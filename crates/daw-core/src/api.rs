@@ -157,6 +157,9 @@ fn note_to_lua(lua: &Lua, n: &Note) -> mlua::Result<Table> {
     note.raw_set("length", n.length)?;
     note.raw_set("pitch", n.pitch)?;
     note.raw_set("velocity", n.velocity)?;
+    if n.id != 0 {
+        note.raw_set("id", n.id)?;
+    }
     // What extensions keep with a note, such as its lyric.
     if !n.meta.is_empty() {
         note.raw_set("meta", to_lua(lua, &n.meta)?)?;
@@ -211,6 +214,12 @@ fn notes_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Vec<Note>> {
                 pitch: int(note.raw_get("pitch").ok()?)?,
                 velocity,
                 meta: Default::default(),
+                id: match note.raw_get::<LuaValue>("id").ok()? {
+                    LuaValue::Nil => 0,
+                    LuaValue::Integer(i) => u64::try_from(i).ok()?,
+                    LuaValue::Number(n) if n >= 0.0 && n.fract() == 0.0 => n as u64,
+                    _ => return None,
+                },
             });
         }
         Some(notes)

@@ -208,7 +208,10 @@ end)
 test("events report what changed", function()
   fresh()
   local seen = {}
-  local handle = daw.on("*", function(payload, name) seen[#seen + 1] = name .. ":" .. tostring(payload.id or "") end)
+  -- (What changed, said again as addresses, is daw.address's business: tests/address.lua.)
+  local handle = daw.on("*", function(payload, name)
+    if name ~= "address.changed" then seen[#seen + 1] = name .. ":" .. tostring(payload.id or "") end
+  end)
   local t = daw.add_track()
   local d = t:add_device("gain")
   daw.flush()

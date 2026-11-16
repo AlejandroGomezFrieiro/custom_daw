@@ -139,6 +139,7 @@ impl Recording {
                 pitch: key,
                 velocity,
                 meta: Default::default(),
+                id: 0,
             });
         }
     }
@@ -544,6 +545,8 @@ impl Session {
             return;
         }
         self.dirty = false;
+        // Whatever this edit added, it is given a name before anyone sees it.
+        self.project.name_notes();
         let mut ctx = SyncCtx {
             registry: &self.registry,
             audio: &mut self.audio,
@@ -585,6 +588,10 @@ impl Session {
             return;
         }
         self.touched = false;
+        // An edit not yet played has notes not yet named: the step keeps them named.
+        if self.project.name_notes() {
+            self.dirty = true;
+        }
         // The one control this step moved, if that is all it did.
         let moved = sweep
             .key
