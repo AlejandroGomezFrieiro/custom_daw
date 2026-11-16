@@ -109,8 +109,13 @@ daw.harmony.provide("my-analysis", nil)   -- removed
 daw.harmony.invalidate()                  -- my answer changed
 ```
 
-A provider returning nil leaves it to the next. Names and numerals are
-filled in. `daw.harmony.provider()` says whose reading it is.
+A provider returning nil leaves it to the next. One that answers wins over
+the stretch its answer covers, and the providers below it fill in the rest
+of the song: MIDI LSP's engine, which hears the clip it is sent, names the
+chords there (with their function, `T`, `S`, `D`), the built-in reading
+the others. Names and numerals a provider leaves out are filled in, and
+other names of qualities (`major`, `min7`, `dom7`, `half-dim`) are
+understood. `daw.harmony.provider()` says whose reading wins.
 
 **Theory.** `parse_key("F# dorian")`, `key_name(key)`, `pc_name(pc, key)`,
 `in_key(key, pitch)`, `snap(key, pitch, dir)`, `degree(key, pitch)`,
