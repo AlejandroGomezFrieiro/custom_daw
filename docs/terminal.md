@@ -77,6 +77,7 @@ returns to normal mode.
 | `grv` `grp`, `grt` | type the volume (dB) or pan (`L30`, `R25`, `C`, -100 to 100), the tempo: a number, `+2` or `-3` to step from the value now, `=-6` for a value below zero |
 | `I` `Alt-i`, `R` | next audio input, monitor the input; record or stop recording |
 | `&` `S` `J` `~`, `grc` | repeat, split, join, mute the clip; rename it |
+| `gw` `gW` | put a warp marker on the audio clip at the cursor; take off the one nearest it |
 | `,cf`, `grC` | type the fade in and out of the audio clip under the cursor, in beats (`1 2`, or one length for both); choose the track's colour from the theme's hues (also in the mixer) |
 | `H` `L`, `Alt-h` `Alt-l`, `Ctrl-a` `Ctrl-x` | move the clip; shorten and lengthen it; transpose it |
 | `Enter`, `K` | edit the clip's notes in the piano roll; describe what is under the cursor |
@@ -84,7 +85,8 @@ returns to normal mode.
 | `A`, `,at` `,ax` | add a volume automation point at the cursor; turn the lane off or on (read or bypass), clear it |
 | `,al`, `,aa` `,aA` | choose what to automate (volume, pan, any device parameter) and show its lane; show or hide the track's lanes as rows; show every track's lanes |
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
-| `gC` `gI`, `zt` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes |
+| `gC` `gI`, `zt` `zT` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes (see below for comping with the mouse), the tempo lane under the ruler |
+| `:preroll 2`, `:tempo.move 9` | play two bars (`3s`: seconds) before the punch in when recording from a stop; move the tempo change at the cursor to bar 9 |
 | `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
 | `Tab` `gt`, `Ctrl-w c`, `Ctrl-w o` | next view; close this panel; close every panel |
@@ -107,9 +109,29 @@ parameter's range), `c` or `=` types its value, `x` removes it, and `,at`
 remove the points in it, `H` `L` move them a grid step, `+` `-` raise or
 lower them. Lanes for send levels are not there yet.
 
+**The tempo lane.** `zT` (or `:tempo.lane`) puts two rows under the ruler that
+draw the tempo map as a curve: level where a change holds, sloping where it
+ramps (`◢`; `◆` marks a change that holds). The header says the tempo at the
+cursor. The lane is to look at; the map is changed by commands, each one undo
+step: `:tempo 96 at 17` (or `here`) adds a change, `:tempo.ramp` makes the
+change before the cursor ramp to the next, `:tempo.move 9` moves it to bar 9,
+`:tempo.remove` takes it away. The window's lane is drawn on with the mouse.
+
+**Comping with the mouse.** `zt` shows a track's takes as lanes under its
+clips, one row for each take. Drag across lane k with the left button, and
+the cells from where you pressed to where you let go are marked; on release
+take k plays over that stretch, as in the window: the clips are cut at its
+ends on the grid (Shift leaves it), the pieces that then play the same take
+are joined, and it is one undo step. A click without a drag (a cell shorter
+than a grid step) gives the piece under it take k. A click on the lane's
+label (`↳ take 2`) makes that take play wherever the track has it. The
+release may be anywhere on the screen: a drag belongs to the view it began
+in. `:take 2` over a selection does the same from the keyboard.
+
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
-`gh` sounds the pitch, `Esc` goes back to the arrange view. In the device panel
+`gh` sounds the pitch, `E` lists the clip's notes and controller moves to
+change in place (the event list), `Esc` goes back to the arrange view. In the device panel
 `j` `k` choose a row, `h` `l` change a parameter, `c` or `=` types its value
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`
@@ -123,6 +145,10 @@ dragging a device card by its name onto a track's header moves it there
 (with `Ctrl`, copies it), and dragging it up or down the list reorders. The
 mixer has `h` `l` for tracks, `j` `k` for volume, `grv` `grp` to type the
 strip's volume and pan, and `dd` `yy` `p` for tracks.
+
+`,l` shows the session view, the clip launcher: a column of slots under
+each track and a scene for each row, launched with `<CR>` and `L`; its keys
+are in [Live performance](live.md).
 
 ## Pickers
 

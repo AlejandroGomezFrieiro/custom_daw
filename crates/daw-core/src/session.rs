@@ -23,16 +23,18 @@ use serde_json::{Map, Value, json};
 use crate::history::{self, History};
 use crate::model::{
     Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Send,
-    StretchMode, Target, Timebase, Track, parse_input,
+    StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
 mod clipops;
 mod encode;
 mod keep;
+pub mod launcher;
 mod loading;
 pub mod media;
 mod midi_out;
+mod monitor;
 mod stretching;
 pub use loading::OpenOpts;
 pub mod notes;
@@ -40,6 +42,7 @@ pub mod offline;
 pub mod panic;
 mod ports;
 pub mod render;
+pub mod tags;
 mod tempo;
 mod undo;
 mod watch;
@@ -70,6 +73,13 @@ pub struct Transport {
     /// for none. Set from `daw.opt.count_in`, so not saved with a project.
     #[serde(skip)]
     pub count_in: u32,
+    /// Bars, and then seconds, that a take punched in from a stop starts
+    /// playing before the punch in. Set from `daw.opt.pre_roll` and
+    /// `daw.opt.pre_roll_seconds`, so not saved with a project.
+    #[serde(skip)]
+    pub pre_roll: u32,
+    #[serde(skip)]
+    pub pre_roll_seconds: f64,
 }
 
 impl Default for Transport {
@@ -84,6 +94,8 @@ impl Default for Transport {
             punch_end: 0.0,
             recording: false,
             count_in: 0,
+            pre_roll: 0,
+            pre_roll_seconds: 0.0,
         }
     }
 }
@@ -212,10 +224,18 @@ pub struct ClipOpts {
     pub pitch: f64,
     pub stretch_mode: StretchMode,
     pub source_tempo: Option<f64>,
+    pub warp: Vec<WarpMarker>,
+    pub formants: bool,
     #[serde(rename = "loop")]
     pub looped: bool,
     pub loop_length: Option<f64>,
     pub loop_start: f64,
+    /// Put it in this row of the track's slots, to be launched, instead of
+    /// on the timeline; and how it launches.
+    pub slot: Option<u32>,
+    pub quantize: Option<crate::model::Quantize>,
+    pub mode: crate::model::LaunchMode,
+    pub legato: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -230,7 +250,7 @@ pub struct LaneOpts {
     pub points: Vec<(f64, f64)>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RenderOpts {
     pub start: f64,
@@ -264,6 +284,9 @@ pub struct RenderOpts {
     pub quality: Option<String>,
     pub bitrate: Option<u32>,
     pub ffmpeg: Option<String>,
+    /// What the file is tagged with, over the project's own
+    /// (`project.meta.tags`): see [`tags::Tags`].
+    pub tags: tags::Tags,
 }
 
 impl Default for RenderOpts {
@@ -284,6 +307,7 @@ impl Default for RenderOpts {
             quality: None,
             bitrate: None,
             ffmpeg: None,
+            tags: tags::Tags::default(),
         }
     }
 }
@@ -608,6 +632,7 @@ impl Session {
             "name": p.name, "tempo": p.tempo, "sig_num": p.sig_num, "sig_den": p.sig_den,
             "tempo_ramp": p.tempo_ramp, "tempo_changes": p.tempo_changes, "sig_changes": p.sig_changes,
             "path": self.path, "length": p.end(), "meta": p.meta,
+            "launch_quantize": p.launch_quantize,
             "modified": self.touched || !self.history.at_saved(),
             // Goes up with every change: compare two readings to see whether
             // something in between edited the project.
@@ -640,6 +665,7 @@ impl Session {
                     p.set_tempo_map(map);
                 }
                 "meta" => p.meta = de_meta(key, value)?,
+                "launch_quantize" => p.launch_quantize = de(key, value)?,
                 _ => bail!("project has no settable field `{key}`"),
             }
             Ok(())
@@ -724,14 +750,21 @@ impl Session {
         self.dirty = true;
         self.restoring = true;
         // The count-in is the user's, not the project's.
-        let count_in = self.transport.count_in;
+        let (count_in, pre_roll, pre_roll_seconds) = (
+            self.transport.count_in,
+            self.transport.pre_roll,
+            self.transport.pre_roll_seconds,
+        );
         self.transport = Transport {
             count_in,
+            pre_roll,
+            pre_roll_seconds,
             ..transport
         };
         self.path = path;
         self.send_transport();
         self.flush();
+        self.launcher_reset();
         // The old project's audio is not needed for undo any more.
         self.trim_audio();
         self.events
@@ -1806,6 +1839,12 @@ impl Session {
     // --- clips -------------------------------------------------------------
 
     pub fn clip_view(&self, id: Id) -> Result<Value> {
+        if let Some((track, index)) = self.project.find_slot_clip(id) {
+            let slot = &self.project.track(track).unwrap().slots[index];
+            let mut view = clip_json(&slot.clip, track);
+            launcher::slot_json(slot, &mut view);
+            return Ok(view);
+        }
         let (track, _) = self
             .project
             .find_clip(id)
@@ -1894,6 +1933,7 @@ impl Session {
         }
         let stretch = opts.stretch.unwrap_or(1.0);
         stretching::check_playing(kind, stretch, opts.pitch, opts.source_tempo)?;
+        stretching::check_warp(kind, &opts.warp)?;
         if opts.loop_length.is_some_and(|l| !l.is_finite() || l <= 0.0)
             || !opts.loop_start.is_finite()
         {
@@ -1904,25 +1944,41 @@ impl Session {
             let t = p
                 .track_mut(track)
                 .with_context(|| format!("no track {track}"))?;
-            t.clips.push(Arc::new(Clip {
+            let clip = Arc::new(Clip {
                 timebase: opts.timebase.filter(|_| kind == "audio"),
                 stretch,
                 pitch: opts.pitch,
                 stretch_mode: opts.stretch_mode,
                 source_tempo: opts.source_tempo.filter(|_| kind == "audio"),
+                warp: opts.warp.clone(),
+                formants: opts.formants,
                 looped: opts.looped && opts.loop_length.is_some(),
                 loop_length: opts.loop_length,
                 loop_start: opts.loop_start,
                 id,
                 name: opts.name.unwrap_or(default_name),
-                start: opts.start,
+                // A clip in a slot starts at 0 whatever `start` says.
+                start: if opts.slot.is_some() { 0.0 } else { opts.start },
                 length,
                 muted: false,
                 content,
                 fade_in: opts.fade_in,
                 fade_out: opts.fade_out,
                 meta: opts.meta,
-            }));
+            });
+            match opts.slot {
+                Some(row) => launcher::put_slot(
+                    t,
+                    crate::model::SlotClip {
+                        row,
+                        clip,
+                        quantize: opts.quantize,
+                        mode: opts.mode,
+                        legato: opts.legato,
+                    },
+                ),
+                None => t.clips.push(clip),
+            }
             Ok(id)
         })
     }
@@ -1983,15 +2039,21 @@ impl Session {
         let ClipContent::Audio { file, offset, .. } = &clip.content else {
             bail!("clip {id} is not an audio clip");
         };
-        let (file, offset, start, stretch) = (file.clone(), *offset, clip.start, clip.stretch);
+        let (file, offset, start) = (file.clone(), *offset, clip.start);
+        let map = self.project.tempo_map().clone();
+        let warp = crate::warp::of(clip, &map).unwrap_or_else(|| crate::warp::Warp::even(1.0));
         let data = self.audio.load(&file)?;
-        let map = self.project.tempo_map();
-        let seconds = (data.seconds() - offset).max(0.0) * stretch;
+        let seconds = (warp.forward(data.seconds()) - warp.forward(offset)).max(0.0);
+
         Ok(map.beat(map.seconds(start) + seconds) - start)
     }
 
     pub fn clip_remove(&mut self, id: Id) -> Result<()> {
         self.edit(|p| {
+            if let Some((track, index)) = p.find_slot_clip(id) {
+                p.track_mut(track).unwrap().slots.remove(index);
+                return Ok(());
+            }
             let (track, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
             p.track_mut(track).unwrap().clips.remove(index);
             Ok(())
@@ -2014,8 +2076,14 @@ impl Session {
             return done;
         }
         self.edit(|p| {
-            let (from, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
-            if key == "track" {
+            // A clip in a slot has keys of its own, and no `start` or
+            // place on a track's timeline.
+            let in_slot = p.find_slot_clip(id).is_some();
+            if in_slot && launcher::set_slot_key(p, id, key, value.clone())? {
+                return Ok(());
+            }
+            if !in_slot && key == "track" {
+                let (from, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
                 let to: Id = de(key, value)?;
                 if p.track(to).is_none() {
                     bail!("no track {to}");
@@ -2024,7 +2092,7 @@ impl Session {
                 p.track_mut(to).unwrap().clips.push(clip);
                 return Ok(());
             }
-            let c = p.clip_mut(id).unwrap();
+            let c = p.clip_mut(id).with_context(|| format!("no clip {id}"))?;
             match (key, &mut c.content) {
                 ("name", _) => c.name = de(key, value)?,
                 ("start", _) => c.start = de::<f64>(key, value)?.max(0.0),
@@ -2322,7 +2390,33 @@ impl Session {
         self.handle.send(Msg::SetMetronome(t.metronome));
     }
 
+    /// Where a take punched in from a stop starts playing: the pre-roll
+    /// before the punch in, but never later than the playhead (a playhead
+    /// further back is left alone), and not at all when the playhead is
+    /// inside the range or past it.
+    fn pre_roll_start(&self) -> Option<f64> {
+        let t = &self.transport;
+        if !t.recording || self.playing || !t.punch_enabled || t.punch_end <= t.punch_start {
+            return None;
+        }
+        if t.pre_roll == 0 && t.pre_roll_seconds <= 0.0 {
+            return None;
+        }
+        let at = self.position();
+        if at > t.punch_start + 1e-9 {
+            return None;
+        }
+        let map = self.project.tempo_map();
+        let bar = (map.bar_of(t.punch_start) - t.pre_roll as i64).max(0);
+        let from = map.bar_start(bar);
+        let from = map.beat((map.seconds(from) - t.pre_roll_seconds).max(0.0));
+        Some(from.min(at))
+    }
+
     pub fn play(&mut self) {
+        if let Some(from) = self.pre_roll_start() {
+            self.seek(from);
+        }
         self.flush();
         if self.transport.recording {
             self.start_take();
@@ -3323,6 +3417,7 @@ impl Session {
             "metronome": t.metronome, "recording": t.recording,
             "punch_enabled": t.punch_enabled, "punch_start": t.punch_start, "punch_end": t.punch_end,
             "count_in": t.count_in, "counting": self.counting(),
+            "pre_roll": t.pre_roll, "pre_roll_seconds": t.pre_roll_seconds,
             "record_offset": self.record_offset,
             "write": self.write,
             "take": self.take.as_ref().map(|t| t.number),
@@ -3359,6 +3454,20 @@ impl Session {
                     bail!("a count-in is from 0 to 16 bars");
                 }
                 t.count_in = bars as u32;
+            }
+            "pre_roll" => {
+                let bars: f64 = de(key, value)?;
+                if !(0.0..=16.0).contains(&bars) {
+                    bail!("a pre-roll is from 0 to 16 bars");
+                }
+                t.pre_roll = bars as u32;
+            }
+            "pre_roll_seconds" => {
+                let seconds: f64 = de(key, value)?;
+                if !(0.0..=30.0).contains(&seconds) {
+                    bail!("a pre-roll is from 0 to 30 seconds");
+                }
+                t.pre_roll_seconds = seconds;
             }
             _ => bail!("the transport has no settable field `{key}`"),
         }
@@ -3887,6 +3996,15 @@ fn clip_json(c: &Clip, track: Id) -> Value {
                 }
             }
             v["stamp"] = json!(hash.finish() >> 11);
+            // The same for the controller moves.
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            for control in controls {
+                control.start.to_bits().hash(&mut hash);
+                control.value.to_bits().hash(&mut hash);
+                control.key.hash(&mut hash);
+                format!("{:?}", control.what).hash(&mut hash);
+            }
+            v["control_stamp"] = json!(hash.finish() >> 11);
         }
         ClipContent::Audio { file, offset, gain } => {
             // Its file is not there: the clip is silent until it is relinked.

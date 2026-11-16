@@ -143,6 +143,7 @@ fn clips(audio: &Arc<AudioData>, notes: usize) -> Box<ClipSet> {
             fade_out: 0.25,
             declick_in: true,
             declick_out: true,
+            hold: Default::default(),
         });
     }
     Box::new(set)
@@ -323,6 +324,11 @@ fn the_audio_thread_never_allocates() {
                     track: slot,
                     port: 99 + i as u32,
                     channel: if i == 0 { 5 } else { 0 },
+                    form: if i == 0 {
+                        daw_engine::midi_form::Form::Mpe(15)
+                    } else {
+                        daw_engine::midi_form::Form::Auto
+                    },
                 },
             );
         }
@@ -348,6 +354,10 @@ fn the_audio_thread_never_allocates() {
     // MIDI output goes into a queue nobody reads here: once it is full,
     // what does not fit is counted and dropped.
     let _midi_out = handle.midi_output();
+    // So does a copy of the output for a listener elsewhere; and one
+    // replaced by another is let go of off the audio thread.
+    let _first = handle.monitor(0.05);
+    let _monitor = handle.monitor(0.05);
     send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
     send(&mut handle, Msg::SetTempo(133.0));
     send(&mut handle, Msg::SetTimeSig { num: 7, den: 8 });
@@ -398,6 +408,70 @@ fn the_audio_thread_never_allocates() {
     AUDIO.with(|a| a.set(false));
     send(&mut handle, Msg::SetPool(Some(Box::new(pool))));
     assert_eq!(run(&mut engine, 200, 512, 4), 0, "playback on four threads");
+
+    // Clip launching: slots given and replaced, launched on every kind of
+    // boundary, legato, stopped, back to the arrangement, across seeks, the
+    // loop going round and the song stopping.
+    use daw_engine::launch::{Launch, Quantize, SlotClip, Slots, Target};
+    let slots = |round: usize| {
+        let rows = (0..4)
+            .map(|row| {
+                (row != 2).then(|| SlotClip {
+                    clips: *clips(&audio, 20 + round),
+                    length: 1.0 + row as f64 + round as f64 * 0.5,
+                })
+            })
+            .collect();
+        Box::new(Slots { rows })
+    };
+    let quantizes = [
+        Quantize::Off,
+        Quantize::Grid(0.25),
+        Quantize::Beat,
+        Quantize::Bars(1),
+        Quantize::Bars(4),
+    ];
+    let targets = [
+        Target::Slot(0),
+        Target::Slot(1),
+        Target::Slot(2),
+        Target::Slot(3),
+        Target::Slot(9),
+        Target::Stop,
+        Target::Arrangement,
+    ];
+    for round in 0..12 {
+        for &slot in &tracks {
+            send(
+                &mut handle,
+                Msg::SetSlots {
+                    track: slot,
+                    slots: slots(round),
+                },
+            );
+        }
+        let launches = tracks
+            .iter()
+            .enumerate()
+            .map(|(i, &track)| Launch {
+                track,
+                target: targets[(i + round) % targets.len()],
+                quantize: quantizes[(i * 3 + round) % quantizes.len()],
+                legato: (i + round) % 3 == 0,
+                from: (round % 5 == 2).then_some(round as f64 * 0.3),
+            })
+            .collect();
+        send(&mut handle, Msg::Launch(Box::new(launches)));
+        if round % 4 == 1 {
+            send(&mut handle, Msg::Seek(round as f64 * 0.7));
+        }
+        if round == 7 {
+            send(&mut handle, Msg::Stop);
+            send(&mut handle, Msg::Play);
+        }
+        assert_eq!(run(&mut engine, 30, 512, 4), 0, "launching clips");
+        handle.collect_garbage();
+    }
 
     // Recording: a take capturing two tracks' input and MIDI input.
     let (audio_tx, mut audio_rx) = rtrb::RingBuffer::new(1 << 20);
@@ -663,6 +737,54 @@ fn the_audio_thread_never_allocates() {
     handle.collect_garbage();
 
     the_sampler_never_allocates();
+    a_sound_being_made_never_allocates();
+}
+
+/// A sound played while it is made, run out of and caught up with, is
+/// played without allocating. Run from the test above.
+fn a_sound_being_made_never_allocates() {
+    use daw_engine::Sink;
+    let (mut engine, mut handle) = Engine::new(SR);
+    let mut sink = Sink::growing(SR as usize * 4, SR as u32, None).unwrap();
+    let mut clips = ClipSet::default();
+    clips.audio.push(AudioRegion {
+        start: 0.0,
+        end: 8.0,
+        data: Arc::new(sink.playing().unwrap()),
+        offset: 0.0,
+        gain: 1.0,
+        fade_in: 0.0,
+        fade_out: 0.0,
+        declick_in: false,
+        declick_out: false,
+        hold: Default::default(),
+    });
+    for msg in [
+        Msg::InsertTrack {
+            slot: 1,
+            track: TrackRt::new(),
+        },
+        Msg::SetClips {
+            track: 1,
+            clips: Box::new(clips),
+        },
+        Msg::SetSchedule(Box::new(Schedule::new(
+            vec![SchedEntry::new(1, MASTER), SchedEntry::new(MASTER, NO_SLOT)],
+            0,
+        ))),
+        Msg::Play,
+    ] {
+        send(&mut handle, msg);
+    }
+    let piece: Vec<f32> = (0..SR as usize / 2)
+        .map(|i| (i as f32 * 0.03).sin())
+        .collect();
+    for _ in 0..8 {
+        // Half a second made for each second played: it runs out, then
+        // picks up again.
+        sink.push(&piece, None).unwrap();
+        assert_eq!(run(&mut engine, 94, 512, 2), 0, "a sound being made");
+    }
 }
 
 /// The sampler plays a kit, is handed new kits while it plays, and gives the

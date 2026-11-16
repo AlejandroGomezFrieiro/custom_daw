@@ -8,6 +8,7 @@ daw.option.define("mixdiag_strip", true)          -- a row of marks above the ar
 local mixdiag = require("mixdiag")
 require("mixdiag.rules")
 require("mixdiag.view")
+require("mixdiag.paint")
 package.loaded["daw.mixdiag"] = mixdiag
 
 local function try(fn)

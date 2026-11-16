@@ -56,6 +56,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `gh` | | hear the pitch |
 | `o` `O` | add a track below, above | |
 | `grn` `grc` | rename the track, the clip | |
+| `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
 | `I` `<A-i>` | choose the input (audio, MIDI port and channel), monitor it | |
@@ -64,7 +65,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `,at` `,ax` | automation off and on, clear it | |
 | `,am` | the track's automation mode: read, touch, latch, write, off in turn | |
 | `]t` `[t` | the clip's next take, the one before | |
-| `zt` | show or hide the track's take lanes | |
+| `zt` `zT` | show or hide the track's take lanes, the tempo lane under the ruler | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
@@ -130,7 +131,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `gs` `gp` | playhead to the start, to the cursor |
 | `gL` `gm` | loop on and off, metronome |
 | `gC` | count a bar in before recording, or not |
-| `gI` | punch recording on and off (over a selection: punch there) |
+| `gI` | punch recording on and off (over a selection: punch there); `:preroll 2` plays two bars before the punch in |
 | `R` | record armed tracks, or stop recording; with the loop on, every time round is a take |
 
 ## Find
@@ -152,12 +153,38 @@ Stop half way through a sequence and the keys that can follow are listed.
 | Keys | |
 | --- | --- |
 | `<Tab>` `gt` | next view |
-| `,m` `,d` `,p` | mixer, device panel, piano roll |
+| `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
+| `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this panel, close every panel |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
 | `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+
+## Launch clips (the session view, `,l`)
+
+| Keys | |
+| --- | --- |
+| `h` `l` `j` `k` | previous, next track; next, previous slot (`gg` `G` first, last) |
+| `<CR>` `L` | launch the slot (an empty one stops the track), launch the row as a scene |
+| `s` `S` | stop the track's clip, every clip |
+| `b` `B` | the track back to its timeline, every track |
+| `n` `e` | a new MIDI clip in the slot, open its notes |
+| `x` `dd` `yy` `p` | empty the slot, yank its clip, paste a clip into it |
+| `gp` | copy the arrange view's clip into the slot |
+| `m` `gl` | the next launch mode (trigger, gate, toggle), legato on or off |
+| `R` `4R` | record a bar, or four, into the empty slot from the next boundary |
+| `grn` `C` | name the scene, capture what is launched into the timeline |
+
+## Diagnostics and language servers
+
+| Keys | |
+| --- | --- |
+| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
+| `gK` | in R: what the diagnostics and language servers say about the note |
+| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
+| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
 ## The tutor
 

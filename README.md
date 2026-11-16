@@ -32,6 +32,10 @@ target/release/daw-gui -e 'dofile("examples/demo-song.lua")'   # the window, wit
 target/release/daw doctor        # check your sound devices, MIDI ports and plugins
 ```
 
+Or without the dev shell: `nix run .` (the terminal UI) and `nix run .#daw-gui`
+(the window); `nix profile install .` installs them
+([Installing with Nix](docs/running.md#installing-with-nix)).
+
 In the terminal, `?` lists every key of the view you are in, `:` runs any
 command by name, and `:q` quits. A course of sixteen ten-minute lessons runs
 inside the program (`:tutor`, once the `tutor` extension is loaded) and can
@@ -108,9 +112,13 @@ terminal uses. [docs/window.md](docs/window.md) has every gesture.
 - **Files.** Projects are JSON you can read. Renders to WAV, FLAC, MP3, Ogg
   and Opus, whole or by region, on a background thread. REAPER projects open
   through the `rpp` extension.
+- **Playing live.** Clips in slots beside the timeline, launched on the bar
+  from the keyboard, the mouse or a pad, in scenes. See [Live performance](docs/live.md).
 - **Somewhere else.** `daw attach` shows the terminal UI of a running
   instance in another terminal, and `daw-gui --connect` puts the window on an
-  instance on another machine. See [docs/protocol.md](docs/protocol.md).
+  instance on another machine, over TLS, each with a cursor and mode of its
+  own; files and sound go across too. See
+  [docs/running.md](docs/running.md#on-another-machine).
 
 ## Make it yours
 
@@ -178,6 +186,7 @@ Protocol.
 | [The graphical frontend](docs/window.md) | every gesture in the window |
 | [Input and recording](docs/recording.md) | inputs, monitoring, takes, punch, count-in |
 | [Editing, mixing and rendering](docs/mixing.md) | routing, automation, tempo, stretching, markers, export |
+| [Live performance](docs/live.md) | clips in slots, launched on the bar, scenes, capturing a performance |
 | [Plugins and built-in devices](docs/devices.md) | CLAP, LV2, VST3, the sandbox, the built-in devices |
 | [Configuration](docs/configuration.md) | options, colours, the look |
 | [Scripting](docs/scripting.md) | the `daw` module, scripts, `daw ctl` |

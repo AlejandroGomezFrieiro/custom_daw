@@ -11,11 +11,15 @@ license = "MIT OR Apache-2.0"
 daw-engine = { path = "crates/daw-engine" }
 daw-core = { path = "crates/daw-core" }
 daw-plugins = { path = "crates/daw-plugins" }
+daw-luadev = { path = "crates/daw-luadev" }
 daw-proto = { path = "crates/daw-proto" }
+daw-listen = { path = "crates/daw-listen" }
 anyhow = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 # Exact round trips of every f64 through a saved project.
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# TLS for network connections, pure Rust with ring: no OpenSSL.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 [profile.dev]
 opt-level = 1

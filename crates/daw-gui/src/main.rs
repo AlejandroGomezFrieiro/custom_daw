@@ -22,6 +22,7 @@ use slint::{
 };
 
 mod portal;
+mod session;
 
 slint::include_modules!();
 
@@ -35,6 +36,12 @@ Usage:
                                        show one running on another machine
                                        (started with --listen-tcp; the token
                                        is also taken from --token or $DAW_TOKEN)
+    --accept-certificate               take the certificate it shows though
+                                       another was remembered for it
+    --no-tls                           connect in the clear, to one started
+                                       with --no-tls
+    --listen-audio                     play its sound here (about 1 Mbit/s);
+                                       also in the engine menu
 
 Options:
   --renderer software|gpu   draw on the processor (the default) or on the
@@ -207,27 +214,42 @@ struct Client {
     /// of device kinds did, which is only sent at first.
     fresh: bool,
     fresh_kinds: bool,
+    /// The kernel's sound, played here (`:listen`, the engine menu).
+    player: Option<daw_listen::Player>,
 }
 
 impl Client {
-    fn connect(path: &Path) -> Result<Self> {
-        Self::watching(daw_proto::Connection::unix(path)?)
+    /// Connect to a kernel on this machine: with a seat of its own (a cursor,
+    /// mode and selection), or in the instance's own (`shared`), as a window
+    /// that started its kernel itself is.
+    fn connect(path: &Path, shared: bool) -> Result<Self> {
+        Self::watching(daw_proto::Connection::unix(path)?, shared)
     }
 
     /// Connect to a kernel on another machine (or this one) over the network.
-    fn connect_tcp(address: &str, token: &str) -> Result<Self> {
-        Self::watching(daw_proto::Connection::tcp(address, token)?)
+    fn connect_tcp(address: &str, token: &str, wire: &daw_proto::Wire) -> Result<Self> {
+        let connection = daw_proto::Connection::tcp_with(address, token, wire)?;
+        if let Some(print) = &connection.trusted_now {
+            eprintln!(
+                "daw-gui: {address} is trusted from now on: its certificate is {print} \
+                 (remembered in {})",
+                daw_proto::tls::known_path().display()
+            );
+        }
+        Self::watching(connection, false)
     }
 
-    fn watching(connection: daw_proto::Connection) -> Result<Self> {
+    fn watching(connection: daw_proto::Connection, shared: bool) -> Result<Self> {
         let mut client = Self {
             connection,
             tick: Value::Null,
             sections: serde_json::Map::new(),
             fresh: false,
             fresh_kinds: false,
+            player: None,
         };
-        client.call("frontend.watch", json!([]))?;
+        let seat = if shared { "instance" } else { "own" };
+        client.call("frontend.watch", json!([{ "seat": seat }]))?;
         Ok(client)
     }
 
@@ -244,6 +266,17 @@ impl Client {
         let mut params = vec![json!(code)];
         params.extend(args.as_array().cloned().unwrap_or_default());
         self.call("eval", Value::Array(params))
+    }
+
+    /// Start playing the kernel's sound here, or stop.
+    fn toggle_listening(&mut self) -> Result<()> {
+        if self.player.take().is_some() {
+            return self.connection.notify("monitor.unlisten", json!([]));
+        }
+        let player = daw_listen::Player::device()?;
+        self.call("monitor.listen", json!([]))?;
+        self.player = Some(player);
+        Ok(())
     }
 
     /// The state to draw, in the shape `daw.frontend.state` gives it: what
@@ -263,6 +296,17 @@ impl Client {
                     }
                     self.tick = payload;
                 }
+                Ok((name, payload)) if name == "audio.frame" => {
+                    if let Some(player) = &self.player {
+                        let _ = player.push(&payload);
+                    }
+                }
+                Ok((name, _)) if name == "monitor.toggle" => {
+                    if let Err(err) = self.toggle_listening() {
+                        let message = format!("cannot play the instance's sound here: {err:#}");
+                        let _ = self.eval("daw.notify(..., 'error')", json!([message]));
+                    }
+                }
                 Ok(_) => {}
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -281,7 +325,7 @@ impl Client {
                 project["lines"] = part("lines");
             }
             state.insert("project".into(), project);
-            for name in ["tracks", "clips", "devices", "routing"] {
+            for name in ["tracks", "clips", "devices", "routing", "slots"] {
                 state.insert(name.into(), part(name));
             }
             state.insert("selected".into(), part("view")["selected"].clone());
@@ -292,6 +336,24 @@ impl Client {
         }
         Ok(state)
     }
+}
+
+/// Send the sound files among `paths` to a kernel on another machine (or
+/// one this window did not start), into its project's media folder, and
+/// return where they are there. The rest are left out, said to be refused.
+fn send_sounds(client: &mut Client, paths: &[String]) -> Result<Vec<String>> {
+    let mut there = Vec::new();
+    for path in paths {
+        let sound = client.eval("return daw.is_audio_file(...)", json!([path]))?;
+        if sound.as_bool() != Some(true) {
+            let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+            let message = format!("cannot send {name}: only sound files go to an instance on another machine");
+            client.eval("daw.notify(..., 'warn')", json!([message]))?;
+            continue;
+        }
+        there.push(client.connection.send_file(Path::new(path))?);
+    }
+    Ok(there)
 }
 
 /// Start a kernel without a UI and connect to it.
@@ -329,7 +391,7 @@ fn start_kernel(args: &[String]) -> Result<(Client, Child)> {
     // The first start can take a while: it looks through every installed plugin.
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
-        if let Ok(client) = Client::connect(&socket) {
+        if let Ok(client) = Client::connect(&socket, true) {
             return Ok((client, child));
         }
         if let Some(status) = child.try_wait()? {
@@ -584,6 +646,65 @@ fn lane_path(
         path += &format!(" L {:.1} {:.1}", beat * zoom, y(*value));
     }
     path += &format!(" L {:.1} {:.1}", to * zoom, y(at(to)));
+    path
+}
+
+/// The height of the tempo lane under the ruler, in pixels, and where in it
+/// a tempo at the bottom or the top of its range is drawn (a little room
+/// above and below, as for the lanes in rows).
+const TEMPO_LANE: f32 = 56.0;
+fn tempo_y(value: f32) -> f32 {
+    (0.12 + (1.0 - value) * 0.76) * TEMPO_LANE
+}
+
+/// The tempo map as a path over beats `from` to `to`, in pixels at `zoom`: a
+/// level run to the next change where a point holds, a sloping line where it
+/// ramps. Each point is `(beat, height 0..1, ramps)`; only the stretch that
+/// shows is drawn.
+fn tempo_path(points: &[(f32, f32, bool)], from: f32, to: f32, zoom: f32) -> String {
+    let Some(last) = points.last() else {
+        return String::new();
+    };
+    let from = from.max(0.0);
+    let to = to.max(from);
+    // The corners of the curve: a step has a corner at the beat where it
+    // changes, a ramp goes straight to the next point's height.
+    let mut corners: Vec<(f32, f32)> = Vec::new();
+    for (i, point) in points.iter().enumerate() {
+        if i > 0 && !points[i - 1].2 {
+            corners.push((point.0, points[i - 1].1));
+        }
+        corners.push((point.0, point.1));
+    }
+    corners.push((to.max(last.0), last.1));
+    let mut path = String::new();
+    let put = |path: &mut String, beat: f32, value: f32| {
+        let command = if path.is_empty() { "M" } else { "L" };
+        *path += &format!("{command} {:.1} {:.1} ", beat * zoom, tempo_y(value));
+    };
+    let mut prev: Option<(f32, f32)> = None;
+    for corner in corners {
+        if let Some(a) = prev {
+            // The part of the stretch from `a` to `corner` that is in view.
+            let (x0, x1) = (a.0.max(from), corner.0.min(to));
+            if corner.0 > a.0 {
+                if x1 >= x0 {
+                    let at = |x: f32| a.1 + (corner.1 - a.1) * (x - a.0) / (corner.0 - a.0);
+                    if path.is_empty() {
+                        put(&mut path, x0, at(x0));
+                    }
+                    put(&mut path, x1, at(x1));
+                }
+            } else if a.0 >= from && a.0 <= to {
+                // A step's upright.
+                if path.is_empty() {
+                    put(&mut path, a.0, a.1);
+                }
+                put(&mut path, a.0, corner.1);
+            }
+        }
+        prev = Some(corner);
+    }
     path
 }
 
@@ -1052,6 +1173,8 @@ struct View {
     tracks: Rc<VecModel<TrackData>>,
     meters: Rc<VecModel<MeterData>>,
     clips: Rc<VecModel<ClipData>>,
+    /// The session view: slots to launch.
+    session: session::Session,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
     params: Vec<Rc<VecModel<ParamData>>>,
@@ -1077,6 +1200,10 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// The notes diagnostics are about, and for each by its place in the
+    /// roll what they say and the titles of their fixes.
+    marks: Rc<VecModel<MarkData>>,
+    mark_notes: Rc<RefCell<HashMap<i32, (SharedString, Vec<SharedString>)>>>,
     /// All of the clip's notes, its other clips' and the song's lines over
     /// it; the models hold those of the stretch `roll_for` (beats) alone.
     roll_notes: Vec<NoteData>,
@@ -1093,6 +1220,8 @@ struct View {
     roll_controls: Vec<Value>,
     strip: i32,
     controls: Rc<VecModel<ControlData>>,
+    /// The places of the moves chosen in the strip, as the kernel counts them.
+    controls_chosen: HashSet<i64>,
     /// The piano roll's own window, and whether the roll is in it.
     roll_window: RollWindow,
     detached: bool,
@@ -1113,6 +1242,11 @@ struct View {
     strips: Rc<VecModel<LaneData>>,
     strip_points: Rc<VecModel<PointData>>,
     lane_rows: Vec<Vec<i32>>,
+    /// The tempo lane under the ruler when it is shown: the tempo at its
+    /// bottom and top, and each change as `(beat, bpm, ramps)`; and what is
+    /// drawn of them.
+    tempo_lane: Option<(f32, f32, Vec<(f32, f32, bool)>)>,
+    tempo_points: Rc<VecModel<TempoPointData>>,
     /// How many take lanes each row shows under its clips, the clips that
     /// have takes on those rows, and what is drawn of them: the lanes, the
     /// takes of the clips in view, and each take's picture by clip and take
@@ -1198,6 +1332,7 @@ impl View {
             self.message_until = None;
         }
         let state = client.state()?;
+        self.session.tick(&state);
         let playing = state["playing"].as_bool().unwrap_or(false);
         let recording = state["recording"].as_bool().unwrap_or(false);
         let position = number(&state["position"]);
@@ -1405,6 +1540,7 @@ impl View {
             roll.set_open(false);
         }
         let _ = self.roll_window.hide();
+        self.show_marks(&Value::Null);
     }
 
     /// Fill the strip under the piano roll with the controller it shows.
@@ -1425,6 +1561,10 @@ impl View {
                     } else {
                         self::number(&c["value"])
                     },
+                    place: c["place"].as_i64().unwrap_or(0) as i32,
+                    selected: c["place"]
+                        .as_i64()
+                        .is_some_and(|place| self.controls_chosen.contains(&place)),
                 })
                 .collect(),
         };
@@ -1441,6 +1581,7 @@ impl View {
         ui.set_macro(text(&modal["recording"]));
         ui.set_focused(text(&modal["focused"]));
         ui.set_show_mixer(modal["mixer"].as_bool().unwrap_or(false));
+        self.session.modal(ui, modal);
         // A render in the background, and a controller being waited for.
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
@@ -1582,6 +1723,15 @@ impl View {
             if changed {
                 self.roll_view(ui);
             }
+            // And which controller moves in the strip.
+            let moves: HashSet<i64> = rows(&roll["controls_chosen"])
+                .iter()
+                .filter_map(Value::as_i64)
+                .collect();
+            if moves != self.controls_chosen {
+                self.controls_chosen = moves;
+                self.show_controls(ui);
+            }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
                 format!(
@@ -1611,10 +1761,35 @@ impl View {
                 shown.set_chosen_text(text(&roll["chosen"]));
                 shown.set_step_input(roll["step_input"].as_bool().unwrap_or(false));
             }
+            self.show_marks(&roll["marks"]);
         }
         ui.set_row_device(modal["device"].as_i64().unwrap_or(0) as i32);
         ui.set_row_param(modal["param"].as_i64().unwrap_or(-1) as i32);
         Ok(())
+    }
+
+    /// Outline the notes diagnostics are about (the kernel's
+    /// `daw.diagnostic.roll_marks`), by their place in the roll.
+    fn show_marks(&mut self, marks: &Value) {
+        let mut notes = HashMap::new();
+        let mut shown = Vec::new();
+        for mark in rows(marks) {
+            let Some(index) = mark["index"].as_i64().and_then(|i| (i as usize).checked_sub(self.roll_hidden)) else {
+                continue;
+            };
+            let index = index as i32;
+            shown.push(MarkData {
+                index,
+                pitch: mark["pitch"].as_i64().unwrap_or(60) as i32,
+                start: number(&mark["start"]),
+                length: number(&mark["length"]),
+                severity: mark["severity"].as_i64().unwrap_or(2) as i32,
+            });
+            let titles = rows(&mark["actions"]).iter().map(text).collect();
+            notes.insert(index, (text(&mark["message"]), titles));
+        }
+        sync(&self.marks, shown);
+        *self.mark_notes.borrow_mut() = notes;
     }
 
     /// Fetch the clip in the piano roll and show its notes, or close the roll
@@ -1677,6 +1852,38 @@ impl View {
             let _ = self.roll_window.show();
         }
         Ok(())
+    }
+
+    /// Lay out the tempo lane over the stretch that shows, and a screen's
+    /// worth on either side.
+    fn draw_tempo(&mut self, ui: &App) {
+        let Some((lo, hi, points)) = &self.tempo_lane else {
+            ui.set_tempo_lane(false);
+            ui.set_tempo_path("".into());
+            sync(&self.tempo_points, Vec::new());
+            return;
+        };
+        let (view_from, view_to) = (ui.get_view_start(), ui.get_view_end());
+        let span = (view_to - view_from).max(1.0);
+        let (from, to) = (view_from - span, view_to + span);
+        let height = |bpm: f32| ((bpm - lo) / (hi - lo).max(1.0)).clamp(0.0, 1.0);
+        let shaped: Vec<(f32, f32, bool)> = points.iter().map(|p| (p.0, height(p.1), p.2)).collect();
+        ui.set_tempo_lane_top(format!("{hi:.0}").into());
+        ui.set_tempo_lane_bottom(format!("{lo:.0}").into());
+        ui.set_tempo_path(tempo_path(&shaped, from, to, ui.get_zoom()).into());
+        let shown: Vec<TempoPointData> = shaped
+            .iter()
+            .zip(points)
+            .filter(|(p, _)| p.0 >= from && p.0 <= to)
+            .map(|(p, raw)| TempoPointData {
+                beat: p.0,
+                value: p.1,
+                ramp: p.2,
+                text: format!("{}", (raw.1 * 100.0).round() / 100.0).into(),
+            })
+            .collect();
+        sync(&self.tempo_points, shown);
+        ui.set_tempo_lane(true);
     }
 
     /// Lay out the lane each track shows, in pixels at the current zoom: the
@@ -1772,6 +1979,7 @@ impl View {
         sync(&self.points, points);
         sync(&self.strips, strips);
         sync(&self.strip_points, strip_points);
+        self.draw_tempo(ui);
         // What each track's header says its lane is, and could be.
         for (row, (_, all)) in self.lane_data.iter().enumerate() {
             let Some(mut track) = self.tracks.row_data(row) else {
@@ -1933,6 +2141,7 @@ impl View {
 
     fn project(&mut self, ui: &App, client: &mut Client, state: &Value, project: &Value) {
         ui.set_project_name(text(&project["name"]));
+        self.session.project(ui, state);
         ui.set_modified(project["modified"].as_bool().unwrap_or(false));
         ui.set_tempo(format!("{}", project["tempo"].as_f64().unwrap_or(120.0)).into());
         ui.set_signature(text(&project["signature"]));
@@ -1940,6 +2149,17 @@ impl View {
         self.all_lines = tempo_lines(&project["lines"]);
         self.lines_for = None;
         ui.set_tempo_marks(tempo_marks(&project["marks"]));
+        let lane = &project["tempo_lane"];
+        self.tempo_lane = lane.is_object().then(|| {
+            let points = rows(&lane["points"])
+                .iter()
+                .map(|p| (number(&p["beat"]), number(&p["bpm"]), p["ramp"].as_bool().unwrap_or(false)))
+                .collect();
+            (number(&lane["lo"]), number(&lane["hi"]), points)
+        });
+        self.draw_tempo(ui);
+        ui.set_pre_roll(project["pre_roll"].as_i64().unwrap_or(0) as i32);
+        ui.set_pre_roll_seconds(number(&project["pre_roll_seconds"]));
         let markers: Vec<MarkerData> = rows(&project["markers"])
             .iter()
             .map(|m| MarkerData {
@@ -2117,6 +2337,9 @@ impl View {
                     takes: c["takes"].as_i64().unwrap_or(1) as i32,
                     take: c["take"].as_i64().unwrap_or(1) as i32,
                     looped: c["loop"].as_bool().unwrap_or(false),
+                    warps: ModelRc::from(Rc::new(VecModel::from(
+                        rows(&c["warps"]).iter().map(number).collect::<Vec<f32>>(),
+                    ))),
                     color: colour(&state["tracks"][row as usize]["color"]),
                 }
             })
@@ -2338,10 +2561,23 @@ fn run() -> Result<()> {
     let (client, child) = match (&address, &socket) {
         (Some(address), _) => {
             let token = token.context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?;
-            (Client::connect_tcp(address, &token)?, None)
+            let flag = |name: &str| args.iter().any(|a| a == name);
+            let wire = if flag("--no-tls") {
+                daw_proto::Wire::Plain
+            } else {
+                daw_proto::Wire::Tls {
+                    known: daw_proto::tls::known_path(),
+                    accept_new: flag("--accept-certificate"),
+                }
+            };
+            let mut client = Client::connect_tcp(address, &token, &wire)?;
+            if flag("--listen-audio") {
+                client.toggle_listening()?;
+            }
+            (client, None)
         }
         (None, Some(path)) => {
-            let client = Client::connect(path)
+            let client = Client::connect(path, false)
                 .with_context(|| format!("no kernel at {}", path.display()))?;
             (client, None)
         }
@@ -2362,6 +2598,7 @@ fn run() -> Result<()> {
         tracks: Rc::new(VecModel::default()),
         meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
+        session: session::Session::new(&ui),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
         pictures: HashMap::new(),
@@ -2373,6 +2610,8 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        marks: Rc::new(VecModel::default()),
+        mark_notes: Rc::new(RefCell::new(HashMap::new())),
         roll_notes: Vec::new(),
         roll_ghosts: Vec::new(),
         roll_lines: Vec::new(),
@@ -2383,6 +2622,7 @@ fn run() -> Result<()> {
         roll_controls: Vec::new(),
         strip: 0,
         controls: Rc::new(VecModel::default()),
+        controls_chosen: HashSet::new(),
         roll_window: RollWindow::new()?,
         detached: false,
         rec_start: None,
@@ -2394,6 +2634,8 @@ fn run() -> Result<()> {
         points: Rc::new(VecModel::default()),
         strips: Rc::new(VecModel::default()),
         strip_points: Rc::new(VecModel::default()),
+        tempo_lane: None,
+        tempo_points: Rc::new(VecModel::default()),
         lane_rows: Vec::new(),
         take_rows: Vec::new(),
         take_clips: Vec::new(),
@@ -2436,6 +2678,16 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_marks(ModelRc::from(view.borrow().marks.clone()));
+        let notes = view.borrow().mark_notes.clone();
+        roll.on_note_message(move |index| {
+            notes.borrow().get(&index).map(|(message, _)| message.clone()).unwrap_or_default()
+        });
+        let notes = view.borrow().mark_notes.clone();
+        roll.on_note_actions(move |index| {
+            let titles = notes.borrow().get(&index).map(|(_, titles)| titles.clone()).unwrap_or_default();
+            ModelRc::new(VecModel::from(titles))
+        });
         roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));
@@ -2444,10 +2696,12 @@ fn run() -> Result<()> {
     ui.set_points(ModelRc::from(view.borrow().points.clone()));
     ui.set_strips(ModelRc::from(view.borrow().strips.clone()));
     ui.set_strip_points(ModelRc::from(view.borrow().strip_points.clone()));
+    ui.set_tempo_points(ModelRc::from(view.borrow().tempo_points.clone()));
     ui.set_take_lanes(ModelRc::from(view.borrow().take_lanes.clone()));
     ui.set_take_pieces(ModelRc::from(view.borrow().take_pieces.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
     ui.set_view_entries(ModelRc::from(view.borrow().view_entries.clone()));
+    ui.set_remote(child.borrow().is_none());
     ui.set_bands(ModelRc::from(view.borrow().bands.clone()));
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
@@ -2475,6 +2729,7 @@ fn run() -> Result<()> {
             act(&|c| c.eval(&code, args.clone()))
         }
     };
+    view.borrow().session.install(&ui, pass.clone());
     // Leaving the project (quitting, starting a new one, opening another)
     // asks first when there are changes to save. Returns whether it asked.
     let leave = {
@@ -2520,6 +2775,8 @@ fn run() -> Result<()> {
         let (client, weak, child) = (client.clone(), ui.as_weak(), child.clone());
         let (pass, leave, act) = (pass.clone(), leave.clone(), act.clone());
         let (busy, absent) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(false)));
+        // A kernel this window attached to may be on another machine.
+        let remote = child.borrow().is_none();
         ANSWER.with(|slot| {
             let (busy, absent) = (busy.clone(), absent.clone());
             *slot.borrow_mut() = Some(Box::new(move |purpose: Purpose, outcome: portal::Outcome| {
@@ -2545,6 +2802,11 @@ fn run() -> Result<()> {
                                 leave(&format!("open:{path}"));
                             }
                             Purpose::SaveAs => pass("chosen", json!(["saveas", path])),
+                            // Chosen here for a kernel elsewhere: sent there first.
+                            Purpose::Import if remote => act(&|c| {
+                                let there = c.connection.send_file(Path::new(&path))?;
+                                c.eval("return daw.frontend.act.chosen(...)", json!(["import", there]))
+                            }),
                             Purpose::Import => pass("chosen", json!(["import", path])),
                             Purpose::Render => ui.set_render_path(path.into()),
                         }
@@ -2555,7 +2817,10 @@ fn run() -> Result<()> {
         });
         // Returns whether a dialog is being shown (or was, and is still open).
         move |purpose: Purpose, render_path: &str, stems: bool| -> bool {
-            if child.borrow().is_none() || absent.get() {
+            // A sound file to import can come from this machine whatever
+            // the kernel's is: it is sent there.
+            let here = child.borrow().is_some() || matches!(purpose, Purpose::Import);
+            if !here || absent.get() {
                 return false;
             }
             if busy.get() {
@@ -2613,6 +2878,58 @@ fn run() -> Result<()> {
                 json!([what.as_str(), kind, beat, to.max(0.0)]),
             )
         }
+    });
+    // The tempo lane under the ruler: the pencil over it (a click adds a
+    // change, a stroke draws a curve), a change dragged, removed or ramped.
+    ui.on_tempo_pencil({
+        let (pass, view, weak) = (pass.clone(), view.clone(), ui.as_weak());
+        move |beat, height, phase| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut view = view.borrow_mut();
+            if phase == 0 {
+                view.pencil.clear();
+            }
+            // The curve has a little room above and below it in its row.
+            let height = ((height - 0.12) / 0.76).clamp(0.0, 1.0);
+            view.pencil.push((beat.max(0.0), height));
+            if phase < 2 {
+                let zoom = ui.get_zoom();
+                let path = stroke_path(&view.pencil, |beat| beat * zoom, tempo_y);
+                ui.set_tempo_pencil_path(path.into());
+                return;
+            }
+            ui.set_tempo_pencil_path("".into());
+            let stroke: Vec<(f32, f32)> = view.pencil.drain(..).collect();
+            drop(view);
+            // How far the pointer went, in pixels: a click hardly moves.
+            let reach = stroke
+                .iter()
+                .map(|p| {
+                    ((p.0 - stroke[0].0) * ui.get_zoom()).abs() + ((p.1 - stroke[0].1) * TEMPO_LANE).abs()
+                })
+                .fold(0.0, f32::max);
+            if reach < 5.0 {
+                pass("tempo_point_add", json!([stroke[0].0, stroke[0].1]));
+            } else {
+                let points: Vec<Value> = stroke.iter().map(|(b, h)| json!([b, h])).collect();
+                pass("tempo_draw", json!([points]));
+            }
+        }
+    });
+    ui.on_tempo_point_move({
+        let pass = pass.clone();
+        move |beat, to, height| {
+            let height = ((height - 0.12) / 0.76).clamp(0.0, 1.0);
+            pass("tempo_point_move", json!([beat, to.max(0.0), height]))
+        }
+    });
+    ui.on_tempo_point_remove({
+        let pass = pass.clone();
+        move |beat| pass("tempo_point_remove", json!([beat]))
+    });
+    ui.on_tempo_point_ramp({
+        let pass = pass.clone();
+        move |beat| pass("tempo_point_ramp", json!([beat]))
     });
     ui.on_set_loop({
         let pass = pass.clone();
@@ -2729,6 +3046,7 @@ fn run() -> Result<()> {
                     ui.set_input_channel(choices(&menu["channel"]));
                     ui.set_input_midi_out(choices(&menu["midi_out"]));
                     ui.set_input_midi_out_channel(choices(&menu["midi_out_channel"]));
+                    ui.set_input_midi_out_form(choices(&menu["midi_out_form"]));
                 }
                 Ok(menu)
             })
@@ -3053,6 +3371,18 @@ fn run() -> Result<()> {
         let pass = pass.clone();
         move |id, db| pass("set_clip_gain", json!([id, db]))
     });
+    ui.on_warp_add({
+        let pass = pass.clone();
+        move |id, beat| pass("warp_add", json!([id, beat]))
+    });
+    ui.on_warp_move({
+        let pass = pass.clone();
+        move |id, index, beat, free| pass("warp_move", json!([id, index + 1, beat, free]))
+    });
+    ui.on_warp_remove({
+        let pass = pass.clone();
+        move |id, index| pass("warp_remove", json!([id, index + 1]))
+    });
     ui.on_clip_command({
         let pass = pass.clone();
         move |id, beat, line| pass("clip_command", json!([id, beat, line.as_str()]))
@@ -3103,7 +3433,7 @@ fn run() -> Result<()> {
             let skip = view.borrow().roll_hidden;
             if matches!(
                 name,
-                "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity"
+                "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity" | "note_action" | "note_hover"
             ) && let Some(place) = args.first().and_then(Value::as_i64)
             {
                 args[0] = json!(place + skip as i64);
@@ -3254,6 +3584,18 @@ fn run() -> Result<()> {
                     drop(view);
                     roll("erase_notes", json!([points]));
                 }
+            }
+        });
+        // A gesture on the strip's moves: the kind it shows goes with it.
+        shown.on_strip_act({
+            let (roll, view) = (roll.clone(), view.clone());
+            move |name, args| {
+                let Some((kind, number)) = strip_kind(view.borrow().strip) else {
+                    return;
+                };
+                let mut all = vec![json!(kind), json!(number)];
+                all.extend(args.iter().map(|a| json!(a)));
+                roll(name.as_str(), Value::Array(all))
             }
         });
         // Any other gesture, by the name of its function in the kernel.
@@ -3617,6 +3959,15 @@ fn run() -> Result<()> {
                     sync(&view.borrow().render_ranges, ranges);
                     ui.set_render_range(0);
                     ui.set_render_path(text(&info["path"]));
+                    let tags = &info["tags"];
+                    ui.set_render_title(text(&tags["title"]));
+                    ui.set_render_artist(text(&tags["artist"]));
+                    ui.set_render_album(text(&tags["album"]));
+                    ui.set_render_track(text(&tags["track"]));
+                    ui.set_render_year(text(&tags["year"]));
+                    ui.set_render_genre(text(&tags["genre"]));
+                    ui.set_render_comment(text(&tags["comment"]));
+                    ui.set_render_cover(text(&tags["cover"]));
                     // The lossy formats are offered when ffmpeg can make them.
                     let has = |name: &str| info["formats"][name].as_bool().unwrap_or(false);
                     ui.set_render_has_mp3(has("mp3"));
@@ -3655,6 +4006,12 @@ fn run() -> Result<()> {
                     "bits": ui.get_render_bits(), "tail": tail.max(0.0), "normalize": normalize,
                     "dither": ui.get_render_dither(), "mono": ui.get_render_mono(),
                     "stems": ui.get_render_stems(),
+                    "tags": {
+                        "title": ui.get_render_title().as_str(), "artist": ui.get_render_artist().as_str(),
+                        "album": ui.get_render_album().as_str(), "track": ui.get_render_track().as_str(),
+                        "year": ui.get_render_year().as_str(), "genre": ui.get_render_genre().as_str(),
+                        "comment": ui.get_render_comment().as_str(), "cover": ui.get_render_cover().as_str(),
+                    },
                 }]),
             );
             ui.set_render_open(false);
@@ -3722,12 +4079,20 @@ fn run() -> Result<()> {
     let layout = |ui: &App| {
         let scale = ui.window().scale_factor();
         let size = ui.window().size().to_logical(scale);
-        json!({
+        let mut layout = json!({
             "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
             "row_height": ui.get_row_height(),
             "roll_height": ui.get_roll_height(),
             "mixer": ui.get_show_mixer(),
-        })
+        });
+        // Where the window is, in screen pixels with its frame, where the
+        // system tells a program (X11). On Wayland it does not: the
+        // compositor places windows, so nothing is kept.
+        if let Some(at) = ui.window().with_winit_window(|window| window.outer_position().ok()).flatten() {
+            layout["x"] = json!(at.x);
+            layout["y"] = json!(at.y);
+        }
+        layout
     };
     ui.window().on_close_requested({
         let (leave, client, weak, layout) = (leave.clone(), client.clone(), ui.as_weak(), layout);
@@ -3746,7 +4111,8 @@ fn run() -> Result<()> {
     // Files dragged in from a file manager. Winit sends one event per file
     // and, on X11 only (it has no drag and drop on Wayland), none says where
     // the pointer is: the kernel puts each sound file on a track of its own.
-    // The paths are local, so only a kernel of this window's own will do.
+    // A kernel of this window's own reads them where they are; one this
+    // window attached to is sent the sound files first.
     ui.window().on_winit_window_event({
         let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
         let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
@@ -3757,24 +4123,33 @@ fn run() -> Result<()> {
             };
             match event {
                 WindowEvent::HoveredFile(_) => {
-                    let (message, error) = if child.borrow().is_some() {
-                        ("Drop to add the files to the project", false)
+                    let message = if child.borrow().is_some() {
+                        "Drop to add the files to the project"
                     } else {
-                        ("Files can only be dropped on a window that started its own kernel", true)
+                        "Drop to send the sound files to the instance and add them"
                     };
-                    view.borrow_mut().show(&ui, message, error);
+                    view.borrow_mut().show(&ui, message, false);
                 }
                 WindowEvent::HoveredFileCancelled => view.borrow_mut().show(&ui, "", false),
-                WindowEvent::DroppedFile(path) if child.borrow().is_some() => {
+                WindowEvent::DroppedFile(path) => {
                     let first = dropped.borrow().is_empty();
                     dropped.borrow_mut().push(path.to_string_lossy().to_string());
                     if first {
                         // The rest of the files follow at once.
                         let (client, view, weak) = (client.clone(), view.clone(), weak.clone());
-                        let (leave, dropped) = (leave.clone(), dropped.clone());
+                        let (leave, dropped, child) = (leave.clone(), dropped.clone(), child.clone());
                         Timer::single_shot(Duration::from_millis(100), move || {
-                            let paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
+                            let mut paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
                             let Some(ui) = weak.upgrade() else { return };
+                            if child.borrow().is_none() {
+                                paths = match send_sounds(&mut client.borrow_mut(), &paths) {
+                                    Ok(there) => there,
+                                    Err(err) => {
+                                        view.borrow_mut().show(&ui, &format!("{err:#}"), true);
+                                        return;
+                                    }
+                                };
+                            }
                             let done = client.borrow_mut().eval(
                                 "return daw.frontend.act.drop(...)",
                                 json!([paths]),
@@ -3820,6 +4195,7 @@ fn run() -> Result<()> {
                     }
                     view.show(&ui, &format!("{err:#}"), true);
                 }
+                ui.set_listening(client.borrow().player.is_some());
                 (view.windows.clone(), std::mem::take(&mut view.repaint))
             };
             let mut canvases = canvases.borrow_mut();
@@ -3847,7 +4223,7 @@ fn run() -> Result<()> {
                     window.on_pointer({
                         let send = send.clone();
                         move |kind, x, y, button, ctrl, shift, alt| {
-                            let kind = ["down", "up", "move", "double"][kind.clamp(0, 3) as usize];
+                            let kind = ["down", "up", "move", "double", "hover"][kind.clamp(0, 4) as usize];
                             let button = ["left", "right", "middle"][button.clamp(0, 2) as usize];
                             send(json!({
                                 "kind": kind, "x": x, "y": y, "button": button,
@@ -3927,6 +4303,29 @@ fn run() -> Result<()> {
     let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
     if let (Some(width), Some(height)) = (size("width"), size("height")) {
         ui.window().set_size(slint::LogicalSize::new(width, height));
+    }
+    // Asking for a position does nothing on Wayland, where the compositor
+    // decides, and nothing was kept there. Where the screens have changed
+    // since, a window that would be out of reach is brought back.
+    if let (Some(x), Some(y)) = (kept["x"].as_i64(), kept["y"].as_i64()) {
+        ui.window().set_position(slint::PhysicalPosition::new(x as i32, y as i32));
+        let weak = ui.as_weak();
+        Timer::single_shot(Duration::from_millis(500), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.window().with_winit_window(|window| {
+                let (Ok(at), size) = (window.outer_position(), window.outer_size()) else { return };
+                let on_screen = window.available_monitors().any(|monitor| {
+                    let (origin, extent) = (monitor.position(), monitor.size());
+                    at.x + size.width as i32 > origin.x + 40
+                        && at.x < origin.x + extent.width as i32 - 40
+                        && at.y >= origin.y - 20
+                        && at.y < origin.y + extent.height as i32 - 40
+                });
+                if !on_screen && let Some(monitor) = window.primary_monitor() {
+                    window.set_outer_position(monitor.position());
+                }
+            });
+        });
     }
     if let Some(zoom) = size("zoom") {
         ui.set_zoom(zoom);

@@ -83,6 +83,12 @@ M.lines.mixer = {
     { "M", "mute" }, { "s", "solo" }, { "r", "arm" }, { "<C-w>c", "close" },
   },
 }
+M.lines.session = {
+  n = {
+    { "<CR>", "launch" }, { "L", "scene" }, { "s", "stop" }, { "b", "timeline" }, { "n", "new clip" },
+    { "e", "notes" }, { "m", "mode" }, { "<Space>", "play" }, { "?", "keys" },
+  },
+}
 M.lines.devices = {
   n = {
     { "j", "next" }, { "l", "raise" }, { "h", "lower" }, { "a", "add" }, { "b", "bypass" }, { "e", "window" },
