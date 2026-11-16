@@ -167,14 +167,19 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 | Keys | |
 | --- | --- |
-| `<Tab>` `gt` | next view |
+| `<Tab>` `<C-w>w` | next window |
 | `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
 | `E` | in R: the clip's notes and controller moves as a list to change in place |
-| `<C-w>c` `<C-w>o` | close this panel, close every panel |
+| `<C-w>c` `<C-w>o` | close this window, close every other window |
+| `<C-w>s` `<C-w>v` | split the window, one above the other, side by side (`:vs roll` shows the piano roll beside) |
+| `<C-w>h` `<C-w>j` `<C-w>k` `<C-w>l` | the window left, below, above, right |
+| `<C-w>H` `<C-w>J` `<C-w>K` `<C-w>L` | move the window to the far left, bottom, top, right |
+| `<C-w>x` `<C-w>r` `<C-w>T` | exchange the window with the next, rotate them, the window to a tab of its own |
+| `gt` `gT` | next tab, previous tab (`:tabnew` makes one) |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
-| `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+| `ZZ` `ZQ` `:q` | save and quit, quit, close the window (quit in the last one) |
 
 ## Launch clips (the session view, `,l`)
 

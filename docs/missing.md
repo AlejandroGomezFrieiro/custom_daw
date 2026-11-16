@@ -1,5 +1,18 @@
 # What is missing
 
+- Windows, buffers and tabs (phase 1 is built): a built-in view is still
+  one buffer shown in one window at a time, as its state (cursor, scroll,
+  the clip open) is one table; phase 2 splits each view's state into the
+  buffer's and the window's, so that two windows can show two clips in
+  piano rolls, or one clip twice. Floating views (help, pickers, pages)
+  are not yet windows of a tab, the window title bar (Neovim's winbar) is
+  drawn by each view itself, layouts are not saved with the project, and
+  the graphical frontend keeps its own layout of panels. `:new` still
+  starts a new project; `:vnew` and `Ctrl-w n` open an empty window.
+  A view's locator (`daw.ui.locator`, where in the project the view's
+  cursor is) belongs to the view, not to each of its windows; phase 2
+  makes it per window.
+
 - Language servers: only clips are sent (MIDI LSP's `track`, `project` and
   `render` documents and its one-shot servers are not); a server's own code
   actions (`codeActionProvider`) and `workspace/executeCommand` have no
@@ -55,8 +68,7 @@
   client's disk (there is no MIDI file import at all, and projects open
   and save on the instance's disk); options such as the zoom, MIDI step
   input, the automation lanes and tempo lane shown are shared by every
-  seat; a view docked by an extension after a seat opened shows only in
-  the seat that docked it; a window's seat does not survive `:reload`.
+  seat; a window's seat does not survive `:reload`.
 - Per-track loudness and spectrum in the painted mix report: the measurement
   gives each track only its peak, so the track meters are peaks, not LUFS
   or RMS. What an extension draws on the terminal's arrange view shows in

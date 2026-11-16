@@ -1625,13 +1625,7 @@ map("n", function(ctx) keymap.search_next(1, ctx.count) end, util.merge(far, { d
 map("N", function(ctx) keymap.search_next(-1, ctx.count) end, util.merge(far, { desc = "Previous match" }))
 map("<Tab>", "view.next", { mode = nx, desc = "Focus the next view" })
 map("<S-Tab>", "view.prev", { mode = nx, desc = "Focus the previous view" })
-map("gt", "view.next", { desc = "Focus the next view" })
-map("gT", "view.prev", { desc = "Focus the previous view" })
-map("<C-w>w", "view.next", { desc = "Focus the next view" })
-map("<C-w>p", "view.prev", { desc = "Focus the previous view" })
-map("<C-w>c", "view.close", { desc = "Close the focused panel" })
-map("<C-w>q", "view.close", { desc = "Close the focused panel" })
-map("<C-w>o", "view.only", { desc = "Close every panel but the arrange view" })
+-- Windows and tabs (`Ctrl-w`, `gt`) are mapped in daw/layout.lua.
 map("<leader>m", "view.toggle mixer", { desc = "Show or hide the mixer" })
 map("<leader>d", "view.toggle devices", { desc = "Show or hide the device panel" })
 map("<leader>p", "view.toggle pianoroll", { desc = "Show or hide the piano roll" })
@@ -2389,7 +2383,12 @@ local function resize(option, by, view, what, least)
   daw.notify(string.format("%s %d", option, daw.opt[option]))
 end
 
-local maximised   -- what `<C-w>_` changed, to put back: { view, hidden = { name = bool }, size }
+--- Whether the arrange view is the only window: then the size keys size
+--- its tracks and headers, as there is no window to share with.
+local function arrange_alone()
+  local wins = daw.layout.focusable_windows()
+  return daw.ui.focused == "arrange" and #wins == 1 and wins[1].view == "arrange"
+end
 
 command("view.height", function(ctx)
   local by = (tonumber(ctx.args[1]) or 1) * (ctx.count or 1)
@@ -2398,6 +2397,7 @@ command("view.height", function(ctx)
   if name ~= "arrange" and node and not in_row then
     return resize(name .. "_height", by, name, "height", 3)
   end
+  if not arrange_alone() and daw.layout.resize(nil, "height", by, true) then return end
   -- From "auto", from the height the tracks have now.
   local now = tonumber(daw.opt.track_height)
   if not now or now <= 0 then now = daw.ui.views.arrange.geometry and daw.ui.views.arrange.geometry.th or 3 end
@@ -2409,54 +2409,29 @@ command("view.width", function(ctx)
   local name = daw.ui.focused
   local node, in_row = layout_node(name)
   if name ~= "arrange" and node and in_row then return resize(name .. "_width", by, name, "width", 12) end
+  if not arrange_alone() and daw.layout.resize(nil, "width", by, true) then return end
   local now = tonumber(daw.opt.header_width)
   if not now then now = daw.ui.views.arrange.geometry and daw.ui.views.arrange.geometry.hw or 24 end
   daw.opt.header_width = util.clamp(now + by, 8, 60)
   daw.notify("header width " .. daw.opt.header_width)
 end, { desc = "A wider side panel, or track header in the arrange view: `view.width 4`, `view.width -2`" })
 command("view.equal", function()
+  if not arrange_alone() then return daw.layout.equalize() end
   daw.opt.track_height = "auto"
   daw.notify("track height fits the tracks to the screen")
-end, { desc = "Track height back to automatic: the tracks fit the screen" })
+end, { desc = "Windows of equal size; with the arrange view alone, track height back to automatic" })
 command("view.maximize", function()
-  if maximised then
-    for name, hidden in pairs(maximised.hidden) do
-      if hidden then daw.ui.hide(name) else daw.ui.show(name) end
-    end
-    local node = layout_node(maximised.view)
-    if node then node.size = maximised.size end
-    local name = maximised.view
-    maximised = nil
-    if daw.ui.views[name] then daw.ui.focus(name) end
-    return
+  if daw.layout.maximize() then
+    daw.notify(daw.ui.focused .. " fills the screen; `Ctrl-w _` again puts the others back")
   end
-  local name = daw.ui.focused
-  local keep = layout_node(name)
-  if not keep then return end
-  maximised = { view = name, hidden = {}, size = keep.size }
-  local function walk(node)
-    if node.view then
-      local view = daw.ui.views[node.view]
-      if node.view ~= name and view and view.focusable ~= false then
-        maximised.hidden[node.view] = node.hidden == true
-        node.hidden = true
-      end
-      return
-    end
-    for _, child in ipairs(node) do walk(child) end
-  end
-  walk(daw.ui.layout)
-  keep.size = nil
-  daw.ui.focus(name)
-  daw.notify(name .. " fills the screen; `Ctrl-w _` again puts the others back")
-end, { desc = "Give the focused panel the whole screen, or put the others back" })
+end, { desc = "Give the focused window the whole tab, or put the others back" })
 
-map("<C-w>+", "view.height 1", { desc = "Taller tracks, or a taller panel" })
-map("<C-w>-", "view.height -1", { desc = "Shorter tracks, or a shorter panel" })
-map("<C-w>=", "view.equal", { desc = "Track height back to automatic" })
-map("<C-w><lt>", "view.width -2", { desc = "Narrower side panel, or track headers" })
-map("<C-w>>", "view.width 2", { desc = "Wider side panel, or track headers" })
-map("<C-w>_", "view.maximize", { desc = "Maximise the focused panel, or restore" })
+map("<C-w>+", "view.height 1", { desc = "Taller window; with the arrange view alone, taller tracks" })
+map("<C-w>-", "view.height -1", { desc = "Shorter window; with the arrange view alone, shorter tracks" })
+map("<C-w>=", "view.equal", { desc = "Windows of equal size; with the arrange view alone, track height automatic" })
+map("<C-w><lt>", "view.width -2", { desc = "Narrower window; with the arrange view alone, track headers" })
+map("<C-w>>", "view.width 2", { desc = "Wider window; with the arrange view alone, track headers" })
+map("<C-w>_", "view.maximize", { desc = "Give the window the whole tab, or put the others back" })
 
 -- Exact values ----------------------------------------------------------------
 --
