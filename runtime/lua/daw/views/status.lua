@@ -105,6 +105,9 @@ function view.segments(width)
   -- Diagnostics: how many of each, for the piano roll's clip or the project.
   local diagnostics = daw.diagnostic and daw.diagnostic.status()
   if diagnostics then add(left, 0, 3, diagnostics) end
+  -- The quickfix list, while it has entries.
+  local qf = daw.qf and daw.qf.status()
+  if qf then add(left, 0, 3, qf) end
   -- What is under the pointer, or what it would do there, in what room is left.
   local pointer = daw.mouse.hint_text()
   local room = width - 70

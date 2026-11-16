@@ -14,7 +14,8 @@
 -- from the cursor, a drag on the paper selects a box, a drag of a note
 -- moves it up or down the staff and in time, a double click enters notes
 -- there; in insert mode a click enters a note of the chosen value where the
--- pointer is, and the note to be entered follows the pointer. A right
+-- pointer is, and the note to be entered follows the pointer. A click lands
+-- on the chosen value within the beat, Alt-click on the grid. A right
 -- click opens a menu of what can be done there.
 local api = daw.api
 local util = daw.util
@@ -595,8 +596,9 @@ end
 -- The pointer ----------------------------------------------------------------------------------
 
 --- What is at a point of the paint: the system, staff, measure, the beat
---- (to the grid) and the staff step there.
-function view:locate(x, y)
+--- and the staff step there. The beat is on the chosen value within the
+--- beat (`view:snap`, in `notation.tui`), or with `fine` on the grid.
+function view:locate(x, y, fine)
   local eng, area = gui.engraved, gui.area
   local layout = self:layout()
   if not (eng and layout and area) then return nil end
@@ -616,10 +618,7 @@ function view:locate(x, y)
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
         if px >= placed.x and px < placed.x + placed.p.width then
-          local raw = model.t_of(placed.p, px - placed.x)
-          local grid = layout.grid
-          local beat = floor((raw - m.start) / grid + 0.5) * grid + m.start
-          beat = util.clamp(beat, m.start, m.start + m.length - grid)
+          local beat = self:snap(m, model.t_of(placed.p, px - placed.x) - m.start, fine) + m.start
           return { sys = sys, staff = staff, step = step, beat = beat, measure = m }
         end
       end
@@ -765,14 +764,14 @@ function view:pointer(e)
   local inserting = daw.keymap.mode == "i"
   if e.kind == "hover" then
     gui.gesture = nil
-    local at = self:locate(e.x, e.y)
+    local at = self:locate(e.x, e.y, e.alt)
     gui.hover = inserting and at and at.beat and { beat = at.beat, step = at.step } or nil
     return
   end
   local in_page = not chrome or e.y < gui.size.h - INFO
   if (e.kind == "down" or e.kind == "double") and in_page then
     local hd = head_at(e.x, e.y)
-    local at = self:locate(e.x, e.y)
+    local at = self:locate(e.x, e.y, e.alt)
     if self.multi then
       -- Several tracks, to read: a click sounds a note and puts the cursor there.
       if hd then
@@ -822,7 +821,9 @@ function view:pointer(e)
       self:set(hd.step, max(0, hd.start))
       local note = clip:notes()[hd.index]
       if note then self:audition(note.pitch) end
-      gui.drag = { index = hd.index, from_step = hd.step, from_beat = at and at.beat or hd.start, start = hd.start, note = note, moved = false }
+      -- A drag moves it on the grid, from where it was taken.
+      local from = self:locate(e.x, e.y, true)
+      gui.drag = { index = hd.index, from_step = hd.step, from_beat = from and from.beat or hd.start, start = hd.start, note = note, moved = false }
     elseif at and at.beat then
       self:set(at.step, at.beat)
       gui.box = { x0 = e.x, y0 = e.y, x1 = e.x, y1 = e.y, at = at }
@@ -837,7 +838,7 @@ function view:pointer(e)
         b.started = true
         daw.keymap.visual_start("b")
       end
-      local at = self:locate(e.x, e.y)
+      local at = self:locate(e.x, e.y, true)
       if b.started and at and at.beat then self:set(at.step, at.beat) end
     elseif e.kind == "up" then
       gui.box = nil
@@ -847,7 +848,7 @@ function view:pointer(e)
   local drag = gui.drag
   if not drag then return end
   if e.kind == "move" then
-    local at = self:locate(e.x, e.y)
+    local at = self:locate(e.x, e.y, true)
     if at and at.beat then
       drag.to_beat = max(0, drag.start + at.beat - drag.from_beat)
       drag.to_step = at.step

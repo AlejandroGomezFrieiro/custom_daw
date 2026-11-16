@@ -310,9 +310,21 @@ columns wide and each system a whole number of rows high, and the drawing
 says where the barlines are, so the terminal is sent the page as images
 cut at barlines and an edit re-sends only the measure it changed.
 
-Beams slope by at most a staff space and sit on, straddle or hang from a
-staff line; ties and slurs are thicker in the middle; a chord's accidentals
-stand in columns. The ink is the terminal's foreground colour (the
+Behind Bars (Gould) is the reference for the details. Beams slope by at
+most a staff space and sit on, straddle or hang from a staff line, and
+stand the font's beam spacing apart on whole pixels. Ties are flat and
+close to the heads, on the side away from the stem (a chord's upper notes
+tie up, its lower ones down), and rise a little more the longer they are,
+never more than 0.6 of a space; slurs are rounder. Ties and slurs are
+thicker in the middle. A chord's accidentals stand in columns, and
+spacing gives accidentals (in parentheses too), grace notes and arpeggios
+room only where the notes' own spacing leaves too little: half a space
+clear of the note before. A tuplet under a beam of its own has only its
+number, past the beam; any other has a bracket from its first head to its
+last. With two voices on a staff, a rest moves out of the way of the
+other voice's notes. A bar is not left alone on the last system when the
+system before can spare one of its bars (breaking is otherwise greedy).
+The ink is the terminal's foreground colour (the
 window's text colour), staff lines are lighter, and the selection, the
 cursor, suggestions and diagnostics take the theme's accents. Light ink on
 a dark page is drawn a little thinner, as it looks heavier.
@@ -339,12 +351,13 @@ say it.
 
 | Pointer | |
 | --- | --- |
-| click | the cursor to that note (and hear it), or to that line or space and time |
+| click | the cursor to that note (and hear it), or to that line or space and time: on the chosen value within the beat (an eighth chosen, on an eighth; in triplets, on a third of the beat), so notes typed next fall on the beat |
+| Alt-click | the same, on the sixteenths' grid (`notation_grid`) |
 | Shift-click | a selection from the cursor to there |
 | drag on the paper | select a box (a block) |
-| drag a note | move it in time and up or down the staff; it keeps its distance from the key (a sharp stays a sharp) |
+| drag a note | move it in time (on the grid) and up or down the staff; it keeps its distance from the key (a sharp stays a sharp) |
 | double click | enter notes from there (insert mode) |
-| click in insert mode | put a note of the chosen value there, at that line or space and time, and hear it; with Rest on, clear that stretch. The note to enter follows the pointer |
+| click in insert mode | put a note of the chosen value there, at that line or space and time (snapped as a click is; Alt on the grid), and hear it; with Rest on, clear that stretch. The note to enter follows the pointer |
 | right click | a menu of what can be done there: delete, sharpen, flatten, respell, marks, voice, triplets; on the paper, a note or a rest of the chosen value, paste; the galley |
 | wheel | scroll the systems (the galley sideways); with Ctrl, zoom |
 
@@ -435,7 +448,8 @@ clefs other than treble, the guitar's treble and bass; key changes within a
 clip; trills and other ornaments; a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows). On the engraved page:
 collision avoidance between marks, dynamics and the notes of the other
-staff; slurs that bend round the notes under them; a choice of Bravura
+staff; slurs that bend round the notes under them; line breaking that
+balances every system (only a bar alone at the end is avoided); a choice of Bravura
 or Petaluma (the kernel has them; nothing chooses them yet). For score
 clips: tempo marks that play, repeats unfolded, trills and fermatas played,
 swing, key and clef changes per measure, the piano roll showing which notes

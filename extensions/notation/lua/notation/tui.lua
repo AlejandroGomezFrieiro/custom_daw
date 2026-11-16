@@ -543,9 +543,22 @@ end
 -- chosen value and the shadow note follows the pointer; a right click opens
 -- the menu of what can be done there; the wheel scrolls by measures.
 
---- What is at a cell of the view: the line or space, the beat there on the
---- grid, its staff, and `note` when the cell is a note's head.
-function view:cell_at(x, y)
+--- Where the pointer puts the cursor or a note `rel` beats into measure
+--- `m`: on a multiple of the chosen value within the beat, as one counts
+--- the bar (an eighth on an eighth, a triplet on a third of a beat), so that
+--- what is typed after a click lands where it was meant; with `fine` (Alt
+--- held, or a drag) on the grid. The window's pointer (`notation.gui`)
+--- snaps the same.
+function view:snap(m, rel, fine)
+  local grid = self:layout().grid
+  if fine then return util.clamp(floor(rel / grid + 0.5) * grid, 0, m.length - grid) end
+  return model.snap(m.meter, rel, self.value * (self.triplets and 2 / 3 or 1))
+end
+
+--- What is at a cell of the view: the line or space, the beat there
+--- (`view:snap`, `fine` on the grid), its staff, and `note` when the cell is
+--- a note's head.
+function view:cell_at(x, y, fine)
   local g = self.geometry
   local layout = self:layout()
   if not (g and layout) then return nil end
@@ -556,9 +569,8 @@ function view:cell_at(x, y)
         for s, clef in ipairs(g.staves or layout.staves) do
           local pos = sys.row_of(s, 0) - y
           if pos >= -g.margin - 1 and pos <= 8 + g.margin + 1 then
-            local grid = daw.opt.notation_grid
             local step = model.CLEF_BOTTOM[clef] + pos
-            local at = { step = step, beat = math.max(0, floor(model.t_of(m, x - placed.x) / grid + 0.5) * grid) }
+            local at = { step = step, beat = m.start + self:snap(m, model.t_of(m, x - placed.x) - m.start, fine) }
             at.staff = self:staff_of_step(step, layout)
             -- A head is drawn at its chord's start, or a column right of it
             -- beside a second.
@@ -590,7 +602,7 @@ function view:on_mouse(e)
     self.first = util.clamp(self.first + wheel, 1, #layout.measures)
     return api.ui_redraw()
   end
-  local at = self:cell_at(e.x, e.y)
+  local at = self:cell_at(e.x, e.y, daw.mouse.has(e, "A"))
   local inserting = daw.keymap.mode == "i"
   if e.kind == "move" then
     view.cell_hover = inserting and at and { beat = at.beat, step = at.step, from_beat = self.beat, from_step = self.step } or nil
@@ -634,7 +646,7 @@ function view:on_mouse(e)
     local to
     return daw.mouse.grab(e, {
       drag = function(d)
-        local there = self:cell_at(d.x, d.y)
+        local there = self:cell_at(d.x, d.y, true)
         if not (d.moved and there) then return end
         to = { step = there.step, beat = there.beat }
         self:set(to.step, to.beat)
@@ -649,7 +661,7 @@ function view:on_mouse(e)
   -- A drag on the paper selects a block.
   daw.mouse.grab(e, {
     drag = function(d)
-      local there = self:cell_at(d.x, d.y)
+      local there = self:cell_at(d.x, d.y, true)
       if not (d.moved and there) then return end
       if daw.keymap.mode ~= "x" then daw.keymap.visual_start("b") end
       self:set(there.step, there.beat)

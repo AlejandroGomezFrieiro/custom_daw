@@ -66,7 +66,7 @@ function E.style(o)
     sp = sp, em = 4 * sp, font = font, cell = o.cell, whole = o.whole_cells,
     line = px(d.staffLineThickness), stem = px(d.stemThickness), ledger = px(d.legerLineThickness),
     ledger_ext = d.legerLineExtension * sp, beam = max(2, round(d.beamThickness * sp * thin)),
-    beam_gap = d.beamSpacing * sp, bar = px(d.thinBarlineThickness), thick = px(d.thickBarlineThickness),
+    beam_gap = max(1, round(d.beamSpacing * sp)), bar = px(d.thinBarlineThickness), thick = px(d.thickBarlineThickness),
     bar_gap = round(d.barlineSeparation * sp), dot_gap = d.repeatBarlineDotSeparation * sp,
     tie_end = d.tieEndpointThickness * sp, tie_mid = d.tieMidpointThickness * sp * thin,
     slur_end = d.slurEndpointThickness * sp, slur_mid = d.slurMidpointThickness * sp * thin,
@@ -140,14 +140,17 @@ E.place = place
 -- Shapes ------------------------------------------------------------------------------------
 
 --- A tie or slur from `x0, y0` to `x1, y1` bowing `bow` px towards `dir`
---- (1 down, -1 up), thicker in the middle.
-local function arc(dst, x0, y0, x1, y1, bow, dir, thick_end, thick_mid, colour)
+--- (1 down, -1 up), thicker in the middle. `inset` is how far in from the
+--- ends the curve's control points are, as a part of its length: small for
+--- a flat curve, a quarter for a round one.
+local function arc(dst, x0, y0, x1, y1, bow, dir, thick_end, thick_mid, colour, inset)
   local dx, dy = x1 - x0, y1 - y0
+  inset = inset or 0.25
   -- A cubic's middle is three quarters of the way to its control points.
   local outer, inner = (bow + thick_mid / 2) / 0.75, (bow - thick_mid / 2) / 0.75
   local e = thick_end / 2
-  local ax, ay = x0 + dx * 0.25, y0 + dy * 0.25
-  local bx, by = x0 + dx * 0.75, y0 + dy * 0.75
+  local ax, ay = x0 + dx * inset, y0 + dy * inset
+  local bx, by = x0 + dx * (1 - inset), y0 + dy * (1 - inset)
   dst:path({ "M", x0, y0 + dir * e,
     "C", ax, ay + dir * outer, bx, by + dir * outer, x1, y1 + dir * e,
     "L", x1, y1 - dir * e,
@@ -155,16 +158,181 @@ local function arc(dst, x0, y0, x1, y1, bow, dir, thick_end, thick_mid, colour)
 end
 E.arc = arc
 
+--- The most a tie rises, in staff spaces.
+E.TIE_HEIGHT = 0.6
+
+--- A tie from `x0` to `x1` at `y`, towards `dir` (1 down): flat, close to
+--- the heads, rising a little more the longer it is (Gould).
+local function tie(dst, st, x0, x1, y, dir, colour)
+  local s = st.sp
+  local bow = min(E.TIE_HEIGHT, 0.3 + 0.02 * (x1 - x0) / s) * s
+  arc(dst, x0, y, x1, y, bow, dir, st.tie_end, st.tie_mid, colour, 0.12)
+end
+
+--- Where the tie of a chord's `i`th note (from the lowest) goes: `dir` (1
+--- below the heads, -1 above) and whether it lies outside the chord, over
+--- or under the heads, or between them. A single note's tie and a chord's
+--- outer ones are outside, on the side away from the stem (a stemless note
+--- by where it sits on the staff); a chord's upper notes tie up, its lower
+--- ones down.
+local function tie_side(ev, i)
+  local notes = ev.notes
+  local away = ev.stem and (ev.stem > 0 and 1 or -1) or (notes[#notes].pos >= 4 and -1 or 1)
+  local count = #notes
+  if count == 1 then return away, true end
+  if i == count then return -1, true end
+  if i == 1 then return 1, true end
+  if 2 * i - 1 == count then return away, false end
+  return 2 * i > count and -1 or 1, false
+end
+
+--- A tie's ends for a head whose left edge is at `hx` (`hw` wide) and the
+--- next head's left edge at `nx`, and its height: outside a chord over the
+--- heads, inside it between them.
+local function tie_ends(st, hw, hx, nx, y, dir, outside, dotted)
+  local s = st.sp
+  if outside then
+    return dotted and hx + hw + 0.85 * s or hx + 0.7 * hw, nx and nx + 0.3 * hw, y + dir * 0.7 * s
+  end
+  return hx + hw + 0.15 * s + (dotted and 0.5 * s or 0), nx and nx - 0.15 * s, y + dir * 0.25 * s
+end
+
+-- Heads, accidentals and what else stands beside a head --------------------------------
+
+--- Accidentals of a chord in columns: the highest nearest the notes, each
+--- next one in the first column where it clears those above it by six
+--- staff positions. Returns the column of each note (0 nearest).
+local function accidental_columns(notes)
+  local cols, placed = {}, {}
+  for i = #notes, 1, -1 do
+    local n = notes[i]
+    if n.acc then
+      local c = 0
+      while true do
+        local clash = false
+        for _, q in ipairs(placed) do
+          if q.col == c and abs(q.pos - n.pos) < 6 then clash = true end
+        end
+        if not clash then break end
+        c = c + 1
+      end
+      cols[i] = c
+      placed[#placed + 1] = { col = c, pos = n.pos }
+    end
+  end
+  return cols
+end
+
+local ACC_GLYPH = { [1] = "accidentalSharp", [-1] = "accidentalFlat", [0] = "accidentalNatural", [2] = "accidentalDoubleSharp", [-2] = "accidentalDoubleFlat" }
+local HEAD_GLYPH = function(base)
+  if not base or base < 2 then return "noteheadBlack" end
+  if base < 4 then return "noteheadHalf" end
+  if base < 8 then return "noteheadWhole" end
+  return "noteheadDoubleWhole"
+end
+local REST_GLYPH = { [4] = "restWhole", [2] = "restHalf", [1] = "restQuarter", [0.5] = "rest8th", [0.25] = "rest16th", [0.125] = "rest32nd" }
+local FLAG_GLYPH = { "flag8th", "flag16th", "flag32nd", "flag64th" }
+E.ACC_GLYPH, E.HEAD_GLYPH = ACC_GLYPH, HEAD_GLYPH
+local DYN_GLYPH = { p = "dynamicPiano", mp = "dynamicMP", mf = "dynamicMF", f = "dynamicForte",
+  pp = "dynamicPP", ff = "dynamicFF", ppp = "dynamicPPP", fff = "dynamicFFF" }
+
+--- Between a head and its accidental, and between columns of accidentals,
+--- in staff spaces.
+local ACC_GAP, ACC_COLUMN_GAP = 0.2, 0.15
+
+--- An accidental's width, its parentheses included.
+local function acc_width(st, n)
+  local w = gwidth(st, ACC_GLYPH[n.acc])
+  if n.courtesy then w = w + gwidth(st, "accidentalParensLeft") + gwidth(st, "accidentalParensRight") end
+  return w
+end
+
+--- A chord's accidentals placed left of its heads: for each note with one,
+--- how far left of the heads' left edge its sign (parentheses included)
+--- begins, each right-aligned in a column as wide as the column's widest;
+--- and the room they all take, from the heads' edge (0 with none).
+local function accidentals(st, notes)
+  local cols = accidental_columns(notes)
+  local widths = {}
+  for i, n in ipairs(notes) do
+    if n.acc then widths[cols[i] + 1] = max(widths[cols[i] + 1] or 0, acc_width(st, n)) end
+  end
+  if #widths == 0 then return {}, 0 end
+  local edge, from = ACC_GAP * st.sp, {}
+  for c, w in ipairs(widths) do
+    from[c] = edge
+    edge = edge + w + ACC_COLUMN_GAP * st.sp
+  end
+  local at = {}
+  for i, n in ipairs(notes) do
+    if n.acc then at[i] = from[cols[i] + 1] + acc_width(st, n) end
+  end
+  return at, edge - ACC_COLUMN_GAP * st.sp
+end
+
+--- Which of a chord's heads go on the other side of the stem (a second up
+--- from its neighbour does), and whether any does.
+local function seconds(ev)
+  local shifted, any = {}, false
+  for i, n in ipairs(ev.notes) do
+    local prev = ev.notes[i - 1]
+    shifted[i] = prev and n.step - prev.step == 1 and not shifted[i - 1] or false
+    any = any or shifted[i]
+  end
+  return shifted, any
+end
+
+--- How far an event's writing reaches left and right of its time (the
+--- middle of its heads), in px: accidentals, grace notes and the arpeggio
+--- on the left; heads on the other side of the stem, dots and a flag on
+--- the right. As `measure_ink` draws them.
+local function room(st, ev)
+  local s = st.sp
+  if ev.kind == "rest" then
+    if ev.whole then return 0, 0 end
+    local rw = gwidth(st, REST_GLYPH[ev.base] or "rest16th")
+    return rw / 2, rw / 2 + (ev.dots > 0 and 0.3 * s + gwidth(st, "augmentationDot") or 0)
+  end
+  local hw = gwidth(st, HEAD_GLYPH(ev.base))
+  local dir = ev.stem or 1
+  -- Most chords have no second and no accidental: nothing to place for those.
+  local any, signs = false, false
+  for i, n in ipairs(ev.notes) do
+    if n.acc then signs = true end
+    if i > 1 and n.step - ev.notes[i - 1].step == 1 then any = true end
+  end
+  local side = any and hw - st.stem or 0
+  local acc = 0
+  if signs then _, acc = accidentals(st, ev.notes) end
+  local left = hw / 2 + (dir < 0 and side or 0) + acc
+  local right = hw / 2 + (dir > 0 and side or 0)
+  if ev.arpeggio or ev.grace then left = left + 0.4 * s end
+  if ev.arpeggio then left = left + 1.1 * s end
+  for _, gn in ipairs(ev.grace or {}) do
+    left = left + 0.66 * gwidth(st, "noteheadBlack") + 0.5 * s
+    if gn.acc then left = left + gwidth(st, ACC_GLYPH[gn.acc], 0.66) + 0.15 * s end
+  end
+  if ev.dots > 0 then right = right + (0.35 + 0.5 * (ev.dots - 1)) * s + gwidth(st, "augmentationDot") end
+  if ev.stem and dir > 0 and not ev.beam and (ev.flags or 0) > 0 then
+    right = max(right, hw / 2 - st.stem + gwidth(st, FLAG_GLYPH[min(4, ev.flags)] .. "Up"))
+  end
+  return left, right
+end
+E.room = room
+
 -- Spacing ------------------------------------------------------------------------------------
 
 --- A measure's spacing without touching the layout's measure: a proxy
---- carries `slots` and `width` (in px).
+--- carries `slots` and `width` (in px). What stands beside the heads gets
+--- room only where the spacing of the values leaves too little, half a
+--- space clear of the note before.
 local function spaced(m, st, spread)
   local p = setmetatable({}, { __index = m })
   local s = st.sp
   model.space({ measures = { p } }, {
-    lead = 1.5 * s, acc = 1.3 * s, grace = 1.3 * s, tail = 0.9 * s,
+    lead = 1.5 * s, gap = 0.5 * s, tail = 0.9 * s,
     unit = function(d) return s * spread * (1.15 + 1.6 * sqrt(d / 0.25)) end,
+    room = function(ev) return room(st, ev) end,
   })
   return p
 end
@@ -248,25 +416,43 @@ function E.systems(layout, st, o)
   local width = o.width
   local spaced_of = {}
   for i, m in ipairs(layout.measures) do spaced_of[i] = spaced(m, st, o.spread or 1) end
-  local systems, i = {}, 1
+  -- Measures packed into systems as they fit, the first of each system
+  -- in `starts`.
+  local n, starts, i = #layout.measures, {}, 1
+  while i <= n do
+    starts[#starts + 1] = i
+    local x = cols(prefix_width(st, layout, i, left))
+    repeat
+      local p = spaced_of[i]
+      if not o.galley and i > starts[#starts] and x + p.width > width - cw then break end
+      x = x + p.width
+      i = i + 1
+    until i > n
+  end
+  -- A bar alone on the last system takes the last bar of the system before,
+  -- when that one has bars to spare and the two fit.
+  local k = #starts
+  if not o.galley and k >= 2 and starts[k] == n and starts[k] - starts[k - 1] >= 3 then
+    local x = cols(prefix_width(st, layout, n - 1, left)) + spaced_of[n - 1].width + spaced_of[n].width
+    if x <= width - cw then starts[k] = n - 1 end
+  end
+  local systems = {}
   local y = o.top or 0
   local staff_h = 4 * s
   local tab = layout.tab
-  while i <= #layout.measures do
-    local x0 = cols(prefix_width(st, layout, i, left))
-    local sys = { measures = {}, x0 = x0, y = y, first = i }
+  for k, first in ipairs(starts) do
+    local x0 = cols(prefix_width(st, layout, first, left))
+    local sys = { measures = {}, x0 = x0, y = y, first = first }
     local x = x0
-    repeat
-      local p = spaced_of[i]
-      if not o.galley and #sys.measures > 0 and x + p.width > width - cw then break end
-      sys.measures[#sys.measures + 1] = { m = layout.measures[i], p = p, x = x }
+    for j = first, (starts[k + 1] or n + 1) - 1 do
+      local p = spaced_of[j]
+      sys.measures[#sys.measures + 1] = { m = layout.measures[j], p = p, x = x }
       x = x + p.width
-      i = i + 1
-    until i > #layout.measures
+    end
     -- Every system but the last is spread to the full width, as on a page;
     -- each barline on a whole cell column.
     local target = x
-    if not o.galley and i <= #layout.measures then target = width - cw end
+    if not o.galley and starts[k + 1] then target = width - cw end
     local factor = (target - x0) / max(1, x - x0)
     local at, natural = x0, x0
     for _, placed in ipairs(sys.measures) do
@@ -351,43 +537,6 @@ local function signature(m, placed, sys, layout)
   return table.concat(parts, ";")
 end
 
---- Accidentals of a chord in columns: the highest nearest the notes, each
---- next one in the first column where it clears those above it by six
---- staff positions. Returns the column of each note (0 nearest).
-local function accidental_columns(notes)
-  local cols, placed = {}, {}
-  for i = #notes, 1, -1 do
-    local n = notes[i]
-    if n.acc then
-      local c = 0
-      while true do
-        local clash = false
-        for _, q in ipairs(placed) do
-          if q.col == c and abs(q.pos - n.pos) < 6 then clash = true end
-        end
-        if not clash then break end
-        c = c + 1
-      end
-      cols[i] = c
-      placed[#placed + 1] = { col = c, pos = n.pos }
-    end
-  end
-  return cols
-end
-
-local ACC_GLYPH = { [1] = "accidentalSharp", [-1] = "accidentalFlat", [0] = "accidentalNatural", [2] = "accidentalDoubleSharp", [-2] = "accidentalDoubleFlat" }
-local HEAD_GLYPH = function(base)
-  if not base or base < 2 then return "noteheadBlack" end
-  if base < 4 then return "noteheadHalf" end
-  if base < 8 then return "noteheadWhole" end
-  return "noteheadDoubleWhole"
-end
-local REST_GLYPH = { [4] = "restWhole", [2] = "restHalf", [1] = "restQuarter", [0.5] = "rest8th", [0.25] = "rest16th", [0.125] = "rest32nd" }
-local FLAG_GLYPH = { "flag8th", "flag16th", "flag32nd", "flag64th" }
-E.ACC_GLYPH, E.HEAD_GLYPH = ACC_GLYPH, HEAD_GLYPH
-local DYN_GLYPH = { p = "dynamicPiano", mp = "dynamicMP", mf = "dynamicMF", f = "dynamicForte",
-  pp = "dynamicPP", ff = "dynamicFF", ppp = "dynamicPPP", fff = "dynamicFFF" }
-
 --- Where a beam group's beams run: `y0` at `x0`, slope per px, direction.
 --- The slope is at most a staff space over the group and comes in quarter
 --- spaces; inside the staff the beam's middle sits on a line, or a
@@ -430,7 +579,8 @@ local function beam_line(st, evs, stem_x, Y, dir)
   local q = round(rel)
   if q >= -1 and q <= 17 and q % 4 == 2 then q = q + (dir > 0 and -1 or 1) end
   local snapped = top + q * s / 4
-  y0 = y0 + (snapped - centre)
+  -- On a whole pixel, so that a flat beam's edges are sharp.
+  y0 = round(y0 + (snapped - centre))
   return { x0 = x0, y0 = y0, slope = slope, dir = dir, at = function(x) return y0 + slope * (x - x0) end }
 end
 
@@ -504,13 +654,7 @@ local function measure_ink(st, layout, sys, placed)
         local hw = gwidth(st, hname)
         local hx = round(ex - hw / 2)
         -- A second up from its neighbour goes on the other side of the stem.
-        local shifted = {}
-        for i, n in ipairs(ev.notes) do
-          local prev = ev.notes[i - 1]
-          shifted[i] = prev and n.step - prev.step == 1 and not shifted[i - 1] or false
-        end
-        local any_shift = false
-        for _, v in ipairs(shifted) do any_shift = any_shift or v end
+        local shifted, any_shift = seconds(ev)
         local side = round(hw - st.stem)
         local low, high = ev.notes[1].pos, ev.notes[#ev.notes].pos
         -- Ledger lines.
@@ -519,10 +663,8 @@ local function measure_ink(st, layout, sys, placed)
         local lx1 = round(hx + hw + ext + ((any_shift and dir > 0) and side or 0))
         for pos = -2, low, -2 do out:rect(lx0, round(Y(pos) - st.ledger / 2), lx1 - lx0, st.ledger, colour) end
         for pos = 10, high, 2 do out:rect(lx0, round(Y(pos) - st.ledger / 2), lx1 - lx0, st.ledger, colour) end
-        local cols = accidental_columns(ev.notes)
+        local acc_at, acc_room = accidentals(st, ev.notes)
         local acc_left = hx - ((any_shift and dir < 0) and side or 0)
-        local col_w = gwidth(st, "accidentalFlat") + 0.25 * s
-        local widest_col = -1
         for i, n in ipairs(ev.notes) do
           local nx = hx + (shifted[i] and (dir > 0 and side or -side) or 0)
           local ny = Y(n.pos)
@@ -531,14 +673,12 @@ local function measure_ink(st, layout, sys, placed)
             base = ev.base, glyph = hname, gx = nx }
           if n.acc then
             local name = ACC_GLYPH[n.acc]
-            local aw = gwidth(st, name)
-            local ax = acc_left - 0.3 * s - aw - cols[i] * col_w
-            widest_col = max(widest_col, cols[i])
+            local ax = acc_left - acc_at[i]
             if n.courtesy then
               local lw = gwidth(st, "accidentalParensLeft")
-              out:glyph(st, round(ax - lw), round(ny), "accidentalParensLeft", st.faint)
-              out:glyph(st, round(ax + aw), round(ny), "accidentalParensRight", st.faint)
-              out:glyph(st, round(ax), round(ny), name, st.faint)
+              out:glyph(st, round(ax), round(ny), "accidentalParensLeft", st.faint)
+              out:glyph(st, round(ax + lw), round(ny), name, st.faint)
+              out:glyph(st, round(ax + lw + gwidth(st, name)), round(ny), "accidentalParensRight", st.faint)
             else
               out:glyph(st, round(ax), round(ny), name, colour)
             end
@@ -549,16 +689,13 @@ local function measure_ink(st, layout, sys, placed)
             out:glyph(st, round(dx), round(dy), "augmentationDot", colour)
           end
           if n.tie and ev.next and ev.next.measure == ev.measure then
-            local up = dir > 0 and 1 or -1
-            local x0 = hx + hw + 0.15 * s + (ev.dots > 0 and 0.5 * s or 0)
-            local x1 = round(xt(ev.next.start) - hw / 2) - 0.15 * s
-            local y = ny + up * 0.5 * s
-            local bow = min(0.9, 0.25 + (x1 - x0) / s * 0.05) * s
-            arc(out, x0, y, x1, y, bow, up, st.tie_end, st.tie_mid, colour)
+            local tdir, outside = tie_side(ev, i)
+            local x0, x1, y = tie_ends(st, hw, nx, round(xt(ev.next.start) - hw / 2), ny, tdir, outside, ev.dots > 0)
+            tie(out, st, x0, x1, y, tdir, colour)
           end
         end
         -- Grace notes, the arpeggio and articulations.
-        local left = hx - 0.4 * s - (widest_col >= 0 and (widest_col + 1) * col_w + 0.2 * s or 0)
+        local left = acc_left - acc_room - 0.4 * s
         if ev.arpeggio then
           local y0, y1 = Y(high) - 0.6 * s, Y(low) + 0.6 * s
           local ax = left - 0.3 * s
@@ -591,11 +728,13 @@ local function measure_ink(st, layout, sys, placed)
             out:rect(sx, tip, st.stem, round(gy) - tip, colour)
             out:glyph(st, sx, tip, "flag8thUp", colour, scale)
             out:path({ "M", sx - 0.5 * s, gy - 0.9 * s, "L", sx + 0.8 * s, gy - 2.0 * s }, colour, max(1, 0.1 * s))
+            left = gx - 0.5 * s
             if gn.acc then
               local name = ACC_GLYPH[gn.acc]
-              out:glyph(st, round(gx - gwidth(st, name, scale) - 0.15 * s), round(gy), name, colour, scale)
+              local aw = gwidth(st, name, scale)
+              out:glyph(st, round(gx - aw - 0.15 * s), round(gy), name, colour, scale)
+              left = left - aw - 0.15 * s
             end
-            left = gx - 0.5 * s
           end
         end
         do
@@ -645,7 +784,10 @@ local function measure_ink(st, layout, sys, placed)
       end
     end
 
-    -- Tuplets: a bracket and the number, on the stems' side.
+    -- Tuplets. A group under one beam of its own has only its number, on
+    -- the beam's side, past the beam's middle; any other has a bracket
+    -- from its first head's left edge to its last head's right edge on the
+    -- stems' side, clear of them, with the number in a gap in the middle.
     local tuplets = {}
     for _, ev in ipairs(evs) do
       if ev.tuplet then
@@ -656,25 +798,35 @@ local function measure_ink(st, layout, sys, placed)
       end
     end
     for span, tp in pairs(tuplets) do
-      local up = tp.up >= 0
-      local x0, x1 = round(xt(tp.events[1].start) - head_w / 2), round(xt(tp.events[#tp.events].start) + head_w / 2)
-      local edge = up and Y(10) or Y(-2)
-      for _, ev in ipairs(tp.events) do
-        for _, n in ipairs(ev.notes or {}) do
-          if up then edge = min(edge, Y(n.pos) - 4.4 * s) else edge = max(edge, Y(n.pos) + 4.4 * s) end
-        end
-      end
-      edge = round(edge)
-      local hook = round(up and 0.5 * s or -0.5 * s)
-      local mid = (x0 + x1) / 2
+      local first, last = tp.events[1], tp.events[#tp.events]
       local name = "tuplet" .. tostring(span.n)
       local nw = gwidth(st, name)
-      local th = st.bracket
-      out:rect(x0, min(edge, edge + hook), th, abs(hook), st.faint)
-      out:rect(x0, edge, round(mid - nw / 2 - 0.3 * s) - x0, th, st.faint)
-      out:rect(round(mid + nw / 2 + 0.3 * s), edge, x1 - round(mid + nw / 2 + 0.3 * s), th, st.faint)
-      out:rect(x1 - th, min(edge, edge + hook), th, abs(hook), st.faint)
-      out:glyph(st, round(mid - nw / 2), round(edge + 0.5 * s), name, colour)
+      local nh = glyph(st, name).bbox[4] * s
+      local b = first.beam and beams[first.beam]
+      if b and #b.events == #tp.events and last.beam == first.beam then
+        local mid = (stem_x(first, b.dir) + stem_x(last, b.dir) + st.stem) / 2
+        local edge = b.line.at(mid)
+        local base = b.dir > 0 and edge - 0.4 * s or edge + 0.4 * s + nh
+        out:glyph(st, round(mid - nw / 2), round(base), name, colour)
+      else
+        local up = tp.up >= 0
+        local x0, x1 = head_x(first), head_x(last) + round(head_w)
+        local edge = up and Y(10) or Y(-2)
+        for _, ev in ipairs(tp.events) do
+          for _, n in ipairs(ev.notes or {}) do
+            if up then edge = min(edge, Y(n.pos) - 4.4 * s) else edge = max(edge, Y(n.pos) + 4.4 * s) end
+          end
+        end
+        edge = round(edge)
+        local hook = round(up and 0.5 * s or -0.5 * s)
+        local mid = (x0 + x1) / 2
+        local th = st.bracket
+        out:rect(x0, min(edge, edge + hook), th, abs(hook), st.faint)
+        out:rect(x0, edge, round(mid - nw / 2 - 0.3 * s) - x0, th, st.faint)
+        out:rect(round(mid + nw / 2 + 0.3 * s), edge, x1 - round(mid + nw / 2 + 0.3 * s), th, st.faint)
+        out:rect(x1 - th, min(edge, edge + hook), th, abs(hook), st.faint)
+        out:glyph(st, round(mid - nw / 2), round(edge + nh / 2), name, colour)
+      end
     end
 
     -- Beams: the first joins every note of the group, the others the
@@ -683,6 +835,7 @@ local function measure_ink(st, layout, sys, placed)
       local list, line = b.events, b.line
       local th = st.beam
       for level = 1, 4 do
+        -- Beams a whole number of pixels apart, the font's gap between them.
         local off = (level - 1) * (th + st.beam_gap) * b.dir
         for i, ev in ipairs(list) do
           if (ev.flags or 0) >= level then
@@ -893,7 +1046,6 @@ function E.system_ink(st, layout, sys, eng)
   end
 
   -- Ties that cross a barline, and slurs: they belong to two measures.
-  local head_w = gwidth(st, "noteheadBlack")
   local where = {}
   for _, placed in ipairs(sys.measures) do where[placed.m.index] = placed end
   for k, placed in ipairs(sys.measures) do
@@ -902,20 +1054,20 @@ function E.system_ink(st, layout, sys, eng)
     for staff = 1, nstaves do
       for ei, ev in ipairs(m.staves[staff] or {}) do
         if ev.notes then
-          local up = (ev.stem or 1) > 0 and 1 or -1
-          for _, n in ipairs(ev.notes) do
-            local y = Y(staff, n.pos) + up * 0.5 * s
+          local hw = gwidth(st, HEAD_GLYPH(ev.base))
+          for i, n in ipairs(ev.notes) do
+            local dir, outside = tie_side(ev, i)
+            local hx = round(xt(ev.start) - hw / 2)
             if n.tie and ev.next and ev.next.measure ~= ev.measure then
-              local x0 = round(xt(ev.start) + head_w / 2) + 0.15 * s + (ev.dots > 0 and 0.5 * s or 0)
               local target = where[ev.next.measure]
-              local x1 = target and (target.x + model.x_of(target.p, ev.next.start) - head_w / 2 - 0.15 * s) or (sys.width + 0.3 * s)
-              arc(spans, x0, y, x1, y, min(0.9, 0.25 + (x1 - x0) / s * 0.05) * s, up, st.tie_end, st.tie_mid, colour)
+              local nx = target and round(target.x + model.x_of(target.p, ev.next.start) - hw / 2)
+              local x0, x1, y = tie_ends(st, hw, hx, nx, Y(staff, n.pos), dir, outside, ev.dots > 0)
+              tie(spans, st, x0, x1 or (sys.width + 0.3 * s), y, dir, colour)
             end
             if n.tied and k == 1 and ei == 1 then
               -- A tie from the system before ends here.
-              local x1 = round(xt(ev.start) - head_w / 2) - 0.15 * s
-              local x0 = placed.x - 0.4 * s
-              arc(spans, x0, y, x1, y, 0.4 * s, up, st.tie_end, st.tie_mid, colour)
+              local _, x1, y = tie_ends(st, hw, hx, hx, Y(staff, n.pos), dir, outside, false)
+              tie(spans, st, placed.x - 0.4 * s, x1, y, dir, colour)
             end
           end
           if ev.slur_to then
