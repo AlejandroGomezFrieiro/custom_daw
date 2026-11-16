@@ -23,8 +23,11 @@ daw.ext.load("extensions/notation")   -- or put it in ~/.config/daw/extensions
 | Open as notation | in the window's right-click menu of a MIDI clip |
 
 The view opens at the bottom of the terminal, taking two thirds of the
-height, and in a window of its own in the graphical frontend. `Esc` goes back
-to the arrange view; closing the window does the same.
+height, and in a window of its own in the graphical frontend. `,n` goes back
+to the arrange view, as it came; `:q`, `ZZ` and `Ctrl-w c` close the view, and
+so does closing the window. `Esc` in normal mode stays in the view, as it
+does in Vim: it drops a count, an operator or a selection, and pressed again
+soon it says how to leave.
 
 ## What is written
 
@@ -153,19 +156,26 @@ visual modes work on it.
 | `gd` | dotted values on or off |
 | `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as they are written, loop |
 | `in` `ib` `ic` | the note, the bar, the clip |
-| `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection |
+| `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection, which takes in the note under the cursor, as Vim's takes the character |
+| `:` on a selection | a command for it: the line starts `:'<,'>` (`:'<,'>notation.cresc`) |
 | `p` `P` | paste after the note, at the cursor |
 | `i`, `a` | enter notes at the cursor, after the note |
 | `gh`, `gp` | hear the cursor's pitch; playhead to the cursor |
 | `zi` `zo` | spread the notes out, draw them closer |
-| `Esc` | back to the arrange view |
+| `,n` | back to the arrange view |
+| `:q` `ZZ` `Ctrl-w c` | close the view |
+| `Esc` | stay: drop a count, an operator or a selection |
 
 **Entering notes** (`i`), the way notation programs do it: a letter `c` to
 `b` enters that note at the cursor with the chosen value, in the octave
 nearest the note before (within a fourth), as the key alters it, and steps
 on; a capital stays, to build a chord (`CEg`). What started in that stretch
-of the staff gives way, and a note still sounding there is cut to end where
-the new one starts.
+of the staff, in the same voice, gives way, and a note of that voice still
+sounding there is cut to end where the new one starts. Other staves and
+voices are left alone: a bass note entered under a melody makes a grand
+staff and keeps the melody. Notes go into the voice of the note the cursor
+is on at `i` (the first voice where there is none), so entering over a
+second voice changes it alone.
 
 | Keys | |
 | --- | --- |
@@ -204,11 +214,21 @@ cursor and change its played notes as a musician would expect:
 A note added in the score goes exactly on the grid, as loud as the notes
 around it. `:notation.quantize` makes the whole clip what is written,
 `:notation.retranscribe` forgets every decision made by hand.
+`:notation.transpose 2` moves the chord under the cursor up two semitones
+(`-1 steps` a step of the key down).
+
+**Ranges.** Every `notation.*` command that works on notes or places marks
+takes a range in front, as in Vim: `:'<,'>` the last selection (what `:`
+types from visual mode), `:5,8` bars 5 to 8, `:5` bar 5. So
+`:5,8notation.transpose 2`, `:'<,'>notation.slur`, `:9notation.dyn p`,
+`:1,4notation.repeat` (both signs around bars 1 to 4), `:5,8notation.quantize`.
+The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
+`repeat`, `quantize`, `retranscribe` and `transpose`.
 
 **Marks that play.** `:notation.dyn mf` puts a dynamic at the cursor (`ppp` to
 `fff`, `off`): the notes from there to the next dynamic are moved to its
 loudness, keeping how the player made them differ. `:notation.cresc` and
-`:notation.dim` put a hairpin over the selection (or to the end of the bar)
+`:notation.dim` put a hairpin over the selection or range (or to the end of the bar)
 that ramps the loudness to the next dynamic. `:notation.slur` slurs the
 selection. `:notation.text Allegro` writes text above the staff, and
 `:notation.repeat start` (`end`, `off`) a repeat sign at the cursor's bar;
