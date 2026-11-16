@@ -11,6 +11,10 @@
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ffmpeg-headless ];
+          # What the window tests (`crates/daw-gui/tests/window.rs`) drive: a
+          # private X server, a window manager, a pointer and key sender, and
+          # tesseract to find words on a screenshot.
+          packages = with pkgs; [ xvfb openbox xdotool imagemagick tesseract ];
           buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
           # The graphical frontend loads its windowing libraries at run time.
           # Here they are on the path; `DAW_GUI_LIBS` is where its build
