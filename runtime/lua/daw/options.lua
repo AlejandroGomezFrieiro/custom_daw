@@ -37,6 +37,7 @@ local defaults = {
   -- cache between runs, so that long files are decoded once.
   media_stream = 64,
   media_cache = 16,
+  ffmpeg = "ffmpeg",       -- what renders to MP3, Ogg and Opus run: a name on the PATH, or a path
 }
 local values = {}
 
