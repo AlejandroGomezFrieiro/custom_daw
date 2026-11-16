@@ -7,7 +7,9 @@ description = "The kernel: project model, engine sync, Lua host, cell grid, even
 
 [dependencies]
 daw-engine.workspace = true
+daw-luadev.workspace = true
 daw-proto.workspace = true
+daw-raster.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,3 +25,6 @@ flacenc = { version = "0.5", default-features = false }
 rubato = "0.16"
 # FFTs for the phase vocoder that stretches clips (stretch.rs).
 realfft = "3.5"
+rustls.workspace = true
+# The self-signed certificate an instance listening on the network shows.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }

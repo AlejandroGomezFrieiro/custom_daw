@@ -8,7 +8,13 @@ daw.option.define("mixdiag_strip", true)          -- a row of marks above the ar
 local mixdiag = require("mixdiag")
 require("mixdiag.rules")
 require("mixdiag.view")
+require("mixdiag.paint")
 package.loaded["daw.mixdiag"] = mixdiag
+
+-- The findings are diagnostics too: a language server in this process,
+-- attached to the mix (lua/mixdiag/lens.lua).
+daw.lsp.config("mixdiag", { server = require("mixdiag.lens").server, attach = { subjects = { "mix" } } })
+daw.lsp.enable("mixdiag")
 
 local function try(fn)
   local ok, err = pcall(fn)

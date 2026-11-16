@@ -110,7 +110,13 @@ function M.parse(line)
 end
 
 --- Run a command line, as typed after `:`.
+--- A number right before the name is the command's count: `:3snippet arp`.
 function M.exec(line, ctx)
+  local count, rest = line:match("^%s*(%d+)(%a.*)$")
+  if count then
+    line = rest
+    ctx = daw.util.merge(ctx, { count = tonumber(count) })
+  end
   local name, args = M.parse(line)
   if not name then return end
   return M.run(name, args, ctx)
@@ -225,10 +231,15 @@ M.completers = {
     return out
   end,
   files = function(word) return files(word) end,
+  -- What `import` takes: sound files and MIDI files.
   audio_files = function(word)
-    return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))
+    return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga", "mid", "midi", "smf", "kar" }))
   end,
   projects = function(word) return files(word, set_of({ "json", "rpp" })) end,
+  -- What `edit` opens: projects, MIDI files (as projects) and sound files.
+  openable = function(word)
+    return files(word, set_of({ "json", "rpp", "mid", "midi", "smf", "kar", "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))
+  end,
 }
 
 --- Candidates from one completer (a name, a list of names by position, or

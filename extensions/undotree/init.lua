@@ -3,6 +3,7 @@
 local api = daw.api
 local undotree = require("undotree")
 local view = require("undotree.view")
+require("undotree.paint")
 
 daw.option.define("undotree_ab_key", "\\")   -- the one key that switches between A and B; "" for none
 

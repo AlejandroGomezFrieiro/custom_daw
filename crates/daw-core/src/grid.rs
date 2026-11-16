@@ -123,11 +123,105 @@ impl Rect {
     }
 }
 
+/// What a terminal can show besides cells, as its frontend found out when
+/// it started (or a remote one said with `ui.attach`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Caps {
+    /// Images by the kitty graphics protocol.
+    pub graphics: bool,
+    /// The size of a cell in pixels; 0 when the terminal does not say.
+    pub cell: (u16, u16),
+    /// The pointer reported in pixels (mode 1016).
+    pub pixel_mouse: bool,
+    /// The terminal's own foreground and background colours, when it said.
+    pub fg: Option<(u8, u8, u8)>,
+    pub bg: Option<(u8, u8, u8)>,
+}
+
+impl Caps {
+    /// Whether a view can be shown in pixels on this terminal.
+    pub fn pixels(&self) -> bool {
+        self.graphics && self.cell.0 > 0 && self.cell.1 > 0
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        let colour = |c: Option<(u8, u8, u8)>| c.map(hex);
+        serde_json::json!({
+            "graphics": self.graphics, "cell": [self.cell.0, self.cell.1],
+            "pixel_mouse": self.pixel_mouse, "fg": colour(self.fg), "bg": colour(self.bg),
+        })
+    }
+
+    pub fn from_json(value: &serde_json::Value) -> Caps {
+        let colour = |v: &serde_json::Value| match v.as_str().and_then(Color::parse) {
+            Some(Color::Rgb(r, g, b)) => Some((r, g, b)),
+            _ => None,
+        };
+        let size = |v: &serde_json::Value| v.as_u64().unwrap_or(0).min(1000) as u16;
+        Caps {
+            graphics: value["graphics"].as_bool().unwrap_or(false),
+            cell: (size(&value["cell"][0]), size(&value["cell"][1])),
+            pixel_mouse: value["pixel_mouse"].as_bool().unwrap_or(false),
+            fg: colour(&value["fg"]),
+            bg: colour(&value["bg"]),
+        }
+    }
+}
+
+/// Cells a view shows pixels in (`buf:surface`): its drawing, the
+/// operations of `daw.canvas.paint`, for the frontend to make into pixels
+/// at `cell` pixels a cell, and which of its cells something drawn after
+/// it covers (a menu, a floating view), where the pixels must not show.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Surface {
+    pub name: String,
+    pub rect: Rect,
+    pub cell: (u16, u16),
+    /// A flag for each cell, row by row.
+    pub covered: Vec<bool>,
+    pub ops: std::sync::Arc<serde_json::Value>,
+}
+
+impl Surface {
+    pub fn is_covered(&self, col: u16, row: u16) -> bool {
+        self.covered
+            .get(row as usize * self.rect.w.max(0) as usize + col as usize)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// Covered cells as runs along rows: `[col, row, cols]` each, from the
+    /// surface's corner.
+    pub fn covered_runs(&self) -> Vec<[u16; 3]> {
+        let w = self.rect.w.max(0) as usize;
+        let mut out = Vec::new();
+        for (row, cells) in self.covered.chunks(w.max(1)).enumerate() {
+            let mut col = 0;
+            while col < cells.len() {
+                if cells[col] {
+                    let start = col;
+                    while col < cells.len() && cells[col] {
+                        col += 1;
+                    }
+                    out.push([start as u16, row as u16, (col - start) as u16]);
+                } else {
+                    col += 1;
+                }
+            }
+        }
+        out
+    }
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct Grid {
     pub width: u16,
     pub height: u16,
     pub cells: Vec<Cell>,
+    /// The terminal keeps the pointer for its own selection instead of
+    /// reporting it (`daw.opt.mouse` off); set by the runtime as it draws.
+    pub mouse_off: bool,
+    pub surfaces: Vec<Surface>,
 }
 
 impl Grid {
@@ -136,6 +230,8 @@ impl Grid {
             width,
             height,
             cells: vec![Cell::default(); width as usize * height as usize],
+            mouse_off: false,
+            surfaces: Vec::new(),
         }
     }
 
@@ -145,6 +241,37 @@ impl Grid {
 
     pub fn clear(&mut self) {
         self.cells.fill(Cell::default());
+        self.surfaces.clear();
+    }
+
+    /// Keep a rectangle of cells for pixels: blank, in the terminal's own
+    /// colours, so that nothing in them breaks the image. Returns the
+    /// surface's index, or nothing when the rectangle is off the screen.
+    pub fn surface(&mut self, name: &str, area: Rect, cell: (u16, u16)) -> Option<usize> {
+        let area = area.intersect(&self.rect());
+        if area.w <= 0 || area.h <= 0 {
+            return None;
+        }
+        // Covered by one shown later, a surface already there shows less.
+        self.fill(area, area, Some(' '), Style { fg: Some(Color::Default), bg: Some(Color::Default), on: 0, off: 0xff });
+        self.surfaces.push(Surface {
+            name: name.to_string(),
+            rect: area,
+            cell,
+            covered: vec![false; (area.w * area.h) as usize],
+            ops: Default::default(),
+        });
+        Some(self.surfaces.len() - 1)
+    }
+
+    /// Mark the cell at `(x, y)` covered in any surface it is in.
+    fn cover(&mut self, x: i32, y: i32) {
+        for surface in &mut self.surfaces {
+            let r = surface.rect;
+            if r.contains(x, y) {
+                surface.covered[((y - r.y) * r.w + (x - r.x)) as usize] = true;
+            }
+        }
     }
 
     pub fn rect(&self) -> Rect {
@@ -171,6 +298,10 @@ impl Grid {
                 continue;
             }
             if clip.contains(col, y) && clip.contains(col + width - 1, y) {
+                if !self.surfaces.is_empty() {
+                    self.cover(col, y);
+                    self.cover(col + width - 1, y);
+                }
                 let cell = self.cell_mut(col, y);
                 cell.ch = ch;
                 style.apply(cell);
@@ -188,8 +319,12 @@ impl Grid {
     /// Restyle an area and, when `ch` is given, overwrite its characters.
     pub fn fill(&mut self, clip: Rect, area: Rect, ch: Option<char>, style: Style) {
         let area = area.intersect(&clip).intersect(&self.rect());
+        let cover = !self.surfaces.is_empty();
         for y in area.y..area.y + area.h {
             for x in area.x..area.x + area.w {
+                if cover {
+                    self.cover(x, y);
+                }
                 let cell = self.cell_mut(x, y);
                 if let Some(ch) = ch {
                     cell.ch = ch;

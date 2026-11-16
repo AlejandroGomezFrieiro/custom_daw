@@ -129,6 +129,7 @@ local function build()
     TakeLane = { fg = c.faint, bg = c.bg_dark },
     TakeLaneName = { fg = c.dim, bg = c.bg_dark },
     ClipEdge = { fg = c.bg },
+    ClipWarp = { fg = c.yellow, bold = true },
     ClipMidi = { fg = c.bg, bg = c.blue },
     ClipAudio = { fg = c.bg, bg = c.green },
     ClipMuted = { fg = c.dim, bg = c.bg_hl },
@@ -165,6 +166,7 @@ local function build()
     StatusLine = { fg = c.fg, bg = alt },
     StatusDim = { fg = c.dim, bg = alt },
     StatusFaint = { fg = c.faint, bg = alt },
+    StatusHint = { fg = c.dim, bg = alt, italic = true },
     StatusSep = { fg = c.line_hi, bg = alt },
     StatusTime = { fg = c.bright, bg = alt, bold = true },
     StatusOn = { fg = c.accent, bg = alt },
@@ -208,6 +210,29 @@ local function build()
     RollCursor = { bg = "#2a3a50" },
     Velocity = { fg = c.dim },
     VelocityLane = { fg = c.faint, bg = c.bg_dark },
+    -- Chord symbols over the piano roll, and a snippet: its notes while it
+    -- is active, its span on the chord row, what the picker would write.
+    RulerChord = { fg = c.fg, bg = c.bg_alt, bold = true },
+    RulerChordEdge = { fg = c.faint, bg = c.bg_alt },
+    SnippetNote = { fg = c.bg, bg = c.visual, bold = true },
+    SnippetSpan = { fg = c.bg, bg = c.visual },
+    SnippetGhost = { fg = c.visual, bg = c.bg_hl },
+    -- Diagnostics (daw.diagnostic): the mark, a note underlined, the message
+    -- after it.
+    DiagnosticError = { fg = c.red, bold = true },
+    DiagnosticWarn = { fg = c.mute, bold = true },
+    DiagnosticInfo = { fg = c.normal },
+    DiagnosticHint = { fg = c.dim },
+    DiagnosticUnderlineError = { fg = c.red, underline = true, bold = true },
+    DiagnosticUnderlineWarn = { fg = c.mute, underline = true, bold = true },
+    DiagnosticUnderlineInfo = { fg = c.normal, underline = true },
+    DiagnosticUnderlineHint = { underline = true },
+    DiagnosticVirtualTextError = { fg = c.red, italic = true },
+    DiagnosticVirtualTextWarn = { fg = c.mute, italic = true },
+    DiagnosticVirtualTextInfo = { fg = c.normal, italic = true },
+    DiagnosticVirtualTextHint = { fg = c.faint, italic = true },
+    -- A label a server puts on something (daw.annotation).
+    Annotation = { fg = c.monitor, italic = true },
 
     DeviceName = { fg = c.bright, bold = true },
     DeviceOff = { fg = c.faint, strike = true },
@@ -232,6 +257,9 @@ local function build()
     PmenuDesc = { fg = c.dim, bg = c.raise },
     PmenuSelDesc = { fg = c.fg, bg = c.sel },
     PmenuThumb = { fg = c.accent, bg = c.raise },
+    -- Where a drag with the pointer will put what it holds, and the box it draws.
+    MouseGhost = { fg = c.bright, bg = c.visual },
+    MouseBox = { fg = c.visual, bold = true },
   }
 end
 

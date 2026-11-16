@@ -35,11 +35,11 @@ impl Session {
         let rate = data.sample_rate as f64;
         let from = (offset * rate).round() as usize;
         // Its real extent in time, by the tempo map, in seconds of the file.
-        let seconds = self
-            .project
-            .tempo_map()
-            .seconds_between(clip.start, clip.start + clip.length)
-            / clip.stretch;
+        let map = self.project.tempo_map();
+        let warp = crate::warp::of(&clip, map).unwrap_or_else(|| crate::warp::Warp::even(1.0));
+        let played = map.seconds_between(clip.start, clip.start + clip.length);
+        let seconds = warp.inverse(warp.forward(offset) + played) - offset;
+
         let frames = (seconds * rate).round() as usize;
         let take = |c: &[f32]| {
             let mut out: Vec<f32> = c.iter().skip(from).take(frames).copied().collect();
@@ -217,6 +217,8 @@ impl Session {
             pitch: 0.0,
             stretch_mode: Default::default(),
             source_tempo: None,
+            warp: Vec::new(),
+            formants: false,
             looped: false,
             loop_length: None,
             loop_start: 0.0,

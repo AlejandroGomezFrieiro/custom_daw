@@ -1,4 +1,4 @@
--- A course for first-time users, inside the DAW, in the way `vimtutor`
+-- A course for first-time users, inside paw, in the way `vimtutor`
 -- teaches Vim. `:tutor` starts it. See README.md beside this file.
 local tutor = require("tutor")
 local panel = require("tutor.panel")
@@ -33,13 +33,13 @@ command("tutor.list", tutor.list, { desc = "The lessons and how far you got" })
 command("tutor.quit", tutor.quit, { desc = "Leave the tutor and reopen your own project" })
 command("tutor.try", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1])
-  if not name then return daw.notify("usage: tutor.try <extension>, for one of the extensions bundled with the DAW", "warn") end
+  if not name then return daw.notify("usage: tutor.try <extension>, for one of the extensions bundled with paw", "warn") end
   if daw.ext.loaded[name] and daw.ext.loaded[name].ok then return daw.notify(name .. " is loaded already") end
   local path = here:gsub("/tutor$", "") .. "/" .. name
   if not require("tutor.store").exists(path .. "/init.lua") then return daw.notify("no bundled extension `" .. name .. "` in " .. path, "warn") end
   local entry = daw.ext.load(path)
   if entry.ok then daw.notify(name .. " loaded for this session. To have it always, link " .. path .. " into ~/.config/daw/extensions") end
-end, { desc = "Load one of the extensions bundled with the DAW, for this session: `tutor.try sections`" })
+end, { desc = "Load one of the extensions bundled with paw, for this session: `tutor.try sections`" })
 
 daw.keymap.group("<leader>h", "tutor")
 map("<leader>hh", "tutor.hint", { desc = "Tutor: a hint" })

@@ -133,12 +133,20 @@ test("cancelling during the encode stops it and leaves nothing", function()
   end
   local path = out .. "/long.mp3"
   daw.render(path, { tail = 0, background = true, quality = "best" })
+  -- On a busy machine playing the long file can take a while before the
+  -- encode starts, so wait by the clock; and cancel whatever happens, so
+  -- that a failure here leaves no render running for the tests after it.
   local seen
-  for _ = 1, 6000 do
+  local deadline = api.now() + 120000
+  while api.now() < deadline do
     local s = daw.render_status()
     if not s then break end
     if s.stage == "encoding" then seen = s break end
     daw.wait(2)
+  end
+  if not seen then
+    if daw.render_status() then daw.cmd("render.cancel") wait_idle() end
+    for _, h in ipairs(handles) do daw.off(h) end
   end
   eq(seen ~= nil, true, "the status says it is encoding")
   eq(seen.fraction < 1, true, "and is not at 100%")
@@ -156,6 +164,9 @@ test("without ffmpeg a lossy format is refused before anything is rendered, and 
   local dir = fresh_dir("missing")
   local was = daw.opt.ffmpeg
   daw.opt.ffmpeg = "/no/such/ffmpeg"
+  -- Put ffmpeg back even if a check below fails, or every later lossy
+  -- render in the suite fails with it.
+  T.after(function() daw.opt.ffmpeg = was end)
   local heard = false
   local off = daw.on("render.before", function() heard = true end)
   fails(function() daw.render(dir .. "/a.mp3", { tail = 0 }) end, "ffmpeg", "the message says ffmpeg is needed")

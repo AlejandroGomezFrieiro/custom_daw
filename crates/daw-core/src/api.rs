@@ -17,10 +17,10 @@ use mlua::serde::SerializeOptions;
 use mlua::{Function, Lua, LuaSerdeExt, LuaString, Table, Value as LuaValue};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
-use crate::grid::{self, Color, Grid, Highlight, Highlights, Rect, Style};
+use crate::grid::{self, Caps, Color, Grid, Highlight, Highlights, Rect, Style};
 use crate::io::Io;
 use crate::model::{Control, Id, Note};
 use crate::session::notes::{NoteChange, NoteRange, NotesEdit};
@@ -47,7 +47,15 @@ pub struct Timer {
 /// Everything the kernel and the Lua API functions both reach into.
 pub struct Shared {
     pub session: RefCell<Session>,
+    /// The screen of the seat whose turn it is (see runtime/lua/daw/seats.lua),
+    /// as big as that seat's terminal: `sizes`, by connection, 0 for the
+    /// program's own.
     pub grid: RefCell<Grid>,
+    pub sizes: RefCell<HashMap<u64, (u16, u16)>>,
+    /// What each terminal can show besides cells, by connection.
+    pub caps: RefCell<HashMap<u64, Caps>>,
+    /// The connection whose turn it is (whose seat), 0 for the program's own.
+    pub seat: Cell<u64>,
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
@@ -69,9 +77,10 @@ pub struct Shared {
     pub started: Instant,
     /// The connections on the control socket, for pushing events to them.
     pub clients: crate::rpc::Clients,
-    /// The connection whose terminal the input being handled came from, or 0
-    /// for the program's own; and the connections whose terminals asked to
-    /// leave, for the kernel to let go after this turn.
+    /// The connection whose terminal the input being handled came from, or
+    /// whose call is being answered, or 0 for the program's own; and the
+    /// connections whose terminals asked to leave, for the kernel to let go
+    /// after this turn.
     pub input_from: Cell<u64>,
     /// MIDI that came in from ports and has not been made into `midi.in`
     /// events yet.
@@ -91,6 +100,15 @@ impl Shared {
                 return;
             };
             self.session.borrow_mut().midi_event(port, kind);
+        }
+    }
+
+    /// Make `proc.output` events of what helper processes have written.
+    pub fn hear_output(&self) {
+        let arrived = self.io.borrow_mut().arrived();
+        let mut session = self.session.borrow_mut();
+        for id in arrived {
+            session.events.push(("proc.output".into(), json!({ "id": id })));
         }
     }
 
@@ -143,6 +161,9 @@ fn note_to_lua(lua: &Lua, n: &Note) -> mlua::Result<Table> {
     note.raw_set("length", n.length)?;
     note.raw_set("pitch", n.pitch)?;
     note.raw_set("velocity", n.velocity)?;
+    if n.id != 0 {
+        note.raw_set("id", n.id)?;
+    }
     // What extensions keep with a note, such as its lyric.
     if !n.meta.is_empty() {
         note.raw_set("meta", to_lua(lua, &n.meta)?)?;
@@ -197,6 +218,12 @@ fn notes_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Vec<Note>> {
                 pitch: int(note.raw_get("pitch").ok()?)?,
                 velocity,
                 meta: Default::default(),
+                id: match note.raw_get::<LuaValue>("id").ok()? {
+                    LuaValue::Nil => 0,
+                    LuaValue::Integer(i) => u64::try_from(i).ok()?,
+                    LuaValue::Number(n) if n >= 0.0 && n.fract() == 0.0 => n as u64,
+                    _ => return None,
+                },
             });
         }
         Some(notes)
@@ -218,6 +245,14 @@ fn options<T: DeserializeOwned + Default>(lua: &Lua, value: LuaValue) -> mlua::R
 
 fn cell(v: f64) -> i32 {
     v.floor() as i32
+}
+
+/// A terminal's capabilities as Lua reads them (`daw.api.ui_caps`).
+fn caps_lua(caps: &Caps) -> Value {
+    let mut value = caps.to_json();
+    value["cell"] = json!({ "w": caps.cell.0, "h": caps.cell.1 });
+    value["pixels"] = json!(caps.pixels());
+    value
 }
 
 fn parse_style(table: &Table) -> mlua::Result<Style> {
@@ -711,12 +746,42 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_glue(lua, sh, ids => Vec<Id>) {
             to_lua(lua, &sh.session.borrow_mut().clip_glue(&ids).lua()?)
         }
+        // Warp markers of an audio clip (session/stretching.rs), counted from 1.
+        fn clip_warp_add(_, sh, (id, beat) => (Id, f64)) {
+            Ok(sh.session.borrow_mut().warp_add(id, beat).lua()? + 1)
+        }
+        fn clip_warp_move(_, sh, (id, index, beat) => (Id, usize, f64)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            Ok(sh.session.borrow_mut().warp_move(id, index, beat).lua()? + 1)
+        }
+        fn clip_warp_remove(_, sh, (id, index) => (Id, usize)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            sh.session.borrow_mut().warp_remove(id, index).lua()
+        }
         // Beats of sound left in an audio clip's file from where the clip starts in it.
         fn clip_source_length(_, sh, id => Id) { sh.session.borrow_mut().clip_source_length(id).lua() }
         fn clip_add(lua, sh, (track, opts) => (Id, LuaValue)) {
             sh.session.borrow_mut().clip_add(track, options(lua, opts)?).lua()
         }
         fn clip_remove(_, sh, id => Id) { sh.session.borrow_mut().clip_remove(id).lua() }
+
+        // --- clip launching (session/launcher.rs) ---
+        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`
+        // and is edited like any clip; `clip_set` also takes `row`,
+        // `quantize`, `mode` and `legato` for it.
+        fn slot_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().slot_list(track).lua()?) }
+        // Copy a clip into a row of a track's slots. Returns the copy's id.
+        fn clip_to_slot(_, sh, (id, track, row) => (Id, Id, u32)) {
+            sh.session.borrow_mut().clip_to_slot(id, track, row).lua()
+        }
+        // `{ { track =, slot = row }, { track =, stop = true },
+        // { track =, arrangement = true }, ... }`, each with `quantize` and
+        // `legato` if not the slot's: all on their boundary, timed together.
+        fn launch(lua, sh, list => LuaValue) {
+            sh.session.borrow_mut().launch(from_lua(lua, list)?).lua()
+        }
+        // What each track plays and has queued, as the engine last said.
+        fn launcher(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().launcher_view()) }
         fn clip_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().clip_set(id, &key, from_lua(lua, value)?).lua()
         }
@@ -822,6 +887,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().lane_set_points(id, vec![(beat, value)], true).lua()
         }
         fn lane_value_at(_, sh, (id, beat) => (Id, f64)) { sh.session.borrow().lane_value_at(id, beat).lua() }
+        // The shapes of the stretches that are not straight, `{ beat, shape, tension }`
+        // each by the beat of the point they leave: "hold" or "smooth".
+        fn lane_shapes(lua, sh, id => Id) { to_lua(lua, &sh.session.borrow().lane_shapes(id).lua()?) }
+        fn lane_set_shapes(lua, sh, (id, shapes) => (Id, LuaValue)) {
+            let shapes: Vec<crate::model::Segment> = from_lua(lua, shapes)?;
+            sh.session.borrow_mut().lane_set_shapes(id, shapes).lua()
+        }
         // A control is held (a fader under the pointer) or let go: in touch
         // mode it writes automation for as long as it is held. The control
         // is named as a lane's target is.
@@ -1017,6 +1089,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().checkpoint();
             Ok(())
         }
+        // Make the project as it is now the start of its undo history, and
+        // unchanged: a MIDI file opened as a project (daw/midifile.lua).
+        fn undo_reset(_, sh, () => ()) {
+            sh.session.borrow_mut().undo_reset();
+            Ok(())
+        }
         // The undo tree and checkpoints: crate::history, session/undo.rs.
         fn undo_tree(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().undo_tree()) }
         fn undo_current(_, sh, () => ()) { Ok(sh.session.borrow().undo_current()) }
@@ -1036,6 +1114,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().undo_label(text);
             Ok(())
         }
+        // The edits of this turn join undo state `id`, the current one,
+        // instead of making a step of their own: a snippet's choice changed.
+        fn undo_join(_, sh, id => u64) { Ok(sh.session.borrow_mut().undo_join(id)) }
         fn undo_keys(_, sh, text => String) {
             sh.session.borrow_mut().undo_keys(text);
             Ok(())
@@ -1069,6 +1150,64 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn ui_cursor(_, sh, (x, y) => (Option<f64>, Option<f64>)) {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
             Ok(())
+        }
+        // Whether the terminal reports the pointer (`daw.opt.mouse`), for the
+        // screen being drawn.
+        fn ui_mouse(_, sh, on => bool) {
+            sh.grid.borrow_mut().mouse_off = !on;
+            Ok(())
+        }
+        // What the terminal of the seat whose turn it is can show besides
+        // cells: `{ graphics, pixels, cell = { w, h }, pixel_mouse, fg, bg }`,
+        // `pixels` when a view can be shown in pixels there.
+        fn ui_caps(lua, sh, () => ()) {
+            let caps = sh.caps.borrow().get(&sh.seat.get()).copied().unwrap_or_default();
+            to_lua(lua, &caps_lua(&caps))
+        }
+        // Say what that terminal can show, in the same form: its frontend
+        // does when it starts, and tests do.
+        fn ui_caps_set(lua, sh, caps => LuaValue) {
+            let mut value: Value = lua.from_value(caps)?;
+            value["cell"] = json!([value["cell"]["w"], value["cell"]["h"]]);
+            sh.caps.borrow_mut().insert(sh.seat.get(), Caps::from_json(&value));
+            sh.dirty.set(true);
+            Ok(())
+        }
+        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for a
+        // view's pixels (`buf:surface`): returns the surface's number for
+        // `grid_surface_ops`, or nil when nothing of it is on the screen.
+        fn grid_surface(_, sh, (name, x, y, w, h, cx, cy, cw, ch) => (String, f64, f64, f64, f64, f64, f64, f64, f64)) {
+            let cell_px = sh.caps.borrow().get(&sh.seat.get()).map_or((0, 0), |c| c.cell);
+            let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
+            let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) }.intersect(&clip);
+            Ok(sh.grid.borrow_mut().surface(&name, area, cell_px).map(|i| i + 1))
+        }
+        // The drawing a surface shows: the operations of `daw.canvas.paint`.
+        fn grid_surface_ops(lua, sh, (index, ops) => (usize, LuaValue)) {
+            let ops: Value = lua.from_value(ops)?;
+            if let Some(surface) = sh.grid.borrow_mut().surfaces.get_mut(index.wrapping_sub(1)) {
+                surface.ops = Arc::new(ops);
+            }
+            Ok(())
+        }
+        // A music font's SMuFL metadata (`Leland`, the default, `Bravura` or
+        // `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors`
+        // and `glyphs` (every glyph name with its code point). Nil for a
+        // font there is none of.
+        fn smufl(lua, _sh, font => Option<String>) {
+            match daw_raster::smufl(font.as_deref()) {
+                Some(meta) => to_lua(lua, &meta),
+                None => Ok(LuaValue::Nil),
+            }
+        }
+        // A music font's glyph as path commands in staff spaces from its
+        // origin, y down (`{ "M", x, y, "C", ... }`), for a frontend that
+        // cannot draw the font. Nil for a glyph or font there is none of.
+        fn smufl_outline(lua, _sh, (font, codepoint) => (Option<String>, u32)) {
+            match daw_raster::glyph_outline(font.as_deref(), codepoint) {
+                Some(path) => to_lua(lua, &serde_json::Value::from(path)),
+                None => Ok(LuaValue::Nil),
+            }
         }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
             // `full` is the group in 24-bit colour, given when `def` is a
@@ -1178,8 +1317,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                     sh.session.borrow_mut().idle();
                     idled = Instant::now();
                 }
-                // What was played into a port meanwhile is heard of.
+                // What was played into a port, or written by a helper,
+                // meanwhile is heard of.
                 sh.hear_midi();
+                sh.hear_output();
                 settle.call::<()>(())?;
                 sh.session.borrow_mut().checkpoint();
                 if Instant::now() >= deadline {
@@ -1213,6 +1354,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.io.borrow_mut().kill(id);
             Ok(())
         }
+        // A process started with `pipe = true`: what it wrote ("" when
+        // nothing, nil once it closed its output), and writing to it. A
+        // `proc.output` event says when there is something to read.
+        fn proc_read(lua, sh, (id, max) => (u64, Option<usize>)) {
+            match sh.io.borrow_mut().read_output(id, max.unwrap_or(1 << 20)).lua()? {
+                Some(bytes) => Ok(LuaValue::String(lua.create_string(bytes)?)),
+                None => Ok(LuaValue::Nil),
+            }
+        }
+        fn proc_write(_, sh, (id, data) => (u64, LuaString)) { sh.io.borrow_mut().write_input(id, &data.as_bytes()).lua() }
+        fn proc_close_input(_, sh, id => u64) { sh.io.borrow_mut().close_input(id).lua() }
         fn sock_listen(_, sh, path => String) { sh.io.borrow_mut().listen(path.into()).lua() }
         fn sock_connect(_, sh, path => String) { sh.io.borrow_mut().connect(path.into()).lua() }
         fn sock_accept(_, sh, id => u64) { sh.io.borrow_mut().accept(id).lua() }
@@ -1240,6 +1392,16 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn rpc_clients(_, sh, () => ()) { Ok(sh.clients.ids()) }
         fn rpc_version(_, _sh, () => ()) { Ok(crate::rpc::VERSION) }
         fn ui_client(_, sh, () => ()) { Ok(sh.input_from.get()) }
+        fn ui_seat(_, sh, seat => u64) {
+            // The screen is the size of the terminal of the seat entered;
+            // a seat without one (a window's) has the size there was at first.
+            let (width, height) = sh.sizes.borrow().get(&seat).copied().unwrap_or((80, 24));
+            let mut grid = sh.grid.borrow_mut();
+            if (grid.width, grid.height) != (width, height) {
+                grid.resize(width, height);
+            }
+            Ok(())
+        }
         fn ui_detach(_, sh, client => u64) {
             sh.detach.borrow_mut().push(client);
             Ok(())
@@ -1338,6 +1500,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
     crate::measure::install(lua, &api, shared)?;
     crate::tempo_api::install(lua, &api, shared)?;
+    crate::luadev_api::install(lua, &api, shared)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("daw.api", api)

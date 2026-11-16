@@ -1,6 +1,6 @@
 # daw-mcp
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server for the DAW,
+A [Model Context Protocol](https://modelcontextprotocol.io) server for paw,
 so that an assistant such as Claude can look at a session and work in it:
 build a song, edit it, mix it, render it, and read the render's levels and
 spectrum in place of listening.
@@ -16,7 +16,7 @@ exactly one undo step. A call that fails part-way is rolled back.
 ```sh
 nix develop -c cargo build --release -p daw-tui -p daw-mcp
 
-# Attach to a DAW that is already running (the terminal UI listens on
+# Attach to a paw that is already running (the terminal UI listens on
 # $XDG_RUNTIME_DIR/daw.sock by default; a headless kernel can too):
 daw --headless --listen /tmp/daw.sock &
 target/release/daw-mcp --socket /tmp/daw.sock
@@ -44,7 +44,7 @@ and extensions and the default audio device unless you pass `--clean` or
 These are instructions for you to run; the server does not register itself.
 
 ```sh
-# Attach to the DAW you have open:
+# Attach to paw you have open:
 claude mcp add daw -- /path/to/custom_daw/target/release/daw-mcp
 
 # Or a private headless session, with the escape hatches on:
@@ -86,7 +86,7 @@ Config) and restart Claude Desktop:
 ```
 
 Claude Desktop does not start servers in a directory of your choosing, so give
-`--root`. Use the socket path of the running DAW (`echo $XDG_RUNTIME_DIR/daw.sock`),
+`--root`. Use the socket path of the running paw (`echo $XDG_RUNTIME_DIR/daw.sock`),
 or `"--spawn"` instead of `"--socket", ...`.
 
 ## Tools
@@ -104,7 +104,7 @@ Middle C is C4. Tracks can be named instead of numbered.
 | `get_clip` | A clip's notes, or an audio clip's file, offset and gain. |
 | `get_device` | A device's parameters with value, range, default, unit and choices; filterable for big plugins. |
 | `find_devices` | Search the built-in devices and installed plugins that can be added. |
-| `get_status` | Transport, audio engine, unsaved changes, recent DAW messages. |
+| `get_status` | Transport, audio engine, unsaved changes, recent paw messages. |
 | `add_track` | A track with its devices, clips and notes, routing and sends, in one call. |
 | `set_track` | Name, volume, pan, mute, solo, colour, position, output, sends. |
 | `add_clip` | A MIDI clip with all its notes, or an audio clip from a file. |
@@ -162,7 +162,7 @@ links.
 kernel process with the user's rights: Lua with the whole `daw` interface and
 LuaJIT's `io`, `os` and `ffi`, commands (which include `:lua`, `:w <path>` and
 `:q`), and keys. Through them an assistant can read and write any file, start
-programs, and quit the DAW; `--root` does not apply to them. Each call is one
+programs, and quit paw; `--root` does not apply to them. Each call is one
 undo step for what it changes in the project, but is not rolled back on
 failure.
 

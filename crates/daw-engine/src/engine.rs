@@ -17,6 +17,7 @@ use crate::clip::ClipSet;
 use crate::device::{Device, Io, ProcessCtx};
 use crate::event::{Ctl, Event, EventBuf, EventKind};
 use crate::guard;
+use crate::launch::{self, Launch, LaunchState, Launcher, Slots};
 use crate::midi_out::MidiOut;
 use crate::pool::Pool;
 use crate::record::{MidiCapture, PUNCH_EPS, Take};
@@ -78,15 +79,19 @@ pub struct TrackRt {
     /// Keys held down through MIDI input, released if the track is disarmed.
     held: u128,
     /// The MIDI output port it sends what it plays to, by its key (0 for
-    /// none), and the channel (1 to 16, or 0 for each message's own).
+    /// none), the channel (1 to 16, or 0 for each message's own), and the
+    /// form it goes in.
     midi_out: u32,
     midi_out_channel: u8,
+    midi_out_form: crate::midi_form::Form,
     /// What it played this block, on its way to the port.
     sent: Vec<Event>,
     /// The track's clips were replaced: stop its notes, and start again those
     /// the new clips hold at the play position. Other tracks play on.
     flush: bool,
     chase: bool,
+    /// The clips in its slots, and which of them plays.
+    launcher: Launcher,
 }
 
 impl TrackRt {
@@ -116,9 +121,11 @@ impl TrackRt {
             held: 0,
             midi_out: 0,
             midi_out_channel: 0,
+            midi_out_form: crate::midi_form::Form::Auto,
             sent: Vec::with_capacity(1024),
             flush: false,
             chase: false,
+            launcher: Launcher::default(),
         })
     }
 
@@ -529,11 +536,13 @@ pub enum Msg {
         channel: u8,
     },
     /// The MIDI output port a track sends what it plays to, by its key (0
-    /// for none), on a channel from 1 to 16 or 0 for each message's own.
+    /// for none), on a channel from 1 to 16 or 0 for each message's own,
+    /// in a form for ports that take no MIDI 2.0.
     SetMidiOutput {
         track: Slot,
         port: u32,
         channel: u8,
+        form: crate::midi_form::Form,
     },
     /// Where MIDI output goes: the queue a sender thread reads (see
     /// [`EngineHandle::midi_output`]), or nowhere.
@@ -548,6 +557,19 @@ pub enum Msg {
     },
     /// Worker threads to process tracks on, or `None` for the audio thread alone.
     SetPool(Option<Box<Pool>>),
+    /// The clips in a track's slots, to be launched.
+    SetSlots {
+        track: Slot,
+        slots: Box<Slots>,
+    },
+    /// Launch slots, stop them or go back to the arrangement, each track on
+    /// the first boundary of its quantize from where the engine is when it
+    /// takes the message (at once while stopped). Launches sent together
+    /// are timed together.
+    Launch(Box<Vec<Launch>>),
+    /// Where a copy of what is played goes, left and right interleaved, for
+    /// someone listening elsewhere (see [`EngineHandle::monitor`]), or nowhere.
+    SetMonitor(Option<Box<Producer<f32>>>),
 }
 
 enum Garbage {
@@ -563,7 +585,10 @@ enum Garbage {
     Key(#[allow(dead_code)] Box<KeyBuf>),
     Outs(#[allow(dead_code)] Box<OutBufs>),
     MidiOut(#[allow(dead_code)] Box<Producer<MidiOut>>),
+    Monitor(#[allow(dead_code)] Box<Producer<f32>>),
     TempoMap(#[allow(dead_code)] Box<TempoMap>),
+    Slots(#[allow(dead_code)] Box<Slots>),
+    Launches(#[allow(dead_code)] Box<Vec<Launch>>),
 }
 
 /// Buckets of [`BlockStats`]: four per octave of processing time, from
@@ -691,6 +716,8 @@ pub struct Shared {
     /// What has gone wrong with each device slot: [`guard::PANICKED`],
     /// [`guard::NOT_FINITE`]. Cleared when a device is put in the slot.
     faults: Vec<AtomicU8>,
+    /// Each track's clip launcher.
+    launch: Vec<LaunchState>,
 }
 
 impl Shared {
@@ -718,6 +745,11 @@ impl Shared {
     /// Beats of a count-in still to be counted before the song starts, or 0.
     pub fn counting(&self) -> u32 {
         self.counting.load(Relaxed)
+    }
+
+    /// What a track's clip launcher plays and has queued.
+    pub fn launch(&self, slot: Slot) -> Option<launch::LaunchView> {
+        self.launch.get(slot as usize).map(LaunchState::view)
     }
 
     /// Post-fader peak level of a track as linear `(left, right)`.
@@ -912,10 +944,14 @@ pub struct Engine {
     count: Option<Count>,
     /// Where tracks' MIDI output goes, when something sends it on.
     midi_out: Option<Box<Producer<MidiOut>>>,
+    /// Where a copy of the output goes, while someone listens elsewhere.
+    monitor: Option<Box<Producer<f32>>>,
     /// When the block being made is heard, on [`midi_out::clock_ns`].
     ///
     /// [`midi_out::clock_ns`]: crate::midi_out::clock_ns
     heard_ns: u64,
+    /// Some track has a launch queued.
+    launching: bool,
 }
 
 /// A count-in: see [`Msg::CountIn`]. Frames count from when it began.
@@ -989,6 +1025,23 @@ impl EngineHandle {
         rx
     }
 
+    /// The receiving end of a new queue of everything the engine plays, left
+    /// and right interleaved, with room for `seconds` of it, for one thread
+    /// to read. Until it is asked for (and after [`stop_monitor`]) nothing
+    /// is copied.
+    ///
+    /// [`stop_monitor`]: Self::stop_monitor
+    pub fn monitor(&mut self, seconds: f64) -> Consumer<f32> {
+        let (tx, rx) = RingBuffer::new(((self.sample_rate * seconds) as usize).max(64) * 2);
+        self.send(Msg::SetMonitor(Some(Box::new(tx))));
+        rx
+    }
+
+    /// Stop copying what the engine plays.
+    pub fn stop_monitor(&mut self) {
+        self.send(Msg::SetMonitor(None));
+    }
+
     /// Queue a message, or hand it back if the queue is full.
     pub fn try_send(&mut self, msg: Msg) -> Result<(), Msg> {
         self.tx.push(msg).map_err(|PushError::Full(msg)| msg)
@@ -1044,6 +1097,7 @@ impl Engine {
             counting: AtomicU32::new(0),
             blocks: BlockStats::new(),
             faults: (0..MAX_DEVICES).map(|_| AtomicU8::new(0)).collect(),
+            launch: (0..MAX_TRACKS).map(|_| LaunchState::default()).collect(),
         });
         let mut tracks: Vec<Guarded<Option<Box<TrackRt>>>> =
             (0..MAX_TRACKS).map(|_| Guarded::new(None)).collect();
@@ -1076,7 +1130,9 @@ impl Engine {
             midi_rx,
             count: None,
             midi_out: None,
+            monitor: None,
             heard_ns: 0,
+            launching: false,
         };
         (
             engine,
@@ -1335,6 +1391,14 @@ impl Engine {
                 self.playing = false;
                 self.flush_notes = true;
                 self.count = None;
+                // A performance ends with the song: every track plays its
+                // clips on the timeline again.
+                for t in self.tracks.iter_mut() {
+                    if let Some(t) = t.get_mut().as_deref_mut() {
+                        t.launcher.reset();
+                    }
+                }
+                self.launching = false;
             }
             Msg::Seek(position) => {
                 self.position = position.max(0.0);
@@ -1342,6 +1406,7 @@ impl Engine {
                 self.chase = true;
                 self.reapply = true;
                 self.seeks = self.seeks.wrapping_add(1);
+                self.requantize(self.position);
             }
             Msg::Live { track, event } => {
                 if let Some(t) = self.track_mut(track)
@@ -1391,21 +1456,25 @@ impl Engine {
                 track,
                 port,
                 channel,
+                form,
             } => {
                 let Some(t) = self.track_mut(track) else {
                     return;
                 };
                 let old = std::mem::replace(&mut t.midi_out, port);
+                let old_form = std::mem::replace(&mut t.midi_out_form, form);
                 t.midi_out_channel = channel;
                 t.sent.clear();
-                // The notes it left sounding where it played before end there.
+                // The notes it left sounding where it played before, or in
+                // the form it played in before, end there.
                 if old != 0
-                    && old != port
+                    && (old != port || old_form != form)
                     && let Some(out) = self.midi_out.as_deref_mut()
                 {
                     let _ = out.push(MidiOut {
                         at: 0,
                         port: old,
+                        form: old_form,
                         kind: EventKind::AllNotesOff,
                     });
                 }
@@ -1415,12 +1484,87 @@ impl Engine {
                     self.discard(Garbage::MidiOut(old));
                 }
             }
+            Msg::SetMonitor(monitor) => {
+                if let Some(old) = std::mem::replace(&mut self.monitor, monitor) {
+                    self.discard(Garbage::Monitor(old));
+                }
+            }
             Msg::SetPool(pool) => {
                 if let Some(old) = self.set_pool(pool) {
                     self.discard(Garbage::Pool(old));
                 }
             }
+            Msg::SetSlots { track, slots } => match self.track_mut(track) {
+                Some(t) => {
+                    let old = t.launcher.set_slots(slots);
+                    if !t.launcher.follows_arrangement() {
+                        t.flush = true;
+                        t.chase = true;
+                    }
+                    self.discard(Garbage::Slots(old));
+                }
+                None => self.discard(Garbage::Slots(slots)),
+            },
+            Msg::Launch(launches) => {
+                let (position, playing) = (self.position, self.playing);
+                if let Some(map) = self.map.take() {
+                    for launch in launches.iter() {
+                        // Stopped, there is no beat to wait for.
+                        let at = if playing {
+                            launch.quantize.next(&map, position)
+                        } else {
+                            position
+                        };
+                        if let Some(t) = self.track_mut(launch.track) {
+                            t.launcher.queue(launch, at);
+                            self.launching = true;
+                        }
+                    }
+                    self.map = Some(map);
+                }
+                self.discard(Garbage::Launches(launches));
+            }
         }
+    }
+
+    /// Move every queued launch to the first boundary from `beat`, where
+    /// the song has jumped to.
+    fn requantize(&mut self, beat: f64) {
+        if !self.launching {
+            return;
+        }
+        let Some(map) = self.map.take() else {
+            return;
+        };
+        for t in self.tracks.iter_mut() {
+            if let Some(t) = t.get_mut().as_deref_mut() {
+                t.launcher.requantize(&map, beat);
+            }
+        }
+        self.map = Some(map);
+    }
+
+    /// The first beat after `start` on which a queued launch happens, to
+    /// end the block there. Notes whether any launch is still queued.
+    fn next_launch(&mut self, start: f64) -> Option<f64> {
+        let schedule = self.schedule.take()?;
+        let (mut next, mut any) = (None::<f64>, false);
+        for entry in &schedule.entries {
+            if let Some(at) = self
+                .tracks
+                .get_mut(entry.slot as usize)
+                .and_then(|t| t.get_mut().as_deref())
+                .and_then(|t| t.launcher.queued_at())
+            {
+                any = true;
+                if at > start {
+                    next = Some(next.map_or(at, |n: f64| n.min(at)));
+                }
+            }
+        }
+        self.schedule = Some(schedule);
+        self.launching = any;
+        next
     }
 
     /// Deliver a note from MIDI input to every track that takes it, and
@@ -1579,6 +1723,11 @@ impl Engine {
             let start = self.position;
             let mut end = start;
             let mut wrap = false;
+            let launch_at = if self.launching && self.playing {
+                self.next_launch(start)
+            } else {
+                None
+            };
             if let Some(map) = self.map.as_deref().filter(|_| self.playing) {
                 let t0 = map.seconds(start);
                 // One tempo throughout: beats per frame, as plain arithmetic.
@@ -1594,21 +1743,29 @@ impl Engine {
                         wrap = true;
                     }
                 }
+                // On the frame: a point a rounding error off a frame is on it.
+                let frames_on = |beat: f64| {
+                    let x = match bpf {
+                        Some(bpf) => (beat - start) / bpf,
+                        None => (map.seconds(beat) - t0) * sr,
+                    };
+                    if (x - x.round()).abs() < 1e-6 {
+                        x.round() as usize
+                    } else {
+                        x.ceil() as usize
+                    }
+                };
+                // A launch happens on its frame: the block ends there.
+                if let Some(frames) = launch_at.map(frames_on)
+                    && frames > 0
+                    && frames < n
+                {
+                    n = frames;
+                    wrap = false;
+                }
                 // A punched take starts and stops capturing on the frame:
                 // the block ends where it punches in or out.
                 if let Some((from, to)) = self.take.as_ref().and_then(|t| t.punch) {
-                    // On the frame: a point a rounding error off a frame is on it.
-                    let frames_on = |beat: f64| {
-                        let x = match bpf {
-                            Some(bpf) => (beat - start) / bpf,
-                            None => (map.seconds(beat) - t0) * sr,
-                        };
-                        if (x - x.round()).abs() < 1e-6 {
-                            x.round() as usize
-                        } else {
-                            x.ceil() as usize
-                        }
-                    };
                     for edge in [from, to] {
                         if edge - start > PUNCH_EPS {
                             let frames = frames_on(edge).max(1);
@@ -1657,6 +1814,9 @@ impl Engine {
                 self.position = if wrap { self.loop_start } else { end };
                 self.flush_notes |= wrap;
                 self.chase |= wrap;
+                if wrap {
+                    self.requantize(self.loop_start);
+                }
             }
         }
         self.shared.position.store(self.position.to_bits(), Relaxed);
@@ -1665,6 +1825,14 @@ impl Engine {
             .counting
             .store(self.count.as_ref().map_or(0, Count::left), Relaxed);
         self.shared.seeks.store(self.seeks, Relaxed);
+        if let Some(monitor) = self.monitor.as_deref_mut() {
+            // What does not fit is dropped: the listener has fallen behind.
+            let frames = total.min(monitor.slots() / 2);
+            if let Ok(chunk) = monitor.write_chunk_uninit(frames * 2) {
+                let samples = left[..frames].iter().zip(&right[..frames]).flat_map(|(l, r)| [*l, *r]);
+                chunk.fill_from_iter(samples);
+            }
+        }
         let ns = u64::try_from(began.elapsed().as_nanos()).unwrap_or(u64::MAX);
         self.shared.blocks.record(ns, total);
     }
@@ -1839,6 +2007,7 @@ impl Engine {
                 let message = MidiOut {
                     at: self.heard_ns + (ev.frame as f64 * ns_per_frame) as u64,
                     port: t.midi_out,
+                    form: t.midi_out_form,
                     kind: crate::midi_out::on_channel(ev.kind, channel),
                 };
                 if out.push(message).is_err() {
@@ -2055,6 +2224,13 @@ impl Work<'_> {
         let Some(t) = claim.as_deref_mut() else {
             return;
         };
+        // A launch due now: what played stops, and what plays from here
+        // starts with its held notes.
+        let slack = if n > 0 { 0.5 * (end - start) / n as f64 } else { 0.0 };
+        if let Some(change) = t.launcher.commit(start, slack) {
+            t.flush = true;
+            t.chase |= change.chase;
+        }
         // The track's own flags are used up here even when the whole
         // engine is flushing or chasing anyway; left set, they would
         // stop and restart the track's notes again one block later.
@@ -2083,50 +2259,33 @@ impl Work<'_> {
         }
         if chase {
             // Start the notes that began before this position and are
-            // still held at it, and put every controller where it was
-            // last moved to, as if playback had run through them.
-            let mut held = [0f32; 128];
-            let mut controllers = [f64::NAN; 130];
-            let mut program = None;
-            for ev in t.clips.midi.iter().take_while(|ev| ev.beat < start) {
-                match ev.kind {
-                    EventKind::NoteOn { key, vel, .. } => held[(key & 127) as usize] = vel,
-                    EventKind::NoteOff { key, .. } => held[(key & 127) as usize] = 0.0,
-                    EventKind::Control { ctl, value, .. } => {
-                        if let Some(index) = ctl_index(ctl) {
-                            controllers[index] = value;
-                        }
-                    }
-                    EventKind::Program { .. } => program = Some(ev.kind),
-                    EventKind::NoteControl { .. } | EventKind::AllNotesOff => {}
-                }
-            }
-            if let Some(kind) = program {
-                t.events.push(Event { frame: 0, kind });
-            }
-            for (index, value) in controllers.into_iter().enumerate() {
-                if !value.is_nan() {
-                    let kind = EventKind::Control {
-                        ctl: ctl_at(index),
-                        value,
-                        ch: 0,
-                    };
-                    t.events.push(Event { frame: 0, kind });
-                }
-            }
-            for (key, vel) in held.into_iter().enumerate().filter(|(_, vel)| *vel > 0.0) {
-                let kind = EventKind::NoteOn {
-                    key: key as u8,
-                    vel,
-                    ch: 0,
-                };
-                t.events.push(Event { frame: 0, kind });
+            // still held at it: on the timeline, or in the slot that plays.
+            if t.launcher.follows_arrangement() {
+                launch::chase(&mut t.events, &t.clips.midi, start);
+            } else if let Some((slot, phase)) = t.launcher.slot() {
+                launch::chase(&mut t.events, &slot.clips.midi, phase);
             }
         }
         for kind in t.live.drain(..) {
             t.events.push(Event { frame: 0, kind });
         }
-        if playing {
+        if playing && !t.launcher.follows_arrangement() {
+            // A slot plays instead of the timeline, or nothing does.
+            if let Some((slot, phase)) = t.launcher.slot() {
+                let [left, right] = &mut t.buf;
+                launch::play(
+                    slot,
+                    phase,
+                    end - start,
+                    n,
+                    &mut t.events,
+                    &mut left[..n],
+                    &mut right[..n],
+                    ctx,
+                );
+            }
+            t.launcher.advance(end - start);
+        } else if playing {
             let first = t.clips.midi.partition_point(|e| e.beat < start);
             for ev in &t.clips.midi[first..] {
                 if ev.beat >= end {
@@ -2228,6 +2387,9 @@ impl Work<'_> {
                 }
             }
         }
+        if let Some(state) = self.shared.launch.get(entry.slot as usize) {
+            t.launcher.publish(state);
+        }
         // A track with sends or side-chains from before its fader keeps
         // the fader for when they have been taken.
         if !entry.taps_pre() {
@@ -2279,7 +2441,7 @@ fn fader(t: &mut TrackRt, slot: Slot, block: &Block, shared: &Shared) {
 /// Where a controller is kept while chasing: the 128 control changes, then
 /// the pitch wheel and pressure. Registered and assignable controllers are
 /// settings more than performance, and are not chased.
-fn ctl_index(ctl: Ctl) -> Option<usize> {
+pub(crate) fn ctl_index(ctl: Ctl) -> Option<usize> {
     match ctl {
         Ctl::Cc(number) => Some((number & 127) as usize),
         Ctl::Bend => Some(128),
@@ -2288,7 +2450,7 @@ fn ctl_index(ctl: Ctl) -> Option<usize> {
     }
 }
 
-fn ctl_at(index: usize) -> Ctl {
+pub(crate) fn ctl_at(index: usize) -> Ctl {
     match index {
         128 => Ctl::Bend,
         129 => Ctl::Pressure,
@@ -2368,7 +2530,11 @@ fn mix_audio(
         // Source position, in source frames, of the block's first frame.
         let origin = (t0 - rs + region.offset) * src_rate;
         let step = src_rate / sr;
+        // Sound still being made is played as far as it is there.
+        let complete = region.data.complete();
         let frames = region.data.frames();
+        let watched = region.hold.watched(complete);
+        let hold_fade = DECLICK_SECONDS * src_rate;
         let [src_l, src_r] = &region.data.channels;
         // Fades, in frames. An edge cut into the middle of a recording gets
         // a few milliseconds of one even when none was asked for, or it clicks.
@@ -2387,10 +2553,16 @@ fn mix_audio(
             }
             let index = pos as usize;
             if index + 1 >= frames {
+                if !complete {
+                    region.hold.starve();
+                }
                 break;
             }
             let frac = (pos - index as f64) as f32;
             let mut gain = region.gain;
+            if watched {
+                gain *= region.hold.gain(pos, frames, complete, hold_fade, fade_curve);
+            }
             let from_start = at + i as f64;
             if from_start < fade_in {
                 gain *= fade_curve(from_start / fade_in);
@@ -2407,7 +2579,7 @@ fn mix_audio(
 /// [`mix_audio`] for one tempo throughout, in beats per frame: the
 /// arithmetic of before there were tempo maps, so that such songs render
 /// the very same samples.
-fn mix_audio_constant(
+pub(crate) fn mix_audio_constant(
     clips: &ClipSet,
     left: &mut [f32],
     right: &mut [f32],
@@ -2431,7 +2603,11 @@ fn mix_audio_constant(
         // Source position, in source frames, of the block's first frame.
         let origin = ((start - region.start) * 60.0 / ctx.tempo + region.offset) * src_rate;
         let step = src_rate / sr;
+        // Sound still being made is played as far as it is there.
+        let complete = region.data.complete();
         let frames = region.data.frames();
+        let watched = region.hold.watched(complete);
+        let hold_fade = DECLICK_SECONDS * src_rate;
         let [src_l, src_r] = &region.data.channels;
         let declick = DECLICK_SECONDS * sr;
         let fade_in =
@@ -2447,10 +2623,16 @@ fn mix_audio_constant(
             }
             let index = pos as usize;
             if index + 1 >= frames {
+                if !complete {
+                    region.hold.starve();
+                }
                 break;
             }
             let frac = (pos - index as f64) as f32;
             let mut gain = region.gain;
+            if watched {
+                gain *= region.hold.gain(pos, frames, complete, hold_fade, fade_curve);
+            }
             let from_start = at + i as f64;
             if from_start < fade_in {
                 gain *= fade_curve(from_start / fade_in);

@@ -1,0 +1,462 @@
+// The session view: a column of slots under each track and a scene for each
+// row, for launching clips while the song plays. It sits under the timeline,
+// so that a clip can be dragged from the timeline into a slot.
+//
+// What the mouse does:
+//   the play mark of a slot   pressed launches the clip (or stops the track,
+//                             on an empty slot); let go stops a gate clip
+//   the rest of a slot        click chooses it, double click opens its notes
+//                             (an empty one gets a new MIDI clip first), drag
+//                             moves the clip to another slot (Ctrl copies)
+//   a scene                   launches its row
+//   under a column            the square stops the track, the arrow sends it
+//                             back to its timeline
+//
+// Everything it does goes out through the callbacks; what a gesture means is
+// decided in the kernel (`daw.frontend.act`).
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Icons, Icon, Button } from "widgets.slint";
+
+export struct SessionColumn {
+    id: int,
+    name: string,
+    color: color,
+}
+
+export struct SlotData {
+    id: int,
+    column: int,        // the track's place among the columns
+    row: int,
+    name: string,
+    midi: bool,
+    muted: bool,
+    mode: string,       // "trigger", "gate" or "toggle"
+}
+
+// What a track plays from its slots: rows, or -1.
+export struct LaunchData {
+    slot: int,
+    queued: int,
+    stopping: bool,     // a stop is queued
+    back: bool,         // a return to the timeline is queued
+    stopped: bool,
+    progress: float,    // round the loop of the clip that plays, 0..1
+    recording: int,     // the row being recorded into, or -1
+}
+
+export component SessionPanel inherits Rectangle {
+    in property <[SessionColumn]> columns;
+    in property <[SlotData]> slots;
+    in property <[LaunchData]> launch;      // by column; empty while nothing is launched
+    in property <[string]> scenes;          // a name for every row
+    in property <string> quantize;
+    in property <bool> capturing;
+    in property <int> chosen-track: -1;     // the slot the cursor is on
+    in property <int> chosen-row: -1;
+    // The slot a clip dragged from the timeline would land in, or -1.
+    in property <int> drop-column: -1;
+    in property <int> drop-row: -1;
+    callback press(int, int, bool);         // track, row, down
+    callback choose(int, int);
+    callback open(int, int);
+    callback move-slot(int, int, int, bool); // clip, track, row, copy
+    callback scene(int);
+    callback stop(int);                     // a track, or -1 for all
+    callback back(int);
+    callback record(int, int);              // track, row
+    callback command(string);
+    callback hint(string);
+
+    out property <length> cell-w: 118px;
+    out property <length> cell-h: 26px;
+    out property <length> top-h: 30px;      // the bar along the top
+    out property <length> head-h: 24px;     // the tracks' names
+    out property <length> gutter: 30px;     // the rows' numbers
+    // Where the slots begin: under the names and the line saying what plays.
+    out property <length> slots-top: self.head-h + self.cell-h;
+
+    // A slot being dragged, and where it is over.
+    property <int> drag-clip: -1;
+    property <length> drag-dx;
+    property <length> drag-dy;
+
+    // The column and row a point in the window falls on, or -1.
+    public pure function column-at(x: length) -> int {
+        let at = (x - self.absolute-position.x - self.gutter - grid.content-x) / self.cell-w;
+        return at >= 0 && at < self.columns.length ? floor(at) : -1;
+    }
+    public pure function row-at(y: length) -> int {
+        let at = (y - self.absolute-position.y - self.top-h - self.slots-top - grid.content-y) / self.cell-h;
+        return at >= 0 && at < self.scenes.length ? floor(at) : -1;
+    }
+
+    background: Theme.surface;
+    clip: true;
+
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.divider;
+    }
+
+    // The bar along the top: where launches land, stop all, back, capture.
+    HorizontalLayout {
+        y: 1px;
+        height: root.top-h - 1px;
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 6px;
+        Text {
+            text: "Session";
+            color: Theme.text;
+            font-size: Theme.t-base;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        Text {
+            text: "launches land on";
+            color: Theme.text-3;
+            font-size: Theme.t-small;
+            vertical-alignment: center;
+        }
+        for q in ["off", "1/16", "1/8", "1/4", "beat", "bar", "2bars", "4bars"]: Button {
+            height: 22px;
+            label: q;
+            quiet: true;
+            on: root.quantize == q;
+            clicked => {
+                root.command("launch.quantize " + q);
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+        Button {
+            height: 22px;
+            icon: Icons.ph-record-fill;
+            icon-box: 256;
+            label: "Capture";
+            quiet: true;
+            on: root.capturing;
+            lit: Theme.rec;
+            clicked => {
+                root.command("launch.capture");
+            }
+            changed has-hover => {
+                root.hint(self.has-hover ? "capture: what is launched is written into the timeline when the song stops" : "");
+            }
+        }
+        Button {
+            height: 22px;
+            icon: Icons.ph-arrow-counter-clockwise;
+            icon-box: 256;
+            label: "Back to timeline";
+            quiet: true;
+            clicked => {
+                root.back(-1);
+            }
+        }
+        Button {
+            height: 22px;
+            icon: Icons.ph-stop-fill;
+            icon-box: 256;
+            label: "Stop all";
+            quiet: true;
+            clicked => {
+                root.stop(-1);
+            }
+        }
+    }
+
+    grid := ScrollView {
+        x: 0;
+        y: root.top-h;
+        width: parent.width - 150px;
+        height: parent.height - root.top-h;
+        content-width: max(self.width, root.gutter + root.columns.length * root.cell-w);
+        content-height: max(self.height, root.slots-top + root.scenes.length * root.cell-h + 8px);
+
+        // The rows' numbers.
+        for name[row] in root.scenes: Text {
+            x: 0;
+            y: root.slots-top + row * root.cell-h;
+            width: root.gutter - 6px;
+            height: root.cell-h;
+            text: row + 1;
+            color: row == root.chosen-row ? Theme.text : Theme.text-3;
+            font-size: Theme.t-small;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        for column[c] in root.columns: Rectangle {
+            x: root.gutter + c * root.cell-w;
+            y: 0;
+            width: root.cell-w - 2px;
+            height: parent.height;
+            property <LaunchData> state: c < root.launch.length ? root.launch[c] : { slot: -1, queued: -1, recording: -1 };
+            // The name, in the track's colour.
+            Rectangle {
+                x: 0;
+                y: 0;
+                height: root.head-h - 2px;
+                border-radius: 3px;
+                background: column.id == root.chosen-track ? column.color : column.color.mix(Theme.surface, 0.45);
+                Text {
+                    x: 6px;
+                    width: parent.width - 12px;
+                    text: column.name;
+                    color: column.id == root.chosen-track ? Theme.on-hue : Theme.bright;
+                    font-size: Theme.t-small;
+                    font-weight: 600;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+            }
+            // The empty slots.
+            for name[row] in root.scenes: Rectangle {
+                x: 0;
+                y: root.slots-top + row * root.cell-h;
+                width: parent.width;
+                height: root.cell-h - 2px;
+                border-radius: 3px;
+                property <bool> recording: state.recording == row;
+                background: self.recording ? Theme.rec.with-alpha(0.3) : root.drop-column == c && root.drop-row == row ? Theme.select-fill : Theme.lane;
+                border-width: column.id == root.chosen-track && row == root.chosen-row ? 1px : 0px;
+                border-color: Theme.select;
+                // The empty slot's mark: launching it stops the track.
+                Rectangle {
+                    x: 7px;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 1px;
+                    border-width: 1px;
+                    border-color: state.queued == row ? Theme.play : Theme.text-off;
+                }
+                TouchArea {
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left && self.mouse-x < 24px) {
+                            root.press(column.id, row, true);
+                        }
+                    }
+                    clicked => {
+                        root.choose(column.id, row);
+                    }
+                    double-clicked => {
+                        root.open(column.id, row);
+                    }
+                    changed has-hover => {
+                        root.hint(self.has-hover ? "empty slot: double click makes a MIDI clip · drop a clip from the timeline here · its square stops the track, its dot records a bar into it" : "");
+                    }
+                }
+                // Its record button, at the right.
+                Rectangle {
+                    x: parent.width - 18px;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: parent.recording ? Theme.rec : rec-touch.has-hover ? Theme.rec.with-alpha(0.6) : Theme.text-off.with-alpha(0.5);
+                    rec-touch := TouchArea {
+                        width: 18px;
+                        height: 18px;
+                        clicked => {
+                            root.record(column.id, row);
+                        }
+                    }
+                }
+            }
+            // What plays, and how to stop it or send it back.
+            Rectangle {
+                x: 0;
+                y: root.head-h;
+                height: root.cell-h - 2px;
+                HorizontalLayout {
+                    spacing: 2px;
+                    Button {
+                        height: 22px;
+                        icon: Icons.ph-stop-fill;
+                        icon-box: 256;
+                        quiet: true;
+                        on: state.stopped || state.stopping;
+                        lit: state.stopping ? Theme.play : Theme.text-2;
+                        clicked => {
+                            root.stop(column.id);
+                        }
+                    }
+                    Button {
+                        height: 22px;
+                        icon: Icons.ph-arrow-counter-clockwise;
+                        icon-box: 256;
+                        quiet: true;
+                        enabled: state.slot >= 0 || state.stopped || state.queued >= 0;
+                        on: state.back;
+                        lit: Theme.play;
+                        clicked => {
+                            root.back(column.id);
+                        }
+                        changed has-hover => {
+                            root.hint(self.has-hover ? "back to the track's timeline" : "");
+                        }
+                    }
+                    Text {
+                        text: state.slot >= 0 ? "plays " + (state.slot + 1) : state.stopped ? "stopped" : "timeline";
+                        color: state.slot >= 0 ? Theme.play-on : Theme.text-3;
+                        font-size: Theme.t-small;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+
+        // The clips, over the empty slots.
+        for slot in root.slots: Rectangle {
+            property <SessionColumn> column: slot.column < root.columns.length ? root.columns[slot.column] : { id: -1 };
+            property <LaunchData> state: slot.column < root.launch.length ? root.launch[slot.column] : { slot: -1, queued: -1, recording: -1 };
+            property <bool> playing: state.slot == slot.row;
+            property <bool> queued: state.queued == slot.row;
+            property <bool> dragged: root.drag-clip == slot.id;
+            x: root.gutter + slot.column * root.cell-w + (self.dragged ? root.drag-dx : 0px);
+            y: root.slots-top + slot.row * root.cell-h + (self.dragged ? root.drag-dy : 0px);
+            width: root.cell-w - 2px;
+            height: root.cell-h - 2px;
+            border-radius: 3px;
+            background: slot.muted ? column.color.mix(Theme.surface, 0.15) : self.playing ? column.color.mix(Theme.surface, 0.55) : column.color.mix(Theme.surface, 0.3);
+            border-width: column.id == root.chosen-track && slot.row == root.chosen-row ? 1px : 0px;
+            border-color: Theme.select;
+            opacity: self.dragged ? 0.7 : 1;
+            // How far round its loop it is.
+            if playing: Rectangle {
+                x: 0;
+                width: parent.width * clamp(state.progress, 0, 1);
+                border-radius: 3px;
+                background: column.color;
+            }
+            Icon {
+                x: 5px;
+                width: 12px;
+                height: 12px;
+                shape: queued ? Icons.ph-caret-right : Icons.ph-play-fill;
+                box: 256;
+                ink: playing ? Theme.on-hue : queued ? Theme.play : Theme.bright.with-alpha(0.75);
+            }
+            Text {
+                x: 22px;
+                width: parent.width - 26px;
+                text: slot.name + (slot.mode == "trigger" ? "" : " · " + slot.mode);
+                color: playing ? Theme.on-hue : Theme.bright;
+                font-size: Theme.t-small;
+                font-weight: playing ? 600 : 400;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            touch := TouchArea {
+                pointer-event(event) => {
+                    if (event.button == PointerEventButton.left && self.pressed-x < 22px) {
+                        // The play mark is a pad: pressed launches, let go stops a gate clip.
+                        if (event.kind == PointerEventKind.down) {
+                            root.press(column.id, slot.row, true);
+                        } else if (event.kind == PointerEventKind.up) {
+                            root.press(column.id, slot.row, false);
+                        }
+                        return;
+                    }
+                    if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                        if (root.drag-clip == slot.id) {
+                            let col = root.column-at(self.absolute-position.x + self.mouse-x);
+                            let row = root.row-at(self.absolute-position.y + self.mouse-y);
+                            if (col >= 0 && row >= 0 && (col != slot.column || row != slot.row)) {
+                                root.move-slot(slot.id, root.columns[col].id, row, event.modifiers.control);
+                            }
+                        } else {
+                            root.choose(column.id, slot.row);
+                        }
+                        root.drag-clip = -1;
+                        root.drag-dx = 0px;
+                        root.drag-dy = 0px;
+                    }
+                }
+                moved => {
+                    if (self.pressed && self.pressed-x >= 22px) {
+                        if (root.drag-clip < 0 && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px)) {
+                            root.drag-clip = slot.id;
+                        }
+                        if (root.drag-clip == slot.id) {
+                            root.drag-dx = self.mouse-x - self.pressed-x;
+                            root.drag-dy = self.mouse-y - self.pressed-y;
+                        }
+                    }
+                }
+                double-clicked => {
+                    root.open(column.id, slot.row);
+                }
+                changed has-hover => {
+                    root.hint(self.has-hover ? "clip: its play mark launches it · click chooses · double click opens its notes · drag moves it, Ctrl copies" : "");
+                }
+            }
+        }
+    }
+
+    // The scenes, down the right, scrolled with the slots.
+    Rectangle {
+        x: parent.width - 150px;
+        y: root.top-h;
+        width: 150px;
+        height: parent.height - root.top-h;
+        clip: true;
+        Rectangle {
+            x: 0;
+            width: 1px;
+            background: Theme.divider;
+        }
+        Rectangle {
+            x: 0;
+            y: grid.content-y;
+            height: root.slots-top + root.scenes.length * root.cell-h;
+            Text {
+                x: 10px;
+                y: 0;
+                height: root.head-h - 2px;
+                text: "Scenes";
+                color: Theme.text-2;
+                font-size: Theme.t-small;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            for name[row] in root.scenes: Rectangle {
+                x: 6px;
+                y: root.slots-top + row * root.cell-h;
+                width: parent.width - 12px;
+                height: root.cell-h - 2px;
+                border-radius: 3px;
+                background: scene-touch.pressed ? Theme.control-press : scene-touch.has-hover ? Theme.control-hover : Theme.control;
+                Icon {
+                    x: 6px;
+                    width: 12px;
+                    height: 12px;
+                    shape: Icons.ph-play-fill;
+                    box: 256;
+                    ink: Theme.text-2;
+                }
+                Text {
+                    x: 24px;
+                    width: parent.width - 28px;
+                    text: name;
+                    color: row == root.chosen-row ? Theme.bright : Theme.text-2;
+                    font-size: Theme.t-small;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                scene-touch := TouchArea {
+                    clicked => {
+                        root.scene(row);
+                    }
+                    changed has-hover => {
+                        root.hint(self.has-hover ? "scene: launches every clip in its row together" : "");
+                    }
+                }
+            }
+        }
+    }
+}

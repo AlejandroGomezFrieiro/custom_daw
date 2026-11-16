@@ -85,3 +85,7 @@ colours are in `runtime/lua/daw/theme.lua`.
 extensions. [extensions/utau](../extensions/utau) is a larger one: singing
 synthesis with OpenUtau's engines, through ReaUtau's `reautau-engine`, with a
 vocal editor and lyric sheet.
+
+Devices written in Lua go in `~/.config/daw/devices/`, one `.lua` file each,
+and are loaded again whenever they are saved: see
+[Writing a device in Lua](devices.md#writing-a-device-in-lua).

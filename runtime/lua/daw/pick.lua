@@ -13,7 +13,8 @@
 -- beside the list, `actions` mapping other keys to `function(item, query)`
 -- (or `{ fn = ..., desc = ..., keep = true }` to leave the picker open),
 -- `multi = true` to mark several with Tab and get them in
--- `on_choose_multi(items)`, `width` and `height`, `empty` (what to say
+-- `on_choose_multi(items)`, `width` and `height`, `top = true` to sit at the
+-- top of the screen (leaving what is below in view), `empty` (what to say
 -- when there is nothing to choose from), and `primary(item)`: the part of
 -- the line that counts first, so that lines matching there rank above
 -- lines matching only elsewhere.
@@ -309,6 +310,10 @@ end
 
 local active        -- the open picker
 local last_spec     -- for `resume`
+daw.seats.keep("pick",
+  function() return active, last_spec end,
+  function(a, spec) active, last_spec = a, spec end,
+  function() return nil, nil end)
 
 local view = { modal = true }
 
@@ -612,6 +617,7 @@ function M.open(spec, extra)
     title = spec.title or "Pick",
     width = spec.width or (spec.preview and min(120, width - 4) or min(80, width - 4)),
     height = spec.height or min(28, max(10, height - 4)),
+    top = spec.top,
   })
   return p
 end

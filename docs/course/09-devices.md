@@ -2,7 +2,7 @@
 
 # Lesson 9: Devices, parameters and plugins
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 9`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 9`.*
 
 Each track has a chain of devices: first an instrument, which turns notes into sound, then effects, each working on the sound of the one before. The device panel lists the chain of the track under the cursor, each device with its parameters, and is driven with the same kind of keys as everything else.
 

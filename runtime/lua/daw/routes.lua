@@ -251,17 +251,25 @@ function M.setup()
     if not track then return daw.notify("no track here", "warn") end
     local words = {}
     for _, word in ipairs(ctx.args) do words[#words + 1] = tostring(word) end
-    -- A channel last, after the port's name.
-    local channel = #words > 1 and tonumber(words[#words]) or nil
-    if channel then table.remove(words) end
+    -- A form and a channel last, after the port's name, in either order.
+    local form, channel
+    for _ = 1, 2 do
+      local last = words[#words]
+      if #words > 1 and M.midi_out_forms[last] then
+        form = table.remove(words)
+      elseif #words > 1 and tonumber(last) then
+        channel = tonumber(table.remove(words))
+      end
+    end
     local name = table.concat(words, " ")
     if name == "" then return daw.commands.exec("track.input") end
-    local ok, err = pcall(M.set_midi_out, track.id, name, channel)
+    local ok, err = pcall(M.set_midi_out, track.id, name, channel, form, tonumber(ctx.args.members))
     if not ok then return warn(err) end
     daw.notify(track.name .. " → " .. M.midi_out_text(track:get()))
   end, {
     desc = "Send what the track plays to a MIDI port: `track.midi_out Synth 2` (channel 2), "
-      .. "`track.midi_out Synth` (each message's own channel), `track.midi_out none`; alone, the input list",
+      .. "`track.midi_out Synth` (each message's own channel), `track.midi_out Synth mpe` (a channel to each note, "
+      .. "where the port takes no MIDI 2.0; or `plain`, `cc14`, `auto`), `track.midi_out none`; alone, the input list",
     complete = function()
       local words = { "none" }
       for _, port in ipairs(daw.midi.outputs()) do words[#words + 1] = port.name end
@@ -270,17 +278,36 @@ function M.setup()
   })
 end
 
---- Where a track sends MIDI, as text: `Synth · channel 2`, or "nowhere".
+--- What a MIDI output sends where the port takes no MIDI 2.0, by the name
+--- `track.midi_output.form` has for it, in words.
+M.midi_out_forms = {
+  auto = "MIDI 2.0 where the port takes it, else plain MIDI 1.0",
+  plain = "plain MIDI 1.0",
+  mpe = "MPE: a channel to each note, with its own bend",
+  cc14 = "MIDI 1.0 with 14-bit controllers",
+}
+M.midi_out_form_order = { "auto", "plain", "mpe", "cc14" }
+
+--- Where a track sends MIDI, as text: `Synth · channel 2 · MPE`, or "no MIDI output".
 function M.midi_out_text(t)
   local out = t.midi_output
   if not out then return "no MIDI output" end
-  return out.port .. (out.channel and " · channel " .. out.channel or "")
+  local form = out.form and out.form ~= "auto" and (out.form == "cc14" and "14-bit" or out.form:upper()) or nil
+  return out.port .. (out.channel and " · channel " .. out.channel or "") .. (form and " · " .. form or "")
 end
 
 --- Send a track's MIDI to the port named `name` (or a part of its name;
---- "none" for none), on `channel` (1 to 16; nil for each message's own).
-function M.set_midi_out(track, name, channel)
+--- "none" for none), on `channel` (1 to 16; nil for each message's own), in
+--- `form` where the port takes no MIDI 2.0 (a key of `M.midi_out_forms`; nil
+--- keeps the one it has), MPE with `members` channels (nil for 15).
+function M.set_midi_out(track, name, channel, form, members)
   if name == "none" or name == "" then return api.track_set(track, "midi_output", nil) end
+  local was = api.track_get(track).midi_output or {}
+  form = form or was.form
+  if form ~= nil and not M.midi_out_forms[form] then
+    error("a MIDI output's form is auto, plain, mpe or cc14", 0)
+  end
+  members = members or (form == "mpe" and was.members or nil)
   local port = name
   for _, p in ipairs(daw.midi.outputs()) do
     if p.name == name then
@@ -289,7 +316,7 @@ function M.set_midi_out(track, name, channel)
     end
     if p.name:lower():find(name:lower(), 1, true) and port == name then port = p.name end
   end
-  api.track_set(track, "midi_output", { port = port, channel = channel })
+  api.track_set(track, "midi_output", { port = port, channel = channel, form = form, members = members })
 end
 
 return M

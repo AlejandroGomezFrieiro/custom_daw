@@ -73,6 +73,18 @@ end
 --- Apply `fn(notes, index)` to what a region of `view` holds.
 function M.apply(view, region, fn)
   if view == "arrange" then return M.apply_arrange(region, fn) end
+  -- The piano roll may edit several clips at once: each is done on its own,
+  -- the region taken in its own beats, so that its notes stay in it.
+  local parts = view == "pianoroll" and daw.roll_clips and daw.roll_clips.parts() or {}
+  if #parts > 1 then
+    local count = 0
+    for i, part in ipairs(parts) do
+      local mine = daw.util.merge(region, { c0 = region.c0 - part.offset, c1 = region.c1 - part.offset })
+      count = count + M.apply_to_clip(part.clip, function(n) return edit.roll.inside(n, mine) end,
+        function(notes) return fn(notes, i) end)
+    end
+    return count
+  end
   local clip = M.view_clip(view)
   if not clip then return 0 end
   return M.apply_to_clip(clip, function(n) return edit.roll.inside(n, region) end, function(notes) return fn(notes, 1) end)
@@ -391,22 +403,31 @@ local function locked() return daw.opt.musicops_scale_lock end
 --- Put the scale-lock mappings in place over the runtime's (and the vocal
 --- editor's, which may be loaded later: this runs again when a view is focused).
 function M.install_locks()
-  -- Insert mode in the piano roll, as laid out by the runtime: the middle row
-  -- of the keyboard white keys from C, the row above the black ones.
+  -- Insert mode in the piano roll the keys way (`I`), as laid out by the
+  -- runtime: the middle row of the keyboard white keys from C, the row above
+  -- the black ones.
   local LAYOUT = { "a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j", "k", "o", "l", "p", ";" }
   for semitone, key in ipairs(LAYOUT) do
     local lhss = { key }
     if key:match("%a") then lhss[2] = key:upper() end
     for i, lhs in ipairs(lhss) do
-      local orig = original("i", "pianoroll", lhs)
+      local orig = original("i", "pianoroll.keys", lhs)
       keymap.set(lhs, function(ctx)
         if not locked() then return call(orig, ctx) end
         local roll = daw.ui.views.pianoroll
         local base = (daw.opt.octave + 1) * 12
         local pitch = scale.snap(scale.current(), base + semitone - 1, opt("snap"))
         roll:enter(pitch - base, i == 1)
-      end, { view = "pianoroll", mode = "i", desc = orig and orig.desc, musicops = true })
+      end, { view = "pianoroll.keys", mode = "i", desc = orig and orig.desc, musicops = true })
     end
+  end
+  -- Insert mode drawing: the note being drawn moves by steps of the scale.
+  for lhs, dir in pairs({ k = 1, ["<Up>"] = 1, j = -1, ["<Down>"] = -1 }) do
+    local orig = original("i", "pianoroll", lhs)
+    keymap.set(lhs, function(ctx)
+      if not locked() then return call(orig, ctx) end
+      daw.roll_draw.pitch(dir, function(pitch, n) return scale.step(scale.current(), pitch, dir * n) end)
+    end, { view = "pianoroll", mode = "i", desc = orig and orig.desc, musicops = true })
   end
 
   for lhs, dir in pairs({ ["<C-a>"] = 1, ["<C-x>"] = -1 }) do

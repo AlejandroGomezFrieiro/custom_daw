@@ -5,6 +5,8 @@ local M = {}
 
 local active      -- { prompt, chars, pos, on_submit, complete, history, index, matches, match }
 local histories = {}
+-- A prompt open in one seat is that seat's; the history is everyone's.
+daw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
 
 local function text()
   return table.concat(active.chars)
@@ -208,6 +210,7 @@ function M.draw_popup(buf)
   local x = api.str_width(a.prompt) + math.max(0, offset) - 2
   x = math.max(0, math.min(x, buf.width - width))
   local y = buf.height - 1 - rows
+  a.popup = { x = x, y = y, w = width, rows = rows, top = top }
   for row = 0, rows - 1 do
     local i = top + row
     local c = a.matches[i]
@@ -229,6 +232,28 @@ function M.draw_popup(buf)
   end
 end
 daw.ui.draw_popup = M.draw_popup
+
+-- The pointer on the list: a click puts a candidate in the line, a second
+-- click on it (or a double click) runs the line; the wheel moves through
+-- the list.
+daw.mouse.overlays[#daw.mouse.overlays + 1] = function(e)
+  local a = active
+  local p = a and a.matches and #a.matches > 0 and a.popup
+  if not p or e.x < p.x or e.x >= p.x + p.w or e.y < p.y or e.y >= p.y + p.rows then return false end
+  if e.kind == "down" then
+    local i = p.top + e.y - p.y
+    if a.matches[i] then
+      local again = i == a.match
+      complete(i - a.match)
+      if again or e.double then on_key("<CR>") end
+    end
+  else
+    local step = daw.mouse.wheel(e)
+    if step then complete(step) end
+  end
+  api.ui_redraw()
+  return true
+end
 
 --- Read a typed value against the one there is now: `6` or `=6` is 6, and
 --- `+2` or `-3` are steps from `now`. `parse(text)` reads one absolute

@@ -22,11 +22,12 @@ use slint::{
 };
 
 mod portal;
+mod session;
 
 slint::include_modules!();
 
 const HELP: &str = "\
-daw-gui: a graphical frontend for daw
+daw-gui: a graphical frontend for paw
 
 Usage:
   daw-gui [kernel options] [project]   start a kernel and show it
@@ -35,6 +36,12 @@ Usage:
                                        show one running on another machine
                                        (started with --listen-tcp; the token
                                        is also taken from --token or $DAW_TOKEN)
+    --accept-certificate               take the certificate it shows though
+                                       another was remembered for it
+    --no-tls                           connect in the clear, to one started
+                                       with --no-tls
+    --listen-audio                     play its sound here (about 1 Mbit/s);
+                                       also in the engine menu
 
 Options:
   --renderer software|gpu   draw on the processor (the default) or on the
@@ -152,7 +159,7 @@ impl Purpose {
         };
         match self {
             Purpose::Open => ask(portal::Kind::Open, "Open", "open"),
-            Purpose::Import => ask(portal::Kind::Open, "Import a sound file", "sound"),
+            Purpose::Import => ask(portal::Kind::Open, "Import a sound or MIDI file", "sound"),
             Purpose::SaveAs => portal::Ask {
                 name: text(&info["name"]).to_string(),
                 ..ask(portal::Kind::Save, "Save the project as", "project")
@@ -207,27 +214,42 @@ struct Client {
     /// of device kinds did, which is only sent at first.
     fresh: bool,
     fresh_kinds: bool,
+    /// The kernel's sound, played here (`:listen`, the engine menu).
+    player: Option<daw_listen::Player>,
 }
 
 impl Client {
-    fn connect(path: &Path) -> Result<Self> {
-        Self::watching(daw_proto::Connection::unix(path)?)
+    /// Connect to a kernel on this machine: with a seat of its own (a cursor,
+    /// mode and selection), or in the instance's own (`shared`), as a window
+    /// that started its kernel itself is.
+    fn connect(path: &Path, shared: bool) -> Result<Self> {
+        Self::watching(daw_proto::Connection::unix(path)?, shared)
     }
 
     /// Connect to a kernel on another machine (or this one) over the network.
-    fn connect_tcp(address: &str, token: &str) -> Result<Self> {
-        Self::watching(daw_proto::Connection::tcp(address, token)?)
+    fn connect_tcp(address: &str, token: &str, wire: &daw_proto::Wire) -> Result<Self> {
+        let connection = daw_proto::Connection::tcp_with(address, token, wire)?;
+        if let Some(print) = &connection.trusted_now {
+            eprintln!(
+                "daw-gui: {address} is trusted from now on: its certificate is {print} \
+                 (remembered in {})",
+                daw_proto::tls::known_path().display()
+            );
+        }
+        Self::watching(connection, false)
     }
 
-    fn watching(connection: daw_proto::Connection) -> Result<Self> {
+    fn watching(connection: daw_proto::Connection, shared: bool) -> Result<Self> {
         let mut client = Self {
             connection,
             tick: Value::Null,
             sections: serde_json::Map::new(),
             fresh: false,
             fresh_kinds: false,
+            player: None,
         };
-        client.call("frontend.watch", json!([]))?;
+        let seat = if shared { "instance" } else { "own" };
+        client.call("frontend.watch", json!([{ "seat": seat }]))?;
         Ok(client)
     }
 
@@ -244,6 +266,17 @@ impl Client {
         let mut params = vec![json!(code)];
         params.extend(args.as_array().cloned().unwrap_or_default());
         self.call("eval", Value::Array(params))
+    }
+
+    /// Start playing the kernel's sound here, or stop.
+    fn toggle_listening(&mut self) -> Result<()> {
+        if self.player.take().is_some() {
+            return self.connection.notify("monitor.unlisten", json!([]));
+        }
+        let player = daw_listen::Player::device()?;
+        self.call("monitor.listen", json!([]))?;
+        self.player = Some(player);
+        Ok(())
     }
 
     /// The state to draw, in the shape `daw.frontend.state` gives it: what
@@ -263,6 +296,17 @@ impl Client {
                     }
                     self.tick = payload;
                 }
+                Ok((name, payload)) if name == "audio.frame" => {
+                    if let Some(player) = &self.player {
+                        let _ = player.push(&payload);
+                    }
+                }
+                Ok((name, _)) if name == "monitor.toggle" => {
+                    if let Err(err) = self.toggle_listening() {
+                        let message = format!("cannot play the instance's sound here: {err:#}");
+                        let _ = self.eval("daw.notify(..., 'error')", json!([message]));
+                    }
+                }
                 Ok(_) => {}
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -281,7 +325,7 @@ impl Client {
                 project["lines"] = part("lines");
             }
             state.insert("project".into(), project);
-            for name in ["tracks", "clips", "devices", "routing"] {
+            for name in ["tracks", "clips", "devices", "routing", "slots"] {
                 state.insert(name.into(), part(name));
             }
             state.insert("selected".into(), part("view")["selected"].clone());
@@ -292,6 +336,27 @@ impl Client {
         }
         Ok(state)
     }
+}
+
+/// Send the sound and MIDI files among `paths` to a kernel on another machine (or
+/// one this window did not start), into its project's media folder, and
+/// return where they are there. The rest are left out, said to be refused.
+fn send_sounds(client: &mut Client, paths: &[String]) -> Result<Vec<String>> {
+    let mut there = Vec::new();
+    for path in paths {
+        let sound = client.eval(
+            "local path = ...; return daw.is_audio_file(path) or daw.midifile.is_midi_file(path)",
+            json!([path]),
+        )?;
+        if sound.as_bool() != Some(true) {
+            let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+            let message = format!("cannot send {name}: only sound and MIDI files go to an instance on another machine");
+            client.eval("daw.notify(..., 'warn')", json!([message]))?;
+            continue;
+        }
+        there.push(client.connection.send_file(Path::new(path))?);
+    }
+    Ok(there)
 }
 
 /// Start a kernel without a UI and connect to it.
@@ -329,7 +394,7 @@ fn start_kernel(args: &[String]) -> Result<(Client, Child)> {
     // The first start can take a while: it looks through every installed plugin.
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
-        if let Ok(client) = Client::connect(&socket) {
+        if let Ok(client) = Client::connect(&socket, true) {
             return Ok((client, child));
         }
         if let Some(status) = child.try_wait()? {
@@ -475,6 +540,18 @@ fn place_of(pos: f64) -> SharedString {
     })
 }
 
+/// The chord symbols over the piano roll's ruler.
+fn roll_chords(list: &Value) -> Vec<RollChord> {
+    rows(list)
+        .iter()
+        .map(|c| RollChord {
+            start: number(&c["start"]),
+            length: number(&c["length"]),
+            label: text(&c["label"]),
+        })
+        .collect()
+}
+
 /// The song's lines over a clip, in the clip's beats, for the piano roll.
 fn roll_lines(start: f32, length: f32) -> Vec<RollLine> {
     let (start, length) = (start as f64, length as f64);
@@ -517,6 +594,49 @@ fn notes_within(notes: &[NoteData], from: f32, to: f32) -> Vec<NoteData> {
     notes
         .iter()
         .filter(|n| n.start <= to && n.start + n.length >= from)
+        .cloned()
+        .collect()
+}
+
+/// The marks of the roll's layers, as the kernel sends them.
+fn roll_marks(list: &Value) -> Vec<RollMark> {
+    rows(list)
+        .iter()
+        .map(|m| {
+            let alpha = m["alpha"].as_f64().unwrap_or(1.0) as f32;
+            let badge = m["badge"].as_bool().unwrap_or(false);
+            RollMark {
+                pitch: m["pitch"].as_i64().unwrap_or(60).clamp(0, 127) as i32,
+                start: number(&m["start"]),
+                length: number(&m["length"]),
+                fill: colour(&m["fill"]).with_alpha(alpha),
+                edge: if m["edge"].is_string() {
+                    colour(&m["edge"])
+                } else {
+                    Color::from_argb_u8(0, 0, 0, 0)
+                },
+                // Dark on a strong chip, light on anything fainter.
+                ink: if badge && alpha >= 0.5 {
+                    Color::from_rgb_u8(0x12, 0x13, 0x16)
+                } else {
+                    Color::from_rgb_u8(0xe4, 0xe5, 0xe8)
+                },
+                label: text(&m["label"]),
+                badge,
+                slot: m["slot"].as_i64().unwrap_or(0) as i32,
+                act: text(&m["act"]),
+                arg: number(&m["arg"]),
+                tip: text(&m["tip"]),
+            }
+        })
+        .collect()
+}
+
+/// The marks among them that show between two beats, with chips always.
+fn marks_within(marks: &[RollMark], from: f32, to: f32) -> Vec<RollMark> {
+    marks
+        .iter()
+        .filter(|m| m.badge || (m.start <= to && m.start + m.length >= from))
         .cloned()
         .collect()
 }
@@ -584,6 +704,65 @@ fn lane_path(
         path += &format!(" L {:.1} {:.1}", beat * zoom, y(*value));
     }
     path += &format!(" L {:.1} {:.1}", to * zoom, y(at(to)));
+    path
+}
+
+/// The height of the tempo lane under the ruler, in pixels, and where in it
+/// a tempo at the bottom or the top of its range is drawn (a little room
+/// above and below, as for the lanes in rows).
+const TEMPO_LANE: f32 = 56.0;
+fn tempo_y(value: f32) -> f32 {
+    (0.12 + (1.0 - value) * 0.76) * TEMPO_LANE
+}
+
+/// The tempo map as a path over beats `from` to `to`, in pixels at `zoom`: a
+/// level run to the next change where a point holds, a sloping line where it
+/// ramps. Each point is `(beat, height 0..1, ramps)`; only the stretch that
+/// shows is drawn.
+fn tempo_path(points: &[(f32, f32, bool)], from: f32, to: f32, zoom: f32) -> String {
+    let Some(last) = points.last() else {
+        return String::new();
+    };
+    let from = from.max(0.0);
+    let to = to.max(from);
+    // The corners of the curve: a step has a corner at the beat where it
+    // changes, a ramp goes straight to the next point's height.
+    let mut corners: Vec<(f32, f32)> = Vec::new();
+    for (i, point) in points.iter().enumerate() {
+        if i > 0 && !points[i - 1].2 {
+            corners.push((point.0, points[i - 1].1));
+        }
+        corners.push((point.0, point.1));
+    }
+    corners.push((to.max(last.0), last.1));
+    let mut path = String::new();
+    let put = |path: &mut String, beat: f32, value: f32| {
+        let command = if path.is_empty() { "M" } else { "L" };
+        *path += &format!("{command} {:.1} {:.1} ", beat * zoom, tempo_y(value));
+    };
+    let mut prev: Option<(f32, f32)> = None;
+    for corner in corners {
+        if let Some(a) = prev {
+            // The part of the stretch from `a` to `corner` that is in view.
+            let (x0, x1) = (a.0.max(from), corner.0.min(to));
+            if corner.0 > a.0 {
+                if x1 >= x0 {
+                    let at = |x: f32| a.1 + (corner.1 - a.1) * (x - a.0) / (corner.0 - a.0);
+                    if path.is_empty() {
+                        put(&mut path, x0, at(x0));
+                    }
+                    put(&mut path, x1, at(x1));
+                }
+            } else if a.0 >= from && a.0 <= to {
+                // A step's upright.
+                if path.is_empty() {
+                    put(&mut path, a.0, a.1);
+                }
+                put(&mut path, a.0, corner.1);
+            }
+        }
+        prev = Some(corner);
+    }
     path
 }
 
@@ -953,6 +1132,8 @@ struct Canvas {
     items: Rc<VecModel<CanvasItem>>,
     painted: Instant,
     size: (f32, f32),
+    /// The drawing the image shows, and at what size: not made again for the same.
+    drawn: (Value, (f32, f32)),
 }
 
 /// A colour of a drawing: `#rrggbb`, `#rrggbbaa`, or nothing for none.
@@ -968,7 +1149,8 @@ fn paint_colour(value: &Value) -> Color {
     }
 }
 
-/// One operation of a drawing (see `daw.canvas.paint`) as the window shows it.
+/// One operation of a view drawn in cells (see `daw.canvas.paint`) as the
+/// window shows it: a rectangle or a run of monospace cells.
 fn canvas_item(op: &Value) -> Option<CanvasItem> {
     let clear = Color::from_argb_u8(0, 0, 0, 0);
     let mut item = CanvasItem {
@@ -982,9 +1164,7 @@ fn canvas_item(op: &Value) -> Option<CanvasItem> {
         stroke: clear,
         stroke_width: 1.0,
         radius: 0.0,
-        size: 12.0,
         bold: false,
-        align: 0,
         italic: false,
         underline: false,
         strike: false,
@@ -1009,35 +1189,20 @@ fn canvas_item(op: &Value) -> Option<CanvasItem> {
             (item.fill, item.stroke) = (paint_colour(&op[5]), paint_colour(&op[6]));
             (item.stroke_width, item.radius) = (number(&op[7]), number(&op[8]));
         }
-        "t" => {
-            item.kind = 1;
-            (item.x, item.y) = (number(&op[1]), number(&op[2]));
-            item.text = text(&op[3]);
-            item.fill = paint_colour(&op[4]);
-            item.size = number(&op[5]);
-            item.bold = number(&op[6]) > 0.5;
-            item.align = match op[7].as_str() {
-                Some("center") => 1,
-                Some("right") => 2,
-                _ => 0,
-            };
-            (item.w, item.h) = (number(&op[8]).min(4000.0), item.size * 1.5);
-            if item.align == 1 {
-                // Centred text is centred on its `x`.
-                item.x -= item.w / 2.0;
-            } else if item.align == 2 {
-                item.x -= item.w;
-            }
-        }
-        "p" => {
-            item.kind = 2;
-            item.text = text(&op[1]);
-            (item.stroke, item.stroke_width) = (paint_colour(&op[2]), number(&op[3]));
-            item.fill = paint_colour(&op[4]);
-        }
         _ => return None,
     }
     Some(item)
+}
+
+/// A drawing (see `daw.canvas.paint`) as an image of a window's size in
+/// logical pixels, at the screen's scale.
+fn raster(ops: &Value, size: (f32, f32), scale: f32) -> Image {
+    let (width, height) = ((size.0 * scale).round().max(1.0) as u32, (size.1 * scale).round().max(1.0) as u32);
+    let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
+    if let Some(pixmap) = daw_raster::Drawing::parse(ops).paint_scaled(width, height, scale) {
+        buffer.make_mut_bytes().copy_from_slice(pixmap.data());
+    }
+    Image::from_rgba8_premultiplied(buffer)
 }
 
 /// What the window shows, and which revision of the project it reflects.
@@ -1052,6 +1217,8 @@ struct View {
     tracks: Rc<VecModel<TrackData>>,
     meters: Rc<VecModel<MeterData>>,
     clips: Rc<VecModel<ClipData>>,
+    /// The session view: slots to launch.
+    session: session::Session,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
     params: Vec<Rc<VecModel<ParamData>>>,
@@ -1077,10 +1244,33 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// What the kernel's layers draw behind the roll's notes and in front
+    /// of them, as it last told, and the switches they add to its toolbar.
+    roll_marks: (Vec<RollMark>, Vec<RollMark>),
+    marks_under: Rc<VecModel<RollMark>>,
+    marks_over: Rc<VecModel<RollMark>>,
+    roll_tools: Rc<VecModel<RollTool>>,
+    /// The chord symbols over the ruler.
+    roll_chords: Rc<VecModel<RollChord>>,
+    /// The notes diagnostics are about, and for each by its place in the
+    /// roll what they say and the titles of their fixes.
+    marks: Rc<VecModel<MarkData>>,
+    mark_notes: Rc<RefCell<HashMap<i32, (SharedString, Vec<SharedString>)>>>,
     /// All of the clip's notes, its other clips' and the song's lines over
     /// it; the models hold those of the stretch `roll_for` (beats) alone.
     roll_notes: Vec<NoteData>,
     roll_ghosts: Vec<NoteData>,
+    /// For each of `roll_notes`, the clip it is in and its place there as
+    /// the kernel counts them: the roll may edit several clips at once.
+    roll_refs: Vec<(i64, i64)>,
+    /// Other tracks' notes, behind the clips', handed over with the clip.
+    roll_context: Vec<RollMark>,
+    /// Where the roll's beats start, in the beats of the clip it has open:
+    /// before 0 when another clip it edits starts earlier.
+    roll_origin: f32,
+    /// The keys sounding at the roll's cursor, and the side panel's rows.
+    chord_keys: Rc<VecModel<bool>>,
+    roll_rows: Rc<VecModel<RollRow>>,
     roll_lines: Vec<RollLine>,
     roll_line_rows: Rc<VecModel<RollLine>>,
     roll_for: Option<(f32, f32)>,
@@ -1093,6 +1283,8 @@ struct View {
     roll_controls: Vec<Value>,
     strip: i32,
     controls: Rc<VecModel<ControlData>>,
+    /// The places of the moves chosen in the strip, as the kernel counts them.
+    controls_chosen: HashSet<i64>,
     /// The piano roll's own window, and whether the roll is in it.
     roll_window: RollWindow,
     detached: bool,
@@ -1113,6 +1305,11 @@ struct View {
     strips: Rc<VecModel<LaneData>>,
     strip_points: Rc<VecModel<PointData>>,
     lane_rows: Vec<Vec<i32>>,
+    /// The tempo lane under the ruler when it is shown: the tempo at its
+    /// bottom and top, and each change as `(beat, bpm, ramps)`; and what is
+    /// drawn of them.
+    tempo_lane: Option<(f32, f32, Vec<(f32, f32, bool)>)>,
+    tempo_points: Rc<VecModel<TempoPointData>>,
     /// How many take lanes each row shows under its clips, the clips that
     /// have takes on those rows, and what is drawn of them: the lanes, the
     /// takes of the clips in view, and each take's picture by clip and take
@@ -1142,6 +1339,8 @@ struct View {
     /// The clip open in the piano roll, and whether its notes need fetching.
     roll: Option<i32>,
     roll_stale: bool,
+    /// The kernel's revision the roll was last fetched at.
+    roll_revision: i64,
     notes: Rc<VecModel<NoteData>>,
     hints: Rc<VecModel<HintData>>,
     clip_entries: Rc<VecModel<MenuEntry>>,
@@ -1198,6 +1397,7 @@ impl View {
             self.message_until = None;
         }
         let state = client.state()?;
+        self.session.tick(&state);
         let playing = state["playing"].as_bool().unwrap_or(false);
         let recording = state["recording"].as_bool().unwrap_or(false);
         let position = number(&state["position"]);
@@ -1376,6 +1576,11 @@ impl View {
         let (from, to) = self.roll_for.unwrap_or((from, to));
         sync(&self.notes, notes_within(&self.roll_notes, from, to));
         sync(&self.ghosts, notes_within(&self.roll_ghosts, from, to));
+        // Other tracks' notes first, behind what the layers draw.
+        let mut under = marks_within(&self.roll_context, from, to);
+        under.extend(marks_within(&self.roll_marks.0, from, to));
+        sync(&self.marks_under, under);
+        sync(&self.marks_over, marks_within(&self.roll_marks.1, from, to));
         let lines = self.roll_lines.iter().filter(|l| (from..=to).contains(&l.at));
         sync(&self.roll_line_rows, lines.cloned().collect());
         self.show_controls(ui);
@@ -1405,6 +1610,7 @@ impl View {
             roll.set_open(false);
         }
         let _ = self.roll_window.hide();
+        self.show_marks(&Value::Null);
     }
 
     /// Fill the strip under the piano roll with the controller it shows.
@@ -1419,12 +1625,16 @@ impl View {
                 .filter(|c| (from..=to).contains(&self::number(&c["start"])))
                 .filter(|c| number.is_none() || c["number"].as_i64() == number)
                 .map(|c| ControlData {
-                    start: self::number(&c["start"]),
+                    start: self::number(&c["start"]) - self.roll_origin,
                     value: if kind == "bend" {
                         (self::number(&c["value"]) + 1.0) / 2.0
                     } else {
                         self::number(&c["value"])
                     },
+                    place: c["place"].as_i64().unwrap_or(0) as i32,
+                    selected: c["place"]
+                        .as_i64()
+                        .is_some_and(|place| self.controls_chosen.contains(&place)),
                 })
                 .collect(),
         };
@@ -1441,6 +1651,7 @@ impl View {
         ui.set_macro(text(&modal["recording"]));
         ui.set_focused(text(&modal["focused"]));
         ui.set_show_mixer(modal["mixer"].as_bool().unwrap_or(false));
+        self.session.modal(ui, modal);
         // A render in the background, and a controller being waited for.
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
@@ -1508,8 +1719,14 @@ impl View {
                 r0 - 1
             });
             ui.set_sel_rows(r1 - r0 + 1);
-            ui.set_sel_start(number(&selection["c0"]));
-            ui.set_sel_end(number(&selection["c1"]));
+            // The roll's beats start at its origin.
+            let shift = if selection["view"] == "pianoroll" {
+                self.roll_origin
+            } else {
+                0.0
+            };
+            ui.set_sel_start(number(&selection["c0"]) - shift);
+            ui.set_sel_end(number(&selection["c1"]) - shift);
         }
         for roll in self.rolls(ui) {
             roll.set_sel_open(selection.is_object());
@@ -1568,28 +1785,77 @@ impl View {
             }
         }
         if open.is_some() {
-            // Which notes are chosen with the pointer.
-            let chosen: HashSet<usize> = rows(&roll["selected"])
+            // The clips edited or a layer of the roll changed.
+            let revision = roll["revision"].as_i64().unwrap_or(0);
+            if revision != self.roll_revision {
+                self.roll_revision = revision;
+                self.roll_stale = true;
+            }
+            // Which notes are chosen with the pointer, in any clip edited.
+            let chosen: HashSet<(i64, i64)> = rows(&roll["refs"])
                 .iter()
-                .filter_map(|place| (place.as_u64()? as usize).checked_sub(1 + self.roll_hidden))
+                .filter_map(|r| Some((r[0].as_i64()?, r[1].as_i64()?)))
                 .collect();
             let mut changed = false;
             for (index, note) in self.roll_notes.iter_mut().enumerate() {
-                let selected = chosen.contains(&index);
+                let selected = self.roll_refs.get(index).is_some_and(|r| chosen.contains(r));
                 changed |= note.selected != selected;
                 note.selected = selected;
             }
+            // What the layers draw, and the toolbar's switches.
+            // In the roll's beats, which start at its origin.
+            let shifted = |list: &Value| -> Vec<RollMark> {
+                roll_marks(list)
+                    .into_iter()
+                    .map(|m| RollMark {
+                        start: m.start - self.roll_origin,
+                        ..m
+                    })
+                    .collect()
+            };
+            let marks = (shifted(&roll["under"]), shifted(&roll["over"]));
+            if marks != self.roll_marks {
+                self.roll_marks = marks;
+                changed = true;
+            }
+            let tools: Vec<RollTool> = rows(&roll["tools"])
+                .iter()
+                .map(|t| RollTool {
+                    label: text(&t["label"]),
+                    on: t["on"].as_bool().unwrap_or(false),
+                    tip: text(&t["tip"]),
+                    act: text(&t["act"]),
+                })
+                .collect();
+            sync(&self.roll_tools, tools);
             if changed {
                 self.roll_view(ui);
             }
+            // And which controller moves in the strip.
+            let moves: HashSet<i64> = rows(&roll["controls_chosen"])
+                .iter()
+                .filter_map(Value::as_i64)
+                .collect();
+            if moves != self.controls_chosen {
+                self.controls_chosen = moves;
+                self.show_controls(ui);
+            }
+            sync(&self.roll_chords, roll_chords(&roll["chords"]));
+            // The keys sounding at the cursor.
+            let mut lit = [false; 128];
+            for pitch in rows(&roll["sounding"]).iter().filter_map(Value::as_i64) {
+                lit[pitch.clamp(0, 127) as usize] = true;
+            }
+            for (pitch, on) in lit.into_iter().enumerate() {
+                if self.chord_keys.row_data(pitch) != Some(on) {
+                    self.chord_keys.set_row_data(pitch, on);
+                }
+            }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
+            // What insert mode is doing, as the kernel words it: the note
+            // being drawn, or the keys as a piano.
             let status: SharedString = if modal["mode"] == "i" {
-                format!(
-                    "entering notes · a is C{} · step {} · Esc to stop",
-                    roll["octave"].as_i64().unwrap_or(4),
-                    number(&roll["step"])
-                )
-                .into()
+                text(&roll["insert"])
             } else {
                 SharedString::default()
             };
@@ -1604,17 +1870,43 @@ impl View {
                     }
                 }
                 shown.set_pitch(pitch);
-                shown.set_cursor(number(&roll["beat"]));
+                shown.set_cursor(number(&roll["beat"]) - self.roll_origin);
+                shown.set_chord(text(&roll["chord"]));
                 shown.set_step(number(&roll["step"]));
                 shown.set_status(status.clone());
                 shown.set_snap(roll["snap"].as_bool().unwrap_or(true));
                 shown.set_chosen_text(text(&roll["chosen"]));
                 shown.set_step_input(roll["step_input"].as_bool().unwrap_or(false));
             }
+            self.show_marks(&roll["marks"]);
         }
         ui.set_row_device(modal["device"].as_i64().unwrap_or(0) as i32);
         ui.set_row_param(modal["param"].as_i64().unwrap_or(-1) as i32);
         Ok(())
+    }
+
+    /// Outline the notes diagnostics are about (the kernel's
+    /// `daw.diagnostic.roll_marks`), by their place in the roll.
+    fn show_marks(&mut self, marks: &Value) {
+        let mut notes = HashMap::new();
+        let mut shown = Vec::new();
+        for mark in rows(marks) {
+            let Some(index) = mark["index"].as_i64().and_then(|i| (i as usize).checked_sub(self.roll_hidden)) else {
+                continue;
+            };
+            let index = index as i32;
+            shown.push(MarkData {
+                index,
+                pitch: mark["pitch"].as_i64().unwrap_or(60) as i32,
+                start: number(&mark["start"]) - self.roll_origin,
+                length: number(&mark["length"]),
+                severity: mark["severity"].as_i64().unwrap_or(2) as i32,
+            });
+            let titles = rows(&mark["actions"]).iter().map(text).collect();
+            notes.insert(index, (text(&mark["message"]), titles));
+        }
+        sync(&self.marks, shown);
+        *self.mark_notes.borrow_mut() = notes;
     }
 
     /// Fetch the clip in the piano roll and show its notes, or close the roll
@@ -1627,17 +1919,71 @@ impl View {
             return Ok(());
         }
         self.roll_hidden = clip["hidden"].as_u64().unwrap_or(0) as usize;
+        // Other clips it edits may start before it: the roll's beats then
+        // start where the first does.
+        let origin = rows(&clip["editable"])
+            .iter()
+            .map(|c| number(&c["offset"]))
+            .fold(0.0, f32::min);
+        let own = colour(&clip["color"]);
         let note = |(index, n): (usize, &Value)| NoteData {
             pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
-            start: number(&n["start"]),
+            start: number(&n["start"]) - origin,
             length: number(&n["length"]),
             velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
             // The kernel's places of the chosen notes, read just before,
             // are already places among these.
             selected: self.roll_notes.get(index).is_some_and(|old| old.selected),
             index: index as i32,
+            color: if n["color"].is_string() {
+                colour(&n["color"])
+            } else {
+                own
+            },
         };
-        let notes: Vec<NoteData> = rows(&clip["notes"]).iter().enumerate().map(note).collect();
+        // The clip's own notes, then those of the others it edits, each
+        // with its clip and its place there.
+        let skip = self.roll_hidden as i64;
+        let mut refs: Vec<(i64, i64)> = (0..rows(&clip["notes"]).len() as i64)
+            .map(|index| (id as i64, index + 1 + skip))
+            .collect();
+        for n in rows(&clip["more"]) {
+            refs.push((n["clip"].as_i64().unwrap_or(0), n["place"].as_i64().unwrap_or(1)));
+        }
+        let notes: Vec<NoteData> = rows(&clip["notes"])
+            .iter()
+            .chain(rows(&clip["more"]).iter())
+            .enumerate()
+            .map(note)
+            .collect();
+        let panel: Vec<RollRow> = rows(&clip["rows"])
+            .iter()
+            .map(|r| RollRow {
+                clip: r["kind"] == "clip",
+                id: r["id"].as_i64().unwrap_or(0) as i32,
+                name: text(&r["name"]),
+                color: colour(&r["color"]),
+                on: r["on"].as_bool().unwrap_or(false),
+                active: r["active"].as_bool().unwrap_or(false),
+            })
+            .collect();
+        sync(&self.roll_rows, panel);
+        self.roll_refs = refs;
+        self.roll_origin = origin;
+        self.roll_context = roll_marks(&clip["context"])
+            .into_iter()
+            .map(|m| RollMark {
+                start: m.start - origin,
+                ..m
+            })
+            .collect();
+        // How far the clips edited reach, from the origin.
+        let reach = rows(&clip["editable"])
+            .iter()
+            .map(|c| number(&c["offset"]) + number(&c["length"]))
+            .fold(number(&clip["length"]), f32::max)
+            - origin;
+        let editing = rows(&clip["editable"]).len();
         let ghosts: Vec<NoteData> = rows(&clip["ghosts"])
             .iter()
             .enumerate()
@@ -1653,9 +1999,14 @@ impl View {
         self.roll_ghosts = ghosts;
         self.roll_controls = rows(&clip["controls"]).to_vec();
         let track: SharedString = format!(
-            "{} · bar {}",
+            "{} · bar {}{}",
             text(&clip["track_name"]),
-            1 + (number(&clip["start"]) / ui.get_bar()) as i32
+            1 + (number(&clip["start"]) / ui.get_bar()) as i32,
+            if editing > 1 {
+                format!(" · {editing} clips edited")
+            } else {
+                String::new()
+            }
         )
         .into();
         for roll in self.rolls(ui) {
@@ -1666,17 +2017,49 @@ impl View {
             roll.set_title(text(&clip["name"]));
             roll.set_track(track.clone());
             roll.set_color(colour(&clip["color"]));
-            roll.set_start(number(&clip["start"]));
-            roll.set_length(number(&clip["length"]));
+            roll.set_start(number(&clip["start"]) + origin);
+            roll.set_length(reach);
             roll.set_bar(ui.get_bar());
             roll.set_open(true);
         }
-        self.roll_lines = roll_lines(number(&clip["start"]), number(&clip["length"]));
+        self.roll_lines = roll_lines(number(&clip["start"]) + origin, reach);
         self.roll_view(ui);
         if self.detached {
             let _ = self.roll_window.show();
         }
         Ok(())
+    }
+
+    /// Lay out the tempo lane over the stretch that shows, and a screen's
+    /// worth on either side.
+    fn draw_tempo(&mut self, ui: &App) {
+        let Some((lo, hi, points)) = &self.tempo_lane else {
+            ui.set_tempo_lane(false);
+            ui.set_tempo_path("".into());
+            sync(&self.tempo_points, Vec::new());
+            return;
+        };
+        let (view_from, view_to) = (ui.get_view_start(), ui.get_view_end());
+        let span = (view_to - view_from).max(1.0);
+        let (from, to) = (view_from - span, view_to + span);
+        let height = |bpm: f32| ((bpm - lo) / (hi - lo).max(1.0)).clamp(0.0, 1.0);
+        let shaped: Vec<(f32, f32, bool)> = points.iter().map(|p| (p.0, height(p.1), p.2)).collect();
+        ui.set_tempo_lane_top(format!("{hi:.0}").into());
+        ui.set_tempo_lane_bottom(format!("{lo:.0}").into());
+        ui.set_tempo_path(tempo_path(&shaped, from, to, ui.get_zoom()).into());
+        let shown: Vec<TempoPointData> = shaped
+            .iter()
+            .zip(points)
+            .filter(|(p, _)| p.0 >= from && p.0 <= to)
+            .map(|(p, raw)| TempoPointData {
+                beat: p.0,
+                value: p.1,
+                ramp: p.2,
+                text: format!("{}", (raw.1 * 100.0).round() / 100.0).into(),
+            })
+            .collect();
+        sync(&self.tempo_points, shown);
+        ui.set_tempo_lane(true);
     }
 
     /// Lay out the lane each track shows, in pixels at the current zoom: the
@@ -1772,6 +2155,7 @@ impl View {
         sync(&self.points, points);
         sync(&self.strips, strips);
         sync(&self.strip_points, strip_points);
+        self.draw_tempo(ui);
         // What each track's header says its lane is, and could be.
         for (row, (_, all)) in self.lane_data.iter().enumerate() {
             let Some(mut track) = self.tracks.row_data(row) else {
@@ -1933,6 +2317,7 @@ impl View {
 
     fn project(&mut self, ui: &App, client: &mut Client, state: &Value, project: &Value) {
         ui.set_project_name(text(&project["name"]));
+        self.session.project(ui, state);
         ui.set_modified(project["modified"].as_bool().unwrap_or(false));
         ui.set_tempo(format!("{}", project["tempo"].as_f64().unwrap_or(120.0)).into());
         ui.set_signature(text(&project["signature"]));
@@ -1940,6 +2325,17 @@ impl View {
         self.all_lines = tempo_lines(&project["lines"]);
         self.lines_for = None;
         ui.set_tempo_marks(tempo_marks(&project["marks"]));
+        let lane = &project["tempo_lane"];
+        self.tempo_lane = lane.is_object().then(|| {
+            let points = rows(&lane["points"])
+                .iter()
+                .map(|p| (number(&p["beat"]), number(&p["bpm"]), p["ramp"].as_bool().unwrap_or(false)))
+                .collect();
+            (number(&lane["lo"]), number(&lane["hi"]), points)
+        });
+        self.draw_tempo(ui);
+        ui.set_pre_roll(project["pre_roll"].as_i64().unwrap_or(0) as i32);
+        ui.set_pre_roll_seconds(number(&project["pre_roll_seconds"]));
         let markers: Vec<MarkerData> = rows(&project["markers"])
             .iter()
             .map(|m| MarkerData {
@@ -2041,6 +2437,8 @@ impl View {
                     group: t["group"].as_bool().unwrap_or(false),
                     folded: t["folded"].as_bool().unwrap_or(false),
                     members: t["members"].as_i64().unwrap_or(0) as i32,
+                    vca: t["vca"].as_bool().unwrap_or(false),
+                    vcas: text(&t["vcas"]),
                     name: text(&t["name"]),
                     color: colour(&t["color"]),
                     chain: chain.into(),
@@ -2117,6 +2515,9 @@ impl View {
                     takes: c["takes"].as_i64().unwrap_or(1) as i32,
                     take: c["take"].as_i64().unwrap_or(1) as i32,
                     looped: c["loop"].as_bool().unwrap_or(false),
+                    warps: ModelRc::from(Rc::new(VecModel::from(
+                        rows(&c["warps"]).iter().map(number).collect::<Vec<f32>>(),
+                    ))),
                     color: colour(&state["tracks"][row as usize]["color"]),
                 }
             })
@@ -2338,10 +2739,23 @@ fn run() -> Result<()> {
     let (client, child) = match (&address, &socket) {
         (Some(address), _) => {
             let token = token.context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?;
-            (Client::connect_tcp(address, &token)?, None)
+            let flag = |name: &str| args.iter().any(|a| a == name);
+            let wire = if flag("--no-tls") {
+                daw_proto::Wire::Plain
+            } else {
+                daw_proto::Wire::Tls {
+                    known: daw_proto::tls::known_path(),
+                    accept_new: flag("--accept-certificate"),
+                }
+            };
+            let mut client = Client::connect_tcp(address, &token, &wire)?;
+            if flag("--listen-audio") {
+                client.toggle_listening()?;
+            }
+            (client, None)
         }
         (None, Some(path)) => {
-            let client = Client::connect(path)
+            let client = Client::connect(path, false)
                 .with_context(|| format!("no kernel at {}", path.display()))?;
             (client, None)
         }
@@ -2362,6 +2776,7 @@ fn run() -> Result<()> {
         tracks: Rc::new(VecModel::default()),
         meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
+        session: session::Session::new(&ui),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
         pictures: HashMap::new(),
@@ -2373,8 +2788,20 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        roll_marks: (Vec::new(), Vec::new()),
+        marks_under: Rc::new(VecModel::default()),
+        marks_over: Rc::new(VecModel::default()),
+        roll_tools: Rc::new(VecModel::default()),
+        roll_chords: Rc::new(VecModel::default()),
+        marks: Rc::new(VecModel::default()),
+        mark_notes: Rc::new(RefCell::new(HashMap::new())),
         roll_notes: Vec::new(),
         roll_ghosts: Vec::new(),
+        roll_refs: Vec::new(),
+        roll_context: Vec::new(),
+        roll_origin: 0.0,
+        chord_keys: Rc::new(VecModel::from(vec![false; 128])),
+        roll_rows: Rc::new(VecModel::default()),
         roll_lines: Vec::new(),
         roll_line_rows: Rc::new(VecModel::default()),
         roll_for: None,
@@ -2383,6 +2810,7 @@ fn run() -> Result<()> {
         roll_controls: Vec::new(),
         strip: 0,
         controls: Rc::new(VecModel::default()),
+        controls_chosen: HashSet::new(),
         roll_window: RollWindow::new()?,
         detached: false,
         rec_start: None,
@@ -2394,6 +2822,8 @@ fn run() -> Result<()> {
         points: Rc::new(VecModel::default()),
         strips: Rc::new(VecModel::default()),
         strip_points: Rc::new(VecModel::default()),
+        tempo_lane: None,
+        tempo_points: Rc::new(VecModel::default()),
         lane_rows: Vec::new(),
         take_rows: Vec::new(),
         take_clips: Vec::new(),
@@ -2413,6 +2843,7 @@ fn run() -> Result<()> {
         query: String::new(),
         roll: None,
         roll_stale: false,
+        roll_revision: -1,
         notes: Rc::new(VecModel::default()),
         hints: Rc::new(VecModel::default()),
         clip_entries: Rc::new(VecModel::default()),
@@ -2436,18 +2867,36 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_marks_under(ModelRc::from(view.borrow().marks_under.clone()));
+        roll.set_marks_over(ModelRc::from(view.borrow().marks_over.clone()));
+        roll.set_tools(ModelRc::from(view.borrow().roll_tools.clone()));
+        roll.set_chords(ModelRc::from(view.borrow().roll_chords.clone()));
+        roll.set_marks(ModelRc::from(view.borrow().marks.clone()));
+        let notes = view.borrow().mark_notes.clone();
+        roll.on_note_message(move |index| {
+            notes.borrow().get(&index).map(|(message, _)| message.clone()).unwrap_or_default()
+        });
+        let notes = view.borrow().mark_notes.clone();
+        roll.on_note_actions(move |index| {
+            let titles = notes.borrow().get(&index).map(|(_, titles)| titles.clone()).unwrap_or_default();
+            ModelRc::new(VecModel::from(titles))
+        });
         roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
+        roll.set_chord_keys(ModelRc::from(view.borrow().chord_keys.clone()));
+        roll.set_rows(ModelRc::from(view.borrow().roll_rows.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));
     }
     ui.set_lanes(ModelRc::from(view.borrow().lanes.clone()));
     ui.set_points(ModelRc::from(view.borrow().points.clone()));
     ui.set_strips(ModelRc::from(view.borrow().strips.clone()));
     ui.set_strip_points(ModelRc::from(view.borrow().strip_points.clone()));
+    ui.set_tempo_points(ModelRc::from(view.borrow().tempo_points.clone()));
     ui.set_take_lanes(ModelRc::from(view.borrow().take_lanes.clone()));
     ui.set_take_pieces(ModelRc::from(view.borrow().take_pieces.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
     ui.set_view_entries(ModelRc::from(view.borrow().view_entries.clone()));
+    ui.set_remote(child.borrow().is_none());
     ui.set_bands(ModelRc::from(view.borrow().bands.clone()));
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
@@ -2475,6 +2924,7 @@ fn run() -> Result<()> {
             act(&|c| c.eval(&code, args.clone()))
         }
     };
+    view.borrow().session.install(&ui, pass.clone());
     // Leaving the project (quitting, starting a new one, opening another)
     // asks first when there are changes to save. Returns whether it asked.
     let leave = {
@@ -2520,6 +2970,8 @@ fn run() -> Result<()> {
         let (client, weak, child) = (client.clone(), ui.as_weak(), child.clone());
         let (pass, leave, act) = (pass.clone(), leave.clone(), act.clone());
         let (busy, absent) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(false)));
+        // A kernel this window attached to may be on another machine.
+        let remote = child.borrow().is_none();
         ANSWER.with(|slot| {
             let (busy, absent) = (busy.clone(), absent.clone());
             *slot.borrow_mut() = Some(Box::new(move |purpose: Purpose, outcome: portal::Outcome| {
@@ -2545,6 +2997,11 @@ fn run() -> Result<()> {
                                 leave(&format!("open:{path}"));
                             }
                             Purpose::SaveAs => pass("chosen", json!(["saveas", path])),
+                            // Chosen here for a kernel elsewhere: sent there first.
+                            Purpose::Import if remote => act(&|c| {
+                                let there = c.connection.send_file(Path::new(&path))?;
+                                c.eval("return daw.frontend.act.chosen(...)", json!(["import", there]))
+                            }),
                             Purpose::Import => pass("chosen", json!(["import", path])),
                             Purpose::Render => ui.set_render_path(path.into()),
                         }
@@ -2555,7 +3012,10 @@ fn run() -> Result<()> {
         });
         // Returns whether a dialog is being shown (or was, and is still open).
         move |purpose: Purpose, render_path: &str, stems: bool| -> bool {
-            if child.borrow().is_none() || absent.get() {
+            // A sound file to import can come from this machine whatever
+            // the kernel's is: it is sent there.
+            let here = child.borrow().is_some() || matches!(purpose, Purpose::Import);
+            if !here || absent.get() {
                 return false;
             }
             if busy.get() {
@@ -2613,6 +3073,58 @@ fn run() -> Result<()> {
                 json!([what.as_str(), kind, beat, to.max(0.0)]),
             )
         }
+    });
+    // The tempo lane under the ruler: the pencil over it (a click adds a
+    // change, a stroke draws a curve), a change dragged, removed or ramped.
+    ui.on_tempo_pencil({
+        let (pass, view, weak) = (pass.clone(), view.clone(), ui.as_weak());
+        move |beat, height, phase| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut view = view.borrow_mut();
+            if phase == 0 {
+                view.pencil.clear();
+            }
+            // The curve has a little room above and below it in its row.
+            let height = ((height - 0.12) / 0.76).clamp(0.0, 1.0);
+            view.pencil.push((beat.max(0.0), height));
+            if phase < 2 {
+                let zoom = ui.get_zoom();
+                let path = stroke_path(&view.pencil, |beat| beat * zoom, tempo_y);
+                ui.set_tempo_pencil_path(path.into());
+                return;
+            }
+            ui.set_tempo_pencil_path("".into());
+            let stroke: Vec<(f32, f32)> = view.pencil.drain(..).collect();
+            drop(view);
+            // How far the pointer went, in pixels: a click hardly moves.
+            let reach = stroke
+                .iter()
+                .map(|p| {
+                    ((p.0 - stroke[0].0) * ui.get_zoom()).abs() + ((p.1 - stroke[0].1) * TEMPO_LANE).abs()
+                })
+                .fold(0.0, f32::max);
+            if reach < 5.0 {
+                pass("tempo_point_add", json!([stroke[0].0, stroke[0].1]));
+            } else {
+                let points: Vec<Value> = stroke.iter().map(|(b, h)| json!([b, h])).collect();
+                pass("tempo_draw", json!([points]));
+            }
+        }
+    });
+    ui.on_tempo_point_move({
+        let pass = pass.clone();
+        move |beat, to, height| {
+            let height = ((height - 0.12) / 0.76).clamp(0.0, 1.0);
+            pass("tempo_point_move", json!([beat, to.max(0.0), height]))
+        }
+    });
+    ui.on_tempo_point_remove({
+        let pass = pass.clone();
+        move |beat| pass("tempo_point_remove", json!([beat]))
+    });
+    ui.on_tempo_point_ramp({
+        let pass = pass.clone();
+        move |beat| pass("tempo_point_ramp", json!([beat]))
     });
     ui.on_set_loop({
         let pass = pass.clone();
@@ -2729,6 +3241,7 @@ fn run() -> Result<()> {
                     ui.set_input_channel(choices(&menu["channel"]));
                     ui.set_input_midi_out(choices(&menu["midi_out"]));
                     ui.set_input_midi_out_channel(choices(&menu["midi_out_channel"]));
+                    ui.set_input_midi_out_form(choices(&menu["midi_out_form"]));
                 }
                 Ok(menu)
             })
@@ -3053,6 +3566,18 @@ fn run() -> Result<()> {
         let pass = pass.clone();
         move |id, db| pass("set_clip_gain", json!([id, db]))
     });
+    ui.on_warp_add({
+        let pass = pass.clone();
+        move |id, beat| pass("warp_add", json!([id, beat]))
+    });
+    ui.on_warp_move({
+        let pass = pass.clone();
+        move |id, index, beat, free| pass("warp_move", json!([id, index + 1, beat, free]))
+    });
+    ui.on_warp_remove({
+        let pass = pass.clone();
+        move |id, index| pass("warp_remove", json!([id, index + 1]))
+    });
     ui.on_clip_command({
         let pass = pass.clone();
         move |id, beat, line| pass("clip_command", json!([id, beat, line.as_str()]))
@@ -3098,15 +3623,54 @@ fn run() -> Result<()> {
             let Some(id) = view.borrow().roll else { return };
             let mut all = vec![json!(id)];
             let mut args = args.as_array().cloned().unwrap_or_default();
-            // The roll leaves out the notes hidden before the clip's start,
-            // which come first: a note's place is past them.
-            let skip = view.borrow().roll_hidden;
+            // A note is named by its clip, which the roll may edit with
+            // others, and its place there (past the notes hidden before the
+            // clip's start); here by its place among those handed over.
             if matches!(
                 name,
-                "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity"
-            ) && let Some(place) = args.first().and_then(Value::as_i64)
+                "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity" | "note_action" | "note_hover"
+            ) && let Some(index) = args.first().and_then(Value::as_i64)
+                && let Some(&(clip, place)) = view.borrow().roll_refs.get((index - 1).max(0) as usize)
             {
-                args[0] = json!(place + skip as i64);
+                all[0] = json!(clip);
+                args[0] = json!(place);
+            }
+            // Beats are the roll's, which start at its origin.
+            let origin = view.borrow().roll_origin as f64;
+            if origin != 0.0 {
+                let shift = |v: &mut Value| {
+                    if let Some(beat) = v.as_f64() {
+                        *v = json!(beat + origin);
+                    }
+                };
+                let at: &[usize] = match name {
+                    "add_note" => &[1],
+                    "select_notes_box" => &[0, 2],
+                    "roll_seek" | "context_click" => &[0],
+                    "select_controls" | "line_controls" => &[2, 4],
+                    _ => &[],
+                };
+                for &i in at {
+                    if let Some(v) = args.get_mut(i) {
+                        shift(v);
+                    }
+                }
+                // Strokes: points whose first number is a beat.
+                let stroke = match name {
+                    "erase_notes" | "draw_velocities" => Some(0),
+                    "draw_controls" => Some(2),
+                    _ => None,
+                };
+                if let Some(points) = stroke
+                    .and_then(|i| args.get_mut(i))
+                    .and_then(Value::as_array_mut)
+                {
+                    for point in points {
+                        if let Some(first) = point.get_mut(0) {
+                            shift(first);
+                        }
+                    }
+                }
             }
             all.extend(args);
             pass(name, Value::Array(all))
@@ -3254,6 +3818,18 @@ fn run() -> Result<()> {
                     drop(view);
                     roll("erase_notes", json!([points]));
                 }
+            }
+        });
+        // A gesture on the strip's moves: the kind it shows goes with it.
+        shown.on_strip_act({
+            let (roll, view) = (roll.clone(), view.clone());
+            move |name, args| {
+                let Some((kind, number)) = strip_kind(view.borrow().strip) else {
+                    return;
+                };
+                let mut all = vec![json!(kind), json!(number)];
+                all.extend(args.iter().map(|a| json!(a)));
+                roll(name.as_str(), Value::Array(all))
             }
         });
         // Any other gesture, by the name of its function in the kernel.
@@ -3617,6 +4193,15 @@ fn run() -> Result<()> {
                     sync(&view.borrow().render_ranges, ranges);
                     ui.set_render_range(0);
                     ui.set_render_path(text(&info["path"]));
+                    let tags = &info["tags"];
+                    ui.set_render_title(text(&tags["title"]));
+                    ui.set_render_artist(text(&tags["artist"]));
+                    ui.set_render_album(text(&tags["album"]));
+                    ui.set_render_track(text(&tags["track"]));
+                    ui.set_render_year(text(&tags["year"]));
+                    ui.set_render_genre(text(&tags["genre"]));
+                    ui.set_render_comment(text(&tags["comment"]));
+                    ui.set_render_cover(text(&tags["cover"]));
                     // The lossy formats are offered when ffmpeg can make them.
                     let has = |name: &str| info["formats"][name].as_bool().unwrap_or(false);
                     ui.set_render_has_mp3(has("mp3"));
@@ -3655,6 +4240,12 @@ fn run() -> Result<()> {
                     "bits": ui.get_render_bits(), "tail": tail.max(0.0), "normalize": normalize,
                     "dither": ui.get_render_dither(), "mono": ui.get_render_mono(),
                     "stems": ui.get_render_stems(),
+                    "tags": {
+                        "title": ui.get_render_title().as_str(), "artist": ui.get_render_artist().as_str(),
+                        "album": ui.get_render_album().as_str(), "track": ui.get_render_track().as_str(),
+                        "year": ui.get_render_year().as_str(), "genre": ui.get_render_genre().as_str(),
+                        "comment": ui.get_render_comment().as_str(), "cover": ui.get_render_cover().as_str(),
+                    },
                 }]),
             );
             ui.set_render_open(false);
@@ -3722,12 +4313,20 @@ fn run() -> Result<()> {
     let layout = |ui: &App| {
         let scale = ui.window().scale_factor();
         let size = ui.window().size().to_logical(scale);
-        json!({
+        let mut layout = json!({
             "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
             "row_height": ui.get_row_height(),
             "roll_height": ui.get_roll_height(),
             "mixer": ui.get_show_mixer(),
-        })
+        });
+        // Where the window is, in screen pixels with its frame, where the
+        // system tells a program (X11). On Wayland it does not: the
+        // compositor places windows, so nothing is kept.
+        if let Some(at) = ui.window().with_winit_window(|window| window.outer_position().ok()).flatten() {
+            layout["x"] = json!(at.x);
+            layout["y"] = json!(at.y);
+        }
+        layout
     };
     ui.window().on_close_requested({
         let (leave, client, weak, layout) = (leave.clone(), client.clone(), ui.as_weak(), layout);
@@ -3745,8 +4344,10 @@ fn run() -> Result<()> {
 
     // Files dragged in from a file manager. Winit sends one event per file
     // and, on X11 only (it has no drag and drop on Wayland), none says where
-    // the pointer is: the kernel puts each sound file on a track of its own.
-    // The paths are local, so only a kernel of this window's own will do.
+    // the pointer is: the kernel puts each sound file on a track of its own,
+    // and a MIDI file's tracks at the cursor. A kernel of this window's own
+    // reads them where they are; one this window attached to is sent the
+    // sound and MIDI files first.
     ui.window().on_winit_window_event({
         let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
         let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
@@ -3757,24 +4358,33 @@ fn run() -> Result<()> {
             };
             match event {
                 WindowEvent::HoveredFile(_) => {
-                    let (message, error) = if child.borrow().is_some() {
-                        ("Drop to add the files to the project", false)
+                    let message = if child.borrow().is_some() {
+                        "Drop to add the files to the project"
                     } else {
-                        ("Files can only be dropped on a window that started its own kernel", true)
+                        "Drop to send the sound and MIDI files to the instance and add them"
                     };
-                    view.borrow_mut().show(&ui, message, error);
+                    view.borrow_mut().show(&ui, message, false);
                 }
                 WindowEvent::HoveredFileCancelled => view.borrow_mut().show(&ui, "", false),
-                WindowEvent::DroppedFile(path) if child.borrow().is_some() => {
+                WindowEvent::DroppedFile(path) => {
                     let first = dropped.borrow().is_empty();
                     dropped.borrow_mut().push(path.to_string_lossy().to_string());
                     if first {
                         // The rest of the files follow at once.
                         let (client, view, weak) = (client.clone(), view.clone(), weak.clone());
-                        let (leave, dropped) = (leave.clone(), dropped.clone());
+                        let (leave, dropped, child) = (leave.clone(), dropped.clone(), child.clone());
                         Timer::single_shot(Duration::from_millis(100), move || {
-                            let paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
+                            let mut paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
                             let Some(ui) = weak.upgrade() else { return };
+                            if child.borrow().is_none() {
+                                paths = match send_sounds(&mut client.borrow_mut(), &paths) {
+                                    Ok(there) => there,
+                                    Err(err) => {
+                                        view.borrow_mut().show(&ui, &format!("{err:#}"), true);
+                                        return;
+                                    }
+                                };
+                            }
                             let done = client.borrow_mut().eval(
                                 "return daw.frontend.act.drop(...)",
                                 json!([paths]),
@@ -3820,6 +4430,7 @@ fn run() -> Result<()> {
                     }
                     view.show(&ui, &format!("{err:#}"), true);
                 }
+                ui.set_listening(client.borrow().player.is_some());
                 (view.windows.clone(), std::mem::take(&mut view.repaint))
             };
             let mut canvases = canvases.borrow_mut();
@@ -3847,7 +4458,7 @@ fn run() -> Result<()> {
                     window.on_pointer({
                         let send = send.clone();
                         move |kind, x, y, button, ctrl, shift, alt| {
-                            let kind = ["down", "up", "move", "double"][kind.clamp(0, 3) as usize];
+                            let kind = ["down", "up", "move", "double", "hover"][kind.clamp(0, 4) as usize];
                             let button = ["left", "right", "middle"][button.clamp(0, 2) as usize];
                             send(json!({
                                 "kind": kind, "x": x, "y": y, "button": button,
@@ -3887,6 +4498,7 @@ fn run() -> Result<()> {
                             items,
                             painted: Instant::now() - Duration::from_secs(1),
                             size: (0.0, 0.0),
+                            drawn: (Value::Null, (0.0, 0.0)),
                         },
                     );
                 }
@@ -3906,6 +4518,7 @@ fn run() -> Result<()> {
                 let opts = json!({
                     "cell": { "w": canvas.window.get_cell_width(), "h": canvas.window.get_cell_height() },
                     "fresh": canvas.items.row_count() == 0,
+                    "glyphs": true,
                 });
                 let drawing = client
                     .borrow_mut()
@@ -3913,8 +4526,15 @@ fn run() -> Result<()> {
                 if let Ok(drawing) = drawing
                     && drawing["same"] != true
                 {
-                    let items: Vec<CanvasItem> = rows(&drawing["ops"]).iter().filter_map(canvas_item).collect();
-                    sync(&canvas.items, items);
+                    if *cells {
+                        let items: Vec<CanvasItem> = rows(&drawing["ops"]).iter().filter_map(canvas_item).collect();
+                        sync(&canvas.items, items);
+                    } else if canvas.drawn.0 != drawing["ops"] || canvas.drawn.1 != size {
+                        // A view that paints is one image, made by the
+                        // rasterizer the terminal uses: the same pixels in both.
+                        canvas.window.set_raster(raster(&drawing["ops"], size, canvas.window.window().scale_factor()));
+                        canvas.drawn = (drawing["ops"].clone(), size);
+                    }
                 }
             }
         }
@@ -3927,6 +4547,29 @@ fn run() -> Result<()> {
     let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
     if let (Some(width), Some(height)) = (size("width"), size("height")) {
         ui.window().set_size(slint::LogicalSize::new(width, height));
+    }
+    // Asking for a position does nothing on Wayland, where the compositor
+    // decides, and nothing was kept there. Where the screens have changed
+    // since, a window that would be out of reach is brought back.
+    if let (Some(x), Some(y)) = (kept["x"].as_i64(), kept["y"].as_i64()) {
+        ui.window().set_position(slint::PhysicalPosition::new(x as i32, y as i32));
+        let weak = ui.as_weak();
+        Timer::single_shot(Duration::from_millis(500), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.window().with_winit_window(|window| {
+                let (Ok(at), size) = (window.outer_position(), window.outer_size()) else { return };
+                let on_screen = window.available_monitors().any(|monitor| {
+                    let (origin, extent) = (monitor.position(), monitor.size());
+                    at.x + size.width as i32 > origin.x + 40
+                        && at.x < origin.x + extent.width as i32 - 40
+                        && at.y >= origin.y - 20
+                        && at.y < origin.y + extent.height as i32 - 40
+                });
+                if !on_screen && let Some(monitor) = window.primary_monitor() {
+                    window.set_outer_position(monitor.position());
+                }
+            });
+        });
     }
     if let Some(zoom) = size("zoom") {
         ui.set_zoom(zoom);
@@ -4060,6 +4703,7 @@ mod tests {
             velocity: 0.5,
             selected,
             index: 0,
+            color: Color::default(),
         };
         let notes = [
             note(0.0, false),
@@ -4144,6 +4788,7 @@ mod tests {
                 velocity: 0.5,
                 selected: false,
                 index: i,
+                color: Color::default(),
             })
             .collect();
         let (from, to) = around(1000.0, 1016.0);

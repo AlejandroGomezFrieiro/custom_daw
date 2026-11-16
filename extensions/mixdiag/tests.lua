@@ -179,6 +179,40 @@ test("mixdiag: clipping, true peak, loudness and a track over full scale", funct
   one(findings, "loudness", "turns the song down")
 end)
 
+test("mixdiag: the findings are diagnostics on their tracks, fixed from the mixer", function()
+  load()
+  fresh()
+  daw.project.tempo = 120
+  synth("Quiet", 0, 24, { volume = -18 })
+  local hot = synth("Hot", 8, 8, { volume = 18, wave = 1 })
+  local findings = measure()
+  daw.lsp.settle()
+  local over = one(findings, "track_over", "Hot")
+  local about = daw.diagnostic.get(daw.address.track(hot.id), { namespace = "mixdiag" })
+  eq(#about, 1, "the track over full scale is a diagnostic on the track")
+  eq(about[1].message, mixdiag.format(over), "saying what the report says")
+  eq(#daw.diagnostic.get(nil, { namespace = "mixdiag" }), #findings, "one for each finding")
+  -- The mixer marks the strip, and the fix is offered there.
+  daw.ui.show("mixer")
+  daw.ui.focus("mixer")
+  daw.cursor.set_track(hot.id)
+  local screen = table.concat(api.ui_snapshot(140, 50), "\n")
+  eq(screen:find(daw.draw.g.warn, 1, true) ~= nil or screen:find(daw.draw.g.error, 1, true) ~= nil, true, "the strip is marked:\n" .. screen)
+  api.undo_checkpoint()
+  daw.keymap.feed(",ca")
+  local state = daw.pick.state()
+  eq(state and state.matches[1]:find("Lower Hot by", 1, true) ~= nil, true, "the fix, in the picker")
+  daw.keymap.feed("<CR>")
+  api.undo_checkpoint()
+  near(daw.track(hot.id).volume, 18 - over.lower, 1e-6, "the fader comes down by what the finding says")
+  daw.undo()
+  eq(daw.track(hot.id).volume, 18, "one undo puts it back")
+  daw.ui.hide("mixer")
+  daw.ui.focus("arrange")
+  mixdiag.clear()
+  eq(#daw.diagnostic.get(nil, { namespace = "mixdiag" }), 0, "cleared with the findings")
+end)
+
 test("mixdiag: true peak over the ceiling without clipping", function()
   load()
   fresh()
@@ -535,4 +569,59 @@ test("mixdiag: plugins are measured on the worker thread as a render plays them"
     end
   end
   if ran == 0 then return "skipped: test plugins not found" end
+end)
+
+test("mixdiag: the painted report draws meters, a spectrum and the findings, which can be clicked", function()
+  load()
+  fresh()
+  daw.ui.focus("arrange")
+  daw.keymap.feed("<Esc><Esc>")
+  local offered = {}
+  for _, entry in ipairs(daw.canvas.openable()) do offered[entry.name] = true end
+  eq(offered.mixdiag_paint, true, "the window offers the painted report")
+  eq(offered.mixdiag, nil, "instead of the terminal's")
+  daw.canvas.open("mixdiag_paint")
+  local function drawn()
+    local ops = daw.canvas.paint("mixdiag_paint", 1000, 560, { fresh = true }).ops
+    local texts = {}
+    for _, op in ipairs(ops) do if op[1] == "t" then texts[#texts + 1] = op[4] end end
+    return ops, table.concat(texts, "\n")
+  end
+  eq(select(2, drawn()):find("nothing measured yet", 1, true) ~= nil, true, "before a measurement")
+  synth("Hot", 8, 4, { volume = 18, wave = 1 })
+  daw.flush()
+  daw.canvas.key("mixdiag_paint", "a")
+  eq(mixdiag.job ~= nil, true, "a measures the song")
+  settle()
+  local ops, text = drawn()
+  for _, word in ipairs({ "integrated", "true peak", "Spectrum", "Findings", "Hot" }) do
+    eq(text:find(word, 1, true) ~= nil, true, "the report says " .. word)
+  end
+  local shape, outline, meters = 0, 0, 0
+  for _, op in ipairs(ops) do
+    if op[1] == "p" and op[5] ~= "" then shape = shape + 1 end
+    if op[1] == "p" and op[3] == daw.canvas.palette.select and op[4] == 2 then outline = outline + 1 end
+    if op[1] == "r" and op[6] == daw.canvas.palette.meter_clip then meters = meters + 1 end
+  end
+  eq(shape, 1, "the spectrum is one filled shape")
+  eq(outline >= 1, true, "with its outline")
+  eq(meters >= 1, true, "the hot track's meter is in the clipping colour")
+  -- A click chooses a finding, and a click on the chosen one goes there.
+  local wanted
+  for i, item in ipairs(mixdiag.items()) do
+    if item.finding.rule == "clip" then wanted = i end
+  end
+  local paint = daw.ui.views.mixdiag_paint
+  local function row_y() return paint.findings_top + paint.top + (wanted - 1 - paint.first) * 22 + 11 end
+  daw.cursor.set_beat(0)
+  daw.canvas.pointer("mixdiag_paint", { kind = "down", x = paint.right_x + 20, y = row_y(), button = "left" })
+  eq(require("mixdiag.view").list_view.at, wanted, "a click chooses the finding")
+  eq(daw.cursor.beat, 0, "without going there")
+  daw.canvas.pointer("mixdiag_paint", { kind = "down", x = paint.right_x + 20, y = row_y(), button = "left" })
+  near(daw.cursor.beat, 8, 0.01, "the second click goes there")
+  daw.canvas.pointer("mixdiag_paint", { kind = "hover", x = paint.right_x + 20, y = row_y() })
+  eq(select(2, drawn()):find("clips", 1, true) ~= nil, true, "resting on it shows it in full")
+  daw.canvas.key("mixdiag_paint", "q")
+  eq(daw.canvas.open_views.mixdiag_paint, nil, "q closes the window")
+  mixdiag.clear()
 end)

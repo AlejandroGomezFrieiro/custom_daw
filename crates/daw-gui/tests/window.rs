@@ -450,7 +450,7 @@ impl Scene {
             );
             if let Some(Ok(answer)) = self.try_ctl("return 1") {
                 if answer.trim() == "1" {
-                    let found = self.xdotool(&["search", "--onlyvisible", "--name", "^daw"]);
+                    let found = self.xdotool(&["search", "--onlyvisible", "--name", "^paw"]);
                     if let Some(id) = found.lines().next().filter(|l| !l.is_empty()) {
                         break id.to_string();
                     }
@@ -1390,8 +1390,8 @@ fn the_more_menu_opens_a_view_in_a_window_of_its_own() {
     w.shot("more-menu.png");
     w.click_text("Undo tree");
     w.expect(
-        "the undo tree open in a window",
-        "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree'",
+        "the undo tree open in a window, painted",
+        "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree_paint'",
     );
     w.pause(1.0);
     w.assert_alive("after opening a view in a window");
@@ -1434,6 +1434,8 @@ fn a_window_connects_to_a_kernel_over_tcp_and_a_wrong_token_is_refused() {
         ])
         .env("DISPLAY", &w.display)
         .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus")
+        // Where it remembers the kernel's certificate: the scene's, not ours.
+        .env("XDG_STATE_HOME", w.env_path("XDG_STATE_HOME"))
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&refused.stderr).to_string()
@@ -1518,4 +1520,82 @@ fn keys_reach_the_window_after_an_entry_of_a_submenu() {
     w.key("j");
     w.expect("the cursor on the second track", "daw.cursor.track().index == 2");
     w.assert_alive("after a submenu");
+}
+
+/// Two tracks, clips in slots, two named scenes, and the session view shown.
+const SESSION_SONG: &str = "
+local api = daw.api
+local keys = daw.add_track({ name = 'Keys' })
+keys:add_clip({ start = 0, length = 8, name = 'Chorus', notes = { { pitch = 60, start = 0, length = 2 } } })
+local bass = daw.add_track({ name = 'Bass' })
+api.clip_add(keys.id, { slot = 0, length = 4, name = 'Riff', notes = { { pitch = 67, start = 0, length = 1 } } })
+api.clip_add(bass.id, { slot = 0, length = 4, name = 'Walk', notes = { { pitch = 36, start = 0, length = 1 } } })
+daw.launcher.set_scene_name(0, 'Verse')
+daw.launcher.set_scene_name(1, 'Bridge')
+api.undo_checkpoint()
+daw.ui.show('session')
+";
+
+#[test]
+fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
+    let mut w = scene!("session", SESSION_SONG);
+    let keys = w.number("return daw.api.track_list()[1]") as i32;
+    let bass = w.number("return daw.api.track_list()[2]") as i32;
+    let playing = |track: i32| format!("(daw.launcher.state()[{track}] or {{}}).slot");
+
+    // A scene launches its row on both tracks together.
+    w.click_text("Verse");
+    w.expect(
+        "the first scene playing",
+        &format!("{} == 0 and {} == 0", playing(keys), playing(bass)),
+    );
+    w.shot("session-playing.png");
+    w.click_text("Stop all");
+    w.expect(
+        "every clip stopped",
+        &format!("(daw.launcher.state()[{keys}] or {{}}).stopped == true"),
+    );
+    w.click_text("Back to timeline");
+    w.expect("the timeline again", "next(daw.launcher.state()) == nil");
+
+    // A clip dragged from the timeline onto an empty slot of the bass is
+    // copied into it: the slot under the bass's clip, in the second row.
+    let column = w.find_text("Walk", 0);
+    let row = w.find_text("Bridge", 0);
+    let chorus = w.find_text("Chorus", 0);
+    w.drag((chorus.0, chorus.1 + 20), (column.0, row.1));
+    w.expect(
+        "a copy of the chorus in the bass's second slot",
+        &format!(
+            "daw.launcher.clip({bass}, 1) ~= nil and daw.launcher.clip({bass}, 1).name == 'Chorus'"
+        ),
+    );
+    w.expect(
+        "the chorus still on the timeline",
+        &format!("#daw.api.clip_list({keys}) == 1"),
+    );
+
+    // A double click on a clip in a slot opens its notes.
+    let riff = w.find_text("Riff", 0);
+    w.double_click(riff);
+    w.expect(
+        "the riff in the piano roll",
+        &format!("daw.ui.views.pianoroll:clip().id == daw.launcher.clip({keys}, 0).id"),
+    );
+    w.shot("session-roll.png");
+    w.assert_alive("after the session view");
+}
+
+#[test]
+fn the_windows_position_is_kept_in_the_layout() {
+    let mut w = scene!("position", DEMO);
+    let found = w.xdotool(&["search", "--onlyvisible", "--name", "^paw"]);
+    let id = found.lines().next().expect("the window").to_string();
+    w.xdotool(&["windowmove", &id, "420", "180"]);
+    // It is written once a position has stood for a second.
+    w.expect(
+        "the position in the kernel's layout",
+        "(function() local l = daw.frontend.layout_get() return l.x ~= nil and math.abs(l.x - 420) < 40 and math.abs(l.y - 180) < 40 end)()",
+    );
+    w.assert_alive("after being moved");
 }

@@ -4,6 +4,7 @@ local api = daw.api
 
 -- `modal` sends every key to `on_key`, bypassing the mappings behind the window.
 local view = { scroll = 0, lines = {}, modal = true }
+daw.seats.fields("help", view, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
 local function collect(target)
   local lines = {}
@@ -92,6 +93,7 @@ end, {
 
 -- A scrollable list of text lines, used for `:messages` and similar.
 local pager = { scroll = 0, lines = {}, modal = true }
+daw.seats.fields("pager", pager, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
 function pager:render(buf)
   self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #self.lines - buf.height))
@@ -105,7 +107,8 @@ pager.on_key, pager.on_mouse = view.on_key, view.on_mouse
 daw.ui.view("pager", pager)
 
 --- Show lines of text in a floating window. Each line is a string or
---- `{ text = ..., style = ... }`. With `opts.bottom` it opens at the end.
+--- `{ text = ..., style = ... }`. With `opts.bottom` it opens at the end;
+--- `opts.width` and `opts.height` size it (100 by 30).
 function daw.ui.page(title, lines, opts)
   pager.lines, pager.scroll = {}, opts and opts.bottom and math.huge or 0
   for _, line in ipairs(lines) do
@@ -114,5 +117,5 @@ function daw.ui.page(title, lines, opts)
       pager.lines[#pager.lines + 1] = { text = part:gsub("\t", "  "), style = line.style }
     end
   end
-  daw.ui.open("pager", { title = title, width = 100, height = 30 })
+  daw.ui.open("pager", { title = title, width = opts and opts.width or 100, height = opts and opts.height or 30 })
 end

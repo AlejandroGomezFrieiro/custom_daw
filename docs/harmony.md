@@ -1,0 +1,435 @@
+# Harmony, completion and snippets
+
+Seeing and writing the harmony of a song: what is wrong with the notes and
+how to fix it, the chords and key that sound, suggestions of what could
+come next, named snippets of music made from what is around the cursor,
+and the notes of several tracks in one piano roll. Each is a core module a
+plugin can feed, after Neovim's: `daw.diagnostic` and `daw.lsp` (as
+`vim.diagnostic` and `vim.lsp`), `daw.harmony`, `daw.complete`,
+`daw.snippet`. Without an extension loaded they are there and quiet.
+
+## Language servers and diagnostics
+
+A language server (MIDI LSP, or any program speaking its protocol) is sent
+the clip in the piano roll with the notes of every other track that sound
+with it, and what it says comes back to the places everyone uses:
+
+- **diagnostics**, such as a parallel fifth: the notes underlined in the
+  piano roll of the terminal and outlined in the window's, a mark on the
+  ruler, a count in the status line, `]d` `[d` to go from one to the next,
+  `:diagnostics` to list them;
+- **fixes**: `,ca` on a note (Ctrl and a right click in the window), one
+  undo step each;
+- **hover**: `gK` on a note, what the servers say about it;
+- **the chords and key it hears**, offered to `daw.harmony`;
+- **suggestions**, offered to `daw.complete` as a source.
+
+A plugin written in Lua publishes diagnostics just as a server does, with
+`daw.diagnostic.set`. Servers are not only for notes: the same foundation
+shows them a track, the mix or a render, so a mixing and mastering server
+marks faders, devices and renders the way MIDI LSP marks notes. Locations,
+workspace edits and note ids (`daw://clip/7/note/41`) are what suggestions
+and snippets can name too. The whole story, the protocol and MIDI LSP's
+extension are in [Language servers and diagnostics](lsp.md).
+
+## Harmony
+
+`daw.harmony` reads the notes of every track except drum tracks, muted
+tracks and muted clips. A drum track is one with a drum map (the drums
+extension's), a `drums` device, or a name with drum, perc, kit or beat in
+it.
+
+**Chords.** Time is cut into windows of half a beat (`daw.opt.harmony_step`).
+Each window weighs its pitch classes by how long they sound, a short note
+off the beat counting half and the lowest note half again. Every chord
+(twelve roots, and the qualities major, minor, dim, aug, sus4, sus2, 5, 7,
+maj7, m7, m7b5, dim7, m(maj7), 6, m6, 7sus4, add9, 9, maj9, m9) is scored
+against that: the weight of its tones less the weight of the rest, less
+something for each tone missing (a triad's fifth costs little), less a
+little for each tone past three, plus a bonus when the bass is its root. A
+chord holds from window to window unless another fits better by more than
+a change costs, so a melody's passing notes do not make chords of their
+own. The shortest chord found is about a beat. A chord holds over rests up
+to the next chord; the last one ends with its notes. The bass names
+inversions: `C/E`, `G7/B`; in an arpeggio it is the lowest note. A window
+with a single pitch in it is weighed with the rest of its beat, so that an
+arpeggio in eighths still spells its chord; a melody alone, one note a
+beat, names no chords (the one before holds under it).
+
+**Keys.** Each bar's pitch classes (with half of the bars beside it and a
+quarter of the next ones, and the roots of its chords counted again) are
+compared with Krumhansl and Kessler's major and minor key profiles for all
+twelve tonics. A key loses for what sounds outside its scale, and every
+bar leans a little to the song's overall key. A key holds unless another
+fits better by more than a modulation costs, which is a few bars' worth: a
+modulation is found where the new key is established (at its dominant,
+usually), not at a pivot chord that belongs to both.
+
+A key set with `:key D minor` wins over the one read, everywhere. It is
+kept in `project.meta.musicops`, where the musicops extension kept it
+before the core did, so older projects and the notation extension go on
+reading it. `:key` comes with musicops; from a script, `daw.harmony.set_key`.
+
+**Names.** Chord symbols are spelled as the key writes them (Bb in F major,
+A# in B major; in C major and without a key, the usual C#, Eb, F#, Ab, Bb).
+A diminished chord outside the key is named as the leading note it is:
+G#dim7 before A minor. Roman numerals count from the tonic as in the major
+scale, in every mode: `bVII`, `bVI`, `i`, `V7`, `viiø7`, `ii°`.
+
+**In the piano roll** the chords are written in a row over the ruler, each
+from where it starts, and the key the view starts in on the left. In the
+window the row is the top of the ruler. `daw.opt.chords` says what is
+written: `"names"` (the default), `"roman"`, `"both"`, or `false` for no
+row. The arrange view does not show chords.
+
+Tested on the demo song (`examples/demo-song.lua`: A minor, Am F/C
+Fadd9/G Am7 Cmaj9 G) and on progressions written for the purpose:
+inversions, sevenths, half-diminished and diminished chords, a melody of
+passing notes over block chords, and a modulation from C to G major
+(`tests/harmony.lua`).
+
+### From a script
+
+```lua
+daw.harmony.chords(0, 16)   --> { { at = 0, length = 4, root = 9, quality = "min", bass = 9,
+                            --      tones = { 9, 0, 4 }, name = "Am", roman = "i" }, ... }
+daw.harmony.at(8)  daw.harmony.next(8)  daw.harmony.prev(8)   -- a chord, or nil
+daw.harmony.key(8)          --> { tonic = 9, mode = "minor", name = "A minor", root = 9, scale = "minor", steps = {...} }
+daw.harmony.keys()          --> every key read, { at, length, tonic, mode, name }
+daw.harmony.set_key("D minor")   daw.harmony.project_key()   -- the key set, or nil
+daw.on("harmony.changed", fn)    -- the reading changed
+```
+
+Positions are project beats. The reading is made again only when the
+project changes, so asking on each key press costs nothing.
+
+**Providers.** The reading comes from the highest-priority provider that
+answers. The built-in one has priority 0; a language server, or a script,
+can answer instead:
+
+```lua
+daw.harmony.provide("my-analysis", function(from, to)
+  return { { at = 0, length = 4, root = 2, quality = "m7" }, ... },   -- chords
+         { { at = 0, length = 64, tonic = 0, mode = "major" } }     -- keys
+end, 100)
+daw.harmony.provide("my-analysis", nil)   -- removed
+daw.harmony.invalidate()                  -- my answer changed
+```
+
+A provider returning nil leaves it to the next. One that answers wins over
+the stretch its answer covers, and the providers below it fill in the rest
+of the song: MIDI LSP's engine, which hears the clip it is sent, names the
+chords there (with their function, `T`, `S`, `D`), the built-in reading
+the others. Names and numerals a provider leaves out are filled in, and
+other names of qualities (`major`, `min7`, `dom7`, `half-dim`) are
+understood. `daw.harmony.provider()` says whose reading wins.
+
+**Theory.** `parse_key("F# dorian")`, `key_name(key)`, `pc_name(pc, key)`,
+`in_key(key, pitch)`, `snap(key, pitch, dir)`, `degree(key, pitch)`,
+`degree_pitch(key, degree)`, `step(key, pitch, n)` (by scale degrees),
+`scales`, `scale_names()`; `tones(root, quality)`, `parse_chord("F#m7b5/C")`,
+`chord_name(chord, key)`, `chord_roman(chord, key)`. `daw.harmony.read` has
+the built-in reading as pure functions on note lists.
+
+**Voicings.** `daw.harmony.voice.voice(tones, opts)` gives pitches for a
+chord (`tones` are pitch classes, root first) within `low`..`high`, in a
+`style` ("close", "drop2", "open", "spread", or "smooth": whichever leads
+best), moving least from `prev` and into `next` (pitches of the chords
+around it), with `bass` lowest if asked and `count` voices (the root is
+doubled for more, the fifth left out for fewer).
+
+**Ranges.** `daw.harmony.range(track)` is the range a part for the track
+is written in: `track.meta.range = { low, high }` when set, else guessed
+from words in the track's and its devices' names (bass E1 to G3, guitar,
+strings, voices by part, woodwinds and brass, as MIDI LSP guesses them,
+narrowed to where the instrument sounds well), else C3 to C6.
+
+## Snippets
+
+A snippet is named music made from where the cursor is. `dominant` before
+a C major chord writes G7 from the cursor up to the C, voiced in the
+track's range and led smoothly from the chord before it; a count chains
+dominants back (`2` writes D7 then G7).
+
+- `:snippet dominant` expands one at the piano roll's cursor;
+  `:snippet` alone, or `<C-s>` in the piano roll (normal, insert or visual
+  mode), opens a picker over the snippets of the piano roll. Typing narrows
+  it; its pane shows what the one under the selection would write (the
+  notes, and the choices it has), and the piano roll shows those notes as
+  ghosts, named, under the picker, which sits at the top of the screen.
+  Enter writes it.
+- A count repeats: `3<C-s>`, `:3snippet walk`. Each repeat starts where
+  the one before ended. A snippet that takes the count itself (`dominant`,
+  `bass`, `pedal`) uses it its own way.
+- Over a selection (visual mode, then `<C-s>` or `:snippet`), the snippet
+  is given the selected notes: `harmonize` adds a voice under them,
+  `voice-lead` voices them again.
+- `<C-Space>` offers them too, among the suggestions (the `snippets`
+  source, see Completion): each snippet with something to write there,
+  its notes as the ghost. Taken that way a snippet is written as it is,
+  without choices to step through. They are never offered by themselves
+  after a pause.
+
+Expanding is one undo step, and the snippet stays **active**: its notes
+are drawn marked in violet, and its span is a band along the bottom of the
+roll with its name and its choice (in the window, a chip under its notes).
+
+| Keys (piano roll, normal and insert mode) | |
+| --- | --- |
+| `<Tab>` `<S-Tab>` | the next choice, the one before |
+| `<C-n>` `<C-p>` | the choice's next value, the one before (the first choice when none is chosen); the notes are written again within the same undo step |
+| `<C-y>`, `<Esc>` | done: keep the notes as they are |
+
+Moving the cursor out of the snippet's span, or any other edit, ends it too.
+One `u` takes the whole snippet away, however many choices were changed.
+While a snippet is active its keys come before a suggestion's and before
+`<Esc>` leaves insert mode; when none is, these keys do what they do
+elsewhere (a suggestion's, `<Tab>` to the next view, `<C-y>` to redo). In the piano roll `<C-s>` opens the picker rather than saving; `:w`
+saves.
+
+### The starting set
+
+`extensions/snippets` (load it with `daw.ext.load`, or link it into
+`<config>/extensions`):
+
+| Snippet | Writes | Choices |
+| --- | --- | --- |
+| `dominant` | V7 of the next chord, from the cursor up to it; a count chains dominants back | voicing, kind (7, 9, 7b9, 7sus4, triad), length |
+| `secondary` | V7 of a chord of the key: the next chord's, or ii, iii, IV, V, vi | voicing, of, kind |
+| `two-five` | ii7 then V7 into the next chord (iiø7 and V7b9 before a minor one), sharing the time | voicing, split (half, 3:1, 1:3) |
+| `tritone` | bII7, the tritone substitute of the next chord's dominant | voicing, kind |
+| `passing-dim` | a diminished seventh into the next chord: on its leading note, or on its root | voicing, kind, length |
+| `sus` | the next chord suspended up to it, resolving when it comes | voicing, sus (sus4, sus2, 7sus4), resolve |
+| `cadence` | V–I (or IV–V–I, ii–V–I, IV–I) to the key's tonic, a bar each | voicing, kind, each |
+| `pedal` | a held tonic, dominant or chord root at the bottom of the range | note, length |
+| `arp` | the chord at the cursor, arpeggiated over its length | pattern (up, down, up-down, broken), rate, voicing |
+| `bass` | root and fifth (or roots, or octaves) under the chords, in a bass's range | pattern, length |
+| `harmonize` | a voice a third or a sixth from each selected note, in the key at the note | interval |
+| `voice-lead` | the selected chords voiced again to move least, keeping or freeing the bass | bass, voicing |
+
+The voicing choice is `smooth` first: whichever voicing moves least from
+what this clip plays before the cursor (or, when it plays nothing there,
+from what the other tracks play in its range) and into what comes after.
+
+### Writing a snippet
+
+In `init.lua`, or a file of its own in `<config>/snippets/` (each file
+either calls `daw.snippet.add` or returns a list of snippets). An
+extension's `snippets/` directory is loaded with it; a snippet of yours
+with the same name as an extension's wins.
+
+```lua
+daw.snippet.add({
+  name = "plagal", desc = "IV then I of the key, two beats each",
+  views = { "pianoroll" },
+  choices = { { name = "voicing", values = { "smooth", "close", "open" } } },
+  expand = function(ctx)
+    local tonic = ctx.key.root
+    local four = ctx:chord(ctx.harmony.tones((tonic + 5) % 12, "maj"), ctx.at, ctx.at + 2)
+    local one = ctx:chord(ctx.harmony.tones(tonic, "maj"), ctx.at + 2, ctx.at + 4)
+    for _, n in ipairs(one) do four[#four + 1] = n end
+    return { notes = four }
+  end,
+})
+```
+
+`expand(ctx)` returns `{ notes, choices, remove }`, or nil and a reason the
+picker and the command line show ("no chord after the cursor").
+
+- `notes` are in **project beats**: `{ pitch, start, length, velocity }`,
+  velocity 1 to 127 (`daw.opt.velocity` when left out). They go into the
+  clip open in the piano roll, which grows to hold them.
+- `choices` are `{ name, values }`, given with the result or with the
+  snippet. When one is stepped the snippet is expanded again with
+  `ctx.values[name]` set to the new value, on the clip as it was before, so
+  it sees what it saw the first time. A choice may instead have
+  `apply(result, value)` returning the notes.
+- `remove` lists notes of `ctx.selection` the snippet replaces.
+- `count = true` on the snippet: it takes `ctx.count` itself rather than
+  being repeated.
+
+`ctx` has `at` (the cursor, project beats), `pitch` (the cursor's row),
+`clip` and `track` (objects), `clip_id`, `track_id`, `start` (the clip's
+start), `notes` (the clip's notes in project beats), `selection` (the
+selected notes, with their `place`, or nil) and `region` (`{ from, to }`),
+`harmony` (the module), `key` (at the cursor), `range` (the track's), `grid`,
+`count`, `values`, `velocity`, `opt`. And helpers:
+
+- `ctx:voice(tones, opts)`: pitches for a chord in the track's range, led
+  from the chord before `opts.from` (the cursor) and into what is at
+  `opts.to`; the `voicing` choice is its style. `prev` and `next` (pitches,
+  or false for none), `bass`, `count`, `low`, `high` as `voice.voice`.
+- `ctx:chord(tones, from, to, opts)`: the same as notes from `from` to `to`.
+- `ctx:before(beat)`, `ctx:after(beat)`: this clip's chord before a beat
+  and at it; `ctx:around(beat, before)`: what other tracks play there in
+  this track's range.
+- `ctx:until_next()`: the next chord's start, else the end of the bar.
+
+From a script: `daw.snippet.expand(name, { count, at, values })`,
+`daw.snippet.preview(name)` (what it would write, without writing),
+`daw.snippet.active()`, `jump(dir)`, `step(dir)`, `finish()`, `pick()`,
+`offered(view)`, `get(name)`, `remove(name)`, `load_dir(dir, source)`.
+Events: `snippet.expanded`, `snippet.finished`.
+## Completion
+
+A suggestion is shown as ghost notes in the piano roll: dashed in the
+terminal, see-through with a bright edge in the window, in the track's
+colour. A badge over it says which alternative shows, of how many, and
+where it came from: `1/4 continue: the bar again`. Nothing is written until
+it is accepted, and accepting is one undo step.
+
+Suggestions come from **sources**, which extensions register. Without one
+nothing is ever suggested; `extensions/continue` is a small one to start
+with (it repeats the last bar, or moves it a step up or down the key), and
+a language server or a snippet set can be another. `:complete.sources`
+lists those there are.
+
+**When.** `Ctrl-Space` in the piano roll (normal or insert mode) asks every
+source at once. With `daw.opt.complete_auto` on (the default; the window's
+toolbar has a Suggest switch), the sources are also asked by themselves when
+nothing has been edited for `daw.opt.complete_idle_ms` (1.2 seconds) while
+the piano roll has the keyboard. Never while the transport plays or records:
+a suggestion that came by itself hides when it starts.
+
+**Where.** A suggestion starts after the chosen notes, if some are chosen
+(with the pointer, or a selection in visual mode), else at the cursor. In
+insert mode that is right after the notes just entered, so entering a few
+notes and pausing is enough to be offered more.
+
+**Keys** while a suggestion shows, in normal and insert mode:
+
+| Keys | What they do |
+| --- | --- |
+| `Tab` | accept it all; the cursor goes to where it ends |
+| `Ctrl-l` | accept its next note, or its next chord: the notes that start first, together; the rest keeps showing |
+| `Ctrl-n` `Ctrl-p` | the next or previous alternative |
+| `Alt-1` … `Alt-9` | show that alternative |
+| `Ctrl-e`, `Esc` | dismiss it (in insert mode `Esc` dismisses first and leaves insert mode only when nothing shows) |
+| `gh` | hear it through the track, from a bar before, with the notes already there (normal mode) |
+
+Otherwise those keys do what they always do. An edit of the clip, undo, or
+another request dismisses what shows. Each terminal and window attached to
+an instance has its own suggestion; an edit from any of them dismisses a
+suggestion for that clip in all. With `daw.opt.complete_audition` on,
+every alternative shown is heard that way by itself; the project is never
+changed by hearing one. `:complete`, `:complete.accept` (`next` for the next
+notes only), `:complete.dismiss` and `:complete.audition` do the same as the
+keys.
+
+**In the window** the ghost notes are drawn over the clip's own, with a row of
+chips over them: one numbered chip per alternative (a click shows it) and one
+saying what shows (a click accepts it). The keys work the same with the
+piano roll focused.
+
+**Deadlines.** A request waits `daw.opt.complete_deadline_ms` (300 ms) for
+the sources, then shows what has arrived, the higher priority sources first;
+answers that come later are added at the end, so a slow source never holds
+up a quick one. A source that fails, answers twice or answers nonsense is
+skipped and the piano roll goes on as before.
+
+### Writing a source
+
+```lua
+daw.complete.register({
+  name = "octaves", priority = 10,
+  views = { "pianoroll" },
+  auto = true,                         -- may be asked without a key press
+  complete = function(ctx, done)
+    local items = {}
+    for _, n in ipairs(ctx.selection or {}) do
+      items[#items + 1] = { pitch = n.pitch + 12, start = n.start, length = n.length }
+    end
+    done({ { label = "an octave up", notes = items } })   -- or done(nil): nothing to say
+  end,
+  cancel = function(ctx) end,          -- a newer request replaced ctx.id
+})
+```
+
+`complete` may call `done` at once or any time later (from a timer, or when a
+helper program answers); only its first call counts, and only while the
+request is still the newest. `ctx` holds `clip` and `track` (ids), `start`
+and `length` (where the clip is, in project beats), `at` (where the
+suggestion starts, in the clip's beats), `pitch` (the cursor's), `notes` (the
+clip's notes), `selection` (the chosen notes or nil), `grid`, `view`,
+`trigger` ("manual" or "auto"), `id`, and `key` when a module gives the key
+(`daw.harmony.key`).
+
+An item has a `label`, an optional `detail`, and any of: `notes` to add
+(`{ pitch, start, length, velocity }`, `start` in the clip's beats as
+`clip:notes()` gives them; velocity 1 to 127, `daw.opt.velocity` when left
+out), `remove` (places of the clip's notes it replaces, as `clip:notes()`
+numbers them), `velocities` (`{ [place] = velocity }`) and `controls`
+(controller moves to add). `daw.complete.show(items, { keys = false })`
+shows items as ghost notes without being a source, for a preview; with the
+keys left on they can be accepted like any suggestion.
+
+## Several tracks in the piano roll
+
+**Context notes.** Behind the clip's own notes the roll shows the notes of
+other tracks that sound during it, fainter and each in its track's colour.
+Drum tracks (those with a drum map, see `extensions/drums`) are left out.
+Which tracks show is `daw.opt.roll_context`: `"all"` (the default), `"group"`
+(the tracks of the clip's group), `"none"`, or a list of track ids; each
+track can then be shown or hidden on its own with `:roll.tracks` (terminal)
+or the side panel (window, Tracks in the toolbar). At most
+`daw.opt.roll_context_max` notes (4000) are shown, and they are worked out
+again only when the project, the clips edited or the choice of tracks
+changes. The keys that sound at the cursor, in every clip shown, are marked
+on the keyboard, and the chord they make is named when `daw.harmony` is
+there to read it.
+
+**Editing several clips.** The roll edits one *active* clip, where new
+notes go, and any number of others with it. Everything that works on notes
+works on all of them: motions (`w` goes from note to note across the
+clips), operators and text objects (`d`, `y`, `>`, `=`, `ic` is every note
+of every clip), visual mode, `p`, the keys on the note under the cursor, the
+pointer's clicks, boxes and drags, the velocity strip, quantize, and the
+musicops operators (each clip done on its own). A note keeps to its clip: a
+drag or `H` stops at the clip's edges, and a move never takes a note into
+another clip. Notes yanked from several clips remember theirs, and paste
+back into it while it is edited; otherwise into the clip at the cursor. A
+command that touches several clips is one undo step.
+
+| | Terminal | Window |
+| --- | --- | --- |
+| make the clip of a note shown behind active | `ga` on the note | click the note |
+| edit it too, or no longer | `gE` on the note | Ctrl and a click, or the box in the side panel |
+| the next, the previous clip edited active | `gn` `gN` | a click on its name in the side panel |
+| open several clips together | select them in the arrange view, `Enter` | choose them, double click one |
+| back to one clip | `:roll.only`, or open a clip | open a clip |
+
+The cursor's beats are the active clip's: when another becomes active the
+cursor keeps its place in the song.
+
+## For scripts: `daw.roll_clips`
+
+- `ids()`, `active()`, `editable(id)`, `parts()` (`{ id, clip, offset,
+  start, length, track, name }` each, the active one first; `offset` is how
+  many beats after the active clip it starts), `span()` (the stretch they
+  cover, in the roll's beats).
+- `open(ids, active)`, `only()`, `activate(id)`, `toggle(id)`, `cycle(n)`.
+- `notes(range)`: the notes of every clip edited in the roll's beats, each
+  with `clip` and `place` (its place in its clip, for `Clip:edit_notes`);
+  `note_at(pitch, beat)`.
+- `tracks()`, `show_track(id, on)`, `context()` (the context notes: `{
+  pitch, start, length, velocity, clip, track, color }`), `context_at(pitch,
+  beat)`, `sounding(beat)` (pitches and chord name), `rows()`, `pick()`.
+- The event `roll_clips.changed` when the set or the active clip changes.
+- `daw.edit.roll.yank`, `delete`, `each` and `paste` take the list from
+  `parts()` in place of a clip.
+- It is kept per seat: two people at one instance edit clips of their own.
+- Language servers keep every clip edited open, not only the active one.
+
+## Layers of the piano roll
+
+The roll draws, back to front: the grid, other tracks' notes ("context",
+order 10), the clips' own notes ("notes", 20), diagnostics (30), a
+snippet's marks (40), suggestions (50), then the selection and the cursor.
+A module adds a layer with `daw.ui.views.pianoroll.layer(name, order,
+paint, marks)`: `paint(p)` draws it in the terminal's cells (`p` has
+`roll`, `ruler`, `clip`, `parts`, `x(beat)`, `row(pitch)`, `from`, `to`,
+`zoom`, `top`, `rows`, `width`, `hue`), and `marks(clip_id)` says what the
+window draws for it: boxes or chips in the clip's beats, behind the notes
+below order 20 and in front of them from there (see the comment on
+`layer` in `runtime/lua/daw/views/pianoroll.lua` for every field). The
+context layer is an example of both.

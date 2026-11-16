@@ -8,9 +8,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use daw_engine::midi::{MidiInputs, MidiTarget, port_key};
+use daw_engine::midi_form::Form;
 use daw_engine::midi_out::{MidiOut, MidiOutputs, clock_ns};
 use daw_engine::{
-    ClipSet, Engine, EventKind, MASTER, MidiEv, Msg, NO_SLOT, SchedEntry, Schedule, TrackRt,
+    ClipSet, Ctl, Engine, EventKind, MASTER, MidiEv, Msg, NO_SLOT, NoteCtl, SchedEntry, Schedule,
+    TrackRt,
 };
 
 /// The inputs with a port of ours, `name`, and what arrives there, with
@@ -74,7 +76,7 @@ fn messages_leave_when_they_are_stamped_for() {
             EventKind::NoteOff { key, ch: 4 },
         ] {
             let at = if matches!(kind, EventKind::NoteOff { .. }) { at + 50_000_000 } else { at };
-            tx.push(MidiOut { at, port, kind }).unwrap();
+            tx.push(MidiOut { at, port, form: Form::Auto, kind }).unwrap();
         }
     }
     let got = collect(&rx, 6);
@@ -124,7 +126,12 @@ fn an_engine_sends_what_a_track_plays_and_ends_it_when_stopped() {
     send(
         &mut handle,
         &mut engine,
-        Msg::SetMidiOutput { track: 1, port: port_key("daw: Loop B"), channel: 10 },
+        Msg::SetMidiOutput {
+            track: 1,
+            port: port_key("daw: Loop B"),
+            channel: 10,
+            form: Form::Auto,
+        },
     );
     let entries = vec![SchedEntry::new(1, MASTER), SchedEntry::new(MASTER, NO_SLOT)];
     send(&mut handle, &mut engine, Msg::SetSchedule(Box::new(Schedule::new(entries, 0))));
@@ -164,4 +171,56 @@ fn an_engine_sends_what_a_track_plays_and_ends_it_when_stopped() {
         .collect();
     let apart = (ons[1] - ons[0]) as f64 / 1e6;
     assert!((apart - 500.0).abs() < 40.0, "a beat apart at 120 BPM: {apart} ms");
+}
+
+#[test]
+fn a_route_in_mpe_gives_each_note_a_channel_and_its_bend_there() {
+    let Some((_inputs, rx)) = listen("Loop C") else {
+        eprintln!("skipped: no ALSA sequencer");
+        return;
+    };
+    let outputs = outputs("Loop C").unwrap();
+    let (mut tx, queue) = rtrb::RingBuffer::<MidiOut>::new(64);
+    outputs.set_queue(queue);
+    let port = port_key("daw: Loop C");
+    let at = clock_ns() + 50_000_000;
+    let form = Form::Mpe(3);
+    // A chord on one channel, and the middle note bent a semitone up.
+    for kind in [
+        EventKind::NoteOn { key: 60, vel: 0.8, ch: 0 },
+        EventKind::NoteOn { key: 64, vel: 0.8, ch: 0 },
+        EventKind::NoteOn { key: 67, vel: 0.8, ch: 0 },
+        EventKind::NoteControl { key: 64, ctl: NoteCtl::Bend, value: 1.0 / 48.0, ch: 0 },
+        EventKind::AllNotesOff,
+    ] {
+        tx.push(MidiOut { at, port, form, kind }).unwrap();
+    }
+    // The zone's announcement (24 control changes), three notes and a
+    // bend, then three note-offs, three All Notes Off and the bend put back.
+    let got = collect(&rx, 35);
+    let ons: Vec<(u8, u8)> = got
+        .iter()
+        .filter_map(|(_, kind)| match kind {
+            EventKind::NoteOn { key, ch, .. } => Some((*key, *ch)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ons, [(60, 1), (64, 2), (67, 3)], "each note on a member channel of its own");
+    let bend = got.iter().find_map(|(_, kind)| match kind {
+        EventKind::Control { ctl: Ctl::Bend, value, ch: 2 } if *value != 0.0 => Some(*value),
+        _ => None,
+    });
+    let bend = bend.expect("the bent note's channel was bent");
+    assert!((bend * 48.0 - 1.0).abs() < 0.01, "a semitone of 48: {bend}");
+    // The zone was announced on the manager channel: registered parameter
+    // 6, three member channels.
+    assert!(
+        got.iter().any(|(_, kind)| matches!(
+            kind,
+            EventKind::Control { ctl: Ctl::Cc(6), ch: 0, value } if (*value - daw_engine::ump::unit7(3)).abs() < 1e-9
+        )),
+        "the MPE configuration message"
+    );
+    let offs = got.iter().filter(|(_, kind)| matches!(kind, EventKind::NoteOff { .. })).count();
+    assert_eq!(offs, 3, "all notes off ends each where it was sent");
 }

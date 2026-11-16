@@ -2,9 +2,9 @@
 
 # Lesson 14: Finding any command or key
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 14`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 14`.*
 
-Nobody remembers every key. The DAW tells you what you can do at every point: stop half way through a key sequence and it lists what can follow; `?` lists every key of the view you are in; `:` runs any command by name, with Tab to complete it; and pickers find a command, a key, a track or a clip from a few letters of its name.
+Nobody remembers every key. paw tells you what you can do at every point: stop half way through a key sequence and it lists what can follow; `?` lists every key of the view you are in; `:` runs any command by name, with Tab to complete it; and pickers find a command, a key, a track or a clip from a few letters of its name.
 
 Every key is a command with a name, so whatever you can do with a key you can also type, and whatever you find by name you can map to a key of your own.
 

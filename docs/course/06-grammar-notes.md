@@ -2,7 +2,7 @@
 
 # Lesson 6: The same grammar on notes
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 6`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 6`.*
 
 Everything from the last lesson works in the piano roll, with notes in place of clips and pitches in place of tracks. `w` goes to the next note, so `dw` deletes up to it; `in` is the note under the cursor, `ic` every note of the clip; `dd` deletes a whole row, which here is every note of one pitch; `.` repeats; `y` and `p` copy.
 
@@ -34,8 +34,8 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - ✓ G4 is two steps late now: a little push before the beat.
 6. `yic` yanks every note of the clip. Then `$` goes to the end of the clip and `p` pastes them there. Press `yic`, `$`, `p`.
    - ✓ The riff twice, and the clip grew to hold it.
-7. `c` changes: `cin` deletes the note under the cursor and starts insert mode in its place. Press `^` (the first note), `cin`, then `4` and `g`, and `<Esc>`.
-   - *Hint:* `4` makes the new note a beat long; `g` is G.
+7. `c` changes: `cin` deletes the note under the cursor and starts insert mode in its place. Press `^` (the first note), `cin`, then `7k` and `4l`, and `<Esc>`.
+   - *Hint:* `7k` moves the new note up to G, `4l` makes it a beat long.
    - ✓ The riff starts on G now.
 8. `/` searches: `/d4` and `<CR>` go to the next D4. Then `dd` deletes every note of that pitch. Press `/d4`, `<CR>`, `dd`.
    - ✓ No D4 left anywhere in the clip.

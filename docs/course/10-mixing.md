@@ -2,7 +2,7 @@
 
 # Lesson 10: Mixing: faders, pan, buses, sends, automation
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 10`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 10`.*
 
 Mixing is setting how loud each track is (its fader, in dB), where it sits from left to right (pan), which tracks to silence (mute) or hear alone (solo), and where its sound goes: to the master, into a bus that groups tracks under one fader, or partly to an effect track through a send. Automation changes a fader (or any parameter) over time.
 

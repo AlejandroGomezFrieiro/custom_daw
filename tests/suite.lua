@@ -208,7 +208,10 @@ end)
 test("events report what changed", function()
   fresh()
   local seen = {}
-  local handle = daw.on("*", function(payload, name) seen[#seen + 1] = name .. ":" .. tostring(payload.id or "") end)
+  -- (What changed, said again as addresses, is daw.address's business: tests/address.lua.)
+  local handle = daw.on("*", function(payload, name)
+    if name ~= "address.changed" then seen[#seen + 1] = name .. ":" .. tostring(payload.id or "") end
+  end)
   local t = daw.add_track()
   local d = t:add_device("gain")
   daw.flush()
@@ -1820,9 +1823,12 @@ test("half-typed commands show what can follow, and are counted right", function
   daw.keymap.del("gz", { view = "arrange", mode = "x" })
 end)
 
-test("insert mode enters notes from the keyboard", function()
+test("insert mode the keys way enters notes from the keyboard as from a piano", function()
   local t = three_clips()
   daw.opt.octave, daw.opt.velocity = 4, 100
+  -- Insert mode draws notes unless asked for the keys (tests/drawinsert.lua):
+  -- as `I` does in the piano roll, this once.
+  daw.roll_draw.keys_once()
   daw.cursor.set_beat(16)
   keys("i")
   eq(daw.ui.focused .. daw.keymap.mode, "pianorolli", "i in the arrange view opens a new clip for typing")
@@ -2844,8 +2850,13 @@ end)
 --   local T = ...
 --   T.test("the widget counts", function() T.fresh() T.eq(1 + 1, 2, "sum") end)
 
+-- What a test asks to have undone when it ends, passed or failed, so that
+-- a failure does not leave a setting behind for the tests after it.
+local cleanups = {}
+local function after(fn) cleanups[#cleanups + 1] = fn end
+
 local T = {
-  test = test, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
+  test = test, after = after, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
   scratch = scratch, read_file = read_file, write_file = write_file, frequency = frequency,
   channel_peaks = channel_peaks, three_clips = three_clips, layout = layout, melody = melody, keys = keys,
 }
@@ -2867,6 +2878,7 @@ local only = ...
 for _, t in ipairs(tests) do
   if not only or t.name:find(only, 1, true) then
     local ok, err = xpcall(t.fn, debug.traceback)
+    for i = #cleanups, 1, -1 do pcall(cleanups[i]) cleanups[i] = nil end
     if ok and type(err) == "string" then
       print("skip  " .. t.name .. " (" .. err .. ")")
     elseif ok then

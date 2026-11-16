@@ -291,7 +291,7 @@ test("tutor: quitting the program in a lesson keeps the place", function()
   local tutor = start()
   type_keys(":tutor 3<CR><Esc>o")
   eq(tutor.state().step, 2, "a step done")
-  daw.emit("command.pre", { name = "q", args = {} })   -- what `:q` says before the program ends
+  daw.emit("command.pre", { name = "quit", args = {} })   -- what `:q` in the last window says before the program ends
   tutor._forget()
   T.fresh()
   type_keys(":tutor<CR><Esc>")
@@ -365,12 +365,12 @@ test("tutor: docs/course is made from the lessons and agrees with them", functio
   end
 end)
 
-test("tutor: every key in docs/course/keys.md is a key the DAW has", function()
+test("tutor: every key in docs/course/keys.md is a key paw has", function()
   ext()
   local keymap = daw.keymap
   local known, operators, chars = {}, {}, {}
   for _, mode in ipairs({ "n", "x", "o", "i" }) do
-    for _, view in ipairs({ "arrange", "pianoroll", "mixer", "devices" }) do
+    for _, view in ipairs({ "arrange", "pianoroll", "pianoroll.complete", "pianoroll.keys", "mixer", "devices" }) do
       for _, map in ipairs(keymap.list(mode, view)) do
         local keys = table.concat(keymap.parse(map.lhs))
         known[keys] = true
@@ -422,7 +422,7 @@ test("tutor: every key in docs/course/keys.md is a key the DAW has", function()
       first = first:gsub("\1", "|")
       for token in first:gmatch("`([^`]+)`") do
         checked = checked + 1
-        if not ok(token) then error("keys.md: `" .. token .. "` is not a key of the DAW", 0) end
+        if not ok(token) then error("keys.md: `" .. token .. "` is not a key of paw", 0) end
       end
     end
   end

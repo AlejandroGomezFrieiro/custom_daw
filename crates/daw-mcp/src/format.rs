@@ -50,7 +50,7 @@ pub fn messages(out: &mut String, list: &Value) {
     if list.is_empty() {
         return;
     }
-    out.push_str("DAW messages:\n");
+    out.push_str("paw messages:\n");
     for m in list {
         let level = s(&m["level"]);
         let text = s(&m["text"]);

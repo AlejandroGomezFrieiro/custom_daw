@@ -156,7 +156,7 @@ test("rpp: base64 blocks and plugin chunks", function()
   local parts = assert(fx.vst_parts(vst))
   eq(#parts.data, 24, "state size from the header")
   local state = assert(fx.vst3_state_from_reaper(parts.data))
-  eq(state, b64.pack_u32(4) .. "abcd" .. b64.pack_u32(4) .. "wxyz", "this DAW's VST3 state")
+  eq(state, b64.pack_u32(4) .. "abcd" .. b64.pack_u32(4) .. "wxyz", "paw's VST3 state")
   eq(fx.vst3_state_to_reaper(state), parts.data, "and back")
   -- Data lines are rewritten in groups of 128 characters.
   local block = r.block("STATE")
@@ -622,7 +622,7 @@ test("rpp: plugins go out and come back with their settings", function()
   -- only has it after that.
   api.sleep(300)
   local state = api.device_state(g.id)
-  -- The plugin rounds the value it saves; what this DAW's own copy of the
+  -- The plugin rounds the value it saves; what paw's own copy of the
   -- state gives is what the import must give.
   local want = api.device_get(api.device_add(g:track().id, vst3, { state = state })).params[key]
   local default = api.device_get(api.device_add(g:track().id, vst3, {})).params[key]
