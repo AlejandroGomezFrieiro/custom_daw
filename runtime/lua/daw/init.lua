@@ -134,6 +134,8 @@ daw.routes = require("daw.routes")
 daw.controls = require("daw.controls")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
+daw.harmony = require("daw.harmony")
+daw.snippet = require("daw.snippet")
 daw.launcher = require("daw.launcher")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
@@ -159,7 +161,10 @@ function K.startup()
   for _, name in ipairs({ "arrange_mouse", "pianoroll_mouse", "panels_mouse" }) do
     require("daw.views." .. name)
   end
+  daw.address = require("daw.address")
   daw.diagnostic = require("daw.diagnostic")
+  daw.annotation = require("daw.annotation")
+  require("daw.locators")
   daw.lsp = require("daw.lsp")
   require("daw.defaults")
   daw.layout.setup()
@@ -189,6 +194,7 @@ function K.startup()
       local chunk, err = loadfile(init)
       if chunk then daw.try(daw.limit.untrusted(chunk)) else daw.notify(err, "error") end
     end
+    daw.snippet.load_dir(env.config_dir .. "/snippets", "config")
   end
   for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
   daw.emit("startup", {})

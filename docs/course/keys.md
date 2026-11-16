@@ -128,6 +128,17 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `z` `x` | octave down, up |
 | `<Esc>` | back to normal mode |
 
+## Write from the harmony (snippets, R)
+
+| Keys | |
+| --- | --- |
+| `<C-s>`, `:snippet name` | choose a snippet and write it at the cursor or over the selection (`3<C-s>` three times); in normal, insert and visual mode |
+| `<Tab>` `<S-Tab>` | while a snippet is active: its next choice, the one before (before a suggestion's keys) |
+| `<C-n>` `<C-p>` | the choice's next value, the one before, written again in the same undo step |
+| `<C-y>` `<Esc>` | done with the snippet |
+
+See [Harmony, completion and snippets](../harmony.md).
+
 ## Take a suggestion (piano roll, normal and insert mode)
 
 | Keys | |
@@ -214,10 +225,10 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 | Keys | |
 | --- | --- |
-| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
-| `gK` | in R: what the diagnostics and language servers say about the note |
-| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
-| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `]d` `[d` | next, previous diagnostic this view shows (R, A, M, D): the cursor goes there |
+| `gK` | what the diagnostics and language servers say about what is under the cursor |
+| `,ca` | fixes and actions for what is under the cursor; Enter makes one, as one undo step |
+| `:diagnostics` | every diagnostic, grouped by what it is about; Enter goes there |
 | `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
 ## The tutor

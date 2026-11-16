@@ -2243,16 +2243,18 @@ pmap("<Esc>", function()
   daw.ui.focus("arrange")
 end, "Let go of the chosen notes; back to the arrange view")
 
--- Diagnostics and language servers (daw.diagnostic, daw.lsp). `K` is an
--- octave up here, so what the servers say about a note is `gK`.
-pmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic", { jump = true })
-pmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic", { jump = true })
-amap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next clip with diagnostics", { jump = true })
-amap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous clip with diagnostics", { jump = true })
-pmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
-pmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes for the note, or for the diagnostics here")
+-- Diagnostics and language servers (daw.diagnostic, daw.lsp), on whatever
+-- is under the cursor in each view: a note, a clip, a track, a strip, a
+-- device or parameter. `K` means other things in these views, so asking
+-- what is known about it is `gK`.
+for _, v in ipairs({ "pianoroll", "arrange", "mixer", "devices" }) do
+  map("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, { view = v, desc = "Next diagnostic here", jump = true })
+  map("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, { view = v, desc = "Previous diagnostic here", jump = true })
+  map("gK", function() daw.lsp.show_hover() end, { view = v, desc = "What the diagnostics and language servers say about what is under the cursor" })
+  map("<leader>ca", function() daw.lsp.code_actions() end, { view = v, desc = "Fixes and actions for what is under the cursor" })
+end
 command("diagnostics", function(ctx) daw.diagnostic.list(ctx.args[1] == "clip" and daw.ui.views.pianoroll.clip_id or nil) end,
-  { desc = "List the diagnostics, of every clip or (`diagnostics clip`) the piano roll's; Enter goes to one", complete = { "clip" } })
+  { desc = "List the diagnostics, grouped by what they are about, or (`diagnostics clip`) the piano roll's; Enter goes to one", complete = { "clip" } })
 command("lsp", function(ctx) daw.lsp.command(ctx) end,
   { desc = "Language servers: `lsp info`, `lsp start|stop|restart [name]`, `lsp log`", complete = function() return daw.lsp.command_complete() end })
 
@@ -2334,6 +2336,38 @@ imap("<Left>", function() roll:step(-1) end, "Step back")
 imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
+
+-- Piano roll: snippets (runtime/lua/daw/snippet.lua). While one is active its
+-- keys come first; otherwise each key does what it does everywhere else.
+roll.layer("snippet", 40, function(p) daw.snippet.paint(p) end, function(clip_id) return daw.snippet.window_marks(clip_id) end)
+command("snippet", function(ctx)
+  local name = ctx.args[1]
+  local region = daw.snippet.take_cmdline_selection()
+  if name == nil then return daw.snippet.pick({ count = ctx.count, selection = region }) end
+  local _, why = daw.snippet.expand(tostring(name), { count = ctx.count, selection = region })
+  if why then daw.notify(why, "warn") end
+end, {
+  desc = "Expand a snippet at the piano roll's cursor: `snippet dominant`, `3snippet arp`; alone, choose one",
+  complete = function()
+    local out = {}
+    for _, s in ipairs(daw.snippet.offered("pianoroll")) do out[#out + 1] = { text = s.name, desc = s.desc } end
+    return out
+  end,
+})
+-- While a snippet is active its keys come first, before a suggestion's and
+-- before Escape leaves insert mode.
+roll:key_scope("pianoroll.snippet", 40, function() return daw.snippet.active() ~= nil end)
+local function smap(lhs, fn, desc)
+  map(lhs, fn, { view = "pianoroll.snippet", mode = { "n", "i" }, desc = desc, repeatable = false })
+end
+smap("<Tab>", function() daw.snippet.jump(1) end, "The snippet's next choice")
+smap("<S-Tab>", function() daw.snippet.jump(-1) end, "The snippet's choice before")
+smap("<C-n>", function() daw.snippet.step(1) end, "The snippet's choice: its next value")
+smap("<C-p>", function() daw.snippet.step(-1) end, "The snippet's choice: its value before")
+smap("<C-y>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+smap("<Esc>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+map("<C-s>", function(ctx) daw.snippet.pick({ count = ctx.count }) end,
+  { view = "pianoroll", mode = { "n", "i", "x" }, desc = "Choose a snippet to expand here", repeatable = false })
 
 -- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
 -- while a suggestion shows, its keys come first, in normal and insert mode.

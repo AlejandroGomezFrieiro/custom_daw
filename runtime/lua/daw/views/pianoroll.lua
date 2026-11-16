@@ -65,6 +65,12 @@ function view:note_at(pitch, beat)
   return clips.note_at(pitch, beat)
 end
 
+--- Rows above the notes on a panel `h` rows tall: the panel's title, the
+--- chord symbols when `daw.opt.chords` asks for them and there is room,
+--- then the ruler.
+function view.head_rows(h)
+  return (daw.opt.chords and h >= 12) and 3 or 2
+end
 -- Switches a module adds to the window's piano roll toolbar: `fn()`
 -- returns `{ label, on, tip, act }` (`act` names the `daw.frontend.act`
 -- function a click calls, given the clip), or nil to show none for now.
@@ -112,8 +118,6 @@ function view:subscope()
   end
   return #out > 0 and out or nil
 end
-
-local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
 
 -- Layers that modules draw over the roll, from back to front by `order`:
 -- other tracks' notes ("context", 10), the notes of the clips edited
@@ -243,7 +247,9 @@ function view:render(buf, ctx)
   local zoom, grid = daw.opt.note_zoom, daw.opt.note_grid
   -- With room to spare, the notes' velocities get a few rows of their own.
   local vel = view.velocity_rows(h)
-  local rows, tw = h - HEAD - vel, w - KEYS
+  local head = view.head_rows(h)
+  self.head = head
+  local rows, tw = h - head - vel, w - KEYS
   local span = tw / zoom
 
   -- Keep the cursor on screen.
@@ -257,7 +263,7 @@ function view:render(buf, ctx)
     if self.beat >= self.scroll + span - grid then self.scroll = math.ceil(self.beat - span + 1) end
   end
   self.scroll = math.max(math.min(0, math.floor(lo)), self.scroll)
-  self.geometry = { rows = rows, zoom = zoom, keys = KEYS, head = HEAD, vel = vel, span = span }
+  self.geometry = { rows = rows, zoom = zoom, keys = KEYS, head = head, vel = vel, span = span }
 
   -- Title: the active clip in its track's colour, the track and how many
   -- clips are edited, where the cursor is and the chord sounding there; on
@@ -279,10 +285,17 @@ function view:render(buf, ctx)
     buf:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
 
-  -- Ruler: bars as the project counts them, beats in between.
-  buf:fill(0, 1, w, 1, " ", "Ruler")
-  local roll = buf:sub(KEYS, HEAD, tw, rows)
-  local ruler = buf:sub(KEYS, 1, tw, 1)
+  -- Ruler: bars as the project counts them, beats in between; above it
+  -- the chords that sound, read over every pitched track, and the key.
+  buf:fill(0, head - 1, w, 1, " ", "Ruler")
+  local roll = buf:sub(KEYS, head, tw, rows)
+  local ruler = buf:sub(KEYS, head - 1, tw, 1)
+  if head == 3 then
+    buf:fill(0, 1, w, 1, " ", "Ruler")
+    local key = daw.harmony.key(c.start + self.scroll)
+    buf:text(0, 1, (key.name:gsub(" major", ""):gsub(" minor", "m")):sub(1, KEYS - 1), "RulerChordEdge")
+    daw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
+  end
   local lines = daw.draw.beats(ruler, self.scroll, span, zoom, c.start)
   -- Steps between the beats when zoomed in far enough to see them.
   -- They are the same on every row: one line of text, drawn row by row.
@@ -306,8 +319,8 @@ function view:render(buf, ctx)
   local end_x = math.floor((hi - self.scroll) * zoom + 0.5)
   for row = 0, rows - 1 do
     local pitch = self.top - row
-    daw.draw.piano_key(buf, row + HEAD, pitch, pitch == self.pitch, KEYS)
-    if sounds[pitch] then buf:text(KEYS - 1, row + HEAD, "•", "PianoCursor") end
+    daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS)
+    if sounds[pitch] then buf:text(KEYS - 1, row + head, "•", "PianoCursor") end
     roll:fill(0, row, tw, 1, " ", music.is_black(pitch) and "RollRowBlack" or "RollRow")
     if steps then roll:text(0, row, steps, music.is_black(pitch) and "RollStepBlack" or "RollStep") end
     for _, line in ipairs(lines) do roll:text(line.x, row, line.bar and g.bar or g.beat, line.bar and "RollBar" or "RollBeat") end
@@ -338,9 +351,9 @@ function view:render(buf, ctx)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then
-    local lane = buf:sub(KEYS, HEAD + rows, tw, vel)
-    buf:fill(0, HEAD + rows, w, vel, " ", "VelocityLane")
-    buf:text(1, HEAD + rows + vel - 1, "vel", "VelocityLane")
+    local lane = buf:sub(KEYS, head + rows, tw, vel)
+    buf:fill(0, head + rows, w, vel, " ", "VelocityLane")
+    buf:text(1, head + rows + vel - 1, "vel", "VelocityLane")
     for _, line in ipairs(lines) do
       if line.bar then lane:fill(line.x, 0, 1, vel, g.bar, "RollBar") end
     end

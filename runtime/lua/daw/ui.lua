@@ -283,7 +283,9 @@ local function float_rect(width, height)
   local f = M.float
   local w = math.min(f.width or 72, width - 2)
   local h = math.min(f.height or 24, height - 2)
-  return { name = f.name, x = math.floor((width - w) / 2), y = math.floor((height - h) / 2), w = w, h = h }
+  -- `top`: at the top of the screen, leaving what is below it in view.
+  local y = f.top and 1 or math.floor((height - h) / 2)
+  return { name = f.name, x = math.floor((width - w) / 2), y = y, w = w, h = h }
 end
 
 --- Draw a box around a buffer's edge and return a buffer for the inside.
@@ -495,7 +497,7 @@ end
 function M.open(name, opts)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
   opts = opts or {}
-  M.float = { name = name, title = opts.title, width = opts.width, height = opts.height, back = M.float and M.float.back or M.focused }
+  M.float = { name = name, title = opts.title, width = opts.width, height = opts.height, top = opts.top, back = M.float and M.float.back or M.focused }
   M.focused = name
   api.ui_redraw()
 end
@@ -652,6 +654,66 @@ function M.input(opts, on_submit)
 end
 
 M.redraw = api.ui_redraw
+
+-- Layers and locators ----------------------------------------------------------
+--
+-- What modules draw over a view (diagnostics, annotations, a suggestion),
+-- each a layer of a part of it, drawn in order; and how a view says where
+-- things with an address are (daw/address.lua). The piano roll has layers
+-- of its own (`daw.ui.views.pianoroll.layer`).
+
+M.layers = {}  -- view -> part -> { { name, order, paint } }
+
+--- Draw `paint(ctx)` as a layer of a part of a view (`"arrange", "header"`),
+--- replacing one of the same name (nil removes it). The view says what
+--- `ctx` holds where it calls `daw.ui.paint`.
+function M.layer(view, part, name, order, paint)
+  M.layers[view] = M.layers[view] or {}
+  local list = M.layers[view][part] or {}
+  for i = #list, 1, -1 do
+    if list[i].name == name then table.remove(list, i) end
+  end
+  if paint then list[#list + 1] = { name = name, order = order, paint = paint } end
+  table.sort(list, function(a, b) return a.order < b.order end)
+  M.layers[view][part] = list
+  api.ui_redraw()
+end
+
+--- Draw the layers of a part of a view: views call this where the part is drawn.
+function M.paint(view, part, ctx)
+  local list = M.layers[view] and M.layers[view][part]
+  if not list then return end
+  for _, layer in ipairs(list) do layer.paint(ctx) end
+end
+
+M.locators = {}  -- view -> locator
+
+--- Say how a view places locations (`{ uri, selector }`):
+---   at()            the location under its cursor, or nil
+---   position()      where its cursor is, as a list of numbers to sort by
+---   place(location) where a location is in it, the same way, or nil when it does not show it
+---   go(location)    put its cursor there
+function M.locator(view, spec) M.locators[view] = spec end
+
+--- The location under the cursor of the focused view (or `view`).
+function M.location(view)
+  local loc = M.locators[view or M.focused]
+  return loc and loc.at() or nil
+end
+
+--- Go to a location in the view that shows it best (the piano roll for
+--- notes, the device panel for devices and parameters, the arrange view for
+--- tracks and time), focusing it.
+function M.go(location)
+  for _, name in ipairs({ "pianoroll", "devices", "arrange", "mixer" }) do
+    local loc = M.locators[name]
+    if loc and loc.place(location, true) then
+      if not M.visible(name) then M.show(name) end
+      M.focus(name)
+      return loc.go(location)
+    end
+  end
+end
 
 -- Meters and the playhead move without anything changing in the project, so
 -- redraw on a timer while playing and for a moment after any activity.

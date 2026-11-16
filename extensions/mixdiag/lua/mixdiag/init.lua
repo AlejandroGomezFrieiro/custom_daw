@@ -270,6 +270,7 @@ function M.finish(result, range, quiet)
     daw.notify(M.line, worst == "error" and "warn" or "info")
   end
   daw.emit("mixdiag.done", { count = #M.findings })
+  require("mixdiag.lens").publish()
   M.show_strip()
   api.ui_redraw()
   return M.findings
@@ -283,6 +284,7 @@ end
 function M.clear()
   M.cancel()
   M.result, M.findings, M.line = nil, {}, nil
+  require("mixdiag.lens").publish()
   M.hide_strip()
   -- The findings' band in the graphical frontend goes too.
   daw.frontend.refresh()

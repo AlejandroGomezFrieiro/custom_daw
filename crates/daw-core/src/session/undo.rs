@@ -133,6 +133,15 @@ impl Session {
         self.history.label(text);
     }
 
+    /// Make the edits of the open step part of state `id` instead of a step
+    /// of their own, if `id` is still the current state and nothing hangs on
+    /// it. Returns whether they will be.
+    pub fn undo_join(&mut self, id: StateId) -> bool {
+        let joins = id == self.history.current() && self.history.can_extend();
+        self.join = joins.then_some(id);
+        joins
+    }
+
     /// The keys typed for the open step.
     pub fn undo_keys(&mut self, text: String) {
         self.history.keys(text);
@@ -729,6 +738,12 @@ where
     out
 }
 
+/// Two notes that sound the same and carry the same data: their ids may
+/// differ (one state was written before notes had them).
+fn same_note(a: &Note, b: &Note) -> bool {
+    a.start == b.start && a.length == b.length && a.pitch == b.pitch && a.velocity == b.velocity && a.meta == b.meta
+}
+
 fn diff_notes(was: &[Note], now: &[Note]) -> Count {
     let mut count = Count::default();
     let mut left: HashMap<(u64, u8), Vec<&Note>> = HashMap::new();
@@ -743,7 +758,7 @@ fn diff_notes(was: &[Note], now: &[Note]) -> Count {
         let key = (note.start.to_bits(), note.pitch);
         match left
             .get_mut(&key)
-            .and_then(|list| list.iter().position(|n| *n == note).map(|i| list.remove(i)))
+            .and_then(|list| list.iter().position(|n| same_note(n, note)).map(|i| list.remove(i)))
         {
             Some(_) => {}
             None => unmatched.push(key),
@@ -803,6 +818,7 @@ mod tests {
             pitch,
             velocity: 100,
             meta: Default::default(),
+            id: 0,
         };
         track.clips.push(Arc::new(Clip {
             timebase: None,
