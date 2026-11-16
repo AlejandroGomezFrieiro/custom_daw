@@ -300,10 +300,14 @@ end)
 
 -- Speed ------------------------------------------------------------------------------------------
 
-test("score: an edit in a 64 bar score paints quickly", function()
+test("score: an edit in a 64 bar score is quicker than a MIDI clip's paint after an edit", function()
   load()
   local bench = require("notation.bench")
-  local r = bench.run(64, { glyphs = true, surface = true, cell = { w = 13, h = 27 } }, 5, { score = true })
-  -- A loose bound, for a busy machine: the target is well under 33 ms.
-  eq(r.edit < 150, true, "an edit and its paint (" .. string.format("%.1f", r.edit) .. " ms)")
+  local opts = { glyphs = true, surface = true, cell = { w = 13, h = 27 } }
+  local midi = bench.run(64, opts, 3)
+  local score = bench.run(64, opts, 3, { score = true })
+  -- Against the other on the same machine at the same time, so a busy
+  -- machine does not decide it: the edit itself and its paint, against a
+  -- transcribed clip's paint alone.
+  eq(score.edit < midi.edit, true, string.format("score: edit and paint %.1f ms; MIDI: paint after an edit %.1f ms", score.edit, midi.edit))
 end)
