@@ -29,9 +29,14 @@ for _, name in ipairs({
   "undotree",   -- the undo tree, named checkpoints, A/B listening (`,u…`)
   "rpp",        -- opening and writing REAPER projects
   "tutor",      -- the course: `:tutor` starts it
+  "doctor",     -- a guided check of the hardware, with a written report (`:doctor`, `daw doctor`)
 }) do
   daw.ext.load(plugins .. "/" .. name)
 end
+
+-- Plugins that `:doctor` loads on a track of its own and plays a few notes
+-- on, to say whether sound comes out: name fragments, as `:device.add` takes.
+-- daw.opt.doctor_plugins = { "MT-PowerDrumKit", "Ugritone" }
 
 -- Audio. The devices are chosen once from the engine menu (`:audio`) and
 -- remembered for this machine; name them here instead to pin them.
@@ -48,8 +53,10 @@ end
 -- daw.opt.grid = 1              -- beats the cursor and clips snap to
 -- daw.opt.note_grid = 0.25      -- beats notes snap to (a sixteenth)
 -- daw.opt.autosave = 60         -- seconds between safety copies; 0 for none
--- daw.opt.threads = 0           -- audio threads; 0 leaves it to the machine
+-- daw.opt.reopen_last = false   -- start with the project that was open last, when none is named
+-- daw.opt.threads = 0          -- audio threads; 0 leaves it to the machine
 -- daw.opt.keybar = true         -- the line of keys at the bottom of the terminal
+-- daw.opt.native_dialogs = true -- the window opens, saves and imports with the desktop's file dialog; false for the kernel's list
 -- daw.opt.editor_on_add = true  -- a plugin added by hand (picker, `:device.add`, the window) opens its own window
 
 -- A colour of your own for anything on screen:

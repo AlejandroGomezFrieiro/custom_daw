@@ -389,6 +389,18 @@ function M.render(buf)
   if M.draw_popup then M.draw_popup(buf) end
 end
 
+--- Draw one view by itself on a buffer of its own, as a window of a
+--- graphical frontend shows it (see `daw.canvas.open_view`). Curves are
+--- drawn without braille, which the window's font does not have.
+function M.render_view(name, buf)
+  local view = M.views[name]
+  buf:fill(0, 0, buf.width, buf.height, " ", backgrounds[name] or "Normal")
+  if not view then return end
+  daw.draw.window = true
+  draw(view, buf, { focused = M.focused == name, x = 0, y = 0, window = true })
+  daw.draw.window = false
+end
+
 --- List the keys that can follow a half-typed command, in a box along the
 --- bottom of the screen.
 function M.draw_hints(buf)
@@ -424,7 +436,13 @@ function M.open(name, opts)
 end
 
 function M.close()
-  if not M.float then return end
+  if not M.float then
+    -- A view drawn in a window of its own (`daw.canvas.open_view`) closes
+    -- with it, as it would have closed floating.
+    local window = daw.canvas.open_views[M.focused]
+    if window and window.cells then daw.canvas.close(M.focused) end
+    return
+  end
   M.focused = M.float.back
   M.float = nil
   api.ui_redraw()
@@ -479,7 +497,9 @@ local truecolor = nil
 local function set(name, def)
   defined[name] = def
   if truecolor == nil then truecolor = daw.draw.truecolor() end
-  set_raw(name, daw.draw.term_def(def, truecolor))
+  -- A window draws the group as defined, whatever the terminal shows.
+  local shown = daw.draw.term_def(def, truecolor)
+  set_raw(name, shown, shown ~= def and def or nil)
 end
 -- Groups set straight through the kernel's call get the same treatment.
 api.hl_set = set
@@ -501,7 +521,7 @@ end
 --- Set every group again: after `daw.opt.termcolors` has changed.
 function M.recolour()
   truecolor = daw.draw.truecolor()
-  for name, def in pairs(defined) do set_raw(name, daw.draw.term_def(def, truecolor)) end
+  for name, def in pairs(defined) do set(name, def) end
   api.ui_redraw()
 end
 

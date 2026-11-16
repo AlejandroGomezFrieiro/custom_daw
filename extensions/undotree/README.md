@@ -39,7 +39,13 @@ undo and redo, `-` `+` step through time like `g-` `g+`, `a` marks the
 selected state A, `b` switches A/B, `n` names the selected state, `c` writes a
 checkpoint of the current state, `d` switches the right-hand side between
 what the selected state's step changed and what differs from it to the
-current state, `Space` plays and stops, `q` or `Esc` closes.
+current state, `Space` plays and stops, `q` or `Esc` closes. A click on a row
+selects it, and the wheel moves the selection.
+
+In the graphical frontend the tree opens in a window of its own (More ▸ Undo
+tree, `:view.window undotree`, or "Open in a window" on `<leader>uu`), drawn
+as in the terminal and taking the same keys and clicks; a name asked for
+with `n` or `c` is typed on its last line.
 
 The window draws newest at the top. `@` is the current state, `*` any other;
 `│` carries a branch down to where it grew from, and `─┘` joins it there.

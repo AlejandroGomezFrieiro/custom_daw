@@ -4,6 +4,7 @@ local api = daw.api
 local undotree = require("undotree")
 
 local view = {
+  title = "Undo tree",
   modal = true,
   sel = 1,          -- the selected row
   scroll = 0,

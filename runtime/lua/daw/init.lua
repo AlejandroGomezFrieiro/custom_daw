@@ -145,6 +145,7 @@ function K.startup()
   daw.media = require("daw.media")
   require("daw.render")
   daw.markers = require("daw.markers")
+  daw.recent = require("daw.recent")
   daw.learn = require("daw.learn")
   daw.autosave = require("daw.autosave")
   daw.loading = require("daw.loading")
@@ -203,6 +204,9 @@ local function settle()
       if event.name == "changed" then
         for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
         api.ui_redraw()
+      elseif event.name == "transport.record" then
+        -- What starting a take has to say (a punch range already passed).
+        for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
       end
       daw.emit(event.name, event.payload)
     end
@@ -224,6 +228,11 @@ end
 
 function K.render(width, height)
   daw.limit.guard("drawing the screen", daw.ui.render, daw.ui.Buf.root(width, height))
+end
+
+--- One view drawn by itself, for a window: see `daw.api.ui_view_snapshot`.
+function K.render_view(name, width, height)
+  daw.limit.guard("drawing the view " .. name, daw.ui.render_view, name, daw.ui.Buf.root(width, height))
 end
 
 --- Calls from the control socket: `eval`, `cmd`, `keys`, or any `daw.api` function.
