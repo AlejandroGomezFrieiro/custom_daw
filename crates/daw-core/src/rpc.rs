@@ -19,7 +19,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
@@ -30,16 +30,39 @@ use serde_json::{Value, json};
 
 use crate::kernel::KernelMsg;
 
+/// How much may wait to be written to one connection. One that does not
+/// read what it asked for (a program that stopped, a network that went
+/// away without saying) is closed when this much is waiting for it,
+/// instead of being kept for in memory without end.
+const MAX_WAITING: usize = 32 << 20;
+
+/// The longest request listened to: from a connection that has shown the
+/// token (or needs none), and from one that has not yet.
+const MAX_REQUEST: u64 = 64 << 20;
+const MAX_HELLO: u64 = 4096;
+
+/// How long a network connection has to show the token.
+const HELLO_TIME: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// One connection's way out.
+struct Out {
+    lines: Sender<String>,
+    /// The bytes queued and not yet written.
+    waiting: Arc<AtomicUsize>,
+    /// Ends the connection from this side.
+    close: Box<dyn Fn() + Send>,
+}
+
 /// Every open connection's way out. Cheap to clone; the kernel keeps one to
 /// push events with.
 #[derive(Clone, Default)]
 pub struct Clients {
-    out: Arc<Mutex<HashMap<ClientId, Sender<String>>>>,
+    out: Arc<Mutex<HashMap<ClientId, Out>>>,
     next: Arc<AtomicU64>,
 }
 
 impl Clients {
-    fn add(&self, out: Sender<String>) -> ClientId {
+    fn add(&self, out: Out) -> ClientId {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         self.out.lock().unwrap().insert(id, out);
         id
@@ -49,10 +72,20 @@ impl Clients {
         self.out.lock().unwrap().remove(&id);
     }
 
-    /// Queue a line for a connection. False when it is gone.
+    /// Queue a line for a connection. False when it is gone, or when it has
+    /// let too much wait and is closed for it.
     pub fn send(&self, id: ClientId, line: String) -> bool {
-        let out = self.out.lock().unwrap();
-        out.get(&id).is_some_and(|out| out.send(line).is_ok())
+        let mut all = self.out.lock().unwrap();
+        let Some(out) = all.get(&id) else {
+            return false;
+        };
+        let waiting = out.waiting.fetch_add(line.len(), Ordering::Relaxed) + line.len();
+        if waiting > MAX_WAITING || out.lines.send(line).is_err() {
+            (out.close)();
+            all.remove(&id);
+            return false;
+        }
+        true
     }
 
     /// Push an event to a connection. False when it is gone.
@@ -105,8 +138,11 @@ pub fn serve(path: &Path, kernel: Sender<KernelMsg>, clients: Clients) -> Result
         for stream in listener.incoming().flatten() {
             let (kernel, clients) = (kernel.clone(), clients.clone());
             std::thread::spawn(move || {
-                if let Ok(writer) = stream.try_clone() {
-                    connection(stream, writer, kernel, clients, None);
+                if let (Ok(writer), Ok(closer)) = (stream.try_clone(), stream.try_clone()) {
+                    let close = move || {
+                        let _ = closer.shutdown(std::net::Shutdown::Both);
+                    };
+                    connection(stream, writer, kernel, clients, None, close, || {});
                 }
             });
         }
@@ -137,8 +173,18 @@ pub fn serve_tcp(
             std::thread::spawn(move || {
                 // Small messages both ways: do not wait to fill a packet.
                 let _ = stream.set_nodelay(true);
-                if let Ok(writer) = stream.try_clone() {
-                    connection(stream, writer, kernel, clients, Some(token));
+                // Whoever connects and says nothing does not keep a thread.
+                let _ = stream.set_read_timeout(Some(HELLO_TIME));
+                if let (Ok(writer), Ok(closer), Ok(known)) =
+                    (stream.try_clone(), stream.try_clone(), stream.try_clone())
+                {
+                    let close = move || {
+                        let _ = closer.shutdown(std::net::Shutdown::Both);
+                    };
+                    let trusted = move || {
+                        let _ = known.set_read_timeout(None);
+                    };
+                    connection(stream, writer, kernel, clients, Some(token), close, trusted);
                 }
             });
         }
@@ -223,39 +269,66 @@ fn connection(
     kernel: Sender<KernelMsg>,
     clients: Clients,
     token: Option<String>,
+    close: impl Fn() + Send + 'static,
+    on_trusted: impl FnOnce(),
 ) {
-    let (out, queue): (Sender<String>, Receiver<String>) = channel();
+    let (lines, queue): (Sender<String>, Receiver<String>) = channel();
+    let waiting = Arc::new(AtomicUsize::new(0));
+    let written = waiting.clone();
     std::thread::spawn(move || {
         for line in queue {
-            if writer.write_all(line.as_bytes()).is_err()
-                || writer.write_all(b"\n").is_err()
-                || writer.flush().is_err()
-            {
+            let sent = writer.write_all(line.as_bytes()).is_ok()
+                && writer.write_all(b"\n").is_ok()
+                && writer.flush().is_ok();
+            written.fetch_sub(line.len(), Ordering::Relaxed);
+            if !sent {
                 break;
             }
         }
     });
-    let id = clients.add(out.clone());
+    let id = clients.add(Out {
+        lines,
+        waiting,
+        close: Box::new(close),
+    });
+    // Everything for this connection goes through its queue, counted.
+    let out = {
+        let clients = clients.clone();
+        move |line: String| clients.send(id, line)
+    };
+    let mut on_trusted = Some(on_trusted);
     // Over the network, nothing is listened to before the token is shown.
     let challenge = token.as_ref().map(|_| nonce());
     let mut trusted = token.is_none();
     if let Some(nonce) = &challenge {
-        let _ = out.send(
-            json!({ "event": "hello", "payload": { "version": VERSION, "nonce": nonce } })
-                .to_string(),
-        );
+        out(json!({ "event": "hello", "payload": { "version": VERSION, "nonce": nonce } })
+            .to_string());
     }
-    for line in BufReader::new(stream).lines() {
-        let Ok(line) = line else { break };
+    let mut reader = BufReader::new(stream);
+    loop {
+        // One line, and no more of it than a request may be long: what
+        // has not shown the token gets to say very little.
+        let limit = if trusted { MAX_REQUEST } else { MAX_HELLO };
+        let mut bytes = Vec::new();
+        match (&mut reader).take(limit + 1).read_until(b'\n', &mut bytes) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        if bytes.last() != Some(&b'\n') && bytes.len() as u64 > limit {
+            out(json!({ "id": null, "error": "the request is too long" }).to_string());
+            break;
+        }
+        let line = String::from_utf8_lossy(&bytes);
         if line.trim().is_empty() {
             continue;
         }
         let request = match serde_json::from_str::<Value>(&line) {
             Ok(request) => request,
             Err(err) => {
-                let _ = out.send(
-                    json!({ "id": null, "error": format!("bad request: {err}") }).to_string(),
-                );
+                out(json!({ "id": null, "error": format!("bad request: {err}") }).to_string());
+                if !trusted {
+                    break;
+                }
                 continue;
             }
         };
@@ -269,6 +342,9 @@ fn connection(
                 trusted = shown.is_some_and(|shown| same(shown, &proof(token, nonce)));
             }
             if trusted {
+                if let Some(on_trusted) = on_trusted.take() {
+                    on_trusted();
+                }
                 Ok(json!({ "version": VERSION, "client": id }))
             } else {
                 Err("the token is not the right one".to_string())
@@ -294,7 +370,7 @@ fn connection(
             Ok(result) => json!({ "id": request_id, "result": result }),
             Err(error) => json!({ "id": request_id, "error": error }),
         };
-        if out.send(response.to_string()).is_err() {
+        if !out(response.to_string()) {
             break;
         }
         if !trusted {

@@ -233,3 +233,50 @@ fn a_terminal_attaches_to_a_kernel_without_one_types_and_leaves() {
     assert_eq!(c.call("eval", json!(["return daw.api.ui_attached()"])).unwrap(), json!(false));
     assert_eq!(c.call("eval", json!(["return #daw.tracks()"])).unwrap(), json!(2));
 }
+
+#[test]
+fn connections_that_misbehave_are_closed_and_the_kernel_goes_on() {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::os::unix::net::UnixStream;
+    let instance = start("rude");
+    let mut good = Connection::unix(&instance.socket).unwrap();
+    let open = |good: &mut Connection| {
+        good.call("eval", json!(["return #daw.api.rpc_clients()"])).unwrap().as_u64().unwrap()
+    };
+    assert_eq!(open(&mut good), 1);
+
+    // One that says more than a greeting may hold before showing the token.
+    let mut long = TcpStream::connect(&instance.address).unwrap();
+    long.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+    // (Just past the limit: all of it is taken in, so the answer is not
+    // lost to a connection reset.)
+    let _ = long.write_all(&vec![b'x'; 4097]);
+    let mut said = String::new();
+    let _ = long.read_to_string(&mut said);
+    assert!(said.contains("too long"), "it is told why and closed: {said}");
+
+    // One that connects and says nothing is not kept.
+    let mut silent = TcpStream::connect(&instance.address).unwrap();
+    silent.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    let started = Instant::now();
+    let mut said = String::new();
+    let _ = silent.read_to_string(&mut said);
+    assert!(said.contains("nonce"), "it was greeted: {said}");
+    assert!(started.elapsed() < Duration::from_secs(25), "and then let go");
+
+    // One that asks for a great deal and reads none of it.
+    let mut deaf = UnixStream::connect(&instance.socket).unwrap();
+    for _ in 0..80 {
+        let request = json!({ "id": 1, "method": "eval", "params": ["return string.rep('x', 2 ^ 20)"] });
+        if writeln!(deaf, "{request}").is_err() {
+            break;
+        }
+    }
+    let until = Instant::now() + Duration::from_secs(30);
+    while open(&mut good) != 1 && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(open(&mut good), 1, "only the well-behaved connection is left");
+    assert_eq!(good.call("eval", json!(["return 2 + 2"])).unwrap(), json!(4));
+}

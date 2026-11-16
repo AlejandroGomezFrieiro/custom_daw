@@ -85,6 +85,10 @@ A wrong proof is answered with an error and the connection is closed. On
 the Unix socket `hello` is optional and only tells you the version and
 your connection's number.
 
+A network connection has ten seconds and 4096 bytes to show the proof.
+Any connection is closed when it lets 32 MB wait unread, and a request
+may be 64 MB long.
+
 ## Events
 
 What the kernel pushes has no `id`:
