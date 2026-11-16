@@ -26,6 +26,7 @@ cargo run -- -l examples/demo.lua demo.wav           # no UI: build the song and
 cargo run -p daw-gui -- -e 'dofile("examples/demo.lua")'   # the graphical frontend
 cargo test                                           # the end-to-end suite
 cargo run -- --output UR22 --input UR22              # open these audio devices (a part of the name is enough)
+cargo run -- doctor                                  # check the audio, plugins and environment, and print a report
 ```
 
 The audio devices are the system's default output and input until others are
@@ -602,6 +603,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/undotree` | a window on the undo tree, named checkpoints, A/B listening |
 | `extensions/rpp` | opening and writing REAPER projects |
 | `extensions/tutor` | a course for first-time users, inside the program |
+| `extensions/doctor` | a guided check of the real hardware (audio, MIDI, recording, plugins), with a written report: `:doctor`, `daw doctor` |
 | `crates/daw-mcp` | a Model Context Protocol server in front of the control socket |
 
 Each has a README of its own. Where a plugin needed something only the core
@@ -663,6 +665,13 @@ daw ctl eval 'daw.api.ui_snapshot(100, 30)'   # the screen as text
 ```
 
 One JSON object per line: `{"id":1,"method":"eval","params":["..."]}`.
+
+`daw doctor` is a script of its own kind: it runs the checks of
+[extensions/doctor](extensions/doctor) that need nobody, with the sound device
+open (unlike other scripts, which get the null backend unless told), and prints
+the report. It takes the program's audio options, `--seconds`, `--plugin` and
+`--only`, and finds the extension in the source tree beside the binary or in
+`$DAW_HOME`.
 
 ## How it is put together
 
@@ -1277,7 +1286,7 @@ clip:set_controls({
   { start = 4, type = "program", program = 12, bank = 258 },
 })
 track:midi({ type = "cc", number = 1, value = 0.3 })           -- now, to the track's devices
-daw.on("midi.in", function(e) end)       -- everything that arrives at a port, for scripts
+daw.on("midi.in", function(e) end)       -- everything that arrives at a port, for scripts; `e.port` names the port
 daw.midi.ump({ type = "cc", number = 74, value = 1 })   -- as a MIDI 2.0 packet: two words
 daw.midi.inject_ump({ 0x40903c00, 0xc0000000 })         -- and a packet, as if from a port
 ```
@@ -1473,8 +1482,13 @@ the project, as the project does, so it opens with them.
 
 **For scripts.** `daw.wait(ms)` lets time pass with timers firing and events
 delivered, which `daw.api.sleep` does not; a script run with `-l` is otherwise
-one long turn. `tests/*.lua` and `extensions/*/tests.lua` are run by the
-suite, each given the suite's helpers.
+one long turn. `daw.api.project_shelve()` puts the open project aside whole
+(undo tree, playhead, changed flag) and opens an empty one to work in;
+`daw.api.project_unshelve()` closes that and brings the first back exactly as
+it was, and `daw.api.project_shelved()` says whether one is aside. It is for
+tools that need tracks of their own without touching the person's work (the
+[doctor](extensions/doctor) does). `tests/*.lua` and `extensions/*/tests.lua`
+are run by the suite, each given the suite's helpers.
 
 ## Takes
 
