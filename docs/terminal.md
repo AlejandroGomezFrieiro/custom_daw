@@ -21,6 +21,8 @@ ordinary mapping made in `runtime/lua/daw/defaults.lua` with the calls under
 | `9\|`, `:9` | bar 9 | |
 | `/name`, `n` `N`, `*` | find a clip or track by name; next, previous; the next clip named like this one | find a note by pitch name (`/c4`) |
 | `ma`, `'a`, `''` | set mark `a`; go to it; go back to where the last jump came from | the same |
+| `:delmarks a b c-e`, `:delmarks!` | remove marks, as in Vim (`:delm` for short; Tab completes the marks set); with the bang every lowercase mark | the same |
+| `g'`, `g"`, `gx` | put a marker (a name on the ruler) at the cursor; choose one from a list; remove the one at the cursor, or right click its name on the ruler | |
 | `Ctrl-o` `Ctrl-i` | back and forward through the places jumped from | the same |
 | `gP` | to the playhead | |
 

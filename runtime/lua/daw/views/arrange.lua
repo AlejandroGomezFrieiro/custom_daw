@@ -815,6 +815,12 @@ function view:on_mouse(event)
   elseif event.kind == "scroll_left" or event.kind == "scroll_right" then
     self.scroll = math.max(0, self.scroll + (event.kind == "scroll_right" and bar or -bar))
     return api.ui_redraw()
+  elseif event.kind == "down" and event.button == "right" then
+    if event.y == g.layout.ruler_rows - 1 and event.x >= g.hw then
+      local marker = daw.markers.at_column(event.x - g.hw, self.scroll, g.zoom)
+      if marker then daw.markers.menu(marker) end
+    end
+    return
   elseif event.kind ~= "down" or event.button ~= "left" then
     return
   end

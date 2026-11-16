@@ -66,6 +66,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `]t` `[t` | the clip's next take, the one before | |
 | `zt` | show or hide the track's take lanes | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
+| `gx` | remove the marker or region at the cursor; a right click on its name in the ruler offers to remove or rename it | |
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
 
@@ -119,6 +120,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `qa` … `q` | record keys into register a |
 | `@a` `@@` `@:` | play them, the last macro again, the last command line |
 | `ma` `'a` `''` | set mark a, go to it, back to before the jump |
+| `:delmarks a-d` `:delmarks!` | remove marks (letters, ranges); all lowercase ones |
 | `<C-o>` `<C-i>` | back, forward through jumps |
 
 ## Play

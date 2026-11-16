@@ -337,6 +337,30 @@ daw.command("render.regions", function(ctx)
   daw.notify(string.format("rendering %d region%s into %s", #files, #files == 1 and "" or "s", dir))
 end, { desc = "Render every region to a file of its own: `render.regions out`, `render.regions out format=flac bits=24`, `render.regions out format=mp3 quality=best`" })
 
+--- The marker or region drawn at a column of the timeline (as the arrange
+--- view draws them: a name from where it starts, a region's band too), for
+--- the terminal's pointer.
+function M.at_column(x, scroll, zoom)
+  local found
+  for _, m in ipairs(M.list()) do
+    local from = math.floor((m.beat - scroll) * zoom + 0.5)
+    local to = from + api.str_width((m.length and "▏" or "▼") .. M.label(m))
+    if m.length then to = math.max(to, math.floor((m.beat + m.length - scroll) * zoom + 0.5)) end
+    if x >= from and x < to then found = m end
+  end
+  return found
+end
+
+--- What a right click on a marker offers, as a short list.
+function M.menu(m)
+  local kind = m.length and "region" or "marker"
+  daw.pick({
+    title = "“" .. M.label(m) .. "”",
+    items = { { text = "Remove " .. kind, run = "remove" }, { text = "Rename " .. kind, run = "rename" } },
+    on_choose = function(item) daw.cmd("marker." .. item.run, { id = m.id }) end,
+  })
+end
+
 -- On the arrange view's ruler ------------------------------------------------------
 
 local function draw(view, layer)
