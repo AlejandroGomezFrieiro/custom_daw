@@ -1376,11 +1376,11 @@ function M.setup()
       if win then return M.show_in(win, view, buf and not buf.single and buf.id or nil) end
     end
     return daw.commands.run("edit", ctx.args, ctx)
-  end, { desc = "Show a buffer in this window: `e roll`; or open a project: `e song.json`",
+  end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song.json`, `e song.mid`, `e take.wav`",
     complete = function(text, info)
       if info.index > 1 then return {} end
       local out = M.buffer_names()
-      for _, c in ipairs(daw.commands.completers.projects(text)) do out[#out + 1] = c end
+      for _, c in ipairs(daw.commands.completers.openable(text)) do out[#out + 1] = c end
       return out
     end })
 

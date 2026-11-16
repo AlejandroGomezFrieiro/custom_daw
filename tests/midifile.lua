@@ -1,0 +1,362 @@
+-- Tests of Standard MIDI Files: reading them (daw.midifile), opening one as
+-- a project, bringing one into a project, and writing one. The files are
+-- made here, byte by byte. Loaded by tests/suite.lua with its helpers.
+local T = ...
+local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
+local api = daw.api
+local smf = daw.midifile
+
+-- The tabs and windows the suite started with: `:e roll` and the piano roll
+-- opened here change them, and the tests after these expect them as they were.
+local initial = daw.layout.capture()
+
+local function start()
+  fresh()
+  api.engine_restart({ backend = "null" })
+  daw.keymap.feed("<Esc><Esc>")
+  while daw.ui.float do daw.ui.close() end
+  daw.layout.restore(initial)
+  daw.ui.focus("arrange")
+  T.after(function()
+    daw.keymap.feed("<Esc><Esc>")
+    while daw.ui.float do daw.ui.close() end
+    daw.layout.restore(initial)
+    daw.ui.focus("arrange")
+  end)
+end
+
+-- Bytes ------------------------------------------------------------------------
+
+local function vlq(n)
+  local bytes = { string.char(n % 128) }
+  n = math.floor(n / 128)
+  while n > 0 do
+    table.insert(bytes, 1, string.char(128 + n % 128))
+    n = math.floor(n / 128)
+  end
+  return table.concat(bytes)
+end
+local function u16(n) return string.char(math.floor(n / 256) % 256, n % 256) end
+local function u32(n) return u16(math.floor(n / 65536)) .. u16(n % 65536) end
+local function chunk(id, body) return id .. u32(#body) .. body end
+local function header(format, ntracks, division) return chunk("MThd", u16(format) .. u16(ntracks) .. u16(division)) end
+--- An event: its delta time, then its bytes (a status byte left out is running status).
+local function ev(delta, ...) return vlq(delta) .. string.char(...) end
+local function meta(delta, kind, body) return vlq(delta) .. "\255" .. string.char(kind) .. vlq(#body) .. body end
+local function tempo(delta, bpm)
+  local us = math.floor(60000000 / bpm + 0.5)
+  return meta(delta, 0x51, string.char(math.floor(us / 65536), math.floor(us / 256) % 256, us % 256))
+end
+local function track(...) return chunk("MTrk", table.concat({ ... }) .. "\0\255\47\0") end
+
+local folder = 0
+local function file(name, bytes)
+  folder = folder + 1
+  local dir = T.scratch .. "/midifile" .. folder
+  os.execute("mkdir -p '" .. dir .. "'")
+  T.write_file(dir .. "/" .. name, bytes)
+  return dir .. "/" .. name
+end
+
+--- Format 0 at 96 ticks a beat: a melody on channel 1 and drums on channel
+--- 10, in one track, with running status, controllers, a tempo change, a
+--- time signature, a marker, a lyric and a sysex.
+local function format0()
+  return header(0, 1, 96) .. track(
+    meta(0, 0x03, "Demo song"),
+    tempo(0, 100),
+    meta(0, 0x58, string.char(3, 2, 24, 8)),          -- 3/4
+    meta(0, 0x06, "Verse"),
+    ev(0, 0xC0, 5),                                    -- program 5 on channel 1
+    ev(0, 0xB0, 7, 100),                               -- volume
+    meta(0, 0x05, "la"),
+    ev(0, 0x90, 60, 100),                              -- C4 on
+    ev(0, 64, 90),                                     -- E4 on, running status
+    ev(0, 0x99, 36, 120),                              -- kick on channel 10
+    ev(48, 0x89, 36, 0),
+    ev(0, 0xE0, 0, 96),                                -- bend up, 0x3000
+    ev(0, 0xD0, 64),                                   -- channel pressure
+    vlq(0) .. "\240\3\65\16\247",                      -- sysex
+    ev(48, 0x80, 60, 0),                               -- C4 off: a beat long
+    ev(0, 0x90, 64, 0),                                -- E4 off by velocity 0
+    tempo(96, 150),                                    -- at beat 2
+    ev(0, 0x90, 67, 80),
+    ev(192, 0x80, 67, 0))                              -- G4: two beats
+end
+
+--- Format 1 at 480 ticks a beat: a conductor track and two named tracks,
+--- one striking a key again before letting it go.
+local function format1()
+  return header(1, 3, 480)
+    .. track(meta(0, 0x03, "Conductor"), tempo(0, 90), meta(0, 0x58, string.char(4, 2, 24, 8)), tempo(1920, 120))
+    .. track(meta(0, 0x03, "Bass"),
+      ev(0, 0x91, 40, 100), ev(240, 0x91, 40, 90),      -- struck again half a beat in
+      ev(240, 0x81, 40, 0), ev(480, 0x81, 40, 0),       -- the first ends at 1, the second at 2
+      ev(0, 0xB1, 1, 64))                               -- mod wheel at beat 2
+    .. track(meta(0, 0x03, "Lead"),
+      ev(1920, 0x92, 72, 110), ev(960, 0x82, 72, 0))    -- bar 2, two beats
+end
+
+local function names()
+  local out = {}
+  for _, t in ipairs(daw.tracks()) do out[#out + 1] = t.name end
+  return table.concat(out, ",")
+end
+
+local function control(list, kind, number)
+  for _, c in ipairs(list) do
+    if c.type == kind and (number == nil or c.number == number) then return c end
+  end
+end
+
+local function screen(w, h) return table.concat(api.ui_snapshot(w or 120, h or 30), "\n") end
+
+-- Reading ----------------------------------------------------------------------
+
+test("a format 0 MIDI file is read with running status, controllers, tempo, metre, markers and lyrics", function()
+  local f = assert(smf.parse(format0()))
+  eq(f.format, 0, "format")
+  eq(f.ppq, 96, "ticks a beat")
+  eq(#f.tracks, 1, "one track")
+  local notes = f.tracks[1].notes
+  eq(#notes, 4, "four notes")
+  eq(notes[2].pitch, 60, "C4 second, after the kick at the same tick")
+  eq(notes[2].length, 96, "C4 is a beat long")
+  eq(notes[3].pitch, 64, "E4 by running status")
+  eq(notes[3].length, 96, "a note-on of velocity 0 ends it")
+  eq(notes[1].channel, 9, "the kick is on channel 10")
+  eq(notes[2].lyric, "la", "the lyric is on the note it starts, not on the drum's")
+  eq(#f.tempos, 2, "two tempos")
+  near(f.tempos[2].bpm, 150, 0.01, "the second tempo")
+  eq(f.tempos[2].tick, 192, "at beat 2")
+  eq(f.signatures[1].num .. "/" .. f.signatures[1].den, "3/4", "the time signature")
+  eq(f.markers[1].text, "Verse", "the marker")
+  eq(f.tracks[1].name, "Demo song", "the track's name")
+  eq(f.skipped.sysex, 1, "the sysex is skipped, and counted")
+  local c = f.tracks[1].controls
+  eq(control(c, "bend").value, 0x3000, "pitch bend in 14 bits")
+  eq(control(c, "program").program, 5, "the program change")
+  eq(control(c, "cc", 7).value, 100, "the volume controller")
+end)
+
+test("a format 1 MIDI file pairs a key struck again first on, first off", function()
+  local f = assert(smf.parse(format1()))
+  eq(#f.tracks, 3, "three tracks")
+  local bass = f.tracks[2].notes
+  eq(#bass, 2, "two notes on one key")
+  eq(bass[1].length, 480, "the first ends at the first note-off")
+  eq(bass[2].tick .. "+" .. bass[2].length, "240+720", "the second at the second")
+  eq(#f.tempos, 2, "the conductor's tempos")
+end)
+
+test("format 2, frame timing, a cut-off file and something not MIDI are read or refused in words", function()
+  local f = assert(smf.parse(header(2, 2, 96) .. track(ev(0, 0x90, 60, 100), ev(96, 0x80, 60, 0))
+    .. track(ev(0, 0x90, 62, 100), ev(96, 0x80, 62, 0))))
+  eq(f.tracks[2].notes[1].tick, 96, "format 2's tracks follow one another")
+  -- 25 frames a second, 40 ticks a frame: a thousand ticks a second.
+  f = assert(smf.parse(header(0, 1, 0xE728) .. track(tempo(0, 60), ev(0, 0x90, 60, 100), ev(1000, 0x80, 60, 0))))
+  near(f.tracks[1].notes[1].length / f.ppq, 2, 1e-9, "a second of frames is two beats at 120")
+  near(f.tempos[1].bpm, 120, 1e-9, "at 120")
+  local whole = format1()
+  f = assert(smf.parse(whole:sub(1, #whole - 7)))
+  eq(f.skipped["a track cut short"] ~= nil or f.skipped["notes without an end (held to the end)"] ~= nil, true, "a cut-off file reads what is there")
+  local none, why = smf.parse("RIFF....WAVEfmt ")
+  eq(none, nil, "a wav is not MIDI")
+  eq(why, "not a MIDI file", "and says so")
+end)
+
+test("a MIDI file written and read again keeps its notes, controls, tempo map and markers", function()
+  local f = assert(smf.parse(format0()))
+  local again = assert(smf.parse(smf.encode({ format = 1, ppq = f.ppq, tempos = f.tempos, signatures = f.signatures,
+    markers = f.markers, tracks = { {}, f.tracks[1] } })))
+  eq(#again.tracks[2].notes, 4, "the notes")
+  for i, n in ipairs(f.tracks[1].notes) do
+    local m = again.tracks[2].notes[i]
+    eq(m.tick .. ":" .. m.length .. ":" .. m.pitch .. ":" .. m.velocity .. ":" .. m.channel .. ":" .. tostring(m.lyric),
+      n.tick .. ":" .. n.length .. ":" .. n.pitch .. ":" .. n.velocity .. ":" .. n.channel .. ":" .. tostring(n.lyric), "note " .. i)
+  end
+  eq(#again.tracks[2].controls, #f.tracks[1].controls, "the controls")
+  eq(#again.tempos, 2, "the tempos")
+  eq(again.signatures[1].num, 3, "the metre")
+  eq(again.markers[1].text, "Verse", "the marker")
+end)
+
+-- Opening ----------------------------------------------------------------------
+
+test(":open with a MIDI file makes a project of it: a track a channel, clips, controls, tempo map, nothing to undo", function()
+  start()
+  daw.add_track({ name = "Old" })
+  api.undo_checkpoint()
+  local path = file("demo.mid", format0())
+  T.keys(":open " .. path .. "<CR>")
+  eq(names(), "Channel 1,Channel 10", "a format 0 file is split by channel")
+  local p = api.project_get()
+  eq(p.path, nil, "the project has no file: saving asks for one")
+  eq(p.name, "demo", "it is named after the file")
+  eq(p.modified, false, "nothing is changed yet")
+  eq(daw.undo(), false, "and nothing is to be undone")
+  local melody, drums = daw.tracks()[1], daw.tracks()[2]
+  eq(#melody:devices(), 0, "a melody track has no instrument, as a new track has none")
+  eq(drums:devices()[1].kind, "drums", "channel 10 plays the drum kit")
+  local clip = melody:clips()[1]
+  eq(clip.start, 0, "the clip starts at the bar of its first note")
+  near(clip.length, 6, 1e-9, "and spans whole 3/4 bars")
+  local notes = clip:notes()
+  eq(#notes, 3, "the melody's notes")
+  near(notes[3].start, 2, 1e-9, "G4 at beat 2")
+  near(notes[3].length, 2, 1e-9, "for two beats")
+  eq(notes[1].meta.lyric, "la", "the lyric stays with its note")
+  local controls = clip:controls()
+  near(control(controls, "cc", 7).value, 100 / 127, 1e-9, "the volume controller as a clip control")
+  near(control(controls, "bend").value, 0.5, 1e-9, "the pitch bend, -1 to 1")
+  near(control(controls, "pressure").value, 64 / 127, 1e-9, "the channel pressure")
+  eq(control(controls, "program").program, 5, "the program change")
+  near(daw.tempo.at(0), 100, 0.01, "the first tempo")
+  near(daw.tempo.at(3), 150, 0.01, "the tempo change")
+  eq(table.concat({ daw.tempo.signature_at(0) }, "/"), "3/4", "the time signature")
+  eq(daw.markers.list()[1].name, "Verse", "the marker")
+  eq(daw.ui.message.text:find("4 notes on 2 tracks", 1, true) ~= nil, true, "the status line says what came: " .. daw.ui.message.text)
+  eq(daw.ui.message.text:find("1 sysex", 1, true) ~= nil, true, "and what was left out")
+end)
+
+test("a format 1 file opens with a track each, named, and the arrange view and piano roll show the notes", function()
+  start()
+  local path = file("song.mid", format1())
+  T.keys(":e " .. path .. "<CR>")
+  eq(names(), "Bass,Lead", "tracks with notes, by their names; the conductor has none")
+  local lead = daw.tracks()[2]:clips()[1]
+  eq(lead.start, 4, "the lead's clip starts at bar 2")
+  near(lead:notes()[1].start, 0, 1e-9, "its note at the clip's start")
+  near(daw.tempo.at(5), 120, 0.01, "the conductor's tempo change")
+  local bass = daw.tracks()[1]:clips()[1]
+  near(control(bass:controls(), "cc", 1).value, 64 / 127, 1e-9, "the mod wheel")
+  local arrange = screen()
+  eq(arrange:find("Bass", 1, true) ~= nil and arrange:find("Lead", 1, true) ~= nil, true, "the arrange view shows the tracks:\n" .. arrange)
+  daw.cursor.set_track(daw.tracks()[1])
+  daw.cursor.beat = 0
+  daw.ui.views.pianoroll:edit(bass)
+  daw.ui.focus("pianoroll")
+  local roll = screen()
+  eq(roll:find("E2", 1, true) ~= nil, true, "the piano roll shows the bass notes' key:\n" .. roll)
+end)
+
+test(":e names a buffer before a file, and saving over a MIDI file is refused", function()
+  start()
+  T.keys(":e roll<CR>")
+  eq(daw.ui.focused, "pianoroll", "a buffer's name still shows the buffer")
+  daw.ui.focus("arrange")
+  T.keys(":w " .. T.scratch .. "/x.mid<CR>")
+  eq(io.open(T.scratch .. "/x.mid") == nil, true, "nothing written")
+  eq(daw.ui.message.text:find(":export", 1, true) ~= nil, true, "it points to :export")
+end)
+
+test("a MIDI file that will not read leaves the project alone", function()
+  start()
+  daw.add_track({ name = "Keep" })
+  api.undo_checkpoint()
+  T.keys(":open " .. file("bad.mid", "not midi at all") .. "<CR>")
+  eq(names(), "Keep", "the project is as it was")
+  eq(daw.ui.message.text:find("not a MIDI file", 1, true) ~= nil, true, "and says why")
+end)
+
+-- Importing --------------------------------------------------------------------
+
+test(":import brings a MIDI file's tracks in at the cursor in one undo step, leaving the tempo map", function()
+  start()
+  daw.project.tempo = 128
+  daw.add_track({ name = "Drums" })
+  daw.add_track({ name = "Last" })
+  api.undo_checkpoint()
+  daw.cursor.set_track(daw.tracks()[1])
+  daw.cursor.beat = 8
+  T.keys(":import " .. file("in.mid", format1()) .. "<CR>")
+  eq(names(), "Drums,Bass,Lead,Last", "new tracks below the cursor's")
+  eq(daw.tracks()[2]:clips()[1].start, 8, "the file's start at the cursor")
+  eq(daw.tracks()[3]:clips()[1].start, 12, "and its bars after it")
+  near(daw.tempo.at(20), 128, 1e-9, "the tempo map is not the file's")
+  eq(daw.undo(), true, "undo")
+  eq(names(), "Drums,Last", "takes the whole import back in one step")
+end)
+
+test(":import tempo=yes takes the file's tempo map from the cursor on, and clip.import makes one clip", function()
+  start()
+  daw.project.tempo = 128
+  daw.add_track({ name = "A" })
+  daw.cursor.set_track(daw.tracks()[1])
+  daw.cursor.beat = 4
+  api.undo_checkpoint()
+  T.keys(":import " .. file("t.mid", format1()) .. " tempo=yes<CR>")
+  near(daw.tempo.at(0), 128, 1e-9, "the project's before the cursor")
+  near(daw.tempo.at(4), 90, 0.01, "the file's from it")
+  near(daw.tempo.at(9), 120, 0.01, "and its change")
+  daw.cursor.set_track(daw.tracks()[1])
+  daw.cursor.beat = 32
+  local clip = daw.cmd("clip.import", { file("riff.mid", format1()) })
+  eq(clip:track().name, "A", "on the cursor's track")
+  eq(#clip:notes(), 3, "every note of the file in one clip")
+  eq(clip.name, "riff", "named after the file")
+end)
+
+test("import completes and lists MIDI files beside sound files, and a dropped MIDI file is imported", function()
+  start()
+  local path = file("drop.mid", format1())
+  local dir = path:match("^(.*)/")
+  local found = false
+  for _, c in ipairs(daw.commands.complete("import " .. dir .. "/dr")) do
+    if c.text:find("drop.mid", 1, true) then found = true end
+  end
+  eq(found, true, "import offers the MIDI file")
+  found = false
+  for _, c in ipairs(daw.commands.complete("e " .. dir .. "/dr")) do
+    if c.text:find("drop.mid", 1, true) then found = true end
+  end
+  eq(found, true, ":e offers it too")
+  daw.state.pick_dir = dir
+  T.keys(":import<CR>")
+  eq(daw.ui.float ~= nil, true, "the list is open")
+  eq(screen():find("drop.mid", 1, true) ~= nil, true, "and shows the MIDI file")
+  daw.keymap.feed("<Esc>")
+  while daw.ui.float do daw.ui.close() end
+  local out = daw.frontend.act.drop({ path }, nil, 0)
+  eq(#out.clips, 2, "the dropped file's clips")
+  eq(names(), "Bass,Lead", "on tracks of their own")
+end)
+
+-- Writing ----------------------------------------------------------------------
+
+test(":export writes the project as a format 1 MIDI file with its tempo map, and a clip alone", function()
+  start()
+  daw.project.tempo = 100
+  daw.tempo.set_signature(1, 6, 8)
+  daw.tempo.set(6, 140)
+  local t = daw.add_track({ name = "Keys" })
+  t:add_clip({ start = 3, length = 6, notes = { { pitch = 60, start = 0, length = 1, velocity = 90 }, { pitch = 64, start = 2, length = 0.5 } },
+    controls = { { start = 1, type = "cc", number = 64, value = 1 } } })
+  local d = daw.add_track({ name = "Beat" })
+  d:add_device("drums")
+  d:add_clip({ start = 0, length = 3, notes = { { pitch = 36, start = 0, length = 0.25 } } })
+  daw.markers.add(3, "In")
+  local path = T.scratch .. "/export.mid"
+  T.keys(":export " .. path .. "<CR>")
+  local f = assert(smf.read(path))
+  eq(f.format, 1, "format 1")
+  eq(#f.tracks, 3, "a conductor and a track each")
+  eq(f.tracks[2].name, "Keys", "named")
+  eq(f.tracks[2].notes[1].tick, 3 * f.ppq, "at the clip's place")
+  eq(f.tracks[2].notes[2].length, f.ppq / 2, "lengths")
+  eq(f.tracks[2].controls[1].value, 127, "the pedal")
+  eq(f.tracks[3].notes[1].channel, 9, "the drum kit's track on channel 10")
+  near(f.tempos[2].bpm, 140, 0.01, "the tempo change")
+  eq(f.signatures[1].num .. "/" .. f.signatures[1].den, "6/8", "the metre")
+  eq(f.markers[1].text, "In", "the marker")
+  -- And opened again, it is the same song.
+  smf.open(path)
+  eq(names(), "Keys,Beat", "opened again")
+  local again = daw.tracks()[1]:clips()[1]:notes()
+  near(daw.tracks()[1]:clips()[1].start + again[2].start, 5, 1e-9, "the notes where they were")
+  daw.cursor.set_track(daw.tracks()[1])
+  daw.cursor.beat = daw.tracks()[1]:clips()[1].start
+  T.keys(":export " .. T.scratch .. "/clip.mid clip<CR>")
+  f = assert(smf.read(T.scratch .. "/clip.mid"))
+  eq(#f.tracks, 2, "a clip alone")
+end)

@@ -1750,7 +1750,8 @@ function A.leave(how, what)
 end
 
 --- A file chosen in the desktop's dialog, for what `kind` says: "import"
---- (a sound file on a new track) or "saveas" (the project's new file).
+--- (a sound file on a new track, a MIDI file's tracks at the cursor) or
+--- "saveas" (the project's new file).
 function A.chosen(kind, path)
   remember_dir(path)
   if kind == "saveas" then
@@ -1761,31 +1762,44 @@ function A.chosen(kind, path)
   end
 end
 
---- Files dropped on the window: sound files and projects. A project (the
---- first of them, when there are several) is not opened here, for the
---- window asks about unsaved changes first: its path is returned as
---- `open`. Sound files go on the track at `row` (a place in the list of
+--- Files dropped on the window: sound files, MIDI files and projects. A
+--- project (the first of them, when there are several) is not opened here,
+--- for the window asks about unsaved changes first: its path is returned as
+--- `open`. A MIDI file's tracks come in below the cursor's at `beat`, or
+--- the edit cursor. Sound files go on the track at `row` (a place in the list of
 --- drawn tracks, from 1) at `beat`, snapped, one after another; with no
 --- track there (below the last, or where the window cannot tell) each gets
 --- a track of its own, at `beat` or the edit cursor. Anything else is said
 --- to be refused. Returns `{ open, clips, refused }`.
 function A.drop(paths, row, beat)
   local out = { clips = {}, refused = 0 }
-  local sounds = {}
+  local sounds, midis = {}, {}
   for _, path in ipairs(paths) do
     if daw.is_audio_file(path) then
       sounds[#sounds + 1] = path
+    elseif daw.midifile.is_midi_file(path) then
+      midis[#midis + 1] = path
     elseif path:lower():match("%.json$") then
       out.open = out.open or path
     else
       out.refused = out.refused + 1
-      daw.notify("cannot take " .. (path:match("([^/]+)$") or path) .. ": it is neither a sound file nor a project", "warn")
+      daw.notify("cannot take " .. (path:match("([^/]+)$") or path) .. ": it is not a sound file, a MIDI file or a project", "warn")
     end
   end
   if out.open then return out end
   local rows = daw.groups.rows()
   local track = row and rows[row]
   local start = beat and snap(beat)
+  for _, path in ipairs(midis) do
+    local ok, done = pcall(daw.midifile.import, path, { start = start })
+    if ok then
+      for _, clip in ipairs(done.clips) do out.clips[#out.clips + 1] = clip.id end
+      daw.notify(string.format("dropped %s: %d notes on %d tracks", path:match("([^/]+)$") or path, done.notes, #done.tracks))
+    else
+      out.refused = out.refused + 1
+      daw.notify("could not import " .. path .. ": " .. tostring(done), "error")
+    end
+  end
   for _, path in ipairs(sounds) do
     local ok, clip = pcall(daw.import_audio, path, { track = track, start = start })
     if ok then

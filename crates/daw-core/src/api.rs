@@ -1089,6 +1089,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().checkpoint();
             Ok(())
         }
+        // Make the project as it is now the start of its undo history, and
+        // unchanged: a MIDI file opened as a project (daw/midifile.lua).
+        fn undo_reset(_, sh, () => ()) {
+            sh.session.borrow_mut().undo_reset();
+            Ok(())
+        }
         // The undo tree and checkpoints: crate::history, session/undo.rs.
         fn undo_tree(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().undo_tree()) }
         fn undo_current(_, sh, () => ()) { Ok(sh.session.borrow().undo_current()) }

@@ -740,8 +740,12 @@ command("clip.import", function(ctx)
   if not track then return end
   local file = ctx.args[1]
   if not file then return daw.notify("usage: clip.import <file.wav>", "warn") end
+  if daw.midifile.is_midi_file(file) then
+    -- A MIDI file is one clip of all its notes, on this track.
+    return daw.midifile.import(tostring(file), { track = track }).clips[1]
+  end
   return track:add_clip({ start = cursor.beat, file = tostring(file) })
-end, { desc = "Add an audio file at the cursor: `clip.import take.wav`", complete = { "audio_files" } })
+end, { desc = "Add an audio or MIDI file at the cursor: `clip.import take.wav`, `clip.import riff.mid`", complete = { "audio_files" } })
 -- Sound files this program reads.
 local audio_extensions = { "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }
 
@@ -780,30 +784,77 @@ end
 --- project, with plugins offline as `opts` says (see `daw.loading.open`).
 function daw.open(path, opts)
   if daw.is_audio_file(path) then return daw.import_audio(path, { start = 0 }) end
+  if daw.midifile.is_midi_file(path) then return daw.midifile.open(path) end
   return daw.loading.open(path, opts)
 end
 
+--- What a MIDI file brought in or opened came to, said.
+local function midi_said(path, done)
+  local name = path:match("([^/]+)$") or path
+  local text = string.format("%s: %d notes on %d track%s", name, done.notes, #done.tracks, #done.tracks == 1 and "" or "s")
+  if done.skipped then text = text .. "; left out: " .. done.skipped end
+  return text
+end
+
 command("import", function(ctx)
+  local tempo = ctx.args.tempo
   local function bring(path)
+    if daw.midifile.is_midi_file(path) then
+      local ok, done = pcall(daw.midifile.import, path, { tempo = tempo == true or tempo == "yes" or tempo == "on" })
+      if not ok then return daw.notify("could not import " .. path .. ": " .. tostring(done):gsub("^[^:]*:%d+: ", ""), "error") end
+      return daw.notify("imported " .. midi_said(path, done))
+    end
     local ok, clip = pcall(daw.import_audio, path, { track = ctx.args.track })
     if not ok then return daw.notify("could not import " .. path .. ": " .. tostring(clip), "error") end
     daw.notify(string.format("imported %s: %.1f beats on track “%s”", path:match("([^/]+)$") or path, clip.length, clip:track().name))
   end
   local path = ctx.args[1]
+  -- `tempo=yes` at the end of the line, the path being the rest.
+  if path then
+    local rest, word = path:match("^(.-)%s+tempo=(%S+)%s*$")
+    if rest then path, tempo = rest, word end
+  end
   if path and path ~= "" then return bring((path:gsub("^~", os.getenv("HOME") or "~"))) end
-  daw.pick.file({ title = "Import audio", extensions = audio_extensions, on_choose = bring })
-end, { desc = "Bring a sound file (wav, aiff, flac, mp3, ogg) in on a new track: `import take.mp3`; alone, choose it from a list", raw = true, complete = "audio_files" })
+  local endings = {}
+  for _, list in ipairs({ audio_extensions, daw.midifile.extensions }) do
+    for _, ext in ipairs(list) do endings[#endings + 1] = ext end
+  end
+  daw.pick.file({ title = "Import", extensions = endings, on_choose = bring })
+end, { desc = "Bring a sound file in on a new track, or a MIDI file's tracks at the cursor: `import take.mp3`, `import song.mid`, `import song.mid tempo=yes` (its tempo map too); alone, choose it from a list", raw = true, complete = "audio_files" })
 
 command("open", function(ctx)
   local function go(path)
     local ok, err = pcall(daw.open, path)
     if not ok then return daw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error") end
+    if daw.midifile.is_midi_file(path) then return daw.notify("opened " .. midi_said(path, err) .. " (`:w` asks where to save it)") end
     daw.notify("opened " .. path)
   end
   local path = ctx.args[1]
   if path and path ~= "" then return go((path:gsub("^~", os.getenv("HOME") or "~"))) end
   daw.pick.file({ title = "Open", on_choose = go })
-end, { desc = "Open a project, or a sound file on a new track: `open song.json`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
+end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
+
+command("export", function(ctx)
+  local path, what = ctx.args[1] and tostring(ctx.args[1]), ctx.args[2] and tostring(ctx.args[2])
+  if not path or not daw.midifile.is_midi_file(path) then
+    return daw.notify("usage: export <song.mid> [clip|selection]; `:render` makes sound files", "warn")
+  end
+  path = path:gsub("^~", os.getenv("HOME") or "~")
+  local opts = {}
+  if what == "clip" then
+    local clip = cursor.clip()
+    if not clip or clip.kind ~= "midi" then return daw.notify("no MIDI clip at the cursor", "warn") end
+    opts.clips = { clip.id }
+  elseif what == "selection" then
+    local region = daw.keymap.selection()
+    if not region then return daw.notify("nothing is selected", "warn") end
+    opts.tracks = edit.arrange.tracks(region)
+  elseif what then
+    return daw.notify("export what: `clip`, `selection`, or nothing for the whole project", "warn")
+  end
+  local notes = daw.midifile.export(path, opts)
+  daw.notify(string.format("exported %d notes to %s", notes, path))
+end, { desc = "Write a MIDI file of the project, of the clip at the cursor, or of the selection's tracks: `export song.mid`, `export riff.mid clip`, `export part.mid selection`", complete = { "files", function() return { "clip", "selection" } end } })
 
 --- Text typed for an option, as the value it stands for.
 local function option_value(text)
@@ -1377,6 +1428,9 @@ command("write", function(ctx)
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
   if not path and not api.project_get().path and daw.fx.interactive() then return daw.frontend.save_as() end
+  if path and daw.midifile.is_midi_file(path) then
+    return daw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
+  end
   daw.notify("saved " .. daw.project.save(path))
 end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
 command("saveas", function() daw.frontend.save_as() end, { desc = "Save the project under a name chosen from a list of directories" })
@@ -1384,8 +1438,10 @@ command("edit", function(ctx)
   if not ctx.args[1] then return daw.notify("usage: edit <project.json>", "warn") end
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return daw.notify("usage: edit <project.json> [offline|online]", "warn") end
+  local path = tostring(ctx.args[1])
+  if daw.midifile.is_midi_file(path) or daw.is_audio_file(path) then return daw.commands.run("open", { path }) end
   daw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
-end, { desc = "Open a project: `edit song.json`; `edit song.json offline` with every plugin offline, `online` with none held back", complete = { "projects", function() return { "offline", "online" } end } })
+end, { desc = "Open a project: `edit song.json`; `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
 command("new", function() daw.project.new() end, { desc = "Start an empty project" })
 -- `:render`, `:render.cancel` and `:stems` are in daw/render.lua.
 command("track.bounce", function()

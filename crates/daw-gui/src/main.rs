@@ -159,7 +159,7 @@ impl Purpose {
         };
         match self {
             Purpose::Open => ask(portal::Kind::Open, "Open", "open"),
-            Purpose::Import => ask(portal::Kind::Open, "Import a sound file", "sound"),
+            Purpose::Import => ask(portal::Kind::Open, "Import a sound or MIDI file", "sound"),
             Purpose::SaveAs => portal::Ask {
                 name: text(&info["name"]).to_string(),
                 ..ask(portal::Kind::Save, "Save the project as", "project")
@@ -338,16 +338,19 @@ impl Client {
     }
 }
 
-/// Send the sound files among `paths` to a kernel on another machine (or
+/// Send the sound and MIDI files among `paths` to a kernel on another machine (or
 /// one this window did not start), into its project's media folder, and
 /// return where they are there. The rest are left out, said to be refused.
 fn send_sounds(client: &mut Client, paths: &[String]) -> Result<Vec<String>> {
     let mut there = Vec::new();
     for path in paths {
-        let sound = client.eval("return daw.is_audio_file(...)", json!([path]))?;
+        let sound = client.eval(
+            "local path = ...; return daw.is_audio_file(path) or daw.midifile.is_midi_file(path)",
+            json!([path]),
+        )?;
         if sound.as_bool() != Some(true) {
             let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
-            let message = format!("cannot send {name}: only sound files go to an instance on another machine");
+            let message = format!("cannot send {name}: only sound and MIDI files go to an instance on another machine");
             client.eval("daw.notify(..., 'warn')", json!([message]))?;
             continue;
         }
@@ -4341,9 +4344,10 @@ fn run() -> Result<()> {
 
     // Files dragged in from a file manager. Winit sends one event per file
     // and, on X11 only (it has no drag and drop on Wayland), none says where
-    // the pointer is: the kernel puts each sound file on a track of its own.
-    // A kernel of this window's own reads them where they are; one this
-    // window attached to is sent the sound files first.
+    // the pointer is: the kernel puts each sound file on a track of its own,
+    // and a MIDI file's tracks at the cursor. A kernel of this window's own
+    // reads them where they are; one this window attached to is sent the
+    // sound and MIDI files first.
     ui.window().on_winit_window_event({
         let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
         let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
@@ -4357,7 +4361,7 @@ fn run() -> Result<()> {
                     let message = if child.borrow().is_some() {
                         "Drop to add the files to the project"
                     } else {
-                        "Drop to send the sound files to the instance and add them"
+                        "Drop to send the sound and MIDI files to the instance and add them"
                     };
                     view.borrow_mut().show(&ui, message, false);
                 }

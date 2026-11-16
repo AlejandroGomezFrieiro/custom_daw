@@ -62,7 +62,7 @@ test("a dropped project is handed back to be opened, and anything else is refuse
   out = act.drop({ "/x/notes.txt" })
   eq(out.refused, 1, "one refused")
   eq(daw.ui.message.text:find("notes.txt", 1, true) ~= nil, true, "the status line names it")
-  eq(daw.ui.message.text:find("neither a sound file nor a project", 1, true) ~= nil, true, "and says why")
+  eq(daw.ui.message.text:find("not a sound file, a MIDI file or a project", 1, true) ~= nil, true, "and says why")
 end)
 
 test("a file chosen in the desktop's dialog is imported or saved to as it is, spaces and all", function()
