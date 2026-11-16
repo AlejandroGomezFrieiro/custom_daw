@@ -684,7 +684,7 @@ end
 --- Whether closing now would lose anything: { modified, name, path }.
 function M.closing()
   local p = api.project_get()
-  return { modified = p.modified, name = p.name, path = p.path }
+  return { modified = daw.project.unsaved(), name = p.name, path = p.path }
 end
 
 --- What the render dialog starts from: the file a render would go to, the
@@ -1895,13 +1895,13 @@ function A.set_output(track, target)
   api.track_set(track, "output", target and target ~= 0 and target or nil)
 end
 
---- Send a track's sound to another as well, at `level` dB (0 without).
+--- Send a track's sound to another as well, at `level` dB (`daw.opt.send_level` without).
 function A.add_send(track, target, level)
   local sends = api.track_get(track).sends
   for _, send in ipairs(sends) do
     if send.target == target then return end
   end
-  sends[#sends + 1] = { target = target, level = level or 0 }
+  sends[#sends + 1] = { target = target, level = level or daw.opt.send_level }
   api.track_set(track, "sends", sends)
 end
 

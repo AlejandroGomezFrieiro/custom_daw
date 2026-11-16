@@ -64,7 +64,7 @@ test("a project that will not parse offers its .bak and its newest safety copy",
   eq(daw.project.modified, true, "unsaved until saved over it")
 
   pcall(daw.project.load, path)
-  daw.commands.exec("recover 1")
+  daw.commands.exec("recover! 1")
   eq(#daw.tracks(), 3, "the safety copy has the later work")
   daw.project.save()
   eq(pcall(daw.project.load, path), true, "and once saved, the project opens again")

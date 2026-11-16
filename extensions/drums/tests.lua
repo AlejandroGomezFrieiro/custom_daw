@@ -143,6 +143,19 @@ test("drums: Enter toggles a hit, and the grid shows it by name and by how hard"
   eq(text:find("▇▇", 1, true) ~= nil, true, "a hit at 100 is drawn seven eighths tall")
 end)
 
+test("drums: the ruler marks the beats with ticks and no numbers, as the roll's does", function()
+  drum_track()
+  daw.flush()
+  local lines = api.ui_snapshot(140, 30)
+  local ruler
+  for i, line in ipairs(lines) do
+    if line:find("Kick", 1, true) and line:find("·", 1, true) then ruler = lines[i - 1] break end
+  end
+  eq(type(ruler), "string", "the ruler is above the first row")
+  eq(ruler:find("▏", 1, true) ~= nil, true, "beats are ticks: " .. ruler)
+  eq(ruler:find("▏%d") == nil, true, "with no number after them: " .. ruler)
+end)
+
 test("drums: a new hit is heard", function()
   local track = drum_track()
   local before = 0

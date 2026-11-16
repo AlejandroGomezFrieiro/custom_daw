@@ -122,7 +122,7 @@ function view:render(buf, ctx)
     right = status,
   })
 
-  -- The ruler: bars as the project counts them, beats between.
+  -- The ruler: bars as the project counts them, beats between as ticks, as in the roll.
   buf:fill(0, 1, w, 1, " ", "Ruler")
   local bar = daw.time.bar()
   for i = 0, cells - 1 do
@@ -135,7 +135,7 @@ function view:render(buf, ctx)
     if on_bar then
       buf:text(cx, 1, tostring(math.floor(pos / bar + 0.5) + 1), "RulerBar")
     elseif on_beat then
-      buf:text(cx, 1, g.tick .. tostring(math.floor(pos % bar + 0.5) + 1), "RulerTick")
+      buf:text(cx, 1, g.tick, "RulerTick")
     end
   end
 
