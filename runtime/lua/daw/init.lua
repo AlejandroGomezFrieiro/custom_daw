@@ -53,6 +53,10 @@ daw.cmd = daw.commands.run
 daw.music = require("daw.music")
 daw.params = require("daw.params")
 daw.ui = require("daw.ui")
+-- Buffers, windows and tabs (daw/layout.lua).
+daw.layout = require("daw.layout")
+daw.buf, daw.win, daw.tab = daw.layout.buf, daw.layout.win, daw.layout.tabs
+daw.buftype, daw.layouts = daw.layout.buftype, daw.layout.layouts
 daw.draw = require("daw.draw")
 daw.ui.keybar = require("daw.keybar")
 daw.canvas = require("daw.canvas")
@@ -152,6 +156,7 @@ function K.startup()
   daw.diagnostic = require("daw.diagnostic")
   daw.lsp = require("daw.lsp")
   require("daw.defaults")
+  daw.layout.setup()
   daw.fx.setup()
   daw.routes.setup()
   daw.media = require("daw.media")

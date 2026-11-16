@@ -170,7 +170,8 @@ end
 -- Steps -------------------------------------------------------------------------
 
 local function new_ctx()
-  return { commands = {}, events = {}, messages = #daw.ui.messages }
+  -- The last message before the step, as the list drops its oldest.
+  return { commands = {}, events = {}, last_message = daw.ui.messages[#daw.ui.messages] }
 end
 
 local function begin_step()

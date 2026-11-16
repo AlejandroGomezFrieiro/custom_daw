@@ -99,8 +99,10 @@ end
 
 --- Whether a message containing `text` was shown since the step began.
 function M.said(ctx, text)
-  for i = ctx.messages + 1, #daw.ui.messages do
-    if daw.ui.messages[i].text:find(text, 1, true) then return true end
+  for i = #daw.ui.messages, 1, -1 do
+    local message = daw.ui.messages[i]
+    if message == ctx.last_message then break end
+    if message.text:find(text, 1, true) then return true end
   end
   return false
 end
