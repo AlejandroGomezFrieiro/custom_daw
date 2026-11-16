@@ -226,6 +226,63 @@ time with `view:time_axis()` and `view:set_time_axis(left, zoom)`, as the
 arrange view and the piano roll do; a window that follows another is drawn
 with `ctx.follower`.
 
+**Text buffers.** `daw.textbuf.kind` adds a listing edited as text, as
+`daw://tracks` is (see Lists edited as text in [the terminal
+interface](terminal.md)). The kind reads the project into items, writes
+each as cells, reads a line back into fields, and turns what changed into a
+plan; the text core does the editing, the hidden ids, the diff, the float
+that shows the plan and the one undo step it is applied as.
+
+```lua
+daw.textbuf.kind("clips", {
+  pattern = "^daw://track/(%d+)/clips$",   -- the names it takes; captures are ctx.args
+  title = function(ctx) return "Clips of track " .. ctx.args[1] end,
+  read = function(ctx)                      -- one item a line, each with an id
+    local out = {}
+    for i, clip in ipairs(daw.api.clip_list(daw.api.track_list()[tonumber(ctx.args[1])])) do
+      out[i] = { id = clip.id, clip = clip }
+    end
+    return out
+  end,
+  format = function(item)                   -- the cells, laid out in columns two spaces apart
+    return { daw.textbuf.quote(item.clip.name), "at " .. item.clip.start }
+  end,
+  parse = function(text)                    -- the fields of a line, or nil and what is wrong
+    local cells = daw.textbuf.cells(text)
+    local at = cells[2] and tonumber(cells[2].text:match("^at (%S+)$"))
+    if not at then return nil, "a clip is a name and `at` a beat" end
+    return { name = daw.textbuf.unquote(cells[1].text), start = at }
+  end,
+  plan = function(changes, ctx)             -- steps: { text, run(state) }, or an error
+    local steps = {}
+    for _, e in ipairs(changes.changed) do
+      steps[#steps + 1] = { text = "move " .. e.fields.name .. " to " .. e.fields.start,
+        run = function() daw.api.clip_set(e.id, "start", e.fields.start) end }
+    end
+    for _, d in ipairs(changes.deleted) do
+      steps[#steps + 1] = { text = "delete " .. d.base.name, run = function() daw.api.clip_remove(d.id) end }
+    end
+    return steps
+  end,
+  keywords = { at = true },                 -- words drawn dim ahead of a value; `if` skips them
+  open = function(ctx, line, text) end,     -- Enter on a line
+  parent = function(ctx) return "daw://tracks" end,  -- `-`
+})
+```
+
+`:e daw://track/1/clips` then lists them. `changes` holds `changed` (each
+with `id`, `fields`, `base`, the fields the line was read as, and `keys`,
+those that differ), `deleted` (`id`, `base`), `copied` (`copy_of`, `fields`),
+`added` (`fields`), `lines` (every line that reads, in order, with `place`)
+and `moves` (the lines that moved, with `from` and `place`). A step's `run`
+gets a table it shares with the other steps (`state.made[line]` holds what
+an earlier step made for a line); `quiet = true` keeps a step off the list
+shown. Plans are checked before anything runs: an error raised in `plan`
+stops the write with its message. If a step fails anyway, what the steps
+before it did is undone. `daw.textbuf.open(name, opts)` shows a buffer
+(`here`, `vertical`, `window`), `daw.textbuf.buf()` is the current one, and
+its `state.text.lines` its lines (`{ text, id }`).
+
 A view's `on_mouse` gets the terminal's pointer in the view's own cells:
 `kind` (`down`, `up`, `drag`, `move`, `scroll_up`, `scroll_down`,
 `scroll_left`, `scroll_right`), `button`, `x`, `y`, `mods` (any of `C`, `A`,

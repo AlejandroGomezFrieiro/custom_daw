@@ -152,8 +152,16 @@ function M.range(line)
   return { bars = { a, b }, from = daw.time.bar_start(a), to = daw.time.bar_start(b + 1), single = single }, rest
 end
 
+--- Functions that may take a whole line before it is read as a command:
+--- `fn(line, ctx)` returns true when it ran it. A text buffer takes `:w`,
+--- `:s/a/b/` and its ranges of lines this way (daw/textbuf.lua).
+M.line_handlers = {}
+
 --- Run a command line, as typed after `:`, with a range in front if it has one.
 function M.exec(line, ctx)
+  for _, handler in ipairs(M.line_handlers) do
+    if handler(line, ctx) then return end
+  end
   local range, rest, err = M.range(line)
   if err then error(err, 0) end
   local name, args = M.parse(rest)

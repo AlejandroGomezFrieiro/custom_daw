@@ -223,6 +223,28 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `<C-s>` `:w` | save |
 | `ZZ` `ZQ` `:q` | save and quit, quit, close the window (quit in the last one) |
 
+## Edit lists as text (`:e daw://tracks`)
+
+The tracks, sends, a track's devices and the markers as lines of text
+(`daw://tracks`, `daw://sends`, `daw://track/2/devices`, `daw://markers`).
+Every motion, operator, count, register, selection and `.` works on the
+text as in Vim; nothing changes in the project until `:w`.
+
+| Keys | |
+| --- | --- |
+| `cw` `cif` | change the name, change the value of the field under the cursor (`af` the whole field) |
+| `dd`, `yy` `p`, `dd` `p` | delete; copy (a track with its devices and clips); move down |
+| `o` `O` | a new line: a new track, device or marker (`Tab` types the space between fields) |
+| `<C-a>` `<C-x>` | add, take 1 (or the count) from the number under or after the cursor |
+| `rM` `rS` `rR` `r-` | on a track's flags: mute, solo, arm, or not |
+| `<C-v>` `I` `A` `r` | in a block: type before or after it on every line, replace it |
+| `u` `<C-r>` | undo, redo the text |
+| `:w` | show what will change; `y` or `<CR>` applies it as one undo step, `n` goes back |
+| `:e` | with `!` (`:e!`), throw the changes away and read again; `:w!` applies over changes made elsewhere since |
+| `:sort` | sort the lines (`!` reversed, `n` by number); over ranges of lines too: `:%s/a/b/g`, `:2,4d`, `:m 0` |
+| `<CR>` `-` | a track's devices, a device in the panel, go to a marker; back up to the tracks |
+| `gw` | the buffer in a window of its own, in the graphical frontend |
+
 ## Launch clips (the session view, `,l`)
 
 | Keys | |
