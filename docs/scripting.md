@@ -187,29 +187,73 @@ output instead (its errors still go to `log`): `proc_write(id, bytes)`,
 output), `proc_close_input(id)`; a `proc.output` event (`{ id }`) says when
 there is something to read, so nothing polls.
 
-**Diagnostics and language servers.** `daw.diagnostic` is `vim.diagnostic`
-for clips: `set(namespace, clip, list)` with each
-`{ notes = { places }, at, length, severity, message, rule, source, fixes }`
-(`severity` 1 to 4, or "error", "warning", "info", "hint"; a fix is
-`{ title, edits = { { note, pitch | delete | start | length | velocity } } }`
-or `{ title, apply = fn }`), `get(clip, { namespace, severity, note })`,
-`count(clip)`, `reset(namespace, clip)`, `config({ virtual_text, signs,
-underline, severity_sort })`, `actions(clip, place)`, `apply(d, fix)` (one
-undo step), `goto_next()`, `goto_prev()`, `list()`; event
-`diagnostic.changed`. `daw.lsp` is `vim.lsp`: `config(name, { cmd, framing,
-attach, settings, init_options, restart })`, `enable(name, on)`,
+**Addresses.** `daw.address` names everything with a URI built from ids:
+
+| URI | What |
+| --- | --- |
+| `daw://project` | the project |
+| `daw://track/12` | a track; `daw://track/0` is the master |
+| `daw://track/12/device/3` | a device on it |
+| `daw://track/12/device/3/param/cutoff` | one of the device's parameters |
+| `daw://track/12/send/5` | its send to track 5 |
+| `daw://clip/7` | a clip |
+| `daw://clip/7/note/41` | a note, by its own id (`note.id`), which it keeps through every edit |
+| `daw://clip/7/control/cc/74` | a clip's moves of one controller |
+| `daw://lane/9` | an automation lane |
+| `daw://tempo`, `daw://marker/5` | the tempo map, a marker |
+| `daw://render/<path, %-encoded>` | a rendered file |
+| `daw://<kind>/...` | a kind an extension adds with `daw.address.scheme(kind, { resolve, children, parent, edit })` |
+
+`of(object)`, `resolve(uri)` (what `daw.api` has of it; a note says its
+`place`), `parent(uri)`, `children(uri)`, `within(uri, ancestor)`,
+`track_of(uri)`, `matches(pattern, uri)` (`*` one level, `**` any),
+constructors (`track(id)`, `device(id)`, `param(device, key)`, `clip(id)`,
+`note(clip, id)`, `render(path)`, ...), `renders` (what was rendered, by
+path), and `edit(changes, label)`: a workspace edit, each change
+`{ uri, set = { ... } }`, `{ uri, insert = { ... } }` or `{ uri, delete = true }`,
+all checked first and made as one undo step (nil and why when not).
+`address.changed { uris, revision }` follows every edit.
+
+**Diagnostics, labels and language servers.** `daw.diagnostic` is
+`vim.diagnostic` over locations (`{ uri, selector }`, selector
+`{ time, notes, pitch, seconds, value }`): `set(namespace, document, list)`
+with each `{ location, severity, message, rule, source, fixes }` (`severity`
+1 to 4, or "error", "warning", "info", "hint"; a fix is
+`{ title, edit = { changes } }` or `{ title, apply = fn }`; a clip as the
+document with `{ notes = { places }, at, length, fixes = { { title, edits } } }`
+is the older form), `get(target, { namespace, severity, note, kind,
+document })` (target a clip id or an address), `count`, `worst(uri)`,
+`kind(d)`, `about(d, uri)`, `where(d)`, `reset(namespace, document)`,
+`config({ virtual_text, signs, underline, severity_sort })`,
+`actions(target, place)`, `apply(d, fix)`, `jump(dir)`, `list()`; event
+`diagnostic.changed`. `daw.annotation` keeps labels the same way:
+`set(namespace, document, { { location, label, kind } })`, `get(uri)`,
+`reset`. `daw.lsp` is `vim.lsp`: `config(name, { cmd | server, kind,
+framing, adapter, attach = { subjects, where }, settings, init_options,
+restart, timeout_ms, accepts, input, diagnostic })`, `enable(name, on)`,
 `clients()`, `restart(name)`, `stop(name)`, `request(name, method, params,
 function(err, result) end)`, `notify(name, method, params)`,
-`daw.lsp.handlers[method] = function(client, params) end`, `hover(clip,
-pitch, beat, cb)`, `complete(ctx, done)`, `attach(name, clip)` to keep a
-clip open in a server, `settle()` for scripts; events `lsp.status`,
-`lsp.analysis`. See [Language servers and diagnostics](lsp.md).
+`daw.lsp.handlers[method] = function(client, params) end`,
+`subject(name, { targets, build, key, depends, language })`,
+`adapter(name, spec)`, `hover_at(location, cb)`, `actions_at(location, cb)`,
+`show_hover()`, `code_actions()`, `hover(clip, pitch, beat, cb)`,
+`complete(ctx, done)`, `attach(name, address)` to keep a subject open,
+`settle()` for scripts; events `lsp.status`, `lsp.analysis`. See
+[Language servers and diagnostics](lsp.md).
 
-**Layers of the piano roll.** `daw.ui.views.pianoroll.layer(name, order,
-paint)` draws over the roll in order: below 20 under the clip's notes,
-above it over them (diagnostics are 30), always under the cursor. `paint(p)`
-gets the roll's and the ruler's cells, the clip, and `p.x(beat)`,
-`p.row(pitch)` to place things.
+**Layers and locators.** What modules draw over a view goes in layers:
+`daw.ui.views.pianoroll.layer(name, order, paint)` draws over the roll in
+order (below 20 under the clip's notes, above them over them; diagnostics
+are 30), `paint(p)` getting the roll's and the ruler's cells, the clip,
+`p.x(beat)` and `p.row(pitch)`; `daw.ui.views.arrange.layers[name] =
+function(view, layer)` draws on the timeline and its ruler;
+`daw.ui.layer(view, part, name, order, paint)` draws on a part of a view
+where it calls `daw.ui.paint(view, part, ctx)`: the arrange view's
+`header` and `clip`, the mixer's `strip` and `strip_foot`, the device
+panel's `device` and `param`. `daw.ui.locator(view, { at, position, place,
+go })` says how a view places locations: what is under its cursor, where
+its cursor is, where a location is in it, and how to go there;
+`daw.ui.location()` and `daw.ui.go(location)` use them.
 `daw.json.encode(value, pretty)` and `daw.json.decode(text)` are for what an
 extension keeps in files of its own.
 

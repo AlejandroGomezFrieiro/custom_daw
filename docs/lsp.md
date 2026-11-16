@@ -1,137 +1,228 @@
 # Language servers and diagnostics
 
-A language server for music reads the notes you write and says what it
-thinks of them: a parallel fifth between two voices, a leap too wide for a
-flute, the chord and key it hears, what might come next. This is Neovim's
-`vim.lsp` and `vim.diagnostic` for a DAW. The core knows the protocol and
-shows what any server says; which server runs is an extension's business.
-[MIDI LSP](#midi-lsp) is the one that comes with the source.
+A language server reads part of a project and says what it thinks of it: a
+parallel fifth between two voices, a fader that will clip, a master louder
+than the delivery allows, a render without dither. This is Neovim's
+`vim.lsp` and `vim.diagnostic` for a DAW, built in four layers, none of
+which knows any server by name:
 
-## Diagnostics
+1. **Addresses**: a URI for everything a server could talk about.
+2. **Subjects**: what a server is shown, as projections of the project.
+3. **Clients**: how a server is run and spoken to.
+4. **Features**: diagnostics, labels, hover, actions and suggestions, kept
+   by location and drawn by each view where it belongs.
 
-A diagnostic is something wrong (or worth knowing) about some notes of a
-MIDI clip: a severity (error, warning, information, hint), a message, the
-rule that found it, who said it, and the fixes for it. They are shown the
-same way whoever published them:
+[MIDI LSP](#midi-lsp), which comes with the source as an extension, is one
+server among any number; `extensions/mixdiag` is another, run in this
+process.
 
-- **In the piano roll**, each note a diagnostic is about is underlined in
-  its severity's colour (red, amber, blue, grey), the message follows the
-  last of its notes while there is room, and a mark on the ruler shows
-  where it starts. In the window the notes are outlined in that colour and
-  the ruler is marked the same way; the pointer on such a note says what is
-  wrong with it in the hint line.
-- **The status line** counts them: `E1 W2` for the clip in the piano roll,
-  or for the whole project when none is open.
-- **The arrange view** marks a clip that has any at its right end.
-- `]d` and `[d` go to the next and previous diagnostic of the piano roll's
-  clip; in the arrange view, to the next and previous clip with any (with
-  extensions/mixdiag loaded, they go to its mix findings there instead).
-- `:diagnostics` lists every one (`:diagnostics clip`, those of the piano
-  roll's clip) in a picker, as Neovim's quickfix list: Enter goes there.
+## Using them
 
-**Fixes.** `,ca` in the piano roll lists the fixes for the note under the
-cursor (off a note, for the diagnostics where the cursor is); Enter carries
-one out. In the window, Ctrl and a right click on a note opens the same
-list, with "What the language servers say about it" at its foot. A fix is
-always one undo step, and finds its notes by pitch and start, so other
-edits made since do not make it change the wrong note.
+What any server (or any plugin) says shows the same way, in the terminal
+first and in the window:
 
-**What a server says about a note.** `gK` in the piano roll (`K` is an
-octave up there) opens a small float with the diagnostics about the note
-under the cursor and each server's answer about that place: for MIDI LSP,
-the note's degree in the key and the chord it sounds in.
+- **Notes** a diagnostic is about are underlined in the piano roll in the
+  colour of its severity (red error, amber warning, blue information, grey
+  hint), with the message after the last of them and a mark on the ruler.
+  The window outlines them and says what is wrong in the hint line.
+- **Tracks**: a sign before the name on the track's header and at the end
+  of its name plate on the mixer strip. A server's label on a track (a
+  loudness readout, say) is shown on the strip's peak row.
+- **Devices and parameters**: a sign and the message after the device's
+  name in the device panel, a sign before a parameter's name.
+- **Stretches of time**: marked on the arrange view's ruler.
+- **Renders**: listed by `:diagnostics` under Renders, with fixes that render
+  again.
+- **The status line** counts them: `E1 W2` for the piano roll's clip, or the
+  whole project when none is open.
 
-## Language servers
+| Keys | |
+| --- | --- |
+| `]d` `[d` | the next, previous diagnostic the focused view shows (piano roll, arrange view, mixer, device panel); the cursor goes there |
+| `gK` | what is known about what is under the cursor: diagnostics, labels, and each server's hover |
+| `,ca` | fixes and actions for what is under the cursor; Enter makes one, as one undo step |
+| `:diagnostics` | every diagnostic, grouped by what it is about; Enter goes there |
+| `:lsp` | `:lsp info` (each server, how it runs, what it is shown and can do, its last error), `:lsp start\|stop\|restart [name]`, `:lsp log` |
 
-A server is a program that speaks MIDI LSP's protocol: JSON-RPC 2.0 on its
-standard input and output, one message a line (as MIDI LSP's engine does
-with `--stdio`) or with LSP's `Content-Length` headers. It is started from
-a config, as `vim.lsp.config`:
+In the window, Ctrl and a right click on a note opens its fixes and "What
+the language servers say about it".
+
+## Addresses
+
+Everything has a URI built from ids, so it survives edits
+(`daw.address`, see [Scripting](scripting.md) for the whole list):
+`daw://project`, `daw://track/12` (`daw://track/0` is the master),
+`daw://track/12/device/3`, `daw://track/12/device/3/param/cutoff`,
+`daw://track/12/send/5`, `daw://clip/7`, `daw://clip/7/note/41`,
+`daw://lane/9`, `daw://tempo`, `daw://marker/5`,
+`daw://render/<the file's path>`. Extensions add kinds of their own.
+
+**Notes have ids.** Every note in the model has an id that stays with it
+through every move and change, given when it is made; a copy pasted beside
+its original is another note with an id of its own. `daw://clip/7/note/41`
+is that note wherever it goes, so a diagnostic stays on its notes and a fix
+changes the right one after other edits. (Before, notes were found again
+by pitch and start; that is gone.)
+
+A **location** is an address and, optionally, a part of it: `{ uri, selector }`
+with `selector = { time = { from, to } }` (beats), `{ notes = { ids } }`,
+`{ pitch = { lo, hi } }`, `{ seconds = { from, to } }` (in a render) or
+`{ value = x }`.
+
+A **workspace edit** is a list of changes, each `{ uri, set = { ... } }`,
+`{ uri, insert = { ... } }` or `{ uri, delete = true }`, all checked before
+any is made and made as one undo step: a note's pitch, start, length or
+velocity; a clip's notes inserted; a track's volume, pan, mute, solo, name or
+output, a device inserted on it; a device's bypass or parameters; a
+parameter's value; a send's level; a render made again with other options.
+Every fix and every edit a server asks for goes through it.
+
+## Subjects
+
+A server is shown subjects, each a projection of part of the project as
+plain data, sent as a document named by its address (and `#subject` when the
+subject is not the address's own):
+
+| Subject | Document | What it holds | By focus |
+| --- | --- | --- | --- |
+| `clip` | `daw://clip/7` | MIDI LSP's take: the notes in ticks (960 to the beat) with their ids, the track and its devices, the signature and bar the clip starts in, the tempo map over it, the key, the controller moves, and as `context` the notes of other tracks that sound with it | the clips open in a piano roll |
+| `track` | `daw://track/3` | the track's fader, pan, mute, solo, output, sends, its devices with their parameters' values and ranges, and its clips | the track a cursor is on |
+| `mix` | `daw://project#mix` | every track as above with its address, the master, the tempo and signatures, the sample rate, the loudness targets (`daw.opt.loudness_target`, `daw.opt.true_peak_target`), the last render's options | |
+| `project` | `daw://project` | the whole, summarised: tracks with how many clips and devices, markers, the tempo, its length | |
+| `render` | `daw://render/...` | a rendered file: its path, format, rate, bits, channels, length, peak and loudness as measured, the options it was made with, the master's devices | |
+
+A document is sent when a server becomes attached to it, again (debounced)
+when the addresses it depends on change and it comes out different, and
+closed when it goes. A server is attached by its config,
+`attach = { subjects = { "mix", "render" }, where = { focus = true, tracks = { "Flute*" }, drums = false } }`,
+or else by what it asks for at initialize (`capabilities.daw.subjects`), or
+else to clips. `focus = true` means only what someone is looking at (the
+open piano roll's clip, the cursor's track); without it, a mix or render
+server is sent the whole, all the time.
+
+## Running a server
 
 ```lua
-daw.lsp.config("range", {
-  cmd = { "python3", "/home/me/servers/range_lint.py" },  -- or a function giving it
-  framing = "lines",                       -- or "headers"
-  attach = { kinds = { "clip" }, tracks = { "Flute*", "Violin*" }, drums = false },
-  init_options = { lo = 60, hi = 96 },    -- sent once, at initialize
-  settings = { severity = "warning" },    -- sent at initialize, and again when changed
-  restart = { max = 3, within_s = 60 },   -- restarts after it dies (none by default)
+daw.lsp.config("mixcheck", {
+  cmd = { "python3", "/home/me/servers/mixcheck.py" },  -- or a function giving it
+  framing = "lines",                       -- or "headers" (Content-Length)
+  attach = { subjects = { "mix" } },
+  init_options = { target = -14 },         -- sent once, at initialize
+  settings = { strict = true },            -- sent at initialize, and again when changed
+  restart = { max = 3, within_s = 60 },    -- restarts after it dies (none by default)
 })
-daw.lsp.enable("range")
+daw.lsp.enable("mixcheck")
 ```
 
-What happens then:
+A server is one of three things:
 
-1. The server is started with pipes (`daw.api.proc_spawn(argv, { pipe = true })`);
-   what it writes on its error output goes to
-   `$XDG_STATE_HOME/daw/lsp-<name>.log`.
-2. It is sent `initialize` with `protocolVersion = 2`, and answers with what
-   it can do (`diagnosticProvider`, `hoverProvider`, `completionProvider`
-   with its lanes, `analysisProvider`). Everything below is turned on from
-   those answers, never from the server's name.
-3. The clip open in the piano roll is sent as a document, if the server's
-   `attach` takes it: `midi/didOpen` the first time, `midi/didChange` once
-   edits have paused for a quarter of a second, `midi/didClose` when another
-   clip is opened. With several people on one instance, every clip open in
-   anyone's piano roll is sent.
-4. What it publishes goes to the generic places: `midi/publishDiagnostics`
-   to `daw.diagnostic` under the server's name, `midi/publishAnalysis` (the
-   chords and keys it hears) to `daw.harmony` as a provider, its suggestions
-   to `daw.complete`, its hover to the float above.
-5. If it dies it is marked dead, its diagnostics go, and it is started again
-   if `restart` allows.
+- **A process** speaking JSON-RPC on its standard input and output, one
+  message a line or with LSP's `Content-Length` headers. Its errors go to
+  `$XDG_STATE_HOME/daw/lsp-<name>.log`.
+- **A one-shot command** (`kind = "oneshot"`), run once per version of each
+  subject it is attached to, with a timeout (`timeout_ms`). In `cmd`,
+  `{file}` (a render's path), `{input}` (a file holding the subject as JSON,
+  or what `input(doc)` makes of it), `{uri}`, `{subject}` and each setting
+  are put in; a word that is only a placeholder with no value is left out
+  with the option before it. The subject is also written to its input. It
+  prints `{ "findings": [ { "rule", "severity", "message", "time_s"? } ] }`
+  (severity `off` is left out); `diagnostic(finding, doc)` in the config may
+  give a location and fixes; `accepts(doc)` says which documents it takes.
+  Printing `{ "error": ... }`, or what is not JSON, marks it failed, with the
+  reason in `:lsp info`.
+- **A Lua table** in this process (`server = { initialize = fn, ... }`):
+  its handlers are called directly with the parameters and a `ctx` whose
+  `notify(method, params)` sends this program a notification and
+  `request(method, params)` asks it something.
 
-**The document** is MIDI LSP's snapshot of a take, built from a clip: its
-URI is `daw://clip/<id>`, times are ticks from the clip's start at 960 to
-the beat, a note's `id` is its place in the clip less one. It carries the
-track's name and devices, the signature and the bar the clip starts in,
-the tempo and signature changes over it, the project's key (from
-`daw.harmony`, or extensions/musicops), the clip's controller moves, and as
-`context` the notes of every other track's MIDI clip that sounds with it,
-in this clip's ticks, with their tracks (a drum track is tagged `drums`).
+### Writing a server for the mix
 
-`:lsp` (`:lsp info`) lists the servers, their state, the command, what they
-can do, the documents they hold and where their errors are written. `:lsp
-start [name]`, `:lsp stop [name]`, `:lsp restart [name]`, and `:lsp log`
-for the last messages to and from them.
+The protocol is LSP's own; this program's locations and workspace edits
+travel in the `data` fields LSP leaves free. A server must:
 
-### Writing a server
-
-Any language will do. A server reads a message a line from its input and
-writes its answers a line each to its output. It must answer `initialize`
-with `protocolVersion`, `serverInfo` and `capabilities`, take
-`midi/didOpen` and `midi/didChange` (the snapshot above) and answer them,
-and may publish `midi/publishDiagnostics`:
+1. answer `initialize` with its capabilities, saying which subjects it wants:
+   `{ "capabilities": { "hoverProvider": true, "codeActionProvider": true, "daw": { "subjects": ["mix"], "annotations": true } } }`;
+   the client offers `capabilities.daw = { subjects, addresses, workspaceEdit, features }`;
+2. take `textDocument/didOpen` (`{ textDocument: { uri, languageId: "daw-mix", version, text } }`,
+   `text` the subject as JSON), `didChange` (the whole text again) and
+   `didClose`;
+3. publish what it finds with `textDocument/publishDiagnostics`:
 
 ```json
-{ "jsonrpc": "2.0", "method": "midi/publishDiagnostics",
-  "params": { "uri": "daw://clip/3", "hash": "…as sent…",
-    "diagnostics": [ { "code": "range", "severity": "warning", "message": "C7 is too high",
-                       "start": 960, "end": 1920, "notes": [1],
-                       "fixes": [ { "title": "Move C7 to C6", "edits": [ { "note": 1, "pitch": 84 } ] } ] } ] } }
+{ "uri": "daw://project#mix",
+  "diagnostics": [ { "severity": 2, "code": "hot-fader", "source": "mixcheck",
+    "message": "Bass's fader is at +3.0 dB: it may clip",
+    "data": { "location": { "uri": "daw://track/4" },
+              "fixes": [ { "title": "Bring Bass to 0 dB",
+                           "edit": [ { "uri": "daw://track/4", "set": { "volume": 0 } } ] } ] } } ] }
 ```
 
-An edit sets `pitch`, or `delete`s the note. `tests/fixtures/range_lint.py`
-is a complete server in a hundred lines, with hover and completion too.
+and may also send `daw/publishAnnotations` (`{ uri, annotations: [ { location, label, kind } ] }`,
+labels on things), `daw/publishAnalysis` (`{ uri, chords, keys, key }` in
+project beats, for `daw.harmony`), answer `textDocument/hover` and
+`textDocument/codeAction` (both with `params.daw.location`, what is asked
+about; actions are `{ title, edit: { daw: changes } }` or `{ title, command }`),
+`textDocument/completion` on clips (`params.daw.at`; items' `data.notes`),
+and ask for `workspace/applyEdit` (`{ edit: { daw: changes }, label }`).
+`tests/fixtures/mix_lint.py` is a complete server for the mix in a hundred
+lines, and `tests/fixtures/range_lint.py` one for clips.
+
+### Writing one in Lua
+
+```lua
+local doc
+daw.lsp.config("loud", { server = {
+  initialize = function() return { capabilities = { daw = { subjects = { "mix" } } } } end,
+  ["textDocument/didOpen"] = function(p, ctx)
+    doc = p.textDocument.uri
+    local list = {}
+    for _, t in ipairs(p.textDocument.data.tracks) do   -- in-process: the subject as a table
+      if t.volume > 6 then
+        list[#list + 1] = { severity = 2, message = t.name .. " is very loud", data = { location = { uri = t.address } } }
+      end
+    end
+    ctx.notify("textDocument/publishDiagnostics", { uri = doc, diagnostics = list })
+  end,
+  ["textDocument/didChange"] = function(p, ctx) end,
+} })
+daw.lsp.enable("loud")
+```
+
+extensions/mixdiag is such a server: its measurements' findings become
+diagnostics on the tracks they name, with a fix wherever a finding says by
+how much to lower a fader, so its report and `:diagnostics` agree.
+
+### Dialects
+
+A server that speaks another protocol gets an **adapter**
+(`daw.lsp.adapter(name, spec)` and `adapter = name` in its config): small
+functions that turn the subject into its messages and its answers into
+locations and workspace edits (see `runtime/lua/daw/lsp/standard.lua` for
+what an adapter has). MIDI LSP's `midi/*` dialect is one, in
+`extensions/midilsp/lua/midilsp/adapter.lua`.
 
 ## Diagnostics from Lua
 
-A plugin need not be a server to say what is wrong. `daw.diagnostic` is
-open to any Lua (see [Scripting](scripting.md)):
+A plugin need not be a server. `daw.diagnostic` is open to any Lua:
 
 ```lua
-daw.diagnostic.set("mylint", clip, {
-  { notes = { 3 }, severity = "warning", rule = "range", message = "too high",
-    fixes = { { title = "Down an octave", edits = { { note = 3, pitch = 72 } } } } },
+daw.diagnostic.set("mylint", "mylint", {
+  { location = { uri = "daw://track/3" }, severity = "warning", message = "too loud",
+    fixes = { { title = "Lower it", edit = { { uri = "daw://track/3", set = { volume = -6 } } } } } },
 })
 ```
+
+The older form for the notes of a clip still works:
+`daw.diagnostic.set("mylint", clip, { { notes = { 3 }, message = "...", fixes = { { title, edits = { { note = 3, pitch = 72 } } } } } })`,
+with notes by their place when published.
 
 ## MIDI LSP
 
 `extensions/midilsp` is MIDI LSP's entry, from openutau_reaper_editor
 (`projects/midi-lsp`): its engine checks voice leading, counterpoint,
 ranges, rhythm and form, hears chords and keys, and suggests melodies,
-velocities and controller curves.
+velocities and controller curves; its delivery and settings checks look at
+rendered masters.
 
 ```lua
 daw.ext.load("/path/to/daw/extensions/midilsp")
@@ -140,10 +231,26 @@ daw.ext.load("/path/to/daw/extensions/midilsp")
 The engine is found in `daw.opt.midilsp_cmd` (words, such as `"reaper-midi-lsp
 --rules /home/me/rules"`), else `$MIDI_LSP_ENGINE`, else `reaper-midi-lsp`
 on the PATH. To build one: `nix build <openutau_reaper_editor>#midi-lsp-engine`.
-It is started when the extension loads (`daw.opt.midilsp_autostart`), as two
-servers: `midi-lsp`, the language role, and `midi-lsp-suggest`, the
-suggestion role (`daw.opt.midilsp_suggest`), so that a slow suggestion never
-holds up a diagnostic.
+It is started when the extension loads (`daw.opt.midilsp_autostart`), as
+two servers on clips in MIDI LSP's dialect: `midi-lsp`, the language role,
+and `midi-lsp-suggest`, the suggestion role (`daw.opt.midilsp_suggest`).
+
+With `daw.opt.midilsp_render_checks` (on by default) two one-shot servers
+check every render, when their programs are installed beside the engine:
+
+- `midilsp-delivery` runs `reaper-midi-lsp-delivery` on each WAV render:
+  integrated loudness, true peak, clipping, the loudest passage and the
+  loudness range, against `daw.opt.midilsp_delivery_target` (`spotify`,
+  `ebu-r128`, or empty for information only). Too loud, or over the
+  true-peak ceiling, comes with a fix that lowers the master by what is
+  over.
+- `midilsp-settings` runs `reaper-midi-lsp-settings` on the settings it
+  reads from REAPER, made here from the render's options and the master's
+  devices: a 16-bit render without dither (fixed by rendering again with
+  dither), normalising on, a rate other than the project's (fixed by
+  rendering again at it), a limiter on the master bypassed (fixed by
+  switching it on) or not last. Its messages name REAPER's render dialog
+  where this program has the render's options.
 
 | Command | Key | What it does |
 | --- | --- | --- |

@@ -25,5 +25,9 @@ with it, and what it says comes back to the places everyone uses:
 - **suggestions**, offered to `daw.complete` as a source.
 
 A plugin written in Lua publishes diagnostics just as a server does, with
-`daw.diagnostic.set`. The whole story, the protocol and MIDI LSP's
+`daw.diagnostic.set`. Servers are not only for notes: the same foundation
+shows them a track, the mix or a render, so a mixing and mastering server
+marks faders, devices and renders the way MIDI LSP marks notes. Locations,
+workspace edits and note ids (`daw://clip/7/note/41`) are what suggestions
+and snippets can name too. The whole story, the protocol and MIDI LSP's
 extension are in [Language servers and diagnostics](lsp.md).
