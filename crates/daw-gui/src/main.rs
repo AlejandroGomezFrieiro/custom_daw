@@ -1072,6 +1072,7 @@ impl View {
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
         ui.set_render_fraction(number(&render["fraction"]));
+        ui.set_render_stage(render["stage"].as_str().unwrap_or("").into());
         ui.set_render_name(
             render["path"]
                 .as_str()
@@ -2855,6 +2856,14 @@ fn run() -> Result<()> {
                     sync(&view.borrow().render_ranges, ranges);
                     ui.set_render_range(0);
                     ui.set_render_path(text(&info["path"]));
+                    // The lossy formats are offered when ffmpeg can make them.
+                    let has = |name: &str| info["formats"][name].as_bool().unwrap_or(false);
+                    ui.set_render_has_mp3(has("mp3"));
+                    ui.set_render_has_ogg(has("ogg"));
+                    ui.set_render_has_opus(has("opus"));
+                    if !has(ui.get_render_format().as_str()) && !matches!(ui.get_render_format().as_str(), "wav" | "flac") {
+                        ui.set_render_format("wav".into());
+                    }
                     ui.set_render_open(true);
                 }
                 Err(err) => view.borrow_mut().show(&ui, &format!("{err:#}"), true),
@@ -2880,7 +2889,8 @@ fn run() -> Result<()> {
                 "render",
                 json!([{
                     "path": ui.get_render_path().as_str(), "range": range,
-                    "format": if ui.get_render_flac() { "flac" } else { "wav" },
+                    "format": ui.get_render_format().as_str(),
+                    "quality": ui.get_render_quality().as_str(),
                     "bits": ui.get_render_bits(), "tail": tail.max(0.0), "normalize": normalize,
                     "dither": ui.get_render_dither(), "mono": ui.get_render_mono(),
                     "stems": ui.get_render_stems(),

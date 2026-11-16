@@ -504,7 +504,12 @@ export component App inherits Window {
     in-out property <string> render-path;
     in property <[RangeChoice]> render-ranges;
     in-out property <int> render-range;
-    in-out property <bool> render-flac;
+    // "wav", "flac", or a lossy format ("mp3", "ogg", "opus") ffmpeg can make here.
+in-out property <string> render-format: "wav";
+in property <bool> render-has-mp3;
+in property <bool> render-has-ogg;
+in property <bool> render-has-opus;
+in-out property <string> render-quality: "high";
     in-out property <int> render-bits: 24;
     in-out property <string> render-tail: "1";
     in-out property <bool> render-normalize;
@@ -515,6 +520,8 @@ export component App inherits Window {
     in property <bool> rendering;
     in property <float> render-fraction;
     in property <string> render-name;
+// "encoding" while ffmpeg makes a lossy file from the render.
+in property <string> render-stage;
     // What is waiting for a MIDI controller to be moved, or "".
     in property <string> learning;
     in-out property <bool> show-automation;
@@ -4650,7 +4657,7 @@ export component App inherits Window {
                 if root.rendering: HorizontalLayout {
                     spacing: 6px;
                     Text {
-                        text: "Rendering " + root.render-name + "  " + round(root.render-fraction * 100) + "%";
+                        text: (root.render-stage == "encoding" ? "Encoding " : "Rendering ") + root.render-name + "  " + round(root.render-fraction * 100) + "%";
                         color: Theme.text;
                         font-size: Theme.t-small;
                         font-weight: 600;
@@ -4908,44 +4915,93 @@ export component App inherits Window {
                     }
                     Button {
                         label: "WAV";
-                        on: !root.render-flac;
+                        on: root.render-format == "wav";
                         clicked => {
-                            root.render-flac = false;
+                            root.render-format = "wav";
                         }
                     }
                     Button {
                         label: "FLAC";
-                        on: root.render-flac;
+                        on: root.render-format == "flac";
                         clicked => {
-                            root.render-flac = true;
+                            root.render-format = "flac";
                             if (root.render-bits == 32) {
                                 root.render-bits = 24;
                             }
                         }
                     }
+                    if root.render-has-mp3: Button {
+                        label: "MP3";
+                        on: root.render-format == "mp3";
+                        clicked => {
+                            root.render-format = "mp3";
+                        }
+                    }
+                    if root.render-has-ogg: Button {
+                        label: "Ogg";
+                        on: root.render-format == "ogg";
+                        clicked => {
+                            root.render-format = "ogg";
+                        }
+                    }
+                    if root.render-has-opus: Button {
+                        label: "Opus";
+                        on: root.render-format == "opus";
+                        clicked => {
+                            root.render-format = "opus";
+                        }
+                    }
                     Rectangle {
                         width: 12px;
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "16 bit";
                         on: root.render-bits == 16;
                         clicked => {
                             root.render-bits = 16;
                         }
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "24 bit";
                         on: root.render-bits == 24;
                         clicked => {
                             root.render-bits = 24;
                         }
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "32 float";
                         on: root.render-bits == 32;
-                        enabled: !root.render-flac;
+                        enabled: root.render-format != "flac";
                         clicked => {
                             root.render-bits = 32;
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "Low";
+                        on: root.render-quality == "low";
+                        clicked => {
+                            root.render-quality = "low";
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "Medium";
+                        on: root.render-quality == "medium";
+                        clicked => {
+                            root.render-quality = "medium";
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "High";
+                        on: root.render-quality == "high";
+                        clicked => {
+                            root.render-quality = "high";
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "Best";
+                        on: root.render-quality == "best";
+                        clicked => {
+                            root.render-quality = "best";
                         }
                     }
                     Rectangle {
@@ -4985,7 +5041,7 @@ export component App inherits Window {
                             root.render-normalize = !root.render-normalize;
                         }
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "Dither";
                         on: root.render-dither;
                         enabled: root.render-bits != 32;

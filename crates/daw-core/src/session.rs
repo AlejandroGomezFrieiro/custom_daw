@@ -28,6 +28,7 @@ use crate::model::{
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
 mod clipops;
+mod encode;
 mod keep;
 mod loading;
 pub mod media;
@@ -243,6 +244,12 @@ pub struct RenderOpts {
     /// Threads to render on, when not as many as the session uses. The file
     /// is the same whatever the number.
     pub threads: Option<usize>,
+    /// For MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the default)
+    /// or "best"; or a bitrate in kbit/s instead. They need ffmpeg, which is
+    /// `ffmpeg` when it is not on the PATH.
+    pub quality: Option<String>,
+    pub bitrate: Option<u32>,
+    pub ffmpeg: Option<String>,
 }
 
 impl Default for RenderOpts {
@@ -260,6 +267,9 @@ impl Default for RenderOpts {
             channels: 2,
             master: true,
             threads: None,
+            quality: None,
+            bitrate: None,
+            ffmpeg: None,
         }
     }
 }

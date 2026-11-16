@@ -1061,7 +1061,7 @@ does wherever it is.
 | Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
 | Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
-| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC, the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
+| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
 | Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it |
 | Wheel | scrolls; with Shift sideways; with Ctrl it zooms in time where the pointer is, in the timeline and in the piano roll, and over the track headers makes every track taller or shorter; with Alt it makes the tracks (or the piano roll's rows) taller and shorter |
@@ -1337,14 +1337,46 @@ says when it is done. The render plays a snapshot of the project taken when it
 starts, so editing meanwhile changes the project and not the file. The file
 is written as `.mix.flac.part` beside the target and renamed when complete, so
 a render that fails or is cancelled leaves nothing under the name. Formats
-that need an encoder this program does not have (MP3, Ogg Vorbis, Opus, AAC)
-are refused by name before anything is rendered; `daw.api.render_formats()`
-lists what can be written (`{ name, extensions, bits }`). The command takes
+that need an encoder this program does not have (AAC, AIFF, WMA) are refused
+by name before anything is rendered; `daw.api.render_formats()` lists what
+can be written (`{ name, extensions, bits, lossy, available, why }`).
+
+MP3 (`.mp3`), Ogg Vorbis (`.ogg`) and Opus (`.opus`) are made by `ffmpeg`,
+when it is installed: no encoder for them is linked into the program. The
+song is rendered to a hidden 32-bit float WAV beside the target (no dither;
+at the sample rate asked for), and ffmpeg encodes that into a `.part` file
+that is renamed when complete; the WAV is removed whether the encode succeeds,
+fails or is cancelled. The encode runs on the render's thread too: the status
+line says `encoding mix.mp3 61%` (and the window "Encoding") instead of
+sitting at 100%, `Esc` or `:render.cancel` stops ffmpeg as well, and
+`render.done`, `render.failed` or `render.cancelled` come once, for the final
+file (`render.progress` and `render_status()` carry `stage`, `"rendering"` or
+`"encoding"`). Opus holds only 48 kHz and the usual lower rates, so ffmpeg
+resamples to 48 kHz; MP3 above 48 kHz is resampled to 48 kHz too. The project's
+name is the file's title tag. `ffmpeg` is the program found on the PATH; set
+`daw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an
+ffmpeg built without the encoder, `:render mix.mp3` fails before anything is
+rendered, saying so and naming the formats that need nothing (WAV and FLAC),
+and `render_formats()` gives `available = false` and `why`; the window's
+dialog then does not offer the format.
+
+`quality=low|medium|high|best` (high by default) means the same in each
+format; `bitrate=192` (kbit/s) takes its place when you want a number:
+
+| quality | MP3 (LAME) | Ogg Vorbis | Opus |
+|---|---|---|---|
+| low | VBR `-q:a 6` (about 115 kbit/s) | `-q:a 3` | 64 kbit/s |
+| medium | VBR `-q:a 4` (about 165) | `-q:a 5` | 96 kbit/s |
+| high | VBR `-q:a 2` (about 190) | `-q:a 7` | 128 kbit/s |
+| best | constant 320 kbit/s | `-q:a 9` | 192 kbit/s |
+
+A bitrate is constant for MP3 and the target for Opus and Vorbis. `bits=` and
+`dither=` do not apply to these formats. The command takes
 (and `<Tab>` completes) `range=song|loop|selection`, or `start=` and `end=` in
 beats; `tail=2` (seconds after the end, for reverbs; 1 by default);
 `rate=44100`; `bits=16|24|32` (32 is float, WAV only; 24 by default);
 `channels=mono|stereo` (mono mixes the sides at half level each);
-`dither=true`; `normalize=-1` (peak, dB); `loudness=-14` (integrated LUFS,
+`quality=high` or `bitrate=192` (MP3, Ogg and Opus); `dither=true`; `normalize=-1` (peak, dB); `loudness=-14` (integrated LUFS,
 measured as BS.1770; with `normalize` too, the peak level is a ceiling);
 `tracks=selected` or `tracks=3,5` for a stem of those tracks;
 `master=false` to leave out the master's devices, fader and pan;
@@ -1355,14 +1387,14 @@ and encodes from there.
 
 `daw.render(path, opts)` takes the same as a table (`range`, `start`, `end`,
 `tail`, `sample_rate` or `rate`, `bits`, `channels` (1, 2, "mono",
-"stereo"), `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
+"stereo"), `quality`, `bitrate`, `ffmpeg`, `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
 `master`, `threads`) and waits for the file, returning `{ path, frames,
 seconds, sample_rate, peak, gain, loudness, format, bits, channels, ... }`;
 with `background = true` it returns at once and the events follow:
-`render.progress` (`{ path, fraction, seconds }`, a few times a second),
+`render.progress` (`{ path, fraction, seconds, stage }`, a few times a second),
 then `render.done` (the table above), `render.failed` (`{ path, error }`) or
 `render.cancelled`. `daw.render_status()` gives the running render (`{ path,
-fraction, seconds, cancelling, queued }`) and `daw.render_cancel()` stops it;
+fraction, seconds, cancelling, stage, queued }`) and `daw.render_cancel()` stops it;
 the window finds the same in `daw.frontend.state().modal.render`.
 `daw.render_ranges.chorus = function() return 32, 48 end` adds a named range.
 `daw.render_stems(dir, opts)` writes one file per track, which add up to the
@@ -1566,8 +1598,10 @@ port a message came through is not told apart. In scripts:
   are chosen piece by piece from a clip's menu or with `]t`.
 - MIDI output to hardware, MIDI-CI, and an editor for controller moves.
 - Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
-- Rendering to MP3, Ogg Vorbis or Opus: there is no encoder for them in pure
-  Rust of a quality worth shipping, and no C library is linked for them.
+- Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
+  for them in pure Rust of a quality worth shipping, and no C library is
+  linked for them; they need ffmpeg installed (see Rendering). Nor does the
+  file carry more than the title tag (no artist, album or cover).
 - Attaching the terminal UI to a running instance. It runs in the same process
   as the kernel; the graphical frontend is the one that attaches.
 - In the graphical frontend: what the other bundled extensions draw in the

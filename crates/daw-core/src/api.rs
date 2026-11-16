@@ -918,12 +918,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // whatever takes it.
         fn input_levels(_, sh, () => ()) { Ok(sh.session.borrow().input_levels()) }
         // What a render can write: `{ { name = "WAV", extensions = { "wav" } } }`.
-        fn render_formats(lua, _sh, () => ()) {
-            to_lua(lua, &crate::session::render::formats_json())
+        fn render_formats(lua, _sh, ffmpeg => Option<String>) {
+            to_lua(lua, &crate::session::render::formats_json(ffmpeg.as_deref()))
         }
         // Nothing when a render can write `path`, or why not.
-        fn render_check(_, _sh, path => String) {
-            Ok(crate::session::render::format_of(path.as_ref()).err().map(|e| e.to_string()))
+        fn render_check(_, _sh, (path, ffmpeg) => (String, Option<String>)) {
+            Ok(crate::session::render::format_of(path.as_ref(), ffmpeg.as_deref()).err().map(|e| e.to_string()))
         }
         fn render(lua, sh, (path, opts) => (String, LuaValue)) {
             let opts: RenderOpts = options(lua, opts)?;

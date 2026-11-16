@@ -92,8 +92,9 @@ function view.segments(width)
   if job then
     local pct = string.format("%d%%", math.floor(job.fraction * 100))
     local file = tostring(job.path):match("([^/]+)$") or tostring(job.path)
-    local text = width >= 120 and ("rendering " .. file .. " " .. pct .. " · Esc cancels")
-      or width >= 80 and ("render " .. pct .. " · Esc") or ("render " .. pct)
+    local verb = job.stage == "encoding" and "encoding" or "rendering"
+    local text = width >= 120 and (verb .. " " .. file .. " " .. pct .. " · Esc cancels")
+      or width >= 80 and (verb:sub(1, 6) .. " " .. pct .. " · Esc") or (verb:sub(1, 6) .. " " .. pct)
     add(left, 0, 3, { { text, "StatusRec" } })
   end
   -- 8: the grid.
