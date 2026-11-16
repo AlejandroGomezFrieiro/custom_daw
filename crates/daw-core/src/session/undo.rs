@@ -691,6 +691,7 @@ pub fn diff(a: &Project, b: &Project) -> Value {
             Some((_, prev))
                 if !Arc::ptr_eq(prev, lane)
                     && (prev.points != lane.points
+                        || prev.shapes != lane.shapes
                         || prev.enabled != lane.enabled
                         || prev.target != lane.target) =>
             {

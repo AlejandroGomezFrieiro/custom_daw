@@ -22,8 +22,8 @@ use serde_json::{Map, Value, json};
 
 use crate::history::{self, History};
 use crate::model::{
-    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Send,
-    StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
+    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Segment,
+    Send, Shape, StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
@@ -2339,6 +2339,7 @@ impl Session {
                 target,
                 enabled: opts.enabled.unwrap_or(true),
                 points,
+                shapes: Vec::new(),
             }));
             Ok(id)
         })
@@ -2386,17 +2387,52 @@ impl Session {
             points = self.clean_points(&lane.target, all)?;
         }
         self.edit(|p| {
-            p.lane_mut(id).unwrap().points = points;
+            let lane = p.lane_mut(id).unwrap();
+            // A shape stays with a point that stays where it was.
+            lane.shapes.retain(|s| points.iter().any(|q| q.0 == s.beat));
+            lane.points = points;
+            Ok(())
+        })
+    }
+
+    /// The shapes of a lane's stretches that are not straight.
+    pub fn lane_shapes(&self, id: Id) -> Result<&[Segment]> {
+        Ok(&self
+            .project
+            .lane(id)
+            .with_context(|| format!("no lane {id}"))?
+            .shapes)
+    }
+
+    /// Replace the shapes of a lane's stretches: each by the beat of a point
+    /// of the lane; a straight one need not be listed.
+    pub fn lane_set_shapes(&mut self, id: Id, shapes: Vec<Segment>) -> Result<()> {
+        let lane = self.project.lane(id).with_context(|| format!("no lane {id}"))?;
+        let mut kept: Vec<Segment> = Vec::new();
+        for mut s in shapes {
+            if !s.beat.is_finite() || !s.tension.is_finite() {
+                bail!("a shape needs a finite beat and tension");
+            }
+            if !lane.points.iter().any(|q| q.0 == s.beat) {
+                bail!("lane {id} has no point at beat {} to shape", s.beat);
+            }
+            s.tension = s.tension.clamp(-1.0, 1.0);
+            kept.retain(|k| k.beat != s.beat);
+            if s.shape != Shape::Linear {
+                kept.push(s);
+            }
+        }
+        kept.sort_by(|a, b| a.beat.total_cmp(&b.beat));
+        self.edit(|p| {
+            p.lane_mut(id).unwrap().shapes = kept;
             Ok(())
         })
     }
 
     /// The lane's value at a beat, or nothing when it has no points.
     pub fn lane_value_at(&self, id: Id, beat: f64) -> Result<Option<f64>> {
-        Ok(daw_engine::automation::value_at(
-            self.lane_points(id)?,
-            beat,
-        ))
+        let lane = self.project.lane(id).with_context(|| format!("no lane {id}"))?;
+        Ok(daw_engine::automation::value_at(&lane.played(), beat))
     }
 
     // --- transport ---------------------------------------------------------
