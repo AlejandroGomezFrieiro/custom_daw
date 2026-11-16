@@ -13,6 +13,15 @@
   preview is drawn by the snippet's own layer rather than through
   `daw.complete.show`. A melody of eighth notes alone may be read as
   chords (a beat with two pitches in it is evidence of one).
+- Pickers you can hear: `daw.opt.audition_level` sets the level of sound
+  files only; a phrase plays through the track at the track's own level,
+  so that a preset is heard as it would be. A phrase is timed by the
+  kernel's timers rather than the engine, so it can be a few milliseconds
+  uneven under load. A plugin factory preset takes as long to try as to
+  load (some plugins hold the program up to a third of a second). The
+  pickers of templates, UTAU presets and singers, sends and drum maps are
+  not heard. The window shows a picker's pane as text, the outline of a
+  sound file in block characters, not as a drawn waveform.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the

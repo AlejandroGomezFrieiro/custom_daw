@@ -511,6 +511,30 @@ and a word, `Ctrl-u` clears. The extra keys a picker has are listed along its
 bottom, and a pane on the right shows more about the selected line when the
 picker has one.
 
+**Pickers you can hear.** In the pickers of presets (`:preset`), devices
+(`,fa`), files (`,ff`, and the file picker of `:import`), beats
+(`:drums.beat`) and snippets (`Ctrl-s` in the piano roll), the item under
+the selection is heard once the selection has rested on it for
+`daw.opt.audition_delay` ms (150), as Telescope previews a file. The top of
+the pane says what plays: `▶ Soft pad · loop bar 5`.
+
+| Picker | What is heard |
+| --- | --- |
+| presets | the preset loaded into the device, with the track's own notes: the bar of its MIDI clip at the cursor (else the last bar before it with notes), over and over. A track without notes plays a built-in phrase in the song's key (a beat on a drum track). Moving on loads the next preset over the same loop |
+| devices | the device added to the cursor's track, with the same phrase. A plugin is made apart, so the selection rests on it 600 ms first, and the pane says `… loading` until it plays |
+| files | a sound file on its own, from its start, over everything else at `daw.opt.audition_level` dB (-12), with its outline drawn in the pane and the place it has got to; a MIDI file's first two bars, at its own tempo, through the cursor's track when it has an instrument, else through a synth (and a kit for its drums) added for the purpose |
+| beats | the beat written into the clip, its first bar over and over |
+| snippets | what the snippet would write, once, with what the other pitched tracks play over the same beats |
+
+What is tried on the project is a trial: it is made, heard and seen like
+any edit, and `Esc` puts everything back exactly as it was, with no undo
+step and the project not marked modified. `Enter` on the item heard keeps
+it, as the one undo step choosing it makes (the plugin that was loaded is
+kept, not made again). Nothing plays a phrase while the transport runs: the
+song is what you hear then, with the preset or device in it. `Ctrl-Space`
+turns hearing off and on for that kind of picker, and it is remembered
+until the program ends.
+
 **Matching** is fuzzy, as in fzf: the letters typed must appear in the line in
 that order, not necessarily together. `dfh` finds `Dragonfly Hall`. Lines rank
 higher when the letters are consecutive, when they start words (after a
@@ -541,12 +565,31 @@ daw.pick({
 | `multi` | `Tab` marks several; `on_choose_multi(items)` gets them (or `on_choose` is called for each) |
 | `empty` | what to say when there is nothing to choose from |
 | `primary(item)` | the part of the line that counts first: lines that match there rank above lines that match only elsewhere |
+| `audition(item)` | makes the item heard when the selection rests on it; returns the label the pane shows, or `{ label, loading = function, keep = function(item) }`: `keep` runs in place of `on_choose` when the item heard is chosen, its trial kept. `audition_key` names the setting `Ctrl-Space` keeps, `audition_default = false` starts it off, `audition_delay(item, ms)` rests longer on a slow item |
 | `prompt`, `width`, `height` | |
 
 `daw.pick.match(query, line)` returns the score and the positions that
 matched, `daw.pick.filter(query, items, format)` the items that match, best
 first. `daw.pick.state()` is the open picker's query, matches and selection.
 `daw.pick.resume()` opens the last picker again.
+
+**Hearing from Lua.** `daw.audition` is what the pickers use:
+
+```lua
+daw.audition.try(function() daw.fx.load(device, "Plate") end)   -- an edit that can be taken back
+daw.audition.through(track.id)        -- play the track's bar at the cursor through it, over and over
+daw.audition.phrase(track.id, { { pitch = 60, start = 0, length = 1, velocity = 100 } }, { length = 4 })
+daw.audition.file("/samples/kick.wav")  -- heard on its own at daw.opt.audition_level
+daw.audition.keep()                     -- the trial becomes one undo step
+daw.audition.stop()                     -- silence, and the trial taken back
+daw.audition.state()                    -- what plays: a phrase's notes, or a file's place and outline
+```
+
+Underneath, `api.trial_begin()` and `api.trial_end(keep)` bracket the
+edits, and `api.preview_play(path)`, `api.preview_stop()`,
+`api.preview_get()` and `api.preview_level(db)` drive the preview bus: a
+voice in the engine added after the master, which is never recorded,
+rendered or saved.
 
 **Adding a picker.** `daw.pick.sources` holds the pickers by name. Add a table
 of the same fields with a `desc`, or a function returning one, and it opens
