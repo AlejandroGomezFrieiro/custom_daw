@@ -103,6 +103,32 @@ test("midilsp: Problems lists every namespace's diagnostics with their fixes, an
   eq(clip:notes()[1].pitch, 88, "applied")
 end)
 
+-- MIDI LSP's dialect, without the engine: the tests' range lint speaking it.
+test("midilsp: any server speaking MIDI LSP's dialect works through its adapter", function()
+  local python = io.popen("command -v python3 2>/dev/null"):read("*l")
+  if not python or python == "" then return "no python3" end
+  start()
+  local clip = daw.add_track({ name = "Flute" }):add_clip({ start = 0, length = 4,
+    notes = { { pitch = 60, start = 0, length = 1 }, { pitch = 96, start = 1, length = 1 } } })
+  daw.ui.views.pianoroll:edit(clip)
+  daw.lsp.config("range-midi", { cmd = { python, "tests/fixtures/range_lint.py", "--midi" }, adapter = "midi-lsp" })
+  daw.lsp.enable("range-midi")
+  until_(function() return #daw.diagnostic.get(clip.id) == 1 end, "the range diagnostic")
+  local d = daw.diagnostic.get(clip.id)[1]
+  eq(d.notes[1], 2, "on the second note, by its id")
+  eq(d.at .. " " .. d.length, "1 1", "where, from its ticks")
+  eq(daw.diagnostic.actions(clip.id, 2)[1].title, "Move C7 to C6", "its fix")
+  local hover
+  daw.lsp.hover(clip.id, 96, 1, function(s) hover = s end)
+  until_(function() return hover end, "the hover")
+  eq(hover[1].lines[1], "C7 in range-lint's eyes", "midi/hover")
+  local items
+  daw.lsp.complete({ clip = clip.id, at = 2 }, function(list) items = list or {} end)
+  until_(function() return items end, "the suggestions")
+  eq(items[1].notes[1].pitch .. " " .. items[1].notes[1].start, "60 2", "midi/completion, in the clip's beats")
+  daw.lsp.stop()
+end)
+
 -- With the real engine ----------------------------------------------------------
 
 local function engine_or_skip()

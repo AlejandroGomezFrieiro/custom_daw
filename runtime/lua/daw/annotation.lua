@@ -49,7 +49,8 @@ function M.get(uri, exact)
   return out
 end
 
--- Where they are drawn: a track's labels at the foot of its mixer strip; a
+-- Where they are drawn: a track's label on its mixer strip, over the peak
+-- readout (the meter still holds the peak); a
 -- device's after its name in the device panel; stretches of time on the
 -- arrange view's ruler.
 daw.ui.layer("mixer", "strip_foot", "annotations", 40, function(c)
@@ -58,7 +59,8 @@ daw.ui.layer("mixer", "strip_foot", "annotations", 40, function(c)
   if #list > 0 and c.width > 1 then
     local text = list[1].label
     if api.str_width(text) > c.width then text = daw.util.fit(text, c.width) end
-    c.buf:text(c.x, c.y, text, "Annotation")
+    c.buf:fill(c.x, c.y, c.width, 1, " ", nil)
+    c.buf:text(c.x + c.width - api.str_width(text), c.y, text, "Annotation")
   end
 end)
 daw.ui.layer("devices", "device", "annotations", 40, function(c)

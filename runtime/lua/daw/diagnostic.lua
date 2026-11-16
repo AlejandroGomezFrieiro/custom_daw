@@ -579,7 +579,14 @@ end)
 daw.ui.layer("devices", "device", "diagnostics", 30, function(c)
   if not next(store) then return end
   local list = M.get(A.device(c.device))
-  if #list > 0 then sign(c.buf, c.x, c.y, c.width, list[1].severity, #list == 1 and list[1].message or (#list .. " diagnostics")) end
+  if #list == 0 then return end
+  local worst, own = 4, nil
+  for _, d in ipairs(list) do
+    worst = math.min(worst, d.severity)
+    if not own and d.location.uri == A.device(c.device) then own = d end
+  end
+  -- What is said of the device itself; its parameters have marks of their own.
+  sign(c.buf, c.x, c.y, c.width, worst, own and own.message or (#list .. " diagnostics"))
 end)
 daw.ui.layer("devices", "param", "diagnostics", 30, function(c)
   if not next(store) then return end
