@@ -15,9 +15,15 @@
   the main pair and one side-chain.
 - Pre-roll without a punch (a take from the playhead is not played in from
   before it), and pre-roll in fractions of a bar.
-- MIDI-CI, an editor for controller moves, and MIDI 2.0 on the way out:
-  MIDI output sends MIDI 1.0, so a note's own bend and the finer values
-  are lost there.
+- MIDI-CI: no discovery, profiles or property exchange. It is SysEx, which
+  the MIDI ports neither send nor read yet, so a loopback could not test
+  it.
+- MPE for plugins that take only MIDI 1.0 (LV2, some CLAP): a note's own
+  bend and controllers do not reach them; MPE is a form of MIDI output only.
+- MIDI 2.0 output through the sequencer is untried here: this machine's
+  kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
+  MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's
+  own ports).
 - Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is

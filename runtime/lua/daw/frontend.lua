@@ -181,6 +181,8 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- The controller moves chosen in the strip, by place.
+      controls_chosen = daw.controls.chosen(clip.id),
     }
   end
   local under = daw.cursor.clip()
@@ -262,7 +264,9 @@ function M.clip(id)
     end
   end
   clip.controls = {}
-  for _, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
+  for place, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
+    -- With its place among all of them, as gestures name it.
+    move.place = place
     if move.start >= 0 and move.start < clip.length then clip.controls[#clip.controls + 1] = move end
   end
   local track = api.track_get(clip.track)
@@ -530,8 +534,9 @@ function M.state(known)
         fade_in = clip.fade_in, fade_out = clip.fade_out, gain = clip.gain,
         -- Its file is missing: silent until relinked. The name says so too.
         offline = clip.offline or nil,
-        -- Changes exactly when the clip's notes do: fetch `M.preview` again then.
-        stamp = clip.stamp and string.format("%.0f|%.17g%s", clip.stamp, clip.length, repeats) or nil,
+        -- Changes exactly when the clip's notes or controller moves do:
+        -- fetch `M.preview` (and the piano roll's clip) again then.
+        stamp = clip.stamp and string.format("%.0f|%.0f|%.17g%s", clip.stamp, clip.control_stamp or 0, clip.length, repeats) or nil,
         -- Changes exactly when the clip's waveform does: fetch `M.peaks` again then.
         waveform = clip.kind == "audio"
           and string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
@@ -625,11 +630,11 @@ end
 
 --- The menu of a track's input: the choices of `daw.audio.choices` under
 --- their headings, `audio`, `midi` and `channel`, and where the track sends
---- MIDI, `midi_out` and `midi_out_channel`, each a list of
+--- MIDI, `midi_out`, `midi_out_channel` and `midi_out_form`, each a list of
 --- `{ label, checked }`. `act.choose_input` takes one by heading and place.
 function M.input_menu(track)
   local out = {
-    audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {},
+    audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {}, midi_out_form = {},
     monitor = api.track_get(track).monitor,
   }
   for _, choice in ipairs(daw.audio.choices(track)) do
@@ -2503,6 +2508,31 @@ function A.clear_controls(clip, kind, number)
     if not (control.type == kind and control.key == nil and (kind ~= "cc" or control.number == number)) then out[#out + 1] = control end
   end
   c:set_controls(out)
+end
+
+-- Moves of the strip chosen, moved and taken away, drawn as a line, and
+-- the event list: `daw.controls` says what each does.
+-- A window names a mode by number: 0 alone, 1 add, 2 toggle.
+local modes = { [0] = "only", [1] = "add", [2] = "toggle" }
+function A.select_control(clip, place, mode) daw.controls.select(clip, place, modes[mode] or mode) end
+function A.select_controls(clip, kind, number, beat0, low, beat1, high, mode)
+  return daw.controls.select_box(clip, kind, number, beat0, low, beat1, high, modes[mode] or mode)
+end
+function A.select_all_controls(clip, kind, number)
+  return daw.controls.select_box(clip, kind, number, -1, 0, daw.clip(clip).length + 1, 1)
+end
+function A.clear_control_selection(clip) daw.controls.clear(clip) end
+function A.move_controls(clip, dbeat, dfraction, free)
+  return daw.controls.move(clip, dbeat, dfraction, free == true or free == 1)
+end
+function A.remove_chosen_controls(clip) return daw.controls.remove(clip) end
+function A.line_controls(clip, kind, number, beat0, f0, beat1, f1, free)
+  return daw.controls.line(clip, kind, number, beat0, f0, beat1, f1, free == true or free == 1)
+end
+
+--- The event list of the clip in the piano roll, in a window of its own.
+function A.open_event_list(clip)
+  daw.canvas.open_view("eventlist", { title = "Events · " .. daw.clip(clip).name, width = 520, height = 440 })
 end
 
 function A.remove_point(lane, index)

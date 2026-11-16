@@ -737,6 +737,7 @@ in property <string> render-stage;
     in property <[ChoiceData]> input-channel;
     in property <[ChoiceData]> input-midi-out;
     in property <[ChoiceData]> input-midi-out-channel;
+    in property <[ChoiceData]> input-midi-out-form;
     callback fill-input-menu(int);
     callback choose-input(int, string, int);
     // The audio devices, from the engine indicator: the same way.
@@ -2805,6 +2806,17 @@ in property <string> render-stage;
                                                     activated => {
                                                         refocus.running = true;
                                                         root.choose-input(track.id, "midi_out_channel", at + 1);
+                                                    }
+                                                }
+                                            }
+                                            Menu {
+                                                title: "MIDI out form, where the port takes no MIDI 2.0";
+                                                for entry[at] in root.input-midi-out-form: MenuItem {
+                                                    title: entry.label;
+                                                    checked: entry.checked;
+                                                    activated => {
+                                                        refocus.running = true;
+                                                        root.choose-input(track.id, "midi_out_form", at + 1);
                                                     }
                                                 }
                                             }

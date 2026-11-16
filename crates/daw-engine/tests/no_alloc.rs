@@ -324,6 +324,11 @@ fn the_audio_thread_never_allocates() {
                     track: slot,
                     port: 99 + i as u32,
                     channel: if i == 0 { 5 } else { 0 },
+                    form: if i == 0 {
+                        daw_engine::midi_form::Form::Mpe(15)
+                    } else {
+                        daw_engine::midi_form::Form::Auto
+                    },
                 },
             );
         }

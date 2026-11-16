@@ -538,6 +538,7 @@ end, { desc = "Move the track down or up: `track.move by=-1`" })
 -- they are a picker and commands.
 local group_names = {
   audio = "audio", midi = "MIDI", channel = "MIDI channel", midi_out = "MIDI out", midi_out_channel = "out channel",
+  midi_out_form = "out form",
 }
 local function input_picker(track)
   local items = {}
@@ -557,7 +558,7 @@ local function input_picker(track)
         return daw.notify(track.name .. (track.monitor and ": monitoring its input" or ": not monitoring"))
       end
       daw.audio.choose(track, item)
-      if item.group == "midi_out" or item.group == "midi_out_channel" then
+      if item.group:find("^midi_out") then
         return daw.notify(track.name .. " → " .. daw.routes.midi_out_text(track:get()))
       end
       daw.notify(track.name .. " ← " .. (daw.audio.label(track:get()) or "MIDI from every port"))
@@ -2052,10 +2053,12 @@ local function chosen()
   return clip and #daw.frontend.chosen_notes(clip.id) > 0 and clip or nil
 end
 pmap("x", function()
-  local clip = chosen()
-  if clip then return daw.frontend.act.remove_chosen_notes(clip.id) end
-  keymap.normal("din")
-end, "Delete the note, or the notes chosen with the pointer")
+  local clip = roll:clip()
+  -- Controller moves chosen in the strip go with the chosen notes.
+  local moves = clip and daw.controls.remove(clip.id) or 0
+  if chosen() then return daw.frontend.act.remove_chosen_notes(clip.id) end
+  if moves == 0 then keymap.normal("din") end
+end, "Delete the note, or the notes and controller moves chosen with the pointer")
 pmap("gA", function()
   local clip = roll:clip()
   if clip then daw.frontend.act.select_all_notes(clip.id) end
@@ -2066,6 +2069,35 @@ command("notes.quantize", function(ctx)
   local n = daw.frontend.act.quantize_notes(clip.id, tonumber(ctx.args[1]) and tonumber(ctx.args[1]) / 100 or 1)
   daw.notify(string.format("%d note%s on the %g-beat grid", n, n == 1 and "" or "s", daw.opt.note_grid))
 end, { desc = "Quantize the piano roll's chosen notes, or all, to its grid: `notes.quantize [strength%]`" })
+pmap("E", "notes.list", "The clip's notes and controller moves as a list, to change in place")
+command("notes.list", function()
+  local clip = roll:clip()
+  if not clip then return daw.notify("open a clip in the piano roll first", "warn") end
+  daw.ui.open("eventlist", { title = "Events · " .. clip.name, width = 60, height = 24 })
+end, { desc = "List the piano roll's notes and controller moves, each cell changed in place (Enter), `x` deletes, `a` adds a move" })
+command("controls.line", function(ctx)
+  local clip = roll:clip()
+  if not clip then return daw.notify("open a clip in the piano roll first", "warn") end
+  local args = ctx.args
+  local kind, at = args[1], 2
+  local number
+  if kind == "cc" then number, at = tonumber(args[2]), 3 end
+  local from, to = tonumber(args[at]), tonumber(args[at + 1])
+  if not (kind == "cc" and number or kind == "bend" or kind == "pressure") or not from or not to then
+    return daw.notify("controls.line cc 74 0 127, controls.line bend -8192 8191, controls.line pressure 0 127", "warn")
+  end
+  -- From and to in the units the event list shows: seven-bit steps, or the wheel's -8192 to 8191.
+  local function height(v) return kind == "bend" and (v / 8192 + 1) / 2 or v / 127 end
+  local selection = keymap.selection()
+  local b0, b1 = 0, clip.length
+  if selection and daw.ui.focused == "pianoroll" and selection.kind ~= "line" then b0, b1 = selection.c0, selection.c1 end
+  -- The last step of the stretch reaches `to`.
+  b1 = math.max(b0, b1 - daw.opt.note_grid)
+  local made = daw.frontend.act.line_controls(clip.id, kind, number, b0, height(from), b1, height(to), false)
+  keymap.set_mode("n")
+  daw.notify(string.format("%d %s moves in a line", made, kind == "cc" and "CC " .. number or kind))
+end, { desc = "Draw a straight line of controller moves over the piano roll's selection, or its whole clip: "
+  .. "`controls.line cc 74 0 127`, `controls.line bend 0 8191`, `controls.line pressure 127 0`" })
 command("notes.step_input", function() daw.frontend.act.toggle_step_input() end,
   { desc = "Turn step input on or off: notes from a MIDI keyboard are entered at the piano roll's cursor while stopped" })
 pmap("D", function() keymap.normal("d$") end, "Delete to the end of the clip")
