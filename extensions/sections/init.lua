@@ -4,3 +4,4 @@
 require("sections")
 require("sections.arrange")
 require("sections.ui")
+require("sections.view")

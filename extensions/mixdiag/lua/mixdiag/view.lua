@@ -12,54 +12,121 @@ daw.ui.hl("MixWarn", "Warn")
 daw.ui.hl("MixInfo", "Title")
 daw.ui.hl("MixHint", "Dim")
 
--- The list ----------------------------------------------------------------------
+-- The report ----------------------------------------------------------------------
 
-local list = { items = {}, at = 1, scroll = 0, modal = true }
+-- What was measured and what it came to, then the findings to go to. It
+-- reads the findings afresh each time it is drawn, so a measurement that
+-- ends while it is open shows at once.
+local list = { title = "Mix report", items = {}, at = 1, scroll = 0, modal = true }
+
+--- The report's head: what is being measured or was, the numbers, and the tally.
+local function head(mixdiag)
+  local target = mixdiag.target()
+  local lines = {}
+  local aim = target.integrated and string.format("target %s: %g LUFS, %g dBTP", target.name, target.integrated, target.true_peak or 0)
+    or "target: " .. target.name
+  if mixdiag.job then
+    lines[1] = { string.format("measuring the %s… %d%%", mixdiag.job.range.label, math.floor((mixdiag.job.progress or 0) * 100 + 0.5)), "Warn" }
+  elseif mixdiag.result then
+    local range = mixdiag.range_measured and mixdiag.range_measured.label or "mix"
+    lines[1] = { "the " .. range .. (mixdiag.stale() and ", measured before the last change" or ""), mixdiag.stale() and "Warn" or "Title" }
+  else
+    lines[1] = { "nothing measured yet", "Dim" }
+  end
+  lines[2] = { mixdiag.result and mixdiag.summary(mixdiag.result) or "a measures the song, l the loop, t the cursor's track", mixdiag.result and "Normal" or "Dim" }
+  local counts = {}
+  for _, f in ipairs(mixdiag.findings or {}) do counts[f.severity] = (counts[f.severity] or 0) + 1 end
+  local tally = {}
+  for _, s in ipairs(mixdiag.severities) do
+    if counts[s] then tally[#tally + 1] = counts[s] .. " " .. s end
+  end
+  lines[3] = { (mixdiag.result and (#tally > 0 and table.concat(tally, ", ") or "no findings") .. "   " or "") .. aim, "Dim" }
+  return lines
+end
 
 function list:render(buf)
-  local rows = buf.height - 1
+  local mixdiag = require("mixdiag")
+  self.items = mixdiag.result and mixdiag.items() or {}
+  self.at = daw.util.clamp(self.at, 1, math.max(1, #self.items))
+  local top = head(mixdiag)
+  for i, line in ipairs(top) do buf:text(1, i - 1, daw.util.fit(line[1], math.max(1, buf.width - 2)), line[2]) end
+  buf:fill(0, #top, buf.width, 1, daw.draw.g.h, "Rule")
+  local first = #top + 1
+  local rows = buf.height - first - 1
+  self.first, self.rows = first, rows
   if self.at < self.scroll + 1 then self.scroll = self.at - 1 end
   if self.at > self.scroll + rows then self.scroll = self.at - rows end
-  if #self.items == 0 then buf:text(1, 0, "no findings", "Dim") end
+  if mixdiag.result and #self.items == 0 then buf:text(1, first, "no findings", "Dim") end
   for row = 0, rows - 1 do
     local i = row + 1 + self.scroll
     local item = self.items[i]
     if not item then break end
-    if i == self.at then buf:fill(0, row, buf.width, 1, " ", "Visual") end
-    buf:text(1, row, item.text, styles[item.severity] or "Normal")
+    if i == self.at then buf:fill(0, first + row, buf.width, 1, " ", "Visual") end
+    buf:text(1, first + row, daw.util.fit(item.text, math.max(1, buf.width - 2)), styles[item.severity] or "Normal")
   end
-  buf:text(1, buf.height - 1, "j/k move   Enter go there   q close", "Dim")
+  buf:text(1, buf.height - 1, daw.util.fit("j/k move  Enter go there  a measure the song  l the loop  t the track  T target  q close", buf.width - 2), "Dim")
 end
 
+--- Go to the finding chosen. Floating, the report closes first; in a window
+--- of its own it stays open beside the arrange view.
+local function go()
+  local item = list.items[list.at]
+  if not (item and item.finding) then return end
+  if daw.ui.float and daw.ui.float.name == "mixdiag" then daw.ui.close() end
+  daw.ui.focus("arrange")
+  require("mixdiag").jump(item.finding)
+end
+
+local function measure(scope)
+  return function()
+    local ok, err = pcall(require("mixdiag").analyze, scope)
+    if not ok then daw.notify("mix: " .. tostring(err), "warn") end
+  end
+end
+
+local actions = {
+  j = function() list.at = list.at + 1 end,
+  k = function() list.at = list.at - 1 end,
+  g = function() list.at = 1 end,
+  G = function() list.at = #list.items end,
+  ["<CR>"] = go,
+  a = measure("song"),
+  l = measure("loop"),
+  t = measure("track"),
+  T = function() daw.cmd("mix.target") end,
+  q = function() daw.ui.close() end,
+  ["<Esc>"] = function() daw.ui.close() end,
+}
+actions["<Down>"], actions["<Up>"], actions["<Enter>"] = actions.j, actions.k, actions["<CR>"]
+
 function list:on_key(key)
-  if key == "j" or key == "<Down>" then
-    self.at = math.min(#self.items, self.at + 1)
-  elseif key == "k" or key == "<Up>" then
-    self.at = math.max(1, self.at - 1)
-  elseif key == "gg" or key == "g" then
-    self.at = 1
-  elseif key == "G" then
-    self.at = #self.items
-  elseif key == "<CR>" or key == "<Enter>" then
-    local item = self.items[self.at]
-    daw.ui.close()
-    if item and item.finding then
-      daw.ui.focus("arrange")
-      require("mixdiag").jump(item.finding)
+  local action = actions[key]
+  if action then action() end
+  api.ui_redraw()
+end
+
+function list:on_mouse(event)
+  if event.kind == "scroll_down" then self.at = self.at + 3 end
+  if event.kind == "scroll_up" then self.at = self.at - 3 end
+  if event.kind == "down" and self.first then
+    local i = event.y - self.first + 1 + self.scroll
+    if event.y >= self.first and event.y < self.first + self.rows and self.items[i] then
+      -- A click chooses a finding; a click on the one chosen goes there.
+      if i == self.at then go() else self.at = i end
     end
-  elseif key == "q" or key == "<Esc>" then
-    daw.ui.close()
   end
   api.ui_redraw()
 end
 
 daw.ui.view("mixdiag", list)
 
-function M.open(title, items)
-  list.items, list.at, list.scroll = items, 1, 0
-  local width = 40
-  for _, item in ipairs(items) do width = math.max(width, api.str_width(item.text) + 4) end
-  daw.ui.open("mixdiag", { title = title, width = math.min(width, 140), height = math.min(#items + 3, 30) })
+--- Show the report, on the first finding.
+function M.open()
+  list.at, list.scroll = 1, 0
+  local items = require("mixdiag").items()
+  local width = 60
+  for _, item in ipairs(items) do width = math.max(width, api.str_width(item.text) + 6) end
+  daw.ui.open("mixdiag", { title = "Mix report", width = math.min(width, 140), height = math.min(#items + 8, 30) })
 end
 
 M.list_view = list
@@ -97,6 +164,39 @@ function strip:render(buf)
 end
 
 daw.ui.view("mixdiag_strip", strip)
+
+-- In the graphical frontend, the findings that have a place are flags in a
+-- band under the ruler, in the colour of the worst at each place; a click
+-- goes to that one.
+if daw.frontend and daw.frontend.bands then
+  local c = daw.canvas.palette
+  local colours = { error = c.error, warn = c.warn, info = c.select, hint = c.text_3 }
+  table.insert(daw.frontend.bands, function()
+    local mixdiag = require("mixdiag")
+    local out, at = {}, {}
+    for _, f in ipairs(mixdiag.findings or {}) do
+      if f.beat then
+        local key = string.format("%.6f", f.beat)
+        local flag = at[key]
+        if not flag then
+          flag = { beat = f.beat, length = 0, count = 0 }
+          at[key], out[#out + 1] = flag, flag
+        end
+        flag.count = flag.count + 1
+        if not flag.worst or rank[f.severity] < rank[flag.worst.severity] then flag.worst = f end
+      end
+    end
+    for _, flag in ipairs(out) do
+      local f = flag.worst
+      flag.name = flag.count > 1 and (f.rule .. " +" .. (flag.count - 1)) or f.rule
+      flag.color = colours[f.severity]
+      flag.hint = f.severity .. ": " .. mixdiag.format(f) .. (flag.count > 1 and string.format(" (and %d more here)", flag.count - 1) or "")
+      flag.run = function() mixdiag.jump(f) end
+    end
+    return out
+  end)
+  daw.on("mixdiag.done", daw.frontend.refresh)
+end
 
 local docked = false
 

@@ -444,6 +444,59 @@ test("mixdiag: the list of findings, in a picker or in its own view", function()
   mixdiag.clear()
 end)
 
+--- What a window of the report shows, as one string of its runs.
+local function report_text()
+  local painted = daw.canvas.paint("mixdiag", 1200, 400, { cell = { w = 10, h = 20 }, fresh = true })
+  local text = {}
+  for _, op in ipairs(painted.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
+  return table.concat(text, " ")
+end
+
+test("mixdiag: the report in a window of its own measures, reads and goes to findings", function()
+  load()
+  fresh()
+  daw.ui.focus("arrange")
+  daw.keymap.feed("<Esc><Esc>")
+  daw.canvas.open_view("mixdiag")
+  eq(report_text():find("nothing measured yet", 1, true) ~= nil, true, "before a measurement")
+  synth("Hot", 8, 4, { volume = 18, wave = 1 })
+  daw.flush()
+  daw.canvas.key("mixdiag", "a")
+  eq(mixdiag.job ~= nil, true, "a measures the song")
+  eq(report_text():find("measuring the song", 1, true) ~= nil, true, "and the report says so")
+  settle()
+  local text = report_text()
+  eq(text:find("LUFS", 1, true) ~= nil and text:find("dBTP", 1, true) ~= nil, true, "the numbers: " .. text)
+  eq(text:find("clips at bar 3", 1, true) ~= nil, true, "and the findings")
+  -- The findings with a place are in a band under the window's ruler.
+  local flag
+  for _, e in ipairs(daw.frontend.band_state().entries) do
+    if e.name:match("^clip") then flag = e end
+  end
+  eq(flag ~= nil and flag.color == daw.canvas.palette.error, true, "the clipping is flagged in the colour of an error")
+  daw.cursor.set_beat(0)
+  daw.frontend.act.band(flag.band, flag.index)
+  near(daw.cursor.beat, 8, 0.01, "a click on it goes there")
+  -- In the report, Enter goes to the finding chosen and leaves it open.
+  daw.cursor.set_beat(0)
+  local items = mixdiag.items()
+  for i, item in ipairs(items) do
+    if item.finding.rule == "clip" then
+      for _ = 1, i - 1 do daw.canvas.key("mixdiag", "j") end
+    end
+  end
+  daw.canvas.key("mixdiag", "<CR>")
+  near(daw.cursor.beat, 8, 0.01, "Enter goes to the finding")
+  eq(daw.canvas.open_views.mixdiag ~= nil, true, "and the report stays open")
+  daw.canvas.close("mixdiag")
+  mixdiag.clear()
+  flag = nil
+  for _, e in ipairs(daw.frontend.band_state().entries) do
+    if e.name:match("^clip") then flag = e end
+  end
+  eq(flag, nil, "cleared, the flags go")
+end)
+
 test("mixdiag: marks above the arrange view, and the summary", function()
   findings_at_known_places()
   daw.opt.zoom = 2
