@@ -181,6 +181,8 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- The controller moves chosen in the strip, by place.
+      controls_chosen = daw.controls.chosen(clip.id),
     }
   end
   local under = daw.cursor.clip()
@@ -262,7 +264,9 @@ function M.clip(id)
     end
   end
   clip.controls = {}
-  for _, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
+  for place, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
+    -- With its place among all of them, as gestures name it.
+    move.place = place
     if move.start >= 0 and move.start < clip.length then clip.controls[#clip.controls + 1] = move end
   end
   local track = api.track_get(clip.track)
@@ -2432,6 +2436,27 @@ function A.clear_controls(clip, kind, number)
     if not (control.type == kind and control.key == nil and (kind ~= "cc" or control.number == number)) then out[#out + 1] = control end
   end
   c:set_controls(out)
+end
+
+-- Moves of the strip chosen, moved and taken away, drawn as a line, and
+-- the event list: `daw.controls` says what each does.
+function A.select_control(clip, place, mode) daw.controls.select(clip, place, mode) end
+function A.select_controls(clip, kind, number, beat0, low, beat1, high, mode)
+  return daw.controls.select_box(clip, kind, number, beat0, low, beat1, high, mode)
+end
+function A.select_all_controls(clip, kind, number)
+  return daw.controls.select_box(clip, kind, number, -1, 0, daw.clip(clip).length + 1, 1)
+end
+function A.clear_control_selection(clip) daw.controls.clear(clip) end
+function A.move_controls(clip, dbeat, dfraction, free) return daw.controls.move(clip, dbeat, dfraction, free) end
+function A.remove_chosen_controls(clip) return daw.controls.remove(clip) end
+function A.line_controls(clip, kind, number, beat0, f0, beat1, f1, free)
+  return daw.controls.line(clip, kind, number, beat0, f0, beat1, f1, free)
+end
+
+--- The event list of the clip in the piano roll, in a window of its own.
+function A.open_event_list(clip)
+  daw.canvas.open_view("eventlist", { title = "Events · " .. daw.clip(clip).name, width = 520, height = 440 })
 end
 
 function A.remove_point(lane, index)

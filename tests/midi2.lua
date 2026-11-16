@@ -170,3 +170,163 @@ test("a route with 14-bit controllers sends the fine part of control changes bel
       "together the fourteen bits")
   end)
 end)
+
+-- The editor for controller moves.
+
+local function starts(list)
+  local out = {}
+  for i, m in ipairs(list) do out[i] = string.format("%g", m.start) end
+  return table.concat(out, " ")
+end
+
+--- The moves of `clip` whose places are `places`.
+local function picked(clip, places)
+  local all, out = clip:controls(), {}
+  for i, place in ipairs(places) do out[i] = all[place] end
+  return out
+end
+
+local function moves_clip()
+  fresh()
+  daw.project.tempo = 120
+  daw.opt.note_grid, daw.opt.note_snap = 0.25, true
+  local t = daw.add_track({ name = "Keys" })
+  local clip = t:add_clip({ start = 0, length = 8, notes = { { pitch = "C4", start = 0, length = 1 } } })
+  clip:set_controls({
+    { start = 0, type = "cc", number = 1, value = 0.2 }, { start = 1, type = "cc", number = 1, value = 0.4 },
+    { start = 2, type = "cc", number = 1, value = 0.6 }, { start = 3, type = "cc", number = 1, value = 0.8 },
+    { start = 1, type = "bend", value = 0.5 }, { start = 1.5, type = "cc", number = 74, value = 0.9 },
+  })
+  return clip
+end
+
+test("controller moves in the strip are chosen with a click or a box, moved, and taken away", function()
+  local clip = moves_clip()
+  local id = clip.id
+  eq(A.select_controls(id, "cc", 1, 0.5, 0, 2.5, 1, "only"), 2, "a box over two beats chooses the modulation moves there")
+  eq(starts(picked(clip, daw.controls.chosen(id))), "1 2", "and not the wheel or another controller in it")
+  eq(A.select_controls(id, "cc", 1, 0, 0.5, 8, 1, "only"), 2, "a box can take only the high ones")
+  eq(starts(picked(clip, daw.controls.chosen(id))), "2 3", "those above the middle")
+  local first = daw.controls.chosen(id)[1]
+  A.select_controls(id, "cc", 1, 0, 0, 0.1, 1, "add")
+  eq(#daw.controls.chosen(id), 3, "Shift adds to them")
+  A.select_control(id, first, "toggle")
+  eq(starts(picked(clip, daw.controls.chosen(id))), "0 3", "Ctrl takes one out")
+  -- Dragged a beat and a bit later and a tenth up: the first lands on the grid.
+  A.move_controls(id, 1.1, 0.1)
+  local moved = picked(clip, daw.controls.chosen(id))
+  eq(starts(moved), "1 4", "moved on, still the chosen ones")
+  near(moved[1].value, 0.3, 1e-9, "and up")
+  near(moved[2].value, 0.9, 1e-9, "both of them")
+  A.move_controls(id, 0, 5)
+  near(picked(clip, daw.controls.chosen(id))[2].value, 1, 1e-9, "no higher than the top")
+  api.undo_checkpoint()
+  eq(A.remove_chosen_controls(id), 2, "Delete takes the chosen away")
+  api.undo_checkpoint()
+  local left = {}
+  for _, m in ipairs(clip:controls()) do left[#left + 1] = m.type .. (m.number or "") .. "@" .. m.start end
+  eq(table.concat(left, " "), "cc1@1 bend@1 cc74@1.5 cc1@2", "the rest stay")
+  daw.undo()
+  eq(#clip:controls(), 6, "undo brings them back")
+  eq(#daw.controls.chosen(id), 0, "and an edit made otherwise lets go of the chosen")
+  -- The piano roll's x takes chosen moves away too.
+  daw.ui.views.pianoroll:edit(clip)
+  A.select_all_controls(id, "bend")
+  eq(#daw.controls.chosen(id), 1, "every move of the strip's kind")
+  daw.keymap.feed("x")
+  eq(#clip:controls(), 5, "x in the piano roll deletes the chosen moves")
+  eq(#clip:notes(), 1, "and not the note under the cursor")
+end)
+
+test("a line of controller moves replaces those between its ends, a move to each grid step", function()
+  local clip = moves_clip()
+  local id = clip.id
+  eq(A.line_controls(id, "cc", 1, 2, 1, 1, 0), 5, "from beat 1 to 2 in quarter beats, either way round")
+  local line = {}
+  for _, m in ipairs(clip:controls()) do
+    if m.type == "cc" and m.number == 1 then line[#line + 1] = string.format("%g=%g", m.start, m.value) end
+  end
+  eq(table.concat(line, " "), "0=0.2 1=0 1.25=0.25 1.5=0.5 1.75=0.75 2=1 3=0.8", "a ramp, the moves outside it kept")
+  eq(#daw.controls.chosen(id), 5, "the line is then chosen, to move it")
+  -- The wheel rests in the middle of the strip.
+  A.line_controls(id, "bend", nil, 4, 0.5, 5, 1, true)
+  local bends = {}
+  for _, m in ipairs(clip:controls()) do if m.type == "bend" and m.start >= 4 then bends[#bends + 1] = m end end
+  eq(#bends, 33, "off the grid, a move to each 32nd of a beat")
+  near(bends[1].value, 0, 1e-9, "from rest")
+  near(bends[#bends].value, 1, 1e-9, "to the top")
+  daw.ui.views.pianoroll:edit(clip)
+  daw.commands.exec("controls.line cc 7 0 127")
+  local volume = {}
+  for _, m in ipairs(clip:controls()) do if m.type == "cc" and m.number == 7 then volume[#volume + 1] = m end end
+  eq(#volume, 32, ":controls.line draws across the whole clip without a selection")
+  near(volume[#volume].value, 1, 1e-9, "up to 127")
+end)
+
+test("the event list shows every note and move in time order and changes each cell in place", function()
+  fresh()
+  daw.project.tempo = 120
+  local t = daw.add_track({ name = "Keys" })
+  local clip = t:add_clip({ start = 4, length = 4, notes = {
+    { pitch = "C4", start = 0, length = 1, velocity = 100 }, { pitch = "E4", start = 1, length = 0.5, velocity = 90 },
+  } })
+  clip:set_controls({
+    { start = 0.5, type = "cc", number = 74, value = 0.5 },
+    { start = 1, type = "bend", key = "E4", value = 1 / 48 },
+  })
+  local id = clip.id
+  local function table_of()
+    local out = {}
+    for i, row in ipairs(daw.controls.rows(id)) do
+      local c = daw.controls.cells(id, row)
+      out[i] = table.concat({ c.time, c.kind, c.which, c.value, c.length }, "|")
+    end
+    return out
+  end
+  local rows = table_of()
+  eq(rows[1], "2.1.00|note|C4|100|1", "a note: where, what, how hard, how long")
+  eq(rows[2], "2.1.50|cc|74|63.5|", "a controller in seven-bit steps, finer ones as decimals")
+  eq(rows[3], "2.2.00|note|E4|90|0.5", "notes before moves at the same time")
+  eq(rows[4], "2.2.00|bend|E4|+1.00 st|", "a note's own bend in semitones")
+  local function row(n) return daw.controls.rows(id)[n] end
+  daw.controls.edit(id, row(2), "value", "100")
+  near(clip:controls()[1].value, 100 / 127, 1e-9, "a value typed in")
+  daw.controls.edit(id, row(4), "value", "-2 st")
+  near(clip:controls()[2].value, -2 / 48, 1e-9, "a bend in semitones")
+  daw.controls.edit(id, row(1), "which", "D4")
+  eq(clip:notes()[1].pitch, 62, "a note's pitch by name")
+  daw.controls.edit(id, row(1), "time", "2.3.50")
+  near(clip:notes()[2].start, 2.5, 1e-9, "a time as bar.beat.hundredths moves the note")
+  eq(table_of()[1], "2.1.50|cc|74|100|", "the list is in time order again")
+  fails(function() daw.controls.edit(id, row(1), "kind", "bend") end, "kind stays", "a row's kind")
+  fails(function() daw.controls.edit(id, row(1), "time", "12.1") end, "outside the clip", "a time past the clip")
+  fails(function() daw.controls.edit(id, row(1), "value", "loud") end, "a value is a number", "a value that is no number")
+  daw.controls.remove_row(id, row(1))
+  eq(#clip:controls(), 1, "a move taken away")
+  daw.controls.add(id, 3, "cc", 11)
+  local all = table_of()
+  eq(all[#all], "2.4.00|cc|11|0|", "a move added")
+end)
+
+test("the event list floats over the terminal, its keys change a cell, and the window opens it alone", function()
+  fresh()
+  local t = daw.add_track({ name = "Keys" })
+  local clip = t:add_clip({ start = 0, length = 4, notes = { { pitch = "C4", start = 0, length = 1, velocity = 100 } } })
+  clip:set_controls({ { start = 1, type = "cc", number = 1, value = 0 } })
+  daw.ui.views.pianoroll:edit(clip)
+  daw.keymap.feed("E")
+  eq(daw.ui.float and daw.ui.float.name, "eventlist", "E in the piano roll lists its clip's events")
+  local list = daw.ui.views.eventlist
+  list.row, list.column = 1, 4
+  daw.keymap.feed("j<CR><C-u>64<CR>")
+  near(clip:controls()[1].value, 64 / 127, 1e-9, "Enter asks for the cell's text, and sets it")
+  daw.keymap.feed("kx")
+  eq(#clip:notes(), 0, "x deletes the row under the cursor")
+  daw.keymap.feed("q")
+  eq(daw.ui.float, nil, "q closes it")
+  A.open_event_list(clip.id)
+  local open = false
+  for _, w in ipairs(daw.canvas.windows()) do open = open or w.name == "eventlist" end
+  eq(open, true, "the window's piano roll opens it in a window of its own")
+  daw.canvas.close("eventlist")
+end)

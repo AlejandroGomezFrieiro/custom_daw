@@ -120,6 +120,7 @@ daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
+daw.controls = require("daw.controls")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
 
@@ -139,7 +140,7 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
-  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "help", "effect_windows" }) do
+  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows" }) do
     require("daw.views." .. name)
   end
   require("daw.defaults")
