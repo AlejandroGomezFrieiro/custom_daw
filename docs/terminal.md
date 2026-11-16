@@ -77,6 +77,7 @@ returns to normal mode.
 | `grv` `grp`, `grt` | type the volume (dB) or pan (`L30`, `R25`, `C`, -100 to 100), the tempo: a number, `+2` or `-3` to step from the value now, `=-6` for a value below zero |
 | `I` `Alt-i`, `R` | next audio input, monitor the input; record or stop recording |
 | `&` `S` `J` `~`, `grc` | repeat, split, join, mute the clip; rename it |
+| `gw` `gW` | put a warp marker on the audio clip at the cursor; take off the one nearest it |
 | `,cf`, `grC` | type the fade in and out of the audio clip under the cursor, in beats (`1 2`, or one length for both); choose the track's colour from the theme's hues (also in the mixer) |
 | `H` `L`, `Alt-h` `Alt-l`, `Ctrl-a` `Ctrl-x` | move the clip; shorten and lengthen it; transpose it |
 | `Enter`, `K` | edit the clip's notes in the piano roll; describe what is under the cursor |

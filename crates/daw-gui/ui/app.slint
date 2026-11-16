@@ -12,7 +12,8 @@
 //   clip       click chooses (Ctrl toggles, Shift extends), drag moves the
 //              chosen (Ctrl copies, Shift off the grid), edges trim (Alt
 //              slips), corners fade, top line sets gain, double click opens
-//              its notes, right click for the rest
+//              its notes (on an audio clip's top band: a warp marker, whose
+//              handle drags), right click for the rest
 //   ruler      click puts the cursor, drag in the top half loops a stretch,
 //              the loop's edges drag
 //   header     click selects, double click renames, drag reorders, bottom
@@ -97,6 +98,7 @@ export struct ClipData {
     takes: int,         // how many takes it has (1 without others), and which plays
     take: int,
     looped: bool,       // it repeats what it plays (notches in `preview` mark the repeats)
+    warps: [float],     // an audio clip's warp markers, in beats from its start
 }
 
 // A send of the selected track: where to, and how much.
@@ -769,6 +771,12 @@ in property <string> render-stage;
     callback set-fade(int, bool, float);
     // The top line of an audio clip: the clip and its gain in dB.
     callback set-clip-gain(int, float);
+    // Warp markers of an audio clip: one put at a beat (a double click on
+    // the top band), marker `index` (from 0) dragged to a beat (off the grid
+    // with Shift), or removed.
+    callback warp-add(int, float);
+    callback warp-move(int, int, float, bool);
+    callback warp-remove(int, int);
     callback clip-command(int, float, string);
     // The clip menu's "Split at the edit cursor" and "Glue", on the chosen clips or the clip.
     callback split-clips(int);
@@ -955,6 +963,11 @@ in property <string> render-stage;
     property <length> fade-dx;
     property <int> gain-clip: -1;
     property <length> gain-ay;
+    // A warp marker's handle being dragged: its clip, which, and how far.
+    property <int> warp-clip: -1;
+    property <int> warp-index;
+    property <length> warp-ax;
+    property <length> warp-dx;
     property <float> gain-start;
     property <float> gain-now;
     // A press on M, S or R, swept down (or up) across the others: where it
@@ -3498,6 +3511,39 @@ in property <string> render-stage;
                                             root.clip-command(clip.id, clip.start, "clip.tempo");
                                         }
                                     }
+                                    MenuItem {
+                                        title: "Keep formants when shifted";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.formants");
+                                        }
+                                    }
+                                    MenuSeparator { }
+                                    MenuItem {
+                                        title: "Warp marker at the pointer   double click the top";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.warp-add(clip.id, clip.start + (clip-box.cut-left + clip-touch.menu-x) / root.beat);
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Warp markers onto the grid";
+                                        enabled: clip.warps.length > 0;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.warp snap");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Remove the warp markers";
+                                        enabled: clip.warps.length > 0;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.warp clear");
+                                        }
+                                    }
                                     MenuSeparator { }
                                     MenuItem {
                                         title: clip.looped ? "Stop looping" : "Loop: repeat when made longer";
@@ -3585,7 +3631,12 @@ in property <string> render-stage;
                                 }
                                 double-clicked => {
                                     self.opened = true;
-                                    root.open-clip(clip.id);
+                                    // On an audio clip's top band: a warp marker there.
+                                    if (!clip.midi && self.mouse-y < max(clip-box.title, 10px)) {
+                                        root.warp-add(clip.id, clip.start + (clip-box.cut-left + self.x + self.mouse-x) / root.beat);
+                                    } else {
+                                        root.open-clip(clip.id);
+                                    }
                                 }
                                 scroll-event(event) => {
                                     if (event.modifiers.control) {
@@ -3721,6 +3772,78 @@ in property <string> render-stage;
                                         if (self.has-hover) {
                                             root.hint = "fade: drag sideways to make it longer or shorter";
                                         } else if (root.hint == "fade: drag sideways to make it longer or shorter") {
+                                            root.hint = "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Its warp markers: a line down the clip and a handle on its top
+                        // band, dragged to stretch the sound on either side of it.
+                        for at[index] in clip.warps: Rectangle {
+                            property <bool> held: root.warp-clip == clip.id && root.warp-index == index;
+                            property <length> line-x: at * root.beat - clip-box.cut-left + (self.held ? root.warp-dx : 0px);
+                            x: self.line-x - 4px;
+                            y: 0;
+                            width: 9px;
+                            height: parent.height;
+                            visible: self.line-x >= 0px && self.line-x <= parent.width;
+                            Rectangle {
+                                x: 4px;
+                                y: 0;
+                                width: 1px;
+                                height: parent.height;
+                                background: Theme.yellow.with-alpha(parent.held || warp-touch.has-hover ? 1.0 : 0.7);
+                            }
+                            Path {
+                                x: 0;
+                                y: 0;
+                                width: 9px;
+                                height: 7px;
+                                viewbox-width: 9;
+                                viewbox-height: 7;
+                                commands: "M 0 0 L 9 0 L 4.5 7 Z";
+                                fill: parent.held || warp-touch.has-hover ? Theme.select : Theme.yellow;
+                            }
+                            warp-menu := ContextMenuArea {
+                                Menu {
+                                    MenuItem {
+                                        title: "Remove warp marker";
+                                        activated => {
+                                            root.warp-remove(clip.id, index);
+                                        }
+                                    }
+                                }
+                                warp-touch := TouchArea {
+                                    height: max(clip-box.title, 10px);
+                                    y: 0;
+                                    mouse-cursor: ew-resize;
+                                    pointer-event(event) => {
+                                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                            keys.focus();
+                                            root.warp-clip = clip.id;
+                                            root.warp-index = index;
+                                            root.warp-ax = self.absolute-position.x + self.mouse-x;
+                                            root.warp-dx = 0px;
+                                        }
+                                        if (event.kind == PointerEventKind.move && root.warp-clip == clip.id && root.warp-index == index) {
+                                            root.warp-dx = self.absolute-position.x + self.mouse-x - root.warp-ax;
+                                        }
+                                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left && root.warp-clip == clip.id) {
+                                            if (abs(root.warp-dx) > 1px) {
+                                                root.warp-move(clip.id, index, clip.start + at + root.warp-dx / root.beat, event.modifiers.shift);
+                                            }
+                                            root.warp-clip = -1;
+                                            root.warp-dx = 0px;
+                                        }
+                                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                                            warp-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                        }
+                                    }
+                                    changed has-hover => {
+                                        if (self.has-hover) {
+                                            root.hint = "warp marker: drag to stretch the sound on either side of it, on the grid, Shift off it · right click to remove";
+                                        } else if (root.hint == "warp marker: drag to stretch the sound on either side of it, on the grid, Shift off it · right click to remove") {
                                             root.hint = "";
                                         }
                                     }

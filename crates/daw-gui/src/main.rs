@@ -2117,6 +2117,9 @@ impl View {
                     takes: c["takes"].as_i64().unwrap_or(1) as i32,
                     take: c["take"].as_i64().unwrap_or(1) as i32,
                     looped: c["loop"].as_bool().unwrap_or(false),
+                    warps: ModelRc::from(Rc::new(VecModel::from(
+                        rows(&c["warps"]).iter().map(number).collect::<Vec<f32>>(),
+                    ))),
                     color: colour(&state["tracks"][row as usize]["color"]),
                 }
             })
@@ -3052,6 +3055,18 @@ fn run() -> Result<()> {
     ui.on_set_clip_gain({
         let pass = pass.clone();
         move |id, db| pass("set_clip_gain", json!([id, db]))
+    });
+    ui.on_warp_add({
+        let pass = pass.clone();
+        move |id, beat| pass("warp_add", json!([id, beat]))
+    });
+    ui.on_warp_move({
+        let pass = pass.clone();
+        move |id, index, beat, free| pass("warp_move", json!([id, index + 1, beat, free]))
+    });
+    ui.on_warp_remove({
+        let pass = pass.clone();
+        move |id, index| pass("warp_remove", json!([id, index + 1]))
     });
     ui.on_clip_command({
         let pass = pass.clone();

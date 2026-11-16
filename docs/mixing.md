@@ -430,10 +430,15 @@ saved with the project, copied, pasted, cut and undone with it.
 | `:clip.pitch 3`, `:clip.pitch -0.5` | play it 3 semitones higher, or a quarter tone lower, at the same length |
 | `:clip.tempo`, `:clip.tempo 100`, `:clip.tempo off` | follow the tempo: keep its beats when the tempo changes, its sound being at the tempo it plays at now, or at 100 BPM; or keep its seconds again |
 | `:clip.stretch_mode tonal` | how it is stretched: `tonal`, `percussive` or `auto` |
+| `:clip.formants`, `:clip.formants on`, `off` | keep its formants when its pitch is shifted (on and off) |
+| `:clip.warp`, `gw` | put a warp marker at the cursor, pinning the sound there |
+| `:clip.warp move`, `:clip.warp move 2`, `:clip.warp move 2 8.5` | move the warp marker nearest the cursor (or marker 2) to the cursor (or to beat 8.5) |
+| `:clip.warp remove`, `gW`; `:clip.warp snap`; `:clip.warp clear` | take off the marker nearest the cursor; move every marker onto the grid; take them all off |
 | `:clip.loop`, `:clip.loop 4`, `:clip.loop off` | loop the clip (on and off), repeating 4 beats, or stop |
 
 In the window, drag the right edge of an audio clip with Alt and Shift held
-to stretch it to there (on the grid); the clip's menu has "Stretch and
+to stretch it to there (on the grid); double click its top band for a warp
+marker, and drag the marker's handle; the clip's menu has "Stretch and
 loop" with the rest. A stretched clip says so before its name, in both
 frontends: `×1.5`, `+3st`, `♩` (following the tempo), `⟳` (looping), and
 `stretching…` while its sound is being made.
@@ -443,11 +448,37 @@ frontends: `×1.5`, `+3st`, `♩` (following the tempo), `⟳` (looping), and
 `clip.stretch_mode`. A stretched or shifted clip does not stretch as it
 plays: its file is stretched once, on a thread of its own, and the engine
 plays the result as it plays any file. It is made a moment after the last
-change (a drag makes it once, when the edge is let go), kept by file,
-ratio, shift, mode and sample rate, in the media cache when it is large,
-and found there again in later runs. Until it is ready the clip is silent;
-a render waits for it. `clip.offset` stays in seconds of the file, so a
-second of a clip stretched by 2 is half a second of its file.
+change (a drag makes it once, when the edge is let go), from its start,
+into room laid out for all of it, and the clip plays it as far as it is
+made: it is made many times faster than it plays, so a long file is heard
+at once. Played past where it has got (the playhead put far into a long
+clip just changed), the clip fades out just before that point, is silent,
+and fades in again where the making catches up; `clip.made` says how much
+is made, from 0 to 1. A render waits until it is all made, and is the same
+whenever it is asked for. The version is kept by file, warp, shift, mode,
+formants and sample rate, in the media cache when it is large, and found
+there again in later runs. `clip.offset` stays in seconds of the file, so
+a second of a clip stretched by 2 is half a second of its file.
+
+**Warp markers.** A warp marker pins a moment of the file to a place in the
+clip, so that the parts of the sound between markers are each stretched by
+their own amount: put one on each beat of a loosely played part and move
+each onto its beat, or snap them all (`:clip.warp snap`). Putting one
+changes nothing; moving one stretches the sound between it and its
+neighbours and nowhere else: where there is no marker between it and the
+clip's start or end, that edge is pinned with a marker of its own first.
+A marker goes no further than a stretch of 0.25 to 4 on either side
+allows. In the terminal a marker is a line down the clip, on the cell's
+left edge; in the window a yellow line with a handle on the clip's top band.
+They are `clip.warp`, a list of `{ source, target, beat }`: `source` is the
+moment of the file in seconds, `beat` where it plays now, and `target`,
+what is saved, is where the moment would be heard with no markers, in
+seconds of the file before the clip's stretch, which still applies to the
+whole. They are saved, copied and cut with the clip, undone as any edit,
+and stay pinned to the file when the clip is trimmed or slipped. In
+scripts: `daw.stretch.warp_add(clip, beat)`, `daw.stretch.warp_move(clip, i,
+beat)`, `daw.stretch.warp_remove(clip, i)`, `daw.stretch.warp_snap(clip)`,
+or `clip.warp = {}` to take them all off.
 
 There are two ways of stretching, both written for this program in Rust
 (`crates/daw-core/src/stretch.rs`). `tonal` is a phase vocoder with
@@ -457,7 +488,14 @@ file at its own speed (WSOLA), each placed where it carries on best from
 the last, and plays each onset once, whole, where it belongs: for drums and
 speech. `auto`, the default, takes a sound with two onsets a second or more
 for percussive. Both keep the two channels one image. A pitch shift is a
-stretch followed by a resampling, so formants move with the pitch.
+stretch followed by a resampling, so formants move with the pitch, and a
+voice shifted far sounds smaller or larger, unless the clip keeps its
+formants (`clip.formants`, `:clip.formants`): then the vocoder finds each
+frame's spectral envelope (the cepstrum, liftered at 1.5 ms) and moves it
+the other way before the resampling moves it back, so that the formants,
+which say what vowel is sung, stay where they were while the harmonics
+move. A clip that keeps its formants is stretched the `tonal` way whatever
+its mode.
 
 **Following the tempo.** A clip in the `stretch` timebase (`:clip.tempo`,
 or `clip.timebase = "stretch"`) keeps its start and its length on their
@@ -466,7 +504,11 @@ pitch stays. `clip.source_tempo` is its sound's own tempo: set when the
 timebase is turned on (the tempo at its start, times its stretch), by hand
 (`:clip.tempo 100` makes a loop recorded at 100 BPM play at the song's
 tempo), and by recording, which notes the tempo a take was made at on every
-clip it makes.
+clip it makes. Where the tempo changes inside such a clip (a ramp, or a
+change part way), it is not stretched evenly but bent along the tempo map:
+each beat of its sound, at `clip.source_tempo`, lands on a beat of the
+song (`clip.bent` says so). A looped clip is stretched evenly all the same.
+
 
 **Looping.** A looped clip (`clip.loop`) repeats `clip.loop_length` beats of
 what it plays over its whole length: drag its end out and the content comes

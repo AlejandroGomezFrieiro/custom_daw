@@ -56,6 +56,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `gh` | | hear the pitch |
 | `o` `O` | add a track below, above | |
 | `grn` `grc` | rename the track, the clip | |
+| `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
 | `I` `<A-i>` | choose the input (audio, MIDI port and channel), monitor it | |
