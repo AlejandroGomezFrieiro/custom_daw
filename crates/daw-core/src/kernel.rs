@@ -53,6 +53,8 @@ pub enum KernelMsg {
     /// A message that arrived at a MIDI port.
     /// MIDI came in: it waits in `Shared::midi_in`.
     Midi,
+    /// A helper process started with pipes wrote something or ended.
+    Output,
     Rpc {
         /// The connection the call came over, or 0 for none.
         client: ClientId,
@@ -149,6 +151,11 @@ impl Kernel {
                 argv: opts.argv,
             },
         });
+        // What a helper writes waits with it; the message only wakes the loop.
+        let output_tx = Mutex::new(tx.clone());
+        shared.io.borrow_mut().on_output(Arc::new(move || {
+            let _ = output_tx.lock().unwrap().send(KernelMsg::Output);
+        }));
         Ok(Self {
             shared,
             lua: Lua::new(),
@@ -314,6 +321,7 @@ impl Kernel {
                 self.shared.dirty.set(true);
             }
             KernelMsg::Midi => self.shared.hear_midi(),
+            KernelMsg::Output => self.shared.hear_output(),
             KernelMsg::Rpc {
                 client,
                 method,
