@@ -128,11 +128,11 @@ test("midilsp: the engine marks a parallel fifth, and its fix is one undo step",
   eq(#marks, 2, "the window is told to mark both")
   api.undo_checkpoint()
   local actions = daw.diagnostic.actions(clip.id, 2)
-  eq(actions[1].title, "Change D5 to C#5", "the engine's fix")
+  eq(actions[1].title, "Change D5 to C5", "the engine's fix, in the key daw.harmony reads and sends")
   actions[1].run()
   daw.flush()
   api.undo_checkpoint()
-  eq(clip:notes()[2].pitch, 73, "applied")
+  eq(clip:notes()[2].pitch, 72, "applied")
   until_(function()
     for _, x in ipairs(daw.diagnostic.get(clip.id)) do
       if x.rule == "parallel-perfect" then return false end
@@ -236,10 +236,10 @@ test("midilsp: in the terminal, a parallel fifth is marked, gone to, explained a
   api.undo_checkpoint()
   daw.keymap.feed(",ca")
   text = screen()
-  eq(text:find("Change D5 to C#5", 1, true) ~= nil, true, "the fixes, in the picker:\n" .. text)
+  eq(text:find("Change D5 to C5", 1, true) ~= nil, true, "the fixes, in the picker:\n" .. text)
   daw.keymap.feed("<CR>")
   api.undo_checkpoint()
-  eq(clip:notes()[2].pitch, 73, "fixed")
+  eq(clip:notes()[2].pitch, 72, "fixed")
   until_(function() return #daw.diagnostic.get(clip.id, { namespace = "midi-lsp" }) == 0 end, "the mark to go")
   -- (The message line may still say what ]d went to.)
   local still = false

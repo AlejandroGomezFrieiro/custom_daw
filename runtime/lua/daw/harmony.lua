@@ -208,6 +208,11 @@ end
 
 -- Chord names --------------------------------------------------------------------
 
+-- Other names providers give qualities.
+local ALIAS = { major = "maj", minor = "min", M = "maj", m = "min", dom7 = "7", dominant7 = "7", ["dom"] = "7",
+  maj7 = "maj7", min7 = "m7", ["half-dim"] = "m7b5", hdim7 = "m7b5", ["m7b5"] = "m7b5", diminished = "dim",
+  augmented = "aug", dim7 = "dim7", ["min7b5"] = "m7b5", ["5"] = "5", power = "5" }
+
 local ROMAN = { "I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII" }
 
 --- A chord's symbol: "G7", "F/A", "Bbmaj7", spelled as `key` writes it.
@@ -418,25 +423,60 @@ end
 local function reading()
   local sig = signature()
   if cache.stamp == sig then return cache end
-  local chords, keys, by
+  -- The highest-priority provider that answers wins over the stretch its
+  -- answer covers; the ones below fill in the rest of the song (a language
+  -- server hears the clip it is sent, the built-in reading everything).
+  local chords, keys, by, covered = {}, {}, nil, {}
+  -- What of `x` lies outside the stretches covered already: the longer
+  -- piece left, or nil.
+  local function free(x)
+    local a, z = x.at, x.at + x.length
+    for _, span in ipairs(covered) do
+      if a < span[2] - 1e-9 and z > span[1] + 1e-9 then
+        if span[1] - a >= z - span[2] then z = math.min(z, span[1]) else a = math.max(a, span[2]) end
+      end
+    end
+    if z - a < 1e-9 then return nil end
+    if a == x.at and z == x.at + x.length then return x end
+    local cut = {}
+    for k, v in pairs(x) do cut[k] = v end
+    cut.at, cut.length = a, z - a
+    return cut
+  end
   for _, p in ipairs(providers) do
     local ok, c, k = pcall(p.fn, 0, math.huge)
     if ok and c then
-      chords, keys, by = c, k, p.name
-      break
+      by = by or p.name
+      local from, to = math.huge, -math.huge
+      for _, chord in ipairs(c) do
+        chords[#chords + 1] = free(chord)
+        from, to = math.min(from, chord.at), math.max(to, chord.at + chord.length)
+      end
+      for _, key in ipairs(k or {}) do
+        keys[#keys + 1] = free(key)
+        from, to = math.min(from, key.at), math.max(to, key.at + key.length)
+      end
+      if to > from then covered[#covered + 1] = { from, to } end
     elseif not ok then
       daw.notify("harmony provider " .. p.name .. ": " .. tostring(c), "warn")
     end
   end
-  chords, keys = chords or {}, keys or {}
   local set = M.project_key()
   local full = {}
   for i, k in ipairs(keys) do full[i] = complete_key(k) end
   table.sort(full, function(a, b) return a.at < b.at end)
   local list = {}
   for _, c in ipairs(chords) do
-    local chord = { at = c.at, length = c.length, root = c.root % 12, quality = c.quality, bass = (c.bass or c.root) % 12 }
-    chord.tones = c.tones or M.tones(chord.root, chord.quality)
+    -- What the provider says is kept (a server's `function`, `cadence`,
+    -- its own name and numeral); what it leaves out is filled in.
+    local chord = {}
+    for k, v in pairs(c) do chord[k] = v end
+    chord.root = M.pitch_class(c.root)
+    chord.bass = M.pitch_class(c.bass or c.root)
+    chord.quality = read.by_quality[c.quality] and c.quality or ALIAS[c.quality] or c.quality
+    if not chord.tones then
+      chord.tones = read.by_quality[chord.quality] and M.tones(chord.root, chord.quality) or { chord.root }
+    end
     list[#list + 1] = chord
   end
   table.sort(list, function(a, b) return a.at < b.at end)
@@ -444,8 +484,8 @@ local function reading()
   local parts = {}
   for _, chord in ipairs(list) do
     local key = M.key(chord.at)
-    chord.name = M.chord_name(chord, key)
-    chord.roman = M.chord_roman(chord, key)
+    chord.name = chord.name or M.chord_name(chord, key)
+    chord.roman = chord.roman or M.chord_roman(chord, key)
     parts[#parts + 1] = string.format("%g:%g:%s", chord.at, chord.length, chord.name)
   end
   for _, k in ipairs(full) do parts[#parts + 1] = string.format("%g:%s", k.at, k.name) end

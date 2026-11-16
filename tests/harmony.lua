@@ -274,6 +274,11 @@ test("harmony: a provider answers instead of the reading", function()
   eq(H.provider(), "server", "said")
   H.provide("silent", function() return nil end, 200)
   eq(H.provider(), "server", "one that does not answer is passed over")
+  H.provide("server", function()
+    return { { at = 0, length = 2, root = 2, quality = "min7", ["function"] = "S" } }, {}
+  end, 50)
+  eq(reading(), "0:Dm7 2:C", "the built-in reading fills in what a provider's answer does not cover")
+  eq(H.at(0)["function"], "S", "a provider's own fields are kept, and its names for qualities understood")
   H.provide("server", nil)
   H.provide("silent", nil)
   eq(reading(), "0:C", "removed")
@@ -307,4 +312,37 @@ test("harmony: chord symbols in the piano roll's ruler", function()
   daw.opt.chords = "names"
   daw.opt.note_zoom = 8
   daw.ui.focus("arrange")
+end)
+
+test("harmony: the chords MIDI LSP's engine hears flow into the reading and the terminal's chord row", function()
+  -- Only with the engine named: the extension's own tests load it otherwise.
+  if not os.getenv("MIDI_LSP_ENGINE") then return "no MIDI LSP engine: set $MIDI_LSP_ENGINE to run this" end
+  daw.opt.midilsp_autostart = false
+  if not daw.ext.loaded.midilsp then daw.ext.load("extensions/midilsp") end
+  local midilsp = require("midilsp")
+  fresh()
+  dofile("examples/demo-song.lua")
+  daw.flush()
+  local keys = daw.tracks()[3]
+  daw.ui.views.pianoroll:edit(keys:clips()[1])
+  local ok, err = pcall(function()
+    midilsp.start(true)
+    local deadline = api.now() + 30000
+    while H.provider() ~= "lsp" do
+      if api.now() > deadline then error("waited in vain for the engine's analysis", 0) end
+      daw.wait(20)
+    end
+    local first = H.at(0)
+    eq(first.name, "Am", "the engine hears A minor at the start")
+    eq(first["function"] ~= nil, true, "with its function: " .. tostring(first["function"]))
+    eq(reading(8), "8:F/C 12:Fadd9/G 16:Am7 24:Cmaj9 28:G", "the built-in reading fills in past the clip it was sent")
+    local row
+    for _, line in ipairs(api.ui_snapshot(140, 48)) do
+      if line:find("▏Am", 1, true) then row = line end
+    end
+    eq(row ~= nil, true, "the terminal's chord row shows it")
+  end)
+  daw.lsp.stop()
+  daw.ui.focus("arrange")
+  if not ok then error(err, 0) end
 end)

@@ -1316,10 +1316,22 @@ export component PianoRoll inherits Rectangle {
                         }
                     }
                 }
-                // What modules draw over the notes, as the kernel's piano
-                // roll layers give it: ghosts of notes that would be
-                // written, marked notes (an active snippet's), and a span
-                // with a few words along the bottom of what shows.
+                // The notes diagnostics are about, outlined in the colour
+                // of the worst said of each, over the notes (a drawing only:
+                // the pointer goes through to the note).
+                for mark in Roll.marks: Rectangle {
+                    x: root.seen-x(mark.start * root.beat) - 2px;
+                    y: (127 - mark.pitch) * root.note-height - 2px;
+                    width: max(3px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px)) + 4px;
+                    height: root.note-height + 3px;
+                    border-radius: 3px;
+                    border-width: 2px;
+                    border-color: root.severity-color(mark.severity);
+                }
+                // What a snippet draws over the notes, as the kernel sends
+                // it: ghosts of the notes the picker would write, an active
+                // snippet's notes marked, and its span with a few words
+                // along the bottom of what shows.
                 for mark in Roll.overlay: Rectangle {
                     x: root.seen-x(mark.start * root.beat);
                     y: mark.kind == 2 ? -roll.content-y + roll.height - 30px : (127 - mark.pitch) * root.note-height + 1px;
@@ -1339,17 +1351,6 @@ export component PianoRoll inherits Rectangle {
                         vertical-alignment: center;
                         height: parent.height;
                     }
-                // The notes diagnostics are about, outlined in the colour
-                // of the worst said of each, over the notes (a drawing only:
-                // the pointer goes through to the note).
-                for mark in Roll.marks: Rectangle {
-                    x: root.seen-x(mark.start * root.beat) - 2px;
-                    y: (127 - mark.pitch) * root.note-height - 2px;
-                    width: max(3px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px)) + 4px;
-                    height: root.note-height + 3px;
-                    border-radius: 3px;
-                    border-width: 2px;
-                    border-color: root.severity-color(mark.severity);
                 }
                 // Past the end of the clip.
                 Rectangle {
