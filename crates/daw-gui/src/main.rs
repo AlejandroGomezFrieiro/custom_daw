@@ -986,6 +986,10 @@ fn notation(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
         Some((_, name)) => (name.to_string(), false),
         None if key == ' ' => ("Space".to_string(), false),
         None if key == '<' => ("lt".to_string(), false),
+        // Slint sends a press of a modifier alone as a control character
+        // (Control is U+0011, which would read as Ctrl-q): it is no key, and
+        // must not end the count or the operator typed before it.
+        None if ('\u{10}'..='\u{18}').contains(&key) => return None,
         // With Control held some systems send the control character.
         None if ctrl && (key as u32) < 0x20 => (((key as u8 + 0x60) as char).to_string(), true),
         // What is left below a space, or in the private range Slint uses for
@@ -4937,6 +4941,16 @@ mod tests {
         assert_eq!(renderer_choice(&mut args, Some("")).unwrap(), Renderer::Software);
         assert!(renderer_choice(&mut args, Some("vulkan")).is_err());
         assert!(renderer_choice(&mut vec!["--renderer".into()], None).is_err());
+    }
+
+    #[test]
+    fn a_press_of_a_modifier_alone_is_no_key() {
+        // Control, Shift, Alt and the rest reach Slint as control
+        // characters; a count typed before Ctrl-a must survive them.
+        for key in ['\u{10}', '\u{11}', '\u{12}', '\u{13}', '\u{17}'] {
+            assert_eq!(notation(&key.to_string(), true, false, false), None);
+        }
+        assert_eq!(notation("a", true, false, false).as_deref(), Some("<C-a>"));
     }
 
     #[test]
