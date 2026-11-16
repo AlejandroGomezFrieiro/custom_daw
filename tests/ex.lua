@@ -388,3 +388,22 @@ test("ex: score clips are refused with a reason", function()
   t:clips()[1].meta = { score = { measures = {} } }
   fails(function() daw.commands.exec("%s/c4/d4/g") end, "is a score")
 end)
+
+test("ex: in a text buffer a line's ranges are lines, as the buffer reads them", function()
+  local t = song()
+  local L = daw.layout
+  local before = L.capture()
+  T.after(function()
+    for _, buf in ipairs(L.buffers_list()) do
+      if buf.type == "textbuf" then L.buf_delete(buf) end
+    end
+    L.restore(before)
+  end)
+  keys(":e daw://tracks<CR>")
+  local tb = require("daw.textbuf")
+  keys(":2d<CR>")
+  eq(#tb.buf().state.text.lines, 1, ":2d deletes the second line of the buffer")
+  eq(T.layout(t), "a@0+4 b@4+4 c@8+4", "not bar 2 of the song")
+  keys(":%s/Drums/Kit/<CR>")
+  eq(api.track_get(api.track_list()[2]).name, "Drums", "and :s edits the text, not the notes, until :w")
+end)
