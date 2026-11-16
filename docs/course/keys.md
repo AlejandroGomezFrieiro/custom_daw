@@ -54,8 +54,11 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `[` `]` | | velocity |
 | `<CR>` | open the clip in R | add or remove a note |
 | `gh` | | hear the pitch |
+| `ga` `gE` | | edit the clip of another track's note under the cursor instead; edit it too, or no longer |
+| `gn` `gN` | | the next, the previous clip edited becomes the active one |
 | `o` `O` | add a track below, above | |
 | `grn` `grc` | rename the track, the clip | |
+| `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
 | `,vn` `,va` `,vr` `,vx` `,vl` | a new VCA over the selected tracks; put them under a VCA; take them out of their VCAs; take the VCA at the cursor away; link the faders of a group | |
@@ -95,6 +98,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `o` | go to the other end |
 | `gv` | select the last selection again |
 | `x` `p` | delete it, replace it with the register |
+| `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
 | `<Esc>` | back to normal mode |
@@ -110,6 +114,18 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `z` `x` | octave down, up |
 | `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
+
+## Take a suggestion (piano roll, normal and insert mode)
+
+| Keys | |
+| --- | --- |
+| `<C-Space>` | ask the completion sources what comes next |
+| `<Tab>` | accept the suggestion that shows |
+| `<C-l>` | accept its next note or chord only |
+| `<C-n>` `<C-p>` | the next, the previous alternative |
+| `<A-1>` … `<A-9>` | show that alternative |
+| `<C-e>` `<Esc>` | dismiss it (`<Esc>` leaves insert mode only when nothing shows) |
+| `gh` | hear it from a bar before (normal mode) |
 
 ## Repeat and remember
 
@@ -153,12 +169,38 @@ Stop half way through a sequence and the keys that can follow are listed.
 | Keys | |
 | --- | --- |
 | `<Tab>` `gt` | next view |
-| `,m` `,d` `,p` | mixer, device panel, piano roll |
+| `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
+| `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this panel, close every panel |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
 | `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+
+## Launch clips (the session view, `,l`)
+
+| Keys | |
+| --- | --- |
+| `h` `l` `j` `k` | previous, next track; next, previous slot (`gg` `G` first, last) |
+| `<CR>` `L` | launch the slot (an empty one stops the track), launch the row as a scene |
+| `s` `S` | stop the track's clip, every clip |
+| `b` `B` | the track back to its timeline, every track |
+| `n` `e` | a new MIDI clip in the slot, open its notes |
+| `x` `dd` `yy` `p` | empty the slot, yank its clip, paste a clip into it |
+| `gp` | copy the arrange view's clip into the slot |
+| `m` `gl` | the next launch mode (trigger, gate, toggle), legato on or off |
+| `R` `4R` | record a bar, or four, into the empty slot from the next boundary |
+| `grn` `C` | name the scene, capture what is launched into the timeline |
+
+## Diagnostics and language servers
+
+| Keys | |
+| --- | --- |
+| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
+| `gK` | in R: what the diagnostics and language servers say about the note |
+| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
+| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
 ## The tutor
 

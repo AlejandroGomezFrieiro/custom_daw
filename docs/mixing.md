@@ -208,14 +208,40 @@ go: the built-in synth follows the wheel, the sustain pedal and a note's own
 bend; CLAP plugins get a note's own controllers as note expressions and the
 rest as MIDI 2.0 if they take it, else MIDI 1.0; VST3 plugins get note
 expressions and poly pressure, and controllers through the parameters they
-assign to them; LV2 plugins get MIDI 1.0, which has no per-note bend.
+assign to them; LV2 plugins, and CLAP plugins that take only MIDI 1.0, get
+MIDI 1.0, which has no per-note bend: a note's own controllers do not reach
+them (MPE for them, as for a MIDI output, is not there yet).
+
+**Editing controller moves.** The strip under the window's piano roll shows
+the velocities or one controller, chosen from its dropdown. A controller is
+drawn with the pointer held down; the right button dragged draws a straight
+line, a move to each grid step (Shift: each 32nd of a beat); a click on a
+move's head chooses it (Ctrl adds or takes it out) and Ctrl and a drag
+chooses the moves in a box; dragging a chosen head moves them all in time
+and value, landing on the grid; `Delete` or `x` removes them, and a right
+click opens a menu (choose all, let go, delete, clear the controller).
+`:controls.line cc 74 0 127` draws a line over the piano roll's selection,
+or its whole clip, from the terminal (`bend -8192 8191`, `pressure 0 127`).
+
+The event list shows every note and move of the clip in the piano roll, a
+row each in time order: its time (bar.beat.hundredths), kind (`note`, `cc`,
+`bend`, `pressure`, `registered`, `assignable`, `program`), which (a note's
+pitch, a controller's number, the note a move belongs to), value (a
+velocity; seven-bit steps with the finer part as decimals; the wheel from
+-8192 to 8191; a note's own bend in semitones) and length. `E` in the piano
+roll (`:notes.list`) floats it over the terminal; the window's piano roll
+opens it in a window of its own with List. `j` `k` `h` `l` move, `Enter`
+changes the cell under the cursor (or a double click), `x` deletes the row,
+`a` adds a move at its time, `u` undoes, `q` closes. Scripts have the same
+through `daw.controls` (`rows`, `cells`, `edit`, `select_box`, `move`,
+`line`).
 
 At the ports the program opens as a MIDI 2.0 client and reads Universal MIDI
 Packets, so a MIDI 2.0 device arrives whole and a MIDI 1.0 device arrives as
 the same events with less detail. That needs a kernel built with
 `CONFIG_SND_SEQ_UMP`; without it the ports are MIDI 1.0, and what arrives is
 widened by the specification's rules so that both read the same. There is no
-MIDI-CI, and no editor for controller moves yet.
+MIDI-CI (see What is missing).
 
 **MIDI output to hardware.** A track sends what it plays (its clips' notes
 and controllers, and MIDI input passing through it, before its devices) to
@@ -223,7 +249,34 @@ a port: `track.midi_output = { port = "UM-ONE: UM-ONE MIDI 1", channel = 2 }`
 (`channel` nil keeps each message's own), `:track.midi_out UM-ONE 2` (part
 of the name will do; `none` for none), or the MIDI out entries of the input
 list (`I`) and of the window's input menu on the track's header.
-`daw.midi.outputs()` lists the ports. The audio thread stamps each message
+`daw.midi.outputs()` lists the ports.
+
+What goes out is MIDI 2.0 where the port takes it: when the sequencer has
+MIDI 2.0 (`CONFIG_SND_SEQ_UMP`) and the port's program speaks it, the notes,
+their own bends and controllers and every value go whole, as Universal MIDI
+Packets. Elsewhere it is MIDI 1.0, in the form the route asks for, `form` in
+`track.midi_output` (also `:track.midi_out UM-ONE 2 mpe`, and the MIDI out
+form entries of the input list and the window's input menu):
+
+- `auto` (the default): MIDI 2.0 where the port takes it, else plain.
+- `plain`: MIDI 1.0 as each message has it, in seven bits; a note's own bend
+  and controllers are left out, its pressure goes as poly pressure.
+- `mpe`: MIDI Polyphonic Expression. Each note gets a channel of its own in
+  the lower zone (channel 1 for what is the whole instrument's, `members`
+  channels from 2 on, 15 unless said), so that its own bend, pressure and
+  brightness (controller 74) are its channel's pitch bend, pressure and
+  controller 74. The zone is announced first (MPE's configuration message)
+  with a bend range of 48 semitones, which is a note's own bend range here.
+  A note takes the channel let go of longest ago, so that a release still
+  sounding is not bent by the next note; with every channel busy it shares
+  the one with fewest notes. What comes for a note before it starts is sent
+  on its channel just before it.
+- `cc14`: control changes 0 to 31 as pairs of fourteen bits, the fine part
+  on 32 to 63.
+
+On this machine's kernel, without `CONFIG_SND_SEQ_UMP`, only the MIDI 1.0
+forms can be tried; the MIDI 2.0 path is the same packets the plugins and
+the tests' codec use, untried through a sequencer. The audio thread stamps each message
 with when it is heard (the output's latency and the plugins' delay
 included) and hands it over a lock-free queue to a thread that schedules it
 on an ALSA sequencer queue in real time, so a synth on the port sounds with
@@ -293,7 +346,7 @@ sitting at 100%, `Esc` or `:render.cancel` stops ffmpeg as well, and
 file (`render.progress` and `render_status()` carry `stage`, `"rendering"` or
 `"encoding"`). Opus holds only 48 kHz and the usual lower rates, so ffmpeg
 resamples to 48 kHz; MP3 above 48 kHz is resampled to 48 kHz too. The project's
-name is the file's title tag. `ffmpeg` is the program found on the PATH; set
+name is the file's title tag (see "Tags" below). `ffmpeg` is the program found on the PATH; set
 `daw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an
 ffmpeg built without the encoder, `:render mix.mp3` fails before anything is
 rendered, saying so and naming the formats that need nothing (WAV and FLAC),
@@ -325,10 +378,40 @@ render in the foreground. `:stems out format=flac master=false` renders stems
 too. Normalizing renders the song once into a raw temporary file, measures it
 and encodes from there.
 
+### Tags
+
+A rendered file carries a title, artist, album, track number, year, genre,
+comment and a cover picture, when they are set. They belong to the project,
+which keeps them (`project.meta.tags`, saved with it) for every render:
+
+```
+:render.tags artist=Ana album="First one" track=3/12 year=2026 genre=Ambient comment="a note" cover=cover.png
+:render.tags                  " what is set
+:render.tags genre=           " an empty value takes one out
+```
+
+In Lua `daw.render_tags()` gives the table and `daw.render_tags({ artist = "Ana" })`
+sets those fields and keeps the others. `:render` takes the same words
+(`:render mix.mp3 artist=Bo`) and `daw.render` a `tags` table, for that file
+only; they go over the project's. The title of an MP3, Ogg or Opus file is the project's name unless one
+is given, and a lossy stem's is its track's name. A relative `cover` is from the
+project's directory; it must be a PNG or JPEG file of at most 8 MiB, and a
+render that cannot read it is refused before anything is rendered. The
+window's render dialog has them under Tags, and what is typed there becomes
+the project's.
+
+Each format holds them its own way: a WAV in a `LIST` chunk of `INFO`
+(`INAM`, `IART`, `IPRD`, `ITRK`, `ICRD`, `IGNR`, `ICMT`), a FLAC in Vorbis
+comments and a `PICTURE` block, MP3 in ID3v2.3 with the cover as an attached
+picture, and Ogg Vorbis and Opus in Vorbis comments, the cover in
+`METADATA_BLOCK_PICTURE`. The last three are written by ffmpeg, which is
+handed the tags in a file, not on its command line. A WAV has no cover that
+players read, so none is written to it.
+
 `daw.render(path, opts)` takes the same as a table (`range`, `start`, `end`,
 `tail`, `sample_rate` or `rate`, `bits`, `channels` (1, 2, "mono",
 "stereo"), `quality`, `bitrate`, `ffmpeg`, `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
-`master`, `threads`) and waits for the file, returning `{ path, frames,
+`master`, `threads`, `tags`) and waits for the file, returning `{ path, frames,
 seconds, sample_rate, peak, gain, loudness, format, bits, channels, ... }`;
 with `background = true` it returns at once and the events follow:
 `render.progress` (`{ path, fraction, seconds, stage }`, a few times a second),
@@ -469,10 +552,15 @@ saved with the project, copied, pasted, cut and undone with it.
 | `:clip.pitch 3`, `:clip.pitch -0.5` | play it 3 semitones higher, or a quarter tone lower, at the same length |
 | `:clip.tempo`, `:clip.tempo 100`, `:clip.tempo off` | follow the tempo: keep its beats when the tempo changes, its sound being at the tempo it plays at now, or at 100 BPM; or keep its seconds again |
 | `:clip.stretch_mode tonal` | how it is stretched: `tonal`, `percussive` or `auto` |
+| `:clip.formants`, `:clip.formants on`, `off` | keep its formants when its pitch is shifted (on and off) |
+| `:clip.warp`, `gw` | put a warp marker at the cursor, pinning the sound there |
+| `:clip.warp move`, `:clip.warp move 2`, `:clip.warp move 2 8.5` | move the warp marker nearest the cursor (or marker 2) to the cursor (or to beat 8.5) |
+| `:clip.warp remove`, `gW`; `:clip.warp snap`; `:clip.warp clear` | take off the marker nearest the cursor; move every marker onto the grid; take them all off |
 | `:clip.loop`, `:clip.loop 4`, `:clip.loop off` | loop the clip (on and off), repeating 4 beats, or stop |
 
 In the window, drag the right edge of an audio clip with Alt and Shift held
-to stretch it to there (on the grid); the clip's menu has "Stretch and
+to stretch it to there (on the grid); double click its top band for a warp
+marker, and drag the marker's handle; the clip's menu has "Stretch and
 loop" with the rest. A stretched clip says so before its name, in both
 frontends: `×1.5`, `+3st`, `♩` (following the tempo), `⟳` (looping), and
 `stretching…` while its sound is being made.
@@ -482,11 +570,37 @@ frontends: `×1.5`, `+3st`, `♩` (following the tempo), `⟳` (looping), and
 `clip.stretch_mode`. A stretched or shifted clip does not stretch as it
 plays: its file is stretched once, on a thread of its own, and the engine
 plays the result as it plays any file. It is made a moment after the last
-change (a drag makes it once, when the edge is let go), kept by file,
-ratio, shift, mode and sample rate, in the media cache when it is large,
-and found there again in later runs. Until it is ready the clip is silent;
-a render waits for it. `clip.offset` stays in seconds of the file, so a
-second of a clip stretched by 2 is half a second of its file.
+change (a drag makes it once, when the edge is let go), from its start,
+into room laid out for all of it, and the clip plays it as far as it is
+made: it is made many times faster than it plays, so a long file is heard
+at once. Played past where it has got (the playhead put far into a long
+clip just changed), the clip fades out just before that point, is silent,
+and fades in again where the making catches up; `clip.made` says how much
+is made, from 0 to 1. A render waits until it is all made, and is the same
+whenever it is asked for. The version is kept by file, warp, shift, mode,
+formants and sample rate, in the media cache when it is large, and found
+there again in later runs. `clip.offset` stays in seconds of the file, so
+a second of a clip stretched by 2 is half a second of its file.
+
+**Warp markers.** A warp marker pins a moment of the file to a place in the
+clip, so that the parts of the sound between markers are each stretched by
+their own amount: put one on each beat of a loosely played part and move
+each onto its beat, or snap them all (`:clip.warp snap`). Putting one
+changes nothing; moving one stretches the sound between it and its
+neighbours and nowhere else: where there is no marker between it and the
+clip's start or end, that edge is pinned with a marker of its own first.
+A marker goes no further than a stretch of 0.25 to 4 on either side
+allows. In the terminal a marker is a line down the clip, on the cell's
+left edge; in the window a yellow line with a handle on the clip's top band.
+They are `clip.warp`, a list of `{ source, target, beat }`: `source` is the
+moment of the file in seconds, `beat` where it plays now, and `target`,
+what is saved, is where the moment would be heard with no markers, in
+seconds of the file before the clip's stretch, which still applies to the
+whole. They are saved, copied and cut with the clip, undone as any edit,
+and stay pinned to the file when the clip is trimmed or slipped. In
+scripts: `daw.stretch.warp_add(clip, beat)`, `daw.stretch.warp_move(clip, i,
+beat)`, `daw.stretch.warp_remove(clip, i)`, `daw.stretch.warp_snap(clip)`,
+or `clip.warp = {}` to take them all off.
 
 There are two ways of stretching, both written for this program in Rust
 (`crates/daw-core/src/stretch.rs`). `tonal` is a phase vocoder with
@@ -496,7 +610,14 @@ file at its own speed (WSOLA), each placed where it carries on best from
 the last, and plays each onset once, whole, where it belongs: for drums and
 speech. `auto`, the default, takes a sound with two onsets a second or more
 for percussive. Both keep the two channels one image. A pitch shift is a
-stretch followed by a resampling, so formants move with the pitch.
+stretch followed by a resampling, so formants move with the pitch, and a
+voice shifted far sounds smaller or larger, unless the clip keeps its
+formants (`clip.formants`, `:clip.formants`): then the vocoder finds each
+frame's spectral envelope (the cepstrum, liftered at 1.5 ms) and moves it
+the other way before the resampling moves it back, so that the formants,
+which say what vowel is sung, stay where they were while the harmonics
+move. A clip that keeps its formants is stretched the `tonal` way whatever
+its mode.
 
 **Following the tempo.** A clip in the `stretch` timebase (`:clip.tempo`,
 or `clip.timebase = "stretch"`) keeps its start and its length on their
@@ -505,7 +626,11 @@ pitch stays. `clip.source_tempo` is its sound's own tempo: set when the
 timebase is turned on (the tempo at its start, times its stretch), by hand
 (`:clip.tempo 100` makes a loop recorded at 100 BPM play at the song's
 tempo), and by recording, which notes the tempo a take was made at on every
-clip it makes.
+clip it makes. Where the tempo changes inside such a clip (a ramp, or a
+change part way), it is not stretched evenly but bent along the tempo map:
+each beat of its sound, at `clip.source_tempo`, lands on a beat of the
+song (`clip.bent` says so). A looped clip is stretched evenly all the same.
+
 
 **Looping.** A looped clip (`clip.loop`) repeats `clip.loop_length` beats of
 what it plays over its whole length: drag its end out and the content comes
@@ -576,6 +701,7 @@ pan, or a parameter of a device.
 | --- | --- |
 | `:learn` | bind what was moved last (or the parameter under the device panel's cursor): then move the controller |
 | `:learn volume`, `:learn pan`, `:learn cutoff` | the selected track's fader, pan, or a parameter by name |
+| `:learn launch`, `:learn scene`, `:learn stop`, `:learn stop all` | a pad or button that launches the slot under the session view's cursor, its scene, or stops (see [Live performance](live.md)) |
 | `:learn.list` | what is bound; choosing one takes it away |
 | `:learn.remove 2`, `:learn.remove volume`, `:learn.clear` | take bindings away |
 

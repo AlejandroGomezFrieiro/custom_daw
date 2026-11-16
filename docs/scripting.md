@@ -127,6 +127,8 @@ daw.keymap.setreg(value, name)   daw.keymap.getreg(name)   daw.keymap.selection(
 daw.keymap.feed("3jdd")          daw.keymap.normal("dic")  -- as typed; from inside a mapping
 daw.edit.arrange.yank(region)    daw.edit.arrange.paste(value)   daw.edit.roll.delete(clip, region)
 track:snapshot()                 daw.restore_track(snapshot, index)   -- with devices, clips, automation
+daw.roll_clips.parts()           daw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/harmony.md)
+daw.ui.views.pianoroll.layer("lint", 35, paint, marks)                -- draw in the piano roll, both frontends
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
 view.grid = { get = function() return row, beat end, set = function(row, beat) end, step = function() return 1 end }
@@ -163,6 +165,49 @@ daw.ui.input({ prompt = "Name: " }, function(text) end)
 daw.notify("message", "warn")
 ```
 
+**Completion.** `daw.complete` shows suggestions as ghost notes in the piano
+roll, from sources that extensions register; see "Writing a source" in
+[harmony.md](harmony.md) for the context and the items.
+
+```lua
+daw.complete.register({ name = "mine", priority = 10, views = { "pianoroll" }, auto = true,
+  complete = function(ctx, done) done({ { label = "a fifth up", notes = { { pitch = ctx.pitch + 7, start = ctx.at, length = 1 } } } }) end })
+daw.complete.request("manual")    daw.complete.current()    -- { items, index, item, clip } or nil
+daw.complete.select(1)            daw.complete.select(3, true)   daw.complete.accept()   daw.complete.accept(true)  -- next notes only
+daw.complete.dismiss()            daw.complete.audition()   daw.complete.unregister("mine")
+daw.complete.show(items, { keys = false })   -- ghost notes for a preview, from any module
+daw.on("complete.changed", function(e) end)  -- e.shown
+```
+
+**The piano roll's layers.** What a module draws over the piano roll's grid
+goes in a layer, so that several share it in a fixed order from back to
+front: other tracks' notes (10), the clip's own notes (20), diagnostics (30),
+an active snippet (40), suggestions (50), then the cursor. A layer paints in
+the terminal with `paint(p)` and may tell the window what to draw with
+`marks(clip)`; keys that hold while some state lasts go in a key scope,
+which comes before the piano roll's own keys; the window's toolbar takes
+switches.
+
+```lua
+local roll = daw.ui.views.pianoroll
+roll.layer("lint", 30,
+  function(p)                           -- p.roll, p.x(beat), p.row(pitch) (nil off screen), p.data, p.hue
+    local row = p.row(60)
+    if row then p.roll:text(p.x(4), row, "!", "Error") end
+  end,
+  function(clip)                        -- what the window draws: boxes, or chips that can be clicked
+    return { { pitch = 60, start = 4, length = 1, fill = "#e06c75", alpha = 0.2, edge = "#e06c75" },
+             { pitch = 61, start = 4, length = 0, badge = true, label = "parallel fifths", act = "my_fix", arg = 1 } }
+  end)
+roll:key_scope("pianoroll.lint", 30, function() return showing end)   -- then map keys in view "pianoroll.lint"
+roll:tool("lint", function() return { label = "Lint", on = enabled, act = "toggle_lint", tip = "..." } end)
+daw.ui.keybar.set("pianoroll.lint", "n", { { "<C-y>", "fix" } })     -- the key line while the scope is on
+```
+
+A chip's `act` names a `daw.frontend.act` function, called with the clip and
+`arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
+left. A failing layer is skipped, and the others are drawn.
+
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,
@@ -180,7 +225,31 @@ leaves it the time to), `proc_kill(id)`; `sock_listen(path)`, `sock_connect(path
 `sock_accept(id)`, `sock_read(id)` (`""` when nothing has arrived, nil once
 closed), `sock_write(id, bytes)`, `sock_close(id)`. A device that takes data
 from scripts answers `daw.api.device_call(device, method, bytes)`. A helper
-is asked to finish when the program ends, however it ends.
+is asked to finish when the program ends, however it ends. Started with
+`{ pipe = true }`, a program is talked to over its standard input and
+output instead (its errors still go to `log`): `proc_write(id, bytes)`,
+`proc_read(id)` (`""` when nothing is waiting, nil once it closed its
+output), `proc_close_input(id)`; a `proc.output` event (`{ id }`) says when
+there is something to read, so nothing polls.
+
+**Diagnostics and language servers.** `daw.diagnostic` is `vim.diagnostic`
+for clips: `set(namespace, clip, list)` with each
+`{ notes = { places }, at, length, severity, message, rule, source, fixes }`
+(`severity` 1 to 4, or "error", "warning", "info", "hint"; a fix is
+`{ title, edits = { { note, pitch | delete | start | length | velocity } } }`
+or `{ title, apply = fn }`), `get(clip, { namespace, severity, note })`,
+`count(clip)`, `reset(namespace, clip)`, `config({ virtual_text, signs,
+underline, severity_sort })`, `actions(clip, place)`, `apply(d, fix)` (one
+undo step), `goto_next()`, `goto_prev()`, `list()`; event
+`diagnostic.changed`. `daw.lsp` is `vim.lsp`: `config(name, { cmd, framing,
+attach, settings, init_options, restart })`, `enable(name, on)`,
+`clients()`, `restart(name)`, `stop(name)`, `request(name, method, params,
+function(err, result) end)`, `notify(name, method, params)`,
+`daw.lsp.handlers[method] = function(client, params) end`, `hover(clip,
+pitch, beat, cb)`, `complete(ctx, done)`, `attach(name, clip)` to keep a
+clip open in a server, `settle()` for scripts; events `lsp.status`,
+`lsp.analysis`. See [Language servers and diagnostics](lsp.md).
+
 `daw.json.encode(value, pretty)` and `daw.json.decode(text)` are for what an
 extension keeps in files of its own.
 
@@ -207,9 +276,10 @@ a frontend draws (pushed when it changes, in parts), and the terminal
 UI's screen. [docs/protocol.md](protocol.md) is the whole protocol.
 
 **An instance on another machine.** `daw attach` makes the terminal it
-runs in a terminal of an instance that is already running: the same
-screen, the same keys, beside the instance's own terminal if it has one
-(`daw --headless` has none). `:detach` leaves and the instance runs on.
+runs in a terminal of an instance that is already running, beside the
+instance's own terminal if it has one (`daw --headless` has none), with a
+seat of its own: its own cursor, mode, selection and keys, in the one
+project. `:detach` leaves and the instance runs on.
 `daw ctl`, `daw attach` and `daw-gui` all reach an instance three ways:
 
 ```sh
@@ -218,21 +288,39 @@ daw attach --socket /tmp/studio.sock         # another socket, such as one carri
 daw attach --connect studio:7700 --token-file studio.token   # over the network
 ```
 
-Over SSH needs nothing set up in the program and is encrypted:
+Over the network the instance has to be started with `--listen-tcp
+0.0.0.0:7700` (or `127.0.0.1:7700` for this machine alone); the
+connection is encrypted (TLS) and has to show that it knows the token.
+[Running it](running.md#on-another-machine) says how to set that up,
+send files from the machine you sit at, and hear the instance there.
 
-```sh
-ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
-daw-gui --socket /tmp/studio.sock
+**State of each seat, for module authors.** Whatever a module keeps about
+what a person is looking at or in the middle of (a cursor, a scroll, a
+selection, a drag, what the pointer hovers, a prompt, a suggestion
+shown, a snippet being filled in) belongs to a seat, not to the instance.
+Keep it where you would anyway, in locals or in your view's table, and
+name it once, next to where it is made:
+
+```lua
+local active, shown = nil, {}   -- module locals
+daw.seats.keep("mymod",
+  function() return active, shown end,              -- what there is now
+  function(a, s) active, shown = a, s end,          -- put another seat's back
+  function() return nil, {} end)                    -- what a new seat starts with
+
+-- Fields of a table (a view's): the names, and what a new seat starts with.
+daw.seats.fields("mymod.view", view, { "scroll", "hover", "drag" }, { scroll = 0 })
 ```
 
-Over the network the instance has to be started with `--listen-tcp
-0.0.0.0:7700` (or `127.0.0.1:7700` for this machine alone). A connection
-must show that it knows the token in `~/.local/state/daw/token` on the
-instance's machine (made at the first start; copy it to the other
-machine). The token is never sent, but the connection is not encrypted:
-use it on a network you trust. What stays on the instance's machine: the
-sound (it plays on its own sound device), plugin windows, and the files
-that Open, Save and Import browse.
+Code that reads them needs no change: when another seat's turn comes the
+values are swapped in, and with one seat nothing moves. Keep in a seat only
+what is about viewing; what is about the project (its notes, the shown
+lanes that are saved with it, diagnostics of the project itself) stays
+shared. A table you keep is swapped whole, so a new seat must get a new
+one (`function() return {} end`, never a table made once outside it).
+Timers run in the seat that started them; `daw.seats.current` says whose
+turn it is, and `daw.seats.within(id, fn, ...)` runs something in another
+seat. See runtime/lua/daw/seats.lua.
 
 `daw doctor` is a script of its own kind: it runs the checks of
 [extensions/doctor](../extensions/doctor) that need nobody, with the sound device

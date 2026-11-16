@@ -3,6 +3,7 @@ local api = daw.api
 local util = daw.util
 
 local view = { row = 1, scroll = 0 }
+daw.seats.fields("devices", view, { "row", "scroll" }, { row = 1, scroll = 0 })
 
 -- Built-in effects that show what they do under their name: how many rows,
 -- and the function that draws them (in `daw.views.device_pictures`).

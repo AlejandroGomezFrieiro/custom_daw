@@ -13,7 +13,10 @@
 -- In the piano roll rows are pitches and beats count from the start of the
 -- clip. A "char" region is a stretch of time at every pitch, a "block" one
 -- only between two pitches, a "line" one whole pitches. Notes belong to the
--- region they start in, and are never cut.
+-- region they start in, and are never cut. Where the roll edits several
+-- clips at once, `yank`, `delete`, `each` and `paste` take the list of them
+-- (`daw.roll_clips.parts()`: `{ clip, offset }` each, beats counting from
+-- the start of the first) in place of one clip; every note stays in its own.
 local api = daw.api
 local util = daw.util
 local EPS = 1e-9
@@ -390,55 +393,68 @@ function R.notes(clip, region)
   return notes, places
 end
 
---- A region of a clip's notes as a value for a register.
-function R.yank(clip, region)
-  local notes = R.notes(clip, region)
-  for i, n in ipairs(notes) do
-    -- Whole pitches keep their place in time; anything else counts from
-    -- where the region starts.
-    notes[i] = util.merge(n, { start = region.kind == "line" and n.start or n.start - region.c0 })
+--- One clip, or the clips the roll edits, as a list of `{ clip, offset }`;
+--- and whether it is one clip alone.
+local function parts_of(target)
+  if target.id then return { { clip = target, offset = 0 } }, true end
+  return target, #target <= 1
+end
+
+--- A region in the beats of a clip `offset` beats after the first.
+local function shifted(region, offset)
+  if offset == 0 or region.kind == "line" then return region end
+  return util.merge(region, { c0 = region.c0 - offset, c1 = region.c1 - offset })
+end
+
+--- A region of a clip's notes as a value for a register. Taken from
+--- several clips, each note says which it came from (`clip`).
+function R.yank(target, region)
+  local parts, single = parts_of(target)
+  local notes = {}
+  for _, part in ipairs(parts) do
+    for _, n in ipairs((R.notes(part.clip, shifted(region, part.offset)))) do
+      local start = n.start + part.offset
+      -- Whole pitches keep their place in time; anything else counts from
+      -- where the region starts.
+      notes[#notes + 1] = util.merge(n, { start = region.kind == "line" and start or start - region.c0, clip = not single and part.clip.id or nil })
+    end
+  end
+  if not single then
+    table.sort(notes, function(a, b)
+      if math.abs(a.start - b.start) > EPS then return a.start < b.start end
+      return a.pitch < b.pitch
+    end)
   end
   return { kind = "notes", shape = region.kind, top = region.r1, length = region.c1 - region.c0, notes = notes }
 end
 
 --- Remove a region's notes and return them.
-function R.delete(clip, region)
-  local value = R.yank(clip, region)
-  local _, places = R.notes(clip, region)
-  if #places > 0 then clip:edit_notes({ remove = places }) end
+function R.delete(target, region)
+  local value = R.yank(target, region)
+  for _, part in ipairs((parts_of(target))) do
+    local _, places = R.notes(part.clip, shifted(region, part.offset))
+    if #places > 0 then part.clip:edit_notes({ remove = places }) end
+  end
   return value
 end
 
---- Change the notes of a region with `fn(note)`.
-function R.each(clip, region, fn)
-  local notes, places = R.notes(clip, region)
-  local set = {}
-  for i, n in ipairs(notes) do
-    fn(n)
-    set[i] = { index = places[i], start = n.start, length = n.length, pitch = n.pitch, velocity = n.velocity, meta = n.meta or {} }
+--- Change the notes of a region with `fn(note)`, each note's start in its
+--- own clip's beats.
+function R.each(target, region, fn)
+  for _, part in ipairs((parts_of(target))) do
+    local notes, places = R.notes(part.clip, shifted(region, part.offset))
+    local set = {}
+    for i, n in ipairs(notes) do
+      fn(n)
+      set[i] = { index = places[i], start = n.start, length = n.length, pitch = n.pitch, velocity = n.velocity, meta = n.meta or {} }
+    end
+    if #set > 0 then part.clip:edit_notes({ set = set }) end
   end
-  if #set > 0 then clip:edit_notes({ set = set }) end
 end
 
---- Put yanked notes into a clip at a beat. A stretch of time keeps its
---- pitches; a block or whole pitches go with their top at `pitch`. Notes
---- already sounding where the new ones land give way, and the clip grows if
---- they reach past its end. Returns the beat where the pasted stretch ends.
-function R.paste(clip, value, pitch, beat)
-  if not value then return daw.notify("nothing to paste yet", "warn") end
-  if value.kind ~= "notes" then
-    return daw.notify("that register holds " .. value.kind .. ", not notes", "warn")
-  end
-  local add, finish = {}, 0
-  for _, n in ipairs(value.notes) do
-    local note = util.merge(n, {})
-    if value.shape ~= "line" then note.start = beat + n.start end
-    if value.shape ~= "char" then note.pitch = n.pitch + pitch - value.top end
-    if note.pitch >= 0 and note.pitch <= 127 then
-      add[#add + 1] = note
-      finish = math.max(finish, note.start + note.length)
-    end
-  end
+--- Put notes into a clip, where notes already sounding where they land give
+--- way, growing it to reach `finish` (its own beats).
+local function put(clip, add, finish)
   local remove = {}
   for index, old in ipairs(clip:notes()) do
     for _, new in ipairs(add) do
@@ -448,10 +464,44 @@ function R.paste(clip, value, pitch, beat)
       end
     end
   end
-  -- Room for the whole stretch that was yanked, not only the notes in it.
-  if value.shape ~= "line" and #add > 0 then finish = math.max(finish, beat + value.length) end
   if finish > clip.length + EPS then clip.length = math.ceil(finish / daw.opt.note_grid - EPS) * daw.opt.note_grid end
   if #add > 0 or #remove > 0 then clip:edit_notes({ remove = remove, add = add }) end
+end
+
+--- Put yanked notes into a clip at a beat. A stretch of time keeps its
+--- pitches; a block or whole pitches go with their top at `pitch`. Notes
+--- already sounding where the new ones land give way, and the clip grows if
+--- they reach past its end. Returns the beat where the pasted stretch ends.
+--- Given the clips the roll edits, notes yanked from one of them go back
+--- into it and the rest into `into` (one of them; the first by default).
+function R.paste(target, value, pitch, beat, into)
+  if not value then return daw.notify("nothing to paste yet", "warn") end
+  if value.kind ~= "notes" then
+    return daw.notify("that register holds " .. value.kind .. ", not notes", "warn")
+  end
+  local parts, single = parts_of(target)
+  into = not single and into or parts[1]
+  local by_clip = {}
+  for _, part in ipairs(parts) do by_clip[part.clip.id] = part end
+  local adds, finish = {}, {}
+  for _, n in ipairs(value.notes) do
+    local part = not single and by_clip[n.clip] or into
+    local note = util.merge(n, {})
+    note.clip = nil
+    if value.shape ~= "line" then note.start = beat + n.start end
+    note.start = note.start - part.offset
+    if value.shape ~= "char" then note.pitch = n.pitch + pitch - value.top end
+    if note.pitch >= 0 and note.pitch <= 127 then
+      adds[part] = adds[part] or {}
+      table.insert(adds[part], note)
+      finish[part] = math.max(finish[part] or 0, note.start + note.length)
+    end
+  end
+  -- Room for the whole stretch that was yanked, not only the notes in it.
+  if value.shape ~= "line" and adds[into] then finish[into] = math.max(finish[into], beat - into.offset + value.length) end
+  for _, part in ipairs(parts) do
+    if adds[part] then put(part.clip, adds[part], finish[part]) end
+  end
   return value.shape == "line" and beat or beat + value.length
 end
 

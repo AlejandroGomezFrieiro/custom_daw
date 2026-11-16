@@ -10,6 +10,7 @@ pub mod kernel;
 pub mod luadev_api;
 pub mod measure;
 pub mod model;
+pub mod monitor;
 pub mod peaks;
 pub mod remote;
 pub mod resample;
@@ -20,6 +21,9 @@ pub mod stretch;
 pub mod stretched;
 pub mod sync;
 pub mod tempo_api;
+pub mod tls;
+pub mod upload;
+pub mod warp;
 pub mod watchdog;
 
 pub use kernel::{Frontend, InputEvent, Kernel, KernelMsg, KernelOpts};

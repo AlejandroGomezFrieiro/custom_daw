@@ -623,6 +623,7 @@ end, { desc = "Move the track down or up: `track.move by=-1`" })
 -- they are a picker and commands.
 local group_names = {
   audio = "audio", midi = "MIDI", channel = "MIDI channel", midi_out = "MIDI out", midi_out_channel = "out channel",
+  midi_out_form = "out form",
 }
 local function input_picker(track)
   local items = {}
@@ -642,7 +643,7 @@ local function input_picker(track)
         return daw.notify(track.name .. (track.monitor and ": monitoring its input" or ": not monitoring"))
       end
       daw.audio.choose(track, item)
-      if item.group == "midi_out" or item.group == "midi_out_channel" then
+      if item.group:find("^midi_out") then
         return daw.notify(track.name .. " → " .. daw.routes.midi_out_text(track:get()))
       end
       daw.notify(track.name .. " ← " .. (daw.audio.label(track:get()) or "MIDI from every port"))
@@ -1063,6 +1064,46 @@ command("clip.stretch_mode", function(ctx)
   if mode then stretch_run(function() clip.stretch_mode = mode end) end
   daw.notify(clip.name .. " is stretched as " .. tostring(clip.stretch_mode))
 end, { desc = "How an audio clip is stretched: `clip.stretch_mode tonal` (held notes), `percussive` (drums, speech), `auto`", complete = { "auto", "tonal", "percussive" } })
+command("clip.warp", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips have warp markers", "warn") end
+  local word, beat = ctx.args[1] or "add", cursor.beat
+  local index = tonumber(ctx.args[2])
+  local function say(i)
+    local m = api.clip_get(clip.id).warp[i]
+    daw.notify(string.format("warp marker %d: %.3f s into the file, at %s", i, m.source, daw.time.format(m.beat)))
+  end
+  local i
+  if word == "add" then
+    if stretch_run(function() i = daw.stretch.warp_add(clip.id, index or beat) end) then say(i) end
+  elseif word == "remove" or word == "move" then
+    index = index or daw.stretch.warp_near(clip, beat)
+    if not index then return daw.notify(clip.name .. " has no warp markers", "warn") end
+    if word == "remove" then
+      if stretch_run(daw.stretch.warp_remove, clip.id, index) then daw.notify("warp marker " .. index .. " taken off") end
+    elseif stretch_run(function() i = daw.stretch.warp_move(clip.id, index, tonumber(ctx.args[3]) or beat) end) then
+      say(i)
+    end
+  elseif word == "snap" then
+    if stretch_run(daw.stretch.warp_snap, clip.id) then daw.notify(clip.name .. "'s warp markers are on the grid") end
+  elseif word == "clear" then
+    if stretch_run(function() clip.warp = {} end) then daw.notify(clip.name .. " has no warp markers now") end
+  else
+    daw.notify("clip.warp add, remove, move, snap or clear", "warn")
+  end
+end, { desc = "Warp markers: `clip.warp` pins the sound at the cursor; `clip.warp move` pulls the nearest marker to the cursor (`move 2`: marker 2, `move 2 8.5`: to beat 8.5); `clip.warp remove`, `snap` (all onto the grid), `clear`",
+  complete = { "add", "remove", "move", "snap", "clear" } })
+command("clip.formants", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips are shifted", "warn") end
+  local word = ctx.args[1]
+  local on = word == "on" or (word ~= "off" and not clip.formants)
+  if stretch_run(function() clip.formants = on end) then
+    daw.notify(clip.name .. (on and " keeps its formants when shifted" or " shifts its formants with its pitch"))
+  end
+end, { desc = "Keep an audio clip's formants when its pitch is shifted, so that a voice keeps its size: `clip.formants on`, `off`, or turn it over", complete = { "on", "off" } })
 command("clip.loop", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -1746,6 +1787,57 @@ end, "Yank the track")
 mmap("p", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), false, ctx.count) end, "Paste tracks after this one")
 mmap("P", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), true, ctx.count) end, "Paste tracks before this one")
 
+-- The session view: clips in slots, launched while the song plays (`daw.launcher`).
+local launcher = daw.launcher
+map("<leader>l", "view.toggle session", { desc = "Show or hide the session view, clips to launch" })
+local function smap(lhs, rhs, desc) map(lhs, rhs, { view = "session", desc = desc }) end
+local function to_row(row)
+  launcher.row = math.max(0, row)
+  api.ui_redraw()
+end
+smap("l", "cursor.down", "Next track")
+smap("h", "cursor.up", "Previous track")
+smap("<Right>", "cursor.down", "Next track")
+smap("<Left>", "cursor.up", "Previous track")
+smap("j", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smap("k", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smap("<Down>", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smap("<Up>", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smap("gg", function(ctx) to_row((ctx.count or 1) - 1) end, "First slot, or slot N")
+smap("G", function(ctx) to_row(ctx.count and ctx.count - 1 or launcher.rows() - 2) end, "Last slot with a clip, or slot N")
+smap("<CR>", "launch", "Launch the slot (an empty one stops the track)")
+smap("L", "scene", "Launch the scene: the whole row")
+smap("s", "launch.stop", "Stop the track's clip")
+smap("S", "launch.stop all", "Stop every clip")
+smap("b", "launch.back", "Back to the track's timeline")
+smap("B", "launch.back all", "Every track back to its timeline")
+smap("n", "slot.new", "A new MIDI clip in the slot")
+smap("e", "slot.edit", "Open the clip's notes")
+smap("x", "slot.delete", "Empty the slot")
+smap("dd", "slot.delete", "Empty the slot")
+smap("gp", "slot.copy", "Copy the arrange view's clip into the slot")
+smap("m", "slot.mode", "Next launch mode: trigger, gate, toggle")
+smap("gl", "slot.legato", "Legato on or off")
+smap("grn", "scene.name", "Name the scene")
+smap("C", "launch.capture", "Capture what is launched into the timeline")
+smap("R", "slot.record", "Record into the empty slot, a bar (or a count of bars) from the next boundary")
+smap("yy", function(ctx)
+  local track = cursor.track_id()
+  local clip = track and launcher.clip(track, launcher.row)
+  if clip then keymap.setreg({ kind = "slot", clip = daw.clip(clip.id):snapshot() }, ctx.register, true) end
+end, "Yank the slot's clip")
+smap("p", function(ctx)
+  local track, value = cursor.track_id(), keymap.getreg(ctx.register)
+  if not track or not value then return end
+  -- A slot's clip, or the first clip yanked in the arrange view.
+  local snap = value.kind == "slot" and value.clip
+  if value.kind == "range" then
+    for _, row in ipairs(value.rows) do snap = snap or row[1] end
+  end
+  if not snap then return daw.notify("the register holds no clip", "warn") end
+  daw.restore_clip(util.merge(snap, { slot = launcher.row, start = 0 }), track)
+end, "Paste a clip into the slot")
+
 -- Arrange: motions.
 local function amap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "arrange", desc = desc }, opts)) end
 amap("l", "cursor.right", "Right one grid step", motion)
@@ -1891,6 +1983,8 @@ amap("J", "clip.join", "Join the clip with the next one")
 amap("<CR>", "clip.edit", "Edit the clip's notes")
 amap("i", "clip.insert", "Enter notes here, in a new clip if there is none")
 amap("grc", "clip.rename", "Rename the clip")
+amap("gw", "clip.warp", "Put a warp marker on the audio clip at the cursor")
+amap("gW", "clip.warp remove", "Take off the clip's warp marker nearest the cursor")
 amap("L", "clip.move by=1", "Move the clip right")
 amap("H", "clip.move by=-1", "Move the clip left")
 amap("<A-l>", "clip.resize by=1", "Lengthen the clip")
@@ -1932,6 +2026,22 @@ end, "Join the clips")
 map("S", "clip.split", { view = "arrange", mode = "x", desc = "Split the chosen clips at the cursor" })
 ax("~", edit.arrange.mute, "Mute or unmute")
 ax("M", edit.arrange.mute, "Mute or unmute")
+ax("<CR>", function(region)
+  local ids = {}
+  for _, track in ipairs(edit.arrange.tracks(region)) do
+    for _, c in ipairs(api.clip_list(track)) do
+      local inside
+      if region.clips then
+        inside = region.clips[c.id]
+      else
+        inside = region.kind == "line" or (c.start < region.c1 - 1e-9 and c.start + c.length > region.c0 + 1e-9)
+      end
+      if inside and c.kind == "midi" then ids[#ids + 1] = c.id end
+    end
+  end
+  local under = daw.cursor.clip()
+  daw.roll_clips.open(ids, under and under.id)
+end, "Edit the notes of the selected MIDI clips together")
 ax("<C-a>", function(region, ctx) edit.arrange.transpose(region, ctx.count or 1) end, "Transpose up")
 ax("<C-x>", function(region, ctx) edit.arrange.transpose(region, -(ctx.count or 1)) end, "Transpose down")
 ax("L", function(region, ctx) shift(region, ctx.count or 1) end, "Move the clips right")
@@ -2012,7 +2122,7 @@ pmap("b", function(ctx) roll:to_note(-1, ctx.count) end, "Previous note", motion
 pmap("e", function(ctx) roll:to_note_end(ctx.count) end, "End of this note, or the next", motion)
 pmap("W", function(ctx) roll:to_bar(ctx.count or 1) end, "Next bar", motion)
 pmap("B", function(ctx) roll:to_bar(-(ctx.count or 1)) end, "Previous bar", motion)
-pmap("0", function() roll:set(nil, 0) end, "Start of the clip", motion)
+pmap("0", function() roll:set(nil, (roll:span())) end, "Start of the clip", motion)
 pmap("^", function() roll:to_edge(1) end, "The first note", motion)
 pmap("$", function() roll:to_edge(-1) end, "End of the clip", motion)
 pmap("gg", function() roll:to_extreme(1) end, "The highest note", far_lines)
@@ -2044,16 +2154,20 @@ for _, lhs in ipairs({ "ib", "ab" }) do
 end
 for _, lhs in ipairs({ "ic", "ac", "ie", "ae" }) do
   pobject(lhs, function()
-    local clip = roll:clip()
-    if clip then return { view = "pianoroll", kind = "char", r0 = roll.pitch, r1 = roll.pitch, c0 = 0, c1 = clip.length } end
-  end, "Every note of the clip")
+    if not roll:clip() then return end
+    local c0, c1 = roll:span()
+    return { view = "pianoroll", kind = "char", r0 = roll.pitch, r1 = roll.pitch, c0 = c0, c1 = c1 }
+  end, "Every note of the clip, or of the clips edited")
 end
 
--- Piano roll: operators.
+-- Piano roll: operators. They act on every clip the roll edits.
+local function editing()
+  local parts = roll:parts()
+  return #parts > 1 and parts or roll:clip()
+end
 local function pop(lhs, fn, desc)
   keymap.operator(lhs, function(region, ctx)
-    local clip = roll:clip()
-    if clip then return fn(clip, region, ctx) end
+    if roll:clip() then return fn(editing(), region, ctx) end
   end, { view = "pianoroll", desc = desc })
 end
 pop("d", function(clip, region, ctx) keymap.setreg(edit.roll.delete(clip, region), ctx.register) end, "Delete")
@@ -2080,9 +2194,10 @@ pop("=", function(clip, region)
     n.start, n.length = util.round(n.start, grid), math.max(grid, util.round(n.length, grid))
   end)
 end, "Snap notes to the grid")
-pop("gl", function(clip, region)
+pop("gl", function(_, region)
+  local clip = roll:clip()
   local c0, c1 = region.c0, region.c1
-  if region.kind == "line" then c0, c1 = 0, clip.length end
+  if region.kind == "line" then c0, c1 = roll:span() end
   transport.loop_start, transport.loop_end, transport.loop_enabled = clip.start + c0, clip.start + c1, true
 end, "Loop")
 
@@ -2096,15 +2211,21 @@ pmap("a", function()
 end, "Enter notes after this one")
 -- Notes chosen with the pointer (a click, a box) come first for the keys
 -- that would otherwise act on the note under the cursor.
+-- The first of them: its clip's id and its place there.
 local function chosen()
-  local clip = roll:clip()
-  return clip and #daw.frontend.chosen_notes(clip.id) > 0 and clip or nil
+  for _, part in ipairs(roll:parts()) do
+    local places = daw.frontend.chosen_notes(part.id)
+    if #places > 0 then return part.id, places[1] end
+  end
 end
 pmap("x", function()
-  local clip = chosen()
-  if clip then return daw.frontend.act.remove_chosen_notes(clip.id) end
-  keymap.normal("din")
-end, "Delete the note, or the notes chosen with the pointer")
+  local clip = roll:clip()
+  -- Controller moves chosen in the strip go with the chosen notes.
+  local moves = clip and daw.controls.remove(clip.id) or 0
+  local first = chosen()
+  if first then return daw.frontend.act.remove_chosen_notes(first) end
+  if moves == 0 then keymap.normal("din") end
+end, "Delete the note, or the notes and controller moves chosen with the pointer")
 pmap("gA", function()
   local clip = roll:clip()
   if clip then daw.frontend.act.select_all_notes(clip.id) end
@@ -2115,6 +2236,35 @@ command("notes.quantize", function(ctx)
   local n = daw.frontend.act.quantize_notes(clip.id, tonumber(ctx.args[1]) and tonumber(ctx.args[1]) / 100 or 1)
   daw.notify(string.format("%d note%s on the %g-beat grid", n, n == 1 and "" or "s", daw.opt.note_grid))
 end, { desc = "Quantize the piano roll's chosen notes, or all, to its grid: `notes.quantize [strength%]`" })
+pmap("E", "notes.list", "The clip's notes and controller moves as a list, to change in place")
+command("notes.list", function()
+  local clip = roll:clip()
+  if not clip then return daw.notify("open a clip in the piano roll first", "warn") end
+  daw.ui.open("eventlist", { title = "Events · " .. clip.name, width = 60, height = 24 })
+end, { desc = "List the piano roll's notes and controller moves, each cell changed in place (Enter), `x` deletes, `a` adds a move" })
+command("controls.line", function(ctx)
+  local clip = roll:clip()
+  if not clip then return daw.notify("open a clip in the piano roll first", "warn") end
+  local args = ctx.args
+  local kind, at = args[1], 2
+  local number
+  if kind == "cc" then number, at = tonumber(args[2]), 3 end
+  local from, to = tonumber(args[at]), tonumber(args[at + 1])
+  if not (kind == "cc" and number or kind == "bend" or kind == "pressure") or not from or not to then
+    return daw.notify("controls.line cc 74 0 127, controls.line bend -8192 8191, controls.line pressure 0 127", "warn")
+  end
+  -- From and to in the units the event list shows: seven-bit steps, or the wheel's -8192 to 8191.
+  local function height(v) return kind == "bend" and (v / 8192 + 1) / 2 or v / 127 end
+  local selection = keymap.selection()
+  local b0, b1 = 0, clip.length
+  if selection and daw.ui.focused == "pianoroll" and selection.kind ~= "line" then b0, b1 = selection.c0, selection.c1 end
+  -- The last step of the stretch reaches `to`.
+  b1 = math.max(b0, b1 - daw.opt.note_grid)
+  local made = daw.frontend.act.line_controls(clip.id, kind, number, b0, height(from), b1, height(to), false)
+  keymap.set_mode("n")
+  daw.notify(string.format("%d %s moves in a line", made, kind == "cc" and "CC " .. number or kind))
+end, { desc = "Draw a straight line of controller moves over the piano roll's selection, or its whole clip: "
+  .. "`controls.line cc 74 0 127`, `controls.line bend 0 8191`, `controls.line pressure 127 0`" })
 command("notes.step_input", function() daw.frontend.act.toggle_step_input() end,
   { desc = "Turn step input on or off: notes from a MIDI keyboard are entered at the piano roll's cursor while stopped" })
 pmap("D", function() keymap.normal("d$") end, "Delete to the end of the clip")
@@ -2137,18 +2287,14 @@ pmap("H", function()
 end, "Move the note left")
 pmap("<C-a>", function(ctx)
   local by = ctx.count or 1
-  local clip = chosen()
-  if clip then
-    return daw.frontend.act.drag_notes(clip.id, daw.frontend.chosen_notes(clip.id)[1], 0, by, false, true)
-  end
+  local clip, place = chosen()
+  if clip then return daw.frontend.act.drag_notes(clip, place, 0, by, false, true) end
   if roll:change(function(n) n.pitch = math.min(127, n.pitch + by) end) then roll:move(0, by) end
 end, "Move the note up a semitone")
 pmap("<C-x>", function(ctx)
   local by = ctx.count or 1
-  local clip = chosen()
-  if clip then
-    return daw.frontend.act.drag_notes(clip.id, daw.frontend.chosen_notes(clip.id)[1], 0, -by, false, true)
-  end
+  local clip, place = chosen()
+  if clip then return daw.frontend.act.drag_notes(clip, place, 0, -by, false, true) end
   if roll:change(function(n) n.pitch = math.max(0, n.pitch - by) end) then roll:move(0, -by) end
 end, "Move the note down a semitone")
 pmap("]", function()
@@ -2158,16 +2304,50 @@ pmap("[", function()
   roll:change(function(n) n.velocity = math.max(1, n.velocity - 10) end)
 end, "Softer")
 pmap("gh", function() roll:audition() end, "Hear the pitch under the cursor")
+-- The clips the roll edits (`daw.roll_clips`).
+local function clip_here()
+  -- The clip of the note under the cursor: one edited, or one shown behind.
+  local _, _, part = roll:note_at(roll.pitch, roll.beat)
+  if part then return part.id end
+  local note = daw.roll_clips.context_at(roll.pitch, roll.beat)
+  if note then return note.clip end
+  daw.notify("no note under the cursor", "warn")
+end
+pmap("ga", function()
+  local id = clip_here()
+  if id then daw.roll_clips.activate(id) end
+end, "Edit the clip of the note under the cursor: new notes go there")
+pmap("gE", function()
+  local id = clip_here()
+  if id then daw.roll_clips.toggle(id) end
+end, "Edit the clip of the note under the cursor too, or no longer")
+pmap("gn", function(ctx) daw.roll_clips.cycle(ctx.count or 1) end, "The next clip edited becomes the active one")
+pmap("gN", function(ctx) daw.roll_clips.cycle(-(ctx.count or 1)) end, "The clip edited before becomes the active one")
+command("roll.tracks", function() daw.roll_clips.pick() end,
+  { desc = "Choose whose notes the piano roll shows behind its own, and which clips it edits together" })
+command("roll.only", function() daw.roll_clips.only() end, { desc = "Edit the piano roll's active clip alone" })
 pmap("<Esc>", function()
   if chosen() then return daw.frontend.act.clear_note_selection() end
   daw.ui.focus("arrange")
 end, "Let go of the chosen notes; back to the arrange view")
 
+-- Diagnostics and language servers (daw.diagnostic, daw.lsp). `K` is an
+-- octave up here, so what the servers say about a note is `gK`.
+pmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic", { jump = true })
+pmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic", { jump = true })
+amap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next clip with diagnostics", { jump = true })
+amap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous clip with diagnostics", { jump = true })
+pmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
+pmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes for the note, or for the diagnostics here")
+command("diagnostics", function(ctx) daw.diagnostic.list(ctx.args[1] == "clip" and daw.ui.views.pianoroll.clip_id or nil) end,
+  { desc = "List the diagnostics, of every clip or (`diagnostics clip`) the piano roll's; Enter goes to one", complete = { "clip" } })
+command("lsp", function(ctx) daw.lsp.command(ctx) end,
+  { desc = "Language servers: `lsp info`, `lsp start|stop|restart [name]`, `lsp log`", complete = function() return daw.lsp.command_complete() end })
+
 -- Piano roll: on a selection.
 local function px(lhs, fn, desc)
   map(lhs, nil, { view = "pianoroll", mode = "x", desc = desc, operator = function(region, ctx)
-    local clip = roll:clip()
-    if clip then fn(clip, region, ctx) end
+    if roll:clip() then fn(editing(), region, ctx) end
   end })
 end
 px("x", function(clip, region, ctx) keymap.setreg(edit.roll.delete(clip, region), ctx.register) end, "Delete")
@@ -2219,6 +2399,37 @@ imap("<Left>", function() roll:step(-1) end, "Step back")
 imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
+
+-- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
+-- while a suggestion shows, its keys come first, in normal and insert mode.
+local ni = { "n", "i" }
+map("<C-Space>", function() daw.complete.request("manual") end, { view = "pianoroll", mode = ni, desc = "Suggest what comes next", repeatable = false })
+local function cmap(lhs, fn, desc, modes)
+  map(lhs, fn, { view = "pianoroll.complete", mode = modes or ni, desc = desc, repeatable = false })
+end
+cmap("<Tab>", function() daw.complete.accept() end, "Accept the suggestion")
+cmap("<C-l>", function() daw.complete.accept(true) end, "Accept the suggestion's next note or chord")
+cmap("<C-n>", function() daw.complete.select(1) end, "The next alternative")
+cmap("<C-p>", function() daw.complete.select(-1) end, "The previous alternative")
+for n = 1, 9 do
+  cmap("<A-" .. n .. ">", function() daw.complete.select(n, true) end, "Alternative " .. n)
+end
+cmap("<C-e>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("<Esc>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("gh", function() daw.complete.audition() end, "Hear the suggestion, from a bar before", { "n" })
+
+command("complete", function() daw.complete.request("manual") end, { desc = "Suggest what comes next in the piano roll" })
+command("complete.accept", function(args) daw.complete.accept(args[1] == "next") end,
+  { desc = "Accept the suggestion: `:complete.accept next` takes its next note or chord only" })
+command("complete.dismiss", function() daw.complete.dismiss() end, { desc = "Dismiss the suggestion" })
+command("complete.audition", function() daw.complete.audition() end, { desc = "Hear the suggestion through the track, from a bar before" })
+command("complete.sources", function()
+  local lines = {}
+  for _, s in ipairs(daw.complete.list()) do
+    lines[#lines + 1] = string.format("%-16s priority %-4d %s%s", s.name, s.priority, table.concat(s.views, ","), s.auto and "  auto" or "")
+  end
+  daw.notify(#lines > 0 and table.concat(lines, "\n") or "no completion sources: an extension adds them")
+end, { desc = "List the completion sources" })
 
 -- Sizes -----------------------------------------------------------------------
 --

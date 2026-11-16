@@ -69,6 +69,16 @@ chords. `1` to `9` set how many grid steps a note is long, `Space` is a rest,
 velocity. The clip grows by a bar when the notes run past its end. `Esc`
 returns to normal mode.
 
+**Suggestions.** With a completion source loaded (`extensions/continue`, a
+language server), the piano roll can suggest what comes next: dashed ghost
+notes in the track's colour, with a badge such as `1/3 continue: the bar
+again` over them. They come by themselves after a pause in editing, never
+while playing or recording, or with `Ctrl-Space`. `Tab` accepts all of it,
+`Ctrl-l` its next note or chord, `Ctrl-n` `Ctrl-p` and `Alt-1` to `Alt-9`
+show the other alternatives, `gh` plays it from a bar before, `Ctrl-e` or
+`Esc` dismiss it; in insert mode the first `Esc` dismisses and the second
+leaves insert mode. See [harmony.md](harmony.md).
+
 | Keys | Also in the arrange view |
 | --- | --- |
 | `x` `D` `C` `Y` | delete the clip; delete, change, yank to the end of the track |
@@ -77,6 +87,7 @@ returns to normal mode.
 | `grv` `grp`, `grt` | type the volume (dB) or pan (`L30`, `R25`, `C`, -100 to 100), the tempo: a number, `+2` or `-3` to step from the value now, `=-6` for a value below zero |
 | `I` `Alt-i`, `R` | next audio input, monitor the input; record or stop recording |
 | `&` `S` `J` `~`, `grc` | repeat, split, join, mute the clip; rename it |
+| `gw` `gW` | put a warp marker on the audio clip at the cursor; take off the one nearest it |
 | `,cf`, `grC` | type the fade in and out of the audio clip under the cursor, in beats (`1 2`, or one length for both); choose the track's colour from the theme's hues (also in the mixer) |
 | `H` `L`, `Alt-h` `Alt-l`, `Ctrl-a` `Ctrl-x` | move the clip; shorten and lengthen it; transpose it |
 | `Enter`, `K` | edit the clip's notes in the piano roll; describe what is under the cursor |
@@ -129,7 +140,34 @@ in. `:take 2` over a selection does the same from the keyboard.
 
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
-`gh` sounds the pitch, `Esc` goes back to the arrange view. In the device panel
+`gh` sounds the pitch, `E` lists the clip's notes and controller moves to
+change in place (the event list), `Esc` goes back to the arrange view.
+
+Behind the clip's notes the piano roll shows the notes of other tracks that
+sound at the same time, so the harmony can be seen where it is written:
+each a dashed line (`╌`) on a faint shade of its track's colour, without a
+name, where the clip's own notes are solid and named. Drum tracks are left out. Which
+tracks: `daw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
+clip's group, `"none"`, or a list of track ids), and `:roll.tracks` lists
+them with their clips: `Enter` on a track shows or hides its notes. A dot on
+the keyboard marks the keys that sound at the cursor, and the title names
+the chord when a harmony reader is loaded. The piano roll can edit several
+clips at once (REAPER's editability follows selection). One is active: new
+notes go there, its name is in the title, and the title says how many more
+are edited. `ga` on another track's note makes its clip the active one (in
+place of the old), `gE` edits that clip too or no longer, `gn` `gN` make the
+next or previous clip edited active, `:roll.only` goes back to one clip, and
+`Enter` on a clip in `:roll.tracks` adds it or takes it out (`Ctrl-a` there
+makes it active). Opening several clips at once: select them in the arrange
+view (`v` over them, or the pointer) and press `Enter`. Motions, operators,
+visual mode, yank and paste, the keys on the note under the cursor and the
+musicops operators then work on the notes of all of them; the cursor's
+beats are the active clip's. A note moved stays in its own clip and stops at
+its edges; notes yanked from several clips go back into them when pasted
+while they are edited, else into the clip at the cursor; each command is one
+undo step, however many clips it touched.
+
+In the device panel
 `j` `k` choose a row, `h` `l` change a parameter, `c` or `=` types its value
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`
@@ -146,6 +184,10 @@ strip's volume and pan, and `dd` `yy` `p` for tracks. VCAs (see
 [Mixing](mixing.md)) have strips after the tracks: `,vn` makes one over the
 selected tracks, `,va` puts them under one, `,vr` takes them out, `,vx` takes
 one away, and `,vl` links the faders of a group.
+
+`,l` shows the session view, the clip launcher: a column of slots under
+each track and a scene for each row, launched with `<CR>` and `L`; its keys
+are in [Live performance](live.md).
 
 ## Pickers
 

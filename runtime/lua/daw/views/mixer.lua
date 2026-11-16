@@ -8,6 +8,7 @@ local api = daw.api
 local util = daw.util
 
 local view = { scroll = 0 }
+daw.seats.fields("mixer", view, { "scroll", "geometry" }, { scroll = 0 })
 local draw = daw.draw
 
 local SCALE = 4 -- columns for the dB scale on the left

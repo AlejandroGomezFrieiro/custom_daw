@@ -17,7 +17,7 @@ use mlua::serde::SerializeOptions;
 use mlua::{Function, Lua, LuaSerdeExt, LuaString, Table, Value as LuaValue};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
 use crate::grid::{self, Color, Grid, Highlight, Highlights, Rect, Style};
@@ -47,7 +47,11 @@ pub struct Timer {
 /// Everything the kernel and the Lua API functions both reach into.
 pub struct Shared {
     pub session: RefCell<Session>,
+    /// The screen of the seat whose turn it is (see runtime/lua/daw/seats.lua),
+    /// as big as that seat's terminal: `sizes`, by connection, 0 for the
+    /// program's own.
     pub grid: RefCell<Grid>,
+    pub sizes: RefCell<HashMap<u64, (u16, u16)>>,
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
@@ -69,9 +73,10 @@ pub struct Shared {
     pub started: Instant,
     /// The connections on the control socket, for pushing events to them.
     pub clients: crate::rpc::Clients,
-    /// The connection whose terminal the input being handled came from, or 0
-    /// for the program's own; and the connections whose terminals asked to
-    /// leave, for the kernel to let go after this turn.
+    /// The connection whose terminal the input being handled came from, or
+    /// whose call is being answered, or 0 for the program's own; and the
+    /// connections whose terminals asked to leave, for the kernel to let go
+    /// after this turn.
     pub input_from: Cell<u64>,
     /// MIDI that came in from ports and has not been made into `midi.in`
     /// events yet.
@@ -91,6 +96,15 @@ impl Shared {
                 return;
             };
             self.session.borrow_mut().midi_event(port, kind);
+        }
+    }
+
+    /// Make `proc.output` events of what helper processes have written.
+    pub fn hear_output(&self) {
+        let arrived = self.io.borrow_mut().arrived();
+        let mut session = self.session.borrow_mut();
+        for id in arrived {
+            session.events.push(("proc.output".into(), json!({ "id": id })));
         }
     }
 
@@ -711,12 +725,42 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_glue(lua, sh, ids => Vec<Id>) {
             to_lua(lua, &sh.session.borrow_mut().clip_glue(&ids).lua()?)
         }
+        // Warp markers of an audio clip (session/stretching.rs), counted from 1.
+        fn clip_warp_add(_, sh, (id, beat) => (Id, f64)) {
+            Ok(sh.session.borrow_mut().warp_add(id, beat).lua()? + 1)
+        }
+        fn clip_warp_move(_, sh, (id, index, beat) => (Id, usize, f64)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            Ok(sh.session.borrow_mut().warp_move(id, index, beat).lua()? + 1)
+        }
+        fn clip_warp_remove(_, sh, (id, index) => (Id, usize)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            sh.session.borrow_mut().warp_remove(id, index).lua()
+        }
         // Beats of sound left in an audio clip's file from where the clip starts in it.
         fn clip_source_length(_, sh, id => Id) { sh.session.borrow_mut().clip_source_length(id).lua() }
         fn clip_add(lua, sh, (track, opts) => (Id, LuaValue)) {
             sh.session.borrow_mut().clip_add(track, options(lua, opts)?).lua()
         }
         fn clip_remove(_, sh, id => Id) { sh.session.borrow_mut().clip_remove(id).lua() }
+
+        // --- clip launching (session/launcher.rs) ---
+        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`
+        // and is edited like any clip; `clip_set` also takes `row`,
+        // `quantize`, `mode` and `legato` for it.
+        fn slot_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().slot_list(track).lua()?) }
+        // Copy a clip into a row of a track's slots. Returns the copy's id.
+        fn clip_to_slot(_, sh, (id, track, row) => (Id, Id, u32)) {
+            sh.session.borrow_mut().clip_to_slot(id, track, row).lua()
+        }
+        // `{ { track =, slot = row }, { track =, stop = true },
+        // { track =, arrangement = true }, ... }`, each with `quantize` and
+        // `legato` if not the slot's: all on their boundary, timed together.
+        fn launch(lua, sh, list => LuaValue) {
+            sh.session.borrow_mut().launch(from_lua(lua, list)?).lua()
+        }
+        // What each track plays and has queued, as the engine last said.
+        fn launcher(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().launcher_view()) }
         fn clip_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().clip_set(id, &key, from_lua(lua, value)?).lua()
         }
@@ -1178,8 +1222,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                     sh.session.borrow_mut().idle();
                     idled = Instant::now();
                 }
-                // What was played into a port meanwhile is heard of.
+                // What was played into a port, or written by a helper,
+                // meanwhile is heard of.
                 sh.hear_midi();
+                sh.hear_output();
                 settle.call::<()>(())?;
                 sh.session.borrow_mut().checkpoint();
                 if Instant::now() >= deadline {
@@ -1213,6 +1259,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.io.borrow_mut().kill(id);
             Ok(())
         }
+        // A process started with `pipe = true`: what it wrote ("" when
+        // nothing, nil once it closed its output), and writing to it. A
+        // `proc.output` event says when there is something to read.
+        fn proc_read(lua, sh, (id, max) => (u64, Option<usize>)) {
+            match sh.io.borrow_mut().read_output(id, max.unwrap_or(1 << 20)).lua()? {
+                Some(bytes) => Ok(LuaValue::String(lua.create_string(bytes)?)),
+                None => Ok(LuaValue::Nil),
+            }
+        }
+        fn proc_write(_, sh, (id, data) => (u64, LuaString)) { sh.io.borrow_mut().write_input(id, &data.as_bytes()).lua() }
+        fn proc_close_input(_, sh, id => u64) { sh.io.borrow_mut().close_input(id).lua() }
         fn sock_listen(_, sh, path => String) { sh.io.borrow_mut().listen(path.into()).lua() }
         fn sock_connect(_, sh, path => String) { sh.io.borrow_mut().connect(path.into()).lua() }
         fn sock_accept(_, sh, id => u64) { sh.io.borrow_mut().accept(id).lua() }
@@ -1240,6 +1297,16 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn rpc_clients(_, sh, () => ()) { Ok(sh.clients.ids()) }
         fn rpc_version(_, _sh, () => ()) { Ok(crate::rpc::VERSION) }
         fn ui_client(_, sh, () => ()) { Ok(sh.input_from.get()) }
+        fn ui_seat(_, sh, seat => u64) {
+            // The screen is the size of the terminal of the seat entered;
+            // a seat without one (a window's) has the size there was at first.
+            let (width, height) = sh.sizes.borrow().get(&seat).copied().unwrap_or((80, 24));
+            let mut grid = sh.grid.borrow_mut();
+            if (grid.width, grid.height) != (width, height) {
+                grid.resize(width, height);
+            }
+            Ok(())
+        }
         fn ui_detach(_, sh, client => u64) {
             sh.detach.borrow_mut().push(client);
             Ok(())

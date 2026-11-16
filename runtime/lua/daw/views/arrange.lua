@@ -16,6 +16,8 @@ local view = {
   -- `top`, `rows` and `th` (the first track shown, how many, rows per track).
   layers = {},
 }
+daw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry", "comp" },
+  { scroll = 0, top = 1, flags = {} })
 
 local draw = daw.draw
 
@@ -345,8 +347,14 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
         local nx = math.floor(at * zoom + 0.5)
         if nx > 0 and nx < cw and height >= 2 then box:fill(nx, 1, 1, height - 1, g.step, "ClipEdge") end
       end
+      -- A warp marker, where a moment of the file is pinned to a beat.
+      for _, m in ipairs(clip.warp or {}) do
+        local nx = math.floor((m.beat - clip.start) * zoom + 0.5)
+        if nx > 0 and nx < cw then box:fill(nx, 0, 1, height, g.tick, "ClipWarp") end
+      end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
+      if daw.diagnostic then daw.diagnostic.mark_clip(box, clip.id, cw) end
     end
   end
   -- The volume curve runs over the empty lane, never over clips.

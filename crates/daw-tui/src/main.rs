@@ -40,7 +40,8 @@ Options:
   --listen-tcp <address>
                     also take connections from the network, on host:port
                     (127.0.0.1:7700; 0.0.0.0:7700 for any machine that knows
-                    the token). Not encrypted: for a network you trust
+                    the token), in TLS with a certificate made the first time
+  --no-tls          take them in the clear instead: for a network you trust
   --token-file <path>
                     where the token for network connections is kept
                     (default: ~/.local/state/daw/token, made if missing)
@@ -55,6 +56,11 @@ ctl and attach reach the instance on this machine's socket, or:
   --socket <path>           another socket
   --connect <host:port>     an instance listening on the network, with
   --token <token> or --token-file <path> (or $DAW_TOKEN)
+  --accept-certificate      take the certificate it shows though another was
+                            remembered for it (after it made a new one)
+  --no-tls                  connect in the clear, to one started with --no-tls
+attach also takes --listen-audio, to play the instance's sound on this machine
+  (about 1 Mbit/s), or --listen-audio-to <file.wav> to write it to a file
 doctor options: --seconds <n> (length of the dropout runs), --plugin <name> (repeatable),
   --only <ids> (comma separated), and the audio options above (--audio, --output, ...)
 
@@ -64,7 +70,8 @@ ctl examples:
   daw ctl track_add '{\"name\": \"Bass\"}'
   daw ctl --connect studio:7700 --token-file studio.token cmd transport.toggle
 
-In an attached terminal, `:detach` leaves and the instance runs on.
+In an attached terminal, `:detach` leaves and the instance runs on, and
+`:upload <file>` brings a sound file from this machine into the project.
 ";
 
 #[derive(Default)]
@@ -87,6 +94,7 @@ struct Args {
     listen: Option<PathBuf>,
     no_listen: bool,
     listen_tcp: Option<String>,
+    no_tls: bool,
     token_file: Option<PathBuf>,
     no_plugins: bool,
     plugins_in_process: bool,
@@ -136,6 +144,7 @@ fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
             "--no-listen" => args.no_listen = true,
             "--listen-tcp" => args.listen_tcp = Some(value("--listen-tcp")?),
             "--token-file" => args.token_file = Some(value("--token-file")?.into()),
+            "--no-tls" => args.no_tls = true,
             "--no-plugins" => args.no_plugins = true,
             "--plugins-in-process" => args.plugins_in_process = true,
             "--plugins-offline" => args.plugins_offline = true,
@@ -198,6 +207,8 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
     let mut socket = rpc::default_path();
     let mut address = None;
     let mut token = std::env::var("DAW_TOKEN").ok();
+    let mut wire = rpc::Wire::default();
+    let mut accept_new = false;
     while let Some(option) = argv.peek().filter(|a| a.starts_with("--")).cloned() {
         argv.next();
         let mut value = || argv.next().with_context(|| format!("{option} needs a value"));
@@ -205,6 +216,8 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
             "--socket" => socket = value()?.into(),
             "--connect" => address = Some(value()?),
             "--token" => token = Some(value()?),
+            "--no-tls" => wire = rpc::Wire::Plain,
+            "--accept-certificate" => accept_new = true,
             "--token-file" => {
                 let path = value()?;
                 let text = std::fs::read_to_string(&path)
@@ -223,7 +236,18 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
                     .map(|text| text.trim().to_string())
                     .context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?,
             };
-            rpc::Connection::tcp(&address, &token)
+            if let rpc::Wire::Tls { accept_new: accept, .. } = &mut wire {
+                *accept = accept_new;
+            }
+            let connection = rpc::Connection::tcp_with(&address, &token, &wire)?;
+            if let Some(print) = &connection.trusted_now {
+                eprintln!(
+                    "daw: {address} is trusted from now on: its certificate is {print} \
+                     (remembered in {})",
+                    rpc::known_path().display()
+                );
+            }
+            Ok(connection)
         }
         None => rpc::Connection::unix(&socket),
     }
@@ -248,12 +272,57 @@ fn ctl(argv: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
+/// Where an attached terminal plays the instance's sound.
+#[derive(Clone)]
+enum Hear {
+    Device,
+    File(PathBuf),
+}
+
+/// Start hearing the instance here, or stop. What went wrong is said on
+/// the instance's screen.
+fn listen(connection: &mut rpc::Connection, player: &mut Option<daw_listen::Player>, hear: Option<&Hear>) {
+    let started = match hear {
+        None => {
+            *player = None;
+            connection.notify("monitor.unlisten", serde_json::json!([])).map(|_| ())
+        }
+        Some(hear) => (|| {
+            let opened = match hear {
+                Hear::Device => daw_listen::Player::device()?,
+                Hear::File(path) => daw_listen::Player::file(path, 48000)?,
+            };
+            connection.call("monitor.listen", serde_json::json!([]))?;
+            *player = Some(opened);
+            Ok(())
+        })(),
+    };
+    if let Err(err) = started {
+        let message = format!("cannot play the instance's sound here: {err:#}");
+        let _ = connection.notify("eval", serde_json::json!(["daw.notify(..., 'error')", message]));
+    }
+}
+
 /// `daw attach`: this terminal becomes a terminal of a running instance,
-/// which may be on another machine. It shows that instance's one screen
-/// (as its own terminal does, if it has one) and types into it; `:detach`
-/// leaves, and so does the instance ending.
+/// which may be on another machine, with a seat of its own there: its own
+/// cursor, mode and selection in the one project. `:detach` leaves, and so
+/// does the instance ending. With `--listen-audio` it plays what the
+/// instance plays (`--listen-audio-to <file.wav>` writes it to a file).
 fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
-    let mut argv = argv.peekable();
+    // The options of attach's own; the rest say where the instance is.
+    let mut rest = Vec::new();
+    let mut hear = None;
+    let mut argv = argv.into_iter();
+    while let Some(arg) = argv.next() {
+        match arg.as_str() {
+            "--listen-audio" => hear = Some(Hear::Device),
+            "--listen-audio-to" => {
+                hear = Some(Hear::File(argv.next().context("--listen-audio-to needs a file")?.into()))
+            }
+            _ => rest.push(arg),
+        }
+    }
+    let mut argv = rest.into_iter().peekable();
     let mut connection = connect(&mut argv)?;
     if let Some(extra) = argv.next() {
         bail!("unexpected argument `{extra}`");
@@ -261,6 +330,10 @@ fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
     let (input, typed) = std::sync::mpsc::channel();
     let (mut screen, width, height) = terminal::Terminal::start(move |event| input.send(event).is_ok())?;
     connection.call("ui.attach", serde_json::json!([width, height]))?;
+    let mut player = None;
+    if hear.is_some() {
+        listen(&mut connection, &mut player, hear.as_ref());
+    }
     let mut grid = daw_core::grid::Grid::new(width, height);
     use daw_core::Frontend;
     loop {
@@ -280,6 +353,18 @@ fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
                             screen.present(&grid, cursor)?;
                         }
                         "ui.detached" => return Ok(()),
+                        // `:upload`: a file on this machine, for the instance.
+                        "file.wanted" => send_wanted(&mut connection, &payload),
+                        "audio.frame" => {
+                            if let Some(player) = &player {
+                                let _ = player.push(&payload);
+                            }
+                        }
+                        // `:listen`: start or stop hearing the instance here.
+                        "monitor.toggle" => {
+                            let wanted = player.is_none().then(|| hear.clone().unwrap_or(Hear::Device));
+                            listen(&mut connection, &mut player, wanted.as_ref());
+                        }
                         _ => {}
                     }
                 }
@@ -291,6 +376,25 @@ fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
         if idle {
             std::thread::sleep(std::time::Duration::from_millis(4));
         }
+    }
+}
+
+/// Send the file a `file.wanted` event names, from this machine, and import
+/// it; what went wrong is said on the instance's screen.
+fn send_wanted(connection: &mut rpc::Connection, payload: &Value) {
+    let Some(asked) = payload["path"].as_str() else { return };
+    let path = match (asked.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+        _ => PathBuf::from(asked),
+    };
+    let sent = if payload["import"].as_bool().unwrap_or(false) {
+        connection.send_and_import(&path)
+    } else {
+        connection.send_file(&path)
+    };
+    if let Err(err) = sent {
+        let message = format!("could not send {asked}: {err:#}");
+        let _ = connection.notify("eval", serde_json::json!(["daw.notify(..., 'error')", message]));
     }
 }
 
@@ -509,9 +613,19 @@ fn run() -> Result<i32> {
         // Other machines may connect, if they know the token.
         let token_file = args.token_file.clone().unwrap_or_else(rpc::token_path);
         let token = rpc::token_at(&token_file)?;
-        let bound = rpc::serve_tcp(address, token, kernel.sender(), kernel.clients())?;
+        let identity = if args.no_tls {
+            None
+        } else {
+            Some(daw_core::tls::identity(&daw_core::tls::default_dir())?)
+        };
+        let config = identity.as_ref().map(|identity| identity.config.clone());
+        let bound = rpc::serve_tcp(address, token, config, kernel.sender(), kernel.clients())?;
+        let how = match &identity {
+            Some(identity) => format!("in TLS, certificate {}", identity.fingerprint),
+            None => "in the clear (--no-tls)".to_string(),
+        };
         let note = format!(
-            "listening on {bound} for connections that know the token in {}",
+            "listening on {bound} for connections that know the token in {}, {how}",
             token_file.display()
         );
         // Without a terminal attached this goes to stderr as well.
