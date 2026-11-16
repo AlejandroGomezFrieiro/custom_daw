@@ -187,6 +187,8 @@ local function modal()
       marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.
       controls_chosen = daw.controls.chosen(clip.id),
+      -- The chord symbols over the ruler, in the clip's beats.
+      chords = M.roll_chords(clip),
       -- What the roll's layers draw behind and in front of the notes, and
       -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
       tools = roll:toolbar(),
@@ -335,6 +337,17 @@ function M.clip(id)
     end
   end
   return clip
+end
+
+--- The chord symbols over a clip, as `daw.opt.chords` asks for them:
+--- `{ start, length, label }` in the clip's beats; none when it is off.
+function M.roll_chords(clip)
+  local out = {}
+  if not daw.opt.chords then return out end
+  for _, c in ipairs(daw.harmony.chords(clip.start, clip.start + clip.length)) do
+    out[#out + 1] = { start = c.at - clip.start, length = c.length, label = daw.harmony.label(c) }
+  end
+  return out
 end
 
 --- A clip's takes as its take lanes show them: `{ name, key }` each, `key`

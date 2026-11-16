@@ -86,6 +86,10 @@ function view:render(buf, ctx)
       local preset = type(d.meta) == "table" and d.meta.preset
       local room = w - 16 - api.str_width(name) - 6
       if preset and room > 3 then inner:text(4 + api.str_width(name), y, util.fit(preset, room):gsub("%s+$", ""), "Param") end
+      -- What modules mark on the device (`daw.ui.layer("devices", "device", ...)`):
+      -- from `x`, `width` columns up to its on/off chip.
+      local after = 4 + api.str_width(name)
+      daw.ui.paint("devices", "device", { buf = inner, x = after, y = y, width = math.max(0, w - 6 - after), device = d.id })
       -- A device that is not running says so, and what brings it back.
       local status = d.status
       local mark = status == "loading" and { "loading", "Warn" }
@@ -128,6 +132,7 @@ function view:render(buf, ctx)
     else
       local p = row.param
       inner:text(2, y, util.fit(p.name, name_w), chosen and "Bright" or row.host and "DeviceFormat" or "Param")
+      daw.ui.paint("devices", "param", { buf = inner, x = 1, y = y, width = w, device = d.id, param = p.key })
       local range = p.max - p.min
       daw.draw.slider(inner, bar_at, y, bar, range ~= 0 and daw.params.fraction(p, row.value) or 0,
         chosen and "ParamBar" or "ParamBarDim", "ParamBarOff")
@@ -156,13 +161,6 @@ end
 function view:selected()
   local row = self:rows()[self.row]
   return row and daw.device(row.device.id), row
-end
-
-function view:on_mouse(event)
-  if event.kind == "scroll_down" then self.row = self.row + 1 end
-  if event.kind == "scroll_up" then self.row = self.row - 1 end
-  if event.kind == "down" then self.row = event.y + self.scroll end
-  api.ui_redraw()
 end
 
 daw.ui.view("devices", view)

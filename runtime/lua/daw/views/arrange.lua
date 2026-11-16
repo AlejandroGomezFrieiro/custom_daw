@@ -180,7 +180,8 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   local gap = w >= 24 and 1 or 0
   local chips_w = #list > 0 and #list + gap * (#list - 1) or 0
   local chips_at = right - chips_w
-  self.flags = {}
+  -- The master, drawn last, has none: the tracks' stay where they are.
+  if not t.master then self.flags = {} end
   if chips_w > 0 then
     draw.chips(buf, chips_at, y, list, gap)
     if not narrow then
@@ -222,6 +223,9 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   local room = math.max(1, before - name_at)
   if api.str_width(name) > room then name = util.fit(name, room) end
   buf:text(name_at, y, name, selected and "TrackNameSel" or "TrackName")
+  -- What modules mark on the header (`daw.ui.layer("arrange", "header", ...)`):
+  -- `x` is the free column before the name.
+  daw.ui.paint("arrange", "header", { buf = buf, x = name_at - 1, y = y, width = w, height = height, track = t.id })
 
   if height >= 2 then
     local left, r = api.track_meter(t.id)
@@ -354,7 +358,7 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
-      if daw.diagnostic then daw.diagnostic.mark_clip(box, clip.id, cw) end
+      daw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
     end
   end
   -- The volume curve runs over the empty lane, never over clips.
@@ -588,6 +592,17 @@ function view:draw_take_row(headers, timeline, row, lines)
   end
 end
 
+--- The time this view shows, for windows bound in time (`timebind`): the
+--- beat at the left edge, columns per beat, and beats shown.
+function view:time_axis()
+  return self.scroll, daw.opt.zoom, self.geometry and self.geometry.span
+end
+
+function view:set_time_axis(left, zoom)
+  self.scroll = math.max(0, left)
+  if zoom and daw.opt.zoom ~= zoom then daw.opt.zoom = zoom end
+end
+
 --- On an automation lane row the lane's own keys come first.
 function view:subscope()
   return daw.cursor.lane_id() and "arrange.lane" or nil
@@ -608,12 +623,14 @@ function view:render(buf, ctx)
   local span = tw / zoom
   local tracks = L.tracks
 
-  -- Keep the playhead in view while playing, and the cursor whenever it moves.
-  if t.playing and opt.follow then
+  -- Keep the playhead in view while playing, and the cursor whenever it
+  -- moves; unless another window leads this one's time (`timebind`).
+  local led = ctx.follower
+  if t.playing and opt.follow and not led then
     if t.position < self.scroll or t.position >= self.scroll + span then
       self.scroll = daw.time.bar_floor(t.position)
     end
-  elseif cursor.beat ~= self.seen_beat then
+  elseif cursor.beat ~= self.seen_beat and not led then
     if cursor.beat < self.scroll then
       self.scroll = daw.time.bar_floor(cursor.beat)
     elseif cursor.beat >= self.scroll + span - 1 / zoom then
@@ -845,77 +862,6 @@ view.grid = {
     return hits
   end,
 }
-
---- A drag across a take lane, as the window's: the cells from where the
---- button went down to where it is now are marked, and on release that
---- take plays over them (`daw.frontend.act.comp`; a cell shorter than a
---- grid step is a click, which chooses the take for the piece under it).
-function view:comp_drag(event)
-  local g, comp = self.geometry, self.comp
-  comp.x1 = math.max(g.hw, event.x)
-  if event.kind == "up" then
-    self.comp = nil
-    local from = self.scroll + (math.min(comp.x0, comp.x1) - g.hw) / g.zoom
-    local to = self.scroll + (math.max(comp.x0, comp.x1) + 1 - g.hw) / g.zoom
-    daw.frontend.act.comp(comp.id, comp.take, from, to, event.mods:find("S") ~= nil)
-  end
-  api.ui_redraw()
-end
-
-function view:on_mouse(event)
-  local g = self.geometry
-  if not g then return end
-  local bar = daw.time.bar()
-  if event.kind == "scroll_down" or event.kind == "scroll_up" then
-    local step = event.kind == "scroll_down" and 1 or -1
-    if event.mods:find("S") then
-      self.scroll = math.max(0, self.scroll + step * bar)
-    else
-      self.top = self.top + step
-    end
-    return api.ui_redraw()
-  elseif event.kind == "scroll_left" or event.kind == "scroll_right" then
-    self.scroll = math.max(0, self.scroll + (event.kind == "scroll_right" and bar or -bar))
-    return api.ui_redraw()
-  elseif self.comp and (event.kind == "drag" or event.kind == "up") then
-    return self:comp_drag(event)
-  elseif event.kind ~= "down" or event.button ~= "left" then
-    return
-  end
-
-  local beat = self.scroll + (event.x - g.hw) / g.zoom
-  self.comp = nil
-  if event.y == 0 then
-    if event.x >= g.hw then api.transport_seek(daw.cursor.snap(beat)) end
-    return
-  end
-  local hit
-  for _, row in ipairs(g.layout.rows) do
-    if event.y >= row.y and event.y < row.y + row.h then hit = row end
-  end
-  if hit and hit.kind == "take" then
-    if event.x < g.hw then
-      -- The label makes the take play wherever the track has it.
-      local last = 0
-      for _, clip in ipairs(api.clip_list(hit.id)) do last = math.max(last, clip.start + clip.length) end
-      daw.takes.comp(hit.id, hit.take, 0, last)
-      daw.cursor.set_track(hit.id)
-    else
-      self.comp = { id = hit.id, take = hit.take, x0 = event.x, x1 = event.x }
-    end
-    return api.ui_redraw()
-  end
-  if not hit or (hit.kind ~= "track" and hit.kind ~= "lane") then return end
-  local id = hit.id
-  daw.cursor.set_track(id, hit.lane and hit.lane.id)
-  if event.x >= g.hw then
-    daw.cursor.set_beat(math.floor(beat / daw.opt.grid) * daw.opt.grid)
-  elseif event.y == hit.y and hit.kind == "track" then
-    for field, x in pairs(self.flags) do
-      if event.x == x then api.track_set(id, field, not api.track_get(id)[field]) end
-    end
-  end
-end
 
 daw.ui.view("arrange", view)
 return view

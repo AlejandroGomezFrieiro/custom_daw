@@ -39,6 +39,24 @@ function view:edit(clip)
   daw.emit("pianoroll.opened", { clip = clip.id })
 end
 
+--- The time this view shows, for windows bound in time (`timebind`): the
+--- project's beat at the left edge, columns per beat, and beats shown.
+--- The roll counts beats from the active clip's start.
+function view:time_axis()
+  local clip = self:clip()
+  if not clip then return nil end
+  return clip.start + self.scroll, daw.opt.note_zoom, self.geometry and self.geometry.span
+end
+
+function view:set_time_axis(left, zoom)
+  local clip = self:clip()
+  if not clip then return end
+  -- As far left as the earliest clip edited starts, as the roll scrolls.
+  local lo = clips.span()
+  self.scroll = math.max(math.min(0, math.floor(lo or 0)), left - clip.start)
+  if zoom and daw.opt.note_zoom ~= zoom then daw.opt.note_zoom = zoom end
+end
+
 --- The note under the cursor in any of the clips edited, the active one's
 --- first: the note (its start in the roll's beats), its place among its
 --- clip's notes, and its part.
@@ -47,6 +65,12 @@ function view:note_at(pitch, beat)
   return clips.note_at(pitch, beat)
 end
 
+--- Rows above the notes on a panel `h` rows tall: the panel's title, the
+--- chord symbols when `daw.opt.chords` asks for them and there is room,
+--- then the ruler.
+function view.head_rows(h)
+  return (daw.opt.chords and h >= 12) and 3 or 2
+end
 -- Switches a module adds to the window's piano roll toolbar: `fn()`
 -- returns `{ label, on, tip, act }` (`act` names the `daw.frontend.act`
 -- function a click calls, given the clip), or nil to show none for now.
@@ -94,8 +118,6 @@ function view:subscope()
   end
   return #out > 0 and out or nil
 end
-
-local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
 
 -- Layers that modules draw over the roll, from back to front by `order`:
 -- other tracks' notes ("context", 10), the notes of the clips edited
@@ -224,7 +246,9 @@ function view:render(buf, ctx)
   local zoom, grid = daw.opt.note_zoom, daw.opt.note_grid
   -- With room to spare, the notes' velocities get a few rows of their own.
   local vel = view.velocity_rows(h)
-  local rows, tw = h - HEAD - vel, w - KEYS
+  local head = view.head_rows(h)
+  self.head = head
+  local rows, tw = h - head - vel, w - KEYS
   local span = tw / zoom
 
   -- Keep the cursor on screen.
@@ -232,10 +256,13 @@ function view:render(buf, ctx)
   if self.pitch > self.top then self.top = self.pitch end
   if self.pitch <= self.top - rows then self.top = self.pitch + rows - 1 end
   self.top = util.clamp(self.top, rows - 1, 127)
-  if self.beat < self.scroll then self.scroll = math.floor(self.beat) end
-  if self.beat >= self.scroll + span - grid then self.scroll = math.ceil(self.beat - span + 1) end
+  -- Unless another window leads this one's time (`timebind`).
+  if not ctx.follower then
+    if self.beat < self.scroll then self.scroll = math.floor(self.beat) end
+    if self.beat >= self.scroll + span - grid then self.scroll = math.ceil(self.beat - span + 1) end
+  end
   self.scroll = math.max(math.min(0, math.floor(lo)), self.scroll)
-  self.geometry = { rows = rows, zoom = zoom }
+  self.geometry = { rows = rows, zoom = zoom, keys = KEYS, head = head, vel = vel, span = span }
 
   -- Title: the active clip in its track's colour, the track and how many
   -- clips are edited, where the cursor is and the chord sounding there; on
@@ -257,10 +284,17 @@ function view:render(buf, ctx)
     buf:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
 
-  -- Ruler: bars as the project counts them, beats in between.
-  buf:fill(0, 1, w, 1, " ", "Ruler")
-  local roll = buf:sub(KEYS, HEAD, tw, rows)
-  local ruler = buf:sub(KEYS, 1, tw, 1)
+  -- Ruler: bars as the project counts them, beats in between; above it
+  -- the chords that sound, read over every pitched track, and the key.
+  buf:fill(0, head - 1, w, 1, " ", "Ruler")
+  local roll = buf:sub(KEYS, head, tw, rows)
+  local ruler = buf:sub(KEYS, head - 1, tw, 1)
+  if head == 3 then
+    buf:fill(0, 1, w, 1, " ", "Ruler")
+    local key = daw.harmony.key(c.start + self.scroll)
+    buf:text(0, 1, (key.name:gsub(" major", ""):gsub(" minor", "m")):sub(1, KEYS - 1), "RulerChordEdge")
+    daw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
+  end
   local lines = daw.draw.beats(ruler, self.scroll, span, zoom, c.start)
   -- Steps between the beats when zoomed in far enough to see them.
   -- They are the same on every row: one line of text, drawn row by row.
@@ -284,8 +318,8 @@ function view:render(buf, ctx)
   local end_x = math.floor((hi - self.scroll) * zoom + 0.5)
   for row = 0, rows - 1 do
     local pitch = self.top - row
-    daw.draw.piano_key(buf, row + HEAD, pitch, pitch == self.pitch, KEYS)
-    if sounds[pitch] then buf:text(KEYS - 1, row + HEAD, "•", "PianoCursor") end
+    daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS)
+    if sounds[pitch] then buf:text(KEYS - 1, row + head, "•", "PianoCursor") end
     roll:fill(0, row, tw, 1, " ", music.is_black(pitch) and "RollRowBlack" or "RollRow")
     if steps then roll:text(0, row, steps, music.is_black(pitch) and "RollStepBlack" or "RollStep") end
     for _, line in ipairs(lines) do roll:text(line.x, row, line.bar and g.bar or g.beat, line.bar and "RollBar" or "RollBeat") end
@@ -316,9 +350,9 @@ function view:render(buf, ctx)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then
-    local lane = buf:sub(KEYS, HEAD + rows, tw, vel)
-    buf:fill(0, HEAD + rows, w, vel, " ", "VelocityLane")
-    buf:text(1, HEAD + rows + vel - 1, "vel", "VelocityLane")
+    local lane = buf:sub(KEYS, head + rows, tw, vel)
+    buf:fill(0, head + rows, w, vel, " ", "VelocityLane")
+    buf:text(1, head + rows + vel - 1, "vel", "VelocityLane")
     for _, line in ipairs(lines) do
       if line.bar then lane:fill(line.x, 0, 1, vel, g.bar, "RollBar") end
     end
@@ -624,25 +658,6 @@ function view:change(fn)
   fn(note)
   part.clip:set_note(place, { start = note.start, length = note.length, pitch = note.pitch, velocity = note.velocity, meta = note.meta or {} })
   return true
-end
-
-function view:on_mouse(event)
-  local g = self.geometry
-  if not g or not self:clip() then return end
-  if event.kind == "scroll_up" then self.top = math.min(127, self.top + 2) end
-  if event.kind == "scroll_down" then self.top = math.max(g.rows - 1, self.top - 2) end
-  local row = event.y - HEAD
-  if event.kind == "down" and row >= 0 and row < g.rows and event.x >= KEYS then
-    local grid = daw.opt.note_grid
-    self.pitch = self.top - row
-    self.beat = math.floor((self.scroll + (event.x - KEYS) / g.zoom) / grid) * grid
-    if event.button == "left" then self:toggle_note() end
-  elseif event.kind == "down" and row >= 0 and row < g.rows then
-    self:audition(self.top - row)
-  end
-  -- Scrolling moves the window, so bring the cursor along with it.
-  self.pitch = util.clamp(self.pitch, self.top - g.rows + 1, self.top)
-  api.ui_redraw()
 end
 
 daw.ui.view("pianoroll", view)

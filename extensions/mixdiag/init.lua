@@ -11,6 +11,11 @@ require("mixdiag.view")
 require("mixdiag.paint")
 package.loaded["daw.mixdiag"] = mixdiag
 
+-- The findings are diagnostics too: a language server in this process,
+-- attached to the mix (lua/mixdiag/lens.lua).
+daw.lsp.config("mixdiag", { server = require("mixdiag.lens").server, attach = { subjects = { "mix" } } })
+daw.lsp.enable("mixdiag")
+
 local function try(fn)
   local ok, err = pcall(fn)
   if not ok then daw.notify("mix: " .. tostring(err), "error") end

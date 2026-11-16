@@ -344,7 +344,13 @@ line says `encoding mix.mp3 61%` (and the window "Encoding") instead of
 sitting at 100%, `Esc` or `:render.cancel` stops ffmpeg as well, and
 `render.done`, `render.failed` or `render.cancelled` come once, for the final
 file (`render.progress` and `render_status()` carry `stage`, `"rendering"` or
-`"encoding"`). Opus holds only 48 kHz and the usual lower rates, so ffmpeg
+`"encoding"`; a render in the foreground says `render.finished`). Each
+render is a subject language servers can be shown, so a delivery or settings
+check can look at every render and say what it finds as diagnostics with
+fixes (extensions/midilsp runs MIDI LSP's; see
+[Language servers and diagnostics](lsp.md)); so can a server for the mix,
+which is shown every track's fader, pan, sends and devices, and
+extensions/mixdiag's findings are diagnostics on the tracks they name. Opus holds only 48 kHz and the usual lower rates, so ffmpeg
 resamples to 48 kHz; MP3 above 48 kHz is resampled to 48 kHz too. The project's
 name is the file's title tag (see "Tags" below). `ffmpeg` is the program found on the PATH; set
 `daw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an

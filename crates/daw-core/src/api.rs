@@ -157,6 +157,9 @@ fn note_to_lua(lua: &Lua, n: &Note) -> mlua::Result<Table> {
     note.raw_set("length", n.length)?;
     note.raw_set("pitch", n.pitch)?;
     note.raw_set("velocity", n.velocity)?;
+    if n.id != 0 {
+        note.raw_set("id", n.id)?;
+    }
     // What extensions keep with a note, such as its lyric.
     if !n.meta.is_empty() {
         note.raw_set("meta", to_lua(lua, &n.meta)?)?;
@@ -211,6 +214,12 @@ fn notes_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Vec<Note>> {
                 pitch: int(note.raw_get("pitch").ok()?)?,
                 velocity,
                 meta: Default::default(),
+                id: match note.raw_get::<LuaValue>("id").ok()? {
+                    LuaValue::Nil => 0,
+                    LuaValue::Integer(i) => u64::try_from(i).ok()?,
+                    LuaValue::Number(n) if n >= 0.0 && n.fract() == 0.0 => n as u64,
+                    _ => return None,
+                },
             });
         }
         Some(notes)
@@ -1080,6 +1089,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().undo_label(text);
             Ok(())
         }
+        // The edits of this turn join undo state `id`, the current one,
+        // instead of making a step of their own: a snippet's choice changed.
+        fn undo_join(_, sh, id => u64) { Ok(sh.session.borrow_mut().undo_join(id)) }
         fn undo_keys(_, sh, text => String) {
             sh.session.borrow_mut().undo_keys(text);
             Ok(())
@@ -1112,6 +1124,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn ui_attached(_, sh, () => ()) { Ok(sh.attached.get()) }
         fn ui_cursor(_, sh, (x, y) => (Option<f64>, Option<f64>)) {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
+            Ok(())
+        }
+        // Whether the terminal reports the pointer (`daw.opt.mouse`), for the
+        // screen being drawn.
+        fn ui_mouse(_, sh, on => bool) {
+            sh.grid.borrow_mut().mouse_off = !on;
             Ok(())
         }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
