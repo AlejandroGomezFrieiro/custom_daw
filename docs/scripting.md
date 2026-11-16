@@ -54,7 +54,13 @@ daw.transport.record()             -- record armed tracks; see Input and recordi
 daw.transport.punch_start, daw.transport.punch_end = 16, 32   -- record only there
 daw.transport.punch_enabled = true
 daw.opt.count_in = 1               -- a bar counted before a take; transport.counting is what is left
+daw.opt.pre_roll = 2               -- play two bars (and daw.opt.pre_roll_seconds more) before a punch in
 ```
+
+**The tempo lane.** `daw.tempolane` is the row under the ruler that draws the
+tempo map: `show(on)`, `toggle()`, `shown()`, `range()` (the tempo at its bottom
+and top), and the edits a gesture makes, all through `daw.tempo`: `add(beat,
+bpm)`, `move(beat, to, bpm)`, `remove(beat)`, `ramp(beat)` and `draw(points)`.
 
 **Automation.** `daw.lanes` shows lanes as rows of the arrange view:
 `daw.lanes.open(track)`, `toggle`, `is_open`, `lines()` (also
@@ -218,6 +224,34 @@ Over the network the instance has to be started with `--listen-tcp
 connection is encrypted (TLS) and has to show that it knows the token.
 [Running it](running.md#on-another-machine) says how to set that up,
 send files from the machine you sit at, and hear the instance there.
+
+**State of each seat, for module authors.** Whatever a module keeps about
+what a person is looking at or in the middle of (a cursor, a scroll, a
+selection, a drag, what the pointer hovers, a prompt, a suggestion
+shown, a snippet being filled in) belongs to a seat, not to the instance.
+Keep it where you would anyway, in locals or in your view's table, and
+name it once, next to where it is made:
+
+```lua
+local active, shown = nil, {}   -- module locals
+daw.seats.keep("mymod",
+  function() return active, shown end,              -- what there is now
+  function(a, s) active, shown = a, s end,          -- put another seat's back
+  function() return nil, {} end)                    -- what a new seat starts with
+
+-- Fields of a table (a view's): the names, and what a new seat starts with.
+daw.seats.fields("mymod.view", view, { "scroll", "hover", "drag" }, { scroll = 0 })
+```
+
+Code that reads them needs no change: when another seat's turn comes the
+values are swapped in, and with one seat nothing moves. Keep in a seat only
+what is about viewing; what is about the project (its notes, the shown
+lanes that are saved with it, diagnostics of the project itself) stays
+shared. A table you keep is swapped whole, so a new seat must get a new
+one (`function() return {} end`, never a table made once outside it).
+Timers run in the seat that started them; `daw.seats.current` says whose
+turn it is, and `daw.seats.within(id, fn, ...)` runs something in another
+seat. See runtime/lua/daw/seats.lua.
 
 `daw doctor` is a script of its own kind: it runs the checks of
 [extensions/doctor](../extensions/doctor) that need nobody, with the sound device

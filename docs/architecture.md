@@ -15,6 +15,7 @@
 | `daw-engine` | The audio thread: tracks, routing, device chains, clip playback, transport, metronome. Built-in devices. cpal and null backends. No Lua, no UI. |
 | `daw-core` | The project model, undo, the sync that drives the engine from the model, the Lua host and `daw.api`, the cell grid, the event loop, the control socket. |
 | `daw-plugins` | CLAP, LV2 and VST3 hosting: scanning, the scan cache, and for each format a device for the audio thread and a controller for the main thread. |
+| `daw-luadev` | Devices written in Lua: a script in a LuaJIT state of its own, run in a plugin helper process, and the directories scripts are found in. |
 | `daw-tui` | The terminal frontend and the `daw` binary. |
 | `daw-gui` | The graphical frontend, written with Slint. A client of the control socket and nothing more. |
 | `runtime/lua/daw` | Everything else. Compiled into the binary; `--runtime <dir>` loads it from disk instead. |

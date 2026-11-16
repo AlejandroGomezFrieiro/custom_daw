@@ -332,3 +332,62 @@ test("undotree: in a window of its own it takes keys and clicks as in the termin
   eq(daw.canvas.open_views.undotree, nil, "q closes the window")
   eq(daw.ui.focused, "arrange", "and the keyboard goes back")
 end)
+
+--- What a painted window of the tree drew: its nodes (the round rectangles,
+--- by state, newest first), its texts and its paths.
+local function painted_tree()
+  local drawing = daw.canvas.paint("undotree_paint", 900, 500, { fresh = true })
+  local nodes, texts, paths = {}, {}, {}
+  for _, op in ipairs(drawing.ops) do
+    if op[1] == "r" and op[9] > 0 and op[4] == op[5] and op[9] * 2 == op[4] then nodes[#nodes + 1] = op end
+    if op[1] == "t" then texts[#texts + 1] = op[4] end
+    if op[1] == "p" then paths[#paths + 1] = op end
+  end
+  table.sort(nodes, function(a, b) return a[3] < b[3] end)
+  return nodes, table.concat(texts, "\n"), paths
+end
+
+test("undotree: the painted window draws the tree, goes where a node is clicked and says what a step was", function()
+  start()
+  local t
+  local s1 = step(function() t = daw.add_track({ name = "T" }) end)
+  local s2 = step(function() t:add_clip({ name = "old", start = 0, length = 4 }) end)
+  daw.undo()
+  local s3 = step(function() t:add_clip({ name = "new", start = 4, length = 4 }) end)
+  local offered = {}
+  for _, entry in ipairs(daw.canvas.openable()) do offered[entry.name] = entry.title end
+  eq(offered.undotree_paint, "Undo tree", "the window offers the painted tree")
+  eq(offered.undotree, nil, "instead of the terminal's")
+  daw.canvas.open("undotree_paint")
+  local nodes, text, paths = painted_tree()
+  eq(#nodes, 4, "a node for each state")
+  local current = 0
+  for _, node in ipairs(nodes) do
+    if node[7] == daw.canvas.palette.text then current = current + 1 end
+  end
+  eq(current, 1, "one is ringed as the current state")
+  eq(nodes[1][6], daw.canvas.palette.select, "and the current state, the newest, is the highlight colour")
+  local elbow = false
+  for _, p in ipairs(paths) do
+    if select(2, p[2]:gsub("L", "")) == 2 then elbow = true end
+  end
+  eq(elbow, true, "the old branch bends away from the new one")
+  eq(text:find("#" .. s3, 1, true) ~= nil and text:find("#" .. s2, 1, true) ~= nil, true, "each state is labelled")
+  -- A click on a node goes there.
+  local node = nodes[2]
+  daw.canvas.pointer("undotree_paint", { kind = "down", x = node[2] + node[4] / 2, y = node[3] + node[5] / 2, button = "left" })
+  eq(api.undo_current(), s2, "a click on the second node goes to #" .. s2 .. " (the old branch)")
+  local now = painted_tree()
+  eq(now[2][6], daw.canvas.palette.select, "which is now the lit one")
+  -- Resting on a node says what the step was.
+  daw.canvas.pointer("undotree_paint", { kind = "hover", x = node[2], y = node[3] })
+  local _, tip = painted_tree()
+  eq(tip:find("after #" .. s1, 1, true) ~= nil, true, "the tip names the state it grew from")
+  eq(tip:find("ago", 1, true) ~= nil, true, "and says when")
+  -- The terminal's keys work in it, and q closes it.
+  daw.canvas.key("undotree_paint", "k")
+  daw.canvas.key("undotree_paint", "<CR>")
+  eq(api.undo_current(), s3, "k and Enter go to the node above")
+  daw.canvas.key("undotree_paint", "q")
+  eq(daw.canvas.open_views.undotree_paint, nil, "q closes the window")
+end)

@@ -190,3 +190,87 @@ fn a_note_at_the_start_is_started_once() {
     }
     assert_eq!(count.load(Ordering::Relaxed), 1);
 }
+
+/// One track playing `data` from beat 0 for 16 beats, at 120 BPM.
+fn region_engine(data: std::sync::Arc<daw_engine::AudioData>) -> (Engine, EngineHandle) {
+    use daw_engine::AudioRegion;
+    let (engine, mut handle) = Engine::new(SR);
+    let mut clips = ClipSet::default();
+    clips.audio.push(AudioRegion {
+        start: 0.0,
+        end: 16.0,
+        data,
+        offset: 0.0,
+        gain: 1.0,
+        fade_in: 0.0,
+        fade_out: 0.0,
+        declick_in: false,
+        declick_out: false,
+        hold: Default::default(),
+    });
+    for msg in [
+        Msg::InsertTrack {
+            slot: 1,
+            track: TrackRt::new(),
+        },
+        Msg::SetClips {
+            track: 1,
+            clips: Box::new(clips),
+        },
+        Msg::SetSchedule(Box::new(Schedule::new(
+            vec![SchedEntry::new(1, MASTER), SchedEntry::new(MASTER, NO_SLOT)],
+            0,
+        ))),
+        Msg::SetTempo(120.0),
+        Msg::Seek(0.0),
+        Msg::Play,
+    ] {
+        send(&mut handle, msg);
+    }
+    (engine, handle)
+}
+
+/// A sound still being made plays as far as it is there: past that it is
+/// silent, and where more has come it starts again, without a click either
+/// way.
+#[test]
+fn a_sound_being_made_plays_as_far_as_it_is_there_without_clicks() {
+    use daw_engine::Sink;
+    use std::sync::Arc;
+    let sine: Vec<f32> = (0..SR as usize * 8)
+        .map(|i| 0.5 * (std::f64::consts::TAU * 220.0 * i as f64 / SR).sin() as f32)
+        .collect();
+    let mut sink = Sink::growing(sine.len(), SR as u32, None).unwrap();
+    let data = Arc::new(sink.playing().unwrap());
+    let second = SR as usize;
+    sink.push(&sine[..second], None).unwrap();
+    let (mut engine, _handle) = region_engine(data);
+    // A second there, two played: the second one silent.
+    let mut out = run(&mut engine, 2 * second / 256);
+    // More comes, as far as three seconds, and the third second plays.
+    sink.push(&sine[second..3 * second], None).unwrap();
+    out.extend(run(&mut engine, second / 256));
+    let level = |from: f64, to: f64| {
+        let s = &out[(from * SR) as usize..(to * SR) as usize];
+        s.iter().fold(0.0f32, |m, x| m.max(x.abs()))
+    };
+    assert!(level(0.1, 0.99) > 0.45, "the first second plays");
+    assert_eq!(level(1.01, 2.0), 0.0, "silent past what is there");
+    assert!(level(2.01, 2.99) > 0.45, "and plays again once more is there");
+    let largest = out
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0, f32::max);
+    let sine_step = sine
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0, f32::max);
+    assert!(
+        largest <= sine_step * 1.01,
+        "a step of {largest} against the sine's {sine_step}"
+    );
+    // Once it is all there it plays as any sound does.
+    sink.finish(SR as u32).unwrap();
+    let done = run(&mut engine, second / 256);
+    assert!(done.iter().fold(0.0f32, |m, x| m.max(x.abs())) > 0.45);
+}

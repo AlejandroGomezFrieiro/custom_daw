@@ -11,6 +11,7 @@ license = "MIT OR Apache-2.0"
 daw-engine = { path = "crates/daw-engine" }
 daw-core = { path = "crates/daw-core" }
 daw-plugins = { path = "crates/daw-plugins" }
+daw-luadev = { path = "crates/daw-luadev" }
 daw-proto = { path = "crates/daw-proto" }
 daw-listen = { path = "crates/daw-listen" }
 anyhow = "1"

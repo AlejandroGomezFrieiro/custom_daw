@@ -16,7 +16,7 @@ local view = {
   -- `top`, `rows` and `th` (the first track shown, how many, rows per track).
   layers = {},
 }
-daw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry" },
+daw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry", "comp" },
   { scroll = 0, top = 1, flags = {} })
 
 local draw = daw.draw
@@ -97,7 +97,10 @@ end
 function view:layout(w, h)
   local tracks = daw.groups.rows()
   local hw = view.header_width(w)
-  local ruler_rows = wants_ruler2(self) and 2 or 1
+  -- The ruler, its second row if something asks for one, and the tempo
+  -- lane's two rows when it is shown.
+  local tempo_rows = daw.tempolane.shown() and 2 or 0
+  local ruler_rows = (wants_ruler2(self) and 2 or 1) + tempo_rows
   local master_rows = 2
   local room = math.max(1, h - ruler_rows - master_rows)
   -- Take lanes (a line each) and automation lanes shown as rows (two
@@ -112,7 +115,7 @@ function view:layout(w, h)
   if lane_lines > 0 then
     local rows, y = self:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     return {
-      hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, rows = rows, tracks = tracks,
+      hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
       used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows },
     }
   end
@@ -129,7 +132,7 @@ function view:layout(w, h)
     y = y + th
   end
   return {
-    hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, rows = rows, tracks = tracks,
+    hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
     used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows },
   }
 end
@@ -344,6 +347,11 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
         local nx = math.floor(at * zoom + 0.5)
         if nx > 0 and nx < cw and height >= 2 then box:fill(nx, 1, 1, height - 1, g.step, "ClipEdge") end
       end
+      -- A warp marker, where a moment of the file is pinned to a beat.
+      for _, m in ipairs(clip.warp or {}) do
+        local nx = math.floor((m.beat - clip.start) * zoom + 0.5)
+        if nx > 0 and nx < cw then box:fill(nx, 0, 1, height, g.tick, "ClipWarp") end
+      end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
     end
@@ -511,10 +519,38 @@ function view:draw_lane_row(headers, timeline, row, lines)
   timeline:fill(x, y + 1, cw, 1, nil, "CursorTail")
 end
 
+--- The tempo lane: the header says what the tempo is at the cursor, the
+--- timeline draws the map as a curve, a step where a change holds and a slope
+--- where it ramps, a mark on each change. `:tempo.lane` or `zT` hides it.
+function view:draw_tempo_row(headers, timeline, y, lines)
+  local zoom, scroll = self.geometry.zoom, self.scroll
+  local hw, tw = headers.width, timeline.width
+  local beat = daw.cursor.beat
+  headers:fill(0, y, hw, 2, " ", "TrackHeader")
+  headers:text(2, y, util.fit("tempo", math.max(1, hw - 3)), "TrackHeader")
+  headers:text(2, y + 1, util.fit(string.format("%g bpm", daw.tempo.at(beat)), math.max(1, hw - 3)), "TrackInfo")
+  timeline:fill(0, y, tw, 2, " ", "Lane")
+  for _, line in ipairs(lines) do
+    if line.bar then timeline:fill(line.x, y, 1, 2, draw.g.bar, "LaneBar") end
+  end
+  local lo, hi = daw.tempolane.range()
+  local function level(bpm) return util.clamp((bpm - lo) / (hi - lo), 0, 1) end
+  draw.curve(timeline:sub(0, y, tw, 2), 0, 2, function(i)
+    return level(daw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
+  end, "Automation")
+  for _, p in ipairs(daw.tempo.points()) do
+    local x = math.floor((p.beat - scroll) * zoom + 0.5)
+    if x >= 0 and x < tw then timeline:text(x, level(p.bpm) >= 0.5 and y or y + 1, (daw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆")), "Automation") end
+  end
+  local x = math.floor((beat - scroll) * zoom + 0.5)
+  timeline:fill(x, y, math.max(1, math.floor(daw.opt.grid * zoom)), 1, nil, "Cursor")
+end
+
 --- One take lane: take `row.take` of every clip of the track that has that
 --- many, over the clip's own stretch of time, lit where it is the one that
 --- plays and faint where it is not, with its name. To look at: comping here
---- is `:take 2` over a selection, or a drag across the lane in the window.
+--- is `:take 2` over a selection, or a drag across the lane, with the
+--- mouse in the terminal or the window.
 function view:draw_take_row(headers, timeline, row, lines)
   local y, k = row.y, row.take
   local zoom, scroll = self.geometry.zoom, self.scroll
@@ -542,6 +578,12 @@ function view:draw_take_row(headers, timeline, row, lines)
         box:fill(0, 0, 1, 1, draw.g.clip_start, "ClipEdge")
       end
     end
+  end
+  -- The stretch being dragged over.
+  local comp = self.comp
+  if comp and comp.id == row.id and comp.take == k then
+    local x0, x1 = math.min(comp.x0, comp.x1) - hw, math.max(comp.x0, comp.x1) - hw
+    timeline:fill(math.max(0, x0), y, math.max(0, x1 - math.max(0, x0) + 1), 1, nil, "Visual")
   end
 end
 
@@ -652,10 +694,11 @@ function view:render(buf, ctx)
     mark_end = x + ruler:text(x, 0, (mark.kind == "tempo" and "▾" or "‖") .. mark.text, "RulerTempo") + 1
   end
   local ruler2
-  if L.ruler_rows > 1 then
+  if L.ruler_rows - L.tempo_rows > 1 then
     ruler2 = buf:sub(hw, 1, tw, 1)
     ruler2:fill(0, 0, tw, 1, " ", "Ruler")
   end
+  if L.tempo_rows > 0 then self:draw_tempo_row(headers, lanes, L.ruler_rows - L.tempo_rows, lines) end
 
   -- Tracks.
   local cursor_clip = cursor.clip()
@@ -802,6 +845,22 @@ view.grid = {
   end,
 }
 
+--- A drag across a take lane, as the window's: the cells from where the
+--- button went down to where it is now are marked, and on release that
+--- take plays over them (`daw.frontend.act.comp`; a cell shorter than a
+--- grid step is a click, which chooses the take for the piece under it).
+function view:comp_drag(event)
+  local g, comp = self.geometry, self.comp
+  comp.x1 = math.max(g.hw, event.x)
+  if event.kind == "up" then
+    self.comp = nil
+    local from = self.scroll + (math.min(comp.x0, comp.x1) - g.hw) / g.zoom
+    local to = self.scroll + (math.max(comp.x0, comp.x1) + 1 - g.hw) / g.zoom
+    daw.frontend.act.comp(comp.id, comp.take, from, to, event.mods:find("S") ~= nil)
+  end
+  api.ui_redraw()
+end
+
 function view:on_mouse(event)
   local g = self.geometry
   if not g then return end
@@ -817,11 +876,14 @@ function view:on_mouse(event)
   elseif event.kind == "scroll_left" or event.kind == "scroll_right" then
     self.scroll = math.max(0, self.scroll + (event.kind == "scroll_right" and bar or -bar))
     return api.ui_redraw()
+  elseif self.comp and (event.kind == "drag" or event.kind == "up") then
+    return self:comp_drag(event)
   elseif event.kind ~= "down" or event.button ~= "left" then
     return
   end
 
   local beat = self.scroll + (event.x - g.hw) / g.zoom
+  self.comp = nil
   if event.y == 0 then
     if event.x >= g.hw then api.transport_seek(daw.cursor.snap(beat)) end
     return
@@ -829,6 +891,18 @@ function view:on_mouse(event)
   local hit
   for _, row in ipairs(g.layout.rows) do
     if event.y >= row.y and event.y < row.y + row.h then hit = row end
+  end
+  if hit and hit.kind == "take" then
+    if event.x < g.hw then
+      -- The label makes the take play wherever the track has it.
+      local last = 0
+      for _, clip in ipairs(api.clip_list(hit.id)) do last = math.max(last, clip.start + clip.length) end
+      daw.takes.comp(hit.id, hit.take, 0, last)
+      daw.cursor.set_track(hit.id)
+    else
+      self.comp = { id = hit.id, take = hit.take, x0 = event.x, x1 = event.x }
+    end
+    return api.ui_redraw()
   end
   if not hit or (hit.kind ~= "track" and hit.kind ~= "lane") then return end
   local id = hit.id

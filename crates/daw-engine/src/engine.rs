@@ -2405,7 +2405,11 @@ fn mix_audio(
         // Source position, in source frames, of the block's first frame.
         let origin = (t0 - rs + region.offset) * src_rate;
         let step = src_rate / sr;
+        // Sound still being made is played as far as it is there.
+        let complete = region.data.complete();
         let frames = region.data.frames();
+        let watched = region.hold.watched(complete);
+        let hold_fade = DECLICK_SECONDS * src_rate;
         let [src_l, src_r] = &region.data.channels;
         // Fades, in frames. An edge cut into the middle of a recording gets
         // a few milliseconds of one even when none was asked for, or it clicks.
@@ -2424,10 +2428,16 @@ fn mix_audio(
             }
             let index = pos as usize;
             if index + 1 >= frames {
+                if !complete {
+                    region.hold.starve();
+                }
                 break;
             }
             let frac = (pos - index as f64) as f32;
             let mut gain = region.gain;
+            if watched {
+                gain *= region.hold.gain(pos, frames, complete, hold_fade, fade_curve);
+            }
             let from_start = at + i as f64;
             if from_start < fade_in {
                 gain *= fade_curve(from_start / fade_in);
@@ -2468,7 +2478,11 @@ fn mix_audio_constant(
         // Source position, in source frames, of the block's first frame.
         let origin = ((start - region.start) * 60.0 / ctx.tempo + region.offset) * src_rate;
         let step = src_rate / sr;
+        // Sound still being made is played as far as it is there.
+        let complete = region.data.complete();
         let frames = region.data.frames();
+        let watched = region.hold.watched(complete);
+        let hold_fade = DECLICK_SECONDS * src_rate;
         let [src_l, src_r] = &region.data.channels;
         let declick = DECLICK_SECONDS * sr;
         let fade_in =
@@ -2484,10 +2498,16 @@ fn mix_audio_constant(
             }
             let index = pos as usize;
             if index + 1 >= frames {
+                if !complete {
+                    region.hold.starve();
+                }
                 break;
             }
             let frac = (pos - index as f64) as f32;
             let mut gain = region.gain;
+            if watched {
+                gain *= region.hold.gain(pos, frames, complete, hold_fade, fade_curve);
+            }
             let from_start = at + i as f64;
             if from_start < fade_in {
                 gain *= fade_curve(from_start / fade_in);

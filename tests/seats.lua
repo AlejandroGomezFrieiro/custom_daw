@@ -133,6 +133,25 @@ test("a window watching has a seat of its own unless it shares the instance's", 
   eq(daw.seats.has(11), false, "and goes with the connection")
 end)
 
+test("a button held down in one terminal is that terminal's drag alone", function()
+  start()
+  daw.add_track({ name = "One" })
+  K.seat_open(13, "terminal")
+  as(13, function()
+    daw.ui.render(daw.ui.Buf.root(api.ui_size()))
+    local r
+    for _, rect in ipairs(daw.ui.rects) do
+      if rect.name == "arrange" then r = rect end
+    end
+    K.mouse({ kind = "down", button = "left", x = r.x + r.w - 2, y = r.y + 3, mods = "" })
+    eq(daw.ui.pressed, "arrange", "the drag belongs to the arrange view")
+  end)
+  eq(daw.ui.pressed, nil, "not in the instance's seat")
+  as(13, function() K.mouse({ kind = "up", button = "left", x = 1, y = 1, mods = "" }) end)
+  as(13, function() eq(daw.ui.pressed, nil, "let go") end)
+  K.seat_close(13, "terminal")
+end)
+
 test("with one seat, nothing is put away or brought back", function()
   start()
   local stowed = 0

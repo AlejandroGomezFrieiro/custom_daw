@@ -1052,6 +1052,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "daw-engine",
+ "daw-luadev",
  "daw-proto",
  "flacenc",
  "include_dir",
@@ -1105,6 +1106,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-luadev"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "daw-engine",
+ "mlua",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "daw-mcp"
 version = "0.1.0"
 dependencies = [
@@ -1150,6 +1162,7 @@ dependencies = [
  "daw-core",
  "daw-engine",
  "daw-listen",
+ "daw-luadev",
  "daw-plugins",
  "daw-utau",
  "libc",

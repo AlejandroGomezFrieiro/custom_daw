@@ -31,14 +31,15 @@ M.layout = {
   { view = "cmdline", size = 1 },
 }
 
--- Each seat has its own focus, floating view, prompt and panels shown;
--- a new one starts with the panels the instance's terminal shows.
+-- Each seat has its own focus, floating view, prompt, panels shown and
+-- the view a held button went down in; a new one starts with the panels
+-- the instance's terminal shows.
 daw.seats.keep("ui",
-  function() return M.focused, M.float, M.grabber, M.rects, M.layout end,
-  function(focused, float, grabber, rects, layout)
-    M.focused, M.float, M.grabber, M.rects, M.layout = focused, float, grabber, rects, layout
+  function() return M.focused, M.float, M.grabber, M.rects, M.layout, M.pressed end,
+  function(focused, float, grabber, rects, layout, pressed)
+    M.focused, M.float, M.grabber, M.rects, M.layout, M.pressed = focused, float, grabber, rects, layout, pressed
   end,
-  function(_, _, _, _, layout) return "arrange", nil, nil, {}, daw.seats.copy(layout) end)
+  function(_, _, _, _, layout) return "arrange", nil, nil, {}, daw.seats.copy(layout), nil end)
 
 --- Register a view, replacing any view of the same name.
 ---   daw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
@@ -399,15 +400,13 @@ function M.render(buf)
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
---- graphical frontend shows it (see `daw.canvas.open_view`). Curves are
---- drawn without braille, which the window's font does not have.
+--- graphical frontend shows it (see `daw.canvas.open_view`). Braille is
+--- drawn there as dots (`daw.canvas`), as the font has none.
 function M.render_view(name, buf)
   local view = M.views[name]
   buf:fill(0, 0, buf.width, buf.height, " ", backgrounds[name] or "Normal")
   if not view then return end
-  daw.draw.window = true
-  draw(view, buf, { focused = M.focused == name, x = 0, y = 0, window = true })
-  daw.draw.window = false
+  draw(view, buf, { focused = M.focused == name, x = 0, y = 0 })
 end
 
 --- List the keys that can follow a half-typed command, in a box along the
@@ -463,6 +462,16 @@ function M.mouse(event)
   local target
   for _, r in ipairs(M.rects) do
     if event.x >= r.x and event.x < r.x + r.w and event.y >= r.y and event.y < r.y + r.h then target = r end
+  end
+  -- A drag and its release belong to the view the button went down in,
+  -- wherever the pointer has gone since.
+  if event.kind == "down" then
+    M.pressed = target and target.name
+  elseif (event.kind == "drag" or event.kind == "up") and M.pressed then
+    for _, r in ipairs(M.rects) do
+      if r.name == M.pressed then target = r end
+    end
+    if event.kind == "up" then M.pressed = nil end
   end
   if M.float and (not target or target.name ~= M.float.name) then
     if event.kind == "down" then M.close() end

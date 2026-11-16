@@ -460,10 +460,19 @@ fn run() -> Result<i32> {
     match argv.peek().map(String::as_str) {
         Some("plugin-host") => {
             let args: Vec<String> = argv.skip(1).collect();
+            // A device written in Lua is held the way a plugin is.
+            if args.first().is_some_and(|kind| kind.starts_with("lua:")) {
+                return Ok(daw_plugins::sandbox::serve_with(&args, |_, rate, block| {
+                    daw_luadev::serve_make(rate, block)
+                }));
+            }
             return Ok(daw_plugins::sandbox::serve(&args));
         }
         Some("plugin-scan") => {
             let args: Vec<String> = argv.skip(1).collect();
+            if args.first().map(String::as_str) == Some("lua") {
+                return Ok(daw_luadev::scan_main(&args[1..]));
+            }
             return Ok(daw_plugins::scan_main(&args));
         }
         _ => {}
@@ -483,6 +492,11 @@ fn run() -> Result<i32> {
         .clone()
         .unwrap_or_else(|| if scripted && !args.doctor { "null" } else { "auto" }.into());
     let mut registry = Registry::with_builtins();
+    // Devices written in Lua always run in helpers: Lua must not run on
+    // the audio thread.
+    if let Ok(exe) = std::env::current_exe() {
+        daw_luadev::set_helper(exe, daw_plugins::sandbox::remote);
+    }
     // The native half of extensions/utau; it does nothing until that is loaded.
     daw_utau::register(&mut registry);
     let mut plugin_notes = if args.no_plugins {
