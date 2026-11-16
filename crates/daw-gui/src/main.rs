@@ -31,8 +31,97 @@ Usage:
   daw-gui [kernel options] [project]   start a kernel and show it
   daw-gui --socket <path>              show a kernel that is already running
 
+Options:
+  --renderer software|gpu   draw on the processor (the default) or on the
+                            graphics card with OpenGL; also DAW_GUI_RENDERER
+
 Kernel options are passed on to `daw --headless`; see `daw --help`.
 ";
+
+/// How the window is drawn: on the processor, or on the graphics card
+/// through OpenGL.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Renderer {
+    Software,
+    Gpu,
+}
+
+/// The renderer asked for with `--renderer` (taken out of `args`, which go
+/// on to the kernel), else by `env` (`DAW_GUI_RENDERER`); else software.
+fn renderer_choice(args: &mut Vec<String>, env: Option<&str>) -> Result<Renderer> {
+    let named = match args.iter().position(|a| a == "--renderer") {
+        Some(at) => {
+            let name = args.get(at + 1).context("--renderer needs gpu or software")?;
+            let name = name.clone();
+            args.drain(at..at + 2);
+            Some(name)
+        }
+        None => env.filter(|name| !name.is_empty()).map(str::to_string),
+    };
+    match named.as_deref() {
+        None | Some("software") => Ok(Renderer::Software),
+        Some("gpu") => Ok(Renderer::Gpu),
+        Some(other) => bail!("the renderer is gpu or software, not {other}"),
+    }
+}
+
+/// Settle on how the window is drawn, before anything else is started. The
+/// GPU renderer first draws a small window for a moment; where it cannot
+/// (no OpenGL, no EGL, no display that offers them), the program says so
+/// and starts again with the software one, since it can choose only once.
+fn select_renderer(renderer: Renderer, args: &[String]) -> Result<()> {
+    let select = |name: &str| {
+        slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .renderer_name(name.into())
+            .select()
+    };
+    if renderer == Renderer::Software {
+        return Ok(select("software")?);
+    }
+    let Err(err) = select("femtovg")
+        .map_err(anyhow::Error::from)
+        .and_then(|()| probe_gpu())
+    else {
+        return Ok(());
+    };
+    eprintln!("daw-gui: the GPU renderer did not start ({err:#}); drawing with the software one");
+    let err = Command::new(std::env::current_exe()?)
+        .args(args)
+        .env("DAW_GUI_RENDERER", "software")
+        .exec();
+    Err(err).context("starting again with the software renderer")
+}
+
+/// Show a small window with the renderer chosen and wait for it to be drawn.
+/// Where the renderer cannot start, the event loop keeps the error to
+/// itself until it ends: a first frame takes well under a second where it
+/// works, so it is given three.
+fn probe_gpu() -> Result<()> {
+    let probe = Probe::new()?;
+    let drawn = Rc::new(std::cell::Cell::new(false));
+    probe.window().set_rendering_notifier({
+        let drawn = drawn.clone();
+        move |state, _| {
+            if matches!(state, slint::RenderingState::AfterRendering) {
+                drawn.set(true);
+                let _ = slint::quit_event_loop();
+            }
+        }
+    })?;
+    let timeout = Timer::default();
+    timeout.start(TimerMode::SingleShot, Duration::from_secs(3), || {
+        let _ = slint::quit_event_loop();
+    });
+    probe.show()?;
+    let ran = slint::run_event_loop();
+    let _ = probe.hide();
+    ran?;
+    if !drawn.get() {
+        bail!("nothing was drawn in three seconds");
+    }
+    Ok(())
+}
 
 /// How long a message stays in the toolbar.
 const MESSAGE_TIME: Duration = Duration::from_secs(5);
@@ -1846,6 +1935,9 @@ fn run() -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
+    let env = std::env::var("DAW_GUI_RENDERER").ok();
+    let renderer = renderer_choice(&mut args, env.as_deref())?;
+    select_renderer(renderer, &args)?;
     let socket = match args.iter().position(|a| a == "--socket") {
         Some(at) => {
             let path = args.get(at + 1).context("--socket needs a path")?.clone();
@@ -3353,6 +3445,18 @@ mod tests {
         assert!(!still_serves(kept, 1020.0, 1036.0), "scrolled out of it");
         assert!(!still_serves(kept, 1008.0, 1010.0), "zoomed far in");
         assert!(!still_serves(None, 0.0, 16.0), "nothing laid out yet");
+    }
+
+    #[test]
+    fn the_renderer_is_chosen_by_option_then_environment() {
+        let mut args: Vec<String> = ["--renderer", "gpu", "song.json"].map(String::from).into();
+        assert_eq!(renderer_choice(&mut args, Some("software")).unwrap(), Renderer::Gpu);
+        assert_eq!(args, ["song.json"], "the option is not passed on to the kernel");
+        assert_eq!(renderer_choice(&mut args, Some("gpu")).unwrap(), Renderer::Gpu);
+        assert_eq!(renderer_choice(&mut args, None).unwrap(), Renderer::Software);
+        assert_eq!(renderer_choice(&mut args, Some("")).unwrap(), Renderer::Software);
+        assert!(renderer_choice(&mut args, Some("vulkan")).is_err());
+        assert!(renderer_choice(&mut vec!["--renderer".into()], None).is_err());
     }
 
     #[test]
