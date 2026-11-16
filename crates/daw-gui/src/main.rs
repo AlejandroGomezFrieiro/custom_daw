@@ -4706,6 +4706,7 @@ mod tests {
                 velocity: 0.5,
                 selected: false,
                 index: i,
+                color: Color::default(),
             })
             .collect();
         let (from, to) = around(1000.0, 1016.0);

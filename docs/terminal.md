@@ -133,9 +133,10 @@ In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `gh` sounds the pitch, `E` lists the clip's notes and controller moves to
 change in place (the event list), `Esc` goes back to the arrange view.
 
-Behind the clip's notes the piano roll shows, faintly and in their tracks'
-colours, the notes of other tracks that sound at the same time, so the
-harmony can be seen where it is written. Drum tracks are left out. Which
+Behind the clip's notes the piano roll shows the notes of other tracks that
+sound at the same time, so the harmony can be seen where it is written:
+each a dashed line (`╌`) on a faint shade of its track's colour, without a
+name, where the clip's own notes are solid and named. Drum tracks are left out. Which
 tracks: `daw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
 clip's group, `"none"`, or a list of track ids), and `:roll.tracks` lists
 them with their clips: `Enter` on a track shows or hides its notes. A dot on
