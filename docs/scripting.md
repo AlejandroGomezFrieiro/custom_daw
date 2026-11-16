@@ -178,28 +178,28 @@ daw.on("complete.changed", function(e) end)  -- e.shown
 ```
 
 **The piano roll's layers.** What a module draws over the piano roll's grid
-goes in a layer, so that several can share it in a fixed order from back to
+goes in a layer, so that several share it in a fixed order from back to
 front: other tracks' notes (10), the clip's own notes (20), diagnostics (30),
-an active snippet (40), suggestions (50), then the cursor. A layer draws in
-the terminal with `draw(l)` and tells the window with `marks(clip)`; keys
-that hold while some state lasts go in a key scope, which comes before the
-piano roll's own keys; the window's toolbar takes switches.
+an active snippet (40), suggestions (50), then the cursor. A layer paints in
+the terminal with `paint(p)` and may tell the window what to draw with
+`marks(clip)`; keys that hold while some state lasts go in a key scope,
+which comes before the piano roll's own keys; the window's toolbar takes
+switches.
 
 ```lua
 local roll = daw.ui.views.pianoroll
-roll:layer("lint", {
-  order = 30,
-  draw = function(l)                    -- l.roll, l.x(beat), l.y(pitch) (nil off screen), l.clip, l.hue
-    local y = l.y(60)
-    if y then l.roll:text(l.x(4), y, "!", "Error") end
+roll.layer("lint", 30,
+  function(p)                           -- p.roll, p.x(beat), p.row(pitch) (nil off screen), p.data, p.hue
+    local row = p.row(60)
+    if row then p.roll:text(p.x(4), row, "!", "Error") end
   end,
-  marks = function(clip)                -- what the window draws: boxes, or chips that can be clicked
+  function(clip)                        -- what the window draws: boxes, or chips that can be clicked
     return { { pitch = 60, start = 4, length = 1, fill = "#e06c75", alpha = 0.2, edge = "#e06c75" },
              { pitch = 61, start = 4, length = 0, badge = true, label = "parallel fifths", act = "my_fix", arg = 1 } }
-  end,
-})
+  end)
 roll:key_scope("pianoroll.lint", 30, function() return showing end)   -- then map keys in view "pianoroll.lint"
 roll:tool("lint", function() return { label = "Lint", on = enabled, act = "toggle_lint", tip = "..." } end)
+daw.ui.keybar.set("pianoroll.lint", "n", { { "<C-y>", "fix" } })     -- the key line while the scope is on
 ```
 
 A chip's `act` names a `daw.frontend.act` function, called with the clip and
@@ -223,7 +223,31 @@ leaves it the time to), `proc_kill(id)`; `sock_listen(path)`, `sock_connect(path
 `sock_accept(id)`, `sock_read(id)` (`""` when nothing has arrived, nil once
 closed), `sock_write(id, bytes)`, `sock_close(id)`. A device that takes data
 from scripts answers `daw.api.device_call(device, method, bytes)`. A helper
-is asked to finish when the program ends, however it ends.
+is asked to finish when the program ends, however it ends. Started with
+`{ pipe = true }`, a program is talked to over its standard input and
+output instead (its errors still go to `log`): `proc_write(id, bytes)`,
+`proc_read(id)` (`""` when nothing is waiting, nil once it closed its
+output), `proc_close_input(id)`; a `proc.output` event (`{ id }`) says when
+there is something to read, so nothing polls.
+
+**Diagnostics and language servers.** `daw.diagnostic` is `vim.diagnostic`
+for clips: `set(namespace, clip, list)` with each
+`{ notes = { places }, at, length, severity, message, rule, source, fixes }`
+(`severity` 1 to 4, or "error", "warning", "info", "hint"; a fix is
+`{ title, edits = { { note, pitch | delete | start | length | velocity } } }`
+or `{ title, apply = fn }`), `get(clip, { namespace, severity, note })`,
+`count(clip)`, `reset(namespace, clip)`, `config({ virtual_text, signs,
+underline, severity_sort })`, `actions(clip, place)`, `apply(d, fix)` (one
+undo step), `goto_next()`, `goto_prev()`, `list()`; event
+`diagnostic.changed`. `daw.lsp` is `vim.lsp`: `config(name, { cmd, framing,
+attach, settings, init_options, restart })`, `enable(name, on)`,
+`clients()`, `restart(name)`, `stop(name)`, `request(name, method, params,
+function(err, result) end)`, `notify(name, method, params)`,
+`daw.lsp.handlers[method] = function(client, params) end`, `hover(clip,
+pitch, beat, cb)`, `complete(ctx, done)`, `attach(name, clip)` to keep a
+clip open in a server, `settle()` for scripts; events `lsp.status`,
+`lsp.analysis`. See [Language servers and diagnostics](lsp.md).
+
 `daw.json.encode(value, pretty)` and `daw.json.decode(text)` are for what an
 extension keeps in files of its own.
 

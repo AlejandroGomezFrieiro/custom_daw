@@ -354,6 +354,7 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
+      if daw.diagnostic then daw.diagnostic.mark_clip(box, clip.id, cw) end
     end
   end
   -- The volume curve runs over the empty lane, never over clips.

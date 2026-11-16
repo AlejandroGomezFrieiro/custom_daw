@@ -5,6 +5,10 @@
 local T = ...
 local test, eq, near, fails, fresh = T.test, T.eq, T.near, T.fails, T.fresh
 local api = daw.api
+
+-- Our port's name, told apart from those of other instances running the
+-- suite at the same time, which a route by name could otherwise reach.
+local LOOP = "Loop" .. math.floor(api.now()) % 1000000
 local A = daw.frontend.act
 
 local function wait_for(ready, ms)
@@ -24,19 +28,19 @@ end
 --- reason when the sequencer cannot be opened here.
 local function with_loop(fn)
   api.engine_restart({ backend = "null", midi = true })
-  daw.midi.open_port("Loop")
+  daw.midi.open_port(LOOP)
   local heard = {}
   local handler = daw.on("midi.in", function(event)
-    if event.port == "Loop" then heard[#heard + 1] = event end
+    if event.port == LOOP then heard[#heard + 1] = event end
   end)
   local ok, err
-  if wait_for(function() return output_named("daw: Loop") end, 4000) then
+  if wait_for(function() return output_named("daw: " .. LOOP) end, 4000) then
     ok, err = xpcall(fn, debug.traceback, heard)
   else
     ok, err = true, "skipped: no ALSA sequencer to send MIDI through"
   end
   daw.off(handler)
-  daw.midi.close_port("Loop")
+  daw.midi.close_port(LOOP)
   api.engine_restart({ backend = "null" })
   if not ok then error(err, 0) end
   return err
@@ -104,7 +108,7 @@ test("a route in MPE plays each note of a chord on a channel of its own, bent th
     } })
     -- The E a semitone up, half a beat in.
     clip:set_controls({ { start = 0.5, type = "bend", key = "E4", value = 1 / 48 } })
-    t.midi_output = { port = "daw: Loop", form = "mpe", members = 4 }
+    t.midi_output = { port = "daw: " .. LOOP, form = "mpe", members = 4 }
     daw.transport.play()
     local function ons()
       local out = {}
@@ -153,7 +157,7 @@ test("a route with 14-bit controllers sends the fine part of control changes bel
     local clip = t:add_clip({ start = 0, length = 2, notes = {} })
     -- Halfway, and one fourteen-bit step past it.
     clip:set_controls({ { start = 0.25, type = "cc", number = 1, value = (8192 + 1) / 16383 } })
-    t.midi_output = { port = "daw: Loop", channel = 3, form = "cc14" }
+    t.midi_output = { port = "daw: " .. LOOP, channel = 3, form = "cc14" }
     daw.transport.play()
     wait_for(function()
       for _, e in ipairs(heard) do if e.type == "cc" and e.number == 33 then return true end end

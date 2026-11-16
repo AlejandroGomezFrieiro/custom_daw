@@ -28,6 +28,7 @@ function view:edit(clip)
   self.pitch = notes[1] and notes[1].pitch or 60
   self.top = nil
   daw.ui.focus("pianoroll")
+  daw.emit("pianoroll.opened", { clip = clip.id })
 end
 
 --- The note under the cursor, with its index in the clip's note list.
@@ -35,73 +36,6 @@ function view:note_at(pitch, beat)
   local clip = self:clip()
   if not clip or pitch < 0 or pitch > 127 then return end
   return clip:note_at(pitch, beat)
-end
-
--- Layers: what modules and extensions draw over the grid besides the
--- clip's notes, each in its place from back to front. The grid is drawn
--- first and the cursor last; the clip's own notes are at order 20. The
--- runtime's own layers: other tracks' notes 10, diagnostics 30, an active
--- snippet's marks 40, suggestions 50.
---
---   daw.ui.views.pianoroll:layer("lint", {
---     order = 30,
---     draw = function(l) l.roll:text(l.x(4), l.y(60), "!", "Error") end,   -- the terminal
---     marks = function(clip) return { { pitch = 60, start = 4, length = 1, fill = "#e06c75", alpha = 0.2 } } end,   -- the window
---   })
---
--- `draw(l)` paints in the terminal: `l.roll` is the grid's buffer, `l.x(beat)`
--- and `l.y(pitch)` give a column and a row in it (a row is nil for a pitch
--- off screen), and `l.clip`, `l.data` (the clip's fields), `l.hue`, `l.zoom`,
--- `l.scroll`, `l.top`, `l.rows`, `l.width` and `l.focused` say what is drawn.
--- `marks(clip_id)` lists what the window draws: `{ pitch, start, length }`
--- in the clip's beats, with `fill` (`#rrggbb`), `alpha` (0 to 1), `edge`
--- (a border colour), `label`; `badge = true` for a chip with the label on
--- the row of `pitch`, as wide as its text, `slot` putting chips side by
--- side (counted in steps of 20 px; a chip with a longer label takes the
--- last slot); `act` and `arg` for what a click on it does, the name of a
--- `daw.frontend.act` function given the clip and `arg`, and `tip` for what
--- the pointer on it says. A layer without `marks` shows in the terminal
--- alone. A failing layer is skipped.
-view.layers = {}
-
---- Add a layer, or replace the one of that name; `nil` as the spec takes it away.
-function view:layer(name, spec)
-  for i = #self.layers, 1, -1 do
-    if self.layers[i].name == name then table.remove(self.layers, i) end
-  end
-  if not spec then return end
-  self.layers[#self.layers + 1] = util.merge(spec, { name = name, order = spec.order or 50 })
-  table.sort(self.layers, function(a, b) return a.order < b.order end)
-  api.ui_redraw()
-end
-
-local NOTES = 20 -- where the clip's own notes are among the layers
-
-local function draw_layers(l, from, to)
-  for _, layer in ipairs(view.layers) do
-    if layer.draw and layer.order >= from and layer.order < to then
-      local ok, err = pcall(layer.draw, l)
-      if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(err)) end
-    end
-  end
-end
-
---- What the window draws of the layers for `clip_id`: those behind the
---- clip's notes and those in front of them.
-function view:marks(clip_id)
-  local under, over = {}, {}
-  for _, layer in ipairs(self.layers) do
-    if layer.marks then
-      local ok, list = pcall(layer.marks, clip_id)
-      if ok and type(list) == "table" then
-        local into = layer.order < NOTES and under or over
-        for _, mark in ipairs(list) do into[#into + 1] = mark end
-      elseif not ok then
-        api.log("piano roll layer " .. layer.name .. ": " .. tostring(list))
-      end
-    end
-  end
-  return under, over
 end
 
 -- Switches a module adds to the window's piano roll toolbar: `fn()`
@@ -125,7 +59,7 @@ function view:toolbar()
   return out
 end
 
--- Keys that hold for a while:a module whose state takes keys of its own
+-- Keys that hold for a while: a module whose state takes keys of its own
 -- (a suggestion showing, a snippet being filled in) names a scope of
 -- mappings and says when it is on; while it is, its keys come before the
 -- piano roll's, earlier entries first (`daw.keymap` looks here through
@@ -153,6 +87,63 @@ function view:subscope()
 end
 
 local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
+
+-- Layers that modules draw over the roll, from back to front by `order`.
+-- The clip's own notes are at 20: layers below that (other tracks' notes)
+-- are drawn under them, the rest (diagnostics 30, a snippet's marks 40,
+-- suggestions 50) over them, and the cursor last of all.
+view.layers = {}
+local NOTES = 20
+
+--- Draw `paint(p)` as a layer of the roll, replacing one of the same name
+--- (nil removes it). `p` holds `roll` and `ruler` (cell buffers), `clip`,
+--- `data` (the clip's fields), `x(beat)` (a column of the roll), `row(pitch)`
+--- (a row, nil when off screen), `scroll`, `zoom`, `top`, `rows`, `width`,
+--- `focused` and `hue`.
+---
+--- `marks(clip_id)`, if given, lists what the window draws for the layer:
+--- `{ pitch, start, length }` in the clip's beats, with `fill` (`#rrggbb`),
+--- `alpha` (0 to 1), `edge` (a border colour), `label`; `badge = true` for
+--- a chip with the label on the row of `pitch`, as wide as its text, `slot`
+--- putting chips side by side (in steps of 20 px; a chip with a longer
+--- label takes the last slot); `act` and `arg` for what a click on it does,
+--- the name of a `daw.frontend.act` function given the clip and `arg`, and
+--- `tip` for what the pointer on it says. A failing layer is skipped.
+function view.layer(name, order, paint, marks)
+  for i = #view.layers, 1, -1 do
+    if view.layers[i].name == name then table.remove(view.layers, i) end
+  end
+  if paint or marks then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint, marks = marks } end
+  table.sort(view.layers, function(a, b) return a.order < b.order end)
+  api.ui_redraw()
+end
+
+local function paint_layers(p, from, to)
+  for _, layer in ipairs(view.layers) do
+    if layer.paint and layer.order >= from and layer.order < to then
+      local ok, err = pcall(layer.paint, p)
+      if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(err)) end
+    end
+  end
+end
+
+--- What the window draws of the layers for `clip_id`: those behind the
+--- clip's notes and those in front of them.
+function view:marks(clip_id)
+  local under, over = {}, {}
+  for _, layer in ipairs(self.layers) do
+    if layer.marks then
+      local ok, list = pcall(layer.marks, clip_id)
+      if ok and type(list) == "table" then
+        local into = layer.order < NOTES and under or over
+        for _, mark in ipairs(list) do into[#into + 1] = mark end
+      elseif not ok then
+        api.log("piano roll layer " .. layer.name .. ": " .. tostring(list))
+      end
+    end
+  end
+  return under, over
+end
 
 --- Rows for the velocity lane on a panel `h` rows tall.
 function view.velocity_rows(h)
@@ -243,17 +234,17 @@ function view:render(buf, ctx)
   local playing_here = px >= 0 and px < tw and t.position >= c.start and t.position <= c.start + c.length
   if playing_here then roll:fill(px, 0, 1, rows, g.playhead, "Playhead") end
 
-  local top, scroll = self.top, self.scroll
+  local top = self.top
   local layer = {
-    roll = roll, clip = clip, data = c, hue = hue, zoom = zoom, scroll = scroll, top = top, rows = rows,
+    roll = roll, ruler = ruler, clip = clip, data = c, scroll = self.scroll, zoom = zoom, top = top, rows = rows, hue = hue,
     width = tw, focused = ctx.focused,
-    x = function(beat) return math.floor((beat - scroll) * zoom + 0.5) end,
-    y = function(pitch)
+    x = function(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end,
+    row = function(pitch)
       local row = top - pitch
       if row >= 0 and row < rows then return row end
     end,
   }
-  draw_layers(layer, -math.huge, NOTES)
+  paint_layers(layer, -math.huge, NOTES)
 
   -- Only what is on screen crosses over from the core.
   local under = self:note_at(self.pitch, self.beat)
@@ -272,7 +263,7 @@ function view:render(buf, ctx)
     -- Long enough notes say which they are.
     if nw >= 4 then roll:text(x0 + 1, row, music.name(note.pitch):sub(1, nw - 1)) end
   end
-  draw_layers(layer, NOTES, math.huge)
+  paint_layers(layer, NOTES, math.huge)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then

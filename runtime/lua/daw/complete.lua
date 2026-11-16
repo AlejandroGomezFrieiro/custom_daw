@@ -575,75 +575,75 @@ local function badge_text(cur)
   return string.format(" %d/%d %s ", cur.index, #cur.items, item.label ~= item.source and item.source .. ": " .. item.label or item.label)
 end
 
-roll():layer("complete", {
-  order = 50,
-  draw = function(l)
-    local cur = M.current()
-    if not cur or cur.clip ~= l.data.id then return end
-    local colour = daw.draw.track_colour(api.track_get(l.data.track))
-    local style = ghost_style(colour)
-    local g = daw.draw.g
-    -- Dashed, to tell them from notes that are there and from other tracks'.
-    local dash = daw.opt.ascii and "-" or "┄"
-    local highest
-    for _, n in ipairs(cur.item.notes) do
-      local row = l.y(n.pitch)
-      local x0, x1 = l.x(n.start), l.x(n.start + n.length)
-      if row and x1 > 0 and x0 < l.width then
-        local w = math.max(1, x1 - x0)
-        l.roll:fill(x0, row, w, 1, dash, style.note)
-        l.roll:text(x0, row, g.clip_start, style.note)
-        if w >= 4 then l.roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), style.note) end
-      end
-      highest = math.max(highest or n.pitch, n.pitch)
+local function paint(l)
+  local cur = M.current()
+  if not cur or cur.clip ~= l.data.id then return end
+  local colour = daw.draw.track_colour(api.track_get(l.data.track))
+  local style = ghost_style(colour)
+  local g = daw.draw.g
+  -- Dashed, to tell them from notes that are there and from other tracks'.
+  local dash = daw.opt.ascii and "-" or "┄"
+  local highest
+  for _, n in ipairs(cur.item.notes) do
+    local row = l.row(n.pitch)
+    local x0, x1 = l.x(n.start), l.x(n.start + n.length)
+    if row and x1 > 0 and x0 < l.width then
+      local w = math.max(1, x1 - x0)
+      l.roll:fill(x0, row, w, 1, dash, style.note)
+      l.roll:text(x0, row, g.clip_start, style.note)
+      if w >= 4 then l.roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), style.note) end
     end
-    for _, v in ipairs(cur.item.velocities) do
-      local row = l.y(v.pitch)
-      if row then l.roll:text(l.x(v.start), row, tostring(v.velocity), style.badge) end
-    end
-    -- The badge: which alternative of how many, and from where, above it.
-    local first = cur.item.notes[1] or cur.item.velocities[1] or cur.item.remove[1]
-    local at = first and first.start or roll().beat
-    -- Kept on screen when the notes reach past its top or bottom.
-    local row = daw.util.clamp(l.top - ((highest or roll().pitch) + 1), 0, l.rows - 1)
-    l.roll:text(math.max(0, math.min(l.x(at), l.width - 12)), row, badge_text(cur), style.badge)
-  end,
-  marks = function(clip_id)
-    local cur = M.current()
-    if not cur or cur.clip ~= clip_id then return {} end
-    local colour = daw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
-    local out = {}
-    local highest
-    -- Fainter than the notes that are there, brighter at the edge than
-    -- other tracks' notes, which are faint all over.
-    local edge = daw.draw.mix(colour, "#ffffff", 0.45)
-    for _, n in ipairs(cur.item.notes) do
-      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = colour, alpha = 0.3, edge = edge, label = daw.music.name(n.pitch) }
-      highest = math.max(highest or n.pitch, n.pitch)
-    end
-    for _, v in ipairs(cur.item.velocities) do
-      out[#out + 1] = { pitch = v.pitch, start = v.start, length = v.length, fill = colour, alpha = 0, edge = edge, label = "vel " .. v.velocity }
-    end
-    -- Over the first note, a chip per alternative (a click shows it) and
-    -- then what the one showing is (a click accepts it).
-    local first = cur.item.notes[1] or cur.item.velocities[1] or cur.item.remove[1]
-    local at = first and first.start or roll().beat
-    local pitch = math.min(127, (highest or roll().pitch) + 1)
-    local count = math.min(9, #cur.items)
-    for i = 1, count do
-      out[#out + 1] = {
-        pitch = pitch, start = at, length = 0, badge = true, slot = i - 1, label = tostring(i), fill = colour,
-        alpha = i == cur.index and 0.9 or 0.3, act = "complete_badge", arg = i, tip = "show " .. cur.items[i].label .. " (Alt-" .. i .. ")",
-      }
-    end
-    local text = badge_text(cur):gsub("^ ", ""):gsub(" $", "")
+    highest = math.max(highest or n.pitch, n.pitch)
+  end
+  for _, v in ipairs(cur.item.velocities) do
+    local row = l.row(v.pitch)
+    if row then l.roll:text(l.x(v.start), row, tostring(v.velocity), style.badge) end
+  end
+  -- The badge: which alternative of how many, and from where, above it.
+  local first = cur.item.notes[1] or cur.item.velocities[1] or cur.item.remove[1]
+  local at = first and first.start or roll().beat
+  -- Kept on screen when the notes reach past its top or bottom.
+  local row = daw.util.clamp(l.top - ((highest or roll().pitch) + 1), 0, l.rows - 1)
+  l.roll:text(math.max(0, math.min(l.x(at), l.width - 12)), row, badge_text(cur), style.badge)
+end
+
+local function marks(clip_id)
+  local cur = M.current()
+  if not cur or cur.clip ~= clip_id then return {} end
+  local colour = daw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
+  local out = {}
+  local highest
+  -- Fainter than the notes that are there, brighter at the edge than
+  -- other tracks' notes, which are faint all over.
+  local edge = daw.draw.mix(colour, "#ffffff", 0.45)
+  for _, n in ipairs(cur.item.notes) do
+    out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = colour, alpha = 0.3, edge = edge, label = daw.music.name(n.pitch) }
+    highest = math.max(highest or n.pitch, n.pitch)
+  end
+  for _, v in ipairs(cur.item.velocities) do
+    out[#out + 1] = { pitch = v.pitch, start = v.start, length = v.length, fill = colour, alpha = 0, edge = edge, label = "vel " .. v.velocity }
+  end
+  -- Over the first note, a chip per alternative (a click shows it) and
+  -- then what the one showing is (a click accepts it).
+  local first = cur.item.notes[1] or cur.item.velocities[1] or cur.item.remove[1]
+  local at = first and first.start or roll().beat
+  local pitch = math.min(127, (highest or roll().pitch) + 1)
+  local count = math.min(9, #cur.items)
+  for i = 1, count do
     out[#out + 1] = {
-      pitch = pitch, start = at, length = 0, badge = true, slot = count, label = text, fill = colour, alpha = 0.9,
-      act = "complete_badge", arg = cur.index, tip = "accept the suggestion (Tab; Ctrl-l its next notes) · Esc dismisses",
+      pitch = pitch, start = at, length = 0, badge = true, slot = i - 1, label = tostring(i), fill = colour,
+      alpha = i == cur.index and 0.9 or 0.3, act = "complete_badge", arg = i, tip = "show " .. cur.items[i].label .. " (Alt-" .. i .. ")",
     }
-    return out
-  end,
-})
+  end
+  local text = badge_text(cur):gsub("^ ", ""):gsub(" $", "")
+  out[#out + 1] = {
+    pitch = pitch, start = at, length = 0, badge = true, slot = count, label = text, fill = colour, alpha = 0.9,
+    act = "complete_badge", arg = cur.index, tip = "accept the suggestion (Tab; Ctrl-l its next notes) · Esc dismisses",
+  }
+  return out
+end
+
+roll().layer("complete", 50, paint, marks)
 
 roll():key_scope("pianoroll.complete", 50, keys_on)
 -- The terminal's key line while a suggestion shows.

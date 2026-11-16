@@ -11,11 +11,16 @@ local roll = daw.ui.views.pianoroll
 
 local log = {}
 
---- A test that leaves the piano roll closed and the arrange view focused,
---- as the tests after it expect, however it ends.
+--- A test with only its own sources (the runtime's own, such as `daw.lsp`'s,
+--- are put back after), that leaves the piano roll closed and the arrange
+--- view focused, as the tests after it expect, however it ends.
 local function test(name, fn)
   T.test(name, function()
+    local others = {}
+    for source_name, spec in pairs(complete.sources) do others[source_name] = spec end
+    for source_name in pairs(others) do complete.unregister(source_name) end
     local ok, err = xpcall(fn, debug.traceback)
+    for _, spec in pairs(others) do complete.register(spec) end
     complete.dismiss()
     daw.keymap.feed("<Esc><Esc>")
     daw.ui.hide("pianoroll")
@@ -331,9 +336,9 @@ test("a source that fails or answers nonsense never breaks the piano roll", func
         eq(item.notes[1].pitch .. "@" .. item.notes[1].start .. " v" .. item.notes[1].velocity, "62@4 v127", "made whole")
       end
     end
-    roll:layer("broken", { order = 45, draw = function() error("layer boom") end, marks = function() error("marks boom") end })
+    roll.layer("broken", 45, function() error("layer boom") end, function() error("marks boom") end)
     local ok, text = pcall(screen)
-    roll:layer("broken", nil)
+    roll.layer("broken", 45, nil)
     eq(ok, true, "drawing goes on past a failing layer")
     eq(text:find("1/4", 1, true) ~= nil, true, "with the suggestion drawn")
   end)
