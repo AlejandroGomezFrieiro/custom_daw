@@ -49,9 +49,23 @@ function M.toggle_art(kind, ids)
       art[kind] = on or nil
       x.ev.art = next(art) and art or nil
       D.touch(sc, x.mi)
+      M.played_as_marked(sc, x.ev)
     end
   end)
   return on
+end
+
+--- A note marked to be played short or long is played as marked: the
+--- length of its feel (how much longer or shorter it was played than
+--- written) goes. Its timing and loudness stay.
+function M.played_as_marked(sc, ev)
+  for _, n in ipairs(ev.notes or {}) do
+    local fe = sc.feel and sc.feel[n.id]
+    if fe then
+      fe.dlen = nil
+      sc.feel[n.id] = next(fe) and fe or nil
+    end
+  end
 end
 
 -- Marks along the score -----------------------------------------------------------------------
@@ -65,11 +79,10 @@ end
 
 local KINDS = { dyn = "dynamic", cresc = "hairpin", dim = "hairpin", text = "text", slur = "slur" }
 
---- Put a mark at a beat of the clip, replacing one of its kind there, or
---- take it away with `value` false: `{ at, kind = "dyn" | "cresc" | "dim"
---- | "text" | "repeat", value, to }`.
-function M.put(clip, mark)
-  local _ = clip
+--- Put a mark at a beat of the open clip, replacing one of its kind there,
+--- or take it away with `value` false: `{ at, kind = "dyn" | "cresc" |
+--- "dim" | "text" | "repeat", value, to }`. (`clip` is the open clip.)
+function M.put(_, mark)
   view:write(function(sc)
     if mark.kind == "repeat" then
       local mi, at = view.where(sc, mark.at)
@@ -105,8 +118,7 @@ end
 --- A slur over the notes written from `from` to `to` (clip beats) on a
 --- staff (by its index), or none there if one starts there: the notes
 --- under it are played legato. Returns whether there is one now.
-function M.slur(clip, from, to, staff)
-  local _ = clip
+function M.slur(_, from, to, staff)
   local on = false
   view:write(function(sc)
     local st = (sc.staves[staff or 1] or sc.staves[1]).id
@@ -120,6 +132,11 @@ function M.slur(clip, from, to, staff)
     if not removed then
       list[#list + 1] = { id = D.id(sc, "k"), kind = "slur", staff = st, from = ref, to = M.ref(sc, to) }
       on = true
+      -- The notes under it are played legato, as marked.
+      local s0, s1 = render.at_of(sc, f, ref), render.at_of(sc, f, M.ref(sc, to))
+      D.each(sc, function(ev, _, staff, _, s)
+        if staff == st and ev.kind == "chord" and s >= s0 and s < s1 then M.played_as_marked(sc, ev) end
+      end)
     end
     sc.marks = list
     D.touch(sc, mi)

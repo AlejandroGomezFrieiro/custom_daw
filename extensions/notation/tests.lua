@@ -644,7 +644,7 @@ test("marks: articulations are written and played", function()
   eq(ev.art.staccato, true, "the written note carries it")
   eq(model_text_has(view, "q C5"), true, "still written a quarter")
   keys("g'")
-  eq(clip:notes()[1].length, 1, "taken away: played long again, as it was played")
+  eq(clip:notes()[1].length, 0.9, "taken away: played as written again (the mark replaced how it was played)")
   view:set(43, 1)
   local before = clip:notes()[2].velocity
   keys("g>")

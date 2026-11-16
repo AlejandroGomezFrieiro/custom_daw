@@ -865,14 +865,14 @@ function view.add_sounding(sc, note, t, len, staff)
 end
 
 --- A single staff whose clef the track leaves to the notes becomes a
---- grand staff when a note is entered far outside it (a bass under a
---- melody, a melody over a bass), as the clef would have been chosen.
+--- grand staff when a note is entered more than three ledger lines outside
+--- it (a bass under a melody, a melody over a bass).
 function view:make_room(sc, pitch)
   if #sc.staves ~= 1 then return end
   local clip = self:clip()
   if not clip or view.track_clef(clip:get().track) then return end
   local clef = sc.staves[1].clef
-  if (clef == "treble" and pitch < 57) or (clef == "bass" and pitch > 64) then
+  if (clef == "treble" and pitch < 53) or (clef == "bass" and pitch > 67) then
     local upper = clef == "treble" and sc.staves[1] or { id = D.id(sc, "s"), clef = "treble" }
     local lower = clef == "bass" and sc.staves[1] or { id = D.id(sc, "s"), clef = "bass" }
     sc.staves = { upper, lower }
@@ -1337,7 +1337,6 @@ function view:toggle_grace()
     if not (nxt and nxt.ev.kind == "chord") then return false end
     local len = here.e - here.s
     local grace = { id = D.id(sc, "e"), kind = "chord", grace = "acciaccatura", dur = { 1, 8 }, dots = 0, notes = ev.notes }
-    local was_notes = ev.notes
     ev.kind, ev.notes, ev.art, ev.arpeggio = "rest", nil, nil, nil
     local _, nentry, nk = D.find(sc, nxt.ev.id)
     table.insert(nentry.events, nk, grace)
@@ -1347,7 +1346,6 @@ function view:toggle_grace()
     else
       D.normalize(sc, mi, entry.staff, entry.voice)
     end
-    local _ = was_notes
     D.touch(sc, mi)
     made = true
   end)
@@ -1457,7 +1455,7 @@ end
 
 --- Respell the note under the cursor: the next letter that can name its pitch (G sharp, A flat).
 function view:respell()
-  return self:change(function(sc, note, written)
+  return self:change(function(sc, note)
     local pitch = D.pitch(note)
     local options = {}
     for letter = 0, 6 do
@@ -1476,7 +1474,6 @@ function view:respell()
     end
     respell(sc, note, pick)
     self.step = pick.step
-    local _ = written
   end)
 end
 

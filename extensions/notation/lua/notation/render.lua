@@ -127,27 +127,25 @@ M.at_of = at_of
 --- The loudness the dynamics and hairpins ask for at a place, by `marks`
 --- resolved to ticks: `{ dyns = { { t, level } }, pins = { { s, e, kind } } }`.
 local function level(resolved, t)
-  local v
-  for _, d in ipairs(resolved.dyns) do
-    if d.t <= t then v = d.level end
+  local function at(x)
+    local v
+    for _, d in ipairs(resolved.dyns) do
+      if d.t <= x then v = d.level end
+    end
+    return v
   end
   for _, h in ipairs(resolved.pins) do
     if t >= h.s and t < h.e then
-      local from = v or M.DYNAMICS.mf
+      local from = at(h.s) or M.DYNAMICS.mf
       local to
       for _, d in ipairs(resolved.dyns) do
         if not to and d.t >= h.e then to = d.level end
       end
       to = to or (from + (h.kind == "cresc" and 24 or -24))
-      local start_level
-      for _, d in ipairs(resolved.dyns) do
-        if d.t <= h.s then start_level = d.level end
-      end
-      from = start_level or M.DYNAMICS.mf
       return from + (to - from) * (t - h.s) / math.max(1, h.e - h.s)
     end
   end
-  return v or M.DYNAMICS.mf
+  return at(t) or M.DYNAMICS.mf
 end
 
 --- The marks of a score in ticks: dynamics, hairpins and slurs.
@@ -178,11 +176,9 @@ end
 --- written end.
 feel_on = function(r, fe, written)
   local dt = math.max(-written / 2, math.min(written / 2, fe.dt or 0))
-  -- An articulation's length is the note's, whatever the feel.
-  local dlen = r.articulated and 0 or (fe.dlen or 0)
-  local length = math.max(1 / 64, math.min(r.length + dlen, written + 0.125 - dt))
+  local length = math.max(1 / 64, math.min(r.length + (fe.dlen or 0), written + 0.125 - dt))
   return { pitch = r.pitch, start = r.start + dt, length = length, velocity = clamp_vel(r.velocity + (fe.dvel or 0)),
-    meta = r.meta, written = r.written, articulated = r.articulated }
+    meta = r.meta, written = r.written }
 end
 
 --- What the score plays: notes `{ pitch, start, length, velocity, meta }`
@@ -236,17 +232,19 @@ function M.render(score, opts)
   local feel = opts.feel ~= false and score.feel or {}
   local out = {}
   for _, p in ipairs(protos) do
-    local g = gate
     local art = p.art or {}
-    for kind, x in pairs(GATE) do
-      if art[kind] then g = math.min(g == gate and 1 or g, x) end
-    end
-    if not (art.staccato or art.staccatissimo) then
+    local g = gate
+    if art.staccatissimo then
+      g = GATE.staccatissimo
+    elseif art.staccato then
+      g = GATE.staccato
+    elseif art.tenuto then
+      g = GATE.tenuto
+    else
       for _, sl in ipairs(marks.slurs) do
         if p.s >= sl.s and p.s < sl.e and (not sl.staff or sl.staff == p.staff) then g = 1 end
       end
     end
-    if art.tenuto then g = math.max(g, 1) end
     if opts.gate then g = opts.gate end
     local len = p.grace and p.len or p.len * g
     local vel = level(marks, p.s)
@@ -256,7 +254,7 @@ function M.render(score, opts)
     local fe = feel[p.n]
     local note = {
       pitch = p.pitch, start = (origin + p.s) / Q, length = len / Q, velocity = clamp_vel(vel),
-      meta = { score = { e = p.e, n = p.n } }, written = opts.written and p or nil, articulated = g ~= gate or nil,
+      meta = { score = { e = p.e, n = p.n } }, written = opts.written and p or nil,
     }
     out[#out + 1] = fe and feel_on(note, fe, p.len / Q) or note
   end
