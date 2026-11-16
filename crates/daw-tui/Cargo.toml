@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 daw-core.workspace = true
 daw-engine.workspace = true
+daw-luadev.workspace = true
 daw-plugins.workspace = true
 daw-utau = { path = "../daw-utau" }
 anyhow.workspace = true

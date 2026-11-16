@@ -1224,12 +1224,13 @@ fn audio_regions(
             end,
             // An edge inside the recording is a cut.
             declick_in: offset > 1e-6,
-            declick_out: offset + seconds < data.seconds() - 1e-6,
+            declick_out: offset + seconds < data.whole_seconds() - 1e-6,
             data,
             offset,
             gain,
             fade_in: clip.fade_in,
             fade_out: clip.fade_out,
+            hold: Default::default(),
         });
         return;
     };
@@ -1264,7 +1265,7 @@ fn audio_regions(
             end: stop,
             declick_in: if ra <= 0.0 { into > 1e-6 } else { !joins },
             declick_out: if rb >= seconds {
-                into + (rb - ra) < data.seconds() - 1e-6
+                into + (rb - ra) < data.whole_seconds() - 1e-6
             } else {
                 !joins
             },
@@ -1273,6 +1274,7 @@ fn audio_regions(
             gain,
             fade_in: 0.0,
             fade_out: 0.0,
+            hold: Default::default(),
         });
     }
     if let Some(r) = out.get_mut(first) {
@@ -1318,16 +1320,18 @@ fn build_clips(
             }
             ClipContent::Audio { file, offset, gain } => {
                 let rate = ctx.sample_rate as u32;
-                // A stretched or shifted clip plays a version made for it,
-                // in which a second of the file lasts `stretch` seconds; it
-                // is silent until that is ready.
-                let data = match crate::stretched::Key::of(clip, rate) {
+                // A stretched, warped or shifted clip plays a version made
+                // for it, in which its file's moments are where its warp
+                // puts them (`warp.rs`); it is silent until that is started,
+                // and then plays it as far as it is made.
+                let warp = crate::warp::of(clip, tempo);
+                let data = match crate::stretched::Key::of(clip, rate, tempo) {
                     Some(key) => ctx.audio.stretched(&key, ctx.warnings),
                     None => ctx.audio.get(file, rate, ctx.warnings),
                 };
                 if let Some(data) = data {
                     let gain = db_to_gain(*gain);
-                    let offset = offset * clip.stretch;
+                    let offset = warp.map_or(*offset, |w| w.forward(*offset));
                     audio_regions(clip, data, offset, gain, tempo, &mut set.audio);
                 }
             }

@@ -23,7 +23,7 @@ use serde_json::{Map, Value, json};
 use crate::history::{self, History};
 use crate::model::{
     Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Send,
-    StretchMode, Target, Timebase, Track, parse_input,
+    StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
@@ -71,6 +71,13 @@ pub struct Transport {
     /// for none. Set from `daw.opt.count_in`, so not saved with a project.
     #[serde(skip)]
     pub count_in: u32,
+    /// Bars, and then seconds, that a take punched in from a stop starts
+    /// playing before the punch in. Set from `daw.opt.pre_roll` and
+    /// `daw.opt.pre_roll_seconds`, so not saved with a project.
+    #[serde(skip)]
+    pub pre_roll: u32,
+    #[serde(skip)]
+    pub pre_roll_seconds: f64,
 }
 
 impl Default for Transport {
@@ -85,6 +92,8 @@ impl Default for Transport {
             punch_end: 0.0,
             recording: false,
             count_in: 0,
+            pre_roll: 0,
+            pre_roll_seconds: 0.0,
         }
     }
 }
@@ -213,6 +222,8 @@ pub struct ClipOpts {
     pub pitch: f64,
     pub stretch_mode: StretchMode,
     pub source_tempo: Option<f64>,
+    pub warp: Vec<WarpMarker>,
+    pub formants: bool,
     #[serde(rename = "loop")]
     pub looped: bool,
     pub loop_length: Option<f64>,
@@ -729,9 +740,15 @@ impl Session {
         self.dirty = true;
         self.restoring = true;
         // The count-in is the user's, not the project's.
-        let count_in = self.transport.count_in;
+        let (count_in, pre_roll, pre_roll_seconds) = (
+            self.transport.count_in,
+            self.transport.pre_roll,
+            self.transport.pre_roll_seconds,
+        );
         self.transport = Transport {
             count_in,
+            pre_roll,
+            pre_roll_seconds,
             ..transport
         };
         self.path = path;
@@ -1899,6 +1916,7 @@ impl Session {
         }
         let stretch = opts.stretch.unwrap_or(1.0);
         stretching::check_playing(kind, stretch, opts.pitch, opts.source_tempo)?;
+        stretching::check_warp(kind, &opts.warp)?;
         if opts.loop_length.is_some_and(|l| !l.is_finite() || l <= 0.0)
             || !opts.loop_start.is_finite()
         {
@@ -1915,6 +1933,8 @@ impl Session {
                 pitch: opts.pitch,
                 stretch_mode: opts.stretch_mode,
                 source_tempo: opts.source_tempo.filter(|_| kind == "audio"),
+                warp: opts.warp.clone(),
+                formants: opts.formants,
                 looped: opts.looped && opts.loop_length.is_some(),
                 loop_length: opts.loop_length,
                 loop_start: opts.loop_start,
@@ -1988,10 +2008,12 @@ impl Session {
         let ClipContent::Audio { file, offset, .. } = &clip.content else {
             bail!("clip {id} is not an audio clip");
         };
-        let (file, offset, start, stretch) = (file.clone(), *offset, clip.start, clip.stretch);
+        let (file, offset, start) = (file.clone(), *offset, clip.start);
+        let map = self.project.tempo_map().clone();
+        let warp = crate::warp::of(clip, &map).unwrap_or_else(|| crate::warp::Warp::even(1.0));
         let data = self.audio.load(&file)?;
-        let map = self.project.tempo_map();
-        let seconds = (data.seconds() - offset).max(0.0) * stretch;
+        let seconds = (warp.forward(data.seconds()) - warp.forward(offset)).max(0.0);
+
         Ok(map.beat(map.seconds(start) + seconds) - start)
     }
 
@@ -2327,7 +2349,33 @@ impl Session {
         self.handle.send(Msg::SetMetronome(t.metronome));
     }
 
+    /// Where a take punched in from a stop starts playing: the pre-roll
+    /// before the punch in, but never later than the playhead (a playhead
+    /// further back is left alone), and not at all when the playhead is
+    /// inside the range or past it.
+    fn pre_roll_start(&self) -> Option<f64> {
+        let t = &self.transport;
+        if !t.recording || self.playing || !t.punch_enabled || t.punch_end <= t.punch_start {
+            return None;
+        }
+        if t.pre_roll == 0 && t.pre_roll_seconds <= 0.0 {
+            return None;
+        }
+        let at = self.position();
+        if at > t.punch_start + 1e-9 {
+            return None;
+        }
+        let map = self.project.tempo_map();
+        let bar = (map.bar_of(t.punch_start) - t.pre_roll as i64).max(0);
+        let from = map.bar_start(bar);
+        let from = map.beat((map.seconds(from) - t.pre_roll_seconds).max(0.0));
+        Some(from.min(at))
+    }
+
     pub fn play(&mut self) {
+        if let Some(from) = self.pre_roll_start() {
+            self.seek(from);
+        }
         self.flush();
         if self.transport.recording {
             self.start_take();
@@ -3328,6 +3376,7 @@ impl Session {
             "metronome": t.metronome, "recording": t.recording,
             "punch_enabled": t.punch_enabled, "punch_start": t.punch_start, "punch_end": t.punch_end,
             "count_in": t.count_in, "counting": self.counting(),
+            "pre_roll": t.pre_roll, "pre_roll_seconds": t.pre_roll_seconds,
             "record_offset": self.record_offset,
             "write": self.write,
             "take": self.take.as_ref().map(|t| t.number),
@@ -3364,6 +3413,20 @@ impl Session {
                     bail!("a count-in is from 0 to 16 bars");
                 }
                 t.count_in = bars as u32;
+            }
+            "pre_roll" => {
+                let bars: f64 = de(key, value)?;
+                if !(0.0..=16.0).contains(&bars) {
+                    bail!("a pre-roll is from 0 to 16 bars");
+                }
+                t.pre_roll = bars as u32;
+            }
+            "pre_roll_seconds" => {
+                let seconds: f64 = de(key, value)?;
+                if !(0.0..=30.0).contains(&seconds) {
+                    bail!("a pre-roll is from 0 to 30 seconds");
+                }
+                t.pre_roll_seconds = seconds;
             }
             _ => bail!("the transport has no settable field `{key}`"),
         }

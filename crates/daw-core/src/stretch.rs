@@ -24,9 +24,15 @@
 //! (for WSOLA) are worked out on the sum of the channels and applied to
 //! both, so the same sound in both channels comes out the same in both.
 //!
-//! The result has `round(frames * ratio)` frames, and a sound at input
-//! frame `x` is at output frame `x * ratio`. A pitch shift is a stretch by
-//! the ratio times the shift, then a sinc resampling back by the shift.
+//! How long the result is, and where each moment of the input lands in it,
+//! is a [`Warp`]: a sound at input frame `x` is at output frame
+//! `warp(x)`, evenly `x * ratio`, or by parts stretched differently (warp
+//! markers, a clip bent along the tempo). Both ways follow the warp as it
+//! goes, frame by frame. A pitch shift is a stretch by the warp times the
+//! shift, then a sinc resampling back by the shift. A shift can keep the
+//! sound's formants ([`Params::formants`]): the vocoder then moves the
+//! spectrum's envelope the other way first, so that the resampling puts it
+//! back where it was (see [`Envelope`]).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,6 +44,7 @@ use realfft::num_complex::Complex;
 use serde::{Deserialize, Serialize};
 
 use crate::resample::Stream;
+pub use crate::warp::Warp;
 
 /// How a clip is stretched: see the module's description.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -81,31 +88,60 @@ pub fn choose(data: &AudioData) -> Mode {
     }
 }
 
-/// `data` made `ratio` times as long and `semitones` higher, kept where
-/// `sink` keeps it. Gives up, with an error, once `cancel` is set.
+/// What a sound is made into.
+#[derive(Clone, Debug)]
+pub struct Params {
+    /// Where each moment goes, in seconds.
+    pub warp: Warp,
+    /// How much higher it plays.
+    pub semitones: f64,
+    pub mode: Mode,
+    /// A shift keeps the formants where they were. Only the vocoder can:
+    /// with this, it stretches whatever the mode.
+    pub formants: bool,
+}
+
+impl Params {
+    /// `ratio` times as long, `semitones` higher.
+    pub fn even(ratio: f64, semitones: f64, mode: Mode) -> Self {
+        Self {
+            warp: Warp::even(ratio),
+            semitones,
+            mode,
+            formants: false,
+        }
+    }
+}
+
+/// How many frames `frames` at `rate` make through `warp`.
+pub fn length(frames: usize, rate: u32, warp: &Warp) -> usize {
+    warp.in_frames(rate as f64)
+        .forward(frames as f64)
+        .round()
+        .max(0.0) as usize
+}
+
+/// `data` made into what `params` say, kept where `sink` keeps it: a
+/// growing sink ([`Sink::growing`]) of [`length`] frames can be played as
+/// it fills. Gives up, with an error, once `cancel` is set.
 pub fn render(
     data: &AudioData,
-    ratio: f64,
-    semitones: f64,
-    mode: Mode,
+    params: &Params,
     sink: Sink,
     cancel: &AtomicBool,
 ) -> Result<AudioData> {
-    if !(RATIO_RANGE.0..=RATIO_RANGE.1).contains(&ratio) {
-        bail!(
-            "a stretch is between {} and {} times as long, not {ratio}",
-            RATIO_RANGE.0,
-            RATIO_RANGE.1
-        );
-    }
+    params.warp.check()?;
+    let semitones = params.semitones;
     if !semitones.is_finite() || semitones.abs() > PITCH_RANGE {
         bail!("a pitch shift is at most {PITCH_RANGE} semitones either way, not {semitones}");
     }
     let rate = data.sample_rate;
     let frames = data.frames();
-    let wanted = (frames as f64 * ratio).round() as usize;
+    let wanted = length(frames, rate, &params.warp);
     let shift = (semitones / 12.0).exp2();
-    let mode = match mode {
+    let formants = (params.formants && semitones != 0.0).then_some(shift);
+    let mode = match params.mode {
+        _ if formants.is_some() => Mode::Tonal,
         Mode::Auto => choose(data),
         mode => mode,
     };
@@ -115,16 +151,12 @@ pub fn render(
         // Made `shift` times longer still, then played back that much faster.
         Out::Resample(Box::new(Stream::new(1.0 / shift, rate, wanted, sink)?))
     };
-    let length = if semitones == 0.0 {
-        wanted
-    } else {
-        (frames as f64 * ratio * shift).round() as usize
-    };
-    let ratio = length as f64 / frames.max(1) as f64;
+    let map = params.warp.in_frames(rate as f64).scaled(shift);
+    let length = map.forward(frames as f64).round().max(0.0) as usize;
     let input = [&data.channels[0][..], &data.channels[1][..]];
     match mode {
-        Mode::Percussive => wsola(input, rate, ratio, length, &mut out, cancel)?,
-        _ => vocoder(input, rate, ratio, length, &mut out, cancel)?,
+        Mode::Percussive => wsola(input, rate, &map, length, &mut out, cancel)?,
+        _ => vocoder(input, rate, &map, length, formants, &mut out, cancel)?,
     }
     out.finish(rate, wanted)
 }
@@ -303,12 +335,15 @@ fn wrap(phase: f64) -> f64 {
     phase - TAU * ((phase + PI) / TAU).floor()
 }
 
-/// The phase vocoder (see the module's description).
+/// The phase vocoder (see the module's description), following `map` (in
+/// frames). With `formants`, the shift that will follow, it moves each
+/// frame's spectral envelope by the inverse of the shift.
 fn vocoder(
     input: [&[f32]; 2],
     rate: u32,
-    ratio: f64,
+    map: &Warp,
     length: usize,
+    formants: Option<f64>,
     out: &mut Out,
     cancel: &AtomicBool,
 ) -> Result<()> {
@@ -341,6 +376,7 @@ fn vocoder(
     let mut ola = Ola::new(length);
     let mut last_start: Option<i64> = None;
     let mut last_centre = f64::NEG_INFINITY;
+    let mut envelope = formants.map(|shift| Envelope::new(&mut planner, n, rate, shift));
 
     // Synthesis frame m starts at m * hop - n + hop, so that the first
     // output frames have every frame over them that later ones have.
@@ -353,7 +389,7 @@ fn vocoder(
         if m % 64 == 0 && cancel.load(Ordering::Relaxed) {
             bail!("cancelled");
         }
-        let centre = (start + n as i64 / 2) as f64 / ratio;
+        let centre = map.inverse((start + n as i64 / 2) as f64);
         let a_start = centre.round() as i64 - n as i64 / 2;
         // The analysis hop actually taken, for the phases' advance.
         let a_hop = last_start.map(|s| (a_start - s) as f64);
@@ -433,12 +469,17 @@ fn vocoder(
         }
         last_phase.copy_from_slice(&phase);
         last_start = Some(a_start);
+        let gains = match &mut envelope {
+            Some(envelope) => Some(envelope.gains(&magnitude)?),
+            None => None,
+        };
 
         for c in 0..2 {
             let spectrum = &mut spectra[c];
             for k in 0..bins {
                 let turn = synth[k] - phase[k];
-                spectrum[k] *= Complex::from_polar(1.0, turn as f32);
+                let gain = gains.map_or(1.0, |g| g[k]);
+                spectrum[k] *= Complex::from_polar(gain, turn as f32);
             }
             spectrum[0].im = 0.0;
             spectrum[bins - 1].im = 0.0;
@@ -456,11 +497,11 @@ fn vocoder(
     ola.emit(length as i64, out)
 }
 
-/// WSOLA (see the module's description).
+/// WSOLA (see the module's description), following `map` (in frames).
 fn wsola(
     input: [&[f32]; 2],
     rate: u32,
-    ratio: f64,
+    map: &Warp,
     length: usize,
     out: &mut Out,
     cancel: &AtomicBool,
@@ -479,7 +520,7 @@ fn wsola(
     let onsets = onsets(&mono, rate);
     let (w64, hop64) = (w as i64, hop as i64);
     // Where an input frame belongs in the output.
-    let place = |x: f64| x * ratio;
+    let place = |x: f64| map.forward(x);
 
     let mut ola = Ola::new(length);
     let mut pieces: [Vec<f32>; 2] = [vec![0.0; w], vec![0.0; w]];
@@ -501,7 +542,7 @@ fn wsola(
         if m % 256 == 0 && cancel.load(Ordering::Relaxed) {
             bail!("cancelled");
         }
-        let nominal = ((at + hop64) as f64 / ratio).round() as i64 - hop64;
+        let nominal = map.inverse((at + hop64) as f64).round() as i64 - hop64;
         let pos = match last {
             None => nominal,
             Some(prev) if carry => prev + hop64,
@@ -596,22 +637,89 @@ fn best_fit(natural: &[f32], candidate: &[f32], tolerance: i64) -> i64 {
     best.0 as i64 - tolerance
 }
 
+/// The envelope of a spectrum, and the gains that move it.
+///
+/// The envelope is found by liftering the cepstrum: the log of the
+/// magnitudes, transformed back, holds the slow shape of the spectrum (the
+/// formants) in its first coefficients and the fine one (the harmonics of
+/// a voice) further out; keeping the first ones and transforming forward
+/// again gives the shape alone. A voice of up to about 650 Hz keeps its
+/// harmonics out of what is kept.
+struct Envelope {
+    inverse: Arc<dyn realfft::ComplexToReal<f32>>,
+    forward: Arc<dyn realfft::RealToComplex<f32>>,
+    log: Vec<Complex<f32>>,
+    cepstrum: Vec<f32>,
+    smooth: Vec<Complex<f32>>,
+    /// The envelope, in log magnitude, by bin.
+    shape: Vec<f32>,
+    gains: Vec<f32>,
+    /// Coefficients kept.
+    keep: usize,
+    shift: f64,
+}
+
+impl Envelope {
+    fn new(planner: &mut RealFftPlanner<f32>, n: usize, rate: u32, shift: f64) -> Self {
+        let inverse = planner.plan_fft_inverse(n);
+        let forward = planner.plan_fft_forward(n);
+        let bins = n / 2 + 1;
+        Self {
+            log: inverse.make_input_vec(),
+            cepstrum: inverse.make_output_vec(),
+            smooth: forward.make_output_vec(),
+            inverse,
+            forward,
+            shape: vec![0.0; bins],
+            gains: vec![1.0; bins],
+            // 1.5 ms of quefrency.
+            keep: ((rate as f64 * 0.0015) as usize).clamp(8, n / 4),
+            shift,
+        }
+    }
+
+    /// The gain for each bin of a spectrum of `magnitude` that, once the
+    /// spectrum is moved `shift` times higher, leaves its envelope where it
+    /// was: the envelope at `shift` times the bin's frequency, over the
+    /// envelope at it.
+    fn gains(&mut self, magnitude: &[f32]) -> Result<&[f32]> {
+        let bins = magnitude.len();
+        let n = self.cepstrum.len();
+        let floor = magnitude.iter().cloned().fold(0.0, f32::max) * 1e-6 + 1e-20;
+        for (l, m) in self.log.iter_mut().zip(magnitude) {
+            *l = Complex::new((m + floor).ln(), 0.0);
+        }
+        self.inverse
+            .process(&mut self.log, &mut self.cepstrum)
+            .map_err(|e| anyhow::anyhow!("finding formants: {e}"))?;
+        for (q, c) in self.cepstrum.iter_mut().enumerate() {
+            if q >= self.keep && q <= n - self.keep {
+                *c = 0.0;
+            }
+        }
+        self.forward
+            .process(&mut self.cepstrum, &mut self.smooth)
+            .map_err(|e| anyhow::anyhow!("finding formants: {e}"))?;
+        for (s, c) in self.shape.iter_mut().zip(&self.smooth) {
+            *s = c.re / n as f32;
+        }
+        for k in 0..bins {
+            let at = k as f64 * self.shift;
+            let i = (at as usize).min(bins - 1);
+            let frac = (at - i as f64).min(1.0) as f32;
+            let next = self.shape[(i + 1).min(bins - 1)];
+            let moved = self.shape[i] + (next - self.shape[i]) * frac;
+            // At most 40 dB either way: where the envelope is all but
+            // silent its shape says little.
+            self.gains[k] = (moved - self.shape[k]).clamp(-4.6, 4.6).exp();
+        }
+        Ok(&self.gains)
+    }
+}
+
 /// For tests and tools: `data` stretched whole, in memory.
-pub fn stretched(
-    data: &AudioData,
-    ratio: f64,
-    semitones: f64,
-    mode: Mode,
-) -> Result<Arc<AudioData>> {
-    render(
-        data,
-        ratio,
-        semitones,
-        mode,
-        Sink::memory(),
-        &AtomicBool::new(false),
-    )
-    .map(Arc::new)
+pub fn stretched(data: &AudioData, params: &Params) -> Result<Arc<AudioData>> {
+    render(data, params, Sink::memory(), &AtomicBool::new(false)).map(Arc::new)
 }
 
 #[cfg(test)]
@@ -675,7 +783,11 @@ mod tests {
         let source_step = largest_step(&src);
         for mode in [Mode::Tonal, Mode::Percussive] {
             for ratio in [0.5, 0.8, 1.25, 2.0] {
-                let out = stretched(&sound(src.clone(), src.clone()), ratio, 0.0, mode).unwrap();
+                let out = stretched(
+                    &sound(src.clone(), src.clone()),
+                    &Params::even(ratio, 0.0, mode),
+                )
+                .unwrap();
                 let left = &out.channels[0];
                 assert_eq!(
                     out.frames(),
@@ -738,9 +850,7 @@ mod tests {
         for ratio in [0.5, 0.8, 1.25, 2.0] {
             let out = stretched(
                 &sound(src.clone(), src.clone()),
-                ratio,
-                0.0,
-                Mode::Percussive,
+                &Params::even(ratio, 0.0, Mode::Percussive),
             )
             .unwrap();
             let left = &out.channels[0];
@@ -775,7 +885,11 @@ mod tests {
         }
         // The vocoder, for the record: it smears a click over its frame.
         for ratio in [0.8, 1.25] {
-            let out = stretched(&sound(src.clone(), src.clone()), ratio, 0.0, Mode::Tonal).unwrap();
+            let out = stretched(
+                &sound(src.clone(), src.clone()),
+                &Params::even(ratio, 0.0, Mode::Tonal),
+            )
+            .unwrap();
             let got = found(&out.channels[0], 0.9);
             eprintln!("clicks through the vocoder x{ratio}: {} found", got.len());
         }
@@ -794,8 +908,11 @@ mod tests {
         let src = sine(440.0, 2.0, 0.5);
         for (semitones, ratio) in [(3.0, 1.0), (-0.5, 1.0), (7.0, 1.5), (-12.0, 0.8)] {
             for mode in [Mode::Tonal, Mode::Percussive] {
-                let out =
-                    stretched(&sound(src.clone(), src.clone()), ratio, semitones, mode).unwrap();
+                let out = stretched(
+                    &sound(src.clone(), src.clone()),
+                    &Params::even(ratio, semitones, mode),
+                )
+                .unwrap();
                 assert_eq!(out.frames(), (src.len() as f64 * ratio).round() as usize);
                 let want = 440.0 * (semitones / 12.0f64).exp2();
                 let f = frequency(&out.channels[0]);
@@ -817,7 +934,8 @@ mod tests {
             .map(|(a, b)| a + b)
             .collect();
         for mode in [Mode::Tonal, Mode::Percussive] {
-            let out = stretched(&sound(s.clone(), s.clone()), 1.37, 2.0, mode).unwrap();
+            let out =
+                stretched(&sound(s.clone(), s.clone()), &Params::even(1.37, 2.0, mode)).unwrap();
             assert!(
                 out.channels[0].iter().eq(out.channels[1].iter()),
                 "{mode:?}"
@@ -826,7 +944,11 @@ mod tests {
         // A stereo sound keeps the difference between its channels: the
         // right channel half as loud comes out half as loud.
         let half: Vec<f32> = s.iter().map(|x| x * 0.5).collect();
-        let out = stretched(&sound(s.clone(), half), 1.5, 0.0, Mode::Tonal).unwrap();
+        let out = stretched(
+            &sound(s.clone(), half),
+            &Params::even(1.5, 0.0, Mode::Tonal),
+        )
+        .unwrap();
         let ratio = rms(&out.channels[1]) / rms(&out.channels[0]);
         assert!((ratio - 0.5).abs() < 0.01, "right against left {ratio}");
     }
@@ -836,7 +958,148 @@ mod tests {
         let s = sine(440.0, 1.0, 0.5);
         let cancel = AtomicBool::new(true);
         let data = sound(s.clone(), s);
-        assert!(render(&data, 2.0, 0.0, Mode::Tonal, Sink::memory(), &cancel).is_err());
-        assert!(render(&data, 9.0, 0.0, Mode::Tonal, Sink::memory(), &cancel).is_err());
+        assert!(
+            render(
+                &data,
+                &Params::even(2.0, 0.0, Mode::Tonal),
+                Sink::memory(),
+                &cancel
+            )
+            .is_err()
+        );
+        assert!(
+            render(
+                &data,
+                &Params::even(9.0, 0.0, Mode::Tonal),
+                Sink::memory(),
+                &cancel
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_warp_puts_each_click_where_it_says_in_both_ways() {
+        // Two seconds made into three: the first second into a half, the
+        // second into two and a half.
+        let (src, at) = clicks(7);
+        let warp = Warp::new(vec![(0.0, 0.0), (1.0, 0.5)], 0.5, 2.5);
+        let data = sound(src.clone(), src.clone());
+        let place = |x: usize| warp.forward(x as f64 / RATE as f64) * RATE as f64;
+        for mode in [Mode::Percussive, Mode::Tonal] {
+            let params = Params {
+                warp: warp.clone(),
+                semitones: 0.0,
+                mode,
+                formants: false,
+            };
+            let out = stretched(&data, &params).unwrap();
+            assert_eq!(out.frames(), length(src.len(), RATE, &warp));
+            assert_eq!(
+                out.frames(),
+                (warp.forward(2.0) * RATE as f64).round() as usize
+            );
+            // The vocoder smears a click over its frame: only its loudest
+            // sample is looked for, near where it belongs.
+            let peak = if mode == Mode::Tonal { 0.3 } else { 0.9 };
+            let got = found(&out.channels[0], peak);
+            assert_eq!(got.len(), at.len(), "{mode:?}: clicks at {got:?}");
+            for (g, a) in got.iter().zip(&at) {
+                let off = (*g as f64 - place(*a)).abs() * 1000.0 / RATE as f64;
+                let limit = if mode == Mode::Tonal { 25.0 } else { 2.0 };
+                assert!(off < limit, "{mode:?}: a click {off:.2} ms from its place");
+            }
+        }
+    }
+
+    #[test]
+    fn a_growing_sink_is_filled_with_what_memory_would_hold() {
+        let s = sine(330.0, 1.5, 0.5);
+        let data = sound(s.clone(), s);
+        let params = Params::even(1.7, 3.0, Mode::Tonal);
+        let whole = stretched(&data, &params).unwrap();
+        let frames = length(data.frames(), RATE, &params.warp);
+        let sink = Sink::growing(frames, RATE, None).unwrap();
+        let playing = sink.playing().unwrap();
+        let made = render(&data, &params, sink, &AtomicBool::new(false)).unwrap();
+        assert!(made.complete() && playing.complete());
+        assert!(whole.channels[0].iter().eq(playing.channels[0].iter()));
+        assert!(whole.channels[1].iter().eq(made.channels[1].iter()));
+    }
+
+    /// A voice-like sound: harmonics of `f0` shaped by one formant at
+    /// `formant` Hz.
+    fn vowel(f0: f64, formant: f64, seconds: f64) -> Vec<f32> {
+        let shape = |f: f64| 0.02 + (-((f - formant) / 250.0).powi(2)).exp();
+        let harmonics: Vec<(f64, f64)> = (1..)
+            .map(|h| h as f64 * f0)
+            .take_while(|f| *f < 8000.0)
+            .map(|f| (f, shape(f)))
+            .collect();
+        (0..(RATE as f64 * seconds) as usize)
+            .map(|i| {
+                let t = i as f64 / RATE as f64;
+                let s: f64 = harmonics.iter().map(|(f, a)| a * (TAU * f * t).sin()).sum();
+                (0.1 * s) as f32
+            })
+            .collect()
+    }
+
+    /// The frequency of the loudest harmonic in the middle of `s`.
+    fn loudest(s: &[f32]) -> f64 {
+        let n = 16384;
+        let from = s.len() / 2 - n / 2;
+        let window = hann(n);
+        let mut frame: Vec<f32> = s[from..from + n]
+            .iter()
+            .zip(&window)
+            .map(|(x, w)| x * w)
+            .collect();
+        let fft = RealFftPlanner::<f32>::new().plan_fft_forward(n);
+        let mut spectrum = fft.make_output_vec();
+        fft.process(&mut frame, &mut spectrum).unwrap();
+        let (k, _) = spectrum
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.norm().total_cmp(&b.1.norm()))
+            .unwrap();
+        k as f64 * RATE as f64 / n as f64
+    }
+
+    #[test]
+    fn a_shift_keeping_formants_leaves_the_formant_where_it_was() {
+        let (f0, formant) = (150.0, 1000.0);
+        let src = vowel(f0, formant, 1.5);
+        let data = sound(src.clone(), src.clone());
+        let before = loudest(&src);
+        assert!(
+            (before - formant).abs() <= f0 / 2.0,
+            "the source's at {before:.0} Hz"
+        );
+        for semitones in [7.0, -5.0] {
+            let shift = (semitones / 12.0f64).exp2();
+            let mut params = Params::even(1.0, semitones, Mode::Auto);
+            let moved = loudest(&stretched(&data, &params).unwrap().channels[0]);
+            params.formants = true;
+            let out = stretched(&data, &params).unwrap();
+            let kept = loudest(&out.channels[0]);
+            eprintln!("{semitones:+} st: formant {moved:.0} Hz moved, {kept:.0} Hz kept");
+            let spacing = f0 * shift;
+            assert!(
+                (moved - formant * shift).abs() <= spacing,
+                "{semitones:+} st, moved: the loudest harmonic at {moved:.0} Hz"
+            );
+            assert!(
+                (kept - formant).abs() <= spacing,
+                "{semitones:+} st, kept: the loudest harmonic at {kept:.0} Hz"
+            );
+            // And it is a harmonic of the shifted pitch.
+            let h = kept / spacing;
+            assert!(
+                (h - h.round()).abs() < 0.05,
+                "harmonic {h:.2} of the new pitch"
+            );
+            assert_eq!(out.frames(), src.len());
+        }
     }
 }

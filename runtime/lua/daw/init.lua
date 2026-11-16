@@ -118,6 +118,7 @@ daw.edit = require("daw.edit")
 daw.ext = require("daw.ext")
 daw.groups = require("daw.groups")
 daw.lanes = require("daw.lanes")
+daw.tempolane = require("daw.tempolane")
 daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
@@ -158,8 +159,10 @@ function K.startup()
   daw.reconnect = require("daw.reconnect")
   daw.ui.start_ticker()
 
+  daw.luadev = require("daw.luadev")
   local env = api.env()
   if not env.clean then
+    daw.luadev.add_dir(env.config_dir .. "/devices", daw.luadev.RANK_CONFIG)
     daw.ext.load_dir(env.config_dir .. "/extensions")
     local init = env.config_dir .. "/init.lua"
     local file = io.open(init, "r")

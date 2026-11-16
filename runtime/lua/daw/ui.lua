@@ -390,15 +390,13 @@ function M.render(buf)
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
---- graphical frontend shows it (see `daw.canvas.open_view`). Curves are
---- drawn without braille, which the window's font does not have.
+--- graphical frontend shows it (see `daw.canvas.open_view`). Braille is
+--- drawn there as dots (`daw.canvas`), as the font has none.
 function M.render_view(name, buf)
   local view = M.views[name]
   buf:fill(0, 0, buf.width, buf.height, " ", backgrounds[name] or "Normal")
   if not view then return end
-  daw.draw.window = true
-  draw(view, buf, { focused = M.focused == name, x = 0, y = 0, window = true })
-  daw.draw.window = false
+  draw(view, buf, { focused = M.focused == name, x = 0, y = 0 })
 end
 
 --- List the keys that can follow a half-typed command, in a box along the
@@ -454,6 +452,16 @@ function M.mouse(event)
   local target
   for _, r in ipairs(M.rects) do
     if event.x >= r.x and event.x < r.x + r.w and event.y >= r.y and event.y < r.y + r.h then target = r end
+  end
+  -- A drag and its release belong to the view the button went down in,
+  -- wherever the pointer has gone since.
+  if event.kind == "down" then
+    M.pressed = target and target.name
+  elseif (event.kind == "drag" or event.kind == "up") and M.pressed then
+    for _, r in ipairs(M.rects) do
+      if r.name == M.pressed then target = r end
+    end
+    if event.kind == "up" then M.pressed = nil end
   end
   if M.float and (not target or target.name ~= M.float.name) then
     if event.kind == "down" then M.close() end

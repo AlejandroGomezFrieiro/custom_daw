@@ -42,12 +42,17 @@ what the selected state's step changed and what differs from it to the
 current state, `Space` plays and stops, `q` or `Esc` closes. A click on a row
 selects it, and the wheel moves the selection.
 
-In the graphical frontend the tree opens in a window of its own (More ▸ Undo
-tree, `:view.window undotree`, or "Open in a window" on `<leader>uu`), drawn
-as in the terminal and taking the same keys and clicks; a name asked for
-with `n` or `c` is typed on its last line.
+In the graphical frontend the tree opens in a painted window of its own
+(More ▸ Undo tree, or `:view.window undotree_paint`): a node for each state,
+newest at the top, the branches drawn between them, the way back to the first
+state and the current state lit. A click on a state goes there; resting the
+pointer on one says what the step was, when, and which state it grew from;
+the right-hand side shows what the chosen state changed. It takes the same
+keys as the terminal's, and a name asked for with `n` or `c` is typed on its
+last line. (`:view.window undotree`, or "Open in a window" on `<leader>uu`,
+opens the terminal's view in cells instead.)
 
-The window draws newest at the top. `@` is the current state, `*` any other;
+The terminal's tree draws newest at the top. `@` is the current state, `*` any other;
 `│` carries a branch down to where it grew from, and `─┘` joins it there.
 Each row shows the state's number, the time it was made, its name in quotes,
 `[A]` `[B]`, `(saved)` for the state last saved, and what made it: the

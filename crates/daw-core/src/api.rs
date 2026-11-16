@@ -711,6 +711,18 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_glue(lua, sh, ids => Vec<Id>) {
             to_lua(lua, &sh.session.borrow_mut().clip_glue(&ids).lua()?)
         }
+        // Warp markers of an audio clip (session/stretching.rs), counted from 1.
+        fn clip_warp_add(_, sh, (id, beat) => (Id, f64)) {
+            Ok(sh.session.borrow_mut().warp_add(id, beat).lua()? + 1)
+        }
+        fn clip_warp_move(_, sh, (id, index, beat) => (Id, usize, f64)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            Ok(sh.session.borrow_mut().warp_move(id, index, beat).lua()? + 1)
+        }
+        fn clip_warp_remove(_, sh, (id, index) => (Id, usize)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            sh.session.borrow_mut().warp_remove(id, index).lua()
+        }
         // Beats of sound left in an audio clip's file from where the clip starts in it.
         fn clip_source_length(_, sh, id => Id) { sh.session.borrow_mut().clip_source_length(id).lua() }
         fn clip_add(lua, sh, (track, opts) => (Id, LuaValue)) {
@@ -1338,6 +1350,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
     crate::measure::install(lua, &api, shared)?;
     crate::tempo_api::install(lua, &api, shared)?;
+    crate::luadev_api::install(lua, &api, shared)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("daw.api", api)

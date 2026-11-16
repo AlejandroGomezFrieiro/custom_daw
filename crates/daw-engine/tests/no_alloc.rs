@@ -143,6 +143,7 @@ fn clips(audio: &Arc<AudioData>, notes: usize) -> Box<ClipSet> {
             fade_out: 0.25,
             declick_in: true,
             declick_out: true,
+            hold: Default::default(),
         });
     }
     Box::new(set)
@@ -663,6 +664,54 @@ fn the_audio_thread_never_allocates() {
     handle.collect_garbage();
 
     the_sampler_never_allocates();
+    a_sound_being_made_never_allocates();
+}
+
+/// A sound played while it is made, run out of and caught up with, is
+/// played without allocating. Run from the test above.
+fn a_sound_being_made_never_allocates() {
+    use daw_engine::Sink;
+    let (mut engine, mut handle) = Engine::new(SR);
+    let mut sink = Sink::growing(SR as usize * 4, SR as u32, None).unwrap();
+    let mut clips = ClipSet::default();
+    clips.audio.push(AudioRegion {
+        start: 0.0,
+        end: 8.0,
+        data: Arc::new(sink.playing().unwrap()),
+        offset: 0.0,
+        gain: 1.0,
+        fade_in: 0.0,
+        fade_out: 0.0,
+        declick_in: false,
+        declick_out: false,
+        hold: Default::default(),
+    });
+    for msg in [
+        Msg::InsertTrack {
+            slot: 1,
+            track: TrackRt::new(),
+        },
+        Msg::SetClips {
+            track: 1,
+            clips: Box::new(clips),
+        },
+        Msg::SetSchedule(Box::new(Schedule::new(
+            vec![SchedEntry::new(1, MASTER), SchedEntry::new(MASTER, NO_SLOT)],
+            0,
+        ))),
+        Msg::Play,
+    ] {
+        send(&mut handle, msg);
+    }
+    let piece: Vec<f32> = (0..SR as usize / 2)
+        .map(|i| (i as f32 * 0.03).sin())
+        .collect();
+    for _ in 0..8 {
+        // Half a second made for each second played: it runs out, then
+        // picks up again.
+        sink.push(&piece, None).unwrap();
+        assert_eq!(run(&mut engine, 94, 512, 2), 0, "a sound being made");
+    }
 }
 
 /// The sampler plays a kit, is handed new kits while it plays, and gives the
