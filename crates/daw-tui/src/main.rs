@@ -20,6 +20,7 @@ Usage:
   daw -l <script.lua> [args...]   run a Lua script without a UI, then exit
   daw --headless [project]        run without a UI until told to quit
   daw ctl <method> [params...]    call a running instance over its socket
+  daw doctor [options]            check the audio, MIDI, plugins and environment, and print a report
 
 Options:
   -e <lua>          run Lua code after startup (repeatable)
@@ -41,6 +42,9 @@ Options:
   --plugins-offline open the project with every plugin offline (:plugins.online)
   -h, --help        show this help
   -V, --version     show the version
+
+doctor options: --seconds <n> (length of the dropout runs), --plugin <name> (repeatable),
+  --only <ids> (comma separated), and the audio options above (--audio, --output, ...)
 
 ctl examples:
   daw ctl eval 'return daw.transport.position'
@@ -70,6 +74,8 @@ struct Args {
     no_plugins: bool,
     plugins_in_process: bool,
     plugins_offline: bool,
+    /// Run as `daw doctor`: a script, but with the sound device unless told otherwise.
+    doctor: bool,
 }
 
 fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
@@ -189,8 +195,51 @@ fn ctl(mut argv: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
+/// Where `extensions/doctor/shell.lua` is: under `$DAW_HOME`, or beside the
+/// binary in a source tree (the binary is in `target/release`), or here.
+fn doctor_script() -> Result<PathBuf> {
+    let mut roots: Vec<PathBuf> = std::env::var_os("DAW_HOME").map(PathBuf::from).into_iter().collect();
+    if let Ok(exe) = std::env::current_exe() {
+        roots.extend(exe.ancestors().skip(1).take(4).map(PathBuf::from));
+    }
+    roots.extend(std::env::current_dir());
+    roots
+        .iter()
+        .map(|root| root.join("extensions/doctor/shell.lua"))
+        .find(|path| path.is_file())
+        .context("cannot find extensions/doctor/shell.lua: set DAW_HOME to the source tree")
+}
+
+/// `daw doctor [options]`: the options the doctor itself takes become the
+/// script's arguments (`--seconds=20`); the rest are the program's own.
+fn doctor_args(argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
+    let mut own = Vec::new();
+    let mut rest = Vec::new();
+    let mut argv = argv.peekable();
+    while let Some(arg) = argv.next() {
+        match arg.as_str() {
+            "--seconds" | "--plugin" | "--only" => {
+                let value = argv.next().with_context(|| format!("{arg} needs a value"))?;
+                own.push(format!("{arg}={value}"));
+            }
+            _ => rest.push(arg),
+        }
+    }
+    let Some(mut args) = parse_args(rest.into_iter())? else {
+        return Ok(None);
+    };
+    args.script = Some(doctor_script()?);
+    args.script_args = own;
+    args.doctor = true;
+    Ok(Some(args))
+}
+
 fn run() -> Result<i32> {
     let mut argv = std::env::args().skip(1).peekable();
+    let doctor = argv.peek().map(String::as_str) == Some("doctor");
+    if doctor {
+        argv.next();
+    }
     if argv.peek().map(String::as_str) == Some("ctl") {
         argv.next();
         ctl(argv)?;
@@ -209,7 +258,8 @@ fn run() -> Result<i32> {
         }
         _ => {}
     }
-    let Some(args) = parse_args(argv)? else {
+    let parsed = if doctor { doctor_args(argv)? } else { parse_args(argv)? };
+    let Some(args) = parsed else {
         return Ok(0);
     };
     let scripted = args.script.is_some();
@@ -221,7 +271,7 @@ fn run() -> Result<i32> {
     let backend = args
         .audio
         .clone()
-        .unwrap_or_else(|| if scripted { "null" } else { "auto" }.into());
+        .unwrap_or_else(|| if scripted && !args.doctor { "null" } else { "auto" }.into());
     let mut registry = Registry::with_builtins();
     // The native half of extensions/utau; it does nothing until that is loaded.
     daw_utau::register(&mut registry);

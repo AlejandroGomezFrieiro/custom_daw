@@ -472,6 +472,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn project_set(lua, sh, (key, value) => (String, LuaValue)) {
             sh.session.borrow_mut().project_set(&key, from_lua(lua, value)?).lua()
         }
+        // Put the open project aside, undo history and all, and open an empty
+        // scratch one; `project_unshelve` brings the first back exactly as it
+        // was. For checks that need tracks of their own (extensions/doctor).
+        fn project_shelve(_, sh, () => ()) { sh.session.borrow_mut().project_shelve().lua() }
+        fn project_unshelve(_, sh, () => ()) { sh.session.borrow_mut().project_unshelve().lua() }
+        fn project_shelved(_, sh, () => ()) { Ok(sh.session.borrow().project_shelved()) }
         fn project_new(_, sh, () => ()) {
             sh.session.borrow_mut().project_new();
             Ok(())

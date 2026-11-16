@@ -165,3 +165,12 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `:tutor` `:tutor 5` | the course where you left off, lesson 5 |
 | `,hh` `,hn` `,hr` | a hint, skip the step, restart the lesson |
 | `,hl` `,hq` | the lessons, leave the tutor |
+
+## The doctor
+
+| Keys | |
+| --- | --- |
+| `:doctor` `:doctor all` `:doctor input` | open the hardware check, run every check, run one |
+| `j` `k` `<CR>` `A` `u` | on its page: choose a check, run it, run all, run those that need nobody |
+| `y` `n` `s` ... | answer the question it asks (the keys are listed under it); `s` skips |
+| `<Esc>` `q` | stop the run, close the page |
