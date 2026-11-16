@@ -34,6 +34,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/drums` | drum tracks in one step, and a grid of the kit's pieces by name, in the terminal and a window |
 | `extensions/templates` | a track, a group of tracks or a chain of devices saved under a name, to make again in any project |
 | `extensions/vinput` | virtual inputs: a guitar heard as MIDI through gdi2m, as a port any track takes, set up in the terminal and a window |
+| `extensions/midilsp` | MIDI LSP, the language server for music, plugged into `daw.lsp`: voice-leading diagnostics with fixes, the chords it hears, suggestions |
 | `extensions/mixdiag` | the mix measured (LUFS, true peak, phase) and reported as findings to jump to |
 | `extensions/undotree` | a window on the undo tree, named checkpoints, A/B listening |
 | `extensions/rpp` | opening and writing REAPER projects |

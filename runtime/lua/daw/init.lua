@@ -148,6 +148,8 @@ function K.startup()
   for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows" }) do
     require("daw.views." .. name)
   end
+  daw.diagnostic = require("daw.diagnostic")
+  daw.lsp = require("daw.lsp")
   require("daw.defaults")
   daw.fx.setup()
   daw.routes.setup()
