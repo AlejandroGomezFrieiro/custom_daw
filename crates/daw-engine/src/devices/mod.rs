@@ -29,14 +29,19 @@ pub fn register(registry: &mut Registry) {
         synth::params(),
         |sr| Box::new(synth::Synth::new(sr)),
     );
-    add(
-        registry,
-        "drums",
-        "Drums",
-        "instrument",
-        drums::params(),
-        |sr| Box::new(drums::Drums::new(sr)),
-    );
+    registry.register(Rc::new(FnFactory {
+        info: DeviceInfo {
+            kind: "drums".into(),
+            name: "Drums".into(),
+            category: "instrument".into(),
+            format: "builtin".into(),
+            vendor: String::new(),
+            params: drums::params(),
+        },
+        make: |sr| Box::new(drums::Drums::new(sr)),
+        latency: 0.0,
+        outputs: &drums::OUTPUTS,
+    }));
     registry.register(Rc::new(sampler::Factory {
         info: DeviceInfo {
             kind: "sampler".into(),
@@ -198,6 +203,7 @@ fn add_late(
         info,
         make,
         latency,
+        outputs: &[],
     }));
 }
 

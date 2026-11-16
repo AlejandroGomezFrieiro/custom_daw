@@ -14,8 +14,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
     DiskStore, MASTER,
-    MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, ParamInfo, Registry,
-    SchedEntry, Schedule, SendRt, Slot, TrackRt, db_to_gain,
+    KeyRt, MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, OutRt, ParamInfo,
+    Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt, db_to_gain,
 };
 use serde_json::{Value, json};
 
@@ -34,8 +34,37 @@ struct Route {
     output: Id,
     /// Target, gain, and whether it is taken before the fader.
     sends: Vec<(Id, f32, bool)>,
+    /// Devices on other tracks that listen to this one: see [`Key`].
+    keys: Vec<Key>,
+    /// Further output pairs of this track's devices: see [`Out`].
+    outs: Vec<Out>,
     /// Frames of latency of the track's own devices.
     latency: u32,
+}
+
+/// A side-chain, as the track it is taken from sees it.
+#[derive(Clone, Debug, PartialEq)]
+struct Key {
+    /// The track the listening device is on, and the device.
+    track: Id,
+    device: Id,
+    /// Taken before the fader.
+    pre: bool,
+    /// Frames of latency of the devices before it on its track, which the
+    /// key waits for so that it lines up with what the device hears.
+    before: u32,
+}
+
+/// One of a device's further output pairs, played into another track.
+#[derive(Clone, Debug, PartialEq)]
+struct Out {
+    device: Id,
+    /// 0 for the device's second pair.
+    pair: usize,
+    target: Id,
+    /// Frames of latency of the track's devices up to this one, included:
+    /// how late after the track's input the pair leaves.
+    late: u32,
 }
 
 type Routing = Vec<Route>;
@@ -48,12 +77,18 @@ pub struct Mapper {
     free_devices: Vec<Slot>,
     next_track: Slot,
     next_device: Slot,
-    mix: HashMap<Id, (f32, f32, bool)>,
+    mix: HashMap<Id, (f32, f32, bool, bool)>,
     /// First input channel, channel count, monitoring and armed, as last sent.
     inputs: HashMap<Id, (usize, usize, bool, bool)>,
     /// The MIDI port's key and channel each track takes, as last sent.
     midi_inputs: HashMap<Id, (u32, u8)>,
+    /// The same for the port each track sends to.
+    midi_outputs: HashMap<Id, (u32, u8)>,
     routing: Routing,
+    /// Devices given a buffer for a side-chain.
+    keyed: HashSet<Id>,
+    /// Devices given buffers for further output pairs, and which.
+    outs: HashMap<Id, Vec<usize>>,
     /// Frames by which the output is behind the transport, as last scheduled.
     pub latency: u32,
     /// Each track's MIDI clips as engine events, kept from one sync to the
@@ -89,7 +124,10 @@ impl Mapper {
             mix: HashMap::new(),
             inputs: HashMap::new(),
             midi_inputs: HashMap::new(),
+            midi_outputs: HashMap::new(),
             routing: Vec::new(),
+            keyed: HashSet::new(),
+            outs: HashMap::new(),
             latency: 0,
             clip_events: HashMap::new(),
             host_latency: HashMap::new(),
@@ -422,6 +460,8 @@ pub fn sync(
     let mut lanes_changed = false;
     // The schedule lists slots, so a track that gets one needs a new schedule.
     let mut new_slots = false;
+    // Side-chains name device slots, so a device that gets one does too.
+    let mut device_slots = false;
     let mut removals = Vec::new();
 
     for track in new.all_tracks() {
@@ -464,6 +504,9 @@ pub fn sync(
             match old_devices.get(&device.id).filter(|_| prev.is_some()) {
                 Some(before) if before.offline != device.offline => {
                     toggled = true;
+                    device_slots = true;
+                    map.keyed.remove(&device.id);
+                    map.outs.remove(&device.id);
                     if device.offline {
                         ctx.live.remove(&device.id);
                         if let Some(slot) = map.devices.remove(&device.id) {
@@ -480,6 +523,7 @@ pub fn sync(
                 }
                 None => {
                     add_device(device, map, ctx, send);
+                    device_slots = true;
                     if !old_devices.contains_key(&device.id) {
                         emit(
                             "device.added",
@@ -556,6 +600,8 @@ pub fn sync(
     for id in old_devices.keys().filter(|id| !new_devices.contains(id)) {
         ctx.live.remove(id);
         map.host_latency.remove(id);
+        map.keyed.remove(id);
+        map.outs.remove(id);
         if let Some(slot) = map.devices.remove(id) {
             removals.push(Msg::RemoveDevice { slot });
             map.free_devices.push(slot);
@@ -605,7 +651,8 @@ pub fn sync(
         let mix = (
             db_to_gain(track.volume),
             track.pan as f32,
-            track.mute || silenced,
+            track.mute,
+            silenced,
         );
         if map.mix.get(&track.id) != Some(&mix) {
             map.mix.insert(track.id, mix);
@@ -614,6 +661,7 @@ pub fn sync(
                 gain: mix.0,
                 pan: mix.1,
                 mute: mix.2,
+                quiet: mix.3,
             });
         }
     }
@@ -650,6 +698,20 @@ pub fn sync(
                 channel: midi.1,
             });
         }
+        let out = track.midi_output.as_ref().map_or((0, 0), |m| {
+            (
+                daw_engine::midi::port_key(&m.port),
+                m.channel.unwrap_or(0),
+            )
+        });
+        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0)) != out {
+            map.midi_outputs.insert(track.id, out);
+            send(Msg::SetMidiOutput {
+                track: slot,
+                port: out.0,
+                channel: out.1,
+            });
+        }
     }
 
     // A device whose latency changed: its dry signal is held back to match.
@@ -665,7 +727,56 @@ pub fn sync(
         }
     }
     let routing = routing_of(new, ctx.live);
-    if routing != map.routing || new_slots {
+    // Devices that listen to a side-chain get a buffer for it, before the
+    // schedule that fills it; those that no longer do give theirs back.
+    let keyed: HashSet<Id> = routing
+        .iter()
+        .flat_map(|r| &r.keys)
+        .map(|k| k.device)
+        .filter(|id| map.devices.contains_key(id))
+        .collect();
+    for id in keyed.difference(&map.keyed) {
+        send(Msg::SetKey {
+            device: map.devices[id],
+            key: Some(daw_engine::key_buf()),
+        });
+    }
+    for id in map.keyed.difference(&keyed) {
+        if let Some(&device) = map.devices.get(id) {
+            send(Msg::SetKey { device, key: None });
+        }
+    }
+    map.keyed = keyed;
+    // Likewise buffers for as many further output pairs as are routed.
+    let mut outs: HashMap<Id, Vec<usize>> = HashMap::new();
+    for out in routing.iter().flat_map(|r| &r.outs) {
+        if map.devices.contains_key(&out.device) {
+            let pairs = outs.entry(out.device).or_default();
+            if !pairs.contains(&out.pair) {
+                pairs.push(out.pair);
+                pairs.sort_unstable();
+            }
+        }
+    }
+    for (id, pairs) in &outs {
+        if map.outs.get(id) != Some(pairs) {
+            send(Msg::SetOutputs {
+                device: map.devices[id],
+                outs: Some(daw_engine::out_bufs(pairs)),
+            });
+        }
+    }
+    for id in map.outs.keys().filter(|id| !outs.contains_key(id)) {
+        if let Some(&device) = map.devices.get(id) {
+            send(Msg::SetOutputs { device, outs: None });
+        }
+    }
+    map.outs = outs;
+    let routes_moved = device_slots
+        && routing
+            .iter()
+            .any(|r| !r.keys.is_empty() || !r.outs.is_empty());
+    if routing != map.routing || new_slots || routes_moved {
         let schedule = build_schedule(&routing, map);
         map.latency = schedule.latency;
         send(Msg::SetSchedule(Box::new(schedule)));
@@ -675,12 +786,21 @@ pub fn sync(
     for id in old_tracks.keys().filter(|id| new.track(**id).is_none()) {
         map.clip_events.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
+            // Notes it left sounding on its MIDI output port end there.
+            if map.midi_outputs.get(id).is_some_and(|(port, _)| *port != 0) {
+                removals.push(Msg::SetMidiOutput {
+                    track: slot,
+                    port: 0,
+                    channel: 0,
+                });
+            }
             removals.push(Msg::RemoveTrack { slot });
             map.free_tracks.push(slot);
         }
         map.mix.remove(id);
         map.inputs.remove(id);
         map.midi_inputs.remove(id);
+        map.midi_outputs.remove(id);
         emit("track.removed", json!({ "id": id }));
     }
     // Removals go last, once nothing in the schedule or a chain refers to them.
@@ -1463,17 +1583,59 @@ fn routing_of(project: &Project, live: &LiveDevices) -> Routing {
     let ids: HashSet<Id> = project.all_tracks().map(|t| t.id).collect();
     let exists = |id: Id| ids.contains(&id);
     // A device that is bypassed is not run, so it holds nothing back.
-    let latency = |t: &Track| -> u32 {
-        t.devices
-            .iter()
-            .filter(|d| !d.bypass)
-            .filter_map(|d| live.get(&d.id))
-            .map(|l| l.latency.min(MAX_DELAY as u32))
-            .sum()
+    let device_latency = |d: &DeviceInst| -> u32 {
+        if d.bypass {
+            return 0;
+        }
+        live.get(&d.id)
+            .map_or(0, |l| l.latency.min(MAX_DELAY as u32))
+    };
+    let latency = |t: &Track| -> u32 { t.devices.iter().map(|d| device_latency(d)).sum() };
+    // Side-chains, by the track they are taken from. The master feeds
+    // nothing, so it keys nothing.
+    let mut keys: HashMap<Id, Vec<Key>> = HashMap::new();
+    for t in project.all_tracks() {
+        let mut before = 0;
+        for d in &t.devices {
+            if let Some(source) = d
+                .sidechain
+                .filter(|s| exists(*s) && *s != t.id && *s != MASTER_ID)
+            {
+                keys.entry(source).or_default().push(Key {
+                    track: t.id,
+                    device: d.id,
+                    pre: d.sidechain_pre,
+                    before,
+                });
+            }
+            before += device_latency(d);
+        }
+    }
+    // Further output pairs, by the track whose devices they come from. The
+    // master feeds nothing, so its devices' pairs go nowhere.
+    let outs_of = |t: &Track| -> Vec<Out> {
+        let mut late = 0;
+        let mut outs = Vec::new();
+        for d in &t.devices {
+            late += device_latency(d);
+            for (&pair, &target) in &d.outputs {
+                if t.id != MASTER_ID && pair >= 2 && exists(target) && target != t.id {
+                    outs.push(Out {
+                        device: d.id,
+                        pair: pair as usize - 2,
+                        target,
+                        late,
+                    });
+                }
+            }
+        }
+        outs
     };
     project
         .all_tracks()
         .map(|t| Route {
+            keys: keys.remove(&t.id).unwrap_or_default(),
+            outs: outs_of(t),
             track: t.id,
             output: t
                 .output
@@ -1496,17 +1658,32 @@ fn routing_of(project: &Project, live: &LiveDevices) -> Routing {
 fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
     // The master is in the routing for its latency, not as a source.
     let sources: Vec<&Route> = routing.iter().filter(|r| r.track != MASTER_ID).collect();
-    let mut feeders: HashMap<Id, Vec<usize>> = HashMap::new();
+    // What feeds each track: the source, and how many frames earlier than
+    // its output the place it arrives at is (a side-chain arrives at a
+    // device, after the devices before it).
+    let mut feeders: HashMap<Id, Vec<(usize, u32)>> = HashMap::new();
     for (index, route) in sources.iter().enumerate() {
-        feeders.entry(route.output).or_default().push(index);
+        feeders.entry(route.output).or_default().push((index, 0));
         for (target, ..) in &route.sends {
-            feeders.entry(*target).or_default().push(index);
+            feeders.entry(*target).or_default().push((index, 0));
+        }
+        for key in &route.keys {
+            feeders
+                .entry(key.track)
+                .or_default()
+                .push((index, key.before));
+        }
+        for out in &route.outs {
+            feeders
+                .entry(out.target)
+                .or_default()
+                .push((index, route.latency.saturating_sub(out.late)));
         }
     }
     fn visit(
         index: usize,
         sources: &[&Route],
-        feeders: &HashMap<Id, Vec<usize>>,
+        feeders: &HashMap<Id, Vec<(usize, u32)>>,
         state: &mut [u8],
         order: &mut Vec<usize>,
     ) {
@@ -1514,7 +1691,7 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
             return;
         }
         state[index] = 1;
-        for &feeder in feeders
+        for &(feeder, _) in feeders
             .get(&sources[index].track)
             .map(Vec::as_slice)
             .unwrap_or(&[])
@@ -1530,7 +1707,9 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
     }
 
     // How late each track's output is, and how late the latest signal fed
-    // into it is. Feeders come first in the order, so one pass does it.
+    // into it is. Feeders come first in the order, so one pass does it. A
+    // side-chain that would arrive late at its device holds back the
+    // track the device is on instead.
     let mut arrives: HashMap<Id, u32> = HashMap::new();
     let mut leaves: HashMap<Id, u32> = HashMap::new();
     let latest = |id: Id, leaves: &HashMap<Id, u32>| -> u32 {
@@ -1538,8 +1717,11 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
             .get(&id)
             .into_iter()
             .flatten()
-            .filter_map(|&f| leaves.get(&sources[f].track))
-            .copied()
+            .filter_map(|&(f, early)| {
+                leaves
+                    .get(&sources[f].track)
+                    .map(|l| l.saturating_sub(early))
+            })
             .max()
             .unwrap_or(0)
     };
@@ -1558,17 +1740,15 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
 
     let slot = |id: &Id| map.tracks.get(id).copied();
     // What a connection into `target` waits: until the latest one gets there.
-    let wait = |from: Id, target: Id| -> Delay {
-        let frames = arrives
-            .get(&target)
-            .copied()
-            .unwrap_or(0)
+    let wait_for = |from: Id, target: Id, early: u32| -> Delay {
+        let frames = (arrives.get(&target).copied().unwrap_or(0) + early)
             .saturating_sub(leaves[&from]);
         match frames {
             0 => Delay::default(),
             frames => Delay::new(frames as usize),
         }
     };
+    let wait = |from: Id, target: Id| wait_for(from, target, 0);
     let mut entries: Vec<SchedEntry> = order
         .into_iter()
         .filter_map(|index| {
@@ -1591,6 +1771,34 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
                             gain: *gain,
                             pre: *pre,
                             delay: wait(route.track, *target),
+                        })
+                    })
+                    .collect(),
+                keys: route
+                    .keys
+                    .iter()
+                    .filter_map(|key| {
+                        Some(KeyRt {
+                            device: *map.devices.get(&key.device)?,
+                            track: slot(&key.track)?,
+                            pre: key.pre,
+                            delay: wait_for(route.track, key.track, key.before),
+                        })
+                    })
+                    .collect(),
+                outs: route
+                    .outs
+                    .iter()
+                    .filter_map(|out| {
+                        Some(OutRt {
+                            device: *map.devices.get(&out.device)?,
+                            pair: out.pair,
+                            target: slot(&out.target)?,
+                            delay: wait_for(
+                                route.track,
+                                out.target,
+                                route.latency.saturating_sub(out.late),
+                            ),
                         })
                     })
                     .collect(),

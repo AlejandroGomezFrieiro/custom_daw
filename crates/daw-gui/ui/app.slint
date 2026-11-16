@@ -202,6 +202,12 @@ export struct ChoiceData {
     checked: bool,
 }
 
+// One of a device's further output pairs, and the tracks it can play into.
+export struct OutputMenuData {
+    label: string,
+    choices: [ChoiceData],
+}
+
 // A key that can follow what has been typed, and what it does.
 // An entry an extension added to a right-click menu.
 export struct MenuEntry {
@@ -246,6 +252,10 @@ export struct DeviceData {
     preset: string,     // the preset last loaded or saved, or ""
     wet: float,         // the host's wet share, 0 to 1
     gain: float,        // the host's output gain, in dB
+    keyed: bool,        // it can listen to a side-chain
+    sidechain: string,  // the track it listens to, or ""
+    pairs: int,         // its output pairs, 1 for most devices
+    routed: int,        // how many of the further ones play somewhere
 }
 
 // A track's strip in the mixer, from the top: where its sound goes, its
@@ -697,6 +707,8 @@ in property <string> render-stage;
     in property <[ChoiceData]> input-audio;
     in property <[ChoiceData]> input-midi;
     in property <[ChoiceData]> input-channel;
+    in property <[ChoiceData]> input-midi-out;
+    in property <[ChoiceData]> input-midi-out-channel;
     callback fill-input-menu(int);
     callback choose-input(int, string, int);
     // The audio devices, from the engine indicator: the same way.
@@ -721,6 +733,14 @@ in property <string> render-stage;
     callback fill-preset-menu(int);
     in property <[string]> preset-names;
     callback choose-preset(int, int);
+    // A device's side-chain: a menu of the tracks it can listen to, filled when it opens.
+    callback fill-sidechain-menu(int);
+    in property <[ChoiceData]> sidechain-choices;
+    callback choose-sidechain(int, int);
+    // A device's further output pairs: a menu of where each plays, filled when it opens.
+    callback fill-outputs-menu(int);
+    in property <[OutputMenuData]> output-pairs;
+    callback route-pair(int, int, int);
     callback device-command(int, string);
     // A device card dragged: onto a track (its id, or -1), or to a height in the list.
     callback drop-device(int, int, float, bool);
@@ -2519,6 +2539,27 @@ in property <string> render-stage;
                                                 checked: track.monitor;
                                                 activated => {
                                                     root.toggle-flag(track.id, "monitor");
+                                                }
+                                            }
+                                            MenuSeparator { }
+                                            Menu {
+                                                title: "MIDI out: send what it plays to";
+                                                for entry[at] in root.input-midi-out: MenuItem {
+                                                    title: entry.label;
+                                                    checked: entry.checked;
+                                                    activated => {
+                                                        root.choose-input(track.id, "midi_out", at + 1);
+                                                    }
+                                                }
+                                            }
+                                            Menu {
+                                                title: "MIDI out channel";
+                                                for entry[at] in root.input-midi-out-channel: MenuItem {
+                                                    title: entry.label;
+                                                    checked: entry.checked;
+                                                    activated => {
+                                                        root.choose-input(track.id, "midi_out_channel", at + 1);
+                                                    }
                                                 }
                                             }
                                         }
@@ -4747,6 +4788,115 @@ in property <string> render-stage;
                                                 quiet: true;
                                                 clicked => {
                                                     root.preset-step(device.id, 1);
+                                                }
+                                            }
+                                        }
+                                        // Where its further output pairs play, for a device with several.
+                                        if device.pairs > 1: HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 6px;
+                                            height: 22px;
+                                            Text {
+                                                text: "Outs";
+                                                color: Theme.text-3;
+                                                font-size: Theme.t-small;
+                                                vertical-alignment: center;
+                                            }
+                                            outs-menu := ContextMenuArea {
+                                                horizontal-stretch: 1;
+                                                Menu {
+                                                    for pair[p] in root.output-pairs: Menu {
+                                                        title: pair.label;
+                                                        for entry[index] in pair.choices: MenuItem {
+                                                            title: entry.label;
+                                                            checked: entry.checked;
+                                                            activated => {
+                                                                root.route-pair(device.id, p + 2, index + 1);
+                                                            }
+                                                        }
+                                                    }
+                                                    MenuSeparator { }
+                                                    MenuItem {
+                                                        title: "Spread the outputs over new tracks";
+                                                        activated => {
+                                                            root.device-command(device.id, "device.spread");
+                                                        }
+                                                    }
+                                                }
+                                                Rectangle {
+                                                    y: 1px;
+                                                    height: 20px;
+                                                    border-radius: 3px;
+                                                    background: outs-touch.has-hover ? Theme.hover-face : Theme.well;
+                                                    Text {
+                                                        x: 8px;
+                                                        width: parent.width - 16px;
+                                                        text: device.routed + " of " + (device.pairs - 1) + " more pairs routed  ▾";
+                                                        color: device.routed == 0 ? Theme.text-3 : Theme.text;
+                                                        font-size: Theme.t-small;
+                                                        overflow: elide;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    outs-touch := TouchArea {
+                                                        clicked => {
+                                                            root.fill-outputs-menu(device.id);
+                                                            outs-menu.show({ x: 0px, y: self.height });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // The track it listens to, for a device with a side-chain.
+                                        if device.keyed: HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 6px;
+                                            height: 22px;
+                                            Text {
+                                                text: "Key";
+                                                color: Theme.text-3;
+                                                font-size: Theme.t-small;
+                                                vertical-alignment: center;
+                                            }
+                                            key-menu := ContextMenuArea {
+                                                horizontal-stretch: 1;
+                                                Menu {
+                                                    for entry[index] in root.sidechain-choices: MenuItem {
+                                                        title: entry.label;
+                                                        checked: entry.checked;
+                                                        activated => {
+                                                            root.choose-sidechain(device.id, index + 1);
+                                                        }
+                                                    }
+                                                }
+                                                Rectangle {
+                                                    y: 1px;
+                                                    height: 20px;
+                                                    border-radius: 3px;
+                                                    background: key-touch.has-hover ? Theme.hover-face : Theme.well;
+                                                    Text {
+                                                        x: 8px;
+                                                        width: parent.width - 16px;
+                                                        text: (device.sidechain == "" ? "Its own input" : device.sidechain) + "  ▾";
+                                                        color: device.sidechain == "" ? Theme.text-3 : Theme.text;
+                                                        font-size: Theme.t-small;
+                                                        overflow: elide;
+                                                        vertical-alignment: center;
+                                                    }
+                                                    key-touch := TouchArea {
+                                                        clicked => {
+                                                            root.fill-sidechain-menu(device.id);
+                                                            key-menu.show({ x: 0px, y: self.height });
+                                                        }
+                                                        changed has-hover => {
+                                                            if (self.has-hover) {
+                                                                root.hint = "side-chain: the track this device listens to, such as a kick that ducks the bass";
+                                                            } else if (root.hint == "side-chain: the track this device listens to, such as a kick that ducks the bass") {
+                                                                root.hint = "";
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }

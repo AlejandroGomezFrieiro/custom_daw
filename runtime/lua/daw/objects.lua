@@ -139,6 +139,7 @@ function Track:snapshot()
   local snap = {
     name = t.name, volume = t.volume, pan = t.pan, output = t.output, color = t.color, mute = t.mute,
     sends = t.sends, input = t.input, monitor = t.monitor, midi_input = t.midi_input, height = t.height,
+    midi_output = t.midi_output,
     -- What extensions keep with the track: a drum map, the group it is in.
     meta = next(t.meta or {}) and t.meta or nil,
     devices = {}, clips = {}, lanes = {},
@@ -175,6 +176,7 @@ function M.restore_track(snap, index)
   if snap.input then track.input = snap.input end
   if snap.monitor then track.monitor = true end
   if snap.midi_input then track.midi_input = snap.midi_input end
+  if snap.midi_output then track.midi_output = snap.midi_output end
   if snap.height then api.track_set(track.id, "height", snap.height) end
   if snap.meta then api.track_set(track.id, "meta", snap.meta) end
   local devices = {}
@@ -193,6 +195,8 @@ end
 function Track:duplicate()
   local snap = self:snapshot()
   snap.name = snap.name .. " copy"
+  -- The tracks the original's output pairs play into stay the original's.
+  for _, device in ipairs(snap.devices) do device.outputs = nil end
   return M.restore_track(snap, self.index + 1)
 end
 
@@ -227,7 +231,15 @@ end
 
 -- Devices --------------------------------------------------------------------
 
-class(Device, "Device", api.device_get, api.device_set)
+class(Device, "Device", api.device_get, function(id, key, value)
+  if key == "sidechain" then value = id_of(value) end
+  if key == "outputs" and type(value) == "table" then
+    local ids = {}
+    for pair, track in pairs(value) do ids[tostring(pair)] = id_of(track) end
+    value = next(ids) and ids or nil
+  end
+  api.device_set(id, key, value)
+end)
 
 function Device:get() return api.device_get(self.id) end
 
@@ -270,7 +282,30 @@ function Device:snapshot()
   local state = api.device_state(self.id)
   -- What extensions keep with the device goes where the device goes.
   local meta = type(d.meta) == "table" and next(d.meta) and d.meta or nil
-  return { kind = d.kind, bypass = d.bypass, state = state, params = not state and d.params or nil, meta = meta }
+  return {
+    kind = d.kind, bypass = d.bypass, state = state, params = not state and d.params or nil, meta = meta,
+    sidechain = d.sidechain, sidechain_pre = d.sidechain_pre or nil,
+    outputs = next(d.outputs or {}) and d.outputs or nil,
+  }
+end
+
+--- Play the device's output pair `pair` (2 and on: the first plays on its
+--- own track) into a track, or nowhere with nil. `device.outputs` is a table
+--- of pair number to track id; `device.ports.outputs` names the pairs.
+function Device:set_output(pair, track)
+  require("daw.routes").set_output(self.id, pair, id_of(track))
+  return self
+end
+
+--- Listen to another track's sound as the device's side-chain: a
+--- compressor on the bass ducks under the kick with `comp:set_sidechain(kick)`.
+--- `{ pre = true }` takes it before that track's fader, pan and mute; nil
+--- (or no track) takes the side-chain away. `device.sidechain` is the
+--- track's id.
+function Device:set_sidechain(track, opts)
+  api.device_set(self.id, "sidechain", id_of(track))
+  api.device_set(self.id, "sidechain_pre", track ~= nil and opts ~= nil and opts.pre == true)
+  return self
 end
 
 --- Show the plugin's own window. `device.editor` is "open", "closed", or nil
@@ -523,6 +558,22 @@ function M.restore_device(snap, track, index)
   }))
   if snap.bypass then device.bypass = true end
   if snap.meta then api.device_set(device.id, "meta", snap.meta) end
+  -- The track it listened to is kept while it exists and can still be
+  -- listened to from here; otherwise the side-chain is dropped, and said so.
+  if snap.sidechain then
+    local ok = pcall(device.set_sidechain, device, snap.sidechain, { pre = snap.sidechain_pre })
+    if not ok then
+      daw.notify(string.format("%s no longer has its side-chain: track %s is gone or would make a loop",
+        device.name, tostring(snap.sidechain)), "warn")
+    end
+  end
+  -- So are the tracks its further output pairs played into.
+  for pair, track in pairs(snap.outputs or {}) do
+    if not pcall(device.set_output, device, tonumber(pair), track) then
+      daw.notify(string.format("%s output pair %s no longer plays anywhere: track %s is gone or would make a loop",
+        device.name, tostring(pair), tostring(track)), "warn")
+    end
+  end
   return device
 end
 
@@ -628,6 +679,14 @@ M.midi = {
     return api.midi_ump(event)
   end,
   inject_ump = api.midi_inject_ump,
+  --- The ports MIDI can be sent to, `{ id, name, own }` each: a track
+  --- sends what it plays to one with `track.midi_output = { port = name,
+  --- channel = 1 }` (channel nil: each message's own).
+  outputs = api.midi_outputs,
+  --- A port of this program's that other programs read from (`daw out:
+  --- <name>`): a track sending to `name` plays a synth in another program.
+  open_output = api.midi_open_output,
+  close_output = api.midi_close_output,
 }
 
 function M.midi.note_on(pitch, velocity, channel)

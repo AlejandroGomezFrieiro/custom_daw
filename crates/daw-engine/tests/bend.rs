@@ -28,6 +28,8 @@ fn rises(events: &[EventKind]) -> usize {
                 left: &mut left,
                 right: &mut right,
                 events: &mut buf,
+                sidechain: None,
+                outputs: &mut [],
             },
         );
         buf.clear();

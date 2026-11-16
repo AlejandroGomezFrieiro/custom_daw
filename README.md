@@ -192,7 +192,9 @@ In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`
 `>` `w` `W` choose, step through, save and set the default preset, `f` finds
-a parameter and `t` goes to the last touched one. `V` and `j` `k` select
+a parameter and `t` goes to the last touched one, `K` chooses the track the
+device listens to as its side-chain, `O` where its further output pairs
+play. `V` and `j` `k` select
 several devices for `y` `d`; `:device.copy_to <track>` and
 `:device.move_to <track>` take the selected one elsewhere. In the window,
 dragging a device card by its name onto a track's header moves it there
@@ -978,7 +980,9 @@ keys.midi_input = { port = "Keystation 49", channel = 1 }   -- MIDI from one por
 everything a track can take in, under three headings: audio (no audio input,
 each channel and each neighbouring pair, named with the device:
 `UR22mkII · 1`, `UR22mkII · 1/2`), MIDI (every port, or one) and MIDI channel
-(every channel, or one). `daw.audio.choices(track)` is that list and
+(every channel, or one), and where the track sends MIDI (MIDI out, and its
+channel: see [MIDI output to hardware](#mixing-midi-and-rendering-in-the-core)).
+`daw.audio.choices(track)` is that list and
 `daw.audio.choose(track, choice)` takes one; a choice that is saved but not
 there now (a pair the device lacks, a port that is unplugged) is listed as
 chosen and marked missing. `:track.input 1/2` and `:track.midi Keystation ch=1`
@@ -1333,7 +1337,7 @@ The sections and the mix's findings are shown this way.
 | Kind | Parameters |
 | --- | --- |
 | `synth` | `wave` (sine, saw, square, triangle), `attack`, `decay`, `sustain`, `release`, `cutoff`, `resonance`, `gain` |
-| `drums` | `gain`, `kick_tune`, `decay`. A synthesized kit on the General MIDI drum notes: kick (35, 36), rim (37), snare (38, 40), clap (39), closed, pedal and open hat (42, 44, 46; the closed and pedal hat cut the open one off), six toms (41 to 50), crashes, china and splash (49, 57, 52, 55), ride (51, 59), ride bell (53), tambourine (54), cowbell (56). |
+| `drums` | `gain`, `kick_tune`, `decay`. Output pairs Kit, Kick, Snare, Hats, Toms, Cymbals and Percussion (see [Instruments with several outputs](#mixing-midi-and-rendering-in-the-core)). A synthesized kit on the General MIDI drum notes: kick (35, 36), rim (37), snare (38, 40), clap (39), closed, pedal and open hat (42, 44, 46; the closed and pedal hat cut the open one off), six toms (41 to 50), crashes, china and splash (49, 57, 52, 55), ride (51, 59), ride bell (53), tambourine (54), cowbell (56). |
 | `sampler` | `gain`. One sound file per note, each with a level, pan, tuning and choke group. The kit is the device's state: text lines `note level pan tune group path`, set with `daw.api.device_set(id, "state", base64)`; the files are read off the audio thread. `extensions/drums` makes kits from folders. |
 | `gain` | `gain` |
 | `delay` | Echoes: `time` (ms), or `sync` to a note length at the tempo of the moment (`1/8.`, `1/4T`...), `feedback`, `mix` (the echoes' level; the dry stays at full level), `mode` (stereo or ping-pong), `low_cut` and `high_cut` on the repeats (off at the ends of their ranges), `width`. A new time glides there, like tape. |
@@ -1343,13 +1347,13 @@ The sections and the mix's findings are shown this way.
 | `tremolo` | `mode` (tremolo, or auto-pan at equal power), `rate` or `sync`, `depth`, `shape` (sine, triangle, a softened square). Synced LFOs lock to the song's position while it plays. |
 | `limiter` | The last device on the master: `ceiling` (default -1 dB), `gain` (drive into it), `release`, `true_peak` (on by default: the peaks between samples are held under the ceiling too, as a BS.1770 meter reads them, with 0.2 dB to spare). Looks 5 ms ahead, so nothing leaves it above the ceiling; the rest of the mix waits for it. `daw.params.read(l, "meters")` gives `gr` and `input` in dB. |
 | `eq` | A parametric equaliser for shaping any track or bus: eight bands, each with `bN_on`, `bN_type` (low cut 12 or 24 dB/oct, low shelf, bell, high shelf, high cut 12 or 24, notch, band pass), `bN_freq`, `bN_gain`, `bN_q`, and `output`. Flat until a band is moved; settings glide without clicks. `daw.params.read(eq, "curve", n)` gives its response in dB at `n` frequencies from 20 Hz to 20 kHz on a log scale, for drawing. |
-| `compressor` | Evens out a vocal, glues a drum bus, or (with `mix` below 100 %) compresses in parallel: `threshold`, `ratio` (the top of its range is a limit), `knee`, `attack`, `release`, `auto_release` (a fast release after short peaks, a slow one after sustained compression), `makeup`, `auto_makeup` (gives back half of what a 0 dB peak loses), `lookahead` (reported as latency), `detector_hp` (so the kick does not drive it), `detect` (peak or RMS), `mix`, `link`. `daw.params.read(c, "meters")` gives `gr`, `input` and `output` in dB; `"curve"` the static curve. |
+| `compressor` | Evens out a vocal, glues a drum bus, or (with `mix` below 100 %) compresses in parallel: `threshold`, `ratio` (the top of its range is a limit), `knee`, `attack`, `release`, `auto_release` (a fast release after short peaks, a slow one after sustained compression), `makeup`, `auto_makeup` (gives back half of what a 0 dB peak loses), `lookahead` (reported as latency), `detector_hp` (so the kick does not drive it), `detect` (peak or RMS), `mix`, `link`, `listen` (play the side-chain as the detector hears it). With a side-chain (see [Side-chains](#mixing-midi-and-rendering-in-the-core)) the detector hears that track instead of its own input. `daw.params.read(c, "meters")` gives `gr`, `input` and `output` in dB; `"curve"` the static curve. |
 | `reverb` | Room and plate sounds for vocals, drums and buses: an eight-line feedback delay network whose lines drift slowly so that it does not ring. `size`, `decay` (seconds to fall 60 dB), `predelay`, `damp_high` and `damp_low` (where the highs and lows start dying sooner; off at the ends of their ranges), `diffusion`, `early` (early reflections against the tail), `width`, `mix` (the dry stays at full level up to 50 %, the wet reaches full level there). |
 | `utility` | Level and stereo fixes: `gain`, `pan` (a balance: the far side fades out), `width` (0 % is mono, 200 % twice as wide), `mono_below` (the sides taken out under this frequency; off at 20 Hz), `invert_l`, `invert_r`, `swap`, `dc` (a 5 Hz high-pass). |
 | `saturation` | Warmth or grit on a bass, a drum bus or a vocal: `drive`, `curve` (tape: soft and symmetric; tube: biased, adds even harmonics; hard clip), `oversample` (2x or 4x, so the harmonics do not fold back as noise), `tone` (a high shelf after the curve), `mix`, `output`. Quiet audio passes at its own level; 31 samples late (0.65 ms at 48 kHz), reported as latency. |
 | `meter` | Measures and passes the audio through untouched, for the master or any track: `daw.params.read(m, "meters")` gives `momentary`, `short_term` and `integrated` loudness (LUFS, EBU R 128 with its gates), `true_peak` (dBTP) and `sample_peak` held since `daw.params.read(m, "reset")` (or for 3 s with `hold`), `rms_l`, `rms_r` and `correlation` over 300 ms; `"spectrum", n` gives dB in `n` bands from 20 Hz to 20 kHz. Readings not taken yet are -200. |
 | `tuner` | Tunes a guitar or a bass: `daw.params.read(t, "pitch")` gives `freq`, `note` (`E2`), `midi`, `cents` and `confidence`, from the last 85 ms (YIN); `reference` sets A4, `mute` silences the track while tuning. |
-| `gate` | Cuts the spill between hits on a drum track, or the noise between phrases: `mode` (gate or expander), `threshold`, `range`, `ratio` (expander), `attack`, `hold`, `release`, `hysteresis`, `lookahead`, `detector_hp`, `detect`, `link`. The same meters as the compressor. |
+| `gate` | Cuts the spill between hits on a drum track, or the noise between phrases: `mode` (gate or expander), `threshold`, `range`, `ratio` (expander), `attack`, `hold`, `release`, `hysteresis`, `lookahead`, `detector_hp`, `detect`, `link`, `listen`. Keyed by a side-chain like the compressor (a pad that opens on the hi-hat). The same meters as the compressor. |
 
 In the device panel the equaliser draws its curve, the compressor, gate and limiter their gain reduction, the meter its loudness and the tuner a needle, under their names. `:eq` and `:tuner` show the track's equaliser or tuner (adding one if it has none), `:loudness` the master's meter; in the window each opens a window of its own (also from the track menu, and the timeline's for the meter), and in the equaliser's window a band's dot is dragged to move it, the wheel over it changes its Q, and a double click turns a band off, or on as a bell where the empty space was clicked.
 
@@ -1449,6 +1453,62 @@ a list) plays the track into another, `:send Reverb -9` (`,s` for a list;
 signal after the track's devices and before its fader and pan, so the send
 keeps its level when the fader moves. Muting the track still silences it.
 
+**Side-chains.** A device can listen to another track: a compressor on the
+bass that ducks under the kick, a gate on a pad that opens on the hi-hat.
+`comp:set_sidechain(kick)` (or `comp.sidechain = kick.id`) takes the kick
+after its fader, as a send does; `{ pre = true }` (`comp.sidechain_pre`)
+takes it after its devices but before its fader, pan and mute, so that a
+muted "ghost" kick still keys. Soloing another track does not cut a key: a
+track silenced by a solo still keys what listens to it, after its fader, as
+if it were heard; muting it does cut a key taken after the fader. `comp:set_sidechain(nil)` takes it away. The
+built-in `compressor` and `gate` key their detector from it (`listen` plays
+it); CLAP, VST3 and LV2 plugins get it on their first side-chain input (a
+CLAP audio port that is not the main one, a VST3 auxiliary bus, an LV2 port
+marked `isSideChain` or in a group that is the side-chain of another), and
+`device.ports.sidechain` says whether a device has one. Other devices ignore
+it. The track listened to is processed first, like a track that sends; a
+side-chain that would make a loop (from the device's own track, the master,
+or any track the device's track plays, sends or keys into, directly or
+through others) is refused with the reason, and so are outputs and sends
+that would close one. The key is lined up with what the device hears: it is
+held back by the latency of the devices before it, or holds the device's
+track back when it is the later. Removing the track takes the side-chain
+away (undo brings it back); copying a track keeps it, a track restored after
+its key is gone (or where it would loop) drops it with a message, and
+templates leave it out. `:device.sidechain Kick` (`pre=1` for before the
+fader, `none` to take it away; alone, a list) acts on the device panel's
+device, `K` there chooses from a list, and the panel shows `key Kick` on the
+device's line. In the window a device that can listen to one has a Key row
+on its card, with a menu of the tracks it can hear.
+
+**Instruments with several outputs.** A drum plugin with a pair per drum,
+or Surge XT's scene outputs: `device.ports.outputs` names the pairs (from
+the plugin: CLAP audio ports, VST3 output buses, which are all switched on,
+LV2 output ports two by two; a port wider than two is taken in pairs too).
+The first plays on the device's own track, as ever. A further pair plays
+only where it is routed, as in REAPER, where it would sit unheard on
+channels 3 and up: `kit:set_output(2, kick)` (`kit.outputs` is a table of
+pair number to track), `:device.output 2 Kick` (`none` to take it away;
+alone, a list of pairs and then of tracks; `O` in the device panel), and
+`:device.spread` (`daw.routes.spread(kit)`) makes a track for each pair that
+plays nowhere, named after it, and puts them and the device's track in a
+group (`<track> outputs`, or the group the track is in already; the
+device's track cannot be the group itself, since its pairs feed the new
+tracks). A pair is taken from the device as it comes out, before the rest
+of the chain: the fader, pan and mute of its own track do not act on it,
+those of the track it plays into do. It is added in before that track's
+devices, so that track is processed after it, and it is lined up with the
+rest like any other connection. Loops are refused as for side-chains, and
+so are pairs of a device on the master. Removing the track a pair plays
+into takes the route away; a copy of the track plays its pairs nowhere;
+templates leave them out. The built-in `drums` has a pair for each family
+of pieces (Kick, Snare, Hats, Toms, Cymbals, Percussion): a family whose
+pair is routed plays there and leaves the kit's own pair. The device panel
+shows `outs 2/6` (pairs routed of those there are) on the device's line, and
+the window's card an Outs row whose menu routes each pair and spreads them.
+Main pairs wider than stereo (surround) are not handled; a mono plugin on a
+stereo track plays on both sides.
+
 **Delay compensation.** A device that looks ahead says how late its output is
 (CLAP, VST3 and LV2 plugins do; of the built-in devices the `limiter` does).
 Every other path to the same place is held back by the difference, through
@@ -1490,7 +1550,27 @@ Packets, so a MIDI 2.0 device arrives whole and a MIDI 1.0 device arrives as
 the same events with less detail. That needs a kernel built with
 `CONFIG_SND_SEQ_UMP`; without it the ports are MIDI 1.0, and what arrives is
 widened by the specification's rules so that both read the same. There is no
-MIDI output to hardware, no MIDI-CI, and no editor for controller moves yet.
+MIDI-CI, and no editor for controller moves yet.
+
+**MIDI output to hardware.** A track sends what it plays (its clips' notes
+and controllers, and MIDI input passing through it, before its devices) to
+a port: `track.midi_output = { port = "UM-ONE: UM-ONE MIDI 1", channel = 2 }`
+(`channel` nil keeps each message's own), `:track.midi_out UM-ONE 2` (part
+of the name will do; `none` for none), or the MIDI out entries of the input
+list (`I`) and of the window's input menu on the track's header.
+`daw.midi.outputs()` lists the ports. The audio thread stamps each message
+with when it is heard (the output's latency and the plugins' delay
+included) and hands it over a lock-free queue to a thread that schedules it
+on an ALSA sequencer queue in real time, so a synth on the port sounds with
+the tracks. Stopping, jumping and going round the loop end the notes that
+are sounding there, with an All Notes Off on their channels; so do taking
+the port away and removing the track. Renders send nothing. Ports are
+opened when MIDI input is (with an audio device, or `engine_restart({ midi =
+true })`). `daw.midi.open_output("To Surge")` makes a port of the program's
+own that other programs read from (`daw out: To Surge`), and a track that
+sends to `To Surge` plays them; `daw.midi.close_output` takes it away.
+Copies of the track send where it does; templates and project files keep
+the port by name.
 
 **Recording offset.** What is played along to the song is heard late and
 arrives late. Takes are moved earlier by what the audio system reports, plus
@@ -1920,11 +2000,14 @@ port a message came through is not told apart. In scripts:
   bent along a ramp inside it; a stretch is made whole before it plays,
   so a long file takes a few seconds and is silent meanwhile; no warp
   markers to stretch parts of a clip by different amounts.
-- Side-chain inputs and plugins with more than one stereo pair in or out.
+- Plugins with main buses wider than stereo (surround), and inputs beyond
+  the main pair and one side-chain.
 - Pre-roll before a punch: the song plays from wherever the playhead is.
 - Comping with the mouse in the terminal: its take lanes are to look at, and
   `:take 2` over a selection comps there.
-- MIDI output to hardware, MIDI-CI, and an editor for controller moves.
+- MIDI-CI, an editor for controller moves, and MIDI 2.0 on the way out:
+  MIDI output sends MIDI 1.0, so a note's own bend and the finer values
+  are lost there.
 - Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is

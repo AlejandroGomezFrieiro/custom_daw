@@ -50,12 +50,22 @@ local function read(kind, name)
   return data and data.data
 end
 
+--- Devices as a template keeps them: without the tracks they listened to
+--- or played their further output pairs into.
+local function unrouted(devices)
+  for _, device in ipairs(devices) do
+    device.sidechain, device.sidechain_pre, device.outputs = nil, nil, nil
+  end
+  return devices
+end
+
 --- A track as a template keeps it: without what ties it to one project
---- (the tracks it played into, its place in a group), and without its clips
---- unless `clips` is set.
+--- (the tracks it played into or listened to, its place in a group), and
+--- without its clips unless `clips` is set.
 local function portable(track, clips)
   local snap = track:snapshot()
   snap.output, snap.sends = nil, {}
+  unrouted(snap.devices)
   if not clips then snap.clips = {} end
   if snap.meta then
     snap.meta.group, snap.meta.group_head, snap.meta.group_folded = nil, nil, nil
@@ -76,7 +86,7 @@ function M.save_fx(track, name)
   local devices = {}
   for i, device in ipairs(track:devices()) do devices[i] = device:snapshot() end
   if #devices == 0 then error("the track has no devices to save", 2) end
-  return write("fx", name, { devices = devices })
+  return write("fx", name, { devices = unrouted(devices) })
 end
 
 --- Save a group: the group's own track and every track in it, groups

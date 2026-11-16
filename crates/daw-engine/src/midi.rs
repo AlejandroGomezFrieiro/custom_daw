@@ -489,6 +489,11 @@ mod imp {
                         continue;
                     }
                     let client_name = text(snd_seq_client_info_get_name(client));
+                    // What tracks send out (`midi_out`) would come straight
+                    // back in to the tracks that sent it.
+                    if client_name == crate::midi_out::CLIENT {
+                        continue;
+                    }
                     snd_seq_port_info_set_client(port, id);
                     snd_seq_port_info_set_port(port, -1);
                     while snd_seq_query_next_port(self.seq.0, port) >= 0 {

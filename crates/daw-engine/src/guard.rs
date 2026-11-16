@@ -82,6 +82,7 @@ pub fn register_test_devices(registry: &mut crate::Registry) {
             },
             make,
             latency: 0.0,
+            outputs: &[],
         }));
     }
 }

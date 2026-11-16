@@ -10,7 +10,7 @@
 
 use anyhow::{Result, bail};
 
-use crate::device::{Controller, Device, DeviceFactory, DeviceInfo, Instance, ParamInfo};
+use crate::device::{Controller, Device, DeviceFactory, DeviceInfo, Instance, ParamInfo, Ports};
 
 pub trait Face {
     /// Answer a request. `values` are the device's parameters as set now.
@@ -22,6 +22,10 @@ pub trait Face {
     fn latency(&self, values: &[f32]) -> u32 {
         let _ = values;
         0
+    }
+    /// Whether the device listens to a side-chain.
+    fn sidechain(&self) -> bool {
+        false
     }
 }
 
@@ -115,6 +119,13 @@ impl Controller for Panel {
 
     fn call(&mut self, method: &str, data: &[u8]) -> Result<Vec<u8>> {
         self.face.call(&self.values, method, data)
+    }
+
+    fn ports(&self) -> Ports {
+        Ports {
+            sidechain: self.face.sidechain(),
+            ..Ports::default()
+        }
     }
 }
 

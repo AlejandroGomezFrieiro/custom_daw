@@ -2216,6 +2216,10 @@ impl View {
                 preset: text(&device["preset"]),
                 wet: number(&device["wet"]),
                 gain: number(&device["gain"]),
+                keyed: device["keyed"].as_bool().unwrap_or(false),
+                sidechain: text(&device["sidechain"]),
+                pairs: device["pairs"].as_i64().unwrap_or(1) as i32,
+                routed: device["routed"].as_i64().unwrap_or(0) as i32,
             });
         }
         sync(&self.devices, device_rows);
@@ -2723,6 +2727,8 @@ fn run() -> Result<()> {
                     ui.set_input_audio(choices(&menu["audio"]));
                     ui.set_input_midi(choices(&menu["midi"]));
                     ui.set_input_channel(choices(&menu["channel"]));
+                    ui.set_input_midi_out(choices(&menu["midi_out"]));
+                    ui.set_input_midi_out_channel(choices(&menu["midi_out_channel"]));
                 }
                 Ok(menu)
             })
@@ -2912,6 +2918,47 @@ fn run() -> Result<()> {
     ui.on_choose_preset({
         let pass = pass.clone();
         move |id, index| pass("preset_choose", json!([id, index]))
+    });
+    // So is the menu of the tracks a device can listen to.
+    ui.on_fill_sidechain_menu({
+        let (act, weak) = (act.clone(), ui.as_weak());
+        move |id| {
+            act(&|c| {
+                let menu = c.eval("return daw.frontend.sidechain_menu(...)", json!([id]))?;
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_sidechain_choices(choices(&menu));
+                }
+                Ok(Value::Null)
+            })
+        }
+    });
+    ui.on_choose_sidechain({
+        let pass = pass.clone();
+        move |id, index| pass("choose_sidechain", json!([id, index]))
+    });
+    // And the menu of where a device's further output pairs play.
+    ui.on_fill_outputs_menu({
+        let (act, weak) = (act.clone(), ui.as_weak());
+        move |id| {
+            act(&|c| {
+                let menu = c.eval("return daw.frontend.outputs_menu(...)", json!([id]))?;
+                if let Some(ui) = weak.upgrade() {
+                    let pairs: Vec<OutputMenuData> = rows(&menu)
+                        .iter()
+                        .map(|pair| OutputMenuData {
+                            label: text(&pair["label"]),
+                            choices: choices(&pair["choices"]),
+                        })
+                        .collect();
+                    ui.set_output_pairs(ModelRc::from(Rc::new(VecModel::from(pairs))));
+                }
+                Ok(Value::Null)
+            })
+        }
+    });
+    ui.on_route_pair({
+        let pass = pass.clone();
+        move |id, pair, index| pass("route_pair", json!([id, pair, index]))
     });
     // Where each device card is in the inspector's list, for a drop there.
     let cards: Rc<RefCell<Vec<(f32, f32)>>> = Rc::default();

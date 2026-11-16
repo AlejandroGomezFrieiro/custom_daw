@@ -48,6 +48,31 @@ pub struct Io<'a> {
     /// Events for this block, ordered by frame. A device may rewrite them for
     /// the devices after it.
     pub events: &'a mut EventBuf,
+    /// The side-chain: another track's sound, as long as the block, for a
+    /// device that listens to one ([`Ports::sidechain`]). None when nothing
+    /// is connected; a compressor then listens to its own input.
+    pub sidechain: Option<[&'a [f32]; 2]>,
+    /// Where a device with more than one output pair puts the others: the
+    /// second pair at index 0, up to the last that is routed somewhere
+    /// (often none), and `None` for those that are not. Each channel holds
+    /// at least a block; the device writes the first `left.len()` frames of
+    /// the pairs it has, and leaves the rest silent. A device that can put
+    /// a sound on its main pair or another (a drum kit) puts it on the other
+    /// when that is routed.
+    pub outputs: &'a mut [Option<[Vec<f32>; 2]>],
+}
+
+/// Most output pairs a device is heard on, its main one included.
+pub const MAX_PAIRS: usize = 16;
+
+/// The audio a device takes and gives besides its main stereo pair.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ports {
+    /// Whether it listens to a side-chain (see [`Io::sidechain`]).
+    pub sidechain: bool,
+    /// The names of its output pairs, the main one first, for a device
+    /// with more than one (see [`Io::outputs`]); empty for one.
+    pub outputs: Vec<String>,
 }
 
 /// Runs on the audio thread: implementations must not allocate, lock or block.
@@ -128,6 +153,11 @@ pub trait Controller {
     /// answer is bytes too, so it can cross `daw.api` as plain strings.
     fn call(&mut self, method: &str, _data: &[u8]) -> Result<Vec<u8>> {
         anyhow::bail!("this device has no method `{method}`")
+    }
+    /// What it takes and gives besides its main stereo pair, as this
+    /// instance has it.
+    fn ports(&self) -> Ports {
+        Ports::default()
     }
 }
 
@@ -235,6 +265,10 @@ pub trait DeviceFactory {
     fn latency(&self, _sample_rate: f32) -> u32 {
         0
     }
+    /// The ports of a device that has no [`Controller`] to ask.
+    fn ports(&self) -> Ports {
+        Ports::default()
+    }
     /// Whether [`start`](Self::start) makes this device without the main
     /// thread waiting for it: a plugin in a process of its own, which may
     /// take long or hang while it is made.
@@ -271,6 +305,8 @@ pub struct FnFactory {
     pub make: fn(f32) -> Box<dyn Device>,
     /// Seconds by which the device's output is behind its input.
     pub latency: f32,
+    /// The names of its output pairs, for a device with more than one.
+    pub outputs: &'static [&'static str],
 }
 
 impl DeviceFactory for FnFactory {
@@ -287,6 +323,13 @@ impl DeviceFactory for FnFactory {
 
     fn latency(&self, sample_rate: f32) -> u32 {
         (self.latency * sample_rate).round() as u32
+    }
+
+    fn ports(&self) -> Ports {
+        Ports {
+            outputs: self.outputs.iter().map(|s| s.to_string()).collect(),
+            ..Ports::default()
+        }
     }
 }
 

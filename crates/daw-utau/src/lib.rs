@@ -538,6 +538,8 @@ mod tests {
                 left: &mut left,
                 right: &mut right,
                 events: &mut events,
+                sidechain: None,
+                outputs: &mut [],
             },
         );
         assert_eq!(left[400], 0.0);
@@ -576,6 +578,8 @@ mod tests {
                     left: &mut left,
                     right: &mut right,
                     events: &mut events,
+                    sidechain: None,
+                    outputs: &mut [],
                 },
             );
             (left[10], left[60])

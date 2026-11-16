@@ -17,8 +17,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use daw_engine::{
-    Controller, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, ParamInfo, ProcessCtx,
-    Registry, ump,
+    Controller, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, ParamInfo, Ports,
+    ProcessCtx, Registry, ump,
 };
 use lilv_sys::*;
 
@@ -196,6 +196,10 @@ struct World {
     toggled: *mut LilvNode,
     instrument: *mut LilvNode,
     x11_ui: *mut LilvNode,
+    /// A port, or a group of ports, that takes a side-chain.
+    side_chain: *mut LilvNode,
+    group: *mut LilvNode,
+    side_chain_of: *mut LilvNode,
 }
 
 // Created and used on the main thread only.
@@ -237,6 +241,9 @@ fn world() -> &'static World {
             time_position: uri("http://lv2plug.in/ns/ext/time#Position".into()),
             free_wheeling: uri(format!("{LV2_CORE}freeWheeling")),
             x11_ui: uri("http://lv2plug.in/ns/extensions/ui#X11UI".into()),
+            side_chain: uri(format!("{LV2_CORE}isSideChain")),
+            group: uri("http://lv2plug.in/ns/ext/port-groups#group".into()),
+            side_chain_of: uri("http://lv2plug.in/ns/ext/port-groups#sideChainOf".into()),
         }
     })
 }
@@ -881,6 +888,8 @@ impl DeviceFactory for Lv2Factory {
                 (Vec::new(), Vec::new(), HashMap::new());
             let mut audio_in = Vec::new();
             let mut audio_out = Vec::new();
+            let mut key_in = Vec::new();
+            let mut out_names = Vec::new();
             let mut atoms = Vec::new();
             let mut midi_in = None;
             let mut time_in = None;
@@ -920,8 +929,14 @@ impl DeviceFactory for Lv2Factory {
                 } else if is(w.cv) {
                     // Control voltage is not routed anywhere yet.
                     plan.push((index as u32, Connect::Spare));
+                } else if is(w.audio) && input && takes_key(plugin, port, w) {
+                    key_in.push(vec![0f32; max_block]);
+                    plan.push((index as u32, Connect::Key(key_in.len() - 1)));
                 } else if is(w.audio) {
                     let buffers = if input { &mut audio_in } else { &mut audio_out };
+                    if !input {
+                        out_names.push(take_text(lilv_port_get_name(plugin, port)));
+                    }
                     buffers.push(vec![0f32; max_block]);
                     plan.push((index as u32, Connect::Audio(input, buffers.len() - 1)));
                 } else if is(w.atom) {
@@ -952,6 +967,7 @@ impl DeviceFactory for Lv2Factory {
                     Connect::Control(slot) => controls[slot].as_ptr().cast(),
                     Connect::Audio(true, i) => audio_in[i].as_mut_ptr().cast(),
                     Connect::Audio(false, i) => audio_out[i].as_mut_ptr().cast(),
+                    Connect::Key(i) => key_in[i].as_mut_ptr().cast(),
                     Connect::Atom(i) => atoms[i].data.as_mut_ptr().cast(),
                     Connect::Spare => spare.as_mut_ptr().cast(),
                 };
@@ -1018,6 +1034,22 @@ impl DeviceFactory for Lv2Factory {
             lilv_instance_activate(instance);
             let (to_plugin, from_ui) = rtrb::RingBuffer::new(WORK_CAPACITY);
             let (to_ui, from_plugin) = rtrb::RingBuffer::new(WORK_CAPACITY);
+            // The outputs two by two in their order, the main pair first,
+            // each named after its left one.
+            let out_pairs: Vec<crate::OutPair> = (0..audio_out.len())
+                .step_by(2)
+                .take(daw_engine::MAX_PAIRS)
+                .map(|left| crate::OutPair {
+                    port: 0,
+                    left,
+                    right: (left + 1).min(audio_out.len() - 1),
+                    name: side_less(&out_names[left]),
+                })
+                .collect();
+            let ports = Ports {
+                sidechain: !key_in.is_empty(),
+                outputs: crate::pair_names(&out_pairs),
+            };
             let device = Lv2Device {
                 shared: shared.clone(),
                 from_ui,
@@ -1025,6 +1057,9 @@ impl DeviceFactory for Lv2Factory {
                 message: Vec::with_capacity(ATOM_CAPACITY),
                 audio_in,
                 audio_out,
+                key_in,
+                keyed: false,
+                out_pairs,
                 atoms,
                 midi_in,
                 time_in,
@@ -1047,9 +1082,39 @@ impl DeviceFactory for Lv2Factory {
                     from_plugin,
                     message: Vec::with_capacity(ATOM_CAPACITY),
                     ui: None,
+                    ports,
                 })),
             })
         }
+    }
+}
+
+/// A port's name without the side it carries, for the pair it begins.
+fn side_less(name: &str) -> String {
+    [" Left", " left", " L", " l"]
+        .iter()
+        .find_map(|side| name.strip_suffix(side))
+        .unwrap_or(name)
+        .to_string()
+}
+
+/// Whether an audio input takes a side-chain: it says so, or belongs to a
+/// group that is the side-chain of another.
+unsafe fn takes_key(plugin: *const LilvPlugin, port: *const LilvPort, w: &World) -> bool {
+    unsafe {
+        if lilv_port_has_property(plugin, port, w.side_chain) {
+            return true;
+        }
+        let groups = lilv_port_get_value(plugin, port, w.group);
+        let mut keyed = false;
+        let mut at = lilv_nodes_begin(groups);
+        while !lilv_nodes_is_end(groups, at) {
+            let group = lilv_nodes_get(groups, at);
+            keyed |= lilv_world_ask(w.world, group, w.side_chain_of, std::ptr::null());
+            at = lilv_nodes_next(groups, at);
+        }
+        lilv_nodes_free(groups);
+        keyed
     }
 }
 
@@ -1058,6 +1123,8 @@ enum Connect {
     Control(usize),
     /// Whether it is an input, and its index among the buffers of that kind.
     Audio(bool, usize),
+    /// A side-chain input, by its index among those.
+    Key(usize),
     Atom(usize),
     Spare,
 }
@@ -1072,6 +1139,11 @@ struct Lv2Device {
     message: Vec<u8>,
     audio_in: Vec<Vec<f32>>,
     audio_out: Vec<Vec<f32>>,
+    /// The side-chain inputs, and whether they hold a key.
+    key_in: Vec<Vec<f32>>,
+    keyed: bool,
+    /// The outputs as stereo pairs, the main one first.
+    out_pairs: Vec<crate::OutPair>,
     atoms: Vec<AtomBuffer>,
     /// Index in `atoms` of the port that takes MIDI.
     midi_in: Option<usize>,
@@ -1100,6 +1172,7 @@ impl Device for Lv2Device {
                 right[..n].copy_from_slice(io.right);
             }
         }
+        self.keyed = crate::put_key(self.key_in.as_mut_slice(), io.sidechain, self.keyed, n);
         for atom in &mut self.atoms {
             atom.reset();
         }
@@ -1183,6 +1256,12 @@ impl Device for Lv2Device {
             [mono] => write_output(io.left, io.right, &[&mono[..n]], add),
             [left, right, ..] => write_output(io.left, io.right, &[&left[..n], &right[..n]], add),
         }
+        crate::write_pairs(
+            &self.out_pairs,
+            std::slice::from_ref(&self.audio_out),
+            io.outputs,
+            n,
+        );
     }
 
     fn set_param(&mut self, index: u32, value: f32) {
@@ -1499,6 +1578,7 @@ struct Lv2Controller {
     from_plugin: rtrb::Consumer<u8>,
     message: Vec<u8>,
     ui: Option<Ui>,
+    ports: Ports,
 }
 
 impl Lv2Controller {
@@ -1563,6 +1643,10 @@ impl Drop for Lv2Controller {
 }
 
 impl Controller for Lv2Controller {
+    fn ports(&self) -> Ports {
+        self.ports.clone()
+    }
+
     fn set_offline(&mut self, offline: bool) {
         if let Some(slot) = self.shared.free_wheeling {
             let value: f32 = if offline { 1.0 } else { 0.0 };

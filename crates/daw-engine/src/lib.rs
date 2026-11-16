@@ -15,6 +15,7 @@ pub mod event;
 pub mod guard;
 pub mod host;
 pub mod midi;
+pub mod midi_out;
 pub mod pool;
 pub mod record;
 pub mod samples;
@@ -26,12 +27,13 @@ pub use automation::{AutoLane, AutoTarget, Automation};
 pub use backend::no_denormals;
 pub use clip::{AudioData, AudioRegion, ClipSet, MidiEv};
 pub use device::{
-    Controller, Device, DeviceFactory, DeviceInfo, Instance, Io, ParamInfo, ProcessCtx, Registry,
+    Controller, Device, DeviceFactory, DeviceInfo, Instance, Io, MAX_PAIRS, ParamInfo, Ports,
+    ProcessCtx, Registry,
 };
 pub use engine::{
-    BlockStats, BlockSummary, Delay, Engine, EngineHandle, MASTER, MAX_BLOCK, MAX_DELAY,
-    MAX_DEVICES, MAX_INPUTS, MAX_TRACKS, Msg, NO_SLOT, SchedEntry, Schedule, SendRt, Shared, Slot,
-    TrackRt,
+    BlockStats, BlockSummary, Delay, Engine, EngineHandle, KeyBuf, KeyRt, MASTER, MAX_BLOCK,
+    MAX_DELAY, MAX_DEVICES, MAX_INPUTS, MAX_TRACKS, Msg, NO_SLOT, OutBufs, OutRt, SchedEntry,
+    Schedule, SendRt, Shared, Slot, TrackRt, key_buf, out_bufs,
 };
 pub use event::{Ctl, Event, EventBuf, EventKind, NOTE_BEND_RANGE, NoteCtl};
 pub use pool::Pool;

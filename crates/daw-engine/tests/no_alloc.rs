@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use daw_engine::record::{AudioCapture, Take, TakeShared};
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
-    EngineHandle, EventKind, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, Pool, Registry, SchedEntry,
-    Schedule, SendRt, Slot, TrackRt,
+    EngineHandle, EventKind, KeyRt, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, OutRt, Pool,
+    Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt,
 };
 
 struct Guard;
@@ -148,6 +148,17 @@ fn clips(audio: &Arc<AudioData>, notes: usize) -> Box<ClipSet> {
     Box::new(set)
 }
 
+/// The device of each track that listens to a side-chain: its last.
+const KINDS: [&str; 5] = ["synth", "drums", "gain", "delay", "compressor"];
+fn keyed_device(track: usize) -> Slot {
+    (track * KINDS.len() + KINDS.len() - 1) as Slot
+}
+
+/// Each track's drum kit, which has further output pairs.
+fn kit_device(track: usize) -> Slot {
+    (track * KINDS.len() + 1) as Slot
+}
+
 fn schedule(tracks: &[Slot]) -> Box<Schedule> {
     let mut entries: Vec<SchedEntry> = tracks
         .iter()
@@ -163,6 +174,28 @@ fn schedule(tracks: &[Slot]) -> Box<Schedule> {
                     ..SendRt::new(tracks[2], 0.5)
                 });
                 entry.delay = Delay::new(128);
+            }
+            // The fourth keys a compressor on the fifth, late, and the fifth
+            // one on the sixth from before its fader.
+            if i == 3 || i == 4 {
+                entry.keys.push(KeyRt {
+                    device: keyed_device(i + 1),
+                    track: tracks[i + 1],
+                    pre: i == 4,
+                    delay: Delay::new(if i == 3 { 64 } else { 0 }),
+                });
+            }
+            // The fourth's drum kit plays its kick pair into the sixth, late,
+            // and its hats into the fifth.
+            if i == 3 {
+                for (pair, target, delay) in [(0, tracks[5], 32), (2, tracks[4], 0)] {
+                    entry.outs.push(OutRt {
+                        device: kit_device(i),
+                        pair,
+                        target,
+                        delay: Delay::new(delay),
+                    });
+                }
             }
             entry
         })
@@ -204,7 +237,7 @@ fn the_audio_thread_never_allocates() {
     });
     // Three in a chain, and three more beside them that nothing feeds.
     let tracks: Vec<Slot> = vec![1, 2, 3, 4, 5, 6];
-    let kinds = ["synth", "drums", "gain", "delay"];
+    let kinds = KINDS;
     for (i, &slot) in tracks.iter().enumerate() {
         send(
             &mut handle,
@@ -259,6 +292,7 @@ fn the_audio_thread_never_allocates() {
                 gain: 0.8,
                 pan: 0.1,
                 mute: false,
+                quiet: i == 5,
             },
         );
         send(
@@ -280,7 +314,40 @@ fn the_audio_thread_never_allocates() {
                 channel: if i == 1 { 2 } else { 0 },
             },
         );
+        // Two tracks send what they play to MIDI output ports, one of them
+        // on a channel of its own.
+        if i < 2 {
+            send(
+                &mut handle,
+                Msg::SetMidiOutput {
+                    track: slot,
+                    port: 99 + i as u32,
+                    channel: if i == 0 { 5 } else { 0 },
+                },
+            );
+        }
+        if i == 4 || i == 5 {
+            send(
+                &mut handle,
+                Msg::SetKey {
+                    device: keyed_device(i),
+                    key: Some(daw_engine::key_buf()),
+                },
+            );
+        }
+        if i == 3 {
+            send(
+                &mut handle,
+                Msg::SetOutputs {
+                    device: kit_device(i),
+                    outs: Some(daw_engine::out_bufs(&[0, 2])),
+                },
+            );
+        }
     }
+    // MIDI output goes into a queue nobody reads here: once it is full,
+    // what does not fit is counted and dropped.
+    let _midi_out = handle.midi_output();
     send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
     send(&mut handle, Msg::SetTempo(133.0));
     send(&mut handle, Msg::SetTimeSig { num: 7, den: 8 });
@@ -486,6 +553,25 @@ fn the_audio_thread_never_allocates() {
                 .map(|k| (i * kinds.len() + k) as Slot)
                 .collect();
             send(&mut handle, Msg::SetChain { track: slot, chain });
+            // Side-chains and output pairs taken away and given again.
+            if i == 4 {
+                send(
+                    &mut handle,
+                    Msg::SetKey {
+                        device: keyed_device(i),
+                        key: (round % 2 == 1).then(daw_engine::key_buf),
+                    },
+                );
+            }
+            if i == 3 {
+                send(
+                    &mut handle,
+                    Msg::SetOutputs {
+                        device: kit_device(i),
+                        outs: (round % 2 == 0).then(|| daw_engine::out_bufs(&[0, 2])),
+                    },
+                );
+            }
         }
         send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
         send(&mut handle, Msg::Seek(round as f64 * 1.5));
@@ -646,6 +732,8 @@ fn the_sampler_never_allocates() {
                 left: &mut left,
                 right: &mut right,
                 events: &mut events,
+                sidechain: None,
+                outputs: &mut [],
             },
         );
         AUDIO.with(|a| a.set(false));
@@ -675,6 +763,8 @@ fn built_in_effects_do_not_allocate() {
         let mut events = EventBuf::with_capacity(16);
         let mut left: Vec<f32> = (0..512).map(|i| (i as f32 * 0.03).sin()).collect();
         let mut right = left.clone();
+        // Every other block with a side-chain, for those that listen to one.
+        let key: Vec<f32> = (0..512).map(|i| (i as f32 * 0.07).sin()).collect();
         let before = HERE.with(|h| h.get());
         for block in 0..(info.params.len() * 4 + 40) {
             let which = block / 4;
@@ -694,6 +784,8 @@ fn built_in_effects_do_not_allocate() {
                     left: &mut left,
                     right: &mut right,
                     events: &mut events,
+                    sidechain: (block % 2 == 1).then_some([&key[..], &key[..]]),
+                    outputs: &mut [],
                 },
             );
             AUDIO.with(|a| a.set(false));

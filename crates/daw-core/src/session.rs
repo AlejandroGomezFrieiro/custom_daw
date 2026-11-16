@@ -32,11 +32,13 @@ mod encode;
 mod keep;
 mod loading;
 pub mod media;
+mod midi_out;
 mod stretching;
 pub use loading::OpenOpts;
 pub mod notes;
 pub mod offline;
 pub mod panic;
+mod ports;
 pub mod render;
 mod tempo;
 mod undo;
@@ -348,6 +350,10 @@ pub struct Session {
     /// Ports of our own for other programs to send MIDI to, by name.
     midi_own: Vec<String>,
     midi_without_audio: bool,
+    /// MIDI output, open when MIDI input is, and ports of our own for other
+    /// programs to read from: session/midi_out.rs.
+    midi_out: Option<daw_engine::midi_out::MidiOutputs>,
+    midi_out_own: Vec<String>,
     /// Threads to process tracks on, or 0 for as many as the machine has cores.
     threads: usize,
     /// What the engine was last started with, to start it again with a
@@ -459,6 +465,8 @@ impl Session {
             midi_select: None,
             midi_own: Vec::new(),
             midi_without_audio: false,
+            midi_out: None,
+            midi_out_own: Vec::new(),
             threads: 0,
             backend: opts.clone(),
             device_file: None,
@@ -871,8 +879,12 @@ impl Session {
             "clips": t.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
             "color": t.color, "meta": t.meta, "index": index.map(|i| i + 1),
             "master": id == MASTER_ID, "input": t.input, "monitor": t.monitor,
-            "midi_input": t.midi_input, "height": t.height,
+            "midi_input": t.midi_input, "midi_output": t.midi_output, "height": t.height,
             "automation": t.automation.name(),
+            // The tracks that devices on this one listen to as side-chains.
+            "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
+            // The tracks that further output pairs of its devices play into.
+            "pairs_into": t.devices.iter().flat_map(|d| d.outputs.values()).collect::<BTreeSet<_>>(),
         }))
     }
 
@@ -920,6 +932,25 @@ impl Session {
                     let track = Arc::make_mut(track);
                     track.output = track.output.filter(|o| *o != id);
                     track.sends.retain(|s| s.target != id);
+                }
+            }
+            // Devices that listened to it listen to their own input again,
+            // and output pairs that played into it are no longer heard.
+            let routed = |d: &DeviceInst| {
+                d.sidechain == Some(id) || d.outputs.values().any(|to| *to == id)
+            };
+            for track in std::iter::once(&mut p.master).chain(&mut p.tracks) {
+                if track.devices.iter().any(|d| routed(d)) {
+                    for device in &mut Arc::make_mut(track).devices {
+                        if routed(device) {
+                            let device = Arc::make_mut(device);
+                            if device.sidechain == Some(id) {
+                                device.sidechain = None;
+                                device.sidechain_pre = false;
+                            }
+                            device.outputs.retain(|_, to| *to != id);
+                        }
+                    }
                 }
             }
             Ok(())
@@ -1039,6 +1070,10 @@ impl Session {
                         }
                     };
                     p.track_mut(id).unwrap().midi_input = midi;
+                }
+                "midi_output" => {
+                    let out = midi_out::parse(value)?;
+                    p.track_mut(id).unwrap().midi_output = out;
                 }
                 _ => {
                     let t = p.track_mut(id).unwrap();
@@ -1165,6 +1200,11 @@ impl Session {
             // hung, or could not be made.
             "stopped": stopped,
             "status": status,
+            // The track it listens to, and whether it can listen at all.
+            "sidechain": d.sidechain, "sidechain_pre": d.sidechain_pre,
+            // Where its further output pairs play, by pair number.
+            "outputs": d.outputs,
+            "ports": ports::ports_json(&self.device_ports(id)),
         }))
     }
 
@@ -1194,6 +1234,9 @@ impl Session {
                 loaded: 0,
                 name: name.clone(),
                 offline: false,
+                sidechain: None,
+                sidechain_pre: false,
+                outputs: BTreeMap::new(),
             };
             let index = opts
                 .index
@@ -1245,6 +1288,17 @@ impl Session {
                 .with_context(|| format!("no device {id}"))?;
             if p.track(track).is_none() {
                 bail!("no track {track}");
+            }
+            if let Some(source) = p.device(id).and_then(|d| d.sidechain)
+                && from != track
+                && (source == track || p.would_cycle(source, track))
+            {
+                bail!("the device listens to track {source}: on track {track} that would make a loop");
+            }
+            if from != track {
+                for (pair, to) in p.device(id).map(|d| d.outputs.clone()).unwrap_or_default() {
+                    ports::check_output(p, track, pair, to)?;
+                }
             }
             let source = p.track_mut(from).unwrap();
             let device = source.devices.remove(at);
@@ -1686,10 +1740,50 @@ impl Session {
 
     pub fn device_set(&mut self, id: Id, key: &str, value: Value) -> Result<()> {
         self.edit(|p| {
+            if key == "sidechain" {
+                let (track, _) = p
+                    .find_device(id)
+                    .with_context(|| format!("no device {id}"))?;
+                // An empty Lua table arrives as an empty list.
+                let source: Option<Id> = match value {
+                    Value::Array(a) if a.is_empty() => None,
+                    value => de(key, value)?,
+                };
+                if let Some(source) = source {
+                    if p.track(source).is_none() {
+                        bail!("no track {source} to take a side-chain from");
+                    }
+                    if source == MASTER_ID {
+                        bail!("the master track feeds nothing, so it cannot be a side-chain");
+                    }
+                    if source == track {
+                        bail!("a device cannot take a side-chain from its own track");
+                    }
+                    if p.would_cycle(source, track) {
+                        bail!(
+                            "a side-chain from track {source} to track {track} would make a loop"
+                        );
+                    }
+                }
+                p.device_mut(id).unwrap().sidechain = source;
+                return Ok(());
+            }
+            if key == "outputs" {
+                let (track, _) = p
+                    .find_device(id)
+                    .with_context(|| format!("no device {id}"))?;
+                let outputs = ports::parse_outputs(value)?;
+                for (pair, to) in &outputs {
+                    ports::check_output(p, track, *pair, *to)?;
+                }
+                p.device_mut(id).unwrap().outputs = outputs;
+                return Ok(());
+            }
             let d = p
                 .device_mut(id)
                 .with_context(|| format!("no device {id}"))?;
             match key {
+                "sidechain_pre" => d.sidechain_pre = de(key, value)?,
                 "bypass" => d.bypass = de(key, value)?,
                 "offline" => d.offline = de(key, value)?,
                 "meta" => d.meta = de_meta(key, value)?,
@@ -3056,8 +3150,10 @@ impl Session {
         if matches!(self.stream.info.backend.as_str(), "null" | "test") && !self.midi_without_audio
         {
             self.midi = None;
+            self.midi_out = None;
             return;
         }
+        self.connect_midi_out();
         if self.midi.is_none() {
             match MidiInputs::start(self.midi_sink.clone()) {
                 Ok(midi) => {

@@ -17,6 +17,7 @@ use crate::clip::ClipSet;
 use crate::device::{Device, Io, ProcessCtx};
 use crate::event::{Ctl, Event, EventBuf, EventKind};
 use crate::guard;
+use crate::midi_out::MidiOut;
 use crate::pool::Pool;
 use crate::record::{MidiCapture, PUNCH_EPS, Take};
 use crate::tempo::TempoMap;
@@ -47,10 +48,15 @@ pub struct TrackRt {
     gain: f32,
     pan: f32,
     mute: bool,
+    /// Silenced because another track is soloed: not heard, but what
+    /// listens to it as a side-chain still hears it.
+    quiet: bool,
     /// Per-channel gain actually applied at the end of the last block.
     applied: [f32; 2],
     /// The same for what is sent on before the fader: 0 when muted, else 1.
     applied_pre: f32,
+    /// The same for what is heard of it after the fader: 0 when quiet.
+    applied_heard: f32,
     /// Whether the track has produced a block yet. Until then a fader change
     /// takes effect at once rather than ramping from the default.
     started: bool,
@@ -71,6 +77,12 @@ pub struct TrackRt {
     midi_channel: u8,
     /// Keys held down through MIDI input, released if the track is disarmed.
     held: u128,
+    /// The MIDI output port it sends what it plays to, by its key (0 for
+    /// none), and the channel (1 to 16, or 0 for each message's own).
+    midi_out: u32,
+    midi_out_channel: u8,
+    /// What it played this block, on its way to the port.
+    sent: Vec<Event>,
     /// The track's clips were replaced: stop its notes, and start again those
     /// the new clips hold at the play position. Other tracks play on.
     flush: bool,
@@ -87,8 +99,10 @@ impl TrackRt {
             gain: 1.0,
             pan: 0.0,
             mute: false,
+            quiet: false,
             applied: [1.0, 1.0],
             applied_pre: 1.0,
+            applied_heard: 1.0,
             started: false,
             events: EventBuf::with_capacity(1024),
             live: Vec::with_capacity(256),
@@ -100,6 +114,9 @@ impl TrackRt {
             midi_port: 0,
             midi_channel: 0,
             held: 0,
+            midi_out: 0,
+            midi_out_channel: 0,
+            sent: Vec::with_capacity(1024),
             flush: false,
             chase: false,
         })
@@ -161,16 +178,16 @@ impl Delay {
         self.ring[1].fill(0.0);
     }
 
-    /// Add `src`, this much later, into a track's buffer, with a gain that
+    /// Add `src`, this much later, into a pair of buffers, with a gain that
     /// moves from `from` to `to` over the block.
-    fn mix(&mut self, src: [&[f32]; 2], dst: &mut TrackRt, from: f32, to: f32) {
+    fn mix(&mut self, src: [&[f32]; 2], dst: [&mut [f32]; 2], from: f32, to: f32) {
         let n = src[0].len();
         let len = self.ring[0].len();
         let step = (to - from) / n.max(1) as f32;
-        for (ch, src) in src.into_iter().enumerate() {
+        for (ch, (src, dst)) in src.into_iter().zip(dst).enumerate() {
             let mut at = self.at;
             let ring = &mut self.ring[ch];
-            for (i, (d, s)) in dst.buf[ch][..n].iter_mut().zip(src).enumerate() {
+            for (i, (d, s)) in dst[..n].iter_mut().zip(src).enumerate() {
                 let gain = from + step * (i + 1) as f32;
                 if len == 0 {
                     *d += s * gain;
@@ -210,6 +227,30 @@ impl SendRt {
     }
 }
 
+/// A side-chain: a track's sound taken to a device on another track that
+/// listens to it, such as a compressor ducking under a kick.
+pub struct KeyRt {
+    /// The device that listens, and the track it is on.
+    pub device: Slot,
+    pub track: Slot,
+    /// Taken after the devices but before the fader, pan and mute, so that
+    /// a muted track can still key.
+    pub pre: bool,
+    /// Lines the key up with the sound the device is processing.
+    pub delay: Delay,
+}
+
+/// One of a device's further output pairs, played into another track.
+/// It is taken from the device as it is: the fader, pan and mute of the
+/// device's own track do not act on it, the target's do.
+pub struct OutRt {
+    /// The device, and which of its further pairs: 0 for its second.
+    pub device: Slot,
+    pub pair: usize,
+    pub target: Slot,
+    pub delay: Delay,
+}
+
 pub struct SchedEntry {
     pub slot: Slot,
     /// Where the track's output goes. [`NO_SLOT`] for the master track.
@@ -217,6 +258,10 @@ pub struct SchedEntry {
     /// How long the output waits for slower tracks that feed the same place.
     pub delay: Delay,
     pub sends: Vec<SendRt>,
+    /// Devices elsewhere that listen to this track.
+    pub keys: Vec<KeyRt>,
+    /// Further output pairs of the track's devices, and where they go.
+    pub outs: Vec<OutRt>,
 }
 
 impl SchedEntry {
@@ -226,7 +271,15 @@ impl SchedEntry {
             output,
             delay: Delay::default(),
             sends: Vec::new(),
+            keys: Vec::new(),
+            outs: Vec::new(),
         }
+    }
+
+    /// Whether something is taken from the track before its fader, which
+    /// then waits until that has been done.
+    fn taps_pre(&self) -> bool {
+        self.sends.iter().any(|send| send.pre) || self.keys.iter().any(|key| key.pre)
     }
 }
 
@@ -257,9 +310,11 @@ impl Schedule {
             .into_iter()
             .map(|entry| {
                 let group = waits.get(&entry.slot).copied().unwrap_or(0);
-                for target in
-                    std::iter::once(entry.output).chain(entry.sends.iter().map(|s| s.target))
-                {
+                let targets = std::iter::once(entry.output)
+                    .chain(entry.sends.iter().map(|s| s.target))
+                    .chain(entry.keys.iter().map(|k| k.track))
+                    .chain(entry.outs.iter().map(|o| o.target));
+                for target in targets {
                     let wait = waits.entry(target).or_default();
                     *wait = (*wait).max(group + 1);
                 }
@@ -367,10 +422,24 @@ pub enum Msg {
         gain: f32,
         pan: f32,
         mute: bool,
+        /// Silenced by another track's solo (see `TrackRt::quiet`).
+        quiet: bool,
     },
     InsertDevice {
         slot: Slot,
         device: Box<dyn Device>,
+    },
+    /// Give a device a buffer for its side-chain, which the track it listens
+    /// to fills each block, or take it away with `None`.
+    SetKey {
+        device: Slot,
+        key: Option<Box<KeyBuf>>,
+    },
+    /// Give a device buffers for its further output pairs, as many as are
+    /// routed somewhere, or take them away with `None`.
+    SetOutputs {
+        device: Slot,
+        outs: Option<Box<OutBufs>>,
     },
     RemoveDevice {
         slot: Slot,
@@ -459,6 +528,16 @@ pub enum Msg {
         port: u32,
         channel: u8,
     },
+    /// The MIDI output port a track sends what it plays to, by its key (0
+    /// for none), on a channel from 1 to 16 or 0 for each message's own.
+    SetMidiOutput {
+        track: Slot,
+        port: u32,
+        channel: u8,
+    },
+    /// Where MIDI output goes: the queue a sender thread reads (see
+    /// [`EngineHandle::midi_output`]), or nowhere.
+    SetMidiOut(Option<Box<Producer<MidiOut>>>),
     /// Start capturing into a take, or stop with `None`.
     SetTake(Option<Box<Take>>),
     /// A note as if it came from a MIDI input port, by its key (0 for none
@@ -481,6 +560,9 @@ enum Garbage {
     Take(#[allow(dead_code)] Box<Take>),
     Pool(#[allow(dead_code)] Box<Pool>),
     Host(#[allow(dead_code)] Box<crate::host::HostPath>),
+    Key(#[allow(dead_code)] Box<KeyBuf>),
+    Outs(#[allow(dead_code)] Box<OutBufs>),
+    MidiOut(#[allow(dead_code)] Box<Producer<MidiOut>>),
     TempoMap(#[allow(dead_code)] Box<TempoMap>),
 }
 
@@ -729,10 +811,36 @@ impl Shared {
     }
 }
 
+/// A device's side-chain input: a block of the track it listens to.
+pub type KeyBuf = [Vec<f32>; 2];
+
+/// A buffer for a side-chain, made on the main thread.
+pub fn key_buf() -> Box<KeyBuf> {
+    Box::new([vec![0.0; MAX_BLOCK], vec![0.0; MAX_BLOCK]])
+}
+
+/// A device's further output pairs: see [`Io::outputs`].
+pub type OutBufs = Vec<Option<[Vec<f32>; 2]>>;
+
+/// Buffers for the further output pairs that are routed, by their index
+/// (0 for the second pair), made on the main thread.
+pub fn out_bufs(routed: &[usize]) -> Box<OutBufs> {
+    let count = routed.iter().map(|i| i + 1).max().unwrap_or(0);
+    Box::new(
+        (0..count)
+            .map(|i| routed.contains(&i).then(|| [vec![0.0; MAX_BLOCK], vec![0.0; MAX_BLOCK]]))
+            .collect(),
+    )
+}
+
 struct DeviceSlot {
     device: Box<dyn Device>,
     bypass: bool,
     host: Option<Box<crate::host::HostPath>>,
+    /// Where the track it listens to puts its sound, when it has a side-chain.
+    key: Option<Box<KeyBuf>>,
+    /// Where it puts its further output pairs, when some are routed.
+    outs: Option<Box<OutBufs>>,
     /// It panicked: it is not run again, and what comes in goes on as it is.
     failed: bool,
     /// Its output held NaN or infinity, and that has been reported.
@@ -802,6 +910,12 @@ pub struct Engine {
     midi_rx: Consumer<(u32, EventKind)>,
     /// A count-in under way, or whose last clicks are still to be heard.
     count: Option<Count>,
+    /// Where tracks' MIDI output goes, when something sends it on.
+    midi_out: Option<Box<Producer<MidiOut>>>,
+    /// When the block being made is heard, on [`midi_out::clock_ns`].
+    ///
+    /// [`midi_out::clock_ns`]: crate::midi_out::clock_ns
+    heard_ns: u64,
 }
 
 /// A count-in: see [`Msg::CountIn`]. Frames count from when it began.
@@ -861,6 +975,18 @@ impl EngineHandle {
     /// Each message comes with the key of the port it came from.
     pub fn take_midi_input(&mut self) -> Option<Producer<(u32, EventKind)>> {
         self.midi_tx.take()
+    }
+
+    /// The receiving end of a new queue of the MIDI the tracks send to their
+    /// output ports, for the one thread that sends it on
+    /// ([`MidiOutputs::set_queue`]). Until one is asked for, nothing is
+    /// sent: an offline render never is.
+    ///
+    /// [`MidiOutputs::set_queue`]: crate::midi_out::MidiOutputs::set_queue
+    pub fn midi_output(&mut self) -> Consumer<MidiOut> {
+        let (tx, rx) = RingBuffer::new(crate::midi_out::MIDI_OUT_CAPACITY);
+        self.send(Msg::SetMidiOut(Some(Box::new(tx))));
+        rx
     }
 
     /// Queue a message, or hand it back if the queue is full.
@@ -949,6 +1075,8 @@ impl Engine {
             take: None,
             midi_rx,
             count: None,
+            midi_out: None,
+            heard_ns: 0,
         };
         (
             engine,
@@ -1028,23 +1156,32 @@ impl Engine {
                 gain,
                 pan,
                 mute,
+                quiet,
             } => {
                 if let Some(track) = self.track_mut(slot) {
                     track.gain = gain;
                     track.pan = pan;
                     track.mute = mute;
+                    track.quiet = quiet;
                     if !track.started {
                         track.applied = track.target_gains();
+                        track.applied_heard = if quiet { 0.0 } else { 1.0 };
                     }
                 }
             }
             Msg::InsertDevice { slot, device } => {
                 if let Some(entry) = self.devices.get_mut(slot as usize) {
                     self.shared.faults[slot as usize].store(0, Relaxed);
+                    // A device put in place of another (one that was being
+                    // made, or restarted) listens where that one did.
+                    let key = entry.get_mut().as_mut().and_then(|old| old.key.take());
+                    let outs = entry.get_mut().as_mut().and_then(|old| old.outs.take());
                     if let Some(old) = entry.get_mut().replace(DeviceSlot {
                         device,
                         bypass: false,
                         host: None,
+                        key,
+                        outs,
                         failed: false,
                         flagged: false,
                     }) {
@@ -1067,6 +1204,30 @@ impl Engine {
                     if let Some(host) = old.host {
                         self.discard(Garbage::Host(host));
                     }
+                    if let Some(key) = old.key {
+                        self.discard(Garbage::Key(key));
+                    }
+                    if let Some(outs) = old.outs {
+                        self.discard(Garbage::Outs(outs));
+                    }
+                }
+            }
+            Msg::SetKey { device, key } => {
+                let old = match self.device_mut(device) {
+                    Some(slot) => std::mem::replace(&mut slot.key, key),
+                    None => key,
+                };
+                if let Some(old) = old {
+                    self.discard(Garbage::Key(old));
+                }
+            }
+            Msg::SetOutputs { device, outs } => {
+                let old = match self.device_mut(device) {
+                    Some(slot) => std::mem::replace(&mut slot.outs, outs),
+                    None => outs,
+                };
+                if let Some(old) = old {
+                    self.discard(Garbage::Outs(old));
                 }
             }
             Msg::SetHost { device, path } => match self.device_mut(device) {
@@ -1226,6 +1387,34 @@ impl Engine {
                 }
             }
             Msg::MidiIn { port, kind } => self.midi_in(port, kind),
+            Msg::SetMidiOutput {
+                track,
+                port,
+                channel,
+            } => {
+                let Some(t) = self.track_mut(track) else {
+                    return;
+                };
+                let old = std::mem::replace(&mut t.midi_out, port);
+                t.midi_out_channel = channel;
+                t.sent.clear();
+                // The notes it left sounding where it played before end there.
+                if old != 0
+                    && old != port
+                    && let Some(out) = self.midi_out.as_deref_mut()
+                {
+                    let _ = out.push(MidiOut {
+                        at: 0,
+                        port: old,
+                        kind: EventKind::AllNotesOff,
+                    });
+                }
+            }
+            Msg::SetMidiOut(out) => {
+                if let Some(old) = std::mem::replace(&mut self.midi_out, out) {
+                    self.discard(Garbage::MidiOut(old));
+                }
+            }
             Msg::SetPool(pool) => {
                 if let Some(old) = self.set_pool(pool) {
                     self.discard(Garbage::Pool(old));
@@ -1362,6 +1551,7 @@ impl Engine {
         right: &mut [f32],
     ) {
         let began = std::time::Instant::now();
+        let callback_ns = crate::midi_out::clock_ns();
         self.pump();
         if let Some(pool) = &self.pool {
             // Fewer than it was given, if its workers were refused the
@@ -1437,6 +1627,13 @@ impl Engine {
             }
             self.load_input(input, channels, done, n);
             self.capture(n, start);
+            if self.midi_out.is_some() {
+                // The block is heard after the plugins' delay and the
+                // output's, and the MIDI sent with it goes as late.
+                let late = self.schedule.as_ref().map_or(0, |s| s.latency) as f64 / sr
+                    + self.shared.output_latency() as f64;
+                self.heard_ns = callback_ns + ((done as f64 / sr + late) * 1e9) as u64;
+            }
             self.segment(
                 &mut left[done..done + n],
                 &mut right[done..done + n],
@@ -1524,6 +1721,29 @@ impl Engine {
                 // part of what comes next.
                 entry.delay.clear();
                 entry.sends.iter_mut().for_each(|send| send.delay.clear());
+                entry.keys.iter_mut().for_each(|key| key.delay.clear());
+                entry.outs.iter_mut().for_each(|out| out.delay.clear());
+            }
+            for key in &entry.keys {
+                if let Some(buf) = self
+                    .device_mut(key.device)
+                    .and_then(|d| d.key.as_deref_mut())
+                {
+                    buf[0][..n].fill(0.0);
+                    buf[1][..n].fill(0.0);
+                }
+            }
+            // A device that does not run this block (bypassed, failed)
+            // leaves its further pairs silent.
+            for out in &entry.outs {
+                if let Some(pair) = self
+                    .device_mut(out.device)
+                    .and_then(|d| d.outs.as_deref_mut())
+                    .and_then(|outs| outs.get_mut(out.pair)?.as_mut())
+                {
+                    pair[0][..n].fill(0.0);
+                    pair[1][..n].fill(0.0);
+                }
             }
         }
 
@@ -1610,10 +1830,26 @@ impl Engine {
             return;
         };
         let t = &mut *track;
-        if entry.sends.iter().any(|send| send.pre) {
+        if t.midi_out != 0
+            && let Some(out) = self.midi_out.as_deref_mut()
+        {
+            let ns_per_frame = 1e9 / self.sample_rate;
+            let channel = t.midi_out_channel.checked_sub(1);
+            for ev in t.sent.drain(..) {
+                let message = MidiOut {
+                    at: self.heard_ns + (ev.frame as f64 * ns_per_frame) as u64,
+                    port: t.midi_out,
+                    kind: crate::midi_out::on_channel(ev.kind, channel),
+                };
+                if out.push(message).is_err() {
+                    crate::event::count_dropped();
+                }
+            }
+        }
+        if entry.taps_pre() {
             // Sends from before the fader ignore it and the pan, but not the
             // mute. The fader was left for now, so that they could be taken.
-            let pre = if t.mute { 0.0 } else { 1.0 };
+            let pre = if t.mute || t.quiet { 0.0 } else { 1.0 };
             let pre_from = if t.started { t.applied_pre } else { pre };
             t.applied_pre = pre;
             for send in entry.sends.iter_mut().filter(|send| send.pre) {
@@ -1623,9 +1859,17 @@ impl Engine {
                     .and_then(|t| t.get_mut().as_deref_mut())
                 {
                     let src = [&t.buf[0][..n], &t.buf[1][..n]];
-                    send.delay
-                        .mix(src, dst, send.gain * pre_from, send.gain * pre);
+                    let [l, r] = &mut dst.buf;
+                    send.delay.mix(
+                        src,
+                        [&mut l[..n], &mut r[..n]],
+                        send.gain * pre_from,
+                        send.gain * pre,
+                    );
                 }
+            }
+            for key in entry.keys.iter_mut().filter(|key| key.pre) {
+                key_into(&mut self.devices, key, [&t.buf[0][..n], &t.buf[1][..n]]);
             }
             fader(t, entry.slot, block, &self.shared);
         }
@@ -1634,13 +1878,20 @@ impl Engine {
             out_l.copy_from_slice(&t.buf[0][..n]);
             out_r.copy_from_slice(&t.buf[1][..n]);
         } else {
+            // A track silenced by another's solo is not heard, moving there
+            // smoothly, but its side-chains are still taken from it.
+            let heard = if t.quiet { 0.0 } else { 1.0 };
+            let heard_from = std::mem::replace(&mut t.applied_heard, heard);
             let src = [&t.buf[0][..n], &t.buf[1][..n]];
             if let Some(dst) = self
                 .tracks
                 .get_mut(entry.output as usize)
                 .and_then(|t| t.get_mut().as_deref_mut())
             {
-                entry.delay.mix(src, dst, 1.0, 1.0);
+                let [l, r] = &mut dst.buf;
+                entry
+                    .delay
+                    .mix(src, [&mut l[..n], &mut r[..n]], heard_from, heard);
             }
             for send in entry.sends.iter_mut().filter(|send| !send.pre) {
                 if let Some(dst) = self
@@ -1648,8 +1899,38 @@ impl Engine {
                     .get_mut(send.target as usize)
                     .and_then(|t| t.get_mut().as_deref_mut())
                 {
-                    send.delay.mix(src, dst, send.gain, send.gain);
+                    let [l, r] = &mut dst.buf;
+                    send.delay.mix(
+                        src,
+                        [&mut l[..n], &mut r[..n]],
+                        send.gain * heard_from,
+                        send.gain * heard,
+                    );
                 }
+            }
+            for key in entry.keys.iter_mut().filter(|key| !key.pre) {
+                key_into(&mut self.devices, key, src);
+            }
+            for out in entry.outs.iter_mut() {
+                let (Some(pair), Some(dst)) = (
+                    self.devices
+                        .get_mut(out.device as usize)
+                        .and_then(|d| d.get_mut().as_mut())
+                        .and_then(|d| d.outs.as_deref())
+                        .and_then(|outs| outs.get(out.pair)?.as_ref()),
+                    self.tracks
+                        .get_mut(out.target as usize)
+                        .and_then(|t| t.get_mut().as_deref_mut()),
+                ) else {
+                    continue;
+                };
+                let [l, r] = &mut dst.buf;
+                out.delay.mix(
+                    [&pair[0][..n], &pair[1][..n]],
+                    [&mut l[..n], &mut r[..n]],
+                    1.0,
+                    1.0,
+                );
             }
         }
         *self.tracks[entry.slot as usize].get_mut() = Some(track);
@@ -1703,6 +1984,18 @@ impl Engine {
                 self.click.env *= fall;
             }
         }
+    }
+}
+
+/// Put a block of a track into the side-chain of a device that listens to it.
+fn key_into(devices: &mut [Guarded<Option<DeviceSlot>>], key: &mut KeyRt, src: [&[f32]; 2]) {
+    let n = src[0].len();
+    if let Some([l, r]) = devices
+        .get_mut(key.device as usize)
+        .and_then(|d| d.get_mut().as_mut())
+        .and_then(|d| d.key.as_deref_mut())
+    {
+        key.delay.mix(src, [&mut l[..n], &mut r[..n]], 1.0, 1.0);
     }
 }
 
@@ -1862,6 +2155,14 @@ impl Work<'_> {
         if t.monitor {
             add_input(self.inputs, t, n);
         }
+        // What it plays goes to its MIDI output port as well, as it is
+        // before its devices change it.
+        if t.midi_out != 0 {
+            t.sent.clear();
+            let room = t.sent.capacity();
+            t.sent
+                .extend(t.events.as_slice().iter().take(room).copied());
+        }
 
         if playing {
             for lane in t.automation.lanes.iter_mut() {
@@ -1891,17 +2192,28 @@ impl Work<'_> {
                 && let Some(dev) = dev.as_mut()
                 && !dev.failed
             {
+                // Taken out of the slot while the device runs on it.
+                let key = dev.key.take();
+                let mut outs = dev.outs.take();
                 let mut io = Io {
                     left: &mut left[..n],
                     right: &mut right[..n],
                     events: &mut t.events,
+                    sidechain: key.as_deref().map(|[l, r]| [&l[..n], &r[..n]]),
+                    outputs: match outs.as_deref_mut() {
+                        Some(outs) => outs.as_mut_slice(),
+                        None => &mut [],
+                    },
                 };
                 // A device that panics is passed over from then on (an
                 // instrument falls silent, an effect lets its input through),
                 // and one that puts out NaN or infinity is silenced for the
                 // block: neither reaches the fader, the meters or the master.
                 // The host's wet/dry mix and bypass fade go around it.
-                if !dev.process(ctx, &mut io) {
+                let ok = dev.process(ctx, &mut io);
+                dev.key = key;
+                dev.outs = outs;
+                if !ok {
                     dev.failed = true;
                     left[..n].fill(0.0);
                     right[..n].fill(0.0);
@@ -1916,9 +2228,9 @@ impl Work<'_> {
                 }
             }
         }
-        // A track with sends from before its fader keeps the fader for
-        // when they have been taken.
-        if !entry.sends.iter().any(|send| send.pre) {
+        // A track with sends or side-chains from before its fader keeps
+        // the fader for when they have been taken.
+        if !entry.taps_pre() {
             fader(t, entry.slot, self.block, self.shared);
         }
     }
@@ -1954,6 +2266,8 @@ fn fader(t: &mut TrackRt, slot: Slot, block: &Block, shared: &Shared) {
             }
         }
         t.applied[ch] = target[ch];
+        // A track silenced by a solo shows nothing, as it is heard.
+        let peak = if t.quiet { 0.0 } else { peak };
         t.peak[ch] = peak.max(t.peak[ch] * block.meter_fall);
         if let Some(meter) = shared.meters.get(slot as usize) {
             meter[ch].store(t.peak[ch].to_bits(), Relaxed);

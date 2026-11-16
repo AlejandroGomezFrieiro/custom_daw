@@ -103,6 +103,11 @@ pub struct Track {
     /// has no audio input; `None` for every port and channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi_input: Option<MidiInput>,
+    /// The MIDI output port the track sends what it plays to (its clips'
+    /// notes and controllers, and MIDI input passing through), and on which
+    /// channel; `None` for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub midi_output: Option<MidiOutput>,
     /// How tall the track is drawn, as a share of the height all tracks
     /// have at the frontend's zoom; `None` for that height.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -165,6 +170,17 @@ pub struct MidiInput {
     pub channel: Option<u8>,
 }
 
+/// MIDI to one output port, by its name, on a channel or on each
+/// message's own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MidiOutput {
+    /// The port's name as `daw.midi.outputs()` gives it.
+    pub port: String,
+    /// From 1 to 16, or `None` for the channel each message has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<u8>,
+}
+
 impl Track {
     pub fn new(id: Id) -> Self {
         Self {
@@ -185,6 +201,7 @@ impl Track {
             input: None,
             monitor: false,
             midi_input: None,
+            midi_output: None,
             height: None,
             automation: AutoMode::Read,
         }
@@ -272,6 +289,18 @@ pub struct DeviceInst {
     /// parameters are kept as they are.
     #[serde(default, skip_serializing_if = "is_false")]
     pub offline: bool,
+    /// The track whose sound the device listens to as its side-chain, such
+    /// as a kick that a compressor on a bass ducks under.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidechain: Option<Id>,
+    /// The side-chain is taken after that track's devices but before its
+    /// fader, pan and mute, rather than after them.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sidechain_pre: bool,
+    /// Where the device's further output pairs play, by pair number (2 for
+    /// its second) and track. Pairs not named here are not heard.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub outputs: BTreeMap<u32, Id>,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -706,7 +735,14 @@ impl Project {
             if let Some(t) = tracks.get(&id) {
                 stack.extend(t.output);
                 stack.extend(t.sends.iter().map(|s| s.target));
+                stack.extend(t.devices.iter().flat_map(|d| d.outputs.values()));
             }
+            // A track feeds the tracks of the devices that listen to it.
+            stack.extend(
+                self.all_tracks()
+                    .filter(|t| t.devices.iter().any(|d| d.sidechain == Some(id)))
+                    .map(|t| t.id),
+            );
         }
         false
     }
