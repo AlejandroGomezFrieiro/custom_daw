@@ -491,6 +491,7 @@ end, { desc = "Move the track down or up: `track.move by=-1`" })
 -- they are a picker and commands.
 local group_names = {
   audio = "audio", midi = "MIDI", channel = "MIDI channel", midi_out = "MIDI out", midi_out_channel = "out channel",
+  midi_out_form = "out form",
 }
 local function input_picker(track)
   local items = {}
@@ -510,7 +511,7 @@ local function input_picker(track)
         return daw.notify(track.name .. (track.monitor and ": monitoring its input" or ": not monitoring"))
       end
       daw.audio.choose(track, item)
-      if item.group == "midi_out" or item.group == "midi_out_channel" then
+      if item.group:find("^midi_out") then
         return daw.notify(track.name .. " → " .. daw.routes.midi_out_text(track:get()))
       end
       daw.notify(track.name .. " ← " .. (daw.audio.label(track:get()) or "MIDI from every port"))

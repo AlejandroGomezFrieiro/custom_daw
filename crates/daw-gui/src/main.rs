@@ -2729,6 +2729,7 @@ fn run() -> Result<()> {
                     ui.set_input_channel(choices(&menu["channel"]));
                     ui.set_input_midi_out(choices(&menu["midi_out"]));
                     ui.set_input_midi_out_channel(choices(&menu["midi_out_channel"]));
+                    ui.set_input_midi_out_form(choices(&menu["midi_out_form"]));
                 }
                 Ok(menu)
             })

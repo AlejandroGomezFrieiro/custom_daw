@@ -171,7 +171,7 @@ pub struct MidiInput {
 }
 
 /// MIDI to one output port, by its name, on a channel or on each
-/// message's own.
+/// message's own, in a form for ports that take no MIDI 2.0.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MidiOutput {
     /// The port's name as `daw.midi.outputs()` gives it.
@@ -179,6 +179,46 @@ pub struct MidiOutput {
     /// From 1 to 16, or `None` for the channel each message has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<u8>,
+    #[serde(default, skip_serializing_if = "OutForm::is_auto")]
+    pub form: OutForm,
+    /// The member channels of an MPE zone, 1 to 15; `None` for 15.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub members: Option<u8>,
+}
+
+/// What a MIDI output sends where the port takes no MIDI 2.0 (see
+/// `daw_engine::midi_form`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutForm {
+    /// MIDI 2.0 where the port takes it, else plain MIDI 1.0.
+    #[default]
+    Auto,
+    /// MIDI 1.0 as each message has it.
+    Plain,
+    /// MIDI Polyphonic Expression: a channel to each note.
+    Mpe,
+    /// Control changes 0 to 31 in fourteen bits.
+    Cc14,
+}
+
+impl OutForm {
+    pub fn is_auto(&self) -> bool {
+        *self == OutForm::Auto
+    }
+}
+
+impl MidiOutput {
+    /// The form as the engine takes it.
+    pub fn engine_form(&self) -> daw_engine::midi_form::Form {
+        use daw_engine::midi_form::Form;
+        match self.form {
+            OutForm::Auto => Form::Auto,
+            OutForm::Plain => Form::Plain,
+            OutForm::Cc14 => Form::Cc14,
+            OutForm::Mpe => Form::Mpe(self.members.unwrap_or(15)),
+        }
+    }
 }
 
 impl Track {

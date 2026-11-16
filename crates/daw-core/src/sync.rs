@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::Engine as _;
+use daw_engine::midi_form::Form;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
@@ -83,7 +84,7 @@ pub struct Mapper {
     /// The MIDI port's key and channel each track takes, as last sent.
     midi_inputs: HashMap<Id, (u32, u8)>,
     /// The same for the port each track sends to.
-    midi_outputs: HashMap<Id, (u32, u8)>,
+    midi_outputs: HashMap<Id, (u32, u8, Form)>,
     routing: Routing,
     /// Devices given a buffer for a side-chain.
     keyed: HashSet<Id>,
@@ -698,18 +699,20 @@ pub fn sync(
                 channel: midi.1,
             });
         }
-        let out = track.midi_output.as_ref().map_or((0, 0), |m| {
+        let out = track.midi_output.as_ref().map_or((0, 0, Form::Auto), |m| {
             (
                 daw_engine::midi::port_key(&m.port),
                 m.channel.unwrap_or(0),
+                m.engine_form(),
             )
         });
-        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0)) != out {
+        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0, Form::Auto)) != out {
             map.midi_outputs.insert(track.id, out);
             send(Msg::SetMidiOutput {
                 track: slot,
                 port: out.0,
                 channel: out.1,
+                form: out.2,
             });
         }
     }
@@ -787,11 +790,12 @@ pub fn sync(
         map.clip_events.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
             // Notes it left sounding on its MIDI output port end there.
-            if map.midi_outputs.get(id).is_some_and(|(port, _)| *port != 0) {
+            if map.midi_outputs.get(id).is_some_and(|(port, ..)| *port != 0) {
                 removals.push(Msg::SetMidiOutput {
                     track: slot,
                     port: 0,
                     channel: 0,
+                    form: Form::Auto,
                 });
             }
             removals.push(Msg::RemoveTrack { slot });

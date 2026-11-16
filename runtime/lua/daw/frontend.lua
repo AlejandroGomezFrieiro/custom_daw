@@ -613,11 +613,11 @@ end
 
 --- The menu of a track's input: the choices of `daw.audio.choices` under
 --- their headings, `audio`, `midi` and `channel`, and where the track sends
---- MIDI, `midi_out` and `midi_out_channel`, each a list of
+--- MIDI, `midi_out`, `midi_out_channel` and `midi_out_form`, each a list of
 --- `{ label, checked }`. `act.choose_input` takes one by heading and place.
 function M.input_menu(track)
   local out = {
-    audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {},
+    audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {}, midi_out_form = {},
     monitor = api.track_get(track).monitor,
   }
   for _, choice in ipairs(daw.audio.choices(track)) do
