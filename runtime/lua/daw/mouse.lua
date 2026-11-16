@@ -1,0 +1,197 @@
+-- The pointer in the terminal: what the views share to take it, and what
+-- happens before an event reaches the view under the pointer.
+--
+-- A terminal reports a press, a release, the pointer moving with a button
+-- held (a drag) or without (a move, for what is under it), and the wheel,
+-- each in cells with the modifiers held (`mods`: any of `C`, `A`, `S`).
+-- `daw.ui.mouse` gives each one first to what floats over the views (a menu,
+-- the command line's list), then to a gesture that holds the pointer, then
+-- to the view under it, with coordinates relative to the view.
+--
+-- What a gesture means is the window's: views turn cells into beats,
+-- pitches, tracks and values and call `daw.frontend.act`, so both frontends
+-- do the same with the same gesture.
+--
+--   function view:on_mouse(e)
+--     if e.kind == "down" then
+--       daw.mouse.grab(e, {
+--         drag = function(d) ... d.x, d.y, d.dx, d.dy, d.moved ... end,
+--         up = function(u) ... end,
+--       })
+--     end
+--   end
+--
+-- `daw.opt.mouse = false` leaves the pointer to the terminal's own selection.
+local api = daw.api
+local M = {
+  -- Two presses of a button on one cell within this many milliseconds are a
+  -- double click, which a terminal does not report itself.
+  double_ms = 400,
+  -- What floats over the views and takes the pointer first, while it is
+  -- there: functions given the event in screen cells, returning true when
+  -- they took it.
+  overlays = {},
+}
+
+-- Each seat has its own: the gesture under way, the last press, what the
+-- status line says about the pointer.
+local state = {}
+daw.seats.keep("mouse", function() return state end, function(s) state = s end, function() return {} end)
+
+--- Whether a press is the second of a double click: the same button on the
+--- same cell soon after the first, which was not itself a second.
+local function mark_double(event)
+  if event.kind ~= "down" then return end
+  local now, last = api.now(), state.last
+  local double = last and not last.double and last.button == event.button and last.x == event.x
+    and last.y == event.y and now - last.time <= M.double_ms
+  event.double = double or nil
+  state.last = { button = event.button, x = event.x, y = event.y, time = now, double = double }
+end
+
+--- Whether the modifiers of an event hold `letter` ("C", "A" or "S").
+function M.has(event, letter)
+  return (event.mods or ""):find(letter, 1, true) ~= nil
+end
+
+--- How a click with modifiers chooses: "toggle" with Ctrl, "add" with
+--- Shift, else "only".
+function M.mode(event)
+  if M.has(event, "C") then return "toggle" end
+  if M.has(event, "S") then return "add" end
+  return "only"
+end
+
+--- Hold the pointer from a press (`down`, as the view got it) until its
+--- button is let go: every drag goes to `handlers.drag(e)` and the release
+--- to `handlers.up(e)`, wherever the pointer is, with `x` and `y` relative to
+--- the view the press was in, `dx` and `dy` the cells from the press, and
+--- `moved` whether it has left the cell it went down on. A press of another
+--- button meanwhile calls `handlers.cancel()` and ends the gesture.
+function M.grab(down, handlers)
+  state.gesture = {
+    handlers = handlers, button = down.button, x0 = down.x, y0 = down.y,
+    ox = down.view_x or 0, oy = down.view_y or 0, moved = false,
+  }
+end
+
+--- Forget the last press and any gesture under way: the next press is
+--- not the second of a double click.
+function M.forget()
+  state.last, state.gesture = nil, nil
+end
+
+--- The gesture under way, if any: what was handed to `grab`.
+function M.gesture()
+  return state.gesture and state.gesture.handlers
+end
+
+local function feed_gesture(event)
+  local g = state.gesture
+  local e = daw.util.merge(event, { x = event.x - g.ox, y = event.y - g.oy })
+  e.dx, e.dy = e.x - g.x0, e.y - g.y0
+  g.moved = g.moved or e.dx ~= 0 or e.dy ~= 0
+  e.moved = g.moved
+  if event.kind == "up" then
+    -- What the drag said is over; the next move says what is under the pointer.
+    state.gesture, state.hint = nil, nil
+    -- Whatever the view saw of the press is over too.
+    daw.ui.pressed = nil
+    if g.handlers.up then g.handlers.up(e) end
+  elseif g.handlers.drag then
+    g.handlers.drag(e)
+  end
+  api.ui_redraw()
+end
+
+--- Say what is under the pointer, or what it would do, on the status line;
+--- nil says nothing. A view calls it as the pointer moves over it.
+function M.hint(text)
+  state.hinted = true
+  if text ~= state.hint then
+    state.hint = text
+    api.ui_redraw()
+  end
+end
+
+--- What the status line says about the pointer, if anything.
+function M.hint_text()
+  return state.hint
+end
+
+--- Called by `daw.ui.mouse` first: true when the event was taken here and
+--- goes no further.
+function M.take(event)
+  if daw.opt.mouse == false then return true end
+  event.mods = event.mods or ""
+  mark_double(event)
+  local g = state.gesture
+  if g then
+    if (event.kind == "drag" or event.kind == "up") and (event.button == g.button or event.button == "" or not event.button) then
+      feed_gesture(event)
+      return true
+    elseif event.kind == "down" then
+      state.gesture = nil
+      if g.handlers.cancel then g.handlers.cancel() end
+      api.ui_redraw()
+    end
+  end
+  for i = #M.overlays, 1, -1 do
+    if M.overlays[i](event) then return true end
+  end
+  state.hinted = false
+  return false
+end
+
+--- Give an event in a view's own cells to the view, for a view drawn in a
+--- window of its own (`daw.canvas.pointer`): a gesture under way has it
+--- first, as in the terminal.
+function M.to_view(view, event)
+  event.mods = event.mods or ""
+  mark_double(event)
+  local g = state.gesture
+  if g and (event.kind == "drag" or event.kind == "up") then return feed_gesture(event) end
+  if g and event.kind == "down" then
+    state.gesture = nil
+    if g.handlers.cancel then g.handlers.cancel() end
+  end
+  if view.on_mouse then view:on_mouse(daw.util.merge(event, { view_x = 0, view_y = 0 })) end
+end
+
+--- Called by `daw.ui.mouse` last: a move over nothing that says what it is
+--- under the pointer clears what the status line said.
+function M.done(event)
+  if event.kind == "move" and not state.hinted and state.hint then
+    state.hint = nil
+    api.ui_redraw()
+  end
+end
+
+-- Cells to beats, with the precision a cell has: a cell stands for the
+-- stretch of time from its left edge, so a press on it means that edge, or
+-- the grid step it falls in.
+
+--- The beat at the left edge of column `x` of a timeline whose column 0
+--- is beat `scroll`, at `zoom` columns a beat.
+function M.beat(x, scroll, zoom)
+  return scroll + x / zoom
+end
+
+--- The same, on the grid: the step the column's left edge falls in, which
+--- is the one drawn there.
+function M.on_grid(x, scroll, zoom, grid)
+  local beat = scroll + x / zoom
+  return math.floor(beat / grid + 1e-6) * grid
+end
+
+--- A wheel event as a step: 1 down or right, -1 up or left, and whether it
+--- goes sideways.
+function M.wheel(event)
+  local kind = event.kind
+  if kind == "scroll_down" then return 1, false end
+  if kind == "scroll_up" then return -1, false end
+  if kind == "scroll_right" then return 1, true end
+  if kind == "scroll_left" then return -1, true end
+end
+
+return M

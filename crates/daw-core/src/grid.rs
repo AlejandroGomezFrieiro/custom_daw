@@ -128,6 +128,9 @@ pub struct Grid {
     pub width: u16,
     pub height: u16,
     pub cells: Vec<Cell>,
+    /// The terminal keeps the pointer for its own selection instead of
+    /// reporting it (`daw.opt.mouse` off); set by the runtime as it draws.
+    pub mouse_off: bool,
 }
 
 impl Grid {
@@ -136,6 +139,7 @@ impl Grid {
             width,
             height,
             cells: vec![Cell::default(); width as usize * height as usize],
+            mouse_off: false,
         }
     }
 

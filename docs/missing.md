@@ -21,9 +21,16 @@
   what servers say about a note through the float, not a tooltip of its own,
   and marks no clips with diagnostics in its arrange view (the terminal's does).
 
-- Editing the tempo lane with the mouse in the terminal (it draws the curve;
-  changes are made by command there), and a tempo curve that is smooth: a
-  drawn stroke makes a change a beat or so, each ramping to the next.
+- A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
+  each ramping to the next.
+- The mouse in the terminal: an audio clip's fades and gain are not dragged
+  (the keys and the clip's commands set them), a track's height is not
+  dragged (the wheel with Ctrl over the headers changes every track's), and
+  the volume curve drawn over a track's lane
+  is not edited with the pointer (its lane shown as a row is). Heights in a
+  lane are as fine as its two lines, and finer only by dragging a point.
+  Where the terminal keeps Shift for its own selection, Shift does not
+  reach the program.
 - In stretching: ratios are 0.25 to 4 (each part between warp markers
   too) and shifts 24 semitones either way; a stretch is always made from
   the start of its file, so the playhead put far into a long clip just

@@ -1117,6 +1117,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
             Ok(())
         }
+        // Whether the terminal reports the pointer (`daw.opt.mouse`), for the
+        // screen being drawn.
+        fn ui_mouse(_, sh, on => bool) {
+            sh.grid.borrow_mut().mouse_off = !on;
+            Ok(())
+        }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
             // `full` is the group in 24-bit colour, given when `def` is a
             // nearer form of it for a terminal that shows fewer colours.

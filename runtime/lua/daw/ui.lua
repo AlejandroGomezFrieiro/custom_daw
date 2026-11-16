@@ -358,6 +358,7 @@ end
 --- Draw the whole screen. Called by the kernel.
 function M.render(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
+  api.ui_mouse(daw.opt.mouse ~= false)
   if buf.width < M.min_width or buf.height < M.min_height then return too_small(buf) end
   M.rects = M.arrange(buf.width, buf.height)
   local g = daw.draw.g
@@ -399,6 +400,7 @@ function M.render(buf)
   end
   M.draw_hints(buf)
   if M.draw_popup then M.draw_popup(buf) end
+  if M.draw_menu then M.draw_menu(buf) end
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
@@ -458,9 +460,7 @@ function M.close()
   api.ui_redraw()
 end
 
---- Route a mouse event to the view under the pointer, with coordinates
---- relative to that view.
-function M.mouse(event)
+local function route(event)
   local target
   for _, r in ipairs(M.rects) do
     if event.x >= r.x and event.x < r.x + r.w and event.y >= r.y and event.y < r.y + r.h then target = r end
@@ -484,8 +484,20 @@ function M.mouse(event)
   if not view then return end
   if event.kind == "down" and focusable(target.name) and not M.float then M.focus(target.name) end
   if view.on_mouse then
-    view:on_mouse(daw.util.merge(event, { x = event.x - target.x, y = event.y - target.y }))
+    view:on_mouse(daw.util.merge(event, {
+      x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
+    }))
   end
+end
+
+--- Route a mouse event to the view under the pointer, with coordinates
+--- relative to that view (and `view_x`, `view_y`, `w`, `h`, where the view
+--- is), after what floats over the views and a gesture under way have had
+--- it (`daw.mouse`).
+function M.mouse(event)
+  if daw.mouse.take(event) then return end
+  route(event)
+  daw.mouse.done(event)
 end
 
 --- Show a message. `level` is "info" (default), "warn" or "error".
