@@ -382,6 +382,25 @@ test("the other takes of a stretched clip are stretched as it is", function()
   info = render({ tail = 0, bits = 16 })
   near(info.frames / info.sample_rate, 3, 0.01, "as long")
   near(T.frequency(info, 0.5, 2.5), 220, 1.5, "at its pitch")
+  local tracks = daw.takes.explode(clip.id)
+  eq(tracks[1]:clips()[1].stretch, 1.5, "a take put on a track of its own is stretched as the clip was")
+end)
+
+test("the terminal marks a stretched, shifted, following or looped clip in its label", function()
+  local file = tone_file(4)
+  local clip = daw.add_track({ name = "audio" }):add_clip({ file = file, start = 0 })
+  eq(daw.stretch.badge(clip:get()), nil, "nothing on a plain clip")
+  daw.stretch.set(clip.id, 1.5)
+  clip.pitch = 3
+  daw.stretch.follow(clip.id)
+  daw.stretch.loop(clip.id, true)
+  daw.flush()
+  eq(daw.stretch.badge(clip:get()), "stretching… ×1.5 +3st ♩ ⟳", "while it is made")
+  settled()
+  eq(daw.stretch.badge(clip:get()), "×1.5 +3st ♩ ⟳", "once it is made")
+  daw.opt.ascii = true
+  eq(daw.stretch.badge(clip:get()), "x1.5 +3st bpm loop", "in plain characters")
+  daw.opt.ascii = false
 end)
 
 -- The project file --------------------------------------------------------------------

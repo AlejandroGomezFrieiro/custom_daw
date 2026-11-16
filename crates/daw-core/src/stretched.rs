@@ -111,7 +111,7 @@ enum Job {
 /// Where a clip's version is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
-    /// Not stretched at all: it plays its file.
+    /// Not stretched at all (it plays its file), or not asked for yet.
     Plain,
     Ready,
     /// Waiting or being made.
@@ -184,10 +184,10 @@ impl Renders {
     }
 
     pub fn status(&self, key: Option<&Key>) -> Status {
-        match key.map(|k| self.jobs.get(k)) {
+        match key.and_then(|k| self.jobs.get(k)) {
             None => Status::Plain,
-            Some(Some(Job::Done(_))) => Status::Ready,
-            Some(Some(Job::Failed)) => Status::Failed,
+            Some(Job::Done(_)) => Status::Ready,
+            Some(Job::Failed) => Status::Failed,
             Some(_) => Status::Making,
         }
     }

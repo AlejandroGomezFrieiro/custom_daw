@@ -507,6 +507,37 @@ fn wave_picture(peaks: &[f32]) -> Image {
     })
 }
 
+/// `picture` with a notch at each of `at` (fractions of its width): where
+/// a looped clip repeats, marked solid at the top and bottom and dotted
+/// between, as REAPER and Ableton mark them.
+fn notched(picture: Image, at: &[f32]) -> Image {
+    let Some(mut buffer) = picture.to_rgba8() else {
+        return picture;
+    };
+    let (width, height) = (buffer.width() as usize, buffer.height() as usize);
+    if at.is_empty() || width == 0 {
+        return picture;
+    }
+    let tick = (height / 6).max(2);
+    let pixels = buffer.make_mut_slice();
+    for f in at {
+        // Two columns, so that drawing the picture narrower keeps one.
+        let x = ((f * width as f32).round() as usize).clamp(1, width - 1);
+        for y in 0..height {
+            let a = if y < tick || y >= height - tick {
+                255
+            } else if (y / 2) % 2 == 0 {
+                150
+            } else {
+                continue;
+            };
+            pixels[y * width + x - 1] = Rgba8Pixel::new(a, a, a, a);
+            pixels[y * width + x] = Rgba8Pixel::new(a, a, a, a);
+        }
+    }
+    Image::from_rgba8(buffer)
+}
+
 /// A key press in the notation of the kernel's key mappings: `a`, `<CR>`,
 /// `<C-r>`, `<S-Left>`. None for a press of a modifier alone.
 fn notation(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
@@ -755,6 +786,9 @@ struct View {
     /// The picture inside each clip (its notes or its waveform), with the
     /// key that says when to make it again.
     pictures: HashMap<i32, (String, Image)>,
+    /// Where each looped clip's repeats begin, in beats, for drawing its
+    /// picture again at another zoom.
+    notches: HashMap<i32, Vec<f32>>,
     /// Every track's automation lanes as the kernel last reported them,
     /// by row, kept to redraw their curves when the zoom changes.
     lane_data: Vec<(i32, Vec<Lane>)>,
@@ -1447,6 +1481,10 @@ impl View {
         } else {
             wave_picture(&flat)
         };
+        // A looped clip's repeats are marked in its picture.
+        let notches = self.notches.get(&id).map_or(&[][..], Vec::as_slice);
+        let at: Vec<f32> = notches.iter().map(|beat| beat / length.max(1e-6)).collect();
+        let picture = notched(picture, &at);
         self.pictures.insert(id, (key.to_string(), picture.clone()));
         picture
     }
@@ -1591,6 +1629,12 @@ impl View {
                 let row = c["track"].as_i64().unwrap_or(0);
                 let midi = c["midi"].as_bool().unwrap_or(false);
                 let length = number(&c["length"]);
+                let notches: Vec<f32> = rows(&c["notches"]).iter().map(number).collect();
+                if notches.is_empty() {
+                    self.notches.remove(&id);
+                } else {
+                    self.notches.insert(id, notches);
+                }
                 ClipData {
                     // Whichever of the two the clip has says when to draw it again.
                     preview: match c["stamp"].as_str().or(c["waveform"].as_str()) {
@@ -1610,6 +1654,7 @@ impl View {
                     gain: number(&c["gain"]),
                     takes: c["takes"].as_i64().unwrap_or(1) as i32,
                     take: c["take"].as_i64().unwrap_or(1) as i32,
+                    looped: c["loop"].as_bool().unwrap_or(false),
                     color: colour(&state["tracks"][row as usize]["color"]),
                 }
             })
@@ -1812,6 +1857,7 @@ fn run() -> Result<()> {
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
         pictures: HashMap::new(),
+        notches: HashMap::new(),
         lane_data: Vec::new(),
         shown: HashMap::new(),
         row_lane: Vec::new(),
@@ -2247,6 +2293,10 @@ fn run() -> Result<()> {
     ui.on_toggle_offline({
         let pass = pass.clone();
         move |id| pass("toggle_offline", json!([id]))
+    });
+    ui.on_stretch_clip({
+        let pass = pass.clone();
+        move |id, what| pass("stretch_clip", json!([id, what.as_str()]))
     });
     ui.on_select_clip({
         let pass = pass.clone();

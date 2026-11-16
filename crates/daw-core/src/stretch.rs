@@ -110,7 +110,7 @@ pub fn render(
         mode => mode,
     };
     let mut out = if semitones == 0.0 {
-        Out::Sink(sink)
+        Out::Sink(Box::new(sink))
     } else {
         // Made `shift` times longer still, then played back that much faster.
         Out::Resample(Box::new(Stream::new(1.0 / shift, rate, wanted, sink)?))
@@ -131,7 +131,7 @@ pub fn render(
 
 /// Where the stretched sound goes as it is made.
 enum Out {
-    Sink(Sink),
+    Sink(Box<Sink>),
     Resample(Box<Stream>),
 }
 

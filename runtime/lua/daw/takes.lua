@@ -189,6 +189,8 @@ function M.explode(id)
       at = at + 1
       local t = daw.add_track({ name = entry.name or (track.name .. " take " .. i), index = at })
       local snap = { name = entry.name or c.name, start = c.start, length = c.length, kind = c.kind }
+      -- Each plays as the clip does: stretched, shifted, looped.
+      daw.stretch.carry(c, snap, 0)
       if c.kind == "audio" then
         snap.file, snap.offset, snap.gain = entry.file, math.max(0, (entry.offset or 0) + shift), entry.gain or 0
         snap.fade_in, snap.fade_out = c.fade_in, c.fade_out
