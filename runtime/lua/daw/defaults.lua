@@ -1625,13 +1625,7 @@ map("n", function(ctx) keymap.search_next(1, ctx.count) end, util.merge(far, { d
 map("N", function(ctx) keymap.search_next(-1, ctx.count) end, util.merge(far, { desc = "Previous match" }))
 map("<Tab>", "view.next", { mode = nx, desc = "Focus the next view" })
 map("<S-Tab>", "view.prev", { mode = nx, desc = "Focus the previous view" })
-map("gt", "view.next", { desc = "Focus the next view" })
-map("gT", "view.prev", { desc = "Focus the previous view" })
-map("<C-w>w", "view.next", { desc = "Focus the next view" })
-map("<C-w>p", "view.prev", { desc = "Focus the previous view" })
-map("<C-w>c", "view.close", { desc = "Close the focused panel" })
-map("<C-w>q", "view.close", { desc = "Close the focused panel" })
-map("<C-w>o", "view.only", { desc = "Close every panel but the arrange view" })
+-- Windows and tabs (`Ctrl-w`, `gt`) are mapped in daw/layout.lua.
 map("<leader>m", "view.toggle mixer", { desc = "Show or hide the mixer" })
 map("<leader>d", "view.toggle devices", { desc = "Show or hide the device panel" })
 map("<leader>p", "view.toggle pianoroll", { desc = "Show or hide the piano roll" })
@@ -2240,16 +2234,18 @@ pmap("<Esc>", function()
   daw.ui.focus("arrange")
 end, "Let go of the chosen notes; back to the arrange view")
 
--- Diagnostics and language servers (daw.diagnostic, daw.lsp). `K` is an
--- octave up here, so what the servers say about a note is `gK`.
-pmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic", { jump = true })
-pmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic", { jump = true })
-amap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next clip with diagnostics", { jump = true })
-amap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous clip with diagnostics", { jump = true })
-pmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
-pmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes for the note, or for the diagnostics here")
+-- Diagnostics and language servers (daw.diagnostic, daw.lsp), on whatever
+-- is under the cursor in each view: a note, a clip, a track, a strip, a
+-- device or parameter. `K` means other things in these views, so asking
+-- what is known about it is `gK`.
+for _, v in ipairs({ "pianoroll", "arrange", "mixer", "devices" }) do
+  map("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, { view = v, desc = "Next diagnostic here", jump = true })
+  map("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, { view = v, desc = "Previous diagnostic here", jump = true })
+  map("gK", function() daw.lsp.show_hover() end, { view = v, desc = "What the diagnostics and language servers say about what is under the cursor" })
+  map("<leader>ca", function() daw.lsp.code_actions() end, { view = v, desc = "Fixes and actions for what is under the cursor" })
+end
 command("diagnostics", function(ctx) daw.diagnostic.list(ctx.args[1] == "clip" and daw.ui.views.pianoroll.clip_id or nil) end,
-  { desc = "List the diagnostics, of every clip or (`diagnostics clip`) the piano roll's; Enter goes to one", complete = { "clip" } })
+  { desc = "List the diagnostics, grouped by what they are about, or (`diagnostics clip`) the piano roll's; Enter goes to one", complete = { "clip" } })
 command("lsp", function(ctx) daw.lsp.command(ctx) end,
   { desc = "Language servers: `lsp info`, `lsp start|stop|restart [name]`, `lsp log`", complete = function() return daw.lsp.command_complete() end })
 
@@ -2308,6 +2304,38 @@ imap("<Left>", function() roll:step(-1) end, "Step back")
 imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
+
+-- Piano roll: snippets (runtime/lua/daw/snippet.lua). While one is active its
+-- keys come first; otherwise each key does what it does everywhere else.
+roll.layer("snippet", 40, function(p) daw.snippet.paint(p) end, function(clip_id) return daw.snippet.window_marks(clip_id) end)
+command("snippet", function(ctx)
+  local name = ctx.args[1]
+  local region = daw.snippet.take_cmdline_selection()
+  if name == nil then return daw.snippet.pick({ count = ctx.count, selection = region }) end
+  local _, why = daw.snippet.expand(tostring(name), { count = ctx.count, selection = region })
+  if why then daw.notify(why, "warn") end
+end, {
+  desc = "Expand a snippet at the piano roll's cursor: `snippet dominant`, `3snippet arp`; alone, choose one",
+  complete = function()
+    local out = {}
+    for _, s in ipairs(daw.snippet.offered("pianoroll")) do out[#out + 1] = { text = s.name, desc = s.desc } end
+    return out
+  end,
+})
+-- While a snippet is active its keys come first, before a suggestion's and
+-- before Escape leaves insert mode.
+roll:key_scope("pianoroll.snippet", 40, function() return daw.snippet.active() ~= nil end)
+local function smap(lhs, fn, desc)
+  map(lhs, fn, { view = "pianoroll.snippet", mode = { "n", "i" }, desc = desc, repeatable = false })
+end
+smap("<Tab>", function() daw.snippet.jump(1) end, "The snippet's next choice")
+smap("<S-Tab>", function() daw.snippet.jump(-1) end, "The snippet's choice before")
+smap("<C-n>", function() daw.snippet.step(1) end, "The snippet's choice: its next value")
+smap("<C-p>", function() daw.snippet.step(-1) end, "The snippet's choice: its value before")
+smap("<C-y>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+smap("<Esc>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+map("<C-s>", function(ctx) daw.snippet.pick({ count = ctx.count }) end,
+  { view = "pianoroll", mode = { "n", "i", "x" }, desc = "Choose a snippet to expand here", repeatable = false })
 
 -- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
 -- while a suggestion shows, its keys come first, in normal and insert mode.
@@ -2389,7 +2417,12 @@ local function resize(option, by, view, what, least)
   daw.notify(string.format("%s %d", option, daw.opt[option]))
 end
 
-local maximised   -- what `<C-w>_` changed, to put back: { view, hidden = { name = bool }, size }
+--- Whether the arrange view is the only window: then the size keys size
+--- its tracks and headers, as there is no window to share with.
+local function arrange_alone()
+  local wins = daw.layout.focusable_windows()
+  return daw.ui.focused == "arrange" and #wins == 1 and wins[1].view == "arrange"
+end
 
 command("view.height", function(ctx)
   local by = (tonumber(ctx.args[1]) or 1) * (ctx.count or 1)
@@ -2398,6 +2431,7 @@ command("view.height", function(ctx)
   if name ~= "arrange" and node and not in_row then
     return resize(name .. "_height", by, name, "height", 3)
   end
+  if not arrange_alone() and daw.layout.resize(nil, "height", by, true) then return end
   -- From "auto", from the height the tracks have now.
   local now = tonumber(daw.opt.track_height)
   if not now or now <= 0 then now = daw.ui.views.arrange.geometry and daw.ui.views.arrange.geometry.th or 3 end
@@ -2409,54 +2443,29 @@ command("view.width", function(ctx)
   local name = daw.ui.focused
   local node, in_row = layout_node(name)
   if name ~= "arrange" and node and in_row then return resize(name .. "_width", by, name, "width", 12) end
+  if not arrange_alone() and daw.layout.resize(nil, "width", by, true) then return end
   local now = tonumber(daw.opt.header_width)
   if not now then now = daw.ui.views.arrange.geometry and daw.ui.views.arrange.geometry.hw or 24 end
   daw.opt.header_width = util.clamp(now + by, 8, 60)
   daw.notify("header width " .. daw.opt.header_width)
 end, { desc = "A wider side panel, or track header in the arrange view: `view.width 4`, `view.width -2`" })
 command("view.equal", function()
+  if not arrange_alone() then return daw.layout.equalize() end
   daw.opt.track_height = "auto"
   daw.notify("track height fits the tracks to the screen")
-end, { desc = "Track height back to automatic: the tracks fit the screen" })
+end, { desc = "Windows of equal size; with the arrange view alone, track height back to automatic" })
 command("view.maximize", function()
-  if maximised then
-    for name, hidden in pairs(maximised.hidden) do
-      if hidden then daw.ui.hide(name) else daw.ui.show(name) end
-    end
-    local node = layout_node(maximised.view)
-    if node then node.size = maximised.size end
-    local name = maximised.view
-    maximised = nil
-    if daw.ui.views[name] then daw.ui.focus(name) end
-    return
+  if daw.layout.maximize() then
+    daw.notify(daw.ui.focused .. " fills the screen; `Ctrl-w _` again puts the others back")
   end
-  local name = daw.ui.focused
-  local keep = layout_node(name)
-  if not keep then return end
-  maximised = { view = name, hidden = {}, size = keep.size }
-  local function walk(node)
-    if node.view then
-      local view = daw.ui.views[node.view]
-      if node.view ~= name and view and view.focusable ~= false then
-        maximised.hidden[node.view] = node.hidden == true
-        node.hidden = true
-      end
-      return
-    end
-    for _, child in ipairs(node) do walk(child) end
-  end
-  walk(daw.ui.layout)
-  keep.size = nil
-  daw.ui.focus(name)
-  daw.notify(name .. " fills the screen; `Ctrl-w _` again puts the others back")
-end, { desc = "Give the focused panel the whole screen, or put the others back" })
+end, { desc = "Give the focused window the whole tab, or put the others back" })
 
-map("<C-w>+", "view.height 1", { desc = "Taller tracks, or a taller panel" })
-map("<C-w>-", "view.height -1", { desc = "Shorter tracks, or a shorter panel" })
-map("<C-w>=", "view.equal", { desc = "Track height back to automatic" })
-map("<C-w><lt>", "view.width -2", { desc = "Narrower side panel, or track headers" })
-map("<C-w>>", "view.width 2", { desc = "Wider side panel, or track headers" })
-map("<C-w>_", "view.maximize", { desc = "Maximise the focused panel, or restore" })
+map("<C-w>+", "view.height 1", { desc = "Taller window; with the arrange view alone, taller tracks" })
+map("<C-w>-", "view.height -1", { desc = "Shorter window; with the arrange view alone, shorter tracks" })
+map("<C-w>=", "view.equal", { desc = "Windows of equal size; with the arrange view alone, track height automatic" })
+map("<C-w><lt>", "view.width -2", { desc = "Narrower window; with the arrange view alone, track headers" })
+map("<C-w>>", "view.width 2", { desc = "Wider window; with the arrange view alone, track headers" })
+map("<C-w>_", "view.maximize", { desc = "Give the window the whole tab, or put the others back" })
 
 -- Exact values ----------------------------------------------------------------
 --

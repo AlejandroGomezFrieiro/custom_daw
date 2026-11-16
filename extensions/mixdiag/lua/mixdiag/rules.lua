@@ -90,6 +90,8 @@ rules.true_peak = {
           ctx.where(beat, r.true_peak_at), db(ceiling), why),
         fix = string.format("lower the limiter's ceiling (or the master) by at least %.1f dB; check a true-peak meter on the render", r.true_peak - ceiling),
         beat = beat, seconds = r.true_peak_at, track = 0,
+        -- How far a fader should come down to fix it (the diagnostic's fix).
+        lower = math.ceil((r.true_peak - ceiling) * 10) / 10,
       })
     elseif not ceiling and r.true_peak > 0 and r.clip_runs == 0 then
       add({
@@ -122,6 +124,7 @@ rules.loudness = {
         fix = string.format("%s the master by %.1f dB%s", diff > 0 and "lower" or "raise", math.abs(diff),
           diff < 0 and string.format(" (true peak would then be %s dBTP)", db(r.true_peak - diff)) or ""),
         beat = beat, track = 0,
+        lower = diff > 0 and math.floor(diff * 10 + 0.5) / 10 or nil,
       })
     elseif t.kind == "normalize" then
       if diff > rule.slack then
@@ -164,6 +167,7 @@ rules.track_over = {
           fix = string.format("lower its fader or clip gain by %.1f dB%s", t.peak + 0.1,
             master_clips and " (the master clips too)" or "; the mix is floating point, so this only clips in a device that clips, or when it reaches the master"),
           beat = beat, seconds = t.over_at, track = t.id,
+          lower = math.ceil((t.peak + 0.1) * 10) / 10,
         })
       end
     end

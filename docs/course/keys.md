@@ -114,6 +114,17 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
 
+## Write from the harmony (snippets, R)
+
+| Keys | |
+| --- | --- |
+| `<C-s>`, `:snippet name` | choose a snippet and write it at the cursor or over the selection (`3<C-s>` three times); in normal, insert and visual mode |
+| `<Tab>` `<S-Tab>` | while a snippet is active: its next choice, the one before (before a suggestion's keys) |
+| `<C-n>` `<C-p>` | the choice's next value, the one before, written again in the same undo step |
+| `<C-y>` `<Esc>` | done with the snippet |
+
+See [Harmony, completion and snippets](../harmony.md).
+
 ## Take a suggestion (piano roll, normal and insert mode)
 
 | Keys | |
@@ -167,14 +178,19 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 | Keys | |
 | --- | --- |
-| `<Tab>` `gt` | next view |
+| `<Tab>` `<C-w>w` | next window |
 | `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
 | `E` | in R: the clip's notes and controller moves as a list to change in place |
-| `<C-w>c` `<C-w>o` | close this panel, close every panel |
+| `<C-w>c` `<C-w>o` | close this window, close every other window |
+| `<C-w>s` `<C-w>v` | split the window, one above the other, side by side (`:vs roll` shows the piano roll beside) |
+| `<C-w>h` `<C-w>j` `<C-w>k` `<C-w>l` | the window left, below, above, right |
+| `<C-w>H` `<C-w>J` `<C-w>K` `<C-w>L` | move the window to the far left, bottom, top, right |
+| `<C-w>x` `<C-w>r` `<C-w>T` | exchange the window with the next, rotate them, the window to a tab of its own |
+| `gt` `gT` | next tab, previous tab (`:tabnew` makes one) |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
-| `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+| `ZZ` `ZQ` `:q` | save and quit, quit, close the window (quit in the last one) |
 
 ## Launch clips (the session view, `,l`)
 
@@ -195,10 +211,10 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 | Keys | |
 | --- | --- |
-| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
-| `gK` | in R: what the diagnostics and language servers say about the note |
-| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
-| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `]d` `[d` | next, previous diagnostic this view shows (R, A, M, D): the cursor goes there |
+| `gK` | what the diagnostics and language servers say about what is under the cursor |
+| `,ca` | fixes and actions for what is under the cursor; Enter makes one, as one undo step |
+| `:diagnostics` | every diagnostic, grouped by what it is about; Enter goes there |
 | `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
 ## The tutor
