@@ -17,8 +17,16 @@
 --
 -- `e.kind` is "down", "up", "move" (while a button is held), "hover" (the
 -- pointer moving over the window with no button down), "double" or
--- "wheel". Keys go to the view as they do in the terminal: through the key
--- mappings made for it, or its `on_key`.
+-- "wheel".
+--
+-- The same view shows its pixels in a terminal that shows images when its
+-- `render` keeps an area for them (`buf:surface`). `ctx.surface` is then
+-- true, `ctx.cell` the terminal's cell size `{ w, h }` in pixels and
+-- `ctx.fg`, `ctx.bg` its own colours (nil where it did not say), so that
+-- the view can lay out in whole cells and leave out what the terminal's
+-- own text shows (a toolbar). The pointer comes to `pointer` in pixels
+-- there too. Keys go to the view as they do in the terminal: through the
+-- key mappings made for it, or its `on_key`.
 --
 -- `g:sub(x, y, w, h)` gives a painter for part of the area: what is drawn
 -- through it is placed from its corner and cut off at its edges, which is
@@ -223,6 +231,31 @@ function Painter:mono(x, y, text, style, cells)
     style.color or c.text, style.background or "", attrs)
 end
 
+--- A glyph of a music font (SMuFL) with its origin at `x, y`: `size` is
+--- the font's em in pixels (four staff spaces), `codepoint` the glyph's,
+--- `colour` as for the rest, `font` the font's name (Leland when nil). Left
+--- out when it is wholly outside the painter, by its em.
+function Painter:glyph(x, y, size, codepoint, colour, font)
+  local x0, y0 = self:origin_x() + x, self:origin_y() + y
+  if x0 + size < self.x or x0 - size > self.x + self.width or y0 + size < self.y or y0 - size > self.y + self.height then return end
+  self.ops[#self.ops + 1] = { "g", x0, y0, size, codepoint, colour or c.text, font or "Leland" }
+end
+
+--- Where a frontend that cuts the drawing into images may cut it: a
+--- barline at `x`, across the band `y0` to `y1` (a system). Draws nothing.
+function Painter:cut(x, y0, y1)
+  local ox, oy = self:origin_x(), self:origin_y()
+  self.ops[#self.ops + 1] = { "cut", ox + x, oy + y0, oy + y1 }
+end
+
+--- What follows, up to the next layer, is the layer `name` (the page's
+--- "ink", or what moves over it: "selection", "caret", "ghost",
+--- "diagnostic", "playhead"), so a frontend can keep the page and draw the
+--- rest over it. Draws nothing.
+function Painter:layer(name)
+  self.ops[#self.ops + 1] = { "layer", name }
+end
+
 --- Whether a point of the painter's own coordinates is inside it.
 function Painter:contains(x, y)
   return x >= 0 and y >= 0 and x < self.width and y < self.height
@@ -382,16 +415,27 @@ end
 ---   { "t", x, y, text, colour, size, bold (0 or 1), align, width }
 ---   { "p", path commands, stroke, stroke width, fill }
 ---   { "m", x, y, w, h, text, colour, background, attributes }
---- (attributes add up 1 bold, 4 italic, 8 underline, 32 strike), and the
+---   { "g", x, y, size, code point, colour, font }
+---   { "cut", x, top, bottom }
+---   { "layer", name }
+--- (attributes add up 1 bold, 4 italic, 8 underline, 32 strike; `g` is a
+--- glyph of a SMuFL font, `size` pixels to the em, `cut` a barline the
+--- terminal may cut its images at, `layer` what follows drawn over the
+--- page: see crates/daw-raster), and the
 --- window's title, which a view may change as it goes. `opts`: `cell`, the
---- size `{ w, h }` of a cell of the window's monospace font, and `fresh`
---- when the window has nothing yet. A view that draws cells answers
+--- size `{ w, h }` of a cell of the window's monospace font (or of the
+--- terminal's, for a surface), `fresh` when the window has nothing yet,
+--- `surface` when the drawing goes into a terminal's cells, `colors`
+--- `{ fg, bg }`, the terminal's, and `glyphs` when the frontend draws
+--- glyphs itself. The view's `paint` is given these in its context, as
+--- `cell`, `surface`, `fg` and `bg`. A view that draws cells answers
 --- `{ same = true }` when nothing would change.
 function M.paint(name, width, height, opts)
   local view = daw.ui.views[name]
   local window = M.open_views[name]
   opts = opts or {}
-  if opts.cell and (opts.cell.w or 0) > 0 then M.cell = { w = opts.cell.w, h = opts.cell.h } end
+  -- A terminal's cell is the surface's own: the window's stays as it measured it.
+  if opts.cell and (opts.cell.w or 0) > 0 and not opts.surface then M.cell = { w = opts.cell.w, h = opts.cell.h } end
   if view and not view.paint then
     if not (window and window.cells) then return nil end
     return paint_cells(name, window, width, height, opts)
@@ -399,7 +443,11 @@ function M.paint(name, width, height, opts)
   if not view then return nil end
   local ops = {}
   local g = painter(ops, 0, 0, width, height)
-  local ok, err = xpcall(view.paint, debug.traceback, view, g, { width = width, height = height, focused = daw.ui.focused == name })
+  local colors = opts.colors or {}
+  local ok, err = xpcall(view.paint, debug.traceback, view, g, {
+    width = width, height = height, focused = daw.ui.focused == name,
+    cell = opts.surface and opts.cell or M.cell, surface = opts.surface or false, fg = colors.fg, bg = colors.bg,
+  })
   if not ok then
     -- Show the failure where the view would have been.
     ops = {}

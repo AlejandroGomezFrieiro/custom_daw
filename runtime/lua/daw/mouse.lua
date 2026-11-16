@@ -158,6 +158,63 @@ function M.to_view(view, event)
   if view.on_mouse then view:on_mouse(daw.util.merge(event, { view_x = 0, view_y = 0 })) end
 end
 
+--- Called by `daw.ui.mouse` for the view an event goes to: over the
+--- pixels the view shows (`buf:surface`), the event goes to the view's
+--- `pointer` as a window gives it (`daw.canvas`), in pixels of its drawing:
+--- where the terminal reports the pointer in pixels, exactly; elsewhere at
+--- the middle of the cell. `kind` is "down", "up", "move" (a button held),
+--- "hover", "double" (after the second press) or "wheel" (`dx`, `dy`); the
+--- modifiers are `ctrl`, `shift` and `alt`; `col`, `row` are the screen
+--- cell under the pointer, where a menu opens. A drag and its release go to
+--- the surface the press was on, wherever the pointer has gone. True when
+--- the event went there.
+function M.to_surface(target, event)
+  local surface
+  for _, s in ipairs(daw.ui.rects.surfaces or {}) do
+    if s.name == target.name then surface = s end
+  end
+  local view = surface and daw.ui.views[surface.name]
+  if not (view and view.pointer) then
+    state.surface = nil
+    return false
+  end
+  local s, kind = surface, event.kind
+  local inside = event.x >= s.x and event.x < s.x + s.w and event.y >= s.y and event.y < s.y + s.h
+  if kind == "down" then
+    state.surface = inside and s.name or nil
+  elseif kind == "drag" or kind == "up" then
+    inside = state.surface == s.name
+    if kind == "up" then state.surface = nil end
+  end
+  if not inside then return false end
+  local cw, ch = s.cell.w, s.cell.h
+  local e = {
+    x = event.px and event.px - s.x * cw or (event.x - s.x + 0.5) * cw,
+    y = event.py and event.py - s.y * ch or (event.y - s.y + 0.5) * ch,
+    ctrl = M.has(event, "C"), shift = M.has(event, "S"), alt = M.has(event, "A"),
+    button = event.button ~= "" and event.button or nil,
+    col = event.x, row = event.y,
+  }
+  if kind == "drag" then
+    e.kind = "move"
+  elseif kind == "move" then
+    e.kind = "hover"
+  elseif kind:match("^scroll") then
+    -- A notch of the wheel is three rows, up and left positive, as a window has it.
+    local step, sideways = M.wheel(event)
+    local d = -step * 3 * ch
+    e.kind, e.dx, e.dy = "wheel", sideways and d or 0, sideways and 0 or d
+  else
+    e.kind = kind
+  end
+  daw.limit.named("the mouse", view.pointer, view, e)
+  if kind == "down" and event.double then
+    daw.limit.named("the mouse", view.pointer, view, daw.util.merge(e, { kind = "double" }))
+  end
+  api.ui_redraw()
+  return true
+end
+
 --- Called by `daw.ui.mouse` last: a move over nothing that says what it is
 --- under the pointer clears what the status line said.
 function M.done(event)

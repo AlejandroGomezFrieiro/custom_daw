@@ -1090,6 +1090,7 @@ dependencies = [
  "ashpd",
  "daw-listen",
  "daw-proto",
+ "daw-raster",
  "libc",
  "serde_json",
  "slint",

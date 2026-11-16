@@ -3,6 +3,7 @@
 --   buf:text(x, y, text, style)        draw text, returns the columns it takes
 --   buf:fill(x, y, w, h, char, style)  restyle an area; `char` overwrites it too
 --   buf:sub(x, y, w, h)                a buffer for part of this one
+--   buf:surface(x, y, w, h, name)      keep an area for a view's pixels
 --   buf.width, buf.height
 --
 -- Coordinates count cells from 0 at the buffer's top-left corner, and
@@ -31,6 +32,16 @@ end
 
 function Buf:fill(x, y, w, h, char, style)
   grid_fill(self.x + x, self.y + y, w, h, char, style, self.cx, self.cy, self.cw, self.ch)
+end
+
+--- Keep an area for the pixels of a view that paints (`name`, the view
+--- being drawn by default), where the terminal shows images: its `paint`
+--- draws there at the terminal's cell size, after the screen is drawn.
+--- The cells are left blank. False where the terminal shows cells only,
+--- for the view to draw them instead:
+---   if buf:surface(0, 1, buf.width, buf.height - 1) then return end
+function Buf:surface(x, y, w, h, name)
+  return daw.ui.surface(self, x, y, w, h, name)
 end
 
 function Buf:sub(x, y, w, h)

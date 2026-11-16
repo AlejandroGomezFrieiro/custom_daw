@@ -23,6 +23,7 @@ local defaults = {
   ascii = false,           -- draw with plain ASCII characters only
   braille = true,          -- draw curves with braille dots
   mouse = true,            -- the terminal reports the pointer; false leaves it to the terminal's own selection
+  graphics = true,         -- views that paint show pixels where the terminal shows images; false keeps cells
   follow = true,           -- scroll to keep the playhead in view
   fps = 30,                -- redraw rate while something is moving
   clip_length = 4,         -- beats, for new MIDI clips

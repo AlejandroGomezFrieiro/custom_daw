@@ -269,6 +269,15 @@ impl Drawing {
         Some(pixmap)
     }
 
+    /// Page and overlay together, `scale` pixels to a pixel of the drawing.
+    pub fn paint_scaled(&self, width: u32, height: u32, scale: f32) -> Option<Pixmap> {
+        let mut pixmap = Pixmap::new(width.max(1), height.max(1))?;
+        let at = Transform::from_scale(scale, scale);
+        paint_with(&mut pixmap, &self.page, at);
+        paint_with(&mut pixmap, &self.overlay, at);
+        Some(pixmap)
+    }
+
     /// Page and overlay together.
     pub fn paint_all(&self, width: u32, height: u32) -> Option<Pixmap> {
         let mut pixmap = self.paint_page(width, height)?;
@@ -365,7 +374,12 @@ fn bounds(op: &Op) -> [f32; 4] {
 
 /// Draw items onto a pixmap whose corner is at `(dx, dy)` of the drawing.
 pub fn paint(pixmap: &mut Pixmap, items: &[Item], dx: f32, dy: f32) {
-    let shift = Transform::from_translate(-dx, -dy);
+    paint_with(pixmap, items, Transform::from_translate(-dx, -dy));
+}
+
+/// Draw items onto a pixmap through a transform: `scale` for a screen with
+/// more pixels than the drawing's (a window on a HiDPI screen).
+pub fn paint_with(pixmap: &mut Pixmap, items: &[Item], shift: Transform) {
     for item in items {
         match &item.op {
             Op::Rect { x, y, w, h, fill, stroke, width, radius } => {
@@ -416,7 +430,7 @@ pub fn paint(pixmap: &mut Pixmap, items: &[Item], dx: f32, dy: f32) {
                 if let Some(glyph) = font.face().glyph_index(*codepoint)
                     && let Some(path) = font.outline(glyph)
                 {
-                    let at = Transform::from_row(*size, 0.0, 0.0, *size, x - dx, y - dy);
+                    let at = Transform::from_row(*size, 0.0, 0.0, *size, *x, *y).post_concat(shift);
                     pixmap.fill_path(&path, &colour.paint(), FillRule::Winding, at, None);
                 }
             }
@@ -489,7 +503,7 @@ fn draw_text(pixmap: &mut Pixmap, shift: Transform, font: Font, text: &str, x: f
             break;
         }
         if let Some(path) = font.outline(glyph) {
-            let at = Transform::from_row(size, 0.0, 0.0, size, pen + shift.tx, baseline + shift.ty);
+            let at = Transform::from_row(size, 0.0, 0.0, size, pen, baseline).post_concat(shift);
             pixmap.fill_path(&path, &paint, FillRule::Winding, at, None);
         }
         pen += advance;

@@ -8,6 +8,11 @@
   what servers say about a note through the float, not a tooltip of its own,
   and marks no clips with diagnostics in its arrange view (the terminal's does).
 
+- Pictures in the terminal: only by the kitty graphics protocol, as direct
+  placements (not Sixel, not iTerm's, not Unicode placeholders), so not
+  through tmux, which does not pass them on; a terminal that puts images
+  over images well is known only by its name (kitty, Ghostty, herdr), and
+  any other has the moving parts drawn into the page.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next.
 - The mouse in the terminal: an audio clip's fades and gain are not dragged

@@ -1117,6 +1117,8 @@ struct Canvas {
     items: Rc<VecModel<CanvasItem>>,
     painted: Instant,
     size: (f32, f32),
+    /// The drawing the image shows, and at what size: not made again for the same.
+    drawn: (Value, (f32, f32)),
 }
 
 /// A colour of a drawing: `#rrggbb`, `#rrggbbaa`, or nothing for none.
@@ -1132,7 +1134,8 @@ fn paint_colour(value: &Value) -> Color {
     }
 }
 
-/// One operation of a drawing (see `daw.canvas.paint`) as the window shows it.
+/// One operation of a view drawn in cells (see `daw.canvas.paint`) as the
+/// window shows it: a rectangle or a run of monospace cells.
 fn canvas_item(op: &Value) -> Option<CanvasItem> {
     let clear = Color::from_argb_u8(0, 0, 0, 0);
     let mut item = CanvasItem {
@@ -1146,9 +1149,7 @@ fn canvas_item(op: &Value) -> Option<CanvasItem> {
         stroke: clear,
         stroke_width: 1.0,
         radius: 0.0,
-        size: 12.0,
         bold: false,
-        align: 0,
         italic: false,
         underline: false,
         strike: false,
@@ -1173,35 +1174,20 @@ fn canvas_item(op: &Value) -> Option<CanvasItem> {
             (item.fill, item.stroke) = (paint_colour(&op[5]), paint_colour(&op[6]));
             (item.stroke_width, item.radius) = (number(&op[7]), number(&op[8]));
         }
-        "t" => {
-            item.kind = 1;
-            (item.x, item.y) = (number(&op[1]), number(&op[2]));
-            item.text = text(&op[3]);
-            item.fill = paint_colour(&op[4]);
-            item.size = number(&op[5]);
-            item.bold = number(&op[6]) > 0.5;
-            item.align = match op[7].as_str() {
-                Some("center") => 1,
-                Some("right") => 2,
-                _ => 0,
-            };
-            (item.w, item.h) = (number(&op[8]).min(4000.0), item.size * 1.5);
-            if item.align == 1 {
-                // Centred text is centred on its `x`.
-                item.x -= item.w / 2.0;
-            } else if item.align == 2 {
-                item.x -= item.w;
-            }
-        }
-        "p" => {
-            item.kind = 2;
-            item.text = text(&op[1]);
-            (item.stroke, item.stroke_width) = (paint_colour(&op[2]), number(&op[3]));
-            item.fill = paint_colour(&op[4]);
-        }
         _ => return None,
     }
     Some(item)
+}
+
+/// A drawing (see `daw.canvas.paint`) as an image of a window's size in
+/// logical pixels, at the screen's scale.
+fn raster(ops: &Value, size: (f32, f32), scale: f32) -> Image {
+    let (width, height) = ((size.0 * scale).round().max(1.0) as u32, (size.1 * scale).round().max(1.0) as u32);
+    let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
+    if let Some(pixmap) = daw_raster::Drawing::parse(ops).paint_scaled(width, height, scale) {
+        buffer.make_mut_bytes().copy_from_slice(pixmap.data());
+    }
+    Image::from_rgba8_premultiplied(buffer)
 }
 
 /// What the window shows, and which revision of the project it reflects.
@@ -4492,6 +4478,7 @@ fn run() -> Result<()> {
                             items,
                             painted: Instant::now() - Duration::from_secs(1),
                             size: (0.0, 0.0),
+                            drawn: (Value::Null, (0.0, 0.0)),
                         },
                     );
                 }
@@ -4511,6 +4498,7 @@ fn run() -> Result<()> {
                 let opts = json!({
                     "cell": { "w": canvas.window.get_cell_width(), "h": canvas.window.get_cell_height() },
                     "fresh": canvas.items.row_count() == 0,
+                    "glyphs": true,
                 });
                 let drawing = client
                     .borrow_mut()
@@ -4518,8 +4506,15 @@ fn run() -> Result<()> {
                 if let Ok(drawing) = drawing
                     && drawing["same"] != true
                 {
-                    let items: Vec<CanvasItem> = rows(&drawing["ops"]).iter().filter_map(canvas_item).collect();
-                    sync(&canvas.items, items);
+                    if *cells {
+                        let items: Vec<CanvasItem> = rows(&drawing["ops"]).iter().filter_map(canvas_item).collect();
+                        sync(&canvas.items, items);
+                    } else if canvas.drawn.0 != drawing["ops"] || canvas.drawn.1 != size {
+                        // A view that paints is one image, made by the
+                        // rasterizer the terminal uses: the same pixels in both.
+                        canvas.window.set_raster(raster(&drawing["ops"], size, canvas.window.window().scale_factor()));
+                        canvas.drawn = (drawing["ops"].clone(), size);
+                    }
                 }
             }
         }
