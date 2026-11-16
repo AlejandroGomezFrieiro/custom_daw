@@ -33,18 +33,24 @@
   other formats carry it), and a file dialog for the cover in the render
   dialog: its path is typed. Tags are text only: no lyrics, ISRC, composer,
   disc number or replay gain.
-- For instances on other machines: encryption of network connections
-  (SSH does it today), hearing the instance's sound on the machine you sit
-  at, sending it files from that machine, and a cursor and mode for each
-  connection (every terminal and window of an instance shares one).
+- For instances on other machines: the sound is sent as plain 16-bit
+  samples (about 1 Mbit/s) rather than Opus, which has no encoder in pure
+  Rust worth shipping; nothing is sent the other way (recording from the
+  client's microphone); only sound files are sent and imported from the
+  client's disk (there is no MIDI file import at all, and projects open
+  and save on the instance's disk); options such as the zoom, MIDI step
+  input, the automation lanes and tempo lane shown are shared by every
+  seat; a view docked by an extension after a seat opened shows only in
+  the seat that docked it; a window's seat does not survive `:reload`.
 - Per-track loudness and spectrum in the painted mix report: the measurement
   gives each track only its peak, so the track meters are peaks, not LUFS
   or RMS. What an extension draws on the terminal's arrange view shows in
   the window only as a band it adds too.
 - Dropping files where the pointer is: the window cannot learn where a file
   from a file manager is dropped (winit 0.30 reports no position), and on
-  Wayland it is told of no drops at all. The desktop's file dialogs are
-  not shown for a kernel the window attached to with `--socket`.
+  Wayland it is told of no drops at all. For a kernel the window attached
+  to, the desktop's file dialog is only shown to import (the file chosen is
+  sent to the kernel); Open and Save as browse the kernel's disk.
 - For devices written in Lua: a window of their own drawn by the script
   (they show their parameters as sliders, like any device), sample-accurate
   parameter moves within a block (a block reads each parameter once), state

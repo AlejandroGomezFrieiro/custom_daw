@@ -33,6 +33,7 @@ mod keep;
 mod loading;
 pub mod media;
 mod midi_out;
+mod monitor;
 mod stretching;
 pub use loading::OpenOpts;
 pub mod notes;

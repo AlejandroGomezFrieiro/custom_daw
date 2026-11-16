@@ -16,6 +16,8 @@ local view = {
   -- `top`, `rows` and `th` (the first track shown, how many, rows per track).
   layers = {},
 }
+daw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry", "comp" },
+  { scroll = 0, top = 1, flags = {} })
 
 local draw = daw.draw
 

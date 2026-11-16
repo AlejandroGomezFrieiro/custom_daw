@@ -10,9 +10,9 @@
 //! queue per connection, in the order they were made.
 //!
 //! Two ways in: a Unix socket, which whoever may open the file may use, and
-//! TCP, where a connection first has to show that it knows the token
-//! without sending it (`hello`). TCP is not encrypted: it is for a network
-//! you trust, and for anything else it goes through SSH or a VPN.
+//! TCP, inside TLS (see `crate::tls`), where a connection first has to show
+//! that it knows the token without sending it (`hello`). TCP in the clear
+//! is only there when asked for, for a network you trust.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -24,7 +24,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
-pub use daw_proto::{ClientId, Connection, VERSION, proof, sha256};
+pub use daw_proto::tls::known_path;
+pub use daw_proto::{ClientId, Connection, VERSION, Wire, proof, sha256};
 use daw_proto::hex;
 use serde_json::{Value, json};
 
@@ -43,6 +44,15 @@ const MAX_HELLO: u64 = 4096;
 
 /// How long a network connection has to show the token.
 const HELLO_TIME: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long a connection to a TLS port may stay quiet before it is taken
+/// for a client that waits to be greeted in the clear, as those from before
+/// TLS do. A TLS client speaks at once.
+const PLAIN_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// What a client that does not speak TLS is told by a port that only does.
+const TLS_ONLY: &str = "this instance takes network connections in TLS only (protocol 3): \
+    connect with a daw as new as it, or start the instance with --no-tls";
 
 /// One connection's way out.
 struct Out {
@@ -153,11 +163,13 @@ pub fn serve(path: &Path, kernel: Sender<KernelMsg>, clients: Clients) -> Result
 }
 
 /// Listen on a TCP address (`127.0.0.1:7700`, `0.0.0.0:7700`) for
-/// connections that know `token`. Returns the address bound, which says
-/// which port was given when the address asked for port 0.
+/// connections that know `token`: in TLS with `tls`, else in the clear.
+/// Returns the address bound, which says which port was given when the
+/// address asked for port 0.
 pub fn serve_tcp(
     address: &str,
     token: String,
+    tls: Option<Arc<rustls::ServerConfig>>,
     kernel: Sender<KernelMsg>,
     clients: Clients,
 ) -> Result<std::net::SocketAddr> {
@@ -170,21 +182,37 @@ pub fn serve_tcp(
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let (kernel, clients, token) = (kernel.clone(), clients.clone(), token.clone());
+            let tls = tls.clone();
             std::thread::spawn(move || {
                 // Small messages both ways: do not wait to fill a packet.
                 let _ = stream.set_nodelay(true);
                 // Whoever connects and says nothing does not keep a thread.
                 let _ = stream.set_read_timeout(Some(HELLO_TIME));
-                if let (Ok(writer), Ok(closer), Ok(known)) =
-                    (stream.try_clone(), stream.try_clone(), stream.try_clone())
-                {
-                    let close = move || {
-                        let _ = closer.shutdown(std::net::Shutdown::Both);
-                    };
-                    let trusted = move || {
-                        let _ = known.set_read_timeout(None);
-                    };
-                    connection(stream, writer, kernel, clients, Some(token), close, trusted);
+                let (Ok(closer), Ok(known)) = (stream.try_clone(), stream.try_clone()) else {
+                    return;
+                };
+                let close = move || {
+                    let _ = closer.shutdown(std::net::Shutdown::Both);
+                };
+                let trusted = move || {
+                    let _ = known.set_read_timeout(None);
+                };
+                let Some(config) = tls else {
+                    if let Ok(writer) = stream.try_clone() {
+                        connection(stream, writer, kernel, clients, Some(token), close, trusted);
+                    }
+                    return;
+                };
+                // A TLS client opens with a handshake record; anything else
+                // is told what this port wants.
+                if first_byte(&stream) != Some(0x16) {
+                    return refuse_plain(stream);
+                }
+                let Ok(server) = rustls::ServerConnection::new(config) else {
+                    return;
+                };
+                if let Ok((reader, writer)) = daw_proto::tls::split(server.into(), stream) {
+                    connection(reader, writer, kernel, clients, Some(token), close, trusted);
                 }
             });
         }
@@ -192,17 +220,38 @@ pub fn serve_tcp(
     Ok(bound)
 }
 
+/// The first byte a new connection sends, or nothing when it waits to be
+/// spoken to first (or goes away).
+fn first_byte(stream: &std::net::TcpStream) -> Option<u8> {
+    let _ = stream.set_read_timeout(Some(PLAIN_WAIT));
+    let mut byte = [0u8; 1];
+    let seen = matches!(stream.peek(&mut byte), Ok(1));
+    let _ = stream.set_read_timeout(Some(HELLO_TIME));
+    seen.then_some(byte[0])
+}
+
+/// Tell a client that speaks in the clear, on a port that only takes TLS,
+/// why it will not be listened to: in the greeting it waits for, and in
+/// the answer to its first request.
+fn refuse_plain(mut stream: std::net::TcpStream) {
+    let hello = json!({ "event": "hello", "payload": { "version": VERSION, "error": TLS_ONLY } });
+    if writeln!(stream, "{hello}").is_err() {
+        return;
+    }
+    let mut line = Vec::new();
+    let mut reader = BufReader::new((&stream).take(MAX_HELLO));
+    if reader.read_until(b'\n', &mut line).is_ok()
+        && let Ok(request) = serde_json::from_slice::<Value>(&line)
+    {
+        let _ = writeln!(stream, "{}", json!({ "id": request["id"], "error": TLS_ONLY }));
+    }
+    let _ = stream.shutdown(std::net::Shutdown::Both);
+}
+
 /// Where the token for network connections is kept on this machine:
 /// `$XDG_STATE_HOME/daw/token`.
 pub fn token_path() -> PathBuf {
-    std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
-        })
-        .unwrap_or_else(std::env::temp_dir)
-        .join("daw")
-        .join("token")
+    daw_proto::state_dir().join("token")
 }
 
 /// The token in `path`, made and written there (readable by its owner

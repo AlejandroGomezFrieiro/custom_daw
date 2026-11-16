@@ -588,6 +588,10 @@ export component App inherits Window {
     // The desktop's file dialog for the render's file (or folder), when it has one.
     callback choose-render-path();
     in-out property <bool> render-open;
+    // The kernel is one this window attached to, perhaps on another
+    // machine, and its sound is being played here.
+    in property <bool> remote;
+    in property <bool> listening;
     in-out property <string> render-path;
     in property <[RangeChoice]> render-ranges;
     in-out property <int> render-range;
@@ -1630,6 +1634,17 @@ in property <string> render-stage;
                             for entry in root.engine-info: MenuItem {
                                 title: entry.label;
                                 enabled: false;
+                            }
+                            MenuSeparator { }
+                            // Its sound, sent over the connection: for a
+                            // window attached from another machine.
+                            MenuItem {
+                                title: "Hear it on this machine";
+                                checked: root.listening;
+                                enabled: root.remote;
+                                activated => {
+                                    root.command("listen");
+                                }
                             }
                             MenuSeparator { }
                             MenuItem {

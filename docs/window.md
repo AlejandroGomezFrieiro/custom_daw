@@ -107,8 +107,11 @@ no toolkit linked). It offers projects, sound files and all files, and starts
 where a file was last chosen, else beside the project; the list picker starts
 in the same place. The dialog does not stop the window. Without a portal (no
 session bus, a bare window manager), with `daw.opt.native_dialogs = false`, or
-when the window is attached to a kernel with `--socket` (which may be on
-another machine), the kernel's list picker is used, as it always was. A
+when the window is attached to a kernel with `--socket` or `--connect`
+(which may be on another machine), the kernel's list picker is used, as it
+always was; but Import still shows the desktop's dialog there, and sends
+the sound file chosen to the kernel (see
+[Running it](running.md#on-another-machine)). A
 project chosen this way asks about unsaved changes like any other way of
 opening one: `daw.frontend.act.leave(how, "open:" .. path)`.
 
@@ -120,7 +123,15 @@ taken. What a drop means is `daw.frontend.act.drop(paths, row, beat)`: with a
 `row` (a place in the list of tracks) and a `beat` it puts the files one
 after another on that track, at the beat on the grid; the window cannot say
 where the pointer was, for winit 0.30 does not tell, so it passes neither.
-Wayland sends the window no drops at all with this version of winit.
+Wayland sends the window no drops at all with this version of winit. On a
+window attached to a kernel it did not start, the sound files dropped are
+sent to the kernel first, into its project's media folder; nothing else is.
+
+A window attached to a kernel (`--socket`, `--connect`) has a seat of its
+own there: its own cursor, selection and mode, beside the kernel's
+terminal and other windows. The engine menu's "Hear it on this machine"
+(or `--listen-audio`) plays the kernel's sound through this machine's
+device, a quarter of a second late or more.
 
 Every key still goes to the kernel's key mappings, so the window is also
 driven exactly as the terminal UI is: the same modes, operators, registers

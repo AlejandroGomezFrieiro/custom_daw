@@ -3,7 +3,7 @@
 A running `daw` is a server. Other programs (the window, `daw ctl`,
 `daw attach`, the MCP server, your own scripts) connect to it, call into
 it, and are told what happens in it. This page is the whole protocol,
-version 2.
+version 3.
 
 ## Connecting
 
@@ -12,19 +12,33 @@ Messages are JSON objects, one per line, UTF-8, in both directions.
 | Way in | Who may use it |
 | --- | --- |
 | A Unix socket, `$XDG_RUNTIME_DIR/daw.sock` unless `--listen <path>` names another (`--no-listen` for none) | whoever may open the file: you, on that machine |
-| TCP, when the instance is started with `--listen-tcp <host:port>` | whoever can reach the port and knows the token |
+| TCP inside TLS, when the instance is started with `--listen-tcp <host:port>` | whoever can reach the port and knows the token |
 
 The token is 32 hexadecimal digits in `~/.local/state/daw/token`
 (`--token-file <path>` for another place), made the first time it is needed
 and readable by you alone. Copy it to the machines that may connect.
 
-TCP is **not encrypted**. The token itself never crosses the wire (see
-`hello`), but everything said afterwards can be read, and changed, by
-whoever sits between the two machines: `eval` runs any Lua, so that is
-the machine. Use `--listen-tcp` on a network you trust (`127.0.0.1:7700` is
-this machine only; `0.0.0.0:7700` is every network the machine is on), and
-for anything else leave it off and carry the Unix socket through SSH,
-which needs nothing from this program:
+TCP is encrypted with TLS 1.3 (or 1.2), from the first byte; the lines
+below go inside it. The instance makes a self-signed certificate the first
+time it listens, keeps it in `~/.local/state/daw/tls/` and prints its
+fingerprint (the SHA-256 of the certificate, in groups of four hexadecimal
+digits) when it starts. There is no authority to vouch for it: a client
+trusts the certificate the first time it connects to an address and holds
+the instance to it afterwards, as SSH does with host keys. `daw`'s clients
+remember it in `~/.local/state/daw/known_instances` (an address and a
+fingerprint on each line), refuse a different one naming both, and take a
+new one with `--accept-certificate`. A client of your own can do the same
+with any TLS library: accept the certificate shown, compare its
+fingerprint with the one remembered.
+
+`--no-tls` (on the instance and on `daw`'s clients) speaks the lines in
+the clear instead, for a network you trust: `eval` runs any Lua, so
+whoever can change what is said can run anything on the instance's
+machine. A client that speaks in the clear to a port that only takes TLS
+is greeted with `{"event": "hello", "payload": {"version": 3, "error":
+"…"}}` (after a second and a half of silence, or at once if it speaks
+first) and its first request is answered with that error. SSH needs
+nothing from this program either:
 
 ```sh
 ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
@@ -47,7 +61,7 @@ are answered in order. A request with `"id": null` is answered with
 
 | Method | Parameters | Does |
 | --- | --- | --- |
-| `hello` | `{ "proof": "…" }` over TCP, `{}` otherwise | says who is there; answers `{ "version": 2, "client": n }` |
+| `hello` | `{ "proof": "…" }` over TCP, `{}` otherwise | says who is there; answers `{ "version": 3, "client": n }` |
 | `eval` | Lua source, then values for its `...` | runs it in the kernel and answers what it returns |
 | `cmd` | a command line, as after `:` | runs the command |
 | `keys` | keys, as typed: `"ggdd"`, `"<C-s>"` | types them |
@@ -55,11 +69,17 @@ are answered in order. A request with `"id": null` is answered with
 | any `daw.api` function | its arguments | calls it: `track_add`, `transport_get`, … |
 | `subscribe` | event names or patterns | events are pushed from now on; answers the list in force |
 | `unsubscribe` | patterns, or nothing for all | stops them |
-| `frontend.watch` | `{ "interval": ms }` (33) | `frontend.state` events from now on |
+| `frontend.watch` | `{ "interval": ms, "seat": "own" or "instance" }` (33, `own`) | `frontend.state` events from now on, seen from a seat of the connection's own or the instance's |
 | `frontend.unwatch` | | stops them |
 | `ui.attach` | width, height in cells | this connection becomes a terminal: `ui.grid` events from now on |
 | `ui.input` | one input event | typing and pointing in that terminal |
 | `ui.detach` | | stops being a terminal |
+| `file.begin` | `{ "name": "take.wav", "size": bytes }` | starts sending a file; answers its upload number |
+| `file.chunk` | upload number, the next bytes in base64 | answers how many bytes have arrived |
+| `file.end` | upload number | answers where the whole file is on the instance's machine |
+| `file.abort` | upload number | throws away what arrived |
+| `monitor.listen` | | `audio.frame` events from now on; answers `{ "rate", "channels", "format", "frame_ms" }` |
+| `monitor.unlisten` | | stops them |
 
 An extension adds methods of its own with
 `daw.remote.methods["name"] = function(client, ...) return … end`.
@@ -69,7 +89,7 @@ An extension adds methods of its own with
 Over TCP the kernel speaks first:
 
 ```json
-{"event": "hello", "payload": {"version": 2, "nonce": "9f1c…"}}
+{"event": "hello", "payload": {"version": 3, "nonce": "9f1c…"}}
 ```
 
 and listens to nothing until the connection has answered with the proof
@@ -78,7 +98,7 @@ colon and the nonce.
 
 ```json
 {"id": 1, "method": "hello", "params": [{"proof": "sha256(token + ':' + nonce)"}]}
-{"id": 1, "result": {"version": 2, "client": 7}}
+{"id": 1, "result": {"version": 3, "client": 7}}
 ```
 
 A wrong proof is answered with an error and the connection is closed. On
@@ -170,27 +190,90 @@ with keys in the notation key mappings use, mouse kinds `down`, `up`,
 `drag`, `move`, `scroll_up`, `scroll_down`, `scroll_left`, `scroll_right`,
 and `mods` any of `C`, `A`, `S`.
 
-Every terminal of an instance shows the same screen, as wide and tall as
-whichever was sized last, and types into the same session: it is one
-instance seen from several places, not one each. `:detach` (or
-`ui.detach`) lets a remote terminal go, answered with a `ui.detached`
-event; the instance runs on. `:q` quits the instance for everyone.
+`:detach` (or `ui.detach`) lets a remote terminal go, answered with a
+`ui.detached` event; the instance runs on. `:q` quits the instance for
+everyone.
+
+## Seats
+
+The project is one; what each person sees and is in the middle of is
+their own. A connection that attaches (`ui.attach`) or watches
+(`frontend.watch`, unless it asks for `"seat": "instance"`) has a seat:
+its own focused view and panels shown, edit cursor, mode, selection, keys
+half typed, registers, marks, prompt and scroll, and a terminal drawn at
+its own size. Every call that connection makes (`eval`, `cmd`, `keys`,
+`daw.frontend.act.*`) happens in its seat. The instance's own seat is its
+terminal's, if it has one, and that of every connection without a seat of
+its own (`daw ctl`, scripts). A new seat starts at the instance's cursor,
+with the instance's panels shown, in normal mode; it closes with its
+connection. Edits from two seats are steps in the one undo history.
+Options (`daw.opt`) are shared. In Lua, `daw.seats` says whose turn it is
+(`daw.seats.current`); see runtime/lua/daw/seats.lua for how a module
+keeps state of its own for each seat.
+
+## Files
+
+A client on another machine sends a file into the project's media folder
+(beside a saved project, else a scratch folder) with `file.begin`, as
+many `file.chunk` as it takes (1 MB each is right) and `file.end`, then
+imports the path `file.end` answers like any other:
+
+```json
+{"id": 1, "method": "file.begin", "params": [{"name": "take.wav", "size": 2400044}]}
+{"id": 1, "result": 1}
+{"id": 2, "method": "file.chunk", "params": [1, "UklGRiw…"]}
+{"id": 2, "result": 1048576}
+…
+{"id": 4, "method": "file.end", "params": [1]}
+{"id": 4, "result": "/home/me/songs/media/take.wav"}
+{"id": 5, "method": "eval", "params": ["daw.commands.run('import', { ... })", "/home/me/songs/media/take.wav"]}
+```
+
+The name keeps only its last part; a name taken already gets `-2`, `-3`…
+The file has its name only once it is whole; one that has not ended when
+its connection closes is thrown away. `:upload <path>` typed in an
+attached terminal sends the connection `{"event": "file.wanted",
+"payload": {"path": "…", "import": true}}`, for its program to send that
+file from its own disk; `daw attach` does.
+
+## Sound
+
+`monitor.listen` sends the connection what the instance plays, as it
+plays it:
+
+```json
+{"event": "audio.frame", "payload": {"seq": 41, "rate": 24000, "channels": 2, "pcm": "…"}}
+```
+
+Each frame is 20 ms of sound, left and right interleaved, as 16-bit
+little-endian samples in base64, at half the engine's rate (a quarter at
+88.2 kHz and above). That is about 770 kbit/s, a megabit with base64 and
+JSON. `seq` counts from 1. The engine only makes the copy while someone
+listens. `:listen` sends a terminal's or window's connection
+`{"event": "monitor.toggle"}`, for its program to start or stop
+listening; `daw attach` and `daw-gui` do, playing the frames through a
+jitter buffer that waits for 200 ms and holds at most a second.
 
 ## What is not here
 
-- Encryption on TCP: see above.
-- A cursor, mode and selection for each connection: every frontend
-  shares one.
-- Sound. A remote instance plays on its own machine's sound device.
-  PipeWire can carry that to another machine by itself.
-- Files from the client's disk. Open, save, import and render browse
-  the instance's own disk.
+- Sound in compressed form: frames are plain 16-bit samples (no pure Rust
+  Opus encoder is good enough to ship, and no C codec is linked), and
+  nothing goes from the client to the instance (no recording from the
+  client's microphone).
+- Opening and saving projects on the client's disk: Open, Save and
+  Render use the instance's.
 - Plugin windows. They open on the instance's display.
 
 ## In Rust
 
-The crate `daw-proto` (no dependencies but `serde_json` and `anyhow`) is
-the client's side: `Connection::unix(path)` or `Connection::tcp(address,
-token)`, then `call(method, params)`, `notify(method, params)` and the
-`events` channel. `daw_core::remote::apply` puts `ui.grid` events into
-a grid of cells.
+The crate `daw-proto` (with `serde_json`, `anyhow`, `base64` and
+`rustls` on `ring`, no OpenSSL) is the client's side:
+`Connection::unix(path)` or `Connection::tcp(address, token)` (TLS,
+remembering the certificate in the state directory;
+`Connection::tcp_with(address, token, &Wire::…)` chooses where, or the
+clear), then `call(method, params)`, `notify(method, params)`, the
+`events` channel, `send_file(path)` and `send_and_import(path)`.
+`daw_proto::monitor` makes and reads `audio.frame` payloads, and the crate
+`daw-listen` plays them (`Player::device()`, or `Player::file(path,
+rate)` to write them to a WAV file). `daw_core::remote::apply` puts
+`ui.grid` events into a grid of cells.
