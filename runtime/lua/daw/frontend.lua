@@ -278,14 +278,16 @@ function M.take_rows(clip)
   local takes = daw.takes.of(clip)
   if not takes then return nil end
   local out = {}
-  local seconds = clip.kind == "audio" and daw.time.seconds(clip.length, clip.start) or 0
+  local seconds = clip.kind == "audio" and daw.stretch.file_seconds(clip, clip.length) or 0
   for i, entry in ipairs(takes.list) do
     local key
     if clip.kind == "audio" then
       local c = daw.takes.content(clip, i)
-      key = string.format("%s|%.17g|%.17g|%.17g|%.17g", c.file, c.offset, c.gain, clip.length, seconds)
+      key = string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s|%s|%.17g|%.17g", c.file, c.offset, c.gain, clip.length,
+        seconds, clip.stretch, clip.pitch, tostring(clip.stretching), tostring(clip.loop), clip.loop_start, clip.loop_length or 0)
     else
-      key = string.format("%s|%d|%d|%d|%.17g", tostring(clip.stamp), takes.active, i, #(entry.notes or {}), clip.length)
+      key = string.format("%s|%d|%d|%d|%.17g|%s|%.17g|%.17g", tostring(clip.stamp), takes.active, i, #(entry.notes or {}),
+        clip.length, tostring(clip.loop), clip.loop_start, clip.loop_length or 0)
     end
     out[i] = { name = entry.name or ("take " .. i), key = key }
   end
@@ -294,7 +296,9 @@ end
 
 --- What take `take` of a clip plays, for the picture in its take lane: a
 --- waveform as `M.peaks` gives one at `points` points for sound, the notes
---- as `M.preview` gives them for MIDI.
+--- as `M.preview` gives them for MIDI, repeated as a looped clip repeats.
+--- The playing take's waveform is the clip's own, stretched; another's is
+--- its file squeezed or spread in time as far as the clip stretches it.
 function M.take_preview(id, take, points)
   local ok, clip = pcall(api.clip_get, id)
   if not ok then return {} end
@@ -302,8 +306,34 @@ function M.take_preview(id, take, points)
   local flat = {}
   if clip.kind == "audio" then
     points = daw.util.clamp(math.floor(points or M.peak_points), 8, 4096)
-    local seconds = daw.time.seconds(clip.length, clip.start)
-    local got, peaks = pcall(api.media_peaks, c.file, c.offset, seconds, points)
+    local takes = daw.takes.of(clip)
+    if takes and take == takes.active then
+      local got, peaks = pcall(api.clip_peaks, id, points)
+      for i, p in ipairs(got and peaks or {}) do
+        flat[3 * i - 2], flat[3 * i - 1], flat[3 * i] = p[1], p[2], p[3]
+      end
+      return flat
+    end
+    local seconds = daw.stretch.file_seconds(clip, clip.length)
+    local got, peaks
+    if clip.loop and clip.loop_length then
+      -- One repeat's worth, laid along the clip as it repeats.
+      local period = daw.stretch.file_seconds(clip, clip.loop_length)
+      local lead = clip.loop_start / clip.loop_length * period
+      local per = daw.util.clamp(math.ceil(points * period / seconds), 1, 4096)
+      local one
+      got, one = pcall(api.media_peaks, c.file, math.max(0, c.offset + lead), period, per)
+      if got and #one > 0 then
+        peaks = {}
+        for i = 1, points do
+          local at = (i - 0.5) * seconds / points
+          local phase = ((at - lead) % period) / period
+          peaks[i] = one[math.min(#one, math.floor(phase * #one) + 1)]
+        end
+      end
+    else
+      got, peaks = pcall(api.media_peaks, c.file, c.offset, seconds, points)
+    end
     local gain = 10 ^ ((c.gain or 0) / 20)
     for i, p in ipairs(got and peaks or {}) do
       flat[3 * i - 2], flat[3 * i - 1], flat[3 * i] = p[1] * gain, p[2] * gain, p[3] * gain
@@ -311,7 +341,7 @@ function M.take_preview(id, take, points)
     return flat
   end
   local i = 0
-  for _, n in ipairs(c.notes) do
+  for _, n in ipairs(daw.stretch.sounding(clip, c.notes, M.preview_notes)) do
     if i >= M.preview_notes then break end
     if n.start >= 0 and n.start < clip.length then
       i = i + 1
@@ -327,7 +357,10 @@ end
 function M.preview(id)
   local flat = {}
   local ok, notes = pcall(api.clip_notes, id)
-  local length = ok and api.clip_get(id).length or 0
+  local c = ok and api.clip_get(id) or { length = 0 }
+  local length = c.length
+  -- A looped clip shows its notes over and over, as they sound.
+  if ok then notes = daw.stretch.sounding(c, notes, M.preview_notes) end
   local i = 0
   for _, n in ipairs(ok and notes or {}) do
     if i >= M.preview_notes then break end
@@ -454,12 +487,16 @@ function M.state(known)
     end
     local take_lanes = out.tracks[i].take_rows > 0
     for _, clip in ipairs(api.clip_list(id)) do
+      -- Stretched, shifted, looped, or being stretched: in a few characters.
+      local mark = daw.stretch.badge(clip)
+      local notches = daw.stretch.repeats(clip)
+      local repeats = clip.loop and string.format("|%.17g|%.17g", clip.loop_start, clip.loop_length) or ""
       out.clips[#out.clips + 1] = {
         -- In take lanes: each take's name, and what changes exactly when
         -- its picture does (fetch `M.take_preview` again then).
         take_rows = take_lanes and M.take_rows(clip) or nil,
         id = clip.id, track = i - 1, start = clip.start, length = clip.length,
-        name = clip.offline and ("offline · " .. clip.name) or clip.name,
+        name = (clip.offline and "offline · " or "") .. (mark and mark .. " · " or "") .. clip.name,
         midi = clip.kind == "midi", muted = clip.muted,
         -- How many takes it has (1 without others), and which plays.
         takes = select(1, daw.takes.count(clip)), take = select(2, daw.takes.count(clip)),
@@ -470,10 +507,13 @@ function M.state(known)
         -- Its file is missing: silent until relinked. The name says so too.
         offline = clip.offline or nil,
         -- Changes exactly when the clip's notes do: fetch `M.preview` again then.
-        stamp = clip.stamp and string.format("%.0f|%.17g", clip.stamp, clip.length) or nil,
+        stamp = clip.stamp and string.format("%.0f|%.17g%s", clip.stamp, clip.length, repeats) or nil,
         -- Changes exactly when the clip's waveform does: fetch `M.peaks` again then.
         waveform = clip.kind == "audio"
-          and string.format("%s|%.17g|%.17g|%.17g|%.17g", clip.file, clip.offset, clip.length, clip.gain, daw.time.seconds(clip.length, clip.start)) or nil,
+          and string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
+            daw.time.seconds(clip.length, clip.start), clip.stretch, clip.pitch, tostring(clip.stretching), repeats) or nil,
+        -- Whether it loops, and where its repeats begin, in beats from its start.
+        loop = clip.loop or nil, notches = notches,
       }
     end
   end
@@ -947,7 +987,7 @@ end
 --- How far before an audio clip's start its file begins, in beats of the
 --- tempo map there (a negative number).
 local function file_start(c)
-  return daw.time.to_beat(math.max(0, daw.time.to_seconds(c.start) - c.offset)) - c.start
+  return daw.time.to_beat(math.max(0, daw.time.to_seconds(c.start) - c.offset * (c.stretch or 1))) - c.start
 end
 
 --- Drag an edge of a clip, and the same edge of the clips chosen with it:
@@ -958,17 +998,23 @@ end
 --- hides the notes before its new start, which come back when it is
 --- dragged out again. A clip is never shorter than a grid step (a 64th of
 --- a beat when free). With `slip` (Alt) the edge stays and what plays
---- inside the clip moves instead. One undo step. Returns the ids.
+--- inside the clip moves instead. With Alt and Shift on the right edge,
+--- the sound is stretched instead (`A.stretch_clips`). One undo step.
+--- Returns the ids.
 function A.trim_clips(id, edge, dbeat, free, slip)
+  if slip and free and edge == "end" then return A.stretch_clips(id, dbeat) end
   local ids = grabbed_clips(id)
   local held = api.clip_get(id)
   local least = free and 1 / 64 or daw.opt.grid
   if slip then
     for _, cid in ipairs(ids) do
       local c = api.clip_get(cid)
-      if c.kind == "audio" then
+      if c.loop then
+        -- A looped clip's repeats turn round under it.
+        daw.stretch.move_content(cid, -dbeat)
+      elseif c.kind == "audio" then
         -- Later in the clip is earlier in the file, which has no time before 0.
-        api.clip_set(cid, "offset", math.max(0, c.offset - daw.time.seconds(dbeat, c.start)))
+        api.clip_set(cid, "offset", math.max(0, c.offset - daw.stretch.file_seconds(c, dbeat)))
       else
         shift_content(cid, dbeat)
       end
@@ -983,16 +1029,21 @@ function A.trim_clips(id, edge, dbeat, free, slip)
     if edge == "start" then
       local d = math.min(by, c.length - least)
       d = math.max(d, -c.start)
-      if c.kind == "audio" then d = math.max(d, file_start(c)) end
+      -- A looped clip turns its loop round instead of running out of file.
+      if c.kind == "audio" and not c.loop then d = math.max(d, file_start(c)) end
       if math.abs(d) > 1e-9 then
         api.clip_set(cid, "start", c.start + d)
         api.clip_set(cid, "length", c.length - d)
-        if c.kind == "audio" then
-          api.clip_set(cid, "offset", math.max(0, c.offset + daw.time.seconds(d, c.start)))
-          api.clip_set(cid, "fade_in", math.min(c.fade_in, c.length - d))
-          api.clip_set(cid, "fade_out", math.min(c.fade_out, c.length - d))
+        if c.loop then
+          daw.stretch.move_content(cid, d)
+        elseif c.kind == "audio" then
+          api.clip_set(cid, "offset", math.max(0, c.offset + daw.stretch.file_seconds(c, d)))
         else
           shift_content(cid, -d)
+        end
+        if c.kind == "audio" then
+          api.clip_set(cid, "fade_in", math.min(c.fade_in, c.length - d))
+          api.clip_set(cid, "fade_out", math.min(c.fade_out, c.length - d))
         end
       end
     else
@@ -1005,6 +1056,51 @@ function A.trim_clips(id, edge, dbeat, free, slip)
     end
   end
   return ids
+end
+
+--- The right edge of an audio clip dragged with Alt and Shift: what it
+--- plays is stretched to end where the edge lands on the grid, without
+--- changing its pitch, and that of the audio clips chosen with it by as
+--- many beats (`daw.stretch.to`). The stretched sound is made once the
+--- edge is let go. One undo step. Returns the ids.
+function A.stretch_clips(id, dbeat)
+  local ids = grabbed_clips(id)
+  local held = api.clip_get(id)
+  local at = held.start + held.length
+  local by = snap(at + dbeat) - at
+  if math.abs(by) < 1e-9 then return ids end
+  for _, cid in ipairs(ids) do
+    local c = api.clip_get(cid)
+    if c.kind == "audio" then
+      local ok, err = pcall(daw.stretch.to, cid, math.max(daw.opt.grid, c.length + by))
+      if not ok then daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+    end
+  end
+  return ids
+end
+
+--- The clip menu's "Stretch to the selection", "Stretch to the loop" and
+--- "Reset stretch" (`what` "selection", "loop" or "reset"), on audio clip
+--- `id`: it is stretched to start and end where the time selection or the
+--- loop does, or plays its file at its own speed again.
+function A.stretch_clip(id, what)
+  local from, to
+  if what == "selection" then
+    local sel = daw.keymap.selection()
+    -- Clips chosen with the pointer make a selection too: not one of time.
+    if not (sel and not sel.clips and sel.c0 and sel.c1 and sel.c1 > sel.c0) then
+      return daw.notify("select a stretch of time to stretch the clip to", "warn")
+    end
+    from, to = sel.c0, sel.c1
+  elseif what == "loop" then
+    local t = api.transport_get()
+    if not (t.loop_end > t.loop_start) then return daw.notify("there is no loop to stretch the clip to", "warn") end
+    from, to = t.loop_start, t.loop_end
+  end
+  local ok, err = pcall(function()
+    if from then daw.stretch.fit(id, from, to) else daw.stretch.reset(id) end
+  end)
+  if not ok then daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
 end
 
 --- The handle at a top corner of an audio clip: its fade in (`which` "in")

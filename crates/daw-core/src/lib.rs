@@ -15,6 +15,8 @@ pub mod resample;
 pub mod rpc;
 pub mod safe;
 pub mod session;
+pub mod stretch;
+pub mod stretched;
 pub mod sync;
 pub mod tempo_api;
 pub mod watchdog;

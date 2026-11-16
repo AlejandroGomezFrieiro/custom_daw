@@ -31,7 +31,7 @@ local function preview(clip, width, rows, zoom)
   if previews[key] then return previews[key] end
   local out
   if clip.kind == "midi" then
-    out = draw.miniroll(api.clip_notes(clip.id), width, rows, zoom)
+    out = draw.miniroll(daw.stretch.sounding(clip, api.clip_notes(clip.id)), width, rows, zoom)
   else
     -- A file that has gone missing has been reported already; draw nothing.
     local ok, peaks = pcall(api.clip_peaks, clip.id, width)
@@ -327,12 +327,20 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       -- A clip with takes says which plays: `take 3 ‹2/4›`.
       local badge = daw.takes.badge(clip)
       local label = clip.offline and ("offline · " .. clip.name) or clip.name
+      -- Stretched, shifted, looped: `×1.5 ⟳ drums`.
+      local mark = daw.stretch.badge(clip)
+      if mark then label = mark .. " " .. label end
       box:text(cw > 2 and 1 or 0, 0, badge and (label .. " ‹" .. badge .. "›") or label)
       if height >= 2 then
         box:fill(0, 1, cw, height - 1, " ", hue["body" .. kind])
         if clip.kind == "audio" or clip.note_count > 0 then
           for row, text in ipairs(preview(clip, cw, height - 1, zoom)) do box:text(0, row, text) end
         end
+      end
+      -- A notch where each repeat of a looped clip begins.
+      for _, at in ipairs(daw.stretch.repeats(clip)) do
+        local nx = math.floor(at * zoom + 0.5)
+        if nx > 0 and nx < cw and height >= 2 then box:fill(nx, 1, 1, height - 1, g.step, "ClipEdge") end
       end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")

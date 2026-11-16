@@ -431,6 +431,9 @@ function Clip:snapshot()
   local snap = {
     name = c.name, start = c.start, length = c.length, kind = c.kind, muted = c.muted,
     file = c.file, offset = c.offset, gain = c.gain, fade_in = c.fade_in, fade_out = c.fade_out,
+    -- How it plays: an audio clip's timebase, stretch and shift; looping.
+    timebase = c.timebase, stretch = c.stretch, pitch = c.pitch, stretch_mode = c.stretch_mode,
+    source_tempo = c.source_tempo, loop = c.loop or nil, loop_length = c.loop_length, loop_start = c.loop_start,
     -- What extensions keep with the clip goes where the clip goes.
     meta = next(c.meta) and c.meta or nil,
   }

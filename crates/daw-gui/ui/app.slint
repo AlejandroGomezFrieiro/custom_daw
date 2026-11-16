@@ -96,6 +96,7 @@ export struct ClipData {
     gain: float,        // and its gain, in dB
     takes: int,         // how many takes it has (1 without others), and which plays
     take: int,
+    looped: bool,       // it repeats what it plays (notches in `preview` mark the repeats)
 }
 
 // A send of the selected track: where to, and how much.
@@ -752,6 +753,8 @@ in property <string> render-stage;
     // The clip menu's "Split at the edit cursor" and "Glue", on the chosen clips or the clip.
     callback split-clips(int);
     callback glue-clips(int);
+    // The clip menu's "Stretch to the selection" ("selection"), "to the loop" ("loop"), "Reset stretch" ("reset").
+    callback stretch-clip(int, string);
     callback track-command(int, string);
     callback menu-entry(string, int, int, float);   // which menu, which entry, the clip or track, the beat
     callback move-track(int, int);
@@ -910,8 +913,10 @@ in property <string> render-stage;
     function trim-move(id: int, x: length, shift: bool, alt: bool) {
         if (root.trim-clip == id) {
             root.trim-dx = x - root.trim-ax;
-            root.trim-free = shift;
-            root.trim-slip = alt;
+            // Alt and Shift on the end stretch the sound: shown as the end
+            // moving on the grid.
+            root.trim-free = shift && !(alt && !root.trim-start);
+            root.trim-slip = alt && !(shift && !root.trim-start);
         }
     }
     function trim-release(id: int, shift: bool, alt: bool) {
@@ -1024,6 +1029,18 @@ in property <string> render-stage;
     }
 
     forward-focus: keys;
+
+    // A submenu closes after the menu it came from, and hands the keyboard
+    // back to that menu, which has gone: nothing would have the keys. Its
+    // entries start this, and the window takes them back once both are shut.
+    refocus := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            keys.focus();
+        }
+    }
 
     // Every key goes to the kernel's key mappings, whenever no text box
     // has the keyboard.
@@ -3291,12 +3308,15 @@ in property <string> render-stage;
                                         root.clip-command(clip.id, clip.start, "clip.mute");
                                     }
                                 }
+                                // An entry of a submenu gives the keys back to the window a
+                                // moment later (`refocus`).
                                 Menu {
                                     title: clip.takes > 1 ? "Takes (" + clip.take + " of " + clip.takes + ")" : "Takes";
                                     MenuItem {
                                         title: "Next take   ]t";
                                         enabled: clip.takes > 1;
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take next");
                                         }
                                     }
@@ -3304,6 +3324,7 @@ in property <string> render-stage;
                                         title: "Take before   [t";
                                         enabled: clip.takes > 1;
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take prev");
                                         }
                                     }
@@ -3311,12 +3332,14 @@ in property <string> render-stage;
                                         title: "Choose from a list…";
                                         enabled: clip.takes > 1;
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take.list");
                                         }
                                     }
                                     MenuItem {
                                         title: "Show or hide the take lanes, to comp by swiping   zt";
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take.lanes");
                                         }
                                     }
@@ -3324,6 +3347,7 @@ in property <string> render-stage;
                                     MenuItem {
                                         title: "New take: keep this, carry on in a copy";
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take.new");
                                         }
                                     }
@@ -3331,6 +3355,7 @@ in property <string> render-stage;
                                         title: "Throw this take away";
                                         enabled: clip.takes > 1;
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take.remove");
                                         }
                                     }
@@ -3338,6 +3363,7 @@ in property <string> render-stage;
                                         title: "Keep only this take";
                                         enabled: clip.takes > 1;
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take.keep");
                                         }
                                     }
@@ -3345,7 +3371,67 @@ in property <string> render-stage;
                                         title: "Put the other takes on tracks of their own";
                                         enabled: clip.takes > 1;
                                         activated => {
+                                            refocus.running = true;
                                             root.clip-command(clip.id, clip.start, "take.explode");
+                                        }
+                                    }
+                                }
+                                Menu {
+                                    title: "Stretch and loop";
+                                    MenuItem {
+                                        title: "Stretch to the selection";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.stretch-clip(clip.id, "selection");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Stretch to the loop";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.stretch-clip(clip.id, "loop");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Stretch by…   Alt+Shift drag the end";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.stretch");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Reset stretch";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.stretch-clip(clip.id, "reset");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Shift pitch…";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.pitch");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Follow the tempo";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.tempo");
+                                        }
+                                    }
+                                    MenuSeparator { }
+                                    MenuItem {
+                                        title: clip.looped ? "Stop looping" : "Loop: repeat when made longer";
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.loop");
                                         }
                                     }
                                 }

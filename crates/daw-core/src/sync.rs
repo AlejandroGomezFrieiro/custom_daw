@@ -134,6 +134,8 @@ pub struct AudioCache {
     /// Where the decoded sound of long files is kept and played from,
     /// instead of memory; nowhere when `None`.
     pub store: Option<DiskStore>,
+    /// Stretched and shifted versions of files, made apart: `stretched.rs`.
+    pub renders: crate::stretched::Renders,
 }
 
 /// File, offset and length in seconds (as bits, to hash them), and points.
@@ -206,6 +208,22 @@ impl AudioCache {
         self.summaries.retain(|path, _| keep.contains(path));
         self.peaks.retain(|key, _| keep.contains(&key.0));
         self.converted.retain(|key, _| keep.contains(&key.0));
+        self.renders.retain(Some(keep));
+    }
+
+    /// What a stretched or shifted clip plays, if it has been made; if not,
+    /// it is queued to be made (see `stretched.rs`).
+    pub fn stretched(
+        &mut self,
+        key: &crate::stretched::Key,
+        warnings: &mut Vec<String>,
+    ) -> Option<Arc<AudioData>> {
+        let store = self.store.clone();
+        if self.renders.known(key) {
+            return self.renders.get(key, store.as_ref(), || None);
+        }
+        let source = self.get(&key.file, key.rate, warnings);
+        self.renders.get(key, store.as_ref(), || source)
     }
 
     /// What the engine plays of a file at `rate`, if it has been loaded:
@@ -230,6 +248,7 @@ impl AudioCache {
     pub fn forget_loaded(&mut self) {
         self.files.clear();
         self.converted.clear();
+        self.renders.retain(None);
     }
 
     /// How many files are held, decoded or known to be unreadable.
@@ -971,25 +990,179 @@ fn update_device(
     }
 }
 
-/// One MIDI clip's notes and controller moves as engine events, sorted.
+/// One MIDI clip's notes and controller moves as engine events, sorted. A
+/// looped clip plays what lies in its repeated stretch over and over, each
+/// note cut at the end of its repeat.
 fn compile_clip(clip: &Clip, notes: &[Note], controls: &[Control]) -> Arc<[MidiEv]> {
     let mut set = ClipSet::default();
-    for control in controls
-        .iter()
-        .filter(|c| c.start >= 0.0 && c.start < clip.length)
-    {
-        set.push_event(clip.start + control.start, control.event(0));
-    }
-    for note in notes
-        .iter()
-        .filter(|n| n.start >= 0.0 && n.start < clip.length)
-    {
-        let end = (note.start + note.length).min(clip.length);
-        let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
-        set.push_note(clip.start + note.start, clip.start + end, note.pitch, vel);
+    let Some((from, beats)) = clip.repeat() else {
+        for control in controls
+            .iter()
+            .filter(|c| c.start >= 0.0 && c.start < clip.length)
+        {
+            set.push_event(clip.start + control.start, control.event(0));
+        }
+        for note in notes
+            .iter()
+            .filter(|n| n.start >= 0.0 && n.start < clip.length)
+        {
+            let end = (note.start + note.length).min(clip.length);
+            let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
+            set.push_note(clip.start + note.start, clip.start + end, note.pitch, vel);
+        }
+        set.finish();
+        return set.midi.into();
+    };
+    let inside = |at: f64| at >= from && at < from + beats;
+    for (base, end) in repeats(from, beats, clip.length) {
+        let place = |at: f64| base + (at - from);
+        for control in controls.iter().filter(|c| inside(c.start)) {
+            let at = place(control.start);
+            if at >= 0.0 && at < clip.length {
+                set.push_event(clip.start + at, control.event(0));
+            }
+        }
+        for note in notes.iter().filter(|n| inside(n.start)) {
+            let at = place(note.start);
+            if at >= 0.0 && at < clip.length {
+                let stop = (at + note.length).min(end);
+                let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
+                set.push_note(clip.start + at, clip.start + stop, note.pitch, vel);
+            }
+        }
     }
     set.finish();
     set.midi.into()
+}
+
+/// Where each repeat of a looped clip begins and ends, from the clip's
+/// start, for a repeated stretch beginning at `from` and `period` long, in
+/// a clip `length` long: the first begins at or before 0, the last ends
+/// at `length` or later. In beats for MIDI, in seconds for sound.
+pub fn repeats(from: f64, period: f64, length: f64) -> impl Iterator<Item = (f64, f64)> {
+    // The repeat the clip's start falls in.
+    let first = from - period * (from / period).ceil();
+    let count = if period > 0.0 {
+        ((length - first) / period).ceil().max(0.0) as usize
+    } else {
+        0
+    };
+    (0..count).map(move |k| {
+        let a = first + k as f64 * period;
+        (a, first + (k + 1) as f64 * period)
+    })
+}
+
+/// Whether sound repeated from `from` for `seconds` runs on from its end
+/// into its start without a jump: the frame after its end is about the
+/// frame at its start, as near as one frame is to the next around there.
+fn joins_itself(data: &AudioData, from: f64, seconds: f64) -> bool {
+    let rate = data.sample_rate as f64;
+    let (a, b) = (
+        (from * rate).round() as i64,
+        ((from + seconds) * rate).round() as i64,
+    );
+    let at = |c: &[f32], i: i64| {
+        usize::try_from(i)
+            .ok()
+            .and_then(|i| c.get(i))
+            .copied()
+            .unwrap_or(0.0)
+    };
+    data.channels.iter().all(|c| {
+        let jump = (at(c, b) - at(c, a)).abs();
+        let step = [a, b]
+            .iter()
+            .flat_map(|&i| {
+                [
+                    (at(c, i) - at(c, i - 1)).abs(),
+                    (at(c, i + 1) - at(c, i)).abs(),
+                ]
+            })
+            .fold(0.0, f32::max);
+        jump <= 2.0 * step + 1e-4
+    })
+}
+
+/// The regions an audio clip plays: the part of `data` from `offset`
+/// seconds, or, looped, its repeated stretch again and again. A fade in
+/// belongs to the first repeat and a fade out to the last, each as long
+/// as that repeat at most.
+fn audio_regions(
+    clip: &Clip,
+    data: Arc<AudioData>,
+    offset: f64,
+    gain: f32,
+    tempo: &daw_engine::TempoMap,
+    out: &mut Vec<AudioRegion>,
+) {
+    let seconds = tempo.seconds_between(clip.start, clip.start + clip.length);
+    let end = clip.start + clip.length;
+    let Some((from, beats)) = clip.repeat() else {
+        out.push(AudioRegion {
+            start: clip.start,
+            end,
+            // An edge inside the recording is a cut.
+            declick_in: offset > 1e-6,
+            declick_out: offset + seconds < data.seconds() - 1e-6,
+            data,
+            offset,
+            gain,
+            fade_in: clip.fade_in,
+            fade_out: clip.fade_out,
+        });
+        return;
+    };
+    // A repeat lasts as long in seconds as its beats do from the clip's start.
+    let period = tempo.seconds_between(clip.start, clip.start + beats);
+    if period <= 1e-9 {
+        return;
+    }
+    let lead = from * period / beats;
+    let begins = offset + lead;
+    let joins = joins_itself(&data, begins, period);
+    let t0 = tempo.seconds(clip.start);
+    let first = out.len();
+    for (a, b) in repeats(lead, period, seconds) {
+        let (ra, rb) = (a.max(0.0), b.min(seconds));
+        if rb - ra <= 1e-9 {
+            continue;
+        }
+        let into = begins + (ra - a);
+        let start = if ra <= 0.0 {
+            clip.start
+        } else {
+            tempo.beat(t0 + ra)
+        };
+        let stop = if rb >= seconds {
+            end
+        } else {
+            tempo.beat(t0 + rb)
+        };
+        out.push(AudioRegion {
+            start,
+            end: stop,
+            declick_in: if ra <= 0.0 { into > 1e-6 } else { !joins },
+            declick_out: if rb >= seconds {
+                into + (rb - ra) < data.seconds() - 1e-6
+            } else {
+                !joins
+            },
+            data: data.clone(),
+            offset: into,
+            gain,
+            fade_in: 0.0,
+            fade_out: 0.0,
+        });
+    }
+    if let Some(r) = out.get_mut(first) {
+        r.fade_in = clip.fade_in.min(r.end - r.start);
+    }
+    if out.len() > first
+        && let Some(r) = out.last_mut()
+    {
+        r.fade_out = clip.fade_out.min(r.end - r.start);
+    }
 }
 
 /// Everything a track plays. A MIDI clip that is the very same as at the
@@ -1024,20 +1197,18 @@ fn build_clips(
                 kept.push((clip.clone(), events));
             }
             ClipContent::Audio { file, offset, gain } => {
-                if let Some(data) = ctx.audio.get(file, ctx.sample_rate as u32, ctx.warnings) {
-                    let seconds = tempo.seconds_between(clip.start, clip.start + clip.length);
-                    set.audio.push(AudioRegion {
-                        start: clip.start,
-                        end: clip.start + clip.length,
-                        // An edge inside the recording is a cut.
-                        declick_in: *offset > 1e-6,
-                        declick_out: offset + seconds < data.seconds() - 1e-6,
-                        data,
-                        offset: *offset,
-                        gain: db_to_gain(*gain),
-                        fade_in: clip.fade_in,
-                        fade_out: clip.fade_out,
-                    });
+                let rate = ctx.sample_rate as u32;
+                // A stretched or shifted clip plays a version made for it,
+                // in which a second of the file lasts `stretch` seconds; it
+                // is silent until that is ready.
+                let data = match crate::stretched::Key::of(clip, rate) {
+                    Some(key) => ctx.audio.stretched(&key, ctx.warnings),
+                    None => ctx.audio.get(file, rate, ctx.warnings),
+                };
+                if let Some(data) = data {
+                    let gain = db_to_gain(*gain);
+                    let offset = offset * clip.stretch;
+                    audio_regions(clip, data, offset, gain, tempo, &mut set.audio);
                 }
             }
         }

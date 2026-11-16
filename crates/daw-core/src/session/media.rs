@@ -616,6 +616,13 @@ mod tests {
     fn clip(id: u64, file: &str) -> crate::model::Clip {
         crate::model::Clip {
             timebase: None,
+            stretch: 1.0,
+            pitch: 0.0,
+            stretch_mode: Default::default(),
+            source_tempo: None,
+            looped: false,
+            loop_length: None,
+            loop_start: 0.0,
             id,
             name: String::new(),
             start: 0.0,

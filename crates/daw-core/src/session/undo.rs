@@ -803,6 +803,13 @@ mod tests {
         };
         track.clips.push(Arc::new(Clip {
             timebase: None,
+            stretch: 1.0,
+            pitch: 0.0,
+            stretch_mode: Default::default(),
+            source_tempo: None,
+            looped: false,
+            loop_length: None,
+            loop_start: 0.0,
             id: 3,
             name: "verse".into(),
             start: 0.0,

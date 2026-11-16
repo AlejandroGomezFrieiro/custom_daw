@@ -34,11 +34,12 @@ impl Session {
         let data = self.audio.load(&file)?;
         let rate = data.sample_rate as f64;
         let from = (offset * rate).round() as usize;
-        // Its real extent in time, by the tempo map.
+        // Its real extent in time, by the tempo map, in seconds of the file.
         let seconds = self
             .project
             .tempo_map()
-            .seconds_between(clip.start, clip.start + clip.length);
+            .seconds_between(clip.start, clip.start + clip.length)
+            / clip.stretch;
         let frames = (seconds * rate).round() as usize;
         let take = |c: &[f32]| {
             let mut out: Vec<f32> = c.iter().skip(from).take(frames).copied().collect();
@@ -212,6 +213,13 @@ impl Session {
 
         let glued = Arc::new(Clip {
             timebase: None,
+            stretch: 1.0,
+            pitch: 0.0,
+            stretch_mode: Default::default(),
+            source_tempo: None,
+            looped: false,
+            loop_length: None,
+            loop_start: 0.0,
             id: self.new_id(),
             name: first_clip.name.clone(),
             start,
