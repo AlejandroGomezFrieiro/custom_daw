@@ -587,6 +587,65 @@ fn lane_path(
     path
 }
 
+/// The height of the tempo lane under the ruler, in pixels, and where in it
+/// a tempo at the bottom or the top of its range is drawn (a little room
+/// above and below, as for the lanes in rows).
+const TEMPO_LANE: f32 = 56.0;
+fn tempo_y(value: f32) -> f32 {
+    (0.12 + (1.0 - value) * 0.76) * TEMPO_LANE
+}
+
+/// The tempo map as a path over beats `from` to `to`, in pixels at `zoom`: a
+/// level run to the next change where a point holds, a sloping line where it
+/// ramps. Each point is `(beat, height 0..1, ramps)`; only the stretch that
+/// shows is drawn.
+fn tempo_path(points: &[(f32, f32, bool)], from: f32, to: f32, zoom: f32) -> String {
+    let Some(last) = points.last() else {
+        return String::new();
+    };
+    let from = from.max(0.0);
+    let to = to.max(from);
+    // The corners of the curve: a step has a corner at the beat where it
+    // changes, a ramp goes straight to the next point's height.
+    let mut corners: Vec<(f32, f32)> = Vec::new();
+    for (i, point) in points.iter().enumerate() {
+        if i > 0 && !points[i - 1].2 {
+            corners.push((point.0, points[i - 1].1));
+        }
+        corners.push((point.0, point.1));
+    }
+    corners.push((to.max(last.0), last.1));
+    let mut path = String::new();
+    let put = |path: &mut String, beat: f32, value: f32| {
+        let command = if path.is_empty() { "M" } else { "L" };
+        *path += &format!("{command} {:.1} {:.1} ", beat * zoom, tempo_y(value));
+    };
+    let mut prev: Option<(f32, f32)> = None;
+    for corner in corners {
+        if let Some(a) = prev {
+            // The part of the stretch from `a` to `corner` that is in view.
+            let (x0, x1) = (a.0.max(from), corner.0.min(to));
+            if corner.0 > a.0 {
+                if x1 >= x0 {
+                    let at = |x: f32| a.1 + (corner.1 - a.1) * (x - a.0) / (corner.0 - a.0);
+                    if path.is_empty() {
+                        put(&mut path, x0, at(x0));
+                    }
+                    put(&mut path, x1, at(x1));
+                }
+            } else if a.0 >= from && a.0 <= to {
+                // A step's upright.
+                if path.is_empty() {
+                    put(&mut path, a.0, a.1);
+                }
+                put(&mut path, a.0, corner.1);
+            }
+        }
+        prev = Some(corner);
+    }
+    path
+}
+
 /// The lines of `all` to draw when beats `from` to `to` show at `zoom`
 /// pixels a beat: those in view and a little beyond, and when bars are
 /// too close together to tell apart, only every second, fourth or eighth.
@@ -1113,6 +1172,11 @@ struct View {
     strips: Rc<VecModel<LaneData>>,
     strip_points: Rc<VecModel<PointData>>,
     lane_rows: Vec<Vec<i32>>,
+    /// The tempo lane under the ruler when it is shown: the tempo at its
+    /// bottom and top, and each change as `(beat, bpm, ramps)`; and what is
+    /// drawn of them.
+    tempo_lane: Option<(f32, f32, Vec<(f32, f32, bool)>)>,
+    tempo_points: Rc<VecModel<TempoPointData>>,
     /// How many take lanes each row shows under its clips, the clips that
     /// have takes on those rows, and what is drawn of them: the lanes, the
     /// takes of the clips in view, and each take's picture by clip and take
@@ -1679,6 +1743,38 @@ impl View {
         Ok(())
     }
 
+    /// Lay out the tempo lane over the stretch that shows, and a screen's
+    /// worth on either side.
+    fn draw_tempo(&mut self, ui: &App) {
+        let Some((lo, hi, points)) = &self.tempo_lane else {
+            ui.set_tempo_lane(false);
+            ui.set_tempo_path("".into());
+            sync(&self.tempo_points, Vec::new());
+            return;
+        };
+        let (view_from, view_to) = (ui.get_view_start(), ui.get_view_end());
+        let span = (view_to - view_from).max(1.0);
+        let (from, to) = (view_from - span, view_to + span);
+        let height = |bpm: f32| ((bpm - lo) / (hi - lo).max(1.0)).clamp(0.0, 1.0);
+        let shaped: Vec<(f32, f32, bool)> = points.iter().map(|p| (p.0, height(p.1), p.2)).collect();
+        ui.set_tempo_lane_top(format!("{hi:.0}").into());
+        ui.set_tempo_lane_bottom(format!("{lo:.0}").into());
+        ui.set_tempo_path(tempo_path(&shaped, from, to, ui.get_zoom()).into());
+        let shown: Vec<TempoPointData> = shaped
+            .iter()
+            .zip(points)
+            .filter(|(p, _)| p.0 >= from && p.0 <= to)
+            .map(|(p, raw)| TempoPointData {
+                beat: p.0,
+                value: p.1,
+                ramp: p.2,
+                text: format!("{}", (raw.1 * 100.0).round() / 100.0).into(),
+            })
+            .collect();
+        sync(&self.tempo_points, shown);
+        ui.set_tempo_lane(true);
+    }
+
     /// Lay out the lane each track shows, in pixels at the current zoom: the
     /// one chosen for it, else the first that holds anything, else its first.
     fn draw_lanes(&mut self, ui: &App) {
@@ -1772,6 +1868,7 @@ impl View {
         sync(&self.points, points);
         sync(&self.strips, strips);
         sync(&self.strip_points, strip_points);
+        self.draw_tempo(ui);
         // What each track's header says its lane is, and could be.
         for (row, (_, all)) in self.lane_data.iter().enumerate() {
             let Some(mut track) = self.tracks.row_data(row) else {
@@ -1940,6 +2037,17 @@ impl View {
         self.all_lines = tempo_lines(&project["lines"]);
         self.lines_for = None;
         ui.set_tempo_marks(tempo_marks(&project["marks"]));
+        let lane = &project["tempo_lane"];
+        self.tempo_lane = lane.is_object().then(|| {
+            let points = rows(&lane["points"])
+                .iter()
+                .map(|p| (number(&p["beat"]), number(&p["bpm"]), p["ramp"].as_bool().unwrap_or(false)))
+                .collect();
+            (number(&lane["lo"]), number(&lane["hi"]), points)
+        });
+        self.draw_tempo(ui);
+        ui.set_pre_roll(project["pre_roll"].as_i64().unwrap_or(0) as i32);
+        ui.set_pre_roll_seconds(number(&project["pre_roll_seconds"]));
         let markers: Vec<MarkerData> = rows(&project["markers"])
             .iter()
             .map(|m| MarkerData {
@@ -2394,6 +2502,8 @@ fn run() -> Result<()> {
         points: Rc::new(VecModel::default()),
         strips: Rc::new(VecModel::default()),
         strip_points: Rc::new(VecModel::default()),
+        tempo_lane: None,
+        tempo_points: Rc::new(VecModel::default()),
         lane_rows: Vec::new(),
         take_rows: Vec::new(),
         take_clips: Vec::new(),
@@ -2444,6 +2554,7 @@ fn run() -> Result<()> {
     ui.set_points(ModelRc::from(view.borrow().points.clone()));
     ui.set_strips(ModelRc::from(view.borrow().strips.clone()));
     ui.set_strip_points(ModelRc::from(view.borrow().strip_points.clone()));
+    ui.set_tempo_points(ModelRc::from(view.borrow().tempo_points.clone()));
     ui.set_take_lanes(ModelRc::from(view.borrow().take_lanes.clone()));
     ui.set_take_pieces(ModelRc::from(view.borrow().take_pieces.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
@@ -2613,6 +2724,58 @@ fn run() -> Result<()> {
                 json!([what.as_str(), kind, beat, to.max(0.0)]),
             )
         }
+    });
+    // The tempo lane under the ruler: the pencil over it (a click adds a
+    // change, a stroke draws a curve), a change dragged, removed or ramped.
+    ui.on_tempo_pencil({
+        let (pass, view, weak) = (pass.clone(), view.clone(), ui.as_weak());
+        move |beat, height, phase| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut view = view.borrow_mut();
+            if phase == 0 {
+                view.pencil.clear();
+            }
+            // The curve has a little room above and below it in its row.
+            let height = ((height - 0.12) / 0.76).clamp(0.0, 1.0);
+            view.pencil.push((beat.max(0.0), height));
+            if phase < 2 {
+                let zoom = ui.get_zoom();
+                let path = stroke_path(&view.pencil, |beat| beat * zoom, tempo_y);
+                ui.set_tempo_pencil_path(path.into());
+                return;
+            }
+            ui.set_tempo_pencil_path("".into());
+            let stroke: Vec<(f32, f32)> = view.pencil.drain(..).collect();
+            drop(view);
+            // How far the pointer went, in pixels: a click hardly moves.
+            let reach = stroke
+                .iter()
+                .map(|p| {
+                    ((p.0 - stroke[0].0) * ui.get_zoom()).abs() + ((p.1 - stroke[0].1) * TEMPO_LANE).abs()
+                })
+                .fold(0.0, f32::max);
+            if reach < 5.0 {
+                pass("tempo_point_add", json!([stroke[0].0, stroke[0].1]));
+            } else {
+                let points: Vec<Value> = stroke.iter().map(|(b, h)| json!([b, h])).collect();
+                pass("tempo_draw", json!([points]));
+            }
+        }
+    });
+    ui.on_tempo_point_move({
+        let pass = pass.clone();
+        move |beat, to, height| {
+            let height = ((height - 0.12) / 0.76).clamp(0.0, 1.0);
+            pass("tempo_point_move", json!([beat, to.max(0.0), height]))
+        }
+    });
+    ui.on_tempo_point_remove({
+        let pass = pass.clone();
+        move |beat| pass("tempo_point_remove", json!([beat]))
+    });
+    ui.on_tempo_point_ramp({
+        let pass = pass.clone();
+        move |beat| pass("tempo_point_ramp", json!([beat]))
     });
     ui.on_set_loop({
         let pass = pass.clone();
