@@ -240,3 +240,40 @@ test("lenses: diagnostics on devices, parameters and stretches of time are drawn
   end
   eq(found, true, "the cursor goes to where the stretch starts")
 end)
+
+test("lenses: every clip the piano roll edits is shown to the servers and marked, and the mouse's menus offer the lens", function()
+  start()
+  local a = daw.add_track({ name = "Upper" }):add_clip({ start = 0, length = 4, notes = { { pitch = 72, start = 0, length = 1 } } })
+  local b = daw.add_track({ name = "Lower" }):add_clip({ start = 4, length = 4, notes = { { pitch = 48, start = 1, length = 1 } } })
+  daw.flush()
+  daw.ui.views.pianoroll:edit(a)
+  daw.roll_clips.open({ a.id, b.id }, a.id)
+  -- Shown to a server attached to clips: both, by focus.
+  local opened = {}
+  daw.lsp.config("seen", { server = {
+    initialize = function() return { capabilities = { daw = { subjects = { "clip" } } } } end,
+    ["textDocument/didOpen"] = function(p) opened[#opened + 1] = p.textDocument.uri end,
+  } })
+  daw.lsp.enable("seen")
+  table.sort(opened)
+  local want = { A.clip(a.id), A.clip(b.id) }
+  table.sort(want)
+  eq(table.concat(opened, " "), table.concat(want, " "), "the active clip and the other one edited")
+  -- A diagnostic on the other clip's note is drawn at its place in the roll.
+  local nid = b:notes()[1].id
+  daw.diagnostic.set("lint", "lint", { { location = { uri = A.note(b.id, nid) }, severity = 2, message = "low" } })
+  local painted = {}
+  local cells = { width = 80, fill = function(_, x, y, w, h, ch, style) painted[#painted + 1] = x .. "," .. y .. " " .. tostring(style) end,
+    text = function() end }
+  daw.diagnostic.paint_roll({ roll = cells, ruler = cells, clip = a, parts = daw.roll_clips.parts(),
+    x = function(beat) return beat * 4 end, row = function(pitch) return 100 - pitch end })
+  eq(painted[1], "20,52 DiagnosticUnderlineWarn", "at beat 5 of the roll, the note's row")
+  -- The mouse's menus: on the note, on the track.
+  local menus = require("daw.mouse_menus")
+  local labels = {}
+  for _, item in ipairs(menus.note(b.id, 1)) do if type(item) == "table" then labels[#labels + 1] = item.label end end
+  eq(table.concat(labels, "|"):find("Fixes and actions…|What the language servers say about it", 1, true) ~= nil, true, table.concat(labels, "|"))
+  labels = {}
+  for _, item in ipairs(menus.track(b:get().track)) do if type(item) == "table" then labels[#labels + 1] = item.label end end
+  eq(table.concat(labels, "|"):find("Fixes and actions…", 1, true) ~= nil, true, "on the track too")
+end)
