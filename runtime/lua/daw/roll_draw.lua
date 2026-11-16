@@ -2,9 +2,9 @@
 -- cursor. `i` starts a note at the cursor, nothing long yet; `l` and `h`
 -- make it a grid step longer and shorter, `j` and `k` move its pitch, and
 -- the cursor stays at its end, so what shows is what will be written.
--- `<CR>` writes it and starts the next where it ends, `<Space>` after a
+-- `<CR>` keeps it and starts the next where it ends, `<Space>` after a
 -- step's rest, `o` at the same place and as long, for a chord. `<Esc>`
--- writes the last one and leaves.
+-- writes them all and leaves.
 --
 -- Nothing reaches the project until insert mode ends: then every note drawn
 -- is written at once, which makes the whole of it one undo step and lets
@@ -24,7 +24,7 @@ local M = {}
 daw.option.define("roll_insert", "draw")
 
 -- Beats here are the project's, so that what is drawn stays put when the
--- active clip changes: `notes` written so far, as `{ pitch, start, length,
+-- active clip changes: `notes` kept so far, as `{ pitch, start, length,
 -- velocity }`; the note being drawn, from `start` at `pitch`, `length` long;
 -- `count`, digits typed for the next key.
 local session
