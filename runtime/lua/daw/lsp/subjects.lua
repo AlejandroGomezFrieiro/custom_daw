@@ -63,16 +63,21 @@ function M.track_passes(track, where)
   return true
 end
 
--- The clips open in a piano roll: each seat (each person's terminal or
--- window) has its own, and the servers are shared, so they get all of them.
+-- The clips open in a piano roll, the active one and every other it edits
+-- with it (daw.roll_clips): each seat (each person's terminal or window)
+-- has its own, and the servers are shared, so they get all of them.
 local function open_clips()
   local open, out = {}, {}
+  local function add(id)
+    if id and not open[id] and pcall(api.clip_get, id) then
+      open[id] = true
+      out[#out + 1] = id
+    end
+  end
   local function look()
     local view = daw.ui.views.pianoroll
-    if view and view.clip_id and not open[view.clip_id] and pcall(api.clip_get, view.clip_id) then
-      open[view.clip_id] = true
-      out[#out + 1] = view.clip_id
-    end
+    add(view and view.clip_id)
+    for _, id in ipairs(daw.roll_clips and daw.roll_clips.ids() or {}) do add(id) end
   end
   local seats = daw.seats and daw.seats.list() or {}
   if #seats <= 1 then look() else for _, seat in ipairs(seats) do daw.seats.within(seat, look) end end

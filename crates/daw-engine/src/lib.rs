@@ -14,6 +14,7 @@ pub mod engine;
 pub mod event;
 pub mod guard;
 pub mod host;
+pub mod launch;
 pub mod midi;
 pub mod midi_form;
 pub mod midi_out;

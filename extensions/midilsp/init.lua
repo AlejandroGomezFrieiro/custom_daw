@@ -38,8 +38,8 @@ end, { desc = "Switch a MIDI LSP rule on or off: `midilsp.rule parallel-perfect 
 daw.command("problems", function() midilsp.problems() end,
   { desc = "Every language server's diagnostics with their fixes: Enter goes to one, or applies a fix" })
 
-daw.keymap.set("<leader>lp", "problems", { desc = "Problems: every server's diagnostics and fixes" })
-daw.keymap.set("<leader>lr", "midilsp.rule", { desc = "MIDI LSP's rules, to switch on and off" })
-daw.keymap.set("<leader>li", "lsp info", { desc = "The language servers and what they can do" })
+daw.keymap.set("<leader>Lp", "problems", { desc = "Problems: every server's diagnostics and fixes" })
+daw.keymap.set("<leader>Lr", "midilsp.rule", { desc = "MIDI LSP's rules, to switch on and off" })
+daw.keymap.set("<leader>Li", "lsp info", { desc = "The language servers and what they can do" })
 
 if daw.opt.midilsp_autostart then midilsp.start(false) end

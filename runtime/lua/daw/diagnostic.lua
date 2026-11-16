@@ -488,13 +488,20 @@ end
 
 local g = function() return daw.draw.g end
 
---- Mark the diagnostics of the piano roll's clip, as one of its layers:
---- each note underlined in its severity's colour, the message after the last
---- note while there is room, and a mark on the ruler where it starts.
+--- Mark the diagnostics of every clip the piano roll edits, as one of its
+--- layers: each note underlined in its severity's colour, the message after
+--- the last note while there is room, and a mark on the ruler where it starts.
 function M.paint_roll(p)
-  local list = M.get(p.clip.id)
+  for _, part in ipairs(p.parts or { { id = p.clip.id, offset = 0 } }) do
+    M.paint_part(p, part.id, part.offset or 0)
+  end
+end
+
+-- One clip's, `offset` beats from the roll's own.
+function M.paint_part(p, id, offset)
+  local list = M.get(id)
   if #list == 0 then return end
-  local notes = api.clip_notes(p.clip.id)
+  local notes = api.clip_notes(id)
   local worst = {}
   for _, d in ipairs(list) do
     for _, place in ipairs(M.places(d)) do
@@ -504,13 +511,13 @@ function M.paint_roll(p)
   if options.underline then
     for place, severity in pairs(worst) do
       local n = notes[place]
-      local x0, x1, row = p.x(n.start), p.x(n.start + n.length), p.row(n.pitch)
+      local x0, x1, row = p.x(n.start + offset), p.x(n.start + n.length + offset), p.row(n.pitch)
       if row then p.roll:fill(x0, row, math.max(1, x1 - x0), 1, nil, M.group("DiagnosticUnderline", severity)) end
     end
   end
   for _, d in ipairs(list) do
     -- On the cell's left edge, where the diagnostic starts.
-    if options.signs then p.ruler:text(p.x(d.at or 0), 0, g().mark, M.group("Diagnostic", d.severity)) end
+    if options.signs then p.ruler:text(p.x((d.at or 0) + offset), 0, g().mark, M.group("Diagnostic", d.severity)) end
     if options.virtual_text then
       local last
       for _, place in ipairs(M.places(d)) do
@@ -519,7 +526,7 @@ function M.paint_roll(p)
       end
       local row = last and p.row(last.pitch)
       if row then
-        local x = p.x(last.start + last.length) + 1
+        local x = p.x(last.start + last.length + offset) + 1
         local room = p.roll.width - x
         if room >= 8 then
           local text = api.str_width(d.message) > room and daw.util.fit(d.message, room) or d.message

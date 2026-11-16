@@ -752,6 +752,24 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().clip_add(track, options(lua, opts)?).lua()
         }
         fn clip_remove(_, sh, id => Id) { sh.session.borrow_mut().clip_remove(id).lua() }
+
+        // --- clip launching (session/launcher.rs) ---
+        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`
+        // and is edited like any clip; `clip_set` also takes `row`,
+        // `quantize`, `mode` and `legato` for it.
+        fn slot_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().slot_list(track).lua()?) }
+        // Copy a clip into a row of a track's slots. Returns the copy's id.
+        fn clip_to_slot(_, sh, (id, track, row) => (Id, Id, u32)) {
+            sh.session.borrow_mut().clip_to_slot(id, track, row).lua()
+        }
+        // `{ { track =, slot = row }, { track =, stop = true },
+        // { track =, arrangement = true }, ... }`, each with `quantize` and
+        // `legato` if not the slot's: all on their boundary, timed together.
+        fn launch(lua, sh, list => LuaValue) {
+            sh.session.borrow_mut().launch(from_lua(lua, list)?).lua()
+        }
+        // What each track plays and has queued, as the engine last said.
+        fn launcher(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().launcher_view()) }
         fn clip_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().clip_set(id, &key, from_lua(lua, value)?).lua()
         }
@@ -1103,6 +1121,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn ui_attached(_, sh, () => ()) { Ok(sh.attached.get()) }
         fn ui_cursor(_, sh, (x, y) => (Option<f64>, Option<f64>)) {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
+            Ok(())
+        }
+        // Whether the terminal reports the pointer (`daw.opt.mouse`), for the
+        // screen being drawn.
+        fn ui_mouse(_, sh, on => bool) {
+            sh.grid.borrow_mut().mouse_off = !on;
             Ok(())
         }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {

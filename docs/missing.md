@@ -9,9 +9,16 @@
   and the window shows them through `:diagnostics` and the float); MIDI LSP's
   settings check names REAPER's render dialog in its messages.
 
-- Editing the tempo lane with the mouse in the terminal (it draws the curve;
-  changes are made by command there), and a tempo curve that is smooth: a
-  drawn stroke makes a change a beat or so, each ramping to the next.
+- A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
+  each ramping to the next.
+- The mouse in the terminal: an audio clip's fades and gain are not dragged
+  (the keys and the clip's commands set them), a track's height is not
+  dragged (the wheel with Ctrl over the headers changes every track's), and
+  the volume curve drawn over a track's lane
+  is not edited with the pointer (its lane shown as a row is). Heights in a
+  lane are as fine as its two lines, and finer only by dragging a point.
+  Where the terminal keeps Shift for its own selection, Shift does not
+  reach the program.
 - In stretching: ratios are 0.25 to 4 (each part between warp markers
   too) and shifts 24 semitones either way; a stretch is always made from
   the start of its file, so the playhead put far into a long clip just
@@ -69,9 +76,26 @@
 - The window's GPU renderer as the default: it is tried only on a software
   OpenGL (llvmpipe) so far, where it draws correctly but costs more than
   the software renderer.
+- In clip launching: follow actions (a clip that launches the next, or a
+  random one, after so many bars); under a tempo ramp a slot's clip spreads
+  each block's beats evenly over it, so its notes can land up to a frame or
+  so from where the timeline would put them; and launches are not rendered
+  as they are: they are captured into the timeline first.
 - The window's position on Wayland: the compositor places windows and a
   program cannot ask for a place, so only X11 keeps it.
 - The flake's `flake.lock` names the `nixpkgs` of this machine as a path in
   its Nix store, so the package builds here but not from a URL elsewhere
   until it is locked to a release (`nix flake update`). The package is built
   for x86_64 and aarch64 Linux, and tried only on the first.
+- In the piano roll with several clips: `i` on a selection of clips in the
+  arrange view does not open them (`i` there begins a text object; `Enter`
+  does); musicops' phrase and chord text objects see the active clip only;
+  the window does not shade the gaps between the clips edited; a click on a
+  note shown behind always makes its clip active, so a note cannot be
+  added on top of one by a click (a drag draws it).
+- Suggestions in the arrange view (whole clips) and the drum view: sources
+  may say they offer them (`views`), but only the piano roll asks and shows
+  them. A suggestion's controller moves are written when accepted but not
+  drawn beforehand, and its badge has no list of the alternatives' details
+  to read through; hearing one uses the track's live input, so it is timed
+  by the kernel's timers rather than the engine's clock.

@@ -1048,6 +1048,8 @@ daw.on("startup", offer)
 daw.on("pianoroll.opened", function() if next(clients) then M.sync() end end)
 daw.on("address.changed", schedule)
 daw.on("cursor.changed", schedule)
+-- Every clip the piano roll edits is open with the servers, not only the active one.
+daw.on("roll_clips.changed", function() if next(clients) then M.sync() end end)
 daw.on("exit", function() M.stop() end)
 
 -- `:lsp` -------------------------------------------------------------------------

@@ -2847,8 +2847,13 @@ end)
 --   local T = ...
 --   T.test("the widget counts", function() T.fresh() T.eq(1 + 1, 2, "sum") end)
 
+-- What a test asks to have undone when it ends, passed or failed, so that
+-- a failure does not leave a setting behind for the tests after it.
+local cleanups = {}
+local function after(fn) cleanups[#cleanups + 1] = fn end
+
 local T = {
-  test = test, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
+  test = test, after = after, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
   scratch = scratch, read_file = read_file, write_file = write_file, frequency = frequency,
   channel_peaks = channel_peaks, three_clips = three_clips, layout = layout, melody = melody, keys = keys,
 }
@@ -2870,6 +2875,7 @@ local only = ...
 for _, t in ipairs(tests) do
   if not only or t.name:find(only, 1, true) then
     local ok, err = xpcall(t.fn, debug.traceback)
+    for i = #cleanups, 1, -1 do pcall(cleanups[i]) cleanups[i] = nil end
     if ok and type(err) == "string" then
       print("skip  " .. t.name .. " (" .. err .. ")")
     elseif ok then
