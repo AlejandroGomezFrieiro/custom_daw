@@ -128,6 +128,8 @@ function view:render(buf, ctx)
   local value = (model.NAMES[self.value] or "?") .. (self.dot and " dotted" or "")
   local keyname = stored and (stored.root .. " " .. (stored.scale or "major")) or "C major"
   local extra = (layout.names and ("  " .. #layout.names .. " staves, to read") or "") .. (view.raw_view() and "  raw" or "")
+    .. (layout.midi and not layout.names and "  MIDI: :score.from-midi or i to write" or "")
+    .. ((self.voice or 1) > 1 and ("  voice " .. self.voice) or "")
     .. (only and ("  " .. (only == 1 and "right hand" or "left hand") .. " (low panel)") or "")
   daw.ui.titlebar(real, {
     pill = { c.name, hue.pill }, name = track.name, focused = ctx.focused,

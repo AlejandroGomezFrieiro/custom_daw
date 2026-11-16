@@ -61,6 +61,21 @@
   shown as the terminal draws it, in a window of its own (`:textbuf.window`),
   not among the window's panels.
 
+- Score clips (notation): tempo marks are written only (`:notation.text`),
+  not tempo-map points, and no option makes the score own the song's
+  tempo; repeats and voltas are written, not unfolded; trills, tremolos,
+  fermatas, swing and expression maps are not rendered; no CC1 or CC11 is
+  written for sustained instruments; the piano roll does not mark a score
+  clip's notes as written or show a note's feel; with `timebind` the note
+  under one view's cursor is not outlined in the other; key, clef and
+  time-signature changes inside a clip are not edited per measure (a score
+  keeps the time signatures it was written with, and the project's key);
+  joining, splitting or stretching a score clip in the arrange view and
+  recording into one work on its notes as on any MIDI clip, and the next
+  edit in notation renders the score over them; `:import song.mid score=yes`
+  does not exist (`:score.from-midi` after importing does it); the
+  several-tracks view and a track's export transcribe what the clips play.
+
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but
   not drawn; annotations are drawn on mixer strips, devices and the ruler,

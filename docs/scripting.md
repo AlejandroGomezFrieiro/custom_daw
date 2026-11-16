@@ -50,6 +50,29 @@ daw.midifile.export("out.mid", { clips = { clip.id } })         -- or { tracks =
 local file = daw.midifile.read("song.mid")             -- parse(bytes) and encode(file) work on bytes
 ```
 
+**Clip owners.** An extension that keeps a clip's notes as the rendering
+of something of its own (the notation extension's written score) names
+itself the clip's owner, and is asked before any note of it is written
+through `daw.Clip` (and so by the piano roll, the window's gestures,
+`daw.edit` and fixes from language servers). It says what the change
+means and makes it its own way, or refuses it with a message; its own
+writes go through `daw.api`, which is not asked.
+
+```lua
+daw.clips.owner("myscore", {
+  claims = function(clip) return clip.meta.mine ~= nil end,   -- clip as daw.api.clip_get gives it
+  on_edit = function(clip, change)                            -- change: set / remove / add / replace
+    if change.remove then return { kind = "refuse", message = "these notes are mine" } end
+    return { kind = "written", apply = function() --[[ change it my way ]] end }
+  end,
+})
+daw.clips.owner_of(clip.id)    -- "myscore", or nil
+```
+
+`kind` is `"written"` or `"feel"` (both: `apply()` is called instead of
+the write, and what it returns is what `set_note` and `add_note` return),
+`"refuse"`, or nil for the write to go ahead as asked.
+
 **Transport.**
 
 ```lua
