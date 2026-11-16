@@ -40,6 +40,16 @@ The suite hosts real plugins in all three formats. The dev shell provides them
 (LSP Plugins and Surge XT, through `DAW_TEST_PLUGINS`); outside it those tests
 are skipped.
 
+`cargo test -p daw-gui` also drives the real window
+(`crates/daw-gui/tests/window.rs`): each scenario starts Xvfb on a free display
+from `:120` up, openbox and the window, makes pointer and key gestures with
+xdotool, and asks the kernel what it holds afterwards. It needs `Xvfb`,
+`openbox` and `xdotool` (and ImageMagick, for a screenshot of a failure); the
+dev shell has them. Without them these tests say what is missing and pass. A
+failed scenario leaves `failure.png` and the window's output under
+`target/tmp/window/<scenario>`. The tests marked `#[ignore]` are bugs found
+this way; `cargo test -p daw-gui -- --ignored` runs them.
+
 The first start looks through every installed plugin, which can take several
 seconds (bridged Windows plugins each start Wine). The result is cached in
 `~/.cache/daw/plugins.json`; after that a plugin file is only loaded when it
