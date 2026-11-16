@@ -84,7 +84,7 @@ returns to normal mode.
 | `A`, `,at` `,ax` | add a volume automation point at the cursor; turn the lane off or on (read or bypass), clear it |
 | `,al`, `,aa` `,aA` | choose what to automate (volume, pan, any device parameter) and show its lane; show or hide the track's lanes as rows; show every track's lanes |
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
-| `gC` `gI`, `zt` `zT` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes, the tempo lane under the ruler |
+| `gC` `gI`, `zt` `zT` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes (see below for comping with the mouse), the tempo lane under the ruler |
 | `:preroll 2`, `:tempo.move 9` | play two bars (`3s`: seconds) before the punch in when recording from a stop; move the tempo change at the cursor to bar 9 |
 | `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
@@ -115,6 +115,17 @@ cursor. The lane is to look at; the map is changed by commands, each one undo
 step: `:tempo 96 at 17` (or `here`) adds a change, `:tempo.ramp` makes the
 change before the cursor ramp to the next, `:tempo.move 9` moves it to bar 9,
 `:tempo.remove` takes it away. The window's lane is drawn on with the mouse.
+
+**Comping with the mouse.** `zt` shows a track's takes as lanes under its
+clips, one row for each take. Drag across lane k with the left button, and
+the cells from where you pressed to where you let go are marked; on release
+take k plays over that stretch, as in the window: the clips are cut at its
+ends on the grid (Shift leaves it), the pieces that then play the same take
+are joined, and it is one undo step. A click without a drag (a cell shorter
+than a grid step) gives the piece under it take k. A click on the lane's
+label (`↳ take 2`) makes that take play wherever the track has it. The
+release may be anywhere on the screen: a drag belongs to the view it began
+in. `:take 2` over a selection does the same from the keyboard.
 
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,

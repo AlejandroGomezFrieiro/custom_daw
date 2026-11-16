@@ -192,3 +192,117 @@ nothing back.
 
 New devices implement the `Device` trait in `daw-engine` and are added to the
 registry in [devices/mod.rs](../crates/daw-engine/src/devices/mod.rs).
+
+## Writing a device in Lua
+
+A device can be a Lua file, in the spirit of REAPER's JSFX: parameters and a
+`process` function given each block of sound. Saved in
+`~/.config/daw/devices/`, it shows in the device picker beside the built-in
+devices and plugins as `lua:<file name>`, and its parameters are set,
+automated, learnt, saved with the project and kept in presets like any
+other device's.
+
+```lua
+-- ~/.config/daw/devices/tilt.lua: a tilt equaliser
+local dsp = require("daw.dsp")
+
+local dev = dsp.device {
+  name = "Tilt",
+  params = {
+    { key = "tilt", name = "Tilt", min = -6, max = 6, default = 0, unit = "dB" },
+    { key = "output", name = "Output", min = -12, max = 12, default = 0, unit = "dB" },
+  },
+}
+
+local low, high
+
+function dev.init(sample_rate)
+  low = { dsp.biquad(), dsp.biquad() }
+  high = { dsp.biquad(), dsp.biquad() }
+end
+
+function dev.process(b)
+  local p = b.params
+  for ch = 1, 2 do
+    low[ch]:set("lowshelf", 800, 0.7, -p.tilt, b.sample_rate)
+    high[ch]:set("highshelf", 800, 0.7, p.tilt, b.sample_rate)
+  end
+  local g = dsp.gain(p.output)
+  for i = 0, b.frames - 1 do
+    b.left[i] = g * high[1]:process(low[1]:process(b.left[i]))
+    b.right[i] = g * high[2]:process(low[2]:process(b.right[i]))
+  end
+end
+
+return dev
+```
+
+- **The file returns its device**, made with `dsp.device { ... }`: `name`
+  (else the file's name), `category` (`"effect"`, the default, or
+  `"instrument"`), `vendor`, and `params`, a list of `{ key, name, min,
+  max, default, unit }` or of choices, `{ key = "mode", choices = {
+  "Soft", "Hard" }, default = "Soft" }` (a choice's value is its number
+  from 0). `dev.init(sample_rate, max_block)` runs once before the first
+  block.
+- **`dev.process(b)` runs each block.** `b.left` and `b.right` are the
+  block's two channels, `ffi` float arrays counted from 0, `b.frames` long:
+  an effect changes them, an instrument adds to them. `b.params` holds the
+  parameters' values by key, `b.sample_rate` the rate, and the transport is
+  in `b.playing`, `b.tempo`, `b.beat`, `b.seconds`, `b.bar`, `b.bar_start`,
+  `b.sig_num` and `b.sig_den`. Loops over the arrays are compiled by
+  LuaJIT; a gain costs under a microsecond a block. Instead of `process`, a
+  device may give `dev.sample(l, r, b)`, which takes one frame and returns
+  the new pair.
+- **MIDI.** `b.events[0]` to `b.events[b.nevents - 1]` are the block's
+  events in order, each with `frame`, `type`, `channel` (1 to 16), `key`
+  and `value`. Types are `dsp.NOTE_ON` (`value` is the velocity, 0 to 1),
+  `dsp.NOTE_OFF`, `dsp.CC` (`key` is the controller, `value` 0 to 1),
+  `dsp.BEND` (-1 to 1), `dsp.PRESSURE`, `dsp.PROGRAM`, `dsp.ALL_NOTES_OFF`,
+  and `dsp.OTHER` for the rest (a note's own controllers, RPNs).
+  `b:note_on(frame, key, velocity, channel)`, `b:note_off(frame, key,
+  channel)`, `b:cc(frame, number, value, channel)` and `b:send(frame, type,
+  key, value, channel)` send events to the devices after it, in any order;
+  `b:pass(e)` sends on one that came in as it is. What comes in is passed
+  on by itself, with what the device sends added; a device declared with
+  `midi_effect = true` (an arpeggiator, a chord maker) replaces it instead.
+- **A side-chain.** `sidechain = true` lets the device listen to another
+  track (see [Side-chains](mixing.md#mixing-midi-and-rendering-in-the-core)):
+  `b.key_left` and `b.key_right` hold it, nil when nothing is connected.
+- **The helpers** in `daw.dsp`: `dsp.gain(db)` and `dsp.db(gain)`,
+  `dsp.mtof(note)`, `dsp.pan(p)` (equal-power gains), `dsp.clamp`,
+  `dsp.saturate(x)` (a soft clip), `dsp.buffer(n)` (a float array for a
+  delay line), `dsp.onepole(hz, sr)` with `:lowpass(x)` and `:highpass(x)`,
+  `dsp.biquad(shape, hz, q, gain_db, sr)` with `:set(...)` and
+  `:process(x)` (lowpass, highpass, bandpass, notch, peak, lowshelf,
+  highshelf), and `dsp.smoother(ms, sr)` with `:next(target)` for gliding
+  to a new value. One filter or smoother per channel. Modules beside the
+  file are found by `require`.
+- **Where scripts are found.** `~/.config/daw/devices/`, and `devices/` in
+  each extension: an extension ships devices by having that directory.
+  A script in the configuration directory wins over an extension's of the
+  same name. `extensions/luafx` has four to start from (a gain and pan, a
+  drive, a chord maker and a sine instrument); `daw.luadev.add_dir(dir)`
+  looks in another directory.
+- **Saved, it is loaded again.** Each second the files are looked at
+  (`daw.opt.lua_devices_watch`, in ms, 0 for never); a script that changed
+  is loaded, and the devices made from it start again from the new code,
+  keeping their parameters' values. A new parameter starts at its default.
+  `:device.reload` does it at once for the device chosen in the panel, or
+  every Lua device of the track. `:device.scripts` lists the scripts, where
+  they are, and why any did not load.
+- **Errors are shown, not fatal.** A script that does not load (a syntax
+  error, no `process`, a top level that runs for more than five seconds)
+  is reported with its file and line, and a device already running from an
+  earlier version goes on as it was. A script that fails while it runs
+  stops alone: the session shows the device as stopped with the error
+  (`tilt.lua:23: attempt to index a nil value`), the track plays on with
+  an effect passed over and an instrument silent, and `:device.restart` or
+  saving the file starts it again.
+- **Each Lua device runs in a process of its own**, the helper plugins get,
+  with a LuaJIT state to itself. LuaJIT allocates as it runs, which the
+  audio thread must never do, so the engine hands the helper each block
+  through shared memory and waits for it within the block, exactly as for
+  a plugin: no latency is added, a script that is slow costs its own track
+  a block, and one that hangs or crashes (`ffi` can) is ended and shown as
+  stopped without touching anything else. This holds with
+  `--plugins-in-process` too.

@@ -7,6 +7,7 @@ pub mod grid;
 pub mod history;
 pub mod io;
 pub mod kernel;
+pub mod luadev_api;
 pub mod measure;
 pub mod model;
 pub mod peaks;

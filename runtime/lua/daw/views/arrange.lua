@@ -542,7 +542,8 @@ end
 --- One take lane: take `row.take` of every clip of the track that has that
 --- many, over the clip's own stretch of time, lit where it is the one that
 --- plays and faint where it is not, with its name. To look at: comping here
---- is `:take 2` over a selection, or a drag across the lane in the window.
+--- is `:take 2` over a selection, or a drag across the lane, with the
+--- mouse in the terminal or the window.
 function view:draw_take_row(headers, timeline, row, lines)
   local y, k = row.y, row.take
   local zoom, scroll = self.geometry.zoom, self.scroll
@@ -570,6 +571,12 @@ function view:draw_take_row(headers, timeline, row, lines)
         box:fill(0, 0, 1, 1, draw.g.clip_start, "ClipEdge")
       end
     end
+  end
+  -- The stretch being dragged over.
+  local comp = self.comp
+  if comp and comp.id == row.id and comp.take == k then
+    local x0, x1 = math.min(comp.x0, comp.x1) - hw, math.max(comp.x0, comp.x1) - hw
+    timeline:fill(math.max(0, x0), y, math.max(0, x1 - math.max(0, x0) + 1), 1, nil, "Visual")
   end
 end
 
@@ -831,6 +838,22 @@ view.grid = {
   end,
 }
 
+--- A drag across a take lane, as the window's: the cells from where the
+--- button went down to where it is now are marked, and on release that
+--- take plays over them (`daw.frontend.act.comp`; a cell shorter than a
+--- grid step is a click, which chooses the take for the piece under it).
+function view:comp_drag(event)
+  local g, comp = self.geometry, self.comp
+  comp.x1 = math.max(g.hw, event.x)
+  if event.kind == "up" then
+    self.comp = nil
+    local from = self.scroll + (math.min(comp.x0, comp.x1) - g.hw) / g.zoom
+    local to = self.scroll + (math.max(comp.x0, comp.x1) + 1 - g.hw) / g.zoom
+    daw.frontend.act.comp(comp.id, comp.take, from, to, event.mods:find("S") ~= nil)
+  end
+  api.ui_redraw()
+end
+
 function view:on_mouse(event)
   local g = self.geometry
   if not g then return end
@@ -846,11 +869,14 @@ function view:on_mouse(event)
   elseif event.kind == "scroll_left" or event.kind == "scroll_right" then
     self.scroll = math.max(0, self.scroll + (event.kind == "scroll_right" and bar or -bar))
     return api.ui_redraw()
+  elseif self.comp and (event.kind == "drag" or event.kind == "up") then
+    return self:comp_drag(event)
   elseif event.kind ~= "down" or event.button ~= "left" then
     return
   end
 
   local beat = self.scroll + (event.x - g.hw) / g.zoom
+  self.comp = nil
   if event.y == 0 then
     if event.x >= g.hw then api.transport_seek(daw.cursor.snap(beat)) end
     return
@@ -858,6 +884,18 @@ function view:on_mouse(event)
   local hit
   for _, row in ipairs(g.layout.rows) do
     if event.y >= row.y and event.y < row.y + row.h then hit = row end
+  end
+  if hit and hit.kind == "take" then
+    if event.x < g.hw then
+      -- The label makes the take play wherever the track has it.
+      local last = 0
+      for _, clip in ipairs(api.clip_list(hit.id)) do last = math.max(last, clip.start + clip.length) end
+      daw.takes.comp(hit.id, hit.take, 0, last)
+      daw.cursor.set_track(hit.id)
+    else
+      self.comp = { id = hit.id, take = hit.take, x0 = event.x, x1 = event.x }
+    end
+    return api.ui_redraw()
   end
   if not hit or (hit.kind ~= "track" and hit.kind ~= "lane") then return end
   local id = hit.id
