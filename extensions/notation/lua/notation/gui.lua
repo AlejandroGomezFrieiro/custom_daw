@@ -25,9 +25,10 @@ local view = require("notation")
 local c = require("daw.canvas").palette
 local floor, max, min, abs = math.floor, math.max, math.min, math.abs
 local EPS = 1e-6
-local TOOLBAR, INFO = 44, 26
+local INFO = 26
 
-local gui = { scroll = 0, hscroll = 0, drag = nil, buttons = {}, heads = {}, accidental = nil, rest = false, measures = {} }
+-- bar_h is the toolbar's height: it grows a row for every row the buttons wrap to.
+local gui = { bar_h = 44, scroll = 0, hscroll = 0, drag = nil, buttons = {}, heads = {}, accidental = nil, rest = false, measures = {} }
 view.gui = gui
 view.space = nil       -- the staff space chosen by zooming, in px; nil: by the size of a cell
 view.galley = false    -- one endless system, scrolled sideways
@@ -357,15 +358,42 @@ end
 
 local VALUE_BUTTONS = { 4, 2, 1, 0.5, 0.25, 0.125 }
 
-local function button(g, x, w, label, on, action, draw)
-  g:rect(x, 9, w, 26, { fill = on and c.select or c.control, radius = 5 })
-  if draw then
-    draw(x + w / 2, 22, on and c.surface or c.text)
-  else
-    g:text(x, 15, label, { color = on and c.surface or c.text, bold = on, align = "center", width = w })
+-- The toolbar is groups of buttons, every button BTN high, BAR_GAP between
+-- groups; a group that does not fit on its row goes to the next row. The
+-- zoom buttons keep the right end of the first row.
+local BTN, BAR_ROW, BAR_GAP, ZOOM_W = 28, 36, 16, 70
+
+local function bar_height(rows) return #rows * BAR_ROW + 8 end
+
+--- Where each group goes in a toolbar `width` wide: rows of { group, x }.
+local function bar_rows(groups, width)
+  local rows, x = { {} }, 10
+  for _, grp in ipairs(groups) do
+    local gw = -5
+    for _, b in ipairs(grp) do gw = gw + b.w + 5 end
+    if x > 10 and x + gw > width - 10 - (#rows == 1 and ZOOM_W or 0) then
+      rows[#rows + 1] = {}
+      x = 10
+    end
+    local row = rows[#rows]
+    row[#row + 1] = { group = grp, x = x }
+    x = x + gw + BAR_GAP
   end
-  gui.buttons[#gui.buttons + 1] = { x = x, y = 9, w = w, h = 26, action = action, label = label }
-  return x + w + 5
+  return rows
+end
+
+--- One button at `x, y`. Its label, or what `b.draw` paints around the
+--- button's centre, sits in the middle of the box.
+local function button(g, x, y, b)
+  g:rect(x, y, b.w, BTN, { fill = b.fill or (b.on and c.select or c.control), radius = 5 })
+  local ink2 = (b.fill or b.on) and c.surface or c.text
+  if b.draw then
+    b.draw(x + b.w / 2, y + BTN / 2, ink2)
+  else
+    -- Centred text is centred on the `x` it is given, not started there.
+    g:text(x + b.w / 2, y + (BTN - 12) / 2 - 1, b.label, { color = ink2, bold = b.on or b.fill ~= nil, align = "center", width = b.w })
+  end
+  if b.action then gui.buttons[#gui.buttons + 1] = { x = x, y = y, w = b.w, h = BTN, action = b.action, label = b.label } end
 end
 
 --- A glyph of the music font for the toolbar, at a staff space of 5 px.
@@ -375,18 +403,16 @@ local function icon(g, name, x, y, colour)
   if gl then g:glyph(x, y, 20, gl.cp, colour, font.name) end
 end
 
-local function toolbar(g, w, data, colour)
-  g:rect(0, 0, w, TOOLBAR, { fill = c.panel })
-  local name_w = #data.name * 7 + 22
-  g:rect(10, 9, name_w, 26, { fill = colour, radius = 5 })
-  g:text(21, 15, data.name, { color = c.surface, bold = true })
-  local x = 10 + name_w + 12
+--- The toolbar's buttons, in groups: the clip's name, the note value, the
+--- accidentals, the marks, the dynamics. `colour` is the track's.
+local function bar_groups(g, name, colour)
+  local marks = view.marks
+  local values, accidentals, shapes, dynamics = {}, {}, {}, {}
   for _, v in ipairs(VALUE_BUTTONS) do
-    local on = view.value == v and not gui.rest
-    x = button(g, x, 30, model.NAMES[v], on, function()
+    values[#values + 1] = { w = 30, label = model.NAMES[v], on = view.value == v and not gui.rest, action = function()
       view:choose(v)
       gui.rest = false
-    end, function(cx, cy, ink2)
+    end, draw = function(cx, cy, ink2)
       local hx, hy = floor(cx - 4), floor(cy + 6)
       icon(g, engrave.HEAD_GLYPH(v), hx, hy, ink2)
       if v < 4 then
@@ -394,43 +420,54 @@ local function toolbar(g, w, data, colour)
         local flags = model.flags(v)
         if flags > 0 then icon(g, ({ "flag8thUp", "flag16thUp", "flag32ndUp" })[flags], hx + 6, hy - 16, ink2) end
       end
-    end)
+    end }
   end
-  x = button(g, x + 4, 30, "dot", view.dot, function() view.dot = not view.dot end,
-    function(cx, cy, ink2) icon(g, "augmentationDot", floor(cx - 2), floor(cy), ink2) end)
-  x = button(g, x, 44, "rest", gui.rest, function() gui.rest = not gui.rest end)
-  x = x + 8
+  values[#values + 1] = { w = 30, label = "dot", on = view.dot, action = function() view.dot = not view.dot end,
+    draw = function(cx, cy, ink2) icon(g, "augmentationDot", floor(cx - 2), floor(cy), ink2) end }
+  values[#values + 1] = { w = 44, label = "rest", on = gui.rest, action = function() gui.rest = not gui.rest end }
   for _, a in ipairs({ { -1, "flat" }, { 0, "natural" }, { 1, "sharp" } }) do
-    local on = gui.accidental == a[1]
-    x = button(g, x, 30, a[2], on, function() gui.accidental = (gui.accidental ~= a[1]) and a[1] or nil end,
-      function(cx, cy, ink2) icon(g, engrave.ACC_GLYPH[a[1]], floor(cx - 3), floor(cy + 1), ink2) end)
+    accidentals[#accidentals + 1] = { w = 30, label = a[2], on = gui.accidental == a[1], action = function()
+      gui.accidental = (gui.accidental ~= a[1]) and a[1] or nil
+    end, draw = function(cx, cy, ink2) icon(g, engrave.ACC_GLYPH[a[1]], floor(cx - 3), floor(cy + 1), ink2) end }
   end
-  x = x + 8
-  local marks = view.marks
-  local function art_button(kind, glyph_name)
-    x = button(g, x, 28, kind, false, function() marks.toggle_art(kind, view:chord_indices()) end,
-      function(cx, cy, ink2) icon(g, glyph_name, floor(cx - 4), floor(cy + 2), ink2) end)
+  local function art(kind, glyph_name)
+    shapes[#shapes + 1] = { w = 28, label = kind, action = function() marks.toggle_art(kind, view:chord_indices()) end,
+      draw = function(cx, cy, ink2) icon(g, glyph_name, floor(cx - 4), floor(cy + 2), ink2) end }
   end
-  art_button("staccato", "articStaccatoAbove")
-  art_button("accent", "articAccentAbove")
-  art_button("tenuto", "articTenutoAbove")
-  x = button(g, x, 28, "slur", false, function() daw.cmd("notation.slur") end,
-    function(cx, cy, ink2) g:poly({ cx - 8, cy + 3, cx - 4, cy - 2, cx + 4, cy - 2, cx + 8, cy + 3 }, { color = ink2, width = 1.6 }) end)
-  x = button(g, x, 28, "triplet", false, function() view:toggle_tuplet() end,
-    function(cx, cy, ink2) icon(g, "tuplet3", floor(cx - 3), floor(cy + 5), ink2) end)
-  x = button(g, x, 28, "voice", false, function() view:toggle_voice() end,
-    function(cx, cy, ink2) g:text(cx - 8, cy - 7, "v2", { color = ink2, size = 12 }) end)
-  x = x + 6
+  art("staccato", "articStaccatoAbove")
+  art("accent", "articAccentAbove")
+  art("tenuto", "articTenutoAbove")
+  shapes[#shapes + 1] = { w = 28, label = "slur", action = function() daw.cmd("notation.slur") end,
+    draw = function(cx, cy, ink2) g:poly({ cx - 8, cy + 3, cx - 4, cy - 2, cx + 4, cy - 2, cx + 8, cy + 3 }, { color = ink2, width = 1.6 }) end }
+  shapes[#shapes + 1] = { w = 28, label = "triplet", action = function() view:toggle_tuplet() end,
+    draw = function(cx, cy, ink2) icon(g, "tuplet3", floor(cx - 3), floor(cy + 5), ink2) end }
+  shapes[#shapes + 1] = { w = 32, label = "voice", action = function() view:toggle_voice() end,
+    draw = function(cx, cy, ink2) g:text(cx, cy - 7.5, "v2", { color = ink2, size = 12, align = "center" }) end }
   for _, d in ipairs({ "p", "mf", "f" }) do
-    x = button(g, x, 28, d, false, function() daw.cmd("notation.dyn", { d }) end)
+    dynamics[#dynamics + 1] = { w = 32, label = d, action = function() daw.cmd("notation.dyn", { d }) end }
   end
-  x = button(g, x, 28, "cresc", false, function() daw.cmd("notation.cresc") end,
-    function(cx, cy, ink2) g:poly({ cx + 8, cy - 4, cx - 8, cy, cx + 8, cy + 4 }, { color = ink2, width = 1.4 }) end)
-  button(g, x, 28, "dim", false, function() daw.cmd("notation.dim") end,
-    function(cx, cy, ink2) g:poly({ cx - 8, cy - 4, cx + 8, cy, cx - 8, cy + 4 }, { color = ink2, width = 1.4 }) end)
-  local right = w - 40
-  button(g, right, 30, "+", false, function() gui.zoom(1) end)
-  button(g, right - 35, 30, "−", false, function() gui.zoom(-1) end)
+  dynamics[#dynamics + 1] = { w = 28, label = "cresc", action = function() daw.cmd("notation.cresc") end,
+    draw = function(cx, cy, ink2) g:poly({ cx + 8, cy - 4, cx - 8, cy, cx + 8, cy + 4 }, { color = ink2, width = 1.4 }) end }
+  dynamics[#dynamics + 1] = { w = 28, label = "dim", action = function() daw.cmd("notation.dim") end,
+    draw = function(cx, cy, ink2) g:poly({ cx - 8, cy - 4, cx + 8, cy, cx - 8, cy + 4 }, { color = ink2, width = 1.4 }) end }
+  return { { { w = #name * 7 + 22, label = name, fill = colour } }, values, accidentals, shapes, dynamics }
+end
+
+local function toolbar(g, w, rows)
+  g:rect(0, 0, w, gui.bar_h, { fill = c.panel })
+  for r, row in ipairs(rows) do
+    local y = 6 + (r - 1) * BAR_ROW
+    for gi, placed in ipairs(row) do
+      local x = placed.x
+      for _, b in ipairs(placed.group) do
+        button(g, x, y, b)
+        x = x + b.w + 5
+      end
+      if gi > 1 then g:rect(placed.x - BAR_GAP / 2 - 0.5, y + 3, 1, BTN - 6, { fill = c.text_3 }) end
+    end
+  end
+  button(g, w - 40, 6, { w = 30, label = "+", action = function() gui.zoom(1) end })
+  button(g, w - 75, 6, { w = 30, label = "−", action = function() gui.zoom(-1) end })
 end
 
 --- What the info line says: the note under the cursor, a diagnostic
@@ -502,7 +539,12 @@ function view:paint(g, ctx)
   local colour = daw.draw.track_colour(track)
   local layout = self:layout()
   local st = style_for(ctx)
-  local area = { top = chrome and TOOLBAR or 0, bottom = h - (chrome and INFO or 0), width = w }
+  local rows
+  if chrome then
+    rows = bar_rows(bar_groups(g, data.name, colour), w)
+    gui.bar_h = bar_height(rows)
+  end
+  local area = { top = chrome and gui.bar_h or 0, bottom = h - (chrome and INFO or 0), width = w }
   local eng = self:engrave(layout, w, st, 0)
   gui.engraved, gui.area = eng, area
   follow(eng, area, layout)
@@ -533,7 +575,7 @@ function view:paint(g, ctx)
   draw_playhead(g, eng, layout, clip, area)
 
   if chrome then
-    toolbar(g, w, data, colour)
+    toolbar(g, w, rows)
     local fifths = layout.fifths
     local key_text = (fifths == 0 and "C") or (abs(fifths) .. (fifths > 0 and "♯" or "♭"))
     gui.key_text = key_text .. "  ·  " .. layout.meter.num .. "/" .. layout.meter.den .. "  ·  " .. track.name
@@ -683,7 +725,7 @@ function view:pointer(e)
     end
     return
   end
-  if chrome and e.kind == "down" and e.y < TOOLBAR then
+  if chrome and e.kind == "down" and e.y < gui.bar_h then
     for _, b in ipairs(gui.buttons) do
       if e.x >= b.x and e.x < b.x + b.w and e.y >= b.y and e.y < b.y + b.h then return b.action() end
     end
