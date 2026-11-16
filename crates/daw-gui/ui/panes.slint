@@ -1,0 +1,249 @@
+// The main area as the kernel's tabs and windows lay it out (see
+// runtime/lua/daw/panes.lua): a pane for each window of the current tab,
+// the borders between them to drag, a row of tabs along the top when there
+// is more than one, and a ring round the pane with the keyboard. The views
+// the window has its own drawing for (the arrange view, the device panel,
+// the piano roll, the mixer, the session view) are put in their panes by
+// app.slint; every other is a picture the kernel paints (`PaneView`).
+
+import { Theme, Icons, Button } from "widgets.slint";
+
+// A window of the layout. `kind`: 0 drawn by the window itself, 1 a view
+// that paints, 2 a view drawn in cells as the terminal draws it.
+export struct PaneData {
+    win: int,
+    view: string,
+    kind: int,
+    title: string,
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    focused: bool,
+    image: image,
+}
+
+// Where a pane the window draws itself goes, and whether it shows.
+export struct PaneRect {
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    shown: bool,
+}
+
+// A border between panes: `across` for one between panes side by side.
+export struct BorderData {
+    across: bool,
+    x: length,
+    y: length,
+    length: length,
+}
+
+export struct TabData {
+    title: string,
+    current: bool,
+}
+
+// The height of a painted pane's title along its top.
+export global PaneSizes {
+    out property <length> heading: 24px;
+}
+
+// A pane the kernel paints: its picture, the pointer passed back, and for
+// a view that paints, a title with buttons to pop it out and to close it.
+export component PaneView inherits Rectangle {
+    in property <PaneData> pane;
+    // kind (0 down, 1 up, 2 move with a button held, 3 double, 4 hover), x, y in the picture, button (0 left, 1 right, 2 middle), ctrl, shift, alt
+    callback pointer(int, length, length, int, bool, bool, bool);
+    callback wheel(length, length, length, length, bool, bool);
+    callback window();
+    callback close();
+    callback hint(string);
+    property <length> top: root.pane.kind == 1 ? PaneSizes.heading : 0px;
+    x: root.pane.x;
+    y: root.pane.y;
+    width: root.pane.w;
+    height: root.pane.h;
+    background: Theme.surface;
+    clip: true;
+
+    if root.pane.kind == 1: Rectangle {
+        x: 0;
+        y: 0;
+        height: PaneSizes.heading;
+        background: root.pane.focused ? Theme.panel-sel : Theme.panel;
+        Text {
+            x: 10px;
+            width: parent.width - 80px;
+            text: root.pane.title;
+            color: root.pane.focused ? Theme.text : Theme.text-2;
+            font-size: Theme.t-small;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            x: parent.width - self.preferred-width - 4px;
+            y: 2px;
+            height: parent.height - 4px;
+            spacing: 2px;
+            Button {
+                height: 20px;
+                width: 20px;
+                quiet: true;
+                icon: Icons.ph-arrow-square-out;
+                icon-box: 256;
+                clicked => {
+                    root.window();
+                }
+                changed has-hover => {
+                    root.hint(self.has-hover ? "open in a window of its own (gw)" : "");
+                }
+            }
+            Button {
+                height: 20px;
+                width: 20px;
+                quiet: true;
+                icon: Icons.ph-x;
+                icon-box: 256;
+                clicked => {
+                    root.close();
+                }
+                changed has-hover => {
+                    root.hint(self.has-hover ? "close the window (:q)" : "");
+                }
+            }
+        }
+    }
+    Image {
+        x: 0;
+        y: root.top;
+        width: parent.width;
+        height: parent.height - root.top;
+        source: root.pane.image;
+        image-fit: fill;
+    }
+    TouchArea {
+        y: root.top;
+        height: parent.height - root.top;
+        // Held by any button: `pressed` is only the left one, and a right
+        // drag moves too.
+        property <bool> held;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.move && !self.held && !self.pressed) {
+                root.pointer(4, self.mouse-x, self.mouse-y, 0, false, false, false);
+            }
+            if (event.kind == PointerEventKind.down) {
+                self.held = true;
+                root.pointer(0, self.mouse-x, self.mouse-y,
+                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
+                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            }
+            if (event.kind == PointerEventKind.up) {
+                self.held = false;
+                root.pointer(1, self.mouse-x, self.mouse-y,
+                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
+                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            }
+        }
+        moved => {
+            if (self.pressed || self.held) {
+                root.pointer(2, self.mouse-x, self.mouse-y, 0, false, false, false);
+            }
+        }
+        double-clicked => {
+            root.pointer(3, self.mouse-x, self.mouse-y, 0, false, false, false);
+        }
+        scroll-event(event) => {
+            root.wheel(self.mouse-x, self.mouse-y, event.delta-x, event.delta-y, event.modifiers.control, event.modifiers.shift);
+            accept
+        }
+    }
+}
+
+// A border between two panes, dragged to resize them: where the pointer
+// is, in the main area, goes to the kernel.
+export component PaneBorder inherits Rectangle {
+    in property <BorderData> border;
+    callback drag(length, length);
+    callback hint(string);
+    // The line drawn, and a little more on either side to take hold of.
+    property <length> grip: 6px;
+    x: root.border.across ? root.border.x - root.grip / 2 : root.border.x;
+    y: root.border.across ? root.border.y : root.border.y - root.grip / 2;
+    width: root.border.across ? root.grip : root.border.length;
+    height: root.border.across ? root.border.length : root.grip;
+    Rectangle {
+        x: root.border.across ? (parent.width - self.width) / 2 : 0;
+        y: root.border.across ? 0 : (parent.height - self.height) / 2;
+        width: root.border.across ? 1px : parent.width;
+        height: root.border.across ? parent.height : 1px;
+        background: touch.has-hover || touch.pressed ? Theme.select.with-alpha(0.7) : Theme.divider;
+    }
+    touch := TouchArea {
+        mouse-cursor: root.border.across ? ew-resize : ns-resize;
+        moved => {
+            if (self.pressed) {
+                root.drag(root.x + self.mouse-x, root.y + self.mouse-y);
+            }
+        }
+        changed has-hover => {
+            root.hint(self.has-hover ? "drag to share the room between the windows" : "");
+        }
+    }
+}
+
+// The tabs, along the top of the main area when there is more than one.
+export component TabBar inherits Rectangle {
+    in property <[TabData]> tabs;
+    callback go(int);
+    background: Theme.panel;
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.divider;
+    }
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-top: 3px;
+        spacing: 2px;
+        alignment: start;
+        for tab[i] in root.tabs: Rectangle {
+            width: label.preferred-width + 24px;
+            border-radius: 4px;
+            background: tab.current ? Theme.surface : touch.has-hover ? Theme.hover-face : transparent;
+            Rectangle {
+                y: 0;
+                height: 2px;
+                background: tab.current ? Theme.select : transparent;
+            }
+            label := Text {
+                text: (i + 1) + "  " + tab.title;
+                color: tab.current ? Theme.text : Theme.text-2;
+                font-size: Theme.t-small;
+                font-weight: tab.current ? 600 : 400;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            touch := TouchArea {
+                clicked => {
+                    root.go(i);
+                }
+            }
+        }
+    }
+}
+
+// The ring round the pane with the keyboard.
+export component FocusRing inherits Rectangle {
+    in property <PaneRect> pane;
+    x: root.pane.x;
+    y: root.pane.y;
+    width: root.pane.w;
+    height: root.pane.h;
+    visible: root.pane.shown;
+    border-width: 2px;
+    border-color: Theme.select.with-alpha(0.85);
+    background: transparent;
+}

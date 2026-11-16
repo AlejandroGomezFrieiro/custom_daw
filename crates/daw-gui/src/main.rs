@@ -21,6 +21,7 @@ use slint::{
     Timer, TimerMode, VecModel,
 };
 
+mod panes;
 mod portal;
 mod session;
 
@@ -1219,6 +1220,8 @@ struct View {
     clips: Rc<VecModel<ClipData>>,
     /// The session view: slots to launch.
     session: session::Session,
+    /// The kernel's tabs and windows, as panes of the main area.
+    panes: panes::Panes,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
     params: Vec<Rc<VecModel<ParamData>>>,
@@ -1652,6 +1655,7 @@ impl View {
         ui.set_focused(text(&modal["focused"]));
         ui.set_show_mixer(modal["mixer"].as_bool().unwrap_or(false));
         self.session.modal(ui, modal);
+        self.panes.modal(ui, &modal["panes"]);
         // A render in the background, and a controller being waited for.
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
@@ -2777,6 +2781,7 @@ fn run() -> Result<()> {
         meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
         session: session::Session::new(&ui),
+        panes: panes::Panes::new(&ui),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
         pictures: HashMap::new(),
@@ -2925,6 +2930,13 @@ fn run() -> Result<()> {
         }
     };
     view.borrow().session.install(&ui, pass.clone());
+    view.borrow().panes.install(&ui, {
+        let (act, view) = (act.clone(), view.clone());
+        move |code: &str, args: Value| {
+            act(&|c| c.eval(code, args.clone()));
+            view.borrow_mut().repaint = true;
+        }
+    });
     // Leaving the project (quitting, starting a new one, opening another)
     // asks first when there are changes to save. Returns whether it asked.
     let leave = {
@@ -4316,7 +4328,6 @@ fn run() -> Result<()> {
         let mut layout = json!({
             "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
             "row_height": ui.get_row_height(),
-            "roll_height": ui.get_roll_height(),
             "mixer": ui.get_show_mixer(),
         });
         // Where the window is, in screen pixels with its frame, where the
@@ -4351,6 +4362,9 @@ fn run() -> Result<()> {
     ui.window().on_winit_window_event({
         let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
         let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
+        // Where the pointer is, in logical pixels: a press there gives the
+        // pane under it the keyboard, whatever in it takes the press.
+        let pointer = Rc::new(Cell::new((0.0f32, 0.0f32)));
         move |_, event| {
             use slint::winit_030::winit::event::WindowEvent;
             let Some(ui) = weak.upgrade() else {
@@ -4366,6 +4380,17 @@ fn run() -> Result<()> {
                     view.borrow_mut().show(&ui, message, false);
                 }
                 WindowEvent::HoveredFileCancelled => view.borrow_mut().show(&ui, "", false),
+                WindowEvent::CursorMoved { position, .. } => {
+                    let scale = ui.window().scale_factor();
+                    pointer.set((position.x as f32 / scale, position.y as f32 / scale));
+                }
+                WindowEvent::MouseInput { state: slint::winit_030::winit::event::ElementState::Pressed, .. } => {
+                    let (x, y) = pointer.get();
+                    let pressed = view.borrow().panes.pressed(&ui, x, y);
+                    if let Some(win) = pressed {
+                        let _ = client.borrow_mut().eval("daw.panes.focus(...)", json!([win]));
+                    }
+                }
                 WindowEvent::DroppedFile(path) => {
                     let first = dropped.borrow().is_empty();
                     dropped.borrow_mut().push(path.to_string_lossy().to_string());
@@ -4431,6 +4456,8 @@ fn run() -> Result<()> {
                     view.show(&ui, &format!("{err:#}"), true);
                 }
                 ui.set_listening(client.borrow().player.is_some());
+                let repaint = view.repaint;
+                view.panes.paint(&ui, &mut client.borrow_mut(), repaint);
                 (view.windows.clone(), std::mem::take(&mut view.repaint))
             };
             let mut canvases = canvases.borrow_mut();
@@ -4438,6 +4465,8 @@ fn run() -> Result<()> {
                 let open = windows.iter().any(|w| &w.0 == name);
                 if !open {
                     let _ = canvas.window.hide();
+                    // The keyboard comes back to the main window.
+                    ui.window().with_winit_window(|window| window.focus_window());
                 }
                 open
             });
@@ -4576,9 +4605,6 @@ fn run() -> Result<()> {
     }
     if let Some(height) = size("row_height") {
         ui.set_row_height(height);
-    }
-    if let Some(height) = size("roll_height") {
-        ui.set_roll_height(height);
     }
     if kept["mixer"].as_bool() == Some(true) {
         act(&|c| {
