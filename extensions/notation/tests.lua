@@ -1039,6 +1039,37 @@ test("notation window: the toolbar chooses the value, the accidental and rests",
   eq(notes_of(clip), "E4@0+2", "a rest clears it")
 end)
 
+test("notation window: the toolbar's buttons are one height, labels centred, and wrap instead of overlapping", function()
+  local view = song({ N(64, 0, 4) }, 4)
+  for _, width in ipairs({ 1100, 520, 380 }) do
+    local drawing = daw.canvas.paint("notation", width, 560)
+    local rows, labelled = {}, 0
+    for i, a in ipairs(view.gui.buttons) do
+      eq(a.h, 28, "every button is as high as the others")
+      eq(a.x >= 0 and a.x + a.w <= width, true, "inside the window at " .. width)
+      rows[a.y] = true
+      for j = i + 1, #view.gui.buttons do
+        local b = view.gui.buttons[j]
+        eq(a.x + a.w <= b.x or b.x + b.w <= a.x or a.y + a.h <= b.y or b.y + b.h <= a.y, true,
+          a.label .. " and " .. b.label .. " do not overlap at " .. width)
+      end
+      if a.label == "rest" or a.label == "mf" then
+        for _, op in ipairs(drawing.ops) do
+          if op[1] == "t" and op[4] == a.label and op[8] == "center" then
+            labelled = labelled + 1
+            eq(op[2], a.x + a.w / 2, a.label .. " is centred on its button")
+          end
+        end
+      end
+    end
+    eq(labelled, 2, "rest and mf are drawn centred at " .. width)
+    local count = 0
+    for _ in pairs(rows) do count = count + 1 end
+    eq(view.gui.bar_h, count * 36 + 8, "the toolbar is as high as its rows at " .. width)
+    eq(count > 1, width < 800, "the buttons wrap onto more rows only when the window is narrow")
+  end
+end)
+
 --- The ops of a layer of a drawing.
 local function layer_ops(drawing, name)
   local out, current = {}, nil
