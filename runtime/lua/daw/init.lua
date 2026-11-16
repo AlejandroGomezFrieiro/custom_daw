@@ -122,6 +122,7 @@ daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
+daw.launcher = require("daw.launcher")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
 -- gives text, `daw.json.decode(text)` the value, or nil and the reason.
@@ -139,7 +140,7 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
-  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "help", "effect_windows" }) do
+  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "help", "effect_windows", "session" }) do
     require("daw.views." .. name)
   end
   require("daw.defaults")

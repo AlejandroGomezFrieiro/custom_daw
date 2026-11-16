@@ -1,0 +1,414 @@
+-- Clip launching, for playing live: every track has slots, a column of
+-- clips kept apart from the timeline, and a row of slots across the tracks
+-- is a scene. Launching a slot starts its clip looping on its track at the
+-- next boundary of its quantize (a bar by default), to the frame; while a
+-- track plays a slot, or has been stopped, its clips on the timeline are
+-- silent until it goes back to the arrangement. Stopping the song sends
+-- every track back. A render plays the timeline: `capture` writes a
+-- performance into it.
+--
+--   :launch                 the slot under the session view's cursor
+--   :scene 2                every clip in the second row
+--   :launch.stop            stop the track's clip; `launch.stop all` every one
+--   :launch.back            back to the arrangement; `launch.back all`
+--   :launch.quantize 1/8    where launches land (off 1/16 1/8 1/4 beat bar 2bars 4bars)
+--   daw.launcher.launch(track.id, 0)
+--
+-- The clips are clips like any other (`daw.api.clip_add(track, { slot = row })`),
+-- saved with the project and undone like any edit. Scene names are kept in
+-- `project.meta.scenes`. Rows count from 0 here and in `daw.api`, from 1 in
+-- commands and on screen.
+local api = daw.api
+local M = {
+  -- The slot the session view's cursor is on, as a row from 0; the track
+  -- is the cursor's.
+  row = 0,
+  quantizes = { "off", "1/16", "1/8", "1/4", "beat", "bar", "2bars", "4bars" },
+  modes = { "trigger", "gate", "toggle" },
+  -- A performance is being written into the timeline.
+  capturing = false,
+}
+
+-- Rows the session view shows at least.
+daw.option.define("launch_rows", 8)
+
+local function contains(list, value)
+  for _, v in ipairs(list) do
+    if v == value then return true end
+  end
+  return false
+end
+
+--- The clips in a track's slots, by row: `{ [row] = clip view }`.
+function M.slots(track)
+  local out = {}
+  for _, clip in ipairs(api.slot_list(track)) do out[clip.slot] = clip end
+  return out
+end
+
+--- The clip in a slot, or nil.
+function M.clip(track, row)
+  for _, clip in ipairs(api.slot_list(track)) do
+    if clip.slot == row then return clip end
+  end
+end
+
+--- What each track plays and has queued, by track id: see `daw.api.launcher`.
+--- A track with nothing launched is missing.
+function M.state()
+  local out = {}
+  for _, s in ipairs(api.launcher()) do
+    if s.slot or s.stopped or s.queued then out[s.track] = s end
+  end
+  return out
+end
+
+--- What one track plays: "arrangement", "stopped" or a row; and what it
+--- has queued, if anything.
+function M.playing(track)
+  local s = M.state()[track]
+  if not s then return "arrangement" end
+  return s.slot or (s.stopped and "stopped" or "arrangement"), s.queued
+end
+
+--- The names of the scenes, by row from 1; rows without one are nil.
+function M.scenes()
+  local scenes = api.project_get().meta.scenes
+  return type(scenes) == "table" and scenes or {}
+end
+
+function M.scene_name(row)
+  local name = M.scenes()[row + 1]
+  return (type(name) == "string" and name ~= "") and name or ("Scene " .. (row + 1))
+end
+
+function M.set_scene_name(row, name)
+  local meta = api.project_get().meta
+  local scenes = type(meta.scenes) == "table" and meta.scenes or {}
+  for i = 1, row do scenes[i] = scenes[i] or "" end
+  scenes[row + 1] = name
+  while #scenes > 0 and scenes[#scenes] == "" do scenes[#scenes] = nil end
+  meta.scenes = #scenes > 0 and scenes or nil
+  api.project_set("meta", meta)
+end
+
+--- How many rows there are: those with clips or names, one empty row more,
+--- and at least `daw.opt.launch_rows`.
+function M.rows()
+  local last = #M.scenes()
+  for _, id in ipairs(api.track_list()) do
+    for _, clip in ipairs(api.slot_list(id)) do last = math.max(last, clip.slot + 1) end
+  end
+  return math.max(daw.opt.launch_rows, last + 1)
+end
+
+-- Launching ------------------------------------------------------------------
+
+--- Send launches, and start the song if it is stopped: launched while
+--- stopped, clips start at once.
+local function send(list, start)
+  if #list == 0 then return end
+  api.launch(list)
+  if start and not daw.transport.playing then daw.transport.play() end
+  api.ui_redraw()
+end
+
+--- Launch the clip in a slot on its next boundary; an empty slot stops the
+--- track. `opts.quantize` and `opts.legato` stand in for the slot's.
+function M.launch(track, row, opts)
+  opts = opts or {}
+  send({ { track = track, slot = row, quantize = opts.quantize, legato = opts.legato } }, true)
+end
+
+--- A slot's button pressed, from a key, the mouse or a controller: what that
+--- does is the clip's mode. A toggle stops a clip that plays or is queued.
+function M.press(track, row)
+  local clip = M.clip(track, row)
+  local now, queued = M.playing(track)
+  if clip and clip.mode == "toggle" and (now == row or queued == row) then return M.stop(track) end
+  M.launch(track, row)
+end
+
+--- A slot's button let go: a gate clip stops.
+function M.release(track, row)
+  local clip = M.clip(track, row)
+  local now, queued = M.playing(track)
+  if clip and clip.mode == "gate" and (now == row or queued == row) then M.stop(track) end
+end
+
+--- Stop a track's clip on the next boundary; with no track, every track's.
+--- A stopped track is silent until it is launched again or sent back.
+function M.stop(track)
+  local list = {}
+  if track then
+    list[1] = { track = track, stop = true }
+  else
+    for id, s in pairs(M.state()) do
+      if s.slot or (s.queued and s.queued ~= "stop") then list[#list + 1] = { track = id, stop = true } end
+    end
+  end
+  send(list)
+end
+
+--- Send a track back to its timeline; with no track, every track that left it.
+function M.back(track)
+  local list = {}
+  if track then
+    list[1] = { track = track, arrangement = true }
+  else
+    for id in pairs(M.state()) do list[#list + 1] = { track = id, arrangement = true } end
+  end
+  send(list)
+end
+
+--- Launch a scene: the clip in that row on every track that has one, all
+--- on the same boundary. Tracks without one stop what they play from a slot.
+function M.scene(row)
+  local list, state = {}, M.state()
+  for _, id in ipairs(api.track_list()) do
+    if M.clip(id, row) then
+      list[#list + 1] = { track = id, slot = row }
+    elseif state[id] and state[id].slot then
+      list[#list + 1] = { track = id, stop = true }
+    end
+  end
+  send(list, true)
+end
+
+--- Where launches land unless a slot says otherwise.
+function M.set_quantize(q)
+  if not contains(M.quantizes, q) then
+    error("a quantize is one of " .. table.concat(M.quantizes, ", "), 2)
+  end
+  api.project_set("launch_quantize", q)
+end
+
+-- Making clips in slots --------------------------------------------------------
+
+--- An empty MIDI clip of `bars` bars (1) in a slot. Returns its id.
+function M.new_clip(track, row, bars)
+  local length = daw.time.bar(0) * (bars or 1)
+  return api.clip_add(track, { slot = row, length = length, name = "clip " .. (row + 1) })
+end
+
+--- Copy a clip from the timeline (or another slot) into a slot.
+function M.copy(clip, track, row)
+  return api.clip_to_slot(clip, track, row)
+end
+
+-- Capturing a performance ------------------------------------------------------
+--
+-- While capturing and playing, what each track plays is read from the engine
+-- every few milliseconds; the engine says on which beat each launch
+-- happened, so the timeline gets them exactly. When the song stops, every
+-- stretch a track played a slot becomes a looped copy of the clip there, and
+-- every stretch it was stopped is cleared, in one undo step.
+
+local log, last, timer = {}, {}, nil
+
+--- Begin or end a stretch for a track, from what the engine says of it.
+local function note(s, position)
+  local was = last[s.track]
+  local key = string.format("%s|%.9f", tostring(s.slot or s.stopped or "timeline"), s.since)
+  if was and was.key == key then return end
+  if was and was.kind then was.to = s.since end
+  if s.slot or s.stopped then
+    -- How far into its loop the clip was where it began (a legato launch).
+    local phase = s.slot and s.length and ((s.phase or 0) - (position - s.since)) % s.length or 0
+    local entry = { kind = s.slot and "slot" or "stop", row = s.slot, from = s.since, phase = phase, key = key }
+    log[#log + 1] = { track = s.track, entry = entry }
+    last[s.track] = entry
+  else
+    last[s.track] = { key = key }
+  end
+end
+
+local function poll()
+  if not daw.transport.playing then return end
+  local position = daw.transport.position
+  for _, s in ipairs(api.launcher()) do note(s, position) end
+end
+
+--- Write what was captured into the timeline.
+local function write(position)
+  for track, entry in pairs(last) do
+    if entry.kind and not entry.to then entry.to = position end
+    last[track] = nil
+  end
+  local wrote = 0
+  for _, item in ipairs(log) do
+    local e, track = item.entry, item.track
+    if e.to and e.to - e.from > 1e-9 and pcall(api.track_get, track) then
+      daw.edit.arrange.clear(track, e.from, e.to)
+      local clip = e.kind == "slot" and M.clip(track, e.row)
+      if clip then
+        local snap = daw.clip(clip.id):snapshot()
+        snap.slot, snap.quantize, snap.mode, snap.legato = nil, nil, nil, nil
+        snap.start, snap.length = e.from, e.to - e.from
+        snap.loop, snap.loop_length, snap.loop_start = true, clip.length, 0
+        if clip.kind == "midi" and e.phase > 1e-9 then
+          -- Begun partway through its loop: the loop starts that much before the clip.
+          snap.loop_start = -e.phase
+          for _, n in ipairs(snap.notes or {}) do n.start = n.start - e.phase end
+          for _, c in ipairs(snap.controls or {}) do c.start = c.start - e.phase end
+        end
+        daw.restore_clip(snap, track)
+      end
+      wrote = wrote + 1
+    end
+  end
+  log = {}
+  return wrote
+end
+
+--- Start or stop capturing. Stopping while the song plays writes what has
+--- been captured so far.
+function M.capture(on)
+  if on == nil then on = not M.capturing end
+  if on == M.capturing then return end
+  M.capturing = on
+  if on then
+    log, last = {}, {}
+    timer = daw.every(10, poll)
+    poll()
+    daw.notify("capturing: what is launched is written into the timeline when the song stops")
+  else
+    if timer then daw.cancel(timer) end
+    timer = nil
+    poll()
+    M.write_captured(daw.transport.position)
+  end
+  api.ui_redraw()
+end
+
+--- Write what has been captured and not written yet, up to `position`
+--- where it is still under way, as one undo step.
+function M.write_captured(position)
+  if #log == 0 then return end
+  local wrote = write(position)
+  api.undo_checkpoint()
+  if wrote > 0 then daw.notify("captured " .. wrote .. (wrote == 1 and " clip" or " clips") .. " into the timeline") end
+end
+
+-- The song stopped where it says: so did what was launched.
+daw.on("transport.stop", function(e)
+  if M.capturing then M.write_captured(e.position or daw.transport.position) end
+end)
+
+daw.on("project.loaded", function()
+  M.row = 0
+  if M.capturing then M.capture(false) end
+end)
+
+-- Commands ---------------------------------------------------------------------
+
+local function track_or_warn()
+  local id = daw.cursor.track_id()
+  if not id or id == 0 then daw.notify("no track selected", "warn") end
+  return id ~= 0 and id or nil
+end
+
+--- A row from a command's argument (from 1), or the cursor's.
+local function row_arg(arg)
+  local n = tonumber(arg)
+  return n and math.max(0, math.floor(n) - 1) or M.row
+end
+
+daw.command("launch", function(ctx)
+  local track = track_or_warn()
+  if track then M.press(track, row_arg(ctx.args[1])) end
+end, { desc = "Launch a slot of the selected track: `launch 2`, or the one under the cursor" })
+daw.command("launch.stop", function(ctx)
+  if ctx.args[1] == "all" then return M.stop() end
+  local track = track_or_warn()
+  if track then M.stop(track) end
+end, { desc = "Stop the selected track's clip on the next boundary: `launch.stop all` stops every one", complete = { "all" } })
+daw.command("launch.back", function(ctx)
+  if ctx.args[1] == "all" then return M.back() end
+  local track = track_or_warn()
+  if track then M.back(track) end
+end, { desc = "Have the selected track play its timeline again: `launch.back all` for every track", complete = { "all" } })
+daw.command("launch.quantize", function(ctx)
+  local q = ctx.args[1]
+  if not q then return daw.notify("launches land on: " .. api.project_get().launch_quantize) end
+  M.set_quantize(q)
+end, { desc = "Where launches land: `launch.quantize 1/8` (off 1/16 1/8 1/4 beat bar 2bars 4bars)", complete = M.quantizes })
+daw.command("launch.capture", function() M.capture() end, {
+  desc = "Write what is launched into the timeline when the song stops (again: stop capturing)",
+})
+daw.command("scene", function(ctx) M.scene(row_arg(ctx.args[1])) end, {
+  desc = "Launch a scene, every clip in a row: `scene 2`, or the cursor's row",
+})
+daw.command("scene.name", function(ctx)
+  local name = table.concat(ctx.args, " ")
+  if name ~= "" then return M.set_scene_name(M.row, name) end
+  daw.ui.input({ prompt = "Scene name: ", text = M.scene_name(M.row) }, function(text)
+    if text then M.set_scene_name(M.row, text) end
+  end)
+end, { desc = "Name the scene of the cursor's row: `scene.name Chorus`" })
+
+--- The clip in the slot under the cursor, or a warning.
+local function slot_clip()
+  local track = track_or_warn()
+  local clip = track and M.clip(track, M.row)
+  if track and not clip then daw.notify("the slot is empty", "warn") end
+  return clip
+end
+
+daw.command("slot.new", function(ctx)
+  local track = track_or_warn()
+  if not track then return end
+  if M.clip(track, M.row) then return daw.notify("the slot holds a clip already", "warn") end
+  M.new_clip(track, M.row, tonumber(ctx.args[1]))
+end, { desc = "A new MIDI clip in the slot under the cursor: `slot.new 2` for two bars" })
+daw.command("slot.copy", function()
+  local track = track_or_warn()
+  local clip = track and daw.cursor.clip()
+  if not clip then return daw.notify("no clip under the arrange view's cursor", "warn") end
+  M.copy(clip.id, track, M.row)
+end, { desc = "Copy the clip under the arrange view's cursor into the slot under the session view's" })
+daw.command("slot.delete", function()
+  local clip = slot_clip()
+  if clip then api.clip_remove(clip.id) end
+end, { desc = "Empty the slot under the cursor" })
+daw.command("slot.edit", function()
+  local clip = slot_clip()
+  if clip and clip.kind == "midi" then daw.ui.views.pianoroll:edit(daw.clip(clip.id)) end
+end, { desc = "Open the notes of the clip in the slot under the cursor" })
+daw.command("slot.mode", function(ctx)
+  local clip = slot_clip()
+  if not clip then return end
+  local mode = ctx.args[1]
+  if not mode then
+    -- Round the modes.
+    for i, m in ipairs(M.modes) do
+      if m == clip.mode then mode = M.modes[i % #M.modes + 1] end
+    end
+  end
+  if not contains(M.modes, mode) then return daw.notify("a mode is trigger, gate or toggle", "warn") end
+  api.clip_set(clip.id, "mode", mode)
+  daw.notify(clip.name .. ": " .. mode)
+end, { desc = "How the slot's clip launches: `slot.mode gate` (trigger, gate, toggle; none goes round them)", complete = M.modes })
+daw.command("slot.legato", function()
+  local clip = slot_clip()
+  if clip then api.clip_set(clip.id, "legato", not clip.legato) end
+end, { desc = "Have the slot's clip take over where the clip before it had got to, or not" })
+daw.command("slot.quantize", function(ctx)
+  local clip = slot_clip()
+  if not clip then return end
+  local q = ctx.args[1]
+  if q and q ~= "project" and not contains(M.quantizes, q) then
+    return daw.notify("a quantize is project or one of " .. table.concat(M.quantizes, ", "), "warn")
+  end
+  api.clip_set(clip.id, "quantize", (q and q ~= "project") and q or nil)
+end, {
+  desc = "Where the slot's clip launches: `slot.quantize 1/16`, or `slot.quantize` for the project's",
+  complete = function() return { "project", unpack(M.quantizes) } end,
+})
+daw.command("slot.length", function(ctx)
+  local clip = slot_clip()
+  local bars = tonumber(ctx.args[1])
+  if clip and bars and bars > 0 then api.clip_set(clip.id, "length", bars * daw.time.bar(0)) end
+end, { desc = "How many bars the slot's clip loops over: `slot.length 2`" })
+
+return M

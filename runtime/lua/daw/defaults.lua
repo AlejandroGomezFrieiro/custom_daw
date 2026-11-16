@@ -1614,6 +1614,56 @@ end, "Yank the track")
 mmap("p", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), false, ctx.count) end, "Paste tracks after this one")
 mmap("P", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), true, ctx.count) end, "Paste tracks before this one")
 
+-- The session view: clips in slots, launched while the song plays (`daw.launcher`).
+local launcher = daw.launcher
+map("<leader>l", "view.toggle session", { desc = "Show or hide the session view, clips to launch" })
+local function smap(lhs, rhs, desc) map(lhs, rhs, { view = "session", desc = desc }) end
+local function to_row(row)
+  launcher.row = math.max(0, row)
+  api.ui_redraw()
+end
+smap("l", "cursor.down", "Next track")
+smap("h", "cursor.up", "Previous track")
+smap("<Right>", "cursor.down", "Next track")
+smap("<Left>", "cursor.up", "Previous track")
+smap("j", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smap("k", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smap("<Down>", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smap("<Up>", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smap("gg", function(ctx) to_row((ctx.count or 1) - 1) end, "First slot, or slot N")
+smap("G", function(ctx) to_row(ctx.count and ctx.count - 1 or launcher.rows() - 2) end, "Last slot with a clip, or slot N")
+smap("<CR>", "launch", "Launch the slot (an empty one stops the track)")
+smap("L", "scene", "Launch the scene: the whole row")
+smap("s", "launch.stop", "Stop the track's clip")
+smap("S", "launch.stop all", "Stop every clip")
+smap("b", "launch.back", "Back to the track's timeline")
+smap("B", "launch.back all", "Every track back to its timeline")
+smap("n", "slot.new", "A new MIDI clip in the slot")
+smap("e", "slot.edit", "Open the clip's notes")
+smap("x", "slot.delete", "Empty the slot")
+smap("dd", "slot.delete", "Empty the slot")
+smap("gp", "slot.copy", "Copy the arrange view's clip into the slot")
+smap("m", "slot.mode", "Next launch mode: trigger, gate, toggle")
+smap("gl", "slot.legato", "Legato on or off")
+smap("grn", "scene.name", "Name the scene")
+smap("C", "launch.capture", "Capture what is launched into the timeline")
+smap("yy", function(ctx)
+  local track = cursor.track_id()
+  local clip = track and launcher.clip(track, launcher.row)
+  if clip then keymap.setreg({ kind = "slot", clip = daw.clip(clip.id):snapshot() }, ctx.register, true) end
+end, "Yank the slot's clip")
+smap("p", function(ctx)
+  local track, value = cursor.track_id(), keymap.getreg(ctx.register)
+  if not track or not value then return end
+  -- A slot's clip, or the first clip yanked in the arrange view.
+  local snap = value.kind == "slot" and value.clip
+  if value.kind == "range" then
+    for _, row in ipairs(value.rows) do snap = snap or row[1] end
+  end
+  if not snap then return daw.notify("the register holds no clip", "warn") end
+  daw.restore_clip(util.merge(snap, { slot = launcher.row, start = 0 }), track)
+end, "Paste a clip into the slot")
+
 -- Arrange: motions.
 local function amap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "arrange", desc = desc }, opts)) end
 amap("l", "cursor.right", "Right one grid step", motion)
