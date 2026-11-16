@@ -167,6 +167,15 @@ daw.notify("message", "warn")
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,
 `daw.music.degree("A4", "minor_pentatonic", 3)`; `daw.time.format(beats)`;
+`daw.harmony` is the chords and key that sound when (`daw.harmony.at(8)`,
+`.next(8)`, `.key(8)`, providers with `.provide`), and `daw.snippet` writes
+named music from them (`daw.snippet.add`, `.expand("dominant")`); both in
+[Harmony, completion and snippets](harmony.md). A view's grid can be painted
+on by modules: `daw.ui.views.pianoroll.layer(name, { order, draw, marks })`
+adds a layer to the piano roll (below 0 under the clip's notes, above over
+them), drawn in the terminal by `draw(view, g)` and in the window from what
+`marks(clip_id)` returns (ghost notes, marked notes, a labelled span).
+`:3snippet arp`: a number before a command's name is its count.
 `daw.cursor` is the edit cursor; `daw.inspect(value)`; `daw.device_types()`
 lists every device kind with its format and vendor. Notes may carry a `meta`
 table too (`{ pitch = 60, start = 0, meta = { lyric = "la" } }`), which stays

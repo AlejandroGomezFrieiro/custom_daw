@@ -1,5 +1,15 @@
 # What is missing
 
+- Harmony: chords are read per half beat, so a chord shorter than about a
+  beat is taken for passing notes; the chords and the key are not shown in
+  the arrange view's ruler (only over the piano roll); slash chords whose
+  bass is not a chord tone are named by the full pitch set (C G B D is
+  Cmaj9, not G/C). The reading is redone over the whole song after each
+  edit, which is quick for songs of some thousands of notes but not
+  incremental.
+- Snippets are offered in the piano roll only (a snippet may name other
+  views, but nothing opens the picker there yet), and are not yet a source
+  of completion suggestions (they will be once `daw.complete` is in).
 - Editing the tempo lane with the mouse in the terminal (it draws the curve;
   changes are made by command there), and a tempo curve that is smooth: a
   drawn stroke makes a change a beat or so, each ramping to the next.

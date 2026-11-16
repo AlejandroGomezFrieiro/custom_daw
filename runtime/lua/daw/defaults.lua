@@ -2209,8 +2209,9 @@ imap("<Down>", move(0, -1), "Down a semitone")
 roll.layer("snippet", daw.snippet.layer)
 command("snippet", function(ctx)
   local name = ctx.args[1]
-  if name == nil then return daw.snippet.pick({ count = ctx.count }) end
-  local _, why = daw.snippet.expand(tostring(name), { count = ctx.count })
+  local region = daw.snippet.take_cmdline_selection()
+  if name == nil then return daw.snippet.pick({ count = ctx.count, selection = region }) end
+  local _, why = daw.snippet.expand(tostring(name), { count = ctx.count, selection = region })
   if why then daw.notify(why, "warn") end
 end, {
   desc = "Expand a snippet at the piano roll's cursor: `snippet dominant`, `3snippet arp`; alone, choose one",

@@ -17,7 +17,6 @@ local read = require("daw.harmony.read")
 local M = { read = read, voice = require("daw.harmony.voice") }
 
 daw.option.define("chords", "names")          -- chord symbols in the piano roll's ruler: "names", "roman", "both" or false
-daw.option.define("chords_arrange", false)    -- and in the arrange view's ruler, the same way
 daw.option.define("harmony_step", 0.5)        -- beats: the shortest chord the built-in reading finds is about twice this
 
 -- Theory: pitch classes, keys and scales -------------------------------------------

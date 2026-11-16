@@ -536,6 +536,36 @@ fn place_of(pos: f64) -> SharedString {
     })
 }
 
+/// What the piano roll's layers draw, as the kernel sends it.
+fn roll_marks(list: &Value) -> Vec<RollMark> {
+    rows(list)
+        .iter()
+        .map(|m| RollMark {
+            kind: match m["kind"].as_str() {
+                Some("mark") => 1,
+                Some("span") => 2,
+                _ => 0,
+            },
+            pitch: m["pitch"].as_i64().unwrap_or(0) as i32,
+            start: number(&m["start"]),
+            length: number(&m["length"]),
+            label: text(&m["label"]),
+        })
+        .collect()
+}
+
+/// The chord symbols over the piano roll's ruler.
+fn roll_chords(list: &Value) -> Vec<RollChord> {
+    rows(list)
+        .iter()
+        .map(|c| RollChord {
+            start: number(&c["start"]),
+            length: number(&c["length"]),
+            label: text(&c["label"]),
+        })
+        .collect()
+}
+
 /// The song's lines over a clip, in the clip's beats, for the piano roll.
 fn roll_lines(start: f32, length: f32) -> Vec<RollLine> {
     let (start, length) = (start as f64, length as f64);
@@ -1197,6 +1227,10 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// What the kernel's piano roll layers draw over the notes (an active
+    /// snippet, a preview), and the chord symbols over the ruler.
+    roll_marks: Rc<VecModel<RollMark>>,
+    roll_chords: Rc<VecModel<RollChord>>,
     /// All of the clip's notes, its other clips' and the song's lines over
     /// it; the models hold those of the stretch `roll_for` (beats) alone.
     roll_notes: Vec<NoteData>,
@@ -1722,6 +1756,8 @@ impl View {
                 self.controls_chosen = moves;
                 self.show_controls(ui);
             }
+            sync(&self.roll_marks, roll_marks(&roll["marks"]));
+            sync(&self.roll_chords, roll_chords(&roll["chords"]));
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
                 format!(
@@ -2573,6 +2609,8 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        roll_marks: Rc::new(VecModel::default()),
+        roll_chords: Rc::new(VecModel::default()),
         roll_notes: Vec::new(),
         roll_ghosts: Vec::new(),
         roll_lines: Vec::new(),
@@ -2639,6 +2677,8 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_marks(ModelRc::from(view.borrow().roll_marks.clone()));
+        roll.set_chords(ModelRc::from(view.borrow().roll_chords.clone()));
         roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));

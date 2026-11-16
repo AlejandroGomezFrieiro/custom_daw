@@ -131,7 +131,11 @@ in. `:take 2` over a selection does the same from the keyboard.
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
 `gh` sounds the pitch, `E` lists the clip's notes and controller moves to
-change in place (the event list), `Esc` goes back to the arrange view. In the device panel
+change in place (the event list), `Esc` goes back to the arrange view.
+Over the ruler a row names the chords that sound, read over every pitched
+track, with the key on the left (`daw.opt.chords`); `Ctrl-s` writes a
+snippet such as the dominant of the next chord, and `Tab`, `Ctrl-n` step
+through its choices (see [Harmony, completion and snippets](harmony.md)). In the device panel
 `j` `k` choose a row, `h` `l` change a parameter, `c` or `=` types its value
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`

@@ -178,7 +178,9 @@ function M.chords(notes, opts)
         if prev[l] > best then best, best_l = prev[l], l end
       end
       for l = 1, NL do
-        local stay, change = prev[l], best - CHANGE
+        -- A change costs a little more in silence, so that the chord
+        -- before holds over a rest rather than the next one starting early.
+        local stay, change = prev[l], best - CHANGE - (total > 1e-9 and 0 or 0.01)
         if stay >= change then
           cur[l], from_l[l] = stay + scores[l], l
         else

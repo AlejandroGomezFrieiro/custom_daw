@@ -30,6 +30,23 @@ export struct RollLine {
     label: string,
 }
 
+// What a layer of the kernel's piano roll draws over the notes, in the
+// clip's beats: 0 a ghost note, 1 a marked note, 2 a span with a label.
+export struct RollMark {
+    kind: int,
+    pitch: int,
+    start: float,
+    length: float,
+    label: string,
+}
+
+// A chord symbol over the ruler, in the clip's beats.
+export struct RollChord {
+    start: float,
+    length: float,
+    label: string,
+}
+
 export struct ControlData {
     start: float,
     value: float,       // 0..1 up the strip
@@ -62,6 +79,10 @@ export global Roll {
     // Notes of the track's other clips that sound during this one, in this
     // clip's beats: drawn faintly behind its own.
     in property <[NoteData]> ghosts;
+    // What modules draw over the notes, and the chords that sound (both
+    // from the kernel; no chords when `daw.opt.chords` is off).
+    in property <[RollMark]> marks;
+    in property <[RollChord]> chords;
     // Which keys sound now, by pitch.
     in property <[bool]> sounding;
     // While a stroke crosses the velocity strip: what it gives each note, -1 for nothing.
@@ -213,7 +234,11 @@ export component PianoRoll inherits Rectangle {
     property <length> note-height: 12px;
     property <length> beat: Roll.zoom * 1px;
     property <length> keys-width: 64px;
-    property <length> ruler-height: 22px;
+    // The ruler: a row of chord symbols over the bars and beats, when
+    // there are chords to show.
+    property <length> chord-height: Roll.chords.length > 0 ? 16px : 0px;
+    property <length> ruler-height: 22px + root.chord-height;
+    property <color> mark-color: #ac93e6;
     property <length> strip-height: 80px;
     property <length> grid-px: Roll.grid * root.beat;
     // Where something at `x`, `w` wide, starts and how wide it is within
@@ -677,6 +702,30 @@ export component PianoRoll inherits Rectangle {
                     x: root.keys-width;
                     width: parent.width - root.keys-width;
                     clip: true;
+                    // The chords that sound, over every pitched track: each
+                    // symbol from where its chord starts, cut where the next does.
+                    for chord in Roll.chords: Rectangle {
+                        x: root.seen-x(chord.start * root.beat) + roll.content-x;
+                        y: 0;
+                        width: root.seen-w(chord.start * root.beat, chord.length * root.beat);
+                        height: root.chord-height;
+                        clip: true;
+                        Rectangle {
+                            x: 0;
+                            y: 2px;
+                            width: 1px;
+                            height: parent.height - 2px;
+                            background: Theme.text-3;
+                        }
+                        Text {
+                            x: 4px;
+                            y: 1px;
+                            text: chord.label;
+                            color: Theme.text;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                    }
                     for line in Roll.lines: tick := Rectangle {
                         property <bool> is-bar: line.bar;
                         x: line.at * root.beat + roll.content-x;
@@ -689,7 +738,7 @@ export component PianoRoll inherits Rectangle {
                         }
                         if tick.is-bar || root.beat > 48px: Text {
                             x: 4px;
-                            y: 3px;
+                            y: root.chord-height + 3px;
                             text: line.label;
                             color: tick.is-bar ? Theme.text-2 : Theme.text-3;
                             font-size: 11px;
@@ -1206,6 +1255,30 @@ export component PianoRoll inherits Rectangle {
                                 Roll.remove-note(note.index);
                             }
                         }
+                    }
+                }
+                // What modules draw over the notes, as the kernel's piano
+                // roll layers give it: ghosts of notes that would be
+                // written, marked notes (an active snippet's), and a span
+                // with a few words along the bottom of what shows.
+                for mark in Roll.marks: Rectangle {
+                    x: root.seen-x(mark.start * root.beat);
+                    y: mark.kind == 2 ? -roll.content-y + roll.height - 30px : (127 - mark.pitch) * root.note-height + 1px;
+                    width: max(2px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px));
+                    height: mark.kind == 2 ? 18px : root.note-height - 2px;
+                    border-radius: 2px;
+                    background: mark.kind == 0 ? root.mark-color.with-alpha(0.18) : mark.kind == 1 ? root.mark-color.with-alpha(0.55) : root.mark-color.with-alpha(0.85);
+                    border-width: mark.kind == 2 ? 0px : 1px;
+                    border-color: mark.kind == 0 ? root.mark-color.with-alpha(0.6) : root.mark-color;
+                    if mark.kind == 2: Text {
+                        x: 6px;
+                        width: 600px;
+                        text: mark.label;
+                        color: #eef1f6;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        height: parent.height;
                     }
                 }
                 // Past the end of the clip.

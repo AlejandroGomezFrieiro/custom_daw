@@ -291,6 +291,13 @@ end
 
 local active      -- the snippet being edited: see `expand`
 M.previewing = nil -- what the picker would write: `{ clip, notes }` for drawing
+-- Both are what one person is in the middle of: each seat has its own.
+-- The selection the command line was opened from, for `:snippet`.
+local from_visual
+daw.seats.keep("snippet",
+  function() return active, M.previewing, from_visual end,
+  function(a, p, v) active, M.previewing, from_visual = a, p, v end,
+  function() return nil, nil, nil end)
 
 --- Write `result` into its clip in place of what the clip held before.
 local function write(state, result)
@@ -367,7 +374,7 @@ function M.expand(name, opts)
   api.undo_label("snippet " .. name)
   local state = {
     name = name, spec = spec, opts = { count = opts.count, at = result.ctx.at, selection = result.ctx.selected_region or false },
-    clip = c.id, start = c.start, length = c.length, before = api.clip_notes(c.id),
+    clip = c.id, start = c.start, length = c.length, before = api.clip_notes(c.id), undo_before = api.undo_current(),
     choices = result.choices, index = index, current = 0,
   }
   write(state, result)
@@ -404,7 +411,9 @@ end
 --- the undo step that wrote it. It runs again on the clip as it was
 --- before, so that it sees what it saw the first time.
 local function rewrite(state)
-  api.undo_join(api.undo_current())
+  -- Stepped in the same turn as it was written (keys typed at once, a
+  -- script), the step is still open: there is nothing to join.
+  if api.undo_current() ~= state.undo_before then api.undo_join(api.undo_current()) end
   local clip = daw.clip(state.clip)
   api.clip_set_notes(state.clip, state.before)
   if math.abs(clip.length - state.length) > 1e-9 then clip.length = state.length end
@@ -414,6 +423,14 @@ local function rewrite(state)
     return M.finish()
   end
   write(state, result)
+end
+
+--- The notes a snippet wrote, as text to compare.
+local function signature(notes)
+  local out = {}
+  for i, n in ipairs(notes or {}) do out[i] = string.format("%d@%.6f+%.6f", n.pitch, n.start or n.at, n.length) end
+  table.sort(out)
+  return table.concat(out, " ")
 end
 
 --- Go to the next choice (`dir` 1) or the one before (-1). False when no
@@ -443,9 +460,15 @@ function M.step(dir)
   end
   if state.current == 0 then state.current = 1 end
   local choice = state.choices[state.current]
-  local i = state.index[choice.name] or 1
-  state.index[choice.name] = (i - 1 + (dir or 1)) % #choice.values + 1
-  rewrite(state)
+  -- Values that would write the same notes (a smooth voicing that is the
+  -- close one here) are passed over.
+  local was = signature(state.notes)
+  for _ = 1, #choice.values - 1 do
+    local i = state.index[choice.name] or 1
+    state.index[choice.name] = (i - 1 + (dir or 1)) % #choice.values + 1
+    rewrite(state)
+    if not active or signature(state.notes) ~= was then break end
+  end
   daw.notify(describe(state))
   api.ui_redraw()
   return true
@@ -524,7 +547,7 @@ function M.pick(opts)
   local view = daw.ui.focused
   local items = M.offered(view)
   -- The context is the cursor's now, before the picker takes the keys.
-  local region = view == "pianoroll" and daw.keymap.selection() or nil
+  local region = opts.selection or (view == "pianoroll" and daw.keymap.selection()) or nil
   local run_opts = { count = opts.count, selection = region or false }
   return daw.pick({
     title = "Snippets",
@@ -609,6 +632,16 @@ M.layer = {
 daw.on("escape", function() M.finish() end)
 daw.on("mode.changed", function(e)
   if e.old == "i" and e.mode == "n" then M.finish() end
+  -- `:` typed over a selection: the command works on it.
+  if e.mode == "c" then from_visual = e.old == "x" and daw.ui.focused == "pianoroll" and daw.keymap.selection() or nil end
 end)
+
+--- The selection the command line was opened over, once: what
+--- `:snippet` works on.
+function M.take_cmdline_selection()
+  local region = from_visual
+  from_visual = nil
+  return region
+end
 
 return M
