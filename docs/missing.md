@@ -29,8 +29,7 @@
   `:g` will, through `daw.qf.set`); `:cfdo` runs once per track, as there
   are no files; lists are not kept with the project or between runs; a
   location list stays with its window's number after the window closes.
-  The window shows it in a window of its own (More, `:qf.window`), not
-  docked, and its status bar does not count it.
+  The window's status bar does not count it.
 
 - Lists edited as text (`daw://tracks` and the others): a track's input,
   MIDI ports, height and automation, a device's side-chain, outputs and
@@ -41,8 +40,8 @@
   `\s` `\w` `\(` `\)` of Vim's, not Vim's whole syntax; there is no `:g`,
   no completion of track and device names while typing, and no buffer of
   clips, lanes or notes yet. In the graphical frontend a text buffer is
-  shown as the terminal draws it, in a window of its own (`:textbuf.window`),
-  not among the window's panels.
+  drawn as the terminal draws it, in the monospace font, not with the
+  window's own widgets.
 
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but

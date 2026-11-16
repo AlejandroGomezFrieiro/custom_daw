@@ -203,8 +203,9 @@ move every sixteenth of a beat. With the mouse a click on a point chooses
 it and a drag moves it (Shift off the grid), a press elsewhere adds a point
 and a drag draws, the wheel scrolls (with Ctrl it zooms), and a right click
 opens the point's menu (its shape, its value, removing it) or the curve's
-(a wave, thinning, smoothing, quantizing). `:curve.window` (`gw`) shows the
-curve in a window of its own in the graphical frontend.
+(a wave, thinning, smoothing, quantizing). The graphical frontend shows the
+curve in a pane, as here; `:curve.window` (`gw`) pops it out into a window
+of its own.
 
 In the device panel `A` automates the parameter under the cursor: it makes
 its lane with a point at the value it has, at the arrange cursor's beat,
@@ -315,6 +316,7 @@ left and above).
 | `:resize 20` `:resize +5`, `:vertical resize 40` | the window's height, its width |
 | `:tabnew Mix`, `:tabnew mixer`, `gt` `gT`, `:tabn 2`, `Ctrl-w T` | a new tab named Mix, or showing the mixer; next and previous tab; tab 2; the window to a tab of its own |
 | `:tabclose`, `:tabs` | close the tab; list the tabs and their windows |
+| `:view.open undotree` | show a view where it docks, else in a window split from this one (the graphical frontend's More) |
 | `:setlocal timebind` | bind this window's time to the other bound windows' |
 | `:layout save edit`, `:layout edit` | keep the tabs and windows as they are; put them back |
 
@@ -414,9 +416,9 @@ volume moved elsewhere in the meantime stays moved.
 
 `Enter` on a track's line opens its devices (`daw://track/N/devices`), and
 `-` there goes back up to the tracks; on a device `Enter` shows it in the
-device panel, on a marker it puts the cursor there. `:textbuf.window` (`gw`)
-shows the buffer in a window of its own in the graphical frontend, where it
-is edited with the same keys.
+device panel, on a marker it puts the cursor there. The graphical frontend
+shows a text buffer in a pane, as here; `:textbuf.window` (`gw`) pops it out
+into a window of its own, where it is edited with the same keys.
 
 ## The quickfix list
 
@@ -450,8 +452,9 @@ were. Extensions add to it (see [Scripting](scripting.md)).
 | `:lopen` `:lnext` `]l` `[l` `:ldiag` ... | the same for the window's own location list: `:ldiag` lists what the window shows (the piano roll its clip, the mixer and device panel the track), `:lopen` shows it below the window |
 
 The list is a buffer like any other: `:vs quickfix` shows it beside the
-window, `:e quickfix` in it, and a layout keeps its window. In the window
-it opens from More, or with `:qf.window`.
+window, `:e quickfix` in it, and a layout keeps its window. The graphical
+frontend docks it in a pane as here (`:copen`, More); `:qf.window` pops it
+out into a window of its own.
 
 ## The mouse
 
