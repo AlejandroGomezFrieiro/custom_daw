@@ -32,6 +32,18 @@
   The window shows it in a window of its own (More, `:qf.window`), not
   docked, and its status bar does not count it.
 
+- Lists edited as text (`daw://tracks` and the others): a track's input,
+  MIDI ports, height and automation, a device's side-chain, outputs and
+  parameters, and a send's place among a track's sends are not fields of
+  their lines (a copy keeps them); a device is not renamed or replaced by
+  editing its name; the lines are not laid out in columns again until the
+  buffer is read again (`:w`, `:e!`); `:s` takes Lua patterns with `\d`
+  `\s` `\w` `\(` `\)` of Vim's, not Vim's whole syntax; there is no `:g`,
+  no completion of track and device names while typing, and no buffer of
+  clips, lanes or notes yet. In the graphical frontend a text buffer is
+  shown as the terminal draws it, in a window of its own (`:textbuf.window`),
+  not among the window's panels.
+
 - Score clips (notation): tempo marks are written only (`:notation.text`),
   not tempo-map points, and no option makes the score own the song's
   tempo; repeats and voltas are written, not unfolded; trills, tremolos,
