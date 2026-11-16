@@ -65,7 +65,7 @@ under it:
 | Keys in the panel | |
 | --- | --- |
 | `j` `k`, `gg` `G` | move along the rows |
-| `h` `l`, `H` `L` | less and more of a setting, by one step or ten (a count multiplies); on a heading, off and on |
+| `+` `-`, `Ctrl-a` `Ctrl-x` | less and more of a setting, by one step (a count multiplies: `10+`); on a heading, off and on |
 | `Enter` | on a heading, the input on or off; on a setting, flip it, choose it from a list, or type it |
 | `=` | the setting's usual value |
 | `o` | the input on or off |
@@ -74,7 +74,7 @@ under it:
 | `a`, `D` | a new input; take this one away |
 | `t` | a track that takes the input, with an instrument, armed |
 | `r`, `R` | start the tracker again; look for audio ports again |
-| `Esc` | back to the arrange view |
+| `Esc`, `Ctrl-w p` | cancel (the panel stays); back to the window before |
 
 In the window: a tab for each input and `+ Add`; the chain as boxes (a click
 on the source opens the ports, on the port its name, on gdi2m starts it

@@ -242,10 +242,6 @@ where it came up and what would make it easier for a newcomer.
 | --- | --- | --- |
 | 12 | After `<Space>` stops a take, record mode stays on (`rec` lit): the next `R` switches recording *off* instead of recording, and the next `<Space>` records again. The lesson has to teach `R` then `<Space>`. | Stopping the transport ends record mode, or `R` always starts a take when stopped. |
 | 10 | Sends have no key and no command: the lesson types `:lua daw.track("Lead"):send(daw.track("Echo"), -6)`. | `:track.send Echo -6` and a key in the mixer. |
-| 10 | The mixer shows no pan, and the arrange header neither: `>` in the mixer gives no feedback (only `K` shows it). | A pan readout on the strip. |
-| 10 | `>` `<` pan in the mixer but move clips in the arrange view; pan there is `(` `)`. | The same key for pan in both, or say so in the mixer. |
-| 9, 10 | `<Esc>` does nothing in the device panel and the mixer; in the piano roll it goes back to the arrange view. | `<Esc>` in any panel returns to the arrange view. |
-| 9 | The device panel has no way to jump between devices: the lesson has to say `5j` to reach the second device's heading. | `w` `b` (or `]]` `[[`) between device headings, `gg` `G`. |
 | 9 | The device panel keeps its row when the track changes, so `,d` can open on a row of another device's list. | Start at the top for a new track. |
 | 3, 10 | Prompts come filled in (`grn` with the old name, `A` with the current value), and typing appends: the lesson must teach `<C-u>` first. | The first key typed replaces the filled-in text, as the vocal editor's lyric prompt does. |
 | 4 | The note length set with a digit in insert mode lasts for the rest of the session, across clips, and is also the length `<CR>` gives a new note in normal mode; nothing shows it outside insert mode. | Reset it when insert mode ends, or show it in the piano roll's title row always. |

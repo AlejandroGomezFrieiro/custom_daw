@@ -10,11 +10,11 @@ The clip `tune` has three notes in its second bar. You will add to it.
 
 ## The idea
 
-Moving: `h` `l` a step, `j` `k` a semitone, `J` `K` an octave, `w` `b` notes, `0` `$` the start and end of the clip. Changing the note under the cursor: `<CR>` adds or removes, `+` `-` length, `H` `L` move it, `<C-a>` `<C-x>` pitch, `[` `]` velocity, `gh` hear the pitch. Insert mode (`i`, or `a` after the note) draws a note from the cursor: `l` `h` longer and shorter, `j` `k` `J` `K` its pitch, `<CR>` keeps it and draws the next where it ends, `<Space>` after a rest, `o` from the same start for a chord, `<BS>` takes back, `<Esc>` writes and leaves. `I` makes the keyboard a piano instead: `a w s e d f t g y h u j k` are C up to the next C.
+Moving: `h` `l` a step, `j` `k` a semitone, `<C-d>` `<C-u>` an octave, `w` `b` notes, `0` `$` the start and end of the clip. Changing the note under the cursor: `<CR>` adds or removes, `+` `-` (and `<C-a>` `<C-x>`) its pitch, `<A-h>` `<A-l>` its length, `H` `L` move it, `[` `]` velocity, `gh` hear the pitch. Insert mode (`i`, or `a` after the note) draws a note from the cursor: `l` `h` longer and shorter, `j` `k` `<C-d>` `<C-u>` its pitch, `<CR>` keeps it and draws the next where it ends, `<Space>` after a rest, `o` from the same start for a chord, `<BS>` takes back, `<Esc>` writes and leaves. `I` makes the keyboard a piano instead: `a w s e d f t g y h u j k` are C up to the next C. `<Esc>` in normal mode stays in the roll; `<C-w>p` goes back to the arrange view.
 
 ## If you know Vim
 
-`<C-a>` and `<C-x>` add and subtract, as on numbers in Vim; here they move a note's pitch. Insert mode does not insert text: it draws a note, and all of it is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.
+`<C-a>` and `<C-x>` add and subtract, as on numbers in Vim; here they move a note's pitch, as `+` `-` do: the main value of a note is its pitch. Insert mode does not insert text: it draws a note, and all of it is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.
 
 ## Steps
 
@@ -22,14 +22,14 @@ The tutor opens a practice project made for this lesson and checks each step as 
 
 1. The cursor is on the clip `tune`. Press `<CR>` (Enter) to open it in the piano roll.
    - ✓ The piano roll. The cursor is on E4 at the start of the clip.
-2. `j` and `k` move a semitone down and up (`J` `K` an octave), and you hear each pitch. Press `k` three times to reach G4.
+2. `j` and `k` move a semitone down and up (`<C-d>` `<C-u>` an octave, half a page as in Vim), and you hear each pitch. Press `k` three times to reach G4.
    - *Hint:* Watch the title row of the piano roll: it shows the pitch under the cursor.
    - ✓ G4: the name is in the title row and highlighted on the left.
 3. `<CR>` adds a note at the cursor (or removes the one there). Press `<CR>`.
    - ✓ A short G4: one step, a sixteenth.
-4. `+` makes the note under the cursor a step longer, `-` shorter. Press `+` three times.
+4. `<A-l>` makes the note under the cursor a step longer, `<A-h>` shorter, as they do to a clip in the arrange view. Press `<A-l>` three times.
    - ✓ Now it lasts a beat.
-5. `<C-a>` moves the note up a semitone and `<C-x>` down. Press `<C-a>` twice.
+5. `<C-a>` (or `+`) moves the note up a semitone and `<C-x>` (or `-`) down. Press `<C-a>` twice.
    - *Hint:* `<C-a>` is Ctrl and a. The cursor must be on the note.
    - ✓ A4 now, and the cursor went with it.
 6. Go a beat on with `4l`, and press `i` to draw a note there.
@@ -46,10 +46,10 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - ✓ A C a beat long, past the end of the clip: it will grow to hold it.
 11. `o` keeps the note and starts another from the same place, as long, for a chord. Press `o` and `4k` (E), then `o` and `3k` (G).
    - ✓ C and E kept, G being drawn.
-12. `<CR>` goes on after the chord; `J` and `K` move an octave. Press `<CR>`, `J` and `7j` (the C below), `4l`, and `<Esc>`.
+12. `<CR>` goes on after the chord; `<C-d>` and `<C-u>` move an octave. Press `<CR>`, `<C-d>` and `7j` (the C below), `4l`, and `<Esc>`.
    - *Hint:* `<Space>` would have left a step's rest before the next note instead.
    - ✓ A C major chord, then C3 under it.
-13. Press `<Esc>` (out of the piano roll), then `gs` and `<Space>` to listen; `<Space>` stops.
+13. `<Esc>` in normal mode stays in the piano roll, as in every view; `<C-w>p` goes back to the window before. Press `<C-w>p`, then `gs` and `<Space>` to listen; `<Space>` stops.
    - ✓ Your tune, over the drums.
 
 ## What you did

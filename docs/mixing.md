@@ -144,7 +144,7 @@ away (undo brings it back); copying a track keeps it, a track restored after
 its key is gone (or where it would loop) drops it with a message, and
 templates leave it out. `:device.sidechain Kick` (`pre=1` for before the
 fader, `none` to take it away; alone, a list) acts on the device panel's
-device, `K` there chooses from a list, and the panel shows `key Kick` on the
+device, `gS` there chooses from a list, and the panel shows `key Kick` on the
 device's line. In the window a device that can listen to one has a Key row
 on its card, with a menu of the tracks it can hear.
 

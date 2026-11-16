@@ -143,7 +143,7 @@ test("a curve is a buffer named by its address, shown in a window split off", fu
   eq(daw.buf.current().name, "daw://tempo", "the tempo map is a curve too")
 end)
 
-test("lane rows, the device panel and the piano roll open their curves with gc", function()
+test("lane rows, the device panel and the piano roll open their curves with gC", function()
   start()
   local t = daw.add_track({ name = "Pad" })
   local lane = t:automate("volume")
@@ -151,7 +151,7 @@ test("lane rows, the device panel and the piano roll open their curves with gc",
   local clip = t:add_clip({ start = 4, length = 4, notes = { { pitch = 60, start = 0, length = 2 } } })
   daw.lanes.open(t)
   daw.cursor.set_track(t.id, lane.id)
-  keys("gc")
+  keys("gC")
   eq(daw.buf.current().name, daw.address.lane(lane.id), "a lane row's curve")
   L.restore(initial)
   daw.cursor.set_track(t)
@@ -160,16 +160,16 @@ test("lane rows, the device panel and the piano roll open their curves with gc",
   for i, row in ipairs(devices:rows()) do
     if row.param and row.param.key == "cutoff" then devices.row = i end
   end
-  keys("gc")
+  keys("gC")
   eq(daw.buf.current().name, daw.address.param(d.id, "cutoff"), "a parameter's curve")
   L.restore(initial)
   daw.ui.views.pianoroll:edit(clip)
-  keys("gc")
+  keys("gC")
   eq(daw.buf.current().name, daw.address.clip(clip.id) .. "/control/cc/1", "the strip's controller")
   L.restore(initial)
   daw.ui.views.pianoroll:edit(clip)
   daw.ui.views.pianoroll.pitch, daw.ui.views.pianoroll.beat = 60, 0
-  keys("gC")
+  keys("gX")
   eq(daw.buf.current().name, daw.address.clip(clip.id) .. "/control/cc/1#key=60", "the note's own")
   eq(editor.current().state.beat, 4, "the cursor where the roll's was, in the project's beats")
 end)
@@ -225,16 +225,21 @@ test("points are words: w b move between them, x removes, + raises, o adds at th
   eq(#lane:points(), 2, "one undo step")
 end)
 
-test("s gives a stretch its shape, and < > bend a smooth one", function()
+test("~ gives a stretch its shape, and ] [ bend a smooth one", function()
   start()
   local _, lane = lane_with({ { 0, -12 }, { 4, 0 } })
-  keys("s")
+  keys("~")
   eq(api.lane_shapes(lane.id)[1].shape, "hold", "straight, then held")
-  keys("s")
+  keys("~")
   eq(api.lane_shapes(lane.id)[1].shape, "smooth", "then smooth")
-  keys(">>")
-  near(api.lane_shapes(lane.id)[1].tension, 0.5, 1e-9, "> bends it")
-  keys("s")
+  -- `]` waits a moment for `]g`, as at the keyboard.
+  local wait = daw.opt.timeoutlen
+  daw.opt.timeoutlen = 20
+  keys("2]")
+  daw.wait(150)
+  daw.opt.timeoutlen = wait
+  near(api.lane_shapes(lane.id)[1].tension, 0.5, 1e-9, "] bends it")
+  keys("~")
   eq(#api.lane_shapes(lane.id), 0, "and back to straight")
 end)
 
@@ -290,11 +295,11 @@ test("gS thins a curve drawn finely and keeps its shape", function()
   near(api.lane_value_at(lane.id, 1), -16, 1e-6, "the same curve")
 end)
 
-test("gn draws a wave whose choices step within one undo step", function()
+test("g~ draws a wave whose choices step within one undo step", function()
   start()
   local _, lane = lane_with({ { 0, -30 } })
   local before = api.undo_current()
-  daw.keymap.feed("v" .. string.rep("l", 16) .. "gn")
+  daw.keymap.feed("v" .. string.rep("l", 16) .. "g~")
   eq(require("daw.menu").is_open(), true, "a menu of waves")
   keys("<CR>")
   local sine = #lane:points()

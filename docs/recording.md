@@ -85,7 +85,7 @@ and the loudspeaker beside the input button in the window, switch monitoring;
 - **Count-in.** `daw.opt.count_in` is how many bars the metronome counts
   before a take begun with the song stopped (0, the default, for none):
   `:countin 1`, `:countin off`, or `:countin` alone to turn it off and on;
-  `gC` does the same. The record button, `R` and `daw.transport.record()`
+  `gM` does the same. The record button, `R` and `daw.transport.record()`
   count in, and so does playing with record mode on; punching in by hand
   while playing does not. The clicks are at the tempo and in the signature
   at the playhead, a click on every beat of the signature and a higher one
