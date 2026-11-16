@@ -110,7 +110,13 @@ function M.parse(line)
 end
 
 --- Run a command line, as typed after `:`.
+--- A number right before the name is the command's count: `:3snippet arp`.
 function M.exec(line, ctx)
+  local count, rest = line:match("^%s*(%d+)(%a.*)$")
+  if count then
+    line = rest
+    ctx = daw.util.merge(ctx, { count = tonumber(count) })
+  end
   local name, args = M.parse(line)
   if not name then return end
   return M.run(name, args, ctx)

@@ -181,6 +181,10 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- What modules draw over the notes (the piano roll's layers), and
+      -- the chord symbols over its ruler, in the clip's beats.
+      marks = roll:marks(clip.id),
+      chords = M.roll_chords(clip),
     }
   end
   local under = daw.cursor.clip()
@@ -281,6 +285,17 @@ function M.clip(id)
     end
   end
   return clip
+end
+
+--- The chord symbols over a clip, as `daw.opt.chords` asks for them:
+--- `{ start, length, label }` in the clip's beats; none when it is off.
+function M.roll_chords(clip)
+  local out = {}
+  if not daw.opt.chords then return out end
+  for _, c in ipairs(daw.harmony.chords(clip.start, clip.start + clip.length)) do
+    out[#out + 1] = { start = c.at - clip.start, length = c.length, label = daw.harmony.label(c) }
+  end
+  return out
 end
 
 --- A clip's takes as its take lanes show them: `{ name, key }` each, `key`

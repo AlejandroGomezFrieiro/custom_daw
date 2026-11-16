@@ -1,0 +1,310 @@
+-- Tests of `daw.harmony`: chords and keys read from real and constructed
+-- music, the theory around them, providers, and the chord row of the piano
+-- roll. Loaded by tests/suite.lua with its helpers.
+local T = ...
+local test, eq, fresh = T.test, T.eq, T.fresh
+local api = daw.api
+local H = daw.harmony
+local music = daw.music
+
+--- The chords read over the song as "at:name" words.
+local function reading(from, to, how)
+  local out = {}
+  for _, c in ipairs(H.chords(from, to)) do
+    out[#out + 1] = string.format("%g:%s", c.at, how == "roman" and c.roman or c.name)
+  end
+  return table.concat(out, " ")
+end
+
+local function keys()
+  local out = {}
+  for _, k in ipairs(H.keys()) do out[#out + 1] = string.format("%g:%s", k.at, k.name) end
+  return table.concat(out, " ")
+end
+
+--- A track playing chords: each `{ "C4 E4 G4", beats }` one after another,
+--- or `{ "C4 E4 G4", beats, at = beat }`.
+local function chords(name, list, opts)
+  opts = opts or {}
+  local track = daw.add_track({ name = name })
+  local notes, at = {}, opts.start or 0
+  for _, entry in ipairs(list) do
+    at = entry.at or at
+    for word in entry[1]:gmatch("%S+") do
+      notes[#notes + 1] = { pitch = music.pitch(word), start = at, length = entry[2] * (opts.gate or 1), velocity = 90 }
+    end
+    at = at + entry[2]
+  end
+  track:add_clip({ start = 0, length = math.max(4, math.ceil(at / 4) * 4), notes = notes })
+  return track
+end
+
+--- A melody track: `{ "E5", beats }` one after another.
+local function line(name, list, start)
+  local track = daw.add_track({ name = name })
+  local notes, at = {}, start or 0
+  for _, entry in ipairs(list) do
+    if entry[1] ~= "r" then notes[#notes + 1] = { pitch = music.pitch(entry[1]), start = at, length = entry[2], velocity = 90 } end
+    at = at + entry[2]
+  end
+  track:add_clip({ start = 0, length = math.max(4, math.ceil(at / 4) * 4), notes = notes })
+  return track
+end
+
+test("harmony: block chords in C major are named, numbered and in C major", function()
+  fresh()
+  chords("Piano", {
+    { "C3 C4 E4 G4", 4 }, { "A2 A3 C4 E4", 4 }, { "D3 D4 F4 A4", 4 }, { "G2 G3 B3 D4 F4", 4 }, { "C3 C4 E4 G4", 4 },
+  })
+  daw.flush()
+  eq(reading(), "0:C 4:Am 8:Dm 12:G7 16:C", "the names")
+  eq(reading(nil, nil, "roman"), "0:I 4:vi 8:ii 12:V7 16:I", "the numerals")
+  eq(keys(), "0:C major", "the key")
+  eq(H.at(13).name, "G7", "the chord at a beat")
+  eq(H.next(12).name, "C", "the next chord starts after the beat")
+  eq(H.next(11.5).name, "G7", "even from inside the chord before")
+  eq(H.prev(13).name, "Dm", "the previous chord")
+  eq(H.next(16), nil, "nothing after the last")
+  eq(H.at(13).length, 4, "a chord lasts until the next")
+  eq(H.at(16).length, 4, "the last until its notes end")
+  eq(reading(5, 9), "4:Am 8:Dm", "a stretch: the chords sounding in it")
+end)
+
+test("harmony: inversions are read from the bass and written as slash chords", function()
+  fresh()
+  chords("Piano", {
+    { "E3 G3 C4", 4 }, { "F3 A3 C4", 4 }, { "B2 F3 G3 D4", 4 }, { "C3 E3 G3 C4", 4 },
+    { "F2 A3 D4", 4 }, { "G2 B3 D4 F4", 4 }, { "E3 G#3 B3 D4", 4 }, { "A2 E3 A3 C4", 4 },
+  })
+  daw.flush()
+  eq(reading(), "0:C/E 4:F 8:G7/B 12:C 16:Dm/F 20:G7 24:E7 28:Am", "inversions and their bass")
+end)
+
+test("harmony: sevenths, half-diminished and diminished chords", function()
+  fresh()
+  chords("Keys", {
+    { "C3 E3 G3 B3", 4 }, { "A2 C3 E3 G3", 4 }, { "D3 F3 A3 C4", 4 }, { "G2 B2 D3 F3", 4 },
+    { "B2 D3 F3 A3", 4 }, { "E3 G#3 B3 D4", 4 }, { "G#2 B2 D3 F3", 4 }, { "A2 C3 E3 A3", 4 },
+    { "F3 A3 C4 E4", 4 }, { "C3 E3 G3 A3", 4 }, { "G2 C3 D3 F3", 4 }, { "C3 G3 C4", 4 },
+  })
+  daw.flush()
+  eq(reading(), "0:Cmaj7 4:Am7 8:Dm7 12:G7 16:Bm7b5 20:E7 24:G#dim7 28:Am 32:Fmaj7 36:C6 40:G7sus4 44:C5",
+    "every quality")
+end)
+
+test("harmony: a chord holds across the melody's passing notes", function()
+  fresh()
+  chords("Piano", { { "C3 E3 G3", 4 }, { "F3 A3 C4", 4 }, { "G2 B2 D3", 4 }, { "C3 E3 G3", 4 } })
+  -- Stepwise eighths and sixteenths, half of them outside the chord.
+  line("Flute", {
+    { "C5", 0.5 }, { "D5", 0.5 }, { "E5", 0.5 }, { "F5", 0.5 }, { "G5", 1 }, { "E5", 0.5 }, { "D5", 0.5 },
+    { "C5", 0.5 }, { "D5", 0.25 }, { "E5", 0.25 }, { "F5", 1 }, { "A5", 0.5 }, { "G5", 0.5 }, { "F5", 1 },
+    { "D5", 0.5 }, { "E5", 0.5 }, { "F5", 1 }, { "B4", 0.5 }, { "C5", 0.5 }, { "D5", 1 },
+    { "E5", 0.5 }, { "D5", 0.25 }, { "C5", 0.25 }, { "C5", 3 },
+  })
+  daw.flush()
+  eq(reading(), "0:C 4:F 8:G 12:C", "the chords, not the passing notes")
+end)
+
+test("harmony: a modulation from C major to G major is found", function()
+  fresh()
+  chords("Strings", {
+    { "C3 E3 G3", 4 }, { "F3 A3 C4", 4 }, { "G2 B2 D3 F3", 4 }, { "C3 E3 G3", 4 },
+    { "A2 C3 E3", 4 }, { "D3 F3 A3", 4 }, { "G2 B2 D3", 4 }, { "C3 E3 G3", 4 },
+    -- The pivot (Am, ii in G), then D7 and G with their F sharps.
+    { "A2 C3 E3", 4 }, { "D3 F#3 A3 C4", 4 }, { "G2 B2 D3", 4 }, { "E3 G3 B3", 4 },
+    { "C3 E3 G3", 4 }, { "A2 C3 E3 G3", 4 }, { "D3 F#3 A3 C4", 4 }, { "G2 B2 D3", 4 },
+  })
+  daw.flush()
+  -- The pivot belongs to both keys and is heard in the old one: the new key
+  -- begins with its dominant, where its F sharp first sounds.
+  eq(keys(), "0:C major 36:G major", "the keys")
+  eq(reading(32, 64, "roman"), "32:vi 36:V7 40:I 44:vi 48:IV 52:ii7 56:V7 60:I", "numerals in the new key")
+  eq(reading(0, 32, "roman"), "0:I 4:IV 8:V7 12:I 16:vi 20:ii 24:V 28:I", "and in the old")
+  eq(H.key(10).name, "C major", "the key at a beat")
+  eq(H.key(50).name, "G major", "after the modulation")
+end)
+
+test("harmony: the demo song", function()
+  fresh()
+  dofile("examples/demo-song.lua")
+  daw.flush()
+  -- The drums are left out; the bass, the keys and the lead are read
+  -- together: A minor, F over C and over G (with its added ninth), A minor
+  -- seventh, the G triad over a C bass (a C major ninth without its third)
+  -- and G.
+  eq(reading(), "0:Am 8:F/C 12:Fadd9/G 16:Am7 24:Cmaj9 28:G", "the chords")
+  eq(keys(), "0:A minor", "the key")
+  eq(reading(nil, nil, "roman"), "0:i 8:bVI 12:bVIadd9 16:i7 24:bIIImaj9 28:bVII", "the numerals")
+end)
+
+test("harmony: drum tracks, muted tracks and muted clips are left out", function()
+  fresh()
+  chords("Piano", { { "C3 E3 G3", 4 } })
+  local kit = chords("Kit", { { "C#3 D#3 F#3", 4 } })
+  daw.flush()
+  eq(reading(), "0:C", "a drum track by its name")
+  kit.name = "Perc 2"
+  local pad = chords("Pad", { { "D3 F#3 A3", 4 } })
+  daw.flush()
+  eq(reading() ~= "0:C", true, "a pitched track is heard")
+  pad.mute = true
+  daw.flush()
+  eq(reading(), "0:C", "a muted track is not")
+  pad.mute = false
+  pad:clips()[1].muted = true
+  daw.flush()
+  eq(reading(), "0:C", "nor a muted clip")
+  local meta = pad.meta or {}
+  meta.drums = { map = "gm", rows = { { note = 36, name = "Kick" } } }
+  pad:clips()[1].muted = false
+  pad.meta = meta
+  daw.flush()
+  eq(reading(), "0:C", "nor a track with a drum map")
+end)
+
+test("harmony: the reading is cached, follows edits and undo, and says when it changes", function()
+  fresh()
+  local t = chords("Piano", { { "C3 E3 G3", 4 } })
+  daw.flush()
+  api.undo_checkpoint()
+  local changes = 0
+  local id = daw.on("harmony.changed", function() changes = changes + 1 end)
+  eq(reading(), "0:C", "read")
+  local first = H.chords()
+  eq(H.chords()[1], first[1], "the same reading while nothing changes")
+  t:clips()[1]:add_note({ pitch = music.pitch("Bb3"), start = 0, length = 4 })
+  daw.flush()
+  api.undo_checkpoint()
+  eq(reading(), "0:C7", "an edit is read at once")
+  for _ = 1, 200 do
+    if changes > 0 then break end
+    daw.wait(25)
+  end
+  eq(changes >= 1, true, "and heard of")
+  daw.undo()
+  daw.flush()
+  eq(reading(), "0:C", "and undone")
+  daw.off(id)
+end)
+
+test("harmony: the project's key wins over the one read, and is kept as musicops kept it", function()
+  fresh()
+  chords("Piano", { { "A2 C3 E3", 4 }, { "D3 F3 A3", 4 }, { "E3 G#3 B3", 4 }, { "A2 C3 E3", 4 } })
+  daw.flush()
+  eq(H.key(0).name, "A minor", "read")
+  eq(reading(nil, nil, "roman"), "0:i 4:iv 8:V 12:i", "numerals in A minor")
+  H.set_key("C major")
+  daw.flush()
+  eq(H.key(0).name, "C major", "set")
+  eq(api.project_get().meta.musicops.root, "C", "where musicops kept it")
+  eq(reading(nil, nil, "roman"), "0:vi 4:ii 8:III 12:vi", "numerals in the key set")
+  eq(keys(), "0:C major", "the only key")
+  H.set_key(nil)
+  daw.flush()
+  eq(H.project_key(), nil, "cleared")
+  eq(H.key(0).name, "A minor", "read again")
+end)
+
+test("harmony: theory: keys, spelling, degrees, chord symbols", function()
+  local d = H.parse_key("D minor")
+  eq(d.root, 2, "root")
+  eq(d.tonic, 2, "tonic")
+  eq(d.mode, "minor", "mode")
+  eq(H.key_name("bb"), "Bb major", "spelled with flats")
+  eq(H.key_name("F# Harmonic Minor"), "F# harmonic_minor", "forgiving names")
+  eq(H.key_name("D# minor"), "Eb minor", "as it is usually written")
+  eq(H.pc_name(10, "F major"), "Bb", "a flat key's black key")
+  eq(H.pc_name(6, "E major"), "F#", "a sharp key's")
+  eq(H.pc_name(10), "Bb", "without a key")
+  eq(H.in_key("C major", 66), false, "F# is not in C")
+  eq(H.snap("C major", 61), 62, "C# goes up to D")
+  eq(H.step("C major", 60, 2), 64, "two steps up from C")
+  eq(H.step("A minor", 72, -2), 69, "two down from C in A minor")
+  eq(H.degree_pitch("C major", 35), 60, "C4 is the 36th degree")
+  local c = H.parse_chord("F#m7b5/C")
+  eq(c.root .. " " .. c.quality .. " " .. c.bass, "6 m7b5 0", "a symbol read")
+  eq(table.concat(H.tones(7, "7"), " "), "7 11 2 5", "the tones of G7")
+  eq(H.chord_name({ root = 10, quality = "maj7", bass = 2 }, "F major"), "Bbmaj7/D", "a name in a key")
+  eq(H.chord_roman({ root = 11, quality = "m7b5" }, "C major"), "viiø7", "a numeral")
+  eq(H.chord_roman({ root = 10, quality = "maj" }, "C major"), "bVII", "borrowed")
+  eq(H.parse_chord("H7"), nil, "not a chord")
+end)
+
+test("harmony: voicings fit the range and lead smoothly", function()
+  local V = H.voice
+  local g7 = H.tones(7, "7")
+  local p = V.voice(g7, { low = 48, high = 84, prev = { 60, 64, 67 } })
+  eq(#p, 4, "four voices")
+  for _, x in ipairs(p) do eq(x >= 48 and x <= 84, true, "within the range") end
+  eq(V.distance({ 60, 64, 67 }, p) <= 5, true, "close to the C major before: " .. table.concat(p, " "))
+  local into = V.voice(g7, { low = 48, high = 84, next = { 60, 64, 67, 72 } })
+  eq(V.distance(into, { 60, 64, 67, 72 }) <= 5, true, "close to the C after: " .. table.concat(into, " "))
+  local bass = V.voice(H.tones(0, "maj"), { low = 28, high = 55, count = 3, bass = 4 })
+  eq(bass[1] % 12, 4, "the bass asked for is lowest")
+  eq(bass[3] <= 55, true, "within a bass's range")
+  local drop = V.voice(H.tones(0, "maj7"), { low = 40, high = 84, style = "drop2", center = 60 })
+  eq(drop[2] - drop[1] > 4, true, "drop 2 opens the bottom: " .. table.concat(drop, " "))
+  eq(V.voice(g7, { low = 60, high = 62 }), nil, "nothing fits a range too narrow")
+end)
+
+test("harmony: an instrument's range is guessed from the track", function()
+  fresh()
+  local bass = daw.add_track({ name = "Bass" })
+  eq(H.range(bass).low, 28, "a bass")
+  eq(H.range(daw.add_track({ name = "Lead Guitar" })).name, "guitar", "a guitar")
+  eq(H.range(daw.add_track({ name = "Track 3" })).low, 48, "else C3")
+  eq(H.range(daw.add_track({ name = "Track 4" })).high, 84, "to C6")
+  local own = daw.add_track({ name = "Odd" })
+  own.meta = { range = { low = 50, high = 70 } }
+  eq(H.range(own).high, 70, "or the track's own")
+end)
+
+test("harmony: a provider answers instead of the reading", function()
+  fresh()
+  chords("Piano", { { "C3 E3 G3", 4 } })
+  daw.flush()
+  eq(H.provider(), "builtin", "the built-in reading")
+  H.provide("server", function(from, to)
+    return { { at = 0, length = 2, root = 2, quality = "m7" }, { at = 2, length = 2, root = 7, quality = "7" } },
+      { { at = 0, length = 4, tonic = 0, mode = "major" } }
+  end, 100)
+  eq(reading(), "0:Dm7 2:G7", "the provider's chords")
+  eq(reading(nil, nil, "roman"), "0:ii7 2:V7", "named in its key")
+  eq(H.provider(), "server", "said")
+  H.provide("silent", function() return nil end, 200)
+  eq(H.provider(), "server", "one that does not answer is passed over")
+  H.provide("server", nil)
+  H.provide("silent", nil)
+  eq(reading(), "0:C", "removed")
+end)
+
+test("harmony: chord symbols in the piano roll's ruler", function()
+  fresh()
+  chords("Piano", { { "C3 E3 G3", 4 }, { "A2 C3 E3", 4 }, { "G2 B2 D3 F3", 4 }, { "C3 E3 G3", 4 } })
+  daw.flush()
+  local roll = daw.ui.views.pianoroll
+  roll:edit(daw.tracks()[1]:clips()[1])
+  daw.opt.note_zoom = 4
+  local function chord_row()
+    local lines = api.ui_snapshot(100, 30)
+    for _, l in ipairs(lines) do
+      if l:find("Am") then return l end
+    end
+  end
+  daw.opt.chords = "names"
+  local row = chord_row()
+  eq(row ~= nil and row:find("C") ~= nil and row:find("G7") ~= nil, true, "the names: " .. tostring(row))
+  daw.opt.chords = "roman"
+  local function has(text)
+    for _, l in ipairs(api.ui_snapshot(100, 30)) do
+      if l:find(text, 1, true) then return true end
+    end
+  end
+  eq(has("vi") and has("V7"), true, "the numerals")
+  daw.opt.chords = false
+  eq(chord_row(), nil, "and none")
+  daw.opt.chords = "names"
+  daw.opt.note_zoom = 8
+  daw.ui.focus("arrange")
+end)

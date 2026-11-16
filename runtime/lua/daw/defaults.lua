@@ -2020,9 +2020,10 @@ pmap("[", function()
 end, "Softer")
 pmap("gh", function() roll:audition() end, "Hear the pitch under the cursor")
 pmap("<Esc>", function()
+  if daw.snippet.active() then return daw.snippet.finish() end
   if chosen() then return daw.frontend.act.clear_note_selection() end
   daw.ui.focus("arrange")
-end, "Let go of the chosen notes; back to the arrange view")
+end, "End the snippet, or let go of the chosen notes; else back to the arrange view")
 
 -- Piano roll: on a selection.
 local function px(lhs, fn, desc)
@@ -2080,6 +2081,51 @@ imap("<Left>", function() roll:step(-1) end, "Step back")
 imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
+
+-- Piano roll: snippets (runtime/lua/daw/snippet.lua). While one is active its
+-- keys come first; otherwise each key does what it does everywhere else.
+roll.layer("snippet", daw.snippet.layer)
+command("snippet", function(ctx)
+  local name = ctx.args[1]
+  if name == nil then return daw.snippet.pick({ count = ctx.count }) end
+  local _, why = daw.snippet.expand(tostring(name), { count = ctx.count })
+  if why then daw.notify(why, "warn") end
+end, {
+  desc = "Expand a snippet at the piano roll's cursor: `snippet dominant`, `3snippet arp`; alone, choose one",
+  complete = function()
+    local out = {}
+    for _, s in ipairs(daw.snippet.offered("pianoroll")) do out[#out + 1] = { text = s.name, desc = s.desc } end
+    return out
+  end,
+})
+local function global_key(lhs, mode, ctx)
+  local want = table.concat(keymap.parse(lhs))
+  for _, m in ipairs(keymap.list(mode, "global")) do
+    if m.scope == "global" and table.concat(m.keys) == want then
+      if type(m.rhs) == "function" then return m.rhs(ctx) end
+      return daw.commands.exec(m.rhs, ctx)
+    end
+  end
+end
+for lhs, spec in pairs({
+  ["<Tab>"] = { function() return daw.snippet.jump(1) end, "The snippet's next choice; else the next view" },
+  ["<S-Tab>"] = { function() return daw.snippet.jump(-1) end, "The snippet's choice before; else the view before" },
+  ["<C-n>"] = { function() return daw.snippet.step(1) end, "The snippet's choice: its next value" },
+  ["<C-p>"] = { function() return daw.snippet.step(-1) end, "The snippet's choice: its value before" },
+  ["<C-y>"] = { function()
+    if not daw.snippet.active() then return false end
+    daw.snippet.finish()
+    return true
+  end, "End the snippet, keeping its notes; else redo" },
+}) do
+  for _, mode in ipairs({ "n", "i" }) do
+    map(lhs, function(ctx)
+      if not spec[1]() and mode == "n" then return global_key(lhs, mode, ctx) end
+    end, { view = "pianoroll", mode = mode, desc = spec[2], repeatable = false })
+  end
+end
+map("<C-s>", function(ctx) daw.snippet.pick({ count = ctx.count }) end,
+  { view = "pianoroll", mode = { "n", "i", "x" }, desc = "Choose a snippet to expand here", repeatable = false })
 
 -- Sizes -----------------------------------------------------------------------
 --

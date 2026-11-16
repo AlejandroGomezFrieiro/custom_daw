@@ -208,12 +208,7 @@ impl<T: Clone> History<T> {
     /// instead of a new state being made: nothing hangs on it yet.
     pub fn can_amend(&self) -> bool {
         let state = &self.states[&self.current];
-        state.children.is_empty()
-            && !state.keep
-            && state.name.is_none()
-            && state.parent.is_some()
-            && self.saved != Some(self.current)
-            && !self.save_pending
+        self.can_extend()
             // A command or a key is a step of its own, however alike the
             // one before: only moves that nothing names (a fader dragged
             // in a window, a knob turned on a controller) run together.
@@ -221,6 +216,19 @@ impl<T: Clone> History<T> {
             && state.keys.is_none()
             && self.pending_label.is_none()
             && self.pending_keys.is_none()
+    }
+
+    /// Whether the current state can take a later edit into itself when that
+    /// is asked for (a snippet's choice stepped through): nothing hangs on
+    /// it, and it is neither saved nor named nor kept.
+    pub fn can_extend(&self) -> bool {
+        let state = &self.states[&self.current];
+        state.children.is_empty()
+            && !state.keep
+            && state.name.is_none()
+            && state.parent.is_some()
+            && self.saved != Some(self.current)
+            && !self.save_pending
     }
 
     /// Replace what the current state holds with a later version of the

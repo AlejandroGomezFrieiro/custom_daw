@@ -122,6 +122,8 @@ daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
+daw.harmony = require("daw.harmony")
+daw.snippet = require("daw.snippet")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
 -- gives text, `daw.json.decode(text)` the value, or nil and the reason.
@@ -166,6 +168,7 @@ function K.startup()
       local chunk, err = loadfile(init)
       if chunk then daw.try(daw.limit.untrusted(chunk)) else daw.notify(err, "error") end
     end
+    daw.snippet.load_dir(env.config_dir .. "/snippets", "config")
   end
   for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
   daw.emit("startup", {})

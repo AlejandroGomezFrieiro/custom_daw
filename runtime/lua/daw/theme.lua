@@ -207,6 +207,13 @@ local function build()
     RollCursor = { bg = "#2a3a50" },
     Velocity = { fg = c.dim },
     VelocityLane = { fg = c.faint, bg = c.bg_dark },
+    -- Chord symbols over the piano roll, and a snippet: its notes while it
+    -- is active, its span on the chord row, what the picker would write.
+    RulerChord = { fg = c.fg, bg = c.bg_alt, bold = true },
+    RulerChordEdge = { fg = c.faint, bg = c.bg_alt },
+    SnippetNote = { fg = c.bg, bg = c.visual, bold = true },
+    SnippetSpan = { fg = c.bg, bg = c.visual },
+    SnippetGhost = { fg = c.visual, bg = c.bg_hl },
 
     DeviceName = { fg = c.bright, bold = true },
     DeviceOff = { fg = c.faint, strike = true },

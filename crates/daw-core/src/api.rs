@@ -1036,6 +1036,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().undo_label(text);
             Ok(())
         }
+        // The edits of this turn join undo state `id`, the current one,
+        // instead of making a step of their own: a snippet's choice changed.
+        fn undo_join(_, sh, id => u64) { Ok(sh.session.borrow_mut().undo_join(id)) }
         fn undo_keys(_, sh, text => String) {
             sh.session.borrow_mut().undo_keys(text);
             Ok(())

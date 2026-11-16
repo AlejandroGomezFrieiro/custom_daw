@@ -35,11 +35,64 @@ function view:note_at(pitch, beat)
   return clip:note_at(pitch, beat)
 end
 
-local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
+--- Rows above the notes on a panel `h` rows tall: the panel's title, the
+--- chord symbols when `daw.opt.chords` asks for them and there is room,
+--- then the ruler.
+function view.head_rows(h)
+  return (daw.opt.chords and h >= 12) and 3 or 2
+end
 
 --- Rows for the velocity lane on a panel `h` rows tall.
 function view.velocity_rows(h)
   return h >= 30 and 5 or h >= 16 and 3 or 0
+end
+
+-- Layers: what modules draw over the grid, from back to front by `order`.
+-- Those below 0 go under the clip's notes (notes of other tracks), those
+-- above over them (marks of diagnostics, an active snippet, suggestions),
+-- all under the selection and the cursor. `draw(view, g)` paints the
+-- terminal: `g.roll` is the grid's buffer, `g.x(beat)` the column of a beat
+-- of the clip, `g.row(pitch)` the row of a pitch (nil off screen), `g.clip`
+-- the clip's data, `g.width`, `g.rows`, `g.zoom`, `g.scroll`, `g.top`.
+-- `marks(clip_id)` returns what the window draws for it: a list of
+-- `{ kind = "ghost"|"mark"|"span", pitch, start, length, label }` in the
+-- clip's beats.
+view.layers = {}
+
+--- Add or replace a layer: `daw.ui.views.pianoroll.layer("snippet", { order = 20, draw = fn, marks = fn })`.
+function view.layer(name, spec)
+  for i = #view.layers, 1, -1 do
+    if view.layers[i].name == name then table.remove(view.layers, i) end
+  end
+  if spec then
+    spec.name = name
+    view.layers[#view.layers + 1] = spec
+    table.sort(view.layers, function(a, b) return (a.order or 0) < (b.order or 0) end)
+  end
+end
+
+local function draw_layers(self, g, below)
+  for _, layer in ipairs(view.layers) do
+    if layer.draw and ((layer.order or 0) < 0) == below then
+      local ok, err = pcall(layer.draw, self, g)
+      if not ok then daw.notify("piano roll layer " .. layer.name .. ": " .. tostring(err), "error") end
+    end
+  end
+end
+
+--- What every layer has for the window over clip `clip_id`, in order.
+function view:marks(clip_id)
+  local out = {}
+  for _, layer in ipairs(view.layers) do
+    if layer.marks then
+      local ok, list = pcall(layer.marks, clip_id)
+      for _, m in ipairs(ok and list or {}) do
+        m.layer = layer.name
+        out[#out + 1] = m
+      end
+    end
+  end
+  return out
 end
 
 function view:render(buf, ctx)
@@ -60,7 +113,9 @@ function view:render(buf, ctx)
   local zoom, grid = daw.opt.note_zoom, daw.opt.note_grid
   -- With room to spare, the notes' velocities get a few rows of their own.
   local vel = view.velocity_rows(h)
-  local rows, tw = h - HEAD - vel, w - KEYS
+  local head = view.head_rows(h)
+  self.head = head
+  local rows, tw = h - head - vel, w - KEYS
   local span = tw / zoom
 
   -- Keep the cursor on screen.
@@ -89,10 +144,17 @@ function view:render(buf, ctx)
     buf:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
 
-  -- Ruler: bars as the project counts them, beats in between.
-  buf:fill(0, 1, w, 1, " ", "Ruler")
-  local roll = buf:sub(KEYS, HEAD, tw, rows)
-  local ruler = buf:sub(KEYS, 1, tw, 1)
+  -- Ruler: bars as the project counts them, beats in between; above it
+  -- the chords that sound, read over every pitched track.
+  buf:fill(0, head - 1, w, 1, " ", "Ruler")
+  local roll = buf:sub(KEYS, head, tw, rows)
+  local ruler = buf:sub(KEYS, head - 1, tw, 1)
+  if head == 3 then
+    buf:fill(0, 1, w, 1, " ", "Ruler")
+    local key = daw.harmony.key(c.start + self.scroll)
+    buf:text(0, 1, (key.name:gsub(" major", ""):gsub(" minor", "m")):sub(1, KEYS - 1), "RulerChordEdge")
+    daw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
+  end
   local lines = daw.draw.beats(ruler, self.scroll, span, zoom, c.start)
   -- Steps between the beats when zoomed in far enough to see them.
   -- They are the same on every row: one line of text, drawn row by row.
@@ -112,7 +174,7 @@ function view:render(buf, ctx)
   local end_x = math.floor((c.length - self.scroll) * zoom + 0.5)
   for row = 0, rows - 1 do
     local pitch = self.top - row
-    daw.draw.piano_key(buf, row + HEAD, pitch, pitch == self.pitch, KEYS)
+    daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS)
     roll:fill(0, row, tw, 1, " ", music.is_black(pitch) and "RollRowBlack" or "RollRow")
     if steps then roll:text(0, row, steps, music.is_black(pitch) and "RollStepBlack" or "RollStep") end
     for _, line in ipairs(lines) do roll:text(line.x, row, line.bar and g.bar or g.beat, line.bar and "RollBar" or "RollBeat") end
@@ -125,6 +187,16 @@ function view:render(buf, ctx)
   local px = math.floor((t.position - c.start - self.scroll) * zoom + 0.5)
   local playing_here = px >= 0 and px < tw and t.position >= c.start and t.position <= c.start + c.length
   if playing_here then roll:fill(px, 0, 1, rows, g.playhead, "Playhead") end
+
+  local layer_g = {
+    roll = roll, clip = c, width = tw, rows = rows, zoom = zoom, scroll = self.scroll, top = self.top, hue = hue,
+    x = function(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end,
+    row = function(pitch)
+      local row = self.top - pitch
+      if row >= 0 and row < rows then return row end
+    end,
+  }
+  draw_layers(self, layer_g, true)
 
   -- Only what is on screen crosses over from the core.
   local under = self:note_at(self.pitch, self.beat)
@@ -143,12 +215,13 @@ function view:render(buf, ctx)
     -- Long enough notes say which they are.
     if nw >= 4 then roll:text(x0 + 1, row, music.name(note.pitch):sub(1, nw - 1)) end
   end
+  draw_layers(self, layer_g, false)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then
-    local lane = buf:sub(KEYS, HEAD + rows, tw, vel)
-    buf:fill(0, HEAD + rows, w, vel, " ", "VelocityLane")
-    buf:text(1, HEAD + rows + vel - 1, "vel", "VelocityLane")
+    local lane = buf:sub(KEYS, head + rows, tw, vel)
+    buf:fill(0, head + rows, w, vel, " ", "VelocityLane")
+    buf:text(1, head + rows + vel - 1, "vel", "VelocityLane")
     for _, line in ipairs(lines) do
       if line.bar then lane:fill(line.x, 0, 1, vel, g.bar, "RollBar") end
     end
@@ -439,7 +512,7 @@ function view:on_mouse(event)
   if not g or not self:clip() then return end
   if event.kind == "scroll_up" then self.top = math.min(127, self.top + 2) end
   if event.kind == "scroll_down" then self.top = math.max(g.rows - 1, self.top - 2) end
-  local row = event.y - HEAD
+  local row = event.y - (self.head or 2)
   if event.kind == "down" and row >= 0 and row < g.rows and event.x >= KEYS then
     local grid = daw.opt.note_grid
     self.pitch = self.top - row
