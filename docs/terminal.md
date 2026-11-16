@@ -84,7 +84,7 @@ returns to normal mode.
 | `A`, `,at` `,ax` | add a volume automation point at the cursor; turn the lane off or on (read or bypass), clear it |
 | `,al`, `,aa` `,aA` | choose what to automate (volume, pan, any device parameter) and show its lane; show or hide the track's lanes as rows; show every track's lanes |
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
-| `gC` `gI`, `zt` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes |
+| `gC` `gI`, `zt` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes (see below for comping with the mouse) |
 | `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
 | `Tab` `gt`, `Ctrl-w c`, `Ctrl-w o` | next view; close this panel; close every panel |
@@ -106,6 +106,17 @@ parameter's range), `c` or `=` types its value, `x` removes it, and `,at`
 `,ax` bypass or clear that lane. In a selection (`v`) on a lane row `x` or `d`
 remove the points in it, `H` `L` move them a grid step, `+` `-` raise or
 lower them. Lanes for send levels are not there yet.
+
+**Comping with the mouse.** `zt` shows a track's takes as lanes under its
+clips, one row for each take. Drag across lane k with the left button, and
+the cells from where you pressed to where you let go are marked; on release
+take k plays over that stretch, as in the window: the clips are cut at its
+ends on the grid (Shift leaves it), the pieces that then play the same take
+are joined, and it is one undo step. A click without a drag (a cell shorter
+than a grid step) gives the piece under it take k. A click on the lane's
+label (`↳ take 2`) makes that take play wherever the track has it. The
+release may be anywhere on the screen: a drag belongs to the view it began
+in. `:take 2` over a selection does the same from the keyboard.
 
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
