@@ -6,7 +6,7 @@
 //! already running; otherwise it starts one of its own and stops it on exit.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -36,8 +36,97 @@ Usage:
                                        (started with --listen-tcp; the token
                                        is also taken from --token or $DAW_TOKEN)
 
+Options:
+  --renderer software|gpu   draw on the processor (the default) or on the
+                            graphics card with OpenGL; also DAW_GUI_RENDERER
+
 Kernel options are passed on to `daw --headless`; see `daw --help`.
 ";
+
+/// How the window is drawn: on the processor, or on the graphics card
+/// through OpenGL.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Renderer {
+    Software,
+    Gpu,
+}
+
+/// The renderer asked for with `--renderer` (taken out of `args`, which go
+/// on to the kernel), else by `env` (`DAW_GUI_RENDERER`); else software.
+fn renderer_choice(args: &mut Vec<String>, env: Option<&str>) -> Result<Renderer> {
+    let named = match args.iter().position(|a| a == "--renderer") {
+        Some(at) => {
+            let name = args.get(at + 1).context("--renderer needs gpu or software")?;
+            let name = name.clone();
+            args.drain(at..at + 2);
+            Some(name)
+        }
+        None => env.filter(|name| !name.is_empty()).map(str::to_string),
+    };
+    match named.as_deref() {
+        None | Some("software") => Ok(Renderer::Software),
+        Some("gpu") => Ok(Renderer::Gpu),
+        Some(other) => bail!("the renderer is gpu or software, not {other}"),
+    }
+}
+
+/// Settle on how the window is drawn, before anything else is started. The
+/// GPU renderer first draws a small window for a moment; where it cannot
+/// (no OpenGL, no EGL, no display that offers them), the program says so
+/// and starts again with the software one, since it can choose only once.
+fn select_renderer(renderer: Renderer, args: &[String]) -> Result<()> {
+    let select = |name: &str| {
+        slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .renderer_name(name.into())
+            .select()
+    };
+    if renderer == Renderer::Software {
+        return Ok(select("software")?);
+    }
+    let Err(err) = select("femtovg")
+        .map_err(anyhow::Error::from)
+        .and_then(|()| probe_gpu())
+    else {
+        return Ok(());
+    };
+    eprintln!("daw-gui: the GPU renderer did not start ({err:#}); drawing with the software one");
+    let err = Command::new(std::env::current_exe()?)
+        .args(args)
+        .env("DAW_GUI_RENDERER", "software")
+        .exec();
+    Err(err).context("starting again with the software renderer")
+}
+
+/// Show a small window with the renderer chosen and wait for it to be drawn.
+/// Where the renderer cannot start, the event loop keeps the error to
+/// itself until it ends: a first frame takes well under a second where it
+/// works, so it is given three.
+fn probe_gpu() -> Result<()> {
+    let probe = Probe::new()?;
+    let drawn = Rc::new(Cell::new(false));
+    probe.window().set_rendering_notifier({
+        let drawn = drawn.clone();
+        move |state, _| {
+            if matches!(state, slint::RenderingState::AfterRendering) {
+                drawn.set(true);
+                let _ = slint::quit_event_loop();
+            }
+        }
+    })?;
+    let timeout = Timer::default();
+    timeout.start(TimerMode::SingleShot, Duration::from_secs(3), || {
+        let _ = slint::quit_event_loop();
+    });
+    probe.show()?;
+    let ran = slint::run_event_loop();
+    let _ = probe.hide();
+    ran?;
+    if !drawn.get() {
+        bail!("nothing was drawn in three seconds");
+    }
+    Ok(())
+}
 
 /// What a file chosen in the desktop's dialog is for.
 #[derive(Clone, Copy)]
@@ -387,9 +476,9 @@ fn place_of(pos: f64) -> SharedString {
 }
 
 /// The song's lines over a clip, in the clip's beats, for the piano roll.
-fn roll_lines(start: f32, length: f32) -> ModelRc<RollLine> {
+fn roll_lines(start: f32, length: f32) -> Vec<RollLine> {
     let (start, length) = (start as f64, length as f64);
-    let lines: Vec<RollLine> = SONG_LINES.with(|lines| {
+    SONG_LINES.with(|lines| {
         lines
             .borrow()
             .iter()
@@ -404,8 +493,32 @@ fn roll_lines(start: f32, length: f32) -> ModelRc<RollLine> {
                 },
             })
             .collect()
-    });
-    ModelRc::from(Rc::new(VecModel::from(lines)))
+    })
+}
+
+/// The stretch of beats to lay out for a view from `from` to `to`: it and
+/// a view's worth on either side, so that scrolling a little needs nothing new.
+fn around(from: f32, to: f32) -> (f32, f32) {
+    let span = (to - from).max(1.0);
+    (from - span, to + span)
+}
+
+/// Whether a stretch laid out with `around` still serves the view from
+/// `from` to `to`: it covers the view and, after zooming in, is not so much
+/// wider that it holds far more than shows.
+fn still_serves(kept: Option<(f32, f32)>, from: f32, to: f32) -> bool {
+    kept.is_some_and(|(kept_from, kept_to)| {
+        from >= kept_from && to <= kept_to && kept_to - kept_from < (to - from).max(1.0) * 4.0
+    })
+}
+
+/// The notes that sound at some time between beats `from` and `to`.
+fn notes_within(notes: &[NoteData], from: f32, to: f32) -> Vec<NoteData> {
+    notes
+        .iter()
+        .filter(|n| n.start <= to && n.start + n.length >= from)
+        .cloned()
+        .collect()
 }
 
 /// The tempo map's bar and beat lines, as the kernel sends them.
@@ -906,6 +1019,7 @@ struct View {
     tops: Rc<RefCell<Vec<f32>>>,
     revision: i64,
     tracks: Rc<VecModel<TrackData>>,
+    meters: Rc<VecModel<MeterData>>,
     clips: Rc<VecModel<ClipData>>,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
@@ -929,6 +1043,13 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// All of the clip's notes, its other clips' and the song's lines over
+    /// it; the models hold those of the stretch `roll_for` (beats) alone.
+    roll_notes: Vec<NoteData>,
+    roll_ghosts: Vec<NoteData>,
+    roll_lines: Vec<RollLine>,
+    roll_line_rows: Rc<VecModel<RollLine>>,
+    roll_for: Option<(f32, f32)>,
     sounding: Rc<VecModel<bool>>,
     /// The velocities a stroke over the strip is giving, by note, -1 for
     /// none: shown until the kernel's own come back.
@@ -1071,7 +1192,12 @@ impl View {
             ui.set_tempo(format!("{tempo}").into());
             ui.set_signature(text(&state["signature"]));
         }
-        ui.set_cpu(number(&state["cpu"]));
+        // Only when it has moved by 4%: the load wavers all the time, and
+        // every change of a property shown is a frame drawn.
+        let cpu = number(&state["cpu"]);
+        if (cpu - ui.get_cpu()).abs() >= 0.04 {
+            ui.set_cpu(cpu);
+        }
         ui.set_record_armed(state["armed"].as_bool().unwrap_or(false));
         ui.set_counting(state["counting"].as_i64().unwrap_or(0) as i32);
         let levels: Vec<f32> = rows(&state["levels"])
@@ -1089,6 +1215,11 @@ impl View {
         self.modal(ui, client, &state["modal"])?;
         if let (Some(id), true) = (self.roll, std::mem::take(&mut self.roll_stale)) {
             self.show_roll(ui, client, id)?;
+        }
+        // Scrolled or zoomed out of the stretch of the clip handed over.
+        let (from, to) = self.roll_seen(ui);
+        if self.roll.is_some() && !still_serves(self.roll_for, from, to) {
+            self.roll_view(ui);
         }
         // Scrolled past the stretch the curves were laid out over.
         let out_of_view = self.lanes_for.is_none_or(|(from, to)| {
@@ -1144,27 +1275,29 @@ impl View {
         self.meters_at = Some(now);
         for (index, level) in levels.chunks_exact(2).enumerate() {
             let input = inputs.get(index).copied().unwrap_or(0.0);
-            let Some(mut track) = self.tracks.row_data(index) else {
+            let (Some(track), Some(mut meter)) =
+                (self.tracks.row_data(index), self.meters.row_data(index))
+            else {
                 continue;
             };
             let peak = self.peaks.entry(track.id).or_default();
             peak.update([level[0], level[1]], dt);
             let peak = *peak;
-            if (track.level_l - level[0]).abs() > 0.004
-                || (track.level_r - level[1]).abs() > 0.004
-                || (track.input_level - input).abs() > 0.004
-                || (track.hold_l - peak.level[0]).abs() > 0.004
-                || (track.hold_r - peak.level[1]).abs() > 0.004
-                || track.clipped != peak.clipped
+            if (meter.level_l - level[0]).abs() > 0.004
+                || (meter.level_r - level[1]).abs() > 0.004
+                || (meter.input_level - input).abs() > 0.004
+                || (meter.hold_l - peak.level[0]).abs() > 0.004
+                || (meter.hold_r - peak.level[1]).abs() > 0.004
+                || meter.clipped != peak.clipped
             {
-                track.level_l = level[0];
-                track.level_r = level[1];
-                track.input_level = input;
-                track.hold_l = peak.level[0];
-                track.hold_r = peak.level[1];
-                track.clipped = peak.clipped;
-                track.peak_text = peak.text().into();
-                self.tracks.set_row_data(index, track);
+                meter.level_l = level[0];
+                meter.level_r = level[1];
+                meter.input_level = input;
+                meter.hold_l = peak.level[0];
+                meter.hold_r = peak.level[1];
+                meter.clipped = peak.clipped;
+                meter.peak_text = peak.text().into();
+                self.meters.set_row_data(index, meter);
             }
         }
         Ok(())
@@ -1184,12 +1317,42 @@ impl View {
         }
     }
 
+    /// The beats of the piano roll's clip that show.
+    fn roll_seen(&self, ui: &App) -> (f32, f32) {
+        let roll = self.active_roll(ui);
+        let (from, to) = (roll.get_view_start(), roll.get_view_end());
+        if to > from {
+            (from, to)
+        } else {
+            // Not laid out yet: a wide screen's worth.
+            (from, from + 4000.0 / roll.get_zoom().max(1.0))
+        }
+    }
+
+    /// Hand the piano roll the notes, lines and controller moves of the
+    /// stretch of its clip that shows and a view's worth on either side;
+    /// the stretch is laid out again when the view leaves it.
+    fn roll_view(&mut self, ui: &App) {
+        let (from, to) = self.roll_seen(ui);
+        if !still_serves(self.roll_for, from, to) {
+            self.roll_for = Some(around(from, to));
+            // Its bars were for the notes in the rows they had.
+            sync(&self.vel_preview, Vec::new());
+        }
+        let (from, to) = self.roll_for.unwrap_or((from, to));
+        sync(&self.notes, notes_within(&self.roll_notes, from, to));
+        sync(&self.ghosts, notes_within(&self.roll_ghosts, from, to));
+        let lines = self.roll_lines.iter().filter(|l| (from..=to).contains(&l.at));
+        sync(&self.roll_line_rows, lines.cloned().collect());
+        self.show_controls(ui);
+    }
+
     /// Light the piano roll's keys whose notes sound at the playhead.
     fn sound_keys(&self, ui: &App, playing: bool, position: f32) {
         let mut lit = [false; 128];
         if playing && self.roll.is_some() {
             let at = position - ui.global::<Roll>().get_start();
-            for note in self.notes.iter() {
+            for note in &self.roll_notes {
                 if note.start <= at && at < note.start + note.length {
                     lit[note.pitch.clamp(0, 127) as usize] = true;
                 }
@@ -1212,12 +1375,14 @@ impl View {
 
     /// Fill the strip under the piano roll with the controller it shows.
     fn show_controls(&mut self, ui: &App) {
+        let (from, to) = self.roll_for.unwrap_or((f32::MIN, f32::MAX));
         let moves: Vec<ControlData> = match strip_kind(self.strip) {
             None => Vec::new(),
             Some((kind, number)) => self
                 .roll_controls
                 .iter()
                 .filter(|c| c["type"] == kind && c["key"].is_null())
+                .filter(|c| (from..=to).contains(&self::number(&c["start"])))
                 .filter(|c| number.is_none() || c["number"].as_i64() == number)
                 .map(|c| ControlData {
                     start: self::number(&c["start"]),
@@ -1370,19 +1535,18 @@ impl View {
         }
         if open.is_some() {
             // Which notes are chosen with the pointer.
-            let chosen: Vec<usize> = rows(&roll["selected"])
+            let chosen: HashSet<usize> = rows(&roll["selected"])
                 .iter()
                 .filter_map(|place| (place.as_u64()? as usize).checked_sub(1 + self.roll_hidden))
                 .collect();
-            for index in 0..self.notes.row_count() {
-                let Some(mut note) = self.notes.row_data(index) else {
-                    continue;
-                };
+            let mut changed = false;
+            for (index, note) in self.roll_notes.iter_mut().enumerate() {
                 let selected = chosen.contains(&index);
-                if note.selected != selected {
-                    note.selected = selected;
-                    self.notes.set_row_data(index, note);
-                }
+                changed |= note.selected != selected;
+                note.selected = selected;
+            }
+            if changed {
+                self.roll_view(ui);
             }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
@@ -1429,33 +1593,31 @@ impl View {
             return Ok(());
         }
         self.roll_hidden = clip["hidden"].as_u64().unwrap_or(0) as usize;
-        let notes: Vec<NoteData> = rows(&clip["notes"])
-            .iter()
-            .map(|n| NoteData {
-                pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
-                start: number(&n["start"]),
-                length: number(&n["length"]),
-                velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
-                selected: false,
-            })
-            .collect();
+        let note = |(index, n): (usize, &Value)| NoteData {
+            pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
+            start: number(&n["start"]),
+            length: number(&n["length"]),
+            velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
+            // The kernel's places of the chosen notes, read just before,
+            // are already places among these.
+            selected: self.roll_notes.get(index).is_some_and(|old| old.selected),
+            index: index as i32,
+        };
+        let notes: Vec<NoteData> = rows(&clip["notes"]).iter().enumerate().map(note).collect();
         let ghosts: Vec<NoteData> = rows(&clip["ghosts"])
             .iter()
+            .enumerate()
             .map(|n| NoteData {
-                pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
-                start: number(&n["start"]),
-                length: number(&n["length"]),
-                velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
                 selected: false,
+                ..note(n)
             })
             .collect();
-        sync(&self.ghosts, ghosts);
         sync(&self.vel_preview, Vec::new());
         let was_open = ui.global::<Roll>().get_open();
         let highest = notes.iter().map(|n| n.pitch).max().unwrap_or(72);
-        sync(&self.notes, notes);
+        self.roll_notes = notes;
+        self.roll_ghosts = ghosts;
         self.roll_controls = rows(&clip["controls"]).to_vec();
-        self.show_controls(ui);
         let track: SharedString = format!(
             "{} · bar {}",
             text(&clip["track_name"]),
@@ -1473,9 +1635,10 @@ impl View {
             roll.set_start(number(&clip["start"]));
             roll.set_length(number(&clip["length"]));
             roll.set_bar(ui.get_bar());
-            roll.set_lines(roll_lines(roll.get_start(), roll.get_length()));
             roll.set_open(true);
         }
+        self.roll_lines = roll_lines(number(&clip["start"]), number(&clip["length"]));
+        self.roll_view(ui);
         if self.detached {
             let _ = self.roll_window.show();
         }
@@ -1779,7 +1942,6 @@ impl View {
         for roll in self.rolls(ui) {
             roll.set_grid(number(&project["note_grid"]));
             roll.set_bar(number(&project["bar"]).max(0.25));
-            roll.set_lines(roll_lines(roll.get_start(), roll.get_length()));
         }
         let mut selected_name = SharedString::new();
         let mut selected_colour = Color::from_rgb_u8(0x7a, 0x81, 0x94);
@@ -1827,7 +1989,6 @@ impl View {
                     + lane_rows[index] as f32 * LANE_ROW;
                 tops.push(top);
                 top += size;
-                let peak = self.peaks.get(&id).copied().unwrap_or_default();
                 TrackData {
                     top: top - size,
                     size,
@@ -1851,16 +2012,7 @@ impl View {
                     input: text(&t["input"]),
                     input_label: text(&t["input_label"]),
                     monitor: t["monitor"].as_bool().unwrap_or(false),
-                    // Kept where it is; updated with the meters.
-                    input_level: old.as_ref().map_or(0.0, |old| old.input_level),
                     master: t["master"].as_bool().unwrap_or(false),
-                    // Keep the meters where they are; they are updated separately.
-                    level_l: old.as_ref().map_or(0.0, |old| old.level_l),
-                    level_r: old.as_ref().map_or(0.0, |old| old.level_r),
-                    hold_l: peak.level[0],
-                    hold_r: peak.level[1],
-                    clipped: peak.clipped,
-                    peak_text: peak.text().into(),
                     number: index as i32 + 1,
                     output: t["output"].as_str().unwrap_or("Master").into(),
                     inserts: ModelRc::from(Rc::new(VecModel::from(
@@ -1878,6 +2030,10 @@ impl View {
                 }
             })
             .collect();
+        // The meters keep their levels, row by row, and are updated with them.
+        let mut meters: Vec<MeterData> = self.meters.iter().collect();
+        meters.resize(tracks.len(), MeterData::default());
+        sync(&self.meters, meters);
         sync(&self.tracks, tracks);
         tops.push(top);
         *self.tops.borrow_mut() = tops;
@@ -2101,6 +2257,9 @@ fn run() -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
+    let env = std::env::var("DAW_GUI_RENDERER").ok();
+    let renderer = renderer_choice(&mut args, env.as_deref())?;
+    select_renderer(renderer, &args)?;
     // An option of this program's own and its value, taken off the
     // arguments (the rest are the kernel's).
     let mut option = |name: &str| -> Result<Option<String>> {
@@ -2148,6 +2307,7 @@ fn run() -> Result<()> {
         roll_hidden: 0,
         tops: Rc::new(RefCell::new(Vec::new())),
         tracks: Rc::new(VecModel::default()),
+        meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
@@ -2159,6 +2319,11 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        roll_notes: Vec::new(),
+        roll_ghosts: Vec::new(),
+        roll_lines: Vec::new(),
+        roll_line_rows: Rc::new(VecModel::default()),
+        roll_for: None,
         sounding: Rc::new(VecModel::from(vec![false; 128])),
         vel_preview: Rc::new(VecModel::default()),
         roll_controls: Vec::new(),
@@ -2217,6 +2382,7 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));
     }
@@ -2232,6 +2398,7 @@ fn run() -> Result<()> {
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
     ui.set_tracks(ModelRc::from(view.borrow().tracks.clone()));
+    ui.set_meters(ModelRc::from(view.borrow().meters.clone()));
     ui.set_clips(ModelRc::from(view.borrow().clips.clone()));
     ui.set_devices(ModelRc::from(view.borrow().devices.clone()));
 
@@ -2479,14 +2646,14 @@ fn run() -> Result<()> {
             let mut view = view.borrow_mut();
             view.peaks.insert(id, PeakHold::default());
             for index in 0..view.tracks.row_count() {
-                if let Some(mut track) = view.tracks.row_data(index)
-                    && track.id == id
+                if view.tracks.row_data(index).is_some_and(|track| track.id == id)
+                    && let Some(mut meter) = view.meters.row_data(index)
                 {
-                    track.clipped = false;
-                    track.hold_l = 0.0;
-                    track.hold_r = 0.0;
-                    track.peak_text = PeakHold::default().text().into();
-                    view.tracks.set_row_data(index, track);
+                    meter.clipped = false;
+                    meter.hold_l = 0.0;
+                    meter.hold_r = 0.0;
+                    meter.peak_text = PeakHold::default().text().into();
+                    view.meters.set_row_data(index, meter);
                 }
             }
             drop(view);
@@ -2941,10 +3108,15 @@ fn run() -> Result<()> {
                 }
                 // Over velocities the bars themselves follow the pencil.
                 if view.strip == 0 {
-                    let notes: Vec<NoteData> = view.notes.iter().collect();
                     let preview =
-                        velocity_preview(&view.control_stroke, &notes, 4.0 / zoom.max(1.0));
-                    sync(&view.vel_preview, preview);
+                        velocity_preview(&view.control_stroke, &view.roll_notes, 4.0 / zoom.max(1.0));
+                    // By the rows of the notes handed over.
+                    let shown: Vec<f32> = view
+                        .notes
+                        .iter()
+                        .map(|n| preview.get(n.index as usize).copied().unwrap_or(-1.0))
+                        .collect();
+                    sync(&view.vel_preview, shown);
                 }
                 if done {
                     let points: Vec<Value> = view
@@ -3786,6 +3958,7 @@ mod tests {
             length: 1.0,
             velocity: 0.5,
             selected,
+            index: 0,
         };
         let notes = [
             note(0.0, false),
@@ -3858,6 +4031,48 @@ mod tests {
         let far = lines_in_view(&all, 0.0, 4000.0, 1.0);
         assert!(far.iter().all(|l| !l.label.is_empty()), "no beat lines");
         assert_eq!(far.len(), 500, "every second bar when a bar is 4 px");
+    }
+
+    #[test]
+    fn the_piano_roll_is_handed_the_notes_near_what_shows_alone() {
+        let notes: Vec<NoteData> = (0..4000)
+            .map(|i| NoteData {
+                pitch: 60,
+                start: i as f32,
+                length: 0.5,
+                velocity: 0.5,
+                selected: false,
+                index: i,
+            })
+            .collect();
+        let (from, to) = around(1000.0, 1016.0);
+        assert_eq!((from, to), (984.0, 1032.0), "a view's worth on either side");
+        let near = notes_within(&notes, from, to);
+        assert_eq!(near.len(), 49, "of four thousand");
+        assert_eq!(near[0].index, 984, "each knows its place among all");
+        let long = [NoteData {
+            start: 0.0,
+            length: 2000.0,
+            ..notes[0].clone()
+        }];
+        assert_eq!(notes_within(&long, from, to).len(), 1, "a note over the whole view");
+        let kept = Some((from, to));
+        assert!(still_serves(kept, 1004.0, 1020.0), "scrolled a little");
+        assert!(!still_serves(kept, 1020.0, 1036.0), "scrolled out of it");
+        assert!(!still_serves(kept, 1008.0, 1010.0), "zoomed far in");
+        assert!(!still_serves(None, 0.0, 16.0), "nothing laid out yet");
+    }
+
+    #[test]
+    fn the_renderer_is_chosen_by_option_then_environment() {
+        let mut args: Vec<String> = ["--renderer", "gpu", "song.json"].map(String::from).into();
+        assert_eq!(renderer_choice(&mut args, Some("software")).unwrap(), Renderer::Gpu);
+        assert_eq!(args, ["song.json"], "the option is not passed on to the kernel");
+        assert_eq!(renderer_choice(&mut args, Some("gpu")).unwrap(), Renderer::Gpu);
+        assert_eq!(renderer_choice(&mut args, None).unwrap(), Renderer::Software);
+        assert_eq!(renderer_choice(&mut args, Some("")).unwrap(), Renderer::Software);
+        assert!(renderer_choice(&mut args, Some("vulkan")).is_err());
+        assert!(renderer_choice(&mut vec!["--renderer".into()], None).is_err());
     }
 
     #[test]

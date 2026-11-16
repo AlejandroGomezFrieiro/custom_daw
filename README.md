@@ -1137,6 +1137,22 @@ It keeps no project state. Thirty times a second it calls
 goes back as commands, so it and a terminal UI or a script can drive the same
 session at once.
 
+The window is drawn on the processor (Slint's software renderer), which works
+everywhere. `daw-gui --renderer gpu`, or `DAW_GUI_RENDERER=gpu`, draws it
+with OpenGL on the graphics card instead: worth trying on a large screen,
+where the processor has many pixels to fill while playing. It needs the
+system's OpenGL driver (on NixOS, `hardware.graphics.enable`); where OpenGL
+cannot start, the window says so in one line and draws on the processor. It
+has not been tried on a real graphics card yet, so it is not the default.
+Either way the window draws again only what has changed: the playhead, the
+clock and the meters while playing, next to nothing at rest. The piano roll
+and the timeline are handed only the notes, lines and points near what
+shows, so a clip of thousands of notes opens and scrolls as fast as a short
+one. Measured with the demo song in a 1500x960 window (software renderer,
+on a busy machine): 1–2% of a core at rest, 17–42% playing, 9–21% scrolling,
+25% playing with the piano roll open; maximised on a 3840x2160 screen, 2% at
+rest and 48% playing.
+
 It looks like a mixing desk rather than a web page. Surfaces are neutral
 greys, and colour means something: blue is the selection, the edit cursor
 and a lit switch; amber the playhead and the loop; green playing; red
@@ -1833,5 +1849,8 @@ port a message came through is not told apart. In scripts:
   Wayland it is told of no drops at all. The desktop's file dialogs are
   not shown for a kernel the window attached to with `--socket`.
 - Devices written in Lua.
+- The window's GPU renderer as the default: it is tried only on a software
+  OpenGL (llvmpipe) so far, where it draws correctly but costs more than
+  the software renderer.
 - The window's position on the screen is not remembered, only its size: the window manager decides where it goes.
 - A Nix package: for now the binary is built with `cargo` inside the dev shell.
