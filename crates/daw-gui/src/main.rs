@@ -3124,9 +3124,50 @@ fn run() -> Result<()> {
             }
         }
     });
-    ui.window().on_close_requested({
-        let leave = leave.clone();
+    // The recent projects are fetched when the File menu opens; the kernel
+    // asks the question about unsaved changes as it does for Open.
+    let recent: Rc<RefCell<Vec<String>>> = Rc::default();
+    ui.on_fill_recent_menu({
+        let (act, weak, recent) = (act.clone(), ui.as_weak(), recent.clone());
         move || {
+            act(&|c| {
+                let menu = c.eval("return daw.frontend.recent_menu()", json!([]))?;
+                *recent.borrow_mut() = rows(&menu).iter().map(|entry| text(&entry["path"]).to_string()).collect();
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_recent_list(choices(&menu));
+                }
+                Ok(menu)
+            })
+        }
+    });
+    ui.on_open_recent({
+        let (leave, recent) = (leave.clone(), recent.clone());
+        move |at| {
+            let path = usize::try_from(at).ok().and_then(|at| recent.borrow().get(at).cloned());
+            if let Some(path) = path {
+                leave(&format!("open:{path}"));
+            }
+        }
+    });
+
+    // How the window was left comes back, and is kept again once a change
+    // has stood for a second and when the window closes.
+    let layout = |ui: &App| {
+        let scale = ui.window().scale_factor();
+        let size = ui.window().size().to_logical(scale);
+        json!({
+            "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
+            "row_height": ui.get_row_height(),
+            "roll_height": ui.get_roll_height(),
+            "mixer": ui.get_show_mixer(),
+        })
+    };
+    ui.window().on_close_requested({
+        let (leave, client, weak, layout) = (leave.clone(), client.clone(), ui.as_weak(), layout);
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                let _ = client.borrow_mut().eval("daw.frontend.layout_set(...)", json!([layout(&ui)]));
+            }
             if leave("quit") {
                 slint::CloseRequestResponse::KeepWindowShown
             } else {
@@ -3249,7 +3290,48 @@ fn run() -> Result<()> {
         }
     });
 
+    let kept = client
+        .borrow_mut()
+        .eval("return daw.frontend.layout_get()", json!([]))
+        .unwrap_or(Value::Null);
+    let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
+    if let (Some(width), Some(height)) = (size("width"), size("height")) {
+        ui.window().set_size(slint::LogicalSize::new(width, height));
+    }
+    if let Some(zoom) = size("zoom") {
+        ui.set_zoom(zoom);
+    }
+    if let Some(height) = size("row_height") {
+        ui.set_row_height(height);
+    }
+    if let Some(height) = size("roll_height") {
+        ui.set_roll_height(height);
+    }
+    if kept["mixer"].as_bool() == Some(true) {
+        act(&|c| {
+            c.eval("if not daw.ui.visible('mixer') then daw.commands.exec('view.toggle mixer') end", json!([]))
+        });
+    }
+    let saver = Timer::default();
+    {
+        let (client, weak) = (client.clone(), ui.as_weak());
+        // What was last kept, and what has been seen since and for how long.
+        let mut done = layout(&ui);
+        let mut seen = (done.clone(), Instant::now());
+        saver.start(TimerMode::Repeated, Duration::from_millis(250), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let now = layout(&ui);
+            if now != seen.0 {
+                seen = (now, Instant::now());
+            } else if seen.0 != done && seen.1.elapsed() >= Duration::from_secs(1) {
+                let _ = client.borrow_mut().eval("daw.frontend.layout_set(...)", json!([seen.0]));
+                done = seen.0.clone();
+            }
+        });
+    }
+
     ui.run()?;
+    drop(saver);
     drop(timer);
     if let Some(child) = child.borrow_mut().as_mut() {
         // The window is gone: so is the kernel it started, unless it has

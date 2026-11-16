@@ -487,6 +487,38 @@ function M.input_menu(track)
   return out
 end
 
+--- The recent projects the File menu lists: `{ label, path }` each.
+function M.recent_menu()
+  return daw.recent.menu()
+end
+
+local function layout_file() return M.layout_path or api.env().state_dir .. "/window.json" end
+
+--- How the window was left (its size, the zoom, the heights of rows and of
+--- the piano roll, whether the mixer shows): a table, empty when nothing
+--- was kept. It belongs to the machine, so it is kept here, where a window
+--- attached to this kernel finds it too. (`M.layout_path` names another
+--- file, for tests.)
+function M.layout_get()
+  local handle = io.open(layout_file(), "rb")
+  if not handle then return {} end
+  local text = handle:read("*a")
+  handle:close()
+  local ok, data = pcall(api.json_decode, text)
+  return ok and type(data) == "table" and data or {}
+end
+
+--- Keep the window's layout (see `layout_get`).
+function M.layout_set(layout)
+  local file = layout_file()
+  os.execute("mkdir -p '" .. (file:match("^(.*)/[^/]*$") or "."):gsub("'", "'\\''") .. "'")
+  local handle = io.open(file .. ".tmp", "wb")
+  if not handle then return end
+  handle:write(api.json_encode(layout, true))
+  handle:close()
+  os.rename(file .. ".tmp", file)
+end
+
 --- The menu where the audio devices are chosen: `info` (lines to show),
 --- `output`, `input`, `block`, `rate` and `backend`, each a list of
 --- `{ label, checked }`.
@@ -1278,8 +1310,8 @@ function A.hold(track, target, device, param, on)
   api.automation_hold(track, target, device, param, on)
 end
 
---- Leave the project: `what` is "quit", "new" (an empty project) or
---- "open" (another, chosen from a list). `how` is "save" to save its
+--- Leave the project: `what` is "quit", "new" (an empty project),
+--- "open" (another, chosen from a list) or "open:<path>" (that one). `how` is "save" to save its
 --- changes first (asking where, for a project with no file yet),
 --- "discard" to throw them away, or "go" when there are none.
 function A.leave(how, what)
@@ -1289,6 +1321,8 @@ function A.leave(how, what)
       api.quit(0)
     elseif what == "new" then
       daw.project.new()
+    elseif what:match("^open:") then
+      daw.recent.open(what:sub(6))
     else
       daw.commands.exec("open")
     end

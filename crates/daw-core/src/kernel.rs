@@ -68,6 +68,8 @@ pub struct KernelOpts {
     pub config_dir: PathBuf,
     pub runtime_dir: Option<PathBuf>,
     pub clean: bool,
+    /// Running a script (`-l`), not a session somebody works in.
+    pub scripted: bool,
     pub argv: Vec<String>,
 }
 
@@ -122,6 +124,7 @@ impl Kernel {
                 config_dir: opts.config_dir,
                 runtime_dir: opts.runtime_dir,
                 clean: opts.clean,
+                scripted: opts.scripted,
                 argv: opts.argv,
             },
         });

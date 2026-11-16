@@ -36,6 +36,16 @@ machine, not to a project: it is kept in `~/.local/state/daw/audio.json` and
 opened at the next start; when a remembered device is not connected, the
 default is opened instead and the program says so.
 
+Every project opened or saved is remembered, newest first, twenty at most, in
+`~/.local/state/daw/recent.json`; the list belongs to the machine, and a file
+that is gone drops out of it. `:recent` chooses from it (`,fR`), `:recent 2`
+opens the second, `:recent.clear` forgets them, and the window's File menu has
+them under "Open recent", asking about unsaved changes as "Open" does. With
+`daw.opt.reopen_last = true` a start with no project named opens the newest
+one; if it will not open, that is a message and the program starts anyway.
+Nothing is remembered under `--clean` or in a script. In Lua:
+`daw.recent.list()` gives `{ path, name, time }` for each.
+
 The suite hosts real plugins in all three formats. The dev shell provides them
 (LSP Plugins and Surge XT, through `DAW_TEST_PLUGINS`); outside it those tests
 are skipped.
@@ -208,6 +218,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | `,fn` | `pick.messages` | earlier messages, newest first | shows the whole message |
 | `,ff` | `pick.files` | projects and audio files under the working directory | opens the project, or adds the audio at the cursor |
 | `,fo` | `pick.options` | options and their values | switches a true/false option, or asks for a new value |
+| `,fR` | `recent` | the recent projects, with where they are and when each was last opened | opens it |
 | `,fp` | `pick` | every picker | opens it |
 | `,f.` | `pick.resume` | the last picker, with what was typed | |
 
@@ -1054,6 +1065,13 @@ daw --headless --listen /tmp/daw.sock &
 daw-gui --socket /tmp/daw.sock    # watch and drive a kernel that is already running
 ```
 
+The window remembers how it was left, for the machine, in
+`~/.local/state/daw/window.json`: its size, the timeline's zoom, the height
+of the rows and of the piano roll, and whether the mixer shows. It writes it
+when a value has stood for a second and when it closes, through
+`daw.frontend.layout_get()` and `layout_set(table)` in the kernel, so a window
+attached to a running kernel finds it too.
+
 It keeps no project state. Thirty times a second it calls
 `daw.frontend.state(revision)` over the socket, and everything the user does
 goes back as commands, so it and a terminal UI or a script can drive the same
@@ -1098,7 +1116,7 @@ does wherever it is.
 | Templates | with the templates extension: a track's menu saves it (or, on a group, the whole group) and saves its devices as a chain; `Track` → "From a template…" makes one again, and "Add devices from a template…" puts a saved chain on the track |
 | Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
-| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
+| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
 | File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC, the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
 | Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it |
@@ -1646,4 +1664,5 @@ port a message came through is not told apart. In scripts:
   terminal (sections, the undo tree, mix diagnostics); only the vocal editor
   has a window so far.
 - Devices written in Lua.
+- The window's position on the screen is not remembered, only its size: the window manager decides where it goes.
 - A Nix package: for now the binary is built with `cargo` inside the dev shell.
