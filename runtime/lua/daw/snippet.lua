@@ -261,7 +261,9 @@ local function run(spec, opts, index)
       end
       if again then
         c.values = values
-        result = spec.expand(c) or result
+        local fine, second = xpcall(spec.expand, debug.traceback, c)
+        if not fine then return nil, tostring(second) end
+        result = second or result
       end
     end
     local notes = result.notes or {}
@@ -290,10 +292,9 @@ function M.preview(name, opts)
 end
 
 local active      -- the snippet being edited: see `expand`
-M.previewing = nil -- what the picker would write: `{ clip, notes }` for drawing
--- Both are what one person is in the middle of: each seat has its own.
--- The selection the command line was opened from, for `:snippet`.
-local from_visual
+M.previewing = nil -- the open picker's context and what each snippet would write there
+local from_visual  -- the selection the command line was opened over, for `:snippet`
+-- All three are what one person is in the middle of: each seat has its own.
 daw.seats.keep("snippet",
   function() return active, M.previewing, from_visual end,
   function(a, p, v) active, M.previewing, from_visual = a, p, v end,
@@ -391,7 +392,7 @@ function M.active()
   if not active then return nil end
   local roll = daw.ui.views.pianoroll
   local clip = roll and roll:clip()
-  local stale = api.project_get().edits ~= active.edits
+  local stale = api.project_get().edits ~= active.edits or not pcall(api.clip_get, active.clip)
   local away = not clip or clip.id ~= active.clip
     or clip.start + roll.beat < active.span.from - 1e-9 or clip.start + roll.beat > active.span.to + 1e-9
   if stale or away then M.finish() end
@@ -502,10 +503,21 @@ local function note_names(notes)
   return table.concat(out, " ")
 end
 
+--- What snippet `name` would write in the open picker's context, made once:
+--- `{ result, why }`.
+local function previewed(name)
+  local p = M.previewing
+  if not p.results[name] then
+    local result, why = run(M.list[name], p.opts, {})
+    p.results[name] = { result = result, why = why }
+  end
+  return p.results[name]
+end
+
 --- Lines describing what a snippet would write here.
-function M.describe_preview(spec, opts)
+function M.describe_preview(spec, opts, result, why)
   local lines = { { text = spec.name, style = "Title" }, spec.desc ~= "" and spec.desc or nil }
-  local result, why = run(spec, opts or {}, {})
+  if result == nil and why == nil then result, why = run(spec, opts or {}, {}) end
   if not result then
     lines[#lines + 1] = ""
     lines[#lines + 1] = { text = why or "nothing to write here", style = "Comment" }
@@ -549,17 +561,22 @@ function M.pick(opts)
   -- The context is the cursor's now, before the picker takes the keys.
   local region = opts.selection or (view == "pianoroll" and daw.keymap.selection()) or nil
   local run_opts = { count = opts.count, selection = region or false }
+  -- What each snippet would write here, made once while the picker is open:
+  -- its pane and the ghosts in the roll both show it.
+  M.previewing = { opts = run_opts, results = {} }
   return daw.pick({
     title = "Snippets",
     items = items,
+    -- Above the piano roll, so that its ghosts show under it.
+    top = true,
+    height = 16,
     query = opts.query,
     format = function(s) return string.format("%-12s %s", s.name, s.desc) end,
     primary = function(s) return s.name end,
     empty = "No snippets here. Load extensions/snippets, or add your own with daw.snippet.add.",
     preview = function(s)
-      local lines, result = M.describe_preview(s, run_opts)
-      M.previewing = result and { clip = result.ctx.clip_id, start = result.ctx.start, notes = result.notes } or nil
-      return lines
+      local found = M.previewing and previewed(s.name)
+      return (M.describe_preview(s, run_opts, found and found.result or nil, found and found.why or nil))
     end,
     on_choose = function(s)
       M.previewing = nil
@@ -570,12 +587,16 @@ function M.pick(opts)
   })
 end
 
---- The notes the picker would write, in the clip's beats, for drawing.
+--- The notes the snippet under the picker's selection would write, in the
+--- clip's beats, for drawing; nil when no picker of snippets is open.
 function M.preview_marks(clip_id)
-  local p = M.previewing
-  if not p or p.clip ~= clip_id or not daw.ui.float then return nil end
+  local state = M.previewing and daw.pick.state()
+  local item = state and state.title == "Snippets" and state.item
+  local found = item and previewed(item.name)
+  local result = found and found.result
+  if not result or result.ctx.clip_id ~= clip_id then return nil end
   local out = {}
-  for i, n in ipairs(p.notes) do out[i] = { pitch = n.pitch, start = (n.start or n.at) - p.start, length = n.length } end
+  for i, n in ipairs(result.notes) do out[i] = { pitch = n.pitch, start = (n.start or n.at) - result.ctx.start, length = n.length } end
   return out
 end
 
@@ -590,8 +611,10 @@ M.layer = {
       local row = g.row(n.pitch)
       if row then
         local x0 = g.x(n.start)
-        roll:fill(x0, row, math.max(1, g.x(n.start + n.length) - x0), 1, " ", "SnippetGhost")
+        local w = math.max(1, g.x(n.start + n.length) - x0)
+        roll:fill(x0, row, w, 1, " ", "SnippetGhost")
         roll:text(x0, row, glyphs.clip_start, "SnippetGhost")
+        if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetGhost") end
       end
     end
     local m = M.marks(g.clip.id)
@@ -630,6 +653,8 @@ M.layer = {
 }
 
 daw.on("escape", function() M.finish() end)
+-- Another project (or a new one): nothing of this one's snippet is left.
+daw.on("project.loaded", function() M.finish() end)
 daw.on("mode.changed", function(e)
   if e.old == "i" and e.mode == "n" then M.finish() end
   -- `:` typed over a selection: the command works on it.
