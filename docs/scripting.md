@@ -157,6 +157,49 @@ daw.ui.input({ prompt = "Name: " }, function(text) end)
 daw.notify("message", "warn")
 ```
 
+**Completion.** `daw.complete` shows suggestions as ghost notes in the piano
+roll, from sources that extensions register; see "Writing a source" in
+[harmony.md](harmony.md) for the context and the items.
+
+```lua
+daw.complete.register({ name = "mine", priority = 10, views = { "pianoroll" }, auto = true,
+  complete = function(ctx, done) done({ { label = "a fifth up", notes = { { pitch = ctx.pitch + 7, start = ctx.at, length = 1 } } } }) end })
+daw.complete.request("manual")    daw.complete.current()    -- { items, index, item, clip } or nil
+daw.complete.select(1)            daw.complete.select(3, true)   daw.complete.accept()   daw.complete.accept(true)  -- next notes only
+daw.complete.dismiss()            daw.complete.audition()   daw.complete.unregister("mine")
+daw.complete.show(items, { keys = false })   -- ghost notes for a preview, from any module
+daw.on("complete.changed", function(e) end)  -- e.shown
+```
+
+**The piano roll's layers.** What a module draws over the piano roll's grid
+goes in a layer, so that several can share it in a fixed order from back to
+front: other tracks' notes (10), the clip's own notes (20), diagnostics (30),
+an active snippet (40), suggestions (50), then the cursor. A layer draws in
+the terminal with `draw(l)` and tells the window with `marks(clip)`; keys
+that hold while some state lasts go in a key scope, which comes before the
+piano roll's own keys; the window's toolbar takes switches.
+
+```lua
+local roll = daw.ui.views.pianoroll
+roll:layer("lint", {
+  order = 30,
+  draw = function(l)                    -- l.roll, l.x(beat), l.y(pitch) (nil off screen), l.clip, l.hue
+    local y = l.y(60)
+    if y then l.roll:text(l.x(4), y, "!", "Error") end
+  end,
+  marks = function(clip)                -- what the window draws: boxes, or chips that can be clicked
+    return { { pitch = 60, start = 4, length = 1, fill = "#e06c75", alpha = 0.2, edge = "#e06c75" },
+             { pitch = 61, start = 4, length = 0, badge = true, label = "parallel fifths", act = "my_fix", arg = 1 } }
+  end,
+})
+roll:key_scope("pianoroll.lint", 30, function() return showing end)   -- then map keys in view "pianoroll.lint"
+roll:tool("lint", function() return { label = "Lint", on = enabled, act = "toggle_lint", tip = "..." } end)
+```
+
+A chip's `act` names a `daw.frontend.act` function, called with the clip and
+`arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
+left. A failing layer is skipped, and the others are drawn.
+
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,

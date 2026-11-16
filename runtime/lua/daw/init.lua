@@ -143,6 +143,7 @@ function K.startup()
     require("daw.views." .. name)
   end
   require("daw.defaults")
+  daw.complete = require("daw.complete")
   daw.fx.setup()
   daw.routes.setup()
   daw.media = require("daw.media")

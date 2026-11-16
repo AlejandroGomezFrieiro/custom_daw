@@ -521,6 +521,49 @@ fn notes_within(notes: &[NoteData], from: f32, to: f32) -> Vec<NoteData> {
         .collect()
 }
 
+/// The marks of the roll's layers, as the kernel sends them.
+fn roll_marks(list: &Value) -> Vec<RollMark> {
+    rows(list)
+        .iter()
+        .map(|m| {
+            let alpha = m["alpha"].as_f64().unwrap_or(1.0) as f32;
+            let badge = m["badge"].as_bool().unwrap_or(false);
+            RollMark {
+                pitch: m["pitch"].as_i64().unwrap_or(60).clamp(0, 127) as i32,
+                start: number(&m["start"]),
+                length: number(&m["length"]),
+                fill: colour(&m["fill"]).with_alpha(alpha),
+                edge: if m["edge"].is_string() {
+                    colour(&m["edge"])
+                } else {
+                    Color::from_argb_u8(0, 0, 0, 0)
+                },
+                // Dark on a strong chip, light on anything fainter.
+                ink: if badge && alpha >= 0.5 {
+                    Color::from_rgb_u8(0x12, 0x13, 0x16)
+                } else {
+                    Color::from_rgb_u8(0xe4, 0xe5, 0xe8)
+                },
+                label: text(&m["label"]),
+                badge,
+                slot: m["slot"].as_i64().unwrap_or(0) as i32,
+                act: text(&m["act"]),
+                arg: number(&m["arg"]),
+                tip: text(&m["tip"]),
+            }
+        })
+        .collect()
+}
+
+/// The marks among them that show between two beats, with chips always.
+fn marks_within(marks: &[RollMark], from: f32, to: f32) -> Vec<RollMark> {
+    marks
+        .iter()
+        .filter(|m| m.badge || (m.start <= to && m.start + m.length >= from))
+        .cloned()
+        .collect()
+}
+
 /// The tempo map's bar and beat lines, as the kernel sends them.
 fn tempo_lines(list: &Value) -> Vec<RulerLine> {
     SONG_LINES.with(|lines| {
@@ -1077,6 +1120,12 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// What the kernel's layers draw behind the roll's notes and in front
+    /// of them, as it last told, and the switches they add to its toolbar.
+    roll_marks: (Vec<RollMark>, Vec<RollMark>),
+    marks_under: Rc<VecModel<RollMark>>,
+    marks_over: Rc<VecModel<RollMark>>,
+    roll_tools: Rc<VecModel<RollTool>>,
     /// All of the clip's notes, its other clips' and the song's lines over
     /// it; the models hold those of the stretch `roll_for` (beats) alone.
     roll_notes: Vec<NoteData>,
@@ -1376,6 +1425,8 @@ impl View {
         let (from, to) = self.roll_for.unwrap_or((from, to));
         sync(&self.notes, notes_within(&self.roll_notes, from, to));
         sync(&self.ghosts, notes_within(&self.roll_ghosts, from, to));
+        sync(&self.marks_under, marks_within(&self.roll_marks.0, from, to));
+        sync(&self.marks_over, marks_within(&self.roll_marks.1, from, to));
         let lines = self.roll_lines.iter().filter(|l| (from..=to).contains(&l.at));
         sync(&self.roll_line_rows, lines.cloned().collect());
         self.show_controls(ui);
@@ -1579,6 +1630,22 @@ impl View {
                 changed |= note.selected != selected;
                 note.selected = selected;
             }
+            // What the layers draw, and the toolbar's switches.
+            let marks = (roll_marks(&roll["under"]), roll_marks(&roll["over"]));
+            if marks != self.roll_marks {
+                self.roll_marks = marks;
+                changed = true;
+            }
+            let tools: Vec<RollTool> = rows(&roll["tools"])
+                .iter()
+                .map(|t| RollTool {
+                    label: text(&t["label"]),
+                    on: t["on"].as_bool().unwrap_or(false),
+                    tip: text(&t["tip"]),
+                    act: text(&t["act"]),
+                })
+                .collect();
+            sync(&self.roll_tools, tools);
             if changed {
                 self.roll_view(ui);
             }
@@ -2373,6 +2440,10 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        roll_marks: (Vec::new(), Vec::new()),
+        marks_under: Rc::new(VecModel::default()),
+        marks_over: Rc::new(VecModel::default()),
+        roll_tools: Rc::new(VecModel::default()),
         roll_notes: Vec::new(),
         roll_ghosts: Vec::new(),
         roll_lines: Vec::new(),
@@ -2436,6 +2507,9 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_marks_under(ModelRc::from(view.borrow().marks_under.clone()));
+        roll.set_marks_over(ModelRc::from(view.borrow().marks_over.clone()));
+        roll.set_tools(ModelRc::from(view.borrow().roll_tools.clone()));
         roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));

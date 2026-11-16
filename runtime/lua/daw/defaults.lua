@@ -2081,6 +2081,37 @@ imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
 
+-- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
+-- while a suggestion shows, its keys come first, in normal and insert mode.
+local ni = { "n", "i" }
+map("<C-Space>", function() daw.complete.request("manual") end, { view = "pianoroll", mode = ni, desc = "Suggest what comes next", repeatable = false })
+local function cmap(lhs, fn, desc, modes)
+  map(lhs, fn, { view = "pianoroll.complete", mode = modes or ni, desc = desc, repeatable = false })
+end
+cmap("<Tab>", function() daw.complete.accept() end, "Accept the suggestion")
+cmap("<C-l>", function() daw.complete.accept(true) end, "Accept the suggestion's next note or chord")
+cmap("<C-n>", function() daw.complete.select(1) end, "The next alternative")
+cmap("<C-p>", function() daw.complete.select(-1) end, "The previous alternative")
+for n = 1, 9 do
+  cmap("<A-" .. n .. ">", function() daw.complete.select(n, true) end, "Alternative " .. n)
+end
+cmap("<C-e>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("<Esc>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("gh", function() daw.complete.audition() end, "Hear the suggestion, from a bar before", { "n" })
+
+command("complete", function() daw.complete.request("manual") end, { desc = "Suggest what comes next in the piano roll" })
+command("complete.accept", function(args) daw.complete.accept(args[1] == "next") end,
+  { desc = "Accept the suggestion: `:complete.accept next` takes its next note or chord only" })
+command("complete.dismiss", function() daw.complete.dismiss() end, { desc = "Dismiss the suggestion" })
+command("complete.audition", function() daw.complete.audition() end, { desc = "Hear the suggestion through the track, from a bar before" })
+command("complete.sources", function()
+  local lines = {}
+  for _, s in ipairs(daw.complete.list()) do
+    lines[#lines + 1] = string.format("%-16s priority %-4d %s%s", s.name, s.priority, table.concat(s.views, ","), s.auto and "  auto" or "")
+  end
+  daw.notify(#lines > 0 and table.concat(lines, "\n") or "no completion sources: an extension adds them")
+end, { desc = "List the completion sources" })
+
 -- Sizes -----------------------------------------------------------------------
 --
 -- Every size is an option, so a configuration can set it: `track_height`

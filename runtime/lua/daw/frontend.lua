@@ -181,7 +181,11 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- What the roll's layers draw behind and in front of the notes, and
+      -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
+      tools = roll:toolbar(),
     }
+    out.roll.under, out.roll.over = roll:marks(clip.id)
   end
   local under = daw.cursor.clip()
   out.clip = ui.focused == "arrange" and under and under.id or nil
