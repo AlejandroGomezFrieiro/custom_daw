@@ -3847,7 +3847,7 @@ fn run() -> Result<()> {
                     window.on_pointer({
                         let send = send.clone();
                         move |kind, x, y, button, ctrl, shift, alt| {
-                            let kind = ["down", "up", "move", "double"][kind.clamp(0, 3) as usize];
+                            let kind = ["down", "up", "move", "double", "hover"][kind.clamp(0, 4) as usize];
                             let button = ["left", "right", "middle"][button.clamp(0, 2) as usize];
                             send(json!({
                                 "kind": kind, "x": x, "y": y, "button": button,
