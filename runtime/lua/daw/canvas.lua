@@ -310,6 +310,15 @@ function M.leave(name)
   -- Where the view had the keyboard, the window before it gets it back.
   local before = here and here.view == name and t.prev and L.find_id(t.layout, t.prev)
   L.conceal(name)
+  -- A type with a buffer for each target: the windows of the tab showing
+  -- the buffer the window of its own shows close, as a view's do.
+  local def = L.types[name]
+  local loose = def and def.window and def.window()
+  if loose and loose.buf then
+    for _, win in ipairs(L.windows(t.layout)) do
+      if win.view == name and win.buf == loose.buf and win ~= loose then L.close(win) end
+    end
+  end
   for _, win in ipairs({ here, before, L.current() }) do
     if win and win.view ~= name and not win.hidden then return win.id end
   end
@@ -349,7 +358,7 @@ function M.open_view(name, opts)
   name = name or daw.ui.focused
   local view = daw.ui.views[name]
   if not view then error("no view `" .. tostring(name) .. "`", 2) end
-  if view.paint then return M.open(name, opts) end
+  if view.paint then return M.open(name, daw.util.merge(opts or {}, { window = true })) end
   opts = opts or {}
   local float = daw.ui.float and daw.ui.float.name == name and daw.ui.float
   if float then daw.ui.close() end
