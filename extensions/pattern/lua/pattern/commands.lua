@@ -50,7 +50,7 @@ end
 --- the prompt opens again with the text as it was and the error in front.
 function M.prompt(text, cycles, problem, new)
   local prompt = problem and ("pattern (" .. tostring(problem) .. "): ") or "pattern: "
-  daw.ui.input({ prompt = prompt, text = text or "", history = "pattern" }, function(value)
+  daw.ui.input({ prompt = prompt, text = text or "", history = "pattern", select = problem == nil }, function(value)
     if value:match("^%s*$") then return end
     local ok, err = pattern.parse(value)
     if not ok then return M.prompt(value, cycles, err, new) end

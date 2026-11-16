@@ -48,7 +48,18 @@ end
 --- Run a command. `args` is a table of arguments; `ctx` adds fields such as `count`.
 function M.run(name, args, ctx)
   local spec = registry[name]
-  if not spec then error("no command `" .. tostring(name) .. "`: `,fc` or `:` and Tab find one", 0) end
+  -- A bare extension name (`:notation`) opens its main view, where it has one.
+  if not spec and type(name) == "string" then
+    for _, main in ipairs({ ".open", ".show" }) do spec = spec or registry[name .. main] end
+    if spec then name = spec.name end
+  end
+  if not spec then
+    local near = {}
+    for _, other in ipairs(M.list()) do
+      if #near < 5 and #tostring(name) >= 2 and other.name:sub(1, #tostring(name)) == tostring(name) then near[#near + 1] = ":" .. other.name end
+    end
+    error("no command `" .. tostring(name) .. "`" .. (#near > 0 and ": did you mean " .. table.concat(near, ", ") .. "?" or ": `,fc` or `:` and Tab find one"), 0)
+  end
   ctx = ctx or {}
   ctx.args, ctx.name = args or {}, name
   -- Names the undo step this command makes, as its description says it;

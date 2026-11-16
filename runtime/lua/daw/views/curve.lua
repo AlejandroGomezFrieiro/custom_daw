@@ -167,8 +167,11 @@ local function render(win, canvas, ctx)
   local lines = daw.draw.beats(canvas:sub(AXIS, 1, pw, 1), s.left, span, s.zoom, 0)
   local plot = canvas:sub(AXIS, top, pw, rows)
   plot:fill(0, 0, pw, rows, " ", "Lane")
+  -- Beats only once they are far enough apart not to be noise, as in the arrange view.
   for _, line in ipairs(lines) do
-    if line.x >= 0 and line.x < pw then plot:fill(line.x, 0, 1, rows, line.bar and g.bar or g.beat, line.bar and "LaneBar" or "LaneBeat") end
+    if line.x >= 0 and line.x < pw and (line.bar or s.zoom >= 4) then
+      plot:fill(line.x, 0, 1, rows, line.bar and g.bar or g.beat, line.bar and "LaneBar" or "LaneBeat")
+    end
   end
 
   -- A selection: its stretch of time, behind the curve.

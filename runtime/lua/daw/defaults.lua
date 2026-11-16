@@ -881,8 +881,14 @@ command("set", function(ctx)
   end
   if not name then return daw.pick("options") end
   name = tostring(name)
-  -- `set follow!` flips a true/false option, as in Vim.
+  -- `set follow?` shows an option; a name that is none is an error, as in Vim.
+  local ask = name:match("^(.-)%?$")
+  if ask then name, value = ask, nil end
   local flip = name:match("^(.-)!$")
+  local known = false
+  for _, o in ipairs(daw.option.list()) do known = known or o.name == (flip or name) end
+  if not known then return daw.notify("E518: Unknown option: " .. (flip or name), "error") end
+  -- `set follow!` flips a true/false option, as in Vim.
   if flip then
     name = flip
     if type(daw.opt[name]) ~= "boolean" then return daw.notify(name .. " is not a true/false option", "warn") end
@@ -892,7 +898,7 @@ command("set", function(ctx)
   daw.opt[name] = type(value) == "string" and option_value(value) or value
   daw.notify(name .. " = " .. tostring(daw.opt[name]))
 end, {
-  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set follow!` flips it, `set` alone lists them",
+  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow!` flips it, `set` alone lists them",
   complete = { "options" },
 })
 
@@ -1450,6 +1456,11 @@ command("edit", function(ctx)
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return daw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
+  -- A buffer's name, a view's or an address (`daw://tracks`) shows it here;
+  -- only a file's path asks about the project.
+  local view, buf = daw.layout.resolve(path)
+  local win = view and not how and daw.layout.current()
+  if win then return daw.layout.show_in(win, view, buf and not buf.single and buf.id or nil) end
   if daw.midifile.is_midi_file(path) or daw.is_audio_file(path) then return daw.commands.run("open", { path }) end
   if not daw.project.guard("edit") then return end
   daw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
