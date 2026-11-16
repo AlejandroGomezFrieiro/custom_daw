@@ -384,7 +384,8 @@ end
 command("track.group", function(ctx)
   local tracks = chosen_tracks()
   if #tracks == 0 then return daw.notify("no track to group", "warn") end
-  local name = ctx.args[1]
+  -- Typed as a command alone, a raw command is given an empty text.
+  local name = ctx.args[1] ~= "" and ctx.args[1] or nil
   local function make(text)
     if not text or text == "" then return end
     local group = daw.groups.make(tracks, text)
