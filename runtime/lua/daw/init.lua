@@ -77,6 +77,8 @@ daw.device_types = api.device_types
 --- named ranges a render can take.
 function daw.render(path, opts) return require("daw.render").render(path, opts) end
 function daw.render_stems(dir, opts) return require("daw.render").stems(dir, opts) end
+--- The tags of the project's rendered files: `daw.render_tags()`, `daw.render_tags({ artist = "Me" })`.
+function daw.render_tags(set) return require("daw.render").tags(set) end
 function daw.render_status() return require("daw.render").status() end
 function daw.render_cancel() return require("daw.render").cancel() end
 daw.render_ranges = setmetatable({}, {

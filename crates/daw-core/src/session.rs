@@ -40,6 +40,7 @@ pub mod offline;
 pub mod panic;
 mod ports;
 pub mod render;
+pub mod tags;
 mod tempo;
 mod undo;
 mod watch;
@@ -230,7 +231,7 @@ pub struct LaneOpts {
     pub points: Vec<(f64, f64)>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RenderOpts {
     pub start: f64,
@@ -264,6 +265,9 @@ pub struct RenderOpts {
     pub quality: Option<String>,
     pub bitrate: Option<u32>,
     pub ffmpeg: Option<String>,
+    /// What the file is tagged with, over the project's own
+    /// (`project.meta.tags`): see [`tags::Tags`].
+    pub tags: tags::Tags,
 }
 
 impl Default for RenderOpts {
@@ -284,6 +288,7 @@ impl Default for RenderOpts {
             quality: None,
             bitrate: None,
             ffmpeg: None,
+            tags: tags::Tags::default(),
         }
     }
 }
