@@ -148,3 +148,25 @@ test("the terminal and the window choose a track's MIDI output", function()
     daw.midi.close_output("To synth")
   end)
 end)
+
+test("a script that waits hears what is played into a port", function()
+  fresh()
+  return with_loop(function()
+    daw.project.tempo = 120
+    local heard = {}
+    local handler = daw.on("midi.in", function(event)
+      if event.type == "note_on" then heard[#heard + 1] = event.pitch .. "@" .. tostring(event.port) end
+    end)
+    local t = daw.add_track({ name = "Hardware" })
+    t:add_clip({ start = 0, length = 2, notes = {
+      { pitch = "C4", start = 0, length = 0.5 }, { pitch = "E4", start = 1, length = 0.5 },
+    } })
+    t.midi_output = { port = "daw: Loop" }
+    daw.transport.play()
+    local got = wait_for(function() return #heard >= 2 end, 8000)
+    daw.transport.stop()
+    daw.off(handler)
+    eq(got, true, "the notes arrived while the script waited")
+    eq(table.concat(heard, " "), "60@Loop 64@Loop", "as events that name the port they came in on")
+  end)
+end)

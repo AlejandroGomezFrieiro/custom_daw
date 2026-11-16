@@ -8,6 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use daw_engine::backend::{BackendOptions, TestInput};
@@ -72,6 +73,9 @@ pub struct Shared {
     /// for the program's own; and the connections whose terminals asked to
     /// leave, for the kernel to let go after this turn.
     pub input_from: Cell<u64>,
+    /// MIDI that came in from ports and has not been made into `midi.in`
+    /// events yet.
+    pub midi_in: Arc<Mutex<VecDeque<(u32, EventKind)>>>,
     pub detach: RefCell<Vec<u64>>,
     /// Interrupts Lua that has run past its time limit.
     pub watchdog: Watchdog,
@@ -79,6 +83,17 @@ pub struct Shared {
 }
 
 impl Shared {
+    /// Make `midi.in` events of what came in from ports since last time.
+    pub fn hear_midi(&self) {
+        loop {
+            // Not held while the session works: the port's thread adds to it.
+            let Some((port, kind)) = self.midi_in.lock().unwrap().pop_front() else {
+                return;
+            };
+            self.session.borrow_mut().midi_event(port, kind);
+        }
+    }
+
     pub fn log(&self, line: String) {
         let mut log = self.log.borrow_mut();
         if log.len() >= 1000 {
@@ -1163,6 +1178,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                     sh.session.borrow_mut().idle();
                     idled = Instant::now();
                 }
+                // What was played into a port meanwhile is heard of.
+                sh.hear_midi();
                 settle.call::<()>(())?;
                 sh.session.borrow_mut().checkpoint();
                 if Instant::now() >= deadline {

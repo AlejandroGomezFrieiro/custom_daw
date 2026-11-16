@@ -1053,6 +1053,9 @@ in property <string> render-stage;
     // A submenu closes after the menu it came from, and hands the keyboard
     // back to that menu, which has gone: nothing would have the keys. Its
     // entries start this, and the window takes them back once both are shut.
+    // Every entry of every submenu starts it: a new one must too (the test
+    // `keys_reach_the_window_after_an_entry_of_a_submenu` shows what
+    // happens without).
     refocus := Timer {
         interval: 1ms;
         running: false;
@@ -1149,6 +1152,7 @@ in property <string> render-stage;
                                 for entry[at] in root.recent-list: MenuItem {
                                     title: entry.label;
                                     activated => {
+                                        refocus.running = true;
                                         root.open-recent(at);
                                     }
                                 }
@@ -1156,6 +1160,7 @@ in property <string> render-stage;
                                 MenuItem {
                                     title: "Clear the list";
                                     activated => {
+                                        refocus.running = true;
                                         root.command("recent.clear");
                                     }
                                 }
@@ -1197,12 +1202,14 @@ in property <string> render-stage;
                                 MenuItem {
                                     title: "Find missing files…";
                                     activated => {
+                                        refocus.running = true;
                                         root.command("media.relink");
                                     }
                                 }
                                 MenuItem {
                                     title: "Copy into the project's folder";
                                     activated => {
+                                        refocus.running = true;
                                         root.command("media.collect");
                                     }
                                 }
@@ -1602,6 +1609,7 @@ in property <string> render-stage;
                                     title: entry.label;
                                     checked: entry.checked;
                                     activated => {
+                                        refocus.running = true;
                                         root.choose-engine("block", at + 1);
                                     }
                                 }
@@ -1612,6 +1620,7 @@ in property <string> render-stage;
                                     title: entry.label;
                                     checked: entry.checked;
                                     activated => {
+                                        refocus.running = true;
                                         root.choose-engine("rate", at + 1);
                                     }
                                 }
@@ -1622,6 +1631,7 @@ in property <string> render-stage;
                                     title: entry.label;
                                     checked: entry.checked;
                                     activated => {
+                                        refocus.running = true;
                                         root.choose-engine("backend", at + 1);
                                     }
                                 }
@@ -2153,48 +2163,56 @@ in property <string> render-stage;
                                     MenuItem {
                                         title: "Coral";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color coral");
                                         }
                                     }
                                     MenuItem {
                                         title: "Gold";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color gold");
                                         }
                                     }
                                     MenuItem {
                                         title: "Lime";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color lime");
                                         }
                                     }
                                     MenuItem {
                                         title: "Teal";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color teal");
                                         }
                                     }
                                     MenuItem {
                                         title: "Sky";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color sky");
                                         }
                                     }
                                     MenuItem {
                                         title: "Violet";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color violet");
                                         }
                                     }
                                     MenuItem {
                                         title: "Pink";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color pink");
                                         }
                                     }
                                     MenuItem {
                                         title: "Sand";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color sand");
                                         }
                                     }
@@ -2202,6 +2220,7 @@ in property <string> render-stage;
                                     MenuItem {
                                         title: "The theme's";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "track.color none");
                                         }
                                     }
@@ -2247,6 +2266,7 @@ in property <string> render-stage;
                                         title: "Read: the lanes play";
                                         checked: track.automation == "read";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "automation read");
                                         }
                                     }
@@ -2254,6 +2274,7 @@ in property <string> render-stage;
                                         title: "Touch: write while a control is held";
                                         checked: track.automation == "touch";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "automation touch");
                                         }
                                     }
@@ -2261,6 +2282,7 @@ in property <string> render-stage;
                                         title: "Latch: write from the first move until stop";
                                         checked: track.automation == "latch";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "automation latch");
                                         }
                                     }
@@ -2268,6 +2290,7 @@ in property <string> render-stage;
                                         title: "Write: write everything while playing";
                                         checked: track.automation == "write";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "automation write");
                                         }
                                     }
@@ -2275,6 +2298,7 @@ in property <string> render-stage;
                                         title: "Off: the lanes do not play";
                                         checked: track.automation == "off";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "automation off");
                                         }
                                     }
@@ -2282,6 +2306,7 @@ in property <string> render-stage;
                                     MenuItem {
                                         title: "Show or hide the lanes as rows";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "lane.rows");
                                         }
                                     }
@@ -2297,18 +2322,21 @@ in property <string> render-stage;
                                     MenuItem {
                                         title: "Learn for the fader…";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "learn volume");
                                         }
                                     }
                                     MenuItem {
                                         title: "Learn for the pan…";
                                         activated => {
+                                            refocus.running = true;
                                             root.track-command(track.id, "learn pan");
                                         }
                                     }
                                     MenuItem {
                                         title: "What is bound…";
                                         activated => {
+                                            refocus.running = true;
                                             root.command("learn.list");
                                         }
                                     }
@@ -2529,6 +2557,7 @@ in property <string> render-stage;
                                                     title: entry.label;
                                                     checked: entry.checked;
                                                     activated => {
+                                                        refocus.running = true;
                                                         root.choose-input(track.id, "channel", at + 1);
                                                     }
                                                 }
@@ -2548,6 +2577,7 @@ in property <string> render-stage;
                                                     title: entry.label;
                                                     checked: entry.checked;
                                                     activated => {
+                                                        refocus.running = true;
                                                         root.choose-input(track.id, "midi_out", at + 1);
                                                     }
                                                 }
@@ -2558,6 +2588,7 @@ in property <string> render-stage;
                                                     title: entry.label;
                                                     checked: entry.checked;
                                                     activated => {
+                                                        refocus.running = true;
                                                         root.choose-input(track.id, "midi_out_channel", at + 1);
                                                     }
                                                 }
@@ -4812,6 +4843,7 @@ in property <string> render-stage;
                                                             title: entry.label;
                                                             checked: entry.checked;
                                                             activated => {
+                                                                refocus.running = true;
                                                                 root.route-pair(device.id, p + 2, index + 1);
                                                             }
                                                         }

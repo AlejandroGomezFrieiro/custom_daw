@@ -1452,7 +1452,7 @@ fn reading_the_screen_is_reliable() {
     const RUNS: usize = 8;
     let (mut tried, mut found) = (0, 0);
     for run in 0..RUNS {
-        let mut w = scene!(
+        let w = scene!(
             "reading",
             &format!("{DEMO}\ndaw.ext.load('extensions/undotree')")
         );
@@ -1499,4 +1499,23 @@ fn reading_the_screen_is_reliable() {
     }
     eprintln!("read {found} of {tried}");
     assert_eq!(found, tried);
+}
+
+#[test]
+fn keys_reach_the_window_after_an_entry_of_a_submenu() {
+    let mut w = scene!("submenu", DEMO);
+    let header = (70, place::row_top(0, false) + 17);
+    w.click(header);
+    w.expect("the first track under the cursor", "daw.cursor.track().index == 1");
+    w.mouse_to(header);
+    w.xdotool(&["click", "3"]);
+    w.pause(0.4);
+    w.click_text("Colour");
+    w.shot("submenu.png");
+    w.click_text("Teal");
+    w.expect("the colour taken", "daw.tracks()[1].color ~= nil");
+    // The menus are shut: what is typed goes to the kernel's mappings.
+    w.key("j");
+    w.expect("the cursor on the second track", "daw.cursor.track().index == 2");
+    w.assert_alive("after a submenu");
 }

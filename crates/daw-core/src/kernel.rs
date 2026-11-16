@@ -10,11 +10,12 @@ use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use daw_engine::backend::BackendOptions;
-use daw_engine::{EventKind, Registry};
+use daw_engine::Registry;
 use include_dir::{Dir, include_dir};
 use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaSerdeExt, Table, Value as LuaValue};
 use serde_json::Value;
@@ -50,7 +51,8 @@ pub enum InputEvent {
 pub enum KernelMsg {
     Input(InputEvent),
     /// A message that arrived at a MIDI port.
-    Midi(u32, EventKind),
+    /// MIDI came in: it waits in `Shared::midi_in`.
+    Midi,
     Rpc {
         /// The connection the call came over, or 0 for none.
         client: ClientId,
@@ -108,9 +110,14 @@ impl Kernel {
         session.set_peak_dir(Some(crate::peaks::cache_dir()));
         let (tx, rx) = channel();
         // MIDI input goes straight to the engine; scripts hear of it here.
+        // It waits in a queue of its own, which a script that waits empties
+        // too (`daw.wait`): the message only wakes the loop.
         let midi_tx = tx.clone();
+        let midi_in = Arc::new(Mutex::new(VecDeque::new()));
+        let heard = midi_in.clone();
         session.set_midi_tap(Box::new(move |port, kind| {
-            let _ = midi_tx.send(KernelMsg::Midi(port, kind));
+            heard.lock().unwrap().push_back((port, kind));
+            let _ = midi_tx.send(KernelMsg::Midi);
         }));
         let started = Instant::now();
         let shared = Rc::new(Shared {
@@ -130,6 +137,7 @@ impl Kernel {
             io: RefCell::new(Default::default()),
             started,
             clients: Clients::default(),
+            midi_in,
             input_from: Cell::new(0),
             detach: RefCell::new(Vec::new()),
             watchdog: Watchdog::new(started),
@@ -305,7 +313,7 @@ impl Kernel {
                 }
                 self.shared.dirty.set(true);
             }
-            KernelMsg::Midi(port, kind) => self.shared.session.borrow_mut().midi_event(port, kind),
+            KernelMsg::Midi => self.shared.hear_midi(),
             KernelMsg::Rpc {
                 client,
                 method,
