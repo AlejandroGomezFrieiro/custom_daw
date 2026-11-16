@@ -620,6 +620,9 @@ export component App inherits Window {
     in property <[ChoiceData]> engine-rate;
     in property <[ChoiceData]> engine-backend;
     callback fill-engine-menu();
+    in property <[ChoiceData]> recent-list;
+    callback fill-recent-menu();
+    callback open-recent(int);
     callback choose-engine(string, int);
     callback add-device(string);
     callback search-devices(string);
@@ -1016,6 +1019,22 @@ export component App inherits Window {
                                     root.file-action("open");
                                 }
                             }
+                            Menu {
+                                title: "Open recent";
+                                for entry[at] in root.recent-list: MenuItem {
+                                    title: entry.label;
+                                    activated => {
+                                        root.open-recent(at);
+                                    }
+                                }
+                                MenuSeparator { }
+                                MenuItem {
+                                    title: "Clear the list";
+                                    activated => {
+                                        root.command("recent.clear");
+                                    }
+                                }
+                            }
                             MenuItem {
                                 title: "Recover unsaved work…";
                                 activated => {
@@ -1086,6 +1105,7 @@ export component App inherits Window {
                         }
                         TouchArea {
                             clicked => {
+                                root.fill-recent-menu();
                                 file-menu.show({ x: 0, y: self.height + 4px });
                             }
                             changed has-hover => {
