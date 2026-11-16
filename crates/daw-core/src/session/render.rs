@@ -898,7 +898,13 @@ impl Flac {
         use flacenc::error::Verify;
         let channels = plan.channels as usize;
         let bits = plan.bits as usize;
-        let config = flacenc::config::Encoder::default()
+        let mut config = flacenc::config::Encoder::default();
+        // flacenc's fixed predictors can pick a Rice parameter far too small
+        // for a block of loud 24-bit sound (the demo song's), which writes
+        // one frame of hundreds of megabytes. Its LPC does not, and does the
+        // fixed predictors' work as well.
+        config.subframe_coding.use_fixed = false;
+        let config = config
             .into_verified()
             .map_err(|e| anyhow!("FLAC settings: {e:?}"))?;
         let mut stream = flacenc::component::Stream::new(plan.sample_rate as usize, channels, bits)
