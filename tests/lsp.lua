@@ -2,7 +2,23 @@
 -- of its own (tests/fixtures/range_lint.py, a range lint in Python) driven
 -- through its whole life. Loaded by tests/suite.lua with its helpers.
 local T = ...
-local test, eq, fresh = T.test, T.eq, T.fresh
+local eq, fresh = T.eq, T.fresh
+
+-- Each test leaves things as the next expects them: no servers, no
+-- diagnostics, the piano roll closed, whether it passed or not.
+local function test(name, fn)
+  T.test(name, function()
+    local result = { xpcall(fn, debug.traceback) }
+    daw.lsp.stop()
+    daw.diagnostic.reset()
+    while daw.ui.float do daw.ui.close() end
+    daw.ui.views.pianoroll.clip_id = nil
+    daw.ui.hide("pianoroll")
+    daw.ui.focus("arrange")
+    if not result[1] then error(result[2], 0) end
+    return result[2]
+  end)
+end
 local api = daw.api
 local rpc = require("daw.lsp.rpc")
 local document = require("daw.lsp.document")
