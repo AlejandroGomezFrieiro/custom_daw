@@ -3,8 +3,8 @@
 //! pointer and key gestures with xdotool, and asks the kernel over the
 //! window's control socket what it holds afterwards.
 //!
-//! These need Xvfb, openbox and xdotool (ImageMagick too, for a screenshot
-//! when a scenario fails). The dev shell has them; without them the tests
+//! These need Xvfb, openbox and xdotool (ImageMagick and tesseract too, to photograph
+//! the window and find words on it). The dev shell has them; without them the tests
 //! say what is missing and pass. A failed scenario leaves `failure.png` and
 //! the window's output in its directory under `target/tmp/window`.
 
@@ -33,6 +33,8 @@ mod place {
     pub const ROW_H: i32 = 66;
     /// A lane shown as a row under its track is this share of a row.
     pub const LANE_ROW_H: i32 = ROW_H * 4 / 5;
+    /// A take lane shown under a track's clips is this share of a row.
+    pub const TAKE_ROW_H: i32 = ROW_H * 3 / 5;
     /// Pixels to a beat at the zoom the window starts with.
     pub const BEAT_PX: f64 = 28.0;
 
@@ -52,6 +54,29 @@ mod place {
 
 type Point = (i32, i32);
 
+/// A word read off the screen: where it is in the window, and which line of
+/// text it is on.
+struct Word {
+    text: String,
+    line: (u32, u32, u32),
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+/// How much a screenshot is enlarged before it is read.
+const OCR_SCALE: i32 = 3;
+
+/// A word as it is compared: lower case letters and digits only, so that
+/// "Render…" and "render" are one.
+fn plain(word: &str) -> String {
+    word.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 const DEMO: &str = "dofile('examples/demo-song.lua')";
 
 // ---------------------------------------------------------------- tools
@@ -66,21 +91,35 @@ struct Tools {
     xvfb: PathBuf,
     openbox: PathBuf,
     xdotool: PathBuf,
-    import: Option<PathBuf>,
+    import: PathBuf,
+    convert: PathBuf,
+    tesseract: PathBuf,
 }
 
 fn tools() -> Result<Tools, String> {
     let find = |name: &'static str| on_path(name).ok_or(name);
-    let (xvfb, openbox, xdotool) = (find("Xvfb"), find("openbox"), find("xdotool"));
-    match (xvfb, openbox, xdotool) {
-        (Ok(xvfb), Ok(openbox), Ok(xdotool)) => Ok(Tools {
+    let all = (
+        find("Xvfb"),
+        find("openbox"),
+        find("xdotool"),
+        find("import"),
+        find("tesseract"),
+        find("convert"),
+    );
+    match all {
+        (Ok(xvfb), Ok(openbox), Ok(xdotool), Ok(import), Ok(tesseract), Ok(convert)) => Ok(Tools {
             xvfb,
             openbox,
             xdotool,
-            import: on_path("import"),
+            import,
+            tesseract,
+            convert,
         }),
-        (a, b, c) => {
-            let missing: Vec<&str> = [a, b, c].into_iter().filter_map(Result::err).collect();
+        (a, b, c, d, e, f) => {
+            let missing: Vec<&str> = [a, b, c, d, e, f]
+                .into_iter()
+                .filter_map(Result::err)
+                .collect();
             Err(format!(
                 "{} not installed (`nix develop` has them)",
                 missing.join(", ")
@@ -157,6 +196,10 @@ struct Scene {
     xvfb: Child,
     openbox: Child,
     gui: Child,
+    /// The kernel the window is a client of, when it did not start one.
+    kernel: Option<Child>,
+    /// Where that kernel listens on the network.
+    tcp: Option<String>,
     socket: PathBuf,
     daw: PathBuf,
     envs: Vec<(&'static str, PathBuf)>,
@@ -241,6 +284,16 @@ impl Scene {
     /// Start the window with `setup` run in its kernel; None, after saying
     /// so, when the tools for it are not installed.
     fn start(name: &str, setup: &str) -> Option<Scene> {
+        Scene::launch(name, setup, false)
+    }
+
+    /// The same, but the window is a client of a kernel started beside it,
+    /// reached over TCP with a token (`--connect`).
+    fn start_remote(name: &str, setup: &str) -> Option<Scene> {
+        Scene::launch(name, setup, true)
+    }
+
+    fn launch(name: &str, setup: &str, remote: bool) -> Option<Scene> {
         let tools = match tools() {
             Ok(tools) => tools,
             Err(missing) => {
@@ -263,9 +316,16 @@ impl Scene {
             ("XDG_DATA_HOME", dir.join("xdg/data")),
             ("XDG_CONFIG_HOME", dir.join("xdg/config")),
             ("XDG_RUNTIME_DIR", run),
+            // No test can reach the desktop's portals or session bus.
+            (
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent/bus".into(),
+            ),
         ];
-        for (_, path) in &envs {
-            fs::create_dir_all(path).unwrap();
+        for (key, path) in &envs {
+            if *key != "DBUS_SESSION_BUS_ADDRESS" {
+                fs::create_dir_all(path).unwrap();
+            }
         }
         let (xvfb, display) = start_xvfb(&tools, &dir);
         envs.push(("DAW_BIN", daw.clone()));
@@ -278,9 +338,68 @@ impl Scene {
         let openbox = spawn_group(&mut command);
 
         let out = fs::File::create(dir.join("window.out")).unwrap();
+        let run = envs
+            .iter()
+            .find(|(k, _)| *k == "XDG_RUNTIME_DIR")
+            .unwrap()
+            .1
+            .clone();
+        let mut kernel = None;
+        let mut window_args: Vec<String> =
+            ["--clean", "--no-plugins", "--audio", "null", "-e", setup]
+                .map(String::from)
+                .to_vec();
+        let mut socket = None;
+        let mut tcp = None;
+        if remote {
+            let port = {
+                let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                probe.local_addr().unwrap().port()
+            };
+            let token = dir.join("token");
+            fs::write(&token, "window-test-token\n").unwrap();
+            let unix = run.join("kernel.sock");
+            let mut command = Command::new(&daw);
+            command
+                .args([
+                    "--headless",
+                    "--clean",
+                    "--no-plugins",
+                    "--audio",
+                    "null",
+                    "--listen",
+                ])
+                .arg(&unix)
+                .arg("--listen-tcp")
+                .arg(format!("127.0.0.1:{port}"))
+                .arg("--token-file")
+                .arg(&token)
+                .args(["-e", setup])
+                .current_dir(repo())
+                .stdin(Stdio::null())
+                .stdout(out.try_clone().unwrap())
+                .stderr(out.try_clone().unwrap());
+            for (key, value) in &envs {
+                command.env(key, value);
+            }
+            kernel = Some(spawn_group(&mut command));
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while UnixStream::connect(&unix).is_err() {
+                assert!(Instant::now() < deadline, "the kernel never listened");
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            window_args = vec![
+                "--connect".into(),
+                format!("127.0.0.1:{port}"),
+                "--token-file".into(),
+                token.to_string_lossy().into_owned(),
+            ];
+            socket = Some(unix);
+            tcp = Some(format!("127.0.0.1:{port}"));
+        }
         let mut command = Command::new(env!("CARGO_BIN_EXE_daw-gui"));
         command
-            .args(["--clean", "--no-plugins", "--audio", "null", "-e", setup])
+            .args(&window_args)
             .current_dir(repo())
             .env("DISPLAY", &display)
             .env("RUST_BACKTRACE", "1")
@@ -293,12 +412,7 @@ impl Scene {
             command.env(key, value);
         }
         let gui = spawn_group(&mut command);
-        let socket = envs
-            .iter()
-            .find(|(key, _)| *key == "XDG_RUNTIME_DIR")
-            .unwrap()
-            .1
-            .join(format!("daw-gui-{}.sock", gui.id()));
+        let socket = socket.unwrap_or_else(|| run.join(format!("daw-gui-{}.sock", gui.id())));
 
         let mut scene = Scene {
             name: name.to_string(),
@@ -308,6 +422,8 @@ impl Scene {
             xvfb,
             openbox,
             gui,
+            kernel,
+            tcp,
             socket,
             daw,
             envs,
@@ -570,20 +686,216 @@ impl Scene {
         self.key("alt+F4");
     }
 
-    /// The middle of the window, which dialogs are centred on, and a point
-    /// from it.
-    fn middle(&self, dx: i32, dy: i32) -> Point {
-        (self.size.0 / 2 + dx, self.size.1 / 2 + dy)
+    /// The file menu, from the project's name at the left of the transport bar.
+    fn open_file_menu(&self) {
+        self.click((40, place::TRANSPORT_H / 2));
+    }
+
+    /// File, Render…: the dialog, up when its Tail field shows.
+    fn open_render_dialog(&self) {
+        self.open_file_menu();
+        self.click_text("Render");
+        self.find_text("Tail", 0);
+    }
+
+    /// Type `path` in the open render dialog's file field and press Render.
+    fn render_to(&self, path: &Path) {
+        self.click_right_of("File", 150);
+        self.key("ctrl+a");
+        self.type_text(path.to_str().unwrap());
+        self.click_last_text("Render");
+    }
+
+    // ----------------------------------------------- finding text on screen
+    //
+    // Menu entries and dialog buttons move whenever one is added, so they
+    // are found by what they say: the window is photographed, enlarged,
+    // inverted (light text on dark reads worse) and read by tesseract.
+
+    /// The words on the window now, with where they are in the window, read
+    /// three ways: inverted, with a global threshold and with a local one.
+    /// Each misses text the others get (a dialog on a dimmed backdrop; a
+    /// light button), and what is found by any counts.
+    /// The first match from the top stops at the first reading that finds
+    /// it; the last waits for all four, as a reading may miss a later one.
+    fn screens(&self, text: &str, nth: i32) -> Vec<Vec<Word>> {
+        let mut screens = Vec::new();
+        for prepare in [
+            &["-negate"][..],
+            &["-threshold", "60%"],
+            &["-lat", "60x60+3%"],
+            &["-lat", "30x30-3%"],
+        ] {
+            screens.push(self.words(prepare));
+            if nth >= 0 && Scene::locate(&screens, text, nth).is_some() {
+                break;
+            }
+        }
+        screens
+    }
+
+    fn words(&self, prepare: &[&str]) -> Vec<Word> {
+        let (import, tesseract) = (&self.tools.import, &self.tools.tesseract);
+        let crop = format!(
+            "{}x{}+{}+{}",
+            self.size.0, self.size.1, self.origin.0, self.origin.1
+        );
+        let mut shot = Command::new(import)
+            .args(["-window", "root", "-crop", &crop, "+repage", "png:-"])
+            .env("DISPLAY", &self.display)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("running import");
+        let mut larger = Command::new(&self.tools.convert)
+            .arg("png:-")
+            .args(["-resize", &format!("{}%", OCR_SCALE * 100)])
+            .args(prepare)
+            .args(["-colorspace", "Gray", "png:-"])
+            .stdin(Stdio::from(shot.stdout.take().unwrap()))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("running convert");
+        let read = Command::new(tesseract)
+            .args(["stdin", "stdout", "--psm", "11", "tsv"])
+            .stdin(Stdio::from(larger.stdout.take().unwrap()))
+            .stderr(Stdio::null())
+            .output()
+            .expect("running tesseract");
+        let _ = shot.wait();
+        let _ = larger.wait();
+        let scale = OCR_SCALE as f64;
+        String::from_utf8_lossy(&read.stdout)
+            .lines()
+            .filter_map(|line| {
+                let f: Vec<&str> = line.split('\t').collect();
+                if f.len() < 12 || f[0] != "5" {
+                    return None;
+                }
+                let n = |i: usize| f[i].parse::<f64>().ok();
+                Some(Word {
+                    text: f[11].to_string(),
+                    line: (n(2)? as u32, n(3)? as u32, n(4)? as u32),
+                    x: (n(6)? / scale) as i32,
+                    y: (n(7)? / scale) as i32,
+                    w: (n(8)? / scale) as i32,
+                    h: (n(9)? / scale) as i32,
+                })
+            })
+            .collect()
+    }
+
+    /// Where `text` is among `words`, as the middle of its words in the
+    /// window: the `nth` match from the top of the window (the last with
+    /// `nth` negative, counting from -1).
+    fn locate(screens: &[Vec<Word>], text: &str, nth: i32) -> Option<Point> {
+        let wanted: Vec<String> = text
+            .split_whitespace()
+            .map(plain)
+            .filter(|w| !w.is_empty())
+            .collect();
+        let mut found: Vec<Point> = Vec::new();
+        for words in screens {
+            Scene::locate_in(words, &wanted, &mut found);
+        }
+        // The same words read in more than one way are one.
+        let mut unique: Vec<Point> = Vec::new();
+        for at in found {
+            if !unique
+                .iter()
+                .any(|u| (u.0 - at.0).abs() < 12 && (u.1 - at.1).abs() < 12)
+            {
+                unique.push(at);
+            }
+        }
+        let mut found = unique;
+        found.sort_by_key(|&(x, y)| (y / 12, x));
+        let at = if nth < 0 {
+            found.len() as i32 + nth
+        } else {
+            nth
+        };
+        usize::try_from(at)
+            .ok()
+            .and_then(|at| found.get(at).copied())
+    }
+
+    fn locate_in(words: &[Word], wanted: &[String], found: &mut Vec<Point>) {
+        let words: Vec<(&Word, String)> = words
+            .iter()
+            .map(|w| (w, plain(&w.text)))
+            .filter(|(_, p)| !p.is_empty())
+            .collect();
+        for start in 0..words.len().saturating_sub(wanted.len() - 1) {
+            let run = &words[start..start + wanted.len()];
+            let same_line = run.iter().all(|(w, _)| w.line == run[0].0.line);
+            if same_line && run.iter().zip(wanted).all(|((_, p), w)| p == w) {
+                let left = run.iter().map(|(w, _)| w.x).min().unwrap();
+                let right = run.iter().map(|(w, _)| w.x + w.w).max().unwrap();
+                let top = run.iter().map(|(w, _)| w.y).min().unwrap();
+                let bottom = run.iter().map(|(w, _)| w.y + w.h).max().unwrap();
+                found.push(((left + right) / 2, (top + bottom) / 2));
+            }
+        }
+    }
+
+    /// Wait for `text` to show and say where.
+    fn find_text(&self, text: &str, nth: i32) -> Point {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let screens = self.screens(text, nth);
+            if let Some(at) = Scene::locate(&screens, text, nth) {
+                return at;
+            }
+            if Instant::now() > deadline {
+                let seen: Vec<&str> = screens.iter().flatten().map(|w| w.text.as_str()).collect();
+                panic!(
+                    "{}: no `{text}` on the screen; the words seen: {}",
+                    self.name,
+                    seen.join(" ")
+                );
+            }
+            self.pause(0.3);
+        }
+    }
+
+    /// Whether `text` shows within `seconds`.
+    fn shows(&self, text: &str, seconds: u64) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(seconds);
+        loop {
+            if Scene::locate(&self.screens(text, 0), text, 0).is_some() {
+                return true;
+            }
+            if Instant::now() > deadline {
+                return false;
+            }
+            self.pause(0.3);
+        }
+    }
+
+    /// Click the first `text` from the top of the window.
+    fn click_text(&self, text: &str) {
+        self.click(self.find_text(text, 0));
+    }
+
+    /// Click the last `text` (a dialog's button, under its title).
+    fn click_last_text(&self, text: &str) {
+        self.click(self.find_text(text, -1));
+    }
+
+    /// Click `dx` pixels right of `text`: a field beside its label.
+    fn click_right_of(&self, text: &str, dx: i32) {
+        let (x, y) = self.find_text(text, 0);
+        self.click((x + dx, y));
     }
 
     fn shot(&self, file: &str) {
-        if let Some(import) = &self.tools.import {
-            let _ = Command::new(import)
-                .args(["-window", "root"])
-                .arg(self.dir.join(file))
-                .env("DISPLAY", &self.display)
-                .output();
-        }
+        let _ = Command::new(&self.tools.import)
+            .args(["-window", "root"])
+            .arg(self.dir.join(file))
+            .env("DISPLAY", &self.display)
+            .output();
     }
 }
 
@@ -601,7 +913,14 @@ impl Drop for Scene {
                 tail.join("\n")
             );
         }
-        for child in [&mut self.gui, &mut self.openbox] {
+        for child in [
+            Some(&mut self.gui),
+            Some(&mut self.openbox),
+            self.kernel.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        {
             signal_group(child);
             let _ = child.wait();
         }
@@ -626,6 +945,12 @@ impl Drop for Scene {
 macro_rules! scene {
     ($name:expr, $setup:expr) => {
         match Scene::start($name, $setup) {
+            Some(scene) => scene,
+            None => return,
+        }
+    };
+    ($name:expr, $setup:expr, remote) => {
+        match Scene::start_remote($name, $setup) {
             Some(scene) => scene,
             None => return,
         }
@@ -677,23 +1002,20 @@ fn demo_song_shows_and_answers_the_pointer() {
     // and a typed path and the Render button write the file.
     let target = w.dir.join("render/song.wav");
     fs::create_dir_all(target.parent().unwrap()).unwrap();
-    w.click((40, place::TRANSPORT_H / 2));
-    w.click((75, 269));
+    w.open_render_dialog();
     w.shot("render-dialog.png");
-    w.click(w.middle(40, -77));
-    w.key("ctrl+a");
-    w.type_text(target.to_str().unwrap());
-    w.click(w.middle(213, 106));
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !fs::metadata(&target).is_ok_and(|m| m.len() > 1000) {
-        assert!(
-            Instant::now() < deadline,
-            "no rendered file at {}",
-            target.display()
-        );
-        w.pause(0.2);
-    }
+    w.render_to(&target);
+    wait_for_file(&target, 1000);
     w.assert_alive("after rendering");
+}
+
+/// Wait for a file of at least `size` bytes.
+fn wait_for_file(path: &Path, size: u64) {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !fs::metadata(path).is_ok_and(|m| m.len() >= size) {
+        assert!(Instant::now() < deadline, "no file at {}", path.display());
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 /// A song with a project file, so that Save has somewhere to write.
@@ -721,7 +1043,7 @@ fn closing_with_unsaved_changes_asks() {
     // Cancel keeps it running.
     w.close_window();
     w.shot("closing.png");
-    w.click(w.middle(129, 27));
+    w.click_text("Cancel");
     w.pause(1.0);
     w.assert_alive("after Cancel");
     w.expect(
@@ -731,7 +1053,7 @@ fn closing_with_unsaved_changes_asks() {
 
     // Don't save ends it, and the copy goes with it.
     w.close_window();
-    w.click(w.middle(-176, 27));
+    w.click_text("Don't save");
     w.wait_gone("after Don't save");
     assert_eq!(copies(), 0, "a recovery copy was left behind");
 }
@@ -755,7 +1077,7 @@ fn closing_with_a_project_file_saves_it() {
     );
 
     w.close_window();
-    w.click(w.middle(189, 27));
+    w.click_last_text("Save");
     w.wait_gone("after Save");
     let saved = fs::read_to_string(&file).unwrap();
     assert!(
@@ -942,11 +1264,9 @@ fn a_very_long_song_does_not_hurt_the_window() {
     w.shot("long-roll.png");
 }
 
-// Found by this test: with the piano roll open on the 3000-beat clip of
-// `LONG_SONG` the window uses about 90% of a core while nothing happens
-// (14% on the demo song's short clips with its roll open).
+// The roll shows only the notes in view, so a clip of 3000 beats costs no
+// more than a short one. (Before that it used about 90% of a core.)
 #[test]
-#[ignore = "bug: the window burns a core when the piano roll shows a clip of 3000 beats"]
 fn a_piano_roll_on_a_very_long_clip_is_idle() {
     let mut w = scene!("long-roll", LONG_SONG);
     let clip = w.number("return daw.api.clip_list(daw.api.track_list()[1])[1].id") as i32;
@@ -959,4 +1279,224 @@ fn a_piano_roll_on_a_very_long_clip_is_idle() {
         "the window uses {busy:.0}% of a core with the roll open"
     );
     w.assert_alive("at the end");
+}
+
+/// A directory of this test's own, outside the scene's (which is wiped at
+/// the start), for files that must exist before the window starts.
+fn files_dir(name: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("window")
+        .join(format!("{name}-files"));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn an_idle_window_uses_little_of_a_processor() {
+    let mut w = scene!("idle", DEMO);
+    w.pause(3.0);
+    let idle = w.cpu_percent(5.0);
+    assert!(idle < 5.0, "the idle window uses {idle:.1}% of a core");
+    w.assert_alive("while idle");
+}
+
+#[test]
+fn the_file_menu_lists_recent_projects_and_opens_one() {
+    let dir = files_dir("recent");
+    let file = dir.join("recentsong.json");
+    let setup = format!(
+        "daw.recent.use('{}/recent.json')\n{DEMO}\ndaw.project.save('{}')\ndaw.project.new()",
+        dir.display(),
+        file.display()
+    );
+    let mut w = scene!("recent", &setup);
+    w.expect("an empty project", "daw.api.project_get().path == nil");
+    w.open_file_menu();
+    w.click_text("Open recent");
+    w.shot("recent-menu.png");
+    w.click_text("recentsong");
+    w.expect(
+        "the saved project open",
+        &format!("daw.api.project_get().path == '{}'", file.display()),
+    );
+    w.expect("its tracks", "#daw.api.track_list() == 5");
+    w.assert_alive("after opening a recent project");
+}
+
+#[test]
+fn the_render_dialog_offers_mp3() {
+    if on_path("ffmpeg").is_none() {
+        eprintln!("window test mp3 skipped: ffmpeg is not installed");
+        return;
+    }
+    let mut w = scene!("mp3", DEMO);
+    let target = w.dir.join("render/song.mp3");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    w.open_render_dialog();
+    w.click_text("MP3");
+    w.render_to(&target);
+    wait_for_file(&target, 1000);
+    // MP3 starts with an ID3 tag or a frame header.
+    let head = fs::read(&target).unwrap();
+    assert!(
+        head.starts_with(b"ID3") || (head[0] == 0xff && head[1] & 0xe0 == 0xe0),
+        "not an MP3 file"
+    );
+    w.assert_alive("after rendering");
+}
+
+#[test]
+fn take_lanes_show_the_takes_and_a_click_chooses_one() {
+    let setup = "
+local track = daw.add_track({ name = 'T' })
+local id = daw.api.track_list()[1]
+track:add_clip({ start = 0, length = 8, name = 'c', notes = { { pitch = 60, start = 0, length = 1 } } })
+daw.takes.new(daw.api.clip_list(id)[1].id)
+daw.cursor.set_track(id)
+";
+    let mut w = scene!("takes", setup);
+    let clip = "daw.api.clip_list(daw.api.track_list()[1])[1].id";
+    w.expect(
+        "two takes, the second playing",
+        &format!("select(2, daw.takes.count({clip})) == 2"),
+    );
+    w.ctl("return daw.commands.exec('take.lanes')");
+    w.expect(
+        "two take rows",
+        "daw.frontend.state(0).tracks[1].take_rows == 2",
+    );
+    w.pause(0.8);
+    w.shot("take-lanes.png");
+    // Row k of the lanes is under the clip: the first take's row is the
+    // first.
+    let first = place::row_top(0, false) + place::ROW_H + place::TAKE_ROW_H / 2;
+    w.click((place::beat_x(2.0), first));
+    w.expect(
+        "the first take playing",
+        &format!("select(2, daw.takes.count({clip})) == 1"),
+    );
+    w.assert_alive("after choosing a take");
+}
+
+#[test]
+fn the_more_menu_opens_a_view_in_a_window_of_its_own() {
+    let mut w = scene!(
+        "more",
+        &format!("{DEMO}\ndaw.ext.load('extensions/undotree')")
+    );
+    assert_eq!(w.number("return #daw.canvas.windows()"), 0.0);
+    w.click_text("More");
+    w.shot("more-menu.png");
+    w.click_text("Undo tree");
+    w.expect(
+        "the undo tree open in a window",
+        "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree'",
+    );
+    w.pause(1.0);
+    w.assert_alive("after opening a view in a window");
+}
+
+#[test]
+fn the_window_follows_a_change_made_from_outside() {
+    let mut w = scene!("pushed", DEMO);
+    assert!(!w.shows("Zebra", 0), "the track is there before it is made");
+    w.ctl("return daw.add_track({ name = 'Zebra' }).id");
+    assert!(
+        w.shows("Zebra", 10),
+        "a track added from outside does not show in the window"
+    );
+    w.ctl("return daw.api.track_set(daw.api.track_list()[6], 'name', 'Okapi')");
+    assert!(
+        w.shows("Okapi", 10),
+        "a track renamed from outside does not show"
+    );
+    w.assert_alive("after changes from outside");
+}
+
+#[test]
+fn a_window_connects_to_a_kernel_over_tcp_and_a_wrong_token_is_refused() {
+    let mut w = scene!("remote", DEMO, remote);
+    assert!(w.shows("Drums", 20), "the remote project does not show");
+    w.ctl("return daw.add_track({ name = 'Zebra' }).id");
+    assert!(
+        w.shows("Zebra", 10),
+        "a change at the remote kernel does not show"
+    );
+    w.assert_alive("while connected");
+
+    let refused = Command::new(env!("CARGO_BIN_EXE_daw-gui"))
+        .args([
+            "--connect",
+            w.tcp.as_deref().unwrap(),
+            "--token",
+            "not-the-token",
+        ])
+        .env("DISPLAY", &w.display)
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&refused.stderr).to_string()
+        + &String::from_utf8_lossy(&refused.stdout);
+    assert!(!refused.status.success(), "a wrong token was taken: {said}");
+    assert!(said.contains("did not accept the token"), "{said}");
+}
+
+/// How reliably the screen is read, for whoever changes how: every text the
+/// tests click, in each place they click it, over fresh windows. Run it
+/// with `cargo test -p daw-gui --test window -- --ignored --nocapture
+/// reading_the_screen`; it says how many readings found each text.
+#[test]
+#[ignore = "a measurement, not a test: it takes minutes"]
+fn reading_the_screen_is_reliable() {
+    const RUNS: usize = 8;
+    let (mut tried, mut found) = (0, 0);
+    for run in 0..RUNS {
+        let mut w = scene!(
+            "reading",
+            &format!("{DEMO}\ndaw.ext.load('extensions/undotree')")
+        );
+        let mut check = |w: &Scene, texts: &[(&str, i32)]| {
+            for &(text, nth) in texts {
+                tried += 1;
+                let at = Scene::locate(&w.screens(text, nth), text, nth);
+                if at.is_some() {
+                    found += 1;
+                } else {
+                    eprintln!("run {run}: `{text}` not found");
+                }
+            }
+        };
+        w.open_file_menu();
+        check(
+            &w,
+            &[
+                ("New project", 0),
+                ("Open recent", 0),
+                ("Save as", 0),
+                ("Render", 0),
+                ("Quit", 0),
+            ],
+        );
+        w.click((700, 700));
+        w.click_text("More");
+        check(&w, &[("Undo tree", 0)]);
+        w.click((700, 700));
+        w.open_render_dialog();
+        check(
+            &w,
+            &[
+                ("File", 0),
+                ("Tail", 0),
+                ("MP3", 0),
+                ("Cancel", 0),
+                ("Render", -1),
+            ],
+        );
+        w.click_text("Cancel");
+        w.close_window();
+        check(&w, &[("Don't save", 0), ("Cancel", 0), ("Save", -1)]);
+    }
+    eprintln!("read {found} of {tried}");
+    assert_eq!(found, tried);
 }

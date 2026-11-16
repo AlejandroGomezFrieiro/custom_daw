@@ -53,13 +53,18 @@ are skipped.
 
 `cargo test -p daw-gui` also drives the real window
 (`crates/daw-gui/tests/window.rs`): each scenario starts Xvfb on a free display
-from `:120` up, openbox and the window, makes pointer and key gestures with
-xdotool, and asks the kernel what it holds afterwards. It needs `Xvfb`,
-`openbox` and `xdotool` (and ImageMagick, for a screenshot of a failure); the
-dev shell has them. Without them these tests say what is missing and pass. A
-failed scenario leaves `failure.png` and the window's output under
-`target/tmp/window/<scenario>`. The tests marked `#[ignore]` are bugs found
-this way; `cargo test -p daw-gui -- --ignored` runs them.
+from `:120` up, openbox and the window (with no session bus, so that nothing
+reaches the desktop), makes pointer and key gestures with xdotool, and asks
+the kernel what it holds afterwards. Menu entries and dialog buttons are found
+by reading the screen: ImageMagick takes a picture of the window and tesseract
+reads the words on it, so that a new entry in a menu moves nothing the tests
+rely on. The tests need `Xvfb`, `openbox`, `xdotool`, ImageMagick and
+`tesseract` (the dev shell has them), and the MP3 one `ffmpeg`. Without them
+these tests say what is missing and pass. A failed scenario leaves
+`failure.png` and the window's output under `target/tmp/window/<scenario>`.
+`-- --ignored` runs the ones that are marked `#[ignore]`: how reliably the
+screen is read (a measurement of several minutes), and known bugs, when there
+are any.
 
 The first start looks through every installed plugin, which can take several
 seconds (bridged Windows plugins each start Wine). The result is cached in
