@@ -61,6 +61,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
+| `,vn` `,va` `,vr` `,vx` `,vl` | a new VCA over the selected tracks; put them under a VCA; take them out of their VCAs; take the VCA at the cursor away; link the faders of a group | |
 | `I` `<A-i>` | choose the input (audio, MIDI port and channel), monitor it | |
 | `a` | add a device | enter notes after the note |
 | `A` | add a volume automation point | |

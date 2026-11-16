@@ -68,7 +68,11 @@ end
 
 function view:render(buf, ctx)
   local g = draw.g
-  local tracks = api.track_list()
+  -- A VCA has no clips to launch.
+  local tracks = {}
+  for _, id in ipairs(api.track_list()) do
+    if not daw.vca.is_vca(id) then tracks[#tracks + 1] = id end
+  end
   local quantize = api.project_get().launch_quantize
   local body = daw.ui.titlebar(buf, {
     name = "Session",
@@ -79,7 +83,10 @@ function view:render(buf, ctx)
   body:fill(0, 0, w, h, " ", "TrackHeader")
   local cw = view.column_width(w, #tracks)
   local room = math.max(1, math.floor((w - GUTTER - SCENES) / cw))
-  local index = daw.cursor.index() or 1
+  local index = 1
+  for i, id in ipairs(tracks) do
+    if id == daw.cursor.track_id() then index = i end
+  end
   if index <= self.scroll then self.scroll = index - 1 end
   if index > self.scroll + room then self.scroll = index - room end
   self.scroll = util.clamp(self.scroll, 0, math.max(0, #tracks - room))

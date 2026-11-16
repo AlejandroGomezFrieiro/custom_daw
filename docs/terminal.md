@@ -185,7 +185,10 @@ several devices for `y` `d`; `:device.copy_to <track>` and
 dragging a device card by its name onto a track's header moves it there
 (with `Ctrl`, copies it), and dragging it up or down the list reorders. The
 mixer has `h` `l` for tracks, `j` `k` for volume, `grv` `grp` to type the
-strip's volume and pan, and `dd` `yy` `p` for tracks.
+strip's volume and pan, and `dd` `yy` `p` for tracks. VCAs (see
+[Mixing](mixing.md)) have strips after the tracks: `,vn` makes one over the
+selected tracks, `,va` puts them under one, `,vr` takes them out, `,vx` takes
+one away, and `,vl` links the faders of a group.
 
 `,l` shows the session view, the clip launcher: a column of slots under
 each track and a scene for each row, launched with `<CR>` and `L`; its keys

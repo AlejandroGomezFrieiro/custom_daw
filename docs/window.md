@@ -73,7 +73,9 @@ level reaches 0 dB; it stays lit until it is clicked. The mixer has a strip
 per track, with the master at the right: where it plays into, its devices
 (a click on one picks it in the device panel), pan, a fader with a scale
 beside its meters, the fader's level and the peak held, `M` `S` `R`, and
-its name on its colour. The status line at the bottom says what the pointer
+its name on its colour. A VCA has a strip too, after the tracks, naming the
+tracks under it; right-click a strip or a track's header to make a VCA with the
+track, put it under one or take it out. The status line at the bottom says what the pointer
 does wherever it is.
 
 | Where | What the pointer does |

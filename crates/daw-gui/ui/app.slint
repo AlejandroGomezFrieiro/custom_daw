@@ -64,6 +64,8 @@ export struct TrackData {
     group: bool,        // it is a group
     folded: bool,       // and its members are folded away
     members: int,       // how many tracks it holds
+    vca: bool,          // it is a VCA
+    vcas: string,       // a VCA's members, or the VCAs a track is under, by name
     top: float,         // where its row starts and how tall it is, in rows
     size: float,        // of the zoom's height (`row-height`)
     clip-size: float,   // how much of that its clips take: the rest is lanes shown as rows
@@ -286,6 +288,7 @@ component MixerStrip inherits Rectangle {
     callback clear-clip();
     callback pick-device(int);
     callback hint(string);
+    callback command(string);
     background: root.chosen ? Theme.panel-sel : Theme.panel;
     TouchArea {
         clicked => {
@@ -310,7 +313,7 @@ component MixerStrip inherits Rectangle {
             Text {
                 x: 5px;
                 width: parent.width - 10px;
-                text: root.track.master ? "Output" : "→ " + root.track.output;
+                text: root.track.master ? "Output" : root.track.vca ? "VCA: " + (root.track.vcas == "" ? "no tracks" : root.track.vcas) : "→ " + root.track.output + (root.track.vcas == "" ? "" : " · VCA " + root.track.vcas);
                 color: Theme.text-2;
                 font-size: Theme.t-small;
                 vertical-alignment: center;
@@ -320,7 +323,7 @@ component MixerStrip inherits Rectangle {
         }
         // Its devices, four at most (one when the strip is short); a click
         // picks one in the device panel.
-        for slot in (root.height < 300px ? 1 : 4): slot-box := Rectangle {
+        for slot in (root.track.vca ? 0 : root.height < 300px ? 1 : 4): slot-box := Rectangle {
             height: 18px;
             border-radius: 2px;
             property <bool> used: slot < root.track.inserts.length;
@@ -342,7 +345,7 @@ component MixerStrip inherits Rectangle {
             }
         }
         // The pan.
-        HorizontalLayout {
+        if !root.track.vca: HorizontalLayout {
             height: 26px;
             alignment: center;
             Knob {
@@ -529,6 +532,49 @@ component MixerStrip inherits Rectangle {
             if root.chosen: Rectangle {
                 border-width: 1px;
                 border-color: white;
+            }
+            strip-menu := ContextMenuArea {
+                enabled: !root.track.master;
+                Menu {
+                    MenuItem {
+                        title: "New VCA with this track…";
+                        enabled: !root.track.vca;
+                        activated => {
+                            root.command("vca.make");
+                        }
+                    }
+                    MenuItem {
+                        title: "Put under a VCA…";
+                        enabled: !root.track.vca;
+                        activated => {
+                            root.command("vca.assign");
+                        }
+                    }
+                    MenuItem {
+                        title: root.track.vca ? "Dissolve the VCA" : "Take out of its VCAs";
+                        enabled: root.track.vca || root.track.vcas != "";
+                        activated => {
+                            root.command(root.track.vca ? "vca.dissolve" : "vca.release");
+                        }
+                    }
+                }
+                strip-touch := TouchArea {
+                    property <length> right-x;
+                    property <length> right-y;
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                            self.right-x = self.mouse-x;
+                            self.right-y = self.mouse-y;
+                        }
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right && !root.track.master
+                            && abs(self.mouse-x - self.right-x) < 5px && abs(self.mouse-y - self.right-y) < 5px) {
+                            strip-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                        }
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                            root.select();
+                        }
+                    }
+                }
             }
         }
     }
@@ -2532,6 +2578,34 @@ in property <string> render-stage;
                                     enabled: track.group || track.depth > 0;
                                     activated => {
                                         root.track-command(track.id, "track.ungroup");
+                                    }
+                                }
+                                MenuItem {
+                                    title: "New VCA with this track…";
+                                    enabled: !track.vca;
+                                    activated => {
+                                        root.track-command(track.id, "vca.make");
+                                    }
+                                }
+                                MenuItem {
+                                    title: "Put under a VCA…";
+                                    enabled: !track.vca;
+                                    activated => {
+                                        root.track-command(track.id, "vca.assign");
+                                    }
+                                }
+                                MenuItem {
+                                    title: track.vca ? "Dissolve the VCA" : "Take out of its VCAs";
+                                    enabled: track.vca || track.vcas != "";
+                                    activated => {
+                                        root.track-command(track.id, track.vca ? "vca.dissolve" : "vca.release");
+                                    }
+                                }
+                                MenuItem {
+                                    title: "Link the faders of the group";
+                                    enabled: track.group || track.depth > 0;
+                                    activated => {
+                                        root.track-command(track.id, "group.link");
                                     }
                                 }
                                 MenuItem {
@@ -5690,6 +5764,9 @@ in property <string> render-stage;
                         }
                         hint(text) => {
                             root.hint = text;
+                        }
+                        command(line) => {
+                            root.track-command(track.id, line);
                         }
                     }
                 }
