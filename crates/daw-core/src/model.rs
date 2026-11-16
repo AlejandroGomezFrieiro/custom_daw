@@ -737,13 +737,22 @@ impl Target {
 }
 
 impl Project {
-    /// Give the notes that have none an id (see `Note::id`), touching only
-    /// the clips that need it.
-    pub fn name_notes(&mut self) -> bool {
+    /// Give the notes that have none an id (see `Note::id`), looking only at
+    /// the clips that are not the very same as in `before` (the state the
+    /// last naming saw), and touching only those that need it.
+    pub fn name_notes(&mut self, before: &Project) -> bool {
         let mut named = false;
+        let old_tracks: std::collections::HashMap<Id, &Arc<Track>> = before.all_tracks().map(|t| (t.id, t)).collect();
         let tracks = self.tracks.iter_mut().chain(std::iter::once(&mut self.master));
         for track in tracks {
+            let old = old_tracks.get(&track.id);
+            if old.is_some_and(|o| Arc::ptr_eq(o, track)) {
+                continue;
+            }
+            let old_clips: std::collections::HashMap<Id, &Arc<Clip>> =
+                old.map(|o| o.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
             let needs = |c: &Arc<Clip>| match &c.content {
+                _ if old_clips.get(&c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
                 ClipContent::Midi { notes, .. } => {
                     let mut seen = std::collections::HashSet::with_capacity(notes.len());
                     notes.iter().any(|n| n.id == 0 || !seen.insert(n.id))
