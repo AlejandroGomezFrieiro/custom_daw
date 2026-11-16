@@ -695,6 +695,37 @@ daw ctl eval 'daw.api.ui_snapshot(100, 30)'   # the screen as text
 ```
 
 One JSON object per line: `{"id":1,"method":"eval","params":["..."]}`.
+A connection can also be sent things: events it subscribed to, the state
+a frontend draws (pushed when it changes, in parts), and the terminal
+UI's screen. [docs/protocol.md](docs/protocol.md) is the whole protocol.
+
+**An instance on another machine.** `daw attach` makes the terminal it
+runs in a terminal of an instance that is already running: the same
+screen, the same keys, beside the instance's own terminal if it has one
+(`daw --headless` has none). `:detach` leaves and the instance runs on.
+`daw ctl`, `daw attach` and `daw-gui` all reach an instance three ways:
+
+```sh
+daw attach                                   # this machine's socket
+daw attach --socket /tmp/studio.sock         # another socket, such as one carried by SSH
+daw attach --connect studio:7700 --token-file studio.token   # over the network
+```
+
+Over SSH needs nothing set up in the program and is encrypted:
+
+```sh
+ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
+daw-gui --socket /tmp/studio.sock
+```
+
+Over the network the instance has to be started with `--listen-tcp
+0.0.0.0:7700` (or `127.0.0.1:7700` for this machine alone). A connection
+must show that it knows the token in `~/.local/state/daw/token` on the
+instance's machine (made at the first start; copy it to the other
+machine). The token is never sent, but the connection is not encrypted:
+use it on a network you trust. What stays on the instance's machine: the
+sound (it plays on its own sound device), plugin windows, and the files
+that Open, Save and Import browse.
 
 `daw doctor` is a script of its own kind: it runs the checks of
 [extensions/doctor](extensions/doctor) that need nobody, with the sound device
@@ -1087,7 +1118,12 @@ selected track, a mixer and a piano roll. It starts a kernel of its own
 daw-gui song.json                 # its own kernel; options are passed on to it
 daw --headless --listen /tmp/daw.sock &
 daw-gui --socket /tmp/daw.sock    # watch and drive a kernel that is already running
+daw-gui --connect studio:7700 --token-file studio.token   # one on another machine
 ```
+
+The window is sent what it draws when that changes, instead of asking for
+it: an idle project costs nothing on the wire, and a change sends only the
+part that changed (see [docs/protocol.md](docs/protocol.md)).
 
 The window remembers how it was left, for the machine, in
 `~/.local/state/daw/window.json`: its size, the timeline's zoom, the height
@@ -1782,8 +1818,10 @@ port a message came through is not told apart. In scripts:
   for them in pure Rust of a quality worth shipping, and no C library is
   linked for them; they need ffmpeg installed (see Rendering). Nor does the
   file carry more than the title tag (no artist, album or cover).
-- Attaching the terminal UI to a running instance. It runs in the same process
-  as the kernel; the graphical frontend is the one that attaches.
+- For instances on other machines: encryption of network connections
+  (SSH does it today), hearing the instance's sound on the machine you sit
+  at, sending it files from that machine, and a cursor and mode for each
+  connection (every terminal and window of an instance shares one).
 - Painted windows for the undo tree (a tree of nodes to click) and the mix
   report (meters and a spectrum as shapes): in the graphical frontend they
   are their terminal views in a window. What an extension draws on the

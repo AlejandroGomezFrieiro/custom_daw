@@ -66,6 +66,13 @@ pub struct Shared {
     /// Helper processes and sockets that extensions opened.
     pub io: RefCell<Io>,
     pub started: Instant,
+    /// The connections on the control socket, for pushing events to them.
+    pub clients: crate::rpc::Clients,
+    /// The connection whose terminal the input being handled came from, or 0
+    /// for the program's own; and the connections whose terminals asked to
+    /// leave, for the kernel to let go after this turn.
+    pub input_from: Cell<u64>,
+    pub detach: RefCell<Vec<u64>>,
     /// Interrupts Lua that has run past its time limit.
     pub watchdog: Watchdog,
     pub env: Env,
@@ -1196,6 +1203,22 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn sock_write(_, sh, (id, data) => (u64, LuaString)) { sh.io.borrow_mut().write(id, &data.as_bytes()).lua() }
         fn sock_close(_, sh, id => u64) {
             sh.io.borrow_mut().close(id);
+            Ok(())
+        }
+
+        // Connections on the control socket (crates/daw-core/src/rpc.rs):
+        // push an event to one (false when it has closed), list them, say
+        // which one's terminal the input being handled came from (0 for the
+        // program's own), and let a connection's terminal go.
+        fn rpc_push(lua, sh, (client, event, payload) => (u64, String, LuaValue)) {
+            let payload: Value = from_lua(lua, payload)?;
+            Ok(sh.clients.push(client, &event, &payload))
+        }
+        fn rpc_clients(_, sh, () => ()) { Ok(sh.clients.ids()) }
+        fn rpc_version(_, _sh, () => ()) { Ok(crate::rpc::VERSION) }
+        fn ui_client(_, sh, () => ()) { Ok(sh.input_from.get()) }
+        fn ui_detach(_, sh, client => u64) {
+            sh.detach.borrow_mut().push(client);
             Ok(())
         }
 

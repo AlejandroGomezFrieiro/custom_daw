@@ -7,6 +7,7 @@ description = "The kernel: project model, engine sync, Lua host, cell grid, even
 
 [dependencies]
 daw-engine.workspace = true
+daw-proto.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

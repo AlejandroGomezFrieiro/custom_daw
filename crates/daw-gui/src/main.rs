@@ -7,8 +7,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -33,6 +31,10 @@ daw-gui: a graphical frontend for daw
 Usage:
   daw-gui [kernel options] [project]   start a kernel and show it
   daw-gui --socket <path>              show a kernel that is already running
+  daw-gui --connect <host:port> --token-file <path>
+                                       show one running on another machine
+                                       (started with --listen-tcp; the token
+                                       is also taken from --token or $DAW_TOKEN)
 
 Kernel options are passed on to `daw --headless`; see `daw --help`.
 ";
@@ -103,37 +105,49 @@ thread_local! {
 /// How long a message stays in the toolbar.
 const MESSAGE_TIME: Duration = Duration::from_secs(5);
 
-/// A connection to a kernel's control socket.
+/// A connection to a kernel's control socket. Calls are answered; the state
+/// to draw is pushed by the kernel when it changes (`frontend.watch`: see
+/// docs/protocol.md), in parts, and put together again here.
 struct Client {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
+    connection: daw_proto::Connection,
+    /// What moves on its own (the playhead, the meters, the mode), as last sent.
+    tick: Value,
+    /// The parts of the state that change with the project, as last sent.
+    sections: serde_json::Map<String, Value>,
+    /// Some part arrived that the window has not drawn yet; and the list
+    /// of device kinds did, which is only sent at first.
+    fresh: bool,
+    fresh_kinds: bool,
 }
 
 impl Client {
     fn connect(path: &Path) -> Result<Self> {
-        let stream = UnixStream::connect(path)?;
-        Ok(Self {
-            reader: BufReader::new(stream.try_clone()?),
-            writer: stream,
-        })
+        Self::watching(daw_proto::Connection::unix(path)?)
+    }
+
+    /// Connect to a kernel on another machine (or this one) over the network.
+    fn connect_tcp(address: &str, token: &str) -> Result<Self> {
+        Self::watching(daw_proto::Connection::tcp(address, token)?)
+    }
+
+    fn watching(connection: daw_proto::Connection) -> Result<Self> {
+        let mut client = Self {
+            connection,
+            tick: Value::Null,
+            sections: serde_json::Map::new(),
+            fresh: false,
+            fresh_kinds: false,
+        };
+        client.call("frontend.watch", json!([]))?;
+        Ok(client)
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value> {
-        writeln!(
-            self.writer,
-            "{}",
-            json!({ "id": 1, "method": method, "params": params })
-        )?;
-        let mut line = String::new();
-        if self.reader.read_line(&mut line)? == 0 {
-            bail!("the kernel went away");
-        }
-        let response: Value = serde_json::from_str(&line).context("bad response")?;
-        match response.get("error").and_then(Value::as_str) {
+        self.connection.call(method, params).map_err(|err| {
             // Lua errors carry a traceback; the first line says what happened.
-            Some(error) => Err(anyhow!("{}", error.lines().next().unwrap_or(error))),
-            None => Ok(response["result"].clone()),
-        }
+            let text = err.to_string();
+            anyhow!("{}", text.lines().next().unwrap_or(&text))
+        })
     }
 
     /// Run Lua in the kernel with `args` as `...`.
@@ -141,6 +155,53 @@ impl Client {
         let mut params = vec![json!(code)];
         params.extend(args.as_array().cloned().unwrap_or_default());
         self.call("eval", Value::Array(params))
+    }
+
+    /// The state to draw, in the shape `daw.frontend.state` gives it: what
+    /// moves on its own always, and the project's parts (`project`,
+    /// `tracks`, `clips`, ...) only when one of them has changed since the
+    /// last time this was asked.
+    fn state(&mut self) -> Result<Value> {
+        loop {
+            match self.connection.events.try_recv() {
+                Ok((name, mut payload)) if name == "frontend.state" => {
+                    if let Some(Value::Object(parts)) =
+                        payload.as_object_mut().and_then(|p| p.remove("sections"))
+                    {
+                        self.fresh = true;
+                        self.fresh_kinds |= parts.contains_key("kinds");
+                        self.sections.extend(parts);
+                    }
+                    self.tick = payload;
+                }
+                Ok(_) => {}
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    bail!("the kernel went away")
+                }
+            }
+        }
+        let mut state = self.tick.clone();
+        if std::mem::take(&mut self.fresh)
+            && let Some(state) = state.as_object_mut()
+        {
+            let part = |name: &str| self.sections.get(name).cloned().unwrap_or(Value::Null);
+            // The bar and beat lines travel apart from the rest of the project.
+            let mut project = part("project");
+            if project.is_object() {
+                project["lines"] = part("lines");
+            }
+            state.insert("project".into(), project);
+            for name in ["tracks", "clips", "devices", "routing"] {
+                state.insert(name.into(), part(name));
+            }
+            state.insert("selected".into(), part("view")["selected"].clone());
+            state.insert("cursor".into(), part("view")["cursor"].clone());
+            if std::mem::take(&mut self.fresh_kinds) {
+                state.insert("kinds".into(), part("kinds"));
+            }
+        }
+        Ok(state)
     }
 }
 
@@ -981,7 +1042,7 @@ impl View {
             ui.set_message("".into());
             self.message_until = None;
         }
-        let state = client.eval("daw.frontend.state(...)", json!([self.revision]))?;
+        let state = client.state()?;
         let playing = state["playing"].as_bool().unwrap_or(false);
         let recording = state["recording"].as_bool().unwrap_or(false);
         let position = number(&state["position"]);
@@ -2040,21 +2101,39 @@ fn run() -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
-    let socket = match args.iter().position(|a| a == "--socket") {
-        Some(at) => {
-            let path = args.get(at + 1).context("--socket needs a path")?.clone();
-            args.drain(at..at + 2);
-            Some(PathBuf::from(path))
-        }
-        None => None,
+    // An option of this program's own and its value, taken off the
+    // arguments (the rest are the kernel's).
+    let mut option = |name: &str| -> Result<Option<String>> {
+        let Some(at) = args.iter().position(|a| a == name) else {
+            return Ok(None);
+        };
+        let value = args.get(at + 1).with_context(|| format!("{name} needs a value"))?.clone();
+        args.drain(at..at + 2);
+        Ok(Some(value))
     };
-    let (client, child) = match &socket {
-        Some(path) => {
+    let socket = option("--socket")?.map(PathBuf::from);
+    let address = option("--connect")?;
+    let token = match (option("--token")?, option("--token-file")?) {
+        (Some(token), _) => Some(token),
+        (None, Some(path)) => Some(
+            std::fs::read_to_string(&path)
+                .with_context(|| format!("reading the token in {path}"))?
+                .trim()
+                .to_string(),
+        ),
+        (None, None) => std::env::var("DAW_TOKEN").ok(),
+    };
+    let (client, child) = match (&address, &socket) {
+        (Some(address), _) => {
+            let token = token.context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?;
+            (Client::connect_tcp(address, &token)?, None)
+        }
+        (None, Some(path)) => {
             let client = Client::connect(path)
                 .with_context(|| format!("no kernel at {}", path.display()))?;
             (client, None)
         }
-        None => {
+        (None, None) => {
             let (client, child) = start_kernel(&args)?;
             (client, Some(child))
         }

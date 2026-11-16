@@ -147,6 +147,7 @@ function K.startup()
   daw.markers = require("daw.markers")
   daw.recent = require("daw.recent")
   daw.learn = require("daw.learn")
+  daw.remote = require("daw.remote")
   daw.autosave = require("daw.autosave")
   daw.loading = require("daw.loading")
   daw.reconnect = require("daw.reconnect")
@@ -235,10 +236,14 @@ function K.render_view(name, width, height)
   daw.limit.guard("drawing the view " .. name, daw.ui.render_view, name, daw.ui.Buf.root(width, height))
 end
 
---- Calls from the control socket: `eval`, `cmd`, `keys`, or any `daw.api` function.
-function K.rpc(method, params)
+--- Calls from the control socket: `eval`, `cmd`, `keys`, what `daw.remote`
+--- offers a connection (`client` is its number), or any `daw.api` function.
+function K.rpc(method, params, client)
   params = params or {}
-  if method == "eval" then
+  local offered = daw.remote and daw.remote.methods[method]
+  if offered then
+    return offered(client or 0, unpack(params))
+  elseif method == "eval" then
     local code = params[1]
     local chunk = loadstring("return " .. code, "=rpc") or assert(loadstring(code, "=rpc"))
     return chunk(unpack(params, 2))
@@ -253,6 +258,11 @@ function K.rpc(method, params)
     return api[method](unpack(params))
   end
   error("no method `" .. tostring(method) .. "`")
+end
+
+--- A connection on the control socket closed.
+function K.rpc_closed(client)
+  if daw.remote then daw.remote.closed(client) end
 end
 
 -- With a screen attached, stdout belongs to the terminal UI.

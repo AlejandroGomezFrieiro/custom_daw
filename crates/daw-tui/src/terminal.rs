@@ -2,7 +2,6 @@
 //! into kernel input.
 
 use std::io::{BufWriter, Stdout, Write, stdout};
-use std::sync::mpsc::Sender;
 
 use anyhow::Result;
 use crossterm::event::{
@@ -14,7 +13,7 @@ use crossterm::style::{
 };
 use crossterm::{cursor, execute, queue, terminal};
 use daw_core::grid::{self, Cell, Color, Grid};
-use daw_core::{Frontend, InputEvent, KernelMsg};
+use daw_core::{Frontend, InputEvent};
 
 pub struct Terminal {
     out: BufWriter<Stdout>,
@@ -23,8 +22,10 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    /// Take over the terminal and start forwarding its events to the kernel.
-    pub fn start(kernel: Sender<KernelMsg>) -> Result<(Self, u16, u16)> {
+    /// Take over the terminal and start handing its events to `send`, which
+    /// says whether anyone is still listening: the kernel in this program,
+    /// or a connection to one somewhere else.
+    pub fn start(send: impl Fn(InputEvent) -> bool + Send + 'static) -> Result<(Self, u16, u16)> {
         terminal::enable_raw_mode()?;
         execute!(
             stdout(),
@@ -46,7 +47,7 @@ impl Terminal {
                     _ => None,
                 };
                 if let Some(input) = input
-                    && kernel.send(KernelMsg::Input(input)).is_err()
+                    && !send(input)
                 {
                     break;
                 }
