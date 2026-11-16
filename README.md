@@ -32,6 +32,10 @@ target/release/daw-gui -e 'dofile("examples/demo-song.lua")'   # the window, wit
 target/release/daw doctor        # check your sound devices, MIDI ports and plugins
 ```
 
+Or without the dev shell: `nix run .` (the terminal UI) and `nix run .#daw-gui`
+(the window); `nix profile install .` installs them
+([Installing with Nix](docs/running.md#installing-with-nix)).
+
 In the terminal, `?` lists every key of the view you are in, `:` runs any
 command by name, and `:q` quits. A course of sixteen ten-minute lessons runs
 inside the program (`:tutor`, once the `tutor` extension is loaded) and can

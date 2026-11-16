@@ -625,7 +625,10 @@ function M.render_dialog()
   for _, f in ipairs(api.render_formats(daw.opt.ffmpeg)) do
     if f.lossy then formats[f.extensions[1]] = f.available end
   end
-  return { path = path, ranges = ranges, sample_rate = api.engine_get().sample_rate, formats = formats }
+  return {
+    path = path, ranges = ranges, sample_rate = api.engine_get().sample_rate, formats = formats,
+    tags = require("daw.render").tags(),
+  }
 end
 
 --- The menu of a track's input: the choices of `daw.audio.choices` under
@@ -1702,9 +1705,12 @@ end
 --- `render_dialog`), `o.format` ("wav", "flac", "mp3", "ogg" or "opus"), `o.quality` (for those
 --- three: "low" to "best"), `o.bits`, `o.tail`
 --- seconds, `o.normalize` dB or nil, `o.dither`, `o.mono`, and `o.stems`
---- for a file per track in a directory named after the path. It runs in
---- the background: the state's `modal.render` says how far it is.
+--- for a file per track in a directory named after the path. `o.tags`
+--- (`title`, `artist`, ... as `daw.render.tags` has them, an empty one
+--- taking it out) becomes the project's tags, which the files carry. It
+--- runs in the background: the state's `modal.render` says how far it is.
 function A.render(o)
+  if o.tags then require("daw.render").tags(o.tags) end
   local opts = {
     tail = tonumber(o.tail), bits = tonumber(o.bits), dither = o.dither and true or nil,
     normalize = tonumber(o.normalize), channels = o.mono and 1 or nil, background = true,

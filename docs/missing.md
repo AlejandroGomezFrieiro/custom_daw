@@ -27,8 +27,12 @@
 - Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is
-  linked for them; they need ffmpeg installed (see Rendering). Nor does the
-  file carry more than the title tag (no artist, album or cover).
+  linked for them; they need ffmpeg installed (see Rendering; the Nix
+  package puts one on the PATH).
+- A cover in a WAV file (a WAV has no cover that players read; the
+  other formats carry it), and a file dialog for the cover in the render
+  dialog: its path is typed. Tags are text only: no lyrics, ISRC, composer,
+  disc number or replay gain.
 - For instances on other machines: encryption of network connections
   (SSH does it today), hearing the instance's sound on the machine you sit
   at, sending it files from that machine, and a cursor and mode for each
@@ -50,5 +54,9 @@
 - The window's GPU renderer as the default: it is tried only on a software
   OpenGL (llvmpipe) so far, where it draws correctly but costs more than
   the software renderer.
-- The window's position on the screen is not remembered, only its size: the window manager decides where it goes.
-- A Nix package: for now the binary is built with `cargo` inside the dev shell.
+- The window's position on Wayland: the compositor places windows and a
+  program cannot ask for a place, so only X11 keeps it.
+- The flake's `flake.lock` names the `nixpkgs` of this machine as a path in
+  its Nix store, so the package builds here but not from a URL elsewhere
+  until it is locked to a release (`nix flake update`). The package is built
+  for x86_64 and aarch64 Linux, and tried only on the first.
