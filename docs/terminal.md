@@ -440,6 +440,79 @@ daw.opt.layout = "edit"
 window may have a `size` in cells or a `weight` (its share, 1 by default).
 Every terminal attached with `daw attach` has tabs and windows of its own.
 
+## Lists edited as text
+
+Some of the project can be edited as plain text, as oil.nvim edits a
+directory: a buffer lists it one thing a line, you edit the lines with
+Vim's keys, and `:w` makes the project what the lines say.
+
+| Buffer | A line | |
+| --- | --- | --- |
+| `daw://tracks` | `Bass  vol -6.0  pan L10  M--  out Bus A  group  in Strings  color #ff9e64  ▸ Synth, EQ` | a track: its name, volume in dB, pan, flags (`M` muted, `S` soloed, `R` armed, `-` not), the track it plays into (the master without `out`), `group` on a group, the group it is in, its colour, its devices |
+| `daw://sends` | `Drums  → Verb  -12.0 dB  post` | a send: the track it is from, the track it goes to, its level, `pre` or `post` the fader |
+| `daw://track/2/devices` | `Comp  on  wet 80%  preset Glue` | the device chain of the second track (`master` for the master's): the device, `on` or `off` (bypassed), its wet share, the preset it was set to |
+| `daw://markers` | `9.1  Chorus  to 13.1  color #9ece6a` | a marker at bar 9, beat 1; with `to`, a region that ends at bar 13 |
+
+`:e daw://tracks` shows one in this window, `:vs daw://sends` beside it,
+`:textbuf.open markers` below. Fields are two spaces apart and every field
+but the first starts with its word, so they can come in any order and a
+missing one has its plain value (0 dB, centre, not muted, the master, no
+group, no colour). A name with two spaces in it is written in quotes.
+
+Every key of the text works as in Vim: `h` `j` `k` `l`, `w` `b` `e` and
+`W` `B` `E`, `0` `^` `$`, `f` `t` `F` `T` `;` `,`, `gg` `G`; the operators
+`d` `c` `y` `gu` `gU` `g~` with every motion, counts and registers; `x` `X`
+`s` `S` `C` `D` `Y` `r` `~` `J` `p` `P`; insert mode with `i` `a` `I` `A`
+`o` `O` (`Tab` types the two spaces between fields); `v`, `V` and `Ctrl-v`
+selections, with `I` and `A` typing on every line of a block; `u` and
+`Ctrl-r` undo and redo the text, and `.` repeats the last change. `iw` `aw`
+name a word, `if` the value of the field under the cursor (`cif` changes it)
+and `af` the whole field. `Ctrl-a` and `Ctrl-x` add and take 1 (or the
+count) from the number under or after the cursor, decimals kept: on a
+volume it is a dB, on a marker's position a bar; on a selection, from each
+line's number. `:s/vol -6/vol -9/g`, `:sort` (`!` the other way, `n` by
+number, `i` ignoring case), `:d`, `:y`, `:m 0` and `:normal` take ranges of
+lines: `:%s`, `:2,4d`, `:.,$sort`, and `:'<,'>` after `:` in a selection.
+`:5` goes to line 5.
+
+What an edit means:
+
+| Edit | What `:w` does |
+| --- | --- |
+| a field changed (`cw` on a name, `Ctrl-a` on a volume, `rM` on the flags) | that field of that thing, and only it |
+| `dd` | deletes the track, send, device or marker |
+| `yyp`, `yyP` | copies it: a track with its devices, clips and automation, a device with its state |
+| `ddp`, `:m`, `:sort` | moves it (tracks and devices are put in the order of the lines) |
+| a line typed new (`o`) | makes one: `Lead  vol -12  ▸ synth` a track with a synth, `reverb` a device, `17.1  Bridge` a marker |
+
+Each line carries, out of sight, the id of what it stands for, so that a
+line renamed is a rename and a line moved is a move, not a deletion and a
+new one. The gutter shows it: the line's place when it was read, `~` on a
+line changed, `+` on a new line or a copy, `!` on a line that does not
+read, whose reason the bottom line shows. The title says `[+]` while the
+buffer has changes.
+
+`:w` shows the plan in a float, as oil.nvim does: `rename Bass → Bassline`,
+`Bassline: volume -6.0 → -3.0 dB`, `delete Pad (2 devices, 4 clips)`. `y`
+or `Enter` applies it as one undo step, so one `u` in any other window takes
+it all back; `n` or `Esc` goes back to the buffer. A line that does not read
+stops the write and the cursor goes to it. `:w` on a buffer without changes
+saves the project, as anywhere else. `:e!` throws the changes away and reads
+the buffer again; `:q` will not close a window on a buffer with changes
+(`:q!` will).
+
+A buffer without changes follows the project: rename a track in the arrange
+view and its line changes. A buffer with changes is marked `changed
+elsewhere` once the project changes under it, and `:w` then refuses; `:w!`
+applies your changes anyway, and only the fields your lines changed, so a
+volume moved elsewhere in the meantime stays moved.
+
+`Enter` on a track's line opens its devices (`daw://track/N/devices`), and
+`-` there goes back up to the tracks; on a device `Enter` shows it in the
+device panel, on a marker it puts the cursor there. `:textbuf.window` (`gw`)
+shows the buffer in a window of its own in the graphical frontend, where it
+is edited with the same keys.
+
 ## The quickfix list
 
 As in Neovim, the quickfix list is one shared place for what is wrong, or

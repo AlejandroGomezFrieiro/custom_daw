@@ -128,8 +128,18 @@ end
 --- rest when the range names nothing.
 function M.range(line) return daw.ex.range(line) end
 
+--- Functions that may take a whole line before it is read as a command:
+--- `fn(line, ctx)` returns true when it ran it. A text buffer takes `:w`,
+--- `:s/a/b/` and its ranges of lines this way (daw/textbuf.lua).
+M.line_handlers = {}
+
 --- Run a command line, as typed after `:`, with a range in front if it has one.
-function M.exec(line, ctx) return daw.ex.exec(line, ctx) end
+function M.exec(line, ctx)
+  for _, handler in ipairs(M.line_handlers) do
+    if handler(line, ctx) then return end
+  end
+  return daw.ex.exec(line, ctx)
+end
 
 -- Completion ------------------------------------------------------------------
 --

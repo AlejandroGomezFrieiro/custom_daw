@@ -387,7 +387,7 @@ test("tutor: every key in docs/course/keys.md is a key paw has", function()
   local keymap = daw.keymap
   local known, operators, chars = {}, {}, {}
   for _, mode in ipairs({ "n", "x", "o", "i" }) do
-    for _, view in ipairs({ "arrange", "pianoroll", "pianoroll.complete", "pianoroll.keys", "mixer", "devices" }) do
+    for _, view in ipairs({ "arrange", "pianoroll", "pianoroll.complete", "pianoroll.keys", "mixer", "devices", "textbuf" }) do
       for _, map in ipairs(keymap.list(mode, view)) do
         local keys = table.concat(keymap.parse(map.lhs))
         known[keys] = true
