@@ -105,7 +105,7 @@ fn listen() -> Option<(MidiInputs, Receiver<EventKind>)> {
     let (tx, rx) = channel();
     let sink = Arc::new(Mutex::new(MidiTarget {
         engine: None,
-        tap: Some(Box::new(move |kind| {
+        tap: Some(Box::new(move |_, kind| {
             let _ = tx.send(kind);
         })),
     }));

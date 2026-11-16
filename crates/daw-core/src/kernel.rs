@@ -48,7 +48,7 @@ pub enum InputEvent {
 pub enum KernelMsg {
     Input(InputEvent),
     /// A message that arrived at a MIDI port.
-    Midi(EventKind),
+    Midi(u32, EventKind),
     Rpc {
         method: String,
         params: Value,
@@ -98,8 +98,8 @@ impl Kernel {
         let (tx, rx) = channel();
         // MIDI input goes straight to the engine; scripts hear of it here.
         let midi_tx = tx.clone();
-        session.set_midi_tap(Box::new(move |kind| {
-            let _ = midi_tx.send(KernelMsg::Midi(kind));
+        session.set_midi_tap(Box::new(move |port, kind| {
+            let _ = midi_tx.send(KernelMsg::Midi(port, kind));
         }));
         let started = Instant::now();
         let shared = Rc::new(Shared {
@@ -238,7 +238,7 @@ impl Kernel {
                 }
                 self.shared.dirty.set(true);
             }
-            KernelMsg::Midi(kind) => self.shared.session.borrow_mut().midi_event(kind),
+            KernelMsg::Midi(port, kind) => self.shared.session.borrow_mut().midi_event(port, kind),
             KernelMsg::Rpc {
                 method,
                 params,
