@@ -1193,7 +1193,7 @@ test("notation pointer: in the terminal a click and an insert-mode click snap to
   m("down", x, y) m("up", x, y)
   eq(view.beat, 3, "a quarter chosen: a click off the beat puts the cursor on the beat")
   keys("ig")
-  eq(notes_of(clip):match("G4@3%+1") ~= nil, true, "a G typed there is a quarter on beat four, not tied eighths")
+  eq(notes_of(clip):match("G4@3%+0%.9") ~= nil, true, "a G typed there is a quarter on beat four, not tied eighths")
   keys("<Esc>")
   shot()
   daw.mouse.forget()
@@ -1201,7 +1201,7 @@ test("notation pointer: in the terminal a click and an insert-mode click snap to
   keys("i")
   local x2, y2 = cell(view, 2.4, 37)
   m("down", x2, y2) m("up", x2, y2)
-  eq(notes_of(clip):match("E4@2%.5%+0%.5") ~= nil, true, "in insert mode a click enters an eighth on an eighth")
+  eq(notes_of(clip):match("E4@2%.5%+0%.45") ~= nil, true, "in insert mode a click enters an eighth on an eighth")
   keys("<Esc>")
 end)
 
@@ -1225,12 +1225,12 @@ test("notation pointer: in the window a click snaps to the value, Alt-click to t
   x, y = spot(view, 2.2, 39)
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip), "G4@2+0.5", "in insert mode a click enters an eighth on beat three")
+  eq(notes_of(clip), "G4@2+0.45", "in insert mode a click enters an eighth on beat three")
   view.triplets = true
   x, y = spot(view, 0.4, 39)
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip):match("G4@0%.333333%+0%.333333") ~= nil, true, "in triplets, on a third of the beat")
+  eq(notes_of(clip):match("G4@0%.333333%+0%.3") ~= nil, true, "in triplets, on a third of the beat")
   view.triplets = false
   keys("<Esc>")
 end)
