@@ -150,6 +150,8 @@ function K.startup()
   end
   daw.address = require("daw.address")
   daw.diagnostic = require("daw.diagnostic")
+  daw.annotation = require("daw.annotation")
+  require("daw.locators")
   daw.lsp = require("daw.lsp")
   require("daw.defaults")
   daw.fx.setup()

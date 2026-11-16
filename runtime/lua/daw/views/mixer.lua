@@ -33,6 +33,8 @@ local function strip(buf, x, t, index, selected, height, sw)
   -- The name on a plate in the track's colour, lit for the track the cursor is on.
   buf:fill(x, 0, w, 1, " ", selected and hue.title_cur or hue.plate)
   buf:text(x + 1, 0, util.fit(t.name, w - 1))
+  -- What modules mark on the strip (`daw.ui.layer("mixer", "strip", ...)`).
+  daw.ui.paint("mixer", "strip", { buf = buf, x = x, y = 0, width = w, height = height, track = t.id })
   local y = 1
   -- The first devices, with room.
   if height >= 20 then
@@ -78,6 +80,8 @@ local function strip(buf, x, t, index, selected, height, sw)
   local db = 20 * math.log10(math.max(hold, 1e-6))
   local peak = db < -60 and "-inf" or string.format("%.1f", db)
   buf:text(x + w - #peak, y, peak, db > -0.1 and "MeterHigh" or "TrackIndex")
+  -- What modules label the strip with, left of the peak (`daw.ui.layer("mixer", "strip_foot", ...)`).
+  daw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - #peak - 2, track = t.id })
   local vol = draw.db_text(t.volume)
   buf:text(x + w - #vol, y + 1, vol, selected and "Bright" or "TrackInfo")
   draw.pan(buf, x + 1, y + 2, math.min(7, w - 1), t.pan or 0)

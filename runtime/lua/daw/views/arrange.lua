@@ -222,6 +222,9 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   local room = math.max(1, before - name_at)
   if api.str_width(name) > room then name = util.fit(name, room) end
   buf:text(name_at, y, name, selected and "TrackNameSel" or "TrackName")
+  -- What modules mark on the header (`daw.ui.layer("arrange", "header", ...)`):
+  -- `x` is the free column before the name.
+  daw.ui.paint("arrange", "header", { buf = buf, x = name_at - 1, y = y, width = w, height = height, track = t.id })
 
   if height >= 2 then
     local left, r = api.track_meter(t.id)
@@ -354,7 +357,7 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
-      if daw.diagnostic then daw.diagnostic.mark_clip(box, clip.id, cw) end
+      daw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
     end
   end
   -- The volume curve runs over the empty lane, never over clips.

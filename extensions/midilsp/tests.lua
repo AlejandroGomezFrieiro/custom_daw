@@ -223,7 +223,7 @@ test("midilsp: in the terminal, a parallel fifth is marked, gone to, explained a
   daw.ui.close()
   -- :diagnostics lists it.
   daw.cmd("diagnostics")
-  eq(daw.pick.state().matches[1]:find("Parallel fifths", 1, true) ~= nil, true, ":diagnostics lists it")
+  eq(daw.pick.state().matches[2]:find("Parallel fifths", 1, true) ~= nil, true, ":diagnostics lists it")
   while daw.ui.float do daw.ui.close() end
   -- :lsp info shows both roles running.
   daw.cmd("lsp", { "info" })

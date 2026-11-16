@@ -1,0 +1,84 @@
+-- Annotations, as LSP's inlay hints: a short label a server (or any plugin)
+-- puts on something with an address: a loudness readout on a mixer strip,
+-- a word on a device, a mark on a stretch of time. Kept by namespace and
+-- document as diagnostics are, and drawn by the views that can place them.
+--
+--   daw.annotation.set("mixcheck", "daw://project#mix", {
+--     { location = { uri = "daw://track/3" }, label = "-9.1 LUFS", kind = "loudness" },
+--   })
+local api = daw.api
+local A = daw.address
+
+local M = {}
+
+local store = {}  -- store[namespace][document] = list
+
+--- Publish what `namespace` labels in a document, replacing what it put there before.
+function M.set(namespace, doc, list)
+  local out = {}
+  for _, a in ipairs(list or {}) do
+    local loc = type(a.location) == "string" and { uri = a.location } or a.location
+    if loc and a.label then out[#out + 1] = { namespace = namespace, location = loc, label = tostring(a.label), kind = a.kind, tooltip = a.tooltip } end
+  end
+  store[namespace] = store[namespace] or {}
+  store[namespace][doc] = #out > 0 and out or nil
+  daw.emit("annotation.changed", { namespace = namespace, document = doc })
+  api.ui_redraw()
+end
+
+--- Forget a namespace's labels, of one document or all; with no namespace, everyone's.
+function M.reset(namespace, doc)
+  for ns, docs in pairs(store) do
+    if not namespace or ns == namespace then
+      if doc == nil then store[ns] = nil else docs[doc] = nil end
+    end
+  end
+  api.ui_redraw()
+end
+
+--- The labels on an address exactly (`exact`), or on it and what it holds.
+function M.get(uri, exact)
+  local out = {}
+  for _, docs in pairs(store) do
+    for _, list in pairs(docs) do
+      for _, a in ipairs(list) do
+        if not uri or a.location.uri == uri or (not exact and A.within(a.location.uri, uri)) then out[#out + 1] = a end
+      end
+    end
+  end
+  return out
+end
+
+-- Where they are drawn: a track's labels at the foot of its mixer strip; a
+-- device's after its name in the device panel; stretches of time on the
+-- arrange view's ruler.
+daw.ui.layer("mixer", "strip_foot", "annotations", 40, function(c)
+  if not next(store) then return end
+  local list = M.get(A.track(c.track), true)
+  if #list > 0 and c.width > 1 then
+    local text = list[1].label
+    if api.str_width(text) > c.width then text = daw.util.fit(text, c.width) end
+    c.buf:text(c.x, c.y, text, "Annotation")
+  end
+end)
+daw.ui.layer("devices", "device", "annotations", 40, function(c)
+  if not next(store) then return end
+  local list = M.get(A.device(c.device), true)
+  if #list > 0 and c.width > #list[1].label + 2 then
+    c.buf:text(c.x + c.width - api.str_width(list[1].label), c.y, list[1].label, "Annotation")
+  end
+end)
+daw.ui.views.arrange.layers.annotations = function(_, c)
+  if not next(store) then return end
+  for _, a in ipairs(M.get()) do
+    local t = a.location.selector and a.location.selector.time
+    if t then
+      local x = c.x(t[1])
+      if x >= 0 and x < c.ruler.width then c.ruler:text(x, 0, daw.util.fit(a.label, math.max(1, c.ruler.width - x)):gsub("%s+$", ""), "Annotation") end
+    end
+  end
+end
+
+daw.on("project.loaded", function() if next(store) then M.reset() end end)
+
+return M

@@ -86,6 +86,9 @@ function view:render(buf, ctx)
       local preset = type(d.meta) == "table" and d.meta.preset
       local room = w - 16 - api.str_width(name) - 6
       if preset and room > 3 then inner:text(4 + api.str_width(name), y, util.fit(preset, room):gsub("%s+$", ""), "Param") end
+      -- What modules mark on the device (`daw.ui.layer("devices", "device", ...)`):
+      -- from `x`, `width` columns before its chips.
+      daw.ui.paint("devices", "device", { buf = inner, x = 4 + api.str_width(name), y = y, width = math.max(0, room), device = d.id })
       -- A device that is not running says so, and what brings it back.
       local status = d.status
       local mark = status == "loading" and { "loading", "Warn" }
@@ -128,6 +131,7 @@ function view:render(buf, ctx)
     else
       local p = row.param
       inner:text(2, y, util.fit(p.name, name_w), chosen and "Bright" or row.host and "DeviceFormat" or "Param")
+      daw.ui.paint("devices", "param", { buf = inner, x = 1, y = y, width = w, device = d.id, param = p.key })
       local range = p.max - p.min
       daw.draw.slider(inner, bar_at, y, bar, range ~= 0 and daw.params.fraction(p, row.value) or 0,
         chosen and "ParamBar" or "ParamBarDim", "ParamBarOff")
