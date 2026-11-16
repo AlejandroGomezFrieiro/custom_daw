@@ -40,12 +40,22 @@ M.NAMES = { [4] = "whole", [2] = "half", [1] = "quarter", [0.5] = "eighth", [0.2
 
 --- The written value of a duration: its base (4 a whole note, 1 a quarter)
 --- and how many dots, or nil when one value cannot show it.
+local values = { {}, {} }   -- what value_of found, by the dots allowed and the duration
+local value_count = 0
 function M.value_of(d, max_dots)
-  for _, base in ipairs(M.BASES) do
-    if near(d, base) then return base, 0 end
-    if near(d, base * 1.5) then return base, 1 end
-    if (max_dots or 1) >= 2 and near(d, base * 1.75) then return base, 2 end
+  local memo = values[(max_dots or 1) >= 2 and 2 or 1]
+  local hit = memo[d]
+  if hit then return hit[1], hit[2] end
+  local base, dots
+  for _, b in ipairs(M.BASES) do
+    if near(d, b) then base, dots = b, 0 break end
+    if near(d, b * 1.5) then base, dots = b, 1 break end
+    if (max_dots or 1) >= 2 and near(d, b * 1.75) then base, dots = b, 2 break end
   end
+  value_count = value_count + 1
+  if value_count > 20000 then values, value_count = { {}, {} }, 0 end
+  memo[d] = { base, dots }
+  return base, dots
 end
 
 --- How many flags or beams a value has.
@@ -179,9 +189,17 @@ end
 --- `octave`, and `step`, the diatonic step counted from C-1 (C4 is 35).
 --- Notes of the key take its letters; the others lean the way the key
 --- does, as written music usually has them (C#, Eb, F#, G#, Bb in C major).
+local spellings = {}   -- by key and pitch class: { letter, alter }
 function M.spell(pitch, fifths)
   fifths = fifths or 0
   local pc = pitch % 12
+  local by_key = spellings[fifths]
+  if not by_key then
+    by_key = {}
+    spellings[fifths] = by_key
+  end
+  local hit = by_key[pc]
+  if hit then return M.spelled(hit[1], hit[2], pitch) end
   local best, best_d, best_f
   for letter = 0, 6 do
     for alter = -2, 2 do
@@ -194,6 +212,7 @@ function M.spell(pitch, fifths)
       end
     end
   end
+  by_key[pc] = { best.letter, best.alter }
   return M.spelled(best.letter, best.alter, pitch)
 end
 

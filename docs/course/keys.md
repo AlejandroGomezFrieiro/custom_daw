@@ -234,3 +234,12 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `j` `k` `<CR>` `A` `u` | on its page: choose a check, run it, run all, run those that need nobody |
 | `y` `n` `s` ... | answer the question it asks (the keys are listed under it); `s` skips |
 | `<Esc>` `q` | stop the run, close the page |
+
+## Notation
+
+The notation extension (`,n` on a MIDI clip) has its own keys, listed in
+[its README](../../extensions/notation/README.md) and by `?` in the view.
+Normal mode takes the piano roll's grammar; insert mode enters notes by
+letter, a capital adds to the chord, Alt-2 to Alt-8 add an interval above,
+`~` ties, `t` enters triplets, `R` repeats the chord, and the numbers choose
+the value (5 a quarter). zg shows the engraved page as one long system.
