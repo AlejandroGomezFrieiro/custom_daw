@@ -41,4 +41,4 @@ The tutor opens a practice project made for this lesson and checks each step as 
 
 pattern, musicops, sections, undotree, mixdiag, rpp and utau: each one thing. Their READMEs have the rest.
 
-Previous: [Making it your own: options, keys, commands](15-your-own.md) · [All lessons](README.md)
+Previous: [Making it your own: options, keys, commands](15-your-own.md) · [All lessons](README.md) · Next: [Ranges, :s and :g: editing by line](17-ranges.md)

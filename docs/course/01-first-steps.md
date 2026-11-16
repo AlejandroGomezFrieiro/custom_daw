@@ -14,7 +14,7 @@ Nothing here needs the mouse. A key either does something at once (`<Space>` pla
 
 ## If you know Vim
 
-`:q`, `ZZ` and `ZQ` mean what they mean in Vim, and `:w` saves. `:` takes commands by name (`:tempo 120`), not Ex commands.
+`:q`, `ZZ` and `ZQ` mean what they mean in Vim, and `:w` saves. `:` takes commands by name (`:tempo 120`), and Ex commands over bars and tracks (`:5,8d`, `:%s/c4/d4/g`): lesson 17.
 
 ## Steps
 
