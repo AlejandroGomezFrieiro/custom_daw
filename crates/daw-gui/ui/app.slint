@@ -50,18 +50,11 @@ export struct TrackData {
     armed: bool,
     input: string,      // "1", "1/2", or "" for none
     input-label: string, // what it takes in, in words: "UR22mkII · 1/2", or ""
-    input-level: float, // what arrives there, 0..1, armed or not
     monitor: bool,      // the input is heard without arming
     master: bool,
-    level-l: float,     // meters, 0..1
-    level-r: float,
-    hold-l: float,      // the peaks held a moment, 0..1
-    hold-r: float,
-    clipped: bool,      // the level reached 0 dB since the light was cleared
     number: int,        // its place in the list, from 1
     output: string,     // the track it plays into
     inserts: [string],  // the names of its devices
-    peak-text: string,  // the peak held, in dB
     lane-name: string,      // the automation lane it shows
     lane-choices: [string], // and the ones it could
     depth: int,         // how many groups it is inside
@@ -72,6 +65,18 @@ export struct TrackData {
     size: float,        // of the zoom's height (`row-height`)
     clip-size: float,   // how much of that its clips take: the rest is lanes shown as rows
     automation: string, // "read", "touch", "latch", "write" or "off"
+}
+
+// A track's meters, apart from the rest of it: they change many times a
+// second, and a change to a track's row redraws all that shows the track.
+export struct MeterData {
+    input-level: float, // what arrives at its input, 0..1, armed or not
+    level-l: float,     // meters, 0..1
+    level-r: float,
+    hold-l: float,      // the peaks held a moment, 0..1
+    hold-r: float,
+    clipped: bool,      // the level reached 0 dB since the light was cleared
+    peak-text: string,  // the peak held, in dB
 }
 
 export struct ClipData {
@@ -199,6 +204,7 @@ export struct DeviceData {
 // switches, and its name on its colour.
 component MixerStrip inherits Rectangle {
     in property <TrackData> track;
+    in property <MeterData> meter;
     in property <bool> chosen;
     callback select();
     callback set-volume(float);
@@ -328,7 +334,7 @@ component MixerStrip inherits Rectangle {
                     y: 2px;
                     width: 14px;
                     height: 4px;
-                    on: root.track.clipped;
+                    on: root.meter.clipped;
                     clear => {
                         root.clear-clip();
                     }
@@ -339,8 +345,8 @@ component MixerStrip inherits Rectangle {
                     width: 6px;
                     height: parent.height - 10px;
                     upright: true;
-                    level: root.track.level-l;
-                    hold: root.track.hold-l;
+                    level: root.meter.level-l;
+                    hold: root.meter.hold-l;
                 }
                 Meter {
                     x: 10px;
@@ -348,8 +354,8 @@ component MixerStrip inherits Rectangle {
                     width: 6px;
                     height: parent.height - 10px;
                     upright: true;
-                    level: root.track.level-r;
-                    hold: root.track.hold-r;
+                    level: root.meter.level-r;
+                    hold: root.meter.hold-r;
                 }
             }
         }
@@ -375,11 +381,11 @@ component MixerStrip inherits Rectangle {
             Rectangle {
                 horizontal-stretch: 1;
                 border-radius: 2px;
-                background: root.track.clipped ? Theme.meter-clip.with-alpha(0.25) : Theme.well;
+                background: root.meter.clipped ? Theme.meter-clip.with-alpha(0.25) : Theme.well;
                 Text {
                     width: parent.width;
-                    text: root.track.peak-text;
-                    color: root.track.clipped ? Theme.meter-clip : Theme.text-2;
+                    text: root.meter.peak-text;
+                    color: root.meter.clipped ? Theme.meter-clip : Theme.text-2;
                     font-family: Theme.mono;
                     font-size: Theme.t-small;
                     font-weight: 500;
@@ -468,6 +474,8 @@ export component App inherits Window {
     default-font-size: 12px;
 
     in property <[TrackData]> tracks;
+    // Each track's meters, in the order of `tracks`.
+    in property <[MeterData]> meters;
     in property <[ClipData]> clips;
     in property <[DeviceData]> devices;
     // Device kinds matching what is typed in the search box.
@@ -2221,8 +2229,8 @@ export component App inherits Window {
                                         x: 0;
                                         y: parent.height - 2px;
                                         height: 2px;
-                                        width: parent.width * min(1, track.input-level);
-                                        background: track.input-level > 0.89 ? Theme.meter-clip : Theme.meter-low;
+                                        width: parent.width * min(1, root.meters[index].input-level);
+                                        background: root.meters[index].input-level > 0.89 ? Theme.meter-clip : Theme.meter-low;
                                     }
                                     in-menu := ContextMenuArea {
                                         Menu {
@@ -2503,7 +2511,7 @@ export component App inherits Window {
                                 y: 2px;
                                 width: 14px;
                                 height: 4px;
-                                on: track.clipped;
+                                on: root.meters[index].clipped;
                                 clear => {
                                     root.clear-clip(track.id);
                                 }
@@ -2514,8 +2522,8 @@ export component App inherits Window {
                                 width: 6px;
                                 height: parent.height - 10px;
                                 upright: true;
-                                level: track.level-l;
-                                hold: track.hold-l;
+                                level: root.meters[index].level-l;
+                                hold: root.meters[index].hold-l;
                             }
                             Meter {
                                 x: 11px;
@@ -2523,8 +2531,8 @@ export component App inherits Window {
                                 width: 6px;
                                 height: parent.height - 10px;
                                 upright: true;
-                                level: track.level-r;
-                                hold: track.hold-r;
+                                level: root.meters[index].level-r;
+                                hold: root.meters[index].hold-r;
                             }
                         }
                         // The bottom edge: drag to make the track taller or shorter,
@@ -4526,6 +4534,7 @@ export component App inherits Window {
                         height: parent.height;
                         visible: !track.master;
                         track: track;
+                        meter: root.meters[index];
                         chosen: track.id == root.selected;
                         select => {
                             root.select-track(track.id, root.cursor);
