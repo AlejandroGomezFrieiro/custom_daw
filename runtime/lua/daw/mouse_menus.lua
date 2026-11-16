@@ -24,6 +24,19 @@ local function append(list, more)
   return list
 end
 
+--- What the diagnostics and language servers have for a location
+--- (daw/address.lua): its fixes and the servers' actions, and what they say
+--- about it. Empty when nothing is said of it and no server is running.
+function M.lens(location)
+  if not (daw.lsp and daw.diagnostic) then return {} end
+  local said = #daw.diagnostic.get(location.uri) > 0
+  if not said and #daw.lsp.clients() == 0 then return {} end
+  return {
+    { label = "Fixes and actions…", run = function() daw.lsp.code_actions(location) end },
+    { label = "What the language servers say about it", run = function() daw.lsp.show_hover(location) end },
+  }
+end
+
 --- A clip, clicked at `beat`.
 function M.clip(id, beat)
   local c = api.clip_get(id)
@@ -123,6 +136,11 @@ function M.track(id)
     { label = "New track below", run = run("track.add") },
   }
   append(items, added("track", id, 0, false))
+  local lens = M.lens({ uri = daw.address.track(id) })
+  if #lens > 0 then
+    items[#items + 1] = "-"
+    append(items, lens)
+  end
   items[#items + 1] = "-"
   items[#items + 1] = { label = "Delete", run = run("track.remove") }
   return items
@@ -228,12 +246,15 @@ function M.roll(clip)
 end
 
 --- A note with something to fix, by its place: the fixes the diagnostics
---- offer, and taking the note away.
+--- offer (each a workspace edit, one undo step), what the servers say and
+--- can do about the note, and taking the note away.
 function M.note(clip, place)
   local items = {}
   for n, action in ipairs(daw.diagnostic and daw.diagnostic.actions(clip, place) or {}) do
     items[#items + 1] = { label = action.title, run = function() act().note_action(clip, place, n) end }
   end
+  local note = api.clip_notes(clip)[place]
+  if note and note.id and daw.address then append(items, M.lens({ uri = daw.address.note(clip, note.id) })) end
   if #items > 0 then items[#items + 1] = "-" end
   items[#items + 1] = { label = "Remove the note", run = function() act().remove_note(clip, place) end }
   return items

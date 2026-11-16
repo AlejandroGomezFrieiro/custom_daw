@@ -1,12 +1,39 @@
 # What is missing
 
-- Language servers: only clips are sent (MIDI LSP's `track`, `project` and
-  `render` documents and its one-shot servers are not); a server's own code
-  actions (`codeActionProvider`) and `workspace/executeCommand` have no
-  menu, only the fixes that come with diagnostics; the related notes of
-  other tracks a diagnostic names are kept but not drawn; the window shows
-  what servers say about a note through the float, not a tooltip of its own,
-  and marks no clips with diagnostics in its arrange view (the terminal's does).
+- Harmony: chords are read per half beat, so a chord shorter than about a
+  beat is taken for passing notes; the chords and the key are not shown in
+  the arrange view's ruler (only over the piano roll); slash chords whose
+  bass is not a chord tone are named by the full pitch set (C G B D is
+  Cmaj9, not G/C). The reading is redone over the whole song after each
+  edit, which is quick for songs of some thousands of notes but not
+  incremental.
+- Snippets are offered in the piano roll only (a snippet may name other
+  views, but nothing opens the picker there yet). Taken as a suggestion
+  (`Ctrl-Space`) a snippet has no choices to step through, and the picker's
+  preview is drawn by the snippet's own layer rather than through
+  `daw.complete.show`. A melody of eighth notes alone may be read as
+  chords (a beat with two pitches in it is evidence of one).
+- Windows, buffers and tabs (phase 1 is built): a built-in view is still
+  one buffer shown in one window at a time, as its state (cursor, scroll,
+  the clip open) is one table; phase 2 splits each view's state into the
+  buffer's and the window's, so that two windows can show two clips in
+  piano rolls, or one clip twice. Floating views (help, pickers, pages)
+  are not yet windows of a tab, the window title bar (Neovim's winbar) is
+  drawn by each view itself, layouts are not saved with the project, and
+  the graphical frontend keeps its own layout of panels. `:new` still
+  starts a new project; `:vnew` and `Ctrl-w n` open an empty window.
+  A view's locator (`daw.ui.locator`, where in the project the view's
+  cursor is) belongs to the view, not to each of its windows; phase 2
+  makes it per window.
+
+- Language servers: documents are sent whole, never as incremental
+  changes; the related notes of other tracks a diagnostic names are kept but
+  not drawn; annotations are drawn on mixer strips, devices and the ruler,
+  not yet on clips or notes; a fix that renders again is not an undo step
+  (a render is not an edit of the project); the window shows the marks on
+  notes only (tracks, devices, time and renders are marked in the terminal,
+  and the window shows them through `:diagnostics` and the float); MIDI LSP's
+  settings check names REAPER's render dialog in its messages.
 
 - Pictures in the terminal: only by the kitty graphics protocol, as direct
   placements (not Sixel, not iTerm's, not Unicode placeholders), so not
@@ -60,8 +87,7 @@
   client's disk (there is no MIDI file import at all, and projects open
   and save on the instance's disk); options such as the zoom, MIDI step
   input, the automation lanes and tempo lane shown are shared by every
-  seat; a view docked by an extension after a seat opened shows only in
-  the seat that docked it; a window's seat does not survive `:reload`.
+  seat; a window's seat does not survive `:reload`.
 - Per-track loudness and spectrum in the painted mix report: the measurement
   gives each track only its peak, so the track meters are peaks, not LUFS
   or RMS. What an extension draws on the terminal's arrange view shows in

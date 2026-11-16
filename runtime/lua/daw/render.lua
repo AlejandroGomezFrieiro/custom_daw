@@ -88,7 +88,8 @@ end
 ---   background  true to return at once and render on a thread of its own:
 ---               `render.progress` ({ path, fraction, seconds }) follows now
 ---               and then, and `render.done` (what is returned below),
----               `render.failed` ({ path, error }) or `render.cancelled` at the end
+---               `render.failed` ({ path, error }) or `render.cancelled` at the end;
+---               a render in the foreground emits `render.finished` with what it returns
 --- Returns { path, frames, seconds, sample_rate, peak, gain, loudness, format,
 --- bits (nil for a lossy format), channels, ... } when done. `render.before` is emitted first, and its
 --- handlers run before rendering starts, so an extension that makes audio of
@@ -111,6 +112,8 @@ function M.render(path, opts)
   local info = api.render(path, opts)
   -- What the render had to leave out (a plugin that stopped answering).
   for _, why in ipairs(info.left_out or {}) do daw.notify(why, "warn") end
+  -- As `render.done` says of a render in the background.
+  daw.emit("render.finished", daw.util.merge(info, { path = info.path or path }))
   return info
 end
 

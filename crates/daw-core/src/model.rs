@@ -754,10 +754,42 @@ pub struct Note {
     /// note through edits, unlike data kept beside the clip's note list.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub meta: Map<String, Value>,
+    /// What names the note within its clip for as long as it lives, however
+    /// it is moved or changed (`daw://clip/7/note/41`). 0 until the session
+    /// gives it one, which it does to every note that has none, or shares
+    /// one with a note before it, before the edit is played or kept.
+    #[serde(default, skip_serializing_if = "unnamed")]
+    pub id: u64,
 }
 
 fn default_velocity() -> u8 {
     100
+}
+
+fn unnamed(id: &u64) -> bool {
+    *id == 0
+}
+
+/// Give every note of a list that has no id, or the id of a note before it,
+/// the next free one. Returns whether any changed. The same notes are always
+/// given the same ids, so a state written without them (an older file, a
+/// step of the undo history) comes back with the ids it had.
+pub fn name_notes(notes: &mut [Note]) -> bool {
+    let mut seen = std::collections::HashSet::with_capacity(notes.len());
+    let unnamed = notes.iter().any(|n| n.id == 0 || !seen.insert(n.id));
+    if !unnamed {
+        return false;
+    }
+    let mut next = notes.iter().map(|n| n.id).max().unwrap_or(0) + 1;
+    seen.clear();
+    for note in notes.iter_mut() {
+        if note.id == 0 || !seen.insert(note.id) {
+            note.id = next;
+            seen.insert(next);
+            next += 1;
+        }
+    }
+    true
 }
 
 /// Automation of one of a track's settings, or of a parameter of one of its devices.
@@ -794,6 +826,42 @@ impl Target {
 }
 
 impl Project {
+    /// Give the notes that have none an id (see `Note::id`), looking only at
+    /// the clips that are not the very same as in `before` (the state the
+    /// last naming saw), and touching only those that need it.
+    pub fn name_notes(&mut self, before: &Project) -> bool {
+        let mut named = false;
+        let old_tracks: std::collections::HashMap<Id, &Arc<Track>> = before.all_tracks().map(|t| (t.id, t)).collect();
+        let tracks = self.tracks.iter_mut().chain(std::iter::once(&mut self.master));
+        for track in tracks {
+            let old = old_tracks.get(&track.id);
+            if old.is_some_and(|o| Arc::ptr_eq(o, track)) {
+                continue;
+            }
+            let old_clips: std::collections::HashMap<Id, &Arc<Clip>> =
+                old.map(|o| o.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
+            let needs = |c: &Arc<Clip>| match &c.content {
+                _ if old_clips.get(&c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
+                ClipContent::Midi { notes, .. } => {
+                    let mut seen = std::collections::HashSet::with_capacity(notes.len());
+                    notes.iter().any(|n| n.id == 0 || !seen.insert(n.id))
+                }
+                _ => false,
+            };
+            if !track.clips.iter().any(needs) {
+                continue;
+            }
+            for clip in Arc::make_mut(track).clips.iter_mut() {
+                if needs(clip)
+                    && let ClipContent::Midi { notes, .. } = &mut Arc::make_mut(clip).content
+                {
+                    named |= name_notes(notes);
+                }
+            }
+        }
+        named
+    }
+
     /// Every track including the master track, which comes last.
     pub fn all_tracks(&self) -> impl Iterator<Item = &Arc<Track>> {
         self.tracks.iter().chain(std::iter::once(&self.master))
@@ -1375,5 +1443,40 @@ mod tempo_tests {
         assert_eq!(m.signature(17.0), (6, 8));
         let back = serde_json::to_value(&p).unwrap();
         assert_eq!(back["tempo_changes"].as_array().unwrap().len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod note_ids {
+    use super::*;
+
+    fn note(pitch: u8, id: u64) -> Note {
+        Note { start: 0.0, length: 1.0, pitch, velocity: 100, meta: Map::new(), id }
+    }
+
+    #[test]
+    fn notes_without_an_id_get_the_next_free_ones_and_the_same_ones_again() {
+        let mut notes = vec![note(60, 0), note(62, 0), note(64, 0)];
+        assert!(name_notes(&mut notes));
+        assert_eq!(notes.iter().map(|n| n.id).collect::<Vec<_>>(), [1, 2, 3]);
+        assert!(!name_notes(&mut notes), "named notes are left alone");
+        let mut again = vec![note(60, 0), note(62, 0), note(64, 0)];
+        name_notes(&mut again);
+        assert_eq!(again, notes, "the same notes, the same ids");
+    }
+
+    #[test]
+    fn a_copy_next_to_its_original_gets_an_id_of_its_own() {
+        let mut notes = vec![note(60, 7), note(60, 7), note(62, 3), note(65, 0)];
+        assert!(name_notes(&mut notes));
+        assert_eq!(notes.iter().map(|n| n.id).collect::<Vec<_>>(), [7, 8, 3, 9]);
+    }
+
+    #[test]
+    fn a_note_without_an_id_is_written_without_one() {
+        let text = serde_json::to_string(&note(60, 0)).unwrap();
+        assert!(!text.contains("\"id\""), "{text}");
+        let back: Note = serde_json::from_str(&serde_json::to_string(&note(60, 4)).unwrap()).unwrap();
+        assert_eq!(back.id, 4);
     }
 }

@@ -102,7 +102,7 @@ test("lsp: a clip becomes MIDI LSP's document, with what sounds with it", functi
   eq(doc.ppq, 960, "ticks to the beat")
   eq(#doc.notes, 2, "its notes")
   eq(string.format("%d %d %d %d %d", doc.notes[2].id, doc.notes[2].pitch, doc.notes[2].start, doc.notes[2]["end"], doc.notes[2].vel),
-    "1 96 960 1920 100", "the second note: place less one, ticks from the clip's start")
+    clip:notes()[2].id .. " 96 960 1920 100", "the second note: its own id, ticks from the clip's start")
   eq(doc.track.name, "Flute", "the track")
   eq(doc.key.root .. " " .. doc.key.scale, "2 harmonic minor", "the project's key")
   eq(doc.tempi[1].bpm, 100, "the tempo")

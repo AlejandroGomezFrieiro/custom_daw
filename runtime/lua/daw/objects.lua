@@ -541,6 +541,8 @@ function M.notes(notes)
       length = note.length or note[3] or 1,
       velocity = note.velocity or note[4] or daw.opt.velocity,
       meta = note.meta,
+      -- A note given back keeps its name (`daw.address`); a new one gets one.
+      id = note.id,
     }
   end
   return out

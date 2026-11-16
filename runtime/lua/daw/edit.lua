@@ -487,7 +487,8 @@ function R.paste(target, value, pitch, beat, into)
   for _, n in ipairs(value.notes) do
     local part = not single and by_clip[n.clip] or into
     local note = util.merge(n, {})
-    note.clip = nil
+    -- What is pasted is a note of its own, whatever it was copied from.
+    note.clip, note.id = nil, nil
     if value.shape ~= "line" then note.start = beat + n.start end
     note.start = note.start - part.offset
     if value.shape ~= "char" then note.pitch = n.pitch + pitch - value.top end
