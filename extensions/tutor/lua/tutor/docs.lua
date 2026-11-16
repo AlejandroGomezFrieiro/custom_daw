@@ -84,7 +84,8 @@ Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5
 to 8 are the grammar that the rest of paw is made of. 9 to 13 are the
 studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are
 about finding your own way: finding any key, making paw yours, and the
-extensions.]]))
+extensions. 17 edits by line, as Vim's Ex does: ranges of bars and tracks,
+`:s` and `:g`.]]))
   return table.concat(out, "\n") .. "\n"
 end
 
