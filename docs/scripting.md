@@ -162,8 +162,18 @@ daw.ui.view("clock", {
 daw.ui.dock("clock", { side = "top", size = 1 })
 daw.ui.toggle("mixer")   daw.ui.focus("arrange")   daw.ui.open("help", { title = "Keys" })
 daw.ui.input({ prompt = "Name: " }, function(text) end)
+daw.ui.menu({ { label = "Rename", run = function() end }, "-", { label = "Delete", keys = "x", run = function() end } }, { x = 10, y = 4 })
 daw.notify("message", "warn")
 ```
+
+A view's `on_mouse` gets the terminal's pointer in the view's own cells:
+`kind` (`down`, `up`, `drag`, `move`, `scroll_up`, `scroll_down`,
+`scroll_left`, `scroll_right`), `button`, `x`, `y`, `mods` (any of `C`, `A`,
+`S`), `double` on the second press of a double click, and where the view is
+(`view_x`, `view_y`, `w`, `h`). `daw.mouse.grab(event, { drag = fn, up = fn })`
+on a press keeps the drags and the release for the view wherever the
+pointer goes, with `dx`, `dy` from the press; `daw.mouse.hint(text)` says
+on the status line what is under the pointer. See `runtime/lua/daw/mouse.lua`.
 
 **Completion.** `daw.complete` shows suggestions as ghost notes in the piano
 roll, from sources that extensions register; see "Writing a source" in

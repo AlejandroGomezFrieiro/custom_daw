@@ -19,6 +19,33 @@ pub struct Terminal {
     out: BufWriter<Stdout>,
     /// What is on screen now, to send only the cells that changed.
     shown: Option<Grid>,
+    /// Whether the terminal reports the pointer, or keeps it for its own
+    /// selection (`daw.opt.mouse` off).
+    mouse: bool,
+}
+
+/// What [`restore`] sends, as plain bytes for a signal handler to write:
+/// the pointer and pasting reported no more (crossterm's
+/// `DisableMouseCapture` turns off 1006, 1015, 1003, 1002 and 1000), the
+/// normal screen back, the cursor shown.
+const RESTORE: &[u8] =
+    b"\x1b[?2004l\x1b[?1006l\x1b[?1015l\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?1049l\x1b[?25h";
+
+/// The terminal's settings before raw mode, for a signal handler to put back.
+static COOKED: std::sync::OnceLock<libc::termios> = std::sync::OnceLock::new();
+
+/// Killed (`kill`, a multiplexer closing the pane), the program would leave
+/// the terminal reporting every move of the pointer to the shell. A handler
+/// gives it back, then lets the signal end the program as it would have.
+extern "C" fn on_signal(signal: libc::c_int) {
+    unsafe {
+        libc::write(1, RESTORE.as_ptr().cast(), RESTORE.len());
+        if let Some(cooked) = COOKED.get() {
+            libc::tcsetattr(0, libc::TCSANOW, cooked);
+        }
+        libc::signal(signal, libc::SIG_DFL);
+        libc::raise(signal);
+    }
 }
 
 impl Terminal {
@@ -26,6 +53,15 @@ impl Terminal {
     /// says whether anyone is still listening: the kernel in this program,
     /// or a connection to one somewhere else.
     pub fn start(send: impl Fn(InputEvent) -> bool + Send + 'static) -> Result<(Self, u16, u16)> {
+        unsafe {
+            let mut cooked: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(0, &mut cooked) == 0 {
+                let _ = COOKED.set(cooked);
+            }
+            for signal in [libc::SIGTERM, libc::SIGHUP] {
+                libc::signal(signal, on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t);
+            }
+        }
         terminal::enable_raw_mode()?;
         execute!(
             stdout(),
@@ -57,6 +93,7 @@ impl Terminal {
             Self {
                 out: BufWriter::with_capacity(1 << 16, stdout()),
                 shown: None,
+                mouse: true,
             },
             width,
             height,
@@ -99,6 +136,14 @@ impl Frontend for Terminal {
         if !same_size {
             self.shown = None;
             queue!(self.out, terminal::Clear(terminal::ClearType::All))?;
+        }
+        if grid.mouse_off == self.mouse {
+            self.mouse = !grid.mouse_off;
+            if self.mouse {
+                queue!(self.out, event::EnableMouseCapture)?;
+            } else {
+                queue!(self.out, event::DisableMouseCapture)?;
+            }
         }
         queue!(self.out, terminal::BeginSynchronizedUpdate, cursor::Hide)?;
 

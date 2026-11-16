@@ -144,38 +144,6 @@ function view:render(buf, ctx)
   self.geometry = { columns = columns, cw = cw, sx = sx, shown = shown, h = h }
 end
 
-function view:on_mouse(event)
-  local geo = self.geometry
-  if event.kind ~= "down" or not geo then return end
-  -- The body starts under the title bar.
-  local x, y = event.x, event.y - 1
-  local row = self.top + y - 1
-  if x >= geo.sx then
-    if y == geo.h - 1 then return launcher.stop() end
-    if y >= 1 and y <= geo.shown then
-      launcher.row = row
-      return launcher.scene(row)
-    end
-    return
-  end
-  for _, col in ipairs(geo.columns) do
-    if x >= col.x - 1 and x < col.x + geo.cw - 1 then
-      daw.cursor.set_track(col.id)
-      if y == geo.h - 1 then return launcher.stop(col.id) end
-      if y >= 1 and y <= geo.shown then
-        -- A click chooses a slot; a click on the chosen one presses it.
-        if launcher.row == row and event.button ~= "right" and self.chosen == col.id .. ":" .. row then
-          launcher.press(col.id, row)
-        end
-        launcher.row = row
-        self.chosen = col.id .. ":" .. row
-      end
-      api.ui_redraw()
-      return
-    end
-  end
-end
-
 daw.ui.view("session", view)
 daw.ui.dock("session", { side = "bottom", hidden = true })
 return view

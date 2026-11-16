@@ -235,7 +235,7 @@ function view:render(buf, ctx)
   if self.beat < self.scroll then self.scroll = math.floor(self.beat) end
   if self.beat >= self.scroll + span - grid then self.scroll = math.ceil(self.beat - span + 1) end
   self.scroll = math.max(math.min(0, math.floor(lo)), self.scroll)
-  self.geometry = { rows = rows, zoom = zoom }
+  self.geometry = { rows = rows, zoom = zoom, keys = KEYS, head = HEAD, vel = vel, span = span }
 
   -- Title: the active clip in its track's colour, the track and how many
   -- clips are edited, where the cursor is and the chord sounding there; on
@@ -624,25 +624,6 @@ function view:change(fn)
   fn(note)
   part.clip:set_note(place, { start = note.start, length = note.length, pitch = note.pitch, velocity = note.velocity, meta = note.meta or {} })
   return true
-end
-
-function view:on_mouse(event)
-  local g = self.geometry
-  if not g or not self:clip() then return end
-  if event.kind == "scroll_up" then self.top = math.min(127, self.top + 2) end
-  if event.kind == "scroll_down" then self.top = math.max(g.rows - 1, self.top - 2) end
-  local row = event.y - HEAD
-  if event.kind == "down" and row >= 0 and row < g.rows and event.x >= KEYS then
-    local grid = daw.opt.note_grid
-    self.pitch = self.top - row
-    self.beat = math.floor((self.scroll + (event.x - KEYS) / g.zoom) / grid) * grid
-    if event.button == "left" then self:toggle_note() end
-  elseif event.kind == "down" and row >= 0 and row < g.rows then
-    self:audition(self.top - row)
-  end
-  -- Scrolling moves the window, so bring the cursor along with it.
-  self.pitch = util.clamp(self.pitch, self.top - g.rows + 1, self.top)
-  api.ui_redraw()
 end
 
 daw.ui.view("pianoroll", view)
