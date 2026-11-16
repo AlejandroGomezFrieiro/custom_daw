@@ -114,9 +114,22 @@ local function paint_marks(L, marks)
   end
 end
 
--- Other tracks' notes, behind the clips' own.
+-- Other tracks' notes, behind the clips' own. In the terminal each is a
+-- dashed line on a faint shade of its track's colour, without a name: the
+-- clips' own notes are solid and named.
 view.layer("context", {
   order = -10,
+  paint = function(_, L)
+    local glyph = daw.opt.ascii and "-" or "╌"
+    for _, n in ipairs(clips.context()) do
+      local row = L.row(n.pitch)
+      if row and n.start < L.to and n.start + n.length > L.from then
+        local x0 = math.floor((n.start - L.from) * L.zoom + 0.5)
+        local x1 = math.floor((n.start + n.length - L.from) * L.zoom + 0.5)
+        L.roll:fill(x0, row, math.max(1, x1 - x0), 1, glyph, daw.draw.hue(n.color).body)
+      end
+    end
+  end,
   marks = function(from, to)
     local out = {}
     for _, n in ipairs(clips.context()) do

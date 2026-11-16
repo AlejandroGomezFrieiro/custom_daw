@@ -188,6 +188,9 @@ local function modal()
     -- `{ clip, place }`; and the keys that sound at the cursor, with the
     -- chord they make when that is known.
     out.roll.refs = M.chosen_refs()
+    -- What the roll shows changes with the clips it edits and its layers,
+    -- not only with the project: fetch it again when this does.
+    out.roll.revision = M.revision
     out.roll.sounding, out.roll.chord = daw.roll_clips.sounding(roll.beat)
   end
   local under = daw.cursor.clip()

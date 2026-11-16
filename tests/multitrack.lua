@@ -79,6 +79,99 @@ test("the piano roll shows other pitched tracks' notes behind its own, in their 
   daw.ui.hide("pianoroll")
 end)
 
+-- The terminal's piano roll as cells: what is at a beat and pitch of the
+-- roll, with its colours (`#rrggbb`), from the view drawn by itself.
+local function cells(width, height)
+  local shot = api.ui_view_snapshot("pianoroll", width, height)
+  local roll = daw.ui.views.pianoroll
+  local at = function(beat, pitch)
+    local x = 5 + math.floor((beat - roll.scroll) * daw.opt.note_zoom + 0.5)
+    local y = 2 + roll.top - pitch
+    for _, run in ipairs(shot.rows[y + 1] or {}) do
+      if x >= run.x and x < run.x + run.w then
+        local chars = {}
+        for ch in run.text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+        return { ch = chars[x - run.x + 1] or " ", fg = run.fg, bg = run.bg, text = run.text }
+      end
+    end
+  end
+  local lines = {}
+  for i, row in ipairs(shot.rows) do
+    local parts = {}
+    for _, run in ipairs(row) do parts[#parts + 1] = run.text end
+    lines[i] = table.concat(parts)
+  end
+  return at, table.concat(lines, "\n")
+end
+
+local function faint(colour)
+  return daw.draw.mix(require("daw.theme").palette.bg, colour, 0.20)
+end
+
+test("the terminal's piano roll draws other tracks' notes dashed in their colours, its own solid and named", function()
+  local s = song()
+  local roll = daw.ui.views.pianoroll
+  local zoom = daw.opt.note_zoom
+  daw.opt.note_zoom = 8
+  roll:edit(s.keys)
+  roll:set(64, 0)
+  roll.top = 76
+  local at, text = cells(120, 30)
+  local pad_colour = daw.draw.track_colour(api.track_get(s.tracks.pad.id))
+  local bass_colour = daw.draw.track_colour(api.track_get(s.tracks.bass.id))
+  local keys_colour = daw.draw.track_colour(api.track_get(s.tracks.keys.id))
+  local pad = at(1, 72)
+  eq(pad.ch, "╌", "a pad note behind: a dashed line")
+  eq(pad.bg, faint(pad_colour), "on a faint shade of the pad's colour")
+  eq(at(1.5, 64).bg, keys_colour, "the clip's own note in its track's full colour")
+  eq(text:find("▏E4", 1, true) ~= nil, true, "and named")
+  eq(at(0.5, 76) and at(0.5, 76).ch ~= "╌", true, "nothing where no note sounds")
+  roll:set(36, 2)
+  at, text = cells(120, 30)
+  eq(at(2.5, 36).ch, "╌", "the bass note two beats in, dashed")
+  eq(at(2.5, 36).bg, faint(bass_colour), "in the bass's colour, not the pad's")
+  eq(text:find("render failed", 1, true), nil, "drawn without an error")
+  -- The keys sounding at the cursor are marked on the keyboard.
+  local shot = api.ui_snapshot(120, 30)
+  eq(table.concat(shot, "\n"):find("•", 1, true) ~= nil, true, "a dot on a key sounding at the cursor")
+  daw.opt.note_zoom = zoom
+end)
+
+test("the terminal's piano roll draws every clip edited, says which is active and how many, and switches", function()
+  local s = song()
+  local roll = daw.ui.views.pianoroll
+  local zoom = daw.opt.note_zoom
+  daw.opt.note_zoom = 8
+  rc.open({ s.keys.id, s.bass.id }, s.keys.id)
+  roll:set(36, 2)
+  local at, text = cells(120, 30)
+  local bass_colour = daw.draw.track_colour(api.track_get(s.tracks.bass.id))
+  local first = text:match("^[^\n]*")
+  eq(first:find(" chords ", 1, true) ~= nil and first:find("Keys  +1 clip", 1, true) ~= nil, true, "the title: the active clip and one more")
+  local note = at(3.5, 43) -- not the one under the cursor, which is drawn as the cursor
+  eq(note.ch ~= "╌" and note.bg == bass_colour, true, "a bass note drawn as a note, in the bass's colour")
+  eq(text:find("▏C2", 1, true) ~= nil, true, "and named")
+  keys("ga")
+  at, text = cells(120, 30)
+  first = text:match("^[^\n]*")
+  eq(first:find(" line ", 1, true) ~= nil and first:find("Bass  +1 clip", 1, true) ~= nil, true, "ga: the bass clip is active")
+  eq(at(1.5, 43).bg, bass_colour, "its notes where they were, a beat in now")
+  -- A stretch of time across both, deleted, in the terminal.
+  roll:set(40, -0.5)
+  keys("v")
+  roll:set(40, 1.5)
+  at = cells(120, 30)
+  eq(at(0.5, 36).bg ~= bass_colour, true, "the selection shows over a bass note")
+  keys("d")
+  eq(melody(s.keys) .. " | " .. melody(s.bass), "60@0+1 64@1+1 | 40@2+1", "the stretch took notes of both clips")
+  at = cells(120, 30)
+  eq(at(1.5, 43).bg ~= bass_colour, true, "and the roll shows them gone")
+  keys("u")
+  at = cells(120, 30)
+  eq(at(1.5, 43).bg, bass_colour, "u brings them back, in one step")
+  daw.opt.note_zoom = zoom
+end)
+
 test("several clips are edited at once, new notes go to the active one, the cursor keeps its place in the song", function()
   local s = song()
   local roll = daw.ui.views.pianoroll

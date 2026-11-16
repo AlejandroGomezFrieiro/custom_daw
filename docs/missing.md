@@ -66,3 +66,9 @@
   its Nix store, so the package builds here but not from a URL elsewhere
   until it is locked to a release (`nix flake update`). The package is built
   for x86_64 and aarch64 Linux, and tried only on the first.
+- In the piano roll with several clips: `i` on a selection of clips in the
+  arrange view does not open them (`i` there begins a text object; `Enter`
+  does); musicops' phrase and chord text objects see the active clip only;
+  the window does not shade the gaps between the clips edited; a click on a
+  note shown behind always makes its clip active, so a note cannot be
+  added on top of one by a click (a drag draws it).

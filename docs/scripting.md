@@ -127,6 +127,8 @@ daw.keymap.setreg(value, name)   daw.keymap.getreg(name)   daw.keymap.selection(
 daw.keymap.feed("3jdd")          daw.keymap.normal("dic")  -- as typed; from inside a mapping
 daw.edit.arrange.yank(region)    daw.edit.arrange.paste(value)   daw.edit.roll.delete(clip, region)
 track:snapshot()                 daw.restore_track(snapshot, index)   -- with devices, clips, automation
+daw.roll_clips.parts()           daw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/harmony.md)
+daw.ui.views.pianoroll.layer("lint", { order = 10, marks = fn })      -- draw in the piano roll, both frontends
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
 view.grid = { get = function() return row, beat end, set = function(row, beat) end, step = function() return 1 end }
