@@ -640,10 +640,19 @@ local function idle()
     and not daw.ui.grabber
 end
 
+-- Changes made outside the project that `.` repeats too: a text buffer's.
+local changes = 0
+
+--- Note a change that is not an edit of the project (a text buffer's
+--- lines), so that `.` repeats the command that made it.
+function M.changed() changes = changes + 1 end
+
+local function edits() return api.project_get().edits + changes end
+
 --- Once a command is complete, remember it for `.` if it changed the project.
 local function finish_command()
   if not idle() then return end
-  if track.keys and not track.norepeat and not replaying and api.project_get().edits ~= track.edits then
+  if track.keys and not track.norepeat and not replaying and edits() ~= track.edits then
     last_change = track.keys
   end
   track = {}
@@ -762,7 +771,7 @@ end
 
 function M.dispatch(key)
   if macro and depth == 0 then macro.keys[#macro.keys + 1] = key end
-  if not track.keys then track.keys, track.edits = {}, api.project_get().edits end
+  if not track.keys then track.keys, track.edits = {}, edits() end
   track.keys[#track.keys + 1] = key
   local ok, err = xpcall(handle, debug.traceback, key)
   if not ok then
