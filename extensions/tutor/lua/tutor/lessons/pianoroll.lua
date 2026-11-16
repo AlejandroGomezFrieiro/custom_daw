@@ -5,21 +5,25 @@ return {
   intro = [[
 The piano roll shows the notes of one clip: a row per pitch, with the names on
 the left, and time running to the right in steps of a sixteenth note. In
-normal mode you move about and change single notes; in insert mode the keyboard
-is a piano and every key enters a note and steps on.
+normal mode you move about and change single notes; in insert mode you draw
+notes with the cursor, as long as you like, and they are written when you leave
+it.
 
 The clip `tune` has three notes in its second bar. You will add to it.]],
   idea = [[
 Moving: `h` `l` a step, `j` `k` a semitone, `J` `K` an octave, `w` `b` notes, `0`
 `$` the start and end of the clip. Changing the note under the cursor: `<CR>`
 adds or removes, `+` `-` length, `H` `L` move it, `<C-a>` `<C-x>` pitch, `[` `]`
-velocity, `gh` hear the pitch. Insert mode (`i`, or `a` after the note): `a w s
-e d f t g y h u j k` are C up to the next C, a capital stays in place for a
-chord, `1`-`9` set the note length in steps, `<Space>` is a rest, `<BS>` takes
-back, `z` `x` change octave, `<Esc>` leaves.]],
+velocity, `gh` hear the pitch. Insert mode (`i`, or `a` after the note) draws a
+note from the cursor: `l` `h` longer and shorter, `j` `k` `J` `K` its pitch,
+`<CR>` keeps it and draws the next where it ends, `<Space>` after a rest, `o`
+from the same start for a chord, `<BS>` takes back, `<Esc>` writes and leaves.
+`I` makes the keyboard a piano instead: `a w s e d f t g y h u j k` are C up to
+the next C.]],
   vim = [[
 `<C-a>` and `<C-x>` add and subtract, as on numbers in Vim; here they move a
-note's pitch. Insert mode does not insert text: each key is a note.]],
+note's pitch. Insert mode does not insert text: it draws a note, and all of it
+is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.]],
   setup = function(look)
     daw.project.tempo = 90
     local drums = daw.add_track({ name = "Drums", volume = -4 })
@@ -64,47 +68,61 @@ note's pitch. Insert mode does not insert text: each key is a note.]],
       hint = "`<C-a>` is Ctrl and a. The cursor must be on the note.",
     },
     {
-      say = "Go a beat on with `4l`, and press `i` to start entering notes there.",
+      say = "Go a beat on with `4l`, and press `i` to draw a note there.",
       keys = { "4l", "i" },
       check = function() return daw.keymap.mode == "i" and daw.ui.views.pianoroll.beat == 1 end,
-      done = "INSERT at beat 2. The title row shows the octave (C4), the step and the velocity.",
+      done = "INSERT at beat 2: a note starts here, nothing long yet. The title row shows its pitch and length.",
     },
     {
-      say = "Digits set how many steps long the next notes are. Press `4` (a beat), then type `gfd` for G, F and E.",
-      keys = { "4", "gfd" },
+      say = "In insert mode `l` makes the note a step longer and `h` shorter; `j` `k` move its pitch. Press `2j` (down to G) and `4l` (a beat long).",
+      keys = { "2j", "4l" },
+      check = function() return select(2, daw.roll_draw.text()) == "67@1+1" end,
+      done = "A G a beat long, in green: drawn, not written yet. The cursor sits at its end.",
+      hint = "Counts work as in normal mode: `4l` is `l` four times. `h` takes a step back off the note.",
+    },
+    {
+      say = "`<CR>` keeps the note and starts the next where it ends. Press `<CR>`, `2j` (F), `4l`, `<CR>`, `j` (E) and `4l`.",
+      keys = { "<CR>", "2j", "4l", "<CR>", "j", "4l" },
+      check = function() return daw.roll_draw.text() == "67@1+1 65@2+1" and select(2, daw.roll_draw.text()) == "64@3+1" end,
+      done = "G, F, and an E being drawn.",
+      hint = "Each new note starts with no length: `4l` draws it. `<BS>` takes the last one kept back.",
+    },
+    {
+      say = "`<Esc>` writes what was drawn and leaves insert mode. Press `<Esc>`.",
+      keys = { "<Esc>" },
       check = function(_, look)
-        return look.melody(look.clip("Piano")):find("69@0+1 67@1+1 65@2+1 64@3+1 64@4+1", 1, true) ~= nil
+        return daw.keymap.mode == "n" and look.melody(look.clip("Piano")):find("69@0+1 67@1+1 65@2+1 64@3+1 64@4+1", 1, true) ~= nil
       end,
-      done = "A G F E, running into the E D C that was there.",
-      hint = "`a` is C, `s` D, `d` E, `f` F, `g` G, `h` A, `j` B, `k` the C above. `<BS>` takes the last one back.",
+      done = "A G F E, running into the E D C that was there. All of it is one step to undo.",
     },
     {
-      say = "`<Space>` is a rest: it steps on without a note. Press `<Space>` four times to step past the notes already there.",
-      keys = { "<Space>", "<Space>", "<Space>", "<Space>" },
-      check = function() return daw.ui.views.pianoroll.beat == 8 end,
-      done = "At the end of the clip, which grew a bar to make room.",
+      say = "Now a chord at the end of the clip. Press `$` (the end), `i`, `4j` (down to C) and `4l`.",
+      keys = { "$", "i", "4j", "4l" },
+      check = function() return select(2, daw.roll_draw.text()) == "60@8+1" end,
+      done = "A C a beat long, past the end of the clip: it will grow to hold it.",
     },
     {
-      say = "A capital letter enters a note and stays, for chords. Type `AD` (C and E, staying), then `g` (G, stepping on).",
-      keys = { "AD", "g" },
+      say = "`o` keeps the note and starts another from the same place, as long, for a chord. Press `o` and `4k` (E), then `o` and `3k` (G).",
+      keys = { "o", "4k", "o", "3k" },
+      check = function() return daw.roll_draw.text() == "60@8+1 64@8+1" and select(2, daw.roll_draw.text()) == "67@8+1" end,
+      done = "C and E kept, G being drawn.",
+    },
+    {
+      say = "`<CR>` goes on after the chord; `J` and `K` move an octave. Press `<CR>`, `J` and `7j` (the C below), `4l`, and `<Esc>`.",
+      keys = { "<CR>", "J", "7j", "4l", "<Esc>" },
       check = function(_, look)
-        return look.melody(look.clip("Piano")):find("60@8+1 64@8+1 67@8+1", 1, true) ~= nil
+        local m = look.melody(look.clip("Piano"))
+        return daw.keymap.mode == "n" and m:find("60@8+1 64@8+1 67@8+1", 1, true) ~= nil and m:find("48@9+1", 1, true) ~= nil
       end,
-      done = "A C major chord.",
-      hint = "Shift and a, shift and d, then a small g.",
+      done = "A C major chord, then C3 under it.",
+      hint = "`<Space>` would have left a step's rest before the next note instead.",
     },
     {
-      say = "`z` goes down an octave and `x` up. Press `z`, then `a` for a low C.",
-      keys = { "z", "a" },
-      check = function(_, look) return look.melody(look.clip("Piano")):find("48@9+1", 1, true) ~= nil end,
-      done = "C3 under the chord.",
-    },
-    {
-      say = "Press `<Esc>` twice (out of insert mode, out of the piano roll), then `gs` and `<Space>` to listen; `<Space>` stops.",
-      keys = { "<Esc>", "<Esc>", "gs", "<Space>", { wait = 300 }, "<Space>" },
+      say = "Press `<Esc>` (out of the piano roll), then `gs` and `<Space>` to listen; `<Space>` stops.",
+      keys = { "<Esc>", "gs", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.focused() == "arrange" and look.played(ctx) end,
       done = "Your tune, over the drums.",
     },
   },
-  outro = "You moved by pitch and time, added and changed a note in normal mode, and entered a line and a chord in insert mode.",
+  outro = "You moved by pitch and time, added and changed a note in normal mode, and drew a line and a chord in insert mode.",
 }

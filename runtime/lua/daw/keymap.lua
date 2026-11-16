@@ -119,13 +119,14 @@ function M.all(view)
   if view == daw.ui.focused then
     local sub = M.scopes()
     for i = 1, #sub - 2 do
-      for _, mode in ipairs({ "n", "x" }) do
+      for _, mode in ipairs({ "n", "x", "i" }) do
         local list = {}
         for _, map in pairs(maps[mode] and maps[mode][sub[i]] or {}) do list[#list + 1] = map end
         table.sort(list, function(a, b) return a.lhs:lower() .. a.lhs < b.lhs:lower() .. b.lhs end)
         for _, map in ipairs(list) do
-          if not shadowed[mode .. table.concat(map.keys)] and (mode == "n" or not M.has("n", map)) then
-            out[#out + 1] = { map = map, kind = mode == "x" and "visual" or map.motion and "motion" or "key" }
+          if not shadowed[mode .. table.concat(map.keys)] and (mode ~= "x" or not M.has("n", map)) then
+            local kind = mode == "x" and "visual" or mode == "i" and "insert" or map.motion and "motion" or "key"
+            out[#out + 1] = { map = map, kind = kind }
           end
           shadowed[mode .. table.concat(map.keys)] = true
         end
@@ -143,7 +144,9 @@ function M.all(view)
   for _, map in ipairs(M.list("o", view)) do
     if map.object then out[#out + 1] = { map = map, kind = "object" } end
   end
-  for _, map in ipairs(M.list("i", view)) do out[#out + 1] = { map = map, kind = "insert" } end
+  for _, map in ipairs(M.list("i", view)) do
+    if not shadowed["i" .. table.concat(map.keys)] then out[#out + 1] = { map = map, kind = "insert" } end
+  end
   return out
 end
 

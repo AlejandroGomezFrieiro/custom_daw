@@ -2197,12 +2197,21 @@ end, "Loop")
 
 -- Piano roll: single keys.
 pmap("<CR>", function() roll:toggle_note() end, "Add or remove a note")
-pmap("i", function() keymap.set_mode("i") end, "Enter notes from the keyboard")
+pmap("i", function() keymap.set_mode("i") end, "Draw notes from the cursor")
 pmap("a", function()
   local note = roll:note_at(roll.pitch, roll.beat)
-  if note then roll:set(nil, note.start + note.length) end
+  if note then
+    roll:set(nil, note.start + note.length)
+  elseif daw.opt.roll_insert ~= "keys" then
+    -- A step on, past the end of the clip if need be: it grows to hold what is drawn.
+    roll.beat = roll.beat + daw.opt.note_grid
+  end
   keymap.set_mode("i")
-end, "Enter notes after this one")
+end, "Draw notes after this one")
+pmap("I", function()
+  daw.roll_draw.keys_once()
+  keymap.set_mode("i")
+end, "Enter notes from the keyboard, as a piano")
 -- Notes chosen with the pointer (a click, a box) come first for the keys
 -- that would otherwise act on the note under the cursor.
 -- The first of them: its clip's id and its place there.
@@ -2371,9 +2380,32 @@ px("-", function(clip, region)
   edit.roll.each(clip, region, function(n) n.length = math.max(daw.opt.note_grid, n.length - daw.opt.note_grid) end)
 end, "Shorten")
 
--- Piano roll: insert mode. The middle row of the keyboard is the white keys
--- from C and the row above it the black ones, as on a piano.
-local function imap(lhs, rhs, desc) map(lhs, rhs, { view = "pianoroll", mode = "i", desc = desc }) end
+-- Piano roll: insert mode draws a note from the cursor (`daw.roll_draw`).
+-- What is drawn is written when insert mode ends, as one undo step.
+local function drawmap(lhs, fn, desc) map(lhs, fn, { view = "pianoroll", mode = "i", desc = desc }) end
+local drawing = daw.roll_draw
+for digit = 0, 9 do
+  drawmap(tostring(digit), function() drawing.digit(digit) end, "A count for the next key")
+end
+for _, lhs in ipairs({ "l", "<Right>" }) do drawmap(lhs, function() drawing.grow(1) end, "The note a step longer") end
+for _, lhs in ipairs({ "h", "<Left>" }) do drawmap(lhs, function() drawing.grow(-1) end, "The note a step shorter") end
+for _, lhs in ipairs({ "k", "<Up>" }) do drawmap(lhs, function() drawing.pitch(1) end, "The note up a semitone") end
+for _, lhs in ipairs({ "j", "<Down>" }) do drawmap(lhs, function() drawing.pitch(-1) end, "The note down a semitone") end
+drawmap("K", function() drawing.pitch(12) end, "The note up an octave")
+drawmap("J", function() drawing.pitch(-12) end, "The note down an octave")
+drawmap("<CR>", function() drawing.next("legato") end, "Keep the note, and draw the next where it ends")
+drawmap("<Space>", function() drawing.next("rest") end, "Keep the note, and draw the next after a step's rest")
+drawmap("o", function() drawing.next("chord") end, "Keep the note, and draw another as long from where it starts, for a chord")
+drawmap("<BS>", function() drawing.back() end, "Take back the note kept last, to draw it again")
+drawmap("]", function() daw.opt.velocity = math.min(127, daw.opt.velocity + 10) end, "Louder notes")
+drawmap("[", function() daw.opt.velocity = math.max(1, daw.opt.velocity - 10) end, "Softer notes")
+
+-- Piano roll: insert mode the other way (`I`, or `daw.opt.roll_insert =
+-- "keys"`). The middle row of the keyboard is the white keys from C and the
+-- row above it the black ones, as on a piano. These keys come before the
+-- drawing ones while that way is in use.
+roll:key_scope("pianoroll.keys", 90, function() return keymap.mode == "i" and not drawing.active() end)
+local function imap(lhs, rhs, desc) map(lhs, rhs, { view = "pianoroll.keys", mode = "i", desc = desc }) end
 local layout = { "a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j", "k", "o", "l", "p", ";" }
 for semitone, key in ipairs(layout) do
   local name = (daw.music.name(60 + semitone - 1):gsub("%d+$", ""))
