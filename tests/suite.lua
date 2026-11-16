@@ -2297,7 +2297,7 @@ test("the vocal editor takes operators, and notes keep their lyrics", function()
   daw.ui.hide("utau")
 end)
 
-test("the vocal editor paints itself in a window and is worked with the pointer", function()
+test("the vocal editor paints itself in a pane and is worked with the pointer", function()
   fresh()
   load_utau()
   local editor = require("utau.editor").editor
@@ -2318,8 +2318,8 @@ test("the vocal editor paints itself in a window and is worked with the pointer"
   end
 
   daw.frontend.act.open_clip(clip.id)
-  local windows = daw.frontend.state(-1).modal.windows
-  eq(#windows .. " " .. (windows[1] and windows[1].name or ""), "1 utau", "a double click on a vocal clip opens the vocal editor's window")
+  eq(#daw.frontend.state(-1).modal.windows, 0, "a double click on a vocal clip opens the vocal editor docked, in no window of its own")
+  eq(daw.ui.visible("utau") and daw.ui.focused, "utau", "with the keyboard")
   eq(daw.frontend.state(-1).modal.roll, nil, "and not the piano roll")
   local first = clip:notes()[1].meta.lyric
   eq(texts():find(first, 1, true) ~= nil, true, "the notes are painted with their lyrics")
@@ -2423,6 +2423,8 @@ local function vocal_window(pitches)
   local track, clip = vocal(pitches)
   daw.flush()
   daw.frontend.act.open_clip(clip.id)
+  -- Popped out into a window of its own, where Ctrl+V pastes.
+  daw.canvas.open("utau", { window = true })
   gui.tool, gui.curves, gui.inspector = "notes", true, true
   local win = { editor = editor, gui = gui, track = track, clip = clip }
   function win.paint() return daw.canvas.paint("utau", 1180, 620) end

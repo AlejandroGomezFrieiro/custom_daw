@@ -207,7 +207,9 @@ local function modal()
   end
   local under = daw.cursor.clip()
   out.clip = ui.focused == "arrange" and under and under.id or nil
-  -- Views that paint, open in windows of their own.
+  -- The tabs and windows, as panes of the main area.
+  out.panes = daw.panes.state()
+  -- Views in windows of their own.
   out.windows = daw.canvas.windows()
   -- Views that can be opened in one, for the views menu.
   out.views = daw.canvas.openable()
@@ -1699,9 +1701,10 @@ end
 --- to a selection.
 function A.keys(keys)
   -- Keys typed in the main window are not for a view in a window of its
-  -- own, which sends its own (`daw.canvas.key`).
+  -- own, which sends its own (`daw.canvas.key`): they go to the window
+  -- that had the keyboard before.
   if daw.canvas.open_views[daw.ui.focused] and not daw.ui.float and not daw.ui.grabber then
-    daw.ui.focus("arrange")
+    daw.canvas.back(daw.ui.focused)
   end
   daw.keymap.feed(keys)
 end

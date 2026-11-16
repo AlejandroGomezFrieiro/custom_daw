@@ -46,6 +46,9 @@ local api = daw.api
 local band = bit.band
 local M = {
   open_views = {},
+  -- What a view was called when it was opened (`open`), for the pane or
+  -- the window that shows it.
+  titles = {},
   -- The size of a cell of the window's monospace font in pixels. A window
   -- measures it and says so with each paint; this is JetBrains Mono at
   -- 13 px until one has.
@@ -263,17 +266,64 @@ end
 
 M.Painter = Painter
 
---- Show a view that paints in a window of a graphical frontend, and give it
---- the keyboard. `opts`: `title`, `width`, `height` (what the window starts at).
+--- Show a view that paints in a graphical frontend and give it the
+--- keyboard: docked, as the terminal shows it, when it has a place in the
+--- layout (`daw.ui.dock`, or a window showing it); else, or with `window =
+--- true`, in a window of its own. A view already in a window of its own
+--- stays there. `opts`: `title`, `width`, `height` (what a window starts
+--- at), `window`.
 function M.open(name, opts)
   local view = daw.ui.views[name]
   if not (view and view.paint) then error("no view `" .. tostring(name) .. "` that paints", 2) end
-  M.open_views[name] = { title = opts and opts.title or view.title or name, width = opts and opts.width or 900, height = opts and opts.height or 520 }
+  opts = opts or {}
+  M.titles[name] = opts.title or M.titles[name]
+  local L = daw.layout
+  if not opts.window and not M.open_views[name] and (L.homes[name] or L.find(daw.ui.layout, name)) then
+    daw.ui.focus(name)
+    return
+  end
+  -- Taking the keyboard may have shown its place in the layout too.
+  local back = M.open_views[name] and M.open_views[name].back
+  back = M.leave(name) or back
+  M.open_views[name] = { title = opts.title or view.title or name, width = opts.width or 900, height = opts.height or 520, back = back }
   if daw.ui.focused ~= name and not daw.ui.float then
     daw.ui.focused = name
     daw.emit("view.focused", { view = name })
   end
   api.ui_redraw()
+end
+
+--- Whether a graphical frontend shows a view: in a window of its own, or
+--- docked where the seat's screen is a frontend's main area (one that has
+--- said its size to `daw.panes`, or the instance's own with no terminal).
+function M.shown(name)
+  if M.open_views[name] then return true end
+  return daw.ui.visible(name) and (daw.panes.cells() ~= nil or not api.ui_attached())
+end
+
+--- A view about to show in a window of its own leaves the layout, so as
+--- not to show twice: its windows in the tabs close, keeping their place.
+--- Returns the window that had the keyboard, to give it back to.
+function M.leave(name)
+  local L = daw.layout
+  local here, t = L.current(), L.tab()
+  -- Where the view had the keyboard, the window before it gets it back.
+  local before = here and here.view == name and t.prev and L.find_id(t.layout, t.prev)
+  L.conceal(name)
+  for _, win in ipairs({ here, before, L.current() }) do
+    if win and win.view ~= name and not win.hidden then return win.id end
+  end
+end
+
+--- Give the keyboard back to the main window from a view in a window of
+--- its own: to the window that had it before the view went there, else the
+--- arrange view.
+function M.back(name)
+  local window = M.open_views[name]
+  local L = daw.layout
+  local win = window and window.back and L.find_id(daw.ui.layout, window.back)
+  if win and not win.hidden then return L.enter(win) end
+  daw.ui.focus("arrange")
 end
 
 --- Give a view in a window the keyboard, as a click in it does.
@@ -284,6 +334,8 @@ local function focus(name)
     daw.emit("view.focused", { view = name })
   end
 end
+
+M.focus = focus
 
 --- Show any view in a window of a graphical frontend (the focused one when
 --- `name` is nil), and give it the keyboard. A view that paints is painted
@@ -301,8 +353,9 @@ function M.open_view(name, opts)
   opts = opts or {}
   local float = daw.ui.float and daw.ui.float.name == name and daw.ui.float
   if float then daw.ui.close() end
+  local back = M.open_views[name] and M.open_views[name].back or M.leave(name)
   M.open_views[name] = {
-    title = opts.title or (float and float.title) or view.title or name, cells = true,
+    title = opts.title or (float and float.title) or view.title or name, cells = true, back = back,
     -- The float's size in cells, or a size that suits most views.
     width = opts.width or math.floor((float and float.width or 100) * M.cell.w + 0.5),
     height = opts.height or math.floor(((float and float.height or 32) + 1) * M.cell.h + 0.5),
@@ -336,12 +389,19 @@ function M.openable()
   return out
 end
 
+--- Close a view's window of its own; the keyboard goes back to the main
+--- window, where it was before. A view docked in the layout instead
+--- closes its window there, as `:close` would.
 function M.close(name)
-  if not M.open_views[name] then return end
+  if not M.open_views[name] then
+    local win = daw.layout.find(daw.ui.layout, name)
+    if win and not win.hidden then daw.layout.close(win) end
+    return
+  end
+  if daw.ui.focused == name and not daw.ui.float then M.back(name) end
   M.open_views[name] = nil
   local view = daw.ui.views[name]
   if view and view.on_close then view:on_close() end
-  if daw.ui.focused == name then daw.ui.focus("arrange") end
   api.ui_redraw()
 end
 
@@ -364,17 +424,25 @@ end
 --- Drawn again only when a redraw has been asked for since, once a second
 --- for what changes on its own (times), and on every call while playing;
 --- `{ same = true }` when what it would draw is what it drew last.
-local function paint_cells(name, window, width, height, opts)
+--- `window` keeps what was drawn. With `win`, a window of the layout (a
+--- pane of a frontend's main area), that window is drawn, and nothing
+--- under it: the frontend's own status line shows prompts and messages;
+--- without, the view in a window of its own, with a line under it for
+--- them and the view's keys.
+function M.paint_cells(name, window, width, height, opts, win)
   local cell = M.cell
   window.cell = cell
-  local cols, rows = math.max(1, math.floor(width / cell.w)), math.max(2, math.floor(height / cell.h))
+  local cols, rows = math.max(1, math.floor(width / cell.w)), math.max(win and 1 or 2, math.floor(height / cell.h))
   local redraws, now = api.ui_redraws(), api.now()
   if not opts.fresh and window.drawn == redraws and window.cols == cols and window.rows == rows
     and now - window.at < (api.transport_get().playing and 30 or 1000) then
     return { title = window.title, same = true }
   end
   local focused = daw.ui.focused == name
-  local snap = api.ui_view_snapshot(name, cols, rows - 1)
+  daw.ui.view_win = win
+  local ok, snap = pcall(api.ui_view_snapshot, name, cols, win and rows or rows - 1)
+  daw.ui.view_win = nil
+  if not ok then error(snap, 0) end
   local ops = { { "r", 0, 0, width, height, snap.bg, "", 1, 0 } }
   local function add(lines, top)
     for r, row in ipairs(lines) do
@@ -392,7 +460,7 @@ local function paint_cells(name, window, width, height, opts)
   end
   add(snap.rows, 0)
   local cursor = snap.cursor and { snap.cursor.x, snap.cursor.y }
-  if focused then
+  if focused and not win then
     -- The line under the view: a prompt, a message, or the view's keys.
     local line = api.ui_view_snapshot("cmdline", cols, 1)
     add(line.rows, rows - 1)
@@ -481,7 +549,7 @@ function M.paint(name, width, height, opts)
   if opts.cell and (opts.cell.w or 0) > 0 and not opts.surface then M.cell = { w = opts.cell.w, h = opts.cell.h } end
   if view and not view.paint then
     if not (window and window.cells) then return nil end
-    return paint_cells(name, window, width, height, opts)
+    return M.paint_cells(name, window, width, height, opts)
   end
   if not view then return nil end
   local ops = {}
@@ -510,7 +578,7 @@ end
 --- `on_mouse`: in cells, `kind` down, up, drag or scroll_up and so on,
 --- `button`, and `mods` ("C", "A", "S"). Nil for what the terminal has no
 --- word for (the second click of a double one comes as down and up).
-local function cell_event(window, event)
+function M.cell_event(window, event, bare)
   local cell = window.cell or M.cell
   local kind = event.kind
   if kind == "move" then
@@ -533,7 +601,7 @@ local function cell_event(window, event)
   if kind:match("^scroll") then button = "" end
   local x, y = math.floor((event.x or 0) / cell.w), math.floor((event.y or 0) / cell.h)
   -- The line under the view is not the view's.
-  if window.rows and y >= window.rows - 1 and kind ~= "up" and kind ~= "drag" then return nil end
+  if not bare and window.rows and y >= window.rows - 1 and kind ~= "up" and kind ~= "drag" then return nil end
   local mods = (event.ctrl and "C" or "") .. (event.alt and "A" or "") .. (event.shift and "S" or "")
   return { kind = kind, x = x, y = y, button = button, mods = mods }
 end
@@ -547,7 +615,7 @@ function M.pointer(name, event)
   if event.kind == "down" then focus(name) end
   local window = M.open_views[name]
   if not view.paint and window and window.cells then
-    local e = cell_event(window, event)
+    local e = M.cell_event(window, event)
     if e and view.on_mouse then daw.limit.named("the mouse", daw.mouse.to_view, view, e) end
   elseif view.pointer then
     view:pointer(event)
@@ -557,9 +625,23 @@ end
 
 --- Keys typed in a view's window: they go to the key mappings with that
 --- view focused (or to a prompt that is open), as typed in the terminal.
+---
+--- `Esc` with nothing to cancel (normal mode, no keys half typed, no prompt,
+--- and the view has no `Esc` of its own) closes the window, and the main
+--- window has the keyboard again.
 function M.key(name, keys)
   if daw.ui.views[name] then focus(name) end
-  daw.keymap.feed(keys)
+  local keymap = daw.keymap
+  if keys == "<Esc>" and M.open_views[name] and not daw.ui.float and not daw.ui.grabber
+    and keymap.mode == "n" and keymap.pending() == "" then
+    local esc = table.concat(keymap.parse("<Esc>"))
+    local own = false
+    for _, map in ipairs(keymap.list("n", name)) do
+      if map.scope == name and table.concat(map.keys) == esc then own = true end
+    end
+    if not own then return M.close(name) end
+  end
+  keymap.feed(keys)
   api.ui_redraw()
 end
 
