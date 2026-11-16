@@ -74,6 +74,7 @@ daw.restore_track, daw.restore_clip, daw.restore_device = objects.restore_track,
 daw.master, daw.project, daw.transport, daw.time = objects.master, objects.project, objects.transport, objects.time
 daw.midi = objects.midi
 daw.tempo = require("daw.tempo")
+daw.midifile = require("daw.midifile")
 daw.audio = require("daw.audio")
 
 --- Descriptions of every kind of device that can be added to a track.

@@ -796,6 +796,16 @@ impl Session {
         self.replace_project(Project::default(), Transport::default(), None);
     }
 
+    /// Start the undo history again from the project as it is now, which
+    /// counts as unchanged: for a project put together by a script from a
+    /// file that is not a project, such as a MIDI file, which then opens as
+    /// a project file does instead of as edits of an empty one.
+    pub fn undo_reset(&mut self) {
+        self.checkpoint = self.project.clone();
+        self.history.reset(self.project.clone(), history::now());
+        self.touched = false;
+    }
+
     pub fn project_load(&mut self, path: &Path) -> Result<()> {
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
