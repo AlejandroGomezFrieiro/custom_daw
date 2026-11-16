@@ -170,7 +170,8 @@ end
 -- Steps -------------------------------------------------------------------------
 
 local function new_ctx()
-  return { commands = {}, events = {}, messages = #daw.ui.messages }
+  -- The last message so far: the list drops its oldest past 500, so a count would drift.
+  return { commands = {}, events = {}, last_message = daw.ui.messages[#daw.ui.messages] }
 end
 
 local function begin_step()
