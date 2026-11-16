@@ -43,7 +43,7 @@ Tracks share the height there is, three to six rows each
 18 or 12 columns wide by the screen's width (`daw.opt.header_width`). The
 master is pinned to the bottom with both sides' levels in one row and a dB
 scale. Docked panels (devices, mixer, piano roll and extensions' views) have
-a one-row title bar with an amber mark when focused; a panel beside another
+a one-row title bar, drawn inverted in amber when focused (the mode in the status line names the view too: `NORMAL·mixer`); a panel beside another
 has a rule on its left. The mixer's strips have a name plate, the first
 devices and sends when there is room, meters with the peak held, a fader with
 0 dB marked, the pan and the chips. Below 80 columns the device panel floats

@@ -43,7 +43,12 @@ function view.segments(width)
   -- 1: the mode.
   local mode = daw.keymap.mode
   local name = mode == "x" and daw.keymap.visual and visual[daw.keymap.visual.kind] or modes[mode] or mode:upper()
-  if width < 80 then name = short[name] or short[mode] or name:sub(1, 3) end
+  if width < 80 then
+    name = short[name] or short[mode] or name:sub(1, 3)
+  elseif daw.ui.focused then
+    -- The view that has the keys, so that focus can be told at a glance.
+    name = name .. g.dot .. daw.ui.focused
+  end
   add(left, 0, 0, { { " " .. name .. " ", styles[mode] or "StatusMode" }, pill = true })
   -- 2: a macro being recorded.
   if daw.keymap.recording() then add(left, 0, 1, { { "@" .. daw.keymap.recording(), "StatusMacro" } }) end
@@ -110,8 +115,13 @@ function view.segments(width)
     if api.str_width(pointer) > room then pointer = util.fit(pointer, room) end
     add(left, 0, 3, { { pointer, "StatusHint" } })
   end
-  -- 8: the grid.
-  add(left, 100, 9, { { "grid " .. view.grid_text(daw.opt.grid), "StatusDim" } })
+  -- 8: the grid of the view that has focus: the roll and the drums keep their own.
+  local focused = daw.ui.views[daw.ui.focused]
+  local cells = focused and focused.grid
+  if not (cells and cells.step) or cells.rows then
+    cells = { step = function() return daw.opt.grid end }
+  end
+  add(left, 100, 9, { { "grid " .. view.grid_text(cells.step()), "StatusDim" } })
   -- 9: how much is selected, in visual mode.
   local selection = mode == "x" and daw.ui.focused == "arrange" and daw.keymap.selection()
   if selection then
