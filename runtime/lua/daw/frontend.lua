@@ -187,7 +187,19 @@ local function modal()
       marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.
       controls_chosen = daw.controls.chosen(clip.id),
+      -- What the roll's layers draw behind and in front of the notes, and
+      -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
+      tools = roll:toolbar(),
     }
+    -- Where it edits several clips, the chosen notes of all of them, as
+    -- `{ clip, place }`; and the keys that sound at the cursor, with the
+    -- chord they make when that is known.
+    out.roll.refs = M.chosen_refs()
+    -- What the roll shows changes with the clips it edits and its layers,
+    -- not only with the project: fetch it again when this does.
+    out.roll.revision = M.revision
+    out.roll.sounding, out.roll.chord = daw.roll_clips.sounding(roll.beat)
+    out.roll.under, out.roll.over = roll:marks(clip.id)
   end
   local under = daw.cursor.clip()
   out.clip = ui.focused == "arrange" and under and under.id or nil
@@ -278,14 +290,48 @@ function M.clip(id)
   -- The notes of the track's other MIDI clips that sound during this one,
   -- with their starts in this clip's beats, for drawing faintly.
   clip.ghosts = {}
+  local rc = daw.roll_clips
+  local open = clip.kind == "midi" and rc.active() == id
   for _, other in ipairs(clip.kind == "midi" and api.clip_list(clip.track) or {}) do
-    if other.id ~= id and other.kind == "midi" and other.start < clip.start + clip.length and other.start + other.length > clip.start then
+    if other.id ~= id and other.kind == "midi" and other.start < clip.start + clip.length and other.start + other.length > clip.start
+      and not (open and rc.editable(other.id)) then
       for _, n in ipairs(api.clip_notes(other.id)) do
         local at = other.start + n.start - clip.start
         if n.start < other.length and at < clip.length and at + n.length > 0 and #clip.ghosts < M.preview_notes then
           clip.ghosts[#clip.ghosts + 1] = { pitch = n.pitch, start = at, length = math.min(n.length, other.length - n.start), velocity = n.velocity }
         end
       end
+    end
+  end
+  -- Open in the piano roll, which may edit other clips with it: those
+  -- clips (`editable`, this one first, each with how far it starts after
+  -- this one), their notes (`more`, starts in this clip's beats, each with
+  -- its clip, its place there and its track's colour), the tracks and
+  -- clips its side panel lists (`rows`: see `daw.roll_clips.rows`), and
+  -- other tracks' notes (`context`).
+  clip.editable, clip.more, clip.rows, clip.context = {}, {}, {}, {}
+  if open then
+    for i, part in ipairs(rc.parts()) do
+      local colour = daw.draw.track_colour(api.track_get(part.track))
+      clip.editable[i] = { id = part.id, name = part.name, offset = part.offset, length = part.length, color = colour }
+      if i > 1 then
+        for place, n in ipairs(api.clip_notes(part.id)) do
+          if n.start >= 0 and n.start < part.length then
+            clip.more[#clip.more + 1] = {
+              pitch = n.pitch, start = n.start + part.offset, length = math.min(n.length, part.length - n.start),
+              velocity = n.velocity, clip = part.id, place = place, color = colour,
+            }
+          end
+        end
+      end
+    end
+    clip.rows = rc.rows()
+    -- Other tracks' notes, drawn behind as the layers' marks are (see
+    -- `daw.ui.views.pianoroll.layer`): sent here, with the notes, since
+    -- there may be thousands and they change only with the project.
+    clip.context = {}
+    for i, n in ipairs(rc.context()) do
+      clip.context[i] = { pitch = n.pitch, start = n.start, length = n.length, fill = n.color, alpha = 0.2, edge = n.color }
     end
   end
   return clip
@@ -757,11 +803,14 @@ end
 -- `x` already deletes, and is let go of when the cursor leaves it.
 
 local picked = { set = {}, anchor = nil }
+local recently_chosen  -- the clips chosen before the last plain click: { set, at }
 -- A gesture is choosing: the cursor and mode it moves keep the choice.
 local pointing = false
 -- Each window and terminal chooses clips of its own.
 daw.seats.keep("frontend.picked", function() return picked end, function(p) picked = p end,
   function() return { set = {}, anchor = nil } end)
+daw.seats.keep("frontend.recently_chosen", function() return recently_chosen end,
+  function(r) recently_chosen = r end, function() return nil end)
 
 --- The ids of the chosen clips, in order.
 function M.chosen_clips()
@@ -890,7 +939,12 @@ end
 function A.select_clip(id, beat, mode)
   cursor_into(id, beat)
   mode = mode or "only"
-  if mode == "only" then return choose_clips({ [id] = true }, id, false) end
+  if mode == "only" then
+    -- What was chosen before, for a double click that follows.
+    recently_chosen = { set = {}, at = api.now() }
+    for _, other in ipairs(M.chosen_clips()) do recently_chosen.set[other] = true end
+    return choose_clips({ [id] = true }, id, false)
+  end
   local set = {}
   for _, other in ipairs(M.chosen_clips()) do set[other] = true end
   if mode == "toggle" then
@@ -1295,10 +1349,26 @@ end
 --- returns true if it has opened it.
 function A.open_clip(id)
   local clip = daw.clip(id)
+  -- Opening one of several chosen clips edits them all. A double click's
+  -- first click had chosen it alone a moment before.
+  local before = recently_chosen and api.now() - recently_chosen.at < 1500 and recently_chosen.set
+  if not (before and before[id]) then
+    before = {}
+    for _, other in ipairs(M.chosen_clips()) do before[other] = true end
+  end
+  local together = {}
+  if before[id] then
+    for other in pairs(before) do
+      local ok, c = pcall(api.clip_get, other)
+      if ok and c.kind == "midi" then together[#together + 1] = other end
+    end
+    table.sort(together)
+  end
   A.select_clip(id, clip.start)
   for _, opener in ipairs(M.openers) do
     if opener(clip) then return end
   end
+  if clip.kind == "midi" and #together > 1 then return daw.roll_clips.open(together, id) end
   if clip.kind == "midi" then daw.ui.views.pianoroll:edit(clip) end
 end
 
@@ -1993,14 +2063,19 @@ function A.fold(track)
   daw.groups.fold(track)
 end
 
--- Notes, in the clip the piano roll has open.
+-- Notes, in the clips the piano roll has open. A gesture names a note by
+-- its clip and its place there; where the roll edits several clips (see
+-- `daw.roll_clips`), the chosen notes may be in any of them and a gesture
+-- on one acts on all of them, each note staying in its own clip. Beats a
+-- gesture gives are the roll's: from the start of the clip it names.
 
--- The notes chosen with the pointer: places in one clip. They are kept as
--- long as the clip's notes are what the pointer's own edits left; an edit
--- made any other way (a key, an undo) forgets them, since places move.
-local chosen = { clip = nil, places = {}, stamp = nil }
+-- The notes chosen with the pointer: places in each clip, by clip id. They
+-- are kept as long as the clip's notes are what the pointer's own edits
+-- left; an edit made any other way (a key, an undo) forgets them, since
+-- places move. Each window and terminal chooses notes of its own.
+local chosen = {}
 daw.seats.keep("frontend.chosen", function() return chosen end, function(c) chosen = c end,
-  function() return { clip = nil, places = {}, stamp = nil } end)
+  function() return {} end)
 
 local function stamp_of(clip)
   local ok, data = pcall(api.clip_get, clip)
@@ -2010,35 +2085,86 @@ end
 --- The places of the chosen notes of `clip`, in order; none if the clip's
 --- notes have changed under them.
 function M.chosen_notes(clip)
-  if chosen.clip ~= clip or chosen.stamp ~= stamp_of(clip) then return {} end
+  local entry = chosen[clip]
+  if not entry or entry.stamp ~= stamp_of(clip) then return {} end
   local out = {}
-  for place in pairs(chosen.places) do out[#out + 1] = place end
+  for place in pairs(entry.places) do out[#out + 1] = place end
   table.sort(out)
   return out
 end
 
---- The chosen notes of `clip` in words, for a toolbar: "3 notes · 5.1.00 – 5.3.00",
---- or "" with none chosen.
-function M.chosen_text(clip)
-  local places = M.chosen_notes(clip)
-  if #places == 0 then return "" end
+--- The clips a gesture on `clip` reaches, with how far each starts after
+--- it (`offset`): every clip the roll edits when it is one of them, else
+--- that clip alone.
+local function parts_for(clip)
+  local rc = daw.roll_clips
+  if rc.editable(clip) then
+    local parts = rc.parts()
+    -- Offsets count from the clip named, which is the active one when the
+    -- gesture gives beats.
+    local base = rc.offset(clip)
+    for _, part in ipairs(parts) do part.offset = part.offset - base end
+    return parts
+  end
   local c = api.clip_get(clip)
-  local notes = api.clip_notes(clip)
-  local first, last = math.huge, -math.huge
-  for _, place in ipairs(places) do
-    local n = notes[place]
-    if n then first, last = math.min(first, n.start), math.max(last, n.start + n.length) end
+  return { { id = clip, clip = daw.clip(clip), offset = 0, start = c.start, length = c.length } }
+end
+
+--- The chosen notes of the clips a gesture on `clip` reaches: clip id ->
+--- places, and how many there are.
+local function chosen_map(clip)
+  local map, count = {}, 0
+  for _, part in ipairs(parts_for(clip)) do
+    local places = M.chosen_notes(part.id)
+    if #places > 0 then map[part.id], count = places, count + #places end
+  end
+  return map, count
+end
+
+--- Every chosen note of the clips the roll edits, as `{ clip, place }`.
+function M.chosen_refs()
+  local out = {}
+  local active = daw.roll_clips.active()
+  if not active then return out end
+  for _, part in ipairs(parts_for(active)) do
+    for _, place in ipairs(M.chosen_notes(part.id)) do out[#out + 1] = { part.id, place } end
+  end
+  return out
+end
+
+--- The chosen notes of `clip` (and of the clips edited with it) in words,
+--- for a toolbar: "3 notes · 5.1.00 – 5.3.00", or "" with none chosen.
+function M.chosen_text(clip)
+  local map, count = chosen_map(clip)
+  if count == 0 then return "" end
+  local first, last, clips = math.huge, -math.huge, 0
+  for id, places in pairs(map) do
+    local c = api.clip_get(id)
+    local notes = api.clip_notes(id)
+    clips = clips + 1
+    for _, place in ipairs(places) do
+      local n = notes[place]
+      if n then first, last = math.min(first, c.start + n.start), math.max(last, c.start + n.start + n.length) end
+    end
   end
   if first == math.huge then return "" end
-  return string.format("%d note%s · %s – %s", #places, #places == 1 and "" or "s",
-    daw.time.format(c.start + first), daw.time.format(c.start + last))
+  return string.format("%d note%s%s · %s – %s", count, count == 1 and "" or "s",
+    clips > 1 and " in " .. clips .. " clips" or "", daw.time.format(first), daw.time.format(last))
+end
+
+--- Choose notes: `map` is clip id -> places, and replaces every choice.
+local function choose_all(map)
+  chosen = {}
+  for clip, places in pairs(map) do
+    local set = {}
+    for _, place in ipairs(places) do set[place] = true end
+    if next(set) then chosen[clip] = { places = set, stamp = stamp_of(clip) } end
+  end
+  api.ui_redraw()
 end
 
 local function choose(clip, places)
-  local set = {}
-  for _, place in ipairs(places) do set[place] = true end
-  chosen = { clip = clip, places = set, stamp = stamp_of(clip) }
-  api.ui_redraw()
+  choose_all({ [clip] = places })
 end
 
 --- Where notes are now, given what they are: `wanted` is a list of
@@ -2068,9 +2194,22 @@ end
 --- A press and drag on the empty grid: a note from `start` for `length`,
 --- which is then the one chosen note. `free` leaves it off the grid. A
 --- click gives no length (nil, or 0 or less): the note is the piano roll's
---- note length (`set_note_length`); a drawn length becomes that length.
+--- note length (`set_note_length`); a drawn length becomes that length. A
+--- click on a note shown behind the roll's own (another track's) makes its
+--- clip the one the roll edits instead. With several clips edited the note
+--- goes into the one at `start`, the active one first.
 function A.add_note(clip, pitch, start, length, free)
-  local c = daw.clip(clip)
+  local rc = daw.roll_clips
+  if (not length or length <= 0) and clip == rc.active() then
+    local behind = rc.context_at(pitch, start)
+    if behind then return rc.activate(behind.clip) end
+  end
+  local part = parts_for(clip)[1]
+  if rc.editable(clip) then
+    part = rc.target(start + rc.offset(clip))
+    start = start + rc.offset(clip) - part.offset
+  end
+  local c = part.clip
   free = free or not daw.opt.note_snap
   start = snap_note(start, free)
   if start >= c.length or c:note_at(pitch, start) then return end
@@ -2083,112 +2222,155 @@ function A.add_note(clip, pitch, start, length, free)
   end
   local index = c:add_note({ pitch = pitch, start = start, length = math.min(length, c.length - start), velocity = daw.opt.velocity })
   c:track():play_note(pitch, daw.opt.velocity, 150)
-  choose(clip, { index })
+  choose(part.id, { index })
   return index
+end
+
+--- Ctrl and a click on a note shown behind the roll's own: its clip is
+--- edited too, or no longer. `beat` is the roll's.
+function A.context_click(clip, beat, pitch)
+  local behind = daw.roll_clips.context_at(math.floor(pitch + 0.5), beat + daw.roll_clips.offset(clip))
+  if behind then daw.roll_clips.toggle(behind.clip) end
+end
+
+--- The clips list of the roll's side panel: make one active, edit it too
+--- (or no longer), show a track's notes behind the roll's or not.
+function A.roll_activate(_, id) daw.roll_clips.activate(math.floor(id)) end
+function A.roll_toggle_clip(_, id) daw.roll_clips.toggle(math.floor(id)) end
+function A.roll_show_track(_, id)
+  id = math.floor(id)
+  for _, t in ipairs(daw.roll_clips.tracks()) do
+    if t.id == id then return daw.roll_clips.show_track(id, not t.on) end
+  end
 end
 
 --- Choose notes with a click: `mode` is "only" (the note alone), "add" or
 --- "toggle" (Shift or Ctrl held).
 function A.select_note(clip, index, mode)
-  local places = M.chosen_notes(clip)
   if mode == "only" or mode == nil then return choose(clip, { index }) end
+  local map = chosen_map(clip)
   local set = {}
-  for _, place in ipairs(places) do set[place] = true end
+  for _, place in ipairs(map[clip] or {}) do set[place] = true end
   if mode == "toggle" and set[index] then set[index] = nil else set[index] = true end
   local out = {}
   for place in pairs(set) do out[#out + 1] = place end
-  choose(clip, out)
+  map[clip] = out
+  choose_all(map)
 end
 
 --- Choose the notes a box touches: from `beat0, pitch0` to `beat1, pitch1`,
---- in any order. `mode` as for `select_note`.
+--- in any order, in every clip the roll edits. `mode` as for `select_note`.
 function A.select_notes_box(clip, beat0, pitch0, beat1, pitch1, mode)
   if beat0 > beat1 then beat0, beat1 = beat1, beat0 end
   if pitch0 > pitch1 then pitch0, pitch1 = pitch1, pitch0 end
-  local set = {}
-  if mode == "add" or mode == "toggle" then
-    for _, place in ipairs(M.chosen_notes(clip)) do set[place] = true end
-  end
-  for place, n in ipairs(daw.clip(clip):notes()) do
-    if n.start >= 0 and n.pitch >= pitch0 and n.pitch <= pitch1 and n.start < beat1 and n.start + n.length > beat0 then
-      if mode == "toggle" and set[place] then set[place] = nil else set[place] = true end
+  local map = (mode == "add" or mode == "toggle") and chosen_map(clip) or {}
+  local count = 0
+  for _, part in ipairs(parts_for(clip)) do
+    local set = {}
+    for _, place in ipairs(map[part.id] or {}) do set[place] = true end
+    for place, n in ipairs(part.clip:notes()) do
+      local start = n.start + part.offset
+      if n.start >= 0 and n.pitch >= pitch0 and n.pitch <= pitch1 and start < beat1 and start + n.length > beat0 then
+        if mode == "toggle" and set[place] then set[place] = nil else set[place] = true end
+      end
     end
+    local out = {}
+    for place in pairs(set) do out[#out + 1] = place end
+    map[part.id], count = out, count + #out
   end
-  local out = {}
-  for place in pairs(set) do out[#out + 1] = place end
-  choose(clip, out)
-  return #out
+  choose_all(map)
+  return count
 end
 
 function A.select_all_notes(clip)
-  local out = {}
-  local length = daw.clip(clip).length
-  for place, n in ipairs(daw.clip(clip):notes()) do
-    -- Not those hidden by a trim of the clip's edges.
-    if n.start >= 0 and n.start < length then out[#out + 1] = place end
+  local map = {}
+  for _, part in ipairs(parts_for(clip)) do
+    local out = {}
+    for place, n in ipairs(part.clip:notes()) do
+      -- Not those hidden by a trim of the clip's edges.
+      if n.start >= 0 and n.start < part.length then out[#out + 1] = place end
+    end
+    map[part.id] = out
   end
-  choose(clip, out)
+  choose_all(map)
 end
 
 function A.clear_note_selection()
-  if next(chosen.places) then choose(chosen.clip, {}) end
+  if next(chosen) then choose_all({}) end
 end
 
 --- The notes a gesture on the note at `index` acts on: all the chosen ones
---- if it is one of them, else that note alone, which is then the chosen one.
+--- if it is one of them, else that note alone, which is then the chosen
+--- one. Clip id -> places.
 local function grabbed(clip, index)
-  local places = M.chosen_notes(clip)
-  for _, place in ipairs(places) do
-    if place == index then return places end
+  local map = chosen_map(clip)
+  for _, place in ipairs(map[clip] or {}) do
+    if place == index then return map end
   end
   choose(clip, { index })
-  return { index }
+  return { [clip] = { index } }
+end
+
+--- The parts a map of chosen notes is in, each with its notes and places.
+local function grabbed_parts(clip, map)
+  local out = {}
+  for _, part in ipairs(parts_for(clip)) do
+    if map[part.id] then
+      part.notes, part.places = part.clip:notes(), map[part.id]
+      out[#out + 1] = part
+    end
+  end
+  return out
 end
 
 --- Drag notes: the one at `index` and, if it is chosen, the others chosen
 --- with it, by `dbeat` and `dpitch`. The grabbed note lands on the grid
 --- unless `free`; the rest keep their distance from it. With `copy` the
---- notes stay and copies are dropped.
+--- notes stay and copies are dropped. Each note stays in its own clip.
 function A.drag_notes(clip, index, dbeat, dpitch, copy, free)
-  local c = daw.clip(clip)
-  local notes = c:notes()
-  local held = notes[index]
+  local held = daw.clip(clip):notes()[index]
   if not held then return end
-  local places = grabbed(clip, index)
+  local parts = grabbed_parts(clip, grabbed(clip, index))
   local by = snap_note(held.start + dbeat, free) - held.start
   dpitch = math.floor((dpitch or 0) + 0.5)
-  -- Nothing leaves the clip or the keyboard.
-  for _, place in ipairs(places) do
-    local n = notes[place]
-    by = math.max(by, -n.start)
-    by = math.min(by, c.length - n.start - math.min(n.length, daw.opt.note_grid))
-    dpitch = daw.util.clamp(dpitch, -n.pitch, 127 - n.pitch)
-  end
-  if math.abs(by) < 1e-9 and dpitch == 0 and not copy then return end
-  local wanted, set, add = {}, {}, {}
-  for _, place in ipairs(places) do
-    local n = notes[place]
-    local moved = { start = n.start + by, pitch = n.pitch + dpitch }
-    wanted[#wanted + 1] = moved
-    if copy then
-      add[#add + 1] = daw.util.merge(n, moved)
-    else
-      set[#set + 1] = { index = place, start = moved.start, pitch = moved.pitch }
+  -- Nothing leaves its clip or the keyboard.
+  for _, part in ipairs(parts) do
+    for _, place in ipairs(part.places) do
+      local n = part.notes[place]
+      by = math.max(by, -n.start)
+      by = math.min(by, part.length - n.start - math.min(n.length, daw.opt.note_grid))
+      dpitch = daw.util.clamp(dpitch, -n.pitch, 127 - n.pitch)
     end
   end
-  c:edit_notes({ set = set, add = add })
-  if dpitch ~= 0 then c:track():play_note(held.pitch + dpitch, held.velocity, 120) end
-  choose(clip, places_of(clip, wanted))
+  if math.abs(by) < 1e-9 and dpitch == 0 and not copy then return end
+  local after = {}
+  for _, part in ipairs(parts) do
+    local wanted, set, add = {}, {}, {}
+    for _, place in ipairs(part.places) do
+      local n = part.notes[place]
+      local moved = { start = n.start + by, pitch = n.pitch + dpitch }
+      wanted[#wanted + 1] = moved
+      if copy then
+        add[#add + 1] = daw.util.merge(n, moved)
+      else
+        set[#set + 1] = { index = place, start = moved.start, pitch = moved.pitch }
+      end
+    end
+    part.clip:edit_notes({ set = set, add = add })
+    after[part.id] = wanted
+  end
+  if dpitch ~= 0 then daw.clip(clip):track():play_note(held.pitch + dpitch, held.velocity, 120) end
+  local map = {}
+  for id, wanted in pairs(after) do map[id] = places_of(id, wanted) end
+  choose_all(map)
 end
 
 --- Drag an end of the note at `index`, and the same end of the notes chosen
 --- with it: `dstart` moves their starts (the ends stay), `dlength` their ends.
 function A.stretch_notes(clip, index, dstart, dlength, free)
-  local c = daw.clip(clip)
-  local notes = c:notes()
-  local held = notes[index]
+  local held = daw.clip(clip):notes()[index]
   if not held then return end
-  local places = grabbed(clip, index)
+  local parts = grabbed_parts(clip, grabbed(clip, index))
   local least = (free or not daw.opt.note_snap) and 1 / 64 or daw.opt.note_grid
   -- The grabbed note's end lands on the grid; the others change by as much.
   if dstart and dstart ~= 0 then
@@ -2201,33 +2383,40 @@ function A.stretch_notes(clip, index, dstart, dlength, free)
   else
     dlength = 0
   end
-  local wanted, set = {}, {}
-  for _, place in ipairs(places) do
-    local n = notes[place]
-    local stop = n.start + n.length
-    local start = daw.util.clamp(n.start + dstart, 0, stop - least)
-    local length = math.max(least, math.min(stop + dlength, c.length) - start)
-    wanted[#wanted + 1] = { start = start, pitch = n.pitch }
-    set[#set + 1] = { index = place, start = start, length = length }
+  local map = {}
+  for _, part in ipairs(parts) do
+    local wanted, set = {}, {}
+    for _, place in ipairs(part.places) do
+      local n = part.notes[place]
+      local stop = n.start + n.length
+      local start = daw.util.clamp(n.start + dstart, 0, stop - least)
+      local length = math.max(least, math.min(stop + dlength, part.length) - start)
+      wanted[#wanted + 1] = { start = start, pitch = n.pitch }
+      set[#set + 1] = { index = place, start = start, length = length }
+    end
+    part.clip:edit_notes({ set = set })
+    map[part.id] = places_of(part.id, wanted)
   end
-  c:edit_notes({ set = set })
-  choose(clip, places_of(clip, wanted))
-  return notes[index] and (dlength ~= 0 or dstart ~= 0)
+  choose_all(map)
+  return dlength ~= 0 or dstart ~= 0
 end
 
 --- Take a note away, and with it the others if it is one of the chosen.
 function A.remove_note(clip, index)
-  local places = grabbed(clip, index)
-  daw.clip(clip):edit_notes({ remove = places })
-  choose(clip, {})
+  for _, part in ipairs(grabbed_parts(clip, grabbed(clip, index))) do
+    part.clip:edit_notes({ remove = part.places })
+  end
+  choose_all({})
 end
 
 --- Take the chosen notes away: what Delete does in the piano roll.
 function A.remove_chosen_notes(clip)
-  local places = M.chosen_notes(clip)
-  if #places == 0 then return false end
-  daw.clip(clip):edit_notes({ remove = places })
-  choose(clip, {})
+  local map, count = chosen_map(clip)
+  if count == 0 then return false end
+  for _, part in ipairs(grabbed_parts(clip, map)) do
+    part.clip:edit_notes({ remove = part.places })
+  end
+  choose_all({})
   return true
 end
 
@@ -2248,14 +2437,16 @@ end
 --- How hard a note is played; with the note among the chosen, all of them.
 function A.set_velocity(clip, index, velocity)
   velocity = daw.util.clamp(math.floor(velocity + 0.5), 1, 127)
-  local places = M.chosen_notes(clip)
+  local map = chosen_map(clip)
   local among = false
-  for _, place in ipairs(places) do among = among or place == index end
+  for _, place in ipairs(map[clip] or {}) do among = among or place == index end
   if not among then return daw.clip(clip):set_note(index, { velocity = velocity }) end
-  local set = {}
-  for i, place in ipairs(places) do set[i] = { index = place, velocity = velocity } end
-  daw.clip(clip):edit_notes({ set = set })
-  choose(clip, places)
+  for _, part in ipairs(grabbed_parts(clip, map)) do
+    local set = {}
+    for i, place in ipairs(part.places) do set[i] = { index = place, velocity = velocity } end
+    part.clip:edit_notes({ set = set })
+  end
+  choose_all(map)
 end
 
 --- Hear a pitch on the track of the clip that is open: a click on the keyboard.
@@ -2267,38 +2458,45 @@ end
 --- are `{ beat, pitch }` as the pointer went; between two of them the path
 --- is a straight line, so a quick stroke misses nothing it passed over.
 function A.erase_notes(clip, points)
-  local c = daw.clip(clip)
-  local hit = {}
   local function crosses(n, b0, p0, b1, p1)
     -- Walk the segment in steps finer than a note's height and a 64th.
     local steps = math.max(1, math.ceil(math.max(math.abs(p1 - p0) * 4, math.abs(b1 - b0) * 64)))
     for s = 0, steps do
       local t = s / steps
       local beat, pitch = b0 + (b1 - b0) * t, p0 + (p1 - p0) * t
-      if n.start >= 0 and math.floor(pitch + 0.5) == n.pitch and beat >= n.start and beat < n.start + n.length then return true end
+      if not n.hidden and math.floor(pitch + 0.5) == n.pitch and beat >= n.start and beat < n.start + n.length then return true end
     end
     return false
   end
-  for place, n in ipairs(c:notes()) do
-    for i = 1, #points do
-      local a, b = points[i], points[math.min(i + 1, #points)]
-      if crosses(n, a[1], a[2], b[1], b[2]) then
-        hit[#hit + 1] = place
-        break
+  local count = 0
+  for _, part in ipairs(parts_for(clip)) do
+    local hit = {}
+    for place, n in ipairs(part.clip:notes()) do
+      -- Notes hidden by a trim of the clip's start are not there to cross.
+      local seen = daw.util.merge(n, { start = n.start + part.offset, hidden = n.start < 0 })
+      for i = 1, #points do
+        local a, b = points[i], points[math.min(i + 1, #points)]
+        if crosses(seen, a[1], a[2], b[1], b[2]) then
+          hit[#hit + 1] = place
+          break
+        end
       end
     end
+    if #hit > 0 then part.clip:edit_notes({ remove = hit }) end
+    count = count + #hit
   end
-  if #hit > 0 then
-    c:edit_notes({ remove = hit })
-    choose(clip, {})
-  end
-  return #hit
+  if count > 0 then choose_all({}) end
+  return count
 end
 
 --- A drag with the right button down the keyboard: choose every note from
 --- `low` to `high` (either way round). `mode` as for `select_note`.
 function A.select_pitches(clip, low, high, mode)
-  return A.select_notes_box(clip, -1, low, daw.clip(clip).length + 1, high, mode)
+  local from, to = 0, daw.clip(clip).length
+  for _, part in ipairs(parts_for(clip)) do
+    from, to = math.min(from, part.offset), math.max(to, part.offset + part.length)
+  end
+  return A.select_notes_box(clip, from - 1, low, to + 1, high, mode)
 end
 
 --- Draw over the velocity strip: `points` are `{ beat, fraction }` as the
@@ -2320,21 +2518,23 @@ function A.draw_velocities(clip, points, reach)
     end
     return points[#points][2]
   end
-  local c = daw.clip(clip)
-  local only = {}
-  local places = M.chosen_notes(clip)
-  for _, place in ipairs(places) do only[place] = true end
-  local set = {}
-  for place, n in ipairs(c:notes()) do
-    if (#places == 0 or only[place]) and n.start >= 0 and n.start >= from - 1e-9 and n.start <= to + 1e-9 then
-      set[#set + 1] = { index = place, velocity = daw.util.clamp(math.floor(height(n.start) * 127 + 0.5), 1, 127) }
+  local map, chosen_count = chosen_map(clip)
+  local count = 0
+  for _, part in ipairs(parts_for(clip)) do
+    local only = {}
+    for _, place in ipairs(map[part.id] or {}) do only[place] = true end
+    local set = {}
+    for place, n in ipairs(part.clip:notes()) do
+      local start = n.start + part.offset
+      if (chosen_count == 0 or only[place]) and n.start >= 0 and start >= from - 1e-9 and start <= to + 1e-9 then
+        set[#set + 1] = { index = place, velocity = daw.util.clamp(math.floor(height(start) * 127 + 0.5), 1, 127) }
+      end
     end
+    if #set > 0 then part.clip:edit_notes({ set = set }) end
+    count = count + #set
   end
-  if #set > 0 then
-    c:edit_notes({ set = set })
-    if #places > 0 then choose(clip, places) end
-  end
-  return #set
+  if count > 0 and chosen_count > 0 then choose_all(map) end
+  return count
 end
 
 --- The length a click on the grid gives a note, and that insert mode and
@@ -2348,30 +2548,42 @@ function A.toggle_note_snap()
   daw.opt.note_snap = not daw.opt.note_snap
 end
 
---- Quantize: the chosen notes of `clip`, or all of them with none chosen,
---- start on the nearest step of the piano roll's grid, keeping their
---- lengths (a note that would leave the clip stops at its end). `strength`
---- from 0 to 1 moves them that part of the way (1 without).
+--- Quantize: the chosen notes of `clip` (and of the clips edited with it),
+--- or all of them with none chosen, start on the nearest step of the piano
+--- roll's grid, keeping their lengths (a note that would leave its clip
+--- stops at its end). `strength` from 0 to 1 moves them that part of the
+--- way (1 without).
 function A.quantize_notes(clip, strength)
   strength = daw.util.clamp(strength or 1, 0, 1)
-  local c = daw.clip(clip)
-  local notes = c:notes()
-  local places = M.chosen_notes(clip)
-  local kept = #places > 0
-  if not kept then
-    for place in ipairs(notes) do places[place] = place end
+  local map, chosen_count = chosen_map(clip)
+  local kept = chosen_count > 0
+  local count, after = 0, {}
+  for _, part in ipairs(parts_for(clip)) do
+    local notes = part.clip:notes()
+    local places = map[part.id] or {}
+    if not kept then
+      for place in ipairs(notes) do places[place] = place end
+    end
+    local set, wanted = {}, {}
+    for _, place in ipairs(places) do
+      local n = notes[place]
+      local start = math.max(0, math.min(n.start + (note_snap(n.start) - n.start) * strength, part.length - daw.opt.note_grid))
+      set[#set + 1] = { index = place, start = start, length = math.min(n.length, part.length - start) }
+      wanted[#wanted + 1] = { start = start, pitch = n.pitch }
+    end
+    if #set > 0 then
+      part.clip:edit_notes({ set = set })
+      after[part.id] = wanted
+    end
+    count = count + #set
   end
-  local set, wanted = {}, {}
-  for _, place in ipairs(places) do
-    local n = notes[place]
-    local start = math.max(0, math.min(n.start + (note_snap(n.start) - n.start) * strength, c.length - daw.opt.note_grid))
-    set[#set + 1] = { index = place, start = start, length = math.min(n.length, c.length - start) }
-    wanted[#wanted + 1] = { start = start, pitch = n.pitch }
+  if count == 0 then return 0 end
+  if kept then
+    local out = {}
+    for id, wanted in pairs(after) do out[id] = places_of(id, wanted) end
+    choose_all(out)
   end
-  if #set == 0 then return 0 end
-  c:edit_notes({ set = set })
-  if kept then choose(clip, places_of(clip, wanted)) end
-  return #set
+  return count
 end
 
 -- Step input: with it on, the piano roll open and the transport stopped,

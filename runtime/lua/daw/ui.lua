@@ -26,15 +26,15 @@ M.layout = M.tabs[1].layout
 M.bars = { { view = "status", size = 1 }, { view = "cmdline", size = 1 } }
 
 -- Each seat has its own focus, floating view, prompt, tabs and windows,
--- the view a held button went down in and a border being dragged; a new
--- one starts with the tabs and windows of the instance's terminal.
+-- and the view a held button went down in; a new one starts with the tabs
+-- and windows of the instance's terminal.
 daw.seats.keep("ui",
-  function() return M.focused, M.float, M.grabber, M.rects, M.tabs, M.tab, M.pressed, M.dragging end,
-  function(focused, float, grabber, rects, tabs, tab, pressed, dragging)
-    M.focused, M.float, M.grabber, M.rects, M.pressed, M.dragging = focused, float, grabber, rects, pressed, dragging
+  function() return M.focused, M.float, M.grabber, M.rects, M.tabs, M.tab, M.pressed end,
+  function(focused, float, grabber, rects, tabs, tab, pressed)
+    M.focused, M.float, M.grabber, M.rects, M.pressed = focused, float, grabber, rects, pressed
     M.tabs, M.tab, M.layout = tabs, tab, tabs[tab].layout
   end,
-  function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, daw.seats.copy(tabs), tab, nil, nil end)
+  function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, daw.seats.copy(tabs), tab, nil end)
 
 --- Register a view, replacing any view of the same name.
 ---   daw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
@@ -367,6 +367,7 @@ end
 --- Draw the whole screen. Called by the kernel.
 function M.render(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
+  api.ui_mouse(daw.opt.mouse ~= false)
   if buf.width < M.min_width or buf.height < M.min_height then return too_small(buf) end
   local sizes_before = M.rects.sizes or {}
   M.rects = M.arrange(buf.width, buf.height)
@@ -452,6 +453,7 @@ function M.render(buf)
   end
   M.draw_hints(buf)
   if M.draw_popup then M.draw_popup(buf) end
+  if M.draw_menu then M.draw_menu(buf) end
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
@@ -511,22 +513,17 @@ function M.close()
   api.ui_redraw()
 end
 
---- Route a mouse event to the view under the pointer, with coordinates
---- relative to that view.
-function M.mouse(event)
-  -- A border between windows being dragged moves with the pointer.
-  if M.dragging then
-    local border = M.dragging
-    if event.kind == "drag" then
-      border.moved = true
-      return L.drag_border(border, M.rects, event.x, event.y)
-    end
-    M.dragging = nil
-    -- A click on a window's top row that did not drag is the window's.
-    if event.kind == "up" and (border.moved or border.dir == "h") then
-      return L.drag_border(border, M.rects, event.x, event.y)
-    end
-  end
+--- A border between two windows held from a press: it follows the pointer.
+local function hold_border(event, border, only_moved)
+  daw.mouse.grab(daw.util.merge(event, { view_x = 0, view_y = 0 }), {
+    drag = function(d) L.drag_border(border, M.rects, d.x, d.y) end,
+    up = function(u)
+      if u.moved or not only_moved then L.drag_border(border, M.rects, u.x, u.y) end
+    end,
+  })
+end
+
+local function route(event)
   local tabline = M.rects.tabline
   if tabline and event.y == tabline.y and not M.float then
     -- A click on a tab goes to it.
@@ -539,15 +536,10 @@ function M.mouse(event)
   for _, r in ipairs(M.rects) do
     if event.x >= r.x and event.x < r.x + r.w and event.y >= r.y and event.y < r.y + r.h then target = r end
   end
-  if event.kind == "down" and not M.float then
-    -- The rule between two windows side by side is a border to drag; so is
-    -- the top row of a window below another, which the window hears too.
-    local border = L.border_at(M.rects, event.x, event.y)
-    if border then
-      M.dragging = border
-      if border.dir == "h" or not target then return end
-    end
-  end
+  -- The rule between two windows side by side is a border to drag; so is
+  -- the top row of a window below another, which the window hears first.
+  local border = event.kind == "down" and not M.float and L.border_at(M.rects, event.x, event.y)
+  if border and (border.dir == "h" or not target) then return hold_border(event, border) end
   -- A drag and its release belong to the view the button went down in,
   -- wherever the pointer has gone since.
   if event.kind == "down" then
@@ -570,8 +562,24 @@ function M.mouse(event)
     if win then L.enter(win) else M.focus(target.name) end
   end
   if view.on_mouse then
-    view:on_mouse(daw.util.merge(event, { x = event.x - target.x, y = event.y - target.y, win = target.win }))
+    view:on_mouse(daw.util.merge(event, {
+      x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
+      win = target.win,
+    }))
   end
+  -- A press on a window's top row that the window did not hold drags the
+  -- border above it.
+  if border and not daw.mouse.gesture() then hold_border(event, border, true) end
+end
+
+--- Route a mouse event to the view under the pointer, with coordinates
+--- relative to that view (and `view_x`, `view_y`, `w`, `h`, where the view
+--- is), after what floats over the views and a gesture under way have had
+--- it (`daw.mouse`).
+function M.mouse(event)
+  if daw.mouse.take(event) then return end
+  route(event)
+  daw.mouse.done(event)
 end
 
 --- Show a message. `level` is "info" (default), "warn" or "error".

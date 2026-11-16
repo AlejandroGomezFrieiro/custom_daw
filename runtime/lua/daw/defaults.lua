@@ -1929,6 +1929,22 @@ end, "Join the clips")
 map("S", "clip.split", { view = "arrange", mode = "x", desc = "Split the chosen clips at the cursor" })
 ax("~", edit.arrange.mute, "Mute or unmute")
 ax("M", edit.arrange.mute, "Mute or unmute")
+ax("<CR>", function(region)
+  local ids = {}
+  for _, track in ipairs(edit.arrange.tracks(region)) do
+    for _, c in ipairs(api.clip_list(track)) do
+      local inside
+      if region.clips then
+        inside = region.clips[c.id]
+      else
+        inside = region.kind == "line" or (c.start < region.c1 - 1e-9 and c.start + c.length > region.c0 + 1e-9)
+      end
+      if inside and c.kind == "midi" then ids[#ids + 1] = c.id end
+    end
+  end
+  local under = daw.cursor.clip()
+  daw.roll_clips.open(ids, under and under.id)
+end, "Edit the notes of the selected MIDI clips together")
 ax("<C-a>", function(region, ctx) edit.arrange.transpose(region, ctx.count or 1) end, "Transpose up")
 ax("<C-x>", function(region, ctx) edit.arrange.transpose(region, -(ctx.count or 1)) end, "Transpose down")
 ax("L", function(region, ctx) shift(region, ctx.count or 1) end, "Move the clips right")
@@ -2009,7 +2025,7 @@ pmap("b", function(ctx) roll:to_note(-1, ctx.count) end, "Previous note", motion
 pmap("e", function(ctx) roll:to_note_end(ctx.count) end, "End of this note, or the next", motion)
 pmap("W", function(ctx) roll:to_bar(ctx.count or 1) end, "Next bar", motion)
 pmap("B", function(ctx) roll:to_bar(-(ctx.count or 1)) end, "Previous bar", motion)
-pmap("0", function() roll:set(nil, 0) end, "Start of the clip", motion)
+pmap("0", function() roll:set(nil, (roll:span())) end, "Start of the clip", motion)
 pmap("^", function() roll:to_edge(1) end, "The first note", motion)
 pmap("$", function() roll:to_edge(-1) end, "End of the clip", motion)
 pmap("gg", function() roll:to_extreme(1) end, "The highest note", far_lines)
@@ -2041,16 +2057,20 @@ for _, lhs in ipairs({ "ib", "ab" }) do
 end
 for _, lhs in ipairs({ "ic", "ac", "ie", "ae" }) do
   pobject(lhs, function()
-    local clip = roll:clip()
-    if clip then return { view = "pianoroll", kind = "char", r0 = roll.pitch, r1 = roll.pitch, c0 = 0, c1 = clip.length } end
-  end, "Every note of the clip")
+    if not roll:clip() then return end
+    local c0, c1 = roll:span()
+    return { view = "pianoroll", kind = "char", r0 = roll.pitch, r1 = roll.pitch, c0 = c0, c1 = c1 }
+  end, "Every note of the clip, or of the clips edited")
 end
 
--- Piano roll: operators.
+-- Piano roll: operators. They act on every clip the roll edits.
+local function editing()
+  local parts = roll:parts()
+  return #parts > 1 and parts or roll:clip()
+end
 local function pop(lhs, fn, desc)
   keymap.operator(lhs, function(region, ctx)
-    local clip = roll:clip()
-    if clip then return fn(clip, region, ctx) end
+    if roll:clip() then return fn(editing(), region, ctx) end
   end, { view = "pianoroll", desc = desc })
 end
 pop("d", function(clip, region, ctx) keymap.setreg(edit.roll.delete(clip, region), ctx.register) end, "Delete")
@@ -2077,9 +2097,10 @@ pop("=", function(clip, region)
     n.start, n.length = util.round(n.start, grid), math.max(grid, util.round(n.length, grid))
   end)
 end, "Snap notes to the grid")
-pop("gl", function(clip, region)
+pop("gl", function(_, region)
+  local clip = roll:clip()
   local c0, c1 = region.c0, region.c1
-  if region.kind == "line" then c0, c1 = 0, clip.length end
+  if region.kind == "line" then c0, c1 = roll:span() end
   transport.loop_start, transport.loop_end, transport.loop_enabled = clip.start + c0, clip.start + c1, true
 end, "Loop")
 
@@ -2093,15 +2114,19 @@ pmap("a", function()
 end, "Enter notes after this one")
 -- Notes chosen with the pointer (a click, a box) come first for the keys
 -- that would otherwise act on the note under the cursor.
+-- The first of them: its clip's id and its place there.
 local function chosen()
-  local clip = roll:clip()
-  return clip and #daw.frontend.chosen_notes(clip.id) > 0 and clip or nil
+  for _, part in ipairs(roll:parts()) do
+    local places = daw.frontend.chosen_notes(part.id)
+    if #places > 0 then return part.id, places[1] end
+  end
 end
 pmap("x", function()
   local clip = roll:clip()
   -- Controller moves chosen in the strip go with the chosen notes.
   local moves = clip and daw.controls.remove(clip.id) or 0
-  if chosen() then return daw.frontend.act.remove_chosen_notes(clip.id) end
+  local first = chosen()
+  if first then return daw.frontend.act.remove_chosen_notes(first) end
   if moves == 0 then keymap.normal("din") end
 end, "Delete the note, or the notes and controller moves chosen with the pointer")
 pmap("gA", function()
@@ -2165,18 +2190,14 @@ pmap("H", function()
 end, "Move the note left")
 pmap("<C-a>", function(ctx)
   local by = ctx.count or 1
-  local clip = chosen()
-  if clip then
-    return daw.frontend.act.drag_notes(clip.id, daw.frontend.chosen_notes(clip.id)[1], 0, by, false, true)
-  end
+  local clip, place = chosen()
+  if clip then return daw.frontend.act.drag_notes(clip, place, 0, by, false, true) end
   if roll:change(function(n) n.pitch = math.min(127, n.pitch + by) end) then roll:move(0, by) end
 end, "Move the note up a semitone")
 pmap("<C-x>", function(ctx)
   local by = ctx.count or 1
-  local clip = chosen()
-  if clip then
-    return daw.frontend.act.drag_notes(clip.id, daw.frontend.chosen_notes(clip.id)[1], 0, -by, false, true)
-  end
+  local clip, place = chosen()
+  if clip then return daw.frontend.act.drag_notes(clip, place, 0, -by, false, true) end
   if roll:change(function(n) n.pitch = math.max(0, n.pitch - by) end) then roll:move(0, -by) end
 end, "Move the note down a semitone")
 pmap("]", function()
@@ -2186,6 +2207,28 @@ pmap("[", function()
   roll:change(function(n) n.velocity = math.max(1, n.velocity - 10) end)
 end, "Softer")
 pmap("gh", function() roll:audition() end, "Hear the pitch under the cursor")
+-- The clips the roll edits (`daw.roll_clips`).
+local function clip_here()
+  -- The clip of the note under the cursor: one edited, or one shown behind.
+  local _, _, part = roll:note_at(roll.pitch, roll.beat)
+  if part then return part.id end
+  local note = daw.roll_clips.context_at(roll.pitch, roll.beat)
+  if note then return note.clip end
+  daw.notify("no note under the cursor", "warn")
+end
+pmap("ga", function()
+  local id = clip_here()
+  if id then daw.roll_clips.activate(id) end
+end, "Edit the clip of the note under the cursor: new notes go there")
+pmap("gE", function()
+  local id = clip_here()
+  if id then daw.roll_clips.toggle(id) end
+end, "Edit the clip of the note under the cursor too, or no longer")
+pmap("gn", function(ctx) daw.roll_clips.cycle(ctx.count or 1) end, "The next clip edited becomes the active one")
+pmap("gN", function(ctx) daw.roll_clips.cycle(-(ctx.count or 1)) end, "The clip edited before becomes the active one")
+command("roll.tracks", function() daw.roll_clips.pick() end,
+  { desc = "Choose whose notes the piano roll shows behind its own, and which clips it edits together" })
+command("roll.only", function() daw.roll_clips.only() end, { desc = "Edit the piano roll's active clip alone" })
 pmap("<Esc>", function()
   if chosen() then return daw.frontend.act.clear_note_selection() end
   daw.ui.focus("arrange")
@@ -2207,8 +2250,7 @@ command("lsp", function(ctx) daw.lsp.command(ctx) end,
 -- Piano roll: on a selection.
 local function px(lhs, fn, desc)
   map(lhs, nil, { view = "pianoroll", mode = "x", desc = desc, operator = function(region, ctx)
-    local clip = roll:clip()
-    if clip then fn(clip, region, ctx) end
+    if roll:clip() then fn(editing(), region, ctx) end
   end })
 end
 px("x", function(clip, region, ctx) keymap.setreg(edit.roll.delete(clip, region), ctx.register) end, "Delete")
@@ -2260,6 +2302,37 @@ imap("<Left>", function() roll:step(-1) end, "Step back")
 imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
+
+-- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
+-- while a suggestion shows, its keys come first, in normal and insert mode.
+local ni = { "n", "i" }
+map("<C-Space>", function() daw.complete.request("manual") end, { view = "pianoroll", mode = ni, desc = "Suggest what comes next", repeatable = false })
+local function cmap(lhs, fn, desc, modes)
+  map(lhs, fn, { view = "pianoroll.complete", mode = modes or ni, desc = desc, repeatable = false })
+end
+cmap("<Tab>", function() daw.complete.accept() end, "Accept the suggestion")
+cmap("<C-l>", function() daw.complete.accept(true) end, "Accept the suggestion's next note or chord")
+cmap("<C-n>", function() daw.complete.select(1) end, "The next alternative")
+cmap("<C-p>", function() daw.complete.select(-1) end, "The previous alternative")
+for n = 1, 9 do
+  cmap("<A-" .. n .. ">", function() daw.complete.select(n, true) end, "Alternative " .. n)
+end
+cmap("<C-e>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("<Esc>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("gh", function() daw.complete.audition() end, "Hear the suggestion, from a bar before", { "n" })
+
+command("complete", function() daw.complete.request("manual") end, { desc = "Suggest what comes next in the piano roll" })
+command("complete.accept", function(args) daw.complete.accept(args[1] == "next") end,
+  { desc = "Accept the suggestion: `:complete.accept next` takes its next note or chord only" })
+command("complete.dismiss", function() daw.complete.dismiss() end, { desc = "Dismiss the suggestion" })
+command("complete.audition", function() daw.complete.audition() end, { desc = "Hear the suggestion through the track, from a bar before" })
+command("complete.sources", function()
+  local lines = {}
+  for _, s in ipairs(daw.complete.list()) do
+    lines[#lines + 1] = string.format("%-16s priority %-4d %s%s", s.name, s.priority, table.concat(s.views, ","), s.auto and "  auto" or "")
+  end
+  daw.notify(#lines > 0 and table.concat(lines, "\n") or "no completion sources: an extension adds them")
+end, { desc = "List the completion sources" })
 
 -- Sizes -----------------------------------------------------------------------
 --

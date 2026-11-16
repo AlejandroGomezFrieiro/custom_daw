@@ -6,12 +6,14 @@
 //! `ui.grid` event,
 //!
 //!   { "w": 120, "h": 40, "full": false, "cursor": [x, y] or null,
-//!     "runs": [ [x, y, "text", fg, bg, attrs], ... ] }
+//!     "runs": [ [x, y, "text", fg, bg, attrs], ... ], "mouse": true }
 //!
 //! where a run is a stretch of cells of one style on one row, colours are
 //! `null` (the terminal's own), a number (one of its 256) or `"#rrggbb"`,
 //! and `attrs` are the bits of [`crate::grid`]. `full` says that the screen
 //! is to be cleared first (the first event, and after a change of size).
+//! `mouse` false asks the terminal to leave the pointer to its own
+//! selection (`daw.opt.mouse` off).
 //! The other side keeps a [`Grid`] and gives each event to [`apply`].
 
 use anyhow::{Result, bail};
@@ -106,6 +108,7 @@ pub fn apply(grid: &mut Grid, payload: &Value) -> Result<Option<(u16, u16)>> {
     if payload["full"].as_bool().unwrap_or(false) || (grid.width, grid.height) != (width, height) {
         *grid = Grid::new(width, height);
     }
+    grid.mouse_off = payload["mouse"].as_bool() == Some(false);
     let clip = grid.rect();
     for run in payload["runs"].as_array().into_iter().flatten() {
         let (Some(x), Some(y), Some(text)) = (run[0].as_i64(), run[1].as_i64(), run[2].as_str())
@@ -156,12 +159,13 @@ impl Frontend for RemoteFrontend {
             .is_some_and(|s| (s.width, s.height) == (grid.width, grid.height));
         let shown = self.shown.as_ref().filter(|_| same_size);
         let runs = runs(grid, shown);
-        if runs.is_empty() && same_size && cursor == self.cursor {
+        let same_mouse = shown.is_some_and(|s| s.mouse_off == grid.mouse_off);
+        if runs.is_empty() && same_size && same_mouse && cursor == self.cursor {
             return Ok(());
         }
         let payload = json!({
             "w": grid.width, "h": grid.height, "full": !same_size,
-            "cursor": cursor.map(|(x, y)| json!([x, y])), "runs": runs,
+            "cursor": cursor.map(|(x, y)| json!([x, y])), "runs": runs, "mouse": !grid.mouse_off,
         });
         if !self.clients.push(self.client, "ui.grid", &payload) {
             bail!("connection {} is gone", self.client);
@@ -270,6 +274,15 @@ mod tests {
         apply(&mut far, &json!({ "w": 12, "h": 3, "runs": changed })).unwrap();
         assert_eq!(far.cells, after.cells);
         assert!(runs(&after, Some(&after)).is_empty(), "nothing changed, nothing sent");
+    }
+
+    #[test]
+    fn the_far_terminal_is_told_whether_to_report_the_pointer() {
+        let mut far = painted();
+        apply(&mut far, &json!({ "w": 12, "h": 3, "runs": [], "mouse": false })).unwrap();
+        assert!(far.mouse_off, "the terminal keeps the pointer for its selection");
+        apply(&mut far, &json!({ "w": 12, "h": 3, "runs": [] })).unwrap();
+        assert!(!far.mouse_off, "without a word it reports the pointer");
     }
 
     #[test]

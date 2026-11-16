@@ -59,6 +59,8 @@ daw.buf, daw.win, daw.tab = daw.layout.buf, daw.layout.win, daw.layout.tabs
 daw.buftype, daw.layouts = daw.layout.buftype, daw.layout.layouts
 daw.draw = require("daw.draw")
 daw.ui.keybar = require("daw.keybar")
+daw.mouse = require("daw.mouse")
+require("daw.menu")
 daw.canvas = require("daw.canvas")
 daw.notify = daw.ui.notify
 daw.keymap = require("daw.keymap")
@@ -153,10 +155,15 @@ function K.startup()
   for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
     require("daw.views." .. name)
   end
+  -- What the pointer does in them: the window's gestures, in cells.
+  for _, name in ipairs({ "arrange_mouse", "pianoroll_mouse", "panels_mouse" }) do
+    require("daw.views." .. name)
+  end
   daw.diagnostic = require("daw.diagnostic")
   daw.lsp = require("daw.lsp")
   require("daw.defaults")
   daw.layout.setup()
+  daw.complete = require("daw.complete")
   daw.fx.setup()
   daw.routes.setup()
   daw.media = require("daw.media")

@@ -456,7 +456,7 @@ function M.pointer(name, event)
   local window = M.open_views[name]
   if not view.paint and window and window.cells then
     local e = cell_event(window, event)
-    if e and view.on_mouse then daw.limit.named("the mouse", view.on_mouse, view, e) end
+    if e and view.on_mouse then daw.limit.named("the mouse", daw.mouse.to_view, view, e) end
   elseif view.pointer then
     view:pointer(event)
   end

@@ -150,9 +150,9 @@ holds up a diagnostic.
 | `:midilsp` | | where the engine is, the settings, the servers |
 | `:midilsp start`, `:midilsp stop` | | |
 | `:midilsp.preset strict-counterpoint` | | the rules to check, as one of the engine's profiles |
-| `:midilsp.rule parallel-perfect off` | `,lr` alone: a list to switch rules in | a rule on or off |
-| `:problems` | `,lp` | every server's diagnostics, each with its fixes: Enter goes to one, or applies a fix |
-| `:lsp info` | `,li` | |
+| `:midilsp.rule parallel-perfect off` | `,Lr` alone: a list to switch rules in | a rule on or off |
+| `:problems` | `,Lp` | every server's diagnostics, each with its fixes: Enter goes to one, or applies a fix |
+| `:lsp info` | `,Li` | |
 
 The preset and the rules are kept with the project and sent to the engine
 as soon as they change; its diagnostics follow.

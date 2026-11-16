@@ -158,12 +158,5 @@ function view:selected()
   return row and daw.device(row.device.id), row
 end
 
-function view:on_mouse(event)
-  if event.kind == "scroll_down" then self.row = self.row + 1 end
-  if event.kind == "scroll_up" then self.row = self.row - 1 end
-  if event.kind == "down" then self.row = event.y + self.scroll end
-  api.ui_redraw()
-end
-
 daw.ui.view("devices", view)
 return view
