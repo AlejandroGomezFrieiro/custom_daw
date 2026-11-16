@@ -1,6 +1,6 @@
-# daw
+# paw
 
-A digital audio workstation built the way Neovim is built: a small kernel, and
+A Personalized (digital) Audio Workstation built the way Neovim is built: a small kernel, and
 everything you touch written in Lua on top of it. You can drive it from the
 keyboard with modal editing, from a window with the mouse, or from a script.
 
