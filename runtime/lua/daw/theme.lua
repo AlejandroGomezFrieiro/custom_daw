@@ -128,6 +128,7 @@ local function build()
     TakeLane = { fg = c.faint, bg = c.bg_dark },
     TakeLaneName = { fg = c.dim, bg = c.bg_dark },
     ClipEdge = { fg = c.bg },
+    ClipWarp = { fg = c.yellow, bold = true },
     ClipMidi = { fg = c.bg, bg = c.blue },
     ClipAudio = { fg = c.bg, bg = c.green },
     ClipMuted = { fg = c.dim, bg = c.bg_hl },

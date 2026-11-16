@@ -131,9 +131,21 @@ end
 
 -- Documents -------------------------------------------------------------------
 
-local function roll_clip()
-  local view = daw.ui.views.pianoroll
-  return view and view.clip_id and pcall(api.clip_get, view.clip_id) and view.clip_id or nil
+-- The clips open in a piano roll: each seat (each person's terminal or
+-- window) has its own, and the servers are shared, so they get all of them.
+local function roll_clips()
+  local open = {}
+  local function look()
+    local view = daw.ui.views.pianoroll
+    if view and view.clip_id and pcall(api.clip_get, view.clip_id) then open[view.clip_id] = true end
+  end
+  local seats = daw.seats and daw.seats.list() or {}
+  if #seats <= 1 then
+    look()
+  else
+    for _, seat in ipairs(seats) do daw.seats.within(seat, look) end
+  end
+  return open
 end
 
 -- Shell-style patterns with `*` and `?`, ignoring case.
@@ -194,13 +206,15 @@ function M.sync()
     daw.cancel(M.timer)
     M.timer = nil
   end
-  local open = roll_clip()
+  local open = roll_clips()
   for _, client in pairs(clients) do
     if client.status == "running" then
       for id, doc in pairs(client.docs) do
-        if id ~= open and not doc.kept then close_doc(client, id) end
+        if not open[id] and not doc.kept then close_doc(client, id) end
       end
-      if open and M.attaches(client, open) then send_doc(client, open) end
+      for id in pairs(open) do
+        if M.attaches(client, id) then send_doc(client, id) end
+      end
       for id, doc in pairs(client.docs) do
         if doc.kept then send_doc(client, id) end
       end
@@ -657,18 +671,27 @@ function M.show_hover(id, pitch, beat)
     lines[#lines + 1] = { text = daw.diagnostic.format(d), style = daw.diagnostic.group("Diagnostic", d.severity) }
     for _, fix in ipairs(d.fixes) do lines[#lines + 1] = "  fix: " .. tostring(fix.title) end
   end
+  -- The answers may come in another person's turn: the float is shown to
+  -- whoever asked.
+  local seat = daw.seats and daw.seats.current
   M.hover(id, pitch, beat, function(sections)
-    for _, s in ipairs(sections) do
-      if #lines > 0 then lines[#lines + 1] = "" end
-      lines[#lines + 1] = { text = s.client, style = "Title" }
-      for _, line in ipairs(s.lines) do lines[#lines + 1] = "  " .. line end
-    end
-    if #lines == 0 then return daw.notify("nothing to say about " .. daw.music.name(pitch) .. " here") end
-    local width = 20
-    for _, line in ipairs(lines) do width = math.max(width, api.str_width(type(line) == "table" and line.text or line) + 4) end
-    daw.ui.page(daw.music.name(pitch) .. " " .. daw.time.format(api.clip_get(id).start + beat), lines,
-      { width = math.min(100, width), height = math.min(30, #lines + 3) })
+    if seat and seat ~= daw.seats.current then return daw.seats.within(seat, M.show_lines, id, pitch, beat, lines, sections) end
+    M.show_lines(id, pitch, beat, lines, sections)
   end)
+end
+
+--- The hover float itself: the diagnostics' lines, then each server's.
+function M.show_lines(id, pitch, beat, lines, sections)
+  for _, s in ipairs(sections) do
+    if #lines > 0 then lines[#lines + 1] = "" end
+    lines[#lines + 1] = { text = s.client, style = "Title" }
+    for _, line in ipairs(s.lines) do lines[#lines + 1] = "  " .. line end
+  end
+  if #lines == 0 then return daw.notify("nothing to say about " .. daw.music.name(pitch) .. " here") end
+  local width = 20
+  for _, line in ipairs(lines) do width = math.max(width, api.str_width(type(line) == "table" and line.text or line) + 4) end
+  daw.ui.page(daw.music.name(pitch) .. " " .. daw.time.format(api.clip_get(id).start + beat), lines,
+    { width = math.min(100, width), height = math.min(30, #lines + 3) })
 end
 
 -- Code actions -----------------------------------------------------------------

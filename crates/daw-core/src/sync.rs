@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::Engine as _;
+use daw_engine::midi_form::Form;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
@@ -83,7 +84,7 @@ pub struct Mapper {
     /// The MIDI port's key and channel each track takes, as last sent.
     midi_inputs: HashMap<Id, (u32, u8)>,
     /// The same for the port each track sends to.
-    midi_outputs: HashMap<Id, (u32, u8)>,
+    midi_outputs: HashMap<Id, (u32, u8, Form)>,
     routing: Routing,
     /// Devices given a buffer for a side-chain.
     keyed: HashSet<Id>,
@@ -698,18 +699,20 @@ pub fn sync(
                 channel: midi.1,
             });
         }
-        let out = track.midi_output.as_ref().map_or((0, 0), |m| {
+        let out = track.midi_output.as_ref().map_or((0, 0, Form::Auto), |m| {
             (
                 daw_engine::midi::port_key(&m.port),
                 m.channel.unwrap_or(0),
+                m.engine_form(),
             )
         });
-        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0)) != out {
+        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0, Form::Auto)) != out {
             map.midi_outputs.insert(track.id, out);
             send(Msg::SetMidiOutput {
                 track: slot,
                 port: out.0,
                 channel: out.1,
+                form: out.2,
             });
         }
     }
@@ -787,11 +790,12 @@ pub fn sync(
         map.clip_events.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
             // Notes it left sounding on its MIDI output port end there.
-            if map.midi_outputs.get(id).is_some_and(|(port, _)| *port != 0) {
+            if map.midi_outputs.get(id).is_some_and(|(port, ..)| *port != 0) {
                 removals.push(Msg::SetMidiOutput {
                     track: slot,
                     port: 0,
                     channel: 0,
+                    form: Form::Auto,
                 });
             }
             removals.push(Msg::RemoveTrack { slot });
@@ -1224,12 +1228,13 @@ fn audio_regions(
             end,
             // An edge inside the recording is a cut.
             declick_in: offset > 1e-6,
-            declick_out: offset + seconds < data.seconds() - 1e-6,
+            declick_out: offset + seconds < data.whole_seconds() - 1e-6,
             data,
             offset,
             gain,
             fade_in: clip.fade_in,
             fade_out: clip.fade_out,
+            hold: Default::default(),
         });
         return;
     };
@@ -1264,7 +1269,7 @@ fn audio_regions(
             end: stop,
             declick_in: if ra <= 0.0 { into > 1e-6 } else { !joins },
             declick_out: if rb >= seconds {
-                into + (rb - ra) < data.seconds() - 1e-6
+                into + (rb - ra) < data.whole_seconds() - 1e-6
             } else {
                 !joins
             },
@@ -1273,6 +1278,7 @@ fn audio_regions(
             gain,
             fade_in: 0.0,
             fade_out: 0.0,
+            hold: Default::default(),
         });
     }
     if let Some(r) = out.get_mut(first) {
@@ -1318,16 +1324,18 @@ fn build_clips(
             }
             ClipContent::Audio { file, offset, gain } => {
                 let rate = ctx.sample_rate as u32;
-                // A stretched or shifted clip plays a version made for it,
-                // in which a second of the file lasts `stretch` seconds; it
-                // is silent until that is ready.
-                let data = match crate::stretched::Key::of(clip, rate) {
+                // A stretched, warped or shifted clip plays a version made
+                // for it, in which its file's moments are where its warp
+                // puts them (`warp.rs`); it is silent until that is started,
+                // and then plays it as far as it is made.
+                let warp = crate::warp::of(clip, tempo);
+                let data = match crate::stretched::Key::of(clip, rate, tempo) {
                     Some(key) => ctx.audio.stretched(&key, ctx.warnings),
                     None => ctx.audio.get(file, rate, ctx.warnings),
                 };
                 if let Some(data) = data {
                     let gain = db_to_gain(*gain);
-                    let offset = offset * clip.stretch;
+                    let offset = warp.map_or(*offset, |w| w.forward(*offset));
                     audio_regions(clip, data, offset, gain, tempo, &mut set.audio);
                 }
             }

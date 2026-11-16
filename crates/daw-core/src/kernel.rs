@@ -89,9 +89,13 @@ pub struct Kernel {
     tx: Sender<KernelMsg>,
     rx: Receiver<KernelMsg>,
     /// Everything showing the grid: the program's own terminal (as
-    /// connection 0) and the terminals attached over connections. They all
-    /// show the one screen, as wide and tall as whichever was sized last.
+    /// connection 0) and the terminals attached over connections, each
+    /// drawn from its own seat at its own size.
     frontends: Vec<(ClientId, Box<dyn Frontend>)>,
+    /// Files being sent over connections (`file.*`).
+    uploads: crate::upload::Uploads,
+    /// What is played, sent to connections that listen (`monitor.*`).
+    monitor: crate::monitor::Monitor,
 }
 
 impl Drop for Kernel {
@@ -125,6 +129,7 @@ impl Kernel {
         let shared = Rc::new(Shared {
             session: RefCell::new(session),
             grid: RefCell::new(Grid::new(80, 24)),
+            sizes: RefCell::new(HashMap::new()),
             highlights: RefCell::new(Highlights::default()),
             dirty: Cell::new(true),
             redraws: Cell::new(0),
@@ -156,12 +161,15 @@ impl Kernel {
         shared.io.borrow_mut().on_output(Arc::new(move || {
             let _ = output_tx.lock().unwrap().send(KernelMsg::Output);
         }));
+        let monitor = crate::monitor::Monitor::new(shared.clients.clone());
         Ok(Self {
             shared,
             lua: Lua::new(),
             tx,
             rx,
             frontends: Vec::new(),
+            uploads: Default::default(),
+            monitor,
         })
     }
 
@@ -173,8 +181,50 @@ impl Kernel {
     /// Show the screen on a frontend of the given size.
     pub fn attach(&mut self, frontend: Box<dyn Frontend>, width: u16, height: u16) {
         self.shared.grid.borrow_mut().resize(width, height);
+        self.shared.sizes.borrow_mut().insert(0, (width, height));
         self.shared.attached.set(true);
         self.frontends.push((0, frontend));
+    }
+
+    /// Make it `client`'s turn: what happens next happens in its seat (the
+    /// instance's when it has none of its own).
+    fn enter(&self, client: ClientId) {
+        if let Err(err) = self.call::<()>("seat", client) {
+            self.report("seat", err);
+        }
+    }
+
+    /// A terminal's keys, pointer and size, in its own seat.
+    fn input(&mut self, client: ClientId, event: InputEvent) {
+        self.enter(client);
+        let result = match event {
+            InputEvent::Key(key) => self.call::<()>("key", key),
+            InputEvent::Paste(text) => self.call::<()>("paste", text),
+            InputEvent::Mouse {
+                kind,
+                button,
+                x,
+                y,
+                mods,
+            } => (|| {
+                let event = self.lua.create_table()?;
+                event.set("kind", kind)?;
+                event.set("button", button)?;
+                event.set("x", x)?;
+                event.set("y", y)?;
+                event.set("mods", mods)?;
+                self.call::<()>("mouse", event)
+            })(),
+            InputEvent::Resize(width, height) => {
+                self.shared.sizes.borrow_mut().insert(client, (width, height));
+                self.shared.grid.borrow_mut().resize(width, height);
+                self.call::<()>("resize", (width, height))
+            }
+        };
+        if let Err(err) = result {
+            self.report("input", err);
+        }
+        self.shared.dirty.set(true);
     }
 
     /// The connections open on the control socket, to serve them with and
@@ -194,7 +244,11 @@ impl Kernel {
                 let frontend = RemoteFrontend::new(client, self.shared.clients.clone());
                 self.frontends.push((client, Box::new(frontend)));
                 self.shared.attached.set(true);
-                self.handle(KernelMsg::Input(InputEvent::Resize(width, height)));
+                // A seat of its own: its own cursor, mode and selection.
+                if let Err(err) = self.call::<()>("seat_open", (client, "terminal")) {
+                    self.report("seat_open", err);
+                }
+                self.input(client, InputEvent::Resize(width, height));
                 Ok(Value::Bool(true))
             }
             "ui.input" => {
@@ -204,7 +258,7 @@ impl Kernel {
                 let event = remote::input_of(&params[0]).ok_or("not an input event")?;
                 // Lua may ask which terminal a key came from (`:detach`).
                 self.shared.input_from.set(client);
-                self.handle(KernelMsg::Input(event));
+                self.input(client, event);
                 self.shared.input_from.set(0);
                 Ok(Value::Null)
             }
@@ -222,6 +276,11 @@ impl Kernel {
         self.frontends.retain(|(id, _)| *id != client);
         if self.frontends.len() != before {
             self.shared.clients.push(client, "ui.detached", &Value::Null);
+            self.shared.sizes.borrow_mut().remove(&client);
+            self.enter(0);
+            if let Err(err) = self.call::<()>("seat_close", (client, "terminal")) {
+                self.report("seat_close", err);
+            }
         }
         if self.frontends.is_empty() {
             self.shared.attached.set(false);
@@ -246,6 +305,12 @@ impl Kernel {
             .exec()
             .map_err(lua_error)?;
         self.call::<()>("startup", ()).map_err(lua_error)?;
+        // A reload keeps the terminals attached, each in a seat of its own.
+        for (client, _) in &self.frontends {
+            if *client != 0 {
+                self.call::<()>("seat_open", (*client, "terminal")).map_err(lua_error)?;
+            }
+        }
         self.settle();
         self.shared.dirty.set(true);
         Ok(())
@@ -291,35 +356,7 @@ impl Kernel {
 
     fn handle(&mut self, msg: KernelMsg) {
         match msg {
-            KernelMsg::Input(event) => {
-                let result = match event {
-                    InputEvent::Key(key) => self.call::<()>("key", key),
-                    InputEvent::Paste(text) => self.call::<()>("paste", text),
-                    InputEvent::Mouse {
-                        kind,
-                        button,
-                        x,
-                        y,
-                        mods,
-                    } => (|| {
-                        let event = self.lua.create_table()?;
-                        event.set("kind", kind)?;
-                        event.set("button", button)?;
-                        event.set("x", x)?;
-                        event.set("y", y)?;
-                        event.set("mods", mods)?;
-                        self.call::<()>("mouse", event)
-                    })(),
-                    InputEvent::Resize(width, height) => {
-                        self.shared.grid.borrow_mut().resize(width, height);
-                        self.call::<()>("resize", (width, height))
-                    }
-                };
-                if let Err(err) = result {
-                    self.report("input", err);
-                }
-                self.shared.dirty.set(true);
-            }
+            KernelMsg::Input(event) => self.input(0, event),
             KernelMsg::Midi => self.shared.hear_midi(),
             KernelMsg::Output => self.shared.hear_output(),
             KernelMsg::Rpc {
@@ -330,23 +367,37 @@ impl Kernel {
             } => {
                 let result = if method.starts_with("ui.") {
                     self.remote_ui(client, &method, &params)
+                } else if method.starts_with("file.") {
+                    let dir = self.shared.session.borrow().media_dir();
+                    self.uploads.call(client, &method, &params, &dir)
+                } else if method.starts_with("monitor.") {
+                    let mut session = self.shared.session.borrow_mut();
+                    self.monitor.call(client, &method, &mut session)
                 } else {
-                    (|| {
+                    self.enter(client);
+                    // A command run over a connection may answer it (`:upload`, `:listen`).
+                    self.shared.input_from.set(client);
+                    let result = (|| {
                         let params = api::to_lua(&self.lua, &params)?;
                         let value: LuaValue = self.call("rpc", (method, params, client))?;
                         self.lua.from_value::<Value>(value)
                     })()
-                    .map_err(|err| err.to_string())
+                    .map_err(|err| err.to_string());
+                    self.shared.input_from.set(0);
+                    result
                 };
                 let _ = reply.send(result);
             }
             KernelMsg::Gone(client) => {
                 self.detach(client);
+                self.uploads.closed(client);
+                self.monitor.closed(client, &mut self.shared.session.borrow_mut());
                 if let Err(err) = self.call::<()>("rpc_closed", client) {
                     self.report("rpc_closed", err);
                 }
             }
         }
+        self.enter(0);
         // A terminal that asked to leave (`:detach`) is let go.
         let leaving: Vec<ClientId> = self.shared.detach.borrow_mut().drain(..).collect();
         for client in leaving {
@@ -367,33 +418,37 @@ impl Kernel {
             return;
         }
         self.shared.dirty.set(false);
-        self.shared.grid.borrow_mut().clear();
-        self.shared.cursor.set(None);
-        let result = api::render(&self.lua, &self.shared);
-        if let Err(err) = result {
-            // The Lua UI is broken, so the kernel draws the reason itself.
-            let mut grid = self.shared.grid.borrow_mut();
-            let style = Style {
-                fg: Some(Color::Indexed(9)),
-                ..Style::default()
-            };
-            let clip = grid.rect();
-            for (row, line) in format!("render failed: {err}").lines().enumerate() {
-                grid.text(clip, 0, row as i32, line, style);
-            }
-        }
-        let (grid, cursor) = (self.shared.grid.borrow(), self.shared.cursor.get());
         let mut gone = Vec::new();
-        for (client, frontend) in &mut self.frontends {
-            if let Err(err) = frontend.present(&grid, cursor) {
+        for index in 0..self.frontends.len() {
+            let client = self.frontends[index].0;
+            // Each terminal is drawn from its own seat, at its own size.
+            self.enter(client);
+            self.shared.grid.borrow_mut().clear();
+            self.shared.cursor.set(None);
+            let result = api::render(&self.lua, &self.shared);
+            if let Err(err) = result {
+                // The Lua UI is broken, so the kernel draws the reason itself.
+                let mut grid = self.shared.grid.borrow_mut();
+                let style = Style {
+                    fg: Some(Color::Indexed(9)),
+                    ..Style::default()
+                };
+                let clip = grid.rect();
+                for (row, line) in format!("render failed: {err}").lines().enumerate() {
+                    grid.text(clip, 0, row as i32, line, style);
+                }
+            }
+            let shared = self.shared.clone();
+            let (grid, cursor) = (shared.grid.borrow(), shared.cursor.get());
+            if let Err(err) = self.frontends[index].1.present(&grid, cursor) {
                 self.shared.log(format!("frontend: {err:#}"));
                 // A terminal at the end of a connection that has closed.
-                if *client != 0 {
-                    gone.push(*client);
+                if client != 0 {
+                    gone.push(client);
                 }
             }
         }
-        drop(grid);
+        self.enter(0);
         for client in gone {
             self.detach(client);
         }
@@ -437,6 +492,7 @@ impl Kernel {
                 last_idle = Instant::now();
             }
             self.settle();
+            self.monitor.keep_fed(&mut self.shared.session.borrow_mut());
 
             if self.shared.reload.replace(false)
                 && let Err(err) = self.boot()

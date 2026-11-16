@@ -4,6 +4,7 @@ local api = daw.api
 
 -- `modal` sends every key to `on_key`, bypassing the mappings behind the window.
 local view = { scroll = 0, lines = {}, modal = true }
+daw.seats.fields("help", view, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
 local function collect(target)
   local lines = {}
@@ -92,6 +93,7 @@ end, {
 
 -- A scrollable list of text lines, used for `:messages` and similar.
 local pager = { scroll = 0, lines = {}, modal = true }
+daw.seats.fields("pager", pager, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
 function pager:render(buf)
   self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #self.lines - buf.height))

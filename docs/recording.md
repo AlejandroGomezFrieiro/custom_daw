@@ -114,7 +114,20 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   range is saved with the project, like the loop, and is not undoable. It is
   red on the ruler of both frontends, under the loop in the window, where
   its ends are dragged like the loop's; the timeline's menu has the entries.
-  There is no pre-roll: the song plays from wherever the playhead is.
+- **Pre-roll.** `daw.opt.pre_roll` (whole bars, 0 to 16) and
+  `daw.opt.pre_roll_seconds` (0 to 30) say how long before the punch in a
+  take punched in from a stop starts playing: `:preroll 2`, `:preroll 3s`,
+  `:preroll off`, or `:preroll` alone to turn it off and on (the window's
+  timeline menu has the same). With punch on, the transport stopped and
+  recording begun, the playhead goes back to the bars before the bar line
+  at or before the punch in, and then back the seconds more, and the song
+  plays from there; nothing is recorded until the punch in, where the take
+  begins on the frame as without a pre-roll, so the clip starts exactly at
+  the punch in. A playhead already further back than that stays where it is;
+  one inside the range or past it, a take begun while playing, and a take
+  without punch have none. A count-in comes before the pre-roll: it counts
+  at the pre-roll's start, and the song plays from there when it is done.
+  The pre-roll is yours, as the count-in is: it is not saved with a project.
 - **Files** go in a `media` directory beside the project file. A project that
   has never been saved records into `~/.local/share/daw/recordings`; saving it
   links or copies those files into `media` beside it and points the clips
