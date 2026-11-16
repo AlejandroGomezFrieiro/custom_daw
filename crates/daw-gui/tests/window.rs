@@ -1557,8 +1557,8 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     w.expect("the timeline again", "next(daw.launcher.state()) == nil");
 
     // A clip dragged from the timeline onto an empty slot of the bass is
-    // copied into it: the slot under the bass's name, in the second row.
-    let column = w.find_text("Bass", -1);
+    // copied into it: the slot under the bass's clip, in the second row.
+    let column = w.find_text("Walk", 0);
     let row = w.find_text("Bridge", 0);
     let chorus = w.find_text("Chorus", 0);
     w.drag((chorus.0, chorus.1 + 20), (column.0, row.1));
