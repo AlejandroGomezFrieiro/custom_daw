@@ -139,6 +139,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `,,` | pick a command |
 | `,fk` `,ft` `,fl` `,fa` `,fd` | pick a key, track, clip, device to add, device of the track |
 | `,fm` `,fr` `,fn` `,ff` `,fo` `,fp` `,f.` | marks, registers, messages, files, options, every picker, the last picker |
+| `,fR` | recent projects (`:recent 2` opens the second) |
 
 Stop half way through a sequence and the keys that can follow are listed.
 

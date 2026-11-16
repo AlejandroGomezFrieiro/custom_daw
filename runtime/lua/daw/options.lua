@@ -12,7 +12,8 @@ local defaults = {
   -- Seconds between safety copies of unsaved work; 0 for none. Off when
   -- started with --clean, which is how tests and experiments run.
   autosave = require("daw.api").env().clean and 0 or 60,
-  threads = 0,             -- threads to process tracks on; 0 for one per core
+  reopen_last = false,     -- start with the project that was open last, when none is named
+  threads = 0,            -- threads to process tracks on; 0 for one per core
   octave = 4,              -- where note entry in insert mode starts: `a` is C of this octave
   grid = 1,                -- arrange cursor step and snap, in beats
   zoom = 2,                -- arrange columns per beat

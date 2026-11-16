@@ -263,6 +263,7 @@ fn run() -> Result<i32> {
             .clone()
             .or_else(|| std::env::var_os("DAW_RUNTIME").map(PathBuf::from)),
         clean: args.clean,
+        scripted,
         argv: args.script_args.clone(),
     })?;
 
@@ -347,6 +348,9 @@ fn run() -> Result<i32> {
             ),
             &[&project.to_string_lossy()],
         )?;
+    } else {
+        // Nothing named: `daw.opt.reopen_last` may ask for the last project.
+        kernel.eval("daw.recent.reopen_last()", &[])?;
     }
     for expr in &args.exprs {
         kernel.eval(expr, &[])?;
