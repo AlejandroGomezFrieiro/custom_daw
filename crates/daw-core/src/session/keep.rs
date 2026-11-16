@@ -56,6 +56,12 @@ impl Session {
         for state in self.history.states() {
             add(&state.snapshot);
         }
+        if let Some(shelf) = &self.shelf {
+            add(&shelf.project);
+            for state in shelf.history.states() {
+                add(&state.snapshot);
+            }
+        }
         self.audio.retain(&keep);
     }
 }

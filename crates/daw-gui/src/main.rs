@@ -5,10 +5,8 @@
 //! does back as commands. With `--socket` it attaches to a kernel that is
 //! already running; otherwise it starts one of its own and stops it on exit.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -17,10 +15,13 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
+use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{
     Color, ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString,
     Timer, TimerMode, VecModel,
 };
+
+mod portal;
 
 slint::include_modules!();
 
@@ -30,44 +31,212 @@ daw-gui: a graphical frontend for daw
 Usage:
   daw-gui [kernel options] [project]   start a kernel and show it
   daw-gui --socket <path>              show a kernel that is already running
+  daw-gui --connect <host:port> --token-file <path>
+                                       show one running on another machine
+                                       (started with --listen-tcp; the token
+                                       is also taken from --token or $DAW_TOKEN)
+
+Options:
+  --renderer software|gpu   draw on the processor (the default) or on the
+                            graphics card with OpenGL; also DAW_GUI_RENDERER
 
 Kernel options are passed on to `daw --headless`; see `daw --help`.
 ";
 
+/// How the window is drawn: on the processor, or on the graphics card
+/// through OpenGL.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Renderer {
+    Software,
+    Gpu,
+}
+
+/// The renderer asked for with `--renderer` (taken out of `args`, which go
+/// on to the kernel), else by `env` (`DAW_GUI_RENDERER`); else software.
+fn renderer_choice(args: &mut Vec<String>, env: Option<&str>) -> Result<Renderer> {
+    let named = match args.iter().position(|a| a == "--renderer") {
+        Some(at) => {
+            let name = args.get(at + 1).context("--renderer needs gpu or software")?;
+            let name = name.clone();
+            args.drain(at..at + 2);
+            Some(name)
+        }
+        None => env.filter(|name| !name.is_empty()).map(str::to_string),
+    };
+    match named.as_deref() {
+        None | Some("software") => Ok(Renderer::Software),
+        Some("gpu") => Ok(Renderer::Gpu),
+        Some(other) => bail!("the renderer is gpu or software, not {other}"),
+    }
+}
+
+/// Settle on how the window is drawn, before anything else is started. The
+/// GPU renderer first draws a small window for a moment; where it cannot
+/// (no OpenGL, no EGL, no display that offers them), the program says so
+/// and starts again with the software one, since it can choose only once.
+fn select_renderer(renderer: Renderer, args: &[String]) -> Result<()> {
+    let select = |name: &str| {
+        slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .renderer_name(name.into())
+            .select()
+    };
+    if renderer == Renderer::Software {
+        return Ok(select("software")?);
+    }
+    let Err(err) = select("femtovg")
+        .map_err(anyhow::Error::from)
+        .and_then(|()| probe_gpu())
+    else {
+        return Ok(());
+    };
+    eprintln!("daw-gui: the GPU renderer did not start ({err:#}); drawing with the software one");
+    let err = Command::new(std::env::current_exe()?)
+        .args(args)
+        .env("DAW_GUI_RENDERER", "software")
+        .exec();
+    Err(err).context("starting again with the software renderer")
+}
+
+/// Show a small window with the renderer chosen and wait for it to be drawn.
+/// Where the renderer cannot start, the event loop keeps the error to
+/// itself until it ends: a first frame takes well under a second where it
+/// works, so it is given three.
+fn probe_gpu() -> Result<()> {
+    let probe = Probe::new()?;
+    let drawn = Rc::new(Cell::new(false));
+    probe.window().set_rendering_notifier({
+        let drawn = drawn.clone();
+        move |state, _| {
+            if matches!(state, slint::RenderingState::AfterRendering) {
+                drawn.set(true);
+                let _ = slint::quit_event_loop();
+            }
+        }
+    })?;
+    let timeout = Timer::default();
+    timeout.start(TimerMode::SingleShot, Duration::from_secs(3), || {
+        let _ = slint::quit_event_loop();
+    });
+    probe.show()?;
+    let ran = slint::run_event_loop();
+    let _ = probe.hide();
+    ran?;
+    if !drawn.get() {
+        bail!("nothing was drawn in three seconds");
+    }
+    Ok(())
+}
+
+/// What a file chosen in the desktop's dialog is for.
+#[derive(Clone, Copy)]
+enum Purpose {
+    Open,
+    SaveAs,
+    Import,
+    /// The render dialog's file field (or, for stems, the folder's name).
+    Render,
+}
+
+impl Purpose {
+    /// The dialog for this purpose, starting where `info` (from the kernel's
+    /// `daw.frontend.dialog_info`) says, or beside the render's path.
+    fn ask(self, info: &Value, render_path: &str, stems: bool) -> portal::Ask {
+        let dir = text(&info["dir"]).to_string();
+        let ask = |kind, title: &str, files: &str| portal::Ask {
+            kind,
+            title: title.to_string(),
+            files: files.to_string(),
+            dir: dir.clone(),
+            name: String::new(),
+        };
+        match self {
+            Purpose::Open => ask(portal::Kind::Open, "Open", "open"),
+            Purpose::Import => ask(portal::Kind::Open, "Import a sound file", "sound"),
+            Purpose::SaveAs => portal::Ask {
+                name: text(&info["name"]).to_string(),
+                ..ask(portal::Kind::Save, "Save the project as", "project")
+            },
+            Purpose::Render => {
+                let endings = info["render"]
+                    .as_array()
+                    .map_or("wav,flac".to_string(), |l| {
+                        l.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(",")
+                    });
+                let path = Path::new(render_path);
+                let beside = path.parent().filter(|d| d.is_dir());
+                portal::Ask {
+                    dir: beside.map_or(dir.clone(), |d| d.to_string_lossy().to_string()),
+                    name: path
+                        .file_name()
+                        .map_or(String::new(), |n| n.to_string_lossy().to_string()),
+                    ..ask(
+                        portal::Kind::Save,
+                        if stems { "Name the folder for the stems" } else { "Render to" },
+                        &format!("render:{endings}"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+type Answer = Box<dyn Fn(Purpose, portal::Outcome)>;
+
+thread_local! {
+    /// What the window does with a dialog's answer. The dialog runs on a
+    /// thread of its own and its answer is handed back to the window's
+    /// thread by `slint::invoke_from_event_loop`, which can carry nothing
+    /// that is not `Send`: so the handler waits here.
+    static ANSWER: RefCell<Option<Answer>> = const { RefCell::new(None) };
+}
+
 /// How long a message stays in the toolbar.
 const MESSAGE_TIME: Duration = Duration::from_secs(5);
 
-/// A connection to a kernel's control socket.
+/// A connection to a kernel's control socket. Calls are answered; the state
+/// to draw is pushed by the kernel when it changes (`frontend.watch`: see
+/// docs/protocol.md), in parts, and put together again here.
 struct Client {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
+    connection: daw_proto::Connection,
+    /// What moves on its own (the playhead, the meters, the mode), as last sent.
+    tick: Value,
+    /// The parts of the state that change with the project, as last sent.
+    sections: serde_json::Map<String, Value>,
+    /// Some part arrived that the window has not drawn yet; and the list
+    /// of device kinds did, which is only sent at first.
+    fresh: bool,
+    fresh_kinds: bool,
 }
 
 impl Client {
     fn connect(path: &Path) -> Result<Self> {
-        let stream = UnixStream::connect(path)?;
-        Ok(Self {
-            reader: BufReader::new(stream.try_clone()?),
-            writer: stream,
-        })
+        Self::watching(daw_proto::Connection::unix(path)?)
+    }
+
+    /// Connect to a kernel on another machine (or this one) over the network.
+    fn connect_tcp(address: &str, token: &str) -> Result<Self> {
+        Self::watching(daw_proto::Connection::tcp(address, token)?)
+    }
+
+    fn watching(connection: daw_proto::Connection) -> Result<Self> {
+        let mut client = Self {
+            connection,
+            tick: Value::Null,
+            sections: serde_json::Map::new(),
+            fresh: false,
+            fresh_kinds: false,
+        };
+        client.call("frontend.watch", json!([]))?;
+        Ok(client)
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value> {
-        writeln!(
-            self.writer,
-            "{}",
-            json!({ "id": 1, "method": method, "params": params })
-        )?;
-        let mut line = String::new();
-        if self.reader.read_line(&mut line)? == 0 {
-            bail!("the kernel went away");
-        }
-        let response: Value = serde_json::from_str(&line).context("bad response")?;
-        match response.get("error").and_then(Value::as_str) {
+        self.connection.call(method, params).map_err(|err| {
             // Lua errors carry a traceback; the first line says what happened.
-            Some(error) => Err(anyhow!("{}", error.lines().next().unwrap_or(error))),
-            None => Ok(response["result"].clone()),
-        }
+            let text = err.to_string();
+            anyhow!("{}", text.lines().next().unwrap_or(&text))
+        })
     }
 
     /// Run Lua in the kernel with `args` as `...`.
@@ -75,6 +244,53 @@ impl Client {
         let mut params = vec![json!(code)];
         params.extend(args.as_array().cloned().unwrap_or_default());
         self.call("eval", Value::Array(params))
+    }
+
+    /// The state to draw, in the shape `daw.frontend.state` gives it: what
+    /// moves on its own always, and the project's parts (`project`,
+    /// `tracks`, `clips`, ...) only when one of them has changed since the
+    /// last time this was asked.
+    fn state(&mut self) -> Result<Value> {
+        loop {
+            match self.connection.events.try_recv() {
+                Ok((name, mut payload)) if name == "frontend.state" => {
+                    if let Some(Value::Object(parts)) =
+                        payload.as_object_mut().and_then(|p| p.remove("sections"))
+                    {
+                        self.fresh = true;
+                        self.fresh_kinds |= parts.contains_key("kinds");
+                        self.sections.extend(parts);
+                    }
+                    self.tick = payload;
+                }
+                Ok(_) => {}
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    bail!("the kernel went away")
+                }
+            }
+        }
+        let mut state = self.tick.clone();
+        if std::mem::take(&mut self.fresh)
+            && let Some(state) = state.as_object_mut()
+        {
+            let part = |name: &str| self.sections.get(name).cloned().unwrap_or(Value::Null);
+            // The bar and beat lines travel apart from the rest of the project.
+            let mut project = part("project");
+            if project.is_object() {
+                project["lines"] = part("lines");
+            }
+            state.insert("project".into(), project);
+            for name in ["tracks", "clips", "devices", "routing"] {
+                state.insert(name.into(), part(name));
+            }
+            state.insert("selected".into(), part("view")["selected"].clone());
+            state.insert("cursor".into(), part("view")["cursor"].clone());
+            if std::mem::take(&mut self.fresh_kinds) {
+                state.insert("kinds".into(), part("kinds"));
+            }
+        }
+        Ok(state)
     }
 }
 
@@ -260,9 +476,9 @@ fn place_of(pos: f64) -> SharedString {
 }
 
 /// The song's lines over a clip, in the clip's beats, for the piano roll.
-fn roll_lines(start: f32, length: f32) -> ModelRc<RollLine> {
+fn roll_lines(start: f32, length: f32) -> Vec<RollLine> {
     let (start, length) = (start as f64, length as f64);
-    let lines: Vec<RollLine> = SONG_LINES.with(|lines| {
+    SONG_LINES.with(|lines| {
         lines
             .borrow()
             .iter()
@@ -277,8 +493,32 @@ fn roll_lines(start: f32, length: f32) -> ModelRc<RollLine> {
                 },
             })
             .collect()
-    });
-    ModelRc::from(Rc::new(VecModel::from(lines)))
+    })
+}
+
+/// The stretch of beats to lay out for a view from `from` to `to`: it and
+/// a view's worth on either side, so that scrolling a little needs nothing new.
+fn around(from: f32, to: f32) -> (f32, f32) {
+    let span = (to - from).max(1.0);
+    (from - span, to + span)
+}
+
+/// Whether a stretch laid out with `around` still serves the view from
+/// `from` to `to`: it covers the view and, after zooming in, is not so much
+/// wider that it holds far more than shows.
+fn still_serves(kept: Option<(f32, f32)>, from: f32, to: f32) -> bool {
+    kept.is_some_and(|(kept_from, kept_to)| {
+        from >= kept_from && to <= kept_to && kept_to - kept_from < (to - from).max(1.0) * 4.0
+    })
+}
+
+/// The notes that sound at some time between beats `from` and `to`.
+fn notes_within(notes: &[NoteData], from: f32, to: f32) -> Vec<NoteData> {
+    notes
+        .iter()
+        .filter(|n| n.start <= to && n.start + n.length >= from)
+        .cloned()
+        .collect()
 }
 
 /// The tempo map's bar and beat lines, as the kernel sends them.
@@ -596,7 +836,22 @@ const MODES: [&str; 3] = ["only", "add", "toggle"];
 /// How tall a lane shown as a row of its own is, as a share of the height
 /// of a track at the zoom.
 const LANE_ROW: f32 = 0.8;
+/// And a take lane.
+const TAKE_ROW: f32 = 0.6;
 const STRIP: f32 = 79.0;
+
+/// A clip with takes on a track that shows its take lanes, as the kernel
+/// reports it: its row, where it is, which take plays, and each take's name
+/// and the key that changes when its picture does.
+struct TakeClip {
+    id: i32,
+    row: usize,
+    start: f32,
+    length: f32,
+    midi: bool,
+    take: i32,
+    takes: Vec<(SharedString, String)>,
+}
 
 /// What the strip under the piano roll shows, by its number there: the
 /// kind of controller and, for a control change, which.
@@ -699,8 +954,24 @@ fn canvas_item(op: &Value) -> Option<CanvasItem> {
         size: 12.0,
         bold: false,
         align: 0,
+        italic: false,
+        underline: false,
+        strike: false,
     };
     match op[0].as_str()? {
+        "m" => {
+            // A run of monospace cells: text on a background of its own.
+            item.kind = 3;
+            (item.x, item.y) = (number(&op[1]), number(&op[2]));
+            (item.w, item.h) = (number(&op[3]), number(&op[4]));
+            item.text = text(&op[5]);
+            (item.fill, item.stroke) = (paint_colour(&op[6]), paint_colour(&op[7]));
+            let attrs = number(&op[8]) as u32;
+            item.bold = attrs & 1 != 0;
+            item.italic = attrs & 4 != 0;
+            item.underline = attrs & 8 != 0;
+            item.strike = attrs & 32 != 0;
+        }
         "r" => {
             (item.x, item.y) = (number(&op[1]), number(&op[2]));
             (item.w, item.h) = (number(&op[3]), number(&op[4]));
@@ -748,6 +1019,7 @@ struct View {
     tops: Rc<RefCell<Vec<f32>>>,
     revision: i64,
     tracks: Rc<VecModel<TrackData>>,
+    meters: Rc<VecModel<MeterData>>,
     clips: Rc<VecModel<ClipData>>,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
@@ -771,6 +1043,13 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// All of the clip's notes, its other clips' and the song's lines over
+    /// it; the models hold those of the stretch `roll_for` (beats) alone.
+    roll_notes: Vec<NoteData>,
+    roll_ghosts: Vec<NoteData>,
+    roll_lines: Vec<RollLine>,
+    roll_line_rows: Rc<VecModel<RollLine>>,
+    roll_for: Option<(f32, f32)>,
     sounding: Rc<VecModel<bool>>,
     /// The velocities a stroke over the strip is giving, by note, -1 for
     /// none: shown until the kernel's own come back.
@@ -785,8 +1064,12 @@ struct View {
     detached: bool,
     /// Where the take being made began.
     rec_start: Option<f32>,
-    /// The views that paint, as the kernel lists them: name, title, size.
-    windows: Vec<(String, String, f32, f32)>,
+    /// The views in windows of their own, as the kernel lists them: name,
+    /// title, size, and whether the view is drawn in cells.
+    windows: Vec<(String, String, f32, f32, bool)>,
+    /// Views to open in a window, and extensions' bands under the ruler.
+    view_entries: Rc<VecModel<ViewEntry>>,
+    bands: Rc<VecModel<BandData>>,
     /// Set when something happened that a painted view may show.
     repaint: bool,
     lanes: Rc<VecModel<LaneData>>,
@@ -796,6 +1079,15 @@ struct View {
     strips: Rc<VecModel<LaneData>>,
     strip_points: Rc<VecModel<PointData>>,
     lane_rows: Vec<Vec<i32>>,
+    /// How many take lanes each row shows under its clips, the clips that
+    /// have takes on those rows, and what is drawn of them: the lanes, the
+    /// takes of the clips in view, and each take's picture by clip and take
+    /// with the key that says when to make it again.
+    take_rows: Vec<usize>,
+    take_clips: Vec<TakeClip>,
+    take_lanes: Rc<VecModel<TakeLaneData>>,
+    take_pieces: Rc<VecModel<TakePiece>>,
+    take_pictures: HashMap<(i32, usize), (String, Image)>,
     markers: Rc<VecModel<MarkerData>>,
     /// Every bar and beat line of the song, and the ones being drawn: those
     /// of the stretch `lines_for` (beats, and the zoom they were chosen at).
@@ -871,7 +1163,7 @@ impl View {
             ui.set_message("".into());
             self.message_until = None;
         }
-        let state = client.eval("daw.frontend.state(...)", json!([self.revision]))?;
+        let state = client.state()?;
         let playing = state["playing"].as_bool().unwrap_or(false);
         let recording = state["recording"].as_bool().unwrap_or(false);
         let position = number(&state["position"]);
@@ -900,8 +1192,14 @@ impl View {
             ui.set_tempo(format!("{tempo}").into());
             ui.set_signature(text(&state["signature"]));
         }
-        ui.set_cpu(number(&state["cpu"]));
+        // Only when it has moved by 4%: the load wavers all the time, and
+        // every change of a property shown is a frame drawn.
+        let cpu = number(&state["cpu"]);
+        if (cpu - ui.get_cpu()).abs() >= 0.04 {
+            ui.set_cpu(cpu);
+        }
         ui.set_record_armed(state["armed"].as_bool().unwrap_or(false));
+        ui.set_counting(state["counting"].as_i64().unwrap_or(0) as i32);
         let levels: Vec<f32> = rows(&state["levels"])
             .iter()
             .map(|v| meter(number(v)))
@@ -918,15 +1216,22 @@ impl View {
         if let (Some(id), true) = (self.roll, std::mem::take(&mut self.roll_stale)) {
             self.show_roll(ui, client, id)?;
         }
+        // Scrolled or zoomed out of the stretch of the clip handed over.
+        let (from, to) = self.roll_seen(ui);
+        if self.roll.is_some() && !still_serves(self.roll_for, from, to) {
+            self.roll_view(ui);
+        }
         // Scrolled past the stretch the curves were laid out over.
         let out_of_view = self.lanes_for.is_none_or(|(from, to)| {
             ui.get_view_start() < from || ui.get_view_end() > to
         });
         if out_of_view && ui.get_zoom() == self.zoom && ui.get_row_height() == self.row {
             self.draw_lanes(ui);
+            self.draw_takes(ui, client);
         }
         if ui.get_zoom() != self.zoom || ui.get_row_height() != self.row {
             self.draw_lanes(ui);
+            self.draw_takes(ui, client);
             // Waveforms are drawn again at the width they now have.
             for index in 0..self.clips.row_count() {
                 let Some(mut clip) = self.clips.row_data(index) else {
@@ -970,27 +1275,29 @@ impl View {
         self.meters_at = Some(now);
         for (index, level) in levels.chunks_exact(2).enumerate() {
             let input = inputs.get(index).copied().unwrap_or(0.0);
-            let Some(mut track) = self.tracks.row_data(index) else {
+            let (Some(track), Some(mut meter)) =
+                (self.tracks.row_data(index), self.meters.row_data(index))
+            else {
                 continue;
             };
             let peak = self.peaks.entry(track.id).or_default();
             peak.update([level[0], level[1]], dt);
             let peak = *peak;
-            if (track.level_l - level[0]).abs() > 0.004
-                || (track.level_r - level[1]).abs() > 0.004
-                || (track.input_level - input).abs() > 0.004
-                || (track.hold_l - peak.level[0]).abs() > 0.004
-                || (track.hold_r - peak.level[1]).abs() > 0.004
-                || track.clipped != peak.clipped
+            if (meter.level_l - level[0]).abs() > 0.004
+                || (meter.level_r - level[1]).abs() > 0.004
+                || (meter.input_level - input).abs() > 0.004
+                || (meter.hold_l - peak.level[0]).abs() > 0.004
+                || (meter.hold_r - peak.level[1]).abs() > 0.004
+                || meter.clipped != peak.clipped
             {
-                track.level_l = level[0];
-                track.level_r = level[1];
-                track.input_level = input;
-                track.hold_l = peak.level[0];
-                track.hold_r = peak.level[1];
-                track.clipped = peak.clipped;
-                track.peak_text = peak.text().into();
-                self.tracks.set_row_data(index, track);
+                meter.level_l = level[0];
+                meter.level_r = level[1];
+                meter.input_level = input;
+                meter.hold_l = peak.level[0];
+                meter.hold_r = peak.level[1];
+                meter.clipped = peak.clipped;
+                meter.peak_text = peak.text().into();
+                self.meters.set_row_data(index, meter);
             }
         }
         Ok(())
@@ -1010,12 +1317,42 @@ impl View {
         }
     }
 
+    /// The beats of the piano roll's clip that show.
+    fn roll_seen(&self, ui: &App) -> (f32, f32) {
+        let roll = self.active_roll(ui);
+        let (from, to) = (roll.get_view_start(), roll.get_view_end());
+        if to > from {
+            (from, to)
+        } else {
+            // Not laid out yet: a wide screen's worth.
+            (from, from + 4000.0 / roll.get_zoom().max(1.0))
+        }
+    }
+
+    /// Hand the piano roll the notes, lines and controller moves of the
+    /// stretch of its clip that shows and a view's worth on either side;
+    /// the stretch is laid out again when the view leaves it.
+    fn roll_view(&mut self, ui: &App) {
+        let (from, to) = self.roll_seen(ui);
+        if !still_serves(self.roll_for, from, to) {
+            self.roll_for = Some(around(from, to));
+            // Its bars were for the notes in the rows they had.
+            sync(&self.vel_preview, Vec::new());
+        }
+        let (from, to) = self.roll_for.unwrap_or((from, to));
+        sync(&self.notes, notes_within(&self.roll_notes, from, to));
+        sync(&self.ghosts, notes_within(&self.roll_ghosts, from, to));
+        let lines = self.roll_lines.iter().filter(|l| (from..=to).contains(&l.at));
+        sync(&self.roll_line_rows, lines.cloned().collect());
+        self.show_controls(ui);
+    }
+
     /// Light the piano roll's keys whose notes sound at the playhead.
     fn sound_keys(&self, ui: &App, playing: bool, position: f32) {
         let mut lit = [false; 128];
         if playing && self.roll.is_some() {
             let at = position - ui.global::<Roll>().get_start();
-            for note in self.notes.iter() {
+            for note in &self.roll_notes {
                 if note.start <= at && at < note.start + note.length {
                     lit[note.pitch.clamp(0, 127) as usize] = true;
                 }
@@ -1038,12 +1375,14 @@ impl View {
 
     /// Fill the strip under the piano roll with the controller it shows.
     fn show_controls(&mut self, ui: &App) {
+        let (from, to) = self.roll_for.unwrap_or((f32::MIN, f32::MAX));
         let moves: Vec<ControlData> = match strip_kind(self.strip) {
             None => Vec::new(),
             Some((kind, number)) => self
                 .roll_controls
                 .iter()
                 .filter(|c| c["type"] == kind && c["key"].is_null())
+                .filter(|c| (from..=to).contains(&self::number(&c["start"])))
                 .filter(|c| number.is_none() || c["number"].as_i64() == number)
                 .map(|c| ControlData {
                     start: self::number(&c["start"]),
@@ -1072,6 +1411,7 @@ impl View {
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
         ui.set_render_fraction(number(&render["fraction"]));
+        ui.set_render_stage(render["stage"].as_str().unwrap_or("").into());
         ui.set_render_name(
             render["path"]
                 .as_str()
@@ -1093,9 +1433,18 @@ impl View {
                     text(&w["title"]).to_string(),
                     number(&w["width"]),
                     number(&w["height"]),
+                    w["cells"].as_bool().unwrap_or(false),
                 )
             })
             .collect();
+        let views: Vec<ViewEntry> = rows(&modal["views"])
+            .iter()
+            .map(|v| ViewEntry {
+                name: text(&v["name"]),
+                title: text(&v["title"]),
+            })
+            .collect();
+        sync(&self.view_entries, views);
 
         let prompt = &modal["prompt"];
         ui.set_prompt_open(prompt.is_object());
@@ -1186,19 +1535,18 @@ impl View {
         }
         if open.is_some() {
             // Which notes are chosen with the pointer.
-            let chosen: Vec<usize> = rows(&roll["selected"])
+            let chosen: HashSet<usize> = rows(&roll["selected"])
                 .iter()
                 .filter_map(|place| (place.as_u64()? as usize).checked_sub(1 + self.roll_hidden))
                 .collect();
-            for index in 0..self.notes.row_count() {
-                let Some(mut note) = self.notes.row_data(index) else {
-                    continue;
-                };
+            let mut changed = false;
+            for (index, note) in self.roll_notes.iter_mut().enumerate() {
                 let selected = chosen.contains(&index);
-                if note.selected != selected {
-                    note.selected = selected;
-                    self.notes.set_row_data(index, note);
-                }
+                changed |= note.selected != selected;
+                note.selected = selected;
+            }
+            if changed {
+                self.roll_view(ui);
             }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
@@ -1245,33 +1593,31 @@ impl View {
             return Ok(());
         }
         self.roll_hidden = clip["hidden"].as_u64().unwrap_or(0) as usize;
-        let notes: Vec<NoteData> = rows(&clip["notes"])
-            .iter()
-            .map(|n| NoteData {
-                pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
-                start: number(&n["start"]),
-                length: number(&n["length"]),
-                velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
-                selected: false,
-            })
-            .collect();
+        let note = |(index, n): (usize, &Value)| NoteData {
+            pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
+            start: number(&n["start"]),
+            length: number(&n["length"]),
+            velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
+            // The kernel's places of the chosen notes, read just before,
+            // are already places among these.
+            selected: self.roll_notes.get(index).is_some_and(|old| old.selected),
+            index: index as i32,
+        };
+        let notes: Vec<NoteData> = rows(&clip["notes"]).iter().enumerate().map(note).collect();
         let ghosts: Vec<NoteData> = rows(&clip["ghosts"])
             .iter()
+            .enumerate()
             .map(|n| NoteData {
-                pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
-                start: number(&n["start"]),
-                length: number(&n["length"]),
-                velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
                 selected: false,
+                ..note(n)
             })
             .collect();
-        sync(&self.ghosts, ghosts);
         sync(&self.vel_preview, Vec::new());
         let was_open = ui.global::<Roll>().get_open();
         let highest = notes.iter().map(|n| n.pitch).max().unwrap_or(72);
-        sync(&self.notes, notes);
+        self.roll_notes = notes;
+        self.roll_ghosts = ghosts;
         self.roll_controls = rows(&clip["controls"]).to_vec();
-        self.show_controls(ui);
         let track: SharedString = format!(
             "{} · bar {}",
             text(&clip["track_name"]),
@@ -1289,9 +1635,10 @@ impl View {
             roll.set_start(number(&clip["start"]));
             roll.set_length(number(&clip["length"]));
             roll.set_bar(ui.get_bar());
-            roll.set_lines(roll_lines(roll.get_start(), roll.get_length()));
             roll.set_open(true);
         }
+        self.roll_lines = roll_lines(number(&clip["start"]), number(&clip["length"]));
+        self.roll_view(ui);
         if self.detached {
             let _ = self.roll_window.show();
         }
@@ -1314,13 +1661,15 @@ impl View {
         let (mut strips, mut strip_points) = (Vec::new(), Vec::new());
         self.row_lane = Vec::new();
         for (row, (track, all)) in self.lane_data.iter().enumerate() {
-            // The lanes shown as rows of their own, under the track's clips.
+            // The lanes shown as rows of their own, under the track's clips
+            // and its take lanes.
             let clip_size = self.tracks.row_data(row).map_or(1.0, |t| t.clip_size);
+            let takes = self.take_rows.get(row).copied().unwrap_or(0) as f32 * TAKE_ROW;
             for (place, id) in self.lane_rows.get(row).into_iter().flatten().enumerate() {
                 let Some(lane) = all.iter().find(|l| l.id == *id) else {
                     continue;
                 };
-                let top = clip_size + place as f32 * LANE_ROW;
+                let top = clip_size + takes + place as f32 * LANE_ROW;
                 // A little room above and below the curve.
                 let y = |value: f32| (0.08 + (1.0 - value) * 0.84) * row_height * LANE_ROW;
                 let path = lane_path(&lane.points, from, to, self.zoom, y);
@@ -1411,6 +1760,95 @@ impl View {
         }
     }
 
+    /// Lay out the take lanes, and the takes of the clips over the stretch
+    /// of the song that shows and a screen's worth on either side, as
+    /// `draw_lanes` does for curves: a long song has thousands of clips, and
+    /// each piece drawn is an element and a picture.
+    fn draw_takes(&mut self, ui: &App, client: &mut Client) {
+        let (view_from, view_to) = (ui.get_view_start(), ui.get_view_end());
+        let span = (view_to - view_from).max(1.0);
+        let (from, to) = (view_from - span, view_to + span);
+        let zoom = ui.get_zoom();
+        let mut lanes = Vec::new();
+        for (row, &count) in self.take_rows.iter().enumerate() {
+            let Some(track) = self.tracks.row_data(row) else {
+                continue;
+            };
+            for take in 0..count {
+                lanes.push(TakeLaneData {
+                    track: track.id,
+                    row: row as i32,
+                    take: take as i32 + 1,
+                    top: track.clip_size + take as f32 * TAKE_ROW,
+                    span: TAKE_ROW,
+                });
+            }
+        }
+        let mut pieces = Vec::new();
+        let clips = std::mem::take(&mut self.take_clips);
+        for clip in clips
+            .iter()
+            .filter(|c| c.start < to && c.start + c.length > from)
+        {
+            let Some(track) = self.tracks.row_data(clip.row) else {
+                continue;
+            };
+            for (index, (name, key)) in clip.takes.iter().enumerate() {
+                let picture = self.take_picture(client, clip, index + 1, key, zoom);
+                pieces.push(TakePiece {
+                    clip: clip.id,
+                    row: clip.row as i32,
+                    take: index as i32 + 1,
+                    start: clip.start,
+                    length: clip.length,
+                    top: track.clip_size + index as f32 * TAKE_ROW,
+                    span: TAKE_ROW,
+                    name: name.clone(),
+                    active: clip.take == index as i32 + 1,
+                    picture,
+                });
+            }
+        }
+        self.take_clips = clips;
+        sync(&self.take_lanes, lanes);
+        sync(&self.take_pieces, pieces);
+    }
+
+    /// The picture of take `take` of a clip in its take lane, made again
+    /// when `key` says what the take plays has changed.
+    fn take_picture(
+        &mut self,
+        client: &mut Client,
+        clip: &TakeClip,
+        take: usize,
+        key: &str,
+        zoom: f32,
+    ) -> Image {
+        let points = wave_points(clip.length * zoom);
+        let key = if clip.midi {
+            key.to_string()
+        } else {
+            format!("{key}@{points}")
+        };
+        if let Some((known, picture)) = self.take_pictures.get(&(clip.id, take))
+            && *known == key
+        {
+            return picture.clone();
+        }
+        let flat: Vec<f32> = client
+            .eval("daw.frontend.take_preview(...)", json!([clip.id, take, points]))
+            .map(|values| rows(&values).iter().map(number).collect())
+            .unwrap_or_default();
+        let picture = if clip.midi {
+            notes_picture(&flat, clip.length)
+        } else {
+            wave_picture(&flat)
+        };
+        self.take_pictures
+            .insert((clip.id, take), (key, picture.clone()));
+        picture
+    }
+
     /// The picture to draw inside a clip, made again when `key` says its
     /// notes or its waveform have changed.
     fn picture(
@@ -1470,11 +1908,31 @@ impl View {
             })
             .collect();
         sync(&self.markers, markers);
+        let bands: Vec<BandData> = rows(&project["bands"]["entries"])
+            .iter()
+            .map(|b| BandData {
+                row: number(&b["row"]) as i32,
+                band: number(&b["band"]) as i32,
+                index: number(&b["index"]) as i32,
+                beat: number(&b["beat"]),
+                length: number(&b["length"]),
+                name: text(&b["name"]),
+                color: paint_colour(&b["color"]),
+                active: b["active"].as_bool().unwrap_or(false),
+                hint: text(&b["hint"]),
+            })
+            .collect();
+        sync(&self.bands, bands);
+        ui.set_band_rows(number(&project["bands"]["rows"]) as i32);
         ui.set_length(number(&project["length"]));
         ui.set_looping(project["loop_enabled"].as_bool().unwrap_or(false));
         ui.set_loop_start(number(&project["loop_start"]));
         ui.set_loop_end(number(&project["loop_end"]));
         ui.set_metronome(project["metronome"].as_bool().unwrap_or(false));
+        ui.set_punching(project["punch_enabled"].as_bool().unwrap_or(false));
+        ui.set_punch_start(number(&project["punch_start"]));
+        ui.set_punch_end(number(&project["punch_end"]));
+        ui.set_count_in(project["count_in"].as_i64().unwrap_or(0) as i32);
         ui.set_engine(text(&project["engine"]));
         let selected = state["selected"].as_i64().unwrap_or(-1) as i32;
         ui.set_selected(selected);
@@ -1484,7 +1942,6 @@ impl View {
         for roll in self.rolls(ui) {
             roll.set_grid(number(&project["note_grid"]));
             roll.set_bar(number(&project["bar"]).max(0.25));
-            roll.set_lines(roll_lines(roll.get_start(), roll.get_length()));
         }
         let mut selected_name = SharedString::new();
         let mut selected_colour = Color::from_rgb_u8(0x7a, 0x81, 0x94);
@@ -1501,6 +1958,10 @@ impl View {
             })
             .collect();
         let lane_rows: Vec<usize> = self.lane_rows.iter().map(Vec::len).collect();
+        self.take_rows = rows(&state["tracks"])
+            .iter()
+            .map(|t| t["take_rows"].as_u64().unwrap_or(0) as usize)
+            .collect();
         let tracks: Vec<TrackData> = rows(&state["tracks"])
             .iter()
             .enumerate()
@@ -1520,12 +1981,14 @@ impl View {
                     None => text(&t["chain"]).to_string(),
                 };
                 let old = self.tracks.row_data(index);
-                // Its clips, and under them a row for each lane it shows so.
+                // Its clips, and under them its take lanes and a row for
+                // each automation lane it shows so.
                 let clip_size = t["height"].as_f64().map_or(1.0, |h| h as f32);
-                let size = clip_size + lane_rows[index] as f32 * LANE_ROW;
+                let size = clip_size
+                    + self.take_rows[index] as f32 * TAKE_ROW
+                    + lane_rows[index] as f32 * LANE_ROW;
                 tops.push(top);
                 top += size;
-                let peak = self.peaks.get(&id).copied().unwrap_or_default();
                 TrackData {
                     top: top - size,
                     size,
@@ -1549,16 +2012,7 @@ impl View {
                     input: text(&t["input"]),
                     input_label: text(&t["input_label"]),
                     monitor: t["monitor"].as_bool().unwrap_or(false),
-                    // Kept where it is; updated with the meters.
-                    input_level: old.as_ref().map_or(0.0, |old| old.input_level),
                     master: t["master"].as_bool().unwrap_or(false),
-                    // Keep the meters where they are; they are updated separately.
-                    level_l: old.as_ref().map_or(0.0, |old| old.level_l),
-                    level_r: old.as_ref().map_or(0.0, |old| old.level_r),
-                    hold_l: peak.level[0],
-                    hold_r: peak.level[1],
-                    clipped: peak.clipped,
-                    peak_text: peak.text().into(),
                     number: index as i32 + 1,
                     output: t["output"].as_str().unwrap_or("Master").into(),
                     inserts: ModelRc::from(Rc::new(VecModel::from(
@@ -1576,6 +2030,10 @@ impl View {
                 }
             })
             .collect();
+        // The meters keep their levels, row by row, and are updated with them.
+        let mut meters: Vec<MeterData> = self.meters.iter().collect();
+        meters.resize(tracks.len(), MeterData::default());
+        sync(&self.meters, meters);
         sync(&self.tracks, tracks);
         tops.push(top);
         *self.tops.borrow_mut() = tops;
@@ -1618,6 +2076,26 @@ impl View {
         self.pictures
             .retain(|id, _| clips.iter().any(|clip| clip.id == *id));
         sync(&self.clips, clips);
+        // The clips whose takes show in take lanes.
+        self.take_clips = rows(&state["clips"])
+            .iter()
+            .filter(|c| c["take_rows"].is_array())
+            .map(|c| TakeClip {
+                id: c["id"].as_i64().unwrap_or(0) as i32,
+                row: c["track"].as_u64().unwrap_or(0) as usize,
+                start: number(&c["start"]),
+                length: number(&c["length"]),
+                midi: c["midi"].as_bool().unwrap_or(false),
+                take: c["take"].as_i64().unwrap_or(1) as i32,
+                takes: rows(&c["take_rows"])
+                    .iter()
+                    .map(|t| (text(&t["name"]), t["key"].as_str().unwrap_or("").to_string()))
+                    .collect(),
+            })
+            .collect();
+        let shown: Vec<i32> = self.take_clips.iter().map(|c| c.id).collect();
+        self.take_pictures.retain(|(id, _), _| shown.contains(id));
+        self.draw_takes(ui, client);
 
         // Every lane, with its points as heights over the stretch it is drawn over.
         self.lane_data = rows(&state["tracks"])
@@ -1779,21 +2257,42 @@ fn run() -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
-    let socket = match args.iter().position(|a| a == "--socket") {
-        Some(at) => {
-            let path = args.get(at + 1).context("--socket needs a path")?.clone();
-            args.drain(at..at + 2);
-            Some(PathBuf::from(path))
-        }
-        None => None,
+    let env = std::env::var("DAW_GUI_RENDERER").ok();
+    let renderer = renderer_choice(&mut args, env.as_deref())?;
+    select_renderer(renderer, &args)?;
+    // An option of this program's own and its value, taken off the
+    // arguments (the rest are the kernel's).
+    let mut option = |name: &str| -> Result<Option<String>> {
+        let Some(at) = args.iter().position(|a| a == name) else {
+            return Ok(None);
+        };
+        let value = args.get(at + 1).with_context(|| format!("{name} needs a value"))?.clone();
+        args.drain(at..at + 2);
+        Ok(Some(value))
     };
-    let (client, child) = match &socket {
-        Some(path) => {
+    let socket = option("--socket")?.map(PathBuf::from);
+    let address = option("--connect")?;
+    let token = match (option("--token")?, option("--token-file")?) {
+        (Some(token), _) => Some(token),
+        (None, Some(path)) => Some(
+            std::fs::read_to_string(&path)
+                .with_context(|| format!("reading the token in {path}"))?
+                .trim()
+                .to_string(),
+        ),
+        (None, None) => std::env::var("DAW_TOKEN").ok(),
+    };
+    let (client, child) = match (&address, &socket) {
+        (Some(address), _) => {
+            let token = token.context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?;
+            (Client::connect_tcp(address, &token)?, None)
+        }
+        (None, Some(path)) => {
             let client = Client::connect(path)
                 .with_context(|| format!("no kernel at {}", path.display()))?;
             (client, None)
         }
-        None => {
+        (None, None) => {
             let (client, child) = start_kernel(&args)?;
             (client, Some(child))
         }
@@ -1808,6 +2307,7 @@ fn run() -> Result<()> {
         roll_hidden: 0,
         tops: Rc::new(RefCell::new(Vec::new())),
         tracks: Rc::new(VecModel::default()),
+        meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
@@ -1819,6 +2319,11 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        roll_notes: Vec::new(),
+        roll_ghosts: Vec::new(),
+        roll_lines: Vec::new(),
+        roll_line_rows: Rc::new(VecModel::default()),
+        roll_for: None,
         sounding: Rc::new(VecModel::from(vec![false; 128])),
         vel_preview: Rc::new(VecModel::default()),
         roll_controls: Vec::new(),
@@ -1828,12 +2333,19 @@ fn run() -> Result<()> {
         detached: false,
         rec_start: None,
         windows: Vec::new(),
+        view_entries: Rc::new(VecModel::default()),
+        bands: Rc::new(VecModel::default()),
         repaint: true,
         lanes: Rc::new(VecModel::default()),
         points: Rc::new(VecModel::default()),
         strips: Rc::new(VecModel::default()),
         strip_points: Rc::new(VecModel::default()),
         lane_rows: Vec::new(),
+        take_rows: Vec::new(),
+        take_clips: Vec::new(),
+        take_lanes: Rc::new(VecModel::default()),
+        take_pieces: Rc::new(VecModel::default()),
+        take_pictures: HashMap::new(),
         markers: Rc::new(VecModel::default()),
         all_lines: Vec::new(),
         lanes_for: None,
@@ -1870,6 +2382,7 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));
     }
@@ -1877,10 +2390,15 @@ fn run() -> Result<()> {
     ui.set_points(ModelRc::from(view.borrow().points.clone()));
     ui.set_strips(ModelRc::from(view.borrow().strips.clone()));
     ui.set_strip_points(ModelRc::from(view.borrow().strip_points.clone()));
+    ui.set_take_lanes(ModelRc::from(view.borrow().take_lanes.clone()));
+    ui.set_take_pieces(ModelRc::from(view.borrow().take_pieces.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
+    ui.set_view_entries(ModelRc::from(view.borrow().view_entries.clone()));
+    ui.set_bands(ModelRc::from(view.borrow().bands.clone()));
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
     ui.set_tracks(ModelRc::from(view.borrow().tracks.clone()));
+    ui.set_meters(ModelRc::from(view.borrow().meters.clone()));
     ui.set_clips(ModelRc::from(view.borrow().clips.clone()));
     ui.set_devices(ModelRc::from(view.borrow().devices.clone()));
 
@@ -1903,9 +2421,126 @@ fn run() -> Result<()> {
             act(&|c| c.eval(&code, args.clone()))
         }
     };
+    // Leaving the project (quitting, starting a new one, opening another)
+    // asks first when there are changes to save. Returns whether it asked.
+    let leave = {
+        let (client, view, weak, pass, child) = (
+            client.clone(),
+            view.clone(),
+            ui.as_weak(),
+            pass.clone(),
+            child.clone(),
+        );
+        move |what: &str| -> bool {
+            let Some(ui) = weak.upgrade() else {
+                return false;
+            };
+            let closing = client
+                .borrow_mut()
+                .eval("return daw.frontend.closing()", json!([]))
+                .unwrap_or(Value::Null);
+            // A kernel that was running before this window is not this
+            // window's to save or to end.
+            let ours = child.borrow().is_some();
+            if closing["modified"].as_bool().unwrap_or(false) && (ours || what != "quit") {
+                view.borrow_mut().leaving = what.to_string();
+                ui.set_closing_name(text(&closing["name"]));
+                ui.set_closing_what(what.into());
+                ui.set_closing(true);
+                return true;
+            }
+            if what == "quit" {
+                let _ = slint::quit_event_loop();
+            } else {
+                pass("leave", json!(["go", what]));
+            }
+            false
+        }
+    };
+    // The desktop's own file dialogs, where the kernel is this window's own
+    // child (its disk is ours) and `daw.opt.native_dialogs` is on. They run
+    // on a thread, so that the window goes on; the answer comes back to
+    // `ANSWER` on the window's thread. Where there is no portal, the kernel's
+    // list picker is used, as before.
+    let native = {
+        let (client, weak, child) = (client.clone(), ui.as_weak(), child.clone());
+        let (pass, leave, act) = (pass.clone(), leave.clone(), act.clone());
+        let (busy, absent) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(false)));
+        ANSWER.with(|slot| {
+            let (busy, absent) = (busy.clone(), absent.clone());
+            *slot.borrow_mut() = Some(Box::new(move |purpose: Purpose, outcome: portal::Outcome| {
+                busy.set(false);
+                let Some(ui) = weak.upgrade() else { return };
+                match outcome {
+                    portal::Outcome::Cancelled => {}
+                    portal::Outcome::Unavailable => {
+                        absent.set(true);
+                        match purpose {
+                            Purpose::Open => {
+                                leave("open");
+                            }
+                            Purpose::SaveAs => act(&|c| c.call("cmd", json!(["saveas"]))),
+                            Purpose::Import => act(&|c| c.call("cmd", json!(["import"]))),
+                            Purpose::Render => {}
+                        }
+                    }
+                    portal::Outcome::Chosen(path) => {
+                        let path = path.to_string_lossy().to_string();
+                        match purpose {
+                            Purpose::Open => {
+                                leave(&format!("open:{path}"));
+                            }
+                            Purpose::SaveAs => pass("chosen", json!(["saveas", path])),
+                            Purpose::Import => pass("chosen", json!(["import", path])),
+                            Purpose::Render => ui.set_render_path(path.into()),
+                        }
+                        ui.invoke_focus_keys();
+                    }
+                }
+            }));
+        });
+        // Returns whether a dialog is being shown (or was, and is still open).
+        move |purpose: Purpose, render_path: &str, stems: bool| -> bool {
+            if child.borrow().is_none() || absent.get() {
+                return false;
+            }
+            if busy.get() {
+                return true;
+            }
+            let info = client
+                .borrow_mut()
+                .eval("return daw.frontend.dialog_info()", json!([]))
+                .unwrap_or(Value::Null);
+            if !info["native"].as_bool().unwrap_or(false) {
+                return false;
+            }
+            let ask = purpose.ask(&info, render_path, stems);
+            busy.set(true);
+            std::thread::spawn(move || {
+                let outcome = portal::choose(&ask);
+                let _ = slint::invoke_from_event_loop(move || {
+                    ANSWER.with(|slot| {
+                        if let Some(answer) = slot.borrow().as_ref() {
+                            answer(purpose, outcome);
+                        }
+                    })
+                });
+            });
+            true
+        }
+    };
+
     ui.on_command({
-        let act = act.clone();
-        move |line| act(&|c| c.call("cmd", json!([line.as_str()])))
+        let (act, native) = (act.clone(), native.clone());
+        move |line| match line.as_str() {
+            "import" if native(Purpose::Import, "", false) => {}
+            "saveas" if native(Purpose::SaveAs, "", false) => {}
+            _ => act(&|c| c.call("cmd", json!([line.as_str()]))),
+        }
+    });
+    ui.on_band_click({
+        let pass = pass.clone();
+        move |band, index| pass("band", json!([band, index]))
     });
     ui.on_feed({
         let pass = pass.clone();
@@ -1950,6 +2585,27 @@ fn run() -> Result<()> {
             )
         }
     });
+    ui.on_set_punch_edge({
+        let pass = pass.clone();
+        move |start, beat, free| {
+            pass(
+                "set_punch_edge",
+                json!([if start { "start" } else { "end" }, beat.max(0.0), free]),
+            )
+        }
+    });
+    // A drag across a take lane, and a click on one: the kernel says what
+    // they make play where.
+    ui.on_comp({
+        let pass = pass.clone();
+        move |track, take, from, to, free| {
+            pass("comp", json!([track, take, from.max(0.0), to.max(0.0), free]))
+        }
+    });
+    ui.on_take_click({
+        let pass = pass.clone();
+        move |track, take, beat| pass("take_click", json!([track, take, beat.max(0.0)]))
+    });
     ui.on_ruler_click({
         let pass = pass.clone();
         move |beat| pass("ruler_click", json!([beat.max(0.0)]))
@@ -1990,14 +2646,14 @@ fn run() -> Result<()> {
             let mut view = view.borrow_mut();
             view.peaks.insert(id, PeakHold::default());
             for index in 0..view.tracks.row_count() {
-                if let Some(mut track) = view.tracks.row_data(index)
-                    && track.id == id
+                if view.tracks.row_data(index).is_some_and(|track| track.id == id)
+                    && let Some(mut meter) = view.meters.row_data(index)
                 {
-                    track.clipped = false;
-                    track.hold_l = 0.0;
-                    track.hold_r = 0.0;
-                    track.peak_text = PeakHold::default().text().into();
-                    view.tracks.set_row_data(index, track);
+                    meter.clipped = false;
+                    meter.hold_l = 0.0;
+                    meter.hold_r = 0.0;
+                    meter.peak_text = PeakHold::default().text().into();
+                    view.meters.set_row_data(index, meter);
                 }
             }
             drop(view);
@@ -2452,10 +3108,15 @@ fn run() -> Result<()> {
                 }
                 // Over velocities the bars themselves follow the pencil.
                 if view.strip == 0 {
-                    let notes: Vec<NoteData> = view.notes.iter().collect();
                     let preview =
-                        velocity_preview(&view.control_stroke, &notes, 4.0 / zoom.max(1.0));
-                    sync(&view.vel_preview, preview);
+                        velocity_preview(&view.control_stroke, &view.roll_notes, 4.0 / zoom.max(1.0));
+                    // By the rows of the notes handed over.
+                    let shown: Vec<f32> = view
+                        .notes
+                        .iter()
+                        .map(|n| preview.get(n.index as usize).copied().unwrap_or(-1.0))
+                        .collect();
+                    sync(&view.vel_preview, shown);
                 }
                 if done {
                     let points: Vec<Value> = view
@@ -2855,6 +3516,14 @@ fn run() -> Result<()> {
                     sync(&view.borrow().render_ranges, ranges);
                     ui.set_render_range(0);
                     ui.set_render_path(text(&info["path"]));
+                    // The lossy formats are offered when ffmpeg can make them.
+                    let has = |name: &str| info["formats"][name].as_bool().unwrap_or(false);
+                    ui.set_render_has_mp3(has("mp3"));
+                    ui.set_render_has_ogg(has("ogg"));
+                    ui.set_render_has_opus(has("opus"));
+                    if !has(ui.get_render_format().as_str()) && !matches!(ui.get_render_format().as_str(), "wav" | "flac") {
+                        ui.set_render_format("wav".into());
+                    }
                     ui.set_render_open(true);
                 }
                 Err(err) => view.borrow_mut().show(&ui, &format!("{err:#}"), true),
@@ -2880,7 +3549,8 @@ fn run() -> Result<()> {
                 "render",
                 json!([{
                     "path": ui.get_render_path().as_str(), "range": range,
-                    "format": if ui.get_render_flac() { "flac" } else { "wav" },
+                    "format": ui.get_render_format().as_str(),
+                    "quality": ui.get_render_quality().as_str(),
                     "bits": ui.get_render_bits(), "tail": tail.max(0.0), "normalize": normalize,
                     "dither": ui.get_render_dither(), "mono": ui.get_render_mono(),
                     "stems": ui.get_render_stems(),
@@ -2891,46 +3561,19 @@ fn run() -> Result<()> {
         }
     });
 
-    // Leaving the project (quitting, starting a new one, opening another)
-    // asks first when there are changes to save. Returns whether it asked.
-    let leave = {
-        let (client, view, weak, pass, child) = (
-            client.clone(),
-            view.clone(),
-            ui.as_weak(),
-            pass.clone(),
-            child.clone(),
-        );
-        move |what: &str| -> bool {
-            let Some(ui) = weak.upgrade() else {
-                return false;
-            };
-            let closing = client
-                .borrow_mut()
-                .eval("return daw.frontend.closing()", json!([]))
-                .unwrap_or(Value::Null);
-            // A kernel that was running before this window is not this
-            // window's to save or to end.
-            let ours = child.borrow().is_some();
-            if closing["modified"].as_bool().unwrap_or(false) && (ours || what != "quit") {
-                view.borrow_mut().leaving = what.to_string();
-                ui.set_closing_name(text(&closing["name"]));
-                ui.set_closing_what(what.into());
-                ui.set_closing(true);
-                return true;
-            }
-            if what == "quit" {
-                let _ = slint::quit_event_loop();
-            } else {
-                pass("leave", json!(["go", what]));
-            }
-            false
-        }
-    };
     ui.on_file_action({
-        let leave = leave.clone();
+        let (leave, native) = (leave.clone(), native.clone());
         move |what| {
-            leave(what.as_str());
+            if what != "open" || !native(Purpose::Open, "", false) {
+                leave(what.as_str());
+            }
+        }
+    });
+    ui.on_choose_render_path({
+        let (native, weak) = (native.clone(), ui.as_weak());
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            native(Purpose::Render, ui.get_render_path().as_str(), ui.get_render_stems());
         }
     });
     ui.on_close_choice({
@@ -2947,14 +3590,108 @@ fn run() -> Result<()> {
             }
         }
     });
-    ui.window().on_close_requested({
-        let leave = leave.clone();
+    // The recent projects are fetched when the File menu opens; the kernel
+    // asks the question about unsaved changes as it does for Open.
+    let recent: Rc<RefCell<Vec<String>>> = Rc::default();
+    ui.on_fill_recent_menu({
+        let (act, weak, recent) = (act.clone(), ui.as_weak(), recent.clone());
         move || {
+            act(&|c| {
+                let menu = c.eval("return daw.frontend.recent_menu()", json!([]))?;
+                *recent.borrow_mut() = rows(&menu).iter().map(|entry| text(&entry["path"]).to_string()).collect();
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_recent_list(choices(&menu));
+                }
+                Ok(menu)
+            })
+        }
+    });
+    ui.on_open_recent({
+        let (leave, recent) = (leave.clone(), recent.clone());
+        move |at| {
+            let path = usize::try_from(at).ok().and_then(|at| recent.borrow().get(at).cloned());
+            if let Some(path) = path {
+                leave(&format!("open:{path}"));
+            }
+        }
+    });
+
+    // How the window was left comes back, and is kept again once a change
+    // has stood for a second and when the window closes.
+    let layout = |ui: &App| {
+        let scale = ui.window().scale_factor();
+        let size = ui.window().size().to_logical(scale);
+        json!({
+            "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
+            "row_height": ui.get_row_height(),
+            "roll_height": ui.get_roll_height(),
+            "mixer": ui.get_show_mixer(),
+        })
+    };
+    ui.window().on_close_requested({
+        let (leave, client, weak, layout) = (leave.clone(), client.clone(), ui.as_weak(), layout);
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                let _ = client.borrow_mut().eval("daw.frontend.layout_set(...)", json!([layout(&ui)]));
+            }
             if leave("quit") {
                 slint::CloseRequestResponse::KeepWindowShown
             } else {
                 slint::CloseRequestResponse::HideWindow
             }
+        }
+    });
+
+    // Files dragged in from a file manager. Winit sends one event per file
+    // and, on X11 only (it has no drag and drop on Wayland), none says where
+    // the pointer is: the kernel puts each sound file on a track of its own.
+    // The paths are local, so only a kernel of this window's own will do.
+    ui.window().on_winit_window_event({
+        let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
+        let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
+        move |_, event| {
+            use slint::winit_030::winit::event::WindowEvent;
+            let Some(ui) = weak.upgrade() else {
+                return EventResult::Propagate;
+            };
+            match event {
+                WindowEvent::HoveredFile(_) => {
+                    let (message, error) = if child.borrow().is_some() {
+                        ("Drop to add the files to the project", false)
+                    } else {
+                        ("Files can only be dropped on a window that started its own kernel", true)
+                    };
+                    view.borrow_mut().show(&ui, message, error);
+                }
+                WindowEvent::HoveredFileCancelled => view.borrow_mut().show(&ui, "", false),
+                WindowEvent::DroppedFile(path) if child.borrow().is_some() => {
+                    let first = dropped.borrow().is_empty();
+                    dropped.borrow_mut().push(path.to_string_lossy().to_string());
+                    if first {
+                        // The rest of the files follow at once.
+                        let (client, view, weak) = (client.clone(), view.clone(), weak.clone());
+                        let (leave, dropped) = (leave.clone(), dropped.clone());
+                        Timer::single_shot(Duration::from_millis(100), move || {
+                            let paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
+                            let Some(ui) = weak.upgrade() else { return };
+                            let done = client.borrow_mut().eval(
+                                "return daw.frontend.act.drop(...)",
+                                json!([paths]),
+                            );
+                            match done {
+                                Ok(done) => {
+                                    if let Some(project) = done["open"].as_str() {
+                                        leave(&format!("open:{project}"));
+                                    }
+                                }
+                                Err(err) => view.borrow_mut().show(&ui, &format!("{err:#}"), true),
+                            }
+                        });
+                    }
+                }
+                _ => {}
+            }
+            EventResult::Propagate
         }
     });
 
@@ -2992,7 +3729,7 @@ fn run() -> Result<()> {
                 }
                 open
             });
-            for (name, title, width, height) in &windows {
+            for (name, title, width, height, cells) in &windows {
                 if !canvases.contains_key(name) {
                     let Ok(window) = CanvasWindow::new() else { continue };
                     let items = Rc::new(VecModel::default());
@@ -3023,11 +3760,13 @@ fn run() -> Result<()> {
                             send(json!({ "kind": "wheel", "x": x, "y": y, "dx": dx, "dy": dy, "ctrl": ctrl, "shift": shift }))
                         }
                     });
+                    // Keys typed here are the view's, whichever view the
+                    // main window last gave the keyboard to.
                     window.on_key({
-                        let (act, view) = (act.clone(), view.clone());
+                        let (act, view, name) = (act.clone(), view.clone(), name.clone());
                         move |key, ctrl, alt, shift| {
                             if let Some(keys) = notation(&key, ctrl, alt, shift) {
-                                act(&|c| c.call("keys", json!([keys])));
+                                act(&|c| c.eval("daw.canvas.key(...)", json!([name, keys])));
                                 view.borrow_mut().repaint = true;
                             }
                         }
@@ -3053,18 +3792,26 @@ fn run() -> Result<()> {
                 let Some(canvas) = canvases.get_mut(name) else { continue };
                 canvas.window.set_heading(title.as_str().into());
                 // Painted again when something may have changed, when the
-                // window has another size, and now and then regardless.
+                // window has another size, and now and then regardless. A
+                // view in cells is asked every time: the kernel knows
+                // whether it has changed, and answers `same` when not.
                 let size = (canvas.window.get_canvas_width(), canvas.window.get_canvas_height());
                 let stale = canvas.painted.elapsed() > Duration::from_millis(250);
-                if !(repaint || stale || size != canvas.size) {
+                if !(repaint || stale || size != canvas.size || *cells) {
                     continue;
                 }
                 canvas.painted = Instant::now();
                 canvas.size = size;
+                let opts = json!({
+                    "cell": { "w": canvas.window.get_cell_width(), "h": canvas.window.get_cell_height() },
+                    "fresh": canvas.items.row_count() == 0,
+                });
                 let drawing = client
                     .borrow_mut()
-                    .eval("return daw.canvas.paint(...)", json!([name, size.0, size.1]));
-                if let Ok(drawing) = drawing {
+                    .eval("return daw.canvas.paint(...)", json!([name, size.0, size.1, opts]));
+                if let Ok(drawing) = drawing
+                    && drawing["same"] != true
+                {
                     let items: Vec<CanvasItem> = rows(&drawing["ops"]).iter().filter_map(canvas_item).collect();
                     sync(&canvas.items, items);
                 }
@@ -3072,7 +3819,48 @@ fn run() -> Result<()> {
         }
     });
 
+    let kept = client
+        .borrow_mut()
+        .eval("return daw.frontend.layout_get()", json!([]))
+        .unwrap_or(Value::Null);
+    let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
+    if let (Some(width), Some(height)) = (size("width"), size("height")) {
+        ui.window().set_size(slint::LogicalSize::new(width, height));
+    }
+    if let Some(zoom) = size("zoom") {
+        ui.set_zoom(zoom);
+    }
+    if let Some(height) = size("row_height") {
+        ui.set_row_height(height);
+    }
+    if let Some(height) = size("roll_height") {
+        ui.set_roll_height(height);
+    }
+    if kept["mixer"].as_bool() == Some(true) {
+        act(&|c| {
+            c.eval("if not daw.ui.visible('mixer') then daw.commands.exec('view.toggle mixer') end", json!([]))
+        });
+    }
+    let saver = Timer::default();
+    {
+        let (client, weak) = (client.clone(), ui.as_weak());
+        // What was last kept, and what has been seen since and for how long.
+        let mut done = layout(&ui);
+        let mut seen = (done.clone(), Instant::now());
+        saver.start(TimerMode::Repeated, Duration::from_millis(250), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let now = layout(&ui);
+            if now != seen.0 {
+                seen = (now, Instant::now());
+            } else if seen.0 != done && seen.1.elapsed() >= Duration::from_secs(1) {
+                let _ = client.borrow_mut().eval("daw.frontend.layout_set(...)", json!([seen.0]));
+                done = seen.0.clone();
+            }
+        });
+    }
+
     ui.run()?;
+    drop(saver);
     drop(timer);
     if let Some(child) = child.borrow_mut().as_mut() {
         // The window is gone: so is the kernel it started, unless it has
@@ -3170,6 +3958,7 @@ mod tests {
             length: 1.0,
             velocity: 0.5,
             selected,
+            index: 0,
         };
         let notes = [
             note(0.0, false),
@@ -3242,6 +4031,48 @@ mod tests {
         let far = lines_in_view(&all, 0.0, 4000.0, 1.0);
         assert!(far.iter().all(|l| !l.label.is_empty()), "no beat lines");
         assert_eq!(far.len(), 500, "every second bar when a bar is 4 px");
+    }
+
+    #[test]
+    fn the_piano_roll_is_handed_the_notes_near_what_shows_alone() {
+        let notes: Vec<NoteData> = (0..4000)
+            .map(|i| NoteData {
+                pitch: 60,
+                start: i as f32,
+                length: 0.5,
+                velocity: 0.5,
+                selected: false,
+                index: i,
+            })
+            .collect();
+        let (from, to) = around(1000.0, 1016.0);
+        assert_eq!((from, to), (984.0, 1032.0), "a view's worth on either side");
+        let near = notes_within(&notes, from, to);
+        assert_eq!(near.len(), 49, "of four thousand");
+        assert_eq!(near[0].index, 984, "each knows its place among all");
+        let long = [NoteData {
+            start: 0.0,
+            length: 2000.0,
+            ..notes[0].clone()
+        }];
+        assert_eq!(notes_within(&long, from, to).len(), 1, "a note over the whole view");
+        let kept = Some((from, to));
+        assert!(still_serves(kept, 1004.0, 1020.0), "scrolled a little");
+        assert!(!still_serves(kept, 1020.0, 1036.0), "scrolled out of it");
+        assert!(!still_serves(kept, 1008.0, 1010.0), "zoomed far in");
+        assert!(!still_serves(None, 0.0, 16.0), "nothing laid out yet");
+    }
+
+    #[test]
+    fn the_renderer_is_chosen_by_option_then_environment() {
+        let mut args: Vec<String> = ["--renderer", "gpu", "song.json"].map(String::from).into();
+        assert_eq!(renderer_choice(&mut args, Some("software")).unwrap(), Renderer::Gpu);
+        assert_eq!(args, ["song.json"], "the option is not passed on to the kernel");
+        assert_eq!(renderer_choice(&mut args, Some("gpu")).unwrap(), Renderer::Gpu);
+        assert_eq!(renderer_choice(&mut args, None).unwrap(), Renderer::Software);
+        assert_eq!(renderer_choice(&mut args, Some("")).unwrap(), Renderer::Software);
+        assert!(renderer_choice(&mut args, Some("vulkan")).is_err());
+        assert!(renderer_choice(&mut vec!["--renderer".into()], None).is_err());
     }
 
     #[test]

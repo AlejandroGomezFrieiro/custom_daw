@@ -26,6 +26,7 @@ use daw_engine::backend;
 use daw_engine::{Engine, Msg, wav};
 use serde_json::{Value, json};
 
+use super::encode::{self, Lossy, Quality};
 use super::{Dither, RenderOpts, Session, block_json, check_sample_rate, settle_plugins};
 use crate::measure::analysis::Analyzer;
 use crate::model::{MASTER_ID, Project};
@@ -36,6 +37,10 @@ use crate::sync::{LiveDevices, Mapper, SyncCtx, sync};
 pub enum Format {
     Wav,
     Flac,
+    /// The lossy formats are made by ffmpeg from a WAV: see [`encode`].
+    Mp3,
+    Vorbis,
+    Opus,
 }
 
 impl Format {
@@ -43,6 +48,9 @@ impl Format {
     pub const ALL: &'static [(Format, &'static str, &'static [&'static str])] = &[
         (Format::Wav, "WAV", &["wav", "wave"]),
         (Format::Flac, "FLAC", &["flac"]),
+        (Format::Mp3, "MP3", &["mp3"]),
+        (Format::Vorbis, "Ogg Vorbis", &["ogg", "oga"]),
+        (Format::Opus, "Opus", &["opus"]),
     ];
 
     pub fn name(self) -> &'static str {
@@ -54,16 +62,23 @@ impl Format {
         match self {
             Format::Wav => &[16, 24, 32],
             Format::Flac => &[16, 24],
+            _ => &[],
+        }
+    }
+
+    /// The lossy format this is, when it is one.
+    fn lossy(self) -> Option<Lossy> {
+        match self {
+            Format::Mp3 => Some(Lossy::Mp3),
+            Format::Vorbis => Some(Lossy::Vorbis),
+            Format::Opus => Some(Lossy::Opus),
+            _ => None,
         }
     }
 }
 
 /// Formats people ask for that cannot be written, and why.
 const UNWRITABLE: &[(&str, &str)] = &[
-    ("mp3", "MP3"),
-    ("ogg", "Ogg Vorbis"),
-    ("oga", "Ogg Vorbis"),
-    ("opus", "Opus"),
     ("m4a", "AAC"),
     ("aac", "AAC"),
     ("aif", "AIFF"),
@@ -71,10 +86,12 @@ const UNWRITABLE: &[(&str, &str)] = &[
     ("wma", "WMA"),
 ];
 
-/// "WAV (.wav) or FLAC (.flac)": what can be written, for messages.
+/// "WAV (.wav) or FLAC (.flac)": what can be written with nothing else
+/// installed, for messages.
 pub fn writable() -> String {
     let names: Vec<String> = Format::ALL
         .iter()
+        .filter(|(format, ..)| format.lossy().is_none())
         .map(|(_, name, ext)| format!("{name} (.{})", ext[0]))
         .collect();
     match names.split_last() {
@@ -84,8 +101,9 @@ pub fn writable() -> String {
     }
 }
 
-/// The format a file name asks for, or why it cannot be written.
-pub fn format_of(path: &Path) -> Result<Format> {
+/// The format a file name asks for, or why it cannot be written. The lossy
+/// formats need ffmpeg: `ffmpeg` is where it is, when not on the PATH.
+pub fn format_of(path: &Path, ffmpeg: Option<&str>) -> Result<Format> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -101,6 +119,14 @@ pub fn format_of(path: &Path) -> Result<Format> {
         .iter()
         .find(|(_, _, exts)| exts.contains(&ext.as_str()))
     {
+        if let Some(why) = format.lossy().and_then(|l| encode::unavailable(l, ffmpeg)) {
+            bail!(
+                "cannot render {}: {} {why}; render to {}, which need nothing",
+                path.display(),
+                format.name(),
+                writable()
+            );
+        }
         return Ok(*format);
     }
     match UNWRITABLE.iter().find(|(e, _)| *e == ext) {
@@ -117,12 +143,18 @@ pub fn format_of(path: &Path) -> Result<Format> {
     }
 }
 
-/// The formats, for `daw.api.render_formats()`: `{ { name, extensions, bits } }`.
-pub fn formats_json() -> Value {
+/// The formats, for `daw.api.render_formats()`: `{ { name, extensions, bits,
+/// lossy, available, why } }`; `why` says what a format that is not
+/// available needs.
+pub fn formats_json(ffmpeg: Option<&str>) -> Value {
     Value::Array(
         Format::ALL
             .iter()
-            .map(|(format, name, exts)| json!({ "name": name, "extensions": exts, "bits": format.bits() }))
+            .map(|(format, name, exts)| {
+                let why = format.lossy().and_then(|l| encode::unavailable(l, ffmpeg));
+                json!({ "name": name, "extensions": exts, "bits": format.bits(),
+                    "lossy": format.lossy().is_some(), "available": why.is_none(), "why": why })
+            })
             .collect(),
     )
 }
@@ -133,6 +165,8 @@ struct Progress {
     /// Fraction done, as the bits of an `f64`.
     fraction: AtomicU64,
     cancel: AtomicBool,
+    /// The file is being encoded by ffmpeg: `fraction` is now the encode's.
+    encoding: AtomicBool,
 }
 
 impl Progress {
@@ -146,6 +180,14 @@ impl Progress {
 
     fn cancelled(&self) -> bool {
         self.cancel.load(Ordering::Relaxed)
+    }
+
+    fn stage(&self) -> &'static str {
+        if self.encoding.load(Ordering::Relaxed) {
+            "encoding"
+        } else {
+            "rendering"
+        }
     }
 }
 
@@ -178,6 +220,17 @@ struct Plan {
     /// Bring the integrated loudness to this level in LUFS.
     loudness: Option<f64>,
     progress: Arc<Progress>,
+    /// For a lossy format: how ffmpeg is to make the file from the WAV
+    /// that is rendered first.
+    encode: Option<Encode>,
+}
+
+struct Encode {
+    format: Lossy,
+    program: String,
+    quality: Quality,
+    bitrate: Option<u32>,
+    title: String,
 }
 
 /// The temporary name a file is written under until it is complete.
@@ -230,7 +283,7 @@ impl Session {
     /// snapshot of the project as it is now. [`render_poll`](Self::render_poll)
     /// reports progress and the end as events.
     pub fn render_start(&mut self, path: &Path, opts: &RenderOpts) -> Result<()> {
-        format_of(path)?;
+        format_of(path, opts.ffmpeg.as_deref())?;
         // Every plugin is needed: wait for those still being made, and
         // refuse, naming it, one that did not load.
         self.await_loads(Duration::from_secs(60))?;
@@ -247,7 +300,16 @@ impl Session {
         path: &Path,
         opts: &RenderOpts,
     ) -> Result<()> {
-        let format = format_of(path)?;
+        let format = format_of(path, opts.ffmpeg.as_deref())?;
+        let quality = opts
+            .quality
+            .as_deref()
+            .map_or(Ok(Quality::High), Quality::parse)?;
+        if opts.bitrate.is_some_and(|k| !(8..=512).contains(&k)) {
+            bail!("bitrate is in kbit/s, from 8 to 512");
+        }
+        // What is rendered: a lossy format is encoded from 32-bit float.
+        let bits = if format.lossy().is_some() { 32 } else { opts.bits };
         // One that has finished but not been reported yet is reported now.
         self.render_poll();
         if let Some(job) = &self.render_job {
@@ -256,7 +318,7 @@ impl Session {
                 job.path.display()
             );
         }
-        if !format.bits().contains(&opts.bits) {
+        if format.lossy().is_none() && !format.bits().contains(&opts.bits) {
             let bits: Vec<String> = format.bits().iter().map(u16::to_string).collect();
             bail!(
                 "cannot render {} at {} bits: use {}",
@@ -303,11 +365,10 @@ impl Session {
         let seconds = project.tempo_map().seconds_between(opts.start, end) + opts.tail.max(0.0);
         let frames = (seconds * sample_rate as f64).ceil();
         // A WAV file holds at most 4 GiB of samples.
-        let bytes = frames * opts.channels as f64 * (opts.bits / 8) as f64;
-        if format == Format::Wav && bytes >= u32::MAX as f64 - 64.0 {
+        let bytes = frames * opts.channels as f64 * (bits / 8) as f64;
+        if (format == Format::Wav || format.lossy().is_some()) && bytes >= u32::MAX as f64 - 64.0 {
             bail!(
-                "{seconds:.0} s at {sample_rate} Hz and {} bits is more than a WAV file can hold",
-                opts.bits
+                "{seconds:.0} s at {sample_rate} Hz and {bits} bits is more than a WAV file can hold"
             );
         }
         let frames = frames as usize;
@@ -379,14 +440,21 @@ impl Session {
             format,
             path: path.to_path_buf(),
             sample_rate,
-            bits: opts.bits,
+            bits,
             channels: opts.channels,
             frames,
             latency,
-            dither: opts.dither,
+            dither: opts.dither && format.lossy().is_none(),
             peak: opts.normalize,
             loudness: opts.loudness,
             progress: progress.clone(),
+            encode: format.lossy().map(|lossy| Encode {
+                format: lossy,
+                program: encode::program(opts.ffmpeg.as_deref()).to_owned(),
+                quality,
+                bitrate: opts.bitrate,
+                title: project.name.clone(),
+            }),
         };
         let thread = std::thread::Builder::new()
             .name("render".into())
@@ -427,6 +495,7 @@ impl Session {
                 "fraction": job.progress.get(),
                 "seconds": job.started.elapsed().as_secs_f64(),
                 "cancelling": job.progress.cancelled(),
+                "stage": job.progress.stage(),
             }),
             None => Value::Null,
         }
@@ -447,10 +516,10 @@ impl Session {
         let finished = job.thread.as_ref().is_none_or(|t| t.is_finished());
         if !finished {
             let fraction = job.progress.get();
-            if fraction > job.reported.0 && job.reported.1.elapsed() >= Duration::from_millis(100) {
+            if fraction != job.reported.0 && job.reported.1.elapsed() >= Duration::from_millis(100) {
                 job.reported = (fraction, Instant::now());
                 let event = json!({ "path": job.path, "fraction": fraction,
-                    "seconds": job.started.elapsed().as_secs_f64() });
+                    "stage": job.progress.stage(), "seconds": job.started.elapsed().as_secs_f64() });
                 self.events.push(("render.progress".into(), event));
             }
             return;
@@ -502,7 +571,43 @@ fn bypass_master(project: &mut Project) {
 fn run(engine: Engine, plan: Plan) -> Result<Value> {
     let part = partial(&plan.path, "part");
     let raw = partial(&plan.path, "raw");
-    let result = write(engine, &plan, &part, &raw);
+    let result = match &plan.encode {
+        None => write(engine, &plan, &part, &raw),
+        Some(encode) => {
+            // The mix goes to a WAV beside the file, which ffmpeg then
+            // encodes into the part; the WAV goes either way.
+            let wav = partial(&plan.path, "wav.part");
+            let result = write(engine, &plan, &wav, &raw).and_then(|info| {
+                plan.progress.encoding.store(true, Ordering::Relaxed);
+                plan.progress.set(0.0);
+                let seconds = plan.frames as f64 / plan.sample_rate as f64;
+                encode::run(
+                    &encode::Job {
+                        format: encode.format,
+                        program: &encode.program,
+                        input: &wav,
+                        output: &part,
+                        rate: plan.sample_rate,
+                        seconds,
+                        title: &encode.title,
+                        quality: encode.quality,
+                        bitrate: encode.bitrate,
+                    },
+                    &|f| plan.progress.set(f),
+                    &|| plan.progress.cancelled(),
+                )?;
+                plan.progress.set(1.0);
+                Ok(info)
+            });
+            let _ = std::fs::remove_file(&wav);
+            result.map(|mut info| {
+                info["bits"] = Value::Null;
+                info["quality"] = json!(format!("{:?}", encode.quality).to_lowercase());
+                info["bitrate"] = json!(encode.bitrate);
+                info
+            })
+        }
+    };
     let _ = std::fs::remove_file(&raw);
     match result {
         Ok(info) => {
@@ -690,7 +795,7 @@ enum Out {
 impl Encoder {
     fn create(plan: &Plan, path: &Path) -> Result<Self> {
         let out = match plan.format {
-            Format::Wav => Out::Wav(
+            Format::Wav | Format::Mp3 | Format::Vorbis | Format::Opus => Out::Wav(
                 wav::Writer::with_channels(
                     path,
                     plan.sample_rate,
@@ -871,13 +976,15 @@ mod tests {
 
     #[test]
     fn a_format_that_cannot_be_written_is_refused_by_name() {
-        assert_eq!(format_of(Path::new("mix.WAV")).unwrap(), Format::Wav);
-        assert_eq!(format_of(Path::new("mix.flac")).unwrap(), Format::Flac);
-        let err = format_of(Path::new("mix.mp3")).unwrap_err().to_string();
-        assert!(err.contains("MP3") && err.contains(".wav"), "{err}");
-        let err = format_of(Path::new("mix.xyz")).unwrap_err().to_string();
+        assert_eq!(format_of(Path::new("mix.WAV"), None).unwrap(), Format::Wav);
+        assert_eq!(format_of(Path::new("mix.flac"), None).unwrap(), Format::Flac);
+        let err = format_of(Path::new("mix.m4a"), None).unwrap_err().to_string();
+        assert!(err.contains("AAC") && err.contains(".wav"), "{err}");
+        let err = format_of(Path::new("mix.mp3"), Some("/no/such/ffmpeg")).unwrap_err().to_string();
+        assert!(err.contains("MP3") && err.contains("ffmpeg") && err.contains(".wav"), "{err}");
+        let err = format_of(Path::new("mix.xyz"), None).unwrap_err().to_string();
         assert!(err.contains(".xyz") && err.contains("WAV"), "{err}");
-        let err = format_of(Path::new("mix")).unwrap_err().to_string();
+        let err = format_of(Path::new("mix"), None).unwrap_err().to_string();
         assert!(err.contains("no extension"), "{err}");
     }
 }

@@ -10,6 +10,7 @@ pub mod kernel;
 pub mod measure;
 pub mod model;
 pub mod peaks;
+pub mod remote;
 pub mod resample;
 pub mod rpc;
 pub mod safe;

@@ -384,6 +384,340 @@ test("notes recorded round the loop are takes too", function()
   end)
 end)
 
+-- Counting in and punching in ----------------------------------------------------
+
+test("a count-in counts a bar before the take, which starts on the beat where the playhead was", function()
+  with_input(function()
+    fresh()
+    daw.project.tempo = 120
+    daw.project.save(T.scratch .. "/countin.json")
+    local mic = daw.add_track({ name = "mic" })
+    mic.input, mic.armed = "1", true
+    daw.cmd("countin", { "1" })
+    eq(daw.opt.count_in .. " " .. daw.transport.count_in, "1 1", "the option, and the kernel told of it")
+    daw.transport.seek(4)
+    daw.transport.record()
+    eq(api.transport_get().counting, 4, "a bar of four beats to count")
+    eq(daw.frontend.state(daw.frontend.revision).counting, 4, "the window is told")
+    api.sleep(1000) -- half the bar
+    local t = api.transport_get()
+    eq(t.counting >= 1 and t.counting <= 3, true, "counting down: " .. t.counting)
+    eq(t.position, 4, "the playhead waits where it was")
+    eq(t.playing, true, "the transport is busy")
+    daw.ui.focus("arrange")
+    local text = table.concat(api.ui_snapshot(160, 20), "\n")
+    eq(text:find("count %d") ~= nil, true, "the status line counts")
+    api.sleep(1700) -- past the end of the bar
+    t = api.transport_get()
+    eq(t.counting, 0, "counted")
+    eq(t.position > 4, true, "and then the song plays")
+    daw.transport.stop()
+    daw.flush()
+    local played = daw.transport.position - 4
+    local clips = mic:clips()
+    eq(#clips, 1, "a take")
+    local c = clips[1]:get()
+    eq(c.start, 4, "on the beat where the playhead was")
+    eq(c.offset, 0, "from the start of its file, as without a count")
+    near(c.length, played, 0.05, "holding what was played after the count and nothing of it")
+    -- Stopping, or Esc, while it counts calls the take off.
+    daw.transport.seek(12)
+    api.undo_checkpoint()
+    local edits = daw.project.get().edits
+    daw.transport.record()
+    api.sleep(300)
+    daw.transport.stop()
+    daw.flush()
+    eq(#mic:clips(), 1, "stopped during the count: no take")
+    eq(daw.transport.recording, false, "and record mode is off")
+    eq(daw.transport.position, 12, "the playhead stays")
+    daw.transport.record()
+    api.sleep(300)
+    daw.keymap.feed("<Esc>")
+    daw.flush()
+    eq(daw.transport.playing, false, "Esc calls the count off")
+    eq(#mic:clips(), 1, "with nothing recorded")
+    eq(daw.project.get().edits, edits, "and nothing changed")
+    -- Punching in by hand while playing is not counted.
+    daw.transport.play()
+    daw.wait(50)
+    daw.transport.recording = true
+    eq(api.transport_get().counting, 0, "punched in by hand: no count")
+    daw.transport.stop()
+    daw.cmd("countin", { "off" })
+    eq(daw.transport.count_in, 0, "off")
+    daw.cmd("countin")
+    eq(daw.opt.count_in, 1, "toggled back to the last count")
+    daw.opt.count_in = 0
+  end)
+end)
+
+test("a punched take records from the punch in to the punch out while the song plays on", function()
+  with_input(function()
+    fresh()
+    daw.project.tempo = 120
+    local path = T.scratch .. "/punch.json"
+    daw.project.save(path)
+    local mic = daw.add_track({ name = "mic" })
+    mic.input, mic.armed = "1", true
+    daw.cmd("punch", { "2", "2" })
+    local t = api.transport_get()
+    eq(t.punch_start .. " " .. t.punch_end .. " " .. tostring(t.punch_enabled), "4 8 true", "bar 2, as the loop counts bars")
+    daw.transport.seek(2)
+    daw.transport.record()
+    api.sleep(3600) -- from beat 2 to past beat 9
+    eq(daw.transport.playing and daw.transport.position > 8, true, "the song plays on past the punch out")
+    daw.transport.stop()
+    daw.flush()
+    local clips = mic:clips()
+    eq(#clips, 1, "one clip")
+    local c = clips[1]:get()
+    eq(c.start .. "+" .. c.length, "4+4", "over the punch range exactly")
+    eq(c.offset, 0, "from the start of its file")
+    near(api.clip_source_length(c.id), 4, 0.001, "whose file holds the range and no more")
+    near(render({ start = 4, ["end"] = 8, tail = 0 }).peak, 10 ^ (-12 / 20), 0.02, "it sounds over the range")
+    eq(render({ start = 0, ["end"] = 4, tail = 0 }).peak < 1e-6, true, "and not before it")
+    -- Started inside the range: at once, up to the punch out.
+    clips[1]:remove()
+    daw.transport.seek(6)
+    daw.transport.record()
+    api.sleep(1400)
+    daw.transport.stop()
+    daw.flush()
+    c = mic:clips()[1]:get()
+    eq(c.start .. "+" .. c.length, "6+2", "from the playhead to the punch out")
+    -- Started after it: nothing, and it says so.
+    mic:clips()[1]:remove()
+    daw.transport.seek(9)
+    daw.transport.record()
+    daw.flush()
+    eq(tostring(daw.ui.message and daw.ui.message.text):find("past the punch out") ~= nil, true, "it says so")
+    api.sleep(200)
+    daw.transport.stop()
+    daw.flush()
+    eq(#mic:clips(), 0, "and records nothing")
+    -- Kept with the project, as the loop is.
+    daw.project.save(path)
+    daw.project.new()
+    eq(daw.transport.punch_enabled, false, "a new project has none")
+    daw.project.load(path)
+    t = api.transport_get()
+    eq(t.punch_start .. " " .. t.punch_end .. " " .. tostring(t.punch_enabled), "4 8 true", "loaded again")
+    local s = daw.frontend.state(-1)
+    eq(s.project.punch_start .. " " .. s.project.punch_end .. " " .. tostring(s.project.punch_enabled), "4 8 true", "and the window is told")
+    -- Toggled, and drawn on the ruler.
+    daw.cmd("punch")
+    eq(daw.transport.punch_enabled, false, "toggled off")
+    daw.cmd("punch")
+    eq(daw.transport.punch_enabled, true, "and on")
+    daw.ui.focus("arrange")
+    local text = table.concat(api.ui_snapshot(160, 20), "\n")
+    eq(text:find("punch 2", 1, true) ~= nil, true, "the status line says where")
+    daw.frontend.act.set_punch_edge("end", 12.3)
+    eq(daw.transport.punch_end, 12, "an edge dragged lands on the grid")
+    daw.frontend.act.set_punch(16, 9.9)
+    eq(daw.transport.punch_start .. " " .. daw.transport.punch_end, "10 16", "a range drawn")
+    daw.transport.punch_enabled = false
+  end)
+end)
+
+test("notes punched in are kept inside the range and cut at the punch out", function()
+  start()
+  daw.project.tempo = 120
+  local keys = daw.add_track({ name = "keys" })
+  keys:add_device("synth", { attack = 0.001, release = 0.01 })
+  keys.armed = true
+  daw.transport.punch_start, daw.transport.punch_end, daw.transport.punch_enabled = 4, 6, true
+  daw.transport.seek(3)
+  daw.transport.record()
+  api.sleep(200)  -- beat 3.4, before the punch in
+  daw.midi.inject({ type = "note_on", pitch = 60, velocity = 100 })
+  api.sleep(200)
+  daw.midi.inject({ type = "note_off", pitch = 60 })
+  api.sleep(400)  -- beat 4.6, inside
+  daw.midi.inject({ type = "note_on", pitch = 64, velocity = 90 })
+  api.sleep(1100) -- beat 6.8, past the punch out, still held
+  daw.midi.inject({ type = "note_off", pitch = 64 })
+  api.sleep(200)
+  daw.transport.stop()
+  daw.flush()
+  local clips = keys:clips()
+  eq(#clips, 1, "one clip")
+  local c = clips[1]:get()
+  eq(c.kind .. " " .. c.start .. "+" .. c.length, "midi 4+2", "over the punch range")
+  local notes = clips[1]:notes()
+  eq(#notes, 1, "the note before the punch in is left out")
+  eq(notes[1].pitch, 64, "the one inside is kept")
+  near(notes[1].start, 0.6, 0.25, "where it was played")
+  near(notes[1].start + notes[1].length, 2, 1e-9, "and cut at the punch out")
+  daw.transport.punch_enabled = false
+end)
+
+test("punching with the loop on keeps every time through the punch range as a take", function()
+  with_input(function()
+    fresh()
+    daw.project.tempo = 120
+    daw.project.save(T.scratch .. "/punchloop.json")
+    local mic = daw.add_track({ name = "mic" })
+    mic.input, mic.armed = "1", true
+    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 4, true
+    daw.transport.punch_start, daw.transport.punch_end, daw.transport.punch_enabled = 1, 3, true
+    daw.transport.seek(0)
+    daw.transport.record()
+    api.sleep(5750) -- twice round the two-second loop, and through the range a third time
+    daw.transport.stop()
+    daw.flush()
+    local clips = mic:clips()
+    eq(#clips, 1, "one clip")
+    local c = clips[1]:get()
+    eq(c.start .. "+" .. c.length, "1+2", "over the punch range")
+    eq(table.concat({ daw.takes.count(c.id) }, " "), "3 3", "a take each time through it, the last playing")
+    local list = c.meta.takes.list
+    near(list[1].offset, 0, 1e-6, "the first from the start of the file")
+    near(list[2].offset, 1, 1e-4, "the second right after it: only the range was captured")
+    near(c.offset, 2, 1e-4, "and the one playing after that")
+    near(api.clip_source_length(c.id), 2, 0.001, "where the file ends")
+    -- One step from comping: the takes as lanes.
+    daw.cursor.set_track(mic)
+    daw.cmd("take.lanes")
+    eq(daw.takes.lane_count(mic.id), 3, "every pass shows at once")
+    daw.takes.show_lanes(mic.id, false)
+    daw.transport.loop_enabled, daw.transport.punch_enabled = false, false
+  end)
+end)
+
+-- Take lanes and comping ------------------------------------------------------------
+
+--- A track with an audio clip of eight beats whose three takes are three
+--- stretches of one file, the third playing.
+local function three_takes()
+  local source = T.tone("source", 32)
+  daw.project.tempo = 120
+  local wav = render({ tail = 0, bits = 32 })
+  source:remove()
+  local t = daw.add_track({ name = "vox" })
+  local clip = t:add_clip({ file = wav.path, start = 0, length = 8, offset = 8, meta = {
+    takes = { active = 3, origin = 8, list = {
+      { name = "vox.1", file = wav.path, offset = 0, gain = 0 },
+      { name = "vox.2", file = wav.path, offset = 4, gain = -6 },
+      { name = "vox.3" },
+    } },
+  } })
+  return t, clip, wav
+end
+
+test("a drag across a take lane makes that take play over the stretch, as one undo step", function()
+  start()
+  local t, clip = three_takes()
+  local act = daw.frontend.act
+  eq(act.take_lanes(t.id), true, "the take lanes are shown")
+  daw.flush()
+  local s = daw.frontend.state(-1)
+  eq(s.tracks[1].take_rows, 3, "three lanes under the clips")
+  eq(s.clips[1].take_rows[2].name, "vox.2", "each take by name")
+  api.undo_checkpoint()
+  eq(act.comp(t.id, 1, 2.2, 5.9, false), 1, "one piece given take 1")
+  api.undo_checkpoint()
+  local clips = t:clips()
+  local shape = {}
+  for i, c in ipairs(clips) do shape[i] = c.start .. "+" .. c.length .. ":" .. select(2, daw.takes.count(c.id)) end
+  eq(table.concat(shape, " "), "0+2:3 2+4:1 6+2:3", "cut on the grid at both ends, take 1 between")
+  near(clips[2].offset, 1, 1e-9, "take 1 lined up: two beats into its stretch of the file")
+  near(clips[3].offset, 8 + 3, 1e-9, "while take 3 plays on after it")
+  daw.undo()
+  eq(#t:clips(), 1, "one undo step undoes it all")
+  daw.redo()
+  -- Swiping back joins the pieces again.
+  eq(act.comp(t.id, 3, 2, 6, false), 1, "take 3 back over the stretch")
+  clips = t:clips()
+  eq(#clips, 1, "the pieces are one clip again")
+  eq(clips[1].start .. "+" .. clips[1].length .. " " .. clips[1].offset, "0+8 8", "the clip as it was")
+  eq(daw.takes.count(clips[1].id), 3, "with every take")
+  -- Two takes side by side, then one over both.
+  act.comp(t.id, 1, 0, 4)
+  act.comp(t.id, 2, 4, 8)
+  eq(#t:clips(), 2, "two pieces")
+  near(t:clips()[2].offset, 4 + 2, 1e-9, "take 2 lined up after the cut")
+  act.comp(t.id, 2, 0, 8)
+  eq(#t:clips(), 1, "one take over both: one clip")
+  eq(select(2, daw.takes.count(t:clips()[1].id)), 2, "playing take 2")
+  near(t:clips()[1].gain, -6, 1e-9, "with its gain")
+  -- A click chooses the take of the piece under the pointer.
+  act.comp(t.id, 3, 4, 8)
+  eq(act.take_click(t.id, 3, 1) ~= nil, true, "a click on lane 3")
+  eq(#t:clips(), 1, "which then carries straight on into its neighbour")
+  eq(act.comp(t.id, 1, 3.3, 3.31, false), 1, "too short a drag is a click")
+  eq(#t:clips(), 1, "the whole piece under it gets the take")
+  eq(select(2, daw.takes.count(t:clips()[1].id)), 1, "take 1")
+  -- Off the grid with Shift.
+  act.comp(t.id, 2, 1.3, 2.7, true)
+  local starts = {}
+  for i, c in ipairs(t:clips()) do starts[i] = c.start end
+  eq(table.concat(starts, " "), "0 1.3 2.7", "exactly where it was dragged")
+  -- Clips without takes are left alone.
+  local plain = t:add_clip({ file = clip.file, start = 10, length = 4 })
+  eq(act.comp(t.id, 2, 9, 13), 0, "a clip without takes is not comped")
+  eq(plain.start .. "+" .. plain.length, "10+4", "nor cut")
+end)
+
+test("the window draws other takes from their own files, and the terminal shows the lanes", function()
+  start()
+  local t, clip, wav = three_takes()
+  local peaks = api.media_peaks(wav.path, 0, 1, 16)
+  eq(#peaks, 16, "a waveform of a stretch of any file")
+  eq(peaks[8][2] > 0.1, true, "with the sound in it")
+  eq(#api.media_peaks(wav.path, 0, 0, 16), 0, "nothing of no time")
+  fails(function() api.media_peaks(wav.path, 0, 1, 1e9) end, "at most", "too many points")
+  -- What take 2 would play is what the clip plays once it is chosen.
+  local preview = daw.frontend.take_preview(clip.id, 2, 64)
+  eq(#preview, 64 * 3, "a point for each")
+  daw.takes.select(clip.id, 2)
+  local own = daw.frontend.peaks(clip.id, 64)
+  local same = true
+  for i = 1, #own do same = same and math.abs(own[i] - preview[i]) < 1e-6 end
+  eq(same, true, "a take's picture is its sound, gain and all")
+  -- MIDI takes give their notes.
+  local keys = daw.add_track({ name = "keys" })
+  local m = keys:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 1, length = 1 } } })
+  daw.takes.new(m.id)
+  m:set_notes({ { pitch = 72, start = 0, length = 2 } })
+  local flat = daw.frontend.take_preview(m.id, 1, 0)
+  eq(table.concat(flat, " "), "1 1 60", "take 1's notes")
+  -- The terminal: a row for each take under the track, the one that plays lit.
+  daw.cursor.set_track(t)
+  daw.keymap.feed("zt")
+  eq(daw.takes.lanes_shown(t.id), true, "zt shows them")
+  daw.ui.focus("arrange")
+  local text = table.concat(api.ui_snapshot(160, 30), "\n")
+  eq(text:find("take 3", 1, true) ~= nil, true, "a row for each take")
+  eq(text:find("vox.1", 1, true) ~= nil, true, "named")
+  daw.keymap.feed("zt")
+  eq(daw.takes.lanes_shown(t.id), false, "and hides them")
+end)
+
+test("comping notes joins the pieces back exactly when the same take plays across them", function()
+  start()
+  local t = daw.add_track({ name = "comp" })
+  local function beats(pitch)
+    local notes = {}
+    for i = 0, 7 do notes[i + 1] = { pitch = pitch, start = i, length = 1 } end
+    return notes
+  end
+  local clip = t:add_clip({ start = 0, length = 8, notes = beats(60) })
+  daw.takes.new(clip.id)
+  clip:set_notes(beats(72))
+  eq(daw.takes.comp(t.id, 1, 2, 4), 1, "take 1 over two beats")
+  eq(#t:clips(), 3, "three pieces")
+  eq(daw.takes.comp(t.id, 2, 0, 8), 3, "take 2 over the lot")
+  local clips = t:clips()
+  eq(#clips, 1, "one clip again")
+  eq(#clips[1]:notes(), 8, "with every note")
+  eq(clips[1]:notes()[3].pitch .. " " .. clips[1]:notes()[3].start, "72 2", "in its place")
+  daw.takes.select(clips[1].id, 1)
+  local notes = clips[1]:notes()
+  eq(#notes .. " " .. notes[8].pitch .. " " .. notes[8].start, "8 60 7", "and the other take whole too")
+end)
+
 -- Automation modes --------------------------------------------------------------
 
 test("a track's automation mode says what moving a control writes", function()
@@ -650,4 +984,26 @@ test("a take chosen over a selected stretch plays there alone", function()
   daw.undo()
   daw.undo()
   eq(#t:clips(), 1, "one undo for the choice of take, one for the cut and the comp")
+end)
+
+test("saving names a project after its file, and what is edited after it is not saved", function()
+  fresh()
+  eq(daw.project.name, "untitled", "a new project has no name of its own")
+  daw.add_track({ name = "one" })
+  local path = T.scratch .. "/My song.json"
+  daw.project.save(path)
+  eq(daw.project.name, "My song", "saved, it is called what its file is")
+  eq(daw.project.modified, false, "and has nothing unsaved")
+  -- In the same turn as the save: this is not in the file.
+  daw.add_track({ name = "two" })
+  eq(daw.project.modified, true, "an edit after the save is a change to save")
+  api.undo_checkpoint()
+  daw.undo()
+  eq(#daw.tracks() .. " " .. daw.project.name, "1 My song", "undoing it goes back to what was saved, name and all")
+  eq(daw.project.modified, false, "which has nothing unsaved")
+  daw.project.name = "Renamed"
+  daw.project.save(T.scratch .. "/another file.json")
+  eq(daw.project.name, "Renamed", "a name given by hand is kept")
+  daw.project.load(path)
+  eq(daw.project.name .. " " .. #daw.tracks(), "My song 1", "the file holds the name and what was saved")
 end)

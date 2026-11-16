@@ -18,6 +18,7 @@ export struct NoteData {
     length: float,
     velocity: float,    // 0..1
     selected: bool,     // one of the notes chosen with the pointer
+    index: int,         // its place among all the clip's notes, from 0
 }
 
 // A controller move of the kind the strip shows.
@@ -73,6 +74,11 @@ export global Roll {
     // Rows to skip from the top, to start near the notes.
     in-out property <int> top: 40;
     in-out property <float> zoom: 80;   // pixels per beat
+    // The beats of the clip that show. Only the notes and lines in and near
+    // them are handed over: a long clip has thousands, and each one drawn
+    // is an element.
+    in-out property <float> view-start;
+    in-out property <float> view-end;
     in property <string> mode: "n";
     in property <bool> focused;
     in property <bool> sel-open;
@@ -226,12 +232,14 @@ export component PianoRoll inherits Rectangle {
     property <length> drag-dy: 0px;
     property <length> drag-start: 0px;
     property <length> drag-end: 0px;
-    property <int> grabbed: -1;
+    property <int> grabbed: -1;     // its place among all the notes
     property <bool> drag-free;      // Shift: off the grid
     property <bool> drag-copy;      // Ctrl: copies
     property <bool> free: root.drag-free || !Roll.snap;
-    // Where the dragged notes land, as the kernel will put them.
-    property <NoteData> held: root.grabbed >= 0 ? Roll.notes[root.grabbed] : { pitch: 0, start: 0, length: 0 };
+    // The note grabbed, as it was then (it may scroll out of the notes
+    // handed over); and where the dragged notes land, as the kernel will
+    // put them.
+    property <NoteData> held;
     property <length> shown-dx: root.grabbed < 0 ? 0px : root.snapped(root.held.start * root.beat + root.drag-dx) - root.held.start * root.beat;
     property <length> shown-dy: round(root.drag-dy / root.note-height) * root.note-height;
     property <length> shown-start: root.grabbed < 0 || root.drag-start == 0 ? 0px : root.snapped(root.held.start * root.beat + root.drag-start) - root.held.start * root.beat;
@@ -260,6 +268,20 @@ export component PianoRoll inherits Rectangle {
     property <int> hover-pitch: -1;
     property <int> key-held: -1;
     property <int> key-from: -1;
+
+    // What shows, reported to the window from the start and as it changes.
+    property <float> shows-from: -roll.content-x / root.beat;
+    property <float> shows-to: (-roll.content-x + roll.width) / root.beat;
+    init => {
+        Roll.view-start = self.shows-from;
+        Roll.view-end = self.shows-to;
+    }
+    changed shows-from => {
+        Roll.view-start = self.shows-from;
+    }
+    changed shows-to => {
+        Roll.view-end = self.shows-to;
+    }
 
     pure function is-black(pitch: int) -> bool {
         Math.mod(pitch, 12) == 1 || Math.mod(pitch, 12) == 3 || Math.mod(pitch, 12) == 6 || Math.mod(pitch, 12) == 8 || Math.mod(pitch, 12) == 10
@@ -613,10 +635,12 @@ export component PianoRoll inherits Rectangle {
                             font-weight: tick.is-bar ? 600 : 400;
                         }
                     }
-                    // Grid steps between the beats, when there is room.
+                    // Grid steps between the beats, when there is room: those
+                    // that show alone.
                     if root.grid-px >= 10px && Roll.grid < 1: Rectangle {
-                        for index in Math.ceil(roll.content-width / root.grid-px) + 1: Rectangle {
-                            x: index * root.grid-px + roll.content-x;
+                        property <int> first: floor(-roll.content-x / root.grid-px);
+                        for index in Math.ceil(roll.width / root.grid-px) + 1: Rectangle {
+                            x: (parent.first + index) * root.grid-px + roll.content-x;
                             y: parent.height - 3px;
                             width: 1px;
                             height: 3px;
@@ -818,8 +842,9 @@ export component PianoRoll inherits Rectangle {
                 }
                 // Grid steps when there is room, then beats, then bars.
                 if root.grid-px >= 10px && Roll.grid < 1: Rectangle {
-                    for index in Math.ceil(roll.content-width / root.grid-px): Rectangle {
-                        x: index * root.grid-px;
+                    property <int> first: floor(-roll.content-x / root.grid-px);
+                    for index in Math.ceil(roll.width / root.grid-px) + 1: Rectangle {
+                        x: (parent.first + index) * root.grid-px;
                         width: 1px;
                         height: roll.content-height;
                         background: Theme.line-sub;
@@ -924,11 +949,11 @@ export component PianoRoll inherits Rectangle {
                     border-width: 1px;
                     border-color: white;
                 }
-                for note[index] in Roll.notes: slot := Rectangle {
+                for note in Roll.notes: slot := Rectangle {
                     // The chosen notes all follow a drag; a note that is
                     // grabbed while not chosen goes alone.
-                    property <bool> follows: root.grabbed == index || (note.selected && root.grabbed >= 0 && Roll.notes[root.grabbed].selected);
-                    property <bool> lit: note.selected || root.grabbed == index;
+                    property <bool> follows: root.grabbed == note.index || (note.selected && root.grabbed >= 0 && root.held.selected);
+                    property <bool> lit: note.selected || root.grabbed == note.index;
                     property <bool> under-eraser: root.erasing && root.ex >= self.x && root.ex < self.x + self.width && root.ey >= self.y && root.ey < self.y + self.height;
                     property <bool> crossed;
                     property <bool> erasing: root.erasing;
@@ -990,7 +1015,7 @@ export component PianoRoll inherits Rectangle {
                             } else if (root.boxing) {
                                 root.bx1 = parent.x + self.x + self.mouse-x;
                                 root.by1 = parent.y + self.mouse-y;
-                            } else if (root.grabbed == index && (!self.toggling || self.moving)) {
+                            } else if (root.grabbed == note.index && (!self.toggling || self.moving)) {
                                 root.drag-dx = self.mouse-x - self.pressed-x;
                                 root.drag-dy = self.mouse-y - self.pressed-y;
                                 Roll.hint = root.describe(note.pitch - round(root.drag-dy / root.note-height), note.start + root.shown-dx / root.beat, note.length);
@@ -1013,13 +1038,14 @@ export component PianoRoll inherits Rectangle {
                                     self.toggling = event.modifiers.shift || event.modifiers.control;
                                     root.drag-free = event.modifiers.shift;
                                     root.drag-copy = event.modifiers.control;
-                                    root.grabbed = index;
+                                    root.grabbed = note.index;
+                                    root.held = note;
                                     if (!note.selected && !self.toggling) {
-                                        Roll.select-note(index, 0);
+                                        Roll.select-note(note.index, 0);
                                     }
                                 }
                             }
-                            if (event.kind == PointerEventKind.move && root.grabbed == index) {
+                            if (event.kind == PointerEventKind.move && root.grabbed == note.index) {
                                 root.drag-free = event.modifiers.shift;
                                 root.drag-copy = event.modifiers.control;
                             }
@@ -1027,9 +1053,9 @@ export component PianoRoll inherits Rectangle {
                                 if (root.erasing) {
                                     root.erase-at(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, 2);
                                 } else if (self.toggling && !self.moving) {
-                                    Roll.select-note(index, 2);
+                                    Roll.select-note(note.index, 2);
                                 } else if (self.moving) {
-                                    Roll.drag-notes(index, root.drag-dx / root.beat, -round(root.drag-dy / root.note-height), event.modifiers.control, event.modifiers.shift);
+                                    Roll.drag-notes(note.index, root.drag-dx / root.beat, -round(root.drag-dy / root.note-height), event.modifiers.control, event.modifiers.shift);
                                 }
                                 Roll.hint = "";
                                 root.drag-dx = 0px;
@@ -1039,14 +1065,14 @@ export component PianoRoll inherits Rectangle {
                             }
                             // The right button: a click removes the note, a drag is a box.
                             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
-                                root.box-begin(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, false, index);
+                                root.box-begin(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, false, note.index);
                             }
                             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right && root.boxing) {
                                 root.box-end(event.modifiers.shift, event.modifiers.control, 0, 0);
                             }
                         }
                         double-clicked => {
-                            Roll.remove-note(index);
+                            Roll.remove-note(note.index);
                         }
                         changed has-hover => {
                             root.hover-pitch = self.has-hover ? note.pitch : -1;
@@ -1059,7 +1085,7 @@ export component PianoRoll inherits Rectangle {
                         width: clamp(parent.width / 4, 2px, 5px);
                         mouse-cursor: ew-resize;
                         moved => {
-                            if (self.pressed && root.grabbed == index) {
+                            if (self.pressed && root.grabbed == note.index) {
                                 root.drag-start = self.mouse-x - self.pressed-x;
                                 Roll.hint = root.describe(note.pitch, note.start + root.shown-start / root.beat, note.length - root.shown-start / root.beat);
                             }
@@ -1068,21 +1094,22 @@ export component PianoRoll inherits Rectangle {
                             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
                                 Roll.focus-keys();
                                 root.drag-free = event.modifiers.shift;
-                                root.grabbed = index;
+                                root.grabbed = note.index;
+                                root.held = note;
                             }
-                            if (event.kind == PointerEventKind.move && root.grabbed == index) {
+                            if (event.kind == PointerEventKind.move && root.grabbed == note.index) {
                                 root.drag-free = event.modifiers.shift;
                             }
                             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
                                 if (abs(root.drag-start) > 2px) {
-                                    Roll.stretch-notes(index, root.drag-start / root.beat, 0, event.modifiers.shift);
+                                    Roll.stretch-notes(note.index, root.drag-start / root.beat, 0, event.modifiers.shift);
                                 }
                                 Roll.hint = "";
                                 root.drag-start = 0px;
                                 root.grabbed = -1;
                             }
                             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
-                                Roll.remove-note(index);
+                                Roll.remove-note(note.index);
                             }
                         }
                     }
@@ -1091,7 +1118,7 @@ export component PianoRoll inherits Rectangle {
                         width: clamp(parent.width / 4, 2px, 5px);
                         mouse-cursor: ew-resize;
                         moved => {
-                            if (self.pressed && root.grabbed == index) {
+                            if (self.pressed && root.grabbed == note.index) {
                                 root.drag-end = self.mouse-x - self.pressed-x;
                                 Roll.hint = root.describe(note.pitch, note.start, note.length + root.shown-end / root.beat);
                             }
@@ -1100,21 +1127,22 @@ export component PianoRoll inherits Rectangle {
                             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
                                 Roll.focus-keys();
                                 root.drag-free = event.modifiers.shift;
-                                root.grabbed = index;
+                                root.grabbed = note.index;
+                                root.held = note;
                             }
-                            if (event.kind == PointerEventKind.move && root.grabbed == index) {
+                            if (event.kind == PointerEventKind.move && root.grabbed == note.index) {
                                 root.drag-free = event.modifiers.shift;
                             }
                             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
                                 if (abs(root.drag-end) > 2px) {
-                                    Roll.stretch-notes(index, 0, root.drag-end / root.beat, event.modifiers.shift);
+                                    Roll.stretch-notes(note.index, 0, root.drag-end / root.beat, event.modifiers.shift);
                                 }
                                 Roll.hint = "";
                                 root.drag-end = 0px;
                                 root.grabbed = -1;
                             }
                             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
-                                Roll.remove-note(index);
+                                Roll.remove-note(note.index);
                             }
                         }
                     }
