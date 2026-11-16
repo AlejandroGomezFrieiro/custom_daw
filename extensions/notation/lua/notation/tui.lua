@@ -498,17 +498,31 @@ function view:render(buf, ctx)
     end
   end
 
-  -- The cursor: on its line or space, at its time.
+  -- The cursor: on its line or space, at its time. Off a note it is the
+  -- note `Enter` or a letter would put there (the shadow note); in insert
+  -- mode that follows the pointer while it is over the staff.
   if ctx.focused then
+    local beat, step, s = self.beat, self.step, nil
+    local hover = view.cell_hover
+    if inserting and hover and hover.from_beat == self.beat and hover.from_step == self.step then
+      beat, step, s, under = hover.beat, hover.step, only and 1 or self:staff_of_step(hover.step, layout), nil
+    end
     for _, sys in ipairs(geometry.systems) do
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
-        if self.beat >= m.start - EPS and (self.beat < m.start + m.length - EPS or (m.index == #layout.measures and self.beat <= m.start + m.length + EPS)) then
-          local s = only and 1 or self:cursor_staff(layout)
-          local pos = self.step - model.CLEF_BOTTOM[layout.staves[s]]
-          local cx = placed.x + floor(model.x_of(m, self.beat) + 0.5)
-          if not under or inserting or selection then
-            buf:fill(cx, sys.row_of(s, pos), 1, 1, nil, inserting and "InsertCursor" or "RollCursor")
+        if beat >= m.start - EPS and (beat < m.start + m.length - EPS or (m.index == #layout.measures and beat <= m.start + m.length + EPS)) then
+          s = s or (only and 1 or self:cursor_staff(layout))
+          local pos = step - model.CLEF_BOTTOM[layout.staves[s]]
+          local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
+          local style = inserting and "InsertCursor" or "RollCursor"
+          if selection then
+            buf:fill(cx, sys.row_of(s, pos), 1, 1, nil, style)
+          elseif not under then
+            for p = -2, pos, -2 do buf:text(cx - 1, sys.row_of(s, p), "───", faint) end
+            for p = 10, pos, 2 do buf:text(cx - 1, sys.row_of(s, p), "───", faint) end
+            buf:text(cx, sys.row_of(s, pos), (model.value_of(self:entry_length()) or 1) >= 2 and "○" or "●", style)
+          elseif inserting then
+            buf:fill(cx, sys.row_of(s, pos), 1, 1, nil, style)
           end
           return
         end
@@ -517,33 +531,126 @@ function view:render(buf, ctx)
   end
 end
 
---- A click puts the cursor on the line or space and the time under it.
-function view:on_mouse(event)
+-- The pointer, as on the engraved page (`notation.gui`), in cells: in
+-- normal mode a click puts the cursor on a note (and sounds it) or on a line
+-- or space and time, Shift-click stretches a selection from the cursor, a
+-- drag of a note moves it, a drag on the paper selects a block, a double
+-- click enters notes there; in insert mode a click enters a note of the
+-- chosen value and the shadow note follows the pointer; a right click opens
+-- the menu of what can be done there; the wheel scrolls by measures.
+
+--- What is at a cell of the view: the line or space, the beat there on the
+--- grid, its staff, and `note` when the cell is a note's head.
+function view:cell_at(x, y)
   local g = self.geometry
   local layout = self:layout()
-  if not (g and layout) then return end
-  if event.kind == "scroll_up" then self.first = math.max(1, self.first - 1) end
-  if event.kind == "scroll_down" then self.first = math.min(#layout.measures, self.first + 1) end
-  if event.kind ~= "down" then return api.ui_redraw() end
+  if not (g and layout) then return nil end
   for _, sys in ipairs(g.systems) do
     for _, placed in ipairs(sys.measures) do
       local m = placed.m
-      if event.x >= placed.x and event.x <= placed.x + m.width then
+      if x >= placed.x and x <= placed.x + m.width then
         for s, clef in ipairs(g.staves or layout.staves) do
-          local pos = sys.row_of(s, 0) - event.y
+          local pos = sys.row_of(s, 0) - y
           if pos >= -g.margin - 1 and pos <= 8 + g.margin + 1 then
-            local beat = model.t_of(m, event.x - placed.x)
             local grid = daw.opt.notation_grid
-            self:set(model.CLEF_BOTTOM[clef] + pos, math.max(0, floor(beat / grid + 0.5) * grid))
-            -- A click on a note sounds it.
-            local note = self:note()
-            if note then self:audition(note.pitch) end
-            return
+            local step = model.CLEF_BOTTOM[clef] + pos
+            local at = { step = step, beat = math.max(0, floor(model.t_of(m, x - placed.x) / grid + 0.5) * grid) }
+            at.staff = self:staff_of_step(step, layout)
+            -- A head is drawn at its chord's start, or a column right of it
+            -- beside a second.
+            local ev, n = self:event_at(at.beat, step)
+            local hx = ev and placed.x + floor(model.x_of(m, ev.start) + 0.5)
+            if n and x >= hx and x <= hx + 1 then at.note, at.beat = n.index, ev.start end
+            return at
           end
         end
       end
     end
   end
+end
+
+--- Say on the status line what the pointer is over.
+local function hint(self, at)
+  if not at then return daw.mouse.hint(nil) end
+  local fifths = view.key()
+  local note = at.note and self:clip() and self:clip():notes()[at.note]
+  local name = note and daw.music.name(note.pitch) or model.name(model.spell(model.key_pitch(at.step, fifths), fifths))
+  daw.mouse.hint(string.format("%s  %s", name, daw.time.format(self:clip():get().start + at.beat)))
+end
+
+function view:on_mouse(e)
+  local layout = self:layout()
+  if not (self.geometry and layout) then return end
+  local wheel = daw.mouse.wheel(e)
+  if wheel then
+    self.first = util.clamp(self.first + wheel, 1, #layout.measures)
+    return api.ui_redraw()
+  end
+  local at = self:cell_at(e.x, e.y)
+  local inserting = daw.keymap.mode == "i"
+  if e.kind == "move" then
+    view.cell_hover = inserting and at and { beat = at.beat, step = at.step, from_beat = self.beat, from_step = self.step } or nil
+    hint(self, at)
+    return api.ui_redraw()
+  end
+  if e.kind ~= "down" or not at then return end
+  view.cell_hover = nil
+  if self.multi or e.button == "right" then
+    self:set(at.step, at.beat)
+    if self.multi then
+      -- Several tracks, to read: a click sounds the note.
+      local note = self:note()
+      if note then self:audition(note.pitch) end
+      return
+    end
+    return daw.ui.menu(self:menu_items(at.note ~= nil, at), { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) })
+  end
+  if e.button ~= "left" then return end
+  if inserting then
+    -- The second press of a double click enters nothing more.
+    if not e.double then self:enter_at(at) end
+    return
+  end
+  if e.double then
+    self:set(at.step, at.beat)
+    self.last, self.chord = nil, nil
+    return daw.keymap.set_mode("i")
+  end
+  if daw.mouse.has(e, "S") then
+    if daw.keymap.mode ~= "x" then daw.keymap.visual_start("v") end
+    return self:set(at.step, at.beat)
+  end
+  if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
+  self:set(at.step, at.beat)
+  local clip = self:clip()
+  local note = at.note and clip:notes()[at.note]
+  if note then
+    self:audition(note.pitch)
+    -- A drag of the note moves it: the cursor, off the note, shows where.
+    local to
+    return daw.mouse.grab(e, {
+      drag = function(d)
+        local there = self:cell_at(d.x, d.y)
+        if not (d.moved and there) then return end
+        to = { step = there.step, beat = there.beat }
+        self:set(to.step, to.beat)
+        hint(self, there)
+      end,
+      up = function()
+        if to and (to.step ~= at.step or math.abs(to.beat - at.beat) > EPS) then self:move_note(at.note, note, to.step, to.beat) end
+      end,
+      cancel = function() self:set(at.step, at.beat) end,
+    })
+  end
+  -- A drag on the paper selects a block.
+  daw.mouse.grab(e, {
+    drag = function(d)
+      local there = self:cell_at(d.x, d.y)
+      if not (d.moved and there) then return end
+      if daw.keymap.mode ~= "x" then daw.keymap.visual_start("b") end
+      self:set(there.step, there.beat)
+    end,
+  })
 end
 
 return view

@@ -80,6 +80,9 @@ pub struct Mapper {
     next_track: Slot,
     next_device: Slot,
     mix: HashMap<Id, (f32, f32, bool, bool)>,
+    /// The fader lane each track has because of the VCAs it is in, as last
+    /// sent: see [`vca_volume_lane`].
+    vca_lanes: HashMap<Id, Vec<(f64, f64)>>,
     /// First input channel, channel count, monitoring and armed, as last sent.
     inputs: HashMap<Id, (usize, usize, bool, bool)>,
     /// The MIDI port's key and channel each track takes, as last sent.
@@ -124,6 +127,7 @@ impl Mapper {
             next_track: MASTER + 1,
             next_device: 0,
             mix: HashMap::new(),
+            vca_lanes: HashMap::new(),
             inputs: HashMap::new(),
             midi_inputs: HashMap::new(),
             midi_outputs: HashMap::new(),
@@ -601,7 +605,7 @@ pub fn sync(
             lanes_changed |= !same_lanes;
             send(Msg::SetAutomation {
                 track: slot,
-                automation: Box::new(build_automation(track, map, ctx)),
+                automation: Box::new(build_automation(track, new, map, ctx)),
             });
         }
         if let Some(prev) = prev.filter(|_| !same_lanes) {
@@ -654,21 +658,42 @@ pub fn sync(
         );
     }
 
-    let any_solo = new.tracks.iter().any(|t| t.solo);
-    let sounding = if any_solo {
-        solo_paths(new)
-    } else {
+    // A track the VCAs it is in have changed the fader lane of is told so,
+    // and takes its own fader value back when it no longer has one.
+    for track in new.all_tracks() {
+        let Some(&slot) = map.tracks.get(&track.id) else {
+            continue;
+        };
+        let lane = vca_volume_lane(track, new);
+        if lane.as_ref() != map.vca_lanes.get(&track.id) {
+            match lane {
+                Some(points) => map.vca_lanes.insert(track.id, points),
+                None => map.vca_lanes.remove(&track.id),
+            };
+            map.mix.remove(&track.id);
+            send(Msg::SetAutomation {
+                track: slot,
+                automation: Box::new(build_automation(track, new, map, ctx)),
+            });
+        }
+    }
+
+    let soloed = soloed_tracks(new);
+    let sounding = if soloed.is_empty() {
         HashSet::new()
+    } else {
+        solo_paths(new, &soloed)
     };
     for track in new.all_tracks() {
         let Some(&slot) = map.tracks.get(&track.id) else {
             continue;
         };
-        let silenced = any_solo && track.id != MASTER_ID && !sounding.contains(&track.id);
+        let silenced = !soloed.is_empty() && track.id != MASTER_ID && !sounding.contains(&track.id);
+        let vcas = vcas_of(track, new);
         let mix = (
-            db_to_gain(track.volume),
+            db_to_gain(track.volume + vcas.iter().map(|v| v.volume).sum::<f64>()),
             track.pan as f32,
-            track.mute,
+            track.mute || vcas.iter().any(|v| v.mute),
             silenced,
         );
         if map.mix.get(&track.id) != Some(&mix) {
@@ -1496,13 +1521,19 @@ pub fn is_active(lane: &Lane) -> bool {
     lane.enabled && !lane.points.is_empty()
 }
 
-fn build_automation(track: &Track, map: &Mapper, ctx: &SyncCtx) -> Automation {
+fn build_automation(track: &Track, project: &Project, map: &Mapper, ctx: &SyncCtx) -> Automation {
     let mut set = Automation::default();
     // A track whose automation is off keeps its lanes and plays none.
     let on = track.automation != crate::model::AutoMode::Off;
+    let vca = vca_volume_lane(track, project);
+    if let Some(points) = &vca {
+        set.lanes.push(AutoLane::new(AutoTarget::Volume, points.clone()));
+    }
     for lane in track.lanes.iter().filter(|l| on && is_active(l)) {
         let mut range = None;
         let target = match &lane.target {
+            // The fader's lane is already there when VCAs are involved.
+            Target::Volume if vca.is_some() => continue,
             Target::Volume => AutoTarget::Volume,
             Target::Pan => AutoTarget::Pan,
             Target::Param { device, param } => {
@@ -1532,6 +1563,105 @@ fn build_automation(track: &Track, map: &Mapper, ctx: &SyncCtx) -> Automation {
         set.lanes.push(AutoLane::new(target, points));
     }
     set
+}
+
+/// Whether a track is a VCA: a fader, mute and solo that belong to other
+/// tracks and carry no audio of their own. The runtime marks it in its meta.
+fn is_vca(track: &Track) -> bool {
+    track.meta.get("vca").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// The VCAs a track is assigned to (named in its meta) that exist.
+fn vcas_of<'a>(track: &Track, project: &'a Project) -> Vec<&'a Track> {
+    let Some(ids) = track.meta.get("vcas").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    if is_vca(track) {
+        return Vec::new();
+    }
+    project
+        .tracks
+        .iter()
+        .filter(|t| is_vca(t) && ids.iter().any(|id| id.as_u64() == Some(t.id)))
+        .map(|t| &**t)
+        .collect()
+}
+
+/// A fader's lane on its own: its points in dB, or `None` where the fader
+/// is still (or its automation is off).
+fn fader_points(track: &Track) -> Option<&[(f64, f64)]> {
+    if track.automation == crate::model::AutoMode::Off {
+        return None;
+    }
+    track
+        .lanes
+        .iter()
+        .find(|l| l.target == Target::Volume && is_active(l))
+        .map(|l| l.points.as_slice())
+}
+
+/// The fader lane of a track that is in VCAs, when any lane is in play: the
+/// sum in dB of its own fader and its VCAs' faders, each a lane or a fixed
+/// value. Lanes are straight lines between points, so the sum is too, with
+/// a point wherever one of them has one: the engine plays it as any lane,
+/// sample by sample, and a render hears the same.
+fn vca_volume_lane(track: &Track, project: &Project) -> Option<Vec<(f64, f64)>> {
+    let vcas = vcas_of(track, project);
+    if vcas.is_empty() {
+        return None;
+    }
+    let all: Vec<&Track> = std::iter::once(track).chain(vcas).collect();
+    let lanes: Vec<Option<&[(f64, f64)]>> = all.iter().map(|t| fader_points(t)).collect();
+    if lanes.iter().all(|l| l.is_none()) {
+        return None;
+    }
+    let mut beats: Vec<f64> = lanes
+        .iter()
+        .flatten()
+        .flat_map(|l| l.iter().map(|p| p.0))
+        .collect();
+    beats.sort_by(f64::total_cmp);
+    beats.dedup();
+    let sum = |at: &dyn Fn(&[(f64, f64)]) -> f64| -> f64 {
+        all.iter()
+            .zip(&lanes)
+            .map(|(t, l)| l.map_or(t.volume, at))
+            .sum()
+    };
+    let mut out = Vec::new();
+    for b in beats {
+        // The value as a beat is reached, and as it is left (they differ at a jump).
+        let before = sum(&|p| value_before(p, b));
+        let after = sum(&|p| daw_engine::automation::value_at(p, b).unwrap_or(0.0));
+        if before != after {
+            out.push((b, before));
+        }
+        out.push((b, after));
+    }
+    Some(out)
+}
+
+/// A lane's value as `beat` is approached from before it.
+fn value_before(points: &[(f64, f64)], beat: f64) -> f64 {
+    let next = points.partition_point(|p| p.0 < beat);
+    match (next.checked_sub(1).map(|i| points[i]), points.get(next)) {
+        (None, Some(b)) => b.1,
+        (Some(a), None) => a.1,
+        (Some(a), Some(b)) => a.1 + (b.1 - a.1) * (beat - a.0) / (b.0 - a.0),
+        (None, None) => 0.0,
+    }
+}
+
+/// The tracks that count as soloed: those that are, and the members of a
+/// soloed VCA.
+fn soloed_tracks(project: &Project) -> HashSet<Id> {
+    let mut out = HashSet::new();
+    for t in project.all_tracks() {
+        if (t.solo && !is_vca(t)) || vcas_of(t, project).iter().any(|v| v.solo) {
+            out.insert(t.id);
+        }
+    }
+    out
 }
 
 /// Put back the project's own value of anything a lane stopped automating,
@@ -1592,11 +1722,11 @@ fn release_targets(
 /// With some track soloed, a track still sounds if it is soloed itself, feeds a
 /// soloed track, or carries a soloed track's signal on to the master. The
 /// tracks that still sound, found in one pass over the outputs.
-fn solo_paths(project: &Project) -> HashSet<Id> {
+fn solo_paths(project: &Project, soloed: &HashSet<Id>) -> HashSet<Id> {
     let by_id: HashMap<Id, &Track> = project.tracks.iter().map(|t| (t.id, &**t)).collect();
     let mut sounding = HashSet::new();
     // Soloed tracks, and every track their output passes through.
-    for t in project.tracks.iter().filter(|t| t.solo) {
+    for t in project.tracks.iter().filter(|t| soloed.contains(&t.id)) {
         sounding.insert(t.id);
         let mut at = t.output;
         let mut steps = 0;
@@ -1618,7 +1748,7 @@ fn solo_paths(project: &Project) -> HashSet<Id> {
         let mut at = t.output;
         while let Some(&next) = at.and_then(|id| by_id.get(&id)) {
             if let Some(&known) = feeds.get(&next.id) {
-                beyond = known || next.solo;
+                beyond = known || soloed.contains(&next.id);
                 break;
             }
             if path.len() > by_id.len() {
@@ -1629,7 +1759,7 @@ fn solo_paths(project: &Project) -> HashSet<Id> {
         }
         for n in path.iter().rev() {
             feeds.insert(n.id, beyond);
-            beyond |= n.solo;
+            beyond |= soloed.contains(&n.id);
         }
         feeds.insert(t.id, beyond);
         if beyond {

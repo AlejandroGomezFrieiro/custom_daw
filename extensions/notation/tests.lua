@@ -744,6 +744,125 @@ test("several tracks: one system of staves, to read; lyrics under the notes", fu
   eq(#view:layout().staves, 1, "and back to the clip alone")
 end)
 
+-- The pointer in the terminal ----------------------------------------------------------------
+
+local function shot() return api.ui_snapshot(120, 40) end
+
+local function m(kind, x, y, button, mods)
+  daw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
+  api.undo_checkpoint()
+end
+
+--- The screen cell of a beat and staff step in the terminal view, after a snapshot.
+local function cell(view, beat, step)
+  local model = require("notation.model")
+  local rect
+  for _, r in ipairs(daw.ui.rects) do if r.name == "notation" then rect = r end end
+  local g = view.geometry
+  for _, sys in ipairs(g.systems) do
+    for _, placed in ipairs(sys.measures) do
+      local mm = placed.m
+      if beat >= mm.start and beat < mm.start + mm.length then
+        return rect.x + placed.x + math.floor(model.x_of(mm, beat) + 0.5),
+          rect.y + sys.row_of(1, step - model.CLEF_BOTTOM[g.staves[1]])
+      end
+    end
+  end
+end
+
+local function terminal_song(notes)
+  local view, clip = song(notes, 4)
+  daw.opt.mouse = true
+  daw.mouse.forget()
+  daw.ui.focus("notation")
+  shot()
+  return view, clip
+end
+
+test("notation terminal: a click chooses, a drag moves a note, a right click opens a menu", function()
+  local view, clip = terminal_song({ N(67, 1, 0.5) })
+  local x, y = cell(view, 2, 39)
+  m("down", x, y) m("up", x, y)
+  eq(notes_of(clip), "G4@1+0.5", "a click on the paper adds nothing")
+  eq(view.beat .. " " .. view.step, "2 39", "it puts the cursor on that line and time")
+  daw.mouse.forget()
+  local hx, hy = cell(view, 1, 39)
+  local tx, ty = cell(view, 2, 41)
+  m("down", hx, hy)
+  eq(view.beat, 1, "a click on a note puts the cursor on it")
+  m("drag", hx + 1, hy - 1)
+  m("drag", tx, ty)
+  m("up", tx, ty)
+  eq(notes_of(clip), "B4@2+0.5", "dragged two steps up and a beat later")
+  shot()
+  daw.mouse.forget()
+  local rx, ry = cell(view, 2, 41)
+  m("down", rx, ry, "right")
+  eq(require("daw.menu").is_open(), true, "a right click opens a menu")
+  eq(table.concat(shot(), "\n"):find("Delete the note", 1, true) ~= nil, true, "of what can be done to the note")
+  keys("<CR>")
+  eq(notes_of(clip), "", "its first entry deletes the note")
+end)
+
+test("notation terminal: Shift-click extends a selection, a drag on the paper selects a block", function()
+  local view = terminal_song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
+  local x, y = cell(view, 0, 35)
+  m("down", x, y) m("up", x, y)
+  daw.mouse.forget()
+  local x2, y2 = cell(view, 2, 37)
+  m("down", x2, y2, "left", "S") m("up", x2, y2, "left", "S")
+  local sel = daw.keymap.selection()
+  eq(sel and sel.c0, 0, "a selection from the cursor")
+  eq(sel and sel.c1 >= 2, true, "to the note clicked with Shift")
+  keys("<Esc>")
+  shot()
+  daw.mouse.forget()
+  local ax, ay = cell(view, 1.5, 33)
+  local bx, by = cell(view, 3.5, 40)
+  m("down", ax, ay)
+  m("drag", ax + 1, ay)
+  m("drag", bx, by)
+  m("up", bx, by)
+  sel = daw.keymap.selection()
+  eq(sel and sel.kind, "block", "a box drawn on the paper selects a block")
+  keys("<Esc>")
+end)
+
+test("notation terminal: a double click enters notes; in insert mode a click enters one and the shadow note follows the pointer", function()
+  local view, clip = terminal_song(nil)
+  view.value = 0.5
+  local x, y = cell(view, 1, 39)
+  m("down", x, y) m("up", x, y)
+  m("down", x, y) m("up", x, y)
+  eq(daw.keymap.mode, "i", "a double click enters notes")
+  eq(notes_of(clip), "", "and enters nothing itself")
+  local hx, hy = cell(view, 2, 41)
+  m("move", hx, hy, "")
+  local screen = shot()
+  eq(screen[hy + 1]:find("●", 1, true) ~= nil, true, "the note to enter is drawn where the pointer is")
+  eq(view.cell_hover and view.cell_hover.step, 41, "the shadow note follows the pointer")
+  daw.mouse.forget()
+  m("down", x, y) m("up", x, y)
+  eq(notes_of(clip), "G4@1+0.5", "a click enters an eighth G on beat two")
+  keys("<Esc>")
+end)
+
+test("notation terminal: off a note the cursor is the note Enter would put there", function()
+  local view = terminal_song(nil)
+  view:set(39, 1)
+  local x, y = cell(view, 1, 39)
+  local screen = shot()
+  local row = screen[y + 1]
+  local col = 0
+  for ch in row:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    if col == x then eq(ch, "●", "a quarter's head at the cursor") break end
+    col = col + 1
+  end
+  view.value = 2
+  screen = shot()
+  eq(screen[y + 1]:find("○", 1, true) ~= nil, true, "a half note's when halves are chosen")
+end)
+
 -- The window -----------------------------------------------------------------------------------
 
 local function paint(view)
@@ -758,42 +877,80 @@ end
 --- Where a beat and staff step are in the window, after a paint.
 local function spot(view, beat, step)
   local model = require("notation.model")
-  local eng = view.gui.engraved
+  local engrave = require("notation.engrave")
+  local gui = view.gui
+  local eng = gui.engraved
   local layout = view:layout()
   for _, sys in ipairs(eng.systems) do
     for _, placed in ipairs(sys.measures) do
       local m = placed.m
       if beat >= m.start and beat < m.start + m.length then
         local pos = step - model.CLEF_BOTTOM[layout.staves[1]]
-        return placed.x + model.x_of(m, beat), sys.staff_top[1] + (8 - pos) * eng.s / 2 - view.gui.scroll
+        return placed.x + model.x_of(placed.p, beat) - (view.galley and gui.hscroll or 0),
+          engrave.y_of(eng.style, sys, 1, pos) + gui.area.top - gui.scroll
       end
     end
   end
 end
 
-test("notation window: it paints notes, stems, beams and the clef as paths", function()
+test("notation window: it engraves notes, stems, beams and the clef with the music font", function()
   local view = song({ N(72, 0, 0.5), N(74, 0.5, 0.5), N(76, 1, 1), N(67, 2, 2) })
-  local drawing = paint(view)
-  local paths = 0
+  local drawing = daw.canvas.paint("notation", 1100, 560, { glyphs = true })
+  local glyphs, layers, cuts = {}, {}, 0
   for _, op in ipairs(drawing.ops) do
+    if op[1] == "g" and layers[#layers] == "ink" then glyphs[op[5]] = (glyphs[op[5]] or 0) + 1 end
+    if op[1] == "layer" then layers[#layers + 1] = op[2] end
+    if op[1] == "cut" then cuts = cuts + 1 end
+  end
+  eq(glyphs[0xE0A4], 3, "three black note heads (Leland's noteheadBlack)")
+  eq(glyphs[0xE0A3], 1, "a half note's head")
+  eq(glyphs[0xE050], 1, "a treble clef")
+  eq(table.concat(layers, " "), "ink selection ghost diagnostic caret playhead", "the page's ink, then what moves over it, as layers")
+  eq(cuts >= 1, true, "and where a frontend may cut it at a barline")
+  eq(#view.gui.heads, 4, "four note heads, each remembered for the pointer")
+  local paths = 0
+  for _, op in ipairs(paint(view).ops) do
+    if op[1] == "g" then error("a frontend that does not draw glyphs is given none") end
     if op[1] == "p" then paths = paths + 1 end
   end
-  eq(paths > 30, true, "heads, stems, beams, clef and lines are drawn")
-  eq(#view.gui.heads, 4, "four note heads, each remembered for the pointer")
+  eq(paths > 10, true, "the window is given each glyph as a path from the font's outline")
 end)
 
-test("notation window: a click places a note of the chosen value, a drag moves it, a right click removes it", function()
-  local view, clip = song(nil, 4)
+test("notation window: staff lines, stems and barlines are on whole pixels, systems whole cell rows", function()
+  local view = song({ N(72, 0, 0.5), N(74, 0.5, 0.5), N(76, 1, 1), N(67, 2, 2), N(60, 4, 4), N(64, 8, 1) }, 16)
+  local drawing = daw.canvas.paint("notation", 1053, 600, { glyphs = true, surface = true, cell = { w = 13, h = 27 }, colors = { fg = "#cdd6f4", bg = "#1e1e2e" } })
+  local whole = true
+  for _, op in ipairs(drawing.ops) do
+    if op[1] == "r" then
+      for i = 2, 5 do whole = whole and op[i] == math.floor(op[i]) end
+    end
+    eq(op[1] ~= "t" or op[4] ~= "midi", true, "no toolbar on a terminal's surface")
+  end
+  eq(whole, true, "every rectangle on whole pixels")
+  eq(drawing.ops[1][1], "layer", "no background: the terminal's own shows")
+  local eng = view.gui.engraved
+  eq(eng.style.sp, 9, "a staff space of a third of a 27 px cell")
+  for _, sys in ipairs(eng.systems) do
+    eq(sys.height % 27, 0, "each system whole rows of cells high")
+    for _, placed in ipairs(sys.measures) do eq(placed.x % 13, 0, "each measure starting on a whole column") end
+  end
+  eq(eng.systems[1].height <= 6 * 27, true, "a single staff in no more than six rows")
+end)
+
+test("notation window: in normal mode a click chooses, a drag moves a note, a right click opens a menu", function()
+  local view, clip = song({ N(67, 1, 0.5) }, 4)
+  daw.ui.focus("notation")
   paint(view)
-  view.value = 0.5
-  local x, y = spot(view, 1, 39)
+  local x, y = spot(view, 2, 39)
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip), "G4@1+0.5", "an eighth G on beat two")
+  eq(notes_of(clip), "G4@1+0.5", "a click on the paper adds nothing")
+  eq(view.beat, 2, "it puts the cursor there")
   paint(view)
   local hx, hy = spot(view, 1, 39)
   local tx, ty = spot(view, 2, 41)
   pointer("down", hx, hy)
+  eq(view.beat, 1, "a click on a note puts the cursor on it")
   pointer("move", (hx + tx) / 2, (hy + ty) / 2)
   pointer("move", tx, ty)
   pointer("up", tx, ty)
@@ -801,7 +958,60 @@ test("notation window: a click places a note of the chosen value, a drag moves i
   paint(view)
   local rx, ry = spot(view, 2, 41)
   pointer("down", rx, ry, { button = "right" })
-  eq(notes_of(clip), "", "removed")
+  eq(require("daw.menu").is_open(), true, "a right click opens a menu")
+  keys("<CR>")
+  eq(notes_of(clip), "", "its first entry deletes the note")
+end)
+
+test("notation window: Shift extends a selection, a drag on the paper selects a box", function()
+  local view = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) }, 4)
+  daw.ui.focus("notation")
+  paint(view)
+  local x, y = spot(view, 0, 35)
+  pointer("down", x, y)
+  pointer("up", x, y)
+  local x2, y2 = spot(view, 2, 37)
+  pointer("down", x2, y2, { shift = true })
+  local sel = daw.keymap.selection()
+  eq(sel and sel.c0, 0, "a selection from the cursor")
+  eq(sel and sel.c1 >= 2, true, "to the note clicked with Shift")
+  keys("<Esc>")
+  paint(view)
+  local ax, ay = spot(view, 1, 33)
+  local bx, by = spot(view, 3, 40)
+  pointer("down", ax, ay)
+  pointer("move", bx, by)
+  pointer("up", bx, by)
+  sel = daw.keymap.selection()
+  eq(sel and sel.kind, "block", "a box drawn on the paper selects a block")
+  keys("<Esc>")
+end)
+
+test("notation window: a double click enters notes there; in insert mode a click enters a note and the note to enter follows the pointer", function()
+  local view, clip = song(nil, 4)
+  daw.ui.focus("notation")
+  paint(view)
+  view.value = 0.5
+  local x, y = spot(view, 1, 39)
+  pointer("double", x, y)
+  eq(daw.keymap.mode, "i", "a double click enters notes")
+  pointer("down", x, y)
+  pointer("up", x, y)
+  eq(notes_of(clip), "", "the double click's own second press enters nothing")
+  local hx, hy = spot(view, 2, 41)
+  daw.canvas.pointer("notation", { kind = "hover", x = hx, y = hy })
+  eq(view.gui.hover and view.gui.hover.step, 41, "the note to enter follows the pointer")
+  local drawing = daw.canvas.paint("notation", 1100, 560, { glyphs = true })
+  local in_caret, heads = false, 0
+  for _, op in ipairs(drawing.ops) do
+    if op[1] == "layer" then in_caret = op[2] == "caret" end
+    if in_caret and op[1] == "g" and op[5] == 0xE0A4 then heads = heads + 1 end
+  end
+  eq(heads, 1, "drawn half transparent in the caret's layer")
+  pointer("down", x, y)
+  pointer("up", x, y)
+  eq(notes_of(clip), "G4@1+0.5", "a click enters an eighth G on beat two")
+  keys("<Esc>")
 end)
 
 test("notation window: the toolbar chooses the value, the accidental and rests", function()
@@ -816,6 +1026,7 @@ test("notation window: the toolbar chooses the value, the accidental and rests",
   press("half")
   eq(view.value, 2, "half notes")
   press("sharp")
+  keys("i")
   paint(view)
   local x, y = spot(view, 2, 38)
   pointer("down", x, y)
@@ -826,6 +1037,113 @@ test("notation window: the toolbar chooses the value, the accidental and rests",
   x, y = spot(view, 2, 38)
   pointer("down", x, y)
   eq(notes_of(clip), "E4@0+2", "a rest clears it")
+end)
+
+--- The ops of a layer of a drawing.
+local function layer_ops(drawing, name)
+  local out, current = {}, nil
+  for _, op in ipairs(drawing.ops) do
+    if op[1] == "layer" then current = op[2] elseif current == name then out[#out + 1] = op end
+  end
+  return out
+end
+
+local function surface_paint()
+  return daw.canvas.paint("notation", 1053, 800, { glyphs = true, surface = true, cell = { w = 13, h = 27 } })
+end
+
+test("notation page: the selection, suggestions, diagnostics and the playhead are layers over the ink", function()
+  local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) }, 8)
+  daw.ui.focus("notation")
+  view:set(35, 0)
+  keys("vl")
+  local d = surface_paint()
+  local sel = layer_ops(d, "selection")
+  eq(sel[1] and sel[1][1], "r", "a faint band over the selection")
+  eq(#sel >= 2, true, "and its notes again in the accent")
+  keys("<Esc>")
+  daw.complete.show({ { label = "next", notes = { { pitch = 67, start = 4, length = 1 } } } }, { clip = clip.id, keys = false })
+  local ghosts = 0
+  for _, op in ipairs(layer_ops(surface_paint(), "ghost")) do
+    if op[1] == "g" then ghosts = ghosts + 1 end
+  end
+  eq(ghosts, 1, "a suggested note laid out where it would be written")
+  daw.complete.dismiss()
+  daw.diagnostic.set("test", clip.id, { { notes = { 2 }, severity = "warning", message = "a leap" } })
+  local diag = layer_ops(surface_paint(), "diagnostic")
+  local wave, tinted = false, false
+  for _, op in ipairs(diag) do
+    if op[1] == "p" then wave = true end
+    if op[1] == "g" then tinted = true end
+  end
+  eq(wave and tinted, true, "a wavy line under the staff and the note tinted")
+  view:set(37, 1)
+  eq(view:status_text(), "a leap", "its message on the cursor's note")
+  view:set(35, 0)
+  keys("]d")
+  eq(view.beat .. " " .. view.step, "1 36", "]d goes to it in the notation view")
+  local here = daw.ui.location("notation")
+  eq(here and here.uri:match("/note/") ~= nil, true, "the view says which note is under its cursor")
+  daw.diagnostic.reset("test", clip.id)
+  api.transport_seek(2)
+  local play = layer_ops(surface_paint(), "playhead")
+  eq(play[1] and play[1][4], 2, "a 2 px playhead")
+end)
+
+test("notation page: a cursor move draws the page from what was engraved; an edit engraves only the measures it changed", function()
+  local view, clip = song({ N(60, 0, 1), N(62, 4, 1), N(64, 8, 1), N(65, 12, 1) }, 16)
+  daw.ui.focus("notation")
+  surface_paint()
+  local cache = view.gui.measures
+  local made = cache.count
+  view:move(1, 0)
+  surface_paint()
+  eq(cache.count, made, "moving the cursor engraves nothing")
+  clip:set_note(2, { pitch = 65 })
+  surface_paint()
+  eq(cache.count, made + 1, "an edit in one bar engraves that bar again")
+  local bench = require("notation.bench")
+  local r = bench.run(16, { glyphs = true, surface = true, cell = { w = 13, h = 27 } }, 5)
+  -- Loose bounds, for a busy machine: the targets are 8 and 30 ms.
+  eq(r.cursor < 80, true, "a cursor move paints quickly (" .. string.format("%.1f", r.cursor) .. " ms)")
+  eq(r.edit < 300, true, "an edit paints quickly (" .. string.format("%.1f", r.edit) .. " ms)")
+end)
+
+test("notation page: the galley is one long system that keeps the cursor in view", function()
+  local notes = {}
+  for i = 0, 63 do notes[#notes + 1] = N(60 + i % 12, i, 1) end
+  local view = song(notes, 64)
+  daw.ui.focus("notation")
+  keys("zg")
+  eq(view.galley, true, "zg: one long system")
+  surface_paint()
+  eq(#view.gui.engraved.systems, 1, "every measure in one system")
+  view:set(nil, 60)
+  surface_paint()
+  local _, x = view.gui.at_beat(view.gui.engraved, 60)
+  local shown = x - view.gui.hscroll
+  eq(shown > 0 and shown < 1053, true, "scrolled sideways to the cursor")
+  keys("zg")
+  eq(view.galley, false, "and back to wrapped systems")
+end)
+
+test("notation insert: an interval above, a tie, triplets and the last chord again", function()
+  local view, clip = song(nil, 4)
+  keys("i")
+  keys("C<A-3><A-3>")
+  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1", "Alt-3 twice: a third above, and a third above that, a chord")
+  keys("<Space>")
+  eq(view.beat, 1, "Space steps on")
+  keys("R")
+  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1 C4@1+1 E4@1+1 G4@1+1", "R: the chord again")
+  keys("e~")
+  eq(notes_of(clip):match("E4@2%+2") ~= nil, true, "~ holds the note just entered on by the value")
+  eq(view.beat, 4, "and steps on")
+  keys("<Esc>")
+  local view2, clip2 = song(nil, 4)
+  keys("i4tcde<Esc>")
+  local _ = view2
+  eq(notes_of(clip2), "C4@0+0.333333 D4@0.333333+0.333333 E4@0.666667+0.333333", "t: eighth triplets")
 end)
 
 -- Export -------------------------------------------------------------------------------------

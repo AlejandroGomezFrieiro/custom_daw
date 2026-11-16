@@ -243,9 +243,10 @@ end
 
 -- The cursor ------------------------------------------------------------------------------
 
---- The value chosen, in beats, with its dot.
+--- The value chosen, in beats, with its dot, and as a triplet when
+--- entering in triplets.
 function view:entry_length()
-  return self.value * (self.dot and 1.5 or 1)
+  return self.value * (self.dot and 1.5 or 1) * (self.triplets and 2 / 3 or 1)
 end
 
 --- The beat the view keeps on screen: the playhead while playing in the
@@ -949,12 +950,75 @@ function view:enter(letter, advance)
   self:audition(pitch)
   self.last = { step = step, pitch = pitch, beat = self.beat }
   self.step = step
+  self:remember_chord()
   if advance then
     self.chord = nil
     self:step_on(1)
   else
     api.ui_redraw()
   end
+end
+
+--- Keep the chord being entered, for `R` to enter again.
+function view:remember_chord()
+  if not self.chord then return end
+  local pitches = {}
+  for p in pairs(self.chord.pitches) do pitches[#pitches + 1] = p end
+  table.sort(pitches)
+  self.again = { pitches = pitches, step = self.last and self.last.step }
+end
+
+--- Add a note an interval above the note just entered, in the key, to its
+--- chord: `interval` 2 a second, 3 a third ... 8 an octave.
+function view:add_interval(interval)
+  local clip = self:clip()
+  local last = self.last
+  if not (clip and last) then return end
+  local fifths = view.key()
+  local step = last.step + interval - 1
+  local pitch = model.key_pitch(step, fifths)
+  if pitch > 127 then return daw.notify("no note that high", "warn") end
+  if not (self.chord and math.abs(self.chord.beat - last.beat) < EPS) then self.chord = { beat = last.beat, pitches = { [last.pitch] = true } } end
+  self.chord.pitches[pitch] = true
+  self:place(pitch, last.beat, self:entry_length(), self.chord.pitches)
+  self:audition(pitch)
+  self.last = { step = step, pitch = pitch, beat = last.beat }
+  self:remember_chord()
+  api.ui_redraw()
+end
+
+--- Enter the chord entered last again at the cursor, and step on.
+function view:repeat_chord()
+  local again = self.again
+  if not (again and #again.pitches > 0) then return daw.notify("nothing entered yet to repeat", "warn") end
+  local keep = {}
+  for _, p in ipairs(again.pitches) do keep[p] = true end
+  for _, p in ipairs(again.pitches) do self:place(p, self.beat, self:entry_length(), keep) end
+  self.last = { step = again.step or self.step, pitch = again.pitches[#again.pitches], beat = self.beat }
+  self.chord = nil
+  self:step_on(1)
+end
+
+--- Hold the note just entered on by the chosen value (a tie where it
+--- crosses a beat or a barline), and step on.
+function view:tie_last()
+  local clip = self:clip()
+  local last = self.last
+  if not (clip and last) then return end
+  local notes, at = clip:notes({ from = last.beat - EPS, to = last.beat + EPS })
+  local set = {}
+  local finish
+  for i, n in ipairs(notes) do
+    if math.abs(n.start - last.beat) < EPS and (not self.chord or self.chord.pitches[n.pitch] or n.pitch == last.pitch) then
+      finish = n.start + n.length + self:entry_length()
+      set[#set + 1] = { index = at[i], length = n.length + self:entry_length() }
+    end
+  end
+  if #set == 0 then return end
+  self:grow(clip, finish)
+  clip:edit_notes({ set = set })
+  self.chord = nil
+  self:set(nil, finish)
 end
 
 --- Move by the chosen value, growing the clip when it runs out.
@@ -1046,6 +1110,7 @@ function view:edit(clip)
   if not clip then return daw.notify("no clip here", "warn") end
   if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be shown as notation", "warn") end
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache, self.multi = clip.id, 0, 1, nil, nil, nil, nil
+  self.triplets, self.again = false, nil
   local layout = self:layout()
   local first = model.events(layout)[1]
   self.step = 35
