@@ -122,8 +122,36 @@ test("a suggestion shows as ghost notes with its badge and changes nothing in th
     local text = screen()
     eq(text:find("1/2 fixed: rise", 1, true) ~= nil, true, "the badge says which of how many, from where")
     eq(text:find("G4", 1, true) ~= nil, true, "the ghost notes are drawn with their names")
+    eq(text:find("Tab accept", 1, true) ~= nil, true, "the key line says how to take it")
+    eq(#daw.ui.keybar.check(), 0, "and every key it shows is mapped")
     eq(T.melody(clip), before, "the clip is as it was")
     eq(api.project_get().edits, edits, "and nothing was edited")
+  end)
+end)
+
+test("the terminal's piano roll draws ghost notes dashed on their rows, under a badge kept on screen", function()
+  start()
+  local function line_of(lines, text)
+    for i, l in ipairs(lines) do
+      if l:find(text, 1, true) then return i end
+    end
+  end
+  with({ fixed("fixed", next_bar) }, {}, function()
+    daw.keymap.feed("<C-Space>")
+    local lines = api.ui_snapshot(120, 40)
+    local g, a, badge = line_of(lines, "G4┄"), line_of(lines, "A4┄"), line_of(lines, "1/2 fixed: rise")
+    eq(g ~= nil and a ~= nil, true, "both ghost notes, named and dashed")
+    eq(g - a, 2, "each on its pitch's row: A4 two rows above G4")
+    eq(badge, a - 1, "the badge on the row above the highest")
+    daw.keymap.feed("<C-n>")
+    lines = api.ui_snapshot(120, 40)
+    eq(line_of(lines, "2/2 fixed: fall") ~= nil and line_of(lines, "E4┄") ~= nil, true, "Ctrl-n draws the other")
+    daw.keymap.feed("<Esc>")
+    eq(line_of(api.ui_snapshot(120, 40), "┄"), nil, "Esc takes it all away")
+  end)
+  with({ fixed("high", { { label = "high", notes = { n(120, 4) } } }) }, {}, function()
+    complete.request()
+    eq(screen():find("1/1 high", 1, true) ~= nil, true, "a badge for notes above the screen stays on it")
   end)
 end)
 

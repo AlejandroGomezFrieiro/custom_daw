@@ -604,8 +604,9 @@ roll():layer("complete", {
     -- The badge: which alternative of how many, and from where, above it.
     local first = cur.item.notes[1] or cur.item.velocities[1] or cur.item.remove[1]
     local at = first and first.start or roll().beat
-    local row = highest and l.y(highest + 1) or l.y(roll().pitch + 1) or 0
-    l.roll:text(math.max(0, math.min(l.x(at), l.width - 12)), row or 0, badge_text(cur), style.badge)
+    -- Kept on screen when the notes reach past its top or bottom.
+    local row = daw.util.clamp(l.top - ((highest or roll().pitch) + 1), 0, l.rows - 1)
+    l.roll:text(math.max(0, math.min(l.x(at), l.width - 12)), row, badge_text(cur), style.badge)
   end,
   marks = function(clip_id)
     local cur = M.current()
@@ -645,6 +646,13 @@ roll():layer("complete", {
 })
 
 roll():key_scope("pianoroll.complete", 50, keys_on)
+-- The terminal's key line while a suggestion shows.
+local keyline = {
+  { "<Tab>", "accept" }, { "<C-l>", "next notes" }, { "<C-n>", "other" }, { "<A-1>", "pick", "Alt-1…9" },
+  { "<Esc>", "dismiss" },
+}
+daw.ui.keybar.set("pianoroll.complete", "n", daw.util.merge(keyline, { [6] = { "gh", "hear" } }))
+daw.ui.keybar.set("pianoroll.complete", "i", keyline)
 roll():tool("complete", function() return M.tool() end)
 
 -- The window's gestures -------------------------------------------------------
