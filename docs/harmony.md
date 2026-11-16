@@ -47,7 +47,10 @@ chord holds from window to window unless another fits better by more than
 a change costs, so a melody's passing notes do not make chords of their
 own. The shortest chord found is about a beat. A chord holds over rests up
 to the next chord; the last one ends with its notes. The bass names
-inversions: `C/E`, `G7/B`.
+inversions: `C/E`, `G7/B`; in an arpeggio it is the lowest note. A window
+with a single pitch in it is weighed with the rest of its beat, so that an
+arpeggio in eighths still spells its chord; a melody alone, one note a
+beat, names no chords (the one before holds under it).
 
 **Keys.** Each bar's pitch classes (with half of the bars beside it and a
 quarter of the next ones, and the roots of its chords counted again) are

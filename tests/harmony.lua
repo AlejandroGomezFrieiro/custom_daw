@@ -106,6 +106,21 @@ test("harmony: a chord holds across the melody's passing notes", function()
   eq(reading(), "0:C 4:F 8:G 12:C", "the chords, not the passing notes")
 end)
 
+test("harmony: a melody alone names no chords, an arpeggio in eighths does", function()
+  fresh()
+  line("Flute", { { "C5", 1 }, { "D5", 1 }, { "E5", 1 }, { "G5", 1 } })
+  daw.flush()
+  eq(reading(), "", "do re mi sol is no chord")
+  eq(keys(), "0:C major", "but is in C major")
+  fresh()
+  line("Harp", {
+    { "C4", 0.5 }, { "E4", 0.5 }, { "G4", 0.5 }, { "E4", 0.5 }, { "C4", 0.5 }, { "E4", 0.5 }, { "G4", 0.5 }, { "E4", 0.5 },
+    { "A3", 0.5 }, { "C4", 0.5 }, { "F4", 0.5 }, { "C4", 0.5 }, { "A3", 0.5 }, { "C4", 0.5 }, { "F4", 0.5 }, { "C4", 0.5 },
+  })
+  daw.flush()
+  eq(reading(), "0:C 4:F/A", "the chords the notes spell out one at a time")
+end)
+
 test("harmony: a modulation from C major to G major is found", function()
   fresh()
   chords("Strings", {

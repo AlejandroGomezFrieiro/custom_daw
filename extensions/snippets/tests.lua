@@ -60,6 +60,11 @@ local function start()
   api.engine_restart({ backend = "null" })
   daw.keymap.feed("<Esc><Esc>")
   while daw.ui.float do daw.ui.close() end
+  -- Panels other tests left open (the mixer, a drum grid) would leave the
+  -- piano roll too few rows to show what these tests look for.
+  for _, name in ipairs({ "mixer", "devices", "drums", "notation", "utau", "session", "undotree", "eventlist", "mixdiag", "sections", "vinput", "tutor" }) do
+    if daw.ui.views[name] and daw.ui.visible(name) then pcall(daw.ui.hide, name) end
+  end
 end
 
 local function open(clip, pitch, beat)

@@ -51,7 +51,7 @@ local MISSING = 0.12   -- each tone of the chord that does not sound
 local MISSING_FIFTH = 0.04
 local MISSING_ROOT = 0.2
 local ROOT_IN_BASS = 0.2
-local CHANGE = 0.35    -- what a change of chord costs, in beats of a perfect fit
+local CHANGE = 0.45    -- what a change of chord costs, in beats of a perfect fit
 local NONE = -0.5      -- "no chord" where something sounds
 
 --- Weights of the twelve pitch classes between `from` and `to`, the bass's
@@ -93,11 +93,28 @@ local function weigh(notes, from, to, first)
   for pc, d in pairs(held) do
     if d > most or (d == most and bass and pc < bass) then bass, most = pc, d end
   end
+  -- An arpeggio's bass sounds a moment and leaves the others to it: the
+  -- lowest pitch of all is the bass when it sounds an eighth of the time.
+  local lowest, lasts = nil, 0
+  for _, l in ipairs(lows) do
+    if not lowest or l.pitch < lowest then lowest, lasts = l.pitch, 0 end
+    if l.pitch == lowest then lasts = lasts + (l.b - l.a) end
+  end
+  if lowest and lowest % 12 ~= bass and lasts >= (to - from) / 8 then bass, most = lowest % 12, lasts end
   if bass then
     w[bass] = w[bass] + most * 0.5
     total = total + most * 0.5
   end
   return w, bass, total
+end
+
+--- How many pitch classes weigh something (a twentieth of the total) in `w`.
+local function classes(w, total)
+  local n = 0
+  for pc = 0, 11 do
+    if w[pc] > 0.05 * total then n = n + 1 end
+  end
+  return n
 end
 
 --- How well the chord `root` `quality` fits weights `w` with `bass` and `total`.
@@ -158,16 +175,29 @@ function M.chords(notes, opts)
     local w, bass, total = weigh(sorted, at, at + len, lo)
     windows[i] = { at = at, length = len, w = w, bass = bass, total = total }
     local scores = {}
-    if total > 1e-9 then
+    -- One pitch alone is no chord: it is weighed with the rest of its beat
+    -- (an arpeggio's notes come one at a time), and if the beat has no
+    -- other either (a melody alone) it says nothing, and the chord before
+    -- holds over it.
+    local ew, ebass, etotal = w, bass, total
+    if total > 1e-9 and classes(w, total) < 2 and step < 1 then
+      local beat = math.floor(at + 1e-9)
+      ew, ebass, etotal = weigh(sorted, beat, beat + 1, lo)
+    end
+    if total > 1e-9 and classes(ew, etotal) < 2 then
       quiet = 0
-      for l, label in ipairs(labels) do scores[l] = fit(w, bass, total, label.root, label.q) * len end
+      for l = 1, NL - 1 do scores[l] = 0 end
+      scores[NL] = 1e-6   -- with nothing to go on, no chord rather than the first there is
+    elseif total > 1e-9 then
+      quiet = 0
+      for l, label in ipairs(labels) do scores[l] = fit(ew, ebass, etotal, label.root, label.q) * len end
       scores[NL] = NONE * len
     else
       quiet = quiet + len
       -- Silence lets the chord before hold over it, unless it lasts a bar.
       local gap = quiet >= (opts.bar or 4) - 1e-9
       for l = 1, NL - 1 do scores[l] = gap and -math.huge or 0 end
-      scores[NL] = 0
+      scores[NL] = 1e-6
     end
     local cur, from_l = {}, {}
     if not prev then
