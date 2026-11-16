@@ -42,6 +42,8 @@ local last_macro
 
 local registers = {}
 local marks, jumps = {}, {}
+local changes = {} -- view -> positions where the project was edited, newest last
+local groups = {}   -- scope -> keys -> name of a prefix that only leads to more keys
 
 M.mode = "n"
 M.visual = nil      -- the open selection's fixed end: { kind, row, col, view }
@@ -180,6 +182,16 @@ function M.set(lhs, rhs, opts)
   end
 end
 
+--- Name a prefix that only leads to more keys, so that the hints after it
+--- say `+mixer` where they would say how many keys are behind it.
+---   daw.keymap.group("<leader>x", "mix checks")
+--- With `opts.view` the name holds only while that view has focus.
+function M.group(prefix, name, opts)
+  local scope = opts and opts.view or "global"
+  groups[scope] = groups[scope] or {}
+  groups[scope][table.concat(M.parse(prefix))] = name
+end
+
 --- Define an operator: `fn(region, ctx)` acts on a region of the focused
 --- view. A region has `r0`, `r1` (rows, inclusive), `c0`, `c1` (beats, the
 --- end not included) and `kind`: "char" for a stretch of time, "line" for
@@ -306,12 +318,8 @@ function M.visual_swap()
   v.row, v.col = row, col
 end
 
---- The region selected in the focused view, or nil outside visual mode. From
---- the cursor to where the selection began; a selection that has not been
---- stretched yet covers one grid step.
-function M.selection()
-  local v, g = M.visual, grid()
-  if not (v and g) or v.view ~= daw.ui.focused then return nil end
+--- The region a selection `v` covers with the cursor at `row`, `col`.
+local function selected(v, g, row, col)
   -- Clips chosen one by one with the pointer: the region they span, which
   -- names them (`clips`), and is not stretched by the cursor.
   if v.region then
@@ -319,14 +327,55 @@ function M.selection()
     if out then out.visual, out.view = true, v.view end
     return out
   end
-  local row, col = g.get()
   local out = region(v.row, v.col, row, col, v.kind == "V" and "line" or v.kind == "b" and "block" or "char")
   out.visual = true
+  -- A view whose cursor stands on things that last (a note in the score)
+  -- says where the one at the later end ends: it is selected too.
+  if g.extent and out.kind ~= "line" then
+    local last_row = col >= v.col and row or v.row
+    out.c1 = math.max(out.c1, g.extent(last_row, out.c1) or out.c1)
+  end
   if out.c1 - out.c0 < 1e-9 then
     out.c1 = out.c0 + g.step()
     out.unstretched = true
   end
   return out
+end
+
+local ranged   -- the region `:'<,'>` names while its command runs
+
+--- The region selected in the focused view, or nil outside visual mode. From
+--- the cursor to where the selection began, both ends included when the
+--- view says how far the thing under the cursor reaches (`grid.extent`);
+--- a selection that has not been stretched yet covers one grid step.
+--- While a command runs with `:'<,'>`, the selection it names.
+function M.selection()
+  if ranged then return ranged end
+  local v, g = M.visual, grid()
+  if not (v and g) or v.view ~= daw.ui.focused then return nil end
+  local row, col = g.get()
+  return selected(v, g, row, col)
+end
+
+--- The last selection made in the focused view, as `'<,'>` names it: the
+--- one open now, or the one visual mode last closed. Nil if there is none.
+function M.last_selection()
+  local open = M.selection()
+  if open then return open end
+  local last, g = M.last_visual, grid()
+  if not (last and g) or last.view ~= daw.ui.focused then return nil end
+  return selected(last, g, last.cursor_row, last.cursor_col)
+end
+
+--- Run `fn(...)` with `region` as the selection, the way `:'<,'>` runs a
+--- command: anything that asks for the selection meanwhile gets it.
+function M.with_selection(region_, fn, ...)
+  local outer = ranged
+  ranged = region_
+  local result = { pcall(fn, ...) }
+  ranged = outer
+  if not result[1] then error(result[2], 0) end
+  return unpack(result, 2, table.maxn(result))
 end
 
 -- Registers -------------------------------------------------------------------
@@ -395,6 +444,41 @@ function M.jump(n)
   go(g, list[list.at])
 end
 
+--- Remember where the cursor is after a command that edited the project.
+local function push_change()
+  local g = grid()
+  if not g then return end
+  local list = changes[daw.ui.focused] or {}
+  changes[daw.ui.focused] = list
+  list.at = nil
+  local here = position(g)
+  if list[#list] and same(list[#list], here) then return end
+  list[#list + 1] = here
+  if #list > 100 then table.remove(list, 1) end
+end
+
+--- Go to where an earlier edit happened (`n` back, a negative `n` forward
+--- again). The first step from the place of the last edit goes to the one before.
+function M.change(n)
+  local g, list = grid(), changes[daw.ui.focused]
+  if not (g and list) or #list == 0 then return daw.notify("no changes yet in this view", "warn") end
+  local at = list.at
+  if not at then
+    at = #list + 1
+    if same(list[#list], position(g)) then at = at - 1 end
+  end
+  local to = at - n
+  if to < 1 then return daw.notify("at the oldest change", "warn") end
+  if to > #list then return daw.notify("at the newest change", "warn") end
+  list.at = to
+  go(g, list[to])
+end
+
+--- The places edits happened in a view, oldest first.
+function M.changes(view)
+  return changes[view or daw.ui.focused] or {}
+end
+
 function M.mark(name)
   local g = grid()
   if not g or not name:match("^%a$") then return end
@@ -403,10 +487,16 @@ function M.mark(name)
 end
 
 --- Move to a mark; `'` or a backtick as the name goes back to where the last
---- jump came from.
+--- jump came from, and `.` goes to where the last edit was.
 function M.goto_mark(name)
   local g = grid()
   if not g then return end
+  if name == "." then
+    local list = changes[daw.ui.focused]
+    if not list or #list == 0 then return daw.notify("no changes yet in this view", "warn") end
+    M.push_jump()
+    return go(g, list[#list])
+  end
   if name == "'" or name == "`" then
     local list = jumps[daw.ui.focused]
     if not list or #list == 0 then return end
@@ -641,18 +731,18 @@ local function idle()
 end
 
 -- Changes made outside the project that `.` repeats too: a text buffer's.
-local changes = 0
+local text_changes = 0
 
 --- Note a change that is not an edit of the project (a text buffer's
 --- lines), so that `.` repeats the command that made it.
-function M.changed() changes = changes + 1 end
-
-local function edits() return api.project_get().edits + changes end
+function M.changed() text_changes = text_changes + 1 end
 
 --- Once a command is complete, remember it for `.` if it changed the project.
 local function finish_command()
   if not idle() then return end
-  if track.keys and not track.norepeat and not replaying and edits() ~= track.edits then
+  if track.keys and api.project_get().edits ~= track.edits then push_change() end
+  local changed = track.keys and (api.project_get().edits ~= track.edits or text_changes ~= track.texts)
+  if changed and not track.norepeat and not replaying then
     last_change = track.keys
   end
   track = {}
@@ -752,8 +842,11 @@ handle = function(key)
     elseif M.mode == "o" then
       return reset()
     else
+      -- Nothing is mapped, not even the start of it: say so and drop the
+      -- rest, rather than run the last key as if it were typed alone.
+      local typed = M.human(keys)
       reset()
-      n = #keys - 1
+      return daw.notify(typed .. " is not mapped", "warn")
     end
     for i = n + 1, #keys do handle(keys[i]) end
   else
@@ -771,7 +864,7 @@ end
 
 function M.dispatch(key)
   if macro and depth == 0 then macro.keys[#macro.keys + 1] = key end
-  if not track.keys then track.keys, track.edits = {}, edits() end
+  if not track.keys then track.keys, track.edits, track.texts = {}, api.project_get().edits, text_changes end
   track.keys[#track.keys + 1] = key
   local ok, err = xpcall(handle, debug.traceback, key)
   if not ok then
@@ -875,6 +968,14 @@ function M.pending()
   return out .. (register and '"' .. register or "") .. (count or "") .. table.concat(pending)
 end
 
+--- The name given to a prefix with `group`, if any.
+function M.group_name(keys)
+  for _, scope in ipairs(scopes()) do
+    local name = groups[scope] and groups[scope][keys]
+    if name then return name end
+  end
+end
+
 --- The keys that can follow what has been typed, once the typist has paused:
 --- a list of { key, desc }, and a title. Nil when there is nothing to offer.
 function M.hints()
@@ -899,7 +1000,10 @@ function M.hints()
   end
   local out = {}
   for _, entry in pairs(found) do
-    if not entry.desc then entry.desc = "+" .. entry.more .. " more" end
+    if not entry.desc then
+      local named = M.group_name(seq .. entry.key)
+      entry.desc = named and "+" .. named or "+" .. entry.more .. " more"
+    end
     out[#out + 1] = entry
   end
   if #out == 0 then return nil end

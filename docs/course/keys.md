@@ -112,6 +112,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
+| `:` | a command for the selection: the line starts `:'<,'>` |
 | `<Esc>` | back to normal mode |
 
 ## Draw notes (insert mode, R)
@@ -174,6 +175,8 @@ See [Harmony, completion and snippets](../harmony.md).
 | `ma` `'a` `''` | set mark a, go to it, back to before the jump |
 | `:delmarks a-d` `:delmarks!` | remove marks (letters, ranges); all lowercase ones |
 | `<C-o>` `<C-i>` | back, forward through jumps |
+| `g;` `g,` | back, forward through the places the project was edited |
+| `` `. `` `'.` | the place of the last edit |
 
 ## Play
 

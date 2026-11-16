@@ -138,10 +138,7 @@ M.in_practice = in_practice
 --- Whether opening a practice project now would lose unsaved work.
 local function unsaved_work()
   if in_practice() then return false end
-  local p = daw.project.get()
-  if not p.modified then return false end
-  -- An untitled project with nothing in it has nothing to lose.
-  return p.path ~= nil or #api.track_list() > 0
+  return daw.project.unsaved()
 end
 
 local function tidy_screen()

@@ -91,14 +91,49 @@ end, {
   complete = function() return { "all" } end,
 })
 
--- A scrollable list of text lines, used for `:messages` and similar.
+-- A scrollable list of text lines, used for `:messages` and similar. Lines
+-- longer than the window go on over the next rows, indented.
 local pager = { scroll = 0, lines = {}, modal = true }
 daw.seats.fields("pager", pager, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
+--- The first `n` characters of `text` (not bytes), and the rest.
+local function split(text, n)
+  local i, count = 1, 0
+  while i <= #text and count < n do
+    i = i + 1
+    while i <= #text and text:byte(i) >= 128 and text:byte(i) < 192 do i = i + 1 end
+    count = count + 1
+  end
+  return text:sub(1, i - 1), text:sub(i)
+end
+
+local function length(text) return select(2, text:gsub("[^\128-\191]", "")) end
+
+--- `text` cut into rows of at most `width` characters, at a space where
+--- there is one, the rows after the first indented by two.
+local function wrap(text, width)
+  local rows = {}
+  while length(text) > width do
+    local head, tail = split(text, width)
+    local at = head:match("^.*() ")
+    if at and at > 1 then head, tail = text:sub(1, at - 1), text:sub(at + 1) end
+    rows[#rows + 1] = head
+    text = "  " .. tail
+  end
+  rows[#rows + 1] = text
+  return rows
+end
+
+pager.wrap = wrap
+
 function pager:render(buf)
-  self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #self.lines - buf.height))
+  local rows = {}
+  for _, line in ipairs(self.lines) do
+    for _, part in ipairs(wrap(line.text, math.max(8, buf.width - 2))) do rows[#rows + 1] = { text = part, style = line.style } end
+  end
+  self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #rows - buf.height))
   for row = 0, buf.height - 1 do
-    local line = self.lines[row + 1 + self.scroll]
+    local line = rows[row + 1 + self.scroll]
     if line then buf:text(1, row, line.text, line.style or "Normal") end
   end
 end

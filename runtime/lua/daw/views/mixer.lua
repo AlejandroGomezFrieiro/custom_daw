@@ -18,12 +18,17 @@ function view.strip_width(w)
   return w < 80 and 8 or 10
 end
 
-local marks = { 0, -6, -12, -24, -48 }
+-- What the scale names: where the fader's cap is at each of these levels.
+-- The meters beside it are linear in decibels from -60 (bottom) to 0 (top)
+-- and have their loudest of late in numbers under them, so the scale is the
+-- fader's and does not claim to be theirs.
+local marks = { 6, 0, -6, -12, -24, -48 }
 
 -- The fader's travel: most of it is the top twenty decibels, as on a desk.
 local function fader_row(volume, rows)
   return math.floor(util.clamp((volume + 60) / 66, 0, 1) ^ 2.5 * (rows - 1) + 0.5)
 end
+view.fader_row = fader_row
 
 local function strip(buf, x, t, index, selected, height, sw)
   local g = draw.g
@@ -160,12 +165,14 @@ function view:render(buf, ctx)
   body:fill(x, 0, 1, h, g.strip_sep, "Rule")
   block = strip(body, x + 1, api.track_get(0), nil, false, h, sw) or block
   strips[#strips + 1] = block
-  -- The scale beside the first strip's meters.
+  -- The scale beside the first strip, on the rows the fader's cap takes.
   if block and block.rows >= 6 then
+    local last = nil
     for _, mark in ipairs(marks) do
-      local level = (mark + 60) / 60
-      local row = block.y + block.rows - 1 - math.floor(level * block.rows - 0.5)
-      if row >= block.y then body:text(SCALE - 1 - #tostring(mark), math.max(block.y, row), tostring(mark), "MeterScale") end
+      local row = block.y + block.rows - 1 - fader_row(mark, block.rows)
+      local label = (mark > 0 and "+" or "") .. mark
+      if row ~= last then body:text(SCALE - 1 - #label, row, label, mark == 0 and "FaderZero" or "MeterScale") end
+      last = row
     end
   end
   self.geometry = { sw = sw, shown = shown, strips = strips }

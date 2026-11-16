@@ -111,7 +111,9 @@ release VCAs.
 
 **Outputs and sends from the keyboard.** `:track.output Drum bus` (`,o` for
 a list) plays the track into another, `:send Reverb -9` (`,s` for a list;
-`pre=1` for ahead of the fader) sends its sound to one as well, and
+`pre=1` for ahead of the fader) sends its sound to one as well (at -12 dB
+unless told, or at `daw.opt.send_level`; the list offers the tracks with no
+instrument of their own, the returns, first), and
 `:send.remove Reverb` takes the send away.
 
 **Sends before the fader.** `track:send(reverb, -6, { pre = true })` takes the

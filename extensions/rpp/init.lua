@@ -3,6 +3,7 @@
 local rpp = require("rpp")
 
 local function import(path, args)
+  if args.merge ~= true and not daw.project.guard("rpp.import") then return end
   local result = rpp.import(path, { merge = args.merge == true, instrument = args.instrument and tostring(args.instrument) })
   rpp.show(result.report, string.format("imported %s: %d tracks, %d clips, %d plugins",
     path, #result.tracks, result.clips, result.devices))
@@ -42,5 +43,6 @@ local function hook(name, alias, run)
   if alias and daw.commands.get(alias) then daw.command.alias(alias, name) end
 end
 
+daw.project.allow_discard("rpp.import")
 hook("edit", "e", import)
 hook("write", "w", export)

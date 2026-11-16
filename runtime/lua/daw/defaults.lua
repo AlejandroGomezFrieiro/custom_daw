@@ -352,6 +352,15 @@ local function pick_target(track, title, with_master, on_choose)
   for _, target in ipairs(daw.frontend.routing(track).targets) do
     if with_master or target.id ~= 0 then items[#items + 1] = target end
   end
+  -- A send goes to a return first: a track with no instrument and no audio
+  -- of its own, which is there to hold effects.
+  if not with_master then
+    local rank = {}
+    for i, target in ipairs(items) do
+      rank[target.id] = (daw.fx.preferred(target.id) == "instrument" and 0 or 1) * 1000 + i
+    end
+    table.sort(items, function(a, b) return rank[a.id] < rank[b.id] end)
+  end
   daw.pick({ title = title, items = items, format = function(t) return t.name end, on_choose = function(t) on_choose(t.id) end })
 end
 
@@ -373,7 +382,7 @@ end, { desc = "Play the track into another: `track.output Drum bus`, `track.outp
 command("send", function(ctx)
   local track = need_track()
   if not track then return end
-  local level = tonumber(ctx.args[2]) or tonumber(ctx.args.level) or 0
+  local level = tonumber(ctx.args[2]) or tonumber(ctx.args.level) or daw.opt.send_level
   local function add(target)
     daw.frontend.act.add_send(track.id, target, level)
     if ctx.args.pre then
@@ -387,7 +396,7 @@ command("send", function(ctx)
   local target = track_named(tostring(name))
   if not target or target == 0 then return daw.notify("no track `" .. tostring(name) .. "` to send to", "warn") end
   add(target)
-end, { desc = "Send the track's sound to another as well: `send Reverb -9`, `send Reverb -9 pre=1`; alone, choose from a list", complete = { "tracks" } })
+end, { desc = "Send the track's sound to another as well, at `send_level` dB unless told: `send Reverb -9`, `send Reverb -9 pre=1`; alone, choose from a list", complete = { "tracks" } })
 
 command("send.remove", function(ctx)
   local track = need_track()
@@ -823,7 +832,9 @@ command("import", function(ctx)
 end, { desc = "Bring a sound file in on a new track, or a MIDI file's tracks at the cursor: `import take.mp3`, `import song.mid`, `import song.mid tempo=yes` (its tempo map too); alone, choose it from a list", raw = true, complete = "audio_files" })
 
 command("open", function(ctx)
+  local force = daw.project.discarding()
   local function go(path)
+    if not daw.is_audio_file(path) and not daw.project.guard("open", force) then return end
     local ok, err = pcall(daw.open, path)
     if not ok then return daw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error") end
     if daw.midifile.is_midi_file(path) then return daw.notify("opened " .. midi_said(path, err) .. " (`:w` asks where to save it)") end
@@ -1440,9 +1451,12 @@ command("edit", function(ctx)
   if how and how ~= "offline" and how ~= "online" then return daw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
   if daw.midifile.is_midi_file(path) or daw.is_audio_file(path) then return daw.commands.run("open", { path }) end
+  if not daw.project.guard("edit") then return end
   daw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
 end, { desc = "Open a project: `edit song.json`; `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
-command("new", function() daw.project.new() end, { desc = "Start an empty project" })
+command("new", function()
+  if daw.project.guard("new") then daw.project.new() end
+end, { desc = "Start an empty project, unless there is unsaved work" })
 -- `:render`, `:render.cancel` and `:stems` are in daw/render.lua.
 command("track.bounce", function()
   local track = need_track()
@@ -1546,8 +1560,8 @@ daw.on("option.changed", function(e)
   if e.name == "threads" then api.engine_set_threads(e.value) end
 end)
 command("quit", function()
-  if daw.project.modified then
-    return daw.notify("the project has unsaved changes: `:w` saves them, `:q!` quits without them", "error")
+  if daw.project.unsaved() then
+    return daw.notify("the project has unsaved work: `:w` saves it, `:q!` quits without it", "error")
   end
   api.quit(0)
 end, { desc = "Quit, unless there are unsaved changes" })
@@ -1594,13 +1608,19 @@ command("extensions", function()
   daw.ui.page("Extensions", lines)
 end, { desc = "List loaded extensions" })
 
+for _, name in ipairs({ "open", "edit", "new" }) do daw.project.allow_discard(name) end
+
 for alias, target in pairs({ w = "write", e = "edit", q = "quit", ["q!"] = "quit!", u = "undo" }) do
   command.alias(alias, target)
 end
 
-command("cmdline", function()
+command("cmdline", function(ctx)
+  -- From a selection, the command is for it, as `:` in Vim's visual mode.
+  local from_visual = ctx.mode == "x" and keymap.selection() ~= nil
+  if from_visual then keymap.set_mode("n") end
   daw.ui.input({
     prompt = ":",
+    text = from_visual and "'<,'>" or nil,
     history = "cmdline",
     -- Command names, then what each command says its arguments are.
     complete = function(text) return daw.commands.complete(text) end,
@@ -1674,6 +1694,18 @@ command("marks", function()
   if #lines == 0 then lines[1] = "No marks. `ma` sets mark a at the cursor, `'a` goes back to it." end
   daw.ui.page("Marks", lines)
 end, { desc = "List the marks" })
+command("changes", function()
+  local lines = {}
+  local list = keymap.changes()
+  for i = #list, 1, -1 do
+    local pos = list[i]
+    local where = pos.beat and daw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track).name or "(track gone)")
+      or string.format("row %d  beat %g", pos[1], (pos[2] or 0) + 1)
+    lines[#lines + 1] = string.format("%3d  %s", #list - i + 1, where)
+  end
+  if #lines == 0 then lines[1] = "No changes yet in this view. `g;` goes to where the last edit was." end
+  daw.ui.page("Changes · " .. tostring(daw.ui.focused), lines)
+end, { desc = "List where the focused view's project edits happened, newest first; `g;` and `g,` walk them" })
 local function remove_marks(spec, all)
   local removed, err = keymap.delmarks(spec, all)
   if not removed then return daw.notify(err, "warn") end
@@ -1745,6 +1777,13 @@ command.alias("reg", "registers")
 -- lines and a note is a word. So `dw` deletes up to the next clip, `yy` yanks
 -- a track, `3>ic` nudges a clip three steps later, `.` does it again.
 
+
+-- The names the key hints give to prefixes that only lead to more keys.
+keymap.group("<leader>a", "automation")
+keymap.group("<leader>c", "clip")
+keymap.group("<leader>f", "find")
+keymap.group("gr", "set a value")
+
 local nx = { "n", "x" }
 local motion = { motion = true }
 local linewise = { motion = true, linewise = true }
@@ -1776,8 +1815,10 @@ map("@", function(ctx)
   end
 end, { mode = nx, char = true, repeatable = false, desc = "Play the keys in a register; `@@` the last one, `@:` the last command" })
 map("m", function(ctx) keymap.mark(ctx.char) end, { char = true, desc = "Set a mark at the cursor" })
-map("'", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark; `''` goes back" })
-map("`", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark" })
+map("'", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark; `''` goes back, `'.` to the last edit" })
+map("`", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark; `` `. `` goes to the last edit" })
+map("g;", function(ctx) keymap.change(ctx.count or 1) end, { desc = "Back to where the project was edited before" })
+map("g,", function(ctx) keymap.change(-(ctx.count or 1)) end, { desc = "Forward again through the edits" })
 map("<C-o>", function(ctx) keymap.jump(ctx.count or 1) end, { desc = "Back to where the cursor jumped from" })
 map("<C-i>", function(ctx) keymap.jump(-(ctx.count or 1)) end, { desc = "Forward again" })
 map("v", function() keymap.visual_start("v") end, { mode = nx, desc = "Select a stretch of time" })

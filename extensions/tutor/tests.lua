@@ -265,6 +265,23 @@ test("tutor: a project with unsaved changes is not closed without asking", funct
   eq(daw.track("Unsaved"), nil, "without the changes that were thrown away")
 end)
 
+test("tutor: a project opened from a MIDI file is not replaced without asking", function()
+  local tutor = start()
+  local t = daw.add_track({ name = "Keys" })
+  t:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1, velocity = 90 } } })
+  local path = T.scratch .. "/tutor-import.mid"
+  daw.midifile.export(path)
+  T.fresh()
+  type_keys(":open " .. path .. "<CR>")
+  eq(api.project_get().modified, false, "an imported project is not modified")
+  type_keys(":tutor 1<CR>")
+  eq(tutor.state().active, false, "yet the lesson did not start")
+  eq(daw.track("Keys") ~= nil, true, "and the notes are still there")
+  type_keys(":tutor! 1<CR><Esc>")
+  eq(tutor.state().active, true, "`:tutor!` starts anyway")
+  tutor.quit()
+end)
+
 test("tutor: progress survives leaving and coming back, and a restart of the program", function()
   local tutor = start()
   type_keys(":tutor 3<CR><Esc>")
