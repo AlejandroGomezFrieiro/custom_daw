@@ -9,8 +9,7 @@ local M = {
   Buf = require("daw.buf"),
   views = {},
   focused = "arrange",
-  messages = {},   -- the last 500 messages, oldest first
-  message_count = 0, -- how many there have been, those dropped from `messages` too
+  messages = {},   -- every message so far, oldest first
   message = nil,   -- the one on the command line now
   grabber = nil,   -- function that takes every key while set (prompts)
   float = nil,     -- the floating view, if one is open
@@ -494,7 +493,6 @@ function M.notify(text, level)
   text, level = tostring(text), level or "info"
   local message = { text = text, level = level, time = api.now() }
   M.messages[#M.messages + 1] = message
-  M.message_count = M.message_count + 1
   if #M.messages > 500 then table.remove(M.messages, 1) end
   api.log(string.format("[%s] %s", level, text))
   -- Without a terminal the message also goes to stderr; a graphical
