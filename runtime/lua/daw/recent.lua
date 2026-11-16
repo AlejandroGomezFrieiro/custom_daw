@@ -129,6 +129,7 @@ function M.menu()
 end
 
 daw.command("recent", function(ctx)
+  if not daw.project.guard("recent") then return end
   local list = M.list()
   if #list == 0 then return daw.notify("no project has been opened yet") end
   local which = tonumber(ctx.args[1])
@@ -142,6 +143,7 @@ daw.command("recent", function(ctx)
   end
   daw.pick({ title = "Recent projects", items = items, on_choose = function(item) M.open(item.path) end })
 end, { desc = "Open a recent project: `recent` chooses from a list, `recent 2` opens the second" })
+daw.project.allow_discard("recent")
 
 daw.command("recent.clear", function()
   M.clear()

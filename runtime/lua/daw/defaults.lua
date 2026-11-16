@@ -352,6 +352,15 @@ local function pick_target(track, title, with_master, on_choose)
   for _, target in ipairs(daw.frontend.routing(track).targets) do
     if with_master or target.id ~= 0 then items[#items + 1] = target end
   end
+  -- A send goes to a return first: a track with no instrument and no audio
+  -- of its own, which is there to hold effects.
+  if not with_master then
+    local rank = {}
+    for i, target in ipairs(items) do
+      rank[target.id] = (daw.fx.preferred(target.id) == "instrument" and 0 or 1) * 1000 + i
+    end
+    table.sort(items, function(a, b) return rank[a.id] < rank[b.id] end)
+  end
   daw.pick({ title = title, items = items, format = function(t) return t.name end, on_choose = function(t) on_choose(t.id) end })
 end
 
@@ -373,7 +382,7 @@ end, { desc = "Play the track into another: `track.output Drum bus`, `track.outp
 command("send", function(ctx)
   local track = need_track()
   if not track then return end
-  local level = tonumber(ctx.args[2]) or tonumber(ctx.args.level) or 0
+  local level = tonumber(ctx.args[2]) or tonumber(ctx.args.level) or daw.opt.send_level
   local function add(target)
     daw.frontend.act.add_send(track.id, target, level)
     if ctx.args.pre then
@@ -387,7 +396,7 @@ command("send", function(ctx)
   local target = track_named(tostring(name))
   if not target or target == 0 then return daw.notify("no track `" .. tostring(name) .. "` to send to", "warn") end
   add(target)
-end, { desc = "Send the track's sound to another as well: `send Reverb -9`, `send Reverb -9 pre=1`; alone, choose from a list", complete = { "tracks" } })
+end, { desc = "Send the track's sound to another as well, at `send_level` dB unless told: `send Reverb -9`, `send Reverb -9 pre=1`; alone, choose from a list", complete = { "tracks" } })
 
 command("send.remove", function(ctx)
   local track = need_track()
@@ -823,7 +832,9 @@ command("import", function(ctx)
 end, { desc = "Bring a sound file in on a new track, or a MIDI file's tracks at the cursor: `import take.mp3`, `import song.mid`, `import song.mid tempo=yes` (its tempo map too); alone, choose it from a list", raw = true, complete = "audio_files" })
 
 command("open", function(ctx)
+  local force = daw.project.discarding()
   local function go(path)
+    if not daw.is_audio_file(path) and not daw.project.guard("open", force) then return end
     local ok, err = pcall(daw.open, path)
     if not ok then return daw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error") end
     if daw.midifile.is_midi_file(path) then return daw.notify("opened " .. midi_said(path, err) .. " (`:w` asks where to save it)") end
@@ -1440,9 +1451,12 @@ command("edit", function(ctx)
   if how and how ~= "offline" and how ~= "online" then return daw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
   if daw.midifile.is_midi_file(path) or daw.is_audio_file(path) then return daw.commands.run("open", { path }) end
+  if not daw.project.guard("edit") then return end
   daw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
 end, { desc = "Open a project: `edit song.json`; `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
-command("new", function() daw.project.new() end, { desc = "Start an empty project" })
+command("new", function()
+  if daw.project.guard("new") then daw.project.new() end
+end, { desc = "Start an empty project, unless there is unsaved work" })
 -- `:render`, `:render.cancel` and `:stems` are in daw/render.lua.
 command("track.bounce", function()
   local track = need_track()
@@ -1546,8 +1560,8 @@ daw.on("option.changed", function(e)
   if e.name == "threads" then api.engine_set_threads(e.value) end
 end)
 command("quit", function()
-  if daw.project.modified then
-    return daw.notify("the project has unsaved changes: `:w` saves them, `:q!` quits without them", "error")
+  if daw.project.unsaved() then
+    return daw.notify("the project has unsaved work: `:w` saves it, `:q!` quits without it", "error")
   end
   api.quit(0)
 end, { desc = "Quit, unless there are unsaved changes" })
@@ -1593,6 +1607,8 @@ command("extensions", function()
   if #lines == 0 then lines[1] = "No extensions loaded. They live in " .. api.env().config_dir .. "/extensions" end
   daw.ui.page("Extensions", lines)
 end, { desc = "List loaded extensions" })
+
+for _, name in ipairs({ "open", "edit", "new" }) do daw.project.allow_discard(name) end
 
 for alias, target in pairs({ w = "write", e = "edit", q = "quit", ["q!"] = "quit!", u = "undo" }) do
   command.alias(alias, target)

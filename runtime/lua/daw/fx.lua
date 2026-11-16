@@ -412,8 +412,9 @@ function M.note_used(kind, query)
 end
 
 --- Every device that can be added: favourites first, then the ones used
---- last, newest first, then the rest (built-in ones first, by name).
-function M.device_list()
+--- last, newest first, then the rest (the kind `wanted` first, see
+--- `preferred`; built-in ones first, by name).
+function M.device_list(wanted)
   local lib = M.library()
   local recency = {}
   for i, kind in ipairs(lib.recent) do recency[kind] = i end
@@ -426,6 +427,7 @@ function M.device_list()
   table.sort(out, function(a, b)
     if group(a) ~= group(b) then return group(a) < group(b) end
     if a.recent and b.recent and a.recent ~= b.recent then return a.recent < b.recent end
+    if wanted and group(a) == 2 and (a.category == wanted) ~= (b.category == wanted) then return a.category == wanted end
     if (a.format == "builtin") ~= (b.format == "builtin") then return a.format == "builtin" end
     return a.name:lower() < b.name:lower()
   end)
@@ -453,11 +455,30 @@ local function passes(info, tag)
   return false
 end
 
+--- Which kind of device a track most likely wants next: "instrument" for
+--- one that makes sound from MIDI and has no instrument yet, "effect" for
+--- the rest (a track with an instrument, the master, a track of audio).
+function M.preferred(track_id)
+  if not track_id or track_id == 0 then return "effect" end
+  local track = daw.track(track_id)
+  if not track then return "effect" end
+  local category = {}
+  for _, info in ipairs(daw.device_types()) do category[info.kind] = info.category end
+  for _, device in ipairs(track:devices()) do
+    if category[device:get().kind] == "instrument" then return "effect" end
+  end
+  for _, clip in ipairs(api.clip_list(track_id)) do
+    if clip.kind ~= "midi" then return "effect" end
+  end
+  return "instrument"
+end
+
 --- How well a device matches what was typed, or nil when it does not:
 --- the `@` words filter, the rest is matched against the whole line, a
 --- match in the name alone counts for more than one that needs the vendor,
---- and the device chosen last time for the same words comes first.
-function M.rank(info, query, line)
+--- and the device chosen last time for the same words comes first. A device
+--- of the category `wanted` (see `preferred`) comes before others.
+function M.rank(info, query, line, wanted)
   local words = {}
   for word in query:gmatch("%S+") do
     local tag = word:match("^@(.*)$")
@@ -483,6 +504,7 @@ function M.rank(info, query, line)
     end
   end
   if info.favourite then score = score + 10 end
+  if wanted and info.category == wanted then score = score + 5 end
   local q = query:lower():gsub("^%s+", ""):gsub("%s+$", "")
   if q ~= "" and M.library().picks[q] == info.kind then score = score + 100000 end
   return score
@@ -490,10 +512,10 @@ end
 
 --- The devices matching `query`, best first, at most `limit`: what the
 --- window's "Add a device" box lists.
-function M.search(query, limit)
+function M.search(query, limit, wanted)
   local out = {}
-  for _, info in ipairs(M.device_list()) do
-    local score = M.rank(info, query or "")
+  for _, info in ipairs(M.device_list(wanted)) do
+    local score = M.rank(info, query or "", nil, wanted)
     if score then out[#out + 1] = { info = info, score = score } end
   end
   if query and query:match("%S") then
@@ -775,7 +797,7 @@ function M.setup()
   --- each as the line to show and its kind.
   function A.search_devices(query)
     local out = {}
-    for i, info in ipairs(M.search(query, 40)) do
+    for i, info in ipairs(M.search(query, 40, M.preferred(daw.cursor.track_id()))) do
       out[i] = { kind = info.kind, line = (info.favourite and "★ " or "") .. info.name
         .. (info.vendor ~= "" and "  · " .. info.vendor or "") .. "  · " .. info.format .. " " .. info.category }
     end

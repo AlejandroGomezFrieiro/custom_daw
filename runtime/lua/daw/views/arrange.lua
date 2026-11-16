@@ -384,7 +384,7 @@ local function welcome(buf)
   local lines = {
     { "o", "add a track" },
     { "a", "put an instrument on it" },
-    { "i", "type notes: a s d f g h j k are a scale" },
+    { "I", "type notes: a s d f g h j k are a scale" },
     { "Space", "play, and stop" },
     { ",,", "find any command, track or device" },
     { "?", "every key that works where you are" },

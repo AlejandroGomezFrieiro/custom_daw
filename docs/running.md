@@ -109,8 +109,14 @@ then what the command takes (tracks by name for `:send`, devices for
 for `:set`). `Tab` and `Shift-Tab` (or `Ctrl-n` `Ctrl-p`) choose one into the
 line, `Enter` runs the line, and on a directory goes into it. `:set zoom 4`,
 `:set zoom=4` and `:set follow!` change options; `:open` opens a project, a
-MIDI file (as a new project) or a sound file. After an error the bottom line says how to read it whole (`,fn`
-picks among the messages, `:messages` shows them all, newest at the bottom)
+MIDI file (as a new project) or a sound file. A project with unsaved work
+(changes, or no file yet and something in it, as one opened from a MIDI file
+or a REAPER project is) is not replaced without asking: `:open`, `:edit`,
+`:new`, `:recent`, `:recover`, `:rpp.import`, `:tutor` and `:q` say so and
+stop, `:w` first, or the same with a `!` (`:open! song.json`,
+`:new!`) to throw the work away; the window asks in a box. After an error the bottom line says how to read it whole (`,fn`
+picks among the messages, `:messages` shows them all, newest at the bottom, a
+long one wrapped over several rows)
 until you have. Stop halfway through a command and the keys
 that can follow are listed.
 

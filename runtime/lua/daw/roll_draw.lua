@@ -240,12 +240,24 @@ end
 
 -- Entering insert mode in the piano roll starts a note at the cursor, unless
 -- the keys are a piano this time; leaving it writes what was drawn.
+local entered   -- { clip, notes it held } when insert mode began
 daw.on("mode.changed", function(e)
   if e.old == "i" then
     keys_once = nil
-    return M.finish()
+    M.finish()
+    -- Whatever was entered, drawn or typed, is said once it is in.
+    local from = entered
+    entered = nil
+    if from then
+      local ok, notes = pcall(function() return #from.clip:notes() end)
+      local added = ok and notes - from.notes or 0
+      if added > 0 then daw.notify(string.format("wrote %d note%s", added, added == 1 and "" or "s")) end
+    end
+    return
   end
   if e.mode == "i" and daw.ui.focused == "pianoroll" and roll():clip() then
+    local clip = roll():clip()
+    entered = { clip = clip, notes = #clip:notes() }
     if keys_once or daw.opt.roll_insert == "keys" then return end
     M.start()
   end
