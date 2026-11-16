@@ -4,6 +4,10 @@
 -- A view is a table with a `render(self, buf, ctx)` function that draws into a
 -- cell buffer. Everything on screen, including the built-in arrange view and
 -- status line, is a view registered through `daw.ui.view`.
+--
+-- A view that also paints (`paint`, see `daw.canvas`) can show its pixels
+-- in a terminal that shows images: its `render` keeps an area for them
+-- with `buf:surface`, or the view sets `surface = true` to be all pixels.
 local api = daw.api
 local L = require("daw.layout")
 local M = {
@@ -267,6 +271,8 @@ local backgrounds = { status = "StatusLine", cmdline = "KeyBar" }
 M.backgrounds = backgrounds
 
 local function draw(view, buf, ctx)
+  M.drawing = view.name
+  if view.surface == true and view.paint and buf:surface(0, 0, buf.width, buf.height) then return end
   local ok, err = xpcall(view.render, debug.traceback, view, buf, ctx)
   if not ok then
     -- Show the failure where the view would have been.
@@ -366,6 +372,38 @@ local function too_small(buf)
   end
 end
 
+--- Keep an area of a buffer for a view's pixels: see `Buf:surface`.
+--- Where it is kept is in `daw.ui.rects.surfaces`: `{ name, x, y, w, h,
+--- cell = { w, h } }` each, in cells of the screen.
+function M.surface(buf, x, y, w, h, name)
+  if daw.opt.graphics == false then return false end
+  local caps = api.ui_caps()
+  if not caps.pixels then return false end
+  name = name or M.drawing
+  local view = M.views[name]
+  if not (view and view.paint) then return false end
+  x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
+  local index = api.grid_surface(name, x, y, w, h, buf.cx, buf.cy, buf.cw, buf.ch)
+  if not index then return false end
+  -- What shows of it inside the buffer.
+  local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
+  local x1, y1 = math.min(x + w, buf.cx + buf.cw), math.min(y + h, buf.cy + buf.ch)
+  M.rects.surfaces = M.rects.surfaces or {}
+  table.insert(M.rects.surfaces, { name = name, index = index, x = x0, y = y0, w = x1 - x0, h = y1 - y0, cell = caps.cell })
+  return true
+end
+
+--- Paint what the views kept surfaces for, once the screen is drawn.
+local function paint_surfaces()
+  local caps = api.ui_caps()
+  for _, s in ipairs(M.rects.surfaces or {}) do
+    local drawing = daw.canvas.paint(s.name, s.w * s.cell.w, s.h * s.cell.h, {
+      surface = true, glyphs = true, cell = s.cell, colors = { fg = caps.fg, bg = caps.bg },
+    })
+    api.grid_surface_ops(s.index, drawing and drawing.ops or {})
+  end
+end
+
 --- Draw the whole screen. Called by the kernel.
 function M.render(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
@@ -456,6 +494,7 @@ function M.render(buf)
   M.draw_hints(buf)
   if M.draw_popup then M.draw_popup(buf) end
   if M.draw_menu then M.draw_menu(buf) end
+  paint_surfaces()
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
@@ -563,6 +602,7 @@ local function route(event)
     local win = target.win and L.find_id(M.layout, target.win)
     if win then L.enter(win) else M.focus(target.name) end
   end
+  if daw.mouse.to_surface(target, event) then return end
   if view.on_mouse then
     view:on_mouse(daw.util.merge(event, {
       x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,

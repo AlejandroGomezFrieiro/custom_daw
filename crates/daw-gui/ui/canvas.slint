@@ -1,23 +1,24 @@
 // A window for a view that paints: an extension's own editor, drawn by its
-// Lua in the kernel as rectangles, text and lines, with the pointer and the
-// keyboard passed back to it. See `daw.canvas`.
+// Lua in the kernel as rectangles, text, lines and music glyphs, made into
+// one image by the rasterizer the terminal uses (crates/daw-raster), with
+// the pointer and the keyboard passed back to it. A view drawn in cells is
+// drawn here item by item, rectangles and runs of the window's monospace
+// font. See `daw.canvas`.
 
 import { Theme } from "widgets.slint";
 
 export struct CanvasItem {
-    kind: int,          // 0 rectangle, 1 text, 2 path, 3 a run of monospace cells
+    kind: int,          // 0 rectangle, 3 a run of monospace cells
     x: length,
     y: length,
     w: length,
     h: length,
-    text: string,       // or a path's commands
+    text: string,
     fill: color,        // a run's text
     stroke: color,      // a run's background
     stroke-width: length,
     radius: length,
-    size: length,
     bold: bool,
-    align: int,         // 0 left, 1 centre, 2 right
     italic: bool,       // a run's attributes
     underline: bool,
     strike: bool,
@@ -27,6 +28,8 @@ export component CanvasWindow inherits Window {
     in property <string> name;
     in property <string> heading;
     in property <[CanvasItem]> items;
+    // A painted view's drawing, at the screen's scale.
+    in property <image> raster;
     title: root.heading;
     out property <length> canvas-width: self.width;
     out property <length> canvas-height: self.height;
@@ -61,37 +64,24 @@ export component CanvasWindow inherits Window {
         font-family: "JetBrains Mono";
         font-size: root.mono-size;
     }
+    Image {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        source: root.raster;
+        image-fit: fill;
+    }
     for item in root.items: Rectangle {
-        x: item.kind == 2 ? 0 : item.x;
-        y: item.kind == 2 ? 0 : item.y;
-        width: item.kind == 2 ? root.width : item.w;
-        height: item.kind == 2 ? root.height : item.h;
+        x: item.x;
+        y: item.y;
+        width: item.w;
+        height: item.h;
         if item.kind == 0: Rectangle {
             background: item.fill;
             border-color: item.stroke;
             border-width: item.stroke.alpha > 0 ? item.stroke-width : 0px;
             border-radius: item.radius;
-        }
-        if item.kind == 1: Text {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            text: item.text;
-            color: item.fill;
-            font-size: item.size;
-            font-weight: item.bold ? 600 : 400;
-            horizontal-alignment: item.align == 1 ? center : item.align == 2 ? right : left;
-            overflow: elide;
-        }
-        if item.kind == 2: Path {
-            width: parent.width;
-            height: parent.height;
-            viewbox-width: self.width / 1px;
-            viewbox-height: self.height / 1px;
-            commands: item.text;
-            stroke: item.stroke;
-            stroke-width: item.stroke-width;
-            fill: item.fill;
         }
         if item.kind == 3: Rectangle {
             background: item.stroke;

@@ -35,6 +35,11 @@
   and the window shows them through `:diagnostics` and the float); MIDI LSP's
   settings check names REAPER's render dialog in its messages.
 
+- Pictures in the terminal: only by the kitty graphics protocol, as direct
+  placements (not Sixel, not iTerm's, not Unicode placeholders), so not
+  through tmux, which does not pass them on; a terminal that puts images
+  over images well is known only by its name (kitty, Ghostty, herdr), and
+  any other has the moving parts drawn into the page.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).

@@ -1,6 +1,7 @@
 //! The `daw` command: start the kernel with a terminal UI, without one, to run
 //! a script, or to talk to an instance that is already running.
 
+mod graphics;
 mod terminal;
 
 use std::path::PathBuf;
@@ -329,7 +330,7 @@ fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
     }
     let (input, typed) = std::sync::mpsc::channel();
     let (mut screen, width, height) = terminal::Terminal::start(move |event| input.send(event).is_ok())?;
-    connection.call("ui.attach", serde_json::json!([width, height]))?;
+    connection.call("ui.attach", serde_json::json!([width, height, screen.caps().to_json()]))?;
     let mut player = None;
     if hear.is_some() {
         listen(&mut connection, &mut player, hear.as_ref());
@@ -557,6 +558,8 @@ fn run() -> Result<i32> {
             );
         }
     }));
+    // What the terminal said about itself, for the log.
+    let mut described = None;
     if !scripted && !args.headless {
         // Plugins write to stderr whenever they like, which would land in the
         // middle of the screen.
@@ -575,9 +578,14 @@ fn run() -> Result<i32> {
             }
             hook(info);
         }));
+        kernel.set_caps(terminal.caps());
+        described = Some(terminal.describe());
         kernel.attach(Box::new(terminal), width, height);
     }
     kernel.boot()?;
+    if let Some(line) = &described {
+        kernel.eval("daw.api.log(...)", &[line])?;
+    }
     if !scripted {
         // Opening a project or adding a plugin does not wait for plugins
         // to be made: they come in as they are ready.

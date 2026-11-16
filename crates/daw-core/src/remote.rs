@@ -14,12 +14,25 @@
 //! is to be cleared first (the first event, and after a change of size).
 //! `mouse` false asks the terminal to leave the pointer to its own
 //! selection (`daw.opt.mouse` off).
+//!
+//! A terminal that said with `ui.attach` that it shows images (its third
+//! parameter, `{ "graphics": true, "cell": [w, h], ... }`, see
+//! [`crate::grid::Caps`]) is also sent the surfaces views show pixels in,
+//!
+//!   "surfaces": [ { "name": "notation", "x": 0, "y": 3, "w": 80, "h": 30,
+//!                   "cell": [10, 20], "covered": [[col, row, cols], ...],
+//!                   "ops": [...] }, ... ]
+//!
+//! with `ops`, the drawing, only when it differs from what was last sent
+//! for that name: the drawing travels, and the far side makes the pixels.
 //! The other side keeps a [`Grid`] and gives each event to [`apply`].
 
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
-use crate::grid::{Cell, Color, Grid, Style};
+use std::sync::Arc;
+
+use crate::grid::{Cell, Color, Grid, Rect, Style, Surface};
 use crate::kernel::{Frontend, InputEvent};
 use crate::rpc::{ClientId, Clients};
 
@@ -124,6 +137,28 @@ pub fn apply(grid: &mut Grid, payload: &Value) -> Result<Option<(u16, u16)>> {
         };
         grid.text(clip, x as i32, y as i32, text, style);
     }
+    let before = std::mem::take(&mut grid.surfaces);
+    for s in payload["surfaces"].as_array().into_iter().flatten() {
+        let number = |v: &Value| v.as_i64().unwrap_or(0) as i32;
+        let rect = Rect { x: number(&s["x"]), y: number(&s["y"]), w: number(&s["w"]).max(0), h: number(&s["h"]).max(0) };
+        let name = s["name"].as_str().unwrap_or("").to_string();
+        let ops = match s.get("ops") {
+            Some(ops) => Arc::new(ops.clone()),
+            // The same drawing as before.
+            None => before.iter().find(|b| b.name == name).map(|b| b.ops.clone()).unwrap_or_default(),
+        };
+        let mut covered = vec![false; (rect.w * rect.h) as usize];
+        for run in s["covered"].as_array().into_iter().flatten() {
+            let (col, row, cols) = (number(&run[0]), number(&run[1]), number(&run[2]));
+            for c in col.max(0)..(col + cols).min(rect.w) {
+                if let Some(cell) = covered.get_mut((row * rect.w + c) as usize) {
+                    *cell = true;
+                }
+            }
+        }
+        let size = |v: &Value| v.as_u64().unwrap_or(0).min(1000) as u16;
+        grid.surfaces.push(Surface { name, rect, cell: (size(&s["cell"][0]), size(&s["cell"][1])), covered, ops });
+    }
     let cursor = &payload["cursor"];
     Ok(match (cursor[0].as_u64(), cursor[1].as_u64()) {
         (Some(x), Some(y)) => Some((x as u16, y as u16)),
@@ -160,12 +195,29 @@ impl Frontend for RemoteFrontend {
         let shown = self.shown.as_ref().filter(|_| same_size);
         let runs = runs(grid, shown);
         let same_mouse = shown.is_some_and(|s| s.mouse_off == grid.mouse_off);
-        if runs.is_empty() && same_size && same_mouse && cursor == self.cursor {
+        let same_surfaces = self.shown.as_ref().is_some_and(|s| s.surfaces == grid.surfaces);
+        if runs.is_empty() && same_size && same_mouse && same_surfaces && cursor == self.cursor {
             return Ok(());
         }
+        let surfaces: Vec<Value> = grid
+            .surfaces
+            .iter()
+            .map(|s| {
+                let mut out = json!({
+                    "name": s.name, "x": s.rect.x, "y": s.rect.y, "w": s.rect.w, "h": s.rect.h,
+                    "cell": [s.cell.0, s.cell.1], "covered": s.covered_runs(),
+                });
+                let sent = self.shown.as_ref().and_then(|shown| shown.surfaces.iter().find(|b| b.name == s.name));
+                if sent.is_none_or(|sent| sent.ops != s.ops) {
+                    out["ops"] = (*s.ops).clone();
+                }
+                out
+            })
+            .collect();
         let payload = json!({
             "w": grid.width, "h": grid.height, "full": !same_size,
             "cursor": cursor.map(|(x, y)| json!([x, y])), "runs": runs, "mouse": !grid.mouse_off,
+            "surfaces": surfaces,
         });
         if !self.clients.push(self.client, "ui.grid", &payload) {
             bail!("connection {} is gone", self.client);
@@ -178,7 +230,9 @@ impl Frontend for RemoteFrontend {
 
 /// What a remote terminal sends with `ui.input`, as the kernel takes input:
 /// `{"key": "a"}`, `{"paste": "text"}`, `{"resize": [w, h]}`, or
-/// `{"mouse": {"kind": "down", "button": "left", "x": 3, "y": 4, "mods": "C"}}`.
+/// `{"mouse": {"kind": "down", "button": "left", "x": 3, "y": 4, "mods": "C"}}`
+/// (with `"px"` and `"py"`, where the pointer is in pixels, when the
+/// terminal reports that), or `{"cell": [w, h]}`, a cell's new size in pixels.
 pub fn input_of(value: &Value) -> Option<InputEvent> {
     if let Some(key) = value["key"].as_str() {
         return Some(InputEvent::Key(key.to_string()));
@@ -193,13 +247,18 @@ pub fn input_of(value: &Value) -> Option<InputEvent> {
             height.clamp(1, 1000) as u16,
         ));
     }
+    if let (Some(width), Some(height)) = (value["cell"][0].as_u64(), value["cell"][1].as_u64()) {
+        return Some(InputEvent::CellSize(width.min(1000) as u16, height.min(1000) as u16));
+    }
     let mouse = value.get("mouse")?;
+    let pixel = |v: &Value| v.as_u64().map(|n| n.min(u16::MAX as u64) as u16);
     Some(InputEvent::Mouse {
         kind: mouse["kind"].as_str()?.to_string(),
         button: mouse["button"].as_str().unwrap_or("").to_string(),
         x: mouse["x"].as_u64()?.min(u16::MAX as u64) as u16,
         y: mouse["y"].as_u64()?.min(u16::MAX as u64) as u16,
         mods: mouse["mods"].as_str().unwrap_or("").to_string(),
+        pixel: pixel(&mouse["px"]).zip(pixel(&mouse["py"])),
     })
 }
 
@@ -209,13 +268,22 @@ pub fn input_json(event: &InputEvent) -> Value {
         InputEvent::Key(key) => json!({ "key": key }),
         InputEvent::Paste(text) => json!({ "paste": text }),
         InputEvent::Resize(width, height) => json!({ "resize": [width, height] }),
+        InputEvent::CellSize(width, height) => json!({ "cell": [width, height] }),
         InputEvent::Mouse {
             kind,
             button,
             x,
             y,
             mods,
-        } => json!({ "mouse": { "kind": kind, "button": button, "x": x, "y": y, "mods": mods } }),
+            pixel,
+        } => {
+            let mut mouse = json!({ "kind": kind, "button": button, "x": x, "y": y, "mods": mods });
+            if let Some((px, py)) = pixel {
+                mouse["px"] = json!(px);
+                mouse["py"] = json!(py);
+            }
+            json!({ "mouse": mouse })
+        }
     }
 }
 
@@ -277,6 +345,32 @@ mod tests {
     }
 
     #[test]
+    fn a_surface_arrives_with_what_covers_it_and_keeps_its_drawing_when_none_is_sent() {
+        let mut near = Grid::new(12, 3);
+        let index = near.surface("notation", Rect { x: 2, y: 0, w: 6, h: 3 }, (10, 20)).unwrap();
+        near.surfaces[index].ops = Arc::new(json!([["r", 0, 0, 5, 5, "#ffffff", "", 1, 0]]));
+        // A menu over two cells of its middle row.
+        let clip = near.rect();
+        near.text(clip, 4, 1, "ok", Style::default());
+        let s = &near.surfaces[0];
+        assert_eq!(s.covered_runs(), vec![[2, 1, 2]]);
+        let sent = |ops: Option<&Value>| {
+            let mut surface = json!({ "name": "notation", "x": 2, "y": 0, "w": 6, "h": 3, "cell": [10, 20], "covered": s.covered_runs() });
+            if let Some(ops) = ops {
+                surface["ops"] = ops.clone();
+            }
+            json!({ "w": 12, "h": 3, "runs": [], "surfaces": [surface] })
+        };
+        let mut far = Grid::new(12, 3);
+        apply(&mut far, &sent(Some(&s.ops))).unwrap();
+        assert_eq!(far.surfaces, near.surfaces);
+        apply(&mut far, &sent(None)).unwrap();
+        assert_eq!(far.surfaces[0].ops, near.surfaces[0].ops, "the drawing it had");
+        apply(&mut far, &json!({ "w": 12, "h": 3, "runs": [] })).unwrap();
+        assert!(far.surfaces.is_empty(), "gone when not sent");
+    }
+
+    #[test]
     fn the_far_terminal_is_told_whether_to_report_the_pointer() {
         let mut far = painted();
         apply(&mut far, &json!({ "w": 12, "h": 3, "runs": [], "mouse": false })).unwrap();
@@ -297,7 +391,17 @@ mod tests {
                 x: 7,
                 y: 9,
                 mods: "CS".into(),
+                pixel: None,
             },
+            InputEvent::Mouse {
+                kind: "move".into(),
+                button: "".into(),
+                x: 7,
+                y: 9,
+                mods: "".into(),
+                pixel: Some((75, 190)),
+            },
+            InputEvent::CellSize(10, 21),
         ] {
             let back = input_of(&input_json(&event)).unwrap();
             assert_eq!(format!("{back:?}"), format!("{event:?}"));

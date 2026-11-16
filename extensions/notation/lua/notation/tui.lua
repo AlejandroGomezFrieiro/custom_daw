@@ -138,6 +138,8 @@ function view:render(buf, ctx)
     local text = " INS " .. value .. " "
     real:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
+  -- Where the terminal shows images, the engraved page (gui.lua) below the title.
+  if real:surface(0, 1, w, h - 1) then return end
 
   -- Room: systems of staves down the panel.
   local staves = #layout.staves

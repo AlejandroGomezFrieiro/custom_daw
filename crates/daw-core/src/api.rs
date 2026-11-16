@@ -20,7 +20,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
-use crate::grid::{self, Color, Grid, Highlight, Highlights, Rect, Style};
+use crate::grid::{self, Caps, Color, Grid, Highlight, Highlights, Rect, Style};
 use crate::io::Io;
 use crate::model::{Control, Id, Note};
 use crate::session::notes::{NoteChange, NoteRange, NotesEdit};
@@ -52,6 +52,10 @@ pub struct Shared {
     /// program's own.
     pub grid: RefCell<Grid>,
     pub sizes: RefCell<HashMap<u64, (u16, u16)>>,
+    /// What each terminal can show besides cells, by connection.
+    pub caps: RefCell<HashMap<u64, Caps>>,
+    /// The connection whose turn it is (whose seat), 0 for the program's own.
+    pub seat: Cell<u64>,
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
@@ -241,6 +245,14 @@ fn options<T: DeserializeOwned + Default>(lua: &Lua, value: LuaValue) -> mlua::R
 
 fn cell(v: f64) -> i32 {
     v.floor() as i32
+}
+
+/// A terminal's capabilities as Lua reads them (`daw.api.ui_caps`).
+fn caps_lua(caps: &Caps) -> Value {
+    let mut value = caps.to_json();
+    value["cell"] = json!({ "w": caps.cell.0, "h": caps.cell.1 });
+    value["pixels"] = json!(caps.pixels());
+    value
 }
 
 fn parse_style(table: &Table) -> mlua::Result<Style> {
@@ -1138,6 +1150,58 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn ui_mouse(_, sh, on => bool) {
             sh.grid.borrow_mut().mouse_off = !on;
             Ok(())
+        }
+        // What the terminal of the seat whose turn it is can show besides
+        // cells: `{ graphics, pixels, cell = { w, h }, pixel_mouse, fg, bg }`,
+        // `pixels` when a view can be shown in pixels there.
+        fn ui_caps(lua, sh, () => ()) {
+            let caps = sh.caps.borrow().get(&sh.seat.get()).copied().unwrap_or_default();
+            to_lua(lua, &caps_lua(&caps))
+        }
+        // Say what that terminal can show, in the same form: its frontend
+        // does when it starts, and tests do.
+        fn ui_caps_set(lua, sh, caps => LuaValue) {
+            let mut value: Value = lua.from_value(caps)?;
+            value["cell"] = json!([value["cell"]["w"], value["cell"]["h"]]);
+            sh.caps.borrow_mut().insert(sh.seat.get(), Caps::from_json(&value));
+            sh.dirty.set(true);
+            Ok(())
+        }
+        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for a
+        // view's pixels (`buf:surface`): returns the surface's number for
+        // `grid_surface_ops`, or nil when nothing of it is on the screen.
+        fn grid_surface(_, sh, (name, x, y, w, h, cx, cy, cw, ch) => (String, f64, f64, f64, f64, f64, f64, f64, f64)) {
+            let cell_px = sh.caps.borrow().get(&sh.seat.get()).map_or((0, 0), |c| c.cell);
+            let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
+            let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) }.intersect(&clip);
+            Ok(sh.grid.borrow_mut().surface(&name, area, cell_px).map(|i| i + 1))
+        }
+        // The drawing a surface shows: the operations of `daw.canvas.paint`.
+        fn grid_surface_ops(lua, sh, (index, ops) => (usize, LuaValue)) {
+            let ops: Value = lua.from_value(ops)?;
+            if let Some(surface) = sh.grid.borrow_mut().surfaces.get_mut(index.wrapping_sub(1)) {
+                surface.ops = Arc::new(ops);
+            }
+            Ok(())
+        }
+        // A music font's SMuFL metadata (`Leland`, the default, `Bravura` or
+        // `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors`
+        // and `glyphs` (every glyph name with its code point). Nil for a
+        // font there is none of.
+        fn smufl(lua, _sh, font => Option<String>) {
+            match daw_raster::smufl(font.as_deref()) {
+                Some(meta) => to_lua(lua, &meta),
+                None => Ok(LuaValue::Nil),
+            }
+        }
+        // A music font's glyph as path commands in staff spaces from its
+        // origin, y down (`{ "M", x, y, "C", ... }`), for a frontend that
+        // cannot draw the font. Nil for a glyph or font there is none of.
+        fn smufl_outline(lua, _sh, (font, codepoint) => (Option<String>, u32)) {
+            match daw_raster::glyph_outline(font.as_deref(), codepoint) {
+                Some(path) => to_lua(lua, &serde_json::Value::from(path)),
+                None => Ok(LuaValue::Nil),
+            }
         }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
             // `full` is the group in 24-bit colour, given when `def` is a

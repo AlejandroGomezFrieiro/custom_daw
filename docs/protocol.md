@@ -179,6 +179,22 @@ size). A character two cells wide takes two. `"mouse": false` asks the
 terminal to stop reporting the pointer and leave it to its own selection
 (`daw.opt.mouse` off); without it, or `true`, it reports it.
 
+A terminal that shows images says so with a third parameter of
+`ui.attach`, `{"graphics": true, "cell": [10, 20], "pixel_mouse": true,
+"fg": "#cdd6f4", "bg": "#1e1e2e"}` (its cell size in pixels, whether it
+reports the pointer in pixels, its colours). It is then also sent the
+surfaces views keep for their pixels:
+
+```json
+"surfaces": [{"name": "notation", "x": 0, "y": 3, "w": 80, "h": 30,
+              "cell": [10, 20], "covered": [[4, 2, 20]], "ops": [...]}]
+```
+
+`covered` lists what covers part of it (column, row and columns, from
+its corner), and `ops`, the drawing (see `daw.canvas.paint`), comes only
+when it differs from the last one sent for that name: the far side makes
+the pixels. Without the parameter the views draw in cells for it.
+
 `ui.input` takes one of
 
 ```json
@@ -190,7 +206,9 @@ terminal to stop reporting the pointer and leave it to its own selection
 
 with keys in the notation key mappings use, mouse kinds `down`, `up`,
 `drag`, `move`, `scroll_up`, `scroll_down`, `scroll_left`, `scroll_right`,
-and `mods` any of `C`, `A`, `S`.
+and `mods` any of `C`, `A`, `S`. A terminal that reports the pointer in
+pixels adds `"px"` and `"py"`, from the screen's corner, and
+`{"cell": [w, h]}` says a cell has another size (the font changed).
 
 `:detach` (or `ui.detach`) lets a remote terminal go, answered with a
 `ui.detached` event; the instance runs on. `:q` quits the instance for

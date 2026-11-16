@@ -388,6 +388,34 @@ way off the grid. `:set mouse!` (`daw.opt.mouse = false`) stops the
 reporting altogether, leaving the pointer to the terminal; the same again
 takes it back.
 
+## Pictures
+
+A view that paints for the window (`paint`, see
+[The graphical frontend](window.md)), such as the score of `:notation`,
+shows the same pixels in a terminal that shows images. At start the
+program asks the terminal what it is (XTVERSION), its colours (`OSC 10`
+and `11`), the size of a cell in pixels, whether it draws images (the
+kitty graphics protocol, sent through shared memory, a temporary file or
+in the escape sequences themselves, whichever it takes), and whether it
+reports the pointer in pixels (mode 1016). The log says what it found, in
+a line that starts `terminal:`.
+
+The picture is made in the program at the terminal's own cell size and
+cut into pieces at its barlines, so that an edit sends again only the
+bars it touched. The cells under it are left blank. A menu or a floating
+view over part of it hides the pieces under it. What moves over the page
+(the cursor, the note about to be entered, the playhead) is a picture of
+its own above the page where the terminal is known to put images over
+images well (kitty, Ghostty, and herdr, which answers as libghostty); in
+any other terminal, WezTerm among them, it is drawn into the pieces it
+crosses. Over a picture the pointer goes to the view in pixels where the
+terminal reports them, else at the middle of the cell.
+
+Where the terminal shows no images (tmux, which does not pass them on, a
+terminal without the protocol, `daw attach` from one) the view draws in
+cells as before. `:set graphics!` (`daw.opt.graphics = false`) keeps
+cells everywhere; the same again takes the pictures back.
+
 ## Pickers
 
 A picker chooses one thing out of many by typing a few letters of it, as

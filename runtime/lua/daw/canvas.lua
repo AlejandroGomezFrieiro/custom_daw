@@ -17,8 +17,16 @@
 --
 -- `e.kind` is "down", "up", "move" (while a button is held), "hover" (the
 -- pointer moving over the window with no button down), "double" or
--- "wheel". Keys go to the view as they do in the terminal: through the key
--- mappings made for it, or its `on_key`.
+-- "wheel".
+--
+-- The same view shows its pixels in a terminal that shows images when its
+-- `render` keeps an area for them (`buf:surface`). `ctx.surface` is then
+-- true, `ctx.cell` the terminal's cell size `{ w, h }` in pixels and
+-- `ctx.fg`, `ctx.bg` its own colours (nil where it did not say), so that
+-- the view can lay out in whole cells and leave out what the terminal's
+-- own text shows (a toolbar). The pointer comes to `pointer` in pixels
+-- there too. Keys go to the view as they do in the terminal: through the
+-- key mappings made for it, or its `on_key`.
 --
 -- `g:sub(x, y, w, h)` gives a painter for part of the area: what is drawn
 -- through it is placed from its corner and cut off at its edges, which is
@@ -402,11 +410,20 @@ local function paint_cells(name, window, width, height, opts)
   return { title = window.title, ops = ops }
 end
 
---- A glyph op as a path, from the outline its font's owner gives
---- (`M.glyph_outline(font, codepoint)`: commands and numbers in staff
---- spaces from the origin, y down), or nil when there is none.
+--- A music font's glyph as commands and numbers in staff spaces from its
+--- origin, y down, from the fonts built into the kernel, or nil.
+local outlines = {}
+function M.glyph_outline(font, codepoint)
+  if type(codepoint) ~= "number" then return nil end
+  local key = (font or "") .. ":" .. codepoint
+  if outlines[key] == nil then outlines[key] = api.smufl_outline(font, codepoint) or false end
+  return outlines[key] or nil
+end
+
+--- A glyph op as a path, from its outline (`M.glyph_outline`), or nil
+--- when there is none.
 local function glyph_path(op)
-  local outline = M.glyph_outline and M.glyph_outline(op[7], op[5])
+  local outline = M.glyph_outline(op[7], op[5])
   if not outline then return nil end
   local x, y, scale = op[2], op[3], op[4] / 4
   local out, axis = {}, 0
@@ -460,7 +477,8 @@ function M.paint(name, width, height, opts)
   local view = daw.ui.views[name]
   local window = M.open_views[name]
   opts = opts or {}
-  if opts.cell and (opts.cell.w or 0) > 0 then M.cell = { w = opts.cell.w, h = opts.cell.h } end
+  -- A terminal's cell is the surface's own: the window's stays as it measured it.
+  if opts.cell and (opts.cell.w or 0) > 0 and not opts.surface then M.cell = { w = opts.cell.w, h = opts.cell.h } end
   if view and not view.paint then
     if not (window and window.cells) then return nil end
     return paint_cells(name, window, width, height, opts)
@@ -470,8 +488,8 @@ function M.paint(name, width, height, opts)
   local g = painter(ops, 0, 0, width, height)
   local colors = opts.colors or {}
   local ok, err = xpcall(view.paint, debug.traceback, view, g, {
-    width = width, height = height, focused = daw.ui.focused == name, cell = M.cell,
-    surface = opts.surface or false, fg = colors.fg, bg = colors.bg,
+    width = width, height = height, focused = daw.ui.focused == name,
+    cell = opts.surface and opts.cell or M.cell, surface = opts.surface or false, fg = colors.fg, bg = colors.bg,
   })
   if not ok then
     -- Show the failure where the view would have been.

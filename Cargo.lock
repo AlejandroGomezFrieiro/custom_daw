@@ -1054,6 +1054,7 @@ dependencies = [
  "daw-engine",
  "daw-luadev",
  "daw-proto",
+ "daw-raster",
  "flacenc",
  "include_dir",
  "libc",
@@ -1089,6 +1090,7 @@ dependencies = [
  "ashpd",
  "daw-listen",
  "daw-proto",
+ "daw-raster",
  "libc",
  "serde_json",
  "slint",
@@ -1154,6 +1156,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-raster"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "flate2",
+ "libc",
+ "serde_json",
+ "tiny-skia 0.12.0",
+ "ttf-parser",
+]
+
+[[package]]
 name = "daw-tui"
 version = "0.1.0"
 dependencies = [
@@ -1164,6 +1178,7 @@ dependencies = [
  "daw-listen",
  "daw-luadev",
  "daw-plugins",
+ "daw-raster",
  "daw-utau",
  "libc",
  "serde_json",

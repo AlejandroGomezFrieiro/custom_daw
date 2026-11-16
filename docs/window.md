@@ -202,12 +202,20 @@ daw.ui.view("scope", {
 daw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
 ```
 
-The kernel paints the view at the window's size and the frontend draws the
-rectangles, text and lines it is given. A frontend that cannot draw a music
-font's glyphs is given each as a path from the font's outline (which the
-font's owner gives `daw.canvas.glyph_outline`); the paint context also says
-the size of a cell (`ctx.cell`) and, on a terminal's pixel surface,
-`ctx.surface` with the terminal's colours (`ctx.fg`, `ctx.bg`). `daw.canvas.palette` holds the
+The kernel paints the view at the window's size and the frontend makes the
+rectangles, text, lines and music glyphs it is given into one image, with
+the rasterizer the terminal uses ([crates/daw-raster](../crates/daw-raster)),
+so the two show the same pixels. `g:glyph(x, y, size, codepoint, colour,
+font)` draws a glyph of a SMuFL music font built in (Leland, Bravura,
+Petaluma), `size` pixels to the em; `daw.api.smufl(font)` gives the font's
+metadata (engraving defaults, glyph boxes and anchors, glyph names). A
+view that also shows its pixels in the terminal keeps cells for them in
+its `render` with `buf:surface(x, y, w, h)`, which is false where the
+terminal shows only cells (see "Pictures" in [The terminal
+interface](terminal.md)); `ctx.surface` then says the drawing goes there,
+`ctx.cell` is the terminal's cell size, and `ctx.fg`, `ctx.bg` its
+colours. A frontend that cannot draw a music font's glyphs is given each
+as a path from the font's outline (`daw.canvas.glyph_outline`). `daw.canvas.palette` holds the
 window's colours under the names the window itself uses (`surface`, `lane`,
 `panel`, `well`, `control`, `line_bar`, `text`, `text_2`, `text_3`,
 `select`, `play`, `rec`, `mute`, `solo`, `warn`, `error`, the meter colours
