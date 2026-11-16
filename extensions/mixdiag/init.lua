@@ -81,6 +81,7 @@ end, {
 })
 
 local map = daw.keymap.set
+daw.keymap.group("<leader>x", "mix checks")
 map("<leader>xa", "mix.analyze", { mode = { "n", "x" }, desc = "Measure the mix (the selection in visual mode)" })
 map("<leader>xl", "mix.analyze loop", { desc = "Measure the loop" })
 map("<leader>xk", "mix.analyze track", { desc = "Measure the cursor track's contribution" })

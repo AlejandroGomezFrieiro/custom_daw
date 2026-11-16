@@ -110,10 +110,25 @@ end, { desc = "Set how the clip is transcribed: `notation.set strum 80`, `notati
 -- Marks: articulations, dynamics, hairpins, slurs, text, repeats.
 local marks = require("notation.marks")
 
---- The chords a mark goes on, by their ids in the score: the selection's,
---- or the chord's under the cursor. A plain MIDI clip is written as a score.
-local function target_notes(region)
+--- The region a command works on: its range of bars (`:5,8notation.slur`),
+--- else the selection, which is also what `:'<,'>` names; nil for neither.
+local function ranged(ctx)
+  local clip = view:clip()
+  local range = ctx and ctx.range
+  if clip and range and range.bars then
+    local c = clip:get()
+    return { view = "notation", kind = "char", r0 = 0, r1 = 127, c0 = math.max(0, range.from - c.start), c1 = math.min(c.length, range.to - c.start) }
+  end
+  local sel = keymap.selection()
+  if sel and sel.view == "notation" then return sel end
+end
+
+--- The chords a mark goes on, by their ids in the score: the region's (by
+--- default the command's range or the selection), or the chord's under the
+--- cursor. A plain MIDI clip is written as a score.
+local function target_notes(region, ctx)
   local clip = view:ensure_score()
+  region = region or ranged(ctx)
   if region and clip then
     local _, places = edit.roll.notes(clip, region)
     return view:events_of(places)
@@ -124,14 +139,15 @@ end
 command("notation.art", function(ctx)
   local kind = tostring(ctx.args[1] or "")
   if not marks.ARTICULATIONS[kind] then return daw.notify("an articulation is staccato, accent, tenuto or marcato", "warn") end
-  local on = marks.toggle_art(kind, target_notes())
+  local on = marks.toggle_art(kind, target_notes(nil, ctx))
   if on ~= nil then daw.notify(kind .. (on and " on" or " off")) end
-end, { desc = "Staccato, accent, tenuto or marcato on the chord under the cursor: `notation.art accent`" })
+end, { range = true, desc = "Staccato, accent, tenuto or marcato on the chord under the cursor, or the range: `notation.art accent`" })
 
---- Where a mark goes: the cursor's place, or the start and end of the selection.
-local function mark_span()
-  local sel = daw.keymap.selection()
-  if sel and sel.view == "notation" then return math.max(0, sel.c0), sel.c1 + (sel.kind == "line" and 0 or view:entry_length()) end
+--- Where a mark goes: the start and end of the range or the selection, or
+--- the cursor's place and the end of its bar.
+local function mark_span(ctx)
+  local region = ranged(ctx)
+  if region then return math.max(0, region.c0), region.c1 end
   local layout = view:layout()
   local m = view:measure_at(view.beat, layout)
   return view.beat, m and (m.start + m.length) or (view.beat + 4)
@@ -141,7 +157,7 @@ command("notation.dyn", function(ctx)
   local clip = view:clip()
   if not clip then return daw.notify("no clip open as notation", "warn") end
   local value = tostring(ctx.args[1] or "")
-  local at = mark_span()
+  local at = mark_span(ctx)
   if value == "off" then
     marks.put(clip, { at = at, kind = "dyn", value = false })
     return daw.notify("no dynamic here")
@@ -149,63 +165,78 @@ command("notation.dyn", function(ctx)
   if not marks.DYNAMICS[value] then return daw.notify("a dynamic is " .. table.concat(marks.ORDER, ", ") .. " or off", "warn") end
   marks.put(clip, { at = at, kind = "dyn", value = value })
   daw.notify(value .. ": notes from here as loud as " .. marks.DYNAMICS[value])
-end, { desc = "A dynamic at the cursor, which sets how loud the notes from there play: `notation.dyn mf`" })
+end, { range = true, desc = "A dynamic at the cursor (or the start of the range), which sets how loud the notes from there play: `notation.dyn mf`" })
 
 for _, kind in ipairs({ "cresc", "dim" }) do
-  command("notation." .. kind, function()
+  command("notation." .. kind, function(ctx)
     local clip = view:clip()
     if not clip then return daw.notify("no clip open as notation", "warn") end
-    local from, to = mark_span()
+    local from, to = mark_span(ctx)
     marks.put(clip, { at = from, to = to, kind = kind })
     daw.notify((kind == "cresc" and "crescendo" or "diminuendo") .. " to " .. daw.time.format(clip.start + to))
-  end, { desc = (kind == "cresc" and "A crescendo" or "A diminuendo") .. " hairpin over the selection (or to the end of the bar), ramping the loudness" })
+  end, { range = true, desc = (kind == "cresc" and "A crescendo" or "A diminuendo") .. " hairpin over the range or selection (or to the end of the bar), ramping the loudness" })
 end
 
 command("notation.text", function(ctx)
   local clip = view:clip()
   if not clip then return daw.notify("no clip open as notation", "warn") end
   local text = tostring(ctx.args[1] or ""):match("^%s*(.-)%s*$")
-  marks.put(clip, { at = view.beat, kind = "text", value = text ~= "" and text or false })
-end, { raw = true, desc = "Text above the staff at the cursor: `notation.text Allegro`; with nothing, takes it away" })
+  local region = ranged(ctx)
+  marks.put(clip, { at = region and math.max(0, region.c0) or view.beat, kind = "text", value = text ~= "" and text or false })
+end, { raw = true, range = true, desc = "Text above the staff at the cursor (or the start of the range): `notation.text Allegro`; with nothing, takes it away" })
 
 command("notation.repeat", function(ctx)
   local clip = view:clip()
   if not clip then return daw.notify("no clip open as notation", "warn") end
   local which = tostring(ctx.args[1] or "")
-  local m = view:measure_at(view.beat)
+  -- Over a range: its first bar's start and its last bar's end.
+  local region = ranged(ctx)
+  local first = view:measure_at(region and math.max(0, region.c0) or view.beat)
+  local last = region and view:measure_at(math.max(region.c0, region.c1 - EPS)) or first
+  local from, to = first.start, last.start + last.length
   if which == "start" then
-    marks.put(clip, { at = m.start, kind = "repeat", value = "start" })
+    marks.put(clip, { at = from, kind = "repeat", value = "start" })
   elseif which == "end" then
-    marks.put(clip, { at = m.start + m.length, kind = "repeat", value = "end" })
+    marks.put(clip, { at = to, kind = "repeat", value = "end" })
+  elseif which == "both" or (which == "" and region) then
+    marks.put(clip, { at = from, kind = "repeat", value = "start" })
+    marks.put(clip, { at = to, kind = "repeat", value = "end" })
   elseif which == "off" then
-    marks.put(clip, { at = m.start, kind = "repeat", value = false })
-    marks.put(clip, { at = m.start + m.length, kind = "repeat", value = false })
+    marks.put(clip, { at = from, kind = "repeat", value = false })
+    marks.put(clip, { at = to, kind = "repeat", value = false })
   else
-    return daw.notify("a repeat sign is start, end or off", "warn")
+    return daw.notify("a repeat sign is start, end, both or off", "warn")
   end
-end, { desc = "A repeat sign at the start or end of the cursor's bar (written only): `notation.repeat start`" })
+end, { range = true, desc = "A repeat sign at the start or end of the cursor's bar, or around the range (written only): `notation.repeat start`, `:5,8notation.repeat`" })
 
-command("notation.slur", function()
+command("notation.slur", function(ctx)
   local clip = view:clip()
   if not clip then return daw.notify("no clip open as notation", "warn") end
-  local from, to = mark_span()
+  local from, to = mark_span(ctx)
   local on = marks.slur(clip, from, to - 1e-3, view:cursor_staff())
   daw.notify(on and "slurred: the notes played legato" or "slur taken away")
-end, { desc = "A slur over the selection: the notes under it played legato" })
+end, { range = true, desc = "A slur over the range or selection: the notes under it played legato" })
 
-command("notation.quantize", function()
+--- A region's stretch and pitches, as `quantize` and `retranscribe` take them.
+local function bounds(region)
+  if not region or region.kind == "line" then return nil, nil, nil, nil end
+  if region.kind == "char" then return region.c0, region.c1 end
+  return region.c0, region.c1, region.r0, region.r1
+end
+
+command("notation.quantize", function(ctx)
   if not view:clip() then return daw.notify("no clip open as notation", "warn") end
-  local n = view:quantize()
+  local n = view:quantize(bounds(ranged(ctx)))
   daw.notify(n .. " notes played as written")
-end, { desc = "Make the clip's notes play exactly what is written: forget their feel" })
+end, { range = true, desc = "Make the clip's notes (or the range's) play exactly what is written: forget their feel" })
 command("score.reset-performance", function() daw.cmd("notation.quantize") end,
   { desc = "Forget the feel of every note of the score clip: it plays as written" })
 
-command("notation.retranscribe", function()
+command("notation.retranscribe", function(ctx)
   if not view:clip() then return daw.notify("no clip open as notation", "warn") end
-  view:retranscribe()
+  view:retranscribe(bounds(ranged(ctx)))
   daw.notify("written again from the playing")
-end, { desc = "Write the score again from what its notes play: what was decided by hand is forgotten" })
+end, { range = true, desc = "Write the score (or the range's bars) again from what its notes play: what was decided by hand is forgotten" })
 
 command("score.from-midi", function()
   local clip = view.target()
@@ -232,6 +263,15 @@ command("notation.voice", function(ctx)
   api.ui_redraw()
   daw.notify("entering in voice " .. view.voice)
 end, { desc = "Choose the voice notes are entered in, on the cursor's staff: `notation.voice 2` (1 to 4)" })
+
+command("notation.transpose", function(ctx)
+  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  local by = tonumber(ctx.args[1])
+  if not by then return daw.notify("transpose by semitones, or by steps of the key: `notation.transpose -12`, `notation.transpose 2 steps`", "warn") end
+  local steps = ctx.args[2] == "steps" or ctx.args[2] == "step"
+  local n = view:transpose_events(target_notes(nil, ctx), by, steps)
+  daw.notify(n == 1 and "1 note transposed" or n .. " notes transposed")
+end, { range = true, desc = "Transpose the chord under the cursor, or the range or selection, by semitones or steps of the key: `:5,8notation.transpose 2`, `notation.transpose -1 steps`" })
 
 command("notation.raw", function()
   local clip = settings_clip()
@@ -354,7 +394,7 @@ local function guarded(rhs)
     return rhs(...)
   end
 end
-local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, gd = true, gR = true, gT = true }
+local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, ["<leader>n"] = true, ZZ = true, gd = true, gR = true, gT = true }
 local function nmap(lhs, rhs, desc, opts)
   if not (opts and opts.motion) and not READ[lhs] and not lhs:match("^g%d$") then rhs = guarded(rhs) end
   map(lhs, rhs, util.merge({ view = "notation", desc = desc }, opts))
@@ -449,7 +489,7 @@ end, "Yank")
 op("c", function(clip, region, ctx)
   keymap.setreg(edit.roll.delete(clip, region), ctx.register)
   if region.kind ~= "line" then view:set(nil, region.c0) end
-  view.last, view.chord = nil, nil
+  view.last, view.chord, view.voice = nil, nil, view:cursor_voice()
   keymap.set_mode("i")
 end, "Change: delete and enter notes")
 local function shift(clip, region, values)
@@ -459,11 +499,6 @@ local function shift(clip, region, values)
 end
 op(">", function(clip, region, ctx) shift(clip, region, region.visual and ctx.count or 1) end, "Move notes later by the chosen value")
 op("<lt>", function(clip, region, ctx) shift(clip, region, -(region.visual and ctx.count or 1)) end, "Move notes earlier by the chosen value")
-local function bounds(region)
-  if region.kind == "line" then return nil, nil, nil, nil end
-  if region.kind == "char" then return region.c0, region.c1 end
-  return region.c0, region.c1, region.r0, region.r1
-end
 op("=", function(_, region)
   -- The performance made what is written: each note's feel forgotten.
   local n = view:quantize(bounds(region))
@@ -487,7 +522,8 @@ nmap("<CR>", function() view:toggle_note() end, "Add a note of the chosen value,
 local function insert()
   -- Entering notes writes a score: a plain MIDI clip becomes one now.
   if not view.multi and not view:ensure_score() then return end
-  view.last, view.chord = nil, nil
+  -- Entry goes into the voice of the note the cursor is on, if it is on one.
+  view.last, view.chord, view.voice = nil, nil, view:cursor_voice()
   keymap.set_mode("i")
 end
 nmap("i", insert, "Enter notes by letter name (a to g)")
@@ -584,7 +620,20 @@ nmap("zg", function()
   daw.notify(view.galley and "one long system, scrolled sideways (galley)" or "systems wrapped down the page")
   api.ui_redraw()
 end, "The engraved page as one long system (galley), or wrapped")
-nmap("<Esc>", function() daw.ui.focus("arrange") end, "Back to the arrange view")
+-- Escape stays: a Vim hand presses it to be sure it is in normal mode, and
+-- the keys after it must not land in the arrange view. Counts, pending
+-- operators and selections are dropped by the keymap before this runs.
+-- A second one soon after says how to leave.
+local escaped_at = -math.huge
+nmap("<Esc>", function()
+  local now = api.now()
+  if now - escaped_at < 2000 then
+    daw.notify("normal mode: " .. keymap.human("<leader>n") .. " goes back to the arrange view, :q or ZZ closes the notation")
+  end
+  escaped_at = now
+end, "Stay in the view (,n leaves)", { repeatable = false })
+nmap("<leader>n", function() daw.ui.focus("arrange") end, "Back to the arrange view")
+nmap("ZZ", "close", "Close the notation")
 
 -- On a selection.
 local function vmap(lhs, fn, desc)
@@ -691,6 +740,13 @@ view.grid = {
     view:set(step, col)
   end,
   step = function() return view:entry_length() end,
+  -- Where the note or rest at a place ends: a selection takes in the one
+  -- under the cursor, as Vim's takes in the character under it.
+  extent = function(row, col)
+    local step = model.spell(util.clamp(row, 0, 127), (view.key())).step
+    local ev = view:event_at(col, step)
+    if ev then return ev.start + ev.length end
+  end,
   search = function(text)
     local wanted, hits = text:lower(), {}
     local layout = view:layout()
@@ -754,7 +810,7 @@ end
 if daw.ui.keybar then
   daw.ui.keybar.set("notation", "n", {
     { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" },
-    { "+", "longer" }, { "-", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<Esc>", "back" },
+    { "+", "longer" }, { "-", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
   })
   daw.ui.keybar.set("notation", "i", {
     { "c", "C..B", "a-g" }, { "C", "chord", "A-G" }, { "<A-3>", "+3rd", "Alt-2…8" }, { "5", "value", "2-7" }, { ".", "dot" },

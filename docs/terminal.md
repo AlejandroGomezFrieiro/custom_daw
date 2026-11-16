@@ -24,6 +24,7 @@ ordinary mapping made in `runtime/lua/daw/defaults.lua` with the calls under
 | `:delmarks a b c-e`, `:delmarks!` | remove marks, as in Vim (`:delm` for short; Tab completes the marks set); with the bang every lowercase mark | the same |
 | `g'`, `g"`, `gx` | put a marker (a name on the ruler) at the cursor; choose one from a list; remove the one at the cursor, or right click its name under the ruler and choose Remove | |
 | `Ctrl-o` `Ctrl-i` | back and forward through the places jumped from | the same |
+| `g;` `g,`, `` `. ``, `'.`, `:changes` | back and forward through the places where the project was edited (`3g;` three edits back); the place of the last edit; list them | the same, each view keeping its own |
 | `gP` | to the playhead | |
 
 **Operators** act on what a motion covers, on a text object, or on a
@@ -49,7 +50,9 @@ with `j` and `k`; `V` whole tracks; in the piano roll `v` a stretch of time at
 every pitch, `Ctrl-v` a rectangle, `V` whole pitches. Then an operator, or `x`
 to delete, `~` to mute, `J` to join the clips, `Ctrl-a` and `Ctrl-x` to
 transpose, `p` to replace it with the register. `o` goes to the other end, `gv`
-selects the same again.
+selects the same again. `:` types a command for the selection: the line starts
+with `'<,'>`, which names the last selection, as in Vim. A command may also take
+bars in front: `:5,8notation.transpose 2`, `:5notation.dyn mf`.
 
 **Registers, repeating, macros.** `p` pastes after the clip or note under the
 cursor (tracks: below), `P` right at the cursor (tracks: above); `3p` pastes
@@ -80,7 +83,8 @@ line. Then, without leaving insert mode:
 | `Backspace` | takes back the note kept last, to draw it again |
 
 `[` and `]` change the velocity. `Esc` writes what was drawn and returns to
-normal mode; a note of no length is not written, and one drawn over a note
+normal mode, saying how many notes went in (`wrote 4 notes`), whether they
+were drawn or typed; a note of no length is not written, and one drawn over a note
 of the same pitch that starts there replaces it. The clip grows by whole
 bars to hold what runs past its end. Nothing reaches the project until
 insert mode ends, so the whole of it is one undo step, and `.` draws the same
@@ -123,7 +127,7 @@ leaves insert mode. See [harmony.md](harmony.md).
 | `,cf`, `grC` | type the fade in and out of the audio clip under the cursor, in beats (`1 2`, or one length for both); choose the track's colour from the theme's hues (also in the mixer) |
 | `H` `L`, `Alt-h` `Alt-l`, `Ctrl-a` `Ctrl-x` | move the clip; shorten and lengthen it; transpose it |
 | `Enter`, `K` | edit the clip's notes in the piano roll; describe what is under the cursor |
-| `a`, `ge`, `,d` `,m` `,p` | add a device; show the plugin's own window; show the device panel, the mixer, the piano roll |
+| `a`, `ge`, `,d` `,m` `,p` | add a device (the list offers instruments first on a track with none, effects first otherwise); show the plugin's own window; show the device panel, the mixer, the piano roll |
 | `A`, `,at` `,ax` | add a volume automation point at the cursor; turn the lane off or on (read or bypass), clear it |
 | `,al`, `,aa` `,aA` | choose what to automate (volume, pan, any device parameter) and show its lane; show or hide the track's lanes as rows; show every track's lanes |
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
@@ -168,7 +172,9 @@ there too), on a parameter in the device panel, in the piano roll the
 controller its strip shows (`gC` that of the note under the cursor alone).
 The curve is a buffer named by its address, so `:vs daw://lane/3`, `:e
 daw://tempo` or `:sp daw://clip/7/control/cc/74` show one, and `:setlocal
-timebind` scrolls it with the arrange view. It draws the curve in braille
+timebind` scrolls it with the arrange view. A window showing a lane that
+the project no longer has (another project was opened) closes, or, when it
+is the last, is left empty. It draws the curve in braille
 dots over the bars and beats, the values in their unit along the left, each
 point as `◆` (`■` where the stretch after it holds, `●` where it eases),
 and along the bottom the point under the cursor or the curve's value there.
@@ -263,7 +269,11 @@ several devices for `y` `d`; `:device.copy_to <track>` and
 dragging a device card by its name onto a track's header moves it there
 (with `Ctrl`, copies it), and dragging it up or down the list reorders. The
 mixer has `h` `l` for tracks, `j` `k` for volume, `grv` `grp` to type the
-strip's volume and pan, and `dd` `yy` `p` for tracks. VCAs (see
+strip's volume and pan, and `dd` `yy` `p` for tracks. The scale left of the
+first strip is the fader's (`+6` to `-48`, on the rows its cap takes: the
+fader spends most of its travel on the top twenty decibels); the meters beside
+the fader are linear from -60 to 0 and have the loudest of late in numbers
+under them. VCAs (see
 [Mixing](mixing.md)) have strips after the tracks: `,vn` makes one over the
 selected tracks, `,va` puts them under one, `,vr` takes them out, `,vx` takes
 one away, and `,vl` links the faders of a group.
@@ -427,7 +437,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | Keys | Command | Lists | Enter |
 | --- | --- | --- | --- |
 | `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description | runs it; `Ctrl-e` types it on the command line instead, for arguments |
-| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode | runs it |
+| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`) | runs it |
 | `,ft` | `pick.tracks` | tracks | moves the cursor to the track |
 | `,fl` | `pick.clips` | every clip, with its track | goes to it |
 | `,fa` | `pick.devices` | devices and plugins that can be added | adds it to the cursor's track |

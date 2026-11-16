@@ -26,8 +26,11 @@ daw.ext.load("extensions/notation")   -- or put it in ~/.config/daw/extensions
 | Open as notation | in the window's right-click menu of a MIDI clip |
 
 The view opens at the bottom of the terminal, taking two thirds of the
-height, and in a window of its own in the graphical frontend. `Esc` goes back
-to the arrange view; closing the window does the same.
+height, and in a window of its own in the graphical frontend. `,n` goes back
+to the arrange view, as it came; `:q`, `ZZ` and `Ctrl-w c` close the view, and
+so does closing the window. `Esc` in normal mode stays in the view, as it
+does in Vim: it drops a count, an operator or a selection, and pressed again
+soon it says how to leave.
 
 ## Score clips
 
@@ -208,22 +211,26 @@ the edit), and says so.
 | `gd` | dotted values on or off |
 | `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as written (forget their feel), loop |
 | `in` `ib` `ic` | the note, the bar, the clip |
-| `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection |
+| `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection, which takes in the note under the cursor, as Vim's takes the character |
+| `:` on a selection | a command for it: the line starts `:'<,'>` (`:'<,'>notation.cresc`) |
 | `p` `P` | paste after the note, at the cursor |
 | `i`, `a` | enter notes at the cursor, after the note |
 | `gh`, `gp` | hear the cursor's pitch; playhead to the cursor |
 | `zi` `zo` | spread the notes out, draw them closer; on the engraved page, a larger, smaller staff |
 | `zg` | the engraved page as one long system scrolled sideways (the galley), or wrapped |
-| `Esc` | back to the arrange view |
+| `,n` | back to the arrange view |
+| `:q` `ZZ` `Ctrl-w c` | close the view |
+| `Esc` | stay: drop a count, an operator or a selection |
 
 **Entering notes** (`i`), the way notation programs do it: a letter `c` to
 `b` enters that note at the cursor with the chosen value, in the octave
 nearest the note before (within a fourth), as the key alters it, and steps
-on; a capital stays, to build a chord (`CEg`). Notes go into the entry
-voice (1 unless chosen) of the staff the note is written on, over what that
-voice had there: a chord it cuts into keeps what is before, the rest of it
-is a rest; a note longer than what is left of the bar is tied over the
-barline. No other voice and no other staff is touched.
+on; a capital stays, to build a chord (`CEg`). Notes go into a voice of
+the staff the note is written on: the voice of the note the cursor is on at
+`i` (else the one chosen, 1 unless `v` or `:notation.voice` says), over what
+that voice had there: a chord it cuts into keeps what is before, the rest
+of it is a rest; a note longer than what is left of the bar is tied over
+the barline. No other voice and no other staff is touched.
 
 | Keys | |
 | --- | --- |
@@ -266,11 +273,21 @@ its notes keep their feel:
 
 `:notation.quantize` makes the whole clip play what is written,
 `:notation.retranscribe` writes it again from what it plays.
+`:notation.transpose 2` moves the chord under the cursor up two semitones,
+spelled by the key (`-1 steps` a step of the key down).
+
+**Ranges.** Every `notation.*` command that works on notes or places marks
+takes a range in front, as in Vim: `:'<,'>` the last selection (what `:`
+types from visual mode), `:5,8` bars 5 to 8, `:5` bar 5. So
+`:5,8notation.transpose 2`, `:'<,'>notation.slur`, `:9notation.dyn p`,
+`:1,4notation.repeat` (both signs around bars 1 to 4), `:5,8notation.quantize`.
+The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
+`repeat`, `quantize`, `retranscribe` and `transpose`.
 
 **Marks that play.** `:notation.dyn mf` puts a dynamic at the cursor (`ppp` to
 `fff`, `off`): the notes from there to the next dynamic play at its
 loudness, each note's feel (how the player made it differ) on top. `:notation.cresc` and
-`:notation.dim` put a hairpin over the selection (or to the end of the bar)
+`:notation.dim` put a hairpin over the selection or range (or to the end of the bar)
 that ramps the loudness to the next dynamic. `:notation.slur` slurs the
 selection. `:notation.text Allegro` writes text above the staff, and
 `:notation.repeat start` (`end`, `off`) a repeat sign at the cursor's bar;
@@ -378,7 +395,21 @@ model.layout(notes, { length = 4, settings = { mode = "raw" } })   -- note for n
 require("notation.score").transcribe(notes, ctx)   -- the score events alone
 model.spell(70, -1)                 -- { letter = 6, alter = -1, octave = 4, step = 41 }: B flat
 require("notation.export").lilypond(layout, { title = "tune" })   -- or .musicxml(layout, { title, part })
+
+-- Scores.
+local view, D = require("notation"), require("notation.doc")
+local sc = view.score_of(clip:get())            -- the clip's score, to read (nil for plain MIDI)
+local s = sc.staves[1].id
+D.put_chord(sc, 2, s, 1, D.Q, 2 * D.Q, { { step = 4, alter = 0, octave = 4 } })   -- a half G4 on beat two of bar two
+require("notation.render").render(sc)           -- the notes it plays
+require("notation.layout").layout(sc, { length = 8 })   -- its layout, as model.layout's
 ```
+
+A score is changed by the view's `write(fn)`, which gives `fn` the clip's
+score to change and then keeps it and renders its notes, as one undo step:
+`view:write(function(sc) ... end)`. In the clip it is kept with each
+measure as JSON text and the feel as a line of text (`notation.doc`'s
+`encode` and `decode`), so that reading the clip stays quick.
 
 `notation.engrave` turns a layout into drawing operations for `daw.canvas`
 (`engrave.style`, `engrave.systems`, and each measure's and system's ink);
@@ -405,7 +436,9 @@ clip; trills and other ornaments; a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows). On the engraved page:
 collision avoidance between marks, dynamics and the notes of the other
 staff; slurs that bend round the notes under them; a choice of Bravura
-or Petaluma (the kernel has them; nothing chooses them yet); and the
-transcription is still done again for the whole clip on each edit (the
-engraving is redone only for the bars that changed), which costs about
-20 ms for 64 bars.
+or Petaluma (the kernel has them; nothing chooses them yet). For score
+clips: tempo marks that play, repeats unfolded, trills and fermatas played,
+swing, key and clef changes per measure, the piano roll showing which notes
+are written and their feel (see docs/missing.md). A plain MIDI clip is
+still transcribed whole after each change of its notes; a score clip is laid
+out, rendered and engraved again only in the measures an edit changed.

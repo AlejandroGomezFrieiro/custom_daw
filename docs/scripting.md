@@ -50,6 +50,29 @@ daw.midifile.export("out.mid", { clips = { clip.id } })         -- or { tracks =
 local file = daw.midifile.read("song.mid")             -- parse(bytes) and encode(file) work on bytes
 ```
 
+**Clip owners.** An extension that keeps a clip's notes as the rendering
+of something of its own (the notation extension's written score) names
+itself the clip's owner, and is asked before any note of it is written
+through `daw.Clip` (and so by the piano roll, the window's gestures,
+`daw.edit` and fixes from language servers). It says what the change
+means and makes it its own way, or refuses it with a message; its own
+writes go through `daw.api`, which is not asked.
+
+```lua
+daw.clips.owner("myscore", {
+  claims = function(clip) return clip.meta.mine ~= nil end,   -- clip as daw.api.clip_get gives it
+  on_edit = function(clip, change)                            -- change: set / remove / add / replace
+    if change.remove then return { kind = "refuse", message = "these notes are mine" } end
+    return { kind = "written", apply = function() --[[ change it my way ]] end }
+  end,
+})
+daw.clips.owner_of(clip.id)    -- "myscore", or nil
+```
+
+`kind` is `"written"` or `"feel"` (both: `apply()` is called instead of
+the write, and what it returns is what `set_note` and `add_note` return),
+`"refuse"`, or nil for the write to go ahead as asked.
+
 **Transport.**
 
 ```lua
@@ -111,6 +134,15 @@ daw.command(name, function(ctx) end, { desc = "..." })   -- ctx.args, ctx.count
 -- more to daw.commands.completers. daw.commands.complete(line) lists them.
 daw.command("send.to", fn, { complete = { "tracks" } })
 daw.command("mood", fn, { complete = function(text, info) return { "calm", "loud" } end })
+-- Ranges, as in Vim. `:'<,'>name` runs a command on the last selection made
+-- in the focused view (`:` in visual mode starts the prompt with it):
+-- ctx.range is { selection = true, region = <as an operator gets it> }, and
+-- daw.keymap.selection() returns that region while the command runs, so a
+-- command that works on the selection takes the range unasked. `:5,8name`
+-- (or `:5name`) gives bars, to commands made with `range = true` only:
+-- ctx.range is { bars = { 5, 8 }, from, to }, beats of the song, `to` not included.
+daw.command("bars.color", function(ctx) local r = ctx.range end, { range = true })
+daw.commands.exec("5,8bars.color red")   -- as typed after `:`; daw.commands.range(line) splits it off
 daw.cmd("track.add", { "Bass", device = "synth" })
 daw.keymap.set("<leader>x", "command and arguments", { view = "arrange", desc = "..." })
 daw.keymap.set("gx", function(ctx) end)          -- ctx.count, ctx.register
@@ -132,6 +164,9 @@ daw.keymap.textobject("ip", function()               -- from the cursor to the p
 end, { view = "arrange", desc = "Up to the playhead" })
 
 daw.keymap.setreg(value, name)   daw.keymap.getreg(name)   daw.keymap.selection()
+daw.keymap.group("<leader>x", "mix checks")      -- the name the key hints give a prefix: `+mix checks`
+daw.keymap.last_selection()      -- the selection open now, or the one visual mode last closed: '<,'>
+daw.keymap.with_selection(region, fn, ...)   -- run fn with region as the selection, as :'<,'> does
 daw.keymap.feed("3jdd")          daw.keymap.normal("dic")  -- as typed; from inside a mapping
 daw.edit.arrange.yank(region)    daw.edit.arrange.paste(value)   daw.edit.roll.delete(clip, region)
 track:snapshot()                 daw.restore_track(snapshot, index)   -- with devices, clips, automation
@@ -140,6 +175,8 @@ daw.ui.views.pianoroll.layer("lint", 35, paint, marks)                -- draw in
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
 view.grid = { get = function() return row, beat end, set = function(row, beat) end, step = function() return 1 end }
+-- Optional: where the thing under the cursor ends (a note), so that a selection takes it in.
+view.grid.extent = function(row, beat) return beat + 1 end
 
 daw.on("track.added", function(event) end)    -- also track.changed, track.removed, track.moved,
                                               -- device.*, clip.*, lane.*, project.*, transport.*

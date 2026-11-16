@@ -864,6 +864,22 @@ function view.add_sounding(sc, note, t, len, staff)
   end
 end
 
+--- A single staff whose clef the track leaves to the notes becomes a
+--- grand staff when a note is entered far outside it (a bass under a
+--- melody, a melody over a bass), as the clef would have been chosen.
+function view:make_room(sc, pitch)
+  if #sc.staves ~= 1 then return end
+  local clip = self:clip()
+  if not clip or view.track_clef(clip:get().track) then return end
+  local clef = sc.staves[1].clef
+  if (clef == "treble" and pitch < 57) or (clef == "bass" and pitch > 64) then
+    local upper = clef == "treble" and sc.staves[1] or { id = D.id(sc, "s"), clef = "treble" }
+    local lower = clef == "bass" and sc.staves[1] or { id = D.id(sc, "s"), clef = "bass" }
+    sc.staves = { upper, lower }
+    for i in ipairs(sc.measures) do D.touch(sc, i) end
+  end
+end
+
 --- Write a note at the cursor's beat (or `beat`), `length` beats long, in
 --- the entry voice on its staff: what was written there in that voice gives
 --- way (in no other voice or staff). With `chord`, it joins the chord the
@@ -872,6 +888,7 @@ end
 function view:put(sc, note, beat, length, chord)
   local mi, at = where(sc, beat)
   D.ensure(sc, mi)
+  self:make_room(sc, D.pitch(note))
   local staff = self:staff_id(sc, D.pitch(note))
   local v = self.voice or 1
   if chord then
@@ -1514,6 +1531,44 @@ function view:delete()
   end) ~= false
 end
 
+--- The voice notes are entered in from the cursor: the voice of the note
+--- under it, or else the one chosen.
+function view:cursor_voice()
+  local ev, n = self:event_at(self.beat, self.step)
+  return (ev and n and ev.voice) or self.voice or 1
+end
+
+--- Transpose the notes of chords of the score (by event id) by semitones,
+--- respelled by the key, or with `steps` by steps of the key. Returns how
+--- many notes moved.
+function view:transpose_events(ids, by, steps)
+  local fifths = view.key()
+  local count = 0
+  if #ids == 0 then return 0 end
+  self:write(function(sc)
+    for _, id in ipairs(ids) do
+      local _, _, _, _, ev = D.find(sc, id)
+      for _, note in ipairs(ev and ev.notes or {}) do
+        if not note.tied then
+          local sp
+          if steps then
+            local step = D.diatonic(note) + by
+            sp = model.spelled(step % 7, model.key_alter(step % 7, fifths), model.key_pitch(step, fifths))
+          else
+            sp = model.spell(D.pitch(note) + by, fifths)
+          end
+          if sp.pitch >= 0 and sp.pitch <= 127 then
+            respell(sc, note, sp)
+            count = count + 1
+          end
+        end
+      end
+    end
+    return count > 0
+  end)
+  return count
+end
+
 --- Add a note of the chosen value at the cursor, or take away the one there.
 function view:toggle_note()
   local clip = self:clip()
@@ -1689,7 +1744,7 @@ end
 
 --- A rest of the chosen value at the cursor, then on.
 function view:enter_rest()
-  self:rest(self.beat, self:entry_length(), self:staff_of_step(self.step))
+  self:rest(self.beat, self:entry_length(), self:staff_of_step(self.step), self.voice)
   self.chord = nil
   self:step_on(1)
 end

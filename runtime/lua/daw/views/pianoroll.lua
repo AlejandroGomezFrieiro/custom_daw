@@ -235,8 +235,9 @@ function view:render(buf, ctx)
   if not clip then
     daw.ui.titlebar(buf, { name = "Piano roll", focused = ctx.focused })
     buf:text(2, 2, "No clip open.", "Empty")
-    buf:text(2, 3, "Put the cursor on a MIDI clip in the arrange view and press", "Empty")
-    buf:text(61, 3, "Enter", "EmptyKey")
+    local lead = "Put the cursor on a MIDI clip in the arrange view and press "
+    buf:text(2, 3, lead, "Empty")
+    buf:text(2 + #lead, 3, "Enter", "EmptyKey")
     return
   end
   local c = clip:get()

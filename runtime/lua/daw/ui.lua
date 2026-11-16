@@ -313,13 +313,14 @@ end
 --- Draw a one-row title bar along the top of a docked panel and return a
 --- buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`,
 --- drawn ahead of the name), `context` (after the name),
---- `right` (state, at the right end), `focused`. Focus shows as an amber
---- mark in the first column and a bright name.
+--- `right` (state, at the right end), `focused`. Focus shows as the whole
+--- bar in the accent colour, inverted.
 ---   local body = daw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
 function M.titlebar(buf, opts)
   local g = daw.draw.g
   local focused = opts.focused
-  buf:fill(0, 0, buf.width, 1, " ", "TitleBar")
+  local plain = focused and "TitleBarFocus" or "TitleBar"
+  buf:fill(0, 0, buf.width, 1, " ", plain)
   buf:text(0, 0, g.mark, focused and "TitleBarMarkFocus" or "TitleBarMark")
   local x = 2
   local right = opts.right and tostring(opts.right) or ""
@@ -339,10 +340,10 @@ function M.titlebar(buf, opts)
     if room >= 4 then
       local text = tostring(opts.context)
       if api.str_width(text) > room then text = daw.util.fit(text, room) end
-      x = x + 2 + buf:text(x + 2, 0, text, "TitleBar")
+      x = x + 2 + buf:text(x + 2, 0, text, plain)
     end
   end
-  if right_w > 0 and buf.width - right_w - 1 > x then buf:text(buf.width - right_w - 1, 0, right, "TitleBarFaint") end
+  if right_w > 0 and buf.width - right_w - 1 > x then buf:text(buf.width - right_w - 1, 0, right, focused and "TitleBarFocus" or "TitleBarFaint") end
   return buf:sub(0, 1, buf.width, buf.height - 1)
 end
 

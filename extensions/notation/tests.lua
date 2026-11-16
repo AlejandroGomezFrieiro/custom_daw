@@ -564,11 +564,11 @@ test("notation: operators and visual mode work on notes as in the piano roll", f
   eq(notes_of(clip), "D4@1+1 E4@2+1 F4@3+1", "dw deletes up to the next note")
   view:set(36, 1)
   keys("vll<A-k>")
-  eq(notes_of(clip), "E4@1+1 F4@2+1 F4@3+1", "a selection from beat two up to the cursor on beat four, up a step of the key")
+  eq(notes_of(clip), "E4@1+1 F4@2+1 G4@3+1", "a selection from beat two to the note under the cursor on beat four, both in, up a step of the key")
   view:set(38, 2)
-  keys("vl<C-a>")
-  eq(notes_of(clip), "E4@1+1 F#4@2+1 F4@3+1", "Ctrl-a on a selection")
-  view:set(38, 3)
+  keys("v<C-a>")
+  eq(notes_of(clip), "E4@1+1 F#4@2+1 G4@3+1", "Ctrl-a on a selection of the note under the cursor alone")
+  view:set(39, 3)
   keys("yinP")
   eq(#clip:notes(), 3, "yank and paste over itself")
 end)
@@ -1223,6 +1223,94 @@ test("notation export: :notation.export writes a file for the clip or the whole 
   if f then f:close() end
   eq(text:find("c''4 d''4", 1, true) ~= nil, true, "the first clip")
   eq(text:find("e''1", 1, true) ~= nil, true, "and the second, in its bar")
+end)
+
+-- Modal editing to trust ----------------------------------------------------------------------
+
+--- The clip's notes as a sorted list, for comparing whatever order they are kept in.
+local function sorted_notes(clip)
+  local out = {}
+  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%g+%g", daw.music.name(n.pitch), n.start, n.length) end
+  table.sort(out)
+  return table.concat(out, " ")
+end
+
+test("notation entry: a bass note entered under a melody leaves the melody alone", function()
+  local view, clip = song({ N(67, 0, 1), N(69, 1, 1), N(71, 2, 1), N(74, 3, 1) })
+  eq(#view:layout().staves, 1, "one staff before the bass")
+  view:set(25, 0)
+  keys("i7g<Esc>")
+  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D5@3+1 G2@0+3.6 G4@0+1", "the whole-note G2 is added and the melody of bar 1 kept")
+  eq(#view:layout().staves, 2, "now a grand staff")
+  view:set(25, 0)
+  keys("i5d<Esc>")
+  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D2@0+0.9 D5@3+1 G4@0+1", "on the bass staff, entry still replaces what is there")
+  view:set(25, 1)
+  keys("ir<Esc>")
+  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D2@0+0.9 D5@3+1 G4@0+1", "a rest on the bass staff takes nothing from the treble")
+end)
+
+test("notation entry: a second voice under a first is left alone, and entered in on its own", function()
+  local held = { voice = 2 }
+  local view, clip = song({ N(76, 0, 1), N(77, 1, 1), N(79, 2, 1), N(77, 3, 1),
+    { pitch = 72, start = 0, length = 2, meta = { notation = held } }, { pitch = 72, start = 2, length = 2, meta = { notation = held } } })
+  view:set(44, 0)   -- E5, voice 1
+  keys("i4ga<Esc>")
+  eq(sorted_notes(clip), "A5@0.5+0.45 C5@0+2 C5@2+2 F5@1+1 F5@3+1 G5@0+0.45 G5@2+1",
+    "eighths in voice 1 replace its E; the held C of voice 2 stays")
+  view:set(42, 2)   -- C5 on beat three, voice 2
+  keys("i6b<Esc>")
+  eq(sorted_notes(clip), "A5@0.5+0.45 B4@2+1.8 C5@0+2 F5@1+1 F5@3+1 G5@0+0.45 G5@2+1",
+    "entering on the voice-2 note replaces it alone, and the melody over it stays")
+  eq(require("notation.model").text(view:layout(), 1, 2), "h C5 h B4", "the new note is written in voice 2")
+end)
+
+test("notation: Esc stays in the view; ,n, ZZ and :q leave it", function()
+  local view = song({ N(60, 0, 1) })
+  keys("<Esc>")
+  eq(daw.ui.focused, "notation", "Esc in normal mode keeps the keyboard in the view")
+  keys("2<Esc>")
+  eq(daw.ui.focused, "notation", "and drops a count")
+  keys("d<Esc>")
+  eq(daw.keymap.mode, "n", "and a pending operator")
+  eq(daw.ui.focused, "notation", "staying")
+  keys("<leader>n")
+  eq(daw.ui.focused, "arrange", ",n goes back to the arrange view")
+  view:edit(view:clip())
+  keys("ZZ")
+  eq(daw.ui.focused, "arrange", "ZZ closes the notation")
+  view:edit(view:clip())
+  keys(":q<CR>")
+  eq(daw.ui.focused, "arrange", ":q closes the notation, and the program runs on")
+end)
+
+test("notation: a visual selection takes in the note under the cursor", function()
+  local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
+  view:set(35, 0)
+  keys("v3w(")
+  local evs = view:layout().measures[1].staves[1]
+  eq(evs[1].slur_to ~= nil, true, "the slur starts on the first note")
+  eq(evs[1].slur_to == evs[4], true, "and reaches over the fourth, under the cursor")
+  view:set(35, 0)
+  keys("v3wd")
+  eq(notes_of(clip), "", "v3wd deletes the four notes")
+end)
+
+test("notation: : from a selection runs a command over it, and commands take bars", function()
+  local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1), N(67, 4, 4), N(69, 8, 4) }, 12)
+  view:set(35, 0)
+  keys("vw:")
+  eq(require("daw.views.cmdline").state().before, "'<,'>", "the prompt starts with the selection's range")
+  keys("notation.cresc<CR>")
+  local mark = view:layout().measures[1].marks[1]
+  eq(mark.kind, "cresc", "a crescendo")
+  eq(mark.at == 0 and mark.to == 2, true, "over the two selected notes, the second under the cursor included")
+  daw.commands.exec("2,3notation.transpose 2")
+  eq(notes_of(clip), "C4@0+1 D4@1+1 E4@2+1 F4@3+1 A4@4+4 B4@8+4", "bars 2 and 3 a tone up")
+  daw.commands.exec("1notation.transpose -1 steps")
+  eq(notes_of(clip), "B3@0+1 C4@1+1 D4@2+1 E4@3+1 A4@4+4 B4@8+4", "bar 1 a step of the key down")
+  daw.commands.exec("'<,'>notation.transpose 12")
+  eq(notes_of(clip), "B4@0+1 C5@1+1 D4@2+1 E4@3+1 A4@4+4 B4@8+4", "'<,'> typed later names the last selection again")
 end)
 
 assert(loadfile("extensions/notation/tests_score.lua"))(T)

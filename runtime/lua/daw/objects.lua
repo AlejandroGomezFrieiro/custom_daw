@@ -671,6 +671,41 @@ M.transport = setmetatable({
   end,
 })
 
+-- Fields set with rawset: the project's own setter takes only settings.
+local discarding = false
+
+--- Whether replacing the project now would lose work: it has changes that
+--- are not saved, or it has no file and something in it. A project opened
+--- from a MIDI file or a REAPER project has no changes to count, but it is
+--- not on disk either, and this is every guard's one question.
+rawset(M.project, "unsaved", function()
+  local p = api.project_get()
+  return p.modified or (p.path == nil and #api.track_list() > 0)
+end)
+
+--- Whether the project may be replaced: says why not, naming `what` (the
+--- command, whose `!` form goes on anyway), when there is unsaved work.
+--- `force` is for a choice made later from a list, which asked before.
+rawset(M.project, "guard", function(what, force)
+  if force or discarding or not M.project.unsaved() then return true end
+  daw.notify(string.format("the project has unsaved work: `:w` saves it, `:%s!` goes on without it", what), "error")
+  return false
+end)
+
+--- Whether a `!` command is running, for a choice made later from a list.
+rawset(M.project, "discarding", function() return discarding end)
+
+--- Define `<name>!`, which is `name` with the unsaved work thrown away.
+rawset(M.project, "allow_discard", function(name)
+  local spec = daw.commands.get(name)
+  daw.command(name .. "!", function(ctx)
+    discarding = true
+    local ok, err = pcall(daw.commands.get(name).run, ctx)
+    discarding = false
+    if not ok then error(err, 0) end
+  end, { desc = (spec.desc:gsub("%.$", "")) .. "; the unsaved work is thrown away", raw = spec.raw, complete = spec.complete })
+end)
+
 -- MIDI input -----------------------------------------------------------------
 
 -- `daw.midi.inputs()`, `daw.midi.select({ "Keystation" })`, `daw.midi.note_on("C4", 100)`

@@ -172,6 +172,7 @@ end, {
 
 -- The arrange view --------------------------------------------------------------
 
+keymap.group("<leader>k", "drums", { view = "arrange" })
 map("<leader>kn", "drums.track", { view = "arrange", desc = "Add a drum track" })
 map("<leader>km", "drums.map", { view = "arrange", desc = "Choose the track's drum map" })
 

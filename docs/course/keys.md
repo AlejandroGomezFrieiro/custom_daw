@@ -112,6 +112,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
+| `:` | a command for the selection: the line starts `:'<,'>` |
 | `<Esc>` | back to normal mode |
 
 ## Draw notes (insert mode, R)
@@ -174,6 +175,8 @@ See [Harmony, completion and snippets](../harmony.md).
 | `ma` `'a` `''` | set mark a, go to it, back to before the jump |
 | `:delmarks a-d` `:delmarks!` | remove marks (letters, ranges); all lowercase ones |
 | `<C-o>` `<C-i>` | back, forward through jumps |
+| `g;` `g,` | back, forward through the places the project was edited |
+| `` `. `` `'.` | the place of the last edit |
 
 ## Play
 
@@ -265,7 +268,11 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 The notation extension (`,n` on a MIDI clip) has its own keys, listed in
 [its README](../../extensions/notation/README.md) and by `?` in the view.
-Normal mode takes the piano roll's grammar; insert mode enters notes by
-letter, a capital adds to the chord, Alt-2 to Alt-8 add an interval above,
-`~` ties, `t` enters triplets, `R` repeats the chord, and the numbers choose
-the value (5 a quarter). zg shows the engraved page as one long system.
+What is written in notation is a score kept with the clip, and the clip's
+notes play it; a plain MIDI clip is shown as it would be written, and the
+first edit (or `:score.from-midi`) writes it as a score; `:score.detach`
+makes it plain MIDI again. Normal mode takes the piano roll's grammar;
+insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
+Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
+the other voice, `R` repeats the chord, and the numbers choose the value (5
+a quarter). zg shows the engraved page as one long system.
