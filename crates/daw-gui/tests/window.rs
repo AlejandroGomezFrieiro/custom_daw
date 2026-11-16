@@ -1434,6 +1434,8 @@ fn a_window_connects_to_a_kernel_over_tcp_and_a_wrong_token_is_refused() {
         ])
         .env("DISPLAY", &w.display)
         .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus")
+        // Where it remembers the kernel's certificate: the scene's, not ours.
+        .env("XDG_STATE_HOME", w.env_path("XDG_STATE_HOME"))
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&refused.stderr).to_string()
