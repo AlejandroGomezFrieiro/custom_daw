@@ -1744,6 +1744,47 @@ impl View {
             })
             .collect();
         sync(&self.keys, keys);
+        ui.set_prompt_note(text(&prompt["note"]));
+        ui.set_prompt_note_level(i32::from(prompt["note_level"] == "error"));
+        let ex = &modal["ex"];
+        let (from, to) = if ex.is_object() && !ex["from"].is_null() {
+            (number(&ex["from"]), number(&ex["to"]))
+        } else {
+            (-1.0, -1.0)
+        };
+        ui.set_ex_from(from);
+        ui.set_ex_to(to);
+        let row_of = |id: i64| {
+            self.tracks
+                .iter()
+                .position(|t| i64::from(t.id) == id)
+                .map(|row| row as i32)
+        };
+        let ex_rows: Vec<i32> = rows(&ex["tracks"])
+            .iter()
+            .filter_map(|id| row_of(id.as_i64()?))
+            .collect();
+        let current = ex["current"].as_i64();
+        let ex_marks: Vec<ExMark> = rows(&ex["clips"])
+            .iter()
+            .filter_map(|m| {
+                let id = m["id"].as_i64()?;
+                let clip = self.clips.iter().find(|c| i64::from(c.id) == id)?;
+                Some(ExMark {
+                    row: clip.track,
+                    start: clip.start,
+                    length: clip.length,
+                    count: if m["notes"].as_bool().unwrap_or(false) {
+                        m["count"].as_i64().unwrap_or(0) as i32
+                    } else {
+                        0
+                    },
+                    current: current == Some(id),
+                })
+            })
+            .collect();
+        ui.set_ex_rows(ModelRc::from(Rc::new(VecModel::from(ex_rows))));
+        ui.set_ex_marks(ModelRc::from(Rc::new(VecModel::from(ex_marks))));
         ui.set_qf(text(&modal["qf"]["text"]));
         ui.set_qf_level(modal["qf"]["level"].as_i64().unwrap_or(0) as i32);
         // A message stays until the next key or a change of mode, as well as

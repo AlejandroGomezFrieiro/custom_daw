@@ -200,6 +200,14 @@ local function modal()
     out.keys = {}
     for i, entry in ipairs(ui.keybar.entries()) do out.keys[i] = { key = entry[1], desc = entry[2] } end
   end
+  -- What an Ex line being typed would act on: the stretch of time, the
+  -- tracks, and the clips that match with how many matches each holds.
+  local shown = daw.ex and daw.ex.shown()
+  if shown then
+    out.ex = { from = shown.from, to = shown.to, tracks = {}, clips = {}, current = shown.current and shown.current.clip and shown.current.clip.id }
+    for id in pairs(shown.tracks or {}) do out.ex.tracks[#out.ex.tracks + 1] = id end
+    for id, n in pairs(shown.clips or {}) do out.ex.clips[#out.ex.clips + 1] = { id = id, count = n, notes = shown.notes[id] ~= nil } end
+  end
   local qf = daw.qf and daw.qf.status()
   if qf then
     local text, worst = {}, 0

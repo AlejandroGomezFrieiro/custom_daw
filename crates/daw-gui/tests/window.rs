@@ -1718,3 +1718,18 @@ fn a_count_typed_in_the_window_reaches_the_kernel() {
     w.shot("count.png");
     w.assert_alive("after a count");
 }
+
+#[test]
+fn an_ex_line_shows_its_count_and_marks_what_it_covers() {
+    let mut w = scene!("exline", DEMO);
+    w.type_text(":%s/c4/d4/g");
+    w.expect("the line open", "daw.keymap.mode == 'c'");
+    assert!(w.shows("match", 5), "the count at the end of the line");
+    w.shot("ex-preview.png");
+    w.key("Escape");
+    w.type_text(":%s/c4/d4/gc\n");
+    w.expect("the question asked", "daw.ex.shown() ~= nil and daw.ex.shown().current ~= nil");
+    assert!(w.shows("y/n/a/q/l", 5), "the question on the status bar");
+    w.key("q");
+    w.assert_alive("after the Ex line");
+}

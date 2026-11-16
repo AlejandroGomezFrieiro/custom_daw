@@ -248,6 +248,17 @@ export struct TempoPointData {
     text: string,
 }
 
+// A clip an Ex line being typed would act on: its row, where it is, how
+// many of its notes match (0 for the clip as a whole), and whether it is
+// the one being asked about.
+export struct ExMark {
+    row: int,
+    start: float,
+    length: float,
+    count: int,
+    current: bool,
+}
+
 export struct HintData {
     key: string,
     desc: string,
@@ -736,6 +747,14 @@ in property <string> render-stage;
     // for the status bar (`qf-level` 0 plain, 1 warning, 2 error), and what
     // the command line could be completed to.
     in property <[HintData]> keys;
+    // An Ex line being typed: the stretch of time it covers (-1 for none),
+    // the rows of the tracks it covers, and the clips that match.
+    in property <float> ex-from: -1;
+    in property <float> ex-to: -1;
+    in property <[int]> ex-rows;
+    in property <[ExMark]> ex-marks;
+    in property <string> prompt-note;
+    in property <int> prompt-note-level;
     in property <string> qf;
     in property <int> qf-level;
     in property <[HintData]> matches;
@@ -4657,6 +4676,37 @@ in property <string> render-stage;
                             border-color: Theme.select;
                         }
                     }
+                    // What an Ex line being typed would act on.
+                    if root.ex-to > root.ex-from && root.ex-from >= 0: Rectangle {
+                        x: root.seen-x(root.ex-from * root.beat);
+                        y: 0;
+                        width: root.seen-w(root.ex-from * root.beat, (root.ex-to - root.ex-from) * root.beat);
+                        height: root.rows-total * root.row-height;
+                        background: Theme.warn.with-alpha(0.10);
+                        border-width: 1px;
+                        border-color: Theme.warn.with-alpha(0.5);
+                    }
+                    for row in root.ex-rows: Rectangle {
+                        x: root.seen-x(0px);
+                        y: root.row-top(row);
+                        width: 3px;
+                        height: root.row-size(row) - 1px;
+                        background: Theme.warn;
+                    }
+                    for mark in root.ex-marks: Rectangle {
+                        x: root.seen-x(mark.start * root.beat);
+                        y: root.row-top(mark.row);
+                        width: root.seen-w(mark.start * root.beat, mark.length * root.beat);
+                        height: 16px;
+                        background: mark.current ? Theme.select.with-alpha(0.55) : Theme.warn.with-alpha(0.35);
+                        if mark.count > 0: Text {
+                            x: parent.width - self.width - 4px;
+                            text: mark.count;
+                            color: Theme.text;
+                            font-size: Theme.t-micro;
+                            vertical-alignment: center;
+                        }
+                    }
                     // What is selected: by a drag here, or by visual mode.
                     if root.sel-open && root.focused == "arrange" && root.sel-kind != "clips": Rectangle {
                         x: root.sel-kind == "line" ? root.seen-x(0px) : root.seen-x(root.sel-start * root.beat);
@@ -6024,6 +6074,12 @@ in property <string> render-stage;
                             }
                         }
                     }
+                }
+                if root.prompt-open && root.prompt-note != "": Text {
+                    text: root.prompt-note;
+                    color: root.prompt-note-level == 1 ? Theme.warn : Theme.text-2;
+                    font-size: Theme.t-small;
+                    vertical-alignment: center;
                 }
                 if root.qf != "": Text {
                     text: root.qf;
