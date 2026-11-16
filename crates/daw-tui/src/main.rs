@@ -520,6 +520,8 @@ fn run() -> Result<i32> {
         }));
         notes
     };
+    // What the scan said, apart from the note about the display.
+    let scanned = plugin_notes.len();
     plugin_notes.extend(display_note);
     let mut kernel = Kernel::new(KernelOpts {
         registry,
@@ -597,6 +599,11 @@ fn run() -> Result<i32> {
         if note.starts_with("skipped ") {
             kernel.eval("daw.notify(..., 'warn')", &[note])?;
         }
+    }
+    // The same notes, for the quickfix list's Problems (daw/qf.lua).
+    if scanned > 0 {
+        let notes: Vec<&str> = plugin_notes[..scanned].iter().map(String::as_str).collect();
+        kernel.eval("daw.emit('plugins.scanned', { notes = { ... } })", &notes)?;
     }
 
     let _server = if scripted || args.no_listen {

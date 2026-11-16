@@ -3089,6 +3089,7 @@ command("plugins.rescan", function(ctx)
   local notes = api.plugins_rescan(name)
   if not notes then return daw.notify("plugins are not loaded in this session", "warn") end
   for _, note in ipairs(notes) do daw.api.log("plugin scan: " .. note) end
+  daw.emit("plugins.scanned", { notes = notes, name = name })
   daw.notify(string.format("looked into %s again%s", name and ("plugin files matching “" .. name .. "”") or "every plugin file",
     #notes > 0 and (": " .. #notes .. " could not be used (see the log)") or ""))
 end, { desc = "Look into plugin files again, including ones skipped because they failed: `plugins.rescan`, `plugins.rescan surge`" })

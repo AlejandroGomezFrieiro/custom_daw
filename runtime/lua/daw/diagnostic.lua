@@ -484,6 +484,12 @@ function M.list(target)
   })
 end
 
+--- Put the diagnostics in the quickfix list, as `vim.diagnostic.setqflist`:
+--- `opts` has `target`, `severity` (the least severe), `title`, `open`.
+--- `setloclist` puts them in the current window's location list.
+function M.setqflist(opts) return daw.qf.diagnostics(opts) end
+function M.setloclist(opts) return daw.qf.diagnostics(daw.util.merge(opts or {}, { win = (opts and opts.win) or true })) end
+
 -- Drawing ----------------------------------------------------------------------
 
 local g = function() return daw.draw.g end

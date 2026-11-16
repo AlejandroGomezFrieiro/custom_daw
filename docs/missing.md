@@ -25,6 +25,12 @@
   A view's locator (`daw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
+- The quickfix list: no `:grep` or `:vimgrep` fills it yet (searches and
+  `:g` will, through `daw.qf.set`); `:cfdo` runs once per track, as there
+  are no files; lists are not kept with the project or between runs; a
+  location list stays with its window's number after the window closes.
+  The window shows it in a window of its own (More, `:qf.window`), not
+  docked, and its status bar does not count it.
 
 - Lists edited as text (`daw://tracks` and the others): a track's input,
   MIDI ports, height and automation, a device's side-chain, outputs and
