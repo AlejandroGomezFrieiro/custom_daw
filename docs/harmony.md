@@ -43,7 +43,9 @@ notes and pausing is enough to be offered more.
 | `gh` | hear it through the track, from a bar before, with the notes already there (normal mode) |
 
 Otherwise those keys do what they always do. An edit of the clip, undo, or
-another request dismisses what shows. With `daw.opt.complete_audition` on,
+another request dismisses what shows. Each terminal and window attached to
+an instance has its own suggestion; an edit from any of them dismisses a
+suggestion for that clip in all. With `daw.opt.complete_audition` on,
 every alternative shown is heard that way by itself; the project is never
 changed by hearing one. `:complete`, `:complete.accept` (`next` for the next
 notes only), `:complete.dismiss` and `:complete.audition` do the same as the
