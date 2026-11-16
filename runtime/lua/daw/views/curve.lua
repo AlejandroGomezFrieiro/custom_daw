@@ -269,6 +269,8 @@ local def = layout.buftype("curve", {
     return t and t.name() or buf.target
   end,
   create = function(target) return { uri = target } end,
+  -- The lane or parameter is in the project, or the window has nothing to show.
+  alive = function(buf) return curves.target(buf.target) ~= nil end,
   render = render,
   window = function() return loose end,
   time = {

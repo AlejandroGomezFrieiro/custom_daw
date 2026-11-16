@@ -281,16 +281,20 @@ return function(pick)
   -- Devices ------------------------------------------------------------------------
 
   local typed -- what was typed in the device picker, remembered with the choice
+  local wanted -- the kind of device the track most likely needs, listed first
   S.devices = {
     desc = "Add a device or plugin to the track",
     title = "Add a device",
     -- Favourites first, then the ones used last; `@instrument`, `@clap`,
     -- `@fav` or `@<vendor>` typed filter (see `daw.fx.rank`).
-    items = function() return daw.fx.device_list() end,
+    items = function()
+      wanted = daw.fx.preferred(daw.cursor.track_id())
+      return daw.fx.device_list(wanted)
+    end,
     format = function(info) return daw.fx.device_line(info) end,
     rank = function(info, query, line)
       typed = query
-      return daw.fx.rank(info, query, line)
+      return daw.fx.rank(info, query, line, wanted)
     end,
     on_choose = function(info)
       local track = need_track()
@@ -503,6 +507,7 @@ return function(pick)
     format = function(f) return f.path end,
     on_choose = function(f)
       if f.kind == "project" then
+        if not daw.project.guard("open") then return end
         daw.open(f.path)
         return daw.notify("opened " .. f.path)
       end

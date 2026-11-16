@@ -80,6 +80,7 @@ end
 --- one of them is what ended the session.
 function M.recover(file, opts)
   opts = opts or {}
+  if not daw.project.guard("recover", opts.force) then return end
   api.project_recover(file, opts)
   if not opts.as_path then os.remove(file) end
   copied = nil
@@ -286,6 +287,7 @@ function M.choices()
 end
 
 daw.command("recover", function(ctx)
+  local force = daw.project.discarding()
   local list = M.choices()
   if #list == 0 then return daw.notify("nothing was left behind to recover") end
   local which = tonumber(ctx.args[1])
@@ -293,7 +295,7 @@ daw.command("recover", function(ctx)
     if not list[which] then return daw.notify("there are " .. #list .. " to choose from", "warn") end
     local item = list[which]
     if item.take then return M.import_take(item.file) end
-    return M.recover(item.file, { as_path = item.as_path, plugins_offline = ctx.args[2] == "offline" })
+    return M.recover(item.file, { as_path = item.as_path, plugins_offline = ctx.args[2] == "offline", force = force })
   end
   local items = {}
   for i, item in ipairs(list) do
@@ -308,13 +310,14 @@ daw.command("recover", function(ctx)
   if daw.pick then
     return daw.pick({ title = "Recover", items = items, on_choose = function(item)
       if item.take then return M.import_take(item.file) end
-      M.recover(item.file, { as_path = item.as_path, plugins_offline = item.offline or false })
+      M.recover(item.file, { as_path = item.as_path, plugins_offline = item.offline or false, force = force })
     end })
   end
   local lines = { "Unsaved work and takes that can be brought back. `:recover 1` opens the first, `:recover 1 offline` with every plugin offline.", "" }
   for i, item in ipairs(items) do lines[i + 2] = item.text end
   daw.ui.page("Recover", lines)
 end, { desc = "Open a project that a session which ended badly left unsaved: `recover`, `recover 1`, `recover 1 offline` (plugins offline)" })
+daw.project.allow_discard("recover")
 
 daw.on("startup", function()
   current = M.file()

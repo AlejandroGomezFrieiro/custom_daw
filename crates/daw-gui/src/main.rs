@@ -3359,7 +3359,7 @@ fn run() -> Result<()> {
             if let Some(target) = view.borrow().route_ids.get(at as usize).copied()
                 && target != 0
             {
-                pass("add_send", json!([ui.get_selected(), target, -6.0]))
+                pass("add_send", json!([ui.get_selected(), target]))
             }
         }
     });

@@ -322,6 +322,7 @@ test("pick: files opens projects and imports audio", function()
   eq(clips[1].start, 4, "where the cursor is")
   eq(clips[1].kind, "audio", "as audio")
 
+  daw.project.save(dir .. "/import.json")
   daw.pick.sources.files.on_choose({ path = dir .. "/song.json", kind = "project" })
   eq(daw.tracks()[1].name, "Saved", "a project opens")
 end)

@@ -410,6 +410,19 @@ function M.buf_delete(buf)
   api.ui_redraw()
 end
 
+--- Close the windows of buffers whose target is gone, as when another
+--- project is opened (a window with `daw://lane/9` in it): a type says so
+--- with `alive(buf)`. A window that cannot close, the last one, is left empty.
+function M.drop_dead()
+  local dead = {}
+  for _, buf in pairs(M.buffers) do
+    local def = M.types[buf.type]
+    if def and def.alive and not buf.single and not def.alive(buf) then dead[#dead + 1] = buf end
+  end
+  for _, buf in ipairs(dead) do M.buf_delete(buf) end
+end
+daw.on("project.loaded", function() M.drop_dead() end)
+
 -- Buffer types ----------------------------------------------------------------
 
 --- Make a buffer type. See docs/scripting.md.
