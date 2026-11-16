@@ -415,6 +415,8 @@ local function rendered(info)
 end
 daw.on("render.done", rendered)
 daw.on("render.finished", rendered)
+-- Another project, other renders.
+daw.on("project.loaded", function() M.renders = {} end)
 
 -- Change events --------------------------------------------------------------
 

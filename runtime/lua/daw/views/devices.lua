@@ -87,8 +87,9 @@ function view:render(buf, ctx)
       local room = w - 16 - api.str_width(name) - 6
       if preset and room > 3 then inner:text(4 + api.str_width(name), y, util.fit(preset, room):gsub("%s+$", ""), "Param") end
       -- What modules mark on the device (`daw.ui.layer("devices", "device", ...)`):
-      -- from `x`, `width` columns before its chips.
-      daw.ui.paint("devices", "device", { buf = inner, x = 4 + api.str_width(name), y = y, width = math.max(0, room), device = d.id })
+      -- from `x`, `width` columns up to its on/off chip.
+      local after = 4 + api.str_width(name)
+      daw.ui.paint("devices", "device", { buf = inner, x = after, y = y, width = math.max(0, w - 6 - after), device = d.id })
       -- A device that is not running says so, and what brings it back.
       local status = d.status
       local mark = status == "loading" and { "loading", "Warn" }

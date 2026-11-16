@@ -214,7 +214,7 @@ test("midilsp: in the terminal, a parallel fifth is marked, gone to, explained a
   local roll = daw.ui.views.pianoroll
   midilsp.start(true)
   until_(function() return #daw.diagnostic.get(clip.id, { namespace = "midi-lsp" }) > 0 end, "the engine's diagnostics")
-  until_(function() return #daw.lsp.clients() == 2 and daw.lsp.settle() end, "both roles")
+  until_(function() return running("midi-lsp") and running("midi-lsp-suggest") and daw.lsp.settle() end, "both roles")
   roll:set(74, 0)
   -- The playhead's cap would sit where the mark is.
   daw.transport.seek(20)
