@@ -311,6 +311,8 @@ impl Session {
             );
         }
         let frames = frames as usize;
+        // Stretched clips play versions made apart: wait for those too.
+        self.await_stretches(project, sample_rate, Duration::from_secs(120))?;
         if let Some(level) = opts.normalize
             && (!level.is_finite() || level > 0.0)
         {

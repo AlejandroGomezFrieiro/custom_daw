@@ -732,7 +732,17 @@ command("clip.split", function()
   local at = cursor.beat - c.start
   if at <= 0 or at >= c.length then return end
   local right = { start = cursor.beat, length = c.length - at, name = c.name, kind = c.kind }
-  if c.kind == "midi" then
+  -- The right half plays as the clip does: stretched, shifted, looped.
+  local moved = daw.stretch.carry(c, right, at)
+  if c.kind == "midi" and c.loop then
+    -- Each half of a looped clip repeats the whole loop, from where it begins.
+    right.notes = clip:notes()
+    for _, note in ipairs(right.notes) do note.start = note.start + moved.shift end
+    if c.control_count > 0 then
+      right.controls = clip:controls()
+      for _, control in ipairs(right.controls) do control.start = control.start + moved.shift end
+    end
+  elseif c.kind == "midi" then
     local keep, move = {}, {}
     for _, note in ipairs(clip:notes()) do
       if note.start < at then
@@ -761,14 +771,14 @@ command("clip.split", function()
     end
   else
     right.file, right.gain = c.file, c.gain
-    right.offset = c.offset + daw.time.seconds(at, c.start)
+    right.offset = moved.offset
     -- The fade out goes with the end, which the right half now has.
     right.fade_out = math.min(c.fade_out, right.length)
     clip.fade_out = 0
     clip.fade_in = math.min(c.fade_in, at)
   end
   -- Both halves keep every take, lined up.
-  local takes = daw.takes.piece(c, cursor.beat, c.start + c.length)
+  local takes = daw.takes.piece(c, cursor.beat, c.start + c.length, c.loop and moved.shift)
   if takes then right.meta = { takes = takes } end
   clip.length = at
   clip:track():add_clip(right)
@@ -856,6 +866,78 @@ command("clip.crossfade", function(ctx)
   if overlap <= 0 then return daw.notify("the clips do not meet: move them together first", "warn") end
   clip.fade_out, next_clip.fade_in = overlap, overlap
 end, { desc = "Fade this audio clip into the next one over some beats: `clip.crossfade 1`" })
+-- Stretching, pitch shifting and looping: `daw.stretch`.
+local function stretch_run(f, ...)
+  local ok, err = pcall(f, ...)
+  if not ok then daw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):gsub("^runtime error: ", "")), "warn") end
+  return ok
+end
+command("clip.stretch", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips are stretched", "warn") end
+  local word, to = ctx.args[1], tonumber(ctx.args.to)
+  local ok
+  if to then
+    ok = stretch_run(daw.stretch.to, clip.id, to)
+  elseif word == "selection" or word == "loop" then
+    local from, finish = require("daw.render").ranges[word]()
+    if not from then return daw.notify(finish, "warn") end
+    ok = stretch_run(daw.stretch.fit, clip.id, from, finish)
+  elseif word == "reset" then
+    ok = stretch_run(daw.stretch.reset, clip.id)
+  elseif tonumber(word) then
+    ok = stretch_run(daw.stretch.set, clip.id, tonumber(word))
+  else
+    return daw.ui.input({ prompt = string.format("Stretch %s to (now ×%g): ", clip.name, clip.stretch), label = "Stretch the clip" },
+      function(text) daw.commands.run("clip.stretch", { tonumber(text) or text }) end)
+  end
+  if ok then daw.notify(string.format("%s plays ×%g as long as its file", clip.name, clip.stretch)) end
+end, { desc = "Stretch an audio clip, keeping its pitch: `clip.stretch 1.5` (times as long), `clip.stretch to=8` (beats), `clip.stretch selection`, `clip.stretch loop`, `clip.stretch reset`" })
+command("clip.pitch", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips are shifted: transpose a MIDI clip's notes", "warn") end
+  local semitones = tonumber(ctx.args[1])
+  if not semitones then
+    return daw.ui.input({ prompt = string.format("Shift %s by semitones (now %+g): ", clip.name, clip.pitch), label = "Shift the pitch" },
+      function(text) if tonumber(text) then daw.commands.run("clip.pitch", { tonumber(text) }) end end)
+  end
+  if stretch_run(daw.stretch.pitch, clip.id, semitones) then
+    daw.notify(string.format("%s plays %+g semitones from its file", clip.name, semitones))
+  end
+end, { desc = "Shift an audio clip's pitch by semitones, keeping its length: `clip.pitch 3`, `clip.pitch -0.5`, `clip.pitch 0`" })
+command("clip.tempo", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  local word = ctx.args[1]
+  if word == "off" then
+    stretch_run(daw.stretch.follow, clip.id, false)
+    return daw.notify(clip.name .. " keeps its length in seconds")
+  end
+  if stretch_run(daw.stretch.follow, clip.id, tonumber(word)) then
+    daw.notify(string.format("%s follows the tempo; its sound is at %g BPM", clip.name, clip.source_tempo))
+  end
+end, { desc = "Make an audio clip keep its beats when the tempo changes, stretched to fit: `clip.tempo 120` (its sound's tempo), `clip.tempo` (as it plays now), `clip.tempo off`" })
+command("clip.stretch_mode", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  local mode = ctx.args[1]
+  if mode then stretch_run(function() clip.stretch_mode = mode end) end
+  daw.notify(clip.name .. " is stretched as " .. tostring(clip.stretch_mode))
+end, { desc = "How an audio clip is stretched: `clip.stretch_mode tonal` (held notes), `percussive` (drums, speech), `auto`", complete = { "auto", "tonal", "percussive" } })
+command("clip.loop", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  local word = ctx.args[1]
+  if word == "off" or (word == nil and clip.loop) then
+    stretch_run(daw.stretch.loop, clip.id, false)
+    return daw.notify(clip.name .. " no longer loops")
+  end
+  if stretch_run(daw.stretch.loop, clip.id, true, tonumber(word)) then
+    daw.notify(string.format("%s loops every %g beats: drag its end out to repeat it", clip.name, clip.loop_length))
+  end
+end, { desc = "Loop a clip: dragged longer it repeats what it plays. `clip.loop` turns it on or off, `clip.loop 4` repeats 4 beats, `clip.loop off`" })
 command("clip.edit", function()
   local clip = need_clip()
   if not clip then return end

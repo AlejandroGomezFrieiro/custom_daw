@@ -120,6 +120,7 @@ daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
 daw.takes = require("daw.takes")
+daw.stretch = require("daw.stretch")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
 -- gives text, `daw.json.decode(text)` the value, or nil and the reason.

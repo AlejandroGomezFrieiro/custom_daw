@@ -1050,7 +1050,7 @@ does wherever it is.
 | Where | What the pointer does |
 | --- | --- |
 | Timeline | click puts the cursor and lets go of the chosen clips; double click makes an empty one-bar MIDI clip; drag across empty lanes selects a stretch of time on those tracks (then `Delete`, or right click to delete, copy, loop or mute it); a drag with the right button draws a box that chooses the clips it touches (Shift adds them, Ctrl turns them over); the middle button held pans; right click (on release, where the button was not dragged) for a new clip, paste or a new track |
-| Clip | click chooses it; Ctrl and a click adds it to the chosen clips or takes it out; Shift and a click takes in the clips between it and the last one chosen (on one track by time, across tracks the rectangle). Dragging a chosen clip moves all of them, keeping their places, also across tracks; Ctrl drops copies; they move by whole grid steps, so a clip off the grid keeps its distance from it; Shift leaves the grid. Either edge trims the clip, and the same edge of every chosen clip: the start without moving what plays (an audio clip starts further into its file; a MIDI clip hides the notes before its new start, which come back when the edge is dragged out again); Alt and an edge slips what plays inside instead. On an audio clip the handles at the top corners drag its fades, drawn over it, and its top line drags its gain (Shift finely), which the waveform's height follows. Double click opens its notes; right click to rename, split at the pointer or at the edit cursor, glue the chosen clips, repeat, mute or delete. One gesture is one undo step. Two or more chosen clips are visual mode's selection, so `d`, `x`, `y`, `>`, `gc`, `J` (glue) and the rest act on them, `S` splits them at the cursor, `Esc` lets go; one clip chosen with a click is the clip under the cursor |
+| Clip | click chooses it; Ctrl and a click adds it to the chosen clips or takes it out; Shift and a click takes in the clips between it and the last one chosen (on one track by time, across tracks the rectangle). Dragging a chosen clip moves all of them, keeping their places, also across tracks; Ctrl drops copies; they move by whole grid steps, so a clip off the grid keeps its distance from it; Shift leaves the grid. Either edge trims the clip, and the same edge of every chosen clip: the start without moving what plays (an audio clip starts further into its file; a MIDI clip hides the notes before its new start, which come back when the edge is dragged out again); Alt and an edge slips what plays inside instead; Alt and Shift on the right edge of an audio clip stretches what it plays to end there (see [Stretching and looping clips](#stretching-and-looping-clips)), and a looped clip dragged longer repeats. On an audio clip the handles at the top corners drag its fades, drawn over it, and its top line drags its gain (Shift finely), which the waveform's height follows. Double click opens its notes; right click to rename, split at the pointer or at the edit cursor, glue the chosen clips, repeat, mute, stretch, shift, loop or delete. One gesture is one undo step. Two or more chosen clips are visual mode's selection, so `d`, `x`, `y`, `>`, `gc`, `J` (glue) and the rest act on them, `S` splits them at the cursor, `Esc` lets go; one clip chosen with a click is the clip under the cursor |
 | Ruler | click puts the edit cursor and the playhead; a drag in its top half loops the stretch dragged over (in the bottom half it moves them to where it ends); drag the loop's edges to change it; double click turns the loop on or off. Bars are numbered by the tempo map; a flag marks each tempo change (`96`) and signature change (`6/8`): drag it to move it, double click it to type a value, right click it to remove it |
 | Track header | click selects; double click renames; drag up or down to reorder, into a group when dropped among its tracks or under its header, out of it when dropped outside; drag the bottom edge to make the track taller or shorter (double click it for the height of the others; the height is kept with the track); press M, S or R and sweep across the others to set them all as the first was set; Shift on the fader moves it finely, double click puts it at 0 dB; right click (on release) for a colour, duplicate, bounce to audio, a new track below, delete |
 | Piano roll | the mouse works as in REAPER's MIDI editor. Left button on empty grid: press where a note should start and drag as far as it should last (a click gives the note length shown in the toolbar, which drawing or stretching a note sets). Shift leaves the grid while drawing, moving or stretching; the magnet in the toolbar turns snapping off altogether. A click on a note chooses it, Shift or Ctrl click adds it or takes it out; dragging a note moves it and the others chosen (Ctrl drops copies), dragging either end changes where they all start or stop, and the status line shows the note's name, place and length meanwhile. The right button dragged, or the left with Ctrl, chooses the notes its box touches (Shift adds, Ctrl toggles); a right click removes a note, or on empty grid opens a menu (choose all, let go, delete, quantize, snap); a double click removes a note; Alt and a drag erases every note crossed. The keyboard sounds a key under a click or a drag, and a right drag over it chooses the notes in that range of pitches. The wheel scrolls, with Shift sideways; Ctrl and the wheel zoom in time and Alt the rows, where the pointer is; the middle button pans. `Ctrl-a` (in the window), `gA` chooses every note, `x` or `Delete` removes the chosen, `Esc` lets go. The strip underneath shows velocities, set by dragging across the bars (only the chosen notes, if any are chosen), or a controller chosen from its dropdown (pitch wheel, modulation, expression, pedal), drawn with the pointer held down and cleared with a right click. The toolbar holds the clip, the grid, snap, the note length, Quantize (`:notes.quantize`, the chosen notes or all), Step (`:notes.step_input`: with the transport stopped, notes played on a MIDI keyboard are entered at the cursor, chords together, and the cursor steps on), zoom, a window of its own and close. It also says how many notes are chosen and where. The ruler counts bars and beats; a click there moves the playhead. Notes of the track's other clips that sound at the same time show faintly behind |
@@ -1231,8 +1231,10 @@ stretches nor cuts a recording, and its end beat follows from the map. What
 an audio clip keeps of its start is its `timebase`: `"time"` (the default,
 as REAPER's audio items) keeps its start at the same second, so the clip
 moves in beats when the tempo before it changes; `"beats"` keeps it on its
-beat (`clip.timebase = "beats"`). MIDI clips and automation stay on their
-beats.
+beat (`clip.timebase = "beats"`); `"stretch"` keeps its start and its
+length on their beats, stretching its sound to fit (see
+[Stretching and looping clips](#stretching-and-looping-clips)). MIDI clips
+and automation stay on their beats.
 
 **Groups of tracks.** `daw.groups.make({ violins, violas, cellos }, "Strings")`
 (`:track.group Strings` on the selected tracks, `,g`) makes a group: a track
@@ -1507,6 +1509,91 @@ In scripts: `daw.takes.count(clip)`, `daw.takes.select(clip, n)`,
 that are not playing count as the project's files, are moved into `media`
 when it is first saved, and are found again when they go missing.
 
+## Stretching and looping clips
+
+An audio clip can play its file longer or shorter without changing its
+pitch, higher or lower without changing its length, and in time with the
+tempo whatever it is; any clip can loop. Each is a field of the clip,
+saved with the project, copied, pasted, cut and undone with it.
+
+| Command | |
+| --- | --- |
+| `:clip.stretch 1.5` | play the file 1.5 times as long (2 is half speed); the clip grows with it |
+| `:clip.stretch to=8` | stretch what the clip plays to last 8 beats |
+| `:clip.stretch selection`, `:clip.stretch loop` | stretch it over the time selection, or the loop |
+| `:clip.stretch reset` | play the file at its own speed again |
+| `:clip.pitch 3`, `:clip.pitch -0.5` | play it 3 semitones higher, or a quarter tone lower, at the same length |
+| `:clip.tempo`, `:clip.tempo 100`, `:clip.tempo off` | follow the tempo: keep its beats when the tempo changes, its sound being at the tempo it plays at now, or at 100 BPM; or keep its seconds again |
+| `:clip.stretch_mode tonal` | how it is stretched: `tonal`, `percussive` or `auto` |
+| `:clip.loop`, `:clip.loop 4`, `:clip.loop off` | loop the clip (on and off), repeating 4 beats, or stop |
+
+In the window, drag the right edge of an audio clip with Alt and Shift held
+to stretch it to there (on the grid); the clip's menu has "Stretch and
+loop" with the rest. A stretched clip says so before its name, in both
+frontends: `×1.5`, `+3st`, `♩` (following the tempo), `⟳` (looping), and
+`stretching…` while its sound is being made.
+
+**Stretching.** The fields are `clip.stretch` (the ratio, 0.25 to 4),
+`clip.pitch` (semitones, fractions allowed, up to 24 either way) and
+`clip.stretch_mode`. A stretched or shifted clip does not stretch as it
+plays: its file is stretched once, on a thread of its own, and the engine
+plays the result as it plays any file. It is made a moment after the last
+change (a drag makes it once, when the edge is let go), kept by file,
+ratio, shift, mode and sample rate, in the media cache when it is large,
+and found there again in later runs. Until it is ready the clip is silent;
+a render waits for it. `clip.offset` stays in seconds of the file, so a
+second of a clip stretched by 2 is half a second of its file.
+
+There are two ways of stretching, both written for this program in Rust
+(`crates/daw-core/src/stretch.rs`). `tonal` is a phase vocoder with
+identity phase locking that starts its phases afresh at each onset: for
+held and melodic sound, at any ratio. `percussive` overlaps pieces of the
+file at its own speed (WSOLA), each placed where it carries on best from
+the last, and plays each onset once, whole, where it belongs: for drums and
+speech. `auto`, the default, takes a sound with two onsets a second or more
+for percussive. Both keep the two channels one image. A pitch shift is a
+stretch followed by a resampling, so formants move with the pitch.
+
+**Following the tempo.** A clip in the `stretch` timebase (`:clip.tempo`,
+or `clip.timebase = "stretch"`) keeps its start and its length on their
+beats when the tempo changes: its stretch changes so that it fits, and its
+pitch stays. `clip.source_tempo` is its sound's own tempo: set when the
+timebase is turned on (the tempo at its start, times its stretch), by hand
+(`:clip.tempo 100` makes a loop recorded at 100 BPM play at the song's
+tempo), and by recording, which notes the tempo a take was made at on every
+clip it makes.
+
+**Looping.** A looped clip (`clip.loop`) repeats `clip.loop_length` beats of
+what it plays over its whole length: drag its end out and the content comes
+round again, a notch marking each repeat in both frontends. The length is
+by default, when looping is turned on, the clip's length for MIDI and the
+rest of its file from where it starts for sound; when it loops, an audio
+clip's repeat is measured in seconds at its start, as its sound is.
+`clip.loop_start` (0 or less) is where the repeated stretch begins, from
+the clip's start. With a loop:
+
+- the repeats are sample for sample the same: audio is played again from
+  the same file, a fade of a few milliseconds put at the seams only where
+  the sound does not run on into its own start; MIDI notes are played again,
+  each cut at the end of its repeat;
+- trimming the start turns the loop round instead of running out of file:
+  what is left plays where it did, and dragging the start out again brings
+  earlier repeats back; Alt and an edge slips the pattern round inside the
+  clip;
+- a cut gives both pieces the whole loop, each from where it begins, so the
+  pieces sound as the clip did (a cut through sound is faded out and in over
+  3 ms, as any cut is);
+- a fade in belongs to the first repeat and a fade out to the last, each no
+  longer than its repeat;
+- takes: the playing take's files and the others' are all played through
+  the clip's stretch and loop; looped clips are not joined by a comp.
+
+In scripts: `daw.stretch.set(clip, 1.5)`, `daw.stretch.to(clip, 8)`,
+`daw.stretch.fit(clip, from, to)`, `daw.stretch.reset(clip)`,
+`daw.stretch.pitch(clip, 3)`, `daw.stretch.follow(clip, bpm)`,
+`daw.stretch.loop(clip, true, 4)`, or the fields themselves
+(`clip.stretch = 2` changes the ratio without changing the clip's length).
+
 ## Markers and regions
 
 A marker is a named place in the song; a region is a named stretch. They
@@ -1557,9 +1644,14 @@ port a message came through is not told apart. In scripts:
 
 ## What is missing
 
-- Time stretching, clips that loop, and a tempo lane to draw the tempo as
-  a curve (tempo changes are set by command, by script and on the window's
-  ruler).
+- A tempo lane to draw the tempo as a curve (tempo changes are set by
+  command, by script and on the window's ruler).
+- In stretching: formants are not kept, so a voice shifted far sounds
+  smaller or larger; ratios are 0.25 to 4 and shifts 24 semitones either
+  way; a clip following the tempo is stretched evenly over its length, not
+  bent along a ramp inside it; a stretch is made whole before it plays,
+  so a long file takes a few seconds and is silent meanwhile; no warp
+  markers to stretch parts of a clip by different amounts.
 - Side-chain inputs and plugins with more than one stereo pair in or out.
 - Punch recording between two points, and a count-in.
 - Takes drawn as lanes under a clip, to comp by swiping across them: takes

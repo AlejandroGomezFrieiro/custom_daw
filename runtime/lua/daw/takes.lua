@@ -207,19 +207,25 @@ end
 --- the timeline: what a cut gives each side. Sound keeps its entries as
 --- they are (the piece's own offset says where it is in them); notes are
 --- those of the stretch, counted from the piece's start. Nil for a clip
---- without takes.
-function M.piece(c, from, to)
+--- without takes. The notes of a looped clip all go with every piece,
+--- moved by `shift` as the piece's own are (see `daw.stretch.moved`).
+function M.piece(c, from, to, shift)
   local takes = M.of(c)
   if not takes then return nil end
   if c.kind == "audio" then return takes end
   local a, b = from - c.start, to - c.start
+  if shift then a, b = -shift, math.huge end
   local list = {}
   for i, entry in ipairs(takes.list) do
     local e = copy(entry)
     if entry.notes then
       e.notes = {}
       for _, n in ipairs(entry.notes) do
-        if n.start >= a - EPS and n.start < b - EPS then
+        if shift then
+          local note = copy(n)
+          note.start = n.start + shift
+          e.notes[#e.notes + 1] = note
+        elseif n.start >= a - EPS and n.start < b - EPS then
           local note = copy(n)
           note.start, note.length = n.start - a, math.min(n.length, b - n.start)
           e.notes[#e.notes + 1] = note
@@ -229,7 +235,7 @@ function M.piece(c, from, to)
     if entry.controls then
       e.controls = {}
       for _, move in ipairs(entry.controls) do
-        if move.start >= a - EPS and move.start < b - EPS then
+        if shift or (move.start >= a - EPS and move.start < b - EPS) then
           local m = copy(move)
           m.start = move.start - a
           e.controls[#e.controls + 1] = m
@@ -319,6 +325,7 @@ local function continues(a, b)
     if ta.list[i].name ~= tb.list[i].name then return false end
   end
   if a.kind == "midi" then
+    if a.loop or b.loop then return false end
     if not (within(api.clip_notes(a.id), a.length) and within(api.clip_notes(b.id), b.length)) then return false end
     for i = 1, #ta.list do
       if not (within(ta.list[i].notes, a.length) and within(tb.list[i].notes, b.length)) then return false end
@@ -326,7 +333,8 @@ local function continues(a, b)
     return true
   end
   if (a.fade_out or 0) > EPS or (b.fade_in or 0) > EPS then return false end
-  local seconds = daw.time.seconds(a.length, a.start)
+  if a.loop or b.loop or a.stretch ~= b.stretch or a.pitch ~= b.pitch then return false end
+  local seconds = daw.stretch.file_seconds(a, a.length)
   for i = 1, #ta.list do
     local x, y = M.content(a, i), M.content(b, i)
     if x.file ~= y.file or math.abs((x.gain or 0) - (y.gain or 0)) > 1e-9 then return false end

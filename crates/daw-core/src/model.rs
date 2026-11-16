@@ -298,6 +298,33 @@ pub struct Clip {
     /// `None` is [`Timebase::Time`]. MIDI clips follow beats.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timebase: Option<Timebase>,
+    /// How many times as long as its file an audio clip plays it, at the
+    /// file's pitch: 2 is half speed. 1 plays the file as it is.
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub stretch: f64,
+    /// Semitones an audio clip plays higher than its file (lower below
+    /// 0), at the same length.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pitch: f64,
+    /// How an audio clip is stretched or shifted (see `stretch.rs`).
+    #[serde(default, skip_serializing_if = "is_auto")]
+    pub stretch_mode: StretchMode,
+    /// The tempo an audio clip's sound is at as it is stretched now, which
+    /// a clip in [`Timebase::Stretch`] follows: at this tempo it plays at
+    /// `stretch`. Recordings know theirs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_tempo: Option<f64>,
+    /// The clip repeats what it plays from `loop_start` for `loop_length`
+    /// beats, over its whole length.
+    #[serde(default, rename = "loop", skip_serializing_if = "is_false")]
+    pub looped: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_length: Option<f64>,
+    /// Beats from the clip's start to where the repeated stretch begins: 0,
+    /// or less once the start has been trimmed (more than a repeat back is
+    /// a repeat less back).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub loop_start: f64,
     #[serde(default)]
     pub meta: Map<String, Value>,
 }
@@ -314,6 +341,37 @@ pub enum Timebase {
     Time,
     /// Its start stays on its beat.
     Beats,
+    /// Its start and its length stay on their beats: the sound is
+    /// stretched to fit, from the tempo it is at (`source_tempo`).
+    Stretch,
+}
+
+pub use crate::stretch::Mode as StretchMode;
+
+fn one() -> f64 {
+    1.0
+}
+
+fn is_one(value: &f64) -> bool {
+    *value == 1.0
+}
+
+fn is_auto(mode: &StretchMode) -> bool {
+    *mode == StretchMode::Auto
+}
+
+impl Clip {
+    /// Whether what an audio clip plays is made apart, stretched or shifted.
+    pub fn is_stretched(&self) -> bool {
+        matches!(self.content, ClipContent::Audio { .. })
+            && (self.stretch != 1.0 || self.pitch != 0.0)
+    }
+
+    /// The beats a looped clip repeats, if it loops.
+    pub fn repeat(&self) -> Option<(f64, f64)> {
+        let length = self.loop_length.filter(|l| *l > 0.0)?;
+        self.looped.then_some((self.loop_start, length))
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -750,11 +808,22 @@ impl Project {
             for clip in Arc::make_mut(track).clips.iter_mut().filter(|c| audio(c)) {
                 let s0 = old.seconds(clip.start);
                 let s1 = old.seconds(clip.start + clip.length);
+                if clip.timebase == Some(Timebase::Stretch) {
+                    // Everything stays on its beats; the sound is stretched
+                    // as much more as the clip now lasts longer.
+                    let now = map.seconds_between(clip.start, clip.start + clip.length);
+                    let (lo, hi) = crate::stretch::RATIO_RANGE;
+                    let stretch = (clip.stretch * now / (s1 - s0)).clamp(lo, hi);
+                    if (stretch - clip.stretch).abs() > 1e-12 {
+                        Arc::make_mut(clip).stretch = stretch;
+                    }
+                    continue;
+                }
                 let fade_in = old.seconds(clip.start + clip.fade_in) - s0;
                 let fade_out = s1 - old.seconds(clip.start + clip.length - clip.fade_out);
                 let start = match clip.timebase.unwrap_or_default() {
                     Timebase::Time => map.beat(s0).max(0.0),
-                    Timebase::Beats => clip.start,
+                    Timebase::Beats | Timebase::Stretch => clip.start,
                 };
                 let n0 = map.seconds(start);
                 let end = map.beat(n0 + (s1 - s0));
@@ -778,8 +847,17 @@ impl Project {
                     && same(moved.2, clip.fade_in)
                     && same(moved.3, clip.fade_out))
                 {
+                    // What repeats keeps its length in seconds as the sound does.
+                    let repeat = clip.loop_length.map(|beats| {
+                        let seconds = old.seconds_between(clip.start, clip.start + beats);
+                        (map.beat(n0 + seconds) - start, beats)
+                    });
                     let c = Arc::make_mut(clip);
                     (c.start, c.length, c.fade_in, c.fade_out) = moved;
+                    if let Some((length, beats)) = repeat {
+                        c.loop_start *= length / beats;
+                        c.loop_length = Some(length);
+                    }
                 }
             }
         }
@@ -913,8 +991,21 @@ impl Project {
                             bail!("audio clip {} has offset {offset}", c.id);
                         }
                         range(&format!("the gain of clip {}", c.id), *gain, -120.0, 24.0)?;
+                        let (lo, hi) = crate::stretch::RATIO_RANGE;
+                        range(&format!("the stretch of clip {}", c.id), c.stretch, lo, hi)?;
+                        let most = crate::stretch::PITCH_RANGE;
+                        range(&format!("the pitch of clip {}", c.id), c.pitch, -most, most)?;
+                        if let Some(bpm) = c.source_tempo {
+                            range(&format!("the tempo of clip {}", c.id), bpm, 1.0, 999.0)?;
+                        }
                     }
                 }
+                if let Some(length) = c.loop_length {
+                    let what = format!("the loop length of clip {}", c.id);
+                    range(&what, length, 1e-6, 1e9)?;
+                }
+                let what = format!("the loop start of clip {}", c.id);
+                range(&what, c.loop_start, -1e9, 1e9)?;
             }
             for l in &t.lanes {
                 if l.points

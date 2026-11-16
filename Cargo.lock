@@ -968,6 +968,7 @@ dependencies = [
  "include_dir",
  "libc",
  "mlua",
+ "realfft",
  "rtrb",
  "rubato",
  "serde",

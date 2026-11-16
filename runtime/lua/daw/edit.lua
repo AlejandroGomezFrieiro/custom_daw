@@ -37,16 +37,26 @@ local function piece(c, notes, from, to)
   local a, b = math.max(c.start, from), math.min(c.start + c.length, to)
   if b - a <= EPS then return nil end
   local snap = { name = c.name, start = a, length = b - a, kind = c.kind, muted = c.muted }
+  -- It plays as the clip does: stretched, shifted, looped from where it begins.
+  local moved = daw.stretch.carry(c, snap, a - c.start)
   -- What extensions keep with a clip describes the whole of it, so it goes
   -- with a whole copy and not with a part.
   if a - c.start < EPS and c.start + c.length - b < EPS and c.meta and next(c.meta) then
     snap.meta = c.meta
   else
     -- Its takes are another matter: every piece keeps them, lined up.
-    local takes = daw.takes.piece(c, a, b)
+    local takes = daw.takes.piece(c, a, b, c.loop and moved.shift)
     if takes then snap.meta = { takes = takes } end
   end
-  if c.kind == "midi" then
+  if c.kind == "midi" and c.loop then
+    -- A looped piece keeps everything it repeats, wherever it begins.
+    snap.notes = {}
+    for i, n in ipairs(notes) do snap.notes[i] = util.merge(n, { start = n.start + moved.shift }) end
+    for _, move in ipairs(c.control_count > 0 and api.clip_controls(c.id) or {}) do
+      snap.controls = snap.controls or {}
+      snap.controls[#snap.controls + 1] = util.merge(move, { start = move.start + moved.shift })
+    end
+  elseif c.kind == "midi" then
     snap.notes = {}
     for _, n in ipairs(notes) do
       local start = c.start + n.start
@@ -64,7 +74,7 @@ local function piece(c, notes, from, to)
     end
   else
     snap.file, snap.gain = c.file, c.gain
-    snap.offset = c.offset + daw.time.seconds(a - c.start, c.start)
+    snap.offset = moved.offset
     -- A fade stays with the edge it belongs to; a new edge gets none.
     snap.fade_in = a - c.start < EPS and math.min(c.fade_in, b - a) or 0
     snap.fade_out = c.start + c.length - b < EPS and math.min(c.fade_out, b - a) or 0
@@ -106,6 +116,7 @@ function A.clear(track, from, to, only)
       else
         api.clip_set(c.id, "start", keep.start)
         api.clip_set(c.id, "length", keep.length)
+        if keep.loop_start then api.clip_set(c.id, "loop_start", keep.loop_start) end
         if notes then
           api.clip_set_notes(c.id, keep.notes)
           if c.control_count > 0 then api.clip_set_controls(c.id, keep.controls or {}) end

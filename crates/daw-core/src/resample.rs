@@ -21,7 +21,7 @@ pub fn convert(data: &AudioData, rate: u32) -> anyhow::Result<AudioData> {
 
 /// As [`convert`], with the result kept where `sink` keeps it: on the disk
 /// when it is large.
-pub fn convert_into(data: &AudioData, rate: u32, mut sink: Sink) -> anyhow::Result<AudioData> {
+pub fn convert_into(data: &AudioData, rate: u32, sink: Sink) -> anyhow::Result<AudioData> {
     if data.sample_rate == rate {
         return Ok(AudioData {
             sample_rate: rate,
@@ -29,60 +29,111 @@ pub fn convert_into(data: &AudioData, rate: u32, mut sink: Sink) -> anyhow::Resu
         });
     }
     let ratio = rate as f64 / data.sample_rate as f64;
-    let params = SincInterpolationParameters {
-        sinc_len: 256,
-        // The passband reaches 95% of the lower rate's Nyquist frequency:
-        // 20.9 kHz going to 44.1 kHz.
-        f_cutoff: 0.95,
-        interpolation: SincInterpolationType::Cubic,
-        oversampling_factor: 256,
-        window: WindowFunction::BlackmanHarris2,
-    };
-    let mut resampler = SincFixedIn::<f32>::new(ratio, 1.0, params, CHUNK, 2)
-        .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
     let frames = data.frames();
     let wanted = (frames as f64 * ratio).round() as usize;
-    sink.reserve(wanted);
-    // No more than `wanted` frames go out, however many the filter makes.
-    let put = |sink: &mut Sink, buffer: &[Vec<f32>], made: usize| {
-        let take = made.min(wanted - sink.frames());
-        sink.push(&buffer[0][..take], Some(&buffer[1][..take]))
-    };
-    let mut buffer = resampler.output_buffer_allocate(true);
+    let mut stream = Stream::new(ratio, rate, wanted, sink)?;
     let mut at = 0;
-    while at + CHUNK <= frames {
-        let input = [
-            &data.channels[0][at..at + CHUNK],
-            &data.channels[1][at..at + CHUNK],
-        ];
-        let (_, made) = resampler
-            .process_into_buffer(&input, &mut buffer, None)
-            .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
-        put(&mut sink, &buffer, made)?;
-        at += CHUNK;
+    while at < frames {
+        let to = (at + CHUNK).min(frames);
+        stream.push(&data.channels[0][at..to], &data.channels[1][at..to])?;
+        at = to;
     }
-    // The rest, then silence until what is still in the filter has come out.
-    let rest = [&data.channels[0][at..], &data.channels[1][at..]];
-    let (_, made) = resampler
-        .process_partial_into_buffer(Some(&rest), &mut buffer, None)
-        .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
-    put(&mut sink, &buffer, made)?;
-    // The resampler lines its output up with its input itself: what comes
-    // out first is the first frame (the tests check a click's place).
-    while sink.frames() < wanted {
-        let (_, made) = resampler
-            .process_partial_into_buffer(None::<&[&[f32]]>, &mut buffer, None)
+    stream.finish()
+}
+
+/// Sound resampled as it comes: `ratio` frames out for each frame in,
+/// `wanted` frames in all, kept where the sink keeps them. A pitch shift
+/// plays a stretched sound back this way, faster or slower.
+pub struct Stream {
+    resampler: SincFixedIn<f32>,
+    buffer: Vec<Vec<f32>>,
+    /// Frames taken that are not yet a whole chunk.
+    pending: [Vec<f32>; 2],
+    wanted: usize,
+    rate: u32,
+    sink: Sink,
+}
+
+impl Stream {
+    /// `rate` is the rate the result is said to have.
+    pub fn new(ratio: f64, rate: u32, wanted: usize, mut sink: Sink) -> anyhow::Result<Self> {
+        let params = SincInterpolationParameters {
+            sinc_len: 256,
+            // The passband reaches 95% of the lower rate's Nyquist frequency:
+            // 20.9 kHz going to 44.1 kHz.
+            f_cutoff: 0.95,
+            interpolation: SincInterpolationType::Cubic,
+            oversampling_factor: 256,
+            window: WindowFunction::BlackmanHarris2,
+        };
+        let resampler = SincFixedIn::<f32>::new(ratio, 1.0, params, CHUNK, 2)
             .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
-        if made == 0 {
-            break;
+        sink.reserve(wanted);
+        let buffer = resampler.output_buffer_allocate(true);
+        Ok(Self {
+            resampler,
+            buffer,
+            pending: [Vec::with_capacity(CHUNK), Vec::with_capacity(CHUNK)],
+            wanted,
+            rate,
+            sink,
+        })
+    }
+
+    /// No more than `wanted` frames go out, however many the filter makes.
+    fn put(&mut self, made: usize) -> anyhow::Result<()> {
+        let take = made.min(self.wanted - self.sink.frames());
+        self.sink
+            .push(&self.buffer[0][..take], Some(&self.buffer[1][..take]))
+    }
+
+    pub fn push(&mut self, mut left: &[f32], mut right: &[f32]) -> anyhow::Result<()> {
+        while !left.is_empty() {
+            let room = CHUNK - self.pending[0].len();
+            let n = room.min(left.len());
+            self.pending[0].extend_from_slice(&left[..n]);
+            self.pending[1].extend_from_slice(&right[..n]);
+            (left, right) = (&left[n..], &right[n..]);
+            if self.pending[0].len() == CHUNK {
+                let input = [&self.pending[0][..], &self.pending[1][..]];
+                let (_, made) = self
+                    .resampler
+                    .process_into_buffer(&input, &mut self.buffer, None)
+                    .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+                self.pending[0].clear();
+                self.pending[1].clear();
+                self.put(made)?;
+            }
         }
-        put(&mut sink, &buffer, made)?;
+        Ok(())
     }
-    if sink.frames() < wanted {
-        let silence = vec![0.0; wanted - sink.frames()];
-        sink.push(&silence, Some(&silence))?;
+
+    /// The rest, then silence until what is still in the filter has come out.
+    pub fn finish(mut self) -> anyhow::Result<AudioData> {
+        let rest = [&self.pending[0][..], &self.pending[1][..]];
+        let (_, made) = self
+            .resampler
+            .process_partial_into_buffer(Some(&rest), &mut self.buffer, None)
+            .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+        self.put(made)?;
+        // The resampler lines its output up with its input itself: what comes
+        // out first is the first frame (the tests check a click's place).
+        while self.sink.frames() < self.wanted {
+            let (_, made) = self
+                .resampler
+                .process_partial_into_buffer(None::<&[&[f32]]>, &mut self.buffer, None)
+                .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+            if made == 0 {
+                break;
+            }
+            self.put(made)?;
+        }
+        if self.sink.frames() < self.wanted {
+            let silence = vec![0.0; self.wanted - self.sink.frames()];
+            self.sink.push(&silence, Some(&silence))?;
+        }
+        self.sink.finish(self.rate)
     }
-    sink.finish(rate)
 }
 
 #[cfg(test)]

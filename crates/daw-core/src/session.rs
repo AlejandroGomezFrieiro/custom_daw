@@ -23,7 +23,7 @@ use serde_json::{Map, Value, json};
 use crate::history::{self, History};
 use crate::model::{
     Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Send,
-    Target, Track, parse_input,
+    StretchMode, Target, Timebase, Track, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
@@ -31,6 +31,7 @@ mod clipops;
 mod keep;
 mod loading;
 pub mod media;
+mod stretching;
 pub use loading::OpenOpts;
 pub mod notes;
 pub mod offline;
@@ -201,6 +202,17 @@ pub struct ClipOpts {
     /// Controller moves of a MIDI clip.
     pub controls: Vec<Control>,
     pub meta: Map<String, Value>,
+    /// How it plays, as the clip's fields of these names have it: an
+    /// audio clip's timebase, stretch and pitch, and looping.
+    pub timebase: Option<Timebase>,
+    pub stretch: Option<f64>,
+    pub pitch: f64,
+    pub stretch_mode: StretchMode,
+    pub source_tempo: Option<f64>,
+    #[serde(rename = "loop")]
+    pub looped: bool,
+    pub loop_length: Option<f64>,
+    pub loop_start: f64,
 }
 
 #[derive(Default, Deserialize)]
@@ -1379,6 +1391,7 @@ impl Session {
         }
         self.render_poll();
         self.poll_loads();
+        self.poll_stretches();
         self.watch_devices();
         let mut changed: Vec<(Id, Vec<String>)> = Vec::new();
         // What was moved in a plugin's own window, for writing automation.
@@ -1596,7 +1609,10 @@ impl Session {
             .project
             .find_clip(id)
             .with_context(|| format!("no clip {id}"))?;
-        Ok(clip_json(self.project.clip(id).unwrap(), track))
+        let clip = self.project.clip(id).unwrap();
+        let mut view = clip_json(clip, track);
+        self.note_stretching(clip, &mut view);
+        Ok(view)
     }
 
     /// The clips on a track, in timeline order, without their notes.
@@ -1608,7 +1624,14 @@ impl Session {
         let mut clips: Vec<&Arc<Clip>> = t.clips.iter().collect();
         clips.sort_by(|a, b| a.start.total_cmp(&b.start));
         Ok(Value::Array(
-            clips.into_iter().map(|c| clip_json(c, track)).collect(),
+            clips
+                .into_iter()
+                .map(|c| {
+                    let mut view = clip_json(c, track);
+                    self.note_stretching(c, &mut view);
+                    view
+                })
+                .collect(),
         ))
     }
 
@@ -1647,7 +1670,7 @@ impl Session {
                 let file = std::path::absolute(&file).unwrap_or(file);
                 let data = self.audio.load(&file)?;
                 // Its whole file from where it starts, in time.
-                let seconds = (data.seconds() - opts.offset).max(0.0);
+                let seconds = (data.seconds() - opts.offset).max(0.0) * opts.stretch.unwrap_or(1.0);
                 let natural = tempo.beat(tempo.seconds(opts.start) + seconds) - opts.start;
                 let name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
                 let content = ClipContent::Audio {
@@ -1668,13 +1691,27 @@ impl Session {
         if kind == "midi" && (opts.fade_in > 0.0 || opts.fade_out > 0.0) {
             bail!("only audio clips fade");
         }
+        let stretch = opts.stretch.unwrap_or(1.0);
+        stretching::check_playing(kind, stretch, opts.pitch, opts.source_tempo)?;
+        if opts.loop_length.is_some_and(|l| !l.is_finite() || l <= 0.0)
+            || !opts.loop_start.is_finite()
+        {
+            bail!("a clip's loop is a length above 0 from a start");
+        }
         let id = self.new_id();
         self.edit(|p| {
             let t = p
                 .track_mut(track)
                 .with_context(|| format!("no track {track}"))?;
             t.clips.push(Arc::new(Clip {
-                timebase: None,
+                timebase: opts.timebase.filter(|_| kind == "audio"),
+                stretch,
+                pitch: opts.pitch,
+                stretch_mode: opts.stretch_mode,
+                source_tempo: opts.source_tempo.filter(|_| kind == "audio"),
+                looped: opts.looped && opts.loop_length.is_some(),
+                loop_length: opts.loop_length,
+                loop_start: opts.loop_start,
                 id,
                 name: opts.name.unwrap_or(default_name),
                 start: opts.start,
@@ -1699,19 +1736,16 @@ impl Session {
         let clip = self
             .project
             .clip(id)
-            .with_context(|| format!("no clip {id}"))?;
-        let ClipContent::Audio { file, offset, gain } = &clip.content else {
+            .with_context(|| format!("no clip {id}"))?
+            .clone();
+        let ClipContent::Audio { gain, .. } = &clip.content else {
             bail!(
                 "clip {id} is a {} clip; only audio clips have a waveform",
                 clip.content.kind()
             );
         };
-        let seconds = self
-            .project
-            .tempo_map()
-            .seconds_between(clip.start, clip.start + clip.length);
-        let peaks = self.audio.peaks(file, *offset, seconds, n)?;
         let gain = daw_engine::db_to_gain(*gain);
+        let peaks = self.playing_peaks(&clip, n)?;
         Ok(peaks
             .iter()
             .map(|[lo, hi, rms]| [lo * gain, hi * gain, rms * gain])
@@ -1748,10 +1782,11 @@ impl Session {
         let ClipContent::Audio { file, offset, .. } = &clip.content else {
             bail!("clip {id} is not an audio clip");
         };
-        let (file, offset, start) = (file.clone(), *offset, clip.start);
+        let (file, offset, start, stretch) = (file.clone(), *offset, clip.start, clip.stretch);
         let data = self.audio.load(&file)?;
         let map = self.project.tempo_map();
-        Ok(map.beat(map.seconds(start) + (data.seconds() - offset).max(0.0)) - start)
+        let seconds = (data.seconds() - offset).max(0.0) * stretch;
+        Ok(map.beat(map.seconds(start) + seconds) - start)
     }
 
     pub fn clip_remove(&mut self, id: Id) -> Result<()> {
@@ -1774,6 +1809,9 @@ impl Session {
             }
             _ => None,
         };
+        if let Some(done) = self.clip_set_playing(id, key, &value) {
+            return done;
+        }
         self.edit(|p| {
             let (from, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
             if key == "track" {
@@ -1808,7 +1846,6 @@ impl Session {
                     *gain = de::<f64>(key, value)?.clamp(-120.0, 24.0)
                 }
                 ("fade_in", ClipContent::Audio { .. }) => c.fade_in = check_fade(de(key, value)?)?,
-                ("timebase", ClipContent::Audio { .. }) => c.timebase = Some(de(key, value)?),
                 ("fade_out", ClipContent::Audio { .. }) => {
                     c.fade_out = check_fade(de(key, value)?)?
                 }
@@ -2625,6 +2662,7 @@ impl Session {
                 length: punched.then_some(pass.end - pass.start),
                 file: Some(path.to_path_buf()),
                 offset: latency + pass.seconds,
+                source_tempo: Some(self.project.tempo_map().tempo(pass.start)),
                 ..ClipOpts::default()
             };
             return self.clip_add(track, opts).map(|_| ());
@@ -2661,6 +2699,7 @@ impl Session {
                 length: Some(loop_start - first.start),
                 file: Some(path.to_path_buf()),
                 offset: latency,
+                source_tempo: Some(map.tempo(first.start)),
                 ..ClipOpts::default()
             };
             self.clip_add(track, opts)?;
@@ -2673,6 +2712,7 @@ impl Session {
                     length: Some(loop_end - first.start),
                     file: Some(path.to_path_buf()),
                     offset: latency,
+                    source_tempo: Some(map.tempo(first.start)),
                     ..ClipOpts::default()
                 };
                 self.clip_add(track, opts)?;
@@ -2717,6 +2757,7 @@ impl Session {
             file: Some(path.to_path_buf()),
             offset: kept[kept.len() - 1].1,
             meta,
+            source_tempo: Some(map.tempo(loop_start)),
             ..ClipOpts::default()
         };
         self.clip_add(track, opts).map(|_| ())
@@ -3643,7 +3684,18 @@ fn clip_json(c: &Clip, track: Id) -> Value {
             v["fade_in"] = json!(c.fade_in);
             v["fade_out"] = json!(c.fade_out);
             v["timebase"] = json!(c.timebase.unwrap_or_default());
+            v["stretch"] = json!(c.stretch);
+            v["pitch"] = json!(c.pitch);
+            v["stretch_mode"] = json!(c.stretch_mode);
+            if let Some(bpm) = c.source_tempo {
+                v["source_tempo"] = json!(bpm);
+            }
         }
+    }
+    v["loop"] = json!(c.looped);
+    v["loop_start"] = json!(c.loop_start);
+    if let Some(beats) = c.loop_length {
+        v["loop_length"] = json!(beats);
     }
     v
 }
