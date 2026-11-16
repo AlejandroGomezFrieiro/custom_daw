@@ -170,8 +170,8 @@ do
 end
 
 --- Render every region to a file of its own in `dir`, named after it:
---- `01 Intro.wav`. `opts` is as for `daw.render`, plus `format` ("wav" or
---- "flac"). Returns the files.
+--- `01 Intro.wav`. `opts` is as for `daw.render`, plus `format` ("wav",
+--- "flac", "mp3", "ogg" or "opus"). Returns the files.
 function M.render_regions(dir, opts)
   opts = opts or {}
   local regions = M.regions()
@@ -335,7 +335,7 @@ daw.command("render.regions", function(ctx)
   opts.background = api.ui_attached() or nil
   local files = M.render_regions(dir, opts)
   daw.notify(string.format("rendering %d region%s into %s", #files, #files == 1 and "" or "s", dir))
-end, { desc = "Render every region to a file of its own: `render.regions out`, `render.regions out format=flac bits=24`" })
+end, { desc = "Render every region to a file of its own: `render.regions out`, `render.regions out format=flac bits=24`, `render.regions out format=mp3 quality=best`" })
 
 -- On the arrange view's ruler ------------------------------------------------------
 

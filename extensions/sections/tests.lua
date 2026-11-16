@@ -302,3 +302,58 @@ test("sections: drawn on the ruler", function()
   ruler = api.ui_snapshot(100, 30)[2]
   eq(ruler:find("‹Hook", 1, true) ~= nil, true, "and follows a rename")
 end)
+
+--- The entries of the sections' band under the window's ruler.
+local function band()
+  local out = {}
+  for _, e in ipairs(daw.frontend.band_state().entries) do
+    if e.hint:match("^section ") then out[#out + 1] = e end
+  end
+  return out
+end
+
+test("sections: a band under the window's ruler, where a click goes to a section", function()
+  local S = song()
+  local entries = band()
+  local shown = {}
+  for i, e in ipairs(entries) do shown[i] = string.format("%s@%g+%g", e.name, e.beat, e.length) end
+  eq(table.concat(shown, " "), "Intro@0+8 Verse@8+8 Chorus@16+8 Outro@24+8", "each section over its stretch")
+  eq(entries[1].color ~= "" and entries[2].color == "", true, "the one at the cursor in the colour of focus")
+  daw.ui.focus("mixer")
+  daw.frontend.act.band(entries[3].band, entries[3].index)
+  eq(daw.cursor.beat, 16, "a click goes to the Chorus")
+  eq(daw.ui.focused, "arrange", "in the arrange view")
+  eq(band()[3].color ~= "", true, "which is lit now")
+  S.rename("Chorus", "Hook")
+  eq(band()[3].name, "Hook", "the band follows a rename")
+  eq(daw.frontend.state(-1).project.bands.rows > 0, true, "the frontend is told of it")
+  S.set({})
+  eq(#band(), 0, "no sections, no band")
+end)
+
+test("sections: the list in a window of its own goes to, renames and adds sections", function()
+  local S = song()
+  daw.canvas.open_view("sections")
+  local cell = { w = 10, h = 20 }
+  local painted = daw.canvas.paint("sections", 600, 200, { cell = cell, fresh = true })
+  local text = {}
+  for _, op in ipairs(painted.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
+  text = table.concat(text, " ")
+  eq(text:find("Verse", 1, true) ~= nil and text:find("Outro", 1, true) ~= nil, true, "it lists them: " .. text)
+  for _, key in ipairs({ "j", "<CR>" }) do daw.canvas.key("sections", key) end
+  eq(daw.cursor.beat, 8, "Enter goes to the Verse")
+  eq(daw.canvas.open_views.sections ~= nil, true, "and the window stays open")
+  -- A click on a row chooses it, a second goes there.
+  local click = { kind = "down", x = 15, y = 2 * cell.h + 5, button = "left" }
+  daw.canvas.pointer("sections", click)
+  eq(daw.cursor.beat, 8, "one click chooses the Chorus")
+  daw.canvas.pointer("sections", click)
+  eq(daw.cursor.beat, 16, "a second goes there")
+  for _, key in ipairs({ "r", "<C-u>", "H", "o", "o", "k", "<CR>" }) do daw.canvas.key("sections", key) end
+  eq(names(S), "Intro@0 Verse@8 Hook@16 Outro@24", "r renames the one chosen")
+  daw.cursor.set_beat(4)
+  for _, key in ipairs({ "a", "P", "i", "c", "k", "<CR>" }) do daw.canvas.key("sections", key) end
+  eq(names(S), "Intro@0 Pick@4 Verse@8 Hook@16 Outro@24", "a adds one at the cursor")
+  daw.canvas.key("sections", "q")
+  eq(daw.canvas.open_views.sections, nil, "q closes the window")
+end)

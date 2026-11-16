@@ -28,6 +28,9 @@ function M.entries()
   local view = daw.ui.focused
   local mode = daw.keymap.mode
   local lines = M.lines[view]
+  -- A view that takes every key itself has none of the usual ones.
+  local modal = daw.ui.views[view] and daw.ui.views[view].modal
+  if modal and not lines then return {} end
   local entries = lines and (lines[mode] or mode ~= "n" and {} or nil) or mode == "n" and M.lines.default.n or {}
   local out = {}
   for i, entry in ipairs(entries or {}) do out[i] = { entry[3] or M.show(entry[1]), entry[2] } end

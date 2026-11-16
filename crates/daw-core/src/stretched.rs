@@ -235,6 +235,11 @@ impl Renders {
                 .join()
                 .unwrap_or_else(|_| Err(anyhow::anyhow!("the stretch stopped unexpectedly")));
             if cancel.load(Ordering::Relaxed) {
+                // Wanted again since it was told to stop: its clips are
+                // built again, which asks for it anew.
+                if wanted.contains(&key) {
+                    finished.push(key);
+                }
                 continue;
             }
             match result {
@@ -317,9 +322,10 @@ impl Renders {
     /// Forget what was made from files not in `keep`, and everything when
     /// `keep` is `None`.
     pub fn retain(&mut self, keep: Option<&HashSet<PathBuf>>) {
-        for job in self.jobs.values() {
+        // One being made stops at its next look, and is dropped once it has.
+        for (key, job) in &self.jobs {
             if let Job::Running(_, cancel) = job
-                && keep.is_none()
+                && !keep.is_some_and(|k| k.contains(&key.file))
             {
                 cancel.store(true, Ordering::Relaxed);
             }

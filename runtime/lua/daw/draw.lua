@@ -436,9 +436,10 @@ local lines3 = { unicode = { "▁", "─", "▔" }, ascii = { "_", "-", "'" } }
 --- row `y` down: `value(i)` gives the height, from 0 at the bottom to 1 at
 --- the top, at the `i`th of two points per column. Only the cells the line
 --- passes through are touched. Braille dots unless `daw.opt.braille` is off
---- or `daw.opt.ascii` on; then lines at three heights a row.
+--- or `daw.opt.ascii` on, or the view is being drawn for a window
+--- (`M.window`), whose font has no braille; then lines at three heights a row.
 function M.curve(buf, y, rows, value, style)
-  if daw.opt.ascii or daw.opt.braille == false then
+  if daw.opt.ascii or daw.opt.braille == false or M.window then
     local set = daw.opt.ascii and lines3.ascii or lines3.unicode
     for col = 0, buf.width - 1 do
       local v = value(col * 2)

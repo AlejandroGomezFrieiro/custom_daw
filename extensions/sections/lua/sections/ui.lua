@@ -79,18 +79,6 @@ function M.choose(title, fn)
   end)
 end
 
---- Every section with where it is, as a page.
-function M.page()
-  local lines = {}
-  local current = S.current()
-  for _, s in ipairs(S.list()) do
-    lines[#lines + 1] = { text = (current and current.index == s.index and "> " or "  ") .. s.index .. ". " .. M.describe(s),
-      style = current and current.index == s.index and "Title" or nil }
-  end
-  if #lines == 0 then lines[1] = "No sections. `<leader>Sa` adds one at the cursor, `:section.add Chorus` too." end
-  daw.ui.page("Sections", lines)
-end
-
 -- Commands --------------------------------------------------------------------------
 
 local command = daw.command
@@ -137,7 +125,7 @@ command("section.remove", guarded(function(ctx)
   daw.notify("removed section " .. s.name .. "; what was in it stays")
 end), { desc = "Remove the section marker at the cursor, or a named one; the timeline stays as it is" })
 
-command("section.list", function() M.page() end, { desc = "List the sections" })
+command("section.list", function() require("sections.view").open() end, { desc = "List the sections, to go to, rename, add and remove" })
 
 command("section.goto", function(ctx)
   if ctx.args[1] then
@@ -324,6 +312,22 @@ if arrange and arrange.layers then
   if arrange.ruler2 then arrange.ruler2.sections = function() return #S.list() > 0 end end
 else
   daw.notify("sections: this arrange view has no layers to draw on; sections are not shown on the ruler", "warn")
+end
+
+-- In the graphical frontend, a band of their own under the ruler: each
+-- section over its stretch, the one at the cursor in the colour of focus,
+-- and a click goes there.
+if daw.frontend and daw.frontend.bands then
+  table.insert(daw.frontend.bands, function()
+    local current = S.current()
+    local out = {}
+    for i, s in ipairs(S.list()) do
+      out[i] = { beat = s.start, length = s.finish - s.start, name = s.name, command = "section.goto " .. i,
+        hint = "section " .. s.name .. ": click goes to its start",
+        color = current and current.index == i and daw.canvas.palette.select or nil }
+    end
+    return out
+  end)
 end
 
 -- A change made elsewhere (undo, loading) redraws the ruler.

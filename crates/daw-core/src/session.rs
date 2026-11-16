@@ -28,6 +28,7 @@ use crate::model::{
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
 mod clipops;
+mod encode;
 mod keep;
 mod loading;
 pub mod media;
@@ -255,6 +256,12 @@ pub struct RenderOpts {
     /// Threads to render on, when not as many as the session uses. The file
     /// is the same whatever the number.
     pub threads: Option<usize>,
+    /// For MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the default)
+    /// or "best"; or a bitrate in kbit/s instead. They need ffmpeg, which is
+    /// `ffmpeg` when it is not on the PATH.
+    pub quality: Option<String>,
+    pub bitrate: Option<u32>,
+    pub ffmpeg: Option<String>,
 }
 
 impl Default for RenderOpts {
@@ -272,6 +279,9 @@ impl Default for RenderOpts {
             channels: 2,
             master: true,
             threads: None,
+            quality: None,
+            bitrate: None,
+            ffmpeg: None,
         }
     }
 }
@@ -359,6 +369,19 @@ pub struct Session {
     watch: watch::Watch,
     /// When files played from the disk were last read ahead of the playhead.
     read_ahead_at: Instant,
+    /// The project put aside while a scratch one is open: see
+    /// [`Session::project_shelve`].
+    shelf: Option<Shelf>,
+}
+
+/// An open project, with its undo history, put aside whole.
+struct Shelf {
+    project: Project,
+    history: History<Project>,
+    touched: bool,
+    transport: Transport,
+    position: f64,
+    path: Option<PathBuf>,
 }
 
 /// The rest of what [`Session::audio_use`] can change: the sound system
@@ -445,6 +468,7 @@ impl Session {
             open_opts: Default::default(),
             watch: Default::default(),
             read_ahead_at: Instant::now(),
+            shelf: None,
         };
         session.warnings.extend(session.stream.info.warning.clone());
         session.send_pool();
@@ -614,12 +638,69 @@ impl Session {
         })
     }
 
+    /// Put the open project aside, history and all, and open an empty
+    /// scratch project in its place, for something that needs tracks and
+    /// clips of its own (a hardware check) without touching the user's work.
+    /// [`project_unshelve`](Self::project_unshelve) puts it back exactly as
+    /// it was, undo tree included.
+    pub fn project_shelve(&mut self) -> Result<()> {
+        if self.shelf.is_some() {
+            bail!("a project is put aside already");
+        }
+        self.capture_states();
+        self.checkpoint();
+        self.history.set_current_snapshot(self.checkpoint.clone());
+        let fresh = Project::default();
+        let history = std::mem::replace(
+            &mut self.history,
+            History::new(fresh.clone(), history::now(), UNDO_LIMIT),
+        );
+        self.shelf = Some(Shelf {
+            project: self.project.clone(),
+            history,
+            touched: self.touched,
+            transport: self.transport.clone(),
+            position: self.position(),
+            path: self.path.clone(),
+        });
+        self.replace_project(fresh, Transport::default(), None);
+        Ok(())
+    }
+
+    /// Whether a project is put aside by [`project_shelve`](Self::project_shelve).
+    pub fn project_shelved(&self) -> bool {
+        self.shelf.is_some()
+    }
+
+    /// Close the scratch project and bring back the one put aside.
+    pub fn project_unshelve(&mut self) -> Result<()> {
+        let Some(shelf) = self.shelf.take() else {
+            bail!("no project is put aside");
+        };
+        self.history = shelf.history;
+        self.put_project(shelf.project, shelf.transport, shelf.path, Some(shelf.touched));
+        self.seek(shelf.position);
+        Ok(())
+    }
+
     /// Replace the project, dropping the undo history.
     fn replace_project(
+        &mut self,
+        project: Project,
+        transport: Transport,
+        path: Option<PathBuf>,
+    ) {
+        self.put_project(project, transport, path, None);
+    }
+
+    /// Make `project` the open one. With `touched`, the undo history is
+    /// already in place and kept; without, it starts again from the project.
+    fn put_project(
         &mut self,
         mut project: Project,
         transport: Transport,
         path: Option<PathBuf>,
+        touched: Option<bool>,
     ) {
         project.refresh_tempo();
         self.apply_open_opts(&mut project);
@@ -628,11 +709,18 @@ impl Session {
         self.next_id = self.next_id.max(project.max_id() + 1);
         self.project = project;
         self.checkpoint = self.project.clone();
-        self.history.reset(self.project.clone(), history::now());
-        self.touched = false;
+        if touched.is_none() {
+            self.history.reset(self.project.clone(), history::now());
+        }
+        self.touched = touched.unwrap_or(false);
         self.dirty = true;
         self.restoring = true;
-        self.transport = transport;
+        // The count-in is the user's, not the project's.
+        let count_in = self.transport.count_in;
+        self.transport = Transport {
+            count_in,
+            ..transport
+        };
         self.path = path;
         self.send_transport();
         self.flush();
@@ -2398,6 +2486,7 @@ impl Session {
                 start,
                 file: Some(path),
                 offset: take["offset"].as_f64().unwrap_or(0.0),
+                source_tempo: Some(self.project.tempo_map().tempo(start)),
                 ..ClipOpts::default()
             };
             if let Err(err) = self.clip_add(track as Id, opts) {
@@ -3053,19 +3142,20 @@ impl Session {
         self.flush();
         let port = port.map_or(0, daw_engine::midi::port_key);
         self.handle.send(Msg::MidiIn { port, kind });
-        self.midi_event(kind);
+        self.midi_event(port, kind);
     }
 
     /// Have `tap` told of everything the MIDI ports receive, on their thread.
-    pub fn set_midi_tap(&mut self, tap: Box<dyn FnMut(EventKind) + std::marker::Send>) {
+    pub fn set_midi_tap(&mut self, tap: Box<dyn FnMut(u32, EventKind) + std::marker::Send>) {
         if let Ok(mut sink) = self.midi_sink.lock() {
             sink.tap = Some(tap);
         }
     }
 
-    /// Tell scripts about a message from a MIDI port, as a `midi.in` event.
-    pub fn midi_event(&mut self, kind: EventKind) {
-        let payload = match kind {
+    /// Tell scripts about a message from a MIDI port, as a `midi.in` event
+    /// naming the port when it is one of those listed (`port` is its key).
+    pub fn midi_event(&mut self, port: u32, kind: EventKind) {
+        let mut payload = match kind {
             EventKind::NoteOn { key, vel, ch } => json!({
                 "type": "note_on", "pitch": key, "channel": ch + 1,
                 "velocity": (vel * 127.0).round(),
@@ -3084,6 +3174,16 @@ impl Session {
             }
             EventKind::AllNotesOff => return,
         };
+        let name = self.midi_inputs().as_array().and_then(|ports| {
+            ports
+                .iter()
+                .filter_map(|p| p["name"].as_str())
+                .find(|name| daw_engine::midi::port_key(name) == port)
+                .map(str::to_string)
+        });
+        if let Some(name) = name {
+            payload["port"] = json!(name);
+        }
         self.events.push(("midi.in".into(), payload));
     }
 

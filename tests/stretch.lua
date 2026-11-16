@@ -474,3 +474,71 @@ test("in the window an end dragged with Alt and Shift stretches, and the menu fi
   daw.frontend.act.trim_clips(clip.id, "start", -1, false, true)
   eq(clip.offset > offset, true, "slipped")
 end)
+
+-- Comping -----------------------------------------------------------------------------
+
+test("comping a stretched clip keeps every piece stretched, and joins them back", function()
+  local low = tone_file(8, "A3")
+  local high = tone_file(8, "E4")
+  local t = daw.add_track({ name = "vox" })
+  local clip = t:add_clip({ file = low, start = 0 })
+  daw.takes.new(clip.id)
+  clip.file = high
+  daw.stretch.set(clip.id, 1.5)
+  clip.pitch = 1
+  near(clip.length, 12, 1e-6, "twelve beats")
+  local act = daw.frontend.act
+  eq(act.take_lanes(t.id), true, "the take lanes are shown")
+  api.undo_checkpoint()
+  eq(act.comp(t.id, 1, 4, 8, false), 1, "take 1 over the middle")
+  local clips = t:clips()
+  eq(#clips, 3, "three pieces")
+  for i, c in ipairs(clips) do
+    eq(c.stretch .. " " .. c.pitch, "1.5 1", "piece " .. i .. " is stretched and shifted")
+  end
+  near(clips[2].offset, 4 / 1.5 * 0.5, 1e-9, "take 1 lined up in its file, in seconds of the file")
+  near(clips[3].offset, 8 / 1.5 * 0.5, 1e-9, "and take 2 after it")
+  local info = render({ tail = 0, bits = 16 })
+  near(T.frequency(info, 2.2, 3.8), 220 * 2 ^ (1 / 12), 2, "the middle at take 1's pitch, shifted")
+  near(T.frequency(info, 4.2, 5.8), 329.63 * 2 ^ (1 / 12), 3, "the end at take 2's")
+  -- The window draws each take as it would play.
+  local rows = daw.frontend.state(-1).clips[1].take_rows
+  eq(#rows, 2, "two lanes")
+  eq(#daw.frontend.take_preview(clips[1].id, 1, 64) >= 3, true, "a picture of the take that is not playing")
+  act.comp(t.id, 2, 0, 12, false)
+  clips = t:clips()
+  eq(#clips, 1, "one take over all of it: one clip again")
+  near(clips[1].length, 12, 1e-6, "as long as before")
+  eq(clips[1].stretch, 1.5, "stretched as before")
+  -- Pieces stretched otherwise are not joined.
+  act.comp(t.id, 1, 4, 8, false)
+  t:clips()[2].stretch = 1.25
+  act.comp(t.id, 2, 0, 12, false)
+  eq(#t:clips() > 1, true, "a piece stretched otherwise stays a piece")
+end)
+
+test("comping a looped clip keeps the loop on every piece, and joins pieces that carry it on", function()
+  start()
+  local t = daw.add_track({ name = "keys" })
+  t:add_device("synth", { attack = 0.001, release = 0.01 })
+  local clip = t:add_clip({ start = 0, length = 2, notes = {
+    { pitch = "A3", start = 0, length = 0.5 }, { pitch = "C4", start = 1, length = 0.5 },
+  } })
+  daw.stretch.loop(clip.id, true)
+  clip.length = 8
+  daw.takes.new(clip.id)
+  clip:set_notes({ { pitch = "E4", start = 0, length = 0.5 }, { pitch = "G4", start = 1, length = 0.5 } })
+  local before = T.read_file(render({ tail = 0, bits = 16 }).path)
+  local act = daw.frontend.act
+  act.take_lanes(t.id)
+  eq(act.comp(t.id, 1, 3, 5, false), 1, "take 1 over the middle")
+  local clips = t:clips()
+  eq(#clips, 3, "three pieces")
+  for i, c in ipairs(clips) do eq(c.loop, true, "piece " .. i .. " loops") end
+  near(clips[2].loop_start, -1, 1e-9, "the middle piece a beat into a repeat")
+  local flat = daw.frontend.preview(clips[2].id)
+  eq(flat[3], 60, "it plays take 1's second note first")
+  act.comp(t.id, 2, 3, 5, false)
+  eq(#t:clips(), 1, "take 2 back: the pieces carry the loop on, and are one clip again")
+  eq(T.read_file(render({ tail = 0, bits = 16 }).path) == before, true, "sounding as before")
+end)

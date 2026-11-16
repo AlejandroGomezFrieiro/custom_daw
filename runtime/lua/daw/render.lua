@@ -30,6 +30,8 @@ local function kernel_opts(opts)
   out.range, out.background, out.format = nil, nil, nil
   if out.channels == "mono" then out.channels = 1 elseif out.channels == "stereo" then out.channels = 2 end
   if out.rate then out.sample_rate, out.rate = out.rate, nil end
+  out.ffmpeg = out.ffmpeg or daw.opt.ffmpeg
+  out.bitrate = tonumber(out.bitrate)
   if range and range ~= "song" then
     local resolve = M.ranges[range]
     if not resolve then
@@ -46,7 +48,7 @@ local function kernel_opts(opts)
 end
 
 local function check(path)
-  local why = api.render_check(path)
+  local why = api.render_check(path, daw.opt.ffmpeg)
   if why then error(why, 0) end
 end
 
@@ -59,7 +61,10 @@ local function start(path, opts)
   daw.ui.poke()
 end
 
---- Render the project to a file: WAV or FLAC, by the file's extension.
+--- Render the project to a file: WAV or FLAC, or MP3, Ogg Vorbis or Opus
+--- when ffmpeg is installed (`daw.opt.ffmpeg` says where it is, if not on
+--- the PATH), by the file's extension. A lossy file is rendered to a
+--- temporary WAV, which ffmpeg then encodes.
 --- `opts` (all optional):
 ---   range       "song" (the default), "loop", "selection", or a name in `daw.render_ranges`
 ---   start, end  beats, instead of a range (`end` defaults to the end of the last clip)
@@ -68,6 +73,8 @@ end
 ---   bits        16, 24 or 32 (float; WAV only); 24 by default
 ---   channels    2 (or "stereo") or 1 (or "mono")
 ---   dither      true to add dither when writing 16 or 24 bits
+---   quality     for MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the
+---               default) or "best"; `bitrate` (kbit/s) instead of it for a number
 ---   normalize   bring the loudest sample to this level in dB, such as -1
 ---   loudness    bring the integrated loudness to this level in LUFS, such as -14;
 ---               with `normalize` too, the peak level is a ceiling
@@ -79,7 +86,7 @@ end
 ---               and then, and `render.done` (what is returned below),
 ---               `render.failed` ({ path, error }) or `render.cancelled` at the end
 --- Returns { path, frames, seconds, sample_rate, peak, gain, loudness, format,
---- bits, channels, ... } when done. `render.before` is emitted first, and its
+--- bits (nil for a lossy format), channels, ... } when done. `render.before` is emitted first, and its
 --- handlers run before rendering starts, so an extension that makes audio of
 --- its own can finish it. A file that cannot be written is refused before
 --- anything is rendered; nothing is left under the name asked for when a
@@ -104,7 +111,9 @@ function M.render(path, opts)
 end
 
 --- The render running in the background: { path, fraction, seconds,
---- cancelling, queued }, or nil.
+--- cancelling, stage, queued }, or nil. `stage` is "rendering", or "encoding"
+--- when ffmpeg is making a lossy file from the render: `fraction` is then
+--- the encode's.
 function M.status()
   local s = api.render_status()
   if s then s.queued = #queue end
@@ -122,7 +131,8 @@ end
 --- after it: stems. A track is rendered with what it passes through on the
 --- way to the master, as when it is soloed, so that the stems add up to the
 --- mix. `opts` is as for `daw.render`, plus `tracks` to choose which (all
---- that are not muted, by default) and `format` ("wav" or "flac"). With
+--- that are not muted, by default) and `format` ("wav", "flac", "mp3", "ogg"
+--- or "opus"). With
 --- `background`, they are rendered one after another. Returns the files.
 function M.stems(dir, opts)
   opts = opts or {}
@@ -193,6 +203,8 @@ M.options = {
   { "tail=", { "0", "1", "2", "4" }, "seconds after the end" },
   { "rate=", { "44100", "48000", "96000" }, "sample rate" },
   { "bits=", { "16", "24", "32" }, "sample size; 32 is float" },
+  { "quality=", { "low", "medium", "high", "best" }, "of an MP3, Ogg or Opus file" },
+  { "bitrate=", { "128", "192", "256", "320" }, "kbit/s of an MP3, Ogg or Opus file" },
   { "channels=", { "stereo", "mono" }, "" },
   { "dither=", { "true" }, "dither at 16 or 24 bits" },
   { "normalize=", { "-1", "-0.3" }, "peak level in dB" },
@@ -228,7 +240,8 @@ daw.command("render", function(ctx)
   local a = ctx.args
   local opts = {
     range = a.range, start = tonumber(a.start), ["end"] = tonumber(a["end"]), tail = tonumber(a.tail),
-    rate = tonumber(a.rate), bits = tonumber(a.bits), dither = a.dither == true or nil,
+    rate = tonumber(a.rate), bits = tonumber(a.bits), quality = a.quality and tostring(a.quality) or nil,
+    bitrate = tonumber(a.bitrate), dither = a.dither == true or nil,
     channels = a.channels == "mono" and 1 or a.channels == "stereo" and 2 or tonumber(a.channels),
     normalize = tonumber(a.normalize), loudness = tonumber(a.loudness),
     master = a.master ~= false and nil or false, tracks = track_list(a.tracks),
@@ -249,8 +262,8 @@ daw.command("render", function(ctx)
     daw.notify("rendering " .. name_of(path) .. " · Esc cancels")
   end
 end, {
-  desc = "Render to WAV or FLAC by the file's extension: `render mix.flac range=loop tail=2 bits=16 dither=true "
-    .. "channels=mono rate=44100 normalize=-1 loudness=-14 tracks=selected master=false stems=true`",
+  desc = "Render to WAV or FLAC by the file's extension, or MP3, Ogg or Opus with ffmpeg installed: `render mix.flac "
+    .. "range=loop tail=2 bits=16 dither=true channels=mono rate=44100 normalize=-1 loudness=-14 tracks=selected master=false stems=true`",
   complete = function(rest)
     local before, last = rest:match("^(.-)(%S*)$")
     local out = {}
@@ -274,6 +287,7 @@ daw.command("stems", function(ctx)
   local dir = tostring(ctx.args[1] or "stems")
   local files = M.stems(dir, {
     tail = tonumber(ctx.args.tail), bits = tonumber(ctx.args.bits), format = ctx.args.format,
+    quality = ctx.args.quality and tostring(ctx.args.quality) or nil, bitrate = tonumber(ctx.args.bitrate),
     master = ctx.args.master ~= false and nil or false, background = ctx.args.wait ~= true,
   })
   daw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))

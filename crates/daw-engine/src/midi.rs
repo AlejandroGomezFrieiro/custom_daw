@@ -25,8 +25,9 @@ pub struct MidiTarget {
     /// The engine's queue, replaced when the engine restarts. Each message
     /// goes with the [`port_key`] of the port it came from.
     pub engine: Option<Producer<(u32, EventKind)>>,
-    /// Told of every message as well, on the thread that reads the ports.
-    pub tap: Option<Box<dyn FnMut(EventKind) + Send>>,
+    /// Told of every message as well, with the [`port_key`] of its port, on
+    /// the thread that reads the ports.
+    pub tap: Option<Box<dyn FnMut(u32, EventKind) + Send>>,
 }
 
 pub type MidiSink = Arc<Mutex<MidiTarget>>;
@@ -126,7 +127,7 @@ fn deliver(sink: &MidiSink, port: u32, kind: EventKind) {
             crate::event::count_dropped();
         }
         if let Some(tap) = guard.tap.as_mut() {
-            tap(kind);
+            tap(port, kind);
         }
     }
 }

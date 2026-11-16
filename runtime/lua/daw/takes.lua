@@ -313,11 +313,60 @@ local function within(notes, length)
   return true
 end
 
+--- Whether two lists of notes or controller moves are the same, the first
+--- moved by `by` beats.
+local function same_moved(x, y, by)
+  x, y = x or {}, y or {}
+  if #x ~= #y then return false end
+  local function key(item, shift)
+    return string.format("%.6f|%s|%s|%s|%s|%s", item.start + shift, tostring(item.pitch), tostring(item.length),
+      tostring(item.velocity), tostring(item.type or item.number), tostring(item.value))
+  end
+  local a, b = {}, {}
+  for i, item in ipairs(x) do a[i] = key(item, by) end
+  for i, item in ipairs(y) do b[i] = key(item, 0) end
+  table.sort(a)
+  table.sort(b)
+  for i = 1, #a do
+    if a[i] ~= b[i] then return false end
+  end
+  return true
+end
+
+--- Whether looped clip `b` carries on `a`'s repeats where `a` ends: the
+--- same loop, turned on as far as `a` is long (see `daw.stretch.moved`),
+--- and for notes the same notes, every take's too.
+local function loop_continues(a, b, ta, tb)
+  if not (a.loop and b.loop) or math.abs(a.loop_length - b.loop_length) > 1e-9 then return false end
+  local m = daw.stretch.moved(a, a.length)
+  if math.abs(m.loop_start - b.loop_start) > 1e-6 then return false end
+  if a.kind == "audio" then
+    for i = 1, #ta.list do
+      local x, y = M.content(a, i), M.content(b, i)
+      if x.file ~= y.file or math.abs((x.gain or 0) - (y.gain or 0)) > 1e-9 then return false end
+    end
+    return math.abs(m.offset - b.offset) < 1e-6
+  end
+  if not same_moved(api.clip_notes(a.id), api.clip_notes(b.id), m.shift) then return false end
+  if (a.control_count > 0 or b.control_count > 0)
+    and not same_moved(api.clip_controls(a.id), api.clip_controls(b.id), m.shift) then
+    return false
+  end
+  for i = 1, #ta.list do
+    if i ~= ta.active then
+      if not same_moved(ta.list[i].notes, tb.list[i].notes, m.shift) then return false end
+      if not same_moved(ta.list[i].controls, tb.list[i].controls, m.shift) then return false end
+    end
+  end
+  return true
+end
+
 --- Whether clip `b` carries straight on from clip `a`: side by side on the
 --- track, alike in kind, name and mute, playing the same take of the same
---- list, and for sound every take lined up across the join (the same file,
---- gain and place in it), so that one clip in their place plays just what
---- the two did.
+--- list, stretched, shifted and looped alike, and for sound every take
+--- lined up across the join (the same file, gain and place in it), so that
+--- one clip in their place plays just what the two did. Looped clips join
+--- where the second carries on the first's repeats.
 local function continues(a, b)
   if math.abs(a.start + a.length - b.start) > 1e-6 or a.kind ~= b.kind then return false end
   if a.name ~= b.name or (a.muted or false) ~= (b.muted or false) then return false end
@@ -326,8 +375,14 @@ local function continues(a, b)
   for i = 1, #ta.list do
     if ta.list[i].name ~= tb.list[i].name then return false end
   end
+  for _, key in ipairs({ "stretch", "pitch", "stretch_mode", "source_tempo", "timebase", "loop", "loop_length" }) do
+    if a[key] ~= b[key] then return false end
+  end
+  if a.loop then
+    if a.kind == "audio" and ((a.fade_out or 0) > EPS or (b.fade_in or 0) > EPS) then return false end
+    return loop_continues(a, b, ta, tb)
+  end
   if a.kind == "midi" then
-    if a.loop or b.loop then return false end
     if not (within(api.clip_notes(a.id), a.length) and within(api.clip_notes(b.id), b.length)) then return false end
     for i = 1, #ta.list do
       if not (within(ta.list[i].notes, a.length) and within(tb.list[i].notes, b.length)) then return false end
@@ -335,7 +390,6 @@ local function continues(a, b)
     return true
   end
   if (a.fade_out or 0) > EPS or (b.fade_in or 0) > EPS then return false end
-  if a.loop or b.loop or a.stretch ~= b.stretch or a.pitch ~= b.pitch then return false end
   local seconds = daw.stretch.file_seconds(a, a.length)
   for i = 1, #ta.list do
     local x, y = M.content(a, i), M.content(b, i)
@@ -360,8 +414,11 @@ local function append(into, more)
 end
 
 --- Make clip `b` part of clip `a`, which `continues` has found it carries on.
+--- A looped clip already holds what the other repeats.
 local function join(a, b)
-  if a.kind == "midi" then
+  if a.loop then
+    if a.kind == "audio" then api.clip_set(a.id, "fade_out", b.fade_out or 0) end
+  elseif a.kind == "midi" then
     local ta, tb = M.of(a), M.of(b)
     api.clip_set_notes(a.id, append(api.clip_notes(a.id), shifted(api.clip_notes(b.id), a.length)))
     if a.control_count > 0 or b.control_count > 0 then
