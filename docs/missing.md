@@ -5,7 +5,8 @@
   actions (`codeActionProvider`) and `workspace/executeCommand` have no
   menu, only the fixes that come with diagnostics; the related notes of
   other tracks a diagnostic names are kept but not drawn; the window shows
-  what servers say about a note through the float, not a tooltip of its own.
+  what servers say about a note through the float, not a tooltip of its own,
+  and marks no clips with diagnostics in its arrange view (the terminal's does).
 
 - Editing the tempo lane with the mouse in the terminal (it draws the curve;
   changes are made by command there), and a tempo curve that is smooth: a
