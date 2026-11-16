@@ -1591,7 +1591,7 @@ end
 -- The plan shown before writing, as oil.nvim shows it: a float that takes
 -- y or Enter to apply, n, q or Esc to leave it.
 local confirm = { modal = true, focusable = true, window = false, scroll = 0, steps = {} }
-daw.seats.fields("textbuf.plan", confirm, { "scroll", "steps", "shown", "buf" }, { scroll = 0, steps = {}, shown = {} })
+daw.seats.fields("textbuf.plan", confirm, { "scroll", "steps", "shown", "buf", "loose" }, { scroll = 0, steps = {}, shown = {} })
 
 local FOOTER = "y or Enter: apply, as one undo step · n or Esc: back"
 local verbs = { delete = "Error", remove = "Error", add = "Info", copy = "Info", new = "Info" }
@@ -1611,10 +1611,18 @@ function confirm:render(canvas)
   canvas:text(1, canvas.height - 1, FOOTER, "FloatFooter")
 end
 
+--- Close the plan; from a graphical frontend's window, back to the buffer's.
+local function close_plan()
+  local back = confirm.loose
+  confirm.loose = nil
+  daw.ui.close()
+  if back and daw.canvas.open_views.textbuf then daw.ui.focus("textbuf") end
+end
+
 function confirm:on_key(key)
   if key == "y" or key == "<CR>" then
     local buf, steps, n = self.buf, self.steps, #self.shown
-    daw.ui.close()
+    close_plan()
     self.steps, self.shown, self.buf = {}, {}, nil
     if not (buf and layout.buffers[buf.id]) then return end
     local ok, err = M.apply(buf, steps)
@@ -1625,7 +1633,7 @@ function confirm:on_key(key)
     end
   elseif key == "n" or key == "q" or key == "<Esc>" or key == "<C-c>" then
     self.steps, self.shown, self.buf = {}, {}, nil
-    daw.ui.close()
+    close_plan()
   elseif key == "j" or key == "<Down>" then
     self.scroll = self.scroll + 1
   elseif key == "k" or key == "<Up>" then
@@ -1669,8 +1677,14 @@ function M.write(buf, force)
   confirm.steps, confirm.shown, confirm.buf, confirm.scroll = steps, shown, buf, 0
   local w = width(FOOTER) + 4
   for _, step in ipairs(shown) do w = math.max(w, width(step.text) + 4) end
+  local win = M.current()
   daw.ui.open("textbuf.plan", { title = "Write " .. buf.name .. ": " .. #shown .. " change" .. (#shown == 1 and "" or "s"),
     width = math.min(w, 110), height = math.min(#shown + 3, 30) })
+  -- Typed in a graphical frontend's window, the plan opens in one too.
+  if win and win == loose and daw.canvas.open_views.textbuf then
+    confirm.loose = true
+    daw.canvas.open_view("textbuf.plan")
+  end
 end
 
 -- Drawing -----------------------------------------------------------------------------------

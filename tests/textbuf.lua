@@ -504,6 +504,10 @@ test("a text buffer in a window of its own is drawn and edited with the same key
   end
   local drawn = table.concat(text, "\n")
   eq(drawn:find("Bass", 1, true) ~= nil, true, "the lines are drawn: " .. drawn)
-  daw.canvas.key("textbuf", "jcwLow<Esc>:w<CR>y")
+  daw.canvas.key("textbuf", "jcwLow<Esc>:w<CR>")
+  eq(daw.canvas.open_views["textbuf.plan"] ~= nil and daw.ui.float == nil, true, "the plan opens in a window too")
+  daw.canvas.key("textbuf.plan", "y")
   eq(bass.name, "Low", "keys typed in it edit it, and :w applies")
+  eq(daw.canvas.open_views["textbuf.plan"], nil, "the plan's window closes")
+  eq(daw.ui.focused, "textbuf", "and the keyboard is back in the buffer's")
 end)
