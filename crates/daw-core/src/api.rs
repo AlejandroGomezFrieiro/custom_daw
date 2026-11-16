@@ -875,6 +875,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().lane_set_points(id, vec![(beat, value)], true).lua()
         }
         fn lane_value_at(_, sh, (id, beat) => (Id, f64)) { sh.session.borrow().lane_value_at(id, beat).lua() }
+        // The shapes of the stretches that are not straight, `{ beat, shape, tension }`
+        // each by the beat of the point they leave: "hold" or "smooth".
+        fn lane_shapes(lua, sh, id => Id) { to_lua(lua, &sh.session.borrow().lane_shapes(id).lua()?) }
+        fn lane_set_shapes(lua, sh, (id, shapes) => (Id, LuaValue)) {
+            let shapes: Vec<crate::model::Segment> = from_lua(lua, shapes)?;
+            sh.session.borrow_mut().lane_set_shapes(id, shapes).lua()
+        }
         // A control is held (a fader under the pointer) or let go: in touch
         // mode it writes automation for as long as it is held. The control
         // is named as a lane's target is.

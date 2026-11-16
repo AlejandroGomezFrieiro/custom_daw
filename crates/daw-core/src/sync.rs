@@ -1551,13 +1551,14 @@ fn build_automation(track: &Track, project: &Project, map: &Mapper, ctx: &SyncCt
                 }
             }
         };
+        // Shaped stretches go to the engine as the straight pieces they are played as.
+        let played = lane.played();
         let points: Vec<(f64, f64)> = match range {
-            Some(param) => lane
-                .points
+            Some(param) => played
                 .iter()
                 .map(|&(beat, v)| (beat, param_value(param, v)))
                 .collect(),
-            None => lane.points.clone(),
+            None => played.into_owned(),
         };
         set.lanes.push(AutoLane::new(target, points));
     }

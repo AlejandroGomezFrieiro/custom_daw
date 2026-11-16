@@ -158,6 +158,52 @@ ramp to the next, `:tempo.move 9` moves it to bar 9, `:tempo.remove` takes it
 away. The lane is also drawn on with the mouse, here as in the window (see
 [The mouse](#the-mouse)).
 
+**The curve editor.** Any curve can be edited in a window of its own: an
+automation lane, a device parameter, a MIDI clip's controller (the pitch
+wheel, pressure, any CC), one note's own expression, and the tempo map.
+`gc` opens the curve of what the cursor is on: on a lane row (`Enter`
+there too), on a parameter in the device panel, in the piano roll the
+controller its strip shows (`gC` that of the note under the cursor alone).
+The curve is a buffer named by its address, so `:vs daw://lane/3`, `:e
+daw://tempo` or `:sp daw://clip/7/control/cc/74` show one, and `:setlocal
+timebind` scrolls it with the arrange view. It draws the curve in braille
+dots over the bars and beats, the values in their unit along the left, each
+point as `◆` (`■` where the stretch after it holds, `●` where it eases),
+and along the bottom the point under the cursor or the curve's value there.
+
+The cursor is a beat and a value. `h` `l` move a grid step, `j` `k` a step
+of the value (`J` `K` ten), `w` `b` go to the next and previous point and
+take its value, `0` `$` the first and last. `o` adds a point at the
+cursor, `A` one on the curve there, `x` removes the point under the cursor,
+`+` `-` raise and lower it, `c` or `=` types its value. `s` gives the
+stretch after it the next shape (straight, held, smooth) and `<` `>` bend a
+smooth one. `i` draws: from there each move of the cursor (`h` `l` `j` `k`
+`J` `K`) puts a point where it lands, and `Esc` writes them over what was
+there as one undo step (`a` starts from the curve's value instead of the
+cursor's). Operators take motions and selections: `d` and `y` cut and copy
+points and `p` puts them at the cursor, `gs` smooths, `gS` thins out points
+that add nothing, `gq` moves them onto the grid, and `gn` draws a wave over
+the stretch (sine, triangle, saw, square, random or a ramp, from a menu).
+While the wave is new, `Tab` goes from its shape to its rate to its depth,
+`Ctrl-n` `Ctrl-p` change the one chosen, in the same undo step, and
+`Ctrl-y` or `Esc` keep it; `:curve.generate sine rate=1 depth=0.5` makes one
+by name. In a selection `x` deletes, `+` `-` raise and lower, `H` `L` move
+the points a grid step, `s` shapes them. `zi` `zo` zoom, `[g` `]g` change
+the window's grid. A lane has every shape; the tempo map ramps or holds; a
+controller's moves hold, so a ramp or a wave drawn on one is written as a
+move every sixteenth of a beat. With the mouse a click on a point chooses
+it and a drag moves it (Shift off the grid), a press elsewhere adds a point
+and a drag draws, the wheel scrolls (with Ctrl it zooms), and a right click
+opens the point's menu (its shape, its value, removing it) or the curve's
+(a wave, thinning, smoothing, quantizing). `:curve.window` (`gw`) shows the
+curve in a window of its own in the graphical frontend.
+
+In the device panel `A` automates the parameter under the cursor: it makes
+its lane with a point at the value it has, at the arrange cursor's beat,
+and shows the track's lanes with the cursor on the new one
+(`:param.automate`). A right click on a parameter offers the same, and its
+curve.
+
 **Comping with the mouse.** `zt` shows a track's takes as lanes under its
 clips, one row for each take. Drag across lane k with the left button, and
 the cells from where you pressed to where you let go are marked; on release
@@ -311,7 +357,8 @@ says on the status line what it is and what a click there does.
 | Ruler | click puts the cursor and the playhead there; drag loops the cells it crosses; double click turns the loop on or off; the loop's edges and the punch range's (`▕`) drag; a tempo or signature flag (`▾96`, `‖6/8`) drags to move it, double click types its value, right click offers to change or remove it |
 | Markers | in their row under the ruler: click goes to one, drag moves it, double click renames it, right click to rename, loop the region or remove it |
 | Tempo lane (`zT`) | click adds a change at that height; hold and drag to draw the tempo; drag a change to move it (an eighth of the lane's range a line up or down, Shift finer); double click makes it ramp to the next or hold; right click removes it, elsewhere hides the lane |
-| Lanes as rows | click adds a point, hold and drag to draw, drag a point to move it, right click removes it; right click elsewhere to clear the lane, bypass it or hide the rows |
+| Lanes as rows | click adds a point, hold and drag to draw, drag a point to move it, right click removes it; right click elsewhere to edit the curve, clear the lane, bypass it or hide the rows |
+| Curve editor | click a point to choose it and drag to move it (Shift off the grid); press elsewhere to add a point, drag to draw; wheel scrolls, with Ctrl zooms; right click a point for its shape, value and removal, elsewhere for a wave, thinning, smoothing and quantizing |
 | Take lanes | drag across lane k: take k plays there (see Comping with the mouse, above); click a piece to give it take k; click the label for the whole track; right click hides them |
 | Piano roll | as REAPER's: press on empty grid where a note should start and drag as far as it should last (a click gives the roll's note length, which a drawn length becomes); click a note to choose it, Shift or Ctrl to add it or take it out; drag a note to move it and the chosen with it (Ctrl copies, Shift off the grid); drag its first or last cell to move where they start or stop; the right button dragged, or the left with Ctrl, chooses the notes in its box; right click removes a note (Ctrl and a right click offers the fixes the diagnostics have for it), on empty grid opens a menu (choose all, let go, delete, quantize, snap); double click removes a note; Alt and a drag erases every note crossed. With several clips edited, a note is chosen and moved in its own clip, a new one goes into the clip where it is drawn, and Ctrl and a click on another track's note shown behind edits its clip too (or no longer). The keyboard sounds a key under a click or a drag, and a right drag down it chooses the notes of those pitches. The strip under the notes takes the velocity drawn across it (only the chosen notes, if any are); a click on its name (`vel`) shows a controller there instead (the pitch wheel, modulation, expression, the pedal), drawn with the button held, a move's head (the top of its bar) clicked to choose it (Ctrl or Shift adds it) and dragged to move the chosen, Ctrl and a drag choosing those in a box, the right button dragged drawing a straight line and clicked opening its menu. A click on the ruler moves the playhead |
 | Session view | click a slot to choose it; its play mark (`■`, `▶`) launches the clip, and letting go releases a gate or one-shot clip; double click opens a slot's notes, or makes a MIDI clip of a bar in an empty one; an empty slot's dot records a bar into it; drag a clip to another slot (Ctrl copies); right click opens the clip's menu; a scene's name launches its row; the bottom line stops a track, or every track under the scenes; the wheel scrolls the rows, with Shift the tracks |

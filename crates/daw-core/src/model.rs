@@ -803,6 +803,70 @@ pub struct Lane {
     /// joined by straight lines; before the first point and after the last
     /// the nearest value holds.
     pub points: Vec<(f64, f64)>,
+    /// How the curve goes from a point to the next where it does not go in
+    /// a straight line, by the beat of the point it leaves.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shapes: Vec<Segment>,
+}
+
+/// The shape of the stretch of a lane from one point to the next.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Segment {
+    /// The beat of the point the stretch leaves from.
+    pub beat: f64,
+    pub shape: Shape,
+    /// For a smooth stretch, -1 to 1: above 0 it moves early and settles,
+    /// below 0 it waits and then moves.
+    #[serde(default)]
+    pub tension: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Shape {
+    Linear,
+    /// The value holds and jumps at the next point.
+    Hold,
+    /// An S curve, bent by the tension.
+    Smooth,
+}
+
+/// How many straight pieces a smooth stretch is played as.
+const SMOOTH_PIECES: usize = 32;
+
+/// Where a smooth stretch is `t` of the way along, 0 to 1.
+pub fn smooth(t: f64, tension: f64) -> f64 {
+    let t = t.clamp(0.0, 1.0);
+    let t = t.powf(4f64.powf(-tension.clamp(-1.0, 1.0)));
+    t * t * (3.0 - 2.0 * t)
+}
+
+impl Lane {
+    /// The points as they are played: joined by straight lines, a held
+    /// stretch as a jump at the next point and a smooth one as many short
+    /// lines. The points themselves when every stretch is straight.
+    pub fn played(&self) -> std::borrow::Cow<'_, [(f64, f64)]> {
+        if self.shapes.is_empty() {
+            return std::borrow::Cow::Borrowed(&self.points);
+        }
+        let mut out = Vec::with_capacity(self.points.len() * 2);
+        for (i, &(beat, value)) in self.points.iter().enumerate() {
+            out.push((beat, value));
+            let Some(&(next, to)) = self.points.get(i + 1) else { break };
+            let Some(seg) = self.shapes.iter().find(|s| s.beat == beat) else { continue };
+            match seg.shape {
+                Shape::Linear => {}
+                Shape::Hold => out.push((next, value)),
+                Shape::Smooth => {
+                    for k in 1..SMOOTH_PIECES {
+                        let t = k as f64 / SMOOTH_PIECES as f64;
+                        out.push((beat + (next - beat) * t, value + (to - value) * smooth(t, seg.tension)));
+                    }
+                }
+            }
+        }
+        std::borrow::Cow::Owned(out)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1295,6 +1359,9 @@ impl Project {
                         l.id
                     );
                 }
+                if l.shapes.iter().any(|s| !s.beat.is_finite() || !s.tension.is_finite()) {
+                    bail!("automation lane {} has a shape that is not at a finite beat", l.id);
+                }
                 let limits = match &l.target {
                     Target::Volume => Some((-120.0, 24.0)),
                     Target::Pan => Some((-1.0, 1.0)),
@@ -1478,5 +1545,34 @@ mod note_ids {
         assert!(!text.contains("\"id\""), "{text}");
         let back: Note = serde_json::from_str(&serde_json::to_string(&note(60, 4)).unwrap()).unwrap();
         assert_eq!(back.id, 4);
+    }
+}
+
+#[cfg(test)]
+mod lane_shapes {
+    use super::*;
+    use daw_engine::automation::value_at;
+
+    fn lane(shapes: Vec<Segment>) -> Lane {
+        Lane { id: 1, target: Target::Volume, enabled: true, points: vec![(0.0, -12.0), (4.0, 0.0), (8.0, -6.0)], shapes }
+    }
+
+    #[test]
+    fn a_held_stretch_jumps_at_the_next_point_and_a_smooth_one_eases() {
+        let straight = lane(Vec::new());
+        assert_eq!(value_at(&straight.played(), 2.0), Some(-6.0));
+        let held = lane(vec![Segment { beat: 0.0, shape: Shape::Hold, tension: 0.0 }]);
+        assert_eq!(value_at(&held.played(), 3.99), Some(-12.0));
+        assert_eq!(value_at(&held.played(), 4.0), Some(0.0));
+        assert_eq!(value_at(&held.played(), 6.0), Some(-3.0), "the next stretch is straight");
+        let eased = lane(vec![Segment { beat: 0.0, shape: Shape::Smooth, tension: 0.0 }]);
+        assert!((value_at(&eased.played(), 2.0).unwrap() + 6.0).abs() < 1e-9, "half way at the middle");
+        assert!(value_at(&eased.played(), 0.5).unwrap() < -11.0, "slow to leave");
+        let early = lane(vec![Segment { beat: 0.0, shape: Shape::Smooth, tension: 1.0 }]);
+        assert!(value_at(&early.played(), 1.0).unwrap() > value_at(&eased.played(), 1.0).unwrap());
+        let text = serde_json::to_string(&straight).unwrap();
+        assert!(!text.contains("shapes"), "{text}");
+        let back: Lane = serde_json::from_str(&serde_json::to_string(&held).unwrap()).unwrap();
+        assert_eq!(back.shapes, held.shapes);
     }
 }
