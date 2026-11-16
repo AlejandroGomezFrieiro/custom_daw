@@ -191,6 +191,9 @@ daw.ui.view("scope", {
     g:poly({ 0, 80, 40, 60, 80, 90 }, { color = c.select, width = 2 })
     local part = g:sub(0, 100, ctx.width, 200)   -- drawn from its corner, cut at its edges
     g:mono(12, 40, "┌─ cells ─┐", { color = c.text, background = c.well })  -- a run of monospace cells
+    g:glyph(40, 60, 36, 0xE050, c.text, "Leland")  -- a music font's (SMuFL) glyph: origin, em in px, code point
+    g:layer("caret")                             -- what follows moves over the page: a frontend may draw it apart
+    g:cut(300, 0, 120)                           -- a barline: where a frontend may cut the page into images
   end,
   pointer = function(self, e) end,               -- e.kind: down, up, move (button held), hover, double, wheel; e.x, e.y, e.button
 })
@@ -198,7 +201,11 @@ daw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
 ```
 
 The kernel paints the view at the window's size and the frontend draws the
-rectangles, text and lines it is given. `daw.canvas.palette` holds the
+rectangles, text and lines it is given. A frontend that cannot draw a music
+font's glyphs is given each as a path from the font's outline (which the
+font's owner gives `daw.canvas.glyph_outline`); the paint context also says
+the size of a cell (`ctx.cell`) and, on a terminal's pixel surface,
+`ctx.surface` with the terminal's colours (`ctx.fg`, `ctx.bg`). `daw.canvas.palette` holds the
 window's colours under the names the window itself uses (`surface`, `lane`,
 `panel`, `well`, `control`, `line_bar`, `text`, `text_2`, `text_3`,
 `select`, `play`, `rec`, `mute`, `solo`, `warn`, `error`, the meter colours

@@ -694,12 +694,17 @@ function view:pointer(e)
       return context_menu(self, hd, at, e)
     end
     if e.kind == "double" then
-      -- Enter notes from here.
+      -- Enter notes from here. A frontend may say so before the second
+      -- click's own `down`, which is not a click in insert mode.
       if at and at.beat then self:set(at.step, at.beat) end
       self.last, self.chord = nil, nil
+      gui.gesture = { x = e.x, y = e.y }
       daw.keymap.set_mode("i")
       return
     end
+    local second = gui.gesture and abs(gui.gesture.x - e.x) < 4 and abs(gui.gesture.y - e.y) < 4
+    gui.gesture = nil
+    if second then return end
     if inserting or gui.rest then
       if at and at.beat and at.beat >= 0 then enter_at(self, at) end
       return

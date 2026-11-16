@@ -532,7 +532,7 @@ local function measure_ink(st, layout, sys, placed)
           if n.acc then
             local name = ACC_GLYPH[n.acc]
             local aw = gwidth(st, name)
-            local ax = acc_left - 0.2 * s - aw - cols[i] * col_w
+            local ax = acc_left - 0.3 * s - aw - cols[i] * col_w
             widest_col = max(widest_col, cols[i])
             if n.courtesy then
               local lw = gwidth(st, "accidentalParensLeft")
@@ -873,7 +873,8 @@ function E.system_ink(st, layout, sys, eng)
     end
   end
   local first = sys.measures[1]
-  out:text(round(first.x), round(top_y - 2.6 * s), tostring(first.m.number), st.muted, max(9, round(1.0 * s)))
+  -- The bar's number at the top of the system, over whatever reaches above the staff.
+  out:text(round(left), 1, tostring(first.m.number), st.muted, max(9, round(1.0 * s)))
   -- Time signatures that change inside the system.
   for k = 2, #sys.measures do
     local placed = sys.measures[k]
