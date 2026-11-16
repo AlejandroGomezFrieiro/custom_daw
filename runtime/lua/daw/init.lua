@@ -65,6 +65,7 @@ daw.canvas = require("daw.canvas")
 daw.notify = daw.ui.notify
 daw.keymap = require("daw.keymap")
 
+daw.clips = require("daw.clips")
 local objects = require("daw.objects")
 daw.Track, daw.Device, daw.Clip, daw.Lane = objects.Track, objects.Device, objects.Clip, objects.Lane
 daw.tracks, daw.track, daw.device, daw.clip = objects.tracks, objects.track, objects.device, objects.clip

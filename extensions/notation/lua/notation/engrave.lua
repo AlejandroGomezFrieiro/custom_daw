@@ -339,7 +339,7 @@ local function signature(m, placed, sys, layout)
         end
       end
       for _, n in ipairs(ev.notes or {}) do
-        parts[#parts + 1] = table.concat({ n.pos, n.index, tostring(n.acc), tostring(n.courtesy), tostring(n.tie),
+        parts[#parts + 1] = table.concat({ n.pos, n.id or n.index, tostring(n.acc), tostring(n.courtesy), tostring(n.tie),
           tostring(n.tied), tostring(n.string), tostring(n.fret), tostring(ev.next and ev.next.measure == ev.measure and ev.next.start) }, ".")
       end
       for _, n in ipairs(ev.grace or {}) do parts[#parts + 1] = "g" .. n.pos .. tostring(n.acc) end
@@ -527,7 +527,7 @@ local function measure_ink(st, layout, sys, placed)
           local nx = hx + (shifted[i] and (dir > 0 and side or -side) or 0)
           local ny = Y(n.pos)
           out:glyph(st, nx, ny, hname, colour)
-          out.heads[#out.heads + 1] = { x = nx + hw / 2, y = ny, index = n.index, step = n.step, start = ev.start, staff = staff,
+          out.heads[#out.heads + 1] = { x = nx + hw / 2, y = ny, index = n.index, id = n.id, step = n.step, start = ev.start, staff = staff,
             base = ev.base, glyph = hname, gx = nx }
           if n.acc then
             local name = ACC_GLYPH[n.acc]
