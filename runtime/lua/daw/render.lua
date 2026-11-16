@@ -78,7 +78,7 @@ end
 ---               default) or "best"; `bitrate` (kbit/s) instead of it for a number
 ---   tags        { title, artist, album, track, year, genre, comment, cover } written into
 ---               the file, over the project's own (`daw.render_tags`); `cover` is a PNG or
----               JPEG file (a WAV holds no cover); the title is the project's name by default
+---               JPEG file (a WAV holds no cover); the title of a lossy file is the project's name by default
 ---   normalize   bring the loudest sample to this level in dB, such as -1
 ---   loudness    bring the integrated loudness to this level in LUFS, such as -14;
 ---               with `normalize` too, the peak level is a ceiling
@@ -184,8 +184,9 @@ function M.stems(dir, opts)
     used[name] = (used[name] or 0) + 1
     if used[name] > 1 then name = name .. " " .. used[name] end
     local path = string.format("%s/%s.%s", dir, name, ext)
-    -- A stem is titled after its track, unless the options say otherwise.
-    local tags = daw.util.merge({ title = name }, opts.tags or {})
+    -- A lossy stem is titled after its track, unless the options say otherwise.
+    local lossy = ext ~= "wav" and ext ~= "flac"
+    local tags = daw.util.merge(lossy and { title = name } or {}, opts.tags or {})
     M.render(path, daw.util.merge(opts, { tracks = { id }, format = false, tags = tags }))
     out[#out + 1] = path
   end

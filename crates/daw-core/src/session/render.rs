@@ -294,10 +294,13 @@ impl Session {
         self.capture_states();
         let project = self.project.clone();
         // The file's tags are the project's, over which the render's own
-        // go; the title is the project's name unless one is given.
+        // go. A lossy file's title is the project's name unless one is
+        // given; a WAV or FLAC is only tagged with what was asked for, so
+        // that a plain render stays a plain file.
         let mut opts = opts.clone();
         opts.tags = Tags::of_project(&project)?.over(&opts.tags);
-        if opts.tags.title.is_empty() {
+        let lossy = format_of(path, opts.ffmpeg.as_deref())?.lossy().is_some();
+        if lossy && opts.tags.title.is_empty() {
             opts.tags.title.clone_from(&project.name);
         }
         self.render_snapshot(project, path, &opts)

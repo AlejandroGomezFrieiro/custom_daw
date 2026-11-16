@@ -13,6 +13,49 @@ cargo run -- --output UR22 --input UR22              # open these audio devices 
 cargo run -- doctor                                  # check the audio, plugins and environment, and print a report
 ```
 
+## Installing with Nix
+
+The flake builds the program as a package, so that it can be run or installed
+without the dev shell, on any Linux with Nix and flakes (no NixOS or
+home-manager is needed):
+
+```sh
+nix run .                       # the terminal UI (`daw`)
+nix run .#daw-gui               # the window; `.#daw` and `.#daw-mcp` are the others
+nix build                       # ./result/bin/{daw,daw-gui,daw-mcp}
+nix profile install .           # into your profile: daw, daw-gui and daw-mcp on the PATH
+nix profile remove daw          # and out again
+```
+
+Run these in a checkout, where `.` is the flake. One build gives all three programs, and `.#daw`, `.#daw-gui` and `.#daw-mcp` are
+only the one named, out of it. The window starts its own kernel, which is the
+`daw` beside it, so it needs no other install.
+
+What the package takes care of, which the dev shell does otherwise:
+
+- The window's libraries (Wayland, xkbcommon, X11, fontconfig, OpenGL) and
+  the ones that plugins built elsewhere open by name are written into the
+  programs, so they run from any shell. The OpenGL driver for
+  `--renderer gpu` is the system's (on NixOS `hardware.graphics.enable`).
+- LuaJIT is built with `LUAJIT_ENABLE_CHECKHOOK`, as `.cargo/config.toml`
+  asks, so that `daw.limit` can stop a runaway loop.
+- The runtime's Lua and the window's fonts are compiled into the binaries.
+  The extensions, `examples` and `config` are installed under
+  `share/daw`, and the programs start with `DAW_HOME` pointing there (unless
+  you set it): `daw doctor` finds its script that way, and
+  `daw.ext.load(os.getenv("DAW_HOME") .. "/extensions/sections")` loads an
+  extension from the package.
+- `ffmpeg` is on the programs' PATH, after your own, for rendering to MP3,
+  Ogg Vorbis and Opus; nothing else needs it. `daw.opt.ffmpeg` names
+  another.
+- The tests do not run in the build: they drive plugins, audio devices and
+  an X server, which a build sandbox has none of. They run in the dev shell
+  (`cargo test`, `tests/tools/suite.sh`).
+
+The project's state (recent projects, the window's layout, the plugin cache)
+is kept under your home directory as with any build, in `~/.local/state/daw`
+and `~/.cache/daw`.
+
 The audio devices are the system's default output and input until others are
 chosen: with `:audio` (a list of every output, input and block size), with a
 click on the engine indicator at the right of the window's transport bar, or

@@ -3617,6 +3617,15 @@ fn run() -> Result<()> {
                     sync(&view.borrow().render_ranges, ranges);
                     ui.set_render_range(0);
                     ui.set_render_path(text(&info["path"]));
+                    let tags = &info["tags"];
+                    ui.set_render_title(text(&tags["title"]));
+                    ui.set_render_artist(text(&tags["artist"]));
+                    ui.set_render_album(text(&tags["album"]));
+                    ui.set_render_track(text(&tags["track"]));
+                    ui.set_render_year(text(&tags["year"]));
+                    ui.set_render_genre(text(&tags["genre"]));
+                    ui.set_render_comment(text(&tags["comment"]));
+                    ui.set_render_cover(text(&tags["cover"]));
                     // The lossy formats are offered when ffmpeg can make them.
                     let has = |name: &str| info["formats"][name].as_bool().unwrap_or(false);
                     ui.set_render_has_mp3(has("mp3"));
@@ -3655,6 +3664,12 @@ fn run() -> Result<()> {
                     "bits": ui.get_render_bits(), "tail": tail.max(0.0), "normalize": normalize,
                     "dither": ui.get_render_dither(), "mono": ui.get_render_mono(),
                     "stems": ui.get_render_stems(),
+                    "tags": {
+                        "title": ui.get_render_title().as_str(), "artist": ui.get_render_artist().as_str(),
+                        "album": ui.get_render_album().as_str(), "track": ui.get_render_track().as_str(),
+                        "year": ui.get_render_year().as_str(), "genre": ui.get_render_genre().as_str(),
+                        "comment": ui.get_render_comment().as_str(), "cover": ui.get_render_cover().as_str(),
+                    },
                 }]),
             );
             ui.set_render_open(false);
@@ -3722,12 +3737,20 @@ fn run() -> Result<()> {
     let layout = |ui: &App| {
         let scale = ui.window().scale_factor();
         let size = ui.window().size().to_logical(scale);
-        json!({
+        let mut layout = json!({
             "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
             "row_height": ui.get_row_height(),
             "roll_height": ui.get_roll_height(),
             "mixer": ui.get_show_mixer(),
-        })
+        });
+        // Where the window is, in screen pixels with its frame, where the
+        // system tells a program (X11). On Wayland it does not: the
+        // compositor places windows, so nothing is kept.
+        if let Some(at) = ui.window().with_winit_window(|window| window.outer_position().ok()).flatten() {
+            layout["x"] = json!(at.x);
+            layout["y"] = json!(at.y);
+        }
+        layout
     };
     ui.window().on_close_requested({
         let (leave, client, weak, layout) = (leave.clone(), client.clone(), ui.as_weak(), layout);
@@ -3927,6 +3950,29 @@ fn run() -> Result<()> {
     let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
     if let (Some(width), Some(height)) = (size("width"), size("height")) {
         ui.window().set_size(slint::LogicalSize::new(width, height));
+    }
+    // Asking for a position does nothing on Wayland, where the compositor
+    // decides, and nothing was kept there. Where the screens have changed
+    // since, a window that would be out of reach is brought back.
+    if let (Some(x), Some(y)) = (kept["x"].as_i64(), kept["y"].as_i64()) {
+        ui.window().set_position(slint::PhysicalPosition::new(x as i32, y as i32));
+        let weak = ui.as_weak();
+        Timer::single_shot(Duration::from_millis(500), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.window().with_winit_window(|window| {
+                let (Ok(at), size) = (window.outer_position(), window.outer_size()) else { return };
+                let on_screen = window.available_monitors().any(|monitor| {
+                    let (origin, extent) = (monitor.position(), monitor.size());
+                    at.x + size.width as i32 > origin.x + 40
+                        && at.x < origin.x + extent.width as i32 - 40
+                        && at.y >= origin.y - 20
+                        && at.y < origin.y + extent.height as i32 - 40
+                });
+                if !on_screen && let Some(monitor) = window.primary_monitor() {
+                    window.set_outer_position(monitor.position());
+                }
+            });
+        });
     }
     if let Some(zoom) = size("zoom") {
         ui.set_zoom(zoom);

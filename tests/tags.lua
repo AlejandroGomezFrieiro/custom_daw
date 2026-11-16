@@ -100,7 +100,7 @@ test("a WAV carries the project's tags in an INFO chunk and is still a WAV", fun
   local path = dir .. "/a.wav"
   daw.render(path, { tail = 0, bits = 16 })
   local info, size_ok = wav_info(T.read_file(path))
-  eq(info.INAM, "Sunrise", "the title is the project's name")
+  eq(info.INAM, nil, "a WAV is not titled with the project's name unless asked")
   eq(info.IART .. "|" .. info.IPRD .. "|" .. info.ITRK .. "|" .. info.ICRD .. "|" .. info.IGNR .. "|" .. info.ICMT,
     "Ana|First|3|2026|Ambient|a note", "every tag is there")
   eq(size_ok, true, "the RIFF size covers the chunk")
@@ -196,5 +196,5 @@ test("the tags are given to :render, :render.tags and the window's dialog, and k
   api.project_load(project)
   eq(daw.render_tags().year, "1999", "they are saved with the project")
   daw.render_stems(dir .. "/stems", { tail = 0 })
-  eq(wav_info(T.read_file(dir .. "/stems/Synth.wav")).INAM, "Synth", "a stem is titled after its track")
+  eq(wav_info(T.read_file(dir .. "/stems/Synth.wav")).IART, "Cy", "a stem has the project's tags")
 end)

@@ -254,7 +254,7 @@ sitting at 100%, `Esc` or `:render.cancel` stops ffmpeg as well, and
 file (`render.progress` and `render_status()` carry `stage`, `"rendering"` or
 `"encoding"`). Opus holds only 48 kHz and the usual lower rates, so ffmpeg
 resamples to 48 kHz; MP3 above 48 kHz is resampled to 48 kHz too. The project's
-name is the file's title tag. `ffmpeg` is the program found on the PATH; set
+name is the file's title tag (see "Tags" below). `ffmpeg` is the program found on the PATH; set
 `daw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an
 ffmpeg built without the encoder, `:render mix.mp3` fails before anything is
 rendered, saying so and naming the formats that need nothing (WAV and FLAC),
@@ -286,10 +286,40 @@ render in the foreground. `:stems out format=flac master=false` renders stems
 too. Normalizing renders the song once into a raw temporary file, measures it
 and encodes from there.
 
+### Tags
+
+A rendered file carries a title, artist, album, track number, year, genre,
+comment and a cover picture, when they are set. They belong to the project,
+which keeps them (`project.meta.tags`, saved with it) for every render:
+
+```
+:render.tags artist=Ana album="First one" track=3/12 year=2026 genre=Ambient comment="a note" cover=cover.png
+:render.tags                  " what is set
+:render.tags genre=           " an empty value takes one out
+```
+
+In Lua `daw.render_tags()` gives the table and `daw.render_tags({ artist = "Ana" })`
+sets those fields and keeps the others. `:render` takes the same words
+(`:render mix.mp3 artist=Bo`) and `daw.render` a `tags` table, for that file
+only; they go over the project's. The title of an MP3, Ogg or Opus file is the project's name unless one
+is given, and a lossy stem's is its track's name. A relative `cover` is from the
+project's directory; it must be a PNG or JPEG file of at most 8 MiB, and a
+render that cannot read it is refused before anything is rendered. The
+window's render dialog has them under Tags, and what is typed there becomes
+the project's.
+
+Each format holds them its own way: a WAV in a `LIST` chunk of `INFO`
+(`INAM`, `IART`, `IPRD`, `ITRK`, `ICRD`, `IGNR`, `ICMT`), a FLAC in Vorbis
+comments and a `PICTURE` block, MP3 in ID3v2.3 with the cover as an attached
+picture, and Ogg Vorbis and Opus in Vorbis comments, the cover in
+`METADATA_BLOCK_PICTURE`. The last three are written by ffmpeg, which is
+handed the tags in a file, not on its command line. A WAV has no cover that
+players read, so none is written to it.
+
 `daw.render(path, opts)` takes the same as a table (`range`, `start`, `end`,
 `tail`, `sample_rate` or `rate`, `bits`, `channels` (1, 2, "mono",
 "stereo"), `quality`, `bitrate`, `ffmpeg`, `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
-`master`, `threads`) and waits for the file, returning `{ path, frames,
+`master`, `threads`, `tags`) and waits for the file, returning `{ path, frames,
 seconds, sample_rate, peak, gain, loudness, format, bits, channels, ... }`;
 with `background = true` it returns at once and the events follow:
 `render.progress` (`{ path, fraction, seconds, stage }`, a few times a second),
