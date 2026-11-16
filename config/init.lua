@@ -29,9 +29,14 @@ for _, name in ipairs({
   "undotree",   -- the undo tree, named checkpoints, A/B listening (`,u…`)
   "rpp",        -- opening and writing REAPER projects
   "tutor",      -- the course: `:tutor` starts it
+  "doctor",     -- a guided check of the hardware, with a written report (`:doctor`, `daw doctor`)
 }) do
   daw.ext.load(plugins .. "/" .. name)
 end
+
+-- Plugins that `:doctor` loads on a track of its own and plays a few notes
+-- on, to say whether sound comes out: name fragments, as `:device.add` takes.
+-- daw.opt.doctor_plugins = { "MT-PowerDrumKit", "Ugritone" }
 
 -- Audio. The devices are chosen once from the engine menu (`:audio`) and
 -- remembered for this machine; name them here instead to pin them.

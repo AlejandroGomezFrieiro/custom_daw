@@ -1,0 +1,108 @@
+-- A guided check of the real hardware: audio, MIDI, recording, plugins and
+-- the environment, with a written report. `:doctor` opens it, `daw doctor`
+-- runs what needs nobody from the shell. See README.md beside this file.
+daw.option.define("doctor_plugins", {}) -- name fragments of plugins to load and play: { "MT-PowerDrumKit", "Ugritone" }
+daw.option.define("doctor_seconds", 20) -- seconds each of the two dropout runs lasts
+daw.option.define("doctor_dir", "")     -- where reports go; "" is `doctor` in the state directory
+
+local doctor = require("doctor")
+local panel = require("doctor.panel")
+require("doctor.gui")
+
+local command, map = daw.command, daw.keymap.set
+
+-- Where a window has no terminal to float over, the page is only in its own
+-- window, and the keyboard goes there through this hidden place in the layout.
+daw.ui.dock("doctor", { side = "bottom", hidden = true })
+
+--- Show the page: floating over the terminal if there is one, and in a
+--- window of its own where a graphical frontend is attached.
+local function open()
+  if daw.api.ui_attached() then
+    daw.ui.open("doctor", { title = "Doctor", width = 100, height = 30 })
+  else
+    daw.ui.focus("doctor")
+  end
+  daw.canvas.open("doctor", { title = "Doctor", width = 900, height = 560 })
+end
+
+local function close()
+  if doctor.running() then doctor.cancel() end
+  daw.canvas.close("doctor")
+  if daw.ui.float and daw.ui.float.name == "doctor" then daw.ui.close() end
+  if daw.ui.focused == "doctor" then daw.ui.focus("arrange") end
+end
+
+local function names()
+  local out = { "all", "unattended", "stop", "report" }
+  for _, check in ipairs(doctor.checks) do out[#out + 1] = doctor.id_of(check) end
+  return out
+end
+
+command("doctor", function(ctx)
+  local what = ctx.args[1] and tostring(ctx.args[1])
+  open()
+  if what == "report" then
+    local run = doctor.run()
+    return daw.notify(run and run.report and ("report: " .. run.report) or "no report yet: `:doctor all` runs the checks", run and run.report and nil or "warn")
+  end
+  if what == "stop" then return doctor.cancel() end
+  if what == nil then return end
+  if doctor.running() then return daw.notify("the doctor is running: `:doctor stop` ends it", "warn") end
+  local ok, err
+  if what == "all" then
+    ok, err = pcall(doctor.start)
+  elseif what == "unattended" then
+    ok, err = pcall(doctor.start, { unattended = true })
+  else
+    ok, err = pcall(doctor.start, { only = { tonumber(what) or what } })
+  end
+  if not ok then daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+end, {
+  desc = "Check the hardware: `doctor` opens the page, `doctor all` runs every check, `doctor input` one, `doctor unattended` those that need nobody",
+  complete = names,
+})
+
+command("doctor.close", close, { desc = "Close the doctor's page, and stop a run that is going" })
+
+-- The page's keys. A key that answers the question being asked does that;
+-- otherwise it does what is written here.
+local function pmap(lhs, rhs, desc) map(lhs, rhs, { view = "doctor", desc = desc }) end
+local function move(by) return function(ctx)
+  panel.row = panel.row + by * (ctx.count or 1)
+  panel:current()
+  daw.api.ui_redraw()
+end end
+pmap("j", move(1), "Down a check")
+pmap("k", move(-1), "Up a check")
+pmap("<Down>", move(1), "Down a check")
+pmap("<Up>", move(-1), "Up a check")
+for _, key in ipairs(panel.answer_keys) do
+  pmap(key, function()
+    if doctor.answer(key) then return end
+    if key == "s" then doctor.skip() end
+  end, key == "s" and "Skip the check, or answer \"skip\"" or "Answer the question with this key")
+end
+pmap("<CR>", function()
+  if doctor.running() then return end
+  local row = panel:current()
+  if row then doctor.start({ only = { row.index } }) end
+end, "Run the check under the cursor")
+pmap("A", function() if not doctor.running() then doctor.start() end end, "Run every check")
+pmap("u", function() if not doctor.running() then doctor.start({ unattended = true }) end end, "Run the checks that need nobody")
+pmap("o", function()
+  local run = doctor.run()
+  daw.notify(run and run.report and ("report: " .. run.report) or "no report yet", run and run.report and nil or "warn")
+end, "Where the report is")
+pmap("<Esc>", function()
+  if doctor.running() then doctor.cancel() else close() end
+end, "Stop the run; close the page when none is going")
+pmap("q", close, "Close the page")
+
+if daw.ui.keybar then
+  daw.ui.keybar.set("doctor", "n", {
+    { "<CR>", "run this" }, { "A", "run all" }, { "u", "no person" }, { "y", "yes" }, { "n", "no" }, { "s", "skip" }, { "o", "report" }, { "<Esc>", "stop/close" },
+  })
+end
+
+return doctor
