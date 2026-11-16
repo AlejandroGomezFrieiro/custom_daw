@@ -1614,9 +1614,13 @@ for alias, target in pairs({ w = "write", e = "edit", q = "quit", ["q!"] = "quit
   command.alias(alias, target)
 end
 
-command("cmdline", function()
+command("cmdline", function(ctx)
+  -- From a selection, the command is for it, as `:` in Vim's visual mode.
+  local from_visual = ctx.mode == "x" and keymap.selection() ~= nil
+  if from_visual then keymap.set_mode("n") end
   daw.ui.input({
     prompt = ":",
+    text = from_visual and "'<,'>" or nil,
     history = "cmdline",
     -- Command names, then what each command says its arguments are.
     complete = function(text) return daw.commands.complete(text) end,

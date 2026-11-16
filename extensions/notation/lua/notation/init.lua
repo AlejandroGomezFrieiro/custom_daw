@@ -21,6 +21,7 @@ local view = {
   first = 1,         -- the first measure on screen
   chord = nil,       -- notes entered at one place in insert mode: { beat, pitches }
   last = nil,        -- the last note entered in insert mode: { pitch, beat }
+  voice = nil,       -- the voice insert mode enters notes in, taken from the cursor at `i`
 }
 
 function view:clip()
@@ -498,37 +499,83 @@ function view:velocity_near(beat)
   return math.floor(sum / count + 0.5)
 end
 
---- Put a note in as it is written, `length` long from `beat`, the way
---- notation programs do: on its staff, what is written as starting in that
---- stretch goes, and a chord still sounding when it starts is cut to end
---- there. `keep` is a set of pitches written at `beat` that stay (a chord
---- being built). `spell` is how to write it. The note goes in exactly on
---- the grid, as loud as the notes around it. Returns the note's place.
-function view:place(pitch, beat, length, keep, spell)
-  local clip = self:clip()
-  if not clip then return end
-  pitch = util.clamp(pitch, 0, 127)
-  self:grow(clip, beat + length)
-  local layout = self:layout()
-  local staff = self:staff_of_pitch(pitch, layout)
-  local notes = clip:notes()
+--- The voice notes are entered in at the cursor: the voice of the note
+--- under it, or of what is written there on its staff, else the first.
+function view:cursor_voice()
+  local ev = self:event_at(self.beat, self.step)
+  return ev and ev.voice or 1
+end
+
+--- What gives way to something written `length` long from `beat` on one
+--- staff and in one voice: the notes written as starting in that stretch
+--- go, and a chord still sounding when it starts is cut to end there.
+--- Other staves and voices are left alone. `keep(n)` spares a note
+--- starting at `beat` (a chord being built). `events` may stand for more
+--- notes than the clip's `notes`; only the clip's give way. Returns
+--- `remove`, `set` for `clip:edit_notes`.
+function view:give_way(events, notes, beat, length, staff, voice, keep)
   local remove, set = {}, {}
-  for _, ev in ipairs(self:chords(staff, layout)) do
-    local here = math.abs(ev.start - beat) < EPS
-    if ev.start >= beat - EPS and ev.start < beat + length - EPS then
-      for _, n in ipairs(ev.notes) do
-        if not (here and keep and keep[n.pitch] and n.pitch ~= pitch) then remove[#remove + 1] = n.index end
-      end
-      for _, g in ipairs(ev.grace or {}) do remove[#remove + 1] = g.index end
-    elseif ev.start < beat - EPS and ev.start + ev.length > beat + EPS then
-      for _, n in ipairs(ev.notes) do
-        local played = notes[n.index]
-        if played.start + played.length > beat then set[#set + 1] = { index = n.index, length = math.max(0.01, beat - played.start) } end
+  for _, ev in ipairs(events) do
+    if ev.staff == staff and (ev.voice or 1) == voice then
+      local here = math.abs(ev.start - beat) < EPS
+      if ev.start >= beat - EPS and ev.start < beat + length - EPS then
+        for _, n in ipairs(ev.notes) do
+          if notes[n.index] and not (here and keep and keep(n)) then remove[#remove + 1] = n.index end
+        end
+        for _, g in ipairs(ev.grace or {}) do
+          if notes[g.index] then remove[#remove + 1] = g.index end
+        end
+      elseif ev.start < beat - EPS and ev.start + ev.length > beat + EPS then
+        for _, n in ipairs(ev.notes) do
+          local played = notes[n.index]
+          if played and played.start + played.length > beat then set[#set + 1] = { index = n.index, length = math.max(0.01, beat - played.start) } end
+        end
       end
     end
   end
+  return remove, set
+end
+
+--- Put a note in as it is written, `length` long from `beat`, the way
+--- notation programs do: what is on its staff and in its voice in that
+--- stretch gives way (see `give_way`). `keep` is a set of pitches written
+--- at `beat` that stay (a chord being built). `spell` is how to write it;
+--- `voice` the voice it goes in, by default the cursor's. The note goes in
+--- exactly on the grid, as loud as the notes around it. Returns the note's
+--- place.
+function view:place(pitch, beat, length, keep, spell, voice)
+  local clip = self:clip()
+  if not clip then return end
+  pitch = util.clamp(pitch, 0, 127)
+  voice = voice or self:cursor_voice()
+  self:grow(clip, beat + length)
+  local layout = self:layout()
+  local notes = clip:notes()
   local note = { pitch = pitch, start = beat, length = length, velocity = self:velocity_near(beat) }
+  -- A note that makes one staff two (a bass under a melody) is on the
+  -- staff the score will write it on: ask the layout it will have.
+  local events, staff = layout.score.events, self:staff_of_pitch(pitch, layout)
+  local opts = view.layout_opts(clip:get())
+  local pitches = { pitch }
+  for i, n in ipairs(notes) do pitches[i + 1] = n.pitch end
+  if #model.choose_clef(pitches, opts.clef) ~= #layout.staves then
+    local with = util.merge(notes, {})
+    with[#with + 1] = note
+    events = model.layout(with, opts).score.events
+    for _, ev in ipairs(events) do
+      for _, n in ipairs(ev.notes) do
+        if n.index == #with then staff = ev.staff end
+      end
+    end
+  end
+  local remove, set = self:give_way(events, notes, beat, length, staff, voice, function(n)
+    return keep and keep[n.pitch] and n.pitch ~= pitch
+  end)
   if spell then note.meta = spelling_meta(nil, spell) end
+  if voice ~= 1 then
+    note.meta = note.meta or {}
+    note.meta.notation = util.merge(note.meta.notation or {}, { voice = voice })
+  end
   clip:edit_notes({ remove = remove, set = set, add = { note } })
   daw.ui.poke()
   -- Where it is now among the clip's notes.
@@ -536,25 +583,15 @@ function view:place(pitch, beat, length, keep, spell)
   return at[1]
 end
 
---- Clear a stretch of one staff: a rest written there.
-function view:rest(beat, length, staff)
+--- Clear a stretch of one staff and voice (by default the cursor's): a
+--- rest written there.
+function view:rest(beat, length, staff, voice)
   local clip = self:clip()
   if not clip then return end
+  voice = voice or self:cursor_voice()
   self:grow(clip, beat + length)
   local layout = self:layout()
-  local notes = clip:notes()
-  local remove, set = {}, {}
-  for _, ev in ipairs(self:chords(staff, layout)) do
-    if ev.start >= beat - EPS and ev.start < beat + length - EPS then
-      for _, n in ipairs(ev.notes) do remove[#remove + 1] = n.index end
-      for _, g in ipairs(ev.grace or {}) do remove[#remove + 1] = g.index end
-    elseif ev.start < beat - EPS and ev.start + ev.length > beat + EPS then
-      for _, n in ipairs(ev.notes) do
-        local played = notes[n.index]
-        if played.start + played.length > beat then set[#set + 1] = { index = n.index, length = math.max(0.01, beat - played.start) } end
-      end
-    end
-  end
+  local remove, set = self:give_way(layout.score.events, clip:notes(), beat, length, staff, voice)
   if #remove > 0 or #set > 0 then clip:edit_notes({ remove = remove, set = set }) end
 end
 
@@ -946,7 +983,7 @@ function view:enter(letter, advance)
   -- A chord being built keeps what was entered at this place already.
   if not (self.chord and math.abs(self.chord.beat - self.beat) < EPS) then self.chord = { beat = self.beat, pitches = {} } end
   self.chord.pitches[pitch] = true
-  self:place(pitch, self.beat, self:entry_length(), self.chord.pitches)
+  self:place(pitch, self.beat, self:entry_length(), self.chord.pitches, nil, self.voice)
   self:audition(pitch)
   self.last = { step = step, pitch = pitch, beat = self.beat }
   self.step = step
@@ -1032,7 +1069,7 @@ end
 
 --- A rest of the chosen value at the cursor, then on.
 function view:enter_rest()
-  self:rest(self.beat, self:entry_length(), self:staff_of_step(self.step))
+  self:rest(self.beat, self:entry_length(), self:staff_of_step(self.step), self.voice)
   self.chord = nil
   self:step_on(1)
 end
@@ -1081,16 +1118,20 @@ function view:octave_last(dir)
   end
 end
 
---- Step back and remove what starts there on the cursor's staff.
+--- Step back and remove what starts there on the cursor's staff, in the
+--- voice notes are entered in.
 function view:backspace()
   local clip = self:clip()
   if not clip or self.beat <= 0 then return end
   self:step_on(-1)
   local layout = self:layout()
   local staff = self:staff_of_step(self.step, layout)
+  local voice = self.voice or 1
   local remove = {}
-  for index, n in ipairs(clip:notes()) do
-    if math.abs(n.start - self.beat) < EPS and self:staff_of_pitch(n.pitch, layout) == staff then remove[#remove + 1] = index end
+  for _, ev in ipairs(layout.score.events) do
+    if ev.staff == staff and (ev.voice or 1) == voice and math.abs(ev.start - self.beat) < EPS then
+      for _, n in ipairs(ev.notes) do remove[#remove + 1] = n.index end
+    end
   end
   if #remove > 0 then clip:edit_notes({ remove = remove }) end
   self.chord, self.last = nil, nil

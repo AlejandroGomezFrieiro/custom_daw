@@ -50,7 +50,9 @@ with `j` and `k`; `V` whole tracks; in the piano roll `v` a stretch of time at
 every pitch, `Ctrl-v` a rectangle, `V` whole pitches. Then an operator, or `x`
 to delete, `~` to mute, `J` to join the clips, `Ctrl-a` and `Ctrl-x` to
 transpose, `p` to replace it with the register. `o` goes to the other end, `gv`
-selects the same again.
+selects the same again. `:` types a command for the selection: the line starts
+with `'<,'>`, which names the last selection, as in Vim. A command may also take
+bars in front: `:5,8notation.transpose 2`, `:5notation.dyn mf`.
 
 **Registers, repeating, macros.** `p` pastes after the clip or note under the
 cursor (tracks: below), `P` right at the cursor (tracks: above); `3p` pastes

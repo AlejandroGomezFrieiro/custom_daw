@@ -112,6 +112,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
+| `:` | a command for the selection: the line starts `:'<,'>` |
 | `<Esc>` | back to normal mode |
 
 ## Draw notes (insert mode, R)
