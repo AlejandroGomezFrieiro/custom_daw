@@ -47,7 +47,11 @@ pub struct Timer {
 /// Everything the kernel and the Lua API functions both reach into.
 pub struct Shared {
     pub session: RefCell<Session>,
+    /// The screen of the seat whose turn it is (see runtime/lua/daw/seats.lua),
+    /// as big as that seat's terminal: `sizes`, by connection, 0 for the
+    /// program's own.
     pub grid: RefCell<Grid>,
+    pub sizes: RefCell<HashMap<u64, (u16, u16)>>,
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
@@ -69,9 +73,10 @@ pub struct Shared {
     pub started: Instant,
     /// The connections on the control socket, for pushing events to them.
     pub clients: crate::rpc::Clients,
-    /// The connection whose terminal the input being handled came from, or 0
-    /// for the program's own; and the connections whose terminals asked to
-    /// leave, for the kernel to let go after this turn.
+    /// The connection whose terminal the input being handled came from, or
+    /// whose call is being answered, or 0 for the program's own; and the
+    /// connections whose terminals asked to leave, for the kernel to let go
+    /// after this turn.
     pub input_from: Cell<u64>,
     /// MIDI that came in from ports and has not been made into `midi.in`
     /// events yet.
@@ -711,6 +716,18 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_glue(lua, sh, ids => Vec<Id>) {
             to_lua(lua, &sh.session.borrow_mut().clip_glue(&ids).lua()?)
         }
+        // Warp markers of an audio clip (session/stretching.rs), counted from 1.
+        fn clip_warp_add(_, sh, (id, beat) => (Id, f64)) {
+            Ok(sh.session.borrow_mut().warp_add(id, beat).lua()? + 1)
+        }
+        fn clip_warp_move(_, sh, (id, index, beat) => (Id, usize, f64)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            Ok(sh.session.borrow_mut().warp_move(id, index, beat).lua()? + 1)
+        }
+        fn clip_warp_remove(_, sh, (id, index) => (Id, usize)) {
+            let index = index.checked_sub(1).ok_or_else(|| mlua::Error::runtime("warp markers count from 1"))?;
+            sh.session.borrow_mut().warp_remove(id, index).lua()
+        }
         // Beats of sound left in an audio clip's file from where the clip starts in it.
         fn clip_source_length(_, sh, id => Id) { sh.session.borrow_mut().clip_source_length(id).lua() }
         fn clip_add(lua, sh, (track, opts) => (Id, LuaValue)) {
@@ -1243,6 +1260,16 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn rpc_clients(_, sh, () => ()) { Ok(sh.clients.ids()) }
         fn rpc_version(_, _sh, () => ()) { Ok(crate::rpc::VERSION) }
         fn ui_client(_, sh, () => ()) { Ok(sh.input_from.get()) }
+        fn ui_seat(_, sh, seat => u64) {
+            // The screen is the size of the terminal of the seat entered;
+            // a seat without one (a window's) has the size there was at first.
+            let (width, height) = sh.sizes.borrow().get(&seat).copied().unwrap_or((80, 24));
+            let mut grid = sh.grid.borrow_mut();
+            if (grid.width, grid.height) != (width, height) {
+                grid.resize(width, height);
+            }
+            Ok(())
+        }
         fn ui_detach(_, sh, client => u64) {
             sh.detach.borrow_mut().push(client);
             Ok(())
@@ -1341,6 +1368,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
     crate::measure::install(lua, &api, shared)?;
     crate::tempo_api::install(lua, &api, shared)?;
+    crate::luadev_api::install(lua, &api, shared)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("daw.api", api)

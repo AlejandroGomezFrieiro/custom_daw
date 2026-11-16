@@ -1,6 +1,6 @@
-//! The control socket from outside: calls, pushed events, the token over
-//! TCP, the frontend's state pushed in parts, and a terminal attached to a
-//! kernel that runs without one.
+//! The control socket from outside: calls, pushed events, TLS and the token
+//! over TCP, the frontend's state pushed in parts, and a terminal attached
+//! to a kernel that runs without one.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -8,7 +8,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use daw_core::grid::Grid;
-use daw_core::rpc::Connection;
+use daw_core::rpc::{Connection, Wire};
 use serde_json::{Value, json};
 
 /// A kernel without a UI, listening on a socket and on a TCP port of its
@@ -29,21 +29,35 @@ impl Drop for Instance {
     }
 }
 
-fn start(name: &str) -> Instance {
+/// A scratch directory of the test's own, empty.
+fn scratch(name: &str) -> PathBuf {
     // A short path: a Unix socket's must fit in 108 bytes.
     let dir = std::env::temp_dir().join(format!("daw-rt-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn start(name: &str) -> Instance {
+    start_with(name, None, &[])
+}
+
+/// An instance with more options, and with its state (its token and
+/// certificate) kept in `state` rather than in its own directory.
+fn start_with(name: &str, state: Option<&std::path::Path>, more: &[&str]) -> Instance {
+    let dir = scratch(name);
+    let state = state.unwrap_or(&dir).to_path_buf();
     let socket = dir.join("daw.sock");
-    let token_file = dir.join("token");
+    let token_file = state.join("token");
     let mut child = Command::new(env!("CARGO_BIN_EXE_daw"))
         .args(["--headless", "--clean", "--no-plugins", "--audio", "null"])
         .arg("--listen")
         .arg(&socket)
         .args(["--listen-tcp", "127.0.0.1:0", "--token-file"])
         .arg(&token_file)
+        .args(more)
         .env("XDG_CACHE_HOME", &dir)
-        .env("XDG_STATE_HOME", &dir)
+        .env("XDG_STATE_HOME", &state)
         .env("XDG_DATA_HOME", &dir)
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
@@ -67,6 +81,19 @@ fn start(name: &str) -> Instance {
         address,
         token,
         dir,
+    }
+}
+
+impl Instance {
+    /// What this test's client remembers of the certificates it has seen.
+    fn known(&self) -> PathBuf {
+        self.dir.join("known_instances")
+    }
+
+    /// A connection over the network, in TLS.
+    fn tcp(&self) -> anyhow::Result<Connection> {
+        let wire = Wire::Tls { known: self.known(), accept_new: false };
+        Connection::tcp_with(&self.address, &self.token, &wire)
     }
 }
 
@@ -119,13 +146,47 @@ fn calls_and_subscribed_events_over_the_socket() {
 }
 
 #[test]
-fn the_network_wants_the_token() {
+fn the_network_wants_tls_and_the_token() {
     let instance = start("token");
-    let mut good = Connection::tcp(&instance.address, &instance.token).unwrap();
+    let mut good = instance.tcp().unwrap();
     assert_eq!(good.call("eval", json!(["return 6 * 7"])).unwrap(), json!(42));
-    let wrong = "0".repeat(32);
-    let refused = Connection::tcp(&instance.address, &wrong);
+    let wire = Wire::Tls { known: instance.known(), accept_new: false };
+    let refused = Connection::tcp_with(&instance.address, &"0".repeat(32), &wire);
     assert!(refused.is_err(), "a wrong token is refused");
+    // Much both ways, in TLS.
+    let big = good.call("eval", json!(["return string.rep('x', 3 * 2 ^ 20)"])).unwrap();
+    assert_eq!(big.as_str().unwrap().len(), 3 << 20);
+    let echoed = good.call("eval", json!(["return #(...)", "y".repeat(5 << 20)])).unwrap();
+    assert_eq!(echoed, json!(5 << 20));
+    // A client that speaks in the clear is told the port wants TLS.
+    use std::io::Write;
+    let mut raw = std::net::TcpStream::connect(&instance.address).unwrap();
+    let mut lines = BufReader::new(raw.try_clone().unwrap()).lines();
+    let hello: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+    assert!(hello["payload"]["error"].as_str().unwrap().contains("TLS"), "{hello}");
+    assert!(hello["payload"].get("nonce").is_none(), "nothing to prove the token with");
+    writeln!(raw, "{}", json!({ "id": 1, "method": "eval", "params": ["return 1"] })).unwrap();
+    let answer: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+    assert!(answer["error"].as_str().unwrap().contains("--no-tls"), "{answer}");
+    assert!(lines.next().is_none(), "and the connection is closed");
+    // So is this program's own client, asked to connect in the clear.
+    let plain = Connection::tcp_with(&instance.address, &instance.token, &Wire::Plain);
+    let err = plain.err().expect("refused in the clear").to_string();
+    assert!(err.contains("TLS only"), "{err}");
+    // The first connection is none the worse.
+    assert_eq!(good.call("eval", json!(["return 'still here'"])).unwrap(), json!("still here"));
+}
+
+#[test]
+fn in_the_clear_only_when_asked_and_still_with_the_token() {
+    let instance = start_with("plain", None, &["--no-tls"]);
+    // A TLS client is told the instance speaks in the clear.
+    let err = instance.tcp().err().expect("no TLS there").to_string();
+    assert!(err.contains("without encryption") && err.contains("--no-tls"), "{err}");
+    let mut good = Connection::tcp_with(&instance.address, &instance.token, &Wire::Plain).unwrap();
+    assert_eq!(good.call("eval", json!(["return 6 * 7"])).unwrap(), json!(42));
+    let wrong = Connection::tcp_with(&instance.address, &"0".repeat(32), &Wire::Plain);
+    assert!(wrong.is_err(), "a wrong token is refused");
     // Without hello, nothing is answered but the refusal.
     use std::io::Write;
     let mut raw = std::net::TcpStream::connect(&instance.address).unwrap();
@@ -137,8 +198,47 @@ fn the_network_wants_the_token() {
     let answer: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
     assert!(answer["error"].as_str().unwrap().contains("hello"), "{answer}");
     assert!(lines.next().is_none(), "and the connection is closed");
-    // The first connection is none the worse.
     assert_eq!(good.call("eval", json!(["return 'still here'"])).unwrap(), json!("still here"));
+}
+
+#[test]
+fn the_certificate_is_trusted_the_first_time_and_held_to_after() {
+    let state = scratch("pin-state");
+    let first = start_with("pin1", Some(&state), &[]);
+    let known = first.known();
+    let c = first.tcp().unwrap();
+    let print = c.trusted_now.clone().expect("remembered the first time");
+    assert_eq!(print.len(), 64 + 15, "{print}");
+    let kept = std::fs::read_to_string(&known).unwrap();
+    assert_eq!(kept.trim(), format!("{} {print}", first.address));
+    assert!(first.tcp().unwrap().trusted_now.is_none(), "nothing new the second time");
+    drop((c, first));
+    // The same instance started again (on another port: what it is
+    // remembered by is copied over) shows the same certificate.
+    let again = start_with("pin2", Some(&state), &[]);
+    let line = |address: &str, print: &str| format!("{address} {print}\n");
+    std::fs::write(again.known(), line(&again.address, &print)).unwrap();
+    let mut c = again.tcp().unwrap();
+    assert!(c.trusted_now.is_none(), "the certificate was kept");
+    assert_eq!(c.call("eval", json!(["return 1"])).unwrap(), json!(1));
+    drop((c, again));
+    // One that made a new certificate is refused, naming both.
+    std::fs::remove_dir_all(state.join("daw/tls")).unwrap();
+    let other = start_with("pin3", Some(&state), &[]);
+    std::fs::write(other.known(), line(&other.address, &print)).unwrap();
+    let err = format!("{:#}", other.tcp().err().expect("refused"));
+    assert!(err.contains(&print) && err.contains("--accept-certificate"), "{err}");
+    let shown = err.lines().find_map(|l| l.split("shown now:").nth(1)).unwrap().trim().to_string();
+    assert_ne!(shown, print);
+    // Unless the new one is accepted, which is remembered in its place.
+    let wire = Wire::Tls { known: other.known(), accept_new: true };
+    let mut c = Connection::tcp_with(&other.address, &other.token, &wire).unwrap();
+    assert_eq!(c.trusted_now.as_deref(), Some(shown.as_str()));
+    assert_eq!(c.call("eval", json!(["return 2"])).unwrap(), json!(2));
+    assert_eq!(std::fs::read_to_string(other.known()).unwrap(), line(&other.address, &shown));
+    assert!(other.tcp().is_ok());
+    drop(other);
+    let _ = std::fs::remove_dir_all(&state);
 }
 
 #[test]
@@ -208,7 +308,7 @@ fn screen(c: &Connection, grid: &mut Grid, ready: impl Fn(&str) -> bool) -> Stri
 #[test]
 fn a_terminal_attaches_to_a_kernel_without_one_types_and_leaves() {
     let instance = start("attach");
-    let mut c = Connection::tcp(&instance.address, &instance.token).unwrap();
+    let mut c = instance.tcp().unwrap();
     c.call("eval", json!(["daw.add_track({ name = 'Remote bass' })"])).unwrap();
     assert!(c.call("ui.input", json!([{ "key": "j" }])).is_err(), "not before attaching");
     c.call("ui.attach", json!([100, 30])).unwrap();
@@ -239,7 +339,9 @@ fn connections_that_misbehave_are_closed_and_the_kernel_goes_on() {
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::unix::net::UnixStream;
-    let instance = start("rude");
+    // What is checked here happens before the token is shown, the same
+    // with TLS or without; in the clear it can be done by hand.
+    let instance = start_with("rude", None, &["--no-tls"]);
     let mut good = Connection::unix(&instance.socket).unwrap();
     let open = |good: &mut Connection| {
         good.call("eval", json!(["return #daw.api.rpc_clients()"])).unwrap().as_u64().unwrap()
@@ -279,4 +381,140 @@ fn connections_that_misbehave_are_closed_and_the_kernel_goes_on() {
     }
     assert_eq!(open(&mut good), 1, "only the well-behaved connection is left");
     assert_eq!(good.call("eval", json!(["return 2 + 2"])).unwrap(), json!(4));
+}
+
+fn type_keys(c: &mut Connection, keys: &[&str]) {
+    for key in keys {
+        c.notify("ui.input", json!([{ "key": key }])).unwrap();
+    }
+}
+
+#[test]
+fn two_terminals_attached_have_a_seat_each_in_one_project() {
+    let instance = start("seats");
+    let mut a = instance.tcp().unwrap();
+    let mut b = Connection::unix(&instance.socket).unwrap();
+    a.call("eval", json!(["daw.add_track({ name = 'Drums' }); daw.add_track({ name = 'Bass' })"])).unwrap();
+    a.call("ui.attach", json!([100, 30])).unwrap();
+    b.call("ui.attach", json!([90, 24])).unwrap();
+    let (mut ga, mut gb) = (Grid::new(1, 1), Grid::new(1, 1));
+    screen(&a, &mut ga, |t| t.contains("Bass") && t.contains("NORMAL"));
+    screen(&b, &mut gb, |t| t.contains("Bass") && t.contains("NORMAL"));
+    assert_eq!((ga.width, gb.width), (100, 90), "each at its own size");
+    // A selection opened in one terminal is that terminal's alone.
+    type_keys(&mut a, &["j", "V"]);
+    screen(&a, &mut ga, |t| t.contains("V-LINE"));
+    let mode = |c: &mut Connection| c.call("eval", json!(["return daw.keymap.mode"])).unwrap();
+    assert_eq!(mode(&mut a), json!("x"), "a call over a terminal's connection is in its seat");
+    assert_eq!(mode(&mut b), json!("n"));
+    let at = |c: &mut Connection| c.call("eval", json!(["return daw.cursor.track().name"])).unwrap();
+    assert_eq!(at(&mut a), json!("Bass"));
+    assert_eq!(at(&mut b), json!("Drums"), "the other cursor did not move");
+    // What one adds, the other sees, and can take back: one history.
+    type_keys(&mut a, &["<Esc>", ":", "t", "r", "a", "c", "k", ".", "a", "d", "d", "<CR>"]);
+    screen(&b, &mut gb, |t| t.contains("Track 3"));
+    type_keys(&mut b, &["u"]);
+    screen(&a, &mut ga, |t| !t.contains("Track 3"));
+    // The instance's own seat (as `daw ctl` sees it) is neither.
+    let mut ctl = Connection::unix(&instance.socket).unwrap();
+    assert_eq!(mode(&mut ctl), json!("n"));
+    assert_eq!(at(&mut ctl), json!("Drums"));
+    // A terminal that leaves takes its seat with it.
+    let seats = |c: &mut Connection| c.call("eval", json!(["return #daw.seats.list()"])).unwrap();
+    assert_eq!(seats(&mut ctl), json!(3));
+    drop(a);
+    let until = Instant::now() + Duration::from_secs(20);
+    while seats(&mut ctl) != json!(2) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(seats(&mut ctl), json!(2));
+}
+
+/// A WAV file of `seconds` of a 440 Hz tone, 16-bit stereo at 48 kHz.
+fn tone_file(path: &std::path::Path, seconds: f64) {
+    let frames = (48000.0 * seconds) as u32;
+    let mut data = Vec::new();
+    data.extend_from_slice(b"RIFF");
+    data.extend_from_slice(&(36 + frames * 4).to_le_bytes());
+    data.extend_from_slice(b"WAVEfmt ");
+    for word in [16u32, 1 | 2 << 16, 48000, 48000 * 4, 4 | 16 << 16] {
+        data.extend_from_slice(&word.to_le_bytes());
+    }
+    data.extend_from_slice(b"data");
+    data.extend_from_slice(&(frames * 4).to_le_bytes());
+    for i in 0..frames {
+        let v = ((i as f32 * 440.0 * std::f32::consts::TAU / 48000.0).sin() * 16000.0) as i16;
+        data.extend_from_slice(&v.to_le_bytes());
+        data.extend_from_slice(&v.to_le_bytes());
+    }
+    std::fs::write(path, data).unwrap();
+}
+
+#[test]
+fn a_file_from_the_clients_disk_is_sent_and_imported() {
+    let instance = start("upload");
+    let mut c = instance.tcp().unwrap();
+    let here = instance.dir.join("client take.wav");
+    tone_file(&here, 3.0);
+    let there = c.send_and_import(&here).unwrap();
+    let media = c.call("eval", json!(["return daw.api.media_dir()"])).unwrap();
+    assert!(there.starts_with(media.as_str().unwrap()), "{there} is in the project's media folder");
+    assert_eq!(std::fs::read(&there).unwrap(), std::fs::read(&here).unwrap(), "every byte arrived");
+    let clips = c.call("eval", json!(["local t = daw.tracks()[1]; return t and #t:clips()"])).unwrap();
+    assert_eq!(clips, json!(1), "imported on a track of its own");
+    // The same name again does not overwrite it.
+    let again = c.send_file(&here).unwrap();
+    assert_ne!(again, there);
+    // A larger file goes in many pieces.
+    let big = instance.dir.join("long.wav");
+    tone_file(&big, 20.0);
+    let there = c.send_file(&big).unwrap();
+    assert_eq!(std::fs::metadata(&there).unwrap().len(), std::fs::metadata(&big).unwrap().len());
+}
+
+#[test]
+fn the_instances_sound_is_heard_where_the_client_is() {
+    let instance = start("listen");
+    let mut c = instance.tcp().unwrap();
+    // A long note on a synth, playing, on the null device.
+    c.call(
+        "eval",
+        json!(["local t = daw.add_track({ name = 'Lead' }); t:add_device('synth', { attack = 0.001 })
+               t:add_clip({ start = 0, length = 64, notes = { { pitch = 'A4', start = 0, length = 64 } } })
+               daw.transport.play()"]),
+    )
+    .unwrap();
+    let heard = instance.dir.join("heard.wav");
+    let player = daw_listen::Player::file(&heard, 48000).unwrap();
+    let answer = c.call("monitor.listen", json!([])).unwrap();
+    assert_eq!(answer["format"], "s16le");
+    assert_eq!(answer["rate"], json!(24000));
+    let until = Instant::now() + Duration::from_secs(3);
+    let mut frames = 0;
+    let mut last = 0;
+    while Instant::now() < until {
+        if let Ok((name, payload)) = c.events.recv_timeout(Duration::from_millis(100))
+            && name == "audio.frame"
+        {
+            let seq = payload["seq"].as_u64().unwrap();
+            assert!(last == 0 || seq == last + 1, "frames in order: {last} then {seq}");
+            last = seq;
+            frames += 1;
+            player.push(&payload).unwrap();
+        }
+    }
+    assert!(frames >= 100, "about fifty frames a second: {frames} in three seconds");
+    drop(player);
+    let data = std::fs::read(&heard).unwrap();
+    let samples: Vec<i16> = data[44..].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+    let loud = samples.iter().filter(|s| s.abs() > 1000).count();
+    assert!(loud > 48000 / 2, "the note was played here: {loud} loud samples");
+    // Rising zero crossings of the left side over a stretch: A4 is 440 Hz.
+    let left: Vec<i16> = samples.iter().step_by(2).copied().skip(48000).take(48000).collect();
+    let rising = left.windows(2).filter(|w| w[0] < 0 && w[1] >= 0).count();
+    assert!((400..=480).contains(&rising), "{rising} crossings in a second");
+    // Stopping stops the frames.
+    c.call("monitor.unlisten", json!([])).unwrap();
+    while c.events.recv_timeout(Duration::from_millis(300)).is_ok() {}
+    assert!(quiet(&c, Duration::from_millis(500)), "no more frames");
 }

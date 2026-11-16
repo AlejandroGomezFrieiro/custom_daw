@@ -1434,6 +1434,8 @@ fn a_window_connects_to_a_kernel_over_tcp_and_a_wrong_token_is_refused() {
         ])
         .env("DISPLAY", &w.display)
         .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/bus")
+        // Where it remembers the kernel's certificate: the scene's, not ours.
+        .env("XDG_STATE_HOME", w.env_path("XDG_STATE_HOME"))
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&refused.stderr).to_string()
@@ -1518,4 +1520,18 @@ fn keys_reach_the_window_after_an_entry_of_a_submenu() {
     w.key("j");
     w.expect("the cursor on the second track", "daw.cursor.track().index == 2");
     w.assert_alive("after a submenu");
+}
+
+#[test]
+fn the_windows_position_is_kept_in_the_layout() {
+    let mut w = scene!("position", DEMO);
+    let found = w.xdotool(&["search", "--onlyvisible", "--name", "^daw"]);
+    let id = found.lines().next().expect("the window").to_string();
+    w.xdotool(&["windowmove", &id, "420", "180"]);
+    // It is written once a position has stood for a second.
+    w.expect(
+        "the position in the kernel's layout",
+        "(function() local l = daw.frontend.layout_get() return l.x ~= nil and math.abs(l.x - 420) < 40 and math.abs(l.y - 180) < 40 end)()",
+    );
+    w.assert_alive("after being moved");
 }

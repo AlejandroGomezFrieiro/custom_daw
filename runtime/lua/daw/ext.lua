@@ -4,6 +4,8 @@
 --   extensions/euclid/lua/...       on the `require` path
 --   extensions/scratch.lua          a one-file extension, run at startup
 --
+--   extensions/euclid/devices/*.lua devices written in Lua (see daw.luadev)
+--
 -- An extension is ordinary Lua using the same `daw` module as the user's
 -- `init.lua`; there is no separate plugin interface.
 local api = daw.api
@@ -23,6 +25,9 @@ function M.load(path)
   local init = path
   if not path:match("%.lua$") then
     package.path = path .. "/lua/?.lua;" .. path .. "/lua/?/init.lua;" .. package.path
+    for _, item in ipairs(api.read_dir(path)) do
+      if item.is_dir and item.name == "devices" and daw.luadev then daw.luadev.add_dir(path .. "/devices") end
+    end
     init = path .. "/init.lua"
     if not exists(init) then
       daw.snippet.load_dir(path .. "/snippets", "extension")

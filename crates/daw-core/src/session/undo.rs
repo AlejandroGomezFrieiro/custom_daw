@@ -819,6 +819,8 @@ mod tests {
             pitch: 0.0,
             stretch_mode: Default::default(),
             source_tempo: None,
+            warp: Vec::new(),
+            formants: false,
             looped: false,
             loop_length: None,
             loop_start: 0.0,

@@ -32,6 +32,7 @@ local function kernel_opts(opts)
   if out.rate then out.sample_rate, out.rate = out.rate, nil end
   out.ffmpeg = out.ffmpeg or daw.opt.ffmpeg
   out.bitrate = tonumber(out.bitrate)
+  if out.tags and next(out.tags) == nil then out.tags = nil end
   if range and range ~= "song" then
     local resolve = M.ranges[range]
     if not resolve then
@@ -75,6 +76,9 @@ end
 ---   dither      true to add dither when writing 16 or 24 bits
 ---   quality     for MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the
 ---               default) or "best"; `bitrate` (kbit/s) instead of it for a number
+---   tags        { title, artist, album, track, year, genre, comment, cover } written into
+---               the file, over the project's own (`daw.render_tags`); `cover` is a PNG or
+---               JPEG file (a WAV holds no cover); the title of a lossy file is the project's name by default
 ---   normalize   bring the loudest sample to this level in dB, such as -1
 ---   loudness    bring the integrated loudness to this level in LUFS, such as -14;
 ---               with `normalize` too, the peak level is a ceiling
@@ -108,6 +112,32 @@ function M.render(path, opts)
   -- What the render had to leave out (a plugin that stopped answering).
   for _, why in ipairs(info.left_out or {}) do daw.notify(why, "warn") end
   return info
+end
+
+M.tag_names = { "title", "artist", "album", "track", "year", "genre", "comment", "cover" }
+
+--- What the project's rendered files are tagged with (`project.meta.tags`):
+--- `daw.render_tags()` gives `{ title, artist, album, track, year, genre, comment, cover }`
+--- as far as set; `daw.render_tags({ artist = "Me" })` sets those fields and keeps the others,
+--- an empty string takes one out. A relative `cover` is from the project's directory.
+function M.tags(set)
+  local meta = api.project_get().meta
+  local tags = meta.tags or {}
+  local changed = false
+  for _, key in ipairs(M.tag_names) do
+    local value = set and set[key]
+    if value ~= nil then
+      value = tostring(value) ~= "" and tostring(value) or nil
+      changed = changed or tags[key] ~= value
+      tags[key] = value
+    end
+  end
+  -- The project is only touched when a tag is different.
+  if changed then
+    meta.tags = next(tags) ~= nil and tags or nil
+    api.project_set("meta", meta)
+  end
+  return tags
 end
 
 --- The render running in the background: { path, fraction, seconds,
@@ -154,7 +184,10 @@ function M.stems(dir, opts)
     used[name] = (used[name] or 0) + 1
     if used[name] > 1 then name = name .. " " .. used[name] end
     local path = string.format("%s/%s.%s", dir, name, ext)
-    M.render(path, daw.util.merge(opts, { tracks = { id }, format = false }))
+    -- A lossy stem is titled after its track, unless the options say otherwise.
+    local lossy = ext ~= "wav" and ext ~= "flac"
+    local tags = daw.util.merge(lossy and { title = name } or {}, opts.tags or {})
+    M.render(path, daw.util.merge(opts, { tracks = { id }, format = false, tags = tags }))
     out[#out + 1] = path
   end
   return out
@@ -213,6 +246,14 @@ M.options = {
   { "stems=", { "true" }, "one file per track, into a directory" },
   { "master=", { "false" }, "leave out the master's devices and fader" },
   { "wait=", { "true" }, "render in the foreground" },
+  { "title=", nil, "tag; the project's name by default" },
+  { "artist=", nil, "tag" },
+  { "album=", nil, "tag" },
+  { "track=", nil, "tag: a number, or 3/12" },
+  { "year=", nil, "tag" },
+  { "genre=", nil, "tag" },
+  { "comment=", nil, "tag" },
+  { "cover=", nil, "tag: a PNG or JPEG file" },
 }
 
 local function default_path()
@@ -247,6 +288,11 @@ daw.command("render", function(ctx)
     master = a.master ~= false and nil or false, tracks = track_list(a.tracks),
     background = a.wait ~= true,
   }
+  local tags = {}
+  for _, key in ipairs(M.tag_names) do
+    if a[key] ~= nil and a[key] ~= true then tags[key] = a[key] end
+  end
+  opts.tags = next(tags) ~= nil and tags or nil
   if opts.start or opts["end"] then opts.range = nil end
   if a.stems == true then
     local dir = a[1] and tostring(a[1]) or (default_path():gsub("%.wav$", "") .. " stems")
@@ -277,6 +323,23 @@ end, {
     end
     return out
   end,
+})
+
+daw.command("render.tags", function(ctx)
+  local set = {}
+  for _, key in ipairs(M.tag_names) do
+    if ctx.args[key] ~= nil and ctx.args[key] ~= true then set[key] = ctx.args[key] end
+  end
+  local tags = M.tags(next(set) ~= nil and set or nil)
+  local words = {}
+  for _, key in ipairs(M.tag_names) do
+    if tags[key] then words[#words + 1] = key .. "=" .. tostring(tags[key]) end
+  end
+  daw.notify(#words > 0 and ("rendered files are tagged " .. table.concat(words, ", "))
+    or "no tags: set some with `render.tags artist=Me album=First`")
+end, {
+  desc = "Show or set the tags of the project's rendered files: `render.tags artist=Me album=\"First one\" track=3 "
+    .. "year=2026 genre=Ambient comment=\"a note\" cover=cover.png`; an empty value takes one out",
 })
 
 daw.command("render.cancel", function()

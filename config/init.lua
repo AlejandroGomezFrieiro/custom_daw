@@ -30,6 +30,7 @@ for _, name in ipairs({
   "rpp",        -- opening and writing REAPER projects
   "tutor",      -- the course: `:tutor` starts it
   "doctor",     -- a guided check of the hardware, with a written report (`:doctor`, `daw doctor`)
+  "luafx",      -- devices written in Lua: gain and pan, drive, chords, sine (and how to write your own)
 }) do
   daw.ext.load(plugins .. "/" .. name)
 end

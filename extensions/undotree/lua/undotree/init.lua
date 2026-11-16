@@ -42,7 +42,8 @@ function M.what(state)
 end
 
 --- The tree as rows to draw, newest first, each with the branch graph to its
---- left: `{ id, graph, state }`. `*` is a state, `@` the current one; `│`
+--- left: `{ id, graph, state, col, lanes }` (`col` is the state's lane, from
+--- 1, among `lanes` that row's graph is wide). `*` is a state, `@` the current one; `│`
 --- carries a branch down to its parent, and `─┘` joins a branch to the
 --- state it grew from.
 function M.rows(tree)
@@ -80,7 +81,7 @@ function M.rows(tree)
       parts[#parts + 1] = cell
       if l < width then parts[#parts + 1] = (l >= col and l < last_merge) and "─" or " " end
     end
-    rows[#rows + 1] = { id = s.id, graph = table.concat(parts), state = s }
+    rows[#rows + 1] = { id = s.id, graph = table.concat(parts), state = s, col = col, lanes = width }
     for l in pairs(merging) do lanes[l] = false end
     lanes[col] = s.parent or false
     while #lanes > 0 and not lanes[#lanes] do lanes[#lanes] = nil end

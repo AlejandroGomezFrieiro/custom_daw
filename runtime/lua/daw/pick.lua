@@ -309,6 +309,10 @@ end
 
 local active        -- the open picker
 local last_spec     -- for `resume`
+daw.seats.keep("pick",
+  function() return active, last_spec end,
+  function(a, spec) active, last_spec = a, spec end,
+  function() return nil, nil end)
 
 local view = { modal = true }
 
