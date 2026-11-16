@@ -3887,6 +3887,15 @@ fn clip_json(c: &Clip, track: Id) -> Value {
                 }
             }
             v["stamp"] = json!(hash.finish() >> 11);
+            // The same for the controller moves.
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            for control in controls {
+                control.start.to_bits().hash(&mut hash);
+                control.value.to_bits().hash(&mut hash);
+                control.key.hash(&mut hash);
+                format!("{:?}", control.what).hash(&mut hash);
+            }
+            v["control_stamp"] = json!(hash.finish() >> 11);
         }
         ClipContent::Audio { file, offset, gain } => {
             // Its file is not there: the clip is silent until it is relinked.

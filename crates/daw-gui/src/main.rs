@@ -1093,6 +1093,8 @@ struct View {
     roll_controls: Vec<Value>,
     strip: i32,
     controls: Rc<VecModel<ControlData>>,
+    /// The places of the moves chosen in the strip, as the kernel counts them.
+    controls_chosen: HashSet<i64>,
     /// The piano roll's own window, and whether the roll is in it.
     roll_window: RollWindow,
     detached: bool,
@@ -1425,6 +1427,10 @@ impl View {
                     } else {
                         self::number(&c["value"])
                     },
+                    place: c["place"].as_i64().unwrap_or(0) as i32,
+                    selected: c["place"]
+                        .as_i64()
+                        .is_some_and(|place| self.controls_chosen.contains(&place)),
                 })
                 .collect(),
         };
@@ -1581,6 +1587,15 @@ impl View {
             }
             if changed {
                 self.roll_view(ui);
+            }
+            // And which controller moves in the strip.
+            let moves: HashSet<i64> = rows(&roll["controls_chosen"])
+                .iter()
+                .filter_map(Value::as_i64)
+                .collect();
+            if moves != self.controls_chosen {
+                self.controls_chosen = moves;
+                self.show_controls(ui);
             }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
@@ -2383,6 +2398,7 @@ fn run() -> Result<()> {
         roll_controls: Vec::new(),
         strip: 0,
         controls: Rc::new(VecModel::default()),
+        controls_chosen: HashSet::new(),
         roll_window: RollWindow::new()?,
         detached: false,
         rec_start: None,
@@ -3255,6 +3271,18 @@ fn run() -> Result<()> {
                     drop(view);
                     roll("erase_notes", json!([points]));
                 }
+            }
+        });
+        // A gesture on the strip's moves: the kind it shows goes with it.
+        shown.on_strip_act({
+            let (roll, view) = (roll.clone(), view.clone());
+            move |name, args| {
+                let Some((kind, number)) = strip_kind(view.borrow().strip) else {
+                    return;
+                };
+                let mut all = vec![json!(kind), json!(number)];
+                all.extend(args.iter().map(|a| json!(a)));
+                roll(name.as_str(), Value::Array(all))
             }
         });
         // Any other gesture, by the name of its function in the kernel.

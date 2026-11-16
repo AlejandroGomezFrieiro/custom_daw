@@ -53,7 +53,7 @@ function view:render(buf, ctx)
     local cells = controls.cells(clip.id, row)
     x = 1
     for c, name in ipairs(controls.columns) do
-      local style = here and c == self.column and ctx.focused and "RollCursor"
+      local style = here and (c == self.column and ctx.focused and "RollCursor" or "Selected")
         or name == "kind" and (row.kind == "note" and "Bright" or "Accent") or "Normal"
       buf:text(x, y, util.fit(cells[name], WIDTHS[name]), style)
       x = x + WIDTHS[name] + 1

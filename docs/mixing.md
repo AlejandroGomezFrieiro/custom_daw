@@ -169,14 +169,40 @@ go: the built-in synth follows the wheel, the sustain pedal and a note's own
 bend; CLAP plugins get a note's own controllers as note expressions and the
 rest as MIDI 2.0 if they take it, else MIDI 1.0; VST3 plugins get note
 expressions and poly pressure, and controllers through the parameters they
-assign to them; LV2 plugins get MIDI 1.0, which has no per-note bend.
+assign to them; LV2 plugins, and CLAP plugins that take only MIDI 1.0, get
+MIDI 1.0, which has no per-note bend: a note's own controllers do not reach
+them (MPE for them, as for a MIDI output, is not there yet).
+
+**Editing controller moves.** The strip under the window's piano roll shows
+the velocities or one controller, chosen from its dropdown. A controller is
+drawn with the pointer held down; the right button dragged draws a straight
+line, a move to each grid step (Shift: each 32nd of a beat); a click on a
+move's head chooses it (Ctrl adds or takes it out) and Ctrl and a drag
+chooses the moves in a box; dragging a chosen head moves them all in time
+and value, landing on the grid; `Delete` or `x` removes them, and a right
+click opens a menu (choose all, let go, delete, clear the controller).
+`:controls.line cc 74 0 127` draws a line over the piano roll's selection,
+or its whole clip, from the terminal (`bend -8192 8191`, `pressure 0 127`).
+
+The event list shows every note and move of the clip in the piano roll, a
+row each in time order: its time (bar.beat.hundredths), kind (`note`, `cc`,
+`bend`, `pressure`, `registered`, `assignable`, `program`), which (a note's
+pitch, a controller's number, the note a move belongs to), value (a
+velocity; seven-bit steps with the finer part as decimals; the wheel from
+-8192 to 8191; a note's own bend in semitones) and length. `E` in the piano
+roll (`:notes.list`) floats it over the terminal; the window's piano roll
+opens it in a window of its own with List. `j` `k` `h` `l` move, `Enter`
+changes the cell under the cursor (or a double click), `x` deletes the row,
+`a` adds a move at its time, `u` undoes, `q` closes. Scripts have the same
+through `daw.controls` (`rows`, `cells`, `edit`, `select_box`, `move`,
+`line`).
 
 At the ports the program opens as a MIDI 2.0 client and reads Universal MIDI
 Packets, so a MIDI 2.0 device arrives whole and a MIDI 1.0 device arrives as
 the same events with less detail. That needs a kernel built with
 `CONFIG_SND_SEQ_UMP`; without it the ports are MIDI 1.0, and what arrives is
 widened by the specification's rules so that both read the same. There is no
-MIDI-CI, and no editor for controller moves yet.
+MIDI-CI (see What is missing).
 
 **MIDI output to hardware.** A track sends what it plays (its clips' notes
 and controllers, and MIDI input passing through it, before its devices) to
@@ -184,7 +210,34 @@ a port: `track.midi_output = { port = "UM-ONE: UM-ONE MIDI 1", channel = 2 }`
 (`channel` nil keeps each message's own), `:track.midi_out UM-ONE 2` (part
 of the name will do; `none` for none), or the MIDI out entries of the input
 list (`I`) and of the window's input menu on the track's header.
-`daw.midi.outputs()` lists the ports. The audio thread stamps each message
+`daw.midi.outputs()` lists the ports.
+
+What goes out is MIDI 2.0 where the port takes it: when the sequencer has
+MIDI 2.0 (`CONFIG_SND_SEQ_UMP`) and the port's program speaks it, the notes,
+their own bends and controllers and every value go whole, as Universal MIDI
+Packets. Elsewhere it is MIDI 1.0, in the form the route asks for, `form` in
+`track.midi_output` (also `:track.midi_out UM-ONE 2 mpe`, and the MIDI out
+form entries of the input list and the window's input menu):
+
+- `auto` (the default): MIDI 2.0 where the port takes it, else plain.
+- `plain`: MIDI 1.0 as each message has it, in seven bits; a note's own bend
+  and controllers are left out, its pressure goes as poly pressure.
+- `mpe`: MIDI Polyphonic Expression. Each note gets a channel of its own in
+  the lower zone (channel 1 for what is the whole instrument's, `members`
+  channels from 2 on, 15 unless said), so that its own bend, pressure and
+  brightness (controller 74) are its channel's pitch bend, pressure and
+  controller 74. The zone is announced first (MPE's configuration message)
+  with a bend range of 48 semitones, which is a note's own bend range here.
+  A note takes the channel let go of longest ago, so that a release still
+  sounding is not bent by the next note; with every channel busy it shares
+  the one with fewest notes. What comes for a note before it starts is sent
+  on its channel just before it.
+- `cc14`: control changes 0 to 31 as pairs of fourteen bits, the fine part
+  on 32 to 63.
+
+On this machine's kernel, without `CONFIG_SND_SEQ_UMP`, only the MIDI 1.0
+forms can be tried; the MIDI 2.0 path is the same packets the plugins and
+the tests' codec use, untried through a sequencer. The audio thread stamps each message
 with when it is heard (the output's latency and the plugins' delay
 included) and hands it over a lock-free queue to a thread that schedules it
 on an ALSA sequencer queue in real time, so a synth on the port sounds with

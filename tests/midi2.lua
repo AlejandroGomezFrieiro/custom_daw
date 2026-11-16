@@ -213,7 +213,9 @@ test("controller moves in the strip are chosen with a click or a box, moved, and
   A.select_control(id, first, "toggle")
   eq(starts(picked(clip, daw.controls.chosen(id))), "0 3", "Ctrl takes one out")
   -- Dragged a beat and a bit later and a tenth up: the first lands on the grid.
+  local stamp = api.clip_get(id).control_stamp
   A.move_controls(id, 1.1, 0.1)
+  eq(api.clip_get(id).control_stamp ~= stamp, true, "the clip says its moves changed, for the window to fetch them")
   local moved = picked(clip, daw.controls.chosen(id))
   eq(starts(moved), "1 4", "moved on, still the chosen ones")
   near(moved[1].value, 0.3, 1e-9, "and up")

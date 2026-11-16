@@ -19,7 +19,7 @@ local chosen = { clip = nil, places = {}, stamp = nil }
 
 local function stamp_of(clip)
   local ok, data = pcall(api.clip_get, clip)
-  return ok and data.stamp or nil
+  return ok and data.control_stamp or nil
 end
 
 --- The places of the chosen moves of `clip`, in order.

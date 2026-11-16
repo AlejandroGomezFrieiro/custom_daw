@@ -109,7 +109,8 @@ lower them. Lanes for send levels are not there yet.
 
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
-`gh` sounds the pitch, `Esc` goes back to the arrange view. In the device panel
+`gh` sounds the pitch, `E` lists the clip's notes and controller moves to
+change in place (the event list), `Esc` goes back to the arrange view. In the device panel
 `j` `k` choose a row, `h` `l` change a parameter, `c` or `=` types its value
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`

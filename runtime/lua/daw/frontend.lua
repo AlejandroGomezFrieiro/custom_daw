@@ -522,8 +522,9 @@ function M.state(known)
         fade_in = clip.fade_in, fade_out = clip.fade_out, gain = clip.gain,
         -- Its file is missing: silent until relinked. The name says so too.
         offline = clip.offline or nil,
-        -- Changes exactly when the clip's notes do: fetch `M.preview` again then.
-        stamp = clip.stamp and string.format("%.0f|%.17g%s", clip.stamp, clip.length, repeats) or nil,
+        -- Changes exactly when the clip's notes or controller moves do:
+        -- fetch `M.preview` (and the piano roll's clip) again then.
+        stamp = clip.stamp and string.format("%.0f|%.0f|%.17g%s", clip.stamp, clip.control_stamp or 0, clip.length, repeats) or nil,
         -- Changes exactly when the clip's waveform does: fetch `M.peaks` again then.
         waveform = clip.kind == "audio"
           and string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
@@ -2440,18 +2441,22 @@ end
 
 -- Moves of the strip chosen, moved and taken away, drawn as a line, and
 -- the event list: `daw.controls` says what each does.
-function A.select_control(clip, place, mode) daw.controls.select(clip, place, mode) end
+-- A window names a mode by number: 0 alone, 1 add, 2 toggle.
+local modes = { [0] = "only", [1] = "add", [2] = "toggle" }
+function A.select_control(clip, place, mode) daw.controls.select(clip, place, modes[mode] or mode) end
 function A.select_controls(clip, kind, number, beat0, low, beat1, high, mode)
-  return daw.controls.select_box(clip, kind, number, beat0, low, beat1, high, mode)
+  return daw.controls.select_box(clip, kind, number, beat0, low, beat1, high, modes[mode] or mode)
 end
 function A.select_all_controls(clip, kind, number)
   return daw.controls.select_box(clip, kind, number, -1, 0, daw.clip(clip).length + 1, 1)
 end
 function A.clear_control_selection(clip) daw.controls.clear(clip) end
-function A.move_controls(clip, dbeat, dfraction, free) return daw.controls.move(clip, dbeat, dfraction, free) end
+function A.move_controls(clip, dbeat, dfraction, free)
+  return daw.controls.move(clip, dbeat, dfraction, free == true or free == 1)
+end
 function A.remove_chosen_controls(clip) return daw.controls.remove(clip) end
 function A.line_controls(clip, kind, number, beat0, f0, beat1, f1, free)
-  return daw.controls.line(clip, kind, number, beat0, f0, beat1, f1, free)
+  return daw.controls.line(clip, kind, number, beat0, f0, beat1, f1, free == true or free == 1)
 end
 
 --- The event list of the clip in the piano roll, in a window of its own.

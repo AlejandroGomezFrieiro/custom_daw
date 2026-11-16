@@ -153,6 +153,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | --- | --- |
 | `<Tab>` `gt` | next view |
 | `,m` `,d` `,p` | mixer, device panel, piano roll |
+| `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this panel, close every panel |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
