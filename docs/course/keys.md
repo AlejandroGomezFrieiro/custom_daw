@@ -176,6 +176,16 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `R` `4R` | record a bar, or four, into the empty slot from the next boundary |
 | `grn` `C` | name the scene, capture what is launched into the timeline |
 
+## Diagnostics and language servers
+
+| Keys | |
+| --- | --- |
+| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
+| `gK` | in R: what the diagnostics and language servers say about the note |
+| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
+| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
+
 ## The tutor
 
 | Keys | |

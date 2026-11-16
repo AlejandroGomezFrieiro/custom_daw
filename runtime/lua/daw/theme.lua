@@ -208,6 +208,20 @@ local function build()
     RollCursor = { bg = "#2a3a50" },
     Velocity = { fg = c.dim },
     VelocityLane = { fg = c.faint, bg = c.bg_dark },
+    -- Diagnostics (daw.diagnostic): the mark, a note underlined, the message
+    -- after it.
+    DiagnosticError = { fg = c.red, bold = true },
+    DiagnosticWarn = { fg = c.mute, bold = true },
+    DiagnosticInfo = { fg = c.normal },
+    DiagnosticHint = { fg = c.dim },
+    DiagnosticUnderlineError = { fg = c.red, underline = true, bold = true },
+    DiagnosticUnderlineWarn = { fg = c.mute, underline = true, bold = true },
+    DiagnosticUnderlineInfo = { fg = c.normal, underline = true },
+    DiagnosticUnderlineHint = { underline = true },
+    DiagnosticVirtualTextError = { fg = c.red, italic = true },
+    DiagnosticVirtualTextWarn = { fg = c.mute, italic = true },
+    DiagnosticVirtualTextInfo = { fg = c.normal, italic = true },
+    DiagnosticVirtualTextHint = { fg = c.faint, italic = true },
 
     DeviceName = { fg = c.bright, bold = true },
     DeviceOff = { fg = c.faint, strike = true },

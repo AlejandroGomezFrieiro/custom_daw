@@ -17,7 +17,7 @@ use mlua::serde::SerializeOptions;
 use mlua::{Function, Lua, LuaSerdeExt, LuaString, Table, Value as LuaValue};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
 use crate::grid::{self, Color, Grid, Highlight, Highlights, Rect, Style};
@@ -96,6 +96,15 @@ impl Shared {
                 return;
             };
             self.session.borrow_mut().midi_event(port, kind);
+        }
+    }
+
+    /// Make `proc.output` events of what helper processes have written.
+    pub fn hear_output(&self) {
+        let arrived = self.io.borrow_mut().arrived();
+        let mut session = self.session.borrow_mut();
+        for id in arrived {
+            session.events.push(("proc.output".into(), json!({ "id": id })));
         }
     }
 
@@ -1213,8 +1222,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                     sh.session.borrow_mut().idle();
                     idled = Instant::now();
                 }
-                // What was played into a port meanwhile is heard of.
+                // What was played into a port, or written by a helper,
+                // meanwhile is heard of.
                 sh.hear_midi();
+                sh.hear_output();
                 settle.call::<()>(())?;
                 sh.session.borrow_mut().checkpoint();
                 if Instant::now() >= deadline {
@@ -1248,6 +1259,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.io.borrow_mut().kill(id);
             Ok(())
         }
+        // A process started with `pipe = true`: what it wrote ("" when
+        // nothing, nil once it closed its output), and writing to it. A
+        // `proc.output` event says when there is something to read.
+        fn proc_read(lua, sh, (id, max) => (u64, Option<usize>)) {
+            match sh.io.borrow_mut().read_output(id, max.unwrap_or(1 << 20)).lua()? {
+                Some(bytes) => Ok(LuaValue::String(lua.create_string(bytes)?)),
+                None => Ok(LuaValue::Nil),
+            }
+        }
+        fn proc_write(_, sh, (id, data) => (u64, LuaString)) { sh.io.borrow_mut().write_input(id, &data.as_bytes()).lua() }
+        fn proc_close_input(_, sh, id => u64) { sh.io.borrow_mut().close_input(id).lua() }
         fn sock_listen(_, sh, path => String) { sh.io.borrow_mut().listen(path.into()).lua() }
         fn sock_connect(_, sh, path => String) { sh.io.borrow_mut().connect(path.into()).lua() }
         fn sock_accept(_, sh, id => u64) { sh.io.borrow_mut().accept(id).lua() }

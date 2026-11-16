@@ -427,11 +427,15 @@ test("a MIDI input that goes away and comes back is told of, and its tracks take
   t:add_device("synth", { attack = 0.001, release = 0.01 })
   t.midi_input = { port = "Keys A" }
   t.armed = true
-  local seen = {}
-  local handlers = {
-    daw.on("midi.lost", function(e) seen[#seen + 1] = "lost " .. e.port .. " " .. table.concat(e.tracks, ",") end),
-    daw.on("midi.returned", function(e) seen[#seen + 1] = "back " .. e.port .. " " .. table.concat(e.tracks, ",") end),
-  }
+  -- Only the test's own ports: the machine's real ones may come and go
+  -- meanwhile, as other programs open and close theirs.
+  local seen, ours = {}, { ["Keys A"] = true, Pads = true }
+  local function note(word)
+    return function(e)
+      if ours[e.port] then seen[#seen + 1] = word .. " " .. e.port .. " " .. table.concat(e.tracks, ",") end
+    end
+  end
+  local handlers = { daw.on("midi.lost", note("lost")), daw.on("midi.returned", note("back")) }
   api.midi_test_ports({ "Keys A", "Pads" })
   daw.wait(300)
   api.midi_test_ports({ "Pads" })
