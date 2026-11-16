@@ -1,0 +1,236 @@
+-- The default colours. Override any group with `daw.ui.hl(name, def)`, or
+-- change `palette` and call `daw.ui.theme(require("daw.theme").build())`.
+--
+-- What is content stays neutral: names, numbers, the grid. Colour is spent
+-- on what matters now: amber for focus, the playhead and keys to press; the
+-- mode's colour in the mode pill and the cursor; red for recording and
+-- errors; a track's own colour for what belongs to that track.
+--
+-- Tracks take their colour from `hues` in turn (or from `track.color`), and
+-- everything that belongs to a track is drawn in shades of it: its clips,
+-- its notes in the piano roll, its strip in the mixer. Those shades are made
+-- on demand by `daw.draw.hue`. The window uses the same twelve hues.
+local c = {
+  bg = "#101216",        -- the screen
+  bg_dark = "#0c0d10",   -- outside a clip, black keys' rows, automation
+  bg_alt = "#16191f",    -- chrome: headers, the ruler, title bars, status and key lines
+  bg_hl = "#20242d",     -- wells: chips that are off, meter rails
+  sel = "#262c38",       -- the selected header, strip or row
+  raise = "#2c3240",     -- what stands out from a panel
+  line = "#1b1f26",      -- grid steps
+  line_beat = "#252a33", -- beat lines
+  line_hi = "#363d4b",   -- bar lines and rules between panes
+  faint = "#565d6d",
+  dim = "#8a91a3",
+  fg = "#c9ced8",
+  bright = "#eef1f6",
+  accent = "#f5a95c",    -- focus, the playhead, keys to press
+  normal = "#6aa9e9",    -- the modes
+  insert = "#8fc96a",
+  visual = "#ac93e6",
+  mute = "#e8a33d",
+  solo = "#e3cf4f",
+  red = "#ef5b5b",       -- arm, record, errors
+  monitor = "#6cc3b8",
+  automation = "#e98d55",
+  loop_ruler = "#4a3a24",
+  loop_lane = "#14161a",
+  punch_ruler = "#4c2428",
+  meter_low = "#6fbf73",
+  meter_mid = "#e3cf4f",
+  meter_high = "#ef5b5b",
+  playhead_clip = "#3a3022",
+  -- Older names, kept for configurations that use them.
+  cyan = "#6cc3b8",
+  blue = "#6aa9e9",
+  green = "#8fc96a",
+  yellow = "#e3cf4f",
+  orange = "#e98d55",
+  magenta = "#ac93e6",
+}
+
+-- One per track, in turn: the same twelve as the window's.
+local hues = {
+  "#e0605a", "#e58a45", "#d9ab3a", "#a9c04a", "#5fb56a", "#45b3a3",
+  "#4aa3df", "#6d8ff0", "#9a7ff0", "#c773d6", "#e06b9a", "#b39c7d",
+}
+-- Their names, for `:track.color`.
+local hue_names = { "coral", "orange", "gold", "lime", "green", "teal", "sky", "blue", "violet", "purple", "pink", "sand" }
+
+local function build()
+  local alt = c.bg_alt
+  return {
+    Normal = { fg = c.fg, bg = c.bg },
+    Dim = { fg = c.dim },
+    Faint = { fg = c.faint },
+    Bright = { fg = c.bright, bold = true },
+    Accent = { fg = c.accent },
+    Title = { fg = c.accent, bold = true },
+    Error = { fg = c.red },
+    Warn = { fg = c.mute },
+    Info = { fg = c.fg },
+    Border = { fg = c.line_hi },
+    BorderFocus = { fg = c.accent },
+    Rule = { fg = c.line_hi },
+    Panel = { fg = c.fg, bg = alt },
+    PanelTitle = { fg = c.dim, bg = alt, bold = true },
+    PanelTitleFocus = { fg = c.bright, bg = alt, bold = true },
+    -- A docked panel's title bar (`daw.ui.titlebar`).
+    TitleBar = { fg = c.dim, bg = alt },
+    TitleBarName = { fg = c.dim, bg = alt, bold = true },
+    TitleBarNameFocus = { fg = c.bright, bg = alt, bold = true },
+    TitleBarMark = { fg = c.line_hi, bg = alt },
+    TitleBarMarkFocus = { fg = c.accent, bg = alt },
+    TitleBarFaint = { fg = c.faint, bg = alt },
+    FloatFooter = { fg = c.dim, bg = c.bg },
+
+    Ruler = { fg = c.faint, bg = alt },
+    RulerBar = { fg = c.dim, bg = alt, bold = true },
+    RulerTick = { fg = c.faint, bg = alt },
+    RulerTempo = { fg = c.accent, bg = alt },
+    RulerLoop = { fg = c.bright, bg = c.loop_ruler, bold = true },
+    RulerLoopTick = { fg = c.dim, bg = c.loop_ruler },
+    RulerLoopEdge = { fg = c.accent, bg = alt },
+    RulerLoopEdgeIn = { fg = c.accent, bg = c.loop_ruler },
+    -- The punch range: where recording starts and stops.
+    RulerPunch = { fg = c.bright, bg = c.punch_ruler, bold = true },
+    RulerPunchTick = { fg = c.dim, bg = c.punch_ruler },
+    RulerPunchEdge = { fg = c.red, bg = alt, bold = true },
+    RulerCorner = { fg = c.fg, bg = alt },
+    RulerCornerLabel = { fg = c.faint, bg = alt },
+    RulerPlayhead = { fg = c.accent, bg = alt, bold = true },
+    Ruler2 = { fg = c.faint, bg = c.bg },
+    -- Markers and regions, on the ruler's second row.
+    Marker = { fg = c.accent, bg = c.bg, bold = true },
+    Region = { fg = c.dim, bg = c.sel },
+    RegionName = { fg = c.monitor, bg = c.sel, bold = true },
+
+    TrackHeader = { fg = c.fg, bg = alt },
+    TrackHeaderSel = { fg = c.bright, bg = c.sel },
+    TrackName = { fg = c.fg, bg = alt },
+    TrackNameSel = { fg = c.bright, bg = c.sel, bold = true },
+    TrackIndex = { fg = c.faint },
+    TrackInfo = { fg = c.dim },
+    TrackRoute = { fg = c.faint },
+    FlagOff = { fg = c.faint, bg = c.bg_hl },
+    Mute = { fg = c.bg, bg = c.mute, bold = true },
+    Solo = { fg = c.bg, bg = c.solo, bold = true },
+    Armed = { fg = c.bg, bg = c.red, bold = true },
+    Monitor = { fg = c.bg, bg = c.monitor, bold = true },
+    Input = { fg = c.monitor },
+
+    Lane = { fg = c.line_hi, bg = c.bg },
+    LaneSel = { fg = c.line_hi, bg = "#14171c" },
+    LaneBar = { fg = c.line_hi },
+    LaneBeat = { fg = c.line_beat },
+    LaneLoop = { bg = c.loop_lane },
+    -- A take lane: the takes that do not play, faint; the header's words.
+    TakeLane = { fg = c.faint, bg = c.bg_dark },
+    TakeLaneName = { fg = c.dim, bg = c.bg_dark },
+    ClipEdge = { fg = c.bg },
+    ClipMidi = { fg = c.bg, bg = c.blue },
+    ClipAudio = { fg = c.bg, bg = c.green },
+    ClipMuted = { fg = c.dim, bg = c.bg_hl },
+    ClipCursor = { bg = "#c8d3f5" },
+    ClipNotes = { fg = "#283457" },
+    Automation = { fg = c.automation },
+    ClipWave = { fg = "#283457" },
+    Playhead = { fg = c.accent },
+    PlayheadClip = { bg = c.playhead_clip },
+    Cursor = { bg = c.normal, fg = c.bg },
+    CursorVisual = { bg = c.visual, fg = c.bg },
+    CursorTail = { bg = "#2a3a50" },
+    Visual = { bg = "#3a3352", fg = c.bright },
+    InsertCursor = { bg = c.insert, fg = c.bg },
+    RulerInsert = { fg = c.bg, bg = c.insert, bold = true },
+    HintKey = { fg = c.accent, bold = true },
+    Welcome = { fg = c.fg },
+    WelcomeTitle = { fg = c.bright, bold = true },
+    Empty = { fg = c.dim },
+    EmptyKey = { fg = c.accent, bold = true },
+
+    MeterLow = { fg = c.meter_low },
+    MeterMid = { fg = c.meter_mid },
+    MeterHigh = { fg = c.meter_high },
+    MeterOff = { fg = c.bg_hl },
+    MeterPeak = { fg = c.bright },
+    MeterScale = { fg = c.faint },
+    Fader = { fg = c.fg, bold = true },
+    FaderSel = { fg = c.accent, bold = true },
+    FaderZero = { fg = c.dim },
+    FaderTrack = { fg = c.line_hi },
+
+    StatusLine = { fg = c.fg, bg = alt },
+    StatusDim = { fg = c.dim, bg = alt },
+    StatusFaint = { fg = c.faint, bg = alt },
+    StatusSep = { fg = c.line_hi, bg = alt },
+    StatusTime = { fg = c.bright, bg = alt, bold = true },
+    StatusOn = { fg = c.accent, bg = alt },
+    StatusMode = { fg = c.bg, bg = c.normal, bold = true },
+    StatusVisual = { fg = c.bg, bg = c.visual, bold = true },
+    StatusInsert = { fg = c.bg, bg = c.insert, bold = true },
+    StatusPending = { fg = c.bg, bg = c.solo, bold = true },
+    StatusCommand = { fg = c.bg, bg = c.accent, bold = true },
+    StatusMacro = { fg = c.red, bg = alt, bold = true },
+    StatusPlay = { fg = c.insert, bg = alt, bold = true },
+    StatusStop = { fg = c.dim, bg = alt },
+    StatusRec = { fg = c.red, bg = alt, bold = true },
+    StatusRecOn = { fg = c.red, bg = alt, bold = true },
+    StatusModified = { fg = c.accent, bg = alt },
+    StatusName = { fg = c.fg, bg = alt, bold = true },
+    StatusWarn = { fg = c.mute, bg = alt },
+    StatusError = { fg = c.red, bg = alt, bold = true },
+    StatusOff = { fg = c.faint, bg = alt },
+
+    KeyBar = { fg = c.faint, bg = alt },
+    KeyBarKey = { fg = c.accent, bg = alt },
+    KeyBarText = { fg = c.dim, bg = alt },
+    KeyBarSep = { fg = c.line_hi, bg = alt },
+    FooterKey = { fg = c.accent, bg = c.bg },
+    FooterText = { fg = c.dim, bg = c.bg },
+    FooterSep = { fg = c.line_hi, bg = c.bg },
+
+    PianoWhite = { fg = "#5b6170", bg = "#c9ced8" },
+    PianoBlack = { fg = c.dim, bg = "#1c1f26" },
+    PianoC = { fg = "#1c1f26", bg = "#c9ced8", bold = true },
+    PianoCursor = { fg = c.bg, bg = c.accent, bold = true },
+    RollRow = { fg = c.line, bg = c.bg },
+    RollRowBlack = { fg = c.line, bg = c.bg_dark },
+    RollBar = { fg = c.line_hi },
+    RollBeat = { fg = c.line_beat },
+    RollStep = { fg = c.line, bg = c.bg },
+    RollStepBlack = { fg = c.line, bg = c.bg_dark },
+    RollOutside = { fg = c.bg_alt, bg = "#08090b" },
+    Note = { fg = c.bg, bg = c.green },
+    NoteCursor = { fg = c.bg, bg = c.bright, bold = true },
+    RollCursor = { bg = "#2a3a50" },
+    Velocity = { fg = c.dim },
+    VelocityLane = { fg = c.faint, bg = c.bg_dark },
+
+    DeviceName = { fg = c.bright, bold = true },
+    DeviceOff = { fg = c.faint, strike = true },
+    DeviceFormat = { fg = c.faint },
+    Param = { fg = c.fg },
+    ParamValue = { fg = c.dim },
+    ParamBar = { fg = c.accent },
+    ParamBarDim = { fg = c.dim },
+    ParamBarOff = { fg = c.bg_hl },
+    Selected = { bg = c.sel },
+    SelectedMark = { fg = c.accent, bg = c.sel },
+
+    HelpKey = { fg = c.accent, bold = true },
+    HelpSection = { fg = c.dim, bold = true },
+
+    TooSmall = { fg = c.dim, bg = c.bg },
+    TooSmallTitle = { fg = c.bright, bg = c.bg, bold = true },
+
+    -- The completion list above the command line.
+    Pmenu = { fg = c.fg, bg = c.raise },
+    PmenuSel = { fg = c.bright, bg = c.sel, bold = true },
+    PmenuDesc = { fg = c.dim, bg = c.raise },
+    PmenuSelDesc = { fg = c.fg, bg = c.sel },
+    PmenuThumb = { fg = c.accent, bg = c.raise },
+  }
+end
+
+return { palette = c, hues = hues, hue_names = hue_names, build = build, groups = build() }

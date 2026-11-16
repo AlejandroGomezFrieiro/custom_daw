@@ -1,0 +1,152 @@
+-- The project's sound files: listing what is missing, relinking it, and
+-- copying files from elsewhere into the project's own `media` folder.
+-- The work is in the kernel (crates/daw-core/src/session/media.rs).
+local api = daw.api
+local command = daw.command
+local M = {}
+
+require("daw.options").define("copy_imports", false) -- importing copies the file into `media` beside the project
+
+-- Long files are played from the disk, not held in memory: see the
+-- options `media_stream` and `media_cache`.
+api.media_store(tonumber(daw.opt.media_stream) or 0, tonumber(daw.opt.media_cache) or 16)
+daw.on("option.changed", function(e)
+  if e.name == "media_stream" then api.media_store(tonumber(e.value) or 0) end
+end)
+
+local function name_of(path) return tostring(path):match("([^/]+)$") or tostring(path) end
+
+--- Files the project's clips play that are not there, once each.
+function M.missing() return api.media_missing() end
+
+--- Every file the project plays: `{ path, missing, inside }`.
+function M.list() return api.media_list() end
+
+--- Point the clips that play `from` at the file `to`, and look beside it
+--- for the other missing files. One undo step. Returns `{ clips, found, missing }`.
+function M.relink(from, to) return api.media_relink(from, to) end
+
+--- Look for every missing file in a directory tree. One undo step.
+--- Returns `{ found, missing }`.
+function M.search(dir) return api.media_search(dir) end
+
+--- Copy every file from outside the project's folder into `media` beside
+--- it and point the clips at the copies. One undo step. Returns `{ copied, missing, dir }`.
+function M.collect() return api.media_collect() end
+
+local function still(result)
+  local n = #(result.missing or {})
+  return n == 0 and "nothing is missing now" or string.format("%d still missing", n)
+end
+
+--- Choose a file for a missing one, or a directory to search for them all.
+function M.relink_pick()
+  local missing = api.media_missing()
+  if #missing == 0 then return daw.notify("no media is missing") end
+  local items = { { label = "Search a directory for all of them…", search = true } }
+  for _, path in ipairs(missing) do items[#items + 1] = { label = name_of(path) .. "  " .. path, path = path } end
+  daw.pick.open({
+    title = string.format("Missing media (%d)", #missing),
+    items = items,
+    format = function(item) return item.label end,
+    on_choose = function(item)
+      if item.search then
+        return daw.pick.file({
+          title = "Search for missing media", directory = true,
+          on_choose = function(dir)
+            local result = api.media_search(dir)
+            daw.notify(string.format("found %d file%s; %s", result.found, result.found == 1 and "" or "s", still(result)))
+          end,
+        })
+      end
+      local ext = item.path:match("%.([^./]+)$")
+      daw.pick.file({
+        title = "Find " .. name_of(item.path),
+        extensions = ext and { ext } or nil,
+        on_choose = function(path)
+          local ok, result = pcall(api.media_relink, item.path, path)
+          if not ok then return daw.notify(tostring(result), "error") end
+          daw.notify(string.format("%s: %d clip%s relinked, %d other file%s found; %s", name_of(path),
+            result.clips, result.clips == 1 and "" or "s", result.found, result.found == 1 and "" or "s", still(result)))
+        end,
+      })
+    end,
+  })
+end
+
+command("media.relink", function(ctx)
+  local a, b = ctx.args[1], ctx.args[2]
+  if a and b then
+    local result = api.media_relink(tostring(a), tostring(b))
+    return daw.notify(string.format("%d clip%s relinked; %s", result.clips, result.clips == 1 and "" or "s", still(result)))
+  elseif a then
+    local result = api.media_search(tostring(a))
+    return daw.notify(string.format("found %d file%s; %s", result.found, result.found == 1 and "" or "s", still(result)))
+  end
+  M.relink_pick()
+end, { desc = "Find missing media: alone, choose a file or a directory; `media.relink <dir>` searches it; `media.relink <old> <new>`" })
+
+command("media.collect", function()
+  local result = api.media_collect()
+  local n = #result.missing
+  daw.notify(string.format("copied %d file%s into %s%s", result.copied, result.copied == 1 and "" or "s", result.dir,
+    n > 0 and string.format(" (%d missing, not copied)", n) or ""))
+end, { desc = "Copy every sound file from outside the project's folder into its `media` folder" })
+
+command("media.missing", function()
+  local missing = api.media_missing()
+  if #missing == 0 then return daw.notify("no media is missing") end
+  local names = {}
+  for i, path in ipairs(missing) do names[i] = name_of(path) end
+  daw.notify(string.format("%d missing: %s; :media.relink finds them", #missing, table.concat(names, ", ")), "warn")
+end, { desc = "List the sound files the project plays that are not there" })
+
+-- Audio clip operations that leave the source file alone ---------------------
+
+local function need_audio_clip()
+  local clip = daw.cursor.clip()
+  if not clip then daw.notify("no clip under the cursor", "warn") return nil end
+  if clip.kind ~= "audio" then daw.notify("not an audio clip", "warn") return nil end
+  return clip
+end
+
+--- Play an audio clip backwards, from a new reversed copy of its part of the file.
+function M.reverse(clip) return api.clip_reverse(type(clip) == "table" and clip.id or clip) end
+
+--- Bring the loudest sample an audio clip plays to `level` dB (0) by its gain.
+--- Returns the new gain.
+function M.normalize(clip, level) return api.clip_normalize(type(clip) == "table" and clip.id or clip, level) end
+
+--- Join audio clips of one track into one clip playing a new file: the clips
+--- given, or with one, it and every audio clip touching or overlapping it.
+--- Returns { id, file, glued }.
+function M.glue(clips)
+  local ids = {}
+  for i, c in ipairs(type(clips) == "table" and clips.id == nil and clips or { clips }) do
+    ids[i] = type(c) == "table" and c.id or c
+  end
+  return api.clip_glue(ids)
+end
+
+command("clip.reverse", function()
+  local clip = need_audio_clip()
+  if not clip then return end
+  M.reverse(clip)
+  daw.notify("reversed " .. clip.name)
+end, { desc = "Play the audio clip under the cursor backwards (a new file; the original stays)" })
+
+command("clip.normalize", function(ctx)
+  local clip = need_audio_clip()
+  if not clip then return end
+  local gain = M.normalize(clip, tonumber(ctx.args[1]) or 0)
+  daw.notify(string.format("%s: clip gain %+.1f dB", clip.name, gain))
+end, { desc = "Bring the audio clip's loudest sample to a level by its gain: `clip.normalize -1`" })
+
+command("clip.glue", function()
+  local clip = need_audio_clip()
+  if not clip then return end
+  local result = M.glue(clip)
+  daw.notify(string.format("glued %d clips into %s", result.glued, name_of(result.file)))
+end, { desc = "Join the audio clip under the cursor and those touching it into one clip (a new file)" })
+
+return M

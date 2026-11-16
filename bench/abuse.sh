@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Run every case of abuse.lua in its own process, with a time limit and a
+# memory limit, and report crashes, hangs and broken results.
+#   bench/abuse.sh [daw binary] [seconds per case]
+set -uo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+daw="${1:-$here/../target/release/daw}"
+limit="${2:-60}"
+export BENCH_TMP="${BENCH_TMP:-/tmp/daw-bench}"
+mkdir -p "$BENCH_TMP/home"
+export XDG_CACHE_HOME="$BENCH_TMP/home/cache" XDG_DATA_HOME="$BENCH_TMP/home/data" XDG_CONFIG_HOME="$BENCH_TMP/home/config"
+
+bad=0
+while IFS= read -r name; do
+  # 8 GB of address space: an absurd allocation fails instead of taking the machine.
+  log="$BENCH_TMP/abuse-case.log"
+  (ulimit -v 8000000; timeout "$limit" "$daw" --clean --no-plugins -l "$here/abuse.lua" "$name") > "$log" 2>&1
+  code=$?
+  line=$(grep '^{' "$log" | tail -1)
+  if [ "$code" = 124 ]; then
+    echo "{\"workload\":\"abuse\",\"case\":\"$name\",\"outcome\":\"BAD\",\"detail\":\"hung: killed after ${limit} s\"}"
+    bad=$((bad + 1))
+  elif [ -z "$line" ]; then
+    why=$(grep -v '^\s' "$log" | tail -2 | tr '\n"' ' \x27' | cut -c1-300)
+    echo "{\"workload\":\"abuse\",\"case\":\"$name\",\"outcome\":\"BAD\",\"detail\":\"exit $code: $why\"}"
+    bad=$((bad + 1))
+  else
+    echo "$line"
+    case "$line" in *'"outcome":"BAD"'*) bad=$((bad + 1)) ;; esac
+  fi
+done < <("$daw" --clean --no-plugins -l "$here/abuse.lua" list 2>/dev/null)
+echo "abuse: $bad bad" >&2
+[ "$bad" = 0 ]

@@ -1,0 +1,439 @@
+//! Kernel data as compact text for a model: ids in brackets, positions in
+//! beats with `bar.beat` beside them, levels in dB.
+
+use std::fmt::Write as _;
+
+use serde_json::Value;
+
+use crate::music::{Meter, name, num};
+
+/// The items of a JSON array; an empty Lua table arrives as `{}`, so
+/// anything that is not an array is no items.
+pub fn items(value: &Value) -> &[Value] {
+    value.as_array().map(Vec::as_slice).unwrap_or(&[])
+}
+
+fn f(value: &Value) -> f64 {
+    value.as_f64().unwrap_or(0.0)
+}
+
+fn s(value: &Value) -> &str {
+    value.as_str().unwrap_or("")
+}
+
+/// `8 (3.1)`: beats, and where that is in bars.
+pub fn at(beats: f64, meter: Meter) -> String {
+    format!("{} ({})", num(beats), meter.format(beats))
+}
+
+/// A length in beats, with bars when it is a whole number of them.
+pub fn span(beats: f64, meter: Meter) -> String {
+    let bars = beats / meter.bar();
+    if (bars - bars.round()).abs() < 1e-6 && bars >= 1.0 {
+        let n = bars.round() as i64;
+        format!(
+            "{} beats = {n} bar{}",
+            num(beats),
+            if n == 1 { "" } else { "s" }
+        )
+    } else {
+        format!("{} beats", num(beats))
+    }
+}
+
+pub fn db(value: f64) -> String {
+    format!("{} dB", num((value * 10.0).round() / 10.0))
+}
+
+pub fn messages(out: &mut String, list: &Value) {
+    let list = items(list);
+    if list.is_empty() {
+        return;
+    }
+    out.push_str("DAW messages:\n");
+    for m in list {
+        let level = s(&m["level"]);
+        let text = s(&m["text"]);
+        let first = text.lines().next().unwrap_or("");
+        if level == "info" {
+            let _ = writeln!(out, "  {first}");
+        } else {
+            let _ = writeln!(out, "  [{level}] {first}");
+        }
+    }
+}
+
+pub fn transport(t: &Value, meter: Meter) -> String {
+    let mut out = format!(
+        "{} at {}",
+        if t["playing"].as_bool() == Some(true) {
+            "playing"
+        } else {
+            "stopped"
+        },
+        at(f(&t["position"]), meter)
+    );
+    let _ = write!(
+        out,
+        " · loop {} {}–{}",
+        if t["loop_enabled"].as_bool() == Some(true) {
+            "on"
+        } else {
+            "off"
+        },
+        at(f(&t["loop_start"]), meter),
+        at(f(&t["loop_end"]), meter)
+    );
+    if t["metronome"].as_bool() == Some(true) {
+        out.push_str(" · metronome on");
+    }
+    if t["recording"].as_bool() == Some(true) {
+        out.push_str(" · RECORDING");
+    }
+    out
+}
+
+pub fn project_header(p: &Value, meter: Meter) -> String {
+    let file = match p["path"].as_str() {
+        Some(path) => format!("file {path}"),
+        None => "never saved".into(),
+    };
+    format!(
+        "Project \"{}\" ({file}{}) · {} BPM · {}/{} · length {}",
+        s(&p["name"]),
+        if p["modified"].as_bool() == Some(true) {
+            ", unsaved changes"
+        } else {
+            ""
+        },
+        num(f(&p["tempo"])),
+        meter.num,
+        meter.den,
+        span(f(&p["length"]), meter)
+    ) + &tempo_changes(p, meter)
+}
+
+/// " · then 90 BPM at 5.1 (ramping to the next), 6/8 at 9.1" for a song
+/// whose tempo or signature changes along the way.
+fn tempo_changes(p: &Value, meter: Meter) -> String {
+    let mut changes: Vec<(f64, String)> = Vec::new();
+    for c in items(&p["tempo_changes"]) {
+        let ramp = if c["ramp"].as_bool() == Some(true) {
+            ", ramping to the next"
+        } else {
+            ""
+        };
+        let at = f(&c["beat"]);
+        changes.push((
+            at,
+            format!("{} BPM at {}{ramp}", num(f(&c["bpm"])), meter.format(at)),
+        ));
+    }
+    for c in items(&p["sig_changes"]) {
+        let at = f(&c["beat"]);
+        changes.push((
+            at,
+            format!("{}/{} at {}", c["num"], c["den"], meter.format(at)),
+        ));
+    }
+    if changes.is_empty() {
+        return String::new();
+    }
+    changes.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let ramp = if p["tempo_ramp"].as_bool() == Some(true) {
+        " (ramping from the start)"
+    } else {
+        ""
+    };
+    let list: Vec<String> = changes.into_iter().map(|c| c.1).collect();
+    format!("{ramp} · then {}", list.join(", "))
+}
+
+pub fn project(p: &Value) -> String {
+    let meter = Meter::from_project(p);
+    let mut out = project_header(p, meter);
+    let _ = writeln!(out, "\nTransport: {}", transport(&p["transport"], meter));
+    let tracks = items(&p["tracks"]);
+    let _ = writeln!(out, "Tracks ({}):", tracks.len());
+    for t in tracks {
+        track(&mut out, t, meter, false);
+    }
+    track(&mut out, &p["master"], meter, false);
+    out
+}
+
+fn track_line(t: &Value, meter: Meter) -> String {
+    let _ = meter;
+    let mut line = if t["master"].as_bool() == Some(true) {
+        "Master [id 0]".to_string()
+    } else {
+        format!(
+            "{}. \"{}\" [id {}]",
+            f(&t["index"]),
+            s(&t["name"]),
+            f(&t["id"])
+        )
+    };
+    let _ = write!(
+        line,
+        " vol {}, pan {}",
+        db(f(&t["volume"])),
+        num(f(&t["pan"]))
+    );
+    if t["master"].as_bool() != Some(true) {
+        match t["output"].as_f64() {
+            Some(id) => {
+                let _ = write!(line, ", out → \"{}\" [id {id}]", s(&t["output_name"]));
+            }
+            None => line.push_str(", out → master"),
+        }
+    }
+    for (flag, label) in [("mute", "MUTED"), ("solo", "SOLO"), ("armed", "ARMED")] {
+        if t[flag].as_bool() == Some(true) {
+            let _ = write!(line, ", {label}");
+        }
+    }
+    if let Some(input) = t["input"].as_str() {
+        let _ = write!(line, ", input {input}");
+    }
+    line
+}
+
+pub fn track(out: &mut String, t: &Value, meter: Meter, detail: bool) {
+    let _ = writeln!(out, "{}", track_line(t, meter));
+    let sends = items(&t["sends"]);
+    if !sends.is_empty() {
+        let list: Vec<String> = sends
+            .iter()
+            .map(|send| {
+                format!(
+                    "\"{}\" [id {}] {}",
+                    s(&send["name"]),
+                    f(&send["target"]),
+                    db(f(&send["level"]))
+                )
+            })
+            .collect();
+        let _ = writeln!(out, "   sends: {}", list.join(", "));
+    }
+    let devices = items(&t["devices"]);
+    if devices.is_empty() {
+        out.push_str("   devices: none\n");
+    } else if detail {
+        out.push_str("   devices:\n");
+        for d in devices {
+            device(out, d, "     ", 32);
+        }
+    } else {
+        let list: Vec<String> = devices.iter().map(device_short).collect();
+        let _ = writeln!(out, "   devices: {}", list.join(", "));
+    }
+    let clips = items(&t["clips"]);
+    if !clips.is_empty() {
+        let limit = if detail { usize::MAX } else { 16 };
+        out.push_str("   clips:\n");
+        for c in clips.iter().take(limit) {
+            let _ = writeln!(out, "     {}", clip_line(c, meter));
+        }
+        if clips.len() > limit {
+            let _ = writeln!(
+                out,
+                "     ... and {} more (get_track lists them all)",
+                clips.len() - limit
+            );
+        }
+    }
+    for l in items(&t["lanes"]) {
+        let _ = writeln!(out, "   automation: {}", lane(l, meter));
+    }
+}
+
+fn device_short(d: &Value) -> String {
+    let mut text = format!("[id {}] {} ({})", f(&d["id"]), s(&d["name"]), s(&d["kind"]));
+    if d["bypass"].as_bool() == Some(true) {
+        text.push_str(" BYPASSED");
+    }
+    if d["missing"].as_bool() == Some(true) {
+        text.push_str(" NOT LOADED");
+    }
+    text
+}
+
+pub fn clip_line(c: &Value, meter: Meter) -> String {
+    let start = f(&c["start"]);
+    let length = f(&c["length"]);
+    let mut line = format!(
+        "[id {}] \"{}\" {} at {}, {} long, to {}",
+        f(&c["id"]),
+        s(&c["name"]),
+        s(&c["kind"]),
+        at(start, meter),
+        span(length, meter),
+        meter.format(start + length)
+    );
+    if s(&c["kind"]) == "midi" {
+        let count = f(&c["note_count"]) as i64;
+        let _ = write!(line, ", {count} note{}", if count == 1 { "" } else { "s" });
+        if let (Some(lo), Some(hi)) = (c["low"].as_u64(), c["high"].as_u64()) {
+            if lo == hi {
+                let _ = write!(line, " ({})", name(lo as u8));
+            } else {
+                let _ = write!(line, " ({}–{})", name(lo as u8), name(hi as u8));
+            }
+        }
+    } else {
+        let _ = write!(
+            line,
+            ", file {}, offset {} s, gain {}",
+            s(&c["file"]),
+            num(f(&c["offset"])),
+            db(f(&c["gain"]))
+        );
+    }
+    if c["muted"].as_bool() == Some(true) {
+        line.push_str(", MUTED");
+    }
+    line
+}
+
+/// A clip, and its notes when they are there.
+pub fn clip(out: &mut String, c: &Value, meter: Meter) {
+    let _ = writeln!(out, "{}", clip_line(c, meter));
+    if let Some(track) = c["track_name"].as_str() {
+        let _ = writeln!(out, "on track \"{track}\" [id {}]", f(&c["track"]));
+    }
+    let notes = items(&c["notes"]);
+    if notes.is_empty() {
+        return;
+    }
+    out.push_str(
+        "notes: pitch start length velocity (beats from the clip's start; bar.beat within the clip)\n",
+    );
+    for n in notes {
+        let start = f(&n["start"]);
+        let _ = write!(
+            out,
+            "  {} {} {} {}  ({})",
+            name(n["pitch"].as_u64().unwrap_or(0) as u8),
+            num(start),
+            num(f(&n["length"])),
+            f(&n["velocity"]),
+            meter.format(start)
+        );
+        if let Some(lyric) = n["lyric"].as_str() {
+            let _ = write!(out, " lyric \"{lyric}\"");
+        }
+        out.push('\n');
+    }
+}
+
+fn param_value(p: &Value) -> String {
+    let value = f(&p["value"]);
+    let choices = items(&p["choices"]);
+    if !choices.is_empty() {
+        let index = value.round() as usize;
+        let current = choices.get(index).and_then(Value::as_str).unwrap_or("?");
+        let all: Vec<&str> = choices.iter().map(s).collect();
+        return format!("{current} ({}; one of {})", num(value), all.join("|"));
+    }
+    let unit = s(&p["unit"]);
+    format!(
+        "{}{}{} (range {} to {}, default {})",
+        num(value),
+        if unit.is_empty() { "" } else { " " },
+        unit,
+        num(f(&p["min"])),
+        num(f(&p["max"])),
+        num(f(&p["default"]))
+    )
+}
+
+/// A device with its parameters, at most `limit` of them.
+pub fn device(out: &mut String, d: &Value, indent: &str, limit: usize) {
+    let _ = writeln!(
+        out,
+        "{indent}{} · {} format · position {} in the chain of track [id {}]",
+        device_short(d),
+        s(&d["format"]),
+        f(&d["index"]),
+        f(&d["track"])
+    );
+    let params = items(&d["params"]);
+    let total = d["param_count"].as_u64().unwrap_or(params.len() as u64) as usize;
+    if params.is_empty() {
+        if total > 0 {
+            let _ = writeln!(out, "{indent}  {total} parameters (get_device lists them)");
+        } else if d["filtered"].as_bool() == Some(true) {
+            let _ = writeln!(out, "{indent}  no parameter matches the filter");
+        } else {
+            let _ = writeln!(out, "{indent}  no parameters");
+        }
+        return;
+    }
+    if params.len() > limit {
+        let _ = writeln!(
+            out,
+            "{indent}  {} parameters; get_device lists them (with a filter for big plugins)",
+            params.len()
+        );
+        return;
+    }
+    if d["filtered"].as_bool() == Some(true) || d["only_changed"].as_bool() == Some(true) {
+        let _ = writeln!(out, "{indent}  {} of {total} parameters:", params.len());
+    }
+    for p in params {
+        let key = s(&p["key"]);
+        let pname = s(&p["name"]);
+        let label = if pname.eq_ignore_ascii_case(key) || pname.is_empty() {
+            key.to_string()
+        } else {
+            format!("{key} \"{pname}\"")
+        };
+        let _ = writeln!(out, "{indent}  {label}: {}", param_value(p));
+    }
+}
+
+pub fn lane(l: &Value, meter: Meter) -> String {
+    let target = match s(&l["target"]) {
+        "param" => format!(
+            "device [id {}] parameter {}",
+            f(&l["device"]),
+            s(&l["param"])
+        ),
+        other => other.to_string(),
+    };
+    let mut text = format!(
+        "[id {}] {target}, {}, range {} to {}",
+        f(&l["id"]),
+        if l["enabled"].as_bool() == Some(false) {
+            "OFF"
+        } else {
+            "on"
+        },
+        num(f(&l["min"]).max(-1e9)),
+        num(f(&l["max"]).min(1e9)),
+    );
+    let points = items(&l["points"]);
+    if points.is_empty() {
+        let count = f(&l["point_count"]) as i64;
+        let _ = write!(text, ", {count} point{}", if count == 1 { "" } else { "s" });
+    } else {
+        let list: Vec<String> = points
+            .iter()
+            .take(64)
+            .map(|p| {
+                let beat = f(&p[0]);
+                format!("{}→{}", at(beat, meter), num(f(&p[1])))
+            })
+            .collect();
+        let _ = write!(
+            text,
+            ", points (beat (bar.beat)→value): {}",
+            list.join(", ")
+        );
+        if points.len() > 64 {
+            let _ = write!(text, " ... and {} more", points.len() - 64);
+        }
+    }
+    text
+}

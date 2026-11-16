@@ -1,0 +1,634 @@
+//! Where a project's sound files are, and finding them when they have moved.
+//!
+//! In memory every audio clip names its file by an absolute path. A saved
+//! project names files inside its own directory tree by a path relative to
+//! the project file, and files elsewhere by their absolute path, so that a
+//! project folder can be moved or copied whole. On opening, a file that is
+//! not where the project says is looked for: relative to the project, then
+//! by name in the project's directory tree and in directories where other
+//! missing files turned up. What is still missing stays in the project,
+//! offline and silent, under the path it was saved with.
+
+use std::collections::{BTreeSet, HashMap};
+use std::ffi::OsString;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+
+use anyhow::{Context, Result, bail};
+use serde_json::{Value, json};
+
+use super::Session;
+use crate::model::{Clip, ClipContent, Project};
+
+/// How deep, and how far, the search for a missing file by name looks.
+const SEARCH_DEPTH: usize = 8;
+const SEARCH_ENTRIES: usize = 50_000;
+
+/// The files of a clip's other takes: `meta.takes.list[].file`, which
+/// `daw.takes` keeps (the take that plays is the clip's own file).
+fn take_files(clip: &Clip) -> impl Iterator<Item = PathBuf> + '_ {
+    clip.meta
+        .get("takes")
+        .and_then(|takes| takes.get("list"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|take| take.get("file").and_then(Value::as_str))
+        .map(PathBuf::from)
+}
+
+/// Change the files of a clip's other takes for which `f` gives a new one.
+fn map_take_files(clip: &mut Clip, f: &mut impl FnMut(&Path) -> Option<PathBuf>) {
+    let Some(list) = clip
+        .meta
+        .get_mut("takes")
+        .and_then(|takes| takes.get_mut("list"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for take in list {
+        let new = take
+            .get("file")
+            .and_then(Value::as_str)
+            .and_then(|file| f(Path::new(file)));
+        if let Some(new) = new {
+            take["file"] = Value::String(new.to_string_lossy().into_owned());
+        }
+    }
+}
+
+/// Change the file of every audio clip, and of every other take of one, for
+/// which `f` gives a new one. Returns how many clips changed.
+pub(super) fn map_files(
+    project: &mut Project,
+    mut f: impl FnMut(&Path) -> Option<PathBuf>,
+) -> usize {
+    let mut changed = 0;
+    for track in project
+        .tracks
+        .iter_mut()
+        .chain(std::iter::once(&mut project.master))
+    {
+        let new: Vec<(Option<PathBuf>, bool)> = track
+            .clips
+            .iter()
+            .map(|c| {
+                let own = match &c.content {
+                    ClipContent::Audio { file, .. } => f(file),
+                    _ => None,
+                };
+                (own, take_files(c).any(|file| f(&file).is_some()))
+            })
+            .collect();
+        if new.iter().all(|(own, takes)| own.is_none() && !takes) {
+            continue;
+        }
+        let track = Arc::make_mut(track);
+        for (clip, (path, takes)) in track.clips.iter_mut().zip(new) {
+            if path.is_none() && !takes {
+                continue;
+            }
+            let clip = Arc::make_mut(clip);
+            if takes {
+                map_take_files(clip, &mut f);
+            }
+            if let Some(path) = path
+                && let ClipContent::Audio { file, .. } = &mut clip.content
+            {
+                *file = path;
+            }
+            changed += 1;
+        }
+    }
+    changed
+}
+
+/// Every file the project's audio clips play, once each: the takes that
+/// are not playing included.
+pub fn files(project: &Project) -> BTreeSet<PathBuf> {
+    project
+        .all_tracks()
+        .flat_map(|t| &t.clips)
+        .flat_map(|c| {
+            let own = match &c.content {
+                ClipContent::Audio { file, .. } => Some(file.clone()),
+                _ => None,
+            };
+            own.into_iter().chain(take_files(c))
+        })
+        .collect()
+}
+
+/// The directory a project file is in, as an absolute path.
+fn project_dir(path: &Path) -> PathBuf {
+    let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    path.parent().map(Path::to_path_buf).unwrap_or_default()
+}
+
+/// `path` without `.` and `..` steps, so that prefixes compare as they should.
+fn tidy(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// The project as it is written to `path`: files inside the project's
+/// directory tree by a path relative to it, others as they are.
+pub fn for_file(project: &Project, path: &Path) -> Project {
+    let dir = tidy(&project_dir(path));
+    let mut out = project.clone();
+    map_files(&mut out, |file| {
+        let file = tidy(file);
+        file.strip_prefix(&dir)
+            .ok()
+            .filter(|rel| !rel.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+    });
+    out
+}
+
+/// What happened to a project's files on opening it.
+#[derive(Default)]
+pub struct Found {
+    /// Files found somewhere other than where the project said: (was, now).
+    pub moved: Vec<(PathBuf, PathBuf)>,
+    /// Files that are nowhere to be found, by the path the project gave.
+    pub missing: Vec<PathBuf>,
+}
+
+/// Looks for missing files by name, in directory trees it reads once.
+#[derive(Default)]
+pub struct Finder {
+    /// Directories where missing files have been found, searched first.
+    pub dirs: Vec<PathBuf>,
+    /// Trees already read, by root: file name to the paths that have it.
+    trees: HashMap<PathBuf, HashMap<OsString, Vec<PathBuf>>>,
+}
+
+impl Finder {
+    /// Read a directory tree into the index, once.
+    fn tree(&mut self, root: &Path) -> &HashMap<OsString, Vec<PathBuf>> {
+        self.trees.entry(root.to_path_buf()).or_insert_with(|| {
+            let mut index: HashMap<OsString, Vec<PathBuf>> = HashMap::new();
+            let mut stack = vec![(root.to_path_buf(), 0usize)];
+            let mut seen = 0usize;
+            while let Some((dir, depth)) = stack.pop() {
+                let Ok(entries) = std::fs::read_dir(&dir) else {
+                    continue;
+                };
+                for entry in entries.flatten() {
+                    seen += 1;
+                    if seen > SEARCH_ENTRIES {
+                        return index;
+                    }
+                    let name = entry.file_name();
+                    let Ok(kind) = entry.file_type() else {
+                        continue;
+                    };
+                    if kind.is_dir() {
+                        if depth < SEARCH_DEPTH && !name.to_string_lossy().starts_with('.') {
+                            stack.push((entry.path(), depth + 1));
+                        }
+                    } else {
+                        index.entry(name).or_default().push(entry.path());
+                    }
+                }
+            }
+            // The shallowest first, then by name, so that the choice repeats.
+            for paths in index.values_mut() {
+                paths.sort_by_key(|p| (p.components().count(), p.clone()));
+            }
+            index
+        })
+    }
+
+    /// Where a file that is not at `file` is now, looking under `roots`.
+    pub fn find(&mut self, file: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
+        let name = file.file_name()?.to_os_string();
+        // Relative to each root: the last few steps of the old path, longest first.
+        let parts: Vec<_> = file.components().collect();
+        for root in roots {
+            for k in (1..=parts.len().min(4)).rev() {
+                let mut candidate = root.clone();
+                for part in &parts[parts.len() - k..] {
+                    candidate.push(part);
+                }
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+        for dir in &self.dirs {
+            let candidate = dir.join(&name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        for root in roots {
+            if let Some(found) = self.tree(root).get(&name).and_then(|p| p.first()) {
+                return Some(found.clone());
+            }
+        }
+        None
+    }
+
+    /// Remember where a file turned up, to look there for the others.
+    fn found_in(&mut self, path: &Path) {
+        if let Some(dir) = path.parent()
+            && !self.dirs.iter().any(|d| d == dir)
+        {
+            self.dirs.push(dir.to_path_buf());
+        }
+    }
+
+    /// Point every clip whose file is missing at where it is found under
+    /// `roots`. Files that are still missing are left as they were.
+    pub fn relink(&mut self, project: &mut Project, roots: &[PathBuf]) -> Found {
+        let mut found = Found::default();
+        let mut moved: HashMap<PathBuf, PathBuf> = HashMap::new();
+        for file in files(project) {
+            if file.is_file() {
+                continue;
+            }
+            match self.find(&file, roots) {
+                Some(now) => {
+                    self.found_in(&now);
+                    moved.insert(file.clone(), now.clone());
+                    found.moved.push((file, now));
+                }
+                None => found.missing.push(file),
+            }
+        }
+        map_files(project, |file| moved.get(file).cloned());
+        found
+    }
+}
+
+/// "a.wav, b.wav and 3 more": names for a message.
+fn some_names(files: &[PathBuf]) -> String {
+    let names: Vec<String> = files
+        .iter()
+        .take(3)
+        .map(|f| {
+            f.file_name().map_or_else(
+                || f.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            )
+        })
+        .collect();
+    let more = files.len().saturating_sub(3);
+    if more > 0 {
+        format!("{} and {more} more", names.join(", "))
+    } else {
+        names.join(", ")
+    }
+}
+
+impl Session {
+    /// Keep waveform overviews in `dir` between runs (`peaks.rs`), or nowhere.
+    pub fn set_peak_dir(&mut self, dir: Option<PathBuf>) {
+        self.audio.peak_dir = dir;
+    }
+
+    /// Play long files from the disk instead of memory: the decoded sound
+    /// of a file larger than `megabytes` is kept in `dir` and read as it is
+    /// played (`daw_engine::samples`). With `megabytes` at 0, or no `dir`,
+    /// every file is held in memory. Files loaded already stay where they are.
+    pub fn set_media_store(&mut self, dir: Option<PathBuf>, megabytes: f64) {
+        let store = dir
+            .filter(|_| megabytes.is_finite() && megabytes > 0.0)
+            .map(|dir| daw_engine::DiskStore {
+                dir,
+                limit: (megabytes * 1_048_576.0) as u64,
+            });
+        let same = match (&store, &self.audio.store) {
+            (Some(a), Some(b)) => a.dir == b.dir && a.limit == b.limit,
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            self.audio.store = store;
+            // What is loaded next is held as the new setting says; what
+            // plays now plays on from where it is.
+            self.audio.forget_loaded();
+        }
+    }
+
+    /// Where long files' decoded sound is kept, and past what size in megabytes.
+    pub fn media_store(&self) -> Option<(PathBuf, f64)> {
+        let store = self.audio.store.as_ref()?;
+        Some((store.dir.clone(), store.limit as f64 / 1_048_576.0))
+    }
+
+    /// Bring in from the disk what the song is about to play of the files
+    /// that are played from there, so that the audio thread does not have
+    /// to wait for it: the next seconds from `beat`, and from the loop's
+    /// start when the loop is on.
+    pub(super) fn read_ahead_from(&mut self, beat: f64) {
+        self.read_ahead_at = std::time::Instant::now();
+        if self.audio.store.is_none() {
+            return;
+        }
+        const AHEAD: f64 = 8.0;
+        let rate = self.handle.sample_rate as u32;
+        let map = self.project.tempo_map();
+        let now = map.seconds(beat);
+        let mut windows = vec![(now, now + AHEAD)];
+        let t = &self.transport;
+        if t.loop_enabled && t.loop_end > t.loop_start {
+            let start = map.seconds(t.loop_start);
+            windows.push((start, start + AHEAD));
+        }
+        for clip in self.project.all_tracks().flat_map(|t| &t.clips) {
+            let ClipContent::Audio { file, offset, .. } = &clip.content else {
+                continue;
+            };
+            let Some(data) = self.audio.playing(file, rate).filter(|d| d.on_disk()) else {
+                continue;
+            };
+            let (begins, ends) = (
+                map.seconds(clip.start),
+                map.seconds(clip.start + clip.length),
+            );
+            for (from, to) in &windows {
+                let (from, to) = (from.max(begins), to.min(ends));
+                if to > from {
+                    data.advise(offset + from - begins, offset + to - begins);
+                }
+            }
+        }
+    }
+
+    /// [`read_ahead_from`](Self::read_ahead_from) the playhead, a few times
+    /// a second while the song plays. Called every turn.
+    pub fn read_ahead(&mut self) {
+        if self.playing && self.read_ahead_at.elapsed() >= std::time::Duration::from_millis(250) {
+            self.read_ahead_from(self.position());
+        }
+    }
+
+    /// Make the paths of a project just read from `path` absolute, and look
+    /// for files that are not where it says. Reports what is missing once.
+    /// Returns whether any file was found somewhere else.
+    pub(super) fn find_media(&mut self, project: &mut Project, path: &Path) -> bool {
+        let dir = project_dir(path);
+        map_files(project, |file| {
+            file.is_relative().then(|| tidy(&dir.join(file)))
+        });
+        let mut finder = Finder::default();
+        let found = finder.relink(project, std::slice::from_ref(&dir));
+        self.report_media(&found);
+        !found.moved.is_empty()
+    }
+
+    /// Say what was found and what is missing, in one message each.
+    fn report_media(&mut self, found: &Found) {
+        if !found.moved.is_empty() {
+            let files: Vec<PathBuf> = found.moved.iter().map(|m| m.0.clone()).collect();
+            self.warnings.push(format!(
+                "found {} moved media file{} ({}); save to keep the new place",
+                files.len(),
+                if files.len() == 1 { "" } else { "s" },
+                some_names(&files)
+            ));
+        }
+        if !found.missing.is_empty() {
+            self.warnings.push(format!(
+                "{} media file{} missing ({}): {} clips are offline; :media.relink finds them",
+                found.missing.len(),
+                if found.missing.len() == 1 {
+                    " is"
+                } else {
+                    "s are"
+                },
+                some_names(&found.missing),
+                if found.missing.len() == 1 {
+                    "its"
+                } else {
+                    "their"
+                },
+            ));
+        }
+        if !found.missing.is_empty() || !found.moved.is_empty() {
+            self.events.push((
+                "media.missing".into(),
+                json!({ "files": found.missing, "found": found.moved.len() }),
+            ));
+        }
+    }
+
+    /// Files the project's clips play that are not there, once each.
+    pub fn media_missing(&self) -> Vec<PathBuf> {
+        files(&self.project)
+            .into_iter()
+            .filter(|f| !f.is_file())
+            .collect()
+    }
+
+    /// Every file the project's clips play: `{ path, missing, inside }`,
+    /// `inside` when it is in the project's directory tree.
+    pub fn media_list(&self) -> Value {
+        let dir = self.path.as_deref().map(|p| tidy(&project_dir(p)));
+        Value::Array(
+            files(&self.project)
+                .into_iter()
+                .map(|f| {
+                    let inside = dir.as_ref().is_some_and(|d| tidy(&f).starts_with(d));
+                    // Played from the disk, not held in memory (long files).
+                    let on_disk = self.audio.on_disk(&f).unwrap_or(false);
+                    json!({
+                        "path": f, "missing": !f.is_file(), "inside": inside,
+                        "on_disk": on_disk,
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    /// Point the clips that play `from` at `to`, and look beside `to` for
+    /// the other missing files. One undo step. Returns `{ clips, found, missing }`.
+    pub fn media_relink(&mut self, from: &Path, to: &Path) -> Result<Value> {
+        let to = std::path::absolute(to).unwrap_or_else(|_| to.to_path_buf());
+        if !to.is_file() {
+            bail!("{} is not a file", to.display());
+        }
+        daw_engine::AudioData::load(&to)?;
+        if !files(&self.project).contains(from) {
+            bail!("no clip plays {}", from.display());
+        }
+        let clips = self.edit(|p| Ok(map_files(p, |f| (f == from).then(|| to.clone()))))?;
+        let dir = to.parent().map(Path::to_path_buf).unwrap_or_default();
+        let mut result = self.media_search(&dir)?;
+        result["clips"] = json!(clips);
+        Ok(result)
+    }
+
+    /// Look for every missing file in a directory tree, and point the clips
+    /// at what is found. One undo step. Returns `{ found, missing }`.
+    pub fn media_search(&mut self, dir: &Path) -> Result<Value> {
+        if !dir.is_dir() {
+            bail!("{} is not a directory", dir.display());
+        }
+        let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
+        let mut finder = Finder {
+            dirs: vec![dir.clone()],
+            ..Default::default()
+        };
+        let mut project = self.project.clone();
+        let found = finder.relink(&mut project, &[dir]);
+        if !found.moved.is_empty() {
+            let moved: HashMap<PathBuf, PathBuf> = found.moved.iter().cloned().collect();
+            self.edit(|p| Ok(map_files(p, |f| moved.get(f).cloned())))?;
+        }
+        Ok(json!({
+            "found": found.moved.len(),
+            "missing": found.missing,
+        }))
+    }
+
+    /// Copy every file the project plays from outside its directory tree
+    /// into `media` beside the project file, and point the clips at the
+    /// copies. The originals stay. One undo step. Returns `{ copied, missing }`.
+    pub fn media_collect(&mut self) -> Result<Value> {
+        let path = self.path.clone().context(
+            "the project has no file yet: save it first, so that its files have somewhere to go",
+        )?;
+        let dir = tidy(&project_dir(&path));
+        let media = dir.join("media");
+        let mut copies: HashMap<PathBuf, PathBuf> = HashMap::new();
+        let mut missing = Vec::new();
+        for file in files(&self.project) {
+            if tidy(&file).starts_with(&dir) {
+                continue;
+            }
+            if !file.is_file() {
+                missing.push(file);
+                continue;
+            }
+            copies.insert(file.clone(), copy_into(&file, &media)?);
+        }
+        if !copies.is_empty() {
+            self.edit(|p| Ok(map_files(p, |f| copies.get(f).cloned())))?;
+        }
+        Ok(json!({ "copied": copies.len(), "missing": missing, "dir": media }))
+    }
+
+    /// Copy a file into `media` beside the project, for importing with
+    /// `daw.opt.copy_imports` on. Gives the copy, or the file itself when it
+    /// is in the project's tree already or the project has no file.
+    pub fn media_adopt(&mut self, file: &Path) -> Result<PathBuf> {
+        let Some(path) = self.path.clone() else {
+            return Ok(file.to_path_buf());
+        };
+        let file = std::path::absolute(file).unwrap_or_else(|_| file.to_path_buf());
+        let dir = tidy(&project_dir(&path));
+        if tidy(&file).starts_with(&dir) {
+            return Ok(file);
+        }
+        copy_into(&file, &dir.join("media"))
+    }
+}
+
+/// Copy `file` into `dir` under its own name, or with a number added when a
+/// different file has that name there already. A copy already there is used.
+fn copy_into(file: &Path, dir: &Path) -> Result<PathBuf> {
+    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = file
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let size = std::fs::metadata(file)?.len();
+    let mut n = 1;
+    loop {
+        let name = if n == 1 {
+            format!("{stem}{ext}")
+        } else {
+            format!("{stem}-{n}{ext}")
+        };
+        let target = dir.join(name);
+        match std::fs::metadata(&target) {
+            Ok(meta) if meta.len() == size && same_bytes(file, &target) => return Ok(target),
+            Ok(_) => n += 1,
+            Err(_) => {
+                // Copy beside it and rename, so that a full disk leaves no half file.
+                let tmp = dir.join(format!(".{stem}{ext}.part"));
+                std::fs::copy(file, &tmp)
+                    .with_context(|| format!("copying {} to {}", file.display(), dir.display()))?;
+                std::fs::rename(&tmp, &target)
+                    .with_context(|| format!("writing {}", target.display()))?;
+                return Ok(target);
+            }
+        }
+    }
+}
+
+fn same_bytes(a: &Path, b: &Path) -> bool {
+    match (std::fs::read(a), std::fs::read(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paths_inside_the_project_are_written_relative() {
+        let mut p = Project::default();
+        Arc::make_mut(&mut p.master).clips = vec![
+            Arc::new(clip(1, "/songs/a/media/x.wav")),
+            Arc::new(clip(2, "/elsewhere/y.wav")),
+            Arc::new(clip(3, "/songs/a/../a/z.wav")),
+        ];
+        let out = for_file(&p, Path::new("/songs/a/song.json"));
+        let got: Vec<PathBuf> = out
+            .master
+            .clips
+            .iter()
+            .map(|c| match &c.content {
+                ClipContent::Audio { file, .. } => file.clone(),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                PathBuf::from("media/x.wav"),
+                PathBuf::from("/elsewhere/y.wav"),
+                PathBuf::from("z.wav")
+            ]
+        );
+    }
+
+    fn clip(id: u64, file: &str) -> crate::model::Clip {
+        crate::model::Clip {
+            timebase: None,
+            id,
+            name: String::new(),
+            start: 0.0,
+            length: 1.0,
+            muted: false,
+            content: ClipContent::Audio {
+                file: file.into(),
+                offset: 0.0,
+                gain: 0.0,
+            },
+            fade_in: 0.0,
+            fade_out: 0.0,
+            meta: Default::default(),
+        }
+    }
+}

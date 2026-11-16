@@ -1,0 +1,1836 @@
+{
+  "version": 1,
+  "project": {
+    "name": "untitled",
+    "tempo": 112.0,
+    "sig_num": 4,
+    "sig_den": 4,
+    "master": {
+      "id": 0,
+      "name": "Master",
+      "volume": 0.0,
+      "pan": 0.0,
+      "mute": false,
+      "solo": false,
+      "armed": false,
+      "output": null,
+      "sends": [],
+      "devices": [],
+      "clips": [],
+      "color": null,
+      "meta": {},
+      "monitor": false
+    },
+    "tracks": [
+      {
+        "id": 1,
+        "name": "Drums",
+        "volume": 0.0,
+        "pan": 0.0,
+        "mute": false,
+        "solo": false,
+        "armed": false,
+        "output": null,
+        "sends": [],
+        "devices": [
+          {
+            "id": 2,
+            "kind": "drums",
+            "bypass": false,
+            "params": {},
+            "meta": {}
+          }
+        ],
+        "clips": [
+          {
+            "id": 3,
+            "name": "beat",
+            "start": 0.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 4,
+            "name": "beat",
+            "start": 4.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 5,
+            "name": "beat",
+            "start": 8.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 6,
+            "name": "fill",
+            "start": 12.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 7,
+            "name": "beat",
+            "start": 16.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 8,
+            "name": "beat",
+            "start": 20.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 9,
+            "name": "beat",
+            "start": 24.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 10,
+            "name": "fill",
+            "start": 28.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 38,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.25,
+                  "pitch": 42,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          }
+        ],
+        "color": null,
+        "meta": {},
+        "monitor": false
+      },
+      {
+        "id": 11,
+        "name": "Bass",
+        "volume": -4.0,
+        "pan": 0.0,
+        "mute": false,
+        "solo": false,
+        "armed": false,
+        "output": null,
+        "sends": [],
+        "devices": [
+          {
+            "id": 12,
+            "kind": "synth",
+            "bypass": false,
+            "params": {
+              "cutoff": 600.0,
+              "wave": 1.0
+            },
+            "meta": {}
+          }
+        ],
+        "clips": [
+          {
+            "id": 13,
+            "name": "bass 1",
+            "start": 0.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 14,
+            "name": "bass 2",
+            "start": 4.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 15,
+            "name": "bass 3",
+            "start": 8.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 48,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 48,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 16,
+            "name": "bass 4",
+            "start": 12.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 43,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 43,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 17,
+            "name": "bass 1",
+            "start": 16.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 18,
+            "name": "bass 2",
+            "start": 20.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 33,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 45,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 19,
+            "name": "bass 3",
+            "start": 24.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 48,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 36,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 48,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 20,
+            "name": "bass 4",
+            "start": 28.0,
+            "length": 4.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 0.5,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 1.5,
+                  "length": 0.4,
+                  "pitch": 43,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 2.5,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.0,
+                  "length": 0.4,
+                  "pitch": 31,
+                  "velocity": 100
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.4,
+                  "pitch": 43,
+                  "velocity": 100
+                }
+              ]
+            },
+            "meta": {}
+          }
+        ],
+        "color": null,
+        "meta": {},
+        "monitor": false
+      },
+      {
+        "id": 21,
+        "name": "Keys",
+        "volume": -8.0,
+        "pan": -0.3,
+        "mute": false,
+        "solo": false,
+        "armed": false,
+        "output": null,
+        "sends": [
+          {
+            "target": 32,
+            "level": -12.0
+          }
+        ],
+        "devices": [
+          {
+            "id": 22,
+            "kind": "synth",
+            "bypass": false,
+            "params": {
+              "attack": 0.019999999552965164,
+              "release": 0.4000000059604645,
+              "wave": 3.0
+            },
+            "meta": {}
+          },
+          {
+            "id": 23,
+            "kind": "delay",
+            "bypass": false,
+            "params": {
+              "mix": 0.20000000298023224,
+              "time": 268.0
+            },
+            "meta": {}
+          }
+        ],
+        "clips": [
+          {
+            "id": 24,
+            "name": "chords",
+            "start": 0.0,
+            "length": 8.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 57,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 60,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 64,
+                  "velocity": 80
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 57,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 60,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 64,
+                  "velocity": 60
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 57,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 60,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 64,
+                  "velocity": 80
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 57,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 60,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 64,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 25,
+            "name": "chords",
+            "start": 8.0,
+            "length": 8.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 57,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 60,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 65,
+                  "velocity": 80
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 57,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 60,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 65,
+                  "velocity": 60
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 57,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 60,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 65,
+                  "velocity": 80
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 57,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 60,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 65,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 26,
+            "name": "chords",
+            "start": 16.0,
+            "length": 8.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 55,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 60,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 64,
+                  "velocity": 80
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 55,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 60,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 64,
+                  "velocity": 60
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 55,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 60,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 64,
+                  "velocity": 80
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 55,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 60,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 64,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          },
+          {
+            "id": 27,
+            "name": "chords",
+            "start": 24.0,
+            "length": 8.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 55,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 59,
+                  "velocity": 80
+                },
+                {
+                  "start": 0.0,
+                  "length": 3.5,
+                  "pitch": 62,
+                  "velocity": 80
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 55,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 59,
+                  "velocity": 60
+                },
+                {
+                  "start": 3.5,
+                  "length": 0.5,
+                  "pitch": 62,
+                  "velocity": 60
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 55,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 59,
+                  "velocity": 80
+                },
+                {
+                  "start": 4.0,
+                  "length": 3.5,
+                  "pitch": 62,
+                  "velocity": 80
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 55,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 59,
+                  "velocity": 60
+                },
+                {
+                  "start": 7.5,
+                  "length": 0.5,
+                  "pitch": 62,
+                  "velocity": 60
+                }
+              ]
+            },
+            "meta": {}
+          }
+        ],
+        "color": null,
+        "meta": {},
+        "monitor": false
+      },
+      {
+        "id": 28,
+        "name": "Lead",
+        "volume": -6.0,
+        "pan": 0.25,
+        "mute": false,
+        "solo": false,
+        "armed": false,
+        "output": null,
+        "sends": [
+          {
+            "target": 32,
+            "level": -9.0
+          }
+        ],
+        "devices": [
+          {
+            "id": 29,
+            "kind": "synth",
+            "bypass": false,
+            "params": {
+              "cutoff": 2400.0,
+              "wave": 2.0
+            },
+            "meta": {}
+          }
+        ],
+        "clips": [
+          {
+            "id": 30,
+            "name": "melody",
+            "start": 8.0,
+            "length": 16.0,
+            "muted": false,
+            "content": {
+              "kind": "midi",
+              "notes": [
+                {
+                  "start": 0.0,
+                  "length": 0.75,
+                  "pitch": 69,
+                  "velocity": 83
+                },
+                {
+                  "start": 1.0,
+                  "length": 0.75,
+                  "pitch": 72,
+                  "velocity": 96
+                },
+                {
+                  "start": 2.0,
+                  "length": 0.75,
+                  "pitch": 76,
+                  "velocity": 109
+                },
+                {
+                  "start": 3.0,
+                  "length": 1.0,
+                  "pitch": 74,
+                  "velocity": 72
+                },
+                {
+                  "start": 4.0,
+                  "length": 0.75,
+                  "pitch": 72,
+                  "velocity": 85
+                },
+                {
+                  "start": 5.0,
+                  "length": 0.75,
+                  "pitch": 69,
+                  "velocity": 98
+                },
+                {
+                  "start": 6.0,
+                  "length": 0.75,
+                  "pitch": 67,
+                  "velocity": 111
+                },
+                {
+                  "start": 7.0,
+                  "length": 1.0,
+                  "pitch": 69,
+                  "velocity": 74
+                },
+                {
+                  "start": 8.0,
+                  "length": 0.75,
+                  "pitch": 72,
+                  "velocity": 87
+                },
+                {
+                  "start": 9.0,
+                  "length": 0.75,
+                  "pitch": 76,
+                  "velocity": 100
+                },
+                {
+                  "start": 10.0,
+                  "length": 0.75,
+                  "pitch": 79,
+                  "velocity": 113
+                },
+                {
+                  "start": 11.0,
+                  "length": 1.0,
+                  "pitch": 77,
+                  "velocity": 76
+                },
+                {
+                  "start": 12.0,
+                  "length": 0.75,
+                  "pitch": 76,
+                  "velocity": 89
+                },
+                {
+                  "start": 13.0,
+                  "length": 0.75,
+                  "pitch": 74,
+                  "velocity": 102
+                },
+                {
+                  "start": 14.0,
+                  "length": 0.75,
+                  "pitch": 72,
+                  "velocity": 115
+                },
+                {
+                  "start": 15.0,
+                  "length": 1.0,
+                  "pitch": 71,
+                  "velocity": 78
+                }
+              ]
+            },
+            "meta": {}
+          }
+        ],
+        "lanes": [
+          {
+            "id": 31,
+            "target": {
+              "kind": "volume"
+            },
+            "enabled": true,
+            "points": [
+              [
+                8.0,
+                -18.0
+              ],
+              [
+                12.0,
+                -6.0
+              ],
+              [
+                20.0,
+                -6.0
+              ],
+              [
+                24.0,
+                -14.0
+              ]
+            ]
+          }
+        ],
+        "color": null,
+        "meta": {},
+        "monitor": false
+      },
+      {
+        "id": 32,
+        "name": "Reverb",
+        "volume": 0.0,
+        "pan": 0.0,
+        "mute": false,
+        "solo": false,
+        "armed": false,
+        "output": null,
+        "sends": [],
+        "devices": [
+          {
+            "id": 33,
+            "kind": "delay",
+            "bypass": false,
+            "params": {
+              "feedback": 0.6000000238418579,
+              "mix": 1.0,
+              "time": 90.0
+            },
+            "meta": {}
+          }
+        ],
+        "clips": [],
+        "color": null,
+        "meta": {},
+        "monitor": false
+      }
+    ],
+    "meta": {}
+  },
+  "transport": {
+    "loop_enabled": false,
+    "loop_start": 8.0,
+    "loop_end": 16.0,
+    "metronome": false
+  }
+}

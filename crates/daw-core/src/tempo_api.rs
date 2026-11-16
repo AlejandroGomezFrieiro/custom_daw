@@ -1,0 +1,197 @@
+//! `daw.api.tempo_*`: the tempo map for Lua. The conversions are called for
+//! every clip and line a view draws, so they read the project's map in
+//! place: a binary search, no copying.
+
+use std::rc::Rc;
+
+use daw_engine::{SigPoint, TempoMap, TempoPoint};
+use mlua::{Lua, Table, Value as LuaValue};
+use serde::Deserialize;
+
+use crate::api::{LuaResult, Shared, from_lua};
+
+#[derive(Deserialize)]
+struct TempoIn {
+    beat: f64,
+    bpm: f64,
+    #[serde(default)]
+    ramp: bool,
+}
+
+#[derive(Deserialize)]
+struct SigIn {
+    beat: f64,
+    num: u32,
+    den: u32,
+}
+
+/// Register a function of the project's map.
+fn reader<A, R>(
+    lua: &Lua,
+    api: &Table,
+    shared: &Rc<Shared>,
+    name: &str,
+    f: impl Fn(&Lua, &TempoMap, A) -> mlua::Result<R> + 'static,
+) -> mlua::Result<()>
+where
+    A: mlua::FromLuaMulti,
+    R: mlua::IntoLuaMulti,
+{
+    let sh = shared.clone();
+    api.set(
+        name,
+        lua.create_function(move |lua, args: A| {
+            let session = sh.session.borrow();
+            f(lua, session.project.tempo_map(), args)
+        })?,
+    )
+}
+
+pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> {
+    reader(lua, api, shared, "tempo_seconds", |_, m, beat: f64| {
+        Ok(m.seconds(beat))
+    })?;
+    reader(lua, api, shared, "tempo_beat", |_, m, seconds: f64| {
+        Ok(m.beat(seconds))
+    })?;
+    reader(lua, api, shared, "tempo_at", |_, m, beat: f64| {
+        Ok(m.tempo(beat))
+    })?;
+    reader(lua, api, shared, "tempo_signature", |_, m, beat: f64| {
+        Ok(m.signature(beat))
+    })?;
+    // Bars count from 0 here; `daw.tempo` and `daw.time` count from 1.
+    reader(lua, api, shared, "tempo_bar_of", |_, m, beat: f64| {
+        Ok(m.bar_of(beat))
+    })?;
+    reader(lua, api, shared, "tempo_bar_start", |_, m, bar: i64| {
+        Ok(m.bar_start(bar))
+    })?;
+    reader(lua, api, shared, "tempo_bar_length", |_, m, beat: f64| {
+        Ok(m.bar_length(beat))
+    })?;
+    reader(lua, api, shared, "tempo_bar_signature", |_, m, bar: i64| {
+        Ok(m.bar_signature(bar))
+    })?;
+    reader(lua, api, shared, "tempo_is_bar_line", |_, m, beat: f64| {
+        Ok(m.is_bar_line(beat))
+    })?;
+    reader(lua, api, shared, "tempo_bbt", |_, m, beat: f64| {
+        Ok(m.bbt(beat))
+    })?;
+    reader(
+        lua,
+        api,
+        shared,
+        "tempo_from_bbt",
+        |_, m, (bar, beat, fraction): (i64, u32, Option<f64>)| {
+            Ok(m.from_bbt(bar, beat, fraction.unwrap_or(0.0)))
+        },
+    )?;
+    // The bar and beat lines from one beat to another: { beat, bar, index }
+    // each, `index` 0 on a bar line. At most `limit` of them (default 10000).
+    reader(
+        lua,
+        api,
+        shared,
+        "tempo_lines",
+        |lua, m, (from, to, limit): (f64, f64, Option<usize>)| {
+            let list = lua.create_table()?;
+            let limit = limit.unwrap_or(10_000);
+            let mut n = 0;
+            let mut result = Ok(());
+            m.lines(from, to, |line| {
+                if n >= limit || result.is_err() {
+                    return;
+                }
+                n += 1;
+                result = (|| {
+                    let t = lua.create_table_with_capacity(0, 3)?;
+                    t.raw_set("beat", line.beat)?;
+                    t.raw_set("bar", line.bar + 1)?;
+                    t.raw_set("index", line.index)?;
+                    list.raw_set(n, t)
+                })();
+            });
+            result.map(|_| list)
+        },
+    )?;
+    // Every point: { tempos = { { beat, bpm, ramp } }, signatures = { { beat, num, den, bar } } }.
+    reader(lua, api, shared, "tempo_points", |lua, m, ()| {
+        let out = lua.create_table()?;
+        let tempos = lua.create_table()?;
+        for (i, p) in m.tempos().enumerate() {
+            let t = lua.create_table()?;
+            t.raw_set("beat", p.beat)?;
+            t.raw_set("bpm", p.bpm)?;
+            t.raw_set("ramp", p.ramp)?;
+            tempos.raw_set(i + 1, t)?;
+        }
+        let sigs = lua.create_table()?;
+        for (i, p) in m.signatures().enumerate() {
+            let t = lua.create_table()?;
+            t.raw_set("beat", p.beat)?;
+            t.raw_set("num", p.num)?;
+            t.raw_set("den", p.den)?;
+            t.raw_set("bar", m.bar_of(p.beat) + 1)?;
+            sigs.raw_set(i + 1, t)?;
+        }
+        out.raw_set("tempos", tempos)?;
+        out.raw_set("signatures", sigs)?;
+        Ok(out)
+    })?;
+
+    let sh = shared.clone();
+    api.set(
+        "tempo_set",
+        lua.create_function(move |_, (beat, bpm, ramp): (f64, f64, Option<bool>)| {
+            sh.session.borrow_mut().tempo_set(beat, bpm, ramp).lua()
+        })?,
+    )?;
+    let sh = shared.clone();
+    api.set(
+        "tempo_remove",
+        lua.create_function(move |_, beat: f64| sh.session.borrow_mut().tempo_remove(beat).lua())?,
+    )?;
+    let sh = shared.clone();
+    api.set(
+        "signature_set",
+        lua.create_function(move |_, (beat, num, den): (f64, u32, u32)| {
+            sh.session.borrow_mut().signature_set(beat, num, den).lua()
+        })?,
+    )?;
+    let sh = shared.clone();
+    api.set(
+        "signature_remove",
+        lua.create_function(move |_, beat: f64| {
+            sh.session.borrow_mut().signature_remove(beat).lua()
+        })?,
+    )?;
+    // Replace the whole map: `tempo_set_points({ { beat, bpm, ramp } }, { { beat, num, den } })`.
+    let sh = shared.clone();
+    api.set(
+        "tempo_set_points",
+        lua.create_function(move |lua, (tempos, sigs): (LuaValue, LuaValue)| {
+            let tempos: Vec<TempoIn> = from_lua(lua, tempos)?;
+            let sigs: Vec<SigIn> = from_lua(lua, sigs)?;
+            let tempos = tempos
+                .into_iter()
+                .map(|p| TempoPoint {
+                    beat: p.beat,
+                    bpm: p.bpm,
+                    ramp: p.ramp,
+                })
+                .collect();
+            let sigs = sigs
+                .into_iter()
+                .map(|p| SigPoint {
+                    beat: p.beat,
+                    num: p.num,
+                    den: p.den,
+                })
+                .collect();
+            sh.session.borrow_mut().tempo_set_points(tempos, sigs).lua()
+        })?,
+    )?;
+    Ok(())
+}

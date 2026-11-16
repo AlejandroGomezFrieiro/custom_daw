@@ -1,0 +1,22 @@
+[package]
+name = "daw-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The kernel: project model, engine sync, Lua host, cell grid, event loop, RPC."
+
+[dependencies]
+daw-engine.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+mlua = { version = "0.12", features = ["luajit", "vendored", "serde"] }
+include_dir = "0.7"
+unicode-width = "0.2"
+base64 = "0.22"
+rtrb = "0.4"
+libc = "0.2"
+# Pure Rust FLAC encoder, for renders to .flac.
+flacenc = { version = "0.5", default-features = false }
+# Band-limited sample-rate conversion of sound files (resample.rs).
+rubato = "0.16"

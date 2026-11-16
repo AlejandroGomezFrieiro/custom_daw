@@ -1,0 +1,358 @@
+-- The fuzzy picker, `daw.pick`: the matcher, the view, and every source.
+local T = ...
+local test, eq, fresh = T.test, T.eq, T.fresh
+local api = daw.api
+local pick = daw.pick
+
+--- The texts `pick.filter` returns, best first.
+local function ranked(query, list)
+  local out = {}
+  for i, r in ipairs(pick.filter(query, list)) do out[i] = r.text end
+  return out
+end
+
+local function screen(w, h)
+  return table.concat(api.ui_snapshot(w or 100, h or 30), "\n")
+end
+
+local function has(text, part, what)
+  if not text:find(part, 1, true) then error(string.format("%s: %q is not in\n%s", what or "text", part, text), 2) end
+end
+
+local function start()
+  fresh()
+  daw.keymap.feed("<Esc><Esc>")
+  if daw.ui.float then daw.ui.close() end
+  daw.ui.focus("arrange")
+end
+
+--- Open the picker named `name`, type `query`, press Enter.
+local function choose(name, query)
+  daw.pick(name)
+  eq(pick.state() ~= nil, true, name .. " picker is open")
+  daw.keymap.feed((query or "") .. "<CR>")
+  eq(pick.state(), nil, name .. " picker closed after Enter")
+end
+
+-- Matching -------------------------------------------------------------------
+
+test("pick: matching is a subsequence, in order", function()
+  eq(pick.match("bss", "Bass Synth") ~= nil, true, "b-s-s is in Bass Synth")
+  eq(pick.match("ssb", "Bass Synth"), nil, "out of order is no match")
+  eq(pick.match("x", "Bass"), nil, "a missing character is no match")
+  local score, positions = pick.match("bs", "Bass Synth")
+  eq(score > 0, true, "a score")
+  eq(table.concat(positions, ","), "1,6", "B and the S that starts a word")
+  eq(select(2, pick.match("hall drag", "Dragonfly Hall")) ~= nil, true, "words of the query match apart")
+  eq(pick.match("hall drum", "Dragonfly Hall"), nil, "and every one must match")
+end)
+
+test("pick: lower case ignores case, a capital does not", function()
+  eq(#ranked("bass", { "BASS", "bass", "Bass" }), 3, "lower case matches any case")
+  eq(table.concat(ranked("Ba", { "bass", "Bass", "BASS" }), " "), "Bass", "a capital matches as typed")
+end)
+
+test("pick: ranking prefers runs, word starts and short lines", function()
+  eq(ranked("ver", { "xvaexr", "xaverx" })[1], "xaverx", "consecutive characters")
+  eq(ranked("dh", { "dashboard", "Dragonfly Hall" })[1], "Dragonfly Hall", "word starts")
+  eq(ranked("tp", { "setup", "transport.play" })[1], "transport.play", "after a separator")
+  eq(ranked("ms", { "mono synth", "mysynth" })[1], "mono synth", "two word starts beat a run in one word")
+  eq(table.concat(ranked("bass", { "a big bad ass sound", "Bass Synth", "Bass" }), "|"),
+    "Bass|Bass Synth|a big bad ass sound", "shorter first, scattered last")
+  eq(ranked("cs", { "clipSplit", "chorus" })[1], "clipSplit", "a capital inside a word starts one")
+  eq(table.concat(ranked("", { "c", "a", "b" }), ""), "cab", "an empty query keeps the order")
+end)
+
+-- The view -------------------------------------------------------------------
+
+test("pick: the call as other extensions make it", function()
+  start()
+  local chosen, cancelled
+  local bass = { text = "Bass", id = 3 }
+  daw.pick({
+    title = "Tracks",
+    items = { bass, { text = "Drums", id = 4 }, "Lead" },
+    on_choose = function(item) chosen = item end,
+    on_cancel = function() cancelled = true end,
+  })
+  eq(daw.ui.float and daw.ui.float.name, "pick", "a floating view")
+  eq(#pick.state().matches, 3, "everything before typing")
+  daw.keymap.feed("bs")
+  eq(table.concat(pick.state().matches, ","), "Bass", "typing narrows")
+  daw.keymap.feed("<CR>")
+  eq(chosen, bass, "Enter chooses the very item given")
+  eq(daw.ui.float, nil, "and closes")
+  eq(daw.ui.focused, "arrange", "focus goes back")
+
+  chosen = nil
+  daw.pick({ items = { "one", "two" }, on_choose = function(item) chosen = item end, on_cancel = function() cancelled = true end })
+  daw.keymap.feed("<C-n><CR>")
+  eq(chosen, "two", "a plain string item comes back as the string")
+
+  daw.pick({ items = function() return { { name = "x" }, { name = "y" } } end, format = function(i) return "item " .. i.name end,
+    on_choose = function(item) chosen = item end })
+  eq(pick.state().matches[2], "item y", "items from a function, lines from format")
+  daw.keymap.feed("y<CR>")
+  eq(chosen.name, "y", "matched on the formatted line")
+
+  daw.pick({ items = { "a" }, on_choose = function() end, on_cancel = function() cancelled = true end })
+  daw.keymap.feed("<Esc>")
+  eq(cancelled, true, "Escape cancels")
+  eq(daw.ui.float, nil, "and closes")
+  daw.pick({ items = { "a" }, on_choose = function() end })
+  daw.keymap.feed("<Esc>")
+  eq(daw.ui.float, nil, "on_cancel is optional")
+end)
+
+test("pick: keys move, clear and edit the query", function()
+  start()
+  local chosen
+  daw.pick({ items = { "alpha", "beta", "gamma", "delta" }, on_choose = function(item) chosen = item end })
+  local function sel() return pick.state().item end
+  daw.keymap.feed("<C-n>")
+  eq(sel(), "beta", "C-n")
+  daw.keymap.feed("<Down><C-j>")
+  eq(sel(), "delta", "Down and C-j")
+  daw.keymap.feed("<C-n>")
+  eq(sel(), "alpha", "past the end wraps")
+  daw.keymap.feed("<C-p>")
+  eq(sel(), "delta", "C-p wraps back")
+  daw.keymap.feed("<Up><C-k>")
+  eq(sel(), "beta", "Up and C-k")
+  daw.keymap.feed("ta")
+  eq(table.concat(pick.state().matches, ","), "beta,delta", "typing narrows")
+  eq(sel(), "beta", "and selects the best")
+  daw.keymap.feed("<BS><BS>")
+  eq(#pick.state().matches, 4, "Backspace widens again")
+  daw.keymap.feed("ga<C-u>")
+  eq(pick.state().query, "", "C-u clears")
+  eq(#pick.state().matches, 4, "and everything is back")
+  daw.keymap.feed("zzz")
+  eq(#pick.state().matches, 0, "nothing matches")
+  has(screen(), "Nothing matches.", "says so")
+  daw.keymap.feed("<C-w>e<Space>t<CR>")
+  eq(chosen, "beta", "C-w deletes a word; a space starts another")
+end)
+
+test("pick: the screen as text marks the selection with a character", function()
+  start()
+  daw.pick({ title = "Fruit", items = { "apple", "banana", "cherry" }, on_choose = function() end })
+  daw.keymap.feed("an<C-n>")
+  local text = screen(100, 30)
+  has(text, "Fruit", "the title")
+  has(text, "> an", "the query")
+  has(text, "1/3", "how many match")
+  has(text, "▶ banana", "the selected line")
+  local float = daw.frontend.float(100, 30)
+  eq(float.title, "Fruit", "the frontend gets the title")
+  local found
+  for _, line in ipairs(float.lines) do
+    if line:find("▶ banana", 1, true) then found = true end
+  end
+  eq(found, true, "and the selected line as plain text")
+  daw.keymap.feed("<Esc>")
+end)
+
+test("pick: preview, actions, multi-select and resume", function()
+  start()
+  local acted, many
+  daw.pick({
+    title = "Things", items = { "one", "two", "three" }, on_choose = function() end,
+    preview = function(item) return { "about " .. item } end,
+    actions = { ["<C-e>"] = { fn = function(item, query) acted = item .. "|" .. query end, desc = "act" } },
+  })
+  daw.keymap.feed("tw")
+  has(screen(110, 30), "about two", "the preview shows the selected item")
+  has(screen(110, 30), "e act", "and the footer lists the extra key")
+  daw.keymap.feed("<C-e>")
+  eq(acted, "two|tw", "an action gets the item and the query")
+  eq(daw.ui.float, nil, "and closes the picker")
+  pick.resume()
+  eq(pick.state().query, "tw", "resume brings back the query")
+  daw.keymap.feed("<Esc>")
+
+  daw.pick({ items = { "a", "b", "c" }, multi = true, on_choose = function() end, on_choose_multi = function(items) many = items end })
+  daw.keymap.feed("<Tab><C-n><Tab><CR>")
+  eq(table.concat(many, ","), "a,c", "Tab marks several")
+end)
+
+test("pick: stays quick with thousands of items", function()
+  start()
+  local words = { "Dragonfly", "Hall", "Reverb", "Plate", "Compressor", "Limiter", "Delay", "Chorus", "EQ", "Gate", "Tape", "Synth" }
+  local items = {}
+  for i = 1, 6000 do
+    items[i] = "clap:vendor." .. words[i % #words + 1] .. " " .. words[(i * 7) % #words + 1] .. " " .. i
+  end
+  local t0 = api.now()
+  daw.pick({ items = items, on_choose = function() end })
+  for _, key in ipairs({ "d", "r", "a", "<Space>", "h", "<BS>", "<BS>", "g" }) do
+    daw.keymap.feed(key)
+    api.ui_snapshot(120, 40)
+  end
+  local ms = api.now() - t0
+  eq(ms < 1000, true, "eight keys over 6000 items took " .. math.floor(ms) .. " ms")
+  eq(#pick.state().matches > 0, true, "and found some")
+  daw.keymap.feed("<Esc>")
+end)
+
+-- Sources --------------------------------------------------------------------
+
+test("pick: keys under <leader>f open the sources", function()
+  start()
+  daw.add_track({ name = "Bass" })
+  for keys, title in pairs({ [",ft"] = "Tracks", [",fc"] = "Commands", [",,"] = "Commands", [",fp"] = "Pickers", [",fa"] = "Add a device" }) do
+    daw.keymap.feed(keys)
+    eq(pick.state() and pick.state().title, title, keys)
+    daw.keymap.feed("<Esc>")
+  end
+end)
+
+test("pick: commands runs the one chosen", function()
+  start()
+  local ran = 0
+  daw.command("zz_pick_test", function() ran = ran + 1 end, { desc = "for the picker test" })
+  choose("commands", "zz_pick_test")
+  eq(ran, 1, "ran it")
+  daw.cmd("pick.commands", { "zz_pick_test" })
+  eq(pick.state().query, "zz_pick_test", "a command with a query")
+  daw.keymap.feed("<CR>")
+  eq(ran, 2, "ran it again")
+end)
+
+test("pick: keys runs the mapping chosen", function()
+  start()
+  local ran
+  daw.keymap.set("gQ", function() ran = true end, { view = "arrange", desc = "zz picker mapping" })
+  choose("keys", "zz picker")
+  eq(ran, true, "ran the mapping")
+  daw.keymap.del("gQ", { view = "arrange" })
+end)
+
+test("pick: tracks and clips move the cursor", function()
+  start()
+  local bass = daw.add_track({ name = "Bass" })
+  local drums = daw.add_track({ name = "Drums" })
+  bass:add_clip({ name = "verse", start = 8, length = 4 })
+  drums:add_clip({ name = "fill", start = 12, length = 4 })
+  daw.cursor.set_track(bass)
+  choose("tracks", "drum")
+  eq(daw.cursor.track_id(), drums.id, "on the track")
+  daw.cursor.set_beat(0)
+  choose("clips", "verse")
+  eq(daw.cursor.track_id(), bass.id, "on the clip's track")
+  eq(daw.cursor.beat, 8, "at its start")
+  daw.keymap.feed("<C-o>")
+  eq(daw.cursor.track_id(), drums.id, "and C-o goes back")
+end)
+
+test("pick: devices adds to the track, and device.add asks with it", function()
+  start()
+  local track = daw.add_track({ name = "T" })
+  daw.cursor.set_track(track)
+  choose("devices", "delay")
+  eq(track:devices()[1] and track:devices()[1].kind, "delay", "added the delay")
+  daw.keymap.feed("a")
+  eq(pick.state() and pick.state().title, "Add a device", "`a` opens the picker")
+  daw.keymap.feed("synth<CR>")
+  eq(track:devices()[2].kind, "synth", "and adds what is chosen")
+  daw.cmd("device.add", { "gain" })
+  eq(track:devices()[3].kind, "gain", "device.add with a name still adds at once")
+  eq(pick.state(), nil, "without a picker")
+
+  daw.ui.focus("arrange")
+  choose("track_devices", "synth")
+  eq(daw.ui.focused, "devices", "the device panel")
+  eq(daw.ui.views.devices:selected().kind, "synth", "on the device chosen")
+  daw.ui.focus("arrange")
+end)
+
+test("pick: marks, registers and messages", function()
+  start()
+  local a = daw.add_track({ name = "A" })
+  local b = daw.add_track({ name = "B" })
+  daw.cursor.set_track(b)
+  daw.cursor.set_beat(5)
+  daw.keymap.feed("mq")
+  daw.cursor.set_track(a)
+  daw.cursor.set_beat(0)
+  choose("marks", "q")
+  eq(daw.cursor.track_id(), b.id, "the mark's track")
+  eq(daw.cursor.beat, 5, "the mark's beat")
+
+  daw.cursor.set_track(a)
+  daw.keymap.setreg({ kind = "keys", keys = "j" }, "m")
+  choose("registers", "macro")
+  eq(daw.cursor.track_id(), b.id, "a macro plays")
+  daw.cursor.set_track(a)
+  daw.keymap.feed("yy")
+  choose("registers", '"0')
+  eq(#api.track_list(), 3, "a register of tracks is pasted")
+
+  daw.notify("zz picker message\nwith a second line")
+  daw.pick("messages")
+  eq(pick.state().matches[1]:find("zz picker message", 1, true) ~= nil, true, "the newest message first")
+  has(screen(110, 30), "with a second line", "the preview shows all of it")
+  daw.keymap.feed("<CR>")
+  eq(daw.ui.float and daw.ui.float.title, "Message", "Enter shows it in a page")
+  daw.ui.close()
+end)
+
+test("pick: files opens projects and imports audio", function()
+  start()
+  local dir = T.scratch .. "/pickfiles"
+  os.execute("mkdir -p '" .. dir .. "/sub/.hidden'")
+  local t = daw.add_track({ name = "Saved" })
+  daw.project.save(dir .. "/song.json")
+  T.write_file(dir .. "/notes.json", '{"not": "a project"}')
+  os.execute("cp tests/fixtures/tone-mono-8k.wav '" .. dir .. "/sub/take.wav'")
+  os.execute("cp tests/fixtures/tone-mono-8k.wav '" .. dir .. "/sub/.hidden/no.wav'")
+  local found = {}
+  for _, f in ipairs(pick.sources._walk(dir, 1000)) do found[#found + 1] = f.kind .. ":" .. f.path:sub(#dir + 2) end
+  table.sort(found)
+  eq(table.concat(found, " "), "audio:sub/take.wav project:song.json", "projects and audio, not other JSON or hidden files")
+
+  -- The real source walks the working directory, the repository here.
+  daw.project.new()
+  t = daw.add_track({ name = "Import" })
+  daw.cursor.set_track(t)
+  daw.cursor.set_beat(4)
+  choose("files", "fixtures tone-mono-8k.wav")
+  local clips = api.clip_list(t.id)
+  eq(#clips, 1, "imported at the cursor")
+  eq(clips[1].start, 4, "where the cursor is")
+  eq(clips[1].kind, "audio", "as audio")
+
+  daw.pick.sources.files.on_choose({ path = dir .. "/song.json", kind = "project" })
+  eq(daw.tracks()[1].name, "Saved", "a project opens")
+end)
+
+test("pick: options switch or ask for a value", function()
+  start()
+  local hints = daw.opt.hints
+  choose("options", "hints")
+  eq(daw.opt.hints, not hints, "a boolean switches")
+  daw.opt.hints = hints
+  daw.pick("options", { query = "clip_length" })
+  daw.keymap.feed("<CR><C-u>8<CR>")
+  eq(daw.opt.clip_length, 8, "a number is asked for")
+  daw.opt.clip_length = 4
+  daw.keymap.feed("<Esc>")
+end)
+
+test("pick: sources can be added, and the picker of pickers lists them", function()
+  start()
+  local got
+  daw.pick.sources.zz_test = { desc = "a test source", items = { "x", "y" }, on_choose = function(item) got = item end }
+  daw.cmd("pick")
+  eq(pick.state().title, "Pickers", ":pick with no name")
+  daw.keymap.feed("zz_test<CR>")
+  eq(pick.state() and pick.state().title, "zz_test", "opens the chosen source")
+  daw.keymap.feed("y<CR>")
+  eq(got, "y", "which works")
+  daw.pick.sources.zz_fn = function() return { title = "Made", items = { "z" }, on_choose = function(item) got = item end } end
+  daw.commands.exec("pick zz_fn")
+  eq(pick.state().title, "Made", "a source can be a function")
+  daw.keymap.feed("<CR>")
+  eq(got, "z", "chosen")
+  daw.pick.sources.zz_test, daw.pick.sources.zz_fn = nil, nil
+end)

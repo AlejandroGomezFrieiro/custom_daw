@@ -1,0 +1,1365 @@
+// The piano roll: the notes of one MIDI clip, and under them a strip for
+// how hard each is played or for a controller drawn with a pencil. It is
+// shown docked in the main window or in a window of its own, so what it
+// shows and what it reports live in a global that both windows share.
+//
+// The pointer follows REAPER's MIDI editor: the left button draws, moves and
+// stretches notes, the right button chooses with a box (or removes a note it
+// clicks, or opens the menu on empty grid), Shift leaves the grid, Ctrl
+// copies or toggles, Alt erases. What each gesture means is the kernel's:
+// this file only reports them.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "widgets.slint";
+
+export struct NoteData {
+    pitch: int,
+    start: float,       // beats from the start of the clip
+    length: float,
+    velocity: float,    // 0..1
+    selected: bool,     // one of the notes chosen with the pointer
+}
+
+// A controller move of the kind the strip shows.
+// A bar or beat line of the tempo map, in the clip's beats, with what the
+// ruler writes there: the bar's number, or bar.beat.
+export struct RollLine {
+    at: float,
+    bar: bool,
+    label: string,
+}
+
+export struct ControlData {
+    start: float,
+    value: float,       // 0..1 up the strip
+}
+
+export global Roll {
+    in property <bool> open;
+    in property <bool> detached;        // shown in its own window
+    in property <string> title;
+    in property <string> track;
+    in property <string> status;
+    in property <color> color: #5fb56a;
+    in property <float> start;
+    in property <float> length: 4;
+    in property <float> position;
+    in property <bool> playing;
+    in property <float> bar: 4;
+    // Bar and beat lines over the clip, from the song's tempo map.
+    in property <[RollLine]> lines;
+    // A song position in beats as bar.beat.sixteenth, by the tempo map.
+    pure callback place-of(float) -> string;
+    in property <float> grid: 0.25;
+    in property <bool> snap: true;
+    in property <float> step: 0.25;     // the note length a click gives
+    in property <float> cursor;
+    in property <int> pitch: 60;
+    in property <[NoteData]> notes;
+    // Notes of the track's other clips that sound during this one, in this
+    // clip's beats: drawn faintly behind its own.
+    in property <[NoteData]> ghosts;
+    // Which keys sound now, by pitch.
+    in property <[bool]> sounding;
+    // While a stroke crosses the velocity strip: what it gives each note, -1 for nothing.
+    in property <[float]> vel-preview;
+    in property <[ControlData]> controls;
+    // The chosen notes in a few words: how many, from where to where.
+    in property <string> chosen-text;
+    in property <bool> step-input;
+    // What the strip shows: 0 velocity, 1 pitch wheel, 2 modulation,
+    // 3 expression, 4 sustain pedal.
+    in-out property <int> lane: 0;
+    // Rows to skip from the top, to start near the notes.
+    in-out property <int> top: 40;
+    in-out property <float> zoom: 80;   // pixels per beat
+    in property <string> mode: "n";
+    in property <bool> focused;
+    in property <bool> sel-open;
+    in property <string> sel-kind;
+    in property <int> sel-row;
+    in property <int> sel-rows;
+    in property <float> sel-start;
+    in property <float> sel-end;
+    in property <string> stroke;        // what the pencil is drawing, as a path
+    in-out property <string> hint;
+    callback add-note(int, float, float, bool);          // pitch, start, length (0 for a click), off the grid
+    callback select-note(int, int);                      // which, 0 alone 1 add 2 toggle
+    callback box-select(float, int, float, int, int);    // beat, pitch, beat, pitch, mode
+    callback drag-notes(int, float, int, bool, bool);    // which, beats, pitches, copy, off the grid
+    callback stretch-notes(int, float, float, bool);     // which, start by, end by, off the grid
+    callback remove-note(int);
+    callback set-velocity(int, float);
+    callback audition(int);
+    callback draw-control(float, float, int);   // beat, height, 0 down 1 move 2 up
+    callback erase(float, float, int);          // beat, pitch, 0 down 1 move 2 up
+    callback clear-controls();
+    callback set-grid(float);
+    // Any other gesture: the name of a `daw.frontend.act` function that
+    // takes the clip first, and its numbers.
+    callback act(string, [float]);
+    callback close();
+    callback detach();
+    callback focus-keys();
+}
+
+// An icon button of the toolbar: no face until the pointer is on it.
+component Tool inherits Rectangle {
+    in property <string> icon;          // a path in a 16 by 16 box
+    in property <string> label;
+    in property <bool> on;
+    in property <string> tip;
+    callback clicked();
+    width: self.label == "" ? 24px : max(24px, text.preferred-width + (self.icon == "" ? 14px : 32px));
+    height: 24px;
+    border-radius: 4px;
+    background: touch.pressed ? #00000033 : root.on ? #46b9fe1f : touch.has-hover ? #ffffff12 : transparent;
+    animate background { duration: 80ms; }
+    if root.icon != "": Path {
+        x: root.label == "" ? (parent.width - 16px) / 2 : 6px;
+        y: (parent.height - 16px) / 2;
+        width: 16px;
+        height: 16px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        commands: root.icon;
+        fill: root.on ? Theme.select : touch.has-hover ? Theme.text : Theme.text-2;
+    }
+    text := Text {
+        x: root.icon == "" ? 7px : 26px;
+        text: root.label;
+        color: root.on ? Theme.select : Theme.text-2;
+        font-size: 11px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+        changed has-hover => {
+            if (self.has-hover && root.tip != "") {
+                Roll.hint = root.tip;
+            } else if (Roll.hint == root.tip) {
+                Roll.hint = "";
+            }
+        }
+    }
+}
+
+// A dropdown's face: what is chosen, a small caret.
+component Drop inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> tip;
+    callback clicked();
+    width: lead.preferred-width + shown.preferred-width + 30px;
+    height: 24px;
+    border-radius: 4px;
+    background: touch.pressed ? Theme.control-press : touch.has-hover ? Theme.control-hover : Theme.control;
+    animate background { duration: 80ms; }
+    lead := Text {
+        x: 8px;
+        text: root.label;
+        color: Theme.text-3;
+        font-size: 11px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    shown := Text {
+        x: lead.x + lead.preferred-width + (root.label == "" ? 0px : 5px);
+        text: root.value;
+        color: Theme.text;
+        font-size: 11px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    Path {
+        x: parent.width - 14px;
+        y: (parent.height - 8px) / 2;
+        width: 8px;
+        height: 8px;
+        viewbox-width: 8;
+        viewbox-height: 8;
+        commands: "M 1 2.5 L 7 2.5 L 4 6 Z";
+        fill: Theme.text-2;
+    }
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+        changed has-hover => {
+            if (self.has-hover && root.tip != "") {
+                Roll.hint = root.tip;
+            } else if (Roll.hint == root.tip) {
+                Roll.hint = "";
+            }
+        }
+    }
+}
+
+export component PianoRoll inherits Rectangle {
+    property <length> note-height: 12px;
+    property <length> beat: Roll.zoom * 1px;
+    property <length> keys-width: 64px;
+    property <length> ruler-height: 22px;
+    property <length> strip-height: 80px;
+    property <length> grid-px: Roll.grid * root.beat;
+    // Where something at `x`, `w` wide, starts and how wide it is within
+    // what shows of the roll (with room to spare): nothing drawn reaches
+    // further, however long the clip, since the renderer counts pixels in
+    // sixteen bits.
+    pure function seen-x(x: length) -> length {
+        clamp(x, -roll.content-x - 600px, -roll.content-x + roll.width + 600px)
+    }
+    pure function seen-w(x: length, w: length) -> length {
+        root.seen-x(x + w) - root.seen-x(x)
+    }
+    // Rows of the roll, white keys and black keys.
+    property <color> row-white: #232428;
+    property <color> row-black: #1e1f22;
+    property <[string]> names: ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+
+    // A drag in progress, which every chosen note follows: moved by, the
+    // start moved by, the end moved by; and the note that was grabbed.
+    property <length> drag-dx: 0px;
+    property <length> drag-dy: 0px;
+    property <length> drag-start: 0px;
+    property <length> drag-end: 0px;
+    property <int> grabbed: -1;
+    property <bool> drag-free;      // Shift: off the grid
+    property <bool> drag-copy;      // Ctrl: copies
+    property <bool> free: root.drag-free || !Roll.snap;
+    // Where the dragged notes land, as the kernel will put them.
+    property <NoteData> held: root.grabbed >= 0 ? Roll.notes[root.grabbed] : { pitch: 0, start: 0, length: 0 };
+    property <length> shown-dx: root.grabbed < 0 ? 0px : root.snapped(root.held.start * root.beat + root.drag-dx) - root.held.start * root.beat;
+    property <length> shown-dy: round(root.drag-dy / root.note-height) * root.note-height;
+    property <length> shown-start: root.grabbed < 0 || root.drag-start == 0 ? 0px : root.snapped(root.held.start * root.beat + root.drag-start) - root.held.start * root.beat;
+    property <length> shown-end: root.grabbed < 0 || root.drag-end == 0 ? 0px : root.snapped((root.held.start + root.held.length) * root.beat + root.drag-end) - (root.held.start + root.held.length) * root.beat;
+
+    // A box being drawn, in the grid's own coordinates; and what began it.
+    property <bool> boxing;
+    property <bool> box-left;       // with the left button and Ctrl
+    property <int> box-note: -1;    // the note the right button went down on
+    property <length> bx0;
+    property <length> by0;
+    property <length> bx1;
+    property <length> by1;
+    property <bool> box-big: abs(root.bx1 - root.bx0) > 3px || abs(root.by1 - root.by0) > 3px;
+    // Alt and a drag: the eraser, where it is.
+    property <bool> erasing;
+    property <length> ex;
+    property <length> ey;
+    // The middle button pans: where the view was, where the pointer was.
+    property <bool> panning;
+    property <length> pan-x;
+    property <length> pan-y;
+    property <length> pan-px;
+    property <length> pan-py;
+    // The row under the pointer, and the key held down on the keyboard.
+    property <int> hover-pitch: -1;
+    property <int> key-held: -1;
+    property <int> key-from: -1;
+
+    pure function is-black(pitch: int) -> bool {
+        Math.mod(pitch, 12) == 1 || Math.mod(pitch, 12) == 3 || Math.mod(pitch, 12) == 6 || Math.mod(pitch, 12) == 8 || Math.mod(pitch, 12) == 10
+    }
+    pure function snapped(x: length) -> length {
+        root.free ? max(0px, x) : max(0px, round(x / root.grid-px) * root.grid-px)
+    }
+    pure function pitch-name(pitch: int) -> string {
+        root.names[Math.mod(pitch, 12)] + (floor(pitch / 12) - 1)
+    }
+    // Bar, beat and sixteenth of a beat in the clip, as the song counts them.
+    pure function place(at: float) -> string {
+        Roll.place-of(Roll.start + at)
+    }
+    // A length as a part of a whole note when it is a number of 64ths.
+    pure function length-name(beats: float) -> string {
+        abs(beats * 16 - round(beats * 16)) > 0.02 ? (round(beats * 100) / 100) + " beats" : root.fraction(round(beats * 16))
+    }
+    pure function fraction(n: int) -> string {
+        root.fraction-of(n, Math.mod(n, 64) == 0 ? 64 : Math.mod(n, 32) == 0 ? 32 : Math.mod(n, 16) == 0 ? 16 : Math.mod(n, 8) == 0 ? 8 : Math.mod(n, 4) == 0 ? 4 : Math.mod(n, 2) == 0 ? 2 : 1)
+    }
+    pure function fraction-of(n: int, common: int) -> string {
+        n <= 0 ? "0" : (n / common) + "/" + (64 / common)
+    }
+    pure function describe(pitch: int, at: float, beats: float) -> string {
+        root.pitch-name(pitch) + "  ·  " + root.place(at) + "  ·  " + root.length-name(beats)
+    }
+    function say(text: string, on: bool) {
+        if (on) {
+            Roll.hint = text;
+        } else if (Roll.hint == text) {
+            Roll.hint = "";
+        }
+    }
+    // Scroll the grid, kept within what there is.
+    function scroll-to(x: length, y: length) {
+        roll.content-x = clamp(x, min(0px, roll.visible-width - roll.content-width), 0px);
+        roll.content-y = clamp(y, min(0px, roll.visible-height - roll.content-height), 0px);
+    }
+    // Zoom in time, or the rows, keeping what is under the pointer (at `x`
+    // or `y` in the grid) where it is.
+    function zoom-at(x: length, by: float) {
+        if (Roll.zoom * by >= 8 && Roll.zoom * by <= 640) {
+            Roll.zoom = Roll.zoom * by;
+            root.scroll-to(roll.content-x + x - x * by, roll.content-y);
+        }
+    }
+    function rows-at(y: length, by: length) {
+        if (root.note-height + by >= 6px && root.note-height + by <= 28px) {
+            root.note-height = root.note-height + by;
+            root.scroll-to(roll.content-x, roll.content-y + y - y * (root.note-height / (root.note-height - by)));
+        }
+    }
+    // A pan, with the pointer's place in the view (not in the grid, which moves).
+    function pan-begin(x: length, y: length) {
+        root.panning = true;
+        root.pan-x = roll.content-x;
+        root.pan-y = roll.content-y;
+        root.pan-px = x;
+        root.pan-py = y;
+    }
+    function pan-to(x: length, y: length) {
+        root.scroll-to(root.pan-x + x - root.pan-px, root.pan-y + y - root.pan-py);
+    }
+    function box-begin(x: length, y: length, left: bool, note: int) {
+        root.boxing = true;
+        root.box-left = left;
+        root.box-note = note;
+        root.bx0 = x;
+        root.by0 = y;
+        root.bx1 = x;
+        root.by1 = y;
+    }
+    // A box let go: the notes it touches are chosen. A right click that did
+    // not move removes the note it was on, or opens the menu on empty grid.
+    function box-end(shift: bool, control: bool, menu-x: length, menu-y: length) {
+        if (root.box-big) {
+            Roll.box-select(
+                min(root.bx0, root.bx1) / root.beat,
+                127 - floor(max(root.by0, root.by1) / root.note-height),
+                max(root.bx0, root.bx1) / root.beat,
+                127 - floor(min(root.by0, root.by1) / root.note-height),
+                shift ? 1 : control && !root.box-left ? 2 : 0);
+        } else if (!root.box-left && root.box-note >= 0) {
+            Roll.remove-note(root.box-note);
+        } else if (!root.box-left) {
+            grid-menu.show({ x: menu-x, y: menu-y });
+        }
+        root.boxing = false;
+        root.box-note = -1;
+    }
+    function erase-at(x: length, y: length, phase: int) {
+        root.erasing = phase != 2;
+        root.ex = x;
+        root.ey = y;
+        Roll.erase(x / root.beat, 127.5 - y / root.note-height, phase);
+    }
+
+    background: Theme.panel;
+
+    // What a right click on empty grid offers.
+    grid-menu := ContextMenuArea {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        Menu {
+            MenuItem {
+                title: "Choose every note";
+                activated => {
+                    Roll.act("select_all_notes", []);
+                }
+            }
+            MenuItem {
+                title: "Let go of the chosen notes";
+                activated => {
+                    Roll.act("clear_note_selection", []);
+                }
+            }
+            MenuItem {
+                title: "Delete the chosen notes";
+                activated => {
+                    Roll.act("remove_chosen_notes", []);
+                }
+            }
+            MenuItem {
+                title: "Quantize the chosen notes (or all) to the grid";
+                activated => {
+                    Roll.act("quantize_notes", []);
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Snap to the grid";
+                checkable: true;
+                checked: Roll.snap;
+                activated => {
+                    Roll.act("toggle_note_snap", []);
+                }
+            }
+        }
+        Rectangle { }
+    }
+
+    VerticalLayout {
+        // The toolbar.
+        Rectangle {
+            height: 32px;
+            background: Theme.panel;
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.divider;
+            }
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 6px;
+                padding-top: 4px;
+                padding-bottom: 5px;
+                spacing: 4px;
+                // The clip, in its track's colour.
+                Rectangle {
+                    width: min(160px, title.preferred-width + 16px);
+                    border-radius: 3px;
+                    background: Roll.color;
+                    title := Text {
+                        x: 8px;
+                        width: parent.width - 16px;
+                        text: Roll.title == "" ? "clip" : Roll.title;
+                        color: Theme.on-hue;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        height: parent.height;
+                    }
+                }
+                Text {
+                    text: Roll.track;
+                    color: Theme.text-2;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 0;
+                }
+                Rectangle {
+                    width: 6px;
+                }
+                Text {
+                    text: Roll.status != "" ? Roll.status : Roll.chosen-text;
+                    color: Roll.status != "" ? Theme.play-on : Theme.text-2;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                grid-drop := ContextMenuArea {
+                    width: grid-face.width;
+                    Menu {
+                        for g in [
+                            { name: "1/1", value: 4.0 },
+                            { name: "1/2", value: 2.0 },
+                            { name: "1/4", value: 1.0 },
+                            { name: "1/8", value: 0.5 },
+                            { name: "1/16", value: 0.25 },
+                            { name: "1/32", value: 0.125 },
+                            { name: "1/8 triplet", value: 1 / 3 },
+                            { name: "1/16 triplet", value: 1 / 6 },
+                        ]: MenuItem {
+                            title: g.name;
+                            checkable: true;
+                            checked: abs(Roll.grid - g.value) < 0.001;
+                            activated => {
+                                Roll.set-grid(g.value);
+                            }
+                        }
+                    }
+                    grid-face := Drop {
+                        label: "Grid";
+                        value: abs(Roll.grid * 3 - round(Roll.grid * 3)) < 0.001 && abs(Roll.grid * 16 - round(Roll.grid * 16)) > 0.001 ? root.length-name(Roll.grid * 3 / 2) + "T" : root.length-name(Roll.grid);
+                        tip: "the grid notes snap to and the lines it draws (also :grid)";
+                        clicked => {
+                            grid-drop.show({ x: 0, y: self.height + 2px });
+                        }
+                    }
+                }
+                Tool {
+                    // A magnet.
+                    icon: "M 3 2 H 6 V 8 A 2 2 0 0 0 10 8 V 2 H 13 V 8 A 5 5 0 0 1 3 8 Z";
+                    on: Roll.snap;
+                    tip: "snap to the grid: notes land on it (Shift while dragging leaves it)";
+                    clicked => {
+                        Roll.act("toggle_note_snap", []);
+                    }
+                }
+                length-drop := ContextMenuArea {
+                    width: length-face.width;
+                    Menu {
+                        MenuItem {
+                            title: "Grid";
+                            activated => {
+                                Roll.act("set_note_length", [0]);
+                            }
+                        }
+                        for g in [
+                            { name: "1/1", value: 4.0 },
+                            { name: "1/2", value: 2.0 },
+                            { name: "1/4", value: 1.0 },
+                            { name: "1/8", value: 0.5 },
+                            { name: "1/16", value: 0.25 },
+                            { name: "1/32", value: 0.125 },
+                        ]: MenuItem {
+                            title: g.name;
+                            checkable: true;
+                            checked: abs(Roll.step - g.value) < 0.001;
+                            activated => {
+                                Roll.act("set_note_length", [g.value]);
+                            }
+                        }
+                    }
+                    length-face := Drop {
+                        label: "Note";
+                        value: root.length-name(Roll.step);
+                        tip: "the length a click gives a note, and that step input enters; drawing a note sets it";
+                        clicked => {
+                            length-drop.show({ x: 0, y: self.height + 2px });
+                        }
+                    }
+                }
+                Tool {
+                    label: "Quantize";
+                    tip: "quantize: the chosen notes, or all of them, start on the grid (also :notes.quantize)";
+                    clicked => {
+                        Roll.act("quantize_notes", []);
+                    }
+                }
+                Tool {
+                    // A key of a keyboard with a dot: notes from a MIDI keyboard.
+                    icon: "M 2 3 H 14 V 13 H 2 Z M 3.5 4.5 V 11.5 H 5.5 V 8.5 H 4.8 V 4.5 Z M 6.8 4.5 V 8.5 H 6.3 V 11.5 H 9.7 V 8.5 H 9.2 V 4.5 Z M 10.5 4.5 V 8.5 H 10.5 V 11.5 H 12.5 V 4.5 Z";
+                    label: "Step";
+                    on: Roll.step-input;
+                    tip: "step input: with the transport stopped, notes played on a MIDI keyboard are entered at the cursor, which then steps on (also :notes.step_input)";
+                    clicked => {
+                        Roll.act("toggle_step_input", []);
+                    }
+                }
+                Rectangle {
+                    width: 4px;
+                }
+                Tool {
+                    icon: "M 2.5 7 H 13.5 V 9 H 2.5 Z";
+                    tip: "zoom out in time (Ctrl and the wheel zoom where the pointer is)";
+                    clicked => {
+                        Roll.zoom = max(8, Roll.zoom / 1.3);
+                    }
+                }
+                Tool {
+                    icon: "M 7 2.5 H 9 V 7 H 13.5 V 9 H 9 V 13.5 H 7 V 9 H 2.5 V 7 H 7 Z";
+                    tip: "zoom in in time";
+                    clicked => {
+                        Roll.zoom = min(640, Roll.zoom * 1.3);
+                    }
+                }
+                Tool {
+                    // A box with an arrow out of it.
+                    icon: "M 9 2 H 14 V 7 H 12.5 V 4.6 L 8 9.1 L 6.9 8 L 11.4 3.5 H 9 Z M 2 4 H 7 V 5.5 H 3.5 V 12.5 H 10.5 V 9 H 12 V 14 H 2 Z";
+                    on: Roll.detached;
+                    tip: Roll.detached ? "put the piano roll back in the main window" : "give the piano roll a window of its own";
+                    clicked => {
+                        Roll.detach();
+                    }
+                }
+                Tool {
+                    icon: "M 3.3 4.7 L 4.7 3.3 L 8 6.6 L 11.3 3.3 L 12.7 4.7 L 9.4 8 L 12.7 11.3 L 11.3 12.7 L 8 9.4 L 4.7 12.7 L 3.3 11.3 L 6.6 8 Z";
+                    tip: "close the piano roll";
+                    clicked => {
+                        Roll.close();
+                    }
+                }
+            }
+        }
+        Rectangle {
+            clip: true;
+            // The ruler: bars and beats of the song, and the playhead. A
+            // click puts the playhead there.
+            Rectangle {
+                x: 0;
+                y: 0;
+                height: root.ruler-height;
+                background: Theme.panel;
+                Rectangle {
+                    x: root.keys-width;
+                    width: parent.width - root.keys-width;
+                    clip: true;
+                    for line in Roll.lines: tick := Rectangle {
+                        property <bool> is-bar: line.bar;
+                        x: line.at * root.beat + roll.content-x;
+                        width: 1px;
+                        height: parent.height;
+                        Rectangle {
+                            y: parent.height - self.height;
+                            height: tick.is-bar ? parent.height : 6px;
+                            background: tick.is-bar ? Theme.line-bar : Theme.text-3;
+                        }
+                        if tick.is-bar || root.beat > 48px: Text {
+                            x: 4px;
+                            y: 3px;
+                            text: line.label;
+                            color: tick.is-bar ? Theme.text-2 : Theme.text-3;
+                            font-size: 11px;
+                            font-weight: tick.is-bar ? 600 : 400;
+                        }
+                    }
+                    // Grid steps between the beats, when there is room.
+                    if root.grid-px >= 10px && Roll.grid < 1: Rectangle {
+                        for index in Math.ceil(roll.content-width / root.grid-px) + 1: Rectangle {
+                            x: index * root.grid-px + roll.content-x;
+                            y: parent.height - 3px;
+                            width: 1px;
+                            height: 3px;
+                            background: Theme.text-off;
+                        }
+                    }
+                    // The end of the clip.
+                    Rectangle {
+                        x: Roll.length * root.beat + roll.content-x;
+                        width: parent.width;
+                        background: #00000066;
+                    }
+                    // The playhead, with its cap.
+                    if Roll.position >= Roll.start && Roll.position <= Roll.start + Roll.length: Path {
+                        x: (Roll.position - Roll.start) * root.beat + roll.content-x - 4.5px;
+                        y: parent.height - 6px;
+                        width: 9px;
+                        height: 6px;
+                        viewbox-width: 9;
+                        viewbox-height: 6;
+                        commands: "M 0 0 L 9 0 L 4.5 6 Z";
+                        fill: Theme.play;
+                    }
+                    TouchArea {
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                Roll.act("roll_seek", [(self.mouse-x - roll.content-x) / root.beat]);
+                            }
+                        }
+                        changed has-hover => {
+                            root.say("ruler: click to put the playhead there", self.has-hover);
+                        }
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.divider;
+                }
+            }
+            // The keyboard, scrolling with the notes. A click or a drag sounds
+            // the keys; a drag with the right button chooses their notes.
+            Rectangle {
+                x: 0;
+                y: root.ruler-height;
+                width: root.keys-width;
+                height: parent.height - root.strip-height - root.ruler-height;
+                clip: true;
+                background: #d8d9dc;
+                for index in 128: key := Rectangle {
+                    property <int> pitch: 127 - index;
+                    property <bool> lit: Roll.sounding[self.pitch] || root.key-held == self.pitch;
+                    y: index * root.note-height + roll.content-y;
+                    height: root.note-height;
+                    // White keys: the pointer's lights, a sounding one is blue.
+                    if !root.is-black(key.pitch) && (key.lit || root.hover-pitch == key.pitch): Rectangle {
+                        background: key.lit ? Theme.select : #c5e6ff;
+                    }
+                    // Lines between white keys: where E meets F and B meets
+                    // C, and in the middle of a black key.
+                    if Math.mod(key.pitch, 12) == 0 || Math.mod(key.pitch, 12) == 5: Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: #a9abb2;
+                    }
+                    if root.is-black(key.pitch): Rectangle {
+                        y: parent.height / 2;
+                        height: 1px;
+                        background: #a9abb2;
+                    }
+                    if root.is-black(key.pitch): Rectangle {
+                        x: 0;
+                        width: parent.width * 0.6;
+                        background: key.lit ? Theme.select : root.hover-pitch == key.pitch ? #3a3c42 : #1c1d20;
+                    }
+                    if Math.mod(key.pitch, 12) == 0 && root.note-height >= 8px: Text {
+                        x: parent.width - self.preferred-width - 5px;
+                        text: "C" + (floor(key.pitch / 12) - 1);
+                        color: #4a4c53;
+                        font-size: min(10px, root.note-height - 1px);
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        height: parent.height;
+                    }
+                }
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    background: Theme.divider;
+                }
+                keys := TouchArea {
+                    property <int> under: 127 - floor((self.mouse-y - roll.content-y) / root.note-height);
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                            Roll.focus-keys();
+                            root.key-held = self.under;
+                            Roll.audition(self.under);
+                        }
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                            root.key-from = self.under;
+                        }
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                            root.key-held = -1;
+                        }
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right && root.key-from >= 0) {
+                            Roll.act("select_pitches", [root.key-from, self.under, event.modifiers.shift ? 1 : event.modifiers.control ? 2 : 0]);
+                            root.key-from = -1;
+                        }
+                    }
+                    moved => {
+                        if (root.key-held >= 0 && self.under != root.key-held && self.under >= 0 && self.under <= 127) {
+                            root.key-held = self.under;
+                            Roll.audition(self.under);
+                        }
+                    }
+                    changed under => {
+                        if (self.has-hover) {
+                            root.hover-pitch = self.under;
+                        }
+                    }
+                    changed has-hover => {
+                        root.hover-pitch = self.has-hover ? self.under : -1;
+                        root.say("keyboard: click or drag to hear the keys · right drag chooses their notes", self.has-hover);
+                    }
+                    scroll-event(event) => {
+                        if (event.modifiers.alt) {
+                            root.rows-at(self.mouse-y - roll.content-y, event.delta-y > 0 ? 1px : -1px);
+                        } else {
+                            root.scroll-to(roll.content-x, roll.content-y + event.delta-y);
+                        }
+                        accept
+                    }
+                }
+                // The range a right drag is choosing.
+                if root.key-from >= 0 && keys.pressed: Rectangle {
+                    y: (127 - max(root.key-from, keys.under)) * root.note-height + roll.content-y;
+                    height: (abs(root.key-from - keys.under) + 1) * root.note-height;
+                    background: Theme.select-fill;
+                    border-width: 1px;
+                    border-color: Theme.select;
+                }
+            }
+            // The grid, scrolled by hand rather than by a ScrollView, so that
+            // the wheel with Ctrl, Alt or Shift reaches the roll.
+            roll := Rectangle {
+                x: root.keys-width;
+                y: root.ruler-height;
+                width: parent.width - root.keys-width;
+                height: parent.height - root.strip-height - root.ruler-height;
+                clip: true;
+                property <length> visible-width: self.width;
+                property <length> visible-height: self.height;
+                property <length> content-width: max(self.width, (Roll.length + Roll.bar) * root.beat);
+                property <length> content-height: 128 * root.note-height;
+                property <length> content-x: 0px;
+                property <length> content-y: -Roll.top * root.note-height;
+                // Follow the kernel's cursor when it leaves what is showing.
+                property <int> top: Roll.top;
+                changed top => {
+                    root.scroll-to(self.content-x, -self.top * root.note-height);
+                }
+                wheel := TouchArea {
+                    // The wheel scrolls; with Shift sideways, with Ctrl it
+                    // zooms in time and with Alt the rows, where the pointer is.
+                    scroll-event(event) => {
+                        if (event.modifiers.control) {
+                            root.zoom-at(self.mouse-x - roll.content-x, event.delta-y > 0 ? 1.2 : 1 / 1.2);
+                        } else if (event.modifiers.alt) {
+                            root.rows-at(self.mouse-y - roll.content-y, event.delta-y > 0 ? 1px : -1px);
+                        } else if (event.modifiers.shift) {
+                            root.scroll-to(roll.content-x + (event.delta-x != 0 ? event.delta-x : event.delta-y), roll.content-y);
+                        } else {
+                            root.scroll-to(roll.content-x + event.delta-x, roll.content-y + event.delta-y);
+                        }
+                        accept
+                    }
+                Rectangle {
+                x: roll.content-x;
+                y: roll.content-y;
+                width: roll.content-width;
+                height: roll.content-height;
+
+                // Rows: white keys and black keys, a line between octaves,
+                // and a faint light on the row under the pointer.
+                for index in 128: Rectangle {
+                    x: root.seen-x(0px);
+                    y: index * root.note-height;
+                    width: root.seen-w(0px, roll.content-width);
+                    height: root.note-height;
+                    background: root.is-black(127 - index) ? root.row-black : root.row-white;
+                    if Math.mod(127 - index, 12) == 0 || Math.mod(127 - index, 12) == 5: Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Math.mod(127 - index, 12) == 0 ? Theme.line-beat : Theme.line-sub;
+                    }
+                    if root.hover-pitch == 127 - index: Rectangle {
+                        background: #ffffff08;
+                    }
+                }
+                // Grid steps when there is room, then beats, then bars.
+                if root.grid-px >= 10px && Roll.grid < 1: Rectangle {
+                    for index in Math.ceil(roll.content-width / root.grid-px): Rectangle {
+                        x: index * root.grid-px;
+                        width: 1px;
+                        height: roll.content-height;
+                        background: Theme.line-sub;
+                    }
+                }
+                Rectangle {
+                    for line in Roll.lines: Rectangle {
+                        x: line.at * root.beat;
+                        width: 1px;
+                        height: roll.content-height;
+                        background: line.bar ? Theme.line-bar : Theme.line-beat;
+                    }
+                }
+                // Notes of the track's other clips, faint, behind these.
+                for ghost in Roll.ghosts: Rectangle {
+                    x: root.seen-x(ghost.start * root.beat);
+                    y: (127 - ghost.pitch) * root.note-height + 1px;
+                    width: max(2px, root.seen-w(ghost.start * root.beat, ghost.length * root.beat - 1px));
+                    height: root.note-height - 2px;
+                    border-radius: 2px;
+                    background: Roll.color.with-alpha(0.10);
+                    border-width: 1px;
+                    border-color: Roll.color.with-alpha(0.28);
+                }
+                // The grid itself. A press with the left button and a drag
+                // draws a note; with Ctrl held, or with the right button, the
+                // drag is a box that chooses the notes it touches; with Alt
+                // it erases. The middle button pans.
+                roll-touch := TouchArea {
+                    width: roll.content-width;
+                    height: roll.content-height;
+                    mouse-cursor: root.erasing ? MouseCursor.crosshair : root.panning ? MouseCursor.grabbing : MouseCursor.default;
+                    property <bool> drawing;
+                    property <bool> draw-free;
+                    property <bool> dragged: abs(self.mouse-x - self.pressed-x) > 3px;
+                    property <float> at: self.draw-free || !Roll.snap ? max(0, self.pressed-x / root.beat) : floor(self.pressed-x / root.grid-px) * Roll.grid;
+                    property <float> drawn: !self.dragged ? Roll.step : self.draw-free || !Roll.snap ? max(1 / 64, self.mouse-x / root.beat - self.at) : max(Roll.grid, Math.ceil(self.mouse-x / root.grid-px - 0.0001) * Roll.grid - self.at);
+                    property <int> drawn-pitch: 127 - floor(self.pressed-y / root.note-height);
+                    property <int> under: 127 - floor(self.mouse-y / root.note-height);
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down) {
+                            Roll.focus-keys();
+                            if (event.button == PointerEventButton.middle) {
+                                root.pan-begin(self.mouse-x + roll.content-x, self.mouse-y + roll.content-y);
+                            } else if (event.button == PointerEventButton.left && event.modifiers.alt) {
+                                root.erase-at(self.mouse-x, self.mouse-y, 0);
+                            } else if (event.button == PointerEventButton.right || (event.button == PointerEventButton.left && event.modifiers.control)) {
+                                root.box-begin(self.mouse-x, self.mouse-y, event.button == PointerEventButton.left, -1);
+                            } else if (event.button == PointerEventButton.left) {
+                                self.drawing = true;
+                                self.draw-free = event.modifiers.shift;
+                                root.say(root.describe(self.drawn-pitch, self.at, self.drawn), true);
+                            }
+                        }
+                        if (event.kind == PointerEventKind.move && self.drawing) {
+                            self.draw-free = event.modifiers.shift;
+                        }
+                        if (event.kind == PointerEventKind.up) {
+                            if (event.button == PointerEventButton.middle) {
+                                root.panning = false;
+                            } else if (root.erasing && event.button == PointerEventButton.left) {
+                                root.erase-at(self.mouse-x, self.mouse-y, 2);
+                            } else if (root.boxing && ((event.button == PointerEventButton.right && !root.box-left) || (event.button == PointerEventButton.left && root.box-left))) {
+                                root.box-end(event.modifiers.shift, event.modifiers.control, self.mouse-x + roll.content-x + root.keys-width, self.mouse-y + roll.content-y + root.ruler-height + 32px);
+                            } else if (event.button == PointerEventButton.left && self.drawing) {
+                                self.drawing = false;
+                                Roll.hint = "";
+                                Roll.add-note(self.drawn-pitch, self.at, self.dragged ? self.drawn : 0, self.draw-free);
+                            }
+                        }
+                    }
+                    moved => {
+                        if (root.panning) {
+                            root.pan-to(self.mouse-x + roll.content-x, self.mouse-y + roll.content-y);
+                        } else if (root.erasing) {
+                            root.erase-at(self.mouse-x, self.mouse-y, 1);
+                        } else if (root.boxing) {
+                            root.bx1 = self.mouse-x;
+                            root.by1 = self.mouse-y;
+                        } else if (self.drawing) {
+                            Roll.hint = root.describe(self.drawn-pitch, self.at, self.drawn);
+                        }
+                    }
+                    changed under => {
+                        if (self.has-hover) {
+                            root.hover-pitch = self.under;
+                        }
+                    }
+                    changed has-hover => {
+                        root.hover-pitch = self.has-hover ? self.under : -1;
+                        root.say("piano roll: drag draws a note (Shift off the grid) · right drag or Ctrl drag chooses with a box · Alt drag erases · right click for the menu · wheel scrolls, Shift sideways, Ctrl zooms, Alt the rows · middle drag pans", self.has-hover);
+                    }
+                }
+                // The note being drawn.
+                if roll-touch.drawing: Rectangle {
+                    x: roll-touch.at * root.beat;
+                    y: (127 - roll-touch.drawn-pitch) * root.note-height;
+                    width: max(3px, roll-touch.drawn * root.beat - 1px);
+                    height: root.note-height - 1px;
+                    border-radius: 2px;
+                    background: Roll.color.mix(white, 0.7);
+                    border-width: 1px;
+                    border-color: white;
+                }
+                for note[index] in Roll.notes: slot := Rectangle {
+                    // The chosen notes all follow a drag; a note that is
+                    // grabbed while not chosen goes alone.
+                    property <bool> follows: root.grabbed == index || (note.selected && root.grabbed >= 0 && Roll.notes[root.grabbed].selected);
+                    property <bool> lit: note.selected || root.grabbed == index;
+                    property <bool> under-eraser: root.erasing && root.ex >= self.x && root.ex < self.x + self.width && root.ey >= self.y && root.ey < self.y + self.height;
+                    property <bool> crossed;
+                    property <bool> erasing: root.erasing;
+                    changed under-eraser => {
+                        if (self.under-eraser) {
+                            self.crossed = true;
+                        }
+                    }
+                    changed erasing => {
+                        self.crossed = false;
+                    }
+                    // Where the note stays while the pointer drags it: the
+                    // pointer areas do not move, only the drawing does.
+                    x: root.seen-x(note.start * root.beat);
+                    y: (127 - note.pitch) * root.note-height;
+                    width: max(3px, root.seen-w(note.start * root.beat, note.length * root.beat - 1px));
+                    height: root.note-height - 1px;
+                    // A copy leaves the note where it was.
+                    if slot.follows && root.drag-copy && (root.shown-dx != 0 || root.shown-dy != 0): Rectangle {
+                        border-radius: 2px;
+                        background: Roll.color.mix(root.row-white, 0.5);
+                    }
+                    body := Rectangle {
+                        x: slot.follows ? root.shown-dx + root.shown-start : 0px;
+                        y: slot.follows ? root.shown-dy : 0px;
+                        width: max(3px, slot.width + (slot.follows ? root.shown-end - root.shown-start : 0px));
+                        height: parent.height;
+                        border-radius: 2px;
+                        // Loud notes at the track's full colour, quiet ones
+                        // fainter; chosen ones light, with a white edge.
+                        background: slot.crossed ? Theme.text-off : slot.lit ? Roll.color.mix(white, 0.7) : grab.has-hover || left.has-hover || right.has-hover ? Roll.color.mix(white, 0.85) : Roll.color.mix(root.row-black, 0.45 + 0.55 * note.velocity);
+                        border-width: 1px;
+                        border-color: slot.lit ? white : #00000060;
+                        if self.width >= 28px && root.note-height >= 11px: Text {
+                            x: 4px;
+                            width: parent.width - 6px;
+                            height: parent.height;
+                            text: root.pitch-name(note.pitch + (slot.follows ? -round(root.drag-dy / root.note-height) : 0));
+                            color: Theme.on-hue;
+                            font-size: 9px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            overflow: clip;
+                        }
+                    }
+                    grab := TouchArea {
+                        x: left.width;
+                        width: max(1px, parent.width - left.width - right.width);
+                        mouse-cursor: root.erasing ? MouseCursor.crosshair : MouseCursor.move;
+                        // Shift or Ctrl on a note: a click toggles it, a drag moves
+                        // it off the grid or drops a copy.
+                        property <bool> toggling;
+                        property <bool> moving: abs(self.mouse-x - self.pressed-x) > 3px || abs(self.mouse-y - self.pressed-y) > root.note-height / 2;
+                        moved => {
+                            if (root.panning) {
+                                root.pan-to(slot.x + self.x + self.mouse-x + roll.content-x, slot.y + self.mouse-y + roll.content-y);
+                            } else if (root.erasing) {
+                                root.erase-at(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, 1);
+                            } else if (root.boxing) {
+                                root.bx1 = parent.x + self.x + self.mouse-x;
+                                root.by1 = parent.y + self.mouse-y;
+                            } else if (root.grabbed == index && (!self.toggling || self.moving)) {
+                                root.drag-dx = self.mouse-x - self.pressed-x;
+                                root.drag-dy = self.mouse-y - self.pressed-y;
+                                Roll.hint = root.describe(note.pitch - round(root.drag-dy / root.note-height), note.start + root.shown-dx / root.beat, note.length);
+                            }
+                        }
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down) {
+                                Roll.focus-keys();
+                            }
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.middle) {
+                                root.pan-begin(slot.x + self.x + self.mouse-x + roll.content-x, slot.y + self.mouse-y + roll.content-y);
+                            }
+                            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.middle) {
+                                root.panning = false;
+                            }
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                if (event.modifiers.alt) {
+                                    root.erase-at(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, 0);
+                                } else {
+                                    self.toggling = event.modifiers.shift || event.modifiers.control;
+                                    root.drag-free = event.modifiers.shift;
+                                    root.drag-copy = event.modifiers.control;
+                                    root.grabbed = index;
+                                    if (!note.selected && !self.toggling) {
+                                        Roll.select-note(index, 0);
+                                    }
+                                }
+                            }
+                            if (event.kind == PointerEventKind.move && root.grabbed == index) {
+                                root.drag-free = event.modifiers.shift;
+                                root.drag-copy = event.modifiers.control;
+                            }
+                            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                                if (root.erasing) {
+                                    root.erase-at(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, 2);
+                                } else if (self.toggling && !self.moving) {
+                                    Roll.select-note(index, 2);
+                                } else if (self.moving) {
+                                    Roll.drag-notes(index, root.drag-dx / root.beat, -round(root.drag-dy / root.note-height), event.modifiers.control, event.modifiers.shift);
+                                }
+                                Roll.hint = "";
+                                root.drag-dx = 0px;
+                                root.drag-dy = 0px;
+                                root.grabbed = -1;
+                                self.toggling = false;
+                            }
+                            // The right button: a click removes the note, a drag is a box.
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                root.box-begin(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, false, index);
+                            }
+                            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right && root.boxing) {
+                                root.box-end(event.modifiers.shift, event.modifiers.control, 0, 0);
+                            }
+                        }
+                        double-clicked => {
+                            Roll.remove-note(index);
+                        }
+                        changed has-hover => {
+                            root.hover-pitch = self.has-hover ? note.pitch : -1;
+                            root.say("note: drag moves it and the others chosen (Shift off the grid, Ctrl copies) · either end changes its length · Shift or Ctrl click adds or takes it out · right click or double click removes", self.has-hover);
+                        }
+                    }
+                    // The ends: drag to change where the note starts or stops.
+                    left := TouchArea {
+                        x: 0;
+                        width: clamp(parent.width / 4, 2px, 5px);
+                        mouse-cursor: ew-resize;
+                        moved => {
+                            if (self.pressed && root.grabbed == index) {
+                                root.drag-start = self.mouse-x - self.pressed-x;
+                                Roll.hint = root.describe(note.pitch, note.start + root.shown-start / root.beat, note.length - root.shown-start / root.beat);
+                            }
+                        }
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                Roll.focus-keys();
+                                root.drag-free = event.modifiers.shift;
+                                root.grabbed = index;
+                            }
+                            if (event.kind == PointerEventKind.move && root.grabbed == index) {
+                                root.drag-free = event.modifiers.shift;
+                            }
+                            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                                if (abs(root.drag-start) > 2px) {
+                                    Roll.stretch-notes(index, root.drag-start / root.beat, 0, event.modifiers.shift);
+                                }
+                                Roll.hint = "";
+                                root.drag-start = 0px;
+                                root.grabbed = -1;
+                            }
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                Roll.remove-note(index);
+                            }
+                        }
+                    }
+                    right := TouchArea {
+                        x: parent.width - self.width;
+                        width: clamp(parent.width / 4, 2px, 5px);
+                        mouse-cursor: ew-resize;
+                        moved => {
+                            if (self.pressed && root.grabbed == index) {
+                                root.drag-end = self.mouse-x - self.pressed-x;
+                                Roll.hint = root.describe(note.pitch, note.start, note.length + root.shown-end / root.beat);
+                            }
+                        }
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                Roll.focus-keys();
+                                root.drag-free = event.modifiers.shift;
+                                root.grabbed = index;
+                            }
+                            if (event.kind == PointerEventKind.move && root.grabbed == index) {
+                                root.drag-free = event.modifiers.shift;
+                            }
+                            if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                                if (abs(root.drag-end) > 2px) {
+                                    Roll.stretch-notes(index, 0, root.drag-end / root.beat, event.modifiers.shift);
+                                }
+                                Roll.hint = "";
+                                root.drag-end = 0px;
+                                root.grabbed = -1;
+                            }
+                            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                Roll.remove-note(index);
+                            }
+                        }
+                    }
+                }
+                // Past the end of the clip.
+                Rectangle {
+                    x: root.seen-x(Roll.length * root.beat);
+                    width: root.seen-w(Roll.length * root.beat, max(0px, roll.content-width - Roll.length * root.beat));
+                    height: roll.content-height;
+                    background: #00000066;
+                }
+                // The box that chooses notes.
+                if root.boxing && root.box-big: Rectangle {
+                    x: min(root.bx0, root.bx1);
+                    y: min(root.by0, root.by1);
+                    width: abs(root.bx1 - root.bx0);
+                    height: abs(root.by1 - root.by0);
+                    background: Theme.select-fill;
+                    border-width: 1px;
+                    border-color: Theme.select;
+                }
+                if Roll.sel-open && Roll.focused: Rectangle {
+                    x: Roll.sel-kind == "line" ? root.seen-x(0px) : root.seen-x(Roll.sel-start * root.beat);
+                    y: Roll.sel-kind == "char" ? 0 : Roll.sel-row * root.note-height;
+                    width: Roll.sel-kind == "line" ? root.seen-w(0px, roll.content-width) : root.seen-w(Roll.sel-start * root.beat, (Roll.sel-end - Roll.sel-start) * root.beat);
+                    height: Roll.sel-kind == "char" ? roll.content-height : Roll.sel-rows * root.note-height;
+                    background: Theme.select-fill;
+                    border-width: 1px;
+                    border-color: Theme.select;
+                }
+                // The cursor: one grid step, or in insert mode the note about to be entered.
+                Rectangle {
+                    x: Roll.cursor * root.beat;
+                    y: (127 - Roll.pitch) * root.note-height;
+                    width: max(3px, (Roll.mode == "i" || Roll.step-input ? Roll.step : Roll.grid) * root.beat);
+                    height: root.note-height - 1px;
+                    background: #ffffff10;
+                    border-width: Roll.focused || Roll.step-input ? 1px : 0px;
+                    border-color: Roll.step-input ? Theme.rec : Theme.mode-color(Roll.mode);
+                }
+                if Roll.position >= Roll.start && Roll.position <= Roll.start + Roll.length: Rectangle {
+                    x: (Roll.position - Roll.start) * root.beat;
+                    width: 1px;
+                    height: roll.content-height;
+                    background: Theme.play;
+                }
+                }
+                }
+                // Where the view is in the clip and among the keys: thin bars
+                // that can be dragged.
+                if roll.content-width > roll.width + 1px: Rectangle {
+                    x: -roll.content-x / roll.content-width * roll.width;
+                    y: roll.height - 5px;
+                    width: max(24px, roll.width * roll.width / roll.content-width);
+                    height: 4px;
+                    border-radius: 2px;
+                    background: hbar.pressed || hbar.has-hover ? #ffffff50 : #ffffff24;
+                    hbar := TouchArea {
+                        property <length> from;
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down) {
+                                self.from = roll.content-x;
+                            }
+                        }
+                        moved => {
+                            root.scroll-to(self.from - (self.mouse-x - self.pressed-x) * roll.content-width / roll.width, roll.content-y);
+                        }
+                    }
+                }
+                Rectangle {
+                    x: roll.width - 5px;
+                    y: -roll.content-y / roll.content-height * roll.height;
+                    width: 4px;
+                    height: max(24px, roll.height * roll.height / roll.content-height);
+                    border-radius: 2px;
+                    background: vbar.pressed || vbar.has-hover ? #ffffff50 : #ffffff24;
+                    vbar := TouchArea {
+                        property <length> from;
+                        pointer-event(event) => {
+                            if (event.kind == PointerEventKind.down) {
+                                self.from = roll.content-y;
+                            }
+                        }
+                        moved => {
+                            root.scroll-to(roll.content-x, self.from - (self.mouse-y - self.pressed-y) * roll.content-height / roll.height);
+                        }
+                    }
+                }
+            }
+            // The strip: how hard each note is played, or a controller.
+            Rectangle {
+                x: 0;
+                y: parent.height - self.height;
+                height: root.strip-height;
+                background: Theme.surface;
+                clip: true;
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.divider;
+                }
+                // Which of them, as a dropdown at the left.
+                Rectangle {
+                    x: 0;
+                    width: root.keys-width;
+                    background: Theme.panel;
+                    lane-drop := ContextMenuArea {
+                        x: 4px;
+                        y: 6px;
+                        width: parent.width - 8px;
+                        height: 22px;
+                        Menu {
+                            for name[index] in ["Velocity", "Pitch bend", "Modulation", "Expression", "Sustain pedal"]: MenuItem {
+                                title: name;
+                                checkable: true;
+                                checked: Roll.lane == index;
+                                activated => {
+                                    Roll.lane = index;
+                                }
+                            }
+                        }
+                        Rectangle {
+                            border-radius: 3px;
+                            background: lane-touch.has-hover ? Theme.control-hover : Theme.control;
+                            Text {
+                                x: 5px;
+                                width: parent.width - 16px;
+                                text: ["Velocity", "Bend", "Mod", "Expr", "Pedal"][Roll.lane];
+                                color: Theme.text;
+                                font-size: 10px;
+                                vertical-alignment: center;
+                                height: parent.height;
+                                overflow: elide;
+                            }
+                            Path {
+                                x: parent.width - 11px;
+                                y: (parent.height - 7px) / 2;
+                                width: 7px;
+                                height: 7px;
+                                viewbox-width: 8;
+                                viewbox-height: 8;
+                                commands: "M 1 2.5 L 7 2.5 L 4 6 Z";
+                                fill: Theme.text-2;
+                            }
+                            lane-touch := TouchArea {
+                                clicked => {
+                                    lane-drop.show({ x: 0, y: self.height + 2px });
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: parent.width - 1px;
+                        width: 1px;
+                        background: Theme.divider;
+                    }
+                }
+                Rectangle {
+                    x: root.keys-width;
+                    y: 1px;
+                    width: parent.width - root.keys-width;
+                    height: parent.height - 1px;
+                    clip: true;
+                    // Beat and bar lines, as above.
+                    Rectangle {
+                        for line in Roll.lines: Rectangle {
+                            x: line.at * root.beat + roll.content-x;
+                            width: 1px;
+                            background: line.bar ? Theme.line-bar : Theme.line-sub;
+                        }
+                    }
+                    Rectangle {
+                        x: Roll.length * root.beat + roll.content-x;
+                        width: parent.width;
+                        background: #00000066;
+                    }
+                    // The wheel rests in the middle.
+                    if Roll.lane == 1: Rectangle {
+                        y: parent.height / 2;
+                        height: 1px;
+                        background: Theme.line-bar;
+                    }
+                    if Roll.lane == 0: Rectangle {
+                        for note[index] in Roll.notes: Rectangle {
+                            property <float> shown: Roll.vel-preview.length > index && Roll.vel-preview[index] >= 0 ? Roll.vel-preview[index] : note.velocity;
+                            x: note.start * root.beat + roll.content-x;
+                            y: parent.height - self.height;
+                            width: 3px;
+                            height: max(2px, (parent.height - 8px) * self.shown);
+                            background: note.selected ? Theme.select : Roll.color.mix(Theme.surface, 0.45 + 0.55 * note.velocity);
+                        }
+                    }
+                    // A controller: a bar for each move, held until the next.
+                    if Roll.lane != 0: Rectangle {
+                        for control in Roll.controls: Rectangle {
+                            property <length> top: (parent.height - 4px) * (1 - control.value) + 2px;
+                            property <length> rest: Roll.lane == 1 ? parent.height / 2 : parent.height - 2px;
+                            x: control.start * root.beat + roll.content-x;
+                            y: min(self.top, self.rest);
+                            width: max(2px, Roll.grid * root.beat - 1px);
+                            height: max(2px, abs(self.rest - self.top));
+                            background: Roll.color.with-alpha(0.8);
+                        }
+                    }
+                    if Roll.lane != 0: Path {
+                        x: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-x: -roll.content-x / 1px;
+                        viewbox-width: self.width / 1px;
+                        viewbox-height: self.height / 1px;
+                        commands: Roll.stroke;
+                        stroke: Theme.text;
+                        stroke-width: 1.5px;
+                    }
+                    // A pencil: a velocity or a controller is drawn with the
+                    // pointer held down.
+                    TouchArea {
+                        mouse-cursor: crosshair;
+                        pointer-event(event) => {
+                            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                                Roll.focus-keys();
+                                Roll.draw-control((self.mouse-x - roll.content-x) / root.beat, clamp(1 - (self.mouse-y - 2px) / (self.height - 4px), 0, 1), 0);
+                            }
+                            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                                Roll.draw-control((self.mouse-x - roll.content-x) / root.beat, clamp(1 - (self.mouse-y - 2px) / (self.height - 4px), 0, 1), 2);
+                            }
+                            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                Roll.clear-controls();
+                            }
+                        }
+                        moved => {
+                            if (self.pressed) {
+                                Roll.draw-control((self.mouse-x - roll.content-x) / root.beat, clamp(1 - (self.mouse-y - 2px) / (self.height - 4px), 0, 1), 1);
+                                if (Roll.lane == 0) {
+                                    Roll.hint = "velocity " + round(127 * clamp(1 - (self.mouse-y - 2px) / (self.height - 4px), 0, 1));
+                                }
+                            }
+                        }
+                        changed has-hover => {
+                            root.say(Roll.lane == 0 ? "velocity: drag across the bars to set how hard the notes play (only the chosen ones, if any are chosen)" : "controller: draw it with the pointer held down · right click clears it", self.has-hover);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

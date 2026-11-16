@@ -1,0 +1,535 @@
+-- The pickers that come with the runtime. Each is a table of the fields
+-- `daw.pick` takes, with a `desc`, or a function that returns one; add your
+-- own to `daw.pick.sources` the same way.
+return function(pick)
+  local api = daw.api
+  local S = {}
+
+  local function need_track()
+    local track = daw.cursor.track()
+    if not track then daw.notify("no track selected", "warn") end
+    return track
+  end
+
+  local function plural(n, word) return n .. " " .. word .. (n == 1 and "" or "s") end
+
+  -- Pickers ------------------------------------------------------------------------
+
+  S.pickers = {
+    desc = "Every picker",
+    title = "Pickers",
+    items = function()
+      local out = {}
+      for name, source in pairs(pick.sources) do
+        if name ~= "pickers" then
+          local desc = type(source) == "table" and (source.desc or source.title) or ""
+          out[#out + 1] = { name = name, desc = desc }
+        end
+      end
+      table.sort(out, function(a, b) return a.name < b.name end)
+      return out
+    end,
+    format = function(s) return string.format("%-14s %s", s.name, s.desc) end,
+    on_choose = function(s) pick(s.name) end,
+  }
+
+  -- Commands -----------------------------------------------------------------------
+
+  --- Every key that runs a command, by the command's name: lists of
+  --- `lhs` strings, with the view in brackets for a view's own.
+  local function key_index()
+    local index = {}
+    for _, mode in ipairs({ "n", "x" }) do
+      for _, scope in ipairs({ daw.ui.focused, "arrange", "pianoroll", "devices", "mixer" }) do
+        for _, map in ipairs(daw.keymap.list(mode, scope)) do
+          if type(map.rhs) == "string" then
+            local name = map.rhs:match("^(%S+)")
+            local key = map.lhs .. (map.scope ~= "global" and " (" .. map.scope .. ")" or "")
+            local list = index[name] or {}
+            index[name] = list
+            if not list[key] then
+              list[key] = true
+              list[#list + 1] = key
+            end
+          end
+        end
+      end
+    end
+    -- The shortest key first: `u` before `Ctrl-z`.
+    for _, list in pairs(index) do
+      for i, key in ipairs(list) do list[i] = { key = key, n = i } end
+      table.sort(list, function(a, b)
+        local la, lb = #daw.keymap.human((a.key:gsub(" %(.*%)$", ""))), #daw.keymap.human((b.key:gsub(" %(.*%)$", "")))
+        if la ~= lb then return la < lb end
+        return a.n < b.n
+      end)
+      for i, entry in ipairs(list) do list[i] = entry.key end
+    end
+    return index
+  end
+
+  local keys_now = {}
+
+  --- Keys that run a command, as `lhs` strings.
+  local function keys_for(name)
+    return keys_now[name] or {}
+  end
+
+  local function edit_command(spec)
+    daw.ui.input({ prompt = ":", history = "cmdline", text = spec.name .. " " }, function(line)
+      if line:match("%S") then daw.state.last_cmdline = line end
+      daw.commands.exec(line)
+    end)
+  end
+
+  S.commands = {
+    desc = "Run a command",
+    title = "Commands",
+    items = function()
+      keys_now = key_index()
+      return daw.commands.list()
+    end,
+    format = function(spec)
+      local keys = keys_for(spec.alias_of or spec.name)
+      local key = keys[1] and daw.keymap.human((keys[1]:gsub(" %(.*%)$", ""))) or ""
+      return string.format("%-24s %-10s %s", spec.name, key, spec.alias_of and "→ " .. spec.alias_of or spec.desc)
+    end,
+    primary = function(spec) return spec.name end,
+    on_choose = function(spec)
+      daw.state.last_cmdline = spec.name
+      daw.commands.run(spec.name)
+    end,
+    actions = { ["<C-e>"] = { fn = function(spec) if spec then edit_command(spec) end end, desc = "edit arguments" } },
+    preview = function(spec)
+      local lines = { { text = spec.name, style = "Title" }, "" }
+      for line in (spec.desc ~= "" and spec.desc or "(no description)"):gmatch("[^\n]+") do lines[#lines + 1] = line end
+      if spec.alias_of then lines[#lines + 1] = "Another name for " .. spec.alias_of end
+      local keys = keys_for(spec.alias_of or spec.name)
+      if #keys > 0 then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = { text = "Keys", style = "HelpSection" }
+        for _, key in ipairs(keys) do
+          local lhs, where = key:match("^(.-)( %(.*%))$")
+          lines[#lines + 1] = "  " .. daw.keymap.human(lhs or key) .. (where or "")
+        end
+      end
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = { text = "C-e types it on the command line, for arguments", style = "Dim" }
+      return lines
+    end,
+  }
+
+  -- Key mappings -------------------------------------------------------------------
+
+  -- What a key is for, in a few letters: where it works and what kind it is.
+  local kind_tags = { motion = "motion", operator = "operator", object = "object", visual = "visual", insert = "insert" }
+
+  local function key_tag(entry)
+    local where = entry.map.scope == "global" and "global" or entry.map.scope:gsub("^%a+%.", "")
+    local kind = kind_tags[entry.kind]
+    return kind and where .. " " .. kind or where
+  end
+
+  --- Run a mapping chosen in the keys picker, as if its keys were typed.
+  local function run_key(entry)
+    local map = entry.map
+    if entry.kind == "object" then
+      return daw.notify(daw.keymap.human(map.lhs) .. " names a region: type it after an operator such as `d` or `y`, or in a selection")
+    end
+    if entry.kind == "insert" then
+      return daw.notify(daw.keymap.human(map.lhs) .. " works in insert mode: `i` first")
+    end
+    if entry.kind == "visual" and daw.keymap.mode ~= "x" then
+      return daw.notify(daw.keymap.human(map.lhs) .. " acts on a selection: `v` or `V` first")
+    end
+    daw.keymap.normal(map.lhs)
+  end
+
+  S.keys = function()
+    local view = daw.ui.focused
+    -- The line is laid out for the width the picker will have.
+    local width = math.min(80, (api.ui_size()) - 4) - 5
+    local key_w = 14
+    local tag_w = 18
+    local desc_w = math.max(10, width - key_w - tag_w - 2)
+    return {
+      desc = "Every key that works in the focused view",
+      title = "Keys · " .. tostring(view),
+      empty = "No keys are mapped here.",
+      items = function()
+        local out = {}
+        for _, entry in ipairs(daw.keymap.all(view)) do
+          local map = entry.map
+          entry.human = daw.keymap.human(map.lhs)
+          entry.desc = map.desc or (type(map.rhs) == "string" and map.rhs) or "(no description)"
+          entry.tag = key_tag(entry)
+          out[#out + 1] = entry
+        end
+        return out
+      end,
+      format = function(e)
+        return daw.util.fit(e.human, key_w) .. " " .. daw.util.fit(e.desc, desc_w) .. " " .. e.tag
+      end,
+      primary = function(e) return e.human end,
+      on_choose = run_key,
+    }
+  end
+
+  -- Tracks and clips ---------------------------------------------------------------
+
+  local function track_name(id)
+    local ok, t = pcall(api.track_get, id)
+    return ok and t.name or "?"
+  end
+
+  S.tracks = {
+    desc = "Go to a track",
+    title = "Tracks",
+    items = function()
+      local out = {}
+      for i, id in ipairs(api.track_list()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
+      return out
+    end,
+    format = function(t) return string.format("%2d  %s", t.index, t.name) end,
+    on_choose = function(t)
+      daw.keymap.push_jump()
+      daw.cursor.set_track(t.id)
+      if daw.ui.views.arrange.center then daw.ui.views.arrange:center() end
+    end,
+    preview = function(t)
+      local info = api.track_get(t.id)
+      local lines = { { text = info.name, style = "Title" }, "" }
+      lines[#lines + 1] = string.format("volume %+.1f dB, pan %+.2f%s%s", info.volume, info.pan, info.mute and ", muted" or "", info.solo and ", solo" or "")
+      lines[#lines + 1] = "output  " .. (info.output and track_name(info.output) or "Master")
+      for i, id in ipairs(info.devices) do lines[#lines + 1] = string.format("%d. %s", i, api.device_get(id).name) end
+      local clips = api.clip_list(t.id)
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = plural(#clips, "clip")
+      for _, c in ipairs(clips) do lines[#lines + 1] = string.format("  %-10s %s", daw.time.format(c.start), c.name) end
+      return lines
+    end,
+  }
+
+  S.clips = {
+    desc = "Go to a clip",
+    title = "Clips",
+    items = function()
+      local out = {}
+      for _, id in ipairs(api.track_list()) do
+        local name = track_name(id)
+        for _, c in ipairs(api.clip_list(id)) do
+          out[#out + 1] = { id = c.id, track = id, track_name = name, name = c.name, start = c.start, length = c.length, kind = c.kind }
+        end
+      end
+      return out
+    end,
+    format = function(c) return string.format("%-20s %-14s %s", c.name, c.track_name, daw.time.format(c.start)) end,
+    on_choose = function(c)
+      daw.keymap.push_jump()
+      daw.ui.focus("arrange")
+      daw.cursor.set_track(c.track)
+      daw.cursor.set_beat(c.start)
+      daw.ui.views.arrange:center()
+    end,
+    preview = function(c)
+      local info = api.clip_get(c.id)
+      local lines = {
+        { text = info.name, style = "Title" }, "",
+        "track   " .. c.track_name,
+        string.format("from    %s to %s, %g beats%s", daw.time.format(info.start), daw.time.format(info.start + info.length), info.length, info.muted and ", muted" or ""),
+      }
+      if info.kind == "midi" then
+        lines[#lines + 1] = plural(info.note_count, "note")
+        local notes = api.clip_notes(c.id)
+        table.sort(notes, function(a, b) return a.start < b.start end)
+        for i, n in ipairs(notes) do
+          if i > 20 then break end
+          lines[#lines + 1] = string.format("  %-5s at %-6g for %g", daw.music.name(n.pitch), n.start, n.length)
+        end
+      else
+        lines[#lines + 1] = "audio   " .. tostring(info.file)
+      end
+      return lines
+    end,
+  }
+
+  -- Devices ------------------------------------------------------------------------
+
+  local typed -- what was typed in the device picker, remembered with the choice
+  S.devices = {
+    desc = "Add a device or plugin to the track",
+    title = "Add a device",
+    -- Favourites first, then the ones used last; `@instrument`, `@clap`,
+    -- `@fav` or `@<vendor>` typed filter (see `daw.fx.rank`).
+    items = function() return daw.fx.device_list() end,
+    format = function(info) return daw.fx.device_line(info) end,
+    rank = function(info, query, line)
+      typed = query
+      return daw.fx.rank(info, query, line)
+    end,
+    on_choose = function(info)
+      local track = need_track()
+      if not track then return end
+      daw.fx.add(track, info.kind, { query = typed })
+      daw.notify("added " .. info.name .. " to " .. track.name)
+    end,
+    actions = {
+      ["<C-f>"] = { desc = "favourite", fn = function(info, query)
+        if info then daw.fx.toggle_favourite(info.kind) end
+        daw.pick("devices", { query = query })
+      end },
+      ["<C-t>"] = { desc = "instruments/effects", fn = function(_, query)
+        -- Step the filter: none, instruments, effects.
+        local q = query:gsub("%s*@instrument", ""):gsub("%s*@effect", "")
+        local was = query:find("@instrument") and 1 or query:find("@effect") and 2 or 0
+        local tag = ({ [0] = " @instrument", [1] = " @effect", [2] = "" })[was]
+        daw.pick("devices", { query = (q .. tag):gsub("^%s+", "") })
+      end },
+    },
+    preview = function(info)
+      local lines = {
+        { text = info.name, style = "Title" }, "",
+        "kind     " .. info.kind,
+        "format   " .. info.format .. (info.category and info.category ~= "" and ", " .. info.category or ""),
+      }
+      if info.favourite then lines[#lines + 1] = "a favourite (Ctrl-f)" end
+      if info.vendor and info.vendor ~= "" then lines[#lines + 1] = "vendor   " .. info.vendor end
+      local params = info.params or {}
+      if #params > 0 then
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = { text = plural(#params, "parameter"), style = "HelpSection" }
+        for i, p in ipairs(params) do
+          if i > 30 then break end
+          lines[#lines + 1] = "  " .. p.name
+        end
+      end
+      return lines
+    end,
+  }
+
+  S.track_devices = {
+    desc = "Devices on the track: show one in the device panel",
+    title = "Devices on the track",
+    empty = "No devices on this track. `<leader>fa` adds one.",
+    items = function()
+      local track, out = daw.cursor.track(), {}
+      for i, device in ipairs(track and track:devices() or {}) do
+        local d = device:get()
+        out[#out + 1] = { id = d.id, index = i, name = d.name, kind = d.kind, bypass = d.bypass }
+      end
+      return out
+    end,
+    format = function(d) return string.format("%d. %s%s", d.index, d.name, d.bypass and "  (bypassed)" or "") end,
+    on_choose = function(d)
+      local panel = daw.ui.views.devices
+      daw.ui.focus("devices")
+      for i, row in ipairs(panel:rows()) do
+        if row.device.id == d.id and not row.param and not row.picture then panel.row = i end
+      end
+      api.ui_redraw()
+    end,
+    actions = {
+      ["<C-e>"] = { fn = function(d) if d then api.device_editor(d.id) end end, desc = "plugin window" },
+    },
+    preview = function(d)
+      local info = api.device_get(d.id)
+      local lines = { { text = info.name, style = "Title" }, "", "kind   " .. info.kind, "" }
+      for i, p in ipairs(info.param_info) do
+        if i > 40 then break end
+        lines[#lines + 1] = string.format("%-18s %s", p.name, daw.frontend.format_value(p, info.params[p.key]))
+      end
+      return lines
+    end,
+  }
+
+  -- Marks and registers ------------------------------------------------------------
+
+  S.marks = {
+    desc = "Go to a mark",
+    title = "Marks",
+    empty = "No marks. `ma` sets mark a at the cursor.",
+    items = function()
+      local out = {}
+      for _, view in ipairs({ "arrange", "pianoroll" }) do
+        local list = daw.keymap.marks(view)
+        local names = {}
+        for name in pairs(list) do names[#names + 1] = name end
+        table.sort(names)
+        for _, name in ipairs(names) do
+          local pos = list[name]
+          local where
+          if view == "arrange" then
+            local ok, t = pcall(api.track_get, pos.track)
+            where = daw.time.format(pos.beat) .. "  " .. (ok and t.name or "(track gone)")
+          else
+            where = daw.music.name(pos[1]) .. "  beat " .. pos[2] + 1
+          end
+          out[#out + 1] = { name = name, view = view, where = where }
+        end
+      end
+      return out
+    end,
+    format = function(m) return string.format("%s  %-10s %s", m.name, m.view, m.where) end,
+    on_choose = function(m)
+      if daw.ui.focused ~= m.view then daw.ui.focus(m.view) end
+      daw.keymap.goto_mark(m.name)
+    end,
+  }
+
+  --- What a register holds, in a line.
+  local function describe(value)
+    if value.kind == "keys" then return "macro   " .. value.keys end
+    if value.kind == "tracks" then
+      local list = {}
+      for i, t in ipairs(value.tracks) do list[i] = t.name end
+      return "tracks  " .. table.concat(list, ", ")
+    end
+    if value.kind == "range" then
+      local clips = 0
+      for _, row in ipairs(value.rows) do clips = clips + #row end
+      return string.format("time    %g beats on %s, %s", value.length, plural(#value.rows, "track"), plural(clips, "clip"))
+    end
+    if value.kind == "notes" then return string.format("notes   %d over %g beats", #value.notes, value.length) end
+    if value.kind == "device" then return "device  " .. tostring(value.device.kind) end
+    return tostring(value.kind)
+  end
+
+  S.registers = {
+    desc = "Paste a register, or play a macro",
+    title = "Registers",
+    empty = "Nothing yanked or recorded yet.",
+    items = function()
+      local out = {}
+      for name, value in pairs(daw.keymap.registers) do out[#out + 1] = { name = name, value = value } end
+      table.sort(out, function(a, b) return a.name < b.name end)
+      return out
+    end,
+    format = function(r) return string.format('"%s  %s', r.name, describe(r.value)) end,
+    on_choose = function(r)
+      if r.value.kind == "keys" then return daw.keymap.play(r.name) end
+      daw.keymap.normal('"' .. r.name .. "P")
+    end,
+  }
+
+  -- Messages -----------------------------------------------------------------------
+
+  local levels = { info = "Normal", warn = "Warn", error = "Error" }
+
+  S.messages = {
+    desc = "Earlier messages, newest first",
+    title = "Messages",
+    empty = "No messages yet.",
+    items = function()
+      local out, list = {}, daw.ui.messages
+      for i = #list, 1, -1 do out[#out + 1] = list[i] end
+      return out
+    end,
+    format = function(m) return string.format("%-5s %s", m.level, m.text:match("^[^\n]*")) end,
+    on_choose = function(m) daw.ui.page("Message", { { text = m.text, style = levels[m.level] } }) end,
+    preview = function(m) return { { text = m.text, style = levels[m.level] } } end,
+  }
+
+  -- Files --------------------------------------------------------------------------
+
+  local audio_ext = { wav = true, wave = true, aif = true, aiff = true, flac = true, mp3 = true, ogg = true }
+  local skip_dir = { target = true, node_modules = true, result = true }
+
+  local function is_project(path)
+    local file = io.open(path, "rb")
+    if not file then return false end
+    local head = file:read(200) or ""
+    file:close()
+    return head:find('"version"', 1, true) ~= nil and head:find('"project"', 1, true) ~= nil
+  end
+
+  --- Project and audio files under `root`, walking at most `limit` entries.
+  local function walk(root, limit)
+    local out, seen = {}, 0
+    local function visit(dir, prefix, depth)
+      for _, entry in ipairs(api.read_dir(dir)) do
+        seen = seen + 1
+        if seen > limit then return end
+        local name = entry.name
+        local path = prefix .. name
+        if entry.is_dir then
+          if depth < 8 and name:sub(1, 1) ~= "." and not skip_dir[name] then visit(dir .. "/" .. name, path .. "/", depth + 1) end
+        else
+          local ext = (name:match("%.([^.]+)$") or ""):lower()
+          if audio_ext[ext] then
+            out[#out + 1] = { path = path, kind = "audio" }
+          elseif ext == "json" and is_project(dir .. "/" .. name) then
+            out[#out + 1] = { path = path, kind = "project" }
+          end
+        end
+      end
+    end
+    visit(root, root == "." and "" or root .. "/", 0)
+    return out
+  end
+  S._walk = walk
+
+  S.files = {
+    desc = "Open a project, or import audio at the cursor",
+    title = "Files",
+    empty = "No project or audio files under this directory.",
+    items = function() return walk(".", 50000) end,
+    format = function(f) return f.path end,
+    on_choose = function(f)
+      if f.kind == "project" then
+        daw.open(f.path)
+        return daw.notify("opened " .. f.path)
+      end
+      local track = need_track()
+      if not track then return end
+      track:add_clip({ start = daw.cursor.beat, file = f.path })
+    end,
+    preview = function(f)
+      if f.kind == "project" then
+        return { { text = f.path, style = "Title" }, "", "A project.", "Enter opens it in place of this one." }
+      end
+      local track = daw.cursor.track()
+      return {
+        { text = f.path, style = "Title" }, "", "Audio.",
+        "Enter adds it at " .. daw.time.format(daw.cursor.beat) .. (track and " on " .. track.name or ""),
+      }
+    end,
+  }
+
+  -- Options ------------------------------------------------------------------------
+
+  local function convert(text)
+    if text == "true" then return true end
+    if text == "false" then return false end
+    return tonumber(text) or text
+  end
+
+  S.options = {
+    desc = "Set an option",
+    title = "Options",
+    items = function() return daw.option.list() end,
+    format = function(o) return string.format("%-14s %s", o.name, tostring(daw.opt[o.name])) end,
+    on_choose = function(o)
+      local value = daw.opt[o.name]
+      if type(value) == "boolean" then
+        daw.opt[o.name] = not value
+        return daw.notify(o.name .. " = " .. tostring(not value))
+      end
+      daw.ui.input({ prompt = o.name .. " = ", text = tostring(value) }, function(text)
+        if text == "" then return end
+        daw.opt[o.name] = convert(text)
+        daw.notify(o.name .. " = " .. tostring(daw.opt[o.name]))
+      end)
+    end,
+    preview = function(o)
+      return {
+        { text = o.name, style = "Title" }, "",
+        "now       " .. tostring(daw.opt[o.name]),
+        "default   " .. tostring(o.default),
+        "",
+        { text = type(o.default) == "boolean" and "Enter switches it" or "Enter asks for a new value", style = "Dim" },
+      }
+    end,
+  }
+
+  return S
+end

@@ -1,0 +1,607 @@
+//! The undo tree: every state the project has been in, as a tree.
+//!
+//! Undo goes to the parent and redo to the child last visited. An edit made
+//! after undoing starts a new branch beside the old one, so nothing is lost by
+//! undoing and then changing something. States are also numbered in the order
+//! they were made, which is what [`History::step`] walks (Vim's `g-` and `g+`)
+//! and what [`History::travel`] measures time along (`:earlier 2m`).
+//!
+//! The tree is generic over the snapshot it keeps, so that it can be tested
+//! without a project. The session keeps a [`crate::model::Project`] in each
+//! state; those share everything unchanged through `Arc`, so a state costs
+//! about as much as what its edit changed.
+//!
+//! ## Pruning
+//!
+//! The tree keeps at most `limit` states. When a new state takes it past
+//! that, the oldest state is dropped that is not protected; its children hang
+//! from its parent instead, so undo from them jumps over the gap. Protected
+//! are the root (the project as it was opened), the current state, the state
+//! last saved, named states and states marked `keep`. If every state is
+//! protected the tree grows past the limit rather than drop one of them.
+
+use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub type StateId = u64;
+
+/// Seconds since the Unix epoch, as a state's time.
+pub fn now() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
+}
+
+#[derive(Clone, Debug)]
+pub struct State<T> {
+    /// Ids grow in the order states were made.
+    pub id: StateId,
+    pub parent: Option<StateId>,
+    /// Oldest first.
+    pub children: Vec<StateId>,
+    /// The child redo goes to: the one last visited, or the newest.
+    pub redo: Option<StateId>,
+    /// When the state was made, in seconds since the Unix epoch.
+    pub time: f64,
+    /// The command that made it, if one did.
+    pub label: Option<String>,
+    /// The keys typed for it, if any were.
+    pub keys: Option<String>,
+    pub name: Option<String>,
+    /// Never pruned.
+    pub keep: bool,
+    pub snapshot: T,
+}
+
+pub struct History<T> {
+    states: BTreeMap<StateId, State<T>>,
+    current: StateId,
+    root: StateId,
+    next: StateId,
+    limit: usize,
+    saved: Option<StateId>,
+    /// Saved while an edit was open: the next state made is the one saved.
+    save_pending: bool,
+    pending_label: Option<String>,
+    pending_keys: Option<String>,
+}
+
+impl<T: Clone> History<T> {
+    pub fn new(snapshot: T, time: f64, limit: usize) -> Self {
+        let mut history = Self {
+            states: BTreeMap::new(),
+            current: 0,
+            root: 0,
+            next: 0,
+            limit: limit.max(2),
+            saved: None,
+            save_pending: false,
+            pending_label: None,
+            pending_keys: None,
+        };
+        history.reset(snapshot, time);
+        history
+    }
+
+    /// Forget every state and start again from `snapshot`, which counts as
+    /// saved. Ids keep counting up, so an old id never names a new state.
+    pub fn reset(&mut self, snapshot: T, time: f64) {
+        self.states.clear();
+        let id = self.next;
+        self.next += 1;
+        self.states
+            .insert(id, Self::state(id, None, time, snapshot));
+        self.current = id;
+        self.root = id;
+        self.saved = Some(id);
+        self.save_pending = false;
+        self.clear_labels();
+    }
+
+    fn state(id: StateId, parent: Option<StateId>, time: f64, snapshot: T) -> State<T> {
+        State {
+            id,
+            parent,
+            children: Vec::new(),
+            redo: None,
+            time,
+            label: None,
+            keys: None,
+            name: None,
+            keep: false,
+            snapshot,
+        }
+    }
+
+    // --- reading -----------------------------------------------------------
+
+    pub fn current(&self) -> StateId {
+        self.current
+    }
+
+    pub fn root(&self) -> StateId {
+        self.root
+    }
+
+    pub fn saved(&self) -> Option<StateId> {
+        self.saved.filter(|_| !self.save_pending)
+    }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    pub fn len(&self) -> usize {
+        self.states.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.states.is_empty()
+    }
+
+    pub fn get(&self, id: StateId) -> Option<&State<T>> {
+        self.states.get(&id)
+    }
+
+    /// Every state, oldest first.
+    pub fn states(&self) -> impl Iterator<Item = &State<T>> {
+        self.states.values()
+    }
+
+    pub fn current_snapshot(&self) -> &T {
+        &self.states[&self.current].snapshot
+    }
+
+    /// Replace what the current state holds, for bookkeeping that changes
+    /// the snapshot without being an edit.
+    pub fn set_current_snapshot(&mut self, snapshot: T) {
+        self.states.get_mut(&self.current).unwrap().snapshot = snapshot;
+    }
+
+    /// Whether the current state is the one last saved.
+    pub fn at_saved(&self) -> bool {
+        self.saved() == Some(self.current)
+    }
+
+    // --- labels ------------------------------------------------------------
+
+    /// Name the command making the next state. The first one named wins,
+    /// so a command that runs others is the one remembered.
+    pub fn label(&mut self, text: String) {
+        self.pending_label.get_or_insert(text);
+    }
+
+    /// The keys typed for the next state. The last ones given win.
+    pub fn keys(&mut self, text: String) {
+        self.pending_keys = Some(text);
+    }
+
+    /// Forget the labels gathered for a step that changed nothing.
+    pub fn clear_labels(&mut self) {
+        self.pending_label = None;
+        self.pending_keys = None;
+    }
+
+    // --- changing ----------------------------------------------------------
+
+    /// Add a state below the current one and make it current.
+    pub fn push(&mut self, snapshot: T, time: f64) -> StateId {
+        let id = self.next;
+        self.next += 1;
+        let parent = self.current;
+        let mut state = Self::state(id, Some(parent), time, snapshot);
+        state.label = self.pending_label.take();
+        state.keys = self.pending_keys.take();
+        self.states.insert(id, state);
+        let p = self.states.get_mut(&parent).unwrap();
+        p.children.push(id);
+        p.redo = Some(id);
+        self.current = id;
+        if std::mem::take(&mut self.save_pending) {
+            self.saved = Some(id);
+        }
+        self.prune();
+        id
+    }
+
+    /// Whether the current state can take a further change into itself
+    /// instead of a new state being made: nothing hangs on it yet.
+    pub fn can_amend(&self) -> bool {
+        let state = &self.states[&self.current];
+        state.children.is_empty()
+            && !state.keep
+            && state.name.is_none()
+            && state.parent.is_some()
+            && self.saved != Some(self.current)
+            && !self.save_pending
+            // A command or a key is a step of its own, however alike the
+            // one before: only moves that nothing names (a fader dragged
+            // in a window, a knob turned on a controller) run together.
+            && state.label.is_none()
+            && state.keys.is_none()
+            && self.pending_label.is_none()
+            && self.pending_keys.is_none()
+    }
+
+    /// Replace what the current state holds with a later version of the
+    /// same edit: a control still being moved.
+    pub fn amend(&mut self, snapshot: T, time: f64) {
+        let state = self.states.get_mut(&self.current).unwrap();
+        state.snapshot = snapshot;
+        state.time = time;
+        self.clear_labels();
+    }
+
+    /// Remember the current state as the one saved. With an edit still open
+    /// (`touched`), the state that edit becomes is the one saved.
+    pub fn mark_saved(&mut self, touched: bool) {
+        self.saved = Some(self.current);
+        self.save_pending = touched;
+    }
+
+    pub fn set_name(&mut self, id: StateId, name: Option<String>) -> bool {
+        match self.states.get_mut(&id) {
+            Some(state) => {
+                state.name = name.filter(|n| !n.is_empty());
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn set_keep(&mut self, id: StateId, keep: bool) -> bool {
+        match self.states.get_mut(&id) {
+            Some(state) => {
+                state.keep = keep;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The named state with this name, the newest if several share it.
+    pub fn find_name(&self, name: &str) -> Option<StateId> {
+        self.states
+            .values()
+            .rev()
+            .find(|s| s.name.as_deref() == Some(name))
+            .map(|s| s.id)
+    }
+
+    // --- moving ------------------------------------------------------------
+    //
+    // Each of these moves `current` and returns where it went, or None when
+    // there is nowhere to go. The caller then takes up the snapshot.
+
+    /// To the parent.
+    pub fn undo(&mut self) -> Option<StateId> {
+        let parent = self.states[&self.current].parent?;
+        self.states.get_mut(&parent).unwrap().redo = Some(self.current);
+        self.current = parent;
+        Some(parent)
+    }
+
+    /// To the child last visited.
+    pub fn redo(&mut self) -> Option<StateId> {
+        let state = &self.states[&self.current];
+        let child = state
+            .redo
+            .filter(|c| state.children.contains(c))
+            .or_else(|| state.children.last().copied())?;
+        self.current = child;
+        Some(child)
+    }
+
+    /// To any state. Redo from each state on the way there then leads to it.
+    pub fn goto(&mut self, id: StateId) -> Option<StateId> {
+        if !self.states.contains_key(&id) {
+            return None;
+        }
+        let mut at = id;
+        while let Some(parent) = self.states[&at].parent {
+            self.states.get_mut(&parent).unwrap().redo = Some(at);
+            at = parent;
+        }
+        self.current = id;
+        Some(id)
+    }
+
+    /// `n` states later in the order they were made (earlier when negative),
+    /// whatever branch they are on: Vim's `g+` and `g-`. Stops at the oldest
+    /// and the newest.
+    pub fn step(&mut self, n: i64) -> Option<StateId> {
+        let target = if n < 0 {
+            self.states
+                .range(..self.current)
+                .rev()
+                .take(n.unsigned_abs() as usize)
+                .last()
+                .map(|(id, _)| *id)
+        } else {
+            self.states
+                .range(self.current + 1..)
+                .take(n as usize)
+                .last()
+                .map(|(id, _)| *id)
+        };
+        self.goto(target?)
+    }
+
+    /// To the state that was current `seconds` later (earlier when negative)
+    /// than the current one was made: the newest state made by then. Going
+    /// earlier than the oldest state stops there, and later than the newest
+    /// stops at the newest.
+    pub fn travel(&mut self, seconds: f64) -> Option<StateId> {
+        let time = self.states[&self.current].time + seconds;
+        let target = if seconds < 0.0 {
+            self.states
+                .range(..self.current)
+                .rev()
+                .find(|(_, s)| s.time <= time)
+                .or_else(|| self.states.iter().next())
+        } else {
+            self.states
+                .range(self.current + 1..)
+                .take_while(|(_, s)| s.time <= time)
+                .last()
+        }
+        .map(|(id, _)| *id)
+        .filter(|id| *id != self.current)?;
+        self.goto(target)
+    }
+
+    // --- pruning -----------------------------------------------------------
+
+    fn protected(&self, state: &State<T>) -> bool {
+        state.id == self.root
+            || state.id == self.current
+            || self.saved == Some(state.id)
+            || state.name.is_some()
+            || state.keep
+    }
+
+    fn prune(&mut self) {
+        while self.states.len() > self.limit {
+            let Some(id) = self
+                .states
+                .values()
+                .find(|s| !self.protected(s))
+                .map(|s| s.id)
+            else {
+                return;
+            };
+            self.remove(id);
+        }
+    }
+
+    /// Drop one state that is not the root, hanging its children from its parent.
+    fn remove(&mut self, id: StateId) {
+        let state = self.states.remove(&id).unwrap();
+        let parent_id = state.parent.expect("the root is never removed");
+        for child in &state.children {
+            self.states.get_mut(child).unwrap().parent = Some(parent_id);
+        }
+        let parent = self.states.get_mut(&parent_id).unwrap();
+        let at = parent.children.iter().position(|c| *c == id).unwrap();
+        parent
+            .children
+            .splice(at..=at, state.children.iter().copied());
+        if parent.redo == Some(id) {
+            parent.redo = state.redo.or_else(|| state.children.last().copied());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tree of strings, with each state made one second after the last.
+    struct T {
+        h: History<String>,
+        clock: f64,
+    }
+
+    impl T {
+        fn new(limit: usize) -> Self {
+            Self {
+                h: History::new("root".into(), 1000.0, limit),
+                clock: 1000.0,
+            }
+        }
+        fn edit(&mut self, text: &str) -> StateId {
+            self.clock += 1.0;
+            self.h.push(text.into(), self.clock)
+        }
+        fn at(&self) -> &str {
+            self.h.current_snapshot()
+        }
+    }
+
+    #[test]
+    fn undo_and_redo_walk_a_line() {
+        let mut t = T::new(100);
+        t.edit("a");
+        t.edit("b");
+        assert_eq!(t.at(), "b");
+        assert!(t.h.undo().is_some());
+        assert_eq!(t.at(), "a");
+        assert!(t.h.undo().is_some());
+        assert_eq!(t.at(), "root");
+        assert!(t.h.undo().is_none(), "nothing before the root");
+        assert!(t.h.redo().is_some());
+        assert!(t.h.redo().is_some());
+        assert_eq!(t.at(), "b");
+        assert!(t.h.redo().is_none(), "nothing after the newest");
+    }
+
+    #[test]
+    fn an_edit_after_undo_starts_a_branch() {
+        let mut t = T::new(100);
+        let a = t.edit("a");
+        let b = t.edit("b");
+        t.h.undo();
+        let c = t.edit("c");
+        assert_eq!(t.h.get(a).unwrap().children, vec![b, c]);
+        assert!(t.h.redo().is_none(), "the new branch is at its end");
+        // The old branch is still there.
+        t.h.goto(b);
+        assert_eq!(t.at(), "b");
+        // Redo follows the branch last visited.
+        t.h.undo();
+        t.h.redo();
+        assert_eq!(t.at(), "b");
+        t.h.goto(c);
+        t.h.undo();
+        t.h.redo();
+        assert_eq!(t.at(), "c");
+    }
+
+    #[test]
+    fn goto_sets_the_redo_path() {
+        let mut t = T::new(100);
+        let a = t.edit("a");
+        let b = t.edit("b");
+        t.h.goto(a);
+        let c = t.edit("c");
+        t.h.goto(b);
+        t.h.goto(t.h.root());
+        t.h.redo();
+        t.h.redo();
+        assert_eq!(t.h.current(), b);
+        assert_ne!(t.h.current(), c);
+    }
+
+    #[test]
+    fn step_visits_every_state_in_time_order() {
+        let mut t = T::new(100);
+        let a = t.edit("a");
+        let b = t.edit("b");
+        t.h.undo();
+        let c = t.edit("c");
+        t.h.goto(t.h.root());
+        let d = t.edit("d");
+        let mut seen = vec![t.h.current()];
+        while let Some(id) = t.h.step(-1) {
+            seen.push(id);
+        }
+        assert_eq!(seen, vec![d, c, b, a, t.h.root()]);
+        let mut seen = vec![t.h.current()];
+        while let Some(id) = t.h.step(1) {
+            seen.push(id);
+        }
+        assert_eq!(seen, vec![t.h.root(), a, b, c, d]);
+        t.h.goto(t.h.root());
+        assert_eq!(t.h.step(3), Some(c));
+        assert_eq!(t.h.step(10), Some(d), "stops at the newest");
+        assert_eq!(t.h.step(-2), Some(b));
+    }
+
+    #[test]
+    fn travel_by_time() {
+        let mut t = T::new(100);
+        let a = t.edit("a"); // 1001
+        let _b = t.edit("b"); // 1002
+        t.clock += 60.0;
+        let c = t.edit("c"); // 1063
+        let d = t.edit("d"); // 1064
+        assert_eq!(
+            t.h.travel(-30.0),
+            Some(_b),
+            "the newest state made 30 s before"
+        );
+        assert_eq!(t.h.travel(-1.0), Some(a));
+        assert_eq!(t.h.travel(-500.0), Some(t.h.root()), "stops at the oldest");
+        assert_eq!(t.h.travel(-1.0), None, "nothing earlier");
+        assert_eq!(t.h.travel(62.0), Some(_b), "the newest made by then");
+        assert_eq!(t.h.travel(61.0), Some(c));
+        assert_eq!(t.h.travel(1000.0), Some(d), "stops at the newest");
+        assert_eq!(t.h.travel(1.0), None);
+    }
+
+    #[test]
+    fn pruning_drops_the_oldest_unprotected_state() {
+        let mut t = T::new(4);
+        let a = t.edit("a");
+        let b = t.edit("b");
+        let c = t.edit("c");
+        assert_eq!(t.h.len(), 4);
+        let d = t.edit("d");
+        assert_eq!(t.h.len(), 4);
+        assert!(t.h.get(a).is_none(), "the oldest went");
+        assert!(t.h.get(t.h.root()).is_some(), "but never the root");
+        assert_eq!(t.h.get(b).unwrap().parent, Some(t.h.root()));
+        assert_eq!(t.h.get(t.h.root()).unwrap().children, vec![b]);
+        // Undo jumps over the gap.
+        t.h.goto(b);
+        assert_eq!(t.h.undo(), Some(t.h.root()));
+        t.h.redo();
+        assert_eq!(t.h.current(), b);
+        // Named and kept states stay.
+        t.h.set_name(b, Some("verse".into()));
+        t.h.goto(d);
+        t.h.set_keep(c, true);
+        let e = t.edit("e");
+        assert!(t.h.get(b).is_some() && t.h.get(c).is_some());
+        assert!(t.h.get(d).is_none(), "the oldest unprotected one went");
+        assert_eq!(t.h.get(e).unwrap().parent, Some(c));
+        assert_eq!(t.h.len(), 4);
+        // With nothing left to drop the limit gives.
+        t.h.set_name(e, Some("chorus".into()));
+        let f = t.edit("f");
+        assert_eq!(t.h.len(), 5);
+        assert_eq!(t.h.current(), f);
+    }
+
+    #[test]
+    fn pruning_keeps_branches_attached() {
+        let mut t = T::new(5);
+        let a = t.edit("a");
+        let b = t.edit("b");
+        t.h.goto(a);
+        let c = t.edit("c");
+        t.h.goto(a);
+        let d = t.edit("d");
+        // a (oldest unprotected) goes: b, c and d hang from the root, in order.
+        let e = t.edit("e");
+        assert!(t.h.get(a).is_none());
+        assert_eq!(t.h.get(t.h.root()).unwrap().children, vec![b, c, d]);
+        assert_eq!(t.h.get(e).unwrap().parent, Some(d));
+        t.h.goto(t.h.root());
+        t.h.redo();
+        assert_eq!(t.h.current(), d, "redo still leads where it led");
+    }
+
+    #[test]
+    fn saved_state_and_labels() {
+        let mut t = T::new(100);
+        assert!(t.h.at_saved());
+        t.edit("a");
+        assert!(!t.h.at_saved());
+        t.h.mark_saved(false);
+        assert!(t.h.at_saved());
+        t.h.undo();
+        assert!(!t.h.at_saved());
+        t.h.redo();
+        assert!(t.h.at_saved());
+        // Saved in the middle of an edit: the state it becomes is the saved one.
+        t.h.mark_saved(true);
+        assert!(!t.h.at_saved());
+        t.h.label("clip.add".into());
+        t.h.label("clip.set".into());
+        t.h.keys("x".into());
+        let b = t.edit("b");
+        assert!(t.h.at_saved());
+        let state = t.h.get(b).unwrap();
+        assert_eq!(state.label.as_deref(), Some("clip.add"));
+        assert_eq!(state.keys.as_deref(), Some("x"));
+        t.h.clear_labels();
+        let c = t.edit("c");
+        assert_eq!(t.h.get(c).unwrap().label, None);
+        // Reset starts over with new ids.
+        t.h.reset("new".into(), 2000.0);
+        assert_eq!(t.h.len(), 1);
+        assert!(t.h.root() > c);
+        assert!(t.h.get(c).is_none());
+    }
+}

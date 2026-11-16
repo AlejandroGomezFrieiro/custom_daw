@@ -1,0 +1,16 @@
+[package]
+name = "daw-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A Model Context Protocol server in front of the kernel's control socket."
+
+[[bin]]
+name = "daw-mcp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+hound = "3.5"
+libc = "0.2"

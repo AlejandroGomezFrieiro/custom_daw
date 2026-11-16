@@ -1,0 +1,114 @@
+// A window for a view that paints: an extension's own editor, drawn by its
+// Lua in the kernel as rectangles, text and lines, with the pointer and the
+// keyboard passed back to it. See `daw.canvas`.
+
+import { Theme } from "widgets.slint";
+
+export struct CanvasItem {
+    kind: int,          // 0 rectangle, 1 text, 2 path
+    x: length,
+    y: length,
+    w: length,
+    h: length,
+    text: string,       // or a path's commands
+    fill: color,
+    stroke: color,
+    stroke-width: length,
+    radius: length,
+    size: length,
+    bold: bool,
+    align: int,         // 0 left, 1 centre, 2 right
+}
+
+export component CanvasWindow inherits Window {
+    in property <string> name;
+    in property <string> heading;
+    in property <[CanvasItem]> items;
+    title: root.heading;
+    out property <length> canvas-width: self.width;
+    out property <length> canvas-height: self.height;
+    // kind (0 down, 1 up, 2 move, 3 double), x, y, button (0 left, 1 right, 2 middle), ctrl, shift, alt
+    callback pointer(int, length, length, int, bool, bool, bool);
+    callback wheel(length, length, length, length, bool, bool);
+    callback key(string, bool, bool, bool);
+    preferred-width: 960px;
+    preferred-height: 560px;
+    min-width: 480px;
+    min-height: 280px;
+    background: Theme.surface;
+    default-font-family: "Inter";
+    default-font-size: 12px;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            root.key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift);
+            accept
+        }
+    }
+    for item in root.items: Rectangle {
+        x: item.kind == 2 ? 0 : item.x;
+        y: item.kind == 2 ? 0 : item.y;
+        width: item.kind == 2 ? root.width : item.w;
+        height: item.kind == 2 ? root.height : item.h;
+        if item.kind == 0: Rectangle {
+            background: item.fill;
+            border-color: item.stroke;
+            border-width: item.stroke.alpha > 0 ? item.stroke-width : 0px;
+            border-radius: item.radius;
+        }
+        if item.kind == 1: Text {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            text: item.text;
+            color: item.fill;
+            font-size: item.size;
+            font-weight: item.bold ? 600 : 400;
+            horizontal-alignment: item.align == 1 ? center : item.align == 2 ? right : left;
+            overflow: elide;
+        }
+        if item.kind == 2: Path {
+            width: parent.width;
+            height: parent.height;
+            viewbox-width: self.width / 1px;
+            viewbox-height: self.height / 1px;
+            commands: item.text;
+            stroke: item.stroke;
+            stroke-width: item.stroke-width;
+            fill: item.fill;
+        }
+    }
+    touch := TouchArea {
+        // Held by any button: `pressed` is only the left one, and a right
+        // drag moves too.
+        property <bool> held;
+        pointer-event(event) => {
+            keys.focus();
+            if (event.kind == PointerEventKind.down) {
+                self.held = true;
+                root.pointer(0, self.mouse-x, self.mouse-y,
+                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
+                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            }
+            if (event.kind == PointerEventKind.up) {
+                self.held = false;
+                root.pointer(1, self.mouse-x, self.mouse-y,
+                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
+                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            }
+        }
+        moved => {
+            if (self.pressed || self.held) {
+                root.pointer(2, self.mouse-x, self.mouse-y, 0, false, false, false);
+            }
+        }
+        double-clicked => {
+            root.pointer(3, self.mouse-x, self.mouse-y, 0, false, false, false);
+        }
+        scroll-event(event) => {
+            root.wheel(self.mouse-x, self.mouse-y, event.delta-x, event.delta-y, event.modifiers.control, event.modifiers.shift);
+            accept
+        }
+    }
+}

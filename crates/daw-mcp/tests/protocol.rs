@@ -1,0 +1,658 @@
+//! Speaks MCP to `daw-mcp` over stdio, with a headless kernel on the null
+//! audio backend behind it: the handshake, the tool list, a short song built
+//! with typed tools only, a render, undo, and the ways calls go wrong.
+
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
+
+/// The `daw` binary, built beside this crate's when it is not there yet.
+fn daw_binary() -> PathBuf {
+    if let Some(path) = std::env::var_os("DAW_BIN") {
+        return path.into();
+    }
+    let dir = Path::new(env!("CARGO_BIN_EXE_daw-mcp")).parent().unwrap();
+    let daw = dir.join("daw");
+    if !daw.is_file() {
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+        let mut command = Command::new(cargo);
+        command.args(["build", "-p", "daw-tui", "--bin", "daw"]);
+        if dir.ends_with("release") {
+            command.arg("--release");
+        }
+        let status = command.status().expect("running cargo build -p daw-tui");
+        assert!(status.success(), "could not build the daw binary");
+    }
+    daw
+}
+
+/// A fresh directory under the target's temporary directory.
+/// A short directory for sockets, whose paths must fit in 108 bytes.
+fn socket_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("dmcp-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn scratch(name: &str) -> PathBuf {
+    let dir =
+        Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("mcp-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.canonicalize().unwrap()
+}
+
+const KERNEL_ARGS: [&str; 4] = ["--audio", "null", "--no-plugins", "--clean"];
+
+struct Client {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    next: u64,
+}
+
+impl Client {
+    fn start(dir: &Path, args: &[&str]) -> Self {
+        let name = dir.file_name().unwrap().to_str().unwrap();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_daw-mcp"))
+            .arg("--root")
+            .arg(dir)
+            .arg("--daw")
+            .arg(daw_binary())
+            .args(args)
+            .current_dir(dir)
+            .env("XDG_RUNTIME_DIR", socket_dir(name))
+            .env("XDG_CACHE_HOME", dir)
+            .env("XDG_DATA_HOME", dir)
+            .env("XDG_CONFIG_HOME", dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("starting daw-mcp");
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        Self {
+            child,
+            stdin,
+            stdout,
+            next: 1,
+        }
+    }
+
+    fn send(&mut self, message: &Value) {
+        writeln!(self.stdin, "{message}").unwrap();
+        self.stdin.flush().unwrap();
+    }
+
+    /// The next line of stdout, which must be one JSON-RPC message.
+    fn receive(&mut self) -> Value {
+        let mut line = String::new();
+        self.stdout.read_line(&mut line).unwrap();
+        assert!(!line.is_empty(), "the server closed stdout");
+        let message: Value = serde_json::from_str(&line).unwrap_or_else(|err| {
+            panic!("stdout carried something that is not JSON ({err}): {line}")
+        });
+        assert_eq!(message["jsonrpc"], "2.0", "{message}");
+        message
+    }
+
+    fn request(&mut self, method: &str, params: Value) -> Value {
+        let id = self.next;
+        self.next += 1;
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        let reply = self.receive();
+        assert_eq!(reply["id"], id, "{reply}");
+        reply
+    }
+
+    fn initialize(&mut self, version: &str) -> Value {
+        let reply = self.request(
+            "initialize",
+            json!({
+                "protocolVersion": version,
+                "capabilities": {},
+                "clientInfo": { "name": "test", "version": "0" },
+            }),
+        );
+        self.send(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
+        reply["result"].clone()
+    }
+
+    /// Call a tool; returns its text and whether it reported an error.
+    fn call(&mut self, name: &str, args: Value) -> (String, bool) {
+        let reply = self.request("tools/call", json!({ "name": name, "arguments": args }));
+        let result = &reply["result"];
+        assert!(result.is_object(), "{name}: not a tool result: {reply}");
+        let content = result["content"].as_array().expect("content");
+        assert_eq!(content[0]["type"], "text");
+        let text = content[0]["text"].as_str().unwrap().to_string();
+        (text, result["isError"] == true)
+    }
+
+    fn ok(&mut self, name: &str, args: Value) -> String {
+        let (text, error) = self.call(name, args.clone());
+        assert!(!error, "{name} {args} failed: {text}");
+        text
+    }
+
+    fn fails(&mut self, name: &str, args: Value) -> String {
+        let (text, error) = self.call(name, args.clone());
+        assert!(error, "{name} {args} should have failed, but said: {text}");
+        text
+    }
+
+    /// Close stdin and wait for the server to exit by itself.
+    fn finish(mut self) {
+        drop(self.stdin);
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                assert!(status.success(), "daw-mcp exited with {status}");
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "daw-mcp did not exit when stdin closed"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+/// Check that a value is a sound JSON Schema of the kind tools use: known
+/// keywords with values of the right shape, all the way down.
+fn check_schema(schema: &Value, at: &str) {
+    if schema.is_boolean() {
+        return;
+    }
+    let object = schema
+        .as_object()
+        .unwrap_or_else(|| panic!("{at}: a schema must be an object"));
+    const TYPES: [&str; 7] = [
+        "object", "array", "string", "number", "integer", "boolean", "null",
+    ];
+    for (key, value) in object {
+        match key.as_str() {
+            "type" => {
+                let types: Vec<&Value> = match value {
+                    Value::Array(list) => list.iter().collect(),
+                    other => vec![other],
+                };
+                assert!(!types.is_empty(), "{at}: empty type");
+                for t in types {
+                    assert!(
+                        TYPES.contains(&t.as_str().unwrap_or("")),
+                        "{at}: bad type {t}"
+                    );
+                }
+            }
+            "description" | "title" => assert!(value.is_string(), "{at}: {key} must be a string"),
+            "properties" => {
+                for (name, sub) in value
+                    .as_object()
+                    .unwrap_or_else(|| panic!("{at}: properties"))
+                {
+                    assert!(
+                        sub["description"].is_string() || sub["anyOf"].is_array(),
+                        "{at}.{name} has no description"
+                    );
+                    check_schema(sub, &format!("{at}.{name}"));
+                }
+            }
+            "required" => {
+                for name in value.as_array().unwrap_or_else(|| panic!("{at}: required")) {
+                    let name = name.as_str().expect("required names are strings");
+                    assert!(
+                        object["properties"].get(name).is_some(),
+                        "{at}: required `{name}` is not a property"
+                    );
+                }
+            }
+            "items" | "additionalProperties" => check_schema(value, &format!("{at}.{key}")),
+            "anyOf" | "prefixItems" => {
+                for (i, sub) in value
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{at}: {key}"))
+                    .iter()
+                    .enumerate()
+                {
+                    check_schema(sub, &format!("{at}.{key}[{i}]"));
+                }
+            }
+            "enum" => assert!(
+                value.as_array().is_some_and(|v| !v.is_empty()),
+                "{at}: enum"
+            ),
+            "minimum" | "maximum" | "exclusiveMinimum" => assert!(value.is_number(), "{at}: {key}"),
+            "minItems" | "maxItems" => assert!(value.is_u64(), "{at}: {key}"),
+            other => panic!("{at}: unexpected keyword `{other}`"),
+        }
+    }
+}
+
+/// The peak of the left channel in dBFS, from a render's measurements.
+fn left_peak(text: &str) -> f64 {
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("left: peak"))
+        .unwrap_or_else(|| panic!("no levels in:\n{text}"));
+    let value = line
+        .trim_start_matches("left: peak ")
+        .split(' ')
+        .next()
+        .unwrap();
+    if value == "-inf" {
+        -200.0
+    } else {
+        value.parse().unwrap()
+    }
+}
+
+#[test]
+fn handshake_and_tool_list() {
+    let dir = scratch("handshake");
+    let mut client = Client::start(
+        &dir,
+        &[
+            "--spawn",
+            "--",
+            "--audio",
+            "null",
+            "--no-plugins",
+            "--clean",
+        ],
+    );
+
+    // Each revision we speak is answered with itself; an unknown one with our newest.
+    for version in ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"] {
+        let result = client.initialize(version);
+        assert_eq!(result["protocolVersion"], version);
+        assert!(result["capabilities"]["tools"].is_object());
+        assert_eq!(result["serverInfo"]["name"], "daw-mcp");
+        assert!(result["instructions"].as_str().unwrap().contains("beats"));
+    }
+    assert_eq!(
+        client.initialize("1999-01-01")["protocolVersion"],
+        "2025-11-25"
+    );
+    assert_eq!(client.request("ping", json!({}))["result"], json!({}));
+
+    let tools = client.request("tools/list", json!({}))["result"]["tools"].clone();
+    let tools = tools.as_array().unwrap();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    for expected in [
+        "get_project",
+        "get_track",
+        "get_clip",
+        "get_device",
+        "find_devices",
+        "get_status",
+        "add_track",
+        "set_track",
+        "add_clip",
+        "edit_clip",
+        "add_device",
+        "set_device",
+        "automate",
+        "set_project",
+        "remove",
+        "transport",
+        "undo",
+        "project_file",
+        "render",
+        "analyze_audio",
+    ] {
+        assert!(names.contains(&expected), "missing tool {expected}");
+    }
+    // The escape hatches are not offered without --allow-eval.
+    for hidden in ["run_command", "send_keys", "eval_lua"] {
+        assert!(
+            !names.contains(&hidden),
+            "{hidden} offered without --allow-eval"
+        );
+    }
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap();
+        assert!(
+            name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+            "{name}"
+        );
+        assert!(
+            tool["description"].as_str().unwrap().len() > 40,
+            "{name}: description too short"
+        );
+        let schema = &tool["inputSchema"];
+        assert_eq!(schema["type"], "object", "{name}");
+        assert!(schema["properties"].is_object(), "{name}");
+        check_schema(schema, name);
+    }
+
+    // The 2026-07-28 revision: version in `_meta`, no handshake needed.
+    let meta = json!({ "_meta": { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } });
+    let modern = client.request("tools/list", meta.clone());
+    assert_eq!(modern["result"]["resultType"], "complete");
+    assert_eq!(
+        modern["result"]["tools"].as_array().unwrap().len(),
+        tools.len()
+    );
+    let discover = client.request("server/discover", meta);
+    assert_eq!(
+        discover["result"]["supportedVersions"],
+        json!(["2026-07-28"])
+    );
+    let unsupported = client.request(
+        "tools/list",
+        json!({ "_meta": { "io.modelcontextprotocol/protocolVersion": "2099-01-01" } }),
+    );
+    assert_eq!(unsupported["error"]["code"], -32022);
+
+    // Protocol errors.
+    assert_eq!(
+        client.request("no/such/method", json!({}))["error"]["code"],
+        -32601
+    );
+    let unknown = client.request(
+        "tools/call",
+        json!({ "name": "no_such_tool", "arguments": {} }),
+    );
+    assert_eq!(unknown["error"]["code"], -32602);
+    client.send(&json!("not a request"));
+    assert_eq!(client.receive()["error"]["code"], -32600);
+    writeln!(client.stdin, "{{ this is not json").unwrap();
+    client.stdin.flush().unwrap();
+    assert_eq!(client.receive()["error"]["code"], -32700);
+    client.finish();
+}
+
+#[test]
+fn build_render_undo() {
+    let dir = scratch("song");
+    let mut args = vec!["--spawn", "--"];
+    args.extend(KERNEL_ARGS);
+    let mut c = Client::start(&dir, &args);
+    c.initialize("2025-06-18");
+
+    let text = c.ok(
+        "set_project",
+        json!({ "tempo": 110, "signature": "4/4", "name": "Test song" }),
+    );
+    assert!(text.contains("110 BPM"), "{text}");
+
+    // A bass track with its instrument and a two-bar riff, in one call.
+    let text = c.ok(
+        "add_track",
+        json!({
+            "name": "Bass",
+            "volume": -3,
+            "devices": [{ "kind": "synth", "params": { "wave": "saw", "cutoff": 900 } }],
+            "clips": [{ "name": "riff", "start": 0, "length": "2 bars", "notes": [
+                "A1 0 1/8", "A1 0.5 1/8", "C2 1:2 1/4 90", "E2 1:3 1/4", "G1 4 2",
+                { "pitch": "A1", "start": "2.3", "length": 1, "velocity": 110 }
+            ]}]
+        }),
+    );
+    assert!(text.contains("\"Bass\""), "{text}");
+    assert!(text.contains("6 notes (G1–E2)"), "{text}");
+    let bass_synth = id_after(&text, "devices: [id ");
+    let riff = id_after(&text, "clips:\n     [id ");
+
+    let text = c.ok("add_track", json!({
+        "name": "Drums",
+        "devices": ["drums"],
+        "clips": [{ "start": "1.1", "length": 8, "notes": ["C2 0", "D2 1", "C2 2", "D2 3", "F#2 0 1/8", "F#2 2 1/8"] }]
+    }));
+    assert!(text.contains("\"Drums\""), "{text}");
+
+    let text = c.ok(
+        "add_track",
+        json!({ "name": "Echo", "devices": [{ "kind": "delay", "params": { "mix": 1 } }] }),
+    );
+    assert!(text.contains("Delay"), "{text}");
+    let text = c.ok(
+        "set_track",
+        json!({ "track": "bass", "sends": [{ "target": "Echo", "level": -10 }], "pan": -0.25 }),
+    );
+    assert!(text.contains("sends: \"Echo\""), "{text}");
+    assert!(text.contains("pan -0.25"), "{text}");
+
+    let text = c.ok(
+        "set_device",
+        json!({ "device": bass_synth, "params": { "resonance": 0.4, "release": 99 } }),
+    );
+    assert!(text.contains("resonance: 0.4"), "{text}");
+    assert!(
+        text.contains("release: 5 s"),
+        "clamped to the range: {text}"
+    );
+
+    let text = c.ok(
+        "edit_clip",
+        json!({ "clip": riff, "add_notes": ["E2 6 1"], "remove_notes": { "pitches": ["G1"] } }),
+    );
+    assert!(text.contains("6 notes"), "{text}");
+    assert!(text.contains("(1 notes removed)"), "{text}");
+
+    // Read it back.
+    let text = c.ok("get_project", json!({}));
+    for expected in [
+        "Test song",
+        "\"Bass\"",
+        "\"Drums\"",
+        "\"Echo\"",
+        "110 BPM",
+        "Synth (synth)",
+        "Drums (drums)",
+    ] {
+        assert!(
+            text.contains(expected),
+            "get_project lacks {expected}:\n{text}"
+        );
+    }
+    let text = c.ok("get_clip", json!({ "clip": riff }));
+    assert!(text.contains("A1 0 0.5 100  (1.1)"), "{text}");
+    assert!(text.contains("A1 6 1 110  (2.3)"), "{text}");
+    let text = c.ok(
+        "get_device",
+        json!({ "device": bass_synth, "filter": "cut" }),
+    );
+    assert!(text.contains("cutoff: 900 Hz (range 20 to 20000"), "{text}");
+    let text = c.ok("find_devices", json!({ "query": "drum" }));
+    assert!(text.contains("drums — Drums"), "{text}");
+
+    // Render, and hear it in numbers.
+    let text = c.ok("render", json!({ "path": "out/mix.wav", "tail": 0.5 }));
+    assert!(dir.join("out/mix.wav").is_file(), "{text}");
+    assert!(!text.contains("SILENT"), "{text}");
+    assert!(left_peak(&text) > -40.0, "{text}");
+    assert!(text.contains("level over time (bars"), "{text}");
+    assert!(text.contains("spectral centroid"), "{text}");
+
+    // Automation, then undo it: the lane is gone and the clip still there.
+    let text = c.ok(
+        "automate",
+        json!({ "track": "Bass", "points": [[0, -40], ["2.1", 0]] }),
+    );
+    assert!(text.contains("New automation"), "{text}");
+    assert!(
+        c.ok("get_track", json!({ "track": "Bass" }))
+            .contains("automation:")
+    );
+    let text = c.ok("undo", json!({}));
+    assert!(text.contains("Undid 1 step"), "{text}");
+    let track = c.ok("get_track", json!({ "track": "Bass" }));
+    assert!(!track.contains("automation:"), "{track}");
+    assert!(track.contains("\"riff\""), "{track}");
+    assert!(
+        c.ok("undo", json!({ "redo": true }))
+            .contains("Redid 1 step")
+    );
+
+    // A call that fails part-way changes nothing.
+    let before = c.ok("get_project", json!({}));
+    let text = c.fails(
+        "add_track",
+        json!({ "name": "Broken", "devices": ["synth", "no such device at all"] }),
+    );
+    assert!(text.contains("rolled back"), "{text}");
+    assert_eq!(c.ok("get_project", json!({})), before);
+
+    // Bad arguments come back as tool errors the model can act on.
+    assert!(
+        c.fails("add_clip", json!({ "track": "Bass", "strat": 0 }))
+            .contains("unknown argument `strat`")
+    );
+    assert!(
+        c.fails("add_clip", json!({ "track": "Bass", "notes": ["H9 0"] }))
+            .contains("not a note name")
+    );
+    assert!(
+        c.fails("add_clip", json!({ "track": "Bass", "start": "0.5" }))
+            .contains("bar.beat")
+    );
+    assert!(
+        c.fails("get_clip", json!({ "clip": 99999 }))
+            .contains("no clip 99999")
+    );
+    assert!(
+        c.fails("set_track", json!({ "track": "Nobody" }))
+            .contains("no track named")
+    );
+    assert!(
+        c.fails("get_track", json!({}))
+            .contains("missing required argument `track`")
+    );
+    assert!(
+        c.fails("eval_lua", json!({ "code": "1" }))
+            .contains("--allow-eval")
+    );
+    assert!(
+        c.fails("render", json!({ "path": "../outside.wav" }))
+            .contains("outside the working directory")
+    );
+    assert!(
+        c.fails(
+            "project_file",
+            json!({ "action": "save", "path": "/tmp/x.json" })
+        )
+        .contains("outside")
+    );
+
+    // Save, and refuse to throw away unsaved work.
+    let text = c.ok(
+        "project_file",
+        json!({ "action": "save", "path": "song.json" }),
+    );
+    assert!(dir.join("song.json").is_file(), "{text}");
+    c.ok("set_track", json!({ "track": "Drums", "mute": true }));
+    assert!(
+        c.fails("project_file", json!({ "action": "new" }))
+            .contains("unsaved")
+    );
+    let text = c.ok(
+        "project_file",
+        json!({ "action": "open", "path": "song.json", "discard": true }),
+    );
+    assert!(text.contains("\"Drums\""), "{text}");
+    assert!(!text.contains("MUTED"), "{text}");
+    c.finish();
+}
+
+#[test]
+fn escape_hatches_with_allow_eval() {
+    let dir = scratch("eval");
+    let mut args = vec!["--spawn", "--allow-eval", "--"];
+    args.extend(KERNEL_ARGS);
+    let mut c = Client::start(&dir, &args);
+    c.initialize("2025-03-26");
+    let tools = c.request("tools/list", json!({}))["result"]["tools"].clone();
+    assert!(
+        tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["name"] == "eval_lua")
+    );
+    assert_eq!(c.ok("eval_lua", json!({ "code": "1 + 2" })), "3");
+    let text = c.ok("run_command", json!({ "line": "tempo 97" }));
+    assert!(text.contains("one undo step"), "{text}");
+    assert!(c.ok("get_project", json!({})).contains("97 BPM"));
+    assert!(
+        c.fails("eval_lua", json!({ "code": "error('boom')" }))
+            .contains("boom")
+    );
+    c.ok("send_keys", json!({ "keys": "gg" }));
+
+    // The kernel this server started goes away: the next call starts another
+    // and says so.
+    c.ok("eval_lua", json!({ "code": "daw.api.quit(0)" }));
+    std::thread::sleep(Duration::from_millis(300));
+    let text = c.ok("get_project", json!({}));
+    assert!(
+        text.starts_with("NOTE: The kernel this server started had stopped"),
+        "{text}"
+    );
+    assert!(text.contains("120 BPM"), "a fresh project: {text}");
+    c.finish();
+}
+
+/// The server attaches to a kernel it did not start, reports when it is
+/// gone, and carries on when one is back.
+#[test]
+fn kernel_gone_and_back() {
+    let dir = scratch("gone");
+    let socket = socket_dir("gone").join("k.sock");
+    let kernel = || {
+        let child = Command::new(daw_binary())
+            .args(["--headless", "--listen"])
+            .arg(&socket)
+            .args(KERNEL_ARGS)
+            .env("XDG_CACHE_HOME", &dir)
+            .env("XDG_DATA_HOME", &dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while std::os::unix::net::UnixStream::connect(&socket).is_err() {
+            assert!(Instant::now() < deadline, "the kernel did not start");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        child
+    };
+    let mut c = Client::start(&dir, &["--socket", socket.to_str().unwrap()]);
+    c.initialize("2025-11-25");
+    let text = c.fails("get_project", json!({}));
+    assert!(text.contains("No DAW kernel at"), "{text}");
+
+    let mut k = kernel();
+    c.ok("add_track", json!({ "name": "First" }));
+    k.kill().unwrap();
+    k.wait().unwrap();
+    let text = c.fails("get_project", json!({}));
+    assert!(text.contains("No DAW kernel"), "{text}");
+
+    let mut k = kernel();
+    let text = c.ok("get_project", json!({}));
+    assert!(text.contains("Tracks (0)"), "a fresh kernel: {text}");
+    c.finish();
+    k.kill().unwrap();
+    k.wait().unwrap();
+}
+
+/// The number after `marker` in `text`.
+fn id_after(text: &str, marker: &str) -> u64 {
+    let at = text
+        .find(marker)
+        .unwrap_or_else(|| panic!("no `{marker}` in:\n{text}"))
+        + marker.len();
+    text[at..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .unwrap()
+}

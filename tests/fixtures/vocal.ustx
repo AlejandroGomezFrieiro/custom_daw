@@ -1,0 +1,79 @@
+name: daw vocal import test
+comment: Three notes for the utau import test.
+output_dir: Vocal
+cache_dir: UCache
+ustx_version: 0.6
+resolution: 480
+bpm: 100
+beat_per_bar: 4
+beat_unit: 4
+expressions: {}
+time_signatures:
+- bar_position: 0
+  beat_per_bar: 4
+  beat_unit: 4
+tempos:
+- position: 0
+  bpm: 100
+tracks:
+- singer: Kitane sno act5 VCV
+  phonemizer: OpenUtau.Core.DefaultPhonemizer
+  renderer_settings:
+    renderer: WORLDLINE-R
+  track_name: Imported vocal
+  track_color: Blue
+  mute: false
+  solo: false
+  volume: 0
+  pan: 0
+  voice_color_names:
+  - ''
+voice_parts:
+- duration: 1920
+  name: Verse
+  comment: ''
+  track_no: 0
+  position: 960
+  notes:
+  - position: 0
+    duration: 480
+    tone: 60
+    lyric: '- あ'
+    tuning: 15
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+    phoneme_expressions: []
+    phoneme_overrides: []
+  - position: 480
+    duration: 960
+    tone: 64
+    lyric: '- い'
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 60, period: 180, depth: 30, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+    phoneme_expressions: []
+    phoneme_overrides: []
+  - position: 1440
+    duration: 480
+    tone: 67
+    lyric: '- う'
+    pitch:
+      data:
+      - {x: -40, y: 0, shape: io}
+      - {x: 40, y: 0, shape: io}
+      snap_first: true
+    vibrato: {length: 0, period: 175, depth: 25, in: 10, out: 10, shift: 0, drift: 0, vol_link: 0}
+    phoneme_expressions: []
+    phoneme_overrides: []
+  curves:
+  - xs: [0, 480, 960]
+    ys: [0, -60, 0]
+    abbr: dyn
+wave_parts: []

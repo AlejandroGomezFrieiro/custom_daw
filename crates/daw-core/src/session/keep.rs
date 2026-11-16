@@ -1,0 +1,61 @@
+//! Letting go of decoded audio no clip needs any more.
+//!
+//! Decoded files are kept so that clips sharing a file, and undo, do not
+//! decode it again. A file that neither the project nor any undo step
+//! refers to is dropped, so that a long session opening project after
+//! project does not hold every file it ever played.
+
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use super::Session;
+use crate::model::{ClipContent, Project, Track};
+
+/// Checkpoints between looks at what is still referred to.
+const EVERY: u32 = 64;
+
+impl Session {
+    /// Count a checkpoint, and every so often drop unneeded audio.
+    pub(super) fn trim_audio_now_and_then(&mut self) {
+        self.trims = self.trims.wrapping_add(1);
+        if self.trims.is_multiple_of(EVERY) {
+            self.trim_audio();
+        }
+    }
+
+    /// Drop decoded audio that no clip in the project or its undo history uses.
+    pub fn trim_audio(&mut self) {
+        // A running render was built from what is in the cache: leave it be
+        // until the render is over (its engine holds what it plays anyway).
+        if self.rendering() {
+            return;
+        }
+        let mut keep: HashSet<PathBuf> = HashSet::new();
+        // Undo steps share the tracks they did not change: look at each once.
+        let mut seen: HashSet<*const Track> = HashSet::new();
+        let mut add = |project: &Project| {
+            for track in project
+                .tracks
+                .iter()
+                .chain(std::iter::once(&project.master))
+            {
+                if !seen.insert(Arc::as_ptr(track)) {
+                    continue;
+                }
+                for clip in &track.clips {
+                    if let ClipContent::Audio { file, .. } = &clip.content {
+                        keep.insert(file.clone());
+                    }
+                }
+            }
+        };
+        add(&self.project);
+        add(&self.checkpoint);
+        add(&self.synced);
+        for state in self.history.states() {
+            add(&state.snapshot);
+        }
+        self.audio.retain(&keep);
+    }
+}

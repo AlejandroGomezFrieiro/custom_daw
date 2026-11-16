@@ -1,0 +1,335 @@
+//! The device interface: anything that sits in a track's chain and makes or
+//! changes sound. Built-in devices and hosted plugins both implement [`Device`].
+
+use std::collections::BTreeMap;
+use std::rc::Rc;
+
+use anyhow::Result;
+
+use crate::event::EventBuf;
+
+pub struct ProcessCtx {
+    pub sample_rate: f32,
+    pub tempo: f64,
+    pub sig_num: u32,
+    pub sig_den: u32,
+    pub playing: bool,
+    /// Project position, in beats, of the first frame of this block.
+    pub position: f64,
+    /// The same position in seconds from the start of the song.
+    pub seconds: f64,
+    /// The bar the block starts in, counting from 0, and where it starts
+    /// in beats.
+    pub bar: i64,
+    pub bar_start: f64,
+}
+
+impl ProcessCtx {
+    /// A context at the start of a song with one tempo and signature.
+    pub fn at(sample_rate: f32, tempo: f64, sig_num: u32, sig_den: u32, playing: bool) -> Self {
+        Self {
+            sample_rate,
+            tempo,
+            sig_num,
+            sig_den,
+            playing,
+            position: 0.0,
+            seconds: 0.0,
+            bar: 0,
+            bar_start: 0.0,
+        }
+    }
+}
+
+/// What a device reads and writes for one block. Audio is processed in place.
+pub struct Io<'a> {
+    pub left: &'a mut [f32],
+    pub right: &'a mut [f32],
+    /// Events for this block, ordered by frame. A device may rewrite them for
+    /// the devices after it.
+    pub events: &'a mut EventBuf,
+}
+
+/// Runs on the audio thread: implementations must not allocate, lock or block.
+///
+/// A device is created and dropped on the main thread, and only `process` and
+/// `set_param` are called from the audio thread in between.
+pub trait Device: Send {
+    fn process(&mut self, ctx: &ProcessCtx, io: &mut Io);
+    /// `index` is the position of the parameter in the device's parameter list.
+    fn set_param(&mut self, index: u32, value: f32);
+}
+
+/// The main-thread side of a device that has one, such as a hosted plugin:
+/// everything about it that is not processing audio.
+pub trait Controller {
+    /// This instance's parameters, for devices that only know them once
+    /// they exist.
+    fn params(&self) -> Vec<ParamInfo>;
+    /// The current value of a parameter, by position in [`params`](Self::params).
+    fn value(&self, index: usize) -> Option<f64>;
+    /// Told whenever the host sets a parameter, alongside the change sent to
+    /// the audio thread, for formats that keep a main-thread copy of the value.
+    fn set_value(&mut self, _index: usize, _value: f64) {}
+    /// Everything needed to bring a new instance back to this one's state.
+    fn save_state(&mut self) -> Result<Option<Vec<u8>>>;
+    fn load_state(&mut self, state: &[u8]) -> Result<()>;
+    /// Whether the project says what the device's state is, as for a kit of
+    /// samples set from a script: then a new state in the project (an edit,
+    /// an undo) is loaded into the running device. A plugin's state is only
+    /// read back from it, and is loaded only when the plugin is made.
+    fn follows_state(&self) -> bool {
+        false
+    }
+    /// Called regularly, for whatever the device needs done on the main thread.
+    fn idle(&mut self) {}
+    /// Parameters the device changed by itself since the last call, as
+    /// (position in [`params`](Self::params), new value): what a user did in
+    /// the device's own editor, or a preset it loaded.
+    fn take_changes(&mut self) -> Vec<(usize, f64)> {
+        Vec::new()
+    }
+    /// Whether the device has a window of its own to show.
+    fn has_editor(&self) -> bool {
+        false
+    }
+    fn editor_open(&self) -> bool {
+        false
+    }
+    /// Show the device's own window, titled `title`.
+    fn open_editor(&mut self, _title: &str) -> Result<()> {
+        anyhow::bail!("this device has no editor")
+    }
+    fn close_editor(&mut self) {}
+    /// Frames by which the device's output is behind its input, for devices
+    /// that look ahead. The host holds everything else back to match. Asked
+    /// again whenever the device is idled, since a setting can change it.
+    fn latency(&self) -> u32 {
+        0
+    }
+    /// Say that the device is about to render faster than real time, into
+    /// a file: called once, on the main thread, before its first block. A
+    /// plugin told this can do at once what it would otherwise leave to a
+    /// background thread, and take its time over quality.
+    fn set_offline(&mut self, _offline: bool) {}
+    /// Why the device has stopped working, if it has: a plugin running in
+    /// a process of its own that crashed, hung or was ended. Asked
+    /// regularly; a device that is well says nothing.
+    fn health(&mut self) -> Option<String> {
+        None
+    }
+    /// Blocks the device did not deliver in time (a plugin in a helper
+    /// process that was late), since it was made.
+    fn late_blocks(&self) -> u64 {
+        0
+    }
+    /// A request from a script, for devices that are fed from outside the
+    /// timeline: `method` names it, `data` is whatever bytes it takes, and the
+    /// answer is bytes too, so it can cross `daw.api` as plain strings.
+    fn call(&mut self, method: &str, _data: &[u8]) -> Result<Vec<u8>> {
+        anyhow::bail!("this device has no method `{method}`")
+    }
+}
+
+/// A new device, with its controller if it has one.
+pub struct Instance {
+    pub device: Box<dyn Device>,
+    pub controller: Option<Box<dyn Controller>>,
+}
+
+impl Instance {
+    pub fn simple(device: impl Device + 'static) -> Self {
+        Self {
+            device: Box::new(device),
+            controller: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ParamInfo {
+    /// The identifier used in projects and scripts. Unique within a device.
+    pub key: String,
+    /// The name to show.
+    pub name: String,
+    pub min: f32,
+    pub max: f32,
+    pub default: f32,
+    pub unit: String,
+    /// Names for integer steps, for parameters that choose between options.
+    pub choices: Vec<String>,
+}
+
+impl ParamInfo {
+    pub fn new(name: &str, min: f32, max: f32, default: f32, unit: &str) -> Self {
+        Self {
+            key: name.into(),
+            name: name.into(),
+            min,
+            max,
+            default,
+            unit: unit.into(),
+            choices: Vec::new(),
+        }
+    }
+
+    pub fn choice(name: &str, choices: &[&str], default: usize) -> Self {
+        Self {
+            max: (choices.len() - 1) as f32,
+            choices: choices.iter().map(|s| s.to_string()).collect(),
+            ..Self::new(name, 0.0, 0.0, default as f32, "")
+        }
+    }
+}
+
+/// Turn display names into keys: lower case, words joined by `_`, and a
+/// number appended where two names would otherwise collide.
+pub fn assign_keys(params: &mut [ParamInfo]) {
+    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+    for param in params {
+        let mut key = String::new();
+        for ch in param.name.chars() {
+            if ch.is_alphanumeric() {
+                key.extend(ch.to_lowercase());
+            } else if !key.ends_with('_') && !key.is_empty() {
+                key.push('_');
+            }
+        }
+        let key = key.trim_end_matches('_').to_string();
+        let key = if key.is_empty() {
+            "param".to_string()
+        } else {
+            key
+        };
+        let count = seen.entry(key.clone()).or_insert(0);
+        *count += 1;
+        param.key = if *count == 1 {
+            key
+        } else {
+            format!("{key}_{count}")
+        };
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DeviceInfo {
+    /// The identifier used in projects and scripts, such as `synth` or
+    /// `clap:org.surge-synth-team.surge-xt`.
+    pub kind: String,
+    pub name: String,
+    /// `instrument` or `effect`.
+    pub category: String,
+    /// `builtin`, `clap`, `lv2` or `vst3`.
+    pub format: String,
+    pub vendor: String,
+    /// Empty for devices whose parameters are only known per instance.
+    pub params: Vec<ParamInfo>,
+}
+
+/// Creates device instances. Lives on the main thread.
+pub trait DeviceFactory {
+    fn info(&self) -> &DeviceInfo;
+    /// The new device starts with every parameter at its default.
+    fn create(&self, sample_rate: f32, max_block: usize) -> Result<Instance>;
+    /// Frames of latency of a device that has no [`Controller`] to ask.
+    fn latency(&self, _sample_rate: f32) -> u32 {
+        0
+    }
+    /// Whether [`start`](Self::start) makes this device without the main
+    /// thread waiting for it: a plugin in a process of its own, which may
+    /// take long or hang while it is made.
+    fn starts_apart(&self) -> bool {
+        false
+    }
+    /// Begin making a device, with `state` (as its controller saved it)
+    /// loaded into it, and return at once; [`Starting::poll`] gives the
+    /// result. None for factories that only make devices in [`create`].
+    ///
+    /// [`create`]: Self::create
+    fn start(
+        &self,
+        _sample_rate: f32,
+        _max_block: usize,
+        _state: Option<Vec<u8>>,
+    ) -> Option<Box<dyn Starting>> {
+        None
+    }
+}
+
+/// A device that is being made apart from the main thread (see
+/// [`DeviceFactory::start`]). Dropping it gives up on the device.
+pub trait Starting {
+    /// The device once it is made, with its state loaded; why it could not
+    /// be made; or None while that is not known yet. Asked on the main
+    /// thread, and never blocks.
+    fn poll(&mut self) -> Option<Result<Instance>>;
+}
+
+/// A [`DeviceFactory`] made from a descriptor and a constructor function.
+pub struct FnFactory {
+    pub info: DeviceInfo,
+    pub make: fn(f32) -> Box<dyn Device>,
+    /// Seconds by which the device's output is behind its input.
+    pub latency: f32,
+}
+
+impl DeviceFactory for FnFactory {
+    fn info(&self) -> &DeviceInfo {
+        &self.info
+    }
+
+    fn create(&self, sample_rate: f32, _max_block: usize) -> Result<Instance> {
+        Ok(Instance {
+            device: (self.make)(sample_rate),
+            controller: None,
+        })
+    }
+
+    fn latency(&self, sample_rate: f32) -> u32 {
+        (self.latency * sample_rate).round() as u32
+    }
+}
+
+/// Every device kind the session can instantiate, by kind name. It stays on
+/// the main thread, like the factories in it.
+/// Looks for plugins again and registers what it finds: see [`Registry::rescan`].
+pub type Rescan = Rc<dyn Fn(&mut Registry, Option<&str>) -> Vec<String>>;
+
+#[derive(Default, Clone)]
+pub struct Registry {
+    factories: BTreeMap<String, Rc<dyn DeviceFactory>>,
+    rescan: Option<Rescan>,
+}
+
+impl Registry {
+    pub fn with_builtins() -> Self {
+        let mut registry = Self::default();
+        crate::devices::register(&mut registry);
+        registry
+    }
+
+    pub fn register(&mut self, factory: Rc<dyn DeviceFactory>) {
+        self.factories.insert(factory.info().kind.clone(), factory);
+    }
+
+    /// Say how to look for plugins again (the program that found them knows).
+    pub fn set_rescan(&mut self, rescan: Rescan) {
+        self.rescan = Some(rescan);
+    }
+
+    /// Look into plugin files again: all of them, or those `name` matches.
+    /// `None` when there is nothing to do it with. The answer is notes on
+    /// what could not be used.
+    pub fn rescan(&mut self, name: Option<&str>) -> Option<Vec<String>> {
+        let rescan = self.rescan.clone()?;
+        Some(rescan(self, name))
+    }
+
+    pub fn get(&self, kind: &str) -> Option<&Rc<dyn DeviceFactory>> {
+        self.factories.get(kind)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn DeviceFactory>> {
+        self.factories.values()
+    }
+}

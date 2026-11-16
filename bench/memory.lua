@@ -1,0 +1,77 @@
+-- Resident memory.
+--   daw --clean --no-plugins -l bench/memory.lua project <tracks> <clips per track> <undo steps>
+--       a large project (as in saveload.lua), then a long undo history of
+--       one-note edits on its first clip, as in the Tracktion driver's `memory`
+--   daw --clean --no-plugins -l bench/memory.lua churn <rounds>
+--       build, edit, render, undo and clear the same project over and over:
+--       resident memory should level off rather than keep growing
+local daw = require("daw")
+local api = daw.api
+local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
+
+local mode, a, b, c = ...
+
+if mode == "project" then
+  local tracks, clips, steps = tonumber(a) or 100, tonumber(b) or 8, tonumber(c) or 1000
+  local rss_start = B.rss()
+  local first
+  for i = 0, tracks - 1 do
+    local id = api.track_add({ name = "T" .. i })
+    api.device_add(id, "synth", { params = { wave = 1 } })
+    api.device_add(id, "delay")
+    for k = 0, clips - 1 do
+      local clip = api.clip_add(id, { start = k * 4, length = 4, notes = B.bar_notes(0, i) })
+      first = first or clip
+    end
+  end
+  api.undo_checkpoint()
+  daw.flush()
+  -- Let the engine run for a moment so that device buffers are touched.
+  api.sleep(500)
+  local rss_built = B.rss()
+  for i = 1, steps do
+    local notes = api.clip_notes(first)
+    local n = notes[(i - 1) % #notes + 1]
+    n.velocity = 1 + i % 126
+    api.clip_set_notes(first, notes)
+    daw.flush()
+    api.undo_checkpoint()
+  end
+  local rss_undo = B.rss()
+  B.emit({
+    workload = "memory", tracks = tracks, clips_per_track = clips, undo_steps = steps,
+    rss_start_kb = rss_start, rss_built_kb = rss_built, rss_undo_kb = rss_undo,
+  })
+elseif mode == "churn" then
+  local rounds = tonumber(a) or 20
+  local samples = {}
+  for round = 1, rounds do
+    api.project_new()
+    daw.flush()
+    B.build({ tracks = 20, kind = "midi", fx = true, automation = true, bars = 4 })
+    for _, id in ipairs(api.track_list()) do
+      api.track_set(id, "volume", -3)
+      daw.flush()
+      api.undo_checkpoint()
+    end
+    for _ = 1, 10 do api.undo() end
+    daw.flush()
+    daw.render(B.tmp .. "/churn.wav", { tail = 0 })
+    api.project_save(B.tmp .. "/churn.json")
+    api.project_load(B.tmp .. "/churn.json")
+    daw.flush()
+    samples[round] = B.rss()
+  end
+  os.remove(B.tmp .. "/churn.wav")
+  os.remove(B.tmp .. "/churn.json")
+  local half = math.floor(rounds / 2)
+  B.emit({
+    workload = "churn", rounds = rounds, rss_first_kb = samples[1], rss_mid_kb = samples[half],
+    rss_last_kb = samples[rounds],
+    -- Growth per round over the second half, in kB: near 0 when nothing leaks.
+    growth_kb_per_round = (samples[rounds] - samples[half]) / math.max(1, rounds - half),
+  })
+else
+  error("usage: memory.lua project <tracks> <clips> <steps> | churn <rounds>")
+end
+api.quit(0)

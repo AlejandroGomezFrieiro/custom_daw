@@ -1,0 +1,708 @@
+//! The audio thread never allocates or frees: checked with a global allocator
+//! that counts every allocation and deallocation made while the current
+//! thread is marked as the audio thread, across every message the engine
+//! takes and every built-in device.
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use daw_engine::record::{AudioCapture, Take, TakeShared};
+use daw_engine::{
+    AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
+    EngineHandle, EventKind, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, Pool, Registry, SchedEntry,
+    Schedule, SendRt, Slot, TrackRt,
+};
+
+struct Guard;
+
+thread_local! {
+    static AUDIO: Cell<bool> = const { Cell::new(false) };
+}
+static VIOLATIONS: AtomicUsize = AtomicUsize::new(0);
+
+fn audio() -> bool {
+    let on = AUDIO.try_with(|a| a.get()).unwrap_or(false);
+    if on {
+        let _ = HERE.try_with(|h| h.set(h.get() + 1));
+    }
+    on
+}
+
+thread_local! {
+    /// Violations on this thread alone, for tests that run beside others.
+    static HERE: Cell<usize> = const { Cell::new(0) };
+}
+
+unsafe impl GlobalAlloc for Guard {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if audio() {
+            VIOLATIONS.fetch_add(1, Ordering::Relaxed);
+        }
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        if audio() {
+            VIOLATIONS.fetch_add(1, Ordering::Relaxed);
+        }
+        unsafe { System.alloc_zeroed(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if audio() {
+            VIOLATIONS.fetch_add(1, Ordering::Relaxed);
+        }
+        unsafe { System.dealloc(ptr, layout) }
+    }
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        if audio() {
+            VIOLATIONS.fetch_add(1, Ordering::Relaxed);
+        }
+        unsafe { System.realloc(ptr, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL: Guard = Guard;
+
+const SR: f64 = 48000.0;
+
+/// Run `blocks` callbacks of `frames` frames, with `channels` channels of
+/// input, as the audio thread, and return how many allocations they made.
+fn run(engine: &mut Engine, blocks: usize, frames: usize, channels: usize) -> usize {
+    let mut left = vec![0.0f32; frames];
+    let mut right = vec![0.0f32; frames];
+    let input: Vec<f32> = (0..frames * channels)
+        .map(|i| (i as f32 * 0.01).sin())
+        .collect();
+    let before = VIOLATIONS.load(Ordering::Relaxed);
+    AUDIO.with(|a| a.set(true));
+    for _ in 0..blocks {
+        engine.process_input(&input, channels, &mut left, &mut right);
+    }
+    AUDIO.with(|a| a.set(false));
+    VIOLATIONS.load(Ordering::Relaxed) - before
+}
+
+fn send(handle: &mut EngineHandle, msg: Msg) {
+    assert!(handle.try_send(msg).is_ok(), "message queue full");
+}
+
+fn device(kind: &str) -> Box<dyn daw_engine::Device> {
+    Registry::with_builtins()
+        .get(kind)
+        .unwrap()
+        .create(SR as f32, MAX_BLOCK)
+        .unwrap()
+        .device
+}
+
+fn clips(audio: &Arc<AudioData>, notes: usize) -> Box<ClipSet> {
+    let mut set = ClipSet::default();
+    for i in 0..notes {
+        let at = i as f64 * 0.25;
+        let key = 36 + (i % 48) as u8;
+        set.push_note(at, at + 0.5, key, 0.8);
+        // Controllers of the channel and of the note, as MIDI 2.0 has them.
+        let value = (i % 10) as f64 / 10.0;
+        for kind in [
+            EventKind::Control {
+                ctl: Ctl::Cc(64),
+                value,
+                ch: 0,
+            },
+            EventKind::Control {
+                ctl: Ctl::Bend,
+                value: value - 0.5,
+                ch: 0,
+            },
+            EventKind::NoteControl {
+                key,
+                ctl: NoteCtl::Bend,
+                value: 0.01,
+                ch: 0,
+            },
+            EventKind::Program {
+                program: 3,
+                bank: Some(1),
+                ch: 0,
+            },
+        ] {
+            set.push_event(at + 0.1, kind);
+        }
+    }
+    set.finish();
+    for i in 0..8 {
+        set.audio.push(AudioRegion {
+            start: i as f64 * 4.0,
+            end: i as f64 * 4.0 + 3.0,
+            data: audio.clone(),
+            offset: 0.1,
+            gain: 0.5,
+            fade_in: 0.5,
+            fade_out: 0.25,
+            declick_in: true,
+            declick_out: true,
+        });
+    }
+    Box::new(set)
+}
+
+fn schedule(tracks: &[Slot]) -> Box<Schedule> {
+    let mut entries: Vec<SchedEntry> = tracks
+        .iter()
+        .enumerate()
+        .map(|(i, &slot)| {
+            // The first track feeds the second, which sends to the third,
+            // before its fader and through a delay, as when devices are late.
+            let mut entry = SchedEntry::new(slot, if i == 0 { tracks[1] } else { MASTER });
+            if i == 1 {
+                entry.sends.push(SendRt {
+                    pre: true,
+                    delay: Delay::new(300),
+                    ..SendRt::new(tracks[2], 0.5)
+                });
+                entry.delay = Delay::new(128);
+            }
+            entry
+        })
+        .collect();
+    entries.push(SchedEntry::new(MASTER, NO_SLOT));
+    Box::new(Schedule::new(entries, 300))
+}
+
+/// Every message, every device, playback with loops, seeks, live notes,
+/// MIDI input, monitoring and recording: none of it may allocate on the
+/// audio thread.
+#[test]
+fn the_audio_thread_never_allocates() {
+    // The guard itself works: an allocation and a free while marked count.
+    let before = VIOLATIONS.load(Ordering::Relaxed);
+    AUDIO.with(|a| a.set(true));
+    drop(std::hint::black_box(vec![1u8; 16]));
+    AUDIO.with(|a| a.set(false));
+    assert_eq!(
+        VIOLATIONS.load(Ordering::Relaxed) - before,
+        2,
+        "the guard counts"
+    );
+
+    let (mut engine, mut handle) = Engine::new(SR);
+    // A source at another rate, so that audio regions are resampled.
+    let audio = Arc::new(AudioData {
+        sample_rate: 44100,
+        channels: [
+            (0..44100 * 4)
+                .map(|i| (i as f32 * 0.03).sin())
+                .collect::<Vec<f32>>()
+                .into(),
+            (0..44100 * 4)
+                .map(|i| (i as f32 * 0.05).sin())
+                .collect::<Vec<f32>>()
+                .into(),
+        ],
+    });
+    // Three in a chain, and three more beside them that nothing feeds.
+    let tracks: Vec<Slot> = vec![1, 2, 3, 4, 5, 6];
+    let kinds = ["synth", "drums", "gain", "delay"];
+    for (i, &slot) in tracks.iter().enumerate() {
+        send(
+            &mut handle,
+            Msg::InsertTrack {
+                slot,
+                track: TrackRt::new(),
+            },
+        );
+        for (k, kind) in kinds.iter().enumerate() {
+            let dev = (i * kinds.len() + k) as Slot;
+            send(
+                &mut handle,
+                Msg::InsertDevice {
+                    slot: dev,
+                    device: device(kind),
+                },
+            );
+        }
+        let chain: Box<[Slot]> = (0..kinds.len())
+            .map(|k| (i * kinds.len() + k) as Slot)
+            .collect();
+        send(&mut handle, Msg::SetChain { track: slot, chain });
+        send(
+            &mut handle,
+            Msg::SetClips {
+                track: slot,
+                clips: clips(&audio, 400),
+            },
+        );
+        let lanes = vec![
+            AutoLane::new(AutoTarget::Volume, vec![(0.0, -12.0), (8.0, 0.0)]),
+            AutoLane::new(AutoTarget::Pan, vec![(0.0, -1.0), (8.0, 1.0)]),
+            AutoLane::new(
+                AutoTarget::Param {
+                    device: (i * kinds.len()) as Slot,
+                    index: 5,
+                },
+                vec![(0.0, 200.0), (8.0, 4000.0)],
+            ),
+        ];
+        send(
+            &mut handle,
+            Msg::SetAutomation {
+                track: slot,
+                automation: Box::new(Automation { lanes }),
+            },
+        );
+        send(
+            &mut handle,
+            Msg::SetMix {
+                slot,
+                gain: 0.8,
+                pan: 0.1,
+                mute: false,
+            },
+        );
+        send(
+            &mut handle,
+            Msg::SetInput {
+                track: slot,
+                first: i,
+                channels: 2,
+                monitor: true,
+                armed: i == 2,
+            },
+        );
+        // One track takes MIDI from one port and channel.
+        send(
+            &mut handle,
+            Msg::SetMidiInput {
+                track: slot,
+                port: if i == 1 { 77 } else { 0 },
+                channel: if i == 1 { 2 } else { 0 },
+            },
+        );
+    }
+    send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
+    send(&mut handle, Msg::SetTempo(133.0));
+    send(&mut handle, Msg::SetTimeSig { num: 7, den: 8 });
+    // A map with ramps and signature changes, swapped in whole.
+    let ramps: Vec<_> = (0..64)
+        .map(|i| daw_engine::TempoPoint {
+            beat: i as f64 * 0.75,
+            bpm: 80.0 + (i * 7 % 60) as f64,
+            ramp: i % 2 == 0,
+        })
+        .collect();
+    let sigs: Vec<_> = (0..16)
+        .map(|i| daw_engine::SigPoint {
+            beat: i as f64 * 2.5,
+            num: 3 + i % 4,
+            den: 8,
+        })
+        .collect();
+    send(
+        &mut handle,
+        Msg::SetTempoMap(Box::new(daw_engine::TempoMap::new(&ramps, &sigs))),
+    );
+    send(&mut handle, Msg::SetTempo(133.0));
+    send(
+        &mut handle,
+        Msg::SetLoop {
+            enabled: true,
+            start: 2.0,
+            end: 6.0,
+        },
+    );
+    send(&mut handle, Msg::SetMetronome(true));
+    send(&mut handle, Msg::Play);
+    assert_eq!(run(&mut engine, 200, 512, 4), 0, "set-up and playback");
+
+    // The rest on several threads. The workers count as audio threads too:
+    // every one of them is marked before the engine is given the pool.
+    let mut pool = Pool::new(4);
+    let marked = AtomicUsize::new(0);
+    while marked.load(Ordering::Relaxed) < 4 {
+        pool.run(64, &|_| {
+            if !AUDIO.with(|a| a.replace(true)) {
+                marked.fetch_add(1, Ordering::Relaxed);
+            }
+            std::thread::sleep(std::time::Duration::from_micros(200));
+        });
+    }
+    AUDIO.with(|a| a.set(false));
+    send(&mut handle, Msg::SetPool(Some(Box::new(pool))));
+    assert_eq!(run(&mut engine, 200, 512, 4), 0, "playback on four threads");
+
+    // Recording: a take capturing two tracks' input and MIDI input.
+    let (audio_tx, mut audio_rx) = rtrb::RingBuffer::new(1 << 20);
+    let (midi_tx, mut midi_rx) = rtrb::RingBuffer::new(1024);
+    let (wraps_tx, _wraps_rx) = rtrb::RingBuffer::new(64);
+    let take = Take::new(
+        vec![AudioCapture {
+            first: 0,
+            channels: 2,
+            ring: audio_tx,
+        }],
+        midi_tx,
+        Arc::new(TakeShared::default()),
+        wraps_tx,
+    );
+    send(&mut handle, Msg::SetTake(Some(Box::new(take))));
+    for key in 40..60 {
+        send(
+            &mut handle,
+            Msg::MidiIn {
+                port: 77,
+                kind: EventKind::NoteOn {
+                    key,
+                    vel: 0.5,
+                    ch: 1,
+                },
+            },
+        );
+        send(
+            &mut handle,
+            Msg::Live {
+                track: tracks[0],
+                event: EventKind::NoteOn {
+                    key,
+                    vel: 0.5,
+                    ch: 0,
+                },
+            },
+        );
+    }
+    let mut midi = handle.take_midi_input().unwrap();
+    for key in 40..60 {
+        let _ = midi.push((77, EventKind::NoteOff { key, ch: 1 }));
+    }
+    assert_eq!(run(&mut engine, 100, 256, 4), 0, "recording");
+    while audio_rx.pop().is_ok() {}
+    while midi_rx.pop().is_ok() {}
+
+    // A take punched in and out inside the loop, and a count-in before
+    // playing again, with the metronome on and off.
+    let (audio_tx, mut audio_rx) = rtrb::RingBuffer::new(1 << 20);
+    let (midi_tx, mut midi_rx) = rtrb::RingBuffer::new(1024);
+    let (wraps_tx, _wraps_rx) = rtrb::RingBuffer::new(64);
+    let mut take = Take::new(
+        vec![AudioCapture {
+            first: 0,
+            channels: 2,
+            ring: audio_tx,
+        }],
+        midi_tx,
+        Arc::new(TakeShared::default()),
+        wraps_tx,
+    );
+    take.punch = Some((3.0, 4.5));
+    send(&mut handle, Msg::SetTake(Some(Box::new(take))));
+    for key in 40..50 {
+        send(
+            &mut handle,
+            Msg::MidiIn {
+                port: 0,
+                kind: EventKind::NoteOn {
+                    key,
+                    vel: 0.5,
+                    ch: 0,
+                },
+            },
+        );
+    }
+    assert_eq!(run(&mut engine, 100, 256, 4), 0, "punched recording");
+    for metronome in [true, false] {
+        send(&mut handle, Msg::SetMetronome(metronome));
+        send(
+            &mut handle,
+            Msg::CountIn {
+                frames: 48000,
+                every: 6000.0,
+                clicks: 8,
+                per_bar: 4,
+            },
+        );
+        assert_eq!(run(&mut engine, 120, 512, 4), 0, "counting in");
+        send(
+            &mut handle,
+            Msg::CountIn {
+                frames: 48000,
+                every: 12000.0,
+                clicks: 4,
+                per_bar: 4,
+            },
+        );
+        send(&mut handle, Msg::Stop);
+        send(&mut handle, Msg::Play);
+        assert_eq!(run(&mut engine, 10, 512, 4), 0, "a count called off");
+    }
+    send(&mut handle, Msg::SetTake(None));
+    assert_eq!(run(&mut engine, 4, 256, 4), 0, "punched take let go");
+    handle.collect_garbage();
+    while audio_rx.pop().is_ok() {}
+    while midi_rx.pop().is_ok() {}
+
+    // Everything replaced while playing: the old parts go to the garbage queue.
+    for round in 0..20 {
+        for (i, &slot) in tracks.iter().enumerate() {
+            send(
+                &mut handle,
+                Msg::SetClips {
+                    track: slot,
+                    clips: clips(&audio, 100 + round),
+                },
+            );
+            send(
+                &mut handle,
+                Msg::SetAutomation {
+                    track: slot,
+                    automation: Box::default(),
+                },
+            );
+            let dev = (i * kinds.len()) as Slot;
+            send(
+                &mut handle,
+                Msg::SetParam {
+                    device: dev,
+                    param: (round % 8) as u32,
+                    value: 0.5,
+                },
+            );
+            send(
+                &mut handle,
+                Msg::SetBypass {
+                    device: dev + 1,
+                    bypass: round % 2 == 0,
+                },
+            );
+            send(
+                &mut handle,
+                Msg::InsertDevice {
+                    slot: dev + 2,
+                    device: device("gain"),
+                },
+            );
+            let chain: Box<[Slot]> = (0..kinds.len())
+                .rev()
+                .map(|k| (i * kinds.len() + k) as Slot)
+                .collect();
+            send(&mut handle, Msg::SetChain { track: slot, chain });
+        }
+        send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
+        send(&mut handle, Msg::Seek(round as f64 * 1.5));
+        send(&mut handle, Msg::SetTake(None));
+        assert_eq!(
+            run(&mut engine, 5, 1024 + 7, 2),
+            0,
+            "replacing parts, round {round}"
+        );
+        handle.collect_garbage();
+    }
+
+    // Removing everything, stopping, and messages for slots that do not exist.
+    for (i, &slot) in tracks.iter().enumerate() {
+        for k in 0..kinds.len() {
+            send(
+                &mut handle,
+                Msg::RemoveDevice {
+                    slot: (i * kinds.len() + k) as Slot,
+                },
+            );
+        }
+        send(&mut handle, Msg::RemoveTrack { slot });
+    }
+    send(
+        &mut handle,
+        Msg::SetClips {
+            track: 999,
+            clips: Box::default(),
+        },
+    );
+    send(
+        &mut handle,
+        Msg::InsertTrack {
+            slot: u32::MAX - 1,
+            track: TrackRt::new(),
+        },
+    );
+    send(
+        &mut handle,
+        Msg::InsertDevice {
+            slot: u32::MAX - 1,
+            device: device("delay"),
+        },
+    );
+    send(
+        &mut handle,
+        Msg::SetChain {
+            track: 999,
+            chain: Box::new([1, 2]),
+        },
+    );
+    send(
+        &mut handle,
+        Msg::SetParam {
+            device: 99999,
+            param: 0,
+            value: 1.0,
+        },
+    );
+    send(
+        &mut handle,
+        Msg::Live {
+            track: 999,
+            event: EventKind::AllNotesOff,
+        },
+    );
+    send(&mut handle, Msg::Stop);
+    send(&mut handle, Msg::SetSchedule(Box::default()));
+    assert_eq!(run(&mut engine, 20, 64, 0), 0, "removing");
+
+    // A garbage queue nobody empties: the engine must leak, not free.
+    for _ in 0..20000 {
+        if handle
+            .try_send(Msg::SetAutomation {
+                track: MASTER,
+                automation: Box::default(),
+            })
+            .is_err()
+        {
+            assert_eq!(run(&mut engine, 1, 16, 0), 0, "full garbage queue");
+        }
+    }
+    assert_eq!(run(&mut engine, 1, 16, 0), 0, "full garbage queue");
+    assert!(
+        handle.shared.leaked() > 0,
+        "the queue should have overflowed"
+    );
+    handle.collect_garbage();
+
+    the_sampler_never_allocates();
+}
+
+/// The sampler plays a kit, is handed new kits while it plays, and gives the
+/// old ones back, all without allocating on the audio thread. Run from the
+/// test above, so that the counter is not shared with it.
+fn the_sampler_never_allocates() {
+    use daw_engine::{Event, EventBuf, Io, ProcessCtx};
+    let dir = std::env::temp_dir().join(format!("daw-noalloc-sampler-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("hit.wav");
+    let spec = hound::WavSpec {
+        channels: 2,
+        sample_rate: 44100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut w = hound::WavWriter::create(&file, spec).unwrap();
+    for i in 0..8000 {
+        w.write_sample(((i as f32 * 0.07).sin() * 8000.0) as i16)
+            .unwrap();
+        w.write_sample(((i as f32 * 0.05).sin() * 8000.0) as i16)
+            .unwrap();
+    }
+    w.finalize().unwrap();
+    let mut kit = String::from("sampler 1\n");
+    for note in 30..90 {
+        kit.push_str(&format!(
+            "{note} -3 0.3 {} {} {}\n",
+            note % 5,
+            note % 3,
+            file.display()
+        ));
+    }
+    let instance = Registry::with_builtins()
+        .get("sampler")
+        .unwrap()
+        .create(SR as f32, MAX_BLOCK)
+        .unwrap();
+    let (mut device, mut control) = (instance.device, instance.controller.unwrap());
+    control.load_state(kit.as_bytes()).unwrap();
+    let ctx = ProcessCtx::at(SR as f32, 120.0, 4, 4, true);
+    let mut events = EventBuf::with_capacity(256);
+    let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+    let before = VIOLATIONS.load(Ordering::Relaxed);
+    for block in 0..400 {
+        if block % 50 == 25 {
+            // A new kit while notes ring: built here, taken there.
+            control.load_state(kit.as_bytes()).unwrap();
+            control.idle();
+        }
+        events.clear();
+        for i in 0..40u32 {
+            events.push(Event {
+                frame: i * 12,
+                kind: EventKind::NoteOn {
+                    key: 30 + ((block as u32 * 7 + i) % 62) as u8,
+                    vel: 0.8,
+                    ch: 0,
+                },
+            });
+        }
+        AUDIO.with(|a| a.set(true));
+        device.set_param(0, -6.0);
+        device.process(
+            &ctx,
+            &mut Io {
+                left: &mut left,
+                right: &mut right,
+                events: &mut events,
+            },
+        );
+        AUDIO.with(|a| a.set(false));
+    }
+    assert_eq!(
+        VIOLATIONS.load(Ordering::Relaxed) - before,
+        0,
+        "the sampler"
+    );
+    assert!(left.iter().any(|s| *s != 0.0), "and it played");
+}
+
+/// Every built-in effect, with each of its parameters moved to the ends of
+/// its range while it plays, and its face asked for its readings meanwhile.
+#[test]
+fn built_in_effects_do_not_allocate() {
+    use daw_engine::{EventBuf, Io, ProcessCtx};
+    let registry = Registry::with_builtins();
+    let ctx = ProcessCtx::at(SR as f32, 120.0, 4, 4, true);
+    for factory in registry.iter() {
+        let info = factory.info().clone();
+        if info.category != "effect" {
+            continue;
+        }
+        let instance = factory.create(SR as f32, MAX_BLOCK).unwrap();
+        let mut device = instance.device;
+        let mut events = EventBuf::with_capacity(16);
+        let mut left: Vec<f32> = (0..512).map(|i| (i as f32 * 0.03).sin()).collect();
+        let mut right = left.clone();
+        let before = HERE.with(|h| h.get());
+        for block in 0..(info.params.len() * 4 + 40) {
+            let which = block / 4;
+            AUDIO.with(|a| a.set(true));
+            if let Some(p) = info.params.get(which % info.params.len().max(1)) {
+                let value = if block % 2 == 0 { p.max } else { p.min };
+                device.set_param((which % info.params.len()) as u32, value);
+            }
+            for (i, (l, r)) in left.iter_mut().zip(right.iter_mut()).enumerate() {
+                let x = ((block * 512 + i) as f32 * 0.031).sin() * 0.8;
+                *l = x;
+                *r = -x;
+            }
+            device.process(
+                &ctx,
+                &mut Io {
+                    left: &mut left,
+                    right: &mut right,
+                    events: &mut events,
+                },
+            );
+            AUDIO.with(|a| a.set(false));
+        }
+        assert_eq!(
+            HERE.with(|h| h.get()) - before,
+            0,
+            "{} allocates while processing",
+            info.kind
+        );
+    }
+}

@@ -1,0 +1,1078 @@
+//! The project: plain data, cheap to clone.
+//!
+//! Tracks, devices and clips sit behind `Arc`, and edits go through
+//! `Arc::make_mut`. A clone of a [`Project`] therefore shares everything that
+//! did not change, which is what makes snapshot undo and pointer-comparing
+//! diffs cheap.
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use daw_engine::{Ctl, EventKind, NoteCtl, SigPoint, TempoMap, TempoPoint};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+pub type Id = u64;
+
+/// The master track's id in every project.
+pub const MASTER_ID: Id = 0;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Project {
+    pub name: String,
+    /// Beats (quarter notes) per minute at the start of the song.
+    pub tempo: f64,
+    /// The time signature at the start of the song.
+    pub sig_num: u32,
+    pub sig_den: u32,
+    /// The tempo ramps from the start to the first of `tempo_changes`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tempo_ramp: bool,
+    /// Where the tempo changes after the start, in order. A song with one
+    /// tempo and one signature has none of these, and its file is what it
+    /// was before there were tempo maps.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tempo_changes: Vec<TempoChange>,
+    /// Where the time signature changes after the start, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sig_changes: Vec<SigChange>,
+    /// The fields above as a map to convert with, rebuilt by
+    /// [`refresh_tempo`](Project::refresh_tempo) and
+    /// [`set_tempo_map`](Project::set_tempo_map) whenever they change.
+    #[serde(skip)]
+    map: Arc<TempoMap>,
+    pub master: Arc<Track>,
+    pub tracks: Vec<Arc<Track>>,
+    /// Free-form data for extensions, saved with the project.
+    #[serde(default)]
+    pub meta: Map<String, Value>,
+}
+
+impl Default for Project {
+    fn default() -> Self {
+        Self {
+            name: "untitled".into(),
+            tempo: 120.0,
+            sig_num: 4,
+            sig_den: 4,
+            tempo_ramp: false,
+            tempo_changes: Vec::new(),
+            sig_changes: Vec::new(),
+            map: Arc::new(TempoMap::default()),
+            master: Arc::new(Track {
+                name: "Master".into(),
+                ..Track::new(MASTER_ID)
+            }),
+            tracks: Vec::new(),
+            meta: Map::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Track {
+    pub id: Id,
+    pub name: String,
+    /// Fader level in dB.
+    pub volume: f64,
+    /// -1 (left) to 1 (right).
+    pub pan: f64,
+    pub mute: bool,
+    pub solo: bool,
+    pub armed: bool,
+    /// The track this one feeds, or `None` for the master track.
+    pub output: Option<Id>,
+    pub sends: Vec<Send>,
+    pub devices: Vec<Arc<DeviceInst>>,
+    pub clips: Vec<Arc<Clip>>,
+    /// At most one lane per target.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lanes: Vec<Arc<Lane>>,
+    pub color: Option<String>,
+    #[serde(default)]
+    pub meta: Map<String, Value>,
+    /// Audio input channels, counting from 1: `"1"` for a mono input, `"1/2"`
+    /// for a stereo pair, `None` for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    /// Hear the input even when the track is not armed.
+    #[serde(default)]
+    pub monitor: bool,
+    /// Which MIDI input the track plays and records when it is armed and
+    /// has no audio input; `None` for every port and channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub midi_input: Option<MidiInput>,
+    /// How tall the track is drawn, as a share of the height all tracks
+    /// have at the frontend's zoom; `None` for that height.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+    /// What moving a fader, the pan or a parameter of the track does to
+    /// its automation while the song plays, and whether its lanes play.
+    #[serde(default, skip_serializing_if = "AutoMode::is_read")]
+    pub automation: AutoMode,
+}
+
+/// How a track treats its automation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AutoMode {
+    /// The lanes play; moving a control writes nothing.
+    #[default]
+    Read,
+    /// A control writes while it is held or being moved, and the lane
+    /// takes over again when it is let go.
+    Touch,
+    /// A control writes from when it is first moved until the song stops.
+    Latch,
+    /// Everything the track's lanes move is written over from where the
+    /// song starts playing until it stops, moved or not.
+    Write,
+    /// The lanes are kept but do not play.
+    Off,
+}
+
+impl AutoMode {
+    fn is_read(&self) -> bool {
+        *self == AutoMode::Read
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AutoMode::Read => "read",
+            AutoMode::Touch => "touch",
+            AutoMode::Latch => "latch",
+            AutoMode::Write => "write",
+            AutoMode::Off => "off",
+        }
+    }
+
+    /// Moving a control in this mode writes into its lane.
+    pub fn writes(self) -> bool {
+        matches!(self, AutoMode::Touch | AutoMode::Latch | AutoMode::Write)
+    }
+}
+
+/// MIDI from one port, by its name, and optionally one channel of it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct MidiInput {
+    /// The port's name as the system gives it (`daw.midi.inputs()`), or
+    /// `None` for every port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<String>,
+    /// From 1 to 16, or `None` for every channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<u8>,
+}
+
+impl Track {
+    pub fn new(id: Id) -> Self {
+        Self {
+            id,
+            name: String::new(),
+            volume: 0.0,
+            pan: 0.0,
+            mute: false,
+            solo: false,
+            armed: false,
+            output: None,
+            sends: Vec::new(),
+            devices: Vec::new(),
+            clips: Vec::new(),
+            lanes: Vec::new(),
+            color: None,
+            meta: Map::new(),
+            input: None,
+            monitor: false,
+            midi_input: None,
+            height: None,
+            automation: AutoMode::Read,
+        }
+    }
+
+    /// The first input channel, counting from 0, and how many channels.
+    pub fn input_channels(&self) -> Option<(usize, usize)> {
+        parse_input(self.input.as_deref()?)
+    }
+}
+
+/// Read an input as `"3"` or `"3/4"` into its first channel, counting from 0,
+/// and its number of channels.
+pub fn parse_input(spec: &str) -> Option<(usize, usize)> {
+    let mut parts = spec.trim().split('/');
+    let first: usize = parts.next()?.trim().parse().ok().filter(|n| *n >= 1)?;
+    match (parts.next(), parts.next()) {
+        (None, _) => Some((first - 1, 1)),
+        (Some(second), None) if second.trim().parse::<usize>().ok()? == first + 1 => {
+            Some((first - 1, 2))
+        }
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Send {
+    pub target: Id,
+    /// Send level in dB.
+    pub level: f64,
+    /// Taken after the track's devices but before its fader, pan and mute,
+    /// so that the send does not follow the fader.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pre: bool,
+}
+
+/// A tempo change along the song.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TempoChange {
+    pub beat: f64,
+    pub bpm: f64,
+    /// Ramp to the next change's tempo instead of holding this one.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ramp: bool,
+}
+
+/// A time signature starting a bar at a beat.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SigChange {
+    pub beat: f64,
+    pub num: u32,
+    pub den: u32,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn is_zero(value: &f64) -> bool {
+    *value == 0.0
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceInst {
+    pub id: Id,
+    /// Which device this is, as registered in the device registry.
+    pub kind: String,
+    pub bypass: bool,
+    pub params: BTreeMap<String, f64>,
+    /// A plugin's saved state, base64 encoded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub meta: Map<String, Value>,
+    /// Counts the presets loaded into the device. When it differs between
+    /// two versions of the project (a preset was loaded, or that was
+    /// undone), `state` is loaded into the running plugin.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub loaded: u32,
+    /// A plugin's name, kept so that it can be named where it is not
+    /// installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Not made at all: no process, no sound, passed over; its state and
+    /// parameters are kept as they are.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub offline: bool,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Clip {
+    pub id: Id,
+    pub name: String,
+    /// Position and length on the timeline, in beats.
+    pub start: f64,
+    pub length: f64,
+    pub muted: bool,
+    pub content: ClipContent,
+    /// Beats over which an audio clip fades in from its start and out to its
+    /// end. Two clips fade across each other where one's fade out overlaps
+    /// the other's fade in.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fade_in: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fade_out: f64,
+    /// For an audio clip, what it keeps when the tempo before it changes;
+    /// `None` is [`Timebase::Time`]. MIDI clips follow beats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timebase: Option<Timebase>,
+    #[serde(default)]
+    pub meta: Map<String, Value>,
+}
+
+/// What an audio clip keeps when the tempo changes. Either way it keeps its
+/// length in seconds, so that a recording plays every sample at the time
+/// it was recorded at: its end beat follows from the tempo map.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Timebase {
+    /// Its start stays at the same time in seconds (REAPER's default for
+    /// audio items), moving in beats when the tempo before it changes.
+    #[default]
+    Time,
+    /// Its start stays on its beat.
+    Beats,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ClipContent {
+    Midi {
+        notes: Vec<Note>,
+        /// Controller, pitch wheel and pressure moves, in the order they happen.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        controls: Vec<Control>,
+    },
+    Audio {
+        file: PathBuf,
+        /// Seconds into the file where the clip starts playing.
+        offset: f64,
+        /// Clip gain in dB.
+        gain: f64,
+    },
+}
+
+impl ClipContent {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            ClipContent::Midi { .. } => "midi",
+            ClipContent::Audio { .. } => "audio",
+        }
+    }
+}
+
+/// A controller moving to a value at a point in a MIDI clip: a control
+/// change, the pitch wheel, pressure, a registered or assignable controller,
+/// or a program change. With `key` it belongs to the note on that key
+/// alone, as MIDI 2.0 has it: that note's own pitch bend, pressure or
+/// controller.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Control {
+    /// Beats from the start of the clip; below 0 it is hidden before the
+    /// clip's start and not played.
+    #[serde(default)]
+    pub start: f64,
+    #[serde(flatten)]
+    pub what: ControlKind,
+    /// 0 to 1, or -1 to 1 for pitch bend. Kept as a fraction, so nothing of
+    /// a 32-bit value is lost.
+    #[serde(default)]
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ControlKind {
+    /// A control change by number: 1 is the modulation wheel, 64 the
+    /// sustain pedal. With a key, the registered per-note controller of
+    /// that number.
+    Cc {
+        number: u8,
+    },
+    Bend,
+    Pressure,
+    /// A registered controller (RPN) by bank and index; per note, by index.
+    Registered {
+        #[serde(default)]
+        bank: u8,
+        index: u8,
+    },
+    /// An assignable controller (NRPN) by bank and index; per note, by index.
+    Assignable {
+        #[serde(default)]
+        bank: u8,
+        index: u8,
+    },
+    /// Choose a sound, with its bank (fourteen bits) if that is given.
+    Program {
+        program: u8,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bank: Option<u16>,
+    },
+}
+
+impl Control {
+    /// Why this cannot be played, if it cannot.
+    pub fn problem(&self) -> Option<&'static str> {
+        let range = match self.what {
+            ControlKind::Bend => -1.0..=1.0,
+            _ => 0.0..=1.0,
+        };
+        let seven = |n: u8| n < 128;
+        // A move before 0 lies before the clip's start, hidden there by a
+        // trim of the clip's start, and is not played.
+        if !self.start.is_finite() {
+            return Some("it needs a start that is a finite number");
+        }
+        if !range.contains(&self.value) {
+            return Some("its value is out of range: 0 to 1, or -1 to 1 for pitch bend");
+        }
+        if self.key.is_some_and(|key| !seven(key)) {
+            return Some("keys go up to 127");
+        }
+        match self.what {
+            ControlKind::Cc { number } if !seven(number) => Some("controller numbers go up to 127"),
+            ControlKind::Registered { bank, index } | ControlKind::Assignable { bank, index }
+                if self.key.is_none() && !(seven(bank) && seven(index)) =>
+            {
+                Some("a controller's bank and index go up to 127")
+            }
+            ControlKind::Program { program, bank }
+                if !seven(program) || bank.is_some_and(|b| b > 0x3fff) =>
+            {
+                Some("programs go up to 127 and banks to 16383")
+            }
+            ControlKind::Program { .. } if self.key.is_some() => {
+                Some("a program change belongs to a channel, not to a note")
+            }
+            _ => None,
+        }
+    }
+
+    /// The engine's event for this, on a channel.
+    pub fn event(&self, ch: u8) -> EventKind {
+        let value = self.value;
+        if let Some(key) = self.key {
+            let ctl = match self.what {
+                ControlKind::Bend => NoteCtl::Bend,
+                ControlKind::Pressure => NoteCtl::Pressure,
+                ControlKind::Cc { number } => NoteCtl::Registered(number),
+                ControlKind::Registered { index, .. } => NoteCtl::Registered(index),
+                ControlKind::Assignable { index, .. } => NoteCtl::Assignable(index),
+                ControlKind::Program { program, bank } => {
+                    return EventKind::Program { program, bank, ch };
+                }
+            };
+            return EventKind::NoteControl {
+                key,
+                ctl,
+                value,
+                ch,
+            };
+        }
+        let ctl = match self.what {
+            ControlKind::Cc { number } => Ctl::Cc(number),
+            ControlKind::Bend => Ctl::Bend,
+            ControlKind::Pressure => Ctl::Pressure,
+            ControlKind::Registered { bank, index } => Ctl::Registered(bank, index),
+            ControlKind::Assignable { bank, index } => Ctl::Assignable(bank, index),
+            ControlKind::Program { program, bank } => {
+                return EventKind::Program { program, bank, ch };
+            }
+        };
+        EventKind::Control { ctl, value, ch }
+    }
+
+    /// What an engine event is as a controller move at `start`: nothing for notes.
+    pub fn from_event(start: f64, kind: EventKind) -> Option<Self> {
+        let (what, value, key) = match kind {
+            EventKind::Control { ctl, value, .. } => (
+                match ctl {
+                    Ctl::Cc(number) => ControlKind::Cc { number },
+                    Ctl::Bend => ControlKind::Bend,
+                    Ctl::Pressure => ControlKind::Pressure,
+                    Ctl::Registered(bank, index) => ControlKind::Registered { bank, index },
+                    Ctl::Assignable(bank, index) => ControlKind::Assignable { bank, index },
+                },
+                value,
+                None,
+            ),
+            EventKind::NoteControl {
+                key, ctl, value, ..
+            } => (
+                match ctl {
+                    NoteCtl::Bend => ControlKind::Bend,
+                    NoteCtl::Pressure => ControlKind::Pressure,
+                    NoteCtl::Registered(index) => ControlKind::Registered { bank: 0, index },
+                    NoteCtl::Assignable(index) => ControlKind::Assignable { bank: 0, index },
+                },
+                value,
+                Some(key),
+            ),
+            EventKind::Program { program, bank, .. } => {
+                (ControlKind::Program { program, bank }, 0.0, None)
+            }
+            EventKind::NoteOn { .. } | EventKind::NoteOff { .. } | EventKind::AllNotesOff => {
+                return None;
+            }
+        };
+        Some(Self {
+            start,
+            what,
+            value,
+            key,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Note {
+    /// Beats from the start of the clip. A note before 0 (or from the clip's
+    /// length on) is hidden by a trim of the clip's edge: kept, but not
+    /// played until the edge is dragged out over it again.
+    pub start: f64,
+    pub length: f64,
+    /// MIDI note number, 60 is middle C.
+    pub pitch: u8,
+    /// 1 to 127.
+    #[serde(default = "default_velocity")]
+    pub velocity: u8,
+    /// Free-form data for extensions, such as a lyric. It travels with the
+    /// note through edits, unlike data kept beside the clip's note list.
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub meta: Map<String, Value>,
+}
+
+fn default_velocity() -> u8 {
+    100
+}
+
+/// Automation of one of a track's settings, or of a parameter of one of its devices.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Lane {
+    pub id: Id,
+    pub target: Target,
+    /// A lane that is off keeps its points but does not move its target.
+    pub enabled: bool,
+    /// `(beat, value)` in the target's own units, sorted by beat. Values are
+    /// joined by straight lines; before the first point and after the last
+    /// the nearest value holds.
+    pub points: Vec<(f64, f64)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Target {
+    /// The track's fader, in dB.
+    Volume,
+    /// The track's pan, -1 to 1.
+    Pan,
+    /// A parameter, by key, of a device on the same track.
+    Param { device: Id, param: String },
+}
+
+impl Target {
+    pub fn device(&self) -> Option<Id> {
+        match self {
+            Target::Param { device, .. } => Some(*device),
+            _ => None,
+        }
+    }
+}
+
+impl Project {
+    /// Every track including the master track, which comes last.
+    pub fn all_tracks(&self) -> impl Iterator<Item = &Arc<Track>> {
+        self.tracks.iter().chain(std::iter::once(&self.master))
+    }
+
+    pub fn track(&self, id: Id) -> Option<&Arc<Track>> {
+        self.all_tracks().find(|t| t.id == id)
+    }
+
+    pub fn track_mut(&mut self, id: Id) -> Option<&mut Track> {
+        let track = if id == MASTER_ID {
+            &mut self.master
+        } else {
+            self.tracks.iter_mut().find(|t| t.id == id)?
+        };
+        Some(Arc::make_mut(track))
+    }
+
+    /// The track that holds a device, and the device's position in its chain.
+    pub fn find_device(&self, id: Id) -> Option<(Id, usize)> {
+        self.all_tracks()
+            .find_map(|t| t.devices.iter().position(|d| d.id == id).map(|i| (t.id, i)))
+    }
+
+    /// The track that holds an automation lane, and the lane's index on it.
+    pub fn find_lane(&self, id: Id) -> Option<(Id, usize)> {
+        self.all_tracks()
+            .find_map(|t| t.lanes.iter().position(|l| l.id == id).map(|i| (t.id, i)))
+    }
+
+    pub fn lane(&self, id: Id) -> Option<&Arc<Lane>> {
+        let (track, index) = self.find_lane(id)?;
+        Some(&self.track(track)?.lanes[index])
+    }
+
+    pub fn lane_mut(&mut self, id: Id) -> Option<&mut Lane> {
+        let (track, index) = self.find_lane(id)?;
+        Some(Arc::make_mut(&mut self.track_mut(track)?.lanes[index]))
+    }
+
+    /// The track that holds a clip, and the clip's index on it.
+    pub fn find_clip(&self, id: Id) -> Option<(Id, usize)> {
+        self.all_tracks()
+            .find_map(|t| t.clips.iter().position(|c| c.id == id).map(|i| (t.id, i)))
+    }
+
+    pub fn device(&self, id: Id) -> Option<&Arc<DeviceInst>> {
+        let (track, index) = self.find_device(id)?;
+        Some(&self.track(track)?.devices[index])
+    }
+
+    pub fn clip(&self, id: Id) -> Option<&Arc<Clip>> {
+        let (track, index) = self.find_clip(id)?;
+        Some(&self.track(track)?.clips[index])
+    }
+
+    pub fn device_mut(&mut self, id: Id) -> Option<&mut DeviceInst> {
+        let (track, index) = self.find_device(id)?;
+        Some(Arc::make_mut(&mut self.track_mut(track)?.devices[index]))
+    }
+
+    pub fn clip_mut(&mut self, id: Id) -> Option<&mut Clip> {
+        let (track, index) = self.find_clip(id)?;
+        Some(Arc::make_mut(&mut self.track_mut(track)?.clips[index]))
+    }
+
+    /// Whether routing `from` into `to` would make audio flow in a circle.
+    /// Audio flows on from a track through its output and its sends alike.
+    pub fn would_cycle(&self, from: Id, to: Id) -> bool {
+        let tracks: std::collections::HashMap<Id, &Track> =
+            self.tracks.iter().map(|t| (t.id, &**t)).collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![to];
+        while let Some(id) = stack.pop() {
+            if id == from {
+                return true;
+            }
+            if id == MASTER_ID || !seen.insert(id) {
+                continue;
+            }
+            if let Some(t) = tracks.get(&id) {
+                stack.extend(t.output);
+                stack.extend(t.sends.iter().map(|s| s.target));
+            }
+        }
+        false
+    }
+
+    /// The largest id in use.
+    pub fn max_id(&self) -> Id {
+        self.all_tracks()
+            .flat_map(|t| {
+                std::iter::once(t.id)
+                    .chain(t.devices.iter().map(|d| d.id))
+                    .chain(t.clips.iter().map(|c| c.id))
+                    .chain(t.lanes.iter().map(|l| l.id))
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The tempo map, for converting between beats, seconds and bars.
+    pub fn tempo_map(&self) -> &Arc<TempoMap> {
+        &self.map
+    }
+
+    /// Every tempo point, the start's first.
+    pub fn tempo_points(&self) -> Vec<TempoPoint> {
+        let first = TempoPoint {
+            beat: 0.0,
+            bpm: self.tempo,
+            ramp: self.tempo_ramp,
+        };
+        std::iter::once(first)
+            .chain(self.tempo_changes.iter().map(|c| TempoPoint {
+                beat: c.beat,
+                bpm: c.bpm,
+                ramp: c.ramp,
+            }))
+            .collect()
+    }
+
+    /// Every signature point, the start's first.
+    pub fn sig_points(&self) -> Vec<SigPoint> {
+        let first = SigPoint {
+            beat: 0.0,
+            num: self.sig_num,
+            den: self.sig_den,
+        };
+        std::iter::once(first)
+            .chain(self.sig_changes.iter().map(|c| SigPoint {
+                beat: c.beat,
+                num: c.num,
+                den: c.den,
+            }))
+            .collect()
+    }
+
+    /// Build the map again from the tempo and signature fields, after they
+    /// were set or read from a file, and tidy the fields as the map has them.
+    pub fn refresh_tempo(&mut self) {
+        let map = TempoMap::new(&self.tempo_points(), &self.sig_points());
+        self.set_tempo_map(map);
+    }
+
+    /// Take the tempo and signature points of `map`.
+    pub fn set_tempo_map(&mut self, map: TempoMap) {
+        let mut tempos = map.tempos();
+        let first = tempos.next().expect("a map has a first tempo");
+        self.tempo = first.bpm;
+        self.tempo_ramp = first.ramp;
+        self.tempo_changes = tempos
+            .map(|p| TempoChange {
+                beat: p.beat,
+                bpm: p.bpm,
+                ramp: p.ramp,
+            })
+            .collect();
+        let mut sigs = map.signatures();
+        let first = sigs.next().expect("a map has a first signature");
+        (self.sig_num, self.sig_den) = (first.num, first.den);
+        self.sig_changes = sigs
+            .map(|p| SigChange {
+                beat: p.beat,
+                num: p.num,
+                den: p.den,
+            })
+            .collect();
+        self.map = Arc::new(map);
+    }
+
+    /// Change to a new tempo map, moving audio clips as their timebase
+    /// says: each keeps its length (and fades) in seconds, and its start in
+    /// seconds or in beats. MIDI clips and automation stay on their beats.
+    pub fn retime(&mut self, map: TempoMap) {
+        let old = self.map.clone();
+        let tracks = std::iter::once(&mut self.master).chain(self.tracks.iter_mut());
+        for track in tracks {
+            let audio = |c: &Arc<Clip>| matches!(c.content, ClipContent::Audio { .. });
+            if !track.clips.iter().any(audio) {
+                continue;
+            }
+            for clip in Arc::make_mut(track).clips.iter_mut().filter(|c| audio(c)) {
+                let s0 = old.seconds(clip.start);
+                let s1 = old.seconds(clip.start + clip.length);
+                let fade_in = old.seconds(clip.start + clip.fade_in) - s0;
+                let fade_out = s1 - old.seconds(clip.start + clip.length - clip.fade_out);
+                let start = match clip.timebase.unwrap_or_default() {
+                    Timebase::Time => map.beat(s0).max(0.0),
+                    Timebase::Beats => clip.start,
+                };
+                let n0 = map.seconds(start);
+                let end = map.beat(n0 + (s1 - s0));
+                let moved = (
+                    start,
+                    end - start,
+                    if clip.fade_in > 0.0 {
+                        map.beat(n0 + fade_in) - start
+                    } else {
+                        0.0
+                    },
+                    if clip.fade_out > 0.0 {
+                        end - map.beat(n0 + (s1 - s0) - fade_out)
+                    } else {
+                        0.0
+                    },
+                );
+                let same = |a: f64, b: f64| (a - b).abs() < 1e-12;
+                if !(same(moved.0, clip.start)
+                    && same(moved.1, clip.length)
+                    && same(moved.2, clip.fade_in)
+                    && same(moved.3, clip.fade_out))
+                {
+                    let c = Arc::make_mut(clip);
+                    (c.start, c.length, c.fade_in, c.fade_out) = moved;
+                }
+            }
+        }
+        self.set_tempo_map(map);
+    }
+
+    /// Whether the map was built from the fields as they are now.
+    pub fn tempo_is_current(&self) -> bool {
+        let m = &self.map;
+        m.tempos().eq(self.tempo_points()) && m.signatures().eq(self.sig_points())
+    }
+
+    /// Where the last clip ends, in beats.
+    pub fn end(&self) -> f64 {
+        self.all_tracks()
+            .flat_map(|t| t.clips.iter().map(|c| c.start + c.length))
+            .fold(0.0, f64::max)
+    }
+
+    /// Check what a project file holds against what the editing calls allow,
+    /// so that a damaged or hand-made file cannot load into a state the rest
+    /// of the program does not expect: a tempo of 0 (renders that never
+    /// end), two things with one id, routing loops, numbers out of range.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        use anyhow::bail;
+        let range = |what: &str, v: f64, lo: f64, hi: f64| -> anyhow::Result<()> {
+            if !(lo..=hi).contains(&v) {
+                bail!("{what} is {v}, which is outside {lo} to {hi}");
+            }
+            Ok(())
+        };
+        range("the tempo", self.tempo, 1.0, 999.0)?;
+        for c in &self.tempo_changes {
+            range("a tempo change's tempo", c.bpm, 1.0, 999.0)?;
+            range("a tempo change's beat", c.beat, 0.0, 1e9)?;
+        }
+        for c in &self.sig_changes {
+            range("a signature change's beat", c.beat, 0.0, 1e9)?;
+            range("a signature's numerator", c.num as f64, 1.0, 64.0)?;
+            range("a signature's denominator", c.den as f64, 1.0, 64.0)?;
+        }
+        range(
+            "the time signature's numerator",
+            self.sig_num as f64,
+            1.0,
+            64.0,
+        )?;
+        range(
+            "the time signature's denominator",
+            self.sig_den as f64,
+            1.0,
+            64.0,
+        )?;
+        if self.master.id != MASTER_ID
+            || self.master.output.is_some()
+            || !self.master.sends.is_empty()
+        {
+            bail!("the master track must have id {MASTER_ID} and no output or sends");
+        }
+        let mut ids = std::collections::HashSet::new();
+        let mut unique = |id: Id| -> anyhow::Result<()> {
+            if !ids.insert(id) {
+                bail!("id {id} is used twice");
+            }
+            Ok(())
+        };
+        for t in self.all_tracks() {
+            unique(t.id)?;
+            for d in &t.devices {
+                unique(d.id)?;
+            }
+            for c in &t.clips {
+                unique(c.id)?;
+            }
+            for l in &t.lanes {
+                unique(l.id)?;
+            }
+        }
+        let tracks: std::collections::HashMap<Id, &Track> =
+            self.all_tracks().map(|t| (t.id, &**t)).collect();
+        for t in self.all_tracks() {
+            let name = format!("track {} ({})", t.id, t.name);
+            range(&format!("the volume of {name}"), t.volume, -120.0, 24.0)?;
+            range(&format!("the pan of {name}"), t.pan, -1.0, 1.0)?;
+            for target in t.output.iter().chain(t.sends.iter().map(|s| &s.target)) {
+                if *target == t.id || *target == MASTER_ID || !tracks.contains_key(target) {
+                    bail!("{name} is routed to track {target}, which it cannot be");
+                }
+            }
+            for s in &t.sends {
+                range(&format!("a send level of {name}"), s.level, -120.0, 24.0)?;
+            }
+            for d in &t.devices {
+                if let Some((key, v)) = d.params.iter().find(|(_, v)| !v.is_finite()) {
+                    bail!("parameter {key} of device {} is {v}", d.id);
+                }
+            }
+            for c in &t.clips {
+                if !c.start.is_finite() || c.start < 0.0 || !c.length.is_finite() || c.length <= 0.0
+                {
+                    bail!(
+                        "clip {} starts at {} and is {} long: it needs a start of at least 0 and a length above 0",
+                        c.id,
+                        c.start,
+                        c.length
+                    );
+                }
+                match &c.content {
+                    ClipContent::Midi { notes, controls } => {
+                        if let Some((control, problem)) = controls
+                            .iter()
+                            .find_map(|c| c.problem().map(|problem| (c, problem)))
+                        {
+                            bail!(
+                                "clip {} holds a controller move {control:?}: {problem}",
+                                c.id
+                            );
+                        }
+                        if let Some(n) = notes.iter().find(|n| {
+                            !n.start.is_finite()
+                                || !n.length.is_finite()
+                                || n.length <= 0.0
+                                || n.pitch > 127
+                                || n.velocity > 127
+                        }) {
+                            bail!("clip {} holds a note that cannot be played: {n:?}", c.id);
+                        }
+                    }
+                    ClipContent::Audio { offset, gain, .. } => {
+                        if !offset.is_finite() || *offset < 0.0 {
+                            bail!("audio clip {} has offset {offset}", c.id);
+                        }
+                        range(&format!("the gain of clip {}", c.id), *gain, -120.0, 24.0)?;
+                    }
+                }
+            }
+            for l in &t.lanes {
+                if l.points
+                    .iter()
+                    .any(|(b, v)| !b.is_finite() || !v.is_finite() || *b < 0.0)
+                {
+                    bail!(
+                        "automation lane {} has a point that is not a finite beat and value",
+                        l.id
+                    );
+                }
+                let limits = match &l.target {
+                    Target::Volume => Some((-120.0, 24.0)),
+                    Target::Pan => Some((-1.0, 1.0)),
+                    Target::Param { .. } => None,
+                };
+                if let Some((lo, hi)) = limits {
+                    for (_, v) in &l.points {
+                        range(&format!("a point of automation lane {}", l.id), *v, lo, hi)?;
+                    }
+                }
+                if let Target::Param { device, .. } = &l.target
+                    && !t.devices.iter().any(|d| d.id == *device)
+                {
+                    bail!(
+                        "automation lane {} is for device {device}, which is not on its track",
+                        l.id
+                    );
+                }
+            }
+        }
+        // Routing must not go round in a circle: a depth-first walk along
+        // outputs and sends that never comes back to a track on its own path.
+        let mut state: std::collections::HashMap<Id, u8> = std::collections::HashMap::new();
+        for start in &self.tracks {
+            if state.contains_key(&start.id) {
+                continue;
+            }
+            let mut stack: Vec<(Id, usize)> = vec![(start.id, 0)];
+            state.insert(start.id, 1);
+            while let Some(&mut (id, ref mut next)) = stack.last_mut() {
+                let t = tracks[&id];
+                let targets: Vec<Id> = t
+                    .output
+                    .iter()
+                    .copied()
+                    .chain(t.sends.iter().map(|s| s.target))
+                    .collect();
+                match targets.get(*next) {
+                    Some(&to) => {
+                        *next += 1;
+                        match state.get(&to) {
+                            Some(1) => bail!("track {} ({}) is routed in a loop", t.id, t.name),
+                            Some(_) => {}
+                            None => {
+                                state.insert(to, 1);
+                                stack.push((to, 0));
+                            }
+                        }
+                    }
+                    None => {
+                        state.insert(id, 2);
+                        stack.pop();
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A project as files were written before tracks had a height of their
+    /// own and before anything could lie hidden before a clip's start.
+    const OLD: &str = r#"{
+        "name": "old", "tempo": 120.0, "sig_num": 4, "sig_den": 4,
+        "master": { "id": 0, "name": "Master", "volume": 0.0, "pan": 0.0, "mute": false,
+            "solo": false, "armed": false, "output": null, "sends": [], "devices": [],
+            "clips": [], "color": null },
+        "tracks": [{ "id": 1, "name": "Keys", "volume": -3.0, "pan": 0.0, "mute": false,
+            "solo": false, "armed": false, "output": null, "sends": [], "devices": [],
+            "color": null,
+            "clips": [{ "id": 2, "name": "riff", "start": 4.0, "length": 4.0, "muted": false,
+                "content": { "kind": "midi",
+                    "notes": [{ "start": 0.0, "length": 1.0, "pitch": 60, "velocity": 90 }],
+                    "controls": [{ "start": 0.5, "type": "cc", "number": 1, "value": 0.5 }] } }] }]
+    }"#;
+
+    #[test]
+    fn an_old_project_loads_unchanged() {
+        let project: Project = serde_json::from_str(OLD).expect("an old project loads");
+        project.validate().expect("and is valid");
+        let track = &project.tracks[0];
+        assert_eq!(
+            track.height, None,
+            "a track is as tall as the zoom makes it"
+        );
+        let ClipContent::Midi { notes, controls } = &track.clips[0].content else {
+            panic!("a MIDI clip");
+        };
+        assert_eq!((notes.len(), controls.len()), (1, 1));
+        let saved = serde_json::to_string(&project).unwrap();
+        assert!(!saved.contains("height"), "and is saved as it was: {saved}");
+    }
+
+    #[test]
+    fn a_height_and_hidden_moves_are_kept() {
+        let mut project: Project = serde_json::from_str(OLD).unwrap();
+        let track = Arc::make_mut(&mut project.tracks[0]);
+        track.height = Some(2.5);
+        let clip = Arc::make_mut(&mut track.clips[0]);
+        if let ClipContent::Midi { notes, controls } = &mut clip.content {
+            notes[0].start = -1.0;
+            controls[0].start = -0.5;
+        }
+        project
+            .validate()
+            .expect("notes and moves before the start are allowed");
+        let again: Project =
+            serde_json::from_str(&serde_json::to_string(&project).unwrap()).unwrap();
+        assert_eq!(again.tracks[0].height, Some(2.5));
+    }
+}
+
+#[cfg(test)]
+mod tempo_tests {
+    use super::*;
+
+    #[test]
+    fn one_tempo_saves_as_before() {
+        let p = Project::default();
+        let text = serde_json::to_value(&p).unwrap();
+        let o = text.as_object().unwrap();
+        assert!(!o.contains_key("tempo_changes") && !o.contains_key("sig_changes"));
+        assert!(!o.contains_key("tempo_ramp") && !o.contains_key("map"));
+        assert_eq!(o["tempo"], 120.0);
+    }
+
+    #[test]
+    fn changes_load_into_the_map() {
+        let mut v = serde_json::to_value(Project::default()).unwrap();
+        v["tempo"] = 100.0.into();
+        v["tempo_ramp"] = true.into();
+        v["tempo_changes"] = serde_json::json!([{"beat": 8, "bpm": 50}, {"beat": 4, "bpm": 200}]);
+        v["sig_changes"] = serde_json::json!([{"beat": 16, "num": 6, "den": 8}]);
+        let mut p: Project = serde_json::from_value(v).unwrap();
+        p.validate().unwrap();
+        p.refresh_tempo();
+        assert!(p.tempo_is_current());
+        assert_eq!(p.tempo_changes[0].beat, 4.0, "kept in order");
+        let m = p.tempo_map();
+        // 100 to 200 over four beats, linear in time: 4 * 60 / 150 s.
+        assert!((m.seconds(4.0) - 1.6).abs() < 1e-12);
+        assert_eq!(m.signature(17.0), (6, 8));
+        let back = serde_json::to_value(&p).unwrap();
+        assert_eq!(back["tempo_changes"].as_array().unwrap().len(), 2);
+    }
+}

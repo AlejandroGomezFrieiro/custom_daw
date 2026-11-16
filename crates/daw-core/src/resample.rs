@@ -1,0 +1,197 @@
+//! Converting a sound file to the engine's sample rate, band-limited.
+//!
+//! A file at another rate than the engine's is converted once, when it is
+//! loaded for playing, with a windowed-sinc resampler (`rubato`): frequencies
+//! the new rate cannot hold are filtered out instead of folding back as
+//! aliases, and no images of the old rate are left above the audio band. The
+//! engine then plays the converted samples one for one.
+
+use daw_engine::{AudioData, Sink};
+use rubato::{
+    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
+};
+
+/// Frames handed to the resampler at a time.
+const CHUNK: usize = 4096;
+
+/// `data` at `rate`. The same length in seconds, give or take a frame.
+pub fn convert(data: &AudioData, rate: u32) -> anyhow::Result<AudioData> {
+    convert_into(data, rate, Sink::memory())
+}
+
+/// As [`convert`], with the result kept where `sink` keeps it: on the disk
+/// when it is large.
+pub fn convert_into(data: &AudioData, rate: u32, mut sink: Sink) -> anyhow::Result<AudioData> {
+    if data.sample_rate == rate {
+        return Ok(AudioData {
+            sample_rate: rate,
+            channels: data.channels.clone(),
+        });
+    }
+    let ratio = rate as f64 / data.sample_rate as f64;
+    let params = SincInterpolationParameters {
+        sinc_len: 256,
+        // The passband reaches 95% of the lower rate's Nyquist frequency:
+        // 20.9 kHz going to 44.1 kHz.
+        f_cutoff: 0.95,
+        interpolation: SincInterpolationType::Cubic,
+        oversampling_factor: 256,
+        window: WindowFunction::BlackmanHarris2,
+    };
+    let mut resampler = SincFixedIn::<f32>::new(ratio, 1.0, params, CHUNK, 2)
+        .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+    let frames = data.frames();
+    let wanted = (frames as f64 * ratio).round() as usize;
+    sink.reserve(wanted);
+    // No more than `wanted` frames go out, however many the filter makes.
+    let put = |sink: &mut Sink, buffer: &[Vec<f32>], made: usize| {
+        let take = made.min(wanted - sink.frames());
+        sink.push(&buffer[0][..take], Some(&buffer[1][..take]))
+    };
+    let mut buffer = resampler.output_buffer_allocate(true);
+    let mut at = 0;
+    while at + CHUNK <= frames {
+        let input = [
+            &data.channels[0][at..at + CHUNK],
+            &data.channels[1][at..at + CHUNK],
+        ];
+        let (_, made) = resampler
+            .process_into_buffer(&input, &mut buffer, None)
+            .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+        put(&mut sink, &buffer, made)?;
+        at += CHUNK;
+    }
+    // The rest, then silence until what is still in the filter has come out.
+    let rest = [&data.channels[0][at..], &data.channels[1][at..]];
+    let (_, made) = resampler
+        .process_partial_into_buffer(Some(&rest), &mut buffer, None)
+        .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+    put(&mut sink, &buffer, made)?;
+    // The resampler lines its output up with its input itself: what comes
+    // out first is the first frame (the tests check a click's place).
+    while sink.frames() < wanted {
+        let (_, made) = resampler
+            .process_partial_into_buffer(None::<&[&[f32]]>, &mut buffer, None)
+            .map_err(|e| anyhow::anyhow!("converting the sample rate: {e}"))?;
+        if made == 0 {
+            break;
+        }
+        put(&mut sink, &buffer, made)?;
+    }
+    if sink.frames() < wanted {
+        let silence = vec![0.0; wanted - sink.frames()];
+        sink.push(&silence, Some(&silence))?;
+    }
+    sink.finish(rate)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::TAU;
+
+    fn tone(rate: u32, seconds: f64, freq: impl Fn(f64) -> f64) -> AudioData {
+        let n = (rate as f64 * seconds) as usize;
+        let mut phase = 0.0f64;
+        let mut s = Vec::with_capacity(n);
+        for i in 0..n {
+            let t = i as f64 / rate as f64;
+            s.push((phase.sin() * 0.5) as f32);
+            phase += TAU * freq(t) / rate as f64;
+        }
+        AudioData {
+            sample_rate: rate,
+            channels: [s.clone().into(), s.into()],
+        }
+    }
+
+    /// Level in dB relative to an amplitude of 0.5, of the middle of a signal
+    /// (away from the edges, where the filter starts and stops).
+    fn rms_db(s: &[f32]) -> f64 {
+        let mid = &s[s.len() / 10..s.len() * 9 / 10];
+        let power: f64 = mid.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / mid.len() as f64;
+        10.0 * (power / 0.125).log10()
+    }
+
+    /// Level of one frequency in a signal, by Goertzel, in dB relative to an
+    /// amplitude of 0.5.
+    fn level_at(s: &[f32], rate: u32, freq: f64) -> f64 {
+        let mid = &s[s.len() / 10..s.len() * 9 / 10];
+        let w = TAU * freq / rate as f64;
+        let (mut a, mut b) = (0.0f64, 0.0f64);
+        for (i, x) in mid.iter().enumerate() {
+            // A Hann window keeps the measurement to the frequency asked for.
+            let win = 0.5 - 0.5 * (TAU * i as f64 / mid.len() as f64).cos();
+            let y = *x as f64 * win + 2.0 * w.cos() * a - b;
+            b = a;
+            a = y;
+        }
+        let power = a * a + b * b - 2.0 * w.cos() * a * b;
+        let amplitude = 2.0 * power.sqrt() / (mid.len() as f64 * 0.5);
+        20.0 * (amplitude / 0.5).max(1e-12).log10()
+    }
+
+    #[test]
+    fn a_sweep_above_the_new_nyquist_frequency_leaves_no_aliases() {
+        // 96 kHz to 48 kHz: a sweep from 25 to 46 kHz has nothing the new
+        // rate can hold. Linear interpolation folds it back into the audio
+        // band at about -10 dB; here what is left is below -70 dB.
+        let sweep = tone(96_000, 2.0, |t| 25_000.0 + 21_000.0 * t / 2.0);
+        let out = convert(&sweep, 48_000).unwrap();
+        assert_eq!(out.frames(), 96_000);
+        let level = rms_db(&out.channels[0]);
+        assert!(level < -70.0, "aliases at {level:.1} dB");
+    }
+
+    #[test]
+    fn a_tone_near_the_top_leaves_no_image_when_raising_the_rate() {
+        // 44.1 kHz to 48 kHz: a 20 kHz tone has an image at 24.1 kHz, which
+        // at 48 kHz folds to 23.9 kHz. It must be below -70 dB, and the tone
+        // itself within 0.1 dB.
+        let src = tone(44_100, 2.0, |_| 20_000.0);
+        let out = convert(&src, 48_000).unwrap();
+        assert_eq!(out.frames(), 96_000);
+        let image = level_at(&out.channels[0], 48_000, 23_900.0);
+        assert!(image < -70.0, "image at {image:.1} dB");
+        let kept = level_at(&out.channels[0], 48_000, 20_000.0);
+        assert!(kept.abs() < 0.1, "tone at {kept:.2} dB");
+    }
+
+    #[test]
+    fn a_sweep_in_the_audio_band_keeps_its_level_and_place() {
+        let sweep = tone(44_100, 2.0, |t| 100.0 + 9_900.0 * t / 2.0);
+        let out = convert(&sweep, 48_000).unwrap();
+        let level = rms_db(&out.channels[0]);
+        assert!(level.abs() < 0.05, "level {level:.3} dB");
+        // A click at a known place stays at that place in time.
+        let mut click = AudioData {
+            sample_rate: 44_100,
+            channels: [vec![0.0; 44_100].into(), vec![0.0; 44_100].into()],
+        };
+        click.channels[0][22_050] = 1.0;
+        let out = convert(&click, 48_000).unwrap();
+        let peak = out.channels[0]
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+            .unwrap()
+            .0;
+        assert!((peak as i64 - 24_000).abs() <= 1, "the click is at {peak}");
+        let mut click = AudioData {
+            sample_rate: 96_000,
+            channels: [vec![0.0; 96_000].into(), vec![0.0; 96_000].into()],
+        };
+        click.channels[0][48_000] = 1.0;
+        let out = convert(&click, 48_000).unwrap();
+        let peak = out.channels[0]
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.abs().total_cmp(&b.1.abs()))
+            .unwrap()
+            .0;
+        assert!(
+            (peak as i64 - 24_000).abs() <= 1,
+            "going down, the click is at {peak}"
+        );
+    }
+}

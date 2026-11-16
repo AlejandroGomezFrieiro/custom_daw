@@ -1,0 +1,574 @@
+// The colours, the type and the small parts the window is built from:
+// buttons, icons, sliders, knobs, faders and meters. Surfaces are neutral
+// greys; colour is kept for state (blue selection, amber playhead and loop,
+// green play, red record, orange mute, yellow solo) and for what belongs to
+// a track (its stripe, clips, notes and name plate).
+
+export global Theme {
+    out property <color> bg: #101216;
+    out property <color> dark: #0b0c0f;
+    out property <color> panel: #26272b;
+    out property <color> raised: #1f232b;
+    out property <color> high: #2a2f3a;
+    out property <color> line: #232730;
+    out property <color> line-hi: #343a47;
+    out property <color> faint: #4a5060;
+    out property <color> dim: #7a8194;
+    out property <color> text: #e4e5e8;
+    out property <color> bright: #f4f6fa;
+    out property <color> accent: #ffb86b;
+    out property <color> cyan: #7fd1c7;
+    out property <color> blue: #6cb6ff;
+    out property <color> green: #9ad36a;
+    out property <color> yellow: #f2c94c;
+    out property <color> orange: #ff9b5e;
+    out property <color> red: #ff6b6b;
+    out property <color> magenta: #b79cf2;
+
+    // The palette the window is moving to: surfaces from the back forward,
+    // text by weight, and one colour per state. Track hues appear only on
+    // what belongs to a track; these never take a track's hue.
+    out property <color> surface: #18191c;
+    out property <color> lane: #1f2024;
+    out property <color> lane-alt: #1c1d20;
+    out property <color> panel-sel: #313238;
+    out property <color> well: #121315;
+    out property <color> divider: #0f1012;
+    out property <color> control: #34363c;
+    out property <color> control-hover: #3e4047;
+    out property <color> control-press: #2a2b30;
+    out property <color> line-sub: #25262a;
+    out property <color> line-beat: #2c2d32;
+    out property <color> line-bar: #3b3d44;
+    out property <color> text-2: #a1a3ab;
+    out property <color> text-3: #6b6e77;
+    out property <color> text-off: #4a4c53;
+    out property <color> on-hue: #121316;
+    out property <color> select: #46b9fe;
+    out property <color> select-fill: #46b9fe26;
+    out property <color> play: #fec13a;
+    out property <color> play-on: #4ade80;
+    out property <color> rec: #ef4444;
+    out property <color> mute: #f08a3c;
+    out property <color> solo: #f2d24b;
+    out property <color> warn: #f2c94c;
+    out property <color> error: #ff5a4f;
+    out property <color> meter-low: #35c46a;
+    out property <color> meter-mid: #a6d84a;
+    out property <color> meter-high: #f2d24b;
+    out property <color> meter-hot: #f59e3b;
+    out property <color> meter-clip: #ff3b30;
+    out property <color> meter-well: #0e0f11;
+    // Raised parts: device cards and menus, the caps of sliders and faders.
+    out property <color> card: #2b2c31;
+    out property <color> card-line: #3d3f46;
+    out property <color> thumb: #c9cbd1;
+    out property <color> thumb-low: #a9abb2;
+    out property <color> hover-face: #ffffff12;
+    out property <color> press-face: #00000033;
+
+    // Type: Inter for words, JetBrains Mono for numbers that change. Both
+    // are built into the program (fonts/), so the window looks the same on
+    // any machine.
+    out property <string> mono: "JetBrains Mono";
+    out property <length> t-micro: 9px;
+    out property <length> t-small: 11px;
+    out property <length> t-base: 12px;
+    out property <length> t-title: 13px;
+    out property <length> t-clock: 18px;
+
+    // Where a level in dB sits along a meter, 0 to 1: -60 dB at the foot,
+    // +6 at the top, as the Rust side computes `meter`.
+    pure public function meter-pos(db: float) -> float {
+        clamp((db + 60) / 66, 0, 1)
+    }
+
+    // The colour of a mode of the keyboard, as in the terminal's status line.
+    pure public function mode-color(mode: string) -> color {
+        mode == "x" ? self.magenta : mode == "i" ? self.green : mode == "o" ? self.yellow : mode == "c" ? self.accent : self.blue
+    }
+}
+
+// Drawings for buttons, as paths in a 16 by 16 box.
+export global Icons {
+    out property <string> play: "M 4 2.5 L 14 8 L 4 13.5 Z";
+    out property <string> stop: "M 3.5 3.5 H 12.5 V 12.5 H 3.5 Z";
+    out property <string> record: "M 8 2.5 A 5.5 5.5 0 1 0 8 13.5 A 5.5 5.5 0 1 0 8 2.5 Z";
+    out property <string> start: "M 3 3 H 5 V 13 H 3 Z M 13.5 3 L 6 8 L 13.5 13 Z";
+    out property <string> loop: "M 3 6.5 H 10.5 V 4 L 14.5 7.5 L 10.5 11 V 8.5 H 5 V 10 H 3 Z M 3 11.5 H 9 V 13 H 3 Z";
+    out property <string> click: "M 5.2 14 L 7 2.5 H 9 L 10.8 14 Z M 7.6 9 L 12.5 3.2 L 13.3 3.9 L 8.6 9.6 Z";
+    out property <string> undo: "M 7 3 L 2 8 L 7 13 V 9.5 H 14 V 6.5 H 7 Z";
+    out property <string> redo: "M 9 3 L 14 8 L 9 13 V 9.5 H 2 V 6.5 H 9 Z";
+    out property <string> plus: "M 7 2.5 H 9 V 7 H 13.5 V 9 H 9 V 13.5 H 7 V 9 H 2.5 V 7 H 7 Z";
+    out property <string> minus: "M 2.5 7 H 13.5 V 9 H 2.5 Z";
+    out property <string> close: "M 3.3 4.7 L 4.7 3.3 L 8 6.6 L 11.3 3.3 L 12.7 4.7 L 9.4 8 L 12.7 11.3 L 11.3 12.7 L 8 9.4 L 4.7 12.7 L 3.3 11.3 L 6.6 8 Z";
+    out property <string> mixer: "M 3 2 H 5 V 14 H 3 Z M 7 2 H 9 V 14 H 7 Z M 11 2 H 13 V 14 H 11 Z M 2 9 H 6 V 12 H 2 Z M 6 4 H 10 V 7 H 6 Z M 10 8 H 14 V 11 H 10 Z";
+    out property <string> curve: "M 2 12 L 6 5 L 10 9 L 14 3 L 14 5.5 L 10 11.5 L 6 7.5 L 2 14.5 Z";
+    out property <string> up: "M 8 4 L 13 11 H 3 Z";
+    out property <string> down: "M 8 12 L 13 5 H 3 Z";
+    out property <string> window: "M 2 3 H 14 V 13 H 2 Z M 3.5 6 V 11.5 H 12.5 V 6 Z";
+
+    // Phosphor icons (MIT, see icons-LICENSE), on a 256 by 256 box: draw
+    // them with `box: 256`. Bold weight; the fill weight for play, record,
+    // stop, pause and skip-back.
+    out property <string> ph-arrow-clockwise: "M244,56v48a12,12,0,0,1-12,12H184a12,12,0,1,1,0-24H201.1l-19-17.38c-.13-.12-.26-.24-.38-.37A76,76,0,1,0,127,204h1a75.53,75.53,0,0,0,52.15-20.72,12,12,0,0,1,16.49,17.45A99.45,99.45,0,0,1,128,228h-1.37A100,100,0,1,1,198.51,57.06L220,76.72V56a12,12,0,0,1,24,0Z";
+    out property <string> ph-arrow-counter-clockwise: "M228,128a100,100,0,0,1-98.66,100H128a99.39,99.39,0,0,1-68.62-27.29,12,12,0,0,1,16.48-17.45,76,76,0,1,0-1.57-109c-.13.13-.25.25-.39.37L54.89,92H72a12,12,0,0,1,0,24H24a12,12,0,0,1-12-12V56a12,12,0,0,1,24,0V76.72L57.48,57.06A100,100,0,0,1,228,128Z";
+    out property <string> ph-arrows-in-line-horizontal: "M140,40V216a12,12,0,0,1-24,0V40a12,12,0,0,1,24,0ZM64.49,87.51a12,12,0,0,0-17,17L59,116H16a12,12,0,0,0,0,24H59L47.51,151.51a12,12,0,0,0,17,17l32-32a12,12,0,0,0,0-17ZM240,116H197l11.52-11.51a12,12,0,0,0-17-17l-32,32a12,12,0,0,0,0,17l32,32a12,12,0,0,0,17-17L197,140h43a12,12,0,0,0,0-24Z";
+    out property <string> ph-arrows-in-line-vertical: "M228,128a12,12,0,0,1-12,12H40a12,12,0,0,1,0-24H216A12,12,0,0,1,228,128ZM119.51,96.49a12,12,0,0,0,17,0l32-32a12,12,0,0,0-17-17L140,59V16a12,12,0,0,0-24,0V59L104.49,47.51a12,12,0,0,0-17,17Zm17,63a12,12,0,0,0-17,0l-32,32a12,12,0,0,0,17,17L116,197v43a12,12,0,0,0,24,0V197l11.51,11.52a12,12,0,0,0,17-17Z";
+    out property <string> ph-arrows-out-line-horizontal: "M140,40V216a12,12,0,0,1-24,0V40a12,12,0,0,1,24,0ZM88,116H45l11.52-11.51a12,12,0,0,0-17-17l-32,32a12,12,0,0,0,0,17l32,32a12,12,0,0,0,17-17L45,140H88a12,12,0,0,0,0-24Zm160.49,3.51-32-32a12,12,0,0,0-17,17L211,116H168a12,12,0,0,0,0,24h43l-11.52,11.51a12,12,0,0,0,17,17l32-32A12,12,0,0,0,248.49,119.51Z";
+    out property <string> ph-arrows-out-line-vertical: "M228,128a12,12,0,0,1-12,12H40a12,12,0,0,1,0-24H216A12,12,0,0,1,228,128ZM104.49,56.48,116,45V88a12,12,0,0,0,24,0V45l11.51,11.51a12,12,0,0,0,17-17l-32-32a12,12,0,0,0-17,0l-32,32a12,12,0,0,0,17,17Zm47,143L140,211V168a12,12,0,0,0-24,0v43l-11.51-11.52a12,12,0,0,0-17,17l32,32a12,12,0,0,0,17,0l32-32a12,12,0,0,0-17-17Z";
+    out property <string> ph-arrow-square-out: "M228,104a12,12,0,0,1-24,0V69l-59.51,59.51a12,12,0,0,1-17-17L187,52H152a12,12,0,0,1,0-24h64a12,12,0,0,1,12,12Zm-44,24a12,12,0,0,0-12,12v64H52V84h64a12,12,0,0,0,0-24H48A20,20,0,0,0,28,80V208a20,20,0,0,0,20,20H176a20,20,0,0,0,20-20V140A12,12,0,0,0,184,128Z";
+    out property <string> ph-caret-down: "M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z";
+    out property <string> ph-caret-right: "M184.49,136.49l-80,80a12,12,0,0,1-17-17L159,128,87.51,56.49a12,12,0,1,1,17-17l80,80A12,12,0,0,1,184.49,136.49Z";
+    out property <string> ph-caret-up: "M216.49,168.49a12,12,0,0,1-17,0L128,97,56.49,168.49a12,12,0,0,1-17-17l80-80a12,12,0,0,1,17,0l80,80A12,12,0,0,1,216.49,168.49Z";
+    out property <string> ph-chart-line: "M236,208a12,12,0,0,1-12,12H32a12,12,0,0,1-12-12V48a12,12,0,0,1,24,0v85.55L88.1,95a12,12,0,0,1,15.1-.57l56.22,42.16L216.1,87A12,12,0,1,1,231.9,105l-64,56a12,12,0,0,1-15.1.57L96.58,119.44,44,165.45V196H224A12,12,0,0,1,236,208Z";
+    out property <string> ph-circle: "M128,20A108,108,0,1,0,236,128,108.12,108.12,0,0,0,128,20Zm0,192a84,84,0,1,1,84-84A84.09,84.09,0,0,1,128,212Z";
+    out property <string> ph-cursor: "M224.15,179.17l-46.83-46.82,37.93-13.51.76-.3a20,20,0,0,0-1.76-37.27L54.16,29A20,20,0,0,0,29,54.16L81.27,214.24A20,20,0,0,0,118.54,216c.11-.25.21-.5.3-.76l13.51-37.92,46.83,46.82a20,20,0,0,0,28.28,0l16.69-16.68A20,20,0,0,0,224.15,179.17Zm-30.83,25.17-48.48-48.48A20,20,0,0,0,130.7,150a20.66,20.66,0,0,0-3.74.35A20,20,0,0,0,112.35,162c-.11.25-.21.5-.3.76L100.4,195.5,54.29,54.29l141.21,46.1-32.71,11.66c-.26.09-.51.19-.76.3a20,20,0,0,0-6.17,32.48h0l48.49,48.48Z";
+    out property <string> ph-dots-six-vertical: "M108,60A16,16,0,1,1,92,44,16,16,0,0,1,108,60Zm56,16a16,16,0,1,0-16-16A16,16,0,0,0,164,76ZM92,112a16,16,0,1,0,16,16A16,16,0,0,0,92,112Zm72,0a16,16,0,1,0,16,16A16,16,0,0,0,164,112ZM92,180a16,16,0,1,0,16,16A16,16,0,0,0,92,180Zm72,0a16,16,0,1,0,16,16A16,16,0,0,0,164,180Z";
+    out property <string> ph-dots-three: "M144,128a16,16,0,1,1-16-16A16,16,0,0,1,144,128ZM60,112a16,16,0,1,0,16,16A16,16,0,0,0,60,112Zm136,0a16,16,0,1,0,16,16A16,16,0,0,0,196,112Z";
+    out property <string> ph-eraser: "M216,204H141l86.84-86.84a28,28,0,0,0,0-39.6L186.43,36.19a28,28,0,0,0-39.6,0L28.19,154.82a28,28,0,0,0,0,39.6l30.06,30.07A12,12,0,0,0,66.74,228H216a12,12,0,0,0,0-24ZM163.8,53.16a4,4,0,0,1,5.66,0l41.38,41.38a4,4,0,0,1,0,5.65L160,151l-47-47ZM71.71,204,45.16,177.45a4,4,0,0,1,0-5.65L96,121l47,47-36,36Z";
+    out property <string> ph-faders: "M140,124v92a12,12,0,0,1-24,0V124a12,12,0,0,1,24,0Zm60,68a12,12,0,0,0-12,12v12a12,12,0,0,0,24,0V204A12,12,0,0,0,200,192Zm24-40H212V40a12,12,0,0,0-24,0V152H176a12,12,0,0,0,0,24h48a12,12,0,0,0,0-24ZM56,160a12,12,0,0,0-12,12v44a12,12,0,0,0,24,0V172A12,12,0,0,0,56,160Zm24-40H68V40a12,12,0,0,0-24,0v80H32a12,12,0,0,0,0,24H80a12,12,0,0,0,0-24Zm72-48H140V40a12,12,0,0,0-24,0V72H104a12,12,0,0,0,0,24h48a12,12,0,0,0,0-24Z";
+    out property <string> ph-floppy-disk: "M222.14,69.17,186.83,33.86A19.86,19.86,0,0,0,172.69,28H48A20,20,0,0,0,28,48V208a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V83.31A19.86,19.86,0,0,0,222.14,69.17ZM164,204H92V160h72Zm40,0H188V156a20,20,0,0,0-20-20H88a20,20,0,0,0-20,20v48H52V52H171l33,33ZM164,84a12,12,0,0,1-12,12H96a12,12,0,0,1,0-24h56A12,12,0,0,1,164,84Z";
+    out property <string> ph-folder-open: "M248.23,112.31A20,20,0,0,0,232,104H220V88a20,20,0,0,0-20-20H132L105.34,48a20.12,20.12,0,0,0-12-4H40A20,20,0,0,0,20,64V208a12,12,0,0,0,12,12H211.1a12,12,0,0,0,11.33-8l28.49-81.47.06-.17A20,20,0,0,0,248.23,112.31ZM92,68l28.8,21.6A12,12,0,0,0,128,92h68v12H69.77a20,20,0,0,0-18.94,13.58L44,137.15V68ZM202.59,196H48.89l23.72-68H226.37Z";
+    out property <string> ph-gear-six: "M128,76a52,52,0,1,0,52,52A52.06,52.06,0,0,0,128,76Zm0,80a28,28,0,1,1,28-28A28,28,0,0,1,128,156Zm113.86-49.57A12,12,0,0,0,236,98.34L208.21,82.49l-.11-31.31a12,12,0,0,0-4.25-9.12,116,116,0,0,0-38-21.41,12,12,0,0,0-9.68.89L128,37.27,99.83,21.53a12,12,0,0,0-9.7-.9,116.06,116.06,0,0,0-38,21.47,12,12,0,0,0-4.24,9.1l-.14,31.34L20,98.35a12,12,0,0,0-5.85,8.11,110.7,110.7,0,0,0,0,43.11A12,12,0,0,0,20,157.66l27.82,15.85.11,31.31a12,12,0,0,0,4.25,9.12,116,116,0,0,0,38,21.41,12,12,0,0,0,9.68-.89L128,218.73l28.14,15.74a12,12,0,0,0,9.7.9,116.06,116.06,0,0,0,38-21.47,12,12,0,0,0,4.24-9.1l.14-31.34,27.81-15.81a12,12,0,0,0,5.85-8.11A110.7,110.7,0,0,0,241.86,106.43Zm-22.63,33.18-26.88,15.28a11.94,11.94,0,0,0-4.55,4.59c-.54,1-1.11,1.93-1.7,2.88a12,12,0,0,0-1.83,6.31L184.13,199a91.83,91.83,0,0,1-21.07,11.87l-27.15-15.19a12,12,0,0,0-5.86-1.53h-.29c-1.14,0-2.3,0-3.44,0a12.08,12.08,0,0,0-6.14,1.51L93,210.82A92.27,92.27,0,0,1,71.88,199l-.11-30.24a12,12,0,0,0-1.83-6.32c-.58-.94-1.16-1.91-1.7-2.88A11.92,11.92,0,0,0,63.7,155L36.8,139.63a86.53,86.53,0,0,1,0-23.24l26.88-15.28a12,12,0,0,0,4.55-4.58c.54-1,1.11-1.94,1.7-2.89a12,12,0,0,0,1.83-6.31L71.87,57A91.83,91.83,0,0,1,92.94,45.17l27.15,15.19a11.92,11.92,0,0,0,6.15,1.52c1.14,0,2.3,0,3.44,0a12.08,12.08,0,0,0,6.14-1.51L163,45.18A92.27,92.27,0,0,1,184.12,57l.11,30.24a12,12,0,0,0,1.83,6.32c.58.94,1.16,1.91,1.7,2.88A11.92,11.92,0,0,0,192.3,101l26.9,15.33A86.53,86.53,0,0,1,219.23,139.61Z";
+    out property <string> ph-grid-four: "M200,36H56A20,20,0,0,0,36,56V200a20,20,0,0,0,20,20H200a20,20,0,0,0,20-20V56A20,20,0,0,0,200,36Zm-4,80H140V60h56ZM116,60v56H60V60ZM60,140h56v56H60Zm80,56V140h56v56Z";
+    out property <string> ph-keyboard: "M224,44H32A20,20,0,0,0,12,64V192a20,20,0,0,0,20,20H224a20,20,0,0,0,20-20V64A20,20,0,0,0,224,44Zm-4,144H36V68H220ZM52,128a12,12,0,0,1,12-12H192a12,12,0,0,1,0,24H64A12,12,0,0,1,52,128Zm0-36A12,12,0,0,1,64,80H192a12,12,0,0,1,0,24H64A12,12,0,0,1,52,92Zm0,72a12,12,0,0,1,12-12h8a12,12,0,0,1,0,24H64A12,12,0,0,1,52,164Zm108,0a12,12,0,0,1-12,12H108a12,12,0,0,1,0-24h40A12,12,0,0,1,160,164Zm44,0a12,12,0,0,1-12,12h-8a12,12,0,0,1,0-24h8A12,12,0,0,1,204,164Z";
+    out property <string> ph-magnet: "M209.84,47.44A91.42,91.42,0,0,0,144.62,20h-.35A91.44,91.44,0,0,0,79.15,47L17.76,109.17a20,20,0,0,0,.08,28.21L46.5,166a19.89,19.89,0,0,0,14.15,5.86h.11a19.86,19.86,0,0,0,14.2-6l60.87-62.39a12.07,12.07,0,0,1,16.77-.12,11.63,11.63,0,0,1,3.5,8.35,12.85,12.85,0,0,1-3.66,9.11L90.19,181a20,20,0,0,0-.21,28.5l28.66,28.66a20.08,20.08,0,0,0,28.15.14l61.76-60.44.09-.09C244.65,141.78,245.18,83.31,209.84,47.44ZM60.62,146.21l-23-23L55.81,104.8l22.88,22.88Zm72.2,72.18-23-23,18.61-18,22.88,22.87Zm58.89-57.62L168.48,183.5,145.7,160.73,169.21,138l.15-.14a37,37,0,0,0,10.74-26.37,35.44,35.44,0,0,0-10.85-25.41,36.2,36.2,0,0,0-50.44.48l-.1.11L95.46,110.49,72.68,87.72l23.5-23.8A67.55,67.55,0,0,1,144.27,44h.26a67.62,67.62,0,0,1,48.21,20.29C218.85,90.78,218.38,134.05,191.71,160.77Z";
+    out property <string> ph-magnifying-glass-minus: "M156,112a12,12,0,0,1-12,12H80a12,12,0,0,1,0-24h64A12,12,0,0,1,156,112Zm76.49,120.49a12,12,0,0,1-17,0L168,185a92.12,92.12,0,1,1,17-17l47.54,47.53A12,12,0,0,1,232.49,232.49ZM112,180a68,68,0,1,0-68-68A68.08,68.08,0,0,0,112,180Z";
+    out property <string> ph-magnifying-glass-plus: "M156,112a12,12,0,0,1-12,12H124v20a12,12,0,0,1-24,0V124H80a12,12,0,0,1,0-24h20V80a12,12,0,0,1,24,0v20h20A12,12,0,0,1,156,112Zm76.49,120.49a12,12,0,0,1-17,0L168,185a92.12,92.12,0,1,1,17-17l47.54,47.53A12,12,0,0,1,232.49,232.49ZM112,180a68,68,0,1,0-68-68A68.08,68.08,0,0,0,112,180Z";
+    out property <string> ph-metronome: "M219.05,201.94l-27.4-86.12,25.23-27.75a12,12,0,0,0-17.76-16.14L183.24,89.39l-15.1-47.45A19.93,19.93,0,0,0,149.08,28H106.91A19.93,19.93,0,0,0,87.85,41.94l-50.91,160A20,20,0,0,0,56,228H200a20,20,0,0,0,19.06-26.06ZM179.25,156H155.12L173,136.34ZM109.83,52h36.33l18.42,57.91L122.69,156H76.74ZM61.47,204l7.63-24H186.89l7.63,24Z";
+    out property <string> ph-microphone: "M128,180a52.06,52.06,0,0,0,52-52V64A52,52,0,0,0,76,64v64A52.06,52.06,0,0,0,128,180ZM100,64a28,28,0,0,1,56,0v64a28,28,0,0,1-56,0Zm40,155.22V240a12,12,0,0,1-24,0V219.22A92.14,92.14,0,0,1,36,128a12,12,0,0,1,24,0,68,68,0,0,0,136,0,12,12,0,0,1,24,0A92.14,92.14,0,0,1,140,219.22Z";
+    out property <string> ph-minus: "M228,128a12,12,0,0,1-12,12H40a12,12,0,0,1,0-24H216A12,12,0,0,1,228,128Z";
+    out property <string> ph-pause-fill: "M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z";
+    out property <string> ph-pause: "M200,28H160a20,20,0,0,0-20,20V208a20,20,0,0,0,20,20h40a20,20,0,0,0,20-20V48A20,20,0,0,0,200,28Zm-4,176H164V52h32ZM96,28H56A20,20,0,0,0,36,48V208a20,20,0,0,0,20,20H96a20,20,0,0,0,20-20V48A20,20,0,0,0,96,28ZM92,204H60V52H92Z";
+    out property <string> ph-pencil-simple: "M230.14,70.54,185.46,25.85a20,20,0,0,0-28.29,0L33.86,149.17A19.85,19.85,0,0,0,28,163.31V208a20,20,0,0,0,20,20H92.69a19.86,19.86,0,0,0,14.14-5.86L230.14,98.82a20,20,0,0,0,0-28.28ZM91,204H52V165l84-84,39,39ZM192,103,153,64l18.34-18.34,39,39Z";
+    out property <string> ph-piano-keys: "M208,28H48A20,20,0,0,0,28,48V208a20,20,0,0,0,20,20H208a20,20,0,0,0,20-20V48A20,20,0,0,0,208,28ZM92,132V52h24v80Zm52,24v48H112V156Zm20-24H140V52h24ZM52,52H68v92a12,12,0,0,0,12,12h8v48H52ZM204,204H168V156h8a12,12,0,0,0,12-12V52h16Z";
+    out property <string> ph-play-fill: "M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z";
+    out property <string> ph-plugs: "M137,168l11.52-11.51a12,12,0,0,0-17-17L120,151l-15-15,11.52-11.51a12,12,0,0,0-17-17L88,119,72.49,103.51a12,12,0,0,0-17,17L59,124,38.54,144.49a36,36,0,0,0,0,50.91l2.55,2.54L15.51,223.51a12,12,0,0,0,17,17l25.57-25.58,2.54,2.55a36.06,36.06,0,0,0,50.91,0L132,197l3.51,3.52a12,12,0,0,0,17-17ZM94.54,200.49a12,12,0,0,1-17,0L55.51,178.43a12,12,0,0,1,0-17L76,141l39,39Zm146-185a12,12,0,0,0-17,0L197.94,41.09l-2.54-2.55a36.05,36.05,0,0,0-50.91,0L124,59l-3.51-3.52a12,12,0,0,0-17,17l80,80a12,12,0,0,0,17-17L197,132l20.49-20.49a36,36,0,0,0,0-50.91l-2.55-2.54,25.58-25.57A12,12,0,0,0,240.49,15.51Zm-40,79L180,115,141,76l20.49-20.49a12,12,0,0,1,17,0l22.06,22.06a12,12,0,0,1,0,17Z";
+    out property <string> ph-plus: "M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z";
+    out property <string> ph-power: "M116,128V48a12,12,0,0,1,24,0v80a12,12,0,0,1-24,0Zm66.55-82a12,12,0,0,0-13.1,20.1C191.41,80.37,204,103,204,128a76,76,0,0,1-152,0c0-25,12.59-47.63,34.55-61.95A12,12,0,0,0,73.45,46C44.56,64.78,28,94.69,28,128a100,100,0,0,0,200,0C228,94.69,211.44,64.78,182.55,46Z";
+    out property <string> ph-record-fill: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm72-88a72,72,0,1,1-72-72A72.08,72.08,0,0,1,200,128Z";
+    out property <string> ph-repeat: "M20,128A76.08,76.08,0,0,1,96,52h99l-3.52-3.51a12,12,0,1,1,17-17l24,24a12,12,0,0,1,0,17l-24,24a12,12,0,0,1-17-17L195,76H96a52.06,52.06,0,0,0-52,52,12,12,0,0,1-24,0Zm204-12a12,12,0,0,0-12,12,52.06,52.06,0,0,1-52,52H61l3.52-3.51a12,12,0,1,0-17-17l-24,24a12,12,0,0,0,0,17l24,24a12,12,0,1,0,17-17L61,204h99a76.08,76.08,0,0,0,76-76A12,12,0,0,0,224,116Z";
+    out property <string> ph-scissors: "M238.78,183.79,98.28,87.65A40.18,40.18,0,0,0,100,76a40,40,0,1,0-15.29,31.45l30,20.56-30,20.56a40,40,0,1,0,3.57,59.74h0A39.73,39.73,0,0,0,100,180a40.18,40.18,0,0,0-1.72-11.66L136,142.54l89.22,61.06a12,12,0,0,0,13.56-19.81ZM71.31,191.33h0A16,16,0,1,1,76,180,16,16,0,0,1,71.31,191.33ZM48.69,87.3a16,16,0,1,1,22.62,0h0A16,16,0,0,1,48.69,87.3Zm112.82,23.24a12,12,0,0,1,3.13-16.68L225.22,52.4a12,12,0,0,1,13.56,19.81l-60.59,41.46a12,12,0,0,1-16.68-3.13Z";
+    out property <string> ph-skip-back-fill: "M208,47.88V208.12a16,16,0,0,1-24.43,13.43L64,146.77V216a8,8,0,0,1-16,0V40a8,8,0,0,1,16,0v69.23L183.57,34.45A15.95,15.95,0,0,1,208,47.88Z";
+    out property <string> ph-skip-back: "M201.75,30.52a20,20,0,0,0-20.3.53L68,102V40a12,12,0,0,0-24,0V216a12,12,0,0,0,24,0V154l113.45,71A20,20,0,0,0,212,208.12V47.88A19.86,19.86,0,0,0,201.75,30.52ZM188,200.73,71.7,128,188,55.27Z";
+    out property <string> ph-sliders-horizontal: "M40,92H70.06a36,36,0,0,0,67.88,0H216a12,12,0,0,0,0-24H137.94a36,36,0,0,0-67.88,0H40a12,12,0,0,0,0,24Zm64-24A12,12,0,1,1,92,80,12,12,0,0,1,104,68Zm112,96H201.94a36,36,0,0,0-67.88,0H40a12,12,0,0,0,0,24h94.06a36,36,0,0,0,67.88,0H216a12,12,0,0,0,0-24Zm-48,24a12,12,0,1,1,12-12A12,12,0,0,1,168,188Z";
+    out property <string> ph-speaker-high: "M157.27,21.22a12,12,0,0,0-12.64,1.31L75.88,76H32A20,20,0,0,0,12,96v64a20,20,0,0,0,20,20H75.88l68.75,53.47A12,12,0,0,0,164,224V32A12,12,0,0,0,157.27,21.22ZM36,100H68v56H36Zm104,99.46L92,162.13V93.87l48-37.33ZM212,128a44,44,0,0,1-11,29.11,12,12,0,1,1-18-15.88,20,20,0,0,0,0-26.43,12,12,0,0,1,18-15.86A43.94,43.94,0,0,1,212,128Zm40,0a83.87,83.87,0,0,1-21.39,56,12,12,0,0,1-17.89-16,60,60,0,0,0,0-80,12,12,0,1,1,17.88-16A83.87,83.87,0,0,1,252,128Z";
+    out property <string> ph-stop-fill: "M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z";
+    out property <string> ph-warning: "M240.26,186.1,152.81,34.23h0a28.74,28.74,0,0,0-49.62,0L15.74,186.1a27.45,27.45,0,0,0,0,27.71A28.31,28.31,0,0,0,40.55,228h174.9a28.31,28.31,0,0,0,24.79-14.19A27.45,27.45,0,0,0,240.26,186.1Zm-20.8,15.7a4.46,4.46,0,0,1-4,2.2H40.55a4.46,4.46,0,0,1-4-2.2,3.56,3.56,0,0,1,0-3.73L124,46.2a4.77,4.77,0,0,1,8,0l87.44,151.87A3.56,3.56,0,0,1,219.46,201.8ZM116,136V104a12,12,0,0,1,24,0v32a12,12,0,0,1-24,0Zm28,40a16,16,0,1,1-16-16A16,16,0,0,1,144,176Z";
+    out property <string> ph-waveform: "M60,96v64a12,12,0,0,1-24,0V96a12,12,0,0,1,24,0ZM88,20A12,12,0,0,0,76,32V224a12,12,0,0,0,24,0V32A12,12,0,0,0,88,20Zm40,32a12,12,0,0,0-12,12V192a12,12,0,0,0,24,0V64A12,12,0,0,0,128,52Zm40,32a12,12,0,0,0-12,12v64a12,12,0,0,0,24,0V96A12,12,0,0,0,168,84Zm40-16a12,12,0,0,0-12,12v96a12,12,0,0,0,24,0V80A12,12,0,0,0,208,68Z";
+    out property <string> ph-x: "M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z";
+}
+
+export component Icon inherits Rectangle {
+    in property <string> shape;
+    in property <color> ink: Theme.text;
+    // The side of the box `shape` is drawn in: 16 for the drawings above,
+    // 256 for Phosphor's.
+    in property <float> box: 16;
+    width: 16px;
+    height: 16px;
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: root.box;
+        viewbox-height: root.box;
+        commands: root.shape;
+        fill: root.ink;
+    }
+}
+
+// A button with a drawing, a word, or both. `on` lights it in `lit`.
+// A quiet button has no face until the pointer is on it, as the buttons of
+// a toolbar; the others have the face of a control.
+export component Button inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <float> icon-box: 16;
+    in property <string> tip;
+    in property <bool> on;
+    in property <color> lit: Theme.select;
+    in property <bool> quiet;   // no face until the pointer is on it
+    in property <bool> enabled: true;
+    in property <color> idle-ink: transparent;   // the drawing's colour while off, if not the usual
+    out property <bool> has-hover: touch.has-hover;
+    callback clicked();
+    height: 28px;
+    min-width: self.height;
+    horizontal-stretch: 0;
+    border-radius: self.height <= 22px ? 3px : 4px;
+    background: !root.enabled ? (root.quiet ? transparent : Theme.control-press)
+        : root.quiet ? (touch.pressed ? Theme.press-face : root.on ? root.lit.with-alpha(0.12) : touch.has-hover ? Theme.hover-face : transparent)
+        : touch.pressed ? Theme.control-press : root.on ? root.lit.with-alpha(0.2) : touch.has-hover ? Theme.control-hover : Theme.control;
+    animate background { duration: 80ms; }
+    HorizontalLayout {
+        padding-left: root.label == "" ? 0px : 8px;
+        padding-right: root.label == "" ? 0px : 10px;
+        spacing: 6px;
+        alignment: center;
+        if root.icon != "": VerticalLayout {
+            alignment: center;
+            Icon {
+                width: root.height <= 22px ? 14px : 16px;
+                height: self.width;
+                shape: root.icon;
+                box: root.icon-box;
+                ink: !root.enabled ? Theme.text-off : root.on ? root.lit : root.idle-ink.alpha > 0 ? (touch.has-hover ? root.idle-ink.brighter(0.25) : root.idle-ink) : touch.has-hover || !root.quiet ? Theme.text : Theme.text-2;
+            }
+        }
+        if root.label != "": Text {
+            text: root.label;
+            color: !root.enabled ? Theme.text-off : root.on && root.quiet ? root.lit : Theme.text;
+            font-size: Theme.t-base;
+            font-weight: 500;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// The small lettered switches of a track: mute, solo, arm. Off they are a
+// plain control with a dim letter; on, the state's colour with a dark one.
+export component Flag inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    in property <color> lit: Theme.select;
+    out property <bool> has-hover: touch.has-hover;
+    callback clicked();
+    // Pressed, and then the pointer held at `y` in the window: for a press
+    // swept across several.
+    callback pressed();
+    callback swept(length);
+    width: 20px;
+    height: 18px;
+    border-radius: 3px;
+    background: root.on ? (touch.has-hover ? root.lit.brighter(0.12) : root.lit) : touch.pressed ? Theme.control-press : touch.has-hover ? Theme.control-hover : Theme.control;
+    animate background { duration: 80ms; }
+    Text {
+        text: root.label;
+        color: root.on ? Theme.on-hue : touch.has-hover ? Theme.text : Theme.text-3;
+        font-weight: 600;
+        font-size: Theme.t-small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                root.pressed();
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.swept(self.absolute-position.y + self.mouse-y);
+            }
+        }
+    }
+}
+
+// A slider that only reports what the user does and never changes its own
+// value, so the value shown is always the one the kernel holds. Dragging
+// sets it, the wheel nudges it, a double click asks for its resting value.
+// Neutral: grey on a dark well, blue while it is being dragged.
+export component Slider inherits Rectangle {
+    in property <float> value;
+    in property <color> fill: Theme.text-3;
+    in property <bool> centred;   // filled from the middle, as a pan is
+    in property <bool> bar;       // a value bar: thicker, with no thumb
+    out property <bool> has-hover: touch.has-hover;
+    callback moved(float);
+    callback reset();
+    // Taken hold of (true) and let go (false), for automation that is
+    // written while a control is held.
+    callback held(bool);
+    height: 16px;
+    Rectangle {
+        x: root.bar ? 0px : 4px;
+        width: parent.width - 2 * self.x;
+        y: (parent.height - self.height) / 2;
+        height: root.bar ? 4px : 3px;
+        border-radius: root.bar ? 2px : 1.5px;
+        background: Theme.well;
+        Rectangle {
+            x: root.centred ? min(parent.width / 2, parent.width * clamp(root.value, 0, 1)) : 0;
+            width: root.centred ? abs(parent.width * clamp(root.value, 0, 1) - parent.width / 2) : parent.width * clamp(root.value, 0, 1);
+            border-radius: 1.5px;
+            background: touch.pressed ? Theme.select : touch.has-hover ? Theme.text-2 : root.fill;
+        }
+    }
+    // The thumb.
+    if !root.bar: Rectangle {
+        x: (parent.width - self.width) * clamp(root.value, 0, 1);
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 14px;
+        border-radius: 2px;
+        background: touch.pressed ? Theme.text : touch.has-hover ? #dcdee3 : Theme.thumb;
+        border-width: 1px;
+        border-color: #00000060;
+    }
+    touch := TouchArea {
+        // With Shift held the knob moves a tenth as far as the pointer,
+        // from where it was, and does not jump to the pointer.
+        property <bool> fine;
+        property <float> from;
+        property <length> from-x;
+        property <float> sent;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                self.fine = event.modifiers.shift;
+                self.from = root.value;
+                self.from-x = self.mouse-x;
+                self.sent = self.fine ? root.value : clamp((self.mouse-x - 4px) / (self.width - 8px), 0, 1);
+                root.held(true);
+                root.moved(self.sent);
+            }
+            if ((event.kind == PointerEventKind.up && event.button == PointerEventButton.left) || event.kind == PointerEventKind.cancel) {
+                root.held(false);
+            }
+            if (event.kind == PointerEventKind.move && self.pressed) {
+                if (event.modifiers.shift != self.fine) {
+                    self.fine = event.modifiers.shift;
+                    self.from = self.sent;
+                    self.from-x = self.mouse-x;
+                }
+                self.sent = self.fine ? clamp(self.from + (self.mouse-x - self.from-x) / (self.width - 8px) / 10, 0, 1)
+                    : clamp((self.mouse-x - 4px) / (self.width - 8px), 0, 1);
+                root.moved(self.sent);
+            }
+        }
+        double-clicked => {
+            root.reset();
+        }
+        scroll-event(event) => {
+            root.moved(clamp(root.value + (event.delta-y > 0 ? 0.02 : -0.02), 0, 1));
+            accept
+        }
+    }
+}
+
+// A small round knob, for a pan. Drag up and down to turn it, the wheel
+// nudges it, a double click asks for its resting value. Like the slider it
+// shows only the value it is given.
+export component Knob inherits Rectangle {
+    in property <float> value;    // 0 to 1, the middle at 0.5
+    out property <bool> has-hover: touch.has-hover;
+    callback moved(float);
+    callback reset();
+    callback held(bool);
+    width: 16px;
+    height: 16px;
+    property <angle> turn: (clamp(root.value, 0, 1) - 0.5) * 270deg;
+    property <length> r: min(self.width, self.height) / 2;
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.r * 2;
+        height: root.r * 2;
+        border-radius: root.r;
+        background: touch.pressed ? Theme.control-hover : touch.has-hover ? Theme.control-hover : Theme.control;
+        border-width: 1px;
+        border-color: Theme.divider;
+    }
+    // The pointer: a short line from near the middle to the rim.
+    for step in 4: Rectangle {
+        width: 2px;
+        height: 2px;
+        border-radius: 1px;
+        x: root.width / 2 + (root.r - 2.5px - step * 1.5px) * sin(root.turn) - 1px;
+        y: root.height / 2 - (root.r - 2.5px - step * 1.5px) * cos(root.turn) - 1px;
+        background: touch.pressed ? Theme.select : Theme.text;
+    }
+    touch := TouchArea {
+        // With Shift held it turns a tenth as fast.
+        property <float> start;
+        property <length> from-y;
+        property <bool> fine;
+        mouse-cursor: ns-resize;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                self.start = root.value;
+                self.from-y = self.mouse-y;
+                self.fine = event.modifiers.shift;
+                root.held(true);
+            }
+            if ((event.kind == PointerEventKind.up && event.button == PointerEventButton.left) || event.kind == PointerEventKind.cancel) {
+                root.held(false);
+            }
+            if (event.kind == PointerEventKind.move && self.pressed) {
+                if (event.modifiers.shift != self.fine) {
+                    self.start = clamp(self.start + (self.from-y - self.mouse-y) / (self.fine ? 1200px : 120px), 0, 1);
+                    self.from-y = self.mouse-y;
+                    self.fine = event.modifiers.shift;
+                }
+                root.moved(clamp(self.start + (self.from-y - self.mouse-y) / (self.fine ? 1200px : 120px), 0, 1));
+            }
+        }
+        double-clicked => {
+            root.reset();
+        }
+        scroll-event(event) => {
+            root.moved(clamp(root.value + (event.delta-y > 0 ? 0.02 : -0.02), 0, 1));
+            accept
+        }
+    }
+}
+
+// Where a fader's cap sits for a level in dB, 0 to 1 along its travel:
+// 0 dB at 72%, +6 at the top, -60 at the foot, the marks of its scale
+// spaced as a mixer's are.
+export global Taper {
+    pure public function pos(db: float) -> float {
+        clamp(db <= -36 ? (db + 60) / 24 * 0.14
+            : db <= -24 ? 0.14 + (db + 36) / 12 * 0.11
+            : db <= -12 ? 0.25 + (db + 24) / 12 * 0.17
+            : db <= -6 ? 0.42 + (db + 12) / 6 * 0.14
+            : db <= 0 ? 0.56 + (db + 6) / 6 * 0.16
+            : 0.72 + db / 6 * 0.28, 0, 1)
+    }
+    pure public function db(pos: float) -> float {
+        pos <= 0.14 ? pos / 0.14 * 24 - 60
+            : pos <= 0.25 ? (pos - 0.14) / 0.11 * 12 - 36
+            : pos <= 0.42 ? (pos - 0.25) / 0.17 * 12 - 24
+            : pos <= 0.56 ? (pos - 0.42) / 0.14 * 6 - 12
+            : pos <= 0.72 ? (pos - 0.56) / 0.16 * 6 - 6
+            : (pos - 0.72) / 0.28 * 6
+    }
+}
+
+// An upright fader with a cap, for a mixer strip. `value` is the volume as
+// the kernel's sliders take it, 0 to 1 over -60 to +6 dB; the cap moves
+// along the taper above.
+export component Fader inherits Rectangle {
+    in property <float> value;
+    in property <color> cap: Theme.thumb;
+    callback moved(float);
+    callback reset();
+    callback held(bool);
+    width: 24px;
+    property <float> at: Taper.pos(clamp(root.value, 0, 1) * 66 - 60);
+    property <length> travel: self.height - 36px;
+    pure function value-at(y: length) -> float {
+        (Taper.db(clamp(1 - (y - 18px) / root.travel, 0, 1)) + 60) / 66
+    }
+    // The slot.
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 16px;
+        width: 4px;
+        height: parent.height - 32px;
+        border-radius: 2px;
+        background: Theme.well;
+    }
+    // The cap: lighter at the top, with a dark line across its middle.
+    Rectangle {
+        x: 0;
+        y: root.travel * (1 - root.at);
+        width: parent.width;
+        height: 36px;
+        border-radius: 3px;
+        background: touch.pressed ? @linear-gradient(180deg, #e4e5e8 0%, #c9cbd1 100%) : touch.has-hover ? @linear-gradient(180deg, #d7d9de 0%, #b7b9c0 100%) : @linear-gradient(180deg, #c9cbd1 0%, #a9abb2 100%);
+        border-width: 1px;
+        border-color: #00000080;
+        Rectangle {
+            y: (parent.height - 2px) / 2;
+            x: 3px;
+            width: parent.width - 6px;
+            height: 2px;
+            background: #1b1c1f;
+        }
+    }
+    touch := TouchArea {
+        // With Shift held the cap moves a tenth as far as the pointer, from
+        // where it was, and does not jump to the pointer.
+        property <bool> fine;
+        property <float> from;
+        property <length> from-y;
+        property <float> sent;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                self.fine = event.modifiers.shift;
+                self.from = root.at;
+                self.from-y = self.mouse-y;
+                self.sent = self.fine ? root.at : clamp(1 - (self.mouse-y - 18px) / root.travel, 0, 1);
+                root.held(true);
+                root.moved((Taper.db(self.sent) + 60) / 66);
+            }
+            if ((event.kind == PointerEventKind.up && event.button == PointerEventButton.left) || event.kind == PointerEventKind.cancel) {
+                root.held(false);
+            }
+            if (event.kind == PointerEventKind.move && self.pressed) {
+                if (event.modifiers.shift != self.fine) {
+                    self.fine = event.modifiers.shift;
+                    self.from = self.sent;
+                    self.from-y = self.mouse-y;
+                }
+                self.sent = self.fine ? clamp(self.from - (self.mouse-y - self.from-y) / root.travel / 10, 0, 1)
+                    : clamp(1 - (self.mouse-y - 18px) / root.travel, 0, 1);
+                root.moved((Taper.db(self.sent) + 60) / 66);
+            }
+        }
+        double-clicked => {
+            root.reset();
+        }
+        scroll-event(event) => {
+            root.moved((Taper.db(clamp(root.at + (event.delta-y > 0 ? 0.015 : -0.015), 0, 1)) + 60) / 66);
+            accept
+        }
+    }
+}
+
+// A level meter. Its colour is by position, not by level: green to
+// -18 dBFS, then yellow-green, yellow, orange, and red from 0 dB. `hold`
+// draws the peak held a moment, as a thin line.
+export component Meter inherits Rectangle {
+    in property <float> level;
+    in property <float> hold;
+    in property <bool> upright;
+    background: Theme.meter-well;
+    clip: true;
+    Rectangle {
+        x: 0;
+        y: root.upright ? parent.height - self.height : 0;
+        width: root.upright ? parent.width : parent.width * clamp(root.level, 0, 1);
+        height: root.upright ? parent.height * clamp(root.level, 0, 1) : parent.height;
+        clip: true;
+        Rectangle {
+            x: 0;
+            y: root.upright ? parent.height - root.height : 0;
+            width: root.width;
+            height: root.height;
+            background: root.upright
+                ? @linear-gradient(0deg, Theme.meter-low 0%, Theme.meter-low 63.6%, Theme.meter-mid 63.6%, Theme.meter-mid 77.3%, Theme.meter-high 77.3%, Theme.meter-high 86.4%, Theme.meter-hot 86.4%, Theme.meter-hot 90.9%, Theme.meter-clip 90.9%, Theme.meter-clip 100%)
+                : @linear-gradient(90deg, Theme.meter-low 0%, Theme.meter-low 63.6%, Theme.meter-mid 63.6%, Theme.meter-mid 77.3%, Theme.meter-high 77.3%, Theme.meter-high 86.4%, Theme.meter-hot 86.4%, Theme.meter-hot 90.9%, Theme.meter-clip 90.9%, Theme.meter-clip 100%);
+        }
+    }
+    if root.hold > 0.02: Rectangle {
+        x: root.upright ? 0 : parent.width * clamp(root.hold, 0, 1) - 1px;
+        y: root.upright ? parent.height * (1 - clamp(root.hold, 0, 1)) : 0;
+        width: root.upright ? parent.width : 1px;
+        height: root.upright ? 1px : parent.height;
+        background: root.hold >= 0.909 ? Theme.meter-clip : Theme.text;
+    }
+}
+
+// The light over a meter that comes on when the level reaches 0 dB and
+// stays on until it is clicked.
+export component ClipLight inherits Rectangle {
+    in property <bool> on;
+    callback clear();
+    background: root.on ? Theme.meter-clip : Theme.meter-well;
+    TouchArea {
+        clicked => {
+            root.clear();
+        }
+    }
+}

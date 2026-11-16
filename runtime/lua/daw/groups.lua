@@ -1,0 +1,216 @@
+-- Groups of tracks: a track that others belong to, as the strings of an
+-- orchestra belong to "Strings". The members sound through the group (their
+-- output is the group, so its fader, mute and devices act on all of them),
+-- are drawn under it, a step in, and can be folded away into it.
+--
+--   local strings = daw.groups.make({ violins, violas, cellos }, "Strings")
+--   daw.groups.fold(strings, true)
+--   daw.groups.add(basses, strings)
+--   daw.groups.remove(violas)
+--
+-- A group is an ordinary track marked in its `meta`, and each member names
+-- its group in its own, so groups are saved, undone and copied with the
+-- tracks. Groups may hold groups.
+local api = daw.api
+local M = {}
+
+local function id_of(track) return type(track) == "table" and track.id or track end
+
+local function meta(id)
+  local ok, t = pcall(api.track_get, id)
+  return ok and t.meta or {}
+end
+
+local function set_meta(id, key, value)
+  local m = meta(id)
+  m[key] = value
+  api.track_set(id, "meta", m)
+end
+
+--- Whether a track is a group.
+function M.is_group(track)
+  return meta(id_of(track)).group_head == true
+end
+
+--- The group a track belongs to (its id), or nil.
+function M.of(track)
+  local group = meta(id_of(track)).group
+  if group and pcall(api.track_get, group) and M.is_group(group) then return group end
+end
+
+--- The tracks that belong to a group, in the order of the track list.
+function M.members(group)
+  group = id_of(group)
+  local out = {}
+  for _, id in ipairs(api.track_list()) do
+    if M.of(id) == group then out[#out + 1] = id end
+  end
+  return out
+end
+
+--- How many groups a track is inside.
+function M.depth(track)
+  local depth, at = 0, M.of(track)
+  while at and depth < 16 do
+    depth, at = depth + 1, M.of(at)
+  end
+  return depth
+end
+
+function M.folded(group)
+  return meta(id_of(group)).group_folded == true
+end
+
+--- Whether a track is out of sight: inside a group that is folded.
+function M.hidden(track)
+  local at, steps = M.of(track), 0
+  while at and steps < 16 do
+    if M.folded(at) then return true end
+    at, steps = M.of(at), steps + 1
+  end
+  return false
+end
+
+--- The tracks that are drawn, in order: all but those folded away. Rows of
+--- the arrange view and of a graphical frontend are places in this list.
+--- With `{ lanes = true }`, every row: `{ track = id }` for a track and
+--- `{ track = id, lane = id }` for an automation lane shown under it
+--- (see `daw.lanes`).
+function M.rows(opts)
+  if opts and opts.lanes then return daw.lanes.lines() end
+  local out = {}
+  for _, id in ipairs(api.track_list()) do
+    if not M.hidden(id) then out[#out + 1] = id end
+  end
+  return out
+end
+
+local function position(id)
+  for i, other in ipairs(api.track_list()) do
+    if other == id then return i end
+  end
+end
+
+--- Put a group's members right under it, in the order they are in.
+local function gather(group)
+  local at = position(group)
+  for _, id in ipairs(M.members(group)) do
+    local from = position(id)
+    -- Moving a track from above the group shifts the group up by one.
+    if from < at then
+      api.track_move(id, at)
+    else
+      at = at + 1
+      if from ~= at then api.track_move(id, at) end
+    end
+    -- A member that is a group brings its own members along.
+    if M.is_group(id) then
+      gather(id)
+      at = position(id) + #M.members(id)
+    else
+      at = position(id)
+    end
+  end
+end
+M.gather = gather
+
+--- Put a track into a group: it then sounds through the group, unless it
+--- was sent somewhere of its own.
+function M.add(track, group)
+  track, group = id_of(track), id_of(group)
+  if track == group or not M.is_group(group) then error("not a group", 2) end
+  -- A group cannot go inside itself.
+  local at = group
+  while at do
+    if at == track then error("a group cannot be put inside itself", 2) end
+    at = M.of(at)
+  end
+  local t = api.track_get(track)
+  local old = M.of(track)
+  if t.output == nil or t.output == old then api.track_set(track, "output", group) end
+  set_meta(track, "group", group)
+  gather(group)
+end
+
+--- Take a track out of its group, up a level: it sounds where the group
+--- sounds, and belongs to the group that one is in, if any. It moves out of
+--- the group's block of rows, unless `stay`.
+function M.remove(track, stay)
+  track = id_of(track)
+  local group = M.of(track)
+  if not group then return false end
+  if api.track_get(track).output == group then api.track_set(track, "output", api.track_get(group).output) end
+  set_meta(track, "group", M.of(group))
+  -- Out of the group's block of rows: after its last member.
+  local members = M.members(group)
+  local last = position(members[#members] or group)
+  if not stay and position(track) < last then api.track_move(track, last) end
+  return true
+end
+
+--- A new group holding `tracks` (ids or tracks), above the first of them.
+--- Returns the group's track.
+function M.make(tracks, name)
+  local ids = {}
+  for i, track in ipairs(tracks or {}) do ids[i] = id_of(track) end
+  local first
+  for _, id in ipairs(ids) do
+    local at = position(id)
+    if at and (not first or at < first) then first = at end
+  end
+  local group = daw.add_track({ name = name or "Group", index = first })
+  set_meta(group.id, "group_head", true)
+  -- Tracks that were together in a group stay in it, one level down.
+  local outer = ids[1] and M.of(ids[1])
+  local same = outer ~= nil
+  for _, id in ipairs(ids) do same = same and M.of(id) == outer end
+  if same and outer then M.add(group.id, outer) end
+  for _, id in ipairs(ids) do M.add(id, group.id) end
+  return group
+end
+
+--- Undo a group: its members go up a level and the group, if it holds
+--- nothing of its own (no clips, no devices), goes away.
+function M.dissolve(group)
+  group = id_of(group)
+  if not M.is_group(group) then return false end
+  local outer = M.of(group)
+  for _, id in ipairs(M.members(group)) do
+    if api.track_get(id).output == group then api.track_set(id, "output", api.track_get(group).output) end
+    set_meta(id, "group", outer)
+  end
+  local t = api.track_get(group)
+  if #t.clips == 0 and #t.devices == 0 then
+    api.track_remove(group)
+  else
+    set_meta(group, "group_head", nil)
+    set_meta(group, "group_folded", nil)
+  end
+  return true
+end
+
+--- Fold a group away, or open it: `on` nil flips it.
+function M.fold(group, on)
+  group = id_of(group)
+  if not M.is_group(group) then return end
+  if on == nil then on = not M.folded(group) end
+  set_meta(group, "group_folded", on and true or nil)
+  -- The cursor does not stay on a track that is out of sight.
+  local cursor = daw.cursor.track_id()
+  if cursor and M.hidden(cursor) then daw.cursor.set_track(group) end
+end
+
+-- A group that is removed lets its members go: they keep sounding, on the
+-- master, and stand at the top level.
+daw.on("track.removed", function(event)
+  if event.restored then return end
+  for _, id in ipairs(api.track_list()) do
+    local m = meta(id)
+    if m.group == event.id then
+      m.group = nil
+      api.track_set(id, "meta", m)
+    end
+  end
+end)
+
+return M

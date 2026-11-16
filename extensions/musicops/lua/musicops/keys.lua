@@ -1,0 +1,449 @@
+-- The keys of musicops: operators under `gz`, the phrase and chord text
+-- objects, the phrase motions, the key commands, and the scale lock.
+--
+-- Operators act in the piano roll and the vocal editor on the notes of the
+-- region (as `d` and `>` do), and in the arrange view on the notes of the
+-- MIDI clips the region reaches. A count typed in visual mode before the
+-- operator sets its amount (`v3gzk` is up three scale steps); with a motion
+-- or text object the count belongs to that, as with every operator.
+local mo = require("musicops")
+local scale = mo.scale
+local api, keymap, edit = daw.api, daw.keymap, daw.edit
+local EPS = 1e-9
+
+local M = {}
+
+local NOTES = { "pianoroll", "utau" }               -- views that edit one clip's notes
+local ALL = { "pianoroll", "utau", "arrange" }
+local POLY = { "pianoroll", "arrange" }             -- not the vocal editor: one voice, and lyrics
+
+-- Targets ---------------------------------------------------------------------
+
+--- The clip open in a note view, as a handle, and the view.
+function M.view_clip(name)
+  local v = daw.ui.views[name]
+  if not (v and v.clip_id) then return end
+  local ok, c = pcall(api.clip_get, v.clip_id)
+  if ok and c.kind == "midi" then return daw.clip(v.clip_id), v end
+end
+
+--- Replace the notes of a clip that `pick(note)` chooses with what
+--- `fn(notes)` makes of them. The clip grows to hold notes that now reach
+--- past its end. Returns how many notes were picked.
+function M.apply_to_clip(clip, pick, fn)
+  local inside, keep = {}, {}
+  for _, n in ipairs(clip:notes()) do
+    if pick(n) then inside[#inside + 1] = n else keep[#keep + 1] = n end
+  end
+  if #inside == 0 then return 0 end
+  local finish = 0
+  for _, n in ipairs(fn(inside)) do
+    keep[#keep + 1] = n
+    finish = math.max(finish, n.start + n.length)
+  end
+  if finish > clip.length + EPS then
+    local grid = daw.opt.note_grid
+    clip.length = math.ceil(finish / grid - EPS) * grid
+  end
+  clip:set_notes(keep)
+  return #inside
+end
+
+--- Apply `fn(notes, index)` to the notes of the MIDI clips that a region of
+--- the arrange view reaches: for whole tracks every note, otherwise the
+--- notes that start inside the region. Each clip is done on its own.
+function M.apply_arrange(region, fn)
+  local index, count = 0, 0
+  for _, track in ipairs(edit.arrange.tracks(region)) do
+    for _, c in ipairs(api.clip_list(track)) do
+      local whole = region.kind == "line"
+      if c.kind == "midi" and (whole or (c.start < region.c1 - EPS and c.start + c.length > region.c0 + EPS)) then
+        index = index + 1
+        local i = index
+        count = count + M.apply_to_clip(daw.clip(c.id), function(n)
+          local at = c.start + n.start
+          return whole or (at >= region.c0 - EPS and at < region.c1 - EPS)
+        end, function(notes) return fn(notes, i) end)
+      end
+    end
+  end
+  return count
+end
+
+--- Apply `fn(notes, index)` to what a region of `view` holds.
+function M.apply(view, region, fn)
+  if view == "arrange" then return M.apply_arrange(region, fn) end
+  local clip = M.view_clip(view)
+  if not clip then return 0 end
+  return M.apply_to_clip(clip, function(n) return edit.roll.inside(n, region) end, function(notes) return fn(notes, 1) end)
+end
+
+-- Operators ---------------------------------------------------------------------
+
+--- Every operator: { lhs, desc, views }, for the help and the tests.
+M.operators = {}
+
+--- Define a musical operator: `fn(notes, amount, info)` returns the new
+--- notes; `amount` is the count typed in visual mode, or nil; `info.index`
+--- counts the clips done by one use (arrange regions reach several).
+function M.operator(lhs, desc, views, fn)
+  M.operators[#M.operators + 1] = { lhs = lhs, desc = desc, views = views }
+  for _, view in ipairs(views) do
+    keymap.operator(lhs, function(region, ctx)
+      local amount = region.visual and ctx.count or nil
+      M.apply(view, region, function(notes, index)
+        return fn(notes, amount, { index = index, view = view, ctx = ctx })
+      end)
+    end, { view = view, desc = desc })
+  end
+end
+
+local function opt(name) return daw.opt["musicops_" .. name] end
+local function pct(amount) return amount and amount / 100 end
+
+local seeds = 0
+local function seed()
+  local fixed = opt("seed")
+  if fixed then return fixed end
+  seeds = seeds + 1
+  return math.floor(api.now() * 1000 + seeds) % 2147483646
+end
+
+local last_seed
+local op = M.operator
+op("gzh", "Humanize timing and velocity", ALL, function(notes, amount, info)
+  if info.index == 1 then
+    last_seed = seed()
+    daw.notify(string.format("humanized, seed %d (:lua daw.opt.musicops_seed = %d repeats it)", last_seed, last_seed))
+  end
+  return mo.humanize(notes, {
+    timing = pct(amount) or opt("humanize_timing"),
+    velocity = amount or opt("humanize_velocity"),
+    length = opt("humanize_length"),
+    seed = last_seed + info.index - 1,
+  })
+end)
+op("gzs", "Strum chords upwards", POLY, function(notes, amount)
+  return mo.strum(notes, { step = pct(amount) or opt("strum"), dir = "up", tolerance = opt("together") })
+end)
+op("gzS", "Strum chords downwards", POLY, function(notes, amount)
+  return mo.strum(notes, { step = pct(amount) or opt("strum"), dir = "down", tolerance = opt("together") })
+end)
+for lhs, mode in pairs({ gzp = "up", gzP = "down", gzb = "updown", gzB = "played" }) do
+  op(lhs, "Arpeggiate chords " .. (mode == "played" and "as played" or mode), POLY, function(notes, amount)
+    return mo.arpeggiate(notes, {
+      mode = mode, step = amount and 1 / amount or opt("arp_step") or daw.opt.note_grid,
+      gate = opt("arp_gate"), tolerance = opt("together"),
+    })
+  end)
+end
+op("gzl", "Legato: hold each note to the next", ALL, function(notes)
+  return mo.legato(notes, { gap = opt("legato_gap") })
+end)
+op("gzt", "Staccato: shorten the notes", ALL, function(notes, amount)
+  return mo.staccato(notes, { factor = pct(amount) or opt("staccato") })
+end)
+op("gzq", "Quantize, with strength and swing", ALL, function(notes, amount)
+  return mo.quantize(notes, {
+    grid = daw.opt.note_grid, strength = pct(amount) or opt("strength"), swing = opt("swing"),
+  })
+end)
+op("gzw", "Quantize with swing", ALL, function(notes, amount)
+  return mo.quantize(notes, {
+    grid = daw.opt.note_grid, strength = opt("strength"), swing = pct(amount) or opt("swing_amount"),
+  })
+end)
+op("gz>", "Crescendo", POLY, function(notes, amount)
+  return mo.crescendo(notes, { amount = amount or opt("ramp") })
+end)
+op("gz<lt>", "Diminuendo", POLY, function(notes, amount)
+  return mo.diminuendo(notes, { amount = amount or opt("ramp") })
+end)
+op("gzc", "Compress velocities towards their average", POLY, function(notes, amount)
+  return mo.compress(notes, { ratio = pct(amount) or opt("compress") })
+end)
+op("gzv", "Even out velocities: all the average, or the count", POLY, function(notes, amount)
+  return mo.set_velocity(notes, { velocity = amount })
+end)
+op("gze", "Accent the notes on the beat", POLY, function(notes, amount)
+  return mo.accent(notes, { amount = amount or opt("accent"), grid = 1 })
+end)
+op("gzr", "Reverse in time", ALL, function(notes) return mo.reverse(notes) end)
+op("gzd", "Double time: twice as fast", ALL, function(notes) return mo.double_time(notes) end)
+op("gzD", "Half time: half as fast", ALL, function(notes) return mo.half_time(notes) end)
+op("gzu", "Invert chords upwards", POLY, function(notes, amount)
+  return mo.invert(notes, { dir = 1, times = amount or 1, tolerance = opt("together") })
+end)
+op("gzU", "Invert chords downwards", POLY, function(notes, amount)
+  return mo.invert(notes, { dir = -1, times = amount or 1, tolerance = opt("together") })
+end)
+op("gzk", "Up a step of the scale", ALL, function(notes, amount)
+  return mo.transpose_scale(notes, amount or 1, scale.current())
+end)
+op("gzj", "Down a step of the scale", ALL, function(notes, amount)
+  return mo.transpose_scale(notes, -(amount or 1), scale.current())
+end)
+op("gzn", "Snap to the scale", ALL, function(notes)
+  return mo.snap_scale(notes, scale.current(), { dir = opt("snap") })
+end)
+op("gzm", "Mirror the melody around its first note, in the scale", ALL, function(notes)
+  return mo.mirror(notes, { key = opt("mirror_chromatic") and nil or scale.current() })
+end)
+op("gzo", "Double an octave up", POLY, function(notes, amount)
+  return mo.add_octave(notes, { by = 12 * (amount or 1) })
+end)
+op("gzO", "Double an octave down", POLY, function(notes, amount)
+  return mo.add_octave(notes, { by = -12 * (amount or 1) })
+end)
+op("gzx", "Remove overlapping notes of a pitch", ALL, function(notes) return mo.remove_overlaps(notes) end)
+
+-- Text objects and motions ------------------------------------------------------------
+
+local function phrases(clip)
+  return mo.phrases(clip:notes(), opt("phrase_rest"))
+end
+
+--- The phrase at the cursor (or the next one, from a rest) and `count - 1`
+--- more; with `around` up to where the phrase after them starts.
+function M.phrase_region(view, count, around)
+  local clip, v = M.view_clip(view)
+  if not clip then return end
+  local list = phrases(clip)
+  if #list == 0 then return end
+  local first = #list
+  for i, p in ipairs(list) do
+    if v.beat < p.finish - EPS then
+      first = i
+      break
+    end
+  end
+  local last = math.min(#list, first + (count or 1) - 1)
+  local c0, c1 = list[first].start, list[last].finish
+  if around then c1 = list[last + 1] and list[last + 1].start or math.max(c1, clip.length) end
+  return { view = view, kind = "char", r0 = v.pitch, r1 = v.pitch, c0 = c0, c1 = c1 }
+end
+
+--- The chord sounding at the cursor: its notes, as a block from the first
+--- of them to start to just past the last; with `around` everything that
+--- starts while it sounds.
+function M.chord_region(view, around)
+  local clip, v = M.view_clip(view)
+  if not clip then return end
+  local chord = mo.sounding(clip:notes(), v.beat)
+  if #chord == 0 then return end
+  local lo, hi, s0, s1, e0, e1 = 127, 0, math.huge, -math.huge, math.huge, -math.huge
+  for _, n in ipairs(chord) do
+    lo, hi = math.min(lo, n.pitch), math.max(hi, n.pitch)
+    s0, s1 = math.min(s0, n.start), math.max(s1, n.start)
+    e0, e1 = math.min(e0, n.start + n.length), math.max(e1, n.start + n.length)
+  end
+  if around then return { view = view, kind = "char", r0 = v.pitch, r1 = v.pitch, c0 = s0, c1 = e1 } end
+  local c1 = math.max(s1 + 1e-6, math.min(e0, s1 + daw.opt.note_grid))
+  return { view = view, kind = "block", r0 = lo, r1 = hi, c0 = s0, c1 = c1 }
+end
+
+--- Go to the start of the next (`dir` 1) or previous (-1) phrase.
+function M.phrase_motion(view, dir, count)
+  local clip, v = M.view_clip(view)
+  if not clip then return end
+  local list = phrases(clip)
+  local pitch, beat = v.pitch, v.beat
+  for _ = 1, count or 1 do
+    local found
+    if dir > 0 then
+      for _, p in ipairs(list) do
+        if p.start > beat + EPS then
+          found = p
+          break
+        end
+      end
+    else
+      for i = #list, 1, -1 do
+        if list[i].start < beat - EPS then
+          found = list[i]
+          break
+        end
+      end
+    end
+    if not found then
+      beat = dir > 0 and clip.length or 0
+      break
+    end
+    pitch, beat = found.notes[1].pitch, found.start
+  end
+  v.grid.set(pitch, beat)
+end
+
+for _, view in ipairs(NOTES) do
+  local function object(lhs, fn, desc) keymap.textobject(lhs, fn, { view = view, desc = desc }) end
+  object("ip", function(ctx) return M.phrase_region(view, ctx.count, false) end, "The phrase: notes with no long rest between them")
+  object("ap", function(ctx) return M.phrase_region(view, ctx.count, true) end, "The phrase and the rest after it")
+  object("ih", function() return M.chord_region(view, false) end, "The chord sounding at the cursor")
+  object("ah", function() return M.chord_region(view, true) end, "The chord and what starts while it sounds")
+  keymap.set(")", function(ctx) M.phrase_motion(view, 1, ctx.count) end, { view = view, motion = true, jump = true, desc = "Next phrase" })
+  keymap.set("(", function(ctx) M.phrase_motion(view, -1, ctx.count) end, { view = view, motion = true, jump = true, desc = "Start of this phrase, or the previous one" })
+end
+
+-- Key and scale -----------------------------------------------------------------------
+
+local function key_command(ctx)
+  local words = {}
+  for _, w in ipairs(ctx.args) do words[#words + 1] = tostring(w) end
+  local text = table.concat(words, " ")
+  if text == "" then
+    local key = scale.project()
+    return daw.notify(key and ("key: " .. scale.name(key)) or ("no key set; working in " .. scale.default))
+  end
+  if text == "off" or text == "none" then
+    scale.set(nil)
+    return daw.notify("key cleared")
+  end
+  local ok, err = pcall(scale.parse, text)
+  if not ok then return daw.notify(tostring(err):gsub("^.-:%d+: ", ""), "error") end
+  scale.set(text)
+  daw.notify("key: " .. scale.name(text))
+end
+daw.command("musicops.key", key_command, { desc = "Set the project's key: `key D minor`, `key off`; alone shows it" })
+if not daw.commands.get("key") or daw.commands.get("key").alias_of == "musicops.key" then
+  daw.commands.alias("key", "musicops.key")
+end
+daw.command("musicops.scales", function()
+  daw.ui.page("Scales", scale.names())
+end, { desc = "List the scales `key` knows" })
+
+local function lock(ctx)
+  local arg = ctx and ctx.args and ctx.args[1]
+  if arg == nil then
+    daw.opt.musicops_scale_lock = not daw.opt.musicops_scale_lock
+  else
+    daw.opt.musicops_scale_lock = arg == true or arg == "on" or arg == 1
+  end
+  daw.notify("scale lock " .. (daw.opt.musicops_scale_lock and ("on: " .. scale.name(scale.current())) or "off"))
+end
+daw.command("musicops.lock", lock, { desc = "Keep note entry and transposing in the key: `musicops.lock on|off`, alone toggles" })
+keymap.set("gzL", function() lock() end, { desc = "Scale lock on or off", repeatable = false })
+
+--- Apply a function of the module to the notes of the clip being edited:
+--- `:musicops.apply humanize timing=0.05 seed=3`, `:musicops.apply transpose_scale 2`.
+local APPLY = {
+  humanize = true, quantize = true, legato = true, staccato = true, set_length = true, reverse = true,
+  stretch = true, double_time = true, half_time = true, strum = true, arpeggiate = true, invert = true,
+  add_octave = true, transpose = true, transpose_scale = true, snap_scale = true, mirror = true, ramp = true,
+  crescendo = true, diminuendo = true, compress = true, set_velocity = true, accent = true, remove_overlaps = true,
+}
+daw.command("musicops.apply", function(ctx)
+  local name = ctx.args[1]
+  if not APPLY[name] then
+    local names = {}
+    for k in pairs(APPLY) do names[#names + 1] = k end
+    table.sort(names)
+    return daw.notify("usage: musicops.apply <" .. table.concat(names, "|") .. "> name=value ...", "warn")
+  end
+  local opts = {}
+  for k, v in pairs(ctx.args) do
+    if type(k) == "string" then opts[k] = v end
+  end
+  local clip = M.view_clip(daw.ui.focused)
+  if not clip then
+    local at = daw.cursor.clip()
+    clip = at and at.kind == "midi" and at or nil
+  end
+  if not clip then return daw.notify("no MIDI clip to change", "warn") end
+  M.apply_to_clip(clip, function() return true end, function(notes)
+    if name == "transpose" then return mo.transpose(notes, ctx.args[2] or opts.by) end
+    if name == "transpose_scale" then return mo.transpose_scale(notes, ctx.args[2] or opts.by, opts.key) end
+    if name == "snap_scale" then return mo.snap_scale(notes, opts.key, opts) end
+    if name == "mirror" and opts.key == true then opts.key = scale.current() end
+    return mo[name](notes, opts)
+  end)
+end, { desc = "Apply a musicops function to the clip being edited: `musicops.apply humanize seed=3`" })
+
+-- Scale lock: entering notes and moving them stays in the key -----------------------------
+--
+-- With `musicops_scale_lock` on, the piano roll's insert-mode keys enter the
+-- nearest pitch of the key, and `<C-a>` `<C-x>` move notes by scale steps in
+-- the piano roll (normal and visual mode) and the vocal editor (visual
+-- mode). These replace the runtime's mappings and hand back to them while
+-- the lock is off.
+
+daw.state.musicops_originals = daw.state.musicops_originals or {}
+local saved = daw.state.musicops_originals
+
+local function original(mode, view, lhs)
+  local id = mode .. "|" .. view .. "|" .. lhs
+  local want = table.concat(keymap.parse(lhs))
+  for _, m in ipairs(keymap.list(mode, view)) do
+    if m.scope == view and table.concat(m.keys) == want and not m.musicops then saved[id] = m end
+  end
+  return saved[id]
+end
+
+local function call(m, ...)
+  if not m then return end
+  if m.operator then return m.operator(...) end
+  if type(m.rhs) == "function" then return m.rhs(...) end
+  if type(m.rhs) == "string" then return daw.commands.exec(m.rhs, ...) end
+end
+
+local function locked() return daw.opt.musicops_scale_lock end
+
+--- Put the scale-lock mappings in place over the runtime's (and the vocal
+--- editor's, which may be loaded later: this runs again when a view is focused).
+function M.install_locks()
+  -- Insert mode in the piano roll, as laid out by the runtime: the middle row
+  -- of the keyboard white keys from C, the row above the black ones.
+  local LAYOUT = { "a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j", "k", "o", "l", "p", ";" }
+  for semitone, key in ipairs(LAYOUT) do
+    local lhss = { key }
+    if key:match("%a") then lhss[2] = key:upper() end
+    for i, lhs in ipairs(lhss) do
+      local orig = original("i", "pianoroll", lhs)
+      keymap.set(lhs, function(ctx)
+        if not locked() then return call(orig, ctx) end
+        local roll = daw.ui.views.pianoroll
+        local base = (daw.opt.octave + 1) * 12
+        local pitch = scale.snap(scale.current(), base + semitone - 1, opt("snap"))
+        roll:enter(pitch - base, i == 1)
+      end, { view = "pianoroll", mode = "i", desc = orig and orig.desc, musicops = true })
+    end
+  end
+
+  for lhs, dir in pairs({ ["<C-a>"] = 1, ["<C-x>"] = -1 }) do
+    local orig = original("n", "pianoroll", lhs)
+    keymap.set(lhs, function(ctx)
+      if not locked() then return call(orig, ctx) end
+      local roll = daw.ui.views.pianoroll
+      local key, to = scale.current(), nil
+      if roll:change(function(n)
+        n.pitch = math.max(0, math.min(127, scale.step(key, n.pitch, dir * (ctx.count or 1))))
+        to = n.pitch
+      end) then
+        roll:move(0, to - roll.pitch)
+      end
+    end, { view = "pianoroll", desc = orig and orig.desc, musicops = true })
+
+    for _, view in ipairs(NOTES) do
+      local xorig = original("x", view, lhs)
+      keymap.set(lhs, nil, {
+        view = view, mode = "x", desc = xorig and xorig.desc, musicops = true,
+        operator = function(region, ctx)
+          if not locked() then return call(xorig, region, ctx) end
+          M.apply(view, region, function(notes)
+            return mo.transpose_scale(notes, dir * (ctx.count or 1), scale.current())
+          end)
+        end,
+      })
+    end
+  end
+end
+
+M.install_locks()
+daw.on("view.focused", function()
+  local m = nil
+  for _, map in ipairs(keymap.list("x", "utau")) do
+    if map.scope == "utau" and map.lhs == "<C-a>" then m = map end
+  end
+  if m and not m.musicops then M.install_locks() end
+end)
+
+return M

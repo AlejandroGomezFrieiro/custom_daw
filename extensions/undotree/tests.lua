@@ -1,0 +1,297 @@
+-- Tests for the undo tree extension, run by tests/suite.lua.
+local T = ...
+local daw = require("daw")
+local api = daw.api
+local test, eq, near = T.test, T.eq, T.near
+
+local function ext()
+  if not daw.ext.loaded.undotree then daw.ext.load("extensions/undotree") end
+  return require("undotree")
+end
+
+--- A fresh project with one track, and the extension loaded.
+local function start()
+  local u = ext()
+  T.fresh()
+  daw.keymap.feed("<Esc><Esc>")
+  daw.ui.close()
+  daw.ui.focus("arrange")
+  u.clear_ab()
+  return u
+end
+
+local function names(track)
+  local out = {}
+  for _, c in ipairs(track:clips()) do out[#out + 1] = c.name end
+  return table.concat(out, " ")
+end
+
+local function step(fn)
+  fn()
+  api.undo_checkpoint()
+  return api.undo_current()
+end
+
+test("undotree: undo then edit keeps the old branch reachable", function()
+  start()
+  local t
+  local root = api.undo_current()
+  local s1 = step(function() t = daw.add_track({ name = "T" }) end)
+  local s2 = step(function() t:add_clip({ name = "old", start = 0, length = 4 }) end)
+  eq(daw.undo(), true, "undo")
+  eq(names(t), "", "the clip is gone")
+  local s3 = step(function() t:add_clip({ name = "new", start = 4, length = 4 }) end)
+  eq(names(t), "new", "the new branch")
+  eq(daw.redo(), false, "nothing to redo at the end of a branch")
+  local tree = ext().tree()
+  eq(#tree.states, 4, "four states")
+  eq(tree.by_id[s2].parent, s1, "the old branch hangs from #" .. s1)
+  eq(tree.by_id[s3].parent, s1, "and so does the new one")
+  eq(tree.by_id[s1].parent, root, "from the root")
+  eq(api.undo_goto(s2), true, "go to the old branch")
+  eq(names(t), "old", "the old clip is back")
+  eq(daw.undo(), true, "undo")
+  eq(daw.redo(), true, "redo follows the branch last visited")
+  eq(names(t), "old", "back on the old branch")
+  eq(api.undo_goto(s3), true, "and to the new one")
+  eq(names(t), "new", "the new clip")
+  eq(api.undo_goto(999999), false, "no such state")
+  -- A state knows when it was made and what made it.
+  daw.cmd("track.add", { "Cmd" })
+  api.undo_checkpoint()
+  local last = ext().tree().by_id[api.undo_current()]
+  eq(last.label, "Add a track below the cursor", "the command's description is the label")
+  near(last.time, os.time(), 5, "made now")
+  daw.ui.focus("arrange")
+  daw._kernel.key("O")
+  api.undo_checkpoint()
+  last = ext().tree().by_id[api.undo_current()]
+  eq(last.keys, "O", "the keys typed are kept")
+end)
+
+test("undotree: g- and g+ visit every state in time order", function()
+  local u = start()
+  local ids = { api.undo_current() }
+  local t
+  ids[#ids + 1] = step(function() t = daw.add_track({ name = "T" }) end)
+  ids[#ids + 1] = step(function() t.volume = -1 end)
+  daw.undo()
+  ids[#ids + 1] = step(function() t.volume = -2 end)
+  daw.undo()
+  daw.undo()
+  ids[#ids + 1] = step(function() daw.add_track({ name = "U" }) end)
+  local seen = { api.undo_current() }
+  for _ = 1, #ids do
+    T.keys("g-")
+    if api.undo_current() ~= seen[#seen] then seen[#seen + 1] = api.undo_current() end
+  end
+  eq(table.concat(seen, " "), table.concat({ ids[5], ids[4], ids[3], ids[2], ids[1] }, " "), "g- goes back through every state")
+  seen = { api.undo_current() }
+  for _ = 1, #ids do
+    T.keys("g+")
+    if api.undo_current() ~= seen[#seen] then seen[#seen + 1] = api.undo_current() end
+  end
+  eq(table.concat(seen, " "), table.concat(ids, " "), "g+ forward through every state")
+  T.keys("3g-")
+  eq(api.undo_current(), ids[2], "a count")
+  eq(daw.tracks()[1].volume, 0, "and the project is that state")
+  -- :earlier and :later, by count and by time.
+  daw.cmd("later", { 2 })
+  eq(api.undo_current(), ids[4], ":later 2")
+  eq(daw.tracks()[1].volume, -2, "the branch with -2 dB")
+  daw.cmd("earlier", { "1h" })
+  eq(api.undo_current(), ids[1], ":earlier 1h goes back to the start")
+  eq(#daw.tracks(), 0, "an empty project")
+  daw.cmd("later", { "10m" })
+  eq(api.undo_current(), ids[5], ":later 10m to the newest")
+  eq(u.parse_amount("2m").seconds, 120, "minutes")
+  eq(u.parse_amount("30s").seconds, 30, "seconds")
+  eq(u.parse_amount("5").steps, 5, "a count")
+  eq(u.parse_amount("5x"), nil, "nonsense")
+end)
+
+test("undotree: what differs between two states", function()
+  start()
+  local t, clip
+  local s0 = api.undo_current()
+  local s1 = step(function()
+    t = daw.add_track({ name = "Bass" })
+    t:add_device("synth", { cutoff = 900 })
+    clip = t:add_clip({ name = "riff", start = 0, length = 4,
+      notes = { { pitch = 40, start = 0 }, { pitch = 43, start = 1 }, { pitch = 45, start = 2 } } })
+  end)
+  local s2 = step(function()
+    t.volume = -6
+    t:devices()[1]:set("cutoff", 500)
+    local notes = clip:notes()
+    notes[2].velocity = 30
+    table.remove(notes, 3)
+    notes[#notes + 1] = { pitch = 47, start = 3 }
+    notes[#notes + 1] = { pitch = 48, start = 3.5 }
+    clip:set_notes(notes)
+    daw.add_track({ name = "Keys" })
+  end)
+  local d = api.undo_diff(s0, s1)
+  eq(d.tracks.added, 1, "a track added")
+  eq(d.devices.added, 1, "a device added")
+  eq(d.clips.added, 1, "a clip added")
+  d = api.undo_diff()
+  eq(d.from, s1, "the last step: from its parent")
+  eq(d.to, s2, "to the current state")
+  eq(d.tracks.added, 1, "Keys added")
+  eq(d.tracks.changed, 1, "Bass changed")
+  eq(d.devices.changed, 1, "the synth changed")
+  eq(d.clips.changed, 1, "the clip changed")
+  eq(d.notes.added, 2, "two notes added")
+  eq(d.notes.removed, 1, "one removed")
+  eq(d.notes.changed, 1, "one changed")
+  local text = table.concat(d.items, "\n")
+  eq(text:find("~ device synth on track Bass: cutoff", 1, true) ~= nil, true, "readable lines: " .. text)
+  eq(ext().summary(d):find("2 notes added", 1, true) ~= nil, true, "a summary")
+  d = api.undo_diff(s2, s0)
+  eq(d.tracks.removed, 2, "backwards: both tracks removed")
+  eq(api.undo_diff(s1, s1).same, true, "a state against itself")
+end)
+
+test("undotree: named states survive saving and reopening", function()
+  local u = start()
+  local path = T.scratch .. "/checkpoints-song.json"
+  local t = daw.add_track({ name = "T" })
+  api.undo_checkpoint()
+  eq(api.checkpoint_dir(), nil, "an unsaved project has no checkpoint folder")
+  -- Before the project has a file the name is kept, and written on saving.
+  local first = u.checkpoint("intro")
+  eq(first.pending, true, "waiting for a file")
+  t:add_clip({ name = "verse", start = 0, length = 4 })
+  api.undo_checkpoint()
+  eq(daw.project.modified, true, "modified")
+  daw.project.save(path)
+  daw.flush()
+  eq(daw.project.modified, false, "not modified once saved")
+  local dir = api.checkpoint_dir()
+  eq(dir, T.scratch .. "/checkpoints-song.checkpoints", "the folder beside the project")
+  eq(#api.checkpoint_list(), 1, "the waiting one was written")
+  eq(api.checkpoint_list()[1].name, "intro", "under its name")
+  daw.cmd("checkpoint", { "before the bridge" })
+  t:add_clip({ name = "bridge", start = 4, length = 4 })
+  api.undo_checkpoint()
+  eq(daw.project.modified, true, "modified after an edit")
+  daw.undo()
+  eq(daw.project.modified, false, "and not after undoing back to what was saved")
+  daw.redo()
+  daw.project.save(path)
+
+  daw.project.load(path)
+  daw.flush()
+  eq(names(daw.tracks()[1]), "verse bridge", "reopened as saved")
+  local list = api.checkpoint_list()
+  eq(#list, 2, "both checkpoints listed after reopening")
+  eq(list[2].name, "before the bridge", "names with spaces")
+  local items = u.items()
+  eq(items[1].name, "before the bridge", "newest first")
+  daw.cmd("checkpoint.restore", { "intro" })
+  eq(names(daw.tracks()[1]), "", "the intro state is back")
+  local tree = u.tree()
+  eq(tree.by_id[tree.current].name, "intro", "as a named state")
+  eq(daw.undo(), true, "which undo leaves")
+  eq(names(daw.tracks()[1]), "verse bridge", "back to what was opened")
+  daw.cmd("checkpoint.restore", { "1" })
+  eq(names(daw.tracks()[1]), "verse", "by number")
+  -- Without a picker the list is a page.
+  local pick = daw.pick
+  daw.pick = nil
+  daw.cmd("checkpoints")
+  local text = table.concat(api.ui_snapshot(100, 30), "\n")
+  eq(text:find("before the bridge", 1, true) ~= nil, true, "the page lists them")
+  daw.ui.close()
+  -- With one, it gets the items.
+  local got
+  daw.pick = function(opts) got = opts end
+  daw.cmd("checkpoints")
+  eq(got.title, "Checkpoints", "the picker is used")
+  eq(#got.items, 2, "with every checkpoint")
+  got.on_choose(got.items[2])
+  eq(names(daw.tracks()[1]), "", "choosing restores")
+  daw.pick = pick
+  api.checkpoint_delete(list[1].file)
+  eq(#api.checkpoint_list(), 1, "deleted")
+  T.fresh()
+end)
+
+test("undotree: A/B while playing keeps the transport going", function()
+  local u = start()
+  daw.project.tempo = 120
+  local t = T.tone("AB", 64)
+  t.volume = -3
+  api.undo_checkpoint()
+  local a = u.mark_a()
+  t.volume = -12
+  t:clips()[1].name = "changed"
+  api.undo_checkpoint()
+  local b = api.undo_current()
+  eq(u.toggle(), "A", "to A")
+  eq(t.volume, -3, "A's mix")
+  eq(u.toggle(), "B", "and back")
+  eq(t.volume, -12, "B's mix")
+  daw.transport.seek(0)
+  daw.transport.play()
+  local deadline = api.now() + 3000
+  while daw.transport.position < 1 and api.now() < deadline do api.sleep(5) end
+  for i = 1, 4 do
+    daw.flush()
+    local before = daw.transport.position
+    daw.cmd("ab.toggle")
+    daw.flush()
+    local after = daw.transport.position
+    eq(daw.transport.playing, true, "still playing after switch " .. i)
+    eq(after >= before, true, "no jump back: " .. before .. " then " .. after)
+    eq(after - before < 0.25, true, "no jump forward: " .. before .. " then " .. after)
+    eq(api.undo_current(), i % 2 == 1 and a or b, "switch " .. i .. " went to " .. (i % 2 == 1 and "A" or "B"))
+    eq(t.volume, i % 2 == 1 and -3 or -12, "and the engine has that mix")
+    local start = daw.transport.position
+    local wait = api.now() + 3000
+    while daw.transport.position < start + 0.2 and api.now() < wait do api.sleep(5) end
+    eq(daw.transport.position >= start + 0.2, true, "the position keeps moving after switch " .. i)
+  end
+  eq(t:meter() > 0, true, "the track is sounding")
+  daw.transport.stop()
+  -- The single key does the same.
+  daw.ui.focus("arrange")
+  T.keys(daw.opt.undotree_ab_key)
+  eq(api.undo_current(), a, "the A/B key")
+  u.clear_ab()
+end)
+
+test("undotree: the view draws the tree and goes to a state", function()
+  local u = start()
+  local t
+  local s1 = step(function() t = daw.add_track({ name = "T" }) end)
+  local s2 = step(function() t:add_clip({ name = "one", start = 0, length = 4 }) end)
+  daw.undo()
+  local s3 = step(function() t:add_clip({ name = "two", start = 4, length = 4 }) end)
+  api.undo_name("chorus")
+  daw.cmd("undotree")
+  local text = table.concat(api.ui_snapshot(120, 40), "\n")
+  eq(text:find("Undo tree", 1, true) ~= nil, true, "the window: " .. text)
+  eq(text:find("#" .. s3, 1, true) ~= nil, true, "the newest state")
+  eq(text:find('"chorus"', 1, true) ~= nil, true, "its name")
+  eq(text:find("@", 1, true) ~= nil, true, "the current state")
+  eq(text:find("┘", 1, true) ~= nil, true, "a branch joining")
+  eq(text:find("+ clip two on track T", 1, true) ~= nil, true, "what the state changed")
+  -- The rows: two branches from s1.
+  local rows = u.rows(u.tree())
+  eq(rows[1].id, s3, "newest first")
+  eq(rows[1].graph, "@", "the current state")
+  eq(rows[2].id, s2, "then the old branch")
+  eq(rows[2].graph, "│ *", "beside it")
+  eq(rows[3].id, s1, "then where they split")
+  eq(rows[3].graph, "*─┘", "joined")
+  -- j moves down to the old branch, Enter goes there.
+  daw.keymap.feed("j<CR>")
+  eq(api.undo_current(), s2, "Enter went to the selected state")
+  eq(names(t), "one", "the project is that state")
+  text = table.concat(api.ui_snapshot(120, 40), "\n")
+  eq(text:find("@", 1, true) ~= nil, true, "still open")
+  daw.keymap.feed("q")
+  eq(daw.ui.float, nil, "q closes it")
+end)
