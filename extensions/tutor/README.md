@@ -1,6 +1,6 @@
 # tutor
 
-A course for first-time users, inside the DAW, in the way `vimtutor` teaches
+A course for first-time users, inside paw, in the way `vimtutor` teaches
 Vim: sixteen lessons of about ten minutes, each in a practice project of its
 own. A panel along the bottom says what to do next in a sentence or two with
 the exact keys, notices when it is done, says so, and goes on. Every lesson
@@ -16,7 +16,7 @@ the keyboard, [keys.md](../../docs/course/keys.md).
 daw.ext.load("/path/to/daw/extensions/tutor")   -- in ~/.config/daw/init.lua
 ```
 
-or link the directory into `~/.config/daw/extensions`. Then, in the DAW:
+or link the directory into `~/.config/daw/extensions`. Then, in paw:
 
 | | |
 | --- | --- |
@@ -54,7 +54,7 @@ In the tutor's own directory: `$XDG_STATE_HOME/daw/tutor`
 (`~/.local/state/daw/tutor`), or wherever the option `tutor_dir` says.
 `progress.lua` holds the lesson and step you are on and the steps you have
 done; `practice/<lesson>.json` are the practice projects (and `practice/media`
-their recordings). Quitting the DAW in a lesson (`:q`, `ZZ`, `ZQ`) saves the
+their recordings). Quitting paw in a lesson (`:q`, `ZZ`, `ZQ`) saves the
 practice project and your place; `:tutor` next time carries on from there.
 `:reload` keeps the tutor where it was.
 
@@ -86,7 +86,7 @@ everything after it is easier with it: first on clips, where it is easiest to
 see, then on notes, then selecting first, then where deleted and yanked
 things go. The studio (9 to 13) follows in the order a song is made: sounds,
 balance, loops to work on a part, recording, and a file at the end. The last
-three are for going on alone: how to find any key, how to change the DAW, and
+three are for going on alone: how to find any key, how to change paw, and
 what the extensions add.
 
 Every lesson teaches the idea behind a family of keys rather than a list (the
@@ -156,7 +156,7 @@ notes, quitting), and `{ sim = "quit", instead = { ":q", "<CR>" } }`.
 
 **Steps the tutor cannot see** have `unchecked = "why"` in place of `check`;
 the panel tells the learner to press `,hn` when done. `on_quit = true` makes a
-step done by quitting the DAW. `test = { before = fn, after = fn }` on a lesson
+step done by quitting paw. `test = { before = fn, after = fn }` on a lesson
 prepares the test run (an audio engine with a test input) and tidies up after
 it (files written beside the program).
 
@@ -176,7 +176,7 @@ daw --clean --no-plugins -l extensions/tutor/make-docs.lua
 
 from the top of the repository to write `docs/course/`; the tests fail while
 the files and the lessons disagree. `docs/course/keys.md` is written by hand,
-and the tests check that every key in its first column is a key the DAW has.
+and the tests check that every key in its first column is a key paw has.
 
 ## Steps the tests cannot perform
 
@@ -185,7 +185,7 @@ tests stand in for it, and two steps are not checked at all:
 
 | Lesson, step | What the learner does | What the tests do |
 | --- | --- | --- |
-| 1, 8 | `:q` quits the DAW | announce `:q` (`command.pre`) without quitting; the tutor saves the place on that |
+| 1, 8 | `:q` quits paw | announce `:q` (`command.pre`) without quitting; the tutor saves the place on that |
 | 12, 1 to 3 | records from a microphone | the silent engine's test tone is the input |
 | 12, 5 | plays a MIDI keyboard | `daw.midi.note_on` and `note_off`, as if from a port |
 | 9, 9 | adds a plugin and opens its window | **unchecked**: which plugins exist differs between computers, and a window needs a desktop |
@@ -193,7 +193,7 @@ tests stand in for it, and two steps are not checked at all:
 
 Listening steps are checked by the transport having played and stopped; what
 was heard is not. Lesson 16's mixdiag step checks that measuring started, not
-its result. Lesson 9 teaches plugin windows through what the DAW reports for a
+its result. Lesson 9 teaches plugin windows through what paw reports for a
 built-in device (that it has no window).
 
 ## What the extension interface could not do
@@ -235,7 +235,7 @@ recording options) are not taught.
 
 ## Rough edges met while writing the lessons
 
-Left as they are in the DAW and taught as they are; each with the lesson
+Left as they are in paw and taught as they are; each with the lesson
 where it came up and what would make it easier for a newcomer.
 
 | Lesson | What happens | What would help |
@@ -255,7 +255,7 @@ where it came up and what would make it easier for a newcomer.
 | 6 | `dw` from inside a gap deletes nothing (a note belongs to where it starts), so `.` after moving into a gap silently does nothing. | A message when an operator's region holds nothing. |
 | 2 | `<S-CR>` (play from the cursor) is indistinguishable from Enter in many terminals and in tmux. | A second key, such as `g<Space>`. |
 | 13 | `:w name.json` is Vim's `:saveas` (the project moves to the new file); a Vim user expects a copy. There is no way to write a copy. | `:saveas` for moving, `:w name` for a copy, as in Vim. |
-| 13 | `:render name.wav` writes relative to the folder the DAW was started from, `~` is not expanded, and the message gives only the name. | Expand `~`, and say the full path. |
+| 13 | `:render name.wav` writes relative to the folder paw was started from, `~` is not expanded, and the message gives only the name. | Expand `~`, and say the full path. |
 | 14 | Key hints group `grn` and `grc` as `r +2 more` under `g`, hiding the rename keys. | List the group's keys when there are few. |
 | — | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`); an extension listening for `quit` misses `:q`. | Add the command's own name to the event. |
 | — | In a script, `daw.project.save` while an undo step is open counts edits made later in that step as saved (`modified` is false after adding a track). | Close the open step before saving. |

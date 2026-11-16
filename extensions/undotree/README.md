@@ -1,6 +1,6 @@
 # undotree
 
-Neovim's undo tree for the DAW. No edit is lost by undoing and then changing
+Neovim's undo tree for paw. No edit is lost by undoing and then changing
 something: the change starts a new branch, and the old one stays where you can
 go back to it. Any earlier state can be returned to, by walking the tree, by
 stepping through time across branches, or by a time (`:earlier 2m`). States

@@ -3,8 +3,8 @@
 One page to keep beside the keyboard. Keys are written as Vim writes them:
 `<C-r>` is Ctrl and r, `<A-j>` Alt and j, `<CR>` Enter, `<Esc>` Escape, `,` is
 the leader key. **A** is the arrange view, **R** the piano roll, **M** the mixer,
-**D** the device panel. Every key here is checked against the DAW's mappings by
-the tutor's tests; `?` in the DAW lists every key of the view you are in.
+**D** the device panel. Every key here is checked against paw's mappings by
+the tutor's tests; `?` in paw lists every key of the view you are in.
 
 ## The sentence
 
@@ -70,6 +70,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `]t` `[t` | the clip's next take, the one before | |
 | `zt` `zT` | show or hide the track's take lanes, the tempo lane under the ruler | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
+| `gx` | remove the marker or region at the cursor; a right click on its name under the ruler has "Remove" | |
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
 
@@ -171,6 +172,7 @@ See [Harmony, completion and snippets](../harmony.md).
 | `qa` … `q` | record keys into register a |
 | `@a` `@@` `@:` | play them, the last macro again, the last command line |
 | `ma` `'a` `''` | set mark a, go to it, back to before the jump |
+| `:delmarks a-d` `:delmarks!` | remove marks (letters, ranges); all lowercase ones |
 | `<C-o>` `<C-i>` | back, forward through jumps |
 
 ## Play

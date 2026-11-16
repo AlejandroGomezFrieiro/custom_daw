@@ -421,6 +421,40 @@ function M.goto_mark(name)
   go(g, pos)
 end
 
+--- Remove marks from every view, as Vim's `:delmarks` does: `spec` lists
+--- letters and ranges (`"a b"`, `"a-d"`), and `all` removes every lowercase
+--- one. Returns how many were removed, or nil and what is wrong.
+function M.delmarks(spec, all)
+  local names = {}
+  if all then
+    for c = ("a"):byte(), ("z"):byte() do names[#names + 1] = string.char(c) end
+  else
+    spec = spec:gsub("%s+", "")
+    local i = 1
+    while i <= #spec do
+      local first, dash, last = spec:sub(i, i), spec:sub(i + 1, i + 1), spec:sub(i + 2, i + 2)
+      if not first:match("^%a$") then return nil, "`" .. first .. "` is not a mark name" end
+      if dash == "-" then
+        if not last:match("^%a$") or last:byte() < first:byte() or (last:match("%l") == nil) ~= (first:match("%l") == nil) then
+          return nil, "`" .. spec:sub(i, i + 2) .. "` is not a range of marks"
+        end
+        for c = first:byte(), last:byte() do names[#names + 1] = string.char(c) end
+        i = i + 3
+      else
+        names[#names + 1] = first
+        i = i + 1
+      end
+    end
+  end
+  local removed = 0
+  for _, name in ipairs(names) do
+    for _, list in pairs(marks) do
+      if list[name] then list[name], removed = nil, removed + 1 end
+    end
+  end
+  return removed
+end
+
 --- The marks of a view: name -> position.
 function M.marks(view)
   return marks[view or daw.ui.focused] or {}

@@ -1,10 +1,10 @@
--- Writing this DAW's project as a REAPER project.
+-- Writing paw's project as a REAPER project.
 --
 --   local result = require("rpp.export").file("song.rpp")
 --   print(result.report:text())     -- what could not be written, grouped
 --
 -- The file is laid out the way REAPER 7 writes its own: the same lines in the
--- same order, with REAPER's defaults for the settings this DAW does not have.
+-- same order, with REAPER's defaults for the settings paw does not have.
 -- Beats become seconds by the project's tempo map, which is written as
 -- REAPER's tempo envelope (TEMPOENVEX) when it has more than one point.
 local api = daw.api

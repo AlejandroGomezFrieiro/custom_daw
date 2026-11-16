@@ -37,7 +37,7 @@ RUST_BACKTRACE=1 "$BIN/daw-gui" --clean --no-plugins --audio null \
 gui=$!
 trap 'kill $gui 2>/dev/null; sleep 0.4; kill $wm $xvfb 2>/dev/null' EXIT INT TERM
 sleep "${START:-4}"
-xdotool search --name "daw –" windowmove 0 0 >/dev/null 2>&1
+xdotool search --name "paw –" windowmove 0 0 >/dev/null 2>&1
 sleep 0.3
 png=$1
 shift

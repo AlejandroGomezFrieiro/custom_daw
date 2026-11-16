@@ -3,7 +3,7 @@ return {
   id = "first-steps",
   title = "First steps: the screen, playing, quitting",
   intro = [[
-The DAW is driven from the keyboard. Everything on the screen is a view: the
+paw is driven from the keyboard. Everything on the screen is a view: the
 arrange view in the middle has a row per track and time running to the right,
 the status line at the bottom says which mode you are in (`NORMAL` now), and
 the line below it is where commands are typed and messages appear. This panel
@@ -87,7 +87,7 @@ commands by name (`:tempo 120`), not Ex commands.]],
       done = "Faster.",
     },
     {
-      say = "To quit the DAW, type `:q` and `<CR>` (or `ZQ`; `ZZ` saves first). Do it now: the tutor keeps your place, and `:tutor` next time brings you to lesson 2.",
+      say = "To quit paw, type `:q` and `<CR>` (or `ZQ`; `ZZ` saves first). Do it now: the tutor keeps your place, and `:tutor` next time brings you to lesson 2.",
       keys = { { sim = "quit", instead = { ":q", "<CR>" } } },
       on_quit = true,
       done = "Quitting.",

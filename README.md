@@ -1,7 +1,7 @@
 # paw
 
-A Personalized (digital) Audio Workstation built the way Neovim is built: a small kernel, and
-everything you touch written in Lua on top of it. You can drive it from the
+paw, a personal audio workstation, built the way Neovim is built: a small kernel,
+and everything you touch written in Lua on top of it. You can drive it from the
 keyboard with modal editing, from a window with the mouse, or from a script.
 
 ![The window, playing the demo song](docs/images/gui.png)
@@ -22,6 +22,9 @@ two faces of one kernel, and both can be open on the same project.
 > [what is missing](docs/missing.md).
 
 ## Try it
+
+The programs keep short names for now: `daw` is paw's terminal interface, `daw-gui` its
+window, and the Lua module is `daw`.
 
 ```sh
 nix develop                      # the Rust toolchain and the system libraries

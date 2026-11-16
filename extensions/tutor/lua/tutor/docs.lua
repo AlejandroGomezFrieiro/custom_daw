@@ -26,7 +26,7 @@ end
 function M.lesson(n, lesson, lessons)
   local out = { GENERATED, "", string.format("# Lesson %d: %s", n, lesson.title), "" }
   local function add(line) out[#out + 1] = line end
-  add(string.format("*About ten minutes. In the DAW, with the tutor loaded: `:tutor %d`.*", n))
+  add(string.format("*About ten minutes. In paw, with the tutor loaded: `:tutor %d`.*", n))
   add("")
   if lesson.intro then add(paragraphs(lesson.intro)) add("") end
   if lesson.idea then add("## The idea") add("") add(paragraphs(lesson.idea)) add("") end
@@ -58,9 +58,9 @@ function M.index(lessons)
   local out = { GENERATED, "", "# The course", "" }
   local function add(line) out[#out + 1] = line end
   add(paragraphs([[
-A course for the first days with the DAW, by doing. Each lesson takes about ten
+A course for the first days with paw, by doing. Each lesson takes about ten
 minutes, opens a small practice project of its own, and ends with something you
-made or changed and can hear. The same lessons run inside the DAW, where the
+made or changed and can hear. The same lessons run inside paw, where the
 tutor says what to do next and notices when you have done it:]]))
   add("")
   add("```lua")
@@ -68,7 +68,7 @@ tutor says what to do next and notices when you have done it:]]))
   add("```")
   add("")
   add(paragraphs([[
-then `:tutor` in the DAW. These pages are made from the tutor's own lessons, so
+then `:tutor` in paw. These pages are made from the tutor's own lessons, so
 the two say the same. [keys.md](keys.md) is a page of keys to keep beside the
 keyboard.]]))
   add("")
@@ -81,9 +81,9 @@ keyboard.]]))
   add("")
   add(paragraphs([[
 Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5
-to 8 are the grammar that the rest of the DAW is made of. 9 to 13 are the
+to 8 are the grammar that the rest of paw is made of. 9 to 13 are the
 studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are
-about finding your own way: finding any key, making the DAW yours, and the
+about finding your own way: finding any key, making paw yours, and the
 extensions.]]))
   return table.concat(out, "\n") .. "\n"
 end

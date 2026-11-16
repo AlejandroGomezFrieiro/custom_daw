@@ -3,7 +3,7 @@ return {
   id = "grammar",
   title = "The grammar: operators, motions, text objects",
   intro = [[
-This is the heart of the DAW. Most editing is a short sentence: an operator
+This is the heart of paw. Most editing is a short sentence: an operator
 (what to do) followed by a motion or a text object (what to do it to).
 `d` is delete, `w` is "to the next clip", so `dw` deletes up to the next clip.
 `ic` is "the clip I am in", so `dic` deletes this clip. A count says how many:

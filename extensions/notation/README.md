@@ -285,12 +285,12 @@ mode it follows the pointer; the status line says the note and time under
 the pointer.
 
 **Coming from MuseScore.** The note input is MuseScore's in spirit and the
-DAW's in its keys. Insert mode (`i`, `a`, or a double click) is MuseScore's
+paw's in its keys. Insert mode (`i`, `a`, or a double click) is MuseScore's
 note input: a letter enters that note in the nearest octave and steps on, a
 capital adds it to the chord, `Alt-2` … `Alt-8` add an interval above, `t`
 enters triplets, `~` ties, `R` repeats the chord, and the note to be entered
 shows where it would go. Durations are chosen by number as in MuseScore
-(`5` a quarter, `4` an eighth), but there is no 1 or 9: the DAW's values
+(`5` a quarter, `4` an eighth), but there is no 1 or 9: paw's values
 go from a 32nd to a whole note. Pitches are moved with the keys the piano
 roll uses (`Ctrl-a` `Ctrl-x` a semitone, `Alt-k` `Alt-j` a step of the key,
 `}` `{` an octave), not the arrows, which move the cursor as everywhere

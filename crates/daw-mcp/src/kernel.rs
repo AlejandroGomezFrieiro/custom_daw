@@ -1,4 +1,4 @@
-//! The connection to the DAW kernel's control socket: one JSON object per
+//! The connection to paw kernel's control socket: one JSON object per
 //! line, `{"id", "method", "params"}` out and `{"id", "result"|"error"}` back.
 //!
 //! The connection is made when it is first needed and made again after the
@@ -202,7 +202,7 @@ impl Kernel {
             )
         };
         CallError::Unavailable(format!(
-            "No DAW kernel at {}: {err}. {how}",
+            "No paw kernel at {}: {err}. {how}",
             self.socket.display()
         ))
     }

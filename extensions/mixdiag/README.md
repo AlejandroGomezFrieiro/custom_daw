@@ -210,7 +210,7 @@ measurement; `start + seconds * tempo / 60` is the beat.
   carries, which leaves out effect returns fed by its sends.
 - A spectrum compared with reference tracks; no target curves are shipped,
   deliberately.
-- Tempo changes (the DAW has none yet), and integer-render settings: the
+- Tempo changes (paw has none yet), and integer-render settings: the
   measurement is of the floating-point mix, before any dither.
 - Mono files are read as two identical channels, so they measure 3 dB louder
   than a mono-aware meter would read them.

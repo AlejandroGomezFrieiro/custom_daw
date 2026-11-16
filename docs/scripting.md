@@ -386,7 +386,7 @@ over it in [objects.lua](../runtime/lua/daw/objects.lua).
 ## Scripts and other programs
 
 `daw -l script.lua [args]` runs a script with no UI and exits, which makes the
-DAW usable as a batch tool. A running instance listens on a Unix socket:
+paw usable as a batch tool. A running instance listens on a Unix socket:
 
 ```sh
 daw ctl eval 'daw.transport.position'

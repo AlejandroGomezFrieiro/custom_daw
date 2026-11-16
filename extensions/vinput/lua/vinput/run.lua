@@ -2,7 +2,7 @@
 --
 -- Each input that is on has one program (its kind's `argv`), started once
 -- the input's MIDI port is there, started again when a setting changes, and
--- asked to finish when the input is turned off or removed or the DAW exits.
+-- asked to finish when the input is turned off or removed or paw exits.
 -- A program that ends by itself is started again a few times, then left
 -- with the reason shown. What a program prints goes to a file per input in
 -- the state directory, which is read for the level and the note count.
@@ -321,7 +321,7 @@ function R.sources(kind, refresh)
   return list.items
 end
 
--- The programs end with the DAW.
+-- The programs end with paw.
 daw.on("exit", function()
   for _, job in pairs(R.jobs) do
     if job.proc then pcall(api.proc_stop, job.proc) end

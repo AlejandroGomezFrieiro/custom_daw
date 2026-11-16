@@ -1674,6 +1674,30 @@ command("marks", function()
   if #lines == 0 then lines[1] = "No marks. `ma` sets mark a at the cursor, `'a` goes back to it." end
   daw.ui.page("Marks", lines)
 end, { desc = "List the marks" })
+local function remove_marks(spec, all)
+  local removed, err = keymap.delmarks(spec, all)
+  if not removed then return daw.notify(err, "warn") end
+  if removed == 0 then return daw.notify("no such mark is set", "warn") end
+  daw.notify(removed == 1 and "removed 1 mark" or "removed " .. removed .. " marks")
+end
+command("delmarks", function(ctx)
+  if not ctx.args[1] then return daw.notify("usage: delmarks a b c-e; delmarks! removes every lowercase mark", "warn") end
+  remove_marks(table.concat(ctx.args, " "))
+end, {
+  desc = "Remove marks: `delmarks a`, `delmarks a-d x`",
+  complete = function()
+    local seen, out = {}, {}
+    for _, view in ipairs({ "arrange", "pianoroll" }) do
+      for name in pairs(keymap.marks(view)) do seen[name] = true end
+    end
+    for name in pairs(seen) do out[#out + 1] = name end
+    table.sort(out)
+    return out
+  end,
+})
+command("delmarks!", function() remove_marks("", true) end, { desc = "Remove every lowercase mark" })
+command.alias("delm", "delmarks")
+command.alias("delm!", "delmarks!")
 command("info", function()
   local track = need_track()
   if not track then return end
@@ -2053,6 +2077,7 @@ amap("]'", "marker.next", "The next marker or region", { motion = true })
 amap("['", "marker.prev", "The marker or region before", { motion = true })
 amap("g'", "marker", "Put a marker at the cursor")
 amap('g"', "marker.list", "Go to a marker or region from a list")
+amap("gx", "marker.remove", "Remove the marker or region at the cursor")
 amap("<leader>ax", "lane.clear", "Clear the volume automation")
 amap("K", "info", "Describe what is under the cursor")
 

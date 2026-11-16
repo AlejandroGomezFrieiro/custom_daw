@@ -194,7 +194,7 @@ fn defs() -> Vec<ToolDef> {
             "params": {"type": "boolean", "description": "Also list each match's parameters (default false)"}
         }), &[]), true, false);
     add("get_status", "Transport and messages",
-        "Where the transport is (playing, position, loop, metronome), the audio engine (backend, sample rate, CPU, dropouts), whether the project has unsaved changes, and the DAW's recent messages, warnings and errors. Reads only.".into(),
+        "Where the transport is (playing, position, loop, metronome), the audio engine (backend, sample rate, CPU, dropouts), whether the project has unsaved changes, and paw's recent messages, warnings and errors. Reads only.".into(),
         obj(json!({"messages": {"type": "integer", "minimum": 0, "maximum": 100, "description": "How many recent messages (default 10)"}}), &[]), true, false);
 
     // --- writing ---
@@ -397,7 +397,7 @@ fn defs() -> Vec<ToolDef> {
 
     // --- transport, history and files ---
     add("transport", "Play, stop, seek, loop",
-        "Control playback: play, stop, move the playhead, set and toggle the loop, the metronome. Playback is heard on the DAW's audio device (nothing with the null backend); to check how something sounds, use render instead. Not part of undo.".into(),
+        "Control playback: play, stop, move the playhead, set and toggle the loop, the metronome. Playback is heard on paw's audio device (nothing with the null backend); to check how something sounds, use render instead. Not part of undo.".into(),
         obj(json!({
             "action": {"type": "string", "enum": ["play", "stop"], "description": "Start or stop playback (after the other settings are applied)"},
             "position": position("Move the playhead here"),
@@ -407,7 +407,7 @@ fn defs() -> Vec<ToolDef> {
             "metronome": {"type": "boolean", "description": "Metronome on or off"}
         }), &[]), false, false);
     add("undo", "Undo or redo",
-        "Undo the last change (or `steps` changes), or redo with redo=true. Every typed tool call that wrote is one step; so is anything a person did in the DAW meanwhile. Returns the project as it is afterwards.".into(),
+        "Undo the last change (or `steps` changes), or redo with redo=true. Every typed tool call that wrote is one step; so is anything a person did in paw meanwhile. Returns the project as it is afterwards.".into(),
         obj(json!({
             "steps": {"type": "integer", "minimum": 1, "maximum": 100, "description": "How many steps (default 1)"},
             "redo": {"type": "boolean", "description": "Redo instead of undo"}
@@ -449,21 +449,21 @@ fn defs() -> Vec<ToolDef> {
         destructive: true,
         escape: true,
     };
-    d.push(escape("run_command", "Escape hatch: run a DAW command",
-        "ESCAPE HATCH, for what the typed tools do not cover: run a command line as typed after `:` in the DAW, such as `track.add Bass device=synth`, `tempo 96`, `commands` or `lua <code>`. Commands act on the DAW's cursor and selection. Returns the command's result and any messages it showed. One undo step; not rolled back on failure. It can run Lua and write files: only offered with --allow-eval.".into(),
+    d.push(escape("run_command", "Escape hatch: run a paw command",
+        "ESCAPE HATCH, for what the typed tools do not cover: run a command line as typed after `:` in paw, such as `track.add Bass device=synth`, `tempo 96`, `commands` or `lua <code>`. Commands act on paw's cursor and selection. Returns the command's result and any messages it showed. One undo step; not rolled back on failure. It can run Lua and write files: only offered with --allow-eval.".into(),
         obj(json!({"line": {"type": "string", "description": "The command line, without the leading `:`"}}), &["line"])));
     d.push(escape("send_keys", "Escape hatch: type keys",
-        "ESCAPE HATCH: type keys into the DAW as a person would, in Neovim notation (`ggdd`, `<Space>`, `<C-r>`, `:tempo 90<CR>`). Acts on the focused view and the cursor; the result gives the mode and focus afterwards, and any messages. One undo step per call. Only offered with --allow-eval.".into(),
+        "ESCAPE HATCH: type keys into paw as a person would, in Neovim notation (`ggdd`, `<Space>`, `<C-r>`, `:tempo 90<CR>`). Acts on the focused view and the cursor; the result gives the mode and focus afterwards, and any messages. One undo step per call. Only offered with --allow-eval.".into(),
         obj(json!({"keys": {"type": "string", "description": "Keys in Neovim notation"}}), &["keys"])));
-    d.push(escape("eval_lua", "Escape hatch: run Lua in the DAW",
-        "ESCAPE HATCH: run Lua inside the DAW with the whole `daw` scripting interface (daw.tracks(), daw.project, daw.api.*, ...) and return what it returns, as text. An expression is returned as is (`daw.project.tempo`); statements need `return`. This is arbitrary code in the DAW's process, with its file and network access: only offered with --allow-eval. One undo step; not rolled back on failure.".into(),
+    d.push(escape("eval_lua", "Escape hatch: run Lua in paw",
+        "ESCAPE HATCH: run Lua inside paw with the whole `daw` scripting interface (daw.tracks(), daw.project, daw.api.*, ...) and return what it returns, as text. An expression is returned as is (`daw.project.tempo`); statements need `return`. This is arbitrary code in paw's process, with its file and network access: only offered with --allow-eval. One undo step; not rolled back on failure.".into(),
         obj(json!({"code": {"type": "string", "description": "Lua code"}}), &["code"])));
     d
 }
 
 /// Instructions for the model, sent with `initialize`.
 pub const INSTRUCTIONS: &str = "\
-This server drives a session of a DAW (digital audio workstation). Conventions:
+This server drives a session of paw (a personal audio workstation). Conventions:
 - Ids: tracks, devices, clips and automation lanes have numeric ids; get_project lists them. Tracks can also be named. The master track is id 0 or \"master\".
 - Time: a JSON number is beats (quarter notes) from the start, 0 being the start; a string \"bar.beat\" counts from 1 (\"5.1\" is bar 5). Note starts are relative to their clip; in the compact note strings (\"C4 2.5 1/8 90\") the start is beats, or bar:beat with a colon (\"1:3\"). Lengths may be beats, \"2 bars\" or a note value \"1/8\" (a whole note is 4 beats).
 - Pitches: note names with octave, middle C = C4 = MIDI 60; sharps # and flats b; chords as \"C4+E4+G4\".
@@ -507,7 +507,7 @@ impl Tools {
             .ok_or_else(|| ToolError(format!("unknown tool `{name}`")))?;
         if def.escape && !self.policy.allow_eval {
             return err(format!(
-                "`{name}` is an escape hatch that runs arbitrary code in the DAW, and this server was started without --allow-eval. Use the typed tools, or ask the user to restart the server with --allow-eval."
+                "`{name}` is an escape hatch that runs arbitrary code in paw, and this server was started without --allow-eval. Use the typed tools, or ask the user to restart the server with --allow-eval."
             ));
         }
         let empty = Map::new();

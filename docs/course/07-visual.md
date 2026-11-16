@@ -2,7 +2,7 @@
 
 # Lesson 7: Visual mode: select, then act
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 7`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 7`.*
 
 Sometimes it is easier to see what you are about to change before you change it. Visual mode turns that round: first select, with the motions you know, then press an operator, and it acts on the selection.
 

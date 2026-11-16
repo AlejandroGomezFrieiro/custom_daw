@@ -4,8 +4,8 @@
 --   local doc = rpp.read("song.rpp")            -- the file as a tree
 --   doc.project:set("TEMPO", 96, 4, 4, 0)
 --   rpp.save(doc, "song.rpp")                   -- unchanged lines are written as read
---   local result = rpp.import("song.rpp")       -- into this DAW; result.report lists what stayed behind
---   rpp.export("out.rpp")                       -- this DAW's project as a REAPER project
+--   local result = rpp.import("song.rpp")       -- into paw; result.report lists what stayed behind
+--   rpp.export("out.rpp")                       -- paw's project as a REAPER project
 local format = require("rpp.format")
 
 local M = {

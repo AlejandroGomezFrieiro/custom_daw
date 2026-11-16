@@ -234,7 +234,7 @@ opened again is sung again from that cache.
   renders are deterministic. The render's own instances of the device play
   the same phrases.
 - The engine runs only while there is a vocal track or an editor command
-  needs it, and stops with the DAW.
+  needs it, and stops with paw.
 - Curves follow clips by answering each clip edit with lane edits in the
   same turn, so the core puts both in one undo step; changes the core marks
   `restored` (undo, redo, opening a project) are only noted
