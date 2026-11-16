@@ -110,7 +110,9 @@ terminal uses. [docs/window.md](docs/window.md) has every gesture.
   through the `rpp` extension.
 - **Somewhere else.** `daw attach` shows the terminal UI of a running
   instance in another terminal, and `daw-gui --connect` puts the window on an
-  instance on another machine. See [docs/protocol.md](docs/protocol.md).
+  instance on another machine, over TLS, each with a cursor and mode of its
+  own; files and sound go across too. See
+  [docs/running.md](docs/running.md#on-another-machine).
 
 ## Make it yours
 

@@ -21,10 +21,15 @@
   for them in pure Rust of a quality worth shipping, and no C library is
   linked for them; they need ffmpeg installed (see Rendering). Nor does the
   file carry more than the title tag (no artist, album or cover).
-- For instances on other machines: encryption of network connections
-  (SSH does it today), hearing the instance's sound on the machine you sit
-  at, sending it files from that machine, and a cursor and mode for each
-  connection (every terminal and window of an instance shares one).
+- For instances on other machines: the sound is sent as plain 16-bit
+  samples (about 1 Mbit/s) rather than Opus, which has no encoder in pure
+  Rust worth shipping; nothing is sent the other way (recording from the
+  client's microphone); only sound files are sent and imported from the
+  client's disk (there is no MIDI file import at all, and projects open
+  and save on the instance's disk); options such as the zoom, MIDI step
+  input and the automation lanes shown are shared by every seat; a view
+  docked by an extension after a seat opened shows only in the seat that
+  docked it; a window's seat does not survive `:reload`.
 - Painted windows for the undo tree (a tree of nodes to click) and the mix
   report (meters and a spectrum as shapes): in the graphical frontend they
   are their terminal views in a window. What an extension draws on the
@@ -33,8 +38,9 @@
   curves there are drawn with line characters.
 - Dropping files where the pointer is: the window cannot learn where a file
   from a file manager is dropped (winit 0.30 reports no position), and on
-  Wayland it is told of no drops at all. The desktop's file dialogs are
-  not shown for a kernel the window attached to with `--socket`.
+  Wayland it is told of no drops at all. For a kernel the window attached
+  to, the desktop's file dialog is only shown to import (the file chosen is
+  sent to the kernel); Open and Save as browse the kernel's disk.
 - Devices written in Lua.
 - The window's GPU renderer as the default: it is tried only on a software
   OpenGL (llvmpipe) so far, where it draws correctly but costs more than

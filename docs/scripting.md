@@ -201,9 +201,10 @@ a frontend draws (pushed when it changes, in parts), and the terminal
 UI's screen. [docs/protocol.md](protocol.md) is the whole protocol.
 
 **An instance on another machine.** `daw attach` makes the terminal it
-runs in a terminal of an instance that is already running: the same
-screen, the same keys, beside the instance's own terminal if it has one
-(`daw --headless` has none). `:detach` leaves and the instance runs on.
+runs in a terminal of an instance that is already running, beside the
+instance's own terminal if it has one (`daw --headless` has none), with a
+seat of its own: its own cursor, mode, selection and keys, in the one
+project. `:detach` leaves and the instance runs on.
 `daw ctl`, `daw attach` and `daw-gui` all reach an instance three ways:
 
 ```sh
@@ -212,21 +213,11 @@ daw attach --socket /tmp/studio.sock         # another socket, such as one carri
 daw attach --connect studio:7700 --token-file studio.token   # over the network
 ```
 
-Over SSH needs nothing set up in the program and is encrypted:
-
-```sh
-ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
-daw-gui --socket /tmp/studio.sock
-```
-
 Over the network the instance has to be started with `--listen-tcp
-0.0.0.0:7700` (or `127.0.0.1:7700` for this machine alone). A connection
-must show that it knows the token in `~/.local/state/daw/token` on the
-instance's machine (made at the first start; copy it to the other
-machine). The token is never sent, but the connection is not encrypted:
-use it on a network you trust. What stays on the instance's machine: the
-sound (it plays on its own sound device), plugin windows, and the files
-that Open, Save and Import browse.
+0.0.0.0:7700` (or `127.0.0.1:7700` for this machine alone); the
+connection is encrypted (TLS) and has to show that it knows the token.
+[Running it](running.md#on-another-machine) says how to set that up,
+send files from the machine you sit at, and hear the instance there.
 
 `daw doctor` is a script of its own kind: it runs the checks of
 [extensions/doctor](../extensions/doctor) that need nobody, with the sound device

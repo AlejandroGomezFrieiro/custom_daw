@@ -76,3 +76,74 @@ program, in the manner of `vimtutor`: load `extensions/tutor` (see
 [Extensions](extensions.md#extensions)) and type `:tutor`. The same lessons are in
 [docs/course](course/README.md) for reading, with a one-page
 [key reference](course/keys.md).
+
+## On another machine
+
+An instance can be worked on from other terminals and windows, on the
+same machine or another: `daw attach` in a terminal, `daw-gui --socket` or
+`daw-gui --connect` for a window. Each of them has a seat of its own: its
+own cursor, mode, selection, keys half typed, registers, prompt and panels
+shown, while the project is one. What one does the others see at once;
+two edits of the same thing are two steps in the one undo history, and the
+last one stands. `u` undoes the last step whoever made it. Options
+(`daw.opt`, such as the zoom) are the instance's and shared. A window that
+started its own kernel shares that kernel's seat, so `daw ctl` acts in what
+it shows; so does every connection that has not attached (`daw ctl`,
+scripts).
+
+Over the network, start the instance with `--listen-tcp`:
+
+```sh
+daw --listen-tcp 0.0.0.0:7700            # every network the machine is on
+daw --headless --listen-tcp 127.0.0.1:7700
+```
+
+Connections are encrypted with TLS. The first time it listens the instance
+makes a certificate of its own and keeps it in `~/.local/state/daw/tls`;
+it says its fingerprint when it starts (`listening on … certificate
+9f1c:…`). A connection must also show that it knows the token in
+`~/.local/state/daw/token` on the instance's machine (made at the first
+start; copy it to the other machine); the token itself is never sent.
+
+```sh
+daw attach --connect studio:7700 --token-file studio.token
+daw-gui --connect studio:7700 --token-file studio.token
+```
+
+The first connection to an address trusts the certificate it is shown and
+remembers its fingerprint in `~/.local/state/daw/known_instances` on the
+client's machine; compare it with the one the instance said. Afterwards a
+different certificate is refused, with both fingerprints named: either
+the instance made a new one (its state directory was lost, or it moved
+machine), and `--accept-certificate` takes it, or something between the
+two machines is pretending to be it. `--no-tls` on both sides speaks in
+the clear, for a network you trust; an instance that only takes TLS tells
+a client in the clear so. SSH needs nothing from the program either:
+
+```sh
+ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
+daw attach --socket /tmp/studio.sock
+```
+
+**Files from the machine you sit at.** Import and Open browse the
+instance's disk. To bring in a sound file from the client's, drop it on a
+window attached elsewhere, choose it in the window's Import dialog (the
+desktop's own dialog runs on the client), or type `:upload ~/take.wav` in
+an attached terminal. It is sent over the connection in pieces into the
+project's `media` folder on the instance's machine (beside a saved project,
+else a scratch folder) and imported on a new track.
+
+**Hearing it.** The sound plays on the instance's machine. `daw attach
+--listen-audio` and `daw-gui --connect … --listen-audio` also play it
+through the client's own sound device, and `:listen` (or "Hear it on this
+machine" in the window's engine menu) starts and stops that. It is sent as
+16-bit samples at half the engine's rate (24 kHz for 48 kHz), about
+1 Mbit/s with what the protocol adds: fine on a home network, too much for
+a slow link. The client waits until a fifth of a second has arrived before
+it plays and keeps at most a second, so it is heard a quarter of a second
+late or more: for monitoring a mix, not for playing along.
+`daw attach --listen-audio-to heard.wav` writes what it would play to a
+file instead.
+
+What stays on the instance's machine: plugin windows, the files that Save
+and Render write, and recording from its sound device.
