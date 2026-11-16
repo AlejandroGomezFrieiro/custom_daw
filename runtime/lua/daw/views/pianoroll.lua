@@ -12,6 +12,8 @@ local view = {
   top = 72,       -- pitch of the first row
   scroll = 0,     -- beat at the left edge
 }
+daw.seats.fields("pianoroll", view, { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
+  { pitch = 60, beat = 0, top = 72, scroll = 0 })
 
 function view:clip()
   if self.clip_id and pcall(api.clip_get, self.clip_id) then return daw.clip(self.clip_id) end
@@ -26,6 +28,7 @@ function view:edit(clip)
   self.pitch = notes[1] and notes[1].pitch or 60
   self.top = nil
   daw.ui.focus("pianoroll")
+  daw.emit("pianoroll.opened", { clip = clip.id })
 end
 
 --- The note under the cursor, with its index in the clip's note list.
@@ -36,6 +39,31 @@ function view:note_at(pitch, beat)
 end
 
 local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
+
+-- Layers that modules draw over the roll, from back to front by `order`.
+-- The clip's own notes are at 20: layers below that (other tracks' notes)
+-- are drawn under them, the rest (diagnostics 30, a snippet's marks 40,
+-- suggestions 50) over them, and the cursor last of all.
+view.layers = {}
+
+--- Draw `paint(p)` as a layer of the roll, replacing one of the same name
+--- (nil removes it). `p` holds `roll` and `ruler` (cell buffers), `clip`,
+--- `x(beat)` (a column of the roll), `row(pitch)` (a row, nil when off
+--- screen), `scroll`, `zoom`, `top`, `rows` and `hue`.
+function view.layer(name, order, paint)
+  for i = #view.layers, 1, -1 do
+    if view.layers[i].name == name then table.remove(view.layers, i) end
+  end
+  if paint then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint } end
+  table.sort(view.layers, function(a, b) return a.order < b.order end)
+  api.ui_redraw()
+end
+
+local function paint_layers(p, from, to)
+  for _, layer in ipairs(view.layers) do
+    if layer.order >= from and layer.order < to then layer.paint(p) end
+  end
+end
 
 --- Rows for the velocity lane on a panel `h` rows tall.
 function view.velocity_rows(h)
@@ -126,6 +154,17 @@ function view:render(buf, ctx)
   local playing_here = px >= 0 and px < tw and t.position >= c.start and t.position <= c.start + c.length
   if playing_here then roll:fill(px, 0, 1, rows, g.playhead, "Playhead") end
 
+  local top = self.top
+  local layer = {
+    roll = roll, ruler = ruler, clip = clip, scroll = self.scroll, zoom = zoom, top = top, rows = rows, hue = hue,
+    x = function(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end,
+    row = function(pitch)
+      local row = top - pitch
+      if row >= 0 and row < rows then return row end
+    end,
+  }
+  paint_layers(layer, -math.huge, 20)
+
   -- Only what is on screen crosses over from the core.
   local under = self:note_at(self.pitch, self.beat)
   local chosen = {}
@@ -143,6 +182,7 @@ function view:render(buf, ctx)
     -- Long enough notes say which they are.
     if nw >= 4 then roll:text(x0 + 1, row, music.name(note.pitch):sub(1, nw - 1)) end
   end
+  paint_layers(layer, 20, math.huge)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then

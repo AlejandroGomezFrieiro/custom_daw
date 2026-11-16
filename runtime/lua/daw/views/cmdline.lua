@@ -5,6 +5,8 @@ local M = {}
 
 local active      -- { prompt, chars, pos, on_submit, complete, history, index, matches, match }
 local histories = {}
+-- A prompt open in one seat is that seat's; the history is everyone's.
+daw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
 
 local function text()
   return table.concat(active.chars)

@@ -27,6 +27,7 @@ use daw_engine::{Engine, Msg, wav};
 use serde_json::{Value, json};
 
 use super::encode::{self, Lossy, Quality};
+use super::tags::{self, Cover, Tags};
 use super::{Dither, RenderOpts, Session, block_json, check_sample_rate, settle_plugins};
 use crate::measure::analysis::Analyzer;
 use crate::model::{MASTER_ID, Project};
@@ -223,6 +224,10 @@ struct Plan {
     /// For a lossy format: how ffmpeg is to make the file from the WAV
     /// that is rendered first.
     encode: Option<Encode>,
+    /// What the file is tagged with: in a WAV or FLAC as it is written, in
+    /// the lossy formats by ffmpeg.
+    tags: Tags,
+    cover: Option<Cover>,
 }
 
 struct Encode {
@@ -230,7 +235,6 @@ struct Encode {
     program: String,
     quality: Quality,
     bitrate: Option<u32>,
-    title: String,
 }
 
 /// The temporary name a file is written under until it is complete.
@@ -289,7 +293,17 @@ impl Session {
         self.await_loads(Duration::from_secs(60))?;
         self.capture_states();
         let project = self.project.clone();
-        self.render_snapshot(project, path, opts)
+        // The file's tags are the project's, over which the render's own
+        // go. A lossy file's title is the project's name unless one is
+        // given; a WAV or FLAC is only tagged with what was asked for, so
+        // that a plain render stays a plain file.
+        let mut opts = opts.clone();
+        opts.tags = Tags::of_project(&project)?.over(&opts.tags);
+        let lossy = format_of(path, opts.ffmpeg.as_deref())?.lossy().is_some();
+        if lossy && opts.tags.title.is_empty() {
+            opts.tags.title.clone_from(&project.name);
+        }
+        self.render_snapshot(project, path, &opts)
     }
 
     /// Start rendering `project`, which need not be the session's: a glue
@@ -394,6 +408,10 @@ impl Session {
             );
         }
 
+        let cover = opts
+            .tags
+            .load_cover(self.path.as_deref().and_then(Path::parent))?;
+
         let (mut engine, mut handle) = Engine::new(sample_rate as f64);
         engine.set_pool(self.pool(opts.threads));
         // The render gets its own instances of every device, plugins included.
@@ -455,8 +473,9 @@ impl Session {
                 program: encode::program(opts.ffmpeg.as_deref()).to_owned(),
                 quality,
                 bitrate: opts.bitrate,
-                title: project.name.clone(),
             }),
+            tags: opts.tags.clone(),
+            cover,
         };
         let thread = std::thread::Builder::new()
             .name("render".into())
@@ -574,11 +593,21 @@ fn run(engine: Engine, plan: Plan) -> Result<Value> {
     let part = partial(&plan.path, "part");
     let raw = partial(&plan.path, "raw");
     let result = match &plan.encode {
-        None => write(engine, &plan, &part, &raw),
+        None => write(engine, &plan, &part, &raw).and_then(|info| {
+            if plan.format == Format::Wav {
+                tags::write_wav(&part, &plan.tags).context("tagging the file")?;
+            }
+            Ok(info)
+        }),
         Some(encode) => {
             // The mix goes to a WAV beside the file, which ffmpeg then
             // encodes into the part; the WAV goes either way.
             let wav = partial(&plan.path, "wav.part");
+            let metadata = partial(&plan.path, "meta");
+            let cover_file = partial(
+                &plan.path,
+                &format!("cover.{}", plan.cover.as_ref().map_or("png", Cover::extension)),
+            );
             let result = write(engine, &plan, &wav, &raw).and_then(|info| {
                 plan.progress.encoding.store(true, Ordering::Relaxed);
                 plan.progress.set(0.0);
@@ -591,7 +620,10 @@ fn run(engine: Engine, plan: Plan) -> Result<Value> {
                         output: &part,
                         rate: plan.sample_rate,
                         seconds,
-                        title: &encode.title,
+                        tags: &plan.tags,
+                        cover: plan.cover.as_ref(),
+                        metadata: &metadata,
+                        cover_file: &cover_file,
                         quality: encode.quality,
                         bitrate: encode.bitrate,
                     },
@@ -602,6 +634,8 @@ fn run(engine: Engine, plan: Plan) -> Result<Value> {
                 Ok(info)
             });
             let _ = std::fs::remove_file(&wav);
+            let _ = std::fs::remove_file(&metadata);
+            let _ = std::fs::remove_file(&cover_file);
             result.map(|mut info| {
                 info["bits"] = Value::Null;
                 info["quality"] = json!(format!("{:?}", encode.quality).to_lowercase());
@@ -864,7 +898,13 @@ impl Flac {
         use flacenc::error::Verify;
         let channels = plan.channels as usize;
         let bits = plan.bits as usize;
-        let config = flacenc::config::Encoder::default()
+        let mut config = flacenc::config::Encoder::default();
+        // flacenc's fixed predictors can pick a Rice parameter far too small
+        // for a block of loud 24-bit sound (the demo song's), which writes
+        // one frame of hundreds of megabytes. Its LPC does not, and does the
+        // fixed predictors' work as well.
+        config.subframe_coding.use_fixed = false;
+        let config = config
             .into_verified()
             .map_err(|e| anyhow!("FLAC settings: {e:?}"))?;
         let mut stream = flacenc::component::Stream::new(plan.sample_rate as usize, channels, bits)
@@ -873,6 +913,21 @@ impl Flac {
             .stream_info_mut()
             .set_block_sizes(FLAC_BLOCK, FLAC_BLOCK)
             .map_err(|e| anyhow!("FLAC stream: {e:?}"))?;
+        // Tags go after STREAMINFO, as a Vorbis comment block (type 4) and a
+        // picture block (type 6); the header is the same size when it is
+        // written again at the end.
+        let mut block = |tag, data: &[u8]| {
+            let data = flacenc::component::MetadataBlockData::new_unknown(tag, data)
+                .map_err(|e| anyhow!("FLAC metadata: {e:?}"))?;
+            stream.add_metadata_block(data);
+            Ok::<_, anyhow::Error>(())
+        };
+        if plan.tags.has_text() {
+            block(4, &tags::vorbis_comments(&plan.tags))?;
+        }
+        if let Some(cover) = &plan.cover {
+            block(6, &cover.picture_block())?;
+        }
         let file = File::create(path).with_context(|| format!("creating {}", path.display()))?;
         let mut flac = Self {
             file: BufWriter::new(file),

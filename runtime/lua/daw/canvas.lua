@@ -15,7 +15,8 @@
 --   })
 --   daw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
 --
--- `e.kind` is "down", "up", "move" (while a button is held), "double" or
+-- `e.kind` is "down", "up", "move" (while a button is held), "hover" (the
+-- pointer moving over the window with no button down), "double" or
 -- "wheel". Keys go to the view as they do in the terminal: through the key
 -- mappings made for it, or its `on_key`.
 --
@@ -34,6 +35,7 @@
 -- terminal. `g:mono` is the primitive that carries it: a run of text in
 -- cells of that font, on a background of its own.
 local api = daw.api
+local band = bit.band
 local M = {
   open_views = {},
   -- The size of a cell of the window's monospace font in pixels. A window
@@ -162,6 +164,40 @@ function Painter:line(x0, y0, x1, y1, style)
   self:poly({ x0, y0, x1, y1 }, style)
 end
 
+--- Add a run of monospace cells to a drawing. The window's font has no
+--- braille, so each braille character (U+2800 to U+28FF) is left blank in
+--- the run and its dots are drawn as small rectangles over it: the bits of
+--- the character's offset are the dots of a grid of 2 columns by 4 rows.
+local DOT_ROW = { [0] = 0, 1, 2, 0, 1, 2, 3, 3 }
+local DOT_COLUMN = { [0] = 0, 0, 0, 1, 1, 1, 0, 1 }
+local function add_run(ops, x, y, w, h, chars, colour, background, attrs)
+  local dots, shown, cell = {}, {}, M.cell.w
+  for i, ch in ipairs(chars) do
+    local b1, b2, b3 = ch:byte(1, 3)
+    if b1 == 0xE2 and b2 and b2 >= 0xA0 and b2 <= 0xA3 then
+      local bits = (b2 - 0xA0) * 64 + (b3 - 0x80)
+      shown[i] = " "
+      if bits ~= 0 then dots[#dots + 1] = { i - 1, bits } end
+    else
+      shown[i] = ch
+    end
+  end
+  local text = table.concat(shown)
+  if #dots == 0 or text:find("[^ ]") or background ~= "" then
+    ops[#ops + 1] = { "m", x, y, w, h, text, colour, background, attrs }
+  end
+  local dw, dh = math.max(1, cell * 0.24), math.max(1, h * 0.13)
+  for _, dot in ipairs(dots) do
+    for bit = 0, 7 do
+      if band(dot[2], 2 ^ bit) ~= 0 then
+        local cx = x + (dot[1] + (DOT_COLUMN[bit] + 0.5) / 2) * cell
+        local cy = y + (DOT_ROW[bit] + 0.5) * h / 4
+        ops[#ops + 1] = { "r", cx - dw / 2, cy - dh / 2, dw, dh, colour, "", 1, 0 }
+      end
+    end
+  end
+end
+
 --- A run of text in the window's monospace font with its top left corner
 --- at `x, y`, one character to a cell of `daw.canvas.cell`, `cells` of them
 --- wide (the text's length by default). `style`: `color`, `background`,
@@ -183,8 +219,8 @@ function Painter:mono(x, y, text, style, cells)
   local last = math.min(cells, room)
   if last <= skip then return end
   local attrs = (style.bold and 1 or 0) + (style.italic and 4 or 0) + (style.underline and 8 or 0) + (style.strike and 32 or 0)
-  self.ops[#self.ops + 1] = { "m", x0 + skip * cw, y0, (last - skip) * cw, ch, table.concat(chars, "", skip + 1, math.min(#chars, last)),
-    style.color or c.text, style.background or "", attrs }
+  add_run(self.ops, x0 + skip * cw, y0, (last - skip) * cw, ch, { unpack(chars, skip + 1, math.min(#chars, last)) },
+    style.color or c.text, style.background or "", attrs)
 end
 
 --- Whether a point of the painter's own coordinates is inside it.
@@ -253,12 +289,14 @@ local not_windows = {
 
 --- The views a frontend can offer to open in a window: those that take the
 --- keyboard, `{ name, title }` each, by title. A view keeps itself off the
---- list with `window = false`.
+--- list with `window = false`. A view with a painted twin (`painted = "name"`
+--- of a view that has `paint`) is offered as that one.
 function M.openable()
   local out = {}
   for name, view in pairs(daw.ui.views) do
     if view.focusable ~= false and view.window ~= false and not not_windows[name] then
-      out[#out + 1] = { name = name, title = view.title or name }
+      local twin = view.painted and daw.ui.views[view.painted]
+      out[#out + 1] = { name = twin and view.painted or name, title = view.title or name }
     end
   end
   table.sort(out, function(a, b) return a.title:lower() < b.title:lower() end)
@@ -288,8 +326,6 @@ function M.windows()
   return out
 end
 
-local band = bit.band
-
 --- A view that draws cells, at a size in pixels: its snapshot
 --- (`daw.api.ui_view_snapshot`) as runs of text, a run of one style each.
 --- Drawn again only when a redraw has been asked for since, once a second
@@ -313,8 +349,10 @@ local function paint_cells(name, window, width, height, opts)
       for _, run in ipairs(row) do
         -- Spaces on the window's own background need nothing drawn.
         if run.text:find("[^ ]") or run.bg ~= snap.bg or band(run.attrs, 8 + 32) ~= 0 then
-          ops[#ops + 1] = { "m", run.x * cell.w, y, run.w * cell.w, cell.h, run.text, run.fg,
-            run.bg == snap.bg and "" or run.bg, run.attrs }
+          local chars = {}
+          for ch in run.text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+          add_run(ops, run.x * cell.w, y, run.w * cell.w, cell.h, chars, run.fg,
+            run.bg == snap.bg and "" or run.bg, run.attrs)
         end
       end
     end

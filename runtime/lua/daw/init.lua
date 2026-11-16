@@ -24,6 +24,8 @@ daw.on, daw.once, daw.off, daw.emit = events.on, events.once, events.off, events
 local options = require("daw.options")
 daw.opt, daw.option = options.opt, options
 daw.limit = require("daw.limit")
+-- Before anything that keeps state of its own for each terminal and window.
+daw.seats = require("daw.seats")
 
 --- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
 function daw.defer(fn, ms)
@@ -77,6 +79,8 @@ daw.device_types = api.device_types
 --- named ranges a render can take.
 function daw.render(path, opts) return require("daw.render").render(path, opts) end
 function daw.render_stems(dir, opts) return require("daw.render").stems(dir, opts) end
+--- The tags of the project's rendered files: `daw.render_tags()`, `daw.render_tags({ artist = "Me" })`.
+function daw.render_tags(set) return require("daw.render").tags(set) end
 function daw.render_status() return require("daw.render").status() end
 function daw.render_cancel() return require("daw.render").cancel() end
 daw.render_ranges = setmetatable({}, {
@@ -116,10 +120,12 @@ daw.edit = require("daw.edit")
 daw.ext = require("daw.ext")
 daw.groups = require("daw.groups")
 daw.lanes = require("daw.lanes")
+daw.tempolane = require("daw.tempolane")
 daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
+daw.controls = require("daw.controls")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
 
@@ -139,9 +145,11 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
-  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "help", "effect_windows" }) do
+  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows" }) do
     require("daw.views." .. name)
   end
+  daw.diagnostic = require("daw.diagnostic")
+  daw.lsp = require("daw.lsp")
   require("daw.defaults")
   daw.fx.setup()
   daw.routes.setup()
@@ -156,8 +164,10 @@ function K.startup()
   daw.reconnect = require("daw.reconnect")
   daw.ui.start_ticker()
 
+  daw.luadev = require("daw.luadev")
   local env = api.env()
   if not env.clean then
+    daw.luadev.add_dir(env.config_dir .. "/devices", daw.luadev.RANK_CONFIG)
     daw.ext.load_dir(env.config_dir .. "/extensions")
     local init = env.config_dir .. "/init.lua"
     local file = io.open(init, "r")
@@ -266,6 +276,21 @@ end
 --- A connection on the control socket closed.
 function K.rpc_closed(client)
   if daw.remote then daw.remote.closed(client) end
+  daw.seats.close(client)
+end
+
+--- Whose turn it is: a connection with a seat of its own, or 0.
+function K.seat(client)
+  daw.seats.enter(client)
+end
+
+--- A connection's terminal attached, or went away.
+function K.seat_open(client, why)
+  daw.seats.open(client, why)
+end
+
+function K.seat_close(client, why)
+  daw.limit.guard("leaving a seat", daw.seats.close, client, why)
 end
 
 -- With a screen attached, stdout belongs to the terminal UI.
