@@ -420,6 +420,22 @@ export component PianoRoll inherits Rectangle {
         Roll.view-end = self.shows-to;
     }
 
+    // The cursor moves, or a clip opens: keep it in view.
+    property <int> cursor-pitch: Roll.pitch;
+    property <float> cursor-beat: Roll.cursor;
+    property <bool> clip-open: Roll.open;
+    changed cursor-pitch => {
+        root.reveal(false);
+    }
+    changed cursor-beat => {
+        root.reveal(false);
+    }
+    changed clip-open => {
+        if (Roll.open) {
+            root.reveal(true);
+        }
+    }
+
     pure function is-black(pitch: int) -> bool {
         Math.mod(pitch, 12) == 1 || Math.mod(pitch, 12) == 3 || Math.mod(pitch, 12) == 6 || Math.mod(pitch, 12) == 8 || Math.mod(pitch, 12) == 10
     }
@@ -457,6 +473,24 @@ export component PianoRoll inherits Rectangle {
     function scroll-to(x: length, y: length) {
         roll.content-x = clamp(x, min(0px, roll.visible-width - roll.content-width), 0px);
         roll.content-y = clamp(y, min(0px, roll.visible-height - roll.content-height), 0px);
+    }
+    // Bring the kernel's cursor into view: the least scrolling that shows
+    // it with a row or two to spare, or with `centre` the cursor in the
+    // middle, as the terminal does when it opens a clip.
+    function reveal(centre: bool) {
+        if (roll.visible-height <= 0px || roll.visible-width <= 0px) {
+            return;
+        }
+        let cy = (127 - Roll.pitch) * root.note-height;
+        let cx = Roll.cursor * root.beat;
+        let margin = min(2 * root.note-height, roll.visible-height / 4);
+        let above = cy - margin < -roll.content-y;
+        let below = cy + root.note-height + margin > -roll.content-y + roll.visible-height;
+        let aside = cx < -roll.content-x || cx + root.beat > -roll.content-x + roll.visible-width;
+        root.scroll-to(
+            centre || aside ? -(cx - (centre ? roll.visible-width / 2 : roll.visible-width / 3)) : roll.content-x,
+            centre ? -(cy + root.note-height / 2 - roll.visible-height / 2) : above ? -(cy - margin) : below ? -(cy + root.note-height + margin - roll.visible-height) : roll.content-y
+        );
     }
     // Zoom in time, or the rows, keeping what is under the pointer (at `x`
     // or `y` in the grid) where it is.

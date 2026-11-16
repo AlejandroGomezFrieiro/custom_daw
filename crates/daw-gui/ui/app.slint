@@ -58,6 +58,7 @@ export struct TrackData {
     number: int,        // its place in the list, from 1
     output: string,     // the track it plays into
     inserts: [string],  // the names of its devices
+    sends: [string],    // where else its sound goes, with the level: "Reverb  -6.0"
     lane-name: string,      // the automation lane it shows
     lane-choices: [string], // and the ones it could
     depth: int,         // how many groups it is inside
@@ -344,6 +345,19 @@ component MixerStrip inherits Rectangle {
                 }
             }
         }
+        // Its sends, as many as the strip has room for.
+        for send[at] in (root.track.vca ? 0 : min(root.track.sends.length, root.height < 300px ? 1 : 3)): Rectangle {
+            height: 16px;
+            Text {
+                x: 5px;
+                width: parent.width - 10px;
+                text: root.height < 300px && root.track.sends.length > 1 ? "+" + root.track.sends.length + " sends" : "⇢ " + root.track.sends[at];
+                color: Theme.text-2;
+                font-size: Theme.t-micro;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
         // The pan.
         if !root.track.vca: HorizontalLayout {
             height: 26px;
@@ -372,7 +386,7 @@ component MixerStrip inherits Rectangle {
             vertical-stretch: 1;
             min-height: 80px;
             property <length> travel: self.height - 36px;
-            for mark[i] in [6, 0, -6, -12, -24, -36, -60]: Text {
+            for mark[i] in [6, 0, -6, -12, -24, -48]: Text {
                 x: 0;
                 width: 18px;
                 y: 18px + parent.travel * (1 - Taper.pos(mark)) - 6px;
@@ -718,6 +732,17 @@ in property <string> render-stage;
     in property <int> cursor-row: -1;
     in property <float> grid: 1;
     in property <[HintData]> hints;
+    // The key bar of the view that has the keyboard, the quickfix count
+    // for the status bar (`qf-level` 0 plain, 1 warning, 2 error), and what
+    // the command line could be completed to.
+    in property <[HintData]> keys;
+    in property <string> qf;
+    in property <int> qf-level;
+    in property <[HintData]> matches;
+    in property <int> match-chosen;
+    in property <int> match-total;
+    in property <length> match-label-px;
+    in property <length> match-desc-px;
     in property <[MenuEntry]> clip-entries;      // what extensions add to the menus
     in property <[MenuEntry]> track-entries;
     in property <[MenuEntry]> timeline-entries;
@@ -731,6 +756,11 @@ in property <string> render-stage;
     in property <bool> float-open;
     in property <string> float-title;
     in property <string> float-text;
+    // How many columns and lines of text the page has room for: the kernel
+    // draws it to this size.
+    property <length> float-box-w: min(root.width - 40px, 1500px);
+    out property <int> float-cols: max(40, floor((self.float-box-w - 28px) / 7.2px));
+    out property <int> float-rows: max(8, floor((root.height - 130px) / 16px));
     in property <int> float-lines: 1;   // how many lines it has
     // The pointer on it: "down" or the wheel's "scroll_up" and "scroll_down", a line and a column from 1.
     callback float-pointer(string, int, int);
@@ -5745,9 +5775,15 @@ in property <string> render-stage;
         }
 
         // The mixer: a strip per track, the master pinned at the right.
-        if root.show-mixer: Rectangle {
+        if root.show-mixer: mixer := Rectangle {
             // Shorter while the piano roll shares the window.
             height: Roll.open && !Roll.detached ? 250px : 340px;
+            // Strips share the width the master leaves, as wide as a name
+            // needs and no wider than a fader looks right; what is left
+            // over goes to both sides.
+            property <length> strip-w: clamp((self.width - 92px) / max(1, root.tracks.length - 1) - 1px, 72px, 112px);
+            property <length> strips-w: (root.tracks.length - 1) * (self.strip-w + 1px);
+            property <length> pad: max(0px, (self.width - 92px - self.strips-w) / 2);
             background: Theme.surface;
             Rectangle {
                 y: 0;
@@ -5759,12 +5795,12 @@ in property <string> render-stage;
                 spacing: 1px;
                 ScrollView {
                     horizontal-stretch: 1;
-                    content-width: (root.tracks.length - 1) * 73px;
+                    content-width: mixer.pad + mixer.strips-w;
                     content-height: self.visible-height;
                     for track[index] in root.tracks: MixerStrip {
-                        x: index * 73px;
+                        x: mixer.pad + index * (mixer.strip-w + 1px);
                         y: 0;
-                        width: 72px;
+                        width: mixer.strip-w;
                         height: parent.height;
                         visible: !track.master;
                         track: track;
@@ -5951,14 +5987,50 @@ in property <string> render-stage;
                         }
                     }
                 }
-                Text {
-                    text: root.prompt-open ? root.prompt + root.prompt-before + "▏" + root.prompt-after : root.status != "" ? root.status : root.hint != "" ? root.hint : Roll.hint;
-                    color: root.prompt-open ? Theme.text : root.status == "" ? Theme.text-2 : root.status-level == 2 ? Theme.error : root.status-level == 1 ? Theme.warn : Theme.text;
-                    font-family: root.prompt-open ? Theme.mono : "Inter";
-                    font-size: root.prompt-open ? Theme.t-base : Theme.t-small;
-                    vertical-alignment: center;
-                    overflow: elide;
+                bar := Rectangle {
                     horizontal-stretch: 1;
+                    // The keys worth knowing in this view, when nothing else
+                    // has the line.
+                    property <bool> keys-shown: !root.prompt-open && root.status == "" && root.hint == "" && root.keys.length > 0;
+                    Text {
+                        x: 0px;
+                        width: parent.width;
+                        visible: !bar.keys-shown;
+                        text: root.prompt-open ? root.prompt + root.prompt-before + "▏" + root.prompt-after : root.status != "" ? root.status : root.hint != "" ? root.hint : Roll.hint;
+                        color: root.prompt-open ? Theme.text : root.status == "" ? Theme.text-2 : root.status-level == 2 ? Theme.error : root.status-level == 1 ? Theme.warn : Theme.text;
+                        font-family: root.prompt-open ? Theme.mono : "Inter";
+                        font-size: root.prompt-open ? Theme.t-base : Theme.t-small;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if bar.keys-shown: HorizontalLayout {
+                        spacing: 14px;
+                        alignment: start;
+                        for entry in root.keys: HorizontalLayout {
+                            spacing: 5px;
+                            Text {
+                                text: entry.key;
+                                color: Theme.select;
+                                font-family: Theme.mono;
+                                font-size: Theme.t-small;
+                                font-weight: 500;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: entry.desc;
+                                color: Theme.text-2;
+                                font-size: Theme.t-small;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+                if root.qf != "": Text {
+                    text: root.qf;
+                    color: root.qf-level == 2 ? Theme.error : root.qf-level == 1 ? Theme.warn : Theme.text-2;
+                    font-family: Theme.mono;
+                    font-size: Theme.t-small;
+                    vertical-alignment: center;
                 }
                 Text {
                     text: root.pending;
@@ -5968,13 +6040,58 @@ in property <string> render-stage;
                     font-weight: 500;
                     vertical-alignment: center;
                 }
-                Text {
-                    text: root.focused;
-                    color: Theme.text-3;
-                    font-size: Theme.t-small;
-                    vertical-alignment: center;
-                }
             }
+        }
+    }
+
+    // What the command line could become, listed above it as the
+    // terminal does: the one chosen is marked, Tab moves through them.
+    if root.prompt-open && root.matches.length > 0: completions := Rectangle {
+        property <length> label-w: max(80px, min(root.width / 3, root.match-label-px));
+        property <length> row-h: 20px;
+        x: 8px;
+        y: root.height - 23px - self.height - 2px;
+        width: min(root.width - 16px, max(320px, self.label-w + 24px + root.match-desc-px));
+        height: root.matches.length * self.row-h + 8px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.card-line;
+        background: Theme.card;
+        clip: true;
+        for item[index] in root.matches: Rectangle {
+            x: 4px;
+            y: 4px + index * completions.row-h;
+            width: parent.width - 8px;
+            height: completions.row-h;
+            border-radius: 3px;
+            background: index + 1 == root.match-chosen ? Theme.select-fill : transparent;
+            Text {
+                x: 8px;
+                width: completions.label-w;
+                text: item.key;
+                color: index + 1 == root.match-chosen ? Theme.select : Theme.text;
+                font-family: Theme.mono;
+                font-size: Theme.t-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                x: 8px + completions.label-w + 16px;
+                width: parent.width - self.x - 8px;
+                text: item.desc;
+                color: Theme.text-2;
+                font-size: Theme.t-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        // More than show: how many there are.
+        if root.match-total > root.matches.length: Text {
+            x: parent.width - self.width - 8px;
+            y: parent.height - self.height - 2px;
+            text: root.match-total + " matches";
+            color: Theme.text-3;
+            font-size: Theme.t-micro;
         }
     }
 
@@ -6032,7 +6149,7 @@ in property <string> render-stage;
             }
         }
         Rectangle {
-            width: min(root.width - 40px, 860px);
+            width: root.float-box-w;
             height: min(root.height - 60px, page.preferred-height + 52px);
             border-radius: 6px;
             border-width: 1px;
