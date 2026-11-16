@@ -1390,8 +1390,8 @@ fn the_more_menu_opens_a_view_in_a_window_of_its_own() {
     w.shot("more-menu.png");
     w.click_text("Undo tree");
     w.expect(
-        "the undo tree open in a window",
-        "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree'",
+        "the undo tree open in a window, painted",
+        "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree_paint'",
     );
     w.pause(1.0);
     w.assert_alive("after opening a view in a window");
