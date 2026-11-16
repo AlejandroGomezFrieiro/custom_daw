@@ -2,7 +2,7 @@
 
 # Lesson 11: Looping, marks and finding your way
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 11`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 11`.*
 
 Working on a part means hearing it over and over: the loop. It can be switched on and off, set to any stretch with the `gl` operator, and shown on the ruler. And in a long song you need to get about quickly: search clips and tracks by name with `/`, leave marks with `m` and come back to them with `'`, and go back to where you were before a jump.
 

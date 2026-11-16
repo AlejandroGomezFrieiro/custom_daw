@@ -1,4 +1,4 @@
--- Reading a REAPER project into this DAW.
+-- Reading a REAPER project into paw.
 --
 --   local result = require("rpp.import").file("song.rpp")
 --   print(result.report:text())     -- what could not be carried over, grouped
@@ -530,7 +530,7 @@ function M.doc(doc, opts)
         local first = input - 1024 + 1
         pcall(api.track_set, t.id, "input", first .. "/" .. (first + 1))
       elseif input >= 4096 then
-        -- MIDI input: the DAW records MIDI on armed tracks without an audio input.
+        -- MIDI input: paw records MIDI on armed tracks without an audio input.
       end
       if rec:argn(3) == 1 and input >= 0 and input < 4096 then pcall(api.track_set, t.id, "monitor", true) end
     end

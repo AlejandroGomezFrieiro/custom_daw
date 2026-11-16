@@ -1,6 +1,6 @@
 # The control protocol
 
-A running `daw` is a server. Other programs (the window, `daw ctl`,
+A running paw is a server. Other programs (the window, `daw ctl`,
 `daw attach`, the MCP server, your own scripts) connect to it, call into
 it, and are told what happens in it. This page is the whole protocol,
 version 2.

@@ -365,7 +365,7 @@ test("tutor: docs/course is made from the lessons and agrees with them", functio
   end
 end)
 
-test("tutor: every key in docs/course/keys.md is a key the DAW has", function()
+test("tutor: every key in docs/course/keys.md is a key paw has", function()
   ext()
   local keymap = daw.keymap
   local known, operators, chars = {}, {}, {}
@@ -422,7 +422,7 @@ test("tutor: every key in docs/course/keys.md is a key the DAW has", function()
       first = first:gsub("\1", "|")
       for token in first:gmatch("`([^`]+)`") do
         checked = checked + 1
-        if not ok(token) then error("keys.md: `" .. token .. "` is not a key of the DAW", 0) end
+        if not ok(token) then error("keys.md: `" .. token .. "` is not a key of paw", 0) end
       end
     end
   end

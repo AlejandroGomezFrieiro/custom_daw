@@ -1,6 +1,6 @@
 # rpp: a bridge to REAPER
 
-Opens REAPER projects (`.rpp`) in this DAW and writes this DAW's projects out
+Opens REAPER projects (`.rpp`) in paw and writes paw's projects out
 as `.rpp`, so work can move both ways. Underneath is a reader and writer for
 the file format itself, which scripts can use on their own.
 
@@ -68,7 +68,7 @@ was written on, up to 2.9 MB.
 Times in a REAPER project are seconds; here they become beats by the
 project's tempo map, and back.
 
-| | REAPER → this DAW | This DAW → REAPER |
+| | REAPER → paw | paw → REAPER |
 | --- | --- | --- |
 | Tempo, time signature | The whole tempo map: `TEMPO` and the `TEMPOENVEX` points, square ones as steps and linear ones as ramps (linear in time, as REAPER plays them), with their time signatures (packed as numerator + denominator × 65536). Other point shapes become ramps and are reported. Merged into an open project, the project keeps its own map. | `TEMPO`, and `TEMPOENVEX` when the tempo or signature changes along the song. |
 | Loop | Loop points (`SELECTION`) and the repeat switch (`LOOP`). | The same. |
@@ -82,7 +82,7 @@ project's tempo map, and back.
 | Automation | Track and master volume and pan envelopes as lanes, on or off as in REAPER; square points become steps. | Volume and pan lanes. |
 | CLAP plugins | When installed here: the same plugin with REAPER's saved state, which is the plugin's own. | With their state. |
 | VST3 plugins | When installed here (found by name and vendor): the same plugin with its state, taken out of REAPER's chunk (the sizes are checked first). | Only plugins that came from a REAPER project: REAPER's header for them is kept, and the current state goes into it. |
-| LV2 plugins | When installed here: the same plugin with its control ports (`P` lines; the ports' symbols are this DAW's parameter keys). | With their control ports. |
+| LV2 plugins | When installed here: the same plugin with its control ports (`P` lines; the ports' symbols are paw's parameter keys). | With their control ports. |
 | Bypass | Per plugin, and a bypassed FX chain. | Per plugin. |
 | Other plugins | VST2, JSFX, AU, DX, containers, and plugins not installed: a placeholder in the track's `meta.rpp_placeholders` (`name`, `format`, `position`, `reason`, and REAPER's text for it), reported. | Placeholders go back into the chain at their places, as they were read. |
 
@@ -106,7 +106,7 @@ Listed after each import or export:
   and other non-plugin devices; VST3 plugins added here (REAPER's id for them
   is not known); LV2 state beyond control ports; parameter automation of
   plugins; track colours; note times finer than 1/960 beat are rounded.
-- REAPER project settings this DAW has no place for (render settings, grid,
+- REAPER project settings paw has no place for (render settings, grid,
   view, metronome, project notes) are not read, and are written as REAPER's
   defaults.
 

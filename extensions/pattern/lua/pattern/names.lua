@@ -89,7 +89,7 @@ for _, shape in ipairs(shapes) do
   for _, name in ipairs(shape[1]) do M.chords[name] = shape[2] end
 end
 
--- Scales for degrees: the DAW's own, and a few more.
+-- Scales for degrees: paw's own, and a few more.
 M.scales = setmetatable({
   ionian = { 0, 2, 4, 5, 7, 9, 11 },
   aeolian = { 0, 2, 3, 5, 7, 8, 10 },

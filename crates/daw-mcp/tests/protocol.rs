@@ -626,14 +626,14 @@ fn kernel_gone_and_back() {
     let mut c = Client::start(&dir, &["--socket", socket.to_str().unwrap()]);
     c.initialize("2025-11-25");
     let text = c.fails("get_project", json!({}));
-    assert!(text.contains("No DAW kernel at"), "{text}");
+    assert!(text.contains("No paw kernel at"), "{text}");
 
     let mut k = kernel();
     c.ok("add_track", json!({ "name": "First" }));
     k.kill().unwrap();
     k.wait().unwrap();
     let text = c.fails("get_project", json!({}));
-    assert!(text.contains("No DAW kernel"), "{text}");
+    assert!(text.contains("No paw kernel"), "{text}");
 
     let mut k = kernel();
     let text = c.ok("get_project", json!({}));

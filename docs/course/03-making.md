@@ -2,7 +2,7 @@
 
 # Lesson 3: Tracks, clips and notes
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 3`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 3`.*
 
 A track holds clips on the timeline and a chain of devices: an instrument that turns notes into sound, then effects. A clip holds notes (a MIDI clip) or a recording (an audio clip). A new track is silent until it has an instrument.
 

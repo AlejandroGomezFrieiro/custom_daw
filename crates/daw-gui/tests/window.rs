@@ -450,7 +450,7 @@ impl Scene {
             );
             if let Some(Ok(answer)) = self.try_ctl("return 1") {
                 if answer.trim() == "1" {
-                    let found = self.xdotool(&["search", "--onlyvisible", "--name", "^daw"]);
+                    let found = self.xdotool(&["search", "--onlyvisible", "--name", "^paw"]);
                     if let Some(id) = found.lines().next().filter(|l| !l.is_empty()) {
                         break id.to_string();
                     }

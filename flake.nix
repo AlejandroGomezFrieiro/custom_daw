@@ -1,5 +1,5 @@
 {
-  description = "daw: a hackable DAW with a small Rust kernel and everything else in Lua";
+  description = "paw, a personal audio workstation, with a small Rust kernel and everything else in Lua";
 
   inputs.nixpkgs.url = "nixpkgs";
 

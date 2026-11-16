@@ -2,13 +2,13 @@
 
 # The course
 
-A course for the first days with the DAW, by doing. Each lesson takes about ten minutes, opens a small practice project of its own, and ends with something you made or changed and can hear. The same lessons run inside the DAW, where the tutor says what to do next and notices when you have done it:
+A course for the first days with paw, by doing. Each lesson takes about ten minutes, opens a small practice project of its own, and ends with something you made or changed and can hear. The same lessons run inside paw, where the tutor says what to do next and notices when you have done it:
 
 ```lua
 daw.ext.load("extensions/tutor")   -- in ~/.config/daw/init.lua, or link the directory into ~/.config/daw/extensions
 ```
 
-then `:tutor` in the DAW. These pages are made from the tutor's own lessons, so the two say the same. [keys.md](keys.md) is a page of keys to keep beside the keyboard.
+then `:tutor` in paw. These pages are made from the tutor's own lessons, so the two say the same. [keys.md](keys.md) is a page of keys to keep beside the keyboard.
 
 | | Lesson | What it teaches |
 | --- | --- | --- |
@@ -29,4 +29,4 @@ then `:tutor` in the DAW. These pages are made from the tutor's own lessons, so 
 | 15 | [Making it your own: options, keys, commands](15-your-own.md) | An option, a mapping and a command, made live with `:lua`, and where to keep them. |
 | 16 | [The bundled extensions](16-extensions.md) | pattern, musicops, sections, undotree, mixdiag, rpp and utau: each one thing. Their READMEs have the rest. |
 
-Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5 to 8 are the grammar that the rest of the DAW is made of. 9 to 13 are the studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are about finding your own way: finding any key, making the DAW yours, and the extensions.
+Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5 to 8 are the grammar that the rest of paw is made of. 9 to 13 are the studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are about finding your own way: finding any key, making paw yours, and the extensions.

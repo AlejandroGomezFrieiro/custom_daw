@@ -26,7 +26,7 @@ mod portal;
 slint::include_modules!();
 
 const HELP: &str = "\
-daw-gui: a graphical frontend for daw
+daw-gui: a graphical frontend for paw
 
 Usage:
   daw-gui [kernel options] [project]   start a kernel and show it

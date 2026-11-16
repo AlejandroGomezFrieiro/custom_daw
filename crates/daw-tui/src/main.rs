@@ -13,7 +13,7 @@ use daw_engine::backend::BackendOptions;
 use serde_json::Value;
 
 const HELP: &str = "\
-daw: a hackable DAW
+paw: a personal audio workstation
 
 Usage:
   daw [options] [project]         open the terminal UI (a sound file starts a project with it)
@@ -105,7 +105,7 @@ fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
                 return Ok(None);
             }
             "-V" | "--version" => {
-                println!("daw {}", env!("CARGO_PKG_VERSION"));
+                println!("paw {}", env!("CARGO_PKG_VERSION"));
                 return Ok(None);
             }
             "-l" => {

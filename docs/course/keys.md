@@ -3,8 +3,8 @@
 One page to keep beside the keyboard. Keys are written as Vim writes them:
 `<C-r>` is Ctrl and r, `<A-j>` Alt and j, `<CR>` Enter, `<Esc>` Escape, `,` is
 the leader key. **A** is the arrange view, **R** the piano roll, **M** the mixer,
-**D** the device panel. Every key here is checked against the DAW's mappings by
-the tutor's tests; `?` in the DAW lists every key of the view you are in.
+**D** the device panel. Every key here is checked against paw's mappings by
+the tutor's tests; `?` in paw lists every key of the view you are in.
 
 ## The sentence
 

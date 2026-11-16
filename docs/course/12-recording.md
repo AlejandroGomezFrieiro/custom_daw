@@ -2,7 +2,7 @@
 
 # Lesson 12: Recording audio and MIDI
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 12`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 12`.*
 
 A track records what comes in: audio from an input of your sound card (a microphone, a guitar), or notes from a MIDI keyboard. Arm the tracks that should record, press record, play, stop: each armed track gets a new clip where recording began.
 
@@ -29,7 +29,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - *Hint:* Stop recording with `R` before `<Space>`: after `<Space>` alone, record mode stays on (`rec` is lit in the status line) and the next `<Space>` records again.
    - ✓ A new audio clip with your take, where recording began; its waveform is drawn in it.
 4. Now MIDI. Press `r` to disarm Voice, `j` to go to Keys, and `r` to arm it.
-   - *Hint:* `:midi.inputs` lists the MIDI ports the DAW sees.
+   - *Hint:* `:midi.inputs` lists the MIDI ports paw sees.
    - ✓ Keys is armed and has no audio input, so it records MIDI. Play your keyboard: you hear the synth.
 5. Press `gs` to go back to the start, `R` to record, play a few notes on your MIDI keyboard, then `R` and `<Space>` to stop.
    - ✓ A MIDI clip with what you played: `<CR>` on it opens it in the piano roll.
