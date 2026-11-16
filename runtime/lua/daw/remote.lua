@@ -172,7 +172,7 @@ daw.command("upload", function(ctx)
   local path = ctx.args[1]
   if not path or path == "" then return daw.notify("upload what? `upload ~/takes/bass.wav`", "warn") end
   local client = api.ui_client()
-  if client == 0 then
+  if not daw.seats.has(client) then
     return daw.notify("this terminal is the instance's own: `:import` reads this machine's files", "warn")
   end
   api.rpc_push(client, "file.wanted", { path = path, import = true })
@@ -184,7 +184,7 @@ end, { desc = "From a terminal attached with `daw attach`: send a sound file fro
 -- program starts and stops.
 daw.command("listen", function()
   local client = api.ui_client()
-  if client == 0 then
+  if not daw.seats.has(client) then
     return daw.notify("this is the instance's own terminal: its sound plays here already", "warn")
   end
   api.rpc_push(client, "monitor.toggle", {})
@@ -192,7 +192,8 @@ end, { desc = "From a terminal or window attached from another machine: hear the
 
 daw.command("detach", function()
   local client = api.ui_client()
-  if client == 0 then
+  -- A connection without a seat of its own (`daw ctl`) is no terminal.
+  if not daw.seats.has(client) then
     return daw.notify("this is the program's own terminal: `:q` quits; `daw attach` from another terminal can be detached", "warn")
   end
   api.ui_detach(client)
