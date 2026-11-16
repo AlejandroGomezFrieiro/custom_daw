@@ -204,6 +204,11 @@ impl Grid {
 #[derive(Default)]
 pub struct Highlights {
     groups: HashMap<String, Highlight>,
+    /// Groups as they were defined in 24-bit colour, where the terminal is
+    /// shown a nearer form of them: what a window draws.
+    full: HashMap<String, Highlight>,
+    /// Read the 24-bit forms while set: while a view is drawn for a window.
+    pub full_colour: bool,
 }
 
 pub enum Highlight {
@@ -215,18 +220,171 @@ pub enum Highlight {
 impl Highlights {
     pub fn set(&mut self, name: &str, highlight: Highlight) {
         self.groups.insert(name.to_string(), highlight);
+        self.full.remove(name);
+    }
+
+    /// Set a group's 24-bit form beside the one the terminal is shown.
+    pub fn set_full(&mut self, name: &str, highlight: Highlight) {
+        self.full.insert(name.to_string(), highlight);
     }
 
     /// The style of a group, following links. Unknown groups have no effect.
     pub fn get(&self, name: &str) -> Style {
         let mut name = name;
         for _ in 0..8 {
-            match self.groups.get(name) {
+            let full = self.full_colour.then(|| self.full.get(name)).flatten();
+            match full.or_else(|| self.groups.get(name)) {
                 Some(Highlight::Style(style)) => return *style,
                 Some(Highlight::Link(target)) => name = target,
                 None => break,
             }
         }
         Style::default()
+    }
+}
+
+/// A colour as red, green and blue, with `default` for the terminal's own.
+/// The 256 indexed colours are xterm's.
+pub fn rgb(color: Color, default: (u8, u8, u8)) -> (u8, u8, u8) {
+    const BASE: [(u8, u8, u8); 16] = [
+        (0x00, 0x00, 0x00),
+        (0xcd, 0x31, 0x31),
+        (0x0d, 0xbc, 0x79),
+        (0xe5, 0xe5, 0x10),
+        (0x24, 0x72, 0xc8),
+        (0xbc, 0x3f, 0xbc),
+        (0x11, 0xa8, 0xcd),
+        (0xe5, 0xe5, 0xe5),
+        (0x66, 0x66, 0x66),
+        (0xf1, 0x4c, 0x4c),
+        (0x23, 0xd1, 0x8b),
+        (0xf5, 0xf5, 0x43),
+        (0x3b, 0x8e, 0xea),
+        (0xd6, 0x70, 0xd6),
+        (0x29, 0xb8, 0xdb),
+        (0xff, 0xff, 0xff),
+    ];
+    match color {
+        Color::Default => default,
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Indexed(i) if i < 16 => BASE[i as usize],
+        Color::Indexed(i) if i < 232 => {
+            let level = |n: u8| if n == 0 { 0 } else { 55 + 40 * n };
+            let i = i - 16;
+            (level(i / 36), level(i / 6 % 6), level(i % 6))
+        }
+        Color::Indexed(i) => {
+            let grey = 8 + 10 * (i - 232);
+            (grey, grey, grey)
+        }
+    }
+}
+
+fn hex((r, g, b): (u8, u8, u8)) -> String {
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
+/// A stretch of a row in one style, for a frontend that draws text rather
+/// than cells: the column it starts at and how many it takes, its text, its
+/// colours as `#rrggbb`, and what is left of its attributes (bold, italic,
+/// underline, strike). Reverse and dim are already in its colours.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Run {
+    pub x: u16,
+    pub w: u16,
+    pub text: String,
+    pub fg: String,
+    pub bg: String,
+    pub attrs: u8,
+}
+
+impl Grid {
+    /// The grid as rows of runs of one style each, with the terminal's own
+    /// colours given as `fg` and `bg`.
+    pub fn runs(&self, fg: (u8, u8, u8), bg: (u8, u8, u8)) -> Vec<Vec<Run>> {
+        let width = self.width.max(1) as usize;
+        self.cells
+            .chunks(width)
+            .map(|row| {
+                let mut runs: Vec<Run> = Vec::new();
+                for (x, cell) in row.iter().enumerate() {
+                    let (mut front, mut back) = (rgb(cell.fg, fg), rgb(cell.bg, bg));
+                    if cell.attrs & REVERSE != 0 {
+                        (front, back) = (back, front);
+                    }
+                    if cell.attrs & DIM != 0 {
+                        let mix = |a: u8, b: u8| ((a as u16 + b as u16) / 2) as u8;
+                        front = (mix(front.0, back.0), mix(front.1, back.1), mix(front.2, back.2));
+                    }
+                    let attrs = cell.attrs & (BOLD | ITALIC | UNDERLINE | STRIKE);
+                    let (front, back) = (hex(front), hex(back));
+                    match runs.last_mut() {
+                        Some(run) if run.fg == front && run.bg == back && run.attrs == attrs => {
+                            run.w += 1;
+                            if cell.ch != '\0' {
+                                run.text.push(cell.ch);
+                            }
+                        }
+                        // The second half of a wide character goes with its first.
+                        Some(run) if cell.ch == '\0' => run.w += 1,
+                        _ => runs.push(Run {
+                            x: x as u16,
+                            w: 1,
+                            text: if cell.ch == '\0' { String::new() } else { cell.ch.to_string() },
+                            fg: front,
+                            bg: back,
+                            attrs,
+                        }),
+                    }
+                }
+                runs
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rows_become_runs_of_one_style_with_colours_resolved() {
+        let mut grid = Grid::new(8, 2);
+        let clip = grid.rect();
+        let red = Style {
+            fg: Some(Color::Rgb(255, 0, 0)),
+            ..Style::default()
+        };
+        grid.text(clip, 0, 0, "ab", red);
+        grid.text(clip, 2, 0, "界c", Style { on: REVERSE, ..red });
+        let bold_dim = Style {
+            fg: Some(Color::Indexed(196)),
+            on: BOLD | DIM,
+            ..Style::default()
+        };
+        grid.text(clip, 0, 1, "x", bold_dim);
+        let runs = grid.runs((200, 200, 200), (0, 0, 0));
+        assert_eq!(runs[0].len(), 3);
+        assert_eq!((runs[0][0].text.as_str(), runs[0][0].fg.as_str(), runs[0][0].w), ("ab", "#ff0000", 2));
+        // Reversed: the terminal's background in front and red behind; the
+        // wide character takes two columns.
+        let run = &runs[0][1];
+        assert_eq!((run.text.as_str(), run.fg.as_str(), run.bg.as_str()), ("界c", "#000000", "#ff0000"));
+        assert_eq!((run.x, run.w), (2, 3));
+        assert_eq!((runs[0][2].x, runs[0][2].w, runs[0][2].fg.as_str()), (5, 3, "#c8c8c8"));
+        // Indexed 196 is xterm's red, dimmed halfway to the background.
+        assert_eq!((runs[1][0].fg.as_str(), runs[1][0].attrs), ("#7f0000", BOLD));
+    }
+
+    #[test]
+    fn full_colour_groups_are_read_only_when_asked_for() {
+        let mut groups = Highlights::default();
+        let style = |fg| Highlight::Style(Style { fg: Some(fg), ..Style::default() });
+        groups.set("Normal", style(Color::Indexed(1)));
+        groups.set_full("Normal", style(Color::Rgb(1, 2, 3)));
+        groups.set("Text", Highlight::Link("Normal".into()));
+        assert_eq!(groups.get("Text").fg, Some(Color::Indexed(1)));
+        groups.full_colour = true;
+        assert_eq!(groups.get("Text").fg, Some(Color::Rgb(1, 2, 3)));
     }
 }

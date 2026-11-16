@@ -7,6 +7,7 @@ daw.option.define("mixdiag_strip", true)          -- a row of marks above the ar
 
 local mixdiag = require("mixdiag")
 require("mixdiag.rules")
+require("mixdiag.view")
 package.loaded["daw.mixdiag"] = mixdiag
 
 local function try(fn)
@@ -33,6 +34,7 @@ daw.command("mix.file", function(ctx)
 end, { desc = "Measure an audio file: `mix.file master.wav`", complete = { "audio_files" } })
 
 daw.command("mix.list", function() mixdiag.list() end, { desc = "List the mix findings" })
+daw.command("mix.report", function() mixdiag.report() end, { desc = "The mix report: the loudness, peaks and range measured, and the findings to go to" })
 daw.command("mix.next", function(ctx) mixdiag.step(1, ctx.count) end, { desc = "Go to the next mix finding" })
 daw.command("mix.prev", function(ctx) mixdiag.step(-1, ctx.count) end, { desc = "Go to the previous mix finding" })
 daw.command("mix.cancel", function()
@@ -77,6 +79,7 @@ map("<leader>xa", "mix.analyze", { mode = { "n", "x" }, desc = "Measure the mix 
 map("<leader>xl", "mix.analyze loop", { desc = "Measure the loop" })
 map("<leader>xk", "mix.analyze track", { desc = "Measure the cursor track's contribution" })
 map("<leader>xx", "mix.list", { desc = "List the mix findings" })
+map("<leader>xr", "mix.report", { desc = "The mix report" })
 map("<leader>xs", "mix.summary", { desc = "Loudness, true peak and range of the last measurement" })
 map("<leader>xt", "mix.target", { desc = "Next delivery target" })
 map("<leader>xc", "mix.clear", { desc = "Forget the mix findings" })

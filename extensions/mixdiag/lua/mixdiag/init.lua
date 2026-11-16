@@ -284,7 +284,8 @@ function M.clear()
   M.cancel()
   M.result, M.findings, M.line = nil, {}, nil
   M.hide_strip()
-  api.ui_redraw()
+  -- The findings' band in the graphical frontend goes too.
+  daw.frontend.refresh()
 end
 
 --- Findings that have a place on the timeline, for a ruler: { beat, severity, text }.
@@ -384,16 +385,21 @@ end
 --- Show the findings: in the picker when there is one, else in a list of our own.
 function M.list()
   if not M.result then return daw.notify("mix: nothing measured yet: <leader>xa", "warn") end
-  local items = M.items()
-  local title = "Mix: " .. (M.line or "")
   if daw.pick then
     return daw.pick({
       title = "Mix",
-      items = items,
+      items = M.items(),
       on_choose = function(item) if item and item.finding then M.jump(item.finding) end end,
     })
   end
-  require("mixdiag.view").open(title, items)
+  require("mixdiag.view").open()
+end
+
+--- The report: what was measured, the numbers and the findings, with keys
+--- to measure again. Floating in the terminal; in a window of its own in
+--- the graphical frontend.
+function M.report()
+  require("mixdiag.view").open()
 end
 
 -- The strip of marks above the arrange view ----------------------------------

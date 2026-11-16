@@ -151,6 +151,28 @@ export struct MarkerData {
     name: string,
 }
 
+// An entry of an extension's band under the ruler (`daw.frontend.bands`):
+// its row among the bands, which band and which entry it is, where it is,
+// its name, its colour or none for the window's own, whether a click does
+// something, and what the status line says over it.
+export struct BandData {
+    row: int,
+    band: int,
+    index: int,
+    beat: float,
+    length: float,
+    name: string,
+    color: color,
+    active: bool,
+    hint: string,
+}
+
+// A view the kernel can show in a window of its own (`daw.canvas.open_view`).
+export struct ViewEntry {
+    name: string,
+    title: string,
+}
+
 // Something the render dialog can render: the song, the loop, a region.
 export struct RangeChoice {
     name: string,
@@ -586,6 +608,12 @@ in property <string> render-stage;
     in property <[MenuEntry]> clip-entries;      // what extensions add to the menus
     in property <[MenuEntry]> track-entries;
     in property <[MenuEntry]> timeline-entries;
+    // Views to open in windows of their own, and extensions' bands under
+    // the ruler, `band-rows` of them.
+    in property <[ViewEntry]> view-entries;
+    in property <[BandData]> bands;
+    in property <int> band-rows;
+    callback band-click(int, int);
     in property <string> hint-title;
     in property <bool> float-open;
     in property <string> float-title;
@@ -785,10 +813,12 @@ in property <string> render-stage;
         root.tracks[clamp(row, 0, root.tracks.length - 1)].clip-size * root.row-height
     }
     property <length> rows-height: root.rows-total * root.row-height;
-    // The ruler's own rows, and under them a band for markers and regions
-    // when there are any.
+    // The ruler's own rows, under them a band for markers and regions when
+    // there are any, and under that the bands extensions add.
     property <length> ruler-main: 28px;
-    property <length> ruler-height: root.ruler-main + (root.markers.length > 0 ? 18px : 0px);
+    property <length> band-height: 18px;
+    property <length> bands-top: root.ruler-main + (root.markers.length > 0 ? root.band-height : 0px);
+    property <length> ruler-height: root.bands-top + root.band-rows * root.band-height;
     property <int> bars: Math.ceil((root.length + 8 * root.bar) / root.bar);
     property <length> beat: root.zoom * 1px;
     in-out property <length> roll-height: 330px;
@@ -1448,6 +1478,35 @@ in property <string> render-stage;
                                 }
                             }
                         }
+                        // Every other view the kernel has, the extensions'
+                        // among them, each in a window of its own.
+                        more-menu := ContextMenuArea {
+                            Menu {
+                                for entry in root.view-entries: MenuItem {
+                                    title: entry.title;
+                                    activated => {
+                                        root.command("view.window " + entry.name);
+                                    }
+                                }
+                            }
+                            Button {
+                                height: 24px;
+                                icon: Icons.ph-caret-down;
+                                icon-box: 256;
+                                label: "More";
+                                quiet: true;
+                                clicked => {
+                                    more-menu.show({ x: 0, y: self.height + 2px });
+                                }
+                                changed has-hover => {
+                                    if (self.has-hover) {
+                                        root.hint = "more views: the undo tree, sections, an extension's panel… each in a window of its own";
+                                    } else if (root.hint == "more views: the undo tree, sections, an extension's panel… each in a window of its own") {
+                                        root.hint = "";
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Rectangle {
@@ -1832,7 +1891,7 @@ in property <string> render-stage;
                     x: root.header-width;
                     y: root.ruler-main;
                     width: parent.width - root.header-width;
-                    height: root.ruler-height - root.ruler-main;
+                    height: root.band-height;
                     background: Theme.panel;
                     clip: true;
                     Rectangle {
@@ -1921,6 +1980,71 @@ in property <string> render-stage;
                                     } else if (root.hint == "marker: click goes there · drag to move · double click renames · right click for more") {
                                         root.hint = "";
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Extensions' bands (`daw.frontend.bands`), a row each under
+                // the markers: an entry over its stretch, or a flag where it
+                // is, in its colour; a click runs what it stands for.
+                if root.band-rows > 0: Rectangle {
+                    x: root.header-width;
+                    y: root.bands-top;
+                    width: parent.width - root.header-width;
+                    height: root.band-rows * root.band-height;
+                    background: Theme.panel;
+                    clip: true;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.divider;
+                    }
+                    for entry in root.bands: band-box := Rectangle {
+                        property <bool> span: entry.length > 0;
+                        property <color> hue: entry.color.alpha > 0 ? entry.color : Theme.text-2;
+                        // A stretch that starts out of view is drawn from the edge of what shows.
+                        x: root.seen-x(entry.beat * root.beat) + lanes.content-x;
+                        y: entry.row * root.band-height + 1px;
+                        width: self.span ? max(2px, root.seen-w(entry.beat * root.beat, entry.length * root.beat) - 1px) : band-text.preferred-width + 14px;
+                        height: root.band-height - 2px;
+                        clip: true;
+                        // A flag covers those before it, so that names do not run together.
+                        if !band-box.span: Rectangle {
+                            background: Theme.panel;
+                        }
+                        if band-box.span: Rectangle {
+                            border-radius: 2px;
+                            background: band-box.hue.with-alpha(band-touch.has-hover && entry.active ? 0.34 : 0.2);
+                        }
+                        Rectangle {
+                            x: 0;
+                            width: 2px;
+                            background: band-box.hue;
+                        }
+                        band-text := Text {
+                            // The name stays in sight while its stretch is.
+                            x: max(6px, -band-box.x + 6px);
+                            text: entry.name;
+                            color: entry.color.alpha > 0 ? Theme.text : Theme.text-2;
+                            font-size: Theme.t-small;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            height: parent.height;
+                        }
+                        band-touch := TouchArea {
+                            enabled: entry.active;
+                            mouse-cursor: entry.active ? pointer : default;
+                            clicked => {
+                                keys.focus();
+                                root.band-click(entry.band, entry.index);
+                            }
+                            changed has-hover => {
+                                if (self.has-hover) {
+                                    root.hint = entry.hint;
+                                } else if (root.hint == entry.hint) {
+                                    root.hint = "";
                                 }
                             }
                         }
@@ -5082,6 +5206,19 @@ in property <string> render-stage;
                 color: Theme.text;
                 font-family: Theme.mono;
                 font-size: 12px;
+            }
+            // The page as a window of its own, drawn in its colours and
+            // left open beside the rest.
+            Button {
+                x: parent.width - self.width - 8px;
+                y: 6px;
+                width: self.preferred-width;
+                height: 22px;
+                label: "Open in a window";
+                quiet: true;
+                clicked => {
+                    root.command("view.window");
+                }
             }
         }
     }

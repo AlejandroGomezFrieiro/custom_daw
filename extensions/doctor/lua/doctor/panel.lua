@@ -5,7 +5,7 @@ local api = daw.api
 local util = daw.util
 local doctor = require("doctor")
 
-local view = { row = 1, scroll = 0 }
+local view = { title = "Doctor", row = 1, scroll = 0 }
 
 local MARK = { ok = "ok", warn = "WARN", fail = "FAIL", skip = "skip" }
 local STYLE = { ok = "MeterLow", warn = "Warn", fail = "Error", skip = "Faint" }
