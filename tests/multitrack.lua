@@ -100,7 +100,8 @@ local function cells(width, height)
   local roll = daw.ui.views.pianoroll
   local at = function(beat, pitch)
     local x = 5 + math.floor((beat - roll.scroll) * daw.opt.note_zoom + 0.5)
-    local y = 2 + roll.top - pitch
+    -- Under the title, the chord row when it shows, and the ruler.
+    local y = (roll.head or 2) + roll.top - pitch
     for _, run in ipairs(shot.rows[y + 1] or {}) do
       if x >= run.x and x < run.x + run.w then
         local chars = {}

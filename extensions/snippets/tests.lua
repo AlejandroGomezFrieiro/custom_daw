@@ -137,6 +137,29 @@ test("snippets: the owner's example as the terminal shows it: chords over the ru
   daw.ui.focus("arrange")
 end)
 
+test("snippets: with two clips edited, dominant writes into the active one, in its own beats", function()
+  start()
+  local _, piano = track("Piano", { { "D3 F3 A3 C4", 0, 2 } }, 8)
+  -- The strings' clip starts at beat 2, so its C major at its own beat 2 is
+  -- the song's beat 4.
+  local strings = daw.add_track({ name = "Strings" })
+  local other = strings:add_clip({ start = 2, length = 6, notes = {
+    { pitch = 48, start = 2, length = 4 }, { pitch = 55, start = 2, length = 4 },
+    { pitch = 60, start = 2, length = 4 }, { pitch = 64, start = 2, length = 4 } } })
+  daw.flush()
+  api.undo_checkpoint()
+  daw.roll_clips.open({ piano.id, other.id }, piano.id)
+  daw.ui.views.pianoroll:set(60, 2)
+  daw.ui.focus("pianoroll")
+  keys(":snippet dominant<CR>")
+  local pitches, pcs, length = at(piano, 2)
+  eq(pcs .. " " .. length, "2 5 7 11 2", "G7 in the active clip, up to the C: " .. table.concat(pitches, " "))
+  eq(#other:notes(), 4, "the other clip edited is left alone")
+  keys("u")
+  eq(#piano:notes(), 4, "one undo")
+  daw.roll_clips.only()
+end)
+
 test("snippets: dominant before a C major chord in this clip, through the picker, leads into it", function()
   start()
   local _, clip = track("Piano", { { "E4 G4 C5", 4, 4 } })
