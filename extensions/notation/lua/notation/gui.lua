@@ -663,6 +663,7 @@ function view:pointer(e)
   end
   local inserting = daw.keymap.mode == "i"
   if e.kind == "hover" then
+    gui.gesture = nil
     local at = self:locate(e.x, e.y)
     gui.hover = inserting and at and at.beat and { beat = at.beat, step = at.step } or nil
     return

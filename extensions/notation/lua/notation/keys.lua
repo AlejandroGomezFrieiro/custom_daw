@@ -316,7 +316,7 @@ local function guarded(rhs)
     return rhs(...)
   end
 end
-local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, ["<Esc>"] = true, gd = true, gR = true, gT = true }
+local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, gd = true, gR = true, gT = true }
 local function nmap(lhs, rhs, desc, opts)
   if not (opts and opts.motion) and not READ[lhs] and not lhs:match("^g%d$") then rhs = guarded(rhs) end
   map(lhs, rhs, util.merge({ view = "notation", desc = desc }, opts))
@@ -653,6 +653,54 @@ view.grid = {
     return hits
   end,
 }
+
+-- Where the view shows things with an address, so that diagnostics, hover
+-- and fixes (`]d` `[d`, `gK`, `,ca`) work on what is under its cursor.
+if daw.ui.locator and daw.address then
+  local A = daw.address
+  daw.ui.locator("notation", {
+    at = function()
+      local clip = view:clip()
+      if not clip then return nil end
+      local note = view:note()
+      if note and note.id then return A.location(A.note(clip.id, note.id)) end
+      local pitch = view:cursor_pitch()
+      return A.location(A.clip(clip.id), { time = { view.beat, view.beat }, pitch = { pitch, pitch } })
+    end,
+    position = function() return { view.beat, 127 - view:cursor_pitch() } end,
+    place = function(location, anywhere)
+      local p = A.parse(location.uri)
+      if not p or not p.clip or (p.kind ~= "clip" and p.kind ~= "note") then return nil end
+      if p.clip ~= view.clip_id then return anywhere and { 0 } or nil end
+      local first
+      local ids = p.kind == "note" and { p.note } or (location.selector and location.selector.notes) or {}
+      for _, id in ipairs(ids) do
+        local n = A.find_note(p.clip, id)
+        if n and (not first or n.start < first.start or (n.start == first.start and n.pitch > first.pitch)) then first = n end
+      end
+      if first then return { first.start, 127 - first.pitch } end
+      local t = location.selector and location.selector.time
+      return { t and t[1] or 0, 0 }
+    end,
+    go = function(location)
+      local p = A.parse(location.uri)
+      if p.clip ~= view.clip_id then view:edit(daw.clip(p.clip)) end
+      local at = daw.ui.locators.notation.place(location)
+      if at and at[2] and at[2] > 0 then
+        local pitch = 127 - at[2]
+        view:set(model.spell(pitch, (view.key())).step, at[1])
+      else
+        view:set(nil, at and at[1] or 0)
+      end
+    end,
+  })
+  nmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic here", { jump = true })
+  nmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic here", { jump = true })
+  if daw.lsp then
+    nmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
+    nmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes and actions for the note")
+  end
+end
 
 if daw.ui.keybar then
   daw.ui.keybar.set("notation", "n", {

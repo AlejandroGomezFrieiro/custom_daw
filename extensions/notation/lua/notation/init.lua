@@ -977,6 +977,7 @@ function view:add_interval(interval)
   local fifths = view.key()
   local step = last.step + interval - 1
   local pitch = model.key_pitch(step, fifths)
+  if pitch > 127 then return daw.notify("no note that high", "warn") end
   if not (self.chord and math.abs(self.chord.beat - last.beat) < EPS) then self.chord = { beat = last.beat, pitches = { [last.pitch] = true } } end
   self.chord.pitches[pitch] = true
   self:place(pitch, last.beat, self:entry_length(), self.chord.pitches)
