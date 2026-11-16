@@ -184,6 +184,8 @@ function K.startup()
   daw.autosave = require("daw.autosave")
   daw.loading = require("daw.loading")
   daw.reconnect = require("daw.reconnect")
+  daw.qf = require("daw.qf")
+  require("daw.views.qflist")
   daw.ui.start_ticker()
 
   daw.luadev = require("daw.luadev")
