@@ -1047,6 +1047,11 @@ command("view.close", function()
   if daw.ui.focused ~= "arrange" then daw.ui.hide(daw.ui.focused) end
   daw.ui.focus("arrange")
 end, { desc = "Close the focused panel" })
+command("view.window", function(ctx)
+  local name = ctx.args[1] and tostring(ctx.args[1]) or (daw.ui.float and daw.ui.float.name) or daw.ui.focused
+  if not daw.ui.views[name] then return daw.notify("no view `" .. name .. "`", "warn") end
+  daw.canvas.open_view(name)
+end, { desc = "Open a view in a window of its own, in the graphical frontend: `view.window undotree`; the focused one without a name", complete = { "views" } })
 command("view.only", function()
   for _, rect in ipairs(daw.ui.arrange()) do
     local view = daw.ui.views[rect.name]

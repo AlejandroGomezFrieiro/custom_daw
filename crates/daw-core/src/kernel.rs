@@ -107,6 +107,7 @@ impl Kernel {
             grid: RefCell::new(Grid::new(80, 24)),
             highlights: RefCell::new(Highlights::default()),
             dirty: Cell::new(true),
+            redraws: Cell::new(0),
             attached: Cell::new(false),
             cursor: Cell::new(None),
             timers: RefCell::new(Vec::new()),

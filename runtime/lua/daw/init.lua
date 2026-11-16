@@ -226,6 +226,11 @@ function K.render(width, height)
   daw.limit.guard("drawing the screen", daw.ui.render, daw.ui.Buf.root(width, height))
 end
 
+--- One view drawn by itself, for a window: see `daw.api.ui_view_snapshot`.
+function K.render_view(name, width, height)
+  daw.limit.guard("drawing the view " .. name, daw.ui.render_view, name, daw.ui.Buf.root(width, height))
+end
+
 --- Calls from the control socket: `eval`, `cmd`, `keys`, or any `daw.api` function.
 function K.rpc(method, params)
   params = params or {}

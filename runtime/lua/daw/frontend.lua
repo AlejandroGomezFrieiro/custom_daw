@@ -72,6 +72,60 @@ local function menus()
   return out
 end
 
+--- Bands of their own under the frontend's ruler, from extensions, under
+--- the one for markers: each a function that returns the band's entries,
+--- `{ beat, length, name, color, command }` each (`length` 0 for a flag,
+--- `color` `#rrggbb` or nil for the window's own, `command` a command line,
+--- or `run` a function, for a click on it, and `hint`, what the status line
+--- says over it).
+---
+---   table.insert(daw.frontend.bands, function()
+---     return { { beat = 0, length = 16, name = "Intro", command = "section.goto 1" } }
+---   end)
+---
+--- A band with no entries takes no room. They are asked again whenever the
+--- project, the cursor or the transport changes; after a change of its own
+--- (a measurement that has ended) an extension calls `daw.frontend.refresh()`.
+M.bands = {}
+
+--- Have the frontend fetch the project's state again, though nothing in the
+--- project has changed: for what an extension adds to it.
+function M.refresh()
+  M.revision = M.revision + 1
+  api.ui_redraw()
+end
+
+local function band_entries(index)
+  local fn = M.bands[index]
+  local ok, entries = pcall(fn)
+  if not ok then
+    daw.notify("a band of the window's ruler failed: " .. tostring(entries), "error")
+    return {}
+  end
+  return type(entries) == "table" and entries or {}
+end
+
+--- The bands that have entries, as rows from 0 under the marker band:
+--- `{ rows, entries }`, each entry with its `row`, its `band` and `index`
+--- (for `act.band`), `beat`, `length`, `name`, `color`, `active` and `hint`.
+function M.band_state()
+  local out, rows = {}, 0
+  for i in ipairs(M.bands) do
+    local entries = band_entries(i)
+    if #entries > 0 then
+      for j, e in ipairs(entries) do
+        out[#out + 1] = {
+          row = rows, band = i, index = j, beat = tonumber(e.beat) or 0, length = tonumber(e.length) or 0,
+          name = tostring(e.name or ""), color = e.color or "", active = (e.command or e.run) and true or false,
+          hint = tostring(e.hint or e.name or ""),
+        }
+      end
+      rows = rows + 1
+    end
+  end
+  return { rows = rows, entries = out }
+end
+
 local mode_names = { n = "NORMAL", c = "COMMAND", i = "INSERT", o = "PENDING" }
 local visual_names = { v = "VISUAL", V = "V-LINE", b = "V-BLOCK", clips = "CLIPS" }
 
@@ -121,6 +175,8 @@ local function modal()
   out.clip = ui.focused == "arrange" and under and under.id or nil
   -- Views that paint, open in windows of their own.
   out.windows = daw.canvas.windows()
+  -- Views that can be opened in one, for the views menu.
+  out.views = daw.canvas.openable()
   out.menus = menus()
   if ui.focused == "devices" then
     -- The row the keyboard is on, as a device of the track and one of its
@@ -335,6 +391,8 @@ function M.state(known)
   for i, m in ipairs(daw.markers and daw.markers.list() or {}) do
     out.project.markers[i] = { id = m.id, beat = m.beat, name = daw.markers.label(m), length = m.length or 0 }
   end
+  -- Extensions' bands under it (`M.bands`).
+  out.project.bands = M.band_state()
   local last = math.max(p.length or 0, t.loop_end or 0)
   for _, mark in ipairs(out.project.marks) do last = math.max(last, mark.beat) end
   local stop = daw.time.bar_start(daw.time.bar_of(last) + 17)
@@ -1065,6 +1123,21 @@ function A.menu(kind, index, target, beat)
   end
 end
 
+--- A click on an entry of an extension's band under the ruler
+--- (`daw.frontend.bands`), by the band's place in the list and the entry's
+--- in what it returns: its command runs, in the arrange view.
+function A.band(band, index)
+  if not M.bands[band] then return end
+  local entry = band_entries(band)[index]
+  if not entry then return end
+  to_arrange()
+  if entry.run then
+    entry.run(entry)
+  elseif entry.command then
+    daw.commands.exec(entry.command)
+  end
+end
+
 --- Drag along the ruler: loop that stretch. Too short a drag is a click,
 --- which only moves the playhead.
 function A.set_loop(from, to)
@@ -1265,6 +1338,11 @@ end
 --- Type keys as if at the keyboard: what a menu entry for an operator does
 --- to a selection.
 function A.keys(keys)
+  -- Keys typed in the main window are not for a view in a window of its
+  -- own, which sends its own (`daw.canvas.key`).
+  if daw.canvas.open_views[daw.ui.focused] and not daw.ui.float and not daw.ui.grabber then
+    daw.ui.focus("arrange")
+  end
   daw.keymap.feed(keys)
 end
 

@@ -49,6 +49,9 @@ pub struct Shared {
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
+    /// How many times a redraw has been asked for: a window showing one
+    /// view draws it again only when this has moved.
+    pub redraws: Cell<u64>,
     /// A frontend is showing the grid.
     pub attached: Cell<bool>,
     pub cursor: Cell<Option<(u16, u16)>>,
@@ -270,6 +273,39 @@ pub fn render(lua: &Lua, shared: &Shared) -> mlua::Result<()> {
     let daw: Table = lua.globals().get("daw")?;
     let kernel: Table = daw.get("_kernel")?;
     kernel.get::<Function>("render")?.call((width, height))
+}
+
+/// Draw one view by itself on a grid of its own, as a window shows it, and
+/// return it as rows of runs of one style (see [`Grid::runs`]) with the
+/// colours of the theme in 24 bits, whatever the terminal shows. The screen,
+/// its cursor and whether it needs drawing are left as they were.
+fn view_snapshot(lua: &Lua, sh: &Shared, name: &str, width: u16, height: u16) -> mlua::Result<Value> {
+    let screen = sh.grid.replace(Grid::new(width, height));
+    let (cursor, dirty, redraws) = (sh.cursor.replace(None), sh.dirty.get(), sh.redraws.get());
+    sh.highlights.borrow_mut().full_colour = true;
+    let drawn = (|| {
+        let daw: Table = lua.globals().get("daw")?;
+        let kernel: Table = daw.get("_kernel")?;
+        kernel.get::<Function>("render_view")?.call::<()>((name, width, height))
+    })();
+    let normal = sh.highlights.borrow().get("Normal");
+    sh.highlights.borrow_mut().full_colour = false;
+    let grid = sh.grid.replace(screen);
+    let at = sh.cursor.replace(cursor);
+    sh.dirty.set(dirty);
+    sh.redraws.set(redraws);
+    drawn?;
+    let fg = grid::rgb(normal.fg.unwrap_or(Color::Default), (0xd8, 0xd9, 0xdc));
+    let bg = grid::rgb(normal.bg.unwrap_or(Color::Default), (0x18, 0x19, 0x1c));
+    let colour = |(r, g, b): (u8, u8, u8)| format!("#{r:02x}{g:02x}{b:02x}");
+    Ok(serde_json::json!({
+        "width": width,
+        "height": height,
+        "fg": colour(fg),
+        "bg": colour(bg),
+        "rows": grid.runs(fg, bg),
+        "cursor": at.map(|(x, y)| serde_json::json!({ "x": x, "y": y })),
+    }))
 }
 
 #[derive(Default, Deserialize)]
@@ -986,8 +1022,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // --- screen ---
         fn ui_redraw(_, sh, () => ()) {
             sh.dirty.set(true);
+            sh.redraws.set(sh.redraws.get() + 1);
             Ok(())
         }
+        fn ui_redraws(_, sh, () => ()) { Ok(sh.redraws.get()) }
         fn ui_size(_, sh, () => ()) {
             let grid = sh.grid.borrow();
             Ok((grid.width, grid.height))
@@ -997,14 +1035,22 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
             Ok(())
         }
-        fn hl_set(_, sh, (name, def) => (String, LuaValue)) {
-            let highlight = match &def {
+        fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
+            // `full` is the group in 24-bit colour, given when `def` is a
+            // nearer form of it for a terminal that shows fewer colours.
+            let parse = |def: &LuaValue| Ok(match def {
                 LuaValue::String(link) => Highlight::Link(link.to_str()?.to_string()),
                 LuaValue::Table(table) => Highlight::Style(parse_style(table)?),
                 _ => return Err(mlua::Error::runtime("a highlight is a table of attributes or the name of another group")),
-            };
-            sh.highlights.borrow_mut().set(&name, highlight);
+            });
+            let highlight = parse(&def)?;
+            let mut highlights = sh.highlights.borrow_mut();
+            highlights.set(&name, highlight);
+            if !full.is_nil() {
+                highlights.set_full(&name, parse(&full)?);
+            }
             sh.dirty.set(true);
+            sh.redraws.set(sh.redraws.get() + 1);
             Ok(())
         }
         fn str_width(_, _sh, text => LuaString) { Ok(text.to_str()?.width()) }
@@ -1024,6 +1070,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 .map(|line| line.trim_end().to_string())
                 .collect();
             Ok(lines)
+        }
+        fn ui_view_snapshot(lua, sh, (name, width, height) => (String, u16, u16)) {
+            // One view drawn by itself at the given size, as rows of runs of
+            // one style: what a window shows of a view that draws cells.
+            let snapshot = view_snapshot(lua, &sh, &name, width.max(1), height.max(1))?;
+            to_lua(lua, &snapshot)
         }
         // Draw text at (x, y), clipped to the rectangle (cx, cy, cw, ch).
         // Returns the number of columns the text takes.
