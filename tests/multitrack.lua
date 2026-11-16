@@ -2,7 +2,20 @@
 -- roll's, several clips edited at once, the roll's layers. Loaded by
 -- tests/suite.lua with its helpers.
 local T = ...
-local test, eq, fresh, melody = T.test, T.eq, T.fresh, T.melody
+local eq, fresh, melody = T.eq, T.fresh, T.melody
+
+-- Each test leaves the piano roll as it found it: closed, the keyboard in
+-- the arrange view, editing one clip.
+local function test(name, fn)
+  T.test(name, function()
+    local ok, err = xpcall(fn, debug.traceback)
+    daw.keymap.feed("<Esc><Esc>")
+    daw.roll_clips.only()
+    daw.ui.hide("pianoroll")
+    daw.ui.focus("arrange")
+    if not ok then error(err, 0) end
+  end)
+end
 local api = daw.api
 local rc = daw.roll_clips
 
@@ -68,8 +81,9 @@ test("the piano roll shows other pitched tracks' notes behind its own, in their 
   roll:edit(s.bass)
   eq(pitches(rc.context()), "67@0 72@-2 76@2", "from the bass clip's start, only what sounds during it")
   -- Drawn faintly in the terminal, and handed to the window as marks.
-  local under = roll.layer_marks(-4, 8)
-  eq(#under, 3, "the window gets them under the notes")
+  local under = daw.frontend.clip(s.bass.id).context
+  eq(#under, 3, "the window gets them with the clip")
+  eq(under[1].fill, daw.draw.track_colour(api.track_get(s.tracks.keys.id)), "in their tracks' colours")
   roll:set(43, 1)
   local sounding = rc.sounding(1)
   eq(table.concat(sounding, " "), "43 72", "the keys sounding at the cursor, in every track shown")
@@ -341,7 +355,7 @@ test("the window is told the notes of every clip edited, the layers' marks and t
   local c = daw.frontend.clip(s.keys.id)
   eq(#c.notes .. " " .. #c.more .. " " .. #c.editable, "3 3 2", "the active clip's notes, the bass's, both clips")
   eq(c.more[1].start .. " " .. c.more[1].clip .. " " .. c.more[1].place, "2 " .. s.bass.id .. " 1", "a bass note in the keys' beats, with its clip and place")
-  eq(#c.under, 2, "the pad's notes under them")
+  eq(#c.context, 2, "the pad's notes, drawn behind them")
   local kinds = {}
   for _, row in ipairs(c.rows) do kinds[#kinds + 1] = row.kind .. ":" .. row.name .. (row.on and "+" or "") end
   eq(table.concat(kinds, " "), "track:Keys+ clip:chords+ track:Bass+ clip:line+ track:Pad+ clip:pad track:Drums clip:beat", "the side panel's rows")
@@ -356,12 +370,10 @@ test("a layer of the piano roll draws in the terminal and is handed to the windo
   local roll = daw.ui.views.pianoroll
   roll:edit(s.keys)
   local before = #roll.layers
-  roll.layer("test-marks", 35, nil, function()
-    return { { pitch = 60, start = 0, length = 1, color = "#ff0000", fill = 0.5, edge = 1, style = "Visual" } }
-  end)
-  roll.layer("test-under", 5, nil, function() return { { pitch = 61, start = 0, length = 1, color = "#00ff00" } } end)
-  local under, over = roll.layer_marks(0, 8)
-  eq(under[1].pitch .. " " .. under[2].pitch .. " " .. over[1].pitch, "61 36 60", "under the notes by order, then over them")
+  roll.layer("test-marks", 35, nil, function() return { { pitch = 60, start = 0, length = 1, fill = "#ff0000" } } end)
+  roll.layer("test-under", 5, nil, function() return { { pitch = 61, start = 0, length = 1, fill = "#00ff00" } } end)
+  local under, over = roll:marks(s.keys.id)
+  eq(under[1].pitch .. " " .. over[#over].pitch, "61 60", "under the notes by order, then over them")
   local orders = {}
   for _, layer in ipairs(roll.layers) do
     if layer.name:match("^test") or layer.name == "context" or layer.name == "notes" then orders[#orders + 1] = layer.name end

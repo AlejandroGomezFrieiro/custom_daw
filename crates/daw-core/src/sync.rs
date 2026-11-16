@@ -12,6 +12,7 @@ use std::sync::Arc;
 use base64::Engine as _;
 use daw_engine::midi_form::Form;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use daw_engine::launch::{SlotClip, Slots};
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
     DiskStore, MASTER,
@@ -571,6 +572,21 @@ pub fn sync(
                 track: slot,
                 clips: Box::new(build_clips(track, new.tempo_map(), map, ctx)),
             });
+        }
+
+        let same_slots = prev.map_or(track.slots.is_empty(), |p| {
+            p.slots.len() == track.slots.len()
+                && p.slots
+                    .iter()
+                    .zip(&track.slots)
+                    .all(|(a, b)| a.row == b.row && Arc::ptr_eq(&a.clip, &b.clip))
+        });
+        if !same_slots {
+            send(Msg::SetSlots {
+                track: slot,
+                slots: Box::new(build_slots(track, new.tempo_map(), ctx)),
+            });
+            emit("slot.changed", json!({ "track": track.id }));
         }
 
         let same_lanes = prev.map_or(track.lanes.is_empty(), |p| {
@@ -1323,27 +1339,62 @@ fn build_clips(
                 kept.push((clip.clone(), events));
             }
             ClipContent::Audio { file, offset, gain } => {
-                let rate = ctx.sample_rate as u32;
-                // A stretched, warped or shifted clip plays a version made
-                // for it, in which its file's moments are where its warp
-                // puts them (`warp.rs`); it is silent until that is started,
-                // and then plays it as far as it is made.
-                let warp = crate::warp::of(clip, tempo);
-                let data = match crate::stretched::Key::of(clip, rate, tempo) {
-                    Some(key) => ctx.audio.stretched(&key, ctx.warnings),
-                    None => ctx.audio.get(file, rate, ctx.warnings),
-                };
-                if let Some(data) = data {
-                    let gain = db_to_gain(*gain);
-                    let offset = warp.map_or(*offset, |w| w.forward(*offset));
-                    audio_regions(clip, data, offset, gain, tempo, &mut set.audio);
-                }
+                clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut set.audio)
             }
         }
     }
     set.finish();
     map.clip_events.insert(track.id, kept);
     set
+}
+
+/// The regions an audio clip plays, once its sound is at hand.
+fn clip_audio(
+    clip: &Clip,
+    (file, offset, gain): (&Path, f64, f64),
+    tempo: &daw_engine::TempoMap,
+    ctx: &mut SyncCtx,
+    out: &mut Vec<AudioRegion>,
+) {
+    let rate = ctx.sample_rate as u32;
+    // A stretched, warped or shifted clip plays a version made for it, in
+    // which its file's moments are where its warp puts them (`warp.rs`); it
+    // is silent until that is started, and then plays it as far as it is made.
+    let warp = crate::warp::of(clip, tempo);
+    let data = match crate::stretched::Key::of(clip, rate, tempo) {
+        Some(key) => ctx.audio.stretched(&key, ctx.warnings),
+        None => ctx.audio.get(file, rate, ctx.warnings),
+    };
+    if let Some(data) = data {
+        let offset = warp.map_or(offset, |w| w.forward(offset));
+        audio_regions(clip, data, offset, db_to_gain(gain), tempo, out);
+    }
+}
+
+/// What a track's slots play, each clip laid out from its own start.
+fn build_slots(track: &Track, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -> Slots {
+    let mut rows: Vec<Option<SlotClip>> = Vec::new();
+    for slot in track.slots.iter().filter(|s| !s.clip.muted) {
+        let clip = &slot.clip;
+        let mut clips = ClipSet::default();
+        match &clip.content {
+            ClipContent::Midi { notes, controls } => {
+                clips.midi = compile_clip(clip, notes, controls).to_vec()
+            }
+            ClipContent::Audio { file, offset, gain } => {
+                clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut clips.audio)
+            }
+        }
+        let row = slot.row as usize;
+        if rows.len() <= row {
+            rows.resize_with(row + 1, || None);
+        }
+        rows[row] = Some(SlotClip {
+            clips,
+            length: clip.length,
+        });
+    }
+    Slots { rows }
 }
 
 /// A MIDI clip and its notes as engine events.

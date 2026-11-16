@@ -114,6 +114,18 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
 
+## Take a suggestion (piano roll, normal and insert mode)
+
+| Keys | |
+| --- | --- |
+| `<C-Space>` | ask the completion sources what comes next |
+| `<Tab>` | accept the suggestion that shows |
+| `<C-l>` | accept its next note or chord only |
+| `<C-n>` `<C-p>` | the next, the previous alternative |
+| `<A-1>` … `<A-9>` | show that alternative |
+| `<C-e>` `<Esc>` | dismiss it (`<Esc>` leaves insert mode only when nothing shows) |
+| `gh` | hear it from a bar before (normal mode) |
+
 ## Repeat and remember
 
 | Keys | |
@@ -156,13 +168,28 @@ Stop half way through a sequence and the keys that can follow are listed.
 | Keys | |
 | --- | --- |
 | `<Tab>` `gt` | next view |
-| `,m` `,d` `,p` | mixer, device panel, piano roll |
+| `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
 | `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this panel, close every panel |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
 | `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+
+## Launch clips (the session view, `,l`)
+
+| Keys | |
+| --- | --- |
+| `h` `l` `j` `k` | previous, next track; next, previous slot (`gg` `G` first, last) |
+| `<CR>` `L` | launch the slot (an empty one stops the track), launch the row as a scene |
+| `s` `S` | stop the track's clip, every clip |
+| `b` `B` | the track back to its timeline, every track |
+| `n` `e` | a new MIDI clip in the slot, open its notes |
+| `x` `dd` `yy` `p` | empty the slot, yank its clip, paste a clip into it |
+| `gp` | copy the arrange view's clip into the slot |
+| `m` `gl` | the next launch mode (trigger, gate, toggle), legato on or off |
+| `R` `4R` | record a bar, or four, into the empty slot from the next boundary |
+| `grn` `C` | name the scene, capture what is launched into the timeline |
 
 ## Diagnostics and language servers
 
