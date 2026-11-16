@@ -295,3 +295,40 @@ test("undotree: the view draws the tree and goes to a state", function()
   daw.keymap.feed("q")
   eq(daw.ui.float, nil, "q closes it")
 end)
+
+test("undotree: in a window of its own it takes keys and clicks as in the terminal", function()
+  start()
+  local t
+  step(function() t = daw.add_track({ name = "T" }) end)
+  local s2 = step(function() t:add_clip({ name = "one", start = 0, length = 4 }) end)
+  local s3 = step(function() t:add_clip({ name = "two", start = 4, length = 4 }) end)
+  daw.cmd("undotree")
+  daw.cmd("view.window")
+  eq(daw.ui.float, nil, "the floating tree moves into a window")
+  eq(daw.canvas.open_views.undotree.title, "Undo tree", "with its title")
+  local cell = { w = 10, h = 20 }
+  local function shown()
+    local painted = daw.canvas.paint("undotree", 1200, 400, { cell = cell, fresh = true })
+    local text = {}
+    for _, op in ipairs(painted.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
+    return table.concat(text, " ")
+  end
+  local snap = api.ui_view_snapshot("undotree", 120, 19)
+  local first = {}
+  for _, run in ipairs(snap.rows[1]) do first[#first + 1] = run.text end
+  eq(table.concat(first):find("#" .. s3, 1, true) ~= nil, true, "the newest state first")
+  eq(shown():find("#" .. s3, 1, true) ~= nil, true, "and in the window")
+  daw.canvas.key("undotree", "j")
+  daw.canvas.key("undotree", "<CR>")
+  eq(api.undo_current(), s2, "j and Enter go to the state below")
+  for _, key in ipairs({ "n", "<C-u>", "v", "e", "r", "s", "e", "<CR>" }) do daw.canvas.key("undotree", key) end
+  eq(ext().tree().by_id[s2].name, "verse", "n names it, typed in the window")
+  eq(shown():find('"verse"', 1, true) ~= nil, true, "which the window shows")
+  -- A click on the first row chooses the newest state.
+  daw.canvas.pointer("undotree", { kind = "down", x = 15, y = 5, button = "left" })
+  daw.canvas.key("undotree", "<CR>")
+  eq(api.undo_current(), s3, "a click and Enter go there")
+  daw.canvas.key("undotree", "q")
+  eq(daw.canvas.open_views.undotree, nil, "q closes the window")
+  eq(daw.ui.focused, "arrange", "and the keyboard goes back")
+end)

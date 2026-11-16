@@ -71,6 +71,28 @@ test("a track sends its clip's notes to a MIDI port, on its channel, in order an
   end)
 end)
 
+test("removing a track that sends MIDI ends the notes it left sounding", function()
+  fresh()
+  return with_loop(function()
+    daw.project.tempo = 120
+    local t = daw.add_track({ name = "Hardware" })
+    t:add_clip({ start = 0, length = 8, notes = { { pitch = "C5", start = 0, length = 8 } } })
+    t.midi_output = { port = "daw: Loop" }
+    local keys = daw.add_track({ name = "Keys" })
+    keys.midi_input = { port = "Loop" }
+    keys.armed = true
+    daw.transport.record_offset = 0
+    daw.transport.record()
+    wait_for(function() return daw.transport.position >= 2 end, 10000)
+    t:remove()
+    wait_for(function() return daw.transport.position >= 4 end, 10000)
+    daw.transport.stop()
+    local clip = keys:clips()[1]
+    eq(clip ~= nil and #clip:notes(), 1, "the note came back")
+    near(clip:notes()[1].length, 2, 0.3, "and ended when its track went, not when the song stopped")
+  end)
+end)
+
 test("MIDI output: a track's port and channel are checked, saved and taken away with it", function()
   fresh()
   local t = daw.add_track({ name = "Hardware" })
@@ -78,7 +100,13 @@ test("MIDI output: a track's port and channel are checked, saved and taken away 
   fails(function() t.midi_output = { channel = 2 } end, nil, "no port")
   t.midi_output = "Some synth"
   eq(t.midi_output.port .. " " .. tostring(t.midi_output.channel), "Some synth nil", "a port by name, each message on its own channel")
+  api.undo_checkpoint()
   t.midi_output = { port = "Some synth", channel = 10 }
+  api.undo_checkpoint()
+  daw.undo()
+  eq(t.midi_output.channel, nil, "undo takes a change of MIDI output back")
+  daw.redo()
+  eq(t.midi_output.channel, 10, "and redo brings it again")
   local path = T.scratch .. "/midi_out.json"
   daw.project.save(path)
   daw.project.load(path)

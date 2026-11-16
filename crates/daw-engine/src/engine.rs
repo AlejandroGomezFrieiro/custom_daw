@@ -48,10 +48,15 @@ pub struct TrackRt {
     gain: f32,
     pan: f32,
     mute: bool,
+    /// Silenced because another track is soloed: not heard, but what
+    /// listens to it as a side-chain still hears it.
+    quiet: bool,
     /// Per-channel gain actually applied at the end of the last block.
     applied: [f32; 2],
     /// The same for what is sent on before the fader: 0 when muted, else 1.
     applied_pre: f32,
+    /// The same for what is heard of it after the fader: 0 when quiet.
+    applied_heard: f32,
     /// Whether the track has produced a block yet. Until then a fader change
     /// takes effect at once rather than ramping from the default.
     started: bool,
@@ -94,8 +99,10 @@ impl TrackRt {
             gain: 1.0,
             pan: 0.0,
             mute: false,
+            quiet: false,
             applied: [1.0, 1.0],
             applied_pre: 1.0,
+            applied_heard: 1.0,
             started: false,
             events: EventBuf::with_capacity(1024),
             live: Vec::with_capacity(256),
@@ -415,6 +422,8 @@ pub enum Msg {
         gain: f32,
         pan: f32,
         mute: bool,
+        /// Silenced by another track's solo (see `TrackRt::quiet`).
+        quiet: bool,
     },
     InsertDevice {
         slot: Slot,
@@ -1147,13 +1156,16 @@ impl Engine {
                 gain,
                 pan,
                 mute,
+                quiet,
             } => {
                 if let Some(track) = self.track_mut(slot) {
                     track.gain = gain;
                     track.pan = pan;
                     track.mute = mute;
+                    track.quiet = quiet;
                     if !track.started {
                         track.applied = track.target_gains();
+                        track.applied_heard = if quiet { 0.0 } else { 1.0 };
                     }
                 }
             }
@@ -1837,7 +1849,7 @@ impl Engine {
         if entry.taps_pre() {
             // Sends from before the fader ignore it and the pan, but not the
             // mute. The fader was left for now, so that they could be taken.
-            let pre = if t.mute { 0.0 } else { 1.0 };
+            let pre = if t.mute || t.quiet { 0.0 } else { 1.0 };
             let pre_from = if t.started { t.applied_pre } else { pre };
             t.applied_pre = pre;
             for send in entry.sends.iter_mut().filter(|send| send.pre) {
@@ -1866,6 +1878,10 @@ impl Engine {
             out_l.copy_from_slice(&t.buf[0][..n]);
             out_r.copy_from_slice(&t.buf[1][..n]);
         } else {
+            // A track silenced by another's solo is not heard, moving there
+            // smoothly, but its side-chains are still taken from it.
+            let heard = if t.quiet { 0.0 } else { 1.0 };
+            let heard_from = std::mem::replace(&mut t.applied_heard, heard);
             let src = [&t.buf[0][..n], &t.buf[1][..n]];
             if let Some(dst) = self
                 .tracks
@@ -1873,7 +1889,9 @@ impl Engine {
                 .and_then(|t| t.get_mut().as_deref_mut())
             {
                 let [l, r] = &mut dst.buf;
-                entry.delay.mix(src, [&mut l[..n], &mut r[..n]], 1.0, 1.0);
+                entry
+                    .delay
+                    .mix(src, [&mut l[..n], &mut r[..n]], heard_from, heard);
             }
             for send in entry.sends.iter_mut().filter(|send| !send.pre) {
                 if let Some(dst) = self
@@ -1882,8 +1900,12 @@ impl Engine {
                     .and_then(|t| t.get_mut().as_deref_mut())
                 {
                     let [l, r] = &mut dst.buf;
-                    send.delay
-                        .mix(src, [&mut l[..n], &mut r[..n]], send.gain, send.gain);
+                    send.delay.mix(
+                        src,
+                        [&mut l[..n], &mut r[..n]],
+                        send.gain * heard_from,
+                        send.gain * heard,
+                    );
                 }
             }
             for key in entry.keys.iter_mut().filter(|key| !key.pre) {
@@ -2244,6 +2266,8 @@ fn fader(t: &mut TrackRt, slot: Slot, block: &Block, shared: &Shared) {
             }
         }
         t.applied[ch] = target[ch];
+        // A track silenced by a solo shows nothing, as it is heard.
+        let peak = if t.quiet { 0.0 } else { peak };
         t.peak[ch] = peak.max(t.peak[ch] * block.meter_fall);
         if let Some(meter) = shared.meters.get(slot as usize) {
             meter[ch].store(t.peak[ch].to_bits(), Relaxed);

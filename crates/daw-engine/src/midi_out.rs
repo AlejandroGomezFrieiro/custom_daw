@@ -29,6 +29,10 @@ use rtrb::Consumer;
 use crate::event::EventKind;
 use crate::midi::PortInfo;
 
+/// The name of the sequencer client that sends: its ports are not read
+/// back as MIDI input.
+pub const CLIENT: &str = "daw out";
+
 /// Messages that may wait between the audio thread and the sender.
 pub const MIDI_OUT_CAPACITY: usize = 4096;
 

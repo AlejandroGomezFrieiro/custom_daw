@@ -33,8 +33,9 @@ import "fonts/JetBrainsMono-Regular.ttf";
 import "fonts/JetBrainsMono-Medium.ttf";
 import { Roll, PianoRoll, NoteData, ControlData } from "roll.slint";
 import { CanvasWindow, CanvasItem } from "canvas.slint";
+import { Probe } from "probe.slint";
 
-export { Roll, CanvasWindow }
+export { Roll, CanvasWindow, Probe }
 
 export struct TrackData {
     id: int,
@@ -50,18 +51,11 @@ export struct TrackData {
     armed: bool,
     input: string,      // "1", "1/2", or "" for none
     input-label: string, // what it takes in, in words: "UR22mkII · 1/2", or ""
-    input-level: float, // what arrives there, 0..1, armed or not
     monitor: bool,      // the input is heard without arming
     master: bool,
-    level-l: float,     // meters, 0..1
-    level-r: float,
-    hold-l: float,      // the peaks held a moment, 0..1
-    hold-r: float,
-    clipped: bool,      // the level reached 0 dB since the light was cleared
     number: int,        // its place in the list, from 1
     output: string,     // the track it plays into
     inserts: [string],  // the names of its devices
-    peak-text: string,  // the peak held, in dB
     lane-name: string,      // the automation lane it shows
     lane-choices: [string], // and the ones it could
     depth: int,         // how many groups it is inside
@@ -72,6 +66,18 @@ export struct TrackData {
     size: float,        // of the zoom's height (`row-height`)
     clip-size: float,   // how much of that its clips take: the rest is lanes shown as rows
     automation: string, // "read", "touch", "latch", "write" or "off"
+}
+
+// A track's meters, apart from the rest of it: they change many times a
+// second, and a change to a track's row redraws all that shows the track.
+export struct MeterData {
+    input-level: float, // what arrives at its input, 0..1, armed or not
+    level-l: float,     // meters, 0..1
+    level-r: float,
+    hold-l: float,      // the peaks held a moment, 0..1
+    hold-r: float,
+    clipped: bool,      // the level reached 0 dB since the light was cleared
+    peak-text: string,  // the peak held, in dB
 }
 
 export struct ClipData {
@@ -118,12 +124,59 @@ export struct LaneData {
     span: float,        // in rows of the zoom's height
 }
 
+// A take lane under a track's clips: take `take` of every clip of the track
+// that has that many.
+export struct TakeLaneData {
+    track: int,         // id
+    row: int,
+    take: int,          // from 1
+    top: float,         // where it is drawn in its track's row, and how tall,
+    span: float,        // in rows of the zoom's height
+}
+
+// One clip's take in a take lane: what it would play, over the clip's
+// stretch of time, lit when it is the one that plays.
+export struct TakePiece {
+    clip: int,
+    row: int,
+    take: int,
+    start: float,       // beats
+    length: float,
+    top: float,
+    span: float,
+    name: string,
+    active: bool,
+    picture: image,     // its notes or its waveform, to be tinted
+}
+
 // A marker or a region on the ruler: a region has a length.
 export struct MarkerData {
     id: int,
     beat: float,
     length: float,
     name: string,
+}
+
+// An entry of an extension's band under the ruler (`daw.frontend.bands`):
+// its row among the bands, which band and which entry it is, where it is,
+// its name, its colour or none for the window's own, whether a click does
+// something, and what the status line says over it.
+export struct BandData {
+    row: int,
+    band: int,
+    index: int,
+    beat: float,
+    length: float,
+    name: string,
+    color: color,
+    active: bool,
+    hint: string,
+}
+
+// A view the kernel can show in a window of its own (`daw.canvas.open_view`).
+export struct ViewEntry {
+    name: string,
+    title: string,
 }
 
 // Something the render dialog can render: the song, the loop, a region.
@@ -209,6 +262,7 @@ export struct DeviceData {
 // switches, and its name on its colour.
 component MixerStrip inherits Rectangle {
     in property <TrackData> track;
+    in property <MeterData> meter;
     in property <bool> chosen;
     callback select();
     callback set-volume(float);
@@ -338,7 +392,7 @@ component MixerStrip inherits Rectangle {
                     y: 2px;
                     width: 14px;
                     height: 4px;
-                    on: root.track.clipped;
+                    on: root.meter.clipped;
                     clear => {
                         root.clear-clip();
                     }
@@ -349,8 +403,8 @@ component MixerStrip inherits Rectangle {
                     width: 6px;
                     height: parent.height - 10px;
                     upright: true;
-                    level: root.track.level-l;
-                    hold: root.track.hold-l;
+                    level: root.meter.level-l;
+                    hold: root.meter.hold-l;
                 }
                 Meter {
                     x: 10px;
@@ -358,8 +412,8 @@ component MixerStrip inherits Rectangle {
                     width: 6px;
                     height: parent.height - 10px;
                     upright: true;
-                    level: root.track.level-r;
-                    hold: root.track.hold-r;
+                    level: root.meter.level-r;
+                    hold: root.meter.hold-r;
                 }
             }
         }
@@ -385,11 +439,11 @@ component MixerStrip inherits Rectangle {
             Rectangle {
                 horizontal-stretch: 1;
                 border-radius: 2px;
-                background: root.track.clipped ? Theme.meter-clip.with-alpha(0.25) : Theme.well;
+                background: root.meter.clipped ? Theme.meter-clip.with-alpha(0.25) : Theme.well;
                 Text {
                     width: parent.width;
-                    text: root.track.peak-text;
-                    color: root.track.clipped ? Theme.meter-clip : Theme.text-2;
+                    text: root.meter.peak-text;
+                    color: root.meter.clipped ? Theme.meter-clip : Theme.text-2;
                     font-family: Theme.mono;
                     font-size: Theme.t-small;
                     font-weight: 500;
@@ -478,6 +532,8 @@ export component App inherits Window {
     default-font-size: 12px;
 
     in property <[TrackData]> tracks;
+    // Each track's meters, in the order of `tracks`.
+    in property <[MeterData]> meters;
     in property <[ClipData]> clips;
     in property <[DeviceData]> devices;
     // Device kinds matching what is typed in the search box.
@@ -495,6 +551,13 @@ export component App inherits Window {
     in property <int> strip-pencil-lane: -1;
     in property <string> strip-pencil-path;
     callback lane-id-command(int, string);  // a lane, and "clear", "toggle" or "hide"
+    // Take lanes under the clips, and what each clip's takes there show.
+    // `comp` is a drag across one (the track, the take, from and to in
+    // beats, Shift held); `take-click` a click on one.
+    in property <[TakeLaneData]> take-lanes;
+    in property <[TakePiece]> take-pieces;
+    callback comp(int, int, float, float, bool);
+    callback take-click(int, int, float);
     in property <[MarkerData]> markers;
     // A fader, pan or parameter taken hold of or let go: the track, what
     // ("volume", "pan", "param"), the device and the parameter's key.
@@ -510,11 +573,18 @@ export component App inherits Window {
     // The render dialog, filled by `open-render` and sent by `start-render`.
     callback open-render();
     callback start-render();
+    // The desktop's file dialog for the render's file (or folder), when it has one.
+    callback choose-render-path();
     in-out property <bool> render-open;
     in-out property <string> render-path;
     in property <[RangeChoice]> render-ranges;
     in-out property <int> render-range;
-    in-out property <bool> render-flac;
+    // "wav", "flac", or a lossy format ("mp3", "ogg", "opus") ffmpeg can make here.
+in-out property <string> render-format: "wav";
+in property <bool> render-has-mp3;
+in property <bool> render-has-ogg;
+in property <bool> render-has-opus;
+in-out property <string> render-quality: "high";
     in-out property <int> render-bits: 24;
     in-out property <string> render-tail: "1";
     in-out property <bool> render-normalize;
@@ -525,6 +595,8 @@ export component App inherits Window {
     in property <bool> rendering;
     in property <float> render-fraction;
     in property <string> render-name;
+// "encoding" while ffmpeg makes a lossy file from the render.
+in property <string> render-stage;
     // What is waiting for a MIDI controller to be moved, or "".
     in property <string> learning;
     in-out property <bool> show-automation;
@@ -555,6 +627,12 @@ export component App inherits Window {
     in property <[MenuEntry]> clip-entries;      // what extensions add to the menus
     in property <[MenuEntry]> track-entries;
     in property <[MenuEntry]> timeline-entries;
+    // Views to open in windows of their own, and extensions' bands under
+    // the ruler, `band-rows` of them.
+    in property <[ViewEntry]> view-entries;
+    in property <[BandData]> bands;
+    in property <int> band-rows;
+    callback band-click(int, int);
     in property <string> hint-title;
     in property <bool> float-open;
     in property <string> float-title;
@@ -590,6 +668,14 @@ export component App inherits Window {
     in property <float> loop-start;
     in property <float> loop-end;
     in property <bool> metronome;
+    // Recording only between two points, and the beats of a count-in still
+    // to come before a take starts (0 when none is under way).
+    in property <bool> punching;
+    in property <float> punch-start;
+    in property <float> punch-end;
+    in property <int> counting;
+    in property <int> count-in;         // bars counted before a take, 0 for none
+    callback set-punch-edge(bool, float, bool);  // the punch in (or out) dragged to a beat, Shift held
     in property <float> bar: 4;
     // Bar and beat lines and tempo changes from the tempo map.
     in property <[RulerLine]> ruler-lines;
@@ -632,6 +718,9 @@ export component App inherits Window {
     in property <[ChoiceData]> engine-rate;
     in property <[ChoiceData]> engine-backend;
     callback fill-engine-menu();
+    in property <[ChoiceData]> recent-list;
+    callback fill-recent-menu();
+    callback open-recent(int);
     callback choose-engine(string, int);
     callback add-device(string);
     callback search-devices(string);
@@ -753,10 +842,12 @@ export component App inherits Window {
         root.tracks[clamp(row, 0, root.tracks.length - 1)].clip-size * root.row-height
     }
     property <length> rows-height: root.rows-total * root.row-height;
-    // The ruler's own rows, and under them a band for markers and regions
-    // when there are any.
+    // The ruler's own rows, under them a band for markers and regions when
+    // there are any, and under that the bands extensions add.
     property <length> ruler-main: 28px;
-    property <length> ruler-height: root.ruler-main + (root.markers.length > 0 ? 18px : 0px);
+    property <length> band-height: 18px;
+    property <length> bands-top: root.ruler-main + (root.markers.length > 0 ? root.band-height : 0px);
+    property <length> ruler-height: root.bands-top + root.band-rows * root.band-height;
     property <int> bars: Math.ceil((root.length + 8 * root.bar) / root.bar);
     property <length> beat: root.zoom * 1px;
     in-out property <length> roll-height: 330px;
@@ -1036,6 +1127,22 @@ export component App inherits Window {
                                     root.file-action("open");
                                 }
                             }
+                            Menu {
+                                title: "Open recent";
+                                for entry[at] in root.recent-list: MenuItem {
+                                    title: entry.label;
+                                    activated => {
+                                        root.open-recent(at);
+                                    }
+                                }
+                                MenuSeparator { }
+                                MenuItem {
+                                    title: "Clear the list";
+                                    activated => {
+                                        root.command("recent.clear");
+                                    }
+                                }
+                            }
                             MenuItem {
                                 title: "Recover unsaved work…";
                                 activated => {
@@ -1106,6 +1213,7 @@ export component App inherits Window {
                         }
                         TouchArea {
                             clicked => {
+                                root.fill-recent-menu();
                                 file-menu.show({ x: 0, y: self.height + 4px });
                             }
                             changed has-hover => {
@@ -1153,7 +1261,8 @@ export component App inherits Window {
                     rec := Button {
                         icon: Icons.ph-record-fill;
                         icon-box: 256;
-                        on: root.recording || root.record-armed;
+                        // While counting in it blinks with the beats.
+                        on: root.counting > 0 ? Math.mod(root.counting, 2) == 0 : root.recording || root.record-armed;
                         lit: Theme.rec;
                         idle-ink: Theme.rec.mix(Theme.text-3, 0.6);
                         quiet: true;
@@ -1196,9 +1305,10 @@ export component App inherits Window {
                         padding-left: 10px;
                         padding-right: 10px;
                         spacing: 8px;
+                        // Counting in: the beats still to come, in the record colour.
                         Text {
-                            text: root.time;
-                            color: root.playing ? Theme.text : Theme.text;
+                            text: root.counting > 0 ? "count " + root.counting : root.time;
+                            color: root.counting > 0 ? Theme.rec : Theme.text;
                             font-family: Theme.mono;
                             font-size: Theme.t-clock;
                             font-weight: 500;
@@ -1397,6 +1507,35 @@ export component App inherits Window {
                                 }
                             }
                         }
+                        // Every other view the kernel has, the extensions'
+                        // among them, each in a window of its own.
+                        more-menu := ContextMenuArea {
+                            Menu {
+                                for entry in root.view-entries: MenuItem {
+                                    title: entry.title;
+                                    activated => {
+                                        root.command("view.window " + entry.name);
+                                    }
+                                }
+                            }
+                            Button {
+                                height: 24px;
+                                icon: Icons.ph-caret-down;
+                                icon-box: 256;
+                                label: "More";
+                                quiet: true;
+                                clicked => {
+                                    more-menu.show({ x: 0, y: self.height + 2px });
+                                }
+                                changed has-hover => {
+                                    if (self.has-hover) {
+                                        root.hint = "more views: the undo tree, sections, an extension's panel… each in a window of its own";
+                                    } else if (root.hint == "more views: the undo tree, sections, an extension's panel… each in a window of its own") {
+                                        root.hint = "";
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 Rectangle {
@@ -1549,6 +1688,15 @@ export component App inherits Window {
                             background: root.looping ? Theme.play.with-alpha(0.8) : Theme.text-3.with-alpha(0.45);
                         }
                     }
+                    // The punch range: a red line under the loop's band, bright
+                    // while punching is on, its edges dragged like the loop's.
+                    if root.punch-end > root.punch-start: Rectangle {
+                        x: root.seen-x(root.punch-start * root.beat) + lanes.content-x;
+                        width: root.seen-w(root.punch-start * root.beat, (root.punch-end - root.punch-start) * root.beat);
+                        y: 8px;
+                        height: 4px;
+                        background: root.punching ? Theme.rec.with-alpha(0.9) : Theme.text-3.with-alpha(0.35);
+                    }
                     // From the tempo map: half beats and beats of the signature
                     // as ticks from the foot, bars as lines with their numbers.
                     if root.beat >= 20px: Rectangle {
@@ -1599,12 +1747,21 @@ export component App inherits Window {
                         font-weight: 600;
                     }
                     // A loop being drawn in the top band, or an edge of it dragged.
-                    if ruler-touch.pressed && abs(ruler-touch.mouse-x - ruler-touch.pressed-x) > 4px && (ruler-touch.grab != 0 || ruler-touch.top-band): Rectangle {
+                    if ruler-touch.pressed && abs(ruler-touch.mouse-x - ruler-touch.pressed-x) > 4px && (ruler-touch.grab == 1 || ruler-touch.grab == 2 || (ruler-touch.grab == 0 && ruler-touch.top-band)): Rectangle {
                         property <length> from: ruler-touch.grab == 1 ? root.loop-end * root.beat + lanes.content-x
                             : ruler-touch.grab == 2 ? root.loop-start * root.beat + lanes.content-x : ruler-touch.pressed-x;
                         x: min(ruler-touch.mouse-x, self.from);
                         width: abs(ruler-touch.mouse-x - self.from);
                         background: Theme.play.with-alpha(0.3);
+                    }
+                    // An edge of the punch range being dragged.
+                    if ruler-touch.pressed && abs(ruler-touch.mouse-x - ruler-touch.pressed-x) > 2px && ruler-touch.grab >= 3: Rectangle {
+                        property <length> from: ruler-touch.grab == 3 ? root.punch-end * root.beat + lanes.content-x : root.punch-start * root.beat + lanes.content-x;
+                        x: min(ruler-touch.mouse-x, self.from);
+                        y: 8px;
+                        width: abs(ruler-touch.mouse-x - self.from);
+                        height: 4px;
+                        background: Theme.rec;
                     }
                     // The edit cursor, and the playhead's cap.
                     Rectangle {
@@ -1626,24 +1783,33 @@ export component App inherits Window {
                     }
                     ruler-touch := TouchArea {
                         // Under the tempo flags, which come after it.
-                        // What a press took hold of: 1 the loop's start, 2 its end, 0 neither;
-                        // and whether it was in the top band, where a drag draws a loop.
+                        // What a press took hold of: 1 the loop's start, 2 its end, 3
+                        // the punch in, 4 the punch out, 0 none of them; and whether
+                        // it was in the top band, where a drag draws a loop.
                         property <int> grab;
                         property <bool> top-band;
                         pure function near(beat: float) -> bool {
                             root.looping && abs(self.mouse-x - (beat * root.beat + lanes.content-x)) <= 5px
                         }
-                        mouse-cursor: self.near(root.loop-start) || self.near(root.loop-end) ? MouseCursor.ew-resize : MouseCursor.default;
+                        // The punch's edges are taken hold of on its line.
+                        pure function near-punch(beat: float) -> bool {
+                            root.punch-end > root.punch-start && self.mouse-y >= 5px && self.mouse-y <= 16px
+                                && abs(self.mouse-x - (beat * root.beat + lanes.content-x)) <= 5px
+                        }
+                        mouse-cursor: self.near(root.loop-start) || self.near(root.loop-end) || self.near-punch(root.punch-start) || self.near-punch(root.punch-end) ? MouseCursor.ew-resize : MouseCursor.default;
                         pointer-event(event) => {
                             if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
                                 keys.focus();
-                                self.grab = self.near(root.loop-start) ? 1 : self.near(root.loop-end) ? 2 : 0;
+                                self.grab = self.near-punch(root.punch-start) ? 3 : self.near-punch(root.punch-end) ? 4
+                                    : self.near(root.loop-start) ? 1 : self.near(root.loop-end) ? 2 : 0;
                                 self.top-band = self.mouse-y < self.height / 2;
                             }
                             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
-                                if (abs(self.mouse-x - self.pressed-x) <= 4px) {
+                                if (self.grab >= 3 && abs(self.mouse-x - self.pressed-x) > 2px) {
+                                    root.set-punch-edge(self.grab == 3, (self.mouse-x - lanes.content-x) / root.beat, event.modifiers.shift);
+                                } else if (abs(self.mouse-x - self.pressed-x) <= 4px) {
                                     root.ruler-click((self.mouse-x - lanes.content-x) / root.beat);
-                                } else if (self.grab != 0) {
+                                } else if (self.grab == 1 || self.grab == 2) {
                                     root.set-loop-edge(self.grab == 1, (self.mouse-x - lanes.content-x) / root.beat);
                                 } else if (self.top-band) {
                                     root.set-loop((self.pressed-x - lanes.content-x) / root.beat, (self.mouse-x - lanes.content-x) / root.beat);
@@ -1658,8 +1824,8 @@ export component App inherits Window {
                         }
                         changed has-hover => {
                             if (self.has-hover) {
-                                root.hint = "ruler: click puts the edit cursor and the playhead · drag in the top half loops a stretch · drag the loop's edges · double click turns the loop on or off";
-                            } else if (root.hint == "ruler: click puts the edit cursor and the playhead · drag in the top half loops a stretch · drag the loop's edges · double click turns the loop on or off") {
+                                root.hint = "ruler: click puts the edit cursor and the playhead · drag in the top half loops a stretch · drag the loop's edges, or the red punch line's · double click turns the loop on or off";
+                            } else if (root.hint == "ruler: click puts the edit cursor and the playhead · drag in the top half loops a stretch · drag the loop's edges, or the red punch line's · double click turns the loop on or off") {
                                 root.hint = "";
                             }
                         }
@@ -1754,7 +1920,7 @@ export component App inherits Window {
                     x: root.header-width;
                     y: root.ruler-main;
                     width: parent.width - root.header-width;
-                    height: root.ruler-height - root.ruler-main;
+                    height: root.band-height;
                     background: Theme.panel;
                     clip: true;
                     Rectangle {
@@ -1843,6 +2009,71 @@ export component App inherits Window {
                                     } else if (root.hint == "marker: click goes there · drag to move · double click renames · right click for more") {
                                         root.hint = "";
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Extensions' bands (`daw.frontend.bands`), a row each under
+                // the markers: an entry over its stretch, or a flag where it
+                // is, in its colour; a click runs what it stands for.
+                if root.band-rows > 0: Rectangle {
+                    x: root.header-width;
+                    y: root.bands-top;
+                    width: parent.width - root.header-width;
+                    height: root.band-rows * root.band-height;
+                    background: Theme.panel;
+                    clip: true;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.divider;
+                    }
+                    for entry in root.bands: band-box := Rectangle {
+                        property <bool> span: entry.length > 0;
+                        property <color> hue: entry.color.alpha > 0 ? entry.color : Theme.text-2;
+                        // A stretch that starts out of view is drawn from the edge of what shows.
+                        x: root.seen-x(entry.beat * root.beat) + lanes.content-x;
+                        y: entry.row * root.band-height + 1px;
+                        width: self.span ? max(2px, root.seen-w(entry.beat * root.beat, entry.length * root.beat) - 1px) : band-text.preferred-width + 14px;
+                        height: root.band-height - 2px;
+                        clip: true;
+                        // A flag covers those before it, so that names do not run together.
+                        if !band-box.span: Rectangle {
+                            background: Theme.panel;
+                        }
+                        if band-box.span: Rectangle {
+                            border-radius: 2px;
+                            background: band-box.hue.with-alpha(band-touch.has-hover && entry.active ? 0.34 : 0.2);
+                        }
+                        Rectangle {
+                            x: 0;
+                            width: 2px;
+                            background: band-box.hue;
+                        }
+                        band-text := Text {
+                            // The name stays in sight while its stretch is.
+                            x: max(6px, -band-box.x + 6px);
+                            text: entry.name;
+                            color: entry.color.alpha > 0 ? Theme.text : Theme.text-2;
+                            font-size: Theme.t-small;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            height: parent.height;
+                        }
+                        band-touch := TouchArea {
+                            enabled: entry.active;
+                            mouse-cursor: entry.active ? pointer : default;
+                            clicked => {
+                                keys.focus();
+                                root.band-click(entry.band, entry.index);
+                            }
+                            changed has-hover => {
+                                if (self.has-hover) {
+                                    root.hint = entry.hint;
+                                } else if (root.hint == entry.hint) {
+                                    root.hint = "";
                                 }
                             }
                         }
@@ -2036,6 +2267,12 @@ export component App inherits Window {
                                         activated => {
                                             root.track-command(track.id, "lane.rows");
                                         }
+                                    }
+                                }
+                                MenuItem {
+                                    title: "Show or hide the take lanes";
+                                    activated => {
+                                        root.track-command(track.id, "take.lanes");
                                     }
                                 }
                                 Menu {
@@ -2241,8 +2478,8 @@ export component App inherits Window {
                                         x: 0;
                                         y: parent.height - 2px;
                                         height: 2px;
-                                        width: parent.width * min(1, track.input-level);
-                                        background: track.input-level > 0.89 ? Theme.meter-clip : Theme.meter-low;
+                                        width: parent.width * min(1, root.meters[index].input-level);
+                                        background: root.meters[index].input-level > 0.89 ? Theme.meter-clip : Theme.meter-low;
                                     }
                                     in-menu := ContextMenuArea {
                                         Menu {
@@ -2544,7 +2781,7 @@ export component App inherits Window {
                                 y: 2px;
                                 width: 14px;
                                 height: 4px;
-                                on: track.clipped;
+                                on: root.meters[index].clipped;
                                 clear => {
                                     root.clear-clip(track.id);
                                 }
@@ -2555,8 +2792,8 @@ export component App inherits Window {
                                 width: 6px;
                                 height: parent.height - 10px;
                                 upright: true;
-                                level: track.level-l;
-                                hold: track.hold-l;
+                                level: root.meters[index].level-l;
+                                hold: root.meters[index].hold-l;
                             }
                             Meter {
                                 x: 11px;
@@ -2564,8 +2801,8 @@ export component App inherits Window {
                                 width: 6px;
                                 height: parent.height - 10px;
                                 upright: true;
-                                level: track.level-r;
-                                hold: track.hold-r;
+                                level: root.meters[index].level-r;
+                                hold: root.meters[index].hold-r;
                             }
                         }
                         // The bottom edge: drag to make the track taller or shorter,
@@ -2772,6 +3009,13 @@ export component App inherits Window {
                         height: root.rows-height;
                         background: #fec13a10;
                     }
+                    // And the punch range, while punching is on.
+                    if root.punching && root.punch-end > root.punch-start: Rectangle {
+                        x: root.seen-x(root.punch-start * root.beat);
+                        width: root.seen-w(root.punch-start * root.beat, (root.punch-end - root.punch-start) * root.beat);
+                        height: root.rows-height;
+                        background: Theme.rec.with-alpha(0.06);
+                    }
                     // The lanes themselves: a click puts the cursor, a double
                     // click makes a clip, a drag selects a stretch of time.
                     lane-menu := ContextMenuArea {
@@ -2807,6 +3051,32 @@ export component App inherits Window {
                                 title: "Region over the selection or the loop";
                                 activated => {
                                     root.command("region");
+                                }
+                            }
+                            MenuSeparator { }
+                            MenuItem {
+                                title: "Punch in and out over the selection or the loop";
+                                activated => {
+                                    root.command("punch selection");
+                                }
+                            }
+                            MenuItem {
+                                title: root.punching ? "Punch recording off" : "Punch recording on";
+                                enabled: root.punching || root.punch-end > root.punch-start;
+                                activated => {
+                                    root.command("punch");
+                                }
+                            }
+                            MenuItem {
+                                title: root.count-in > 0 ? "No count-in before a take" : "Count a bar in before a take";
+                                activated => {
+                                    root.command(root.count-in > 0 ? "countin off" : "countin 1");
+                                }
+                            }
+                            MenuItem {
+                                title: "Show or hide the track's take lanes";
+                                activated => {
+                                    root.command("take.lanes");
                                 }
                             }
                             MenuSeparator { }
@@ -3085,6 +3355,12 @@ export component App inherits Window {
                                             root.clip-command(clip.id, clip.start, "take.list");
                                         }
                                     }
+                                    MenuItem {
+                                        title: "Show or hide the take lanes, to comp by swiping   zt";
+                                        activated => {
+                                            root.clip-command(clip.id, clip.start, "take.lanes");
+                                        }
+                                    }
                                     MenuSeparator { }
                                     MenuItem {
                                         title: "New take: keep this, carry on in a copy";
@@ -3336,12 +3612,15 @@ export component App inherits Window {
                         }
                     }
                     // While a take is made: what has been recorded so far.
+                    // Punched, only what falls in the punch range.
                     if root.recording: Rectangle {
+                        property <float> from: root.punching ? max(root.rec-start, root.punch-start) : root.rec-start;
+                        property <float> to: root.punching ? min(root.position, root.punch-end) : root.position;
                         for track[index] in root.tracks: Rectangle {
-                            visible: track.armed;
-                            x: root.seen-x(root.rec-start * root.beat);
+                            visible: track.armed && (!root.punching || parent.to > parent.from);
+                            x: root.seen-x(parent.from * root.beat);
                             y: track.top * root.row-height + 1px;
-                            width: max(2px, root.seen-w(root.rec-start * root.beat, (root.position - root.rec-start) * root.beat));
+                            width: max(2px, root.seen-w(parent.from * root.beat, (parent.to - parent.from) * root.beat));
                             height: track.clip-size * root.row-height - 3px;
                             border-radius: 2px;
                             background: Theme.rec.with-alpha(0.3);
@@ -3620,6 +3899,119 @@ export component App inherits Window {
                                     root.remove-point(point.lane, point.index);
                                 }
                             }
+                        }
+                    }
+                    // Take lanes under the clips of their tracks: row k holds take k of
+                    // each clip, lit where it is the one that plays. A drag across a
+                    // lane makes its take play there; a click, in the piece under it.
+                    for lane in root.take-lanes: Rectangle {
+                        x: root.seen-x(0px);
+                        y: root.row-top(lane.row) + lane.top * root.row-height;
+                        width: root.seen-w(0px, lanes.content-width);
+                        height: lane.span * root.row-height - 1px;
+                        background: Theme.panel.with-alpha(0.55);
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.divider;
+                        }
+                    }
+                    for piece in root.take-pieces: piece-box := Rectangle {
+                        property <length> true-x: piece.start * root.beat;
+                        property <length> true-w: max(4px, piece.length * root.beat - 1px);
+                        // How much of it lies before what shows.
+                        property <length> cut-left: self.x - self.true-x;
+                        x: root.seen-x(self.true-x);
+                        y: root.row-top(piece.row) + piece.top * root.row-height + 1px;
+                        width: root.seen-w(self.true-x, self.true-w);
+                        height: piece.span * root.row-height - 3px;
+                        border-radius: 2px;
+                        clip: true;
+                        background: piece.active ? root.tracks[piece.row].color.mix(Theme.lane, 0.38) : Theme.lane-alt;
+                        Image {
+                            property <length> full: parent.true-w;
+                            property <length> from: clamp(parent.cut-left, 0px, self.full);
+                            x: 0;
+                            y: 2px;
+                            width: clamp(parent.width, 0px, self.full - self.from);
+                            height: parent.height - 4px;
+                            source-clip-x: self.from / max(1px, self.full) * piece.picture.width;
+                            source-clip-width: max(1, self.width / max(1px, self.full) * piece.picture.width);
+                            source: piece.picture;
+                            colorize: piece.active ? root.tracks[piece.row].color.mix(white, 0.8) : Theme.text-3.with-alpha(0.7);
+                            image-fit: fill;
+                            image-rendering: pixelated;
+                        }
+                        // Its name, at the left of what shows of it.
+                        Text {
+                            x: max(4px, -lanes.content-x - parent.x + 4px);
+                            y: 1px;
+                            width: max(0px, parent.width - self.x - 3px);
+                            text: piece.name;
+                            color: piece.active ? Theme.text : Theme.text-3;
+                            font-size: Theme.t-small;
+                            font-weight: piece.active ? 600 : 400;
+                            overflow: elide;
+                        }
+                        if piece.active: Rectangle {
+                            border-radius: 2px;
+                            border-width: 1px;
+                            border-color: root.tracks[piece.row].color.with-alpha(0.8);
+                        }
+                    }
+                    for lane in root.take-lanes: take-box := Rectangle {
+                        x: 0;
+                        y: root.row-top(lane.row) + lane.top * root.row-height;
+                        width: lanes.content-width;
+                        height: lane.span * root.row-height - 1px;
+                        take-menu := ContextMenuArea {
+                            Menu {
+                                MenuItem {
+                                    title: "Hide the take lanes   zt";
+                                    activated => {
+                                        root.track-command(lane.track, "take.lanes off");
+                                    }
+                                }
+                            }
+                            take-touch := TouchArea {
+                                pointer-event(event) => {
+                                    if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                        keys.focus();
+                                    }
+                                    if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                                        if (abs(self.mouse-x - self.pressed-x) <= 3px) {
+                                            root.take-click(lane.track, lane.take, self.mouse-x / root.beat);
+                                        } else {
+                                            root.comp(lane.track, lane.take, self.pressed-x / root.beat, self.mouse-x / root.beat, event.modifiers.shift);
+                                        }
+                                    }
+                                    if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                                        take-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                    }
+                                }
+                                scroll-event(event) => {
+                                    if (event.modifiers.control) {
+                                        root.zoom-timeline(event.delta-y, self.mouse-x);
+                                        return accept;
+                                    }
+                                    reject
+                                }
+                                changed has-hover => {
+                                    if (self.has-hover) {
+                                        root.hint = "take lane: drag across to make this take play there · click chooses it for the piece under the pointer · Shift off the grid · right click for more";
+                                    } else if (root.hint == "take lane: drag across to make this take play there · click chooses it for the piece under the pointer · Shift off the grid · right click for more") {
+                                        root.hint = "";
+                                    }
+                                }
+                            }
+                        }
+                        // The stretch being swiped over.
+                        if take-touch.pressed && abs(take-touch.mouse-x - take-touch.pressed-x) > 3px: Rectangle {
+                            x: root.seen-x(min(take-touch.pressed-x, take-touch.mouse-x));
+                            width: root.seen-w(min(take-touch.pressed-x, take-touch.mouse-x), abs(take-touch.mouse-x - take-touch.pressed-x));
+                            background: Theme.select.with-alpha(0.3);
+                            border-width: 1px;
+                            border-color: Theme.select;
                         }
                     }
                     // What is selected: by a drag here, or by visual mode.
@@ -4676,6 +5068,7 @@ export component App inherits Window {
                         height: parent.height;
                         visible: !track.master;
                         track: track;
+                        meter: root.meters[index];
                         chosen: track.id == root.selected;
                         select => {
                             root.select-track(track.id, root.cursor);
@@ -4800,7 +5193,7 @@ export component App inherits Window {
                 if root.rendering: HorizontalLayout {
                     spacing: 6px;
                     Text {
-                        text: "Rendering " + root.render-name + "  " + round(root.render-fraction * 100) + "%";
+                        text: (root.render-stage == "encoding" ? "Encoding " : "Rendering ") + root.render-name + "  " + round(root.render-fraction * 100) + "%";
                         color: Theme.text;
                         font-size: Theme.t-small;
                         font-weight: 600;
@@ -4974,6 +5367,19 @@ export component App inherits Window {
                 font-family: Theme.mono;
                 font-size: 12px;
             }
+            // The page as a window of its own, drawn in its colours and
+            // left open beside the rest.
+            Button {
+                x: parent.width - self.width - 8px;
+                y: 6px;
+                width: self.preferred-width;
+                height: 22px;
+                label: "Open in a window";
+                quiet: true;
+                clicked => {
+                    root.command("view.window");
+                }
+            }
         }
     }
 
@@ -5018,6 +5424,13 @@ export component App inherits Window {
                             root.start-render();
                         }
                     }
+                    Button {
+                        label: "…";
+                        width: 32px;
+                        clicked => {
+                            root.choose-render-path();
+                        }
+                    }
                 }
                 HorizontalLayout {
                     spacing: 8px;
@@ -5058,44 +5471,93 @@ export component App inherits Window {
                     }
                     Button {
                         label: "WAV";
-                        on: !root.render-flac;
+                        on: root.render-format == "wav";
                         clicked => {
-                            root.render-flac = false;
+                            root.render-format = "wav";
                         }
                     }
                     Button {
                         label: "FLAC";
-                        on: root.render-flac;
+                        on: root.render-format == "flac";
                         clicked => {
-                            root.render-flac = true;
+                            root.render-format = "flac";
                             if (root.render-bits == 32) {
                                 root.render-bits = 24;
                             }
                         }
                     }
+                    if root.render-has-mp3: Button {
+                        label: "MP3";
+                        on: root.render-format == "mp3";
+                        clicked => {
+                            root.render-format = "mp3";
+                        }
+                    }
+                    if root.render-has-ogg: Button {
+                        label: "Ogg";
+                        on: root.render-format == "ogg";
+                        clicked => {
+                            root.render-format = "ogg";
+                        }
+                    }
+                    if root.render-has-opus: Button {
+                        label: "Opus";
+                        on: root.render-format == "opus";
+                        clicked => {
+                            root.render-format = "opus";
+                        }
+                    }
                     Rectangle {
                         width: 12px;
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "16 bit";
                         on: root.render-bits == 16;
                         clicked => {
                             root.render-bits = 16;
                         }
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "24 bit";
                         on: root.render-bits == 24;
                         clicked => {
                             root.render-bits = 24;
                         }
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "32 float";
                         on: root.render-bits == 32;
-                        enabled: !root.render-flac;
+                        enabled: root.render-format != "flac";
                         clicked => {
                             root.render-bits = 32;
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "Low";
+                        on: root.render-quality == "low";
+                        clicked => {
+                            root.render-quality = "low";
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "Medium";
+                        on: root.render-quality == "medium";
+                        clicked => {
+                            root.render-quality = "medium";
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "High";
+                        on: root.render-quality == "high";
+                        clicked => {
+                            root.render-quality = "high";
+                        }
+                    }
+                    if root.render-format != "wav" && root.render-format != "flac": Button {
+                        label: "Best";
+                        on: root.render-quality == "best";
+                        clicked => {
+                            root.render-quality = "best";
                         }
                     }
                     Rectangle {
@@ -5135,7 +5597,7 @@ export component App inherits Window {
                             root.render-normalize = !root.render-normalize;
                         }
                     }
-                    Button {
+                    if root.render-format == "wav" || root.render-format == "flac": Button {
                         label: "Dither";
                         on: root.render-dither;
                         enabled: root.render-bits != 32;

@@ -5,19 +5,22 @@
 import { Theme } from "widgets.slint";
 
 export struct CanvasItem {
-    kind: int,          // 0 rectangle, 1 text, 2 path
+    kind: int,          // 0 rectangle, 1 text, 2 path, 3 a run of monospace cells
     x: length,
     y: length,
     w: length,
     h: length,
     text: string,       // or a path's commands
-    fill: color,
-    stroke: color,
+    fill: color,        // a run's text
+    stroke: color,      // a run's background
     stroke-width: length,
     radius: length,
     size: length,
     bold: bool,
     align: int,         // 0 left, 1 centre, 2 right
+    italic: bool,       // a run's attributes
+    underline: bool,
+    strike: bool,
 }
 
 export component CanvasWindow inherits Window {
@@ -27,6 +30,12 @@ export component CanvasWindow inherits Window {
     title: root.heading;
     out property <length> canvas-width: self.width;
     out property <length> canvas-height: self.height;
+    // The monospace font a view drawn in cells is drawn in, and the size of
+    // one of its cells, measured on the font itself so that box-drawing
+    // characters meet from one cell to the next.
+    in property <length> mono-size: 13px;
+    out property <length> cell-width: probe.preferred-width / 20;
+    out property <length> cell-height: probe.preferred-height;
     // kind (0 down, 1 up, 2 move, 3 double), x, y, button (0 left, 1 right, 2 middle), ctrl, shift, alt
     callback pointer(int, length, length, int, bool, bool, bool);
     callback wheel(length, length, length, length, bool, bool);
@@ -45,6 +54,12 @@ export component CanvasWindow inherits Window {
             root.key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift);
             accept
         }
+    }
+    probe := Text {
+        visible: false;
+        text: "MMMMMMMMMMMMMMMMMMMM";
+        font-family: "JetBrains Mono";
+        font-size: root.mono-size;
     }
     for item in root.items: Rectangle {
         x: item.kind == 2 ? 0 : item.x;
@@ -77,6 +92,34 @@ export component CanvasWindow inherits Window {
             stroke: item.stroke;
             stroke-width: item.stroke-width;
             fill: item.fill;
+        }
+        if item.kind == 3: Rectangle {
+            background: item.stroke;
+            Text {
+                x: 0;
+                y: 0;
+                // The run's last glyph may reach a fraction past its cells.
+                width: parent.width + 4px;
+                height: parent.height;
+                text: item.text;
+                color: item.fill;
+                font-family: "JetBrains Mono";
+                font-size: root.mono-size;
+                font-weight: item.bold ? 700 : 400;
+                font-italic: item.italic;
+                wrap: no-wrap;
+                overflow: clip;
+            }
+            if item.underline: Rectangle {
+                y: parent.height - 2px;
+                height: 1px;
+                background: item.fill;
+            }
+            if item.strike: Rectangle {
+                y: parent.height / 2;
+                height: 1px;
+                background: item.fill;
+            }
         }
     }
     touch := TouchArea {

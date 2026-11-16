@@ -7,9 +7,11 @@ description = "A graphical frontend. It talks to the kernel over its control soc
 
 [dependencies]
 anyhow.workspace = true
+daw-proto.workspace = true
 serde_json.workspace = true
 libc = "0.2"
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "unstable-winit-030", "renderer-software", "renderer-femtovg"] }
+ashpd = { version = "0.11", default-features = false, features = ["async-std"] }
 
 [build-dependencies]
 slint-build = "1.18"

@@ -77,7 +77,7 @@ pub struct Mapper {
     free_devices: Vec<Slot>,
     next_track: Slot,
     next_device: Slot,
-    mix: HashMap<Id, (f32, f32, bool)>,
+    mix: HashMap<Id, (f32, f32, bool, bool)>,
     /// First input channel, channel count, monitoring and armed, as last sent.
     inputs: HashMap<Id, (usize, usize, bool, bool)>,
     /// The MIDI port's key and channel each track takes, as last sent.
@@ -632,7 +632,8 @@ pub fn sync(
         let mix = (
             db_to_gain(track.volume),
             track.pan as f32,
-            track.mute || silenced,
+            track.mute,
+            silenced,
         );
         if map.mix.get(&track.id) != Some(&mix) {
             map.mix.insert(track.id, mix);
@@ -641,6 +642,7 @@ pub fn sync(
                 gain: mix.0,
                 pan: mix.1,
                 mute: mix.2,
+                quiet: mix.3,
             });
         }
     }

@@ -21,6 +21,8 @@ use serde_json::Value;
 
 use crate::api::{self, Env, Shared};
 use crate::grid::{Color, Grid, Highlights, Style};
+use crate::remote::{self, RemoteFrontend};
+use crate::rpc::{ClientId, Clients};
 use crate::session::Session;
 use crate::watchdog::Watchdog;
 
@@ -48,12 +50,16 @@ pub enum InputEvent {
 pub enum KernelMsg {
     Input(InputEvent),
     /// A message that arrived at a MIDI port.
-    Midi(EventKind),
+    Midi(u32, EventKind),
     Rpc {
+        /// The connection the call came over, or 0 for none.
+        client: ClientId,
         method: String,
         params: Value,
         reply: Sender<Result<Value, String>>,
     },
+    /// A connection closed: whatever it had asked to be sent stops.
+    Gone(ClientId),
 }
 
 /// Something that shows the grid to a person.
@@ -68,6 +74,8 @@ pub struct KernelOpts {
     pub config_dir: PathBuf,
     pub runtime_dir: Option<PathBuf>,
     pub clean: bool,
+    /// Running a script (`-l`), not a session somebody works in.
+    pub scripted: bool,
     pub argv: Vec<String>,
 }
 
@@ -76,7 +84,10 @@ pub struct Kernel {
     lua: Lua,
     tx: Sender<KernelMsg>,
     rx: Receiver<KernelMsg>,
-    frontend: Option<Box<dyn Frontend>>,
+    /// Everything showing the grid: the program's own terminal (as
+    /// connection 0) and the terminals attached over connections. They all
+    /// show the one screen, as wide and tall as whichever was sized last.
+    frontends: Vec<(ClientId, Box<dyn Frontend>)>,
 }
 
 impl Drop for Kernel {
@@ -98,8 +109,8 @@ impl Kernel {
         let (tx, rx) = channel();
         // MIDI input goes straight to the engine; scripts hear of it here.
         let midi_tx = tx.clone();
-        session.set_midi_tap(Box::new(move |kind| {
-            let _ = midi_tx.send(KernelMsg::Midi(kind));
+        session.set_midi_tap(Box::new(move |port, kind| {
+            let _ = midi_tx.send(KernelMsg::Midi(port, kind));
         }));
         let started = Instant::now();
         let shared = Rc::new(Shared {
@@ -107,6 +118,7 @@ impl Kernel {
             grid: RefCell::new(Grid::new(80, 24)),
             highlights: RefCell::new(Highlights::default()),
             dirty: Cell::new(true),
+            redraws: Cell::new(0),
             attached: Cell::new(false),
             cursor: Cell::new(None),
             timers: RefCell::new(Vec::new()),
@@ -117,11 +129,15 @@ impl Kernel {
             log: RefCell::new(VecDeque::new()),
             io: RefCell::new(Default::default()),
             started,
+            clients: Clients::default(),
+            input_from: Cell::new(0),
+            detach: RefCell::new(Vec::new()),
             watchdog: Watchdog::new(started),
             env: Env {
                 config_dir: opts.config_dir,
                 runtime_dir: opts.runtime_dir,
                 clean: opts.clean,
+                scripted: opts.scripted,
                 argv: opts.argv,
             },
         });
@@ -130,7 +146,7 @@ impl Kernel {
             lua: Lua::new(),
             tx,
             rx,
-            frontend: None,
+            frontends: Vec::new(),
         })
     }
 
@@ -143,7 +159,58 @@ impl Kernel {
     pub fn attach(&mut self, frontend: Box<dyn Frontend>, width: u16, height: u16) {
         self.shared.grid.borrow_mut().resize(width, height);
         self.shared.attached.set(true);
-        self.frontend = Some(frontend);
+        self.frontends.push((0, frontend));
+    }
+
+    /// The connections open on the control socket, to serve them with and
+    /// to push events to.
+    pub fn clients(&self) -> Clients {
+        self.shared.clients.clone()
+    }
+
+    /// The calls that are the kernel's own business rather than Lua's: a
+    /// connection becoming a terminal, typing into it, and leaving.
+    fn remote_ui(&mut self, client: ClientId, method: &str, params: &Value) -> Result<Value, String> {
+        match method {
+            "ui.attach" => {
+                let size = |v: &Value, default| v.as_u64().map_or(default, |n| n.clamp(1, 1000) as u16);
+                let (width, height) = (size(&params[0], 80), size(&params[1], 24));
+                self.frontends.retain(|(id, _)| *id != client);
+                let frontend = RemoteFrontend::new(client, self.shared.clients.clone());
+                self.frontends.push((client, Box::new(frontend)));
+                self.shared.attached.set(true);
+                self.handle(KernelMsg::Input(InputEvent::Resize(width, height)));
+                Ok(Value::Bool(true))
+            }
+            "ui.input" => {
+                if !self.frontends.iter().any(|(id, _)| *id == client) {
+                    return Err("`ui.attach` first".into());
+                }
+                let event = remote::input_of(&params[0]).ok_or("not an input event")?;
+                // Lua may ask which terminal a key came from (`:detach`).
+                self.shared.input_from.set(client);
+                self.handle(KernelMsg::Input(event));
+                self.shared.input_from.set(0);
+                Ok(Value::Null)
+            }
+            "ui.detach" => {
+                self.detach(client);
+                Ok(Value::Bool(true))
+            }
+            _ => Err(format!("no method `{method}`")),
+        }
+    }
+
+    /// Stop showing the screen to a connection.
+    fn detach(&mut self, client: ClientId) {
+        let before = self.frontends.len();
+        self.frontends.retain(|(id, _)| *id != client);
+        if self.frontends.len() != before {
+            self.shared.clients.push(client, "ui.detached", &Value::Null);
+        }
+        if self.frontends.is_empty() {
+            self.shared.attached.set(false);
+        }
     }
 
     /// Start a fresh Lua state and run the runtime, the user's configuration
@@ -238,19 +305,36 @@ impl Kernel {
                 }
                 self.shared.dirty.set(true);
             }
-            KernelMsg::Midi(kind) => self.shared.session.borrow_mut().midi_event(kind),
+            KernelMsg::Midi(port, kind) => self.shared.session.borrow_mut().midi_event(port, kind),
             KernelMsg::Rpc {
+                client,
                 method,
                 params,
                 reply,
             } => {
-                let result = (|| {
-                    let params = api::to_lua(&self.lua, &params)?;
-                    let value: LuaValue = self.call("rpc", (method, params))?;
-                    self.lua.from_value::<Value>(value)
-                })();
-                let _ = reply.send(result.map_err(|err| err.to_string()));
+                let result = if method.starts_with("ui.") {
+                    self.remote_ui(client, &method, &params)
+                } else {
+                    (|| {
+                        let params = api::to_lua(&self.lua, &params)?;
+                        let value: LuaValue = self.call("rpc", (method, params, client))?;
+                        self.lua.from_value::<Value>(value)
+                    })()
+                    .map_err(|err| err.to_string())
+                };
+                let _ = reply.send(result);
             }
+            KernelMsg::Gone(client) => {
+                self.detach(client);
+                if let Err(err) = self.call::<()>("rpc_closed", client) {
+                    self.report("rpc_closed", err);
+                }
+            }
+        }
+        // A terminal that asked to leave (`:detach`) is let go.
+        let leaving: Vec<ClientId> = self.shared.detach.borrow_mut().drain(..).collect();
+        for client in leaving {
+            self.detach(client);
         }
     }
 
@@ -263,9 +347,9 @@ impl Kernel {
     }
 
     fn render(&mut self) {
-        let Some(frontend) = self.frontend.as_mut() else {
+        if self.frontends.is_empty() {
             return;
-        };
+        }
         self.shared.dirty.set(false);
         self.shared.grid.borrow_mut().clear();
         self.shared.cursor.set(None);
@@ -282,8 +366,20 @@ impl Kernel {
                 grid.text(clip, 0, row as i32, line, style);
             }
         }
-        if let Err(err) = frontend.present(&self.shared.grid.borrow(), self.shared.cursor.get()) {
-            self.shared.log(format!("frontend: {err:#}"));
+        let (grid, cursor) = (self.shared.grid.borrow(), self.shared.cursor.get());
+        let mut gone = Vec::new();
+        for (client, frontend) in &mut self.frontends {
+            if let Err(err) = frontend.present(&grid, cursor) {
+                self.shared.log(format!("frontend: {err:#}"));
+                // A terminal at the end of a connection that has closed.
+                if *client != 0 {
+                    gone.push(*client);
+                }
+            }
+        }
+        drop(grid);
+        for client in gone {
+            self.detach(client);
         }
     }
 

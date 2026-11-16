@@ -6,6 +6,10 @@ SCRATCH=${DAW_TEST_SCRATCH:-$ROOT/target/test-scratch}
 mkdir -p "$SCRATCH/xdg" "$SCRATCH/shots"
 export XDG_CACHE_HOME=$SCRATCH/xdg/cache XDG_STATE_HOME=$SCRATCH/xdg/state
 export XDG_DATA_HOME=$SCRATCH/xdg/data XDG_CONFIG_HOME=$SCRATCH/xdg/config
+# The window asks the desktop for its file dialogs over the session bus:
+# a test must never reach the real desktop's, where a dialog would open
+# in front of the person at the machine.
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/bus
 # Checkouts tested side by side each need a display number of their own.
 DAW_TEST_DISPLAY=${DAW_TEST_DISPLAY:-96}
 BIN=${DAW_TEST_BIN:-$ROOT/target/release}

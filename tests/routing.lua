@@ -66,6 +66,20 @@ test("a compressor ducks a pad under a kick through its side-chain", function()
   near(during / between, 1, 0.1, "nor does one faded out")
 end)
 
+test("soloing the track a compressor ducks does not cut its key", function()
+  local pad, kick = pad_and_kick()
+  local comp = pad:add_device("compressor", { threshold = -30, ratio = 50, attack = 0.1, release = 20, knee = 0 })
+  comp:set_sidechain(kick)
+  pad.solo = true
+  local during, between = levels()
+  eq(between > 0.05, true, "the soloed pad sounds")
+  eq(during < between * 0.1, true, string.format("and still ducks under the kick it does not hear: %.3f against %.3f", during, between))
+  pad.solo = false
+  kick.mute = true
+  during, between = levels()
+  near(during / between, 1, 0.1, "while muting the kick still cuts a key taken after its fader")
+end)
+
 test("a gate opens for the key, not for what it gates", function()
   local pad, kick = pad_and_kick()
   local gate = pad:add_device("gate", { threshold = -30, range = -80, attack = 0.1, hold = 0, release = 10 })
@@ -205,7 +219,8 @@ test("side-chains are saved, loaded, copied with a track, and left out of templa
   local path = T.scratch .. "/sidechain.json"
   daw.project.save(path)
   local text = T.read_file(path)
-  eq(select(2, text:gsub('"sidechain"', "")), 1, "the one side-chain is written")
+  -- The project is named after its file: count the field, not the name.
+  eq(select(2, text:gsub('"sidechain":', "")), 1, "the one side-chain is written")
   daw.project.load(path)
   local loaded = daw.track("Pad"):devices()[1]
   eq(loaded.sidechain, daw.track("Kick").id, "and read back")
@@ -222,7 +237,7 @@ test("side-chains are saved, loaded, copied with a track, and left out of templa
   local plain = daw.add_track({ name = "Plain" })
   plain:add_device("compressor")
   daw.project.save(path)
-  eq(T.read_file(path):find("sidechain", 1, true), nil, "a project without side-chains is written as before")
+  eq(T.read_file(path):find("\"sidechain\":", 1, true), nil, "a project without side-chains is written as before")
 end)
 
 test("the device panel and the window choose a device's side-chain", function()

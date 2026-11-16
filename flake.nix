@@ -10,17 +10,20 @@
     in {
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ];
+          nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ffmpeg-headless ];
           buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
           # The graphical frontend loads its windowing libraries at run time.
           # Here they are on the path; `DAW_GUI_LIBS` is where its build
           # script finds them, to write into the binary, so that the binary
-          # also runs from a shell that is not this one.
+          # also runs from a shell that is not this one. `libglvnd` is
+          # libGL and libEGL for `--renderer gpu`; they find the system's
+          # driver themselves (on NixOS in /run/opengl-driver), which must
+          # match the machine and so is not named here.
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
-            wayland libxkbcommon fontconfig libx11 libxcursor libxi libxcb
+            wayland libxkbcommon fontconfig libx11 libxcursor libxi libxcb libglvnd
           ]);
           DAW_GUI_LIBS = pkgs.lib.makeLibraryPath (with pkgs; [
-            wayland libxkbcommon fontconfig libx11 libxcursor libxi libxcb
+            wayland libxkbcommon fontconfig libx11 libxcursor libxi libxcb libglvnd
           ]);
           # Plugins built elsewhere open the display's libraries by name
           # when they make a window, and name others as needed. Nothing is

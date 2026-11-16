@@ -20,6 +20,8 @@ Usage:
   daw -l <script.lua> [args...]   run a Lua script without a UI, then exit
   daw --headless [project]        run without a UI until told to quit
   daw ctl <method> [params...]    call a running instance over its socket
+  daw attach                      show a running instance's terminal UI here
+  daw doctor [options]            check the audio, MIDI, plugins and environment, and print a report
 
 Options:
   -e <lua>          run Lua code after startup (repeatable)
@@ -35,6 +37,13 @@ Options:
   --no-input        do not open the audio device's input
   --listen <path>   control socket path (default: $XDG_RUNTIME_DIR/daw.sock)
   --no-listen       do not open a control socket
+  --listen-tcp <address>
+                    also take connections from the network, on host:port
+                    (127.0.0.1:7700; 0.0.0.0:7700 for any machine that knows
+                    the token). Not encrypted: for a network you trust
+  --token-file <path>
+                    where the token for network connections is kept
+                    (default: ~/.local/state/daw/token, made if missing)
   --no-plugins      do not look for CLAP, LV2 and VST3 plugins
   --plugins-in-process
                     load plugins into this process, not each into its own
@@ -42,10 +51,20 @@ Options:
   -h, --help        show this help
   -V, --version     show the version
 
+ctl and attach reach the instance on this machine's socket, or:
+  --socket <path>           another socket
+  --connect <host:port>     an instance listening on the network, with
+  --token <token> or --token-file <path> (or $DAW_TOKEN)
+doctor options: --seconds <n> (length of the dropout runs), --plugin <name> (repeatable),
+  --only <ids> (comma separated), and the audio options above (--audio, --output, ...)
+
 ctl examples:
   daw ctl eval 'return daw.transport.position'
   daw ctl cmd transport.toggle
   daw ctl track_add '{\"name\": \"Bass\"}'
+  daw ctl --connect studio:7700 --token-file studio.token cmd transport.toggle
+
+In an attached terminal, `:detach` leaves and the instance runs on.
 ";
 
 #[derive(Default)]
@@ -67,9 +86,13 @@ struct Args {
     no_input: bool,
     listen: Option<PathBuf>,
     no_listen: bool,
+    listen_tcp: Option<String>,
+    token_file: Option<PathBuf>,
     no_plugins: bool,
     plugins_in_process: bool,
     plugins_offline: bool,
+    /// Run as `daw doctor`: a script, but with the sound device unless told otherwise.
+    doctor: bool,
 }
 
 fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
@@ -111,6 +134,8 @@ fn parse_args(mut argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
             "--no-input" => args.no_input = true,
             "--listen" => args.listen = Some(value("--listen")?.into()),
             "--no-listen" => args.no_listen = true,
+            "--listen-tcp" => args.listen_tcp = Some(value("--listen-tcp")?),
+            "--token-file" => args.token_file = Some(value("--token-file")?.into()),
             "--no-plugins" => args.no_plugins = true,
             "--plugins-in-process" => args.plugins_in_process = true,
             "--plugins-offline" => args.plugins_offline = true,
@@ -167,21 +192,55 @@ fn cache_dir() -> PathBuf {
     base.join("daw")
 }
 
+/// Connect to the instance `ctl` and `attach` are pointed at by the options
+/// at the front of their arguments, which are taken off.
+fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Result<rpc::Connection> {
+    let mut socket = rpc::default_path();
+    let mut address = None;
+    let mut token = std::env::var("DAW_TOKEN").ok();
+    while let Some(option) = argv.peek().filter(|a| a.starts_with("--")).cloned() {
+        argv.next();
+        let mut value = || argv.next().with_context(|| format!("{option} needs a value"));
+        match option.as_str() {
+            "--socket" => socket = value()?.into(),
+            "--connect" => address = Some(value()?),
+            "--token" => token = Some(value()?),
+            "--token-file" => {
+                let path = value()?;
+                let text = std::fs::read_to_string(&path)
+                    .with_context(|| format!("reading the token in {path}"))?;
+                token = Some(text.trim().to_string());
+            }
+            other => bail!("unknown option `{other}` (see --help)"),
+        }
+    }
+    match address {
+        Some(address) => {
+            // On the machine the instance runs on, its token is at hand.
+            let token = match token {
+                Some(token) => token,
+                None => std::fs::read_to_string(rpc::token_path())
+                    .map(|text| text.trim().to_string())
+                    .context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?,
+            };
+            rpc::Connection::tcp(&address, &token)
+        }
+        None => rpc::Connection::unix(&socket),
+    }
+}
+
 /// `daw ctl <method> [params...]`: each parameter is JSON, or a plain string
 /// when it does not parse as JSON.
-fn ctl(mut argv: impl Iterator<Item = String>) -> Result<()> {
-    let mut socket = rpc::default_path();
-    let mut method = argv
-        .next()
-        .context("usage: daw ctl [--socket <path>] <method> [params...]")?;
-    if method == "--socket" {
-        socket = argv.next().context("--socket needs a path")?.into();
-        method = argv.next().context("missing method")?;
-    }
+fn ctl(argv: impl Iterator<Item = String>) -> Result<()> {
+    let mut argv = argv.peekable();
+    let mut connection = connect(&mut argv)?;
+    let method = argv.next().context(
+        "usage: daw ctl [--socket <path> | --connect <host:port>] <method> [params...]",
+    )?;
     let params: Vec<Value> = argv
         .map(|p| serde_json::from_str(&p).unwrap_or(Value::String(p)))
         .collect();
-    match rpc::call(&socket, &method, Value::Array(params))? {
+    match connection.call(&method, Value::Array(params))? {
         Value::Null => {}
         Value::String(text) => println!("{text}"),
         other => println!("{}", serde_json::to_string_pretty(&other)?),
@@ -189,11 +248,107 @@ fn ctl(mut argv: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
+/// `daw attach`: this terminal becomes a terminal of a running instance,
+/// which may be on another machine. It shows that instance's one screen
+/// (as its own terminal does, if it has one) and types into it; `:detach`
+/// leaves, and so does the instance ending.
+fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
+    let mut argv = argv.peekable();
+    let mut connection = connect(&mut argv)?;
+    if let Some(extra) = argv.next() {
+        bail!("unexpected argument `{extra}`");
+    }
+    let (input, typed) = std::sync::mpsc::channel();
+    let (mut screen, width, height) = terminal::Terminal::start(move |event| input.send(event).is_ok())?;
+    connection.call("ui.attach", serde_json::json!([width, height]))?;
+    let mut grid = daw_core::grid::Grid::new(width, height);
+    use daw_core::Frontend;
+    loop {
+        // What was typed goes out; what the instance shows comes in.
+        let mut idle = true;
+        while let Ok(event) = typed.try_recv() {
+            idle = false;
+            connection.notify("ui.input", serde_json::json!([daw_core::remote::input_json(&event)]))?;
+        }
+        loop {
+            match connection.events.try_recv() {
+                Ok((name, payload)) => {
+                    idle = false;
+                    match name.as_str() {
+                        "ui.grid" => {
+                            let cursor = daw_core::remote::apply(&mut grid, &payload)?;
+                            screen.present(&grid, cursor)?;
+                        }
+                        "ui.detached" => return Ok(()),
+                        _ => {}
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                // The instance ended, or the connection did.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => return Ok(()),
+            }
+        }
+        if idle {
+            std::thread::sleep(std::time::Duration::from_millis(4));
+        }
+    }
+}
+
+/// Where `extensions/doctor/shell.lua` is: under `$DAW_HOME`, or beside the
+/// binary in a source tree (the binary is in `target/release`), or here.
+fn doctor_script() -> Result<PathBuf> {
+    let mut roots: Vec<PathBuf> = std::env::var_os("DAW_HOME").map(PathBuf::from).into_iter().collect();
+    if let Ok(exe) = std::env::current_exe() {
+        roots.extend(exe.ancestors().skip(1).take(4).map(PathBuf::from));
+    }
+    roots.extend(std::env::current_dir());
+    roots
+        .iter()
+        .map(|root| root.join("extensions/doctor/shell.lua"))
+        .find(|path| path.is_file())
+        .context("cannot find extensions/doctor/shell.lua: set DAW_HOME to the source tree")
+}
+
+/// `daw doctor [options]`: the options the doctor itself takes become the
+/// script's arguments (`--seconds=20`); the rest are the program's own.
+fn doctor_args(argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
+    let mut own = Vec::new();
+    let mut rest = Vec::new();
+    let mut argv = argv.peekable();
+    while let Some(arg) = argv.next() {
+        match arg.as_str() {
+            "--seconds" | "--plugin" | "--only" => {
+                let value = argv.next().with_context(|| format!("{arg} needs a value"))?;
+                own.push(format!("{arg}={value}"));
+            }
+            _ => rest.push(arg),
+        }
+    }
+    let Some(mut args) = parse_args(rest.into_iter())? else {
+        return Ok(None);
+    };
+    args.script = Some(doctor_script()?);
+    args.script_args = own;
+    args.doctor = true;
+    Ok(Some(args))
+}
+
 fn run() -> Result<i32> {
     let mut argv = std::env::args().skip(1).peekable();
+    let doctor = argv.peek().map(String::as_str) == Some("doctor");
+    if doctor {
+        argv.next();
+    }
     if argv.peek().map(String::as_str) == Some("ctl") {
         argv.next();
         ctl(argv)?;
+        return Ok(0);
+    }
+    if argv.peek().map(String::as_str) == Some("attach") {
+        argv.next();
+        let result = attach(argv);
+        terminal::restore();
+        result?;
         return Ok(0);
     }
     // Started by a running instance to hold one plugin, or to look into
@@ -209,7 +364,8 @@ fn run() -> Result<i32> {
         }
         _ => {}
     }
-    let Some(args) = parse_args(argv)? else {
+    let parsed = if doctor { doctor_args(argv)? } else { parse_args(argv)? };
+    let Some(args) = parsed else {
         return Ok(0);
     };
     let scripted = args.script.is_some();
@@ -221,7 +377,7 @@ fn run() -> Result<i32> {
     let backend = args
         .audio
         .clone()
-        .unwrap_or_else(|| if scripted { "null" } else { "auto" }.into());
+        .unwrap_or_else(|| if scripted && !args.doctor { "null" } else { "auto" }.into());
     let mut registry = Registry::with_builtins();
     // The native half of extensions/utau; it does nothing until that is loaded.
     daw_utau::register(&mut registry);
@@ -263,6 +419,7 @@ fn run() -> Result<i32> {
             .clone()
             .or_else(|| std::env::var_os("DAW_RUNTIME").map(PathBuf::from)),
         clean: args.clean,
+        scripted,
         argv: args.script_args.clone(),
     })?;
 
@@ -286,7 +443,10 @@ fn run() -> Result<i32> {
         // Plugins write to stderr whenever they like, which would land in the
         // middle of the screen.
         quiet_stderr(&cache_dir().join("stderr.log"));
-        let (terminal, width, height) = terminal::Terminal::start(kernel.sender())?;
+        let sender = kernel.sender();
+        let (terminal, width, height) = terminal::Terminal::start(move |event| {
+            sender.send(daw_core::KernelMsg::Input(event)).is_ok()
+        })?;
         // A panic message printed into the alternate screen would be lost.
         // Only one on the main thread ends the program; a device's is caught.
         let hook = std::panic::take_hook();
@@ -317,7 +477,7 @@ fn run() -> Result<i32> {
         None
     } else {
         let path = args.listen.clone().unwrap_or_else(rpc::default_path);
-        match rpc::serve(&path, kernel.sender()) {
+        match rpc::serve(&path, kernel.sender(), kernel.clients()) {
             Ok(server) => Some(server),
             // The socket is a convenience: carry on without it when it is taken.
             Err(err) if args.listen.is_none() => {
@@ -330,6 +490,19 @@ fn run() -> Result<i32> {
             Err(err) => return Err(err),
         }
     };
+
+    if let Some(address) = &args.listen_tcp {
+        // Other machines may connect, if they know the token.
+        let token_file = args.token_file.clone().unwrap_or_else(rpc::token_path);
+        let token = rpc::token_at(&token_file)?;
+        let bound = rpc::serve_tcp(address, token, kernel.sender(), kernel.clients())?;
+        let note = format!(
+            "listening on {bound} for connections that know the token in {}",
+            token_file.display()
+        );
+        // Without a terminal attached this goes to stderr as well.
+        kernel.eval("daw.notify(...)", &[&note])?;
+    }
 
     if let Some(project) = &args.project {
         // A project, or a sound file to start a project from.
@@ -347,6 +520,9 @@ fn run() -> Result<i32> {
             ),
             &[&project.to_string_lossy()],
         )?;
+    } else {
+        // Nothing named: `daw.opt.reopen_last` may ask for the last project.
+        kernel.eval("daw.recent.reopen_last()", &[])?;
     }
     for expr in &args.exprs {
         kernel.eval(expr, &[])?;

@@ -292,6 +292,7 @@ fn the_audio_thread_never_allocates() {
                 gain: 0.8,
                 pan: 0.1,
                 mute: false,
+                quiet: i == 5,
             },
         );
         send(

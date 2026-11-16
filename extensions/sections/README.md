@@ -21,6 +21,12 @@ off the left edge its name stays at the left, after a `‹`, so you can see
 which section you are in. The column where each section starts is tinted
 across the tracks.
 
+In the graphical frontend the sections are a band under the ruler, each over
+its stretch and the one under the cursor lit; a click on one goes to its
+start. The list (More ▸ Sections, or "Open in a window" on `<leader>Sl`)
+opens in a window of its own, where it stays open while Enter or a second
+click goes to a section.
+
 ## Keys
 
 In the arrange view.
@@ -48,9 +54,10 @@ yanks it, `glis` loops it, `>is` nudges its clips, `vis` selects it. `<leader>Sd
 then `<leader>SP` elsewhere is how a section is moved further than past its
 neighbour. Registers (`"a<leader>Sy`), counts and `.` work as everywhere else.
 
-The list uses `daw.pick` when there is one; without it `<leader>Ss` and
-`<leader>Sc` ask for a name on the command line (Tab completes), and
-`<leader>Sl` shows the list as a page.
+`<leader>Ss` and `<leader>Sc` choose with `daw.pick` when there is one;
+without it they ask for a name on the command line (Tab completes).
+`<leader>Sl` shows the list of sections, floating over the views, to go to
+one, rename it, add one at the cursor or remove one (see `section.list`).
 
 ## Commands
 
@@ -59,7 +66,7 @@ The list uses `daw.pick` when there is one; without it `<leader>Ss` and
 | `section.add [name] [at=beat]` | add a section at the cursor, or at a beat; asks for the name if none is given |
 | `section.rename [name] [section=old]` | rename the section at the cursor, or the one named by `section=` |
 | `section.remove [name]` | remove a section's marker |
-| `section.list` | show the sections |
+| `section.list` | the list of sections: `j` `k` choose one (or a click), Enter (or a second click) goes there, `r` renames it, `a` adds one at the cursor, `x` removes its marker, `q` closes |
 | `section.goto [name or number]` | go to a section; with neither, choose from the list |
 | `section.move [name] [by=1]` | move a section past its neighbours, `by=-1` earlier |
 | `section.duplicate [name]` | repeat a section after itself |

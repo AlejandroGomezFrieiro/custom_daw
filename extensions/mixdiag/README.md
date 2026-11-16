@@ -104,7 +104,8 @@ findings. When a track's contribution is measured, they are left out.
 | `<leader>xa` | `mix.analyze` | measure the song; in visual mode the selection |
 | `<leader>xl` | `mix.analyze loop` | the loop |
 | `<leader>xk` | `mix.analyze track` | the cursor track's contribution: the song with that track as if soloed |
-| `<leader>xx` | `mix.list` | the findings, in `daw.pick` when there is one, else in a list of its own (`j` `k`, Enter goes there, `q` closes) |
+| `<leader>xx` | `mix.list` | the findings, in `daw.pick` when there is one, else in the report |
+| `<leader>xr` | `mix.report` | the report: what was measured (or how far a measurement has got), the numbers, the findings by severity and the target; `j` `k` choose a finding, Enter goes there, `a` measures the song, `l` the loop, `t` the cursor's track, `T` the next target, `q` closes |
 | `<leader>xs` | `mix.summary` | LUFS, true peak, LRA, short-term maximum and mono loss of the last measurement |
 | `<leader>xt` | `mix.target [name]` | the next delivery target, or the one named |
 | `<leader>xc` | `mix.clear` | forget the findings |
@@ -116,6 +117,12 @@ When a measurement finishes, its summary line is shown as a message, and a
 row above the arrange view marks each finding with `E`, `W`, `I` or `H` at its
 beat, lined up with the timeline; it says `measuring 40%` while it runs and
 `(old)` once the project has changed since.
+
+In the graphical frontend the report opens in a window of its own (More ▸
+Mix report, or `:view.window mixdiag`), where it stays open while Enter or a
+second click on a finding goes to it, and the findings that have a place are
+flags in a band under the ruler, in the colour of their severity: a click on
+one goes there.
 
 ## Options
 

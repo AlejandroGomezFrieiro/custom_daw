@@ -20,7 +20,7 @@ fn listen(name: &str) -> Option<(MidiInputs, Receiver<(u64, EventKind)>)> {
     let (tx, rx) = channel();
     let sink = Arc::new(Mutex::new(MidiTarget {
         engine: None,
-        tap: Some(Box::new(move |kind| {
+        tap: Some(Box::new(move |_, kind| {
             let _ = tx.send((clock_ns(), kind));
         })),
     }));
