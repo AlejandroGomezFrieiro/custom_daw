@@ -1702,6 +1702,57 @@ end, "Yank the track")
 mmap("p", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), false, ctx.count) end, "Paste tracks after this one")
 mmap("P", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), true, ctx.count) end, "Paste tracks before this one")
 
+-- The session view: clips in slots, launched while the song plays (`daw.launcher`).
+local launcher = daw.launcher
+map("<leader>l", "view.toggle session", { desc = "Show or hide the session view, clips to launch" })
+local function smap(lhs, rhs, desc) map(lhs, rhs, { view = "session", desc = desc }) end
+local function to_row(row)
+  launcher.row = math.max(0, row)
+  api.ui_redraw()
+end
+smap("l", "cursor.down", "Next track")
+smap("h", "cursor.up", "Previous track")
+smap("<Right>", "cursor.down", "Next track")
+smap("<Left>", "cursor.up", "Previous track")
+smap("j", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smap("k", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smap("<Down>", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smap("<Up>", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smap("gg", function(ctx) to_row((ctx.count or 1) - 1) end, "First slot, or slot N")
+smap("G", function(ctx) to_row(ctx.count and ctx.count - 1 or launcher.rows() - 2) end, "Last slot with a clip, or slot N")
+smap("<CR>", "launch", "Launch the slot (an empty one stops the track)")
+smap("L", "scene", "Launch the scene: the whole row")
+smap("s", "launch.stop", "Stop the track's clip")
+smap("S", "launch.stop all", "Stop every clip")
+smap("b", "launch.back", "Back to the track's timeline")
+smap("B", "launch.back all", "Every track back to its timeline")
+smap("n", "slot.new", "A new MIDI clip in the slot")
+smap("e", "slot.edit", "Open the clip's notes")
+smap("x", "slot.delete", "Empty the slot")
+smap("dd", "slot.delete", "Empty the slot")
+smap("gp", "slot.copy", "Copy the arrange view's clip into the slot")
+smap("m", "slot.mode", "Next launch mode: trigger, gate, toggle")
+smap("gl", "slot.legato", "Legato on or off")
+smap("grn", "scene.name", "Name the scene")
+smap("C", "launch.capture", "Capture what is launched into the timeline")
+smap("R", "slot.record", "Record into the empty slot, a bar (or a count of bars) from the next boundary")
+smap("yy", function(ctx)
+  local track = cursor.track_id()
+  local clip = track and launcher.clip(track, launcher.row)
+  if clip then keymap.setreg({ kind = "slot", clip = daw.clip(clip.id):snapshot() }, ctx.register, true) end
+end, "Yank the slot's clip")
+smap("p", function(ctx)
+  local track, value = cursor.track_id(), keymap.getreg(ctx.register)
+  if not track or not value then return end
+  -- A slot's clip, or the first clip yanked in the arrange view.
+  local snap = value.kind == "slot" and value.clip
+  if value.kind == "range" then
+    for _, row in ipairs(value.rows) do snap = snap or row[1] end
+  end
+  if not snap then return daw.notify("the register holds no clip", "warn") end
+  daw.restore_clip(util.merge(snap, { slot = launcher.row, start = 0 }), track)
+end, "Paste a clip into the slot")
+
 -- Arrange: motions.
 local function amap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "arrange", desc = desc }, opts)) end
 amap("l", "cursor.right", "Right one grid step", motion)
@@ -2142,10 +2193,9 @@ pmap("[", function()
 end, "Softer")
 pmap("gh", function() roll:audition() end, "Hear the pitch under the cursor")
 pmap("<Esc>", function()
-  if daw.snippet.active() then return daw.snippet.finish() end
   if chosen() then return daw.frontend.act.clear_note_selection() end
   daw.ui.focus("arrange")
-end, "End the snippet, or let go of the chosen notes; else back to the arrange view")
+end, "Let go of the chosen notes; back to the arrange view")
 
 -- Diagnostics and language servers (daw.diagnostic, daw.lsp). `K` is an
 -- octave up here, so what the servers say about a note is `gK`.
@@ -2219,7 +2269,7 @@ imap("<Down>", move(0, -1), "Down a semitone")
 
 -- Piano roll: snippets (runtime/lua/daw/snippet.lua). While one is active its
 -- keys come first; otherwise each key does what it does everywhere else.
-roll.layer("snippet", 40, function(p) daw.snippet.paint(p) end)
+roll.layer("snippet", 40, function(p) daw.snippet.paint(p) end, function(clip_id) return daw.snippet.window_marks(clip_id) end)
 command("snippet", function(ctx)
   local name = ctx.args[1]
   local region = daw.snippet.take_cmdline_selection()
@@ -2234,34 +2284,51 @@ end, {
     return out
   end,
 })
-local function global_key(lhs, mode, ctx)
-  local want = table.concat(keymap.parse(lhs))
-  for _, m in ipairs(keymap.list(mode, "global")) do
-    if m.scope == "global" and table.concat(m.keys) == want then
-      if type(m.rhs) == "function" then return m.rhs(ctx) end
-      return daw.commands.exec(m.rhs, ctx)
-    end
-  end
+-- While a snippet is active its keys come first, before a suggestion's and
+-- before Escape leaves insert mode.
+roll:key_scope("pianoroll.snippet", 40, function() return daw.snippet.active() ~= nil end)
+local function smap(lhs, fn, desc)
+  map(lhs, fn, { view = "pianoroll.snippet", mode = { "n", "i" }, desc = desc, repeatable = false })
 end
-for lhs, spec in pairs({
-  ["<Tab>"] = { function() return daw.snippet.jump(1) end, "The snippet's next choice; else the next view" },
-  ["<S-Tab>"] = { function() return daw.snippet.jump(-1) end, "The snippet's choice before; else the view before" },
-  ["<C-n>"] = { function() return daw.snippet.step(1) end, "The snippet's choice: its next value" },
-  ["<C-p>"] = { function() return daw.snippet.step(-1) end, "The snippet's choice: its value before" },
-  ["<C-y>"] = { function()
-    if not daw.snippet.active() then return false end
-    daw.snippet.finish()
-    return true
-  end, "End the snippet, keeping its notes; else redo" },
-}) do
-  for _, mode in ipairs({ "n", "i" }) do
-    map(lhs, function(ctx)
-      if not spec[1]() and mode == "n" then return global_key(lhs, mode, ctx) end
-    end, { view = "pianoroll", mode = mode, desc = spec[2], repeatable = false })
-  end
-end
+smap("<Tab>", function() daw.snippet.jump(1) end, "The snippet's next choice")
+smap("<S-Tab>", function() daw.snippet.jump(-1) end, "The snippet's choice before")
+smap("<C-n>", function() daw.snippet.step(1) end, "The snippet's choice: its next value")
+smap("<C-p>", function() daw.snippet.step(-1) end, "The snippet's choice: its value before")
+smap("<C-y>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+smap("<Esc>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
 map("<C-s>", function(ctx) daw.snippet.pick({ count = ctx.count }) end,
   { view = "pianoroll", mode = { "n", "i", "x" }, desc = "Choose a snippet to expand here", repeatable = false })
+
+-- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
+-- while a suggestion shows, its keys come first, in normal and insert mode.
+local ni = { "n", "i" }
+map("<C-Space>", function() daw.complete.request("manual") end, { view = "pianoroll", mode = ni, desc = "Suggest what comes next", repeatable = false })
+local function cmap(lhs, fn, desc, modes)
+  map(lhs, fn, { view = "pianoroll.complete", mode = modes or ni, desc = desc, repeatable = false })
+end
+cmap("<Tab>", function() daw.complete.accept() end, "Accept the suggestion")
+cmap("<C-l>", function() daw.complete.accept(true) end, "Accept the suggestion's next note or chord")
+cmap("<C-n>", function() daw.complete.select(1) end, "The next alternative")
+cmap("<C-p>", function() daw.complete.select(-1) end, "The previous alternative")
+for n = 1, 9 do
+  cmap("<A-" .. n .. ">", function() daw.complete.select(n, true) end, "Alternative " .. n)
+end
+cmap("<C-e>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("<Esc>", function() daw.complete.dismiss() end, "Dismiss the suggestion")
+cmap("gh", function() daw.complete.audition() end, "Hear the suggestion, from a bar before", { "n" })
+
+command("complete", function() daw.complete.request("manual") end, { desc = "Suggest what comes next in the piano roll" })
+command("complete.accept", function(args) daw.complete.accept(args[1] == "next") end,
+  { desc = "Accept the suggestion: `:complete.accept next` takes its next note or chord only" })
+command("complete.dismiss", function() daw.complete.dismiss() end, { desc = "Dismiss the suggestion" })
+command("complete.audition", function() daw.complete.audition() end, { desc = "Hear the suggestion through the track, from a bar before" })
+command("complete.sources", function()
+  local lines = {}
+  for _, s in ipairs(daw.complete.list()) do
+    lines[#lines + 1] = string.format("%-16s priority %-4d %s%s", s.name, s.priority, table.concat(s.views, ","), s.auto and "  auto" or "")
+  end
+  daw.notify(#lines > 0 and table.concat(lines, "\n") or "no completion sources: an extension adds them")
+end, { desc = "List the completion sources" })
 
 -- Sizes -----------------------------------------------------------------------
 --

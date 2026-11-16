@@ -78,9 +78,20 @@
 - The window's GPU renderer as the default: it is tried only on a software
   OpenGL (llvmpipe) so far, where it draws correctly but costs more than
   the software renderer.
+- In clip launching: follow actions (a clip that launches the next, or a
+  random one, after so many bars); under a tempo ramp a slot's clip spreads
+  each block's beats evenly over it, so its notes can land up to a frame or
+  so from where the timeline would put them; and launches are not rendered
+  as they are: they are captured into the timeline first.
 - The window's position on Wayland: the compositor places windows and a
   program cannot ask for a place, so only X11 keeps it.
 - The flake's `flake.lock` names the `nixpkgs` of this machine as a path in
   its Nix store, so the package builds here but not from a URL elsewhere
   until it is locked to a release (`nix flake update`). The package is built
   for x86_64 and aarch64 Linux, and tried only on the first.
+- Suggestions in the arrange view (whole clips) and the drum view: sources
+  may say they offer them (`views`), but only the piano roll asks and shows
+  them. A suggestion's controller moves are written when accepted but not
+  drawn beforehand, and its badge has no list of the alternatives' details
+  to read through; hearing one uses the track's live input, so it is timed
+  by the kernel's timers rather than the engine's clock.

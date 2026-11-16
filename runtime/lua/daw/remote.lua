@@ -73,12 +73,12 @@ local function sections_of(state)
   project.lines = nil
   return {
     project = project, lines = state.project.lines or {}, tracks = state.tracks or {},
-    clips = state.clips or {}, devices = state.devices or {}, routing = state.routing or false,
+    clips = state.clips or {}, devices = state.devices or {}, routing = state.routing or false, slots = state.slots or {},
     kinds = state.kinds, view = { selected = state.selected, cursor = state.cursor },
   }
 end
 
-local SECTION_KEYS = { "project", "tracks", "clips", "devices", "routing", "kinds", "selected", "cursor" }
+local SECTION_KEYS = { "project", "tracks", "clips", "devices", "routing", "kinds", "selected", "cursor", "slots" }
 
 --- Send a connection what has changed of the frontend's state since it was
 --- last sent anything: nothing at all when nothing has.

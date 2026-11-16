@@ -639,21 +639,57 @@ function M.paint(p)
   end
 end
 
---- The same for the window, in the clip's beats: ghosts of what the
---- picker would write, the active snippet's notes and its labelled span,
---- `{ kind = "ghost"|"mark"|"span", pitch, start, length, label }` each.
+local VIOLET = "#ac93e6"
+
+--- The same for the window (the layer's marks, in the clip's beats):
+--- ghosts of what the picker would write, the active snippet's notes, and
+--- a chip under its lowest note saying what Tab and `<C-n>` work on.
 function M.window_marks(clip_id)
   local out = {}
   for _, n in ipairs(M.preview_marks(clip_id) or {}) do
-    out[#out + 1] = { kind = "ghost", pitch = n.pitch, start = n.start, length = n.length }
+    out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = VIOLET, alpha = 0.2, edge = VIOLET }
   end
   local m = M.marks(clip_id)
   if m then
-    for _, n in ipairs(m.notes) do out[#out + 1] = { kind = "mark", pitch = n.pitch, start = n.start, length = n.length } end
-    out[#out + 1] = { kind = "span", start = m.from, length = m.to - m.from, label = m.label }
+    local low
+    for _, n in ipairs(m.notes) do
+      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = VIOLET, alpha = 0.6, edge = VIOLET }
+      low = math.min(low or n.pitch, n.pitch)
+    end
+    if low then
+      out[#out + 1] = { pitch = math.max(0, low - 1), start = m.from, length = m.to - m.from, badge = true, label = m.label,
+        fill = VIOLET, alpha = 0.9, tip = "Tab: the next choice · Ctrl-n: its next value · Ctrl-y: done" }
+    end
   end
   return out
 end
+
+--- Snippets as a source of suggestions (`daw.complete`): on `<C-Space>`,
+--- each snippet of the piano roll that has something to write at the
+--- suggestion's place is offered, its notes as the ghost. Taking one
+--- writes its notes as they are; its choices are for `<C-s>`. Not asked
+--- after an idle pause: a snippet is chosen, not guessed.
+M.source = {
+  name = "snippets", priority = 10, views = { "pianoroll" }, auto = false,
+  complete = function(ctx, done)
+    local items = {}
+    for _, spec in ipairs(M.offered("pianoroll")) do
+      local ok, result = pcall(run, spec, { at = ctx.start + ctx.at, selection = false }, {})
+      if ok and result and #result.notes > 0 then
+        local notes, remove = {}, {}
+        for i, n in ipairs(result.notes) do
+          notes[i] = { pitch = n.pitch, start = (n.start or n.at) - ctx.start, length = n.length, velocity = n.velocity }
+        end
+        for _, n in ipairs(result.remove) do remove[#remove + 1] = n.place end
+        items[#items + 1] = { label = spec.name, detail = spec.desc, notes = notes, remove = #remove > 0 and remove or nil }
+      end
+    end
+    done(items)
+  end,
+}
+daw.on("startup", function()
+  if daw.complete then daw.complete.register(M.source) end
+end)
 
 daw.on("escape", function() M.finish() end)
 -- Another project (or a new one): nothing of this one's snippet is left.

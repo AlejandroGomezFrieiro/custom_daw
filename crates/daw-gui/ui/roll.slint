@@ -30,16 +30,6 @@ export struct RollLine {
     label: string,
 }
 
-// What a layer of the kernel's piano roll draws over the notes, in the
-// clip's beats: 0 a ghost note, 1 a marked note, 2 a span with a label.
-export struct RollMark {
-    kind: int,
-    pitch: int,
-    start: float,
-    length: float,
-    label: string,
-}
-
 // A chord symbol over the ruler, in the clip's beats.
 export struct RollChord {
     start: float,
@@ -52,6 +42,31 @@ export struct ControlData {
     value: float,       // 0..1 up the strip
     place: int,         // its place among all the clip's moves, from 1
     selected: bool,     // one of the moves chosen with the pointer
+}
+
+// What a layer of the kernel's piano roll draws (`pianoroll:layer`): a
+// note-shaped box, or a chip with a label that may be clicked.
+export struct RollMark {
+    pitch: int,
+    start: float,       // beats from the start of the clip
+    length: float,
+    fill: color,
+    edge: color,        // transparent for no border
+    ink: color,         // the label's colour
+    label: string,
+    badge: bool,        // a chip as wide as its label, on the pitch's row
+    slot: int,          // chips side by side, in steps of 20 px
+    act: string,        // the `daw.frontend.act` a click calls, with `arg`
+    arg: float,
+    tip: string,
+}
+
+// A switch a module adds to the toolbar (`pianoroll:tool`).
+export struct RollTool {
+    label: string,
+    on: bool,
+    tip: string,
+    act: string,
 }
 
 // A note a diagnostic is about (daw.diagnostic), with the worst severity
@@ -89,9 +104,12 @@ export global Roll {
     // Notes of the track's other clips that sound during this one, in this
     // clip's beats: drawn faintly behind its own.
     in property <[NoteData]> ghosts;
-    // What modules draw over the notes, and the chords that sound (both
-    // from the kernel; no chords when `daw.opt.chords` is off).
-    in property <[RollMark]> overlay;
+    // What the kernel's layers draw behind the notes and in front of them
+    // (suggestions, marks), and the switches they add to the toolbar.
+    in property <[RollMark]> marks-under;
+    in property <[RollMark]> marks-over;
+    in property <[RollTool]> tools;
+    // The chords that sound, from the kernel (none when `daw.opt.chords` is off).
     in property <[RollChord]> chords;
     // The notes diagnostics are about, outlined over them and marked on the ruler.
     in property <[MarkData]> marks;
@@ -246,6 +264,48 @@ component Drop inherits Rectangle {
     }
 }
 
+// A mark of a layer: a box over notes' rows, or a chip that may be clicked.
+// The roll places it; a chip says how wide its label is.
+component Mark inherits Rectangle {
+    in property <RollMark> mark;
+    in property <bool> roomy;           // tall enough to write in a box
+    out property <length> label-width: label.preferred-width;
+    property <bool> hovered;
+    border-radius: root.mark.badge ? 3px : 2px;
+    background: root.hovered ? root.mark.fill.brighter(0.4) : root.mark.fill;
+    border-width: root.mark.badge ? 0px : 1px;
+    border-color: root.mark.edge;
+    label := Text {
+        x: root.mark.badge ? 5px : 4px;
+        width: max(0px, parent.width - (root.mark.badge ? 10px : 6px));
+        height: parent.height;
+        visible: root.mark.badge || (parent.width >= 28px && root.roomy);
+        text: root.mark.label;
+        color: root.mark.ink;
+        font-size: root.mark.badge ? 10px : 9px;
+        font-weight: 600;
+        horizontal-alignment: root.mark.badge ? center : left;
+        vertical-alignment: center;
+        overflow: clip;
+    }
+    // Only a mark that does something takes the pointer: the notes under
+    // the others stay within reach.
+    if root.mark.act != "": TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            Roll.act(root.mark.act, [root.mark.arg]);
+        }
+        changed has-hover => {
+            root.hovered = self.has-hover;
+            if (self.has-hover && root.mark.tip != "") {
+                Roll.hint = root.mark.tip;
+            } else if (Roll.hint == root.mark.tip) {
+                Roll.hint = "";
+            }
+        }
+    }
+}
+
 export component PianoRoll inherits Rectangle {
     property <length> note-height: 12px;
     property <length> beat: Roll.zoom * 1px;
@@ -254,7 +314,6 @@ export component PianoRoll inherits Rectangle {
     // there are chords to show.
     property <length> chord-height: Roll.chords.length > 0 ? 16px : 0px;
     property <length> ruler-height: 22px + root.chord-height;
-    property <color> mark-color: #ac93e6;
     property <length> strip-height: 80px;
     property <length> grid-px: Roll.grid * root.beat;
     // Where something at `x`, `w` wide, starts and how wide it is within
@@ -705,6 +764,14 @@ export component PianoRoll inherits Rectangle {
                         Roll.act("open_event_list", []);
                     }
                 }
+                for tool in Roll.tools: Tool {
+                    label: tool.label;
+                    on: tool.on;
+                    tip: tool.tip;
+                    clicked => {
+                        Roll.act(tool.act, []);
+                    }
+                }
                 Rectangle {
                     width: 4px;
                 }
@@ -1038,6 +1105,16 @@ export component PianoRoll inherits Rectangle {
                     border-width: 1px;
                     border-color: Roll.color.with-alpha(0.28);
                 }
+                // The kernel's layers behind the notes.
+                for mark in Roll.marks-under: Mark {
+                    mark: mark;
+                    roomy: root.note-height >= 11px;
+                    x: mark.badge ? root.seen-x(mark.start * root.beat) + mark.slot * 20px : root.seen-x(mark.start * root.beat);
+                    // A chip taller than a row stands on it, clear of the row below.
+                    y: (127 - mark.pitch) * root.note-height + (mark.badge ? root.note-height - self.height : 1px);
+                    width: mark.badge ? max(16px, self.label-width + 10px) : max(2px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px));
+                    height: mark.badge ? max(14px, root.note-height) : root.note-height - 2px;
+                }
                 // The grid itself. A press with the left button and a drag
                 // draws a note; with Ctrl held, or with the right button, the
                 // drag is a box that chooses the notes it touches; with Alt
@@ -1316,6 +1393,18 @@ export component PianoRoll inherits Rectangle {
                         }
                     }
                 }
+                // The kernel's layers in front of the notes: what a language
+                // server marks, a snippet's notes, suggestions (ghost notes
+                // and the chips that choose and accept them).
+                for mark in Roll.marks-over: Mark {
+                    mark: mark;
+                    roomy: root.note-height >= 11px;
+                    x: mark.badge ? root.seen-x(mark.start * root.beat) + mark.slot * 20px : root.seen-x(mark.start * root.beat);
+                    // A chip taller than a row stands on it, clear of the row below.
+                    y: (127 - mark.pitch) * root.note-height + (mark.badge ? root.note-height - self.height : 1px);
+                    width: mark.badge ? max(16px, self.label-width + 10px) : max(2px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px));
+                    height: mark.badge ? max(14px, root.note-height) : root.note-height - 2px;
+                }
                 // The notes diagnostics are about, outlined in the colour
                 // of the worst said of each, over the notes (a drawing only:
                 // the pointer goes through to the note).
@@ -1327,30 +1416,6 @@ export component PianoRoll inherits Rectangle {
                     border-radius: 3px;
                     border-width: 2px;
                     border-color: root.severity-color(mark.severity);
-                }
-                // What a snippet draws over the notes, as the kernel sends
-                // it: ghosts of the notes the picker would write, an active
-                // snippet's notes marked, and its span with a few words
-                // along the bottom of what shows.
-                for mark in Roll.overlay: Rectangle {
-                    x: root.seen-x(mark.start * root.beat);
-                    y: mark.kind == 2 ? -roll.content-y + roll.height - 30px : (127 - mark.pitch) * root.note-height + 1px;
-                    width: max(2px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px));
-                    height: mark.kind == 2 ? 18px : root.note-height - 2px;
-                    border-radius: 2px;
-                    background: mark.kind == 0 ? root.mark-color.with-alpha(0.18) : mark.kind == 1 ? root.mark-color.with-alpha(0.55) : root.mark-color.with-alpha(0.85);
-                    border-width: mark.kind == 2 ? 0px : 1px;
-                    border-color: mark.kind == 0 ? root.mark-color.with-alpha(0.6) : root.mark-color;
-                    if mark.kind == 2: Text {
-                        x: 6px;
-                        width: 600px;
-                        text: mark.label;
-                        color: #eef1f6;
-                        font-size: 11px;
-                        font-weight: 600;
-                        vertical-alignment: center;
-                        height: parent.height;
-                    }
                 }
                 // Past the end of the clip.
                 Rectangle {

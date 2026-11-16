@@ -3,9 +3,20 @@
 -- ends, the picker, counts, loading from files, and the keys falling back
 -- to what they otherwise do. Loaded by tests/suite.lua with its helpers.
 local T = ...
-local test, eq, fresh = T.test, T.eq, T.fresh
+local eq, fresh = T.eq, T.fresh
 local api = daw.api
 local S = daw.snippet
+
+-- The snippets made here are taken away after each test, so that they are
+-- not offered to the tests that follow (they would be suggestions too).
+local function test(name, fn)
+  T.test(name, function()
+    local ok, err = xpcall(fn, debug.traceback)
+    S.finish()
+    for _, n in ipairs({ "stack", "walk", "nothing", "where" }) do S.remove(n) end
+    if not ok then error(err, 0) end
+  end)
+end
 local music = daw.music
 
 local function keys(text)
@@ -241,11 +252,19 @@ test("snippet: the active snippet is drawn in the terminal and told to the windo
   local screen = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(screen:find("stack · interval: 3 (1/3)", 1, true) ~= nil, true, "its choice along the bottom")
   local marks = S.window_marks(clip.id)
-  local kinds = {}
-  for _, m in ipairs(marks) do kinds[m.kind] = (kinds[m.kind] or 0) + 1 end
-  eq(kinds.mark, 3, "its notes")
-  eq(kinds.span, 1, "and its span")
-  eq(#daw.frontend.state(0).modal.roll.overlay, 4, "in the state the window is sent")
+  local notes, chips = 0, 0
+  for _, m in ipairs(marks) do
+    if m.badge then chips = chips + 1 else notes = notes + 1 end
+  end
+  eq(notes, 3, "its notes")
+  eq(chips, 1, "and a chip saying its choice")
+  eq(marks[4].label, "stack · interval: 3 (1/3)", "which it names")
+  local over = daw.frontend.state(0).modal.roll.over
+  local sent = 0
+  for _, m in ipairs(over) do
+    if m.fill == "#ac93e6" then sent = sent + 1 end
+  end
+  eq(sent, 4, "in the state the window is sent, in front of the notes")
   keys("<C-y>")
   eq(#S.window_marks(clip.id), 0, "nothing once it ends")
 end)

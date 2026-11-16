@@ -69,6 +69,16 @@ chords. `1` to `9` set how many grid steps a note is long, `Space` is a rest,
 velocity. The clip grows by a bar when the notes run past its end. `Esc`
 returns to normal mode.
 
+**Suggestions.** With a completion source loaded (`extensions/continue`, a
+language server), the piano roll can suggest what comes next: dashed ghost
+notes in the track's colour, with a badge such as `1/3 continue: the bar
+again` over them. They come by themselves after a pause in editing, never
+while playing or recording, or with `Ctrl-Space`. `Tab` accepts all of it,
+`Ctrl-l` its next note or chord, `Ctrl-n` `Ctrl-p` and `Alt-1` to `Alt-9`
+show the other alternatives, `gh` plays it from a bar before, `Ctrl-e` or
+`Esc` dismiss it; in insert mode the first `Esc` dismisses and the second
+leaves insert mode. See [harmony.md](harmony.md).
+
 | Keys | Also in the arrange view |
 | --- | --- |
 | `x` `D` `C` `Y` | delete the clip; delete, change, yank to the end of the track |
@@ -149,6 +159,10 @@ dragging a device card by its name onto a track's header moves it there
 (with `Ctrl`, copies it), and dragging it up or down the list reorders. The
 mixer has `h` `l` for tracks, `j` `k` for volume, `grv` `grp` to type the
 strip's volume and pan, and `dd` `yy` `p` for tracks.
+
+`,l` shows the session view, the clip launcher: a column of slots under
+each track and a scene for each row, launched with `<CR>` and `L`; its keys
+are in [Live performance](live.md).
 
 ## Pickers
 

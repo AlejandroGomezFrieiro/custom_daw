@@ -261,3 +261,33 @@ test("snippets: harmonize and voice-lead work on the selection", function()
   eq(table.concat(second, " "), "59 62 67", "the G moved next to the C: B3 D4 G4")
   eq(#chords:notes(), 9, "as many notes as before")
 end)
+
+test("snippets: Ctrl-Space offers the snippets that fit as suggestions, and Tab writes one", function()
+  start()
+  local _, clip = track("Piano", {}, 8)
+  track("Strings", { { "C3 G3 C4 E4", 4, 4 } }, 8)
+  open(clip, 60, 0)
+  daw.opt.complete_auto = false
+  keys("<C-Space>")
+  local shown
+  for _ = 1, 300 do
+    shown = daw.complete.current()
+    if shown then break end
+    daw.wait(10)
+  end
+  eq(shown ~= nil, true, "suggestions show")
+  local labels, which = {}, nil
+  for i, item in ipairs(shown.items) do
+    labels[#labels + 1] = item.label
+    if item.label == "dominant" then which = i end
+  end
+  eq(which ~= nil, true, "dominant among them: " .. table.concat(labels, " "))
+  for _ = 2, which do keys("<C-n>") end
+  eq(daw.complete.current().item.label, "dominant", "chosen")
+  eq(#clip:notes(), 0, "a ghost, not written yet")
+  keys("<Tab>")
+  eq(select(2, at(clip, 0)), "2 5 7 11", "Tab writes the G7")
+  keys("u")
+  eq(#clip:notes(), 0, "one undo")
+  daw.opt.complete_auto = true
+end)

@@ -662,6 +662,7 @@ pan, or a parameter of a device.
 | --- | --- |
 | `:learn` | bind what was moved last (or the parameter under the device panel's cursor): then move the controller |
 | `:learn volume`, `:learn pan`, `:learn cutoff` | the selected track's fader, pan, or a parameter by name |
+| `:learn launch`, `:learn scene`, `:learn stop`, `:learn stop all` | a pad or button that launches the slot under the session view's cursor, its scene, or stops (see [Live performance](live.md)) |
 | `:learn.list` | what is bound; choosing one takes it away |
 | `:learn.remove 2`, `:learn.remove volume`, `:learn.clear` | take bindings away |
 

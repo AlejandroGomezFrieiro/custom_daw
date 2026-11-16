@@ -22,6 +22,7 @@ use slint::{
 };
 
 mod portal;
+mod session;
 
 slint::include_modules!();
 
@@ -324,7 +325,7 @@ impl Client {
                 project["lines"] = part("lines");
             }
             state.insert("project".into(), project);
-            for name in ["tracks", "clips", "devices", "routing"] {
+            for name in ["tracks", "clips", "devices", "routing", "slots"] {
                 state.insert(name.into(), part(name));
             }
             state.insert("selected".into(), part("view")["selected"].clone());
@@ -536,24 +537,6 @@ fn place_of(pos: f64) -> SharedString {
     })
 }
 
-/// What the piano roll's layers draw, as the kernel sends it.
-fn roll_overlay(list: &Value) -> Vec<RollMark> {
-    rows(list)
-        .iter()
-        .map(|m| RollMark {
-            kind: match m["kind"].as_str() {
-                Some("mark") => 1,
-                Some("span") => 2,
-                _ => 0,
-            },
-            pitch: m["pitch"].as_i64().unwrap_or(0) as i32,
-            start: number(&m["start"]),
-            length: number(&m["length"]),
-            label: text(&m["label"]),
-        })
-        .collect()
-}
-
 /// The chord symbols over the piano roll's ruler.
 fn roll_chords(list: &Value) -> Vec<RollChord> {
     rows(list)
@@ -608,6 +591,49 @@ fn notes_within(notes: &[NoteData], from: f32, to: f32) -> Vec<NoteData> {
     notes
         .iter()
         .filter(|n| n.start <= to && n.start + n.length >= from)
+        .cloned()
+        .collect()
+}
+
+/// The marks of the roll's layers, as the kernel sends them.
+fn roll_marks(list: &Value) -> Vec<RollMark> {
+    rows(list)
+        .iter()
+        .map(|m| {
+            let alpha = m["alpha"].as_f64().unwrap_or(1.0) as f32;
+            let badge = m["badge"].as_bool().unwrap_or(false);
+            RollMark {
+                pitch: m["pitch"].as_i64().unwrap_or(60).clamp(0, 127) as i32,
+                start: number(&m["start"]),
+                length: number(&m["length"]),
+                fill: colour(&m["fill"]).with_alpha(alpha),
+                edge: if m["edge"].is_string() {
+                    colour(&m["edge"])
+                } else {
+                    Color::from_argb_u8(0, 0, 0, 0)
+                },
+                // Dark on a strong chip, light on anything fainter.
+                ink: if badge && alpha >= 0.5 {
+                    Color::from_rgb_u8(0x12, 0x13, 0x16)
+                } else {
+                    Color::from_rgb_u8(0xe4, 0xe5, 0xe8)
+                },
+                label: text(&m["label"]),
+                badge,
+                slot: m["slot"].as_i64().unwrap_or(0) as i32,
+                act: text(&m["act"]),
+                arg: number(&m["arg"]),
+                tip: text(&m["tip"]),
+            }
+        })
+        .collect()
+}
+
+/// The marks among them that show between two beats, with chips always.
+fn marks_within(marks: &[RollMark], from: f32, to: f32) -> Vec<RollMark> {
+    marks
+        .iter()
+        .filter(|m| m.badge || (m.start <= to && m.start + m.length >= from))
         .cloned()
         .collect()
 }
@@ -1202,6 +1228,8 @@ struct View {
     tracks: Rc<VecModel<TrackData>>,
     meters: Rc<VecModel<MeterData>>,
     clips: Rc<VecModel<ClipData>>,
+    /// The session view: slots to launch.
+    session: session::Session,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
     params: Vec<Rc<VecModel<ParamData>>>,
@@ -1227,9 +1255,13 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
-    /// What the kernel's piano roll layers draw over the notes (an active
-    /// snippet, a preview), and the chord symbols over the ruler.
-    roll_overlay: Rc<VecModel<RollMark>>,
+    /// What the kernel's layers draw behind the roll's notes and in front
+    /// of them, as it last told, and the switches they add to its toolbar.
+    roll_marks: (Vec<RollMark>, Vec<RollMark>),
+    marks_under: Rc<VecModel<RollMark>>,
+    marks_over: Rc<VecModel<RollMark>>,
+    roll_tools: Rc<VecModel<RollTool>>,
+    /// The chord symbols over the ruler.
     roll_chords: Rc<VecModel<RollChord>>,
     /// The notes diagnostics are about, and for each by its place in the
     /// roll what they say and the titles of their fixes.
@@ -1363,6 +1395,7 @@ impl View {
             self.message_until = None;
         }
         let state = client.state()?;
+        self.session.tick(&state);
         let playing = state["playing"].as_bool().unwrap_or(false);
         let recording = state["recording"].as_bool().unwrap_or(false);
         let position = number(&state["position"]);
@@ -1541,6 +1574,8 @@ impl View {
         let (from, to) = self.roll_for.unwrap_or((from, to));
         sync(&self.notes, notes_within(&self.roll_notes, from, to));
         sync(&self.ghosts, notes_within(&self.roll_ghosts, from, to));
+        sync(&self.marks_under, marks_within(&self.roll_marks.0, from, to));
+        sync(&self.marks_over, marks_within(&self.roll_marks.1, from, to));
         let lines = self.roll_lines.iter().filter(|l| (from..=to).contains(&l.at));
         sync(&self.roll_line_rows, lines.cloned().collect());
         self.show_controls(ui);
@@ -1611,6 +1646,7 @@ impl View {
         ui.set_macro(text(&modal["recording"]));
         ui.set_focused(text(&modal["focused"]));
         ui.set_show_mixer(modal["mixer"].as_bool().unwrap_or(false));
+        self.session.modal(ui, modal);
         // A render in the background, and a controller being waited for.
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
@@ -1749,6 +1785,22 @@ impl View {
                 changed |= note.selected != selected;
                 note.selected = selected;
             }
+            // What the layers draw, and the toolbar's switches.
+            let marks = (roll_marks(&roll["under"]), roll_marks(&roll["over"]));
+            if marks != self.roll_marks {
+                self.roll_marks = marks;
+                changed = true;
+            }
+            let tools: Vec<RollTool> = rows(&roll["tools"])
+                .iter()
+                .map(|t| RollTool {
+                    label: text(&t["label"]),
+                    on: t["on"].as_bool().unwrap_or(false),
+                    tip: text(&t["tip"]),
+                    act: text(&t["act"]),
+                })
+                .collect();
+            sync(&self.roll_tools, tools);
             if changed {
                 self.roll_view(ui);
             }
@@ -1761,7 +1813,6 @@ impl View {
                 self.controls_chosen = moves;
                 self.show_controls(ui);
             }
-            sync(&self.roll_overlay, roll_overlay(&roll["overlay"]));
             sync(&self.roll_chords, roll_chords(&roll["chords"]));
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
@@ -2172,6 +2223,7 @@ impl View {
 
     fn project(&mut self, ui: &App, client: &mut Client, state: &Value, project: &Value) {
         ui.set_project_name(text(&project["name"]));
+        self.session.project(ui, state);
         ui.set_modified(project["modified"].as_bool().unwrap_or(false));
         ui.set_tempo(format!("{}", project["tempo"].as_f64().unwrap_or(120.0)).into());
         ui.set_signature(text(&project["signature"]));
@@ -2628,6 +2680,7 @@ fn run() -> Result<()> {
         tracks: Rc::new(VecModel::default()),
         meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
+        session: session::Session::new(&ui),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
         pictures: HashMap::new(),
@@ -2639,7 +2692,10 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
-        roll_overlay: Rc::new(VecModel::default()),
+        roll_marks: (Vec::new(), Vec::new()),
+        marks_under: Rc::new(VecModel::default()),
+        marks_over: Rc::new(VecModel::default()),
+        roll_tools: Rc::new(VecModel::default()),
         roll_chords: Rc::new(VecModel::default()),
         marks: Rc::new(VecModel::default()),
         mark_notes: Rc::new(RefCell::new(HashMap::new())),
@@ -2709,7 +2765,9 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
-        roll.set_overlay(ModelRc::from(view.borrow().roll_overlay.clone()));
+        roll.set_marks_under(ModelRc::from(view.borrow().marks_under.clone()));
+        roll.set_marks_over(ModelRc::from(view.borrow().marks_over.clone()));
+        roll.set_tools(ModelRc::from(view.borrow().roll_tools.clone()));
         roll.set_chords(ModelRc::from(view.borrow().roll_chords.clone()));
         roll.set_marks(ModelRc::from(view.borrow().marks.clone()));
         let notes = view.borrow().mark_notes.clone();
@@ -2762,6 +2820,7 @@ fn run() -> Result<()> {
             act(&|c| c.eval(&code, args.clone()))
         }
     };
+    view.borrow().session.install(&ui, pass.clone());
     // Leaving the project (quitting, starting a new one, opening another)
     // asks first when there are changes to save. Returns whether it asked.
     let leave = {

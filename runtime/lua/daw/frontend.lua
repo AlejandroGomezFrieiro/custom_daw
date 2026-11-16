@@ -151,6 +151,8 @@ local function modal()
     name = keymap.mode == "x" and keymap.visual and visual_names[keymap.visual.kind]
       or mode_names[keymap.mode] or keymap.mode:upper(),
     focused = ui.focused, mixer = ui.visible("mixer"),
+    -- The session view, clips to launch, and the slot its cursor is on.
+    session = ui.visible("session"), slot_row = daw.launcher.row, capturing = daw.launcher.capturing,
     float = ui.float and (ui.float.title or ui.float.name) or nil,
     selection = keymap.selection(),
     -- A render in the background: { path, fraction, seconds, cancelling, stage }.
@@ -185,11 +187,13 @@ local function modal()
       marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.
       controls_chosen = daw.controls.chosen(clip.id),
-      -- What a snippet draws over the notes (its marks, the picker's
-      -- ghosts), and the chord symbols over the ruler, in the clip's beats.
-      overlay = daw.snippet.window_marks(clip.id),
+      -- The chord symbols over the ruler, in the clip's beats.
       chords = M.roll_chords(clip),
+      -- What the roll's layers draw behind and in front of the notes, and
+      -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
+      tools = roll:toolbar(),
     }
+    out.roll.under, out.roll.over = roll:marks(clip.id)
   end
   local under = daw.cursor.clip()
   out.clip = ui.focused == "arrange" and under and under.id or nil
@@ -434,6 +438,8 @@ function M.state(known)
     -- What went wrong while playing (see `:engine.status`).
     xruns = e.xruns, late_blocks = e.late_blocks, midi_dropped = e.midi_dropped,
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,
+    -- What each drawn track plays from its slots: `M.launch_state`.
+    launch = M.launch_state(ids),
   }
   if known == M.revision then return out end
 
@@ -563,6 +569,10 @@ function M.state(known)
       }
     end
   end
+  -- The clips in slots, the scenes' names and where launches land.
+  out.slots = M.slots(ids)
+  out.project.scenes, out.project.launch_quantize = {}, p.launch_quantize
+  for row = 0, daw.launcher.rows() - 1 do out.project.scenes[row + 1] = daw.launcher.scene_name(row) end
   if out.selected >= 0 then
     for i, id in ipairs(api.track_get(out.selected).devices) do out.devices[i] = device_state(id) end
     out.routing = M.routing(out.selected)
@@ -2602,5 +2612,111 @@ function A.move_device(device, by)
   local d = api.device_get(device)
   api.device_move(device, d.track, daw.util.clamp(d.index + by, 1, #api.track_get(d.track).devices))
 end
+
+-- Clip launching (`daw.launcher`) ---------------------------------------------
+--
+-- The session view shows a column of slots under each track and a scene for
+-- each row. Rows and tracks are counted as the rest of the state counts
+-- them: rows from 0, tracks by their place among the drawn ones from 0.
+
+--- What each drawn track (`ids`, the master last) plays from its slots, by
+--- place: `slot` and `queued` are rows or -1, `stopping` and `back` say a
+--- stop or a return to the timeline is queued, `stopped` that it plays
+--- nothing, `progress` how far round its loop the clip is (0 to 1), and
+--- `recording` the row being recorded into or -1. Empty while nothing is
+--- launched or recorded anywhere.
+function M.launch_state(ids)
+  local state, rec = daw.launcher.state(), daw.launcher.recording
+  if not next(state) and not rec then return {} end
+  local out = {}
+  for i, id in ipairs(ids) do
+    local s = state[id] or {}
+    out[i] = {
+      slot = s.slot or -1, queued = type(s.queued) == "number" and s.queued or -1,
+      stopping = s.queued == "stop", back = s.queued == "arrangement", stopped = s.stopped or false,
+      progress = (s.slot and s.length and s.length > 0) and s.phase / s.length or 0,
+      recording = rec and rec.track == id and rec.row or -1,
+    }
+  end
+  return out
+end
+
+--- The clips in the drawn tracks' slots: `{ id, track, row, name, midi,
+--- mode, legato, quantize, muted }` each, `track` by place from 0.
+function M.slots(ids)
+  local out = {}
+  for i, id in ipairs(ids) do
+    if id ~= 0 then
+      for _, clip in ipairs(api.slot_list(id)) do
+        out[#out + 1] = {
+          id = clip.id, track = i - 1, row = clip.slot, name = clip.name, midi = clip.kind == "midi",
+          mode = clip.mode, legato = clip.legato, quantize = clip.quantize or "", muted = clip.muted,
+        }
+      end
+    end
+  end
+  return out
+end
+
+--- A slot pressed, or let go of (`down` false): see `daw.launcher.press`
+--- and `release`. The session view's cursor goes there.
+function A.press_slot(track, row, down)
+  daw.cursor.set_track(track)
+  daw.launcher.row = row
+  if down == false then return daw.launcher.release(track, row) end
+  daw.launcher.press(track, row)
+end
+
+--- A click on a slot: the cursor goes there, launching nothing, and the
+--- keys are the session view's.
+function A.choose_slot(track, row)
+  daw.cursor.set_track(track)
+  daw.launcher.row = row
+  if daw.ui.visible("session") then daw.ui.focus("session") end
+  api.ui_redraw()
+end
+
+--- Record into an empty slot: see `daw.launcher.record`.
+function A.record_slot(track, row)
+  A.choose_slot(track, row)
+  if daw.launcher.recording then return daw.launcher.finish_recording() end
+  daw.launcher.record(track, row)
+end
+
+--- A double click on an empty slot: a MIDI clip of a bar there, opened in
+--- the piano roll. On a slot with a MIDI clip it opens that. Returns the clip.
+function A.open_slot(track, row)
+  A.choose_slot(track, row)
+  local clip = daw.launcher.clip(track, row)
+  local id = clip and clip.id or daw.launcher.new_clip(track, row)
+  if not clip or clip.kind == "midi" then daw.ui.views.pianoroll:edit(daw.clip(id)) end
+  return id
+end
+
+--- A clip from the timeline dropped on a slot: a copy of it goes there.
+function A.clip_to_slot(clip, track, row)
+  A.choose_slot(track, row)
+  return daw.launcher.copy(clip, track, row)
+end
+
+--- A clip in a slot dragged to another, with `copy` (Ctrl) as a copy.
+function A.move_slot(clip, track, row, copy)
+  if copy then return daw.launcher.copy(clip, track, row) end
+  local c = api.clip_get(clip)
+  if c.track ~= track then api.clip_set(clip, "track", track) end
+  api.clip_set(clip, "row", row)
+  A.choose_slot(track, row)
+end
+
+function A.scene(row)
+  daw.launcher.row = row
+  daw.launcher.scene(row)
+end
+
+--- Stop a track's clip, or every clip with no track.
+function A.stop_slots(track) daw.launcher.stop(track) end
+
+--- A track back to its timeline, or every track with none.
+function A.back_to_timeline(track) daw.launcher.back(track) end
 
 return M
