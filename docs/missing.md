@@ -1,7 +1,8 @@
 # What is missing
 
-- A tempo lane to draw the tempo as a curve (tempo changes are set by
-  command, by script and on the window's ruler).
+- Editing the tempo lane with the mouse in the terminal (it draws the curve;
+  changes are made by command there), and a tempo curve that is smooth: a
+  drawn stroke makes a change a beat or so, each ramping to the next.
 - In stretching: formants are not kept, so a voice shifted far sounds
   smaller or larger; ratios are 0.25 to 4 and shifts 24 semitones either
   way; a clip following the tempo is stretched evenly over its length, not
@@ -10,7 +11,8 @@
   markers to stretch parts of a clip by different amounts.
 - Plugins with main buses wider than stereo (surround), and inputs beyond
   the main pair and one side-chain.
-- Pre-roll before a punch: the song plays from wherever the playhead is.
+- Pre-roll without a punch (a take from the playhead is not played in from
+  before it), and pre-roll in fractions of a bar.
 - Comping with the mouse in the terminal: its take lanes are to look at, and
   `:take 2` over a selection comps there.
 - MIDI-CI, an editor for controller moves, and MIDI 2.0 on the way out:

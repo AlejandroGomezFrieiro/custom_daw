@@ -64,7 +64,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `,at` `,ax` | automation off and on, clear it | |
 | `,am` | the track's automation mode: read, touch, latch, write, off in turn | |
 | `]t` `[t` | the clip's next take, the one before | |
-| `zt` | show or hide the track's take lanes | |
+| `zt` `zT` | show or hide the track's take lanes, the tempo lane under the ruler | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
@@ -130,7 +130,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `gs` `gp` | playhead to the start, to the cursor |
 | `gL` `gm` | loop on and off, metronome |
 | `gC` | count a bar in before recording, or not |
-| `gI` | punch recording on and off (over a selection: punch there) |
+| `gI` | punch recording on and off (over a selection: punch there); `:preroll 2` plays two bars before the punch in |
 | `R` | record armed tracks, or stop recording; with the loop on, every time round is a take |
 
 ## Find

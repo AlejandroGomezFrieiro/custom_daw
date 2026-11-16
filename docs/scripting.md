@@ -54,7 +54,13 @@ daw.transport.record()             -- record armed tracks; see Input and recordi
 daw.transport.punch_start, daw.transport.punch_end = 16, 32   -- record only there
 daw.transport.punch_enabled = true
 daw.opt.count_in = 1               -- a bar counted before a take; transport.counting is what is left
+daw.opt.pre_roll = 2               -- play two bars (and daw.opt.pre_roll_seconds more) before a punch in
 ```
+
+**The tempo lane.** `daw.tempolane` is the row under the ruler that draws the
+tempo map: `show(on)`, `toggle()`, `shown()`, `range()` (the tempo at its bottom
+and top), and the edits a gesture makes, all through `daw.tempo`: `add(beat,
+bpm)`, `move(beat, to, bpm)`, `remove(beat)`, `ramp(beat)` and `draw(points)`.
 
 **Automation.** `daw.lanes` shows lanes as rows of the arrange view:
 `daw.lanes.open(track)`, `toggle`, `is_open`, `lines()` (also

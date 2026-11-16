@@ -91,6 +91,51 @@ command("countin", function(ctx)
   daw.notify(bars > 0 and string.format("count-in: %d bar%s before a take", bars, bars == 1 and "" or "s") or "count-in off")
 end, { desc = "Count bars in before recording from a stop: `countin 1`, `countin off`, or toggle" })
 
+-- The pre-roll is two options (`daw.opt.pre_roll` bars and
+-- `daw.opt.pre_roll_seconds`) that the kernel is told of: a take punched in
+-- from a stop starts playing that long before the punch in.
+local function pre_roll_values()
+  return util.clamp(math.floor(tonumber(daw.opt.pre_roll) or 0), 0, 16),
+    util.clamp(tonumber(daw.opt.pre_roll_seconds) or 0, 0, 30)
+end
+local function send_pre_roll()
+  local bars, seconds = pre_roll_values()
+  api.transport_set("pre_roll", bars)
+  api.transport_set("pre_roll_seconds", seconds)
+end
+send_pre_roll()
+daw.on("option.changed", function(e)
+  if e.name == "pre_roll" or e.name == "pre_roll_seconds" then send_pre_roll() end
+end)
+local last_pre_roll = 2
+command("preroll", function(ctx)
+  local word = ctx.args[1]
+  local bars, seconds = 0, 0
+  if word == "off" or word == "0" then
+    bars = 0
+  elseif word == nil then
+    local now_bars, now_seconds = pre_roll_values()
+    bars = (now_bars > 0 or now_seconds > 0) and 0 or last_pre_roll
+  elseif tostring(word):match("^%d+%.?%d*s$") then
+    seconds = tonumber(word:sub(1, -2))
+  elseif tonumber(word) then
+    bars = tonumber(word)
+  else
+    return daw.notify("preroll: a number of bars, `3s` for seconds, or `off`", "warn")
+  end
+  if bars > 16 or seconds > 30 then return daw.notify("preroll: up to 16 bars or 30 seconds", "warn") end
+  bars = math.floor(bars)
+  if bars > 0 then last_pre_roll = bars end
+  daw.opt.pre_roll, daw.opt.pre_roll_seconds = bars, seconds
+  if bars > 0 then
+    daw.notify(string.format("pre-roll: %d bar%s before the punch in", bars, bars == 1 and "" or "s"))
+  elseif seconds > 0 then
+    daw.notify(string.format("pre-roll: %g seconds before the punch in", seconds))
+  else
+    daw.notify("pre-roll off")
+  end
+end, { desc = "Play bars (or `3s` seconds) before the punch in when recording from a stop: `preroll 2`, `preroll 3s`, `preroll off`, or toggle" })
+
 --- Punch in and out: record only between two points while the song plays.
 --- The range is kept with the project, as the loop is.
 local function punch_from_selection()
@@ -128,6 +173,8 @@ command("punch", function(ctx)
 end, { desc = "Record only between two points: toggle, `punch 5 8` (bars), `punch selection` (or the loop)" })
 -- `tempo`, `tempo.ramp`, `tempo.remove`, `tempo.list`, `tempo.tap`, `timesig`.
 daw.tempo.commands(command)
+-- `tempo.lane`, `tempo.move`.
+daw.tempolane.commands(command)
 
 -- Cursor ---------------------------------------------------------------------
 
@@ -1765,6 +1812,7 @@ amap("<leader>aw", "lane.write", "Write automation by moving things while playin
 amap("<leader>am", "automation", "The track's automation mode: read, touch, latch, write, off in turn")
 amap("]t", "take next", "The clip's next take")
 amap("[t", "take prev", "The clip's take before")
+amap("zT", "tempo.lane", "Show or hide the tempo curve under the ruler")
 amap("zt", "take.lanes", "Show the track's takes as lanes under its clips, or hide them")
 amap("]'", "marker.next", "The next marker or region", { motion = true })
 amap("['", "marker.prev", "The marker or region before", { motion = true })

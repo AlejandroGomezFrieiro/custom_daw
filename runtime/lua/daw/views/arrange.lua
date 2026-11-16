@@ -95,7 +95,10 @@ end
 function view:layout(w, h)
   local tracks = daw.groups.rows()
   local hw = view.header_width(w)
-  local ruler_rows = wants_ruler2(self) and 2 or 1
+  -- The ruler, its second row if something asks for one, and the tempo
+  -- lane's two rows when it is shown.
+  local tempo_rows = daw.tempolane.shown() and 2 or 0
+  local ruler_rows = (wants_ruler2(self) and 2 or 1) + tempo_rows
   local master_rows = 2
   local room = math.max(1, h - ruler_rows - master_rows)
   -- Take lanes (a line each) and automation lanes shown as rows (two
@@ -110,7 +113,7 @@ function view:layout(w, h)
   if lane_lines > 0 then
     local rows, y = self:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     return {
-      hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, rows = rows, tracks = tracks,
+      hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
       used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows },
     }
   end
@@ -127,7 +130,7 @@ function view:layout(w, h)
     y = y + th
   end
   return {
-    hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, rows = rows, tracks = tracks,
+    hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
     used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows },
   }
 end
@@ -509,6 +512,33 @@ function view:draw_lane_row(headers, timeline, row, lines)
   timeline:fill(x, y + 1, cw, 1, nil, "CursorTail")
 end
 
+--- The tempo lane: the header says what the tempo is at the cursor, the
+--- timeline draws the map as a curve, a step where a change holds and a slope
+--- where it ramps, a mark on each change. `:tempo.lane` or `zT` hides it.
+function view:draw_tempo_row(headers, timeline, y, lines)
+  local zoom, scroll = self.geometry.zoom, self.scroll
+  local hw, tw = headers.width, timeline.width
+  local beat = daw.cursor.beat
+  headers:fill(0, y, hw, 2, " ", "TrackHeader")
+  headers:text(2, y, util.fit("tempo", math.max(1, hw - 3)), "TrackHeader")
+  headers:text(2, y + 1, util.fit(string.format("%g bpm", daw.tempo.at(beat)), math.max(1, hw - 3)), "TrackInfo")
+  timeline:fill(0, y, tw, 2, " ", "Lane")
+  for _, line in ipairs(lines) do
+    if line.bar then timeline:fill(line.x, y, 1, 2, draw.g.bar, "LaneBar") end
+  end
+  local lo, hi = daw.tempolane.range()
+  local function level(bpm) return util.clamp((bpm - lo) / (hi - lo), 0, 1) end
+  draw.curve(timeline:sub(0, y, tw, 2), 0, 2, function(i)
+    return level(daw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
+  end, "Automation")
+  for _, p in ipairs(daw.tempo.points()) do
+    local x = math.floor((p.beat - scroll) * zoom + 0.5)
+    if x >= 0 and x < tw then timeline:text(x, level(p.bpm) >= 0.5 and y or y + 1, (daw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆")), "Automation") end
+  end
+  local x = math.floor((beat - scroll) * zoom + 0.5)
+  timeline:fill(x, y, math.max(1, math.floor(daw.opt.grid * zoom)), 1, nil, "Cursor")
+end
+
 --- One take lane: take `row.take` of every clip of the track that has that
 --- many, over the clip's own stretch of time, lit where it is the one that
 --- plays and faint where it is not, with its name. To look at: comping here
@@ -650,10 +680,11 @@ function view:render(buf, ctx)
     mark_end = x + ruler:text(x, 0, (mark.kind == "tempo" and "▾" or "‖") .. mark.text, "RulerTempo") + 1
   end
   local ruler2
-  if L.ruler_rows > 1 then
+  if L.ruler_rows - L.tempo_rows > 1 then
     ruler2 = buf:sub(hw, 1, tw, 1)
     ruler2:fill(0, 0, tw, 1, " ", "Ruler")
   end
+  if L.tempo_rows > 0 then self:draw_tempo_row(headers, lanes, L.ruler_rows - L.tempo_rows, lines) end
 
   -- Tracks.
   local cursor_clip = cursor.clip()
