@@ -37,7 +37,7 @@ local function start()
   daw.keymap.feed("<Esc><Esc>")
   while daw.ui.float do daw.ui.close() end
   require("daw.menu").close(0)
-  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do daw.ui.hide(name) end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do daw.ui.hide(name) end
   daw.ui.focus("arrange")
   arrange.scroll, arrange.top = 0, 1
   daw.opt.mouse, daw.opt.zoom, daw.opt.grid, daw.opt.track_height = true, 4, 1, 3
@@ -693,6 +693,71 @@ test("a parameter's slider in the device panel follows the pointer, a double cli
   click(rect.x + bar_at, ly)
   click(rect.x + bar_at, ly)
   near(api.device_get(d.id).params[p.key], p.default, 1e-6, "a double click: back to the default")
+end)
+
+test("in the piano roll a note of another clip edited with the active one is chosen and dragged in its own clip", function()
+  start()
+  local t = daw.add_track({ name = "keys" })
+  local first = t:add_clip({ name = "a", start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
+  local second = t:add_clip({ name = "b", start = 4, length = 4, notes = { { pitch = 62, start = 1, length = 1 } } })
+  roll:edit(first)
+  daw.roll_clips.open({ first.id, second.id }, first.id)
+  roll.top, roll.scroll = 72, 0
+  shot()
+  local rect
+  for _, r in ipairs(daw.ui.rects) do if r.name == "pianoroll" then rect = r end end
+  local g = roll.geometry
+  local function at(pitch, beat) return rect.x + g.keys + math.floor(beat * g.zoom + 0.5), rect.y + g.head + (roll.top - pitch) end
+  local x, y = at(62, 5.5)
+  click(x, y)
+  eq(daw.frontend.chosen_notes(second.id)[1], 1, "the second clip's note is chosen")
+  apart()
+  drag(x, y, x + 8, y)
+  eq(notes_of(second), "62@2+1", "and moved a beat on in its own clip")
+  eq(notes_of(first), "60@0+1", "the active clip's notes as they were")
+end)
+
+test("the session view: a click chooses a slot, its play mark launches it, a double click makes a clip, a drag moves one", function()
+  start()
+  local launcher = daw.launcher
+  local t = daw.add_track({ name = "Keys" })
+  t:add_device("synth")
+  launcher.new_clip(t.id, 0)
+  daw.ui.show("session")
+  shot()
+  local rect
+  for _, r in ipairs(daw.ui.rects) do if r.name == "session" then rect = r end end
+  local view = daw.ui.views.session
+  local col = view.geometry.columns[1]
+  local function slot(row) return rect.x + col.x, rect.y + 1 + (row - view.top) + 1 end
+  local x, y = slot(1)
+  click(x + 4, y)
+  eq(launcher.row .. " " .. daw.ui.focused, "1 session", "a click chooses the slot")
+  apart()
+  x, y = slot(2)
+  click(x + 4, y)
+  click(x + 4, y)
+  eq(launcher.clip(t.id, 2) ~= nil, true, "a double click on an empty slot makes a clip there")
+  eq(daw.ui.focused, "pianoroll", "and opens it")
+  daw.ui.hide("pianoroll")
+  shot()
+  apart()
+  x, y = slot(0)
+  click(x, y)
+  local deadline = api.now() + 5000
+  local function launched()
+    local s = launcher.state()[t.id] or {}
+    return s.slot == 0 or s.queued == 0
+  end
+  while not launched() and api.now() < deadline do daw.wait(5) end
+  eq(launched(), true, "the play mark launches the clip")
+  launcher.stop(nil)
+  daw.transport.stop()
+  apart()
+  local _, y3 = slot(3)
+  drag(x + 4, y, x + 4, y3)
+  eq(launcher.clip(t.id, 3) ~= nil and launcher.clip(t.id, 0) == nil, true, "a drag moves the clip to another slot")
+  daw.ui.hide("session")
 end)
 
 -- What floats over the views ------------------------------------------------------------------------
