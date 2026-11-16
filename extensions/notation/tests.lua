@@ -1037,6 +1037,7 @@ test("notation window: the toolbar chooses the value, the accidental and rests",
   x, y = spot(view, 2, 38)
   pointer("down", x, y)
   eq(notes_of(clip), "E4@0+2", "a rest clears it")
+  view.gui.rest, view.gui.accidental = false, nil
 end)
 
 test("notation window: the toolbar's buttons are one height, labels centred, and wrap instead of overlapping", function()
@@ -1175,6 +1176,298 @@ test("notation insert: an interval above, a tie, triplets and the last chord aga
   keys("i4tcde<Esc>")
   local _ = view2
   eq(notes_of(clip2), "C4@0+0.333333 D4@0.333333+0.333333 E4@0.666667+0.333333", "t: eighth triplets")
+end)
+
+-- The pointer's place in time ----------------------------------------------------------------
+
+test("notation pointer: a click lands on the chosen value within the beat", function()
+  local _, model = load()
+  local four, six = model.meter(4, 4), model.meter(6, 8)
+  eq(model.snap(four, 1.2, 0.5), 1, "an eighth: to the eighth before")
+  eq(model.snap(four, 1.3, 0.5), 1.5, "or after")
+  eq(model.snap(four, 1.4, 1 / 3), 4 / 3, "a triplet eighth: to a third of the beat")
+  eq(model.snap(four, 2.6, 2), 3, "a half: to a beat, not only to the bar's halves")
+  eq(model.snap(four, 3.95, 1), 3, "never past the last place in the bar")
+  eq(model.snap(four, 3.95, 0.25), 3.75, "nor for a sixteenth")
+  eq(model.snap(six, 0.7, 0.5), 0.5, "6/8: eighths in the dotted quarter's beat")
+  eq(model.snap(six, 1.3, 1), 1.5, "a quarter in 6/8 counts from each dotted quarter")
+end)
+
+test("notation pointer: in the terminal a click and an insert-mode click snap to the value, so typing after stays on the beat", function()
+  local notes = {}
+  for i = 0, 7 do notes[#notes + 1] = N(60, i * 0.25, 0.25) end
+  local view, clip = terminal_song(notes)
+  local x, y = cell(view, 2.75, 39)
+  m("down", x, y) m("up", x, y)
+  eq(view.beat, 3, "a quarter chosen: a click off the beat puts the cursor on the beat")
+  keys("ig")
+  eq(notes_of(clip):match("G4@3%+1") ~= nil, true, "a G typed there is a quarter on beat four, not tied eighths")
+  keys("<Esc>")
+  shot()
+  daw.mouse.forget()
+  view.value = 0.5
+  keys("i")
+  local x2, y2 = cell(view, 2.4, 37)
+  m("down", x2, y2) m("up", x2, y2)
+  eq(notes_of(clip):match("E4@2%.5%+0%.5") ~= nil, true, "in insert mode a click enters an eighth on an eighth")
+  keys("<Esc>")
+end)
+
+test("notation pointer: in the window a click snaps to the value, Alt-click to the grid", function()
+  local view, clip = song(nil, 4)
+  daw.ui.focus("notation")
+  view.value = 0.5
+  paint(view)
+  local x, y = spot(view, 1.2, 39)
+  pointer("down", x, y)
+  pointer("up", x, y)
+  eq(view.beat, 1, "an eighth chosen: the cursor on the eighth before")
+  x, y = spot(view, 1.3, 39)
+  pointer("down", x, y)
+  pointer("up", x, y)
+  eq(view.beat, 1.5, "or after")
+  pointer("down", x, y, { alt = true })
+  pointer("up", x, y, { alt = true })
+  eq(view.beat, 1.25, "Alt-click: on the sixteenths' grid")
+  keys("i")
+  x, y = spot(view, 2.2, 39)
+  pointer("down", x, y)
+  pointer("up", x, y)
+  eq(notes_of(clip), "G4@2+0.5", "in insert mode a click enters an eighth on beat three")
+  view.triplets = true
+  x, y = spot(view, 0.4, 39)
+  pointer("down", x, y)
+  pointer("up", x, y)
+  eq(notes_of(clip):match("G4@0%.333333%+0%.333333") ~= nil, true, "in triplets, on a third of the beat")
+  view.triplets = false
+  keys("<Esc>")
+end)
+
+-- Engraving detail (Gould, Behind Bars) --------------------------------------------------------
+
+--- A song painted in the window: the view, the engraving, and each
+--- measure's ink with its note heads (from the measure's left edge and the
+--- system's top).
+local function engraved(notes, length, width)
+  local view = song(notes, length)
+  daw.ui.focus("notation")
+  daw.canvas.paint("notation", width or 1100, 560)
+  local eng = view.gui.engraved
+  local engrave = require("notation.engrave")
+  local measures = {}
+  for _, sys in ipairs(eng.systems) do
+    for _, placed in ipairs(sys.measures) do
+      measures[#measures + 1] = { ink = engrave.measure(view.gui.measures, eng.style, view:layout(), sys, placed), sys = sys, placed = placed }
+    end
+  end
+  return view, eng, measures
+end
+
+--- A glyph op's box, from the font's bounding box: x0, y0, x1, y1, and
+--- the glyph's name.
+local glyph_names
+local function glyph_box(st, op)
+  local font = require("notation.smufl").font()
+  if not glyph_names then
+    glyph_names = {}
+    for name, cp in pairs(api.smufl(font.name).glyphs) do glyph_names[cp] = name end
+  end
+  local name = glyph_names[op[5]]
+  local bb = name and font.glyphs[name].bbox
+  if not bb then return end
+  local k = st.sp * op[4] / (4 * st.sp)
+  return op[2] + bb[1] * k, op[3] - bb[4] * k, op[2] + bb[3] * k, op[3] - bb[2] * k, name
+end
+
+local function overlap(a, b)
+  -- Boxes that only touch do not overlap.
+  return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5
+end
+
+test("notation page: accidentals, courtesy ones too, never touch a stem or a head", function()
+  -- Sixteenths up and down the staff with sharps, then a bar that reminds
+  -- of the naturals in parentheses, and a chord with a second.
+  local p = { 60, 61, 62, 63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 77, 78, 79, 72, 60, 74, 61, 62, 73, 72, 75 }
+  local notes = {}
+  for i, pitch in ipairs(p) do notes[i] = N(pitch, (i - 1) * 0.25, 0.25) end
+  for _, pitch in ipairs({ 65, 67, 68, 72 }) do notes[#notes + 1] = N(pitch, 7, 1) end
+  local _, eng, measures = engraved(notes, 8)
+  local st = eng.style
+  local signs, courtesy = 0, 0
+  for _, mi in ipairs(measures) do
+    local obstacles, accs = {}, {}
+    for _, op in ipairs(mi.ink.ops) do
+      if op[1] == "r" and op[4] == st.stem and op[5] > st.sp then
+        obstacles[#obstacles + 1] = { op[2], op[3], op[2] + op[4], op[3] + op[5] }
+      elseif op[1] == "g" then
+        local x0, y0, x1, y1, name = glyph_box(st, op)
+        if name and name:match("^notehead") then obstacles[#obstacles + 1] = { x0, y0, x1, y1 } end
+        if name and name:match("^accidental") then
+          accs[#accs + 1] = { x0, y0, x1, y1, name = name }
+          if name:match("Parens") then courtesy = courtesy + 1 end
+        end
+      end
+    end
+    for _, a in ipairs(accs) do
+      signs = signs + 1
+      for _, o in ipairs(obstacles) do
+        if overlap(a, o) then
+          error(string.format("%s at %.0f,%.0f touches what is at %.0f,%.0f to %.0f,%.0f", a.name, a[1], a[2], o[1], o[2], o[3], o[4]))
+        end
+      end
+    end
+  end
+  eq(signs > 12, true, "many accidentals checked")
+  eq(courtesy >= 2, true, "courtesy ones among them, in parentheses")
+end)
+
+test("notation page: a beamed tuplet has its number on the beam's side; an unbeamed one a bracket from its first note to its last", function()
+  local t = 1 / 3
+  local _, eng, measures = engraved({
+    N(77, 0, t), N(79, t, t), N(81, 2 * t, t),   -- eighths high up: stems and beam below
+    N(60, 1, t), N(62, 1 + t, t), N(64, 1 + 2 * t, t),   -- low: stems and beam above
+    N(67, 2, 2 * t), N(69, 2 + 2 * t, 2 * t), N(71, 2 + 4 * t, 2 * t),   -- quarters: no beam
+  }, 4)
+  local st = eng.style
+  local mi = measures[1].ink
+  local numbers, brackets = {}, {}
+  for _, op in ipairs(mi.ops) do
+    if op[1] == "g" then
+      local _, y0, _, y1, name = glyph_box(st, op)
+      if name == "tuplet3" then numbers[#numbers + 1] = { x = op[2], y0 = y0, y1 = y1 } end
+    elseif op[1] == "r" and op[6] == st.faint then
+      brackets[#brackets + 1] = op
+    end
+  end
+  eq(#numbers, 3, "three numbers")
+  table.sort(numbers, function(a, b) return a.x < b.x end)
+  local heads = mi.heads
+  table.sort(heads, function(a, b) return a.start < b.start end)
+  local function ys(from, to)
+    local lo, hi = math.huge, -math.huge
+    for i = from, to do lo, hi = math.min(lo, heads[i].y), math.max(hi, heads[i].y) end
+    return lo, hi
+  end
+  local _, low1 = ys(1, 3)
+  eq(numbers[1].y0 > low1 + 3 * st.sp, true, "stems down: the number under the beam, past it")
+  local high2 = ys(4, 6)
+  eq(numbers[2].y1 < high2 - 3 * st.sp, true, "stems up: the number over the beam")
+  local x0, x1 = math.huge, -math.huge
+  for _, r in ipairs(brackets) do x0, x1 = math.min(x0, r[2]), math.max(x1, r[2] + r[4]) end
+  eq(#brackets, 4, "one bracket: two hooks and a line in two halves around its number")
+  eq(x0 <= heads[7].gx + 0.5 and x1 >= heads[9].gx + 2 * (heads[9].x - heads[9].gx) - 1, true,
+    "the bracket from the first head's left edge to the last head's right edge")
+  eq(numbers[3].x > x0 and numbers[3].x < x1, true, "with its number inside it")
+end)
+
+--- The tie paths of some ink: each its ends and how high its outer curve's
+--- control points stand over them, as parts of a staff space, and how far in
+--- they are from the ends, as a part of its length.
+local function ties(ops, sp)
+  local out = {}
+  for _, op in ipairs(ops) do
+    local c = op[1] == "P" and op[2]
+    if c and c[4] == "C" then
+      local x0, y0, ax, ay, x1 = c[2], c[3], c[5], c[6], c[9]
+      out[#out + 1] = { x0 = x0, x1 = x1, y = y0, rise = math.abs(ay - y0) * 0.75 / sp, inset = (ax - x0) / (x1 - x0) }
+    end
+  end
+  return out
+end
+
+test("notation page: ties are flat and close to the heads, in a bar, over a barline and over a system break", function()
+  local notes = {}
+  -- Halves tied over every barline, for eight bars: they break onto systems.
+  for k = 0, 6 do notes[#notes + 1] = N(72, 2 + 4 * k, 4) end
+  -- A half on beat two: two quarters tied inside the bar.
+  notes[#notes + 1] = N(76, 33, 2)
+  local _, eng, measures = engraved(notes, 36, 700)
+  local engrave = require("notation.engrave")
+  local st = eng.style
+  eq(#eng.systems >= 2, true, "more than one system")
+  local all = {}
+  for _, mi in ipairs(measures) do
+    for _, t in ipairs(ties(mi.ink.ops, st.sp)) do all[#all + 1] = t end
+  end
+  local inside = #all
+  for _, sys in ipairs(eng.systems) do
+    for _, t in ipairs(ties(sys.spans, st.sp)) do all[#all + 1] = t end
+  end
+  eq(inside >= 1, true, "ties inside bars")
+  eq(#all - inside >= 7, true, "ties over barlines and system breaks")
+  for _, t in ipairs(all) do
+    eq(t.rise <= engrave.TIE_HEIGHT + st.tie_mid / st.sp / 2 + 0.01, true, string.format("a tie rises no more than %.1f of a space (%.2f)", engrave.TIE_HEIGHT, t.rise))
+    eq(t.inset <= 0.15, true, "flat: its curve turns near its ends")
+  end
+  -- Each tie in a bar starts at a head of its own, no more than a space from its middle.
+  for _, mi in ipairs(measures) do
+    for _, t in ipairs(ties(mi.ink.ops, st.sp)) do
+      local near = false
+      for _, h in ipairs(mi.ink.heads) do
+        if math.abs(h.y - t.y) <= st.sp and t.x0 >= h.gx - st.sp and t.x0 <= h.gx + 2 * st.sp then near = true end
+      end
+      eq(near, true, "a tie starts at its head")
+    end
+  end
+end)
+
+test("notation page: secondary beams stand the font's beam spacing from the primary", function()
+  local _, eng, measures = engraved({ N(72, 0, 0.25), N(72, 0.25, 0.25), N(72, 0.5, 0.5), N(60, 1, 0.25), N(60, 1.25, 0.25), N(60, 1.5, 0.5) }, 4)
+  local st = eng.style
+  local d = require("notation.smufl").font().defaults
+  eq(st.beam_gap, math.max(1, math.floor(d.beamSpacing * st.sp + 0.5)), "the gap is the font's beamSpacing, in whole pixels")
+  -- Each beam is drawn note to note; flat ones share their top.
+  local tops, seen = {}, {}
+  for _, op in ipairs(measures[1].ink.ops) do
+    local c = op[1] == "P" and op[2]
+    if c and c[4] == "L" and #c == 13 and not seen[c[3]] then
+      seen[c[3]] = true
+      tops[#tops + 1] = c[3]
+    end
+  end
+  table.sort(tops)
+  eq(#tops, 4, "two groups, each a primary and a secondary beam, at four heights")
+  for i = 1, 3, 2 do
+    eq(tops[i], math.floor(tops[i]), "a flat beam on whole pixels")
+    eq(tops[i + 1] - (tops[i] + st.beam), st.beam_gap, "the two beams the gap apart")
+  end
+end)
+
+test("notation page: the last system never holds a bar alone when the one before can spare one", function()
+  local notes = {}
+  for i = 0, 55 do notes[#notes + 1] = N(60 + (i * 5) % 14, i * 0.5, 0.5) end
+  local view = song(notes, 28)
+  local engrave = require("notation.engrave")
+  daw.ui.focus("notation")
+  daw.canvas.paint("notation", 1100, 560)
+  local layout, st = view:layout(), view.gui.engraved.style
+  local seen = 0
+  for width = 300, 4000, 25 do
+    local systems = engrave.systems(layout, st, { width = width }).systems
+    local last, before = systems[#systems], systems[#systems - 1]
+    if before and #last.measures == 1 then
+      eq(#before.measures <= 2, true, "a bar alone at " .. width .. " px only when the system before has none to spare")
+    end
+    if before and #last.measures == 2 and #before.measures >= 2 then seen = seen + 1 end
+  end
+  eq(seen > 0, true, "and widths where a bar was taken over")
+end)
+
+test("notation page: with two voices a rest keeps clear of the other voice's notes", function()
+  local v2 = { notation = { voice = 2 } }
+  local view = song({
+    { pitch = 64, start = 0, length = 1 }, { pitch = 69, start = 1, length = 1, meta = v2 },   -- a low E4 over the lower voice's rest
+    { pitch = 71, start = 2, length = 1, meta = v2 }, { pitch = 77, start = 3, length = 1 },    -- a B4 under the upper voice's rest
+  }, 4)
+  local rests = {}
+  for _, ev in ipairs(view:layout().measures[1].staves[1]) do
+    if ev.kind == "rest" then rests[ev.voice .. "@" .. ev.start] = ev end
+  end
+  local low, high = rests["2@0"], rests["1@2"]
+  eq(low ~= nil and high ~= nil, true, "a rest in each voice")
+  -- A rest reaches about three positions from its middle (4 + shift); a head one.
+  eq(4 + low.shift + 3 <= 0 - 1, true, "the lower voice's rest under the E4 (the bottom line)")
+  eq(4 + high.shift - 3 >= 4 + 1, true, "the upper voice's rest over the B4")
 end)
 
 -- Export -------------------------------------------------------------------------------------
