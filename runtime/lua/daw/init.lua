@@ -116,10 +116,12 @@ daw.edit = require("daw.edit")
 daw.ext = require("daw.ext")
 daw.groups = require("daw.groups")
 daw.lanes = require("daw.lanes")
+daw.tempolane = require("daw.tempolane")
 daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
+daw.controls = require("daw.controls")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
 daw.launcher = require("daw.launcher")
@@ -140,7 +142,7 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
-  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "help", "effect_windows", "session" }) do
+  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
     require("daw.views." .. name)
   end
   require("daw.defaults")
@@ -157,8 +159,10 @@ function K.startup()
   daw.reconnect = require("daw.reconnect")
   daw.ui.start_ticker()
 
+  daw.luadev = require("daw.luadev")
   local env = api.env()
   if not env.clean then
+    daw.luadev.add_dir(env.config_dir .. "/devices", daw.luadev.RANK_CONFIG)
     daw.ext.load_dir(env.config_dir .. "/extensions")
     local init = env.config_dir .. "/init.lua"
     local file = io.open(init, "r")

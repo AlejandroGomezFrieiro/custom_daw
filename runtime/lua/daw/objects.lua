@@ -471,6 +471,7 @@ function Clip:snapshot()
     -- How it plays: an audio clip's timebase, stretch and shift; looping.
     timebase = c.timebase, stretch = c.stretch, pitch = c.pitch, stretch_mode = c.stretch_mode,
     source_tempo = c.source_tempo, loop = c.loop or nil, loop_length = c.loop_length, loop_start = c.loop_start,
+    warp = daw.stretch.markers(c), formants = c.formants or nil,
     -- What extensions keep with the clip goes where the clip goes.
     meta = next(c.meta) and c.meta or nil,
     -- A clip in a slot: its row, and how it launches.

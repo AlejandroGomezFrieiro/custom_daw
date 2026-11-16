@@ -261,6 +261,7 @@ local function finish_recording()
   local stopped_at = daw.transport.position
   -- Ending the take puts it on the timeline, as any take.
   daw.transport.recording = false
+  if r.punch then api.transport_set("punch_enabled", true) end
   local made
   for _, c in ipairs(api.clip_list(r.track)) do
     if not r.before[c.id] then
@@ -293,13 +294,17 @@ function M.record(track, row, bars)
   if not api.track_get(track).armed then api.track_set(track, "armed", true) end
   local before = {}
   for _, c in ipairs(api.clip_list(track)) do before[c.id] = true end
+  -- The slot's bars are the take: punching (and with it the pre-roll) is
+  -- set aside until they are done. A count-in still leads in when stopped.
+  local punch = api.transport_get().punch_enabled
+  if punch then api.transport_set("punch_enabled", false) end
   if daw.transport.playing then
     daw.transport.recording = true
   else
     daw.transport.record()
   end
   local from = M.boundary(daw.transport.position)
-  M.recording = { track = track, row = row, from = from, to = from + (bars or 1) * daw.time.bar(from), before = before }
+  M.recording = { track = track, row = row, from = from, to = from + (bars or 1) * daw.time.bar(from), before = before, punch = punch }
   api.launch({ { track = track, stop = true } })
   rec_timer = daw.every(10, function()
     local r = M.recording

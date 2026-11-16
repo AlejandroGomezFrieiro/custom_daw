@@ -79,9 +79,11 @@ pub struct TrackRt {
     /// Keys held down through MIDI input, released if the track is disarmed.
     held: u128,
     /// The MIDI output port it sends what it plays to, by its key (0 for
-    /// none), and the channel (1 to 16, or 0 for each message's own).
+    /// none), the channel (1 to 16, or 0 for each message's own), and the
+    /// form it goes in.
     midi_out: u32,
     midi_out_channel: u8,
+    midi_out_form: crate::midi_form::Form,
     /// What it played this block, on its way to the port.
     sent: Vec<Event>,
     /// The track's clips were replaced: stop its notes, and start again those
@@ -119,6 +121,7 @@ impl TrackRt {
             held: 0,
             midi_out: 0,
             midi_out_channel: 0,
+            midi_out_form: crate::midi_form::Form::Auto,
             sent: Vec::with_capacity(1024),
             flush: false,
             chase: false,
@@ -533,11 +536,13 @@ pub enum Msg {
         channel: u8,
     },
     /// The MIDI output port a track sends what it plays to, by its key (0
-    /// for none), on a channel from 1 to 16 or 0 for each message's own.
+    /// for none), on a channel from 1 to 16 or 0 for each message's own,
+    /// in a form for ports that take no MIDI 2.0.
     SetMidiOutput {
         track: Slot,
         port: u32,
         channel: u8,
+        form: crate::midi_form::Form,
     },
     /// Where MIDI output goes: the queue a sender thread reads (see
     /// [`EngineHandle::midi_output`]), or nowhere.
@@ -1427,21 +1432,25 @@ impl Engine {
                 track,
                 port,
                 channel,
+                form,
             } => {
                 let Some(t) = self.track_mut(track) else {
                     return;
                 };
                 let old = std::mem::replace(&mut t.midi_out, port);
+                let old_form = std::mem::replace(&mut t.midi_out_form, form);
                 t.midi_out_channel = channel;
                 t.sent.clear();
-                // The notes it left sounding where it played before end there.
+                // The notes it left sounding where it played before, or in
+                // the form it played in before, end there.
                 if old != 0
-                    && old != port
+                    && (old != port || old_form != form)
                     && let Some(out) = self.midi_out.as_deref_mut()
                 {
                     let _ = out.push(MidiOut {
                         at: 0,
                         port: old,
+                        form: old_form,
                         kind: EventKind::AllNotesOff,
                     });
                 }
@@ -1961,6 +1970,7 @@ impl Engine {
                 let message = MidiOut {
                     at: self.heard_ns + (ev.frame as f64 * ns_per_frame) as u64,
                     port: t.midi_out,
+                    form: t.midi_out_form,
                     kind: crate::midi_out::on_channel(ev.kind, channel),
                 };
                 if out.push(message).is_err() {
@@ -2483,7 +2493,11 @@ fn mix_audio(
         // Source position, in source frames, of the block's first frame.
         let origin = (t0 - rs + region.offset) * src_rate;
         let step = src_rate / sr;
+        // Sound still being made is played as far as it is there.
+        let complete = region.data.complete();
         let frames = region.data.frames();
+        let watched = region.hold.watched(complete);
+        let hold_fade = DECLICK_SECONDS * src_rate;
         let [src_l, src_r] = &region.data.channels;
         // Fades, in frames. An edge cut into the middle of a recording gets
         // a few milliseconds of one even when none was asked for, or it clicks.
@@ -2502,10 +2516,16 @@ fn mix_audio(
             }
             let index = pos as usize;
             if index + 1 >= frames {
+                if !complete {
+                    region.hold.starve();
+                }
                 break;
             }
             let frac = (pos - index as f64) as f32;
             let mut gain = region.gain;
+            if watched {
+                gain *= region.hold.gain(pos, frames, complete, hold_fade, fade_curve);
+            }
             let from_start = at + i as f64;
             if from_start < fade_in {
                 gain *= fade_curve(from_start / fade_in);
@@ -2546,7 +2566,11 @@ pub(crate) fn mix_audio_constant(
         // Source position, in source frames, of the block's first frame.
         let origin = ((start - region.start) * 60.0 / ctx.tempo + region.offset) * src_rate;
         let step = src_rate / sr;
+        // Sound still being made is played as far as it is there.
+        let complete = region.data.complete();
         let frames = region.data.frames();
+        let watched = region.hold.watched(complete);
+        let hold_fade = DECLICK_SECONDS * src_rate;
         let [src_l, src_r] = &region.data.channels;
         let declick = DECLICK_SECONDS * sr;
         let fade_in =
@@ -2562,10 +2586,16 @@ pub(crate) fn mix_audio_constant(
             }
             let index = pos as usize;
             if index + 1 >= frames {
+                if !complete {
+                    region.hold.starve();
+                }
                 break;
             }
             let frac = (pos - index as f64) as f32;
             let mut gain = region.gain;
+            if watched {
+                gain *= region.hold.gain(pos, frames, complete, hold_fade, fade_curve);
+            }
             let from_start = at + i as f64;
             if from_start < fade_in {
                 gain *= fade_curve(from_start / fade_in);

@@ -1,0 +1,246 @@
+-- The tempo lane under the ruler, and the pre-roll before a punch. Loaded by
+-- tests/suite.lua with its helpers.
+local T = ...
+local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
+local daw = require("daw")
+local api = daw.api
+local act = daw.frontend.act
+
+local function with_input(fn)
+  api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 } })
+  local ok, err = xpcall(fn, debug.traceback)
+  api.engine_restart({ backend = "null" })
+  if not ok then error(err, 0) end
+end
+
+--- 120 bpm all through, with the lane shown.
+local function lane()
+  fresh()
+  daw.project.tempo = 120
+  daw.tempolane.show(true)
+end
+
+--- A test that leaves the lane hidden, as the other tests find it.
+local function lane_test(name, fn)
+  test(name, function()
+    local ok, err = xpcall(fn, debug.traceback)
+    daw.tempolane.show(false)
+    if not ok then error(err, 0) end
+  end)
+end
+
+local function shape(points)
+  local out = {}
+  for i, p in ipairs(points or daw.tempo.points()) do
+    out[i] = string.format("%g@%g%s", p.bpm, p.beat, p.ramp and ">" or "")
+  end
+  return table.concat(out, " ")
+end
+
+lane_test("tempo lane: shown or hidden by command, and the window is told what to draw", function()
+  fresh()
+  daw.tempolane.show(false)
+  daw.tempo.set(16, 90)
+  eq(daw.frontend.state(-1).project.tempo_lane, nil, "nothing while it is hidden")
+  daw.cmd("tempo.lane")
+  eq(daw.tempolane.shown(), true, "the command shows it")
+  local shown = daw.frontend.state(-1).project.tempo_lane
+  eq(shape(shown.points), "120@0 90@16", "the whole map")
+  eq(shown.lo <= 75 and shown.hi >= 135 and shown.hi - shown.lo >= 60, true, "over a range with room round the tempos")
+  daw.cmd("tempo.lane", { "off" })
+  eq(daw.tempolane.shown(), false, "and hides it")
+  daw.keymap.feed("zT")
+  eq(daw.tempolane.shown(), true, "zT toggles it")
+  act.tempo_lane(false)
+  eq(daw.tempolane.shown(), false, "so does the window's gesture")
+end)
+
+lane_test("tempo lane: the terminal draws two rows under the ruler, with the curve and a mark per change", function()
+  lane()
+  daw.tempo.set(8, 120, { ramp = true })
+  daw.tempo.set(16, 90)
+  daw.ui.focus("arrange")
+  local text = table.concat(api.ui_snapshot(120, 24), "\n")
+  eq(text:find("tempo", 1, true) ~= nil, true, "the lane is named")
+  eq(text:find("120 bpm", 1, true) ~= nil, true, "with the tempo at the cursor")
+  eq(text:find("◢", 1, true) ~= nil, true, "a ramping change is marked")
+  eq(text:find("◆", 1, true) ~= nil, true, "and a holding one")
+  daw.tempolane.show(false)
+  local _, hidden = table.concat(api.ui_snapshot(120, 24), "\n"):gsub("120 bpm", "")
+  eq(hidden, 1, "hidden, only the status line says it")
+end)
+
+lane_test("tempo lane: a click adds a change that the whole song follows, and undo takes it back", function()
+  lane()
+  api.undo_checkpoint()
+  local lo, hi = daw.tempolane.range()
+  eq(lo .. " " .. hi, "80 160", "a steady 120 is drawn over 80 to 160")
+  act.tempo_point_add(16.2, 0.75)
+  eq(shape(), "120@0 140@16", "a change on the grid at the height clicked")
+  near(daw.tempo.beats_to_seconds(32), 16 * 0.5 + 16 * 60 / 140, 1e-9, "the song's time follows")
+  eq(daw.tempo.at(20), 140, "as does the tempo at a beat")
+  api.undo_checkpoint()
+  daw.undo()
+  eq(shape(), "120@0", "undone in one step")
+  daw.redo()
+  eq(shape(), "120@0 140@16", "and redone")
+end)
+
+lane_test("tempo lane: a change is dragged to a beat and a height, the first one only in height", function()
+  lane()
+  act.tempo_point_add(8, 0.5)
+  act.tempo_point_add(16, 0.5)
+  eq(shape(), "120@0 120@8 120@16", "three changes")
+  act.tempo_point_move(8, 12.4, 1)
+  eq(shape(), "120@0 160@12 120@16", "moved later and up")
+  act.tempo_point_move(12, 16, 0)
+  eq(shape(), "120@0 90@16", "dropped on another, it takes its place")
+  act.tempo_point_move(0, 4, 1)
+  eq(shape(), "150@0 90@16", "the start's change keeps its beat")
+  eq(daw.project.tempo, 150, "and the project's tempo is its tempo")
+end)
+
+lane_test("tempo lane: a change is removed, and made to ramp or hold", function()
+  lane()
+  act.tempo_point_add(8, 1)
+  act.tempo_point_add(16, 0)
+  eq(shape(), "120@0 160@8 90@16", "set up")
+  eq(act.tempo_point_ramp(8), true, "ramps")
+  eq(shape(), "120@0 160@8> 90@16", "to the next change")
+  near(daw.tempo.beats_to_seconds(16), 8 * 0.5 + 8 * 60 / 125, 1e-9, "the ramp averages 125")
+  eq(act.tempo_point_ramp(8), false, "holds again")
+  act.tempo_point_remove(8)
+  eq(shape(), "120@0 90@16", "removed")
+  act.tempo_point_remove(0)
+  eq(shape(), "120@0 90@16", "the first change cannot be")
+end)
+
+lane_test("tempo lane: the pencil draws a curve of ramps over the stretch it crosses", function()
+  lane()
+  act.tempo_point_add(24, 0.5)
+  act.tempo_draw({ { 4, 0.5 }, { 5, 0.6 }, { 6, 0.8 }, { 7, 1 }, { 8, 1 } })
+  local pts = daw.tempo.points()
+  eq(pts[1].beat .. " " .. pts[2].beat .. " " .. pts[#pts - 1].beat .. " " .. pts[#pts].beat, "0 4 8 24", "a change to each step, the rest kept")
+  eq(pts[2].ramp and pts[3].ramp, true, "each slopes to the next")
+  eq(pts[#pts - 1].bpm >= pts[2].bpm, true, "rising as it was drawn")
+  eq(pts[#pts - 1].ramp, false, "the stroke's last change holds, what follows was not drawn")
+  -- Drawn over a stretch, it replaces what was there.
+  act.tempo_draw({ { 2, 0 }, { 10, 0 } })
+  local between = 0
+  for _, p in ipairs(daw.tempo.points()) do
+    if p.beat > 2 and p.beat < 10 then between = between + 1 end
+  end
+  eq(between <= 1, true, "the changes it crossed are replaced by the stroke's")
+end)
+
+lane_test("tempo lane: commands move a change, and they are undone one step at a time", function()
+  lane()
+  api.undo_checkpoint()
+  daw.cmd("tempo", { "96", "at", "5" })
+  api.undo_checkpoint()
+  eq(shape(), "120@0 96@16", "a change at bar 5")
+  daw.cmd("tempo.move", { "9", "5" })
+  eq(shape(), "120@0 96@32", "moved to bar 9")
+  api.undo_checkpoint()
+  daw.undo()
+  eq(shape(), "120@0 96@16", "undone")
+  T.fails(function() daw.cmd("tempo.move", { "9", "1" }) end, "start", "the start's tempo does not move")
+end)
+
+-- Pre-roll ------------------------------------------------------------------------
+
+--- A take punched over bars 3 and 4 (beats 8 to 16) at 120 bpm, on a mic.
+local function punched()
+  fresh()
+  daw.project.tempo = 120
+  daw.project.save(T.scratch .. "/preroll.json")
+  local mic = daw.add_track({ name = "mic" })
+  mic.input, mic.armed = "1", true
+  daw.cmd("punch", { "3", "4" })
+  return mic
+end
+
+test("pre-roll: it is set in bars or seconds and the kernel is told", function()
+  fresh()
+  daw.cmd("preroll", { "2" })
+  eq(daw.opt.pre_roll .. " " .. daw.transport.pre_roll, "2 2", "bars, as an option and in the kernel")
+  daw.cmd("preroll", { "1.5s" })
+  eq(daw.opt.pre_roll .. " " .. daw.opt.pre_roll_seconds .. " " .. daw.transport.pre_roll_seconds, "0 1.5 1.5", "seconds")
+  daw.cmd("preroll")
+  eq(daw.opt.pre_roll_seconds, 0, "alone it turns it off")
+  daw.cmd("preroll")
+  eq(daw.opt.pre_roll, 2, "and on again, to the last bars")
+  eq(daw.frontend.state(-1).project.pre_roll, 2, "the window is told")
+  daw.cmd("preroll", { "off" })
+  eq(daw.transport.pre_roll, 0, "off")
+  daw.opt.pre_roll_seconds = 0
+end)
+
+test("pre-roll: recording with punch on starts playing bars before the punch in, and the take starts at the punch in", function()
+  with_input(function()
+    local mic = punched()
+    daw.cmd("preroll", { "1" })
+    daw.transport.seek(8)
+    daw.transport.record()
+    local at = api.transport_get().position
+    eq(at >= 4 and at < 5, true, "playing from a bar before the punch in: " .. at)
+    api.sleep(3500)
+    eq(daw.transport.position > 8, true, "past the punch in")
+    daw.transport.stop()
+    daw.flush()
+    local clips = mic:clips()
+    eq(#clips, 1, "one take")
+    local c = clips[1]:get()
+    eq(c.start, 8, "starting exactly at the punch in")
+    eq(c.offset, 0, "from the start of its file")
+    eq(c.length > 0.5 and c.length < 4, true, "holding what was played after it")
+    -- From between the pre-roll's start and the punch in: back to its start.
+    clips[1]:remove()
+    daw.transport.seek(6)
+    daw.transport.record()
+    at = api.transport_get().position
+    eq(at >= 4 and at < 5, true, "from a playhead inside the pre-roll, back to its start: " .. at)
+    daw.transport.stop()
+    -- From further back than the pre-roll, the playhead stays.
+    daw.transport.seek(1)
+    daw.transport.record()
+    at = api.transport_get().position
+    eq(at >= 1 and at < 2, true, "from earlier than that, where it was: " .. at)
+    daw.transport.stop()
+    -- Inside the range, or with punch off, there is none.
+    daw.transport.seek(10)
+    daw.transport.record()
+    at = api.transport_get().position
+    eq(at >= 10 and at < 11, true, "from inside the range, none: " .. at)
+    daw.transport.stop()
+    daw.transport.punch_enabled = false
+    daw.transport.seek(8)
+    daw.transport.record()
+    at = api.transport_get().position
+    eq(at >= 8 and at < 9, true, "without punch, none: " .. at)
+    daw.transport.stop()
+    daw.cmd("preroll", { "off" })
+  end)
+end)
+
+test("pre-roll: seconds count back from the bars, and a count-in comes first", function()
+  with_input(function()
+    punched()
+    daw.opt.pre_roll, daw.opt.pre_roll_seconds = 1, 1
+    daw.transport.seek(8)
+    daw.transport.record()
+    local at = api.transport_get().position
+    -- A bar is 2 s at 120 bpm: 4, and a second (2 beats) before that.
+    eq(at >= 2 and at < 3, true, "a bar and a second before: " .. at)
+    daw.transport.stop()
+    daw.opt.pre_roll_seconds = 0
+    daw.opt.count_in = 1
+    daw.transport.seek(8)
+    daw.transport.record()
+    local t = api.transport_get()
+    eq(t.counting, 4, "the count comes first")
+    eq(t.position, 4, "and the playhead waits at the pre-roll's start")
+    daw.transport.stop()
+    daw.opt.count_in, daw.opt.pre_roll = 0, 0
+  end)
+end)

@@ -16,6 +16,7 @@ pub mod guard;
 pub mod host;
 pub mod launch;
 pub mod midi;
+pub mod midi_form;
 pub mod midi_out;
 pub mod pool;
 pub mod record;

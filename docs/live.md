@@ -91,7 +91,10 @@ recording, through the track's input; when the bars are done, the part of
 it between the two boundaries becomes the slot's clip, the take leaves the
 timeline, and the clip plays on at once, in step, as if it had been
 playing since the bar the recording began on. `R` again, or stopping the
-song, ends it early and keeps what was recorded.
+song, ends it early and keeps what was recorded. Punch recording, and with
+it the pre-roll, is set aside while a slot records; a count-in still leads
+in when the song was stopped. Launching while stopped plays at once, with
+neither.
 
 ## Commands
 
