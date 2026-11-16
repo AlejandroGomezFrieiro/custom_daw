@@ -78,9 +78,10 @@ local function build()
     -- A docked panel's title bar (`daw.ui.titlebar`).
     TitleBar = { fg = c.dim, bg = alt },
     TitleBarName = { fg = c.dim, bg = alt, bold = true },
-    TitleBarNameFocus = { fg = c.bright, bg = alt, bold = true },
+    TitleBarFocus = { fg = c.bg, bg = c.accent },
+    TitleBarNameFocus = { fg = c.bg, bg = c.accent, bold = true },
     TitleBarMark = { fg = c.line_hi, bg = alt },
-    TitleBarMarkFocus = { fg = c.accent, bg = alt },
+    TitleBarMarkFocus = { fg = c.bg, bg = c.accent, bold = true },
     TitleBarFaint = { fg = c.faint, bg = alt },
     FloatFooter = { fg = c.dim, bg = c.bg },
 

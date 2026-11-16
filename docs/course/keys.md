@@ -120,6 +120,8 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `@a` `@@` `@:` | play them, the last macro again, the last command line |
 | `ma` `'a` `''` | set mark a, go to it, back to before the jump |
 | `<C-o>` `<C-i>` | back, forward through jumps |
+| `g;` `g,` | back, forward through the places the project was edited |
+| `` `. `` `'.` | the place of the last edit |
 
 ## Play
 

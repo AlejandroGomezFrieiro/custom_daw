@@ -7,6 +7,7 @@ local view = require("undotree.view")
 daw.option.define("undotree_ab_key", "\\")   -- the one key that switches between A and B; "" for none
 
 local command, map = daw.command, daw.keymap.set
+daw.keymap.group("<leader>u", "undo tree")
 
 command("undotree", function()
   if daw.ui.float and daw.ui.float.name == "undotree" then return daw.ui.close() end

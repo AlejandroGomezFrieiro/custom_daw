@@ -41,6 +41,7 @@ command("tutor.try", function(ctx)
   if entry.ok then daw.notify(name .. " loaded for this session. To have it always, link " .. path .. " into ~/.config/daw/extensions") end
 end, { desc = "Load one of the extensions bundled with the DAW, for this session: `tutor.try sections`" })
 
+daw.keymap.group("<leader>h", "tutor")
 map("<leader>hh", "tutor.hint", { desc = "Tutor: a hint" })
 map("<leader>hn", "tutor.next", { desc = "Tutor: skip this step, or go on to the next lesson" })
 map("<leader>hr", "tutor.restart", { desc = "Tutor: start the lesson again" })

@@ -101,6 +101,7 @@ command("templates", function()
   daw.notify(table.concat(lines, "\n"))
 end, { desc = "List the templates" })
 
+daw.keymap.group("<leader>T", "templates", { view = "arrange" })
 daw.keymap.set("<leader>Tl", "template.load", { view = "arrange", desc = "Make a track, group or chain from a template" })
 daw.keymap.set("<leader>Ts", "template.save", { view = "arrange", desc = "Save the track or group as a template" })
 daw.keymap.set("<leader>Tf", "template.fx", { view = "arrange", desc = "Save the track's devices as a chain" })
