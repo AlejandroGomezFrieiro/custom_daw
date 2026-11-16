@@ -73,14 +73,14 @@ from the middle of a gap deletes nothing.]],
       done = "The riff twice, and the clip grew to hold it.",
     },
     {
-      say = "`c` changes: `cin` deletes the note under the cursor and starts insert mode in its place. Press `^` (the first note), `cin`, then `4` and `g`, and `<Esc>`.",
-      keys = { "^", "cin", "4", "g", "<Esc>" },
+      say = "`c` changes: `cin` deletes the note under the cursor and starts insert mode in its place. Press `^` (the first note), `cin`, then `7k` and `4l`, and `<Esc>`.",
+      keys = { "^", "cin", "7k", "4l", "<Esc>" },
       check = function(_, look)
         local m = look.melody(look.clip("Lead"))
         return m:find("^67@0%+1") ~= nil and not m:find("^60@0") and daw.keymap.mode == "n"
       end,
       done = "The riff starts on G now.",
-      hint = "`4` makes the new note a beat long; `g` is G.",
+      hint = "`7k` moves the new note up to G, `4l` makes it a beat long.",
     },
     {
       say = "`/` searches: `/d4` and `<CR>` go to the next D4. Then `dd` deletes every note of that pitch. Press `/d4`, `<CR>`, `dd`.",

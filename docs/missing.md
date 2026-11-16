@@ -104,6 +104,12 @@
   the window does not shade the gaps between the clips edited; a click on a
   note shown behind always makes its clip active, so a note cannot be
   added on top of one by a click (a drag draws it).
+- Insert mode's drawing writes nothing until it ends: notes drawn are not
+  heard when the song plays meanwhile, nor seen by suggestions or language
+  servers, and the window shows them as marks, not as notes to drag. The
+  keyboard as a piano (`I`) still writes as it goes, a step to undo each key.
+  Notes drawn have no length shorter than the grid, and a count before `i`
+  does not draw the insert several times.
 - Suggestions in the arrange view (whole clips) and the drum view: sources
   may say they offer them (`views`), but only the piano roll asks and shows
   them. A suggestion's controller moves are written when accepted but not

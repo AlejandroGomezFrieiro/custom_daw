@@ -183,6 +183,8 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- What insert mode is doing, in words, while it is on.
+      insert = keymap.mode == "i" and daw.roll_draw.status() or nil,
       -- Notes with diagnostics: { index, pitch, start, length, severity, message, actions }.
       marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.

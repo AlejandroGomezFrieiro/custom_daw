@@ -59,15 +59,45 @@ shows them. `.` repeats the last change, with a new count if one is given.
 `qa` records keys into register `a` until the next `q`; `@a` plays them, `@@`
 again, `5@a` five times, `@:` repeats the last command line.
 
-**Insert mode** enters notes from the keyboard. `i` in the arrange view opens
+**Insert mode** draws a note with the cursor. `i` in the arrange view opens
 the clip under the cursor for it, or a new one; in the piano roll `i` starts at
-the cursor and `a` after the note under it. The middle row of the keyboard is
-the white keys from C and the row above it the black ones (`a w s e d f t g y h
-u j k`); each key enters a note and steps on. A capital stays in place, for
-chords. `1` to `9` set how many grid steps a note is long, `Space` is a rest,
-`Backspace` steps back and removes, `z` and `x` change octave, `[` and `]` the
-velocity. The clip grows by a bar when the notes run past its end. `Esc`
-returns to normal mode.
+the cursor, and `a` where the note under it ends (a grid step on, with no note
+there). A note starts at the cursor's pitch, nothing long yet; `l` makes it a
+grid step longer and `h` shorter, `j` and `k` move it a semitone, `J` and `K`
+an octave (the arrows too), and a count goes first: `4l` is a beat at the
+usual grid. The cursor stays at the note's end, so what shows is what will be
+written: the note being drawn is in insert mode's green, the title says
+`DRAW C4  2 steps · 0.5 beats  vel 100`, and so does the start of the key
+line. Then, without leaving insert mode:
+
+| Key | Keeps the note, and |
+| --- | --- |
+| `Enter` | draws the next where it ends, for a line played legato |
+| `Space` | draws the next a step after it ends, a rest between (`3 Space` three steps) |
+| `o` | draws another from the same start and as long, for a chord: then `k` up to its pitch |
+| `Backspace` | takes back the note kept last, to draw it again |
+
+`[` and `]` change the velocity. `Esc` writes what was drawn and returns to
+normal mode; a note of no length is not written, and one drawn over a note
+of the same pitch that starts there replaces it. The clip grows by whole
+bars to hold what runs past its end. Nothing reaches the project until
+insert mode ends, so the whole of it is one undo step, and `.` draws the same
+shape again from the cursor, moved to its pitch, as Vim repeats an insert.
+Where the roll edits several clips, the notes go into the active one (or the
+one the note starts in, outside it), as notes added in normal mode do. With
+a suggestion showing, its keys come first: `Esc` dismisses it and the next
+leaves insert mode.
+
+`I` enters notes the other way, the keyboard as a piano (`:set
+roll_insert=keys` makes `i` and `a` do so too). The middle row of the
+keyboard is the white keys from C and the row above it the black ones (`a w
+s e d f t g y h u j k`); each key enters a note at once and steps on. A
+capital stays in place, for chords. `1` to `9` set how many grid steps a
+note is long, `Space` is a rest, `Backspace` steps back and removes, `z` and
+`x` change octave, `[` and `]` the velocity. The clip grows by a bar when
+the notes run past its end. `Esc` returns to normal mode. (`I` because Vim's
+`gi`, insert where you last stopped, may be wanted for that, `R` records,
+and Vim's `I`, insert at the start of the line, is `0i` here.)
 
 **Suggestions.** With a completion source loaded (`extensions/continue`, a
 language server), the piano roll can suggest what comes next: dashed ghost

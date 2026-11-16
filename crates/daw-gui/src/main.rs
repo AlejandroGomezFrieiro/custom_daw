@@ -1848,13 +1848,10 @@ impl View {
                 }
             }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
+            // What insert mode is doing, as the kernel words it: the note
+            // being drawn, or the keys as a piano.
             let status: SharedString = if modal["mode"] == "i" {
-                format!(
-                    "entering notes · a is C{} · step {} · Esc to stop",
-                    roll["octave"].as_i64().unwrap_or(4),
-                    number(&roll["step"])
-                )
-                .into()
+                text(&roll["insert"])
             } else {
                 SharedString::default()
             };
