@@ -631,6 +631,21 @@ configuration does. `:extensions` lists what loaded, with the error for
 anything that failed. Files in `~/.config/daw/lua/` shadow the built-in modules
 of the same name, so any part of the runtime can be replaced.
 
+**One interface, both frontends.** A view an extension registers with
+`daw.ui.view` and draws in cells is usable from the graphical frontend with
+no code of its own: it is offered under More in the window, opened with
+`:view.window name`, and drawn there as the terminal draws it, with its keys
+and its `on_mouse` (see "Views in windows" under
+[The graphical frontend](#the-graphical-frontend)). A `title` field names it
+in the menu, and `window = false` keeps it off. An extension that wants more
+than cells in the window gives the view a `paint(g, ctx)` and a
+`pointer(e)` as well: the window then paints it in pixels with
+`daw.canvas`, and the terminal goes on drawing its `render`. The vocal
+editor of extensions/utau does this. What an extension shows along the
+timeline in the terminal (a layer of the arrange view) goes into the
+window's ruler as a band (`daw.frontend.bands`, under "Bands under the
+ruler").
+
 **Lua that runs away is stopped.** A key's handler, a command, an event
 handler, a timer or a view's drawing that runs for more than two seconds
 without returning is stopped with an error that names it (`the key gZ (…)
@@ -1060,12 +1075,13 @@ does wherever it is.
 | Templates | with the templates extension: a track's menu saves it (or, on a group, the whole group) and saves its devices as a chain; `Track` → "From a template…" makes one again, and "Add devices from a template…" puts a saved chain on the track |
 | Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
-| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
+| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a window of its own; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
 | File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC, the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
 | Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it |
 | Wheel | scrolls; with Shift sideways; with Ctrl it zooms in time where the pointer is, in the timeline and in the piano roll, and over the track headers makes every track taller or shorter; with Alt it makes the tracks (or the piano roll's rows) taller and shorter |
-| Pages over the window | a picker's rows (commands, files, devices) take the pointer: a click selects a row, a double click or Enter chooses it, the wheel scrolls; a click outside closes the page |
+| Pages over the window | a picker's rows (commands, files, devices) take the pointer: a click selects a row, a double click or Enter chooses it, the wheel scrolls; a click outside closes the page; "Open in a window" at its top right moves the page into a window of its own, in its colours |
+| Bands under the ruler | under the markers, a row for each extension that adds one: the sections of the song, the mix's findings. A click on an entry does what it stands for (goes to the section, to the finding); the status line says what |
 | Zoom | the buttons in the corner of the timeline: `−` and `+` in time (`Ctrl -`, `Ctrl +`), `Fit` for the whole song (`Ctrl 0`), the arrows for the height of the tracks (`Ctrl ↑`, `Ctrl ↓`), from one line a track to tall ones. Waveforms are drawn again at the width they then have |
 | Sound files | `Track` → "From a sound file…", or "Import a sound file…" in the timeline's menu, lists files to choose from (type to narrow, Enter walks into a directory): wav, aiff, flac, mp3 and ogg come in on a track of their own at the cursor. `:import path` does the same, and `daw-gui take.mp3` starts a project with the file |
 
@@ -1090,6 +1106,25 @@ same behaviour by sending the same gestures. The clips chosen with the
 pointer are kept there too (`daw.frontend.chosen_clips()`), and the state
 marks each clip `selected`.
 
+**Views in windows.** Any view of the terminal can be opened in a window of
+its own, as it is: `:view.window undotree` (the focused view, or the page
+floating over the others, without a name), More beside the view switch, or
+"Open in a window" on a floating page. The kernel draws the view by itself
+at the window's size, in cells of the bundled JetBrains Mono (their size is
+measured on the font, so box-drawing characters join), with the theme's
+colours in 24 bits whatever the terminal shows, and sends it as runs of text
+of one style each. Under it a line shows a prompt being answered, a message,
+or the view's keys. Keys typed there go to the view's mappings with the view
+focused, a prompt it opens is answered there, and the pointer reaches its
+`on_mouse` in cells, as from a terminal: down, up, drag, scroll. Closing the
+view (`q`, `daw.ui.close()`) closes the window. It is drawn again only when
+a redraw has been asked for and what it would show has changed, at most 30
+times a second. The font has no braille, so curves in such a window are
+drawn with line characters, as with `daw.opt.braille` off. A terminal
+attached to the same kernel is not disturbed: the view is drawn on a grid of
+its own (`daw.api.ui_view_snapshot(name, width, height)` gives the same as
+rows of runs `{ x, w, text, fg, bg, attrs }`).
+
 **Windows for extensions.** A view that paints can be shown in a window of
 its own, so an extension brings its own editor to the graphical frontend
 without the frontend knowing anything about it:
@@ -1102,6 +1137,7 @@ daw.ui.view("scope", {
     g:text(12, 10, "hello", { color = c.text, size = 14, bold = true })
     g:poly({ 0, 80, 40, 60, 80, 90 }, { color = c.select, width = 2 })
     local part = g:sub(0, 100, ctx.width, 200)   -- drawn from its corner, cut at its edges
+    g:mono(12, 40, "┌─ cells ─┐", { color = c.text, background = c.well })  -- a run of monospace cells
   end,
   pointer = function(self, e) end,               -- e.kind: down, up, move, double, wheel; e.x, e.y, e.button
 })
@@ -1134,6 +1170,24 @@ beat that was clicked; the cursor is put there first. `only` greys a clip's
 entry out on clips that are not `"midi"` or `"audio"`. The timeline's entries
 are also offered by the buttons that make a track, so an extension's kind of
 track (a drum track) is one click away in an empty project.
+
+**Bands under the ruler.** An extension adds a row of its own under the
+ruler's markers with a function in `daw.frontend.bands` that returns the
+band's entries:
+
+```lua
+table.insert(daw.frontend.bands, function()
+  return { { beat = 0, length = 16, name = "Intro", command = "section.goto 1", hint = "click goes there" } }
+end)
+```
+
+An entry with a `length` is drawn over its stretch, one without as a flag;
+`color` (`#rrggbb`) lights it, `command` (a command line) or `run` (a
+function given the entry) is what a click does, and `hint` is what the
+status line says over it. A band with no entries takes no room. The bands
+are asked again when the project, the cursor or the transport changes;
+after a change of its own an extension calls `daw.frontend.refresh()`.
+The sections and the mix's findings are shown this way.
 
 ## Built-in devices
 
@@ -1570,8 +1624,11 @@ port a message came through is not told apart. In scripts:
   Rust of a quality worth shipping, and no C library is linked for them.
 - Attaching the terminal UI to a running instance. It runs in the same process
   as the kernel; the graphical frontend is the one that attaches.
-- In the graphical frontend: what the other bundled extensions draw in the
-  terminal (sections, the undo tree, mix diagnostics); only the vocal editor
-  has a window so far.
+- Painted windows for the undo tree (a tree of nodes to click) and the mix
+  report (meters and a spectrum as shapes): in the graphical frontend they
+  are their terminal views in a window. What an extension draws on the
+  terminal's arrange view shows in the window only as a band it adds too.
+- Braille in windows of views drawn in cells: the bundled font has none, so
+  curves there are drawn with line characters.
 - Devices written in Lua.
 - A Nix package: for now the binary is built with `cargo` inside the dev shell.
