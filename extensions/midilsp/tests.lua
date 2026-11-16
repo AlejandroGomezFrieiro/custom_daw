@@ -179,3 +179,75 @@ test("midilsp: the engine's hover and suggestions come back", function()
   eq(#items[1].notes > 0 and items[1].notes[1].start >= 2, true, "notes from where it was asked, in the clip's beats")
   daw.lsp.stop()
 end)
+
+test("midilsp: in the terminal, a parallel fifth is marked, gone to, explained and fixed", function()
+  local skip = engine_or_skip()
+  if skip then return skip end
+  start()
+  local clip = fifths()
+  local roll = daw.ui.views.pianoroll
+  midilsp.start(true)
+  until_(function() return #daw.diagnostic.get(clip.id, { namespace = "midi-lsp" }) > 0 end, "the engine's diagnostics")
+  until_(function() return #daw.lsp.clients() == 2 and daw.lsp.settle() end, "both roles")
+  roll:set(74, 0)
+  -- The playhead's cap would sit where the mark is.
+  daw.transport.seek(20)
+  local function screen() return table.concat(api.ui_snapshot(120, 40), "\n") end
+  local lines = api.ui_snapshot(120, 40)
+  local text = table.concat(lines, "\n")
+  -- The message after the last note it is about, on D5's row.
+  local row
+  for i, line in ipairs(lines) do
+    if line:find("Parallel fifths between Upper and Lower", 1, true) then row = i end
+  end
+  eq(row ~= nil and lines[row]:find("D5", 1, true) ~= nil, true, "the message on D5's row:\n" .. text)
+  -- A mark on the ruler where it starts, at the clip's first column.
+  local marked = false
+  for _, line in ipairs(lines) do
+    if line:find("^     " .. daw.draw.g.mark) then marked = true end
+  end
+  eq(marked, true, "a mark on the ruler:\n" .. text)
+  eq(text:find("W1", 1, true) ~= nil, true, "the status line counts it")
+  -- ]d goes to its first note, [d comes round to it again.
+  roll:set(60, 3)
+  daw.keymap.feed("]d")
+  eq(roll.pitch .. " " .. roll.beat, "72 0", "]d: the diagnostic's first note")
+  daw.keymap.feed("[d")
+  eq(roll.pitch .. " " .. roll.beat, "72 0", "[d: the only one, round again")
+  -- gK on D5: the diagnostic and what the engine hears there.
+  roll:set(74, 1)
+  daw.keymap.feed("gK")
+  until_(function() return daw.ui.float and daw.ui.float.name == "pager" end, "the hover float")
+  text = screen()
+  eq(text:find("parallel-perfect", 1, true) ~= nil and text:find("chord  G", 1, true) ~= nil, true, "the float:\n" .. text)
+  daw.ui.close()
+  -- :diagnostics lists it.
+  daw.cmd("diagnostics")
+  eq(daw.pick.state().matches[1]:find("Parallel fifths", 1, true) ~= nil, true, ":diagnostics lists it")
+  while daw.ui.float do daw.ui.close() end
+  -- :lsp info shows both roles running.
+  daw.cmd("lsp", { "info" })
+  text = screen()
+  eq(text:find("midi-lsp  running", 1, true) ~= nil and text:find("midi-lsp-suggest  running", 1, true) ~= nil, true, ":lsp info:\n" .. text)
+  daw.ui.close()
+  -- ,ca on D5 offers the engine's fixes; Enter applies the first as one undo step.
+  daw.ui.focus("pianoroll")
+  roll:set(74, 1)
+  api.undo_checkpoint()
+  daw.keymap.feed(",ca")
+  text = screen()
+  eq(text:find("Change D5 to C#5", 1, true) ~= nil, true, "the fixes, in the picker:\n" .. text)
+  daw.keymap.feed("<CR>")
+  api.undo_checkpoint()
+  eq(clip:notes()[2].pitch, 73, "fixed")
+  until_(function() return #daw.diagnostic.get(clip.id, { namespace = "midi-lsp" }) == 0 end, "the mark to go")
+  -- (The message line may still say what ]d went to.)
+  local still = false
+  for _, line in ipairs(api.ui_snapshot(120, 40)) do
+    if line:find("Parallel fifths", 1, true) and not line:find("warning", 1, true) then still = true end
+  end
+  eq(still, false, "and it is gone from the roll")
+  eq(screen():find("W1", 1, true), nil, "and from the status line")
+  daw.undo()
+  eq(clip:notes()[2].pitch, 74, "one undo brings it back")
+end)
