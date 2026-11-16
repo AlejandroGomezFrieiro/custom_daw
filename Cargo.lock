@@ -964,6 +964,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "daw-engine",
+ "daw-proto",
  "flacenc",
  "include_dir",
  "libc",
@@ -993,6 +994,7 @@ name = "daw-gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "daw-proto",
  "libc",
  "serde_json",
  "slint",
@@ -1024,6 +1026,14 @@ dependencies = [
  "serde_json",
  "vst3",
  "x11rb",
+]
+
+[[package]]
+name = "daw-proto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
 ]
 
 [[package]]
