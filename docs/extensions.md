@@ -79,7 +79,14 @@ in the menu, and `window = false` keeps it off. An extension that wants more
 than cells in the window gives the view a `paint(g, ctx)` and a
 `pointer(e)` as well: the window then paints it in pixels with
 `daw.canvas`, and the terminal goes on drawing its `render`. The vocal
-editor of extensions/utau does this. What an extension shows along the
+editor of extensions/utau does this. When the painted view is a second view
+beside the terminal's (as the undo tree's and the mix report's are, in
+`paint.lua` beside `view.lua`), the terminal's view names it with `painted =
+"name"` and the painted one has `window = false`: More then offers the
+painted one under the terminal view's title, and `pointer` also gets
+`hover` events, the pointer moving over the window with no button down, for
+tips. Braille in a cell view, or in `g:mono`, is drawn as dots by the
+window. What an extension shows along the
 timeline in the terminal (a layer of the arrange view) goes into the
 window's ruler as a band (`daw.frontend.bands`, under "Bands under the
 ruler").
