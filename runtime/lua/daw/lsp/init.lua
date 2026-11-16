@@ -463,6 +463,7 @@ run_oneshot = function(client, doc)
       pcall(api.proc_kill, proc)
     end
   end
+  if client.config.accepts and not client.config.accepts(doc) then return end
   local input = client.config.input and client.config.input(doc) or doc.data
   if input == nil then return end
   local path = os.tmpname()
@@ -705,8 +706,9 @@ end
 ---   server       instead: a Lua table of handlers, run in this process
 ---   kind         "oneshot": `cmd` is run once per version of each subject
 ---                (placeholders `{file}`, `{input}`, `{uri}` and the settings),
----                with `timeout_ms`, `input(doc)` (what it is given, the
----                subject by default) and `diagnostic(finding, doc)`
+---                with `timeout_ms`, `accepts(doc)` (whether to run on it),
+---                `input(doc)` (what it is given, the subject by default)
+---                and `diagnostic(finding, doc)` (a location, fixes)
 ---   framing      "lines" (newline-delimited JSON, the default) or "headers" (Content-Length)
 ---   adapter      the dialect, by name or as a table (LSP's own by default)
 ---   attach       { subjects = { "clip", "mix", ... }, where = { focus, tracks = { "Flute*" }, drums } }

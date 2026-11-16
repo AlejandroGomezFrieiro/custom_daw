@@ -277,3 +277,40 @@ test("midilsp: in the terminal, a parallel fifth is marked, gone to, explained a
   daw.undo()
   eq(clip:notes()[2].pitch, 74, "one undo brings it back")
 end)
+
+test("midilsp: the engine's delivery and settings checks look at every render of the demo song", function()
+  local skip = engine_or_skip()
+  if skip then return skip end
+  start()
+  local checks = require("midilsp.checks")
+  eq(checks.base64("evaw" .. string.char(16)), "ZXZhdxA=", "a 16-bit WAV, as REAPER's render format says it")
+  dofile("examples/demo-song.lua")
+  daw.flush()
+  checks.start()
+  local path = T.scratch .. "/demo-master.wav"
+  daw.render(path, { bits = 16, tail = 1 })
+  local uri = daw.address.render(path)
+  local function rules(ns)
+    local out = {}
+    for _, d in ipairs(daw.diagnostic.get(uri, { namespace = ns })) do out[d.rule] = d end
+    return out
+  end
+  until_(function() return next(rules("midilsp-delivery")) and next(rules("midilsp-settings")) end, "both checks", 120000)
+  local delivery = rules("midilsp-delivery")
+  eq(delivery["delivery.integrated"] ~= nil, true, "the delivery check measured the master's loudness")
+  eq(delivery["delivery.integrated"].message:find("LUFS", 1, true) ~= nil, true, delivery["delivery.integrated"].message)
+  local dither = rules("midilsp-settings")["render.no_dither"]
+  eq(dither ~= nil, true, "the settings check: 16 bits without dither")
+  eq(dither.fixes[1].title, "Render it again with dither", "with a fix")
+  -- The terminal lists them under the render.
+  daw.cmd("diagnostics")
+  local text = table.concat(daw.pick.state().matches, "\n")
+  eq(text:find("── Renders", 1, true) ~= nil and text:find("demo-master.wav", 1, true) ~= nil, true, text)
+  while daw.ui.float do daw.ui.close() end
+  -- Rendered again with dither, the settings check has nothing to say about it.
+  daw.diagnostic.apply(dither)
+  until_(function()
+    return daw.address.renders[path].opts.dither == true and next(rules("midilsp-delivery")) and rules("midilsp-settings")["render.no_dither"] == nil
+  end, "the render again, checked", 120000)
+  checks.stop()
+end)

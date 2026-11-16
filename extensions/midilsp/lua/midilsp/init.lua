@@ -179,12 +179,14 @@ function M.start(loud)
   end
   daw.lsp.enable(M.LSP)
   if daw.opt.midilsp_suggest then daw.lsp.enable(M.SUGGEST) end
+  require("midilsp.checks").start()
   return true
 end
 
 function M.stop()
   daw.lsp.enable(M.LSP, false)
   daw.lsp.enable(M.SUGGEST, false)
+  require("midilsp.checks").stop()
 end
 
 --- What `:midilsp` shows.
