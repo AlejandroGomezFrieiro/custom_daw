@@ -480,3 +480,51 @@ test("each seat has a suggestion of its own, and an edit from either makes both 
     if not ok then error(err, 0) end
   end)
 end)
+
+-- With MIDI LSP's engine (skipped without one: $MIDI_LSP_ENGINE) ---------------
+
+T.test("the language server's suggestions show as ghost notes in the terminal's piano roll and are taken with Tab", function()
+  daw.opt.midilsp_autostart = false
+  if not daw.ext.loaded.midilsp then daw.ext.load("extensions/midilsp") end
+  local midilsp = require("midilsp")
+  if not midilsp.engine() then return "no MIDI LSP engine: set $MIDI_LSP_ENGINE to run this" end
+  local ok, err = xpcall(function()
+    T.fresh()
+    daw.keymap.feed("<Esc><Esc>")
+    local upper = daw.add_track({ name = "Upper" }):add_clip({ start = 0, length = 4,
+      notes = { n(72, 0), n(74, 1), n(76, 2), n(77, 3) } })
+    daw.add_track({ name = "Lower" }):add_clip({ start = 0, length = 4, notes = { n(60, 0, 2), n(67, 2, 2) } })
+    roll:edit(upper)
+    roll:set(77, 4)
+    midilsp.start(true)
+    eq(wait_for(function()
+      for _, c in ipairs(daw.lsp.clients()) do
+        if c.name == "midi-lsp-suggest" and c.status == "running" then return daw.lsp.settle() end
+      end
+    end, 30000), true, "the engine's suggestion role is running")
+    eq(complete.sources.lsp ~= nil, true, "daw.lsp is a completion source")
+    daw.opt.complete_deadline_ms = 3000
+    daw.keymap.feed("<C-Space>")
+    eq(wait_for(function() return complete.current() ~= nil end, 30000), true, "the engine answered")
+    local cur = complete.current()
+    eq(cur.item.source, "midi-lsp-suggest", "from the engine")
+    eq(cur.item.notes[1].start >= 4 - 1e-6, true, "starting where it was asked, in the clip's beats")
+    local text = table.concat(api.ui_snapshot(120, 40), "\n")
+    eq(text:find("┄", 1, true) ~= nil, true, "drawn as ghost notes")
+    eq(text:find("midi-lsp-suggest", 1, true) ~= nil, true, "under its badge")
+    api.undo_checkpoint()
+    local before = #upper:notes()
+    T.keys("<Tab>")
+    eq(#upper:notes(), before + #cur.item.notes, "Tab writes them")
+    daw.undo()
+    eq(#upper:notes(), before, "one undo takes them away")
+  end, debug.traceback)
+  daw.opt.complete_deadline_ms = 300
+  complete.dismiss()
+  daw.lsp.stop()
+  daw.diagnostic.reset()
+  daw.keymap.feed("<Esc><Esc>")
+  daw.ui.hide("pianoroll")
+  daw.ui.focus("arrange")
+  if not ok then error(err, 0) end
+end)

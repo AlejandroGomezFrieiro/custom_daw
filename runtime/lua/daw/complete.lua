@@ -26,7 +26,8 @@
 -- 127, `daw.opt.velocity` when left out), `remove` (places of the clip's
 -- notes it replaces, as `clip:notes()` numbers them), `velocities` (`{
 -- [place] = velocity }`) and `controls` (moves added to the clip's, as
--- `clip:controls()` gives them). The source's name is put in `source`.
+-- `clip:controls()` gives them). `source` says where it came from: the
+-- source's name, unless the item names one of its own (a server's).
 local api = daw.api
 local M = {}
 
@@ -163,7 +164,7 @@ local function normalize(item, source, clip_notes)
   if type(item) ~= "table" then return nil end
   local out = {
     label = tostring(item.label or source), detail = item.detail and tostring(item.detail) or nil,
-    source = source, notes = {}, remove = {}, velocities = {}, controls = {},
+    source = type(item.source) == "string" and item.source or source, notes = {}, remove = {}, velocities = {}, controls = {},
   }
   for _, n in ipairs(type(item.notes) == "table" and item.notes or {}) do
     local start = n.start or n.at
