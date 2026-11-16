@@ -37,6 +37,9 @@ pub struct LaunchOpts {
     pub quantize: Option<Quantize>,
     #[serde(default)]
     pub legato: Option<bool>,
+    /// The beat the clip's loop counts from, as if it had played since then.
+    #[serde(default)]
+    pub from: Option<f64>,
 }
 
 /// Put a clip in a track's row, in place of whatever was there.
@@ -169,6 +172,7 @@ impl Session {
                 target,
                 quantize: quantize.engine(),
                 legato: opts.legato.unwrap_or(clip.is_some_and(|s| s.legato)),
+                from: opts.from,
             });
         }
         if !launches.is_empty() {
@@ -190,6 +194,7 @@ impl Session {
                 target: Target::Arrangement,
                 quantize: daw_engine::launch::Quantize::Off,
                 legato: false,
+                from: None,
             })
             .collect();
         if !launches.is_empty() {

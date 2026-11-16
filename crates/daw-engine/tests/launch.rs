@@ -106,6 +106,7 @@ fn launch(target: Target, quantize: Quantize) -> Msg {
         target,
         quantize,
         legato: false,
+        from: None,
     }]))
 }
 
@@ -231,6 +232,26 @@ fn a_launch_past_the_end_of_the_loop_lands_where_the_loop_begins_again() {
     assert!(at.abs_diff(BEAT - 375) <= 1, "{at}");
     assert_eq!(changes(&out, at, 0.5), out.len());
     assert_eq!(engine.shared().launch(TRACK).unwrap().since, 0.0);
+}
+
+#[test]
+fn a_launch_counted_from_an_earlier_beat_starts_where_the_clip_would_have_got_to() {
+    // Three beats long, sounding for the first; counted from a beat ago.
+    let (mut engine, mut handle) = engine(3.0, 1.0);
+    send(&mut handle, Msg::Play);
+    send(
+        &mut handle,
+        Msg::Launch(Box::new(vec![Launch {
+            track: TRACK,
+            target: Target::Slot(0),
+            quantize: Quantize::Off,
+            legato: false,
+            from: Some(-1.0),
+        }])),
+    );
+    let out = run(&mut engine, 4 * BEAT, 256);
+    assert_eq!(changes(&out, 0, 0.0), 2 * BEAT, "silent to the end of its loop");
+    assert!(changes(&out, 2 * BEAT, 0.5) >= 3 * BEAT - 1);
 }
 
 #[test]

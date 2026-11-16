@@ -127,6 +127,9 @@ pub struct Launch {
     /// Take over where the clip playing before had got to in its loop,
     /// instead of starting from the beginning.
     pub legato: bool,
+    /// The beat the clip's loop counts from, as if it had played since
+    /// then: a clip just recorded goes on in step with where it began.
+    pub from: Option<f64>,
 }
 
 /// What a track plays.
@@ -146,6 +149,7 @@ struct Queued {
     target: Target,
     quantize: Quantize,
     legato: bool,
+    from: Option<f64>,
     /// The project beat it happens on.
     at: f64,
 }
@@ -199,6 +203,7 @@ impl Launcher {
             target: launch.target,
             quantize: launch.quantize,
             legato: launch.legato,
+            from: launch.from,
             at,
         });
     }
@@ -235,8 +240,11 @@ impl Launcher {
             Target::Slot(row) => match self.slots.get(row) {
                 Some(slot) => Playing::Slot {
                     row,
-                    phase: match was {
-                        Playing::Slot { phase, .. } if q.legato => phase.rem_euclid(slot.length),
+                    phase: match (was, q.from) {
+                        (_, Some(from)) => (q.at - from).rem_euclid(slot.length),
+                        (Playing::Slot { phase, .. }, None) if q.legato => {
+                            phase.rem_euclid(slot.length)
+                        }
                         _ => 0.0,
                     },
                 },

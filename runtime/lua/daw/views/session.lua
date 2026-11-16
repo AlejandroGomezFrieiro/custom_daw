@@ -114,7 +114,13 @@ function view:render(buf, ctx)
         queued = s.queued == row,
         progress = (s.slot == row and s.length and s.length > 0) and s.phase / s.length or 0,
       }
-      slot_cell(body, x, r + 1, cw - 1, clip, hue, cell)
+      local rec = launcher.recording
+      if rec and rec.track == id and rec.row == row then
+        body:fill(x, r + 1, cw - 1, 1, " ", "Armed")
+        body:text(x, r + 1, label(g.rec, "recording", cw - 1), "Armed")
+      else
+        slot_cell(body, x, r + 1, cw - 1, clip, hue, cell)
+      end
       if selected and row == launcher.row then
         body:text(x - 1, r + 1, g.mark, ctx.focused and "Cursor" or "Accent")
       end

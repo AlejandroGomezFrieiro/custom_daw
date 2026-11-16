@@ -448,6 +448,7 @@ fn the_audio_thread_never_allocates() {
                 target: targets[(i + round) % targets.len()],
                 quantize: quantizes[(i * 3 + round) % quantizes.len()],
                 legato: (i + round) % 3 == 0,
+                from: (round % 5 == 2).then_some(round as f64 * 0.3),
             })
             .collect();
         send(&mut handle, Msg::Launch(Box::new(launches)));

@@ -2491,11 +2491,12 @@ end
 --- What each drawn track (`ids`, the master last) plays from its slots, by
 --- place: `slot` and `queued` are rows or -1, `stopping` and `back` say a
 --- stop or a return to the timeline is queued, `stopped` that it plays
---- nothing, `progress` how far round its loop the clip is (0 to 1). Empty
---- while nothing is launched anywhere.
+--- nothing, `progress` how far round its loop the clip is (0 to 1), and
+--- `recording` the row being recorded into or -1. Empty while nothing is
+--- launched or recorded anywhere.
 function M.launch_state(ids)
-  local state = daw.launcher.state()
-  if not next(state) then return {} end
+  local state, rec = daw.launcher.state(), daw.launcher.recording
+  if not next(state) and not rec then return {} end
   local out = {}
   for i, id in ipairs(ids) do
     local s = state[id] or {}
@@ -2503,6 +2504,7 @@ function M.launch_state(ids)
       slot = s.slot or -1, queued = type(s.queued) == "number" and s.queued or -1,
       stopping = s.queued == "stop", back = s.queued == "arrangement", stopped = s.stopped or false,
       progress = (s.slot and s.length and s.length > 0) and s.phase / s.length or 0,
+      recording = rec and rec.track == id and rec.row or -1,
     }
   end
   return out
@@ -2534,11 +2536,20 @@ function A.press_slot(track, row, down)
   daw.launcher.press(track, row)
 end
 
---- A click on a slot: the cursor goes there, launching nothing.
+--- A click on a slot: the cursor goes there, launching nothing, and the
+--- keys are the session view's.
 function A.choose_slot(track, row)
   daw.cursor.set_track(track)
   daw.launcher.row = row
+  if daw.ui.visible("session") then daw.ui.focus("session") end
   api.ui_redraw()
+end
+
+--- Record into an empty slot: see `daw.launcher.record`.
+function A.record_slot(track, row)
+  A.choose_slot(track, row)
+  if daw.launcher.recording then return daw.launcher.finish_recording() end
+  daw.launcher.record(track, row)
 end
 
 --- A double click on an empty slot: a MIDI clip of a bar there, opened in

@@ -196,6 +196,121 @@ function M.copy(clip, track, row)
   return api.clip_to_slot(clip, track, row)
 end
 
+-- Recording into a slot ----------------------------------------------------------
+--
+-- An empty slot of a track records `bars` bars from the next boundary. The
+-- take is made by the transport's recording, as any take is; when the bars
+-- are done the part of it between the two boundaries becomes the slot's
+-- clip, the take leaves the timeline, and the clip plays on in step, as if
+-- it had been playing since the first boundary.
+
+-- The slot being recorded: { track, row, from, to, before = clip ids on the
+-- track before }, or nil.
+M.recording = nil
+local rec_timer
+
+local grids = { ["1/16"] = 0.25, ["1/8"] = 0.5, ["1/4"] = 1 }
+local bar_counts = { bar = 1, ["2bars"] = 2, ["4bars"] = 4 }
+
+--- The first boundary of a quantize (the project's by default) at or after
+--- `beat`, as the engine finds it.
+function M.boundary(beat, q)
+  q = q or api.project_get().launch_quantize
+  if q == "off" then return beat end
+  local bar = api.tempo_bar_of(beat)
+  local start = api.tempo_bar_start(bar)
+  local every = bar_counts[q]
+  if every then
+    if start < beat - 1e-9 then bar = bar + 1 end
+    return api.tempo_bar_start(math.ceil(bar / every) * every)
+  end
+  local unit = grids[q] or 4 / select(2, daw.tempo.signature_at(beat))
+  local steps = math.max(0, math.ceil((beat - start) / unit - 1e-9))
+  return math.min(start + steps * unit, api.tempo_bar_start(bar + 1))
+end
+
+--- The part of a recorded clip from `from` to `to`, as options for a clip
+--- in a slot.
+local function piece(c, from, to)
+  local opts = { name = "rec " .. c.name, length = to - from }
+  if c.kind == "midi" then
+    opts.notes, opts.controls = {}, {}
+    for _, n in ipairs(api.clip_notes(c.id)) do
+      local at = c.start + n.start
+      if at >= from - 1e-9 and at < to - 1e-9 then
+        opts.notes[#opts.notes + 1] = { pitch = n.pitch, velocity = n.velocity, start = at - from, length = math.min(n.length, to - at) }
+      end
+    end
+    for _, m in ipairs(c.control_count > 0 and api.clip_controls(c.id) or {}) do
+      local at = c.start + m.start
+      if at >= from - 1e-9 and at < to - 1e-9 then opts.controls[#opts.controls + 1] = daw.util.merge(m, { start = at - from }) end
+    end
+  else
+    opts.file, opts.gain = c.file, c.gain
+    opts.offset = c.offset + daw.time.seconds(from - c.start, c.start)
+  end
+  return opts
+end
+
+local function finish_recording()
+  local r = M.recording
+  if not r then return end
+  M.recording = nil
+  if rec_timer then daw.cancel(rec_timer) end
+  rec_timer = nil
+  local stopped_at = daw.transport.position
+  -- Ending the take puts it on the timeline, as any take.
+  daw.transport.recording = false
+  local made
+  for _, c in ipairs(api.clip_list(r.track)) do
+    if not r.before[c.id] then
+      if not made and c.start <= r.from + 1e-9 and c.start + c.length > r.from then
+        local opts = piece(c, r.from, r.to)
+        opts.slot = r.row
+        made = api.clip_add(r.track, opts)
+      end
+      api.clip_remove(c.id)
+    end
+  end
+  api.undo_checkpoint()
+  api.ui_redraw()
+  if not made then
+    return daw.notify("nothing was recorded into the slot: the song stopped before its first boundary", "warn")
+  end
+  -- Going on in step: the loop counts from where the recording began.
+  if daw.transport.playing and stopped_at >= r.to - 1e-9 then
+    api.launch({ { track = r.track, slot = r.row, quantize = "off", from = r.from } })
+  end
+end
+
+--- Record `bars` bars (1) into an empty slot of a track, from the next
+--- boundary of the project's quantize. The track is armed if it is not,
+--- and stops what it plays at that boundary. Starts the song if it is
+--- stopped; stopping it early keeps what was recorded.
+function M.record(track, row, bars)
+  if M.clip(track, row) then error("the slot holds a clip already", 2) end
+  if M.recording then error("a slot is being recorded already", 2) end
+  if not api.track_get(track).armed then api.track_set(track, "armed", true) end
+  local before = {}
+  for _, c in ipairs(api.clip_list(track)) do before[c.id] = true end
+  if daw.transport.playing then
+    daw.transport.recording = true
+  else
+    daw.transport.record()
+  end
+  local from = M.boundary(daw.transport.position)
+  M.recording = { track = track, row = row, from = from, to = from + (bars or 1) * daw.time.bar(from), before = before }
+  api.launch({ { track = track, stop = true } })
+  rec_timer = daw.every(10, function()
+    local r = M.recording
+    if r and (not daw.transport.playing or daw.transport.position >= r.to) then finish_recording() end
+  end)
+  api.ui_redraw()
+end
+
+--- Stop recording into a slot now, keeping what was recorded.
+M.finish_recording = finish_recording
+
 -- Capturing a performance ------------------------------------------------------
 --
 -- While capturing and playing, what each track plays is read from the engine
@@ -361,6 +476,13 @@ daw.command("slot.new", function(ctx)
   if M.clip(track, M.row) then return daw.notify("the slot holds a clip already", "warn") end
   M.new_clip(track, M.row, tonumber(ctx.args[1]))
 end, { desc = "A new MIDI clip in the slot under the cursor: `slot.new 2` for two bars" })
+daw.command("slot.record", function(ctx)
+  if M.recording then return M.finish_recording() end
+  local track = track_or_warn()
+  if not track then return end
+  if M.clip(track, M.row) then return daw.notify("the slot holds a clip already", "warn") end
+  M.record(track, M.row, tonumber(ctx.args[1]) or ctx.count)
+end, { desc = "Record into the empty slot under the cursor from the next boundary: `slot.record 2` for two bars (again: stop now)" })
 daw.command("slot.copy", function()
   local track = track_or_warn()
   local clip = track and daw.cursor.clip()
