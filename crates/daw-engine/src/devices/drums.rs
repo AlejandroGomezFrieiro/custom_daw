@@ -37,6 +37,11 @@ pub fn params() -> Vec<ParamInfo> {
     ]
 }
 
+/// The kit's output pairs: the whole kit, then a pair for each family of
+/// pieces. A family whose pair is routed somewhere plays there, and leaves
+/// the first pair.
+pub const OUTPUTS: [&str; 7] = ["Kit", "Kick", "Snare", "Hats", "Toms", "Cymbals", "Percussion"];
+
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
     Kick,
@@ -52,6 +57,20 @@ enum Kind {
     Bell,
     Cowbell,
     Tambourine,
+}
+
+impl Kind {
+    /// The output pair of its family: 1 for the kick, and so on.
+    fn family(self) -> usize {
+        match self {
+            Kind::Kick => 1,
+            Kind::Snare | Kind::Clap | Kind::Rim => 2,
+            Kind::Hat | Kind::OpenHat | Kind::PedalHat => 3,
+            Kind::Tom => 4,
+            Kind::Crash | Kind::Ride | Kind::Bell => 5,
+            Kind::Cowbell | Kind::Tambourine => 6,
+        }
+    }
 }
 
 /// The metallic pieces are made of six square waves at these frequencies,
@@ -164,13 +183,28 @@ impl Drums {
         };
     }
 
-    fn render(&mut self, left: &mut [f32], right: &mut [f32]) {
+    /// Render frames `from..to` of the block: each family on its own pair
+    /// where that is routed (`outputs`, from the second pair), else on the
+    /// first.
+    fn render(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        outputs: &mut [Option<[Vec<f32>; 2]>],
+        (from, to): (usize, usize),
+    ) {
         let dt = 1.0 / self.sample_rate;
         let gain = db_to_gain(self.p[GAIN] as f64);
         let tune = self.p[KICK_TUNE];
         let stretch = self.p[DECAY].max(0.05);
-        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+        let routed = |family: usize| outputs.get(family - 1).is_some_and(Option::is_some);
+        let mut apart = [false; OUTPUTS.len()];
+        for (family, apart) in apart.iter_mut().enumerate().skip(1) {
+            *apart = routed(family);
+        }
+        for i in from..to {
             let mut out = 0.0;
+            let mut families = [0.0f32; OUTPUTS.len()];
             for h in self.hits.iter_mut().filter(|h| h.active) {
                 // xorshift noise in -1..1
                 self.noise ^= self.noise << 13;
@@ -303,12 +337,24 @@ impl Drums {
                         ((high * 0.7 + jingle * 0.06) * env * 0.4, 0.45 * stretch)
                     }
                 };
-                out += sample * h.vel;
+                let family = h.kind.family();
+                if apart[family] {
+                    families[family] += sample * h.vel;
+                } else {
+                    out += sample * h.vel;
+                }
                 h.time += dt;
                 h.active = h.time < length;
             }
-            *l += out * gain;
-            *r += out * gain;
+            left[i] += out * gain;
+            right[i] += out * gain;
+            for (family, pair) in outputs.iter_mut().enumerate() {
+                if let Some([l, r]) = pair {
+                    let s = families.get(family + 1).copied().unwrap_or(0.0) * gain;
+                    l[i] += s;
+                    r[i] += s;
+                }
+            }
         }
     }
 }
@@ -320,14 +366,14 @@ impl Device for Drums {
         for ev in io.events.as_slice() {
             let frame = (ev.frame as usize).min(n);
             if frame > pos {
-                self.render(&mut io.left[pos..frame], &mut io.right[pos..frame]);
+                self.render(io.left, io.right, io.outputs, (pos, frame));
                 pos = frame;
             }
             if let EventKind::NoteOn { key, vel, .. } = ev.kind {
                 self.trigger(key, vel);
             }
         }
-        self.render(&mut io.left[pos..], &mut io.right[pos..]);
+        self.render(io.left, io.right, io.outputs, (pos, n));
     }
 
     fn set_param(&mut self, index: u32, value: f32) {
@@ -369,6 +415,7 @@ mod tests {
                     right: &mut right,
                     events: &mut events,
                     sidechain: None,
+                    outputs: &mut [],
                 },
             );
             out.extend_from_slice(&left);

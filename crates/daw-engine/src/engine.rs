@@ -223,6 +223,17 @@ pub struct KeyRt {
     pub delay: Delay,
 }
 
+/// One of a device's further output pairs, played into another track.
+/// It is taken from the device as it is: the fader, pan and mute of the
+/// device's own track do not act on it, the target's do.
+pub struct OutRt {
+    /// The device, and which of its further pairs: 0 for its second.
+    pub device: Slot,
+    pub pair: usize,
+    pub target: Slot,
+    pub delay: Delay,
+}
+
 pub struct SchedEntry {
     pub slot: Slot,
     /// Where the track's output goes. [`NO_SLOT`] for the master track.
@@ -232,6 +243,8 @@ pub struct SchedEntry {
     pub sends: Vec<SendRt>,
     /// Devices elsewhere that listen to this track.
     pub keys: Vec<KeyRt>,
+    /// Further output pairs of the track's devices, and where they go.
+    pub outs: Vec<OutRt>,
 }
 
 impl SchedEntry {
@@ -242,6 +255,7 @@ impl SchedEntry {
             delay: Delay::default(),
             sends: Vec::new(),
             keys: Vec::new(),
+            outs: Vec::new(),
         }
     }
 
@@ -281,7 +295,8 @@ impl Schedule {
                 let group = waits.get(&entry.slot).copied().unwrap_or(0);
                 let targets = std::iter::once(entry.output)
                     .chain(entry.sends.iter().map(|s| s.target))
-                    .chain(entry.keys.iter().map(|k| k.track));
+                    .chain(entry.keys.iter().map(|k| k.track))
+                    .chain(entry.outs.iter().map(|o| o.target));
                 for target in targets {
                     let wait = waits.entry(target).or_default();
                     *wait = (*wait).max(group + 1);
@@ -401,6 +416,12 @@ pub enum Msg {
         device: Slot,
         key: Option<Box<KeyBuf>>,
     },
+    /// Give a device buffers for its further output pairs, as many as are
+    /// routed somewhere, or take them away with `None`.
+    SetOutputs {
+        device: Slot,
+        outs: Option<Box<OutBufs>>,
+    },
     RemoveDevice {
         slot: Slot,
     },
@@ -511,6 +532,7 @@ enum Garbage {
     Pool(#[allow(dead_code)] Box<Pool>),
     Host(#[allow(dead_code)] Box<crate::host::HostPath>),
     Key(#[allow(dead_code)] Box<KeyBuf>),
+    Outs(#[allow(dead_code)] Box<OutBufs>),
     TempoMap(#[allow(dead_code)] Box<TempoMap>),
 }
 
@@ -767,12 +789,28 @@ pub fn key_buf() -> Box<KeyBuf> {
     Box::new([vec![0.0; MAX_BLOCK], vec![0.0; MAX_BLOCK]])
 }
 
+/// A device's further output pairs: see [`Io::outputs`].
+pub type OutBufs = Vec<Option<[Vec<f32>; 2]>>;
+
+/// Buffers for the further output pairs that are routed, by their index
+/// (0 for the second pair), made on the main thread.
+pub fn out_bufs(routed: &[usize]) -> Box<OutBufs> {
+    let count = routed.iter().map(|i| i + 1).max().unwrap_or(0);
+    Box::new(
+        (0..count)
+            .map(|i| routed.contains(&i).then(|| [vec![0.0; MAX_BLOCK], vec![0.0; MAX_BLOCK]]))
+            .collect(),
+    )
+}
+
 struct DeviceSlot {
     device: Box<dyn Device>,
     bypass: bool,
     host: Option<Box<crate::host::HostPath>>,
     /// Where the track it listens to puts its sound, when it has a side-chain.
     key: Option<Box<KeyBuf>>,
+    /// Where it puts its further output pairs, when some are routed.
+    outs: Option<Box<OutBufs>>,
     /// It panicked: it is not run again, and what comes in goes on as it is.
     failed: bool,
     /// Its output held NaN or infinity, and that has been reported.
@@ -1084,11 +1122,13 @@ impl Engine {
                     // A device put in place of another (one that was being
                     // made, or restarted) listens where that one did.
                     let key = entry.get_mut().as_mut().and_then(|old| old.key.take());
+                    let outs = entry.get_mut().as_mut().and_then(|old| old.outs.take());
                     if let Some(old) = entry.get_mut().replace(DeviceSlot {
                         device,
                         bypass: false,
                         host: None,
                         key,
+                        outs,
                         failed: false,
                         flagged: false,
                     }) {
@@ -1114,6 +1154,9 @@ impl Engine {
                     if let Some(key) = old.key {
                         self.discard(Garbage::Key(key));
                     }
+                    if let Some(outs) = old.outs {
+                        self.discard(Garbage::Outs(outs));
+                    }
                 }
             }
             Msg::SetKey { device, key } => {
@@ -1123,6 +1166,15 @@ impl Engine {
                 };
                 if let Some(old) = old {
                     self.discard(Garbage::Key(old));
+                }
+            }
+            Msg::SetOutputs { device, outs } => {
+                let old = match self.device_mut(device) {
+                    Some(slot) => std::mem::replace(&mut slot.outs, outs),
+                    None => outs,
+                };
+                if let Some(old) = old {
+                    self.discard(Garbage::Outs(old));
                 }
             }
             Msg::SetHost { device, path } => match self.device_mut(device) {
@@ -1581,6 +1633,7 @@ impl Engine {
                 entry.delay.clear();
                 entry.sends.iter_mut().for_each(|send| send.delay.clear());
                 entry.keys.iter_mut().for_each(|key| key.delay.clear());
+                entry.outs.iter_mut().for_each(|out| out.delay.clear());
             }
             for key in &entry.keys {
                 if let Some(buf) = self
@@ -1589,6 +1642,18 @@ impl Engine {
                 {
                     buf[0][..n].fill(0.0);
                     buf[1][..n].fill(0.0);
+                }
+            }
+            // A device that does not run this block (bypassed, failed)
+            // leaves its further pairs silent.
+            for out in &entry.outs {
+                if let Some(pair) = self
+                    .device_mut(out.device)
+                    .and_then(|d| d.outs.as_deref_mut())
+                    .and_then(|outs| outs.get_mut(out.pair)?.as_mut())
+                {
+                    pair[0][..n].fill(0.0);
+                    pair[1][..n].fill(0.0);
                 }
             }
         }
@@ -1730,6 +1795,27 @@ impl Engine {
             }
             for key in entry.keys.iter_mut().filter(|key| !key.pre) {
                 key_into(&mut self.devices, key, src);
+            }
+            for out in entry.outs.iter_mut() {
+                let (Some(pair), Some(dst)) = (
+                    self.devices
+                        .get_mut(out.device as usize)
+                        .and_then(|d| d.get_mut().as_mut())
+                        .and_then(|d| d.outs.as_deref())
+                        .and_then(|outs| outs.get(out.pair)?.as_ref()),
+                    self.tracks
+                        .get_mut(out.target as usize)
+                        .and_then(|t| t.get_mut().as_deref_mut()),
+                ) else {
+                    continue;
+                };
+                let [l, r] = &mut dst.buf;
+                out.delay.mix(
+                    [&pair[0][..n], &pair[1][..n]],
+                    [&mut l[..n], &mut r[..n]],
+                    1.0,
+                    1.0,
+                );
             }
         }
         *self.tracks[entry.slot as usize].get_mut() = Some(track);
@@ -1985,11 +2071,16 @@ impl Work<'_> {
             {
                 // Taken out of the slot while the device runs on it.
                 let key = dev.key.take();
+                let mut outs = dev.outs.take();
                 let mut io = Io {
                     left: &mut left[..n],
                     right: &mut right[..n],
                     events: &mut t.events,
                     sidechain: key.as_deref().map(|[l, r]| [&l[..n], &r[..n]]),
+                    outputs: match outs.as_deref_mut() {
+                        Some(outs) => outs.as_mut_slice(),
+                        None => &mut [],
+                    },
                 };
                 // A device that panics is passed over from then on (an
                 // instrument falls silent, an effect lets its input through),
@@ -1998,6 +2089,7 @@ impl Work<'_> {
                 // The host's wet/dry mix and bypass fade go around it.
                 let ok = dev.process(ctx, &mut io);
                 dev.key = key;
+                dev.outs = outs;
                 if !ok {
                     dev.failed = true;
                     left[..n].fill(0.0);

@@ -50,9 +50,12 @@ local function read(kind, name)
   return data and data.data
 end
 
---- Devices as a template keeps them: without the tracks they listened to.
+--- Devices as a template keeps them: without the tracks they listened to
+--- or played their further output pairs into.
 local function unrouted(devices)
-  for _, device in ipairs(devices) do device.sidechain, device.sidechain_pre = nil, nil end
+  for _, device in ipairs(devices) do
+    device.sidechain, device.sidechain_pre, device.outputs = nil, nil, nil
+  end
   return devices
 end
 

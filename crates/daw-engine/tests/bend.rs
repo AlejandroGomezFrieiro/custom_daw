@@ -29,6 +29,7 @@ fn rises(events: &[EventKind]) -> usize {
                 right: &mut right,
                 events: &mut buf,
                 sidechain: None,
+                outputs: &mut [],
             },
         );
         buf.clear();

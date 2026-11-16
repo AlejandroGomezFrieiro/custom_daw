@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use daw_engine::record::{AudioCapture, Take, TakeShared};
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
-    EngineHandle, EventKind, KeyRt, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, Pool, Registry,
-    SchedEntry, Schedule, SendRt, Slot, TrackRt,
+    EngineHandle, EventKind, KeyRt, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, OutRt, Pool,
+    Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt,
 };
 
 struct Guard;
@@ -154,6 +154,11 @@ fn keyed_device(track: usize) -> Slot {
     (track * KINDS.len() + KINDS.len() - 1) as Slot
 }
 
+/// Each track's drum kit, which has further output pairs.
+fn kit_device(track: usize) -> Slot {
+    (track * KINDS.len() + 1) as Slot
+}
+
 fn schedule(tracks: &[Slot]) -> Box<Schedule> {
     let mut entries: Vec<SchedEntry> = tracks
         .iter()
@@ -179,6 +184,18 @@ fn schedule(tracks: &[Slot]) -> Box<Schedule> {
                     pre: i == 4,
                     delay: Delay::new(if i == 3 { 64 } else { 0 }),
                 });
+            }
+            // The fourth's drum kit plays its kick pair into the sixth, late,
+            // and its hats into the fifth.
+            if i == 3 {
+                for (pair, target, delay) in [(0, tracks[5], 32), (2, tracks[4], 0)] {
+                    entry.outs.push(OutRt {
+                        device: kit_device(i),
+                        pair,
+                        target,
+                        delay: Delay::new(delay),
+                    });
+                }
             }
             entry
         })
@@ -302,6 +319,15 @@ fn the_audio_thread_never_allocates() {
                 Msg::SetKey {
                     device: keyed_device(i),
                     key: Some(daw_engine::key_buf()),
+                },
+            );
+        }
+        if i == 3 {
+            send(
+                &mut handle,
+                Msg::SetOutputs {
+                    device: kit_device(i),
+                    outs: Some(daw_engine::out_bufs(&[0, 2])),
                 },
             );
         }
@@ -511,13 +537,22 @@ fn the_audio_thread_never_allocates() {
                 .map(|k| (i * kinds.len() + k) as Slot)
                 .collect();
             send(&mut handle, Msg::SetChain { track: slot, chain });
-            // Side-chains taken away and given again.
+            // Side-chains and output pairs taken away and given again.
             if i == 4 {
                 send(
                     &mut handle,
                     Msg::SetKey {
                         device: keyed_device(i),
                         key: (round % 2 == 1).then(daw_engine::key_buf),
+                    },
+                );
+            }
+            if i == 3 {
+                send(
+                    &mut handle,
+                    Msg::SetOutputs {
+                        device: kit_device(i),
+                        outs: (round % 2 == 0).then(|| daw_engine::out_bufs(&[0, 2])),
                     },
                 );
             }
@@ -682,6 +717,7 @@ fn the_sampler_never_allocates() {
                 right: &mut right,
                 events: &mut events,
                 sidechain: None,
+                outputs: &mut [],
             },
         );
         AUDIO.with(|a| a.set(false));
@@ -733,6 +769,7 @@ fn built_in_effects_do_not_allocate() {
                     right: &mut right,
                     events: &mut events,
                     sidechain: (block % 2 == 1).then_some([&key[..], &key[..]]),
+                    outputs: &mut [],
                 },
             );
             AUDIO.with(|a| a.set(false));

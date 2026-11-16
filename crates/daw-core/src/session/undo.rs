@@ -795,6 +795,7 @@ mod tests {
             offline: false,
             sidechain: None,
             sidechain_pre: false,
+            outputs: Default::default(),
         }));
         let note = |start: f64, pitch: u8| Note {
             start,

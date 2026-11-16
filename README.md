@@ -181,7 +181,8 @@ in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`
 `>` `w` `W` choose, step through, save and set the default preset, `f` finds
 a parameter and `t` goes to the last touched one, `K` chooses the track the
-device listens to as its side-chain. `V` and `j` `k` select
+device listens to as its side-chain, `O` where its further output pairs
+play. `V` and `j` `k` select
 several devices for `y` `d`; `:device.copy_to <track>` and
 `:device.move_to <track>` take the selected one elsewhere. In the window,
 dragging a device card by its name onto a track's header moves it there
@@ -1141,7 +1142,7 @@ track (a drum track) is one click away in an empty project.
 | Kind | Parameters |
 | --- | --- |
 | `synth` | `wave` (sine, saw, square, triangle), `attack`, `decay`, `sustain`, `release`, `cutoff`, `resonance`, `gain` |
-| `drums` | `gain`, `kick_tune`, `decay`. A synthesized kit on the General MIDI drum notes: kick (35, 36), rim (37), snare (38, 40), clap (39), closed, pedal and open hat (42, 44, 46; the closed and pedal hat cut the open one off), six toms (41 to 50), crashes, china and splash (49, 57, 52, 55), ride (51, 59), ride bell (53), tambourine (54), cowbell (56). |
+| `drums` | `gain`, `kick_tune`, `decay`. Output pairs Kit, Kick, Snare, Hats, Toms, Cymbals and Percussion (see [Instruments with several outputs](#mixing-midi-and-rendering-in-the-core)). A synthesized kit on the General MIDI drum notes: kick (35, 36), rim (37), snare (38, 40), clap (39), closed, pedal and open hat (42, 44, 46; the closed and pedal hat cut the open one off), six toms (41 to 50), crashes, china and splash (49, 57, 52, 55), ride (51, 59), ride bell (53), tambourine (54), cowbell (56). |
 | `sampler` | `gain`. One sound file per note, each with a level, pan, tuning and choke group. The kit is the device's state: text lines `note level pan tune group path`, set with `daw.api.device_set(id, "state", base64)`; the files are read off the audio thread. `extensions/drums` makes kits from folders. |
 | `gain` | `gain` |
 | `delay` | Echoes: `time` (ms), or `sync` to a note length at the tempo of the moment (`1/8.`, `1/4T`...), `feedback`, `mix` (the echoes' level; the dry stays at full level), `mode` (stereo or ping-pong), `low_cut` and `high_cut` on the repeats (off at the ends of their ranges), `width`. A new time glides there, like tape. |
@@ -1280,6 +1281,34 @@ fader, `none` to take it away; alone, a list) acts on the device panel's
 device, `K` there chooses from a list, and the panel shows `key Kick` on the
 device's line. In the window a device that can listen to one has a Key row
 on its card, with a menu of the tracks it can hear.
+
+**Instruments with several outputs.** A drum plugin with a pair per drum,
+or Surge XT's scene outputs: `device.ports.outputs` names the pairs (from
+the plugin: CLAP audio ports, VST3 output buses, which are all switched on,
+LV2 output ports two by two; a port wider than two is taken in pairs too).
+The first plays on the device's own track, as ever. A further pair plays
+only where it is routed, as in REAPER, where it would sit unheard on
+channels 3 and up: `kit:set_output(2, kick)` (`kit.outputs` is a table of
+pair number to track), `:device.output 2 Kick` (`none` to take it away;
+alone, a list of pairs and then of tracks; `O` in the device panel), and
+`:device.spread` (`daw.routes.spread(kit)`) makes a track for each pair that
+plays nowhere, named after it, and puts them and the device's track in a
+group (`<track> outputs`, or the group the track is in already; the
+device's track cannot be the group itself, since its pairs feed the new
+tracks). A pair is taken from the device as it comes out, before the rest
+of the chain: the fader, pan and mute of its own track do not act on it,
+those of the track it plays into do. It is added in before that track's
+devices, so that track is processed after it, and it is lined up with the
+rest like any other connection. Loops are refused as for side-chains, and
+so are pairs of a device on the master. Removing the track a pair plays
+into takes the route away; a copy of the track plays its pairs nowhere;
+templates leave them out. The built-in `drums` has a pair for each family
+of pieces (Kick, Snare, Hats, Toms, Cymbals, Percussion): a family whose
+pair is routed plays there and leaves the kit's own pair. The device panel
+shows `outs 2/6` (pairs routed of those there are) on the device's line, and
+the window's card an Outs row whose menu routes each pair and spreads them.
+Main pairs wider than stereo (surround) are not handled; a mono plugin on a
+stereo track plays on both sides.
 
 **Delay compensation.** A device that looks ahead says how late its output is
 (CLAP, VST3 and LV2 plugins do; of the built-in devices the `limiter` does).
@@ -1587,7 +1616,8 @@ port a message came through is not told apart. In scripts:
 - Time stretching, clips that loop, and a tempo lane to draw the tempo as
   a curve (tempo changes are set by command, by script and on the window's
   ruler).
-- Plugins with more than one stereo pair in or out.
+- Plugins with main buses wider than stereo (surround), and inputs beyond
+  the main pair and one side-chain.
 - Punch recording between two points, and a count-in.
 - Takes drawn as lanes under a clip, to comp by swiping across them: takes
   are chosen piece by piece from a clip's menu or with `]t`.

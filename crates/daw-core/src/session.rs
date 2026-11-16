@@ -757,6 +757,8 @@ impl Session {
             "automation": t.automation.name(),
             // The tracks that devices on this one listen to as side-chains.
             "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
+            // The tracks that further output pairs of its devices play into.
+            "pairs_into": t.devices.iter().flat_map(|d| d.outputs.values()).collect::<BTreeSet<_>>(),
         }))
     }
 
@@ -806,14 +808,21 @@ impl Session {
                     track.sends.retain(|s| s.target != id);
                 }
             }
-            // Devices that listened to it listen to their own input again.
+            // Devices that listened to it listen to their own input again,
+            // and output pairs that played into it are no longer heard.
+            let routed = |d: &DeviceInst| {
+                d.sidechain == Some(id) || d.outputs.values().any(|to| *to == id)
+            };
             for track in std::iter::once(&mut p.master).chain(&mut p.tracks) {
-                if track.devices.iter().any(|d| d.sidechain == Some(id)) {
+                if track.devices.iter().any(|d| routed(d)) {
                     for device in &mut Arc::make_mut(track).devices {
-                        if device.sidechain == Some(id) {
+                        if routed(device) {
                             let device = Arc::make_mut(device);
-                            device.sidechain = None;
-                            device.sidechain_pre = false;
+                            if device.sidechain == Some(id) {
+                                device.sidechain = None;
+                                device.sidechain_pre = false;
+                            }
+                            device.outputs.retain(|_, to| *to != id);
                         }
                     }
                 }
@@ -1063,6 +1072,8 @@ impl Session {
             "status": status,
             // The track it listens to, and whether it can listen at all.
             "sidechain": d.sidechain, "sidechain_pre": d.sidechain_pre,
+            // Where its further output pairs play, by pair number.
+            "outputs": d.outputs,
             "ports": ports::ports_json(&self.device_ports(id)),
         }))
     }
@@ -1095,6 +1106,7 @@ impl Session {
                 offline: false,
                 sidechain: None,
                 sidechain_pre: false,
+                outputs: BTreeMap::new(),
             };
             let index = opts
                 .index
@@ -1152,6 +1164,11 @@ impl Session {
                 && (source == track || p.would_cycle(source, track))
             {
                 bail!("the device listens to track {source}: on track {track} that would make a loop");
+            }
+            if from != track {
+                for (pair, to) in p.device(id).map(|d| d.outputs.clone()).unwrap_or_default() {
+                    ports::check_output(p, track, pair, to)?;
+                }
             }
             let source = p.track_mut(from).unwrap();
             let device = source.devices.remove(at);
@@ -1618,6 +1635,17 @@ impl Session {
                     }
                 }
                 p.device_mut(id).unwrap().sidechain = source;
+                return Ok(());
+            }
+            if key == "outputs" {
+                let (track, _) = p
+                    .find_device(id)
+                    .with_context(|| format!("no device {id}"))?;
+                let outputs = ports::parse_outputs(value)?;
+                for (pair, to) in &outputs {
+                    ports::check_output(p, track, *pair, *to)?;
+                }
+                p.device_mut(id).unwrap().outputs = outputs;
                 return Ok(());
             }
             let d = p

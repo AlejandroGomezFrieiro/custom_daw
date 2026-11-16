@@ -1691,6 +1691,8 @@ impl View {
                 gain: number(&device["gain"]),
                 keyed: device["keyed"].as_bool().unwrap_or(false),
                 sidechain: text(&device["sidechain"]),
+                pairs: device["pairs"].as_i64().unwrap_or(1) as i32,
+                routed: device["routed"].as_i64().unwrap_or(0) as i32,
             });
         }
         sync(&self.devices, device_rows);
@@ -2225,6 +2227,30 @@ fn run() -> Result<()> {
     ui.on_choose_sidechain({
         let pass = pass.clone();
         move |id, index| pass("choose_sidechain", json!([id, index]))
+    });
+    // And the menu of where a device's further output pairs play.
+    ui.on_fill_outputs_menu({
+        let (act, weak) = (act.clone(), ui.as_weak());
+        move |id| {
+            act(&|c| {
+                let menu = c.eval("return daw.frontend.outputs_menu(...)", json!([id]))?;
+                if let Some(ui) = weak.upgrade() {
+                    let pairs: Vec<OutputMenuData> = rows(&menu)
+                        .iter()
+                        .map(|pair| OutputMenuData {
+                            label: text(&pair["label"]),
+                            choices: choices(&pair["choices"]),
+                        })
+                        .collect();
+                    ui.set_output_pairs(ModelRc::from(Rc::new(VecModel::from(pairs))));
+                }
+                Ok(Value::Null)
+            })
+        }
+    });
+    ui.on_route_pair({
+        let pass = pass.clone();
+        move |id, pair, index| pass("route_pair", json!([id, pair, index]))
     });
     // Where each device card is in the inspector's list, for a drop there.
     let cards: Rc<RefCell<Vec<(f32, f32)>>> = Rc::default();

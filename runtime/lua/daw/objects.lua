@@ -193,6 +193,8 @@ end
 function Track:duplicate()
   local snap = self:snapshot()
   snap.name = snap.name .. " copy"
+  -- The tracks the original's output pairs play into stay the original's.
+  for _, device in ipairs(snap.devices) do device.outputs = nil end
   return M.restore_track(snap, self.index + 1)
 end
 
@@ -229,6 +231,11 @@ end
 
 class(Device, "Device", api.device_get, function(id, key, value)
   if key == "sidechain" then value = id_of(value) end
+  if key == "outputs" and type(value) == "table" then
+    local ids = {}
+    for pair, track in pairs(value) do ids[tostring(pair)] = id_of(track) end
+    value = next(ids) and ids or nil
+  end
   api.device_set(id, key, value)
 end)
 
@@ -276,7 +283,16 @@ function Device:snapshot()
   return {
     kind = d.kind, bypass = d.bypass, state = state, params = not state and d.params or nil, meta = meta,
     sidechain = d.sidechain, sidechain_pre = d.sidechain_pre or nil,
+    outputs = next(d.outputs or {}) and d.outputs or nil,
   }
+end
+
+--- Play the device's output pair `pair` (2 and on: the first plays on its
+--- own track) into a track, or nowhere with nil. `device.outputs` is a table
+--- of pair number to track id; `device.ports.outputs` names the pairs.
+function Device:set_output(pair, track)
+  require("daw.routes").set_output(self.id, pair, id_of(track))
+  return self
 end
 
 --- Listen to another track's sound as the device's side-chain: a
@@ -544,6 +560,13 @@ function M.restore_device(snap, track, index)
     if not ok then
       daw.notify(string.format("%s no longer has its side-chain: track %s is gone or would make a loop",
         device.name, tostring(snap.sidechain)), "warn")
+    end
+  end
+  -- So are the tracks its further output pairs played into.
+  for pair, track in pairs(snap.outputs or {}) do
+    if not pcall(device.set_output, device, tonumber(pair), track) then
+      daw.notify(string.format("%s output pair %s no longer plays anywhere: track %s is gone or would make a loop",
+        device.name, tostring(pair), tostring(track)), "warn")
     end
   end
   return device

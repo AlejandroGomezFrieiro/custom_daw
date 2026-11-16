@@ -280,6 +280,10 @@ pub struct DeviceInst {
     /// fader, pan and mute, rather than after them.
     #[serde(default, skip_serializing_if = "is_false")]
     pub sidechain_pre: bool,
+    /// Where the device's further output pairs play, by pair number (2 for
+    /// its second) and track. Pairs not named here are not heard.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub outputs: BTreeMap<u32, Id>,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -656,6 +660,7 @@ impl Project {
             if let Some(t) = tracks.get(&id) {
                 stack.extend(t.output);
                 stack.extend(t.sends.iter().map(|s| s.target));
+                stack.extend(t.devices.iter().flat_map(|d| d.outputs.values()));
             }
             // A track feeds the tracks of the devices that listen to it.
             stack.extend(

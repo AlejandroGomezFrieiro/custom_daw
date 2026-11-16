@@ -41,7 +41,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use daw_engine::device::{
     Controller, Device, DeviceFactory, DeviceInfo, Instance, Io, ParamInfo, Ports, Starting,
 };
-use daw_engine::{Event, ProcessCtx, Registry};
+use daw_engine::{Event, MAX_PAIRS, ProcessCtx, Registry};
 use serde_json::{Value, json};
 
 /// How the helper is started: this program and its first arguments.
@@ -140,6 +140,8 @@ struct Header {
     events_out: u32,
     /// Whether the block comes with a side-chain.
     keyed: u32,
+    /// Which further output pairs are asked for, a bit each from the second.
+    outs: u32,
     // What the helper's main thread tells the DAW's.
     latency: AtomicU32,
     editor_open: AtomicU32,
@@ -181,7 +183,8 @@ impl Shm {
         let left = align(std::mem::size_of::<Header>());
         let right = align(left + max_block * 4);
         let key = align(right + max_block * 4);
-        let events = align(key + 2 * max_block * 4);
+        let outs = align(key + 2 * max_block * 4);
+        let events = align(outs + 2 * (MAX_PAIRS - 1) * max_block * 4);
         let params = align(events + EVENTS * std::mem::size_of::<Event>());
         let changes = align(params + PARAMS * std::mem::size_of::<ParamMove>());
         let len = align(changes + CHANGES * std::mem::size_of::<Change>());
@@ -189,6 +192,7 @@ impl Shm {
             left,
             right,
             key,
+            outs,
             events,
             params,
             changes,
@@ -268,6 +272,12 @@ impl Shm {
         )
     }
 
+    /// One channel of a further output pair: `pair` 0 is the second.
+    fn out(&self, pair: usize, channel: usize) -> &mut [f32] {
+        let at = Self::layout(self.max_block).outs + (pair * 2 + channel) * self.max_block * 4;
+        self.part(at, self.max_block)
+    }
+
     fn events(&self) -> &mut [Event] {
         self.part(Self::layout(self.max_block).events, EVENTS)
     }
@@ -286,6 +296,7 @@ struct Layout {
     left: usize,
     right: usize,
     key: usize,
+    outs: usize,
     events: usize,
     params: usize,
     changes: usize,
@@ -414,6 +425,13 @@ impl Device for RemoteDevice {
             head.events_in = count as u32;
             head.params_in = self.moves.len() as u32;
             head.keyed = io.sidechain.is_some() as u32;
+            head.outs = io
+                .outputs
+                .iter()
+                .take(MAX_PAIRS - 1)
+                .enumerate()
+                .filter(|(_, out)| out.is_some())
+                .fold(0, |bits, (pair, _)| bits | 1 << pair);
         }
         shm.left()[..frames].copy_from_slice(&io.left[..frames]);
         shm.right()[..frames].copy_from_slice(&io.right[..frames]);
@@ -479,6 +497,12 @@ impl Device for RemoteDevice {
         link.answered.fetch_add(1, Ordering::Relaxed);
         io.left[..frames].copy_from_slice(&shm.left()[..frames]);
         io.right[..frames].copy_from_slice(&shm.right()[..frames]);
+        for (pair, out) in io.outputs.iter_mut().take(MAX_PAIRS - 1).enumerate() {
+            if let Some([l, r]) = out {
+                l[..frames].copy_from_slice(&shm.out(pair, 0)[..frames]);
+                r[..frames].copy_from_slice(&shm.out(pair, 1)[..frames]);
+            }
+        }
         let out = (header.events_out as usize).min(EVENTS);
         io.events.clear();
         for event in &shm.events()[..out] {
@@ -957,6 +981,14 @@ impl RemoteFactory {
         controller.follows_state = made["follows_state"].as_bool().unwrap_or(false);
         controller.ports = Ports {
             sidechain: made["sidechain"].as_bool().unwrap_or(false),
+            outputs: made["outputs"]
+                .as_array()
+                .map(|list| {
+                    list.iter()
+                        .map(|n| n.as_str().unwrap_or_default().to_string())
+                        .collect()
+                })
+                .unwrap_or_default(),
         };
         Instance {
             device: Box::new(RemoteDevice {
@@ -1196,6 +1228,12 @@ fn audio_loop(shm: Arc<Shm>, mut device: Box<dyn Device>) {
     daw_engine::no_denormals();
     let header = shm.header();
     let mut events = daw_engine::EventBuf::with_capacity(EVENTS);
+    // The further output pairs, filled by the plugin and then copied over;
+    // those not asked for are put aside while it runs.
+    let mut outs: Vec<Option<[Vec<f32>; 2]>> = (0..MAX_PAIRS - 1)
+        .map(|_| Some([vec![0.0; shm.max_block], vec![0.0; shm.max_block]]))
+        .collect();
+    let mut aside: Vec<Option<[Vec<f32>; 2]>> = (0..MAX_PAIRS - 1).map(|_| None).collect();
     let mut seen = 0u32;
     let mut scheduling = (0u32, 0u32);
     loop {
@@ -1247,13 +1285,32 @@ fn audio_loop(shm: Arc<Shm>, mut device: Box<dyn Device>) {
         {
             let (left, right) = (shm.left(), shm.right());
             let (key_l, key_r) = shm.key();
+            let wanted = header.outs;
+            let pairs = (u32::BITS - wanted.leading_zeros()) as usize;
+            for (pair, (out, put)) in outs.iter_mut().zip(aside.iter_mut()).enumerate() {
+                // Swapped, not made or freed: what is asked for is in `outs`.
+                if (wanted >> pair & 1 != 0) != out.is_some() {
+                    std::mem::swap(out, put);
+                }
+                if let Some([l, r]) = out {
+                    l[..frames].fill(0.0);
+                    r[..frames].fill(0.0);
+                }
+            }
             let mut io = Io {
                 left: &mut left[..frames],
                 right: &mut right[..frames],
                 events: &mut events,
                 sidechain: (header.keyed != 0).then_some([&key_l[..frames], &key_r[..frames]]),
+                outputs: &mut outs[..pairs.min(MAX_PAIRS - 1)],
             };
             device.process(&ctx, &mut io);
+            for (pair, out) in outs.iter().enumerate() {
+                if let Some([l, r]) = out {
+                    shm.out(pair, 0)[..frames].copy_from_slice(&l[..frames]);
+                    shm.out(pair, 1)[..frames].copy_from_slice(&r[..frames]);
+                }
+            }
         }
         let out = events.as_slice();
         let count = out.len().min(EVENTS);
@@ -1324,6 +1381,7 @@ pub fn serve(args: &[String]) -> i32 {
             "has_editor": controller.has_editor(),
             "follows_state": controller.follows_state(),
             "sidechain": ports.sidechain,
+            "outputs": ports.outputs,
         });
         shm.header()
             .latency

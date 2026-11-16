@@ -474,6 +474,71 @@ pub(crate) fn put_key<C: AsMut<[f32]>>(
     }
 }
 
+/// One stereo pair of a plugin's outputs: the port (or bus) it is on, the
+/// channels of its two sides there, and its name.
+pub(crate) struct OutPair {
+    pub port: usize,
+    pub left: usize,
+    pub right: usize,
+    pub name: String,
+}
+
+/// A plugin's outputs as stereo pairs, the main one first: each port's
+/// channels two by two (a lone one as both sides), named after the port,
+/// with the channels' numbers where a port has more than two. Ports are
+/// given as their channel count and name. At most [`MAX_PAIRS`].
+///
+/// [`MAX_PAIRS`]: daw_engine::MAX_PAIRS
+pub(crate) fn out_pairs(ports: &[(usize, String)]) -> Vec<OutPair> {
+    let mut pairs = Vec::new();
+    for (port, (channels, name)) in ports.iter().enumerate() {
+        for left in (0..*channels).step_by(2) {
+            let right = (left + 1).min(channels - 1);
+            let name = match (name.trim(), *channels > 2) {
+                ("", _) => format!("Out {}", pairs.len() + 1),
+                (name, true) => format!("{name} {}-{}", left + 1, right + 1),
+                (name, false) => name.to_string(),
+            };
+            pairs.push(OutPair {
+                port,
+                left,
+                right,
+                name,
+            });
+        }
+    }
+    pairs.truncate(daw_engine::MAX_PAIRS);
+    pairs
+}
+
+/// The names of a plugin's output pairs, for [`daw_engine::Ports::outputs`]:
+/// none for a plugin with one.
+pub(crate) fn pair_names(pairs: &[OutPair]) -> Vec<String> {
+    if pairs.len() < 2 {
+        return Vec::new();
+    }
+    pairs.iter().map(|p| p.name.clone()).collect()
+}
+
+/// Copy a plugin's further output pairs (all but the first) into those the
+/// host asks for.
+pub(crate) fn write_pairs(
+    pairs: &[OutPair],
+    channels: &[Vec<Vec<f32>>],
+    outputs: &mut [Option<[Vec<f32>; 2]>],
+    n: usize,
+) {
+    for (pair, out) in pairs.iter().skip(1).zip(outputs.iter_mut()) {
+        let (Some(port), Some([l, r])) = (channels.get(pair.port), out) else {
+            continue;
+        };
+        if let (Some(left), Some(right)) = (port.get(pair.left), port.get(pair.right)) {
+            l[..n].copy_from_slice(&left[..n]);
+            r[..n].copy_from_slice(&right[..n]);
+        }
+    }
+}
+
 /// Copy a plugin's stereo, mono or wider output into the track's two channels.
 /// Instruments add to what is on the track; effects replace it.
 pub(crate) fn write_output(left: &mut [f32], right: &mut [f32], out: &[&[f32]], add: bool) {

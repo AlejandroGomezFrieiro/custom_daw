@@ -52,6 +52,14 @@ local function device_state(id)
     -- ("" for its own input); `sidechain_menu` lists the choices.
     keyed = (d.ports and d.ports.sidechain) or d.sidechain ~= nil,
     sidechain = daw.routes.sidechain_text(d) or "",
+    -- How many output pairs it has (1 for most), and how many of the
+    -- further ones play somewhere; `outputs_menu` routes them.
+    pairs = math.max(1, #(d.ports and d.ports.outputs or {})),
+    routed = (function()
+      local n = 0
+      for _ in pairs(d.outputs or {}) do n = n + 1 end
+      return n
+    end)(),
   }
 end
 
@@ -1419,6 +1427,46 @@ function M.sidechain_menu(device)
   out[#out + 1] = { label = "Before the fader", checked = d.sidechain_pre or false }
   return out
 end
+
+--- The menu of a device's further output pairs: for each, `{ label,
+--- choices }`, where the label names the pair and where it plays and the
+--- choices (`{ label, checked }`) are "Nowhere" and the tracks it can play
+--- into. `act.route_pair` takes one; `act.spread_outputs` makes a track
+--- for each pair that plays nowhere.
+function M.outputs_menu(device)
+  local out = {}
+  local d = api.device_get(device)
+  local reaching = daw.routes.reaching(d.track)
+  for _, o in ipairs(daw.routes.outputs(device)) do
+    if o.pair > 1 then
+      local choices = { { label = "Nowhere: not heard", checked = o.target == nil } }
+      for _, id in ipairs(api.track_list()) do
+        if id ~= d.track and not reaching[id] then
+          choices[#choices + 1] = { label = api.track_get(id).name, checked = id == o.target }
+        end
+      end
+      out[#out + 1] = { label = string.format("%d %s → %s", o.pair, o.name, o.target_name or "not heard"), choices = choices }
+    end
+  end
+  return out
+end
+
+--- Route a device's output pair `pair` (from 2) to the `index`th choice of
+--- its menu (`M.outputs_menu`): 1 for nowhere, then the tracks it lists.
+function A.route_pair(device, pair, index)
+  if index == 1 then return daw.routes.set_output(device, pair, nil) end
+  local d = api.device_get(device)
+  local reaching = daw.routes.reaching(d.track)
+  local n = 1
+  for _, id in ipairs(api.track_list()) do
+    if id ~= d.track and not reaching[id] then
+      n = n + 1
+      if n == index then return daw.routes.set_output(device, pair, id) end
+    end
+  end
+end
+
+function A.spread_outputs(device) daw.routes.spread(device) end
 
 --- Choose from a device's side-chain menu (`M.sidechain_menu`), by place
 --- from 1: none, a track, or the last entry, which turns taking it before

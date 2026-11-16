@@ -108,12 +108,20 @@ function view:render(buf, ctx)
           at = at - #text - 1
           inner:text(at, y, text, "ParamValue")
         end
-        -- The track it listens to as its side-chain: `K` chooses it.
-        local key = daw.routes.sidechain_text(d)
-        if key then
-          local text = "key " .. key
-          local width = api.str_width(text)
-          if at - width - 1 > 4 + api.str_width(name) then inner:text(at - width - 1, y, text, "ParamValue") end
+        -- The track it listens to as its side-chain (`K` chooses it), and
+        -- how many of its further output pairs play somewhere (`O`).
+        local further = #(d.ports and d.ports.outputs or {}) - 1
+        local routed = 0
+        for _ in pairs(d.outputs or {}) do routed = routed + 1 end
+        for _, text in ipairs({
+          further > 0 and string.format("outs %d/%d", routed, further) or false,
+          daw.routes.sidechain_text(d) and "key " .. daw.routes.sidechain_text(d) or false,
+        }) do
+          local width = text and api.str_width(text) or 0
+          if text and at - width - 1 > 4 + api.str_width(name) then
+            at = at - width - 1
+            inner:text(at, y, text, "ParamValue")
+          end
         end
       end
     else

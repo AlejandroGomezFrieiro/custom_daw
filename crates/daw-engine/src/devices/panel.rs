@@ -124,6 +124,7 @@ impl Controller for Panel {
     fn ports(&self) -> Ports {
         Ports {
             sidechain: self.face.sidechain(),
+            ..Ports::default()
         }
     }
 }

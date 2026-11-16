@@ -738,18 +738,23 @@ struct Buses {
     buses: Vec<AudioBusBuffers>,
     /// The input bus that takes the side-chain: the first auxiliary one.
     key: Option<usize>,
+    /// Each bus's channel count and name.
+    infos: Vec<(usize, String)>,
 }
 
 impl Buses {
     unsafe fn new(component: &ComPtr<IComponent>, direction: i32, max_block: usize) -> Self {
         unsafe {
             let mut key = None;
+            let mut infos = Vec::new();
             let mut channels: Vec<Vec<Vec<f32>>> = (0..component.getBusCount(AUDIO, direction))
                 .map(|index| {
                     let mut info: BusInfo = std::mem::zeroed();
                     component.getBusInfo(AUDIO, direction, index, &mut info);
-                    // The first bus carries the track's audio, and the first
-                    // auxiliary input a side-chain.
+                    infos.push((info.channelCount.max(0) as usize, wide(&info.name)));
+                    // The first bus carries the track's audio, the first
+                    // auxiliary input a side-chain, and every output is
+                    // heard where it is routed.
                     let keys = direction == INPUT
                         && key.is_none()
                         && index > 0
@@ -758,7 +763,8 @@ impl Buses {
                     if keys {
                         key = Some(index as usize);
                     }
-                    component.activateBus(AUDIO, direction, index, (index == 0 || keys) as TBool);
+                    let active = index == 0 || keys || direction == OUTPUT;
+                    component.activateBus(AUDIO, direction, index, active as TBool);
                     (0..info.channelCount.max(0))
                         .map(|_| vec![0.0; max_block])
                         .collect()
@@ -782,6 +788,7 @@ impl Buses {
                 _pointers: pointers,
                 buses,
                 key,
+                infos,
             }
         }
     }
@@ -918,8 +925,10 @@ impl DeviceFactory for Vst3Factory {
 
             let shared = Arc::new(shared);
             let (edits, edited) = rtrb::RingBuffer::new(512);
+            let out_pairs = crate::out_pairs(&outputs.infos);
             let ports = Ports {
                 sidechain: inputs.key.is_some(),
+                outputs: crate::pair_names(&out_pairs),
             };
             let device = Vst3Device {
                 shared: shared.clone(),
@@ -927,6 +936,7 @@ impl DeviceFactory for Vst3Factory {
                 inputs,
                 outputs,
                 keyed: false,
+                out_pairs,
                 events: ComWrapper::new(EventList {
                     events: UnsafeCell::new(Vec::with_capacity(1024)),
                 }),
@@ -982,6 +992,8 @@ struct Vst3Device {
     outputs: Buses,
     /// Whether the side-chain bus holds a key.
     keyed: bool,
+    /// The output buses as stereo pairs, the main one first.
+    out_pairs: Vec<crate::OutPair>,
     events: ComWrapper<EventList>,
     changes: ComWrapper<ParamChanges>,
     discard: ComWrapper<Discard>,
@@ -1194,6 +1206,7 @@ impl Device for Vst3Device {
                 }
             }
         }
+        crate::write_pairs(&self.out_pairs, &self.outputs.channels, io.outputs, n);
     }
 
     fn set_param(&mut self, index: u32, value: f32) {

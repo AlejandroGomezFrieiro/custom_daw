@@ -203,6 +203,7 @@ mod tests {
                 right: &mut right,
                 events: &mut events,
                 sidechain: None,
+                outputs: &mut [],
             };
             path.process(device, bypass, &ctx(), &mut io);
             out.extend_from_slice(&left);

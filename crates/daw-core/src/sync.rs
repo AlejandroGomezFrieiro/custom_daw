@@ -14,7 +14,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
     DiskStore, MASTER,
-    KeyRt, MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, ParamInfo,
+    KeyRt, MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, OutRt, ParamInfo,
     Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt, db_to_gain,
 };
 use serde_json::{Value, json};
@@ -36,6 +36,8 @@ struct Route {
     sends: Vec<(Id, f32, bool)>,
     /// Devices on other tracks that listen to this one: see [`Key`].
     keys: Vec<Key>,
+    /// Further output pairs of this track's devices: see [`Out`].
+    outs: Vec<Out>,
     /// Frames of latency of the track's own devices.
     latency: u32,
 }
@@ -51,6 +53,18 @@ struct Key {
     /// Frames of latency of the devices before it on its track, which the
     /// key waits for so that it lines up with what the device hears.
     before: u32,
+}
+
+/// One of a device's further output pairs, played into another track.
+#[derive(Clone, Debug, PartialEq)]
+struct Out {
+    device: Id,
+    /// 0 for the device's second pair.
+    pair: usize,
+    target: Id,
+    /// Frames of latency of the track's devices up to this one, included:
+    /// how late after the track's input the pair leaves.
+    late: u32,
 }
 
 type Routing = Vec<Route>;
@@ -71,6 +85,8 @@ pub struct Mapper {
     routing: Routing,
     /// Devices given a buffer for a side-chain.
     keyed: HashSet<Id>,
+    /// Devices given buffers for further output pairs, and which.
+    outs: HashMap<Id, Vec<usize>>,
     /// Frames by which the output is behind the transport, as last scheduled.
     pub latency: u32,
     /// Each track's MIDI clips as engine events, kept from one sync to the
@@ -108,6 +124,7 @@ impl Mapper {
             midi_inputs: HashMap::new(),
             routing: Vec::new(),
             keyed: HashSet::new(),
+            outs: HashMap::new(),
             latency: 0,
             clip_events: HashMap::new(),
             host_latency: HashMap::new(),
@@ -467,6 +484,7 @@ pub fn sync(
                     toggled = true;
                     device_slots = true;
                     map.keyed.remove(&device.id);
+                    map.outs.remove(&device.id);
                     if device.offline {
                         ctx.live.remove(&device.id);
                         if let Some(slot) = map.devices.remove(&device.id) {
@@ -561,6 +579,7 @@ pub fn sync(
         ctx.live.remove(id);
         map.host_latency.remove(id);
         map.keyed.remove(id);
+        map.outs.remove(id);
         if let Some(slot) = map.devices.remove(id) {
             removals.push(Msg::RemoveDevice { slot });
             map.free_devices.push(slot);
@@ -690,8 +709,36 @@ pub fn sync(
         }
     }
     map.keyed = keyed;
-    let keys_moved = device_slots && routing.iter().any(|r| !r.keys.is_empty());
-    if routing != map.routing || new_slots || keys_moved {
+    // Likewise buffers for as many further output pairs as are routed.
+    let mut outs: HashMap<Id, Vec<usize>> = HashMap::new();
+    for out in routing.iter().flat_map(|r| &r.outs) {
+        if map.devices.contains_key(&out.device) {
+            let pairs = outs.entry(out.device).or_default();
+            if !pairs.contains(&out.pair) {
+                pairs.push(out.pair);
+                pairs.sort_unstable();
+            }
+        }
+    }
+    for (id, pairs) in &outs {
+        if map.outs.get(id) != Some(pairs) {
+            send(Msg::SetOutputs {
+                device: map.devices[id],
+                outs: Some(daw_engine::out_bufs(pairs)),
+            });
+        }
+    }
+    for id in map.outs.keys().filter(|id| !outs.contains_key(id)) {
+        if let Some(&device) = map.devices.get(id) {
+            send(Msg::SetOutputs { device, outs: None });
+        }
+    }
+    map.outs = outs;
+    let routes_moved = device_slots
+        && routing
+            .iter()
+            .any(|r| !r.keys.is_empty() || !r.outs.is_empty());
+    if routing != map.routing || new_slots || routes_moved {
         let schedule = build_schedule(&routing, map);
         map.latency = schedule.latency;
         send(Msg::SetSchedule(Box::new(schedule)));
@@ -1365,10 +1412,31 @@ fn routing_of(project: &Project, live: &LiveDevices) -> Routing {
             before += device_latency(d);
         }
     }
+    // Further output pairs, by the track whose devices they come from. The
+    // master feeds nothing, so its devices' pairs go nowhere.
+    let outs_of = |t: &Track| -> Vec<Out> {
+        let mut late = 0;
+        let mut outs = Vec::new();
+        for d in &t.devices {
+            late += device_latency(d);
+            for (&pair, &target) in &d.outputs {
+                if t.id != MASTER_ID && pair >= 2 && exists(target) && target != t.id {
+                    outs.push(Out {
+                        device: d.id,
+                        pair: pair as usize - 2,
+                        target,
+                        late,
+                    });
+                }
+            }
+        }
+        outs
+    };
     project
         .all_tracks()
         .map(|t| Route {
             keys: keys.remove(&t.id).unwrap_or_default(),
+            outs: outs_of(t),
             track: t.id,
             output: t
                 .output
@@ -1405,6 +1473,12 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
                 .entry(key.track)
                 .or_default()
                 .push((index, key.before));
+        }
+        for out in &route.outs {
+            feeders
+                .entry(out.target)
+                .or_default()
+                .push((index, route.latency.saturating_sub(out.late)));
         }
     }
     fn visit(
@@ -1510,6 +1584,22 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
                             track: slot(&key.track)?,
                             pre: key.pre,
                             delay: wait_for(route.track, key.track, key.before),
+                        })
+                    })
+                    .collect(),
+                outs: route
+                    .outs
+                    .iter()
+                    .filter_map(|out| {
+                        Some(OutRt {
+                            device: *map.devices.get(&out.device)?,
+                            pair: out.pair,
+                            target: slot(&out.target)?,
+                            delay: wait_for(
+                                route.track,
+                                out.target,
+                                route.latency.saturating_sub(out.late),
+                            ),
                         })
                     })
                     .collect(),

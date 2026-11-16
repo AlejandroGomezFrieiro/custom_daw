@@ -71,7 +71,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 In **M**: `k` `j` the fader, `>` `<` pan, `M` `s` `r` `I`, `dd` `yy` `p` tracks.
 In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 `b` bypass, `e` the plugin's window, `yy` `dd` `p` devices, `<A-j>` `<A-k>` reorder,
-`K` the track the device listens to (side-chain).
+`K` the track the device listens to (side-chain), `O` where its further output pairs play.
 
 ## Name a region (text objects)
 

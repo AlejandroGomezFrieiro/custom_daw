@@ -98,7 +98,7 @@ test("a side-chain lines up with what the device hears, through latency on eithe
   eq(T.channel_peaks(info, 0.5, 1) > 0.05, true, "without the key the kick is heard")
 end)
 
-test("side-chains and the threads that process tracks: the same file, byte for byte", function()
+test("side-chains, output pairs and the threads that process tracks: the same file, byte for byte", function()
   fresh()
   local bus = daw.add_track({ name = "bus" })
   bus:add_device("compressor", { threshold = -30, ratio = 8, attack = 1, release = 40, lookahead = 2 })
@@ -120,6 +120,15 @@ test("side-chains and the threads that process tracks: the same file, byte for b
     comp:set_sidechain(keys[i + 1], { pre = i % 4 == 1 })
   end
   bus:devices()[1]:set_sidechain(keys[3])
+  -- And a kit whose kick plays into the bus and whose hats into a voice.
+  local drums = daw.add_track({ name = "kit" })
+  local kit = drums:add_device("drums")
+  drums:add_device("limiter")
+  local beats = {}
+  for step = 0, 15 do beats[#beats + 1] = { pitch = ({ 36, 42, 38, 42 })[step % 4 + 1], start = step * 0.5, length = 0.25 } end
+  drums:add_clip({ start = 0, length = 8, notes = beats })
+  kit:set_output(2, bus)
+  kit:set_output(4, keys[5])
   daw.flush()
   local alone = render({ tail = 0.5, threads = 1 })
   eq(alone.peak > 0.05, true, "something sounds")
@@ -272,5 +281,182 @@ for _, format in ipairs({ "clap", "lv2", "vst3" }) do
     comp.sidechain = nil
     during = levels()
     eq(during < 0.01, true, string.format("without a key it hears nothing: %.4f", during))
+  end)
+end
+
+-- Devices with more than one output pair -----------------------------------------
+
+--- A kit on its own track with a kick on beat 0 and a snare on beat 2, at
+--- 120 BPM: the kick sounds from 0 s, the snare from 1 s.
+local function kit_and_kick()
+  fresh()
+  daw.project.tempo = 120
+  local drums = daw.add_track({ name = "Drums" })
+  local kit = drums:add_device("drums")
+  drums:add_clip({ start = 0, length = 4, notes = { { pitch = 36, start = 0, length = 0.5 }, { pitch = 38, start = 2, length = 0.5 } } })
+  local kick = daw.add_track({ name = "Kick" })
+  return drums, kit, kick
+end
+
+--- Peaks while the kick sounds and while the snare does.
+local function kick_and_snare()
+  local info = render({ tail = 0, bits = 16 })
+  return T.channel_peaks(info, 0.01, 0.2), T.channel_peaks(info, 1.01, 1.2)
+end
+
+test("a kit's routed pair plays on the track it is routed to, and leaves the kit's own", function()
+  local drums, kit, kick = kit_and_kick()
+  eq(table.concat(kit.ports.outputs, " "), "Kit Kick Snare Hats Toms Cymbals Percussion", "the kit names its pairs")
+  kit:set_output(2, kick)
+  eq(kit.outputs["2"], kick.id, "the device says where its second pair plays")
+  drums.volume = -120
+  local k, s = kick_and_snare()
+  eq(k > 0.05 and s < 0.001, true, string.format("the kick plays through its own track, not the kit's fader: %.3f, %.4f", k, s))
+  drums.volume = 0
+  kick.volume = -120
+  k, s = kick_and_snare()
+  eq(k < 0.001 and s > 0.05, true, string.format("and is no longer on the kit's pair: %.4f, %.3f", k, s))
+  kit:set_output(2, nil)
+  eq(next(kit.outputs), nil, "a pair taken away plays nowhere")
+  k = kick_and_snare()
+  eq(k > 0.05, true, "and the kit has its kick back")
+end)
+
+test("a pair routed elsewhere is lined up with the rest through latency on either side", function()
+  fresh()
+  daw.project.tempo = 120
+  local notes = { { pitch = 36, start = 1, length = 0.5 } }
+  -- One kit plays the kick on its own track through a look-ahead; another
+  -- plays it on its kick pair, which leaves before a longer look-ahead and
+  -- is turned upside down on the track it plays into: they cancel.
+  local a = daw.add_track({ name = "A" })
+  a:add_device("drums")
+  a:add_device("compressor", { lookahead = 3, ratio = 1 })
+  a:add_clip({ start = 0, length = 4, notes = notes })
+  local b = daw.add_track({ name = "B" })
+  local kit = b:add_device("drums")
+  b:add_device("compressor", { lookahead = 5, ratio = 1 })
+  b:add_clip({ start = 0, length = 4, notes = notes })
+  local flip = daw.add_track({ name = "Flip" })
+  flip:add_device("utility", { invert_l = 1, invert_r = 1 })
+  kit:set_output(2, flip)
+  local info = render({ tail = 0.2, bits = 16 })
+  eq(T.channel_peaks(info, 0, 2.2) < 1e-4, true, "the two kicks cancel")
+  kit:set_output(2, nil)
+  info = render({ tail = 0.2, bits = 16 })
+  eq(T.channel_peaks(info, 0.5, 1) > 0.05, true, "and without the pair they do not")
+end)
+
+test("output pairs that would make a loop are refused, with outputs, sends and side-chains", function()
+  local drums, kit, kick = kit_and_kick()
+  fails(function() kit:set_output(2, drums) end, "own track", "into the kit's own track")
+  fails(function() kit:set_output(1, kick) end, "from 2", "the first pair, which plays on the kit's track")
+  fails(function() kit:set_output(2, 999) end, "no track", "into a track that is not there")
+  local on_master = daw.master:add_device("drums")
+  fails(function() on_master:set_output(2, kick) end, "master", "from the master")
+  kit:set_output(2, kick)
+  fails(function() kick.output = drums end, "loop", "the kick track playing back into the kit's")
+  fails(function() kick:send(drums, 0) end, "loop", "sending back")
+  local comp = drums:add_device("compressor")
+  fails(function() comp:set_sidechain(kick) end, "loop", "the kit's track listening to the kick track")
+  local other = daw.add_track({ name = "Other" })
+  other:add_device("compressor"):set_sidechain(kick)
+  local second = other:add_device("drums")
+  fails(function() second:set_output(2, drums) end, "loop", "round three tracks, through a side-chain")
+  local names = {}
+  for _, entry in ipairs(daw.frontend.outputs_menu(kit.id)[1].choices) do names[#names + 1] = entry.label end
+  eq(table.concat(names, "|"), "Nowhere: not heard|Kick|Other", "the window offers the tracks it can play into")
+end)
+
+test("removing the track a pair plays into takes the route away, and undo brings it back", function()
+  local _, kit, kick = kit_and_kick()
+  kit:set_output(3, kick)
+  api.undo_checkpoint()
+  kick:remove()
+  eq(next(kit.outputs), nil, "the pair plays nowhere")
+  daw.undo()
+  eq(kit.outputs["3"], kick.id, "undo routes it again")
+end)
+
+test("routed pairs are saved and loaded, left out of copies and templates", function()
+  local _, kit, kick = kit_and_kick()
+  kit:set_output(2, kick)
+  local path = T.scratch .. "/pairs.json"
+  daw.project.save(path)
+  daw.project.load(path)
+  local loaded = daw.track("Drums"):devices()[1]
+  eq(loaded.outputs["2"], daw.track("Kick").id, "the pair is read back")
+  local copy = daw.track("Drums"):duplicate()
+  eq(next(copy:devices()[1].outputs), nil, "a copy of the track plays its pairs nowhere")
+  local snap = daw.track("Drums"):snapshot()
+  daw.track("Kick"):remove()
+  local restored = daw.restore_track(snap)
+  eq(next(restored:devices()[1].outputs), nil, "restored after the track is gone, the pair plays nowhere")
+end)
+
+test("spreading a kit's outputs makes a track for each pair, grouped with the kit's", function()
+  local drums, kit = kit_and_kick()
+  daw.track("Kick"):remove()
+  local made = daw.routes.spread(kit.id)
+  local names = {}
+  for i, t in ipairs(made) do names[i] = t.name end
+  eq(table.concat(names, " "), "Kick Snare Hats Toms Cymbals Percussion", "named after the pairs")
+  eq(kit.outputs["2"], made[1].id, "each pair plays on its track")
+  eq(kit.outputs["7"], made[6].id, "the last too")
+  local group = daw.groups.of(drums)
+  eq(group ~= nil and api.track_get(group).name, "Drums outputs", "the kit's track and the new ones are in a group")
+  eq(daw.groups.of(made[3]), group, "all of them")
+  eq(#daw.routes.spread(kit.id), 0, "spreading again makes nothing more")
+  eq(kick_and_snare() > 0.05, true, "the kick sounds through its new track")
+end)
+
+test("the window and the device panel route a kit's pairs", function()
+  local drums, kit, kick = kit_and_kick()
+  daw.add_track({ name = "Snare" })
+  daw.cursor.set_track(drums)
+  local card = daw.frontend.state(-1).devices[1]
+  eq(card.pairs .. " " .. card.routed, "7 0", "the card knows the kit has seven pairs, none routed")
+  local menu = daw.frontend.outputs_menu(kit.id)
+  eq(#menu, 6, "the menu has the six further pairs")
+  eq(menu[1].label, "2 Kick → not heard", "each says where it plays")
+  daw.frontend.act.route_pair(kit.id, 2, 2)
+  eq(kit.outputs["2"], kick.id, "choosing a track routes the pair")
+  eq(daw.frontend.outputs_menu(kit.id)[1].choices[2].checked, true, "which the menu ticks")
+  daw.frontend.act.route_pair(kit.id, 2, 1)
+  eq(next(kit.outputs), nil, "and Nowhere takes it away")
+
+  daw.ui.focus("devices")
+  daw.ui.views.devices.row = 1
+  daw.commands.exec("device.output 3 Snare")
+  eq(kit.outputs["3"], daw.track("Snare").id, ":device.output routes a pair by number")
+  daw.flush()
+  local text = table.concat(api.ui_snapshot(140, 30), "\n")
+  eq(text:find("outs 1/6", 1, true) ~= nil, true, "the device panel counts the routed pairs")
+  daw.commands.exec("device.output 3 none")
+  eq(next(kit.outputs), nil, ":device.output 3 none takes it away")
+  daw.commands.exec("device.spread")
+  eq(kit.outputs["2"] ~= nil, true, ":device.spread spreads them")
+  daw.ui.focus("arrange")
+end)
+
+-- Plugins with several output pairs, in each format.
+for _, case in ipairs({
+  { "clap", "^Surge XT$" }, { "clap", "Multi%-Sampler x12 DirectOut" },
+  { "lv2", "Multi%-Sampler x12 DirectOut" }, { "vst3", "Multi%-Sampler x12 DirectOut" },
+}) do
+  local format, pattern = case[1], case[2]
+  test(format .. " " .. pattern:gsub("[%^%$%%]", "") .. " names its output pairs, and one is routed", function()
+    local kind = plugin_kind(format, pattern)
+    if not kind then return "skipped: test plugins not found" end
+    fresh()
+    local inst = daw.add_track({ name = "Inst" })
+    local d = inst:add_device(kind)
+    local outputs = d.ports.outputs
+    eq(#outputs > 1, true, "it has several pairs: " .. table.concat(outputs, ", "))
+    local out = daw.add_track({ name = "Out" })
+    d:set_output(2, out)
+    eq(d.outputs["2"], out.id, "a pair is routed")
+    local info = render({ tail = 0, bits = 16, start = 0, ["end"] = 2 })
+    eq(info.frames > 0, true, "and the project renders with it")
   end)
 end
