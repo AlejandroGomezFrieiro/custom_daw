@@ -89,9 +89,9 @@ returns to normal mode.
 | `:preroll 2`, `:tempo.move 9` | play two bars (`3s`: seconds) before the punch in when recording from a stop; move the tempo change at the cursor to bar 9 |
 | `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
-| `Tab` `gt`, `Ctrl-w c`, `Ctrl-w o` | next view; close this panel; close every panel |
-| `Ctrl-w +` `Ctrl-w -`, `Ctrl-w =` | taller or shorter tracks (in the mixer, piano roll or a panel below, that panel); track height back to automatic, fitting the tracks to the screen |
-| `Ctrl-w <` `Ctrl-w >`, `Ctrl-w _` | narrower or wider side panel (in the arrange view, track headers); give the focused panel the whole screen, and again to put the others back |
+| `Tab` `Ctrl-w w`, `Ctrl-w c`, `Ctrl-w o` | next window; close this window; close every other window (see Windows, buffers and tabs below) |
+| `Ctrl-w +` `Ctrl-w -`, `Ctrl-w =` | taller or shorter window (in a panel whose height is an option, `mixer_height`, that option); windows of equal size. With the arrange view the only window: taller or shorter tracks, and track height back to automatic, fitting the tracks to the screen |
+| `Ctrl-w <` `Ctrl-w >`, `Ctrl-w _` | narrower or wider window (the device panel's `devices_width`; with the arrange view alone, its track headers); give the window the whole tab, and again to put the others back |
 | `ZZ` `ZQ` | save and quit; quit |
 
 **Automation lanes as rows.** `,aa` shows a track's automation lanes as
@@ -149,6 +149,68 @@ strip's volume and pan, and `dd` `yy` `p` for tracks.
 `,l` shows the session view, the clip launcher: a column of slots under
 each track and a scene for each row, launched with `<CR>` and `L`; its keys
 are in [Live performance](live.md).
+
+## Windows, buffers and tabs
+
+The screen is laid out as in Neovim. A **buffer** is something to show and
+edit: the arrange view (`arrange`), the piano roll (`roll`), the mixer
+(`mixer`), the device panel (`devices`), the session view (`session`), the
+event list, help, an extension's view (`notation`, `drums`, `utau`, ...). A
+**window** shows one buffer; a **tab** holds windows split side by side and
+one above another. The status line and the bottom line stay along the
+bottom of every tab. On start there is one tab and the screen is as it
+always was: the arrange view, with the panels coming and going in their
+places (`,m`, `,d`, `,p`, `Enter` on a clip).
+
+`:vs roll` splits the window in two side by side and shows the piano roll in
+the new half; `Ctrl-w h` and `Ctrl-w l` go between them, and each takes its
+own keys. Opening a clip then shows it in that window. A built-in view is
+one buffer, shown in one window at a time: showing it in another window
+moves it there, with a message. A panel's window closed with `Ctrl-w c`
+keeps its place, and the panel comes back there. New windows go right of
+and below the one split (`:set splitright!` and `:set splitbelow!` put them
+left and above).
+
+| Keys or command | |
+| --- | --- |
+| `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; an empty window without a name (`Ctrl-w s`, `Ctrl-w v`, `:vnew`, `Ctrl-w n`) |
+| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (`:e song.json` still opens a project); the next and previous buffer |
+| `:ls`, `:bd roll` | list the buffers; close every window of one |
+| `:close` `Ctrl-w c`, `:q` `Ctrl-w q`, `:only` `Ctrl-w o` | close the window; close it, or in the last window quit (asking about unsaved changes as before); close every other window |
+| `Ctrl-w h` `j` `k` `l`, `Ctrl-w w` `W`, `Ctrl-w p` | the window left, below, above, right (a count goes further); the next and previous window; the window that had the keyboard before |
+| `Ctrl-w H` `J` `K` `L`, `Ctrl-w x`, `Ctrl-w r` `R` | move the window to the far left, bottom, top, right; exchange it with the next; rotate the windows of its row or column |
+| `Ctrl-w +` `-` `<` `>`, `Ctrl-w =`, `Ctrl-w _` `\|` | resize (a count steps further); equal sizes; the whole tab and back |
+| `:resize 20` `:resize +5`, `:vertical resize 40` | the window's height, its width |
+| `:tabnew Mix`, `:tabnew mixer`, `gt` `gT`, `:tabn 2`, `Ctrl-w T` | a new tab named Mix, or showing the mixer; next and previous tab; tab 2; the window to a tab of its own |
+| `:tabclose`, `:tabs` | close the tab; list the tabs and their windows |
+| `:setlocal timebind` | bind this window's time to the other bound windows' |
+| `:layout save edit`, `:layout edit` | keep the tabs and windows as they are; put them back |
+
+With more than one tab a tab line along the top names them; a click on one
+goes to it. A click in a window gives it the keyboard. The rule between two
+windows side by side is a border to drag with the mouse, and so is the top
+row of a window below another.
+
+**Bound in time.** `:setlocal timebind` in the arrange view and in the piano
+roll beside it makes them show the same stretch of time at the same zoom:
+the window with the keyboard leads, the other follows as it scrolls, and
+while playing both follow the playhead. `:setlocal notimebind` lets go.
+
+**Layouts.** `:layout save edit` writes the tabs and windows to the state
+directory, and `:layout edit` puts them back. A configuration can name
+layouts of its own, and start with one:
+
+```lua
+daw.layouts.edit = {
+  { name = "Edit", layout = { dir = "h", "arrange", "roll" } },
+  { name = "Mix", layout = "mixer" },
+}
+daw.opt.layout = "edit"
+```
+
+`dir = "h"` puts windows side by side, `dir = "v"` one above another, and a
+window may have a `size` in cells or a `weight` (its share, 1 by default).
+Every terminal attached with `daw attach` has tabs and windows of its own.
 
 ## Pickers
 

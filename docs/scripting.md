@@ -163,6 +163,42 @@ daw.ui.input({ prompt = "Name: " }, function(text) end)
 daw.notify("message", "warn")
 ```
 
+**Buffers, windows and tabs.** A view is a buffer type with one buffer,
+shown in one window at a time (see Windows, buffers and tabs in
+[the terminal interface](terminal.md)). `daw.buftype` makes a type that has
+a buffer for each target, any number of windows showing each:
+
+```lua
+daw.buftype("notes", {
+  create = function(target, buf) return { text = "notes on " .. target } end,  -- the buffer's state
+  render = function(win, canvas, ctx)        -- ctx.buf is the buffer, win.state the window's own
+    canvas:text(0, 0, ctx.buf.state.text, ctx.focused and "Title" or "Normal")
+  end,
+  on_key = function(win, key) end,           -- keys with no mapping
+  on_mouse = function(win, event) end,
+  title = function(buf) return "Notes" end,
+  -- For `timebind`: the beat at the left edge, columns per beat, beats shown.
+  time = { get = function(win) end, set = function(win, left, zoom) end },
+})
+daw.keymap.set("x", function() end, { view = "notes" })   -- keys of its windows
+```
+
+`:vs notes://verse` then shows buffer `notes://verse`. `daw.buf`: `list()`,
+`get(name)`, `create(type, target)`, `delete(name)`, `current()`, `of(win)`.
+`daw.win`: `current()`, `list()` (the tab's windows on screen, each with
+`id`, `view`, `opts`, `state`), `split({ vertical, view })`, `close(win)`,
+`only()`, `show(win, name)`, `enter(win)`, `resize(win, "height" or "width",
+n, relative)`, `equalize()`, `maximize()`, `option(win, name, value)`.
+`daw.tab`: `list()`, `current()`, `new(name, buffer)`, `go(i)`, `close(i)`.
+`daw.layout.capture()` and `daw.layout.restore(data)` give and take the tabs
+and windows as plain data; `daw.layouts.name = {...}` names a layout for
+`:layout name`. Events: `win.enter`, `win.leave`, `win.resized` (`{ win }`),
+`buf.enter`, `buf.leave` (`{ buf, name }`), `tab.enter` (`{ tab }`), and
+`view.focused` as before. A view keeps a window of its own size and
+time with `view:time_axis()` and `view:set_time_axis(left, zoom)`, as the
+arrange view and the piano roll do; a window that follows another is drawn
+with `ctx.follower`.
+
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,
