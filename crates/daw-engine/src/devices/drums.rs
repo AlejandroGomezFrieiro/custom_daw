@@ -368,6 +368,7 @@ mod tests {
                     left: &mut left,
                     right: &mut right,
                     events: &mut events,
+                    sidechain: None,
                 },
             );
             out.extend_from_slice(&left);

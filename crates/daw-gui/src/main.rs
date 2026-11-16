@@ -1689,6 +1689,8 @@ impl View {
                 preset: text(&device["preset"]),
                 wet: number(&device["wet"]),
                 gain: number(&device["gain"]),
+                keyed: device["keyed"].as_bool().unwrap_or(false),
+                sidechain: text(&device["sidechain"]),
             });
         }
         sync(&self.devices, device_rows);
@@ -2206,6 +2208,23 @@ fn run() -> Result<()> {
     ui.on_choose_preset({
         let pass = pass.clone();
         move |id, index| pass("preset_choose", json!([id, index]))
+    });
+    // So is the menu of the tracks a device can listen to.
+    ui.on_fill_sidechain_menu({
+        let (act, weak) = (act.clone(), ui.as_weak());
+        move |id| {
+            act(&|c| {
+                let menu = c.eval("return daw.frontend.sidechain_menu(...)", json!([id]))?;
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_sidechain_choices(choices(&menu));
+                }
+                Ok(Value::Null)
+            })
+        }
+    });
+    ui.on_choose_sidechain({
+        let pass = pass.clone();
+        move |id, index| pass("choose_sidechain", json!([id, index]))
     });
     // Where each device card is in the inspector's list, for a drop there.
     let cards: Rc<RefCell<Vec<(f32, f32)>>> = Rc::default();

@@ -440,6 +440,40 @@ impl HeldNotes {
     }
 }
 
+/// Put a block of side-chain into a plugin's side-chain channels (a mono
+/// one gets both sides at half level each), or silence them once when it is
+/// taken away. `held` says whether they hold one now; the answer is whether
+/// they do afterwards.
+pub(crate) fn put_key<C: AsMut<[f32]>>(
+    channels: &mut [C],
+    key: Option<[&[f32]; 2]>,
+    held: bool,
+    n: usize,
+) -> bool {
+    match (key, channels) {
+        (_, []) => false,
+        (Some([l, r]), [mono]) => {
+            for (m, (l, r)) in mono.as_mut()[..n].iter_mut().zip(l.iter().zip(r)) {
+                *m = (l + r) * 0.5;
+            }
+            true
+        }
+        (Some([l, r]), [left, right, ..]) => {
+            left.as_mut()[..n].copy_from_slice(&l[..n]);
+            right.as_mut()[..n].copy_from_slice(&r[..n]);
+            true
+        }
+        (None, channels) => {
+            if held {
+                for ch in channels {
+                    ch.as_mut().fill(0.0);
+                }
+            }
+            false
+        }
+    }
+}
+
 /// Copy a plugin's stereo, mono or wider output into the track's two channels.
 /// Instruments add to what is on the track; effects replace it.
 pub(crate) fn write_output(left: &mut [f32], right: &mut [f32], out: &[&[f32]], add: bool) {

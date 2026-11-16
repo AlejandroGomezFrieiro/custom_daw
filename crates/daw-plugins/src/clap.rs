@@ -62,7 +62,7 @@ use clap_sys::version::CLAP_VERSION;
 use daw_engine::device::assign_keys;
 use daw_engine::{
     Controller, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, NOTE_BEND_RANGE,
-    NoteCtl, ParamInfo, ProcessCtx, Registry, ump,
+    NoteCtl, ParamInfo, Ports, ProcessCtx, Registry, ump,
 };
 
 use crate::window::{HostWindow, Watches, WindowEvent, ui_scale};
@@ -328,8 +328,12 @@ impl DeviceFactory for ClapFactory {
             read_params(&mut shared);
 
             let ports: *const clap_plugin_audio_ports = extension(plugin, CLAP_EXT_AUDIO_PORTS);
-            let inputs = Buffers::new(&port_channels(plugin, ports, true), max_block);
+            let input_channels = port_channels(plugin, ports, true);
+            let inputs = Buffers::new(&input_channels, max_block);
             let outputs = Buffers::new(&port_channels(plugin, ports, false), max_block);
+            // The main port is the first; the first other input that takes
+            // sound is the side-chain.
+            let key_port = (1..input_channels.len()).find(|&i| input_channels[i] > 0);
             let dialects = note_dialects(plugin);
             let clap_notes = dialects & CLAP_NOTE_DIALECT_CLAP != 0;
             // A channel's controllers, the pitch wheel, pressure and program
@@ -348,6 +352,8 @@ impl DeviceFactory for ClapFactory {
                 changed,
                 inputs,
                 outputs,
+                key_port,
+                keyed: false,
                 events: Vec::with_capacity(2048),
                 pending: Vec::with_capacity(512),
                 held: HeldNotes::new(),
@@ -367,6 +373,9 @@ impl DeviceFactory for ClapFactory {
                     shared,
                     changes,
                     editor: None,
+                    ports: Ports {
+                        sidechain: key_port.is_some(),
+                    },
                 })),
             })
         }
@@ -524,6 +533,9 @@ struct ClapDevice {
     changed: rtrb::Producer<(clap_id, f64)>,
     inputs: Buffers,
     outputs: Buffers,
+    /// The input port that takes the side-chain, and whether it holds one.
+    key_port: Option<usize>,
+    keyed: bool,
     events: Vec<ClapEvent>,
     /// Parameter changes waiting for the next block: index and value.
     pending: Vec<(u32, f32)>,
@@ -569,6 +581,9 @@ impl Device for ClapDevice {
                         right[..n].copy_from_slice(io.right);
                     }
                 }
+            }
+            if let Some(port) = self.key_port.and_then(|p| self.inputs.channels.get_mut(p)) {
+                self.keyed = crate::put_key(port.as_mut_slice(), io.sidechain, self.keyed, n);
             }
 
             self.events.clear();
@@ -792,6 +807,7 @@ struct ClapController {
     /// The open editor: in one of our windows, or (`None` inside) floating in
     /// a window the plugin made itself.
     editor: Option<Option<HostWindow>>,
+    ports: Ports,
 }
 
 impl ClapController {
@@ -894,6 +910,10 @@ impl Controller for ClapController {
 
     fn params(&self) -> Vec<ParamInfo> {
         self.shared.param_infos.clone()
+    }
+
+    fn ports(&self) -> Ports {
+        self.ports.clone()
     }
 
     fn value(&self, index: usize) -> Option<f64> {

@@ -48,6 +48,17 @@ pub struct Io<'a> {
     /// Events for this block, ordered by frame. A device may rewrite them for
     /// the devices after it.
     pub events: &'a mut EventBuf,
+    /// The side-chain: another track's sound, as long as the block, for a
+    /// device that listens to one ([`Ports::sidechain`]). None when nothing
+    /// is connected; a compressor then listens to its own input.
+    pub sidechain: Option<[&'a [f32]; 2]>,
+}
+
+/// The audio a device takes and gives besides its main stereo pair.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ports {
+    /// Whether it listens to a side-chain (see [`Io::sidechain`]).
+    pub sidechain: bool,
 }
 
 /// Runs on the audio thread: implementations must not allocate, lock or block.
@@ -128,6 +139,11 @@ pub trait Controller {
     /// answer is bytes too, so it can cross `daw.api` as plain strings.
     fn call(&mut self, method: &str, _data: &[u8]) -> Result<Vec<u8>> {
         anyhow::bail!("this device has no method `{method}`")
+    }
+    /// What it takes and gives besides its main stereo pair, as this
+    /// instance has it.
+    fn ports(&self) -> Ports {
+        Ports::default()
     }
 }
 

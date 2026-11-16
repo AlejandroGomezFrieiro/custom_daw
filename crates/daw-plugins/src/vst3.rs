@@ -17,7 +17,7 @@ use anyhow::{Context, Result, bail};
 use daw_engine::device::assign_keys;
 use daw_engine::{
     Controller, Ctl, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, NOTE_BEND_RANGE,
-    NoteCtl, ParamInfo, ProcessCtx, Registry,
+    NoteCtl, ParamInfo, Ports, ProcessCtx, Registry,
 };
 use vst3::Steinberg::Linux::*;
 use vst3::Steinberg::Vst::*;
@@ -34,6 +34,8 @@ const AUDIO: i32 = 0;
 const EVENT: i32 = 1;
 const INPUT: i32 = 0;
 const OUTPUT: i32 = 1;
+/// The type of a bus that is not the main one, such as a side-chain.
+const AUX: i32 = 1;
 const SAMPLE_32: i32 = 0;
 const REALTIME: i32 = 0;
 const OFFLINE: i32 = 2;
@@ -734,17 +736,29 @@ struct Buses {
     channels: Vec<Vec<Vec<f32>>>,
     _pointers: Vec<Vec<*mut f32>>,
     buses: Vec<AudioBusBuffers>,
+    /// The input bus that takes the side-chain: the first auxiliary one.
+    key: Option<usize>,
 }
 
 impl Buses {
     unsafe fn new(component: &ComPtr<IComponent>, direction: i32, max_block: usize) -> Self {
         unsafe {
+            let mut key = None;
             let mut channels: Vec<Vec<Vec<f32>>> = (0..component.getBusCount(AUDIO, direction))
                 .map(|index| {
                     let mut info: BusInfo = std::mem::zeroed();
                     component.getBusInfo(AUDIO, direction, index, &mut info);
-                    // Only the first bus carries the track's audio.
-                    component.activateBus(AUDIO, direction, index, (index == 0) as TBool);
+                    // The first bus carries the track's audio, and the first
+                    // auxiliary input a side-chain.
+                    let keys = direction == INPUT
+                        && key.is_none()
+                        && index > 0
+                        && info.busType == AUX
+                        && info.channelCount > 0;
+                    if keys {
+                        key = Some(index as usize);
+                    }
+                    component.activateBus(AUDIO, direction, index, (index == 0 || keys) as TBool);
                     (0..info.channelCount.max(0))
                         .map(|_| vec![0.0; max_block])
                         .collect()
@@ -767,6 +781,7 @@ impl Buses {
                 channels,
                 _pointers: pointers,
                 buses,
+                key,
             }
         }
     }
@@ -903,11 +918,15 @@ impl DeviceFactory for Vst3Factory {
 
             let shared = Arc::new(shared);
             let (edits, edited) = rtrb::RingBuffer::new(512);
+            let ports = Ports {
+                sidechain: inputs.key.is_some(),
+            };
             let device = Vst3Device {
                 shared: shared.clone(),
                 edited,
                 inputs,
                 outputs,
+                keyed: false,
                 events: ComWrapper::new(EventList {
                     events: UnsafeCell::new(Vec::with_capacity(1024)),
                 }),
@@ -945,6 +964,7 @@ impl DeviceFactory for Vst3Factory {
                     shared,
                     edits,
                     editor: None,
+                    ports,
                 })),
             })
         }
@@ -960,6 +980,8 @@ struct Vst3Device {
     edited: rtrb::Consumer<(u32, f32)>,
     inputs: Buses,
     outputs: Buses,
+    /// Whether the side-chain bus holds a key.
+    keyed: bool,
     events: ComWrapper<EventList>,
     changes: ComWrapper<ParamChanges>,
     discard: ComWrapper<Discard>,
@@ -994,6 +1016,9 @@ impl Device for Vst3Device {
                     right[..n].copy_from_slice(io.right);
                 }
             }
+        }
+        if let Some(bus) = self.inputs.key.and_then(|b| self.inputs.channels.get_mut(b)) {
+            self.keyed = crate::put_key(bus.as_mut_slice(), io.sidechain, self.keyed, n);
         }
 
         unsafe {
@@ -1197,6 +1222,7 @@ struct Vst3Controller {
     /// The last value seen for each parameter, to tell what a rescan changed.
     known: Vec<f64>,
     editor: Option<Editor>,
+    ports: Ports,
 }
 
 impl Vst3Controller {
@@ -1258,6 +1284,10 @@ impl Drop for Vst3Controller {
 }
 
 impl Controller for Vst3Controller {
+    fn ports(&self) -> Ports {
+        self.ports.clone()
+    }
+
     fn set_offline(&mut self, offline: bool) {
         // The mode is part of the processing setup, which can only be
         // changed while the processor is stopped.

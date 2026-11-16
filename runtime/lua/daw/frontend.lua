@@ -48,6 +48,10 @@ local function device_state(id)
     preset = type(d.meta) == "table" and d.meta.preset or "",
     -- "running", "loading", "stopped", "offline" or "missing".
     status = d.status or "running",
+    -- Whether it can listen to a side-chain, and the track it listens to
+    -- ("" for its own input); `sidechain_menu` lists the choices.
+    keyed = (d.ports and d.ports.sidechain) or d.sidechain ~= nil,
+    sidechain = daw.routes.sidechain_text(d) or "",
   }
 end
 
@@ -1356,18 +1360,11 @@ end
 --- A track cannot play into itself or into a track that plays into it.
 function M.routing(track)
   local t = api.track_get(track)
-  local function feeds(from, into)
-    -- Whether `from` plays, directly or through others, into `into`.
-    local at, steps = from, 0
-    while at and at ~= 0 and steps < 64 do
-      if at == into then return true end
-      at, steps = api.track_get(at).output, steps + 1
-    end
-    return false
-  end
   local targets = { { id = 0, name = "Master" } }
+  -- Not a track whose sound reaches this one, by any route.
+  local reaching = daw.routes.reaching(track)
   for _, id in ipairs(api.track_list()) do
-    if id ~= track and not feeds(id, track) then targets[#targets + 1] = { id = id, name = api.track_get(id).name } end
+    if id ~= track and not reaching[id] then targets[#targets + 1] = { id = id, name = api.track_get(id).name } end
   end
   local sends = {}
   for i, send in ipairs(t.sends or {}) do
@@ -1408,6 +1405,34 @@ function A.remove_send(track, index)
   if not sends[index] then return end
   table.remove(sends, index)
   api.track_set(track, "sends", sends)
+end
+
+--- The menu of a device's side-chain: "None" first, then the tracks it
+--- can listen to, then whether it is taken before their fader; each
+--- `{ label, checked }`. `act.choose_sidechain` takes one by place.
+function M.sidechain_menu(device)
+  local d = api.device_get(device)
+  local out = { { label = "None: its own input", checked = d.sidechain == nil } }
+  for _, source in ipairs(daw.routes.sidechain_sources(device)) do
+    out[#out + 1] = { label = source.name, checked = source.id == d.sidechain }
+  end
+  out[#out + 1] = { label = "Before the fader", checked = d.sidechain_pre or false }
+  return out
+end
+
+--- Choose from a device's side-chain menu (`M.sidechain_menu`), by place
+--- from 1: none, a track, or the last entry, which turns taking it before
+--- the fader on or off.
+function A.choose_sidechain(device, index)
+  local d = api.device_get(device)
+  local sources = daw.routes.sidechain_sources(device)
+  if index == 1 then
+    daw.routes.set_sidechain(device, nil)
+  elseif sources[index - 1] then
+    daw.routes.set_sidechain(device, sources[index - 1].id, d.sidechain_pre)
+  elseif index == #sources + 2 and d.sidechain then
+    api.device_set(device, "sidechain_pre", not d.sidechain_pre)
+  end
 end
 
 function A.set_pan(track, pan) api.track_set(track, "pan", daw.util.clamp(pan, -1, 1)) end

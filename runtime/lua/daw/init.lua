@@ -119,6 +119,7 @@ daw.lanes = require("daw.lanes")
 daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
+daw.routes = require("daw.routes")
 daw.takes = require("daw.takes")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
@@ -142,6 +143,7 @@ function K.startup()
   end
   require("daw.defaults")
   daw.fx.setup()
+  daw.routes.setup()
   daw.media = require("daw.media")
   require("daw.render")
   daw.markers = require("daw.markers")

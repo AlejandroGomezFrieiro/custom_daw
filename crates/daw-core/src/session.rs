@@ -35,6 +35,7 @@ pub use loading::OpenOpts;
 pub mod notes;
 pub mod offline;
 pub mod panic;
+mod ports;
 pub mod render;
 mod tempo;
 mod undo;
@@ -754,6 +755,8 @@ impl Session {
             "master": id == MASTER_ID, "input": t.input, "monitor": t.monitor,
             "midi_input": t.midi_input, "height": t.height,
             "automation": t.automation.name(),
+            // The tracks that devices on this one listen to as side-chains.
+            "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
         }))
     }
 
@@ -801,6 +804,18 @@ impl Session {
                     let track = Arc::make_mut(track);
                     track.output = track.output.filter(|o| *o != id);
                     track.sends.retain(|s| s.target != id);
+                }
+            }
+            // Devices that listened to it listen to their own input again.
+            for track in std::iter::once(&mut p.master).chain(&mut p.tracks) {
+                if track.devices.iter().any(|d| d.sidechain == Some(id)) {
+                    for device in &mut Arc::make_mut(track).devices {
+                        if device.sidechain == Some(id) {
+                            let device = Arc::make_mut(device);
+                            device.sidechain = None;
+                            device.sidechain_pre = false;
+                        }
+                    }
                 }
             }
             Ok(())
@@ -1046,6 +1061,9 @@ impl Session {
             // hung, or could not be made.
             "stopped": stopped,
             "status": status,
+            // The track it listens to, and whether it can listen at all.
+            "sidechain": d.sidechain, "sidechain_pre": d.sidechain_pre,
+            "ports": ports::ports_json(&self.device_ports(id)),
         }))
     }
 
@@ -1075,6 +1093,8 @@ impl Session {
                 loaded: 0,
                 name: name.clone(),
                 offline: false,
+                sidechain: None,
+                sidechain_pre: false,
             };
             let index = opts
                 .index
@@ -1126,6 +1146,12 @@ impl Session {
                 .with_context(|| format!("no device {id}"))?;
             if p.track(track).is_none() {
                 bail!("no track {track}");
+            }
+            if let Some(source) = p.device(id).and_then(|d| d.sidechain)
+                && from != track
+                && (source == track || p.would_cycle(source, track))
+            {
+                bail!("the device listens to track {source}: on track {track} that would make a loop");
             }
             let source = p.track_mut(from).unwrap();
             let device = source.devices.remove(at);
@@ -1566,10 +1592,39 @@ impl Session {
 
     pub fn device_set(&mut self, id: Id, key: &str, value: Value) -> Result<()> {
         self.edit(|p| {
+            if key == "sidechain" {
+                let (track, _) = p
+                    .find_device(id)
+                    .with_context(|| format!("no device {id}"))?;
+                // An empty Lua table arrives as an empty list.
+                let source: Option<Id> = match value {
+                    Value::Array(a) if a.is_empty() => None,
+                    value => de(key, value)?,
+                };
+                if let Some(source) = source {
+                    if p.track(source).is_none() {
+                        bail!("no track {source} to take a side-chain from");
+                    }
+                    if source == MASTER_ID {
+                        bail!("the master track feeds nothing, so it cannot be a side-chain");
+                    }
+                    if source == track {
+                        bail!("a device cannot take a side-chain from its own track");
+                    }
+                    if p.would_cycle(source, track) {
+                        bail!(
+                            "a side-chain from track {source} to track {track} would make a loop"
+                        );
+                    }
+                }
+                p.device_mut(id).unwrap().sidechain = source;
+                return Ok(());
+            }
             let d = p
                 .device_mut(id)
                 .with_context(|| format!("no device {id}"))?;
             match key {
+                "sidechain_pre" => d.sidechain_pre = de(key, value)?,
                 "bypass" => d.bypass = de(key, value)?,
                 "offline" => d.offline = de(key, value)?,
                 "meta" => d.meta = de_meta(key, value)?,

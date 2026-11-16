@@ -499,6 +499,7 @@ mod tests {
                 left: &mut left,
                 right: &mut right,
                 events: &mut events,
+                sidechain: None,
             },
         );
         (left, right)

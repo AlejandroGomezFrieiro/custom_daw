@@ -53,14 +53,16 @@ impl Detector {
         self.hp = (freq > 20.5).then(|| SvfCoefs::new(Shape::High, freq, 0.71, 0.0, self.sr));
     }
 
-    /// Levels in dB of one stereo frame.
+    /// Levels in dB of one stereo frame; `heard` is left with the frame as
+    /// the detector hears it, after its high-pass.
     #[inline]
-    fn level(&mut self, l: f32, r: f32) -> [f32; 2] {
+    fn level(&mut self, l: f32, r: f32, heard: &mut [f32; 2]) -> [f32; 2] {
         let mut x = [l, r];
         if let Some(c) = &self.hp {
             x[0] = self.hp_state[0].tick(c, x[0]);
             x[1] = self.hp_state[1].tick(c, x[1]);
         }
+        *heard = x;
         let mut level = [0.0; 2];
         for ch in 0..2 {
             level[ch] = if self.rms {
@@ -136,6 +138,17 @@ const C_HP: usize = 9;
 const C_DETECT: usize = 10;
 const C_MIX: usize = 11;
 const C_LINK: usize = 12;
+const C_LISTEN: usize = 13;
+
+/// The detector's input for a frame: the side-chain when one is connected,
+/// else the device's own input.
+#[inline]
+fn key_at(key: Option<[&[f32]; 2]>, i: usize, l: f32, r: f32) -> (f32, f32) {
+    match key {
+        Some([kl, kr]) => (kl[i], kr[i]),
+        None => (l, r),
+    }
+}
 
 pub fn compressor_params() -> Vec<ParamInfo> {
     vec![
@@ -152,6 +165,7 @@ pub fn compressor_params() -> Vec<ParamInfo> {
         choice("detect", "Detect", &["Peak", "RMS"], 0),
         param("mix", "Mix", 0.0, 100.0, 100.0, "%"),
         param("link", "Stereo link", 0.0, 100.0, 100.0, "%"),
+        choice("listen", "Listen to key", &["Off", "On"], 0),
     ]
 }
 
@@ -193,7 +207,7 @@ pub fn compressor(sr: f32) -> Pair {
 
 pub struct Compressor {
     sr: f32,
-    p: [f32; 13],
+    p: [f32; 14],
     detector: Detector,
     ahead: Lookahead,
     attack: f32,
@@ -286,8 +300,12 @@ impl Device for Compressor {
             time_coef(AUTO_SLOW_RELEASE, self.sr),
         );
         let (mut most, mut peak_in, mut peak_out) = (0.0f32, 0.0f32, 0.0f32);
-        for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
-            let level = self.detector.level(*l, *r);
+        let key = io.sidechain;
+        let listen = key.is_some() && self.p[C_LISTEN] >= 0.5;
+        let mut heard = [0.0; 2];
+        for (i, (l, r)) in io.left.iter_mut().zip(io.right.iter_mut()).enumerate() {
+            let (kl, kr) = key_at(key, i, *l, *r);
+            let level = self.detector.level(kl, kr, &mut heard);
             peak_in = peak_in.max(l.abs()).max(r.abs());
             let (dl, dr) = self.ahead.tick(*l, *r);
             let makeup = self.makeup.step();
@@ -316,6 +334,10 @@ impl Device for Compressor {
                 most = most.min(gr);
                 let wet = out[ch] * dsp::db_to_lin(gr) * makeup;
                 out[ch] += (wet - out[ch]) * mix;
+            }
+            // Listening plays what the detector hears instead.
+            if listen {
+                out = heard;
             }
             *l = out[0];
             *r = out[1];
@@ -354,6 +376,7 @@ const G_LOOKAHEAD: usize = 8;
 const G_HP: usize = 9;
 const G_DETECT: usize = 10;
 const G_LINK: usize = 11;
+const G_LISTEN: usize = 12;
 
 pub fn gate_params() -> Vec<ParamInfo> {
     vec![
@@ -369,6 +392,7 @@ pub fn gate_params() -> Vec<ParamInfo> {
         param("detector_hp", "Detector HP", 20.0, 2000.0, 20.0, "Hz"),
         choice("detect", "Detect", &["Peak", "RMS"], 0),
         param("link", "Stereo link", 0.0, 100.0, 100.0, "%"),
+        choice("listen", "Listen to key", &["Off", "On"], 0),
     ]
 }
 
@@ -386,7 +410,7 @@ pub fn gate(sr: f32) -> Pair {
 
 pub struct Gate {
     sr: f32,
-    p: [f32; 12],
+    p: [f32; 13],
     detector: Detector,
     ahead: Lookahead,
     attack: f32,
@@ -452,8 +476,12 @@ impl Device for Gate {
         let (threshold, range) = (p[G_THRESHOLD], p[G_RANGE].min(0.0));
         let close_at = threshold - p[G_HYSTERESIS].max(0.0);
         let (mut most, mut peak_in, mut peak_out) = (0.0f32, 0.0f32, 0.0f32);
-        for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
-            let level = self.detector.level(*l, *r);
+        let key = io.sidechain;
+        let listen = key.is_some() && p[G_LISTEN] >= 0.5;
+        let mut heard = [0.0; 2];
+        for (i, (l, r)) in io.left.iter_mut().zip(io.right.iter_mut()).enumerate() {
+            let (kl, kr) = key_at(key, i, *l, *r);
+            let level = self.detector.level(kl, kr, &mut heard);
             peak_in = peak_in.max(l.abs()).max(r.abs());
             let (dl, dr) = self.ahead.tick(*l, *r);
             let mut out = [dl, dr];
@@ -484,6 +512,9 @@ impl Device for Gate {
                 *g = target + (*g - target) * coef;
                 most = most.min(*g);
                 out[ch] *= dsp::db_to_lin(*g);
+            }
+            if listen {
+                out = heard;
             }
             *l = out[0];
             *r = out[1];
@@ -554,6 +585,10 @@ impl Face for DynamicsFace {
     fn latency(&self, values: &[f32]) -> u32 {
         let at = if self.gate { G_LOOKAHEAD } else { C_LOOKAHEAD };
         lookahead_frames(values[at], self.sr)
+    }
+
+    fn sidechain(&self) -> bool {
+        true
     }
 }
 

@@ -180,7 +180,8 @@ In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`
 `>` `w` `W` choose, step through, save and set the default preset, `f` finds
-a parameter and `t` goes to the last touched one. `V` and `j` `k` select
+a parameter and `t` goes to the last touched one, `K` chooses the track the
+device listens to as its side-chain. `V` and `j` `k` select
 several devices for `y` `d`; `:device.copy_to <track>` and
 `:device.move_to <track>` take the selected one elsewhere. In the window,
 dragging a device card by its name onto a track's header moves it there
@@ -1150,13 +1151,13 @@ track (a drum track) is one click away in an empty project.
 | `tremolo` | `mode` (tremolo, or auto-pan at equal power), `rate` or `sync`, `depth`, `shape` (sine, triangle, a softened square). Synced LFOs lock to the song's position while it plays. |
 | `limiter` | The last device on the master: `ceiling` (default -1 dB), `gain` (drive into it), `release`, `true_peak` (on by default: the peaks between samples are held under the ceiling too, as a BS.1770 meter reads them, with 0.2 dB to spare). Looks 5 ms ahead, so nothing leaves it above the ceiling; the rest of the mix waits for it. `daw.params.read(l, "meters")` gives `gr` and `input` in dB. |
 | `eq` | A parametric equaliser for shaping any track or bus: eight bands, each with `bN_on`, `bN_type` (low cut 12 or 24 dB/oct, low shelf, bell, high shelf, high cut 12 or 24, notch, band pass), `bN_freq`, `bN_gain`, `bN_q`, and `output`. Flat until a band is moved; settings glide without clicks. `daw.params.read(eq, "curve", n)` gives its response in dB at `n` frequencies from 20 Hz to 20 kHz on a log scale, for drawing. |
-| `compressor` | Evens out a vocal, glues a drum bus, or (with `mix` below 100 %) compresses in parallel: `threshold`, `ratio` (the top of its range is a limit), `knee`, `attack`, `release`, `auto_release` (a fast release after short peaks, a slow one after sustained compression), `makeup`, `auto_makeup` (gives back half of what a 0 dB peak loses), `lookahead` (reported as latency), `detector_hp` (so the kick does not drive it), `detect` (peak or RMS), `mix`, `link`. `daw.params.read(c, "meters")` gives `gr`, `input` and `output` in dB; `"curve"` the static curve. |
+| `compressor` | Evens out a vocal, glues a drum bus, or (with `mix` below 100 %) compresses in parallel: `threshold`, `ratio` (the top of its range is a limit), `knee`, `attack`, `release`, `auto_release` (a fast release after short peaks, a slow one after sustained compression), `makeup`, `auto_makeup` (gives back half of what a 0 dB peak loses), `lookahead` (reported as latency), `detector_hp` (so the kick does not drive it), `detect` (peak or RMS), `mix`, `link`, `listen` (play the side-chain as the detector hears it). With a side-chain (see [Side-chains](#mixing-midi-and-rendering-in-the-core)) the detector hears that track instead of its own input. `daw.params.read(c, "meters")` gives `gr`, `input` and `output` in dB; `"curve"` the static curve. |
 | `reverb` | Room and plate sounds for vocals, drums and buses: an eight-line feedback delay network whose lines drift slowly so that it does not ring. `size`, `decay` (seconds to fall 60 dB), `predelay`, `damp_high` and `damp_low` (where the highs and lows start dying sooner; off at the ends of their ranges), `diffusion`, `early` (early reflections against the tail), `width`, `mix` (the dry stays at full level up to 50 %, the wet reaches full level there). |
 | `utility` | Level and stereo fixes: `gain`, `pan` (a balance: the far side fades out), `width` (0 % is mono, 200 % twice as wide), `mono_below` (the sides taken out under this frequency; off at 20 Hz), `invert_l`, `invert_r`, `swap`, `dc` (a 5 Hz high-pass). |
 | `saturation` | Warmth or grit on a bass, a drum bus or a vocal: `drive`, `curve` (tape: soft and symmetric; tube: biased, adds even harmonics; hard clip), `oversample` (2x or 4x, so the harmonics do not fold back as noise), `tone` (a high shelf after the curve), `mix`, `output`. Quiet audio passes at its own level; 31 samples late (0.65 ms at 48 kHz), reported as latency. |
 | `meter` | Measures and passes the audio through untouched, for the master or any track: `daw.params.read(m, "meters")` gives `momentary`, `short_term` and `integrated` loudness (LUFS, EBU R 128 with its gates), `true_peak` (dBTP) and `sample_peak` held since `daw.params.read(m, "reset")` (or for 3 s with `hold`), `rms_l`, `rms_r` and `correlation` over 300 ms; `"spectrum", n` gives dB in `n` bands from 20 Hz to 20 kHz. Readings not taken yet are -200. |
 | `tuner` | Tunes a guitar or a bass: `daw.params.read(t, "pitch")` gives `freq`, `note` (`E2`), `midi`, `cents` and `confidence`, from the last 85 ms (YIN); `reference` sets A4, `mute` silences the track while tuning. |
-| `gate` | Cuts the spill between hits on a drum track, or the noise between phrases: `mode` (gate or expander), `threshold`, `range`, `ratio` (expander), `attack`, `hold`, `release`, `hysteresis`, `lookahead`, `detector_hp`, `detect`, `link`. The same meters as the compressor. |
+| `gate` | Cuts the spill between hits on a drum track, or the noise between phrases: `mode` (gate or expander), `threshold`, `range`, `ratio` (expander), `attack`, `hold`, `release`, `hysteresis`, `lookahead`, `detector_hp`, `detect`, `link`, `listen`. Keyed by a side-chain like the compressor (a pad that opens on the hi-hat). The same meters as the compressor. |
 
 In the device panel the equaliser draws its curve, the compressor, gate and limiter their gain reduction, the meter its loudness and the tuner a needle, under their names. `:eq` and `:tuner` show the track's equaliser or tuner (adding one if it has none), `:loudness` the master's meter; in the window each opens a window of its own (also from the track menu, and the timeline's for the meter), and in the equaliser's window a band's dot is dragged to move it, the wheel over it changes its Q, and a double click turns a band off, or on as a bell where the empty space was clicked.
 
@@ -1253,6 +1254,32 @@ a list) plays the track into another, `:send Reverb -9` (`,s` for a list;
 **Sends before the fader.** `track:send(reverb, -6, { pre = true })` takes the
 signal after the track's devices and before its fader and pan, so the send
 keeps its level when the fader moves. Muting the track still silences it.
+
+**Side-chains.** A device can listen to another track: a compressor on the
+bass that ducks under the kick, a gate on a pad that opens on the hi-hat.
+`comp:set_sidechain(kick)` (or `comp.sidechain = kick.id`) takes the kick
+after its fader, as a send does; `{ pre = true }` (`comp.sidechain_pre`)
+takes it after its devices but before its fader, pan and mute, so that a
+muted "ghost" kick still keys. `comp:set_sidechain(nil)` takes it away. The
+built-in `compressor` and `gate` key their detector from it (`listen` plays
+it); CLAP, VST3 and LV2 plugins get it on their first side-chain input (a
+CLAP audio port that is not the main one, a VST3 auxiliary bus, an LV2 port
+marked `isSideChain` or in a group that is the side-chain of another), and
+`device.ports.sidechain` says whether a device has one. Other devices ignore
+it. The track listened to is processed first, like a track that sends; a
+side-chain that would make a loop (from the device's own track, the master,
+or any track the device's track plays, sends or keys into, directly or
+through others) is refused with the reason, and so are outputs and sends
+that would close one. The key is lined up with what the device hears: it is
+held back by the latency of the devices before it, or holds the device's
+track back when it is the later. Removing the track takes the side-chain
+away (undo brings it back); copying a track keeps it, a track restored after
+its key is gone (or where it would loop) drops it with a message, and
+templates leave it out. `:device.sidechain Kick` (`pre=1` for before the
+fader, `none` to take it away; alone, a list) acts on the device panel's
+device, `K` there chooses from a list, and the panel shows `key Kick` on the
+device's line. In the window a device that can listen to one has a Key row
+on its card, with a menu of the tracks it can hear.
 
 **Delay compensation.** A device that looks ahead says how late its output is
 (CLAP, VST3 and LV2 plugins do; of the built-in devices the `limiter` does).
@@ -1560,7 +1587,7 @@ port a message came through is not told apart. In scripts:
 - Time stretching, clips that loop, and a tempo lane to draw the tempo as
   a curve (tempo changes are set by command, by script and on the window's
   ruler).
-- Side-chain inputs and plugins with more than one stereo pair in or out.
+- Plugins with more than one stereo pair in or out.
 - Punch recording between two points, and a count-in.
 - Takes drawn as lanes under a clip, to comp by swiping across them: takes
   are chosen piece by piece from a clip's menu or with `]t`.

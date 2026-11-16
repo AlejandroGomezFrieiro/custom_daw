@@ -272,6 +272,14 @@ pub struct DeviceInst {
     /// parameters are kept as they are.
     #[serde(default, skip_serializing_if = "is_false")]
     pub offline: bool,
+    /// The track whose sound the device listens to as its side-chain, such
+    /// as a kick that a compressor on a bass ducks under.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidechain: Option<Id>,
+    /// The side-chain is taken after that track's devices but before its
+    /// fader, pan and mute, rather than after them.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sidechain_pre: bool,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -649,6 +657,12 @@ impl Project {
                 stack.extend(t.output);
                 stack.extend(t.sends.iter().map(|s| s.target));
             }
+            // A track feeds the tracks of the devices that listen to it.
+            stack.extend(
+                self.all_tracks()
+                    .filter(|t| t.devices.iter().any(|d| d.sidechain == Some(id)))
+                    .map(|t| t.id),
+            );
         }
         false
     }

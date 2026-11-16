@@ -227,7 +227,10 @@ end
 
 -- Devices --------------------------------------------------------------------
 
-class(Device, "Device", api.device_get, api.device_set)
+class(Device, "Device", api.device_get, function(id, key, value)
+  if key == "sidechain" then value = id_of(value) end
+  api.device_set(id, key, value)
+end)
 
 function Device:get() return api.device_get(self.id) end
 
@@ -270,7 +273,21 @@ function Device:snapshot()
   local state = api.device_state(self.id)
   -- What extensions keep with the device goes where the device goes.
   local meta = type(d.meta) == "table" and next(d.meta) and d.meta or nil
-  return { kind = d.kind, bypass = d.bypass, state = state, params = not state and d.params or nil, meta = meta }
+  return {
+    kind = d.kind, bypass = d.bypass, state = state, params = not state and d.params or nil, meta = meta,
+    sidechain = d.sidechain, sidechain_pre = d.sidechain_pre or nil,
+  }
+end
+
+--- Listen to another track's sound as the device's side-chain: a
+--- compressor on the bass ducks under the kick with `comp:set_sidechain(kick)`.
+--- `{ pre = true }` takes it before that track's fader, pan and mute; nil
+--- (or no track) takes the side-chain away. `device.sidechain` is the
+--- track's id.
+function Device:set_sidechain(track, opts)
+  api.device_set(self.id, "sidechain", id_of(track))
+  api.device_set(self.id, "sidechain_pre", track ~= nil and opts ~= nil and opts.pre == true)
+  return self
 end
 
 --- Show the plugin's own window. `device.editor` is "open", "closed", or nil
@@ -520,6 +537,15 @@ function M.restore_device(snap, track, index)
   }))
   if snap.bypass then device.bypass = true end
   if snap.meta then api.device_set(device.id, "meta", snap.meta) end
+  -- The track it listened to is kept while it exists and can still be
+  -- listened to from here; otherwise the side-chain is dropped, and said so.
+  if snap.sidechain then
+    local ok = pcall(device.set_sidechain, device, snap.sidechain, { pre = snap.sidechain_pre })
+    if not ok then
+      daw.notify(string.format("%s no longer has its side-chain: track %s is gone or would make a loop",
+        device.name, tostring(snap.sidechain)), "warn")
+    end
+  end
   return device
 end
 

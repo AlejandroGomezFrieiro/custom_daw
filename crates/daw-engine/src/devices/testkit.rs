@@ -103,6 +103,7 @@ impl Fx {
                 left: cl,
                 right: cr,
                 events: &mut self.events,
+                sidechain: None,
             };
             self.device.process(&self.ctx, &mut io);
             if self.ctx.playing {
