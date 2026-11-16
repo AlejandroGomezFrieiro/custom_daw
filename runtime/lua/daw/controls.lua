@@ -16,6 +16,8 @@ local M = {}
 -- kept while the clip's moves are what these edits left (as the piano
 -- roll keeps its chosen notes).
 local chosen = { clip = nil, places = {}, stamp = nil }
+daw.seats.keep("controls.chosen", function() return chosen end, function(c) chosen = c end,
+  function() return { clip = nil, places = {}, stamp = nil } end)
 
 local function stamp_of(clip)
   local ok, data = pcall(api.clip_get, clip)

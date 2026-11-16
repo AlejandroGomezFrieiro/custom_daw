@@ -55,6 +55,7 @@ end
 
 local EQ = { top = 40, left = 44, right = 16, bottom = 28, range = 18 }
 local eq = { drag = nil, hover = nil }
+daw.seats.keep("eq_window", function() return eq end, function(e) eq = e end, function() return {} end)
 
 local function eq_area(width, height)
   return EQ.left, EQ.top, width - EQ.left - EQ.right, height - EQ.top - EQ.bottom

@@ -20,6 +20,8 @@ local paint = {
   hover = nil,         -- the row under the pointer, and where the pointer is
   seen = nil,          -- the selected state the scroll last kept in view
 }
+-- Each window looking at it points and scrolls on its own.
+daw.seats.fields("undotree.paint", paint, { "scroll", "hover", "seen" }, { scroll = 0 })
 
 --- The ids from the current state back to the first: the branch that
 --- leads here.

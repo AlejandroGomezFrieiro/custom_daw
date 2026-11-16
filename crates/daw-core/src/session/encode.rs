@@ -15,6 +15,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 
+use super::tags::{self, Cover, Tags};
+
 /// A lossy format ffmpeg can make.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lossy {
@@ -151,13 +153,42 @@ pub struct Job<'a> {
     /// The WAV's sample rate, and its length in seconds.
     pub rate: u32,
     pub seconds: f64,
-    pub title: &'a str,
+    pub tags: &'a Tags,
+    pub cover: Option<&'a Cover>,
+    /// Files this writes for ffmpeg to read, and the caller removes: the
+    /// tags (a cover can be larger than one command-line argument may be),
+    /// and for MP3 the cover.
+    pub metadata: &'a Path,
+    pub cover_file: &'a Path,
     pub quality: Quality,
     /// kbit/s, instead of the quality's.
     pub bitrate: Option<u32>,
 }
 
 impl Job<'_> {
+    /// The cover in the file's comments (Ogg Vorbis and Opus), where MP3
+    /// has it as a picture of its own.
+    fn cover_in_comments(&self) -> Option<&Cover> {
+        self.cover.filter(|_| self.format != Lossy::Mp3)
+    }
+
+    fn has_metadata(&self) -> bool {
+        self.tags.has_text() || self.cover_in_comments().is_some()
+    }
+
+    /// Write the files `args` names.
+    fn prepare(&self) -> Result<()> {
+        if self.has_metadata() {
+            std::fs::write(self.metadata, tags::ffmetadata(self.tags, self.cover_in_comments()))
+                .with_context(|| format!("writing {}", self.metadata.display()))?;
+        }
+        if let (Some(cover), Lossy::Mp3) = (self.cover, self.format) {
+            std::fs::write(self.cover_file, &cover.data)
+                .with_context(|| format!("writing {}", self.cover_file.display()))?;
+        }
+        Ok(())
+    }
+
     fn args(&self) -> Vec<String> {
         let mut args: Vec<String> = [
             "-hide_banner", "-nostdin", "-nostats", "-loglevel", "error", "-progress", "pipe:1", "-y", "-i",
@@ -165,13 +196,38 @@ impl Job<'_> {
         .map(str::to_owned)
         .into();
         args.push(self.input.display().to_string());
-        args.extend(["-vn", "-c:a", self.format.encoder()].map(str::to_owned));
+        // The inputs after the sound: the tags, then MP3's cover.
+        let mut inputs = 1;
+        if self.has_metadata() {
+            args.extend(["-f", "ffmetadata", "-i"].map(str::to_owned));
+            args.push(self.metadata.display().to_string());
+            inputs += 1;
+        }
+        let mp3_cover = self.cover.filter(|_| self.format == Lossy::Mp3);
+        if mp3_cover.is_some() {
+            args.push("-i".to_owned());
+            args.push(self.cover_file.display().to_string());
+        }
+        args.extend(["-map", "0:a"].map(str::to_owned));
+        if mp3_cover.is_some() {
+            args.extend(["-map".to_owned(), format!("{inputs}:v")]);
+        }
+        if self.has_metadata() {
+            args.extend(["-map_metadata", "1"].map(str::to_owned));
+        }
+        args.extend(["-c:a", self.format.encoder()].map(str::to_owned));
+        if mp3_cover.is_some() {
+            args.extend(
+                [
+                    "-c:v", "copy", "-disposition:v:0", "attached_pic", "-id3v2_version", "3",
+                    "-metadata:s:v", "title=Cover", "-metadata:s:v", "comment=Cover (front)",
+                ]
+                .map(str::to_owned),
+            );
+        }
         args.extend(self.format.settings(self.quality, self.bitrate));
         if let Some(rate) = self.format.rate(self.rate) {
             args.extend(["-ar".to_owned(), rate.to_string()]);
-        }
-        if !self.title.is_empty() {
-            args.extend(["-metadata".to_owned(), format!("title={}", self.title)]);
         }
         args.extend(["-f", self.format.muxer()].map(str::to_owned));
         args.push(self.output.display().to_string());
@@ -186,6 +242,7 @@ pub fn run(
     progress: &dyn Fn(f64),
     cancelled: &dyn Fn() -> bool,
 ) -> Result<()> {
+    job.prepare()?;
     let mut command = Command::new(job.program);
     command
         .args(job.args())

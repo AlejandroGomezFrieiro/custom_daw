@@ -32,6 +32,10 @@ target/release/daw-gui -e 'dofile("examples/demo-song.lua")'   # the window, wit
 target/release/daw doctor        # check your sound devices, MIDI ports and plugins
 ```
 
+Or without the dev shell: `nix run .` (the terminal UI) and `nix run .#daw-gui`
+(the window); `nix profile install .` installs them
+([Installing with Nix](docs/running.md#installing-with-nix)).
+
 In the terminal, `?` lists every key of the view you are in, `:` runs any
 command by name, and `:q` quits. A course of sixteen ten-minute lessons runs
 inside the program (`:tutor`, once the `tutor` extension is loaded) and can
@@ -112,7 +116,9 @@ terminal uses. [docs/window.md](docs/window.md) has every gesture.
   from the keyboard, the mouse or a pad, in scenes. See [Live performance](docs/live.md).
 - **Somewhere else.** `daw attach` shows the terminal UI of a running
   instance in another terminal, and `daw-gui --connect` puts the window on an
-  instance on another machine. See [docs/protocol.md](docs/protocol.md).
+  instance on another machine, over TLS, each with a cursor and mode of its
+  own; files and sound go across too. See
+  [docs/running.md](docs/running.md#on-another-machine).
 
 ## Make it yours
 

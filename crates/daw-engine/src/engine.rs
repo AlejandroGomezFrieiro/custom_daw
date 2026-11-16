@@ -567,6 +567,9 @@ pub enum Msg {
     /// takes the message (at once while stopped). Launches sent together
     /// are timed together.
     Launch(Box<Vec<Launch>>),
+    /// Where a copy of what is played goes, left and right interleaved, for
+    /// someone listening elsewhere (see [`EngineHandle::monitor`]), or nowhere.
+    SetMonitor(Option<Box<Producer<f32>>>),
 }
 
 enum Garbage {
@@ -582,6 +585,7 @@ enum Garbage {
     Key(#[allow(dead_code)] Box<KeyBuf>),
     Outs(#[allow(dead_code)] Box<OutBufs>),
     MidiOut(#[allow(dead_code)] Box<Producer<MidiOut>>),
+    Monitor(#[allow(dead_code)] Box<Producer<f32>>),
     TempoMap(#[allow(dead_code)] Box<TempoMap>),
     Slots(#[allow(dead_code)] Box<Slots>),
     Launches(#[allow(dead_code)] Box<Vec<Launch>>),
@@ -940,6 +944,8 @@ pub struct Engine {
     count: Option<Count>,
     /// Where tracks' MIDI output goes, when something sends it on.
     midi_out: Option<Box<Producer<MidiOut>>>,
+    /// Where a copy of the output goes, while someone listens elsewhere.
+    monitor: Option<Box<Producer<f32>>>,
     /// When the block being made is heard, on [`midi_out::clock_ns`].
     ///
     /// [`midi_out::clock_ns`]: crate::midi_out::clock_ns
@@ -1017,6 +1023,23 @@ impl EngineHandle {
         let (tx, rx) = RingBuffer::new(crate::midi_out::MIDI_OUT_CAPACITY);
         self.send(Msg::SetMidiOut(Some(Box::new(tx))));
         rx
+    }
+
+    /// The receiving end of a new queue of everything the engine plays, left
+    /// and right interleaved, with room for `seconds` of it, for one thread
+    /// to read. Until it is asked for (and after [`stop_monitor`]) nothing
+    /// is copied.
+    ///
+    /// [`stop_monitor`]: Self::stop_monitor
+    pub fn monitor(&mut self, seconds: f64) -> Consumer<f32> {
+        let (tx, rx) = RingBuffer::new(((self.sample_rate * seconds) as usize).max(64) * 2);
+        self.send(Msg::SetMonitor(Some(Box::new(tx))));
+        rx
+    }
+
+    /// Stop copying what the engine plays.
+    pub fn stop_monitor(&mut self) {
+        self.send(Msg::SetMonitor(None));
     }
 
     /// Queue a message, or hand it back if the queue is full.
@@ -1107,6 +1130,7 @@ impl Engine {
             midi_rx,
             count: None,
             midi_out: None,
+            monitor: None,
             heard_ns: 0,
             launching: false,
         };
@@ -1460,6 +1484,11 @@ impl Engine {
                     self.discard(Garbage::MidiOut(old));
                 }
             }
+            Msg::SetMonitor(monitor) => {
+                if let Some(old) = std::mem::replace(&mut self.monitor, monitor) {
+                    self.discard(Garbage::Monitor(old));
+                }
+            }
             Msg::SetPool(pool) => {
                 if let Some(old) = self.set_pool(pool) {
                     self.discard(Garbage::Pool(old));
@@ -1796,6 +1825,14 @@ impl Engine {
             .counting
             .store(self.count.as_ref().map_or(0, Count::left), Relaxed);
         self.shared.seeks.store(self.seeks, Relaxed);
+        if let Some(monitor) = self.monitor.as_deref_mut() {
+            // What does not fit is dropped: the listener has fallen behind.
+            let frames = total.min(monitor.slots() / 2);
+            if let Ok(chunk) = monitor.write_chunk_uninit(frames * 2) {
+                let samples = left[..frames].iter().zip(&right[..frames]).flat_map(|(l, r)| [*l, *r]);
+                chunk.fill_from_iter(samples);
+            }
+        }
         let ns = u64::try_from(began.elapsed().as_nanos()).unwrap_or(u64::MAX);
         self.shared.blocks.record(ns, total);
     }

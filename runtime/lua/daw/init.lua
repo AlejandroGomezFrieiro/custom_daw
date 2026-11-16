@@ -24,6 +24,8 @@ daw.on, daw.once, daw.off, daw.emit = events.on, events.once, events.off, events
 local options = require("daw.options")
 daw.opt, daw.option = options.opt, options
 daw.limit = require("daw.limit")
+-- Before anything that keeps state of its own for each terminal and window.
+daw.seats = require("daw.seats")
 
 --- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
 function daw.defer(fn, ms)
@@ -77,6 +79,8 @@ daw.device_types = api.device_types
 --- named ranges a render can take.
 function daw.render(path, opts) return require("daw.render").render(path, opts) end
 function daw.render_stems(dir, opts) return require("daw.render").stems(dir, opts) end
+--- The tags of the project's rendered files: `daw.render_tags()`, `daw.render_tags({ artist = "Me" })`.
+function daw.render_tags(set) return require("daw.render").tags(set) end
 function daw.render_status() return require("daw.render").status() end
 function daw.render_cancel() return require("daw.render").cancel() end
 daw.render_ranges = setmetatable({}, {
@@ -271,6 +275,21 @@ end
 --- A connection on the control socket closed.
 function K.rpc_closed(client)
   if daw.remote then daw.remote.closed(client) end
+  daw.seats.close(client)
+end
+
+--- Whose turn it is: a connection with a seat of its own, or 0.
+function K.seat(client)
+  daw.seats.enter(client)
+end
+
+--- A connection's terminal attached, or went away.
+function K.seat_open(client, why)
+  daw.seats.open(client, why)
+end
+
+function K.seat_close(client, why)
+  daw.limit.guard("leaving a seat", daw.seats.close, client, why)
 end
 
 -- With a screen attached, stdout belongs to the terminal UI.

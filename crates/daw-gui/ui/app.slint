@@ -589,6 +589,10 @@ export component App inherits Window {
     // The desktop's file dialog for the render's file (or folder), when it has one.
     callback choose-render-path();
     in-out property <bool> render-open;
+    // The kernel is one this window attached to, perhaps on another
+    // machine, and its sound is being played here.
+    in property <bool> remote;
+    in property <bool> listening;
     in-out property <string> render-path;
     in property <[RangeChoice]> render-ranges;
     in-out property <int> render-range;
@@ -604,6 +608,16 @@ in-out property <string> render-quality: "high";
     in-out property <bool> render-dither;
     in-out property <bool> render-mono;
     in-out property <bool> render-stems;
+    // The tags of the files, which are the project's: filled by `open-render`.
+    in-out property <bool> render-tags-open;
+    in-out property <string> render-title;
+    in-out property <string> render-artist;
+    in-out property <string> render-album;
+    in-out property <string> render-track;
+    in-out property <string> render-year;
+    in-out property <string> render-genre;
+    in-out property <string> render-comment;
+    in-out property <string> render-cover;
     // A render under way in the background.
     in property <bool> rendering;
     in property <float> render-fraction;
@@ -1661,6 +1675,17 @@ in property <string> render-stage;
                             for entry in root.engine-info: MenuItem {
                                 title: entry.label;
                                 enabled: false;
+                            }
+                            MenuSeparator { }
+                            // Its sound, sent over the connection: for a
+                            // window attached from another machine.
+                            MenuItem {
+                                title: "Hear it on this machine";
+                                checked: root.listening;
+                                enabled: root.remote;
+                                activated => {
+                                    root.command("listen");
+                                }
                             }
                             MenuSeparator { }
                             MenuItem {
@@ -6190,6 +6215,111 @@ in property <string> render-stage;
                     }
                     Rectangle {
                         horizontal-stretch: 1;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        width: 70px;
+                    }
+                    Button {
+                        label: root.render-tags-open ? "Tags  ▾" : "Tags  ▸";
+                        on: root.render-tags-open;
+                        clicked => {
+                            root.render-tags-open = !root.render-tags-open;
+                        }
+                    }
+                    Text {
+                        text: "title, artist, album and more, kept with the project";
+                        color: Theme.text-3;
+                        font-size: Theme.t-small;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Title";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        placeholder-text: "the project's name";
+                        text <=> root.render-title;
+                    }
+                    Text {
+                        text: "Artist";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-artist;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Album";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-album;
+                    }
+                    Text {
+                        text: "Track";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        width: 60px;
+                        text <=> root.render-track;
+                    }
+                    Text {
+                        text: "Year";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        width: 70px;
+                        text <=> root.render-year;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Genre";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-genre;
+                    }
+                    Text {
+                        text: "Comment";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-comment;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Cover";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        placeholder-text: "a PNG or JPEG file (not in a WAV)";
+                        text <=> root.render-cover;
                     }
                 }
                 HorizontalLayout {

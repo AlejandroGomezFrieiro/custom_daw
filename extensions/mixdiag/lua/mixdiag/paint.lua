@@ -18,6 +18,8 @@ local paint = {
   window = false,      -- the terminal's view is the one offered; it names this as `painted`
   hover = nil,         -- the finding under the pointer, and where the pointer is
 }
+-- Each window looking at it points on its own.
+daw.seats.fields("mixdiag.paint", paint, { "hover" })
 
 --- The colour of a meter at `db`, by the window's own steps.
 local function meter_colour(db)

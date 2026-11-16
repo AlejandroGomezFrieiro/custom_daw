@@ -31,6 +31,16 @@ M.layout = {
   { view = "cmdline", size = 1 },
 }
 
+-- Each seat has its own focus, floating view, prompt, panels shown and
+-- the view a held button went down in; a new one starts with the panels
+-- the instance's terminal shows.
+daw.seats.keep("ui",
+  function() return M.focused, M.float, M.grabber, M.rects, M.layout, M.pressed end,
+  function(focused, float, grabber, rects, layout, pressed)
+    M.focused, M.float, M.grabber, M.rects, M.layout, M.pressed = focused, float, grabber, rects, layout, pressed
+  end,
+  function(_, _, _, _, layout) return "arrange", nil, nil, {}, daw.seats.copy(layout), nil end)
+
 --- Register a view, replacing any view of the same name.
 ---   daw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
 --- Optional fields: `focusable` (default true), `on_key(self, key)` for keys

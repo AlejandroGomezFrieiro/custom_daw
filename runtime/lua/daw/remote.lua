@@ -85,7 +85,8 @@ local SECTION_KEYS = { "project", "tracks", "clips", "devices", "routing", "kind
 function M.push(client)
   local w = watchers[client]
   if not w then return end
-  local state = daw.frontend.state(w.revision)
+  -- What the window draws is seen from its own seat.
+  local state = daw.seats.within(client, daw.frontend.state, w.revision)
   local changed
   if state.project then
     w.revision = state.revision
@@ -126,6 +127,12 @@ M.methods["frontend.watch"] = function(client, opts)
   if client == 0 then error("only a connection can watch", 0) end
   local interval = type(opts) == "table" and tonumber(opts.interval) or 33
   watchers[client] = { revision = -1, sent = {}, interval = math.max(16, interval) }
+  -- A window has a seat of its own, unless it shares the instance's (one
+  -- that started its kernel itself, and is the instance's only face).
+  if not (type(opts) == "table" and opts.seat == "instance") then
+    daw.seats.open(client, "window")
+    daw.seats.enter(client)
+  end
   retime()
   -- The whole state at once, without waiting for the first tick.
   M.push(client)
@@ -135,6 +142,7 @@ end
 M.methods["frontend.unwatch"] = function(client)
   watchers[client] = nil
   retime()
+  daw.seats.close(client, "window")
   return true
 end
 
@@ -144,6 +152,7 @@ function M.closed(client)
   if watchers[client] then
     watchers[client] = nil
     retime()
+    daw.seats.close(client, "window")
   end
 end
 
@@ -156,9 +165,35 @@ function M.listeners()
   return out
 end
 
+-- The instance cannot read the disk of the machine a terminal is attached
+-- from, so it asks that terminal's program to send the file (`file.wanted`),
+-- which sends it into the project's media folder and imports it.
+daw.command("upload", function(ctx)
+  local path = ctx.args[1]
+  if not path or path == "" then return daw.notify("upload what? `upload ~/takes/bass.wav`", "warn") end
+  local client = api.ui_client()
+  if not daw.seats.has(client) then
+    return daw.notify("this terminal is the instance's own: `:import` reads this machine's files", "warn")
+  end
+  api.rpc_push(client, "file.wanted", { path = path, import = true })
+  daw.notify("asked for " .. path .. " from the attached terminal's machine")
+end, { desc = "From a terminal attached with `daw attach`: send a sound file from that machine and import it: `upload ~/take.wav`", raw = true })
+
+-- Sound plays on the instance's machine; a terminal or window attached from
+-- another can have it played there too (`monitor.listen`), which its own
+-- program starts and stops.
+daw.command("listen", function()
+  local client = api.ui_client()
+  if not daw.seats.has(client) then
+    return daw.notify("this is the instance's own terminal: its sound plays here already", "warn")
+  end
+  api.rpc_push(client, "monitor.toggle", {})
+end, { desc = "From a terminal or window attached from another machine: hear the instance's sound there, or stop" })
+
 daw.command("detach", function()
   local client = api.ui_client()
-  if client == 0 then
+  -- A connection without a seat of its own (`daw ctl`) is no terminal.
+  if not daw.seats.has(client) then
     return daw.notify("this is the program's own terminal: `:q` quits; `daw attach` from another terminal can be detached", "warn")
   end
   api.ui_detach(client)

@@ -24,3 +24,6 @@ flacenc = { version = "0.5", default-features = false }
 rubato = "0.16"
 # FFTs for the phase vocoder that stretches clips (stretch.rs).
 realfft = "3.5"
+rustls.workspace = true
+# The self-signed certificate an instance listening on the network shows.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }

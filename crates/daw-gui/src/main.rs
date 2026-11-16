@@ -36,6 +36,12 @@ Usage:
                                        show one running on another machine
                                        (started with --listen-tcp; the token
                                        is also taken from --token or $DAW_TOKEN)
+    --accept-certificate               take the certificate it shows though
+                                       another was remembered for it
+    --no-tls                           connect in the clear, to one started
+                                       with --no-tls
+    --listen-audio                     play its sound here (about 1 Mbit/s);
+                                       also in the engine menu
 
 Options:
   --renderer software|gpu   draw on the processor (the default) or on the
@@ -208,27 +214,42 @@ struct Client {
     /// of device kinds did, which is only sent at first.
     fresh: bool,
     fresh_kinds: bool,
+    /// The kernel's sound, played here (`:listen`, the engine menu).
+    player: Option<daw_listen::Player>,
 }
 
 impl Client {
-    fn connect(path: &Path) -> Result<Self> {
-        Self::watching(daw_proto::Connection::unix(path)?)
+    /// Connect to a kernel on this machine: with a seat of its own (a cursor,
+    /// mode and selection), or in the instance's own (`shared`), as a window
+    /// that started its kernel itself is.
+    fn connect(path: &Path, shared: bool) -> Result<Self> {
+        Self::watching(daw_proto::Connection::unix(path)?, shared)
     }
 
     /// Connect to a kernel on another machine (or this one) over the network.
-    fn connect_tcp(address: &str, token: &str) -> Result<Self> {
-        Self::watching(daw_proto::Connection::tcp(address, token)?)
+    fn connect_tcp(address: &str, token: &str, wire: &daw_proto::Wire) -> Result<Self> {
+        let connection = daw_proto::Connection::tcp_with(address, token, wire)?;
+        if let Some(print) = &connection.trusted_now {
+            eprintln!(
+                "daw-gui: {address} is trusted from now on: its certificate is {print} \
+                 (remembered in {})",
+                daw_proto::tls::known_path().display()
+            );
+        }
+        Self::watching(connection, false)
     }
 
-    fn watching(connection: daw_proto::Connection) -> Result<Self> {
+    fn watching(connection: daw_proto::Connection, shared: bool) -> Result<Self> {
         let mut client = Self {
             connection,
             tick: Value::Null,
             sections: serde_json::Map::new(),
             fresh: false,
             fresh_kinds: false,
+            player: None,
         };
-        client.call("frontend.watch", json!([]))?;
+        let seat = if shared { "instance" } else { "own" };
+        client.call("frontend.watch", json!([{ "seat": seat }]))?;
         Ok(client)
     }
 
@@ -247,6 +268,17 @@ impl Client {
         self.call("eval", Value::Array(params))
     }
 
+    /// Start playing the kernel's sound here, or stop.
+    fn toggle_listening(&mut self) -> Result<()> {
+        if self.player.take().is_some() {
+            return self.connection.notify("monitor.unlisten", json!([]));
+        }
+        let player = daw_listen::Player::device()?;
+        self.call("monitor.listen", json!([]))?;
+        self.player = Some(player);
+        Ok(())
+    }
+
     /// The state to draw, in the shape `daw.frontend.state` gives it: what
     /// moves on its own always, and the project's parts (`project`,
     /// `tracks`, `clips`, ...) only when one of them has changed since the
@@ -263,6 +295,17 @@ impl Client {
                         self.sections.extend(parts);
                     }
                     self.tick = payload;
+                }
+                Ok((name, payload)) if name == "audio.frame" => {
+                    if let Some(player) = &self.player {
+                        let _ = player.push(&payload);
+                    }
+                }
+                Ok((name, _)) if name == "monitor.toggle" => {
+                    if let Err(err) = self.toggle_listening() {
+                        let message = format!("cannot play the instance's sound here: {err:#}");
+                        let _ = self.eval("daw.notify(..., 'error')", json!([message]));
+                    }
                 }
                 Ok(_) => {}
                 Err(std::sync::mpsc::TryRecvError::Empty) => break,
@@ -293,6 +336,24 @@ impl Client {
         }
         Ok(state)
     }
+}
+
+/// Send the sound files among `paths` to a kernel on another machine (or
+/// one this window did not start), into its project's media folder, and
+/// return where they are there. The rest are left out, said to be refused.
+fn send_sounds(client: &mut Client, paths: &[String]) -> Result<Vec<String>> {
+    let mut there = Vec::new();
+    for path in paths {
+        let sound = client.eval("return daw.is_audio_file(...)", json!([path]))?;
+        if sound.as_bool() != Some(true) {
+            let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+            let message = format!("cannot send {name}: only sound files go to an instance on another machine");
+            client.eval("daw.notify(..., 'warn')", json!([message]))?;
+            continue;
+        }
+        there.push(client.connection.send_file(Path::new(path))?);
+    }
+    Ok(there)
 }
 
 /// Start a kernel without a UI and connect to it.
@@ -330,7 +391,7 @@ fn start_kernel(args: &[String]) -> Result<(Client, Child)> {
     // The first start can take a while: it looks through every installed plugin.
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
-        if let Ok(client) = Client::connect(&socket) {
+        if let Ok(client) = Client::connect(&socket, true) {
             return Ok((client, child));
         }
         if let Some(status) = child.try_wait()? {
@@ -2470,10 +2531,23 @@ fn run() -> Result<()> {
     let (client, child) = match (&address, &socket) {
         (Some(address), _) => {
             let token = token.context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?;
-            (Client::connect_tcp(address, &token)?, None)
+            let flag = |name: &str| args.iter().any(|a| a == name);
+            let wire = if flag("--no-tls") {
+                daw_proto::Wire::Plain
+            } else {
+                daw_proto::Wire::Tls {
+                    known: daw_proto::tls::known_path(),
+                    accept_new: flag("--accept-certificate"),
+                }
+            };
+            let mut client = Client::connect_tcp(address, &token, &wire)?;
+            if flag("--listen-audio") {
+                client.toggle_listening()?;
+            }
+            (client, None)
         }
         (None, Some(path)) => {
-            let client = Client::connect(path)
+            let client = Client::connect(path, false)
                 .with_context(|| format!("no kernel at {}", path.display()))?;
             (client, None)
         }
@@ -2585,6 +2659,7 @@ fn run() -> Result<()> {
     ui.set_take_pieces(ModelRc::from(view.borrow().take_pieces.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
     ui.set_view_entries(ModelRc::from(view.borrow().view_entries.clone()));
+    ui.set_remote(child.borrow().is_none());
     ui.set_bands(ModelRc::from(view.borrow().bands.clone()));
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
@@ -2658,6 +2733,8 @@ fn run() -> Result<()> {
         let (client, weak, child) = (client.clone(), ui.as_weak(), child.clone());
         let (pass, leave, act) = (pass.clone(), leave.clone(), act.clone());
         let (busy, absent) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(false)));
+        // A kernel this window attached to may be on another machine.
+        let remote = child.borrow().is_none();
         ANSWER.with(|slot| {
             let (busy, absent) = (busy.clone(), absent.clone());
             *slot.borrow_mut() = Some(Box::new(move |purpose: Purpose, outcome: portal::Outcome| {
@@ -2683,6 +2760,11 @@ fn run() -> Result<()> {
                                 leave(&format!("open:{path}"));
                             }
                             Purpose::SaveAs => pass("chosen", json!(["saveas", path])),
+                            // Chosen here for a kernel elsewhere: sent there first.
+                            Purpose::Import if remote => act(&|c| {
+                                let there = c.connection.send_file(Path::new(&path))?;
+                                c.eval("return daw.frontend.act.chosen(...)", json!(["import", there]))
+                            }),
                             Purpose::Import => pass("chosen", json!(["import", path])),
                             Purpose::Render => ui.set_render_path(path.into()),
                         }
@@ -2693,7 +2775,10 @@ fn run() -> Result<()> {
         });
         // Returns whether a dialog is being shown (or was, and is still open).
         move |purpose: Purpose, render_path: &str, stems: bool| -> bool {
-            if child.borrow().is_none() || absent.get() {
+            // A sound file to import can come from this machine whatever
+            // the kernel's is: it is sent there.
+            let here = child.borrow().is_some() || matches!(purpose, Purpose::Import);
+            if !here || absent.get() {
                 return false;
             }
             if busy.get() {
@@ -3832,6 +3917,15 @@ fn run() -> Result<()> {
                     sync(&view.borrow().render_ranges, ranges);
                     ui.set_render_range(0);
                     ui.set_render_path(text(&info["path"]));
+                    let tags = &info["tags"];
+                    ui.set_render_title(text(&tags["title"]));
+                    ui.set_render_artist(text(&tags["artist"]));
+                    ui.set_render_album(text(&tags["album"]));
+                    ui.set_render_track(text(&tags["track"]));
+                    ui.set_render_year(text(&tags["year"]));
+                    ui.set_render_genre(text(&tags["genre"]));
+                    ui.set_render_comment(text(&tags["comment"]));
+                    ui.set_render_cover(text(&tags["cover"]));
                     // The lossy formats are offered when ffmpeg can make them.
                     let has = |name: &str| info["formats"][name].as_bool().unwrap_or(false);
                     ui.set_render_has_mp3(has("mp3"));
@@ -3870,6 +3964,12 @@ fn run() -> Result<()> {
                     "bits": ui.get_render_bits(), "tail": tail.max(0.0), "normalize": normalize,
                     "dither": ui.get_render_dither(), "mono": ui.get_render_mono(),
                     "stems": ui.get_render_stems(),
+                    "tags": {
+                        "title": ui.get_render_title().as_str(), "artist": ui.get_render_artist().as_str(),
+                        "album": ui.get_render_album().as_str(), "track": ui.get_render_track().as_str(),
+                        "year": ui.get_render_year().as_str(), "genre": ui.get_render_genre().as_str(),
+                        "comment": ui.get_render_comment().as_str(), "cover": ui.get_render_cover().as_str(),
+                    },
                 }]),
             );
             ui.set_render_open(false);
@@ -3937,12 +4037,20 @@ fn run() -> Result<()> {
     let layout = |ui: &App| {
         let scale = ui.window().scale_factor();
         let size = ui.window().size().to_logical(scale);
-        json!({
+        let mut layout = json!({
             "width": size.width.round(), "height": size.height.round(), "zoom": ui.get_zoom(),
             "row_height": ui.get_row_height(),
             "roll_height": ui.get_roll_height(),
             "mixer": ui.get_show_mixer(),
-        })
+        });
+        // Where the window is, in screen pixels with its frame, where the
+        // system tells a program (X11). On Wayland it does not: the
+        // compositor places windows, so nothing is kept.
+        if let Some(at) = ui.window().with_winit_window(|window| window.outer_position().ok()).flatten() {
+            layout["x"] = json!(at.x);
+            layout["y"] = json!(at.y);
+        }
+        layout
     };
     ui.window().on_close_requested({
         let (leave, client, weak, layout) = (leave.clone(), client.clone(), ui.as_weak(), layout);
@@ -3961,7 +4069,8 @@ fn run() -> Result<()> {
     // Files dragged in from a file manager. Winit sends one event per file
     // and, on X11 only (it has no drag and drop on Wayland), none says where
     // the pointer is: the kernel puts each sound file on a track of its own.
-    // The paths are local, so only a kernel of this window's own will do.
+    // A kernel of this window's own reads them where they are; one this
+    // window attached to is sent the sound files first.
     ui.window().on_winit_window_event({
         let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
         let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
@@ -3972,24 +4081,33 @@ fn run() -> Result<()> {
             };
             match event {
                 WindowEvent::HoveredFile(_) => {
-                    let (message, error) = if child.borrow().is_some() {
-                        ("Drop to add the files to the project", false)
+                    let message = if child.borrow().is_some() {
+                        "Drop to add the files to the project"
                     } else {
-                        ("Files can only be dropped on a window that started its own kernel", true)
+                        "Drop to send the sound files to the instance and add them"
                     };
-                    view.borrow_mut().show(&ui, message, error);
+                    view.borrow_mut().show(&ui, message, false);
                 }
                 WindowEvent::HoveredFileCancelled => view.borrow_mut().show(&ui, "", false),
-                WindowEvent::DroppedFile(path) if child.borrow().is_some() => {
+                WindowEvent::DroppedFile(path) => {
                     let first = dropped.borrow().is_empty();
                     dropped.borrow_mut().push(path.to_string_lossy().to_string());
                     if first {
                         // The rest of the files follow at once.
                         let (client, view, weak) = (client.clone(), view.clone(), weak.clone());
-                        let (leave, dropped) = (leave.clone(), dropped.clone());
+                        let (leave, dropped, child) = (leave.clone(), dropped.clone(), child.clone());
                         Timer::single_shot(Duration::from_millis(100), move || {
-                            let paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
+                            let mut paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
                             let Some(ui) = weak.upgrade() else { return };
+                            if child.borrow().is_none() {
+                                paths = match send_sounds(&mut client.borrow_mut(), &paths) {
+                                    Ok(there) => there,
+                                    Err(err) => {
+                                        view.borrow_mut().show(&ui, &format!("{err:#}"), true);
+                                        return;
+                                    }
+                                };
+                            }
                             let done = client.borrow_mut().eval(
                                 "return daw.frontend.act.drop(...)",
                                 json!([paths]),
@@ -4035,6 +4153,7 @@ fn run() -> Result<()> {
                     }
                     view.show(&ui, &format!("{err:#}"), true);
                 }
+                ui.set_listening(client.borrow().player.is_some());
                 (view.windows.clone(), std::mem::take(&mut view.repaint))
             };
             let mut canvases = canvases.borrow_mut();
@@ -4142,6 +4261,29 @@ fn run() -> Result<()> {
     let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
     if let (Some(width), Some(height)) = (size("width"), size("height")) {
         ui.window().set_size(slint::LogicalSize::new(width, height));
+    }
+    // Asking for a position does nothing on Wayland, where the compositor
+    // decides, and nothing was kept there. Where the screens have changed
+    // since, a window that would be out of reach is brought back.
+    if let (Some(x), Some(y)) = (kept["x"].as_i64(), kept["y"].as_i64()) {
+        ui.window().set_position(slint::PhysicalPosition::new(x as i32, y as i32));
+        let weak = ui.as_weak();
+        Timer::single_shot(Duration::from_millis(500), move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.window().with_winit_window(|window| {
+                let (Ok(at), size) = (window.outer_position(), window.outer_size()) else { return };
+                let on_screen = window.available_monitors().any(|monitor| {
+                    let (origin, extent) = (monitor.position(), monitor.size());
+                    at.x + size.width as i32 > origin.x + 40
+                        && at.x < origin.x + extent.width as i32 - 40
+                        && at.y >= origin.y - 20
+                        && at.y < origin.y + extent.height as i32 - 40
+                });
+                if !on_screen && let Some(monitor) = window.primary_monitor() {
+                    window.set_outer_position(monitor.position());
+                }
+            });
+        });
     }
     if let Some(zoom) = size("zoom") {
         ui.set_zoom(zoom);

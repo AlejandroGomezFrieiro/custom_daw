@@ -17,11 +17,18 @@ it: an idle project costs nothing on the wire, and a change sends only the
 part that changed (see [docs/protocol.md](protocol.md)).
 
 The window remembers how it was left, for the machine, in
-`~/.local/state/daw/window.json`: its size, the timeline's zoom, the height
-of the rows and of the piano roll, and whether the mixer shows. It writes it
+`~/.local/state/daw/window.json`: its size and, on X11, its position on the
+screen, the timeline's zoom, the height of the rows and of the piano roll,
+and whether the mixer shows. It writes it
 when a value has stood for a second and when it closes, through
 `daw.frontend.layout_get()` and `layout_set(table)` in the kernel, so a window
 attached to a running kernel finds it too.
+
+The position is only kept and restored where a program can ask for it and set
+it, which is X11. On Wayland the compositor decides where a window goes: a
+program cannot say, so none is kept and the window opens where the compositor
+puts it. A saved position that no screen shows any more (a monitor that is
+gone) is not used: the window goes to the top left of the main screen.
 
 It keeps no project state. Thirty times a second it calls
 `daw.frontend.state(revision)` over the socket, and everything the user does
@@ -85,7 +92,7 @@ does wherever it is.
 | Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
 | Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a window of its own; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
-| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line. Open…, Save as…, Import and the render's `…` button show the desktop's own file dialog (see below) |
+| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, a file per track, and under Tags the title, artist, album, track, year, genre, comment and cover that the files carry (kept with the project); the render runs in the background with its progress and a Cancel in the status line. Open…, Save as…, Import and the render's `…` button show the desktop's own file dialog (see below) |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
 | Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it |
 | Wheel | scrolls; with Shift sideways; with Ctrl it zooms in time where the pointer is, in the timeline and in the piano roll, and over the track headers makes every track taller or shorter; with Alt it makes the tracks (or the piano roll's rows) taller and shorter |
@@ -101,8 +108,11 @@ no toolkit linked). It offers projects, sound files and all files, and starts
 where a file was last chosen, else beside the project; the list picker starts
 in the same place. The dialog does not stop the window. Without a portal (no
 session bus, a bare window manager), with `daw.opt.native_dialogs = false`, or
-when the window is attached to a kernel with `--socket` (which may be on
-another machine), the kernel's list picker is used, as it always was. A
+when the window is attached to a kernel with `--socket` or `--connect`
+(which may be on another machine), the kernel's list picker is used, as it
+always was; but Import still shows the desktop's dialog there, and sends
+the sound file chosen to the kernel (see
+[Running it](running.md#on-another-machine)). A
 project chosen this way asks about unsaved changes like any other way of
 opening one: `daw.frontend.act.leave(how, "open:" .. path)`.
 
@@ -114,7 +124,15 @@ taken. What a drop means is `daw.frontend.act.drop(paths, row, beat)`: with a
 `row` (a place in the list of tracks) and a `beat` it puts the files one
 after another on that track, at the beat on the grid; the window cannot say
 where the pointer was, for winit 0.30 does not tell, so it passes neither.
-Wayland sends the window no drops at all with this version of winit.
+Wayland sends the window no drops at all with this version of winit. On a
+window attached to a kernel it did not start, the sound files dropped are
+sent to the kernel first, into its project's media folder; nothing else is.
+
+A window attached to a kernel (`--socket`, `--connect`) has a seat of its
+own there: its own cursor, selection and mode, beside the kernel's
+terminal and other windows. The engine menu's "Hear it on this machine"
+(or `--listen-audio`) plays the kernel's sound through this machine's
+device, a quarter of a second late or more.
 
 Every key still goes to the kernel's key mappings, so the window is also
 driven exactly as the terminal UI is: the same modes, operators, registers

@@ -354,6 +354,10 @@ fn the_audio_thread_never_allocates() {
     // MIDI output goes into a queue nobody reads here: once it is full,
     // what does not fit is counted and dropped.
     let _midi_out = handle.midi_output();
+    // So does a copy of the output for a listener elsewhere; and one
+    // replaced by another is let go of off the audio thread.
+    let _first = handle.monitor(0.05);
+    let _monitor = handle.monitor(0.05);
     send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
     send(&mut handle, Msg::SetTempo(133.0));
     send(&mut handle, Msg::SetTimeSig { num: 7, den: 8 });

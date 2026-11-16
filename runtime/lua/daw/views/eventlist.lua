@@ -9,6 +9,7 @@ local controls = require("daw.controls")
 
 -- `modal` sends every key to `on_key`, bypassing the mappings behind it.
 local view = { title = "Events", row = 1, column = 4, scroll = 0, modal = true }
+daw.seats.fields("eventlist", view, { "row", "column", "scroll" }, { row = 1, column = 4, scroll = 0 })
 
 local HEADINGS = { time = "Time", kind = "Kind", which = "Which", value = "Value", length = "Length" }
 local WIDTHS = { time = 11, kind = 11, which = 10, value = 11, length = 8 }
