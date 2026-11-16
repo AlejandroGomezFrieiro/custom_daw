@@ -1589,7 +1589,7 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
 #[test]
 fn the_windows_position_is_kept_in_the_layout() {
     let mut w = scene!("position", DEMO);
-    let found = w.xdotool(&["search", "--onlyvisible", "--name", "^daw"]);
+    let found = w.xdotool(&["search", "--onlyvisible", "--name", "^paw"]);
     let id = found.lines().next().expect("the window").to_string();
     w.xdotool(&["windowmove", &id, "420", "180"]);
     // It is written once a position has stood for a second.
