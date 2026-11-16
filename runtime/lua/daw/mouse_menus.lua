@@ -196,6 +196,7 @@ end
 function M.lane(lane)
   local l = api.lane_get(lane)
   return {
+    { label = "Edit the curve…", run = function() act().open_curve(daw.address.lane(lane)) end },
     { label = "Clear this lane", run = function() act().clear_lane(lane) end },
     { label = l.enabled and "Turn this lane off" or "Turn this lane on", run = function() act().toggle_lane(lane) end },
     "-",
@@ -214,7 +215,18 @@ end
 
 --- The tempo lane under the ruler.
 function M.tempo_lane()
-  return { { label = "Hide the tempo lane", run = function() act().tempo_lane(false) end } }
+  return {
+    { label = "Edit the tempo as a curve…", run = function() act().open_curve(daw.address.tempo()) end },
+    { label = "Hide the tempo lane", run = function() act().tempo_lane(false) end },
+  }
+end
+
+--- A device's parameter: automating it, and its curve.
+function M.param(device, key)
+  return {
+    { label = "Automate this parameter", run = function() act().automate_param(device, key) end },
+    { label = "Edit its curve…", run = function() act().open_curve(daw.address.param(device, key)) end },
+  }
 end
 
 --- A marker or region in the band under the ruler.

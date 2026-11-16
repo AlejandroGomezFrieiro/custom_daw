@@ -130,11 +130,15 @@ function devices:on_mouse(e)
     if row and not row.picture then return mouse.hint(row.device.name .. " · click on/off to bypass it") end
     return
   end
-  -- A right click on a device or a parameter: its fixes and what the servers say of it.
+  -- A right click on a device or a parameter: automating a parameter, its
+  -- fixes and what the servers say of it.
   if e.kind == "down" and e.button == "right" and row and not row.picture then
     self.row = index
     local uri = row.param and daw.address.param(row.device.id, row.param.key) or daw.address.device(row.device.id)
-    local items = menus.lens({ uri = uri })
+    local items = row.param and menus.param(row.device.id, row.param.key) or {}
+    local lens = menus.lens({ uri = uri })
+    if #items > 0 and #lens > 0 then items[#items + 1] = "-" end
+    for _, item in ipairs(lens) do items[#items + 1] = item end
     if #items > 0 then
       return mouse.grab(e, { up = function(u) if not u.moved then daw.ui.menu(items, screen(e)) end end })
     end

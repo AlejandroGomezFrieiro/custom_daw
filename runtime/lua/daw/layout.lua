@@ -301,6 +301,10 @@ function M.resolve(name)
   end
   if M.types[name] then return name, M.buf_create(name) end
   if views[name] and views[name].focusable ~= false then return name, single(name) end
+  -- A type may take names of its own form as targets (`daw://lane/3`).
+  for type_name, def in pairs(M.types) do
+    if def.claims and def.claims(name) then return type_name, M.buf_create(type_name, name) end
+  end
   local kind, target = name:match("^([%w_]+)://(.*)$")
   if kind and M.types[kind] then return kind, M.buf_create(kind, target ~= "" and target or nil) end
 end
@@ -415,7 +419,10 @@ end
 --- own); `on_key(win, key)` for keys with no mapping; `on_mouse(win,
 --- event)`; `title(buf)`; `bufname(target, buf)`; `options` (the buffer's
 --- to start with); `listed` (false keeps its buffers off `:ls`, and forgets
---- each once no window shows it); `delete(buf)`; `time` (see `timebind`).
+--- each once no window shows it); `delete(buf)`; `time` (see `timebind`);
+--- `claims(name)`, whether a name is a target of the type's by its form
+--- (`:vs daw://lane/3`); `window()`, the window to draw when none in the
+--- tabs shows the type (one in a graphical frontend's window of its own).
 --- Key mappings for its windows are mapped with `{ view = name }`.
 function M.buftype(name, def)
   def.name = name
@@ -427,6 +434,7 @@ function M.buftype(name, def)
     for _, win in ipairs(M.windows(ui().layout)) do
       if win.view == name then return win end
     end
+    if def.window then return def.window() end
   end
   -- The keymap, the drawing and the mouse reach a type through a view of
   -- its name, as they reach every view.
