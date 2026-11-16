@@ -41,6 +41,13 @@ clip:notes({ from = 0, to = 4, low = "C2", high = "C3" })   -- a part of them, a
 clip:edit_notes({ set = { { index = 1, start = 0.5 } }, remove = { 2 }, add = {} })  -- several as one edit
 daw.project.save("song.json")   daw.project.load("song.json")
 daw.render("mix.wav", { tail = 2 })
+
+-- MIDI files. `read` gives what is in one, in ticks (`ppq` to a beat):
+-- { format, ppq, tracks = { { name, notes, controls } }, tempos, signatures, markers, skipped }.
+daw.open("song.mid")                                   -- a new project of it, as :open does
+daw.midifile.import("song.mid", { start = 16, tempo = true })   -- into this one; { track = t } as one clip
+daw.midifile.export("out.mid", { clips = { clip.id } })         -- or { tracks = { ... } }, or the whole project
+local file = daw.midifile.read("song.mid")             -- parse(bytes) and encode(file) work on bytes
 ```
 
 **Transport.**
@@ -99,7 +106,8 @@ daw.command(name, function(ctx) end, { desc = "..." })   -- ctx.args, ctx.count
 -- What the arguments complete to on the command line: a completer's name for
 -- every argument, a list of them by position, or a function returning strings
 -- or { text = ..., desc = ... }. Completers: commands, tracks, devices,
--- track_devices, options, views, pickers, files, audio_files, projects; add
+-- track_devices, options, views, pickers, files, audio_files (sound and MIDI
+-- files), projects, openable (projects, MIDI and sound files); add
 -- more to daw.commands.completers. daw.commands.complete(line) lists them.
 daw.command("send.to", fn, { complete = { "tracks" } })
 daw.command("mood", fn, { complete = function(text, info) return { "calm", "loud" } end })

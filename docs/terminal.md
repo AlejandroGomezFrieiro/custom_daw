@@ -294,7 +294,7 @@ left and above).
 | Keys or command | |
 | --- | --- |
 | `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; an empty window without a name (`Ctrl-w s`, `Ctrl-w v`, `:vnew`, `Ctrl-w n`) |
-| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (`:e song.json` still opens a project); the next and previous buffer |
+| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a file that is not a buffer's name opens as `:open` does: `:e song.json`, `:e song.mid`, `:e take.wav`); the next and previous buffer |
 | `:ls`, `:bd roll` | list the buffers; close every window of one |
 | `:close` `Ctrl-w c`, `:q` `Ctrl-w q`, `:only` `Ctrl-w o` | close the window; close it, or in the last window quit (asking about unsaved changes as before); close every other window |
 | `Ctrl-w h` `j` `k` `l`, `Ctrl-w w` `W`, `Ctrl-w p` | the window left, below, above, right (a count goes further); the next and previous window; the window that had the keyboard before |
@@ -433,7 +433,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | `,fm` | `pick.marks` | marks | goes to the mark |
 | `,fr` | `pick.registers` | registers | pastes it at the cursor, or plays a macro |
 | `,fn` | `pick.messages` | earlier messages, newest first | shows the whole message |
-| `,ff` | `pick.files` | projects and audio files under the working directory | opens the project, or adds the audio at the cursor |
+| `,ff` | `pick.files` | projects, audio and MIDI files under the working directory | opens the project, adds the audio at the cursor, or brings the MIDI file's tracks in there |
 | `,fo` | `pick.options` | options and their values | switches a true/false option, or asks for a new value |
 | `,fR` | `recent` | the recent projects, with where they are and when each was last opened | opens it |
 | `,fp` | `pick` | every picker | opens it |

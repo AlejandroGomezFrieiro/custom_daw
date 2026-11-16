@@ -108,8 +108,8 @@ then what the command takes (tracks by name for `:send`, devices for
 `:device.add`, files for `:open`, `:import`, `:render`, `:write`, options
 for `:set`). `Tab` and `Shift-Tab` (or `Ctrl-n` `Ctrl-p`) choose one into the
 line, `Enter` runs the line, and on a directory goes into it. `:set zoom 4`,
-`:set zoom=4` and `:set follow!` change options; `:open` opens a project or a
-sound file. After an error the bottom line says how to read it whole (`,fn`
+`:set zoom=4` and `:set follow!` change options; `:open` opens a project, a
+MIDI file (as a new project) or a sound file. After an error the bottom line says how to read it whole (`,fn`
 picks among the messages, `:messages` shows them all, newest at the bottom)
 until you have. Stop halfway through a command and the keys
 that can follow are listed.

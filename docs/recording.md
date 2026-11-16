@@ -165,6 +165,28 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   `daw.import_audio(path, { track = ..., start = ... })`, or by naming the
   file where a project would be named on the command line. `:clip.import`
   puts one on the cursor track.
+- **MIDI files** (`.mid`, `.midi`, `.smf`, `.kar`; format 0, 1 and 2, any
+  number of ticks to a beat, or frames of SMPTE time) open as a project of
+  their own with `:open song.mid` (or `:e song.mid`): a track for each of the
+  file's tracks that has notes (a format 0 file is split by channel), named
+  after it or "Channel N", one clip on each over the bars it plays, with its
+  controllers, pitch bend, pressure and program changes as the clip's
+  controls (the curve editor's `daw://clip/C/control/cc/N`), the file's tempo
+  map, time signatures and markers, and its lyrics on the notes they start
+  (`note.meta.lyric`). A track that plays on channel 10 alone gets the
+  built-in drum kit; the others get no instrument, as a new track has none.
+  The project has no file: `:w` asks where it goes, and never writes over the
+  .mid. `:import song.mid` brings the tracks into the open project instead,
+  below the cursor's track, with the file's start at the edit cursor, as one
+  undo step; the tempo map stays the project's unless asked for with
+  `:import song.mid tempo=yes` (the file's from the cursor on).
+  `:clip.import riff.mid` puts every note of the file in one clip on the
+  cursor track. What a file holds that has no place here (sysex, key
+  signatures, text) is left out, and the message says how much.
+  `:export song.mid` writes the project as a format 1 file with its tempo
+  map, time signatures and markers; `:export riff.mid clip` the clip at the
+  cursor, `:export part.mid selection` the selected tracks. In scripts:
+  `daw.midifile` (see [Scripting](scripting.md)).
 - **Latency.** cpal runs input and output as separate streams, joined by a
   ring that holds at most one input period plus one output block; when the
   clocks drift, the excess is dropped or the last frame repeated.

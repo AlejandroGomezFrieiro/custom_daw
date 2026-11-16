@@ -101,12 +101,13 @@ does wherever it is.
 | Pages over the window | a picker's rows (commands, files, devices) take the pointer: a click selects a row, a double click or Enter chooses it, the wheel scrolls; a click outside closes the page; "Open in a window" at its top right moves the page into a window of its own, in its colours |
 | Bands under the ruler | under the markers, a row for each extension that adds one: the sections of the song, the mix's findings. A click on an entry does what it stands for (goes to the section, to the finding); the status line says what |
 | Zoom | the buttons in the corner of the timeline: `−` and `+` in time (`Ctrl -`, `Ctrl +`), `Fit` for the whole song (`Ctrl 0`), the arrows for the height of the tracks (`Ctrl ↑`, `Ctrl ↓`), from one line a track to tall ones. Waveforms are drawn again at the width they then have |
-| Sound files | `Track` → "From a sound file…", or "Import a sound file…" in the timeline's menu, lists files to choose from (type to narrow, Enter walks into a directory): wav, aiff, flac, mp3 and ogg come in on a track of their own at the cursor. `:import path` does the same, and `daw-gui take.mp3` starts a project with the file |
+| Sound files | `Track` → "From a sound file…", or "Import a sound or MIDI file…" in the timeline's menu, lists files to choose from (type to narrow, Enter walks into a directory): wav, aiff, flac, mp3 and ogg come in on a track of their own at the cursor. `:import path` does the same, and `daw-gui take.mp3` starts a project with the file |
+| MIDI files | File → Open… opens a `.mid` as a new project, asking first about unsaved changes as for a project; File → Import… (and the timeline menu's import) brings its tracks in below the cursor's track at the cursor, leaving the tempo map alone. What comes of a file is in [Recording](recording.md) under MIDI files |
 
 When the window started its kernel, so that the kernel's disk is the
 window's, files are chosen in the desktop's own dialog, asked for through
 the XDG desktop portal (`org.freedesktop.portal.FileChooser` over D-Bus, with
-no toolkit linked). It offers projects, sound files and all files, and starts
+no toolkit linked). It offers projects, MIDI files, sound files and all files, and starts
 where a file was last chosen, else beside the project; the list picker starts
 in the same place. The dialog does not stop the window. Without a portal (no
 session bus, a bare window manager), with `daw.opt.native_dialogs = false`, or
@@ -120,15 +121,17 @@ opening one: `daw.frontend.act.leave(how, "open:" .. path)`.
 
 Files can be dragged in from a file manager on X11: a sound file becomes a
 track of its own, one for each file dropped together, with the clip at the
-edit cursor; a project (`.json`) asks to open it, through the same question
+edit cursor; a MIDI file's tracks come in as `:import` brings them; a
+project (`.json`) asks to open it, through the same question
 about unsaved changes; anything else is named in the status line as not
 taken. What a drop means is `daw.frontend.act.drop(paths, row, beat)`: with a
 `row` (a place in the list of tracks) and a `beat` it puts the files one
 after another on that track, at the beat on the grid; the window cannot say
 where the pointer was, for winit 0.30 does not tell, so it passes neither.
 Wayland sends the window no drops at all with this version of winit. On a
-window attached to a kernel it did not start, the sound files dropped are
-sent to the kernel first, into its project's media folder; nothing else is.
+window attached to a kernel it did not start, the sound and MIDI files
+dropped are sent to the kernel first, into its project's media folder;
+nothing else is.
 
 A window attached to a kernel (`--socket`, `--connect`) has a seat of its
 own there: its own cursor, selection and mode, beside the kernel's

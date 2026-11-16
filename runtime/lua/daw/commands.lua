@@ -231,10 +231,15 @@ M.completers = {
     return out
   end,
   files = function(word) return files(word) end,
+  -- What `import` takes: sound files and MIDI files.
   audio_files = function(word)
-    return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))
+    return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga", "mid", "midi", "smf", "kar" }))
   end,
   projects = function(word) return files(word, set_of({ "json", "rpp" })) end,
+  -- What `edit` opens: projects, MIDI files (as projects) and sound files.
+  openable = function(word)
+    return files(word, set_of({ "json", "rpp", "mid", "midi", "smf", "kar", "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))
+  end,
 }
 
 --- Candidates from one completer (a name, a list of names by position, or

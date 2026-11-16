@@ -140,3 +140,14 @@
   drawn beforehand, and its badge has no list of the alternatives' details
   to read through; hearing one uses the track's live input, so it is timed
   by the kernel's timers rather than the engine's clock.
+- MIDI files: key signatures, sysex, text and copyright events and SMPTE
+  offsets are left out (counted in the message), for the project has no
+  place for them; lyrics go only on notes of their own track, so a karaoke
+  file with its words in a track of their own keeps none; controller moves
+  on a channel or track with no notes are left out; a format 1 track that
+  plays on several channels stays one track (each note keeps its channel in
+  `meta.channel`, its controls are merged). A melodic track gets no
+  instrument (the drum kit only on channel 10). `:export` writes MIDI clips
+  only, a looped clip once, a tempo ramp as steps a sixteenth apart, a
+  note's own bend and controllers (MIDI 2.0) not at all, and every control
+  on its track's channel.
