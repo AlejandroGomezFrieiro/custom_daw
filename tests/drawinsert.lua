@@ -178,12 +178,40 @@ test("with several clips edited, what is drawn goes into the active one", functi
   eq(melody(a) .. "|" .. melody(b), "67@2+1|65@1+1", "and into a once it is the active one")
 end)
 
+test("a suggestion's keys come before the drawing ones: Escape dismisses it, and drawing goes on", function()
+  local clip = empty()
+  local complete = daw.complete
+  local source = {
+    name = "drawinsert", priority = 0,
+    complete = function(_, done) done({ { label = "fifth", notes = { { pitch = 67, start = 1, length = 1 } } } }) end,
+  }
+  local auto = daw.opt.complete_auto
+  daw.opt.complete_auto = false
+  complete.register(source)
+  local ok, err = xpcall(function()
+    typed("i2l<C-Space>")
+    eq(complete.current() ~= nil, true, "a suggestion shows while a note is drawn")
+    typed("<Esc>")
+    eq(complete.current(), nil, "the first Escape dismisses it")
+    eq(draw.active(), true, "and the note is still being drawn")
+    eq(melody(clip), "", "nothing written yet")
+    typed("l<Esc>")
+    eq(melody(clip), "60@0+0.75", "the second Escape writes it")
+  end, debug.traceback)
+  complete.unregister(source.name)
+  complete.dismiss()
+  daw.opt.complete_auto = auto
+  if not ok then error(err, 0) end
+end)
+
 -- The terminal's piano roll as cells: what is at a beat and pitch of the
 -- roll, with its colours, from the view drawn by itself.
 local function cell(beat, pitch)
   local shot = api.ui_view_snapshot("pianoroll", 100, 30)
-  local x = 5 + math.floor((beat - roll.scroll) * daw.opt.note_zoom + 0.5)
-  local y = 2 + roll.top - pitch
+  -- The rows above the notes (title, chord row, ruler) as the view counted them.
+  local g = roll.geometry
+  local x = g.keys + math.floor((beat - roll.scroll) * g.zoom + 0.5)
+  local y = g.head + roll.top - pitch
   for _, run in ipairs(shot.rows[y + 1] or {}) do
     if x >= run.x and x < run.x + run.w then
       local chars = {}
