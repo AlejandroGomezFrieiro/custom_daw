@@ -187,7 +187,11 @@ local function modal()
       marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.
       controls_chosen = daw.controls.chosen(clip.id),
+      -- What the roll's layers draw behind and in front of the notes, and
+      -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
+      tools = roll:toolbar(),
     }
+    out.roll.under, out.roll.over = roll:marks(clip.id)
   end
   local under = daw.cursor.clip()
   out.clip = ui.focused == "arrange" and under and under.id or nil

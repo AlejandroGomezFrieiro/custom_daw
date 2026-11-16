@@ -187,6 +187,7 @@ Protocol.
 | [Input and recording](docs/recording.md) | inputs, monitoring, takes, punch, count-in |
 | [Editing, mixing and rendering](docs/mixing.md) | routing, automation, tempo, stretching, markers, export |
 | [Live performance](docs/live.md) | clips in slots, launched on the bar, scenes, capturing a performance |
+| [Harmony, completion and snippets](docs/harmony.md) | suggestions as ghost notes in the piano roll, and how to write a source |
 | [Plugins and built-in devices](docs/devices.md) | CLAP, LV2, VST3, the sandbox, the built-in devices |
 | [Configuration](docs/configuration.md) | options, colours, the look |
 | [Scripting](docs/scripting.md) | the `daw` module, scripts, `daw ctl` |

@@ -38,6 +38,54 @@ function view:note_at(pitch, beat)
   return clip:note_at(pitch, beat)
 end
 
+-- Switches a module adds to the window's piano roll toolbar: `fn()`
+-- returns `{ label, on, tip, act }` (`act` names the `daw.frontend.act`
+-- function a click calls, given the clip), or nil to show none for now.
+view.tools = {}
+
+function view:tool(name, fn)
+  for i = #self.tools, 1, -1 do
+    if self.tools[i].name == name then table.remove(self.tools, i) end
+  end
+  if fn then self.tools[#self.tools + 1] = { name = name, fn = fn } end
+end
+
+function view:toolbar()
+  local out = {}
+  for _, tool in ipairs(self.tools) do
+    local ok, t = pcall(tool.fn)
+    if ok and type(t) == "table" then out[#out + 1] = t end
+  end
+  return out
+end
+
+-- Keys that hold for a while: a module whose state takes keys of its own
+-- (a suggestion showing, a snippet being filled in) names a scope of
+-- mappings and says when it is on; while it is, its keys come before the
+-- piano roll's, earlier entries first (`daw.keymap` looks here through
+-- `subscope`).
+--
+--   daw.ui.views.pianoroll:key_scope("pianoroll.complete", 50, function() return shown ~= nil end)
+view.key_scopes = {}
+
+function view:key_scope(name, order, active)
+  for i = #self.key_scopes, 1, -1 do
+    if self.key_scopes[i].name == name then table.remove(self.key_scopes, i) end
+  end
+  if not active then return end
+  self.key_scopes[#self.key_scopes + 1] = { name = name, order = order, active = active }
+  table.sort(self.key_scopes, function(a, b) return a.order < b.order end)
+end
+
+function view:subscope()
+  local out = {}
+  for _, scope in ipairs(self.key_scopes) do
+    local ok, on = pcall(scope.active)
+    if ok and on then out[#out + 1] = scope.name end
+  end
+  return #out > 0 and out or nil
+end
+
 local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
 
 -- Layers that modules draw over the roll, from back to front by `order`.
@@ -45,24 +93,56 @@ local HEAD = 2 -- rows above the notes: the panel's title, then the ruler
 -- are drawn under them, the rest (diagnostics 30, a snippet's marks 40,
 -- suggestions 50) over them, and the cursor last of all.
 view.layers = {}
+local NOTES = 20
 
 --- Draw `paint(p)` as a layer of the roll, replacing one of the same name
 --- (nil removes it). `p` holds `roll` and `ruler` (cell buffers), `clip`,
---- `x(beat)` (a column of the roll), `row(pitch)` (a row, nil when off
---- screen), `scroll`, `zoom`, `top`, `rows` and `hue`.
-function view.layer(name, order, paint)
+--- `data` (the clip's fields), `x(beat)` (a column of the roll), `row(pitch)`
+--- (a row, nil when off screen), `scroll`, `zoom`, `top`, `rows`, `width`,
+--- `focused` and `hue`.
+---
+--- `marks(clip_id)`, if given, lists what the window draws for the layer:
+--- `{ pitch, start, length }` in the clip's beats, with `fill` (`#rrggbb`),
+--- `alpha` (0 to 1), `edge` (a border colour), `label`; `badge = true` for
+--- a chip with the label on the row of `pitch`, as wide as its text, `slot`
+--- putting chips side by side (in steps of 20 px; a chip with a longer
+--- label takes the last slot); `act` and `arg` for what a click on it does,
+--- the name of a `daw.frontend.act` function given the clip and `arg`, and
+--- `tip` for what the pointer on it says. A failing layer is skipped.
+function view.layer(name, order, paint, marks)
   for i = #view.layers, 1, -1 do
     if view.layers[i].name == name then table.remove(view.layers, i) end
   end
-  if paint then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint } end
+  if paint or marks then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint, marks = marks } end
   table.sort(view.layers, function(a, b) return a.order < b.order end)
   api.ui_redraw()
 end
 
 local function paint_layers(p, from, to)
   for _, layer in ipairs(view.layers) do
-    if layer.order >= from and layer.order < to then layer.paint(p) end
+    if layer.paint and layer.order >= from and layer.order < to then
+      local ok, err = pcall(layer.paint, p)
+      if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(err)) end
+    end
   end
+end
+
+--- What the window draws of the layers for `clip_id`: those behind the
+--- clip's notes and those in front of them.
+function view:marks(clip_id)
+  local under, over = {}, {}
+  for _, layer in ipairs(self.layers) do
+    if layer.marks then
+      local ok, list = pcall(layer.marks, clip_id)
+      if ok and type(list) == "table" then
+        local into = layer.order < NOTES and under or over
+        for _, mark in ipairs(list) do into[#into + 1] = mark end
+      elseif not ok then
+        api.log("piano roll layer " .. layer.name .. ": " .. tostring(list))
+      end
+    end
+  end
+  return under, over
 end
 
 --- Rows for the velocity lane on a panel `h` rows tall.
@@ -156,14 +236,15 @@ function view:render(buf, ctx)
 
   local top = self.top
   local layer = {
-    roll = roll, ruler = ruler, clip = clip, scroll = self.scroll, zoom = zoom, top = top, rows = rows, hue = hue,
+    roll = roll, ruler = ruler, clip = clip, data = c, scroll = self.scroll, zoom = zoom, top = top, rows = rows, hue = hue,
+    width = tw, focused = ctx.focused,
     x = function(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end,
     row = function(pitch)
       local row = top - pitch
       if row >= 0 and row < rows then return row end
     end,
   }
-  paint_layers(layer, -math.huge, 20)
+  paint_layers(layer, -math.huge, NOTES)
 
   -- Only what is on screen crosses over from the core.
   local under = self:note_at(self.pitch, self.beat)
@@ -182,7 +263,7 @@ function view:render(buf, ctx)
     -- Long enough notes say which they are.
     if nw >= 4 then roll:text(x0 + 1, row, music.name(note.pitch):sub(1, nw - 1)) end
   end
-  paint_layers(layer, 20, math.huge)
+  paint_layers(layer, NOTES, math.huge)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then

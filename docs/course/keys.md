@@ -111,6 +111,18 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
 
+## Take a suggestion (piano roll, normal and insert mode)
+
+| Keys | |
+| --- | --- |
+| `<C-Space>` | ask the completion sources what comes next |
+| `<Tab>` | accept the suggestion that shows |
+| `<C-l>` | accept its next note or chord only |
+| `<C-n>` `<C-p>` | the next, the previous alternative |
+| `<A-1>` … `<A-9>` | show that alternative |
+| `<C-e>` `<Esc>` | dismiss it (`<Esc>` leaves insert mode only when nothing shows) |
+| `gh` | hear it from a bar before (normal mode) |
+
 ## Repeat and remember
 
 | Keys | |

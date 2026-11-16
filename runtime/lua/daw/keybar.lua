@@ -28,6 +28,14 @@ function M.entries()
   local view = daw.ui.focused
   local mode = daw.keymap.mode
   local lines = M.lines[view]
+  -- A part of the view whose keys come first (a suggestion showing) has
+  -- its own line, when it sets one.
+  local v = daw.ui.views[view]
+  if v and v.subscope then
+    local ok, sub = pcall(v.subscope, v)
+    if ok and type(sub) == "table" then sub = sub[1] end
+    if ok and sub and M.lines[sub] and M.lines[sub][mode] then lines = M.lines[sub] end
+  end
   -- A view that takes every key itself has none of the usual ones.
   local modal = daw.ui.views[view] and daw.ui.views[view].modal
   if modal and not lines then return {} end
