@@ -46,6 +46,8 @@ impl Session {
         &mut self,
         go: impl FnOnce(&mut History<Project>) -> Option<StateId>,
     ) -> Option<StateId> {
+        // A trial under way is called off: what is undone is what was there.
+        self.trial_end(false);
         // Edits made before the move report themselves as edits.
         self.flush();
         self.checkpoint();
