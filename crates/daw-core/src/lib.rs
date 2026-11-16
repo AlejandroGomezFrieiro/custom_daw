@@ -19,6 +19,7 @@ pub mod stretch;
 pub mod stretched;
 pub mod sync;
 pub mod tempo_api;
+pub mod warp;
 pub mod watchdog;
 
 pub use kernel::{Frontend, InputEvent, Kernel, KernelMsg, KernelOpts};

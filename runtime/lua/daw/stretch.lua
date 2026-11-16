@@ -5,7 +5,12 @@
 -- other. The stretched sound is made once, apart, and played when it is
 -- ready; until then the clip is silent and says so (`clip.stretching`).
 -- `clip.offset` stays in seconds of the file, so a second of the clip is
--- `1 / stretch` seconds of the file (`M.file_seconds`).
+-- `1 / stretch` seconds of the file (`M.file_seconds`), unless warp
+-- markers stretch its parts differently (`M.warp_add`): each is a moment
+-- of the file pinned to a place in the clip, `{ source, target, beat }`
+-- in `clip.warp`, and moving one stretches the sound between it and its
+-- neighbours alone. The sound is made a part at a time, from its start,
+-- and plays as far as it is made: a long file is heard at once.
 --
 -- A clip in the "stretch" timebase keeps its start and its length on their
 -- beats when the tempo changes: its stretch follows, from the tempo its
@@ -21,11 +26,56 @@ local M = {}
 
 local EPS = 1e-9
 
+--- A clip's warp markers as a map from its file's seconds to its seconds
+--- before its stretch: through each marker, at the file's own speed past
+--- the first and the last. With `back`, the other way.
+local function unstretched(warp, x, back)
+  local from, to = "source", "target"
+  if back then from, to = to, from end
+  local n = #warp
+  if x <= warp[1][from] then return warp[1][to] + x - warp[1][from] end
+  for i = 2, n do
+    local a, b = warp[i - 1], warp[i]
+    if x <= b[from] then return a[to] + (x - a[from]) * (b[to] - a[to]) / (b[from] - a[from]) end
+  end
+  return warp[n][to] + x - warp[n][from]
+end
+
+--- The moment of an audio clip's file that plays `by` beats after its
+--- start, through its stretch, its warp markers and its bend along the
+--- tempo (`clip.bent`, when it follows a tempo that changes inside it).
+function M.file_at(c, by)
+  local warp = c.warp or {}
+  if #warp == 0 and not c.bent then
+    return c.offset + daw.time.seconds(by, c.start) / (c.stretch or 1)
+  end
+  local played = c.bent and by * 60 / c.source_tempo or daw.time.seconds(by, c.start) / (c.stretch or 1)
+  if #warp == 0 then return c.offset + played end
+  return unstretched(warp, unstretched(warp, c.offset) + played, true)
+end
+
 --- Seconds of an audio clip's file that `beats` beats of it from beat `at`
 --- (its start when left out) play.
 function M.file_seconds(c, beats, at)
-  return daw.time.seconds(beats, at or c.start) / (c.stretch or 1)
+  if #(c.warp or {}) == 0 and not c.bent then
+    return daw.time.seconds(beats, at or c.start) / (c.stretch or 1)
+  end
+  local from = (at or c.start) - c.start
+  return M.file_at(c, from + beats) - M.file_at(c, from)
 end
+
+--- Seconds an audio clip would play of its file before its start, were
+--- it longer that way: what is played of the file's first `offset` seconds.
+function M.lead(c)
+  local warp = c.warp or {}
+  local u = #warp > 0 and unstretched(warp, c.offset) - unstretched(warp, 0) or c.offset
+  if c.bent then
+    local beats = u * c.source_tempo / 60
+    return daw.time.seconds(beats, c.start - beats)
+  end
+  return u * (c.stretch or 1)
+end
+
 
 --- What a clip plays from, once its start has moved `by` beats later
 --- (earlier below 0) while what it plays stays where it is: `offset` for
@@ -75,6 +125,7 @@ function M.carry(c, snap, by)
   if c.kind == "audio" then
     snap.timebase, snap.stretch, snap.pitch = c.timebase, c.stretch, c.pitch
     snap.stretch_mode, snap.source_tempo = c.stretch_mode, c.source_tempo
+    snap.warp, snap.formants = M.markers(c), c.formants or nil
   end
   snap.loop, snap.loop_length = c.loop or nil, c.loop_length
   snap.loop_start = m.loop_start or c.loop_start
@@ -125,10 +176,66 @@ function M.fit(id, from, to)
   M.to(id, to - from)
 end
 
---- Play an audio clip's file at its own speed again, at its own length.
+--- Play an audio clip's file at its own speed again, at its own length,
+--- without warp markers.
 function M.reset(id)
+  if #(api.clip_get(id).warp or {}) > 0 then api.clip_set(id, "warp", {}) end
   M.set(id, 1)
 end
+
+--- A clip's warp markers as they are saved (`{ source, target }` each),
+--- nil for none.
+function M.markers(c)
+  if #(c.warp or {}) == 0 then return nil end
+  local out = {}
+  for i, m in ipairs(c.warp) do out[i] = { source = m.source, target = m.target } end
+  return out
+end
+
+--- Put a warp marker on an audio clip at `beat`, pinning the moment of its
+--- file that plays there (nothing moves). Returns its index.
+function M.warp_add(id, beat)
+  need_audio(api.clip_get(id))
+  return api.clip_warp_add(id, beat)
+end
+
+--- Move warp marker `index` of a clip to play at `beat`: the sound between
+--- it and its neighbours stretches, the clip's start and end staying where
+--- they are. It goes no further than a stretch of 0.25 to 4 on either
+--- side allows. Returns its index, which may have changed.
+function M.warp_move(id, index, beat)
+  return api.clip_warp_move(id, index, beat)
+end
+
+--- Take warp marker `index` off a clip.
+function M.warp_remove(id, index)
+  api.clip_warp_remove(id, index)
+end
+
+--- The index of a clip's warp marker nearest `beat`, and how far it is.
+function M.warp_near(c, beat)
+  local best, dist
+  for i, m in ipairs(c.warp or {}) do
+    local d = math.abs(m.beat - beat)
+    if not dist or d < dist then best, dist = i, d end
+  end
+  return best, dist
+end
+
+--- Move every warp marker of a clip onto the nearest line of a grid of
+--- `step` beats (`daw.opt.grid` when left out), from the first on.
+function M.warp_snap(id, step)
+  step = step or daw.opt.grid
+  local n = #(api.clip_get(id).warp or {})
+  local i = 1
+  while i <= n do
+    local m = api.clip_get(id).warp[i]
+    local to = math.floor(m.beat / step + 0.5) * step
+    i = M.warp_move(id, i, to) + 1
+    n = #api.clip_get(id).warp
+  end
+end
+
 
 --- Shift an audio clip's pitch to `semitones` (fractions allowed) above its file's.
 function M.pitch(id, semitones)

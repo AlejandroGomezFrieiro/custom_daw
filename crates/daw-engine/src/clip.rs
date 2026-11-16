@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result, bail};
 use symphonia::core::codecs::audio::AudioDecoderOptions;
@@ -39,6 +40,17 @@ impl AudioData {
 
     pub fn seconds(&self) -> f64 {
         self.frames() as f64 / self.sample_rate as f64
+    }
+
+    /// Whether all of the sound is there: false while it is still being
+    /// made, when [`frames`](Self::frames) is how much of it is.
+    pub fn complete(&self) -> bool {
+        self.channels[0].complete()
+    }
+
+    /// How long the sound is once it is all there, in seconds.
+    pub fn whole_seconds(&self) -> f64 {
+        self.channels[0].whole_len() as f64 / self.sample_rate as f64
     }
 
     /// Decode a whole audio file: WAV, AIFF, FLAC, MP3 or Ogg Vorbis. Mono is
@@ -210,6 +222,78 @@ pub struct AudioRegion {
     /// very short fade keeps the cut from clicking.
     pub declick_in: bool,
     pub declick_out: bool,
+    /// Where the region stands with sound that is still being made.
+    pub hold: Hold,
+}
+
+/// How a region plays sound that is still being made (a stretch played
+/// while it is made): up to where the making has got, fading out just
+/// before it, silent past it, and fading in again where it picks up once
+/// more is there. Only the audio thread that plays the region touches it.
+pub struct Hold(AtomicU64);
+
+/// While the region has run out of sound.
+const STARVED: f64 = f64::INFINITY;
+/// While it plays as usual.
+const PLAYING: f64 = f64::NEG_INFINITY;
+
+impl Default for Hold {
+    fn default() -> Self {
+        Self(AtomicU64::new(PLAYING.to_bits()))
+    }
+}
+
+impl Hold {
+    fn get(&self) -> f64 {
+        f64::from_bits(self.0.load(Ordering::Relaxed))
+    }
+
+    fn set(&self, at: f64) {
+        self.0.store(at.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Whether playing has to look at the hold: the sound is still being
+    /// made, or the region is fading in again after it ran out.
+    pub fn watched(&self, complete: bool) -> bool {
+        !complete || self.get() != PLAYING
+    }
+
+    /// The region ran out of sound.
+    pub fn starve(&self) {
+        self.set(STARVED);
+    }
+
+    /// The gain at source frame `pos`, with `frames` frames there (all of
+    /// them when `complete`); the fades are `fade` source frames long and
+    /// shaped by `curve`.
+    pub fn gain(
+        &self,
+        pos: f64,
+        frames: usize,
+        complete: bool,
+        fade: f64,
+        curve: fn(f64) -> f32,
+    ) -> f32 {
+        let mut from = self.get();
+        if from == STARVED {
+            // Picking up again here.
+            from = pos;
+            self.set(from);
+        }
+        let mut gain = 1.0;
+        if pos >= from {
+            if pos - from < fade {
+                gain *= curve((pos - from) / fade);
+            } else {
+                self.set(PLAYING);
+            }
+        }
+        let left = frames as f64 - 1.0 - pos;
+        if !complete && left < fade {
+            gain *= curve(left / fade);
+        }
+        gain
+    }
 }
 
 /// Everything one track plays. Built on the main thread and handed to the

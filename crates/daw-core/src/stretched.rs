@@ -1,11 +1,14 @@
 //! Stretched and pitch-shifted sound, made on worker threads and kept.
 //!
-//! A clip with a stretch or a pitch shift plays a version of its file made
-//! for it (`stretch.rs`), at the engine's rate. Sync asks for it when it
-//! builds the clip; the first time it is not there yet, so it is queued and
-//! the clip is silent until it is ready, when the session builds the
-//! clip's track again (`Session::poll_stretches`). A version is known by
-//! its file and what was made of it (ratio, shift, mode, rate), kept in
+//! A clip with a stretch, warp markers or a pitch shift plays a version of
+//! its file made for it (`stretch.rs`), at the engine's rate. Sync asks
+//! for it when it builds the clip; the first time it is not there yet, so
+//! it is queued, and the clip is silent until it is started, when the
+//! session builds the clip's track again (`Session::poll_stretches`). From
+//! then on the clip plays the version as far as it has been made: it is
+//! made from its start, into room laid out for all of it, many times
+//! faster than it plays. A version is known by its file and what was made
+//! of it (its warp, shift, mode and formants, and the rate), kept in
 //! memory, and in the disk store when it is large, so that it is made once
 //! for every clip that plays it and found again in later runs.
 //!
@@ -22,11 +25,12 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use daw_engine::{AudioData, DiskStore, Sink};
+use daw_engine::{AudioData, DiskStore, Sink, TempoMap};
 
 use crate::model::{Clip, ClipContent};
 use crate::peaks::Summary;
-use crate::stretch::{self, Mode};
+use crate::stretch::{self, Mode, Params};
+use crate::warp::{self, Warp};
 
 /// How long a version must be wanted before it is made.
 pub const SETTLE: Duration = Duration::from_millis(150);
@@ -43,43 +47,59 @@ pub struct Key {
     pub file: PathBuf,
     /// The engine's rate, which the version is at.
     pub rate: u32,
-    /// The ratio and the shift in semitones, as bits.
-    ratio: u64,
+    /// The warp ([`Warp::bits`]) and the shift in semitones, as bits.
+    warp: Vec<u64>,
     pitch: u64,
     pub mode: Mode,
+    pub formants: bool,
 }
 
 impl Key {
-    /// What `clip` plays at `rate`, if it is an audio clip stretched or shifted.
-    pub fn of(clip: &Clip, rate: u32) -> Option<Self> {
+    /// What `clip` plays at `rate` with the song's tempo `map`, if it is an
+    /// audio clip stretched, warped or shifted.
+    pub fn of(clip: &Clip, rate: u32, map: &TempoMap) -> Option<Self> {
         let ClipContent::Audio { file, .. } = &clip.content else {
             return None;
         };
-        clip.is_stretched().then(|| Self {
+        let warp = warp::of(clip, map)?;
+        Some(Self {
             file: file.clone(),
             rate,
-            ratio: clip.stretch.to_bits(),
+            warp: warp.bits(),
             pitch: clip.pitch.to_bits(),
             mode: clip.stretch_mode,
+            formants: clip.formants && clip.pitch != 0.0,
         })
     }
 
-    pub fn ratio(&self) -> f64 {
-        f64::from_bits(self.ratio)
+    pub fn warp(&self) -> Warp {
+        Warp::from_bits(&self.warp)
     }
 
-    pub fn pitch(&self) -> f64 {
-        f64::from_bits(self.pitch)
+    pub fn params(&self) -> Params {
+        Params {
+            warp: self.warp(),
+            semitones: f64::from_bits(self.pitch),
+            mode: self.mode,
+            formants: self.formants,
+        }
     }
 
     /// The name it is kept under in the disk store.
     fn store_name(&self) -> Option<String> {
+        // FNV-1a over the warp.
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for word in &self.warp {
+            for b in word.to_le_bytes() {
+                hash = (hash ^ b as u64).wrapping_mul(0x100_0000_01b3);
+            }
+        }
         let what = format!(
-            "x{}-{:016x}-{:016x}-{}",
+            "x{}-{hash:016x}-{:016x}-{}{}",
             self.rate,
-            self.ratio,
             self.pitch,
-            self.mode.name()
+            self.mode.name(),
+            if self.formants { "-formants" } else { "" }
         );
         daw_engine::store_name(&self.file, &what)
     }
@@ -102,7 +122,12 @@ impl Ready {
 enum Job {
     /// Wanted since then, made from this.
     Waiting(Instant, Arc<AudioData>),
-    Running(JoinHandle<Result<AudioData>>, Arc<AtomicBool>),
+    /// Being made, into the version as far as it is made.
+    Running(
+        JoinHandle<Result<AudioData>>,
+        Arc<AtomicBool>,
+        Arc<AudioData>,
+    ),
     Done(Ready),
     /// It could not be made; why was told once, as a warning.
     Failed,
@@ -126,14 +151,15 @@ pub struct Renders {
     made: VecDeque<Key>,
     /// Why versions could not be made, not yet told.
     pub failures: Vec<String>,
-    /// Versions made (or failed) since the session last looked, whose
-    /// clips are to be built again.
+    /// Versions started, made or failed since the session last looked,
+    /// whose clips are to be built again.
     pub finished: Vec<Key>,
 }
 
 impl Renders {
-    /// The version `key` names, if it is made; otherwise it is queued,
-    /// to be made from `source`, which is asked for only then.
+    /// The version `key` names, if it is made or being made (as far as it
+    /// is); otherwise it is queued, to be made from `source`, which is
+    /// asked for only then.
     pub fn get(
         &mut self,
         key: &Key,
@@ -142,6 +168,7 @@ impl Renders {
     ) -> Option<Arc<AudioData>> {
         match self.jobs.get(key) {
             Some(Job::Done(ready)) => return Some(ready.data.clone()),
+            Some(Job::Running(_, _, made)) => return Some(made.clone()),
             Some(_) => return None,
             None => {}
         }
@@ -192,6 +219,15 @@ impl Renders {
         }
     }
 
+    /// How much of the version `key` names is made, from 0 to 1.
+    pub fn made(&self, key: &Key) -> f64 {
+        match self.jobs.get(key) {
+            Some(Job::Done(_)) => 1.0,
+            Some(Job::Running(_, _, made)) => made.seconds() / made.whole_seconds().max(1e-9),
+            _ => 0.0,
+        }
+    }
+
     /// Whether anything is waiting or being made.
     pub fn busy(&self) -> bool {
         self.jobs
@@ -212,7 +248,7 @@ impl Renders {
         let finished = &mut self.finished;
         self.jobs.retain(|key, job| match job {
             Job::Waiting(..) => wanted.contains(key),
-            Job::Running(_, cancel) => {
+            Job::Running(_, cancel, _) => {
                 if !wanted.contains(key) {
                     // It stops at its next look; its result is dropped then.
                     cancel.store(true, Ordering::Relaxed);
@@ -224,11 +260,11 @@ impl Renders {
         let ended: Vec<Key> = self
             .jobs
             .iter()
-            .filter(|(_, job)| matches!(job, Job::Running(thread, _) if thread.is_finished()))
+            .filter(|(_, job)| matches!(job, Job::Running(thread, ..) if thread.is_finished()))
             .map(|(key, _)| key.clone())
             .collect();
         for key in ended {
-            let Some(Job::Running(thread, cancel)) = self.jobs.remove(&key) else {
+            let Some(Job::Running(thread, cancel, _)) = self.jobs.remove(&key) else {
                 continue;
             };
             let result = thread
@@ -284,17 +320,22 @@ impl Renders {
                 continue;
             };
             let cancel = Arc::new(AtomicBool::new(false));
-            let kept = store.and_then(|s| Some((s.clone(), key.store_name()?)));
-            let (k, stop) = (key.clone(), cancel.clone());
-            let thread = std::thread::Builder::new()
-                .name("stretch".into())
-                .spawn(move || {
-                    let sink = Sink::new(kept.as_ref().map(|(s, n)| (s, n.clone())));
-                    stretch::render(&source, k.ratio(), k.pitch(), k.mode, sink, &stop)
-                });
+            let kept = store.and_then(|s| Some((s, key.store_name()?)));
+            let params = key.params();
+            let frames = stretch::length(source.frames(), source.sample_rate, &params.warp);
+            let stop = cancel.clone();
+            let thread = Sink::growing(frames, source.sample_rate, kept).and_then(|sink| {
+                let made = Arc::new(sink.playing().expect("a growing sink"));
+                let thread = std::thread::Builder::new()
+                    .name("stretch".into())
+                    .spawn(move || stretch::render(&source, &params, sink, &stop))?;
+                Ok((thread, made))
+            });
             match thread {
-                Ok(thread) => {
-                    self.jobs.insert(key, Job::Running(thread, cancel));
+                Ok((thread, made)) => {
+                    // Its clips play it from now, as far as it is made.
+                    finished.push(key.clone());
+                    self.jobs.insert(key, Job::Running(thread, cancel, made));
                 }
                 Err(err) => {
                     let why = format!("starting a stretch: {err}");
@@ -324,7 +365,7 @@ impl Renders {
     pub fn retain(&mut self, keep: Option<&HashSet<PathBuf>>) {
         // One being made stops at its next look, and is dropped once it has.
         for (key, job) in &self.jobs {
-            if let Job::Running(_, cancel) = job
+            if let Job::Running(_, cancel, _) = job
                 && !keep.is_some_and(|k| k.contains(&key.file))
             {
                 cancel.store(true, Ordering::Relaxed);

@@ -342,6 +342,11 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
         local nx = math.floor(at * zoom + 0.5)
         if nx > 0 and nx < cw and height >= 2 then box:fill(nx, 1, 1, height - 1, g.step, "ClipEdge") end
       end
+      -- A warp marker, where a moment of the file is pinned to a beat.
+      for _, m in ipairs(clip.warp or {}) do
+        local nx = math.floor((m.beat - clip.start) * zoom + 0.5)
+        if nx > 0 and nx < cw then box:fill(nx, 0, 1, height, g.tick, "ClipWarp") end
+      end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
     end
