@@ -275,7 +275,14 @@ say it.
 | right click | a menu of what can be done there: delete, sharpen, flatten, respell, marks, voice, triplets; on the paper, a note or a rest of the chosen value, paste; the galley |
 | wheel | scroll the systems (the galley sideways); with Ctrl, zoom |
 
-Every key of the terminal view works in the window too.
+Every key of the terminal view works in the window too, and the pointer
+works the same in the terminal's cell view, a cell at a time: a click on a
+head chooses that note, on a line or space that place and time; the drag,
+Shift, the double click, the click in insert mode and the right click's menu
+are as above, and the wheel scrolls by measures. There the cursor off a note
+is drawn as the note that would be entered (a shadow note), and in insert
+mode it follows the pointer; the status line says the note and time under
+the pointer.
 
 **Coming from MuseScore.** The note input is MuseScore's in spirit and the
 DAW's in its keys. Insert mode (`i`, `a`, or a double click) is MuseScore's

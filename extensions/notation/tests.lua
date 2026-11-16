@@ -744,6 +744,125 @@ test("several tracks: one system of staves, to read; lyrics under the notes", fu
   eq(#view:layout().staves, 1, "and back to the clip alone")
 end)
 
+-- The pointer in the terminal ----------------------------------------------------------------
+
+local function shot() return api.ui_snapshot(120, 40) end
+
+local function m(kind, x, y, button, mods)
+  daw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
+  api.undo_checkpoint()
+end
+
+--- The screen cell of a beat and staff step in the terminal view, after a snapshot.
+local function cell(view, beat, step)
+  local model = require("notation.model")
+  local rect
+  for _, r in ipairs(daw.ui.rects) do if r.name == "notation" then rect = r end end
+  local g = view.geometry
+  for _, sys in ipairs(g.systems) do
+    for _, placed in ipairs(sys.measures) do
+      local mm = placed.m
+      if beat >= mm.start and beat < mm.start + mm.length then
+        return rect.x + placed.x + math.floor(model.x_of(mm, beat) + 0.5),
+          rect.y + sys.row_of(1, step - model.CLEF_BOTTOM[g.staves[1]])
+      end
+    end
+  end
+end
+
+local function terminal_song(notes)
+  local view, clip = song(notes, 4)
+  daw.opt.mouse = true
+  daw.mouse.forget()
+  daw.ui.focus("notation")
+  shot()
+  return view, clip
+end
+
+test("notation terminal: a click chooses, a drag moves a note, a right click opens a menu", function()
+  local view, clip = terminal_song({ N(67, 1, 0.5) })
+  local x, y = cell(view, 2, 39)
+  m("down", x, y) m("up", x, y)
+  eq(notes_of(clip), "G4@1+0.5", "a click on the paper adds nothing")
+  eq(view.beat .. " " .. view.step, "2 39", "it puts the cursor on that line and time")
+  daw.mouse.forget()
+  local hx, hy = cell(view, 1, 39)
+  local tx, ty = cell(view, 2, 41)
+  m("down", hx, hy)
+  eq(view.beat, 1, "a click on a note puts the cursor on it")
+  m("drag", hx + 1, hy - 1)
+  m("drag", tx, ty)
+  m("up", tx, ty)
+  eq(notes_of(clip), "B4@2+0.5", "dragged two steps up and a beat later")
+  shot()
+  daw.mouse.forget()
+  local rx, ry = cell(view, 2, 41)
+  m("down", rx, ry, "right")
+  eq(require("daw.menu").is_open(), true, "a right click opens a menu")
+  eq(table.concat(shot(), "\n"):find("Delete the note", 1, true) ~= nil, true, "of what can be done to the note")
+  keys("<CR>")
+  eq(notes_of(clip), "", "its first entry deletes the note")
+end)
+
+test("notation terminal: Shift-click extends a selection, a drag on the paper selects a block", function()
+  local view = terminal_song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
+  local x, y = cell(view, 0, 35)
+  m("down", x, y) m("up", x, y)
+  daw.mouse.forget()
+  local x2, y2 = cell(view, 2, 37)
+  m("down", x2, y2, "left", "S") m("up", x2, y2, "left", "S")
+  local sel = daw.keymap.selection()
+  eq(sel and sel.c0, 0, "a selection from the cursor")
+  eq(sel and sel.c1 >= 2, true, "to the note clicked with Shift")
+  keys("<Esc>")
+  shot()
+  daw.mouse.forget()
+  local ax, ay = cell(view, 1.5, 33)
+  local bx, by = cell(view, 3.5, 40)
+  m("down", ax, ay)
+  m("drag", ax + 1, ay)
+  m("drag", bx, by)
+  m("up", bx, by)
+  sel = daw.keymap.selection()
+  eq(sel and sel.kind, "block", "a box drawn on the paper selects a block")
+  keys("<Esc>")
+end)
+
+test("notation terminal: a double click enters notes; in insert mode a click enters one and the shadow note follows the pointer", function()
+  local view, clip = terminal_song(nil)
+  view.value = 0.5
+  local x, y = cell(view, 1, 39)
+  m("down", x, y) m("up", x, y)
+  m("down", x, y) m("up", x, y)
+  eq(daw.keymap.mode, "i", "a double click enters notes")
+  eq(notes_of(clip), "", "and enters nothing itself")
+  local hx, hy = cell(view, 2, 41)
+  m("move", hx, hy, "")
+  local screen = shot()
+  eq(screen[hy + 1]:find("●", 1, true) ~= nil, true, "the note to enter is drawn where the pointer is")
+  eq(view.cell_hover and view.cell_hover.step, 41, "the shadow note follows the pointer")
+  daw.mouse.forget()
+  m("down", x, y) m("up", x, y)
+  eq(notes_of(clip), "G4@1+0.5", "a click enters an eighth G on beat two")
+  keys("<Esc>")
+end)
+
+test("notation terminal: off a note the cursor is the note Enter would put there", function()
+  local view = terminal_song(nil)
+  view:set(39, 1)
+  local x, y = cell(view, 1, 39)
+  local screen = shot()
+  local row = screen[y + 1]
+  local col = 0
+  for ch in row:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    if col == x then eq(ch, "●", "a quarter's head at the cursor") break end
+    col = col + 1
+  end
+  view.value = 2
+  screen = shot()
+  eq(screen[y + 1]:find("○", 1, true) ~= nil, true, "a half note's when halves are chosen")
+end)
+
 -- The window -----------------------------------------------------------------------------------
 
 local function paint(view)

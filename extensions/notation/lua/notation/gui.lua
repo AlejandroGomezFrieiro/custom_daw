@@ -592,8 +592,11 @@ local function head_at(x, y)
   return best
 end
 
+-- What a gesture does is the same on the paper and in the terminal's cells
+-- (`notation.tui`): these take a place (`at`: its `beat`, `step`, `staff`).
+
 --- Enter a note of the chosen value at a place, as a click in insert mode does.
-local function enter_at(self, at)
+function view:enter_at(at)
   local length = self:entry_length()
   self.beat, self.step = max(0, at.beat), at.step
   if gui.rest then return self:rest(max(0, at.beat), length, at.staff) end
@@ -610,11 +613,12 @@ local function enter_at(self, at)
   self.last = { step = at.step, pitch = pitch, beat = at.beat }
 end
 
---- The menu a right click opens, for what is under the pointer.
-local function context_menu(self, hd, at, e)
+--- The menu a right click opens: for the note under the pointer
+--- (`on_note`), else for the place `at`.
+function view:menu_items(on_note, at)
   local items = {}
   local function add(label, keys, run) items[#items + 1] = { label = label, keys = keys, run = run } end
-  if hd then
+  if on_note then
     add("Delete the note", "x", function() self:delete() end)
     add("Delete the chord", "X", function() self:delete_chord() end)
     add("Sharpen", "Ctrl-a", function() self:inflect(1) end)
@@ -627,15 +631,39 @@ local function context_menu(self, hd, at, e)
     add("Into the other voice", "gv", function() self:toggle_voice() end)
     add("Triplets on this beat", "gt", function() self:toggle_tuplet() end)
   else
-    add("Enter a " .. model.NAMES[self.value] .. " here", "Enter", function() if at and at.beat then enter_at(self, at) end end)
+    add("Enter a " .. model.NAMES[self.value] .. " here", "Enter", function() if at and at.beat then self:enter_at(at) end end)
     add("Rest here", "r", function() if at and at.beat then self:rest(at.beat, self:entry_length(), at.staff) end end)
     add("Paste here", "P", function() daw.keymap.normal("P") end)
   end
   items[#items + 1] = "-"
   add(view.galley and "Wrapped systems" or "One long system (galley)", "zg", function() view.galley = not view.galley end)
+  return items
+end
+
+--- Move a clip's note (`index`, as it is now) to a line or space and a beat,
+--- as a drag of it does: up or down the staff it keeps its distance from the
+--- key (a sharp stays a sharp).
+function view:move_note(index, note, step, beat)
+  local clip = self:clip()
+  if not clip then return end
+  local fifths = view.key()
+  local old = model.spell(note.pitch, fifths)
+  local want = note.meta and note.meta.notation
+  if type(want) == "table" and want.pitch == note.pitch then old = model.spelled(want.letter, want.alter, note.pitch) end
+  local bend = old.alter - model.key_alter(old.letter, fifths)
+  local pitch = util.clamp(model.key_pitch(step, fifths) + bend, 0, 127)
+  local meta = util.merge(note.meta or {}, {})
+  meta.notation = { letter = step % 7, alter = model.key_alter(step % 7, fifths) + bend, pitch = pitch }
+  self:grow(clip, beat + note.length)
+  clip:set_note(index, { start = beat, pitch = pitch, meta = meta })
+  self:set(step, beat)
+  if pitch ~= note.pitch then self:audition(pitch) end
+end
+
+local function context_menu(self, hd, at, e)
   if daw.ui.menu then
     local cell = daw.canvas.cell
-    daw.ui.menu(items, { x = e.col or floor((e.x or 0) / cell.w), y = e.row or floor((e.y or 0) / cell.h) })
+    daw.ui.menu(self:menu_items(hd ~= nil, at), { x = e.col or floor((e.x or 0) / cell.w), y = e.row or floor((e.y or 0) / cell.h) })
   end
 end
 
@@ -707,7 +735,7 @@ function view:pointer(e)
     gui.gesture = nil
     if second then return end
     if inserting or gui.rest then
-      if at and at.beat and at.beat >= 0 then enter_at(self, at) end
+      if at and at.beat and at.beat >= 0 then self:enter_at(at) end
       return
     end
     if e.shift then
@@ -755,20 +783,7 @@ function view:pointer(e)
   elseif e.kind == "up" then
     gui.drag = nil
     if not (drag.moved and drag.to_beat and drag.note) then return end
-    local fifths = view.key()
-    local old = model.spell(drag.note.pitch, fifths)
-    local want = drag.note.meta and drag.note.meta.notation
-    if type(want) == "table" and want.pitch == drag.note.pitch then old = model.spelled(want.letter, want.alter, drag.note.pitch) end
-    -- Up or down the staff keeps the note's distance from the key.
-    local bend = old.alter - model.key_alter(old.letter, fifths)
-    local pitch = util.clamp(model.key_pitch(drag.to_step, fifths) + bend, 0, 127)
-    local start = drag.to_beat
-    local meta = util.merge(drag.note.meta or {}, {})
-    meta.notation = { letter = drag.to_step % 7, alter = model.key_alter(drag.to_step % 7, fifths) + bend, pitch = pitch }
-    self:grow(clip, start + drag.note.length)
-    clip:set_note(drag.index, { start = start, pitch = pitch, meta = meta })
-    self:set(drag.to_step, start)
-    if pitch ~= drag.note.pitch then self:audition(pitch) end
+    self:move_note(drag.index, drag.note, drag.to_step, drag.to_beat)
   end
 end
 
