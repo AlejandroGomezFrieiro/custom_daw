@@ -592,6 +592,17 @@ function view:draw_take_row(headers, timeline, row, lines)
   end
 end
 
+--- The time this view shows, for windows bound in time (`timebind`): the
+--- beat at the left edge, columns per beat, and beats shown.
+function view:time_axis()
+  return self.scroll, daw.opt.zoom, self.geometry and self.geometry.span
+end
+
+function view:set_time_axis(left, zoom)
+  self.scroll = math.max(0, left)
+  if zoom and daw.opt.zoom ~= zoom then daw.opt.zoom = zoom end
+end
+
 --- On an automation lane row the lane's own keys come first.
 function view:subscope()
   return daw.cursor.lane_id() and "arrange.lane" or nil
@@ -612,12 +623,14 @@ function view:render(buf, ctx)
   local span = tw / zoom
   local tracks = L.tracks
 
-  -- Keep the playhead in view while playing, and the cursor whenever it moves.
-  if t.playing and opt.follow then
+  -- Keep the playhead in view while playing, and the cursor whenever it
+  -- moves; unless another window leads this one's time (`timebind`).
+  local led = ctx.follower
+  if t.playing and opt.follow and not led then
     if t.position < self.scroll or t.position >= self.scroll + span then
       self.scroll = daw.time.bar_floor(t.position)
     end
-  elseif cursor.beat ~= self.seen_beat then
+  elseif cursor.beat ~= self.seen_beat and not led then
     if cursor.beat < self.scroll then
       self.scroll = daw.time.bar_floor(cursor.beat)
     elseif cursor.beat >= self.scroll + span - 1 / zoom then

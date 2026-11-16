@@ -291,7 +291,7 @@ test("tutor: quitting the program in a lesson keeps the place", function()
   local tutor = start()
   type_keys(":tutor 3<CR><Esc>o")
   eq(tutor.state().step, 2, "a step done")
-  daw.emit("command.pre", { name = "q", args = {} })   -- what `:q` says before the program ends
+  daw.emit("command.pre", { name = "quit", args = {} })   -- what `:q` in the last window says before the program ends
   tutor._forget()
   T.fresh()
   type_keys(":tutor<CR><Esc>")
