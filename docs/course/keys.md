@@ -54,6 +54,8 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `[` `]` | | velocity |
 | `<CR>` | open the clip in R | add or remove a note |
 | `gh` | | hear the pitch |
+| `ga` `gE` | | edit the clip of another track's note under the cursor instead; edit it too, or no longer |
+| `gn` `gN` | | the next, the previous clip edited becomes the active one |
 | `o` `O` | add a track below, above | |
 | `grn` `grc` | rename the track, the clip | |
 | `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
@@ -95,6 +97,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `o` | go to the other end |
 | `gv` | select the last selection again |
 | `x` `p` | delete it, replace it with the register |
+| `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
 | `<Esc>` | back to normal mode |

@@ -138,6 +138,8 @@ local function roll_clips()
   local function look()
     local view = daw.ui.views.pianoroll
     if view and view.clip_id and pcall(api.clip_get, view.clip_id) then open[view.clip_id] = true end
+    -- And every other clip the roll edits with it.
+    for _, id in ipairs(daw.roll_clips and daw.roll_clips.ids() or {}) do open[id] = true end
   end
   local seats = daw.seats and daw.seats.list() or {}
   if #seats <= 1 then
@@ -847,6 +849,7 @@ daw.on("startup", offer)
 -- Following the piano roll --------------------------------------------------------
 
 daw.on("pianoroll.opened", function() if next(clients) then M.sync() end end)
+daw.on("roll_clips.changed", function() if next(clients) then M.sync() end end)
 for _, name in ipairs({ "changed", "clip.*", "track.*", "device.*", "project.changed" }) do daw.on(name, schedule) end
 daw.on("exit", function() M.stop() end)
 

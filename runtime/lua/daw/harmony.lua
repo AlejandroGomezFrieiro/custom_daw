@@ -339,8 +339,14 @@ end
 
 --- Every note of the pitched tracks, in project beats, each with `track`
 --- and `clip`. Muted clips and tracks are left out; so are notes hidden by
---- a trim of the clip's edges.
+--- a trim of the clip's edges. Kept until the project changes: this is
+--- what sounds, for the reading and for snippets alike. (The piano roll's
+--- context notes, `daw.roll_clips.context`, are what it shows, in its own
+--- beats and only of the tracks chosen to show.)
+local notes_cache = {}
 function M.notes()
+  local edits = api.project_get().edits
+  if notes_cache.edits == edits then return notes_cache.notes end
   local out = {}
   for _, id in ipairs(api.track_list()) do
     local t = api.track_get(id)
@@ -359,6 +365,7 @@ function M.notes()
       end
     end
   end
+  notes_cache.edits, notes_cache.notes = edits, out
   return out
 end
 
