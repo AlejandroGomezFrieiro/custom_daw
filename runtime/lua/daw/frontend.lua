@@ -729,6 +729,9 @@ end
 local picked = { set = {}, anchor = nil }
 -- A gesture is choosing: the cursor and mode it moves keep the choice.
 local pointing = false
+-- Each window and terminal chooses clips of its own.
+daw.seats.keep("frontend.picked", function() return picked end, function(p) picked = p end,
+  function() return { set = {}, anchor = nil } end)
 
 --- The ids of the chosen clips, in order.
 function M.chosen_clips()
@@ -1904,6 +1907,8 @@ end
 -- long as the clip's notes are what the pointer's own edits left; an edit
 -- made any other way (a key, an undo) forgets them, since places move.
 local chosen = { clip = nil, places = {}, stamp = nil }
+daw.seats.keep("frontend.chosen", function() return chosen end, function(c) chosen = c end,
+  function() return { clip = nil, places = {}, stamp = nil } end)
 
 local function stamp_of(clip)
   local ok, data = pcall(api.clip_get, clip)

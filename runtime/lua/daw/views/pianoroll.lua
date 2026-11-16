@@ -12,6 +12,8 @@ local view = {
   top = 72,       -- pitch of the first row
   scroll = 0,     -- beat at the left edge
 }
+daw.seats.fields("pianoroll", view, { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
+  { pitch = 60, beat = 0, top = 72, scroll = 0 })
 
 function view:clip()
   if self.clip_id and pcall(api.clip_get, self.clip_id) then return daw.clip(self.clip_id) end
