@@ -140,6 +140,7 @@ impl Recording {
                 pitch: key,
                 velocity,
                 meta: Default::default(),
+                id: 0,
             });
         }
     }
@@ -523,6 +524,8 @@ impl Session {
     pub fn edit<R>(&mut self, f: impl FnOnce(&mut Project) -> Result<R>) -> Result<R> {
         let result = f(&mut self.project);
         if result.is_ok() {
+            // A note is named as it is made, so that it can be addressed at once.
+            self.project.name_notes(&self.synced);
             self.dirty = true;
             self.touched = true;
             self.edits += 1;
@@ -555,6 +558,8 @@ impl Session {
             return;
         }
         self.dirty = false;
+        // Whatever was added, it has a name before anyone hears it.
+        self.project.name_notes(&self.synced);
         let mut ctx = SyncCtx {
             registry: &self.registry,
             audio: &mut self.audio,
@@ -597,6 +602,10 @@ impl Session {
             return;
         }
         self.touched = false;
+        // An edit not yet played has notes not yet named: the step keeps them named.
+        if self.project.name_notes(&self.checkpoint) {
+            self.dirty = true;
+        }
         if join.is_some_and(|state| state == self.history.current() && self.history.can_extend()) {
             // Asked for: what this turn did belongs to the step before.
             self.checkpoint = self.project.clone();

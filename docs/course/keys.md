@@ -211,10 +211,10 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 | Keys | |
 | --- | --- |
-| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
-| `gK` | in R: what the diagnostics and language servers say about the note |
-| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
-| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `]d` `[d` | next, previous diagnostic this view shows (R, A, M, D): the cursor goes there |
+| `gK` | what the diagnostics and language servers say about what is under the cursor |
+| `,ca` | fixes and actions for what is under the cursor; Enter makes one, as one undo step |
+| `:diagnostics` | every diagnostic, grouped by what it is about; Enter goes there |
 | `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
 ## The tutor

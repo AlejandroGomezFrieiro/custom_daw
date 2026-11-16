@@ -26,13 +26,14 @@
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
 
-- Language servers: only clips are sent (MIDI LSP's `track`, `project` and
-  `render` documents and its one-shot servers are not); a server's own code
-  actions (`codeActionProvider`) and `workspace/executeCommand` have no
-  menu, only the fixes that come with diagnostics; the related notes of
-  other tracks a diagnostic names are kept but not drawn; the window shows
-  what servers say about a note through the float, not a tooltip of its own,
-  and marks no clips with diagnostics in its arrange view (the terminal's does).
+- Language servers: documents are sent whole, never as incremental
+  changes; the related notes of other tracks a diagnostic names are kept but
+  not drawn; annotations are drawn on mixer strips, devices and the ruler,
+  not yet on clips or notes; a fix that renders again is not an undo step
+  (a render is not an edit of the project); the window shows the marks on
+  notes only (tracks, devices, time and renders are marked in the terminal,
+  and the window shows them through `:diagnostics` and the float); MIDI LSP's
+  settings check names REAPER's render dialog in its messages.
 
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next.

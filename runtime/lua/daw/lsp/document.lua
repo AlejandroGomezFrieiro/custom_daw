@@ -1,8 +1,9 @@
 -- A MIDI clip as a language server is sent it: the document of MIDI LSP's
 -- protocol (`midi/didOpen`, `midi/didChange`), as its REAPER client builds
 -- it from a take (client/lib/snapshot.lua there). Times are ticks from the
--- clip's start at `PPQ` to the beat; a note's id is its place in the clip
--- less one, so `notes = { 4 }` in an answer is the clip's fifth note.
+-- clip's start at `PPQ` to the beat; a note's id is its own (the model's,
+-- `daw://clip/7/note/41`), so `notes = { 41 }` in an answer is that note
+-- wherever it has gone since.
 --
 -- What sounds with the clip goes along as `context`: the notes of other
 -- tracks' MIDI clips that overlap it, in this clip's ticks, with their
@@ -66,7 +67,7 @@ local function notes_of(c, into, from, to, limit)
     if n.start >= 0 and n.start < c.length then
       local s, e = c.start + n.start, c.start + math.min(n.start + n.length, c.length)
       if (not from or e > from) and (not to or s < to) then
-        out[#out + 1] = { id = place - 1, pitch = n.pitch, vel = n.velocity, start = tick(s - into), ["end"] = tick(e - into), chan = 0 }
+        out[#out + 1] = { id = n.id or place - 1, pitch = n.pitch, vel = n.velocity, start = tick(s - into), ["end"] = tick(e - into), chan = 0 }
         if limit and #out >= limit then break end
       end
     end

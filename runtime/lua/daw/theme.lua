@@ -230,6 +230,8 @@ local function build()
     DiagnosticVirtualTextWarn = { fg = c.mute, italic = true },
     DiagnosticVirtualTextInfo = { fg = c.normal, italic = true },
     DiagnosticVirtualTextHint = { fg = c.faint, italic = true },
+    -- A label a server puts on something (daw.annotation).
+    Annotation = { fg = c.monitor, italic = true },
 
     DeviceName = { fg = c.bright, bold = true },
     DeviceOff = { fg = c.faint, strike = true },
