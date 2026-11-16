@@ -99,7 +99,9 @@ end
 
 --- Whether a message containing `text` was shown since the step began.
 function M.said(ctx, text)
-  for i = ctx.messages + 1, #daw.ui.messages do
+  -- Counted over every message ever, as the list keeps only the last ones.
+  local list = daw.ui.messages
+  for i = math.max(1, #list - (daw.ui.message_count - ctx.messages) + 1), #list do
     if daw.ui.messages[i].text:find(text, 1, true) then return true end
   end
   return false

@@ -113,7 +113,7 @@ test("snippets: the owner's example as the terminal shows it: chords over the ru
   keys("<C-s>")
   keys("dom")
   eq(has("D3 F3 G3 B3"), true, "the picker's pane names what it would write")
-  eq(has("▏B3") and has("▏G3"), true, "and the roll shows it as ghosts")
+  eq(has("▏B3") and has("▏G3"), true, "and the roll shows it as ghosts:\n" .. screen())
   eq(#clip:notes(), 4, "nothing written yet")
   keys("<CR>")
   eq(has("▏G7/D"), true, "the chord row reads the new chord")

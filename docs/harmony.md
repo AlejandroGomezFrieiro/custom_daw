@@ -123,7 +123,8 @@ dominants back (`2` writes D7 then G7).
   mode), opens a picker over the snippets of the piano roll. Typing narrows
   it; its pane shows what the one under the selection would write (the
   notes, and the choices it has), and the piano roll shows those notes as
-  ghosts. Enter writes it.
+  ghosts, named, under the picker, which sits at the top of the screen.
+  Enter writes it.
 - A count repeats: `3<C-s>`, `:3snippet walk`. Each repeat starts where
   the one before ended. A snippet that takes the count itself (`dominant`,
   `bass`, `pedal`) uses it its own way.

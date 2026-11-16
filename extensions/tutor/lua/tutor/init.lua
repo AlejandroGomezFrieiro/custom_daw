@@ -170,7 +170,7 @@ end
 -- Steps -------------------------------------------------------------------------
 
 local function new_ctx()
-  return { commands = {}, events = {}, messages = #daw.ui.messages }
+  return { commands = {}, events = {}, messages = daw.ui.message_count }
 end
 
 local function begin_step()
