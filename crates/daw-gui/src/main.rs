@@ -699,8 +699,24 @@ fn canvas_item(op: &Value) -> Option<CanvasItem> {
         size: 12.0,
         bold: false,
         align: 0,
+        italic: false,
+        underline: false,
+        strike: false,
     };
     match op[0].as_str()? {
+        "m" => {
+            // A run of monospace cells: text on a background of its own.
+            item.kind = 3;
+            (item.x, item.y) = (number(&op[1]), number(&op[2]));
+            (item.w, item.h) = (number(&op[3]), number(&op[4]));
+            item.text = text(&op[5]);
+            (item.fill, item.stroke) = (paint_colour(&op[6]), paint_colour(&op[7]));
+            let attrs = number(&op[8]) as u32;
+            item.bold = attrs & 1 != 0;
+            item.italic = attrs & 4 != 0;
+            item.underline = attrs & 8 != 0;
+            item.strike = attrs & 32 != 0;
+        }
         "r" => {
             (item.x, item.y) = (number(&op[1]), number(&op[2]));
             (item.w, item.h) = (number(&op[3]), number(&op[4]));
@@ -785,8 +801,12 @@ struct View {
     detached: bool,
     /// Where the take being made began.
     rec_start: Option<f32>,
-    /// The views that paint, as the kernel lists them: name, title, size.
-    windows: Vec<(String, String, f32, f32)>,
+    /// The views in windows of their own, as the kernel lists them: name,
+    /// title, size, and whether the view is drawn in cells.
+    windows: Vec<(String, String, f32, f32, bool)>,
+    /// Views to open in a window, and extensions' bands under the ruler.
+    view_entries: Rc<VecModel<ViewEntry>>,
+    bands: Rc<VecModel<BandData>>,
     /// Set when something happened that a painted view may show.
     repaint: bool,
     lanes: Rc<VecModel<LaneData>>,
@@ -1093,9 +1113,18 @@ impl View {
                     text(&w["title"]).to_string(),
                     number(&w["width"]),
                     number(&w["height"]),
+                    w["cells"].as_bool().unwrap_or(false),
                 )
             })
             .collect();
+        let views: Vec<ViewEntry> = rows(&modal["views"])
+            .iter()
+            .map(|v| ViewEntry {
+                name: text(&v["name"]),
+                title: text(&v["title"]),
+            })
+            .collect();
+        sync(&self.view_entries, views);
 
         let prompt = &modal["prompt"];
         ui.set_prompt_open(prompt.is_object());
@@ -1470,6 +1499,22 @@ impl View {
             })
             .collect();
         sync(&self.markers, markers);
+        let bands: Vec<BandData> = rows(&project["bands"]["entries"])
+            .iter()
+            .map(|b| BandData {
+                row: number(&b["row"]) as i32,
+                band: number(&b["band"]) as i32,
+                index: number(&b["index"]) as i32,
+                beat: number(&b["beat"]),
+                length: number(&b["length"]),
+                name: text(&b["name"]),
+                color: paint_colour(&b["color"]),
+                active: b["active"].as_bool().unwrap_or(false),
+                hint: text(&b["hint"]),
+            })
+            .collect();
+        sync(&self.bands, bands);
+        ui.set_band_rows(number(&project["bands"]["rows"]) as i32);
         ui.set_length(number(&project["length"]));
         ui.set_looping(project["loop_enabled"].as_bool().unwrap_or(false));
         ui.set_loop_start(number(&project["loop_start"]));
@@ -1828,6 +1873,8 @@ fn run() -> Result<()> {
         detached: false,
         rec_start: None,
         windows: Vec::new(),
+        view_entries: Rc::new(VecModel::default()),
+        bands: Rc::new(VecModel::default()),
         repaint: true,
         lanes: Rc::new(VecModel::default()),
         points: Rc::new(VecModel::default()),
@@ -1878,6 +1925,8 @@ fn run() -> Result<()> {
     ui.set_strips(ModelRc::from(view.borrow().strips.clone()));
     ui.set_strip_points(ModelRc::from(view.borrow().strip_points.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
+    ui.set_view_entries(ModelRc::from(view.borrow().view_entries.clone()));
+    ui.set_bands(ModelRc::from(view.borrow().bands.clone()));
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
     ui.set_tracks(ModelRc::from(view.borrow().tracks.clone()));
@@ -1906,6 +1955,10 @@ fn run() -> Result<()> {
     ui.on_command({
         let act = act.clone();
         move |line| act(&|c| c.call("cmd", json!([line.as_str()])))
+    });
+    ui.on_band_click({
+        let pass = pass.clone();
+        move |band, index| pass("band", json!([band, index]))
     });
     ui.on_feed({
         let pass = pass.clone();
@@ -2992,7 +3045,7 @@ fn run() -> Result<()> {
                 }
                 open
             });
-            for (name, title, width, height) in &windows {
+            for (name, title, width, height, cells) in &windows {
                 if !canvases.contains_key(name) {
                     let Ok(window) = CanvasWindow::new() else { continue };
                     let items = Rc::new(VecModel::default());
@@ -3023,11 +3076,13 @@ fn run() -> Result<()> {
                             send(json!({ "kind": "wheel", "x": x, "y": y, "dx": dx, "dy": dy, "ctrl": ctrl, "shift": shift }))
                         }
                     });
+                    // Keys typed here are the view's, whichever view the
+                    // main window last gave the keyboard to.
                     window.on_key({
-                        let (act, view) = (act.clone(), view.clone());
+                        let (act, view, name) = (act.clone(), view.clone(), name.clone());
                         move |key, ctrl, alt, shift| {
                             if let Some(keys) = notation(&key, ctrl, alt, shift) {
-                                act(&|c| c.call("keys", json!([keys])));
+                                act(&|c| c.eval("daw.canvas.key(...)", json!([name, keys])));
                                 view.borrow_mut().repaint = true;
                             }
                         }
@@ -3053,18 +3108,26 @@ fn run() -> Result<()> {
                 let Some(canvas) = canvases.get_mut(name) else { continue };
                 canvas.window.set_heading(title.as_str().into());
                 // Painted again when something may have changed, when the
-                // window has another size, and now and then regardless.
+                // window has another size, and now and then regardless. A
+                // view in cells is asked every time: the kernel knows
+                // whether it has changed, and answers `same` when not.
                 let size = (canvas.window.get_canvas_width(), canvas.window.get_canvas_height());
                 let stale = canvas.painted.elapsed() > Duration::from_millis(250);
-                if !(repaint || stale || size != canvas.size) {
+                if !(repaint || stale || size != canvas.size || *cells) {
                     continue;
                 }
                 canvas.painted = Instant::now();
                 canvas.size = size;
+                let opts = json!({
+                    "cell": { "w": canvas.window.get_cell_width(), "h": canvas.window.get_cell_height() },
+                    "fresh": canvas.items.row_count() == 0,
+                });
                 let drawing = client
                     .borrow_mut()
-                    .eval("return daw.canvas.paint(...)", json!([name, size.0, size.1]));
-                if let Ok(drawing) = drawing {
+                    .eval("return daw.canvas.paint(...)", json!([name, size.0, size.1, opts]));
+                if let Ok(drawing) = drawing
+                    && drawing["same"] != true
+                {
                     let items: Vec<CanvasItem> = rows(&drawing["ops"]).iter().filter_map(canvas_item).collect();
                     sync(&canvas.items, items);
                 }
