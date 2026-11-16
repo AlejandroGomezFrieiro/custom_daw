@@ -165,6 +165,7 @@ local function build()
     StatusLine = { fg = c.fg, bg = alt },
     StatusDim = { fg = c.dim, bg = alt },
     StatusFaint = { fg = c.faint, bg = alt },
+    StatusHint = { fg = c.dim, bg = alt, italic = true },
     StatusSep = { fg = c.line_hi, bg = alt },
     StatusTime = { fg = c.bright, bg = alt, bold = true },
     StatusOn = { fg = c.accent, bg = alt },
@@ -246,6 +247,9 @@ local function build()
     PmenuDesc = { fg = c.dim, bg = c.raise },
     PmenuSelDesc = { fg = c.fg, bg = c.sel },
     PmenuThumb = { fg = c.accent, bg = c.raise },
+    -- Where a drag with the pointer will put what it holds, and the box it draws.
+    MouseGhost = { fg = c.bright, bg = c.visual },
+    MouseBox = { fg = c.visual, bold = true },
   }
 end
 
