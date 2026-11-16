@@ -27,6 +27,10 @@ local others = {}    -- ids of the clips edited with the active one, in order
 local shown = {}     -- track id -> true or false: a toggle over `roll_context`
 local generation = 0 -- goes up when the set or the toggles change
 local cache = { key = nil, notes = {} }
+-- Each window and terminal edits clips of its own.
+daw.seats.keep("roll_clips", function() return others, shown, cache end,
+  function(o, s, c) others, shown, cache = o, s, c end,
+  function() return {}, {}, { key = nil, notes = {} } end)
 
 local function roll() return daw.ui.views.pianoroll end
 

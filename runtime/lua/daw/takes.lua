@@ -375,8 +375,14 @@ local function continues(a, b)
   for i = 1, #ta.list do
     if ta.list[i].name ~= tb.list[i].name then return false end
   end
-  for _, key in ipairs({ "stretch", "pitch", "stretch_mode", "source_tempo", "timebase", "loop", "loop_length" }) do
+  for _, key in ipairs({ "stretch", "pitch", "stretch_mode", "source_tempo", "timebase", "loop", "loop_length", "formants" }) do
     if a[key] ~= b[key] then return false end
+  end
+  -- Warp markers alike, the same moments of the file in the same places.
+  local wa, wb = a.warp or {}, b.warp or {}
+  if #wa ~= #wb then return false end
+  for i = 1, #wa do
+    if wa[i].source ~= wb[i].source or wa[i].target ~= wb[i].target then return false end
   end
   if a.loop then
     if a.kind == "audio" and ((a.fade_out or 0) > EPS or (b.fade_in or 0) > EPS) then return false end
