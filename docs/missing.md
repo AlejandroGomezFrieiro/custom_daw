@@ -25,6 +25,12 @@
   A view's locator (`daw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
+- The quickfix list: no `:grep` or `:vimgrep` fills it yet (searches and
+  `:g` will, through `daw.qf.set`); `:cfdo` runs once per track, as there
+  are no files; lists are not kept with the project or between runs; a
+  location list stays with its window's number after the window closes.
+  The window shows it in a window of its own (More, `:qf.window`), not
+  docked, and its status bar does not count it.
 
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but

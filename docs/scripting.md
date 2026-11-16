@@ -347,8 +347,35 @@ is the older form), `get(target, { namespace, severity, note, kind,
 document })` (target a clip id or an address), `count`, `worst(uri)`,
 `kind(d)`, `about(d, uri)`, `where(d)`, `reset(namespace, document)`,
 `config({ virtual_text, signs, underline, severity_sort })`,
-`actions(target, place)`, `apply(d, fix)`, `jump(dir)`, `list()`; event
-`diagnostic.changed`. `daw.annotation` keeps labels the same way:
+`actions(target, place)`, `apply(d, fix)`, `jump(dir)`, `list()`,
+`setqflist({ target, severity, title, open })` and `setloclist(...)`; event
+`diagnostic.changed`.
+
+**The quickfix list.** `daw.qf` is Neovim's quickfix and location lists,
+over addresses. An entry is `{ address, selector, text, level, source,
+fix }`: `address` a `daw://` address (or a location), `level` "error",
+"warning", "info", "hint" or none, `fix` `{ title, edit = { changes } }`,
+`{ title, apply = function(entry) end }` or a command line run with the
+cursor on the entry. `set(entries, { title, win, current })` puts a list in
+the history (ten are kept) and makes it current; a list of the same title
+is replaced where it is. `win` (a window's number, or true for the current
+window) makes it that window's location list. `feed(source, entries)`
+replaces what a source says in the Problems list, the one the program
+keeps; `source(name, fn)` with `changed(name)` asks `fn` for them only
+when the list is next looked at. `current(stack)`, `stack()`,
+`loc_stack(win)`, `fed(source)`, `count(list)`, `jump(n)`, `step(n)`,
+`first()`, `last()`, `older(n)`, `newer(n)`, `go(entry)`, `where(entry)`,
+`cdo(line, { per_track })`, `fix(entries)`, `diagnostics(opts)`,
+`open({ loc, height })`, `close(loc)`. A command run by `:cdo` gets the
+entry's address as `ctx.target` and its location as `ctx.location`. Event
+`qf.changed { title }`; the program also hears `plugins.scanned { notes,
+name }`, what a plugin scan could not use.
+
+```lua
+daw.qf.feed("tuning", { { address = "daw://clip/4", text = "out of tune", level = "warning",
+  fix = { title = "Tune it", apply = function(e) ... end } } })
+daw.qf.set({ { address = daw.address.track(3), text = "too quiet" } }, { title = "Levels" })
+``` `daw.annotation` keeps labels the same way:
 `set(namespace, document, { { location, label, kind } })`, `get(uri)`,
 `reset`. `daw.lsp` is `vim.lsp`: `config(name, { cmd | server, kind,
 framing, adapter, attach = { subjects, where }, settings, init_options,

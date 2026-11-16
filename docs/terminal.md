@@ -335,6 +335,41 @@ daw.opt.layout = "edit"
 window may have a `size` in cells or a `weight` (its share, 1 by default).
 Every terminal attached with `daw attach` has tabs and windows of its own.
 
+## The quickfix list
+
+As in Neovim, the quickfix list is one shared place for what is wrong, or
+found, anywhere in the project. Each entry names where it is (a clip, a
+note, a track, a lane's point, a device or its parameter, a bar), says
+what it is about, and may carry a fix. The status line counts its entries
+while it has some: `qf E2 W5`, and `qf 3/7 E2 W5` once you have gone to
+one.
+
+The program keeps one list, **Problems**, filled as things go wrong: the
+diagnostics (those worse than a hint; `:set qf_diagnostics=error` keeps
+only errors, `off` none), what language servers and the mix diagnostics
+say among them; renders that go over full scale, are louder than
+`render_loudest` (-9 LUFS) or fail; sound files that are not there;
+plugins that stopped, put out invalid numbers or are not installed; and
+plugin files a scan could not use. Each keeps its own place too: the
+marks, `]d`, `:diagnostics`, the mix report and the messages stay as they
+were. Extensions add to it (see [Scripting](scripting.md)).
+
+| Keys or command | |
+| --- | --- |
+| `]q` `[q`, `]Q` `[Q` | the next and previous entry (a count goes further; the first `]q` goes to the first), the last and first; the view that shows it gets the keyboard and the cursor goes there |
+| `:cnext` `:cprev` `:cfirst` `:clast`, `:cc 3` | the same; entry 3 (`:cc` alone the current one) |
+| `:copen` `:copen 15`, `:cclose`, `:cwindow` | a window showing the list along the bottom, the whole width (`qf_height` rows); close it; open it when it has entries and close it when not |
+| `j` `k` `gg` `G`, `Enter`, `,ca`, `q` | in the list's window: move, go to the entry, make its fix, close the window |
+| `:colder` `:cnewer`, `:chistory` | the list before and after in the history (ten are kept), and all of them |
+| `:cdiag`, `:cdiag error` | a list of the diagnostics (as `vim.diagnostic.setqflist`), or of the errors |
+| `:cdo track.mute`, `:cfdo track.solo` | run a command on every entry, the cursor on each and its address the command's target; or once for each track the entries are on; all as one undo step |
+| `:cfix`, `:cfix .` | make the fixes of every entry that has one, as one undo step; the current entry's |
+| `:lopen` `:lnext` `]l` `[l` `:ldiag` ... | the same for the window's own location list: `:ldiag` lists what the window shows (the piano roll its clip, the mixer and device panel the track), `:lopen` shows it below the window |
+
+The list is a buffer like any other: `:vs quickfix` shows it beside the
+window, `:e quickfix` in it, and a layout keeps its window. In the window
+it opens from More, or with `:qf.window`.
+
 ## The mouse
 
 The mouse does in the terminal what it does in the window (see

@@ -244,6 +244,17 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `:diagnostics` | every diagnostic, grouped by what it is about; Enter goes there |
 | `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
+## The quickfix list
+
+| Keys | |
+| --- | --- |
+| `]q` `[q` | next, previous entry of the quickfix list (Problems: what went wrong anywhere): the view that shows it gets the keyboard |
+| `]Q` `[Q` | last, first entry |
+| `]l` `[l` | next, previous entry of the window's location list |
+| `:copen` `:cclose` | the list's window along the bottom; in it `j` `k` move, `Enter` goes, `,ca` fixes, `q` closes |
+| `:cdo` `:cfdo` `:cfix` | a command on every entry, on every track of them; make every fix (each one undo step) |
+| `:colder` `:cnewer` `:cdiag` | the list before, after; a list of the diagnostics |
+
 ## The tutor
 
 | Keys | |
