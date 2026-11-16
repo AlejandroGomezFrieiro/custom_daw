@@ -258,6 +258,11 @@ left. A failing layer is skipped, and the others are drawn.
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,
 `daw.music.degree("A4", "minor_pentatonic", 3)`; `daw.time.format(beats)`;
+`daw.harmony` is the chords and key that sound when (`daw.harmony.at(8)`,
+`.next(8)`, `.key(8)`, providers with `.provide`), and `daw.snippet` writes
+named music from them (`daw.snippet.add`, `.expand("dominant")`); both in
+[Harmony, completion and snippets](harmony.md).
+`:3snippet arp`: a number before a command's name is its count.
 `daw.cursor` is the edit cursor; `daw.inspect(value)`; `daw.device_types()`
 lists every device kind with its format and vendor. Notes may carry a `meta`
 table too (`{ pitch = 60, start = 0, meta = { lyric = "la" } }`), which stays

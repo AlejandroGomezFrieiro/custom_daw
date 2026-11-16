@@ -143,6 +143,10 @@ In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
 `gh` sounds the pitch, `E` lists the clip's notes and controller moves to
 change in place (the event list), `Esc` goes back to the arrange view.
+Over the ruler a row names the chords that sound, read over every pitched
+track, with the key on the left (`daw.opt.chords`); `Ctrl-s` writes a
+snippet such as the dominant of the next chord, and `Tab`, `Ctrl-n` step
+through its choices (see [Harmony, completion and snippets](harmony.md)).
 
 Behind the clip's notes the piano roll shows the notes of other tracks that
 sound at the same time, so the harmony can be seen where it is written:
@@ -152,7 +156,7 @@ tracks: `daw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
 clip's group, `"none"`, or a list of track ids), and `:roll.tracks` lists
 them with their clips: `Enter` on a track shows or hides its notes. A dot on
 the keyboard marks the keys that sound at the cursor, and the title names
-the chord when a harmony reader is loaded. The piano roll can edit several
+the chord sounding there. The piano roll can edit several
 clips at once (REAPER's editability follows selection). One is active: new
 notes go there, its name is in the title, and the title says how many more
 are edited. `ga` on another track's note makes its clip the active one (in

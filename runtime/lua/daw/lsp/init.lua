@@ -337,6 +337,9 @@ M.handlers["midi/publishAnalysis"] = function(client, params)
   if not provided and daw.harmony and daw.harmony.provide then
     daw.harmony.provide("lsp", harmony_provider, 50)
     provided = true
+  elseif daw.harmony and daw.harmony.invalidate then
+    -- An answer that comes after the edit it is about: read anew.
+    daw.harmony.invalidate()
   end
   daw.emit("lsp.analysis", { clip = id, client = client.name })
 end

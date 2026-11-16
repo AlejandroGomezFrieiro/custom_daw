@@ -283,7 +283,9 @@ local function float_rect(width, height)
   local f = M.float
   local w = math.min(f.width or 72, width - 2)
   local h = math.min(f.height or 24, height - 2)
-  return { name = f.name, x = math.floor((width - w) / 2), y = math.floor((height - h) / 2), w = w, h = h }
+  -- `top`: at the top of the screen, leaving what is below it in view.
+  local y = f.top and 1 or math.floor((height - h) / 2)
+  return { name = f.name, x = math.floor((width - w) / 2), y = y, w = w, h = h }
 end
 
 --- Draw a box around a buffer's edge and return a buffer for the inside.
@@ -495,7 +497,7 @@ end
 function M.open(name, opts)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
   opts = opts or {}
-  M.float = { name = name, title = opts.title, width = opts.width, height = opts.height, back = M.float and M.float.back or M.focused }
+  M.float = { name = name, title = opts.title, width = opts.width, height = opts.height, top = opts.top, back = M.float and M.float.back or M.focused }
   M.focused = name
   api.ui_redraw()
 end

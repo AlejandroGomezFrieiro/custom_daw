@@ -331,6 +331,9 @@ pub struct Session {
     /// The next flush reports a state put back (undo, redo, a file opened)
     /// rather than an edit: its events carry `restored = true`.
     restoring: bool,
+    /// The undo state the edits of this turn join instead of making a step
+    /// of their own, set by `undo_join`.
+    join: Option<history::StateId>,
     /// Counts every change to the project, undo and redo included.
     edits: u64,
     next_id: Id,
@@ -462,6 +465,7 @@ impl Session {
             sweep: Sweep::default(),
             last_sweep: None,
             restoring: false,
+            join: None,
             edits: 0,
             next_id: MASTER_ID + 1,
             handle,
@@ -587,11 +591,19 @@ impl Session {
     /// Close the current undo step, if anything changed since the last one.
     pub fn checkpoint(&mut self) {
         let sweep = std::mem::take(&mut self.sweep);
+        let join = self.join.take();
         if !self.touched {
             self.history.clear_labels();
             return;
         }
         self.touched = false;
+        if join.is_some_and(|state| state == self.history.current() && self.history.can_extend()) {
+            // Asked for: what this turn did belongs to the step before.
+            self.checkpoint = self.project.clone();
+            self.history.amend(self.checkpoint.clone(), history::now());
+            self.last_sweep = None;
+            return;
+        }
         // The one control this step moved, if that is all it did.
         let moved = sweep
             .key

@@ -114,6 +114,17 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
 
+## Write from the harmony (snippets, R)
+
+| Keys | |
+| --- | --- |
+| `<C-s>`, `:snippet name` | choose a snippet and write it at the cursor or over the selection (`3<C-s>` three times); in normal, insert and visual mode |
+| `<Tab>` `<S-Tab>` | while a snippet is active: its next choice, the one before (before a suggestion's keys) |
+| `<C-n>` `<C-p>` | the choice's next value, the one before, written again in the same undo step |
+| `<C-y>` `<Esc>` | done with the snippet |
+
+See [Harmony, completion and snippets](../harmony.md).
+
 ## Take a suggestion (piano roll, normal and insert mode)
 
 | Keys | |

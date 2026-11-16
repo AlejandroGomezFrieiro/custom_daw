@@ -133,6 +133,15 @@ impl Session {
         self.history.label(text);
     }
 
+    /// Make the edits of the open step part of state `id` instead of a step
+    /// of their own, if `id` is still the current state and nothing hangs on
+    /// it. Returns whether they will be.
+    pub fn undo_join(&mut self, id: StateId) -> bool {
+        let joins = id == self.history.current() && self.history.can_extend();
+        self.join = joins.then_some(id);
+        joins
+    }
+
     /// The keys typed for the open step.
     pub fn undo_keys(&mut self, text: String) {
         self.history.keys(text);

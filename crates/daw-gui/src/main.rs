@@ -537,6 +537,18 @@ fn place_of(pos: f64) -> SharedString {
     })
 }
 
+/// The chord symbols over the piano roll's ruler.
+fn roll_chords(list: &Value) -> Vec<RollChord> {
+    rows(list)
+        .iter()
+        .map(|c| RollChord {
+            start: number(&c["start"]),
+            length: number(&c["length"]),
+            label: text(&c["label"]),
+        })
+        .collect()
+}
+
 /// The song's lines over a clip, in the clip's beats, for the piano roll.
 fn roll_lines(start: f32, length: f32) -> Vec<RollLine> {
     let (start, length) = (start as f64, length as f64);
@@ -1249,6 +1261,8 @@ struct View {
     marks_under: Rc<VecModel<RollMark>>,
     marks_over: Rc<VecModel<RollMark>>,
     roll_tools: Rc<VecModel<RollTool>>,
+    /// The chord symbols over the ruler.
+    roll_chords: Rc<VecModel<RollChord>>,
     /// The notes diagnostics are about, and for each by its place in the
     /// roll what they say and the titles of their fixes.
     marks: Rc<VecModel<MarkData>>,
@@ -1837,6 +1851,7 @@ impl View {
                 self.controls_chosen = moves;
                 self.show_controls(ui);
             }
+            sync(&self.roll_chords, roll_chords(&roll["chords"]));
             // The keys sounding at the cursor.
             let mut lit = [false; 128];
             for pitch in rows(&roll["sounding"]).iter().filter_map(Value::as_i64) {
@@ -2789,6 +2804,7 @@ fn run() -> Result<()> {
         marks_under: Rc::new(VecModel::default()),
         marks_over: Rc::new(VecModel::default()),
         roll_tools: Rc::new(VecModel::default()),
+        roll_chords: Rc::new(VecModel::default()),
         marks: Rc::new(VecModel::default()),
         mark_notes: Rc::new(RefCell::new(HashMap::new())),
         roll_notes: Vec::new(),
@@ -2866,6 +2882,7 @@ fn run() -> Result<()> {
         roll.set_marks_under(ModelRc::from(view.borrow().marks_under.clone()));
         roll.set_marks_over(ModelRc::from(view.borrow().marks_over.clone()));
         roll.set_tools(ModelRc::from(view.borrow().roll_tools.clone()));
+        roll.set_chords(ModelRc::from(view.borrow().roll_chords.clone()));
         roll.set_marks(ModelRc::from(view.borrow().marks.clone()));
         let notes = view.borrow().mark_notes.clone();
         roll.on_note_message(move |index| {

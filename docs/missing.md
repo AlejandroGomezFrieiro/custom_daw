@@ -1,5 +1,18 @@
 # What is missing
 
+- Harmony: chords are read per half beat, so a chord shorter than about a
+  beat is taken for passing notes; the chords and the key are not shown in
+  the arrange view's ruler (only over the piano roll); slash chords whose
+  bass is not a chord tone are named by the full pitch set (C G B D is
+  Cmaj9, not G/C). The reading is redone over the whole song after each
+  edit, which is quick for songs of some thousands of notes but not
+  incremental.
+- Snippets are offered in the piano roll only (a snippet may name other
+  views, but nothing opens the picker there yet). Taken as a suggestion
+  (`Ctrl-Space`) a snippet has no choices to step through, and the picker's
+  preview is drawn by the snippet's own layer rather than through
+  `daw.complete.show`. A melody of eighth notes alone may be read as
+  chords (a beat with two pitches in it is evidence of one).
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the

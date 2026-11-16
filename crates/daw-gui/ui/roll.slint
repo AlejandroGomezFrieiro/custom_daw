@@ -42,6 +42,13 @@ export struct RollLine {
     label: string,
 }
 
+// A chord symbol over the ruler, in the clip's beats.
+export struct RollChord {
+    start: float,
+    length: float,
+    label: string,
+}
+
 export struct ControlData {
     start: float,
     value: float,       // 0..1 up the strip
@@ -114,6 +121,8 @@ export global Roll {
     in property <[RollMark]> marks-under;
     in property <[RollMark]> marks-over;
     in property <[RollTool]> tools;
+    // The chords that sound, from the kernel (none when `daw.opt.chords` is off).
+    in property <[RollChord]> chords;
     // The notes diagnostics are about, outlined over them and marked on the ruler.
     in property <[MarkData]> marks;
     // What the diagnostics say about a note, and the titles of their
@@ -320,7 +329,10 @@ export component PianoRoll inherits Rectangle {
     property <length> note-height: 12px;
     property <length> beat: Roll.zoom * 1px;
     property <length> keys-width: 64px;
-    property <length> ruler-height: 22px;
+    // The ruler: a row of chord symbols over the bars and beats, when
+    // there are chords to show.
+    property <length> chord-height: Roll.chords.length > 0 ? 16px : 0px;
+    property <length> ruler-height: 22px + root.chord-height;
     property <length> strip-height: 80px;
     property <length> panel-width: 180px;
     property <length> grid-px: Roll.grid * root.beat;
@@ -849,6 +861,30 @@ export component PianoRoll inherits Rectangle {
                     x: root.keys-width;
                     width: parent.width - root.keys-width;
                     clip: true;
+                    // The chords that sound, over every pitched track: each
+                    // symbol from where its chord starts, cut where the next does.
+                    for chord in Roll.chords: Rectangle {
+                        x: root.seen-x(chord.start * root.beat) + roll.content-x;
+                        y: 0;
+                        width: root.seen-w(chord.start * root.beat, chord.length * root.beat);
+                        height: root.chord-height;
+                        clip: true;
+                        Rectangle {
+                            x: 0;
+                            y: 2px;
+                            width: 1px;
+                            height: parent.height - 2px;
+                            background: Theme.text-3;
+                        }
+                        Text {
+                            x: 4px;
+                            y: 1px;
+                            text: chord.label;
+                            color: Theme.text;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                    }
                     for line in Roll.lines: tick := Rectangle {
                         property <bool> is-bar: line.bar;
                         x: line.at * root.beat + roll.content-x;
@@ -861,7 +897,7 @@ export component PianoRoll inherits Rectangle {
                         }
                         if tick.is-bar || root.beat > 48px: Text {
                             x: 4px;
-                            y: 3px;
+                            y: root.chord-height + 3px;
                             text: line.label;
                             color: tick.is-bar ? Theme.text-2 : Theme.text-3;
                             font-size: 11px;

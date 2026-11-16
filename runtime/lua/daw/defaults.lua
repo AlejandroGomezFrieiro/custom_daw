@@ -2303,6 +2303,38 @@ imap("<Right>", function() roll:step(1) end, "Step on")
 imap("<Up>", move(0, 1), "Up a semitone")
 imap("<Down>", move(0, -1), "Down a semitone")
 
+-- Piano roll: snippets (runtime/lua/daw/snippet.lua). While one is active its
+-- keys come first; otherwise each key does what it does everywhere else.
+roll.layer("snippet", 40, function(p) daw.snippet.paint(p) end, function(clip_id) return daw.snippet.window_marks(clip_id) end)
+command("snippet", function(ctx)
+  local name = ctx.args[1]
+  local region = daw.snippet.take_cmdline_selection()
+  if name == nil then return daw.snippet.pick({ count = ctx.count, selection = region }) end
+  local _, why = daw.snippet.expand(tostring(name), { count = ctx.count, selection = region })
+  if why then daw.notify(why, "warn") end
+end, {
+  desc = "Expand a snippet at the piano roll's cursor: `snippet dominant`, `3snippet arp`; alone, choose one",
+  complete = function()
+    local out = {}
+    for _, s in ipairs(daw.snippet.offered("pianoroll")) do out[#out + 1] = { text = s.name, desc = s.desc } end
+    return out
+  end,
+})
+-- While a snippet is active its keys come first, before a suggestion's and
+-- before Escape leaves insert mode.
+roll:key_scope("pianoroll.snippet", 40, function() return daw.snippet.active() ~= nil end)
+local function smap(lhs, fn, desc)
+  map(lhs, fn, { view = "pianoroll.snippet", mode = { "n", "i" }, desc = desc, repeatable = false })
+end
+smap("<Tab>", function() daw.snippet.jump(1) end, "The snippet's next choice")
+smap("<S-Tab>", function() daw.snippet.jump(-1) end, "The snippet's choice before")
+smap("<C-n>", function() daw.snippet.step(1) end, "The snippet's choice: its next value")
+smap("<C-p>", function() daw.snippet.step(-1) end, "The snippet's choice: its value before")
+smap("<C-y>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+smap("<Esc>", function() daw.snippet.finish() end, "End the snippet, keeping its notes")
+map("<C-s>", function(ctx) daw.snippet.pick({ count = ctx.count }) end,
+  { view = "pianoroll", mode = { "n", "i", "x" }, desc = "Choose a snippet to expand here", repeatable = false })
+
 -- Piano roll: suggestions (`daw.complete`). Ctrl-Space asks the sources;
 -- while a suggestion shows, its keys come first, in normal and insert mode.
 local ni = { "n", "i" }
