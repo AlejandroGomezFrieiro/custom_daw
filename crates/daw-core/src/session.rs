@@ -808,9 +808,21 @@ impl Session {
             .context("the project has no file yet: give a path")?;
         self.adopt_recordings(&path)?;
         self.capture_states();
+        // What is saved is everything up to here and nothing after: an edit
+        // made later in the same turn is a change that is not saved.
+        self.checkpoint();
+        // A project that was never named takes its file's name.
+        let named = (self.project.name == Project::default().name)
+            .then(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))
+            .flatten()
+            .filter(|name| !name.is_empty());
+        let mut project = media::for_file(&self.project, &path);
+        if let Some(name) = &named {
+            project.name = name.clone();
+        }
         let file = ProjectFile {
             version: FILE_VERSION,
-            project: media::for_file(&self.project, &path),
+            project,
             transport: self.transport.clone(),
         };
         let text = serde_json::to_string_pretty(&file)?;
@@ -818,7 +830,14 @@ impl Session {
         // leave half a file; what was there before is kept as `.bak`.
         crate::safe::write_file(&path, text.as_bytes(), true)?;
         self.path = Some(path.clone());
-        self.history.mark_saved(self.touched);
+        if let Some(name) = named {
+            // Not an edit to undo: the saved state is the named one.
+            self.project.name = name.clone();
+            self.checkpoint.name = name;
+            self.history.set_current_snapshot(self.checkpoint.clone());
+            self.dirty = true;
+        }
+        self.history.mark_saved(false);
         self.remember_for_panic();
         self.events
             .push(("project.saved".into(), json!({ "path": path })));
