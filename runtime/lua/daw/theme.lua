@@ -217,6 +217,12 @@ local function build()
     SnippetNote = { fg = c.bg, bg = c.visual, bold = true },
     SnippetSpan = { fg = c.bg, bg = c.visual },
     SnippetGhost = { fg = c.visual, bg = c.bg_hl },
+    -- What an Ex line being typed acts on (daw.ex): its stretch of time,
+    -- the things that match, the one asked about, what a change would make.
+    ExRange = { bg = "#3a3352" },
+    ExMatch = { fg = c.bg, bg = c.solo },
+    ExCurrent = { fg = c.bg, bg = c.accent, bold = true },
+    ExGhost = { fg = c.visual, bg = c.bg_hl },
     -- Diagnostics (daw.diagnostic): the mark, a note underlined, the message
     -- after it.
     DiagnosticError = { fg = c.red, bold = true },

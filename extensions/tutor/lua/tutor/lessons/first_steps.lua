@@ -20,7 +20,8 @@ in, `<Esc>` gets you back to normal mode, and `?` lists the keys that work where
 you are.]],
   vim = [[
 `:q`, `ZZ` and `ZQ` mean what they mean in Vim, and `:w` saves. `:` takes
-commands by name (`:tempo 120`), not Ex commands.]],
+commands by name (`:tempo 120`), and Ex commands over bars and tracks
+(`:5,8d`, `:%s/c4/d4/g`): lesson 17.]],
   setup = function(look)
     daw.project.tempo = 100
     local drums = daw.add_track({ name = "Drums" })

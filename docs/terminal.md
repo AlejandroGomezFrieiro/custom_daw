@@ -52,7 +52,8 @@ to delete, `~` to mute, `J` to join the clips, `Ctrl-a` and `Ctrl-x` to
 transpose, `p` to replace it with the register. `o` goes to the other end, `gv`
 selects the same again. `:` types a command for the selection: the line starts
 with `'<,'>`, which names the last selection, as in Vim. A command may also take
-bars in front: `:5,8notation.transpose 2`, `:5notation.dyn mf`.
+bars in front: `:5,8notation.transpose 2`, `:5notation.dyn mf`; the Ex commands
+(`:5,8d`, `:%s/c4/d4/g`, `:g/vel<20/d`) are in [Ex](#ex-ranges-s-and-g) below.
 
 **Registers, repeating, macros.** `p` pastes after the clip or note under the
 cursor (tracks: below), `P` right at the cursor (tracks: above); `3p` pastes
@@ -282,6 +283,100 @@ one away, and `,vl` links the faders of a group.
 `,l` shows the session view, the clip launcher: a column of slots under
 each track and a scene for each row, launched with `<CR>` and `L`; its keys
 are in [Live performance](live.md).
+
+## Ex: ranges, `:s` and `:g`
+
+The command line takes Vim's Ex commands, over time and tracks where Vim's
+are over lines. A line is a range, then a command: `:5,8d` empties bars 5
+to 8. Each line is one undo step, named after the line (`u` undoes
+`:%s/c4/d4/g` at once), and goes into the history (`:` then `Up`).
+
+**Ranges of time.** A bar is a number, a beat is `bar.beat` (`5.3`, the
+signature's beats, from 1); both take in the whole of the last one, so
+`:5,8` ends where bar 9 begins and `:5.3,5.4` is two beats.
+
+| Range | |
+| --- | --- |
+| `5` `5,8` `5.3,6.1` | a bar, bars 5 to 8, from beat 3 of bar 5 to the end of beat 1 of bar 6 |
+| `%` | the whole song, to the end of the bar its last clip ends in |
+| `.` `$` | the bar the cursor is in; the last bar |
+| `.+4` `$-1` `5.3+2` | four bars on, the bar before the last, two beats on (after a beat, offsets count beats) |
+| `'a,'b` | from mark `a` up to mark `b`, exactly; `'a` alone is the bar it is in |
+| `'<,'>` | the last selection of the focused view: its time, and in the arrange view its tracks, in the piano roll its pitches (a `Ctrl-v` or `V` selection), or the clips chosen with the pointer |
+
+**Ranges of tracks** come first: `t2`, `t2,t4` (or `t2,4`), `t.` the
+cursor's track, `t$` the last, `t*` every track, `t/Drums/` every track
+whose name holds `Drums`, `t'<,'>` the tracks of the selection.
+
+A time range alone covers every track, or, in the piano roll and the score,
+the notes of the clips it edits; a track range alone covers whole tracks;
+both together cover that time on those tracks: `:t2 5,8d` empties bars 5 to
+8 of track 2. A range with no command goes there: `:$`, `:t3`, `:'a`. As
+before, a number right before a command that takes no range is its count
+(`:3snippet arp`), and a command an extension makes with a range gets one.
+
+**Commands.** Without a range most take the cursor's bar (`.`), as Vim's
+take the cursor's line; `:g` and `:v` take the whole song, the track
+commands the cursor's track.
+
+| Command | |
+| --- | --- |
+| `:5,8d`, `:5,8d!`, `:t2d` | empty bars 5 to 8 of every track, cutting clips at the edges; `d!` takes the time out and closes the gap; a track range alone deletes the tracks. What was there goes to the register (`:5,8d a` to register `a`), for `p`. In the piano roll: the notes |
+| `:5,8y`, `:5,8y a` | yank them |
+| `:5,8co 17`, `:5,8co! 17` | copy bars 5 to 8 to bar 17, over what is there; `co!` makes room. `:t2 co 4` copies track 2 below track 4 (`0` for the top) |
+| `:5,8m 17`, `:5,8m! 17` | move them; `m!` closes the gap they leave and makes room where they go |
+| `:5,8>`, `:5,8>>`, `:5,8< 3` | move the clips that start there a grid step later, two, three earlier; in the piano roll the notes, by its grid |
+| `:5,8j` | join the MIDI clips on each track into one |
+| `:5,8transpose 12`, `:%quantize`, `:%quantize 1/16` | move notes by semitones; snap them to the piano roll's grid, or to a note value or a number of beats |
+| `:t2,t4 mute`, `:t* unmute`, `:t/Drums/ solo`, `:t* unsolo`, `mute!` `solo!` | mute and solo tracks; `!` switches each. `:5,8 mute` mutes the clips in bars 5 to 8 |
+| `:t* volume -3`, `:t2 volume =-6`, `:t2 pan =-0.5` | step the volume of tracks down 3 dB, set it to -6 dB; pan from -1 (left) to 1 |
+| `:5,8normal x`, `:t* normal gcc` | type keys at the start of each bar of the range (on each of its tracks), or with a track range at each track |
+| `:%s/pattern/replacement/flags` | change what matches (below) |
+| `:&`, `:&&` | the last `:s` again on a range, without and with its flags |
+| `:g/pattern/command`, `:g!` or `:v` | run a command on every match, or every thing that does not match: `:g/vel<20/d`, `:g/name:Verse/mute`, `:g/c4/normal x`. With no command, `:g/vel<20/` puts the matches in the quickfix list, for `]q` and `:cdo` |
+
+**Patterns** match notes, clips or tracks by what they are. Terms side by
+side must all hold; `|` in a term is either; `!` before one is not.
+
+| Term | Matches |
+| --- | --- |
+| `c4` `c#4` `bb3` `60` | notes on that key |
+| `c` `f#` | notes on that key in any octave |
+| `vel>100` `vel<=20` `vel=64` | by velocity |
+| `len<1/8` `len>=2` | by length, as a note value or in beats |
+| `beat=1` `beat>=3` | by where in its bar a note starts: 1 the downbeat, 2.5 the and of 2 |
+| `name:Verse` `name=Verse` | clips whose name holds `Verse`, or is it (case does not count; a pattern has no spaces in a term) |
+| `track:Bass` | things on tracks whose name holds `Bass`, or the tracks |
+| `*` | everything: notes in the piano roll, clips in the arrange view |
+
+The deepest field named says what is matched: `c4` matches notes,
+`name:Verse` clips, `name:Verse c4` the C4s of clips named Verse, and
+`track:Bass` alone tracks. Other characters than `/` can mark the pattern
+off, as in Vim: `:%s#len<1/8#len=1/8#g`. An empty pattern is the last one.
+
+**Replacements** set fields of what matched: `d4` (a key without an octave,
+`d`, keeps the note's octave), `+12` or `-3` (semitones), `vel=90`,
+`vel+10`, `len*2`, `len=1/16`, `name:Chorus` (the part of the name the
+pattern found: `Verse 2` becomes `Chorus 2`), `name=Chorus` (the whole
+name), several at once (`vel=90 len=1/8`). An empty replacement removes
+what matched: `:%s/vel<10//g`.
+
+**Flags.** As in Vim, without `g` only the first match in each bar changes,
+a bar being Ex's line; `g` changes every match (`:set gdefault` turns this
+round). `c` asks about each match in turn, lit in the view that shows it:
+`y` yes, `n` no, `a` this and all the rest, `l` this and stop, `q` or `Esc`
+stop. What was said yes to is made when the asking ends, as one undo step.
+`n` only counts the matches.
+
+**While you type**, the line shows what it would do, as Neovim's
+`inccommand`: the range is shaded on the rulers and its tracks marked in
+the headers, the matches are lit (clips in the arrange view, with how many
+of their notes match), what a replacement would make of each note is drawn
+as a ghost in the piano roll, and the right end of the command line counts
+them ("12 notes match", "12 notes match, 4 change (g: all)") or says what is
+wrong with the line. Nothing changes until `Enter`; `Esc` leaves everything
+as it was. `Tab` completes command names after a range, marks after `'`,
+track names after `t/`, and field names in a pattern.
 
 ## Windows, buffers and tabs
 
@@ -587,6 +682,30 @@ and a word, `Ctrl-u` clears. The extra keys a picker has are listed along its
 bottom, and a pane on the right shows more about the selected line when the
 picker has one.
 
+**Pickers you can hear.** In the pickers of presets (`:preset`), devices
+(`,fa`), files (`,ff`, and the file picker of `:import`), beats
+(`:drums.beat`) and snippets (`Ctrl-s` in the piano roll), the item under
+the selection is heard once the selection has rested on it for
+`daw.opt.audition_delay` ms (150), as Telescope previews a file. The top of
+the pane says what plays: `▶ Soft pad · loop bar 5`.
+
+| Picker | What is heard |
+| --- | --- |
+| presets | the preset loaded into the device, with the track's own notes: the bar of its MIDI clip at the cursor (else the last bar before it with notes), over and over. A track without notes plays a built-in phrase in the song's key (a beat on a drum track). Moving on loads the next preset over the same loop |
+| devices | the device added to the cursor's track, with the same phrase. A plugin is made apart, so the selection rests on it 600 ms first, and the pane says `… loading` until it plays |
+| files | a sound file on its own, from its start, over everything else at `daw.opt.audition_level` dB (-12), with its outline drawn in the pane and the place it has got to; a MIDI file's first two bars, at its own tempo, through the cursor's track when it has an instrument, else through a synth (and a kit for its drums) added for the purpose |
+| beats | the beat written into the clip, its first bar over and over |
+| snippets | what the snippet would write, once, with what the other pitched tracks play over the same beats |
+
+What is tried on the project is a trial: it is made, heard and seen like
+any edit, and `Esc` puts everything back exactly as it was, with no undo
+step and the project not marked modified. `Enter` on the item heard keeps
+it, as the one undo step choosing it makes (the plugin that was loaded is
+kept, not made again). Nothing plays a phrase while the transport runs: the
+song is what you hear then, with the preset or device in it. `Ctrl-Space`
+turns hearing off and on for that kind of picker, and it is remembered
+until the program ends.
+
 **Matching** is fuzzy, as in fzf: the letters typed must appear in the line in
 that order, not necessarily together. `dfh` finds `Dragonfly Hall`. Lines rank
 higher when the letters are consecutive, when they start words (after a
@@ -617,12 +736,31 @@ daw.pick({
 | `multi` | `Tab` marks several; `on_choose_multi(items)` gets them (or `on_choose` is called for each) |
 | `empty` | what to say when there is nothing to choose from |
 | `primary(item)` | the part of the line that counts first: lines that match there rank above lines that match only elsewhere |
+| `audition(item)` | makes the item heard when the selection rests on it; returns the label the pane shows, or `{ label, loading = function, keep = function(item) }`: `keep` runs in place of `on_choose` when the item heard is chosen, its trial kept. `audition_key` names the setting `Ctrl-Space` keeps, `audition_default = false` starts it off, `audition_delay(item, ms)` rests longer on a slow item |
 | `prompt`, `width`, `height` | |
 
 `daw.pick.match(query, line)` returns the score and the positions that
 matched, `daw.pick.filter(query, items, format)` the items that match, best
 first. `daw.pick.state()` is the open picker's query, matches and selection.
 `daw.pick.resume()` opens the last picker again.
+
+**Hearing from Lua.** `daw.audition` is what the pickers use:
+
+```lua
+daw.audition.try(function() daw.fx.load(device, "Plate") end)   -- an edit that can be taken back
+daw.audition.through(track.id)        -- play the track's bar at the cursor through it, over and over
+daw.audition.phrase(track.id, { { pitch = 60, start = 0, length = 1, velocity = 100 } }, { length = 4 })
+daw.audition.file("/samples/kick.wav")  -- heard on its own at daw.opt.audition_level
+daw.audition.keep()                     -- the trial becomes one undo step
+daw.audition.stop()                     -- silence, and the trial taken back
+daw.audition.state()                    -- what plays: a phrase's notes, or a file's place and outline
+```
+
+Underneath, `api.trial_begin()` and `api.trial_end(keep)` bracket the
+edits, and `api.preview_play(path)`, `api.preview_stop()`,
+`api.preview_get()` and `api.preview_level(db)` drive the preview bus: a
+voice in the engine added after the master, which is never recorded,
+rendered or saved.
 
 **Adding a picker.** `daw.pick.sources` holds the pickers by name. Add a table
 of the same fields with a `desc`, or a function returning one, and it opens

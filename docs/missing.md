@@ -13,6 +13,15 @@
   preview is drawn by the snippet's own layer rather than through
   `daw.complete.show`. A melody of eighth notes alone may be read as
   chords (a beat with two pitches in it is evidence of one).
+- Pickers you can hear: `daw.opt.audition_level` sets the level of sound
+  files only; a phrase plays through the track at the track's own level,
+  so that a preset is heard as it would be. A phrase is timed by the
+  kernel's timers rather than the engine, so it can be a few milliseconds
+  uneven under load. A plugin factory preset takes as long to try as to
+  load (some plugins hold the program up to a third of a second). The
+  pickers of templates, UTAU presets and singers, sends and drum maps are
+  not heard. The window shows a picker's pane as text, the outline of a
+  sound file in block characters, not as a drawn waveform.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the
@@ -25,11 +34,19 @@
   A view's locator (`daw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
-- The quickfix list: no `:grep` or `:vimgrep` fills it yet (searches and
-  `:g` will, through `daw.qf.set`); `:cfdo` runs once per track, as there
+- The quickfix list: `:g/pattern/` with no command fills it, but no `:grep`
+  or `:vimgrep` does yet, nor `/` searches; `:cfdo` runs once per track, as there
   are no files; lists are not kept with the project or between runs; a
   location list stays with its window's number after the window closes.
   The window's status bar does not count it.
+- Ex (`:5,8d`, `:%s`, `:g`): `d`, `m` and `co` move clips, not automation,
+  tempo changes or markers in the range; `:s` and `:g` refuse score clips
+  (the score's own layer is not reached yet); a term of a pattern holds no
+  spaces, so `name=` cannot name a clip with one; Vim's `:t` (copy) is not
+  there, as `t` starts a range of tracks, nor `:k`, `:j!`, `:retab` and the
+  like. Of the preview the window is handed the piano roll's matches and
+  ghosts (as the roll's marks) and the count (`prompt.note`), but does not
+  show the count yet, nor shade the range or light clips in the arrange view.
 
 - Lists edited as text (`daw://tracks` and the others): a track's input,
   MIDI ports, height and automation, a device's side-chain, outputs and
@@ -42,6 +59,21 @@
   clips, lanes or notes yet. In the graphical frontend a text buffer is
   drawn as the terminal draws it, in the monospace font, not with the
   window's own widgets.
+
+- Score clips (notation): tempo marks are written only (`:notation.text`),
+  not tempo-map points, and no option makes the score own the song's
+  tempo; repeats and voltas are written, not unfolded; trills, tremolos,
+  fermatas, swing and expression maps are not rendered; no CC1 or CC11 is
+  written for sustained instruments; the piano roll does not mark a score
+  clip's notes as written or show a note's feel; with `timebind` the note
+  under one view's cursor is not outlined in the other; key, clef and
+  time-signature changes inside a clip are not edited per measure (a score
+  keeps the time signatures it was written with, and the project's key);
+  joining, splitting or stretching a score clip in the arrange view and
+  recording into one work on its notes as on any MIDI clip, and the next
+  edit in notation renders the score over them; `:import song.mid score=yes`
+  does not exist (`:score.from-midi` after importing does it); the
+  several-tracks view and a track's export transcribe what the clips play.
 
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but

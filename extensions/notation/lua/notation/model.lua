@@ -326,6 +326,7 @@ local function meter_of(num, den)
   meters[key] = meters[key] or M.meter(num, den)
   return meters[key]
 end
+M.meter_of = meter_of
 
 --- Whether a place in a beat is written without a tuplet: on a 32nd.
 local function plain(rel)
@@ -635,7 +636,10 @@ function M.spell_all(layout)
       local function spell_note(n, tied)
         local sp
         local want = n.meta and n.meta.notation
-        if type(want) == "table" and want.pitch == n.pitch and want.letter and want.alter then
+        if n.spelled then
+          -- Written in a score: spelled as it is kept.
+          sp = M.spelled(n.letter, n.alter, n.pitch)
+        elseif type(want) == "table" and want.pitch == n.pitch and want.letter and want.alter then
           sp = M.spelled(want.letter, want.alter, n.pitch)
         else
           sp = M.spell(n.pitch, fifths)
@@ -692,6 +696,7 @@ local function beam_group(meter, t)
 end
 
 local function breaks_beam(ev)
+  if ev.source and ev.source.beam == "break" then return true end
   for _, n in ipairs(ev.notes or {}) do
     local own = n.meta and n.meta.notation
     if type(own) == "table" and own.beam == "break" then return true end

@@ -1,15 +1,17 @@
 # notation
 
-A MIDI clip shown as staff notation, to read and to edit: in the terminal,
-drawn in text cells, and engraved with a music font (Leland) wherever there
-are pixels: in a window of the graphical frontend, and on a terminal that
-shows images. What is written is an interpretation of what was played, as a
-musician would write it down, not a print-out of every note: a strum is a
-chord on the beat, a note played a little early is on the beat, swing is
-straight eighths. The played notes are never changed by being shown; edits
-made in the score change them sensibly, through the clip's ordinary notes,
-so the piano roll and the notation always agree and undo works as it does
-everywhere else.
+Staff notation for a clip, to read and to write: in the terminal, drawn in
+text cells, and engraved with a music font (Leland) wherever there are
+pixels: in a window of the graphical frontend, and on a terminal that shows
+images.
+
+A clip written in notation is a **score clip**: it keeps a written score,
+and its notes are what the score plays. Writing changes the score (a tie
+stays a tie, a dotted rhythm stays dotted, a voice stays a voice, a spelling
+stays a spelling), and the notes follow, in the same undo step. A plain
+MIDI clip is shown as a musician would write down what was played, to read;
+the first edit in notation (or `:score.from-midi`) writes it as a score,
+keeping how it was played.
 
 ```lua
 daw.ext.load("extensions/notation")   -- or put it in ~/.config/daw/extensions
@@ -30,9 +32,58 @@ so does closing the window. `Esc` in normal mode stays in the view, as it
 does in Vim: it drops a count, an operator or a selection, and pressed again
 soon it says how to leave.
 
-## What is written
+## Score clips
 
-Between the clip's notes and the page is a score layer (`notation.score`):
+A score clip keeps its score in `clip.meta.score` (`notation.doc`): staves
+with their clefs, measures with their time signatures, and in each measure
+the voices of each staff, each a list of chords and rests that fills the
+bar. Values are fractions of a whole note (`{ 1, 4 }` a quarter) with their
+dots and tuplets, so nothing drifts however long the piece; pitches are
+spelled (`step` 0 to 6 from C, `alter`, `octave`); every measure, chord,
+note and mark has an id that stays. Dynamics, hairpins, slurs and text are
+marks at places in measures; repeat signs are on the measures.
+
+| | |
+| --- | --- |
+| `:score.from-midi` | write the clip under the cursor as a score: its transcription, keeping what was decided on its notes before (spellings, voices, hands, articulations, dynamics, slurs) and how it was played, as each note's feel |
+| `:score.detach` | plain MIDI again: the notes the score plays, without the score |
+| `:score.reset-performance`, `:notation.quantize` | forget every note's feel: the notes play exactly as written |
+| `:notation.retranscribe`, `g=` | write the score (or the bars of a selection) again from what its notes play |
+
+**What the notes play.** The score is rendered one way, measure by
+measure, and only the measures an edit changed are rendered again: tied
+notes are one note; an acciaccatura sounds a 32nd before its note, an
+appoggiatura on the beat, taking time from it; a note sounds 90% of its
+value, staccato half, staccatissimo a quarter, tenuto and notes under a
+slur all of it; the dynamic in force gives the velocity (`ppp` 25 to `fff`
+124, `mf` 80 where none is written), a hairpin ramps it to the next
+dynamic, an accent adds 20 and a marcato 30. Each note carries
+`meta.score = { e, n }`, the ids of its chord and its written note.
+
+**The piano roll on a score clip.** The roll (and anything else that
+writes notes, through `daw.Clip`) edits the same clip, and the score's
+owner (`notation.owner`, a clip owner of `daw.clips`) says what each
+change means:
+
+| In the roll | | |
+| --- | --- | --- |
+| a note's pitch | written | the written note gets that pitch, spelled by the key |
+| a note added | written | it joins a chord of the same start and length, else fills silence in voice 1, else in voice 2, 3 or 4, on the staff its pitch belongs to |
+| a note deleted | written | its chord loses it, or becomes a rest |
+| moved or made longer or shorter by whole steps of the grid | written | written again where it starts, as long as it is, the values as the metre has them |
+| nudged off the grid, a velocity | feel | kept with the note as its feel, relative to what is written |
+| quantized | | the feel goes |
+
+Either way the note plays where the roll put it: the feel takes up what
+the writing does not say, and goes with the note when the writing changes
+(a pitch changed in notation keeps the note's nudge; a dynamic keeps the
+roll's accents over the new loudness). Undo goes back through both, one
+step per edit, score and notes together.
+
+## What is written of a MIDI clip
+
+Between a MIDI clip's notes and the page is a transcription (`notation.score`),
+which is also how a MIDI clip is written as a score:
 the notes are transcribed into written chords, each knowing which played
 notes it stands for. Everything the score does not show (each note's offset
 from its written place, its real length, its velocity) stays in the notes as
@@ -138,7 +189,10 @@ The rest of the page:
 
 In the notation view. Counts, registers, `.`, macros and marks work as
 everywhere; the view's rows are pitches, so the piano roll's operators and
-visual modes work on it.
+visual modes work on it, on the notes the score plays, which the score's
+owner makes changes of the score as it does the roll's. On a plain MIDI
+clip every key that edits writes it as a score first (one undo step with
+the edit), and says so.
 
 | Keys | |
 | --- | --- |
@@ -151,11 +205,11 @@ visual modes work on it.
 | `Ctrl-a` `Ctrl-x` | sharpen, flatten it (a semitone, spelled with a sharp or a flat) |
 | `Alt-k` `Alt-j` | move it up, down a step of the key |
 | `}` `{` | move it up, down an octave |
-| `+` `-` | lengthen, shorten its chord by the chosen value (the played lengths scale with it) |
+| `+` `-` | lengthen, shorten its chord by the chosen value, ties included |
 | `g.` | dot its chord, or take the dot away |
 | `g2` … `g7` | choose the value: 32nd, 16th, eighth, quarter, half, whole (the numbers MuseScore uses) |
 | `gd` | dotted values on or off |
-| `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as they are written, loop |
+| `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as written (forget their feel), loop |
 | `in` `ib` `ic` | the note, the bar, the clip |
 | `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection, which takes in the note under the cursor, as Vim's takes the character |
 | `:` on a selection | a command for it: the line starts `:'<,'>` (`:'<,'>notation.cresc`) |
@@ -171,13 +225,12 @@ visual modes work on it.
 **Entering notes** (`i`), the way notation programs do it: a letter `c` to
 `b` enters that note at the cursor with the chosen value, in the octave
 nearest the note before (within a fourth), as the key alters it, and steps
-on; a capital stays, to build a chord (`CEg`). What started in that stretch
-of the staff, in the same voice, gives way, and a note of that voice still
-sounding there is cut to end where the new one starts. Other staves and
-voices are left alone: a bass note entered under a melody makes a grand
-staff and keeps the melody. Notes go into the voice of the note the cursor
-is on at `i` (the first voice where there is none), so entering over a
-second voice changes it alone.
+on; a capital stays, to build a chord (`CEg`). Notes go into a voice of
+the staff the note is written on: the voice of the note the cursor is on at
+`i` (else the one chosen, 1 unless `v` or `:notation.voice` says), over what
+that voice had there: a chord it cuts into keeps what is before, the rest
+of it is a rest; a note longer than what is left of the bar is tied over
+the barline. No other voice and no other staff is touched.
 
 | Keys | |
 | --- | --- |
@@ -188,40 +241,40 @@ second voice changes it alone.
 | `'` `,` | the note just entered an octave up, down |
 | `Alt-2` … `Alt-8` | add a second … an octave above the note just entered, in the key, to its chord (`C` `Alt-3` `Alt-3` is a C major triad) |
 | `~` | hold the note just entered on by the chosen value, tied where it crosses a beat or a barline, and step on |
-| `t` | enter triplets of the chosen value, or plain values again |
+| `t` | enter triplets of the chosen value (a triplet of rests is made where there is none, and filled), or plain values again |
+| `v` | enter in the other voice (1 or 2); `:notation.voice 3` chooses any of four |
 | `R` | enter the last chord (or note) again here, and step on |
 | `r` `0` | a rest: clear the chosen value and step on |
 | `Space` | step on, leaving what is there |
 | `Backspace` | step back and remove what starts there |
 | `Esc` | back to normal mode |
 
-**Editing through the score.** These work on the written chord under the
-cursor and change its played notes as a musician would expect:
+**Editing the score.** These work on the written chord under the cursor;
+its notes keep their feel:
 
 | Keys | |
 | --- | --- |
-| `Alt-l` `Alt-h` | move the chord later, earlier by the chosen value: its notes keep their strum and loudness |
-| `+` `-` `g.` | its written length longer, shorter, dotted: the played lengths are scaled by as much |
-| `X` | delete the chord, every note of it (`x` deletes the one note) |
-| `=` | an operator: the notes exactly as written (quantize to the notation), e.g. `=in`, `=ib`, or on a selection |
-| `g=` | an operator: forget what was decided by hand there, so the score follows the playing again |
-| `gv` | the note into the other voice |
-| `gH` | the chord onto the other hand (staff) of a grand staff |
-| `gs` | arpeggio sign up, down, none, as played; on a selection, the notes one chord (a strum) |
-| `gG` | the note a grace note, or the chord's grace note not one |
+| `Alt-l` `Alt-h` | move the chord later, earlier by the chosen value, with its grace notes and marks; what is there in its voice gives way |
+| `+` `-` `g.` | its written length longer, shorter, dotted, ties included |
+| `X` | delete the chord: a rest (`x` deletes the one note) |
+| `=` | an operator: the notes exactly as written (their feel forgotten), e.g. `=in`, `=ib`, or on a selection |
+| `g=` | an operator: the bars written again from what the notes play |
+| `gv` | the note (or the chord) into the other voice, and enter in that voice |
+| `gH` | the chord onto the other staff of a grand staff, in a voice free there |
+| `gs` | arpeggio sign up, down, none; on a selection, the chords one chord (a strum) |
+| `gG` | the chord a grace note of the next (its time goes to the chord before), or the chord's grace notes notes again |
 | `gb` | break the beam before the chord, or join it |
-| `gt` | the beat in triplets (a duplet in 6/8), or as played |
+| `gt` | the beat in triplets (a duplet in 6/8), or not: the bar written again so |
 | `ge` | respell the note: G sharp, A flat |
 | `g'` `g>` `g_` `g^` | staccato, accent, tenuto, marcato on the chord (or a selection), and played so |
 | `(` | on a selection: a slur, the notes played legato |
 | `+` `-` | on a selection: each chord longer, shorter by the chosen value |
 | `gR` `gT` | the raw view; several tracks |
 
-A note added in the score goes exactly on the grid, as loud as the notes
-around it. `:notation.quantize` makes the whole clip what is written,
-`:notation.retranscribe` forgets every decision made by hand.
-`:notation.transpose 2` moves the chord under the cursor up two semitones
-(`-1 steps` a step of the key down).
+`:notation.quantize` makes the whole clip play what is written,
+`:notation.retranscribe` writes it again from what it plays.
+`:notation.transpose 2` moves the chord under the cursor up two semitones,
+spelled by the key (`-1 steps` a step of the key down).
 
 **Ranges.** Every `notation.*` command that works on notes or places marks
 takes a range in front, as in Vim: `:'<,'>` the last selection (what `:`
@@ -232,15 +285,15 @@ The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
 `repeat`, `quantize`, `retranscribe` and `transpose`.
 
 **Marks that play.** `:notation.dyn mf` puts a dynamic at the cursor (`ppp` to
-`fff`, `off`): the notes from there to the next dynamic are moved to its
-loudness, keeping how the player made them differ. `:notation.cresc` and
+`fff`, `off`): the notes from there to the next dynamic play at its
+loudness, each note's feel (how the player made it differ) on top. `:notation.cresc` and
 `:notation.dim` put a hairpin over the selection or range (or to the end of the bar)
 that ramps the loudness to the next dynamic. `:notation.slur` slurs the
 selection. `:notation.text Allegro` writes text above the staff, and
 `:notation.repeat start` (`end`, `off`) a repeat sign at the cursor's bar;
 these two are written only (the song's timeline plays as it is). Staccato
-plays a note at most half its written length, tenuto its full length, an
-accent 20 louder, a marcato 30.
+plays a note half its written length, tenuto its full length, an accent 20
+louder, a marcato 30.
 
 ## The engraved page
 
@@ -355,7 +408,21 @@ model.layout(notes, { length = 4, settings = { mode = "raw" } })   -- note for n
 require("notation.score").transcribe(notes, ctx)   -- the score events alone
 model.spell(70, -1)                 -- { letter = 6, alter = -1, octave = 4, step = 41 }: B flat
 require("notation.export").lilypond(layout, { title = "tune" })   -- or .musicxml(layout, { title, part })
+
+-- Scores.
+local view, D = require("notation"), require("notation.doc")
+local sc = view.score_of(clip:get())            -- the clip's score, to read (nil for plain MIDI)
+local s = sc.staves[1].id
+D.put_chord(sc, 2, s, 1, D.Q, 2 * D.Q, { { step = 4, alter = 0, octave = 4 } })   -- a half G4 on beat two of bar two
+require("notation.render").render(sc)           -- the notes it plays
+require("notation.layout").layout(sc, { length = 8 })   -- its layout, as model.layout's
 ```
+
+A score is changed by the view's `write(fn)`, which gives `fn` the clip's
+score to change and then keeps it and renders its notes, as one undo step:
+`view:write(function(sc) ... end)`. In the clip it is kept with each
+measure as JSON text and the feel as a line of text (`notation.doc`'s
+`encode` and `decode`), so that reading the clip stays quick.
 
 `notation.engrave` turns a layout into drawing operations for `daw.canvas`
 (`engrave.style`, `engrave.systems`, and each measure's and system's ink);
@@ -383,7 +450,9 @@ panel is low (dynamics then fall below what shows). On the engraved page:
 collision avoidance between marks, dynamics and the notes of the other
 staff; slurs that bend round the notes under them; line breaking that
 balances every system (only a bar alone at the end is avoided); a choice of Bravura
-or Petaluma (the kernel has them; nothing chooses them yet); and the
-transcription is still done again for the whole clip on each edit (the
-engraving is redone only for the bars that changed), which costs about
-20 ms for 64 bars.
+or Petaluma (the kernel has them; nothing chooses them yet). For score
+clips: tempo marks that play, repeats unfolded, trills and fermatas played,
+swing, key and clef changes per measure, the piano roll showing which notes
+are written and their feel (see docs/missing.md). A plain MIDI clip is
+still transcribed whole after each change of its notes; a score clip is laid
+out, rendered and engraved again only in the measures an edit changed.

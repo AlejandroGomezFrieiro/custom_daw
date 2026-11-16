@@ -738,6 +738,37 @@ fn the_audio_thread_never_allocates() {
 
     the_sampler_never_allocates();
     a_sound_being_made_never_allocates();
+    a_file_heard_on_its_own_never_allocates();
+}
+
+/// A sound file heard on its own, at another rate than the engine's, while
+/// the transport plays and while it does not, replaced while it plays (the
+/// old one fading out), its level changed, played to its end and stopped,
+/// all without allocating. Run from the test above.
+fn a_file_heard_on_its_own_never_allocates() {
+    use daw_engine::Preview;
+    let (mut engine, mut handle) = Engine::new(SR);
+    let tone: Vec<f32> = (0..44100).map(|i| (i as f32 * 0.05).sin()).collect();
+    let data = Arc::new(AudioData {
+        sample_rate: 44100,
+        channels: [tone.clone().into(), tone.into()],
+    });
+    let voice = |id| Msg::SetPreview(Some(Box::new(Preview::new(data.clone(), SR, 0.25, id))));
+    send(&mut handle, voice(1));
+    assert_eq!(run(&mut engine, 20, 512, 0), 0, "a file heard while stopped");
+    assert_eq!(handle.shared.preview().map(|p| p.0), Some(1));
+    send(&mut handle, Msg::Play);
+    send(&mut handle, voice(2));
+    send(&mut handle, Msg::SetPreviewGain(0.5));
+    assert_eq!(run(&mut engine, 20, 512, 0), 0, "another file while playing");
+    assert_eq!(run(&mut engine, 200, 512, 0), 0, "a file played to its end");
+    assert_eq!(handle.shared.preview(), None, "it has ended");
+    send(&mut handle, voice(3));
+    assert_eq!(run(&mut engine, 4, 512, 0), 0, "a file started again");
+    send(&mut handle, Msg::SetPreview(None));
+    assert_eq!(run(&mut engine, 4, 512, 0), 0, "a file stopped");
+    assert_eq!(handle.shared.preview(), None, "it has stopped");
+    handle.collect_garbage();
 }
 
 /// A sound played while it is made, run out of and caught up with, is

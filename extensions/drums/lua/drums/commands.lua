@@ -154,6 +154,23 @@ command("drums.beat", function(ctx)
     items = items,
     format = function(item) return item.text end,
     on_choose = function(item) apply(item.name) end,
+    -- Written into the clip as a trial, and its first bar played over and
+    -- over through the track; Escape gives the clip its notes back.
+    audition_key = "drums.beat",
+    audition = function(item)
+      local n = daw.audition.try(function() return beats.apply(clip, item.name) end)
+      local c = clip:get()
+      local bar = math.min(daw.time.bar(c.start), c.length)
+      local notes = {}
+      for _, note in ipairs(clip:notes()) do
+        if note.start < bar then notes[#notes + 1] = { pitch = note.pitch, start = note.start, length = note.length, velocity = note.velocity } end
+      end
+      daw.audition.phrase(c.track, notes, { length = bar, at = c.start })
+      return {
+        label = item.name .. " · its first bar",
+        keep = function() daw.notify(string.format("%s: %d hits", item.name, n)) end,
+      }
+    end,
     preview = function(item)
       local lines = { { text = beats.list[item.name].label, style = "Title" } }
       local notes = {}
