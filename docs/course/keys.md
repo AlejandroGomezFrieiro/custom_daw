@@ -96,6 +96,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `x` `p` | delete it, replace it with the register |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
+| `:` | a command for the selection: the line starts `:'<,'>` |
 | `<Esc>` | back to normal mode |
 
 ## Enter notes (insert mode, R)
@@ -157,7 +158,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
-| `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+| `ZZ` `ZQ` `:q` | save and quit, quit, quit (`:q` in a panel closes the panel) |
 
 ## The tutor
 

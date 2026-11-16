@@ -9,10 +9,12 @@ local registry = {}
 --- The handler receives `ctx` with `ctx.args` (positional and named arguments)
 --- and `ctx.count` (the number typed before a key mapping, or nil).
 --- With `opts.raw` the command line passes its text unsplit as `ctx.args[1]`.
+--- With `opts.range` it takes a range of bars in front (`:5,8name`) as
+--- `ctx.range`; see Ranges below.
 function M.define(name, run, opts)
   assert(type(name) == "string" and type(run) == "function", "usage: daw.command(name, function, opts)")
   opts = opts or {}
-  registry[name] = { name = name, run = run, desc = opts.desc or "", raw = opts.raw, complete = opts.complete, label = opts.label }
+  registry[name] = { name = name, run = run, desc = opts.desc or "", raw = opts.raw, complete = opts.complete, label = opts.label, range = opts.range }
 end
 
 --- What an undo step made by a command is called: its `label`, or the
@@ -28,7 +30,7 @@ end
 --- Make `alias` another name for `target`.
 function M.alias(alias, target)
   local spec = assert(registry[target], "no command " .. target)
-  registry[alias] = { name = alias, run = spec.run, desc = spec.desc, raw = spec.raw, complete = spec.complete, label = spec.label, alias_of = target }
+  registry[alias] = { name = alias, run = spec.run, desc = spec.desc, raw = spec.raw, complete = spec.complete, label = spec.label, range = spec.range, alias_of = target }
 end
 
 function M.get(name)
@@ -109,10 +111,56 @@ function M.parse(line)
   return name, args
 end
 
---- Run a command line, as typed after `:`.
+-- Ranges ----------------------------------------------------------------------
+--
+-- A command line may start with a range, as in Vim:
+--
+--   :'<,'>notation.slur        the last selection made in the focused view
+--   :5,8notation.transpose 2   bars 5 to 8
+--   :5notation.dyn mf          bar 5
+--
+-- The command gets it as `ctx.range`. For `'<,'>` that is
+-- `{ selection = true, region = <the region, as operators get it> }`, and
+-- while the command runs `daw.keymap.selection()` returns that region, so a
+-- command that acts on the selection works on it unchanged. For bars it is
+-- `{ bars = { first, last }, from, to }`, `from` and `to` in beats of the
+-- song, the end not included; only a command defined with `range = true`
+-- takes bars.
+
+--- Split a range off the front of a command line: the range, and the rest.
+--- Nil for the range when there is none; an error message instead of the
+--- rest when the range names nothing.
+function M.range(line)
+  local rest = line:match("^%s*'<%s*,%s*'>%s*(.*)$")
+  if rest then
+    local region = daw.keymap.last_selection()
+    if not region then return nil, nil, "no selection made in this view yet for '<,'>" end
+    return { selection = true, region = region }, rest
+  end
+  local a, b
+  a, b, rest = line:match("^%s*(%d+)%s*,%s*(%d+)%s*(.*)$")
+  if not a then
+    a, rest = line:match("^%s*(%d+)%s*([%a_].*)$")
+    b = a
+  end
+  if not a then return nil, line end
+  a, b = tonumber(a), tonumber(b)
+  if a < 1 or b < a then return nil, nil, "a range of bars goes from the first to the last: `5,8`" end
+  return { bars = { a, b }, from = daw.time.bar_start(a), to = daw.time.bar_start(b + 1) }, rest
+end
+
+--- Run a command line, as typed after `:`, with a range in front if it has one.
 function M.exec(line, ctx)
-  local name, args = M.parse(line)
+  local range, rest, err = M.range(line)
+  if err then error(err, 0) end
+  local name, args = M.parse(rest)
   if not name then return end
+  if not range then return M.run(name, args, ctx) end
+  local spec = registry[name]
+  if spec and range.bars and not spec.range then error("`" .. name .. "` takes no range of bars", 0) end
+  ctx = ctx or {}
+  ctx.range = range
+  if range.selection then return daw.keymap.with_selection(range.region, M.run, name, args, ctx) end
   return M.run(name, args, ctx)
 end
 
@@ -254,6 +302,14 @@ local function starts(text, stem) return text:sub(1, #stem):lower() == stem:lowe
 --- `text` the whole line it would become and `label` the part shown.
 ---   daw.commands.complete("track.co")   --> { { text = "track.color", label = "track.color", desc = ... } }
 function M.complete(line)
+  -- A range in front stays as it is; what follows it is completed.
+  local range, rest = M.range(line)
+  if range and rest ~= line then
+    local head = line:sub(1, #line - #rest)
+    local out = M.complete(rest)
+    for _, entry in ipairs(out) do entry.text = head .. entry.text end
+    return out
+  end
   local out = {}
   local name, sep, rest = line:match("^(%S+)(%s+)(.*)$")
   if not name then

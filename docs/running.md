@@ -59,7 +59,8 @@ altogether.
 `Space` plays, `?` finds a key: it lists every key of the focused view and the
 global ones, typing part of a key or of what it does narrows the list, and
 Enter runs the one chosen (`:help all` shows them as one page). `:` runs any
-command by name, `:q` quits. As you type a command, a list above the command
+command by name, `:q` quits (in a panel, such as the piano roll or the
+notation, it closes the panel). As you type a command, a list above the command
 line shows what it could become, with what each does: command names first,
 then what the command takes (tracks by name for `:send`, devices for
 `:device.add`, files for `:open`, `:import`, `:render`, `:write`, options

@@ -289,12 +289,8 @@ function M.visual_swap()
   v.row, v.col = row, col
 end
 
---- The region selected in the focused view, or nil outside visual mode. From
---- the cursor to where the selection began; a selection that has not been
---- stretched yet covers one grid step.
-function M.selection()
-  local v, g = M.visual, grid()
-  if not (v and g) or v.view ~= daw.ui.focused then return nil end
+--- The region a selection `v` covers with the cursor at `row`, `col`.
+local function selected(v, g, row, col)
   -- Clips chosen one by one with the pointer: the region they span, which
   -- names them (`clips`), and is not stretched by the cursor.
   if v.region then
@@ -302,14 +298,55 @@ function M.selection()
     if out then out.visual, out.view = true, v.view end
     return out
   end
-  local row, col = g.get()
   local out = region(v.row, v.col, row, col, v.kind == "V" and "line" or v.kind == "b" and "block" or "char")
   out.visual = true
+  -- A view whose cursor stands on things that last (a note in the score)
+  -- says where the one at the later end ends: it is selected too.
+  if g.extent and out.kind ~= "line" then
+    local last_row = col >= v.col and row or v.row
+    out.c1 = math.max(out.c1, g.extent(last_row, out.c1) or out.c1)
+  end
   if out.c1 - out.c0 < 1e-9 then
     out.c1 = out.c0 + g.step()
     out.unstretched = true
   end
   return out
+end
+
+local ranged   -- the region `:'<,'>` names while its command runs
+
+--- The region selected in the focused view, or nil outside visual mode. From
+--- the cursor to where the selection began, both ends included when the
+--- view says how far the thing under the cursor reaches (`grid.extent`);
+--- a selection that has not been stretched yet covers one grid step.
+--- While a command runs with `:'<,'>`, the selection it names.
+function M.selection()
+  if ranged then return ranged end
+  local v, g = M.visual, grid()
+  if not (v and g) or v.view ~= daw.ui.focused then return nil end
+  local row, col = g.get()
+  return selected(v, g, row, col)
+end
+
+--- The last selection made in the focused view, as `'<,'>` names it: the
+--- one open now, or the one visual mode last closed. Nil if there is none.
+function M.last_selection()
+  local open = M.selection()
+  if open then return open end
+  local last, g = M.last_visual, grid()
+  if not (last and g) or last.view ~= daw.ui.focused then return nil end
+  return selected(last, g, last.cursor_row, last.cursor_col)
+end
+
+--- Run `fn(...)` with `region` as the selection, the way `:'<,'>` runs a
+--- command: anything that asks for the selection meanwhile gets it.
+function M.with_selection(region_, fn, ...)
+  local outer = ranged
+  ranged = region_
+  local result = { pcall(fn, ...) }
+  ranged = outer
+  if not result[1] then error(result[2], 0) end
+  return unpack(result, 2, table.maxn(result))
 end
 
 -- Registers -------------------------------------------------------------------
