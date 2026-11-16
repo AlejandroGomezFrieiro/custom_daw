@@ -532,6 +532,8 @@ export component App inherits Window {
     // The render dialog, filled by `open-render` and sent by `start-render`.
     callback open-render();
     callback start-render();
+    // The desktop's file dialog for the render's file (or folder), when it has one.
+    callback choose-render-path();
     in-out property <bool> render-open;
     in-out property <string> render-path;
     in property <[RangeChoice]> render-ranges;
@@ -5123,6 +5125,13 @@ in property <string> render-stage;
                         text <=> root.render-path;
                         accepted => {
                             root.start-render();
+                        }
+                    }
+                    Button {
+                        label: "…";
+                        width: 32px;
+                        clicked => {
+                            root.choose-render-path();
                         }
                     }
                 }

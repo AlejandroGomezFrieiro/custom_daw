@@ -5,7 +5,7 @@
 //! does back as commands. With `--socket` it attaches to a kernel that is
 //! already running; otherwise it starts one of its own and stops it on exit.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -17,10 +17,13 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
+use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{
     Color, ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString,
     Timer, TimerMode, VecModel,
 };
+
+mod portal;
 
 slint::include_modules!();
 
@@ -33,6 +36,69 @@ Usage:
 
 Kernel options are passed on to `daw --headless`; see `daw --help`.
 ";
+
+/// What a file chosen in the desktop's dialog is for.
+#[derive(Clone, Copy)]
+enum Purpose {
+    Open,
+    SaveAs,
+    Import,
+    /// The render dialog's file field (or, for stems, the folder's name).
+    Render,
+}
+
+impl Purpose {
+    /// The dialog for this purpose, starting where `info` (from the kernel's
+    /// `daw.frontend.dialog_info`) says, or beside the render's path.
+    fn ask(self, info: &Value, render_path: &str, stems: bool) -> portal::Ask {
+        let dir = text(&info["dir"]).to_string();
+        let ask = |kind, title: &str, files: &str| portal::Ask {
+            kind,
+            title: title.to_string(),
+            files: files.to_string(),
+            dir: dir.clone(),
+            name: String::new(),
+        };
+        match self {
+            Purpose::Open => ask(portal::Kind::Open, "Open", "open"),
+            Purpose::Import => ask(portal::Kind::Open, "Import a sound file", "sound"),
+            Purpose::SaveAs => portal::Ask {
+                name: text(&info["name"]).to_string(),
+                ..ask(portal::Kind::Save, "Save the project as", "project")
+            },
+            Purpose::Render => {
+                let endings = info["render"]
+                    .as_array()
+                    .map_or("wav,flac".to_string(), |l| {
+                        l.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(",")
+                    });
+                let path = Path::new(render_path);
+                let beside = path.parent().filter(|d| d.is_dir());
+                portal::Ask {
+                    dir: beside.map_or(dir.clone(), |d| d.to_string_lossy().to_string()),
+                    name: path
+                        .file_name()
+                        .map_or(String::new(), |n| n.to_string_lossy().to_string()),
+                    ..ask(
+                        portal::Kind::Save,
+                        if stems { "Name the folder for the stems" } else { "Render to" },
+                        &format!("render:{endings}"),
+                    )
+                }
+            }
+        }
+    }
+}
+
+type Answer = Box<dyn Fn(Purpose, portal::Outcome)>;
+
+thread_local! {
+    /// What the window does with a dialog's answer. The dialog runs on a
+    /// thread of its own and its answer is handed back to the window's
+    /// thread by `slint::invoke_from_event_loop`, which can carry nothing
+    /// that is not `Send`: so the handler waits here.
+    static ANSWER: RefCell<Option<Answer>> = const { RefCell::new(None) };
+}
 
 /// How long a message stays in the toolbar.
 const MESSAGE_TIME: Duration = Duration::from_secs(5);
@@ -2060,9 +2126,122 @@ fn run() -> Result<()> {
             act(&|c| c.eval(&code, args.clone()))
         }
     };
+    // Leaving the project (quitting, starting a new one, opening another)
+    // asks first when there are changes to save. Returns whether it asked.
+    let leave = {
+        let (client, view, weak, pass, child) = (
+            client.clone(),
+            view.clone(),
+            ui.as_weak(),
+            pass.clone(),
+            child.clone(),
+        );
+        move |what: &str| -> bool {
+            let Some(ui) = weak.upgrade() else {
+                return false;
+            };
+            let closing = client
+                .borrow_mut()
+                .eval("return daw.frontend.closing()", json!([]))
+                .unwrap_or(Value::Null);
+            // A kernel that was running before this window is not this
+            // window's to save or to end.
+            let ours = child.borrow().is_some();
+            if closing["modified"].as_bool().unwrap_or(false) && (ours || what != "quit") {
+                view.borrow_mut().leaving = what.to_string();
+                ui.set_closing_name(text(&closing["name"]));
+                ui.set_closing_what(what.into());
+                ui.set_closing(true);
+                return true;
+            }
+            if what == "quit" {
+                let _ = slint::quit_event_loop();
+            } else {
+                pass("leave", json!(["go", what]));
+            }
+            false
+        }
+    };
+    // The desktop's own file dialogs, where the kernel is this window's own
+    // child (its disk is ours) and `daw.opt.native_dialogs` is on. They run
+    // on a thread, so that the window goes on; the answer comes back to
+    // `ANSWER` on the window's thread. Where there is no portal, the kernel's
+    // list picker is used, as before.
+    let native = {
+        let (client, weak, child) = (client.clone(), ui.as_weak(), child.clone());
+        let (pass, leave, act) = (pass.clone(), leave.clone(), act.clone());
+        let (busy, absent) = (Rc::new(Cell::new(false)), Rc::new(Cell::new(false)));
+        ANSWER.with(|slot| {
+            let (busy, absent) = (busy.clone(), absent.clone());
+            *slot.borrow_mut() = Some(Box::new(move |purpose: Purpose, outcome: portal::Outcome| {
+                busy.set(false);
+                let Some(ui) = weak.upgrade() else { return };
+                match outcome {
+                    portal::Outcome::Cancelled => {}
+                    portal::Outcome::Unavailable => {
+                        absent.set(true);
+                        match purpose {
+                            Purpose::Open => {
+                                leave("open");
+                            }
+                            Purpose::SaveAs => act(&|c| c.call("cmd", json!(["saveas"]))),
+                            Purpose::Import => act(&|c| c.call("cmd", json!(["import"]))),
+                            Purpose::Render => {}
+                        }
+                    }
+                    portal::Outcome::Chosen(path) => {
+                        let path = path.to_string_lossy().to_string();
+                        match purpose {
+                            Purpose::Open => {
+                                leave(&format!("open:{path}"));
+                            }
+                            Purpose::SaveAs => pass("chosen", json!(["saveas", path])),
+                            Purpose::Import => pass("chosen", json!(["import", path])),
+                            Purpose::Render => ui.set_render_path(path.into()),
+                        }
+                        ui.invoke_focus_keys();
+                    }
+                }
+            }));
+        });
+        // Returns whether a dialog is being shown (or was, and is still open).
+        move |purpose: Purpose, render_path: &str, stems: bool| -> bool {
+            if child.borrow().is_none() || absent.get() {
+                return false;
+            }
+            if busy.get() {
+                return true;
+            }
+            let info = client
+                .borrow_mut()
+                .eval("return daw.frontend.dialog_info()", json!([]))
+                .unwrap_or(Value::Null);
+            if !info["native"].as_bool().unwrap_or(false) {
+                return false;
+            }
+            let ask = purpose.ask(&info, render_path, stems);
+            busy.set(true);
+            std::thread::spawn(move || {
+                let outcome = portal::choose(&ask);
+                let _ = slint::invoke_from_event_loop(move || {
+                    ANSWER.with(|slot| {
+                        if let Some(answer) = slot.borrow().as_ref() {
+                            answer(purpose, outcome);
+                        }
+                    })
+                });
+            });
+            true
+        }
+    };
+
     ui.on_command({
-        let act = act.clone();
-        move |line| act(&|c| c.call("cmd", json!([line.as_str()])))
+        let (act, native) = (act.clone(), native.clone());
+        move |line| match line.as_str() {
+            "import" if native(Purpose::Import, "", false) => {}
+            "saveas" if native(Purpose::SaveAs, "", false) => {}
+            _ => act(&|c| c.call("cmd", json!([line.as_str()]))),
+        }
     });
     ui.on_feed({
         let pass = pass.clone();
@@ -3078,46 +3257,19 @@ fn run() -> Result<()> {
         }
     });
 
-    // Leaving the project (quitting, starting a new one, opening another)
-    // asks first when there are changes to save. Returns whether it asked.
-    let leave = {
-        let (client, view, weak, pass, child) = (
-            client.clone(),
-            view.clone(),
-            ui.as_weak(),
-            pass.clone(),
-            child.clone(),
-        );
-        move |what: &str| -> bool {
-            let Some(ui) = weak.upgrade() else {
-                return false;
-            };
-            let closing = client
-                .borrow_mut()
-                .eval("return daw.frontend.closing()", json!([]))
-                .unwrap_or(Value::Null);
-            // A kernel that was running before this window is not this
-            // window's to save or to end.
-            let ours = child.borrow().is_some();
-            if closing["modified"].as_bool().unwrap_or(false) && (ours || what != "quit") {
-                view.borrow_mut().leaving = what.to_string();
-                ui.set_closing_name(text(&closing["name"]));
-                ui.set_closing_what(what.into());
-                ui.set_closing(true);
-                return true;
-            }
-            if what == "quit" {
-                let _ = slint::quit_event_loop();
-            } else {
-                pass("leave", json!(["go", what]));
-            }
-            false
-        }
-    };
     ui.on_file_action({
-        let leave = leave.clone();
+        let (leave, native) = (leave.clone(), native.clone());
         move |what| {
-            leave(what.as_str());
+            if what != "open" || !native(Purpose::Open, "", false) {
+                leave(what.as_str());
+            }
+        }
+    });
+    ui.on_choose_render_path({
+        let (native, weak) = (native.clone(), ui.as_weak());
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            native(Purpose::Render, ui.get_render_path().as_str(), ui.get_render_stems());
         }
     });
     ui.on_close_choice({
@@ -3183,6 +3335,59 @@ fn run() -> Result<()> {
             } else {
                 slint::CloseRequestResponse::HideWindow
             }
+        }
+    });
+
+    // Files dragged in from a file manager. Winit sends one event per file
+    // and, on X11 only (it has no drag and drop on Wayland), none says where
+    // the pointer is: the kernel puts each sound file on a track of its own.
+    // The paths are local, so only a kernel of this window's own will do.
+    ui.window().on_winit_window_event({
+        let (client, view, weak, child) = (client.clone(), view.clone(), ui.as_weak(), child.clone());
+        let (leave, dropped) = (leave.clone(), Rc::new(RefCell::new(Vec::<String>::new())));
+        move |_, event| {
+            use slint::winit_030::winit::event::WindowEvent;
+            let Some(ui) = weak.upgrade() else {
+                return EventResult::Propagate;
+            };
+            match event {
+                WindowEvent::HoveredFile(_) => {
+                    let (message, error) = if child.borrow().is_some() {
+                        ("Drop to add the files to the project", false)
+                    } else {
+                        ("Files can only be dropped on a window that started its own kernel", true)
+                    };
+                    view.borrow_mut().show(&ui, message, error);
+                }
+                WindowEvent::HoveredFileCancelled => view.borrow_mut().show(&ui, "", false),
+                WindowEvent::DroppedFile(path) if child.borrow().is_some() => {
+                    let first = dropped.borrow().is_empty();
+                    dropped.borrow_mut().push(path.to_string_lossy().to_string());
+                    if first {
+                        // The rest of the files follow at once.
+                        let (client, view, weak) = (client.clone(), view.clone(), weak.clone());
+                        let (leave, dropped) = (leave.clone(), dropped.clone());
+                        Timer::single_shot(Duration::from_millis(100), move || {
+                            let paths: Vec<String> = dropped.borrow_mut().drain(..).collect();
+                            let Some(ui) = weak.upgrade() else { return };
+                            let done = client.borrow_mut().eval(
+                                "return daw.frontend.act.drop(...)",
+                                json!([paths]),
+                            );
+                            match done {
+                                Ok(done) => {
+                                    if let Some(project) = done["open"].as_str() {
+                                        leave(&format!("open:{project}"));
+                                    }
+                                }
+                                Err(err) => view.borrow_mut().show(&ui, &format!("{err:#}"), true),
+                            }
+                        });
+                    }
+                }
+                _ => {}
+            }
+            EventResult::Propagate
         }
     });
 
