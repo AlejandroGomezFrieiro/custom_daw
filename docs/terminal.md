@@ -84,7 +84,8 @@ returns to normal mode.
 | `A`, `,at` `,ax` | add a volume automation point at the cursor; turn the lane off or on (read or bypass), clear it |
 | `,al`, `,aa` `,aA` | choose what to automate (volume, pan, any device parameter) and show its lane; show or hide the track's lanes as rows; show every track's lanes |
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
-| `gC` `gI`, `zt` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes (see below for comping with the mouse) |
+| `gC` `gI`, `zt` `zT` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes (see below for comping with the mouse), the tempo lane under the ruler |
+| `:preroll 2`, `:tempo.move 9` | play two bars (`3s`: seconds) before the punch in when recording from a stop; move the tempo change at the cursor to bar 9 |
 | `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
 | `Tab` `gt`, `Ctrl-w c`, `Ctrl-w o` | next view; close this panel; close every panel |
@@ -106,6 +107,14 @@ parameter's range), `c` or `=` types its value, `x` removes it, and `,at`
 `,ax` bypass or clear that lane. In a selection (`v`) on a lane row `x` or `d`
 remove the points in it, `H` `L` move them a grid step, `+` `-` raise or
 lower them. Lanes for send levels are not there yet.
+
+**The tempo lane.** `zT` (or `:tempo.lane`) puts two rows under the ruler that
+draw the tempo map as a curve: level where a change holds, sloping where it
+ramps (`◢`; `◆` marks a change that holds). The header says the tempo at the
+cursor. The lane is to look at; the map is changed by commands, each one undo
+step: `:tempo 96 at 17` (or `here`) adds a change, `:tempo.ramp` makes the
+change before the cursor ramp to the next, `:tempo.move 9` moves it to bar 9,
+`:tempo.remove` takes it away. The window's lane is drawn on with the mouse.
 
 **Comping with the mouse.** `zt` shows a track's takes as lanes under its
 clips, one row for each take. Drag across lane k with the left button, and

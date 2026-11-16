@@ -235,6 +235,15 @@ export struct TempoMark {
     tempo: bool,
 }
 
+// A change in the tempo lane: where it is, how high in the lane (0..1), whether
+// it ramps to the next, and its tempo as text.
+export struct TempoPointData {
+    beat: float,
+    value: float,
+    ramp: bool,
+    text: string,
+}
+
 export struct HintData {
     key: string,
     desc: string,
@@ -729,6 +738,23 @@ in property <string> render-stage;
     in property <[TempoMark]> tempo-marks;
     // A tempo or signature mark: "move" (to a beat), "edit" or "remove".
     callback tempo-mark(string, bool, float, float);
+    // The tempo lane under the ruler: the curve in pixels at the current zoom,
+    // its changes, the tempo at its top and bottom, and the pencil's stroke
+    // (a beat, a height 0..1, then 0 down, 1 move, 2 up). A change dragged
+    // (from a beat, to a beat and a height), removed or made to ramp.
+    in property <bool> tempo-lane;
+    in property <string> tempo-path;
+    in property <string> tempo-lane-top;
+    in property <string> tempo-lane-bottom;
+    in property <[TempoPointData]> tempo-points;
+    in property <string> tempo-pencil-path;
+    callback tempo-pencil(float, float, int);
+    callback tempo-point-move(float, float, float);
+    callback tempo-point-remove(float);
+    callback tempo-point-ramp(float);
+    // Bars and seconds a take punched in from a stop plays before the punch in.
+    in property <int> pre-roll;
+    in property <float> pre-roll-seconds;
     in property <float> length: 16;
     in-out property <float> zoom: 28;       // pixels per beat in the timeline
     // What the pointer would do where it is, for the status line.
@@ -896,7 +922,10 @@ in property <string> render-stage;
     property <length> ruler-main: 28px;
     property <length> band-height: 18px;
     property <length> bands-top: root.ruler-main + (root.markers.length > 0 ? root.band-height : 0px);
-    property <length> ruler-height: root.bands-top + root.band-rows * root.band-height;
+    // The tempo lane is the last of the ruler's rows. `TEMPO_LANE` in main.rs is its height.
+    property <length> tempo-top: root.bands-top + root.band-rows * root.band-height;
+    property <length> tempo-height: root.tempo-lane ? 56px : 0px;
+    property <length> ruler-height: root.tempo-top + root.tempo-height;
     property <int> bars: Math.ceil((root.length + 8 * root.bar) / root.bar);
     property <length> beat: root.zoom * 1px;
     in-out property <length> roll-height: 330px;
@@ -2170,6 +2199,179 @@ in property <string> render-stage;
                     }
                 }
 
+                // The tempo lane: the tempo map as a curve, a step where a
+                // change holds and a slope where it ramps. Hold the pointer
+                // down and draw, click to add a change, drag one to move it,
+                // double click it to ramp, right click it to remove it.
+                if root.tempo-lane: Rectangle {
+                    x: root.header-width;
+                    y: root.tempo-top;
+                    width: parent.width - root.header-width;
+                    height: root.tempo-height;
+                    background: Theme.panel;
+                    clip: true;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.divider;
+                    }
+                    tempo-menu := ContextMenuArea {
+                        Menu {
+                            MenuItem {
+                                title: "Hide the tempo lane";
+                                activated => {
+                                    root.command("tempo.lane off");
+                                }
+                            }
+                        }
+                        tempo-lane-touch := TouchArea {
+                            pure function height-at(y: length) -> float {
+                                clamp(1 - y / self.height, 0, 1)
+                            }
+                            pointer-event(event) => {
+                                if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                                    keys.focus();
+                                    root.tempo-pencil((self.mouse-x - lanes.content-x) / root.beat, self.height-at(self.mouse-y), 0);
+                                }
+                                if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                                    root.tempo-pencil((self.mouse-x - lanes.content-x) / root.beat, self.height-at(self.mouse-y), 2);
+                                }
+                                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
+                                    tempo-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                }
+                            }
+                            moved => {
+                                if (self.pressed) {
+                                    root.tempo-pencil((self.mouse-x - lanes.content-x) / root.beat, self.height-at(self.mouse-y), 1);
+                                }
+                            }
+                            changed has-hover => {
+                                if (self.has-hover) {
+                                    root.hint = "tempo lane: click adds a change · hold and draw a curve · drag a change to move it · double click makes it ramp or hold · right click one removes it";
+                                } else if (root.hint == "tempo lane: click adds a change · hold and draw a curve · drag a change to move it · double click makes it ramp or hold · right click one removes it") {
+                                    root.hint = "";
+                                }
+                            }
+                        }
+                    }
+                    Path {
+                        x: 0;
+                        y: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-x: -lanes.content-x / 1px;
+                        viewbox-y: 0;
+                        viewbox-width: self.width / 1px;
+                        viewbox-height: self.height / 1px;
+                        commands: root.tempo-path;
+                        stroke: Theme.accent;
+                        stroke-width: 1.5px;
+                    }
+                    if root.tempo-pencil-path != "": Path {
+                        x: 0;
+                        y: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-x: -lanes.content-x / 1px;
+                        viewbox-y: 0;
+                        viewbox-width: self.width / 1px;
+                        viewbox-height: self.height / 1px;
+                        commands: root.tempo-pencil-path;
+                        stroke: Theme.text;
+                        stroke-width: 2px;
+                    }
+                    for point[index] in root.tempo-points: tempo-point := Rectangle {
+                        property <length> dx: 0px;
+                        property <length> dy: 0px;
+                        x: point.beat * root.beat + lanes.content-x - 5px + self.dx;
+                        y: (0.12 + (1 - point.value) * 0.76) * root.tempo-height - 5px + self.dy;
+                        width: 10px;
+                        height: 10px;
+                        Rectangle {
+                            x: tempo-handle.has-hover || tempo-handle.pressed ? 1px : 2px;
+                            y: self.x;
+                            width: parent.width - 2 * self.x;
+                            height: self.width;
+                            border-radius: point.ramp ? self.width / 2 : 1px;
+                            background: tempo-handle.pressed ? Theme.select : tempo-handle.has-hover ? white : Theme.text;
+                        }
+                        if tempo-handle.has-hover || tempo-handle.pressed: Text {
+                            x: 12px;
+                            y: -2px;
+                            text: point.text;
+                            color: Theme.text;
+                            font-family: Theme.mono;
+                            font-size: Theme.t-small;
+                            font-weight: 600;
+                        }
+                        tempo-handle := TouchArea {
+                            moved => {
+                                if (self.pressed) {
+                                    parent.dx += self.mouse-x - self.pressed-x;
+                                    parent.dy += self.mouse-y - self.pressed-y;
+                                }
+                            }
+                            pointer-event(event) => {
+                                if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                                    if (abs(parent.dx) > 2px || abs(parent.dy) > 2px) {
+                                        root.tempo-point-move(
+                                            point.beat, point.beat + parent.dx / root.beat,
+                                            clamp(0.88 - (1 - point.value) * 0.76 - parent.dy / root.tempo-height, 0, 1));
+                                    }
+                                    parent.dx = 0px;
+                                    parent.dy = 0px;
+                                }
+                                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                    root.tempo-point-remove(point.beat);
+                                }
+                            }
+                            double-clicked => {
+                                root.tempo-point-ramp(point.beat);
+                            }
+                        }
+                    }
+                }
+                // What the lane's top and bottom are, in the corner.
+                if root.tempo-lane: Rectangle {
+                    x: 0;
+                    y: root.tempo-top;
+                    width: root.header-width;
+                    height: root.tempo-height;
+                    background: Theme.panel;
+                    Text {
+                        x: 12px;
+                        y: 6px;
+                        text: "TEMPO";
+                        color: Theme.text-3;
+                        font-size: Theme.t-micro;
+                        font-weight: 600;
+                    }
+                    Text {
+                        x: 12px;
+                        y: 22px;
+                        text: root.tempo + " bpm";
+                        color: Theme.text-2;
+                        font-family: Theme.mono;
+                        font-size: Theme.t-small;
+                    }
+                    Text {
+                        x: parent.width - self.preferred-width - 8px;
+                        y: 6px;
+                        text: root.tempo-lane-top;
+                        color: Theme.text-3;
+                        font-family: Theme.mono;
+                        font-size: Theme.t-micro;
+                    }
+                    Text {
+                        x: parent.width - self.preferred-width - 8px;
+                        y: parent.height - self.preferred-height - 6px;
+                        text: root.tempo-lane-bottom;
+                        color: Theme.text-3;
+                        font-family: Theme.mono;
+                        font-size: Theme.t-micro;
+                    }
+                }
+
                 // Track headers, scrolling up and down with the timeline.
                 headers := Rectangle {
                     x: 0;
@@ -3193,6 +3395,18 @@ in property <string> render-stage;
                                 title: root.count-in > 0 ? "No count-in before a take" : "Count a bar in before a take";
                                 activated => {
                                     root.command(root.count-in > 0 ? "countin off" : "countin 1");
+                                }
+                            }
+                            MenuItem {
+                                title: (root.pre-roll > 0 || root.pre-roll-seconds > 0 ? "No pre-roll before a punch" : "Pre-roll two bars before a punch");
+                                activated => {
+                                    root.command("preroll");
+                                }
+                            }
+                            MenuItem {
+                                title: root.tempo-lane ? "Hide the tempo lane" : "Show the tempo lane";
+                                activated => {
+                                    root.command("tempo.lane");
                                 }
                             }
                             MenuItem {

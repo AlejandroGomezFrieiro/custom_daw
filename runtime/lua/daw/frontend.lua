@@ -432,7 +432,7 @@ function M.state(known)
     loop_end = t.loop_end, metronome = t.metronome, backend = e.backend, sample_rate = e.sample_rate,
     -- Recording only between two points, and the bars counted before a take.
     punch_enabled = t.punch_enabled, punch_start = t.punch_start, punch_end = t.punch_end,
-    count_in = t.count_in,
+    count_in = t.count_in, pre_roll = t.pre_roll, pre_roll_seconds = t.pre_roll_seconds,
     grid = daw.opt.grid, note_grid = daw.opt.note_grid, threads = e.threads, xruns = e.xruns,
     -- The engine in a few words: backend, output device, sample rate.
     engine = daw.audio.summary(),
@@ -440,6 +440,12 @@ function M.state(known)
   -- Bar and beat lines from the tempo map, well past the end and the last
   -- change, and the tempo and signature changes to flag on the ruler.
   out.project.marks = daw.tempo.marks(0, math.huge)
+  -- The tempo lane under the ruler, when it is shown: the whole map, and the
+  -- tempos at the bottom and the top of the row.
+  if daw.tempolane.shown() then
+    local lo, hi = daw.tempolane.range()
+    out.project.tempo_lane = { lo = lo, hi = hi, points = daw.tempo.points() }
+  end
   -- Markers and regions (`daw.markers`): { id, beat, name, length } each.
   out.project.markers = {}
   for i, m in ipairs(daw.markers and daw.markers.list() or {}) do
@@ -1200,6 +1206,43 @@ function A.tempo_mark(action, kind, beat, to)
       end)
     end
   end
+end
+
+-- The tempo lane under the ruler. A frontend names a height in it as a
+-- fraction, 0 at the bottom, as for the automation lanes.
+
+--- Show the tempo lane, or hide it.
+function A.tempo_lane(on)
+  if on == nil then return daw.tempolane.toggle() end
+  daw.tempolane.show(on)
+  return on
+end
+
+--- A click on the lane: a tempo change at the beat, on the grid.
+function A.tempo_point_add(beat, fraction)
+  daw.tempolane.add(snap(beat), daw.tempolane.bpm(fraction))
+end
+
+--- A change dragged to a beat and a height. The first change, the start's,
+--- only changes its tempo.
+function A.tempo_point_move(beat, to, fraction)
+  daw.tempolane.move(beat, snap(to), daw.tempolane.bpm(fraction))
+end
+
+function A.tempo_point_remove(beat)
+  daw.tempolane.remove(beat)
+end
+
+--- Make the change at `beat` ramp to the next, or hold again.
+function A.tempo_point_ramp(beat)
+  return daw.tempolane.ramp(beat)
+end
+
+--- Draw over the lane with a pencil: `points` are `{ beat, fraction }`.
+function A.tempo_draw(points)
+  local out = {}
+  for i, p in ipairs(points) do out[i] = { snap(p[1]), daw.tempolane.bpm(p[2]) } end
+  daw.tempolane.draw(out)
 end
 
 --- A double click on an empty lane: a clip of one bar in the bar clicked.
