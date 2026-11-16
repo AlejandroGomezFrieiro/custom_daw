@@ -620,7 +620,12 @@ impl Session {
         self.touched = false;
         self.dirty = true;
         self.restoring = true;
-        self.transport = transport;
+        // The count-in is the user's, not the project's.
+        let count_in = self.transport.count_in;
+        self.transport = Transport {
+            count_in,
+            ..transport
+        };
         self.path = path;
         self.send_transport();
         self.flush();

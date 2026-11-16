@@ -596,7 +596,22 @@ const MODES: [&str; 3] = ["only", "add", "toggle"];
 /// How tall a lane shown as a row of its own is, as a share of the height
 /// of a track at the zoom.
 const LANE_ROW: f32 = 0.8;
+/// And a take lane.
+const TAKE_ROW: f32 = 0.6;
 const STRIP: f32 = 79.0;
+
+/// A clip with takes on a track that shows its take lanes, as the kernel
+/// reports it: its row, where it is, which take plays, and each take's name
+/// and the key that changes when its picture does.
+struct TakeClip {
+    id: i32,
+    row: usize,
+    start: f32,
+    length: f32,
+    midi: bool,
+    take: i32,
+    takes: Vec<(SharedString, String)>,
+}
 
 /// What the strip under the piano roll shows, by its number there: the
 /// kind of controller and, for a control change, which.
@@ -796,6 +811,15 @@ struct View {
     strips: Rc<VecModel<LaneData>>,
     strip_points: Rc<VecModel<PointData>>,
     lane_rows: Vec<Vec<i32>>,
+    /// How many take lanes each row shows under its clips, the clips that
+    /// have takes on those rows, and what is drawn of them: the lanes, the
+    /// takes of the clips in view, and each take's picture by clip and take
+    /// with the key that says when to make it again.
+    take_rows: Vec<usize>,
+    take_clips: Vec<TakeClip>,
+    take_lanes: Rc<VecModel<TakeLaneData>>,
+    take_pieces: Rc<VecModel<TakePiece>>,
+    take_pictures: HashMap<(i32, usize), (String, Image)>,
     markers: Rc<VecModel<MarkerData>>,
     /// Every bar and beat line of the song, and the ones being drawn: those
     /// of the stretch `lines_for` (beats, and the zoom they were chosen at).
@@ -902,6 +926,7 @@ impl View {
         }
         ui.set_cpu(number(&state["cpu"]));
         ui.set_record_armed(state["armed"].as_bool().unwrap_or(false));
+        ui.set_counting(state["counting"].as_i64().unwrap_or(0) as i32);
         let levels: Vec<f32> = rows(&state["levels"])
             .iter()
             .map(|v| meter(number(v)))
@@ -924,9 +949,11 @@ impl View {
         });
         if out_of_view && ui.get_zoom() == self.zoom && ui.get_row_height() == self.row {
             self.draw_lanes(ui);
+            self.draw_takes(ui, client);
         }
         if ui.get_zoom() != self.zoom || ui.get_row_height() != self.row {
             self.draw_lanes(ui);
+            self.draw_takes(ui, client);
             // Waveforms are drawn again at the width they now have.
             for index in 0..self.clips.row_count() {
                 let Some(mut clip) = self.clips.row_data(index) else {
@@ -1314,13 +1341,15 @@ impl View {
         let (mut strips, mut strip_points) = (Vec::new(), Vec::new());
         self.row_lane = Vec::new();
         for (row, (track, all)) in self.lane_data.iter().enumerate() {
-            // The lanes shown as rows of their own, under the track's clips.
+            // The lanes shown as rows of their own, under the track's clips
+            // and its take lanes.
             let clip_size = self.tracks.row_data(row).map_or(1.0, |t| t.clip_size);
+            let takes = self.take_rows.get(row).copied().unwrap_or(0) as f32 * TAKE_ROW;
             for (place, id) in self.lane_rows.get(row).into_iter().flatten().enumerate() {
                 let Some(lane) = all.iter().find(|l| l.id == *id) else {
                     continue;
                 };
-                let top = clip_size + place as f32 * LANE_ROW;
+                let top = clip_size + takes + place as f32 * LANE_ROW;
                 // A little room above and below the curve.
                 let y = |value: f32| (0.08 + (1.0 - value) * 0.84) * row_height * LANE_ROW;
                 let path = lane_path(&lane.points, from, to, self.zoom, y);
@@ -1411,6 +1440,95 @@ impl View {
         }
     }
 
+    /// Lay out the take lanes, and the takes of the clips over the stretch
+    /// of the song that shows and a screen's worth on either side, as
+    /// `draw_lanes` does for curves: a long song has thousands of clips, and
+    /// each piece drawn is an element and a picture.
+    fn draw_takes(&mut self, ui: &App, client: &mut Client) {
+        let (view_from, view_to) = (ui.get_view_start(), ui.get_view_end());
+        let span = (view_to - view_from).max(1.0);
+        let (from, to) = (view_from - span, view_to + span);
+        let zoom = ui.get_zoom();
+        let mut lanes = Vec::new();
+        for (row, &count) in self.take_rows.iter().enumerate() {
+            let Some(track) = self.tracks.row_data(row) else {
+                continue;
+            };
+            for take in 0..count {
+                lanes.push(TakeLaneData {
+                    track: track.id,
+                    row: row as i32,
+                    take: take as i32 + 1,
+                    top: track.clip_size + take as f32 * TAKE_ROW,
+                    span: TAKE_ROW,
+                });
+            }
+        }
+        let mut pieces = Vec::new();
+        let clips = std::mem::take(&mut self.take_clips);
+        for clip in clips
+            .iter()
+            .filter(|c| c.start < to && c.start + c.length > from)
+        {
+            let Some(track) = self.tracks.row_data(clip.row) else {
+                continue;
+            };
+            for (index, (name, key)) in clip.takes.iter().enumerate() {
+                let picture = self.take_picture(client, clip, index + 1, key, zoom);
+                pieces.push(TakePiece {
+                    clip: clip.id,
+                    row: clip.row as i32,
+                    take: index as i32 + 1,
+                    start: clip.start,
+                    length: clip.length,
+                    top: track.clip_size + index as f32 * TAKE_ROW,
+                    span: TAKE_ROW,
+                    name: name.clone(),
+                    active: clip.take == index as i32 + 1,
+                    picture,
+                });
+            }
+        }
+        self.take_clips = clips;
+        sync(&self.take_lanes, lanes);
+        sync(&self.take_pieces, pieces);
+    }
+
+    /// The picture of take `take` of a clip in its take lane, made again
+    /// when `key` says what the take plays has changed.
+    fn take_picture(
+        &mut self,
+        client: &mut Client,
+        clip: &TakeClip,
+        take: usize,
+        key: &str,
+        zoom: f32,
+    ) -> Image {
+        let points = wave_points(clip.length * zoom);
+        let key = if clip.midi {
+            key.to_string()
+        } else {
+            format!("{key}@{points}")
+        };
+        if let Some((known, picture)) = self.take_pictures.get(&(clip.id, take))
+            && *known == key
+        {
+            return picture.clone();
+        }
+        let flat: Vec<f32> = client
+            .eval("daw.frontend.take_preview(...)", json!([clip.id, take, points]))
+            .map(|values| rows(&values).iter().map(number).collect())
+            .unwrap_or_default();
+        let picture = if clip.midi {
+            notes_picture(&flat, clip.length)
+        } else {
+            wave_picture(&flat)
+        };
+        self.take_pictures
+            .insert((clip.id, take), (key, picture.clone()));
+        picture
+    }
+
     /// The picture to draw inside a clip, made again when `key` says its
     /// notes or its waveform have changed.
     fn picture(
@@ -1475,6 +1593,10 @@ impl View {
         ui.set_loop_start(number(&project["loop_start"]));
         ui.set_loop_end(number(&project["loop_end"]));
         ui.set_metronome(project["metronome"].as_bool().unwrap_or(false));
+        ui.set_punching(project["punch_enabled"].as_bool().unwrap_or(false));
+        ui.set_punch_start(number(&project["punch_start"]));
+        ui.set_punch_end(number(&project["punch_end"]));
+        ui.set_count_in(project["count_in"].as_i64().unwrap_or(0) as i32);
         ui.set_engine(text(&project["engine"]));
         let selected = state["selected"].as_i64().unwrap_or(-1) as i32;
         ui.set_selected(selected);
@@ -1501,6 +1623,10 @@ impl View {
             })
             .collect();
         let lane_rows: Vec<usize> = self.lane_rows.iter().map(Vec::len).collect();
+        self.take_rows = rows(&state["tracks"])
+            .iter()
+            .map(|t| t["take_rows"].as_u64().unwrap_or(0) as usize)
+            .collect();
         let tracks: Vec<TrackData> = rows(&state["tracks"])
             .iter()
             .enumerate()
@@ -1520,9 +1646,12 @@ impl View {
                     None => text(&t["chain"]).to_string(),
                 };
                 let old = self.tracks.row_data(index);
-                // Its clips, and under them a row for each lane it shows so.
+                // Its clips, and under them its take lanes and a row for
+                // each automation lane it shows so.
                 let clip_size = t["height"].as_f64().map_or(1.0, |h| h as f32);
-                let size = clip_size + lane_rows[index] as f32 * LANE_ROW;
+                let size = clip_size
+                    + self.take_rows[index] as f32 * TAKE_ROW
+                    + lane_rows[index] as f32 * LANE_ROW;
                 tops.push(top);
                 top += size;
                 let peak = self.peaks.get(&id).copied().unwrap_or_default();
@@ -1618,6 +1747,26 @@ impl View {
         self.pictures
             .retain(|id, _| clips.iter().any(|clip| clip.id == *id));
         sync(&self.clips, clips);
+        // The clips whose takes show in take lanes.
+        self.take_clips = rows(&state["clips"])
+            .iter()
+            .filter(|c| c["take_rows"].is_array())
+            .map(|c| TakeClip {
+                id: c["id"].as_i64().unwrap_or(0) as i32,
+                row: c["track"].as_u64().unwrap_or(0) as usize,
+                start: number(&c["start"]),
+                length: number(&c["length"]),
+                midi: c["midi"].as_bool().unwrap_or(false),
+                take: c["take"].as_i64().unwrap_or(1) as i32,
+                takes: rows(&c["take_rows"])
+                    .iter()
+                    .map(|t| (text(&t["name"]), t["key"].as_str().unwrap_or("").to_string()))
+                    .collect(),
+            })
+            .collect();
+        let shown: Vec<i32> = self.take_clips.iter().map(|c| c.id).collect();
+        self.take_pictures.retain(|(id, _), _| shown.contains(id));
+        self.draw_takes(ui, client);
 
         // Every lane, with its points as heights over the stretch it is drawn over.
         self.lane_data = rows(&state["tracks"])
@@ -1834,6 +1983,11 @@ fn run() -> Result<()> {
         strips: Rc::new(VecModel::default()),
         strip_points: Rc::new(VecModel::default()),
         lane_rows: Vec::new(),
+        take_rows: Vec::new(),
+        take_clips: Vec::new(),
+        take_lanes: Rc::new(VecModel::default()),
+        take_pieces: Rc::new(VecModel::default()),
+        take_pictures: HashMap::new(),
         markers: Rc::new(VecModel::default()),
         all_lines: Vec::new(),
         lanes_for: None,
@@ -1877,6 +2031,8 @@ fn run() -> Result<()> {
     ui.set_points(ModelRc::from(view.borrow().points.clone()));
     ui.set_strips(ModelRc::from(view.borrow().strips.clone()));
     ui.set_strip_points(ModelRc::from(view.borrow().strip_points.clone()));
+    ui.set_take_lanes(ModelRc::from(view.borrow().take_lanes.clone()));
+    ui.set_take_pieces(ModelRc::from(view.borrow().take_pieces.clone()));
     ui.set_markers(ModelRc::from(view.borrow().markers.clone()));
     ui.set_ruler_lines(ModelRc::from(view.borrow().ruler_lines.clone()));
     ui.set_render_ranges(ModelRc::from(view.borrow().render_ranges.clone()));
@@ -1949,6 +2105,27 @@ fn run() -> Result<()> {
                 json!([if start { "start" } else { "end" }, beat.max(0.0)]),
             )
         }
+    });
+    ui.on_set_punch_edge({
+        let pass = pass.clone();
+        move |start, beat, free| {
+            pass(
+                "set_punch_edge",
+                json!([if start { "start" } else { "end" }, beat.max(0.0), free]),
+            )
+        }
+    });
+    // A drag across a take lane, and a click on one: the kernel says what
+    // they make play where.
+    ui.on_comp({
+        let pass = pass.clone();
+        move |track, take, from, to, free| {
+            pass("comp", json!([track, take, from.max(0.0), to.max(0.0), free]))
+        }
+    });
+    ui.on_take_click({
+        let pass = pass.clone();
+        move |track, take, beat| pass("take_click", json!([track, take, beat.max(0.0)]))
     });
     ui.on_ruler_click({
         let pass = pass.clone();
