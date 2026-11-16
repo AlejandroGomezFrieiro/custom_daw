@@ -25,12 +25,20 @@
   A view's locator (`daw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
-- The quickfix list: no `:grep` or `:vimgrep` fills it yet (searches and
-  `:g` will, through `daw.qf.set`); `:cfdo` runs once per track, as there
+- The quickfix list: `:g/pattern/` with no command fills it, but no `:grep`
+  or `:vimgrep` does yet, nor `/` searches; `:cfdo` runs once per track, as there
   are no files; lists are not kept with the project or between runs; a
   location list stays with its window's number after the window closes.
   The window shows it in a window of its own (More, `:qf.window`), not
   docked, and its status bar does not count it.
+- Ex (`:5,8d`, `:%s`, `:g`): `d`, `m` and `co` move clips, not automation,
+  tempo changes or markers in the range; `:s` and `:g` refuse score clips
+  (the score's own layer is not reached yet); a term of a pattern holds no
+  spaces, so `name=` cannot name a clip with one; Vim's `:t` (copy) is not
+  there, as `t` starts a range of tracks, nor `:k`, `:j!`, `:retab` and the
+  like. Of the preview the window is handed the piano roll's matches and
+  ghosts (as the roll's marks) and the count (`prompt.note`), but does not
+  show the count yet, nor shade the range or light clips in the arrange view.
 
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but

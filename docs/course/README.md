@@ -28,5 +28,6 @@ then `:tutor` in paw. These pages are made from the tutor's own lessons, so the 
 | 14 | [Finding any command or key](14-finding.md) | Key hints, `?`, `:commands`, Tab on the command line, `,,` and the `,f` pickers, and `K`. |
 | 15 | [Making it your own: options, keys, commands](15-your-own.md) | An option, a mapping and a command, made live with `:lua`, and where to keep them. |
 | 16 | [The bundled extensions](16-extensions.md) | pattern, musicops, sections, undotree, mixdiag, rpp and utau: each one thing. Their READMEs have the rest. |
+| 17 | [Ranges, :s and :g: editing by line](17-ranges.md) | `:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, each one undo step. |
 
-Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5 to 8 are the grammar that the rest of paw is made of. 9 to 13 are the studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are about finding your own way: finding any key, making paw yours, and the extensions.
+Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5 to 8 are the grammar that the rest of paw is made of. 9 to 13 are the studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are about finding your own way: finding any key, making paw yours, and the extensions. 17 edits by line, as Vim's Ex does: ranges of bars and tracks, `:s` and `:g`.

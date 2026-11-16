@@ -116,10 +116,35 @@ daw.command("mood", fn, { complete = function(text, info) return { "calm", "loud
 -- ctx.range is { selection = true, region = <as an operator gets it> }, and
 -- daw.keymap.selection() returns that region while the command runs, so a
 -- command that works on the selection takes the range unasked. `:5,8name`
--- (or `:5name`) gives bars, to commands made with `range = true` only:
--- ctx.range is { bars = { 5, 8 }, from, to }, beats of the song, `to` not included.
+-- (or `:5name`, `:%name`, `:'a,'bname`, `:.+4name`; docs/terminal.md, "Ex")
+-- gives time, to commands made with `range = true` only: ctx.range is
+-- { bars = { 5, 8 }, from, to }, beats of the song, `to` not included.
+-- `:t2,t4name` (`t*`, `t/Drums/`) adds tracks = { ids }; a command without
+-- `range = true` given only tracks runs once at each, the cursor on it.
+-- With `:g/pattern/name` it gets ctx.range = { items = <the matches> }.
 daw.command("bars.color", function(ctx) local r = ctx.range end, { range = true })
 daw.commands.exec("5,8bars.color red")   -- as typed after `:`; daw.commands.range(line) splits it off
+-- What a range holds: notes, clips or tracks ("note", "clip", "track"), each
+-- { kind, track, clip, note, place, at } (`at` in beats of the song). A time
+-- range alone holds every track's, or the notes of the clips the focused view
+-- edits (the piano roll's).
+daw.command("vel.half", function(ctx)
+  local changes = {}
+  for i, item in ipairs(daw.ex.items(ctx.range, "note")) do
+    changes[i] = { item = item, change = { velocity = math.floor(item.note.velocity / 2) } }
+  end
+  daw.ex.apply(changes)                  -- one edit per clip; daw.ex.apply(nil, items) removes
+end, { range = true, desc = "Halve the velocity of the notes in a range" })
+-- A field for :s and :g patterns: `:%s/lyric:la/lyric=lu/g`. `level` is what it
+-- belongs to ("note", "clip", "track"); `type` "number", "beats" (takes `1/8`),
+-- "pitch" or "text"; `set` writes into `change`, as daw.api keeps the thing.
+daw.ex.field("lyric", { level = "note", type = "text", desc = "the sung syllable",
+  get = function(item) return item.note.meta and item.note.meta.lyric end,
+  set = function(item, value, change) change.meta = daw.util.merge(item.note.meta or {}, { lyric = value }) end })
+-- A view of your own whose beats are not the song's, or that edits some clips:
+daw.ex.view("myview", { song = function(col) return clip_start + col end,
+  clips = function() return { clip_id } end, track = function() return track_id end,
+  go = function(beat) end })                -- put the cursor at a beat of the song
 daw.cmd("track.add", { "Bass", device = "synth" })
 daw.keymap.set("<leader>x", "command and arguments", { view = "arrange", desc = "..." })
 daw.keymap.set("gx", function(ctx) end)          -- ctx.count, ctx.register

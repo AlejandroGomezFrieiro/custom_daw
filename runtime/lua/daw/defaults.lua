@@ -1624,6 +1624,8 @@ command("cmdline", function(ctx)
     history = "cmdline",
     -- Command names, then what each command says its arguments are.
     complete = function(text) return daw.commands.complete(text) end,
+    -- What the line would act on, shown as it is typed: daw/ex.lua.
+    preview = function(text) return daw.ex.preview(text) end,
   }, function(line)
     -- A number alone is a bar to go to, as it is a line in an editor.
     if line:match("^%s*%d+%s*$") then return daw.commands.run("cursor.bar", { tonumber(line) }) end
@@ -1637,9 +1639,7 @@ end, { desc = "Type a command" })
 command("visual", function(ctx)
   keymap.visual_start(ctx.args[1] == "line" and "V" or ctx.args[1] == "block" and "b" or "v")
 end, { desc = "Start or stop selecting: `visual`, `visual line`, `visual block`" })
-command("normal", function(ctx)
-  keymap.normal(ctx.args[1] or "")
-end, { desc = "Type keys: `normal 3j dd`", raw = true })
+-- `normal` is an Ex command, with a range or without: daw/ex.lua.
 command("search", function(ctx)
   local function go(text)
     if text == "" then return end

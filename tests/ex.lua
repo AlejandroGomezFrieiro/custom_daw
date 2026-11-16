@@ -1,0 +1,390 @@
+-- Tests of Ex: ranges over time and tracks, and the commands that take
+-- them (`:5,8d`, `:%s/c4/d4/g`, `:g/vel<20/d`, `:t* volume -3`), with the
+-- live preview, confirming each change, and undo. Loaded by
+-- tests/suite.lua with its helpers.
+local T = ...
+local test, eq, fails, keys = T.test, T.eq, T.fails, T.keys
+local api = daw.api
+local ex = daw.ex
+
+--- Track T with clips a, b, c (bars 1 to 3, notes C4 D♭4 D4 E♭4 on the
+--- beats of each), and track Drums with clip d over bars 1 and 2.
+local function song()
+  local t = T.three_clips()
+  -- What a line opens to show a match (the piano roll) is closed again.
+  T.after(function()
+    daw.keymap.feed("<Esc><Esc>")
+    daw.ui.views.pianoroll.clip_id = nil
+    daw.ui.hide("pianoroll")
+    daw.ui.focus("arrange")
+    daw.opt.gdefault = false
+  end)
+  local drums = daw.add_track({ name = "Drums" })
+  drums:add_clip({ name = "d", start = 0, length = 8, notes = { { 36, 0, 1 }, { 38, 1, 1, 30 }, { 36, 4, 1, 120 }, { 38, 5, 1 } } })
+  daw.cursor.set_track(t)
+  api.undo_checkpoint()
+  return t, drums
+end
+
+--- Run a line as typed after `:`, as one turn.
+local function run(line)
+  daw.commands.exec(line)
+  api.undo_checkpoint()
+end
+
+--- The name of the undo step the project is at.
+local function step_name()
+  local tree, at = api.undo_tree(), api.undo_current()
+  for _, s in ipairs(tree.states) do
+    if s.id == at then return s.label end
+  end
+end
+
+local function pitches(clip)
+  local out = {}
+  for _, n in ipairs(clip:notes()) do out[#out + 1] = n.pitch end
+  return table.concat(out, " ")
+end
+
+test("ex: ranges name bars, beats, the cursor, the end, marks and offsets", function()
+  song()
+  local r = ex.range("5,8d")
+  eq(r.from .. "-" .. r.to, daw.time.bar_start(5) .. "-" .. daw.time.bar_start(9), "5,8 is bars 5 to 8, the end of 8 included")
+  r = ex.range("2.3,2.4y")
+  eq(r.from .. "-" .. r.to, "6-8", "2.3,2.4 is beats 3 and 4 of bar 2")
+  daw.cursor.set_beat(5)
+  r = ex.range(".,.+1d")
+  eq(r.from .. "-" .. r.to, "4-12", "`.` is the cursor's bar, `.+1` the next")
+  r = ex.range("%d")
+  eq(r.from .. "-" .. r.to, "0-12", "% is the whole song, to the end of its last bar")
+  r = ex.range("$d")
+  eq(r.from, 8, "$ is the last bar")
+  daw.cursor.set_beat(2)
+  daw.keymap.mark("a")
+  daw.cursor.set_beat(9)
+  daw.keymap.mark("b")
+  r = ex.range("'a,'bd")
+  eq(r.from .. "-" .. r.to, "2-9", "from mark a up to mark b, exactly")
+  r = ex.range("'ad")
+  eq(r.from .. "-" .. r.to, "0-4", "a mark alone stands for its bar, as for a line in Vim")
+  local _, rest, err = ex.range("'qd")
+  eq(rest, nil, "an unset mark names nothing")
+  eq(err:find("mark q is not set", 1, true) ~= nil, true, "and says which: " .. err)
+  _, _, err = ex.range("8,5d")
+  eq(err:find("`8,5`", 1, true) ~= nil, true, "a backwards range names itself: " .. err)
+  _, _, err = ex.range("3.9d")
+  eq(err:find("no beat 9", 1, true) ~= nil, true, "a beat a bar does not have: " .. err)
+  eq(ex.range("track.mute"), nil, "a command's name is no range")
+  eq(select(2, ex.range("tempo 120")), "tempo 120", "nor is a name that starts with t")
+end)
+
+test("ex: ranges of tracks by number, name, all of them and the cursor's, and with time", function()
+  local t, drums = song()
+  local r = ex.range("t2 mute")
+  eq(#r.tracks == 1 and r.tracks[1], drums.id, "t2 is the second track")
+  r = ex.range("t1,t2 mute")
+  eq(#r.tracks, 2, "t1,t2 both")
+  eq(#ex.range("t1,2 mute").tracks, 2, "and so is t1,2")
+  eq(#ex.range("t* mute").tracks, 2, "t* every track")
+  r = ex.range("t/dru/ solo")
+  eq(r.tracks[1], drums.id, "t/dru/ the tracks whose names hold it")
+  r = ex.range("t. mute")
+  eq(r.tracks[1], t.id, "t. the cursor's track")
+  r = ex.range("t2 1,2d")
+  eq(r.tracks[1] .. " " .. r.from .. "-" .. r.to, drums.id .. " 0-8", "tracks then time: that time on those tracks")
+  local _, _, err = ex.range("t5 mute")
+  eq(err:find("`t5`: there are 2 tracks", 1, true) ~= nil, true, err)
+  _, _, err = ex.range("t/Bass/ mute")
+  eq(err:find("no track's name holds `Bass`", 1, true) ~= nil, true, err)
+end)
+
+test("ex: d empties a range, d! takes the time out, and each line is one undo step named after it", function()
+  local t, drums = song()
+  keys(":2d")
+  keys("<CR>")
+  eq(T.layout(t), "a@0+4 c@8+4", ":2d empties bar 2 of every track")
+  eq(T.layout(drums), "d@0+4", "the drum clip is cut there")
+  eq(step_name(), ":2d", "one undo step, named after the line")
+  eq(daw.keymap.getreg().kind, "range", "what was there is in the register")
+  daw.undo()
+  eq(T.layout(t), "a@0+4 b@4+4 c@8+4", "undone at once")
+  run("2d!")
+  eq(T.layout(t), "a@0+4 c@4+4", ":2d! closes the gap")
+  daw.undo()
+  run("t2 2d")
+  eq(T.layout(t) .. " | " .. T.layout(drums), "a@0+4 b@4+4 c@8+4 | d@0+4", ":t2 2d only on track 2")
+  daw.undo()
+  run("t2d")
+  eq(#daw.tracks(), 1, ":t2d deletes the track itself")
+  eq(daw.keymap.getreg().kind, "tracks", "into the register as a track")
+end)
+
+test("ex: co copies and m moves a range of bars, over what is there or making room", function()
+  local t = song()
+  run("t1 1co 3")
+  eq(T.layout(t), "a@0+4 b@4+4 a@8+4", ":1co 3 copies bar 1 over bar 3")
+  daw.undo()
+  run("t1 1co! 3")
+  eq(T.layout(t), "a@0+4 b@4+4 a@8+4 c@12+4", "co! makes room")
+  daw.undo()
+  run("t1 1m 4")
+  eq(T.layout(t), "b@4+4 c@8+4 a@12+4", ":1m 4 moves it")
+  daw.undo()
+  run("t1 1m! 4")
+  eq(T.layout(t), "b@0+4 c@4+4 a@8+4", "m! closes the gap it leaves and makes room where it goes")
+  fails(function() daw.commands.exec("1co") end, "needs a place")
+end)
+
+test("ex: :s changes notes that match, the first of each bar, or all with g", function()
+  local t = song()
+  local a = t:clips()[1]
+  run("%s/c4/d4/")
+  eq(pitches(a), "62 61 62 63", "C4 becomes D4")
+  eq(step_name(), ":%s/c4/d4/", "named after the line")
+  daw.undo()
+  local extra = a:add_note({ pitch = 60, start = 2.5, length = 0.5 })
+  api.undo_checkpoint()
+  run("1s/c4/d4/")
+  eq(pitches(a):gsub(" ", ","), "62,61,62,60,63", "without g only the first in the bar")
+  daw.undo()
+  run("1s/c4/d4/g")
+  eq(pitches(a):gsub(" ", ","), "62,61,62,62,63", "with g every one")
+  daw.undo()
+  daw.opt.gdefault = true
+  run("1s/c4/d4/")
+  eq(pitches(a):gsub(" ", ","), "62,61,62,62,63", "gdefault turns g round")
+  daw.undo()
+  daw.opt.gdefault = false
+  run("%s/c/e/g")
+  eq(pitches(a):gsub(" ", ","), "64,61,62,64,63", "a pitch without an octave keeps the note's")
+  daw.undo()
+  run("%s/c4|d4/+12/g")
+  eq(pitches(a):gsub(" ", ","), "72,61,74,72,63", "either of two, an octave up")
+  eq(extra ~= nil, true)
+end)
+
+test("ex: :s sets velocity and length by field, and an empty replacement removes", function()
+  local t, drums = song()
+  local d = drums:clips()[1]
+  run("%s/vel>100/vel=90/g")
+  local vels = {}
+  for _, n in ipairs(d:notes()) do vels[#vels + 1] = n.velocity end
+  eq(vels[3], 90, "vel>100 set to 90")
+  daw.undo()
+  run("%s/vel<40/vel+20 len*2/g")
+  local n = d:notes()[2]
+  eq(n.velocity .. " " .. n.length, "50 2", "a step and a scale")
+  daw.undo()
+  run("%s/vel<40//g")
+  eq(#d:notes(), 3, "nothing after the pattern removes what matched")
+  daw.undo()
+  run("%s#len>=1 vel<40#len=1/8#g")
+  eq(d:notes()[2].length, 0.5, "any delimiter, so that `/` can be in the pattern")
+  daw.undo()
+  fails(function() daw.commands.exec("%s/vel>>3/vel=1/") end, "vel>>3")
+  fails(function() daw.commands.exec("%s/velo>3/vel=1/") end, "velo>3")
+  fails(function() daw.commands.exec("%s/c4/name:x/") end, "sets clips, but the pattern matches notes")
+  eq(t ~= nil, true)
+end)
+
+test("ex: :s renames clips by the part of the name that matched", function()
+  local t = song()
+  t:clips()[2].name = "Verse 2"
+  api.undo_checkpoint()
+  run("%s/name:verse/name:Chorus/g")
+  eq(t:clips()[2].name, "Chorus 2", "the matched part is replaced")
+  daw.undo()
+  run("%s/name:verse/name=Bridge/g")
+  eq(t:clips()[2].name, "Bridge", "= sets the whole name")
+end)
+
+test("ex: :g runs a command on every match, :v on the others, and with none fills the quickfix list", function()
+  local t, drums = song()
+  local d = drums:clips()[1]
+  run("g/vel<40/d")
+  eq(#d:notes(), 3, ":g/vel<40/d deletes the quiet note")
+  eq(step_name(), ":g/vel<40/d", "one undo step")
+  daw.undo()
+  run("t2 v/c2/d")
+  eq(pitches(d), "36 36", ":v deletes what does not match")
+  daw.undo()
+  run("g/name:b/mute")
+  eq(T.layout(t), "a@0+4 b@4+4m c@8+4", ":g/name:b/mute mutes the clip")
+  daw.undo()
+  run("g/c4/")
+  local list = daw.qf.current()
+  eq(#list.entries, 3, "three C4s in the quickfix list")
+  eq(list.title, ":g/c4/", "titled by the line")
+  run("cdo s/*/vel=10/")
+  local low = 0
+  for _, c in ipairs(t:clips()) do
+    for _, n in ipairs(c:notes()) do
+      if n.velocity == 10 then low = low + 1 end
+    end
+  end
+  eq(low, 3, ":cdo runs an Ex line on each entry")
+end)
+
+test("ex: track commands take ranges of tracks", function()
+  local t, drums = song()
+  run("t* volume -3")
+  eq(t.volume .. " " .. drums.volume, "-3 -3", ":t* volume -3 steps every track down")
+  run("t2 volume =-12")
+  eq(drums.volume, -12, "= sets it")
+  run("t/dru/ solo")
+  eq(drums.solo, true, "solo by name")
+  run("t1,t2 mute")
+  eq(tostring(t.mute) .. tostring(drums.mute), "truetrue", "mute both")
+  run("t* mute!")
+  eq(tostring(t.mute), "false", "mute! switches")
+  run("t2 pan =-0.5")
+  eq(drums.pan, -0.5, "pan")
+  run("2 mute")
+  eq(T.layout(t), "a@0+4 b@4+4m c@8+4", "a stretch of time mutes the clips in it")
+  fails(function() daw.commands.exec("2volume -3") end, "takes tracks")
+end)
+
+test("ex: transpose, quantize, > and j work on ranges", function()
+  local t = song()
+  run("1transpose 12")
+  eq(pitches(t:clips()[1]), "72 73 74 75", "bar 1 an octave up")
+  eq(pitches(t:clips()[2]), "60 61 62 63", "bar 2 as it was")
+  local a = t:clips()[1]
+  a:set_note(1, { start = 0.1 })
+  api.undo_checkpoint()
+  run("%quantize")
+  eq(a:notes()[1].start, 0, "back on the grid")
+  run("t1 2>")
+  eq(T.layout(t), "a@0+4 b@5+4 c@8+4", ":2> moves the clip a grid step later")
+  run("t1 2<<")
+  eq(T.layout(t), "a@0+4 b@3+4 c@8+4", "<< two earlier")
+  daw.undo()
+  daw.undo()
+  run("t1 1,3j")
+  eq(#t:clips(), 1, ":1,3j joins them")
+end)
+
+test("ex: normal runs keys at each bar, track or match", function()
+  local t, drums = song()
+  local seen = {}
+  daw.keymap.set("Q", function() seen[#seen + 1] = daw.cursor.track().name .. "@" .. daw.cursor.beat end, { view = "arrange" })
+  run("t1 1,3normal Q")
+  eq(table.concat(seen, " "), "T@0 T@4 T@8", "at the start of each bar")
+  seen = {}
+  run("t* normal Q")
+  eq(#seen, 2, "at each track")
+  eq(seen[2]:match("^Drums") ~= nil, true, "the cursor on each")
+  seen = {}
+  run("g/name:a|name:c/normal Q")
+  eq(table.concat(seen, " "), "T@0 T@8", "at each clip that matches")
+  daw.keymap.del("Q", { view = "arrange" })
+  eq(drums ~= nil and t ~= nil, true)
+end)
+
+test("ex: in the piano roll a range is of its clip's notes, and '<,'> of the notes selected", function()
+  local t, drums = song()
+  daw.cursor.set_track(t)
+  daw.cursor.set_beat(4)
+  keys("<CR>")
+  eq(daw.ui.focused, "pianoroll", "the roll is open on clip b")
+  run("%s/c4/d4/g")
+  eq(pitches(t:clips()[2]), "62 61 62 63", "its C4 changed")
+  eq(pitches(t:clips()[1]), "60 61 62 63", "the others' did not")
+  eq(pitches(drums:clips()[1]), "36 38 36 38", "nor another track's")
+  daw.undo()
+  run(".d")
+  eq(#t:clips()[2]:notes(), 0, ":.d deletes the notes of the cursor's bar")
+  eq(daw.keymap.getreg().kind, "notes", "into the register as notes")
+  daw.undo()
+  daw.ui.views.pianoroll:set(61, 1)
+  keys("<C-v>k5l<Esc>")
+  run("'<,'>d")
+  eq(pitches(t:clips()[2]), "60 63", "'<,'> takes the pitches and beats selected")
+  keys("<Esc>")
+end)
+
+test("ex: typing a line shows what it matches and would make, and Escape changes nothing", function()
+  local t = song()
+  local cmdline = require("daw.views.cmdline")
+  keys(":%s/c4/d4/g")
+  local state = cmdline.state()
+  eq(state.note, "3 notes match", "the count on the command line")
+  local shown = ex.shown()
+  eq(#shown.matches, 3, "the views are told the matches")
+  local first = shown.notes[t:clips()[1].id]
+  local change
+  for _, m in pairs(first) do change = m.change end
+  eq(change.pitch, 62, "and what each becomes")
+  keys("<Esc>")
+  eq(ex.shown(), nil, "Escape takes it away")
+  eq(pitches(t:clips()[1]), "60 61 62 63", "and nothing changed")
+  keys(":2,1d")
+  eq(cmdline.state().note_level, "error", "a bad range is said while typing")
+  eq(cmdline.state().note:find("`2,1`", 1, true) ~= nil, true, cmdline.state().note)
+  keys("<Esc>:t2 1,2")
+  eq(cmdline.state().note, "bars 1–2 on Drums", "a range says what it covers")
+  local lines = api.ui_snapshot(100, 30)
+  eq(lines[#lines]:find("bars 1–2 on Drums", 1, true) ~= nil, true, "on the bottom row: " .. lines[#lines])
+  keys("<Esc>")
+end)
+
+test("ex: :s with c asks about each match, and what was said yes to is one undo step", function()
+  local t = song()
+  keys(":%s/c4/d4/gc<CR>")
+  local cmdline = require("daw.views.cmdline")
+  eq(cmdline.state().prompt:find("1 of 3", 1, true) ~= nil, true, "asks about the first: " .. cmdline.state().prompt)
+  eq(ex.shown().current ~= nil, true, "which the views show")
+  keys("y")
+  keys("n")
+  keys("y")
+  eq(pitches(t:clips()[1]) .. "|" .. pitches(t:clips()[2]) .. "|" .. pitches(t:clips()[3]), "62 61 62 63|60 61 62 63|62 61 62 63", "yes, no, yes")
+  eq(step_name(), ":%s/c4/d4/gc", "as one step")
+  daw.undo()
+  eq(pitches(t:clips()[3]), "60 61 62 63", "undone together")
+  keys(":%s/c4/d4/gc<CR>")
+  keys("<Esc>")
+  eq(pitches(t:clips()[1]), "60 61 62 63", "Escape at once changes nothing")
+  keys(":%s/c4/d4/gc<CR>")
+  keys("a")
+  eq(pitches(t:clips()[3]), "62 61 62 63", "a: this and all the rest")
+end)
+
+test("ex: completion offers marks, tracks and pattern fields", function()
+  song()
+  daw.cursor.set_beat(4)
+  daw.keymap.mark("a")
+  local labels = {}
+  for _, c in ipairs(daw.commands.complete("'")) do labels[#labels + 1] = c.label end
+  eq(table.concat(labels, " "):match("^'<,'> 'a") ~= nil, true, "the selection and the marks after ': " .. table.concat(labels, " "))
+  local c = daw.commands.complete("t/dr")
+  eq(c[1] and c[1].text, "t/Drums/ ", "tracks after t/")
+  c = daw.commands.complete("%s/ve")
+  eq(c[1] and c[1].text, "%s/vel", "fields in a pattern")
+  local found
+  for _, entry in ipairs(daw.commands.complete("%tra")) do
+    if entry.text == "%transpose" then found = true end
+  end
+  eq(found, true, "a command after a range")
+end)
+
+test("ex: an extension adds a pattern field and a command that takes a range", function()
+  local t = song()
+  ex.field("lyric", { level = "note", type = "text",
+    get = function(item) return item.note.meta and item.note.meta.lyric end,
+    set = function(item, value, change) change.meta = daw.util.merge(item.note.meta or {}, { lyric = value }) end })
+  run("1s/c4/lyric=la/")
+  eq(t:clips()[1]:notes()[1].meta.lyric, "la", "a field of its own, set")
+  run("g/lyric:la/transpose 1")
+  eq(t:clips()[1]:notes()[1].pitch, 61, "and matched")
+  local counted
+  daw.command("test.count", function(ctx) counted = #ex.items(ctx.range, "note") end, { range = true })
+  run("t1 2,3test.count")
+  eq(counted, 8, "a command with a range finds the notes in it")
+  ex.fields.lyric = nil
+end)
+
+test("ex: score clips are refused with a reason", function()
+  local t = song()
+  t:clips()[1].meta = { score = { measures = {} } }
+  fails(function() daw.commands.exec("%s/c4/d4/g") end, "is a score")
+end)

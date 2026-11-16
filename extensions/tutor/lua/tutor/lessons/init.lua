@@ -18,6 +18,7 @@ local order = {
   "finding",         -- finding any command or key
   "your_own",        -- options, mappings and commands in init.lua
   "extensions",      -- what each bundled extension adds
+  "ranges",          -- Ex lines: ranges of time and tracks, :s and :g
 }
 
 for _, name in ipairs(order) do
