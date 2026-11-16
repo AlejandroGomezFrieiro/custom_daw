@@ -17,7 +17,6 @@ end
 
 daw.ui.view("braille_probe", {
   title = "Braille",
-  modal = true,
   render = function(_, buf) buf:text(0, 0, "a⣿b⠁", "Normal") end,
 })
 
@@ -71,17 +70,18 @@ end)
 
 daw.ui.view("curve_probe", {
   title = "Curve",
-  modal = true,
   render = function(_, buf) daw.draw.curve(buf, 0, 4, function(i) return i / (2 * buf.width) end, "Normal") end,
 })
 
 test("a curve in a window is drawn in braille dots, as in the terminal", function()
   start()
+  daw.opt.braille, daw.opt.ascii = true, false
   daw.canvas.open_view("curve_probe")
   local drawing = daw.canvas.paint("curve_probe", 400, 200, { cell = { w = 10, h = 20 }, fresh = true })
   local text = {}
   for _, op in ipairs(drawing.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
-  eq(table.concat(text):find("[▁─▔]") == nil, true, "not as lines")
+  local shown = table.concat(text)
+  eq(shown:find("▁", 1, true) == nil and shown:find("─", 1, true) == nil and shown:find("▔", 1, true) == nil, true, "not as lines")
   eq(#dots(drawing.ops) > 20, true, "but as dots")
   daw.canvas.close("curve_probe")
 end)
