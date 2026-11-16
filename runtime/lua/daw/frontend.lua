@@ -181,6 +181,8 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- The controller moves chosen in the strip, by place.
+      controls_chosen = daw.controls.chosen(clip.id),
       -- What the roll's layers draw behind and in front of the notes, and
       -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
       tools = roll:toolbar(),
@@ -266,7 +268,9 @@ function M.clip(id)
     end
   end
   clip.controls = {}
-  for _, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
+  for place, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
+    -- With its place among all of them, as gestures name it.
+    move.place = place
     if move.start >= 0 and move.start < clip.length then clip.controls[#clip.controls + 1] = move end
   end
   local track = api.track_get(clip.track)
@@ -427,7 +431,7 @@ function M.state(known)
     loop_end = t.loop_end, metronome = t.metronome, backend = e.backend, sample_rate = e.sample_rate,
     -- Recording only between two points, and the bars counted before a take.
     punch_enabled = t.punch_enabled, punch_start = t.punch_start, punch_end = t.punch_end,
-    count_in = t.count_in,
+    count_in = t.count_in, pre_roll = t.pre_roll, pre_roll_seconds = t.pre_roll_seconds,
     grid = daw.opt.grid, note_grid = daw.opt.note_grid, threads = e.threads, xruns = e.xruns,
     -- The engine in a few words: backend, output device, sample rate.
     engine = daw.audio.summary(),
@@ -435,6 +439,12 @@ function M.state(known)
   -- Bar and beat lines from the tempo map, well past the end and the last
   -- change, and the tempo and signature changes to flag on the ruler.
   out.project.marks = daw.tempo.marks(0, math.huge)
+  -- The tempo lane under the ruler, when it is shown: the whole map, and the
+  -- tempos at the bottom and the top of the row.
+  if daw.tempolane.shown() then
+    local lo, hi = daw.tempolane.range()
+    out.project.tempo_lane = { lo = lo, hi = hi, points = daw.tempo.points() }
+  end
   -- Markers and regions (`daw.markers`): { id, beat, name, length } each.
   out.project.markers = {}
   for i, m in ipairs(daw.markers and daw.markers.list() or {}) do
@@ -507,6 +517,12 @@ function M.state(known)
       local mark = daw.stretch.badge(clip)
       local notches = daw.stretch.repeats(clip)
       local repeats = clip.loop and string.format("|%.17g|%.17g", clip.loop_start, clip.loop_length) or ""
+      -- Its warp markers, in beats from its start; they change its waveform.
+      local warps = {}
+      for j, m in ipairs(clip.warp or {}) do
+        warps[j] = m.beat - clip.start
+        repeats = repeats .. string.format("|%.17g:%.17g", m.source, m.target)
+      end
       out.clips[#out.clips + 1] = {
         -- In take lanes: each take's name, and what changes exactly when
         -- its picture does (fetch `M.take_preview` again then).
@@ -522,14 +538,15 @@ function M.state(known)
         fade_in = clip.fade_in, fade_out = clip.fade_out, gain = clip.gain,
         -- Its file is missing: silent until relinked. The name says so too.
         offline = clip.offline or nil,
-        -- Changes exactly when the clip's notes do: fetch `M.preview` again then.
-        stamp = clip.stamp and string.format("%.0f|%.17g%s", clip.stamp, clip.length, repeats) or nil,
+        -- Changes exactly when the clip's notes or controller moves do:
+        -- fetch `M.preview` (and the piano roll's clip) again then.
+        stamp = clip.stamp and string.format("%.0f|%.0f|%.17g%s", clip.stamp, clip.control_stamp or 0, clip.length, repeats) or nil,
         -- Changes exactly when the clip's waveform does: fetch `M.peaks` again then.
         waveform = clip.kind == "audio"
           and string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
             daw.time.seconds(clip.length, clip.start), clip.stretch, clip.pitch, tostring(clip.stretching), repeats) or nil,
         -- Whether it loops, and where its repeats begin, in beats from its start.
-        loop = clip.loop or nil, notches = notches,
+        loop = clip.loop or nil, notches = notches, warps = warps,
       }
     end
   end
@@ -612,16 +629,19 @@ function M.render_dialog()
   for _, f in ipairs(api.render_formats(daw.opt.ffmpeg)) do
     if f.lossy then formats[f.extensions[1]] = f.available end
   end
-  return { path = path, ranges = ranges, sample_rate = api.engine_get().sample_rate, formats = formats }
+  return {
+    path = path, ranges = ranges, sample_rate = api.engine_get().sample_rate, formats = formats,
+    tags = require("daw.render").tags(),
+  }
 end
 
 --- The menu of a track's input: the choices of `daw.audio.choices` under
 --- their headings, `audio`, `midi` and `channel`, and where the track sends
---- MIDI, `midi_out` and `midi_out_channel`, each a list of
+--- MIDI, `midi_out`, `midi_out_channel` and `midi_out_form`, each a list of
 --- `{ label, checked }`. `act.choose_input` takes one by heading and place.
 function M.input_menu(track)
   local out = {
-    audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {},
+    audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {}, midi_out_form = {},
     monitor = api.track_get(track).monitor,
   }
   for _, choice in ipairs(daw.audio.choices(track)) do
@@ -733,6 +753,9 @@ end
 local picked = { set = {}, anchor = nil }
 -- A gesture is choosing: the cursor and mode it moves keep the choice.
 local pointing = false
+-- Each window and terminal chooses clips of its own.
+daw.seats.keep("frontend.picked", function() return picked end, function(p) picked = p end,
+  function() return { set = {}, anchor = nil } end)
 
 --- The ids of the chosen clips, in order.
 function M.chosen_clips()
@@ -1007,7 +1030,7 @@ end
 --- How far before an audio clip's start its file begins, in beats of the
 --- tempo map there (a negative number).
 local function file_start(c)
-  return daw.time.to_beat(math.max(0, daw.time.to_seconds(c.start) - c.offset * (c.stretch or 1))) - c.start
+  return daw.time.to_beat(math.max(0, daw.time.to_seconds(c.start) - daw.stretch.lead(c))) - c.start
 end
 
 --- Drag an edge of a clip, and the same edge of the clips chosen with it:
@@ -1123,6 +1146,28 @@ function A.stretch_clip(id, what)
   if not ok then daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
 end
 
+--- Warp markers in the window (`daw.stretch.warp_add`): a double click on
+--- an audio clip's top band puts one at `beat`; a marker's handle dragged
+--- moves marker `index` to `beat` (on the grid unless `free`), stretching
+--- the sound on either side of it; its menu takes it off. Each one undo
+--- step; a refusal is said, not raised.
+local function warp_run(f, ...)
+  local ok, err = pcall(f, ...)
+  if not ok then daw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):gsub("^runtime error: ", "")), "warn") end
+end
+
+function A.warp_add(id, beat)
+  warp_run(daw.stretch.warp_add, id, math.max(0, beat))
+end
+
+function A.warp_move(id, index, beat, free)
+  warp_run(daw.stretch.warp_move, id, index, free and math.max(0, beat) or snap(beat))
+end
+
+function A.warp_remove(id, index)
+  warp_run(daw.stretch.warp_remove, id, index)
+end
+
 --- The handle at a top corner of an audio clip: its fade in (`which` "in")
 --- or out ("out") is set to `beats`, and so is that of the audio clips
 --- chosen with it, each no longer than the clip. One undo step.
@@ -1191,6 +1236,43 @@ function A.tempo_mark(action, kind, beat, to)
       end)
     end
   end
+end
+
+-- The tempo lane under the ruler. A frontend names a height in it as a
+-- fraction, 0 at the bottom, as for the automation lanes.
+
+--- Show the tempo lane, or hide it.
+function A.tempo_lane(on)
+  if on == nil then return daw.tempolane.toggle() end
+  daw.tempolane.show(on)
+  return on
+end
+
+--- A click on the lane: a tempo change at the beat, on the grid.
+function A.tempo_point_add(beat, fraction)
+  daw.tempolane.add(snap(beat), daw.tempolane.bpm(fraction))
+end
+
+--- A change dragged to a beat and a height. The first change, the start's,
+--- only changes its tempo.
+function A.tempo_point_move(beat, to, fraction)
+  daw.tempolane.move(beat, snap(to), daw.tempolane.bpm(fraction))
+end
+
+function A.tempo_point_remove(beat)
+  daw.tempolane.remove(beat)
+end
+
+--- Make the change at `beat` ramp to the next, or hold again.
+function A.tempo_point_ramp(beat)
+  return daw.tempolane.ramp(beat)
+end
+
+--- Draw over the lane with a pencil: `points` are `{ beat, fraction }`.
+function A.tempo_draw(points)
+  local out = {}
+  for i, p in ipairs(points) do out[i] = { snap(p[1]), daw.tempolane.bpm(p[2]) } end
+  daw.tempolane.draw(out)
 end
 
 --- A double click on an empty lane: a clip of one bar in the bar clicked.
@@ -1630,9 +1712,12 @@ end
 --- `render_dialog`), `o.format` ("wav", "flac", "mp3", "ogg" or "opus"), `o.quality` (for those
 --- three: "low" to "best"), `o.bits`, `o.tail`
 --- seconds, `o.normalize` dB or nil, `o.dither`, `o.mono`, and `o.stems`
---- for a file per track in a directory named after the path. It runs in
---- the background: the state's `modal.render` says how far it is.
+--- for a file per track in a directory named after the path. `o.tags`
+--- (`title`, `artist`, ... as `daw.render.tags` has them, an empty one
+--- taking it out) becomes the project's tags, which the files carry. It
+--- runs in the background: the state's `modal.render` says how far it is.
 function A.render(o)
+  if o.tags then require("daw.render").tags(o.tags) end
   local opts = {
     tail = tonumber(o.tail), bits = tonumber(o.bits), dither = o.dither and true or nil,
     normalize = tonumber(o.normalize), channels = o.mono and 1 or nil, background = true,
@@ -1908,6 +1993,8 @@ end
 -- long as the clip's notes are what the pointer's own edits left; an edit
 -- made any other way (a key, an undo) forgets them, since places move.
 local chosen = { clip = nil, places = {}, stamp = nil }
+daw.seats.keep("frontend.chosen", function() return chosen end, function(c) chosen = c end,
+  function() return { clip = nil, places = {}, stamp = nil } end)
 
 local function stamp_of(clip)
   local ok, data = pcall(api.clip_get, clip)
@@ -2436,6 +2523,31 @@ function A.clear_controls(clip, kind, number)
     if not (control.type == kind and control.key == nil and (kind ~= "cc" or control.number == number)) then out[#out + 1] = control end
   end
   c:set_controls(out)
+end
+
+-- Moves of the strip chosen, moved and taken away, drawn as a line, and
+-- the event list: `daw.controls` says what each does.
+-- A window names a mode by number: 0 alone, 1 add, 2 toggle.
+local modes = { [0] = "only", [1] = "add", [2] = "toggle" }
+function A.select_control(clip, place, mode) daw.controls.select(clip, place, modes[mode] or mode) end
+function A.select_controls(clip, kind, number, beat0, low, beat1, high, mode)
+  return daw.controls.select_box(clip, kind, number, beat0, low, beat1, high, modes[mode] or mode)
+end
+function A.select_all_controls(clip, kind, number)
+  return daw.controls.select_box(clip, kind, number, -1, 0, daw.clip(clip).length + 1, 1)
+end
+function A.clear_control_selection(clip) daw.controls.clear(clip) end
+function A.move_controls(clip, dbeat, dfraction, free)
+  return daw.controls.move(clip, dbeat, dfraction, free == true or free == 1)
+end
+function A.remove_chosen_controls(clip) return daw.controls.remove(clip) end
+function A.line_controls(clip, kind, number, beat0, f0, beat1, f1, free)
+  return daw.controls.line(clip, kind, number, beat0, f0, beat1, f1, free == true or free == 1)
+end
+
+--- The event list of the clip in the piano roll, in a window of its own.
+function A.open_event_list(clip)
+  daw.canvas.open_view("eventlist", { title = "Events · " .. daw.clip(clip).name, width = 520, height = 440 })
 end
 
 function A.remove_point(lane, index)

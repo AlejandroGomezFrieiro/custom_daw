@@ -10,8 +10,15 @@ do
   if saved then track_id, M.beat, lane_id = saved.track, saved.beat or 0, saved.lane end
 end
 
+-- Each seat has a cursor of its own, starting where the instance's is.
+daw.seats.keep("cursor",
+  function() return track_id, M.beat, lane_id end,
+  function(track, beat, lane) track_id, M.beat, lane_id = track, beat, lane end,
+  function(track, beat, lane) return track, beat or 0, lane end)
+
 local function save()
-  api.state_set("cursor", { track = track_id, beat = M.beat, lane = lane_id })
+  -- The instance's own is the one that outlives a reload.
+  if daw.seats.current == 0 then api.state_set("cursor", { track = track_id, beat = M.beat, lane = lane_id }) end
   daw.emit("cursor.changed", { track = track_id, beat = M.beat, lane = lane_id })
   api.ui_redraw()
 end

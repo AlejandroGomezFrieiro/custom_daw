@@ -91,6 +91,51 @@ command("countin", function(ctx)
   daw.notify(bars > 0 and string.format("count-in: %d bar%s before a take", bars, bars == 1 and "" or "s") or "count-in off")
 end, { desc = "Count bars in before recording from a stop: `countin 1`, `countin off`, or toggle" })
 
+-- The pre-roll is two options (`daw.opt.pre_roll` bars and
+-- `daw.opt.pre_roll_seconds`) that the kernel is told of: a take punched in
+-- from a stop starts playing that long before the punch in.
+local function pre_roll_values()
+  return util.clamp(math.floor(tonumber(daw.opt.pre_roll) or 0), 0, 16),
+    util.clamp(tonumber(daw.opt.pre_roll_seconds) or 0, 0, 30)
+end
+local function send_pre_roll()
+  local bars, seconds = pre_roll_values()
+  api.transport_set("pre_roll", bars)
+  api.transport_set("pre_roll_seconds", seconds)
+end
+send_pre_roll()
+daw.on("option.changed", function(e)
+  if e.name == "pre_roll" or e.name == "pre_roll_seconds" then send_pre_roll() end
+end)
+local last_pre_roll = 2
+command("preroll", function(ctx)
+  local word = ctx.args[1]
+  local bars, seconds = 0, 0
+  if word == "off" or word == "0" then
+    bars = 0
+  elseif word == nil then
+    local now_bars, now_seconds = pre_roll_values()
+    bars = (now_bars > 0 or now_seconds > 0) and 0 or last_pre_roll
+  elseif tostring(word):match("^%d+%.?%d*s$") then
+    seconds = tonumber(word:sub(1, -2))
+  elseif tonumber(word) then
+    bars = tonumber(word)
+  else
+    return daw.notify("preroll: a number of bars, `3s` for seconds, or `off`", "warn")
+  end
+  if bars > 16 or seconds > 30 then return daw.notify("preroll: up to 16 bars or 30 seconds", "warn") end
+  bars = math.floor(bars)
+  if bars > 0 then last_pre_roll = bars end
+  daw.opt.pre_roll, daw.opt.pre_roll_seconds = bars, seconds
+  if bars > 0 then
+    daw.notify(string.format("pre-roll: %d bar%s before the punch in", bars, bars == 1 and "" or "s"))
+  elseif seconds > 0 then
+    daw.notify(string.format("pre-roll: %g seconds before the punch in", seconds))
+  else
+    daw.notify("pre-roll off")
+  end
+end, { desc = "Play bars (or `3s` seconds) before the punch in when recording from a stop: `preroll 2`, `preroll 3s`, `preroll off`, or toggle" })
+
 --- Punch in and out: record only between two points while the song plays.
 --- The range is kept with the project, as the loop is.
 local function punch_from_selection()
@@ -128,6 +173,8 @@ command("punch", function(ctx)
 end, { desc = "Record only between two points: toggle, `punch 5 8` (bars), `punch selection` (or the loop)" })
 -- `tempo`, `tempo.ramp`, `tempo.remove`, `tempo.list`, `tempo.tap`, `timesig`.
 daw.tempo.commands(command)
+-- `tempo.lane`, `tempo.move`.
+daw.tempolane.commands(command)
 
 -- Cursor ---------------------------------------------------------------------
 
@@ -491,6 +538,7 @@ end, { desc = "Move the track down or up: `track.move by=-1`" })
 -- they are a picker and commands.
 local group_names = {
   audio = "audio", midi = "MIDI", channel = "MIDI channel", midi_out = "MIDI out", midi_out_channel = "out channel",
+  midi_out_form = "out form",
 }
 local function input_picker(track)
   local items = {}
@@ -510,7 +558,7 @@ local function input_picker(track)
         return daw.notify(track.name .. (track.monitor and ": monitoring its input" or ": not monitoring"))
       end
       daw.audio.choose(track, item)
-      if item.group == "midi_out" or item.group == "midi_out_channel" then
+      if item.group:find("^midi_out") then
         return daw.notify(track.name .. " → " .. daw.routes.midi_out_text(track:get()))
       end
       daw.notify(track.name .. " ← " .. (daw.audio.label(track:get()) or "MIDI from every port"))
@@ -931,6 +979,46 @@ command("clip.stretch_mode", function(ctx)
   if mode then stretch_run(function() clip.stretch_mode = mode end) end
   daw.notify(clip.name .. " is stretched as " .. tostring(clip.stretch_mode))
 end, { desc = "How an audio clip is stretched: `clip.stretch_mode tonal` (held notes), `percussive` (drums, speech), `auto`", complete = { "auto", "tonal", "percussive" } })
+command("clip.warp", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips have warp markers", "warn") end
+  local word, beat = ctx.args[1] or "add", cursor.beat
+  local index = tonumber(ctx.args[2])
+  local function say(i)
+    local m = api.clip_get(clip.id).warp[i]
+    daw.notify(string.format("warp marker %d: %.3f s into the file, at %s", i, m.source, daw.time.format(m.beat)))
+  end
+  local i
+  if word == "add" then
+    if stretch_run(function() i = daw.stretch.warp_add(clip.id, index or beat) end) then say(i) end
+  elseif word == "remove" or word == "move" then
+    index = index or daw.stretch.warp_near(clip, beat)
+    if not index then return daw.notify(clip.name .. " has no warp markers", "warn") end
+    if word == "remove" then
+      if stretch_run(daw.stretch.warp_remove, clip.id, index) then daw.notify("warp marker " .. index .. " taken off") end
+    elseif stretch_run(function() i = daw.stretch.warp_move(clip.id, index, tonumber(ctx.args[3]) or beat) end) then
+      say(i)
+    end
+  elseif word == "snap" then
+    if stretch_run(daw.stretch.warp_snap, clip.id) then daw.notify(clip.name .. "'s warp markers are on the grid") end
+  elseif word == "clear" then
+    if stretch_run(function() clip.warp = {} end) then daw.notify(clip.name .. " has no warp markers now") end
+  else
+    daw.notify("clip.warp add, remove, move, snap or clear", "warn")
+  end
+end, { desc = "Warp markers: `clip.warp` pins the sound at the cursor; `clip.warp move` pulls the nearest marker to the cursor (`move 2`: marker 2, `move 2 8.5`: to beat 8.5); `clip.warp remove`, `snap` (all onto the grid), `clear`",
+  complete = { "add", "remove", "move", "snap", "clear" } })
+command("clip.formants", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips are shifted", "warn") end
+  local word = ctx.args[1]
+  local on = word == "on" or (word ~= "off" and not clip.formants)
+  if stretch_run(function() clip.formants = on end) then
+    daw.notify(clip.name .. (on and " keeps its formants when shifted" or " shifts its formants with its pitch"))
+  end
+end, { desc = "Keep an audio clip's formants when its pitch is shifted, so that a voice keeps its size: `clip.formants on`, `off`, or turn it over", complete = { "on", "off" } })
 command("clip.loop", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -1753,6 +1841,8 @@ amap("J", "clip.join", "Join the clip with the next one")
 amap("<CR>", "clip.edit", "Edit the clip's notes")
 amap("i", "clip.insert", "Enter notes here, in a new clip if there is none")
 amap("grc", "clip.rename", "Rename the clip")
+amap("gw", "clip.warp", "Put a warp marker on the audio clip at the cursor")
+amap("gW", "clip.warp remove", "Take off the clip's warp marker nearest the cursor")
 amap("L", "clip.move by=1", "Move the clip right")
 amap("H", "clip.move by=-1", "Move the clip left")
 amap("<A-l>", "clip.resize by=1", "Lengthen the clip")
@@ -1765,6 +1855,7 @@ amap("<leader>aw", "lane.write", "Write automation by moving things while playin
 amap("<leader>am", "automation", "The track's automation mode: read, touch, latch, write, off in turn")
 amap("]t", "take next", "The clip's next take")
 amap("[t", "take prev", "The clip's take before")
+amap("zT", "tempo.lane", "Show or hide the tempo curve under the ruler")
 amap("zt", "take.lanes", "Show the track's takes as lanes under its clips, or hide them")
 amap("]'", "marker.next", "The next marker or region", { motion = true })
 amap("['", "marker.prev", "The marker or region before", { motion = true })
@@ -1962,10 +2053,12 @@ local function chosen()
   return clip and #daw.frontend.chosen_notes(clip.id) > 0 and clip or nil
 end
 pmap("x", function()
-  local clip = chosen()
-  if clip then return daw.frontend.act.remove_chosen_notes(clip.id) end
-  keymap.normal("din")
-end, "Delete the note, or the notes chosen with the pointer")
+  local clip = roll:clip()
+  -- Controller moves chosen in the strip go with the chosen notes.
+  local moves = clip and daw.controls.remove(clip.id) or 0
+  if chosen() then return daw.frontend.act.remove_chosen_notes(clip.id) end
+  if moves == 0 then keymap.normal("din") end
+end, "Delete the note, or the notes and controller moves chosen with the pointer")
 pmap("gA", function()
   local clip = roll:clip()
   if clip then daw.frontend.act.select_all_notes(clip.id) end
@@ -1976,6 +2069,35 @@ command("notes.quantize", function(ctx)
   local n = daw.frontend.act.quantize_notes(clip.id, tonumber(ctx.args[1]) and tonumber(ctx.args[1]) / 100 or 1)
   daw.notify(string.format("%d note%s on the %g-beat grid", n, n == 1 and "" or "s", daw.opt.note_grid))
 end, { desc = "Quantize the piano roll's chosen notes, or all, to its grid: `notes.quantize [strength%]`" })
+pmap("E", "notes.list", "The clip's notes and controller moves as a list, to change in place")
+command("notes.list", function()
+  local clip = roll:clip()
+  if not clip then return daw.notify("open a clip in the piano roll first", "warn") end
+  daw.ui.open("eventlist", { title = "Events · " .. clip.name, width = 60, height = 24 })
+end, { desc = "List the piano roll's notes and controller moves, each cell changed in place (Enter), `x` deletes, `a` adds a move" })
+command("controls.line", function(ctx)
+  local clip = roll:clip()
+  if not clip then return daw.notify("open a clip in the piano roll first", "warn") end
+  local args = ctx.args
+  local kind, at = args[1], 2
+  local number
+  if kind == "cc" then number, at = tonumber(args[2]), 3 end
+  local from, to = tonumber(args[at]), tonumber(args[at + 1])
+  if not (kind == "cc" and number or kind == "bend" or kind == "pressure") or not from or not to then
+    return daw.notify("controls.line cc 74 0 127, controls.line bend -8192 8191, controls.line pressure 0 127", "warn")
+  end
+  -- From and to in the units the event list shows: seven-bit steps, or the wheel's -8192 to 8191.
+  local function height(v) return kind == "bend" and (v / 8192 + 1) / 2 or v / 127 end
+  local selection = keymap.selection()
+  local b0, b1 = 0, clip.length
+  if selection and daw.ui.focused == "pianoroll" and selection.kind ~= "line" then b0, b1 = selection.c0, selection.c1 end
+  -- The last step of the stretch reaches `to`.
+  b1 = math.max(b0, b1 - daw.opt.note_grid)
+  local made = daw.frontend.act.line_controls(clip.id, kind, number, b0, height(from), b1, height(to), false)
+  keymap.set_mode("n")
+  daw.notify(string.format("%d %s moves in a line", made, kind == "cc" and "CC " .. number or kind))
+end, { desc = "Draw a straight line of controller moves over the piano roll's selection, or its whole clip: "
+  .. "`controls.line cc 74 0 127`, `controls.line bend 0 8191`, `controls.line pressure 127 0`" })
 command("notes.step_input", function() daw.frontend.act.toggle_step_input() end,
   { desc = "Turn step input on or off: notes from a MIDI keyboard are entered at the piano roll's cursor while stopped" })
 pmap("D", function() keymap.normal("d$") end, "Delete to the end of the clip")

@@ -45,6 +45,14 @@ local idle_timer
 
 M.sources = sources
 
+-- What shows and what is being asked are each person's own: a seat has its
+-- suggestion, its request, its idle pause and what it is hearing.
+local audition_stop
+daw.seats.keep("complete",
+  function() return shown, request, idle_timer, audition_stop end,
+  function(s, r, i, a) shown, request, idle_timer, audition_stop = s, r, i, a end,
+  function() return nil, nil, nil, nil end)
+
 local function roll() return daw.ui.views.pianoroll end
 
 local function busy()
@@ -191,8 +199,6 @@ end
 
 -- Showing ---------------------------------------------------------------------
 
-local audition_stop
-
 local function changed()
   api.ui_redraw()
   daw.emit("complete.changed", { shown = shown ~= nil })
@@ -244,6 +250,8 @@ end
 function M.current()
   if not shown then return nil end
   if shown.trigger == "auto" and busy() then return nil end
+  -- Another seat may have edited the clip since: what shows is stale.
+  if stamp_of(shown.clip) ~= shown.stamp then return nil end
   return { items = shown.items, index = shown.index, item = shown.items[shown.index], clip = shown.clip }
 end
 

@@ -47,6 +47,20 @@ M.mode = "n"
 M.visual = nil      -- the open selection's fixed end: { kind, row, col, view }
 M.registers = registers
 
+-- Everything above but the mappings is each seat's own: two people can be
+-- half way through two commands, in two modes, with registers of their own.
+daw.seats.keep("keymap",
+  function()
+    return pending, count, register, op, awaiting, timer, hint_at, track, last_change, macro, last_macro,
+      registers, marks, jumps, M.mode, M.visual, M.last_visual, M.search_text
+  end,
+  function(...)
+    pending, count, register, op, awaiting, timer, hint_at, track, last_change, macro, last_macro,
+      registers, marks, jumps, M.mode, M.visual, M.last_visual, M.search_text = ...
+    M.registers = registers
+  end,
+  function() return {}, nil, nil, nil, nil, nil, nil, {}, nil, nil, nil, {}, {}, {}, "n", nil, nil, nil end)
+
 --- Split `gg<C-x>` into { "g", "g", "<C-x>" }, expanding `<leader>`.
 function M.parse(lhs)
   local keys = {}
@@ -854,5 +868,8 @@ daw.on("view.focused", function()
     M.set_mode("n")
   end
 end)
+
+-- A seat that closes leaves no key waiting to run in it.
+daw.on("seat.closing", function() reset() end)
 
 return setmetatable(M, { __call = function(_, ...) return M.set(...) end })

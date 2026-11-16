@@ -36,7 +36,7 @@ export component CanvasWindow inherits Window {
     in property <length> mono-size: 13px;
     out property <length> cell-width: probe.preferred-width / 20;
     out property <length> cell-height: probe.preferred-height;
-    // kind (0 down, 1 up, 2 move, 3 double), x, y, button (0 left, 1 right, 2 middle), ctrl, shift, alt
+    // kind (0 down, 1 up, 2 move with a button held, 3 double, 4 hover), x, y, button (0 left, 1 right, 2 middle), ctrl, shift, alt
     callback pointer(int, length, length, int, bool, bool, bool);
     callback wheel(length, length, length, length, bool, bool);
     callback key(string, bool, bool, bool);
@@ -127,7 +127,13 @@ export component CanvasWindow inherits Window {
         // drag moves too.
         property <bool> held;
         pointer-event(event) => {
-            keys.focus();
+            // Moving over the window with no button down is a hover.
+            if (event.kind == PointerEventKind.move && !self.held && !self.pressed) {
+                root.pointer(4, self.mouse-x, self.mouse-y, 0, false, false, false);
+            }
+            if (event.kind != PointerEventKind.move) {
+                keys.focus();
+            }
             if (event.kind == PointerEventKind.down) {
                 self.held = true;
                 root.pointer(0, self.mouse-x, self.mouse-y,
