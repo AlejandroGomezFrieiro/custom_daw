@@ -126,6 +126,7 @@ end, { desc = "Show the clip's pattern, seed and cycle length" })
 local amap = function(lhs, rhs, desc, opts)
   map(lhs, rhs, daw.util.merge(opts or {}, { view = "arrange", desc = desc }))
 end
+daw.keymap.group("<leader>t", "pattern", { view = "arrange" })
 amap("<leader>tt", "pattern.edit", "Edit the clip's pattern (a new clip if none)")
 amap("<leader>tn", function(ctx)
   -- Always a new clip: right after the one under the cursor, if any.

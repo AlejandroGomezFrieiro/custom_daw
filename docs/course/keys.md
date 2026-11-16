@@ -174,6 +174,8 @@ See [Harmony, completion and snippets](../harmony.md).
 | `ma` `'a` `''` | set mark a, go to it, back to before the jump |
 | `:delmarks a-d` `:delmarks!` | remove marks (letters, ranges); all lowercase ones |
 | `<C-o>` `<C-i>` | back, forward through jumps |
+| `g;` `g,` | back, forward through the places the project was edited |
+| `` `. `` `'.` | the place of the last edit |
 
 ## Play
 

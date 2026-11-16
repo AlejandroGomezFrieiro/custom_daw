@@ -149,22 +149,47 @@ return function(pick)
     local view = daw.ui.focused
     -- The line is laid out for the width the picker will have.
     local width = math.min(80, (api.ui_size()) - 4) - 5
-    local key_w = 14
-    local tag_w = 18
+    local key_w = 18
+    local tag_w = 16
     local desc_w = math.max(10, width - key_w - tag_w - 2)
     return {
       desc = "Every key that works in the focused view",
       title = "Keys · " .. tostring(view),
       empty = "No keys are mapped here.",
       items = function()
-        local out = {}
+        -- Ranked rather than alphabetical: what the view itself adds, then
+        -- what works everywhere; plain keys before motions, operators and
+        -- the rest; short keys before long ones.
+        local rank = { key = 1, operator = 2, motion = 3, object = 4, visual = 5, insert = 6 }
+        local out, seen = {}, {}
         for _, entry in ipairs(daw.keymap.all(view)) do
           local map = entry.map
           entry.human = daw.keymap.human(map.lhs)
           entry.desc = map.desc or (type(map.rhs) == "string" and map.rhs) or "(no description)"
           entry.tag = key_tag(entry)
-          out[#out + 1] = entry
+          -- Keys that do the same thing in the same place are one line.
+          local same = entry.tag .. "\t" .. entry.desc .. "\t" .. tostring(map.rhs)
+          local first = seen[same]
+          if first then
+            if not first.humans[entry.human] then
+              first.humans[entry.human] = true
+              first.human = first.human .. ", " .. entry.human
+            end
+          else
+            entry.humans = { [entry.human] = true }
+            seen[same] = entry
+            out[#out + 1] = entry
+          end
         end
+        table.sort(out, function(a, b)
+          local ga, gb = a.map.scope == "global" and 1 or 0, b.map.scope == "global" and 1 or 0
+          if ga ~= gb then return ga < gb end
+          if rank[a.kind] ~= rank[b.kind] then return (rank[a.kind] or 9) < (rank[b.kind] or 9) end
+          if #a.map.keys ~= #b.map.keys then return #a.map.keys < #b.map.keys end
+          local la, lb = a.map.lhs:match("^%a") and 0 or 1, b.map.lhs:match("^%a") and 0 or 1
+          if la ~= lb then return la < lb end
+          return a.map.lhs:lower() .. a.map.lhs < b.map.lhs:lower() .. b.map.lhs
+        end)
         return out
       end,
       format = function(e)

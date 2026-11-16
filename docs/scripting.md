@@ -132,6 +132,7 @@ daw.keymap.textobject("ip", function()               -- from the cursor to the p
 end, { view = "arrange", desc = "Up to the playhead" })
 
 daw.keymap.setreg(value, name)   daw.keymap.getreg(name)   daw.keymap.selection()
+daw.keymap.group("<leader>x", "mix checks")      -- the name the key hints give a prefix: `+mix checks`
 daw.keymap.feed("3jdd")          daw.keymap.normal("dic")  -- as typed; from inside a mapping
 daw.edit.arrange.yank(region)    daw.edit.arrange.paste(value)   daw.edit.roll.delete(clip, region)
 track:snapshot()                 daw.restore_track(snapshot, index)   -- with devices, clips, automation

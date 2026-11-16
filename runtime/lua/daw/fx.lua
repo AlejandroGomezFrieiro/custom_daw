@@ -678,6 +678,7 @@ function M.setup()
     get = function() return panel.row, 0 end,
     set = function(row) panel.row = row end,
     step = function() return 1 end,
+    rows = true,   -- a step is a row, not a stretch of time
   }
   local function xmap(lhs, fn, desc) daw.keymap.set(lhs, fn, { view = "devices", mode = "x", desc = desc }) end
   local function selected_devices()

@@ -1690,6 +1690,18 @@ command("marks", function()
   if #lines == 0 then lines[1] = "No marks. `ma` sets mark a at the cursor, `'a` goes back to it." end
   daw.ui.page("Marks", lines)
 end, { desc = "List the marks" })
+command("changes", function()
+  local lines = {}
+  local list = keymap.changes()
+  for i = #list, 1, -1 do
+    local pos = list[i]
+    local where = pos.beat and daw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track).name or "(track gone)")
+      or string.format("row %d  beat %g", pos[1], (pos[2] or 0) + 1)
+    lines[#lines + 1] = string.format("%3d  %s", #list - i + 1, where)
+  end
+  if #lines == 0 then lines[1] = "No changes yet in this view. `g;` goes to where the last edit was." end
+  daw.ui.page("Changes · " .. tostring(daw.ui.focused), lines)
+end, { desc = "List where the focused view's project edits happened, newest first; `g;` and `g,` walk them" })
 local function remove_marks(spec, all)
   local removed, err = keymap.delmarks(spec, all)
   if not removed then return daw.notify(err, "warn") end
@@ -1761,6 +1773,13 @@ command.alias("reg", "registers")
 -- lines and a note is a word. So `dw` deletes up to the next clip, `yy` yanks
 -- a track, `3>ic` nudges a clip three steps later, `.` does it again.
 
+
+-- The names the key hints give to prefixes that only lead to more keys.
+keymap.group("<leader>a", "automation")
+keymap.group("<leader>c", "clip")
+keymap.group("<leader>f", "find")
+keymap.group("gr", "set a value")
+
 local nx = { "n", "x" }
 local motion = { motion = true }
 local linewise = { motion = true, linewise = true }
@@ -1792,8 +1811,10 @@ map("@", function(ctx)
   end
 end, { mode = nx, char = true, repeatable = false, desc = "Play the keys in a register; `@@` the last one, `@:` the last command" })
 map("m", function(ctx) keymap.mark(ctx.char) end, { char = true, desc = "Set a mark at the cursor" })
-map("'", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark; `''` goes back" })
-map("`", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark" })
+map("'", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark; `''` goes back, `'.` to the last edit" })
+map("`", function(ctx) keymap.goto_mark(ctx.char) end, { motion = true, char = true, desc = "Go to a mark; `` `. `` goes to the last edit" })
+map("g;", function(ctx) keymap.change(ctx.count or 1) end, { desc = "Back to where the project was edited before" })
+map("g,", function(ctx) keymap.change(-(ctx.count or 1)) end, { desc = "Forward again through the edits" })
 map("<C-o>", function(ctx) keymap.jump(ctx.count or 1) end, { desc = "Back to where the cursor jumped from" })
 map("<C-i>", function(ctx) keymap.jump(-(ctx.count or 1)) end, { desc = "Forward again" })
 map("v", function() keymap.visual_start("v") end, { mode = nx, desc = "Select a stretch of time" })
