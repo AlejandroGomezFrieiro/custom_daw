@@ -24,6 +24,7 @@ ordinary mapping made in `runtime/lua/daw/defaults.lua` with the calls under
 | `:delmarks a b c-e`, `:delmarks!` | remove marks, as in Vim (`:delm` for short; Tab completes the marks set); with the bang every lowercase mark | the same |
 | `g'`, `g"`, `gx` | put a marker (a name on the ruler) at the cursor; choose one from a list; remove the one at the cursor, or right click its name under the ruler and choose Remove | |
 | `Ctrl-o` `Ctrl-i` | back and forward through the places jumped from | the same |
+| `g;` `g,`, `` `. ``, `'.`, `:changes` | back and forward through the places where the project was edited (`3g;` three edits back); the place of the last edit; list them | the same, each view keeping its own |
 | `gP` | to the playhead | |
 
 **Operators** act on what a motion covers, on a text object, or on a
@@ -427,7 +428,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | Keys | Command | Lists | Enter |
 | --- | --- | --- | --- |
 | `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description | runs it; `Ctrl-e` types it on the command line instead, for arguments |
-| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode | runs it |
+| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`) | runs it |
 | `,ft` | `pick.tracks` | tracks | moves the cursor to the track |
 | `,fl` | `pick.clips` | every clip, with its track | goes to it |
 | `,fa` | `pick.devices` | devices and plugins that can be added | adds it to the cursor's track |

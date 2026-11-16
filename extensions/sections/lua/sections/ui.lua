@@ -246,6 +246,7 @@ keymap.textobject("is", function(ctx) return section_region(ctx, false) end,
 keymap.textobject("as", function(ctx) return section_region(ctx, true) end,
   { view = "arrange", desc = "The section widened to whole bars, on every track" })
 
+keymap.group("<leader>S", "sections", { view = "arrange" })
 amap("<leader>Sa", "section.add", "Add a section at the cursor")
 amap("<leader>Sr", "section.rename", "Rename the section")
 amap("<leader>Sx", "section.remove", "Remove the section marker, keeping the timeline")

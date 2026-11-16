@@ -123,6 +123,7 @@ end
 
 local last_seed
 local op = M.operator
+keymap.group("gz", "music ops")
 op("gzh", "Humanize timing and velocity", ALL, function(notes, amount, info)
   if info.index == 1 then
     last_seed = seed()
