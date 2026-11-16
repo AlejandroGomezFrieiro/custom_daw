@@ -26,6 +26,7 @@ cargo run -- -l examples/demo.lua demo.wav           # no UI: build the song and
 cargo run -p daw-gui -- -e 'dofile("examples/demo.lua")'   # the graphical frontend
 cargo test                                           # the end-to-end suite
 cargo run -- --output UR22 --input UR22              # open these audio devices (a part of the name is enough)
+cargo run -- doctor                                  # check the audio, plugins and environment, and print a report
 ```
 
 The audio devices are the system's default output and input until others are
@@ -35,6 +36,16 @@ with `--output` and `--input`. A choice made in the program belongs to the
 machine, not to a project: it is kept in `~/.local/state/daw/audio.json` and
 opened at the next start; when a remembered device is not connected, the
 default is opened instead and the program says so.
+
+Every project opened or saved is remembered, newest first, twenty at most, in
+`~/.local/state/daw/recent.json`; the list belongs to the machine, and a file
+that is gone drops out of it. `:recent` chooses from it (`,fR`), `:recent 2`
+opens the second, `:recent.clear` forgets them, and the window's File menu has
+them under "Open recent", asking about unsaved changes as "Open" does. With
+`daw.opt.reopen_last = true` a start with no project named opens the newest
+one; if it will not open, that is a message and the program starts anyway.
+Nothing is remembered under `--clean` or in a script. In Lua:
+`daw.recent.list()` gives `{ path, name, time }` for each.
 
 The suite hosts real plugins in all three formats. The dev shell provides them
 (LSP Plugins and Surge XT, through `DAW_TEST_PLUGINS`); outside it those tests
@@ -151,6 +162,7 @@ returns to normal mode.
 | `A`, `,at` `,ax` | add a volume automation point at the cursor; turn the lane off or on (read or bypass), clear it |
 | `,al`, `,aa` `,aA` | choose what to automate (volume, pan, any device parameter) and show its lane; show or hide the track's lanes as rows; show every track's lanes |
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
+| `gC` `gI`, `zt` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes |
 | `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
 | `Tab` `gt`, `Ctrl-w c`, `Ctrl-w o` | next view; close this panel; close every panel |
@@ -207,6 +219,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | `,fn` | `pick.messages` | earlier messages, newest first | shows the whole message |
 | `,ff` | `pick.files` | projects and audio files under the working directory | opens the project, or adds the audio at the cursor |
 | `,fo` | `pick.options` | options and their values | switches a true/false option, or asks for a new value |
+| `,fR` | `recent` | the recent projects, with where they are and when each was last opened | opens it |
 | `,fp` | `pick` | every picker | opens it |
 | `,f.` | `pick.resume` | the last picker, with what was typed | |
 
@@ -436,6 +449,9 @@ daw.transport.loop_start, daw.transport.loop_end = 0, 16
 daw.transport.loop_enabled = true
 bass:play_note("C2", 100, 200)     -- sound a note now, outside the timeline
 daw.transport.record()             -- record armed tracks; see Input and recording
+daw.transport.punch_start, daw.transport.punch_end = 16, 32   -- record only there
+daw.transport.punch_enabled = true
+daw.opt.count_in = 1               -- a bar counted before a take; transport.counting is what is left
 ```
 
 **Automation.** `daw.lanes` shows lanes as rows of the arrange view:
@@ -602,6 +618,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/undotree` | a window on the undo tree, named checkpoints, A/B listening |
 | `extensions/rpp` | opening and writing REAPER projects |
 | `extensions/tutor` | a course for first-time users, inside the program |
+| `extensions/doctor` | a guided check of the real hardware (audio, MIDI, recording, plugins), with a written report: `:doctor`, `daw doctor` |
 | `crates/daw-mcp` | a Model Context Protocol server in front of the control socket |
 
 Each has a README of its own. Where a plugin needed something only the core
@@ -678,6 +695,13 @@ daw ctl eval 'daw.api.ui_snapshot(100, 30)'   # the screen as text
 ```
 
 One JSON object per line: `{"id":1,"method":"eval","params":["..."]}`.
+
+`daw doctor` is a script of its own kind: it runs the checks of
+[extensions/doctor](extensions/doctor) that need nobody, with the sound device
+open (unlike other scripts, which get the null backend unless told), and prints
+the report. It takes the program's audio options, `--seconds`, `--plugin` and
+`--only`, and finds the extension in the source tree beside the binary or in
+`$DAW_HOME`.
 
 ## How it is put together
 
@@ -952,6 +976,39 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   own before it. The first time round counts if it began at the loop's start
   or before; the last if it got at least half way. With the loop off a take
   is one continuous clip. See [Takes](#takes).
+- **Count-in.** `daw.opt.count_in` is how many bars the metronome counts
+  before a take begun with the song stopped (0, the default, for none):
+  `:countin 1`, `:countin off`, or `:countin` alone to turn it off and on;
+  `gC` does the same. The record button, `R` and `daw.transport.record()`
+  count in, and so does playing with record mode on; punching in by hand
+  while playing does not. The clicks are at the tempo and in the signature
+  at the playhead, a click on every beat of the signature and a higher one
+  on each bar's first, whether or not the metronome is on, and heard as late
+  as the song is. The playhead stays where it is while counting, and the
+  song and the take start on the frame after the count, so what is recorded
+  lines up exactly as without one. `daw.transport.counting` is the number of
+  beats still to count (0 when none is under way); the status line reads
+  `count 3` and so does the window's clock, with the record button blinking
+  on the beats. Stop, or `Esc`, during the count calls it off: no take,
+  nothing recorded, record mode off.
+- **Punch in and out.** With `daw.transport.punch_enabled` on, a take is
+  recorded only from `punch_start` to `punch_end` (beats) while the song
+  plays on either side: capturing starts and stops on the frame at those
+  points, and the clip made covers exactly the range (a note held across the
+  punch out is cut there). Started inside the range, it records from the
+  playhead to the punch out; started after it, it records nothing and says
+  so. With the loop on as well, each time through the range is a take of one
+  clip over it, as each time round the loop is without punching (the first
+  time counts if it began at the punch in or before, the last if it got at
+  least half way; a range reaching past the loop's end is cut there). `:punch`
+  turns it on and off, `:punch 5 8` punches over bars 5 to 8 (as
+  `:transport.loop` counts them), and `:punch selection` over the visual
+  selection, or the loop when there is none; the first `:punch` with no range
+  set does the same. `gI` toggles it, and on a selection punches over it. The
+  range is saved with the project, like the loop, and is not undoable. It is
+  red on the ruler of both frontends, under the loop in the window, where
+  its ends are dragged like the loop's; the timeline's menu has the entries.
+  There is no pre-roll: the song plays from wherever the playhead is.
 - **Files** go in a `media` directory beside the project file. A project that
   has never been saved records into `~/.local/share/daw/recordings`; saving it
   links or copies those files into `media` beside it and points the clips
@@ -1032,6 +1089,13 @@ daw --headless --listen /tmp/daw.sock &
 daw-gui --socket /tmp/daw.sock    # watch and drive a kernel that is already running
 ```
 
+The window remembers how it was left, for the machine, in
+`~/.local/state/daw/window.json`: its size, the timeline's zoom, the height
+of the rows and of the piano roll, and whether the mixer shows. It writes it
+when a value has stood for a second and when it closes, through
+`daw.frontend.layout_get()` and `layout_set(table)` in the kernel, so a window
+attached to a running kernel finds it too.
+
 It keeps no project state. Thirty times a second it calls
 `daw.frontend.state(revision)` over the socket, and everything the user does
 goes back as commands, so it and a terminal UI or a script can drive the same
@@ -1066,17 +1130,18 @@ does wherever it is.
 | --- | --- |
 | Timeline | click puts the cursor and lets go of the chosen clips; double click makes an empty one-bar MIDI clip; drag across empty lanes selects a stretch of time on those tracks (then `Delete`, or right click to delete, copy, loop or mute it); a drag with the right button draws a box that chooses the clips it touches (Shift adds them, Ctrl turns them over); the middle button held pans; right click (on release, where the button was not dragged) for a new clip, paste or a new track |
 | Clip | click chooses it; Ctrl and a click adds it to the chosen clips or takes it out; Shift and a click takes in the clips between it and the last one chosen (on one track by time, across tracks the rectangle). Dragging a chosen clip moves all of them, keeping their places, also across tracks; Ctrl drops copies; they move by whole grid steps, so a clip off the grid keeps its distance from it; Shift leaves the grid. Either edge trims the clip, and the same edge of every chosen clip: the start without moving what plays (an audio clip starts further into its file; a MIDI clip hides the notes before its new start, which come back when the edge is dragged out again); Alt and an edge slips what plays inside instead. On an audio clip the handles at the top corners drag its fades, drawn over it, and its top line drags its gain (Shift finely), which the waveform's height follows. Double click opens its notes; right click to rename, split at the pointer or at the edit cursor, glue the chosen clips, repeat, mute or delete. One gesture is one undo step. Two or more chosen clips are visual mode's selection, so `d`, `x`, `y`, `>`, `gc`, `J` (glue) and the rest act on them, `S` splits them at the cursor, `Esc` lets go; one clip chosen with a click is the clip under the cursor |
-| Ruler | click puts the edit cursor and the playhead; a drag in its top half loops the stretch dragged over (in the bottom half it moves them to where it ends); drag the loop's edges to change it; double click turns the loop on or off. Bars are numbered by the tempo map; a flag marks each tempo change (`96`) and signature change (`6/8`): drag it to move it, double click it to type a value, right click it to remove it |
+| Ruler | click puts the edit cursor and the playhead; a drag in its top half loops the stretch dragged over (in the bottom half it moves them to where it ends); drag the loop's edges to change it; double click turns the loop on or off. The punch range is the red line under the loop's band (grey while punching is off): drag its ends to move them, Shift off the grid; the timeline's menu sets it from the selection or the loop and turns it on and off. Bars are numbered by the tempo map; a flag marks each tempo change (`96`) and signature change (`6/8`): drag it to move it, double click it to type a value, right click it to remove it |
 | Track header | click selects; double click renames; drag up or down to reorder, into a group when dropped among its tracks or under its header, out of it when dropped outside; drag the bottom edge to make the track taller or shorter (double click it for the height of the others; the height is kept with the track); press M, S or R and sweep across the others to set them all as the first was set; Shift on the fader moves it finely, double click puts it at 0 dB; right click (on release) for a colour, duplicate, bounce to audio, a new track below, delete |
 | Piano roll | the mouse works as in REAPER's MIDI editor. Left button on empty grid: press where a note should start and drag as far as it should last (a click gives the note length shown in the toolbar, which drawing or stretching a note sets). Shift leaves the grid while drawing, moving or stretching; the magnet in the toolbar turns snapping off altogether. A click on a note chooses it, Shift or Ctrl click adds it or takes it out; dragging a note moves it and the others chosen (Ctrl drops copies), dragging either end changes where they all start or stop, and the status line shows the note's name, place and length meanwhile. The right button dragged, or the left with Ctrl, chooses the notes its box touches (Shift adds, Ctrl toggles); a right click removes a note, or on empty grid opens a menu (choose all, let go, delete, quantize, snap); a double click removes a note; Alt and a drag erases every note crossed. The keyboard sounds a key under a click or a drag, and a right drag over it chooses the notes in that range of pitches. The wheel scrolls, with Shift sideways; Ctrl and the wheel zoom in time and Alt the rows, where the pointer is; the middle button pans. `Ctrl-a` (in the window), `gA` chooses every note, `x` or `Delete` removes the chosen, `Esc` lets go. The strip underneath shows velocities, set by dragging across the bars (only the chosen notes, if any are chosen), or a controller chosen from its dropdown (pitch wheel, modulation, expression, pedal), drawn with the pointer held down and cleared with a right click. The toolbar holds the clip, the grid, snap, the note length, Quantize (`:notes.quantize`, the chosen notes or all), Step (`:notes.step_input`: with the transport stopped, notes played on a MIDI keyboard are entered at the cursor, chords together, and the cursor steps on), zoom, a window of its own and close. It also says how many notes are chosen and where. The ruler counts bars and beats; a click there moves the playhead. Notes of the track's other clips that sound at the same time show faintly behind |
-| Recording | the record button starts a take on the armed tracks (the `R` on a track). A track's input button (the microphone; blue when an input is chosen, and what it takes in, such as `UR22mkII · 1/2`, is written under the fader) opens a menu of its audio inputs, MIDI ports and MIDI channels; a bar along its foot shows the level arriving there, armed or not, and the loudspeaker beside it turns monitoring on. With no audio input a track records MIDI. With no track armed the record button arms the selected one and says so. Press it again, or stop, to end the take; what is being recorded is drawn in red as it grows |
+| Recording | the record button starts a take on the armed tracks (the `R` on a track). A track's input button (the microphone; blue when an input is chosen, and what it takes in, such as `UR22mkII · 1/2`, is written under the fader) opens a menu of its audio inputs, MIDI ports and MIDI channels; a bar along its foot shows the level arriving there, armed or not, and the loudspeaker beside it turns monitoring on. With no audio input a track records MIDI. With no track armed the record button arms the selected one and says so. Press it again, or stop, to end the take; what is being recorded is drawn in red as it grows (punched, only over the punch range). With a count-in the clock reads `count 4`, `count 3`… and the button blinks on the beats until the take starts; the timeline's menu turns the count-in on and off |
+| Take lanes | a track's menu, a clip's Takes menu or `zt` shows its takes as lanes under its clips. Drag across lane k: take k plays over that stretch (on the grid, Shift off it), the clips cut at its ends and pieces that then play the same take joined back, one undo step; a click on lane k gives the piece under the pointer take k; right click to hide them |
 | Groups | a track's menu has "New group with this track…", "Move into a group…" and "Take out of its group". A group's members stand under it, a step in and in its colour, and sound through it; the triangle beside its name folds them away and brings them back |
 | Routing | above the selected track's devices: "Output" chooses the track it plays into, "+ Send" a track its sound is sent to as well; each send has a level to drag, `pre` to take it ahead of the fader, and a cross to take it away |
 | Templates | with the templates extension: a track's menu saves it (or, on a group, the whole group) and saves its devices as a chain; `Track` → "From a template…" makes one again, and "Add devices from a template…" puts a saved chain on the track |
 | Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
-| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a window of its own; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
-| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC, the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
+| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a window of its own; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
+| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
 | Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it |
 | Wheel | scrolls; with Shift sideways; with Ctrl it zooms in time where the pointer is, in the timeline and in the piano roll, and over the track headers makes every track taller or shorter; with Alt it makes the tracks (or the piano roll's rows) taller and shorter |
@@ -1331,7 +1396,7 @@ clip:set_controls({
   { start = 4, type = "program", program = 12, bank = 258 },
 })
 track:midi({ type = "cc", number = 1, value = 0.3 })           -- now, to the track's devices
-daw.on("midi.in", function(e) end)       -- everything that arrives at a port, for scripts
+daw.on("midi.in", function(e) end)       -- everything that arrives at a port, for scripts; `e.port` names the port
 daw.midi.ump({ type = "cc", number = 74, value = 1 })   -- as a MIDI 2.0 packet: two words
 daw.midi.inject_ump({ 0x40903c00, 0xc0000000 })         -- and a packet, as if from a port
 ```
@@ -1391,14 +1456,46 @@ says when it is done. The render plays a snapshot of the project taken when it
 starts, so editing meanwhile changes the project and not the file. The file
 is written as `.mix.flac.part` beside the target and renamed when complete, so
 a render that fails or is cancelled leaves nothing under the name. Formats
-that need an encoder this program does not have (MP3, Ogg Vorbis, Opus, AAC)
-are refused by name before anything is rendered; `daw.api.render_formats()`
-lists what can be written (`{ name, extensions, bits }`). The command takes
+that need an encoder this program does not have (AAC, AIFF, WMA) are refused
+by name before anything is rendered; `daw.api.render_formats()` lists what
+can be written (`{ name, extensions, bits, lossy, available, why }`).
+
+MP3 (`.mp3`), Ogg Vorbis (`.ogg`) and Opus (`.opus`) are made by `ffmpeg`,
+when it is installed: no encoder for them is linked into the program. The
+song is rendered to a hidden 32-bit float WAV beside the target (no dither;
+at the sample rate asked for), and ffmpeg encodes that into a `.part` file
+that is renamed when complete; the WAV is removed whether the encode succeeds,
+fails or is cancelled. The encode runs on the render's thread too: the status
+line says `encoding mix.mp3 61%` (and the window "Encoding") instead of
+sitting at 100%, `Esc` or `:render.cancel` stops ffmpeg as well, and
+`render.done`, `render.failed` or `render.cancelled` come once, for the final
+file (`render.progress` and `render_status()` carry `stage`, `"rendering"` or
+`"encoding"`). Opus holds only 48 kHz and the usual lower rates, so ffmpeg
+resamples to 48 kHz; MP3 above 48 kHz is resampled to 48 kHz too. The project's
+name is the file's title tag. `ffmpeg` is the program found on the PATH; set
+`daw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an
+ffmpeg built without the encoder, `:render mix.mp3` fails before anything is
+rendered, saying so and naming the formats that need nothing (WAV and FLAC),
+and `render_formats()` gives `available = false` and `why`; the window's
+dialog then does not offer the format.
+
+`quality=low|medium|high|best` (high by default) means the same in each
+format; `bitrate=192` (kbit/s) takes its place when you want a number:
+
+| quality | MP3 (LAME) | Ogg Vorbis | Opus |
+|---|---|---|---|
+| low | VBR `-q:a 6` (about 115 kbit/s) | `-q:a 3` | 64 kbit/s |
+| medium | VBR `-q:a 4` (about 165) | `-q:a 5` | 96 kbit/s |
+| high | VBR `-q:a 2` (about 190) | `-q:a 7` | 128 kbit/s |
+| best | constant 320 kbit/s | `-q:a 9` | 192 kbit/s |
+
+A bitrate is constant for MP3 and the target for Opus and Vorbis. `bits=` and
+`dither=` do not apply to these formats. The command takes
 (and `<Tab>` completes) `range=song|loop|selection`, or `start=` and `end=` in
 beats; `tail=2` (seconds after the end, for reverbs; 1 by default);
 `rate=44100`; `bits=16|24|32` (32 is float, WAV only; 24 by default);
 `channels=mono|stereo` (mono mixes the sides at half level each);
-`dither=true`; `normalize=-1` (peak, dB); `loudness=-14` (integrated LUFS,
+`quality=high` or `bitrate=192` (MP3, Ogg and Opus); `dither=true`; `normalize=-1` (peak, dB); `loudness=-14` (integrated LUFS,
 measured as BS.1770; with `normalize` too, the peak level is a ceiling);
 `tracks=selected` or `tracks=3,5` for a stem of those tracks;
 `master=false` to leave out the master's devices, fader and pan;
@@ -1409,14 +1506,14 @@ and encodes from there.
 
 `daw.render(path, opts)` takes the same as a table (`range`, `start`, `end`,
 `tail`, `sample_rate` or `rate`, `bits`, `channels` (1, 2, "mono",
-"stereo"), `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
+"stereo"), `quality`, `bitrate`, `ffmpeg`, `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
 `master`, `threads`) and waits for the file, returning `{ path, frames,
 seconds, sample_rate, peak, gain, loudness, format, bits, channels, ... }`;
 with `background = true` it returns at once and the events follow:
-`render.progress` (`{ path, fraction, seconds }`, a few times a second),
+`render.progress` (`{ path, fraction, seconds, stage }`, a few times a second),
 then `render.done` (the table above), `render.failed` (`{ path, error }`) or
 `render.cancelled`. `daw.render_status()` gives the running render (`{ path,
-fraction, seconds, cancelling, queued }`) and `daw.render_cancel()` stops it;
+fraction, seconds, cancelling, stage, queued }`) and `daw.render_cancel()` stops it;
 the window finds the same in `daw.frontend.state().modal.render`.
 `daw.render_ranges.chorus = function() return 32, 48 end` adds a named range.
 `daw.render_stems(dir, opts)` writes one file per track, which add up to the
@@ -1527,8 +1624,13 @@ the project, as the project does, so it opens with them.
 
 **For scripts.** `daw.wait(ms)` lets time pass with timers firing and events
 delivered, which `daw.api.sleep` does not; a script run with `-l` is otherwise
-one long turn. `tests/*.lua` and `extensions/*/tests.lua` are run by the
-suite, each given the suite's helpers.
+one long turn. `daw.api.project_shelve()` puts the open project aside whole
+(undo tree, playhead, changed flag) and opens an empty one to work in;
+`daw.api.project_unshelve()` closes that and brings the first back exactly as
+it was, and `daw.api.project_shelved()` says whether one is aside. It is for
+tools that need tracks of their own without touching the person's work (the
+[doctor](extensions/doctor) does). `tests/*.lua` and `extensions/*/tests.lua`
+are run by the suite, each given the suite's helpers.
 
 ## Takes
 
@@ -1546,6 +1648,7 @@ in a copy.
 | `:take.remove`, `:take.remove 1` | throw away the playing take, or the one numbered |
 | `:take.keep` | throw away every take but the one that plays |
 | `:take.explode` | every other take as a clip on a new track of its own |
+| `zt`, `:take.lanes` | show the track's takes as lanes under its clips, or hide them |
 
 **Comping**, choosing the best of each take: cut the clip where the choice
 changes (`s`) and choose a take for each piece. Every piece keeps all the
@@ -1554,9 +1657,42 @@ start that is trimmed or slipped moves every take alike. With a stretch of
 time selected, `:take 2` cuts at its ends and plays the second take there.
 In the window the clip's menu has a Takes entry with all of this.
 
+**Take lanes.** `zt` (or `:take.lanes`, the Takes entry of a clip's menu,
+or the track's menu in the window) shows a track's takes as lanes under its
+clips: lane k holds take k of every clip of the track that has takes, each
+over the clip's own stretch of time, so the pieces of a comp line up into
+lanes. What plays is lit, the rest dimmed; each piece shows its take's
+waveform or notes and its name. After recording round the loop nothing
+opens by itself, but `zt` shows every time round at once. In the window,
+**swiping** comps: press on lane k and drag across a stretch of time, and on
+release take k plays over exactly that stretch, the clips being cut at its
+ends where needed, as one undo step; a click on lane k chooses take k for the
+piece under the pointer. The ends land on the grid unless Shift is held, and
+a drag shorter than a grid step is a click. Pieces side by side that then
+play the same take are joined back into one where that is exact, so swiping
+back and forth leaves no slivers: for sound, when every take is lined up
+across the join (the same file and gain, the second piece starting in each
+take where the first ends), the clips have the same name and mute and there
+is no fade at the join; for notes, when the takes' names match and no note
+is hidden past either piece's edge. A note cut in two by an earlier cut stays
+two notes after the join, as it played. In the terminal the lanes are a line
+each under the track, read-only: the playing take is lit and named, and
+comping is `:take 2` over a selection. Which tracks show take lanes is kept
+for the session, like automation lanes shown as rows, not in the project.
+
 In scripts: `daw.takes.count(clip)`, `daw.takes.select(clip, n)`,
 `daw.takes.step(clip, 1)`, `daw.takes.new(clip)`, `daw.takes.remove(clip, n)`,
-`daw.takes.keep(clip)`, `daw.takes.explode(clip)`. They are kept in
+`daw.takes.keep(clip)`, `daw.takes.explode(clip)`,
+`daw.takes.comp(track, n, from, to)` (take n over beats `from` to `to`,
+then the joining above), `daw.takes.choose_at(track, n, beat)`,
+`daw.takes.join_pieces(track, from, to)`, `daw.takes.content(clip, n)`
+(what take n plays: file, offset and gain, or notes), and
+`daw.takes.show_lanes(track, on)`, `daw.takes.lane_count(track)`. The
+window's gestures are `daw.frontend.act.take_lanes(track)`,
+`act.comp(track, n, from, to, free)` and `act.take_click(track, n, beat)`;
+`daw.frontend.take_preview(clip, n, points)` draws a take that is not
+playing, from `daw.api.media_peaks(file, offset, seconds, points)`, the
+waveform of any stretch of a file. They are kept in
 `clip.meta.takes` (`runtime/lua/daw/takes.lua` says how); the files of takes
 that are not playing count as the project's files, are moved into `media`
 when it is first saved, and are found again when they go missing.
@@ -1615,13 +1751,15 @@ port a message came through is not told apart. In scripts:
   a curve (tempo changes are set by command, by script and on the window's
   ruler).
 - Side-chain inputs and plugins with more than one stereo pair in or out.
-- Punch recording between two points, and a count-in.
-- Takes drawn as lanes under a clip, to comp by swiping across them: takes
-  are chosen piece by piece from a clip's menu or with `]t`.
+- Pre-roll before a punch: the song plays from wherever the playhead is.
+- Comping with the mouse in the terminal: its take lanes are to look at, and
+  `:take 2` over a selection comps there.
 - MIDI output to hardware, MIDI-CI, and an editor for controller moves.
 - Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
-- Rendering to MP3, Ogg Vorbis or Opus: there is no encoder for them in pure
-  Rust of a quality worth shipping, and no C library is linked for them.
+- Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
+  for them in pure Rust of a quality worth shipping, and no C library is
+  linked for them; they need ffmpeg installed (see Rendering). Nor does the
+  file carry more than the title tag (no artist, album or cover).
 - Attaching the terminal UI to a running instance. It runs in the same process
   as the kernel; the graphical frontend is the one that attaches.
 - Painted windows for the undo tree (a tree of nodes to click) and the mix
@@ -1631,4 +1769,5 @@ port a message came through is not told apart. In scripts:
 - Braille in windows of views drawn in cells: the bundled font has none, so
   curves there are drawn with line characters.
 - Devices written in Lua.
+- The window's position on the screen is not remembered, only its size: the window manager decides where it goes.
 - A Nix package: for now the binary is built with `cargo` inside the dev shell.

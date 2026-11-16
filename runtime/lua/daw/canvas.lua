@@ -199,7 +199,7 @@ M.Painter = Painter
 function M.open(name, opts)
   local view = daw.ui.views[name]
   if not (view and view.paint) then error("no view `" .. tostring(name) .. "` that paints", 2) end
-  M.open_views[name] = { title = opts and opts.title or name, width = opts and opts.width or 900, height = opts and opts.height or 520 }
+  M.open_views[name] = { title = opts and opts.title or view.title or name, width = opts and opts.width or 900, height = opts and opts.height or 520 }
   if daw.ui.focused ~= name and not daw.ui.float then
     daw.ui.focused = name
     daw.emit("view.focused", { view = name })

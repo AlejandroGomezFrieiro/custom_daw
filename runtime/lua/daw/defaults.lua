@@ -2459,6 +2459,7 @@ for _, entry in ipairs(pick_keys) do
   end, { desc = desc .. ", in a picker" })
   map("<leader>f" .. key, "pick." .. name, { desc = desc })
 end
+map("<leader>fR", "recent", { desc = "Open a recent project" })
 map("<leader>f.", "pick.resume", { desc = "The last picker again" })
 map("<leader><leader>", "pick.commands", { desc = "Run a command" })
 

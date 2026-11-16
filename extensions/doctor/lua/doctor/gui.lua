@@ -1,0 +1,111 @@
+-- The doctor in a graphical frontend: the same page painted in pixels, with
+-- buttons for what the keys do (see runtime/lua/daw/canvas.lua).
+local api = daw.api
+local util = daw.util
+local doctor = require("doctor")
+local view = require("doctor.panel")
+
+local c = require("daw.canvas").palette
+local PAD, ROW, TOP = 16, 30, 52
+
+local hits = {}
+
+local function hit(x, y, w, h, down)
+  hits[#hits + 1] = { x = x, y = y, w = w, h = h, down = down }
+end
+
+local function text_width(text, size) return api.str_width(text) * (size or 12) * 0.58 end
+
+--- A button, drawn and remembered for the pointer. Returns where the next goes.
+local function button(g, x, y, label, action, opts)
+  opts = opts or {}
+  local w = text_width(label) + 22
+  g:rect(x, y, w, 26, { fill = opts.fill or c.control, radius = 5 })
+  g:text(x + w / 2, y + 6, label, { color = opts.color or c.text, align = "center", width = w })
+  hit(x, y, w, 26, action)
+  return x + w + 8
+end
+
+local colours = { ok = c.play_on, warn = c.warn, fail = c.error, skip = c.text_3 }
+
+function view:paint(g, ctx)
+  local w, h = ctx.width, ctx.height
+  local model = view.model()
+  hits = {}
+  g:rect(0, 0, w, h, { fill = c.surface })
+  g:rect(0, 0, w, TOP, { fill = c.panel })
+  local x = PAD
+  if model.running then
+    x = button(g, x, 13, "Skip this check", doctor.skip)
+    button(g, x, 13, "Stop", doctor.cancel, { fill = c.error, color = c.surface })
+  else
+    x = button(g, x, 13, "Run all", function() doctor.start() end, { fill = c.select, color = c.surface })
+    x = button(g, x, 13, "Those that need nobody", function() doctor.start({ unattended = true }) end)
+  end
+  button(g, w - PAD - 70, 13, "Close", function() daw.cmd("doctor.close") end)
+
+  -- The checks.
+  local y = TOP + 10
+  for _, row in ipairs(model.rows) do
+    local chosen = row.index == view.row
+    if chosen then g:rect(PAD - 8, y, w - 2 * PAD + 16, ROW - 2, { fill = c.panel, radius = 5 }) end
+    g:rect(PAD, y + 9, 10, 10, { fill = row.running and c.select or colours[row.mark] or c.text_off, radius = 5 })
+    g:text(PAD + 22, y + 7, string.format("%d. %s", row.index, row.check.name), { color = c.text, bold = chosen, width = 220 })
+    g:text(PAD + 250, y + 7, row.summary, { color = row.mark == "fail" and c.error or c.text_2, width = w - PAD * 2 - 250 })
+    local index = row.index
+    hit(PAD - 8, y, w - 2 * PAD + 16, ROW - 2, function()
+      view.row = index
+      if not model.running then doctor.start({ only = { index } }) end
+    end)
+    y = y + ROW
+  end
+
+  -- What the check under the cursor needs from you.
+  local row = model.rows[view.row]
+  if row and row.check.help then
+    local lines = view.wrap(row.check.help, math.floor((w - 2 * PAD) / 7))
+    for i, line in ipairs(lines) do g:text(PAD, y + 8 + (i - 1) * 16, line, { color = c.text_2, size = 11 }) end
+  end
+
+  -- The bottom: the question, what is being done, or where the report is.
+  local by = h - 118
+  g:rect(0, by, w, 118, { fill = c.panel })
+  if model.meters and #model.meters > 0 then
+    for ch, level in ipairs(model.meters) do
+      local mx = PAD + (ch - 1) * 120
+      local db = level > 1e-6 and 20 * math.log10(level) or -120
+      local at = util.clamp((db + 60) / 60, 0, 1)
+      g:rect(mx, by + 12, 100, 6, { fill = c.well, radius = 3 })
+      g:rect(mx, by + 12, math.max(2, 100 * at), 6, { fill = at > 0.9 and c.error or c.meter_low, radius = 3 })
+      g:text(mx, by + 22, "input " .. ch, { color = c.text_2, size = 10 })
+    end
+  end
+  if model.prompt then
+    for i, line in ipairs(view.wrap(model.prompt.question, math.floor((w - 2 * PAD) / 8))) do
+      if i <= 2 then g:text(PAD, by + 40 + (i - 1) * 18, line, { color = c.text, size = 13, bold = true }) end
+    end
+    local bx = PAD
+    for _, choice in ipairs(model.prompt.choices) do
+      local key = choice[1]
+      bx = button(g, bx, by + 82, choice[2] .. "  (" .. key .. ")", function() doctor.answer(key) end, { fill = c.control_hover })
+    end
+  elseif model.running then
+    g:text(PAD, by + 40, model.say or "working", { color = c.text, size = 13, width = w - 2 * PAD })
+  else
+    if model.report then g:text(PAD, by + 40, "report: " .. model.report, { color = c.text, width = w - 2 * PAD }) end
+    if model.problem then g:text(PAD, by + 62, model.problem, { color = c.error, width = w - 2 * PAD }) end
+  end
+end
+
+function view:pointer(e)
+  if e.kind ~= "down" or e.button ~= "left" then return end
+  for index = #hits, 1, -1 do
+    local on = hits[index]
+    if e.x >= on.x and e.x < on.x + on.w and e.y >= on.y and e.y < on.y + on.h then
+      on.down(e)
+      return
+    end
+  end
+end
+
+return view

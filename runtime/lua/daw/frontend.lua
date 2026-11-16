@@ -141,7 +141,7 @@ local function modal()
     focused = ui.focused, mixer = ui.visible("mixer"),
     float = ui.float and (ui.float.title or ui.float.name) or nil,
     selection = keymap.selection(),
-    -- A render in the background: { path, fraction, seconds, cancelling }.
+    -- A render in the background: { path, fraction, seconds, cancelling, stage }.
     render = daw.api.render_status(),
     -- What `:learn` is waiting to bind a controller to, in words.
     learning = daw.learn and daw.learn.learning and daw.learn.target_name(daw.learn.learning) or nil,
@@ -515,7 +515,8 @@ end
 
 --- What the render dialog starts from: the file a render would go to, the
 --- ranges that can be rendered (`{ name, label }`: the song, the loop, the
---- selection, every region), and the engine's sample rate.
+--- selection, every region), the engine's sample rate, and which lossy
+--- formats ffmpeg can make here (`formats`: `{ mp3 = true, ogg = false, ... }`).
 function M.render_dialog()
   local t = api.transport_get()
   local ranges = { { name = "song", label = "The whole song" } }
@@ -530,7 +531,11 @@ function M.render_dialog()
   -- A project with no file yet renders to where a file was last chosen, or home.
   local path = require("daw.render").default_path()
   if not path:find("/", 1, true) then path = (daw.state.pick_dir or os.getenv("HOME") or ".") .. "/" .. path end
-  return { path = path, ranges = ranges, sample_rate = api.engine_get().sample_rate }
+  local formats = {}
+  for _, f in ipairs(api.render_formats(daw.opt.ffmpeg)) do
+    if f.lossy then formats[f.extensions[1]] = f.available end
+  end
+  return { path = path, ranges = ranges, sample_rate = api.engine_get().sample_rate, formats = formats }
 end
 
 --- The menu of a track's input: the choices of `daw.audio.choices` under
@@ -543,6 +548,38 @@ function M.input_menu(track)
     list[#list + 1] = { label = choice.label, checked = choice.checked }
   end
   return out
+end
+
+--- The recent projects the File menu lists: `{ label, path }` each.
+function M.recent_menu()
+  return daw.recent.menu()
+end
+
+local function layout_file() return M.layout_path or api.env().state_dir .. "/window.json" end
+
+--- How the window was left (its size, the zoom, the heights of rows and of
+--- the piano roll, whether the mixer shows): a table, empty when nothing
+--- was kept. It belongs to the machine, so it is kept here, where a window
+--- attached to this kernel finds it too. (`M.layout_path` names another
+--- file, for tests.)
+function M.layout_get()
+  local handle = io.open(layout_file(), "rb")
+  if not handle then return {} end
+  local text = handle:read("*a")
+  handle:close()
+  local ok, data = pcall(api.json_decode, text)
+  return ok and type(data) == "table" and data or {}
+end
+
+--- Keep the window's layout (see `layout_get`).
+function M.layout_set(layout)
+  local file = layout_file()
+  os.execute("mkdir -p '" .. (file:match("^(.*)/[^/]*$") or "."):gsub("'", "'\\''") .. "'")
+  local handle = io.open(file .. ".tmp", "wb")
+  if not handle then return end
+  handle:write(api.json_encode(layout, true))
+  handle:close()
+  os.rename(file .. ".tmp", file)
 end
 
 --- The menu where the audio devices are chosen: `info` (lines to show),
@@ -1356,8 +1393,8 @@ function A.hold(track, target, device, param, on)
   api.automation_hold(track, target, device, param, on)
 end
 
---- Leave the project: `what` is "quit", "new" (an empty project) or
---- "open" (another, chosen from a list). `how` is "save" to save its
+--- Leave the project: `what` is "quit", "new" (an empty project),
+--- "open" (another, chosen from a list) or "open:<path>" (that one). `how` is "save" to save its
 --- changes first (asking where, for a project with no file yet),
 --- "discard" to throw them away, or "go" when there are none.
 function A.leave(how, what)
@@ -1367,6 +1404,8 @@ function A.leave(how, what)
       api.quit(0)
     elseif what == "new" then
       daw.project.new()
+    elseif what:match("^open:") then
+      daw.recent.open(what:sub(6))
     else
       daw.commands.exec("open")
     end
@@ -1392,7 +1431,8 @@ function A.lane_rows(track)
 end
 
 --- Render as the window's dialog says: `o.path`, `o.range` (a name from
---- `render_dialog`), `o.format` ("wav" or "flac"), `o.bits`, `o.tail`
+--- `render_dialog`), `o.format` ("wav", "flac", "mp3", "ogg" or "opus"), `o.quality` (for those
+--- three: "low" to "best"), `o.bits`, `o.tail`
 --- seconds, `o.normalize` dB or nil, `o.dither`, `o.mono`, and `o.stems`
 --- for a file per track in a directory named after the path. It runs in
 --- the background: the state's `modal.render` says how far it is.
@@ -1401,8 +1441,9 @@ function A.render(o)
     tail = tonumber(o.tail), bits = tonumber(o.bits), dither = o.dither and true or nil,
     normalize = tonumber(o.normalize), channels = o.mono and 1 or nil, background = true,
   }
-  local format = o.format == "flac" and "flac" or "wav"
+  local format = ({ flac = "flac", mp3 = "mp3", ogg = "ogg", opus = "opus" })[o.format] or "wav"
   if format == "flac" and opts.bits == 32 then opts.bits = 24 end
+  if format ~= "wav" and format ~= "flac" then opts.bits, opts.dither, opts.quality = nil, nil, o.quality end
   local range = o.range or "song"
   local region = range:match("^region:(%d+)$")
   if region then
@@ -1414,7 +1455,8 @@ function A.render(o)
   end
   local path = tostring(o.path or ""):gsub("^~", os.getenv("HOME") or "~")
   if path == "" then error("render: name a file to write", 0) end
-  local stem = path:gsub("%.[Ww][Aa][Vv]$", ""):gsub("%.[Ff][Ll][Aa][Cc]$", "")
+  local stem = path:gsub("%.[Ww][Aa][Vv]$", ""):gsub("%.[Ff][Ll][Aa][Cc]$", ""):gsub("%.[Mm][Pp]3$", "")
+    :gsub("%.[Oo][Gg][Gg]$", ""):gsub("%.[Oo][Pp][Uu][Ss]$", "")
   if o.stems then
     opts.format = format
     local files = daw.render_stems(stem .. " stems", opts)
