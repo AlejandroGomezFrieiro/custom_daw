@@ -957,6 +957,7 @@ function M.code_actions(location)
   else
     fixes = daw.diagnostic.actions(location.uri)
   end
+  local seat = daw.seats and daw.seats.current
   M.actions_at(location, function(more)
     local items = {}
     for _, a in ipairs(fixes) do
@@ -969,11 +970,16 @@ function M.code_actions(location)
       end }
     end
     if #items == 0 then return daw.notify("no fixes here") end
-    daw.pick({
-      title = "Code actions",
-      items = items,
-      on_choose = function(item) if item then item.run() end end,
-    })
+    local function show()
+      daw.pick({
+        title = "Code actions",
+        items = items,
+        on_choose = function(item) if item then item.run() end end,
+      })
+    end
+    -- The answers may come in another person's turn: the picker is theirs who asked.
+    if seat and seat ~= daw.seats.current then return daw.seats.within(seat, show) end
+    show()
   end)
 end
 
