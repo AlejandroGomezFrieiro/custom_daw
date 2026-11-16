@@ -2,7 +2,7 @@
 
 # Lesson 2: Moving around, and why keys change meaning
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 2`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 2`.*
 
 In the arrange view a track is a line and time runs along it, a beat to a grid step. A clip on a track is like a word on a line. The keys that move the cursor are called motions, and they come in families: small steps, clips, bars, the ends of things, other tracks. A number typed first repeats a motion.
 

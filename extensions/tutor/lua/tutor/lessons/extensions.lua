@@ -7,7 +7,7 @@ return {
   id = "extensions",
   title = "The bundled extensions",
   intro = [[
-Much of what the DAW can do comes in extensions: directories of Lua in
+Much of what paw can do comes in extensions: directories of Lua in
 `extensions/` beside the program, which use the same `daw` module as your
 `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with
 `:tutor.try` and tries one thing in it; to have one always, link its directory

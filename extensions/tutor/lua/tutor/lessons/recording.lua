@@ -81,7 +81,7 @@ mode.]],
       keys = { "r", "j", "r" },
       check = function(_, look) return not look.track("Voice").armed and look.track("Keys").armed end,
       done = "Keys is armed and has no audio input, so it records MIDI. Play your keyboard: you hear the synth.",
-      hint = "`:midi.inputs` lists the MIDI ports the DAW sees.",
+      hint = "`:midi.inputs` lists the MIDI ports paw sees.",
     },
     {
       say = "Press `gs` to go back to the start, `R` to record, play a few notes on your MIDI keyboard, then `R` and `<Space>` to stop.",

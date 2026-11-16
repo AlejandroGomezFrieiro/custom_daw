@@ -46,6 +46,7 @@ pub enum Outcome {
 }
 
 const SOUNDS: &[&str] = &["wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga"];
+const MIDI: &[&str] = &["mid", "midi", "smf", "kar"];
 
 /// The filters a dialog offers for a kind of file, as (label, patterns).
 /// Both cases of each ending are listed, for patterns are case-sensitive.
@@ -60,9 +61,15 @@ pub fn filters(files: &str) -> Vec<(&'static str, Vec<String>)> {
     };
     let mut out = match files {
         "project" => vec![("Projects", both(&["json"]))],
-        // What `open` takes: a project, or a sound file on a new track.
-        "open" => vec![("Projects", both(&["json"])), ("Sound files", both(SOUNDS))],
-        "sound" => vec![("Sound files", both(SOUNDS))],
+        // What `open` takes: a project, a MIDI file as a new project, or a
+        // sound file on a new track.
+        "open" => vec![
+            ("Projects", both(&["json"])),
+            ("MIDI files", both(MIDI)),
+            ("Sound files", both(SOUNDS)),
+        ],
+        // What `import` takes: a sound file, or a MIDI file's tracks.
+        "sound" => vec![("Sound and MIDI files", both(&[SOUNDS, MIDI].concat())), ("MIDI files", both(MIDI))],
         _ if files.starts_with("render:") => {
             let endings: Vec<&str> = files["render:".len()..].split(',').collect();
             vec![("Sound files", both(&endings))]
@@ -157,7 +164,7 @@ mod tests {
         assert_eq!(filters("project")[0].1, ["*.json", "*.JSON"]);
         assert_eq!(filters("render:wav,mp3")[0].1, ["*.wav", "*.WAV", "*.mp3", "*.MP3"]);
         let sounds = &filters("sound")[0].1;
-        for ending in ["wav", "aiff", "aif", "flac", "mp3", "ogg"] {
+        for ending in ["wav", "aiff", "aif", "flac", "mp3", "ogg", "mid", "midi"] {
             assert!(sounds.contains(&format!("*.{ending}")), "{ending}");
             assert!(sounds.contains(&format!("*.{}", ending.to_uppercase())), "{ending}");
         }

@@ -365,7 +365,7 @@ local function guarded(rhs)
     return rhs(...)
   end
 end
-local READ = { gh = true, gp = true, zi = true, zo = true, ["<Esc>"] = true, ["<leader>n"] = true, ZZ = true, gd = true, gR = true, gT = true }
+local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, ["<leader>n"] = true, ZZ = true, gd = true, gR = true, gT = true }
 local function nmap(lhs, rhs, desc, opts)
   if not (opts and opts.motion) and not READ[lhs] and not lhs:match("^g%d$") then rhs = guarded(rhs) end
   map(lhs, rhs, util.merge({ view = "notation", desc = desc }, opts))
@@ -573,14 +573,17 @@ nmap("gR", function() daw.cmd("notation.raw") end, "Raw view: every note as play
 nmap("gT", function() daw.cmd("notation.tracks") end, "Every track over this stretch, to read, or this clip alone")
 nmap("zi", function()
   view.zoom = math.min(4, view.zoom + 0.5)
-  view.gui_zoom = math.min(3, (view.gui_zoom or 1) * 1.25)
-  api.ui_redraw()
-end, "Spread the notes out")
+  view.gui.zoom(1)
+end, "Spread the notes out; on the engraved page, a larger staff")
 nmap("zo", function()
   view.zoom = math.max(0.5, view.zoom - 0.5)
-  view.gui_zoom = math.max(0.5, (view.gui_zoom or 1) / 1.25)
+  view.gui.zoom(-1)
+end, "Draw the notes closer; on the engraved page, a smaller staff")
+nmap("zg", function()
+  view.galley = not view.galley
+  daw.notify(view.galley and "one long system, scrolled sideways (galley)" or "systems wrapped down the page")
   api.ui_redraw()
-end, "Draw the notes closer")
+end, "The engraved page as one long system (galley), or wrapped")
 -- Escape stays: a Vim hand presses it to be sure it is in normal mode, and
 -- the keys after it must not land in the arrange view. Counts, pending
 -- operators and selections are dropped by the keymap before this runs.
@@ -594,7 +597,7 @@ nmap("<Esc>", function()
   escaped_at = now
 end, "Stay in the view (,n leaves)", { repeatable = false })
 nmap("<leader>n", function() daw.ui.focus("arrange") end, "Back to the arrange view")
-nmap("ZZ", "view.close", "Close the notation")
+nmap("ZZ", "close", "Close the notation")
 
 -- On a selection.
 local function vmap(lhs, fn, desc)
@@ -671,6 +674,17 @@ imap("#", function() view:inflect_last(1) end, "Sharpen the note just entered")
 imap("-", function() view:inflect_last(-1) end, "Flatten the note just entered")
 imap("'", function() view:octave_last(1) end, "The note just entered an octave up")
 imap(",", function() view:octave_last(-1) end, "The note just entered an octave down")
+for interval = 2, 8 do
+  local name = ({ "", "second", "third", "fourth", "fifth", "sixth", "seventh", "octave" })[interval]
+  imap("<A-" .. interval .. ">", function() view:add_interval(interval) end, "Add a " .. name .. " above the note just entered, to its chord")
+end
+imap("~", function() view:tie_last() end, "Hold the note just entered on by the chosen value (tied), and step on")
+imap("t", function()
+  view.triplets = not view.triplets
+  daw.notify(view.triplets and "entering triplets" or "entering plain values")
+  api.ui_redraw()
+end, "Enter triplets, or plain values again")
+imap("R", function() view:repeat_chord() end, "Enter the last chord again and step on")
 imap("<Left>", function() view:step_on(-1) end, "Step back")
 imap("<Right>", function() view:step_on(1) end, "Step on")
 imap("<Up>", function() view:move(0, 1) end, "Up a line or space")
@@ -705,14 +719,67 @@ view.grid = {
   end,
 }
 
+-- Where the view shows things with an address, so that diagnostics, hover
+-- and fixes (`]d` `[d`, `gK`, `,ca`) work on what is under its cursor.
+if daw.ui.locator and daw.address then
+  local A = daw.address
+  daw.ui.locator("notation", {
+    at = function()
+      local clip = view:clip()
+      if not clip then return nil end
+      local note = view:note()
+      if note and note.id then return A.location(A.note(clip.id, note.id)) end
+      local pitch = view:cursor_pitch()
+      return A.location(A.clip(clip.id), { time = { view.beat, view.beat }, pitch = { pitch, pitch } })
+    end,
+    position = function() return { view.beat, 127 - view:cursor_pitch() } end,
+    place = function(location, anywhere)
+      local p = A.parse(location.uri)
+      if not p or not p.clip or (p.kind ~= "clip" and p.kind ~= "note") then return nil end
+      if p.clip ~= view.clip_id then return anywhere and { 0 } or nil end
+      local first
+      local ids = p.kind == "note" and { p.note } or (location.selector and location.selector.notes) or {}
+      for _, id in ipairs(ids) do
+        local n = A.find_note(p.clip, id)
+        if n and (not first or n.start < first.start or (n.start == first.start and n.pitch > first.pitch)) then first = n end
+      end
+      if first then return { first.start, 127 - first.pitch } end
+      local t = location.selector and location.selector.time
+      return { t and t[1] or 0, 0 }
+    end,
+    go = function(location)
+      local p = A.parse(location.uri)
+      if p.clip ~= view.clip_id then view:edit(daw.clip(p.clip)) end
+      local at = daw.ui.locators.notation.place(location)
+      if at and at[2] and at[2] > 0 then
+        local pitch = 127 - at[2]
+        view:set(model.spell(pitch, (view.key())).step, at[1])
+      else
+        view:set(nil, at and at[1] or 0)
+      end
+    end,
+  })
+  nmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic here", { jump = true })
+  nmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic here", { jump = true })
+  if daw.lsp then
+    nmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
+    nmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes and actions for the note")
+  end
+end
+
 if daw.ui.keybar then
   daw.ui.keybar.set("notation", "n", {
     { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" },
     { "+", "longer" }, { "-", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
   })
   daw.ui.keybar.set("notation", "i", {
-    { "c", "C..B", "a-g" }, { "C", "chord", "A-G" }, { "5", "value", "2-7" }, { ".", "dot" }, { "r", "rest" },
-    { "+", "sharp" }, { "-", "flat" }, { "'", "8va" }, { ",", "8vb" }, { "<BS>", "back" },
+    { "c", "C..B", "a-g" }, { "C", "chord", "A-G" }, { "<A-3>", "+3rd", "Alt-2…8" }, { "5", "value", "2-7" }, { ".", "dot" },
+    { "t", "triplets" }, { "~", "tie" }, { "R", "again" }, { "r", "rest" }, { "+", "sharp" }, { "-", "flat" },
+    { "'", "8va" }, { ",", "8vb" }, { "<BS>", "back" },
+  })
+  daw.ui.keybar.set("notation", "x", {
+    { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" }, { "}", "8va" }, { "{", "8vb" },
+    { "g>", "accent" }, { "(", "slur" }, { "+", "longer" }, { "-", "shorter" }, { "<Esc>", "done" },
   })
 end
 

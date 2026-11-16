@@ -97,6 +97,16 @@ function view.segments(width)
       or width >= 80 and (verb:sub(1, 6) .. " " .. pct .. " · Esc") or (verb:sub(1, 6) .. " " .. pct)
     add(left, 0, 3, { { text, "StatusRec" } })
   end
+  -- Diagnostics: how many of each, for the piano roll's clip or the project.
+  local diagnostics = daw.diagnostic and daw.diagnostic.status()
+  if diagnostics then add(left, 0, 3, diagnostics) end
+  -- What is under the pointer, or what it would do there, in what room is left.
+  local pointer = daw.mouse.hint_text()
+  local room = width - 70
+  if pointer and room >= 12 then
+    if api.str_width(pointer) > room then pointer = util.fit(pointer, room) end
+    add(left, 0, 3, { { pointer, "StatusHint" } })
+  end
   -- 8: the grid.
   add(left, 100, 9, { { "grid " .. view.grid_text(daw.opt.grid), "StatusDim" } })
   -- 9: how much is selected, in visual mode.

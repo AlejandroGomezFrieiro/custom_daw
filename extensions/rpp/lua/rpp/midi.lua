@@ -4,6 +4,7 @@
 -- Both give notes in ticks from the start of the source, plus counts of what
 -- is not a note, so an import can say what it left out.
 local fmt = require("rpp.format")
+local smf = require("daw.midifile")
 local M = {}
 
 --- Pair note-ons with note-offs. `events` is a list of
@@ -118,126 +119,38 @@ function M.event_lines(notes, length)
   return lines
 end
 
--- Standard MIDI Files --------------------------------------------------------------
+-- Standard MIDI Files: read and written by the program's own reader
+-- (runtime/lua/daw/midifile.lua), in the shape a source's events have here.
 
-local function be(data, pos, n)
-  local v = 0
-  for i = 0, n - 1 do v = v * 256 + data:byte(pos + i) end
-  return v
-end
+local CONTROL_NAMES = { cc = "CC", bend = "pitch bend", pressure = "channel pressure", program = "program change" }
 
 --- Read a Standard MIDI File. Returns { ppq, notes, length, other, tempo }
 --- with every track's notes merged, ticks counted from the start, and the
 --- first tempo found (bpm), or nil and a reason.
 function M.read_smf(data)
-  if #data < 14 or data:sub(1, 4) ~= "MThd" then return nil, "not a MIDI file" end
-  local ntracks, division = be(data, 11, 2), be(data, 13, 2)
-  if division >= 32768 then return nil, "SMPTE time division is not supported" end
-  local out = { ppq = division, notes = {}, length = 0, other = {}, muted = 0 }
-  local function count(what) out.other[what] = (out.other[what] or 0) + 1 end
-  local events = {}
-  local pos = 9 + be(data, 5, 4)
-  for _ = 1, ntracks do
-    if pos + 8 > #data + 1 then break end
-    local id, size = data:sub(pos, pos + 3), be(data, pos + 4, 4)
-    local p, stop = pos + 8, pos + 8 + size
-    pos = stop
-    if id == "MTrk" then
-      local tick, running = 0, nil
-      while p < stop do
-        local delta = 0
-        repeat
-          local b = data:byte(p)
-          p = p + 1
-          delta = delta * 128 + b % 128
-        until b < 128 or p >= stop
-        tick = tick + delta
-        local status = data:byte(p)
-        if status >= 0x80 then p = p + 1 else status = running end
-        if not status then break end
-        if status == 0xFF then
-          local kind = data:byte(p)
-          p = p + 1
-          local len = 0
-          repeat
-            local b = data:byte(p)
-            p = p + 1
-            len = len * 128 + b % 128
-          until b < 128
-          if kind == 0x51 and len == 3 and not out.tempo then
-            out.tempo = 60000000 / be(data, p, 3)
-          elseif kind ~= 0x2F and kind ~= 0x58 and kind ~= 0x03 and kind ~= 0x51 then
-            count("text and other meta events")
-          end
-          p = p + len
-        elseif status == 0xF0 or status == 0xF7 then
-          local len = 0
-          repeat
-            local b = data:byte(p)
-            p = p + 1
-            len = len * 128 + b % 128
-          until b < 128
-          p = p + len
-          count("sysex and text events")
-        else
-          running = status
-          local kind = math.floor(status / 16)
-          local d1 = data:byte(p) or 0
-          local d2 = 0
-          if kind == 12 or kind == 13 then
-            p = p + 1
-          else
-            d2 = data:byte(p + 1) or 0
-            p = p + 2
-          end
-          if kind == 8 or kind == 9 then
-            events[#events + 1] = { tick, status, d1, d2 }
-          else
-            count(KIND_NAMES[kind] or "other events")
-          end
-        end
-      end
-      out.length = math.max(out.length, tick)
+  local file, why = smf.parse(data)
+  if not file then return nil, why end
+  local out = { ppq = file.ppq, notes = {}, length = file.length, other = {}, muted = 0 }
+  local function count(what, n) out.other[what] = (out.other[what] or 0) + (n or 1) end
+  for _, track in ipairs(file.tracks) do
+    for _, n in ipairs(track.notes) do
+      out.notes[#out.notes + 1] = { tick = n.tick, length = n.length, pitch = n.pitch, velocity = n.velocity, channel = n.channel }
     end
+    for _, c in ipairs(track.controls) do count(c.key and "aftertouch" or CONTROL_NAMES[c.type]) end
   end
-  table.sort(events, function(a, b) return a[1] < b[1] end)
-  local open
-  out.notes, open = pair(events, out.length)
-  if open > 0 then out.other["notes without an end (held to the end)"] = open end
+  for what, n in pairs(file.skipped) do count(what, n) end
+  if #file.markers > 0 then count("markers", #file.markers) end
+  table.sort(out.notes, function(a, b)
+    if a.tick ~= b.tick then return a.tick < b.tick end
+    return a.pitch < b.pitch
+  end)
+  out.tempo = file.tempos[1] and file.tempos[1].bpm
   return out
 end
 
 --- Write a Standard MIDI File (format 0) with these notes in ticks.
 function M.write_smf(notes, ppq, bpm)
-  local function vlq(n)
-    local bytes = { string.char(n % 128) }
-    n = math.floor(n / 128)
-    while n > 0 do
-      table.insert(bytes, 1, string.char(128 + n % 128))
-      n = math.floor(n / 128)
-    end
-    return table.concat(bytes)
-  end
-  local events = {}
-  for _, n in ipairs(notes) do
-    events[#events + 1] = { n.tick, 1, 0x90 + (n.channel or 0), n.pitch, n.velocity }
-    events[#events + 1] = { n.tick + n.length, 0, 0x80 + (n.channel or 0), n.pitch, 0 }
-  end
-  table.sort(events, function(a, b)
-    if a[1] ~= b[1] then return a[1] < b[1] end
-    return a[2] < b[2]
-  end)
-  local us = math.floor(60000000 / (bpm or 120) + 0.5)
-  local body = { "\0\255\81\3" .. string.char(math.floor(us / 65536), math.floor(us / 256) % 256, us % 256) }
-  local tick = 0
-  for _, e in ipairs(events) do
-    body[#body + 1] = vlq(e[1] - tick) .. string.char(e[3], e[4], e[5])
-    tick = e[1]
-  end
-  body[#body + 1] = "\0\255\47\0"
-  local track = table.concat(body)
-  local function u32(n) return string.char(math.floor(n / 16777216) % 256, math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256) end
-  return "MThd" .. u32(6) .. "\0\0\0\1" .. string.char(math.floor(ppq / 256), ppq % 256) .. "MTrk" .. u32(#track) .. track
+  return smf.encode({ format = 0, ppq = ppq, tempos = { { tick = 0, bpm = bpm or 120 } }, tracks = { { notes = notes } } })
 end
 
 return M

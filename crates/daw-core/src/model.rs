@@ -42,6 +42,9 @@ pub struct Project {
     /// [`set_tempo_map`](Project::set_tempo_map) whenever they change.
     #[serde(skip)]
     map: Arc<TempoMap>,
+    /// Where clips launched from slots start, unless a slot says otherwise.
+    #[serde(default, skip_serializing_if = "Quantize::is_bar")]
+    pub launch_quantize: Quantize,
     pub master: Arc<Track>,
     pub tracks: Vec<Arc<Track>>,
     /// Free-form data for extensions, saved with the project.
@@ -60,6 +63,7 @@ impl Default for Project {
             tempo_changes: Vec::new(),
             sig_changes: Vec::new(),
             map: Arc::new(TempoMap::default()),
+            launch_quantize: Quantize::Bar,
             master: Arc::new(Track {
                 name: "Master".into(),
                 ..Track::new(MASTER_ID)
@@ -116,6 +120,90 @@ pub struct Track {
     /// its automation while the song plays, and whether its lanes play.
     #[serde(default, skip_serializing_if = "AutoMode::is_read")]
     pub automation: AutoMode,
+    /// Clips kept apart from the timeline, to be launched while the song
+    /// plays (see `session/launcher.rs`), in order of their rows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<SlotClip>,
+}
+
+/// A clip in one of a track's slots. It starts at 0 and repeats every
+/// `length` beats for as long as it plays.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SlotClip {
+    /// The row it is in, from 0: the scene it belongs to.
+    pub row: u32,
+    pub clip: Arc<Clip>,
+    /// Where it starts when launched, in place of the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantize: Option<Quantize>,
+    #[serde(default, skip_serializing_if = "LaunchMode::is_trigger")]
+    pub mode: LaunchMode,
+    /// Launched while another clip of the track plays, it takes over
+    /// where that one had got to in its loop.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub legato: bool,
+}
+
+/// The boundaries a launch waits for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Quantize {
+    #[serde(rename = "off")]
+    Off,
+    #[serde(rename = "1/16")]
+    Sixteenth,
+    #[serde(rename = "1/8")]
+    Eighth,
+    #[serde(rename = "1/4")]
+    Quarter,
+    /// The signature's beat: an eighth in 6/8.
+    #[serde(rename = "beat")]
+    Beat,
+    #[default]
+    #[serde(rename = "bar")]
+    Bar,
+    #[serde(rename = "2bars")]
+    TwoBars,
+    #[serde(rename = "4bars")]
+    FourBars,
+}
+
+impl Quantize {
+    fn is_bar(&self) -> bool {
+        *self == Quantize::Bar
+    }
+
+    pub fn engine(self) -> daw_engine::launch::Quantize {
+        use daw_engine::launch::Quantize as Q;
+        match self {
+            Quantize::Off => Q::Off,
+            Quantize::Sixteenth => Q::Grid(0.25),
+            Quantize::Eighth => Q::Grid(0.5),
+            Quantize::Quarter => Q::Grid(1.0),
+            Quantize::Beat => Q::Beat,
+            Quantize::Bar => Q::Bars(1),
+            Quantize::TwoBars => Q::Bars(2),
+            Quantize::FourBars => Q::Bars(4),
+        }
+    }
+}
+
+/// What pressing and letting go of a slot's button do.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LaunchMode {
+    /// Pressing launches it, again from its start if it plays.
+    #[default]
+    Trigger,
+    /// It plays while held: letting go stops it.
+    Gate,
+    /// Pressing launches it, and pressing again stops it.
+    Toggle,
+}
+
+impl LaunchMode {
+    fn is_trigger(&self) -> bool {
+        *self == LaunchMode::Trigger
+    }
 }
 
 /// How a track treats its automation.
@@ -171,7 +259,7 @@ pub struct MidiInput {
 }
 
 /// MIDI to one output port, by its name, on a channel or on each
-/// message's own.
+/// message's own, in a form for ports that take no MIDI 2.0.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MidiOutput {
     /// The port's name as `daw.midi.outputs()` gives it.
@@ -179,6 +267,46 @@ pub struct MidiOutput {
     /// From 1 to 16, or `None` for the channel each message has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<u8>,
+    #[serde(default, skip_serializing_if = "OutForm::is_auto")]
+    pub form: OutForm,
+    /// The member channels of an MPE zone, 1 to 15; `None` for 15.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub members: Option<u8>,
+}
+
+/// What a MIDI output sends where the port takes no MIDI 2.0 (see
+/// `daw_engine::midi_form`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutForm {
+    /// MIDI 2.0 where the port takes it, else plain MIDI 1.0.
+    #[default]
+    Auto,
+    /// MIDI 1.0 as each message has it.
+    Plain,
+    /// MIDI Polyphonic Expression: a channel to each note.
+    Mpe,
+    /// Control changes 0 to 31 in fourteen bits.
+    Cc14,
+}
+
+impl OutForm {
+    pub fn is_auto(&self) -> bool {
+        *self == OutForm::Auto
+    }
+}
+
+impl MidiOutput {
+    /// The form as the engine takes it.
+    pub fn engine_form(&self) -> daw_engine::midi_form::Form {
+        use daw_engine::midi_form::Form;
+        match self.form {
+            OutForm::Auto => Form::Auto,
+            OutForm::Plain => Form::Plain,
+            OutForm::Cc14 => Form::Cc14,
+            OutForm::Mpe => Form::Mpe(self.members.unwrap_or(15)),
+        }
+    }
 }
 
 impl Track {
@@ -204,6 +332,7 @@ impl Track {
             midi_output: None,
             height: None,
             automation: AutoMode::Read,
+            slots: Vec::new(),
         }
     }
 
@@ -343,6 +472,16 @@ pub struct Clip {
     /// `stretch`. Recordings know theirs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_tempo: Option<f64>,
+    /// Warp markers of an audio clip, in the order of their moments of the
+    /// file: each part of the file between two is stretched on its own
+    /// (see `warp.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warp: Vec<WarpMarker>,
+    /// An audio clip shifted in pitch keeps its formants (the shape of its
+    /// spectrum, which says what vowel is sung), so that a voice does not
+    /// sound smaller or larger.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub formants: bool,
     /// The clip repeats what it plays from `loop_start` for `loop_length`
     /// beats, over its whole length.
     #[serde(default, rename = "loop", skip_serializing_if = "is_false")]
@@ -377,6 +516,15 @@ pub enum Timebase {
 
 pub use crate::stretch::Mode as StretchMode;
 
+/// A warp marker: the moment `source` of a clip's file plays where its
+/// moment `target` would without the markers, both in seconds of the file,
+/// the clip's stretch then applied to both.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WarpMarker {
+    pub source: f64,
+    pub target: f64,
+}
+
 fn one() -> f64 {
     1.0
 }
@@ -390,12 +538,6 @@ fn is_auto(mode: &StretchMode) -> bool {
 }
 
 impl Clip {
-    /// Whether what an audio clip plays is made apart, stretched or shifted.
-    pub fn is_stretched(&self) -> bool {
-        matches!(self.content, ClipContent::Audio { .. })
-            && (self.stretch != 1.0 || self.pitch != 0.0)
-    }
-
     /// The beats a looped clip repeats, if it loops.
     pub fn repeat(&self) -> Option<(f64, f64)> {
         let length = self.loop_length.filter(|l| *l > 0.0)?;
@@ -612,10 +754,42 @@ pub struct Note {
     /// note through edits, unlike data kept beside the clip's note list.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub meta: Map<String, Value>,
+    /// What names the note within its clip for as long as it lives, however
+    /// it is moved or changed (`daw://clip/7/note/41`). 0 until the session
+    /// gives it one, which it does to every note that has none, or shares
+    /// one with a note before it, before the edit is played or kept.
+    #[serde(default, skip_serializing_if = "unnamed")]
+    pub id: u64,
 }
 
 fn default_velocity() -> u8 {
     100
+}
+
+fn unnamed(id: &u64) -> bool {
+    *id == 0
+}
+
+/// Give every note of a list that has no id, or the id of a note before it,
+/// the next free one. Returns whether any changed. The same notes are always
+/// given the same ids, so a state written without them (an older file, a
+/// step of the undo history) comes back with the ids it had.
+pub fn name_notes(notes: &mut [Note]) -> bool {
+    let mut seen = std::collections::HashSet::with_capacity(notes.len());
+    let unnamed = notes.iter().any(|n| n.id == 0 || !seen.insert(n.id));
+    if !unnamed {
+        return false;
+    }
+    let mut next = notes.iter().map(|n| n.id).max().unwrap_or(0) + 1;
+    seen.clear();
+    for note in notes.iter_mut() {
+        if note.id == 0 || !seen.insert(note.id) {
+            note.id = next;
+            seen.insert(next);
+            next += 1;
+        }
+    }
+    true
 }
 
 /// Automation of one of a track's settings, or of a parameter of one of its devices.
@@ -629,6 +803,70 @@ pub struct Lane {
     /// joined by straight lines; before the first point and after the last
     /// the nearest value holds.
     pub points: Vec<(f64, f64)>,
+    /// How the curve goes from a point to the next where it does not go in
+    /// a straight line, by the beat of the point it leaves.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shapes: Vec<Segment>,
+}
+
+/// The shape of the stretch of a lane from one point to the next.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Segment {
+    /// The beat of the point the stretch leaves from.
+    pub beat: f64,
+    pub shape: Shape,
+    /// For a smooth stretch, -1 to 1: above 0 it moves early and settles,
+    /// below 0 it waits and then moves.
+    #[serde(default)]
+    pub tension: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Shape {
+    Linear,
+    /// The value holds and jumps at the next point.
+    Hold,
+    /// An S curve, bent by the tension.
+    Smooth,
+}
+
+/// How many straight pieces a smooth stretch is played as.
+const SMOOTH_PIECES: usize = 32;
+
+/// Where a smooth stretch is `t` of the way along, 0 to 1.
+pub fn smooth(t: f64, tension: f64) -> f64 {
+    let t = t.clamp(0.0, 1.0);
+    let t = t.powf(4f64.powf(-tension.clamp(-1.0, 1.0)));
+    t * t * (3.0 - 2.0 * t)
+}
+
+impl Lane {
+    /// The points as they are played: joined by straight lines, a held
+    /// stretch as a jump at the next point and a smooth one as many short
+    /// lines. The points themselves when every stretch is straight.
+    pub fn played(&self) -> std::borrow::Cow<'_, [(f64, f64)]> {
+        if self.shapes.is_empty() {
+            return std::borrow::Cow::Borrowed(&self.points);
+        }
+        let mut out = Vec::with_capacity(self.points.len() * 2);
+        for (i, &(beat, value)) in self.points.iter().enumerate() {
+            out.push((beat, value));
+            let Some(&(next, to)) = self.points.get(i + 1) else { break };
+            let Some(seg) = self.shapes.iter().find(|s| s.beat == beat) else { continue };
+            match seg.shape {
+                Shape::Linear => {}
+                Shape::Hold => out.push((next, value)),
+                Shape::Smooth => {
+                    for k in 1..SMOOTH_PIECES {
+                        let t = k as f64 / SMOOTH_PIECES as f64;
+                        out.push((beat + (next - beat) * t, value + (to - value) * smooth(t, seg.tension)));
+                    }
+                }
+            }
+        }
+        std::borrow::Cow::Owned(out)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -652,6 +890,42 @@ impl Target {
 }
 
 impl Project {
+    /// Give the notes that have none an id (see `Note::id`), looking only at
+    /// the clips that are not the very same as in `before` (the state the
+    /// last naming saw), and touching only those that need it.
+    pub fn name_notes(&mut self, before: &Project) -> bool {
+        let mut named = false;
+        let old_tracks: std::collections::HashMap<Id, &Arc<Track>> = before.all_tracks().map(|t| (t.id, t)).collect();
+        let tracks = self.tracks.iter_mut().chain(std::iter::once(&mut self.master));
+        for track in tracks {
+            let old = old_tracks.get(&track.id);
+            if old.is_some_and(|o| Arc::ptr_eq(o, track)) {
+                continue;
+            }
+            let old_clips: std::collections::HashMap<Id, &Arc<Clip>> =
+                old.map(|o| o.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
+            let needs = |c: &Arc<Clip>| match &c.content {
+                _ if old_clips.get(&c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
+                ClipContent::Midi { notes, .. } => {
+                    let mut seen = std::collections::HashSet::with_capacity(notes.len());
+                    notes.iter().any(|n| n.id == 0 || !seen.insert(n.id))
+                }
+                _ => false,
+            };
+            if !track.clips.iter().any(needs) {
+                continue;
+            }
+            for clip in Arc::make_mut(track).clips.iter_mut() {
+                if needs(clip)
+                    && let ClipContent::Midi { notes, .. } = &mut Arc::make_mut(clip).content
+                {
+                    named |= name_notes(notes);
+                }
+            }
+        }
+        named
+    }
+
     /// Every track including the master track, which comes last.
     pub fn all_tracks(&self) -> impl Iterator<Item = &Arc<Track>> {
         self.tracks.iter().chain(std::iter::once(&self.master))
@@ -703,9 +977,20 @@ impl Project {
         Some(&self.track(track)?.devices[index])
     }
 
+    /// A clip on the timeline or in a slot.
     pub fn clip(&self, id: Id) -> Option<&Arc<Clip>> {
-        let (track, index) = self.find_clip(id)?;
-        Some(&self.track(track)?.clips[index])
+        if let Some((track, index)) = self.find_clip(id) {
+            return Some(&self.track(track)?.clips[index]);
+        }
+        let (track, index) = self.find_slot_clip(id)?;
+        Some(&self.track(track)?.slots[index].clip)
+    }
+
+    /// The track that holds a clip in a slot, and the clip's index among
+    /// its slots.
+    pub fn find_slot_clip(&self, id: Id) -> Option<(Id, usize)> {
+        self.all_tracks()
+            .find_map(|t| t.slots.iter().position(|s| s.clip.id == id).map(|i| (t.id, i)))
     }
 
     pub fn device_mut(&mut self, id: Id) -> Option<&mut DeviceInst> {
@@ -713,9 +998,13 @@ impl Project {
         Some(Arc::make_mut(&mut self.track_mut(track)?.devices[index]))
     }
 
+    /// A clip on the timeline or in a slot, to change.
     pub fn clip_mut(&mut self, id: Id) -> Option<&mut Clip> {
-        let (track, index) = self.find_clip(id)?;
-        Some(Arc::make_mut(&mut self.track_mut(track)?.clips[index]))
+        if let Some((track, index)) = self.find_clip(id) {
+            return Some(Arc::make_mut(&mut self.track_mut(track)?.clips[index]));
+        }
+        let (track, index) = self.find_slot_clip(id)?;
+        Some(Arc::make_mut(&mut self.track_mut(track)?.slots[index].clip))
     }
 
     /// Whether routing `from` into `to` would make audio flow in a circle.
@@ -754,6 +1043,7 @@ impl Project {
                 std::iter::once(t.id)
                     .chain(t.devices.iter().map(|d| d.id))
                     .chain(t.clips.iter().map(|c| c.id))
+                    .chain(t.slots.iter().map(|s| s.clip.id))
                     .chain(t.lanes.iter().map(|l| l.id))
             })
             .max()
@@ -965,7 +1255,7 @@ impl Project {
             for d in &t.devices {
                 unique(d.id)?;
             }
-            for c in &t.clips {
+            for c in t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)) {
                 unique(c.id)?;
             }
             for l in &t.lanes {
@@ -991,7 +1281,12 @@ impl Project {
                     bail!("parameter {key} of device {} is {v}", d.id);
                 }
             }
-            for c in &t.clips {
+            if t.slots.windows(2).any(|w| w[0].row >= w[1].row)
+                || t.slots.iter().any(|s| s.clip.start != 0.0)
+            {
+                bail!("{name} has slots out of order, or a clip in a slot that does not start at 0");
+            }
+            for c in t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)) {
                 if !c.start.is_finite() || c.start < 0.0 || !c.length.is_finite() || c.length <= 0.0
                 {
                     bail!(
@@ -1034,6 +1329,17 @@ impl Project {
                         if let Some(bpm) = c.source_tempo {
                             range(&format!("the tempo of clip {}", c.id), bpm, 1.0, 999.0)?;
                         }
+                        let finite = c
+                            .warp
+                            .iter()
+                            .all(|m| m.source.is_finite() && m.target.is_finite());
+                        let ordered = c
+                            .warp
+                            .windows(2)
+                            .all(|w| w[1].source > w[0].source && w[1].target > w[0].target);
+                        if !finite || !ordered {
+                            bail!("the warp markers of clip {} are out of order", c.id);
+                        }
                     }
                 }
                 if let Some(length) = c.loop_length {
@@ -1052,6 +1358,9 @@ impl Project {
                         "automation lane {} has a point that is not a finite beat and value",
                         l.id
                     );
+                }
+                if l.shapes.iter().any(|s| !s.beat.is_finite() || !s.tension.is_finite()) {
+                    bail!("automation lane {} has a shape that is not at a finite beat", l.id);
                 }
                 let limits = match &l.target {
                     Target::Volume => Some((-120.0, 24.0)),
@@ -1201,5 +1510,69 @@ mod tempo_tests {
         assert_eq!(m.signature(17.0), (6, 8));
         let back = serde_json::to_value(&p).unwrap();
         assert_eq!(back["tempo_changes"].as_array().unwrap().len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod note_ids {
+    use super::*;
+
+    fn note(pitch: u8, id: u64) -> Note {
+        Note { start: 0.0, length: 1.0, pitch, velocity: 100, meta: Map::new(), id }
+    }
+
+    #[test]
+    fn notes_without_an_id_get_the_next_free_ones_and_the_same_ones_again() {
+        let mut notes = vec![note(60, 0), note(62, 0), note(64, 0)];
+        assert!(name_notes(&mut notes));
+        assert_eq!(notes.iter().map(|n| n.id).collect::<Vec<_>>(), [1, 2, 3]);
+        assert!(!name_notes(&mut notes), "named notes are left alone");
+        let mut again = vec![note(60, 0), note(62, 0), note(64, 0)];
+        name_notes(&mut again);
+        assert_eq!(again, notes, "the same notes, the same ids");
+    }
+
+    #[test]
+    fn a_copy_next_to_its_original_gets_an_id_of_its_own() {
+        let mut notes = vec![note(60, 7), note(60, 7), note(62, 3), note(65, 0)];
+        assert!(name_notes(&mut notes));
+        assert_eq!(notes.iter().map(|n| n.id).collect::<Vec<_>>(), [7, 8, 3, 9]);
+    }
+
+    #[test]
+    fn a_note_without_an_id_is_written_without_one() {
+        let text = serde_json::to_string(&note(60, 0)).unwrap();
+        assert!(!text.contains("\"id\""), "{text}");
+        let back: Note = serde_json::from_str(&serde_json::to_string(&note(60, 4)).unwrap()).unwrap();
+        assert_eq!(back.id, 4);
+    }
+}
+
+#[cfg(test)]
+mod lane_shapes {
+    use super::*;
+    use daw_engine::automation::value_at;
+
+    fn lane(shapes: Vec<Segment>) -> Lane {
+        Lane { id: 1, target: Target::Volume, enabled: true, points: vec![(0.0, -12.0), (4.0, 0.0), (8.0, -6.0)], shapes }
+    }
+
+    #[test]
+    fn a_held_stretch_jumps_at_the_next_point_and_a_smooth_one_eases() {
+        let straight = lane(Vec::new());
+        assert_eq!(value_at(&straight.played(), 2.0), Some(-6.0));
+        let held = lane(vec![Segment { beat: 0.0, shape: Shape::Hold, tension: 0.0 }]);
+        assert_eq!(value_at(&held.played(), 3.99), Some(-12.0));
+        assert_eq!(value_at(&held.played(), 4.0), Some(0.0));
+        assert_eq!(value_at(&held.played(), 6.0), Some(-3.0), "the next stretch is straight");
+        let eased = lane(vec![Segment { beat: 0.0, shape: Shape::Smooth, tension: 0.0 }]);
+        assert!((value_at(&eased.played(), 2.0).unwrap() + 6.0).abs() < 1e-9, "half way at the middle");
+        assert!(value_at(&eased.played(), 0.5).unwrap() < -11.0, "slow to leave");
+        let early = lane(vec![Segment { beat: 0.0, shape: Shape::Smooth, tension: 1.0 }]);
+        assert!(value_at(&early.played(), 1.0).unwrap() > value_at(&eased.played(), 1.0).unwrap());
+        let text = serde_json::to_string(&straight).unwrap();
+        assert!(!text.contains("shapes"), "{text}");
+        let back: Lane = serde_json::from_str(&serde_json::to_string(&held).unwrap()).unwrap();
+        assert_eq!(back.shapes, held.shapes);
     }
 }

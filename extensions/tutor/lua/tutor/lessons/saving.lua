@@ -12,11 +12,12 @@ This practice project already has a file, in the tutor's folder, so `:w` saves
 it there. Your own projects are saved wherever you say: `:w song.json`.]],
   idea = [[
 `:w` saves (`<C-s>` too), `:w name.json` saves under a new name, `:e name.json`
-opens a project, `:new` starts an empty one, `:wq` or `ZZ` save and quit, `:q` or
+opens a project (`:e song.mid` makes one of a MIDI file, with no file of its own
+until `:w name.json`), `:new` starts an empty one, `:wq` or `ZZ` save and quit, `:q` or
 `ZQ` quit without saving. The status line shows the project's name, with `[+]`
 when there are changes not saved yet. `:render name.wav` writes the song to a
 file; `tail=2` adds two seconds for echoes to die away, `bits=16` makes a 16-bit
-file. A relative name is relative to the folder the DAW was started from.]],
+file. A relative name is relative to the folder paw was started from.]],
   vim = [[
 `:w`, `:e`, `:wq`, `:x`, `ZZ`, `ZQ` as in Vim, with projects for files. There
 is one project open at a time; `:e` replaces it. `:w name.json` is Vim's
@@ -36,7 +37,7 @@ and stays in the old one; there is no such copy here.]],
   end,
   at = function() daw.cursor.set_track(daw.track("Keys")) end,
   test = {
-    -- Rendering writes beside where the DAW was started; the test tidies up.
+    -- Rendering writes beside where paw was started; the test tidies up.
     after = function() os.remove("tutor-song.wav") end,
   },
   steps = {
@@ -56,17 +57,17 @@ and stays in the old one; there is no such copy here.]],
       say = "`:render` plays the song into a WAV file. Type `:render tutor-song.wav tail=2` and `<CR>`.",
       keys = { ":render tutor-song.wav tail=2", "<CR>" },
       check = function(ctx, look) return look.ran(ctx, "render") and look.said(ctx, "tutor-song.wav") end,
-      done = "tutor-song.wav is in the folder you started the DAW from: its length and peak level are on the message line.",
+      done = "tutor-song.wav is in the folder you started paw from: its length and peak level are on the message line.",
       hint = "`tail=2` keeps two more seconds after the last note, so the echo is not cut off.",
     },
     {
       say = "`:messages` shows the messages you have missed. Type `:messages` and `<CR>`, then `q` to close it.",
       keys = { ":messages", "<CR>", "q" },
       check = function(ctx, look) return look.ran(ctx, "messages") and not look.float() end,
-      done = "Every message since the DAW started, saves and renders among them.",
+      done = "Every message since paw started, saves and renders among them.",
     },
     {
-      say = "Listen to the song you rendered in any player. Here, `<Space>` plays it in the DAW; `<Space>` stops.",
+      say = "Listen to the song you rendered in any player. Here, `<Space>` plays it in paw; `<Space>` stops.",
       keys = { "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.played(ctx) end,
       done = "Saved and rendered.",

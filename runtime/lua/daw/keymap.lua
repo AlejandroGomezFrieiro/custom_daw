@@ -47,6 +47,20 @@ M.mode = "n"
 M.visual = nil      -- the open selection's fixed end: { kind, row, col, view }
 M.registers = registers
 
+-- Everything above but the mappings is each seat's own: two people can be
+-- half way through two commands, in two modes, with registers of their own.
+daw.seats.keep("keymap",
+  function()
+    return pending, count, register, op, awaiting, timer, hint_at, track, last_change, macro, last_macro,
+      registers, marks, jumps, M.mode, M.visual, M.last_visual, M.search_text
+  end,
+  function(...)
+    pending, count, register, op, awaiting, timer, hint_at, track, last_change, macro, last_macro,
+      registers, marks, jumps, M.mode, M.visual, M.last_visual, M.search_text = ...
+    M.registers = registers
+  end,
+  function() return {}, nil, nil, nil, nil, nil, nil, {}, nil, nil, nil, {}, {}, {}, "n", nil, nil, nil end)
+
 --- Split `gg<C-x>` into { "g", "g", "<C-x>" }, expanding `<leader>`.
 function M.parse(lhs)
   local keys = {}
@@ -104,16 +118,17 @@ function M.all(view)
   -- A part of the view the cursor is in comes first: its keys win.
   if view == daw.ui.focused then
     local sub = M.scopes()
-    if #sub == 3 then
-      for _, mode in ipairs({ "n", "x" }) do
+    for i = 1, #sub - 2 do
+      for _, mode in ipairs({ "n", "x", "i" }) do
         local list = {}
-        for _, map in pairs(maps[mode] and maps[mode][sub[1]] or {}) do list[#list + 1] = map end
+        for _, map in pairs(maps[mode] and maps[mode][sub[i]] or {}) do list[#list + 1] = map end
         table.sort(list, function(a, b) return a.lhs:lower() .. a.lhs < b.lhs:lower() .. b.lhs end)
         for _, map in ipairs(list) do
-          shadowed[mode .. table.concat(map.keys)] = true
-          if mode == "n" or not M.has("n", map) then
-            out[#out + 1] = { map = map, kind = mode == "x" and "visual" or map.motion and "motion" or "key" }
+          if not shadowed[mode .. table.concat(map.keys)] and (mode ~= "x" or not M.has("n", map)) then
+            local kind = mode == "x" and "visual" or mode == "i" and "insert" or map.motion and "motion" or "key"
+            out[#out + 1] = { map = map, kind = kind }
           end
+          shadowed[mode .. table.concat(map.keys)] = true
         end
       end
     end
@@ -129,7 +144,9 @@ function M.all(view)
   for _, map in ipairs(M.list("o", view)) do
     if map.object then out[#out + 1] = { map = map, kind = "object" } end
   end
-  for _, map in ipairs(M.list("i", view)) do out[#out + 1] = { map = map, kind = "insert" } end
+  for _, map in ipairs(M.list("i", view)) do
+    if not shadowed["i" .. table.concat(map.keys)] then out[#out + 1] = { map = map, kind = "insert" } end
+  end
   return out
 end
 
@@ -441,6 +458,40 @@ function M.goto_mark(name)
   go(g, pos)
 end
 
+--- Remove marks from every view, as Vim's `:delmarks` does: `spec` lists
+--- letters and ranges (`"a b"`, `"a-d"`), and `all` removes every lowercase
+--- one. Returns how many were removed, or nil and what is wrong.
+function M.delmarks(spec, all)
+  local names = {}
+  if all then
+    for c = ("a"):byte(), ("z"):byte() do names[#names + 1] = string.char(c) end
+  else
+    spec = spec:gsub("%s+", "")
+    local i = 1
+    while i <= #spec do
+      local first, dash, last = spec:sub(i, i), spec:sub(i + 1, i + 1), spec:sub(i + 2, i + 2)
+      if not first:match("^%a$") then return nil, "`" .. first .. "` is not a mark name" end
+      if dash == "-" then
+        if not last:match("^%a$") or last:byte() < first:byte() or (last:match("%l") == nil) ~= (first:match("%l") == nil) then
+          return nil, "`" .. spec:sub(i, i + 2) .. "` is not a range of marks"
+        end
+        for c = first:byte(), last:byte() do names[#names + 1] = string.char(c) end
+        i = i + 3
+      else
+        names[#names + 1] = first
+        i = i + 1
+      end
+    end
+  end
+  local removed = 0
+  for _, name in ipairs(names) do
+    for _, list in pairs(marks) do
+      if list[name] then list[name], removed = nil, removed + 1 end
+    end
+  end
+  return removed
+end
+
 --- The marks of a view: name -> position.
 function M.marks(view)
   return marks[view or daw.ui.focused] or {}
@@ -575,15 +626,19 @@ end
 
 --- Where mappings are looked up, first to last: the part of the focused
 --- view the cursor is in, if the view has such parts (`view:subscope()`,
---- such as "arrange.lane" on an automation lane row), the view, then
---- everywhere.
+--- such as "arrange.lane" on an automation lane row, or a list of them,
+--- first first), the view, then everywhere.
 local function scopes()
   local name = daw.ui.focused
   local view = name and daw.ui.views[name]
   local out = {}
   if view and view.subscope then
     local ok, sub = pcall(view.subscope, view)
-    if ok and sub then out[#out + 1] = sub end
+    if ok and type(sub) == "table" then
+      for _, s in ipairs(sub) do out[#out + 1] = s end
+    elseif ok and sub then
+      out[#out + 1] = sub
+    end
   end
   if name then out[#out + 1] = name end
   out[#out + 1] = "global"
@@ -605,6 +660,16 @@ local function lookup(seq)
     end
   end
   return exact, longer
+end
+
+--- Whether a part of the focused view (not the view itself, nor the global
+--- mappings) maps `key` in this mode.
+local function held(key)
+  local list = scopes()
+  for i = 1, #list - 2 do
+    if maps[M.mode] and maps[M.mode][list[i]] and maps[M.mode][list[i]][key] then return true end
+  end
+  return false
 end
 
 local function idle()
@@ -645,7 +710,9 @@ handle = function(key)
 
   local escape = key == "<Esc>" or key == "<C-c>"
   if escape and (#pending > 0 or count or register or op) then return reset() end
-  if escape and (M.mode == "x" or M.mode == "i") then return M.set_mode("n") end
+  -- Escape leaves visual and insert mode, unless something that holds keys
+  -- for a while (a suggestion showing: see `view:subscope()`) maps it first.
+  if escape and (M.mode == "x" or M.mode == "i") and not held(key) then return M.set_mode("n") end
 
   if #pending == 0 and M.mode ~= "i" then
     if key:match("^%d$") and (count or key ~= "0") then
@@ -875,5 +942,8 @@ daw.on("view.focused", function()
     M.set_mode("n")
   end
 end)
+
+-- A seat that closes leaves no key waiting to run in it.
+daw.on("seat.closing", function() reset() end)
 
 return setmetatable(M, { __call = function(_, ...) return M.set(...) end })

@@ -1,7 +1,7 @@
-//! `daw-mcp`: a Model Context Protocol server for the DAW.
+//! `daw-mcp`: a Model Context Protocol server for paw.
 //!
 //! It speaks MCP (JSON-RPC 2.0, one message per line) on stdin and stdout and
-//! drives a DAW kernel through the kernel's control socket. Everything it
+//! drives a paw kernel through the kernel's control socket. Everything it
 //! does to the project goes through `daw.api`, so it is undoable like any
 //! other edit. Logs go to stderr; stdout carries protocol messages only.
 
@@ -23,7 +23,7 @@ use kernel::{Kernel, SpawnOpts};
 use tools::{Policy, ToolError, Tools};
 
 const HELP: &str = "\
-daw-mcp: a Model Context Protocol server for the DAW, on stdin and stdout
+daw-mcp: a Model Context Protocol server for paw, on stdin and stdout
 
 Usage:
   daw-mcp [options]                     attach to a running kernel
@@ -40,7 +40,7 @@ Options:
   --root <dir>        where relative paths start and files may be written
                       (default: the current directory)
   --allow-eval        offer the escape hatches: run_command, send_keys and
-                      eval_lua, which run arbitrary code in the DAW
+                      eval_lua, which run arbitrary code in paw
   --allow-any-path    let save and render write outside --root
   --timeout <secs>    how long to wait for the kernel per call (default 600)
   -h, --help          show this help
@@ -268,7 +268,7 @@ fn capabilities() -> Value {
 fn server_info() -> Value {
     json!({
         "name": "daw-mcp",
-        "title": "DAW",
+        "title": "paw",
         "version": env!("CARGO_PKG_VERSION"),
     })
 }

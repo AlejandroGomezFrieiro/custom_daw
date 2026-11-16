@@ -117,7 +117,9 @@ end
 --
 --   :'<,'>notation.slur        the last selection made in the focused view
 --   :5,8notation.transpose 2   bars 5 to 8
---   :5notation.dyn mf          bar 5
+--   :5notation.dyn mf          bar 5, for a command that takes bars; for any
+--                              other a number right before the name is its
+--                              count: `:3snippet arp`
 --
 -- The command gets it as `ctx.range`. For `'<,'>` that is
 -- `{ selection = true, region = <the region, as operators get it> }`, and
@@ -129,7 +131,8 @@ end
 
 --- Split a range off the front of a command line: the range, and the rest.
 --- Nil for the range when there is none; an error message instead of the
---- rest when the range names nothing.
+--- rest when the range names nothing. A single number is a range with
+--- `single` set, which `exec` gives as a count to a command without bars.
 function M.range(line)
   local rest = line:match("^%s*'<%s*,%s*'>%s*(.*)$")
   if rest then
@@ -137,16 +140,16 @@ function M.range(line)
     if not region then return nil, nil, "no selection made in this view yet for '<,'>" end
     return { selection = true, region = region }, rest
   end
-  local a, b
+  local a, b, single
   a, b, rest = line:match("^%s*(%d+)%s*,%s*(%d+)%s*(.*)$")
   if not a then
     a, rest = line:match("^%s*(%d+)%s*([%a_].*)$")
-    b = a
+    b, single = a, true
   end
   if not a then return nil, line end
   a, b = tonumber(a), tonumber(b)
   if a < 1 or b < a then return nil, nil, "a range of bars goes from the first to the last: `5,8`" end
-  return { bars = { a, b }, from = daw.time.bar_start(a), to = daw.time.bar_start(b + 1) }, rest
+  return { bars = { a, b }, from = daw.time.bar_start(a), to = daw.time.bar_start(b + 1), single = single }, rest
 end
 
 --- Run a command line, as typed after `:`, with a range in front if it has one.
@@ -157,6 +160,10 @@ function M.exec(line, ctx)
   if not name then return end
   if not range then return M.run(name, args, ctx) end
   local spec = registry[name]
+  -- A number right before a command that takes no bars is its count.
+  if range.single and not (spec and spec.range) then
+    return M.run(name, args, daw.util.merge(ctx, { count = range.bars[1] }))
+  end
   if spec and range.bars and not spec.range then error("`" .. name .. "` takes no range of bars", 0) end
   ctx = ctx or {}
   ctx.range = range
@@ -273,10 +280,15 @@ M.completers = {
     return out
   end,
   files = function(word) return files(word) end,
+  -- What `import` takes: sound files and MIDI files.
   audio_files = function(word)
-    return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))
+    return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga", "mid", "midi", "smf", "kar" }))
   end,
   projects = function(word) return files(word, set_of({ "json", "rpp" })) end,
+  -- What `edit` opens: projects, MIDI files (as projects) and sound files.
+  openable = function(word)
+    return files(word, set_of({ "json", "rpp", "mid", "midi", "smf", "kar", "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))
+  end,
 }
 
 --- Candidates from one completer (a name, a list of names by position, or

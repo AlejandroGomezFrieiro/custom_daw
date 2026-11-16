@@ -3,7 +3,7 @@ return {
   id = "finding",
   title = "Finding any command or key",
   intro = [[
-Nobody remembers every key. The DAW tells you what you can do at every point:
+Nobody remembers every key. paw tells you what you can do at every point:
 stop half way through a key sequence and it lists what can follow; `?` lists
 every key of the view you are in; `:` runs any command by name, with Tab to
 complete it; and pickers find a command, a key, a track or a clip from a few

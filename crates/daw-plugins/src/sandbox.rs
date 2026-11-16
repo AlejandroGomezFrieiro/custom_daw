@@ -56,6 +56,8 @@ const PARAMS: usize = 256;
 /// Parameter changes the plugin reports that may wait to be read.
 const CHANGES: usize = 1024;
 const MAGIC: u32 = 0x4441_5750;
+/// The longest reason a helper can give for stopping.
+const REASON: usize = 1024;
 
 /// How long a plugin may take over each kind of request before it is
 /// taken to have hung.
@@ -103,8 +105,28 @@ pub fn wrap(registry: &mut Registry) {
         .filter(|info| matches!(info.format.as_str(), "clap" | "lv2" | "vst3"))
         .collect();
     for info in plugins {
-        registry.register(Rc::new(RemoteFactory { info }));
+        registry.register(Rc::new(RemoteFactory {
+            info,
+            argv: None,
+            env: Vec::new(),
+        }));
     }
+}
+
+/// A factory that makes each device in a helper started with `argv` (this
+/// program and the arguments that put it in `plugin-host` mode), whether or
+/// not plugins get helpers: for devices that must never run in this
+/// process. `env` is added to the helper's environment.
+pub fn remote(
+    info: DeviceInfo,
+    argv: Vec<String>,
+    env: Vec<(String, String)>,
+) -> Rc<dyn DeviceFactory> {
+    Rc::new(RemoteFactory {
+        info,
+        argv: Some(argv),
+        env,
+    })
 }
 
 // --- the shared block -----------------------------------------------------------
@@ -149,6 +171,18 @@ struct Header {
     /// helper, read up to it by the DAW.
     change_head: AtomicU32,
     change_tail: AtomicU32,
+    /// Why the helper stopped the device and ended, when it knows: written
+    /// before it ends, read once it has.
+    reason_len: AtomicU32,
+    reason: [u8; REASON],
+}
+
+impl Header {
+    /// The reason the helper gave for ending, if it gave one.
+    fn reason(&self) -> Option<String> {
+        let len = (self.reason_len.load(Ordering::Acquire) as usize).min(REASON);
+        (len > 0).then(|| String::from_utf8_lossy(&self.reason[..len]).into_owned())
+    }
 }
 
 #[repr(C)]
@@ -598,10 +632,17 @@ impl RemoteController {
         let _ = self.child.wait();
     }
 
-    /// How the helper ended, if it has.
+    /// How the helper ended, if it has: the reason it gave, or how its
+    /// process ended.
     fn exited(&mut self) -> Option<String> {
         match self.child.try_wait() {
-            Ok(Some(status)) => Some(describe(status)),
+            Ok(Some(status)) => Some(
+                self.link
+                    .shm
+                    .header()
+                    .reason()
+                    .unwrap_or_else(|| describe(status)),
+            ),
             _ => None,
         }
     }
@@ -850,8 +891,12 @@ impl Drop for RemoteController {
 }
 
 /// Makes a plugin in a helper process.
+#[derive(Clone)]
 struct RemoteFactory {
     info: DeviceInfo,
+    /// How to start the helper, where it is not the plugins' one.
+    argv: Option<Vec<String>>,
+    env: Vec<(String, String)>,
 }
 
 fn param_from(value: &Value) -> ParamInfo {
@@ -904,7 +949,10 @@ impl RemoteFactory {
     /// Start the helper, which makes the plugin. Its first word, read with
     /// [`made`](Self::made), says whether that worked.
     fn spawn(&self, sample_rate: f32, max_block: usize) -> Result<(RemoteController, UnixStream)> {
-        let argv = host_command().context("plugins are hosted in-process here")?;
+        let argv = match &self.argv {
+            Some(argv) => argv,
+            None => host_command().context("plugins are hosted in-process here")?,
+        };
         let shm = Shm::create(max_block)?;
         let (ours, theirs) = UnixStream::pair()?;
         let (sock_fd, shm_fd): (RawFd, RawFd) = (theirs.as_raw_fd(), shm.fd.as_raw_fd());
@@ -916,6 +964,7 @@ impl RemoteFactory {
             .arg(shm_fd.to_string())
             .arg(sample_rate.to_string())
             .arg(max_block.to_string())
+            .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null());
         if TEST_HANG.load(Ordering::Relaxed) {
             command.env("DAW_PLUGIN_TEST_HANG", "1");
@@ -1165,9 +1214,7 @@ impl DeviceFactory for RemoteFactory {
         max_block: usize,
         state: Option<Vec<u8>>,
     ) -> Option<Box<dyn Starting>> {
-        let factory = RemoteFactory {
-            info: self.info.clone(),
-        };
+        let factory = self.clone();
         let (tell, answer) = std::sync::mpsc::channel();
         let limit = create_limit();
         let controller = match self.spawn(sample_rate, max_block) {
@@ -1326,6 +1373,23 @@ fn audio_loop(shm: Arc<Shm>, mut device: Box<dyn Device>) {
 /// the shared memory handed over by the DAW, the sample rate, the largest
 /// block, and the plugin cache to read. Returns the process's exit code.
 pub fn serve(args: &[String]) -> i32 {
+    let cache = args.get(5).map(PathBuf::from);
+    serve_with(args, |kind, rate, max_block| {
+        let mut registry = Registry::default();
+        crate::register(&mut registry, cache.as_deref());
+        registry
+            .get(kind)
+            .with_context(|| format!("no plugin `{kind}` here"))
+            .and_then(|factory| factory.create(rate, max_block))
+    })
+}
+
+/// Run as the helper of a device that `make` makes from its kind, the
+/// sample rate and the largest block, as [`serve`] does for plugins.
+pub fn serve_with(
+    args: &[String],
+    make: impl FnOnce(&str, f32, usize) -> Result<Instance>,
+) -> i32 {
     let run = || -> Result<()> {
         let [kind, sock, shm, rate, block, ..] = args else {
             bail!("usage: plugin-host <kind> <socket> <memory> <sample rate> <block> [cache]");
@@ -1354,12 +1418,7 @@ pub fn serve(args: &[String]) -> i32 {
         }
         let display_note = crate::repair_display_env();
         let _ = display_note;
-        let mut registry = Registry::default();
-        crate::register(&mut registry, args.get(5).map(Path::new));
-        let made = registry
-            .get(kind)
-            .with_context(|| format!("no plugin `{kind}` here"))
-            .and_then(|factory| factory.create(rate.parse()?, max_block));
+        let made = make(kind, rate.parse()?, max_block);
         let instance = match made {
             Ok(instance) => instance,
             Err(err) => {
@@ -1483,6 +1542,16 @@ pub fn serve(args: &[String]) -> i32 {
                 }
             }
             controller.idle();
+            // A device that has stopped working by itself (a script that
+            // failed) says why, and its helper ends: the DAW shows it as
+            // stopped, with that reason.
+            if let Some(why) = controller.health() {
+                let bytes = why.as_bytes();
+                let len = bytes.len().min(REASON);
+                shm.header_mut().reason[..len].copy_from_slice(&bytes[..len]);
+                header.reason_len.store(len as u32, Ordering::Release);
+                break 'serve;
+            }
             for (index, value) in controller.take_changes() {
                 let head = header.change_head.load(Ordering::Relaxed);
                 // A reader that has fallen a whole ring behind loses the oldest.

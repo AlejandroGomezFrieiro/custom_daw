@@ -11,7 +11,7 @@ const MAX_CHANGES: usize = 31;
 
 /// The project's time signatures, which `bar.beat` positions depend on: the
 /// one at the start, and where it changes along the song (each change
-/// starting a bar, as the DAW's tempo map has them).
+/// starting a bar, as paw's tempo map has them).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Meter {
     pub num: u32,
@@ -103,7 +103,7 @@ impl Meter {
         self.num as f64 * 4.0 / self.den as f64
     }
 
-    /// `bar.beat.hundredths`, counting from 1, as the DAW shows positions.
+    /// `bar.beat.hundredths`, counting from 1, as paw shows positions.
     pub fn format(&self, beats: f64) -> String {
         let (start, num, den, first) = self.segment_at_beat(beats);
         let len = num as f64 * 4.0 / den as f64;

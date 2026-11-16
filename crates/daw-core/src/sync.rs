@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::Engine as _;
+use daw_engine::midi_form::Form;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use daw_engine::launch::{SlotClip, Slots};
 use daw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
     DiskStore, MASTER,
@@ -78,12 +80,15 @@ pub struct Mapper {
     next_track: Slot,
     next_device: Slot,
     mix: HashMap<Id, (f32, f32, bool, bool)>,
+    /// The fader lane each track has because of the VCAs it is in, as last
+    /// sent: see [`vca_volume_lane`].
+    vca_lanes: HashMap<Id, Vec<(f64, f64)>>,
     /// First input channel, channel count, monitoring and armed, as last sent.
     inputs: HashMap<Id, (usize, usize, bool, bool)>,
     /// The MIDI port's key and channel each track takes, as last sent.
     midi_inputs: HashMap<Id, (u32, u8)>,
     /// The same for the port each track sends to.
-    midi_outputs: HashMap<Id, (u32, u8)>,
+    midi_outputs: HashMap<Id, (u32, u8, Form)>,
     routing: Routing,
     /// Devices given a buffer for a side-chain.
     keyed: HashSet<Id>,
@@ -122,6 +127,7 @@ impl Mapper {
             next_track: MASTER + 1,
             next_device: 0,
             mix: HashMap::new(),
+            vca_lanes: HashMap::new(),
             inputs: HashMap::new(),
             midi_inputs: HashMap::new(),
             midi_outputs: HashMap::new(),
@@ -572,6 +578,21 @@ pub fn sync(
             });
         }
 
+        let same_slots = prev.map_or(track.slots.is_empty(), |p| {
+            p.slots.len() == track.slots.len()
+                && p.slots
+                    .iter()
+                    .zip(&track.slots)
+                    .all(|(a, b)| a.row == b.row && Arc::ptr_eq(&a.clip, &b.clip))
+        });
+        if !same_slots {
+            send(Msg::SetSlots {
+                track: slot,
+                slots: Box::new(build_slots(track, new.tempo_map(), ctx)),
+            });
+            emit("slot.changed", json!({ "track": track.id }));
+        }
+
         let same_lanes = prev.map_or(track.lanes.is_empty(), |p| {
             p.lanes.len() == track.lanes.len()
                 && p.lanes
@@ -584,7 +605,7 @@ pub fn sync(
             lanes_changed |= !same_lanes;
             send(Msg::SetAutomation {
                 track: slot,
-                automation: Box::new(build_automation(track, map, ctx)),
+                automation: Box::new(build_automation(track, new, map, ctx)),
             });
         }
         if let Some(prev) = prev.filter(|_| !same_lanes) {
@@ -637,21 +658,42 @@ pub fn sync(
         );
     }
 
-    let any_solo = new.tracks.iter().any(|t| t.solo);
-    let sounding = if any_solo {
-        solo_paths(new)
-    } else {
+    // A track the VCAs it is in have changed the fader lane of is told so,
+    // and takes its own fader value back when it no longer has one.
+    for track in new.all_tracks() {
+        let Some(&slot) = map.tracks.get(&track.id) else {
+            continue;
+        };
+        let lane = vca_volume_lane(track, new);
+        if lane.as_ref() != map.vca_lanes.get(&track.id) {
+            match lane {
+                Some(points) => map.vca_lanes.insert(track.id, points),
+                None => map.vca_lanes.remove(&track.id),
+            };
+            map.mix.remove(&track.id);
+            send(Msg::SetAutomation {
+                track: slot,
+                automation: Box::new(build_automation(track, new, map, ctx)),
+            });
+        }
+    }
+
+    let soloed = soloed_tracks(new);
+    let sounding = if soloed.is_empty() {
         HashSet::new()
+    } else {
+        solo_paths(new, &soloed)
     };
     for track in new.all_tracks() {
         let Some(&slot) = map.tracks.get(&track.id) else {
             continue;
         };
-        let silenced = any_solo && track.id != MASTER_ID && !sounding.contains(&track.id);
+        let silenced = !soloed.is_empty() && track.id != MASTER_ID && !sounding.contains(&track.id);
+        let vcas = vcas_of(track, new);
         let mix = (
-            db_to_gain(track.volume),
+            db_to_gain(track.volume + vcas.iter().map(|v| v.volume).sum::<f64>()),
             track.pan as f32,
-            track.mute,
+            track.mute || vcas.iter().any(|v| v.mute),
             silenced,
         );
         if map.mix.get(&track.id) != Some(&mix) {
@@ -698,18 +740,20 @@ pub fn sync(
                 channel: midi.1,
             });
         }
-        let out = track.midi_output.as_ref().map_or((0, 0), |m| {
+        let out = track.midi_output.as_ref().map_or((0, 0, Form::Auto), |m| {
             (
                 daw_engine::midi::port_key(&m.port),
                 m.channel.unwrap_or(0),
+                m.engine_form(),
             )
         });
-        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0)) != out {
+        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0, Form::Auto)) != out {
             map.midi_outputs.insert(track.id, out);
             send(Msg::SetMidiOutput {
                 track: slot,
                 port: out.0,
                 channel: out.1,
+                form: out.2,
             });
         }
     }
@@ -787,11 +831,12 @@ pub fn sync(
         map.clip_events.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
             // Notes it left sounding on its MIDI output port end there.
-            if map.midi_outputs.get(id).is_some_and(|(port, _)| *port != 0) {
+            if map.midi_outputs.get(id).is_some_and(|(port, ..)| *port != 0) {
                 removals.push(Msg::SetMidiOutput {
                     track: slot,
                     port: 0,
                     channel: 0,
+                    form: Form::Auto,
                 });
             }
             removals.push(Msg::RemoveTrack { slot });
@@ -1224,12 +1269,13 @@ fn audio_regions(
             end,
             // An edge inside the recording is a cut.
             declick_in: offset > 1e-6,
-            declick_out: offset + seconds < data.seconds() - 1e-6,
+            declick_out: offset + seconds < data.whole_seconds() - 1e-6,
             data,
             offset,
             gain,
             fade_in: clip.fade_in,
             fade_out: clip.fade_out,
+            hold: Default::default(),
         });
         return;
     };
@@ -1264,7 +1310,7 @@ fn audio_regions(
             end: stop,
             declick_in: if ra <= 0.0 { into > 1e-6 } else { !joins },
             declick_out: if rb >= seconds {
-                into + (rb - ra) < data.seconds() - 1e-6
+                into + (rb - ra) < data.whole_seconds() - 1e-6
             } else {
                 !joins
             },
@@ -1273,6 +1319,7 @@ fn audio_regions(
             gain,
             fade_in: 0.0,
             fade_out: 0.0,
+            hold: Default::default(),
         });
     }
     if let Some(r) = out.get_mut(first) {
@@ -1317,25 +1364,62 @@ fn build_clips(
                 kept.push((clip.clone(), events));
             }
             ClipContent::Audio { file, offset, gain } => {
-                let rate = ctx.sample_rate as u32;
-                // A stretched or shifted clip plays a version made for it,
-                // in which a second of the file lasts `stretch` seconds; it
-                // is silent until that is ready.
-                let data = match crate::stretched::Key::of(clip, rate) {
-                    Some(key) => ctx.audio.stretched(&key, ctx.warnings),
-                    None => ctx.audio.get(file, rate, ctx.warnings),
-                };
-                if let Some(data) = data {
-                    let gain = db_to_gain(*gain);
-                    let offset = offset * clip.stretch;
-                    audio_regions(clip, data, offset, gain, tempo, &mut set.audio);
-                }
+                clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut set.audio)
             }
         }
     }
     set.finish();
     map.clip_events.insert(track.id, kept);
     set
+}
+
+/// The regions an audio clip plays, once its sound is at hand.
+fn clip_audio(
+    clip: &Clip,
+    (file, offset, gain): (&Path, f64, f64),
+    tempo: &daw_engine::TempoMap,
+    ctx: &mut SyncCtx,
+    out: &mut Vec<AudioRegion>,
+) {
+    let rate = ctx.sample_rate as u32;
+    // A stretched, warped or shifted clip plays a version made for it, in
+    // which its file's moments are where its warp puts them (`warp.rs`); it
+    // is silent until that is started, and then plays it as far as it is made.
+    let warp = crate::warp::of(clip, tempo);
+    let data = match crate::stretched::Key::of(clip, rate, tempo) {
+        Some(key) => ctx.audio.stretched(&key, ctx.warnings),
+        None => ctx.audio.get(file, rate, ctx.warnings),
+    };
+    if let Some(data) = data {
+        let offset = warp.map_or(offset, |w| w.forward(offset));
+        audio_regions(clip, data, offset, db_to_gain(gain), tempo, out);
+    }
+}
+
+/// What a track's slots play, each clip laid out from its own start.
+fn build_slots(track: &Track, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -> Slots {
+    let mut rows: Vec<Option<SlotClip>> = Vec::new();
+    for slot in track.slots.iter().filter(|s| !s.clip.muted) {
+        let clip = &slot.clip;
+        let mut clips = ClipSet::default();
+        match &clip.content {
+            ClipContent::Midi { notes, controls } => {
+                clips.midi = compile_clip(clip, notes, controls).to_vec()
+            }
+            ClipContent::Audio { file, offset, gain } => {
+                clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut clips.audio)
+            }
+        }
+        let row = slot.row as usize;
+        if rows.len() <= row {
+            rows.resize_with(row + 1, || None);
+        }
+        rows[row] = Some(SlotClip {
+            clips,
+            length: clip.length,
+        });
+    }
+    Slots { rows }
 }
 
 /// A MIDI clip and its notes as engine events.
@@ -1437,13 +1521,19 @@ pub fn is_active(lane: &Lane) -> bool {
     lane.enabled && !lane.points.is_empty()
 }
 
-fn build_automation(track: &Track, map: &Mapper, ctx: &SyncCtx) -> Automation {
+fn build_automation(track: &Track, project: &Project, map: &Mapper, ctx: &SyncCtx) -> Automation {
     let mut set = Automation::default();
     // A track whose automation is off keeps its lanes and plays none.
     let on = track.automation != crate::model::AutoMode::Off;
+    let vca = vca_volume_lane(track, project);
+    if let Some(points) = &vca {
+        set.lanes.push(AutoLane::new(AutoTarget::Volume, points.clone()));
+    }
     for lane in track.lanes.iter().filter(|l| on && is_active(l)) {
         let mut range = None;
         let target = match &lane.target {
+            // The fader's lane is already there when VCAs are involved.
+            Target::Volume if vca.is_some() => continue,
             Target::Volume => AutoTarget::Volume,
             Target::Pan => AutoTarget::Pan,
             Target::Param { device, param } => {
@@ -1461,17 +1551,117 @@ fn build_automation(track: &Track, map: &Mapper, ctx: &SyncCtx) -> Automation {
                 }
             }
         };
+        // Shaped stretches go to the engine as the straight pieces they are played as.
+        let played = lane.played();
         let points: Vec<(f64, f64)> = match range {
-            Some(param) => lane
-                .points
+            Some(param) => played
                 .iter()
                 .map(|&(beat, v)| (beat, param_value(param, v)))
                 .collect(),
-            None => lane.points.clone(),
+            None => played.into_owned(),
         };
         set.lanes.push(AutoLane::new(target, points));
     }
     set
+}
+
+/// Whether a track is a VCA: a fader, mute and solo that belong to other
+/// tracks and carry no audio of their own. The runtime marks it in its meta.
+fn is_vca(track: &Track) -> bool {
+    track.meta.get("vca").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// The VCAs a track is assigned to (named in its meta) that exist.
+fn vcas_of<'a>(track: &Track, project: &'a Project) -> Vec<&'a Track> {
+    let Some(ids) = track.meta.get("vcas").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    if is_vca(track) {
+        return Vec::new();
+    }
+    project
+        .tracks
+        .iter()
+        .filter(|t| is_vca(t) && ids.iter().any(|id| id.as_u64() == Some(t.id)))
+        .map(|t| &**t)
+        .collect()
+}
+
+/// A fader's lane on its own: its points in dB, or `None` where the fader
+/// is still (or its automation is off).
+fn fader_points(track: &Track) -> Option<&[(f64, f64)]> {
+    if track.automation == crate::model::AutoMode::Off {
+        return None;
+    }
+    track
+        .lanes
+        .iter()
+        .find(|l| l.target == Target::Volume && is_active(l))
+        .map(|l| l.points.as_slice())
+}
+
+/// The fader lane of a track that is in VCAs, when any lane is in play: the
+/// sum in dB of its own fader and its VCAs' faders, each a lane or a fixed
+/// value. Lanes are straight lines between points, so the sum is too, with
+/// a point wherever one of them has one: the engine plays it as any lane,
+/// sample by sample, and a render hears the same.
+fn vca_volume_lane(track: &Track, project: &Project) -> Option<Vec<(f64, f64)>> {
+    let vcas = vcas_of(track, project);
+    if vcas.is_empty() {
+        return None;
+    }
+    let all: Vec<&Track> = std::iter::once(track).chain(vcas).collect();
+    let lanes: Vec<Option<&[(f64, f64)]>> = all.iter().map(|t| fader_points(t)).collect();
+    if lanes.iter().all(|l| l.is_none()) {
+        return None;
+    }
+    let mut beats: Vec<f64> = lanes
+        .iter()
+        .flatten()
+        .flat_map(|l| l.iter().map(|p| p.0))
+        .collect();
+    beats.sort_by(f64::total_cmp);
+    beats.dedup();
+    let sum = |at: &dyn Fn(&[(f64, f64)]) -> f64| -> f64 {
+        all.iter()
+            .zip(&lanes)
+            .map(|(t, l)| l.map_or(t.volume, at))
+            .sum()
+    };
+    let mut out = Vec::new();
+    for b in beats {
+        // The value as a beat is reached, and as it is left (they differ at a jump).
+        let before = sum(&|p| value_before(p, b));
+        let after = sum(&|p| daw_engine::automation::value_at(p, b).unwrap_or(0.0));
+        if before != after {
+            out.push((b, before));
+        }
+        out.push((b, after));
+    }
+    Some(out)
+}
+
+/// A lane's value as `beat` is approached from before it.
+fn value_before(points: &[(f64, f64)], beat: f64) -> f64 {
+    let next = points.partition_point(|p| p.0 < beat);
+    match (next.checked_sub(1).map(|i| points[i]), points.get(next)) {
+        (None, Some(b)) => b.1,
+        (Some(a), None) => a.1,
+        (Some(a), Some(b)) => a.1 + (b.1 - a.1) * (beat - a.0) / (b.0 - a.0),
+        (None, None) => 0.0,
+    }
+}
+
+/// The tracks that count as soloed: those that are, and the members of a
+/// soloed VCA.
+fn soloed_tracks(project: &Project) -> HashSet<Id> {
+    let mut out = HashSet::new();
+    for t in project.all_tracks() {
+        if (t.solo && !is_vca(t)) || vcas_of(t, project).iter().any(|v| v.solo) {
+            out.insert(t.id);
+        }
+    }
+    out
 }
 
 /// Put back the project's own value of anything a lane stopped automating,
@@ -1532,11 +1722,11 @@ fn release_targets(
 /// With some track soloed, a track still sounds if it is soloed itself, feeds a
 /// soloed track, or carries a soloed track's signal on to the master. The
 /// tracks that still sound, found in one pass over the outputs.
-fn solo_paths(project: &Project) -> HashSet<Id> {
+fn solo_paths(project: &Project, soloed: &HashSet<Id>) -> HashSet<Id> {
     let by_id: HashMap<Id, &Track> = project.tracks.iter().map(|t| (t.id, &**t)).collect();
     let mut sounding = HashSet::new();
     // Soloed tracks, and every track their output passes through.
-    for t in project.tracks.iter().filter(|t| t.solo) {
+    for t in project.tracks.iter().filter(|t| soloed.contains(&t.id)) {
         sounding.insert(t.id);
         let mut at = t.output;
         let mut steps = 0;
@@ -1558,7 +1748,7 @@ fn solo_paths(project: &Project) -> HashSet<Id> {
         let mut at = t.output;
         while let Some(&next) = at.and_then(|id| by_id.get(&id)) {
             if let Some(&known) = feeds.get(&next.id) {
-                beyond = known || next.solo;
+                beyond = known || soloed.contains(&next.id);
                 break;
             }
             if path.len() > by_id.len() {
@@ -1569,7 +1759,7 @@ fn solo_paths(project: &Project) -> HashSet<Id> {
         }
         for n in path.iter().rev() {
             feeds.insert(n.id, beyond);
-            beyond |= n.solo;
+            beyond |= soloed.contains(&n.id);
         }
         feeds.insert(t.id, beyond);
         if beyond {

@@ -1,4 +1,4 @@
--- REAPER bridge: open REAPER projects (.rpp) and write this DAW's projects as
+-- REAPER bridge: open REAPER projects (.rpp) and write paw's projects as
 -- .rpp. See README.md beside this file.
 local rpp = require("rpp")
 

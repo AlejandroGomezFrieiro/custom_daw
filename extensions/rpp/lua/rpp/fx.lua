@@ -1,18 +1,18 @@
--- Plugins: REAPER's FX chain entries to this DAW's devices and back.
+-- Plugins: REAPER's FX chain entries to paw's devices and back.
 --
 -- What maps, and how the state travels:
 --   CLAP   `<CLAP "CLAP: Name (Vendor)" <id> ""` with a `<STATE` block that is
---          the plugin's own saved state, base64. This DAW keeps a CLAP's
+--          the plugin's own saved state, base64. paw keeps a CLAP's
 --          state as the same bytes, so it is carried over as it is.
 --   VST3   `<VST "VST3: Name (Vendor)" <file> 0 "" <n>{<class id>} ""`. The
 --          base64 is three parts: REAPER's header (pins, sizes), the state,
 --          and a trailer. The state part is
 --            u32 component size, u32 1, component state,
 --            u32 controller size, u32 0, controller state
---          and this DAW's is u32 size, component, u32 size, controller.
+--          and paw's is u32 size, component, u32 size, controller.
 --          The sizes are checked against each other before anything is used.
 --   LV2    `<LV2 "LV2: Name (Vendor)" <uri> ""` with `P symbol value` lines,
---          which are the plugin's control ports: this DAW's parameter keys
+--          which are the plugin's control ports: paw's parameter keys
 --          for an LV2 plugin are the same symbols. A `<STATE` block (state
 --          beyond the ports) is not carried over.
 -- Everything else (VST2, JSFX, AU, DX, containers) stays behind as a note.
@@ -43,7 +43,7 @@ end
 
 -- VST3 state ------------------------------------------------------------------------
 
---- REAPER's state part of a VST3 chunk to this DAW's state, or nil and why.
+--- REAPER's state part of a VST3 chunk to paw's state, or nil and why.
 function M.vst3_state_from_reaper(data)
   local cs = b64.u32(data, 1)
   if not cs or 8 + cs + 8 > #data then return nil, "the state is shorter than its sizes say" end
@@ -54,7 +54,7 @@ function M.vst3_state_from_reaper(data)
   return b64.pack_u32(#comp) .. comp .. b64.pack_u32(#ctrl) .. ctrl
 end
 
---- This DAW's VST3 state to REAPER's state part.
+--- paw's VST3 state to REAPER's state part.
 function M.vst3_state_to_reaper(state)
   local cs = b64.u32(state, 1)
   if not cs or 4 + cs + 4 > #state then return nil end

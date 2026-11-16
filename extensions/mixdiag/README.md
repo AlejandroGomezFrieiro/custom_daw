@@ -118,9 +118,15 @@ row above the arrange view marks each finding with `E`, `W`, `I` or `H` at its
 beat, lined up with the timeline; it says `measuring 40%` while it runs and
 `(old)` once the project has changed since.
 
-In the graphical frontend the report opens in a window of its own (More ▸
-Mix report, or `:view.window mixdiag`), where it stays open while Enter or a
-second click on a finding goes to it, and the findings that have a place are
+In the graphical frontend the report opens in a painted window of its own
+(More ▸ Mix report, or `:view.window mixdiag_paint`): the loudness, true peak,
+sample peak and RMS of the mix as bars with the target marked, each track's
+peak as a meter, the spectrum by octave band as a shape on a log axis, and
+the findings below it, each with a dot in its severity's colour; resting the
+pointer on one shows it in full, with its advice. It stays open while Enter or
+a second click on a finding goes to it (`:view.window mixdiag` opens the
+terminal's list in cells instead). The tracks show their peak only, as
+measured (see Not done). The findings that have a place are
 flags in a band under the ruler, in the colour of their severity: a click on
 one goes there.
 
@@ -204,7 +210,7 @@ measurement; `start + seconds * tempo / 60` is the beat.
   carries, which leaves out effect returns fed by its sends.
 - A spectrum compared with reference tracks; no target curves are shipped,
   deliberately.
-- Tempo changes (the DAW has none yet), and integer-render settings: the
+- Tempo changes (paw has none yet), and integer-render settings: the
   measurement is of the floating-point mix, before any dither.
 - Mono files are read as two identical channels, so they measure 3 dB louder
   than a mono-aware meter would read them.

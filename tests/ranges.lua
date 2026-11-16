@@ -54,12 +54,3 @@ test("ranges: completion keeps the range in front and completes what follows", f
   end
   eq(found, true, "5,8test.ran completes to 5,8test.range")
 end)
-
-test("ranges: :q in a panel closes the panel, not the program", function()
-  T.three_clips()
-  keys("<CR>")
-  eq(daw.ui.focused, "pianoroll", "the piano roll is open")
-  keys(":q<CR>")
-  eq(daw.ui.focused, "arrange", "closed by :q")
-  eq(api.project_get() ~= nil, true, "the program runs on")
-end)

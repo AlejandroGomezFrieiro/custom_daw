@@ -1,12 +1,14 @@
-//! Stretched, shifted and looped clips: the fields that set them, the
-//! versions of files made for them (`stretched.rs`) put in place as they
-//! are made, and their waveforms.
+//! Stretched, warped, shifted and looped clips: the fields that set them,
+//! warp markers, the versions of files made for them (`stretched.rs`) put
+//! in place as they are started, and their waveforms.
 //!
 //! A clip's `stretch` is the ratio it plays its file at, whatever its
 //! timebase: a clip in [`Timebase::Stretch`] has it set again whenever the
 //! tempo changes (`Project::retime`), and its `source_tempo` says what its
 //! sound's own tempo is, so that `stretch = source_tempo / tempo` at its
-//! start. While a version is being made its clip is silent.
+//! start (where the tempo changes inside it, it is bent along the tempo
+//! instead: `warp.rs`). Until a version is started its clip is silent;
+//! then it plays as far as it is made.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -16,13 +18,14 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use super::{MAX_PEAKS, Session, de};
-use crate::model::{Clip, ClipContent, Id, Project, Timebase};
+use crate::model::{Clip, ClipContent, Id, Project, Timebase, WarpMarker};
 use crate::peaks;
 use crate::stretch::{PITCH_RANGE, RATIO_RANGE};
 use crate::stretched::{Key, SETTLE, Status};
+use crate::warp;
 
 /// The clip fields set here rather than in `Session::clip_set`.
-const FIELDS: [&str; 8] = [
+const FIELDS: [&str; 10] = [
     "stretch",
     "pitch",
     "stretch_mode",
@@ -31,6 +34,8 @@ const FIELDS: [&str; 8] = [
     "loop",
     "loop_length",
     "loop_start",
+    "warp",
+    "formants",
 ];
 
 /// Check how a new clip of `kind` is to play.
@@ -73,12 +78,33 @@ fn check_tempo(bpm: f64) -> Result<f64> {
     Ok(bpm)
 }
 
+/// Check an audio clip's warp markers: in order of their moments of the
+/// file, and of where they play them.
+pub(super) fn check_warp(kind: &str, warp: &[WarpMarker]) -> Result<()> {
+    if kind != "audio" && !warp.is_empty() {
+        bail!("only audio clips have warp markers");
+    }
+    for m in warp {
+        if !m.source.is_finite() || !m.target.is_finite() || m.source < 0.0 {
+            bail!("a warp marker is a moment of the file from 0 on, and where it plays");
+        }
+    }
+    if warp
+        .windows(2)
+        .any(|w| w[1].source <= w[0].source || w[1].target <= w[0].target)
+    {
+        bail!("warp markers follow each other in the file and where they play it");
+    }
+    Ok(())
+}
+
 /// The versions every stretched clip of `project` plays at `rate`.
 fn wanted(project: &Project, rate: u32) -> HashSet<Key> {
+    let map = project.tempo_map();
     project
         .all_tracks()
-        .flat_map(|t| t.clips.iter())
-        .filter_map(|c| Key::of(c, rate))
+        .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+        .filter_map(|c| Key::of(c, rate, map))
         .collect()
 }
 
@@ -175,18 +201,165 @@ impl Session {
                     beats => c.loop_length = beats,
                 },
                 "loop_start" => c.loop_start = number(&value)?.unwrap_or(0.0),
+                "warp" => {
+                    let markers: Vec<WarpMarker> = match value {
+                        // An empty Lua table is an empty object.
+                        Value::Null => Vec::new(),
+                        Value::Object(map) if map.is_empty() => Vec::new(),
+                        value => de(key, value)?,
+                    };
+                    check_warp("audio", &markers)?;
+                    c.warp = markers;
+                }
+                "formants" => c.formants = de(key, value)?,
                 _ => unreachable!("one of FIELDS"),
             }
             Ok(())
         })
     }
 
-    /// Note on a clip's description that its version is still being made.
+    /// Note on a clip's description that its version is still being made,
+    /// and where its warp markers are, as beats of the song.
     pub(super) fn note_stretching(&self, clip: &Clip, view: &mut Value) {
-        let key = Key::of(clip, self.handle.sample_rate as u32);
-        if self.audio.renders.status(key.as_ref()) == Status::Making {
+        let map = self.project.tempo_map();
+        let key = Key::of(clip, self.handle.sample_rate as u32, map);
+        if let Some(key) = key.as_ref()
+            && self.audio.renders.status(Some(key)) == Status::Making
+        {
+            // Played as far as it is made: how far that is.
             view["stretching"] = json!(true);
+            view["made"] = json!(self.audio.renders.made(key));
         }
+        if warp::is_bent(clip, map) {
+            view["bent"] = json!(true);
+        }
+        if clip.formants {
+            view["formants"] = json!(true);
+        }
+        if !clip.warp.is_empty() {
+            let markers: Vec<Value> = clip
+                .warp
+                .iter()
+                .map(|m| {
+                    json!({
+                        "source": m.source,
+                        "target": m.target,
+                        "beat": warp::beat_of(clip, map, m.source),
+                    })
+                })
+                .collect();
+            view["warp"] = json!(markers);
+        }
+    }
+
+    /// Put a warp marker on audio clip `id` at `beat`, pinning the moment of
+    /// its file that plays there; nothing moves. Returns its index among
+    /// the clip's markers (one already there is found again).
+    pub fn warp_add(&mut self, id: Id, beat: f64) -> Result<usize> {
+        let clip = self.audio_clip_ref(id)?;
+        if !beat.is_finite() || beat < clip.start - 1e-9 || beat > clip.start + clip.length + 1e-9 {
+            bail!("a warp marker goes inside its clip");
+        }
+        let map = self.project.tempo_map().clone();
+        let source = warp::source_at(&clip, &map, beat);
+        if source < 0.0 {
+            bail!("the clip plays nothing of its file there");
+        }
+        if let Some(i) = clip.warp.iter().position(|m| (m.source - source).abs() < 1e-6) {
+            return Ok(i);
+        }
+        let target = warp::Warp::new(
+            clip.warp.iter().map(|m| (m.source, m.target)).collect(),
+            1.0,
+            1.0,
+        )
+        .forward(source);
+        let index = clip.warp.partition_point(|m| m.source < source);
+        self.edit(|p| {
+            let c = p.clip_mut(id).expect("the clip was found");
+            c.warp.insert(index, WarpMarker { source, target });
+            Ok(())
+        })?;
+        Ok(index)
+    }
+
+    /// Move warp marker `index` of clip `id` to play at `beat`, stretching
+    /// the sound between it and its neighbours and nowhere else: the clip's
+    /// start and end are pinned with markers of their own when no marker is
+    /// between them and it. It goes no further than a stretch of a quarter
+    /// to four times on either side allows. Returns its index, which
+    /// pinning may have changed.
+    pub fn warp_move(&mut self, id: Id, index: usize, beat: f64) -> Result<usize> {
+        let clip = self.audio_clip_ref(id)?;
+        let Some(&marker) = clip.warp.get(index) else {
+            bail!("clip {id} has no warp marker {}", index + 1);
+        };
+        if !beat.is_finite() {
+            bail!("a beat is a number");
+        }
+        let map = self.project.tempo_map().clone();
+        let ClipContent::Audio { offset, .. } = clip.content else {
+            unreachable!("an audio clip")
+        };
+        let end = warp::source_at(&clip, &map, clip.start + clip.length);
+        let mut markers = clip.warp.clone();
+        let unstretched = warp::Warp::new(markers.iter().map(|m| (m.source, m.target)).collect(), 1.0, 1.0);
+        let pin = |markers: &mut Vec<WarpMarker>, source: f64| {
+            let at = markers.partition_point(|m| m.source < source);
+            markers.insert(
+                at,
+                WarpMarker {
+                    source,
+                    target: unstretched.forward(source),
+                },
+            );
+        };
+        if offset < marker.source - 1e-6 && !markers.iter().any(|m| m.source >= offset - 1e-9 && m.source < marker.source) {
+            pin(&mut markers, offset);
+        }
+        if end > marker.source + 1e-6 && !markers.iter().any(|m| m.source > marker.source && m.source <= end + 1e-9) {
+            pin(&mut markers, end);
+        }
+        let index = markers
+            .iter()
+            .position(|m| m.source == marker.source)
+            .expect("the marker moved is there");
+        let pinned = Clip {
+            warp: markers.clone(),
+            ..(*clip).clone()
+        };
+        let (lo, hi) = warp::target_range(&markers, index, clip.stretch);
+        let target = warp::target_for(&pinned, &map, beat).clamp(lo, hi);
+        markers[index].target = target;
+        self.edit(|p| {
+            p.clip_mut(id).expect("the clip was found").warp = markers;
+            Ok(())
+        })?;
+        Ok(index)
+    }
+
+    /// Take warp marker `index` off clip `id`: the sound between its
+    /// neighbours is stretched evenly again.
+    pub fn warp_remove(&mut self, id: Id, index: usize) -> Result<()> {
+        let clip = self.audio_clip_ref(id)?;
+        if index >= clip.warp.len() {
+            bail!("clip {id} has no warp marker {}", index + 1);
+        }
+        self.edit(|p| {
+            p.clip_mut(id).expect("the clip was found").warp.remove(index);
+            Ok(())
+        })
+    }
+
+    fn audio_clip_ref(&self, id: Id) -> Result<Arc<Clip>> {
+        let clip = self
+            .project
+            .clip(id)
+            .with_context(|| format!("no clip {id}"))?;
+        if !matches!(clip.content, ClipContent::Audio { .. }) {
+            bail!("only audio clips have warp markers");
+        }
+        Ok(clip.clone())
     }
 
     /// Start versions that have waited long enough, drop those no clip
@@ -209,13 +382,23 @@ impl Session {
         }
         // The engine builds a clip again when its copy differs from the
         // one it last saw: those clips are made to differ.
-        let touched = |c: &Arc<Clip>| Key::of(c, rate).is_some_and(|k| finished.contains(&k));
+        let map = self.project.tempo_map().clone();
+        let touched =
+            |c: &Arc<Clip>| Key::of(c, rate, &map).is_some_and(|k| finished.contains(&k));
         let synced = &mut self.synced;
         for track in std::iter::once(&mut synced.master).chain(synced.tracks.iter_mut()) {
             if track.clips.iter().any(touched) {
                 for clip in Arc::make_mut(track).clips.iter_mut() {
                     if touched(clip) {
                         *clip = Arc::new((**clip).clone());
+                    }
+                }
+            }
+            // So do clips in slots (`session/launcher.rs`).
+            if track.slots.iter().any(|s| touched(&s.clip)) {
+                for slot in Arc::make_mut(track).slots.iter_mut() {
+                    if touched(&slot.clip) {
+                        slot.clip = Arc::new((*slot.clip).clone());
                     }
                 }
             }
@@ -266,8 +449,8 @@ impl Session {
         };
         let map = self.project.tempo_map().clone();
         let seconds = map.seconds_between(clip.start, clip.start + clip.length);
-        let key = Key::of(clip, self.handle.sample_rate as u32);
-        let stretch = clip.stretch;
+        let key = Key::of(clip, self.handle.sample_rate as u32, &map);
+        let warp = warp::of(clip, &map).unwrap_or_else(|| warp::Warp::even(1.0));
         let audio = &mut self.audio;
         // `seconds` of what plays from `from`, in seconds of what plays.
         let mut part = |from: f64, seconds: f64, n: usize| -> Result<Vec<[f32; 3]>> {
@@ -282,11 +465,12 @@ impl Session {
                     n,
                 ));
             }
-            Ok(audio
-                .peaks(file, (from / stretch).max(0.0), seconds / stretch, n)?
-                .to_vec())
+            let start = warp.inverse(from).max(0.0);
+            let end = warp.inverse(from + seconds).max(start);
+            Ok(audio.peaks(file, start, end - start, n)?.to_vec())
         };
-        let begin = offset * stretch;
+        let begin = warp.forward(*offset);
+
         let Some((from, beats)) = clip.repeat() else {
             return part(begin, seconds, n);
         };

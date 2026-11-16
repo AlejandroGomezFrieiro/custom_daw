@@ -2,9 +2,9 @@
 
 # Lesson 16: The bundled extensions
 
-*About ten minutes. In the DAW, with the tutor loaded: `:tutor 16`.*
+*About ten minutes. In paw, with the tutor loaded: `:tutor 16`.*
 
-Much of what the DAW can do comes in extensions: directories of Lua in `extensions/` beside the program, which use the same `daw` module as your `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with `:tutor.try` and tries one thing in it; to have one always, link its directory into `~/.config/daw/extensions`.
+Much of what paw can do comes in extensions: directories of Lua in `extensions/` beside the program, which use the same `daw` module as your `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with `:tutor.try` and tries one thing in it; to have one always, link its directory into `~/.config/daw/extensions`.
 
 Each extension's README.md says everything it does. Their keys live under their own prefixes: `]s` `[s` and `,S` (sections), `gz` (musicops), `,t` (pattern), `,x` and `]d` `[d` (mixdiag), `,u` `g-` `g+` (undotree), `,v` (utau).
 
