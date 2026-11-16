@@ -30,7 +30,7 @@ pub struct Ask {
     pub kind: Kind,
     pub title: String,
     /// Kinds of file offered, by the names `filters` knows.
-    pub files: &'static str,
+    pub files: String,
     pub dir: String,
     /// For `Save`, the name suggested.
     pub name: String,
@@ -50,6 +50,7 @@ const SOUNDS: &[&str] = &["wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "o
 /// The filters a dialog offers for a kind of file, as (label, patterns).
 /// Both cases of each ending are listed, for patterns are case-sensitive.
 /// The first is the one shown at first; the last is every file.
+/// `render:wav,flac,mp3` offers just those endings.
 pub fn filters(files: &str) -> Vec<(&'static str, Vec<String>)> {
     let both = |endings: &[&str]| -> Vec<String> {
         endings
@@ -62,7 +63,10 @@ pub fn filters(files: &str) -> Vec<(&'static str, Vec<String>)> {
         // What `open` takes: a project, or a sound file on a new track.
         "open" => vec![("Projects", both(&["json"])), ("Sound files", both(SOUNDS))],
         "sound" => vec![("Sound files", both(SOUNDS))],
-        "render" => vec![("Sound files", both(&["wav", "flac"]))],
+        _ if files.starts_with("render:") => {
+            let endings: Vec<&str> = files["render:".len()..].split(',').collect();
+            vec![("Sound files", both(&endings))]
+        }
         _ => vec![],
     };
     out.push(("All files", vec!["*".to_string()]));
@@ -98,7 +102,7 @@ fn block_on<T>(future: impl Future<Output = T>) -> T {
 
 async fn request(ask: &Ask) -> Result<Option<PathBuf>, Error> {
     let dir = (!ask.dir.is_empty()).then(|| Path::new(&ask.dir));
-    let filters: Vec<FileFilter> = filters(ask.files)
+    let filters: Vec<FileFilter> = filters(&ask.files)
         .iter()
         .map(|(label, patterns)| {
             patterns
@@ -147,10 +151,11 @@ mod tests {
 
     #[test]
     fn filters_end_with_every_file_and_cover_both_cases() {
-        for kind in ["project", "open", "sound", "render", "anything"] {
+        for kind in ["project", "open", "sound", "render:wav,mp3", "anything"] {
             assert_eq!(filters(kind).last().unwrap().0, "All files", "{kind}");
         }
         assert_eq!(filters("project")[0].1, ["*.json", "*.JSON"]);
+        assert_eq!(filters("render:wav,mp3")[0].1, ["*.wav", "*.WAV", "*.mp3", "*.MP3"]);
         let sounds = &filters("sound")[0].1;
         for ending in ["wav", "aiff", "aif", "flac", "mp3", "ogg"] {
             assert!(sounds.contains(&format!("*.{ending}")), "{ending}");
@@ -176,7 +181,7 @@ mod tests {
         let ask = Ask {
             kind: Kind::Open,
             title: "Open".into(),
-            files: "open",
+            files: "open".into(),
             dir: "/".into(),
             name: String::new(),
         };

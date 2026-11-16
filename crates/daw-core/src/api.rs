@@ -32,6 +32,7 @@ pub struct Env {
     pub runtime_dir: Option<PathBuf>,
     /// Skip the user's configuration and extensions.
     pub clean: bool,
+    pub scripted: bool,
     pub argv: Vec<String>,
 }
 
@@ -918,12 +919,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // whatever takes it.
         fn input_levels(_, sh, () => ()) { Ok(sh.session.borrow().input_levels()) }
         // What a render can write: `{ { name = "WAV", extensions = { "wav" } } }`.
-        fn render_formats(lua, _sh, () => ()) {
-            to_lua(lua, &crate::session::render::formats_json())
+        fn render_formats(lua, _sh, ffmpeg => Option<String>) {
+            to_lua(lua, &crate::session::render::formats_json(ffmpeg.as_deref()))
         }
         // Nothing when a render can write `path`, or why not.
-        fn render_check(_, _sh, path => String) {
-            Ok(crate::session::render::format_of(path.as_ref()).err().map(|e| e.to_string()))
+        fn render_check(_, _sh, (path, ffmpeg) => (String, Option<String>)) {
+            Ok(crate::session::render::format_of(path.as_ref(), ffmpeg.as_deref()).err().map(|e| e.to_string()))
         }
         fn render(lua, sh, (path, opts) => (String, LuaValue)) {
             let opts: RenderOpts = options(lua, opts)?;
@@ -1182,6 +1183,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             env.set("config_dir", sh.env.config_dir.to_string_lossy().into_owned())?;
             env.set("runtime_dir", sh.env.runtime_dir.as_ref().map(|p| p.to_string_lossy().into_owned()))?;
             env.set("clean", sh.env.clean)?;
+            env.set("scripted", sh.env.scripted)?;
             // Where the program keeps what is the user's but not configuration:
             // recordings and the like, and what it needs between runs.
             env.set("data_dir", xdg_dir("XDG_DATA_HOME", ".local/share"))?;

@@ -91,6 +91,7 @@ end)
 test("the dialog option and where to start are what the window is told", function()
   start()
   eq(daw.frontend.dialog_info().native, true, "on by default")
+  eq(daw.frontend.dialog_info().render[1], "flac", "with the endings a render can write")
   daw.opt.native_dialogs = false
   eq(daw.frontend.dialog_info().native, false, "and off when asked")
   daw.opt.native_dialogs = true

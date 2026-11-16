@@ -64,6 +64,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `,at` `,ax` | automation off and on, clear it | |
 | `,am` | the track's automation mode: read, touch, latch, write, off in turn | |
 | `]t` `[t` | the clip's next take, the one before | |
+| `zt` | show or hide the track's take lanes | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
@@ -127,6 +128,8 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `<S-CR>` | play from the cursor |
 | `gs` `gp` | playhead to the start, to the cursor |
 | `gL` `gm` | loop on and off, metronome |
+| `gC` | count a bar in before recording, or not |
+| `gI` | punch recording on and off (over a selection: punch there) |
 | `R` | record armed tracks, or stop recording; with the loop on, every time round is a take |
 
 ## Find
@@ -139,6 +142,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `,,` | pick a command |
 | `,fk` `,ft` `,fl` `,fa` `,fd` | pick a key, track, clip, device to add, device of the track |
 | `,fm` `,fr` `,fn` `,ff` `,fo` `,fp` `,f.` | marks, registers, messages, files, options, every picker, the last picker |
+| `,fR` | recent projects (`:recent 2` opens the second) |
 
 Stop half way through a sequence and the keys that can follow are listed.
 

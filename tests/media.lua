@@ -16,14 +16,14 @@ test("a render to a format that cannot be written is refused before rendering", 
   T.tone("Synth", 2)
   local heard = false
   local off = daw.on("render.before", function() heard = true end)
-  local path = T.scratch .. "/refused.mp3"
-  T.fails(function() daw.render(path, { tail = 0 }) end, "MP3", "an MP3 render")
+  local path = T.scratch .. "/refused.m4a"
+  T.fails(function() daw.render(path, { tail = 0 }) end, "AAC", "an AAC render")
   T.fails(function() daw.render(path, { tail = 0 }) end, "%.wav", "the message names what can be written")
   T.fails(function() daw.render(T.scratch .. "/refused.xyz", { tail = 0 }) end, "xyz", "an unknown extension")
   eq(exists(path), false, "no file is written")
   eq(heard, false, "nothing is rendered, not even what renders before")
   daw.off(off)
-  T.fails(function() daw.cmd("render", { path }) end, "MP3", "the command refuses it too")
+  T.fails(function() daw.cmd("render", { path }) end, "AAC", "the command refuses it too")
   eq(exists(path), false, "and writes nothing")
   local names = {}
   for _, f in ipairs(api.render_formats()) do names[#names + 1] = f.name end
