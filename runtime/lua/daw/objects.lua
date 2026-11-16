@@ -150,6 +150,8 @@ function Track:snapshot()
     snap.devices[i] = device:snapshot()
   end
   for i, clip in ipairs(self:clips()) do snap.clips[i] = clip:snapshot() end
+  -- The clips in its slots, each knowing its row (`daw.launcher`).
+  for _, clip in ipairs(api.slot_list(self.id)) do snap.clips[#snap.clips + 1] = wrap(Clip, clip.id):snapshot() end
   for i, lane in ipairs(api.lane_list(self.id)) do
     snap.lanes[i] = {
       target = lane.target, device = lane.device and position[lane.device], param = lane.param,
@@ -472,6 +474,8 @@ function Clip:snapshot()
     warp = daw.stretch.markers(c), formants = c.formants or nil,
     -- What extensions keep with the clip goes where the clip goes.
     meta = next(c.meta) and c.meta or nil,
+    -- A clip in a slot: its row, and how it launches.
+    slot = c.slot, quantize = c.quantize, mode = c.slot and c.mode, legato = c.slot and c.legato,
   }
   if c.kind == "midi" then
     snap.notes = self:notes()

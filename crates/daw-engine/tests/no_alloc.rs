@@ -409,6 +409,70 @@ fn the_audio_thread_never_allocates() {
     send(&mut handle, Msg::SetPool(Some(Box::new(pool))));
     assert_eq!(run(&mut engine, 200, 512, 4), 0, "playback on four threads");
 
+    // Clip launching: slots given and replaced, launched on every kind of
+    // boundary, legato, stopped, back to the arrangement, across seeks, the
+    // loop going round and the song stopping.
+    use daw_engine::launch::{Launch, Quantize, SlotClip, Slots, Target};
+    let slots = |round: usize| {
+        let rows = (0..4)
+            .map(|row| {
+                (row != 2).then(|| SlotClip {
+                    clips: *clips(&audio, 20 + round),
+                    length: 1.0 + row as f64 + round as f64 * 0.5,
+                })
+            })
+            .collect();
+        Box::new(Slots { rows })
+    };
+    let quantizes = [
+        Quantize::Off,
+        Quantize::Grid(0.25),
+        Quantize::Beat,
+        Quantize::Bars(1),
+        Quantize::Bars(4),
+    ];
+    let targets = [
+        Target::Slot(0),
+        Target::Slot(1),
+        Target::Slot(2),
+        Target::Slot(3),
+        Target::Slot(9),
+        Target::Stop,
+        Target::Arrangement,
+    ];
+    for round in 0..12 {
+        for &slot in &tracks {
+            send(
+                &mut handle,
+                Msg::SetSlots {
+                    track: slot,
+                    slots: slots(round),
+                },
+            );
+        }
+        let launches = tracks
+            .iter()
+            .enumerate()
+            .map(|(i, &track)| Launch {
+                track,
+                target: targets[(i + round) % targets.len()],
+                quantize: quantizes[(i * 3 + round) % quantizes.len()],
+                legato: (i + round) % 3 == 0,
+                from: (round % 5 == 2).then_some(round as f64 * 0.3),
+            })
+            .collect();
+        send(&mut handle, Msg::Launch(Box::new(launches)));
+        if round % 4 == 1 {
+            send(&mut handle, Msg::Seek(round as f64 * 0.7));
+        }
+        if round == 7 {
+            send(&mut handle, Msg::Stop);
+            send(&mut handle, Msg::Play);
+        }
+        assert_eq!(run(&mut engine, 30, 512, 4), 0, "launching clips");
+        handle.collect_garbage();
+    }
+
     // Recording: a take capturing two tracks' input and MIDI input.
     let (audio_tx, mut audio_rx) = rtrb::RingBuffer::new(1 << 20);
     let (midi_tx, mut midi_rx) = rtrb::RingBuffer::new(1024);

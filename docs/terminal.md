@@ -146,6 +146,10 @@ dragging a device card by its name onto a track's header moves it there
 mixer has `h` `l` for tracks, `j` `k` for volume, `grv` `grp` to type the
 strip's volume and pan, and `dd` `yy` `p` for tracks.
 
+`,l` shows the session view, the clip launcher: a column of slots under
+each track and a scene for each row, launched with `<CR>` and `L`; its keys
+are in [Live performance](live.md).
+
 ## Pickers
 
 A picker chooses one thing out of many by typing a few letters of it, as
