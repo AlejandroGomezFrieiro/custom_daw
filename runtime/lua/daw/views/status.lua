@@ -97,6 +97,9 @@ function view.segments(width)
       or width >= 80 and (verb:sub(1, 6) .. " " .. pct .. " · Esc") or (verb:sub(1, 6) .. " " .. pct)
     add(left, 0, 3, { { text, "StatusRec" } })
   end
+  -- Diagnostics: how many of each, for the piano roll's clip or the project.
+  local diagnostics = daw.diagnostic and daw.diagnostic.status()
+  if diagnostics then add(left, 0, 3, diagnostics) end
   -- 8: the grid.
   add(left, 100, 9, { { "grid " .. view.grid_text(daw.opt.grid), "StatusDim" } })
   -- 9: how much is selected, in visual mode.

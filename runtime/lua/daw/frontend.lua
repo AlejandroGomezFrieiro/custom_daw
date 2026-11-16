@@ -181,6 +181,8 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- Notes with diagnostics: { index, pitch, start, length, severity, message, actions }.
+      marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
     }
   end
   local under = daw.cursor.clip()
