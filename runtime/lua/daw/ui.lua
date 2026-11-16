@@ -1,10 +1,11 @@
--- The screen: views, the layout that arranges them, focus, messages and
--- highlight groups.
+-- The screen: views, the tabs and windows that arrange them (laid out by
+-- daw/layout.lua), focus, messages and highlight groups.
 --
 -- A view is a table with a `render(self, buf, ctx)` function that draws into a
 -- cell buffer. Everything on screen, including the built-in arrange view and
 -- status line, is a view registered through `daw.ui.view`.
 local api = daw.api
+local L = require("daw.layout")
 local M = {
   Buf = require("daw.buf"),
   views = {},
@@ -16,36 +17,31 @@ local M = {
   rects = {},      -- where each view was last drawn
 }
 
--- Rows are stacked in a `v` node and columns in an `h` node. A child with a
--- `size` gets exactly that many cells; the rest share what is left.
--- A child's `weight` (default 1) is its share of what is left, and `min`
--- the fewest cells it is given while there are that many. A child with
--- `float_below = n` leaves the layout on screens narrower than `n` and is
--- drawn over the others instead, along the right edge.
-M.layout = {
-  dir = "v",
-  { dir = "h", { view = "arrange" }, { view = "devices", size = 40, hidden = true, float_below = 80 } },
-  { view = "pianoroll", hidden = true, weight = 2 },
-  { view = "mixer", weight = 0.5, min = 14, hidden = true },
-  { view = "status", size = 1 },
-  { view = "cmdline", size = 1 },
-}
+-- The tabs, each a tree of windows (see daw/layout.lua for how a tree is
+-- laid out), and the current one, whose tree is `M.layout`. The status line
+-- and the command line are drawn along the bottom of every tab.
+M.tabs = { { layout = L.default_tree() } }
+M.tab = 1
+M.layout = M.tabs[1].layout
+M.bars = { { view = "status", size = 1 }, { view = "cmdline", size = 1 } }
 
--- Each seat has its own focus, floating view, prompt, panels shown and
--- the view a held button went down in; a new one starts with the panels
--- the instance's terminal shows.
+-- Each seat has its own focus, floating view, prompt, tabs and windows,
+-- and the view a held button went down in; a new one starts with the tabs
+-- and windows of the instance's terminal.
 daw.seats.keep("ui",
-  function() return M.focused, M.float, M.grabber, M.rects, M.layout, M.pressed end,
-  function(focused, float, grabber, rects, layout, pressed)
-    M.focused, M.float, M.grabber, M.rects, M.layout, M.pressed = focused, float, grabber, rects, layout, pressed
+  function() return M.focused, M.float, M.grabber, M.rects, M.tabs, M.tab, M.pressed end,
+  function(focused, float, grabber, rects, tabs, tab, pressed)
+    M.focused, M.float, M.grabber, M.rects, M.pressed = focused, float, grabber, rects, pressed
+    M.tabs, M.tab, M.layout = tabs, tab, tabs[tab].layout
   end,
-  function(_, _, _, _, layout) return "arrange", nil, nil, {}, daw.seats.copy(layout), nil end)
+  function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, daw.seats.copy(tabs), tab, nil end)
 
 --- Register a view, replacing any view of the same name.
 ---   daw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
 --- Optional fields: `focusable` (default true), `on_key(self, key)` for keys
 --- with no mapping, `modal` (every key goes to `on_key`), `on_mouse(self, event)`,
---- `on_show(self)`, `on_hide(self)`.
+--- `on_show(self)`, `on_hide(self)`. A view is a buffer type with one
+--- buffer, named as the view or by `bufname`.
 function M.view(name, def)
   def.name = name
   M.views[name] = def
@@ -53,11 +49,9 @@ function M.view(name, def)
   return def
 end
 
-local function find(node, name)
-  if node.view == name then return node end
-  for _, child in ipairs(node) do
-    local found = find(child, name)
-    if found then return found end
+local function bar(name)
+  for _, node in ipairs(M.bars) do
+    if node.view == name then return node end
   end
 end
 
@@ -75,21 +69,25 @@ local function focusable(name)
   return view and view.focusable ~= false
 end
 
+--- Show a view: in its window if it has one in this tab, else where it was
+--- docked. A view has one window at a time: one on screen in another tab
+--- moves here.
 function M.show(name)
-  local node = find(M.layout, name)
-  if not node then error("view `" .. name .. "` is not in the layout", 2) end
-  if node.hidden then
+  local node = bar(name)
+  if node then
     node.hidden = false
-    local view = M.views[name]
-    if view and view.on_show then view:on_show() end
+  elseif not L.reveal(name) then
+    error("view `" .. name .. "` is not in the layout", 2)
   end
   api.ui_redraw()
 end
 
+--- Close a view's window, in every tab; it keeps its place for next time.
 function M.hide(name)
-  local node = find(M.layout, name)
-  if node and not node.hidden then
+  local node = bar(name)
+  if node then
     node.hidden = true
+  elseif L.conceal(name) then
     local view = M.views[name]
     if view and view.on_hide then view:on_hide() end
   end
@@ -98,53 +96,29 @@ function M.hide(name)
 end
 
 function M.toggle(name)
-  local node = find(M.layout, name)
-  if node and node.hidden then
-    M.show(name)
-    if focusable(name) then M.focus(name) end
-  else
-    M.hide(name)
-  end
+  local win = L.find(M.layout, name)
+  if (win and not win.hidden) or not (win or L.homes[name]) then return M.hide(name) end
+  M.show(name)
+  if focusable(name) then M.focus(name) end
 end
 
 --- Add a view to the layout along one side of the screen.
 ---   daw.ui.dock("clock", { side = "top", size = 5 })
 --- `side` is "top", "bottom" (above the status line), "left" or "right" (beside
 --- the arrange view). Without `size` the view shares the space left over.
---- Docking a view that is already in the layout moves it.
+--- Docking a view that is already in the layout moves it. Other tabs put
+--- it in the same place when it is shown there.
 function M.dock(name, opts)
-  opts = opts or {}
-  local function remove(node)
-    for i = #node, 1, -1 do
-      if node[i].view == name then table.remove(node, i) else remove(node[i]) end
-    end
-  end
-  remove(M.layout)
-  local node = { view = name, size = opts.size, hidden = opts.hidden }
-  local side = opts.side or "bottom"
-  if side == "left" or side == "right" then
-    local row = M.layout[1]
-    for _, child in ipairs(M.layout) do
-      if child.dir == "h" then row = child end
-    end
-    table.insert(row, side == "left" and 1 or #row + 1, node)
-  elseif side == "top" then
-    table.insert(M.layout, 1, node)
-  else
-    local at = #M.layout + 1
-    for i, child in ipairs(M.layout) do
-      if child.view == "status" then at = i end
-    end
-    table.insert(M.layout, at, node)
-  end
+  L.dock(name, opts or {})
   api.ui_redraw()
 end
 
---- Give a view the keyboard, showing it first if it is hidden.
+--- Give a view the keyboard, showing it first if it is hidden: the window
+--- it is in, going to its tab if that is another.
 function M.focus(name)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
-  local node = find(M.layout, name)
-  if node and node.hidden then M.show(name) end
+  local win = L.reveal(name, true)
+  if win then return L.enter(win) end
   if M.focused ~= name then
     local old = M.focused
     M.focused = name
@@ -153,51 +127,44 @@ function M.focus(name)
   api.ui_redraw()
 end
 
---- Focus the next (or with -1 the previous) view that takes the keyboard.
+--- Focus the next (or with -1 the previous) window that takes the keyboard.
 function M.focus_next(step)
-  local names, at = {}, 0
+  local wins, at = {}, 0
+  local cur = L.current()
   for _, rect in ipairs(M.arrange()) do
-    if focusable(rect.name) then
-      names[#names + 1] = rect.name
-      if rect.name == M.focused then at = #names end
+    if rect.win and focusable(rect.name) then
+      wins[#wins + 1] = rect.win
+      if cur and rect.win == cur.id and cur.view == M.focused then at = #wins end
     end
   end
-  if #names == 0 then return end
-  M.focus(names[(at - 1 + (step or 1)) % #names + 1])
+  if #wins == 0 then return end
+  local win = L.find_id(M.layout, wins[(at - 1 + (step or 1)) % #wins + 1])
+  if win then L.enter(win) end
 end
 
-local function place(node, x, y, w, h, out, screen_w, after)
-  if node.view then
-    out[#out + 1] = { name = node.view, x = x, y = y, w = w, h = h, after = after }
-    return
+-- Sizes along a node: a child with a `size` gets that many cells, the rest
+-- share what is left by weight, a child below its `min` given that much and
+-- the rest shared again among the others. With no child left to share, the
+-- last one takes what is left.
+local function shares(children, total)
+  local flexible
+  for _, child in ipairs(children) do
+    if not child.size then flexible = true end
   end
-  local vertical = node.dir ~= "h"
-  local total = vertical and h or w
-  local children, fixed = {}, 0
-  for _, child in ipairs(node) do
-    if not child.hidden then
-      if child.float_below and screen_w < child.float_below and child.view then
-        -- Too narrow to stand beside the others: drawn over them instead.
-        out.floating = out.floating or {}
-        out.floating[#out.floating + 1] = child
-      else
-        children[#children + 1] = child
-        if child.size then fixed = fixed + child.size end
-      end
-    end
-  end
-  -- Shares of what is left, with a child below its `min` given that much
-  -- and the rest shared again among the others.
+  local grow = not flexible and children[#children]
+  local function size_of(child) return child ~= grow and child.size or nil end
+  local fixed = 0
+  for _, child in ipairs(children) do fixed = fixed + (size_of(child) or 0) end
   local spare = math.max(0, total - fixed)
   local sizes = {}
   for _ = 1, #children do
     local weights, left = 0, spare
     for i, child in ipairs(children) do
-      if child.size then sizes[i] = child.size elseif sizes[i] then left = left - sizes[i] else weights = weights + (child.weight or 1) end
+      if size_of(child) then sizes[i] = size_of(child) elseif sizes[i] then left = left - sizes[i] else weights = weights + (child.weight or 1) end
     end
     local grew, weight_seen = false, 0
     for i, child in ipairs(children) do
-      if not child.size and not sizes[i] then
+      if not size_of(child) and not sizes[i] then
         -- Round cumulatively, so the flexible children add up to exactly what is left.
         local before = math.floor(left * weight_seen / weights)
         weight_seen = weight_seen + (child.weight or 1)
@@ -211,7 +178,7 @@ local function place(node, x, y, w, h, out, screen_w, after)
     if not grew then
       weight_seen = 0
       for i, child in ipairs(children) do
-        if not child.size and not sizes[i] then
+        if not size_of(child) and not sizes[i] then
           local before = math.floor(left * weight_seen / weights)
           weight_seen = weight_seen + (child.weight or 1)
           sizes[i] = math.floor(left * weight_seen / weights) - before
@@ -220,31 +187,75 @@ local function place(node, x, y, w, h, out, screen_w, after)
       break
     end
   end
+  return sizes
+end
+
+local function place(node, x, y, w, h, out, screen_w, after)
+  out.nodes[node] = { x = x, y = y, w = w, h = h }
+  if node.view then
+    out[#out + 1] = { name = node.view, win = node.id, x = x, y = y, w = w, h = h, after = after }
+    return
+  end
+  local vertical = node.dir ~= "h"
+  local total = vertical and h or w
+  local children = {}
+  for _, child in ipairs(node) do
+    if L.shown(child) then
+      if child.float_below and screen_w < child.float_below and child.view then
+        -- Too narrow to stand beside the others: drawn over them instead.
+        out.floating[#out.floating + 1] = child
+      else
+        children[#children + 1] = child
+      end
+    end
+  end
+  local sizes = shares(children, total)
   local pos = 0
   for i, child in ipairs(children) do
     local size = math.max(0, math.min(sizes[i] or 0, total - pos))
     if vertical then
-      place(child, x, y + pos, w, size, out, screen_w)
+      if i > 1 then out.borders[#out.borders + 1] = { node = node, a = children[i - 1], b = child, dir = "v", x = x, y = y + pos, w = w } end
+      -- A rule on this node's left edge is on each of its rows' too.
+      place(child, x, y + pos, w, size, out, screen_w, after)
     else
+      if i > 1 then out.borders[#out.borders + 1] = { node = node, a = children[i - 1], b = child, dir = "h", x = x + pos, y = y, h = h } end
       -- A view beside another has a rule along its left edge.
-      place(child, x + pos, y, size, h, out, screen_w, i > 1 and "rule" or nil)
+      place(child, x + pos, y, size, h, out, screen_w, (i > 1 or after) and "rule" or nil)
     end
     pos = pos + size
   end
 end
 
---- Where each visible view goes on a screen of the current size.
+--- Where each visible view goes on a screen of the current size: a list of
+--- `{ name, win, x, y, w, h }`, with the tab line along the top when there
+--- is more than one tab. `.borders` holds the borders between windows and
+--- `.nodes` where each node of the tree went, for resizing.
 function M.arrange(width, height)
   if not width then width, height = api.ui_size() end
-  local out = {}
-  place(M.layout, 0, 0, width, height, out, width)
+  local out = { nodes = {}, borders = {}, floating = {} }
+  local top = #M.tabs > 1 and 1 or 0
+  local below = 0
+  for _, node in ipairs(M.bars) do
+    if not node.hidden then below = below + node.size end
+  end
+  local area = math.max(0, height - top - below)
+  place(M.layout, 0, top, width, area, out, width)
+  local y = top + area
+  for _, node in ipairs(M.bars) do
+    if not node.hidden then
+      local h = math.max(0, math.min(node.size, height - y))
+      out[#out + 1] = { name = node.view, x = 0, y = y, w = width, h = h }
+      y = y + h
+    end
+  end
   -- Panels that float on a narrow screen sit along the right edge, over the
   -- top part of the screen.
-  for _, node in ipairs(out.floating or {}) do
+  for _, node in ipairs(out.floating) do
     local w = math.min(node.size or 40, width - 4)
-    out[#out + 1] = { name = node.view, x = width - w, y = 0, w = w, h = math.max(1, height - 2), after = "box" }
+    out[#out + 1] = { name = node.view, win = node.id, x = width - w, y = top, w = w, h = math.max(1, height - top - 2), after = "box" }
   end
   out.floating = nil
+  out.tabline = top > 0 and { y = 0, w = width } or nil
   return out
 end
 
@@ -360,11 +371,27 @@ function M.render(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
   api.ui_mouse(daw.opt.mouse ~= false)
   if buf.width < M.min_width or buf.height < M.min_height then return too_small(buf) end
+  local sizes_before = M.rects.sizes or {}
   M.rects = M.arrange(buf.width, buf.height)
   local g = daw.draw.g
-  for _, r in ipairs(M.rects) do
+  local current = L.current()
+  -- A time bound window with the keyboard is drawn first, and the other
+  -- time bound windows take its time before they are drawn.
+  local lead, followers = L.time_lead()
+  local order = {}
+  for i, r in ipairs(M.rects) do order[i] = r end
+  for i, r in ipairs(order) do
+    if lead and r.win == lead.id and r.after ~= "box" then
+      table.insert(order, 1, table.remove(order, i))
+      break
+    end
+  end
+  local sizes, resized = {}, {}
+  for _, r in ipairs(order) do
     local view = M.views[r.name]
     if view and r.w > 0 and r.h > 0 then
+      local win = r.win and L.find_id(M.layout, r.win)
+      local focused = M.focused == r.name and (not win or win == current)
       local area = buf:sub(r.x, r.y, r.w, r.h)
       if r.after == "rule" and r.w > 1 then
         -- A rule between this view and the one on its left.
@@ -372,13 +399,41 @@ function M.render(buf)
         r.x, r.w = r.x + 1, r.w - 1
         area = buf:sub(r.x, r.y, r.w, r.h)
       elseif r.after == "box" and r.w > 2 and r.h > 2 then
-        local focused = M.focused == r.name
         area = M.box(area, nil, focused and "BorderFocus" or "Border")
         r.x, r.y, r.w, r.h = r.x + 1, r.y + 1, r.w - 2, r.h - 2
       end
       if backgrounds[r.name] then area:fill(0, 0, r.w, r.h, " ", backgrounds[r.name]) end
-      draw(view, area, { focused = M.focused == r.name, x = r.x, y = r.y })
+      local follower = win and followers and followers[win.id]
+      if follower then L.time_follow(lead, win) end
+      if win and (r.w < L.min_width or r.h < (focusable(r.name) and 2 or 1)) then
+        area:text(0, 0, daw.util.fit("too small", r.w), "TooSmall")
+      else
+        draw(view, area, { focused = focused, x = r.x, y = r.y, win = win, follower = follower or nil })
+      end
+      if win then
+        sizes[win.id] = r.w .. "x" .. r.h
+        if sizes_before[win.id] and sizes_before[win.id] ~= sizes[win.id] then resized[#resized + 1] = win.id end
+      end
     end
+  end
+  M.rects.sizes = sizes
+  if #resized > 0 then
+    daw.defer(function()
+      for _, id in ipairs(resized) do daw.emit("win.resized", { win = id }) end
+    end)
+  end
+  if M.rects.tabline then
+    -- The tabs along the top, the current one bright.
+    local line = buf:sub(0, 0, buf.width, 1)
+    line:fill(0, 0, buf.width, 1, " ", "TitleBar")
+    local x, spans = 0, {}
+    for i, t in ipairs(M.tabs) do
+      local mine = i == M.tab
+      local used = line:text(x, 0, (mine and g.mark or " ") .. i .. " " .. L.tab_title(t) .. " ", mine and "TitleBarNameFocus" or "TitleBarName")
+      spans[i] = { x = x, w = used }
+      x = x + used + 1
+    end
+    M.rects.tabline.spans = spans
   end
   if M.float and M.views[M.float.name] then
     local r = float_rect(buf.width, buf.height)
@@ -460,11 +515,33 @@ function M.close()
   api.ui_redraw()
 end
 
+--- A border between two windows held from a press: it follows the pointer.
+local function hold_border(event, border, only_moved)
+  daw.mouse.grab(daw.util.merge(event, { view_x = 0, view_y = 0 }), {
+    drag = function(d) L.drag_border(border, M.rects, d.x, d.y) end,
+    up = function(u)
+      if u.moved or not only_moved then L.drag_border(border, M.rects, u.x, u.y) end
+    end,
+  })
+end
+
 local function route(event)
+  local tabline = M.rects.tabline
+  if tabline and event.y == tabline.y and not M.float then
+    -- A click on a tab goes to it.
+    for i, span in ipairs(tabline.spans or {}) do
+      if event.kind == "down" and event.x >= span.x and event.x < span.x + span.w then L.tab_go(i) end
+    end
+    return
+  end
   local target
   for _, r in ipairs(M.rects) do
     if event.x >= r.x and event.x < r.x + r.w and event.y >= r.y and event.y < r.y + r.h then target = r end
   end
+  -- The rule between two windows side by side is a border to drag; so is
+  -- the top row of a window below another, which the window hears first.
+  local border = event.kind == "down" and not M.float and L.border_at(M.rects, event.x, event.y)
+  if border and (border.dir == "h" or not target) then return hold_border(event, border) end
   -- A drag and its release belong to the view the button went down in,
   -- wherever the pointer has gone since.
   if event.kind == "down" then
@@ -482,12 +559,19 @@ local function route(event)
   if not target then return end
   local view = M.views[target.name]
   if not view then return end
-  if event.kind == "down" and focusable(target.name) and not M.float then M.focus(target.name) end
+  if event.kind == "down" and focusable(target.name) and not M.float then
+    local win = target.win and L.find_id(M.layout, target.win)
+    if win then L.enter(win) else M.focus(target.name) end
+  end
   if view.on_mouse then
     view:on_mouse(daw.util.merge(event, {
       x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
+      win = target.win,
     }))
   end
+  -- A press on a window's top row that the window did not hold drags the
+  -- border above it.
+  if border and not daw.mouse.gesture() then hold_border(event, border, true) end
 end
 
 --- Route a mouse event to the view under the pointer, with coordinates

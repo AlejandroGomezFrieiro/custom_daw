@@ -39,6 +39,24 @@ function view:edit(clip)
   daw.emit("pianoroll.opened", { clip = clip.id })
 end
 
+--- The time this view shows, for windows bound in time (`timebind`): the
+--- project's beat at the left edge, columns per beat, and beats shown.
+--- The roll counts beats from the active clip's start.
+function view:time_axis()
+  local clip = self:clip()
+  if not clip then return nil end
+  return clip.start + self.scroll, daw.opt.note_zoom, self.geometry and self.geometry.span
+end
+
+function view:set_time_axis(left, zoom)
+  local clip = self:clip()
+  if not clip then return end
+  -- As far left as the earliest clip edited starts, as the roll scrolls.
+  local lo = clips.span()
+  self.scroll = math.max(math.min(0, math.floor(lo or 0)), left - clip.start)
+  if zoom and daw.opt.note_zoom ~= zoom then daw.opt.note_zoom = zoom end
+end
+
 --- The note under the cursor in any of the clips edited, the active one's
 --- first: the note (its start in the roll's beats), its place among its
 --- clip's notes, and its part.
@@ -238,8 +256,11 @@ function view:render(buf, ctx)
   if self.pitch > self.top then self.top = self.pitch end
   if self.pitch <= self.top - rows then self.top = self.pitch + rows - 1 end
   self.top = util.clamp(self.top, rows - 1, 127)
-  if self.beat < self.scroll then self.scroll = math.floor(self.beat) end
-  if self.beat >= self.scroll + span - grid then self.scroll = math.ceil(self.beat - span + 1) end
+  -- Unless another window leads this one's time (`timebind`).
+  if not ctx.follower then
+    if self.beat < self.scroll then self.scroll = math.floor(self.beat) end
+    if self.beat >= self.scroll + span - grid then self.scroll = math.ceil(self.beat - span + 1) end
+  end
   self.scroll = math.max(math.min(0, math.floor(lo)), self.scroll)
   self.geometry = { rows = rows, zoom = zoom, keys = KEYS, head = head, vel = vel, span = span }
 
