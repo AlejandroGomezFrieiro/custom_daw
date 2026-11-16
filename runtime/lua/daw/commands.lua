@@ -124,44 +124,20 @@ end
 
 -- Ranges ----------------------------------------------------------------------
 --
--- A command line may start with a range, as in Vim:
---
---   :'<,'>notation.slur        the last selection made in the focused view
---   :5,8notation.transpose 2   bars 5 to 8
---   :5notation.dyn mf          bar 5, for a command that takes bars; for any
---                              other a number right before the name is its
---                              count: `:3snippet arp`
---
--- The command gets it as `ctx.range`. For `'<,'>` that is
--- `{ selection = true, region = <the region, as operators get it> }`, and
--- while the command runs `daw.keymap.selection()` returns that region, so a
--- command that acts on the selection works on it unchanged. For bars it is
--- `{ bars = { first, last }, from, to }`, `from` and `to` in beats of the
--- song, the end not included; only a command defined with `range = true`
--- takes bars.
+-- A command line may start with a range, as in Vim: of time (`:5,8`, `%`,
+-- `.`, `$`, `'a,'b`, `'<,'>`) and of tracks (`:t2,t4`, `t*`, `t/Drums/`).
+-- `daw.ex` (runtime/lua/daw/ex.lua) reads them, runs its own commands on
+-- them (`:5,8d`, `:%s/c4/d4/`, `:g/vel<20/d`), and gives the range to a
+-- command defined with `range = true` as `ctx.range`: `{ bars = { first,
+-- last }, from, to }` for time, `from` and `to` in beats of the song, the
+-- end not included; `tracks` (ids) for tracks; `{ selection = true, region
+-- }` for `'<,'>`, while `daw.keymap.selection()` returns that region. A
+-- number right before a command without a range is its count: `:3snippet arp`.
 
 --- Split a range off the front of a command line: the range, and the rest.
 --- Nil for the range when there is none; an error message instead of the
---- rest when the range names nothing. A single number is a range with
---- `single` set, which `exec` gives as a count to a command without bars.
-function M.range(line)
-  local rest = line:match("^%s*'<%s*,%s*'>%s*(.*)$")
-  if rest then
-    local region = daw.keymap.last_selection()
-    if not region then return nil, nil, "no selection made in this view yet for '<,'>" end
-    return { selection = true, region = region }, rest
-  end
-  local a, b, single
-  a, b, rest = line:match("^%s*(%d+)%s*,%s*(%d+)%s*(.*)$")
-  if not a then
-    a, rest = line:match("^%s*(%d+)%s*([%a_].*)$")
-    b, single = a, true
-  end
-  if not a then return nil, line end
-  a, b = tonumber(a), tonumber(b)
-  if a < 1 or b < a then return nil, nil, "a range of bars goes from the first to the last: `5,8`" end
-  return { bars = { a, b }, from = daw.time.bar_start(a), to = daw.time.bar_start(b + 1), single = single }, rest
-end
+--- rest when the range names nothing.
+function M.range(line) return daw.ex.range(line) end
 
 --- Functions that may take a whole line before it is read as a command:
 --- `fn(line, ctx)` returns true when it ran it. A text buffer takes `:w`,
@@ -173,21 +149,7 @@ function M.exec(line, ctx)
   for _, handler in ipairs(M.line_handlers) do
     if handler(line, ctx) then return end
   end
-  local range, rest, err = M.range(line)
-  if err then error(err, 0) end
-  local name, args = M.parse(rest)
-  if not name then return end
-  if not range then return M.run(name, args, ctx) end
-  local spec = registry[name]
-  -- A number right before a command that takes no bars is its count.
-  if range.single and not (spec and spec.range) then
-    return M.run(name, args, daw.util.merge(ctx, { count = range.bars[1] }))
-  end
-  if spec and range.bars and not spec.range then error("`" .. name .. "` takes no range of bars", 0) end
-  ctx = ctx or {}
-  ctx.range = range
-  if range.selection then return daw.keymap.with_selection(range.region, M.run, name, args, ctx) end
-  return M.run(name, args, ctx)
+  return daw.ex.exec(line, ctx)
 end
 
 -- Completion ------------------------------------------------------------------
@@ -333,6 +295,9 @@ local function starts(text, stem) return text:sub(1, #stem):lower() == stem:lowe
 --- `text` the whole line it would become and `label` the part shown.
 ---   daw.commands.complete("track.co")   --> { { text = "track.color", label = "track.color", desc = ... } }
 function M.complete(line)
+  -- Marks after `'`, tracks after `t/`, fields in a pattern.
+  local special = daw.ex.complete_range(line) or daw.ex.complete_pattern(line)
+  if special then return special end
   -- A range in front stays as it is; what follows it is completed.
   local range, rest = M.range(line)
   if range and rest ~= line then

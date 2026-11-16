@@ -189,6 +189,7 @@ function K.startup()
   daw.reconnect = require("daw.reconnect")
   daw.qf = require("daw.qf")
   require("daw.views.qflist")
+  daw.ex = require("daw.ex")
   daw.ui.start_ticker()
 
   daw.luadev = require("daw.luadev")

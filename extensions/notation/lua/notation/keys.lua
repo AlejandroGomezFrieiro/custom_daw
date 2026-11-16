@@ -719,6 +719,27 @@ view.grid = {
   end,
 }
 
+-- How Ex lines (`:'<,'>`, `:.`, `:%s/c4/d4/`) read this view: its beats
+-- count from the start of its clip, and it edits that clip's notes.
+daw.ex.view("notation", {
+  song = function(col)
+    local clip = view:clip()
+    return (clip and clip.start or 0) + col
+  end,
+  clips = function()
+    local clip = view:clip()
+    return clip and { clip.id } or nil
+  end,
+  track = function()
+    local clip = view:clip()
+    return clip and clip.track or nil
+  end,
+  go = function(beat)
+    local clip = view:clip()
+    if clip then view:set(nil, beat - clip.start) end
+  end,
+})
+
 -- Where the view shows things with an address, so that diagnostics, hover
 -- and fixes (`]d` `[d`, `gK`, `,ca`) work on what is under its cursor.
 if daw.ui.locator and daw.address then

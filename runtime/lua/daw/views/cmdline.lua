@@ -3,7 +3,7 @@
 local api = daw.api
 local M = {}
 
-local active      -- { prompt, chars, pos, on_submit, complete, history, index, matches, match }
+local active      -- { prompt, chars, pos, on_submit, complete, preview, note, history, index, matches, match }
 local histories = {}
 -- A prompt open in one seat is that seat's; the history is everyone's.
 daw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
@@ -18,8 +18,18 @@ local function set_text(value)
   active.pos = #active.chars
 end
 
+--- Tell the preview what the line is now (nil when the prompt closes),
+--- and keep the few words it says back.
+local function preview(value)
+  local a = active
+  if not (a and a.preview) then return end
+  local ok, note, level = pcall(a.preview, value)
+  a.note, a.note_level = ok and note or nil, ok and level or nil
+end
+
 local function finish(submit)
   local state, value = active, text()
+  preview(nil)
   active = nil
   daw.ui.grabber = nil
   daw.keymap.set_mode("n")
@@ -80,6 +90,7 @@ local function on_key(key, pasted)
     set_text("")
     if key == "<BS>" or key == "<Del>" or key == "<C-u>" or key == "<C-w>" then
       if a.complete then refresh() end
+      preview(text())
       return api.ui_redraw()
     end
   elseif selected and (key == "<Left>" or key == "<Home>" or key == "<C-a>") then
@@ -91,6 +102,7 @@ local function on_key(key, pasted)
       a.pos = a.pos + 1
       table.insert(a.chars, a.pos, ch)
     end
+    preview(text())
     return api.ui_redraw()
   end
   local keep_matches = false
@@ -151,16 +163,20 @@ local function on_key(key, pasted)
     -- The list follows what is typed, once there is something typed.
     if a.complete and #a.chars > 0 and key ~= "<Up>" and key ~= "<Down>" then refresh() end
   end
+  preview(text())
   api.ui_redraw()
 end
 
 --- Start a prompt. `opts`: `prompt`, `text` (initial), `complete(text)` which
 --- returns what the text could become, and `history` (a name; prompts with
 --- the same name share their history), `label` (what the undo step the
---- answer makes is called; by default the prompt). Candidates are strings, or
---- `{ text = whole line, label = the part shown, desc = ... }`. `text` comes
---- selected, so that typing replaces it (`select = false` keeps it to be
---- added to; so does the `:` line). They are
+--- answer makes is called; by default the prompt), `preview(text)` (called
+--- as the text changes, and with nil when the prompt closes; it may return
+--- a few words to show at the right end, and "error" as a second value when
+--- they say what is wrong). `text` comes selected, so that typing replaces
+--- it (`select = false` keeps it to be added to; so does the `:` line).
+--- Candidates are strings, or
+--- `{ text = whole line, label = the part shown, desc = ... }`. They are
 --- listed above the prompt as it is typed; Tab and Shift-Tab (or Ctrl-n,
 --- Ctrl-p) choose one into the line, Enter runs the line.
 function M.open(opts, on_submit)
@@ -168,13 +184,32 @@ function M.open(opts, on_submit)
   local name = opts.history or opts.prompt or ""
   histories[name] = histories[name] or {}
   active = {
-    prompt = opts.prompt or "", on_submit = on_submit, complete = opts.complete,
+    prompt = opts.prompt or "", on_submit = on_submit, complete = opts.complete, preview = opts.preview,
     label = opts.label or (opts.prompt or ""):match("^(%a[^:]*%a)"),
     history = histories[name], chars = {}, pos = 0,
   }
   set_text(opts.text or "")
   active.selected = #active.chars > 0 and opts.select ~= false and opts.prompt ~= ":"
+  if #active.chars > 0 then preview(text()) end
   daw.ui.grabber = on_key
+  daw.keymap.set_mode("c")
+  api.ui_redraw()
+end
+
+--- Ask a question answered with one key, as Vim's `:s///c` does: the
+--- prompt shows until a key is typed, and `on_key(key)` gets it (`<Esc>`
+--- too). It may ask again.
+function M.ask_key(prompt, on_key)
+  active = { prompt = prompt, chars = {}, pos = 0, history = {}, single = true }
+  daw.ui.grabber = function(key)
+    if active and active.single then
+      active = nil
+      daw.ui.grabber = nil
+      daw.keymap.set_mode("n")
+    end
+    on_key(key)
+    api.ui_redraw()
+  end
   daw.keymap.set_mode("c")
   api.ui_redraw()
 end
@@ -186,7 +221,7 @@ function M.state()
   return {
     prompt = active.prompt, before = table.concat(active.chars, "", 1, active.pos),
     after = table.concat(active.chars, "", active.pos + 1), selected = active.selected or nil,
-    matches = active.matches, match = active.match,
+    matches = active.matches, match = active.match, note = active.note, note_level = active.note_level,
   }
 end
 
@@ -345,7 +380,17 @@ daw.ui.view("cmdline", {
   render = function(_, buf, ctx)
     if active then
       local used = buf:text(0, 0, active.prompt, "Accent")
-      buf:text(used, 0, text(), active.selected and "Visual" or "Normal")
+      local typed = buf:text(used, 0, text(), active.selected and "Visual" or "Normal")
+      -- What the line would do, at the right end while there is room.
+      local note = active.note
+      if note and note ~= "" then
+        local w = api.str_width(note)
+        local room = buf.width - used - typed - 3
+        if room >= 8 then
+          buf:text(buf.width - math.min(w, room) - 1, 0, w > room and daw.util.fit(note, room) or note,
+            active.note_level == "error" and "Warn" or "Dim")
+        end
+      end
       local before = table.concat(active.chars, "", 1, active.pos)
       api.ui_cursor(ctx.x + used + api.str_width(before), ctx.y)
       return
