@@ -183,6 +183,8 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- What insert mode is doing, in words, while it is on.
+      insert = keymap.mode == "i" and daw.roll_draw.status() or nil,
       -- Notes with diagnostics: { index, pitch, start, length, severity, message, actions }.
       marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.
@@ -452,6 +454,15 @@ function M.preview(id)
   return flat
 end
 
+--- What a track is in VCA terms, for a strip: a VCA's members by name, a
+--- member's VCAs by name, joined by commas.
+function M.vca_words(id)
+  local names = {}
+  local list = daw.vca.is_vca(id) and daw.vca.members(id) or daw.vca.of(id)
+  for i, other in ipairs(list) do names[i] = api.track_get(other).name end
+  return table.concat(names, ", ")
+end
+
 function M.state(known)
   M.polled = api.now() -- someone is looking: see `daw.fx.interactive`
   local t, e = api.transport_get(), api.engine_get()
@@ -551,6 +562,10 @@ function M.state(known)
       group = id ~= 0 and daw.groups.is_group(id) or false,
       folded = id ~= 0 and daw.groups.folded(id) or false,
       members = id ~= 0 and #daw.groups.members(id) or 0,
+      -- VCAs: whether it is one, and the names of the tracks under it, or
+      -- of the VCAs a track is under, in a few words.
+      vca = id ~= 0 and daw.vca.is_vca(id) or false,
+      vcas = id ~= 0 and M.vca_words(id) or "",
       -- How tall it is drawn, as a share of the zoom's height.
       height = track.height or 1,
       -- "read", "touch", "latch", "write" or "off".

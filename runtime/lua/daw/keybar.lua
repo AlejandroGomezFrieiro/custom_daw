@@ -4,7 +4,9 @@
 -- An extension adds a line for its own view:
 --   daw.ui.keybar.set("myview", "n", { { "<CR>", "open" }, { "x", "delete" } })
 -- Each entry is a key as mappings write it and a word or two for what it
--- does; a third value replaces how the key is shown.
+-- does; a third value replaces how the key is shown. An entry whose key is
+-- "" is no key but news, shown as one: the note insert mode is drawing. A
+-- line that changes as you type is a function that returns the entries.
 local M = { lines = {} }
 
 --- Set the keys shown for a view in a mode ("n", "x", "i").
@@ -40,6 +42,7 @@ function M.entries()
   local modal = daw.ui.views[view] and daw.ui.views[view].modal
   if modal and not lines then return {} end
   local entries = lines and (lines[mode] or mode ~= "n" and {} or nil) or mode == "n" and M.lines.default.n or {}
+  if type(entries) == "function" then entries = entries() end
   local out = {}
   for i, entry in ipairs(entries or {}) do out[i] = { entry[3] or M.show(entry[1]), entry[2] } end
   return out
@@ -51,11 +54,12 @@ function M.check()
   local wrong = {}
   for view, modes in pairs(M.lines) do
     for mode, entries in pairs(modes) do
+      if type(entries) == "function" then entries = entries() or {} end
       local mapped = {}
       for _, map in ipairs(daw.keymap.list(mode, view ~= "default" and view or nil)) do mapped[map.lhs] = true end
       for _, entry in ipairs(entries) do
         -- Leaving a mode with Escape is not a mapping: it always works.
-        local built_in = entry[1] == "<Esc>" and mode ~= "n"
+        local built_in = entry[1] == "<Esc>" and mode ~= "n" or entry[1] == ""
         if not mapped[entry[1]] and not built_in then wrong[#wrong + 1] = view .. " " .. mode .. " " .. entry[1] end
       end
     end
@@ -76,10 +80,26 @@ M.lines.arrange = {
 }
 M.lines.pianoroll = {
   n = {
-    { "<CR>", "note" }, { "i", "type notes" }, { "x", "delete" }, { "+", "longer" }, { "-", "shorter" },
+    { "<CR>", "note" }, { "i", "draw notes" }, { "x", "delete" }, { "+", "longer" }, { "-", "shorter" },
     { "w", "next note" }, { "<Space>", "play" }, { "<Esc>", "back" }, { "?", "keys" },
   },
   x = { { "d", "delete" }, { "y", "copy" }, { ">", "later" }, { "<lt>", "earlier" }, { "<C-a>", "up" }, { "<Esc>", "done" } },
+  -- Insert mode: the note being drawn, then the keys that draw it.
+  i = function()
+    local now = daw.roll_draw and daw.roll_draw.describe()
+    local out = {
+      { "l", "longer" }, { "h", "shorter" }, { "k", "up" }, { "j", "down" }, { "<CR>", "next" }, { "<Space>", "rest" },
+      { "o", "chord" }, { "<Esc>", "write" },
+    }
+    if now then
+      local pitch, length = now:match("^(%S+) · (.*)$")
+      table.insert(out, 1, { "", length, pitch })
+    end
+    return out
+  end,
+}
+-- Insert mode with the keyboard as a piano (`I`).
+M.lines["pianoroll.keys"] = {
   i = {
     { "a", "notes, w e t y u between", "a s d f g h j k" }, { "<Space>", "rest" }, { "<BS>", "back" },
     { "z", "octave down" }, { "x", "octave up" }, { "<Esc>", "done" },

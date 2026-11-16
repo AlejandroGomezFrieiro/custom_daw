@@ -61,6 +61,7 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
+| `,vn` `,va` `,vr` `,vx` `,vl` | a new VCA over the selected tracks; put them under a VCA; take them out of their VCAs; take the VCA at the cursor away; link the faders of a group | |
 | `I` `<A-i>` | choose the input (audio, MIDI port and channel), monitor it | |
 | `a` | add a device | enter notes after the note |
 | `A` | add a volume automation point | |
@@ -102,16 +103,30 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
 | `<Esc>` | back to normal mode |
 
-## Enter notes (insert mode, R)
+## Draw notes (insert mode, R)
 
 | Keys | |
 | --- | --- |
-| `i` | insert at the cursor (in A: in the clip under the cursor, or a new one) |
+| `i` | draw a note from the cursor (in A: in the clip under the cursor, or a new one) |
+| `a` | draw from where the note under the cursor ends |
+| `l` `h` | the note a step longer, shorter; a count first: `4l` |
+| `k` `j` `K` `J` | the note up, down a semitone; an octave |
+| `<CR>` | keep it, draw the next where it ends |
+| `<Space>` | keep it, draw the next after a step's rest |
+| `o` | keep it, draw another from the same start, for a chord |
+| `<BS>` | take back the note kept last |
+| `[` `]` | softer, louder |
+| `<Esc>` | write what was drawn (one undo step; `.` draws it again) and go back to normal mode |
+
+## Enter notes as on a piano (`I`, R)
+
+| Keys | |
+| --- | --- |
+| `I` | insert mode with the keyboard as a piano (`:set roll_insert=keys` for `i` too) |
 | `a w s e d f t g y h u j k` | C, C♯, D, … up to the next C; a capital stays, for chords |
 | `1` … `9` | notes that many steps long |
 | `<Space>` `<BS>` | a rest; step back and remove |
 | `z` `x` | octave down, up |
-| `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
 
 ## Write from the harmony (snippets, R)

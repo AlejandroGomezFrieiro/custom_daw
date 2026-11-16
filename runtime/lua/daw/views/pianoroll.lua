@@ -121,7 +121,8 @@ end
 
 -- Layers that modules draw over the roll, from back to front by `order`:
 -- other tracks' notes ("context", 10), the notes of the clips edited
--- ("notes", 20), diagnostics 30, a snippet's marks 40, suggestions 50; the
+-- ("notes", 20), diagnostics 30, the notes insert mode is drawing
+-- ("draw", 35), a snippet's marks 40, suggestions 50; the
 -- selection and the cursor last of all.
 view.layers = {}
 local NOTES = 20
@@ -280,7 +281,7 @@ function view:render(buf, ctx)
     right = w >= 90 and right or nil,
   })
   if inserting then
-    local text = string.format(" INS C%d  step %g  vel %d ", daw.opt.octave, self:step_length(), daw.opt.velocity)
+    local text = " " .. daw.roll_draw.label() .. " "
     buf:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
 
@@ -661,4 +662,6 @@ function view:change(fn)
 end
 
 daw.ui.view("pianoroll", view)
+-- Insert mode's drawing, which draws on the roll as one of its layers.
+daw.roll_draw = require("daw.roll_draw")
 return view

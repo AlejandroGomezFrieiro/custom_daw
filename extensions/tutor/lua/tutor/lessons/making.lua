@@ -7,8 +7,8 @@ A track holds clips on the timeline and a chain of devices: an instrument that
 turns notes into sound, then effects. A clip holds notes (a MIDI clip) or a
 recording (an audio clip). A new track is silent until it has an instrument.
 
-In this lesson you add a track, give it a name and a synth, enter a few notes
-from the computer keyboard, and listen. There is a drum beat to play along to.]],
+In this lesson you add a track, give it a name and a synth, draw a few notes
+with the keyboard, and listen. There is a drum beat to play along to.]],
   idea = [[
 Small letters in normal mode act on what is under the cursor: `o` opens a new
 track below (as `o` opens a new line in Vim), `a` adds a device, `i` inserts
@@ -16,8 +16,8 @@ notes, `x` deletes the clip, `&` repeats it. `u` undoes and `<C-r>` redoes, so
 nothing you try here can do lasting harm.]],
   vim = [[
 `o` `O` add a track below and above, like lines. `i` opens the clip under the
-cursor (or a new one) in the piano roll in insert mode; the keys of the middle
-row then enter notes rather than text. `grn` renames, as in Neovim's LSP keys.]],
+cursor (or a new one) in the piano roll in insert mode, where the cursor draws
+notes rather than typing text. `grn` renames, as in Neovim's LSP keys.]],
   setup = function(look)
     daw.project.tempo = 100
     local drums = daw.add_track({ name = "Drums" })
@@ -48,24 +48,24 @@ row then enter notes rather than text. `grn` renames, as in Neovim's LSP keys.]]
       hint = "`a` opens a list of every device; typing narrows it, `<CR>` takes the top one.",
     },
     {
-      say = "`i` makes a clip at the cursor and opens it for entering notes: insert mode. Press `i`.",
+      say = "`i` makes a clip at the cursor and opens it for drawing notes: insert mode. Press `i`.",
       keys = { "i" },
       check = function(_, look) return look.mode() == "i" and look.focused() == "pianoroll" end,
-      done = "INSERT: the piano roll is open, and the title row shows the octave, the step and the velocity.",
+      done = "INSERT: the piano roll is open on C4, and the title row shows the note being drawn.",
     },
     {
-      say = "The middle row of letters is a piano: `a` C, `s` D, `d` E, `f` F, `g` G. Press `4` (each note a beat long), then type `asdfg`.",
-      keys = { "4", "asdfg" },
+      say = "`l` draws the note a step longer: `4l` makes it a beat. `<CR>` keeps it and starts the next where it ends, `2k` goes up two semitones. Press `4l`, `<CR>`, `2k`, `4l`, `<CR>`, `2k`, `4l`, and `<Esc>` to write them.",
+      keys = { "4l", "<CR>", "2k", "4l", "<CR>", "2k", "4l", "<Esc>" },
       check = function(_, look)
         local clip = look.clip("Bass")
-        return clip and look.melody(clip) == "60@0+1 62@1+1 64@2+1 65@3+1 67@4+1"
+        return clip and look.melody(clip) == "60@0+1 62@1+1 64@2+1" and look.mode() == "n"
       end,
-      done = "Five notes, C to G. The clip grew a bar to make room for the last one.",
-      hint = "Notes step on by themselves. If one went wrong, `<BS>` steps back and removes it.",
+      done = "Three notes, C D E, written when you left insert mode.",
+      hint = "What is drawn shows in green and is written by `<Esc>`. `h` makes a note shorter, `j` moves it down.",
     },
     {
-      say = "Press `<Esc>` to leave insert mode, and `<Esc>` again to go back to the arrange view.",
-      keys = { "<Esc>", "<Esc>" },
+      say = "Press `<Esc>` to go back to the arrange view.",
+      keys = { "<Esc>" },
       check = function(ctx, look) return look.became(ctx, "back", look.mode() == "n" and look.focused() == "arrange") end,
       done = "Back in the arrange view, in NORMAL mode.",
     },

@@ -1849,13 +1849,10 @@ impl View {
                 }
             }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
+            // What insert mode is doing, as the kernel words it: the note
+            // being drawn, or the keys as a piano.
             let status: SharedString = if modal["mode"] == "i" {
-                format!(
-                    "entering notes · a is C{} · step {} · Esc to stop",
-                    roll["octave"].as_i64().unwrap_or(4),
-                    number(&roll["step"])
-                )
-                .into()
+                text(&roll["insert"])
             } else {
                 SharedString::default()
             };
@@ -2437,6 +2434,8 @@ impl View {
                     group: t["group"].as_bool().unwrap_or(false),
                     folded: t["folded"].as_bool().unwrap_or(false),
                     members: t["members"].as_i64().unwrap_or(0) as i32,
+                    vca: t["vca"].as_bool().unwrap_or(false),
+                    vcas: text(&t["vcas"]),
                     name: text(&t["name"]),
                     color: colour(&t["color"]),
                     chain: chain.into(),

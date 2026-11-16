@@ -13,6 +13,8 @@
 -- tracks. Groups may hold groups.
 local api = daw.api
 local M = {}
+local util = daw.util
+local volumes = {}
 
 local function id_of(track) return type(track) == "table" and track.id or track end
 
@@ -78,10 +80,15 @@ end
 --- (see `daw.lanes`).
 function M.rows(opts)
   if opts and opts.lanes then return daw.lanes.lines() end
-  local out = {}
+  local out, vcas = {}, {}
   for _, id in ipairs(api.track_list()) do
-    if not M.hidden(id) then out[#out + 1] = id end
+    if not M.hidden(id) then
+      -- VCAs come after the tracks they move.
+      local list = daw.vca.is_vca(id) and vcas or out
+      list[#list + 1] = id
+    end
   end
+  table.move(vcas, 1, #vcas, #out + 1, out)
   return out
 end
 
@@ -199,6 +206,46 @@ function M.fold(group, on)
   local cursor = daw.cursor.track_id()
   if cursor and M.hidden(cursor) then daw.cursor.set_track(group) end
 end
+
+--- Note the faders of a group's members: linked faders move by what they
+--- have moved since.
+local function note(group)
+  for _, id in ipairs(M.members(group)) do volumes[id] = api.track_get(id).volume end
+end
+
+--- Whether the faders of a group's members are linked: moving one moves the
+--- others by as many dB. This is apart from routing, which a group has too.
+function M.linked(group)
+  return meta(id_of(group)).group_link == true
+end
+
+--- Link the faders of a group's members, or let them go: `on` nil flips it.
+function M.link(group, on)
+  group = id_of(group)
+  if not M.is_group(group) then error("not a group", 2) end
+  if on == nil then on = not M.linked(group) end
+  set_meta(group, "group_link", on and true or nil)
+  note(group)
+end
+
+daw.on("track.*", function(event, name)
+  local group = event.id and M.of(event.id)
+  if not group or not M.linked(group) then return end
+  -- Undo, redo and opening a project restore every fader themselves.
+  if event.restored or name == "track.added" then return note(group) end
+  if name ~= "track.changed" then return end
+  local now = api.track_get(event.id).volume
+  local before = volumes[event.id]
+  volumes[event.id] = now
+  if before == nil or before == now then return end
+  for _, id in ipairs(M.members(group)) do
+    if id ~= event.id then
+      local was = volumes[id] or api.track_get(id).volume
+      volumes[id] = util.clamp(was + now - before, -120, 24)
+      api.track_set(id, "volume", volumes[id])
+    end
+  end
+end)
 
 -- A group that is removed lets its members go: they keep sounding, on the
 -- master, and stand at the top level.

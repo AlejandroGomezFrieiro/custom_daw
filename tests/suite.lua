@@ -1823,9 +1823,12 @@ test("half-typed commands show what can follow, and are counted right", function
   daw.keymap.del("gz", { view = "arrange", mode = "x" })
 end)
 
-test("insert mode enters notes from the keyboard", function()
+test("insert mode the keys way enters notes from the keyboard as from a piano", function()
   local t = three_clips()
   daw.opt.octave, daw.opt.velocity = 4, 100
+  -- Insert mode draws notes unless asked for the keys (tests/drawinsert.lua):
+  -- as `I` does in the piano roll, this once.
+  daw.roll_draw.keys_once()
   daw.cursor.set_beat(16)
   keys("i")
   eq(daw.ui.focused .. daw.keymap.mode, "pianorolli", "i in the arrange view opens a new clip for typing")

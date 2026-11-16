@@ -110,8 +110,10 @@ other in `daw.music.scales`.
 
 **Scale lock** (`musicops_scale_lock`, `gzL`). While it is on:
 
-- insert mode in the piano roll enters the nearest pitch of the key: in C
-  major `w` (C#) enters D;
+- insert mode in the piano roll moves the note being drawn by steps of the
+  scale (`j` `k`, `2k` from C is E in C major), and with the keyboard as a
+  piano (`I`) enters the nearest pitch of the key: in C major `w` (C#)
+  enters D;
 - `<C-a>` and `<C-x>` move the note under the cursor in the piano roll, and
   the selected notes in the piano roll and the vocal editor, by steps of the
   scale instead of semitones (`3<C-a>`: three steps).

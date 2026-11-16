@@ -71,7 +71,7 @@
   kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
   MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's
   own ports).
-- Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
+- A VCA over a group's own fader, a VCA under a VCA, and VCA gain on the master. A VCA is a track here (so it shows in the arrange view as a row, with lanes like any other), and what it moves is the tracks assigned to it, not what they are routed into. A VCA's solo makes its members the only sound; it does not solo what they feed.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is
   linked for them; they need ffmpeg installed (see Rendering; the Nix
@@ -123,6 +123,12 @@
   the window does not shade the gaps between the clips edited; a click on a
   note shown behind always makes its clip active, so a note cannot be
   added on top of one by a click (a drag draws it).
+- Insert mode's drawing writes nothing until it ends: notes drawn are not
+  heard when the song plays meanwhile, nor seen by suggestions or language
+  servers, and the window shows them as marks, not as notes to drag. The
+  keyboard as a piano (`I`) still writes as it goes, a step to undo each key.
+  Notes drawn have no length shorter than the grid, and a count before `i`
+  does not draw the insert several times.
 - Suggestions in the arrange view (whole clips) and the drum view: sources
   may say they offer them (`views`), but only the piano roll asks and shows
   them. A suggestion's controller moves are written when accepted but not
