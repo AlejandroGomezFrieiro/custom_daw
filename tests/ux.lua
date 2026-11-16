@@ -128,11 +128,17 @@ test(":messages keeps every message and wraps what is longer than the window", f
   daw.notify("added Synth to Track 1")
   local long = "one two three four five six seven eight nine ten " .. ("long "):rep(30) .. "end"
   daw.notify(long)
-  eq(#daw.ui.messages, before + 2, "both are kept")
+  eq(#daw.ui.messages, math.min(500, before + 2), "both are kept")
+  eq(daw.ui.messages[#daw.ui.messages - 1].text, "added Synth to Track 1", "the one a picker made too")
   daw.commands.run("messages")
-  local text = screen(140, 44)
-  eq(text:find("added Synth to Track 1", 1, true) ~= nil, true, "the short one is shown")
-  eq(text:find("end", 1, true) ~= nil, true, "the long one's last word is shown too, on a row of its own")
+  local pager = daw.ui.views.pager
+  eq(pager.lines[#pager.lines - 1].text, "added Synth to Track 1", "the page lists them, the newest last")
+  local rows = pager.wrap(long, 60)
+  eq(#rows > 2, true, "a long one takes several rows")
+  for _, row in ipairs(rows) do eq(#row <= 60, true, "none longer than the window: " .. row) end
+  eq(rows[2]:sub(1, 2), "  ", "the later rows are indented")
+  eq(table.concat(rows, " "):gsub("%s+", " "), long:gsub("%s+", " "), "and nothing is lost")
+  eq(#pager.wrap("↗ short", 60), 1, "a short one stays in one row")
   daw.ui.close()
 end)
 

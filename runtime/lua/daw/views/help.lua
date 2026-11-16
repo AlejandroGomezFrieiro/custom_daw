@@ -124,6 +124,8 @@ local function wrap(text, width)
   return rows
 end
 
+pager.wrap = wrap
+
 function pager:render(buf)
   local rows = {}
   for _, line in ipairs(self.lines) do
