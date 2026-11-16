@@ -6,7 +6,7 @@
 
 A track holds clips on the timeline and a chain of devices: an instrument that turns notes into sound, then effects. A clip holds notes (a MIDI clip) or a recording (an audio clip). A new track is silent until it has an instrument.
 
-In this lesson you add a track, give it a name and a synth, enter a few notes from the computer keyboard, and listen. There is a drum beat to play along to.
+In this lesson you add a track, give it a name and a synth, draw a few notes with the keyboard, and listen. There is a drum beat to play along to.
 
 ## The idea
 
@@ -14,7 +14,7 @@ Small letters in normal mode act on what is under the cursor: `o` opens a new tr
 
 ## If you know Vim
 
-`o` `O` add a track below and above, like lines. `i` opens the clip under the cursor (or a new one) in the piano roll in insert mode; the keys of the middle row then enter notes rather than text. `grn` renames, as in Neovim's LSP keys.
+`o` `O` add a track below and above, like lines. `i` opens the clip under the cursor (or a new one) in the piano roll in insert mode, where the cursor draws notes rather than typing text. `grn` renames, as in Neovim's LSP keys.
 
 ## Steps
 
@@ -28,12 +28,12 @@ The tutor opens a practice project made for this lesson and checks each step as 
 3. A track is silent until it has an instrument. Press `a`, type `synth` and press `<CR>`.
    - *Hint:* `a` opens a list of every device; typing narrows it, `<CR>` takes the top one.
    - ✓ Bass has a synth.
-4. `i` makes a clip at the cursor and opens it for entering notes: insert mode. Press `i`.
-   - ✓ INSERT: the piano roll is open, and the title row shows the octave, the step and the velocity.
-5. The middle row of letters is a piano: `a` C, `s` D, `d` E, `f` F, `g` G. Press `4` (each note a beat long), then type `asdfg`.
-   - *Hint:* Notes step on by themselves. If one went wrong, `<BS>` steps back and removes it.
-   - ✓ Five notes, C to G. The clip grew a bar to make room for the last one.
-6. Press `<Esc>` to leave insert mode, and `<Esc>` again to go back to the arrange view.
+4. `i` makes a clip at the cursor and opens it for drawing notes: insert mode. Press `i`.
+   - ✓ INSERT: the piano roll is open on C4, and the title row shows the note being drawn.
+5. `l` draws the note a step longer: `4l` makes it a beat. `<CR>` keeps it and starts the next where it ends, `2k` goes up two semitones. Press `4l`, `<CR>`, `2k`, `4l`, `<CR>`, `2k`, `4l`, and `<Esc>` to write them.
+   - *Hint:* What is drawn shows in green and is written by `<Esc>`. `h` makes a note shorter, `j` moves it down.
+   - ✓ Three notes, C D E, written when you left insert mode.
+6. Press `<Esc>` to go back to the arrange view.
    - ✓ Back in the arrange view, in NORMAL mode.
 7. Press `<Space>` to hear your notes with the drums, and `<Space>` to stop.
    - ✓ That is your bass line.

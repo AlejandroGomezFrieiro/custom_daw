@@ -1,8 +1,9 @@
 # notation
 
 A MIDI clip shown as staff notation, to read and to edit: in the terminal,
-drawn in text cells, and in a window of the graphical frontend, engraved
-properly. What is written is an interpretation of what was played, as a
+drawn in text cells, and engraved with a music font (Leland) wherever there
+are pixels: in a window of the graphical frontend, and on a terminal that
+shows images. What is written is an interpretation of what was played, as a
 musician would write it down, not a print-out of every note: a strum is a
 chord on the beat, a note played a little early is on the beat, swing is
 straight eighths. The played notes are never changed by being shown; edits
@@ -157,7 +158,8 @@ visual modes work on it.
 | `p` `P` | paste after the note, at the cursor |
 | `i`, `a` | enter notes at the cursor, after the note |
 | `gh`, `gp` | hear the cursor's pitch; playhead to the cursor |
-| `zi` `zo` | spread the notes out, draw them closer |
+| `zi` `zo` | spread the notes out, draw them closer; on the engraved page, a larger, smaller staff |
+| `zg` | the engraved page as one long system scrolled sideways (the galley), or wrapped |
 | `Esc` | back to the arrange view |
 
 **Entering notes** (`i`), the way notation programs do it: a letter `c` to
@@ -174,6 +176,10 @@ the new one starts.
 | `.` | dotted values on or off |
 | `+` `#`, `-` | sharpen, flatten the note just entered |
 | `'` `,` | the note just entered an octave up, down |
+| `Alt-2` … `Alt-8` | add a second … an octave above the note just entered, in the key, to its chord (`C` `Alt-3` `Alt-3` is a C major triad) |
+| `~` | hold the note just entered on by the chosen value, tied where it crosses a beat or a barline, and step on |
+| `t` | enter triplets of the chosen value, or plain values again |
+| `R` | enter the last chord (or note) again here, and step on |
 | `r` `0` | a rest: clear the chosen value and step on |
 | `Space` | step on, leaving what is there |
 | `Backspace` | step back and remove what starts there |
@@ -216,23 +222,81 @@ these two are written only (the song's timeline plays as it is). Staccato
 plays a note at most half its written length, tenuto its full length, an
 accent 20 louder, a marcato 30.
 
-## In the window
+## The engraved page
 
-The toolbar chooses the value (whole to 32nd), the dot, rests, and the
-accidental notes are entered with (flat, natural, sharp; none takes the
-key's); then marks on the chord under the cursor (staccato, accent, tenuto,
-slur, triplet, second voice) and at the cursor (p, mf, f, crescendo,
-diminuendo); and zooms. The bar at the bottom says what is under the cursor
-and, at the right, the key, the time signature and the track. On the staff:
+In a window, and on a terminal's pixel surface where the terminal shows
+images, the staff is engraved with the SMuFL font Leland: the font's own
+note heads, clefs, accidentals, flags, rests and marks, its engraving
+defaults for the thickness of staff lines, stems, beams, ties and slurs,
+and stems attached where the font says. Everything that is a line is drawn
+on whole pixels; the staff space is a whole number of pixels (`zi` `zo` step
+through 6 to 24), a third of a cell's height on a terminal (9 px in a 27 px
+cell), so a staff of one hand fits in five or six rows, where the cell view
+needs eleven or more. On a terminal each measure is a whole number of
+columns wide and each system a whole number of rows high, and the drawing
+says where the barlines are, so the terminal is sent the page as images
+cut at barlines and an edit re-sends only the measure it changed.
+
+Beams slope by at most a staff space and sit on, straddle or hang from a
+staff line; ties and slurs are thicker in the middle; a chord's accidentals
+stand in columns. The ink is the terminal's foreground colour (the
+window's text colour), staff lines are lighter, and the selection, the
+cursor, suggestions and diagnostics take the theme's accents. Light ink on
+a dark page is drawn a little thinner, as it looks heavier.
+
+The page is systems wrapped down the screen, or with `zg` one long system
+scrolled sideways (the galley), which keeps the start of the system at the
+left and, while playing, the playhead a third of the way across. Over the
+page are drawn, each apart from it: the selection (a faint band, its notes
+in the accent), suggestions from `daw.complete` (the notes laid out as they
+would be written, faint), diagnostics from `daw.diagnostic` (a wavy line
+under the staff, the notes tinted, a mark in the margin, the message on the
+info line when the cursor is on it), the cursor (a hairline at its beat and
+the note `Enter` or a click would put there, half transparent; on a note,
+that note in the accent), and the playhead.
+
+In the window the toolbar chooses the value (whole to 32nd), the dot, rests,
+and the accidental notes are entered with (flat, natural, sharp; none takes
+the key's); then marks on the chord under the cursor (staccato, accent,
+tenuto, slur, triplet, second voice) and at the cursor (p, mf, f, crescendo,
+diminuendo); and zooms. The line at the bottom says what is under the
+cursor and, at the right, the key, the time signature and the track. On a
+terminal the toolbar and that line are left out: the terminal's own bars
+say it.
 
 | Pointer | |
 | --- | --- |
-| click | put a note of the chosen value there, at that line or space and time, and hear it; with Rest on, clear that stretch; on a note, hear it |
+| click | the cursor to that note (and hear it), or to that line or space and time |
+| Shift-click | a selection from the cursor to there |
+| drag on the paper | select a box (a block) |
 | drag a note | move it in time and up or down the staff; it keeps its distance from the key (a sharp stays a sharp) |
-| right click a note | remove it |
-| wheel | scroll down the systems; with Ctrl, zoom |
+| double click | enter notes from there (insert mode) |
+| click in insert mode | put a note of the chosen value there, at that line or space and time, and hear it; with Rest on, clear that stretch. The note to enter follows the pointer |
+| right click | a menu of what can be done there: delete, sharpen, flatten, respell, marks, voice, triplets; on the paper, a note or a rest of the chosen value, paste; the galley |
+| wheel | scroll the systems (the galley sideways); with Ctrl, zoom |
 
-Every key of the terminal view works in the window too.
+Every key of the terminal view works in the window too, and the pointer
+works the same in the terminal's cell view, a cell at a time: a click on a
+head chooses that note, on a line or space that place and time; the drag,
+Shift, the double click, the click in insert mode and the right click's menu
+are as above, and the wheel scrolls by measures. There the cursor off a note
+is drawn as the note that would be entered (a shadow note), and in insert
+mode it follows the pointer; the status line says the note and time under
+the pointer.
+
+**Coming from MuseScore.** The note input is MuseScore's in spirit and the
+paw's in its keys. Insert mode (`i`, `a`, or a double click) is MuseScore's
+note input: a letter enters that note in the nearest octave and steps on, a
+capital adds it to the chord, `Alt-2` … `Alt-8` add an interval above, `t`
+enters triplets, `~` ties, `R` repeats the chord, and the note to be entered
+shows where it would go. Durations are chosen by number as in MuseScore
+(`5` a quarter, `4` an eighth), but there is no 1 or 9: paw's values
+go from a 32nd to a whole note. Pitches are moved with the keys the piano
+roll uses (`Ctrl-a` `Ctrl-x` a semitone, `Alt-k` `Alt-j` a step of the key,
+`}` `{` an octave), not the arrows, which move the cursor as everywhere
+else; and in normal mode the letters are motions and operators, so notes
+are only entered by letter in insert mode. A click chooses rather than
+enters, as in MuseScore outside note input.
 
 ## Export
 
@@ -260,6 +324,15 @@ model.spell(70, -1)                 -- { letter = 6, alter = -1, octave = 4, ste
 require("notation.export").lilypond(layout, { title = "tune" })   -- or .musicxml(layout, { title, part })
 ```
 
+`notation.engrave` turns a layout into drawing operations for `daw.canvas`
+(`engrave.style`, `engrave.systems`, and each measure's and system's ink);
+`notation.smufl.font()` is the font's metadata as the engraver reads it,
+from the fonts the kernel embeds (`daw.api.smufl`; Leland, Bravura and
+Petaluma, under the SIL Open Font License, in crates/daw-raster/fonts).
+`tools/paintbench.lua`
+times the paint: run it with `daw --clean --no-plugins --no-listen --audio
+null -l extensions/notation/tools/paintbench.lua 64`.
+
 `layout.score.events` are the written chords (`start`, `length`, `staff`,
 `voice`, `notes` with each played note's `index` and `offset`, `grace`,
 `arpeggio`, `staccato`); `layout.measures[i].staves[s]` lists what is drawn
@@ -273,4 +346,10 @@ tablature in the several-tracks view and as its own staff in MusicXML (the
 string and fret are on each note); first and second endings, D.C. and D.S.;
 clefs other than treble, the guitar's treble and bass; key changes within a
 clip; trills and other ornaments; a mark's own room in the terminal when the
-panel is low (dynamics then fall below what shows).
+panel is low (dynamics then fall below what shows). On the engraved page:
+collision avoidance between marks, dynamics and the notes of the other
+staff; slurs that bend round the notes under them; a choice of Bravura
+or Petaluma (the kernel has them; nothing chooses them yet); and the
+transcription is still done again for the whole clip on each edit (the
+engraving is redone only for the bars that changed), which costs about
+20 ms for 64 bars.

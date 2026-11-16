@@ -88,9 +88,11 @@ the chord, `gzsih` strums it, `d)` deletes to the next phrase.
 
 ## Key and scale
 
-The project's key is kept in `project.meta.musicops` (`{ root = "D", scale =
-"minor" }`), so it is saved with the project and undone like any edit.
-Without one, the operators work in C major.
+The project's key is the core's (`daw.harmony.key`, see
+[docs/harmony.md](../../docs/harmony.md)), still kept in
+`project.meta.musicops` (`{ root = "D", scale = "minor" }`), so it is saved
+with the project and undone like any edit. Without one, the operators work
+in C major (not in the key the core reads from the notes).
 
 | Command | |
 | --- | --- |
@@ -108,8 +110,10 @@ other in `daw.music.scales`.
 
 **Scale lock** (`musicops_scale_lock`, `gzL`). While it is on:
 
-- insert mode in the piano roll enters the nearest pitch of the key: in C
-  major `w` (C#) enters D;
+- insert mode in the piano roll moves the note being drawn by steps of the
+  scale (`j` `k`, `2k` from C is E in C major), and with the keyboard as a
+  piano (`I`) enters the nearest pitch of the key: in C major `w` (C#)
+  enters D;
 - `<C-a>` and `<C-x>` move the note under the cursor in the piano roll, and
   the selected notes in the piano roll and the vocal editor, by steps of the
   scale instead of semitones (`3<C-a>`: three steps).
@@ -217,11 +221,8 @@ motions, the key through undo, redo, save and load, and the scale lock.
   motions `h` `j` `k` `l` `w` `b` `e` cannot directly follow the operator
   with the same last key. For the same reason no operator ends in `i` or `a`,
   which would swallow the text objects.
-- **The key is not shown** in the piano roll, and out-of-key rows are not
-  shaded: the piano roll draws its rows itself and offers no hook for it. It
-  would need the piano roll's `render` to ask for a style per row (for
-  example a `row_style(pitch)` function on the view, or an event), which the
-  runtime does not have.
+- **Out-of-key rows are not shaded** in the piano roll (the key is shown,
+  beside the chord row): its layers paint over notes, not under the rows.
 - **Scale lock** covers insert mode and `<C-a>` `<C-x>` only. The cursor's `j`
   `k`, `Enter` (add a note at the cursor), the mouse and pasted notes stay
   chromatic. It does not apply in the arrange view (where `<C-a>` transposes

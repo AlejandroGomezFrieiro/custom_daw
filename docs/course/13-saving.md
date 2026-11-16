@@ -10,7 +10,7 @@ This practice project already has a file, in the tutor's folder, so `:w` saves i
 
 ## The idea
 
-`:w` saves (`<C-s>` too), `:w name.json` saves under a new name, `:e name.json` opens a project, `:new` starts an empty one, `:wq` or `ZZ` save and quit, `:q` or `ZQ` quit without saving. The status line shows the project's name, with `[+]` when there are changes not saved yet. `:render name.wav` writes the song to a file; `tail=2` adds two seconds for echoes to die away, `bits=16` makes a 16-bit file. A relative name is relative to the folder paw was started from.
+`:w` saves (`<C-s>` too), `:w name.json` saves under a new name, `:e name.json` opens a project (`:e song.mid` makes one of a MIDI file, with no file of its own until `:w name.json`), `:new` starts an empty one, `:wq` or `ZZ` save and quit, `:q` or `ZQ` quit without saving. The status line shows the project's name, with `[+]` when there are changes not saved yet. `:render name.wav` writes the song to a file; `tail=2` adds two seconds for echoes to die away, `bits=16` makes a 16-bit file. A relative name is relative to the folder paw was started from.
 
 ## If you know Vim
 

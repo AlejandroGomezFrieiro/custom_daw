@@ -54,21 +54,35 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `[` `]` | | velocity |
 | `<CR>` | open the clip in R | add or remove a note |
 | `gh` | | hear the pitch |
+| `ga` `gE` | | edit the clip of another track's note under the cursor instead; edit it too, or no longer |
+| `gn` `gN` | | the next, the previous clip edited becomes the active one |
 | `o` `O` | add a track below, above | |
 | `grn` `grc` | rename the track, the clip | |
+| `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
+| `,vn` `,va` `,vr` `,vx` `,vl` | a new VCA over the selected tracks; put them under a VCA; take them out of their VCAs; take the VCA at the cursor away; link the faders of a group | |
 | `I` `<A-i>` | choose the input (audio, MIDI port and channel), monitor it | |
 | `a` | add a device | enter notes after the note |
 | `A` | add a volume automation point | |
 | `,at` `,ax` | automation off and on, clear it | |
 | `,am` | the track's automation mode: read, touch, latch, write, off in turn | |
 | `]t` `[t` | the clip's next take, the one before | |
-| `zt` | show or hide the track's take lanes | |
+| `zt` `zT` | show or hide the track's take lanes, the tempo lane under the ruler | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
-| `gx` | remove the marker or region at the cursor; a right click on its name in the ruler offers to remove or rename it | |
+| `gx` | remove the marker or region at the cursor; a right click on its name under the ruler has "Remove" | |
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
+
+In **D**: `A` automates the parameter, `gc` edits its curve. On a lane row,
+`gc` or `<CR>` edits the lane's curve; in **R** `gc` the strip's controller,
+`gC` the note's own.
+
+In the **curve editor**: `h` `l` `j` `k` move the cursor in time and value,
+`w` `b` from point to point, `o` `A` add a point, `x` remove it, `+` `-`
+raise and lower it, `c` type its value, `s` its shape, `<` `>` its bend,
+`i` draw with the cursor until `<Esc>`, `d` `y` `p` points, `gs` smooth,
+`gS` thin, `gq` quantize, `gn` a wave (then `<Tab>` `<C-n>` `<C-y>`).
 
 In **M**: `k` `j` the fader, `>` `<` pan, `M` `s` `r` `I`, `dd` `yy` `p` tracks.
 In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
@@ -95,21 +109,59 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `o` | go to the other end |
 | `gv` | select the last selection again |
 | `x` `p` | delete it, replace it with the register |
+| `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
 | `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
 | `<Esc>` | back to normal mode |
 
-## Enter notes (insert mode, R)
+## Draw notes (insert mode, R)
 
 | Keys | |
 | --- | --- |
-| `i` | insert at the cursor (in A: in the clip under the cursor, or a new one) |
+| `i` | draw a note from the cursor (in A: in the clip under the cursor, or a new one) |
+| `a` | draw from where the note under the cursor ends |
+| `l` `h` | the note a step longer, shorter; a count first: `4l` |
+| `k` `j` `K` `J` | the note up, down a semitone; an octave |
+| `<CR>` | keep it, draw the next where it ends |
+| `<Space>` | keep it, draw the next after a step's rest |
+| `o` | keep it, draw another from the same start, for a chord |
+| `<BS>` | take back the note kept last |
+| `[` `]` | softer, louder |
+| `<Esc>` | write what was drawn (one undo step; `.` draws it again) and go back to normal mode |
+
+## Enter notes as on a piano (`I`, R)
+
+| Keys | |
+| --- | --- |
+| `I` | insert mode with the keyboard as a piano (`:set roll_insert=keys` for `i` too) |
 | `a w s e d f t g y h u j k` | C, C♯, D, … up to the next C; a capital stays, for chords |
 | `1` … `9` | notes that many steps long |
 | `<Space>` `<BS>` | a rest; step back and remove |
 | `z` `x` | octave down, up |
-| `[` `]` | softer, louder |
 | `<Esc>` | back to normal mode |
+
+## Write from the harmony (snippets, R)
+
+| Keys | |
+| --- | --- |
+| `<C-s>`, `:snippet name` | choose a snippet and write it at the cursor or over the selection (`3<C-s>` three times); in normal, insert and visual mode |
+| `<Tab>` `<S-Tab>` | while a snippet is active: its next choice, the one before (before a suggestion's keys) |
+| `<C-n>` `<C-p>` | the choice's next value, the one before, written again in the same undo step |
+| `<C-y>` `<Esc>` | done with the snippet |
+
+See [Harmony, completion and snippets](../harmony.md).
+
+## Take a suggestion (piano roll, normal and insert mode)
+
+| Keys | |
+| --- | --- |
+| `<C-Space>` | ask the completion sources what comes next |
+| `<Tab>` | accept the suggestion that shows |
+| `<C-l>` | accept its next note or chord only |
+| `<C-n>` `<C-p>` | the next, the previous alternative |
+| `<A-1>` … `<A-9>` | show that alternative |
+| `<C-e>` `<Esc>` | dismiss it (`<Esc>` leaves insert mode only when nothing shows) |
+| `gh` | hear it from a bar before (normal mode) |
 
 ## Repeat and remember
 
@@ -132,7 +184,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `gs` `gp` | playhead to the start, to the cursor |
 | `gL` `gm` | loop on and off, metronome |
 | `gC` | count a bar in before recording, or not |
-| `gI` | punch recording on and off (over a selection: punch there) |
+| `gI` | punch recording on and off (over a selection: punch there); `:preroll 2` plays two bars before the punch in |
 | `R` | record armed tracks, or stop recording; with the loop on, every time round is a take |
 
 ## Find
@@ -153,13 +205,44 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 | Keys | |
 | --- | --- |
-| `<Tab>` `gt` | next view |
-| `,m` `,d` `,p` | mixer, device panel, piano roll |
-| `<C-w>c` `<C-w>o` | close this panel, close every panel |
+| `<Tab>` `<C-w>w` | next window |
+| `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
+| `E` | in R: the clip's notes and controller moves as a list to change in place |
+| `<C-w>c` `<C-w>o` | close this window, close every other window |
+| `<C-w>s` `<C-w>v` | split the window, one above the other, side by side (`:vs roll` shows the piano roll beside) |
+| `<C-w>h` `<C-w>j` `<C-w>k` `<C-w>l` | the window left, below, above, right |
+| `<C-w>H` `<C-w>J` `<C-w>K` `<C-w>L` | move the window to the far left, bottom, top, right |
+| `<C-w>x` `<C-w>r` `<C-w>T` | exchange the window with the next, rotate them, the window to a tab of its own |
+| `gt` `gT` | next tab, previous tab (`:tabnew` makes one) |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
 | `<C-s>` `:w` | save |
-| `ZZ` `ZQ` `:q` | save and quit, quit, quit |
+| `ZZ` `ZQ` `:q` | save and quit, quit, close the window (quit in the last one) |
+
+## Launch clips (the session view, `,l`)
+
+| Keys | |
+| --- | --- |
+| `h` `l` `j` `k` | previous, next track; next, previous slot (`gg` `G` first, last) |
+| `<CR>` `L` | launch the slot (an empty one stops the track), launch the row as a scene |
+| `s` `S` | stop the track's clip, every clip |
+| `b` `B` | the track back to its timeline, every track |
+| `n` `e` | a new MIDI clip in the slot, open its notes |
+| `x` `dd` `yy` `p` | empty the slot, yank its clip, paste a clip into it |
+| `gp` | copy the arrange view's clip into the slot |
+| `m` `gl` | the next launch mode (trigger, gate, toggle), legato on or off |
+| `R` `4R` | record a bar, or four, into the empty slot from the next boundary |
+| `grn` `C` | name the scene, capture what is launched into the timeline |
+
+## Diagnostics and language servers
+
+| Keys | |
+| --- | --- |
+| `]d` `[d` | next, previous diagnostic this view shows (R, A, M, D): the cursor goes there |
+| `gK` | what the diagnostics and language servers say about what is under the cursor |
+| `,ca` | fixes and actions for what is under the cursor; Enter makes one, as one undo step |
+| `:diagnostics` | every diagnostic, grouped by what it is about; Enter goes there |
+| `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
 
 ## The tutor
 
@@ -177,3 +260,12 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `j` `k` `<CR>` `A` `u` | on its page: choose a check, run it, run all, run those that need nobody |
 | `y` `n` `s` ... | answer the question it asks (the keys are listed under it); `s` skips |
 | `<Esc>` `q` | stop the run, close the page |
+
+## Notation
+
+The notation extension (`,n` on a MIDI clip) has its own keys, listed in
+[its README](../../extensions/notation/README.md) and by `?` in the view.
+Normal mode takes the piano roll's grammar; insert mode enters notes by
+letter, a capital adds to the chord, Alt-2 to Alt-8 add an interval above,
+`~` ties, `t` enters triplets, `R` repeats the chord, and the numbers choose
+the value (5 a quarter). zg shows the engraved page as one long system.

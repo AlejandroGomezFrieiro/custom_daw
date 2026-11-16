@@ -3,8 +3,10 @@ name = "daw-proto"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "The client's side of the kernel's control protocol."
+description = "The client's side of the kernel's control protocol, TLS included."
 
 [dependencies]
 anyhow.workspace = true
 serde_json.workspace = true
+rustls.workspace = true
+base64 = "0.22"

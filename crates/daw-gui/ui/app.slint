@@ -12,7 +12,8 @@
 //   clip       click chooses (Ctrl toggles, Shift extends), drag moves the
 //              chosen (Ctrl copies, Shift off the grid), edges trim (Alt
 //              slips), corners fade, top line sets gain, double click opens
-//              its notes, right click for the rest
+//              its notes (on an audio clip's top band: a warp marker, whose
+//              handle drags), right click for the rest
 //   ruler      click puts the cursor, drag in the top half loops a stretch,
 //              the loop's edges drag
 //   header     click selects, double click renames, drag reorders, bottom
@@ -34,8 +35,9 @@ import "fonts/JetBrainsMono-Medium.ttf";
 import { Roll, PianoRoll, NoteData, ControlData } from "roll.slint";
 import { CanvasWindow, CanvasItem } from "canvas.slint";
 import { Probe } from "probe.slint";
+import { SessionPanel, SessionColumn, SlotData, LaunchData } from "session.slint";
 
-export { Roll, CanvasWindow, Probe }
+export { Roll, CanvasWindow, Probe, SessionColumn, SlotData, LaunchData }
 
 export struct TrackData {
     id: int,
@@ -62,6 +64,8 @@ export struct TrackData {
     group: bool,        // it is a group
     folded: bool,       // and its members are folded away
     members: int,       // how many tracks it holds
+    vca: bool,          // it is a VCA
+    vcas: string,       // a VCA's members, or the VCAs a track is under, by name
     top: float,         // where its row starts and how tall it is, in rows
     size: float,        // of the zoom's height (`row-height`)
     clip-size: float,   // how much of that its clips take: the rest is lanes shown as rows
@@ -97,6 +101,7 @@ export struct ClipData {
     takes: int,         // how many takes it has (1 without others), and which plays
     take: int,
     looped: bool,       // it repeats what it plays (notches in `preview` mark the repeats)
+    warps: [float],     // an audio clip's warp markers, in beats from its start
 }
 
 // A send of the selected track: where to, and how much.
@@ -233,6 +238,15 @@ export struct TempoMark {
     tempo: bool,
 }
 
+// A change in the tempo lane: where it is, how high in the lane (0..1), whether
+// it ramps to the next, and its tempo as text.
+export struct TempoPointData {
+    beat: float,
+    value: float,
+    ramp: bool,
+    text: string,
+}
+
 export struct HintData {
     key: string,
     desc: string,
@@ -274,6 +288,7 @@ component MixerStrip inherits Rectangle {
     callback clear-clip();
     callback pick-device(int);
     callback hint(string);
+    callback command(string);
     background: root.chosen ? Theme.panel-sel : Theme.panel;
     TouchArea {
         clicked => {
@@ -298,7 +313,7 @@ component MixerStrip inherits Rectangle {
             Text {
                 x: 5px;
                 width: parent.width - 10px;
-                text: root.track.master ? "Output" : "→ " + root.track.output;
+                text: root.track.master ? "Output" : root.track.vca ? "VCA: " + (root.track.vcas == "" ? "no tracks" : root.track.vcas) : "→ " + root.track.output + (root.track.vcas == "" ? "" : " · VCA " + root.track.vcas);
                 color: Theme.text-2;
                 font-size: Theme.t-small;
                 vertical-alignment: center;
@@ -308,7 +323,7 @@ component MixerStrip inherits Rectangle {
         }
         // Its devices, four at most (one when the strip is short); a click
         // picks one in the device panel.
-        for slot in (root.height < 300px ? 1 : 4): slot-box := Rectangle {
+        for slot in (root.track.vca ? 0 : root.height < 300px ? 1 : 4): slot-box := Rectangle {
             height: 18px;
             border-radius: 2px;
             property <bool> used: slot < root.track.inserts.length;
@@ -330,7 +345,7 @@ component MixerStrip inherits Rectangle {
             }
         }
         // The pan.
-        HorizontalLayout {
+        if !root.track.vca: HorizontalLayout {
             height: 26px;
             alignment: center;
             Knob {
@@ -518,6 +533,49 @@ component MixerStrip inherits Rectangle {
                 border-width: 1px;
                 border-color: white;
             }
+            strip-menu := ContextMenuArea {
+                enabled: !root.track.master;
+                Menu {
+                    MenuItem {
+                        title: "New VCA with this track…";
+                        enabled: !root.track.vca;
+                        activated => {
+                            root.command("vca.make");
+                        }
+                    }
+                    MenuItem {
+                        title: "Put under a VCA…";
+                        enabled: !root.track.vca;
+                        activated => {
+                            root.command("vca.assign");
+                        }
+                    }
+                    MenuItem {
+                        title: root.track.vca ? "Dissolve the VCA" : "Take out of its VCAs";
+                        enabled: root.track.vca || root.track.vcas != "";
+                        activated => {
+                            root.command(root.track.vca ? "vca.dissolve" : "vca.release");
+                        }
+                    }
+                }
+                strip-touch := TouchArea {
+                    property <length> right-x;
+                    property <length> right-y;
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                            self.right-x = self.mouse-x;
+                            self.right-y = self.mouse-y;
+                        }
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right && !root.track.master
+                            && abs(self.mouse-x - self.right-x) < 5px && abs(self.mouse-y - self.right-y) < 5px) {
+                            strip-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                        }
+                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                            root.select();
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -577,6 +635,10 @@ export component App inherits Window {
     // The desktop's file dialog for the render's file (or folder), when it has one.
     callback choose-render-path();
     in-out property <bool> render-open;
+    // The kernel is one this window attached to, perhaps on another
+    // machine, and its sound is being played here.
+    in property <bool> remote;
+    in property <bool> listening;
     in-out property <string> render-path;
     in property <[RangeChoice]> render-ranges;
     in-out property <int> render-range;
@@ -592,6 +654,16 @@ in-out property <string> render-quality: "high";
     in-out property <bool> render-dither;
     in-out property <bool> render-mono;
     in-out property <bool> render-stems;
+    // The tags of the files, which are the project's: filled by `open-render`.
+    in-out property <bool> render-tags-open;
+    in-out property <string> render-title;
+    in-out property <string> render-artist;
+    in-out property <string> render-album;
+    in-out property <string> render-track;
+    in-out property <string> render-year;
+    in-out property <string> render-genre;
+    in-out property <string> render-comment;
+    in-out property <string> render-cover;
     // A render under way in the background.
     in property <bool> rendering;
     in property <float> render-fraction;
@@ -602,6 +674,27 @@ in property <string> render-stage;
     in property <string> learning;
     in-out property <bool> show-automation;
     in property <bool> show-mixer;
+    // The session view (session.slint): clips in slots, launched live.
+    in property <bool> show-session;
+    in property <[SessionColumn]> session-columns;
+    in property <[SlotData]> slots;
+    in property <[LaunchData]> launch;
+    in property <[string]> scenes;
+    in property <string> launch-quantize;
+    in property <bool> capturing;
+    in property <int> slot-row;
+    callback slot-press(int, int, bool);    // track, row, down
+    callback slot-choose(int, int);
+    callback slot-open(int, int);
+    callback slot-move(int, int, int, bool);
+    callback clip-to-slot(int, int, int);   // a clip from the timeline, column, row
+    callback launch-scene(int);
+    callback slot-stop(int);                // a track, or -1 for all
+    callback slot-back(int);
+    callback slot-record(int, int);         // record into an empty slot, or stop recording
+    // The slot a clip dragged from the timeline is over.
+    property <int> drop-column: -1;
+    property <int> drop-row: -1;
 
     // Modal editing: the kernel's key mappings run the keyboard, and report
     // where they are.
@@ -683,6 +776,23 @@ in property <string> render-stage;
     in property <[TempoMark]> tempo-marks;
     // A tempo or signature mark: "move" (to a beat), "edit" or "remove".
     callback tempo-mark(string, bool, float, float);
+    // The tempo lane under the ruler: the curve in pixels at the current zoom,
+    // its changes, the tempo at its top and bottom, and the pencil's stroke
+    // (a beat, a height 0..1, then 0 down, 1 move, 2 up). A change dragged
+    // (from a beat, to a beat and a height), removed or made to ramp.
+    in property <bool> tempo-lane;
+    in property <string> tempo-path;
+    in property <string> tempo-lane-top;
+    in property <string> tempo-lane-bottom;
+    in property <[TempoPointData]> tempo-points;
+    in property <string> tempo-pencil-path;
+    callback tempo-pencil(float, float, int);
+    callback tempo-point-move(float, float, float);
+    callback tempo-point-remove(float);
+    callback tempo-point-ramp(float);
+    // Bars and seconds a take punched in from a stop plays before the punch in.
+    in property <int> pre-roll;
+    in property <float> pre-roll-seconds;
     in property <float> length: 16;
     in-out property <float> zoom: 28;       // pixels per beat in the timeline
     // What the pointer would do where it is, for the status line.
@@ -709,6 +819,7 @@ in property <string> render-stage;
     in property <[ChoiceData]> input-channel;
     in property <[ChoiceData]> input-midi-out;
     in property <[ChoiceData]> input-midi-out-channel;
+    in property <[ChoiceData]> input-midi-out-form;
     callback fill-input-menu(int);
     callback choose-input(int, string, int);
     // The audio devices, from the engine indicator: the same way.
@@ -769,6 +880,12 @@ in property <string> render-stage;
     callback set-fade(int, bool, float);
     // The top line of an audio clip: the clip and its gain in dB.
     callback set-clip-gain(int, float);
+    // Warp markers of an audio clip: one put at a beat (a double click on
+    // the top band), marker `index` (from 0) dragged to a beat (off the grid
+    // with Shift), or removed.
+    callback warp-add(int, float);
+    callback warp-move(int, int, float, bool);
+    callback warp-remove(int, int);
     callback clip-command(int, float, string);
     // The clip menu's "Split at the edit cursor" and "Glue", on the chosen clips or the clip.
     callback split-clips(int);
@@ -850,7 +967,10 @@ in property <string> render-stage;
     property <length> ruler-main: 28px;
     property <length> band-height: 18px;
     property <length> bands-top: root.ruler-main + (root.markers.length > 0 ? root.band-height : 0px);
-    property <length> ruler-height: root.bands-top + root.band-rows * root.band-height;
+    // The tempo lane is the last of the ruler's rows. `TEMPO_LANE` in main.rs is its height.
+    property <length> tempo-top: root.bands-top + root.band-rows * root.band-height;
+    property <length> tempo-height: root.tempo-lane ? 56px : 0px;
+    property <length> ruler-height: root.tempo-top + root.tempo-height;
     property <int> bars: Math.ceil((root.length + 8 * root.bar) / root.bar);
     property <length> beat: root.zoom * 1px;
     in-out property <length> roll-height: 330px;
@@ -955,6 +1075,11 @@ in property <string> render-stage;
     property <length> fade-dx;
     property <int> gain-clip: -1;
     property <length> gain-ay;
+    // A warp marker's handle being dragged: its clip, which, and how far.
+    property <int> warp-clip: -1;
+    property <int> warp-index;
+    property <length> warp-ax;
+    property <length> warp-dx;
     property <float> gain-start;
     property <float> gain-now;
     // A press on M, S or R, swept down (or up) across the others: where it
@@ -1186,7 +1311,7 @@ in property <string> render-stage;
                             }
                             MenuSeparator { }
                             MenuItem {
-                                title: "Import a sound file…";
+                                title: "Import…";
                                 activated => {
                                     root.command("import");
                                 }
@@ -1490,6 +1615,25 @@ in property <string> render-stage;
                         spacing: 2px;
                         Button {
                             height: 24px;
+                            icon: Icons.ph-grid-four;
+                            icon-box: 256;
+                            label: "Session";
+                            quiet: true;
+                            on: root.show-session;
+                            clicked => {
+                                root.command("view.toggle session");
+                                keys.focus();
+                            }
+                            changed has-hover => {
+                                if (self.has-hover) {
+                                    root.hint = "session: clips in slots under each track, launched while the song plays";
+                                } else if (root.hint == "session: clips in slots under each track, launched while the song plays") {
+                                    root.hint = "";
+                                }
+                            }
+                        }
+                        Button {
+                            height: 24px;
                             icon: Icons.ph-faders;
                             icon-box: 256;
                             label: "Mixer";
@@ -1577,6 +1721,17 @@ in property <string> render-stage;
                             for entry in root.engine-info: MenuItem {
                                 title: entry.label;
                                 enabled: false;
+                            }
+                            MenuSeparator { }
+                            // Its sound, sent over the connection: for a
+                            // window attached from another machine.
+                            MenuItem {
+                                title: "Hear it on this machine";
+                                checked: root.listening;
+                                enabled: root.remote;
+                                activated => {
+                                    root.command("listen");
+                                }
                             }
                             MenuSeparator { }
                             MenuItem {
@@ -2124,6 +2279,179 @@ in property <string> render-stage;
                     }
                 }
 
+                // The tempo lane: the tempo map as a curve, a step where a
+                // change holds and a slope where it ramps. Hold the pointer
+                // down and draw, click to add a change, drag one to move it,
+                // double click it to ramp, right click it to remove it.
+                if root.tempo-lane: Rectangle {
+                    x: root.header-width;
+                    y: root.tempo-top;
+                    width: parent.width - root.header-width;
+                    height: root.tempo-height;
+                    background: Theme.panel;
+                    clip: true;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.divider;
+                    }
+                    tempo-menu := ContextMenuArea {
+                        Menu {
+                            MenuItem {
+                                title: "Hide the tempo lane";
+                                activated => {
+                                    root.command("tempo.lane off");
+                                }
+                            }
+                        }
+                        tempo-lane-touch := TouchArea {
+                            pure function height-at(y: length) -> float {
+                                clamp(1 - y / self.height, 0, 1)
+                            }
+                            pointer-event(event) => {
+                                if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                                    keys.focus();
+                                    root.tempo-pencil((self.mouse-x - lanes.content-x) / root.beat, self.height-at(self.mouse-y), 0);
+                                }
+                                if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                                    root.tempo-pencil((self.mouse-x - lanes.content-x) / root.beat, self.height-at(self.mouse-y), 2);
+                                }
+                                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.up) {
+                                    tempo-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                }
+                            }
+                            moved => {
+                                if (self.pressed) {
+                                    root.tempo-pencil((self.mouse-x - lanes.content-x) / root.beat, self.height-at(self.mouse-y), 1);
+                                }
+                            }
+                            changed has-hover => {
+                                if (self.has-hover) {
+                                    root.hint = "tempo lane: click adds a change · hold and draw a curve · drag a change to move it · double click makes it ramp or hold · right click one removes it";
+                                } else if (root.hint == "tempo lane: click adds a change · hold and draw a curve · drag a change to move it · double click makes it ramp or hold · right click one removes it") {
+                                    root.hint = "";
+                                }
+                            }
+                        }
+                    }
+                    Path {
+                        x: 0;
+                        y: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-x: -lanes.content-x / 1px;
+                        viewbox-y: 0;
+                        viewbox-width: self.width / 1px;
+                        viewbox-height: self.height / 1px;
+                        commands: root.tempo-path;
+                        stroke: Theme.accent;
+                        stroke-width: 1.5px;
+                    }
+                    if root.tempo-pencil-path != "": Path {
+                        x: 0;
+                        y: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-x: -lanes.content-x / 1px;
+                        viewbox-y: 0;
+                        viewbox-width: self.width / 1px;
+                        viewbox-height: self.height / 1px;
+                        commands: root.tempo-pencil-path;
+                        stroke: Theme.text;
+                        stroke-width: 2px;
+                    }
+                    for point[index] in root.tempo-points: tempo-point := Rectangle {
+                        property <length> dx: 0px;
+                        property <length> dy: 0px;
+                        x: point.beat * root.beat + lanes.content-x - 5px + self.dx;
+                        y: (0.12 + (1 - point.value) * 0.76) * root.tempo-height - 5px + self.dy;
+                        width: 10px;
+                        height: 10px;
+                        Rectangle {
+                            x: tempo-handle.has-hover || tempo-handle.pressed ? 1px : 2px;
+                            y: self.x;
+                            width: parent.width - 2 * self.x;
+                            height: self.width;
+                            border-radius: point.ramp ? self.width / 2 : 1px;
+                            background: tempo-handle.pressed ? Theme.select : tempo-handle.has-hover ? white : Theme.text;
+                        }
+                        if tempo-handle.has-hover || tempo-handle.pressed: Text {
+                            x: 12px;
+                            y: -2px;
+                            text: point.text;
+                            color: Theme.text;
+                            font-family: Theme.mono;
+                            font-size: Theme.t-small;
+                            font-weight: 600;
+                        }
+                        tempo-handle := TouchArea {
+                            moved => {
+                                if (self.pressed) {
+                                    parent.dx += self.mouse-x - self.pressed-x;
+                                    parent.dy += self.mouse-y - self.pressed-y;
+                                }
+                            }
+                            pointer-event(event) => {
+                                if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                                    if (abs(parent.dx) > 2px || abs(parent.dy) > 2px) {
+                                        root.tempo-point-move(
+                                            point.beat, point.beat + parent.dx / root.beat,
+                                            clamp(0.88 - (1 - point.value) * 0.76 - parent.dy / root.tempo-height, 0, 1));
+                                    }
+                                    parent.dx = 0px;
+                                    parent.dy = 0px;
+                                }
+                                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                                    root.tempo-point-remove(point.beat);
+                                }
+                            }
+                            double-clicked => {
+                                root.tempo-point-ramp(point.beat);
+                            }
+                        }
+                    }
+                }
+                // What the lane's top and bottom are, in the corner.
+                if root.tempo-lane: Rectangle {
+                    x: 0;
+                    y: root.tempo-top;
+                    width: root.header-width;
+                    height: root.tempo-height;
+                    background: Theme.panel;
+                    Text {
+                        x: 12px;
+                        y: 6px;
+                        text: "TEMPO";
+                        color: Theme.text-3;
+                        font-size: Theme.t-micro;
+                        font-weight: 600;
+                    }
+                    Text {
+                        x: 12px;
+                        y: 22px;
+                        text: root.tempo + " bpm";
+                        color: Theme.text-2;
+                        font-family: Theme.mono;
+                        font-size: Theme.t-small;
+                    }
+                    Text {
+                        x: parent.width - self.preferred-width - 8px;
+                        y: 6px;
+                        text: root.tempo-lane-top;
+                        color: Theme.text-3;
+                        font-family: Theme.mono;
+                        font-size: Theme.t-micro;
+                    }
+                    Text {
+                        x: parent.width - self.preferred-width - 8px;
+                        y: parent.height - self.preferred-height - 6px;
+                        text: root.tempo-lane-bottom;
+                        color: Theme.text-3;
+                        font-family: Theme.mono;
+                        font-size: Theme.t-micro;
+                    }
+                }
+
                 // Track headers, scrolling up and down with the timeline.
                 headers := Rectangle {
                     x: 0;
@@ -2250,6 +2578,34 @@ in property <string> render-stage;
                                     enabled: track.group || track.depth > 0;
                                     activated => {
                                         root.track-command(track.id, "track.ungroup");
+                                    }
+                                }
+                                MenuItem {
+                                    title: "New VCA with this track…";
+                                    enabled: !track.vca;
+                                    activated => {
+                                        root.track-command(track.id, "vca.make");
+                                    }
+                                }
+                                MenuItem {
+                                    title: "Put under a VCA…";
+                                    enabled: !track.vca;
+                                    activated => {
+                                        root.track-command(track.id, "vca.assign");
+                                    }
+                                }
+                                MenuItem {
+                                    title: track.vca ? "Dissolve the VCA" : "Take out of its VCAs";
+                                    enabled: track.vca || track.vcas != "";
+                                    activated => {
+                                        root.track-command(track.id, track.vca ? "vca.dissolve" : "vca.release");
+                                    }
+                                }
+                                MenuItem {
+                                    title: "Link the faders of the group";
+                                    enabled: track.group || track.depth > 0;
+                                    activated => {
+                                        root.track-command(track.id, "group.link");
                                     }
                                 }
                                 MenuItem {
@@ -2590,6 +2946,17 @@ in property <string> render-stage;
                                                     activated => {
                                                         refocus.running = true;
                                                         root.choose-input(track.id, "midi_out_channel", at + 1);
+                                                    }
+                                                }
+                                            }
+                                            Menu {
+                                                title: "MIDI out form, where the port takes no MIDI 2.0";
+                                                for entry[at] in root.input-midi-out-form: MenuItem {
+                                                    title: entry.label;
+                                                    checked: entry.checked;
+                                                    activated => {
+                                                        refocus.running = true;
+                                                        root.choose-input(track.id, "midi_out_form", at + 1);
                                                     }
                                                 }
                                             }
@@ -3077,7 +3444,7 @@ in property <string> render-stage;
                                 }
                             }
                             MenuItem {
-                                title: "Import a sound file…";
+                                title: "Import a sound or MIDI file…";
                                 activated => {
                                     root.command("import");
                                 }
@@ -3119,6 +3486,18 @@ in property <string> render-stage;
                                 title: root.count-in > 0 ? "No count-in before a take" : "Count a bar in before a take";
                                 activated => {
                                     root.command(root.count-in > 0 ? "countin off" : "countin 1");
+                                }
+                            }
+                            MenuItem {
+                                title: (root.pre-roll > 0 || root.pre-roll-seconds > 0 ? "No pre-roll before a punch" : "Pre-roll two bars before a punch");
+                                activated => {
+                                    root.command("preroll");
+                                }
+                            }
+                            MenuItem {
+                                title: root.tempo-lane ? "Hide the tempo lane" : "Show the tempo lane";
+                                activated => {
+                                    root.command("tempo.lane");
                                 }
                             }
                             MenuItem {
@@ -3498,6 +3877,39 @@ in property <string> render-stage;
                                             root.clip-command(clip.id, clip.start, "clip.tempo");
                                         }
                                     }
+                                    MenuItem {
+                                        title: "Keep formants when shifted";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.formants");
+                                        }
+                                    }
+                                    MenuSeparator { }
+                                    MenuItem {
+                                        title: "Warp marker at the pointer   double click the top";
+                                        enabled: !clip.midi;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.warp-add(clip.id, clip.start + (clip-box.cut-left + clip-touch.menu-x) / root.beat);
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Warp markers onto the grid";
+                                        enabled: clip.warps.length > 0;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.warp snap");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Remove the warp markers";
+                                        enabled: clip.warps.length > 0;
+                                        activated => {
+                                            refocus.running = true;
+                                            root.clip-command(clip.id, clip.start, "clip.warp clear");
+                                        }
+                                    }
                                     MenuSeparator { }
                                     MenuItem {
                                         title: clip.looped ? "Stop looping" : "Loop: repeat when made longer";
@@ -3540,6 +3952,9 @@ in property <string> render-stage;
                                         if (root.drag-clip == clip.id) {
                                             root.drag-dx = self.absolute-position.x + self.mouse-x - root.drag-ax;
                                             root.drag-dy = self.absolute-position.y + self.mouse-y - root.drag-ay;
+                                            // Over a slot of the session view, it goes there.
+                                            root.drop-column = root.show-session ? session.column-at(self.absolute-position.x + self.mouse-x) : -1;
+                                            root.drop-row = root.drop-column >= 0 ? session.row-at(self.absolute-position.y + self.mouse-y) : -1;
                                         }
                                     }
                                 }
@@ -3569,7 +3984,9 @@ in property <string> render-stage;
                                     }
                                     if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
                                         keys.focus();
-                                        if (root.drag-clip == clip.id && (abs(root.drag-dx) > 3px || root.drag-rows != 0)) {
+                                        if (root.drag-clip == clip.id && root.drop-column >= 0 && root.drop-row >= 0) {
+                                            root.clip-to-slot(clip.id, root.drop-column, root.drop-row);
+                                        } else if (root.drag-clip == clip.id && (abs(root.drag-dx) > 3px || root.drag-rows != 0)) {
                                             root.move-clip(
                                                 clip.id, root.drag-dx / root.beat, root.drag-rows,
                                                 event.modifiers.control, event.modifiers.shift);
@@ -3581,11 +3998,18 @@ in property <string> render-stage;
                                         root.drag-clip = -1;
                                         root.drag-dx = 0px;
                                         root.drag-dy = 0px;
+                                        root.drop-column = -1;
+                                        root.drop-row = -1;
                                     }
                                 }
                                 double-clicked => {
                                     self.opened = true;
-                                    root.open-clip(clip.id);
+                                    // On an audio clip's top band: a warp marker there.
+                                    if (!clip.midi && self.mouse-y < max(clip-box.title, 10px)) {
+                                        root.warp-add(clip.id, clip.start + (clip-box.cut-left + self.x + self.mouse-x) / root.beat);
+                                    } else {
+                                        root.open-clip(clip.id);
+                                    }
                                 }
                                 scroll-event(event) => {
                                     if (event.modifiers.control) {
@@ -3721,6 +4145,78 @@ in property <string> render-stage;
                                         if (self.has-hover) {
                                             root.hint = "fade: drag sideways to make it longer or shorter";
                                         } else if (root.hint == "fade: drag sideways to make it longer or shorter") {
+                                            root.hint = "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Its warp markers: a line down the clip and a handle on its top
+                        // band, dragged to stretch the sound on either side of it.
+                        for at[index] in clip.warps: Rectangle {
+                            property <bool> held: root.warp-clip == clip.id && root.warp-index == index;
+                            property <length> line-x: at * root.beat - clip-box.cut-left + (self.held ? root.warp-dx : 0px);
+                            x: self.line-x - 4px;
+                            y: 0;
+                            width: 9px;
+                            height: parent.height;
+                            visible: self.line-x >= 0px && self.line-x <= parent.width;
+                            Rectangle {
+                                x: 4px;
+                                y: 0;
+                                width: 1px;
+                                height: parent.height;
+                                background: Theme.yellow.with-alpha(parent.held || warp-touch.has-hover ? 1.0 : 0.7);
+                            }
+                            Path {
+                                x: 0;
+                                y: 0;
+                                width: 9px;
+                                height: 7px;
+                                viewbox-width: 9;
+                                viewbox-height: 7;
+                                commands: "M 0 0 L 9 0 L 4.5 7 Z";
+                                fill: parent.held || warp-touch.has-hover ? Theme.select : Theme.yellow;
+                            }
+                            warp-menu := ContextMenuArea {
+                                Menu {
+                                    MenuItem {
+                                        title: "Remove warp marker";
+                                        activated => {
+                                            root.warp-remove(clip.id, index);
+                                        }
+                                    }
+                                }
+                                warp-touch := TouchArea {
+                                    height: max(clip-box.title, 10px);
+                                    y: 0;
+                                    mouse-cursor: ew-resize;
+                                    pointer-event(event) => {
+                                        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                                            keys.focus();
+                                            root.warp-clip = clip.id;
+                                            root.warp-index = index;
+                                            root.warp-ax = self.absolute-position.x + self.mouse-x;
+                                            root.warp-dx = 0px;
+                                        }
+                                        if (event.kind == PointerEventKind.move && root.warp-clip == clip.id && root.warp-index == index) {
+                                            root.warp-dx = self.absolute-position.x + self.mouse-x - root.warp-ax;
+                                        }
+                                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left && root.warp-clip == clip.id) {
+                                            if (abs(root.warp-dx) > 1px) {
+                                                root.warp-move(clip.id, index, clip.start + at + root.warp-dx / root.beat, event.modifiers.shift);
+                                            }
+                                            root.warp-clip = -1;
+                                            root.warp-dx = 0px;
+                                        }
+                                        if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                                            warp-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                        }
+                                    }
+                                    changed has-hover => {
+                                        if (self.has-hover) {
+                                            root.hint = "warp marker: drag to stretch the sound on either side of it, on the grid, Shift off it · right click to remove";
+                                        } else if (root.hint == "warp marker: drag to stretch the sound on either side of it, on the grid, Shift off it · right click to remove") {
                                             root.hint = "";
                                         }
                                     }
@@ -5060,13 +5556,45 @@ in property <string> render-stage;
                                                     height: 22px;
                                                     spacing: 6px;
                                                     property <bool> focused: root.focused == "devices" && root.row-device == at + 1 && root.row-param == row + 1;
-                                                    Text {
-                                                        text: param.name;
-                                                        color: parent.focused ? Theme.select : Theme.text-2;
-                                                        font-size: Theme.t-small;
+                                                    // The name: a right click offers to automate the
+                                                    // parameter, or to edit its curve.
+                                                    Rectangle {
                                                         width: 84px;
-                                                        overflow: elide;
-                                                        vertical-alignment: center;
+                                                        property <bool> focused: parent.focused;
+                                                        Text {
+                                                            x: 0;
+                                                            y: 0;
+                                                            width: parent.width;
+                                                            height: parent.height;
+                                                            text: param.name;
+                                                            color: parent.focused ? Theme.select : Theme.text-2;
+                                                            font-size: Theme.t-small;
+                                                            overflow: elide;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        param-menu := ContextMenuArea {
+                                                            Menu {
+                                                                MenuItem {
+                                                                    title: "Automate this parameter";
+                                                                    activated => {
+                                                                        root.command("param.automate " + device.id + " " + param.key);
+                                                                    }
+                                                                }
+                                                                MenuItem {
+                                                                    title: "Edit its curve…";
+                                                                    activated => {
+                                                                        root.command("curve.open window device=" + device.id + " param=" + param.key);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        TouchArea {
+                                                            pointer-event(event) => {
+                                                                if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                                                                    param-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                     Slider {
                                                         value: param.value;
@@ -5162,6 +5690,60 @@ in property <string> render-stage;
             }
         }
 
+        // The session view: always there, so that a clip dragged from the
+        // timeline can find its slots, and of no height while it is hidden.
+        session := SessionPanel {
+            height: root.show-session ? (Roll.open && !Roll.detached ? 220px : 280px) : 0px;
+            visible: root.show-session;
+            columns: root.session-columns;
+            slots: root.slots;
+            launch: root.launch;
+            scenes: root.scenes;
+            quantize: root.launch-quantize;
+            capturing: root.capturing;
+            chosen-track: root.selected;
+            chosen-row: root.slot-row;
+            drop-column: root.drop-column;
+            drop-row: root.drop-row;
+            press(track, row, down) => {
+                keys.focus();
+                root.slot-press(track, row, down);
+            }
+            choose(track, row) => {
+                keys.focus();
+                root.slot-choose(track, row);
+            }
+            open(track, row) => {
+                root.slot-open(track, row);
+            }
+            move-slot(clip, track, row, copy) => {
+                root.slot-move(clip, track, row, copy);
+            }
+            scene(row) => {
+                keys.focus();
+                root.launch-scene(row);
+            }
+            stop(track) => {
+                keys.focus();
+                root.slot-stop(track);
+            }
+            back(track) => {
+                keys.focus();
+                root.slot-back(track);
+            }
+            record(track, row) => {
+                keys.focus();
+                root.slot-record(track, row);
+            }
+            command(line) => {
+                root.command(line);
+                keys.focus();
+            }
+            hint(text) => {
+                root.hint = text;
+            }
+        }
+
         // The mixer: a strip per track, the master pinned at the right.
         if root.show-mixer: Rectangle {
             // Shorter while the piano roll shares the window.
@@ -5214,6 +5796,9 @@ in property <string> render-stage;
                         }
                         hint(text) => {
                             root.hint = text;
+                        }
+                        command(line) => {
+                            root.track-command(track.id, line);
                         }
                     }
                 }
@@ -5739,6 +6324,111 @@ in property <string> render-stage;
                     }
                     Rectangle {
                         horizontal-stretch: 1;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        width: 70px;
+                    }
+                    Button {
+                        label: root.render-tags-open ? "Tags  ▾" : "Tags  ▸";
+                        on: root.render-tags-open;
+                        clicked => {
+                            root.render-tags-open = !root.render-tags-open;
+                        }
+                    }
+                    Text {
+                        text: "title, artist, album and more, kept with the project";
+                        color: Theme.text-3;
+                        font-size: Theme.t-small;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Title";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        placeholder-text: "the project's name";
+                        text <=> root.render-title;
+                    }
+                    Text {
+                        text: "Artist";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-artist;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Album";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-album;
+                    }
+                    Text {
+                        text: "Track";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        width: 60px;
+                        text <=> root.render-track;
+                    }
+                    Text {
+                        text: "Year";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        width: 70px;
+                        text <=> root.render-year;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Genre";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-genre;
+                    }
+                    Text {
+                        text: "Comment";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.render-comment;
+                    }
+                }
+                if root.render-tags-open: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        width: 70px;
+                        text: "Cover";
+                        color: Theme.text-2;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        placeholder-text: "a PNG or JPEG file (not in a WAV)";
+                        text <=> root.render-cover;
                     }
                 }
                 HorizontalLayout {

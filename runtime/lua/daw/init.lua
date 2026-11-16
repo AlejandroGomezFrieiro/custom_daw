@@ -24,6 +24,8 @@ daw.on, daw.once, daw.off, daw.emit = events.on, events.once, events.off, events
 local options = require("daw.options")
 daw.opt, daw.option = options.opt, options
 daw.limit = require("daw.limit")
+-- Before anything that keeps state of its own for each terminal and window.
+daw.seats = require("daw.seats")
 
 --- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
 function daw.defer(fn, ms)
@@ -51,8 +53,14 @@ daw.cmd = daw.commands.run
 daw.music = require("daw.music")
 daw.params = require("daw.params")
 daw.ui = require("daw.ui")
+-- Buffers, windows and tabs (daw/layout.lua).
+daw.layout = require("daw.layout")
+daw.buf, daw.win, daw.tab = daw.layout.buf, daw.layout.win, daw.layout.tabs
+daw.buftype, daw.layouts = daw.layout.buftype, daw.layout.layouts
 daw.draw = require("daw.draw")
 daw.ui.keybar = require("daw.keybar")
+daw.mouse = require("daw.mouse")
+require("daw.menu")
 daw.canvas = require("daw.canvas")
 daw.notify = daw.ui.notify
 daw.keymap = require("daw.keymap")
@@ -66,6 +74,7 @@ daw.restore_track, daw.restore_clip, daw.restore_device = objects.restore_track,
 daw.master, daw.project, daw.transport, daw.time = objects.master, objects.project, objects.transport, objects.time
 daw.midi = objects.midi
 daw.tempo = require("daw.tempo")
+daw.midifile = require("daw.midifile")
 daw.audio = require("daw.audio")
 
 --- Descriptions of every kind of device that can be added to a track.
@@ -77,6 +86,8 @@ daw.device_types = api.device_types
 --- named ranges a render can take.
 function daw.render(path, opts) return require("daw.render").render(path, opts) end
 function daw.render_stems(dir, opts) return require("daw.render").stems(dir, opts) end
+--- The tags of the project's rendered files: `daw.render_tags()`, `daw.render_tags({ artist = "Me" })`.
+function daw.render_tags(set) return require("daw.render").tags(set) end
 function daw.render_status() return require("daw.render").status() end
 function daw.render_cancel() return require("daw.render").cancel() end
 daw.render_ranges = setmetatable({}, {
@@ -114,14 +125,20 @@ daw.undo, daw.redo = api.undo, api.redo
 daw.cursor = require("daw.cursor")
 daw.edit = require("daw.edit")
 daw.ext = require("daw.ext")
+daw.vca = require("daw.vca")
 daw.groups = require("daw.groups")
 daw.lanes = require("daw.lanes")
+daw.tempolane = require("daw.tempolane")
 daw.frontend = require("daw.frontend")
 daw.pick = require("daw.pick")
 daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
+daw.controls = require("daw.controls")
 daw.takes = require("daw.takes")
 daw.stretch = require("daw.stretch")
+daw.harmony = require("daw.harmony")
+daw.snippet = require("daw.snippet")
+daw.launcher = require("daw.launcher")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
 -- gives text, `daw.json.decode(text)` the value, or nil and the reason.
@@ -139,10 +156,23 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
-  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "help", "effect_windows" }) do
+  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
     require("daw.views." .. name)
   end
+  -- What the pointer does in them: the window's gestures, in cells.
+  for _, name in ipairs({ "arrange_mouse", "pianoroll_mouse", "panels_mouse" }) do
+    require("daw.views." .. name)
+  end
+  daw.address = require("daw.address")
+  daw.diagnostic = require("daw.diagnostic")
+  daw.annotation = require("daw.annotation")
+  require("daw.locators")
+  daw.lsp = require("daw.lsp")
   require("daw.defaults")
+  daw.layout.setup()
+  daw.curves = require("daw.curves")
+  daw.curves.editor = require("daw.views.curve")
+  daw.complete = require("daw.complete")
   daw.fx.setup()
   daw.routes.setup()
   daw.media = require("daw.media")
@@ -156,8 +186,10 @@ function K.startup()
   daw.reconnect = require("daw.reconnect")
   daw.ui.start_ticker()
 
+  daw.luadev = require("daw.luadev")
   local env = api.env()
   if not env.clean then
+    daw.luadev.add_dir(env.config_dir .. "/devices", daw.luadev.RANK_CONFIG)
     daw.ext.load_dir(env.config_dir .. "/extensions")
     local init = env.config_dir .. "/init.lua"
     local file = io.open(init, "r")
@@ -166,6 +198,7 @@ function K.startup()
       local chunk, err = loadfile(init)
       if chunk then daw.try(daw.limit.untrusted(chunk)) else daw.notify(err, "error") end
     end
+    daw.snippet.load_dir(env.config_dir .. "/snippets", "config")
   end
   for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
   daw.emit("startup", {})
@@ -266,6 +299,21 @@ end
 --- A connection on the control socket closed.
 function K.rpc_closed(client)
   if daw.remote then daw.remote.closed(client) end
+  daw.seats.close(client)
+end
+
+--- Whose turn it is: a connection with a seat of its own, or 0.
+function K.seat(client)
+  daw.seats.enter(client)
+end
+
+--- A connection's terminal attached, or went away.
+function K.seat_open(client, why)
+  daw.seats.open(client, why)
+end
+
+function K.seat_close(client, why)
+  daw.limit.guard("leaving a seat", daw.seats.close, client, why)
 end
 
 -- With a screen attached, stdout belongs to the terminal UI.

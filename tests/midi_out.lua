@@ -5,6 +5,10 @@ local T = ...
 local test, eq, near, fails, fresh = T.test, T.eq, T.near, T.fails, T.fresh
 local api = daw.api
 
+-- Our port's name, told apart from those of other instances running the
+-- suite at the same time, which a route by name could otherwise reach.
+local LOOP = "Loop" .. math.floor(api.now()) % 1000000
+
 --- Wait, with the session looked after, until `ready()` or `ms` pass.
 local function wait_for(ready, ms)
   local deadline = api.now() + (ms or 10000)
@@ -23,14 +27,14 @@ end
 --- sequencer cannot be opened here.
 local function with_loop(fn)
   api.engine_restart({ backend = "null", midi = true })
-  daw.midi.open_port("Loop")
+  daw.midi.open_port(LOOP)
   local ok, err
-  if wait_for(function() return output_named("daw: Loop") end, 4000) then
+  if wait_for(function() return output_named("daw: " .. LOOP) end, 4000) then
     ok, err = xpcall(fn, debug.traceback)
   else
     ok, err = true, "skipped: no ALSA sequencer to send MIDI through"
   end
-  daw.midi.close_port("Loop")
+  daw.midi.close_port(LOOP)
   api.engine_restart({ backend = "null" })
   if not ok then error(err, 0) end
   return err
@@ -45,12 +49,12 @@ test("a track sends its clip's notes to a MIDI port, on its channel, in order an
       { pitch = "C4", start = 0, length = 0.5 }, { pitch = "E4", start = 1, length = 0.5 },
       { pitch = "G4", start = 2, length = 0.5 }, { pitch = "C5", start = 3, length = 4 },
     } })
-    t.midi_output = { port = "daw: Loop", channel = 3 }
-    eq(t.midi_output.port .. " " .. t.midi_output.channel, "daw: Loop 3", "the track names its output")
+    t.midi_output = { port = "daw: " .. LOOP, channel = 3 }
+    eq(t.midi_output.port .. " " .. t.midi_output.channel, "daw: " .. LOOP .. " 3", "the track names its output")
     -- What comes back is recorded on a track that takes channel 3 of "Loop"
     -- alone: the notes are where they arrived, in beats.
     local keys = daw.add_track({ name = "Keys" })
-    keys.midi_input = { port = "Loop", channel = 3 }
+    keys.midi_input = { port = LOOP, channel = 3 }
     keys.armed = true
     daw.transport.record_offset = 0
     daw.transport.record()
@@ -77,9 +81,9 @@ test("removing a track that sends MIDI ends the notes it left sounding", functio
     daw.project.tempo = 120
     local t = daw.add_track({ name = "Hardware" })
     t:add_clip({ start = 0, length = 8, notes = { { pitch = "C5", start = 0, length = 8 } } })
-    t.midi_output = { port = "daw: Loop" }
+    t.midi_output = { port = "daw: " .. LOOP }
     local keys = daw.add_track({ name = "Keys" })
-    keys.midi_input = { port = "Loop" }
+    keys.midi_input = { port = LOOP }
     keys.armed = true
     daw.transport.record_offset = 0
     daw.transport.record()
@@ -161,12 +165,12 @@ test("a script that waits hears what is played into a port", function()
     t:add_clip({ start = 0, length = 2, notes = {
       { pitch = "C4", start = 0, length = 0.5 }, { pitch = "E4", start = 1, length = 0.5 },
     } })
-    t.midi_output = { port = "daw: Loop" }
+    t.midi_output = { port = "daw: " .. LOOP }
     daw.transport.play()
     local got = wait_for(function() return #heard >= 2 end, 8000)
     daw.transport.stop()
     daw.off(handler)
     eq(got, true, "the notes arrived while the script waited")
-    eq(table.concat(heard, " "), "60@Loop 64@Loop", "as events that name the port they came in on")
+    eq(table.concat(heard, " "), ("60@%s 64@%s"):format(LOOP, LOOP), "as events that name the port they came in on")
   end)
 end)

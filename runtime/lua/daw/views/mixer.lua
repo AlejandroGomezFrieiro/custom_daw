@@ -8,6 +8,7 @@ local api = daw.api
 local util = daw.util
 
 local view = { scroll = 0 }
+daw.seats.fields("mixer", view, { "scroll", "geometry" }, { scroll = 0 })
 local draw = daw.draw
 
 local SCALE = 4 -- columns for the dB scale on the left
@@ -32,9 +33,23 @@ local function strip(buf, x, t, index, selected, height, sw)
   -- The name on a plate in the track's colour, lit for the track the cursor is on.
   buf:fill(x, 0, w, 1, " ", selected and hue.title_cur or hue.plate)
   buf:text(x + 1, 0, util.fit(t.name, w - 1))
+  -- What modules mark on the strip (`daw.ui.layer("mixer", "strip", ...)`).
+  daw.ui.paint("mixer", "strip", { buf = buf, x = x, y = 0, width = w, height = height, track = t.id })
+  -- Where each part is, for the pointer.
+  local parts = { x = x, w = w, id = t.id }
   local y = 1
-  -- The first devices, with room.
-  if height >= 20 then
+  local vca = t.meta and t.meta.vca == true
+  -- A VCA names the tracks it moves, with room; a track the VCAs it is under.
+  if vca and height >= 12 then
+    local members = daw.vca.members(t.id)
+    for i = 1, 3 do
+      local name = members[i] and api.track_get(members[i]).name
+      if i == 3 and #members > 3 then name = "+" .. (#members - 2) .. " more" end
+      buf:text(x + 1, y, util.fit(name or (i == 1 and "no tracks" or ""), w - 1), name and "TrackInfo" or "TrackIndex")
+      y = y + 1
+    end
+  elseif height >= 20 then
+    parts.devices = y
     for i = 1, 3 do
       local id = (t.devices or {})[i]
       local ok, d = id ~= nil, nil
@@ -47,8 +62,15 @@ local function strip(buf, x, t, index, selected, height, sw)
       y = y + 1
     end
   end
+  -- The VCAs the track is under.
+  if not vca and not t.master and height >= 12 then
+    local words = daw.frontend.vca_words(t.id)
+    if words ~= "" then buf:text(x + 1, y, util.fit("vca " .. words, w - 1), "TrackInfo") end
+    y = y + 1
+  end
   -- The sends, with more room.
   if height >= 24 then
+    parts.sends = y
     for i = 1, 2 do
       local send = (t.sends or {})[i]
       if send then
@@ -77,22 +99,40 @@ local function strip(buf, x, t, index, selected, height, sw)
   local db = 20 * math.log10(math.max(hold, 1e-6))
   local peak = db < -60 and "-inf" or string.format("%.1f", db)
   buf:text(x + w - #peak, y, peak, db > -0.1 and "MeterHigh" or "TrackIndex")
+  -- What modules label the strip with, on the peak's row (`daw.ui.layer("mixer", "strip_foot", ...)`).
+  daw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - 1, track = t.id })
   local vol = draw.db_text(t.volume)
   buf:text(x + w - #vol, y + 1, vol, selected and "Bright" or "TrackInfo")
-  draw.pan(buf, x + 1, y + 2, math.min(7, w - 1), t.pan or 0)
-  if not t.master then
+  if not vca then draw.pan(buf, x + 1, y + 2, math.min(7, w - 1), t.pan or 0) end
+  parts.fader, parts.rows, parts.vol, parts.pan, parts.pan_w, parts.chips = y - rows, rows, y + 1, y + 2, math.min(7, w - 1), y + 3
+  if vca then
+    draw.chips(buf, x + 1, y + 3, { { "M", t.mute, "Mute" }, { "S", t.solo, "Solo" } }, w >= 8 and 1 or 0)
+    buf:text(x + 1, y + 2, "vca", "TrackIndex")
+  elseif not t.master then
     draw.chips(buf, x + 1, y + 3, {
       { "M", t.mute, "Mute" }, { "S", t.solo, "Solo" }, { "R", t.armed, "Armed" }, { "I", t.monitor, "Monitor" },
     }, w >= 8 and 1 or 0)
   else
     buf:text(x + 1, y + 3, "master", "TrackIndex")
   end
-  return { y = y - rows, rows = rows }
+  parts.y = parts.fader
+  return parts
+end
+
+--- The tracks in the order of the strips: VCAs after the others.
+local function strip_order()
+  local tracks, vcas = {}, {}
+  for _, id in ipairs(api.track_list()) do
+    local list = daw.vca.is_vca(id) and vcas or tracks
+    list[#list + 1] = id
+  end
+  table.move(vcas, 1, #vcas, #tracks + 1, tracks)
+  return tracks
 end
 
 function view:render(buf, ctx)
   local g = draw.g
-  local tracks = api.track_list()
+  local tracks = strip_order()
   local body = daw.ui.titlebar(buf, {
     name = "Mixer", context = #tracks .. (#tracks == 1 and " track" or " tracks"), focused = ctx.focused,
   })
@@ -100,21 +140,26 @@ function view:render(buf, ctx)
   body:fill(0, 0, w, h, " ", "TrackHeader")
   local sw = view.strip_width(w + 1)
   local room = math.max(1, math.floor((w - SCALE - sw - 1) / sw))
-  local index = daw.cursor.index() or 1
+  local cursor_track = daw.cursor.track_id()
+  local index = 1
+  for i, id in ipairs(tracks) do
+    if id == cursor_track then index = i end
+  end
   if index <= self.scroll then self.scroll = index - 1 end
   if index > self.scroll + room then self.scroll = index - room end
   self.scroll = util.clamp(self.scroll, 0, math.max(0, #tracks - room))
-  local cursor_track = daw.cursor.track_id()
-  local x, shown, block = SCALE, 0, nil
+  local x, shown, block, strips = SCALE, 0, nil, {}
   for col = 0, room - 1 do
     local id = tracks[self.scroll + col + 1]
     if not id then break end
     block = strip(body, x, api.track_get(id), self.scroll + col + 1, id == cursor_track, h, sw)
+    strips[#strips + 1] = block
     x, shown = x + sw, shown + 1
   end
   -- The master, after the last track behind a heavier rule.
   body:fill(x, 0, 1, h, g.strip_sep, "Rule")
   block = strip(body, x + 1, api.track_get(0), nil, false, h, sw) or block
+  strips[#strips + 1] = block
   -- The scale beside the first strip's meters.
   if block and block.rows >= 6 then
     for _, mark in ipairs(marks) do
@@ -123,15 +168,7 @@ function view:render(buf, ctx)
       if row >= block.y then body:text(SCALE - 1 - #tostring(mark), math.max(block.y, row), tostring(mark), "MeterScale") end
     end
   end
-  self.geometry = { sw = sw, shown = shown }
-end
-
-function view:on_mouse(event)
-  if event.kind ~= "down" or not self.geometry then return end
-  local col = math.floor((event.x - SCALE) / self.geometry.sw)
-  if col < 0 or col >= self.geometry.shown then return end
-  local id = api.track_list()[self.scroll + col + 1]
-  if id then daw.cursor.set_track(id) end
+  self.geometry = { sw = sw, shown = shown, strips = strips }
 end
 
 daw.ui.view("mixer", view)

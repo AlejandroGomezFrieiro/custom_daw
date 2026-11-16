@@ -457,6 +457,8 @@ return function(pick)
           local ext = (name:match("%.([^.]+)$") or ""):lower()
           if audio_ext[ext] then
             out[#out + 1] = { path = path, kind = "audio" }
+          elseif daw.midifile.is_midi_file(name) then
+            out[#out + 1] = { path = path, kind = "midi" }
           elseif ext == "json" and is_project(dir .. "/" .. name) then
             out[#out + 1] = { path = path, kind = "project" }
           end
@@ -469,9 +471,9 @@ return function(pick)
   S._walk = walk
 
   S.files = {
-    desc = "Open a project, or import audio at the cursor",
+    desc = "Open a project, or import audio or MIDI at the cursor",
     title = "Files",
-    empty = "No project or audio files under this directory.",
+    empty = "No project, audio or MIDI files under this directory.",
     items = function() return walk(".", 50000) end,
     format = function(f) return f.path end,
     on_choose = function(f)
@@ -479,6 +481,7 @@ return function(pick)
         daw.open(f.path)
         return daw.notify("opened " .. f.path)
       end
+      if f.kind == "midi" then return daw.commands.run("import", { f.path }) end
       local track = need_track()
       if not track then return end
       track:add_clip({ start = daw.cursor.beat, file = f.path })
@@ -486,6 +489,12 @@ return function(pick)
     preview = function(f)
       if f.kind == "project" then
         return { { text = f.path, style = "Title" }, "", "A project.", "Enter opens it in place of this one." }
+      end
+      if f.kind == "midi" then
+        return {
+          { text = f.path, style = "Title" }, "", "A MIDI file.",
+          "Enter brings its tracks in at " .. daw.time.format(daw.cursor.beat) .. "; `:open` opens it as a project.",
+        }
       end
       local track = daw.cursor.track()
       return {

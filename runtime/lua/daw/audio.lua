@@ -139,6 +139,11 @@ function M.choices(track)
   for ch = 1, 16 do
     add("midi_out_channel", "Channel " .. ch, { midi_out_channel = ch }, sent.channel == ch)
   end
+  -- What it becomes at a port that takes no MIDI 2.0.
+  for _, form in ipairs(daw.routes.midi_out_form_order) do
+    local label = daw.routes.midi_out_forms[form]
+    add("midi_out_form", label:sub(1, 1):upper() .. label:sub(2), { midi_out_form = form }, (sent.form or "auto") == form)
+  end
   return out
 end
 
@@ -159,12 +164,13 @@ function M.choose(track, choice)
     api.track_set(id, "midi_input", (port or channel) and { port = port, channel = channel } or nil)
   end
   -- A channel without a port waits for one.
-  if value.midi_out ~= nil or value.midi_out_channel ~= nil then
+  if value.midi_out ~= nil or value.midi_out_channel ~= nil or value.midi_out_form ~= nil then
     local sent = api.track_get(id).midi_output or {}
-    local port, channel = sent.port, sent.channel
+    local port, channel, form = sent.port, sent.channel, sent.form
     if value.midi_out ~= nil then port = value.midi_out or nil end
     if value.midi_out_channel ~= nil then channel = value.midi_out_channel or nil end
-    api.track_set(id, "midi_output", port and { port = port, channel = channel } or nil)
+    if value.midi_out_form ~= nil then form = value.midi_out_form end
+    api.track_set(id, "midi_output", port and { port = port, channel = channel, form = form, members = sent.members } or nil)
   end
 end
 
