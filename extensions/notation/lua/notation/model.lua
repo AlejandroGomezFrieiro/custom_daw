@@ -106,6 +106,21 @@ function M.meter(num, den)
   return { root = root, bar = bar, beat = beat_len, beats = beats, compound = compound, unit = unit, num = num, den = den }
 end
 
+--- Where a click `t` beats into a bar lands when notes of `value` beats are
+--- entered, as one counting the bar would put them: on a multiple of the
+--- value from the start of the beat the click is in (on a beat when the
+--- value is longer than one), and never later than the last such place.
+function M.snap(meter, t, value)
+  local beat = meter.beat
+  local step = math.min(value, beat)
+  local from = floor(t / beat + EPS) * beat
+  local at = from + floor((t - from) / step + 0.5) * step
+  if from + beat - t < abs(at - t) then at = from + beat end
+  local last = floor((meter.bar - EPS) / beat) * beat
+  last = last + floor((meter.bar - last) / step - EPS) * step
+  return math.max(0, math.min(at, last))
+end
+
 local function on_child_boundary(node, t)
   if near(t, node.s) or near(t, node.e) then return true end
   for _, c in ipairs(node.children or {}) do
@@ -684,6 +699,28 @@ local function breaks_beam(ev)
   return false
 end
 
+--- How far a rest of voice `v` moves from the middle line, in staff
+--- positions, with another voice on its staff: the upper voice's up and the
+--- lower's down, by whole spaces, and further when the other voice's notes
+--- sounding meanwhile would touch it (a rest reaches about three positions
+--- above and below its middle).
+local function rest_shift(evs, rest, v)
+  local shift = v == 1 and 2 or -4
+  local e = rest.start + rest.length
+  for _, other in ipairs(evs) do
+    if other.voice ~= v and other.notes and other.start < e - EPS and other.start + other.length > rest.start + EPS then
+      for _, n in ipairs(other.notes) do
+        if v == 1 then
+          shift = math.max(shift, math.ceil(n.pos / 2) * 2)
+        else
+          shift = math.min(shift, floor((n.pos - 9) / 2) * 2)
+        end
+      end
+    end
+  end
+  return shift
+end
+
 --- Stems, flags and beams; with two voices on a staff, the first's stems up
 --- and the second's down, and their rests out of each other's way.
 function M.stems_and_beams(layout)
@@ -758,8 +795,7 @@ function M.stems_and_beams(layout)
               ev.stem = forced or stem_for({ ev })
             end
           elseif two then
-            -- A rest of the upper voice higher, of the lower one lower.
-            ev.shift = v == 1 and 2 or -4
+            ev.shift = rest_shift(evs, ev, v)
           end
         end
       end
@@ -775,18 +811,30 @@ end
 --- shown (or an arpeggio sign), `o.grace` for each grace note, `o.lead`
 --- before the first and `o.tail` after the last. Sets `m.slots` (`{ t, x }`,
 --- the last one the measure's end) and `m.width`.
+---
+--- With `o.room(ev)` (what an event reaches left and right of its time:
+--- accidentals, grace notes and the arpeggio on the left, heads, dots and
+--- flags on the right) space is added only where it does not fit, as
+--- Gould has it: each slot at least `o.gap` clear of the one before and of
+--- the barline; `o.acc` and `o.grace` are then not used.
 function M.space(layout, o)
+  local room = o.room
   for _, m in ipairs(layout.measures) do
-    local times, acc, graces = {}, {}, {}
+    local times, acc, graces, left, right = {}, {}, {}, {}, {}
     for _, evs in ipairs(m.staves) do
       for _, ev in ipairs(evs) do
         local key = floor(ev.start * 4096 + 0.5)
         times[key] = ev.start
-        for _, n in ipairs(ev.notes or {}) do
-          if n.acc then acc[key] = true end
+        if room then
+          local l, r = room(ev)
+          left[key], right[key] = math.max(left[key] or 0, l), math.max(right[key] or 0, r)
+        else
+          for _, n in ipairs(ev.notes or {}) do
+            if n.acc then acc[key] = true end
+          end
+          if ev.arpeggio then acc[key] = true end
+          if ev.grace then graces[key] = math.max(graces[key] or 0, #ev.grace) end
         end
-        if ev.arpeggio then acc[key] = true end
-        if ev.grace then graces[key] = math.max(graces[key] or 0, #ev.grace) end
       end
     end
     local keys = {}
@@ -794,6 +842,10 @@ function M.space(layout, o)
     table.sort(keys)
     local slots, x = {}, o.lead
     for i, k in ipairs(keys) do
+      if room then
+        local before = keys[i - 1]
+        x = math.max(x, (before and slots[i - 1].x + right[before] or 0) + o.gap + left[k])
+      end
       if acc[k] then x = x + o.acc end
       if graces[k] then x = x + (o.grace or o.acc) * graces[k] end
       slots[i] = { t = times[k], x = x }
