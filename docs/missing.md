@@ -16,7 +16,7 @@
 - MIDI-CI, an editor for controller moves, and MIDI 2.0 on the way out:
   MIDI output sends MIDI 1.0, so a note's own bend and the finer values
   are lost there.
-- Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
+- A VCA over a group's own fader, a VCA under a VCA, and VCA gain on the master. A VCA is a track here (so it shows in the arrange view as a row, with lanes like any other), and what it moves is the tracks assigned to it, not what they are routed into. A VCA's solo makes its members the only sound; it does not solo what they feed.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is
   linked for them; they need ffmpeg installed (see Rendering). Nor does the

@@ -114,6 +114,7 @@ daw.undo, daw.redo = api.undo, api.redo
 daw.cursor = require("daw.cursor")
 daw.edit = require("daw.edit")
 daw.ext = require("daw.ext")
+daw.vca = require("daw.vca")
 daw.groups = require("daw.groups")
 daw.lanes = require("daw.lanes")
 daw.frontend = require("daw.frontend")

@@ -70,6 +70,45 @@ ordinary track marked in its `meta`, so it is saved, copied and undone like
 any other, and `daw.groups.rows()` is the list of tracks that are drawn:
 all but those folded away.
 
+**Linked faders.** `:group.link` (`,vl`) on a group, routed or not, links the
+faders of its members: moving one moves the others by as many dB, so their
+balance stays (a fader stops at its end, and the others go on). The group's
+own fader is left alone. It is an option of the group, kept in its `meta`
+(`daw.groups.link(group, true)`), and one undo step undoes the whole move.
+
+**VCAs.** A VCA is a fader, a mute and a solo that belong to other tracks
+without carrying their sound, as on a desk. `:vca.make Drums` (`,vn`) makes
+one over the selected tracks (or the cursor track), `:vca.assign Drums`
+(`,va`; alone it asks) puts the selected tracks under one, `:vca.release`
+(`,vr`) takes them out of one or of all, and `:vca.dissolve` (`,vx`) takes a
+VCA away. Nothing is routed: the tracks play where they played. Moving the VCA
+fader moves each member by that many dB without changing the member's own
+fader; the VCA's mute mutes them and its solo solos them (their own mute and
+solo are not touched). A track may be under several VCAs, and the gains add in
+dB. The VCA's fader has automation like a track's (`:automation`, `,al`): its
+lanes add to each member's own, in dB, so a member's level is its fader, plus
+its lane, plus every VCA's fader or lane. In a script:
+
+```lua
+local drums = daw.vca.make({ kick, snare, hats }, "Drums")
+drums.volume = -3                 -- every member 3 dB quieter
+drums:automate("volume"):set_points({ { 0, 0 }, { 16, -12 } })
+daw.vca.assign(room, drums)       -- also `unassign`, `members`, `of`, `dissolve`
+```
+
+A VCA is an ordinary track marked in its `meta` (and each member names its
+VCAs in its own), so it is saved, copied and undone like any other; it has no
+devices and plays nothing, and `daw.groups.rows()`, so the arrange view and
+the window, put the VCAs after the other tracks. The sync folds the VCAs into
+each member: a fixed fader into the member's gain, and lanes into one lane for
+the member, which is the sum of the lines in dB (a point wherever any of them
+has one). The audio thread plays that as it plays any lane, sample by sample,
+so a render hears what playing does, on any number of threads. In the
+terminal mixer VCAs have strips after the tracks, naming the tracks under
+them, and a track's strip names its VCAs; in the window the same, and the
+right-click menus of a track's header and of a mixer strip make, assign and
+release VCAs.
+
 **Outputs and sends from the keyboard.** `:track.output Drum bus` (`,o` for
 a list) plays the track into another, `:send Reverb -9` (`,s` for a list;
 `pre=1` for ahead of the fader) sends its sound to one as well, and

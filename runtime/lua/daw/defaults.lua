@@ -453,6 +453,90 @@ command("track.fold", function(ctx)
   daw.groups.fold(group)
 end, { desc = "Fold the group away, or open it: `track.fold`; `track.fold all`, `track.fold none`" })
 
+command("group.link", function()
+  local track = need_track()
+  if not track then return end
+  local group = daw.groups.is_group(track.id) and track.id or daw.groups.of(track.id)
+  if not group then return daw.notify("not in a group", "warn") end
+  daw.groups.link(group)
+  daw.notify(string.format("faders of “%s” %s", api.track_get(group).name,
+    daw.groups.linked(group) and "are linked: moving one member's fader moves the others" or "are free again"))
+end, { desc = "Link the faders of the group's members, or let them go: moving one moves the others by as many dB" })
+
+-- VCAs: faders over tracks that do not route them (see daw.vca).
+
+--- The VCA named, by part of its name, or nil.
+local function vca_named(name)
+  for _, id in ipairs(daw.vca.list()) do
+    if api.track_get(id).name:lower():find(tostring(name):lower(), 1, true) then return id end
+  end
+end
+
+local function vca_names()
+  local out = {}
+  for _, id in ipairs(daw.vca.list()) do out[#out + 1] = api.track_get(id).name end
+  return out
+end
+
+--- Do something with a VCA: the one named, else one chosen from a list.
+local function with_vca(name, title, from, act)
+  if name == "" then name = nil end
+  local vcas = {}
+  for _, id in ipairs(from) do vcas[#vcas + 1] = { id = id, name = api.track_get(id).name } end
+  if name then
+    local id = vca_named(name)
+    if id then return act(id) end
+    return daw.notify("no VCA `" .. name .. "`", "warn")
+  end
+  if #vcas == 0 then return daw.notify("no VCAs here: `:vca.make` makes one", "warn") end
+  daw.pick({ title = title, items = vcas, format = function(v) return v.name end, on_choose = function(v) act(v.id) end })
+end
+
+command("vca.make", function(ctx)
+  local tracks = chosen_tracks()
+  if #tracks == 0 then return daw.notify("no track to put under a VCA", "warn") end
+  local function make(text)
+    if not text or text == "" then return end
+    local vca = daw.vca.make(tracks, text)
+    if keymap.mode == "x" then keymap.set_mode("n") end
+    cursor.set_track(vca)
+    daw.notify(string.format("VCA “%s” moves %d track%s; their routing is as it was", text, #tracks, #tracks == 1 and "" or "s"))
+  end
+  if ctx.args[1] and ctx.args[1] ~= "" then return make(ctx.args[1]) end
+  daw.ui.input({ prompt = "VCA name: ", text = "VCA" }, make)
+end, { desc = "A new VCA over the selected tracks (or the cursor track): `vca.make Drums`", raw = true })
+
+command("vca.assign", function(ctx)
+  local tracks = chosen_tracks()
+  if #tracks == 0 then return daw.notify("no track to put under a VCA", "warn") end
+  with_vca(ctx.args[1], "Put under VCA", daw.vca.list(), function(vca)
+    for _, id in ipairs(tracks) do
+      local ok, err = pcall(daw.vca.assign, id, vca)
+      if not ok then return daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+    end
+  end)
+end, { desc = "Put the selected tracks under a VCA: `vca.assign Drums`; alone, choose it from a list", raw = true, complete = vca_names })
+
+command("vca.release", function(ctx)
+  local tracks = chosen_tracks()
+  local name = ctx.args[1]
+  if not name or name == "" then
+    for _, id in ipairs(tracks) do daw.vca.unassign(id) end
+    return
+  end
+  with_vca(name, "Take out of VCA", daw.vca.list(), function(vca)
+    for _, id in ipairs(tracks) do daw.vca.unassign(id, vca) end
+  end)
+end, { desc = "Take the selected tracks out of a VCA (`vca.release Drums`), or out of all of them", raw = true, complete = vca_names })
+
+command("vca.dissolve", function()
+  local track = need_track()
+  if not track then return end
+  if not daw.vca.is_vca(track.id) then return daw.notify("not a VCA", "warn") end
+  daw.vca.dissolve(track.id)
+  daw.notify("the VCA is gone; its tracks stay, at their own faders")
+end, { desc = "Take the VCA at the cursor away; its tracks stay" })
+
 command("track.duplicate", function()
   local track = need_track()
   if track then cursor.set_track(track:duplicate()) end
@@ -1641,6 +1725,12 @@ amap("zz", function() daw.ui.views.arrange:center() end, "Scroll the cursor to t
 map("<leader>g", "track.group", { view = "arrange", mode = nx, desc = "Group the selected tracks" })
 amap("<leader>G", "track.ungroup", "Take the track out of its group; dissolve a group")
 amap("za", "track.fold", "Fold the group away, or open it")
+-- VCAs, and the faders of a group moving together.
+map("<leader>vn", "vca.make", { view = "arrange", mode = nx, desc = "A new VCA over the selected tracks" })
+map("<leader>va", "vca.assign", { view = "arrange", mode = nx, desc = "Put the selected tracks under a VCA" })
+map("<leader>vr", "vca.release", { view = "arrange", mode = nx, desc = "Take the selected tracks out of their VCAs" })
+amap("<leader>vx", "vca.dissolve", "Take the VCA at the cursor away")
+amap("<leader>vl", "group.link", "Link the faders of the group's members")
 amap("<leader>s", "send", "Send the track's sound to another as well")
 amap("<leader>o", "track.output", "Choose where the track's sound goes")
 amap("zM", "track.fold all", "Fold every group")
