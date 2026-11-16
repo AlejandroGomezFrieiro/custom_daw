@@ -35,7 +35,12 @@
   from a file manager is dropped (winit 0.30 reports no position), and on
   Wayland it is told of no drops at all. The desktop's file dialogs are
   not shown for a kernel the window attached to with `--socket`.
-- Devices written in Lua.
+- For devices written in Lua: a window of their own drawn by the script
+  (they show their parameters as sliders, like any device), sample-accurate
+  parameter moves within a block (a block reads each parameter once), state
+  beyond the parameters' values (a pattern an arpeggiator keeps), more
+  than one stereo output, and reporting latency of their own to delay
+  compensation.
 - The window's GPU renderer as the default: it is tried only on a software
   OpenGL (llvmpipe) so far, where it draws correctly but costs more than
   the software renderer.

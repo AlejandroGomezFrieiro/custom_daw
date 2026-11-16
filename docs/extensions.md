@@ -52,6 +52,7 @@ An extension is a directory or a single file in `~/.config/daw/extensions`:
 ```
 extensions/euclid/init.lua     run at startup
 extensions/euclid/lua/         on the require path
+extensions/euclid/devices/     devices written in Lua (see Writing a device in Lua, in devices.md)
 extensions/clock.lua           a one-file extension
 ```
 
