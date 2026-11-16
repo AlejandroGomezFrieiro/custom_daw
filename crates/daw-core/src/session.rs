@@ -27,6 +27,7 @@ use crate::model::{
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
+mod audition;
 mod clipops;
 mod encode;
 mod keep;
@@ -406,6 +407,12 @@ pub struct Session {
     /// The project put aside while a scratch one is open: see
     /// [`Session::project_shelve`].
     shelf: Option<Shelf>,
+    /// Edits that may yet be thrown away, and the sound file heard on its
+    /// own, with its level in dB: see `session/audition.rs`.
+    trial: Option<audition::Trial>,
+    preview: Option<audition::Previewing>,
+    preview_ids: u32,
+    preview_level: f64,
 }
 
 /// An open project, with its undo history, put aside whole.
@@ -506,6 +513,10 @@ impl Session {
             watch: Default::default(),
             read_ahead_at: Instant::now(),
             shelf: None,
+            trial: None,
+            preview: None,
+            preview_ids: 0,
+            preview_level: -12.0,
         };
         session.warnings.extend(session.stream.info.warning.clone());
         session.send_pool();
@@ -595,6 +606,10 @@ impl Session {
 
     /// Close the current undo step, if anything changed since the last one.
     pub fn checkpoint(&mut self) {
+        // A trial's edits are one step, made when it ends.
+        if self.trial.is_some() {
+            return;
+        }
         let sweep = std::mem::take(&mut self.sweep);
         let join = self.join.take();
         if !self.touched {
@@ -759,6 +774,8 @@ impl Session {
     ) {
         project.refresh_tempo();
         self.apply_open_opts(&mut project);
+        // Another project: a trial of this one's is over with it.
+        self.trial = None;
         self.stop();
         self.seek(0.0);
         self.next_id = self.next_id.max(project.max_id() + 1);
@@ -1488,12 +1505,14 @@ impl Session {
             .find_device(id)
             .with_context(|| format!("no device {id}"))?;
         self.flush();
+        let first = self.trial_loads(id);
         let controller = self.live.get_mut(&id).and_then(|l| l.controller.as_mut());
         // What the plugin holds now goes into the step before this one, so
-        // that undo comes back to it and not to an older state.
+        // that undo comes back to it and not to an older state (in a trial,
+        // what it held before the trial's first preset).
         let mut state = load.state;
         if let Some(controller) = controller {
-            if let Ok(Some(bytes)) = controller.save_state() {
+            if let Some(bytes) = first.then(|| controller.save_state()).and_then(|s| s.ok().flatten()) {
                 let now = BASE64.encode(bytes);
                 for snapshot in [&mut self.project, &mut self.checkpoint, &mut self.synced] {
                     if let Some(device) = snapshot.device_mut(id) {
@@ -1615,6 +1634,7 @@ impl Session {
             self.stop();
         }
         self.render_poll();
+        self.poll_preview();
         self.poll_loads();
         self.poll_stretches();
         self.watch_devices();

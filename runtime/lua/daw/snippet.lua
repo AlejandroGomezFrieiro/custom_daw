@@ -578,6 +578,44 @@ function M.pick(opts)
       local found = M.previewing and previewed(s.name)
       return (M.describe_preview(s, run_opts, found and found.result or nil, found and found.why or nil))
     end,
+    -- Its notes through the clip's track, with what every other pitched
+    -- track plays over the same beats (the harmony it was written for),
+    -- once; nothing is written until it is chosen.
+    audition_key = "snippets",
+    audition = function(s)
+      local found = M.previewing and previewed(s.name)
+      local result = found and found.result
+      if not result or #result.notes == 0 then return found and found.why or "nothing to write here" end
+      local ctx = result.ctx
+      local from, to = math.huge, -math.huge
+      for _, n in ipairs(result.notes) do
+        local at = n.start or n.at
+        from, to = math.min(from, at), math.max(to, at + n.length)
+      end
+      local gone = {}
+      for _, n in ipairs(result.remove) do
+        if n.place then gone[ctx.clip_id .. ":" .. n.place] = true end
+      end
+      local notes = {}
+      for _, n in ipairs(result.notes) do
+        notes[#notes + 1] = { pitch = n.pitch, start = (n.start or n.at) - from, length = n.length, velocity = n.velocity or ctx.velocity, track = ctx.track_id }
+      end
+      for _, n in ipairs(harmony.notes()) do
+        if n.start < to and n.start + n.length > from and n.start >= from - 1e-9 then
+          local place
+          if n.clip == ctx.clip_id then
+            for i, c in ipairs(ctx.notes) do
+              if c.pitch == n.pitch and math.abs(c.start - n.start) < 1e-9 then place = c.place or i end
+            end
+          end
+          if not (place and gone[n.clip .. ":" .. place]) then
+            notes[#notes + 1] = { pitch = n.pitch, start = n.start - from, length = n.length, velocity = n.velocity, track = n.track }
+          end
+        end
+      end
+      daw.audition.phrase(ctx.track_id, notes, { length = to - from, at = from, loop = false })
+      return s.name .. " · " .. daw.time.format(from)
+    end,
     on_choose = function(s)
       M.previewing = nil
       local _, why = M.expand(s.name, run_opts)

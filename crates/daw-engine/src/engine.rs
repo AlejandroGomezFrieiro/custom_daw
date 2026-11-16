@@ -20,6 +20,7 @@ use crate::guard;
 use crate::launch::{self, Launch, LaunchState, Launcher, Slots};
 use crate::midi_out::MidiOut;
 use crate::pool::Pool;
+use crate::preview::Preview;
 use crate::record::{MidiCapture, PUNCH_EPS, Take};
 use crate::tempo::TempoMap;
 
@@ -570,6 +571,12 @@ pub enum Msg {
     /// Where a copy of what is played goes, left and right interleaved, for
     /// someone listening elsewhere (see [`EngineHandle::monitor`]), or nowhere.
     SetMonitor(Option<Box<Producer<f32>>>),
+    /// A sound file to hear over everything else, outside the project (see
+    /// [`crate::preview`]), or silence with `None`. What played before fades
+    /// out.
+    SetPreview(Option<Box<Preview>>),
+    /// The level of the file being heard, as a linear gain.
+    SetPreviewGain(f32),
 }
 
 enum Garbage {
@@ -589,6 +596,7 @@ enum Garbage {
     TempoMap(#[allow(dead_code)] Box<TempoMap>),
     Slots(#[allow(dead_code)] Box<Slots>),
     Launches(#[allow(dead_code)] Box<Vec<Launch>>),
+    Preview(#[allow(dead_code)] Box<Preview>),
 }
 
 /// Buckets of [`BlockStats`]: four per octave of processing time, from
@@ -718,6 +726,10 @@ pub struct Shared {
     faults: Vec<AtomicU8>,
     /// Each track's clip launcher.
     launch: Vec<LaunchState>,
+    /// The sound file being heard on its own: its id (0 for none) and
+    /// where it has got to, in seconds of the file.
+    preview_id: AtomicU32,
+    preview_seconds: AtomicU64,
 }
 
 impl Shared {
@@ -745,6 +757,16 @@ impl Shared {
     /// Beats of a count-in still to be counted before the song starts, or 0.
     pub fn counting(&self) -> u32 {
         self.counting.load(Relaxed)
+    }
+
+    /// The sound file being heard on its own ([`Msg::SetPreview`]): its id,
+    /// and where it has got to in seconds; `None` once it has ended or
+    /// been stopped.
+    pub fn preview(&self) -> Option<(u32, f64)> {
+        match self.preview_id.load(Relaxed) {
+            0 => None,
+            id => Some((id, f64::from_bits(self.preview_seconds.load(Relaxed)))),
+        }
     }
 
     /// What a track's clip launcher plays and has queued.
@@ -952,6 +974,10 @@ pub struct Engine {
     heard_ns: u64,
     /// Some track has a launch queued.
     launching: bool,
+    /// The sound file being heard on its own, and the one before it while
+    /// it fades out.
+    preview: Option<Box<Preview>>,
+    preview_leaving: Option<Box<Preview>>,
 }
 
 /// A count-in: see [`Msg::CountIn`]. Frames count from when it began.
@@ -1098,6 +1124,8 @@ impl Engine {
             blocks: BlockStats::new(),
             faults: (0..MAX_DEVICES).map(|_| AtomicU8::new(0)).collect(),
             launch: (0..MAX_TRACKS).map(|_| LaunchState::default()).collect(),
+            preview_id: AtomicU32::new(0),
+            preview_seconds: AtomicU64::new(0),
         });
         let mut tracks: Vec<Guarded<Option<Box<TrackRt>>>> =
             (0..MAX_TRACKS).map(|_| Guarded::new(None)).collect();
@@ -1133,6 +1161,8 @@ impl Engine {
             monitor: None,
             heard_ns: 0,
             launching: false,
+            preview: None,
+            preview_leaving: None,
         };
         (
             engine,
@@ -1489,6 +1519,17 @@ impl Engine {
                     self.discard(Garbage::Monitor(old));
                 }
             }
+            Msg::SetPreview(preview) => {
+                let old = std::mem::replace(&mut self.preview, preview);
+                if let Some(gone) = std::mem::replace(&mut self.preview_leaving, old) {
+                    self.discard(Garbage::Preview(gone));
+                }
+            }
+            Msg::SetPreviewGain(gain) => {
+                if let Some(preview) = self.preview.as_deref_mut() {
+                    preview.set_gain(gain);
+                }
+            }
             Msg::SetPool(pool) => {
                 if let Some(old) = self.set_pool(pool) {
                     self.discard(Garbage::Pool(old));
@@ -1825,6 +1866,7 @@ impl Engine {
             .counting
             .store(self.count.as_ref().map_or(0, Count::left), Relaxed);
         self.shared.seeks.store(self.seeks, Relaxed);
+        self.play_preview(&mut left[..total], &mut right[..total]);
         if let Some(monitor) = self.monitor.as_deref_mut() {
             // What does not fit is dropped: the listener has fallen behind.
             let frames = total.min(monitor.slots() / 2);
@@ -1835,6 +1877,31 @@ impl Engine {
         }
         let ns = u64::try_from(began.elapsed().as_nanos()).unwrap_or(u64::MAX);
         self.shared.blocks.record(ns, total);
+    }
+
+    /// Add the sound file being heard on its own, and the one fading out
+    /// before it, to the output.
+    fn play_preview(&mut self, left: &mut [f32], right: &mut [f32]) {
+        if let Some(leaving) = self.preview_leaving.as_deref_mut()
+            && !leaving.mix(left, right, true)
+            && let Some(gone) = self.preview_leaving.take()
+        {
+            self.discard(Garbage::Preview(gone));
+        }
+        let Some(preview) = self.preview.as_deref_mut() else {
+            self.shared.preview_id.store(0, Relaxed);
+            return;
+        };
+        let more = preview.mix(left, right, false);
+        self.shared
+            .preview_seconds
+            .store(preview.seconds().to_bits(), Relaxed);
+        self.shared
+            .preview_id
+            .store(if more { preview.id } else { 0 }, Relaxed);
+        if !more && let Some(gone) = self.preview.take() {
+            self.discard(Garbage::Preview(gone));
+        }
     }
 
     /// Run the whole graph for one block covering beats `start..end`.

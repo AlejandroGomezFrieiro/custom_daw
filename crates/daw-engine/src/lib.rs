@@ -19,6 +19,7 @@ pub mod midi;
 pub mod midi_form;
 pub mod midi_out;
 pub mod pool;
+pub mod preview;
 pub mod record;
 pub mod samples;
 pub mod tempo;
@@ -39,6 +40,7 @@ pub use engine::{
 };
 pub use event::{Ctl, Event, EventBuf, EventKind, NOTE_BEND_RANGE, NoteCtl};
 pub use pool::Pool;
+pub use preview::Preview;
 pub use samples::{DiskStore, Samples, Sink, store_name};
 pub use tempo::{SigPoint, TempoMap, TempoPoint};
 

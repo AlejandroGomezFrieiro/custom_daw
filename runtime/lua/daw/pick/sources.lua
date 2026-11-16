@@ -302,6 +302,26 @@ return function(pick)
       daw.fx.add(track, info.kind, { query = typed })
       daw.notify("added " .. info.name .. " to " .. track.name)
     end,
+    -- Heard on the track, with what it plays around the cursor: added as a
+    -- trial, taken away again unless chosen. A plugin is made apart, so
+    -- the selection rests on it longer first.
+    audition = function(info)
+      local track = daw.cursor.track()
+      if not track then return "no track to try it on" end
+      local device = daw.audition.try(function() return daw.fx.place(track, info.kind) end)
+      return {
+        label = info.name .. " · " .. daw.audition.through(track.id),
+        loading = function()
+          local ok, d = pcall(api.device_get, device.id)
+          return ok and d.status == "loading"
+        end,
+        keep = function()
+          daw.fx.added(device, info.kind, { query = typed })
+          daw.notify("added " .. info.name .. " to " .. track.name)
+        end,
+      }
+    end,
+    audition_delay = function(info, ms) return info.format ~= "builtin" and math.max(ms, 600) or ms end,
     actions = {
       ["<C-f>"] = { desc = "favourite", fn = function(info, query)
         if info then daw.fx.toggle_favourite(info.kind) end
@@ -516,6 +536,8 @@ return function(pick)
       if not track then return end
       track:add_clip({ start = daw.cursor.beat, file = f.path })
     end,
+    audition_key = "files",
+    audition = function(f) return pick.hear_file(f.path) end,
     preview = function(f)
       if f.kind == "project" then
         return { { text = f.path, style = "Title" }, "", "A project.", "Enter opens it in place of this one." }

@@ -201,6 +201,7 @@ See [Harmony, completion and snippets](../harmony.md).
 | `,fk` `,ft` `,fl` `,fa` `,fd` | pick a key, track, clip, device to add, device of the track |
 | `,fm` `,fr` `,fn` `,ff` `,fo` `,fp` `,f.` | marks, registers, messages, files, options, every picker, the last picker |
 | `,fR` | recent projects (`:recent 2` opens the second) |
+| `<C-Space>` | in a picker of presets, devices, files, beats or snippets: hear the item under the selection, or stop hearing it; `<Esc>` takes back what was tried |
 
 Stop half way through a sequence and the keys that can follow are listed.
 
