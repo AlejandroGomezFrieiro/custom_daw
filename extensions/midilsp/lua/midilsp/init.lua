@@ -2,6 +2,7 @@
 -- server: find the engine, say how to start it, and keep its settings (a
 -- preset and rules switched on or off) with the project.
 local api = daw.api
+require("midilsp.adapter")
 
 local M = {
   -- The servers this extension configures: the engine's language role
@@ -154,6 +155,7 @@ function M.configure()
   daw.lsp.config(M.LSP, {
     cmd = function() return command("--stdio") end,
     framing = "lines",
+    adapter = "midi-lsp",
     attach = { kinds = { "clip" } },
     settings = wire(),
     restart = { max = 3, within_s = 60 },
@@ -161,6 +163,7 @@ function M.configure()
   daw.lsp.config(M.SUGGEST, {
     cmd = function() return command("--role", "suggest", "--stdio") end,
     framing = "lines",
+    adapter = "midi-lsp",
     attach = { kinds = { "clip" } },
     restart = { max = 3, within_s = 60 },
   })
