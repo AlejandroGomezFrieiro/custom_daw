@@ -72,6 +72,16 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `K` | describe what is under the cursor | |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
 
+In **D**: `A` automates the parameter, `gc` edits its curve. On a lane row,
+`gc` or `<CR>` edits the lane's curve; in **R** `gc` the strip's controller,
+`gC` the note's own.
+
+In the **curve editor**: `h` `l` `j` `k` move the cursor in time and value,
+`w` `b` from point to point, `o` `A` add a point, `x` remove it, `+` `-`
+raise and lower it, `c` type its value, `s` its shape, `<` `>` its bend,
+`i` draw with the cursor until `<Esc>`, `d` `y` `p` points, `gs` smooth,
+`gS` thin, `gq` quantize, `gn` a wave (then `<Tab>` `<C-n>` `<C-y>`).
+
 In **M**: `k` `j` the fader, `>` `<` pan, `M` `s` `r` `I`, `dd` `yy` `p` tracks.
 In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 `b` bypass, `e` the plugin's window, `yy` `dd` `p` devices, `<A-j>` `<A-k>` reorder,

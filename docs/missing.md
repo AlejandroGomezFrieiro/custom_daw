@@ -36,7 +36,12 @@
   settings check names REAPER's render dialog in its messages.
 
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
-  each ramping to the next.
+  each ramping to the next (the curve editor writes a smooth stretch of it
+  as ramps a sixteenth of a beat long).
+- In the curve editor: send levels and clip gain are not curves yet; a
+  controller's moves only hold (a ramp is written as many moves); the
+  window draws a lane's held and smooth stretches straight, though they
+  play as shaped; waves are not `daw.snippet` snippets, which write notes.
 - The mouse in the terminal: an audio clip's fades and gain are not dragged
   (the keys and the clip's commands set them), a track's height is not
   dragged (the wheel with Ctrl over the headers changes every track's), and

@@ -182,6 +182,8 @@ daw.buftype("notes", {
   title = function(buf) return "Notes" end,
   -- For `timebind`: the beat at the left edge, columns per beat, beats shown.
   time = { get = function(win) end, set = function(win, left, zoom) end },
+  claims = function(name) end,               -- whether `:vs <name>` names one of its targets by its form
+  window = function() end,                   -- the window to draw with none in the tabs (a graphical frontend's)
 })
 daw.keymap.set("x", function() end, { view = "notes" })   -- keys of its windows
 ```
@@ -210,6 +212,22 @@ A view's `on_mouse` gets the terminal's pointer in the view's own cells:
 on a press keeps the drags and the release for the view wherever the
 pointer goes, with `dx`, `dy` from the press; `daw.mouse.hint(text)` says
 on the status line what is under the pointer. See `runtime/lua/daw/mouse.lua`.
+
+**Curves.** `daw.curves` reads and writes every curve alike by its
+address (`daw://lane/9`, `daw://track/3/device/5/param/cutoff`,
+`daw://clip/7/control/cc/74`, `daw://clip/7/control/bend#key=60`,
+`daw://tempo`), as points `{ beat, value, shape, tension }` in project
+beats; the curve editor (see [the terminal interface](terminal.md)) is a
+buffer type named `curve` built on it.
+
+```lua
+local c = daw.curves.target("daw://lane/9")    -- nil and why for anything else
+c.points()   c.write(points)   c.format(-6)     -- "-6.0 dB"
+c.lo, c.hi, c.min, c.max, c.step, c.has("smooth")
+daw.curves.thin(points, 0.01, c.frac)   daw.curves.smooth(points, 2)   daw.curves.quantize(points, 0.25)
+daw.curves.generate("sine", 0, 8, { rate = 1, depth = 0.5, unfrac = c.unfrac })
+daw.curves.editor.open("daw://tempo", { vertical = true })
+```
 
 **Completion.** `daw.complete` shows suggestions as ghost notes in the piano
 roll, from sources that extensions register; see "Writing a source" in

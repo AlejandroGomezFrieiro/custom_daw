@@ -5482,13 +5482,45 @@ in property <string> render-stage;
                                                     height: 22px;
                                                     spacing: 6px;
                                                     property <bool> focused: root.focused == "devices" && root.row-device == at + 1 && root.row-param == row + 1;
-                                                    Text {
-                                                        text: param.name;
-                                                        color: parent.focused ? Theme.select : Theme.text-2;
-                                                        font-size: Theme.t-small;
+                                                    // The name: a right click offers to automate the
+                                                    // parameter, or to edit its curve.
+                                                    Rectangle {
                                                         width: 84px;
-                                                        overflow: elide;
-                                                        vertical-alignment: center;
+                                                        property <bool> focused: parent.focused;
+                                                        Text {
+                                                            x: 0;
+                                                            y: 0;
+                                                            width: parent.width;
+                                                            height: parent.height;
+                                                            text: param.name;
+                                                            color: parent.focused ? Theme.select : Theme.text-2;
+                                                            font-size: Theme.t-small;
+                                                            overflow: elide;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        param-menu := ContextMenuArea {
+                                                            Menu {
+                                                                MenuItem {
+                                                                    title: "Automate this parameter";
+                                                                    activated => {
+                                                                        root.command("param.automate " + device.id + " " + param.key);
+                                                                    }
+                                                                }
+                                                                MenuItem {
+                                                                    title: "Edit its curve…";
+                                                                    activated => {
+                                                                        root.command("curve.open window device=" + device.id + " param=" + param.key);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        TouchArea {
+                                                            pointer-event(event) => {
+                                                                if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right) {
+                                                                    param-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                     Slider {
                                                         value: param.value;
