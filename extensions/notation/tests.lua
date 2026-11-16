@@ -1580,7 +1580,7 @@ end)
 test("notation: a visual selection takes in the note under the cursor", function()
   local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
   view:set(35, 0)
-  keys("v3w(")
+  keys("v3wS")
   local evs = view:layout().measures[1].staves[1]
   eq(evs[1].slur_to ~= nil, true, "the slur starts on the first note")
   eq(evs[1].slur_to == evs[4], true, "and reaches over the fourth, under the cursor")
@@ -1607,3 +1607,4 @@ test("notation: : from a selection runs a command over it, and commands take bar
 end)
 
 assert(loadfile("extensions/notation/tests_score.lua"))(T)
+assert(loadfile("extensions/notation/tests_grammar.lua"))(T)

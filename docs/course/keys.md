@@ -310,3 +310,18 @@ insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
 Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
 the other voice, `R` repeats the chord, and the numbers choose the value (5
 a quarter). zg shows the engraved page as one long system.
+
+The grammar in notation is about the score: operators and text objects
+work on what is written, and each edit is one undo step that `.` repeats.
+
+| Keys | What |
+| --- | --- |
+| `in` `an`, `ic` `ac`, `i.` `a.` | the note (`an` with its ties), the chord (`ac` with grace notes and ties), the beat (`a.` in every voice) |
+| `ib` `ab`, `ip` `ap` | what the bar holds, the bar itself (`dab` takes it out, `p` puts it back); the phrase, with the rests after it |
+| `iv` `av`, `is` `as`, `it` `at`, `il` `al`, `ie` | the voice in the bar or through the score, the staff, the tuplet, the slur, the clip (`ic` is the clip in the piano roll) |
+| `gU` `gu`, `g+` `g-`, `g~` | a step of the key up, down (`3gUib` three steps); a semitone; respell sharps as flats |
+| `s`, `g?`, `gq`, `!` | slur (`sip`); retrograde (`2g?` inverts); tidy (spelling, beams, values); filter (`!ib reverse`, `!ib tac`) |
+| `f` `F` `t` `T` + letter, `;` `,` | to a note by its name, and again (`,` waits a moment: it is the leader) |
+| `)` `(`, `]v` `[v`, `Ctrl-j` `Ctrl-k` | by phrase, by voice, by staff |
+| `I`, `Insert`, `r` + letter, `R` | enter pushing later music along, toggle that, re-pitch a note, re-pitch mode (not record here) |
+| in insert: `/` `//`, `Ctrl-t`, `Ctrl-o`, `Ctrl-r`, `Tab` | a grace note, a tuplet, one normal command, paste a register, take the suggestion |
