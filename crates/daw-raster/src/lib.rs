@@ -25,7 +25,10 @@
 
 pub mod fonts;
 pub mod kitty;
+pub mod probe;
 pub mod tiles;
+
+use std::hash::{Hash, Hasher};
 
 use serde_json::Value;
 use tiny_skia::{
@@ -120,12 +123,30 @@ pub struct Cut {
     pub bottom: f32,
 }
 
+/// An operation with the box it draws in (left, top, right, bottom) and a
+/// hash of what it is: a piece of the drawing is painted again only when
+/// an operation reaching into it changed.
+#[derive(Clone, Debug)]
+pub struct Item {
+    pub op: Op,
+    pub bounds: [f32; 4],
+    pub key: u64,
+}
+
+/// Which of a drawing's layers to paint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Layers {
+    Page,
+    Overlay,
+    Both,
+}
+
 /// A drawing ready to paint: its operations by layer, the page first.
 #[derive(Clone, Debug, Default)]
 pub struct Drawing {
-    pub page: Vec<Op>,
+    pub page: Vec<Item>,
     /// What is drawn over the page, in order.
-    pub overlay: Vec<Op>,
+    pub overlay: Vec<Item>,
     pub cuts: Vec<Cut>,
 }
 
@@ -222,10 +243,19 @@ impl Drawing {
                 _ => None,
             };
             if let Some(parsed) = parsed {
+                let item = Item {
+                    bounds: bounds(&parsed),
+                    key: {
+                        let mut hasher = std::hash::DefaultHasher::new();
+                        op.to_string().hash(&mut hasher);
+                        hasher.finish()
+                    },
+                    op: parsed,
+                };
                 if over {
-                    drawing.overlay.push(parsed);
+                    drawing.overlay.push(item);
                 } else {
-                    drawing.page.push(parsed);
+                    drawing.page.push(item);
                 }
             }
         }
@@ -235,31 +265,111 @@ impl Drawing {
     /// The page alone, on a transparent pixmap of the given size.
     pub fn paint_page(&self, width: u32, height: u32) -> Option<Pixmap> {
         let mut pixmap = Pixmap::new(width.max(1), height.max(1))?;
-        paint(&mut pixmap, &self.page);
-        Some(pixmap)
-    }
-
-    /// The overlay alone, on a transparent pixmap of the given size.
-    pub fn paint_overlay(&self, width: u32, height: u32) -> Option<Pixmap> {
-        let mut pixmap = Pixmap::new(width.max(1), height.max(1))?;
-        paint(&mut pixmap, &self.overlay);
+        paint(&mut pixmap, &self.page, 0.0, 0.0);
         Some(pixmap)
     }
 
     /// Page and overlay together.
     pub fn paint_all(&self, width: u32, height: u32) -> Option<Pixmap> {
         let mut pixmap = self.paint_page(width, height)?;
-        paint(&mut pixmap, &self.overlay);
+        paint(&mut pixmap, &self.overlay, 0.0, 0.0);
         Some(pixmap)
+    }
+
+    /// The operations of some layers that reach into a rectangle `[x, y, w, h]`.
+    fn within(&self, area: [f32; 4], layers: Layers) -> impl Iterator<Item = &Item> {
+        let [x, y, w, h] = area;
+        let page = if layers == Layers::Overlay { &[] } else { &self.page[..] };
+        let over = if layers == Layers::Page { &[] } else { &self.overlay[..] };
+        page.iter().chain(over).filter(move |item| {
+            let [l, t, r, b] = item.bounds;
+            l < x + w && r > x && t < y + h && b > y
+        })
+    }
+
+    /// What a piece of the drawing `[x, y, w, h]` shows, as a hash of the
+    /// operations that reach into it: the same hash, the same pixels.
+    pub fn piece_key(&self, area: [f32; 4], layers: Layers) -> u64 {
+        let mut hasher = std::hash::DefaultHasher::new();
+        area.map(f32::to_bits).hash(&mut hasher);
+        (layers as u8).hash(&mut hasher);
+        for item in self.within(area, layers) {
+            item.key.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    /// A piece of the drawing `[x, y, w, h]` (whole pixels) on a pixmap of
+    /// its own: only the operations that reach into it are drawn, so a
+    /// small piece of a large page is quick.
+    pub fn paint_piece(&self, area: [f32; 4], layers: Layers) -> Option<Pixmap> {
+        let mut pixmap = Pixmap::new(area[2].max(1.0) as u32, area[3].max(1.0) as u32)?;
+        let items: Vec<Item> = self.within(area, layers).cloned().collect();
+        paint(&mut pixmap, &items, area[0], area[1]);
+        Some(pixmap)
+    }
+
+    /// The box the overlay draws in, in whole pixels `[x, y, w, h]`, or
+    /// nothing when it draws nothing.
+    pub fn overlay_box(&self) -> Option<[f32; 4]> {
+        let mut out: Option<[f32; 4]> = None;
+        for item in &self.overlay {
+            let [l, t, r, b] = item.bounds;
+            out = Some(match out {
+                None => [l, t, r, b],
+                Some([l0, t0, r0, b0]) => [l0.min(l), t0.min(t), r0.max(r), b0.max(b)],
+            });
+        }
+        out.map(|[l, t, r, b]| {
+            let (l, t) = (l.floor().max(0.0), t.floor().max(0.0));
+            [l, t, r.ceil() - l, b.ceil() - t]
+        })
+        .filter(|a| a[2] > 0.0 && a[3] > 0.0)
     }
 }
 
-/// Draw operations onto a pixmap.
-pub fn paint(pixmap: &mut Pixmap, ops: &[Op]) {
-    for op in ops {
-        match op {
+/// The box an operation draws in, generously: left, top, right, bottom.
+fn bounds(op: &Op) -> [f32; 4] {
+    match op {
+        Op::Rect { x, y, w, h, width, stroke, .. } => {
+            let pad = if stroke.is_some() { *width } else { 0.0 };
+            [x - pad, y - pad, x + w + pad, y + h + pad]
+        }
+        Op::Text { x, y, text, size, bold, align, width, .. } => {
+            let font = if *bold { Font::SansBold } else { Font::Sans };
+            let run = measure(font, text, *size).min(*width);
+            let left = match align {
+                Align::Left => *x,
+                Align::Center => x - run / 2.0,
+                Align::Right => x - run,
+            };
+            [left - 1.0, y - 1.0, left + run + 1.0, y + size * 1.5]
+        }
+        Op::Path { path, width, stroke, .. } => {
+            let b = path.bounds();
+            let pad = if stroke.is_some() { width + 1.0 } else { 1.0 };
+            [b.left() - pad, b.top() - pad, b.right() + pad, b.bottom() + pad]
+        }
+        Op::Mono { x, y, w, h, .. } => [*x, *y, x + w + 2.0, y + h],
+        Op::Glyph { x, y, size, codepoint, font, .. } => {
+            match font.face().glyph_index(*codepoint).and_then(|g| font.outline(g)) {
+                Some(path) => {
+                    let b = path.bounds();
+                    [x + b.left() * size - 1.0, y + b.top() * size - 1.0, x + b.right() * size + 1.0, y + b.bottom() * size + 1.0]
+                }
+                None => [*x, *y, *x, *y],
+            }
+        }
+    }
+}
+
+/// Draw items onto a pixmap whose corner is at `(dx, dy)` of the drawing.
+pub fn paint(pixmap: &mut Pixmap, items: &[Item], dx: f32, dy: f32) {
+    let shift = Transform::from_translate(-dx, -dy);
+    for item in items {
+        match &item.op {
             Op::Rect { x, y, w, h, fill, stroke, width, radius } => {
-                rect(pixmap, *x, *y, *w, *h, *fill, *stroke, *width, *radius)
+                rect(pixmap, shift, *x, *y, *w, *h, *fill, *stroke, *width, *radius)
             }
             Op::Text { x, y, text, colour, size, bold, align, width } => {
                 let font = if *bold { Font::SansBold } else { Font::Sans };
@@ -271,11 +381,11 @@ pub fn paint(pixmap: &mut Pixmap, ops: &[Op]) {
                 };
                 // Slint puts a line's top at `y`: the baseline is an ascent below.
                 let baseline = y + font.ascent() * size;
-                draw_text(pixmap, font, text, left, baseline, *size, *colour, left + width);
+                draw_text(pixmap, shift, font, text, left, baseline, *size, *colour, left + width);
             }
             Op::Path { path, stroke, width, fill } => {
                 if let Some(fill) = fill {
-                    pixmap.fill_path(path, &fill.paint(), FillRule::Winding, Transform::identity(), None);
+                    pixmap.fill_path(path, &fill.paint(), FillRule::Winding, shift, None);
                 }
                 if let Some(stroke) = stroke {
                     let style = Stroke {
@@ -284,29 +394,29 @@ pub fn paint(pixmap: &mut Pixmap, ops: &[Op]) {
                         line_join: LineJoin::Miter,
                         ..Stroke::default()
                     };
-                    pixmap.stroke_path(path, &stroke.paint(), &style, Transform::identity(), None);
+                    pixmap.stroke_path(path, &stroke.paint(), &style, shift, None);
                 }
             }
             Op::Mono { x, y, w, h, text, colour, background, attrs } => {
                 if let Some(background) = background {
-                    rect(pixmap, *x, *y, *w, *h, Some(*background), None, 1.0, 0.0);
+                    rect(pixmap, shift, *x, *y, *w, *h, Some(*background), None, 1.0, 0.0);
                 }
                 let font = if attrs & 1 != 0 { Font::MonoBold } else { Font::Mono };
                 let size = h / font.line_height();
                 let baseline = y + (h - font.line_height() * size) / 2.0 + font.ascent() * size;
-                draw_text(pixmap, font, text, *x, baseline, size, *colour, x + w);
+                draw_text(pixmap, shift, font, text, *x, baseline, size, *colour, x + w);
                 if attrs & 8 != 0 {
-                    rect(pixmap, *x, y + h - 2.0, *w, 1.0, Some(*colour), None, 1.0, 0.0);
+                    rect(pixmap, shift, *x, y + h - 2.0, *w, 1.0, Some(*colour), None, 1.0, 0.0);
                 }
                 if attrs & 32 != 0 {
-                    rect(pixmap, *x, y + h / 2.0, *w, 1.0, Some(*colour), None, 1.0, 0.0);
+                    rect(pixmap, shift, *x, y + h / 2.0, *w, 1.0, Some(*colour), None, 1.0, 0.0);
                 }
             }
             Op::Glyph { x, y, size, codepoint, colour, font } => {
                 if let Some(glyph) = font.face().glyph_index(*codepoint)
                     && let Some(path) = font.outline(glyph)
                 {
-                    let at = Transform::from_row(*size, 0.0, 0.0, *size, *x, *y);
+                    let at = Transform::from_row(*size, 0.0, 0.0, *size, x - dx, y - dy);
                     pixmap.fill_path(&path, &colour.paint(), FillRule::Winding, at, None);
                 }
             }
@@ -315,15 +425,15 @@ pub fn paint(pixmap: &mut Pixmap, ops: &[Op]) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn rect(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, fill: Option<Rgba>, stroke: Option<Rgba>, width: f32, radius: f32) {
+fn rect(pixmap: &mut Pixmap, shift: Transform, x: f32, y: f32, w: f32, h: f32, fill: Option<Rgba>, stroke: Option<Rgba>, width: f32, radius: f32) {
     let Some(area) = Rect::from_xywh(x, y, w, h) else { return };
     if let Some(fill) = fill {
         if radius > 0.0 {
             if let Some(path) = rounded(area, radius) {
-                pixmap.fill_path(&path, &fill.paint(), FillRule::Winding, Transform::identity(), None);
+                pixmap.fill_path(&path, &fill.paint(), FillRule::Winding, shift, None);
             }
         } else {
-            pixmap.fill_rect(area, &fill.paint(), Transform::identity(), None);
+            pixmap.fill_rect(area, &fill.paint(), shift, None);
         }
     }
     if let Some(stroke) = stroke.filter(|s| s.3 > 0 && width > 0.0) {
@@ -333,7 +443,7 @@ fn rect(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, fill: Option<Rgba>,
         let path = if radius > 0.0 { rounded(inner, (radius - half).max(0.0)) } else { Some(PathBuilder::from_rect(inner)) };
         if let Some(path) = path {
             let style = Stroke { width, ..Stroke::default() };
-            pixmap.stroke_path(&path, &stroke.paint(), &style, Transform::identity(), None);
+            pixmap.stroke_path(&path, &stroke.paint(), &style, shift, None);
         }
     }
 }
@@ -367,7 +477,7 @@ pub fn measure(font: Font, text: &str, size: f32) -> f32 {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_text(pixmap: &mut Pixmap, font: Font, text: &str, x: f32, baseline: f32, size: f32, colour: Rgba, right: f32) {
+fn draw_text(pixmap: &mut Pixmap, shift: Transform, font: Font, text: &str, x: f32, baseline: f32, size: f32, colour: Rgba, right: f32) {
     let face = font.face();
     let paint = colour.paint();
     let mut pen = x;
@@ -379,7 +489,7 @@ fn draw_text(pixmap: &mut Pixmap, font: Font, text: &str, x: f32, baseline: f32,
             break;
         }
         if let Some(path) = font.outline(glyph) {
-            let at = Transform::from_row(size, 0.0, 0.0, size, pen, baseline);
+            let at = Transform::from_row(size, 0.0, 0.0, size, pen + shift.tx, baseline + shift.ty);
             pixmap.fill_path(&path, &paint, FillRule::Winding, at, None);
         }
         pen += advance;
@@ -581,6 +691,32 @@ mod tests {
         assert_eq!(at(&page, 4, 4).3, 0);
         let all = drawing.paint_all(10, 10).unwrap();
         assert_eq!(at(&all, 4, 4), (255, 0, 0, 255));
+    }
+
+    #[test]
+    fn a_piece_is_painted_from_what_reaches_into_it_and_changes_only_with_that() {
+        let ops = json!([
+            ["r", 0, 0, 10, 10, "#ff0000", "", 1, 0],
+            ["g", 30, 20, 40, 0xE0A4, "#ffffff"],
+            ["layer", "cursor"],
+            ["r", 32, 0, 1, 40, "#00ff00", "", 1, 0],
+        ]);
+        let drawing = Drawing::parse(&ops);
+        let whole = drawing.paint_all(60, 40).unwrap();
+        let piece = drawing.paint_piece([24.0, 8.0, 30.0, 24.0], Layers::Both).unwrap();
+        for (x, y) in [(0, 0), (6, 12), (8, 4), (29, 23)] {
+            assert_eq!(at(&piece, x, y), at(&whole, x + 24, y + 8), "at {x}, {y}");
+        }
+        let left = [0.0, 0.0, 20.0, 40.0];
+        let right = [20.0, 0.0, 40.0, 40.0];
+        // The cursor moves: only the piece it is in changes, and only with the overlay.
+        let mut moved = ops.clone();
+        moved[3][1] = json!(36);
+        let after = Drawing::parse(&moved);
+        assert_eq!(drawing.piece_key(left, Layers::Both), after.piece_key(left, Layers::Both));
+        assert_ne!(drawing.piece_key(right, Layers::Both), after.piece_key(right, Layers::Both));
+        assert_eq!(drawing.piece_key(right, Layers::Page), after.piece_key(right, Layers::Page));
+        assert_eq!(after.overlay_box(), Some([36.0, 0.0, 1.0, 40.0]));
     }
 
     #[test]

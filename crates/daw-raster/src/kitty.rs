@@ -67,6 +67,30 @@ pub struct Images {
     frame: u64,
     /// Names for shared memory objects and files: this process's own.
     serial: u64,
+    /// Shared memory objects and files sent, with when: the terminal
+    /// removes them as it reads them, and what it has not read in two
+    /// seconds (or by the end) is removed here.
+    sent: Vec<(Sent, std::time::Instant)>,
+}
+
+enum Sent {
+    Shm(String),
+    File(std::path::PathBuf),
+}
+
+impl Sent {
+    fn remove(&self) {
+        match self {
+            Sent::Shm(name) => {
+                if let Ok(name) = std::ffi::CString::new(name.as_str()) {
+                    unsafe { libc::shm_unlink(name.as_ptr()) };
+                }
+            }
+            Sent::File(path) => {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
 }
 
 /// The hash images are kept by: of the size and every pixel.
@@ -100,6 +124,7 @@ impl Images {
             next_pid: 1,
             frame: 0,
             serial: 0,
+            sent: Vec::new(),
         }
     }
 
@@ -127,11 +152,18 @@ impl Images {
     fn transmit(&mut self, out: &mut Vec<u8>, id: u32, rgba: &[u8], width: u32, height: u32) {
         self.serial += 1;
         let name = format!("daw-tty-graphics-protocol-{}-{}", std::process::id(), self.serial);
+        let now = std::time::Instant::now();
         let sent = match self.transfer {
-            Transfer::Shm => write_shm(&format!("/{name}"), rgba).map(|_| ('s', format!("/{name}"))),
+            Transfer::Shm => write_shm(&format!("/{name}"), rgba).map(|_| {
+                self.sent.push((Sent::Shm(format!("/{name}")), now));
+                ('s', format!("/{name}"))
+            }),
             Transfer::File => {
                 let path = std::env::temp_dir().join(&name);
-                std::fs::write(&path, rgba).map(|_| ('t', path.display().to_string()))
+                std::fs::write(&path, rgba).map(|_| {
+                    self.sent.push((Sent::File(path.clone()), now));
+                    ('t', path.display().to_string())
+                })
             }
             Transfer::Zlib => Err(std::io::Error::other("inline")),
         };
@@ -147,6 +179,13 @@ impl Images {
             // When the file cannot be written, the pixels go inline.
             Err(_) => inline(out, id, rgba, width, height),
         }
+    }
+
+    /// The id of an image the terminal holds, by [`hash`] of its pixels.
+    pub fn known(&mut self, key: u64) -> Option<u32> {
+        let image = self.images.get_mut(&key)?;
+        image.used = self.frame;
+        Some(image.id)
     }
 
     /// Show part of an image somewhere, under a name the caller keeps for
@@ -179,6 +218,13 @@ impl Images {
     /// beyond the budget that nothing shows.
     pub fn end(&mut self, out: &mut Vec<u8>) {
         let frame = self.frame;
+        self.sent.retain(|(sent, when)| {
+            let old = when.elapsed() > std::time::Duration::from_secs(2);
+            if old {
+                sent.remove();
+            }
+            !old
+        });
         self.placed.retain(|_, placed| {
             let keep = placed.frame == frame;
             if !keep {
@@ -216,6 +262,9 @@ impl Images {
         self.images.clear();
         self.placed.clear();
         self.held = 0;
+        for (sent, _) in self.sent.drain(..) {
+            sent.remove();
+        }
     }
 
     /// Whether anything is placed under this name now.
@@ -435,7 +484,9 @@ mod tests {
         let path = String::from_utf8(B64.decode(encoded).unwrap()).unwrap();
         assert!(path.contains("tty-graphics-protocol"), "kitty reads only files so named");
         assert_eq!(std::fs::read(&path).unwrap(), vec![9u8; 16]);
-        std::fs::remove_file(path).unwrap();
+        // A terminal that never read it: removed when everything goes.
+        images.clear(&mut out);
+        assert!(!std::path::Path::new(&path).exists());
     }
 
     #[test]

@@ -16,6 +16,7 @@ daw-luadev.workspace = true
 daw-plugins.workspace = true
 daw-listen.workspace = true
 daw-utau = { path = "../daw-utau" }
+daw-raster.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 crossterm = "0.29"

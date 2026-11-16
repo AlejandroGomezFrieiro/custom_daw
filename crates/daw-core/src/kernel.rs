@@ -21,7 +21,7 @@ use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaSerdeExt, Table, Value 
 use serde_json::Value;
 
 use crate::api::{self, Env, Shared};
-use crate::grid::{Color, Grid, Highlights, Style};
+use crate::grid::{Caps, Color, Grid, Highlights, Style};
 use crate::remote::{self, RemoteFrontend};
 use crate::rpc::{ClientId, Clients};
 use crate::session::Session;
@@ -43,8 +43,13 @@ pub enum InputEvent {
         x: u16,
         y: u16,
         mods: String,
+        /// Where the pointer is in pixels, from the screen's corner, when
+        /// the terminal says so (mode 1016).
+        pixel: Option<(u16, u16)>,
     },
     Resize(u16, u16),
+    /// A cell has another size in pixels (the terminal's font changed).
+    CellSize(u16, u16),
     Paste(String),
 }
 
@@ -130,6 +135,8 @@ impl Kernel {
             session: RefCell::new(session),
             grid: RefCell::new(Grid::new(80, 24)),
             sizes: RefCell::new(HashMap::new()),
+            caps: RefCell::new(HashMap::new()),
+            seat: Cell::new(0),
             highlights: RefCell::new(Highlights::default()),
             dirty: Cell::new(true),
             redraws: Cell::new(0),
@@ -186,9 +193,15 @@ impl Kernel {
         self.frontends.push((0, frontend));
     }
 
+    /// Say what the program's own terminal can show besides cells.
+    pub fn set_caps(&mut self, caps: Caps) {
+        self.shared.caps.borrow_mut().insert(0, caps);
+    }
+
     /// Make it `client`'s turn: what happens next happens in its seat (the
     /// instance's when it has none of its own).
     fn enter(&self, client: ClientId) {
+        self.shared.seat.set(client);
         if let Err(err) = self.call::<()>("seat", client) {
             self.report("seat", err);
         }
@@ -206,6 +219,7 @@ impl Kernel {
                 x,
                 y,
                 mods,
+                pixel,
             } => (|| {
                 let event = self.lua.create_table()?;
                 event.set("kind", kind)?;
@@ -213,12 +227,22 @@ impl Kernel {
                 event.set("x", x)?;
                 event.set("y", y)?;
                 event.set("mods", mods)?;
+                if let Some((px, py)) = pixel {
+                    event.set("px", px)?;
+                    event.set("py", py)?;
+                }
                 self.call::<()>("mouse", event)
             })(),
             InputEvent::Resize(width, height) => {
                 self.shared.sizes.borrow_mut().insert(client, (width, height));
                 self.shared.grid.borrow_mut().resize(width, height);
                 self.call::<()>("resize", (width, height))
+            }
+            InputEvent::CellSize(width, height) => {
+                if let Some(caps) = self.shared.caps.borrow_mut().get_mut(&client) {
+                    caps.cell = (width, height);
+                }
+                Ok(())
             }
         };
         if let Err(err) = result {
@@ -242,6 +266,8 @@ impl Kernel {
                 let (width, height) = (size(&params[0], 80), size(&params[1], 24));
                 self.frontends.retain(|(id, _)| *id != client);
                 let frontend = RemoteFrontend::new(client, self.shared.clients.clone());
+                // What its terminal can show: without a word, cells only.
+                self.shared.caps.borrow_mut().insert(client, Caps::from_json(&params[2]));
                 self.frontends.push((client, Box::new(frontend)));
                 self.shared.attached.set(true);
                 // A seat of its own: its own cursor, mode and selection.
@@ -277,6 +303,7 @@ impl Kernel {
         if self.frontends.len() != before {
             self.shared.clients.push(client, "ui.detached", &Value::Null);
             self.shared.sizes.borrow_mut().remove(&client);
+            self.shared.caps.borrow_mut().remove(&client);
             self.enter(0);
             if let Err(err) = self.call::<()>("seat_close", (client, "terminal")) {
                 self.report("seat_close", err);
