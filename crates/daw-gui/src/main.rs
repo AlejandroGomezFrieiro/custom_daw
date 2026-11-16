@@ -2448,6 +2448,8 @@ impl View {
                     group: t["group"].as_bool().unwrap_or(false),
                     folded: t["folded"].as_bool().unwrap_or(false),
                     members: t["members"].as_i64().unwrap_or(0) as i32,
+                    vca: t["vca"].as_bool().unwrap_or(false),
+                    vcas: text(&t["vcas"]),
                     name: text(&t["name"]),
                     color: colour(&t["color"]),
                     chain: chain.into(),

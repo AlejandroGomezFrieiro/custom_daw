@@ -223,6 +223,31 @@ function Painter:mono(x, y, text, style, cells)
     style.color or c.text, style.background or "", attrs)
 end
 
+--- A glyph of a music font (SMuFL) with its origin at `x, y`: `size` is
+--- the font's em in pixels (four staff spaces), `codepoint` the glyph's,
+--- `colour` as for the rest, `font` the font's name (Leland when nil). Left
+--- out when it is wholly outside the painter, by its em.
+function Painter:glyph(x, y, size, codepoint, colour, font)
+  local x0, y0 = self:origin_x() + x, self:origin_y() + y
+  if x0 + size < self.x or x0 - size > self.x + self.width or y0 + size < self.y or y0 - size > self.y + self.height then return end
+  self.ops[#self.ops + 1] = { "g", x0, y0, size, codepoint, colour or c.text, font or "Leland" }
+end
+
+--- Where a frontend that cuts the drawing into images may cut it: a
+--- barline at `x`, across the band `y0` to `y1` (a system). Draws nothing.
+function Painter:cut(x, y0, y1)
+  local ox, oy = self:origin_x(), self:origin_y()
+  self.ops[#self.ops + 1] = { "cut", ox + x, oy + y0, oy + y1 }
+end
+
+--- What follows, up to the next layer, is the layer `name` (the page's
+--- "ink", or what moves over it: "selection", "caret", "ghost",
+--- "diagnostic", "playhead"), so a frontend can keep the page and draw the
+--- rest over it. Draws nothing.
+function Painter:layer(name)
+  self.ops[#self.ops + 1] = { "layer", name }
+end
+
 --- Whether a point of the painter's own coordinates is inside it.
 function Painter:contains(x, y)
   return x >= 0 and y >= 0 and x < self.width and y < self.height
@@ -377,15 +402,59 @@ local function paint_cells(name, window, width, height, opts)
   return { title = window.title, ops = ops }
 end
 
+--- A glyph op as a path, from the outline its font's owner gives
+--- (`M.glyph_outline(font, codepoint)`: commands and numbers in staff
+--- spaces from the origin, y down), or nil when there is none.
+local function glyph_path(op)
+  local outline = M.glyph_outline and M.glyph_outline(op[7], op[5])
+  if not outline then return nil end
+  local x, y, scale = op[2], op[3], op[4] / 4
+  local out, axis = {}, 0
+  for i, v in ipairs(outline) do
+    if type(v) == "string" then
+      out[i] = v
+      axis = 0
+    else
+      out[i] = string.format("%.1f", (axis == 0 and x or y) + v * scale)
+      axis = 1 - axis
+    end
+  end
+  return { "p", table.concat(out, " "), "", 1, op[6] }
+end
+
+--- What a frontend that does not draw glyphs is given: each glyph as a
+--- path, and no markers.
+local function without_glyphs(ops)
+  local out = {}
+  for _, op in ipairs(ops) do
+    local kind = op[1]
+    if kind == "g" then
+      out[#out + 1] = glyph_path(op)
+    elseif kind ~= "cut" and kind ~= "layer" then
+      out[#out + 1] = op
+    end
+  end
+  return out
+end
+
 --- Paint a view at a size. Returns the drawing as a list of operations:
 ---   { "r", x, y, w, h, fill, stroke, stroke width, radius }
 ---   { "t", x, y, text, colour, size, bold (0 or 1), align, width }
 ---   { "p", path commands, stroke, stroke width, fill }
 ---   { "m", x, y, w, h, text, colour, background, attributes }
+---   { "g", x, y, size, codepoint, colour, font }   a music font's glyph
+---   { "cut", x, y0, y1 }                           where a slice may end
+---   { "layer", name }                              what follows is that layer
 --- (attributes add up 1 bold, 4 italic, 8 underline, 32 strike), and the
 --- window's title, which a view may change as it goes. `opts`: `cell`, the
---- size `{ w, h }` of a cell of the window's monospace font, and `fresh`
---- when the window has nothing yet. A view that draws cells answers
+--- size `{ w, h }` of a cell of the window's monospace font (or of the
+--- terminal's, for a surface), `fresh` when the window has nothing yet,
+--- `glyphs` when the frontend draws glyph ops itself (else they come as
+--- paths, and the markers are left out), `surface` when the drawing goes
+--- into a terminal's cells (the view leaves out what the terminal's own
+--- bars show, and its background), and `colors` `{ fg, bg }`, the
+--- terminal's. The view's `paint` is given these in its context, as
+--- `cell`, `surface`, `fg` and `bg`. A view that draws cells answers
 --- `{ same = true }` when nothing would change.
 function M.paint(name, width, height, opts)
   local view = daw.ui.views[name]
@@ -399,7 +468,11 @@ function M.paint(name, width, height, opts)
   if not view then return nil end
   local ops = {}
   local g = painter(ops, 0, 0, width, height)
-  local ok, err = xpcall(view.paint, debug.traceback, view, g, { width = width, height = height, focused = daw.ui.focused == name })
+  local colors = opts.colors or {}
+  local ok, err = xpcall(view.paint, debug.traceback, view, g, {
+    width = width, height = height, focused = daw.ui.focused == name, cell = M.cell,
+    surface = opts.surface or false, fg = colors.fg, bg = colors.bg,
+  })
   if not ok then
     -- Show the failure where the view would have been.
     ops = {}
@@ -411,6 +484,7 @@ function M.paint(name, width, height, opts)
       row = row + 1
     end
   end
+  if not opts.glyphs then ops = without_glyphs(ops) end
   return { title = window and window.title or name, ops = ops }
 end
 
