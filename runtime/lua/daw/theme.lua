@@ -136,7 +136,8 @@ local function build()
     Automation = { fg = c.automation },
     ClipWave = { fg = "#283457" },
     Playhead = { fg = c.accent },
-    PlayheadClip = { bg = c.playhead_clip },
+    PlayheadClip = { fg = c.accent },
+    PlayheadShade = { bg = c.playhead_clip },  -- where a step is a whole cell (the drum grid)
     Cursor = { bg = c.normal, fg = c.bg },
     CursorVisual = { bg = c.visual, fg = c.bg },
     CursorTail = { bg = "#2a3a50" },

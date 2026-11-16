@@ -119,6 +119,13 @@ function view:render(buf, ctx)
     if end_x < tw then roll:fill(math.max(0, end_x), row, tw, 1, " ", "RollOutside") end
   end
 
+  -- The playhead is a thin line on the beat's left edge, under the notes:
+  -- one that starts where it stands is drawn whole, from where it starts.
+  local t = api.transport_get()
+  local px = math.floor((t.position - c.start - self.scroll) * zoom + 0.5)
+  local playing_here = px >= 0 and px < tw and t.position >= c.start and t.position <= c.start + c.length
+  if playing_here then roll:fill(px, 0, 1, rows, g.playhead, "Playhead") end
+
   -- Only what is on screen crosses over from the core.
   local under = self:note_at(self.pitch, self.beat)
   local chosen = {}
@@ -181,12 +188,7 @@ function view:render(buf, ctx)
     roll:fill(cx, self.top - self.pitch, cw, 1, nil, inserting and "InsertCursor" or "RollCursor")
   end
 
-  local t = api.transport_get()
-  local px = math.floor((t.position - c.start - self.scroll) * zoom + 0.5)
-  if px >= 0 and px < tw and t.position >= c.start and t.position <= c.start + c.length then
-    ruler:text(px, 0, g.cap, "RulerPlayhead")
-    roll:fill(px, 0, 1, rows, nil, "PlayheadClip")
-  end
+  if playing_here then ruler:text(px, 0, g.cap, "RulerPlayhead") end
 end
 
 --- Play the pitch under the cursor on the clip's track.

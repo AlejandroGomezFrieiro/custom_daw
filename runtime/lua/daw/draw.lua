@@ -106,8 +106,12 @@ end
 
 -- Characters ------------------------------------------------------------------
 
+-- A beat begins at a cell's left edge: that is where a clip or a note that
+-- starts on it begins to be drawn. So the lines and ticks of a timeline are
+-- characters that sit on that edge, not ones centred in the cell, which
+-- would stand half a cell to the right of everything that starts there.
 local unicode = {
-  rule = "│", bar = "│", beat = "┆", step = "┊", tick = "·", cap = "▼", playhead = "▏",
+  rule = "│", bar = "▏", beat = "▏", step = "▏", tick = "▏", cap = "▼", playhead = "▏",
   loop_in = "▕", loop_out = "▕", clip_start = "▏", punch_in = "▕", punch_out = "▕",
   meter_full = "━", meter_half = "╸", meter_off = "─", peak = "▔", upper = "▀", lower = "▄", full = "█",
   slider_on = "━", knob = "●", slider_off = "─", pan_rail = "─", pan_mark = "┃",

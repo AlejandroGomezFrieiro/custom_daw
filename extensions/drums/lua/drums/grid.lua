@@ -193,7 +193,7 @@ function view:render(buf, ctx)
     if i >= 0 and i < cells then
       local cx = namew + i * CW
       buf:text(cx, 1, g.cap, "RulerPlayhead")
-      for r = 0, math.min(body, #rows - self.first + 1) - 1 do buf:fill(cx, HEAD + r, 1, 1, nil, "PlayheadClip") end
+      for r = 0, math.min(body, #rows - self.first + 1) - 1 do buf:fill(cx, HEAD + r, 1, 1, nil, "PlayheadShade") end
     end
   end
 end

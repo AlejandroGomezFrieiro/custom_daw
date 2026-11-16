@@ -731,8 +731,10 @@ function view:render(buf, ctx)
     end
   end
 
-  -- The playhead: a mark on the ruler, a thin line on the empty lane and a
-  -- warmer shade where it crosses a clip, so that what is there stays readable.
+  -- The playhead: a mark on the ruler and a thin line on the beat's left
+  -- edge, which is where a clip that starts there begins to be drawn. Over a
+  -- clip the line keeps the clip's colour behind it, so the clip is seen to
+  -- start where it does.
   local px = col(t.position)
   if px >= 0 and px < tw then
     ruler:text(px, 0, g.cap, "RulerPlayhead")
@@ -744,7 +746,7 @@ function view:render(buf, ctx)
       if on_clip then
         -- Under the clip's name only, so the name row reads unbroken.
         local skip = row.h > 1 and 1 or 0
-        lanes:fill(px, row.y + skip, 1, row.h - skip, nil, "PlayheadClip")
+        lanes:fill(px, row.y + skip, 1, row.h - skip, g.playhead, "PlayheadClip")
       else
         lanes:fill(px, row.y, 1, row.h, g.playhead, "Playhead")
       end
