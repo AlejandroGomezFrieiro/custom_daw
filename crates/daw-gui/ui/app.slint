@@ -34,8 +34,9 @@ import "fonts/JetBrainsMono-Medium.ttf";
 import { Roll, PianoRoll, NoteData, ControlData } from "roll.slint";
 import { CanvasWindow, CanvasItem } from "canvas.slint";
 import { Probe } from "probe.slint";
+import { SessionPanel, SessionColumn, SlotData, LaunchData } from "session.slint";
 
-export { Roll, CanvasWindow, Probe }
+export { Roll, CanvasWindow, Probe, SessionColumn, SlotData, LaunchData }
 
 export struct TrackData {
     id: int,
@@ -602,6 +603,27 @@ in property <string> render-stage;
     in property <string> learning;
     in-out property <bool> show-automation;
     in property <bool> show-mixer;
+    // The session view (session.slint): clips in slots, launched live.
+    in property <bool> show-session;
+    in property <[SessionColumn]> session-columns;
+    in property <[SlotData]> slots;
+    in property <[LaunchData]> launch;
+    in property <[string]> scenes;
+    in property <string> launch-quantize;
+    in property <bool> capturing;
+    in property <int> slot-row;
+    callback slot-press(int, int, bool);    // track, row, down
+    callback slot-choose(int, int);
+    callback slot-open(int, int);
+    callback slot-move(int, int, int, bool);
+    callback clip-to-slot(int, int, int);   // a clip from the timeline, column, row
+    callback launch-scene(int);
+    callback slot-stop(int);                // a track, or -1 for all
+    callback slot-back(int);
+    callback slot-record(int, int);         // record into an empty slot, or stop recording
+    // The slot a clip dragged from the timeline is over.
+    property <int> drop-column: -1;
+    property <int> drop-row: -1;
 
     // Modal editing: the kernel's key mappings run the keyboard, and report
     // where they are.
@@ -1488,6 +1510,25 @@ in property <string> render-stage;
                     views := HorizontalLayout {
                         padding: 2px;
                         spacing: 2px;
+                        Button {
+                            height: 24px;
+                            icon: Icons.ph-grid-four;
+                            icon-box: 256;
+                            label: "Session";
+                            quiet: true;
+                            on: root.show-session;
+                            clicked => {
+                                root.command("view.toggle session");
+                                keys.focus();
+                            }
+                            changed has-hover => {
+                                if (self.has-hover) {
+                                    root.hint = "session: clips in slots under each track, launched while the song plays";
+                                } else if (root.hint == "session: clips in slots under each track, launched while the song plays") {
+                                    root.hint = "";
+                                }
+                            }
+                        }
                         Button {
                             height: 24px;
                             icon: Icons.ph-faders;
@@ -3540,6 +3581,9 @@ in property <string> render-stage;
                                         if (root.drag-clip == clip.id) {
                                             root.drag-dx = self.absolute-position.x + self.mouse-x - root.drag-ax;
                                             root.drag-dy = self.absolute-position.y + self.mouse-y - root.drag-ay;
+                                            // Over a slot of the session view, it goes there.
+                                            root.drop-column = root.show-session ? session.column-at(self.absolute-position.x + self.mouse-x) : -1;
+                                            root.drop-row = root.drop-column >= 0 ? session.row-at(self.absolute-position.y + self.mouse-y) : -1;
                                         }
                                     }
                                 }
@@ -3569,7 +3613,9 @@ in property <string> render-stage;
                                     }
                                     if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
                                         keys.focus();
-                                        if (root.drag-clip == clip.id && (abs(root.drag-dx) > 3px || root.drag-rows != 0)) {
+                                        if (root.drag-clip == clip.id && root.drop-column >= 0 && root.drop-row >= 0) {
+                                            root.clip-to-slot(clip.id, root.drop-column, root.drop-row);
+                                        } else if (root.drag-clip == clip.id && (abs(root.drag-dx) > 3px || root.drag-rows != 0)) {
                                             root.move-clip(
                                                 clip.id, root.drag-dx / root.beat, root.drag-rows,
                                                 event.modifiers.control, event.modifiers.shift);
@@ -3581,6 +3627,8 @@ in property <string> render-stage;
                                         root.drag-clip = -1;
                                         root.drag-dx = 0px;
                                         root.drag-dy = 0px;
+                                        root.drop-column = -1;
+                                        root.drop-row = -1;
                                     }
                                 }
                                 double-clicked => {
@@ -5159,6 +5207,60 @@ in property <string> render-stage;
                         }
                     }
                 }
+            }
+        }
+
+        // The session view: always there, so that a clip dragged from the
+        // timeline can find its slots, and of no height while it is hidden.
+        session := SessionPanel {
+            height: root.show-session ? (Roll.open && !Roll.detached ? 220px : 280px) : 0px;
+            visible: root.show-session;
+            columns: root.session-columns;
+            slots: root.slots;
+            launch: root.launch;
+            scenes: root.scenes;
+            quantize: root.launch-quantize;
+            capturing: root.capturing;
+            chosen-track: root.selected;
+            chosen-row: root.slot-row;
+            drop-column: root.drop-column;
+            drop-row: root.drop-row;
+            press(track, row, down) => {
+                keys.focus();
+                root.slot-press(track, row, down);
+            }
+            choose(track, row) => {
+                keys.focus();
+                root.slot-choose(track, row);
+            }
+            open(track, row) => {
+                root.slot-open(track, row);
+            }
+            move-slot(clip, track, row, copy) => {
+                root.slot-move(clip, track, row, copy);
+            }
+            scene(row) => {
+                keys.focus();
+                root.launch-scene(row);
+            }
+            stop(track) => {
+                keys.focus();
+                root.slot-stop(track);
+            }
+            back(track) => {
+                keys.focus();
+                root.slot-back(track);
+            }
+            record(track, row) => {
+                keys.focus();
+                root.slot-record(track, row);
+            }
+            command(line) => {
+                root.command(line);
+                keys.focus();
+            }
+            hint(text) => {
+                root.hint = text;
             }
         }
 

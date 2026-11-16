@@ -22,6 +22,7 @@ use slint::{
 };
 
 mod portal;
+mod session;
 
 slint::include_modules!();
 
@@ -281,7 +282,7 @@ impl Client {
                 project["lines"] = part("lines");
             }
             state.insert("project".into(), project);
-            for name in ["tracks", "clips", "devices", "routing"] {
+            for name in ["tracks", "clips", "devices", "routing", "slots"] {
                 state.insert(name.into(), part(name));
             }
             state.insert("selected".into(), part("view")["selected"].clone());
@@ -1052,6 +1053,8 @@ struct View {
     tracks: Rc<VecModel<TrackData>>,
     meters: Rc<VecModel<MeterData>>,
     clips: Rc<VecModel<ClipData>>,
+    /// The session view: slots to launch.
+    session: session::Session,
     devices: Rc<VecModel<DeviceData>>,
     /// The parameter rows of each device, in the order of `devices`.
     params: Vec<Rc<VecModel<ParamData>>>,
@@ -1198,6 +1201,7 @@ impl View {
             self.message_until = None;
         }
         let state = client.state()?;
+        self.session.tick(&state);
         let playing = state["playing"].as_bool().unwrap_or(false);
         let recording = state["recording"].as_bool().unwrap_or(false);
         let position = number(&state["position"]);
@@ -1441,6 +1445,7 @@ impl View {
         ui.set_macro(text(&modal["recording"]));
         ui.set_focused(text(&modal["focused"]));
         ui.set_show_mixer(modal["mixer"].as_bool().unwrap_or(false));
+        self.session.modal(ui, modal);
         // A render in the background, and a controller being waited for.
         let render = &modal["render"];
         ui.set_rendering(render.is_object());
@@ -1933,6 +1938,7 @@ impl View {
 
     fn project(&mut self, ui: &App, client: &mut Client, state: &Value, project: &Value) {
         ui.set_project_name(text(&project["name"]));
+        self.session.project(ui, state);
         ui.set_modified(project["modified"].as_bool().unwrap_or(false));
         ui.set_tempo(format!("{}", project["tempo"].as_f64().unwrap_or(120.0)).into());
         ui.set_signature(text(&project["signature"]));
@@ -2362,6 +2368,7 @@ fn run() -> Result<()> {
         tracks: Rc::new(VecModel::default()),
         meters: Rc::new(VecModel::default()),
         clips: Rc::new(VecModel::default()),
+        session: session::Session::new(&ui),
         devices: Rc::new(VecModel::default()),
         params: Vec::new(),
         pictures: HashMap::new(),
@@ -2475,6 +2482,7 @@ fn run() -> Result<()> {
             act(&|c| c.eval(&code, args.clone()))
         }
     };
+    view.borrow().session.install(&ui, pass.clone());
     // Leaving the project (quitting, starting a new one, opening another)
     // asks first when there are changes to save. Returns whether it asked.
     let leave = {

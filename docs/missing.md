@@ -41,3 +41,8 @@
   the software renderer.
 - The window's position on the screen is not remembered, only its size: the window manager decides where it goes.
 - A Nix package: for now the binary is built with `cargo` inside the dev shell.
+- In clip launching: follow actions (a clip that launches the next, or a
+  random one, after so many bars); under a tempo ramp a slot's clip spreads
+  each block's beats evenly over it, so its notes can land up to a frame or
+  so from where the timeline would put them; and launches are not rendered
+  as they are: they are captured into the timeline first.

@@ -1519,3 +1519,67 @@ fn keys_reach_the_window_after_an_entry_of_a_submenu() {
     w.expect("the cursor on the second track", "daw.cursor.track().index == 2");
     w.assert_alive("after a submenu");
 }
+
+/// Two tracks, clips in slots, two named scenes, and the session view shown.
+const SESSION_SONG: &str = "
+local api = daw.api
+local keys = daw.add_track({ name = 'Keys' })
+keys:add_clip({ start = 0, length = 8, name = 'Chorus', notes = { { pitch = 60, start = 0, length = 2 } } })
+local bass = daw.add_track({ name = 'Bass' })
+api.clip_add(keys.id, { slot = 0, length = 4, name = 'Riff', notes = { { pitch = 67, start = 0, length = 1 } } })
+api.clip_add(bass.id, { slot = 0, length = 4, name = 'Walk', notes = { { pitch = 36, start = 0, length = 1 } } })
+daw.launcher.set_scene_name(0, 'Verse')
+daw.launcher.set_scene_name(1, 'Bridge')
+api.undo_checkpoint()
+daw.ui.show('session')
+";
+
+#[test]
+fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
+    let mut w = scene!("session", SESSION_SONG);
+    let keys = w.number("return daw.api.track_list()[1]") as i32;
+    let bass = w.number("return daw.api.track_list()[2]") as i32;
+    let playing = |track: i32| format!("(daw.launcher.state()[{track}] or {{}}).slot");
+
+    // A scene launches its row on both tracks together.
+    w.click_text("Verse");
+    w.expect(
+        "the first scene playing",
+        &format!("{} == 0 and {} == 0", playing(keys), playing(bass)),
+    );
+    w.shot("session-playing.png");
+    w.click_text("Stop all");
+    w.expect(
+        "every clip stopped",
+        &format!("(daw.launcher.state()[{keys}] or {{}}).stopped == true"),
+    );
+    w.click_text("Back to timeline");
+    w.expect("the timeline again", "next(daw.launcher.state()) == nil");
+
+    // A clip dragged from the timeline onto an empty slot of the bass is
+    // copied into it: the slot under the bass's name, in the second row.
+    let column = w.find_text("Bass", -1);
+    let row = w.find_text("Bridge", 0);
+    let chorus = w.find_text("Chorus", 0);
+    w.drag((chorus.0, chorus.1 + 20), (column.0, row.1));
+    w.expect(
+        "a copy of the chorus in the bass's second slot",
+        &format!(
+            "daw.launcher.clip({bass}, 1) ~= nil and daw.launcher.clip({bass}, 1).name == 'Chorus'"
+        ),
+    );
+    w.expect(
+        "the chorus still on the timeline",
+        &format!("#daw.api.clip_list({keys}) == 1"),
+    );
+
+    // A double click on a clip in a slot opens its notes.
+    let riff = w.find_text("Riff", 0);
+    w.double_click(riff);
+    w.expect(
+        "the riff in the piano roll",
+        &format!("daw.ui.views.pianoroll:clip().id == daw.launcher.clip({keys}, 0).id"),
+    );
+    w.shot("session-roll.png");
+    w.assert_alive("after the session view");
+}
