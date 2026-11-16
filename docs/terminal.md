@@ -141,7 +141,33 @@ in. `:take 2` over a selection does the same from the keyboard.
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
 `gh` sounds the pitch, `E` lists the clip's notes and controller moves to
-change in place (the event list), `Esc` goes back to the arrange view. In the device panel
+change in place (the event list), `Esc` goes back to the arrange view.
+
+Behind the clip's notes the piano roll shows the notes of other tracks that
+sound at the same time, so the harmony can be seen where it is written:
+each a dashed line (`╌`) on a faint shade of its track's colour, without a
+name, where the clip's own notes are solid and named. Drum tracks are left out. Which
+tracks: `daw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
+clip's group, `"none"`, or a list of track ids), and `:roll.tracks` lists
+them with their clips: `Enter` on a track shows or hides its notes. A dot on
+the keyboard marks the keys that sound at the cursor, and the title names
+the chord when a harmony reader is loaded. The piano roll can edit several
+clips at once (REAPER's editability follows selection). One is active: new
+notes go there, its name is in the title, and the title says how many more
+are edited. `ga` on another track's note makes its clip the active one (in
+place of the old), `gE` edits that clip too or no longer, `gn` `gN` make the
+next or previous clip edited active, `:roll.only` goes back to one clip, and
+`Enter` on a clip in `:roll.tracks` adds it or takes it out (`Ctrl-a` there
+makes it active). Opening several clips at once: select them in the arrange
+view (`v` over them, or the pointer) and press `Enter`. Motions, operators,
+visual mode, yank and paste, the keys on the note under the cursor and the
+musicops operators then work on the notes of all of them; the cursor's
+beats are the active clip's. A note moved stays in its own clip and stops at
+its edges; notes yanked from several clips go back into them when pasted
+while they are edited, else into the clip at the cursor; each command is one
+undo step, however many clips it touched.
+
+In the device panel
 `j` `k` choose a row, `h` `l` change a parameter, `c` or `=` types its value
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`

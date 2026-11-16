@@ -1257,6 +1257,17 @@ struct View {
     /// it; the models hold those of the stretch `roll_for` (beats) alone.
     roll_notes: Vec<NoteData>,
     roll_ghosts: Vec<NoteData>,
+    /// For each of `roll_notes`, the clip it is in and its place there as
+    /// the kernel counts them: the roll may edit several clips at once.
+    roll_refs: Vec<(i64, i64)>,
+    /// Other tracks' notes, behind the clips', handed over with the clip.
+    roll_context: Vec<RollMark>,
+    /// Where the roll's beats start, in the beats of the clip it has open:
+    /// before 0 when another clip it edits starts earlier.
+    roll_origin: f32,
+    /// The keys sounding at the roll's cursor, and the side panel's rows.
+    chord_keys: Rc<VecModel<bool>>,
+    roll_rows: Rc<VecModel<RollRow>>,
     roll_lines: Vec<RollLine>,
     roll_line_rows: Rc<VecModel<RollLine>>,
     roll_for: Option<(f32, f32)>,
@@ -1325,6 +1336,8 @@ struct View {
     /// The clip open in the piano roll, and whether its notes need fetching.
     roll: Option<i32>,
     roll_stale: bool,
+    /// The kernel's revision the roll was last fetched at.
+    roll_revision: i64,
     notes: Rc<VecModel<NoteData>>,
     hints: Rc<VecModel<HintData>>,
     clip_entries: Rc<VecModel<MenuEntry>>,
@@ -1560,7 +1573,10 @@ impl View {
         let (from, to) = self.roll_for.unwrap_or((from, to));
         sync(&self.notes, notes_within(&self.roll_notes, from, to));
         sync(&self.ghosts, notes_within(&self.roll_ghosts, from, to));
-        sync(&self.marks_under, marks_within(&self.roll_marks.0, from, to));
+        // Other tracks' notes first, behind what the layers draw.
+        let mut under = marks_within(&self.roll_context, from, to);
+        under.extend(marks_within(&self.roll_marks.0, from, to));
+        sync(&self.marks_under, under);
         sync(&self.marks_over, marks_within(&self.roll_marks.1, from, to));
         let lines = self.roll_lines.iter().filter(|l| (from..=to).contains(&l.at));
         sync(&self.roll_line_rows, lines.cloned().collect());
@@ -1606,7 +1622,7 @@ impl View {
                 .filter(|c| (from..=to).contains(&self::number(&c["start"])))
                 .filter(|c| number.is_none() || c["number"].as_i64() == number)
                 .map(|c| ControlData {
-                    start: self::number(&c["start"]),
+                    start: self::number(&c["start"]) - self.roll_origin,
                     value: if kind == "bend" {
                         (self::number(&c["value"]) + 1.0) / 2.0
                     } else {
@@ -1700,8 +1716,14 @@ impl View {
                 r0 - 1
             });
             ui.set_sel_rows(r1 - r0 + 1);
-            ui.set_sel_start(number(&selection["c0"]));
-            ui.set_sel_end(number(&selection["c1"]));
+            // The roll's beats start at its origin.
+            let shift = if selection["view"] == "pianoroll" {
+                self.roll_origin
+            } else {
+                0.0
+            };
+            ui.set_sel_start(number(&selection["c0"]) - shift);
+            ui.set_sel_end(number(&selection["c1"]) - shift);
         }
         for roll in self.rolls(ui) {
             roll.set_sel_open(selection.is_object());
@@ -1760,19 +1782,35 @@ impl View {
             }
         }
         if open.is_some() {
-            // Which notes are chosen with the pointer.
-            let chosen: HashSet<usize> = rows(&roll["selected"])
+            // The clips edited or a layer of the roll changed.
+            let revision = roll["revision"].as_i64().unwrap_or(0);
+            if revision != self.roll_revision {
+                self.roll_revision = revision;
+                self.roll_stale = true;
+            }
+            // Which notes are chosen with the pointer, in any clip edited.
+            let chosen: HashSet<(i64, i64)> = rows(&roll["refs"])
                 .iter()
-                .filter_map(|place| (place.as_u64()? as usize).checked_sub(1 + self.roll_hidden))
+                .filter_map(|r| Some((r[0].as_i64()?, r[1].as_i64()?)))
                 .collect();
             let mut changed = false;
             for (index, note) in self.roll_notes.iter_mut().enumerate() {
-                let selected = chosen.contains(&index);
+                let selected = self.roll_refs.get(index).is_some_and(|r| chosen.contains(r));
                 changed |= note.selected != selected;
                 note.selected = selected;
             }
             // What the layers draw, and the toolbar's switches.
-            let marks = (roll_marks(&roll["under"]), roll_marks(&roll["over"]));
+            // In the roll's beats, which start at its origin.
+            let shifted = |list: &Value| -> Vec<RollMark> {
+                roll_marks(list)
+                    .into_iter()
+                    .map(|m| RollMark {
+                        start: m.start - self.roll_origin,
+                        ..m
+                    })
+                    .collect()
+            };
+            let marks = (shifted(&roll["under"]), shifted(&roll["over"]));
             if marks != self.roll_marks {
                 self.roll_marks = marks;
                 changed = true;
@@ -1799,6 +1837,16 @@ impl View {
                 self.controls_chosen = moves;
                 self.show_controls(ui);
             }
+            // The keys sounding at the cursor.
+            let mut lit = [false; 128];
+            for pitch in rows(&roll["sounding"]).iter().filter_map(Value::as_i64) {
+                lit[pitch.clamp(0, 127) as usize] = true;
+            }
+            for (pitch, on) in lit.into_iter().enumerate() {
+                if self.chord_keys.row_data(pitch) != Some(on) {
+                    self.chord_keys.set_row_data(pitch, on);
+                }
+            }
             let pitch = roll["pitch"].as_i64().unwrap_or(60) as i32;
             let status: SharedString = if modal["mode"] == "i" {
                 format!(
@@ -1821,7 +1869,8 @@ impl View {
                     }
                 }
                 shown.set_pitch(pitch);
-                shown.set_cursor(number(&roll["beat"]));
+                shown.set_cursor(number(&roll["beat"]) - self.roll_origin);
+                shown.set_chord(text(&roll["chord"]));
                 shown.set_step(number(&roll["step"]));
                 shown.set_status(status.clone());
                 shown.set_snap(roll["snap"].as_bool().unwrap_or(true));
@@ -1848,7 +1897,7 @@ impl View {
             shown.push(MarkData {
                 index,
                 pitch: mark["pitch"].as_i64().unwrap_or(60) as i32,
-                start: number(&mark["start"]),
+                start: number(&mark["start"]) - self.roll_origin,
                 length: number(&mark["length"]),
                 severity: mark["severity"].as_i64().unwrap_or(2) as i32,
             });
@@ -1869,17 +1918,71 @@ impl View {
             return Ok(());
         }
         self.roll_hidden = clip["hidden"].as_u64().unwrap_or(0) as usize;
+        // Other clips it edits may start before it: the roll's beats then
+        // start where the first does.
+        let origin = rows(&clip["editable"])
+            .iter()
+            .map(|c| number(&c["offset"]))
+            .fold(0.0, f32::min);
+        let own = colour(&clip["color"]);
         let note = |(index, n): (usize, &Value)| NoteData {
             pitch: n["pitch"].as_i64().unwrap_or(60) as i32,
-            start: number(&n["start"]),
+            start: number(&n["start"]) - origin,
             length: number(&n["length"]),
             velocity: (number(&n["velocity"]) / 127.0).clamp(0.0, 1.0),
             // The kernel's places of the chosen notes, read just before,
             // are already places among these.
             selected: self.roll_notes.get(index).is_some_and(|old| old.selected),
             index: index as i32,
+            color: if n["color"].is_string() {
+                colour(&n["color"])
+            } else {
+                own
+            },
         };
-        let notes: Vec<NoteData> = rows(&clip["notes"]).iter().enumerate().map(note).collect();
+        // The clip's own notes, then those of the others it edits, each
+        // with its clip and its place there.
+        let skip = self.roll_hidden as i64;
+        let mut refs: Vec<(i64, i64)> = (0..rows(&clip["notes"]).len() as i64)
+            .map(|index| (id as i64, index + 1 + skip))
+            .collect();
+        for n in rows(&clip["more"]) {
+            refs.push((n["clip"].as_i64().unwrap_or(0), n["place"].as_i64().unwrap_or(1)));
+        }
+        let notes: Vec<NoteData> = rows(&clip["notes"])
+            .iter()
+            .chain(rows(&clip["more"]).iter())
+            .enumerate()
+            .map(note)
+            .collect();
+        let panel: Vec<RollRow> = rows(&clip["rows"])
+            .iter()
+            .map(|r| RollRow {
+                clip: r["kind"] == "clip",
+                id: r["id"].as_i64().unwrap_or(0) as i32,
+                name: text(&r["name"]),
+                color: colour(&r["color"]),
+                on: r["on"].as_bool().unwrap_or(false),
+                active: r["active"].as_bool().unwrap_or(false),
+            })
+            .collect();
+        sync(&self.roll_rows, panel);
+        self.roll_refs = refs;
+        self.roll_origin = origin;
+        self.roll_context = roll_marks(&clip["context"])
+            .into_iter()
+            .map(|m| RollMark {
+                start: m.start - origin,
+                ..m
+            })
+            .collect();
+        // How far the clips edited reach, from the origin.
+        let reach = rows(&clip["editable"])
+            .iter()
+            .map(|c| number(&c["offset"]) + number(&c["length"]))
+            .fold(number(&clip["length"]), f32::max)
+            - origin;
+        let editing = rows(&clip["editable"]).len();
         let ghosts: Vec<NoteData> = rows(&clip["ghosts"])
             .iter()
             .enumerate()
@@ -1895,9 +1998,14 @@ impl View {
         self.roll_ghosts = ghosts;
         self.roll_controls = rows(&clip["controls"]).to_vec();
         let track: SharedString = format!(
-            "{} · bar {}",
+            "{} · bar {}{}",
             text(&clip["track_name"]),
-            1 + (number(&clip["start"]) / ui.get_bar()) as i32
+            1 + (number(&clip["start"]) / ui.get_bar()) as i32,
+            if editing > 1 {
+                format!(" · {editing} clips edited")
+            } else {
+                String::new()
+            }
         )
         .into();
         for roll in self.rolls(ui) {
@@ -1908,12 +2016,12 @@ impl View {
             roll.set_title(text(&clip["name"]));
             roll.set_track(track.clone());
             roll.set_color(colour(&clip["color"]));
-            roll.set_start(number(&clip["start"]));
-            roll.set_length(number(&clip["length"]));
+            roll.set_start(number(&clip["start"]) + origin);
+            roll.set_length(reach);
             roll.set_bar(ui.get_bar());
             roll.set_open(true);
         }
-        self.roll_lines = roll_lines(number(&clip["start"]), number(&clip["length"]));
+        self.roll_lines = roll_lines(number(&clip["start"]) + origin, reach);
         self.roll_view(ui);
         if self.detached {
             let _ = self.roll_window.show();
@@ -2685,6 +2793,11 @@ fn run() -> Result<()> {
         mark_notes: Rc::new(RefCell::new(HashMap::new())),
         roll_notes: Vec::new(),
         roll_ghosts: Vec::new(),
+        roll_refs: Vec::new(),
+        roll_context: Vec::new(),
+        roll_origin: 0.0,
+        chord_keys: Rc::new(VecModel::from(vec![false; 128])),
+        roll_rows: Rc::new(VecModel::default()),
         roll_lines: Vec::new(),
         roll_line_rows: Rc::new(VecModel::default()),
         roll_for: None,
@@ -2726,6 +2839,7 @@ fn run() -> Result<()> {
         query: String::new(),
         roll: None,
         roll_stale: false,
+        roll_revision: -1,
         notes: Rc::new(VecModel::default()),
         hints: Rc::new(VecModel::default()),
         clip_entries: Rc::new(VecModel::default()),
@@ -2764,6 +2878,8 @@ fn run() -> Result<()> {
         });
         roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
+        roll.set_chord_keys(ModelRc::from(view.borrow().chord_keys.clone()));
+        roll.set_rows(ModelRc::from(view.borrow().roll_rows.clone()));
         roll.set_vel_preview(ModelRc::from(view.borrow().vel_preview.clone()));
     }
     ui.set_lanes(ModelRc::from(view.borrow().lanes.clone()));
@@ -3502,15 +3618,54 @@ fn run() -> Result<()> {
             let Some(id) = view.borrow().roll else { return };
             let mut all = vec![json!(id)];
             let mut args = args.as_array().cloned().unwrap_or_default();
-            // The roll leaves out the notes hidden before the clip's start,
-            // which come first: a note's place is past them.
-            let skip = view.borrow().roll_hidden;
+            // A note is named by its clip, which the roll may edit with
+            // others, and its place there (past the notes hidden before the
+            // clip's start); here by its place among those handed over.
             if matches!(
                 name,
                 "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity" | "note_action" | "note_hover"
-            ) && let Some(place) = args.first().and_then(Value::as_i64)
+            ) && let Some(index) = args.first().and_then(Value::as_i64)
+                && let Some(&(clip, place)) = view.borrow().roll_refs.get((index - 1).max(0) as usize)
             {
-                args[0] = json!(place + skip as i64);
+                all[0] = json!(clip);
+                args[0] = json!(place);
+            }
+            // Beats are the roll's, which start at its origin.
+            let origin = view.borrow().roll_origin as f64;
+            if origin != 0.0 {
+                let shift = |v: &mut Value| {
+                    if let Some(beat) = v.as_f64() {
+                        *v = json!(beat + origin);
+                    }
+                };
+                let at: &[usize] = match name {
+                    "add_note" => &[1],
+                    "select_notes_box" => &[0, 2],
+                    "roll_seek" | "context_click" => &[0],
+                    "select_controls" | "line_controls" => &[2, 4],
+                    _ => &[],
+                };
+                for &i in at {
+                    if let Some(v) = args.get_mut(i) {
+                        shift(v);
+                    }
+                }
+                // Strokes: points whose first number is a beat.
+                let stroke = match name {
+                    "erase_notes" | "draw_velocities" => Some(0),
+                    "draw_controls" => Some(2),
+                    _ => None,
+                };
+                if let Some(points) = stroke
+                    .and_then(|i| args.get_mut(i))
+                    .and_then(Value::as_array_mut)
+                {
+                    for point in points {
+                        if let Some(first) = point.get_mut(0) {
+                            shift(first);
+                        }
+                    }
+                }
             }
             all.extend(args);
             pass(name, Value::Array(all))
@@ -4533,6 +4688,7 @@ mod tests {
             velocity: 0.5,
             selected,
             index: 0,
+            color: Color::default(),
         };
         let notes = [
             note(0.0, false),
@@ -4617,6 +4773,7 @@ mod tests {
                 velocity: 0.5,
                 selected: false,
                 index: i,
+                color: Color::default(),
             })
             .collect();
         let (from, to) = around(1000.0, 1016.0);
