@@ -50,7 +50,7 @@ pub enum InputEvent {
 pub enum KernelMsg {
     Input(InputEvent),
     /// A message that arrived at a MIDI port.
-    Midi(EventKind),
+    Midi(u32, EventKind),
     Rpc {
         /// The connection the call came over, or 0 for none.
         client: ClientId,
@@ -74,6 +74,8 @@ pub struct KernelOpts {
     pub config_dir: PathBuf,
     pub runtime_dir: Option<PathBuf>,
     pub clean: bool,
+    /// Running a script (`-l`), not a session somebody works in.
+    pub scripted: bool,
     pub argv: Vec<String>,
 }
 
@@ -107,8 +109,8 @@ impl Kernel {
         let (tx, rx) = channel();
         // MIDI input goes straight to the engine; scripts hear of it here.
         let midi_tx = tx.clone();
-        session.set_midi_tap(Box::new(move |kind| {
-            let _ = midi_tx.send(KernelMsg::Midi(kind));
+        session.set_midi_tap(Box::new(move |port, kind| {
+            let _ = midi_tx.send(KernelMsg::Midi(port, kind));
         }));
         let started = Instant::now();
         let shared = Rc::new(Shared {
@@ -134,6 +136,7 @@ impl Kernel {
                 config_dir: opts.config_dir,
                 runtime_dir: opts.runtime_dir,
                 clean: opts.clean,
+                scripted: opts.scripted,
                 argv: opts.argv,
             },
         });
@@ -301,7 +304,7 @@ impl Kernel {
                 }
                 self.shared.dirty.set(true);
             }
-            KernelMsg::Midi(kind) => self.shared.session.borrow_mut().midi_event(kind),
+            KernelMsg::Midi(port, kind) => self.shared.session.borrow_mut().midi_event(port, kind),
             KernelMsg::Rpc {
                 client,
                 method,

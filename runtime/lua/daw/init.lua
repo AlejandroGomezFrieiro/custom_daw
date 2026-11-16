@@ -145,6 +145,7 @@ function K.startup()
   daw.media = require("daw.media")
   require("daw.render")
   daw.markers = require("daw.markers")
+  daw.recent = require("daw.recent")
   daw.learn = require("daw.learn")
   daw.remote = require("daw.remote")
   daw.autosave = require("daw.autosave")
@@ -204,6 +205,9 @@ local function settle()
       if event.name == "changed" then
         for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
         api.ui_redraw()
+      elseif event.name == "transport.record" then
+        -- What starting a take has to say (a punch range already passed).
+        for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
       end
       daw.emit(event.name, event.payload)
     end
