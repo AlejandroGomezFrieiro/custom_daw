@@ -175,7 +175,9 @@ on one row. Colours are `null` (the terminal's own), a number (one of
 its 256) or `"#rrggbb"`; `attrs` adds 1 bold, 2 dim, 4 italic,
 8 underline, 16 reverse, 32 strike. Only what changed is sent; `full`
 says to clear the screen first (the first event, and after a change of
-size). A character two cells wide takes two.
+size). A character two cells wide takes two. `"mouse": false` asks the
+terminal to stop reporting the pointer and leave it to its own selection
+(`daw.opt.mouse` off); without it, or `true`, it reports it.
 
 `ui.input` takes one of
 
