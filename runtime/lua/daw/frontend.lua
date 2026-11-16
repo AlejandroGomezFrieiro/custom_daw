@@ -181,11 +181,13 @@ local function modal()
       -- The chosen notes in words: how many, and the stretch they cover.
       chosen = M.chosen_text(clip.id),
       step_input = M.step_input(),
+      -- Notes with diagnostics: { index, pitch, start, length, severity, message, actions }.
+      marks = daw.diagnostic and daw.diagnostic.roll_marks(clip.id),
       -- The controller moves chosen in the strip, by place.
       controls_chosen = daw.controls.chosen(clip.id),
-      -- What modules draw over the notes (the piano roll's layers), and
-      -- the chord symbols over its ruler, in the clip's beats.
-      marks = roll:marks(clip.id),
+      -- What a snippet draws over the notes (its marks, the picker's
+      -- ghosts), and the chord symbols over the ruler, in the clip's beats.
+      overlay = daw.snippet.window_marks(clip.id),
       chords = M.roll_chords(clip),
     }
   end

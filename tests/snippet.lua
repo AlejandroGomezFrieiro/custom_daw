@@ -240,14 +240,14 @@ test("snippet: the active snippet is drawn in the terminal and told to the windo
   keys(":snippet stack<CR><Tab>")
   local screen = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(screen:find("stack · interval: 3 (1/3)", 1, true) ~= nil, true, "its choice along the bottom")
-  local marks = roll:marks(clip.id)
+  local marks = S.window_marks(clip.id)
   local kinds = {}
   for _, m in ipairs(marks) do kinds[m.kind] = (kinds[m.kind] or 0) + 1 end
   eq(kinds.mark, 3, "its notes")
   eq(kinds.span, 1, "and its span")
-  eq(#daw.frontend.state(0).modal.roll.marks, 4, "in the state the window is sent")
+  eq(#daw.frontend.state(0).modal.roll.overlay, 4, "in the state the window is sent")
   keys("<C-y>")
-  eq(#roll:marks(clip.id), 0, "nothing once it ends")
+  eq(#S.window_marks(clip.id), 0, "nothing once it ends")
 end)
 
 test("snippet: an extension's snippet does not replace the user's", function()

@@ -600,57 +600,60 @@ function M.preview_marks(clip_id)
   return out
 end
 
---- The piano roll's layer (see `views/pianoroll.lua`): the active
---- snippet's notes marked and its span along the bottom with what Tab and
---- `<C-n>` work on; what the picker would write, as ghosts.
-M.layer = {
-  order = 20,
-  draw = function(_, g)
-    local roll, glyphs = g.roll, daw.draw.g
-    for _, n in ipairs(M.preview_marks(g.clip.id) or {}) do
-      local row = g.row(n.pitch)
-      if row then
-        local x0 = g.x(n.start)
-        local w = math.max(1, g.x(n.start + n.length) - x0)
-        roll:fill(x0, row, w, 1, " ", "SnippetGhost")
-        roll:text(x0, row, glyphs.clip_start, "SnippetGhost")
-        if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetGhost") end
-      end
+--- Paint the piano roll's snippet layer (order 40, see
+--- `views/pianoroll.lua`): the active snippet's notes marked and its span
+--- along the bottom with what Tab and `<C-n>` work on; what the picker
+--- would write, as ghosts.
+function M.paint(p)
+  local roll, glyphs = p.roll, daw.draw.g
+  for _, n in ipairs(M.preview_marks(p.clip.id) or {}) do
+    local row = p.row(n.pitch)
+    if row then
+      local x0 = p.x(n.start)
+      local w = math.max(1, p.x(n.start + n.length) - x0)
+      roll:fill(x0, row, w, 1, " ", "SnippetGhost")
+      roll:text(x0, row, glyphs.clip_start, "SnippetGhost")
+      if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetGhost") end
     end
-    local m = M.marks(g.clip.id)
-    if not m then return end
-    for _, n in ipairs(m.notes) do
-      local row = g.row(n.pitch)
-      if row then
-        local x0 = g.x(n.start)
-        local w = math.max(1, g.x(n.start + n.length) - x0)
-        roll:fill(x0, row, w, 1, " ", "SnippetNote")
-        roll:text(x0, row, glyphs.clip_start, "SnippetNote")
-        if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetNote") end
-      end
+  end
+  local m = M.marks(p.clip.id)
+  if not m then return end
+  for _, n in ipairs(m.notes) do
+    local row = p.row(n.pitch)
+    if row then
+      local x0 = p.x(n.start)
+      local w = math.max(1, p.x(n.start + n.length) - x0)
+      roll:fill(x0, row, w, 1, " ", "SnippetNote")
+      roll:text(x0, row, glyphs.clip_start, "SnippetNote")
+      if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetNote") end
     end
-    local x0, x1 = math.max(0, g.x(m.from)), math.min(g.width, g.x(m.to))
-    if x1 > x0 then
-      -- The span along the bottom row, and what it is doing, running on
-      -- past it when the span is short.
-      local label = " " .. m.label .. " "
-      roll:fill(x0, g.rows - 1, x1 - x0, 1, " ", "SnippetSpan")
-      roll:text(x0, g.rows - 1, daw.util.fit(label, math.min(api.str_width(label), g.width - x0)), "SnippetSpan")
-    end
-  end,
-  marks = function(clip_id)
-    local out = {}
-    for _, n in ipairs(M.preview_marks(clip_id) or {}) do
-      out[#out + 1] = { kind = "ghost", pitch = n.pitch, start = n.start, length = n.length }
-    end
-    local m = M.marks(clip_id)
-    if m then
-      for _, n in ipairs(m.notes) do out[#out + 1] = { kind = "mark", pitch = n.pitch, start = n.start, length = n.length } end
-      out[#out + 1] = { kind = "span", start = m.from, length = m.to - m.from, label = m.label }
-    end
-    return out
-  end,
-}
+  end
+  local width = roll.width
+  local x0, x1 = math.max(0, p.x(m.from)), math.min(width, p.x(m.to))
+  if x1 > x0 then
+    -- The span along the bottom row, and what it is doing, running on
+    -- past it when the span is short.
+    local label = " " .. m.label .. " "
+    roll:fill(x0, p.rows - 1, x1 - x0, 1, " ", "SnippetSpan")
+    roll:text(x0, p.rows - 1, daw.util.fit(label, math.min(api.str_width(label), width - x0)), "SnippetSpan")
+  end
+end
+
+--- The same for the window, in the clip's beats: ghosts of what the
+--- picker would write, the active snippet's notes and its labelled span,
+--- `{ kind = "ghost"|"mark"|"span", pitch, start, length, label }` each.
+function M.window_marks(clip_id)
+  local out = {}
+  for _, n in ipairs(M.preview_marks(clip_id) or {}) do
+    out[#out + 1] = { kind = "ghost", pitch = n.pitch, start = n.start, length = n.length }
+  end
+  local m = M.marks(clip_id)
+  if m then
+    for _, n in ipairs(m.notes) do out[#out + 1] = { kind = "mark", pitch = n.pitch, start = n.start, length = n.length } end
+    out[#out + 1] = { kind = "span", start = m.from, length = m.to - m.from, label = m.label }
+  end
+  return out
+end
 
 daw.on("escape", function() M.finish() end)
 -- Another project (or a new one): nothing of this one's snippet is left.

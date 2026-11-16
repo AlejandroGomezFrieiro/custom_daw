@@ -125,7 +125,7 @@ test("snippets: the owner's example as the terminal shows it: chords over the ru
   eq(has("dominant · voicing: drop2 (3/5)"), true, "C-n: the next voicing that sounds otherwise (close is the smooth one here)")
   eq(screen() ~= before, true, "drawn anew")
   keys("<C-y>")
-  eq(#daw.ui.views.pianoroll:marks(clip.id), 0, "C-y: done, the marks are gone")
+  eq(#daw.snippet.window_marks(clip.id), 0, "C-y: done, the marks are gone")
   eq(has("▏G7"), true, "the notes stay")
   keys("u")
   eq(has("▏G7"), false, "u: the whole snippet undone")

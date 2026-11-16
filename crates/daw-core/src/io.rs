@@ -2,16 +2,21 @@
 //! their own (a renderer, a language server) from Lua.
 //!
 //! Everything is addressed by number and moves as plain bytes, so `daw.api`
-//! stays plain data. Reads never block: scripts poll from a timer. Handles
-//! live in the kernel, not in the Lua state, so they survive `:reload`.
+//! stays plain data. Reads never block. A process started with pipes is read
+//! on a thread of its own, which wakes the kernel when bytes arrive, so that
+//! a script hears of them as an event instead of polling; sockets are polled
+//! from a timer. Handles live in the kernel, not in the Lua state, so they
+//! survive `:reload`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Read, Write};
+use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -27,16 +32,40 @@ pub struct SpawnOpts {
     pub env: BTreeMap<String, String>,
     pub cwd: Option<PathBuf>,
     /// File that receives the program's output and errors, appended to.
-    /// Without it they are discarded.
+    /// Without it they are discarded. With `pipe` it receives the errors alone.
     pub log: Option<PathBuf>,
+    /// Talk to the program over its standard input and output, as a
+    /// language server is talked to.
+    pub pipe: bool,
+}
+
+/// Called from a reader thread when a piped process has written something.
+pub type Wake = Arc<dyn Fn() + Send + Sync>;
+
+/// What a piped process has written that has not been read yet.
+#[derive(Default)]
+struct Output {
+    bytes: Vec<u8>,
+    /// The process closed its output (it ended, most likely).
+    closed: bool,
+    /// `arrived` has named it already; reading it lets it be named again.
+    told: bool,
+}
+
+/// The kernel's ends of a piped process's input and output.
+struct Pipe {
+    input: Option<ChildStdin>,
+    output: Arc<Mutex<Output>>,
 }
 
 #[derive(Default)]
 pub struct Io {
     next: u64,
     procs: HashMap<u64, Child>,
+    pipes: HashMap<u64, Pipe>,
     listeners: HashMap<u64, (UnixListener, PathBuf)>,
     streams: HashMap<u64, UnixStream>,
+    wake: Option<Wake>,
 }
 
 impl Io {
@@ -45,26 +74,41 @@ impl Io {
         self.next
     }
 
+    /// Have `wake` called whenever a piped process writes or ends.
+    pub fn on_output(&mut self, wake: Wake) {
+        self.wake = Some(wake);
+    }
+
     pub fn spawn(&mut self, argv: &[String], opts: SpawnOpts) -> Result<u64> {
         let (program, args) = argv.split_first().context("nothing to run")?;
         let mut command = Command::new(program);
-        command.args(args).envs(&opts.env).stdin(Stdio::null());
+        command.args(args).envs(&opts.env);
         if let Some(cwd) = &opts.cwd {
             command.current_dir(cwd);
         }
-        match &opts.log {
-            Some(path) => {
-                let file = OpenOptions::new()
+        let log = match &opts.log {
+            Some(path) => Some(
+                OpenOptions::new()
                     .create(true)
                     .append(true)
                     .open(path)
-                    .with_context(|| format!("opening {}", path.display()))?;
-                command.stdout(file.try_clone()?).stderr(file);
-            }
-            None => {
-                command.stdout(Stdio::null()).stderr(Stdio::null());
-            }
+                    .with_context(|| format!("opening {}", path.display()))?,
+            ),
+            None => None,
+        };
+        if opts.pipe {
+            command.stdin(Stdio::piped()).stdout(Stdio::piped());
+        } else {
+            command.stdin(Stdio::null());
+            match &log {
+                Some(file) => command.stdout(file.try_clone()?),
+                None => command.stdout(Stdio::null()),
+            };
         }
+        match log {
+            Some(file) => command.stderr(file),
+            None => command.stderr(Stdio::null()),
+        };
         // A helper has no reason to outlive the program that drives it: if
         // the program ends without stopping it, however it ends, the helper
         // is asked to finish.
@@ -75,12 +119,86 @@ impl Io {
                 Ok(())
             });
         }
-        let child = command
+        let mut child = command
             .spawn()
             .with_context(|| format!("starting {program}"))?;
         let id = self.id();
+        if opts.pipe {
+            let input = child.stdin.take().context("no pipe to the program")?;
+            let from = child.stdout.take().context("no pipe from the program")?;
+            // A write waits with a limit of its own rather than hold the
+            // kernel up for as long as the program does not read.
+            unsafe {
+                let fd = input.as_raw_fd();
+                libc::fcntl(fd, libc::F_SETFL, libc::fcntl(fd, libc::F_GETFL) | libc::O_NONBLOCK);
+            }
+            let output = Arc::new(Mutex::new(Output::default()));
+            let read = reader(from, output.clone(), self.wake.clone());
+            if let Err(err) = std::thread::Builder::new()
+                .name(format!("proc {id} output"))
+                .spawn(read)
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err).context("starting a thread to read the program's output");
+            }
+            self.pipes.insert(id, Pipe { input: Some(input), output });
+        }
         self.procs.insert(id, child);
         Ok(id)
+    }
+
+    /// The piped processes that have written something, or ended, since they
+    /// were last read. Each is named once until it is read again.
+    pub fn arrived(&mut self) -> Vec<u64> {
+        let mut ids = Vec::new();
+        for (id, pipe) in &self.pipes {
+            let mut output = pipe.output.lock().unwrap();
+            if !output.told && (output.closed || !output.bytes.is_empty()) {
+                output.told = true;
+                ids.push(*id);
+            }
+        }
+        ids.sort_unstable();
+        ids
+    }
+
+    /// Up to `max` bytes a piped process has written: empty when nothing is
+    /// waiting, `None` once it has closed its output and all of it was read.
+    pub fn read_output(&mut self, id: u64, max: usize) -> Result<Option<Vec<u8>>> {
+        let pipe = self
+            .pipes
+            .get(&id)
+            .with_context(|| format!("no process {id} with pipes"))?;
+        let mut output = pipe.output.lock().unwrap();
+        output.told = false;
+        if output.bytes.is_empty() {
+            return Ok((!output.closed).then(Vec::new));
+        }
+        let n = max.clamp(1, 1 << 24).min(output.bytes.len());
+        Ok(Some(output.bytes.drain(..n).collect()))
+    }
+
+    /// Write all of `data` to a piped process's input, waiting for room if
+    /// it is slow to read.
+    pub fn write_input(&mut self, id: u64, data: &[u8]) -> Result<()> {
+        let input = self
+            .pipes
+            .get_mut(&id)
+            .with_context(|| format!("no process {id} with pipes"))?
+            .input
+            .as_mut()
+            .with_context(|| format!("the input of process {id} is closed"))?;
+        write_all(input, data, || format!("process {id}"))
+    }
+
+    /// Close a piped process's input, which tells most programs to finish.
+    pub fn close_input(&mut self, id: u64) -> Result<()> {
+        self.pipes
+            .get_mut(&id)
+            .with_context(|| format!("no process {id} with pipes"))?
+            .input = None;
+        Ok(())
     }
 
     /// `{ running, code, pid }`; `code` is nil while running or when a signal ended it.
@@ -113,6 +231,7 @@ impl Io {
 
     /// Stop a process and forget it.
     pub fn kill(&mut self, id: u64) {
+        self.pipes.remove(&id);
         if let Some(mut child) = self.procs.remove(&id) {
             let _ = child.kill();
             let _ = child.wait();
@@ -189,23 +308,7 @@ impl Io {
             .streams
             .get_mut(&id)
             .with_context(|| format!("no connection {id}"))?;
-        let deadline = Instant::now() + WRITE_TIMEOUT;
-        let mut rest = data;
-        while !rest.is_empty() {
-            match stream.write(rest) {
-                Ok(0) => bail!("connection {id} is closed"),
-                Ok(n) => rest = &rest[n..],
-                Err(err) if err.kind() == ErrorKind::WouldBlock => {
-                    if Instant::now() > deadline {
-                        bail!("connection {id} stopped taking data");
-                    }
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                Err(err) if err.kind() == ErrorKind::Interrupted => {}
-                Err(err) => return Err(err.into()),
-            }
-        }
-        Ok(())
+        write_all(stream, data, || format!("connection {id}"))
     }
 
     /// Close a connection or a listener, removing a listener's socket file.
@@ -217,6 +320,62 @@ impl Io {
     }
 }
 
+/// Write all of `data` to something that does not block, waiting for room
+/// for at most `WRITE_TIMEOUT`.
+fn write_all(to: &mut impl Write, data: &[u8], name: impl Fn() -> String) -> Result<()> {
+    let deadline = Instant::now() + WRITE_TIMEOUT;
+    let mut rest = data;
+    while !rest.is_empty() {
+        match to.write(rest) {
+            Ok(0) => bail!("{} is closed", name()),
+            Ok(n) => rest = &rest[n..],
+            Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                if Instant::now() > deadline {
+                    bail!("{} stopped taking data", name());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(err) if err.kind() == ErrorKind::Interrupted => {}
+            Err(err) if err.kind() == ErrorKind::BrokenPipe => bail!("{} is closed", name()),
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Ok(())
+}
+
+/// What the thread reading a piped process's output does: keep what arrives
+/// until it is read, and wake the kernel.
+fn reader(
+    mut from: impl Read + Send + 'static,
+    to: Arc<Mutex<Output>>,
+    wake: Option<Wake>,
+) -> impl FnOnce() + Send + 'static {
+    move || {
+        let mut buf = vec![0u8; 1 << 16];
+        loop {
+            let n = match from.read(&mut buf) {
+                Err(err) if err.kind() == ErrorKind::Interrupted => continue,
+                Ok(n) => n,
+                Err(_) => 0,
+            };
+            {
+                let mut output = to.lock().unwrap();
+                if n == 0 {
+                    output.closed = true;
+                } else {
+                    output.bytes.extend_from_slice(&buf[..n]);
+                }
+            }
+            if let Some(wake) = &wake {
+                wake();
+            }
+            if n == 0 {
+                return;
+            }
+        }
+    }
+}
+
 impl Drop for Io {
     fn drop(&mut self) {
         let ids: Vec<u64> = self.listeners.keys().copied().collect();
@@ -224,6 +383,9 @@ impl Drop for Io {
             self.close(id);
         }
         self.streams.clear();
+        for pipe in self.pipes.values_mut() {
+            pipe.input = None;
+        }
         // A closed connection is how most helpers learn to quit, so give them a
         // moment to finish what they are writing before stopping them.
         let deadline = Instant::now() + Duration::from_millis(500);
@@ -239,5 +401,97 @@ impl Drop for Io {
         for id in ids {
             self.kill(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// An `Io` that counts how often it was woken.
+    fn counted() -> (Io, Arc<AtomicUsize>) {
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let mut io = Io::default();
+        let count = wakes.clone();
+        io.on_output(Arc::new(move || {
+            count.fetch_add(1, Ordering::SeqCst);
+        }));
+        (io, wakes)
+    }
+
+    fn piped(io: &mut Io, script: &str) -> u64 {
+        let argv = ["sh", "-c", script].map(String::from);
+        io.spawn(&argv, SpawnOpts { pipe: true, ..Default::default() }).unwrap()
+    }
+
+    /// Everything a process writes until it closes its output, read as the
+    /// kernel would: when it is named as having written.
+    fn read_to_end(io: &mut Io, id: u64) -> Vec<u8> {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut all = Vec::new();
+        loop {
+            assert!(Instant::now() < deadline, "the process never closed its output");
+            if !io.arrived().contains(&id) {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
+            }
+            loop {
+                match io.read_output(id, 7).unwrap() {
+                    None => return all,
+                    Some(bytes) if bytes.is_empty() => break,
+                    Some(bytes) => all.extend(bytes),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_piped_process_answers_what_it_is_sent_and_wakes_the_kernel() {
+        let (mut io, wakes) = counted();
+        let id = piped(&mut io, "cat");
+        let line = b"{\"jsonrpc\":\"2.0\",\"method\":\"ping\"}\n";
+        io.write_input(id, line).unwrap();
+        io.close_input(id).unwrap();
+        assert_eq!(read_to_end(&mut io, id), line.to_vec());
+        assert!(wakes.load(Ordering::SeqCst) >= 2, "woken for the bytes and for the end");
+        assert!(io.write_input(id, b"more").is_err(), "nothing goes into a closed input");
+        io.kill(id);
+        assert!(io.read_output(id, 1).is_err(), "a killed process is forgotten");
+    }
+
+    #[test]
+    fn a_process_is_named_once_until_it_is_read() {
+        let (mut io, _) = counted();
+        let id = piped(&mut io, "printf one; read _; printf two");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !io.arrived().contains(&id) {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(io.arrived().is_empty(), "not named again before it is read");
+        assert_eq!(io.read_output(id, 100).unwrap(), Some(b"one".to_vec()));
+        assert_eq!(io.read_output(id, 100).unwrap(), Some(Vec::new()), "nothing more yet");
+        io.write_input(id, b"\n").unwrap();
+        assert_eq!(read_to_end(&mut io, id), b"two".to_vec());
+    }
+
+    #[test]
+    fn a_piped_process_writes_its_errors_to_the_log_and_not_the_pipe() {
+        let (mut io, _) = counted();
+        let dir = std::env::temp_dir().join(format!("daw-io-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("helper.log");
+        let argv = ["sh", "-c", "echo out; echo err >&2"].map(String::from);
+        let opts = SpawnOpts { pipe: true, log: Some(log.clone()), ..Default::default() };
+        let id = io.spawn(&argv, opts).unwrap();
+        assert_eq!(read_to_end(&mut io, id), b"out\n".to_vec());
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while io.status(id).unwrap()["running"] == true {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(std::fs::read_to_string(&log).unwrap(), "err\n");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

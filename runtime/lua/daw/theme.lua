@@ -215,6 +215,20 @@ local function build()
     SnippetNote = { fg = c.bg, bg = c.visual, bold = true },
     SnippetSpan = { fg = c.bg, bg = c.visual },
     SnippetGhost = { fg = c.visual, bg = c.bg_hl },
+    -- Diagnostics (daw.diagnostic): the mark, a note underlined, the message
+    -- after it.
+    DiagnosticError = { fg = c.red, bold = true },
+    DiagnosticWarn = { fg = c.mute, bold = true },
+    DiagnosticInfo = { fg = c.normal },
+    DiagnosticHint = { fg = c.dim },
+    DiagnosticUnderlineError = { fg = c.red, underline = true, bold = true },
+    DiagnosticUnderlineWarn = { fg = c.mute, underline = true, bold = true },
+    DiagnosticUnderlineInfo = { fg = c.normal, underline = true },
+    DiagnosticUnderlineHint = { underline = true },
+    DiagnosticVirtualTextError = { fg = c.red, italic = true },
+    DiagnosticVirtualTextWarn = { fg = c.mute, italic = true },
+    DiagnosticVirtualTextInfo = { fg = c.normal, italic = true },
+    DiagnosticVirtualTextHint = { fg = c.faint, italic = true },
 
     DeviceName = { fg = c.bright, bold = true },
     DeviceOff = { fg = c.faint, strike = true },

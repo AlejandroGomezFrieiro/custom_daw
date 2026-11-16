@@ -172,6 +172,16 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `<C-s>` `:w` | save |
 | `ZZ` `ZQ` `:q` | save and quit, quit, quit |
 
+## Diagnostics and language servers
+
+| Keys | |
+| --- | --- |
+| `]d` `[d` | next, previous diagnostic (in A: clip with diagnostics) |
+| `gK` | in R: what the diagnostics and language servers say about the note |
+| `,ca` | in R: the fixes for the note; Enter applies one, as one undo step |
+| `:diagnostics` | every diagnostic in a list; Enter goes there |
+| `:lsp` | the language servers: `:lsp info`, `:lsp restart`, `:lsp log` |
+
 ## The tutor
 
 | Keys | |
