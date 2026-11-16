@@ -449,6 +449,20 @@ function M.save_as(after)
   })
 end
 
+daw.option.define("native_dialogs", true) -- the window opens the desktop's file dialogs, not the kernel's list
+
+--- What the window needs to open the desktop's own file dialog: `native`,
+--- whether to (the option, and the dialogs shown are the kernel's own when
+--- the window is turned off), `dir`, where to start (where a file was last
+--- chosen, else beside the project, else home: as the list picker does),
+--- and `name`, the project's file name, for "Save as".
+function M.dialog_info()
+  local p = api.project_get()
+  local dir = daw.state.pick_dir or (p.path and p.path:match("^(.*)/[^/]+$")) or os.getenv("HOME") or "/"
+  local name = p.path and p.path:match("([^/]+)$") or ((p.name ~= "" and p.name or "song") .. ".json")
+  return { native = daw.opt.native_dialogs and true or false, dir = dir, name = name }
+end
+
 --- Whether closing now would lose anything: { modified, name, path }.
 function M.closing()
   local p = api.project_get()
@@ -1278,8 +1292,14 @@ function A.hold(track, target, device, param, on)
   api.automation_hold(track, target, device, param, on)
 end
 
---- Leave the project: `what` is "quit", "new" (an empty project) or
---- "open" (another, chosen from a list). `how` is "save" to save its
+--- Where a file was chosen is where the next choice starts.
+local function remember_dir(path)
+  daw.state.pick_dir = path:match("^(.*)/[^/]*$") or daw.state.pick_dir
+end
+
+--- Leave the project: `what` is "quit", "new" (an empty project), "open"
+--- (another, chosen from a list) or "open:<path>" (that one, already
+--- chosen: by the desktop's dialog, or dropped on the window). `how` is "save" to save its
 --- changes first (asking where, for a project with no file yet),
 --- "discard" to throw them away, or "go" when there are none.
 function A.leave(how, what)
@@ -1290,7 +1310,10 @@ function A.leave(how, what)
     elseif what == "new" then
       daw.project.new()
     else
-      daw.commands.exec("open")
+      local path = what:match("^open:(.+)$")
+      if not path then return daw.commands.exec("open") end
+      remember_dir(path)
+      daw.commands.run("open", { path })
     end
   end
   if how ~= "save" then return go() end
@@ -1299,6 +1322,57 @@ function A.leave(how, what)
     return go()
   end
   M.save_as(go)
+end
+
+--- A file chosen in the desktop's dialog, for what `kind` says: "import"
+--- (a sound file on a new track) or "saveas" (the project's new file).
+function A.chosen(kind, path)
+  remember_dir(path)
+  if kind == "saveas" then
+    if not path:match("%.[%w]+$") then path = path .. ".json" end
+    daw.notify("saved " .. daw.project.save(path))
+  else
+    daw.commands.run("import", { path })
+  end
+end
+
+--- Files dropped on the window: sound files and projects. A project (the
+--- first of them, when there are several) is not opened here, for the
+--- window asks about unsaved changes first: its path is returned as
+--- `open`. Sound files go on the track at `row` (a place in the list of
+--- drawn tracks, from 1) at `beat`, snapped, one after another; with no
+--- track there (below the last, or where the window cannot tell) each gets
+--- a track of its own, at `beat` or the edit cursor. Anything else is said
+--- to be refused. Returns `{ open, clips, refused }`.
+function A.drop(paths, row, beat)
+  local out = { clips = {}, refused = 0 }
+  local sounds = {}
+  for _, path in ipairs(paths) do
+    if daw.is_audio_file(path) then
+      sounds[#sounds + 1] = path
+    elseif path:lower():match("%.json$") then
+      out.open = out.open or path
+    else
+      out.refused = out.refused + 1
+      daw.notify("cannot take " .. (path:match("([^/]+)$") or path) .. ": it is neither a sound file nor a project", "warn")
+    end
+  end
+  if out.open then return out end
+  local rows = daw.groups.rows()
+  local track = row and rows[row]
+  local start = beat and snap(beat)
+  for _, path in ipairs(sounds) do
+    local ok, clip = pcall(daw.import_audio, path, { track = track, start = start })
+    if ok then
+      out.clips[#out.clips + 1] = clip.id
+      if track then start = clip.start + clip.length end
+      daw.notify(string.format("dropped %s: %.1f beats on track “%s”", path:match("([^/]+)$") or path, clip.length, clip:track().name))
+    else
+      out.refused = out.refused + 1
+      daw.notify("could not import " .. path .. ": " .. tostring(clip), "error")
+    end
+  end
+  return out
 end
 
 --- The lanes of a lane's track are no longer shown as rows.

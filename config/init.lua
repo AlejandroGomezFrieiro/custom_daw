@@ -50,6 +50,7 @@ end
 -- daw.opt.autosave = 60         -- seconds between safety copies; 0 for none
 -- daw.opt.threads = 0           -- audio threads; 0 leaves it to the machine
 -- daw.opt.keybar = true         -- the line of keys at the bottom of the terminal
+-- daw.opt.native_dialogs = true -- the window opens, saves and imports with the desktop's file dialog; false for the kernel's list
 -- daw.opt.editor_on_add = true  -- a plugin added by hand (picker, `:device.add`, the window) opens its own window
 
 -- A colour of your own for anything on screen:

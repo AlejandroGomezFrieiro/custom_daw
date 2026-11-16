@@ -1061,13 +1061,35 @@ does wherever it is.
 | Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
 | Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
-| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC, the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line |
+| File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC, the sample size, the tail, normalizing, dither, mono, and a file per track; the render runs in the background with its progress and a Cancel in the status line. Open…, Save as…, Import and the render's `…` button show the desktop's own file dialog (see below) |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
 | Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it |
 | Wheel | scrolls; with Shift sideways; with Ctrl it zooms in time where the pointer is, in the timeline and in the piano roll, and over the track headers makes every track taller or shorter; with Alt it makes the tracks (or the piano roll's rows) taller and shorter |
 | Pages over the window | a picker's rows (commands, files, devices) take the pointer: a click selects a row, a double click or Enter chooses it, the wheel scrolls; a click outside closes the page |
 | Zoom | the buttons in the corner of the timeline: `−` and `+` in time (`Ctrl -`, `Ctrl +`), `Fit` for the whole song (`Ctrl 0`), the arrows for the height of the tracks (`Ctrl ↑`, `Ctrl ↓`), from one line a track to tall ones. Waveforms are drawn again at the width they then have |
 | Sound files | `Track` → "From a sound file…", or "Import a sound file…" in the timeline's menu, lists files to choose from (type to narrow, Enter walks into a directory): wav, aiff, flac, mp3 and ogg come in on a track of their own at the cursor. `:import path` does the same, and `daw-gui take.mp3` starts a project with the file |
+
+When the window started its kernel, so that the kernel's disk is the
+window's, files are chosen in the desktop's own dialog, asked for through
+the XDG desktop portal (`org.freedesktop.portal.FileChooser` over D-Bus, with
+no toolkit linked). It offers projects, sound files and all files, and starts
+where a file was last chosen, else beside the project; the list picker starts
+in the same place. The dialog does not stop the window. Without a portal (no
+session bus, a bare window manager), with `daw.opt.native_dialogs = false`, or
+when the window is attached to a kernel with `--socket` (which may be on
+another machine), the kernel's list picker is used, as it always was. A
+project chosen this way asks about unsaved changes like any other way of
+opening one: `daw.frontend.act.leave(how, "open:" .. path)`.
+
+Files can be dragged in from a file manager on X11: a sound file becomes a
+track of its own, one for each file dropped together, with the clip at the
+edit cursor; a project (`.json`) asks to open it, through the same question
+about unsaved changes; anything else is named in the status line as not
+taken. What a drop means is `daw.frontend.act.drop(paths, row, beat)`: with a
+`row` (a place in the list of tracks) and a `beat` it puts the files one
+after another on that track, at the beat on the grid; the window cannot say
+where the pointer was, for winit 0.30 does not tell, so it passes neither.
+Wayland sends the window no drops at all with this version of winit.
 
 Every key still goes to the kernel's key mappings, so the window is also
 driven exactly as the terminal UI is: the same modes, operators, registers
@@ -1573,5 +1595,9 @@ port a message came through is not told apart. In scripts:
 - In the graphical frontend: what the other bundled extensions draw in the
   terminal (sections, the undo tree, mix diagnostics); only the vocal editor
   has a window so far.
+- Dropping files where the pointer is: the window cannot learn where a file
+  from a file manager is dropped (winit 0.30 reports no position), and on
+  Wayland it is told of no drops at all. The desktop's file dialogs are
+  not shown for a kernel the window attached to with `--socket`.
 - Devices written in Lua.
 - A Nix package: for now the binary is built with `cargo` inside the dev shell.
