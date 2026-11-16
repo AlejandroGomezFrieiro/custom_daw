@@ -23,7 +23,7 @@ use serde_json::{Map, Value, json};
 use crate::history::{self, History};
 use crate::model::{
     Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Send,
-    StretchMode, Target, Timebase, Track, parse_input,
+    StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 
@@ -221,6 +221,8 @@ pub struct ClipOpts {
     pub pitch: f64,
     pub stretch_mode: StretchMode,
     pub source_tempo: Option<f64>,
+    pub warp: Vec<WarpMarker>,
+    pub formants: bool,
     #[serde(rename = "loop")]
     pub looped: bool,
     pub loop_length: Option<f64>,
@@ -1909,6 +1911,7 @@ impl Session {
         }
         let stretch = opts.stretch.unwrap_or(1.0);
         stretching::check_playing(kind, stretch, opts.pitch, opts.source_tempo)?;
+        stretching::check_warp(kind, &opts.warp)?;
         if opts.loop_length.is_some_and(|l| !l.is_finite() || l <= 0.0)
             || !opts.loop_start.is_finite()
         {
@@ -1925,6 +1928,8 @@ impl Session {
                 pitch: opts.pitch,
                 stretch_mode: opts.stretch_mode,
                 source_tempo: opts.source_tempo.filter(|_| kind == "audio"),
+                warp: opts.warp.clone(),
+                formants: opts.formants,
                 looped: opts.looped && opts.loop_length.is_some(),
                 loop_length: opts.loop_length,
                 loop_start: opts.loop_start,
@@ -1998,10 +2003,12 @@ impl Session {
         let ClipContent::Audio { file, offset, .. } = &clip.content else {
             bail!("clip {id} is not an audio clip");
         };
-        let (file, offset, start, stretch) = (file.clone(), *offset, clip.start, clip.stretch);
+        let (file, offset, start) = (file.clone(), *offset, clip.start);
+        let map = self.project.tempo_map().clone();
+        let warp = crate::warp::of(clip, &map).unwrap_or_else(|| crate::warp::Warp::even(1.0));
         let data = self.audio.load(&file)?;
-        let map = self.project.tempo_map();
-        let seconds = (data.seconds() - offset).max(0.0) * stretch;
+        let seconds = (warp.forward(data.seconds()) - warp.forward(offset)).max(0.0);
+
         Ok(map.beat(map.seconds(start) + seconds) - start)
     }
 

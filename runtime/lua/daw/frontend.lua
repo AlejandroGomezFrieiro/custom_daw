@@ -509,6 +509,12 @@ function M.state(known)
       local mark = daw.stretch.badge(clip)
       local notches = daw.stretch.repeats(clip)
       local repeats = clip.loop and string.format("|%.17g|%.17g", clip.loop_start, clip.loop_length) or ""
+      -- Its warp markers, in beats from its start; they change its waveform.
+      local warps = {}
+      for j, m in ipairs(clip.warp or {}) do
+        warps[j] = m.beat - clip.start
+        repeats = repeats .. string.format("|%.17g:%.17g", m.source, m.target)
+      end
       out.clips[#out.clips + 1] = {
         -- In take lanes: each take's name, and what changes exactly when
         -- its picture does (fetch `M.take_preview` again then).
@@ -531,7 +537,7 @@ function M.state(known)
           and string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
             daw.time.seconds(clip.length, clip.start), clip.stretch, clip.pitch, tostring(clip.stretching), repeats) or nil,
         -- Whether it loops, and where its repeats begin, in beats from its start.
-        loop = clip.loop or nil, notches = notches,
+        loop = clip.loop or nil, notches = notches, warps = warps,
       }
     end
   end
@@ -1009,7 +1015,7 @@ end
 --- How far before an audio clip's start its file begins, in beats of the
 --- tempo map there (a negative number).
 local function file_start(c)
-  return daw.time.to_beat(math.max(0, daw.time.to_seconds(c.start) - c.offset * (c.stretch or 1))) - c.start
+  return daw.time.to_beat(math.max(0, daw.time.to_seconds(c.start) - daw.stretch.lead(c))) - c.start
 end
 
 --- Drag an edge of a clip, and the same edge of the clips chosen with it:
@@ -1123,6 +1129,28 @@ function A.stretch_clip(id, what)
     if from then daw.stretch.fit(id, from, to) else daw.stretch.reset(id) end
   end)
   if not ok then daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+end
+
+--- Warp markers in the window (`daw.stretch.warp_add`): a double click on
+--- an audio clip's top band puts one at `beat`; a marker's handle dragged
+--- moves marker `index` to `beat` (on the grid unless `free`), stretching
+--- the sound on either side of it; its menu takes it off. Each one undo
+--- step; a refusal is said, not raised.
+local function warp_run(f, ...)
+  local ok, err = pcall(f, ...)
+  if not ok then daw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):gsub("^runtime error: ", "")), "warn") end
+end
+
+function A.warp_add(id, beat)
+  warp_run(daw.stretch.warp_add, id, math.max(0, beat))
+end
+
+function A.warp_move(id, index, beat, free)
+  warp_run(daw.stretch.warp_move, id, index, free and math.max(0, beat) or snap(beat))
+end
+
+function A.warp_remove(id, index)
+  warp_run(daw.stretch.warp_remove, id, index)
 end
 
 --- The handle at a top corner of an audio clip: its fade in (`which` "in")

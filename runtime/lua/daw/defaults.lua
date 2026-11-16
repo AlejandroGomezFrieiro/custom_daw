@@ -978,6 +978,46 @@ command("clip.stretch_mode", function(ctx)
   if mode then stretch_run(function() clip.stretch_mode = mode end) end
   daw.notify(clip.name .. " is stretched as " .. tostring(clip.stretch_mode))
 end, { desc = "How an audio clip is stretched: `clip.stretch_mode tonal` (held notes), `percussive` (drums, speech), `auto`", complete = { "auto", "tonal", "percussive" } })
+command("clip.warp", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips have warp markers", "warn") end
+  local word, beat = ctx.args[1] or "add", cursor.beat
+  local index = tonumber(ctx.args[2])
+  local function say(i)
+    local m = api.clip_get(clip.id).warp[i]
+    daw.notify(string.format("warp marker %d: %.3f s into the file, at %s", i, m.source, daw.time.format(m.beat)))
+  end
+  local i
+  if word == "add" then
+    if stretch_run(function() i = daw.stretch.warp_add(clip.id, index or beat) end) then say(i) end
+  elseif word == "remove" or word == "move" then
+    index = index or daw.stretch.warp_near(clip, beat)
+    if not index then return daw.notify(clip.name .. " has no warp markers", "warn") end
+    if word == "remove" then
+      if stretch_run(daw.stretch.warp_remove, clip.id, index) then daw.notify("warp marker " .. index .. " taken off") end
+    elseif stretch_run(function() i = daw.stretch.warp_move(clip.id, index, tonumber(ctx.args[3]) or beat) end) then
+      say(i)
+    end
+  elseif word == "snap" then
+    if stretch_run(daw.stretch.warp_snap, clip.id) then daw.notify(clip.name .. "'s warp markers are on the grid") end
+  elseif word == "clear" then
+    if stretch_run(function() clip.warp = {} end) then daw.notify(clip.name .. " has no warp markers now") end
+  else
+    daw.notify("clip.warp add, remove, move, snap or clear", "warn")
+  end
+end, { desc = "Warp markers: `clip.warp` pins the sound at the cursor; `clip.warp move` pulls the nearest marker to the cursor (`move 2`: marker 2, `move 2 8.5`: to beat 8.5); `clip.warp remove`, `snap` (all onto the grid), `clear`",
+  complete = { "add", "remove", "move", "snap", "clear" } })
+command("clip.formants", function(ctx)
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return daw.notify("only audio clips are shifted", "warn") end
+  local word = ctx.args[1]
+  local on = word == "on" or (word ~= "off" and not clip.formants)
+  if stretch_run(function() clip.formants = on end) then
+    daw.notify(clip.name .. (on and " keeps its formants when shifted" or " shifts its formants with its pitch"))
+  end
+end, { desc = "Keep an audio clip's formants when its pitch is shifted, so that a voice keeps its size: `clip.formants on`, `off`, or turn it over", complete = { "on", "off" } })
 command("clip.loop", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -1800,6 +1840,8 @@ amap("J", "clip.join", "Join the clip with the next one")
 amap("<CR>", "clip.edit", "Edit the clip's notes")
 amap("i", "clip.insert", "Enter notes here, in a new clip if there is none")
 amap("grc", "clip.rename", "Rename the clip")
+amap("gw", "clip.warp", "Put a warp marker on the audio clip at the cursor")
+amap("gW", "clip.warp remove", "Take off the clip's warp marker nearest the cursor")
 amap("L", "clip.move by=1", "Move the clip right")
 amap("H", "clip.move by=-1", "Move the clip left")
 amap("<A-l>", "clip.resize by=1", "Lengthen the clip")

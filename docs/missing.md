@@ -3,12 +3,14 @@
 - Editing the tempo lane with the mouse in the terminal (it draws the curve;
   changes are made by command there), and a tempo curve that is smooth: a
   drawn stroke makes a change a beat or so, each ramping to the next.
-- In stretching: formants are not kept, so a voice shifted far sounds
-  smaller or larger; ratios are 0.25 to 4 and shifts 24 semitones either
-  way; a clip following the tempo is stretched evenly over its length, not
-  bent along a ramp inside it; a stretch is made whole before it plays,
-  so a long file takes a few seconds and is silent meanwhile; no warp
-  markers to stretch parts of a clip by different amounts.
+- In stretching: ratios are 0.25 to 4 (each part between warp markers
+  too) and shifts 24 semitones either way; a stretch is always made from
+  the start of its file, so the playhead put far into a long clip just
+  changed is silent there until the making gets that far; formants are
+  kept only by the tonal way; a looped clip following the tempo is
+  stretched evenly, not bent along a ramp inside it; warp markers are not
+  found by themselves at onsets (each is put by hand), and the other takes
+  of a clip share its markers.
 - Plugins with main buses wider than stereo (surround), and inputs beyond
   the main pair and one side-chain.
 - Pre-roll without a punch (a take from the playhead is not played in from

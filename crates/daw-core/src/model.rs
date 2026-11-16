@@ -343,6 +343,16 @@ pub struct Clip {
     /// `stretch`. Recordings know theirs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_tempo: Option<f64>,
+    /// Warp markers of an audio clip, in the order of their moments of the
+    /// file: each part of the file between two is stretched on its own
+    /// (see `warp.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warp: Vec<WarpMarker>,
+    /// An audio clip shifted in pitch keeps its formants (the shape of its
+    /// spectrum, which says what vowel is sung), so that a voice does not
+    /// sound smaller or larger.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub formants: bool,
     /// The clip repeats what it plays from `loop_start` for `loop_length`
     /// beats, over its whole length.
     #[serde(default, rename = "loop", skip_serializing_if = "is_false")]
@@ -377,6 +387,15 @@ pub enum Timebase {
 
 pub use crate::stretch::Mode as StretchMode;
 
+/// A warp marker: the moment `source` of a clip's file plays where its
+/// moment `target` would without the markers, both in seconds of the file,
+/// the clip's stretch then applied to both.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WarpMarker {
+    pub source: f64,
+    pub target: f64,
+}
+
 fn one() -> f64 {
     1.0
 }
@@ -390,12 +409,6 @@ fn is_auto(mode: &StretchMode) -> bool {
 }
 
 impl Clip {
-    /// Whether what an audio clip plays is made apart, stretched or shifted.
-    pub fn is_stretched(&self) -> bool {
-        matches!(self.content, ClipContent::Audio { .. })
-            && (self.stretch != 1.0 || self.pitch != 0.0)
-    }
-
     /// The beats a looped clip repeats, if it loops.
     pub fn repeat(&self) -> Option<(f64, f64)> {
         let length = self.loop_length.filter(|l| *l > 0.0)?;
@@ -1033,6 +1046,17 @@ impl Project {
                         range(&format!("the pitch of clip {}", c.id), c.pitch, -most, most)?;
                         if let Some(bpm) = c.source_tempo {
                             range(&format!("the tempo of clip {}", c.id), bpm, 1.0, 999.0)?;
+                        }
+                        let finite = c
+                            .warp
+                            .iter()
+                            .all(|m| m.source.is_finite() && m.target.is_finite());
+                        let ordered = c
+                            .warp
+                            .windows(2)
+                            .all(|w| w[1].source > w[0].source && w[1].target > w[0].target);
+                        if !finite || !ordered {
+                            bail!("the warp markers of clip {} are out of order", c.id);
                         }
                     }
                 }
