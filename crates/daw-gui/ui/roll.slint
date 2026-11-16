@@ -61,6 +61,16 @@ export struct ControlData {
     selected: bool,     // one of the moves chosen with the pointer
 }
 
+// A note a diagnostic is about (daw.diagnostic), with the worst severity
+// said of it: 1 error, 2 warning, 3 information, 4 hint.
+export struct MarkData {
+    index: int,         // the note's place among all the clip's notes, from 0
+    pitch: int,
+    start: float,
+    length: float,
+    severity: int,
+}
+
 export global Roll {
     in property <bool> open;
     in property <bool> detached;        // shown in its own window
@@ -86,6 +96,12 @@ export global Roll {
     // Notes of the track's other clips that sound during this one, in this
     // clip's beats: drawn faintly behind its own.
     in property <[NoteData]> ghosts;
+    // The notes diagnostics are about, outlined over them and marked on the ruler.
+    in property <[MarkData]> marks;
+    // What the diagnostics say about a note, and the titles of their
+    // fixes: what its hint and its Ctrl right click menu show.
+    pure callback note-message(int) -> string;
+    pure callback note-actions(int) -> [string];
     // Which keys sound now, by pitch.
     in property <[bool]> sounding;
     // What the layers draw under the notes (other tracks' notes, first)
@@ -418,6 +434,10 @@ export component PianoRoll inherits Rectangle {
                 max(root.bx0, root.bx1) / root.beat,
                 127 - floor(min(root.by0, root.by1) / root.note-height),
                 shift ? 1 : control && !root.box-left ? 2 : 0);
+        } else if (!root.box-left && root.box-note >= 0 && control) {
+            root.menu-note = root.box-note;
+            root.menu-actions = Roll.note-actions(root.box-note);
+            note-menu.show({ x: menu-x, y: menu-y });
         } else if (!root.box-left && root.box-note >= 0) {
             Roll.remove-note(root.box-note);
         } else if (!root.box-left) {
@@ -437,6 +457,37 @@ export component PianoRoll inherits Rectangle {
     }
 
     background: Theme.panel;
+
+    // Ctrl and a right click on a note: the fixes of the diagnostics about
+    // it, and what the language servers say about it.
+    property <int> menu-note: -1;
+    property <[string]> menu-actions;
+    pure function severity-color(severity: int) -> color {
+        severity == 1 ? #ef5b5b : severity == 2 ? #e8a33d : severity == 3 ? #6aa9e9 : #8a91a3
+    }
+    note-menu := ContextMenuArea {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        Menu {
+            for action[at] in root.menu-actions: MenuItem {
+                title: action;
+                activated => {
+                    Roll.act("note_action", [root.menu-note + 1, at + 1]);
+                    Roll.focus-keys();
+                }
+            }
+            MenuItem {
+                title: "What the language servers say about it";
+                activated => {
+                    Roll.act("note_hover", [root.menu-note + 1]);
+                    Roll.focus-keys();
+                }
+            }
+        }
+        Rectangle { }
+    }
 
     // What a right click on empty grid offers.
     grid-menu := ContextMenuArea {
@@ -770,6 +821,14 @@ export component PianoRoll inherits Rectangle {
                         x: Roll.length * root.beat + roll.content-x;
                         width: parent.width;
                         background: #00000066;
+                    }
+                    // Where each note a diagnostic is about starts.
+                    for mark in Roll.marks: Rectangle {
+                        x: root.seen-x(mark.start * root.beat) + roll.content-x;
+                        y: parent.height - 8px;
+                        width: 3px;
+                        height: 8px;
+                        background: root.severity-color(mark.severity);
                     }
                     // The playhead, with its cap.
                     if Roll.position >= Roll.start && Roll.position <= Roll.start + Roll.length: Path {
@@ -1206,7 +1265,7 @@ export component PianoRoll inherits Rectangle {
                                 root.box-begin(parent.x + self.x + self.mouse-x, parent.y + self.mouse-y, false, note.index);
                             }
                             if (event.kind == PointerEventKind.up && event.button == PointerEventButton.right && root.boxing) {
-                                root.box-end(event.modifiers.shift, event.modifiers.control, 0, 0);
+                                root.box-end(event.modifiers.shift, event.modifiers.control, parent.x + self.x + self.mouse-x + roll.content-x + root.keys-width, parent.y + self.mouse-y + roll.content-y + root.ruler-height + 32px);
                             }
                         }
                         double-clicked => {
@@ -1214,7 +1273,7 @@ export component PianoRoll inherits Rectangle {
                         }
                         changed has-hover => {
                             root.hover-pitch = self.has-hover ? note.pitch : -1;
-                            root.say("note: drag moves it and the others chosen (Shift off the grid, Ctrl copies) · either end changes its length · Shift or Ctrl click adds or takes it out · right click or double click removes", self.has-hover);
+                            root.say(Roll.note-message(note.index) != "" ? Roll.note-message(note.index) + " · Ctrl right click for its fixes" : "note: drag moves it and the others chosen (Shift off the grid, Ctrl copies) · either end changes its length · Shift or Ctrl click adds or takes it out · right click or double click removes · Ctrl right click: fixes and what the servers say", self.has-hover);
                         }
                     }
                     // The ends: drag to change where the note starts or stops.
@@ -1284,6 +1343,18 @@ export component PianoRoll inherits Rectangle {
                             }
                         }
                     }
+                }
+                // The notes diagnostics are about, outlined in the colour
+                // of the worst said of each, over the notes (a drawing only:
+                // the pointer goes through to the note).
+                for mark in Roll.marks: Rectangle {
+                    x: root.seen-x(mark.start * root.beat) - 2px;
+                    y: (127 - mark.pitch) * root.note-height - 2px;
+                    width: max(3px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px)) + 4px;
+                    height: root.note-height + 3px;
+                    border-radius: 3px;
+                    border-width: 2px;
+                    border-color: root.severity-color(mark.severity);
                 }
                 // The layers over the notes: marks of a language server, a
                 // snippet, suggestions. They let the pointer through.

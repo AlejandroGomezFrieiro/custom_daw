@@ -128,7 +128,7 @@ daw.keymap.feed("3jdd")          daw.keymap.normal("dic")  -- as typed; from ins
 daw.edit.arrange.yank(region)    daw.edit.arrange.paste(value)   daw.edit.roll.delete(clip, region)
 track:snapshot()                 daw.restore_track(snapshot, index)   -- with devices, clips, automation
 daw.roll_clips.parts()           daw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/harmony.md)
-daw.ui.views.pianoroll.layer("lint", { order = 10, marks = fn })      -- draw in the piano roll, both frontends
+daw.ui.views.pianoroll.layer("lint", 35, paint, marks)                -- draw in the piano roll, both frontends
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
 view.grid = { get = function() return row, beat end, set = function(row, beat) end, step = function() return 1 end }
@@ -182,7 +182,36 @@ leaves it the time to), `proc_kill(id)`; `sock_listen(path)`, `sock_connect(path
 `sock_accept(id)`, `sock_read(id)` (`""` when nothing has arrived, nil once
 closed), `sock_write(id, bytes)`, `sock_close(id)`. A device that takes data
 from scripts answers `daw.api.device_call(device, method, bytes)`. A helper
-is asked to finish when the program ends, however it ends.
+is asked to finish when the program ends, however it ends. Started with
+`{ pipe = true }`, a program is talked to over its standard input and
+output instead (its errors still go to `log`): `proc_write(id, bytes)`,
+`proc_read(id)` (`""` when nothing is waiting, nil once it closed its
+output), `proc_close_input(id)`; a `proc.output` event (`{ id }`) says when
+there is something to read, so nothing polls.
+
+**Diagnostics and language servers.** `daw.diagnostic` is `vim.diagnostic`
+for clips: `set(namespace, clip, list)` with each
+`{ notes = { places }, at, length, severity, message, rule, source, fixes }`
+(`severity` 1 to 4, or "error", "warning", "info", "hint"; a fix is
+`{ title, edits = { { note, pitch | delete | start | length | velocity } } }`
+or `{ title, apply = fn }`), `get(clip, { namespace, severity, note })`,
+`count(clip)`, `reset(namespace, clip)`, `config({ virtual_text, signs,
+underline, severity_sort })`, `actions(clip, place)`, `apply(d, fix)` (one
+undo step), `goto_next()`, `goto_prev()`, `list()`; event
+`diagnostic.changed`. `daw.lsp` is `vim.lsp`: `config(name, { cmd, framing,
+attach, settings, init_options, restart })`, `enable(name, on)`,
+`clients()`, `restart(name)`, `stop(name)`, `request(name, method, params,
+function(err, result) end)`, `notify(name, method, params)`,
+`daw.lsp.handlers[method] = function(client, params) end`, `hover(clip,
+pitch, beat, cb)`, `complete(ctx, done)`, `attach(name, clip)` to keep a
+clip open in a server, `settle()` for scripts; events `lsp.status`,
+`lsp.analysis`. See [Language servers and diagnostics](lsp.md).
+
+**Layers of the piano roll.** `daw.ui.views.pianoroll.layer(name, order,
+paint)` draws over the roll in order: below 20 under the clip's notes,
+above it over them (diagnostics are 30), always under the cursor. `paint(p)`
+gets the roll's and the ruler's cells, the clip, and `p.x(beat)`,
+`p.row(pitch)` to place things.
 `daw.json.encode(value, pretty)` and `daw.json.decode(text)` are for what an
 extension keeps in files of its own.
 

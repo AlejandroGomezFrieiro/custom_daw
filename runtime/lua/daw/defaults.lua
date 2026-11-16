@@ -2189,6 +2189,19 @@ pmap("<Esc>", function()
   daw.ui.focus("arrange")
 end, "Let go of the chosen notes; back to the arrange view")
 
+-- Diagnostics and language servers (daw.diagnostic, daw.lsp). `K` is an
+-- octave up here, so what the servers say about a note is `gK`.
+pmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic", { jump = true })
+pmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic", { jump = true })
+amap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next clip with diagnostics", { jump = true })
+amap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous clip with diagnostics", { jump = true })
+pmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
+pmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes for the note, or for the diagnostics here")
+command("diagnostics", function(ctx) daw.diagnostic.list(ctx.args[1] == "clip" and daw.ui.views.pianoroll.clip_id or nil) end,
+  { desc = "List the diagnostics, of every clip or (`diagnostics clip`) the piano roll's; Enter goes to one", complete = { "clip" } })
+command("lsp", function(ctx) daw.lsp.command(ctx) end,
+  { desc = "Language servers: `lsp info`, `lsp start|stop|restart [name]`, `lsp log`", complete = function() return daw.lsp.command_complete() end })
+
 -- Piano roll: on a selection.
 local function px(lhs, fn, desc)
   map(lhs, nil, { view = "pianoroll", mode = "x", desc = desc, operator = function(region, ctx)

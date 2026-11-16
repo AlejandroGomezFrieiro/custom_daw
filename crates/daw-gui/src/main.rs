@@ -1206,6 +1206,10 @@ struct View {
     /// Notes of the roll's track's other clips that sound during its clip,
     /// and which keys sound now.
     ghosts: Rc<VecModel<NoteData>>,
+    /// The notes diagnostics are about, and for each by its place in the
+    /// roll what they say and the titles of their fixes.
+    marks: Rc<VecModel<MarkData>>,
+    mark_notes: Rc<RefCell<HashMap<i32, (SharedString, Vec<SharedString>)>>>,
     /// All of the clip's notes, its other clips' and the song's lines over
     /// it; the models hold those of the stretch `roll_for` (beats) alone.
     roll_notes: Vec<NoteData>,
@@ -1560,6 +1564,7 @@ impl View {
             roll.set_open(false);
         }
         let _ = self.roll_window.hide();
+        self.show_marks(&Value::Null);
     }
 
     /// Fill the strip under the piano roll with the controller it shows.
@@ -1802,10 +1807,35 @@ impl View {
                 shown.set_chosen_text(text(&roll["chosen"]));
                 shown.set_step_input(roll["step_input"].as_bool().unwrap_or(false));
             }
+            self.show_marks(&roll["marks"]);
         }
         ui.set_row_device(modal["device"].as_i64().unwrap_or(0) as i32);
         ui.set_row_param(modal["param"].as_i64().unwrap_or(-1) as i32);
         Ok(())
+    }
+
+    /// Outline the notes diagnostics are about (the kernel's
+    /// `daw.diagnostic.roll_marks`), by their place in the roll.
+    fn show_marks(&mut self, marks: &Value) {
+        let mut notes = HashMap::new();
+        let mut shown = Vec::new();
+        for mark in rows(marks) {
+            let Some(index) = mark["index"].as_i64().and_then(|i| (i as usize).checked_sub(self.roll_hidden)) else {
+                continue;
+            };
+            let index = index as i32;
+            shown.push(MarkData {
+                index,
+                pitch: mark["pitch"].as_i64().unwrap_or(60) as i32,
+                start: number(&mark["start"]) - self.roll_origin,
+                length: number(&mark["length"]),
+                severity: mark["severity"].as_i64().unwrap_or(2) as i32,
+            });
+            let titles = rows(&mark["actions"]).iter().map(text).collect();
+            notes.insert(index, (text(&mark["message"]), titles));
+        }
+        sync(&self.marks, shown);
+        *self.mark_notes.borrow_mut() = notes;
     }
 
     /// Fetch the clip in the piano roll and show its notes, or close the roll
@@ -2691,6 +2721,8 @@ fn run() -> Result<()> {
         control_stroke: Vec::new(),
         erase_stroke: Vec::new(),
         ghosts: Rc::new(VecModel::default()),
+        marks: Rc::new(VecModel::default()),
+        mark_notes: Rc::new(RefCell::new(HashMap::new())),
         roll_notes: Vec::new(),
         roll_ghosts: Vec::new(),
         roll_refs: Vec::new(),
@@ -2766,6 +2798,16 @@ fn run() -> Result<()> {
         roll.set_notes(ModelRc::from(view.borrow().notes.clone()));
         roll.set_controls(ModelRc::from(view.borrow().controls.clone()));
         roll.set_ghosts(ModelRc::from(view.borrow().ghosts.clone()));
+        roll.set_marks(ModelRc::from(view.borrow().marks.clone()));
+        let notes = view.borrow().mark_notes.clone();
+        roll.on_note_message(move |index| {
+            notes.borrow().get(&index).map(|(message, _)| message.clone()).unwrap_or_default()
+        });
+        let notes = view.borrow().mark_notes.clone();
+        roll.on_note_actions(move |index| {
+            let titles = notes.borrow().get(&index).map(|(_, titles)| titles.clone()).unwrap_or_default();
+            ModelRc::new(VecModel::from(titles))
+        });
         roll.set_lines(ModelRc::from(view.borrow().roll_line_rows.clone()));
         roll.set_sounding(ModelRc::from(view.borrow().sounding.clone()));
         roll.set_under(ModelRc::from(view.borrow().under.clone()));
@@ -3514,7 +3556,7 @@ fn run() -> Result<()> {
             // clip's start); here by its place among those handed over.
             if matches!(
                 name,
-                "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity"
+                "drag_notes" | "stretch_notes" | "select_note" | "remove_note" | "set_velocity" | "note_action" | "note_hover"
             ) && let Some(index) = args.first().and_then(Value::as_i64)
                 && let Some(&(clip, place)) = view.borrow().roll_refs.get((index - 1).max(0) as usize)
             {

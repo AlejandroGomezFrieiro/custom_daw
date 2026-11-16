@@ -1,9 +1,32 @@
 # Harmony, completion and snippets
 
-Writing a part means hearing it against the others. The piano roll shows
-the other tracks' notes behind the clip it edits, can edit several clips at
-once, and draws in layers that language servers, completion and snippets
-add to.
+Seeing and writing the harmony of a song: what is wrong with the notes and
+how to fix it, the chords and key that sound, suggestions of what could
+come next, named snippets of music made from what is around the cursor,
+and the notes of several tracks in one piano roll. Each is a core module a
+plugin can feed, after Neovim's: `daw.diagnostic` and `daw.lsp` (as
+`vim.diagnostic` and `vim.lsp`), `daw.harmony`, `daw.complete`,
+`daw.snippet`. Without an extension loaded they are there and quiet.
+
+## Language servers and diagnostics
+
+A language server (MIDI LSP, or any program speaking its protocol) is sent
+the clip in the piano roll with the notes of every other track that sound
+with it, and what it says comes back to the places everyone uses:
+
+- **diagnostics**, such as a parallel fifth: the notes underlined in the
+  piano roll of the terminal and outlined in the window's, a mark on the
+  ruler, a count in the status line, `]d` `[d` to go from one to the next,
+  `:diagnostics` to list them;
+- **fixes**: `,ca` on a note (Ctrl and a right click in the window), one
+  undo step each;
+- **hover**: `gK` on a note, what the servers say about it;
+- **the chords and key it hears**, offered to `daw.harmony`;
+- **suggestions**, offered to `daw.complete` as a source.
+
+A plugin written in Lua publishes diagnostics just as a server does, with
+`daw.diagnostic.set`. The whole story, the protocol and MIDI LSP's
+extension are in [Language servers and diagnostics](lsp.md).
 
 ## Several tracks in the piano roll
 
@@ -60,29 +83,30 @@ cursor keeps its place in the song.
 - `daw.edit.roll.yank`, `delete`, `each` and `paste` take the list from
   `parts()` in place of a clip.
 - It is kept per seat: two people at one instance edit clips of their own.
+- Language servers keep every clip edited open, not only the active one.
 
 ## Layers of the piano roll
 
-The roll draws, back to front: the grid, the layers below 0 (the context
-notes are "context", at -10), the clips' notes ("notes", at 0), the layers
-above (diagnostics, a snippet's marks, suggestions), then the selection and
-the cursor. A module adds a layer once and both frontends draw it:
+The roll draws, back to front: the grid, other tracks' notes ("context",
+order 10), the clips' own notes ("notes", 20), diagnostics (30), a
+snippet's marks (40), suggestions (50), then the selection and the cursor.
+A module adds a layer with `daw.ui.views.pianoroll.layer(name, order,
+paint, marks)`:
 
 ```lua
-daw.ui.views.pianoroll.layer("lint", {
-  order = 10,
-  -- What to draw between two of the roll's beats.
-  marks = function(from, to)
+daw.ui.views.pianoroll.layer("lint", 35,
+  -- The terminal: draw in cells. `p` has `roll`, `ruler`, `clip`, `parts`,
+  -- `x(beat)`, `row(pitch)`, `from`, `to`, `zoom`, `top`, `rows`, `hue`.
+  function(p) local row = p.row(60) if row then p.roll:text(p.x(1), row, "!", "Error") end end,
+  -- The window (optional): rectangles between two of the roll's beats.
+  function(from, to)
     return { { pitch = 60, start = 1, length = 0.5, color = "#e05050", fill = 0.15, edge = 0.9 } }
-  end,
-  -- Optional, for the terminal: draw yourself instead of the marks.
-  -- paint = function(view, L) L.roll:text(L.x(1), L.row(60), "!", "Error") end,
-})
+  end)
 ```
 
-The window draws marks as rectangles (`fill` and `edge` are how opaque the
-inside and the border are), under the notes for a negative order and over
-them otherwise; the terminal as cells in `style`, or a faint shade of
-`color`. A layer changing without the project changing calls
-`daw.frontend.refresh()` for the window to fetch it again. `layer(name,
-nil)` takes it away.
+The window draws `marks` as rectangles (`fill` and `edge` are how opaque
+the inside and the border are), under the notes below order 20 and over
+them from there. A layer with marks and no painter is drawn from its marks
+in the terminal too, as cells in a faint shade of each colour. A layer
+changing without the project changing calls `daw.frontend.refresh()` for
+the window to fetch it again. `layer(name, nil)` takes it away.

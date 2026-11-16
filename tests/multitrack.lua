@@ -355,15 +355,17 @@ test("a layer of the piano roll draws in the terminal and is handed to the windo
   local s = song()
   local roll = daw.ui.views.pianoroll
   roll:edit(s.keys)
-  roll.layer("test-marks", {
-    order = 20,
-    marks = function() return { { pitch = 60, start = 0, length = 1, color = "#ff0000", fill = 0.5, edge = 1, style = "Visual" } } end,
-  })
-  roll.layer("test-under", { order = -20, marks = function() return { { pitch = 61, start = 0, length = 1, color = "#00ff00" } } end })
+  local before = #roll.layers
+  roll.layer("test-marks", 35, nil, function()
+    return { { pitch = 60, start = 0, length = 1, color = "#ff0000", fill = 0.5, edge = 1, style = "Visual" } }
+  end)
+  roll.layer("test-under", 5, nil, function() return { { pitch = 61, start = 0, length = 1, color = "#00ff00" } } end)
   local under, over = roll.layer_marks(0, 8)
   eq(under[1].pitch .. " " .. under[2].pitch .. " " .. over[1].pitch, "61 36 60", "under the notes by order, then over them")
   local orders = {}
-  for _, layer in ipairs(roll.layers) do orders[#orders + 1] = layer.name end
+  for _, layer in ipairs(roll.layers) do
+    if layer.name:match("^test") or layer.name == "context" or layer.name == "notes" then orders[#orders + 1] = layer.name end
+  end
   eq(table.concat(orders, " "), "test-under context notes test-marks", "back to front")
   daw.ui.show("pianoroll")
   local text = table.concat(api.ui_snapshot(140, 40), "\n")
@@ -371,7 +373,7 @@ test("a layer of the piano roll draws in the terminal and is handed to the windo
   daw.ui.hide("pianoroll")
   roll.layer("test-marks", nil)
   roll.layer("test-under", nil)
-  eq(#roll.layers, 2, "and they can be taken away")
+  eq(#roll.layers, before, "and they can be taken away")
 end)
 
 test("musicops operators work on every clip the piano roll edits", function()
