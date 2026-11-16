@@ -326,10 +326,10 @@ require("notation.export").lilypond(layout, { title = "tune" })   -- or .musicxm
 
 `notation.engrave` turns a layout into drawing operations for `daw.canvas`
 (`engrave.style`, `engrave.systems`, and each measure's and system's ink);
-`notation.smufl.font()` is the font's metadata as the engraver reads it
-(from `daw.api.smufl` when the kernel has fonts of its own, else from
-`notation/fonts/leland.lua`, made by `tools/smufl.py` from Leland's
-metadata and outlines, under the SIL Open Font License). `tools/paintbench.lua`
+`notation.smufl.font()` is the font's metadata as the engraver reads it,
+from the fonts the kernel embeds (`daw.api.smufl`; Leland, Bravura and
+Petaluma, under the SIL Open Font License, in crates/daw-raster/fonts).
+`tools/paintbench.lua`
 times the paint: run it with `daw --clean --no-plugins --no-listen --audio
 null -l extensions/notation/tools/paintbench.lua 64`.
 
@@ -348,8 +348,8 @@ clefs other than treble, the guitar's treble and bass; key changes within a
 clip; trills and other ornaments; a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows). On the engraved page:
 collision avoidance between marks, dynamics and the notes of the other
-staff; slurs that bend round the notes under them; Bravura and Petaluma
-(only Leland's data is kept until the kernel embeds fonts); and the
+staff; slurs that bend round the notes under them; a choice of Bravura
+or Petaluma (the kernel has them; nothing chooses them yet); and the
 transcription is still done again for the whole clip on each edit (the
 engraving is redone only for the bars that changed), which costs about
 20 ms for 64 bars.

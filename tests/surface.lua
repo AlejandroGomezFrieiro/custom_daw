@@ -172,11 +172,12 @@ test("a drawing marks glyphs, barlines and layers for the frontend to make into 
     end,
   })
   after(function() daw.ui.views.surface_marks = nil end)
-  local ops = daw.canvas.paint("surface_marks", 400, 200, { surface = true, glyphs = true, cell = { w = 10, h = 20 } }).ops
+  local window_cell = daw.canvas.cell
+  local ops = daw.canvas.paint("surface_marks", 400, 200, { surface = true, glyphs = true, cell = { w = 11, h = 23 } }).ops
   same(ops, {
     { "g", 15, 60, 32, 0xE050, daw.canvas.palette.text, "Leland" },
     { "cut", 110, 20, 100 },
     { "layer", "caret" },
   }, "placed from the part's corner, and a glyph outside it left out")
-  eq(daw.canvas.cell.w ~= 10, true, "a terminal's cell is not taken for the window's")
+  eq(daw.canvas.cell, window_cell, "a terminal's cell is not taken for the window's")
 end)

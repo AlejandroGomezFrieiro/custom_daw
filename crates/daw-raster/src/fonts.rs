@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde_json::Value;
-use tiny_skia::{Path, PathBuilder};
+use tiny_skia::{Path, PathBuilder, PathSegment};
 use ttf_parser::{Face, GlyphId, OutlineBuilder};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -160,6 +160,30 @@ pub fn smufl(name: Option<&str>) -> Option<Value> {
     parsed.get(font as usize).cloned()
 }
 
+/// A music font's glyph as path commands, `["M", x, y, "C", ...]`, in staff
+/// spaces from its origin, y down: for a frontend that cannot draw the font
+/// and is given each glyph as a path. Nothing for a glyph it has not.
+pub fn glyph_outline(name: Option<&str>, codepoint: u32) -> Option<Vec<Value>> {
+    let font = Font::music(name)?;
+    let glyph = font.face().glyph_index(char::from_u32(codepoint)?)?;
+    let path = font.outline(glyph)?;
+    // An em is four staff spaces; a thousandth of a space is fine enough.
+    let n = |v: f32| Value::from((v as f64 * 4000.0).round() / 1000.0);
+    let mut out = Vec::new();
+    for segment in path.segments() {
+        match segment {
+            PathSegment::MoveTo(p) => out.extend(["M".into(), n(p.x), n(p.y)]),
+            PathSegment::LineTo(p) => out.extend(["L".into(), n(p.x), n(p.y)]),
+            PathSegment::QuadTo(a, p) => out.extend(["Q".into(), n(a.x), n(a.y), n(p.x), n(p.y)]),
+            PathSegment::CubicTo(a, b, p) => {
+                out.extend(["C".into(), n(a.x), n(a.y), n(b.x), n(b.y), n(p.x), n(p.y)])
+            }
+            PathSegment::Close => out.push("Z".into()),
+        }
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +223,16 @@ mod tests {
         assert!(meta["engravingDefaults"]["staffLineThickness"].as_f64().unwrap() > 0.05);
         assert!(smufl(Some("bravura")).is_some() && smufl(Some("petaluma")).is_some());
         assert!(smufl(Some("Comic Sans")).is_none());
+    }
+
+    #[test]
+    fn a_glyph_outline_is_given_in_staff_spaces() {
+        // A black note head is about 1.3 spaces wide and a space high.
+        let path = glyph_outline(None, 0xE0A4).unwrap();
+        assert_eq!(path[0], "M");
+        let numbers: Vec<f64> = path.iter().filter_map(Value::as_f64).collect();
+        assert!(numbers.iter().all(|v| v.abs() < 1.5), "{numbers:?}");
+        assert!(numbers.iter().cloned().fold(0.0, f64::max) > 1.2);
+        assert!(glyph_outline(Some("Comic Sans"), 0xE0A4).is_none());
     }
 }

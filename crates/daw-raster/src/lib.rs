@@ -35,7 +35,7 @@ use tiny_skia::{
     Color, FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, Transform,
 };
 
-pub use fonts::{Font, smufl};
+pub use fonts::{Font, glyph_outline, smufl};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rgba(pub u8, pub u8, pub u8, pub u8);

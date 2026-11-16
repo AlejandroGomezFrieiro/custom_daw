@@ -1187,6 +1187,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 None => Ok(LuaValue::Nil),
             }
         }
+        // A music font's glyph as path commands in staff spaces from its
+        // origin, y down (`{ "M", x, y, "C", ... }`), for a frontend that
+        // cannot draw the font. Nil for a glyph or font there is none of.
+        fn smufl_outline(lua, _sh, (font, codepoint) => (Option<String>, u32)) {
+            match daw_raster::glyph_outline(font.as_deref(), codepoint) {
+                Some(path) => to_lua(lua, &serde_json::Value::from(path)),
+                None => Ok(LuaValue::Nil),
+            }
+        }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
             // `full` is the group in 24-bit colour, given when `def` is a
             // nearer form of it for a terminal that shows fewer colours.
