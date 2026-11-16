@@ -69,6 +69,16 @@ chords. `1` to `9` set how many grid steps a note is long, `Space` is a rest,
 velocity. The clip grows by a bar when the notes run past its end. `Esc`
 returns to normal mode.
 
+**Suggestions.** With a completion source loaded (`extensions/continue`, a
+language server), the piano roll can suggest what comes next: dashed ghost
+notes in the track's colour, with a badge such as `1/3 continue: the bar
+again` over them. They come by themselves after a pause in editing, never
+while playing or recording, or with `Ctrl-Space`. `Tab` accepts all of it,
+`Ctrl-l` its next note or chord, `Ctrl-n` `Ctrl-p` and `Alt-1` to `Alt-9`
+show the other alternatives, `gh` plays it from a bar before, `Ctrl-e` or
+`Esc` dismiss it; in insert mode the first `Esc` dismisses and the second
+leaves insert mode. See [harmony.md](harmony.md).
+
 | Keys | Also in the arrange view |
 | --- | --- |
 | `x` `D` `C` `Y` | delete the clip; delete, change, yank to the end of the track |
@@ -132,7 +142,33 @@ in. `:take 2` over a selection does the same from the keyboard.
 In the piano roll, `Enter` adds or removes a note, `+` `-` change its length,
 `H` `L` move it, `Ctrl-a` `Ctrl-x` transpose it, `[` `]` change its velocity,
 `gh` sounds the pitch, `E` lists the clip's notes and controller moves to
-change in place (the event list), `Esc` goes back to the arrange view. In the device panel
+change in place (the event list), `Esc` goes back to the arrange view.
+
+Behind the clip's notes the piano roll shows the notes of other tracks that
+sound at the same time, so the harmony can be seen where it is written:
+each a dashed line (`╌`) on a faint shade of its track's colour, without a
+name, where the clip's own notes are solid and named. Drum tracks are left out. Which
+tracks: `daw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
+clip's group, `"none"`, or a list of track ids), and `:roll.tracks` lists
+them with their clips: `Enter` on a track shows or hides its notes. A dot on
+the keyboard marks the keys that sound at the cursor, and the title names
+the chord when a harmony reader is loaded. The piano roll can edit several
+clips at once (REAPER's editability follows selection). One is active: new
+notes go there, its name is in the title, and the title says how many more
+are edited. `ga` on another track's note makes its clip the active one (in
+place of the old), `gE` edits that clip too or no longer, `gn` `gN` make the
+next or previous clip edited active, `:roll.only` goes back to one clip, and
+`Enter` on a clip in `:roll.tracks` adds it or takes it out (`Ctrl-a` there
+makes it active). Opening several clips at once: select them in the arrange
+view (`v` over them, or the pointer) and press `Enter`. Motions, operators,
+visual mode, yank and paste, the keys on the note under the cursor and the
+musicops operators then work on the notes of all of them; the cursor's
+beats are the active clip's. A note moved stays in its own clip and stops at
+its edges; notes yanked from several clips go back into them when pasted
+while they are edited, else into the clip at the cursor; each command is one
+undo step, however many clips it touched.
+
+In the device panel
 `j` `k` choose a row, `h` `l` change a parameter, `c` or `=` types its value
 in its own unit (a choice by name; `+2` `-3` step), `yy` `dd` `p` copy and move
 devices, between tracks too, `Alt-j` `Alt-k` reorder the chain, and `s` `<`
@@ -146,6 +182,10 @@ dragging a device card by its name onto a track's header moves it there
 (with `Ctrl`, copies it), and dragging it up or down the list reorders. The
 mixer has `h` `l` for tracks, `j` `k` for volume, `grv` `grp` to type the
 strip's volume and pan, and `dd` `yy` `p` for tracks.
+
+`,l` shows the session view, the clip launcher: a column of slots under
+each track and a scene for each row, launched with `<CR>` and `L`; its keys
+are in [Live performance](live.md).
 
 ## The mouse
 
@@ -174,6 +214,7 @@ says on the status line what it is and what a click there does.
 | Lanes as rows | click adds a point, hold and drag to draw, drag a point to move it, right click removes it; right click elsewhere to clear the lane, bypass it or hide the rows |
 | Take lanes | drag across lane k: take k plays there (see Comping with the mouse, above); click a piece to give it take k; click the label for the whole track; right click hides them |
 | Piano roll | as REAPER's: press on empty grid where a note should start and drag as far as it should last (a click gives the roll's note length, which a drawn length becomes); click a note to choose it, Shift or Ctrl to add it or take it out; drag a note to move it and the chosen with it (Ctrl copies, Shift off the grid); drag its first or last cell to move where they start or stop; the right button dragged, or the left with Ctrl, chooses the notes in its box; right click removes a note (Ctrl and a right click offers the fixes the diagnostics have for it), on empty grid opens a menu (choose all, let go, delete, quantize, snap); double click removes a note; Alt and a drag erases every note crossed. The keyboard sounds a key under a click or a drag, and a right drag down it chooses the notes of those pitches. The strip under the notes takes the velocity drawn across it (only the chosen notes, if any are); a click on its name (`vel`) shows a controller there instead (the pitch wheel, modulation, expression, the pedal), drawn with the button held, a move's head (the top of its bar) clicked to choose it (Ctrl or Shift adds it) and dragged to move the chosen, Ctrl and a drag choosing those in a box, the right button dragged drawing a straight line and clicked opening its menu. A click on the ruler moves the playhead |
+| Session view | click a slot to choose it; its play mark (`■`, `▶`) launches the clip, and letting go releases a gate or one-shot clip; double click opens a slot's notes, or makes a MIDI clip of a bar in an empty one; an empty slot's dot records a bar into it; drag a clip to another slot (Ctrl copies); right click opens the clip's menu; a scene's name launches its row; the bottom line stops a track, or every track under the scenes; the wheel scrolls the rows, with Shift the tracks |
 | Mixer | drag a fader up or down (Shift finer), the level under it sideways, the pan to where the pointer is; double click puts them back; `M` `S` `R` `I` switch; a click on a device picks it in the device panel; a send's level drags sideways; the wheel nudges the fader, with Shift goes to the next or previous track; right click opens the track's menu |
 | Devices | click or drag a parameter's slider to where the pointer is (Shift drags it finely), double click puts it back; `on` / `off` bypasses the device; the wheel scrolls, with Ctrl it nudges the parameter under the pointer |
 | Menus, pickers, the command line's list | click an entry to choose it (in a picker and the command line's list, the first click selects and a second chooses); the wheel scrolls; a click outside a menu lets it go. Pages such as `:messages` scroll with the wheel |
@@ -189,9 +230,10 @@ window's. A script opens one with `daw.ui.menu(items, { x = x, y = y })`
 every press, release and move of the pointer, held or not (modes 1000, 1002
 and 1003), in the SGR form (1006), which has no limit on columns, and gives
 the terminal back when it ends, when it fails and when it is killed
-(`SIGTERM`, `SIGHUP`). Under tmux, `set -g mouse on` passes the pointer on
-to the program; a multiplexer that has no mouse support of its own (or has
-it turned off) passes it on unchanged. Most terminals (WezTerm, kitty, foot,
+(`SIGTERM`, `SIGHUP`). Under tmux the pointer reaches the program with
+`set -g mouse on`; with it off tmux leaves the pointer to the terminal.
+Another multiplexer passes it on when it passes the program's request for
+it on to the terminal. Most terminals (WezTerm, kitty, foot,
 xterm, Alacritty) keep a press with Shift held for their own selection of
 text, so Shift and a drag still selects text on the screen; there Shift
 does not reach the program, and `:set grid=…` or `:set note_snap!` is the

@@ -18,7 +18,19 @@ export struct NoteData {
     length: float,
     velocity: float,    // 0..1
     selected: bool,     // one of the notes chosen with the pointer
-    index: int,         // its place among all the clip's notes, from 0
+    index: int,         // its place among the notes handed over, from 0
+    color: color,       // its track's colour: the roll may edit clips of several
+}
+
+// A row of the side panel: a track whose notes may show behind the roll's,
+// or one of its clips, which the roll may edit.
+export struct RollRow {
+    clip: bool,         // a clip, else a track
+    id: int,
+    name: string,
+    color: color,
+    on: bool,           // the track's notes show; the clip is edited
+    active: bool,       // the clip new notes go into, or its track
 }
 
 // A controller move of the kind the strip shows.
@@ -35,6 +47,31 @@ export struct ControlData {
     value: float,       // 0..1 up the strip
     place: int,         // its place among all the clip's moves, from 1
     selected: bool,     // one of the moves chosen with the pointer
+}
+
+// What a layer of the kernel's piano roll draws (`pianoroll:layer`): a
+// note-shaped box, or a chip with a label that may be clicked.
+export struct RollMark {
+    pitch: int,
+    start: float,       // beats from the start of the clip
+    length: float,
+    fill: color,
+    edge: color,        // transparent for no border
+    ink: color,         // the label's colour
+    label: string,
+    badge: bool,        // a chip as wide as its label, on the pitch's row
+    slot: int,          // chips side by side, in steps of 20 px
+    act: string,        // the `daw.frontend.act` a click calls, with `arg`
+    arg: float,
+    tip: string,
+}
+
+// A switch a module adds to the toolbar (`pianoroll:tool`).
+export struct RollTool {
+    label: string,
+    on: bool,
+    tip: string,
+    act: string,
 }
 
 // A note a diagnostic is about (daw.diagnostic), with the worst severity
@@ -72,6 +109,11 @@ export global Roll {
     // Notes of the track's other clips that sound during this one, in this
     // clip's beats: drawn faintly behind its own.
     in property <[NoteData]> ghosts;
+    // What the kernel's layers draw behind the notes and in front of them
+    // (suggestions, marks), and the switches they add to the toolbar.
+    in property <[RollMark]> marks-under;
+    in property <[RollMark]> marks-over;
+    in property <[RollTool]> tools;
     // The notes diagnostics are about, outlined over them and marked on the ruler.
     in property <[MarkData]> marks;
     // What the diagnostics say about a note, and the titles of their
@@ -80,6 +122,13 @@ export global Roll {
     pure callback note-actions(int) -> [string];
     // Which keys sound now, by pitch.
     in property <[bool]> sounding;
+    // The keys that sound at the cursor in any clip shown, by pitch, and
+    // the chord they make when that is known.
+    in property <[bool]> chord-keys;
+    in property <string> chord;
+    // The side panel: whether it shows, and its tracks and clips.
+    in-out property <bool> panel;
+    in property <[RollRow]> rows;
     // While a stroke crosses the velocity strip: what it gives each note, -1 for nothing.
     in property <[float]> vel-preview;
     in property <[ControlData]> controls;
@@ -225,12 +274,55 @@ component Drop inherits Rectangle {
     }
 }
 
+// A mark of a layer: a box over notes' rows, or a chip that may be clicked.
+// The roll places it; a chip says how wide its label is.
+component Mark inherits Rectangle {
+    in property <RollMark> mark;
+    in property <bool> roomy;           // tall enough to write in a box
+    out property <length> label-width: label.preferred-width;
+    property <bool> hovered;
+    border-radius: root.mark.badge ? 3px : 2px;
+    background: root.hovered ? root.mark.fill.brighter(0.4) : root.mark.fill;
+    border-width: root.mark.badge ? 0px : 1px;
+    border-color: root.mark.edge;
+    label := Text {
+        x: root.mark.badge ? 5px : 4px;
+        width: max(0px, parent.width - (root.mark.badge ? 10px : 6px));
+        height: parent.height;
+        visible: root.mark.badge || (parent.width >= 28px && root.roomy);
+        text: root.mark.label;
+        color: root.mark.ink;
+        font-size: root.mark.badge ? 10px : 9px;
+        font-weight: 600;
+        horizontal-alignment: root.mark.badge ? center : left;
+        vertical-alignment: center;
+        overflow: clip;
+    }
+    // Only a mark that does something takes the pointer: the notes under
+    // the others stay within reach.
+    if root.mark.act != "": TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            Roll.act(root.mark.act, [root.mark.arg]);
+        }
+        changed has-hover => {
+            root.hovered = self.has-hover;
+            if (self.has-hover && root.mark.tip != "") {
+                Roll.hint = root.mark.tip;
+            } else if (Roll.hint == root.mark.tip) {
+                Roll.hint = "";
+            }
+        }
+    }
+}
+
 export component PianoRoll inherits Rectangle {
     property <length> note-height: 12px;
     property <length> beat: Roll.zoom * 1px;
     property <length> keys-width: 64px;
     property <length> ruler-height: 22px;
     property <length> strip-height: 80px;
+    property <length> panel-width: 180px;
     property <length> grid-px: Roll.grid * root.beat;
     // Where something at `x`, `w` wide, starts and how wide it is within
     // what shows of the roll (with room to spare): nothing drawn reaches
@@ -406,6 +498,9 @@ export component PianoRoll inherits Rectangle {
             Roll.remove-note(root.box-note);
         } else if (!root.box-left) {
             grid-menu.show({ x: menu-x, y: menu-y });
+        } else {
+            // Ctrl and a click: on another track's note, its clip is edited too.
+            Roll.act("context_click", [root.bx0 / root.beat, 127 - floor(root.by0 / root.note-height)]);
         }
         root.boxing = false;
         root.box-note = -1;
@@ -573,6 +668,14 @@ export component PianoRoll inherits Rectangle {
                 Rectangle {
                     width: 6px;
                 }
+                // The chord sounding at the cursor, when it is known.
+                if Roll.chord != "": Text {
+                    text: Roll.chord;
+                    color: Theme.text;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
                 Text {
                     text: Roll.status != "" ? Roll.status : Roll.chosen-text;
                     color: Roll.status != "" ? Theme.play-on : Theme.text-2;
@@ -580,6 +683,16 @@ export component PianoRoll inherits Rectangle {
                     vertical-alignment: center;
                     overflow: elide;
                     horizontal-stretch: 1;
+                }
+                Tool {
+                    // Three staves: the tracks and clips beside the roll.
+                    icon: "M 2 3 H 14 V 4.5 H 2 Z M 2 7.25 H 14 V 8.75 H 2 Z M 2 11.5 H 14 V 13 H 2 Z";
+                    label: "Tracks";
+                    on: Roll.panel;
+                    tip: "the tracks whose notes show behind these, and the clips edited together (also :roll.tracks)";
+                    clicked => {
+                        Roll.panel = !Roll.panel;
+                    }
                 }
                 grid-drop := ContextMenuArea {
                     width: grid-face.width;
@@ -678,6 +791,14 @@ export component PianoRoll inherits Rectangle {
                     tip: "the event list: every note and controller move of the clip, a row each, changed in place (also E)";
                     clicked => {
                         Roll.act("open_event_list", []);
+                    }
+                }
+                for tool in Roll.tools: Tool {
+                    label: tool.label;
+                    on: tool.on;
+                    tip: tool.tip;
+                    clicked => {
+                        Roll.act(tool.act, []);
                     }
                 }
                 Rectangle {
@@ -845,6 +966,15 @@ export component PianoRoll inherits Rectangle {
                         vertical-alignment: center;
                         height: parent.height;
                     }
+                    // The keys sounding at the cursor: the chord there.
+                    if Roll.chord-keys[key.pitch]: Rectangle {
+                        x: parent.width - 12px;
+                        y: (parent.height - self.height) / 2;
+                        width: min(7px, root.note-height - 3px);
+                        height: self.width;
+                        border-radius: self.width / 2;
+                        background: Theme.mode-color("i");
+                    }
                 }
                 Rectangle {
                     x: parent.width - 1px;
@@ -908,7 +1038,7 @@ export component PianoRoll inherits Rectangle {
             roll := Rectangle {
                 x: root.keys-width;
                 y: root.ruler-height;
-                width: parent.width - root.keys-width;
+                width: parent.width - root.keys-width - (Roll.panel ? root.panel-width : 0px);
                 height: parent.height - root.strip-height - root.ruler-height;
                 clip: true;
                 property <length> visible-width: self.width;
@@ -988,6 +1118,16 @@ export component PianoRoll inherits Rectangle {
                     background: Roll.color.with-alpha(0.10);
                     border-width: 1px;
                     border-color: Roll.color.with-alpha(0.28);
+                }
+                // The kernel's layers behind the notes.
+                for mark in Roll.marks-under: Mark {
+                    mark: mark;
+                    roomy: root.note-height >= 11px;
+                    x: mark.badge ? root.seen-x(mark.start * root.beat) + mark.slot * 20px : root.seen-x(mark.start * root.beat);
+                    // A chip taller than a row stands on it, clear of the row below.
+                    y: (127 - mark.pitch) * root.note-height + (mark.badge ? root.note-height - self.height : 1px);
+                    width: mark.badge ? max(16px, self.label-width + 10px) : max(2px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px));
+                    height: mark.badge ? max(14px, root.note-height) : root.note-height - 2px;
                 }
                 // The grid itself. A press with the left button and a drag
                 // draws a note; with Ctrl held, or with the right button, the
@@ -1094,7 +1234,7 @@ export component PianoRoll inherits Rectangle {
                     // A copy leaves the note where it was.
                     if slot.follows && root.drag-copy && (root.shown-dx != 0 || root.shown-dy != 0): Rectangle {
                         border-radius: 2px;
-                        background: Roll.color.mix(root.row-white, 0.5);
+                        background: note.color.mix(root.row-white, 0.5);
                     }
                     body := Rectangle {
                         x: slot.follows ? root.shown-dx + root.shown-start : 0px;
@@ -1104,7 +1244,7 @@ export component PianoRoll inherits Rectangle {
                         border-radius: 2px;
                         // Loud notes at the track's full colour, quiet ones
                         // fainter; chosen ones light, with a white edge.
-                        background: slot.crossed ? Theme.text-off : slot.lit ? Roll.color.mix(white, 0.7) : grab.has-hover || left.has-hover || right.has-hover ? Roll.color.mix(white, 0.85) : Roll.color.mix(root.row-black, 0.45 + 0.55 * note.velocity);
+                        background: slot.crossed ? Theme.text-off : slot.lit ? note.color.mix(white, 0.7) : grab.has-hover || left.has-hover || right.has-hover ? note.color.mix(white, 0.85) : note.color.mix(root.row-black, 0.45 + 0.55 * note.velocity);
                         border-width: 1px;
                         border-color: slot.lit ? white : #00000060;
                         if self.width >= 28px && root.note-height >= 11px: Text {
@@ -1266,6 +1406,18 @@ export component PianoRoll inherits Rectangle {
                             }
                         }
                     }
+                }
+                // The kernel's layers in front of the notes: what a language
+                // server marks, a snippet's notes, suggestions (ghost notes
+                // and the chips that choose and accept them).
+                for mark in Roll.marks-over: Mark {
+                    mark: mark;
+                    roomy: root.note-height >= 11px;
+                    x: mark.badge ? root.seen-x(mark.start * root.beat) + mark.slot * 20px : root.seen-x(mark.start * root.beat);
+                    // A chip taller than a row stands on it, clear of the row below.
+                    y: (127 - mark.pitch) * root.note-height + (mark.badge ? root.note-height - self.height : 1px);
+                    width: mark.badge ? max(16px, self.label-width + 10px) : max(2px, root.seen-w(mark.start * root.beat, mark.length * root.beat - 1px));
+                    height: mark.badge ? max(14px, root.note-height) : root.note-height - 2px;
                 }
                 // The notes diagnostics are about, outlined in the colour
                 // of the worst said of each, over the notes (a drawing only:
@@ -1464,7 +1616,7 @@ export component PianoRoll inherits Rectangle {
                             y: parent.height - self.height;
                             width: 3px;
                             height: max(2px, (parent.height - 8px) * self.shown);
-                            background: note.selected ? Theme.select : Roll.color.mix(Theme.surface, 0.45 + 0.55 * note.velocity);
+                            background: note.selected ? Theme.select : note.color.mix(Theme.surface, 0.45 + 0.55 * note.velocity);
                         }
                     }
                     // A controller: a bar for each move, held until the next.
@@ -1627,6 +1779,84 @@ export component PianoRoll inherits Rectangle {
                                     root.move-dy = self.mouse-y - self.pressed-y;
                                     Roll.hint = "moving the chosen moves by " + round(root.move-dx / root.beat * 100) / 100 + " beats";
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+            // The side panel: each track near the roll, a click on its eye
+            // showing its notes behind these or not; under it its clips, a
+            // click on a name making that clip active, on the box editing
+            // it too or no longer.
+            if Roll.panel: Rectangle {
+                x: parent.width - root.panel-width;
+                y: 0;
+                width: root.panel-width;
+                height: parent.height;
+                background: Theme.panel;
+                Rectangle {
+                    x: 0;
+                    width: 1px;
+                    background: Theme.divider;
+                }
+                Flickable {
+                    x: 1px;
+                    width: parent.width - 1px;
+                    content-height: Roll.rows.length * 22px + 8px;
+                    for row[index] in Roll.rows: Rectangle {
+                        x: 0;
+                        y: 4px + index * 22px;
+                        height: 22px;
+                        width: parent.width;
+                        background: name-touch.has-hover ? #ffffff0a : transparent;
+                        // A track: its colour, its name, whether its notes show.
+                        if !row.clip: Rectangle {
+                            x: 8px;
+                            y: 7px;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 2px;
+                            background: row.on ? row.color : row.color.with-alpha(0.25);
+                        }
+                        // A clip: whether it is edited (filled when it is the active one).
+                        if row.clip: Rectangle {
+                            x: 20px;
+                            y: 6px;
+                            width: 10px;
+                            height: 10px;
+                            border-radius: 2px;
+                            border-width: 1px;
+                            border-color: row.on ? Theme.select : Theme.text-3;
+                            background: row.active ? Theme.select : row.on ? Theme.select.with-alpha(0.3) : transparent;
+                            TouchArea {
+                                clicked => {
+                                    Roll.act("roll_toggle_clip", [row.id]);
+                                }
+                            }
+                        }
+                        Text {
+                            x: row.clip ? 36px : 22px;
+                            width: parent.width - self.x - 8px;
+                            height: parent.height;
+                            text: row.name;
+                            color: row.clip ? (row.on ? Theme.text : Theme.text-2) : (row.on ? Theme.text-2 : Theme.text-3);
+                            font-size: 11px;
+                            font-weight: row.active ? 600 : 400;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        name-touch := TouchArea {
+                            x: row.clip ? 34px : 0px;
+                            width: parent.width - self.x;
+                            clicked => {
+                                if (row.clip) {
+                                    Roll.act("roll_activate", [row.id]);
+                                } else if (!row.active) {
+                                    Roll.act("roll_show_track", [row.id]);
+                                }
+                            }
+                            changed has-hover => {
+                                root.say(row.clip ? "clip: click to make it the one new notes go into · the box edits it with the others" : "track: click to show its notes behind these, or not", self.has-hover);
                             }
                         }
                     }

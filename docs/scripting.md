@@ -127,6 +127,8 @@ daw.keymap.setreg(value, name)   daw.keymap.getreg(name)   daw.keymap.selection(
 daw.keymap.feed("3jdd")          daw.keymap.normal("dic")  -- as typed; from inside a mapping
 daw.edit.arrange.yank(region)    daw.edit.arrange.paste(value)   daw.edit.roll.delete(clip, region)
 track:snapshot()                 daw.restore_track(snapshot, index)   -- with devices, clips, automation
+daw.roll_clips.parts()           daw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/harmony.md)
+daw.ui.views.pianoroll.layer("lint", 35, paint, marks)                -- draw in the piano roll, both frontends
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
 view.grid = { get = function() return row, beat end, set = function(row, beat) end, step = function() return 1 end }
@@ -173,6 +175,49 @@ on a press keeps the drags and the release for the view wherever the
 pointer goes, with `dx`, `dy` from the press; `daw.mouse.hint(text)` says
 on the status line what is under the pointer. See `runtime/lua/daw/mouse.lua`.
 
+**Completion.** `daw.complete` shows suggestions as ghost notes in the piano
+roll, from sources that extensions register; see "Writing a source" in
+[harmony.md](harmony.md) for the context and the items.
+
+```lua
+daw.complete.register({ name = "mine", priority = 10, views = { "pianoroll" }, auto = true,
+  complete = function(ctx, done) done({ { label = "a fifth up", notes = { { pitch = ctx.pitch + 7, start = ctx.at, length = 1 } } } }) end })
+daw.complete.request("manual")    daw.complete.current()    -- { items, index, item, clip } or nil
+daw.complete.select(1)            daw.complete.select(3, true)   daw.complete.accept()   daw.complete.accept(true)  -- next notes only
+daw.complete.dismiss()            daw.complete.audition()   daw.complete.unregister("mine")
+daw.complete.show(items, { keys = false })   -- ghost notes for a preview, from any module
+daw.on("complete.changed", function(e) end)  -- e.shown
+```
+
+**The piano roll's layers.** What a module draws over the piano roll's grid
+goes in a layer, so that several share it in a fixed order from back to
+front: other tracks' notes (10), the clip's own notes (20), diagnostics (30),
+an active snippet (40), suggestions (50), then the cursor. A layer paints in
+the terminal with `paint(p)` and may tell the window what to draw with
+`marks(clip)`; keys that hold while some state lasts go in a key scope,
+which comes before the piano roll's own keys; the window's toolbar takes
+switches.
+
+```lua
+local roll = daw.ui.views.pianoroll
+roll.layer("lint", 30,
+  function(p)                           -- p.roll, p.x(beat), p.row(pitch) (nil off screen), p.data, p.hue
+    local row = p.row(60)
+    if row then p.roll:text(p.x(4), row, "!", "Error") end
+  end,
+  function(clip)                        -- what the window draws: boxes, or chips that can be clicked
+    return { { pitch = 60, start = 4, length = 1, fill = "#e06c75", alpha = 0.2, edge = "#e06c75" },
+             { pitch = 61, start = 4, length = 0, badge = true, label = "parallel fifths", act = "my_fix", arg = 1 } }
+  end)
+roll:key_scope("pianoroll.lint", 30, function() return showing end)   -- then map keys in view "pianoroll.lint"
+roll:tool("lint", function() return { label = "Lint", on = enabled, act = "toggle_lint", tip = "..." } end)
+daw.ui.keybar.set("pianoroll.lint", "n", { { "<C-y>", "fix" } })     -- the key line while the scope is on
+```
+
+A chip's `act` names a `daw.frontend.act` function, called with the clip and
+`arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
+left. A failing layer is skipped, and the others are drawn.
+
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,
@@ -215,11 +260,6 @@ pitch, beat, cb)`, `complete(ctx, done)`, `attach(name, clip)` to keep a
 clip open in a server, `settle()` for scripts; events `lsp.status`,
 `lsp.analysis`. See [Language servers and diagnostics](lsp.md).
 
-**Layers of the piano roll.** `daw.ui.views.pianoroll.layer(name, order,
-paint)` draws over the roll in order: below 20 under the clip's notes,
-above it over them (diagnostics are 30), always under the cursor. `paint(p)`
-gets the roll's and the ruler's cells, the clip, and `p.x(beat)`,
-`p.row(pitch)` to place things.
 `daw.json.encode(value, pretty)` and `daw.json.decode(text)` are for what an
 extension keeps in files of its own.
 

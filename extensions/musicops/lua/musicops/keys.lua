@@ -73,6 +73,18 @@ end
 --- Apply `fn(notes, index)` to what a region of `view` holds.
 function M.apply(view, region, fn)
   if view == "arrange" then return M.apply_arrange(region, fn) end
+  -- The piano roll may edit several clips at once: each is done on its own,
+  -- the region taken in its own beats, so that its notes stay in it.
+  local parts = view == "pianoroll" and daw.roll_clips and daw.roll_clips.parts() or {}
+  if #parts > 1 then
+    local count = 0
+    for i, part in ipairs(parts) do
+      local mine = daw.util.merge(region, { c0 = region.c0 - part.offset, c1 = region.c1 - part.offset })
+      count = count + M.apply_to_clip(part.clip, function(n) return edit.roll.inside(n, mine) end,
+        function(notes) return fn(notes, i) end)
+    end
+    return count
+  end
   local clip = M.view_clip(view)
   if not clip then return 0 end
   return M.apply_to_clip(clip, function(n) return edit.roll.inside(n, region) end, function(notes) return fn(notes, 1) end)
