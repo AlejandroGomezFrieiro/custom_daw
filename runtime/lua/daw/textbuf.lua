@@ -2089,15 +2089,24 @@ tmap(":", cmdline(false), "Type a command: the buffer's own (`:w`, `:s`, `:sort`
 map(":", cmdline(true), { view = "textbuf", mode = "x", desc = "Type a command on the lines selected", repeatable = false })
 
 daw.ui.keybar.set("textbuf", "n", {
-  { "cw", "rename" }, { "dd", "delete" }, { "yyp", "copy" }, { "<C-a>", "+1" }, { ":w", "apply" }, { "<CR>", "open" }, { "?", "keys" },
+  { "c", "change" }, { "d", "delete" }, { "y", "yank" }, { "p", "put" }, { "<C-a>", "+1" }, { ":", "command, :w applies" },
+  { "<CR>", "open" }, { "?", "keys" },
 })
-daw.ui.keybar.set("textbuf", "i", { { "<Esc>", "normal" }, { "<Tab>", "two spaces: the next field" } })
+daw.ui.keybar.set("textbuf", "i", { { "<Esc>", "normal" } })
 daw.ui.keybar.set("textbuf", "x", { { "d", "delete" }, { "y", "yank" }, { "c", "change" }, { "<C-a>", "+1" }, { "I", "insert" }, { ":", "on lines" } })
 
 -- Commands -------------------------------------------------------------------------------------
 
 -- Lines typed after `:` in a text buffer are its own first.
 table.insert(daw.commands.line_handlers, function(line) return M.exec(line) end)
+
+-- By name too, for completion and scripts; typed after `:` in a text buffer
+-- these lines are taken before they get here.
+daw.command("sort", function(ctx)
+  if not M.exec("sort" .. (ctx.args[1] ~= "" and " " .. ctx.args[1] or "")) then
+    daw.notify("`:sort` sorts the lines of a text buffer: `:e daw://tracks` opens one", "warn")
+  end
+end, { desc = "Sort the lines of a text buffer: `sort`, `sort!` the other way, `sort n` by number, `sort i` ignoring case", raw = true })
 
 daw.command("textbuf.open", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1]) or "daw://tracks"

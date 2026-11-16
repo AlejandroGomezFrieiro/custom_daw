@@ -386,8 +386,7 @@ test("names that would not read back are quoted, and every kind reads back what 
       eq(err, nil, name .. " line " .. i .. " reads: " .. l.text)
       eq(tb.same(f, buf.state.fields[l.id]), true, name .. " line " .. i .. " reads as written")
     end
-    keys(":w<CR>")
-    eq(daw.ui.focused ~= "textbuf.plan", true, name .. ": nothing to change, nothing to plan")
+    eq(#tb.plan(buf), 0, name .. ": nothing to change, nothing to plan")
   end
   keys(":e daw://tracks<CR>")
   eq(line(1):match('^"Lead  Vox"') ~= nil, true, "two spaces in a name are quoted: " .. line(1))
