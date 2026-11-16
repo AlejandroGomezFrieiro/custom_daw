@@ -8,8 +8,11 @@
   edit, which is quick for songs of some thousands of notes but not
   incremental.
 - Snippets are offered in the piano roll only (a snippet may name other
-  views, but nothing opens the picker there yet), and are not yet a source
-  of completion suggestions (they will be once `daw.complete` is in).
+  views, but nothing opens the picker there yet). Taken as a suggestion
+  (`Ctrl-Space`) a snippet has no choices to step through, and the picker's
+  preview is drawn by the snippet's own layer rather than through
+  `daw.complete.show`. A melody of eighth notes alone may be read as
+  chords (a beat with two pitches in it is evidence of one).
 - Language servers: only clips are sent (MIDI LSP's `track`, `project` and
   `render` documents and its one-shot servers are not); a server's own code
   actions (`codeActionProvider`) and `workspace/executeCommand` have no
