@@ -17,6 +17,7 @@ use crate::clip::ClipSet;
 use crate::device::{Device, Io, ProcessCtx};
 use crate::event::{Ctl, Event, EventBuf, EventKind};
 use crate::guard;
+use crate::midi_out::MidiOut;
 use crate::pool::Pool;
 use crate::record::{MidiCapture, PUNCH_EPS, Take};
 use crate::tempo::TempoMap;
@@ -71,6 +72,12 @@ pub struct TrackRt {
     midi_channel: u8,
     /// Keys held down through MIDI input, released if the track is disarmed.
     held: u128,
+    /// The MIDI output port it sends what it plays to, by its key (0 for
+    /// none), and the channel (1 to 16, or 0 for each message's own).
+    midi_out: u32,
+    midi_out_channel: u8,
+    /// What it played this block, on its way to the port.
+    sent: Vec<Event>,
     /// The track's clips were replaced: stop its notes, and start again those
     /// the new clips hold at the play position. Other tracks play on.
     flush: bool,
@@ -100,6 +107,9 @@ impl TrackRt {
             midi_port: 0,
             midi_channel: 0,
             held: 0,
+            midi_out: 0,
+            midi_out_channel: 0,
+            sent: Vec::with_capacity(1024),
             flush: false,
             chase: false,
         })
@@ -509,6 +519,16 @@ pub enum Msg {
         port: u32,
         channel: u8,
     },
+    /// The MIDI output port a track sends what it plays to, by its key (0
+    /// for none), on a channel from 1 to 16 or 0 for each message's own.
+    SetMidiOutput {
+        track: Slot,
+        port: u32,
+        channel: u8,
+    },
+    /// Where MIDI output goes: the queue a sender thread reads (see
+    /// [`EngineHandle::midi_output`]), or nowhere.
+    SetMidiOut(Option<Box<Producer<MidiOut>>>),
     /// Start capturing into a take, or stop with `None`.
     SetTake(Option<Box<Take>>),
     /// A note as if it came from a MIDI input port, by its key (0 for none
@@ -533,6 +553,7 @@ enum Garbage {
     Host(#[allow(dead_code)] Box<crate::host::HostPath>),
     Key(#[allow(dead_code)] Box<KeyBuf>),
     Outs(#[allow(dead_code)] Box<OutBufs>),
+    MidiOut(#[allow(dead_code)] Box<Producer<MidiOut>>),
     TempoMap(#[allow(dead_code)] Box<TempoMap>),
 }
 
@@ -880,6 +901,12 @@ pub struct Engine {
     midi_rx: Consumer<(u32, EventKind)>,
     /// A count-in under way, or whose last clicks are still to be heard.
     count: Option<Count>,
+    /// Where tracks' MIDI output goes, when something sends it on.
+    midi_out: Option<Box<Producer<MidiOut>>>,
+    /// When the block being made is heard, on [`midi_out::clock_ns`].
+    ///
+    /// [`midi_out::clock_ns`]: crate::midi_out::clock_ns
+    heard_ns: u64,
 }
 
 /// A count-in: see [`Msg::CountIn`]. Frames count from when it began.
@@ -939,6 +966,18 @@ impl EngineHandle {
     /// Each message comes with the key of the port it came from.
     pub fn take_midi_input(&mut self) -> Option<Producer<(u32, EventKind)>> {
         self.midi_tx.take()
+    }
+
+    /// The receiving end of a new queue of the MIDI the tracks send to their
+    /// output ports, for the one thread that sends it on
+    /// ([`MidiOutputs::set_queue`]). Until one is asked for, nothing is
+    /// sent: an offline render never is.
+    ///
+    /// [`MidiOutputs::set_queue`]: crate::midi_out::MidiOutputs::set_queue
+    pub fn midi_output(&mut self) -> Consumer<MidiOut> {
+        let (tx, rx) = RingBuffer::new(crate::midi_out::MIDI_OUT_CAPACITY);
+        self.send(Msg::SetMidiOut(Some(Box::new(tx))));
+        rx
     }
 
     /// Queue a message, or hand it back if the queue is full.
@@ -1027,6 +1066,8 @@ impl Engine {
             take: None,
             midi_rx,
             count: None,
+            midi_out: None,
+            heard_ns: 0,
         };
         (
             engine,
@@ -1334,6 +1375,34 @@ impl Engine {
                 }
             }
             Msg::MidiIn { port, kind } => self.midi_in(port, kind),
+            Msg::SetMidiOutput {
+                track,
+                port,
+                channel,
+            } => {
+                let Some(t) = self.track_mut(track) else {
+                    return;
+                };
+                let old = std::mem::replace(&mut t.midi_out, port);
+                t.midi_out_channel = channel;
+                t.sent.clear();
+                // The notes it left sounding where it played before end there.
+                if old != 0
+                    && old != port
+                    && let Some(out) = self.midi_out.as_deref_mut()
+                {
+                    let _ = out.push(MidiOut {
+                        at: 0,
+                        port: old,
+                        kind: EventKind::AllNotesOff,
+                    });
+                }
+            }
+            Msg::SetMidiOut(out) => {
+                if let Some(old) = std::mem::replace(&mut self.midi_out, out) {
+                    self.discard(Garbage::MidiOut(old));
+                }
+            }
             Msg::SetPool(pool) => {
                 if let Some(old) = self.set_pool(pool) {
                     self.discard(Garbage::Pool(old));
@@ -1470,6 +1539,7 @@ impl Engine {
         right: &mut [f32],
     ) {
         let began = std::time::Instant::now();
+        let callback_ns = crate::midi_out::clock_ns();
         self.pump();
         if let Some(pool) = &self.pool {
             // Fewer than it was given, if its workers were refused the
@@ -1545,6 +1615,13 @@ impl Engine {
             }
             self.load_input(input, channels, done, n);
             self.capture(n, start);
+            if self.midi_out.is_some() {
+                // The block is heard after the plugins' delay and the
+                // output's, and the MIDI sent with it goes as late.
+                let late = self.schedule.as_ref().map_or(0, |s| s.latency) as f64 / sr
+                    + self.shared.output_latency() as f64;
+                self.heard_ns = callback_ns + ((done as f64 / sr + late) * 1e9) as u64;
+            }
             self.segment(
                 &mut left[done..done + n],
                 &mut right[done..done + n],
@@ -1741,6 +1818,22 @@ impl Engine {
             return;
         };
         let t = &mut *track;
+        if t.midi_out != 0
+            && let Some(out) = self.midi_out.as_deref_mut()
+        {
+            let ns_per_frame = 1e9 / self.sample_rate;
+            let channel = t.midi_out_channel.checked_sub(1);
+            for ev in t.sent.drain(..) {
+                let message = MidiOut {
+                    at: self.heard_ns + (ev.frame as f64 * ns_per_frame) as u64,
+                    port: t.midi_out,
+                    kind: crate::midi_out::on_channel(ev.kind, channel),
+                };
+                if out.push(message).is_err() {
+                    crate::event::count_dropped();
+                }
+            }
+        }
         if entry.taps_pre() {
             // Sends from before the fader ignore it and the pan, but not the
             // mute. The fader was left for now, so that they could be taken.
@@ -2039,6 +2132,14 @@ impl Work<'_> {
         }
         if t.monitor {
             add_input(self.inputs, t, n);
+        }
+        // What it plays goes to its MIDI output port as well, as it is
+        // before its devices change it.
+        if t.midi_out != 0 {
+            t.sent.clear();
+            let room = t.sent.capacity();
+            t.sent
+                .extend(t.events.as_slice().iter().take(room).copied());
         }
 
         if playing {

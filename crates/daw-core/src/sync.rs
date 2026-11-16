@@ -82,6 +82,8 @@ pub struct Mapper {
     inputs: HashMap<Id, (usize, usize, bool, bool)>,
     /// The MIDI port's key and channel each track takes, as last sent.
     midi_inputs: HashMap<Id, (u32, u8)>,
+    /// The same for the port each track sends to.
+    midi_outputs: HashMap<Id, (u32, u8)>,
     routing: Routing,
     /// Devices given a buffer for a side-chain.
     keyed: HashSet<Id>,
@@ -122,6 +124,7 @@ impl Mapper {
             mix: HashMap::new(),
             inputs: HashMap::new(),
             midi_inputs: HashMap::new(),
+            midi_outputs: HashMap::new(),
             routing: Vec::new(),
             keyed: HashSet::new(),
             outs: HashMap::new(),
@@ -674,6 +677,20 @@ pub fn sync(
                 channel: midi.1,
             });
         }
+        let out = track.midi_output.as_ref().map_or((0, 0), |m| {
+            (
+                daw_engine::midi::port_key(&m.port),
+                m.channel.unwrap_or(0),
+            )
+        });
+        if map.midi_outputs.get(&track.id).copied().unwrap_or((0, 0)) != out {
+            map.midi_outputs.insert(track.id, out);
+            send(Msg::SetMidiOutput {
+                track: slot,
+                port: out.0,
+                channel: out.1,
+            });
+        }
     }
 
     // A device whose latency changed: its dry signal is held back to match.
@@ -748,12 +765,21 @@ pub fn sync(
     for id in old_tracks.keys().filter(|id| new.track(**id).is_none()) {
         map.clip_events.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
+            // Notes it left sounding on its MIDI output port end there.
+            if map.midi_outputs.get(id).is_some_and(|(port, _)| *port != 0) {
+                removals.push(Msg::SetMidiOutput {
+                    track: slot,
+                    port: 0,
+                    channel: 0,
+                });
+            }
             removals.push(Msg::RemoveTrack { slot });
             map.free_tracks.push(slot);
         }
         map.mix.remove(id);
         map.inputs.remove(id);
         map.midi_inputs.remove(id);
+        map.midi_outputs.remove(id);
         emit("track.removed", json!({ "id": id }));
     }
     // Removals go last, once nothing in the schedule or a chain refers to them.

@@ -139,6 +139,7 @@ function Track:snapshot()
   local snap = {
     name = t.name, volume = t.volume, pan = t.pan, output = t.output, color = t.color, mute = t.mute,
     sends = t.sends, input = t.input, monitor = t.monitor, midi_input = t.midi_input, height = t.height,
+    midi_output = t.midi_output,
     -- What extensions keep with the track: a drum map, the group it is in.
     meta = next(t.meta or {}) and t.meta or nil,
     devices = {}, clips = {}, lanes = {},
@@ -175,6 +176,7 @@ function M.restore_track(snap, index)
   if snap.input then track.input = snap.input end
   if snap.monitor then track.monitor = true end
   if snap.midi_input then track.midi_input = snap.midi_input end
+  if snap.midi_output then track.midi_output = snap.midi_output end
   if snap.height then api.track_set(track.id, "height", snap.height) end
   if snap.meta then api.track_set(track.id, "meta", snap.meta) end
   local devices = {}
@@ -674,6 +676,14 @@ M.midi = {
     return api.midi_ump(event)
   end,
   inject_ump = api.midi_inject_ump,
+  --- The ports MIDI can be sent to, `{ id, name, own }` each: a track
+  --- sends what it plays to one with `track.midi_output = { port = name,
+  --- channel = 1 }` (channel nil: each message's own).
+  outputs = api.midi_outputs,
+  --- A port of this program's that other programs read from (`daw out:
+  --- <name>`): a track sending to `name` plays a synth in another program.
+  open_output = api.midi_open_output,
+  close_output = api.midi_close_output,
 }
 
 function M.midi.note_on(pitch, velocity, channel)

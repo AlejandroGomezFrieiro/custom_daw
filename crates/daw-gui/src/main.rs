@@ -2021,6 +2021,8 @@ fn run() -> Result<()> {
                     ui.set_input_audio(choices(&menu["audio"]));
                     ui.set_input_midi(choices(&menu["midi"]));
                     ui.set_input_channel(choices(&menu["channel"]));
+                    ui.set_input_midi_out(choices(&menu["midi_out"]));
+                    ui.set_input_midi_out_channel(choices(&menu["midi_out_channel"]));
                 }
                 Ok(menu)
             })

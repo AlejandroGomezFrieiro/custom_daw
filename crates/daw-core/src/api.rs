@@ -803,6 +803,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // `midi_close_port` if there was one to take away.
         fn midi_open_port(_, sh, name => String) { sh.session.borrow_mut().midi_open_port(&name).lua() }
         fn midi_close_port(_, sh, name => String) { Ok(sh.session.borrow_mut().midi_close_port(&name)) }
+        // --- MIDI output ---
+        fn midi_outputs(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().midi_outputs()) }
+        // A port of our own for other programs to read MIDI from; true from
+        // `midi_close_output` if there was one to take away.
+        fn midi_open_output(_, sh, name => String) { sh.session.borrow_mut().midi_open_output(&name).lua() }
+        fn midi_close_output(_, sh, name => String) { Ok(sh.session.borrow_mut().midi_close_output(&name)) }
         // Open only the ports matching these ids or names, or all of them with nil.
         fn midi_select(_, sh, which => Option<Vec<String>>) {
             sh.session.borrow_mut().midi_select(which);

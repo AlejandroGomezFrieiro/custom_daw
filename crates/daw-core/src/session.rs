@@ -31,6 +31,7 @@ mod clipops;
 mod keep;
 mod loading;
 pub mod media;
+mod midi_out;
 pub use loading::OpenOpts;
 pub mod notes;
 pub mod offline;
@@ -327,6 +328,10 @@ pub struct Session {
     /// Ports of our own for other programs to send MIDI to, by name.
     midi_own: Vec<String>,
     midi_without_audio: bool,
+    /// MIDI output, open when MIDI input is, and ports of our own for other
+    /// programs to read from: session/midi_out.rs.
+    midi_out: Option<daw_engine::midi_out::MidiOutputs>,
+    midi_out_own: Vec<String>,
     /// Threads to process tracks on, or 0 for as many as the machine has cores.
     threads: usize,
     /// What the engine was last started with, to start it again with a
@@ -425,6 +430,8 @@ impl Session {
             midi_select: None,
             midi_own: Vec::new(),
             midi_without_audio: false,
+            midi_out: None,
+            midi_out_own: Vec::new(),
             threads: 0,
             backend: opts.clone(),
             device_file: None,
@@ -753,7 +760,7 @@ impl Session {
             "clips": t.clips.iter().map(|c| c.id).collect::<Vec<_>>(),
             "color": t.color, "meta": t.meta, "index": index.map(|i| i + 1),
             "master": id == MASTER_ID, "input": t.input, "monitor": t.monitor,
-            "midi_input": t.midi_input, "height": t.height,
+            "midi_input": t.midi_input, "midi_output": t.midi_output, "height": t.height,
             "automation": t.automation.name(),
             // The tracks that devices on this one listen to as side-chains.
             "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
@@ -944,6 +951,10 @@ impl Session {
                         }
                     };
                     p.track_mut(id).unwrap().midi_input = midi;
+                }
+                "midi_output" => {
+                    let out = midi_out::parse(value)?;
+                    p.track_mut(id).unwrap().midi_output = out;
                 }
                 _ => {
                     let t = p.track_mut(id).unwrap();
@@ -2990,8 +3001,10 @@ impl Session {
         if matches!(self.stream.info.backend.as_str(), "null" | "test") && !self.midi_without_audio
         {
             self.midi = None;
+            self.midi_out = None;
             return;
         }
+        self.connect_midi_out();
         if self.midi.is_none() {
             match MidiInputs::start(self.midi_sink.clone()) {
                 Ok(midi) => {

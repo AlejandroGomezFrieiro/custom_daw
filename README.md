@@ -910,7 +910,9 @@ keys.midi_input = { port = "Keystation 49", channel = 1 }   -- MIDI from one por
 everything a track can take in, under three headings: audio (no audio input,
 each channel and each neighbouring pair, named with the device:
 `UR22mkII · 1`, `UR22mkII · 1/2`), MIDI (every port, or one) and MIDI channel
-(every channel, or one). `daw.audio.choices(track)` is that list and
+(every channel, or one), and where the track sends MIDI (MIDI out, and its
+channel: see [MIDI output to hardware](#mixing-midi-and-rendering-in-the-core)).
+`daw.audio.choices(track)` is that list and
 `daw.audio.choose(track, choice)` takes one; a choice that is saved but not
 there now (a pair the device lacks, a port that is unplugged) is listed as
 chosen and marked missing. `:track.input 1/2` and `:track.midi Keystation ch=1`
@@ -1351,7 +1353,27 @@ Packets, so a MIDI 2.0 device arrives whole and a MIDI 1.0 device arrives as
 the same events with less detail. That needs a kernel built with
 `CONFIG_SND_SEQ_UMP`; without it the ports are MIDI 1.0, and what arrives is
 widened by the specification's rules so that both read the same. There is no
-MIDI output to hardware, no MIDI-CI, and no editor for controller moves yet.
+MIDI-CI, and no editor for controller moves yet.
+
+**MIDI output to hardware.** A track sends what it plays (its clips' notes
+and controllers, and MIDI input passing through it, before its devices) to
+a port: `track.midi_output = { port = "UM-ONE: UM-ONE MIDI 1", channel = 2 }`
+(`channel` nil keeps each message's own), `:track.midi_out UM-ONE 2` (part
+of the name will do; `none` for none), or the MIDI out entries of the input
+list (`I`) and of the window's input menu on the track's header.
+`daw.midi.outputs()` lists the ports. The audio thread stamps each message
+with when it is heard (the output's latency and the plugins' delay
+included) and hands it over a lock-free queue to a thread that schedules it
+on an ALSA sequencer queue in real time, so a synth on the port sounds with
+the tracks. Stopping, jumping and going round the loop end the notes that
+are sounding there, with an All Notes Off on their channels; so do taking
+the port away and removing the track. Renders send nothing. Ports are
+opened when MIDI input is (with an audio device, or `engine_restart({ midi =
+true })`). `daw.midi.open_output("To Surge")` makes a port of the program's
+own that other programs read from (`daw out: To Surge`), and a track that
+sends to `To Surge` plays them; `daw.midi.close_output` takes it away.
+Copies of the track send where it does; templates and project files keep
+the port by name.
 
 **Recording offset.** What is played along to the song is heard late and
 arrives late. Takes are moved earlier by what the audio system reports, plus
@@ -1621,7 +1643,9 @@ port a message came through is not told apart. In scripts:
 - Punch recording between two points, and a count-in.
 - Takes drawn as lanes under a clip, to comp by swiping across them: takes
   are chosen piece by piece from a clip's menu or with `]t`.
-- MIDI output to hardware, MIDI-CI, and an editor for controller moves.
+- MIDI-CI, an editor for controller moves, and MIDI 2.0 on the way out:
+  MIDI output sends MIDI 1.0, so a note's own bend and the finer values
+  are lost there.
 - Groups that link faders without routing (VCA style); groups here are by routing into the group's track.
 - Rendering to MP3, Ogg Vorbis or Opus: there is no encoder for them in pure
   Rust of a quality worth shipping, and no C library is linked for them.

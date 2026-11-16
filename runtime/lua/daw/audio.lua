@@ -123,6 +123,22 @@ function M.choices(track)
   for ch = 1, 16 do
     add("channel", "Channel " .. ch, { midi_channel = ch }, midi.channel == ch)
   end
+
+  -- Where it sends what it plays, and on which channel.
+  local sent = t.midi_output or {}
+  add("midi_out", "None", { midi_out = false }, not sent.port)
+  local found = false
+  for _, port in ipairs(daw.midi.outputs()) do
+    found = found or port.name == sent.port
+    add("midi_out", port.name, { midi_out = port.name }, port.name == sent.port)
+  end
+  if sent.port and not found then
+    add("midi_out", sent.port .. " (not connected)", { midi_out = sent.port }, true)
+  end
+  add("midi_out_channel", "Each message's own", { midi_out_channel = false }, not sent.channel)
+  for ch = 1, 16 do
+    add("midi_out_channel", "Channel " .. ch, { midi_out_channel = ch }, sent.channel == ch)
+  end
   return out
 end
 
@@ -141,6 +157,14 @@ function M.choose(track, choice)
     if value.midi_channel ~= nil then channel = value.midi_channel or nil end
     api.track_set(id, "input", "none")
     api.track_set(id, "midi_input", (port or channel) and { port = port, channel = channel } or nil)
+  end
+  -- A channel without a port waits for one.
+  if value.midi_out ~= nil or value.midi_out_channel ~= nil then
+    local sent = api.track_get(id).midi_output or {}
+    local port, channel = sent.port, sent.channel
+    if value.midi_out ~= nil then port = value.midi_out or nil end
+    if value.midi_out_channel ~= nil then channel = value.midi_out_channel or nil end
+    api.track_set(id, "midi_output", port and { port = port, channel = channel } or nil)
   end
 end
 

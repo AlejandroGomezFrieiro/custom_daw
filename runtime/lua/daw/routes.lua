@@ -245,6 +245,51 @@ function M.setup()
   end, { desc = "Spread the device's output pairs over new tracks, named after them and grouped with its track" })
 
   daw.keymap.set("O", "device.output", { view = "devices", desc = "Route the device's further output pairs" })
+
+  command("track.midi_out", function(ctx)
+    local track = daw.cursor.track()
+    if not track then return daw.notify("no track here", "warn") end
+    local words = {}
+    for _, word in ipairs(ctx.args) do words[#words + 1] = tostring(word) end
+    -- A channel last, after the port's name.
+    local channel = #words > 1 and tonumber(words[#words]) or nil
+    if channel then table.remove(words) end
+    local name = table.concat(words, " ")
+    if name == "" then return daw.commands.exec("track.input") end
+    local ok, err = pcall(M.set_midi_out, track.id, name, channel)
+    if not ok then return warn(err) end
+    daw.notify(track.name .. " → " .. M.midi_out_text(track:get()))
+  end, {
+    desc = "Send what the track plays to a MIDI port: `track.midi_out Synth 2` (channel 2), "
+      .. "`track.midi_out Synth` (each message's own channel), `track.midi_out none`; alone, the input list",
+    complete = function()
+      local words = { "none" }
+      for _, port in ipairs(daw.midi.outputs()) do words[#words + 1] = port.name end
+      return words
+    end,
+  })
+end
+
+--- Where a track sends MIDI, as text: `Synth · channel 2`, or "nowhere".
+function M.midi_out_text(t)
+  local out = t.midi_output
+  if not out then return "no MIDI output" end
+  return out.port .. (out.channel and " · channel " .. out.channel or "")
+end
+
+--- Send a track's MIDI to the port named `name` (or a part of its name;
+--- "none" for none), on `channel` (1 to 16; nil for each message's own).
+function M.set_midi_out(track, name, channel)
+  if name == "none" or name == "" then return api.track_set(track, "midi_output", nil) end
+  local port = name
+  for _, p in ipairs(daw.midi.outputs()) do
+    if p.name == name then
+      port = p.name
+      break
+    end
+    if p.name:lower():find(name:lower(), 1, true) and port == name then port = p.name end
+  end
+  api.track_set(track, "midi_output", { port = port, channel = channel })
 end
 
 return M

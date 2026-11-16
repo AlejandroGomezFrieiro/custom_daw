@@ -103,6 +103,11 @@ pub struct Track {
     /// has no audio input; `None` for every port and channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi_input: Option<MidiInput>,
+    /// The MIDI output port the track sends what it plays to (its clips'
+    /// notes and controllers, and MIDI input passing through), and on which
+    /// channel; `None` for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub midi_output: Option<MidiOutput>,
     /// How tall the track is drawn, as a share of the height all tracks
     /// have at the frontend's zoom; `None` for that height.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -165,6 +170,17 @@ pub struct MidiInput {
     pub channel: Option<u8>,
 }
 
+/// MIDI to one output port, by its name, on a channel or on each
+/// message's own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MidiOutput {
+    /// The port's name as `daw.midi.outputs()` gives it.
+    pub port: String,
+    /// From 1 to 16, or `None` for the channel each message has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<u8>,
+}
+
 impl Track {
     pub fn new(id: Id) -> Self {
         Self {
@@ -185,6 +201,7 @@ impl Track {
             input: None,
             monitor: false,
             midi_input: None,
+            midi_output: None,
             height: None,
             automation: AutoMode::Read,
         }

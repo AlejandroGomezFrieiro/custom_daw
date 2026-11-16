@@ -313,6 +313,18 @@ fn the_audio_thread_never_allocates() {
                 channel: if i == 1 { 2 } else { 0 },
             },
         );
+        // Two tracks send what they play to MIDI output ports, one of them
+        // on a channel of its own.
+        if i < 2 {
+            send(
+                &mut handle,
+                Msg::SetMidiOutput {
+                    track: slot,
+                    port: 99 + i as u32,
+                    channel: if i == 0 { 5 } else { 0 },
+                },
+            );
+        }
         if i == 4 || i == 5 {
             send(
                 &mut handle,
@@ -332,6 +344,9 @@ fn the_audio_thread_never_allocates() {
             );
         }
     }
+    // MIDI output goes into a queue nobody reads here: once it is full,
+    // what does not fit is counted and dropped.
+    let _midi_out = handle.midi_output();
     send(&mut handle, Msg::SetSchedule(schedule(&tracks)));
     send(&mut handle, Msg::SetTempo(133.0));
     send(&mut handle, Msg::SetTimeSig { num: 7, den: 8 });
