@@ -324,7 +324,26 @@ test("articulations: an SFZ's keyswitches make a map, through #define and #inclu
   for i, a in ipairs(spec.arts) do out[i] = a.name .. "=" .. a.m2 .. "/" .. a.out .. "/" .. a.range end
   eq(table.concat(out, " "), "Sustain=10.0/ks=C1/G3-E7 Staccato=11.0/ks=C#1/G3-E7 Pizz=11.A/ks=D1/G3-C7 Tremolo=12.0/ks=D#1/G3-C7 Trill m2=13.0/ks=E1/G3-A6 Col legno=11.C/ks=F1/G3-C7", "the articulations")
   eq(spec.keyswitches .. " " .. spec.default .. " " .. stats.coded, "C1-F1 sustain 6", "rows, default, coded")
-  assert(art.maps.parse(gen.text(spec), "violins.art.toml"))
+  local map = assert(art.maps.parse(gen.text(spec), "violins.art.toml"))
+  -- What the library does not say, from the profile.
+  local filled = {}
+  for _, a in ipairs(map.arts) do
+    filled[#filled + 1] = a.tag .. "/" .. tostring(a.class) .. "/" .. tostring(a.mark or a.text)
+  end
+  eq(table.concat(filled, " "), "nor/long/nil stc/short/staccato pz/short-light/pizz. trm/long-dark/trem. trm2/long-dark/nil clb/short/col legno",
+    "tags as the README writes them, classes, marks and texts")
+  eq(#map.linked .. " " .. map.linked[1].id .. " " .. table.concat(map.linked[1].cc, ","), "1 dynamics 1,11", "dynamics linked on CC1 and CC11")
+end)
+
+test("articulations: :query and :select find notes by their attribute's tag, name and code", function()
+  local _, clip = strings()
+  paw.ui.focus("pianoroll")
+  ex("%art pizz")
+  ex("art stc")
+  local function count(q) return #paw.query(q) end
+  eq(count("note[art=pz]") .. " " .. count("note[art=pizzicato]") .. " " .. count("note[art=11.A]"), "3 3 3", "pizzicato by tag, name and code")
+  eq(count("note[art=stc]") .. " " .. count("note[art=staccato]"), "1 1", "the staccato, by tag and by its first word")
+  eq(#clip:notes(), 4, "nothing else changed")
 end)
 
 test("articulations: a Decent Sampler preset's keyswitch bindings make a map", function()

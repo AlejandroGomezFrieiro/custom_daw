@@ -180,6 +180,13 @@ icon alone. What is left is mostly what the profile makes a controller
 library's own (classification 1A and up), and two articulations of one code
 get two variations of it, so that every articulation can be chosen.
 
+What the library does not say comes from the profile: each coded
+articulation gets the profile's tag (`stc`, `pz`, the tags `:g/art=pz/`
+finds), a class for its colour, and the score's mark (`staccato`) or text
+(`pizz.`, `trem.`, `harm.`) where there is one. Every generated map links
+dynamics on CC1 and CC11 (`[linked]`), so `\c` works on it at once; edit
+the file when the library listens to other controllers.
+
 ## With notation
 
 When the notation extension is loaded too, a note's articulation shows in
