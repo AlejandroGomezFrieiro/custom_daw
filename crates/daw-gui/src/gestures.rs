@@ -781,3 +781,44 @@ fn a_press_in_a_pane_gives_it_the_keyboard() {
     click(&mut h, pos2(1300.0, AREA_TOP + 600.0));
     assert!(calls.borrow().iter().any(|(_, p)| p[0] == "daw.panes.focus(...)" && p[1] == 3), "the device panel");
 }
+
+/// Every character the window's own code and the kernel's menus for it
+/// write has a glyph in the bundled fonts, so none shows as a box.
+#[test]
+fn what_the_window_writes_has_glyphs() {
+    let sources = [
+        include_str!("app.rs"),
+        include_str!("arrange.rs"),
+        include_str!("canvas.rs"),
+        include_str!("chrome.rs"),
+        include_str!("devices.rs"),
+        include_str!("dialogs.rs"),
+        include_str!("headers.rs"),
+        include_str!("menu.rs"),
+        include_str!("mixer.rs"),
+        include_str!("model.rs"),
+        include_str!("panes.rs"),
+        include_str!("roll.rs"),
+        include_str!("ruler.rs"),
+        include_str!("session.rs"),
+        include_str!("widgets.rs"),
+        include_str!("../../../runtime/lua/daw/window_menus.lua"),
+        include_str!("../../../runtime/lua/daw/mouse_menus.lua"),
+    ];
+    let ctx = egui::Context::default();
+    ctx.set_fonts(crate::theme::fonts(None));
+    let _ = ctx.run_ui(egui::RawInput::default(), |_| {});
+    let mut missing: Vec<char> = Vec::new();
+    for source in sources {
+        for ch in source.chars().filter(|c| !c.is_ascii()) {
+            if missing.contains(&ch) {
+                continue;
+            }
+            let has = ctx.fonts_mut(|f| f.has_glyph(&egui::FontId::proportional(12.0), ch) && f.has_glyph(&egui::FontId::monospace(12.0), ch));
+            if !has {
+                missing.push(ch);
+            }
+        }
+    }
+    assert!(missing.is_empty(), "no glyph for {missing:?}");
+}

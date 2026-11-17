@@ -130,7 +130,7 @@ impl View {
             if used {
                 let n = track.sends.len();
                 let (name, level) = &track.sends[at];
-                let said = if short && n > 1 { format!("+{n} sends") } else { format!("⇢ {name}  {}", decibels(*level)) };
+                let said = if short && n > 1 { format!("+{n} sends") } else { format!("→ {name}  {}", decibels(*level)) };
                 p.rect_stroke(r, CornerRadius::same(2), ring(kind == "send" && (row_index == at as i64 + 1 || short)), StrokeKind::Inside);
                 widgets::text_in(ui, pos2(r.left() + 5.0, r.center().y), &said, sans(T_MICRO), t.text_2, r.width() - 10.0);
             }

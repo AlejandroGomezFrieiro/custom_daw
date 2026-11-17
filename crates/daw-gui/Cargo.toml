@@ -13,9 +13,11 @@ daw-raster.workspace = true
 serde_json.workspace = true
 libc = "0.2"
 # OpenGL through glow: it runs on any driver, Mesa's llvmpipe too, so the
-# window needs no graphics card. X11 and Wayland, and the clipboard.
-eframe = { version = "0.37", default-features = false, features = ["glow", "x11", "wayland", "clipboard", "default_fonts"] }
-egui = "0.37"
+# window needs no graphics card. X11 and Wayland, and the clipboard. Not
+# egui's own fonts (one is under the Ubuntu font licence): the window
+# brings its own.
+eframe = { version = "0.37", default-features = false, features = ["glow", "x11", "wayland", "clipboard"] }
+egui = { version = "0.37", default-features = false }
 # The icons are SVG paths: read with kurbo, filled with tiny-skia.
 kurbo = "0.13"
 tiny-skia = "0.12"

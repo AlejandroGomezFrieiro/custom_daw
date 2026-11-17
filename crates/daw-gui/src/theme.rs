@@ -196,9 +196,8 @@ pub fn fonts(cjk: Option<(Vec<u8>, u32)>) -> FontDefinitions {
     add("Inter SemiBold", include_bytes!("../fonts/Inter-SemiBold.ttf"));
     add("JetBrains Mono", include_bytes!("../fonts/JetBrainsMono-Regular.ttf"));
     add("JetBrains Mono Medium", include_bytes!("../fonts/JetBrainsMono-Medium.ttf"));
-    // Symbols Inter has not (▾ ▸ ◀ ☆ ⇢) are JetBrains Mono's, then egui's own.
+    // Symbols Inter has not (▾ ▸ ◀ ☆) are JetBrains Mono's.
     let mut tail = vec!["JetBrains Mono".to_string()];
-    tail.extend(fonts.families[&FontFamily::Proportional].iter().cloned());
     if let Some((bytes, index)) = cjk {
         let mut data = FontData::from_owned(bytes);
         data.index = index;
