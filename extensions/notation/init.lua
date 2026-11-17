@@ -11,6 +11,7 @@ require("notation.owner")
 require("notation.roll")
 require("notation.write")
 require("notation.popover")
+require("notation.files")
 
 daw.ui.view("notation", view)
 daw.ui.dock("notation", { side = "bottom", hidden = true })
