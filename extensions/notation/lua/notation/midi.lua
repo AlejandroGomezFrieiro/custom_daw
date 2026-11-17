@@ -263,16 +263,22 @@ function M.velocity(res, t, art, have)
   end
   local v
   for _, h in ipairs(res.pins) do
-    if t >= h.s and t < h.e then
+    -- A dynamic inside a hairpin ends it there, as it is drawn (the
+    -- soft half of an `fp` at its start, a tick after it, starts it).
+    local e = h.e
+    for _, d in ipairs(res.dyns) do
+      if d.t > h.s + 1 and d.t < e then e = d.t end
+    end
+    if t >= h.s and t < e then
       local from, key = at(h.s)
       from = from or M.DYNAMICS.mf
       local to, to_key
       for _, d in ipairs(res.dyns) do
-        if not to and d.t >= h.e then to, to_key = d.level, "d" .. d.t .. ":" .. d.level end
+        if not to and d.t >= e then to, to_key = d.level, "d" .. d.t .. ":" .. d.level end
       end
       to = to or (from + (h.kind == "cresc" and 24 or -24))
-      v = from + (to - from) * (t - h.s) / math.max(1, h.e - h.s)
-      why = { "h" .. h.s .. ":" .. h.e .. ":" .. h.kind }
+      v = from + (to - from) * (t - h.s) / math.max(1, e - h.s)
+      why = { "h" .. h.s .. ":" .. e .. ":" .. h.kind }
       why[#why + 1] = key
       why[#why + 1] = to_key
     end

@@ -64,7 +64,7 @@ notation keeps:
 | a chord moved, lengthened, dotted | its notes moved or made longer by as much as what is written, however they were played |
 | a note or chord deleted, a bar taken out | the notes gone; the notes after a bar taken out moved earlier |
 | a voice, a staff, a beam, an arpeggio sign, an ornament, a lyric | nothing in the MIDI: kept on the notes |
-| a dynamic, a hairpin | the velocities of the notes it reaches (to the next dynamic), a hairpin ramping them, `sfz` `fp` and the like at their place |
+| a dynamic, a hairpin | the velocities of the notes it reaches (to the next dynamic), a hairpin ramping them (to its end, or to a dynamic written inside it, where it is drawn to end), `sfz` `fp` and the like at their place |
 | an accent, a marcato | 20, 30 louder |
 | a staccato, staccatissimo, tenuto, fermata | half, a quarter of its written length, all of it |
 | a tempo mark, a time signature | the song's tempo map, its signature from that bar |
@@ -168,7 +168,10 @@ played.
   what the notes would suggest, and so is a beat said to be plain.
   **Rests** are merged as the metre divides the bar.
 - Notes drawn exactly on the grid (in the piano roll) are written as they
-  are: the interpretation is for what was played.
+  are: the interpretation is for what was played. A played note that lands
+  on the grid by chance (a MIDI file's ticks allow it now and then) is
+  read as played, unless the notes beside it are drawn too or notation
+  wrote it.
 
 Each of these has a setting, kept with the clip in `clip.meta.notation.settings`:
 
@@ -190,7 +193,7 @@ Each of these has a setting, kept with the clip in `clip.meta.notation.settings`
 | `follow` | on | follow the player's drift from the grid |
 | `mode` | score | `raw`: every note as played, rounded to `daw.opt.notation_grid` |
 
-`:notation.set` alone lists them, `:notation.set swing off` sets one,
+`:notation.set` alone lists them on a page, with the default of each the clip changed, `:notation.set swing off` sets one,
 `:notation.set swing default` forgets it, `:notation.reset` forgets them all.
 `:notation.raw` (`gR`) switches the raw view on and off: every note as it is,
 rounded to the grid, one chord per start, middle C splitting the hands, for
@@ -280,6 +283,7 @@ key that edits writes the clip's MIDI (see
 | `zs` | start a system at the cursor's bar; again, let the bar go where it fits |
 | `zj` | keep the cursor's bar on the system before; again, let it go where it fits |
 | `:notation.bars-per-system 4` | that many bars on every system; without a number, as they fit |
+| `K` | what is under the cursor: the note as written (its value, voice, marks and the dynamic in force) and the MIDI note it is, then the clip and the track |
 | `,n` | back to the arrange view |
 | `:q` `ZZ` `Ctrl-w c` | close the view |
 | `Esc` | stay: drop a count, an operator or a selection |
@@ -526,7 +530,11 @@ them. Rests look like rests: the whole hangs from the fourth line and the
 half sits on the third (`▄▄` `▀▀`), the quarter zigzags (`╲ ╱ ╲`), an eighth
 is a `7`, a sixteenth two. Ties and slurs are arcs (`╰──╯`, `╭──╮`), tuplets
 a bracket with their number, dynamics and hairpins under the staff (between
-a grand staff's two).
+a grand staff's two), a hairpin running on over barlines to where it ends.
+Notes low under the last staff with their stems down get rows of their own
+under it, so that nothing runs into the next system; the popover's prompt
+opens under the row of dynamics, so that a dynamic it previews stays in
+sight.
 
 At the usual zoom the staff is dense: each line has a row and each space is
 between two rows, so a staff takes five rows and a grand staff, with room

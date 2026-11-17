@@ -307,6 +307,20 @@ function M.transcribe(notes, ctx)
     end
   end
   sort(items, by_onset)
+  -- A played note lands on the grid by chance now and then (one in four
+  -- hundred at 480 ticks a beat): it counts as drawn when notation wrote
+  -- it, when most of the notes are drawn, or when one beside it is too.
+  local drawn = 0
+  for _, a in ipairs(items) do
+    if a.exact then drawn = drawn + 1 end
+  end
+  if drawn < 0.5 * #items then
+    local was = {}
+    for i, a in ipairs(items) do was[i] = a.exact end
+    for i, a in ipairs(items) do
+      a.exact = was[i] and (a.own.letter ~= nil or was[i - 1] or was[i + 1]) or false
+    end
+  end
 
   -- Grace notes: short, just before a longer note of another pitch, and
   -- let go by the time it sounds.
