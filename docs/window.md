@@ -220,6 +220,15 @@ same behaviour by sending the same gestures. The clips chosen with the
 pointer are kept there too (`daw.frontend.chosen_clips()`), and the state
 marks each clip `selected`.
 
+**A status line of your own.** The window's status bar is its own, and shows
+the mode, the prompt, messages and keys as it always has. Once
+`daw.statusline.setup` has run (see [Configuration](configuration.md#the-status-line)),
+`frontend.state` carries `modal.statusline`, `{ left, right }`, each a list of
+`{ text, group }` pieces (the groups are those of the terminal's theme): this
+is what the window needs to draw in place of its fixed fields. The window does
+not draw it yet; the terminal does. The tab line's extra sections, and
+`tabline.always`, are the terminal's too.
+
 **Views in windows.** Any view of the terminal can be popped out into a
 window of its own on request: `:view.window undotree` (the focused view, or
 the page floating over the others, without a name), `Ctrl-w f` in a curve

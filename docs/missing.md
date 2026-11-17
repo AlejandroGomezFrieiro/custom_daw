@@ -356,6 +356,15 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
+- The status line and the files: the window does not draw `daw.statusline`'s
+  line (it is told the pieces, `modal.statusline`) nor the tab line's own
+  sections, and `tabline.always` is the terminal's. A "scope" component has
+  no meaning here, so there is none; disk recording shows as `take N`, with no
+  count of bytes written (the engine does not report one). The file manager
+  moves nothing between disks as a folder (a file is copied and then moved),
+  has no undo of a file operation but the trash, and cannot drag a line into
+  `daw://tracks` (to bring a file in, Enter or `go`); `daw` started with a folder
+  does not open it. The graphical window shows a files buffer as any text buffer.
 - Project diff and merge (extensions/projdiff): the diff and conflict views
   are drawn in cells, as the window draws any such view, with no painted
   version of their own (they were driven in the terminal, not in the

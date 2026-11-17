@@ -278,6 +278,20 @@ text as in Vim; nothing changes in the project until `:w`.
 | `<CR>` `-` | a track's devices, a device in the panel, go to a marker; back up to the tracks |
 | `gw` | the buffer in a window of its own, in the graphical frontend |
 
+
+## Files (`:e folder`)
+
+A folder as lines to edit, and as a tree (`:Files`). Edits are the text's;
+`:w` shows the plan and `y` does it; deleted files go to the trash.
+
+| Keys | |
+| --- | --- |
+| `<CR>` `-` | open (a folder goes in, a project opens, a sound is placed at the cursor); up |
+| `go` `gh` `gH` | a sound on a new track; hear it; hear each as the cursor rests |
+| `g.` | show or hide files that start with a dot |
+| `za` `zR` `zM` | in the tree: open or close a folder, all, none |
+| `cw` `dd` `yy` `p` `o` | rename (or move, with a path); trash; copy; new file (`name/` a folder) |
+
 ## Launch clips (the session view, `,l`)
 
 | Keys | |

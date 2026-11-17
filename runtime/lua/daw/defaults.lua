@@ -876,6 +876,7 @@ command("open", function(ctx)
     daw.notify("opened " .. path)
   end
   local path = ctx.args[1]
+  if path and path ~= "" and daw.files.is_dir(path) then return daw.files.open(path, { here = true }) end
   if path and path ~= "" then return go((path:gsub("^~", os.getenv("HOME") or "~"))) end
   daw.pick.file({ title = "Open", on_choose = go })
 end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
@@ -1517,6 +1518,8 @@ command("edit", function(ctx)
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return daw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
+  -- A folder is listed as a buffer to edit (`daw.files`).
+  if daw.files.is_dir(path) then return daw.files.open(path, { here = true }) end
   -- A buffer's name, a view's or an address (`daw://tracks`) shows it here;
   -- only a file's path asks about the project.
   local view, buf = daw.layout.resolve(path)

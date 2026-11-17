@@ -400,9 +400,19 @@ gets a table it shares with the other steps (`state.made[line]` holds what
 an earlier step made for a line); `quiet = true` keeps a step off the list
 shown. Plans are checked before anything runs: an error raised in `plan`
 stops the write with its message. If a step fails anyway, what the steps
-before it did is undone. `daw.textbuf.open(name, opts)` shows a buffer
+before it did is undone (a step that changes something outside the project,
+as the file manager's do, puts a function that takes it back on
+`state.undo`, and those run, last first). `daw.textbuf.open(name, opts)` shows a buffer
 (`here`, `vertical`, `window`), `daw.textbuf.buf()` is the current one, and
-its `state.text.lines` its lines (`{ text, id }`).
+its `state.text.lines` its lines (`{ text, id }`). The file manager is such a
+kind (`daw/views/files.lua`): `daw.files.open(folder, { tree = true })`,
+`daw.files.sound_info(path)`; `daw.api.fs_stat`, `fs_sound`, `fs_move`,
+`fs_copy`, `fs_trash` and the rest of the `fs_` functions are what it is
+made from.
+
+**The status line.** `daw.statusline.setup` and `daw.statusline.component`
+change and extend the line, a winbar and the tab line (see The status line
+in [Configuration](configuration.md#the-status-line)).
 
 **Help.** An extension ships help by having it: its `README.md`, and any
 `doc/*.md` beside it, are pages of `:help` (see Help in [the terminal
