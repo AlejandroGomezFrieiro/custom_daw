@@ -278,6 +278,18 @@ test("Ctrl-] in the keys picker opens the help of the key chosen", function()
   eq(at:find(":helpgrep", 1, true) ~= nil, true, "at the command: " .. tostring(at))
 end)
 
+test("the keys picker shows the help of the key chosen, wide columns, and a key line", function()
+  start()
+  daw.pick("keys", { query = "Ctrl-w o" })
+  local text = table.concat(api.ui_snapshot(200, 40), "\n")
+  eq(text:find("Ctrl-w o", 1, true) ~= nil, true, "the key is listed")
+  eq(text:find("terminal", 1, true) ~= nil, true, "the manual's page is named in the preview")
+  local shown = {}
+  for _, e in ipairs(daw.ui.keybar.entries()) do shown[#shown + 1] = e[1] .. " " .. e[2] end
+  eq(table.concat(shown, " · "), "Enter run · Ctrl-] help · Esc close", "the key line")
+  daw.ui.close()
+end)
+
 test("the key line names the view's topic of help, and every such topic is a tag", function()
   start()
   eq(H.topic_of("arrange"), "terminal", "the arrange view's")

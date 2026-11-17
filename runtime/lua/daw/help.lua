@@ -852,27 +852,72 @@ local function mention(text)
   end
 end
 
---- Go to the help of the first of `names` that is a tag, else to where the
---- first of them is named; say so when none is.
-local function help_for(names, shown)
+--- Where the help of the first of `names` is: a tag, else where it is
+--- named. Nil when there is none.
+local function place_for(names)
   local tags = build().tags
   for _, name in ipairs(names) do
-    if tags[name] then return M.jump(tags[name]) end
+    if tags[name] then return tags[name] end
   end
   for _, name in ipairs(names) do
     local place = mention(name)
-    if place then return M.jump(place) end
+    if place then return place end
   end
+end
+
+--- Go to the help of the first of `names` that is a tag, else to where the
+--- first of them is named; say so when none is.
+local function help_for(names, shown)
+  local place = place_for(names)
+  if place then return M.jump(place) end
   daw.notify("no help for " .. shown .. ": `:helpgrep " .. shown .. "` searches every page", "warn")
+end
+
+local function names_of(map)
+  local human = daw.keymap.human(map.lhs)
+  local names = { human, map.lhs }
+  if type(map.rhs) == "string" then names[#names + 1] = ":" .. map.rhs:match("^%S+") end
+  return names, human
 end
 
 --- The help for a key mapping: of its keys, else of the command it runs
 --- (what `Ctrl-]` does in the keys picker).
 function M.for_map(map)
-  local human = daw.keymap.human(map.lhs)
-  local names = { human, map.lhs }
-  if type(map.rhs) == "string" then names[#names + 1] = ":" .. map.rhs:match("^%S+") end
-  return help_for(names, human)
+  return help_for(names_of(map))
+end
+
+--- A line cut into pieces of at most `width` columns at spaces.
+local function wrapped(text, width)
+  local out, line = {}, ""
+  for word in text:gmatch("%S+") do
+    if line ~= "" and api.str_width(line .. " " .. word) > width then
+      out[#out + 1], line = line, word
+    else
+      line = line == "" and word or line .. " " .. word
+    end
+  end
+  out[#out + 1] = line
+  return out
+end
+
+--- The section of help that `for_map` would go to, as at most `rows` lines
+--- `{ text, style }` wrapped to `width`, for a pane beside a list of keys.
+--- The page's name comes first; nil when there is no help for the key.
+function M.excerpt_for_map(map, width, rows)
+  local place = place_for((names_of(map)))
+  if not place then return nil end
+  local out = { { text = place.source.title or place.source.name, style = "HelpSection" }, { text = "" } }
+  local blank = 0
+  for row = place.row, #place.source.doc.lines do
+    local text = place.source.doc.lines[row].text
+    blank = text:match("%S") and 0 or blank + 1
+    if blank == 2 then break end
+    for _, part in ipairs(wrapped(text, width)) do
+      if #out >= rows then return out end
+      out[#out + 1] = { text = part }
+    end
+  end
+  return out
 end
 
 --- The help for a command (what `Ctrl-]` does in the commands picker).
