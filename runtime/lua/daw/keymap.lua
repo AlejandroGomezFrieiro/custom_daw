@@ -69,7 +69,8 @@ function M.parse(lhs)
   local expanded = lhs:gsub("<[Ll]eader>", function() return daw.opt.leader end)
   local pos = 1
   while pos <= #expanded do
-    local special = expanded:match("^<[%w%-]+>", pos)
+    -- A key with modifiers may be a punctuation mark: `<C-]>`.
+    local special = expanded:match("^<[%w%-]+>", pos) or expanded:match("^<[%a%-]-%a%-[^%w%s>]>", pos)
     local key = special or expanded:match("^[%z\1-\127\194-\244][\128-\191]*", pos)
     keys[#keys + 1] = key
     pos = pos + #key

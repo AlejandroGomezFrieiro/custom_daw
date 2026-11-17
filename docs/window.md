@@ -18,8 +18,8 @@ part that changed (see [docs/protocol.md](protocol.md)).
 
 The window remembers how it was left, for the machine, in
 `~/.local/state/daw/window.json`: its size and, on X11, its position on the
-screen, the timeline's zoom, the height of the rows and of the piano roll,
-and whether the mixer shows. It writes it
+screen, the timeline's zoom, the height of the rows, and whether the mixer
+shows. It writes it
 when a value has stood for a second and when it closes, through
 `daw.frontend.layout_get()` and `layout_set(table)` in the kernel, so a window
 attached to a running kernel finds it too.
@@ -93,12 +93,12 @@ does wherever it is.
 | Routing | above the selected track's devices: "Output" chooses the track it plays into, "+ Send" a track its sound is sent to as well; each send has a level to drag, `pre` to take it ahead of the fader, and a cross to take it away |
 | Templates | with the templates extension: a track's menu saves it (or, on a group, the whole group) and saves its devices as a chain; `Track` → "From a template…" makes one again, and "Add devices from a template…" puts a saved chain on the track |
 | Session | the Session button shows the clip launcher under the timeline: a slot's play mark launches it (let go stops a gate clip), a click chooses it, a double click opens its notes (an empty slot gets a new MIDI clip first), a drag moves it to another slot (Ctrl copies), a clip dragged from the timeline onto a slot is copied there, the dot of an empty slot records into it; scenes down the right launch their rows, and the bar along the top sets the quantize, captures, sends every track back and stops every clip. See [Live performance](live.md) |
-| Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it |
+| Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it. With the keyboard in the mixer, the row its cursor is on (an insert, the sends, the pan, the fader, mute, solo, arm) is outlined on its strip, as the device panel outlines its row |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
-| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a window of its own; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
+| Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a pane: where it docks, else split from the pane with the keyboard; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
 | File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, a file per track, and under Tags the title, artist, album, track, year, genre, comment and cover that the files carry (kept with the project); the render runs in the background with its progress and a Cancel in the status line. Open…, Save as…, Import and the render's `…` button show the desktop's own file dialog (see below) |
 | Lanes as rows | a track's menu has Automation ▸ Show or hide the lanes as rows: each of its lanes is then a row of its own under its clips, always there to draw on (click adds a point, hold to draw, drag a point, right click removes it), while the clips above stay editable. A track with no lane yet gets one for its fader. The same menu sets the track's automation mode, as does the `A` flag on its header |
-| Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it; a right click on the parameter's name offers to automate it (a lane with a point at its value, at the cursor) or to edit its curve in the curve editor, in a window of its own (see [the terminal interface](terminal.md)) |
+| Automation | with Automation on, each track shows one lane over the timeline, named at its left. Click adds a point, holding the button down draws a curve, drag moves a point, right click removes one; right click elsewhere clears the lane or turns it off. The header's last line chooses the lane: volume, pan, or a parameter. The small curve button beside a device's parameter gives that parameter a lane and shows it; a right click on the parameter's name offers to automate it (a lane with a point at its value, at the cursor) or to edit its curve in the curve editor, in a pane split from the one with the keyboard (see [the terminal interface](terminal.md)) |
 | Wheel | scrolls; with Shift sideways; with Ctrl it zooms in time where the pointer is, in the timeline and in the piano roll, and over the track headers makes every track taller or shorter; with Alt it makes the tracks (or the piano roll's rows) taller and shorter |
 | Pages over the window | a picker's rows (commands, files, devices) take the pointer: a click selects a row, a double click or Enter chooses it, the wheel scrolls; a click outside closes the page; "Open in a window" at its top right moves the page into a window of its own, in its colours |
 | Bands under the ruler | under the markers, a row for each extension that adds one: the sections of the song, the mix's findings. A click on an entry does what it stands for (goes to the section, to the finding); the status line says what |
@@ -146,7 +146,9 @@ driven exactly as the terminal UI is: the same modes, operators, registers
 and macros, with the mode and the view that has the keys (`NORMAL·mixer`),
 the prompt, messages and half-typed keys in the status line, the selection
 and both cursors drawn, the keys that can follow listed, and help and other
-pages shown over the window. The status line shows the keys worth knowing in
+pages shown over the window. `:help` opens the manual in a window of its own, drawn as the
+terminal draws it and moved through with the same keys (see Help in [the
+terminal interface](terminal.md)). The status line shows the keys worth knowing in
 the view that has the keyboard (the terminal's key bar, `daw.opt.keybar`), the
 quickfix count (`qf E1 W2`) in the colour of the worst entry, and, while a
 command is typed, the list of what it could become, with each one's
@@ -156,6 +158,36 @@ change of mode, or for `message_time`. Pages such as the commands list are
 drawn as wide as the window. `Ctrl-z`, `Ctrl-y`,
 `Ctrl-s` and `Delete` do what they do elsewhere. The piano roll and mixer are
 the kernel's: opening one puts the keyboard in it.
+
+**Windows, buffers and tabs.** The window shows the kernel's tabs and
+windows (see [Windows, buffers and tabs](terminal.md#windows-buffers-and-tabs))
+as the terminal does: each window of the current tab is a pane of the main
+area, between the transport bar and the status line, laid out by the same
+rules, a size in cells taken as so many of the monospace font's cells in
+pixels (and never less than what the window's own drawing of a view needs).
+The arrange view, the device panel, the piano roll, the mixer and the
+session view are drawn by the window itself in their panes; any other
+buffer is drawn by the kernel at the pane's size: a view that paints (the
+notation, the drum grid, the vocal editor, the undo tree) as a picture
+under a title with buttons to pop it out and to close it, any other (a
+curve `daw://lane/3`, the quickfix list, a text buffer `daw://tracks`, an
+empty window) cell by cell as the terminal draws it. So `:vs daw://lane/3`,
+`Enter` on a lane row, `:copen`, `:sp quickfix`, `:e daw://tracks`,
+`Ctrl-w` and its keys, `:q`, `:only`, `:tabnew mixer`, `gt` and `:layout
+edit` do in the window what they do in the terminal. A ring of the
+selection's colour goes round the pane with the keyboard when there is
+more than one; a press anywhere in a pane gives it the keyboard; the
+borders between panes are dragged to share the room (a size of whole
+cells is kept, as `Ctrl-w +` keeps it); with more than one tab a row of
+them runs along the top, and a click on one goes to it. Every window
+attached has tabs and windows of its own, and the first time a window
+shows its main area the device panel is put beside the arrange view. The
+kernel says where each pane goes in `daw.panes.state()`, told the main
+area's size with `daw.panes.area(width, height)`; it paints a pane with
+`daw.panes.paint(win, width, height)`, and takes the pointer in one with
+`daw.panes.pointer(win, event)`, a press with `daw.panes.focus(win)`, a
+border dragged with `daw.panes.border(i, x, y)` and a tab clicked with
+`daw.panes.tab(i)` (runtime/lua/daw/panes.lua, tested in the suite).
 
 What a gesture means is not decided in the window. It calls
 `daw.frontend.act` in the kernel (`select_clip`, `select_clips_box`,
@@ -170,10 +202,17 @@ same behaviour by sending the same gestures. The clips chosen with the
 pointer are kept there too (`daw.frontend.chosen_clips()`), and the state
 marks each clip `selected`.
 
-**Views in windows.** Any view of the terminal can be opened in a window of
-its own, as it is: `:view.window undotree` (the focused view, or the page
-floating over the others, without a name), More beside the view switch, or
-"Open in a window" on a floating page. The kernel draws the view by itself
+**Views in windows.** Any view of the terminal can be popped out into a
+window of its own on request: `:view.window undotree` (the focused view, or
+the page floating over the others, without a name), `Ctrl-w f` in a curve
+or a text buffer, the button on a painted pane's title, or "Open in a
+window" on a floating page. A view docked in a pane leaves it while it is in
+a window. The keyboard is the window's while it is in front; closing it (its
+close button, `:q`, or the view's own `q`; `Esc` stays in the view, as
+everywhere) gives the keyboard back to the main window, in the pane that had
+it before, and so do keys typed in the main window meanwhile. A view that
+paints has the status line and the command line under it there, so its
+mode, a prompt typed in it and messages show where it is. The kernel draws the view by itself
 at the window's size, in cells of the bundled JetBrains Mono (their size is
 measured on the font, so box-drawing characters join), with the theme's
 colours in 24 bits whatever the terminal shows, and sends it as runs of text
@@ -193,9 +232,9 @@ attached to the same kernel is not disturbed: the view is drawn on a grid of
 its own (`daw.api.ui_view_snapshot(name, width, height)` gives the same as
 rows of runs `{ x, w, text, fg, bg, attrs }`).
 
-**Windows for extensions.** A view that paints can be shown in a window of
-its own, so an extension brings its own editor to the graphical frontend
-without the frontend knowing anything about it:
+**Windows for extensions.** A view that paints is shown in a pane, or in a
+window of its own, so an extension brings its own editor to the graphical
+frontend without the frontend knowing anything about it:
 
 ```lua
 daw.ui.view("scope", {
@@ -212,10 +251,15 @@ daw.ui.view("scope", {
   end,
   pointer = function(self, e) end,               -- e.kind: down, up, move (button held), hover, double, wheel; e.x, e.y, e.button
 })
+daw.ui.dock("scope", { side = "bottom", hidden = true })   -- where it docks
 daw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
 ```
 
-The kernel paints the view at the window's size and the frontend makes the
+`daw.canvas.open` shows a view that docks (`daw.ui.dock`, or one with a
+window in the layout already) in its pane, under the title given; a view
+with no place in the layout, or `daw.canvas.open(name, { window = true })`,
+in a window of its own that starts at the size given. The kernel paints the
+view at the pane's or the window's size and the frontend makes the
 rectangles, text, lines and music glyphs it is given into one image, with
 the rasterizer the terminal uses ([crates/daw-raster](../crates/daw-raster)),
 so the two show the same pixels. `g:glyph(x, y, size, codepoint, colour,

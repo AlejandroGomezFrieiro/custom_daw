@@ -62,6 +62,8 @@ daw.ui.keybar = require("daw.keybar")
 daw.mouse = require("daw.mouse")
 require("daw.menu")
 daw.canvas = require("daw.canvas")
+-- The tabs and windows as panes of a graphical frontend (daw/panes.lua).
+daw.panes = require("daw.panes")
 daw.notify = daw.ui.notify
 daw.keymap = require("daw.keymap")
 daw.keyrule = require("daw.keyrule")
@@ -193,6 +195,9 @@ function K.startup()
   daw.qf = require("daw.qf")
   require("daw.views.qflist")
   daw.ex = require("daw.ex")
+  -- The manual inside the program (`:help`).
+  daw.markdown = require("daw.markdown")
+  daw.help = require("daw.help")
   daw.ui.start_ticker()
 
   daw.luadev = require("daw.luadev")

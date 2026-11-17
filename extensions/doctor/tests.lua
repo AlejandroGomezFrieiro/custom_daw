@@ -414,7 +414,7 @@ test("the doctor's page lists the checks and the question being asked", function
   daw.ui.close()
   daw.cmd("doctor")
   eq(daw.ui.focused, "doctor", "with no terminal, the page has the keyboard")
-  eq(require("daw.canvas").open_views.doctor ~= nil, true, "in a window of its own")
+  eq(daw.ui.visible("doctor") and require("daw.canvas").titles.doctor, "Doctor", "docked for a graphical frontend, under its title")
   daw.cmd("doctor.close")
   daw.flush()
   eq(daw.ui.float, nil, "closed")

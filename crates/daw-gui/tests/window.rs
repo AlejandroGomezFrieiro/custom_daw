@@ -25,6 +25,9 @@ mod place {
     pub const HEADER_W: i32 = 240;
     /// The transport bar along the top.
     pub const TRANSPORT_H: i32 = 40;
+    /// Where the main area, the panes of the kernel's windows, starts:
+    /// under the transport bar and the line under it.
+    pub const AREA_TOP: i32 = TRANSPORT_H + 1;
     /// The ruler's main row.
     pub const RULER_H: i32 = 28;
     /// The band under the ruler that shows markers and regions, once there is one.
@@ -678,6 +681,19 @@ impl Scene {
             "ctrl",
         ]);
         self.pause(0.4);
+    }
+
+    /// A number about the pane that shows `view` (`p.x`, `p.w`...), from
+    /// where the kernel lays the main area out (`daw.panes.state`).
+    fn pane(&self, view: &str, part: &str) -> i32 {
+        self.number(&format!(
+            "for _, p in ipairs(daw.panes.state().panes) do if p.view == '{view}' then return {part} end end"
+        )) as i32
+    }
+
+    /// The middle of the pane that shows `view`, in the window.
+    fn pane_middle(&self, view: &str) -> Point {
+        (self.pane(view, "p.x + p.w / 2"), place::AREA_TOP + self.pane(view, "p.y + p.h / 2"))
     }
 
     /// The window's close button as a window manager sends it.
@@ -1380,21 +1396,140 @@ daw.cursor.set_track(id)
 }
 
 #[test]
-fn the_more_menu_opens_a_view_in_a_window_of_its_own() {
+fn the_more_menu_docks_a_view_in_a_pane_that_pops_out_on_request() {
     let mut w = scene!(
         "more",
         &format!("{DEMO}\ndaw.ext.load('extensions/undotree')")
     );
-    assert_eq!(w.number("return #daw.canvas.windows()"), 0.0);
     w.click_text("More");
     w.shot("more-menu.png");
     w.click_text("Undo tree");
     w.expect(
-        "the undo tree open in a window, painted",
+        "the undo tree docked in a pane, painted, with the keyboard",
+        "(function() for _, p in ipairs(daw.panes.state().panes) do if p.view == 'undotree_paint' then return p.kind == 'paint' and p.focused end end end)()",
+    );
+    assert_eq!(w.number("return #daw.canvas.windows()"), 0.0);
+    w.shot("more-pane.png");
+    // The first button on its title pops it out into a window of its own;
+    // its own `q` there closes it, and keys reach the main window again.
+    let right = w.pane("undotree_paint", "p.x + p.w");
+    let top = place::AREA_TOP + w.pane("undotree_paint", "p.y");
+    w.click((right - 37, top + 12));
+    w.expect(
+        "the undo tree in a window of its own",
         "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree_paint'",
     );
-    w.pause(1.0);
-    w.assert_alive("after opening a view in a window");
+    w.pause(0.6);
+    w.key("q");
+    w.expect("its window closed", "#daw.canvas.windows() == 0");
+    w.expect("the keyboard back in the main window", "daw.ui.focused == 'arrange'");
+    let row = w.number("return daw.cursor.track().index");
+    w.key("j");
+    w.expect("keys reach it", &format!("daw.cursor.track().index == {}", row + 1.0));
+    w.assert_alive("after a view in a pane and in a window");
+}
+
+/// The demo song with a volume lane shown as a row under its first track,
+/// the cursor on it.
+const LANE_SONG: &str = "
+dofile('examples/demo-song.lua')
+local t = daw.tracks()[1]
+local lane = t:automate('volume')
+lane:set_points({ { 0, -12 }, { 8, 0 } })
+daw.lanes.open(t)
+daw.cursor.set_track(t.id, lane.id)
+";
+
+#[test]
+fn enter_on_a_lane_row_shows_its_curve_in_a_pane() {
+    let mut w = scene!("curve-pane", LANE_SONG);
+    w.key("Return");
+    w.expect("the curve has the keyboard", "daw.ui.focused == 'curve'");
+    w.expect(
+        "in a pane drawn in cells, with room",
+        "(function() for _, p in ipairs(daw.panes.state().panes) do if p.view == 'curve' then return p.kind == 'cells' and p.w > 200 and p.h > 100 and p.focused end end end)()",
+    );
+    // What the kernel draws there shows: the curve's scale along its left.
+    w.find_text("dB", 0);
+    w.shot("curve-pane.png");
+    // Its keys work in it: a point added at the cursor.
+    let lane = w.number("return daw.api.lane_list(daw.tracks()[1].id)[1].id") as i32;
+    let before = w.number(&format!("return #daw.api.lane_points({lane})"));
+    w.key("l");
+    w.key("l");
+    w.key("o");
+    w.expect(
+        "a point added from the pane",
+        &format!("#daw.api.lane_points({lane}) == {}", before + 1.0),
+    );
+    // `:q` closes the pane and gives the keyboard back.
+    w.type_text(":q");
+    w.key("Return");
+    w.expect("the pane gone", "daw.ui.focused ~= 'curve'");
+    w.assert_alive("after the curve's pane");
+}
+
+/// The demo song and a quickfix list of one entry.
+const QF_SONG: &str = "
+dofile('examples/demo-song.lua')
+daw.qf.set({ { address = daw.address.project(), text = 'zebra crossing', level = 'error' } }, { title = 'Tests' })
+";
+
+#[test]
+fn copen_docks_the_list_and_focus_moves_between_panes_and_comes_back() {
+    let mut w = scene!("copen", QF_SONG);
+    w.type_text(":copen");
+    w.key("Return");
+    w.expect("the list has the keyboard", "daw.ui.focused == 'qflist'");
+    w.find_text("zebra crossing", 0);
+    w.shot("copen.png");
+    // Ctrl-w k goes up to the arrange view, a click in the list back to it.
+    w.key("ctrl+w");
+    w.key("k");
+    w.expect("the arrange view has the keyboard", "daw.ui.focused == 'arrange'");
+    w.click(w.pane_middle("qflist"));
+    w.expect("a click gives the list the keyboard", "daw.ui.focused == 'qflist'");
+    // A click in the arrange view's pane takes it back.
+    w.click((place::HEADER_W / 2, place::row_top(0, false) + 10));
+    w.expect("a click gives the arrange view the keyboard", "daw.ui.focused == 'arrange'");
+    // Popped out, the list leaves its pane for a window of its own; `q`
+    // there closes it and the keyboard is the main window's again.
+    w.type_text(":qf.window");
+    w.key("Return");
+    w.expect(
+        "the list in a window of its own, not in a pane",
+        "#daw.canvas.windows() == 1 and daw.ui.focused == 'qflist' and #daw.panes.state().panes == 2",
+    );
+    w.pause(0.6);
+    w.key("q");
+    w.expect("its window closed", "#daw.canvas.windows() == 0");
+    w.expect("the keyboard back in the arrange view", "daw.ui.focused == 'arrange'");
+    w.key("ctrl+w");
+    w.key("l");
+    w.expect("keys reach the main window again", "daw.ui.focused == 'devices'");
+    w.assert_alive("after moving between panes");
+}
+
+#[test]
+fn tabs_show_along_the_top_and_a_click_or_gt_goes_to_one() {
+    let mut w = scene!("tabs", DEMO);
+    w.type_text(":tabnew mixer");
+    w.key("Return");
+    w.expect("two tabs, the second current", "#daw.ui.tabs == 2 and daw.ui.tab == 2");
+    w.expect(
+        "the mixer fills the second",
+        "(function() local s = daw.panes.state() return #s.panes == 1 and s.panes[1].view == 'mixer' and s.top > 0 end)()",
+    );
+    w.shot("tabs.png");
+    w.click_text("arrange");
+    w.expect("a click on the first tab goes there", "daw.ui.tab == 1");
+    w.key("g");
+    w.key("t");
+    w.expect("gt to the next", "daw.ui.tab == 2");
+    w.type_text(":tabclose");
+    w.key("Return");
+    w.expect("one tab again", "#daw.ui.tabs == 1");
+    w.assert_alive("after tabs");
 }
 
 #[test]

@@ -1381,6 +1381,16 @@ command("view.window", function(ctx)
   if not daw.ui.views[name] then return daw.notify("no view `" .. name .. "`", "warn") end
   daw.canvas.open_view(name)
 end, { desc = "Open a view in a window of its own, in the graphical frontend: `view.window undotree`; the focused one without a name", complete = { "views" } })
+command("view.open", function(ctx)
+  local name = tostring(ctx.args[1] or "")
+  local view = daw.ui.views[name]
+  if not view then return daw.notify("no view `" .. name .. "`", "warn") end
+  -- Where it is already: in a window of its own, or in the layout.
+  if daw.canvas.open_views[name] then return daw.canvas.focus(name) end
+  if daw.layout.homes[name] or daw.layout.find(daw.ui.layout, name) then return daw.ui.focus(name) end
+  local made, why = daw.layout.split({ view = name })
+  if not made then daw.notify(why, "warn") end
+end, { desc = "Show a view docked: where it docks, else in a window split from this one: `view.open undotree`", complete = { "views" } })
 command("view.only", function()
   for _, rect in ipairs(daw.ui.arrange()) do
     local view = daw.ui.views[rect.name]
@@ -1841,7 +1851,7 @@ map("gI", "punch selection", { mode = "x", desc = "Punch in and out over the sel
 map("ge", "device.editor", { desc = "Show or hide the plugin's window" })
 map("R", "transport.record", { desc = "Record, or stop recording" })
 map(":", "cmdline", { mode = nx, desc = "Type a command" })
-map("?", "help", { mode = nx, desc = "Show key mappings" })
+map("?", "pick.keys", { mode = nx, desc = "Show key mappings" })
 map("u", "undo", { desc = "Undo", repeatable = false })
 map("<C-r>", "redo", { desc = "Redo", repeatable = false })
 map(".", function(ctx) keymap.repeat_last(ctx.count) end, { desc = "Repeat the last change", repeatable = false })

@@ -217,6 +217,16 @@ See [Harmony, completion and snippets](../harmony.md).
 
 Stop half way through a sequence and the keys that can follow are listed.
 
+## Help
+
+| Keys | |
+| --- | --- |
+| `:help` `:help gU` | the manual: its contents; where a key, command (`:help :s`), option (`:help 'timebind'`) or section is described; `<Tab>` completes |
+| `<C-]>` | in help: follow the link, or look up the word, under the cursor |
+| `<C-t>` `<C-o>` | in help: back to where the link was followed from |
+| `K` | in help: look up the word under the cursor |
+| `:helpgrep stretch` | every line of help that holds the words, in the quickfix list |
+
 ## Views and the program
 
 | Keys | |

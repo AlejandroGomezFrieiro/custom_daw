@@ -334,6 +334,29 @@ before it did is undone. `daw.textbuf.open(name, opts)` shows a buffer
 (`here`, `vertical`, `window`), `daw.textbuf.buf()` is the current one, and
 its `state.text.lines` its lines (`{ text, id }`).
 
+**Help.** An extension ships help by having it: its `README.md`, and any
+`doc/*.md` beside it, are pages of `:help` (see Help in [the terminal
+interface](terminal.md)), whether it is loaded or not. The page's title is
+tagged with the extension's name (`doc/more.md` with `name-more`), each
+heading with the name and the heading's words (`## Keys` in notation's
+README is `notation-keys`), and each key, command (`:name.open`), option and
+Lua name written as code where it is described: in a table's first column
+or at the start of a list item. `<!-- tags: name-popovers name-hover -->`
+on a line of its own names the place it stands with more tags, out of
+sight on GitHub. Any other Markdown file is added with
+`daw.help.add(path, { tag, ext, dir })`; `daw.help.open(topic)`,
+`daw.help.find(topic, limit)` (the tags, best first),
+`daw.help.lookup(topic)`, `daw.help.grep(words)` and `daw.help.index()`
+(every page and tag) are what `:help` and `:helpgrep` use, and a view's
+`help` field names its topic for the bottom line. `daw.markdown.parse(text)`
+and `daw.markdown.render(blocks, { width })` make Markdown into lines of
+text with their styles, links and code.
+
+A text buffer's kind may also set `readonly` (what to say when a change is
+tried: the text then cannot be changed, as help's), `gutter = false` (no
+line numbers), `static` (not read again when the project changes) and
+`paint(canvas, x, y, text, kind, width, row, buf)` to draw a line itself.
+
 A view's `on_mouse` gets the terminal's pointer in the view's own cells:
 `kind` (`down`, `up`, `drag`, `move`, `scroll_up`, `scroll_down`,
 `scroll_left`, `scroll_right`), `button`, `x`, `y`, `mods` (any of `C`, `A`,

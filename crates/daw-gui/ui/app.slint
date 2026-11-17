@@ -36,8 +36,9 @@ import { Roll, PianoRoll, NoteData, ControlData } from "roll.slint";
 import { CanvasWindow, CanvasItem } from "canvas.slint";
 import { Probe } from "probe.slint";
 import { SessionPanel, SessionColumn, SlotData, LaunchData } from "session.slint";
+import { PaneData, PaneRect, BorderData, TabData, PaneView, PaneBorder, TabBar, FocusRing, PaneSizes } from "panes.slint";
 
-export { Roll, CanvasWindow, Probe, SessionColumn, SlotData, LaunchData }
+export { Roll, CanvasWindow, Probe, SessionColumn, SlotData, LaunchData, PaneData, PaneRect, BorderData, TabData, PaneSizes }
 
 export struct TrackData {
     id: int,
@@ -749,6 +750,30 @@ in property <string> render-stage;
     in property <string> pending;       // keys of a half-typed command
     in property <string> macro;         // the register being recorded into
     in property <string> focused: "arrange";
+    // The kernel's tabs and windows, as panes of the main area (panes.slint):
+    // where each view the window draws itself goes, every other pane, the
+    // borders between them, the tabs and the pane with the keyboard. The
+    // main area's size and place go back to the kernel.
+    in property <PaneRect> arrange-pane: { w: 900px, h: 600px, shown: true };
+    in property <PaneRect> devices-pane;
+    in property <PaneRect> roll-pane;
+    in property <PaneRect> mixer-pane;
+    in property <PaneRect> session-pane;
+    in property <[PaneData]> panes;
+    in property <[BorderData]> pane-borders;
+    in property <[TabData]> tabs;
+    in property <PaneRect> focus-pane;
+    out property <length> area-width: main-area.width;
+    out property <length> area-height: main-area.height;
+    out property <length> area-x: main-area.absolute-position.x;
+    out property <length> area-y: main-area.absolute-position.y;
+    // Whether the keyboard is the kernel's: no menu is open, no text box has it.
+    out property <bool> keys-focused: keys.has-focus;
+    callback pane-pointer(int, int, length, length, int, bool, bool, bool);   // window, then as `PaneView.pointer`
+    callback pane-wheel(int, length, length, length, length, bool, bool);
+    callback pane-border(int, length, length);                                // a border, dragged to x, y of the area
+    callback pane-tab(int);
+    callback pane-close(int);
     in property <string> status;        // the kernel's last message
     in property <int> status-level;     // 0 plain, 1 warning, 2 error
     in property <bool> prompt-open;
@@ -1048,7 +1073,6 @@ in property <string> render-stage;
     property <length> ruler-height: root.tempo-top + root.tempo-height;
     property <int> bars: Math.ceil((root.length + 8 * root.bar) / root.bar);
     property <length> beat: root.zoom * 1px;
-    in-out property <length> roll-height: 330px;
 
     // Zoom the timeline by a wheel step, keeping the beat under the pointer
     // (at `x` in the timeline's content) where it is.
@@ -1751,13 +1775,14 @@ in property <string> render-stage;
                             }
                         }
                         // Every other view the kernel has, the extensions'
-                        // among them, each in a window of its own.
+                        // among them, each docked as the terminal docks it
+                        // (a painted pane's title pops it out into a window).
                         more-menu := ContextMenuArea {
                             Menu {
                                 for entry in root.view-entries: MenuItem {
                                     title: entry.title;
                                     activated => {
-                                        root.command("view.window " + entry.name);
+                                        root.command("view.open " + entry.name);
                                     }
                                 }
                             }
@@ -1772,8 +1797,8 @@ in property <string> render-stage;
                                 }
                                 changed has-hover => {
                                     if (self.has-hover) {
-                                        root.hint = "more views: the undo tree, sections, an extension's panel… each in a window of its own";
-                                    } else if (root.hint == "more views: the undo tree, sections, an extension's panel… each in a window of its own") {
+                                        root.hint = "more views: the undo tree, sections, an extension's panel… each in a pane of the window";
+                                    } else if (root.hint == "more views: the undo tree, sections, an extension's panel… each in a pane of the window") {
                                         root.hint = "";
                                     }
                                 }
@@ -1919,10 +1944,16 @@ in property <string> render-stage;
             background: Theme.divider;
         }
 
-        HorizontalLayout {
+        // The main area: the kernel's windows, each in its pane.
+        main-area := Rectangle {
+            vertical-stretch: 1;
             // Tracks: headers on the left, the timeline beside them.
             Rectangle {
-                horizontal-stretch: 1;
+                x: root.arrange-pane.x;
+                y: root.arrange-pane.y;
+                width: root.arrange-pane.w;
+                height: root.arrange-pane.h;
+                visible: root.arrange-pane.shown;
                 clip: true;
 
                 // Ruler, scrolling sideways with the timeline. A click moves
@@ -4870,15 +4901,15 @@ in property <string> render-stage;
                 }
             }
 
-            Rectangle {
-                width: 1px;
-                background: Theme.divider;
-            }
-
             // The selected track: its name, then its devices.
             Rectangle {
-                width: 300px;
+                x: root.devices-pane.x;
+                y: root.devices-pane.y;
+                width: root.devices-pane.w;
+                height: root.devices-pane.h;
+                visible: root.devices-pane.shown;
                 background: Theme.panel;
+                clip: true;
                 VerticalLayout {
                     spacing: 0px;
                     // Its name, on a stripe of its colour.
@@ -5689,7 +5720,7 @@ in property <string> render-stage;
                                                                 MenuItem {
                                                                     title: "Edit its curve…";
                                                                     activated => {
-                                                                        root.command("curve.open window device=" + device.id + " param=" + param.key);
+                                                                        root.command("curve.open device=" + device.id + " param=" + param.key);
                                                                     }
                                                                 }
                                                             }
@@ -5794,181 +5825,224 @@ in property <string> render-stage;
                     }
                 }
             }
-        }
 
-        // The session view: always there, so that a clip dragged from the
-        // timeline can find its slots, and of no height while it is hidden.
-        session := SessionPanel {
-            height: root.show-session ? (Roll.open && !Roll.detached ? 220px : 280px) : 0px;
-            visible: root.show-session;
-            columns: root.session-columns;
-            slots: root.slots;
-            launch: root.launch;
-            scenes: root.scenes;
-            quantize: root.launch-quantize;
-            capturing: root.capturing;
-            chosen-track: root.selected;
-            chosen-row: root.slot-row;
-            drop-column: root.drop-column;
-            drop-row: root.drop-row;
-            press(track, row, down) => {
-                keys.focus();
-                root.slot-press(track, row, down);
+            // The session view: always there, so that a clip dragged from the
+            // timeline can find its slots, and of no height while it is hidden.
+            session := SessionPanel {
+                x: root.session-pane.x;
+                y: root.session-pane.y;
+                width: root.session-pane.w;
+                height: root.show-session ? root.session-pane.h : 0px;
+                visible: root.show-session;
+                columns: root.session-columns;
+                slots: root.slots;
+                launch: root.launch;
+                scenes: root.scenes;
+                quantize: root.launch-quantize;
+                capturing: root.capturing;
+                chosen-track: root.selected;
+                chosen-row: root.slot-row;
+                drop-column: root.drop-column;
+                drop-row: root.drop-row;
+                press(track, row, down) => {
+                    keys.focus();
+                    root.slot-press(track, row, down);
+                }
+                choose(track, row) => {
+                    keys.focus();
+                    root.slot-choose(track, row);
+                }
+                open(track, row) => {
+                    root.slot-open(track, row);
+                }
+                move-slot(clip, track, row, copy) => {
+                    root.slot-move(clip, track, row, copy);
+                }
+                scene(row) => {
+                    keys.focus();
+                    root.launch-scene(row);
+                }
+                stop(track) => {
+                    keys.focus();
+                    root.slot-stop(track);
+                }
+                back(track) => {
+                    keys.focus();
+                    root.slot-back(track);
+                }
+                record(track, row) => {
+                    keys.focus();
+                    root.slot-record(track, row);
+                }
+                command(line) => {
+                    root.command(line);
+                    keys.focus();
+                }
+                hint(text) => {
+                    root.hint = text;
+                }
             }
-            choose(track, row) => {
-                keys.focus();
-                root.slot-choose(track, row);
-            }
-            open(track, row) => {
-                root.slot-open(track, row);
-            }
-            move-slot(clip, track, row, copy) => {
-                root.slot-move(clip, track, row, copy);
-            }
-            scene(row) => {
-                keys.focus();
-                root.launch-scene(row);
-            }
-            stop(track) => {
-                keys.focus();
-                root.slot-stop(track);
-            }
-            back(track) => {
-                keys.focus();
-                root.slot-back(track);
-            }
-            record(track, row) => {
-                keys.focus();
-                root.slot-record(track, row);
-            }
-            command(line) => {
-                root.command(line);
-                keys.focus();
-            }
-            hint(text) => {
-                root.hint = text;
-            }
-        }
 
-        // The mixer: a strip per track, the master pinned at the right.
-        if root.show-mixer: mixer := Rectangle {
-            // Shorter while the piano roll shares the window.
-            height: Roll.open && !Roll.detached ? 250px : 340px;
-            // Strips share the width the master leaves, as wide as a name
-            // needs and no wider than a fader looks right; what is left
-            // over goes to both sides.
-            property <length> strip-w: clamp((self.width - 92px) / max(1, root.tracks.length - 1) - 1px, 72px, 112px);
-            property <length> strips-w: (root.tracks.length - 1) * (self.strip-w + 1px);
-            property <length> pad: max(0px, (self.width - 92px - self.strips-w) / 2);
-            background: Theme.surface;
-            Rectangle {
-                y: 0;
-                height: 1px;
-                background: Theme.divider;
-            }
-            HorizontalLayout {
-                padding-top: 1px;
-                spacing: 1px;
-                ScrollView {
-                    horizontal-stretch: 1;
-                    content-width: mixer.pad + mixer.strips-w;
-                    content-height: self.visible-height;
-                    for track[index] in root.tracks: MixerStrip {
-                        x: mixer.pad + index * (mixer.strip-w + 1px);
-                        y: 0;
-                        width: mixer.strip-w;
-                        height: parent.height;
-                        visible: !track.master;
-                        track: track;
-                        meter: root.meters[index];
-                        chosen: track.id == root.selected;
-                        row-kind: track.id == root.mixer-row-track ? root.mixer-row-kind : "";
+            // The mixer: a strip per track, the master pinned at the right.
+            if root.show-mixer: mixer := Rectangle {
+                x: root.mixer-pane.x;
+                y: root.mixer-pane.y;
+                width: root.mixer-pane.w;
+                height: root.mixer-pane.h;
+                // Strips share the width the master leaves, as wide as a name
+                // needs and no wider than a fader looks right; what is left
+                // over goes to both sides.
+                property <length> strip-w: clamp((self.width - 92px) / max(1, root.tracks.length - 1) - 1px, 72px, 112px);
+                property <length> strips-w: (root.tracks.length - 1) * (self.strip-w + 1px);
+                property <length> pad: max(0px, (self.width - 92px - self.strips-w) / 2);
+                background: Theme.surface;
+                Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.divider;
+                }
+                HorizontalLayout {
+                    padding-top: 1px;
+                    spacing: 1px;
+                    ScrollView {
+                        horizontal-stretch: 1;
+                        content-width: mixer.pad + mixer.strips-w;
+                        content-height: self.visible-height;
+                        for track[index] in root.tracks: MixerStrip {
+                            x: mixer.pad + index * (mixer.strip-w + 1px);
+                            y: 0;
+                            width: mixer.strip-w;
+                            height: parent.height;
+                            visible: !track.master;
+                            track: track;
+                            meter: root.meters[index];
+                            chosen: track.id == root.selected;
+                            row-kind: track.id == root.mixer-row-track ? root.mixer-row-kind : "";
+                            row-index: root.mixer-row-index;
+                            row-field: root.mixer-row-field;
+                            select => {
+                                root.select-track(track.id, root.cursor);
+                            }
+                            hold(what, on) => {
+                                root.hold(track.id, what, 0, "", on);
+                            }
+                            set-volume(value) => {
+                                root.set-volume(track.id, value);
+                            }
+                            reset-volume => {
+                                root.reset-volume(track.id);
+                            }
+                            set-pan(value) => {
+                                root.set-pan(track.id, value);
+                            }
+                            toggle-flag(flag) => {
+                                root.toggle-flag(track.id, flag);
+                            }
+                            clear-clip => {
+                                root.clear-clip(track.id);
+                            }
+                            pick-device(slot) => {
+                                root.pick-device(track.id, slot);
+                            }
+                            hint(text) => {
+                                root.hint = text;
+                            }
+                            command(line) => {
+                                root.track-command(track.id, line);
+                            }
+                        }
+                    }
+                    if root.tracks.length > 0: MixerStrip {
+                        width: 88px;
+                        track: root.tracks[root.tracks.length - 1];
+                        chosen: self.track.id == root.selected;
+                        row-kind: self.track.id == root.mixer-row-track ? root.mixer-row-kind : "";
                         row-index: root.mixer-row-index;
                         row-field: root.mixer-row-field;
                         select => {
-                            root.select-track(track.id, root.cursor);
+                            root.select-track(self.track.id, root.cursor);
                         }
                         hold(what, on) => {
-                            root.hold(track.id, what, 0, "", on);
+                            root.hold(self.track.id, what, 0, "", on);
                         }
                         set-volume(value) => {
-                            root.set-volume(track.id, value);
+                            root.set-volume(self.track.id, value);
                         }
                         reset-volume => {
-                            root.reset-volume(track.id);
+                            root.reset-volume(self.track.id);
                         }
                         set-pan(value) => {
-                            root.set-pan(track.id, value);
+                            root.set-pan(self.track.id, value);
                         }
                         toggle-flag(flag) => {
-                            root.toggle-flag(track.id, flag);
+                            root.toggle-flag(self.track.id, flag);
                         }
                         clear-clip => {
-                            root.clear-clip(track.id);
+                            root.clear-clip(self.track.id);
                         }
                         pick-device(slot) => {
-                            root.pick-device(track.id, slot);
+                            root.pick-device(self.track.id, slot);
                         }
                         hint(text) => {
                             root.hint = text;
                         }
-                        command(line) => {
-                            root.track-command(track.id, line);
-                        }
-                    }
-                }
-                if root.tracks.length > 0: MixerStrip {
-                    width: 88px;
-                    track: root.tracks[root.tracks.length - 1];
-                    chosen: self.track.id == root.selected;
-                    row-kind: self.track.id == root.mixer-row-track ? root.mixer-row-kind : "";
-                    row-index: root.mixer-row-index;
-                    row-field: root.mixer-row-field;
-                    select => {
-                        root.select-track(self.track.id, root.cursor);
-                    }
-                    hold(what, on) => {
-                        root.hold(self.track.id, what, 0, "", on);
-                    }
-                    set-volume(value) => {
-                        root.set-volume(self.track.id, value);
-                    }
-                    reset-volume => {
-                        root.reset-volume(self.track.id);
-                    }
-                    set-pan(value) => {
-                        root.set-pan(self.track.id, value);
-                    }
-                    toggle-flag(flag) => {
-                        root.toggle-flag(self.track.id, flag);
-                    }
-                    clear-clip => {
-                        root.clear-clip(self.track.id);
-                    }
-                    pick-device(slot) => {
-                        root.pick-device(self.track.id, slot);
-                    }
-                    hint(text) => {
-                        root.hint = text;
                     }
                 }
             }
-        }
 
-        // The piano roll, for the clip that was double-clicked, unless it
-        // has been given a window of its own.
-        if Roll.open && !Roll.detached: Rectangle {
-            height: root.roll-height;
-            PianoRoll { }
-            // Its top edge: drag to make it taller or shorter.
-            TouchArea {
+            // The piano roll, for the clip that was double-clicked, unless it
+            // has been given a window of its own.
+            if Roll.open && !Roll.detached: Rectangle {
+                x: root.roll-pane.x;
+                y: root.roll-pane.y;
+                width: root.roll-pane.w;
+                height: root.roll-pane.h;
+                PianoRoll { }
+            }
+
+            // The other panes: views the kernel paints.
+            for pane in root.panes: PaneView {
+                pane: pane;
+                pointer(kind, x, y, button, ctrl, shift, alt) => {
+                    keys.focus();
+                    root.pane-pointer(pane.win, kind, x, y, button, ctrl, shift, alt);
+                }
+                wheel(x, y, dx, dy, ctrl, shift) => {
+                    root.pane-wheel(pane.win, x, y, dx, dy, ctrl, shift);
+                }
+                window => {
+                    root.command("view.window " + pane.view);
+                    keys.focus();
+                }
+                close => {
+                    root.pane-close(pane.win);
+                    keys.focus();
+                }
+                hint(text) => {
+                    root.hint = text;
+                }
+            }
+            for border[i] in root.pane-borders: PaneBorder {
+                border: border;
+                drag(x, y) => {
+                    root.pane-border(i, x, y);
+                }
+                hint(text) => {
+                    root.hint = text;
+                }
+            }
+            FocusRing {
+                pane: root.focus-pane;
+            }
+            if root.tabs.length > 1: TabBar {
+                x: 0;
                 y: 0;
-                height: 5px;
-                mouse-cursor: ns-resize;
-                moved => {
-                    if (self.pressed) {
-                        root.roll-height = clamp(root.roll-height - (self.mouse-y - self.pressed-y), 160px, root.height - 220px);
-                    }
+                width: parent.width;
+                height: 28px;
+                tabs: root.tabs;
+                go(i) => {
+                    root.pane-tab(i);
+                    keys.focus();
                 }
             }
         }

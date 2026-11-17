@@ -61,9 +61,9 @@ local function paste_here(ctx)
   end
   editor.sel = sel
 end
--- Ctrl+V pastes in the window; in the terminal it selects a block, as it does everywhere.
+-- Ctrl+V pastes in a graphical window; in the terminal it selects a block, as it does everywhere.
 emap("<C-v>", function(ctx)
-  if daw.canvas.open_views.utau then return paste_here(ctx) end
+  if daw.canvas.shown("utau") then return paste_here(ctx) end
   keymap.visual_start("b")
 end, "Paste at the cursor (window), select a block (terminal)")
 local function select_all()

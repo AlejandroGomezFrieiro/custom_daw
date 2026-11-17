@@ -211,8 +211,9 @@ move every sixteenth of a beat. With the mouse a click on a point chooses
 it and a drag moves it (Shift off the grid), a press elsewhere adds a point
 and a drag draws, the wheel scrolls (with Ctrl it zooms), and a right click
 opens the point's menu (its shape, its value, removing it) or the curve's
-(a wave, thinning, smoothing, quantizing). `:curve.window` (`Ctrl-w f`) shows the
-curve in a window of its own in the graphical frontend.
+(a wave, thinning, smoothing, quantizing). The graphical frontend shows the
+curve in a pane, as here; `:curve.window` (`Ctrl-w f`) pops it out into a
+window of its own.
 
 In the device panel `A` automates the parameter under the cursor: it makes
 its lane with a point at the value it has, at the arrange cursor's beat,
@@ -231,6 +232,7 @@ label (`↳ take 2`) makes that take play wherever the track has it. The
 release may be anywhere on the screen: a drag belongs to the view it began
 in. `:take 2` over a selection does the same from the keyboard.
 
+<!-- tags: piano-roll -->
 In the piano roll, `Enter` adds or removes a note, `+` `-` (and `Ctrl-a`
 `Ctrl-x`, with a count) transpose it, `Alt-l` `Alt-h` change its length,
 `H` `L` move it, `[` `]` change its velocity, `K` describes it,
@@ -266,6 +268,7 @@ its edges; notes yanked from several clips go back into them when pasted
 while they are edited, else into the clip at the cursor; each command is one
 undo step, however many clips it touched.
 
+<!-- tags: device-panel -->
 The device panel is a grid of rows, a device's heading and then its
 parameters. `j` `k` choose a row, `w` `b` go to the next device and back,
 `e` to a device's last parameter, `gg` `G` the first and last row. `+` `-`
@@ -289,6 +292,7 @@ play, `K` describes the device or parameter, `s` solos the track.
 dragging a device card by its name onto a track's header moves it there
 (with `Ctrl`, copies it), and dragging it up or down the list reorders.
 
+<!-- tags: mixer -->
 The mixer is a grid too: `h` `l` go from strip to strip (`0` `$` the first
 and last, `5|` the fifth) and `j` `k` along a strip's rows, top to bottom as
 drawn: its devices (inserts), its sends, the fader, the pan, mute, solo, arm
@@ -312,12 +316,14 @@ under them. VCAs (see
 selected tracks, `,va` puts them under one, `,vr` takes them out, `,vx` takes
 one away, and `,vl` links the faders of a group.
 
+<!-- tags: session-view -->
 `,l` shows the session view, the clip launcher: a column of slots under
 each track and a scene for each row, launched with `<CR>` and `L`; its keys
 are in [Live performance](live.md).
 
 ## Keys: one grammar
 
+<!-- tags: key-rule -->
 Every view keeps to one rule, so that a key learnt in one view means the
 same in the next, as in Vim, where `j` is a line down in any buffer.
 `tests/keys_constitution.lua` walks the mappings of every view, those of the
@@ -566,6 +572,7 @@ left and above).
 | `:resize 20` `:resize +5`, `:vertical resize 40` | the window's height, its width |
 | `:tabnew Mix`, `:tabnew mixer`, `gt` `gT`, `:tabn 2`, `Ctrl-w T` | a new tab named Mix, or showing the mixer; next and previous tab; tab 2; the window to a tab of its own |
 | `:tabclose`, `:tabs` | close the tab; list the tabs and their windows |
+| `:view.open undotree` | show a view where it docks, else in a window split from this one (the graphical frontend's More) |
 | `:setlocal timebind` | bind this window's time to the other bound windows' |
 | `:layout save edit`, `:layout edit` | keep the tabs and windows as they are; put them back |
 
@@ -665,9 +672,9 @@ volume moved elsewhere in the meantime stays moved.
 
 `Enter` on a track's line opens its devices (`daw://track/N/devices`), and
 `-` there goes back up to the tracks; on a device `Enter` shows it in the
-device panel, on a marker it puts the cursor there. `:textbuf.window` (`gw`)
-shows the buffer in a window of its own in the graphical frontend, where it
-is edited with the same keys.
+device panel, on a marker it puts the cursor there. The graphical frontend
+shows a text buffer in a pane, as here; `:textbuf.window` (`Ctrl-w f`) pops it out
+into a window of its own, where it is edited with the same keys.
 
 ## The quickfix list
 
@@ -701,8 +708,9 @@ were. Extensions add to it (see [Scripting](scripting.md)).
 | `:lopen` `:lnext` `]l` `[l` `:ldiag` ... | the same for the window's own location list: `:ldiag` lists what the window shows (the piano roll its clip, the mixer and device panel the track), `:lopen` shows it below the window |
 
 The list is a buffer like any other: `:vs quickfix` shows it beside the
-window, `:e quickfix` in it, and a layout keeps its window. In the window
-it opens from More, or with `:qf.window`.
+window, `:e quickfix` in it, and a layout keeps its window. The graphical
+frontend docks it in a pane as here (`:copen`, More); `:qf.window` pops it
+out into a window of its own.
 
 ## The mouse
 
@@ -786,6 +794,61 @@ Where the terminal shows no images (tmux, which does not pass them on, a
 terminal without the protocol, `daw attach` from one) the view draws in
 cells as before. `:set graphics!` (`daw.opt.graphics = false`) keeps
 cells everywhere; the same again takes the pictures back.
+
+## Help
+
+The manual is inside the program, as Vim's is. `:help` opens its contents
+in a window split off the one you are in; `:help` with a topic goes to the
+place that topic is described:
+
+| Topic | Goes to |
+| --- | --- |
+| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way |
+| `:help :s`, `:help :helpgrep` | a command |
+| `:help 'timebind'` | an option |
+| `:help daw.qf`, `:help daw.qf.feed` | a Lua module or function |
+| `:help daw://tracks` | an address |
+| `:help key-rule`, `:help quickfix-list`, `:help motions` | a section of the manual |
+| `:help terminal`, `:help course-5`, `:help notation`, `:help notation-keys` | a page: of the manual, a lesson of the course, an extension's (by its name), a section of one |
+
+The pages are the manual (`docs/*.md`), the course (`docs/course/*.md`)
+and every extension's `README.md` and `doc/*.md`, those in your
+configuration and those bundled with the program, loaded or not; the page
+of an extension that is not loaded says how to load it. They are read from
+the source tree the program runs from, or from `$DAW_HOME`, where an
+installed program keeps them.
+
+A topic is found as Vim finds it: the tag itself first, then the tags that
+start with it, those that hold it, and those that hold its letters in order
+(`:help qflst`). `Tab` after `:help ` completes the tags in that order. A
+tag is made for each heading (its words joined with `-`: "The quickfix
+list" is `quickfix-list`; in an extension's page they start with its name,
+in a lesson's with `course-5`), for each paragraph that starts in bold
+("**Motions** move the cursor" is `motions`), and for each key, command,
+option, Lua name and address written as code, at the place it is described
+(a table's first column, the start of a list item) before the places it is
+only named, and in the manual before the course and the extensions.
+
+A page of help is a text buffer that cannot be changed: it moves, searches,
+selects and yanks as any text (`j` `k`, `w`, `/`, `n`, `v`, `y`, `gg`), and
+`:vs`, `:sp`, `Ctrl-w` and `:q` treat its window as any other. Headings
+show their tag at the right (`*quickfix-list*`), as Vim's help does; code is
+in its own colour, tables are laid out in columns.
+
+| Keys or command | In help |
+| --- | --- |
+| `Ctrl-]`, `Enter`, a double click | follow the link under the cursor, or look up the key, command or word there |
+| `Ctrl-t`, `Ctrl-o` | back to where the link was followed from (`Ctrl-o` goes back through every jump, across pages) |
+| `K` | look up the word under the cursor (in any text buffer) |
+| `-` | the contents |
+| `:helpgrep stretch` | every line of help that holds the words in the quickfix list, and the first of them; `]q` `[q` go through them. Case counts only when the words have a capital |
+
+The bottom line of each view ends with its topic (`:help terminal` in the
+arrange view, `:help mixer` in the mixer). In the keys picker (`?`) and the
+commands picker (`,,`), `Ctrl-]` opens the help of the key or command
+chosen. The tutor's panel names its lesson's page (`:help course-5`). In
+the graphical frontend help opens in a window of its own, with the same
+keys.
 
 ## Pickers
 
