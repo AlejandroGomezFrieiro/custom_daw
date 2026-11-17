@@ -39,6 +39,20 @@ function view:edit(clip)
   daw.emit("pianoroll.opened", { clip = clip.id })
 end
 
+--- Shown beside a view that has a clip open (the notation view), the roll
+--- takes that clip, as the arrange view's clip is taken: the window that
+--- had the keyboard says which.
+function view:on_show()
+  local other = daw.ui.views[daw.ui.focused]
+  if not other or other == self or type(other.clip) ~= "function" then return end
+  local clip = other:clip()
+  if not clip or clip.kind ~= "midi" or clip.id == self.clip_id then return end
+  self.clip_id, self.beat, self.scroll, self.top = clip.id, 0, 0, nil
+  local notes = clip:notes()
+  self.pitch = notes[1] and notes[1].pitch or 60
+  clips.only()
+end
+
 --- The time this view shows, for windows bound in time (`timebind`): the
 --- project's beat at the left edge, columns per beat, and beats shown.
 --- The roll counts beats from the active clip's start.
