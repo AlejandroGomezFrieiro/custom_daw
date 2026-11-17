@@ -211,7 +211,10 @@ the rasterizer the terminal uses ([crates/daw-raster](../crates/daw-raster)),
 so the two show the same pixels. `g:glyph(x, y, size, codepoint, colour,
 font)` draws a glyph of a SMuFL music font built in (Leland, Bravura,
 Petaluma), `size` pixels to the em; `daw.api.smufl(font)` gives the font's
-metadata (engraving defaults, glyph boxes and anchors, glyph names). A
+metadata (engraving defaults, glyph boxes and anchors, glyph names);
+`daw.api.canvas_export(path, "pdf", pages)` writes drawings as a PDF (a
+page for each `{ ops, width, height }`), `"svg"` or `"png"` the first, the
+glyphs and text as outlines. A
 view that also shows its pixels in the terminal keeps cells for them in
 its `render` with `buf:surface(x, y, w, h)`, which is false where the
 terminal shows only cells (see "Pictures" in [The terminal
