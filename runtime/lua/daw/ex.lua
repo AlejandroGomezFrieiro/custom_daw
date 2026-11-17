@@ -1454,7 +1454,11 @@ function M.exec(line, ctx)
   local name, args, steps = M.split(rest)
   if not name then error("`" .. rest:match("^%s*(.-)%s*$") .. "`: not a command", 0) end
   local spec = commands.get(name)
-  if not spec then error("no command `" .. name .. "`: `,fc` or `:` and Tab find one", 0) end
+  if not spec then
+    spec = commands.main(name)
+    if not spec then error(commands.unknown(name), 0) end
+    name = spec.name
+  end
   local text = line:match("^%s*:?(.-)%s*$")
   if spec.ex and (range or name ~= "normal") then
     api.undo_label(":" .. text)
