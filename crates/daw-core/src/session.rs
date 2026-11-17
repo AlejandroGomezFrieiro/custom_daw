@@ -3639,7 +3639,7 @@ impl Session {
         self.live(track, EventKind::NoteOn { key, vel, ch, attr })
     }
 
-    /// The seconds a note with `attr` is moved by the track's attribute map.
+    /// The milliseconds a note with `attr` is moved by the track's attribute map.
     pub fn attr_delay(&self, track: Id, attr: daw_engine::Attr) -> Result<f64> {
         let track = self
             .project

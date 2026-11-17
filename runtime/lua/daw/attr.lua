@@ -4,17 +4,17 @@
 --
 --   note.attr = { type = 0x11, data = 0xA000 }   -- on a note; nil for none
 --   daw.attr.m2("11.A")                -- { type = 0x11, data = 0xA000 }: pizzicato
---   daw.attr.m2("10.2.3")              -- legato, its variation 3
+--   daw.attr.m2("10.23")               -- legato, its variation 3 ("10.2.3" too)
 --   daw.attr.m2("11.A", { direction = "up", string = 4 })
 --   daw.attr.m2({ type = 0x11, data = 0xA000 })   -- "11.A"
 --   daw.attr.parts(attr)               -- { type, subclass, variation, direction, reset, string }
 --   daw.attr.describe(attr)            -- { code = "11.A", tag = "pz", name = "Pizzicato", ... }
---   daw.attr.delay_of(track, attr)     -- seconds the track's attr_map moves such a note: -0.08
+--   daw.attr.delay_of(track, attr)     -- milliseconds the track's attr_map moves such a note: -80
 --
 -- A code is the classification (the attribute type, 10 to 1F in hex), a
--- dot, the subclass (one hex digit), and optionally a dot and the
--- variation: "11.A" is classification 0x11 (staccatos and shorts),
--- subclass A (pizzicato). Its sixteen bits of data are, from the top:
+-- dot, the subclass (one hex digit), and the variation (one more hex
+-- digit) when it is not 0: "11.A" is classification 0x11 (staccatos and
+-- shorts), subclass A (pizzicato); "10.23" legato, variation 3. Its sixteen bits of data are, from the top:
 -- subclass 4, variation 4, direction 2, reserved 2, reset round robin 1,
 -- string 3 (Figure 1 of M2-123). Types 0x1A to 0x1F are a library's own
 -- articulations; 0x18 and 0x19 are reserved. Other types are not
@@ -111,11 +111,11 @@ function M.m2(code, opts)
     local p = M.parts(code)
     if not p or not is_m2(p.type) then return nil end
     local out = string.format("%X.%X", p.type, p.subclass)
-    if p.variation > 0 then out = out .. string.format(".%X", p.variation) end
+    if p.variation > 0 then out = out .. string.format("%X", p.variation) end
     return out
   end
   local c, s, v = tostring(code):upper():match("^%s*(1%x)%.(%x)%.?(%x?)%s*$")
-  if not c then error("an articulation's code is like 11.A or 10.2.3, not " .. tostring(code), 2) end
+  if not c then error("an articulation's code is like 11.A or 10.23, not " .. tostring(code), 2) end
   opts = opts or {}
   local variation = v ~= "" and tonumber(v, 16) or opts.variation or 0
   local direction = DIRECTIONS[opts.direction] or tonumber(opts.direction) or 0
@@ -157,7 +157,7 @@ function M.describe(attr)
   return { tag = string.format("a%02X", p.type), name = text, text = text }
 end
 
---- The seconds a note with `attr` (nil for none) on `track` plays early
+--- The milliseconds a note with `attr` (nil for none) on `track` plays early
 --- (below 0) or late by the track's `attr_map`, so that a library slow to
 --- speak still sounds on the beat; 0 without a map.
 function M.delay_of(track, attr)

@@ -674,7 +674,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().track_set(id, &key, value).lua()
         }
         fn track_meter(_, sh, id => Id) { Ok(sh.session.borrow().meter(id)) }
-        // The seconds a note with `attr` on the track is moved by its
+        // The milliseconds a note with `attr` on the track is moved by its
         // attribute map (below 0: earlier); 0 without one.
         fn track_attr_delay(lua, sh, (id, attr) => (Id, LuaValue)) {
             let attr = attr_from_lua(lua, attr)?.map_or(daw_engine::Attr::NONE, Into::into);

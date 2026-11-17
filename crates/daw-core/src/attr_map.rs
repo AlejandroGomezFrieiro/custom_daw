@@ -11,7 +11,7 @@
 //! track.attr_map = {
 //!   send = "change",                  -- or "every": before every note
 //!   chase = { 1, 11 },                -- controllers sent again after a change
-//!   default = { out = "ks=C1" },      -- notes with no attribute
+//!   default = { out = "ks=C1" },      -- notes with no attribute, or a code: "10.0"
 //!   arts = { ["11.0"] = { out = "ks=D1" }, ["11.A"] = { out = "ks=E1 cc1=90" } },
 //!   by_type = { [0x13] = { out = "ks=G1" } },   -- a whole classification, or another type
 //!   attribute = true,                 -- notes keep their attribute too (false: drop it)
@@ -24,7 +24,7 @@
 //! `bend=X` (-1 to 1), `ch=N` (the note itself goes out on channel N, 1 to
 //! 16, and so do these events), `attr` (the note keeps its attribute even
 //! when the map drops the others). An articulation is found by its M2-123
-//! code (`"11.A"`, with the variation `"11.A.2"`), falling back as the
+//! code (`"11.A"`, with the variation `"11.A2"`), falling back as the
 //! profile says: the subclass without the variation, the classification's
 //! entry in `by_type`, subclass 0 of the classification, then `"10.0"`; an
 //! attribute of another type by `by_type`, and a note with none, or with
@@ -59,14 +59,14 @@ pub struct AttrMap {
     pub by_type: BTreeMap<TypeKey, Art>,
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub attribute: bool,
-    /// Seconds every note plays early (below 0) or late, unless its
+    /// Milliseconds every note plays early (below 0) or late, unless its
     /// articulation says otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delay: Option<f64>,
 }
 
-/// How far a note may be moved by a delay, in seconds, each way.
-const MOST_DELAY: f64 = 2.0;
+/// How far a note may be moved by a delay, in milliseconds, each way.
+const MOST_DELAY: f64 = 2000.0;
 
 fn yes() -> bool {
     true
@@ -93,8 +93,9 @@ pub enum Art {
     Line(String),
     Table {
         out: String,
-        /// Seconds the articulation's notes play early (below 0: a sample
-        /// that is slow to speak) or late, so that they sound on the beat.
+        /// Milliseconds the articulation's notes play early (below 0: a
+        /// sample that is slow to speak) or late, so that they sound on the
+        /// beat.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         delay: Option<f64>,
         /// Anything else an entry carries (a name, a tag) is the writer's,
@@ -187,7 +188,7 @@ struct Compiled {
     channel: Option<u8>,
     /// Whether the note keeps its attribute.
     attr: bool,
-    /// Seconds the note is moved, and its articulation's events with it.
+    /// Milliseconds the note is moved, and its articulation's events with it.
     delay: f64,
 }
 
@@ -219,7 +220,7 @@ impl AttrMap {
         let check = |delay: Option<f64>, what: &str| -> Result<f64> {
             match delay {
                 Some(d) if !d.is_finite() || d.abs() > MOST_DELAY => bail!(
-                    "{what}: a delay is seconds from -{MOST_DELAY} to {MOST_DELAY}, not {d}"
+                    "{what}: a delay is milliseconds from -{MOST_DELAY} to {MOST_DELAY}, not {d}"
                 ),
                 d => Ok(d.unwrap_or(0.0)),
             }
@@ -235,14 +236,19 @@ impl AttrMap {
             arts.push(c);
             Ok(arts.len() - 1)
         };
+        // The default is an entry of its own, or names one by its code.
+        let named = match &self.default {
+            Some(Art::Line(line)) => normal_code(line),
+            _ => None,
+        };
         let default = match &self.default {
-            Some(art) => Some(compile(art, "`default`")?),
-            None => None,
+            Some(art) if named.is_none() => Some(compile(art, "`default`")?),
+            _ => None,
         };
         let mut by_code = HashMap::new();
         for (code, art) in &self.arts {
             let key = normal_code(code).with_context(|| {
-                format!("`{code}` is not an articulation's code like \"11.A\" or \"10.2.3\"")
+                format!("`{code}` is not an articulation's code like \"11.A\" or \"10.23\"")
             })?;
             by_code.insert(key, compile(art, &format!("`arts[\"{code}\"]`"))?);
         }
@@ -255,7 +261,7 @@ impl AttrMap {
                 bail!("controllers to chase go up to 127, not {cc}");
             }
         }
-        Ok(Plan {
+        let mut plan = Plan {
             every: self.send == SendWhen::Every,
             chase: self.chase.clone(),
             arts,
@@ -263,27 +269,46 @@ impl AttrMap {
             by_code,
             by_type,
             delay,
-        })
+        };
+        if let Some(code) = named {
+            plan.default = plan.find(code_attr(&code));
+        }
+        Ok(plan)
     }
 }
 
-/// A code as the map keeps it: "11.A", "10.2.3" with a variation, in capitals.
+/// The attribute of a code as the map keeps it.
+fn code_attr(code: &str) -> Attr {
+    let hex = |s: &str| u16::from_str_radix(s, 16).unwrap_or(0);
+    let (c, sv) = code.split_once('.').unwrap_or((code, "0"));
+    let (s, v) = sv.split_at(1);
+    Attr {
+        kind: hex(c) as u8,
+        data: hex(s) << 12 | if v.is_empty() { 0 } else { hex(v) << 8 },
+    }
+}
+
+/// A code as the map keeps it, in capitals: "11.A", "10.23" with a
+/// variation ("10.2.3" is read as that too).
 fn normal_code(code: &str) -> Option<String> {
     let parts: Vec<&str> = code.trim().split('.').collect();
-    let hex = |s: &str| u8::from_str_radix(s, 16).ok();
-    match parts.as_slice() {
-        [c, s] if c.len() == 2 && s.len() == 1 => {
-            let (c, s) = (hex(c)?, hex(s)?);
-            (0x10..=0x1f).contains(&c).then(|| format!("{c:X}.{s:X}"))
-        }
-        [c, s, v] if c.len() == 2 && s.len() == 1 && v.len() == 1 => {
-            let (c, s, v) = (hex(c)?, hex(s)?, hex(v)?);
-            (0x10..=0x1f)
-                .contains(&c)
-                .then(|| format!("{c:X}.{s:X}.{v:X}"))
-        }
-        _ => None,
+    let hex = |s: &str| u8::from_str_radix(s, 16).ok().filter(|_| s.len() == 1);
+    let (c, s, v) = match parts.as_slice() {
+        [c, s] if s.len() == 1 => (*c, *s, None),
+        [c, sv] if sv.len() == 2 => (*c, &sv[..1], Some(&sv[1..])),
+        [c, s, v] => (*c, *s, Some(*v)),
+        _ => return None,
+    };
+    let c = u8::from_str_radix(c, 16).ok().filter(|_| c.len() == 2)?;
+    let (s, v) = (hex(s)?, v.map(hex));
+    if !(0x10..=0x1f).contains(&c) {
+        return None;
     }
+    Some(match v {
+        None | Some(Some(0)) => format!("{c:X}.{s:X}"),
+        Some(Some(v)) => format!("{c:X}.{s:X}{v:X}"),
+        Some(None) => return None,
+    })
 }
 
 /// A pitch by name ("D1", "C#-1", "Eb4", with C4 as 60) or number.
@@ -411,7 +436,7 @@ impl Plan {
             let exact = (variation > 0)
                 .then(|| {
                     self.by_code
-                        .get(&format!("{}.{variation:X}", code(subclass)))
+                        .get(&format!("{}{variation:X}", code(subclass)))
                 })
                 .flatten();
             exact
@@ -425,7 +450,7 @@ impl Plan {
         found.copied().or(self.default)
     }
 
-    /// The seconds a note with `attr` is moved by: below 0, earlier.
+    /// The milliseconds a note with `attr` is moved by: below 0, earlier.
     pub fn delay_of(&self, attr: Attr) -> f64 {
         self.find(attr).map_or(self.delay, |i| self.arts[i].delay)
     }
@@ -490,7 +515,7 @@ pub fn downgrade(set: &mut ClipSet, plan: &Plan, tempo: &TempoMap) {
         if delay == 0.0 {
             beat
         } else {
-            tempo.beat(tempo.seconds(beat) + delay)
+            tempo.beat(tempo.seconds(beat) + delay / 1000.0)
         }
     };
     let mut controllers = [f64::NAN; 128];
@@ -682,7 +707,10 @@ mod tests {
         assert_eq!(pitch("A9"), None);
         assert_eq!(pitch("24"), Some(24));
         assert_eq!(normal_code("11.a").as_deref(), Some("11.A"));
-        assert_eq!(normal_code("10.2.3").as_deref(), Some("10.2.3"));
+        assert_eq!(normal_code("10.2.3").as_deref(), Some("10.23"));
+        assert_eq!(normal_code("10.23").as_deref(), Some("10.23"));
+        assert_eq!(normal_code("11.a0").as_deref(), Some("11.A"));
+        assert_eq!(code_attr("11.A3"), Attr { kind: 0x11, data: 0xA300 });
         assert_eq!(normal_code("20.0"), None);
         assert!(
             compile(
@@ -789,9 +817,9 @@ mod tests {
     fn a_delay_moves_a_note_its_end_and_its_keyswitch_by_seconds() {
         let plan = map(serde_json::json!({
             "default": "ks=C1",
-            "arts": { "11.0": { "out": "ks=D1", "delay": -0.1 } },
+            "arts": { "11.0": { "out": "ks=D1", "delay": -100 } },
         }));
-        assert_eq!(plan.delay_of(m2(0x11, 0)), -0.1);
+        assert_eq!(plan.delay_of(m2(0x11, 0)), -100.0);
         assert_eq!(plan.delay_of(Attr::NONE), 0.0);
         let mut set = ClipSet::default();
         note(&mut set, 0.0, 60, Attr::NONE);
@@ -810,11 +838,26 @@ mod tests {
                 .collect::<Vec<_>>(),
             [0.0, 1.9]
         );
-        let map = parse(serde_json::json!({ "arts": { "11.0": { "out": "ks=D1", "delay": -0.1 } } }))
+        let map = parse(serde_json::json!({ "arts": { "11.0": { "out": "ks=D1", "delay": -100 } } }))
             .unwrap()
             .unwrap();
         assert!(map.has_delay());
-        assert!(parse(serde_json::json!({ "delay": 3.0 })).is_err());
+        assert!(parse(serde_json::json!({ "delay": 3000 })).is_err());
+    }
+
+    #[test]
+    fn a_default_may_name_an_articulation_by_its_code() {
+        let plan = map(serde_json::json!({
+            "default": "10.0",
+            "arts": { "10.0": "ks=C1", "11.A2": "ks=E1" },
+        }));
+        let mut set = ClipSet::default();
+        note(&mut set, 0.0, 60, Attr::NONE);
+        note(&mut set, 1.0, 62, Attr { kind: 0x11, data: 0xA200 });
+        set.finish();
+        downgrade(&mut set, &plan, &TempoMap::constant(120.0, 4, 4));
+        let w = words(&set);
+        assert!(w.contains(&"0 on24/0".to_string()) && w.contains(&"1 on28/0".to_string()), "{w:?}");
     }
 
     #[test]

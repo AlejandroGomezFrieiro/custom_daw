@@ -122,8 +122,9 @@ end)
 test("daw.attr names the articulations of M2-123 and reads their fields", function()
   same(daw.attr.m2("11.A"), PIZZ, "pizzicato")
   eq(daw.attr.m2(PIZZ), "11.A", "and back")
-  same(daw.attr.m2("10.2.3"), { type = 0x10, data = 0x2300 }, "legato, its variation 3")
-  eq(daw.attr.m2({ type = 0x10, data = 0x2300 }), "10.2.3", "and back")
+  same(daw.attr.m2("10.23"), { type = 0x10, data = 0x2300 }, "legato, its variation 3")
+  same(daw.attr.m2("10.2.3"), { type = 0x10, data = 0x2300 }, "written with a dot too")
+  eq(daw.attr.m2({ type = 0x10, data = 0x2300 }), "10.23", "and back")
   local p = daw.attr.parts(daw.attr.m2("11.A", { direction = "up", string = 4, reset = true }))
   eq(string.format("%X %d %d %s %d", p.subclass, p.variation, p.direction, tostring(p.reset), p.string), "A 0 2 true 4",
     "the fields of Figure 1")
@@ -244,6 +245,19 @@ test("an attribute map's keyswitch is sent again where playback starts after it"
   near(r, 1 / 100, 2e-3, "told once, where it starts")
 end)
 
+test("the map the articulations extension writes plays: a default named by its code, variations, milliseconds", function()
+  local t = keyswitched({ send = "change", chase = { 1, 11, 64 }, default = "10.0", delay = 0,
+    arts = { ["10.0"] = { out = "ks=24" }, ["11.0"] = { out = "ks=D1:100", delay = 0 }, ["11.A2"] = { out = "ks=E1" } } })
+  t:clips()[1]:set_note(5, { attr = daw.attr.m2("11.A2") })
+  eq(daw.attr.m2(t:clips()[1]:notes()[5].attr), "11.A2", "a variation's code")
+  local info = render({ tail = 0, bits = 16, ["end"] = 6 })
+  for i, key in ipairs({ 24, 26, 26, 26, 28 }) do
+    near(channel_peaks(info, (i - 1) * 0.5 + 0.05, (i - 1) * 0.5 + 0.4), key / 100, 2e-3, "note " .. i .. " plays " .. key)
+  end
+  t:clips()[1]:set_note(5, { attr = { type = 0, data = 0 } })
+  eq(t:clips()[1]:notes()[5].attr, nil, "type 0 is none")
+end)
+
 test("an attribute map is checked, undone, saved and copied with its track", function()
   local t = keyswitched(MAP)
   fails(function() t.attr_map = { arts = { ["11.0"] = "ks=H9" } } end, "no such key", "a key there is not")
@@ -279,7 +293,7 @@ end
 
 -- Staccato speaks slowly in this library: its notes play a tenth of a
 -- second early, its keyswitch with them, so that they sound on the beat.
-local LATE = { default = { out = "ks=C1" }, arts = { ["11.0"] = { out = "ks=D1", delay = -0.1 } } }
+local LATE = { default = { out = "ks=C1" }, arts = { ["11.0"] = { out = "ks=D1", delay = -100 } } }
 
 --- The keyswitched instrument playing a plain note on beat 0 and a
 --- staccato on beat 2, with LATE as the map.
@@ -299,8 +313,8 @@ end
 
 test("a delay in an attribute map plays its notes that much earlier, and the rest where they are", function()
   local t = delayed()
-  eq(daw.attr.delay_of(t, daw.attr.m2("11.0")), -0.1, "the staccato's delay")
-  eq(daw.attr.delay_of(t, daw.attr.m2("11.4")), -0.1, "and what falls back to it")
+  eq(daw.attr.delay_of(t, daw.attr.m2("11.0")), -100, "the staccato's delay, in milliseconds")
+  eq(daw.attr.delay_of(t, daw.attr.m2("11.4")), -100, "and what falls back to it")
   eq(daw.attr.delay_of(t, nil), 0, "a note with none is not moved")
   local info = render({ tail = 0, bits = 16, ["end"] = 4 })
   near(onset(info, 0), 0, 1e-3, "the plain note on its beat")
@@ -310,9 +324,9 @@ test("a delay in an attribute map plays its notes that much earlier, and the res
   daw.project.tempo = 60
   near(onset(render({ tail = 0, bits = 16, ["end"] = 4 }), 1), 1.9, 2e-3, "a tenth before 2 s at 60 bpm")
   daw.project.tempo = 120
-  t.attr_map = daw.util.merge(LATE, { delay = 0.05 })
+  t.attr_map = daw.util.merge(LATE, { delay = 50 })
   near(onset(render({ tail = 0, bits = 16, ["end"] = 4 }), 0), 0.05, 2e-3, "the map's own delay for the rest")
-  fails(function() t.attr_map = daw.util.merge(LATE, { delay = 5 }) end, "delay", "seconds are checked")
+  fails(function() t.attr_map = daw.util.merge(LATE, { delay = 5000 }) end, "delay", "milliseconds are checked")
 end)
 
 test("a note moved before where playback starts is started there", function()

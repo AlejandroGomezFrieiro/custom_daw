@@ -72,7 +72,7 @@ tells it in keyswitches.
 ```lua
 clip:add_note({ pitch = "G4", start = 2, attr = daw.attr.m2("11.A") })   -- pizzicato
 clip:set_note(at, { attr = false })            -- none; left out, a change keeps it
-daw.attr.m2("11.A")          -- { type = 0x11, data = 0xA000 }; "10.2.3" with a variation
+daw.attr.m2("11.A")          -- { type = 0x11, data = 0xA000 }; "10.23" with a variation
 daw.attr.m2(note.attr)       -- "11.A", or nil for what is no articulation
 daw.attr.m2("11.A", { direction = "up", string = 4, reset = true })
 daw.attr.parts(note.attr)    -- { type, data, subclass, variation, direction, reset, string }
@@ -95,12 +95,12 @@ keeps it and plays it with no extension loaded.
 ```lua
 track.attr_map = {
   send = "change",                   -- only when a note's articulation differs from the one before; "every"
-  default = { out = "ks=C1" },       -- notes with no attribute
+  default = { out = "ks=C1" },       -- notes with no attribute; or the code of an entry: default = "10.0"
   arts = { ["11.0"] = { out = "ks=D1" }, ["11.A"] = { out = "ks=E1 cc1=96", name = "pizz" } },
   by_type = { [0x13] = { out = "pc=12" } },   -- a whole classification, or another attribute type
   chase = { 1, 11 },                 -- controllers told again after a change
   attribute = true,                  -- notes keep their attribute as well (false: drop it, `attr` keeps one's)
-  delay = 0,                         -- seconds every note plays early (below 0) or late; an entry's own `delay` wins
+  delay = 0,                         -- milliseconds every note plays early (below 0) or late; an entry's own `delay` wins
 }
 track.attr_map = nil                 -- none
 ```
@@ -120,7 +120,7 @@ again first. A map that does not read is refused when it is set.
 
 **Notes that sound on the beat.** A library whose staccato speaks slowly,
 or whose legato starts with a transition, is played early by that much:
-`arts["11.0"] = { out = "ks=D1", delay = -0.08 }` moves those notes (their
+`arts["11.0"] = { out = "ks=D1", delay = -80 }` (milliseconds) moves those notes (their
 start, their end, and the keyswitch before them) 80 ms earlier, so that
 they can be written on the beat and still sound on it; `attr_map.delay`
 is the same for every note whose entry has none. The kernel moves them
