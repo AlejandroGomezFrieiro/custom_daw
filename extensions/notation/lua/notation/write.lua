@@ -853,7 +853,7 @@ function W.tuplet(ctx)
   if tp == nil then return daw.notify(why, "warn") end
   if W.entering or keymap.mode == "i" then
     -- Entering: the values typed next are of that tuplet.
-    view.triplets, view.tuplet = tp and true or false, tp or nil
+    view.tuplet, view.triplets = tp and { tp.actual, tp.normal } or nil, false
     api.ui_redraw()
     return daw.notify(tp and ("entering " .. tp.actual .. ":" .. tp.normal) or "entering plain values")
   end

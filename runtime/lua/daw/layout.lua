@@ -1319,7 +1319,20 @@ function M.setup()
   -- An empty window: what `:vnew` opens, and `:sp` without a name.
   M.buftype("empty", {
     listed = false,
-    bufname = function(_, buf) return "[No Name " .. buf.id .. "]" end,
+    -- Numbered among the empty windows there are now, the lowest free
+    -- number first, so a long session does not climb to `[No Name 14]`.
+    bufname = function(_, buf)
+      local taken = {}
+      for _, other in pairs(M.buffers) do
+        if other ~= buf and other.type == "empty" then taken[other.name] = true end
+      end
+      local name, n = "[No Name]", 1
+      while taken[name] do
+        n = n + 1
+        name = "[No Name " .. n .. "]"
+      end
+      return name
+    end,
     title = function() return "[No Name]" end,
     render = function(_, canvas, ctx)
       local names = {}
@@ -1330,6 +1343,7 @@ function M.setup()
       canvas:text(2, 2, "An empty window.", "Empty")
       canvas:text(2, 3, ":e <name> shows a buffer here: " .. table.concat(names, ", "), "Empty")
       canvas:text(2, 4, ":ls lists them, :close closes the window.", "Empty")
+      canvas:text(2, 5, "A view shows in one window only: splitting it opens this one instead.", "Empty")
     end,
   })
 
@@ -1339,23 +1353,40 @@ function M.setup()
 
   local names = function() return M.buffer_names() end
 
-  local function split(vertical)
+  -- What a split without a name shows, as Vim shows the same buffer: a
+  -- buffer of a type with many (a text list) again; a view has one window,
+  -- so the arrange view's companion is the piano roll and the other way
+  -- round, and any other view gets an empty window that says so.
+  local companions = { arrange = "pianoroll", pianoroll = "arrange" }
+  local function same_buffer()
+    local buf = M.buf_of(M.current())
+    if not buf then return "empty" end
+    if not buf.single then return buf.type, buf end
+    local other = companions[buf.type]
+    local shown = other and M.find(ui().layout, other)
+    if other and ui().views[other] and not (shown and not shown.hidden) then return other, single(other) end
+    return "empty"
+  end
+
+  local function split(vertical, empty)
     return function(ctx)
       local name = ctx.args[1]
       local view, buf = "empty", nil
       if name ~= nil then
         view, buf = M.resolve(name)
         if not view then return daw.notify("no buffer `" .. tostring(name) .. "`: `:ls` lists them", "warn") end
+      elseif not empty then
+        view, buf = same_buffer()
       end
       local made, why = M.split({ vertical = vertical, view = view, buf = buf and not buf.single and buf.id or nil })
       if not made then daw.notify(why, "warn") end
     end
   end
-  command("split", split(false), { desc = "Split the window in two, one above the other, the new one showing a buffer: `sp roll`; an empty one without", complete = names })
-  command("vsplit", split(true), { desc = "Split the window in two side by side, the new one showing a buffer: `vs roll`; an empty one without", complete = names })
+  command("split", split(false), { desc = "Split the window in two, one above the other, the new one showing a buffer: `sp roll`, or the same buffer without a name (the arrange view and the piano roll show each other, any other view leaves an empty window)", complete = names })
+  command("vsplit", split(true), { desc = "Split the window in two side by side, the new one showing a buffer: `vs roll`, or the same buffer without a name (see `split`)", complete = names })
   command.alias("sp", "split")
   command.alias("vs", "vsplit")
-  command("vnew", split(true), { desc = "A new empty window beside this one" })
+  command("vnew", split(true, true), { desc = "A new empty window beside this one" })
 
   local function close_window()
     if daw.ui.float then
@@ -1373,6 +1404,12 @@ function M.setup()
   command("close", function()
     if not close_window() then daw.notify("the last window does not close: `:q` quits", "warn") end
   end, { desc = "Close the window; a panel's comes back where it was" })
+  -- A view's own name goes to it: `:arrange`, `:mixer`, `:roll`.
+  for view, word in pairs({ arrange = "arrange", mixer = "mixer", pianoroll = "roll", session = "session" }) do
+    if ui().views[view] and not daw.commands.get(word) then
+      command(word, function() daw.ui.focus(view) end, { desc = "Show " .. M.titles[view] .. " and go to it" })
+    end
+  end
   command("only", function() M.only() end, { desc = "Close every window but this one" })
   -- `:q` closes the window, and quits from the last one.
   command("q", function()
@@ -1382,14 +1419,7 @@ function M.setup()
     if not close_window() then daw.cmd("quit!") end
   end, { desc = "Close the window; in the last one, quit without saving" })
   -- `:e roll` shows a buffer here; `:e song.json` opens a project.
-  command("e", function(ctx)
-    local view, buf = M.resolve(ctx.args[1])
-    if view and #ctx.args == 1 then
-      local win = M.current()
-      if win then return M.show_in(win, view, buf and not buf.single and buf.id or nil) end
-    end
-    return daw.commands.run("edit", ctx.args, ctx)
-  end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song.json`, `e song.mid`, `e take.wav`",
+  command("e", function(ctx) return daw.commands.run("edit", ctx.args, ctx) end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song.json`, `e song.mid`, `e take.wav`",
     complete = function(text, info)
       if info.index > 1 then return {} end
       local out = M.buffer_names()
@@ -1542,7 +1572,7 @@ function M.setup()
   local acts = {
     s = function() split(false)({ args = {} }) end,
     v = function() split(true)({ args = {} }) end,
-    n = function() split(false)({ args = {} }) end,
+    n = function() split(false, true)({ args = {} }) end,
     c = function() daw.cmd("close") end,
     q = function() daw.cmd("q") end,
     o = function() M.only() end,

@@ -352,11 +352,16 @@ end
 
 -- The cursor ------------------------------------------------------------------------------
 
---- The value chosen, in beats, with its dot, and as a triplet when
---- entering in triplets.
+--- The tuplet notes are entered in, `{ actual, normal }`, or nil.
+function view:entry_tuplet()
+  return self.tuplet or (self.triplets and { 3, 2 }) or nil
+end
+
+--- The value chosen, in beats, with its dot, and as a tuplet's (a
+--- triplet's) when entering in one.
 function view:entry_length()
-  local tp = self.tuplet or { actual = 3, normal = 2 }
-  return self.value * (self.dot and 1.5 or 1) * (self.triplets and tp.normal / tp.actual or 1)
+  local tp = self:entry_tuplet()
+  return self.value * (self.dot and 1.5 or 1) * (tp and tp[2] / tp[1] or 1)
 end
 
 --- The beat the view keeps on screen: the playhead while playing in the
@@ -822,6 +827,8 @@ local function join_chord(sc, eid, note)
 end
 view.join_chord = join_chord
 
+view.join_chord = join_chord
+
 --- The chord of a voice starting exactly at `at` ticks into measure `mi`.
 local function chord_at(sc, mi, staff, v, at)
   local m = sc.measures[mi]
@@ -899,10 +906,12 @@ function view:put(sc, note, beat, length, chord)
     local ev = chord_at(sc, mi, staff, v, at)
     if ev then return join_chord(sc, ev.id, note) end
   end
-  if self.triplets then
+  -- Entering that pushes: what comes later in the voice moves along first.
+  if self.push and view.push_on then view.push_on(sc, staff, v, D.frame(sc).starts[mi] + at, D.from_beats(length)) end
+  local tp = self:entry_tuplet()
+  if tp then
     local value = D.from_beats(self.value * (self.dot and 1.5 or 1))
-    local tp = self.tuplet or { actual = 3, normal = 2 }
-    local ev, why = D.put_tuplet_chord(sc, mi, staff, v, at, value, tp.actual, tp.normal, { note })
+    local ev, why = D.put_tuplet_chord(sc, mi, staff, v, at, value, tp[1], tp[2], { note })
     if not ev then return nil, why end
     return ev.notes[1].id
   end
@@ -954,7 +963,12 @@ end
 
 --- Clear a stretch of one staff (by its index) in the entry voice: a rest written there.
 function view:rest(beat, length, staff)
-  self:write(function(sc) self:clear(sc, beat, length, staff) end)
+  self:write(function(sc)
+    if self.push and view.push_on then
+      view.push_on(sc, (sc.staves[staff or 1] or sc.staves[1]).id, self.voice or 1, D.from_beats(beat) - D.origin(sc), D.from_beats(length))
+    end
+    self:clear(sc, beat, length, staff)
+  end)
 end
 
 --- Change the note under the cursor with `fn(score, note, written)`:
@@ -1843,7 +1857,7 @@ function view:edit(clip)
   if not clip then return daw.notify("no clip here", "warn") end
   if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be shown as notation", "warn") end
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache, self.multi = clip.id, 0, 1, nil, nil, nil, nil
-  self.triplets, self.tuplet, self.again = false, nil, nil
+  self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace = false, nil, nil, nil, nil, nil
   local layout = self:layout()
   local first = model.events(layout)[1]
   self.step = 35

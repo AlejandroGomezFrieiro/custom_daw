@@ -41,8 +41,9 @@
   The window shows it in a window of its own (More, `:qf.window`), not
   docked, and its status bar does not count it.
 - Ex (`:5,8d`, `:%s`, `:g`): `d`, `m` and `co` move clips, not automation,
-  tempo changes or markers in the range; `:s` and `:g` refuse score clips
-  (the score's own layer is not reached yet); a term of a pattern holds no
+  tempo changes or markers in the range; `:s` and `:g` reach a score
+  clip's notes only where an extension writes them (notation does), and
+  `:m`, `:co` and `:>` move its notes as the piano roll does; a term of a pattern holds no
   spaces, so `name=` cannot name a clip with one; Vim's `:t` (copy) is not
   there, as `t` starts a range of tracks, nor `:k`, `:j!`, `:retab` and the
   like. Of the preview the window is handed the piano roll's matches and
@@ -88,14 +89,22 @@
   the bars after it again in their values, and a tuplet there becomes plain
   values; chord symbols, lyrics of verses after the first, rehearsal
   marks, endings, tempo marks, ornaments and clef changes are not in the
-  MusicXML or LilyPond export; the piano roll does not mark a score
-  clip's notes as written or show a note's feel; with `timebind` the note
-  under one view's cursor is not outlined in the other; joining, splitting
-  or stretching a score clip in the arrange view and
+  MusicXML or LilyPond export; the roll's hatching of generated
+  notes is a pale veil in the window, its velocity strip shows no dynamic
+  line there, and "only this pass" is offered for time, length and velocity
+  only (a pitch or a delete of a generated note can be written, not
+  limited to a pass); the notation window outlines the roll's note in the
+  terminal only; joining, splitting or stretching a score clip in the arrange view and
   recording into one work on its notes as on any MIDI clip, and the next
   edit in notation renders the score over them; `:import song.mid score=yes`
   does not exist (`:score.from-midi` after importing does it); the
   several-tracks view and a track's export transcribe what the clips play.
+  Of the grammar for music: `!` does not run a snippet (snippets expand in
+  the piano roll) nor hand a filter MusicXML (it hands it a line of text an
+  event); `in` takes no count; a chord tied only in some of its notes is
+  written again with those ties lost when it is moved or pasted; `Tab`
+  takes suggestions made for the piano roll's clip (notation does not ask
+  for them); `Ctrl-t` asks on the command line, not in a popover.
 
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but

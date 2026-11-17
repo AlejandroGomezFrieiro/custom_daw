@@ -77,6 +77,24 @@ change means:
 | nudged off the grid, a velocity | feel | kept with the note as its feel, relative to what is written |
 | quantized | | the feel goes |
 
+The roll says what it shows is written: the title reads "written in
+notation (:vs notation)", the key line names the keys that write (`]` `[`
+`x` `i` `H` `L` `Alt-h` `Alt-l`) and what is feel (a velocity, a drag off
+the grid), and in the window a Notation chip opens the score. A note with
+feel has a thin tick where it is written (and where its written end is,
+when its length differs), so a nudge is seen; quantizing takes them away.
+In the velocity strip a note whose velocity is not the dynamic's has a
+line at the dynamic's level, and the note under the cursor reads, for
+example, `100 = mf 80+20`. A note the score makes up from a mark (a grace
+note) is hatched in the terminal and veiled in the window; changing its
+pitch or deleting it asks `[w]rite the mark, or only [t]his pass?`. Only
+the mark can take a pitch or a delete: a pass has no override of its own
+yet, so `t` there says so and changes nothing; for its time, length or
+velocity no question is asked, since those are already only that note's
+feel. With the roll and the notation view both on screen and both
+`:setlocal timebind`, the note under one's cursor is outlined in the other
+(`⟦ ⟧` in the roll, a `◉` head in the staff), found by the note's id.
+
 Either way the note plays where the roll put it: the feel takes up what
 the writing does not say, and goes with the note when the writing changes
 (a pitch changed in notation keeps the note's nudge; a dynamic keeps the
@@ -194,9 +212,9 @@ The rest of the page:
 ## Keys
 
 In the notation view. Counts, registers, `.`, macros and marks work as
-everywhere; the view's rows are pitches, so the piano roll's operators and
-visual modes work on it, on the notes the score plays, which the score's
-owner makes changes of the score as it does the roll's. On a plain MIDI
+everywhere. The operators and text objects work on the written score (see
+[The grammar](#the-grammar)); the view's rows are pitches, so a visual
+selection and the roll's single keys on it work as in the piano roll. On a plain MIDI
 clip every key that edits writes it as a score first (one undo step with
 the edit), and says so.
 
@@ -215,12 +233,11 @@ the edit), and says so.
 | `g.` | dot its chord, or take the dot away |
 | `g2` … `g7` | choose the value: 32nd, 16th, eighth, quarter, half, whole (the numbers MuseScore uses) |
 | `gd` | dotted values on or off |
-| `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as written (forget their feel), loop |
-| `in` `ib` `ic` | the note, the bar, the clip |
+| `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as written (forget their feel), loop; the rest are in [The grammar](#the-grammar) |
 | `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection, which takes in the note under the cursor, as Vim's takes the character |
 | `:` on a selection | a command for it: the line starts `:'<,'>` (`:'<,'>notation.cresc`) |
-| `p` `P` | paste after the note, at the cursor |
-| `i`, `a` | enter notes at the cursor, after the note |
+| `p` `P` | paste after the note, at the cursor (a bar yanked with `yab`: after, before the cursor's bar) |
+| `i`, `a`, `I`, `R` | enter notes at the cursor, after the note; pushing later music along; re-pitching what is there |
 | `gh`, `gp` | hear the cursor's pitch; playhead to the cursor |
 | `zi` `zo` | spread the notes out, draw them closer; on the engraved page, a larger, smaller staff |
 | `zg` | the engraved page as one long system scrolled sideways (the galley), or wrapped |
@@ -255,6 +272,81 @@ the barline. No other voice and no other staff is touched.
 | `Backspace` | step back and remove what starts there |
 | `Esc` | back to normal mode |
 
+## The grammar
+
+A Vim grammar for music: an operator, then a motion or a text object, with
+counts, registers, `.` and undo as everywhere. Text objects are found in
+the score (events, measures, voices), not among notes in time, and every
+operator changes the score itself, so `d3ab`, `gUip`, `y2iv` and `.` after
+any of them are exact and each is one undo step. A motion acts in the
+cursor's staff and voice; a visual selection in every staff and voice (a
+block in its pitches). On a plain MIDI clip the first edit writes it as a
+score.
+
+| Object | `i…` | `a…` |
+| --- | --- | --- |
+| note `n` | the note under the cursor | with the notes its ties join |
+| chord `c` | the chord (`3ic` three) | with its grace notes and ties |
+| beat `.` | the beat, in the cursor's voice (`2i.` two) | the beat in every staff and voice |
+| bar `b` | what the bar holds, every staff and voice (`2ib`) | the bar itself: `dab` takes it out and the music closes up, `yab` then `p` or `P` puts it in after or before the cursor's bar |
+| phrase `p` | the notes under the cursor's slur, else between the rests around it (`2ip`) | with the rests after it |
+| voice `v` | the cursor's voice in the bar (`2iv`) | the voice through the score |
+| staff `s` | every voice of the staff in the bar | the staff through the score |
+| tuplet `t` | the tuplet's notes | the tuplet, rests and all |
+| slur `l` | the notes under the slur | and the slur |
+| clip `e` | the whole clip | the whole clip |
+
+`ic` is the chord here; in the piano roll it is the clip, which in notation
+is `ie` (as in the piano roll too).
+
+| Operator | |
+| --- | --- |
+| `d` `y` `c` | delete (chords become rests, notes leave their chords, bars go), yank (a fragment of the score, which pastes as written here and as played in the piano roll), change |
+| `>` `<` | move later, earlier by the chosen value, as written: ids, feel and marks go along, what is there gives way |
+| `gU` `gu` | up, down a step of the key, keeping chromatic notes chromatic; a count is the steps (`3gUib` a fourth up) |
+| `g+` `g-` | up, down a semitone, spelled as the key has it (an octave keeps the spelling); a count is the semitones |
+| `g~` | respell each note: G sharp, A flat, G sharp again; E, F flat (`g~in` the note under the cursor) |
+| `g(` | a slur over the notes (`g(ip`, `g(3w`; on a slur's start again, taken away; on a selection too). `s` is solo wherever there is a track |
+| `g?` | retrograde: backwards, rhythm and pitches, grace notes with their chord; with a count (`2g?ib`) an inversion about the first note, in the key |
+| `gq` | tidy: spelled as the key has it, beams as the metre has them, values and ties written again as the metre divides the bars |
+| `!` | filter: asks for a filter, `reverse`, `transpose 12`, `rhythm 1/8`, or any shell command, which reads the music a line an event (`1/4 C4 E4`, `1/8 r`, lengths as parts of a whole note) and writes it back so: `!ib tac`, `!ip sed s/D4/G4/` |
+| `=` `g=` `gl` | play as written, write again from the playing, loop |
+
+| Motion | |
+| --- | --- |
+| `f` `F` + letter | to the next, previous note of that name in the voice (`2fe`); with an operator the note found is taken in, as Vim's `df` |
+| `t` `T` + letter | to the note before (after) it |
+| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it waits a moment (`timeoutlen`) for a leader key, then moves; `,` followed by a key no leader map has moves at once |
+| `)` `(` | the next, previous phrase: a note after a rest |
+| `]v` `[v` | the next, previous voice (then the next staff's); entering goes into it |
+| `Ctrl-j` `Ctrl-k` | the staff below, above |
+
+**Entry modes.** `i` writes over what is there in its voice (as MuseScore
+and Dorico do by default). `I` pushes: what comes later in the voice moves
+along by what is entered, over barlines (Dorico's Insert); `Insert` toggles
+between the two while entering. `r` and a letter re-pitches the note under
+the cursor (or its chord's top note) to the nearest note of that name and
+keeps its rhythm (`3rc` three chords). `R` is re-pitch mode: each letter
+makes the next chord of the voice that note, keeping the rhythm, and a
+capital adds a note to it; copy a rhythm, then `R` and the letters (in this
+view `R` is not record). The insert mode badge says `INS`, `PUSH` or
+`REPITCH`, and a tuplet or grace note to come.
+
+| Keys in insert mode | |
+| --- | --- |
+| `/`, `//` then a letter | a grace note before the note at the cursor: an acciaccatura, an appoggiatura |
+| `Ctrl-t` | a tuplet to enter: `3` (three in the time of two), `5` (in four), `5:4`, `2:3`, `off` |
+| `Ctrl-o` | one command of normal mode, then back to entering |
+| `Ctrl-r` and a register | paste it at the cursor and step past it (`Ctrl-r "`) |
+| `Tab` | take the suggestion `daw.complete` shows as ghost notes; in normal mode `3 Tab` takes three notes or chords of it (with none shown, `Tab` is the next view) |
+
+**Ex over a score clip.** `:s`, `:g` and `:d` over notes reach a score
+clip's notes where they are written, and change the score:
+`:%s/c4/db4/g` writes D flats (a replacement spelled with a flat or a sharp
+keeps it; `+12` keeps the spelling an octave up; any other pitch is spelled
+by the key), `:g/e4/d` makes the E4s leave their chords (a chord with none
+left is a rest). Velocity and length go as the piano roll's edits do.
+
 **Editing the score.** These work on the written chord under the cursor;
 its notes keep their feel:
 
@@ -271,9 +363,8 @@ its notes keep their feel:
 | `gG` | the chord a grace note of the next (its time goes to the chord before), or the chord's grace notes notes again |
 | `gb` | break the beam before the chord, or join it |
 | `gt` | the beat in triplets (a duplet in 6/8), or not: the bar written again so |
-| `g~` | respell the note: G sharp, A flat |
 | `g'` `g>` `g_` `g^` | staccato, accent, tenuto, marcato on the chord (or a selection), and played so |
-| `(` | on a selection: a slur, the notes played legato |
+| `g(` | on a selection: a slur, the notes played legato (it is the slur operator: `g(ip`) |
 | `Alt-l` `Alt-h` | on a selection: each chord longer, shorter by the chosen value |
 | `gR` `gT` | the raw view; several tracks |
 
@@ -521,7 +612,9 @@ collision avoidance between marks, dynamics and the notes of the other
 staff; slurs that bend round the notes under them; line breaking that
 balances every system (only a bar alone at the end is avoided); a choice of Bravura
 or Petaluma (the kernel has them; nothing chooses them yet). For score
-clips: repeats unfolded, trills played, swing, the piano roll showing which notes
+clips: repeats unfolded, trills played, swing, `!` through a snippet
+(snippets work in the piano roll), a filter that reads and writes MusicXML
+(it reads and writes the line text above), the piano roll showing which notes
 are written and their feel (see docs/missing.md). A plain MIDI clip is
 still transcribed whole after each change of its notes; a score clip is laid
 out, rendered and engraved again only in the measures an edit changed.

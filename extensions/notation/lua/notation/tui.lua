@@ -211,6 +211,8 @@ function view:render(buf, ctx)
   -- Title: the clip, its track, where the cursor is, what will be entered.
   local under = self:note()
   local _, _, written = self:note()
+  -- The note under the piano roll's cursor, when the two are bound in time.
+  local partner = require("notation.roll").partner_place()
   local here = written and model.name(written) or model.name(model.spell(model.key_pitch(self.step, fifths), fifths))
   local value = (model.NAMES[self.value] or "?") .. (self.dot and " dotted" or "")
   local keyname = stored and (stored.root .. " " .. (stored.scale or "major")) or "C major"
@@ -224,7 +226,11 @@ function view:render(buf, ctx)
     right = value .. "  " .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra,
   })
   if inserting then
-    local text = " INS " .. value .. " "
+    -- How letters write: overwriting (as entered), pushing later music
+    -- along, re-pitching what is there; and a tuplet or grace note to come.
+    local tp = self:entry_tuplet()
+    local how = self.repitch and " REPITCH " or self.push and " PUSH " or " INS "
+    local text = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
     real:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
   -- Where the terminal shows images, the engraved page (gui.lua) below the title.
@@ -395,9 +401,9 @@ function view:render(buf, ctx)
             end
             for i, n in ipairs(ev.notes) do
               local hx = ex + (shifted[i] and 1 or 0)
-              local head = (ev.base or 1) >= 2 and "○" or "●"
+              local head = partner == n.index and "◉" or (ev.base or 1) >= 2 and "○" or "●"
               local is_cursor = under and ctx.focused and n.index == written.index and ev.start <= self.beat + EPS and self.beat < ev.start + ev.length - EPS
-              buf:text(hx, row(n.pos), head, is_cursor and "NoteCursor" or note_style)
+              buf:text(hx, row(n.pos), head, is_cursor and "NoteCursor" or partner == n.index and "Bright" or note_style)
               if n.acc then buf:text(hx - 1, row(n.pos), ACC[n.acc], n.courtesy and "Dim" or note_style) end
               if ev.dots > 0 then
                 local dot_x = ex + 1 + (shifted[i] or shifted[i + 1] and 1 or 0)
@@ -651,7 +657,7 @@ end
 function view:snap(m, rel, fine)
   local grid = self:layout().grid
   if fine then return util.clamp(floor(rel / grid + 0.5) * grid, 0, m.length - grid) end
-  return model.snap(m.meter, rel, self.value * (self.triplets and 2 / 3 or 1))
+  return model.snap(m.meter, rel, self.value * (self:entry_tuplet() and self:entry_tuplet()[2] / self:entry_tuplet()[1] or 1))
 end
 
 --- What is at a cell of the view: the line or space, the beat there

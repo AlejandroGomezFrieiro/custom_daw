@@ -21,6 +21,9 @@ daw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "see
 
 local draw = daw.draw
 
+-- Another project is shown from its start, as the cursor is (daw/cursor.lua).
+daw.on("project.loaded", function() view.scroll, view.top, view.seen_beat = 0, 1, nil end)
+
 -- Small piano rolls and waveforms drawn inside clips, and what a header says
 -- about its track's devices, kept until the project changes.
 local previews, chains = {}, {}

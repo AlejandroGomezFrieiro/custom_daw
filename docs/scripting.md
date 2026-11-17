@@ -71,7 +71,10 @@ daw.clips.owner_of(clip.id)    -- "myscore", or nil
 
 `kind` is `"written"` or `"feel"` (both: `apply()` is called instead of
 the write, and what it returns is what `set_note` and `add_note` return),
-`"refuse"`, or nil for the write to go ahead as asked.
+`"refuse"`, or nil for the write to go ahead as asked. `"ask"` writes
+nothing yet: `prompt` is put as a question answered with one key, and
+`choices` maps a key to `{ apply, message }`; any other key leaves the
+notes as they are (and says `cancel`).
 
 **Transport.**
 
@@ -394,6 +397,11 @@ roll:key_scope("pianoroll.lint", 30, function() return showing end)   -- then ma
 roll:tool("lint", function() return { label = "Lint", on = enabled, act = "toggle_lint", tip = "..." } end)
 daw.ui.keybar.set("pianoroll.lint", "n", { { "<C-y>", "fix" } })     -- the key line while the scope is on
 ```
+
+A fifth argument, `{ lane, title, keys }`, adds more for a clip the layer
+knows: `lane(p)` draws on the velocity lane (`p.lane`, `p.vel` rows),
+`title(clip)` and `keys(clip)` return what the roll's title says of the clip
+and a line on what its keys do to it.
 
 A chip's `act` names a `daw.frontend.act` function, called with the clip and
 `arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is

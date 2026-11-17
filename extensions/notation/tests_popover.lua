@@ -384,7 +384,7 @@ end)
 test("popover: tuplets, on a beat and while entering", function()
   local view, clip = song(nil, 4)
   keys("i<C-o>,35<CR>")
-  eq(view.tuplet and view.tuplet.actual, 5, "entering quintuplets")
+  eq(view.tuplet and view.tuplet[1], 5, "entering quintuplets")
   eq(daw.keymap.mode, "i", "still entering")
   keys("cdefg<Esc>")
   local starts = {}

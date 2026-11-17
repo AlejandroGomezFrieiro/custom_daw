@@ -1,7 +1,7 @@
 -- Popovers: a one-line prompt at the caret for what is not a note, as
 -- Dorico's popovers are, in the shape of a Vim prompt. `<leader>` and a
 -- letter opens one (in visual mode it is for the selection, and in insert
--- mode `<C-o>` first, which goes back to entering notes after); it has its
+-- mode after `<C-o>`, which goes back to entering notes after); it has its
 -- own history (`<Up>`), completion with what each choice means (`<Tab>`),
 -- and while it is typed the page shows what Enter would write, in the
 -- accent's ink. Enter writes it as one undo step; Esc leaves no trace.
@@ -164,7 +164,10 @@ function P.open(name, opts)
     range = "'<,'>"
     keymap.set_mode("n")
   end
-  open_now = { spec = spec, range = range, mode = mode == "i" and "i" or "n" }
+  -- Insert mode's Ctrl-o (one command of normal mode) opened it: it is for
+  -- entering, and entering goes on after it.
+  local entering = mode == "i" or view.once_normal
+  open_now = { spec = spec, range = range, mode = entering and "i" or "n" }
   local state = open_now
   cmdline.open({
     prompt = spec.prompt, history = "notation." .. spec.name, label = spec.label, text = opts.text,
@@ -318,14 +321,12 @@ for _, name in ipairs(P.order) do
   local spec = P.specs[name]
   local desc = "Popover: " .. spec.name .. " (" .. spec.hint .. ")"
   keymap.set("<leader>" .. spec.key, opener(name), { view = "notation", mode = { "n", "x" }, desc = desc })
-  keymap.set("<C-o><leader>" .. spec.key, opener(name), { view = "notation", mode = "i", desc = desc .. ", and back to entering notes" })
 end
 local function again()
   if not P.last then return daw.notify("no popover yet", "warn") end
   P.open(P.last.name, { text = P.last.text })
 end
 keymap.set("<leader>.", again, { view = "notation", mode = { "n", "x" }, desc = "The last popover again, with what was typed in it" })
-keymap.set("<C-o><leader>.", again, { view = "notation", mode = "i", desc = "The last popover again, and back to entering notes" })
 
 -- The ghost: the measures the preview changed, drawn in the accent.
 table.insert(view.decorators, function(layout)

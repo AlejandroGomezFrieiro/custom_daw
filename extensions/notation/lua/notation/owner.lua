@@ -14,6 +14,13 @@
 --
 -- Either way the notes end up where the roll put them: the feel takes up
 -- what the writing does not say. One undo step, score and notes together.
+--
+-- A note the score makes up from a mark (a grace note's realisation) is
+-- not quite written: a pitch or a delete there asks whether to write the
+-- mark or change only this pass. Only the mark can take a pitch or a
+-- delete, since a pass has no override of its own yet (a grace note plays
+-- once; what a trill or an unfolded repeat makes is not rendered), so
+-- "only this pass" is offered for a note's time, length and velocity.
 local api = daw.api
 local view = require("notation")
 local model = require("notation.model")
@@ -55,6 +62,25 @@ local function normalize(change, notes)
   return sets, removes, adds
 end
 
+--- Whether the score makes a note up from a mark, not just writes it: what
+--- kind (`"grace"`), or nil.
+function M.generated(sc, id)
+  local _, ev = D.find_note(sc, id)
+  if ev and ev.grace then return "grace" end
+end
+
+--- The same plan as feel only: what a pass can take (time, length, velocity).
+local function pass_of(plan)
+  local out = {}
+  for _, p in ipairs(plan) do
+    local q = {}
+    for k, v in pairs(p) do q[k] = v end
+    q.pitch, q.move = nil, nil
+    out[#out + 1] = q
+  end
+  return out
+end
+
 --- What a change of a score clip's notes means, and how to make it.
 function M.on_edit(c, change)
   local notes = api.clip_notes(c.id)
@@ -79,7 +105,30 @@ function M.on_edit(c, change)
   if #removes > 0 or #adds > 0 then written, any = true, true end
   -- Only what extensions keep on notes changed: written as asked.
   if not any then return nil end
-  return { kind = written and "written" or "feel", apply = function() return M.apply(c.id, plan, removes, adds, notes) end }
+  local function apply() return M.apply(c.id, plan, removes, adds, notes) end
+  -- A pitch or a delete of a made-up note: the mark or only this pass?
+  local sc, made = view.score_of(c), nil
+  for _, p in ipairs(plan) do
+    made = made or (p.pitch and M.generated(sc, p.id))
+  end
+  for _, i in ipairs(removes) do
+    local id = notes[i] and render.note_id(notes[i])
+    made = made or (id and M.generated(sc, id))
+  end
+  if made then
+    local feel = #removes == 0 and #adds == 0
+    return {
+      kind = "ask", prompt = "A " .. made .. " note is made from its mark: [w]rite the mark, or only [t]his pass? ",
+      cancel = "left as it was",
+      choices = {
+        w = { apply = apply },
+        t = feel and { apply = function() return M.apply(c.id, pass_of(plan), removes, adds, notes) end,
+          message = "only this pass: its time, length and velocity changed; a pitch has no override of a pass yet, write the mark for that" }
+          or { message = "a delete has no override of a pass yet: [w]rite the mark" },
+      },
+    }
+  end
+  return { kind = written and "written" or "feel", apply = apply }
 end
 
 --- Make a planned change: the written part in the score, then each note's
@@ -181,6 +230,82 @@ daw.clips.owner("notation", {
   claims = view.has_score,
   on_edit = M.on_edit,
 })
+
+-- Ex (`:s`, `:g`, `:d` over notes) reads a score clip's notes where they
+-- are written and changes the score: a pitch is respelled (as the
+-- replacement spells it, `:s/c#4/db4/`, else an octave keeps its spelling
+-- and anything else is spelled by the key), a note taken out leaves its
+-- chord with the notes its ties join. Velocity and length go as the roll's
+-- edits do, through the owner above.
+if daw.ex and daw.ex.clips then
+  daw.ex.clips("notation", {
+    claims = view.has_score,
+    notes = function(c)
+      local sc = view.score_of(c)
+      local by = {}
+      for place, n in ipairs(api.clip_notes(c.id)) do
+        local id = render.note_id(n)
+        if id then by[id] = { note = n, place = place } end
+      end
+      local out = {}
+      for _, r in ipairs(render.render(sc, { feel = false, written = true })) do
+        local hit = by[r.written.n]
+        if hit then
+          out[#out + 1] = { kind = "note", note = hit.note, place = hit.place, written = r.written.n,
+            at = c.start + (D.origin(sc) + r.written.s) / D.Q }
+        end
+      end
+      return out
+    end,
+    apply = function(c, changes, removes)
+      local clip = daw.clip(c.id)
+      local sc = view.edit_score_of(c)
+      local fifths = view.key()
+      local rest = {}
+      for _, ch in ipairs(changes) do
+        local nid, want = ch.item.written, ch.change
+        local note = D.find_note(sc, nid)
+        if note and want.pitch and want.pitch ~= D.pitch(note) then
+          local sp = model.spell(want.pitch, fifths)
+          local named = want.spelling and model.spelled(want.spelling.letter, want.spelling.alter, want.pitch)
+          if named and model.pitch_of(named.step, named.alter) == want.pitch then
+            sp = named
+          elseif (want.pitch - D.pitch(note)) % 12 == 0 then
+            sp = model.spelled(note.step, note.alter, want.pitch)
+          end
+          D.respell(sc, nid, sp.letter, sp.alter, sp.octave)
+        end
+        if want.velocity or want.length or want.start then rest[#rest + 1] = { id = nid, change = want } end
+      end
+      for _, item in ipairs(removes) do
+        local nid = item.written
+        local note, _, _, entry = D.find_note(sc, nid)
+        if note then
+          for _, tied in ipairs(D.tied_on(sc, entry.staff, entry.voice, nid)) do D.remove_note(sc, tied.note.id) end
+          D.remove_note(sc, nid)
+          if sc.feel then sc.feel[nid] = nil end
+        end
+      end
+      view.commit(clip, sc)
+      -- The rest of each change, on the notes as they now play.
+      if #rest > 0 then
+        local place = {}
+        for i, n in ipairs(clip:notes()) do
+          local id = render.note_id(n)
+          if id then place[id] = i end
+        end
+        local set = {}
+        for _, x in ipairs(rest) do
+          if place[x.id] then
+            set[#set + 1] = { index = place[x.id], velocity = x.change.velocity, length = x.change.length, start = x.change.start }
+          end
+        end
+        if #set > 0 then clip:edit_notes({ set = set }) end
+      end
+      daw.ui.poke()
+    end,
+  })
+end
 
 view.owner = M
 return M

@@ -8,6 +8,7 @@ require("notation.tui")
 require("notation.gui")
 require("notation.keys")
 require("notation.owner")
+require("notation.roll")
 require("notation.write")
 require("notation.popover")
 

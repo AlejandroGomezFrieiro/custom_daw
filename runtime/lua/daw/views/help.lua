@@ -110,13 +110,16 @@ end
 local function length(text) return select(2, text:gsub("[^\128-\191]", "")) end
 
 --- `text` cut into rows of at most `width` characters, at a space where
---- there is one, the rows after the first indented by two.
+--- there is one after the indent, the rows after the first indented by two.
+--- A word longer than the width is cut where the row ends.
 local function wrap(text, width)
   local rows = {}
   while length(text) > width do
     local head, tail = split(text, width)
     local at = head:match("^.*() ")
-    if at and at > 1 then head, tail = text:sub(1, at - 1), text:sub(at + 1) end
+    if tail:sub(1, 1) == " " then
+      tail = tail:sub(2)
+    elseif at and at > #text:match("^ *") then head, tail = text:sub(1, at - 1), text:sub(at + 1) end
     rows[#rows + 1] = head
     text = "  " .. tail
   end

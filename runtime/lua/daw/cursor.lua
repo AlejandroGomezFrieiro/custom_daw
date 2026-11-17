@@ -97,6 +97,12 @@ function M.set_beat(beat)
   save()
 end
 
+-- Another project starts at its start, on its first track.
+daw.on("project.loaded", function()
+  track_id, lane_id, M.beat = nil, nil, 0
+  save()
+end)
+
 --- Round a position to the arrange grid.
 function M.snap(beat)
   return daw.util.round(beat, daw.opt.grid)

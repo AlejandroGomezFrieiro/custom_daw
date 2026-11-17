@@ -101,7 +101,16 @@ end
 
 function M.toggle(name)
   local win = L.find(M.layout, name)
-  if (win and not win.hidden) or not (win or L.homes[name]) then return M.hide(name) end
+  if (win and not win.hidden) or not (win or L.homes[name]) then
+    -- The only window of the tab does not hide: the arrange view takes
+    -- its place, as `Ctrl-w o` left no other to go to.
+    local alone = win and focusable(name)
+    for _, other in ipairs(win and L.windows(M.layout) or {}) do
+      if other ~= win and focusable(other.view) then alone = false end
+    end
+    if alone and name ~= "arrange" and M.views.arrange then return L.show_in(win, "arrange") end
+    return M.hide(name)
+  end
   M.show(name)
   if focusable(name) then M.focus(name) end
 end

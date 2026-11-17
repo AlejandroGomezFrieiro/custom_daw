@@ -81,6 +81,22 @@ end
 
 local function on_key(key, pasted)
   local a = active
+  -- Text a prompt came with is selected: the first key typed replaces it, a
+  -- key that deletes clears it, and a motion key takes the selection off.
+  local selected = a.selected
+  a.selected = false
+  if selected and (pasted or key == "<Space>" or key == "<lt>" or not key:match("^<.+>$")
+    or key == "<BS>" or key == "<Del>" or key == "<C-u>" or key == "<C-w>") then
+    set_text("")
+    if key == "<BS>" or key == "<Del>" or key == "<C-u>" or key == "<C-w>" then
+      if a.complete then refresh() end
+      preview(text())
+      return api.ui_redraw()
+    end
+  elseif selected and (key == "<Left>" or key == "<Home>" or key == "<C-a>") then
+    a.pos = 0
+    return api.ui_redraw()
+  end
   if pasted then
     for ch in key:gsub("[\r\n]", " "):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
       a.pos = a.pos + 1
@@ -175,7 +191,9 @@ end
 --- what it is about, or nil for the bottom row), `on_key(key, text)` (a
 --- key the prompt handles itself before the line does: it returns true
 --- when it took the key, or the new text of the line), `mode` (the mode to
---- go back to when it closes, "n" unless said). Candidates are strings, or
+--- go back to when it closes, "n" unless said). `text` comes selected, so
+--- that typing replaces it (`select = false` keeps it to be added to; so
+--- does the `:` line). Candidates are strings, or
 --- `{ text = whole line, label = the part shown, desc = ... }`. They are
 --- listed above the prompt as it is typed; Tab and Shift-Tab (or Ctrl-n,
 --- Ctrl-p) choose one into the line, Enter runs the line.
@@ -190,6 +208,7 @@ function M.open(opts, on_submit)
     history = histories[name], history_name = name, chars = {}, pos = 0,
   }
   set_text(opts.text or "")
+  active.selected = #active.chars > 0 and opts.select ~= false and opts.prompt ~= ":"
   if #active.chars > 0 then preview(text()) end
   daw.ui.grabber = on_key
   daw.keymap.set_mode("c")
@@ -228,7 +247,7 @@ function M.state()
   if not active then return nil end
   return {
     prompt = active.prompt, before = table.concat(active.chars, "", 1, active.pos),
-    after = table.concat(active.chars, "", active.pos + 1),
+    after = table.concat(active.chars, "", active.pos + 1), selected = active.selected or nil,
     matches = active.matches, match = active.match, note = active.note, note_level = active.note_level,
     anchored = active.anchor ~= nil, history = active.history_name,
   }
@@ -450,7 +469,7 @@ daw.ui.view("cmdline", {
   render = function(_, buf, ctx)
     if active and not anchored(active) then
       local used = buf:text(0, 0, active.prompt, "Accent")
-      local typed = buf:text(used, 0, text(), "Normal")
+      local typed = buf:text(used, 0, text(), active.selected and "Visual" or "Normal")
       -- What the line would do, at the right end while there is room.
       local note = active.note
       if note and note ~= "" then
