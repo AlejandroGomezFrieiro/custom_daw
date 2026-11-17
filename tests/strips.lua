@@ -9,10 +9,19 @@ local api = daw.api
 local W, H = 120, 36
 local PIXELS = { graphics = true, cell = { w = 10, h = 20 }, under = true }
 
---- The screen as text, without a message that could run out between two.
-local function screen()
-  daw.ui.message = nil
-  return table.concat(api.ui_snapshot(W, H), "\n")
+--- The rows of the screen from the one that holds `from` (the first row
+--- of the view `from` names when there is one), `count` of them: what a
+--- test compares, apart from meters that fall back as time passes.
+local function screen(from, count)
+  local lines = api.ui_snapshot(W, H)
+  local top
+  for _, r in ipairs(daw.ui.rects) do
+    if r.name == from then top = r.y + 1 end
+  end
+  for i, line in ipairs(lines) do
+    if not top and line:find(from, 1, true) then top = i end
+  end
+  return table.concat(lines, "\n", top, math.min(#lines, top + count - 1))
 end
 
 --- Pictures on, for the rest of a test.
@@ -103,7 +112,7 @@ test("an audio clip's waveform is a strip under its cells, of the whole clip, ke
   daw.cursor.set_track(t)
   daw.opt.zoom, daw.opt.track_height = 8, 4
   T.after(function() daw.opt.zoom, daw.opt.track_height = 2, "auto" end)
-  local cells = screen()
+  local cells = screen("loop", 4)
   eq(strip("arrange:wave:" .. clip.id), nil, "no pictures: cells")
 
   pictures()
@@ -131,7 +140,7 @@ test("an audio clip's waveform is a strip under its cells, of the whole clip, ke
   -- Pictures off: the cells as before.
   daw.opt.graphics = false
   T.after(function() daw.opt.graphics = true end)
-  eq(screen(), cells, "graphics off draws the same cells")
+  eq(screen("loop", 4), cells, "graphics off draws the same cells")
 end)
 
 test("the piano roll's controller strip is a strip under its cells, the moves marked", function()
@@ -145,7 +154,7 @@ test("the piano roll's controller strip is a strip under its cells, the moves ma
   local strip_view = require("daw.views.pianoroll_strip")
   strip_view.show("bend")
   T.after(function() strip_view.show(nil) end)
-  local cells = screen()
+  local cells = screen("pianoroll", 30)
   pictures()
   api.ui_snapshot(W, H)
   local s = strip("pianoroll:strip")
@@ -158,5 +167,5 @@ test("the piano roll's controller strip is a strip under its cells, the moves ma
   eq(marks, 2, "a mark on each move")
   daw.opt.graphics = false
   T.after(function() daw.opt.graphics = true end)
-  eq(screen(), cells, "graphics off draws the same cells")
+  eq(screen("pianoroll", 30), cells, "graphics off draws the same cells")
 end)
