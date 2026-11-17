@@ -3,7 +3,7 @@
 local api = daw.api
 local M = {}
 
-local active      -- { prompt, chars, pos, on_submit, complete, preview, note, history, index, matches, match }
+local active      -- { prompt, chars, pos, on_submit, complete, preview, note, history, index, matches, match, anchor, on_key }
 local histories = {}
 -- A prompt open in one seat is that seat's; the history is everyone's.
 daw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
@@ -32,7 +32,7 @@ local function finish(submit)
   preview(nil)
   active = nil
   daw.ui.grabber = nil
-  daw.keymap.set_mode("n")
+  daw.keymap.set_mode(state.back or "n")
   api.ui_redraw()
   if submit and state.on_submit then
     if value ~= "" and state.history[#state.history] ~= value then table.insert(state.history, value) end
@@ -107,6 +107,19 @@ local function on_key(key, pasted)
   end
   local keep_matches = false
   local chosen = a.matches and a.matches[a.match]
+  -- The prompt's own keys first: a lyric's Space puts the syllable down
+  -- and goes on to the next note with the prompt still open.
+  if a.on_key then
+    local ok, took = pcall(a.on_key, key, text())
+    if ok and took ~= nil and active == a then
+      if type(took) == "string" then
+        set_text(took)
+        a.matches = nil
+      end
+      preview(text())
+      return api.ui_redraw()
+    end
+  end
   if key == "<CR>" then
     -- A directory chosen from the list is gone into rather than run.
     if chosen and chosen.label:match("/$") then
@@ -173,9 +186,14 @@ end
 --- answer makes is called; by default the prompt), `preview(text)` (called
 --- as the text changes, and with nil when the prompt closes; it may return
 --- a few words to show at the right end, and "error" as a second value when
---- they say what is wrong). `text` comes selected, so that typing replaces
---- it (`select = false` keeps it to be added to; so does the `:` line).
---- Candidates are strings, or
+--- they say what is wrong; `on_change` is another name for it), `anchor()`
+--- (where to draw the prompt: `{ x, y }` in cells of the screen, beside
+--- what it is about, or nil for the bottom row), `on_key(key, text)` (a
+--- key the prompt handles itself before the line does: it returns true
+--- when it took the key, or the new text of the line), `mode` (the mode to
+--- go back to when it closes, "n" unless said). `text` comes selected, so
+--- that typing replaces it (`select = false` keeps it to be added to; so
+--- does the `:` line). Candidates are strings, or
 --- `{ text = whole line, label = the part shown, desc = ... }`. They are
 --- listed above the prompt as it is typed; Tab and Shift-Tab (or Ctrl-n,
 --- Ctrl-p) choose one into the line, Enter runs the line.
@@ -184,9 +202,10 @@ function M.open(opts, on_submit)
   local name = opts.history or opts.prompt or ""
   histories[name] = histories[name] or {}
   active = {
-    prompt = opts.prompt or "", on_submit = on_submit, complete = opts.complete, preview = opts.preview,
+    prompt = opts.prompt or "", on_submit = on_submit, complete = opts.complete, preview = opts.preview or opts.on_change,
+    anchor = opts.anchor, on_key = opts.on_key, back = opts.mode,
     label = opts.label or (opts.prompt or ""):match("^(%a[^:]*%a)"),
-    history = histories[name], chars = {}, pos = 0,
+    history = histories[name], history_name = name, chars = {}, pos = 0,
   }
   set_text(opts.text or "")
   active.selected = #active.chars > 0 and opts.select ~= false and opts.prompt ~= ":"
@@ -214,15 +233,31 @@ function M.ask_key(prompt, on_key)
   api.ui_redraw()
 end
 
+--- Where an anchored prompt is drawn now, `{ x, y }` in cells, or nil.
+local function anchored(a)
+  if not (a and a.anchor) then return nil end
+  local ok, at = pcall(a.anchor)
+  if ok and type(at) == "table" and at.x and at.y then return at end
+end
+
 --- The prompt that is open, for a frontend that draws its own: what it asks,
---- the text so far, and how many characters of it are before the cursor.
+--- the text so far, and how many characters of it are before the cursor;
+--- `anchored` when it is drawn beside what it is about.
 function M.state()
   if not active then return nil end
   return {
     prompt = active.prompt, before = table.concat(active.chars, "", 1, active.pos),
     after = table.concat(active.chars, "", active.pos + 1), selected = active.selected or nil,
     matches = active.matches, match = active.match, note = active.note, note_level = active.note_level,
+    anchored = active.anchor ~= nil, history = active.history_name,
   }
+end
+
+--- Add a line to a prompt's history, as if typed there.
+function M.remember(name, line)
+  histories[name] = histories[name] or {}
+  local h = histories[name]
+  if line ~= "" and h[#h] ~= line then h[#h + 1] = line end
 end
 
 local MAX_ROWS = 10
@@ -236,6 +271,8 @@ end
 --- command line, starting under the word they complete.
 function M.draw_popup(buf)
   local a = active
+  local at = anchored(a)
+  if at then return M.draw_anchored(buf, a, at) end
   if not (a and a.matches and #a.matches > 0) then return end
   local n = #a.matches
   local rows = math.min(MAX_ROWS, n, buf.height - 2)
@@ -285,6 +322,58 @@ function M.draw_popup(buf)
   end
 end
 daw.ui.draw_popup = M.draw_popup
+
+--- A prompt drawn beside what it is about (`anchor`): one line in a small
+--- float with the few words its preview says, and the candidates under it
+--- (over it when there is no room below).
+function M.draw_anchored(buf, a, at)
+  local typed = text()
+  local note = a.note or ""
+  local width = api.str_width(a.prompt) + math.max(api.str_width(typed) + 1, 12) + 2
+  if note ~= "" then width = width + api.str_width(note) + 2 end
+  width = math.min(math.max(width, 24), buf.width)
+  local x = math.max(0, math.min(at.x, buf.width - width))
+  local y = math.max(0, math.min(at.y, buf.height - 2))
+  buf:fill(x, y, width, 1, " ", "Pmenu")
+  local used = buf:text(x + 1, y, a.prompt, "PmenuSel")
+  local room = width - used - 2
+  buf:text(x + 1 + used, y, daw.util.fit(typed, math.max(1, room)), "Pmenu")
+  if note ~= "" then
+    local w = math.min(api.str_width(note), math.max(0, room - api.str_width(typed) - 2))
+    if w >= 4 then buf:text(x + width - 1 - w, y, daw.util.fit(note, w), a.note_level == "error" and "Warn" or "PmenuDesc") end
+  end
+  local before = table.concat(a.chars, "", 1, a.pos)
+  api.ui_cursor(x + 1 + used + api.str_width(before), y)
+  a.popup = nil
+  local n = a.matches and #a.matches or 0
+  if n == 0 then return end
+  local below = buf.height - y - 2
+  local rows = math.min(MAX_ROWS, n, math.max(below, y))
+  if rows < 1 then return end
+  local top = 1
+  if a.match > rows then top = a.match - rows + 1 end
+  local label_w, desc_w = 0, 0
+  for i = top, top + rows - 1 do
+    local c = a.matches[i]
+    label_w = math.max(label_w, api.str_width(c.label))
+    if c.desc and c.desc ~= "" then desc_w = math.max(desc_w, api.str_width(brief(c.desc))) end
+  end
+  local list_w = math.min(buf.width, 2 + label_w + (desc_w > 0 and 2 + math.min(desc_w, 40) or 0) + 1)
+  desc_w = math.max(0, list_w - 2 - label_w - 3)
+  local lx = math.max(0, math.min(x, buf.width - list_w))
+  local ly = below >= rows and y + 1 or y - rows
+  a.popup = { x = lx, y = ly, w = list_w, rows = rows, top = top }
+  for row = 0, rows - 1 do
+    local i = top + row
+    local c = a.matches[i]
+    local sel = i == a.match
+    buf:fill(lx, ly + row, list_w, 1, " ", sel and "PmenuSel" or "Pmenu")
+    buf:text(lx + 1, ly + row, daw.util.fit(c.label, label_w), sel and "PmenuSel" or "Pmenu")
+    if desc_w > 0 and c.desc then
+      buf:text(lx + 2 + label_w + 1, ly + row, daw.util.fit(brief(c.desc), desc_w), sel and "PmenuSelDesc" or "PmenuDesc")
+    end
+  end
+end
 
 -- The pointer on the list: a click puts a candidate in the line, a second
 -- click on it (or a double click) runs the line; the wheel moves through
@@ -378,7 +467,7 @@ end)
 daw.ui.view("cmdline", {
   focusable = false,
   render = function(_, buf, ctx)
-    if active then
+    if active and not anchored(active) then
       local used = buf:text(0, 0, active.prompt, "Accent")
       local typed = buf:text(used, 0, text(), active.selected and "Visual" or "Normal")
       -- What the line would do, at the right end while there is room.
@@ -398,7 +487,16 @@ daw.ui.view("cmdline", {
     local pending = daw.keymap.pending()
     if pending ~= "" then buf:text(buf.width - #pending - 2, 0, pending, "Accent") end
     local message = daw.ui.message
-    if message then
+    if message and daw.keymap.mode == "i" and daw.opt.keybar and #daw.ui.keybar.entries() > 0 then
+      -- While typing, the keys are what is needed: the message goes at the
+      -- right end, cut to its share, and the keys keep the rest.
+      local first = message.text:match("^[^\n]*")
+      local share = math.floor(buf.width * 0.4)
+      local shown = api.str_width(first) > share and daw.util.fit(first, share) or first
+      local w = api.str_width(shown)
+      buf:text(buf.width - w - 1, 0, shown, levels[message.level] or "Info")
+      daw.draw.keys(buf, 1, 0, daw.ui.keybar.entries(), buf.width - w - 4)
+    elseif message then
       local first = message.text:match("^[^\n]*")
       local how = M.messages_hint()
       local more = (message.text:find("\n") or message.level == "error") and ("  " .. how .. " shows it all") or ""

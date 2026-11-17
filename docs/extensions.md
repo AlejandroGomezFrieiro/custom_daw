@@ -67,7 +67,9 @@ daw.ext.load("/path/to/daw/extensions/sections")
 There is no separate plugin interface. An extension is Lua that calls
 `daw.command`, `daw.keymap.set`, `daw.on` and `daw.ui.view` like any
 configuration does. `:extensions` lists what loaded, with the error for
-anything that failed. Files in `~/.config/daw/lua/` shadow the built-in modules
+anything that failed. `:ext.load notation` loads a bundled extension now
+(Tab completes their names); `daw.ext.load` in `init.lua` keeps it. A
+command of one that is not loaded says so instead of "no command". Files in `~/.config/daw/lua/` shadow the built-in modules
 of the same name, so any part of the runtime can be replaced.
 
 **One interface, both frontends.** A view an extension registers with

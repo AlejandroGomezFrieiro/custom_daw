@@ -43,7 +43,30 @@ end
 --- measures on either side (ties, the bar's accidentals), the staves, the
 --- key and where they are.
 local kept, kept_count = {}, 0
+local rebind
 M.stats = { measures = 0 }
+
+--- Point the events of a measure laid out before at the score's own
+--- events, by the ids they had then. The same measure (by its token) may
+--- come back in another score object, after an undo or a trial taken back,
+--- while the objects the events were made from have been changed in place
+--- by an edit since (`notation.view`'s `lift` gives a moved chord's old
+--- place a new id): what reads `source` must find this score's.
+rebind = function(staves, sm)
+  if not sm then return end
+  local by = {}
+  for _, entry in ipairs(sm.voices) do
+    for _, sev in ipairs(entry.events) do by[sev.id] = sev end
+  end
+  for _, evs in ipairs(staves) do
+    for _, ev in ipairs(evs) do
+      if ev.sid and by[ev.sid] then ev.source = by[ev.sid] end
+      for _, g in ipairs(ev.grace or {}) do
+        if g.sid and by[g.sid] then g.source = by[g.sid] end
+      end
+    end
+  end
+end
 
 --- The page's layout of a score. `opts`: `length` (the clip's, in beats),
 --- `fifths`, `grid`, `number` (the bar number of the first measure).
@@ -62,7 +85,7 @@ function M.layout(score, opts)
   local tuplet_serial = 0
   local function add(m, s, v, sev, t, len, extra)
     local ev = { kind = sev.kind == "chord" and "note" or "rest", start = (origin + starts[m.index] + t) / Q, length = len / Q,
-      base = D.ticks(sev.dur) / Q, dots = sev.dots or 0, measure = m.index, staff = s, voice = v, source = sev,
+      base = D.ticks(sev.dur) / Q, dots = sev.dots or 0, measure = m.index, staff = s, voice = v, source = sev, sid = sev.id,
       mi = m.index, at = t, staff_id = score.staves[s].id }
     for k, x in pairs(extra or {}) do ev[k] = x end
     if sev.kind == "chord" then
@@ -103,7 +126,8 @@ function M.layout(score, opts)
         if sev.grace then
           graces = graces or {}
           for _, n in ipairs(sev.notes or {}) do
-            graces[#graces + 1] = { pitch = D.pitch(n), id = n.id, letter = n.step, alter = n.alter, octave = n.octave, spelled = true, source = sev }
+            graces[#graces + 1] = { pitch = D.pitch(n), id = n.id, letter = n.step, alter = n.alter, octave = n.octave, spelled = true, source = sev,
+              sid = sev.id }
           end
         else
           local len = D.length(sev)
@@ -143,17 +167,45 @@ function M.layout(score, opts)
       end)
     end
   end
+  -- The key and the clefs in force, as measures change them.
+  local fifths, in_force = opts.fifths or 0, {}
+  for k, clef in ipairs(staves) do in_force[k] = clef end
   for i = 1, count do
-    local meter = D.meter(meters[i][1], meters[i][2])
+    local meter = D.meter(meters[i][1], meters[i][2], meters[i].groups)
     local sm, before, after = score.measures[i], score.measures[i - 1], score.measures[i + 1]
+    local key_change, clef_change, key_from = nil, nil, fifths
+    if sm and sm.key and sm.key.fifths then
+      key_change = sm.key.fifths ~= fifths or i == 1
+      fifths = sm.key.fifths
+    end
+    if sm and sm.clef then
+      for id, clef in pairs(sm.clef) do
+        local k = ids[id]
+        if k and in_force[k] ~= clef then
+          clef_change = clef_change or {}
+          clef_change[k], in_force[k] = clef, clef
+        end
+      end
+    end
+    local now = table.concat(in_force, ",")
     local key = table.concat({ i, tostring(sm and sm.v), tostring(before and before.v), tostring(after and after.v), clefs,
-      starts[i], lengths[i], i == count and "last" or "" }, "|")
+      starts[i], lengths[i], i == count and "last" or "", fifths, now }, "|")
     local m = { number = (opts.number or 1) + i - 1, index = i, start = (origin + starts[i]) / Q, length = lengths[i] / Q,
-      meter = meter, staves = {}, id = sm and sm.id, v = sm and sm.v }
-    if sm then m.repeat_start, m.repeat_end = sm.repeat_start, sm.barline == ":|" end
+      meter = meter, staves = {}, id = sm and sm.id, v = sm and sm.v, fifths = fifths, key_change = key_change or nil,
+      key_from = key_change and key_from or nil,
+      clef_change = clef_change }
+    if now ~= table.concat(staves, ",") then
+      m.clefs = {}
+      for k, clef in ipairs(in_force) do m.clefs[k] = clef end
+    end
+    if sm then
+      m.repeat_start, m.repeat_end = sm.repeat_start, sm.barline == ":|"
+      m.barline, m.volta, m.rehearsal, m.key_name = sm.barline, sm.volta, sm.rehearsal, sm.key and sm.key.name
+    end
     local hit = kept[key]
     if hit then
       m.staves, m.incomplete, m.overfull = hit.staves, hit.incomplete, hit.overfull
+      rebind(hit.staves, sm)
     else
       for s = 1, #staves do m.staves[s] = {} end
       build(m, i)
@@ -196,7 +248,7 @@ function M.layout(score, opts)
       end
     end
   end
-  local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = opts.fifths or 0,
+  local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = measures[1].fifths or opts.fifths or 0,
     grid = opts.grid or 0.25, origin = origin / Q, score = { events = {} }, doc = score }
   -- Accidentals and stems of the measures laid out now, each run of them
   -- after the measure before it, which says what its bar left altered.

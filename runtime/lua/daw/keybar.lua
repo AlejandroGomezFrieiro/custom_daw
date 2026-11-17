@@ -115,7 +115,7 @@ M.lines.mixer = {
 }
 M.lines.session = {
   n = {
-    { "<CR>", "launch" }, { "L", "scene" }, { "S", "stop" }, { "B", "timeline" }, { "n", "new clip" },
+    { "<CR>", "launch" }, { "L", "scene" }, { "S", "stop" }, { "B", "resume timeline" }, { "n", "new clip" },
     { "i", "notes" }, { "m", "mode" }, { "<Space>", "play" }, { "?", "keys" },
   },
 }

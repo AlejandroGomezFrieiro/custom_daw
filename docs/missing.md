@@ -72,19 +72,28 @@
   The session view's `m` and `n` still mean launch mode and a new clip, not
   Vim's mark and next match.
 
-- Score clips (notation): tempo marks are written only (`:notation.text`),
-  not tempo-map points, and no option makes the score own the song's
-  tempo; repeats and voltas are written, not unfolded; trills, tremolos,
-  fermatas, swing and expression maps are not rendered; no CC1 or CC11 is
-  written for sustained instruments; the roll's hatching of generated
+- Score clips (notation): a tempo mark writes a point of the song's tempo
+  map when it is written, and nothing keeps the two together after (moving
+  the clip or the mark leaves the point where it was; no option makes the
+  score own the song's tempo); repeats and endings are written, not
+  unfolded; trills, mordents, turns and tremolos are written, not played,
+  and a fermata holds its note's whole value but does not stop the time;
+  playing techniques (`pizz.`, `con sord.`) are written text that switches
+  no articulation of the instrument; swing and expression maps are not
+  rendered; no CC1 or CC11 is written for sustained instruments; a key
+  change after the first bar is not read by `daw.harmony` (there is no key
+  track in the core: the key the score starts in is the project's); a
+  time signature written in the score sets the song's signature only at a
+  bar that starts on one of the song's; writing a time signature writes
+  the bars after it again in their values, and a tuplet there becomes plain
+  values; chord symbols, lyrics of verses after the first, rehearsal
+  marks, endings, tempo marks, ornaments and clef changes are not in the
+  MusicXML or LilyPond export; the roll's hatching of generated
   notes is a pale veil in the window, its velocity strip shows no dynamic
   line there, and "only this pass" is offered for time, length and velocity
   only (a pitch or a delete of a generated note can be written, not
   limited to a pass); the notation window outlines the roll's note in the
-  terminal only; key, clef and
-  time-signature changes inside a clip are not edited per measure (a score
-  keeps the time signatures it was written with, and the project's key);
-  joining, splitting or stretching a score clip in the arrange view and
+  terminal only; joining, splitting or stretching a score clip in the arrange view and
   recording into one work on its notes as on any MIDI clip, and the next
   edit in notation renders the score over them; `:import song.mid score=yes`
   does not exist (`:score.from-midi` after importing does it); the

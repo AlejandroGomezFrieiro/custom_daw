@@ -19,6 +19,9 @@
 -- the line that counts first, so that lines matching there rank above
 -- lines matching only elsewhere.
 --
+-- `boost(item)` returns a number added to the score of an item that
+-- matches (up to 120): what is used often, or belongs to the focused view.
+--
 -- `audition(item)` lets the item under the selection be heard: once the
 -- selection has rested on an item for `daw.opt.audition_delay` ms, the one
 -- before is stopped (its trial taken back, see `daw.audition`) and the hook
@@ -260,6 +263,10 @@ local PRIMARY_BONUS = 1000
 -- than the same letters scattered, and less than a match in the primary.
 local WORD_BONUS, PREFIX_BONUS, EXACT_BONUS = 200, 300, 600
 
+-- What a picker's `boost` may add: more than the difference between two
+-- matches in the same name, less than a prefix match is worth over one.
+local BOOST_MAX = 120
+
 --- Whether `text` has `term` at the start of a word.
 local function starts_word(text, term)
   local from = 1
@@ -389,6 +396,13 @@ local function refilter(p)
     p.matches = kept
   else
     p.matches = filter_entries(query, base)
+    -- A picker may weigh its items by something besides the match (what is
+    -- used often, what belongs to the focused view): `boost(item)` is added
+    -- to the score, at most BOOST_MAX, so that exact and prefix matches stay first.
+    if p.spec.boost and query ~= "" then
+      for _, e in ipairs(p.matches) do e.score = e.score + min(max(p.spec.boost(e.item) or 0, 0), BOOST_MAX) end
+      table.sort(p.matches, by_score)
+    end
   end
   p.last_query = query
   p.selected, p.top = 1, 1
@@ -465,6 +479,8 @@ local function toggle_hearing(p)
   daw.state[hear_key(p)] = on
   hush(p)
   if on then follow(p) else daw.audition.stop() end
+  -- The pane says so at once: `♪ off` gives way to what plays, or to `…`.
+  api.ui_redraw()
 end
 
 local function close(p)
@@ -645,7 +661,7 @@ local function hearing_lines(p, width)
   elseif h.loading and h.loading() then
     lines[1] = { text = "… loading " .. tostring(h.label or ""), style = "Dim" }
   elseif now and now.kind == "file" then
-    local mark = ({ loading = "… reading ", failed = "✗ ", ended = "■ " })[now.state] or "▶ "
+    local mark = ({ loading = "… reading ", failed = "✗ ", ended = "■ " })[now.state] or "♪ "
     local name = h.label or now.file:match("[^/]*$")
     lines[1] = { text = mark .. name .. (now.error and " · " .. now.error or ""), style = now.state == "failed" and "Warn" or "PickPlaying" }
     if now.outline then
@@ -656,9 +672,9 @@ local function hearing_lines(p, width)
     end
   elseif now and now.kind == "phrase" then
     local label = h.label or now.label
-    lines[1] = { text = (now.silent and "■ " or "▶ ") .. tostring(label) .. (now.silent and " · " .. now.silent or ""), style = "PickPlaying" }
+    lines[1] = { text = (now.silent and "■ " or "♪ ") .. tostring(label) .. (now.silent and " · " .. now.silent or ""), style = "PickPlaying" }
   elseif h.label then
-    lines[1] = { text = "▶ " .. tostring(h.label), style = "PickPlaying" }
+    lines[1] = { text = "♪ " .. tostring(h.label), style = "PickPlaying" }
   else
     lines[1] = { text = "■ nothing to hear here", style = "Dim" }
   end
@@ -730,7 +746,9 @@ function view:render(buf, ctx)
     local y = 2 + row
     local selected = index == p.selected
     if selected then buf:fill(0, y, list_w, 1, nil, "PickSelected") end
-    buf:text(0, y, selected and "▶" or " ", selected and "PickCaret" or nil)
+    -- The cursor is `▶`; the row that is heard has `♪` in its place.
+    local heard = selected and p.heard ~= nil and p.heard == e.item and daw.audition.state() ~= nil
+    buf:text(0, y, heard and "♪" or selected and "▶" or " ", selected and "PickCaret" or nil)
     if p.multi then buf:text(2, y, p.marked[e] and "+" or " ", "PickMarked") end
     local positions
     if terms_query then

@@ -95,7 +95,14 @@ function M.hide(name)
     local view = M.views[name]
     if view and view.on_hide then view:on_hide() end
   end
-  if M.focused == name then M.focus_next() end
+  if M.focused == name then
+    M.focus_next()
+    -- The last window of the tab does not close: the arrange view takes
+    -- the keyboard, or this view stays if it is the arrange view.
+    if M.focused == name and not M.visible(name) then
+      M.focus("arrange")
+    end
+  end
   api.ui_redraw()
 end
 
@@ -132,6 +139,14 @@ function M.focus(name)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
   local win = L.reveal(name, true)
   if win then return L.enter(win) end
+  if not (M.float and M.float.name == name) then
+    -- A view with no window and no place of its own (its window showed a
+    -- buffer since) goes into the current window, as `:b` would: focus is
+    -- never given to a view that is not drawn.
+    local cur = L.current()
+    if not cur then error("no window to show `" .. name .. "` in", 2) end
+    return L.show_in(cur, name)
+  end
   if M.focused ~= name then
     local old = M.focused
     M.focused = name
@@ -203,6 +218,67 @@ local function shares(children, total)
   return sizes
 end
 
+--- Whether a node is, or holds, the window of a view.
+local function holds(node, name)
+  if node.view then return node.view == name end
+  for _, win in ipairs(L.windows(node)) do
+    if win.view == name then return true end
+  end
+  return false
+end
+
+-- Move `amount` cells between the children at `others`: a positive amount
+-- goes to them in proportion to their sizes, a negative one is taken from
+-- them in proportion to what each can spare (down to its `min`, else one).
+-- Returns how many cells moved.
+local function spread(children, sizes, others, amount)
+  local room, sum = {}, 0
+  for _, j in ipairs(others) do
+    room[j] = amount > 0 and sizes[j] or math.max(0, sizes[j] - (children[j].min or 1))
+    sum = sum + room[j]
+  end
+  local moved = amount > 0 and amount or math.min(-amount, sum)
+  if sum == 0 or moved == 0 then return 0 end
+  local seen, given = 0, 0
+  for _, j in ipairs(others) do
+    seen = seen + room[j]
+    local upto = math.floor(moved * seen / sum)
+    sizes[j] = sizes[j] + (amount > 0 and 1 or -1) * (upto - given)
+    given = upto
+  end
+  return moved
+end
+
+-- Where three or more views share a node, the weights alone can leave the
+-- arrange view a sliver: it keeps a third of the room, as `Ctrl-w =` gives
+-- it, and the notation view takes at most half.
+local function limit_shares(children, sizes, total)
+  local flexible = {}
+  for i, child in ipairs(children) do
+    if not child.size then flexible[#flexible + 1] = i end
+  end
+  if #flexible < 3 then return end
+  local function others_of(i)
+    local out = {}
+    for _, j in ipairs(flexible) do
+      if j ~= i then out[#out + 1] = j end
+    end
+    return out
+  end
+  for _, i in ipairs(flexible) do
+    local half = math.floor(total / 2)
+    if holds(children[i], "notation") and sizes[i] > half then
+      sizes[i] = sizes[i] - spread(children, sizes, others_of(i), sizes[i] - half)
+    end
+  end
+  for _, i in ipairs(flexible) do
+    local third = math.floor(total / 3)
+    if holds(children[i], "arrange") and sizes[i] < third then
+      sizes[i] = sizes[i] + spread(children, sizes, others_of(i), sizes[i] - third)
+    end
+  end
+end
+
 local function place(node, x, y, w, h, out, screen_w, after)
   out.nodes[node] = { x = x, y = y, w = w, h = h }
   if node.view then
@@ -223,6 +299,7 @@ local function place(node, x, y, w, h, out, screen_w, after)
     end
   end
   local sizes = shares(children, total)
+  limit_shares(children, sizes, total)
   local pos = 0
   for i, child in ipairs(children) do
     local size = math.max(0, math.min(sizes[i] or 0, total - pos))
@@ -726,7 +803,10 @@ end)
 
 --- Ask for a line of text on the command line.
 ---   daw.ui.input({ prompt = "Name: ", text = "Bass" }, function(text) ... end)
---- The callback is not called when the prompt is cancelled.
+--- The callback is not called when the prompt is cancelled. Options are
+--- the command line's (`daw.views.cmdline.open`): `complete`, `history`,
+--- `on_change` (live preview), `anchor` (draw it beside what it is about),
+--- `on_key`.
 function M.input(opts, on_submit)
   require("daw.views.cmdline").open(opts, on_submit)
 end
