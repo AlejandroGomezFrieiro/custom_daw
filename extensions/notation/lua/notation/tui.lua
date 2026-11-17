@@ -283,7 +283,9 @@ function view:render(buf, ctx)
   local value = (model.NAMES[self.value] or "?") .. (self.dot and " dotted" or "")
   local clip = self:clip()
   local keyname = view.key_name(fifths, stored, clip and clip.start)
-  local extra = (layout.names and ("  " .. #layout.names .. " staves, to read") or "") .. (view.raw_view() and "  raw" or "")
+  local extra = (layout.names and ("  " .. #layout.names .. " staves, to read") or "")
+    .. (layout.labels and ("  the score, " .. #layout.labels .. " instruments, to read") or "")
+    .. (layout.part_name and ("  part: " .. layout.part_name .. ", to read") or "") .. (view.raw_view() and "  raw" or "")
     .. ((self.voice or 1) > 1 and ("  voice " .. self.voice) or "")
     .. (only and ("  " .. (only == 1 and "right hand" or "left hand") .. " (low panel)") or "")
   -- How letters write: overwriting (as entered), pushing later music
@@ -411,6 +413,10 @@ function view:render(buf, ctx)
       for _, r in ipairs(cells.clef(clef, dense)) do ink(buf, edge + 1, R.above(r[1]), r[2], clef_style) end
       if clef == "treble8" or clef == "bass8" then buf:text(edge + 1, R.above(-4), "8", clef_style) end
       if layout.names and layout.names[s] ~= "" then buf:text(edge + 1, band(s), layout.names[s], "Dim") end
+      -- A score's instrument names: in full on the first system, short after.
+      for _, l in ipairs(layout.labels or {}) do
+        if l.first == s then buf:text(edge + 1, band(s), (sys.measures[1].m.index == 1 and l.full or l.short) or "", "Dim") end
+      end
       for i, pos in ipairs(key_positions(fifths, clef)) do
         buf:text(key_x + i - 1, R.above(pos), fifths > 0 and G.acc[1] or G.acc[-1], note_style)
       end
@@ -500,7 +506,11 @@ function view:render(buf, ctx)
 
         for ei, ev in ipairs(evs) do
           local ex = xt(ev.start)
-          if ev.kind == "rest" then
+          if ev.kind == "rest" and ev.multirest then
+            -- A multi-measure rest: a bar on the middle line, the count in it.
+            local label = "━━ " .. ev.multirest .. " ━━"
+            buf:text(mx + math.max(1, floor((m.width - (6 + #tostring(ev.multirest))) / 2)), row(4), label, note_style)
+          elseif ev.kind == "rest" then
             local sh = ev.shift or 0
             local rx = ev.whole and mx + floor(m.width / 2) or ex
             local value = ev.whole and 4 or ev.base

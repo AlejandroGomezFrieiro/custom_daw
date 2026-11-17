@@ -404,6 +404,12 @@ The popovers are keys of the notation view (its README has them all):
 | playing techniques | `\p` | `pizz.`, `arco`, `con sord.` |
 | the last popover again, with its text | `\.` | |
 
+The full score and the parts (`:help notation-parts`) are on `\P`, to
+read: `\Ps` the score, `\Pc` condensed (two players to a staff), `\Pp`
+this track's part, `\Pn` `\PN` the next and previous part, `\Po` the clip
+again, `\Pb` `\Pj` a system break in the part, `\Pe` export
+(`:part.export parts.pdf all`).
+
 ## Articulations
 
 The articulations extension (`:ext.load articulations`) gives each note the

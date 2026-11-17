@@ -26,12 +26,15 @@ M.LONELY = 0.4
 --- What a bar alone on the last line costs: as much as lines stretched by
 --- three quarters of their width, so it is avoided unless that is worse.
 M.ALONE = 60
+--- What a line that ends where it had better end costs, of what it would.
+M.RESTS = 0.6
 
 --- The first measure of each line. `widths[i]` is each measure's own width,
 --- `prefix(i)` the width of what starts a line at measure `i` (clef, key,
 --- time), `width` the line's. `o`: `breaks[i]` (a line must start at `i`),
 --- `joins[i]` (no line starts at `i`), `per` (measures to a line, the last
---- line fewer).
+--- line fewer), `rests[i]` (a line had better end with measure `i`: a part
+--- breaks after its rests, where a page can turn).
 function M.lines(widths, prefix, width, o)
   o = o or {}
   local n = #widths
@@ -63,6 +66,7 @@ function M.lines(widths, prefix, width, o)
         else
           cost = 100 * stretch * stretch + (stretch > M.STRETCH and 1e5 * (stretch - M.STRETCH) or 0)
         end
+        if o.rests and o.rests[j] and not last then cost = cost * M.RESTS end
         cost = cost + 1
         if per and per > 0 and count < per and not last and not breaks[j + 1] then cost = cost + 1e8 end
         local total = base + cost

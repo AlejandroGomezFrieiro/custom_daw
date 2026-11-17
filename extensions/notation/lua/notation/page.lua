@@ -92,6 +92,10 @@ function P.paper(out, eng, dx, dy, opts)
           out[#out + 1] = { "t", x + geo.width - geo.margin, y + geo.margin + round(4.2 * s), composer, st.ink, round(1.4 * s), 0, "right",
             geo.width / 2 }
         end
+        -- A part names its instrument at the top left, as parts are printed.
+        if opts.part and opts.part ~= "" then
+          out[#out + 1] = { "t", x + geo.margin, y + geo.margin + round(4.2 * s), opts.part, st.ink, round(1.5 * s), 1, "left", geo.width / 2 }
+        end
       else
         -- Even pages' numbers at the left, odd ones' at the right.
         local right = i % 2 == 1
@@ -123,7 +127,8 @@ end
 --- for each page, numbered after the first) or "png" (the first page): on
 --- white paper in black, the sheet `notation_sheet` at 1.75 mm to the staff
 --- space. The last page ends under its last system instead of at the foot
---- of the sheet. Returns the files written, and the number of pages.
+--- of the sheet. `heading`: `title`, `composer`, and `part` (a part's
+--- instrument). Returns the files written, and the number of pages.
 function P.export(layout, path, format, heading)
   local sp = 10
   local st = engrave.style({ space = sp, cell = { w = 1, h = 1 }, ink = "#000000", paper = "#ffffff", accent = "#000000",
@@ -138,7 +143,7 @@ function P.export(layout, path, format, heading)
       height = math.min(height, page.at - page.y + geo.margin)
     end
     local ops = {}
-    P.paper(ops, eng, 0, -page.y, { only = i, title = heading.title, composer = heading.composer, heights = { [i] = height } })
+    P.paper(ops, eng, 0, -page.y, { only = i, title = heading.title, composer = heading.composer, part = heading.part, heights = { [i] = height } })
     P.music(ops, eng, layout, 0, -page.y, i)
     pages[i] = { ops = ops, width = geo.width, height = height }
   end

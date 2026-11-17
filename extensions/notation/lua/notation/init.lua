@@ -228,6 +228,10 @@ end
 
 --- Whether the view shows several tracks (and so cannot be edited).
 function view:readonly()
+  if self.parts then
+    daw.notify("the " .. self.parts.kind .. " is shown, to read: :part off to edit this clip again", "warn")
+    return true
+  end
   if self.multi then
     daw.notify("several tracks are shown, to read: :notation.tracks to edit this clip again", "warn")
     return true
@@ -245,6 +249,11 @@ function view:layout()
     return nil
   end
   local clip = daw.clip(c.id)
+  -- The full score or a part (`notation.parts`), to read.
+  if self.parts then
+    local layout = require("notation.parts").view_layout(self)
+    if layout then return layout, clip:notes() end
+  end
   local opts = view.layout_opts(c)
   if self.multi then
     local parts = { c.id, c.start, c.length, opts.fifths, tostring(opts.tempo), serial(opts.bars) }
@@ -1756,6 +1765,7 @@ function view:edit(clip)
   if not clip then return daw.notify("no clip here", "warn") end
   if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be shown as notation", "warn") end
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache, self.multi = clip.id, 0, 1, nil, nil, nil, nil
+  self.parts = nil
   self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace, self.pending_grace = false, nil, nil, nil, nil, nil, nil
   local layout = self:layout()
   local first = model.events(layout)[1]
