@@ -316,12 +316,30 @@ local function place(node, x, y, w, h, out, screen_w, after)
   end
 end
 
+--- Lay a tree of windows out over a rectangle, as `arrange` lays out a
+--- tab's: in whatever unit its sizes are in (a graphical frontend's pixels).
+function M.place(root, x, y, w, h)
+  local out = { nodes = {}, borders = {}, floating = {} }
+  place(root, x, y, w, h, out, math.huge)
+  out.floating = nil
+  return out
+end
+
+--- The size of the screen in cells: the terminal's, or for the seat of a
+--- graphical frontend that has said how big its main area is, that area's
+--- (`daw.panes`), so that a split there is measured on what it shows.
+function M.size()
+  local cells = daw.panes and daw.panes.cells()
+  if cells then return cells.w, cells.h end
+  return api.ui_size()
+end
+
 --- Where each visible view goes on a screen of the current size: a list of
 --- `{ name, win, x, y, w, h }`, with the tab line along the top when there
 --- is more than one tab. `.borders` holds the borders between windows and
 --- `.nodes` where each node of the tree went, for resizing.
 function M.arrange(width, height)
-  if not width then width, height = api.ui_size() end
+  if not width then width, height = M.size() end
   local out = { nodes = {}, borders = {}, floating = {} }
   local top = #M.tabs > 1 and 1 or 0
   local below = 0
@@ -359,6 +377,13 @@ M.backgrounds = backgrounds
 local function draw(view, buf, ctx)
   M.drawing = view.name
   if view.surface == true and view.paint and buf:surface(0, 0, buf.width, buf.height) then return end
+  if view.paint and not view.render then
+    -- A view that only paints, on a terminal that shows no pictures.
+    if not buf:surface(0, 0, buf.width, buf.height) then
+      buf:text(1, 0, daw.util.fit((view.title or view.name) .. ": drawn in a graphical window, or a terminal that shows pictures", buf.width - 1), "Dim")
+    end
+    return
+  end
   local ok, err = xpcall(view.render, debug.traceback, view, buf, ctx)
   if not ok then
     -- Show the failure where the view would have been.
@@ -585,13 +610,17 @@ function M.render(buf)
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
---- graphical frontend shows it (see `daw.canvas.open_view`). Braille is
---- drawn there as dots (`daw.canvas`), as the font has none.
+--- graphical frontend shows it (see `daw.canvas.open_view`), or a pane of
+--- its main area shows a window of the layout (`M.view_win`, while it is
+--- drawn). Braille is drawn there as dots (`daw.canvas`), as the font has none.
 function M.render_view(name, buf)
   local view = M.views[name]
   buf:fill(0, 0, buf.width, buf.height, " ", backgrounds[name] or "Normal")
   if not view then return end
-  draw(view, buf, { focused = M.focused == name, x = 0, y = 0 })
+  local win = M.view_win
+  local focused = M.focused == name
+  if win then focused = focused and win == L.current() and not daw.canvas.open_views[name] end
+  draw(view, buf, { focused = focused, x = 0, y = 0, win = win })
 end
 
 --- List the keys that can follow a half-typed command, in a box along the
@@ -632,8 +661,7 @@ function M.close()
   if not M.float then
     -- A view drawn in a window of its own (`daw.canvas.open_view`) closes
     -- with it, as it would have closed floating.
-    local window = daw.canvas.open_views[M.focused]
-    if window and window.cells then daw.canvas.close(M.focused) end
+    if daw.canvas.open_views[M.focused] then daw.canvas.close(M.focused) end
     return
   end
   M.focused = M.float.back

@@ -1395,7 +1395,8 @@ function M.setup()
     end
     -- A view in a window of the graphical frontend closes with it.
     local u = daw.ui
-    if not M.find(u.layout, u.focused) and daw.canvas.open_views[u.focused] then
+    local docked = M.find(u.layout, u.focused)
+    if not (docked and not docked.hidden) and daw.canvas.open_views[u.focused] then
       u.close()
       return true
     end

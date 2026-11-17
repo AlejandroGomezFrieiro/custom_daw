@@ -38,8 +38,7 @@
   or `:vimgrep` does yet, nor `/` searches; `:cfdo` runs once per track, as there
   are no files; lists are not kept with the project or between runs; a
   location list stays with its window's number after the window closes.
-  The window shows it in a window of its own (More, `:qf.window`), not
-  docked, and its status bar does not count it.
+  The window's status bar does not count it.
 - Ex (`:5,8d`, `:%s`, `:g`): `d`, `m` and `co` move clips, not automation,
   tempo changes or markers in the range; `:s` and `:g` reach a score
   clip's notes only where an extension writes them (notation does), and
@@ -67,8 +66,8 @@
   `\s` `\w` `\(` `\)` of Vim's, not Vim's whole syntax; there is no `:g`,
   no completion of track and device names while typing, and no buffer of
   clips, lanes or notes yet. In the graphical frontend a text buffer is
-  shown as the terminal draws it, in a window of its own (`:textbuf.window`),
-  not among the window's panels.
+  drawn as the terminal draws it, in the monospace font, not with the
+  window's own widgets.
 
 - One key grammar (docs/terminal.md, "Keys: one grammar"): the window's
   mixer and device cards do not draw the row the cursor is on, though the

@@ -256,11 +256,7 @@ test("vinput: the window is worked with the pointer", function()
   load()
   vinput.add({ name = "Guitar" })
   daw.cmd("vinput")
-  local window
-  for _, w in ipairs(daw.frontend.state(-1).modal.windows) do
-    if w.name == "vinput" then window = w end
-  end
-  eq(window and window.title, "Virtual inputs", "the panel has a window in a graphical frontend")
+  eq(daw.ui.visible("vinput") and daw.canvas.titles.vinput, "Virtual inputs", "the panel is docked, under its title, in a graphical frontend")
   local function paint() return daw.canvas.paint("vinput", 880, 520).ops end
   local function find(ops, text)
     for _, op in ipairs(ops) do
