@@ -83,6 +83,28 @@ pub enum Segments {
     },
 }
 
+/// One line of levels for a stem: `peak -3.1 dBFS, RMS -17.2 dBFS`, or
+/// `silent`.
+pub fn level_line(audio: &Audio) -> String {
+    let (mut peak, mut sum, mut count) = (0f32, 0f64, 0usize);
+    for ch in &audio.channels {
+        for s in ch {
+            peak = peak.max(s.abs());
+            sum += (*s as f64).powi(2);
+        }
+        count += ch.len();
+    }
+    if db(peak as f64) <= SILENCE_DB {
+        return "silent".into();
+    }
+    let rms = (sum / count.max(1) as f64).sqrt();
+    format!(
+        "peak {} dBFS, RMS {} dBFS",
+        fmt_db(db(peak as f64)),
+        fmt_db(db(rms))
+    )
+}
+
 /// The summary, as compact text.
 pub fn analyze(audio: &Audio, segments: Segments, max_segments: usize) -> Result<String> {
     let frames = audio.channels.first().map_or(0, Vec::len);

@@ -6,9 +6,13 @@
 //! other edit. Logs go to stderr; stdout carries protocol messages only.
 
 mod audio;
+mod check;
 mod format;
 mod kernel;
 mod music;
+mod reference;
+mod resources;
+mod schema;
 mod tools;
 
 use std::io::{BufRead, Write};
@@ -20,7 +24,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use kernel::{Kernel, SpawnOpts};
-use tools::{Policy, ToolError, Tools};
+use tools::{Policy, Reply, ToolError, Tools};
 
 const HELP: &str = "\
 paw-mcp: a Model Context Protocol server for paw, on stdin and stdout
@@ -39,8 +43,8 @@ Options:
                       beside this program, or `paw` on the path)
   --root <dir>        where relative paths start and files may be written
                       (default: the current directory)
-  --allow-eval        offer the escape hatches: run_command, send_keys and
-                      eval_lua, which run arbitrary code in paw
+  --allow-eval        offer the escape hatches: lua, run_command and
+                      send_keys, which run arbitrary code in paw
   --allow-any-path    let save and render write outside --root
   --timeout <secs>    how long to wait for the kernel per call (default 600)
   -h, --help          show this help
@@ -199,11 +203,23 @@ impl Server {
                 "supportedVersions": MODERN_VERSIONS,
                 "capabilities": capabilities(),
                 "_meta": { "io.modelcontextprotocol/serverInfo": server_info() },
-                "instructions": tools::INSTRUCTIONS,
+                "instructions": schema::INSTRUCTIONS,
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": self.tools.list() })),
             "tools/call" => self.call(params),
+            "resources/list" => Ok(json!({ "resources": self.tools.resources_list() })),
+            "resources/templates/list" => {
+                Ok(json!({ "resourceTemplates": self.tools.resource_templates() }))
+            }
+            "resources/read" => {
+                let uri = params["uri"]
+                    .as_str()
+                    .ok_or_else(|| rpc_error(-32602, "Invalid params: resources/read needs a `uri`"))?;
+                self.tools
+                    .resource_read(uri)
+                    .map_err(|ToolError(msg)| rpc_error(-32002, msg))
+            }
             _ => Err(rpc_error(-32601, format!("Method not found: {method}"))),
         }?;
         if modern || method == "server/discover" {
@@ -231,7 +247,7 @@ impl Server {
             "protocolVersion": version,
             "capabilities": capabilities(),
             "serverInfo": server_info(),
-            "instructions": tools::INSTRUCTIONS,
+            "instructions": schema::INSTRUCTIONS,
         }))
     }
 
@@ -239,15 +255,16 @@ impl Server {
         let name = params["name"]
             .as_str()
             .ok_or_else(|| rpc_error(-32602, "Invalid params: tools/call needs a `name`"))?;
-        if !Tools::exists(name) {
-            return Err(rpc_error(-32602, format!("Unknown tool: {name}")));
-        }
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         let started = std::time::Instant::now();
         let outcome = self.tools.call(name, &args);
-        let (text, is_error) = match outcome {
-            Ok(text) => (text, false),
-            Err(ToolError(text)) => (text, true),
+        let is_error = outcome.is_err();
+        let (text, data) = match outcome {
+            Ok(Reply { text, data }) => (text, data),
+            Err(ToolError(text)) => {
+                let data = json!({ "error": text });
+                (text, data)
+            }
         };
         eprintln!(
             "paw-mcp: {name} {} in {} ms",
@@ -256,13 +273,14 @@ impl Server {
         );
         Ok(json!({
             "content": [{ "type": "text", "text": text.trim_end() }],
+            "structuredContent": data,
             "isError": is_error,
         }))
     }
 }
 
 fn capabilities() -> Value {
-    json!({ "tools": { "listChanged": false } })
+    json!({ "tools": { "listChanged": false }, "resources": { "subscribe": false, "listChanged": false } })
 }
 
 fn server_info() -> Value {

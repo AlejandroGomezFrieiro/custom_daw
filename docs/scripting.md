@@ -701,6 +701,35 @@ A connection can also be sent things: events it subscribed to, the state
 a frontend draws (pushed when it changes, in parts), and the terminal
 UI's screen. [docs/protocol.md](protocol.md) is the whole protocol.
 
+**Driving paw from an agent.** An agent with a shell (Claude Code, pi, a
+script of your own) has the best tools already: `paw ctl --json` and Lua.
+`--json` makes every answer one line, `{"ok": true, "result": ...}` or
+`{"ok": false, "error": "..."}` with exit status 1, so nothing needs parsing
+from prose:
+
+```sh
+paw ctl --json eval 'return paw.api.project_get()'
+paw ctl --json eval 'return paw.query("clip[name~=riff] > note[pitch>=c5]")'
+paw ctl --json track_add '{"name": "Bass"}'     # any paw.api function, JSON arguments
+```
+
+A good order of work: read the state (`project_get`, `track_list`,
+`clip_notes`: notes carry ids, which stay with them through every edit);
+change it in Lua, one `eval` per step of the work (an `eval` is one undo
+step, `paw.api.undo_label("agent: verse drums")` names it); `paw.render` and
+`paw.api.measure` to check by numbers (loudness, true peak, clipping, level per
+track) in place of listening; `paw.markers` for sections; `paw.harmony.key()`
+and `paw.harmony.step(key, pitch, n)` to move notes along the key. The
+reference for all of it is `paw.help` (`:help`), this manual, and the
+doc comments above each function: `paw-mcp`'s resources
+(`paw://reference/api`, `paw://reference/lua/<module>`) print them.
+
+An assistant without a shell (a chat application) uses `paw-mcp`, a Model
+Context Protocol server that offers the same work as typed tools: results as
+JSON, per-note edits by id, markers, render options, `diagnose`, `batch`
+(several changes as one named undo step), and the manual and the API
+reference as resources. See [crates/paw-mcp/README.md](../crates/paw-mcp/README.md).
+
 **An instance on another machine.** `paw attach` makes the terminal it
 runs in a terminal of an instance that is already running, beside the
 instance's own terminal if it has one (`paw --headless` has none), with a

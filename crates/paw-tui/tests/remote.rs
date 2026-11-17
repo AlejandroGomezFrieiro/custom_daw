@@ -518,3 +518,41 @@ fn the_instances_sound_is_heard_where_the_client_is() {
     while c.events.recv_timeout(Duration::from_millis(300)).is_ok() {}
     assert!(quiet(&c, Duration::from_millis(500)), "no more frames");
 }
+
+/// `paw ctl --json`: one line of JSON for an answer, and for an error, with
+/// the exit status saying which.
+#[test]
+fn ctl_json_answers_in_one_line_of_json() {
+    let instance = start("ctljson");
+    let ctl = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_paw"))
+            .arg("ctl")
+            .arg("--json")
+            .arg("--socket")
+            .arg(&instance.socket)
+            .args(args)
+            .output()
+            .unwrap();
+        let text = String::from_utf8(out.stdout).unwrap();
+        assert_eq!(text.lines().count(), 1, "one line: {text}");
+        (serde_json::from_str::<Value>(&text).unwrap(), out.status.success())
+    };
+    let (answer, ok) = ctl(&["eval", "return { tempo = paw.project.tempo, tracks = {} }"]);
+    assert!(ok);
+    assert_eq!(answer["ok"], true);
+    assert_eq!(answer["result"]["tempo"], 120);
+    let (answer, ok) = ctl(&["eval", "error('no good')"]);
+    assert!(!ok);
+    assert_eq!(answer["ok"], false);
+    assert!(answer["error"].as_str().unwrap().contains("no good"), "{answer}");
+    let (answer, ok) = ctl(&["no_such_method"]);
+    assert!(!ok && answer["ok"] == false, "{answer}");
+    // Without a kernel to talk to the error is JSON as well.
+    let out = Command::new(env!("CARGO_BIN_EXE_paw"))
+        .args(["ctl", "--json", "--socket", "/nonexistent/paw.sock", "eval", "return 1"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let answer: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(answer["ok"], false);
+}
