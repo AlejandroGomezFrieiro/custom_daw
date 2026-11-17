@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use super::{Session, check_notes};
-use crate::model::{ClipContent, Id, Note, Project};
+use crate::model::{ClipContent, Id, Note, NoteAttr, Project, de_attr};
 
 /// What to change about a note. Fields left out stay as they are.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -27,6 +27,14 @@ pub struct NoteChange {
     pub pitch: Option<u8>,
     pub velocity: Option<u8>,
     pub meta: Option<Map<String, Value>>,
+    /// A new attribute, or none (`false`) to take it away.
+    #[serde(deserialize_with = "some_attr")]
+    pub attr: Option<Option<NoteAttr>>,
+}
+
+/// An attribute given in a change, as opposed to one left out.
+fn some_attr<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Option<NoteAttr>>, D::Error> {
+    de_attr(d).map(Some)
 }
 
 impl NoteChange {
@@ -45,6 +53,9 @@ impl NoteChange {
         }
         if let Some(meta) = &self.meta {
             note.meta = meta.clone();
+        }
+        if let Some(attr) = self.attr {
+            note.attr = attr;
         }
     }
 }

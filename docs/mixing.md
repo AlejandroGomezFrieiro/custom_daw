@@ -76,6 +76,61 @@ balance stays (a fader stops at its end, and the others go on). The group's
 own fader is left alone. It is an option of the group, kept in its `meta`
 (`daw.groups.link(group, true)`), and one undo step undoes the whole move.
 
+<!-- tags: narrowing scope -->
+**Narrowing to a group.** In a large project, `:narrow Strings` (`zn` on a
+group's header or on one of its tracks) opens a tab that holds that group and
+every track inside it, however deep, and nothing else, much as REAPER opens a
+subproject; `:widen` (`zw`) closes it and goes back to the tab it came from,
+and `gt` goes between them as between any tabs. It is the same project with
+one undo tree: an edit made in the narrowed tab is undone from any other. In
+that tab the arrange view, the mixer, the device panel, the session view,
+`daw://tracks`, the pickers, the track motions (`gg`, `G`, `j`) and the Ex
+ranges see only those tracks (`t1` is the group, `t*` and `%` are its tracks,
+`:g` and `:s` look in them alone); the group's own fold is open there. The
+status line says `narrowed Strings`, the tab is named after the group, and a
+track added there goes into the group. Several groups can be open at once,
+each in a tab of its own, and `:narrow` of one that has a tab goes to it. The
+window shows the tab as the terminal does. What the rest of the song does
+while a narrowed tab is in front is `:set scope_rest=`: `play` (the default)
+plays it as a reference, `mute` silences it (as a solo of the group would,
+so what the group's sound passes through still plays; the project's mutes
+and solos are not touched), and `frozen` renders each part of the rest in the
+background (each whole group, and each track outside a group) and plays the
+files, so that their devices rest; a part edited meanwhile plays live until it
+has been rendered again, and the files are let go when the tab is no longer
+in front. Neither changes the project. In Lua: `daw.scope.narrow(group)`,
+`daw.scope.widen()`, `daw.scope.current()`, `daw.scope.tracks()` (what the
+current tab sees), `daw.scope.contains(track)`; a tab's scope is its
+`scope` field. `daw.api.engine_audible(ids)` and `daw.api.engine_hold(track,
+file)` are what `mute` and `frozen` use, and are there for scripts too.
+
+<!-- tags: freezing frozen -->
+**Freezing.** `:freeze` renders the track at the cursor, or a group with
+every track inside it, in place, and from then on plays that file instead of
+its clips and devices, whose processing rests: a heavy instrument costs
+nothing while it is frozen. `:freeze Strings` names one, `:t2,t4freeze` takes
+a range, `tail=4` renders 4 seconds after the end (2 by default), and
+`:unfreeze` plays the clips and devices again (on a track inside a frozen
+group it unfreezes the group). The freeze is taken before the fader: the
+fader, pan, mute and sends stay live, so the mix can go on around a frozen
+track (to print the fader as well, `:track.bounce`). The tracks inside a
+frozen group are held: silent, their devices resting, since the group's file
+holds their sound; a send from one of them to a track outside the group is
+not heard while the group is frozen. The arrange view marks a frozen track's
+header `F`, and `f` on each track held inside one. The freeze is kept in the track's
+`meta` (`frozen = { file }`), so it is one undo step and saved with the
+project; the file goes to the project's `media` folder and is named relative
+to the project as recordings are. Clips, notes and devices are not touched,
+and editing them on a frozen track asks once whether to unfreeze it (the
+edit is kept either way, and heard when the track is unfrozen). A render of
+the song plays the frozen file, and sounds as it did before freezing (the
+suite compares them sample by sample). Changing the tempo does not render it
+again: unfreeze and freeze. In Lua `daw.freeze.freeze(track, { tail = 2 })`,
+`daw.freeze.unfreeze(track)`, `daw.freeze.state(track)` (`"frozen"`,
+`"held"` or nil), and `daw.render(path, { freeze = id })` renders what a
+freeze of `id` would (the core's crates/daw-core/src/freeze.rs). The
+extensions/utau vocal freeze is its own, as it waits for the singing.
+
 **VCAs.** A VCA is a fader, a mute and a solo that belong to other tracks
 without carrying their sound, as on a desk. `:vca.make Drums` (`,vn`) makes
 one over the selected tracks (or the cursor track), `:vca.assign Drums`
@@ -213,6 +268,11 @@ expressions and poly pressure, and controllers through the parameters they
 assign to them; LV2 plugins, and CLAP plugins that take only MIDI 1.0, get
 MIDI 1.0, which has no per-note bend: a note's own controllers do not reach
 them (MPE for them, as for a MIDI output, is not there yet).
+A note's MIDI 2.0 attribute (an articulation, `note.attr`: see
+[Scripting](scripting.md)) is recorded from a MIDI 2.0 note-on, said in a
+`midi.in` event as `e.attr`, sent on in MIDI 2.0 ports' note-ons, and
+reaches CLAP plugins that prefer MIDI 2.0 notes and Lua devices; a
+track's `attr_map` turns it into keyswitches and controllers for the rest.
 
 **Editing controller moves.** The strip under the window's piano roll shows
 the velocities or one controller, chosen from its dropdown. A controller is
@@ -429,7 +489,17 @@ fraction, seconds, cancelling, stage, queued }`) and `daw.render_cancel()` stops
 the window finds the same in `daw.frontend.state().modal.render`.
 `daw.render_ranges.chorus = function() return 32, 48 end` adds a named range.
 `daw.render_stems(dir, opts)` writes one file per track, which add up to the
-mix. `:track.bounce` (`daw.bounce(track, { name = ... })`, which returns the
+mix. `:render stems` writes one file per group instead, each named after it,
+into `<project> stems` (or `:render stems out`): every group at the top and
+every track outside a group that has clips, each with what its sound passes
+through, so that they add up to the mix too. It first shows the plan, each
+file and the tracks it holds, and renders on `y` or `Enter` (`n` or `Esc`
+leaves it). `:render stems tracks` makes one per track; `:render Strings`
+renders one group to `Strings.wav` beside the project; in a narrowed tab,
+`:render stems` writes the parts of its group. The options of `:render`
+apply (`format=flac`, `tail=`, `bits=`, `master=false`, ...). In Lua
+`daw.stems.plan({ dir, format, tracks, group })` gives the list
+(`{ id, name, file, holds }`) and `daw.stems.render(plan, opts)` writes it. `:track.bounce` (`daw.bounce(track, { name = ... })`, which returns the
 new track) renders a track with its devices to audio on a new track and mutes
 the original. Stems and bounces go through `daw.render`, so `render.before` is
 heard. Plugins are told when a render is offline and given a moment to
@@ -533,6 +603,16 @@ what can stand in for it, and `:recover` lists its newest safety copy and its
 `:w` puts it back. Started with such a project on the command line, the
 program starts anyway, with that message. A `.bak` names media relative to
 the project, as the project does, so it opens with them.
+
+**The file is the same every time.** A project is written as JSON with its
+fields in the order the model declares them, its maps by key and its numbers
+with the fewest digits that read back exactly, so saving a project that did
+not change writes the same bytes, and one changed thing is a small diff.
+`daw.api.project_file_text(file)` writes a project given as data the same
+way (and refuses one that would not open), and `daw.api.undo_project(id)`
+is a state of the undo tree as a project file holds it. extensions/projdiff
+builds on both: a diff and a three-way merge of projects, and the drivers
+that let version control use them.
 
 **For scripts.** `daw.wait(ms)` lets time pass with timers firing and events
 delivered, which `daw.api.sleep` does not; a script run with `-l` is otherwise

@@ -449,10 +449,11 @@ function M.device_list(wanted)
 end
 
 --- The line a device is listed with: a star for a favourite, then its
---- name, vendor, format and whether it is an instrument or an effect.
+--- name, vendor, the extension it came with if one did, its format and
+--- whether it is an instrument or an effect.
 function M.device_line(info)
-  return string.format("%s %-28s %-14s %s %s", info.favourite and "★" or " ", info.name,
-    info.vendor ~= "" and info.vendor or "—", info.format, info.category)
+  return string.format("%s %-28s %-14s %s%s %s", info.favourite and "★" or " ", info.name,
+    info.vendor ~= "" and info.vendor or "—", info.from and ("[" .. info.from .. "] ") or "", info.format, info.category)
 end
 
 --- Whether a device passes one `@` filter word.
@@ -460,7 +461,7 @@ local function passes(info, tag)
   if tag == "" then return true end
   local function starts(text) return text ~= nil and text:lower():sub(1, #tag) == tag end
   if tag == "fav" or tag == "favourite" or tag == "favorite" then return info.favourite end
-  if starts(info.format) or starts(info.category) then return true end
+  if starts(info.format) or starts(info.category) or starts(info.from) then return true end
   if tag == "instr" or tag == "inst" then return info.category == "instrument" end
   if tag == "fx" then return info.category == "effect" end
   for word in (info.vendor or ""):gmatch("%S+") do

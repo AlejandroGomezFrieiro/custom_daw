@@ -24,7 +24,7 @@ pub use window::repair_display_env;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::thread::ThreadId;
 use std::time::UNIX_EPOCH;
 
@@ -98,6 +98,68 @@ pub fn rescan(
     let notes = register(registry, cache_file);
     sandbox::wrap(registry);
     notes
+}
+
+/// Directories added for this session ([`add_dir`]), looked in for CLAP
+/// and VST3 plugins besides the usual ones.
+static ADDED_DIRS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// How the directories added are handed to a plugin's helper, which has to
+/// find the plugin where this process did.
+pub(crate) const ADDED_DIRS_ENV: &str = "DAW_PLUGIN_DIRS";
+
+/// Look in `dir` for CLAP and VST3 plugins from now on, as well as where
+/// plugins are usually installed (an extension that ships its own plugins
+/// adds the directory they are built into), and register those in it now.
+/// Returns the device kinds found there, and notes on files that could not
+/// be used. The directory is kept until the program ends; later rescans
+/// look in it too.
+pub fn add_dir(
+    registry: &mut Registry,
+    cache_file: Option<&Path>,
+    dir: &Path,
+) -> (Vec<String>, Vec<String>) {
+    MAIN_THREAD.get_or_init(|| std::thread::current().id());
+    {
+        let mut dirs = ADDED_DIRS.lock().unwrap();
+        if !dirs.iter().any(|d| d == dir) {
+            dirs.push(dir.to_path_buf());
+        }
+    }
+    // Only the new directory is looked into; the cache keeps what it knew
+    // of the rest, which is why it is not saved (and pruned) here.
+    let mut cache = Cache::load(cache_file);
+    let mut found = Registry::default();
+    let mut notes = Vec::new();
+    let dirs = [dir.to_path_buf()];
+    clap::scan_in(&mut found, &mut cache, &mut notes, &dirs);
+    vst3::scan_in(&mut found, &mut cache, &mut notes, &dirs);
+    sandbox::wrap(&mut found);
+    let mut kinds = Vec::new();
+    for factory in found.iter() {
+        kinds.push(factory.info().kind.clone());
+        registry.register(factory.clone());
+    }
+    (kinds, notes)
+}
+
+/// The directories added so far, as [`ADDED_DIRS_ENV`] holds them.
+pub(crate) fn added_dirs_env() -> Option<std::ffi::OsString> {
+    let dirs = ADDED_DIRS.lock().unwrap();
+    if dirs.is_empty() {
+        return None;
+    }
+    std::env::join_paths(dirs.iter()).ok()
+}
+
+/// Take the directories a helper was handed ([`ADDED_DIRS_ENV`]).
+pub(crate) fn adopt_added_dirs() {
+    if let Some(paths) = std::env::var_os(ADDED_DIRS_ENV) {
+        ADDED_DIRS
+            .lock()
+            .unwrap()
+            .extend(std::env::split_paths(&paths));
+    }
 }
 
 /// One plugin inside a plugin file, as remembered between runs.
@@ -352,8 +414,15 @@ pub(crate) fn mtime(path: &Path) -> u64 {
 }
 
 /// Directories to search for one plugin format: the format's environment
-/// variable if set, else the usual per-user and system locations.
+/// variable if set, else the usual per-user and system locations; and those
+/// added by [`add_dir`].
 pub(crate) fn search_dirs(env: &str, name: &str) -> Vec<PathBuf> {
+    let mut dirs = usual_dirs(env, name);
+    dirs.extend(ADDED_DIRS.lock().unwrap().iter().cloned());
+    dirs
+}
+
+fn usual_dirs(env: &str, name: &str) -> Vec<PathBuf> {
     if let Some(paths) = std::env::var_os(env) {
         return std::env::split_paths(&paths).collect();
     }
@@ -404,12 +473,13 @@ pub(crate) fn find_bundles(dirs: &[PathBuf], extension: &str) -> Vec<PathBuf> {
 /// Tracks which notes are sounding, so that "all notes off" can be sent as
 /// the individual note-offs every plugin understands.
 pub(crate) struct HeldNotes {
-    held: [bool; 128],
+    /// The channels each key sounds on, one bit each.
+    held: [u16; 128],
 }
 
 impl HeldNotes {
     pub fn new() -> Self {
-        Self { held: [false; 128] }
+        Self { held: [0; 128] }
     }
 
     /// Feed the block's events through, calling `emit` for each note event
@@ -417,12 +487,12 @@ impl HeldNotes {
     pub fn expand(&mut self, events: &[Event], mut emit: impl FnMut(u32, EventKind)) {
         for event in events {
             match event.kind {
-                EventKind::NoteOn { key, .. } => {
-                    self.held[(key & 127) as usize] = true;
+                EventKind::NoteOn { key, ch, .. } => {
+                    self.held[(key & 127) as usize] |= 1 << (ch & 15);
                     emit(event.frame, event.kind);
                 }
-                EventKind::NoteOff { key, .. } => {
-                    self.held[(key & 127) as usize] = false;
+                EventKind::NoteOff { key, ch } => {
+                    self.held[(key & 127) as usize] &= !(1 << (ch & 15));
                     emit(event.frame, event.kind);
                 }
                 EventKind::Control { .. }
@@ -430,8 +500,9 @@ impl HeldNotes {
                 | EventKind::Program { .. } => emit(event.frame, event.kind),
                 EventKind::AllNotesOff => {
                     for key in 0..128u8 {
-                        if std::mem::take(&mut self.held[key as usize]) {
-                            emit(event.frame, EventKind::NoteOff { key, ch: 0 });
+                        let channels = std::mem::take(&mut self.held[key as usize]);
+                        for ch in (0..16u8).filter(|ch| channels & 1 << ch != 0) {
+                            emit(event.frame, EventKind::NoteOff { key, ch });
                         }
                     }
                 }

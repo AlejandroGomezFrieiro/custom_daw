@@ -187,7 +187,7 @@ end
 --- The tracks in the order of the strips: VCAs after the others.
 local function strip_order()
   local tracks, vcas = {}, {}
-  for _, id in ipairs(api.track_list()) do
+  for _, id in ipairs(daw.scope.tracks()) do
     local list = daw.vca.is_vca(id) and vcas or tracks
     list[#list + 1] = id
   end

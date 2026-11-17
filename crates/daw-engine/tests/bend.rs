@@ -1,6 +1,6 @@
 //! A note's own pitch bend, arriving with the note.
 
-use daw_engine::{Ctl, Event, EventBuf, EventKind, Io, NoteCtl, ProcessCtx, Registry};
+use daw_engine::{Attr, Ctl, Event, EventBuf, EventKind, Io, NoteCtl, ProcessCtx, Registry};
 
 fn rises(events: &[EventKind]) -> usize {
     let registry = Registry::with_builtins();
@@ -49,6 +49,7 @@ fn a_note_is_bent_by_its_own_controller_and_by_the_wheel() {
         key: 57,
         vel: 0.8,
         ch: 0,
+        attr: Attr::NONE,
     };
     let own = EventKind::NoteControl {
         key: 57,

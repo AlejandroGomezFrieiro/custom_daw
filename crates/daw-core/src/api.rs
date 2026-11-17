@@ -22,7 +22,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::grid::{self, Caps, Color, Grid, Highlight, Highlights, Rect, Style};
 use crate::io::Io;
-use crate::model::{Control, Id, Note};
+use crate::model::{Control, Id, Note, NoteAttr};
 use crate::session::notes::{NoteChange, NoteRange, NotesEdit};
 use crate::session::{RenderOpts, Session};
 use crate::watchdog::{self, Watchdog};
@@ -168,7 +168,43 @@ fn note_to_lua(lua: &Lua, n: &Note) -> mlua::Result<Table> {
     if !n.meta.is_empty() {
         note.raw_set("meta", to_lua(lua, &n.meta)?)?;
     }
+    if let Some(attr) = n.attr {
+        note.raw_set("attr", attr_to_lua(lua, attr)?)?;
+    }
     Ok(note)
+}
+
+/// A note's attribute as Lua has it: `{ type = 17, data = 40960 }`.
+fn attr_to_lua(lua: &Lua, attr: NoteAttr) -> mlua::Result<Table> {
+    let table = lua.create_table_with_capacity(0, 2)?;
+    table.raw_set("type", attr.kind)?;
+    table.raw_set("data", attr.data)?;
+    Ok(table)
+}
+
+/// A track's attribute map from Lua as the data `track_set` takes.
+fn attr_map_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Value> {
+    let empty = match &value {
+        LuaValue::Nil | LuaValue::Boolean(false) => true,
+        LuaValue::Table(t) => t.is_empty(),
+        _ => false,
+    };
+    if empty {
+        return Ok(Value::Null);
+    }
+    let map: crate::attr_map::AttrMap = from_lua(lua, value)?;
+    serde_json::to_value(map).map_err(mlua::Error::external)
+}
+
+/// An attribute from Lua: a table of `type` and `data`; nil, false or type
+/// 0 for none.
+fn attr_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Option<NoteAttr>> {
+    #[derive(Deserialize)]
+    struct Given(#[serde(deserialize_with = "crate::model::de_attr")] Option<NoteAttr>);
+    if value.is_nil() {
+        return Ok(None);
+    }
+    Ok(from_lua::<Given>(lua, value)?.0)
 }
 
 /// A note's place in its clip as Lua counts it, from 1, turned into ours.
@@ -208,8 +244,11 @@ fn notes_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Vec<Note>> {
                 LuaValue::Nil => 100,
                 v => int(v)?,
             };
-            // A note that carries data of an extension's goes the long way.
-            if !note.raw_get::<LuaValue>("meta").ok()?.is_nil() {
+            // A note that carries data of an extension's, or an
+            // attribute, goes the long way.
+            if !note.raw_get::<LuaValue>("meta").ok()?.is_nil()
+                || !note.raw_get::<LuaValue>("attr").ok()?.is_nil()
+            {
                 return None;
             }
             notes.push(Note {
@@ -224,6 +263,7 @@ fn notes_from_lua(lua: &Lua, value: LuaValue) -> mlua::Result<Vec<Note>> {
                     LuaValue::Number(n) if n >= 0.0 && n.fract() == 0.0 => n as u64,
                     _ => return None,
                 },
+                attr: None,
             });
         }
         Some(notes)
@@ -444,6 +484,9 @@ struct MidiEventOpts {
     // Read from the table before the rest; named here so that it is allowed.
     #[allow(dead_code)]
     channel: Option<u8>,
+    /// A note-on's MIDI 2.0 attribute.
+    #[serde(default, deserialize_with = "crate::model::de_attr")]
+    attr: Option<NoteAttr>,
 }
 
 /// A MIDI message from Lua as the engine's event: a note, or a controller
@@ -490,6 +533,7 @@ fn midi_kind(lua: &Lua, event: LuaValue) -> mlua::Result<EventKind> {
                     key: pitch()?,
                     vel,
                     ch,
+                    attr: event.attr.map_or(daw_engine::Attr::NONE, Into::into),
                 }
             } else {
                 EventKind::NoteOff { key: pitch()?, ch }
@@ -622,9 +666,20 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().track_move(id, index.saturating_sub(1)).lua()
         }
         fn track_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
-            sh.session.borrow_mut().track_set(id, &key, from_lua(lua, value)?).lua()
+            let value: Value = match key.as_str() {
+                // Read as a map first: its `by_type` is keyed by numbers.
+                "attr_map" => attr_map_from_lua(lua, value)?,
+                _ => from_lua(lua, value)?,
+            };
+            sh.session.borrow_mut().track_set(id, &key, value).lua()
         }
         fn track_meter(_, sh, id => Id) { Ok(sh.session.borrow().meter(id)) }
+        // The milliseconds a note with `attr` on the track is moved by its
+        // attribute map (below 0: earlier); 0 without one.
+        fn track_attr_delay(lua, sh, (id, attr) => (Id, LuaValue)) {
+            let attr = attr_from_lua(lua, attr)?.map_or(daw_engine::Attr::NONE, Into::into);
+            sh.session.borrow().attr_delay(id, attr).lua()
+        }
 
         // --- devices ---
         fn device_types(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().device_types()) }
@@ -669,6 +724,26 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // notes on what could not be used, or nil without plugins.
         fn plugins_rescan(_, sh, name => Option<String>) {
             Ok(sh.session.borrow_mut().registry.rescan(name.as_deref()))
+        }
+        // Look for CLAP and VST3 plugins in one more directory from now on
+        // (an extension's own), and register those in it: `{ kinds, notes }`,
+        // the device kinds found there and what could not be used; nil
+        // where plugins cannot be looked for.
+        fn plugins_add_dir(lua, sh, dir => String) {
+            let found = sh.session.borrow_mut().registry.add_dir(std::path::Path::new(&dir));
+            match found {
+                Some((kinds, notes)) => to_lua(lua, &json!({ "kinds": kinds, "notes": notes })),
+                None => Ok(LuaValue::Nil),
+            }
+        }
+        // What a plugin calls its keys, `{ [pitch] = name }` (CLAP `note-name`).
+        fn device_note_names(lua, sh, id => Id) {
+            let names = sh.session.borrow_mut().device_note_names(id);
+            let table = lua.create_table_with_capacity(0, names.len())?;
+            for (pitch, name) in names {
+                table.raw_set(pitch, name)?;
+            }
+            Ok(table)
         }
         // Add devices that fail on purpose (`test.panic`, `test.nan`), for
         // testing what a bad device does to the rest.
@@ -935,19 +1010,20 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().seek(beats);
             Ok(())
         }
-        fn note_on(_, sh, (track, pitch, velocity) => (Id, u8, Option<f64>)) {
+        // Play a note on a track, with a MIDI 2.0 attribute if one is given.
+        fn note_on(lua, sh, (track, pitch, velocity, attr) => (Id, u8, Option<f64>, LuaValue)) {
             let vel = live_velocity(velocity)?;
             if pitch > 127 {
                 return Err(mlua::Error::runtime(format!("a pitch goes up to 127, not {pitch}")));
             }
-            sh.session.borrow_mut().live(track, EventKind::NoteOn { key: pitch, vel, ch: 0 }).lua()
+            let attr = attr_from_lua(lua, attr)?.map_or(daw_engine::Attr::NONE, Into::into);
+            sh.session.borrow_mut().live_note(track, pitch, vel, attr).lua()
         }
         fn note_off(_, sh, (track, pitch) => (Id, Option<u8>)) {
-            let event = match pitch {
-                Some(key) => EventKind::NoteOff { key, ch: 0 },
-                None => EventKind::AllNotesOff,
-            };
-            sh.session.borrow_mut().live(track, event).lua()
+            match pitch {
+                Some(key) => sh.session.borrow_mut().live_note_off(track, key).lua(),
+                None => sh.session.borrow_mut().live(track, EventKind::AllNotesOff).lua(),
+            }
         }
         fn transport_record(_, sh, () => ()) { sh.session.borrow_mut().record().lua() }
 
@@ -1033,6 +1109,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // Forget the processing times `engine_get().blocks` has recorded so far.
         fn engine_reset_stats(_, sh, () => ()) {
             sh.session.borrow().engine_reset_stats();
+            Ok(())
+        }
+        // Play a track from a sound file for now, as if frozen, or live again
+        // with nil; the project is not changed (see `freeze.rs`).
+        fn engine_hold(_, sh, (track, file) => (Id, Option<String>)) {
+            sh.session.borrow_mut().hold(track, file.map(PathBuf::from)).lua()
+        }
+        fn engine_held(_, sh, () => ()) { Ok(sh.session.borrow().held()) }
+        // Only these tracks heard for now, as a solo would, or all with nil.
+        fn engine_audible(_, sh, tracks => Option<Vec<Id>>) {
+            sh.session.borrow_mut().set_audible(tracks);
             Ok(())
         }
         // Threads to process tracks on, counting the audio thread; 0 leaves
@@ -1145,6 +1232,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         fn undo_diff(lua, sh, (a, b) => (Option<u64>, Option<u64>)) {
             to_lua(lua, &sh.session.borrow_mut().undo_diff(a, b).lua()?)
+        }
+        // A state's project as a project file holds it (the current state's
+        // by default), and the text of a project file for a project given as
+        // data: see extensions/projdiff.
+        fn undo_project(lua, sh, id => Option<u64>) {
+            to_lua(lua, &sh.session.borrow_mut().undo_project(id).lua()?)
+        }
+        fn project_file_text(lua, _sh, value => LuaValue) {
+            crate::session::project_file_text(from_lua(lua, value)?).lua()
         }
         fn undo_label(_, sh, text => String) {
             sh.session.borrow_mut().undo_label(text);
@@ -1571,6 +1667,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
     crate::measure::install(lua, &api, shared)?;
     crate::tempo_api::install(lua, &api, shared)?;
     crate::luadev_api::install(lua, &api, shared)?;
+    crate::fs_api::install(lua, &api)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("daw.api", api)

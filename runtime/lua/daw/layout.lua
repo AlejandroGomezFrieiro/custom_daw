@@ -1039,6 +1039,25 @@ function M.tab_new(name, view, win)
   return t
 end
 
+--- Make a tab with the same windows as the current one, after it, and go
+--- to it, the keyboard in the same kind of window. Views shown in a window
+--- of each show the same state in both.
+function M.tab_copy(name)
+  local u = ui()
+  local from = tab()
+  local here = M.current()
+  local root = M.import(M.export(from.layout))
+  if root.view then root = { dir = "v", root } end
+  M.tidy(root)
+  local t = { name = name, layout = root }
+  for _, win in ipairs(M.windows(root)) do
+    if here and win.view == here.view then t.win = win.id end
+  end
+  table.insert(u.tabs, u.tab + 1, t)
+  M.tab_go(u.tab + 1)
+  return t
+end
+
 --- Go to tab `i`.
 function M.tab_go(i)
   local u = ui()
@@ -1098,6 +1117,8 @@ local function export(node)
   return out
 end
 
+M.export = export
+
 --- The tabs and windows as plain data: what `:layout save` writes.
 function M.capture()
   local u = ui()
@@ -1134,6 +1155,8 @@ local function import(spec)
   end
   return node
 end
+
+M.import = import
 
 --- Put back tabs and windows from `M.capture()`'s data, or from a list of
 --- tabs as a configuration writes them:

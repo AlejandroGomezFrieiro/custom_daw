@@ -11,6 +11,8 @@ require("notation.roll")
 require("notation.write")
 require("notation.popover")
 require("notation.files")
+require("notation.search")
+require("notation.part_keys")
 
 daw.ui.view("notation", view)
 daw.ui.dock("notation", { side = "bottom", hidden = true })

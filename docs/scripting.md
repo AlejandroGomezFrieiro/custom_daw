@@ -57,6 +57,82 @@ the note's `meta`, under a key of its own (`meta.lyric`, `meta.notation`),
 and about the clip in `clip.meta`; the core carries it with the note
 through moves, copies, undo and saving, and never reads it.
 
+**A note's attribute: articulations.** A note may carry the attribute of
+a MIDI 2.0 note-on, `note.attr = { type, data }` (nil for none): mostly an
+articulation of the orchestral articulation profile (M2-123), where the
+type is the classification (0x10 to 0x1F) and the data's top bits the
+subclass and variation. Unlike `meta` it is MIDI, so the core keeps it and
+plays it: through edits, copies and pastes, undo, project files, recording
+from MIDI 2.0 input, and MIDI files (in a sequencer-specific event just
+before the note, which other programs pass over). It reaches MIDI 2.0
+ports, CLAP plugins that prefer MIDI 2.0 notes, and Lua devices; what
+takes only MIDI 1.0 never sees it, unless the track's `attr_map` (below)
+tells it in keyswitches.
+
+```lua
+clip:add_note({ pitch = "G4", start = 2, attr = daw.attr.m2("11.A") })   -- pizzicato
+clip:set_note(at, { attr = false })            -- none; left out, a change keeps it
+daw.attr.m2("11.A")          -- { type = 0x11, data = 0xA000 }; "10.23" with a variation
+daw.attr.m2(note.attr)       -- "11.A", or nil for what is no articulation
+daw.attr.m2("11.A", { direction = "up", string = 4, reset = true })
+daw.attr.parts(note.attr)    -- { type, data, subclass, variation, direction, reset, string }
+daw.attr.describe(note.attr) -- { code = "11.A", tag = "pz", name = "Pizzicato", class = ..., text = "Pizzicato (11.A)" }
+bass:play_note("C2", 100, 200, daw.attr.m2("11.0"))   -- live, with what the map sends first
+```
+
+The piano roll writes the tag on a note long enough for it, the window
+gives the note a chip, and `K` says what it is. Naming articulations per
+instrument, choosing them and drawing them well is
+the articulations extension's work; the core keeps only the numbers.
+
+**What an instrument is told for an attribute: `track.attr_map`.** For an
+instrument that takes only MIDI 1.0 (most samplers and libraries, any
+hardware), a track's map turns its notes' attributes into what that
+instrument understands. It is plain data; whatever knows the instrument
+writes it (an articulations extension from its own files), and the project
+keeps it and plays it with no extension loaded.
+
+```lua
+track.attr_map = {
+  send = "change",                   -- only when a note's articulation differs from the one before; "every"
+  default = { out = "ks=C1" },       -- notes with no attribute; or the code of an entry: default = "10.0"
+  arts = { ["11.0"] = { out = "ks=D1" }, ["11.A"] = { out = "ks=E1 cc1=96", name = "pizz" } },
+  by_type = { [0x13] = { out = "pc=12" } },   -- a whole classification, or another attribute type
+  chase = { 1, 11 },                 -- controllers told again after a change
+  attribute = true,                  -- notes keep their attribute as well (false: drop it, `attr` keeps one's)
+  delay = 0,                         -- milliseconds every note plays early (below 0) or late; an entry's own `delay` wins
+}
+track.attr_map = nil                 -- none
+```
+
+`out` is events separated by spaces: `ks=D1` a keyswitch struck (`ks=D1:64`
+with a velocity), `hold=D1` one held while the articulation lasts,
+`cc32=40` (0 to 127), `pc=12` or `pc=12/258` with a bank, `bend=0.5`, `ch=2`
+(the note goes out on channel 2, and so do its events: a multi-timbral
+instrument), `attr` (this note keeps its attribute). Keys are named with C4
+as 60. An entry may carry fields of its writer's beside `out`, kept as they
+are. A note's articulation is found by its code, falling back as M2-123 says:
+the subclass without its variation, the classification's `by_type` entry,
+its subclass 0, then `"10.0"`; then `default`. The events go on the note's
+own beat, ahead of it, which is the order a keyswitched sampler needs; where
+playback starts or the loop goes back, the last change before it is sent
+again first. A map that does not read is refused when it is set.
+
+**Notes that sound on the beat.** A library whose staccato speaks slowly,
+or whose legato starts with a transition, is played early by that much:
+`arts["11.0"] = { out = "ks=D1", delay = -80 }` (milliseconds) moves those notes (their
+start, their end, and the keyswitch before them) 80 ms earlier, so that
+they can be written on the beat and still sound on it; `attr_map.delay`
+is the same for every note whose entry has none. The kernel moves them
+when it lays the track's events out, by the tempo map at each note, so
+playing, an offline render, a bounce and a freeze all agree, and a tempo
+change moves them again. A note moved before where playback starts (the
+song's first beat, a seek, the loop's start after it goes round) starts
+there, as a note already sounding does: as early as it can.
+`daw.attr.delay_of(track, attr)` says how far a note is moved, for a
+view to show. Notes played live are not moved: they cannot be earlier
+than now.
+
 **Transport.**
 
 ```lua
@@ -324,9 +400,19 @@ gets a table it shares with the other steps (`state.made[line]` holds what
 an earlier step made for a line); `quiet = true` keeps a step off the list
 shown. Plans are checked before anything runs: an error raised in `plan`
 stops the write with its message. If a step fails anyway, what the steps
-before it did is undone. `daw.textbuf.open(name, opts)` shows a buffer
+before it did is undone (a step that changes something outside the project,
+as the file manager's do, puts a function that takes it back on
+`state.undo`, and those run, last first). `daw.textbuf.open(name, opts)` shows a buffer
 (`here`, `vertical`, `window`), `daw.textbuf.buf()` is the current one, and
-its `state.text.lines` its lines (`{ text, id }`).
+its `state.text.lines` its lines (`{ text, id }`). The file manager is such a
+kind (`daw/views/files.lua`): `daw.files.open(folder, { tree = true })`,
+`daw.files.sound_info(path)`; `daw.api.fs_stat`, `fs_sound`, `fs_move`,
+`fs_copy`, `fs_trash` and the rest of the `fs_` functions are what it is
+made from.
+
+**The status line.** `daw.statusline.setup` and `daw.statusline.component`
+change and extend the line, a winbar and the tab line (see The status line
+in [Configuration](configuration.md#the-status-line)).
 
 **Help.** An extension ships help by having it: its `README.md`, and any
 `doc/*.md` beside it, are pages of `:help` (see Help in [the terminal
@@ -376,6 +462,13 @@ daw.curves.generate("sine", 0, 8, { rate = 1, depth = 0.5, unfrac = c.unfrac })
 daw.curves.editor.open("daw://tempo", { vertical = true })
 ```
 
+An extension makes a curve of its own of an address with
+`daw.curves.provide(name, fn)`: `fn(uri, parts)` returns a target with
+the fields above (`points`, `write`, `name`, `format`, `lo`, `hi`, ...),
+or nil to leave the address to the others. extensions/articulations draws
+several controllers as one this way
+(`daw://clip/7/control/cc/1#linked=dynamics`).
+
 **Completion.** `daw.complete` shows suggestions as ghost notes in the piano
 roll, from sources that extensions register; see "Writing a source" in
 [harmony.md](harmony.md) for the context and the items.
@@ -423,6 +516,24 @@ and a line on what its keys do to it.
 A chip's `act` names a `daw.frontend.act` function, called with the clip and
 `arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
 left. A failing layer is skipped, and the others are drawn.
+
+An instrument whose keys mean more than pitches (keyswitches, a playable
+range) says so with four more hooks, each by name, nil taking one away:
+
+```lua
+roll.rows("mine", function(pitch, track)       -- the keyboard edge and the row's shade
+  if pitch < 55 then return { shade = "RollOutside" } end
+  if pitch == 24 then return { label = "sus", style = "PianoC" } end
+end)
+roll.band("mine", 10, {                         -- a row of its own above the ruler
+  title = "art", active = function(clip) return true end,
+  paint = function(buf, b) buf:text(b.x(0), 0, "│sus") end,   -- b.x(beat), b.from, b.to, b.width, b.clip
+})
+roll.describer("mine", function(note, part) return { "  played as  sustain" } end)   -- lines K adds for a note
+roll.entering("mine", function(note, clip) note.velocity = 90 end)   -- a note the keys, insert mode or a click enter
+```
+
+extensions/articulations uses all four.
 
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
@@ -542,6 +653,15 @@ function(err, result) end)`, `notify(name, method, params)`,
 `complete(ctx, done)`, `attach(name, address)` to keep a subject open,
 `settle()` for scripts; events `lsp.status`, `lsp.analysis`. See
 [Language servers and diagnostics](lsp.md).
+
+**Searching.** `daw.query(q)` finds nodes of the project's tree by a
+query (`"clip[name~=pizz] > note[pitch>=C5]"`, or a table of steps) and
+`daw.query.select(q)` chooses them; `daw.query.field(kind, name, get)` adds
+a field. `daw.grep.search(pattern, { mode, fields })` finds the project's
+text, and `daw.grep.source(name, function(add) end)` adds text to it.
+`daw.regex.compile(text)` makes a regular expression of the common kind
+(`re:find(s)`). Each is in [the terminal interface](terminal.md),
+"Structural queries" and "Searching the project's text".
 
 **Layers and locators.** What modules draw over a view goes in layers:
 `daw.ui.views.pianoroll.layer(name, order, paint)` draws over the roll in

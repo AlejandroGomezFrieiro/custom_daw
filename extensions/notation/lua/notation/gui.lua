@@ -148,7 +148,7 @@ local function page_ink(g, eng, layout, area)
   if eng.pages then
     local clip = view:clip()
     local title, composer = page.heading(clip and clip:get().name)
-    page.paper(out, eng, 0, dy, { shadow = true, title = title, composer = composer })
+    page.paper(out, eng, 0, dy, { shadow = true, title = title, composer = composer, part = layout.part_name })
   end
   for _, sys in ipairs(eng.systems) do
     if sys.y + sys.height + dy > area.top and sys.y + dy < area.bottom then

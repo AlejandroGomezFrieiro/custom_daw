@@ -404,7 +404,12 @@ mod tests {
                 if (frame as usize) >= at && (frame as usize) < at + n {
                     events.push(Event {
                         frame: frame - at as u32,
-                        kind: EventKind::NoteOn { key, vel, ch: 9 },
+                        kind: EventKind::NoteOn {
+                            key,
+                            vel,
+                            ch: 9,
+                            attr: crate::event::Attr::NONE,
+                        },
                     });
                 }
             }

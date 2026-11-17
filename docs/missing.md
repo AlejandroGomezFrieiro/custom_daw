@@ -22,6 +22,19 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- paw's sampler (extensions/sampler) reads an instrument's samples whole
+  into memory while the program waits, and nothing streams from disk: a
+  library that takes more than 30 s to read is ended by the plugin
+  helper's time limit. Not played: SFZ's LFOs (`amplfo_*`, `fillfo_*`,
+  `pitchlfo_*`, `lfoN_*`), its v2 envelopes (`egN_*`), `<effect>`,
+  `amp_keytrack`, `sw_vel`, controllers on envelope times and offsets, and
+  smoothing per controller (`_smoothccN`); Decent Sampler's effects,
+  modulators, buses, glide, `legatoInterval` and oscillators. SoundFont 2,
+  folders of samples and `.dslibrary` archives are not read; FLAC samples
+  are kept as floats (twice the memory of 16-bit). The plugin lists no
+  presets for `:preset`, has no editor
+  window of its own, one stereo output, and ignores per-note controllers,
+  MPE and note-off velocity.
 - The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
   column's lowest to highest sample and nothing of its loudness: there is no
   darker inner band for the RMS. The window draws a clip's peaks from the
@@ -39,8 +52,8 @@
   A view's locator (`daw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
-- The quickfix list: `:g/pattern/` with no command fills it, but no `:grep`
-  or `:vimgrep` does yet, nor `/` searches; `:cfdo` runs once per track, as there
+- The quickfix list: `:g/pattern/` and `:vimgrep` fill it, but no `:grep`
+  (there are no files to run a program over) nor `/` searches; `:cfdo` runs once per track, as there
   are no files; lists are not kept with the project or between runs; a
   location list stays with its window's number after the window closes.
   The window's status bar does not count it.
@@ -53,6 +66,19 @@
   like. Of the preview the window is handed the piano roll's matches and
   ghosts (as the roll's marks) and the count (`prompt.note`), but does not
   show the count yet, nor shade the range or light clips in the arrange view.
+
+- Searching: the pickers' regex mode and `:vimgrep` read the common kind of
+  regular expression made into Lua patterns, so a group cannot repeat
+  (`(ab)+`), and there is no `\b`, no backreference and no lookaround. A
+  picker's preview draws a clip as a piano roll or a waveform, not as a score
+  snippet (the notation extension draws staves only in its own view). A
+  picker over a hundred thousand notes takes most of a second to open. The
+  `,fg` live grep searches text kept in the project, not text a plugin
+  shows; the text of automation and of devices' parameters is not searched.
+  `:select` chooses notes and clips; tracks, devices, markers and points
+  found go to the quickfix list only. `]]` and `[[` stay on the cursor's
+  track. The open-in-split keys of a picker open the first of the marked
+  lines, as a view is shown in one window at a time.
 
 - Help (`:help`): pages are laid out 78 columns wide, not to the window;
   `:helpgrep` takes words, not patterns; there is no `:helptags` (the tags
@@ -91,9 +117,10 @@
   score own the song's tempo); repeats and endings are written, not
   unfolded; trills, mordents, turns and tremolos are written, not played,
   and a fermata holds its note's whole value but does not stop the time;
-  playing techniques (`pizz.`, `con sord.`) are written text that switches
-  no articulation of the instrument; swing and expression maps are not
-  rendered; no CC1 or CC11 is written for sustained instruments; a key
+  playing techniques (`pizz.`, `con sord.`) switch an articulation only
+  on a track with an articulation map (extensions/articulations), and
+  only from where they are written to the end of the clip or the range;
+  swing is not rendered; no CC1 or CC11 is written for sustained instruments; a key
   change after the first bar is not read by `daw.harmony` (there is no key
   track in the core: the key the score starts in is the project's); a
   time signature written in notation is the song's, for every track. A mark
@@ -123,12 +150,30 @@
   transcribe what the clips play. Tuplets are read from the MIDI within a
   beat (and quarter-note triplets over two); nine to a beat, five over two
   beats and the like are written only when said in notation.
+  The full score is at concert pitch only, and the score and the parts are
+  to read (edits are made in a clip); a part is its track's first MIDI
+  clip; condensing pairs two players, as two voices where they part; cues
+  are flagged, not beamed; MusicXML carries no multi-measure rests or cues.
   Of the grammar for music: `!` does not run a snippet (snippets expand in
   the piano roll) nor hand a filter MusicXML (it hands it a line of text an
   event); `in` takes no count; a chord tied only in some of its notes is
   written again with those ties lost when it is moved or pasted; `Tab`
   takes suggestions made for the piano roll's clip (notation does not ask
   for them); `Ctrl-t` asks on the command line, not in a popover.
+
+- Articulations (extensions/articulations): the window shows the notes'
+  tags and colours and the shaded, named rows, but not the band, the
+  keyboard's labels or menus of its own; keyswitch rows are labelled, not
+  folded away; the score draws an articulation's mark in the same ink as a
+  written one, and the techniques popover does not offer the map's
+  articulations first; a modifier writes MIDI 1.0 controllers, not the
+  profile's registered controllers (mute type, playing position);
+  `:art.edit` (a map edited in a text buffer) is not there; a generated map
+  is not made again when its library changes; Kontakt and SF2 are not
+  read. `:art.measure` finds onsets by level alone (a sample with a slow
+  swell reads late), and does not yet use the onsets a sampler's
+  `describe` could report; linked controllers are a curve of their own,
+  not one of the choices of the strip under the roll.
 
 - Engraved notation: page breaks of one's own (pages fill as systems
   come), and the engraving options as a buffer to edit (staff size,
@@ -192,10 +237,38 @@
   it.
 - MPE for plugins that take only MIDI 1.0 (LV2, some CLAP): a note's own
   bend and controllers do not reach them; MPE is a form of MIDI output only.
+- A note's MIDI 2.0 attribute (articulations): a note's velocity stays
+  seven bits (1 to 127) in the project, though MIDI 2.0's sixteen reach
+  and leave the engine; a note-off's attribute (M2-123's endings) is not
+  kept; what is played on a MIDI keyboard into a track is not turned into
+  keyswitches by its `attr_map` (clips and `track:play_note` are); in a
+  chord on one channel whose notes have different articulations, each
+  keyswitch goes before its own note but a controller or program change
+  is in force for the whole chord (route one with `ch=`); a MIDI file
+  keeps the attribute in an event of this program's, not in the NRPN form
+  some other programs read; `daw.plugins.add_dir` finds CLAP and VST3
+  plugins, not LV2; only CLAP plugins' key names are read, and the window's
+  piano roll shows a note's articulation as a chip but not the names on
+  its keyboard. A note an articulation's `delay` moves before the loop's
+  start is late after the loop goes round (it starts with the loop, not
+  before its end), and in a launched slot's clip notes are moved by the
+  song's tempo at the clip's own beats.
 - MIDI 2.0 output through the sequencer is untried here: this machine's
   kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
   MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's
   own ports).
+- Freezing after the fader: a freeze is taken before the fader, so that
+  the mix stays live (`:track.bounce` prints the fader too). A send from a
+  track inside a frozen group to a track outside it is not heard while the
+  group is frozen, and a frozen track is not rendered again by itself when
+  the tempo changes. The window draws no `F` on a frozen track's header yet
+  (the terminal does; `daw.freeze.state(id)` says it).
+- A narrowed tab is not kept by `:layout save` (a group's id belongs to its
+  project), and the window's own drawing has no mark for it beyond its tab's
+  name. With `scope_rest=frozen` a part of the rest edited from another tab
+  plays live until it is rendered again; renders always play it live. With a
+  terminal and a window attached at once, each with tabs of its own, the
+  last to change tabs chooses what the rest does.
 - A VCA over a group's own fader, a VCA under a VCA, and VCA gain on the master. A VCA is a track here (so it shows in the arrange view as a row, with lanes like any other), and what it moves is the tracks assigned to it, not what they are routed into. A VCA's solo makes its members the only sound; it does not solo what they feed.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is
@@ -283,3 +356,24 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
+- The status line and the files: the window does not draw `daw.statusline`'s
+  line (it is told the pieces, `modal.statusline`) nor the tab line's own
+  sections, and `tabline.always` is the terminal's. A "scope" component has
+  no meaning here, so there is none; disk recording shows as `take N`, with no
+  count of bytes written (the engine does not report one). The file manager
+  moves nothing between disks as a folder (a file is copied and then moved),
+  has no undo of a file operation but the trash, and cannot drag a line into
+  `daw://tracks` (to bring a file in, Enter or `go`); `daw` started with a folder
+  does not open it. The graphical window shows a files buffer as any text buffer.
+- Project diff and merge (extensions/projdiff): the diff and conflict views
+  are drawn in cells, as the window draws any such view, with no painted
+  version of their own (they were driven in the terminal, not in the
+  window); the folds are the view's own, since a text buffer has no folds. A merge keeps a note edited on both sides as a
+  conflict only when its id is the same; a note given a new id by an edit
+  on each side is two notes. Lists with nothing to name their items
+  (controllers) merge as sets, so a controller moved on both sides shows
+  up twice. A conflict is settled by taking one side whole: there is no
+  editing the two together. Anything an extension keeps in `meta` and
+  points at ids with is not followed when two sides give different things
+  the same id: tracks, devices, clips and lanes are renumbered with what
+  points at them in the model's own fields only.

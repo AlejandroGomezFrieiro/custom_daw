@@ -215,6 +215,9 @@ local function modal()
     local row, id = require("daw.mixer_rows").current()
     if row then out.mixer_row = { track = id, kind = row.kind, index = row.index or 0, field = row.field or "" } end
   end
+  -- The status line when it was set up (`daw.statusline.setup`): the
+  -- pieces of each side as `{ text, style }`, for a window that draws it.
+  if daw.statusline.customized() then out.statusline = daw.statusline.frontend() end
   local qf = daw.qf and daw.qf.status()
   if qf then
     local text, worst = {}, 0
@@ -1079,6 +1082,10 @@ function A.select_clips_box(row0, beat0, row1, beat1, mode)
   for _ in pairs(set) do count = count + 1 end
   return count
 end
+
+--- Choose a set of clips (`{ [id] = true }`), as visual mode's selection:
+--- what `:select` does.
+function M.choose_clips(set) choose_clips(set, nil, true) end
 
 --- Every clip on the timeline, chosen.
 function A.select_all_clips()
@@ -2187,6 +2194,13 @@ local function stamp_of(clip)
   return ok and data.stamp or nil
 end
 
+--- Choose notes of `clip` by their places (`{ [place] = true }`), as the
+--- pointer would: what `:select` does.
+function M.choose_notes(clip, places)
+  chosen[clip] = next(places) and { places = places, stamp = stamp_of(clip) } or nil
+  api.ui_redraw()
+end
+
 --- The places of the chosen notes of `clip`, in order; none if the clip's
 --- notes have changed under them.
 function M.chosen_notes(clip)
@@ -2325,7 +2339,7 @@ function A.add_note(clip, pitch, start, length, free)
     length = math.max(free and 1 / 64 or daw.opt.note_grid, snap_note(length, free))
     roll:set_step(length)
   end
-  local index = c:add_note({ pitch = pitch, start = start, length = math.min(length, c.length - start), velocity = daw.opt.velocity })
+  local index = c:add_note(roll.new_note(c, { pitch = pitch, start = start, length = math.min(length, c.length - start), velocity = daw.opt.velocity }))
   c:track():play_note(pitch, daw.opt.velocity, 150)
   choose(part.id, { index })
   return index

@@ -201,6 +201,11 @@ area's size with `daw.panes.area(width, height)`; it paints a pane with
 `daw.panes.pointer(win, event)`, a press with `daw.panes.focus(win)`, a
 border dragged with `daw.panes.border(i, x, y)` and a tab clicked with
 `daw.panes.tab(i)` (runtime/lua/daw/panes.lua, tested in the suite).
+A tab narrowed to a group (`:narrow Strings`, `zn`; see
+[Narrowing to a group](mixing.md#mixing-midi-and-rendering-in-the-core))
+is a tab like any other in its row, named after the group, and its panes
+draw only that group's tracks: the timeline, the mixer and the device panel
+take their rows from `daw.groups.rows()`, which is the narrowed tab's.
 
 What a gesture means is not decided in the window. It calls
 `daw.frontend.act` in the kernel (`select_clip`, `select_clips_box`,
@@ -214,6 +219,15 @@ snap to the grid and the suite tests each one, so another frontend gets the
 same behaviour by sending the same gestures. The clips chosen with the
 pointer are kept there too (`daw.frontend.chosen_clips()`), and the state
 marks each clip `selected`.
+
+**A status line of your own.** The window's status bar is its own, and shows
+the mode, the prompt, messages and keys as it always has. Once
+`daw.statusline.setup` has run (see [Configuration](configuration.md#the-status-line)),
+`frontend.state` carries `modal.statusline`, `{ left, right }`, each a list of
+`{ text, group }` pieces (the groups are those of the terminal's theme): this
+is what the window needs to draw in place of its fixed fields. The window does
+not draw it yet; the terminal does. The tab line's extra sections, and
+`tabline.always`, are the terminal's too.
 
 **Views in windows.** Any view of the terminal can be popped out into a
 window of its own on request: `:view.window undotree` (the focused view, or

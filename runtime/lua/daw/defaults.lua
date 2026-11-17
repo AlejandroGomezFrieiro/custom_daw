@@ -254,11 +254,11 @@ command("cursor.bar", function(ctx)
   cursor.set_beat(daw.time.bar_start(ctx.count or tonumber(ctx.args[1]) or 1))
 end, { desc = "Start of a bar: `cursor.bar 9`" })
 command("cursor.first_track", function(ctx)
-  local list = api.track_list()
+  local list = daw.scope.tracks()
   if #list > 0 then cursor.set_track(list[util.clamp(ctx.count or 1, 1, #list)]) end
 end, { desc = "First track, or track number N" })
 command("cursor.last_track", function(ctx)
-  local list = api.track_list()
+  local list = daw.scope.tracks()
   if #list > 0 then cursor.set_track(list[util.clamp(ctx.count or #list, 1, #list)]) end
 end, { desc = "Last track, or track number N" })
 command("cursor.to_playhead", function()
@@ -876,6 +876,7 @@ command("open", function(ctx)
     daw.notify("opened " .. path)
   end
   local path = ctx.args[1]
+  if path and path ~= "" and daw.files.is_dir(path) then return daw.files.open(path, { here = true }) end
   if path and path ~= "" then return go((path:gsub("^~", os.getenv("HOME") or "~"))) end
   daw.pick.file({ title = "Open", on_choose = go })
 end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
@@ -1517,6 +1518,8 @@ command("edit", function(ctx)
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return daw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
+  -- A folder is listed as a buffer to edit (`daw.files`).
+  if daw.files.is_dir(path) then return daw.files.open(path, { here = true }) end
   -- A buffer's name, a view's or an address (`daw://tracks`) shows it here;
   -- only a file's path asks about the project.
   local view, buf = daw.layout.resolve(path)
@@ -2089,6 +2092,8 @@ amap("zz", function() daw.ui.views.arrange:center() end, "Scroll the cursor to t
 map("<leader>g", "track.group", { view = "arrange", mode = nx, desc = "Group the selected tracks" })
 amap("<leader>G", "track.ungroup", "Take the track out of its group; dissolve a group")
 amap("za", "track.fold", "Fold the group away, or open it")
+amap("zn", "narrow", "Narrow to the group: a tab of its tracks alone")
+amap("zw", "widen", "Widen: close the narrowed tab")
 -- VCAs, and the faders of a group moving together.
 map("<leader>vn", "vca.make", { view = "arrange", mode = nx, desc = "A new VCA over the selected tracks" })
 map("<leader>va", "vca.assign", { view = "arrange", mode = nx, desc = "Put the selected tracks under a VCA" })
@@ -3180,6 +3185,7 @@ amap("<leader>aA", "lane.show all", "Show every track's automation lanes")
 
 command("pick", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1]) or "pickers"
+  if name == "resume" then return daw.pick.resume() end
   if not daw.pick.sources[name] then return daw.notify("no picker `" .. name .. "`; `:pick` lists them", "warn") end
   daw.pick(name, { query = ctx.args.query and tostring(ctx.args.query) or nil })
 end, { desc = "Choose from a list: `pick tracks`, `pick devices query=reverb`; with no name, every picker", complete = { "pickers" } })
@@ -3198,6 +3204,16 @@ local pick_keys = {
   { "files", "f", "Open a project or import audio from here" },
   { "options", "o", "Set an option" },
   { "pickers", "p", "Every picker" },
+  { "help", "h", "Go to a help tag" },
+  { "markers", "'", "Go to a marker or region" },
+  { "grep", "g", "Find any text in the project" },
+  { "notes", "N", "Find a note by pitch, lyric or articulation" },
+  { "media", "w", "Sound files the project uses" },
+  { "quickfix", "q", "The entries of the quickfix list" },
+  { "undo", "u", "Go to a state of the undo history" },
+  { "extensions", "e", "Extensions, loaded or not" },
+  { "symbols", "s", "Find a function of the Lua API" },
+  { "presets", "P", "Load a preset into the device" },
 }
 for _, entry in ipairs(pick_keys) do
   local name, key, desc = entry[1], entry[2], entry[3]

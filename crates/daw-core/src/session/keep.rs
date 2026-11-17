@@ -48,6 +48,7 @@ impl Session {
                         keep.insert(file.clone());
                     }
                 }
+                keep.extend(crate::freeze::frozen_file(track));
             }
         };
         add(&self.project);
@@ -62,6 +63,7 @@ impl Session {
                 add(&state.snapshot);
             }
         }
+        keep.extend(self.map.held_files.values().cloned());
         self.audio.retain(&keep);
     }
 }

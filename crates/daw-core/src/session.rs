@@ -22,7 +22,7 @@ use serde_json::{Map, Value, json};
 
 use crate::history::{self, History};
 use crate::model::{
-    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, Project, Segment,
+    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, NoteAttr, Project, Segment,
     Send, Shape, StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
@@ -110,8 +110,8 @@ struct Recording {
     audio: Vec<(Id, PathBuf, JoinHandle<record::Written>)>,
     midi: rtrb::Consumer<MidiCapture>,
     /// Notes still held, by track and key: the beat they began on, their
-    /// velocity, and which time round the loop they began in.
-    held: HashMap<(Id, u8), (f64, u8, u32)>,
+    /// velocity, which time round the loop they began in, and their attribute.
+    held: HashMap<(Id, u8), (f64, u8, u32, Option<NoteAttr>)>,
     /// Finished notes by track and time round the loop, with `start` in
     /// project beats.
     notes: BTreeMap<(Id, u32), Vec<Note>>,
@@ -131,7 +131,7 @@ impl Recording {
     /// End a held note at `at`, played in pass `pass`. A note still held
     /// when the loop jumps back ends at the loop's end.
     fn end_note(&mut self, track: Id, key: u8, at: f64, pass: u32) {
-        if let Some((start, velocity, began)) = self.held.remove(&(track, key)) {
+        if let Some((start, velocity, began, attr)) = self.held.remove(&(track, key)) {
             let at = match self.looped {
                 Some((_, end)) if pass > began => end,
                 _ => at,
@@ -143,6 +143,7 @@ impl Recording {
                 velocity,
                 meta: Default::default(),
                 id: 0,
+                attr,
             });
         }
     }
@@ -166,6 +167,19 @@ struct ProjectFile {
     project: Project,
     #[serde(default)]
     transport: Transport,
+}
+
+/// The text of a project file for a project given as data, such as one
+/// merged from three in a script. It goes through the model, so that it has
+/// the form and the key order `project_save` writes (two writers that agree
+/// make small diffs) and cannot be a file that does not load.
+pub fn project_file_text(value: Value) -> Result<String> {
+    let file: ProjectFile = serde_json::from_value(value).context("not a project file")?;
+    if file.version > FILE_VERSION {
+        bail!("the file is of a newer version");
+    }
+    file.project.validate()?;
+    Ok(serde_json::to_string_pretty(&file)?)
 }
 
 #[derive(Default, Deserialize)]
@@ -266,6 +280,9 @@ pub struct RenderOpts {
     pub bits: u16,
     /// Only these tracks, as if they were soloed: a stem. All when empty.
     pub tracks: Vec<Id>,
+    /// This track and what feeds it, before its fader, and nothing else:
+    /// what freezing it plays (see [`crate::freeze::alone`]).
+    pub freeze: Option<Id>,
     /// Add dither when writing 16 or 24 bits.
     pub dither: bool,
     /// Bring the loudest sample to this level in dB.
@@ -301,6 +318,7 @@ impl Default for RenderOpts {
             sample_rate: None,
             bits: 24,
             tracks: Vec::new(),
+            freeze: None,
             dither: false,
             normalize: None,
             loudness: None,
@@ -962,7 +980,7 @@ impl Session {
             "color": t.color, "meta": t.meta, "index": index.map(|i| i + 1),
             "master": id == MASTER_ID, "input": t.input, "monitor": t.monitor,
             "midi_input": t.midi_input, "midi_output": t.midi_output, "height": t.height,
-            "automation": t.automation.name(),
+            "automation": t.automation.name(), "attr_map": t.attr_map,
             // The tracks that devices on this one listen to as side-chains.
             "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
             // The tracks that further output pairs of its devices play into.
@@ -1157,6 +1175,7 @@ impl Session {
                     let out = midi_out::parse(value)?;
                     p.track_mut(id).unwrap().midi_output = out;
                 }
+                "attr_map" => p.track_mut(id).unwrap().attr_map = crate::attr_map::parse(value)?,
                 _ => {
                     let t = p.track_mut(id).unwrap();
                     match key {
@@ -1800,6 +1819,33 @@ impl Session {
     }
 
     /// Pass a script's request to the main-thread side of a device.
+    /// What a plugin calls its keys (CLAP's `note-name`: a drum, a
+    /// keyswitch), by pitch; nothing when it names none, is no CLAP plugin,
+    /// or is not made yet. Asked as views are drawn, so it waits for nothing.
+    pub fn device_note_names(&mut self, id: Id) -> BTreeMap<u8, String> {
+        let clap = self
+            .project
+            .device(id)
+            .is_some_and(|d| d.kind.starts_with("clap:"));
+        let Some(controller) = self
+            .live
+            .get_mut(&id)
+            .and_then(|live| live.controller.as_mut())
+            .filter(|_| clap)
+        else {
+            return BTreeMap::new();
+        };
+        let names: BTreeMap<String, String> = controller
+            .call("note-names", &[])
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
+        names
+            .into_iter()
+            .filter_map(|(key, name)| Some((key.parse::<u8>().ok().filter(|k| *k < 128)?, name)))
+            .collect()
+    }
+
     pub fn device_call(&mut self, id: Id, method: &str, data: &[u8]) -> Result<Vec<u8>> {
         self.flush();
         self.await_device(id);
@@ -2810,11 +2856,11 @@ impl Session {
                 continue;
             };
             match capture.kind {
-                EventKind::NoteOn { key, vel, .. } => {
+                EventKind::NoteOn { key, vel, attr, .. } => {
                     take.end_note(track, key, capture.beat, capture.pass);
                     let velocity = (vel * 127.0).round().clamp(1.0, 127.0) as u8;
-                    take.held
-                        .insert((track, key), (capture.beat, velocity, capture.pass));
+                    let note = (capture.beat, velocity, capture.pass, NoteAttr::of(attr));
+                    take.held.insert((track, key), note);
                 }
                 EventKind::NoteOff { key, .. } => {
                     take.end_note(track, key, capture.beat, capture.pass)
@@ -3453,10 +3499,16 @@ impl Session {
     /// naming the port when it is one of those listed (`port` is its key).
     pub fn midi_event(&mut self, port: u32, kind: EventKind) {
         let mut payload = match kind {
-            EventKind::NoteOn { key, vel, ch } => json!({
-                "type": "note_on", "pitch": key, "channel": ch + 1,
-                "velocity": (vel * 127.0).round(),
-            }),
+            EventKind::NoteOn { key, vel, ch, attr } => {
+                let mut payload = json!({
+                    "type": "note_on", "pitch": key, "channel": ch + 1,
+                    "velocity": (vel * 127.0).round(),
+                });
+                if let Some(attr) = NoteAttr::of(attr) {
+                    payload["attr"] = json!(attr);
+                }
+                payload
+            }
             EventKind::NoteOff { key, ch } => {
                 json!({ "type": "note_off", "pitch": key, "channel": ch + 1 })
             }
@@ -3582,6 +3634,54 @@ impl Session {
             .with_context(|| format!("no track {track}"))?;
         self.handle.send(Msg::Live { track: slot, event });
         Ok(())
+    }
+
+    /// Play a note on a track now, with its attribute: what the track's
+    /// attribute map sends for it goes first.
+    pub fn live_note(&mut self, track: Id, key: u8, vel: f32, attr: daw_engine::Attr) -> Result<()> {
+        let plan = self
+            .project
+            .track(track)
+            .and_then(|t| t.attr_map.as_ref())
+            .and_then(|m| m.plan().ok());
+        let (before, ch, keep) = match &plan {
+            Some(plan) => plan.live(attr),
+            None => (Vec::new(), None, true),
+        };
+        for event in before {
+            self.live(track, event)?;
+        }
+        let attr = if keep { attr } else { daw_engine::Attr::NONE };
+        let ch = ch.unwrap_or(0);
+        self.live(track, EventKind::NoteOn { key, vel, ch, attr })
+    }
+
+    /// The milliseconds a note with `attr` is moved by the track's attribute map.
+    pub fn attr_delay(&self, track: Id, attr: daw_engine::Attr) -> Result<f64> {
+        let track = self
+            .project
+            .track(track)
+            .with_context(|| format!("no track {track}"))?;
+        Ok(match &track.attr_map {
+            Some(map) => map.plan()?.delay_of(attr),
+            None => 0.0,
+        })
+    }
+
+    /// Stop a note played with [`live_note`](Self::live_note), on every
+    /// channel the track's attribute map may have sent it to.
+    pub fn live_note_off(&mut self, track: Id, key: u8) -> Result<()> {
+        let channels = self
+            .project
+            .track(track)
+            .and_then(|t| t.attr_map.as_ref())
+            .and_then(|m| m.plan().ok())
+            .map(|plan| plan.channels())
+            .unwrap_or_default();
+        for ch in channels {
+            self.live(track, EventKind::NoteOff { key, ch })?;
+        }
+        self.live(track, EventKind::NoteOff { key, ch: 0 })
     }
 
     /// Post-fader peak level of a track as linear `(left, right)`.
@@ -3786,6 +3886,38 @@ impl Session {
         self.handle.shared.blocks.reset();
     }
 
+    /// Play a track from a sound file for now, as if it were frozen (see
+    /// [`crate::freeze`]), or live again with `None`. The project is not
+    /// changed: nothing is saved or undone, and renders play it live.
+    pub fn hold(&mut self, track: Id, file: Option<PathBuf>) -> Result<()> {
+        if track == MASTER_ID || self.project.track(track).is_none() {
+            bail!("no track {track} to hold");
+        }
+        match file {
+            Some(file) => self.map.held_files.insert(track, file),
+            None => self.map.held_files.remove(&track),
+        };
+        self.dirty = true;
+        self.flush();
+        Ok(())
+    }
+
+    /// The tracks held by [`hold`](Self::hold).
+    pub fn held(&self) -> Vec<Id> {
+        let mut out: Vec<Id> = self.map.held_files.keys().copied().collect();
+        out.sort_unstable();
+        out
+    }
+
+    /// Let only these tracks be heard for now, with what they pass through
+    /// (as a solo would, without the project's solos changing), or every
+    /// track again with `None`.
+    pub fn set_audible(&mut self, tracks: Option<Vec<Id>>) {
+        self.map.audible = tracks.map(|ids| ids.into_iter().collect());
+        self.dirty = true;
+        self.flush();
+    }
+
     /// Stop the audio backend and start another one, rebuilding the engine
     /// from the project.
     pub fn engine_restart(&mut self, opts: &BackendOptions) -> Result<()> {
@@ -3801,8 +3933,11 @@ impl Session {
         self.send_pool();
         self.live.clear();
         self.seeks = 0;
+        let held = std::mem::take(&mut self.map.held_files);
+        let audible = self.map.audible.take();
         self.map = Mapper::new();
         self.map.defer = self.loads.on;
+        (self.map.held_files, self.map.audible) = (held, audible);
         self.loads.devices.clear();
         self.synced = Project::default();
         self.dirty = true;
@@ -4077,7 +4212,7 @@ fn clip_json(c: &Clip, track: Id) -> Value {
             let mut hash = std::collections::hash_map::DefaultHasher::new();
             for note in notes {
                 (note.start.to_bits(), note.length.to_bits()).hash(&mut hash);
-                (note.pitch, note.velocity).hash(&mut hash);
+                (note.pitch, note.velocity, note.attr).hash(&mut hash);
                 // What extensions keep on a note (a lyric, a spelling) too.
                 if !note.meta.is_empty() {
                     Value::Object(note.meta.clone()).to_string().hash(&mut hash);

@@ -1,0 +1,227 @@
+//! `daw.api.fs_*`: what the file manager (`daw/files.lua`) does to files.
+//! Nothing here removes a file: a file leaves its place by being moved, to
+//! another place or to the trash, and what would overwrite is refused.
+
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+use mlua::{Lua, Table};
+
+fn fail(what: String) -> mlua::Error {
+    mlua::Error::runtime(what)
+}
+
+fn seconds(t: io::Result<std::time::SystemTime>) -> Option<f64> {
+    t.ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs_f64())
+}
+
+/// Move `from` to `to`, across file systems too (a file is copied and then
+/// the original goes; a directory across file systems is refused).
+fn relocate(from: &Path, to: &Path) -> Result<(), String> {
+    if to.symlink_metadata().is_ok() {
+        return Err(format!("{} is there already", to.display()));
+    }
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
+            if from.is_dir() {
+                return Err(format!(
+                    "{} cannot be moved to another disk as a folder: copy it with another program",
+                    from.display()
+                ));
+            }
+            fs::copy(from, to).map_err(|e| format!("copying {}: {e}", from.display()))?;
+            fs::remove_file(from)
+                .map_err(|e| format!("{} was copied but not removed: {e}", from.display()))
+        }
+        Err(e) => Err(format!("{}: {e}", from.display())),
+    }
+}
+
+/// The user's trash directory (freedesktop.org Trash specification).
+fn trash_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
+    Some(base.join("Trash"))
+}
+
+/// A name in `dir` that is free, from `name`: `a.wav`, `a.2.wav`, `a.3.wav`.
+fn free_name(dir: &Path, name: &str) -> String {
+    let free = |n: &str| dir.join(n).symlink_metadata().is_err();
+    if free(name) {
+        return name.to_string();
+    }
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    (2..)
+        .map(|n| format!("{stem}.{n}{ext}"))
+        .find(|n| free(n))
+        .unwrap()
+}
+
+fn percent_encode(path: &str) -> String {
+    let mut out = String::new();
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Now, local time, as the trash records it: `2026-11-17T09:30:00`.
+fn deletion_date() -> String {
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&now, &mut tm);
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec
+        )
+    }
+}
+
+/// Put a file in the trash, with the record of where it came from that
+/// lets a file manager put it back. Returns where it is now.
+fn trash(path: &Path) -> Result<PathBuf, String> {
+    path.symlink_metadata()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let name = path.file_name().ok_or("there is no name to trash")?;
+    let abs = fs::canonicalize(path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")))
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .join(name);
+    let Some(root) = trash_dir() else {
+        return Err("there is no trash: no home directory".into());
+    };
+    let (files, info) = (root.join("files"), root.join("info"));
+    for dir in [&files, &info] {
+        fs::create_dir_all(dir).map_err(|e| format!("making the trash {}: {e}", dir.display()))?;
+    }
+    let kept = free_name(&files, &name.to_string_lossy());
+    let record = format!(
+        "[Trash Info]\nPath={}\nDeletionDate={}\n",
+        percent_encode(&abs.to_string_lossy()),
+        deletion_date()
+    );
+    let note = info.join(format!("{kept}.trashinfo"));
+    fs::write(&note, record).map_err(|e| format!("writing {}: {e}", note.display()))?;
+    let at = files.join(&kept);
+    match fs::rename(&abs, &at) {
+        Ok(()) => Ok(at),
+        Err(e) => {
+            let _ = fs::remove_file(&note);
+            if e.raw_os_error() == Some(libc::EXDEV) {
+                Err(format!(
+                    "{} is on another disk than the trash, so it is left where it is",
+                    abs.display()
+                ))
+            } else {
+                Err(format!("{}: {e}", abs.display()))
+            }
+        }
+    }
+}
+
+pub fn install(lua: &Lua, api: &Table) -> mlua::Result<()> {
+    // `{ kind = "file" | "dir" | "link", dir, size, mtime }`, or nil when
+    // nothing is there. A link is looked at, not followed, for its kind,
+    // and `dir` says whether it leads to a directory.
+    api.set(
+        "fs_stat",
+        lua.create_function(|lua, path: String| {
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                return Ok(None);
+            };
+            let t = lua.create_table()?;
+            let link = meta.file_type().is_symlink();
+            let target = if link { fs::metadata(&path).ok() } else { None };
+            let dir = target.as_ref().map_or(meta.is_dir(), |m| m.is_dir());
+            t.set("kind", if link { "link" } else if dir { "dir" } else { "file" })?;
+            t.set("dir", dir)?;
+            t.set("size", target.as_ref().map_or(meta.len(), |m| m.len()) as f64)?;
+            t.set("mtime", seconds(meta.modified()))?;
+            Ok(Some(t))
+        })?,
+    )?;
+    // The format a sound file's header says: `{ rate, channels, seconds }`
+    // (`seconds` nil when the header does not say); an error for a file
+    // that is not one.
+    api.set(
+        "fs_sound",
+        lua.create_function(|lua, path: String| {
+            let probe =
+                daw_engine::probe::probe(Path::new(&path)).map_err(|e| fail(e.to_string()))?;
+            let t = lua.create_table()?;
+            t.set("rate", probe.sample_rate)?;
+            t.set("channels", probe.channels)?;
+            t.set("seconds", probe.seconds)?;
+            Ok(t)
+        })?,
+    )?;
+    // Make a directory and the ones above it that are missing.
+    api.set(
+        "fs_mkdir",
+        lua.create_function(|_, path: String| {
+            fs::create_dir_all(&path).map_err(|e| fail(format!("{path}: {e}")))
+        })?,
+    )?;
+    // Make an empty file where there is none.
+    api.set(
+        "fs_create",
+        lua.create_function(|_, path: String| {
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .map(|_| ())
+                .map_err(|e| fail(format!("{path}: {e}")))
+        })?,
+    )?;
+    // Move a file or directory; it is refused where `to` is there already.
+    api.set(
+        "fs_move",
+        lua.create_function(|_, (from, to): (String, String)| {
+            relocate(Path::new(&from), Path::new(&to)).map_err(fail)
+        })?,
+    )?;
+    // Copy a file (not a directory) to where there is nothing.
+    api.set(
+        "fs_copy",
+        lua.create_function(|_, (from, to): (String, String)| {
+            if Path::new(&from).is_dir() {
+                return Err(fail(format!("{from} is a directory: only files are copied")));
+            }
+            if Path::new(&to).symlink_metadata().is_ok() {
+                return Err(fail(format!("{to} is there already")));
+            }
+            fs::copy(&from, &to)
+                .map(|_| ())
+                .map_err(|e| fail(format!("{from}: {e}")))
+        })?,
+    )?;
+    // Put a file or directory in the freedesktop trash; returns where it is.
+    api.set(
+        "fs_trash",
+        lua.create_function(|_, path: String| {
+            trash(Path::new(&path))
+                .map(|p| p.to_string_lossy().into_owned())
+                .map_err(fail)
+        })?,
+    )?;
+    Ok(())
+}

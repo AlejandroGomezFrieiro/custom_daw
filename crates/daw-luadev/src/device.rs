@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use daw_engine::device::{Controller, Device, Instance, Io, ParamInfo, Ports};
-use daw_engine::{Ctl, Event, EventKind, ProcessCtx};
+use daw_engine::{Attr, Ctl, Event, EventKind, ProcessCtx};
 use mlua::{Function, HookTriggers, LightUserData, Lua, Table, VmState};
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +50,9 @@ struct LuaEvent {
     value: f64,
     /// The incoming event this one is, counting from 1, or 0.
     from: i32,
-    pad: i32,
+    /// A note-on's MIDI 2.0 attribute as one number, its type above its
+    /// sixteen bits of data; 0 for none.
+    attr: i32,
 }
 
 /// The transport for one block (`daw_transport` in `daw.dsp`).
@@ -339,7 +341,10 @@ fn to_lua(event: &Event, index: usize) -> LuaEvent {
         key,
         value,
         from: index as i32 + 1,
-        pad: 0,
+        attr: match event.kind {
+            EventKind::NoteOn { attr, .. } => attr.packed() as i32,
+            _ => 0,
+        },
     }
 }
 
@@ -352,6 +357,7 @@ fn from_lua(event: &LuaEvent, originals: &[Event]) -> Option<EventKind> {
             key,
             vel: value.clamp(0.0, 1.0) as f32,
             ch,
+            attr: Attr::from_packed(event.attr as u32),
         },
         NOTE_OFF => EventKind::NoteOff { key, ch },
         CC => EventKind::Control {

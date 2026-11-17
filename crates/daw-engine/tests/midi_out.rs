@@ -11,7 +11,7 @@ use daw_engine::midi::{MidiInputs, MidiTarget, port_key};
 use daw_engine::midi_form::Form;
 use daw_engine::midi_out::{MidiOut, MidiOutputs, clock_ns};
 use daw_engine::{
-    ClipSet, Ctl, Engine, EventKind, MASTER, MidiEv, Msg, NO_SLOT, NoteCtl, SchedEntry, Schedule,
+    Attr, ClipSet, Ctl, Engine, EventKind, MASTER, MidiEv, Msg, NO_SLOT, NoteCtl, SchedEntry, Schedule,
     TrackRt,
 };
 
@@ -72,7 +72,7 @@ fn messages_leave_when_they_are_stamped_for() {
     for (i, key) in [60u8, 64, 67].into_iter().enumerate() {
         let at = start + i as u64 * 150_000_000;
         for kind in [
-            EventKind::NoteOn { key, vel: 0.8, ch: 4 },
+            EventKind::NoteOn { key, vel: 0.8, ch: 4, attr: Attr::NONE },
             EventKind::NoteOff { key, ch: 4 },
         ] {
             let at = if matches!(kind, EventKind::NoteOff { .. }) { at + 50_000_000 } else { at };
@@ -119,8 +119,8 @@ fn an_engine_sends_what_a_track_plays_and_ends_it_when_stopped() {
     // A held note from the first beat, and another on the second.
     let mut clips = ClipSet::default();
     clips.midi = vec![
-        MidiEv { beat: 0.0, kind: EventKind::NoteOn { key: 50, vel: 0.5, ch: 0 } },
-        MidiEv { beat: 1.0, kind: EventKind::NoteOn { key: 52, vel: 0.5, ch: 0 } },
+        MidiEv { beat: 0.0, kind: EventKind::NoteOn { key: 50, vel: 0.5, ch: 0, attr: Attr::NONE } },
+        MidiEv { beat: 1.0, kind: EventKind::NoteOn { key: 52, vel: 0.5, ch: 0, attr: Attr::NONE } },
     ];
     send(&mut handle, &mut engine, Msg::SetClips { track: 1, clips: Box::new(clips) });
     send(
@@ -187,9 +187,9 @@ fn a_route_in_mpe_gives_each_note_a_channel_and_its_bend_there() {
     let form = Form::Mpe(3);
     // A chord on one channel, and the middle note bent a semitone up.
     for kind in [
-        EventKind::NoteOn { key: 60, vel: 0.8, ch: 0 },
-        EventKind::NoteOn { key: 64, vel: 0.8, ch: 0 },
-        EventKind::NoteOn { key: 67, vel: 0.8, ch: 0 },
+        EventKind::NoteOn { key: 60, vel: 0.8, ch: 0, attr: Attr::NONE },
+        EventKind::NoteOn { key: 64, vel: 0.8, ch: 0, attr: Attr::NONE },
+        EventKind::NoteOn { key: 67, vel: 0.8, ch: 0, attr: Attr::NONE },
         EventKind::NoteControl { key: 64, ctl: NoteCtl::Bend, value: 1.0 / 48.0, ch: 0 },
         EventKind::AllNotesOff,
     ] {

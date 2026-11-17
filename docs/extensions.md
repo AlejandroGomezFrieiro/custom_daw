@@ -31,12 +31,14 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/musicops` | musical operators: humanize, strum, arpeggiate, scales |
 | `extensions/pattern` | clips written as patterns of text, in the manner of TidalCycles |
 | `extensions/notation` | a MIDI clip as staff notation, read and edited in the terminal and in a window |
+| `extensions/articulations` | each note's articulation as its MIDI 2.0 attribute, named per instrument by `.art.toml` maps, sent as keyswitches to MIDI 1.0 instruments; maps made from SFZ, Decent Sampler, folders and Reaticulate banks |
 | `extensions/drums` | drum tracks in one step, and a grid of the kit's pieces by name, in the terminal and a window |
 | `extensions/templates` | a track, a group of tracks or a chain of devices saved under a name, to make again in any project |
 | `extensions/vinput` | virtual inputs: a guitar heard as MIDI through gdi2m, as a port any track takes, set up in the terminal and a window |
 | `extensions/midilsp` | MIDI LSP, the language server for music, plugged into `daw.lsp`: voice-leading diagnostics with fixes, the chords it hears, suggestions |
 | `extensions/mixdiag` | the mix measured (LUFS, true peak, phase) and reported as findings to jump to |
 | `extensions/undotree` | a window on the undo tree, named checkpoints, A/B listening |
+| `extensions/projdiff` | what changed between two versions of a project (a file, a git revision, an undo state, a snapshot), and three-way merges of projects for git: `:Pdiff`, `:Pmerge`, `:Psnapshot` |
 | `extensions/rpp` | opening and writing REAPER projects |
 | `extensions/tutor` | a course for first-time users, inside the program |
 | `extensions/doctor` | a guided check of the real hardware (audio, MIDI, recording, plugins), with a written report: `:doctor`, `daw doctor` |
@@ -292,12 +294,32 @@ Vocal tracks (utau) and drum tracks (drums) are kinds.
 `daw.track_kinds.add(name, opts)`, `set(track, name, args)`, `clear(track)`,
 `of(track)` and `describe(track)` are there for scripts.
 
+**Plugins of its own.** An extension can bring a plugin built from its own
+source. extensions/sampler is paw's sample player, a CLAP plugin written
+in Rust in `native/` (its own Cargo workspace, so building paw never
+compiles it); its package puts `paw-sampler.clap` in `clap/` beside the
+extension, which adds that folder to the plugin scan. Scripts ask such a
+plugin things by name as they ask a Lua device: `daw.api.device_call(device,
+method, data)` reaches any method paw does not know itself through the
+plugin's `dev.paw.call/1` extension (the sampler answers `describe`), and
+`device_call(device, "preset.load", "file:<path>")` loads a file through
+the plugin's preset-load.
+
 **Programs of its own.** An extension can start a program and talk to it
 over a socket or its standard input and output (see Helper programs in
 [Scripting](scripting.md)). The utau engine is such a program, built from
 the extension's own `engine/` source; `bin/` beside the extension is where
 its package puts it, and where the extension looks first after the
 `utau_engine` option and `$REAUTAU_ENGINE`.
+
+**Plugins of its own.** An extension that builds a CLAP or VST3 plugin
+(its Nix package puts it beside the extension) registers the directory
+with `daw.plugins.add_dir(dir)`. Its plugins are found from then on, for
+the session, as if they were installed: listed as the extension's
+(`daw.plugins.from[kind]`), made in helper processes like any plugin, and
+devices of theirs that a project held while they were missing are made.
+`CLAP_PATH` and the like replace where plugins are looked for and are read
+once at start; this adds to it.
 
 **A renamed device.** `daw.api.device_alias(old, new)` makes devices of a
 kind that was renamed as the new one: projects saved when the utau device

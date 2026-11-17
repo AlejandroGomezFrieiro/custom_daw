@@ -124,6 +124,10 @@ pub struct Track {
     /// plays (see `session/launcher.rs`), in order of their rows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub slots: Vec<SlotClip>,
+    /// How its notes' MIDI 2.0 attributes reach an instrument that does
+    /// not take them: see `attr_map.rs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attr_map: Option<crate::attr_map::AttrMap>,
 }
 
 /// A clip in one of a track's slots. It starts at 0 and repeats every
@@ -333,6 +337,7 @@ impl Track {
             height: None,
             automation: AutoMode::Read,
             slots: Vec::new(),
+            attr_map: None,
         }
     }
 
@@ -760,6 +765,65 @@ pub struct Note {
     /// one with a note before it, before the edit is played or kept.
     #[serde(default, skip_serializing_if = "unnamed")]
     pub id: u64,
+    /// The MIDI 2.0 attribute its note-on carries, such as an articulation
+    /// of the orchestral articulation profile (M2-123); `None` for none.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_attr"
+    )]
+    pub attr: Option<NoteAttr>,
+}
+
+/// A note's MIDI 2.0 attribute: `{ "type": 17, "data": 40960 }`. Type 0
+/// means none, and a note never keeps it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NoteAttr {
+    #[serde(rename = "type")]
+    pub kind: u8,
+    #[serde(default)]
+    pub data: u16,
+}
+
+impl From<NoteAttr> for daw_engine::Attr {
+    fn from(a: NoteAttr) -> Self {
+        daw_engine::Attr {
+            kind: a.kind,
+            data: a.data,
+        }
+    }
+}
+
+impl NoteAttr {
+    /// The attribute of an engine event's note-on, `None` for none.
+    pub fn of(attr: daw_engine::Attr) -> Option<Self> {
+        (!attr.is_none()).then_some(NoteAttr {
+            kind: attr.kind,
+            data: attr.data,
+        })
+    }
+}
+
+/// An attribute as given: a table of `type` and `data`, or nothing (`false`,
+/// `null`, an empty table, or type 0).
+pub fn de_attr<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<NoteAttr>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Given {
+        Attr(NoteAttr),
+        Flag(bool),
+        Empty(Vec<Value>),
+        Unit(()),
+    }
+    match Given::deserialize(d) {
+        Ok(Given::Attr(a)) => Ok((a.kind != 0).then_some(a)),
+        Ok(Given::Flag(false)) | Ok(Given::Unit(())) => Ok(None),
+        Ok(Given::Empty(list)) if list.is_empty() => Ok(None),
+        _ => Err(serde::de::Error::custom(
+            "a note's attribute is `{ type = 0 to 255, data = 0 to 65535 }`, or false for none",
+        )),
+    }
 }
 
 fn default_velocity() -> u8 {
@@ -1518,7 +1582,7 @@ mod note_ids {
     use super::*;
 
     fn note(pitch: u8, id: u64) -> Note {
-        Note { start: 0.0, length: 1.0, pitch, velocity: 100, meta: Map::new(), id }
+        Note { start: 0.0, length: 1.0, pitch, velocity: 100, meta: Map::new(), id, attr: None }
     }
 
     #[test]

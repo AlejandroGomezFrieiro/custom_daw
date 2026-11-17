@@ -51,6 +51,8 @@ daw.command = setmetatable({ alias = daw.commands.alias }, {
 daw.cmd = daw.commands.run
 
 daw.music = require("daw.music")
+-- A note's MIDI 2.0 attribute and the articulations in it (daw/attr.lua).
+daw.attr = require("daw.attr")
 daw.params = require("daw.params")
 daw.ui = require("daw.ui")
 -- Buffers, windows and tabs (daw/layout.lua).
@@ -80,8 +82,16 @@ daw.tempo = require("daw.tempo")
 daw.midifile = require("daw.midifile")
 daw.audio = require("daw.audio")
 
---- Descriptions of every kind of device that can be added to a track.
-daw.device_types = api.device_types
+-- Plugins an extension ships, and what plugins call their keys (daw/plugins.lua).
+daw.plugins = require("daw.plugins")
+
+--- Descriptions of every kind of device that can be added to a track; one
+--- an extension added (`daw.plugins.add_dir`) says which, as `from`.
+function daw.device_types()
+  local list = api.device_types()
+  for _, info in ipairs(list) do info.from = daw.plugins.from[info.kind] end
+  return list
+end
 
 --- Render the project to a file, and render stems: see `daw/render.lua`
 --- for the options. `daw.render_status()` and `daw.render_cancel()` look
@@ -134,6 +144,7 @@ daw.lanes = require("daw.lanes")
 daw.tempolane = require("daw.tempolane")
 daw.frontend = require("daw.frontend")
 daw.audition = require("daw.audition")
+daw.regex = require("daw.regex")
 daw.pick = require("daw.pick")
 daw.track_kinds = require("daw.track_kinds")
 daw.fx = require("daw.fx")
@@ -163,6 +174,7 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
+  daw.statusline = require("daw.statusline")
   for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
     require("daw.views." .. name)
   end
@@ -185,10 +197,15 @@ function K.startup()
   daw.routes.setup()
   daw.media = require("daw.media")
   require("daw.render")
+  -- Freezing tracks, and tabs narrowed to a group.
+  daw.freeze = require("daw.freeze")
+  daw.scope = require("daw.scope")
+  daw.stems = require("daw.stems")
   daw.markers = require("daw.markers")
   -- Listings edited as text (`:e daw://tracks`), and the kinds built in.
   daw.textbuf = require("daw.textbuf")
   require("daw.views.tracklist")
+  daw.files = require("daw.views.files")
   daw.recent = require("daw.recent")
   daw.learn = require("daw.learn")
   daw.remote = require("daw.remote")
@@ -198,6 +215,10 @@ function K.startup()
   daw.qf = require("daw.qf")
   require("daw.views.qflist")
   daw.ex = require("daw.ex")
+  -- Searching the project: queries over its tree, and its text.
+  daw.query = require("daw.query")
+  daw.grep = require("daw.grep")
+  require("daw.structure")
   -- The manual inside the program (`:help`).
   daw.markdown = require("daw.markdown")
   daw.help = require("daw.help")

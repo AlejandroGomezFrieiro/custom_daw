@@ -134,15 +134,35 @@ daw.command("recent", function(ctx)
   if #list == 0 then return daw.notify("no project has been opened yet") end
   local which = tonumber(ctx.args[1])
   if which then return M.open(which) end
-  local items = {}
-  for i, entry in ipairs(list) do
-    items[i] = {
-      text = string.format("%s  %s  %s", entry.name, place(entry), os.date("%Y-%m-%d %H:%M", entry.time)),
-      path = entry.path,
-    }
-  end
-  daw.pick({ title = "Recent projects", items = items, on_choose = function(item) M.open(item.path) end })
+  daw.pick("recent")
 end, { desc = "Open a recent project: `recent` chooses from a list, `recent 2` opens the second" })
+
+-- The picker of them: `Alt-d` forgets one.
+daw.pick.sources.recent = {
+  desc = "Open a recent project",
+  title = "Recent projects",
+  empty = "No project has been opened yet.",
+  items = function()
+    local items = {}
+    for i, entry in ipairs(M.list()) do
+      items[i] = {
+        text = string.format("%s  %s  %s", entry.name, place(entry), os.date("%Y-%m-%d %H:%M", entry.time)),
+        path = entry.path,
+      }
+    end
+    return items
+  end,
+  on_choose = function(item) M.open(item.path) end,
+  delete = function(items)
+    local gone = {}
+    for _, item in ipairs(items) do gone[item.path] = true end
+    local kept = {}
+    for _, entry in ipairs(read()) do
+      if type(entry) == "table" and not gone[entry.path] then kept[#kept + 1] = entry end
+    end
+    write(kept)
+  end,
+}
 daw.project.allow_discard("recent")
 
 daw.command("recent.clear", function()

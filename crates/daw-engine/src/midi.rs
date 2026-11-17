@@ -581,6 +581,7 @@ mod imp {
                             key,
                             vel: ump::velocity7(note.velocity.min(127)),
                             ch,
+                            attr: crate::event::Attr::NONE,
                         }
                     } else {
                         EventKind::NoteOff { key, ch }

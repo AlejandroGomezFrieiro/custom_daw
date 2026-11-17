@@ -10,9 +10,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use daw_engine::record::{AudioCapture, Take, TakeShared};
 use daw_engine::{
-    AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
+    Attr, AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
     EngineHandle, EventKind, KeyRt, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, OutRt, Pool,
-    Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt,
+    Registry, SchedEntry, Schedule, SendRt, Slot, Switch, TrackRt,
 };
 
 struct Guard;
@@ -102,7 +102,15 @@ fn clips(audio: &Arc<AudioData>, notes: usize) -> Box<ClipSet> {
     for i in 0..notes {
         let at = i as f64 * 0.25;
         let key = 36 + (i % 48) as u8;
-        set.push_note(at, at + 0.5, key, 0.8);
+        // Every other note with an articulation, as MIDI 2.0 has them.
+        let attr = match i % 2 {
+            0 => Attr::NONE,
+            _ => Attr {
+                kind: 0x11,
+                data: (i % 16) as u16 * 0x1000,
+            },
+        };
+        set.push_note_attr(at, at + 0.5, key, 0.8, attr);
         // Controllers of the channel and of the note, as MIDI 2.0 has them.
         let value = (i % 10) as f64 / 10.0;
         for kind in [
@@ -132,6 +140,26 @@ fn clips(audio: &Arc<AudioData>, notes: usize) -> Box<ClipSet> {
         }
     }
     set.finish();
+    // What the instrument is told to play from each beat on (keyswitches
+    // and controllers), which playback chases where it starts.
+    for i in 0..notes / 4 {
+        let from = set.switch_events.len();
+        set.switch_events.push(EventKind::NoteOn {
+            key: 24 + (i % 4) as u8,
+            vel: 0.5,
+            ch: 0,
+            attr: Attr::NONE,
+        });
+        set.switch_events.push(EventKind::Control {
+            ctl: Ctl::Cc(32),
+            value: 0.3,
+            ch: 1,
+        });
+        set.switches.push(Switch {
+            beat: i as f64,
+            events: from..set.switch_events.len(),
+        });
+    }
     for i in 0..8 {
         set.audio.push(AudioRegion {
             start: i as f64 * 4.0,
@@ -497,6 +525,7 @@ fn the_audio_thread_never_allocates() {
                     key,
                     vel: 0.5,
                     ch: 1,
+                    attr: Attr::NONE,
                 },
             },
         );
@@ -508,6 +537,7 @@ fn the_audio_thread_never_allocates() {
                     key,
                     vel: 0.5,
                     ch: 0,
+                    attr: Attr::NONE,
                 },
             },
         );
@@ -546,6 +576,7 @@ fn the_audio_thread_never_allocates() {
                     key,
                     vel: 0.5,
                     ch: 0,
+                    attr: Attr::NONE,
                 },
             },
         );
@@ -874,6 +905,7 @@ fn the_sampler_never_allocates() {
                     key: 30 + ((block as u32 * 7 + i) % 62) as u8,
                     vel: 0.8,
                     ch: 0,
+                    attr: Attr::NONE,
                 },
             });
         }

@@ -21,7 +21,7 @@ return function(pick)
     items = function()
       local out = {}
       for name, source in pairs(pick.sources) do
-        if name ~= "pickers" then
+        if name ~= "pickers" and not name:match("^_") then
           local desc = type(source) == "table" and (source.desc or source.title) or ""
           out[#out + 1] = { name = name, desc = desc }
         end
@@ -281,15 +281,26 @@ return function(pick)
     title = "Tracks",
     items = function()
       local out = {}
-      for i, id in ipairs(api.track_list()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
+      for i, id in ipairs(daw.scope.tracks()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
       return out
     end,
     format = function(t) return string.format("%2d  %s", t.index, t.name) end,
+    location = function(t) return daw.address.track(t.id) end,
     on_choose = function(t)
       daw.keymap.push_jump()
       daw.cursor.set_track(t.id)
       if daw.ui.views.arrange.center then daw.ui.views.arrange:center() end
     end,
+    delete = function(list)
+      api.undo_label(#list == 1 and "Remove the track" or "Remove tracks")
+      for _, t in ipairs(list) do
+        if pcall(api.track_get, t.id) then api.track_remove(t.id) end
+      end
+    end,
+    -- What the track plays around the cursor, heard when asked for.
+    audition_key = "tracks",
+    audition_default = false,
+    audition = function(t) return t.name .. " · " .. daw.audition.through(t.id) end,
     preview = function(t)
       local info = api.track_get(t.id)
       local lines = { { text = info.name, style = "Title" }, "" }
@@ -309,7 +320,7 @@ return function(pick)
     title = "Clips",
     items = function()
       local out = {}
-      for _, id in ipairs(api.track_list()) do
+      for _, id in ipairs(daw.scope.tracks()) do
         local name = track_name(id)
         for _, c in ipairs(api.clip_list(id)) do
           out[#out + 1] = { id = c.id, track = id, track_name = name, name = c.name, start = c.start, length = c.length, kind = c.kind }
@@ -318,6 +329,7 @@ return function(pick)
       return out
     end,
     format = function(c) return string.format("%-20s %-14s %s", c.name, c.track_name, daw.time.format(c.start)) end,
+    location = function(c) return daw.address.clip(c.id) end,
     on_choose = function(c)
       daw.keymap.push_jump()
       daw.ui.focus("arrange")
@@ -325,25 +337,43 @@ return function(pick)
       daw.cursor.set_beat(c.start)
       daw.ui.views.arrange:center()
     end,
-    preview = function(c)
+    delete = function(list)
+      api.undo_label(#list == 1 and "Remove the clip" or "Remove clips")
+      for _, c in ipairs(list) do
+        if pcall(api.clip_get, c.id) then api.clip_remove(c.id) end
+      end
+    end,
+    -- A MIDI clip's notes drawn as a small piano roll, an audio clip's sound.
+    preview = function(c, width, height)
       local info = api.clip_get(c.id)
       local lines = {
-        { text = info.name, style = "Title" }, "",
+        { text = info.name, style = "Title" },
         "track   " .. c.track_name,
         string.format("from    %s to %s, %g beats%s", daw.time.format(info.start), daw.time.format(info.start + info.length), info.length, info.muted and ", muted" or ""),
+        info.kind == "midi" and plural(info.note_count, "note") or "audio   " .. tostring(info.file),
+        "",
       }
-      if info.kind == "midi" then
-        lines[#lines + 1] = plural(info.note_count, "note")
-        local notes = api.clip_notes(c.id)
-        table.sort(notes, function(a, b) return a.start < b.start end)
-        for i, n in ipairs(notes) do
-          if i > 20 then break end
-          lines[#lines + 1] = string.format("  %-5s at %-6g for %g", daw.music.name(n.pitch), n.start, n.length)
-        end
-      else
-        lines[#lines + 1] = "audio   " .. tostring(info.file)
-      end
+      local drawn = require("daw.pick.preview").clip(c.id, width or 40, math.max(4, (height or 20) - #lines - 3))
+      for _, line in ipairs(drawn) do lines[#lines + 1] = line end
       return lines
+    end,
+    -- Heard: an audio clip's file; a MIDI clip's first bars through its track.
+    audition_key = "clips",
+    audition = function(c)
+      local info = api.clip_get(c.id)
+      if info.kind == "audio" then
+        daw.audition.file(info.file)
+        return info.name
+      end
+      local length = math.min(info.length, daw.time.bar(info.start) * 2)
+      local notes = {}
+      for _, n in ipairs(api.clip_notes(c.id)) do
+        if n.start >= 0 and n.start < length then
+          notes[#notes + 1] = { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity }
+        end
+      end
+      daw.audition.phrase(c.track, notes, { length = length, label = info.name, key = "clip" .. c.id })
+      return string.format("%s · %g beats on %s", info.name, length, c.track_name)
     end,
   }
 
@@ -661,5 +691,6 @@ return function(pick)
     end,
   }
 
+  require("daw.pick.project")(pick, S)
   return S
 end

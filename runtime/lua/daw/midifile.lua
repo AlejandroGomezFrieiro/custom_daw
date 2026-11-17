@@ -15,7 +15,9 @@
 -- channel, is split by channel), one clip on each, spanning its bars, with
 -- the controller moves, pitch bend, pressure and program changes as the
 -- clip's controls; the tempo map, time signatures and markers are the
--- project's, lyrics go on the notes they start (`note.meta.lyric`), and a
+-- project's, lyrics go on the notes they start (`note.meta.lyric`), a
+-- note's MIDI 2.0 attribute (an articulation) comes back from the
+-- sequencer-specific event this program writes it as (below), and a
 -- track that plays on channel 10 alone gets the built-in drum kit. The
 -- project has no file: saving it asks for a name and never writes over the
 -- .mid. What could not be kept (sysex, key signatures, and the like) is
@@ -92,7 +94,7 @@ local function pair(events, end_tick, ppq, count)
     if e.on then
       local list = held[key] or {}
       held[key] = list
-      local note = { tick = e.tick, pitch = e.pitch, velocity = e.velocity, channel = e.channel }
+      local note = { tick = e.tick, pitch = e.pitch, velocity = e.velocity, channel = e.channel, attr = e.attr }
       list[#list + 1] = note
       notes[#notes + 1] = note
     else
@@ -136,6 +138,22 @@ local function attach_lyrics(track, ppq, count)
   end
 end
 
+-- A note's attribute has no place in a MIDI 1.0 file. It is kept in a
+-- sequencer-specific event (FF 7F) just before the note-on, at its tick:
+-- the id for private use (7D), "pawa", then the type and the two bytes of
+-- data. Other programs pass over it.
+local ATTR_MARK = "\125pawa"
+
+local function attr_meta(attr)
+  return ATTR_MARK .. string.char(attr.type % 256, math.floor((attr.data or 0) / 256) % 256, (attr.data or 0) % 256)
+end
+
+local function meta_attr(body)
+  if #body ~= #ATTR_MARK + 3 or body:sub(1, #ATTR_MARK) ~= ATTR_MARK then return nil end
+  local kind, hi, lo = body:byte(#ATTR_MARK + 1, #ATTR_MARK + 3)
+  return kind > 0 and { type = kind, data = hi * 256 + lo } or nil
+end
+
 local META_SKIPPED = {
   [0x01] = "text events", [0x02] = "copyright notices", [0x08] = "program names", [0x09] = "device names",
   [0x20] = "channel prefixes", [0x21] = "port numbers", [0x54] = "SMPTE offsets", [0x59] = "key signatures",
@@ -147,6 +165,8 @@ local META_SKIPPED = {
 local function parse_track(data, p, stop, offset, file, count)
   local track = { notes = {}, controls = {}, lyrics = {} }
   local tick, running, events = offset, nil, {}
+  -- An attribute read, for the next note to start at its tick.
+  local attr
   while p < stop do
     local delta
     delta, p = vlq(data, p, stop)
@@ -193,6 +213,8 @@ local function parse_track(data, p, stop, offset, file, count)
         track.lyrics[#track.lyrics + 1] = { tick = tick, text = utf8_text(body) }
       elseif kind == 0x06 or kind == 0x07 then
         file.markers[#file.markers + 1] = { tick = tick, text = utf8_text(body) }
+      elseif kind == 0x7F and meta_attr(body) then
+        attr = { tick = tick, value = meta_attr(body) }
       else
         count(META_SKIPPED[kind] or "other meta events")
       end
@@ -221,7 +243,9 @@ local function parse_track(data, p, stop, offset, file, count)
       end
       d1, d2 = d1 % 128, d2 % 128
       if kind == 9 and d2 > 0 then
-        events[#events + 1] = { tick = tick, on = true, channel = channel, pitch = d1, velocity = d2 }
+        events[#events + 1] = { tick = tick, on = true, channel = channel, pitch = d1, velocity = d2,
+          attr = attr and attr.tick == tick and attr.value or nil }
+        attr = nil
       elseif kind == 8 or kind == 9 then
         events[#events + 1] = { tick = tick, channel = channel, pitch = d1 }
       elseif kind == 11 then
@@ -264,7 +288,7 @@ end
 ---
 ---   { format, ppq, length,
 ---     tracks = { { name, instrument, length,
----                  notes = { { tick, length, pitch, velocity, channel, lyric } },
+---                  notes = { { tick, length, pitch, velocity, channel, lyric, attr } },
 ---                  controls = { { tick, type, value, channel, number, key, program } } } },
 ---     tempos = { { tick, bpm } }, signatures = { { tick, num, den } },
 ---     markers = { { tick, text } }, skipped = { [what] = count } }
@@ -369,6 +393,7 @@ local function encode_track(track, conductor)
     local ch = n.channel or 0
     add(n.tick + n.length, 1, string.char(n.pitch, 0), 0x80 + ch)
     if n.lyric then add(n.tick, 3, meta(0x05, n.lyric)) end
+    if n.attr and (n.attr.type or 0) > 0 then add(n.tick, 3, meta(0x7F, attr_meta(n.attr))) end
     add(n.tick, 3, string.char(n.pitch, clamp7(n.velocity)), 0x90 + ch)
   end
   for _, c in ipairs(track.controls or {}) do
@@ -510,7 +535,7 @@ local function clip_of(file, part, at)
     if n.channel ~= 0 or n.lyric then meta = { channel = n.channel ~= 0 and n.channel + 1 or nil, lyric = n.lyric } end
     notes[i] = {
       start = n.tick / ppq - from, length = n.length / ppq, pitch = n.pitch,
-      velocity = math.max(1, math.min(127, n.velocity)), meta = meta,
+      velocity = math.max(1, math.min(127, n.velocity)), meta = meta, attr = n.attr,
     }
   end
   for i, c in ipairs(part.controls) do
@@ -691,7 +716,7 @@ local function export_track(track, only)
           out.notes[#out.notes + 1] = {
             tick = (c.start + n.start) * EXPORT_PPQ, length = length * EXPORT_PPQ, pitch = n.pitch,
             velocity = n.velocity, channel = tonumber(meta.channel) and meta.channel - 1 or channel,
-            lyric = type(meta.lyric) == "string" and meta.lyric or nil,
+            lyric = type(meta.lyric) == "string" and meta.lyric or nil, attr = n.attr,
           }
           last = math.max(last, c.start + n.start + length)
         end

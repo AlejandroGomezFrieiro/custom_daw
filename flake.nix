@@ -249,6 +249,8 @@
         daw-mcp = only pkgs "daw-mcp";
         paw-utau = pawUtau pkgs;
         utau-engine = (extensionsFor pkgs).utau.engine;
+        # extensions/sampler's plugin and command, on their own.
+        paw-sampler = (extensionsFor pkgs).sampler.engine;
       });
 
       # `nix flake check`: clippy, rustfmt, the Rust tests a sandbox can run,

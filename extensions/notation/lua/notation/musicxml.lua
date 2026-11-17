@@ -1296,6 +1296,14 @@ local function part_xml(w, part, pid, divisions, g)
       attrs[#attrs + 1] = "<time" .. (m.meter_symbol and (' symbol="' .. m.meter_symbol .. '"') or "") .. "><beats>" .. top .. "</beats><beat-type>" .. meter[2] .. "</beat-type></time>"
     end
     if mi == 1 and nstaves > 1 then attrs[#attrs + 1] = "<staves>" .. nstaves .. "</staves>" end
+    if mi == 1 and part.transpose then
+      -- Written at an interval from how it sounds: what takes the written
+      -- notes to sounding ones, an octave apart from the rest.
+      local iv = part.transpose
+      local octave = iv.steps >= 0 and floor(iv.steps / 7) or -floor(-iv.steps / 7)
+      attrs[#attrs + 1] = "<transpose><diatonic>" .. -(iv.steps - 7 * octave) .. "</diatonic><chromatic>" .. -(iv.semis - 12 * octave)
+        .. "</chromatic>" .. (octave ~= 0 and ("<octave-change>" .. -octave .. "</octave-change>") or "") .. "</transpose>"
+    end
     for s, st in ipairs(sc.staves) do
       local clef = mi == 1 and st.clef or (m.clef and m.clef[st.id])
       local sign = clef and CLEF_SIGN[clef]
@@ -1489,7 +1497,11 @@ local function part_xml(w, part, pid, divisions, g)
 end
 
 --- A MusicXML document (partwise, 4.0) of score parts: `parts` =
---- `{ { name, score, fifths (the key where the score says none), program, drums } }`;
+--- `{ { name, score, fifths (the key where the score says none), program, drums } }`,
+--- and for a full score each part's `short` name, `transpose` (the
+--- interval it is written at, `notation.parts`), `group` (`{ name, number }`
+--- on a family's first part: a bracket from it) and `group_end` (that
+--- number, on the family's last part);
 --- `opts`: `title`, `composer`.
 function M.write(parts, opts)
   opts = opts or {}
@@ -1509,10 +1521,16 @@ function M.write(parts, opts)
     -- Channels 1 to 16 in turn, 10 kept for drums.
     local channel = (i - 1) % 15 + 1
     if channel >= 10 then channel = channel + 1 end
+    if p.group then
+      w('    <part-group type="start" number="' .. p.group.number .. '"><group-name>' .. esc(p.group.name)
+        .. "</group-name><group-symbol>bracket</group-symbol><group-barline>yes</group-barline></part-group>")
+    end
     w('    <score-part id="' .. pid .. '"><part-name>' .. esc(p.name or ("Part " .. i)) .. "</part-name>"
+      .. (p.short and ("<part-abbreviation>" .. esc(p.short) .. "</part-abbreviation>") or "")
       .. '<score-instrument id="' .. pid .. '-I1"><instrument-name>' .. esc(p.name or ("Part " .. i)) .. "</instrument-name></score-instrument>"
       .. '<midi-instrument id="' .. pid .. '-I1"><midi-channel>' .. (p.drums and 10 or channel) .. "</midi-channel>"
       .. "<midi-program>" .. ((p.program or 0) + 1) .. "</midi-program></midi-instrument></score-part>")
+    if p.group_end then w('    <part-group type="stop" number="' .. p.group_end .. '"/>') end
   end
   w("  </part-list>")
   local divisions, g = divisions_of(scores)
