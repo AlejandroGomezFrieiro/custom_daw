@@ -611,7 +611,7 @@ function view:paint(g, ctx)
   if chrome then
     toolbar(g, w, rows)
     local fifths = layout.fifths
-    local key_text = (fifths == 0 and "C") or (abs(fifths) .. (fifths > 0 and "♯" or "♭"))
+    local key_text = view.key_name(fifths, select(2, view.key()), clip and clip.start)
     gui.key_text = key_text .. "  ·  " .. layout.meter.num .. "/" .. layout.meter.den .. "  ·  " .. track.name
       .. (view.raw_view() and "  ·  raw" or "") .. (view.galley and "  ·  galley" or "") .. (view.page and "  ·  pages" or "")
     local iy = h - INFO

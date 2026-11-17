@@ -45,6 +45,22 @@ function view.key()
   return 0, nil
 end
 
+--- The key's name, for the title: the project's when one is set; else the
+--- key the music is read in (`daw.harmony.key` at `beat`) when it is the
+--- minor key of the signature in force, so a song in A minor is called so
+--- rather than C major; else the signature's major key.
+local MAJORS = { [-7] = "Cb", [-6] = "Gb", [-5] = "Db", [-4] = "Ab", [-3] = "Eb", [-2] = "Bb", [-1] = "F",
+  [0] = "C", "G", "D", "A", "E", "B", "F#", "C#" }
+function view.key_name(fifths, stored, beat)
+  if stored and stored.root then return stored.root .. " " .. (stored.scale or "major") end
+  local ok, read = pcall(daw.harmony.key, beat)
+  if ok and type(read) == "table" and read.mode == "minor" and read.name then
+    local root = read.name:match("^(%S+)")
+    if root and model.fifths_of(root, "minor") == fifths then return read.name end
+  end
+  return (MAJORS[fifths] or "C") .. " major"
+end
+
 --- The clef a track asks for, or nil to choose by the notes.
 function view.track_clef(track_id)
   local ok, t = pcall(api.track_get, track_id)

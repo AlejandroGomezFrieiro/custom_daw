@@ -1611,6 +1611,9 @@ function M.preview(text)
     local ok, said, level = pcall(preview_of, text)
     if not ok then said, level = tostring(said), "error" end
     if level == "error" then view_state = nil end
+    -- A range typed up to its comma (`:t2,`, `:5,`) is not finished yet,
+    -- not wrong: it says nothing until there is more, and Enter says why.
+    if level == "error" and text:match("[,;]t?%s*$") then said, level = nil, nil end
     api.ui_redraw()
     return said, level
   end
