@@ -25,12 +25,34 @@ function M.art_of(note)
   return type(own) == "table" and own or {}
 end
 
+-- Other extensions' part in the marks (extensions/articulations: the
+-- articulation each note's MIDI attribute names):
+--   M.extra(name, fn)  fn(clip) -> { art = function(pitch, beat) -> { staccato = true } or nil,
+--                      marks = { { at, kind = "technique", value } } }: drawn, never written
+--   M.listen(fn)       fn(what) after a mark is written: `{ kind = "art", mark, on,
+--                      clip, before }` (the clip's notes before), or `{ kind =
+--                      "technique", text, from, to, clip }` (`to` nil: to the end)
+M.extras, M.listeners = {}, {}
+
+function M.extra(name, fn) M.extras[name] = fn end
+
+function M.listen(fn) M.listeners[#M.listeners + 1] = fn end
+
+function M.tell(what)
+  for _, fn in ipairs(M.listeners) do
+    local ok, err = pcall(fn, what)
+    if not ok then daw.api.log("notation listener: " .. tostring(err)) end
+  end
+end
+
 --- Toggle an articulation on chords of the score, by their event ids (the
 --- chord under the cursor's, a selection's): on for all unless all have it.
 --- Returns whether it is on.
 function M.toggle_art(kind, ids)
   if #ids == 0 then return nil end
   local on
+  local clip = view:clip()
+  local before = clip and #M.listeners > 0 and clip:notes() or nil
   view:write(function(sc)
     local evs = {}
     for _, id in ipairs(ids) do
@@ -49,6 +71,7 @@ function M.toggle_art(kind, ids)
       D.touch(sc, x.mi)
     end
   end)
+  if before and on ~= nil then M.tell({ kind = "art", mark = kind, on = on, clip = clip, before = before }) end
   return on
 end
 
@@ -178,6 +201,18 @@ end
 function M.decorate(layout, clip)
   local c = clip:get()
   local marks, slurs = marks_of(layout, c)
+  -- What other extensions draw over the notes and along the score.
+  local extras = {}
+  for name, fn in pairs(M.extras) do
+    local ok, x = pcall(fn, clip)
+    if ok and type(x) == "table" then
+      extras[#extras + 1] = x
+      for _, mk in ipairs(x.marks or {}) do marks[#marks + 1] = mk end
+    elseif not ok then
+      daw.api.log("notation marks of " .. name .. ": " .. tostring(x))
+    end
+  end
+  if #extras > 0 then table.sort(marks, function(a, b) return a.at < b.at end) end
   for _, m in ipairs(layout.measures) do
     m.marks, m.directions = {}, {}
     local e = m.start + m.length
@@ -211,6 +246,23 @@ function M.decorate(layout, clip)
             for _, n in ipairs(ev.notes) do
               for k, v in pairs(M.art_of(n)) do art[k] = v end
               if not ev.lyric and n.meta and n.meta.lyric and n.meta.lyric ~= "" then ev.lyric = n.meta.lyric end
+            end
+            ev.art = next(art) and art or nil
+          end
+        end
+      end
+    end
+    if #extras > 0 then
+      for _, evs in ipairs(m.staves) do
+        for _, ev in ipairs(evs) do
+          if ev.kind == "note" and not ev.notes[1].tied then
+            -- A score's events are laid out once: what they had of their own is kept apart.
+            if not layout.doc or ev.own_art == nil then ev.own_art = ev.art or false end
+            local art = util.merge(ev.own_art or {}, {})
+            for _, x in ipairs(extras) do
+              for _, n in ipairs(x.art and ev.notes or {}) do
+                for k, v in pairs(x.art(n.pitch, ev.start) or {}) do art[k] = v end
+              end
             end
             ev.art = next(art) and art or nil
           end

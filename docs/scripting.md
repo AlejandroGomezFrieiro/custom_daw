@@ -452,6 +452,13 @@ daw.curves.generate("sine", 0, 8, { rate = 1, depth = 0.5, unfrac = c.unfrac })
 daw.curves.editor.open("daw://tempo", { vertical = true })
 ```
 
+An extension makes a curve of its own of an address with
+`daw.curves.provide(name, fn)`: `fn(uri, parts)` returns a target with
+the fields above (`points`, `write`, `name`, `format`, `lo`, `hi`, ...),
+or nil to leave the address to the others. extensions/articulations draws
+several controllers as one this way
+(`daw://clip/7/control/cc/1#linked=dynamics`).
+
 **Completion.** `daw.complete` shows suggestions as ghost notes in the piano
 roll, from sources that extensions register; see "Writing a source" in
 [harmony.md](harmony.md) for the context and the items.
@@ -499,6 +506,24 @@ and a line on what its keys do to it.
 A chip's `act` names a `daw.frontend.act` function, called with the clip and
 `arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
 left. A failing layer is skipped, and the others are drawn.
+
+An instrument whose keys mean more than pitches (keyswitches, a playable
+range) says so with four more hooks, each by name, nil taking one away:
+
+```lua
+roll.rows("mine", function(pitch, track)       -- the keyboard edge and the row's shade
+  if pitch < 55 then return { shade = "RollOutside" } end
+  if pitch == 24 then return { label = "sus", style = "PianoC" } end
+end)
+roll.band("mine", 10, {                         -- a row of its own above the ruler
+  title = "art", active = function(clip) return true end,
+  paint = function(buf, b) buf:text(b.x(0), 0, "│sus") end,   -- b.x(beat), b.from, b.to, b.width, b.clip
+})
+roll.describer("mine", function(note, part) return { "  played as  sustain" } end)   -- lines K adds for a note
+roll.entering("mine", function(note, clip) note.velocity = 90 end)   -- a note the keys, insert mode or a click enter
+```
+
+extensions/articulations uses all four.
 
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are

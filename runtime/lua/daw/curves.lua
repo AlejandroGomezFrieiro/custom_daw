@@ -191,11 +191,22 @@ local function tempo_target(uri)
   return t
 end
 
+-- Curves an extension makes of an address the core would read otherwise
+-- (several controllers drawn as one, through curves of their own): by
+-- name, `fn(uri, parts)` giving a target as above, or nil to leave it.
+M.providers = {}
+
+function M.provide(name, fn) M.providers[name] = fn end
+
 --- The curve at an address, or nil and why not.
 function M.target(uri)
   local parts = daw.address.parse(uri)
   if not parts then return nil, "not an address: " .. tostring(uri) end
   local ok, t, why = pcall(function()
+    for _, fn in pairs(M.providers) do
+      local made, err = fn(uri, parts)
+      if made or err then return made, err end
+    end
     if parts.kind == "lane" then return lane_target(parts.lane, uri) end
     if parts.kind == "param" then return param_target(parts, uri) end
     if parts.kind == "control" then return control_target(parts, uri) end

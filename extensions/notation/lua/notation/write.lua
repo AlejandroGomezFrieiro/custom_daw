@@ -622,8 +622,9 @@ W.TECHNIQUES = { "pizz.", "arco", "con sord.", "senza sord.", "trem.", "harm.", 
 function W.technique(ctx)
   if not need_clip() then return end
   local text = words(ctx)
-  local a = span(ctx)
+  local a, b, ranged = span(ctx)
   view:write(function(sc) put_mark(sc, a, "technique", (text ~= "" and text ~= "off") and { value = text } or false) end)
+  marks.tell({ kind = "technique", text = text, from = a, to = ranged and b or nil, clip = view:clip() })
   daw.notify(text ~= "" and text ~= "off" and text or "no technique here")
 end
 

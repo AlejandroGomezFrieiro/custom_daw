@@ -1,0 +1,17 @@
+// A keyswitched instrument of synthesized waves, to read the keyswitches of.
+#define $LO 55
+#include "control.sfz"
+<global> sw_lokey=24 sw_hikey=29 sw_default=24
+<group> sw_last=24 sw_label=Sustain   lokey=$LO hikey=100
+<region> sample=*sine
+<group> sw_last=25 sw_label=Staccato  lokey=$LO hikey=100
+<region> sample=*saw
+<group> sw_last=26 sw_label=Pizz      lokey=$LO hikey=96
+<region> sample=*square
+/* the next two have long labels */
+<group> sw_last=27 sw_label=Tremolo   lokey=$LO hikey=96
+<region> sample=*triangle
+<group> sw_last=28 sw_label=Trill m2  lokey=$LO hikey=93
+<region> sample=*sine
+<group> sw_last=f1 lokey=$LO hikey=96
+<region> sample=*noise
