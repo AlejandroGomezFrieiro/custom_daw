@@ -390,7 +390,9 @@ test("utau: where the terminal shows pictures the pitch and the curve are strips
 
   -- Pictures off, or a terminal without them: the cells as before.
   utau.pitch[clip.id] = nil
-  daw.keymap.feed("h")
+  api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
+  cells = api.ui_snapshot(W, H)
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
   daw.opt.graphics = false
   eq(table.concat(api.ui_snapshot(W, H), "\n"), table.concat(cells, "\n"), "graphics off draws the same cells")
   eq(daw.ui.rects.surfaces, nil, "and keeps no strip")
