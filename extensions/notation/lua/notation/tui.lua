@@ -10,6 +10,8 @@ local api = daw.api
 local util = daw.util
 local model = require("notation.model")
 local cells = require("notation.cells")
+local breaks = require("notation.breaks")
+local engrave = require("notation.engrave")
 local view = require("notation")
 
 local floor = math.floor
@@ -57,25 +59,29 @@ local function rows_for(height, staves, extra, lines, most)
   return 1, staves * (lines + 2) + extra, 1
 end
 
---- Measures from `first` packed into systems `width` wide.
+--- Systems `width` wide from the one that holds measure `first`: broken
+--- as the engraved page is (`notation.breaks`), balanced over the whole
+--- clip, where the score asks for breaks too. Returns them and the last
+--- measure they show.
 local function pack(layout, first, width, systems, prefix)
-  local out = {}
-  local i = first
-  for _ = 1, systems do
-    if i > #layout.measures then break end
-    local row = { measures = {}, prefix = prefix(i) }
+  local widths = {}
+  for i, m in ipairs(layout.measures) do widths[i] = m.width + 1 end
+  local starts = breaks.lines(widths, prefix, width, engrave.asked(layout))
+  local k = 1
+  while starts[k + 1] and starts[k + 1] <= first do k = k + 1 end
+  local out, last = {}, starts[k] - 1
+  for s = k, math.min(#starts, k + systems - 1) do
+    local row = { measures = {}, prefix = prefix(starts[s]) }
     local x = row.prefix
-    repeat
-      local m = layout.measures[i]
-      if #row.measures > 0 and x + m.width + 1 > width then break end
-      row.measures[#row.measures + 1] = { m = m, x = x }
-      x = x + m.width + 1
-      i = i + 1
-    until i > #layout.measures
+    last = (starts[s + 1] or #layout.measures + 1) - 1
+    for j = starts[s], last do
+      row.measures[#row.measures + 1] = { m = layout.measures[j], x = x }
+      x = x + layout.measures[j].width + 1
+    end
     row.width = x
     out[#out + 1] = row
   end
-  return out, i - 1
+  return out, last
 end
 
 --- The column of a beat of measure `index` in a system, if the system has it.

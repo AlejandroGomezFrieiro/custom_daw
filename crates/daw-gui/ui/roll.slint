@@ -412,12 +412,46 @@ export component PianoRoll inherits Rectangle {
     init => {
         Roll.view-start = self.shows-from;
         Roll.view-end = self.shows-to;
+        // The roll is made when a clip opens: start on the cursor.
+        root.centre-pending = true;
+        root.reveal(true);
     }
     changed shows-from => {
         Roll.view-start = self.shows-from;
     }
     changed shows-to => {
         Roll.view-end = self.shows-to;
+    }
+
+    // The cursor moves, or a clip opens: keep it in view.
+    property <int> cursor-pitch: Roll.pitch;
+    property <float> cursor-beat: Roll.cursor;
+    property <bool> clip-open: Roll.open;
+    changed cursor-pitch => {
+        root.reveal(false);
+    }
+    changed cursor-beat => {
+        root.reveal(false);
+    }
+    // A clip that opens before the grid has a size is centred when it has one.
+    property <bool> centre-pending;
+    property <length> grid-h: roll.visible-height;
+    property <length> grid-w: roll.visible-width;
+    changed clip-open => {
+        if (Roll.open) {
+            root.centre-pending = true;
+            root.reveal(true);
+        }
+    }
+    changed grid-h => {
+        if (root.centre-pending) {
+            root.reveal(true);
+        }
+    }
+    changed grid-w => {
+        if (root.centre-pending) {
+            root.reveal(true);
+        }
     }
 
     pure function is-black(pitch: int) -> bool {
@@ -457,6 +491,25 @@ export component PianoRoll inherits Rectangle {
     function scroll-to(x: length, y: length) {
         roll.content-x = clamp(x, min(0px, roll.visible-width - roll.content-width), 0px);
         roll.content-y = clamp(y, min(0px, roll.visible-height - roll.content-height), 0px);
+    }
+    // Bring the kernel's cursor into view: the least scrolling that shows
+    // it with a row or two to spare, or with `centre` the cursor in the
+    // middle, as the terminal does when it opens a clip.
+    function reveal(centre: bool) {
+        if (roll.visible-height <= 0px || roll.visible-width <= 0px) {
+            return;
+        }
+        root.centre-pending = false;
+        let cy = (127 - Roll.pitch) * root.note-height;
+        let cx = Roll.cursor * root.beat;
+        let margin = min(2 * root.note-height, roll.visible-height / 4);
+        let above = cy - margin < -roll.content-y;
+        let below = cy + root.note-height + margin > -roll.content-y + roll.visible-height;
+        let aside = cx < -roll.content-x || cx + root.beat > -roll.content-x + roll.visible-width;
+        root.scroll-to(
+            centre || aside ? -(cx - (centre ? roll.visible-width / 2 : roll.visible-width / 3)) : roll.content-x,
+            centre ? -(cy + root.note-height / 2 - roll.visible-height / 2) : above ? -(cy - margin) : below ? -(cy + root.note-height + margin - roll.visible-height) : roll.content-y
+        );
     }
     // Zoom in time, or the rows, keeping what is under the pointer (at `x`
     // or `y` in the grid) where it is.
