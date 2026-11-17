@@ -78,6 +78,8 @@ nearest of the 256 (`daw.opt.termcolors = "true"`, `"256"` or `"auto"`).
 rows a cell, with steep slopes filled so that it has no gaps), `"braille"`
 (dots, two by four) or `"line"` (lines at three heights a row).
 `daw.opt.braille = false` means `"line"`, and `daw.opt.ascii` wins over all.
+`daw.opt.wave_scale` is how audio clips draw their sound in cells: `"linear"`
+(the default, which shows hits) or `"db"` (which shows quiet sound).
 `daw.opt.graphics = false` keeps views that paint to plain terminal cells; the
 default shows pixels (the kitty graphics protocol) where the terminal can show
 them. `:set graphics!` toggles it.

@@ -27,6 +27,7 @@ local defaults = {
   ascii = false,           -- draw with plain ASCII characters only
   braille = true,          -- false draws curves with lines, whatever curve_glyphs says
   curve_glyphs = "sextant", -- curves in cells: "sextant" (a connected line), "braille" (dots) or "line"
+  wave_scale = "linear",   -- audio clips in cells: "linear" shows hits, "db" shows quiet sound too
   mouse = true,            -- the terminal reports the pointer; false leaves it to the terminal's own selection
   graphics = true,         -- views that paint show pixels where the terminal shows images; false keeps cells
   follow = true,           -- scroll to keep the playhead in view

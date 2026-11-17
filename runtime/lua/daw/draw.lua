@@ -409,23 +409,80 @@ function M.miniroll(notes, width, rows, zoom, from)
   return out
 end
 
---- Peaks (`{ min, max }` pairs from -1 to 1) as a waveform of `rows` text
---- rows that grows from the bottom, on a decibel scale so that quiet
---- material still shows.
+--- How far a sample of size `a` (0 to 1) reaches up a waveform, 0 to 1:
+--- as it is (`daw.opt.wave_scale` "linear", which shows a kick over a hat) or
+--- on a decibel scale from -48 (`"db"`, which shows quiet material).
+local function wave_reach(a)
+  a = math.min(math.abs(a), 1)
+  if daw.opt.wave_scale ~= "db" then return a end
+  return a <= 1e-4 and 0 or daw.util.clamp((20 * math.log10(a) + 48) / 48, 0, 1)
+end
+
+--- Peaks (`{ min, max }` pairs from -1 to 1, one per column) as a waveform
+--- of `rows` text rows, each column drawn from its lowest to its highest
+--- sample around the middle of the rows, in eighths of a row. Returns the
+--- rows as text and, for each row, its runs `{ column, text, mark }` of
+--- cells that share a mark, the column counted from 0 (the text of a run
+--- is drawn with the mark's style, `nil` for none): "flip" is for cells
+--- whose upper part is the wave, an eighth block drawn in reverse video
+--- because blocks only grow from the bottom, "clip" for a column that
+--- reaches full scale, "clipflip" for both.
 function M.waveform(peaks, rows)
   local g = M.g
-  local out = {}
-  for row = 0, rows - 1 do
-    local from_bottom = rows - 1 - row
-    local cells = {}
-    for i, p in ipairs(peaks) do
-      local db = 20 * math.log10(math.max(-p[1], p[2], 1e-6))
-      local level = daw.util.clamp((db + 48) / 48, 0, 1) * rows * 8 - from_bottom * 8
-      cells[i] = level >= 8 and g.full or level >= 1 and g.eighths[math.floor(level)] or " "
+  local plain = daw.opt.ascii
+  local half = rows * 4
+  local cells, flips, clips = {}, {}, {}
+  for row = 1, rows do cells[row], flips[row] = {}, {} end
+  local count = 0
+  for i, p in ipairs(peaks) do
+    count = i
+    local low, high = p[1], p[2]
+    clips[i] = high >= 0.999 or low <= -0.999
+    local lit = high - low > 1e-4 or math.abs(high) > 1e-4
+    -- Eighths from the top of the rows, the wave covering [top, bottom).
+    local top = math.floor(half - (high < 0 and -1 or 1) * wave_reach(high) * half + 0.5)
+    local bottom = math.floor(half - (low < 0 and -1 or 1) * wave_reach(low) * half + 0.5)
+    if bottom <= top then top, bottom = math.min(top, rows * 8 - 1), math.min(top, rows * 8 - 1) + 1 end
+    for row = 1, rows do
+      local from, to = math.max(top - (row - 1) * 8, 0), math.min(bottom - (row - 1) * 8, 8)
+      local cell, flip = " ", false
+      if lit and to > from then
+        if from == 0 and to == 8 then
+          cell = g.full
+        elseif to == 8 then
+          cell = g.eighths[8 - from]
+        elseif from == 0 then
+          cell, flip = plain and g.upper or g.eighths[8 - to], not plain
+        else
+          -- Floating in the middle row: a thin line, or a half block.
+          local mid = (from + to) / 2
+          cell = to - from >= 5 and g.full or to - from <= 2 and (plain and g.peak or "─")
+            or mid < 4 and g.upper or g.lower
+        end
+      end
+      cells[row][i], flips[row][i] = cell, flip
     end
-    out[row + 1] = table.concat(cells)
   end
-  return out
+  local out, runs = {}, {}
+  for row = 1, rows do
+    local line, run = {}, nil
+    for i = 1, count do
+      local cell, mark = cells[row][i], nil
+      if cell ~= " " then
+        mark = (clips[i] and "clip" or "") .. (flips[row][i] and "flip" or "")
+        if mark == "" then mark = nil end
+      end
+      if run and run.mark == mark then
+        run.text[#run.text + 1] = cell
+      else
+        run = { column = i - 1, text = { cell }, mark = mark }
+        line[#line + 1] = run
+      end
+    end
+    for _, r in ipairs(line) do r.text = table.concat(r.text) end
+    out[row], runs[row] = table.concat(cells[row]), line
+  end
+  return out, runs
 end
 
 local function utf8(code)

@@ -22,6 +22,11 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
+  column's lowest to highest sample and nothing of its loudness: there is no
+  darker inner band for the RMS. The window draws a clip's peaks from the
+  same data (`daw.frontend.peaks`: the lowest, the highest and the loudness
+  of each point) as it did before.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the
