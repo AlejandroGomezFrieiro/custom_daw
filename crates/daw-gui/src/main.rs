@@ -1889,6 +1889,10 @@ impl View {
             self.show_marks(&roll["marks"]);
         }
         ui.set_row_device(modal["device"].as_i64().unwrap_or(0) as i32);
+        // The mixer's cursor row; a strip shows its sends together, as one.
+        let mixer_row = modal["mixer_row"]["key"].as_str().unwrap_or("");
+        ui.set_mixer_track(modal["mixer_row"]["track"].as_i64().unwrap_or(-1) as i32);
+        ui.set_mixer_row(if mixer_row.starts_with("send") { "send".into() } else { mixer_row.into() });
         ui.set_row_param(modal["param"].as_i64().unwrap_or(-1) as i32);
         Ok(())
     }

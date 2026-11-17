@@ -214,6 +214,12 @@ local function modal()
   -- Views that can be opened in one, for the views menu.
   out.views = daw.canvas.openable()
   out.menus = menus()
+  if ui.focused == "mixer" then
+    -- The mixer's cursor: the strip's track and the row on it (`volume`,
+    -- `pan`, `insert2`, `send1`, `mute`...), see daw/mixer_rows.lua.
+    local row, id = daw.mixer_rows.current()
+    if row then out.mixer_row = { track = id, key = row.key } end
+  end
   if ui.focused == "devices" then
     -- The row the keyboard is on, as a device of the track and one of its
     -- parameters (0 for the device's own line).

@@ -280,6 +280,9 @@ component MixerStrip inherits Rectangle {
     in property <TrackData> track;
     in property <MeterData> meter;
     in property <bool> chosen;
+    // The row the mixer's cursor is on in this strip (see mixer_rows.lua):
+    // `volume`, `pan`, `insert2`, `send` (any of its sends), `mute`..., or "".
+    in property <string> cursor-row;
     callback select();
     callback set-volume(float);
     callback reset-volume();
@@ -311,6 +314,8 @@ component MixerStrip inherits Rectangle {
             height: 20px;
             border-radius: 3px;
             background: Theme.well;
+            border-width: root.cursor-row == "send" ? 1px : 0px;
+            border-color: Theme.select;
             Text {
                 x: 5px;
                 width: parent.width - 10px;
@@ -329,6 +334,8 @@ component MixerStrip inherits Rectangle {
             border-radius: 2px;
             property <bool> used: slot < root.track.inserts.length;
             background: self.used ? (slot-touch.has-hover ? Theme.control-hover : Theme.control) : Theme.control-press;
+            border-width: root.cursor-row == "insert" + (slot + 1) ? 1px : 0px;
+            border-color: Theme.select;
             if slot-box.used: Text {
                 x: 5px;
                 width: parent.width - 10px;
@@ -350,6 +357,9 @@ component MixerStrip inherits Rectangle {
             height: 26px;
             alignment: center;
             Knob {
+                border-width: root.cursor-row == "pan" ? 1px : 0px;
+                border-radius: 12px;
+                border-color: Theme.select;
                 width: 24px;
                 height: 24px;
                 y: 1px;
@@ -372,6 +382,8 @@ component MixerStrip inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
             min-height: 80px;
+            border-width: root.cursor-row == "volume" ? 1px : 0px;
+            border-color: Theme.select;
             property <length> travel: self.height - 36px;
             for mark[i] in [6, 0, -6, -12, -24, -36, -60]: Text {
                 x: 0;
@@ -481,6 +493,8 @@ component MixerStrip inherits Rectangle {
             spacing: 2px;
             if !root.track.master: Flag {
                 label: "M";
+                border-width: root.cursor-row == "mute" ? 1px : 0px;
+                border-color: Theme.select;
                 on: root.track.mute;
                 lit: Theme.mute;
                 clicked => {
@@ -489,6 +503,8 @@ component MixerStrip inherits Rectangle {
             }
             if !root.track.master: Flag {
                 label: "S";
+                border-width: root.cursor-row == "solo" ? 1px : 0px;
+                border-color: Theme.select;
                 on: root.track.solo;
                 lit: Theme.solo;
                 clicked => {
@@ -497,6 +513,8 @@ component MixerStrip inherits Rectangle {
             }
             if !root.track.master: Flag {
                 label: "R";
+                border-width: root.cursor-row == "armed" ? 1px : 0px;
+                border-color: Theme.select;
                 on: root.track.armed;
                 lit: Theme.rec;
                 clicked => {
@@ -760,6 +778,8 @@ in property <string> render-stage;
     // The pointer on it: "down" or the wheel's "scroll_up" and "scroll_down", a line and a column from 1.
     callback float-pointer(string, int, int);
     in property <int> row-device;       // the device panel's cursor
+    in property <int> mixer-track: -1;  // the mixer's cursor: the strip's track and its row
+    in property <string> mixer-row;
     in property <int> row-param;
     callback key(string, bool, bool, bool);
 
@@ -5805,6 +5825,7 @@ in property <string> render-stage;
                             track: track;
                             meter: root.meters[index];
                             chosen: track.id == root.selected;
+                            cursor-row: root.focused == "mixer" && track.id == root.mixer-track ? root.mixer-row : "";
                             select => {
                                 root.select-track(track.id, root.cursor);
                             }
@@ -5841,6 +5862,7 @@ in property <string> render-stage;
                         width: 88px;
                         track: root.tracks[root.tracks.length - 1];
                         chosen: self.track.id == root.selected;
+                        cursor-row: root.focused == "mixer" && self.track.id == root.mixer-track ? root.mixer-row : "";
                         select => {
                             root.select-track(self.track.id, root.cursor);
                         }

@@ -238,3 +238,18 @@ test("panes: every kind of buffer paints in a pane without failing", function()
     end
   end
 end)
+
+test("panes: the window is told the mixer's cursor row, which the keys move", function()
+  start()
+  local t = daw.add_track({ name = "Pad" })
+  daw.cursor.set_track(t)
+  daw.ui.focus("mixer")
+  local row = daw.frontend.state(-1).modal.mixer_row
+  eq(row and row.track, t.id, "the strip under the cursor")
+  local before = row.key
+  daw.keymap.feed("j")
+  local after = daw.frontend.state(-1).modal.mixer_row.key
+  eq(after ~= before, true, "j moves it down the strip: " .. before .. " to " .. after)
+  daw.ui.focus("arrange")
+  eq(daw.frontend.state(-1).modal.mixer_row, nil, "and nothing while the mixer has not the keyboard")
+end)
