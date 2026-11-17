@@ -235,6 +235,10 @@ the edit), and says so.
 | `gh`, `gp` | hear the cursor's pitch; playhead to the cursor |
 | `zi` `zo` | spread the notes out, draw them closer; on the engraved page, a larger, smaller staff |
 | `zg` | the engraved page as one long system scrolled sideways (the galley), or wrapped |
+| `zp` | the engraved systems on pages of paper, under the title and composer (the page view), or without pages |
+| `zs` | start a system at the cursor's bar; again, let the bar go where it fits |
+| `zj` | keep the cursor's bar on the system before; again, let it go where it fits |
+| `:notation.bars-per-system 4` | that many bars on every system; without a number, as they fit |
 | `,n` | back to the arrange view |
 | `:q` `ZZ` `Ctrl-w c` | close the view |
 | `Esc` | stay: drop a count, an operator or a selection |
@@ -412,9 +416,49 @@ spacing gives accidentals (in parentheses too), grace notes and arpeggios
 room only where the notes' own spacing leaves too little: half a space
 clear of the note before. A tuplet under a beam of its own has only its
 number, past the beam; any other has a bracket from its first head to its
-last. With two voices on a staff, a rest moves out of the way of the
-other voice's notes. A bar is not left alone on the last system when the
-system before can spare one of its bars (breaking is otherwise greedy).
+last, clear of the stems and what stands on them. With two voices on a
+staff, a rest moves out of the way of the other voice's notes. A lyric
+gets the room it needs: its note is spaced so that syllables do not touch.
+
+**What stands outside the staff is placed, not put.** Each staff of a
+system has a skyline, the outline of its notes, stems, beams, flags,
+accidentals, ledger lines, articulations, ties and tuplets seen from above
+and from below (`notation.skyline`). Against it are placed, nearest first,
+each clear of all before it and then part of the outline: slurs, the bar
+number, lyrics, dynamics and hairpins, text, and the kinds other features
+add (chord symbols, rehearsal marks, tempo text). The dynamics and hairpins
+of a system stand on one line along it (Sibelius' magnetic layout), under
+the staff, or over it on a staff with lyrics (Gould); a hairpin runs over
+barlines and systems and stops short of a dynamic at either end, and at
+the next dynamic inside it. The space between the staves of a system, and
+the height of each system, is what their skylines need, so nothing
+overlaps: a grand staff with dynamics between its hands opens up just
+there.
+
+**Slurs bend round the notes.** A slur goes under the heads when every
+stem under it points up, else over them (in two voices, the upper voice's
+over, the lower's under); its ends sit half a space off the end notes, at
+the heads or past the stems. It is as round as its length asks, rounder
+where the notes under it need, and where a slur cannot be rounder without
+looking wrong its ends rise, each for what is near it. Of two slurs one
+inside the other, the inner is placed first. A slur over a system break is
+drawn in two parts, the second from after the clef and key.
+
+**Systems break balanced.** Measures are broken into systems over the whole
+clip at once, not filled one system at a time (`notation.breaks`, a total
+fit in the manner of Knuth and Plass): a system's cost grows with the
+square of how far its bars are stretched, so the stretch is shared out
+evenly, none is stretched past twice its bars' own width while another way
+exists, and a bar is left alone on the last system only when everything
+else is worse. Every system but the last is spread to the width, and the
+last too when it is three quarters full. `zs` starts a system at the
+cursor's bar, `zj` keeps it on the system before, and
+`:notation.bars-per-system 4` fixes the count; they are kept in the score
+(`score.layout`, each break with an id and its measure's id), undone like
+any edit, and the terminal's cell view breaks the same way, in whole
+cells. A tie into a new system starts after the clef and key, as long as a
+tie.
+
 The ink is the terminal's foreground colour (the
 window's text colour), staff lines are lighter, and the selection, the
 cursor, suggestions and diagnostics take the theme's accents. Light ink on
@@ -422,7 +466,15 @@ a dark page is drawn a little thinner, as it looks heavier.
 
 The page is systems wrapped down the screen, or with `zg` one long system
 scrolled sideways (the galley), which keeps the start of the system at the
-left and, while playing, the playhead a third of the way across. Over the
+left and, while playing, the playhead a third of the way across. With `zp`
+(the page view) the systems are laid on sheets of paper: A4 (or US letter,
+option `notation_sheet`) at 1.75 mm to the staff space (a staff 7 mm
+high), with margins, the project's title (`meta.title`, else its name) and
+composer (`meta.composer`) at the head of the first page, page numbers on
+the others, a system that does not fit starting the next page, and the
+systems of a full page spread over it. The paper is white with black ink
+(option `notation_paper`: `"theme"` keeps the theme's colours), and the
+staff space is the largest whose page fits the width, unless zoomed. Over the
 page are drawn, each apart from it: the selection (a faint band, its notes
 in the accent), suggestions from `daw.complete` (the notes laid out as they
 would be written, faint), diagnostics from `daw.diagnostic` (a wavy line
@@ -489,6 +541,14 @@ stems, beams, dynamics, hairpins, text, slurs, lyrics and each note's
 string and fret when there is tablature. Without a path the file is named
 after the clip and written to the working directory.
 
+`:notation.export pdf` (or a path ending in `.pdf`) writes the engraved
+pages as the page view lays them out, on white paper, as a PDF of as many
+pages as there are; `svg` writes each page as an SVG file (numbered after
+the first), `png` the first page as an image. They are drawn from the same
+drawing operations as the screen (`daw.api.canvas_export`, in
+crates/daw-raster), with the music font's glyphs and the text as outlines,
+so the files need no fonts.
+
 ## From Lua
 
 ```lua
@@ -524,6 +584,34 @@ Petaluma, under the SIL Open Font License, in crates/daw-raster/fonts).
 times the paint: run it with `daw --clean --no-plugins --no-listen --audio
 null -l extensions/notation/tools/paintbench.lua 64`.
 
+A feature with marks of its own (chord symbols, rehearsal marks, tempo
+text, lyrics drawn its own way) makes their kind known to the placer, and
+puts them on the layout's measures (`m.marks`, from a decorator) or finds
+them itself with `collect`:
+
+```lua
+local skyline = require("notation.skyline")
+skyline.kind("chord", {
+  order = skyline.ORDER.chord,   -- nearer the staff first: number 5, slur 10, lyric 20,
+                                 -- dynamics 30, text 40, chord 50, rehearsal 60, tempo 70
+  side = "above",                -- or "below", or function(item) return ... end
+  pad = 0.6,                     -- staff spaces clear of what is there already
+  row = "chords",                -- optional: a row's marks on a system share one line
+  staff = 1,                     -- optional: default the mark's `staff`, else 1; "last" the lowest
+  ink = function(ink, st, item)  -- draw at item.x, its line at y 0; the placer moves it clear
+    ink:text(item.x, 0, item.value, st.ink, math.floor(1.4 * st.sp), true)
+  end,
+  collect = function(m, add) end, -- optional: add({ at = beat, staff = k, value = ... }) for marks not on m.marks
+})
+```
+
+A mark on `m.marks` is `{ at, kind, value, to?, staff? }` in beats of the
+clip; `item` has its fields and `x`, `staff` and `system`. `ink` takes the
+engraver's ink calls (`glyph(st, x, y, name, colour, scale)`, `text(x, y,
+text, colour, size, bold, align, width)`, `rect`, `path`); what it draws is
+the mark's shape. `notation.breaks.lines(widths, prefix, width, { breaks,
+joins, per })` is the line breaker on its own.
+
 `layout.score.events` are the written chords (`start`, `length`, `staff`,
 `voice`, `notes` with each played note's `index` and `offset`, `grace`,
 `arpeggio`, `staccato`); `layout.measures[i].staves[s]` lists what is drawn
@@ -538,10 +626,13 @@ string and fret are on each note); first and second endings, D.C. and D.S.;
 clefs other than treble, the guitar's treble and bass; key changes within a
 clip; trills and other ornaments; a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows). On the engraved page:
-collision avoidance between marks, dynamics and the notes of the other
-staff; slurs that bend round the notes under them; line breaking that
-balances every system (only a bar alone at the end is avoided); a choice of Bravura
-or Petaluma (the kernel has them; nothing chooses them yet). For score
+page breaks of one's own (pages fill as systems come), the style as a
+buffer to edit (staff size, spacing, slur height), a choice of Bravura or
+Petaluma (the kernel has them; nothing chooses them yet); staccato and
+tenuto inside a slur (a slur goes over every articulation), and slurs that
+keep clear of the staff lines; systems that interlock (each system's band
+holds all of its ink); the cell view places its marks on fixed rows, not
+against skylines; text in a PDF is outlines, so it cannot be searched. For score
 clips: tempo marks that play, repeats unfolded, trills and fermatas played,
 swing, key and clef changes per measure, `!` through a snippet (snippets
 work in the piano roll), a filter that reads and writes MusicXML (it reads

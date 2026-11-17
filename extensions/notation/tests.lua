@@ -1607,4 +1607,5 @@ test("notation: : from a selection runs a command over it, and commands take bar
 end)
 
 assert(loadfile("extensions/notation/tests_score.lua"))(T)
+assert(loadfile("extensions/notation/tests_layout.lua"))(T)
 assert(loadfile("extensions/notation/tests_grammar.lua"))(T)
