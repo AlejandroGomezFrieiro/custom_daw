@@ -154,6 +154,14 @@ impl Probe {
             v.contains("ghostty") || v.contains("kitty")
         })
     }
+
+    /// Whether the terminal draws text above an image placed under it (a
+    /// negative z), over cells of any background, as the kitty protocol
+    /// says: kitty, Ghostty (herdr) and WezTerm do. Konsole lets a cell's
+    /// coloured background hide the image; others are not known to work.
+    pub fn under(&self) -> bool {
+        self.layered() || self.version.as_deref().is_some_and(|v| v.to_ascii_lowercase().contains("wezterm"))
+    }
 }
 
 #[cfg(test)]
@@ -193,7 +201,7 @@ mod tests {
         let mut graphics = Vec::new();
         let mut buf = b"\x1bP>|libghostty 1.2\x1b\\\x1b_Gi=31;OK\x1b\\\x1b_Gi=32;OK\x1b\\\x1b[?1016;2$y\x1b[6;27;13t\x1b[?62;22c".to_vec();
         probe.hear(parse(&mut buf), &mut graphics);
-        assert!(probe.done && probe.layered() && probe.pixel_mouse);
+        assert!(probe.done && probe.layered() && probe.under() && probe.pixel_mouse);
         assert_eq!((probe.transfer, probe.cell), (Some(Transfer::Shm), Some((13, 27))));
 
         // WezTerm: images, by file; no layering; pixel mouse not known.
@@ -202,6 +210,7 @@ mod tests {
         let mut buf = b"\x1bP>|WezTerm 20240203\x1b\\\x1b_Gi=31;OK\x1b\\\x1b_Gi=33;OK\x1b\\\x1b[?1016;0$y\x1b[?65;4c".to_vec();
         probe.hear(parse(&mut buf), &mut graphics);
         assert!(!probe.layered() && !probe.pixel_mouse);
+        assert!(probe.under(), "text over images under it");
         assert_eq!(probe.transfer, Some(Transfer::File));
 
         // tmux: nothing but DA1.

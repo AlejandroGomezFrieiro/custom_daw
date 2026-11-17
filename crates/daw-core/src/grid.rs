@@ -136,6 +136,11 @@ pub struct Caps {
     /// The terminal's own foreground and background colours, when it said.
     pub fg: Option<(u8, u8, u8)>,
     pub bg: Option<(u8, u8, u8)>,
+    /// Text is drawn above an image placed under it (a negative z), over
+    /// cells of any background: kitty, Ghostty and WezTerm. Konsole lets a
+    /// coloured background hide such an image, so strips placed under the
+    /// text are not shown there.
+    pub under: bool,
 }
 
 impl Caps {
@@ -149,6 +154,7 @@ impl Caps {
         serde_json::json!({
             "graphics": self.graphics, "cell": [self.cell.0, self.cell.1],
             "pixel_mouse": self.pixel_mouse, "fg": colour(self.fg), "bg": colour(self.bg),
+            "under": self.under,
         })
     }
 
@@ -164,22 +170,32 @@ impl Caps {
             pixel_mouse: value["pixel_mouse"].as_bool().unwrap_or(false),
             fg: colour(&value["fg"]),
             bg: colour(&value["bg"]),
+            under: value["under"].as_bool().unwrap_or(false),
         }
     }
 }
 
-/// Cells a view shows pixels in (`buf:surface`): its drawing, the
-/// operations of `daw.canvas.paint`, for the frontend to make into pixels
-/// at `cell` pixels a cell, and which of its cells something drawn after
-/// it covers (a menu, a floating view), where the pixels must not show.
+/// Cells a view shows pixels in (a strip, `buf:strip`, or `buf:surface`):
+/// its drawing, the operations of `daw.canvas`, for the frontend to make
+/// into pixels at `cell` pixels a cell, and which of its cells something
+/// drawn after it covers (a menu, a floating view), where the pixels must
+/// not show.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Surface {
-    pub name: String,
+    /// What the strip is: images and their placements are kept by it, so
+    /// two strips of one view, or one view in two windows, are apart.
+    pub key: String,
     pub rect: Rect,
     pub cell: (u16, u16),
+    /// Placed under the text: its cells are drawn by the view as usual and
+    /// show above the picture.
+    pub under: bool,
     /// A flag for each cell, row by row.
     pub covered: Vec<bool>,
     pub ops: std::sync::Arc<serde_json::Value>,
+    /// Still being drawn by its view ([`Grid::seal_surfaces`]): what is
+    /// written in its cells now is the view's own, not something over it.
+    pub open: bool,
 }
 
 impl Surface {
@@ -244,31 +260,46 @@ impl Grid {
         self.surfaces.clear();
     }
 
-    /// Keep a rectangle of cells for pixels: blank, in the terminal's own
-    /// colours, so that nothing in them breaks the image. Returns the
-    /// surface's index, or nothing when the rectangle is off the screen.
-    pub fn surface(&mut self, name: &str, area: Rect, cell: (u16, u16)) -> Option<usize> {
+    /// Keep a rectangle of cells for pixels, under the name `key`. Over
+    /// the text (`under` false) its cells are made blank, in the terminal's
+    /// own colours, so that nothing in them breaks the image; under the
+    /// text they are left to the view, which goes on drawing them until it
+    /// is done ([`Grid::seal_surfaces`]). Returns the surface's index, or
+    /// nothing when the rectangle is off the screen.
+    pub fn surface(&mut self, key: &str, area: Rect, cell: (u16, u16), under: bool) -> Option<usize> {
         let area = area.intersect(&self.rect());
         if area.w <= 0 || area.h <= 0 {
             return None;
         }
-        // Covered by one shown later, a surface already there shows less.
-        self.fill(area, area, Some(' '), Style { fg: Some(Color::Default), bg: Some(Color::Default), on: 0, off: 0xff });
+        if !under {
+            // Covered by one shown later, a surface already there shows less.
+            self.fill(area, area, Some(' '), Style { fg: Some(Color::Default), bg: Some(Color::Default), on: 0, off: 0xff });
+        }
         self.surfaces.push(Surface {
-            name: name.to_string(),
+            key: key.to_string(),
             rect: area,
             cell,
+            under,
             covered: vec![false; (area.w * area.h) as usize],
             ops: Default::default(),
+            open: under,
         });
         Some(self.surfaces.len() - 1)
+    }
+
+    /// The view that kept the open surfaces is done: what is written over
+    /// them from now on (a menu, a floating view) covers them.
+    pub fn seal_surfaces(&mut self) {
+        for surface in &mut self.surfaces {
+            surface.open = false;
+        }
     }
 
     /// Mark the cell at `(x, y)` covered in any surface it is in.
     fn cover(&mut self, x: i32, y: i32) {
         for surface in &mut self.surfaces {
             let r = surface.rect;
-            if r.contains(x, y) {
+            if !surface.open && r.contains(x, y) {
                 surface.covered[((y - r.y) * r.w + (x - r.x)) as usize] = true;
             }
         }
@@ -509,6 +540,41 @@ mod tests {
         assert_eq!((runs[0][2].x, runs[0][2].w, runs[0][2].fg.as_str()), (5, 3, "#c8c8c8"));
         // Indexed 196 is xterm's red, dimmed halfway to the background.
         assert_eq!((runs[1][0].fg.as_str(), runs[1][0].attrs), ("#7f0000", BOLD));
+    }
+
+    #[test]
+    fn a_strip_under_the_text_keeps_the_views_cells_and_is_covered_only_after() {
+        let mut grid = Grid::new(10, 4);
+        let clip = grid.rect();
+        let lane = Style { bg: Some(Color::Rgb(1, 2, 3)), ..Style::default() };
+        grid.fill(clip, clip, Some(' '), lane);
+        let area = Rect { x: 1, y: 1, w: 6, h: 2 };
+        grid.surface("curve:1", area, (10, 20), false).unwrap();
+        // Over the text: blank, in the terminal's colours.
+        assert_eq!(grid.cells[11], Cell::default());
+        grid.surfaces.clear();
+        grid.fill(clip, clip, Some(' '), lane);
+        grid.surface("curve:1", area, (10, 20), true).unwrap();
+        assert_eq!(grid.cells[11].bg, Color::Rgb(1, 2, 3), "under the text the cells stay");
+        // The view's own cursor and points: drawn, and not covers.
+        grid.text(clip, 2, 1, "+", Style::default());
+        assert_eq!(grid.cells[12].ch, '+');
+        assert!(grid.surfaces[0].covered.iter().all(|c| !c));
+        // Once the view is done, a menu over it covers it.
+        grid.seal_surfaces();
+        grid.text(clip, 3, 2, "ok", Style::default());
+        assert_eq!(grid.surfaces[0].covered_runs(), vec![[2, 1, 2]]);
+    }
+
+    #[test]
+    fn two_strips_side_by_side_are_each_covered_by_what_falls_in_them() {
+        let mut grid = Grid::new(10, 4);
+        let clip = grid.rect();
+        grid.surface("a", Rect { x: 0, y: 0, w: 4, h: 2 }, (10, 20), false).unwrap();
+        grid.surface("b", Rect { x: 4, y: 0, w: 4, h: 2 }, (10, 20), false).unwrap();
+        grid.text(clip, 3, 1, "xy", Style::default());
+        assert_eq!(grid.surfaces[0].covered_runs(), vec![[3, 1, 1]]);
+        assert_eq!(grid.surfaces[1].covered_runs(), vec![[0, 1, 1]]);
     }
 
     #[test]

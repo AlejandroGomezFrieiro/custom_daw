@@ -794,7 +794,7 @@ a line that starts `terminal:`.
 
 The picture is made in the program at the terminal's own cell size and
 cut into pieces at its barlines, so that an edit sends again only the
-bars it touched. The cells under it are left blank. A menu or a floating
+bars it touched. A menu or a floating
 view over part of it hides the pieces under it. What moves over the page
 (the cursor, the note about to be entered, the playhead) is a picture of
 its own above the page where the terminal is known to put images over
@@ -803,10 +803,30 @@ any other terminal, WezTerm among them, it is drawn into the pieces it
 crosses. Over a picture the pointer goes to the view in pixels where the
 terminal reports them, else at the middle of the cell.
 
-Where the terminal shows no images (tmux, which does not pass them on, a
-terminal without the protocol, `daw attach` from one) the view draws in
-cells as before. `:set graphics!` (`daw.opt.graphics = false`) keeps
-cells everywhere; the same again takes the pictures back.
+A picture is a **strip**: a rectangle of cells a view keeps for pixels as
+it draws (`buf:strip`, see [Extensions](extensions.md)), under a key of its
+own, so that a view can have several, and the same view in two windows
+(`:vs`) has one in each, kept apart. The score is one strip over its
+window; the curve editor's plot (`gC`) is another. A strip is either over
+the text, with its cells left blank (the score), or **under** it: the
+view's cells are drawn as usual above the picture, so that the curve
+editor keeps its points, its cursor, the selection and the playhead as
+cells while the grid, the line and the area under it are pixels, a sample
+for each pixel across, with nothing of the curve drawn twice. A strip
+under the text is placed at a z of -2 (its moving parts at -1): in kitty,
+Ghostty (and herdr) and WezTerm the text shows above it and the picture
+above the cells' coloured backgrounds, which show through wherever it
+draws nothing. Konsole puts a coloured background above such a picture,
+which would hide it, so there, and in any terminal not known by its name,
+a strip under the text is not made and the view draws cells.
+
+`daw attach` from a terminal that shows images shows them too: it tells
+the instance what its terminal can do, and is sent each strip's drawing
+(only when it changed), which it makes into pixels itself. Where the
+terminal shows no images (tmux, which does not pass them on, a terminal
+without the protocol, `daw attach` from one) the view draws in cells as
+before. `:set graphics!` (`daw.opt.graphics = false`) keeps cells
+everywhere; the same again takes the pictures back.
 
 ## Help
 

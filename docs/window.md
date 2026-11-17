@@ -287,7 +287,11 @@ its `render` with `buf:surface(x, y, w, h)`, which is false where the
 terminal shows only cells (see "Pictures" in [The terminal
 interface](terminal.md)); `ctx.surface` then says the drawing goes there,
 `ctx.cell` is the terminal's cell size, and `ctx.fg`, `ctx.bg` its
-colours. A frontend that cannot draw a music font's glyphs is given each
+colours. That is a strip of the view's whole drawing; a view that draws
+cells can also keep strips of its own for part of itself, each drawn by a
+function, with `buf:strip(x, y, w, h, { key, draw, under })`, and
+`daw.plot` draws curves over time in them (see
+[Pictures in the terminal](extensions.md#pictures-in-the-terminal)). A frontend that cannot draw a music font's glyphs is given each
 as a path from the font's outline (`daw.canvas.glyph_outline`). `daw.canvas.palette` holds the
 window's colours under the names the window itself uses (`surface`, `lane`,
 `panel`, `well`, `control`, `line_bar`, `text`, `text_2`, `text_3`,

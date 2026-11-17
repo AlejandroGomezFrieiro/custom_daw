@@ -654,6 +654,25 @@ function M.paint(name, width, height, opts)
   return { title = window and window.title or name, ops = ops }
 end
 
+--- The operations a function draws on a painter of `px.w` by `px.h`
+--- pixels: what a strip shows (`buf:strip`). `draw(g, px)` is given the
+--- painter and `px` itself; a failure is shown where it would have drawn.
+---   local ops = daw.canvas.draw(function(g, px) g:rect(0, 0, px.w, 2, { fill = "#ffffff" }) end, { w = 80, h = 40 })
+function M.draw(draw, px)
+  local ops = {}
+  local ok, err = xpcall(draw, debug.traceback, painter(ops, 0, 0, px.w, px.h), px)
+  if not ok then
+    ops = {}
+    local g = painter(ops, 0, 0, px.w, px.h)
+    local row = 0
+    for line in tostring(err):gmatch("[^\n]+") do
+      g:text(4, 2 + row * 14, line:gsub("\t", "  "), { color = c.error })
+      row = row + 1
+    end
+  end
+  return ops
+end
+
 --- A pointer event in pixels as the terminal gives it to a view's
 --- `on_mouse`: in cells, `kind` down, up, drag or scroll_up and so on,
 --- `button`, and `mods` ("C", "A", "S"). Nil for what the terminal has no

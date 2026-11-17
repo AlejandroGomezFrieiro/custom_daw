@@ -122,6 +122,22 @@ end
 
 local function in_span(q, from, to) return q.beat >= from - EPS and q.beat <= to + EPS end
 
+--- The plot in pixels (a strip under the cells, `buf:strip`): the grid,
+--- the curve and the area under it, through `daw.plot`. A value is as high
+--- as the middle of the dot the cells would put it in (`s.sub` dots a
+--- cell down, as `daw.opt.curve_glyphs` has them), so that the points and
+--- the cursor, drawn in cells over it, sit on the line.
+function M.picture(g, px, t, points, s)
+  local track = t.track and api.track_get(t.track) or { master = true }
+  local dot = px.cell.h / (s.sub or 4)
+  daw.plot.curve(g, px, {
+    points = points, from = s.left, pixels_per_beat = s.zoom * px.cell.w,
+    frac = t.frac, flat = #points == 0 and t.flat and t.flat() or nil,
+    color = daw.draw.track_colour(track), top = dot / 2, bottom = dot / 2,
+    beats = s.zoom >= 4, markers = false,
+  })
+end
+
 local function render(win, canvas, ctx)
   local t, why = M.target(win)
   local W, H = canvas.width, canvas.height
@@ -159,9 +175,17 @@ local function render(win, canvas, ctx)
   local lines = daw.draw.beats(canvas:sub(AXIS, 1, pw, 1), s.left, span, s.zoom, 0)
   local plot = canvas:sub(AXIS, top, pw, rows)
   plot:fill(0, 0, pw, rows, " ", "Lane")
+  -- Where the terminal shows pictures, the grid and the curve are one under
+  -- the cells, which keep the points, the cursor and the playhead.
+  local pictured = plot:strip(0, 0, pw, rows, {
+    key = "curve:" .. tostring(win.id), under = true,
+    draw = function(gp, px)
+      M.picture(gp, px, t, points, { left = s.left, zoom = s.zoom, sub = daw.draw.curve_glyphs() == "braille" and 4 or 3 })
+    end,
+  })
   -- Beats only once they are far enough apart not to be noise, as in the arrange view.
   for _, line in ipairs(lines) do
-    if line.x >= 0 and line.x < pw and (line.bar or s.zoom >= 4) then
+    if not pictured and line.x >= 0 and line.x < pw and (line.bar or s.zoom >= 4) then
       plot:fill(line.x, 0, 1, rows, line.bar and g.bar or g.beat, line.bar and "LaneBar" or "LaneBeat")
     end
   end
@@ -190,7 +214,7 @@ local function render(win, canvas, ctx)
   local dots = rows * sub
   local function dot_y(v) return util.clamp(math.floor((1 - t.frac(v)) * (dots - 1) + 0.5), 0, dots - 1) end
   local have = #points > 0 or t.flat
-  if have then
+  if have and not pictured then
     if kind == "line" then
       for cx = 0, pw - 1 do
         local beat = s.left + (cx + 0.5) / s.zoom
@@ -206,7 +230,7 @@ local function render(win, canvas, ctx)
         plot:text(key % pw, math.floor(key / pw), glyph(bits), hue.fg)
       end
     end
-  else
+  elseif not have then
     plot:text(1, 0, "No points yet: `o` adds one at the cursor, `i` draws.", "Empty")
   end
 
