@@ -21,14 +21,28 @@ end
 --- a plugin with a window of its own shows it (`daw.opt.editor_on_add`), as
 --- REAPER does. Some instruments make no sound until it has been open once.
 function M.add(track, kind, opts)
+  local device = M.place(track, kind, opts)
+  M.added(device, kind, opts)
+  return device
+end
+
+--- The first half of `add`: the device on the track, set to the preset new
+--- ones start from. What the device picker tries out before it is chosen.
+function M.place(track, kind, opts)
   local device = track:add_device(kind, nil, { index = opts and opts.index })
-  M.note_used(kind, opts and opts.query)
   -- The preset the user marked as the one new instances start from.
   local default = M.default_preset(kind)
   if default then
     local ok, err = pcall(M.load, device, default)
     if not ok then daw.notify("the default preset `" .. default .. "` did not load: " .. tostring(err):match("^[^\n]*"), "warn") end
   end
+  return device
+end
+
+--- The second half of `add`, once the device is there: remembered as used,
+--- its window shown.
+function M.added(device, kind, opts)
+  M.note_used(kind, opts and opts.query)
   if daw.opt.editor_on_add and M.interactive() and device.editor == "closed" then
     local ok, err = pcall(api.device_editor, device.id, true)
     if not ok then daw.notify(tostring(err):match("^[^\n]*"), "warn") end
@@ -568,6 +582,16 @@ function M.pick(device)
       local ok, err = pcall(M.load, device, p)
       if not ok then return daw.notify(clean(err), "error") end
       daw.notify(d.name .. ": " .. p.name)
+    end,
+    -- Loaded as a trial and heard with what the track plays around the
+    -- cursor; Escape puts the device back as it was.
+    audition_key = "presets",
+    audition = function(p)
+      daw.audition.try(function() M.load(device, p) end)
+      return {
+        label = p.name .. " · " .. daw.audition.through(d.track),
+        keep = function() daw.notify(d.name .. ": " .. p.name) end,
+      }
     end,
     actions = {
       ["<C-s>"] = { desc = "default for new ones", fn = function(p)

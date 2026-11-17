@@ -201,6 +201,7 @@ See [Harmony, completion and snippets](../harmony.md).
 | `,fk` `,ft` `,fl` `,fa` `,fd` | pick a key, track, clip, device to add, device of the track |
 | `,fm` `,fr` `,fn` `,ff` `,fo` `,fp` `,f.` | marks, registers, messages, files, options, every picker, the last picker |
 | `,fR` | recent projects (`:recent 2` opens the second) |
+| `<C-Space>` | in a picker of presets, devices, files, beats or snippets: hear the item under the selection, or stop hearing it; `<Esc>` takes back what was tried |
 
 Stop half way through a sequence and the keys that can follow are listed.
 
@@ -301,7 +302,11 @@ text as in Vim; nothing changes in the project until `:w`.
 
 The notation extension (`,n` on a MIDI clip) has its own keys, listed in
 [its README](../../extensions/notation/README.md) and by `?` in the view.
-Normal mode takes the piano roll's grammar; insert mode enters notes by
-letter, a capital adds to the chord, Alt-2 to Alt-8 add an interval above,
-`~` ties, `t` enters triplets, `R` repeats the chord, and the numbers choose
-the value (5 a quarter). zg shows the engraved page as one long system.
+What is written in notation is a score kept with the clip, and the clip's
+notes play it; a plain MIDI clip is shown as it would be written, and the
+first edit (or `:score.from-midi`) writes it as a score; `:score.detach`
+makes it plain MIDI again. Normal mode takes the piano roll's grammar;
+insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
+Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
+the other voice, `R` repeats the chord, and the numbers choose the value (5
+a quarter). zg shows the engraved page as one long system.
