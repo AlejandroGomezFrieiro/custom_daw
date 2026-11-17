@@ -471,23 +471,23 @@ test("in a window of its own the plot is drawn in pixels between the cells' back
       if op[1] == "p" and not first_poly then first_poly = i end
       if op[1] == "m" then
         if op[8] == "" and not first_text and first_poly then first_text = i end
-        for cp = 0x1FB00, 0x1FB3B do
-          if op[6]:find(daw.draw.sextant(cp - 0x1FB00 + 1), 1, true) then sextants = sextants + 1 end
-        end
       end
+      -- The window draws the cells' sextants and dots as rectangles smaller than a cell.
+      if op[1] == "r" and op[4] < daw.canvas.cell.w - 0.01 and op[5] < daw.canvas.cell.h - 0.01 then sextants = sextants + 1 end
       if op[1] == "r" and i > 1 and not first_poly then last_back = i end
     end
     return kinds, sextants, first_poly, last_back, first_text
   end
   local kinds, sextants, first_poly, last_back, first_text = drawing()
   eq((kinds.p or 0) >= 2, true, "the line and the area under it, in pixels")
-  eq(sextants, 0, "and not in cells as well")
+  local dots = sextants
   eq(first_poly > last_back, true, "over the cells' backgrounds")
   eq(first_text ~= nil and first_text > first_poly, true, "and under their text")
   daw.opt.graphics = false
   T.after(function() daw.opt.graphics = true end)
-  kinds = drawing()
+  kinds, sextants = drawing()
   eq(kinds.p, nil, "graphics off: cells")
+  eq(sextants > dots + 20, true, string.format("the line in cells there and not with pictures: %d, %d", sextants, dots))
 end)
 
 -- Pictures ------------------------------------------------------------------------
