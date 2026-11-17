@@ -121,7 +121,7 @@ since) is read again from it. When the last is settled, `git add` the file.
 
 ```lua
 local pd = require("projdiff")
-local from, to = pd.file("a.json"), pd.file("b.json")
+local from, to = pd.file("a.json"), pd.file("b.json")  -- pd.file(path, true): media paths made whole
 local tree = pd.diff.diff(from.project, to.project)   -- { children, count }
 pd.diff.lines(tree)                                    -- the text of the view
 pd.diff.entries(tree)                                  -- { address, text } for paw.qf

@@ -56,12 +56,15 @@ local function with_whole_paths(doc, path)
   return doc
 end
 
---- A project file on disk, decoded.
-function M.file(path)
+--- A project file on disk, decoded as it is written. With `whole` the
+--- files it names relative to its folder are made whole, to compare with
+--- the project open.
+function M.file(path, whole)
   local content, err = read(path)
   if not content then return nil, tostring(err) end
   local doc, why = M.decode(content, path)
-  return with_whole_paths(doc, path), why
+  if whole then with_whole_paths(doc, path) end
+  return doc, why
 end
 
 --- What a revision of git holds as `path`, decoded.
@@ -118,7 +121,7 @@ local function snapshot_doc(name)
     if s.name == name then found = s end
   end
   if not found then return nil, "no snapshot named " .. name .. " (`:Psnapshot " .. name .. "` makes one)" end
-  if found.file then return M.file(found.file) end
+  if found.file then return M.file(found.file, true) end
   return { version = 1, project = memory[name] }
 end
 
@@ -145,7 +148,7 @@ function M.version(spec)
   local file = io.open(spec, "rb")
   if file then
     file:close()
-    local doc, err = M.file(spec)
+    local doc, err = M.file(spec, true)
     return doc, spec:match("[^/]*$"), err
   end
   if not project.path then return nil, spec, "the project has no file yet, so there is no revision of it: " .. spec .. " is not a file either" end
