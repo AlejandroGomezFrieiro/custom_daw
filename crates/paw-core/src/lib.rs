@@ -19,6 +19,7 @@ pub mod remote;
 pub mod resample;
 pub mod rpc;
 pub mod safe;
+pub mod scene;
 pub mod session;
 pub mod stretch;
 pub mod stretched;

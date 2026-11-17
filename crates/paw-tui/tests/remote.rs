@@ -281,6 +281,115 @@ fn a_watching_frontend_is_sent_what_changed_and_nothing_when_nothing_did() {
     assert!(quiet(&c, Duration::from_millis(300)), "no longer watching");
 }
 
+/// A window's scene as a frontend keeps it, its patches applied, and what
+/// it shows in cells as lines of text.
+fn scene_lines(scene: &paw_scene::Scene) -> Vec<String> {
+    let cells = scene.to_cells();
+    cells.cells.chunks(cells.width.max(1) as usize).map(|row| row.iter().map(|c| c.ch).collect::<String>().trim_end().to_string()).collect()
+}
+
+/// The next patch of a scene, decoded.
+fn patch(c: &Connection) -> paw_scene::Patch {
+    serde_json::from_value(event(c, "scene.patch")).expect("a patch")
+}
+
+#[test]
+fn a_frontend_is_pushed_each_windows_scene_and_then_only_what_changed() {
+    let instance = start("scenes");
+    let mut c = Connection::unix(&instance.socket).unwrap();
+    // A view of the test's own, in a window of its own: it says a count,
+    // and where the pointer went down in it.
+    c.call(
+        "eval",
+        json!(["_G.count = 0
+               paw.ui.view('probe', {
+                 render = function(_, buf)
+                   buf:text(0, 0, 'count ' .. _G.count, 'Normal')
+                   buf:text(0, 1, 'second row', 'Comment')
+                 end,
+                 on_mouse = function(_, e) if e.kind == 'down' then _G.down = e.x .. ',' .. e.y end end,
+               })
+               paw.canvas.open_view('probe')"]),
+    )
+    .unwrap();
+    c.call("scene.watch", json!([{ "cell": { "w": 8, "h": 16 } }])).unwrap();
+    assert!(quiet(&c, Duration::from_millis(300)), "nothing is sent of a window whose size is not said");
+    c.call("scene.area", json!(["view:probe", 20, 3])).unwrap();
+    let first = patch(&c);
+    assert_eq!((first.win.as_str(), first.full), ("view:probe", true), "the whole scene at first");
+    let mut scene = paw_scene::Scene::default();
+    scene.apply(&first);
+    assert_eq!(scene.size, [20.0, 3.0]);
+    assert_eq!(&scene_lines(&scene)[..2], ["count 0", "second row"]);
+    assert!(quiet(&c, Duration::from_millis(400)), "an idle kernel sends nothing");
+    // A change sends what it changed, and nothing else.
+    c.call("eval", json!(["_G.count = 1 paw.api.ui_redraw()"])).unwrap();
+    let next = patch(&c);
+    assert!(!next.full);
+    let keys: Vec<&str> = next.set.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["t0,0"], "only the count");
+    scene.apply(&next);
+    assert_eq!(scene_lines(&scene)[0], "count 1");
+    // The pointer comes back in the same units, as the view takes it.
+    c.call("scene.input", json!(["view:probe", { "kind": "down", "x": 3.5, "y": 1.2, "button": "left" }])).unwrap();
+    let down = c.call("eval", json!(["return _G.down"])).unwrap();
+    assert_eq!(down, json!("3,1"));
+    // A window the frontend no longer shows is forgotten; shown again, it
+    // is sent whole.
+    c.call("scene.area", json!(["view:probe", 0, 0])).unwrap();
+    while !quiet(&c, Duration::from_millis(300)) {}
+    c.call("eval", json!(["_G.count = 2 paw.api.ui_redraw()"])).unwrap();
+    assert!(quiet(&c, Duration::from_millis(300)), "nothing for a window not shown");
+    c.call("scene.area", json!(["view:probe", 20, 3])).unwrap();
+    let again = patch(&c);
+    assert!(again.full);
+    let mut scene = paw_scene::Scene::default();
+    scene.apply(&again);
+    assert_eq!(scene_lines(&scene)[0], "count 2");
+}
+
+#[test]
+fn a_big_drawing_is_fetched_once_by_its_key_and_live_values_are_pushed() {
+    let instance = start("blobs");
+    let mut c = Connection::unix(&instance.socket).unwrap();
+    // A view that paints thousands of rectangles, in a window of its own.
+    c.call(
+        "eval",
+        json!(["paw.ui.view('many', { paint = function(_, g, ctx)
+                 for i = 0, 2999 do g:rect(i % 100, math.floor(i / 100), 1, 1, { fill = '#ffffff' }) end
+               end })
+               paw.canvas.open('many', { window = true })
+               local t = paw.add_track({ name = 'Lead' })
+               t:add_clip({ start = 0, length = 64 })"]),
+    )
+    .unwrap();
+    c.call("scene.watch", json!([{ "cell": { "w": 8, "h": 16 }, "live": true }])).unwrap();
+    c.call("scene.area", json!(["view:many", 30, 10])).unwrap();
+    let first = patch(&c);
+    let paw_scene::Kind::Picture(picture) = &first.set[0].kind else { panic!("a picture: {:?}", first.set[0]) };
+    assert_eq!(picture.px, [240.0, 160.0], "painted at the window's size in pixels");
+    let key = picture.blob.clone().expect("too big to send each time: sent by its key");
+    let ops = c.call("scene.blob", json!([key])).unwrap();
+    assert_eq!(ops.as_array().map(Vec::len), Some(3000));
+    // The playhead and the meters come as live values, not as scenes.
+    c.call("cmd", json!(["transport.play"])).unwrap();
+    let mut moved = false;
+    for _ in 0..40 {
+        let live = event(&c, "scene.live");
+        if live["playing"] == true && live["position"].as_f64().unwrap_or(0.0) > 0.0 {
+            assert!(live["meters"].as_object().is_some_and(|m| !m.is_empty()), "a meter for the track: {live}");
+            moved = true;
+            break;
+        }
+    }
+    assert!(moved, "the position is pushed while playing");
+    c.call("cmd", json!(["transport.stop"])).unwrap();
+    c.call("scene.unwatch", json!([])).unwrap();
+    while !quiet(&c, Duration::from_millis(300)) {}
+    c.call("eval", json!(["paw.api.ui_redraw()"])).unwrap();
+    assert!(quiet(&c, Duration::from_millis(300)), "no longer watching");
+}
+
 /// The screen a terminal attached over `c` shows, as lines of text, once
 /// `ready` says it holds what is waited for.
 fn screen(c: &Connection, grid: &mut Grid, ready: impl Fn(&str) -> bool) -> String {

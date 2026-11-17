@@ -163,7 +163,9 @@ end
 
 --- A pointer event in a pane, in pixels from its corner (as
 --- `paw.canvas.pointer` takes them): a press gives it the keyboard first.
-function M.pointer(id, event)
+--- `drawn`, for a pane drawn in cells, says how: its `cell`, `cols` and
+--- `rows` (what `paint` drew last, without).
+function M.pointer(id, event, drawn)
   local win = window(id)
   if not win then return end
   if event.kind == "down" then M.focus(id) end
@@ -172,9 +174,9 @@ function M.pointer(id, event)
   if view.paint then
     if view.pointer then view:pointer(event) end
   else
-    local e = paw.canvas.cell_event(cells[id] or {}, event, true)
+    drawn = drawn or cells[id] or {}
+    local e = paw.canvas.cell_event(drawn, event, true)
     if e and view.on_mouse then
-      local drawn = cells[id] or {}
       e.win, e.w, e.h = id, drawn.cols, drawn.rows
       paw.limit.named("the mouse", paw.mouse.to_view, view, e)
     end

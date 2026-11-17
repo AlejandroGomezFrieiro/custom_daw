@@ -716,6 +716,38 @@ function M.render_view(name, buf)
   draw(view, buf, { focused = focused, x = 0, y = 0, win = win })
 end
 
+--- Draw one view by itself as a scene for a graphical frontend (see
+--- crates/paw-scene), `w` by `h` units big (fractions allowed), `cell` the
+--- frontend's cell `{ w, h }` in pixels, `win` the window of the layout it
+--- shows in, if any. What `render_view` writes in the whole cells is the
+--- scene's runs and fills, and the strips the view keeps under them its
+--- pictures; a view that paints is one picture of the whole. The scene
+--- stays with the kernel for `paw.api.scene_end` to say what changed of it.
+function M.render_scene(name, w, h, cell, win)
+  local view = M.views[name]
+  api.scene_begin(w, h)
+  if view and view.paint then
+    local px = { w * cell.w, h * cell.h }
+    local drawing = paw.canvas.paint(name, px[1], px[2], { cell = cell, glyphs = true })
+    api.scene_picture({ x = 0, y = 0, w = w, h = h }, { ops = drawing and drawing.ops or {}, px = px })
+    return
+  end
+  M.view_win, M.pictures = win, {}
+  local ok, err = pcall(api.scene_draw, name, math.floor(w), math.floor(h))
+  local pictures = M.pictures
+  M.view_win, M.pictures = nil, nil
+  if not ok then error(err, 0) end
+  for _, p in ipairs(pictures) do
+    -- The whole strip, cut to the part that shows.
+    local px = { w = p.whole_w * cell.w, h = p.whole_h * cell.h, cell = { w = cell.w, h = cell.h },
+      view = { x = p.left * cell.w, y = p.top * cell.h, w = p.w * cell.w, h = p.h * cell.h } }
+    api.scene_picture({ x = p.x - p.left, y = p.y - p.top, w = p.whole_w, h = p.whole_h }, {
+      ops = paw.canvas.draw(p.draw, px), px = { px.w, px.h }, under = true,
+      clip = { x = p.x, y = p.y, w = p.w, h = p.h },
+    })
+  end
+end
+
 --- List the keys that can follow a half-typed command, in a box along the
 --- bottom of the screen.
 function M.draw_hints(buf)

@@ -2910,9 +2910,11 @@ dependencies = [
  "paw-listen",
  "paw-proto",
  "paw-raster",
+ "paw-scene",
  "serde_json",
  "skrifa",
  "tiny-skia",
+ "unicode-width",
 ]
 
 [[package]]
@@ -3007,6 +3009,7 @@ dependencies = [
  "paw-luadev",
  "paw-plugins",
  "paw-raster",
+ "paw-scene",
  "serde_json",
 ]
 
