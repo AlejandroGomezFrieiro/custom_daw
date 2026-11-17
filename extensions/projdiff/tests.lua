@@ -3,6 +3,18 @@ local T = ...
 local test, eq, fresh, scratch = T.test, T.eq, T.fresh, T.scratch
 local api = paw.api
 
+--- The messages shown since `mark` (the last one when it was taken): the
+--- list keeps the last 500, so it is followed by the message, not counted.
+local function since(mark)
+  local out, after = {}, mark == nil
+  for _, m in ipairs(paw.ui.messages) do
+    if after then out[#out + 1] = m end
+    if m == mark then after = true end
+  end
+  return out
+end
+local function mark() return paw.ui.messages[#paw.ui.messages] end
+
 local projdiff
 
 local function load()
@@ -472,10 +484,10 @@ test("projdiff: a reopened project with audio differs in nothing, edits not yet 
   end
   eq(found and found:match('"odd", .*'), '"odd", at beat 16, 0.8 beats long, 0 notes', "a length reads without floating point's noise")
   paw.keymap.feed("q")
-  local from = #paw.ui.messages
+  local from = mark()
   paw.cmd("Pdiff", { "#0" })
   local levels = {}
-  for i = from + 1, #paw.ui.messages do levels[#levels + 1] = paw.ui.messages[i].level .. ": " .. paw.ui.messages[i].text end
+  for _, m in ipairs(since(from)) do levels[#levels + 1] = m.level .. ": " .. m.text end
   eq(table.concat(levels, "; "), "warn: there is no undo state #0: the states are numbered from 1, as the undo tree shows them",
     "#0 is said plainly")
   if paw.ui.float then paw.keymap.feed("q") end

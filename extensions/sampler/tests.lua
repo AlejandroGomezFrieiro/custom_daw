@@ -5,6 +5,18 @@ local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
 local api = paw.api
 
+--- The messages shown since `mark` (the last one when it was taken): the
+--- list keeps the last 500, so it is followed by the message, not counted.
+local function since(mark)
+  local out, after = {}, mark == nil
+  for _, m in ipairs(paw.ui.messages) do
+    if after then out[#out + 1] = m end
+    if m == mark then after = true end
+  end
+  return out
+end
+local function mark() return paw.ui.messages[#paw.ui.messages] end
+
 local sampler
 local function load()
   if not sampler then
@@ -156,7 +168,7 @@ test("sampler: a file that is not there, or not an instrument, is said so in a l
   if not track then return device end
   paw.cursor.set_track(track)
   paw.ui.focus("arrange")
-  local from = #paw.ui.messages
+  local from = mark()
   paw.commands.exec("sampler.load " .. T.scratch .. "/nonexistent.sfz")
   eq(paw.ui.message and paw.ui.message.text, "sampler: no such file: " .. T.scratch .. "/nonexistent.sfz", "a missing file is said so")
   local bytes = {}
@@ -176,7 +188,7 @@ test("sampler: a file that is not there, or not an instrument, is said so in a l
   paw.commands.exec("sampler.track " .. T.scratch .. "/nonexistent.sfz")
   eq(paw.ui.message and paw.ui.message.text, "sampler: no such file: " .. T.scratch .. "/nonexistent.sfz", "and when making a track")
   local said = {}
-  for i = from + 1, #paw.ui.messages do said[#said + 1] = paw.ui.messages[i].text end
+  for _, m in ipairs(since(from)) do said[#said + 1] = m.text end
   local text = table.concat(said, "\n")
   eq(text:find("traceback", 1, true), nil, "no stack trace: " .. text)
   eq(text:find("junk", 1, true) ~= nil, true, "the file is named: " .. text)

@@ -27,11 +27,22 @@ local function song(notes, length)
   return view, clip, track
 end
 
---- The errors shown since message `from`.
+--- The messages shown since `mark` (the last one when it was taken): the
+--- list keeps the last 500, so it is followed by the message, not counted.
+local function since(mark)
+  local out, after = {}, mark == nil
+  for _, m in ipairs(paw.ui.messages) do
+    if after then out[#out + 1] = m end
+    if m == mark then after = true end
+  end
+  return out
+end
+local function mark() return paw.ui.messages[#paw.ui.messages] end
+
+--- The errors shown since `from` (a `mark()`).
 local function errors(from)
   local out = {}
-  for i = from + 1, #paw.ui.messages do
-    local m = paw.ui.messages[i]
+  for _, m in ipairs(since(from)) do
     if m.level == "error" then out[#out + 1] = m.text:match("[^\n]*") end
   end
   return out
@@ -54,7 +65,7 @@ test("notation: every key of the view says the clip is gone when an undo took it
   eq(view:clip(), nil, "the clip is gone")
   local screen = table.concat(api.ui_snapshot(120, 30), "\n")
   eq(screen:find("gone: undone or deleted", 1, true) ~= nil, true, "the view says so")
-  local from, tried = #paw.ui.messages, 0
+  local from, tried = mark(), 0
   for _, m in ipairs(paw.keymap.list("n", "notation")) do
     if m.scope == "notation" and not LEAVE[m.lhs] then
       paw.ui.focus("notation")
@@ -118,7 +129,7 @@ end)
 test("notation: entering and moving notes at the top of the MIDI range stops at G9 and raises no error", function()
   local view, clip = song({}, 4)
   paw.ui.focus("notation")
-  local from = #paw.ui.messages
+  local from = mark()
   view:set(72, 0)
   T.keys("ieabgab<Esc>")
   T.keys("0kkkkk<C-a><C-a>")
