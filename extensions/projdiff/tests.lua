@@ -444,3 +444,39 @@ test("projdiff: git shows a project as text and merges two branches that changed
   eq(git("status --porcelain"):find("UU song.json", 1, true) ~= nil, true, "git says it is unmerged")
   os.execute("rm -rf '" .. root .. "'")
 end)
+
+test("projdiff: a reopened project with audio differs in nothing, edits not yet an undo step count, and #0 and odd lengths read well", function()
+  start()
+  local dir = scratch .. "/pdiff-media"
+  os.execute("rm -rf '" .. dir .. "' && mkdir -p '" .. dir .. "/media'")
+  local s = {}
+  for i = 1, 4800 do s[i] = 0.1 end
+  local wav = T.write_wav(dir .. "/media/tone.wav", s)
+  local t = paw.add_track({ name = "Audio" })
+  t:add_clip({ file = wav, start = 0, length = 2 })
+  api.undo_checkpoint()
+  local path = dir .. "/song.json"
+  api.project_save(path)
+  eq(T.read_file(path):find('"media/tone.wav"', 1, true) ~= nil, true, "the file names its media relative to itself")
+  api.project_load(path)
+  paw.cmd("Pdiff")
+  eq(paw.ui.message and paw.ui.message.text, "saved → now: 0 changes (nothing differs)", "nothing differs after reopening")
+  -- An edit from Lua that no key made an undo step of.
+  paw.tracks()[1]:add_clip({ name = "odd", start = 16, length = 0.1 + 0.7 })
+  paw.cmd("Pdiff")
+  local view = require("projdiff.view")
+  eq(view.title_text:find("saved → now: 1 change", 1, true) ~= nil, true, "the edit is seen: " .. tostring(view.title_text))
+  local found
+  for _, row in ipairs(view.rows) do
+    if row.node.text:find("odd", 1, true) then found = row.node.text end
+  end
+  eq(found and found:match('"odd", .*'), '"odd", at beat 16, 0.8 beats long, 0 notes', "a length reads without floating point's noise")
+  paw.keymap.feed("q")
+  local from = #paw.ui.messages
+  paw.cmd("Pdiff", { "#0" })
+  local levels = {}
+  for i = from + 1, #paw.ui.messages do levels[#levels + 1] = paw.ui.messages[i].level .. ": " .. paw.ui.messages[i].text end
+  eq(table.concat(levels, "; "), "warn: there is no undo state #0: the states are numbered from 1, as the undo tree shows them",
+    "#0 is said plainly")
+  if paw.ui.float then paw.keymap.feed("q") end
+end)

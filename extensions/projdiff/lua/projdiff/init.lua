@@ -34,11 +34,34 @@ function M.decode(content, what)
   return doc
 end
 
+--- The files a decoded project names (a clip's audio, a take's, a frozen
+--- track's: every `file`), made whole from the folder `dir` where a file
+--- names them relative to itself; the project open holds them whole, and
+--- the same file must not read as a change.
+local function whole_paths(node, dir)
+  for k, v in pairs(node) do
+    if k == "file" and type(v) == "string" and v ~= "" and v:sub(1, 1) ~= "/" then
+      node[k] = dir .. "/" .. v
+    elseif type(v) == "table" then
+      whole_paths(v, dir)
+    end
+  end
+end
+
+local function with_whole_paths(doc, path)
+  if not doc then return doc end
+  local dir = path:match("^(.*)/[^/]*$") or "."
+  if dir:sub(1, 1) ~= "/" then dir = (os.getenv("PWD") or ".") .. (dir == "." and "" or "/" .. dir) end
+  whole_paths(doc.project, dir)
+  return doc
+end
+
 --- A project file on disk, decoded.
 function M.file(path)
   local content, err = read(path)
   if not content then return nil, tostring(err) end
-  return M.decode(content, path)
+  local doc, why = M.decode(content, path)
+  return with_whole_paths(doc, path), why
 end
 
 --- What a revision of git holds as `path`, decoded.
@@ -52,13 +75,19 @@ function M.git(rev, path)
   local content = show and show:read("*a") or ""
   if show then show:close() end
   if content == "" then return nil, "git has no " .. name .. " at " .. rev end
-  return M.decode(content, name .. " at " .. rev)
+  local doc, err = M.decode(content, name .. " at " .. rev)
+  return with_whole_paths(doc, path), err
 end
 
---- The project as it is in an undo state (the current one by default).
+--- The project as it is in an undo state; by default as it is now, the
+--- edits not yet made a step of undo with it.
 function M.state(id)
+  if id == nil then paw.api.undo_checkpoint() end
   local ok, project = pcall(paw.api.undo_project, id)
-  if not ok then return nil, tostring(project):match("[^\n]*") end
+  if not ok then
+    if id then return nil, string.format("there is no undo state #%d: the states are numbered from 1, as the undo tree shows them", id) end
+    return nil, tostring(project):match("[^\n]*"):gsub("^runtime error: ", "")
+  end
   return { version = 1, project = project }
 end
 
@@ -79,7 +108,7 @@ function M.snapshot(name)
     local made = paw.api.checkpoint_write(name)
     return name, made.file
   end
-  memory[name] = paw.api.undo_project(nil)
+  memory[name] = M.state(nil).project
   return name
 end
 

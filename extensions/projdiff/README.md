@@ -143,6 +143,12 @@ one change is a small diff. The project's name is taken from the file's name
 the first time it is saved, so a copy saved under another name differs in
 that one line.
 
+"The project now" is the project with every edit in it, those a script
+made without an undo step included: `:Pdiff` closes the open undo step
+first. Media files the file names relative to its folder (`media/a.wav`)
+are compared as the whole paths the open project holds, so reopening a
+project shows no change. Numbers are shown to four decimals.
+
 The views are drawn in cells, like every extension's view that has no
 painted twin, so the graphical frontend draws them as the terminal does
 (docs/extensions.md, "One interface, both frontends").
