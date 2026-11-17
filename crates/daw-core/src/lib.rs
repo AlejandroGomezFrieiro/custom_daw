@@ -2,6 +2,7 @@
 //! state that everything user-facing is written in.
 
 pub mod api;
+pub mod attr_map;
 pub mod audio;
 pub mod grid;
 pub mod history;

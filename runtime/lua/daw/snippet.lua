@@ -316,7 +316,7 @@ local function write(state, result)
   for _, n in ipairs(result.notes) do
     local s = (n.start or n.at) - start
     if s >= -1e-9 then
-      list[#list + 1] = { pitch = n.pitch, start = math.max(0, s), length = n.length, velocity = n.velocity or daw.opt.velocity, meta = n.meta }
+      list[#list + 1] = { pitch = n.pitch, start = math.max(0, s), length = n.length, velocity = n.velocity or daw.opt.velocity, meta = n.meta, attr = n.attr }
       finish = math.max(finish, s + n.length)
     end
   end

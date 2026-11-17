@@ -25,6 +25,7 @@ use clap_sys::ext::gui::{
     clap_window, clap_window_handle,
 };
 use clap_sys::ext::log::{CLAP_EXT_LOG, clap_host_log, clap_log_severity};
+use clap_sys::ext::note_name::{CLAP_EXT_NOTE_NAME, clap_note_name, clap_plugin_note_name};
 use clap_sys::ext::note_ports::{
     CLAP_EXT_NOTE_PORTS, CLAP_NOTE_DIALECT_CLAP, CLAP_NOTE_DIALECT_MIDI, CLAP_NOTE_DIALECT_MIDI2,
     clap_note_port_info, clap_plugin_note_ports,
@@ -161,7 +162,17 @@ fn list(path: &Path) -> Result<Vec<Found>> {
 }
 
 pub(crate) fn scan(registry: &mut Registry, cache: &mut Cache, notes: &mut Vec<String>) {
-    for path in find_bundles(&search_dirs("CLAP_PATH", "clap"), "clap") {
+    scan_in(registry, cache, notes, &search_dirs("CLAP_PATH", "clap"));
+}
+
+/// Register the plugins in the `.clap` files under `dirs`.
+pub(crate) fn scan_in(
+    registry: &mut Registry,
+    cache: &mut Cache,
+    notes: &mut Vec<String>,
+    dirs: &[PathBuf],
+) {
+    for path in find_bundles(dirs, "clap") {
         // A `.clap` is a single shared library on Linux.
         if path.is_dir() {
             continue;
@@ -343,8 +354,11 @@ impl DeviceFactory for ClapFactory {
                 sidechain: key_port.is_some(),
                 outputs: crate::pair_names(&out_pairs),
             };
-            let dialects = note_dialects(plugin);
-            let clap_notes = dialects & CLAP_NOTE_DIALECT_CLAP != 0;
+            let (dialects, preferred) = note_dialects(plugin);
+            // Notes go as CLAP's own events unless the plugin prefers MIDI
+            // 2.0, which alone carries a note's attribute (an articulation).
+            let clap_notes =
+                dialects & CLAP_NOTE_DIALECT_CLAP != 0 && preferred != CLAP_NOTE_DIALECT_MIDI2;
             // A channel's controllers, the pitch wheel, pressure and program
             // changes only exist as MIDI: 2.0 when the plugin takes it.
             let midi2 = dialects & CLAP_NOTE_DIALECT_MIDI2 != 0;
@@ -444,21 +458,52 @@ unsafe fn port_infos(
     }
 }
 
-unsafe fn note_dialects(plugin: *const clap_plugin) -> u32 {
+/// The note dialects the plugin's first note input takes, and the one it
+/// prefers.
+unsafe fn note_dialects(plugin: *const clap_plugin) -> (u32, u32) {
     unsafe {
         let ports: *const clap_plugin_note_ports = extension(plugin, CLAP_EXT_NOTE_PORTS);
         let Some(ports) = ports.as_ref() else {
-            return 0;
+            return (0, 0);
         };
         let (Some(count), Some(get)) = (ports.count, ports.get) else {
-            return 0;
+            return (0, 0);
         };
         let mut info: clap_note_port_info = std::mem::zeroed();
         if count(plugin, true) > 0 && get(plugin, 0, true, &mut info) {
-            info.supported_dialects
+            (info.supported_dialects, info.preferred_dialect)
         } else {
-            0
+            (0, 0)
         }
+    }
+}
+
+/// What the plugin calls its keys (`clap.note-name`), as JSON: `{ "36":
+/// "Kick", "24": "Sustain" }`, for keys of its first port on every channel
+/// or the first. Empty when it names none.
+unsafe fn note_names(plugin: *const clap_plugin) -> Vec<u8> {
+    unsafe {
+        let mut names = serde_json::Map::new();
+        let ext: *const clap_plugin_note_name = extension(plugin, CLAP_EXT_NOTE_NAME);
+        if let Some(ext) = ext.as_ref()
+            && let (Some(count), Some(get)) = (ext.count, ext.get)
+        {
+            for index in 0..count(plugin) {
+                let mut name: clap_note_name = std::mem::zeroed();
+                let ours = |n: &clap_note_name| {
+                    (n.port == -1 || n.port == 0) && matches!(n.channel, -1 | 0)
+                };
+                if !get(plugin, index, &mut name) || !ours(&name) {
+                    continue;
+                }
+                let text = text(name.name.as_ptr());
+                // A name for every key (-1) is no name for any one key.
+                if (0..128).contains(&name.key) && !text.is_empty() {
+                    names.insert(name.key.to_string(), text.into());
+                }
+            }
+        }
+        serde_json::to_vec(&names).unwrap_or_default()
     }
 }
 
@@ -1167,6 +1212,7 @@ impl Controller for ClapController {
                 self.shared.flags.rescan.store(true, Relaxed);
                 Ok(Vec::new())
             },
+            "note-names" => Ok(unsafe { note_names(self.shared.plugin) }),
             _ => unsafe {
                 let ext: *const PawPluginCall = extension(self.shared.plugin, PAW_EXT_CALL);
                 let call = ext

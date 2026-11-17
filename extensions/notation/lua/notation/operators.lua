@@ -229,7 +229,7 @@ function P.value(sc, frag)
   local clip = view:clip()
   for _, n in ipairs(clip and clip:notes() or {}) do
     if n.id and ids["n" .. n.id] then
-      notes[#notes + 1] = { pitch = n.pitch, start = n.start - from, length = n.length, velocity = n.velocity, meta = n.meta }
+      notes[#notes + 1] = { pitch = n.pitch, start = n.start - from, length = n.length, velocity = n.velocity, meta = n.meta, attr = n.attr }
       top = math.max(top, n.pitch)
     end
   end

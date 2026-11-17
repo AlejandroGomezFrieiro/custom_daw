@@ -176,7 +176,7 @@ function E.paste(clip, rows, value, row, beat, step)
   end
   local add, finish = {}, beat
   for _, n in ipairs(value.notes) do
-    local note = { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity, meta = n.meta }
+    local note = { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity, meta = n.meta, attr = n.attr }
     if value.shape ~= "line" then note.start = beat + n.start end
     if value.kind == "drums" and value.shape ~= "char" and n.row then
       local target = rows[row + n.row]

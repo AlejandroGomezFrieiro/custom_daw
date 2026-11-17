@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use daw_engine::device::{Instance, Io};
-use daw_engine::{Event, EventBuf, EventKind, ProcessCtx};
+use daw_engine::{Attr, Event, EventBuf, EventKind, ProcessCtx};
 
 /// A script written to a file of its own.
 fn script(name: &str, text: &str) -> PathBuf {
@@ -97,7 +97,7 @@ fn events_are_passed_on_with_those_sent_in_order() {
           for i = b.nevents - 1, 0, -1 do
             local e = b.events[i]
             if e.type == dsp.NOTE_ON then
-              b:note_on(e.frame + 5, e.key + 12, e.value / 2, e.channel)
+              b:note_on(e.frame + 5, e.key + 12, e.value / 2, e.channel, e.attr)
             elseif e.type == dsp.OTHER then
               b:pass(e, 0)
             end
@@ -106,12 +106,18 @@ fn events_are_passed_on_with_those_sent_in_order() {
         return dev
         "#,
     );
+    // The second note carries an articulation, which the note made from it keeps.
+    let pizz = Attr {
+        kind: 0x11,
+        data: 0xA000,
+    };
     let on = |frame, key| Event {
         frame,
         kind: EventKind::NoteOn {
             key,
             vel: 0.5,
             ch: 3,
+            attr: if key == 62 { pizz } else { Attr::NONE },
         },
     };
     let bend = Event {
@@ -134,8 +140,19 @@ fn events_are_passed_on_with_those_sent_in_order() {
         EventKind::NoteOn {
             key: 72,
             vel: 0.25,
-            ch: 3
+            ch: 3,
+            attr: Attr::NONE,
         }
+    );
+    assert_eq!(
+        out[4].kind,
+        EventKind::NoteOn {
+            key: 74,
+            vel: 0.25,
+            ch: 3,
+            attr: pizz,
+        },
+        "a note's attribute, read and sent by the script"
     );
     assert_eq!(out[1].kind, bend.kind, "an event the library does not describe, as it came");
 

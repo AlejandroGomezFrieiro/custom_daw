@@ -488,6 +488,7 @@ mod tests {
                     key,
                     vel: 1.0,
                     ch: 0,
+                    attr: crate::event::Attr::NONE,
                 },
             });
         }

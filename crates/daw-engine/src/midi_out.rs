@@ -64,7 +64,12 @@ pub fn clock_ns() -> u64 {
 pub fn on_channel(kind: EventKind, ch: Option<u8>) -> EventKind {
     let Some(to) = ch else { return kind };
     match kind {
-        EventKind::NoteOn { key, vel, .. } => EventKind::NoteOn { key, vel, ch: to },
+        EventKind::NoteOn { key, vel, attr, .. } => EventKind::NoteOn {
+            key,
+            vel,
+            ch: to,
+            attr,
+        },
         EventKind::NoteOff { key, .. } => EventKind::NoteOff { key, ch: to },
         EventKind::Control { ctl, value, .. } => EventKind::Control { ctl, value, ch: to },
         EventKind::NoteControl {

@@ -474,7 +474,9 @@ pub fn sync(
         let prev = old_tracks.get(&track.id).copied();
         // A track the engine had no room for is built whole once there is room.
         let fresh = !map.tracks.contains_key(&track.id);
-        if !fresh && prev.is_some_and(|p| Arc::ptr_eq(p, track)) {
+        // Notes an attribute map moves by seconds land by the tempo map.
+        let retimed_notes = retimed && track.attr_map.as_ref().is_some_and(|m| m.has_delay());
+        if !fresh && prev.is_some_and(|p| Arc::ptr_eq(p, track)) && !retimed_notes {
             continue;
         }
         if fresh {
@@ -563,8 +565,10 @@ pub fn sync(
             send(Msg::SetChain { track: slot, chain });
         }
 
-        let same_clips = prev.is_some_and(|p| {
-            p.clips.len() == track.clips.len()
+        let same_clips = !retimed_notes
+            && prev.is_some_and(|p| {
+            p.attr_map == track.attr_map
+                && p.clips.len() == track.clips.len()
                 && p.clips
                     .iter()
                     .zip(&track.clips)
@@ -578,8 +582,10 @@ pub fn sync(
             });
         }
 
-        let same_slots = prev.map_or(track.slots.is_empty(), |p| {
-            p.slots.len() == track.slots.len()
+        let same_slots = !(retimed_notes && !track.slots.is_empty())
+            && prev.map_or(track.slots.is_empty(), |p| {
+            p.attr_map == track.attr_map
+                && p.slots.len() == track.slots.len()
                 && p.slots
                     .iter()
                     .zip(&track.slots)
@@ -1190,7 +1196,8 @@ fn compile_clip(clip: &Clip, notes: &[Note], controls: &[Control]) -> Arc<[MidiE
         {
             let end = (note.start + note.length).min(clip.length);
             let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
-            set.push_note(clip.start + note.start, clip.start + end, note.pitch, vel);
+            let (start, end) = (clip.start + note.start, clip.start + end);
+            set.push_note_attr(start, end, note.pitch, vel, attr_of(note));
         }
         set.finish();
         return set.midi.into();
@@ -1209,12 +1216,18 @@ fn compile_clip(clip: &Clip, notes: &[Note], controls: &[Control]) -> Arc<[MidiE
             if at >= 0.0 && at < clip.length {
                 let stop = (at + note.length).min(end);
                 let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
-                set.push_note(clip.start + at, clip.start + stop, note.pitch, vel);
+                let (start, stop) = (clip.start + at, clip.start + stop);
+                set.push_note_attr(start, stop, note.pitch, vel, attr_of(note));
             }
         }
     }
     set.finish();
     set.midi.into()
+}
+
+/// A note's attribute as the engine has it.
+fn attr_of(note: &Note) -> daw_engine::Attr {
+    note.attr.map_or(daw_engine::Attr::NONE, Into::into)
 }
 
 /// Where each repeat of a looped clip begins and ends, from the clip's
@@ -1387,7 +1400,17 @@ fn build_clips(
     }
     set.finish();
     map.clip_events.insert(track.id, kept);
+    downgrade(track, &mut set, tempo);
     set
+}
+
+/// What the track's attribute map sends, put among its events.
+fn downgrade(track: &Track, set: &mut ClipSet, tempo: &daw_engine::TempoMap) {
+    // A map is checked when it is set; one that no longer reads (from a
+    // file edited by hand) plays as if there were none.
+    if let Some(plan) = track.attr_map.as_ref().and_then(|m| m.plan().ok()) {
+        crate::attr_map::downgrade(set, &plan, tempo);
+    }
 }
 
 /// The regions an audio clip plays, once its sound is at hand.
@@ -1421,7 +1444,8 @@ fn build_slots(track: &Track, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -
         let mut clips = ClipSet::default();
         match &clip.content {
             ClipContent::Midi { notes, controls } => {
-                clips.midi = compile_clip(clip, notes, controls).to_vec()
+                clips.midi = compile_clip(clip, notes, controls).to_vec();
+                downgrade(track, &mut clips, tempo);
             }
             ClipContent::Audio { file, offset, gain } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut clips.audio)

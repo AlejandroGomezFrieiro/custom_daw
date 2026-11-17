@@ -16,7 +16,7 @@ use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 
-use crate::event::EventKind;
+use crate::event::{Attr, EventKind};
 use crate::samples::{DiskStore, Samples, Sink, store_name};
 
 #[derive(Clone, Copy, Debug)]
@@ -303,13 +303,37 @@ pub struct ClipSet {
     /// Sorted by beat, with note-offs before note-ons on the same beat.
     pub midi: Vec<MidiEv>,
     pub audio: Vec<AudioRegion>,
+    /// Where what the track's instrument is told to play changes (the
+    /// keyswitches and controllers its notes' attributes are turned into),
+    /// by beat: what playing from a place after it sends again first.
+    pub switches: Vec<Switch>,
+    /// The events of each switch, `Switch::events` into this.
+    pub switch_events: Vec<EventKind>,
+}
+
+/// One change of what the instrument is told to play: from `beat` on, the
+/// events `switch_events[events]` are in force.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Switch {
+    pub beat: f64,
+    pub events: std::ops::Range<usize>,
 }
 
 impl ClipSet {
     pub fn push_note(&mut self, start: f64, end: f64, key: u8, vel: f32) {
+        self.push_note_attr(start, end, key, vel, Attr::NONE);
+    }
+
+    /// A note with a MIDI 2.0 attribute on its start.
+    pub fn push_note_attr(&mut self, start: f64, end: f64, key: u8, vel: f32, attr: Attr) {
         self.midi.push(MidiEv {
             beat: start,
-            kind: EventKind::NoteOn { key, vel, ch: 0 },
+            kind: EventKind::NoteOn {
+                key,
+                vel,
+                ch: 0,
+                attr,
+            },
         });
         self.midi.push(MidiEv {
             beat: end,
@@ -334,5 +358,17 @@ impl ClipSet {
         };
         self.midi
             .sort_by(|a, b| a.beat.total_cmp(&b.beat).then(rank(a).cmp(&rank(b))));
+    }
+
+    /// The events of the last switch before `beat`, if any.
+    pub fn switch_before(&self, beat: f64) -> &[EventKind] {
+        let at = self.switches.partition_point(|s| s.beat < beat);
+        match at.checked_sub(1).and_then(|i| self.switches.get(i)) {
+            Some(switch) => self
+                .switch_events
+                .get(switch.events.clone())
+                .unwrap_or_default(),
+            None => &[],
+        }
     }
 }

@@ -525,6 +525,19 @@ M.field("vel", { level = "note", type = "number", min = 1, max = 127, desc = "ve
 M.field("len", { level = "note", type = "beats", min = 1 / 64, desc = "length in beats, or as a note value: `1/8`",
   get = function(item) return item.note.length end,
   set = function(_, value, change) change.length = value end })
+M.field("attr", { level = "note", type = "text",
+  desc = "the note's articulation as an M2-123 code (`11.A`, `10.2.3`), `none` for none",
+  get = function(item)
+    local a = item.note.attr
+    if not a then return "none" end
+    return daw.attr.m2(a) or string.format("%X:%04X", a.type, a.data or 0)
+  end,
+  set = function(_, value, change)
+    if value == "none" or value == "" then change.attr = false return end
+    local ok, attr = pcall(daw.attr.m2, value)
+    if not ok then fail("`attr=%s`: %s", value, tostring(attr):gsub("^[^:]*:%d+: ", "")) end
+    change.attr = attr
+  end })
 M.field("beat", { level = "note", type = "number", desc = "where in its bar the note starts: 1 is the downbeat, 2.5 the and of 2",
   get = function(item)
     local start = daw.time.bar_floor(item.at)

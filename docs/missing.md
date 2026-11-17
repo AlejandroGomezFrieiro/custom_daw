@@ -220,6 +220,22 @@
   it.
 - MPE for plugins that take only MIDI 1.0 (LV2, some CLAP): a note's own
   bend and controllers do not reach them; MPE is a form of MIDI output only.
+- A note's MIDI 2.0 attribute (articulations): a note's velocity stays
+  seven bits (1 to 127) in the project, though MIDI 2.0's sixteen reach
+  and leave the engine; a note-off's attribute (M2-123's endings) is not
+  kept; what is played on a MIDI keyboard into a track is not turned into
+  keyswitches by its `attr_map` (clips and `track:play_note` are); in a
+  chord on one channel whose notes have different articulations, each
+  keyswitch goes before its own note but a controller or program change
+  is in force for the whole chord (route one with `ch=`); a MIDI file
+  keeps the attribute in an event of this program's, not in the NRPN form
+  some other programs read; `daw.plugins.add_dir` finds CLAP and VST3
+  plugins, not LV2; only CLAP plugins' key names are read, and the window's
+  piano roll shows a note's articulation as a chip but not the names on
+  its keyboard. A note an articulation's `delay` moves before the loop's
+  start is late after the loop goes round (it starts with the loop, not
+  before its end), and in a launched slot's clip notes are moved by the
+  song's tempo at the clip's own beats.
 - MIDI 2.0 output through the sequencer is untried here: this machine's
   kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
   MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's

@@ -312,6 +312,15 @@ the extension's own `engine/` source; `bin/` beside the extension is where
 its package puts it, and where the extension looks first after the
 `utau_engine` option and `$REAUTAU_ENGINE`.
 
+**Plugins of its own.** An extension that builds a CLAP or VST3 plugin
+(its Nix package puts it beside the extension) registers the directory
+with `daw.plugins.add_dir(dir)`. Its plugins are found from then on, for
+the session, as if they were installed: listed as the extension's
+(`daw.plugins.from[kind]`), made in helper processes like any plugin, and
+devices of theirs that a project held while they were missing are made.
+`CLAP_PATH` and the like replace where plugins are looked for and are read
+once at start; this adds to it.
+
 **A renamed device.** `daw.api.device_alias(old, new)` makes devices of a
 kind that was renamed as the new one: projects saved when the utau device
 was built into the program get the Lua device.

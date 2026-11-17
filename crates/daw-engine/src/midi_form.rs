@@ -247,7 +247,7 @@ impl Converter {
             }
         }
         match kind {
-            EventKind::NoteOn { key, vel, ch } => {
+            EventKind::NoteOn { key, vel, ch, .. } => {
                 let (from, key) = ((ch & 15) as usize, key & 127);
                 // A note started again ends where it was first.
                 let was = mpe.channel_of[from][key as usize];
@@ -402,7 +402,12 @@ mod tests {
     }
 
     fn on(key: u8, ch: u8) -> EventKind {
-        EventKind::NoteOn { key, vel: 0.8, ch }
+        EventKind::NoteOn {
+            key,
+            vel: 0.8,
+            ch,
+            attr: crate::event::Attr::NONE,
+        }
     }
 
     fn off(key: u8, ch: u8) -> EventKind {

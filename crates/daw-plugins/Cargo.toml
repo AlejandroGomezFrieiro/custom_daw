@@ -17,3 +17,8 @@ vst3 = "0.3"
 libloading = "0.8"
 libc = "0.2"
 x11rb = "0.13"
+
+# A CLAP plugin of the tests' own (tests/stub.rs).
+[[example]]
+name = "stub_clap"
+crate-type = ["cdylib"]

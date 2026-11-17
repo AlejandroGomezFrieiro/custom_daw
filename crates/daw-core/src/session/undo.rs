@@ -834,6 +834,7 @@ mod tests {
             velocity: 100,
             meta: Default::default(),
             id: 0,
+            attr: None,
         };
         track.clips.push(Arc::new(Clip {
             timebase: None,

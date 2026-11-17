@@ -339,10 +339,15 @@ impl DeviceFactory for FnFactory {
 /// Looks for plugins again and registers what it finds: see [`Registry::rescan`].
 pub type Rescan = Rc<dyn Fn(&mut Registry, Option<&str>) -> Vec<String>>;
 
+/// Looks for plugins in one more directory and registers what it finds
+/// there: see [`Registry::add_dir`].
+pub type AddDir = Rc<dyn Fn(&mut Registry, &std::path::Path) -> (Vec<String>, Vec<String>)>;
+
 #[derive(Default, Clone)]
 pub struct Registry {
     factories: BTreeMap<String, Rc<dyn DeviceFactory>>,
     rescan: Option<Rescan>,
+    add_dir: Option<AddDir>,
     /// What scripts posted to every device of a kind: by kind, each topic
     /// with its latest data, in the order the topics were first posted.
     posts: BTreeMap<String, Vec<(String, Arc<[u8]>)>>,
@@ -364,6 +369,19 @@ impl Registry {
     /// Say how to look for plugins again (the program that found them knows).
     pub fn set_rescan(&mut self, rescan: Rescan) {
         self.rescan = Some(rescan);
+    }
+
+    /// Say how to look for plugins in a directory of one's choosing.
+    pub fn set_add_dir(&mut self, add_dir: AddDir) {
+        self.add_dir = Some(add_dir);
+    }
+
+    /// Look for plugins in `dir` too from now on, and register those in it:
+    /// the device kinds found there, and notes on what could not be used.
+    /// `None` when there is nothing to do it with.
+    pub fn add_dir(&mut self, dir: &std::path::Path) -> Option<(Vec<String>, Vec<String>)> {
+        let add_dir = self.add_dir.clone()?;
+        Some(add_dir(self, dir))
     }
 
     /// Look into plugin files again: all of them, or those `name` matches.

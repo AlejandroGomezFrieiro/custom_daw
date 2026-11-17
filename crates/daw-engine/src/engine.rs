@@ -2328,9 +2328,9 @@ impl Work<'_> {
             // Start the notes that began before this position and are
             // still held at it: on the timeline, or in the slot that plays.
             if t.launcher.follows_arrangement() {
-                launch::chase(&mut t.events, &t.clips.midi, start);
+                launch::chase(&mut t.events, &t.clips, start);
             } else if let Some((slot, phase)) = t.launcher.slot() {
-                launch::chase(&mut t.events, &slot.clips.midi, phase);
+                launch::chase(&mut t.events, &slot.clips, phase);
             }
         }
         for kind in t.live.drain(..) {

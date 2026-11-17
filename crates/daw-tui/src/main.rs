@@ -498,10 +498,16 @@ fn run() -> Result<i32> {
     if let Ok(exe) = std::env::current_exe() {
         daw_luadev::set_helper(exe, daw_plugins::sandbox::remote);
     }
+    // Directories an extension adds are looked in even without the
+    // plugins installed on the machine.
+    let cache = cache_dir().join("plugins.json");
+    registry.set_add_dir(std::rc::Rc::new({
+        let cache = cache.clone();
+        move |registry, dir| daw_plugins::add_dir(registry, Some(&cache), dir)
+    }));
     let mut plugin_notes = if args.no_plugins {
         Vec::new()
     } else {
-        let cache = cache_dir().join("plugins.json");
         // Each plugin gets a process of its own, started from this program.
         if !args.plugins_in_process
             && let Ok(exe) = std::env::current_exe()
