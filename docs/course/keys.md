@@ -213,7 +213,15 @@ See [Harmony, completion and snippets](../harmony.md).
 | `,fk` `,ft` `,fl` `,fa` `,fd` | pick a key, track, clip, device to add, device of the track |
 | `,fm` `,fr` `,fn` `,ff` `,fo` `,fp` `,f.` | marks, registers, messages, files, options, every picker, the last picker |
 | `,fR` | recent projects (`:recent 2` opens the second) |
-| `<C-Space>` | in a picker of presets, devices, files, beats or snippets: hear the item under the selection, or stop hearing it; `<Esc>` takes back what was tried |
+| `,fh` `,f'` `,fg` `,fN` `,fw` | help tags, markers and regions, any text in the project, notes (pitch, lyric, articulation), sound files |
+| `,fq` `,fu` `,fe` `,fs` `,fP` | the quickfix list, undo states, extensions, the Lua API, presets |
+| `<C-Space>` | in a picker of presets, devices, files, beats, snippets, clips or notes: hear the item under the selection, or stop hearing it; `<Esc>` takes back what was tried |
+| in a picker | Tab marks a line, Ctrl-q sends the marked (or all) to the quickfix list; Ctrl-v, Ctrl-x, Ctrl-t open it beside, below, in a tab; Ctrl-r steps fuzzy, exact, regex; Alt-d deletes; Ctrl-Up what was typed before |
+| `:vimgrep /pizz/` | every text in the project that matches, in the quickfix list |
+| `:select clip[name~=pizz] > note[pitch>=C5]` | choose what a query finds; `:query` lists it |
+| `]]` `[[` | next, previous clip of the same kind on the track (R: note of the same pitch) |
+| `]s` `[s` `[u` `]u` | next, previous track in the group; up to the group; down into it |
+| `ig` `ag` | the group's tracks; with the group track |
 
 Stop half way through a sequence and the keys that can follow are listed.
 

@@ -3180,6 +3180,7 @@ amap("<leader>aA", "lane.show all", "Show every track's automation lanes")
 
 command("pick", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1]) or "pickers"
+  if name == "resume" then return daw.pick.resume() end
   if not daw.pick.sources[name] then return daw.notify("no picker `" .. name .. "`; `:pick` lists them", "warn") end
   daw.pick(name, { query = ctx.args.query and tostring(ctx.args.query) or nil })
 end, { desc = "Choose from a list: `pick tracks`, `pick devices query=reverb`; with no name, every picker", complete = { "pickers" } })
@@ -3198,6 +3199,16 @@ local pick_keys = {
   { "files", "f", "Open a project or import audio from here" },
   { "options", "o", "Set an option" },
   { "pickers", "p", "Every picker" },
+  { "help", "h", "Go to a help tag" },
+  { "markers", "'", "Go to a marker or region" },
+  { "grep", "g", "Find any text in the project" },
+  { "notes", "N", "Find a note by pitch, lyric or articulation" },
+  { "media", "w", "Sound files the project uses" },
+  { "quickfix", "q", "The entries of the quickfix list" },
+  { "undo", "u", "Go to a state of the undo history" },
+  { "extensions", "e", "Extensions, loaded or not" },
+  { "symbols", "s", "Find a function of the Lua API" },
+  { "presets", "P", "Load a preset into the device" },
 }
 for _, entry in ipairs(pick_keys) do
   local name, key, desc = entry[1], entry[2], entry[3]

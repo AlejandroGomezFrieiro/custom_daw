@@ -23,6 +23,13 @@
 -- `boost(item)` returns a number added to the score of an item that
 -- matches (up to 120): what is used often, or belongs to the focused view.
 --
+-- Every picker marks lines with Tab (unless `multi = false`), steps its
+-- mode with Ctrl-r (`mode` starts it "exact" or "regex"), recalls what was
+-- typed with Ctrl-Up, and has the keys of `daw.pick.keys`: what they do
+-- with an item comes from `location(item)` (its address), `open(item,
+-- how)`, `delete(items)` and `insert(item)`. `preview(item, width,
+-- height)` is given the pane's size.
+--
 -- `audition(item)` lets the item under the selection be heard: once the
 -- selection has rested on an item for `daw.opt.audition_delay` ms, the one
 -- before is stopped (its trial taken back, see `daw.audition`) and the hook
@@ -210,26 +217,93 @@ local function match_term(term, text, orig, trace)
   return best, finish
 end
 
+-- The ways a query is read: "fuzzy" (letters in order, with fzf's `'`,
+-- `^`, `$` and `!` before or after a word), "exact" (each word as it is
+-- written, anywhere) and "regex" (the whole query, `daw.regex`).
+M.MODES = { "fuzzy", "exact", "regex" }
+
 --- Split a query into terms. A term with a capital letter is matched as
---- typed; one without ignores case.
-local function terms_of(query)
+--- typed; one without ignores case. In fuzzy mode a term may say how it
+--- matches, as in fzf: `'word` as written, `^word` at the start of the
+--- line, `word$` at its end, `!word` not in the line (`!^word`, `!word$`).
+local function terms_of(query, mode)
   local out = {}
+  if mode == "regex" then
+    if query:match("%S") then
+      local re, err = daw.regex.try(query)
+      out[1] = { kind = "regex", re = re, invalid = err, text = query }
+    end
+    return out
+  end
   for word in query:gmatch("%S+") do
-    out[#out + 1] = { text = word, exact = word:find("%u") ~= nil }
+    local kind, negate = mode == "exact" and "exact" or "fuzzy", false
+    if mode ~= "exact" then
+      if #word > 1 and sub(word, 1, 1) == "!" then negate, word, kind = true, sub(word, 2), "exact" end
+      if #word > 1 and sub(word, 1, 1) == "'" then
+        kind, word = "exact", sub(word, 2)
+      elseif #word > 1 and sub(word, 1, 1) == "^" then
+        kind, word = "prefix", sub(word, 2)
+      elseif #word > 1 and sub(word, -1) == "$" then
+        kind, word = "suffix", sub(word, 1, -2)
+      end
+    end
+    out[#out + 1] = { text = word, exact = word:find("%u") ~= nil, kind = kind, negate = negate }
   end
   return out
 end
 
+--- Score a term that is not fuzzy: the place it is found, worth what the
+--- same characters in a run would be, with the bonus of where it starts.
+local function match_plain(term, text, orig, trace)
+  local a, b
+  if term.invalid then
+    return nil
+  elseif term.kind == "regex" then
+    a, b = term.re:find(orig)
+    if a and b < a then b = a end
+  elseif term.kind == "prefix" then
+    if sub(text, 1, #term.text) == term.text then a, b = 1, #term.text end
+  elseif term.kind == "suffix" then
+    if #term.text <= #text and sub(text, -#term.text) == term.text then a, b = #text - #term.text + 1, #text end
+  else
+    a, b = text:find(term.text, 1, true)
+  end
+  if term.negate then return (not a) and 0 or nil, 0 end
+  if not a then return nil end
+  local prev = a > 1 and class[byte(orig, a - 1)] or WHITE
+  local start = bonus_table[prev][class[byte(orig, a)] or WHITE] or 0
+  if trace then
+    for k = a, b do trace[#trace + 1] = k end
+  end
+  return (b - a + 1) * (MATCH + BONUS_CONSECUTIVE) + start * FIRST_MULTIPLIER, b
+end
+
+--- Score one term of any kind against a line; `low` is the line lowered.
+local function score_term(term, orig, low, trace)
+  local text = term.exact and orig or low
+  if term.kind == "fuzzy" then return match_term(term.text, text, orig, trace) end
+  return match_plain(term, text, orig, trace)
+end
+
+--- Lower the text of the terms that ignore case, once.
+local function ready(terms)
+  for _, term in ipairs(terms) do
+    if not term.exact and term.text and term.kind ~= "regex" then term.text = lower(term.text) end
+  end
+  return terms
+end
+
 --- How well `query` matches `text`: a score, higher is better, and the byte
 --- positions of the matched characters in order. Nil when it does not match.
---- Words of the query separated by spaces must each match.
+--- Words of the query separated by spaces must each match. `mode` is one
+--- of `daw.pick.MODES`, "fuzzy" by default.
 ---   daw.pick.match("bs", "Bass Synth")   --> score, { 1, 6 }
-function M.match(query, text, want_positions)
+function M.match(query, text, want_positions, mode)
   if want_positions == nil then want_positions = true end
   local total, positions = 0, want_positions and {} or nil
   local low = lower(text)
-  for _, term in ipairs(terms_of(query)) do
-    local s = match_term(term.exact and term.text or lower(term.text), term.exact and text or low, text, positions)
+  for _, term in ipairs(ready(terms_of(query, mode))) do
+    local s = score_term(term, text, low, positions)
     if not s then return nil end
     total = total + s
   end
@@ -289,8 +363,8 @@ end
 
 --- Keep the entries that match `query`, best first. An empty query keeps
 --- every entry, in its order.
-local function filter_entries(query, entries)
-  local terms = terms_of(query)
+local function filter_entries(query, entries, mode)
+  local terms = ready(terms_of(query, mode))
   if #terms == 0 then
     local out = {}
     for i, e in ipairs(entries) do
@@ -299,32 +373,32 @@ local function filter_entries(query, entries)
     end
     return out
   end
-  for _, term in ipairs(terms) do
-    if not term.exact then term.text = lower(term.text) end
-  end
+  -- A regex finds a place rather than ranks: the lines keep their order.
+  local plain = mode == "regex"
   local out = {}
   for _, e in ipairs(entries) do
     local total, finish = 0, nil
     for _, term in ipairs(terms) do
-      local s, at = match_term(term.text, term.exact and e.text or e.low, e.text)
+      local s, at = score_term(term, e.text, e.low)
       if not s then
         total = nil
         break
       end
       total, finish = total + s, finish or at
     end
-    if total and e.primary then
+    if plain then
+      total, finish = total and 0, 0
+    elseif total and e.primary then
       local all = true
+      local low = lower(e.primary)
       for _, term in ipairs(terms) do
-        local p = term.exact and e.primary or lower(e.primary)
-        if not match_term(term.text, p, e.primary) then
+        if not term.negate and not score_term(term, e.primary, low) then
           all = false
           break
         end
       end
       if all then
         total = total + PRIMARY_BONUS
-        local low = lower(e.primary)
         if #terms == 1 and (terms[1].exact and e.primary or low) == terms[1].text then
           total = total + EXACT_BONUS
         elseif #terms == 1 and sub(terms[1].exact and e.primary or low, 1, #terms[1].text) == terms[1].text then
@@ -332,10 +406,10 @@ local function filter_entries(query, entries)
         end
       end
     end
-    if total and not (e.primary and total >= PRIMARY_BONUS) then
+    if total and not plain and not (e.primary and total >= PRIMARY_BONUS) then
       local words = true
       for _, term in ipairs(terms) do
-        if not starts_word(term.exact and e.text or e.low, term.text) then
+        if not term.negate and not starts_word(term.exact and e.text or e.low, term.text) then
           words = false
           break
         end
@@ -351,11 +425,12 @@ local function filter_entries(query, entries)
   return out
 end
 
---- The items that match `query`, best first, each as { item, text, score }.
+--- The items that match `query`, best first, each as { item, text, score };
+--- `mode` as `daw.pick.match` takes it.
 ---   daw.pick.filter("bass", { "Bass", "Bass Synth", "Drums" })
-function M.filter(query, items, format, primary)
+function M.filter(query, items, format, primary, mode)
   local out = {}
-  for i, e in ipairs(filter_entries(query, entries_of(items, format, primary))) do
+  for i, e in ipairs(filter_entries(query, entries_of(items, format, primary), mode)) do
     out[i] = { item = e.item, text = e.text, score = e.score }
   end
   return out
@@ -378,12 +453,21 @@ local function chars_of(text)
   return out
 end
 
+--- Whether a query typed on from `before` can only narrow what it matched:
+--- in fuzzy and exact mode, unless a word says what must not be there or
+--- what the line ends with.
+local function narrows(p, before, query)
+  if before == "" or query:sub(1, #before) ~= before or p.mode == "regex" then return false end
+  return not (query:find("!", 1, true) or query:find("$", 1, true)) or p.mode == "exact"
+end
+
 local function refilter(p)
   local query = table.concat(p.query)
   -- Typing on only narrows the matches (a longer term, another term, a
   -- capital that makes a term match case), so start from the last ones.
   local base = p.entries
-  if p.last_query ~= "" and query:sub(1, #p.last_query) == p.last_query then base = p.matches end
+  if narrows(p, p.last_query, query) and p.last_mode == p.mode then base = p.matches end
+  p.last_mode = p.mode
   -- A picker may match and rank its items itself: `rank(item, query, line)`
   -- returns a score, higher first, or nil to leave the item out.
   if p.spec.rank then
@@ -396,11 +480,11 @@ local function refilter(p)
     if query ~= "" then table.sort(kept, by_score) end
     p.matches = kept
   else
-    p.matches = filter_entries(query, base)
+    p.matches = filter_entries(query, base, p.mode)
     -- A picker may weigh its items by something besides the match (what is
     -- used often, what belongs to the focused view): `boost(item)` is added
     -- to the score, at most BOOST_MAX, so that exact and prefix matches stay first.
-    if p.spec.boost and query ~= "" then
+    if p.spec.boost and query ~= "" and p.mode ~= "regex" then
       for _, e in ipairs(p.matches) do e.score = e.score + min(max(p.spec.boost(e.item) or 0, 0), BOOST_MAX) end
       table.sort(p.matches, by_score)
     end
@@ -540,28 +624,234 @@ local function action_of(p, key)
   return a
 end
 
+-- History -------------------------------------------------------------------------
+--
+-- What was typed in each picker before, newest first, kept until the
+-- program ends: `Ctrl-Up` and `Ctrl-Down` step through it, as Telescope's.
+
+local HISTORY = 50
+
+local function source_key(p) return tostring(p.source or p.spec.title or "?") end
+
+local function history_of(p) return daw.state["pick.history." .. source_key(p)] or {} end
+
+--- Remember the query of a picker that was used, unless it is the last one.
+local function remember(p)
+  local query = table.concat(p.query)
+  if not query:match("%S") then return end
+  local list = { query }
+  for _, q in ipairs(history_of(p)) do
+    if q ~= query and #list < HISTORY then list[#list + 1] = q end
+  end
+  daw.state["pick.history." .. source_key(p)] = list
+end
+
+local function step_history(p, by)
+  local list = history_of(p)
+  if #list == 0 then return daw.notify("nothing typed in this picker before", "warn") end
+  if not p.history_at then p.typed = table.concat(p.query) end
+  local at = max(0, min(#list, (p.history_at or 0) + by))
+  p.history_at = at
+  p.query = chars_of(at == 0 and (p.typed or "") or list[at])
+  refilter(p)
+end
+
+-- Keys every picker has --------------------------------------------------------------
+--
+-- As Telescope's: `Ctrl-v`, `Ctrl-x` and `Ctrl-t` open what is chosen in a
+-- window beside, below or in a tab, `Ctrl-q` sends the marked lines (or all
+-- that match) to the quickfix list and `Ctrl-l` to the window's location
+-- list, `Ctrl-y` types the line on the command line, `Alt-d` deletes.
+-- What the item is comes from the picker: `location(item)` its address,
+-- `open(item, how)` opening it some way of its own, `delete(items)` and
+-- `insert(item)`. A picker's own `actions` come before these.
+
+--- The entries marked, in their order, or the one under the selection
+--- (with `all`, every one that matches).
+local function chosen_entries(p, all)
+  local out = {}
+  for _, e in ipairs(p.entries) do
+    if p.marked[e] then out[#out + 1] = e end
+  end
+  if #out == 0 then
+    if all then
+      for i, e in ipairs(p.matches) do out[i] = e end
+    else
+      local _, e = current(p)
+      out[1] = e
+    end
+  end
+  return out
+end
+
+local function location_of(p, item)
+  if not p.spec.location or item == nil then return nil end
+  local ok, loc = pcall(p.spec.location, item)
+  if not ok or not loc then return nil end
+  if type(loc) == "string" then loc = { uri = loc } end
+  return loc
+end
+
+-- The view that shows an address best, for a window of its own.
+local function view_for(loc)
+  local parsed = daw.address.parse(loc.uri)
+  if not parsed then return "arrange" end
+  if parsed.kind == "note" or parsed.kind == "control" then return "pianoroll" end
+  if parsed.kind == "clip" then
+    local ok, c = pcall(api.clip_get, parsed.clip)
+    return ok and c.kind == "midi" and "pianoroll" or "arrange"
+  end
+  if parsed.kind == "device" or parsed.kind == "param" then return "devices" end
+  return "arrange"
+end
+
+--- Show a location: in place (`how` nil), or in a new window beside
+--- ("vsplit"), below ("split") or in a new tab ("tab"), the view that
+--- shows it best moving there. Returns whether there was somewhere to go.
+function M.show(loc, how)
+  if type(loc) == "string" then loc = { uri = loc } end
+  if not how then return daw.qf.go({ location = loc }) end
+  local name = view_for(loc)
+  local L = daw.layout
+  if how == "tab" then
+    L.tab_new(nil, name)
+  elseif not (L.current() and L.current().view == name) then
+    local made, why = L.split({ vertical = how == "vsplit", view = name })
+    if not made then daw.notify(why, "warn") end
+  end
+  daw.ui.focus(name)
+  local locator = daw.ui.locators[name]
+  if locator and locator.place(loc, true) then
+    locator.go(loc)
+    return true
+  end
+  return daw.qf.go({ location = loc })
+end
+
+local function open_with(how)
+  return function(p, entries)
+    local e = entries[1]
+    if not e then return end
+    if #entries > 1 then daw.notify(string.format("opened the first of %d marked", #entries)) end
+    if p.spec.open then return p.spec.open(e.item, how) end
+    local loc = location_of(p, e.item)
+    if not loc then return daw.notify("this line has nowhere to open", "warn") end
+    M.show(loc, how)
+  end
+end
+
+--- The lines as quickfix entries, with their addresses when the picker has them.
+local function send_to_list(loc)
+  return function(p, entries)
+    local list = {}
+    for i, e in ipairs(entries) do list[i] = { location = location_of(p, e.item), text = e.text } end
+    local query = table.concat(p.query)
+    daw.qf.set(list, { title = (p.spec.title or "pick") .. (query ~= "" and " · " .. query or ""), win = loc or nil, source = "pick" })
+    daw.qf.open({ loc = loc })
+    daw.notify(string.format("%d line%s in the %s", #list, #list == 1 and "" or "s", loc and "location list" or "quickfix list"))
+  end
+end
+
+local function insert(p, entries)
+  local e = entries[1]
+  if not e then return end
+  if p.spec.insert then return p.spec.insert(e.item) end
+  local text = e.text:gsub("^%s+", ""):gsub("%s+$", "")
+  daw.ui.input({ prompt = ":", history = "cmdline", text = text }, function(line)
+    if line:match("%S") then daw.commands.exec(line) end
+  end)
+end
+
+--- Read a picker's items again, keeping what is typed.
+local function reload(p)
+  local items = p.spec.items
+  if type(items) == "function" then items = items() end
+  p.entries = entries_of(items or {}, p.spec.format, p.spec.primary)
+  p.marked, p.last_query = {}, ""
+  refilter(p)
+end
+
+local function delete(p, entries)
+  if #entries == 0 then return end
+  local items = {}
+  for i, e in ipairs(entries) do items[i] = e.item end
+  local ok, err = pcall(p.spec.delete, items)
+  if not ok then daw.notify((tostring(err):gsub("^[^:]*:%d+: ", "")), "error") end
+  local selected = p.selected
+  reload(p)
+  p.selected = max(1, min(selected, #p.matches))
+end
+
+local function can_open(p) return p.spec.location ~= nil or p.spec.open ~= nil end
+
+--- The keys every picker has, by key: `{ desc, when(p), all, keep, fn(p, entries) }`.
+M.keys = {
+  ["<C-v>"] = { desc = "split right", when = can_open, fn = open_with("vsplit") },
+  ["<C-x>"] = { desc = "split below", when = can_open, fn = open_with("split") },
+  ["<C-t>"] = { desc = "tab", when = can_open, fn = open_with("tab") },
+  ["<C-q>"] = { desc = "quickfix", all = true, fn = send_to_list(false) },
+  ["<C-l>"] = { desc = "location list", all = true, fn = send_to_list(true) },
+  ["<C-y>"] = { desc = "insert", fn = insert },
+  ["<A-d>"] = { desc = "delete", when = function(p) return p.spec.delete ~= nil end, keep = true, fn = delete },
+}
+
+local function generic_of(p, key)
+  local g = M.keys[key]
+  if g and (not g.when or g.when(p)) then return g end
+end
+
+local function cycle_mode(p)
+  local at = 1
+  for i, m in ipairs(M.MODES) do
+    if m == p.mode then at = i end
+  end
+  p.mode = M.MODES[at % #M.MODES + 1]
+  daw.state["pick.mode." .. source_key(p)] = p.mode
+  refilter(p)
+end
+
 function view:on_key(key)
   local p = active
   if not p then return daw.ui.close() end
-  -- `resume` reopens with what was typed when Enter or Escape closed it.
-  if last_spec and last_spec.spec == p.spec then last_spec.query = table.concat(p.query) end
+  -- `resume` reopens as it was when Enter or Escape closed it.
+  local function keep_for_resume()
+    if last_spec and last_spec.spec == p.spec then
+      last_spec.query, last_spec.mode, last_spec.selected = table.concat(p.query), p.mode, p.selected
+    end
+  end
+  keep_for_resume()
   local action = action_of(p, key)
-  if action then
-    local item = current(p)
-    if not action.keep then
+  local g = not action and generic_of(p, key)
+  if action or g then
+    local item, entries = current(p), g and chosen_entries(p, g.all)
+    remember(p)
+    if not (action or g).keep then
       close(p)
       daw.audition.revert()
     end
-    action.fn(item, table.concat(p.query), p)
+    if action then action.fn(item, table.concat(p.query), p) else g.fn(p, entries) end
     if active == p then follow(p) end
     return api.ui_redraw()
   end
+  local stepping = key == "<C-Up>" or key == "<C-Down>"
+  if not stepping then p.history_at = nil end
   if key == "<CR>" then
+    remember(p)
     return choose(p)
   elseif key == "<Esc>" or key == "<C-c>" then
     return cancel(p)
   elseif key == "<C-Space>" then
     toggle_hearing(p)
+  elseif key == "<C-r>" then
+    -- A picker that ranks its items itself reads what is typed its own way.
+    if p.spec.rank then daw.notify("this picker reads what is typed its own way", "warn") else cycle_mode(p) end
+  elseif stepping then
+    step_history(p, key == "<C-Up>" and 1 or -1)
+  elseif key == "<C-a>" and p.multi then
+    -- Mark every line that matches, or none when all are.
+    local all = #p.matches > 0
+    for _, e in ipairs(p.matches) do all = all and p.marked[e] end
+    for _, e in ipairs(p.matches) do p.marked[e] = (not all) or nil end
   elseif key == "<C-n>" or key == "<Down>" or key == "<C-j>" then
     move(p, 1)
   elseif key == "<C-p>" or key == "<Up>" or key == "<C-k>" then
@@ -602,6 +892,7 @@ function view:on_key(key)
       refilter(p)
     end
   end
+  keep_for_resume()
   follow(p)
   api.ui_redraw()
 end
@@ -683,9 +974,9 @@ local function hearing_lines(p, width)
   return lines
 end
 
-local function preview_lines(p, item)
+local function preview_lines(p, item, width, height)
   if item == nil or not p.spec.preview then return {} end
-  local ok, lines = pcall(p.spec.preview, item)
+  local ok, lines = pcall(p.spec.preview, item, width, height)
   if not ok then return { { text = tostring(lines), style = "Error" } } end
   if type(lines) == "string" then lines = { lines } end
   local out = {}
@@ -707,6 +998,8 @@ function view:render(buf, ctx)
   -- The query line: the prompt, what is typed, and how many match.
   local query = table.concat(p.query)
   local count = string.format("%d/%d", #p.matches, #p.entries)
+  -- A mode other than fuzzy says so beside the count.
+  if p.mode ~= "fuzzy" then count = p.mode .. "  " .. count end
   if p.multi and next(p.marked) then
     local n = 0
     for _ in pairs(p.marked) do n = n + 1 end
@@ -736,9 +1029,11 @@ function view:render(buf, ctx)
   if #p.entries == 0 then
     buf:text(2, 2, p.spec.empty or "Nothing to choose from.", "Dim")
   elseif #p.matches == 0 then
-    buf:text(2, 2, "Nothing matches.", "Dim")
+    local bad = p.mode == "regex" and select(2, daw.regex.try(query))
+    buf:text(2, 2, bad and daw.util.fit(bad, list_w - 3) or "Nothing matches.", bad and "Warn" or "Dim")
   end
-  local mark_room = p.multi and 2 or 0
+  -- The column of marks shows once something is marked.
+  local mark_room = (p.spec.multi or next(p.marked)) and 2 or 0
   local terms_query = query:match("%S") and query or nil
   for row = 0, rows - 1 do
     local index = p.top + row
@@ -750,10 +1045,10 @@ function view:render(buf, ctx)
     -- The cursor is `▶`; the row that is heard has `♪` in its place.
     local heard = selected and p.heard ~= nil and p.heard == e.item and daw.audition.state() ~= nil
     buf:text(0, y, heard and "♪" or selected and "▶" or " ", selected and "PickCaret" or nil)
-    if p.multi then buf:text(2, y, p.marked[e] and "+" or " ", "PickMarked") end
+    if mark_room > 0 then buf:text(2, y, p.marked[e] and "+" or " ", "PickMarked") end
     local positions
     if terms_query then
-      local _, pos = M.match(terms_query, e.text)
+      local _, pos = M.match(terms_query, e.text, true, p.mode)
       positions = pos
     end
     draw_matched(buf, 2 + mark_room, y, e.text, positions, list_w - 3 - mark_room, "PickMatch")
@@ -762,7 +1057,7 @@ function view:render(buf, ctx)
   if has_preview then
     for y = 2, h - 1 - (footer and 1 or 0) do buf:text(list_w, y, "│", "Border") end
     local pw = w - list_w - 2
-    local lines = preview_lines(p, current(p))
+    local lines = preview_lines(p, current(p), pw, rows)
     if p.spec.audition then
       local top = hearing_lines(p, pw)
       for i = #top, 1, -1 do table.insert(lines, 1, top[i]) end
@@ -793,9 +1088,10 @@ daw.ui.keybar.set("pick", "n", function()
   return out
 end)
 
-local function footer_of(spec)
+local function footer_of(p)
+  local spec = p.spec
   local parts = { "Enter choose", "Esc cancel", "C-n/C-p move" }
-  if spec.multi then parts[#parts + 1] = "Tab mark" end
+  if p.multi then parts[#parts + 1] = "Tab mark" end
   if spec.audition then parts[#parts + 1] = "C-Space hear" end
   local keys = {}
   for key, a in pairs(spec.actions or {}) do
@@ -803,6 +1099,11 @@ local function footer_of(spec)
   end
   table.sort(keys)
   for _, k in ipairs(keys) do parts[#parts + 1] = k end
+  -- Then the keys every picker has that this one can use.
+  if can_open(p) and not (spec.actions and spec.actions["<C-v>"]) then parts[#parts + 1] = "C-v/C-x/C-t split/tab" end
+  if not (spec.actions and spec.actions["<C-q>"]) then parts[#parts + 1] = "C-q quickfix" end
+  if spec.delete then parts[#parts + 1] = "A-d delete" end
+  if not spec.rank then parts[#parts + 1] = "C-r mode" end
   return table.concat(parts, "  ")
 end
 
@@ -831,12 +1132,14 @@ function M.open(spec, extra)
   local p = {
     spec = spec, source = source_name, prompt = spec.prompt or "> ", query = chars_of(spec.query or ""),
     entries = entries_of(items or {}, spec.format, spec.primary), selected = 1, top = 1,
-    multi = spec.multi, marked = {}, last_query = "",
+    multi = spec.multi ~= false, marked = {}, last_query = "",
   }
+  -- The mode chosen last in this picker, else the picker's own.
+  p.mode = not spec.rank and (daw.state["pick.mode." .. source_key(p)] or spec.mode) or "fuzzy"
   p.matches = p.entries
-  p.footer = footer_of(spec)
+  p.footer = footer_of(p)
   if #p.query > 0 or spec.rank then refilter(p) end
-  active, last_spec = p, { spec = spec, query = spec.query }
+  active, last_spec = p, { spec = spec, query = spec.query, source = source_name }
   local width, height = api.ui_size()
   daw.ui.open("pick", {
     title = spec.title or "Pick",
@@ -848,13 +1151,18 @@ function M.open(spec, extra)
   return p
 end
 
---- Open the last picker again, with the query it had.
+--- Open the last picker again, as it was: what was typed, the mode, the
+--- line selected. Its items are read again.
 function M.resume()
   if not last_spec then return daw.notify("no picker opened yet", "warn") end
-  local spec, query = last_spec.spec, last_spec.query
-  local p = M.open(spec)
-  p.query = chars_of(query or "")
+  local was = last_spec
+  local p = M.open(was.spec)
+  p.source, last_spec.source = was.source, was.source
+  p.mode = was.mode or p.mode
+  p.query = chars_of(was.query or "")
   refilter(p)
+  p.selected = max(1, min(was.selected or 1, #p.matches))
+  follow(p)
   return p
 end
 
@@ -869,7 +1177,12 @@ function M.state()
   if p.spec.audition then
     hearing = { on = hearing_on(p), item = p.heard, label = p.hearing and p.hearing.label, error = p.hear_error, waiting = p.hear_timer ~= nil }
   end
-  return { query = table.concat(p.query), matches = lines, selected = p.selected, item = current(p), title = p.spec.title or "Pick", audition = hearing }
+  local marked = {}
+  for _, e in ipairs(p.entries) do
+    if p.marked[e] then marked[#marked + 1] = e.item end
+  end
+  return { query = table.concat(p.query), matches = lines, selected = p.selected, item = current(p), title = p.spec.title or "Pick",
+    audition = hearing, mode = p.mode, marked = marked, source = p.source }
 end
 
 local palette = require("daw.theme").palette

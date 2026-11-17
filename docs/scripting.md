@@ -531,6 +531,15 @@ function(err, result) end)`, `notify(name, method, params)`,
 `settle()` for scripts; events `lsp.status`, `lsp.analysis`. See
 [Language servers and diagnostics](lsp.md).
 
+**Searching.** `daw.query(q)` finds nodes of the project's tree by a
+query (`"clip[name~=pizz] > note[pitch>=C5]"`, or a table of steps) and
+`daw.query.select(q)` chooses them; `daw.query.field(kind, name, get)` adds
+a field. `daw.grep.search(pattern, { mode, fields })` finds the project's
+text, and `daw.grep.source(name, function(add) end)` adds text to it.
+`daw.regex.compile(text)` makes a regular expression of the common kind
+(`re:find(s)`). Each is in [the terminal interface](terminal.md),
+"Structural queries" and "Searching the project's text".
+
 **Layers and locators.** What modules draw over a view goes in layers:
 `daw.ui.views.pianoroll.layer(name, order, paint)` draws over the roll in
 order (below 20 under the clip's notes, above them over them; diagnostics
