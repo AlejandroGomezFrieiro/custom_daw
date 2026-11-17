@@ -2672,6 +2672,13 @@ drawmap("o", function() drawing.next("chord") end, "Keep the note, and draw anot
 drawmap("<BS>", function() drawing.back() end, "Take back the note kept last, to draw it again")
 drawmap("]", function() paw.opt.velocity = math.min(127, paw.opt.velocity + 10) end, "Louder notes")
 drawmap("[", function() paw.opt.velocity = math.max(1, paw.opt.velocity - 10) end, "Softer notes")
+drawmap("I", function() drawing.to_keys() end, "Type notes as a piano from here: a s d f … are a scale")
+-- The piano's letters do nothing while drawing: said, not lost in silence.
+for _, lhs in ipairs({ "a", "w", "s", "e", "d", "f", "t", "g", "y", "u", "p", ";" }) do
+  drawmap(lhs, function()
+    paw.notify("drawing a note: h j k l shape it, Enter keeps it; I types notes as a piano (" .. lhs .. " is a key there)", "warn")
+  end, "Not a key while drawing: says that I types notes")
+end
 
 -- Piano roll: insert mode the other way (`I`, or `paw.opt.roll_insert =
 -- "keys"`). The middle row of the keyboard is the white keys from C and the

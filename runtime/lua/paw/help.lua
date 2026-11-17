@@ -304,11 +304,10 @@ local function tags_of_code(text, first)
     return out
   end
   if text:match("^[%w_]+$") and option_known(text) and text:find("_") then out[#out + 1] = "'" .. text .. "'" end
-  -- A command's name, alone or with its arguments (`drums.track [name]`):
-  -- a dotted name, or any where it is described.
+  -- A command's dotted name, alone or with its arguments (`drums.track [name]`).
   local word = text:match("^([%a][%w%._%-]*!?)")
-  local cmd = word and paw.commands.get((word:gsub("!$", "")))
-  if cmd and (word:find("%.") or first) and (word == text or text:sub(#word + 1, #word + 1) == " ") then
+  local cmd = word and word:find("%.") and paw.commands.get((word:gsub("!$", "")))
+  if cmd and (word == text or text:sub(#word + 1, #word + 1) == " ") then
     out[#out + 1] = ":" .. word:gsub("!$", "")
   end
   -- Keys after the leader are named as they are typed (`<leader>SL` is `,SL`).
