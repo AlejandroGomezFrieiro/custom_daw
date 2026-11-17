@@ -231,5 +231,81 @@ daw.clips.owner("notation", {
   on_edit = M.on_edit,
 })
 
+-- Ex (`:s`, `:g`, `:d` over notes) reads a score clip's notes where they
+-- are written and changes the score: a pitch is respelled (as the
+-- replacement spells it, `:s/c#4/db4/`, else an octave keeps its spelling
+-- and anything else is spelled by the key), a note taken out leaves its
+-- chord with the notes its ties join. Velocity and length go as the roll's
+-- edits do, through the owner above.
+if daw.ex and daw.ex.clips then
+  daw.ex.clips("notation", {
+    claims = view.has_score,
+    notes = function(c)
+      local sc = view.score_of(c)
+      local by = {}
+      for place, n in ipairs(api.clip_notes(c.id)) do
+        local id = render.note_id(n)
+        if id then by[id] = { note = n, place = place } end
+      end
+      local out = {}
+      for _, r in ipairs(render.render(sc, { feel = false, written = true })) do
+        local hit = by[r.written.n]
+        if hit then
+          out[#out + 1] = { kind = "note", note = hit.note, place = hit.place, written = r.written.n,
+            at = c.start + (D.origin(sc) + r.written.s) / D.Q }
+        end
+      end
+      return out
+    end,
+    apply = function(c, changes, removes)
+      local clip = daw.clip(c.id)
+      local sc = view.edit_score_of(c)
+      local fifths = view.key()
+      local rest = {}
+      for _, ch in ipairs(changes) do
+        local nid, want = ch.item.written, ch.change
+        local note = D.find_note(sc, nid)
+        if note and want.pitch and want.pitch ~= D.pitch(note) then
+          local sp = model.spell(want.pitch, fifths)
+          local named = want.spelling and model.spelled(want.spelling.letter, want.spelling.alter, want.pitch)
+          if named and model.pitch_of(named.step, named.alter) == want.pitch then
+            sp = named
+          elseif (want.pitch - D.pitch(note)) % 12 == 0 then
+            sp = model.spelled(note.step, note.alter, want.pitch)
+          end
+          D.respell(sc, nid, sp.letter, sp.alter, sp.octave)
+        end
+        if want.velocity or want.length or want.start then rest[#rest + 1] = { id = nid, change = want } end
+      end
+      for _, item in ipairs(removes) do
+        local nid = item.written
+        local note, _, _, entry = D.find_note(sc, nid)
+        if note then
+          for _, tied in ipairs(D.tied_on(sc, entry.staff, entry.voice, nid)) do D.remove_note(sc, tied.note.id) end
+          D.remove_note(sc, nid)
+          if sc.feel then sc.feel[nid] = nil end
+        end
+      end
+      view.commit(clip, sc)
+      -- The rest of each change, on the notes as they now play.
+      if #rest > 0 then
+        local place = {}
+        for i, n in ipairs(clip:notes()) do
+          local id = render.note_id(n)
+          if id then place[id] = i end
+        end
+        local set = {}
+        for _, x in ipairs(rest) do
+          if place[x.id] then
+            set[#set + 1] = { index = place[x.id], velocity = x.change.velocity, length = x.change.length, start = x.change.start }
+          end
+        end
+        if #set > 0 then clip:edit_notes({ set = set }) end
+      end
+      daw.ui.poke()
+    end,
+  })
+end
+
 view.owner = M
 return M
