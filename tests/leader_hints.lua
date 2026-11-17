@@ -36,7 +36,6 @@ local function song()
   daw.flush()
   daw.keymap.set_mode("n")
   view:edit(clip)
-  view:ensure_score()
   return view
 end
 

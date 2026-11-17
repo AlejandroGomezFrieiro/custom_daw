@@ -16,16 +16,18 @@
 --   notation.tuplet   3, 5:4, off
 --   notation.voice    1 to 4
 --
--- Everything is kept in the score (`notation.doc`): key, clef and metre
--- changes, barlines, endings and rehearsal marks on the measures; tempo,
+-- Everything is written in the score (`notation.doc`), which keeps it with
+-- the clip and its notes (`notation.midi`): key and clef changes, the
+-- beats' grouping, barlines, endings and rehearsal marks at bars; tempo,
 -- chord symbols and techniques as marks; ornaments and lyrics on the
--- chords. Tempo marks also write the song's tempo map, so they play.
+-- notes. Tempo marks also write the song's tempo map, and time signatures
+-- the song's signatures, so they play.
 local api = daw.api
 local util = daw.util
 local view = require("notation")
 local model = require("notation.model")
 local D = require("notation.doc")
-local render = require("notation.render")
+local midi = require("notation.midi")
 local marks = require("notation.marks")
 local keymap, command = daw.keymap, daw.command
 
@@ -67,7 +69,7 @@ end
 --- The chords (score event ids) a command works on: the region's, or the
 --- chord under the cursor.
 local function chords(ctx)
-  local clip = view:ensure_score()
+  local clip = view:editable()
   local r = region(ctx)
   if r and clip then
     local _, places = daw.edit.roll.notes(clip, r)
@@ -94,10 +96,10 @@ end
 local function put_mark(sc, beat, kind, fields, same)
   local ref, mi = marks.ref(sc, beat)
   local f = D.frame(sc)
-  local t = render.at_of(sc, f, ref)
+  local t = midi.at_of(sc, f, ref)
   local list = {}
   for _, mk in ipairs(sc.marks or {}) do
-    if not (mk.kind == kind and render.at_of(sc, f, mk.from) == t and (not same or same(mk))) then list[#list + 1] = mk end
+    if not (mk.kind == kind and midi.at_of(sc, f, mk.from) == t and (not same or same(mk))) then list[#list + 1] = mk end
   end
   local new
   if fields then
@@ -151,7 +153,7 @@ local function next_dynamic(sc, beat)
   local best
   for _, mk in ipairs(sc.marks or {}) do
     if mk.kind == "dynamic" then
-      local t = render.at_of(sc, f, mk.from)
+      local t = midi.at_of(sc, f, mk.from)
       local b = t and (origin + t) / D.Q
       if b and b > beat + EPS and (not best or b < best) then best = b end
     end
@@ -251,7 +253,7 @@ function W.tempo(ctx)
     local f, origin = D.frame(sc), D.origin(sc)
     local back, at = nil, -math.huge
     for _, mk in ipairs(sc.marks) do
-      local mt = mk.kind == "tempo" and render.at_of(sc, f, mk.from)
+      local mt = mk.kind == "tempo" and midi.at_of(sc, f, mk.from)
       local beat = mt and (origin + mt) / D.Q
       if beat and beat < a - EPS and beat > at then
         if mk.bpm then
@@ -292,95 +294,10 @@ function W.parse_meter(text)
   return { num = num, den = den, groups = #groups > 1 and groups or nil }
 end
 
---- Write the measures from `mi` on again in a new metre: every chord keeps
---- its place in time, its notes, ids and marks, and is written in the new
---- bars' values (tied over the new barlines); marks keep their places.
-function W.rebar(sc, mi, num, den, groups)
-  local f = D.frame(sc)
-  -- What is written from there, in ticks from measure 1.
-  local items, lost = {}, false
-  for k = mi, #sc.measures do
-    for _, entry in ipairs(sc.measures[k].voices) do
-      local t, graces = f.starts[k], {}
-      for _, ev in ipairs(entry.events) do
-        if ev.grace then
-          graces[#graces + 1] = ev
-        else
-          local len = D.length(ev)
-          if ev.kind == "chord" then
-            if ev.tuplet then lost = true end
-            items[#items + 1] = { staff = entry.staff, voice = entry.voice, ev = ev, s = t, e = t + len, graces = graces }
-          end
-          graces = {}
-          t = t + len
-        end
-      end
-    end
-  end
-  table.sort(items, function(x, y)
-    if x.staff ~= y.staff then return x.staff < y.staff end
-    if x.voice ~= y.voice then return x.voice < y.voice end
-    return x.s < y.s
-  end)
-  -- Tied pieces of one note are one again.
-  local merged = {}
-  for _, it in ipairs(items) do
-    local prev = merged[#merged]
-    local joins = prev and prev.staff == it.staff and prev.voice == it.voice and prev.e == it.s and #prev.ev.notes == #it.ev.notes
-    if joins then
-      for i, n in ipairs(prev.last.notes) do
-        local o = it.ev.notes[i]
-        if not (n.tie and o and D.pitch(o) == D.pitch(n)) then joins = false end
-      end
-    end
-    if joins then
-      prev.e, prev.last = it.e, it.ev
-    else
-      it.last = it.ev
-      merged[#merged + 1] = it
-    end
-  end
-  -- Marks from there, in ticks, to be placed again.
-  local placed = {}
-  for _, mk in ipairs(sc.marks or {}) do
-    for _, key in ipairs({ "from", "to" }) do
-      local ref = mk[key]
-      local at = ref and f.index[ref.measure]
-      if at and at >= mi then placed[#placed + 1] = { ref = ref, t = render.at_of(sc, f, ref) } end
-    end
-  end
-  for k = mi, #sc.measures do
-    sc.measures[k].voices = {}
-    D.touch(sc, k)
-  end
-  local m = sc.measures[mi]
-  m.meter, m.groups = { num, den }, groups
-  sc._frame = nil
-  D.touch(sc, mi)
-  for _, it in ipairs(merged) do
-    local notes = {}
-    for i, n in ipairs(it.ev.notes) do notes[i] = { id = n.id, step = n.step, alter = n.alter, octave = n.octave } end
-    local at_mi, at = D.locate(sc, it.s)
-    local ev = D.put_chord(sc, at_mi, it.staff, it.voice, at, it.e - it.s, notes, { id = it.ev.id, art = it.ev.art,
-      arpeggio = it.ev.arpeggio, orn = it.ev.orn, lyric = it.ev.lyric, lyrics = it.ev.lyrics })
-    if #it.graces > 0 then
-      local _, entry, k = D.find(sc, ev.id)
-      for g = #it.graces, 1, -1 do table.insert(entry.events, k, it.graces[g]) end
-    end
-  end
-  for _, st in ipairs(sc.staves) do
-    for v = 1, 4 do D.fix_ties(sc, st.id, v, mi, #sc.measures) end
-  end
-  for _, p in ipairs(placed) do
-    if p.t then
-      local k, at = D.locate(sc, p.t)
-      D.ensure(sc, k)
-      p.ref.measure, p.ref.at, p.ref.event = sc.measures[k].id, D.ratio(at), nil
-    end
-  end
-  return lost
-end
-
+--- A time signature from the cursor's bar: the song's signature there, so
+--- that its notes stay where they are in time and are written in the new
+--- bars (tied over the new barlines), with the beats' grouping and a
+--- symbol kept with the clip.
 function W.meter(ctx)
   if not need_clip() then return end
   local m, why = W.parse_meter(words(ctx))
@@ -388,19 +305,17 @@ function W.meter(ctx)
   local first = measures(ctx)
   local clip = view:clip()
   local c = clip:get()
-  local lost
-  view:write(function(sc)
-    local _, mi = measure(sc, first.start)
-    lost = W.rebar(sc, mi, m.num, m.den, m.groups)
-    sc.measures[mi].meter_symbol = m.symbol
-  end)
-  -- The song's bars follow, where the bar starts on one of the song's.
   local beat = c.start + first.start
-  if math.abs(daw.time.bar_floor(beat + EPS) - beat) < EPS then
-    daw.tempo.set_signature(daw.time.bar_of(beat + EPS), m.num, m.den)
-  end
-  daw.notify(m.num .. "/" .. m.den .. (m.groups and (" (" .. table.concat(m.groups, "+") .. ")") or "") .. " from bar " .. first.number
-    .. (lost and "; tuplets written again as plain values" or ""))
+  daw.tempo.set_signature(daw.time.bar_of(beat + EPS), m.num, m.den)
+  view.cache = nil
+  view:write(function(sc)
+    local sm, mi = measure(sc, first.start)
+    sm.groups, sm.meter_symbol = m.groups, m.symbol
+    sm.meter = { m.num, m.den }
+    sc._frame = nil
+    D.touch(sc, mi)
+  end)
+  daw.notify(m.num .. "/" .. m.den .. (m.groups and (" (" .. table.concat(m.groups, "+") .. ")") or "") .. " from bar " .. first.number)
 end
 
 -- Key -------------------------------------------------------------------------------------
@@ -436,7 +351,7 @@ function W.key(ctx)
   local text = words(ctx)
   local clip = view:clip()
   -- Without a score open, the project's key, as before scores.
-  if not (clip and view.has_score(clip:get()) and (daw.ui.focused == "notation" or ctx.range)) then return false end
+  if not (clip and (daw.ui.focused == "notation" or ctx.range)) then return false end
   local first = measures(ctx)
   if text == "off" then
     view:write(function(sc)
@@ -467,7 +382,7 @@ end
 --- for a score's bar after the first (the staff's own clef is set then).
 function W.clef(ctx, want)
   local clip = view:clip()
-  if not (clip and view.has_score(clip:get()) and daw.ui.focused == "notation") then return false end
+  if not (clip and daw.ui.focused == "notation") then return false end
   local first = measures(ctx)
   if first.index == 1 then return false end
   local staff_index = view:cursor_staff()
@@ -694,8 +609,6 @@ function W.ornament(ctx)
         end
         if kind == "off" then art = {} end
         ev.art = next(art) and art or nil
-        -- A fermata is held: the note's own length goes, as a tenuto's does.
-        if ev.art then marks.played_as_marked(sc, ev) end
         D.touch(sc, mi)
       end
     end

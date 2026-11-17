@@ -127,16 +127,16 @@ test("in insert mode a message goes beside the key line instead of hiding it", f
   daw.keymap.feed("<Esc><Esc>")
   daw.ui.keybar.set("arrange", "i", { { "zq", "test key" }, { "<Esc>", "done" } })
   daw.keymap.set_mode("i")
-  daw.notify("now a score clip: notation writes it and its notes play it (:score.detach for plain MIDI again)")
+  daw.notify("a message long enough to be seen beside the keys of insert mode, as the notation view says them")
   local rows = api.ui_snapshot(100, 30)
   local last = rows[#rows]
   eq(last:find("test key", 1, true) ~= nil, true, "the keys stay: " .. last)
-  eq(last:find("now a score", 1, true) ~= nil, true, "and the message is there: " .. last)
+  eq(last:find("a message long", 1, true) ~= nil, true, "and the message is there: " .. last)
   daw.keymap.set_mode("n")
   daw.ui.keybar.set("arrange", "i", nil)
   daw.ui.message = nil
   rows = api.ui_snapshot(100, 30)
-  eq(rows[#rows]:find("now a score", 1, true), nil, "gone with the message")
+  eq(rows[#rows]:find("a message long", 1, true), nil, "gone with the message")
 end)
 
 test("the arrange view draws a volume curve only on the track the cursor is on", function()

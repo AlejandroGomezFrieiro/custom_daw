@@ -1,27 +1,25 @@
--- Marks the score keeps besides the notes: articulations on chords
--- (staccato, staccatissimo, tenuto, accent, marcato), and along the score
--- dynamics, hairpins, slurs, text and repeat signs. They are written in the
--- score (`notation.doc`: `event.art`, `score.marks`, `measure.repeat_start`
--- and `barline`) and played by its rendering (`notation.render`): staccato
--- shortens, tenuto and a slur hold, accents add loudness, dynamics set it
--- and hairpins ramp it. Text and repeat signs are written only.
---
--- A plain MIDI clip shown as notation shows what was kept with it before
--- scores were written (`meta.notation.marks`, `slurs`, `art` on notes);
--- writing one of these makes it a score clip, keeping them.
+-- Marks besides the notes: articulations on chords (staccato,
+-- staccatissimo, tenuto, accent, marcato), and along the score dynamics,
+-- hairpins, slurs, text and repeat signs. They are written in the score
+-- (`notation.doc`: `event.art`, `score.marks`, `measure.repeat_start` and
+-- `barline`), which keeps them with the notes and the clip
+-- (`notation.midi`). The ones that play write MIDI when they are written:
+-- a staccato shortens its notes and a tenuto holds them, an accent makes
+-- them louder, a dynamic sets the loudness of the notes it reaches and a
+-- hairpin ramps it. Slurs, text and repeat signs are written only.
 local util = daw.util
 local view = require("notation")
 local D = require("notation.doc")
-local render = require("notation.render")
+local midi = require("notation.midi")
 
 local M = {}
 local EPS = 1e-6
 
-M.DYNAMICS = render.DYNAMICS
-M.ORDER = render.ORDER
-M.ARTICULATIONS = render.ARTICULATIONS
+M.DYNAMICS = midi.DYNAMICS
+M.ORDER = midi.ORDER
+M.ARTICULATIONS = midi.ARTICULATIONS
 
---- The articulations a clip's note carried before it was written in a score.
+--- The articulations a clip's note carries.
 function M.art_of(note)
   local own = note and note.meta and type(note.meta.notation) == "table" and note.meta.notation.art
   return type(own) == "table" and own or {}
@@ -49,23 +47,9 @@ function M.toggle_art(kind, ids)
       art[kind] = on or nil
       x.ev.art = next(art) and art or nil
       D.touch(sc, x.mi)
-      M.played_as_marked(sc, x.ev)
     end
   end)
   return on
-end
-
---- A note marked to be played short or long is played as marked: the
---- length of its feel (how much longer or shorter it was played than
---- written) goes. Its timing and loudness stay.
-function M.played_as_marked(sc, ev)
-  for _, n in ipairs(ev.notes or {}) do
-    local fe = sc.feel and sc.feel[n.id]
-    if fe then
-      fe.dlen = nil
-      sc.feel[n.id] = next(fe) and fe or nil
-    end
-  end
 end
 
 -- Marks along the score -----------------------------------------------------------------------
@@ -98,9 +82,9 @@ function M.put(_, mark)
     local ref, mi = M.ref(sc, mark.at)
     local list = {}
     local f = D.frame(sc)
-    local t = render.at_of(sc, f, ref)
+    local t = midi.at_of(sc, f, ref)
     for _, mk in ipairs(sc.marks or {}) do
-      local same = mk.kind == kind and render.at_of(sc, f, mk.from) == t
+      local same = mk.kind == kind and midi.at_of(sc, f, mk.from) == t
       if not same then list[#list + 1] = mk end
     end
     if mark.value ~= false then
@@ -116,27 +100,22 @@ function M.put(_, mark)
 end
 
 --- A slur over the notes written from `from` to `to` (clip beats) on a
---- staff (by its index), or none there if one starts there: the notes
---- under it are played legato. Returns whether there is one now.
+--- staff (by its index), or none there if one starts there. Returns
+--- whether there is one now.
 function M.slur(_, from, to, staff)
   local on = false
   view:write(function(sc)
     local st = (sc.staves[staff or 1] or sc.staves[1]).id
     local ref, mi = M.ref(sc, from)
     local f = D.frame(sc)
-    local t = render.at_of(sc, f, ref)
+    local t = midi.at_of(sc, f, ref)
     local list, removed = {}, false
     for _, mk in ipairs(sc.marks or {}) do
-      if mk.kind == "slur" and mk.staff == st and render.at_of(sc, f, mk.from) == t then removed = true else list[#list + 1] = mk end
+      if mk.kind == "slur" and mk.staff == st and midi.at_of(sc, f, mk.from) == t then removed = true else list[#list + 1] = mk end
     end
     if not removed then
       list[#list + 1] = { id = D.id(sc, "k"), kind = "slur", staff = st, from = ref, to = M.ref(sc, to) }
       on = true
-      -- The notes under it are played legato, as marked.
-      local s0, s1 = render.at_of(sc, f, ref), render.at_of(sc, f, M.ref(sc, to))
-      D.each(sc, function(ev, _, staff, _, s)
-        if staff == st and ev.kind == "chord" and s >= s0 and s < s1 then M.played_as_marked(sc, ev) end
-      end)
     end
     sc.marks = list
     D.touch(sc, mi)
@@ -148,44 +127,49 @@ end
 
 local XML_WEDGE = { cresc = "crescendo", dim = "diminuendo" }
 
---- The marks of a clip as the layout draws them: `{ at, kind = "dyn" |
---- "cresc" | "dim" | "text" | "repeat", value, to }` in clip beats, and
---- slurs `{ from, to, staff }`; from its score, or what a MIDI clip kept.
-local function marks_of(layout, c)
-  local sc = layout.doc
-  if not sc then
-    local own = view.own(c)
-    return own.marks or {}, own.slurs or {}
-  end
-  local f = D.frame(sc)
-  local origin = D.origin(sc)
-  local function beat(ref)
-    local t = render.at_of(sc, f, ref)
-    return t and (origin + t) / D.Q
-  end
+--- Marks of the score as the layout draws them: `{ at, kind = "dyn" |
+--- "cresc" | "dim" | "text" | "tempo" | "chord" | "technique", value, to }`
+--- in clip beats, and slurs `{ from, to, staff }`. `marks` are the
+--- score's (`score.marks`) with `beat(ref)` their places, or a clip's
+--- `meta.notation.marks` (in beats) for a layout made without a score.
+local function drawn(list, beat, staff_of)
   local marks, slurs = {}, {}
   -- What a popover would write is drawn as a ghost until it is written.
   local ghost = view.ghost and view.ghost.marks or {}
-  for _, mk in ipairs(sc.marks or {}) do
-    local at = beat(mk.from)
+  for _, mk in ipairs(list) do
+    local at = beat(mk.from or mk.at)
     if at then
       local first = #marks
-      if mk.kind == "dynamic" then
+      local to = mk.to and beat(mk.to) or at
+      if mk.kind == "dynamic" or mk.kind == "dyn" then
         marks[#marks + 1] = { at = at, kind = "dyn", value = mk.value, subito = mk.subito }
-      elseif mk.kind == "hairpin" then
-        marks[#marks + 1] = { at = at, kind = mk.value == "dim" and "dim" or "cresc", to = beat(mk.to) or at, niente = mk.niente }
+      elseif mk.kind == "hairpin" or mk.kind == "cresc" or mk.kind == "dim" then
+        local kind = mk.kind == "hairpin" and mk.value or mk.kind
+        marks[#marks + 1] = { at = at, kind = kind == "dim" and "dim" or "cresc", to = to, niente = mk.niente }
       elseif mk.kind == "tempo" or mk.kind == "chord" or mk.kind == "technique" then
         marks[#marks + 1] = { at = at, kind = mk.kind, value = mk.value, bpm = mk.bpm, change = mk.change }
-      elseif mk.kind == "text" then
-        marks[#marks + 1] = { at = at, kind = "text", value = mk.value }
+      elseif mk.kind == "text" or mk.kind == "repeat" then
+        marks[#marks + 1] = { at = at, kind = mk.kind, value = mk.value }
       elseif mk.kind == "slur" then
-        slurs[#slurs + 1] = { from = at, to = beat(mk.to) or at, staff = D.staff_index(sc, mk.staff) or 1 }
+        slurs[#slurs + 1] = { from = at, to = to, staff = staff_of(mk.staff) }
       end
-      if ghost[mk.id] and marks[first + 1] then marks[first + 1].ghost = true end
+      if mk.id and ghost[mk.id] and marks[first + 1] then marks[first + 1].ghost = true end
     end
   end
   table.sort(marks, function(a, b) return a.at < b.at end)
   return marks, slurs
+end
+
+local function marks_of(layout, c)
+  local sc = layout.doc
+  if not sc then
+    local own = view.own(c)
+    local list = {}
+    for _, mk in ipairs(own.marks or {}) do list[#list + 1] = mk end
+    for _, sl in ipairs(own.slurs or {}) do list[#list + 1] = { kind = "slur", at = sl.from, to = sl.to, staff = sl.staff } end
+    return drawn(list, function(x) return x end, function(s) return s or 1 end)
+  end
+  return drawn(sc.marks or {}, function(ref) return midi.beat_of(sc, ref) end, function(s) return D.staff_index(sc, s) or 1 end)
 end
 
 --- Put the marks on a layout's measures and events, for drawing and export:

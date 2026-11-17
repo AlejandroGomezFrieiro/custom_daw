@@ -189,7 +189,10 @@ end
 ---   tempo     beats a minute, for the windows given in milliseconds
 ---   staves    `{ "treble" }` or `{ "treble", "bass" }`
 ---   settings  as `M.settings` gives them
----   tuplets   the user's tuplets: `{ { start, length, n } ... }` in written beats
+---   tuplets   the user's tuplets: `{ { start, length, n, normal } ... }` in written
+---             beats; `{ start, length, plain = true }` a stretch with none (the
+---             grid is the beat's for every voice; which voice a tuplet is
+---             written in, `staff` and `voice`, is the engraving's to read)
 --- Returns `{ events, swing }`: each event `{ start, length, staff, voice,
 --- notes = { { index, pitch, meta, velocity, offset, played } }, grace,
 --- arpeggio (1 low to high, -1 high to low), staccato }`, by start.
@@ -218,11 +221,18 @@ function M.transcribe(notes, ctx)
   -- The notes, with what the user has said about each.
   local items = {}
   for index, n in ipairs(notes) do
-    -- A note before 0 is hidden by a trim of its clip's start.
-    if n.start >= 0 and n.start >= origin - 0.25 and n.start < finish - EPS then
-      local own = n.meta and type(n.meta.notation) == "table" and n.meta.notation or {}
+    local own = n.meta and type(n.meta.notation) == "table" and n.meta.notation or {}
+    -- A note before 0 is hidden by a trim of its clip's start, but for a
+    -- grace note leading to the first beat.
+    local from = own.grace and math.max(-0.5, origin - 0.5) or 0
+    if n.start >= from and n.start >= origin - 0.25 - (own.grace and 0.25 or 0) and n.start < finish - EPS then
+      -- Notation made the note shorter (or longer) than it is written, as
+      -- a staccato plays: written as long as it says, while the note is as
+      -- long as notation made it.
+      local written = tonumber(own.len) and tonumber(own.sounding) and abs(n.length - own.sounding) < 1e-6 and own.len or nil
       items[#items + 1] = { index = index, pitch = n.pitch, s = n.start, e = n.start + n.length, len = n.length,
-        velocity = n.velocity, meta = n.meta, own = own, exact = exact(n.start) and exact(n.start + n.length) }
+        velocity = n.velocity, meta = n.meta, own = own, written = written,
+        exact = exact(n.start) and (written ~= nil or exact(n.start + n.length)) }
     end
   end
   table.sort(items, function(a, b)
@@ -352,12 +362,17 @@ function M.transcribe(notes, ctx)
     ratio = detect_swing(onsets, beats)
   end
 
+  -- The user's tuplets, and beats said to be plain: written on their grids.
   local forced = {}
   for _, tp in ipairs(ctx.tuplets or {}) do
     for bi, b in ipairs(beats) do
       if b.s >= tp.start - EPS and b.e <= tp.start + tp.length + EPS then
-        local d = tp.n * b.len / tp.length
-        forced[bi] = { d, 2 * d }
+        if tp.plain then
+          forced[bi] = b.compound and { 1, 3, 6, 12 } or { 1, 2, 4, 8 }
+        else
+          local d = tp.n * b.len / tp.length
+          forced[bi] = { d, 2 * d }
+        end
       end
     end
   end
@@ -586,7 +601,7 @@ function M.transcribe(notes, ctx)
 
   -- Each note's written release.
   for _, c in ipairs(chords) do
-    for _, x in ipairs(c.items) do x.rel = x.exact and x.e or warp(x.e) end
+    for _, x in ipairs(c.items) do x.rel = (x.written and c.q + x.written) or (x.exact and x.e) or warp(x.e) end
   end
 
   -- Voices: a note held well past the next onset on its staff, under or
@@ -677,7 +692,7 @@ function M.transcribe(notes, ctx)
         rel = max(rel, x.rel)
         played = max(played, x.e - x.s)
         if not x.exact then all_exact = false end
-        if type(x.own.art) == "table" and x.own.art.staccato then marked = true end
+        if type(x.own.art) == "table" and x.own.art.staccato and not x.written then marked = true end
       end
       local beat, beat_i = beat_at(c.q)
       local beat_len = beat.len

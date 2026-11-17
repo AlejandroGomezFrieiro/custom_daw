@@ -254,7 +254,7 @@ local DEFLATED = ""
 --- to be the same score.
 local function describe(sc)
   local D = require("notation.doc")
-  local render = require("notation.render")
+  local midi = require("notation.midi")
   local LET = { [0] = "C", "D", "E", "F", "G", "A", "B" }
   local f = D.frame(sc)
   local out = { "origin " .. D.origin(sc) }
@@ -313,8 +313,8 @@ local function describe(sc)
   end
   local marks = {}
   for _, mk in ipairs(sc.marks or {}) do
-    local parts = { mk.kind, tostring(render.at_of(sc, f, mk.from)) }
-    if mk.to then parts[#parts + 1] = "to " .. tostring(render.at_of(sc, f, mk.to)) end
+    local parts = { mk.kind, tostring(midi.at_of(sc, f, mk.from)) }
+    if mk.to then parts[#parts + 1] = "to " .. tostring(midi.at_of(sc, f, mk.to)) end
     for _, k in ipairs({ "value", "subito", "niente", "bpm", "change" }) do
       if mk[k] ~= nil then parts[#parts + 1] = k .. "=" .. tostring(mk[k]) end
     end
@@ -491,7 +491,7 @@ test("musicxml: :open makes a project of the file, its tempo, title, key and mar
   eq(math.floor(daw.tempo.at(0) + 0.5), 72, "the tempo mark's bpm is the song's tempo")
   local clip = tracks[1]:clips()[1]
   local view = require("notation")
-  eq(view.has_score(clip:get()), true, "a score clip")
+  eq((clip:notes()[1].meta or {}).notation ~= nil, true, "a MIDI clip whose notes keep what the score decided")
   local found
   for _, n in ipairs(clip:notes()) do
     if n.pitch == 81 then
@@ -500,7 +500,7 @@ test("musicxml: :open makes a project of the file, its tempo, title, key and mar
     end
   end
   eq(found and math.floor(found.start * 1000 + 0.5) / 1000, 2, "it starts on beat 3")
-  eq(found and math.floor(found.length * 1000 + 0.5) / 1000, 2.7, "and lasts the half and the quarter tied, 90%")
+  eq(found and math.floor(found.length * 1000 + 0.5) / 1000, 3, "and lasts the half and the quarter tied")
   eq(clip:notes()[1].velocity, 52, "p")
   local programs = 0
   for _, k in ipairs(clip:controls()) do
@@ -523,7 +523,7 @@ test("musicxml: grace notes play before the beat or on it, and a pickup's clip s
   for _, n in ipairs(clip:notes()) do at[#at + 1] = string.format("%s@%g+%g", daw.music.name(n.pitch), math.floor(n.start * 1e4 + 0.5) / 1e4, math.floor(n.length * 1e4 + 0.5) / 1e4) end
   local text = table.concat(at, " ")
   eq(text:find("D5@1.875+0.125", 1, true) ~= nil, true, "the acciaccatura a 32nd before beat 3: " .. text)
-  eq(text:find("B4@3+0.5", 1, true) ~= nil and text:find("A4@3.5+", 1, true) ~= nil, true, "the appoggiatura on beat 4, taking half its note")
+  eq(text:find("B4@2.875+0.125", 1, true) ~= nil and text:find("A4@3+", 1, true) ~= nil, true, "the appoggiatura a 32nd before beat 4, its note on the beat: " .. text)
   eq(text:find("D5@0.3333+", 1, true) ~= nil, true, "the triplet's second note a third of a beat in")
   fresh()
   path = T.scratch .. "/mx-lead.musicxml"
