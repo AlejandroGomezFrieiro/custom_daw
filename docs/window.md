@@ -192,13 +192,13 @@ marks each clip `selected`.
 
 **Views in windows.** Any view of the terminal can be popped out into a
 window of its own on request: `:view.window undotree` (the focused view, or
-the page floating over the others, without a name), `gw` in a curve or a
-text buffer, the button on a painted pane's title, or "Open in a window" on
-a floating page. A view docked in a pane leaves it while it is in a window.
-The keyboard is the window's while it is in front; closing it (its close
-button, `:q`, `q`, or `Esc` with nothing to cancel in a view that does not
-take `Esc` itself) gives the keyboard back to the main window, in the pane
-that had it before, and so do keys typed in the main window meanwhile. The kernel draws the view by itself
+the page floating over the others, without a name), `Ctrl-w f` in a curve
+or a text buffer, the button on a painted pane's title, or "Open in a
+window" on a floating page. A view docked in a pane leaves it while it is in
+a window. The keyboard is the window's while it is in front; closing it (its
+close button, `:q`, or the view's own `q`; `Esc` stays in the view, as
+everywhere) gives the keyboard back to the main window, in the pane that had
+it before, and so do keys typed in the main window meanwhile. The kernel draws the view by itself
 at the window's size, in cells of the bundled JetBrains Mono (their size is
 measured on the font, so box-drawing characters join), with the theme's
 colours in 24 bits whatever the terminal shows, and sends it as runs of text

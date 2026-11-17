@@ -989,6 +989,10 @@ fn notation(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
         Some((_, name)) => (name.to_string(), false),
         None if key == ' ' => ("Space".to_string(), false),
         None if key == '<' => ("lt".to_string(), false),
+        // The left Control key pressed on its own, before the key it holds
+        // down: passed on as `<C-q>` it would cancel a count typed before
+        // it (`6` then `Ctrl-x`). Nothing is mapped to Ctrl-q.
+        None if key == char::from(Key::Control) => return None,
         // With Control held some systems send the control character.
         None if ctrl && (key as u32) < 0x20 => (((key as u8 + 0x60) as char).to_string(), true),
         // What is left below a space, or in the private range Slint uses for
@@ -4688,6 +4692,9 @@ mod tests {
             Some("<Space>")
         );
         assert_eq!(notation("<", false, false, false).as_deref(), Some("<lt>"));
+        // Control alone is no key, so a count before `Ctrl-x` is kept.
+        assert_eq!(notation("\u{11}", true, false, false), None);
+        assert_eq!(notation("\u{18}", true, false, false).as_deref(), Some("<C-x>"));
     }
 
     #[test]

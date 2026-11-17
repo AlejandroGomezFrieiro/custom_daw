@@ -21,7 +21,7 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   offline renders and engine restarts. Parameters set through the project are
   applied on top of it.
 - **Editors.** A plugin's own window opens with `device:open_editor()`, `ge` on
-  a track, `e` or Enter in the device panel, or the `edit` button in the
+  a track or a device in the panel (Enter on a device row too), or the `edit` button in the
   graphical frontend; `device.editor` is `"open"`, `"closed"` or nil. The
   windows belong to the kernel process, so they also work when the UI is a
   terminal. What is changed in an editor is read back: the project shows the
@@ -46,11 +46,11 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   show itself.
 - **Presets.** A device's settings are saved under a name and loaded again,
   into the same kind of device in any project, as one undo step. `:preset`
-  (`s` in the device panel) chooses one in a picker, the user's first and
+  (`c` on a device in the panel) chooses one in a picker, the user's first and
   then the device's own; `:preset Warm` loads one by name or part of it;
-  `:preset.next` and `:preset.prev` (`>` `<`) step through them;
-  `:preset.save Warm` (`w`) saves the device as it is; `:preset.default`
-  (`W`, or `Ctrl-s` in the picker) makes new devices of that kind added by
+  `:preset.next` and `:preset.prev` (`]p` `[p`) step through them;
+  `:preset.save Warm` (`,w`) saves the device as it is; `:preset.default`
+  (`,W`, or `Ctrl-s` in the picker) makes new devices of that kind added by
   hand start from the one loaded (`:preset.default none` stops that), and
   `:preset.delete` deletes one. In the window, a device's card shows its
   preset between `◀` and `▶`, and a click on the name opens a menu of them
@@ -185,7 +185,7 @@ held back by the device's latency so that the two line up. They are set,
 automated, learnt and kept in presets like any other parameter
 (`daw.fx.set_wet(device, 50)`). The window's device card has both under the
 preset; the terminal's device panel shows `wet 50%` on the device's line
-when it is not 100 %, `h` `l` there change it, and both are the last rows of
+when it is not 100 %, `+` `-` there change it, and both are the last rows of
 the device. Bypassing a device or switching it on again, and any change of
 the mix, fades over 5 ms instead of clicking; a bypassed device holds
 nothing back.

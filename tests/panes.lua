@@ -142,7 +142,7 @@ test("panes: tabs are listed with the row of them along the top, and a click on 
   ex("tabclose")
 end)
 
-test("panes: a view that paints is docked where it docks, and popped out it gives the keyboard back", function()
+test("panes: a view that paints is docked where it docks, and popped out it gives the keyboard back when closed", function()
   start()
   local seen = {}
   daw.ui.view("panes_probe", {
@@ -164,13 +164,15 @@ test("panes: a view that paints is docked where it docks, and popped out it give
   eq(seen.size, by.panes_probe.w .. "x" .. by.panes_probe.h, "the pane's size")
   P.pointer(by.panes_probe.win, { kind = "down", x = 3, y = 3, button = "left" })
   eq(seen.pointer, "down", "the pointer reaches it")
-  -- Popped out: the pane goes, and Esc in its window brings the keyboard back.
+  -- Popped out: the pane goes, and :q in its window brings the keyboard back.
   daw.ui.focus("arrange")
   daw.canvas.open("panes_probe", { window = true })
   eq(daw.canvas.open_views.panes_probe ~= nil, true, "a window of its own on request")
   eq(panes().panes_probe, nil, "and no pane")
   daw.canvas.key("panes_probe", "<Esc>")
-  eq(daw.canvas.open_views.panes_probe, nil, "Esc closes the window")
+  eq(daw.canvas.open_views.panes_probe ~= nil, true, "Esc stays in the view")
+  daw.canvas.key("panes_probe", ":q<CR>")
+  eq(daw.canvas.open_views.panes_probe, nil, ":q closes the window")
   local _, now = panes()
   eq(now.view, "arrange", "the keyboard is back where it was")
   daw.ui.hide("panes_probe")

@@ -634,23 +634,13 @@ end
 
 --- Keys typed in a view's window: they go to the key mappings with that
 --- view focused (or to a prompt that is open), as typed in the terminal.
----
---- `Esc` with nothing to cancel (normal mode, no keys half typed, no prompt,
---- and the view has no `Esc` of its own) closes the window, and the main
---- window has the keyboard again.
+--- A view may give keys a meaning of its own in its window, as other programs
+--- do (`view.window_keys`, such as Ctrl-A for choosing every note), where
+--- the terminal keeps the one rule of every view.
 function M.key(name, keys)
-  if daw.ui.views[name] then focus(name) end
-  local keymap = daw.keymap
-  if keys == "<Esc>" and M.open_views[name] and not daw.ui.float and not daw.ui.grabber
-    and keymap.mode == "n" and keymap.pending() == "" then
-    local esc = table.concat(keymap.parse("<Esc>"))
-    local own = false
-    for _, map in ipairs(keymap.list("n", name)) do
-      if map.scope == name and table.concat(map.keys) == esc then own = true end
-    end
-    if not own then return M.close(name) end
-  end
-  keymap.feed(keys)
+  local view = daw.ui.views[name]
+  if view then focus(name) end
+  daw.keymap.feed(view and view.window_keys and view.window_keys[keys] or keys)
   api.ui_redraw()
 end
 

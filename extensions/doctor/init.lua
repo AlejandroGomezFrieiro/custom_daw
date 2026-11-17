@@ -69,21 +69,23 @@ command("doctor.close", close, { desc = "Close the doctor's page, and stop a run
 
 -- The page's keys. A key that answers the question being asked does that;
 -- otherwise it does what is written here.
-local function pmap(lhs, rhs, desc) map(lhs, rhs, { view = "doctor", desc = desc }) end
+local function pmap(lhs, rhs, desc, opts) map(lhs, rhs, daw.util.merge({ view = "doctor", desc = desc }, opts)) end
 local function move(by) return function(ctx)
   panel.row = panel.row + by * (ctx.count or 1)
   panel:current()
   daw.api.ui_redraw()
 end end
-pmap("j", move(1), "Down a check")
-pmap("k", move(-1), "Up a check")
-pmap("<Down>", move(1), "Down a check")
-pmap("<Up>", move(-1), "Up a check")
+pmap("j", move(1), "Down a check", { motion = true })
+pmap("k", move(-1), "Up a check", { motion = true })
+pmap("<Down>", move(1), "Down a check", { motion = true })
+pmap("<Up>", move(-1), "Up a check", { motion = true })
+-- The answers are a prompt's keys, as Vim's `y/n` questions are: they mean
+-- what the question on the page offers (`prompt` tells the key rule so).
 for _, key in ipairs(panel.answer_keys) do
   pmap(key, function()
     if doctor.answer(key) then return end
     if key == "s" then doctor.skip() end
-  end, key == "s" and "Skip the check, or answer \"skip\"" or "Answer the question with this key")
+  end, key == "s" and "Skip the check, or answer \"skip\"" or "Answer the question with this key", { prompt = true })
 end
 pmap("<CR>", function()
   if doctor.running() then return end
@@ -96,14 +98,19 @@ pmap("o", function()
   local run = doctor.run()
   daw.notify(run and run.report and ("report: " .. run.report) or "no report yet", run and run.report and nil or "warn")
 end, "Where the report is")
+-- Escape cancels the run and stays, as it cancels anything in every view;
+-- `q` closes the page.
 pmap("<Esc>", function()
+  if doctor.running() then doctor.cancel() else daw.keymap.escape_hint() end
+end, "Stop the run", { repeatable = false })
+daw.keymap.classic("<Esc>", function()
   if doctor.running() then doctor.cancel() else close() end
-end, "Stop the run; close the page when none is going")
+end, { view = "doctor", desc = "Stop the run; close the page when none is going" })
 pmap("q", close, "Close the page")
 
 if daw.ui.keybar then
   daw.ui.keybar.set("doctor", "n", {
-    { "<CR>", "run this" }, { "A", "run all" }, { "u", "no person" }, { "y", "yes" }, { "n", "no" }, { "s", "skip" }, { "o", "report" }, { "<Esc>", "stop/close" },
+    { "<CR>", "run this" }, { "A", "run all" }, { "u", "no person" }, { "y", "yes" }, { "n", "no" }, { "s", "skip" }, { "o", "report" }, { "<Esc>", "stop" }, { "q", "close" },
   })
 end
 

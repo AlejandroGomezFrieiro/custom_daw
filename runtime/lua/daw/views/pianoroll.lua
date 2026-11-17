@@ -628,6 +628,12 @@ view.grid = {
   get = function() return view.pitch, view.beat end,
   set = function(row, col) view:set(row, col) end,
   step = function() return daw.opt.note_grid end,
+  -- A selection takes in the note under its far end, as Vim's takes in the
+  -- character under the cursor.
+  extent = function(row, col)
+    local note = view:note_at(row, col)
+    if note then return note.start + note.length end
+  end,
   -- Notes by the name of their pitch: `c` finds every C and C sharp, `c4` one key.
   search = function(text)
     local wanted, hits = text:lower(), {}
@@ -649,6 +655,16 @@ function view:toggle_note()
     part.clip:add_note({ pitch = self.pitch, start = self.beat - part.offset, length = self.length or daw.opt.note_grid })
     self:audition()
   end
+end
+
+--- What `K` shows before the track: the note under the cursor.
+function view:describe()
+  local note = self:note_at(self.pitch, self.beat)
+  if not note then return nil end
+  return {
+    { text = "Note  " .. music.name(note.pitch), style = "Title" },
+    string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity), "",
+  }
 end
 
 --- Change the note under the cursor with `fn(note)`, the note's start in

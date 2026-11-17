@@ -35,14 +35,16 @@ emap("<C-c>", function(ctx)
   keymap.setreg(value, ctx.register, true)
   daw.notify(#value.notes == 1 and "copied 1 note" or "copied " .. #value.notes .. " notes")
 end, "Copy the selected notes")
-emap("<C-x>", function(ctx)
+-- `Ctrl-x` and `Ctrl-a` change the pitch, as in every view; cutting is `d`
+-- and `x`, and choosing every note `gA`, as in the piano roll.
+keymap.classic("<C-x>", function(ctx)
   local value = editor:copy()
   if not value then return end
   keymap.setreg(value, ctx.register)
   local indices = editor:targets()
   editor:clear_selection()
   daw.clip(editor.clip_id):edit_notes({ remove = indices })
-end, "Cut the selected notes")
+end, { view = "utau", desc = "Cut the selected notes" })
 --- Paste at the cursor; the pasted notes are selected.
 local function paste_here(ctx)
   local clip = editor:clip()
@@ -64,20 +66,24 @@ emap("<C-v>", function(ctx)
   if daw.canvas.shown("utau") then return paste_here(ctx) end
   keymap.visual_start("b")
 end, "Paste at the cursor (window), select a block (terminal)")
-emap("<C-a>", function()
+local function select_all()
   local list = notes.list(editor.clip_id)
   local all = {}
   for i in ipairs(list) do all[i] = i end
   editor:select(all)
   daw.notify(#all .. " notes selected")
-end, "Select every note")
-emap("gA", function()
+end
+local function select_phrase()
   local phrase = editor:phrase_at(editor.beat)
   if not phrase then return end
   local indices = {}
   for i = phrase.first, phrase.last do indices[#indices + 1] = i end
   editor:select(indices)
-end, "Select the phrase at the cursor")
+end
+-- The phrase is `vap`, the text object, as a paragraph is in Vim.
+emap("gA", select_all, "Select every note")
+keymap.classic("<C-a>", select_all, { view = "utau", desc = "Select every note" })
+keymap.classic("gA", select_phrase, { view = "utau", desc = "Select the phrase at the cursor" })
 for _, lhs in ipairs({ "ip", "ap" }) do
   keymap.textobject(lhs, function()
     local clip = editor:clip()
@@ -92,15 +98,20 @@ emap("<Space>", function() editor:play_from_cursor() end, "Play from the cursor,
 
 -- Curves -----------------------------------------------------------------------------
 
-emap("gc", function(ctx) for _ = 1, ctx.count or 1 do editor:next_curve(1) end end, "Show the next curve under the notes")
-emap("gC", function(ctx) for _ = 1, ctx.count or 1 do editor:next_curve(-1) end end, "Show the previous curve under the notes")
+-- `]c` `[c` go through the curves, as `]t` `[t` go through takes: `gc` mutes
+-- and `gC` opens a curve in every other view.
+local function next_curve(dir) return function(ctx) for _ = 1, ctx.count or 1 do editor:next_curve(dir) end end end
+emap("]c", next_curve(1), "Show the next curve under the notes")
+emap("[c", next_curve(-1), "Show the previous curve under the notes")
+keymap.classic("gc", next_curve(1), { view = "utau", desc = "Show the next curve under the notes" })
+keymap.classic("gC", next_curve(-1), { view = "utau", desc = "Show the previous curve under the notes" })
 
 -- Phonemes ---------------------------------------------------------------------------
 
 emap(")", function(ctx) for _ = 1, ctx.count or 1 do editor:step_phoneme(1) end end, "Next phoneme")
 emap("(", function(ctx) for _ = 1, ctx.count or 1 do editor:step_phoneme(-1) end end, "Previous phoneme")
-emap("]", function(ctx) editor:shift_phoneme(5 * (ctx.count or 1)) end, "The phoneme starts 5 ticks later")
-emap("[", function(ctx) editor:shift_phoneme(-5 * (ctx.count or 1)) end, "The phoneme starts 5 ticks earlier")
+emap("]", function(ctx) editor:shift_phoneme(5 * (ctx.count or 1)) end, "The phoneme starts 5 ticks later", { role = "second+" })
+emap("[", function(ctx) editor:shift_phoneme(-5 * (ctx.count or 1)) end, "The phoneme starts 5 ticks earlier", { role = "second-" })
 emap("gr", function() editor:replace_phoneme() end, "Type the phoneme to sing instead")
 emap("gR", function() editor:reset_phoneme() end, "Put the phoneme back as the voicebank has it")
 

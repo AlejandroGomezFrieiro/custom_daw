@@ -197,15 +197,15 @@ the edit), and says so.
 | Keys | |
 | --- | --- |
 | `h` `l` | back, on by the chosen value |
-| `j` `k`, `J` `K` | down, up a line or space; an octave |
+| `j` `k`, `Ctrl-d` `Ctrl-u` | down, up a line or space; an octave |
 | `w` `b` `e` | next, previous note or rest; end of the note |
 | `W` `B`, `0` `^` `$`, `gg` `G` | next, previous bar; start of the clip, first note, end; the highest, lowest note's line |
 | `Enter` | add a note of the chosen value at the cursor, or take away the one there |
 | `x` | delete the note under the cursor |
-| `Ctrl-a` `Ctrl-x` | sharpen, flatten it (a semitone, spelled with a sharp or a flat) |
+| `+` `-`, `Ctrl-a` `Ctrl-x` | sharpen, flatten it (a semitone, spelled with a sharp or a flat); a count first is how many |
 | `Alt-k` `Alt-j` | move it up, down a step of the key |
 | `}` `{` | move it up, down an octave |
-| `+` `-` | lengthen, shorten its chord by the chosen value, ties included |
+| `Alt-l` `Alt-h` | lengthen, shorten its chord by the chosen value, ties included |
 | `g.` | dot its chord, or take the dot away |
 | `g2` … `g7` | choose the value: 32nd, 16th, eighth, quarter, half, whole (the numbers MuseScore uses) |
 | `gd` | dotted values on or off |
@@ -254,8 +254,8 @@ its notes keep their feel:
 
 | Keys | |
 | --- | --- |
-| `Alt-l` `Alt-h` | move the chord later, earlier by the chosen value, with its grace notes and marks; what is there in its voice gives way |
-| `+` `-` `g.` | its written length longer, shorter, dotted, ties included |
+| `L` `H` | move the chord later, earlier by the chosen value, with its grace notes and marks; what is there in its voice gives way |
+| `Alt-l` `Alt-h` `g.` | its written length longer, shorter, dotted, ties included |
 | `X` | delete the chord: a rest (`x` deletes the one note) |
 | `=` | an operator: the notes exactly as written (their feel forgotten), e.g. `=in`, `=ib`, or on a selection |
 | `g=` | an operator: the bars written again from what the notes play |
@@ -265,10 +265,10 @@ its notes keep their feel:
 | `gG` | the chord a grace note of the next (its time goes to the chord before), or the chord's grace notes notes again |
 | `gb` | break the beam before the chord, or join it |
 | `gt` | the beat in triplets (a duplet in 6/8), or not: the bar written again so |
-| `ge` | respell the note: G sharp, A flat |
+| `g~` | respell the note: G sharp, A flat |
 | `g'` `g>` `g_` `g^` | staccato, accent, tenuto, marcato on the chord (or a selection), and played so |
 | `(` | on a selection: a slur, the notes played legato |
-| `+` `-` | on a selection: each chord longer, shorter by the chosen value |
+| `Alt-l` `Alt-h` | on a selection: each chord longer, shorter by the chosen value |
 | `gR` `gT` | the raw view; several tracks |
 
 `:notation.quantize` makes the whole clip play what is written,

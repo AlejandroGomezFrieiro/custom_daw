@@ -1411,7 +1411,7 @@ fn the_more_menu_docks_a_view_in_a_pane_that_pops_out_on_request() {
     assert_eq!(w.number("return #daw.canvas.windows()"), 0.0);
     w.shot("more-pane.png");
     // The first button on its title pops it out into a window of its own;
-    // Esc there closes it, and keys reach the main window again.
+    // `:q` there closes it, and keys reach the main window again.
     let right = w.pane("undotree_paint", "p.x + p.w");
     let top = place::AREA_TOP + w.pane("undotree_paint", "p.y");
     w.click((right - 37, top + 12));
@@ -1420,7 +1420,8 @@ fn the_more_menu_docks_a_view_in_a_pane_that_pops_out_on_request() {
         "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree_paint'",
     );
     w.pause(0.6);
-    w.key("Escape");
+    w.type_text(":q");
+    w.key("Return");
     w.expect("its window closed", "#daw.canvas.windows() == 0");
     w.expect("the keyboard back in the main window", "daw.ui.focused == 'arrange'");
     let row = w.number("return daw.cursor.track().index");
