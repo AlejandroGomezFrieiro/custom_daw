@@ -346,6 +346,8 @@ pub struct Registry {
     /// What scripts posted to every device of a kind: by kind, each topic
     /// with its latest data, in the order the topics were first posted.
     posts: BTreeMap<String, Vec<(String, Arc<[u8]>)>>,
+    /// Kinds that were renamed, and what they are called now.
+    aliases: BTreeMap<String, String>,
 }
 
 impl Registry {
@@ -373,7 +375,25 @@ impl Registry {
     }
 
     pub fn get(&self, kind: &str) -> Option<&Rc<dyn DeviceFactory>> {
-        self.factories.get(kind)
+        self.factories.get(kind).or_else(|| {
+            self.aliases
+                .get(kind)
+                .and_then(|now| self.factories.get(now))
+        })
+    }
+
+    /// Make devices of `old`, a kind that was renamed, as `new`: projects
+    /// saved before the rename keep working.
+    pub fn alias(&mut self, old: &str, new: &str) {
+        self.aliases.insert(old.to_string(), new.to_string());
+    }
+
+    /// What a kind is called now: itself, unless it was renamed.
+    pub fn resolve<'a>(&'a self, kind: &'a str) -> &'a str {
+        match self.aliases.get(kind) {
+            Some(now) if !self.factories.contains_key(kind) => now,
+            _ => kind,
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn DeviceFactory>> {
@@ -397,6 +417,8 @@ impl Registry {
 
     /// What is posted to devices of `kind`: each topic and its latest data.
     pub fn posts(&self, kind: &str) -> &[(String, Arc<[u8]>)] {
-        self.posts.get(kind).map_or(&[], Vec::as_slice)
+        self.posts
+            .get(self.resolve(kind))
+            .map_or(&[], Vec::as_slice)
     }
 }

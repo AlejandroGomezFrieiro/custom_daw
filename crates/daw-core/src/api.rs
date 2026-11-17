@@ -704,6 +704,11 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 .collect();
             to_lua(lua, &Value::Array(list))
         }
+        // Devices of `old`, a kind that was renamed, are made as `new`.
+        fn device_alias(_, sh, (old, new) => (String, String)) {
+            sh.session.borrow_mut().registry.alias(&old, &new);
+            Ok(())
+        }
 
         // --- clips ---
         fn clip_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().clip_list(track).lua()?) }

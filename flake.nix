@@ -2,8 +2,14 @@
   description = "paw, a personal audio workstation, with a small Rust kernel and everything else in Lua";
 
   inputs.nixpkgs.url = "nixpkgs";
+  # What extensions/utau's engine is built against: the OpenUtau commit
+  # ReaUtau pins (see extensions/utau/engine/README.md).
+  inputs.openutau = {
+    url = "github:openutau/OpenUtau/bc194b6fe4897427a73066390b286e11205fd10f";
+    flake = false;
+  };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, openutau }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
@@ -27,7 +33,7 @@
 
       # The whole workspace in one build: `daw` (the terminal, `--headless`,
       # `ctl`), `daw-gui` and `daw-mcp`.
-      daw = pkgs: pkgs.rustPlatform.buildRustPackage {
+      daw = pkgs: pkgs.rustPlatform.buildRustPackage (finalAttrs: {
         pname = "daw";
         version = "0.1.0";
         # Only what the build reads, so that a change to the manual does not
@@ -71,12 +77,56 @@
         postFixup = ''
           patchelf --add-rpath ${pkgs.lib.makeLibraryPath (guiLibs pkgs)} $out/bin/.daw-gui-wrapped
         '';
+        # The extensions as packages, and the program with some of them:
+        # `paw.withExtensions (exts: [ exts.utau ])`.
+        passthru = {
+          extensions = extensionsFor pkgs;
+          withExtensions = pick: withExtensions pkgs finalAttrs.finalPackage (pick (extensionsFor pkgs));
+        };
         meta = {
           description = "A hackable DAW with a small Rust kernel and everything else in Lua";
           license = with pkgs.lib.licenses; [ mit asl20 ];
           mainProgram = "daw";
           platforms = [ "x86_64-linux" "aarch64-linux" ];
         };
+      });
+
+      # Every extension as a package holding `share/daw/extensions/<name>`.
+      # Most are Lua and nothing else; one with native parts (an engine to
+      # build, a library) has a `nix/default.nix` of its own, given the
+      # flake's inputs it asks for.
+      extensionsFor = pkgs:
+        let
+          lib = pkgs.lib;
+          dirs = lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./extensions);
+          plain = name: pkgs.runCommand "paw-extension-${name}" { passthru.extensionName = name; } ''
+            mkdir -p $out/share/daw/extensions
+            cp -r ${./extensions + "/${name}"} $out/share/daw/extensions/${name}
+          '';
+          inputs = { inherit openutau; };
+          own = name:
+            let f = import (./extensions + "/${name}/nix");
+            in pkgs.callPackage f (builtins.intersectAttrs (builtins.functionArgs f) inputs);
+        in
+        lib.mapAttrs (name: _:
+          if builtins.pathExists (./extensions + "/${name}/nix/default.nix") then own name else plain name) dirs;
+
+      # The program with extensions: each one is loaded at startup from its
+      # package (`DAW_EXTENSIONS`), before the configuration, whatever the
+      # configuration says.
+      withExtensions = pkgs: base: exts: pkgs.symlinkJoin {
+        name = "paw-with-${pkgs.lib.concatMapStringsSep "-" (e: e.extensionName) exts}";
+        paths = [ base ] ++ exts;
+        nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
+        postBuild = ''
+          for bin in daw daw-gui daw-mcp; do
+            rm $out/bin/$bin
+            makeWrapper ${base}/bin/$bin $out/bin/$bin \
+              --prefix DAW_EXTENSIONS : ${pkgs.lib.concatMapStringsSep ":" (e: "${e}/share/daw/extensions/${e.extensionName}") exts}
+          done
+        '';
+        passthru = { extensions = exts; };
+        meta = base.meta // { mainProgram = "daw"; };
       };
 
       # One program of that build, by name.
@@ -84,19 +134,54 @@
         mkdir -p $out/bin
         ln -s ${daw pkgs}/bin/${name} $out/bin/${name}
       '';
+
+      # paw that sings: the program with extensions/utau and its engine.
+      pawUtau = pkgs: (daw pkgs).withExtensions (exts: [ exts.utau ]);
     in {
       packages = forAll (pkgs: {
         default = daw pkgs;
         daw = only pkgs "daw";
         daw-gui = only pkgs "daw-gui";
         daw-mcp = only pkgs "daw-mcp";
+        paw-utau = pawUtau pkgs;
+        utau-engine = (extensionsFor pkgs).utau.engine;
       });
 
       apps = forAll (pkgs:
         nixpkgs.lib.genAttrs [ "daw" "daw-gui" "daw-mcp" ] (name: {
           type = "app";
           program = "${only pkgs name}/bin/${name}";
-        }) // { default = { type = "app"; program = "${daw pkgs}/bin/daw"; }; });
+        }) // {
+          default = { type = "app"; program = "${daw pkgs}/bin/daw"; };
+          paw-utau = { type = "app"; program = "${pawUtau pkgs}/bin/daw"; };
+        });
+
+      # For a home-manager configuration:
+      #   programs.paw = { enable = true; extensions = [ "utau" ]; };
+      homeManagerModules.default = { config, lib, pkgs, ... }:
+        let cfg = config.programs.paw;
+        in {
+          options.programs.paw = {
+            enable = lib.mkEnableOption "paw, a personal audio workstation";
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              description = "The program, without extensions.";
+            };
+            extensions = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "utau" ];
+              description = "Extensions to build in and load at startup, with whatever they need (utau: OpenUtau and its engine).";
+            };
+          };
+          config = lib.mkIf cfg.enable {
+            home.packages = [
+              (if cfg.extensions == [ ] then cfg.package
+               else cfg.package.withExtensions (exts: map (name: exts.${name}) cfg.extensions))
+            ];
+          };
+        };
 
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {

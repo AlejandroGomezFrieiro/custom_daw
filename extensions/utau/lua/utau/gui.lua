@@ -683,8 +683,8 @@ function view:on_hide()
   daw.canvas.close("utau")
 end
 
--- Opening a vocal clip opens this editor, in the terminal and in a window:
--- a double click in a graphical frontend asks here first.
+-- Opening a vocal clip (the vocal track kind's editor) opens this editor, in
+-- the terminal and in a window.
 local edit = view.edit
 function view:edit(clip_id)
   edit(self, clip_id)
@@ -696,17 +696,9 @@ function view:edit(clip_id)
   daw.canvas.open("utau", { title = "Vocal editor", width = 1180, height = 620 })
 end
 
-table.insert(daw.frontend.openers, function(clip)
-  local data = clip:get()
-  if data.kind == "midi" and utau.device_of(data.track) then
-    view:edit(data.id)
-    return true
-  end
-end)
-
--- In the window's menus: a vocal track from the buttons that make a track,
--- and singing for a track that is there already.
-table.insert(daw.frontend.menus.timeline, { label = "New vocal track", command = "utau.track" })
+-- In the window's track menu: singing for a track that is there already.
+-- A new vocal track is offered wherever a track is made, as a kind of
+-- track (see utau.commands).
 table.insert(daw.frontend.menus.track, { label = "Make this a vocal track", command = "utau.voice" })
 
 return gui

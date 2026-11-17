@@ -136,6 +136,7 @@ daw.tempolane = require("daw.tempolane")
 daw.frontend = require("daw.frontend")
 daw.audition = require("daw.audition")
 daw.pick = require("daw.pick")
+daw.track_kinds = require("daw.track_kinds")
 daw.fx = require("daw.fx")
 daw.routes = require("daw.routes")
 daw.controls = require("daw.controls")
@@ -202,6 +203,9 @@ function K.startup()
 
   daw.luadev = require("daw.luadev")
   local env = api.env()
+  -- Extensions the program was built with (`paw.withExtensions` in the
+  -- flake): part of the program, so loaded with `--clean` too.
+  daw.ext.load_packaged(os.getenv("DAW_EXTENSIONS"))
   if not env.clean then
     daw.luadev.add_dir(env.config_dir .. "/devices", daw.luadev.RANK_CONFIG)
     daw.ext.load_dir(env.config_dir .. "/extensions")

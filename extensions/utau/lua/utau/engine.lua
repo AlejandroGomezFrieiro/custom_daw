@@ -28,10 +28,15 @@ local function home()
   return os.getenv("HOME") or "."
 end
 
---- Where the engine is: the `utau_engine` option, `$REAUTAU_ENGINE`,
---- `reautau-engine` on the PATH, or a ReaUtau install in REAPER's folder.
+--- Where the engine is: the `utau_engine` option, `$REAUTAU_ENGINE`, the
+--- one built with the extension (`bin/` beside it, where the Nix package
+--- puts it), `reautau-engine` on the PATH, or a ReaUtau install in REAPER's
+--- folder.
 function M.find()
-  local candidates = { daw.opt.utau_engine, os.getenv("REAUTAU_ENGINE") }
+  local loaded = daw.ext.loaded.utau
+  -- `false`, not nil, where there is nothing: the list must have no holes.
+  local candidates = { daw.opt.utau_engine or false, os.getenv("REAUTAU_ENGINE") or false,
+    loaded and loaded.path .. "/bin/reautau-engine" or false }
   for dir in (os.getenv("PATH") or ""):gmatch("[^:]+") do
     candidates[#candidates + 1] = dir .. "/reautau-engine"
   end

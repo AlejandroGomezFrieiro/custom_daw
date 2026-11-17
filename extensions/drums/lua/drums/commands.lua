@@ -193,28 +193,26 @@ keymap.group("<leader>k", "drums", { view = "arrange" })
 map("<leader>kn", "drums.track", { view = "arrange", desc = "Add a drum track" })
 map("<leader>km", "drums.map", { view = "arrange", desc = "Choose the track's drum map" })
 
--- Enter (`clip.edit`) and a double click in the window open a drum track's
+-- A drum track is a kind of track (`daw.track_kinds`): `:track.add drums`,
+-- `:track.new` and the window's menus that make a track offer it, the
+-- header shows its `D`, and Enter (`clip.edit`) and a double click open its
 -- clips in the drum grid; other clips go to the piano roll as before.
-table.insert(daw.frontend.openers, function(clip)
-  local data = clip:get()
-  if data.kind == "midi" and drums.is_drum(data.track) then
+daw.track_kinds.define("drums", {
+  title = "Drum track",
+  letter = "D",
+  desc = "a kit, and a grid of its pieces by name",
+  create = function(track, args) drums.dress(track, args) end,
+  editor = function(clip)
+    if clip:get().kind ~= "midi" then return false end
     open(clip)
     return true
-  end
-end)
-
-table.insert(daw.frontend.menus.timeline, {
-  label = "New drum track",
-  run = function(track, beat)
-    local list = api.track_list()
-    local index
-    for i, id in ipairs(list) do
-      if id == track then index = i + 1 end
-    end
-    if beat then daw.cursor.set_beat(beat) end
-    if index then daw.cursor.set_track(list[index - 1]) end
-    daw.cmd("drums.track")
   end,
+  describe = function(id)
+    local info = drums.info(id)
+    return info and (info.map .. " map") or nil
+  end,
+  -- Drum tracks made before there were kinds of track keep their map.
+  is = function(id) return drums.is_drum(id) end,
 })
 table.insert(daw.frontend.menus.clip, { label = "Open in the drum grid", command = "drums.edit", only = "midi" })
 table.insert(daw.frontend.menus.clip, { label = "Drum beat to start from…", command = "drums.beat", only = "midi" })

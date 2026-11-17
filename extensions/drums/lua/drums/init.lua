@@ -68,6 +68,7 @@ function M.clear_map(which)
   local meta = track.meta or {}
   if meta.drums == nil then return end
   meta.drums = nil
+  if meta.kind == "drums" then meta.kind = nil end
   -- An empty table would cross over as a list; one key keeps it a table.
   if next(meta) == nil then meta = { drums_was = true } end
   track.meta = meta
@@ -122,21 +123,20 @@ end
 --- `opts`: `name`, `index`, `map`, `kit`, `colour`.
 function M.make_track(opts)
   opts = opts or {}
-  local track = daw.add_track({ name = opts.name or "Drums", index = opts.index })
-  local ok, err = pcall(function()
-    track.color = opts.colour or M.colour
-    if opts.kit and opts.kit ~= "builtin" then
-      require("drums.kit").build(track, opts.kit, { map = opts.map })
-    else
-      track:add_device("drums")
-      M.set_map(track, opts.map)
-    end
-  end)
-  if not ok then
-    track:remove()
-    error(err, 0)
+  return daw.track_kinds.add("drums", util.merge(opts, { name = opts.name or "Drums" }))
+end
+
+--- Make an ordinary track a drum track: its colour, the kit (`opts.kit`, a
+--- folder of samples, or the built-in one) and the map (`opts.map`). What a
+--- drum track is made with, as a kind of track.
+function M.dress(track, opts)
+  track.color = opts.colour or M.colour
+  if opts.kit and opts.kit ~= "builtin" then
+    require("drums.kit").build(track, opts.kit, { map = opts.map })
+  else
+    track:add_device("drums")
+    M.set_map(track, opts.map)
   end
-  return track
 end
 
 --- Sound one piece now, on the track's own instrument.

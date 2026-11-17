@@ -2576,6 +2576,7 @@ impl View {
                     name: text(&t["name"]),
                     color: colour(&t["color"]),
                     chain: chain.into(),
+                    kind: text(&t["kind"]),
                     volume: fader(db),
                     pan: (number(&t["pan"]) + 1.0) / 2.0,
                     volume_text: decibels(db).into(),

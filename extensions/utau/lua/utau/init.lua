@@ -57,7 +57,8 @@ local function round(x) return math.floor(x + 0.5) end
 --- The `utau` device of a track, as a device id, or nil.
 function M.device_of(track_id)
   for _, id in ipairs(api.track_get(track_id).devices) do
-    if api.device_get(id).kind == voices.DEVICE then return id end
+    local kind = api.device_get(id).kind
+    if kind == voices.DEVICE or kind == voices.OLD_DEVICE then return id end
   end
 end
 

@@ -14,9 +14,14 @@ local api = daw.api
 
 local M = {
   DEVICE = "lua:utau",
+  -- What the device was called when it was built into the program: projects
+  -- saved then make it as the Lua device.
+  OLD_DEVICE = "utau",
   -- voices[n][hash] = { start, rate, channels, quality, path }
   voices = {},
 }
+
+api.device_alias(M.OLD_DEVICE, M.DEVICE)
 
 local seq = 0
 

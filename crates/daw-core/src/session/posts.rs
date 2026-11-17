@@ -20,6 +20,8 @@ impl Session {
     ) -> Vec<(u64, String)> {
         self.flush();
         let data: Option<Arc<[u8]>> = data.map(Arc::from);
+        let kind = self.registry.resolve(kind).to_string();
+        let kind = kind.as_str();
         self.registry.post(kind, topic, data.clone());
         let Some(data) = data else {
             return Vec::new();
@@ -29,7 +31,10 @@ impl Session {
             let Some(controller) = live.controller.as_mut() else {
                 continue;
             };
-            if self.project.device(*id).is_some_and(|d| d.kind == kind)
+            if self
+                .project
+                .device(*id)
+                .is_some_and(|d| self.registry.resolve(&d.kind) == kind)
                 && let Err(err) = controller.call(topic, &data)
             {
                 refused.push((*id, format!("{err:#}")));
