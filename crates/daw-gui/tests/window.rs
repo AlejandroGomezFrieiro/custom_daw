@@ -1609,7 +1609,7 @@ fn the_status_bar_names_the_view_and_lists_its_keys() {
     w.xdotool(&["key", "comma", "m"]);
     w.expect("the mixer focused", "daw.ui.focused == 'mixer'");
     w.shot("keybar-mixer.png");
-    assert!(w.shows("louder", 5), "the mixer's keys");
+    assert!(w.shows("pan", 10), "the mixer's keys");
     // A prefix lists the keys that can follow it.
     w.key("g");
     w.expect("a prefix waiting", "daw.keymap.pending() == 'g'");
@@ -1692,13 +1692,13 @@ fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
     let mut w = scene!(
         "rollscroll",
         "local t = daw.add_track({ name = 'Lead' })
-         t:add_clip({ start = 0, length = 8, name = 'Hook', notes = { { pitch = 96, start = 0, length = 1 } } })
+         t:add_clip({ start = 0, length = 8, name = 'Hook', notes = { { pitch = 98, start = 0, length = 1 } } })
          daw.api.undo_checkpoint()"
     );
     w.ctl("daw.cursor.set_track(daw.tracks()[1].id) daw.keymap.feed('<CR>')");
     w.expect("the roll open", "daw.ui.visible('pianoroll')");
     // It opens on the cursor, which the kernel puts on the clip's note
-    // (C7), not on a fixed top of the keyboard.
+    // (D7, so C7 shows beside it), not on a fixed top of the keyboard.
     assert!(w.shows("C7", 15), "the roll opens on the cursor's row");
     // To a low note and to a high one: the row of the cursor is in view.
     w.ctl("daw.ui.views.pianoroll.pitch = 38 daw.api.ui_redraw()");
