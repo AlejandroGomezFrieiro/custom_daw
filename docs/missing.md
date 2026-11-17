@@ -22,6 +22,19 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- paw's sampler (extensions/sampler) reads an instrument's samples whole
+  into memory while the program waits, and nothing streams from disk: a
+  library that takes more than 30 s to read is ended by the plugin
+  helper's time limit. Not played: SFZ's LFOs (`amplfo_*`, `fillfo_*`,
+  `pitchlfo_*`, `lfoN_*`), its v2 envelopes (`egN_*`), `<effect>`,
+  `amp_keytrack`, `sw_vel`, controllers on envelope times and offsets, and
+  smoothing per controller (`_smoothccN`); Decent Sampler's effects,
+  modulators, buses, glide, `legatoInterval` and oscillators. SoundFont 2,
+  folders of samples and `.dslibrary` archives are not read; FLAC samples
+  are kept as floats (twice the memory of 16-bit). The plugin lists no
+  presets for `:preset`, has no editor
+  window of its own, one stereo output, and ignores per-note controllers,
+  MPE and note-off velocity.
 - The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
   column's lowest to highest sample and nothing of its loudness: there is no
   darker inner band for the RMS. The window draws a clip's peaks from the
@@ -91,9 +104,10 @@
   score own the song's tempo); repeats and endings are written, not
   unfolded; trills, mordents, turns and tremolos are written, not played,
   and a fermata holds its note's whole value but does not stop the time;
-  playing techniques (`pizz.`, `con sord.`) are written text that switches
-  no articulation of the instrument; swing and expression maps are not
-  rendered; no CC1 or CC11 is written for sustained instruments; a key
+  playing techniques (`pizz.`, `con sord.`) switch an articulation only
+  on a track with an articulation map (extensions/articulations), and
+  only from where they are written to the end of the clip or the range;
+  swing is not rendered; no CC1 or CC11 is written for sustained instruments; a key
   change after the first bar is not read by `daw.harmony` (there is no key
   track in the core: the key the score starts in is the project's); a
   time signature written in notation is the song's, for every track. A mark
@@ -129,6 +143,20 @@
   written again with those ties lost when it is moved or pasted; `Tab`
   takes suggestions made for the piano roll's clip (notation does not ask
   for them); `Ctrl-t` asks on the command line, not in a popover.
+
+- Articulations (extensions/articulations): the window shows the notes'
+  tags and colours and the shaded, named rows, but not the band, the
+  keyboard's labels or menus of its own; keyswitch rows are labelled, not
+  folded away; the score draws an articulation's mark in the same ink as a
+  written one, and the techniques popover does not offer the map's
+  articulations first; a modifier writes MIDI 1.0 controllers, not the
+  profile's registered controllers (mute type, playing position);
+  `:art.edit` (a map edited in a text buffer) is not there; a generated map
+  is not made again when its library changes; Kontakt and SF2 are not
+  read. `:art.measure` finds onsets by level alone (a sample with a slow
+  swell reads late), and does not yet use the onsets a sampler's
+  `describe` could report; linked controllers are a curve of their own,
+  not one of the choices of the strip under the roll.
 
 - Engraved notation: page breaks of one's own (pages fill as systems
   come), and the engraving options as a buffer to edit (staff size,

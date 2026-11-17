@@ -31,6 +31,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/musicops` | musical operators: humanize, strum, arpeggiate, scales |
 | `extensions/pattern` | clips written as patterns of text, in the manner of TidalCycles |
 | `extensions/notation` | a MIDI clip as staff notation, read and edited in the terminal and in a window |
+| `extensions/articulations` | each note's articulation as its MIDI 2.0 attribute, named per instrument by `.art.toml` maps, sent as keyswitches to MIDI 1.0 instruments; maps made from SFZ, Decent Sampler, folders and Reaticulate banks |
 | `extensions/drums` | drum tracks in one step, and a grid of the kit's pieces by name, in the terminal and a window |
 | `extensions/templates` | a track, a group of tracks or a chain of devices saved under a name, to make again in any project |
 | `extensions/vinput` | virtual inputs: a guitar heard as MIDI through gdi2m, as a port any track takes, set up in the terminal and a window |
@@ -291,6 +292,17 @@ extension, the track is an ordinary one and `K` says which kind it was.
 Vocal tracks (utau) and drum tracks (drums) are kinds.
 `daw.track_kinds.add(name, opts)`, `set(track, name, args)`, `clear(track)`,
 `of(track)` and `describe(track)` are there for scripts.
+
+**Plugins of its own.** An extension can bring a plugin built from its own
+source. extensions/sampler is paw's sample player, a CLAP plugin written
+in Rust in `native/` (its own Cargo workspace, so building paw never
+compiles it); its package puts `paw-sampler.clap` in `clap/` beside the
+extension, which adds that folder to the plugin scan. Scripts ask such a
+plugin things by name as they ask a Lua device: `daw.api.device_call(device,
+method, data)` reaches any method paw does not know itself through the
+plugin's `dev.paw.call/1` extension (the sampler answers `describe`), and
+`device_call(device, "preset.load", "file:<path>")` loads a file through
+the plugin's preset-load.
 
 **Programs of its own.** An extension can start a program and talk to it
 over a socket or its standard input and output (see Helper programs in

@@ -236,6 +236,68 @@ view.layer("notes", 20, function(L)
     end
   end)
 
+-- What modules say about rows and notes, for an instrument whose keys mean
+-- more than pitches (keyswitches, a playable range, drum pieces):
+--
+--   view.rows(name, fn)      fn(pitch, track) -> { label, style, shade } or nil:
+--                            `label` (and its `style`) on the keyboard edge
+--                            instead of the pitch, `shade` the row's style
+--   view.band(name, order, spec)  a row of its own above the ruler while
+--                            `spec.active(clip)`: `spec.title` on the
+--                            keyboard edge, `spec.paint(buf, L)` in it
+--   view.describer(name, fn) fn(note, part) -> lines `K` adds for a note
+--   view.entering(name, fn)  fn(note, clip) changes a note the roll is
+--                            about to enter (keys, insert mode, the mouse)
+-- The first provider with something to say about a row wins. nil removes one.
+view.row_providers, view.bands, view.describers, view.enterers = {}, {}, {}, {}
+
+local function provide(list, name, entry)
+  for i = #list, 1, -1 do
+    if list[i].name == name then table.remove(list, i) end
+  end
+  if entry then
+    entry.name = name
+    list[#list + 1] = entry
+  end
+  table.sort(list, function(a, b) return (a.order or 0) < (b.order or 0) end)
+  api.ui_redraw()
+end
+
+function view.rows(name, fn) provide(view.row_providers, name, fn and { fn = fn }) end
+
+function view.band(name, order, spec) provide(view.bands, name, spec and util.merge(spec, { order = order })) end
+
+function view.describer(name, fn) provide(view.describers, name, fn and { fn = fn }) end
+
+function view.entering(name, fn) provide(view.enterers, name, fn and { fn = fn }) end
+
+--- What the modules say about a row of a track, or nil.
+function view.row_look(pitch, track)
+  for _, p in ipairs(view.row_providers) do
+    local ok, look = pcall(p.fn, pitch, track)
+    if ok and look then return look end
+  end
+end
+
+--- The bands shown over a clip.
+function view.active_bands(clip)
+  local out = {}
+  for _, band in ipairs(view.bands) do
+    local ok, on = pcall(band.active, clip)
+    if ok and on then out[#out + 1] = band end
+  end
+  return out
+end
+
+--- A note about to be entered in `clip`, as the modules want it.
+function view.new_note(clip, note)
+  for _, e in ipairs(view.enterers) do
+    local ok, err = pcall(e.fn, note, clip)
+    if not ok then api.log("piano roll entering " .. e.name .. ": " .. tostring(err)) end
+  end
+  return note
+end
+
 --- Rows for the velocity lane on a panel `h` rows tall.
 function view.velocity_rows(h)
   return h >= 30 and 5 or h >= 16 and 3 or 0
@@ -263,6 +325,8 @@ function view:render(buf, ctx)
   -- With room to spare, the notes' velocities get a few rows of their own.
   local vel = view.velocity_rows(h)
   local head = view.head_rows(h)
+  local bands = h >= 12 and view.active_bands(clip) or {}
+  head = head + #bands
   self.head = head
   local rows, tw = h - head - vel, w - KEYS
   local span = tw / zoom
@@ -312,6 +376,16 @@ function view:render(buf, ctx)
     daw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
   end
   local lines = daw.draw.beats(ruler, self.scroll, span, zoom, c.start)
+  for i, band in ipairs(bands) do
+    local y = head - 1 - #bands + i - 1
+    buf:fill(0, y, w, 1, " ", "Ruler")
+    buf:text(0, y, util.fit(band.title or band.name, KEYS - 1), "RulerChordEdge")
+    local ok, err = pcall(band.paint, buf:sub(KEYS, y, tw, 1), {
+      clip = clip, data = c, from = self.scroll, to = self.scroll + span, zoom = zoom, width = tw, lines = lines,
+      x = function(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end,
+    })
+    if not ok then api.log("piano roll band " .. band.name .. ": " .. tostring(err)) end
+  end
   -- Steps between the beats when zoomed in far enough to see them.
   -- They are the same on every row: one line of text, drawn row by row.
   local steps
@@ -334,9 +408,11 @@ function view:render(buf, ctx)
   local end_x = math.floor((hi - self.scroll) * zoom + 0.5)
   for row = 0, rows - 1 do
     local pitch = self.top - row
+    local look = view.row_look(pitch, c.track) or {}
     daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS)
+    if look.label and pitch ~= self.pitch then buf:text(0, row + head, util.fit(look.label, KEYS - 1) .. " ", look.style or "PianoWhite") end
     if sounds[pitch] then buf:text(KEYS - 1, row + head, "•", "PianoCursor") end
-    roll:fill(0, row, tw, 1, " ", music.is_black(pitch) and "RollRowBlack" or "RollRow")
+    roll:fill(0, row, tw, 1, " ", look.shade or (music.is_black(pitch) and "RollRowBlack" or "RollRow"))
     if steps then roll:text(0, row, steps, music.is_black(pitch) and "RollStepBlack" or "RollStep") end
     for _, line in ipairs(lines) do roll:text(line.x, row, line.bar and g.bar or g.beat, line.bar and "RollBar" or "RollBeat") end
     if start_x > 0 then roll:fill(0, row, math.min(tw, start_x), 1, " ", "RollOutside") end
@@ -615,7 +691,7 @@ function view:enter(semitone, advance)
   -- A note of the same pitch that starts here is replaced.
   clip:edit_notes({
     remove = self:starting_here(clip, pitch, part.offset),
-    add = { { pitch = pitch, start = beat, length = length, velocity = daw.opt.velocity } },
+    add = { view.new_note(clip, { pitch = pitch, start = beat, length = length, velocity = daw.opt.velocity }) },
   })
   self.pitch = pitch
   clip:track():play_note(pitch, daw.opt.velocity, 180)
@@ -666,7 +742,7 @@ function view:toggle_note()
     part.clip:remove_note(place)
   else
     part = clips.target(self.beat)
-    part.clip:add_note({ pitch = self.pitch, start = self.beat - part.offset, length = self.length or daw.opt.note_grid })
+    part.clip:add_note(view.new_note(part.clip, { pitch = self.pitch, start = self.beat - part.offset, length = self.length or daw.opt.note_grid }))
     self:audition()
   end
 end
@@ -675,10 +751,19 @@ end
 function view:describe()
   local note = self:note_at(self.pitch, self.beat)
   if not note then return nil end
-  return {
+  local lines = {
     { text = "Note  " .. music.name(note.pitch), style = "Title" },
-    string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity), "",
+    string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity),
   }
+  local _, _, part = self:note_at(self.pitch, self.beat)
+  for _, d in ipairs(view.describers) do
+    local ok, more = pcall(d.fn, note, part)
+    if ok and type(more) == "table" then
+      for _, line in ipairs(more) do lines[#lines + 1] = line end
+    end
+  end
+  lines[#lines + 1] = ""
+  return lines
 end
 
 --- Change the note under the cursor with `fn(note)`, the note's start in

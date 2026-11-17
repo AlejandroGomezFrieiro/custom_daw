@@ -206,7 +206,7 @@ local function write()
     local part, clip = entry.part, entry.part.clip
     local finish, add, remove, seen = 0, {}, {}, {}
     for _, n in ipairs(entry.notes) do
-      add[#add + 1] = { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity }
+      add[#add + 1] = daw.ui.views.pianoroll.new_note(clip, { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity })
       finish = math.max(finish, n.start + n.length)
       local found, places = clip:notes({ from = n.start - 1e-9, to = n.start + 2e-9, low = n.pitch, high = n.pitch })
       for i, old in ipairs(found) do

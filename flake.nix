@@ -147,6 +147,8 @@
         daw-mcp = only pkgs "daw-mcp";
         paw-utau = pawUtau pkgs;
         utau-engine = (extensionsFor pkgs).utau.engine;
+        # extensions/sampler's plugin and command, on their own.
+        paw-sampler = (extensionsFor pkgs).sampler.engine;
       });
 
       apps = forAll (pkgs:
