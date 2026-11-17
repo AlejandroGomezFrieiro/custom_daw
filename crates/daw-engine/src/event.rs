@@ -43,12 +43,52 @@ pub enum NoteCtl {
 /// default of MIDI 2.0 and of MPE.
 pub const NOTE_BEND_RANGE: f64 = 48.0;
 
+/// The attribute a MIDI 2.0 note-on may carry: its type and sixteen bits
+/// of data. Type 0 is none; 3 is a pitch in 7.9; 0x10 to 0x1F are the
+/// articulations of the orchestral articulation profile (M2-123), which
+/// give the data's top bits as subclass and variation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Attr {
+    pub kind: u8,
+    pub data: u16,
+}
+
+impl Attr {
+    pub const NONE: Attr = Attr { kind: 0, data: 0 };
+
+    pub fn is_none(self) -> bool {
+        self.kind == 0
+    }
+
+    /// As one number, type above data: what a Lua device sees.
+    pub fn packed(self) -> u32 {
+        if self.is_none() {
+            0
+        } else {
+            (self.kind as u32) << 16 | self.data as u32
+        }
+    }
+
+    pub fn from_packed(packed: u32) -> Attr {
+        match (packed >> 16) as u8 {
+            0 => Attr::NONE,
+            kind => Attr {
+                kind,
+                data: packed as u16,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EventKind {
+    /// A note starts. Its attribute reaches what takes MIDI 2.0 (ports,
+    /// plugins that take it, Lua devices) and is dropped for MIDI 1.0.
     NoteOn {
         key: u8,
         vel: f32,
         ch: u8,
+        attr: Attr,
     },
     NoteOff {
         key: u8,

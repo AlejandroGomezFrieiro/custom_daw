@@ -966,6 +966,9 @@ impl RemoteFactory {
             .arg(max_block.to_string())
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(Stdio::null());
+        if let Some(dirs) = crate::added_dirs_env() {
+            command.env(crate::ADDED_DIRS_ENV, dirs);
+        }
         if TEST_HANG.load(Ordering::Relaxed) {
             command.env("DAW_PLUGIN_TEST_HANG", "1");
         }
@@ -1376,6 +1379,7 @@ pub fn serve(args: &[String]) -> i32 {
     let cache = args.get(5).map(PathBuf::from);
     serve_with(args, |kind, rate, max_block| {
         let mut registry = Registry::default();
+        crate::adopt_added_dirs();
         crate::register(&mut registry, cache.as_deref());
         registry
             .get(kind)

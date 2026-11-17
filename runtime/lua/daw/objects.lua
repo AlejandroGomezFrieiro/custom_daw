@@ -95,9 +95,11 @@ end
 function Track:meter() return api.track_meter(self.id) end
 
 --- Start a note now, outside the timeline. `pitch` may be a name like "C4".
-function Track:note_on(pitch, velocity)
+--- With `attr`, a MIDI 2.0 attribute (`daw.attr`), the note carries it, and
+--- what the track's `attr_map` sends for it goes first.
+function Track:note_on(pitch, velocity, attr)
   daw.ui.poke()
-  api.note_on(self.id, music.pitch(pitch), velocity)
+  api.note_on(self.id, music.pitch(pitch), velocity, attr)
 end
 
 --- Stop a note, or every note when `pitch` is left out.
@@ -116,9 +118,9 @@ function Track:midi(event)
   api.midi_send(self.id, event)
 end
 
---- Play a note for `ms` milliseconds (default 200).
-function Track:play_note(pitch, velocity, ms)
-  self:note_on(pitch, velocity)
+--- Play a note for `ms` milliseconds (default 200), with `attr` if given.
+function Track:play_note(pitch, velocity, ms, attr)
+  self:note_on(pitch, velocity, attr)
   daw.defer(function() if self:exists() then self:note_off(pitch) end end, ms or 200)
 end
 
@@ -140,6 +142,8 @@ function Track:snapshot()
     name = t.name, volume = t.volume, pan = t.pan, output = t.output, color = t.color, mute = t.mute,
     sends = t.sends, input = t.input, monitor = t.monitor, midi_input = t.midi_input, height = t.height,
     midi_output = t.midi_output,
+    -- How its notes' articulations reach its instrument.
+    attr_map = t.attr_map,
     -- What extensions keep with the track: a drum map, the group it is in.
     meta = next(t.meta or {}) and t.meta or nil,
     devices = {}, clips = {}, lanes = {},
@@ -179,6 +183,7 @@ function M.restore_track(snap, index)
   if snap.monitor then track.monitor = true end
   if snap.midi_input then track.midi_input = snap.midi_input end
   if snap.midi_output then track.midi_output = snap.midi_output end
+  if snap.attr_map then track.attr_map = snap.attr_map end
   if snap.height then api.track_set(track.id, "height", snap.height) end
   if snap.meta then api.track_set(track.id, "meta", snap.meta) end
   local devices = {}
@@ -391,8 +396,10 @@ function Clip:remove() api.clip_remove(self.id) end
 function Clip:track() return wrap(Track, api.clip_get(self.id).track) end
 
 --- The notes of a MIDI clip: a list of { pitch, start, length, velocity },
---- with `start` in beats from the start of the clip, and `meta`, a table of
---- extension data such as a lyric, on notes that have any.
+--- with `start` in beats from the start of the clip, `meta`, a table of
+--- extension data such as a lyric, on notes that have any, and `attr`, the
+--- MIDI 2.0 attribute of the note's start (`{ type, data }`, see
+--- `daw.attr`), on notes that have one.
 ---
 --- With a range, only the notes sounding within it, and as a second value
 --- the place of each in the whole list, for `set_note` and `remove_note`:
@@ -411,6 +418,7 @@ function Clip:note_at(pitch, beat) return api.clip_note_at(self.id, music.pitch(
 --- Change one note, named by its place among the clip's notes (from 1),
 --- without touching the others: `clip:set_note(3, { length = 2 })`. Returns
 --- the note's place afterwards, since notes stay in the order they start.
+--- `attr = false` takes its attribute away.
 function Clip:set_note(index, fields)
   if fields.pitch then fields = daw.util.merge(fields, { pitch = music.pitch(fields.pitch) }) end
   return api.clip_note_set(self.id, index, fields)
@@ -459,6 +467,7 @@ end
 function Clip:add_notes(notes) api.clip_add_notes(self.id, M.notes(notes)) end
 
 ---   clip:add_note({ pitch = "E4", start = 1, length = 0.5, velocity = 90 })
+---   clip:add_note({ pitch = "G4", start = 2, attr = daw.attr.m2("11.A") })   -- pizzicato
 --- Returns the note's place among the clip's notes.
 function Clip:add_note(note) return api.clip_note_add(self.id, M.notes({ note })[1]) end
 
@@ -541,6 +550,7 @@ function M.notes(notes)
       length = note.length or note[3] or 1,
       velocity = note.velocity or note[4] or daw.opt.velocity,
       meta = note.meta,
+      attr = note.attr,
       -- A note given back keeps its name (`daw.address`); a new one gets one.
       id = note.id,
     }

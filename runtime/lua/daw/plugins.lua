@@ -1,0 +1,77 @@
+-- `daw.plugins`: plugins an extension ships, and what plugins call their keys.
+--
+--   daw.plugins.add_dir(dir)        -- look for CLAP and VST3 plugins in `dir` too
+--   daw.plugins.from["clap:dev.paw.sampler"]   -- "sampler": who added it
+--   daw.plugins.note_names(device)  -- { [36] = "Kick", ... } (CLAP note-name)
+--   daw.plugins.key_names(track)    -- the same for a track's devices together
+local api = daw.api
+
+local M = {}
+
+--- Which extension (or directory) each device kind added by `add_dir`
+--- came from, by kind.
+M.from = {}
+
+--- How long a device's key names are kept before it is asked again, in
+--- milliseconds: an instrument may load another sound and name its keys anew.
+M.names_ttl = 2000
+
+--- Look for CLAP and VST3 plugins in `dir` as well as where plugins are
+--- installed, for the rest of the session, and register those in it now;
+--- devices of theirs that a project already holds and that were missing are
+--- made. They are listed as coming from `name` (by default the extension
+--- whose directory `dir` is in, else `dir`). Works with `--no-plugins` too.
+--- Returns `{ kinds, notes }`: the device kinds found and what could not be
+--- used; nil where plugins cannot be looked for.
+---   daw.plugins.add_dir(here .. "/result/lib/clap")   -- `here`: the extension's directory
+function M.add_dir(dir, name)
+  dir = tostring(dir)
+  local found = api.plugins_add_dir(dir)
+  if not found then return nil end
+  name = name or dir:match("extensions/([^/]+)") or dir
+  local added = {}
+  for _, kind in ipairs(found.kinds) do
+    M.from[kind] = name
+    added[kind] = true
+  end
+  for _, note in ipairs(found.notes) do api.log("plugin scan: " .. note) end
+  for _, id in ipairs(api.track_list()) do
+    for _, device in ipairs(api.track_get(id).devices) do
+      local d = api.device_get(device)
+      if added[d.kind] and d.missing then pcall(api.device_restart, device) end
+    end
+  end
+  daw.emit("plugins.scanned", { notes = found.notes, dir = dir, kinds = found.kinds })
+  return found
+end
+
+local names = {}
+
+--- What a device calls its keys, by pitch: a plugin that implements CLAP's
+--- `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for
+--- the rest. Asked again after `M.names_ttl`.
+function M.note_names(device)
+  local now = api.now()
+  local known = names[device]
+  if known and now - known.at < M.names_ttl then return known.names end
+  local ok, list = pcall(api.device_note_names, device)
+  names[device] = { at = now, names = ok and list or {} }
+  return names[device].names
+end
+
+--- The key names of a track's devices together; where two name a key, the
+--- first in the chain wins.
+function M.key_names(track)
+  local ok, t = pcall(api.track_get, track)
+  local out = {}
+  if not ok then return out end
+  for i = #t.devices, 1, -1 do
+    for pitch, name in pairs(M.note_names(t.devices[i])) do out[pitch] = name end
+  end
+  return out
+end
+
+daw.on("device.removed", function(e) if e and e.id then names[e.id] = nil end end)
+daw.on("device.changed", function(e) if e and e.id then names[e.id] = nil end end)
+
+return M

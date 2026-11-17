@@ -51,6 +51,8 @@ daw.command = setmetatable({ alias = daw.commands.alias }, {
 daw.cmd = daw.commands.run
 
 daw.music = require("daw.music")
+-- A note's MIDI 2.0 attribute and the articulations in it (daw/attr.lua).
+daw.attr = require("daw.attr")
 daw.params = require("daw.params")
 daw.ui = require("daw.ui")
 -- Buffers, windows and tabs (daw/layout.lua).
@@ -80,8 +82,16 @@ daw.tempo = require("daw.tempo")
 daw.midifile = require("daw.midifile")
 daw.audio = require("daw.audio")
 
---- Descriptions of every kind of device that can be added to a track.
-daw.device_types = api.device_types
+-- Plugins an extension ships, and what plugins call their keys (daw/plugins.lua).
+daw.plugins = require("daw.plugins")
+
+--- Descriptions of every kind of device that can be added to a track; one
+--- an extension added (`daw.plugins.add_dir`) says which, as `from`.
+function daw.device_types()
+  local list = api.device_types()
+  for _, info in ipairs(list) do info.from = daw.plugins.from[info.kind] end
+  return list
+end
 
 --- Render the project to a file, and render stems: see `daw/render.lua`
 --- for the options. `daw.render_status()` and `daw.render_cancel()` look

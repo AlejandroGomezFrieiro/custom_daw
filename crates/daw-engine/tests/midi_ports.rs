@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use alsa_sys::*;
 use daw_engine::midi::{MidiInputs, MidiTarget};
-use daw_engine::{Ctl, EventKind, NoteCtl, ump};
+use daw_engine::{Attr, Ctl, EventKind, NoteCtl, ump};
 
 /// A sequencer client with one port that others can read from.
 struct Sender {
@@ -149,6 +149,7 @@ fn packets(inputs: &MidiInputs, rx: &Receiver<EventKind>, modern: &Sender) {
         key: 113,
         vel: 0.5,
         ch: 5,
+        attr: Attr::NONE,
     };
     modern.packet(ump::encode(0, note).unwrap());
     let EventKind::NoteOn { vel, ch, .. } =

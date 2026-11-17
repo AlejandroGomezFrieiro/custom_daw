@@ -475,7 +475,7 @@ end
 --- One row of a keyboard on its side, `width` cells wide, for the left edge
 --- of a piano roll: black keys are short, the Cs are named, and so is the
 --- pitch the cursor is on.
-function M.piano_key(buf, row, pitch, cursor, width)
+function M.piano_key(buf, row, pitch, cursor, width, name)
   local music = daw.music
   local step = pitch % 12
   if music.is_black(pitch) then
@@ -484,8 +484,10 @@ function M.piano_key(buf, row, pitch, cursor, width)
   else
     -- Two white keys with no black one between them get a line instead.
     buf:fill(0, row, width, 1, (step == 0 or step == 5) and (daw.opt.ascii and "_" or "▁") or " ", "PianoWhite")
-    if step == 0 then buf:text(1, row, music.name(pitch), "PianoC") end
+    if step == 0 and not name then buf:text(1, row, music.name(pitch), "PianoC") end
   end
+  -- A key the instrument names (a drum, a keyswitch) shows its name.
+  if name then buf:text(0, row, daw.util.fit(name, width - 1), "PianoC") end
   if cursor then buf:text(0, row, daw.util.fit(music.name(pitch), width - 1) .. " ", "PianoCursor") end
 end
 

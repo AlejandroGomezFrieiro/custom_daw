@@ -185,8 +185,18 @@ fn list(bundle: &Path) -> Result<Vec<Found>> {
 }
 
 pub(crate) fn scan(registry: &mut Registry, cache: &mut Cache, notes: &mut Vec<String>) {
+    scan_in(registry, cache, notes, &search_dirs("VST3_PATH", "vst3"));
+}
+
+/// Register the plugins in the `.vst3` bundles under `dirs`.
+pub(crate) fn scan_in(
+    registry: &mut Registry,
+    cache: &mut Cache,
+    notes: &mut Vec<String>,
+    dirs: &[std::path::PathBuf],
+) {
     let mut seen = std::collections::HashSet::new();
-    for bundle in find_bundles(&search_dirs("VST3_PATH", "vst3"), "vst3") {
+    for bundle in find_bundles(dirs, "vst3") {
         let library = library_path(&bundle);
         if !library.is_file() {
             continue;
@@ -1058,7 +1068,7 @@ impl Device for Vst3Device {
                 let mut event: Event = std::mem::zeroed();
                 event.sampleOffset = frame as i32;
                 match kind {
-                    EventKind::NoteOn { key, vel, ch } => {
+                    EventKind::NoteOn { key, vel, ch, .. } => {
                         event.r#type = NOTE_ON;
                         event.__field0.noteOn = NoteOnEvent {
                             channel: ch as i16,

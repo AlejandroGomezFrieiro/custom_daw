@@ -10,10 +10,10 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
 
-use crate::clip::{ClipSet, MidiEv};
+use crate::clip::ClipSet;
 use crate::device::ProcessCtx;
 use crate::engine::{Slot, mix_audio_constant};
-use crate::event::{Event, EventBuf};
+use crate::event::{Attr, Event, EventBuf};
 use crate::tempo::TempoMap;
 
 /// A clip in a slot: events and sound laid out in beats from its start,
@@ -348,18 +348,20 @@ impl LaunchState {
     }
 }
 
-/// Start again the notes of `midi` that began before `before` and are still
+/// Start again the notes of `clips` that began before `before` and are still
 /// held at it, and put every controller where it was last moved to, as if
-/// playback had run through them.
-pub(crate) fn chase(events: &mut EventBuf, midi: &[MidiEv], before: f64) {
+/// playback had run through them. What the instrument was last told to
+/// play (a keyswitch, see [`ClipSet::switches`]) is told again first.
+pub(crate) fn chase(events: &mut EventBuf, clips: &ClipSet, before: f64) {
     use crate::event::EventKind;
-    let mut held = [0f32; 128];
+    // Each key's last note-on, while it is held: velocity, channel, attribute.
+    let mut held = [(0f32, 0u8, Attr::NONE); 128];
     let mut controllers = [f64::NAN; 130];
     let mut program = None;
-    for ev in midi.iter().take_while(|ev| ev.beat < before) {
+    for ev in clips.midi.iter().take_while(|ev| ev.beat < before) {
         match ev.kind {
-            EventKind::NoteOn { key, vel, .. } => held[(key & 127) as usize] = vel,
-            EventKind::NoteOff { key, .. } => held[(key & 127) as usize] = 0.0,
+            EventKind::NoteOn { key, vel, ch, attr } => held[(key & 127) as usize] = (vel, ch, attr),
+            EventKind::NoteOff { key, .. } => held[(key & 127) as usize].0 = 0.0,
             EventKind::Control { ctl, value, .. } => {
                 if let Some(index) = crate::engine::ctl_index(ctl) {
                     controllers[index] = value;
@@ -367,6 +369,19 @@ pub(crate) fn chase(events: &mut EventBuf, midi: &[MidiEv], before: f64) {
             }
             EventKind::Program { .. } => program = Some(ev.kind),
             EventKind::NoteControl { .. } | EventKind::AllNotesOff => {}
+        }
+    }
+    for &kind in clips.switch_before(before) {
+        match kind {
+            // A keyswitch held down is started again with the held notes.
+            EventKind::NoteOn { key, .. } if held[(key & 127) as usize].0 > 0.0 => {}
+            // One struck is struck and let go.
+            EventKind::NoteOn { key, ch, .. } => {
+                events.push(Event { frame: 0, kind });
+                let kind = EventKind::NoteOff { key, ch };
+                events.push(Event { frame: 0, kind });
+            }
+            _ => events.push(Event { frame: 0, kind }),
         }
     }
     if let Some(kind) = program {
@@ -382,13 +397,16 @@ pub(crate) fn chase(events: &mut EventBuf, midi: &[MidiEv], before: f64) {
             events.push(Event { frame: 0, kind });
         }
     }
-    for (key, vel) in held.into_iter().enumerate().filter(|(_, vel)| *vel > 0.0) {
-        let kind = EventKind::NoteOn {
-            key: key as u8,
-            vel,
-            ch: 0,
-        };
-        events.push(Event { frame: 0, kind });
+    for (key, (vel, ch, attr)) in held.into_iter().enumerate() {
+        if vel > 0.0 {
+            let kind = EventKind::NoteOn {
+                key: key as u8,
+                vel,
+                ch,
+                attr,
+            };
+            events.push(Event { frame: 0, kind });
+        }
     }
 }
 

@@ -230,11 +230,27 @@ view.layer("notes", 20, function(L)
         local style = at_cursor and "NoteCursor" or chosen[places[k]] and hue.title_cur or daw.draw.note_style(hue, note.velocity)
         L.roll:fill(x0, row, nw, 1, " ", style)
         L.roll:text(x0, row, g.clip_start)
-        -- Long enough notes say which they are.
-        if nw >= 4 then L.roll:text(x0 + 1, row, music.name(note.pitch):sub(1, nw - 1)) end
+        -- Long enough notes say which they are, or the articulation
+        -- (MIDI 2.0 attribute) they carry.
+        if nw >= 4 then
+          local said = note.attr and daw.attr.describe(note.attr)
+          L.roll:text(x0 + 1, row, (said and said.tag or music.name(note.pitch)):sub(1, nw - 1))
+        end
       end
     end
   end)
+
+-- The window draws notes itself: an attribute is a chip at a note's start.
+view.layer("attr", 25, nil, function(clip_id)
+  local out = {}
+  for _, n in ipairs(api.clip_notes(clip_id)) do
+    local said = n.attr and daw.attr.describe(n.attr)
+    if said then
+      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, badge = true, label = said.tag, tip = said.text }
+    end
+  end
+  return out
+end)
 
 --- Rows for the velocity lane on a panel `h` rows tall.
 function view.velocity_rows(h)
@@ -327,6 +343,9 @@ function view:render(buf, ctx)
     steps = table.concat(cells)
   end
 
+  -- What the track's instrument calls its keys (a drum, a keyswitch) is
+  -- written on them.
+  local key_names = daw.plugins.key_names(c.track)
   -- The keys that sound at the cursor, in any clip shown, are marked.
   local sounds = {}
   for _, pitch in ipairs(sounding) do sounds[pitch] = true end
@@ -334,7 +353,7 @@ function view:render(buf, ctx)
   local end_x = math.floor((hi - self.scroll) * zoom + 0.5)
   for row = 0, rows - 1 do
     local pitch = self.top - row
-    daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS)
+    daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS, key_names[pitch])
     if sounds[pitch] then buf:text(KEYS - 1, row + head, "•", "PianoCursor") end
     roll:fill(0, row, tw, 1, " ", music.is_black(pitch) and "RollRowBlack" or "RollRow")
     if steps then roll:text(0, row, steps, music.is_black(pitch) and "RollStepBlack" or "RollStep") end
@@ -673,12 +692,18 @@ end
 
 --- What `K` shows before the track: the note under the cursor.
 function view:describe()
-  local note = self:note_at(self.pitch, self.beat)
+  local note, _, part = self:note_at(self.pitch, self.beat)
   if not note then return nil end
-  return {
+  local lines = {
     { text = "Note  " .. music.name(note.pitch), style = "Title" },
-    string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity), "",
+    string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity),
   }
+  local said = note.attr and daw.attr.describe(note.attr)
+  if said then lines[#lines + 1] = "  articulation: " .. said.text end
+  local key = daw.plugins.key_names(part.track)[note.pitch]
+  if key then lines[#lines + 1] = "  the instrument calls this key " .. key end
+  lines[#lines + 1] = ""
+  return lines
 end
 
 --- Change the note under the cursor with `fn(note)`, the note's start in
@@ -688,7 +713,10 @@ function view:change(fn)
   if not place then return false end
   local note = part.clip:notes()[place]
   fn(note)
-  part.clip:set_note(place, { start = note.start, length = note.length, pitch = note.pitch, velocity = note.velocity, meta = note.meta or {} })
+  part.clip:set_note(place, {
+    start = note.start, length = note.length, pitch = note.pitch, velocity = note.velocity, meta = note.meta or {},
+    attr = note.attr or false,
+  })
   return true
 end
 

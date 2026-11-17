@@ -268,7 +268,7 @@ end
 
 local TRACK_FIELDS = { volume = true, pan = true, mute = true, solo = true, name = true, output = true, armed = true }
 local CLIP_FIELDS = { start = true, length = true, name = true, muted = true }
-local NOTE_FIELDS = { pitch = true, start = true, length = true, velocity = true, meta = true }
+local NOTE_FIELDS = { pitch = true, start = true, length = true, velocity = true, meta = true, attr = true }
 
 -- Check one change; return what to do, or nil and why not.
 local function plan(change)

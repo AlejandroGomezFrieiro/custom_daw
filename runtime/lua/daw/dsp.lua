@@ -25,7 +25,7 @@ local M = {}
 
 if not pcall(ffi.typeof, "daw_event") then
   ffi.cdef([[
-    typedef struct { int32_t frame, type, channel, key; double value; int32_t from, pad; } daw_event;
+    typedef struct { int32_t frame, type, channel, key; double value; int32_t from, attr; } daw_event;
     typedef struct { double sample_rate, tempo, beat, seconds, bar_start, bar, sig_num, sig_den, playing; } daw_transport;
     int daw_open(const char *path, int flags) __asm__("open");
     int daw_close(int fd) __asm__("close");
@@ -36,7 +36,7 @@ if not pcall(ffi.typeof, "daw_event") then
 end
 
 -- What an event is: `e.type` is one of these.
-M.NOTE_ON = 1      -- e.key, e.value (velocity, 0 to 1), e.channel (1 to 16)
+M.NOTE_ON = 1      -- e.key, e.value (velocity, 0 to 1), e.channel (1 to 16), e.attr (see M.attr)
 M.NOTE_OFF = 2     -- e.key, e.channel
 M.CC = 3           -- e.key (the controller's number), e.value (0 to 1), e.channel
 M.BEND = 4         -- e.value (-1 to 1, 0 at rest), e.channel
@@ -44,6 +44,17 @@ M.PRESSURE = 5     -- channel pressure: e.value (0 to 1), e.channel
 M.PROGRAM = 6      -- e.key (the program), e.value (the bank, or -1), e.channel
 M.ALL_NOTES_OFF = 7
 M.OTHER = 8        -- anything else (a note's own controllers, RPNs): pass it on with b:pass(e)
+
+--- A note-on's MIDI 2.0 attribute as `{ type, data }`, or nil when it has
+--- none. `e.attr` holds it as one number, `type * 65536 + data`, 0 for
+--- none, so that a device can compare it without making a table:
+---   if e.attr ~= 0 then local a = dsp.attr(e) ... end
+--- `daw.attr.describe` names it.
+function M.attr(e)
+  local packed = tonumber(e.attr)
+  if packed == 0 then return nil end
+  return { type = math.floor(packed / 65536), data = packed % 65536 }
+end
 
 -- Numbers -----------------------------------------------------------------------
 
@@ -244,15 +255,19 @@ Block.__index = Block
 --- Send an event from this block, at `frame` (0 to b.frames - 1); out of
 --- order is fine. `b:note_on(frame, key, velocity, channel)` and the others
 --- below are the common ones.
-function Block:send(frame, type, key, value, channel)
+function Block:send(frame, type, key, value, channel, attr)
   local n = self.nout
   if n >= self.max_events then return end
   local e = self.out[n]
   e.frame, e.type, e.key, e.value, e.channel, e.from = frame, type, key or 0, value or 0, channel or 1, 0
+  -- (`type` is the event's kind here.) A table is `{ type, data }`.
+  if attr and not tonumber(attr) then attr = attr.type * 65536 + (attr.data or 0) end
+  e.attr = attr or 0
   self.nout = n + 1
 end
 
-function Block:note_on(frame, key, velocity, channel) self:send(frame, M.NOTE_ON, key, velocity, channel) end
+--- `attr`, if given, is a MIDI 2.0 attribute: `{ type, data }` or one number as `e.attr` has it.
+function Block:note_on(frame, key, velocity, channel, attr) self:send(frame, M.NOTE_ON, key, velocity, channel, attr) end
 function Block:note_off(frame, key, channel) self:send(frame, M.NOTE_OFF, key, 0, channel) end
 function Block:cc(frame, number, value, channel) self:send(frame, M.CC, number, value, channel) end
 

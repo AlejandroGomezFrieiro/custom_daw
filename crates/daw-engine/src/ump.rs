@@ -7,7 +7,7 @@
 //! rules, so that a value's lowest, centre and highest positions stay where
 //! they are whichever way it is converted.
 
-use crate::event::{Ctl, EventKind, NoteCtl};
+use crate::event::{Attr, Ctl, EventKind, NoteCtl};
 
 /// Widen a value of `from` bits to `to` bits, keeping zero, the centre and
 /// the top where they are (the specification's min-centre-max scaling).
@@ -121,6 +121,7 @@ pub fn decode(words: &[u32]) -> Option<(u8, EventKind)> {
                 key: b3,
                 vel: velocity7(b4),
                 ch,
+                attr: Attr::NONE,
             },
             0xA => EventKind::NoteControl {
                 key: b3,
@@ -182,11 +183,20 @@ pub fn decode(words: &[u32]) -> Option<(u8, EventKind)> {
                     ch,
                 },
                 0x8 => EventKind::NoteOff { key: b3, ch },
-                // Unlike MIDI 1.0, a velocity of 0 is still a note-on.
+                // Unlike MIDI 1.0, a velocity of 0 is still a note-on. The
+                // attribute's type is the first word's last byte, its data
+                // the second word's lower half.
                 0x9 => EventKind::NoteOn {
                     key: b3,
                     vel: ((data >> 16) as f64 / 65535.0) as f32,
                     ch,
+                    attr: match (w0 & 0xff) as u8 {
+                        0 => Attr::NONE,
+                        kind => Attr {
+                            kind,
+                            data: data as u16,
+                        },
+                    },
                 },
                 0xA => EventKind::NoteControl {
                     key: b3,
@@ -238,9 +248,10 @@ pub fn encode(group: u8, kind: EventKind) -> Option<[u32; 2]> {
     };
     let key7 = |key: u8| (key & 127) as u32;
     Some(match kind {
-        EventKind::NoteOn { key, vel, ch } => [
-            head(0x9, ch, key7(key), 0),
-            ((vel.clamp(0.0, 1.0) as f64 * 65535.0).round() as u32) << 16,
+        EventKind::NoteOn { key, vel, ch, attr } => [
+            head(0x9, ch, key7(key), attr.kind as u32),
+            ((vel.clamp(0.0, 1.0) as f64 * 65535.0).round() as u32) << 16
+                | if attr.is_none() { 0 } else { attr.data as u32 },
         ],
         EventKind::NoteOff { key, ch } => [head(0x8, ch, key7(key), 0), 0],
         EventKind::Control { ctl, value, ch } => match ctl {
@@ -287,7 +298,8 @@ pub fn encode(group: u8, kind: EventKind) -> Option<[u32; 2]> {
 /// no MIDI 1.0 form and are left out.
 pub fn midi1(kind: EventKind, mut emit: impl FnMut([u8; 3], u32)) {
     match kind {
-        EventKind::NoteOn { key, vel, ch } => {
+        // MIDI 1.0 has no place for the attribute.
+        EventKind::NoteOn { key, vel, ch, .. } => {
             emit([0x90 | (ch & 15), key & 127, to_velocity7(vel)], 3)
         }
         EventKind::NoteOff { key, ch } => emit([0x80 | (ch & 15), key & 127, 0], 3),
@@ -370,6 +382,16 @@ mod tests {
                 key: 60,
                 vel: 0.5,
                 ch: 3,
+                attr: Attr::NONE,
+            },
+            EventKind::NoteOn {
+                key: 62,
+                vel: 0.25,
+                ch: 3,
+                attr: Attr {
+                    kind: 0x11,
+                    data: 0xA000,
+                },
             },
             EventKind::NoteOff { key: 60, ch: 3 },
             EventKind::Control {
@@ -476,14 +498,16 @@ mod tests {
                         key: k,
                         vel: x,
                         ch: c,
+                        attr: a,
                     },
                     EventKind::NoteOn {
                         key: l,
                         vel: y,
                         ch: d,
+                        attr: b,
                     },
                 ) => {
-                    assert_eq!((k, c), (l, d));
+                    assert_eq!((k, c, a), (l, d, b));
                     assert!((x - y).abs() < 1e-4);
                 }
                 (a, b) => assert_eq!(a, b),
@@ -502,9 +526,42 @@ mod tests {
                 EventKind::NoteOn {
                     key: 60,
                     vel: (0xc000 as f64 / 65535.0) as f32,
-                    ch: 0
+                    ch: 0,
+                    attr: Attr::NONE,
                 }
             ))
+        );
+        // The same with an articulation of M2-123: type 0x11 (staccatos
+        // and shorts), data 0xA000 (subclass A, pizzicato).
+        assert_eq!(
+            decode(&[0x4090_3c11, 0xc000_a000]),
+            Some((
+                0,
+                EventKind::NoteOn {
+                    key: 60,
+                    vel: (0xc000 as f64 / 65535.0) as f32,
+                    ch: 0,
+                    attr: Attr {
+                        kind: 0x11,
+                        data: 0xa000
+                    },
+                }
+            ))
+        );
+        assert_eq!(
+            encode(
+                0,
+                EventKind::NoteOn {
+                    key: 60,
+                    vel: 1.0,
+                    ch: 0,
+                    attr: Attr {
+                        kind: 0x11,
+                        data: 0xa000
+                    },
+                }
+            ),
+            Some([0x4090_3c11, 0xffff_a000])
         );
         // The same note from a MIDI 1.0 device: one word, velocity 96.
         let Some((
@@ -513,6 +570,7 @@ mod tests {
                 key: 60,
                 vel,
                 ch: 0,
+                ..
             },
         )) = decode(&[0x2090_3c60])
         else {
