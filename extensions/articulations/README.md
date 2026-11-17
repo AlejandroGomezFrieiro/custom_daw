@@ -55,7 +55,10 @@ harmonics  = { m2 = "14.0", out = "ks=A1 cc1=96", tag = "hrm", name = "Harmonics
 con-sord   = { m2 = "mute=straight", out = "cc20=127", off = "cc20=0", text = "con sord." }
 ```
 
-The whole example is in `articulations/examples/violin-section.art.toml`.
+The whole example is in this extension's folder, at
+`articulations/examples/violin-section.art.toml` (from the top of paw's
+source: `extensions/articulations/articulations/examples/violin-section.art.toml`);
+`:art.map examples/violin-section` binds it.
 One inline table, one line, per articulation, in the order the popover
 numbers them. `out` is a line of events: `ks=D1` a keyswitch note
 (`ks=D1:127` with a velocity), `hold=D1` held while the articulation lasts,

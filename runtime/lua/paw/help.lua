@@ -235,7 +235,8 @@ local function ex_name(line)
     s = s:gsub("^%s+", ""):gsub("^%%", ""):gsub("^[%d%.]+", ""):gsub("^[,;]", ""):gsub("^%$", "")
     s = s:gsub("^'[%a<>]", ""):gsub("^[+%-]%d*", ""):gsub("^t[%d%.%$%*]+", ""):gsub("^t/[^/]*/", ""):gsub("^t'<,'>", "")
   until s == before
-  return s:match("^([%a][%w%._]*!?)")
+  -- Names may hold `-` (`:notation.apply-marks`).
+  return s:match("^([%a][%w%._%-]*!?)")
 end
 M.ex_name = ex_name
 
@@ -303,7 +304,15 @@ local function tags_of_code(text, first)
     return out
   end
   if text:match("^[%w_]+$") and option_known(text) and text:find("_") then out[#out + 1] = "'" .. text .. "'" end
-  if paw.commands.get(text) and text:find("%.") then out[#out + 1] = ":" .. text end
+  -- A command's name, alone or with its arguments (`drums.track [name]`):
+  -- a dotted name, or any where it is described.
+  local word = text:match("^([%a][%w%._%-]*!?)")
+  local cmd = word and paw.commands.get((word:gsub("!$", "")))
+  if cmd and (word:find("%.") or first) and (word == text or text:sub(#word + 1, #word + 1) == " ") then
+    out[#out + 1] = ":" .. word:gsub("!$", "")
+  end
+  -- Keys after the leader are named as they are typed (`<leader>SL` is `,SL`).
+  if text:match("^<leader>") or text:match("^<localleader>") then text = paw.keymap.human(text) end
   -- Keys written as mappings write them (`<C-w>o`) are named as people
   -- write them (`Ctrl-w o`), as the docs do.
   if text:match("^<%a%-.->") or text:match("^<%u%a+>$") then text = paw.keymap.human(text) end
@@ -456,11 +465,21 @@ local function build()
   sources[1].title = nil
   heading_tags({ sources[1] })
   local tags = {}
+  -- Each extension's pages' own tags too, for what the extension owns
+  -- (`ext_tags[name][tag]`): its commands and keys are found there even
+  -- where the manual names them first.
+  local ext_tags = {}
   local function add(name, source, row, col, prio)
     if not name or name == "" then return end
+    local tag = { name = name, source = source, row = row, col = col or 0, prio = prio, order = source.order }
+    if source.ext then
+      local own = ext_tags[source.ext] or {}
+      ext_tags[source.ext] = own
+      if not own[name] or own[name].prio > prio then own[name] = tag end
+    end
     local old = tags[name]
     if old and old.prio <= prio then return end
-    tags[name] = { name = name, source = source, row = row, col = col or 0, prio = prio, order = source.order }
+    tags[name] = tag
   end
   local by_name, by_path = {}, {}
   for i, source in ipairs(sources) do
@@ -509,7 +528,8 @@ local function build()
   local list = {}
   for _, tag in pairs(tags) do list[#list + 1] = tag end
   table.sort(list, function(a, b) return a.name < b.name end)
-  built = { checked = api.now(), loaded = loaded, signature = signature, sources = sources, tags = tags, list = list, by_name = by_name, by_path = by_path }
+  built = { checked = api.now(), loaded = loaded, signature = signature, sources = sources, tags = tags, list = list, by_name = by_name, by_path = by_path,
+    ext_tags = ext_tags }
   return built
 end
 
@@ -546,6 +566,7 @@ function M.find(topic, limit)
   if topic == "" then return { index.tags.help } end
   local exact = index.tags[topic]
   if not exact and topic:match("^<.+>") then exact = index.tags[paw.keymap.human(topic)] end
+  exact = M.owned(index, topic, exact)
   local q = topic:lower()
   local found = {}
   for _, tag in ipairs(index.list) do
@@ -566,6 +587,51 @@ function M.find(topic, limit)
     out[#out + 1] = f.tag
   end
   return out
+end
+
+--- The extensions that own what a topic names: the command's (`:name`),
+--- or a key's when only extensions map it (a key the core maps is the
+--- core's). A list, empty for the core's.
+function M.owners(topic)
+  local cmd = topic:match("^:(.+)$")
+  if cmd then
+    local spec = paw.commands.get(cmd)
+    return spec and spec.ext and { spec.ext } or {}
+  end
+  local out, seen = {}, {}
+  for _, map in ipairs(paw.keymap.every()) do
+    if map.lhs == topic or paw.keymap.human(map.lhs) == topic then
+      if not map.ext then return {} end
+      if not seen[map.ext] then
+        seen[map.ext] = true
+        out[#out + 1] = map.ext
+      end
+    end
+  end
+  return out
+end
+
+--- The tag a topic an extension owns goes to: its place in the owner's
+--- pages (where `exact` is not already), else the owner's first page.
+function M.owned(index, topic, exact)
+  local owners = M.owners(topic)
+  if #owners == 0 then return exact end
+  for _, ext in ipairs(owners) do
+    if exact and exact.source.ext == ext then return exact end
+  end
+  local human = topic:match("^<.+>") and paw.keymap.human(topic)
+  -- `:name!` is described with `:name`.
+  local plain = topic:match("^(:.+)!$")
+  for _, ext in ipairs(owners) do
+    local own = index.ext_tags[ext]
+    local tag = own and (own[topic] or (human and own[human]) or (plain and own[plain]))
+    if tag then return tag end
+  end
+  for _, ext in ipairs(owners) do
+    local page = index.tags[ext]
+    if page and page.source.ext == ext then return page end
+  end
+  return exact
 end
 
 --- The tag a topic goes to, or nil.

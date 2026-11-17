@@ -23,6 +23,11 @@ templates.load("Lead vocal")                     -- made again below the cursor 
 | `,Tl` | `template.load [name]` | Make a template again: a track or group below the cursor track, a chain at the end of the cursor track's devices. A part of the name is enough; with none, choose from a list |
 | | `template.delete [name]`, `templates` | Delete one; list them |
 
+<!-- tags: :templates -->
+
+Saving over a template of the same name asks first; a name a file cannot
+hold (`Bass/Sub`) is kept as one it can (`Bass_Sub`), and the message says so.
+
 In the graphical frontend: `Track` → "From a template…", and in a track's
 menu "Save as a template…", "Save its devices as a chain…" and "Add devices
 from a template…".

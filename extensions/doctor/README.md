@@ -17,6 +17,10 @@ exists, what changed since.
 paw doctor           from the shell: the checks that need nobody, report on standard output
 ```
 
+<!-- tags: :doctor -->
+
+`:doctor.close` closes the page, and stops a run that is going.
+
 ![:doctor on the null backend with a test signal: the page of checks, then :doctor unattended running the sound system, input levels and dropouts checks](images/tui-doctor.gif)
 
 Load it in `init.lua` (`config/init.lua` has the line) or with
