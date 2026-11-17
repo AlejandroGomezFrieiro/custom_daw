@@ -176,15 +176,20 @@ return function(pick)
 
   S.keys = function()
     local view = daw.ui.focused
-    -- The line is laid out for the width the picker will have.
-    local width = math.min(80, (api.ui_size()) - 4) - 5
-    local key_w = 18
-    local tag_w = 16
-    local desc_w = math.max(10, width - key_w - tag_w - 2)
+    -- The picker is as wide as the screen allows, the list on the left
+    -- and, beside it, the help of the key chosen.
+    -- (A window's main area is wider than the screen the kernel keeps for it.)
+    local cells = daw.panes.cells()
+    local total = math.min(150, math.max((api.ui_size()), cells and cells.w or 0) - 4)
+    local list_w = math.floor(total * 0.6)
+    local preview_w = total - list_w - 3
+    local cols = { key = 8, tag = 4, desc = 10 }
     return {
       desc = "Every key that works in the focused view",
       title = "Keys · " .. tostring(view),
       empty = "No keys are mapped here.",
+      width = total,
+      choose = "run",
       -- The view's own keys before the global ones, and those before the keys of other views.
       boost = function(entry) return entry.other and 0 or entry.map.scope == "global" and 20 or 40 end,
       items = function()
@@ -237,10 +242,26 @@ return function(pick)
             end
           end
         end
+        -- The columns are as wide as what they hold, the description
+        -- keeping what the others leave.
+        local longest = 0
+        cols.key, cols.tag = 8, 4
+        for _, e in ipairs(out) do
+          cols.key = math.max(cols.key, math.min(14, api.str_width(e.human)))
+          cols.tag = math.max(cols.tag, api.str_width(e.tag))
+          longest = math.max(longest, api.str_width(e.desc))
+        end
+        cols.desc = math.max(10, math.min(longest, list_w - 3 - cols.key - cols.tag - 2))
         return out
       end,
       format = function(e)
-        return daw.util.fit(e.human, key_w) .. " " .. daw.util.fit(e.desc, desc_w) .. " " .. e.tag
+        return daw.util.fit(e.human, cols.key) .. " " .. daw.util.fit(e.desc, cols.desc) .. " " .. e.tag
+      end,
+      -- What the manual says of the key, or what it is for.
+      preview = function(e)
+        local lines = daw.help.excerpt_for_map(e.map, preview_w, 24)
+        if lines then return lines end
+        return { { text = e.human, style = "HelpKey" }, "", e.desc, "", { text = "the manual has nothing on it yet", style = "Dim" } }
       end,
       primary = function(e) return e.human end,
       on_choose = run_key,

@@ -2,7 +2,7 @@
 
 # Lesson 8: Yank, paste, registers and macros
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 8`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 8`.*
 
 Deleting and yanking put what they took in a register; pasting takes it out. There is one register you use without naming it, and named ones (`"a` to `"z`) for keeping several things at once. Every change can be undone, a count at a time. And a macro records keys into a register to play them again.
 

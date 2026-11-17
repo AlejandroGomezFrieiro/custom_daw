@@ -347,9 +347,18 @@ work on what is written, and each edit is one undo step that `.` repeats.
   back), `ip` `ap` the phrase, `iv` `av` the voice, `is` `as` the staff,
   `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (as in the piano
   roll).
-- Operators: `gU` `gu` a step of the key (`3gUib` three steps), `g+` `g-`
-  a semitone, `g~` respell, `g(` slur (`g(ip`), `g?` retrograde (`2g?`
-  inverts), `gq` tidy, `!` filter (`!ib reverse`, `!ib tac`).
+- Operators:
+
+  | Keys | In notation |
+  | --- | --- |
+  | `gU` `gu` | up, down a step of the key (`3gUib` three steps) |
+  | `g+` `g-` | up, down a semitone |
+  | `g~` | respell |
+  | `g(` | slur (`g(ip`) |
+  | `g?` | retrograde (`2g?` inverts) |
+  | `gq` | tidy |
+  | `!` | filter (`!ib reverse`, `!ib tac`) |
+
 - Motions: `f` `F` `t` `T` and a letter, `;` `,` again (`,` waits a moment:
   it is the leader), `)` `(` by phrase, `]v` `[v` by voice, `Ctrl-j`
   `Ctrl-k` by staff.

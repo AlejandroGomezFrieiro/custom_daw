@@ -1738,7 +1738,9 @@ impl View {
         sync(&self.view_entries, views);
 
         let prompt = &modal["prompt"];
-        ui.set_prompt_open(prompt.is_object());
+        // A prompt drawn beside what it is about (a notation popover) is not
+        // shown a second time in the status line.
+        ui.set_prompt_open(prompt.is_object() && prompt["anchored"] != true);
         ui.set_prompt(text(&prompt["prompt"]));
         ui.set_prompt_before(text(&prompt["before"]));
         ui.set_prompt_after(text(&prompt["after"]));

@@ -1370,6 +1370,16 @@ end, { desc = "Remove the track's volume automation, or `target=...`" })
 command("view.next", function() daw.ui.focus_next(1) end, { desc = "Focus the next view" })
 command("view.prev", function() daw.ui.focus_next(-1) end, { desc = "Focus the previous view" })
 command("view.toggle", function(ctx) daw.ui.toggle(tostring(ctx.args[1])) end, { desc = "Show or hide a view: `view.toggle mixer`", complete = { "views" } })
+command("roll.toggle", function()
+  if daw.ui.visible("pianoroll") then return daw.ui.toggle("pianoroll") end
+  if roll:clip() then return daw.ui.toggle("pianoroll") end
+  -- Nothing was open: the clip under the cursor, or no pane that would
+  -- only say there is none.
+  local clip = cursor.clip()
+  if not clip then return daw.notify("no clip under the cursor to open in the piano roll", "warn") end
+  roll:edit(clip)
+  if clip.kind == "midi" and not daw.ui.visible("pianoroll") then daw.ui.show("pianoroll") end
+end, { desc = "Show or hide the piano roll; with no clip open, it opens on the clip under the cursor" })
 command("view.focus", function(ctx) daw.ui.focus(tostring(ctx.args[1])) end, { desc = "Focus a view by name", complete = { "views" } })
 command("view.close", function()
   if daw.ui.float then return daw.ui.close() end
@@ -1888,7 +1898,7 @@ map("<S-Tab>", "view.prev", { mode = nx, desc = "Focus the previous view" })
 -- Windows and tabs (`Ctrl-w`, `gt`) are mapped in daw/layout.lua.
 map("<leader>m", "view.toggle mixer", { desc = "Show or hide the mixer" })
 map("<leader>d", "view.toggle devices", { desc = "Show or hide the device panel" })
-map("<leader>p", "view.toggle pianoroll", { desc = "Show or hide the piano roll" })
+map("<leader>p", "roll.toggle", { desc = "Show or hide the piano roll, on the clip under the cursor" })
 -- What other programs have taught the fingers.
 map("<Del>", function() keymap.normal("x") end, { desc = "Delete what is under the cursor" })
 -- On a selection it is the operator: what the Delete key does anywhere else.

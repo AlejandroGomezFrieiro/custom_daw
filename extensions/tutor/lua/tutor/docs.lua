@@ -26,7 +26,7 @@ end
 function M.lesson(n, lesson, lessons)
   local out = { GENERATED, "", string.format("# Lesson %d: %s", n, lesson.title), "" }
   local function add(line) out[#out + 1] = line end
-  add(string.format("*About ten minutes. In paw, with the tutor loaded: `:tutor %d`.*", n))
+  add(string.format("*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor %d`.*", n))
   add("")
   if lesson.intro then add(paragraphs(lesson.intro)) add("") end
   if lesson.idea then add("## The idea") add("") add(paragraphs(lesson.idea)) add("") end

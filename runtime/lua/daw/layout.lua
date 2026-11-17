@@ -28,6 +28,11 @@ local M = {
   -- Short names for the buffers of built-in views, to type after `:vs`,
   -- and what they are called in lists.
   names = { pianoroll = "roll" },
+  -- What a docked view's pane is called, where the view has no title of its own.
+  pane_titles = {
+    arrange = "Arrange", pianoroll = "Piano roll", mixer = "Mixer", devices = "Devices", session = "Session",
+    notation = "Notation",
+  },
   titles = {
     arrange = "the arrange view", pianoroll = "the piano roll", mixer = "the mixer", devices = "the device panel",
     session = "the session view", eventlist = "the event list", help = "keys", empty = "an empty window",
@@ -353,7 +358,7 @@ function M.title(buf)
     if ok and text then return tostring(text) end
   end
   local view = ui().views[buf.type]
-  return view and view.title or M.titles[buf.type] or buf.name
+  return view and view.title or M.pane_titles[buf.type] or M.titles[buf.type] or buf.name
 end
 
 --- A view's buffer's name, for messages.

@@ -546,10 +546,13 @@ one above another. The status line and the bottom line stay along the
 bottom of every tab. In insert mode a message goes at the right end of the
 bottom line and the keys keep the rest. When three or more panels stack, the
 arrange view keeps a third of the rows (as `Ctrl-w =` gives it) and the
-notation view takes at most half. `:view.focus` of a view that is not shown
+notation view takes at most half; in a column the arrange view keeps two fifths
+of the rows whatever else is stacked with it, the panels with a size of their
+own giving way last. `:help` splits off half the screen, as Vim gives its help
+half. `:view.focus` of a view that is not shown
 puts it in the current window, so that focus is never on what is not drawn. On start there is one tab and the screen is as it
 always was: the arrange view, with the panels coming and going in their
-places (`,m`, `,d`, `,p`, `Enter` on a clip). `,m` in a window that is the mixer alone (after `Ctrl-w o`) brings the arrange view back in its place.
+places (`,m`, `,d`, `,p`, `Enter` on a clip). `,p` with no clip open opens the piano roll on the clip under the cursor; with none there it says so and leaves the screen alone. `,m` in a window that is the mixer alone (after `Ctrl-w o`) brings the arrange view back in its place.
 
 `:vs roll` splits the window in two side by side and shows the piano roll in
 the new half; `Ctrl-w h` and `Ctrl-w l` go between them, and each takes its
@@ -803,7 +806,7 @@ place that topic is described:
 
 | Topic | Goes to |
 | --- | --- |
-| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way |
+| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way: its row in the key table (`course/keys.md`) when it has one |
 | `:help :s`, `:help :helpgrep` | a command |
 | `:help 'timebind'` | an option |
 | `:help daw.qf`, `:help daw.qf.feed` | a Lua module or function |
@@ -847,8 +850,8 @@ The bottom line of each view ends with its topic (`:help terminal` in the
 arrange view, `:help mixer` in the mixer). In the keys picker (`?`) and the
 commands picker (`,,`), `Ctrl-]` opens the help of the key or command
 chosen. The tutor's panel names its lesson's page (`:help course-5`). In
-the graphical frontend help opens in a window of its own, with the same
-keys.
+the graphical frontend help opens as a docked pane, with the same
+keys (`gw` pops it out into a window of its own).
 
 ## Pickers
 
@@ -859,7 +862,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | Keys | Command | Lists | Enter |
 | --- | --- | --- | --- |
 | `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description, a name that is the word typed or starts with it above the rest (`arrange` finds `:arrange`); among equal matches the commands you have run from here come first, and those the focused view has keys of its own for | runs it; `Ctrl-e` types it on the command line instead, for arguments |
-| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`). Last come the keys of the other views, tagged `arrange view` and so on, so that `send` in the mixer finds the arrange view's `,s`; choosing one goes to that view | runs it |
+| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`). The columns are as wide as what they hold, and the right side shows the manual's section for the key chosen. Last come the keys of the other views, tagged `arrange view` and so on, so that `send` in the mixer finds the arrange view's `,s`; choosing one goes to that view | runs it |
 | `,ft` | `pick.tracks` | tracks | moves the cursor to the track |
 | `,fl` | `pick.clips` | every clip, with its track | goes to it |
 | `,fa` | `pick.devices` | devices and plugins that can be added | adds it to the cursor's track |

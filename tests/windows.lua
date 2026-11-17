@@ -489,6 +489,8 @@ test("every view still opens: by its keys, and in a window of its own", function
   keys("?")
   eq(daw.ui.float ~= nil, true, "? the keys, floating")
   reset()
+  -- An extension's painted views are views too.
+  daw.cmd("ext.load", { "undotree" })
   daw.ui.views.pianoroll.clip_id = clip.id
   local failed = {}
   for name, view in pairs(daw.ui.views) do

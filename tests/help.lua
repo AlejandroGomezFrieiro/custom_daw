@@ -115,7 +115,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
     local tag = H.lookup(topic)
     return tag and tag.source.name .. " " .. tag.name or "none"
   end
-  eq(where("gU"), "terminal.md gU", "a key")
+  eq(where("gU"), "course/keys.md gU", "a key: its row in the key table")
   eq(where(":s"), "terminal.md :s", "a command")
   eq(where("'timebind'"), "terminal.md 'timebind'", "an option")
   eq(where("daw.qf"), "scripting.md daw.qf", "a Lua module")
@@ -126,7 +126,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
   eq(where("notation"), "notation/README.md notation", "an extension")
   eq(where("notation-keys"), "notation/README.md notation-keys", "an extension's heading")
   eq(where("notation-popovers"), "notation/README.md notation-popovers", "another")
-  eq(where("ic"), "terminal.md ic", "a text object")
+  eq(where("ic"), "course/keys.md ic", "a text object: its row in the key table")
   eq(where("<C-w>o"), where("Ctrl-w o"), "a key written either way")
   -- Each lands on the line that names it.
   local tag = H.lookup("gU")
@@ -201,7 +201,7 @@ test("Ctrl-] follows a link, Ctrl-t and Ctrl-o come back", function()
   daw.keymap.feed("<C-o>")
   eq((here()), "help://index", "Ctrl-o comes back too")
   -- On code, Ctrl-] goes to its tag; Enter does what Ctrl-] does.
-  daw.cmd("help", { "Ctrl-w o" })
+  daw.cmd("help", { "terminal" })
   cursor_on(":only")
   daw.keymap.feed("<CR>")
   local _, line = here()
@@ -269,13 +269,25 @@ test("Ctrl-] in the keys picker opens the help of the key chosen", function()
   daw.pick("keys", { query = "Ctrl-w o" })
   daw.keymap.feed("<C-]>")
   local name, line = here()
-  eq(name, "help://terminal.md", "the manual: " .. message())
-  eq(line:find("Ctrl-w o", 1, true) ~= nil, true, "at the key: " .. tostring(line))
+  eq(name, "help://course/keys.md", "the key table: " .. message())
+  eq(line:find("<C-w>o", 1, true) ~= nil, true, "at the key: " .. tostring(line))
   -- And in the commands picker, the command's.
   daw.pick("commands", { query = "helpgrep" })
   daw.keymap.feed("<C-]>")
   local _, at = here()
   eq(at:find(":helpgrep", 1, true) ~= nil, true, "at the command: " .. tostring(at))
+end)
+
+test("the keys picker shows the help of the key chosen, wide columns, and a key line", function()
+  start()
+  daw.pick("keys", { query = "Ctrl-w o" })
+  local text = table.concat(api.ui_snapshot(200, 40), "\n")
+  eq(text:find("Ctrl-w o", 1, true) ~= nil, true, "the key is listed")
+  eq(text:find("terminal", 1, true) ~= nil, true, "the manual's page is named in the preview")
+  local shown = {}
+  for _, e in ipairs(daw.ui.keybar.entries()) do shown[#shown + 1] = e[1] .. " " .. e[2] end
+  eq(table.concat(shown, " · "), "Enter run · Ctrl-] help · Esc close", "the key line")
+  daw.ui.close()
 end)
 
 test("the key line names the view's topic of help, and every such topic is a tag", function()
@@ -290,16 +302,19 @@ test("the key line names the view's topic of help, and every such topic is a tag
   eq(bottom:find(":help terminal", 1, true) ~= nil, true, "on the bottom line: " .. bottom)
 end)
 
-test("in the graphical frontend help opens in a window of its own", function()
+test("in the graphical frontend help opens as a docked pane, and pops out on request", function()
   start()
   local listeners = daw.remote.listeners
   daw.remote.listeners = function() return { { client = 9, watching = true } } end
   local ok, err = pcall(daw.cmd, "help", { "gU" })
   daw.remote.listeners = listeners
   assert(ok, err)
-  eq(daw.canvas.open_views.textbuf ~= nil, true, "a window for the frontend")
-  eq(daw.ui.focused, "textbuf", "with the keyboard")
-  local _, line = here()
+  eq(daw.canvas.open_views.textbuf, nil, "no window of its own")
+  eq(daw.ui.focused, "textbuf", "the pane has the keyboard")
+  local name, line = here()
+  eq(name:match("^help://") ~= nil, true, "a help pane in the layout")
   eq(line:find("gU", 1, true) ~= nil, true, "at the key")
+  daw.cmd("textbuf.window")
+  eq(daw.canvas.open_views.textbuf ~= nil, true, "popped out to a window of its own")
   daw.canvas.close("textbuf")
 end)
