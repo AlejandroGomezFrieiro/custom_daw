@@ -267,3 +267,15 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
+- Project diff and merge (extensions/projdiff): the diff and conflict views
+  are drawn in cells, as the window draws any such view, with no painted
+  version of their own (they were driven in the terminal, not in the
+  window); the folds are the view's own, since a text buffer has no folds. A merge keeps a note edited on both sides as a
+  conflict only when its id is the same; a note given a new id by an edit
+  on each side is two notes. Lists with nothing to name their items
+  (controllers) merge as sets, so a controller moved on both sides shows
+  up twice. A conflict is settled by taking one side whole: there is no
+  editing the two together. Anything an extension keeps in `meta` and
+  points at ids with is not followed when two sides give different things
+  the same id: tracks, devices, clips and lanes are renumbered with what
+  points at them in the model's own fields only.
