@@ -63,10 +63,16 @@ daw.seats.keep("keymap",
   end,
   function() return {}, nil, nil, nil, nil, nil, nil, {}, nil, nil, nil, {}, {}, {}, "n", nil, nil, nil end)
 
---- Split `gg<C-x>` into { "g", "g", "<C-x>" }, expanding `<leader>`.
+--- Write `<leader>` and `<localleader>` as the keys the options name.
+function M.expand(lhs)
+  return (lhs:gsub("<[Ll]ocal[Ll]eader>", function() return daw.opt.localleader end)
+    :gsub("<[Ll]eader>", function() return daw.opt.leader end))
+end
+
+--- Split `gg<C-x>` into { "g", "g", "<C-x>" }, expanding `<leader>` and `<localleader>`.
 function M.parse(lhs)
   local keys = {}
-  local expanded = lhs:gsub("<[Ll]eader>", function() return daw.opt.leader end)
+  local expanded = M.expand(lhs)
   local pos = 1
   while pos <= #expanded do
     -- A key with modifiers may be a punctuation mark: `<C-]>`.
@@ -86,7 +92,7 @@ local key_names = {
 local modifier_names = { C = "Ctrl", A = "Alt", M = "Alt", S = "Shift", D = "Super" }
 
 --- Keys as a person writes them: `<A-h>` is `Alt-h`, `<leader>at` is `,at`,
---- `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an lhs or a list of keys.
+--- `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an lhs or a list of keys.
 function M.human(keys)
   if type(keys) == "string" then keys = M.parse(keys) end
   local out, prev_word = {}, false

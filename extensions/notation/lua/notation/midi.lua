@@ -326,6 +326,45 @@ function M.gate(art)
   end
 end
 
+--- What the marks of a score ask of a note `n` that is written as `w`
+--- (`M.written`), as a change `{ velocity, length, meta }` to write, or nil
+--- when it plays as they say. `res` is `M.resolve` of the score. What is
+--- written is noted on the note, so that taking a mark away puts back only
+--- what is still as the mark left it.
+function M.marked(res, w, n)
+  local own = own_of(n)
+  local meta = util.merge(own, {})
+  local wrote = type(meta.wrote) == "table" and util.merge(meta.wrote, {}) or {}
+  local change, any = {}, false
+  local stack = type(wrote.velocity) == "table" and util.merge(wrote.velocity, {}) or {}
+  local top = stack[#stack]
+  -- A note still as a mark left it is asked again from what it was before,
+  -- so that an accent is not added twice.
+  local untouched = top and top.v == n.velocity
+  local va = M.velocity(res, w.s, w.ev.art, untouched and top.from or n.velocity)
+  if va and va ~= n.velocity then
+    if not untouched then stack = {} end
+    stack[#stack + 1] = { v = va, from = n.velocity }
+    wrote.velocity, change.velocity, any = stack, va, true
+  end
+  local gate = M.gate(w.ev.art)
+  if gate and not w.grace then
+    local length = math.max(1 / 64, w.len / Q * gate)
+    if math.abs(length - n.length) > EPS then
+      local was = wrote.length
+      local from = (was and math.abs(was.v - n.length) < EPS) and was.from or n.length
+      wrote.length, change.length, any = { v = length, from = from }, length, true
+      meta.len, meta.sounding = w.len / Q, length
+    end
+  end
+  if not any then return nil end
+  meta.wrote = next(wrote) and wrote or nil
+  local all = util.merge(n.meta or {}, {})
+  all.notation = next(meta) and meta or nil
+  change.meta = all
+  return change
+end
+
 -- What the clip keeps ---------------------------------------------------------------------------
 
 local BAR_KEYS = { "barline", "repeat_start", "volta", "rehearsal", "key", "groups", "meter_symbol" }
@@ -877,7 +916,8 @@ function M.sync(clip_id, before, after, own, fixed)
         local stack = type(wrote.velocity) == "table" and util.merge(wrote.velocity, {}) or {}
         local top = stack[#stack]
         local untouched = top and top.v == n.velocity
-        if va and (written_now(why, known) or (accented(art) and not accented(b.ev.art))) then
+        -- A note moved in notation takes what the marks ask where it lands.
+        if va and (written_now(why, known) or (accented(art) and not accented(b.ev.art)) or ds ~= 0) then
           if not untouched then stack = {} end
           stack[#stack + 1] = { v = va, from = n.velocity }
           change.velocity, any = va, true

@@ -22,6 +22,14 @@ daw.on("project.saved", function(event) daw.notify("saved to " .. event.path) en
 daw.audio.use({ output = "UR22mkII Stereo", input = "UR22mkII", buffer = 128 })   -- devices; see Input and recording
 ```
 
+**Leaders.** `<leader>` in a key is `daw.opt.leader` (`,`): the keys that
+mean the same in every view (`,m` the mixer, `,d` the devices).
+`<localleader>` is `daw.opt.localleader` (a backslash, as in Vim): the leader
+of what only one view has, such as the notation popovers (`\d` dynamics,
+`\t` tempo). A key of one view may not sit on a global leader key;
+`:lua =daw.keyrule.broken()` lists any that do. `:map` and the key hints show
+both as typed.
+
 **How it looks.** Content stays neutral and colour goes where attention
 should: amber for focus, the playhead and keys to press; the mode's colour in
 the mode pill and the cursor; red for recording and errors. Each track has a

@@ -1039,6 +1039,29 @@ function view:quantize(from, to, low, high)
   return #set
 end
 
+--- Make the notes written from `from` to `to` (clip beats), `low` to `high`
+--- (pitches), all optional, play as the marks along the clip say: the
+--- dynamic's loudness, the hairpin's ramp, an accent's push, a staccato's
+--- length. For MIDI that has drifted from them (the piano roll was used
+--- since). A MIDI edit, one undo step. Returns how many notes changed.
+function view:apply_marks(from, to, low, high)
+  local clip = self:editable()
+  if not clip then return 0 end
+  local list, sc = written_in(clip, from, to, low, high)
+  local res = midi.resolve(sc)
+  local set = {}
+  for _, x in ipairs(list) do
+    local change = midi.marked(res, x.w, x.note)
+    if change then
+      change.index = x.index
+      set[#set + 1] = change
+    end
+  end
+  if #set > 0 then api.clip_notes_edit(clip.id, { set = set, remove = {}, add = {} }) end
+  daw.ui.poke()
+  return #set
+end
+
 --- Write again from the playing: forget what notation decided about the
 --- notes written from `from` to `to` (clip beats; all of them without):
 --- voices, hands, spellings, grace notes, chords, articulations, tuplets.
