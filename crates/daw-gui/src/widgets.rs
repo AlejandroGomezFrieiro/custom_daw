@@ -98,6 +98,9 @@ pub fn button(ui: &mut Ui, rect: Rect, id: Id, icon_shape: Option<Icon>, label: 
     let t = th();
     let sense = if look.enabled { Sense::click() } else { Sense::hover() };
     let response = ui.interact(rect, id, sense);
+    if !label.is_empty() {
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, look.enabled, label));
+    }
     let (hover, pressed) = (response.hovered() && look.enabled, response.is_pointer_button_down_on());
     let face = if !look.enabled {
         if look.quiet { Color32::TRANSPARENT } else { t.control_press }
@@ -145,6 +148,30 @@ pub fn button(ui: &mut Ui, rect: Rect, id: Id, icon_shape: Option<Icon>, label: 
         ui.painter().text(pos2(x, rect.center().y), Align2::LEFT_CENTER, label, medium(T_BASE), colour);
     }
     response
+}
+
+/// Where `button` went down this frame, over `response`. A click can come
+/// and go within one frame, which `is_pointer_button_down_on` misses.
+pub fn pressed_on(ui: &Ui, response: &Response, button: egui::PointerButton) -> Option<Pos2> {
+    if !(response.hovered() || response.clicked() || response.is_pointer_button_down_on()) {
+        return None;
+    }
+    pressed_at(ui, button).filter(|p| response.interact_rect.contains(*p))
+}
+
+/// Where `button` went down this frame, if it did.
+pub fn pressed_at(ui: &Ui, button: egui::PointerButton) -> Option<Pos2> {
+    ui.input(|i| {
+        i.events.iter().find_map(|e| match e {
+            egui::Event::PointerButton { pos, button: b, pressed: true, .. } if *b == button => Some(*pos),
+            _ => None,
+        })
+    })
+}
+
+/// Name a control that shows a drawing and no word, for whoever cannot see it.
+pub fn name(response: &Response, name: &str) {
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
 }
 
 /// A small lettered switch of a track: mute, solo, arm. Off it is a plain
@@ -242,15 +269,13 @@ fn handle(
         out.push(Moved::Reset);
         return out;
     }
-    if response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed()) {
-        if let Some(pos) = pos {
-            let at = pointer(pos);
-            let sent = if shift || !jumps { value } else { at };
-            set_grip(ui, id, Grip { fine: shift, from: sent, from_at: at, sent });
-            out.push(Moved::Held(true));
-            if jumps && !shift {
-                out.push(Moved::To(sent));
-            }
+    if let Some(press) = pressed_on(ui, response, egui::PointerButton::Primary) {
+        let at = pointer(press);
+        let sent = if shift || !jumps { value } else { at };
+        set_grip(ui, id, Grip { fine: shift, from: sent, from_at: at, sent });
+        out.push(Moved::Held(true));
+        if jumps && !shift {
+            out.push(Moved::To(sent));
         }
     } else if response.dragged_by(egui::PointerButton::Primary)
         && let Some(pos) = pos

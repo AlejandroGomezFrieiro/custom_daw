@@ -28,7 +28,6 @@ pub trait Kernel {
     fn state(&mut self) -> Result<Option<Value>>;
     fn send_file(&mut self, path: &Path) -> Result<String>;
     fn listening(&self) -> bool;
-    fn toggle_listening(&mut self) -> Result<()>;
 }
 
 impl Kernel for Client {
@@ -43,9 +42,6 @@ impl Kernel for Client {
     }
     fn listening(&self) -> bool {
         self.player.is_some()
-    }
-    fn toggle_listening(&mut self) -> Result<()> {
-        Client::toggle_listening(self)
     }
 }
 
@@ -430,7 +426,9 @@ impl View {
         self.text_ids.borrow_mut().clear();
         crate::widgets::new_frame();
         self.roll_frame();
-        let full = ui.max_rect();
+        // The whole window, whatever margin the `ui` given has.
+        let full = ctx.content_rect();
+        ui.set_clip_rect(full);
         let transport = Rect::from_min_size(full.min, vec2(full.width(), TRANSPORT_H));
         let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_H), full.max);
         let area = Rect::from_min_max(pos2(full.left(), transport.bottom() + 1.0), pos2(full.right(), status.top() - 1.0));
@@ -500,21 +498,21 @@ impl View {
     /// the window keeping a few of its own.
     pub fn window_keys(&mut self, events: &[egui::Event]) {
         let in_roll = self.s.focused() == "pianoroll";
-        for event in events {
-            if let egui::Event::Key { key, pressed: true, modifiers, .. } = event
-                && modifiers.ctrl
-                && !modifiers.alt
-                && self.window_key(*key)
-            {
-                continue;
-            }
-            if let Some(keys) = self.keys.notation(event) {
-                let keys = keys::window_keys(keys, in_roll);
-                self.message_dismissed = self.message_time;
-                // A key closes a menu that was open, as a click elsewhere does.
-                self.menu = None;
-                self.acts.borrow_mut().push(("keys".into(), json!([keys])));
-            }
+        // Zoom is the window's own business; the rest are the kernel's.
+        let events: Vec<egui::Event> = events
+            .iter()
+            .filter(|event| match event {
+                egui::Event::Key { key, pressed: true, modifiers, .. } if modifiers.ctrl && !modifiers.alt => !self.window_key(*key),
+                _ => true,
+            })
+            .cloned()
+            .collect();
+        for keys in self.keys.notations(&events) {
+            let keys = keys::window_keys(keys, in_roll);
+            self.message_dismissed = self.message_time;
+            // A key closes a menu that was open, as a click elsewhere does.
+            self.menu = None;
+            self.acts.borrow_mut().push(("keys".into(), json!([keys])));
         }
     }
 

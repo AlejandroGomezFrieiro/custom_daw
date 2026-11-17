@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use crate::app::{Purpose, View};
 use crate::model::{rows, text};
 use crate::portal;
-use crate::theme::{T_BASE, T_SMALL, T_TITLE, sans, semi, th};
+use crate::theme::{T_BASE, T_SMALL, T_TITLE, medium, sans, semi, th};
 use crate::widgets::{self, Look};
 
 /// The layout last kept, the one seen now, and since when.
@@ -120,12 +120,15 @@ fn card(ui: &Ui, id: &str, screen: Rect, width: f32, draw: impl FnOnce(&mut Ui, 
     let height: f32 = ctx.data(|d| d.get_temp(height_id)).unwrap_or(200.0);
     let rect = Rect::from_center_size(screen.center(), vec2(width.min(screen.width() - 40.0), height));
     let mut clicked_out = false;
-    egui::Area::new(Id::unique((id, "backdrop"))).order(Order::Foreground).fixed_pos(screen.min).show(&ctx, |ui| {
+    // An area takes the pointer over what it has laid out: the whole of it.
+    egui::Area::new(Id::unique((id, "backdrop"))).order(Order::Middle).fixed_pos(screen.min).show(&ctx, |ui| {
+        ui.expand_to_include_rect(screen);
         ui.painter().rect_filled(screen, CornerRadius::ZERO, Color32::from_black_alpha(0xaa));
         let response = ui.interact(screen, Id::unique((id, "backdrop-touch")), Sense::click());
         clicked_out = response.clicked() && !rect.contains(response.interact_pointer_pos().unwrap_or_default());
     });
     egui::Area::new(Id::unique((id, "card"))).order(Order::Foreground).fixed_pos(rect.min).show(&ctx, |ui| {
+        ui.expand_to_include_rect(rect);
         let t = th();
         ui.painter().rect(rect, CornerRadius::same(6), t.card, Stroke::new(1.0, t.card_line), StrokeKind::Inside);
         ui.interact(rect, Id::unique((id, "card-touch")), Sense::click());
@@ -244,7 +247,7 @@ impl View {
         let mut action = None;
         let mut range_at = None;
         let text_ids = &self.text_ids;
-        let closed = card(ui, "render", screen, 520.0, |ui, rect| {
+        let closed = card(ui, "render", screen, 580.0, |ui, rect| {
             let t = th();
             let left = rect.left() + 16.0;
             let label_w = 70.0;
@@ -252,7 +255,7 @@ impl View {
             ui.painter().text(pos2(left, y), Align2::LEFT_TOP, "Render", semi(T_TITLE), t.text);
             y += 26.0;
             let label = |ui: &Ui, y: f32, text: &str| {
-                ui.painter().text(pos2(left, y + 14.0), Align2::LEFT_CENTER, text, sans(T_BASE), t.text_2);
+                ui.painter().text(pos2(left, y + 14.0), Align2::LEFT_CENTER, text, medium(T_BASE), t.text);
             };
             let field = |ui: &mut Ui, x: f32, y: f32, w: f32, value: &mut String, name: &str, hint: &str| -> egui::Response {
                 let rect = Rect::from_min_size(pos2(x, y), vec2(w, 28.0));

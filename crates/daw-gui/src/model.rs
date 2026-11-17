@@ -409,8 +409,6 @@ pub struct Clip {
     pub gain: f32,
     pub takes: i64,
     pub take: i64,
-    pub looped: bool,
-    pub offline: bool,
     /// Where a looped clip's repeats begin, and its warp markers, in beats
     /// from its start.
     pub notches: Vec<f32>,
@@ -439,8 +437,6 @@ pub fn clips(list: &Value) -> Vec<Clip> {
             gain: number(&c["gain"]),
             takes: c["takes"].as_i64().unwrap_or(1),
             take: c["take"].as_i64().unwrap_or(1),
-            looped: flag(&c["loop"]),
-            offline: flag(&c["offline"]),
             notches: rows(&c["notches"]).iter().map(number).collect(),
             warps: rows(&c["warps"]).iter().map(number).collect(),
             key: c["stamp"].as_str().or(c["waveform"].as_str()).map(String::from),

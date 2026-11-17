@@ -187,8 +187,8 @@ impl View {
         }
         if response.double_clicked() {
             self.pass("set_track_height", json!([track.id, 1]));
-        } else if response.drag_started()
-            && let Some(p) = response.interact_pointer_pos()
+        } else if self.arrange.gesture.is_none()
+            && let Some(p) = widgets::pressed_on(ui, &response, egui::PointerButton::Primary)
         {
             self.arrange.gesture = Some(Gesture::Size { id: track.id, from: p.y, clip_size: track.clip_size });
         }
@@ -203,9 +203,7 @@ impl View {
             return;
         }
         if self.arrange.gesture.is_none()
-            && body.is_pointer_button_down_on()
-            && ui.input(|i| i.pointer.primary_pressed())
-            && let Some(p) = ui.input(|i| i.pointer.interact_pos())
+            && let Some(p) = widgets::pressed_on(ui, body, egui::PointerButton::Primary)
         {
             self.arrange.gesture = Some(Gesture::Header { row: index, from: p.y });
         }
@@ -291,7 +289,7 @@ impl View {
             if name == "armed" {
                 widgets::hint_on(&response, "arm: this track records when the record button is pressed");
             }
-            if self.arrange.gesture.is_none() && response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed()) {
+            if self.arrange.gesture.is_none() && widgets::pressed_on(ui, &response, egui::PointerButton::Primary).is_some() {
                 self.arrange.gesture = Some(Gesture::Sweep { row: index, flag: name, on: !on, last: index, moved: false });
             }
         }

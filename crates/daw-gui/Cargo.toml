@@ -3,7 +3,7 @@ name = "daw-gui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "A graphical frontend. It talks to the kernel over its control socket."
+description = "A graphical frontend, drawn with egui. It talks to the kernel over its control socket."
 
 [dependencies]
 anyhow.workspace = true
@@ -12,8 +12,16 @@ daw-listen.workspace = true
 daw-raster.workspace = true
 serde_json.workspace = true
 libc = "0.2"
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "unstable-winit-030", "renderer-software", "renderer-femtovg"] }
+# OpenGL through glow: it runs on any driver, Mesa's llvmpipe too, so the
+# window needs no graphics card. X11 and Wayland, and the clipboard.
+eframe = { version = "0.37", default-features = false, features = ["glow", "x11", "wayland", "clipboard", "default_fonts"] }
+egui = "0.37"
+# The icons are SVG paths: read with kurbo, filled with tiny-skia.
+kurbo = "0.13"
+tiny-skia = "0.12"
+# To try a font of the system's with the parser egui draws with.
+skrifa = "0.44"
 ashpd = { version = "0.11", default-features = false, features = ["async-std"] }
 
-[build-dependencies]
-slint-build = "1.18"
+[dev-dependencies]
+egui_kittest = "0.37"

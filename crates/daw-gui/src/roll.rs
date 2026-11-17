@@ -292,6 +292,12 @@ impl Lens {
 }
 
 impl Roll {
+    /// How far the grid is scrolled.
+    #[cfg(test)]
+    pub fn scrolled(&self) -> Vec2 {
+        self.scroll
+    }
+
     fn lens(&self) -> Lens {
         Lens { zoom: self.zoom, note_h: self.note_h, scroll: self.scroll, lane: self.lane }
     }
@@ -786,10 +792,7 @@ impl View {
         if response.hovered() {
             self.roll.hint = "ruler: click to put the playhead there".into();
         }
-        if response.is_pointer_button_down_on()
-            && ui.input(|i| i.pointer.primary_pressed())
-            && let Some(p) = response.interact_pointer_pos()
-        {
+        if let Some(p) = widgets::pressed_on(ui, &response, egui::PointerButton::Primary) {
             let beat = self.roll.beat(ruler, p.x);
             self.roll_pass("roll_seek", json!([beat]));
         }
@@ -819,10 +822,10 @@ impl View {
             // Lines between white keys: where E meets F and B meets C, and
             // in the middle of a black key.
             if pitch.rem_euclid(12) == 0 || pitch.rem_euclid(12) == 5 {
-                p.hline(row.x_range(), row.bottom() - 0.5, Stroke::new(1.0, t.thumb_low));
+                p.hline(row.x_range(), row.bottom() - 0.5, Stroke::new(1.0, t.key_line));
             }
             if is_black(pitch) {
-                p.hline(row.x_range(), row.center().y, Stroke::new(1.0, t.thumb_low));
+                p.hline(row.x_range(), row.center().y, Stroke::new(1.0, t.key_line));
                 let face = if lit { t.select } else if hover_pitch == Some(pitch) { Color32::from_rgb(0x3a, 0x3c, 0x42) } else { t.key_black };
                 p.rect_filled(Rect::from_min_size(row.min, vec2(keys.width() * 0.6, r.note_h)), CornerRadius::ZERO, face);
             }

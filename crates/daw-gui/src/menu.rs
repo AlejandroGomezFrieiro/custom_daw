@@ -62,12 +62,19 @@ pub struct Menu {
     pub at: Pos2,
     /// The submenus open, by place.
     pub open: Vec<usize>,
+    /// The frame it opened in: the press or release that opened it does
+    /// not also close it.
+    pub frame: u64,
 }
 
 const ROW: f32 = 24.0;
 const WIDTH_MIN: f32 = 160.0;
 
 impl View {
+    fn frame_nr(&self) -> u64 {
+        self.ctx.as_ref().map_or(0, |c| c.cumulative_frame_nr())
+    }
+
     /// Open the kernel's menu `kind` for `args` at `at`.
     pub fn open_menu(&mut self, kind: &str, args: Value, at: Pos2) {
         let list = self.ask("return daw.frontend.menu(...)", json!([kind, args]));
@@ -75,12 +82,14 @@ impl View {
         if items.is_empty() {
             return;
         }
-        self.menu = Some(Menu { source: Source::Kernel { kind: kind.into(), args }, items, at, open: Vec::new() });
+        let frame = self.frame_nr();
+        self.menu = Some(Menu { source: Source::Kernel { kind: kind.into(), args }, items, at, open: Vec::new(), frame });
     }
 
     /// Open a menu of the window's own.
     pub fn open_local_menu(&mut self, name: &str, items: Vec<Item>, at: Pos2) {
-        self.menu = Some(Menu { source: Source::Window(name.into()), items, at, open: Vec::new() });
+        let frame = self.frame_nr();
+        self.menu = Some(Menu { source: Source::Window(name.into()), items, at, open: Vec::new(), frame });
     }
 
     /// The menu that is open, over everything; what is chosen is done.
@@ -91,6 +100,7 @@ impl View {
         // Behind it, a sheet that takes the pointer: a press outside lets
         // go of the menu and does nothing else.
         let sheet = egui::Area::new(Id::unique("menu-sheet")).order(Order::Foreground).fixed_pos(screen.min).show(&ctx, |ui| {
+            ui.expand_to_include_rect(screen);
             ui.interact(screen, Id::unique("menu-sheet-touch"), Sense::click()).clicked()
                 || ui.input(|i| i.pointer.secondary_clicked() || i.pointer.middle_down())
         });
@@ -109,6 +119,7 @@ impl View {
             let rect = Rect::from_min_size(pos2(x, y), vec2(width, height));
             let mut next: Option<(usize, Pos2)> = None;
             egui::Area::new(Id::unique(("menu", level))).order(Order::Tooltip).fixed_pos(rect.min).show(&ctx, |ui| {
+                ui.expand_to_include_rect(rect);
                 let t = th();
                 ui.painter().rect(rect, CornerRadius::same(6), t.card, Stroke::new(1.0, t.card_line), StrokeKind::Inside);
                 let mut y = rect.top() + 4.0;
@@ -163,7 +174,7 @@ impl View {
             at = pos;
             level += 1;
         }
-        let pressed_outside = sheet.inner && !over_menu;
+        let pressed_outside = sheet.inner && !over_menu && menu.frame != ctx.cumulative_frame_nr();
         let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
         if let Some(path) = chosen {
             self.choose(&menu, &path);

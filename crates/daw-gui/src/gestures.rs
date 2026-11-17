@@ -1,0 +1,604 @@
+//! The window's gestures, driven in-process (egui_kittest): the window is
+//! drawn from what a kernel told it (tests/fixture.json, made by
+//! tests/fixture.sh), a stand-in kernel takes its calls, and each test says
+//! which `daw.frontend.act` a gesture sends, with what. What a gesture then
+//! means is the kernel's, tested in the Lua suite; the window tests in
+//! tests/window.rs drive a real window and kernel end to end.
+
+use std::cell::RefCell;
+use std::path::Path;
+use std::rc::Rc;
+
+use anyhow::Result;
+use egui::{Event, Modifiers, PointerButton, Pos2, pos2, vec2};
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
+use serde_json::{Value, json};
+
+use crate::app::{Kernel, View};
+
+const FIXTURE: &str = include_str!("../tests/fixture.json");
+
+type Calls = Rc<RefCell<Vec<(String, Value)>>>;
+
+/// A kernel that answers from the fixture and keeps every call.
+struct Fake {
+    state: Option<Value>,
+    calls: Calls,
+}
+
+impl Kernel for Fake {
+    fn call(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.calls.borrow_mut().push((method.to_string(), params.clone()));
+        let fixture: Value = serde_json::from_str(FIXTURE)?;
+        let code = params[0].as_str().unwrap_or("");
+        Ok(if code.contains("daw.frontend.menu(") {
+            json!([{ "label": "First" }, { "separator": true }, { "label": "More", "items": [{ "label": "Inner" }] }, { "label": "Quit", "window": "quit" }])
+        } else if code.contains("daw.frontend.clip(") {
+            fixture["clip"].clone()
+        } else if code.contains("search_devices") {
+            json!([{ "line": "Synth  · builtin instrument", "kind": "synth" }])
+        } else if code.contains("daw.frontend.closing()") {
+            json!({ "modified": true, "name": "song" })
+        } else if code.contains("daw.frontend.act.lane(") {
+            json!(7)
+        } else {
+            Value::Null
+        })
+    }
+    fn state(&mut self) -> Result<Option<Value>> {
+        Ok(self.state.take())
+    }
+    fn send_file(&mut self, path: &Path) -> Result<String> {
+        Ok(path.to_string_lossy().into())
+    }
+    fn listening(&self) -> bool {
+        false
+    }
+}
+
+/// The main area as the kernel lays it out for a window of 1500 by 960:
+/// the arrange view over the piano roll, the device panel beside them.
+fn panes() -> Value {
+    json!({
+        "panes": [
+            { "win": 1, "view": "arrange", "kind": "native", "x": 0, "y": 0, "w": 1088, "h": 500, "focused": true },
+            { "win": 2, "view": "pianoroll", "kind": "native", "x": 0, "y": 500, "w": 1088, "h": 396, "focused": false },
+            { "win": 3, "view": "devices", "kind": "native", "x": 1088, "y": 0, "w": 412, "h": 896, "focused": false },
+        ],
+        "borders": [{ "dir": "v", "x": 0, "y": 500, "length": 1088 }],
+        "tabs": [{ "title": "arrange" }],
+        "tab": 1,
+    })
+}
+
+/// A window drawn from the fixture, `change` applied to the state first.
+fn window_with(change: impl FnOnce(&mut Value)) -> (Harness<'static, View>, Calls) {
+    let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
+    crate::theme::set_theme(crate::theme::Theme::from_palette(&fixture["palette"]));
+    let mut state = fixture["state"].clone();
+    state["modal"]["panes"] = panes();
+    change(&mut state);
+    let calls: Calls = Rc::default();
+    let view = View::new(Box::new(Fake { state: Some(state), calls: calls.clone() }), true);
+    // The window's fonts are given in the first frame and drawn with from the next.
+    let mut first = true;
+    let mut harness = Harness::builder().with_size(vec2(1500.0, 960.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+        move |ui, view: &mut View| {
+            if std::mem::take(&mut first) {
+                ui.ctx().set_fonts(crate::theme::fonts(None));
+                return;
+            }
+            view.frame(ui)
+        },
+        view,
+    );
+    harness.run_steps(3);
+    calls.borrow_mut().clear();
+    (harness, calls)
+}
+
+fn window() -> (Harness<'static, View>, Calls) {
+    window_with(|_| {})
+}
+
+fn button(h: &Harness<View>, pos: Pos2, button: PointerButton, pressed: bool, modifiers: Modifiers) {
+    h.event(Event::PointerButton { pos, button, pressed, modifiers });
+}
+
+/// A press and a release where it was, with what is held.
+fn click_with(h: &mut Harness<View>, pos: Pos2, b: PointerButton, m: Modifiers) {
+    h.event(Event::ModifiersChanged(m));
+    h.hover_at(pos);
+    button(h, pos, b, true, m);
+    button(h, pos, b, false, m);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    // Long enough after that the next click is not a double one.
+    h.run_steps(30);
+}
+
+fn click(h: &mut Harness<View>, pos: Pos2) {
+    click_with(h, pos, PointerButton::Primary, Modifiers::NONE);
+}
+
+fn right_click(h: &mut Harness<View>, pos: Pos2) {
+    click_with(h, pos, PointerButton::Secondary, Modifiers::NONE);
+}
+
+fn double_click(h: &mut Harness<View>, pos: Pos2) {
+    h.hover_at(pos);
+    for _ in 0..2 {
+        button(h, pos, PointerButton::Primary, true, Modifiers::NONE);
+        button(h, pos, PointerButton::Primary, false, Modifiers::NONE);
+    }
+    h.run_steps(2);
+}
+
+/// A press at `from`, moves in steps to `to`, a release there.
+fn drag_with(h: &mut Harness<View>, from: Pos2, to: Pos2, b: PointerButton, m: Modifiers) {
+    h.event(Event::ModifiersChanged(m));
+    h.hover_at(from);
+    button(h, from, b, true, m);
+    for step in 1..=8 {
+        h.hover_at(from + (to - from) * step as f32 / 8.0);
+    }
+    button(h, to, b, false, m);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run_steps(2);
+}
+
+fn drag(h: &mut Harness<View>, from: Pos2, to: Pos2) {
+    drag_with(h, from, to, PointerButton::Primary, Modifiers::NONE);
+}
+
+/// The arguments of the last `daw.frontend.act.<name>` the window sent.
+fn acted(calls: &Calls, name: &str) -> Option<Vec<Value>> {
+    let code = format!("return daw.frontend.act.{name}(...)");
+    calls.borrow().iter().rev().find(|(m, p)| m == "eval" && p[0] == code.as_str()).map(|(_, p)| p.as_array().unwrap()[1..].to_vec())
+}
+
+fn act(calls: &Calls, name: &str) -> Vec<Value> {
+    acted(calls, name).unwrap_or_else(|| panic!("no {name} among {:?}", calls.borrow().iter().map(|c| c.1[0].clone()).collect::<Vec<_>>()))
+}
+
+/// Whether a command line or Lua containing `words` was sent.
+fn sent(calls: &Calls, words: &str) -> bool {
+    calls.borrow().iter().any(|(_, p)| p.to_string().contains(words))
+}
+
+fn num(v: &Value) -> f64 {
+    v.as_f64().unwrap()
+}
+
+// Where things are, as the window draws them at 1500 by 960 with the
+// fixture: the main area starts under the transport bar (40 and a line),
+// the ruler is 28 high and the markers' band 18, a row is 66 high, and a
+// beat 28 wide from the headers' 240.
+const AREA_TOP: f32 = 41.0;
+const LANES_TOP: f32 = AREA_TOP + 28.0 + 18.0;
+fn beat_x(beat: f32) -> f32 {
+    240.0 + beat * 28.0
+}
+/// The tops of track A (its clips, then its lane row), B and C.
+const ROW_A: f32 = LANES_TOP;
+const LANE_ROW_A: f32 = LANES_TOP + 66.0;
+const ROW_B: f32 = LANES_TOP + 66.0 * 1.8;
+const ROW_C: f32 = ROW_B + 66.0;
+
+// ------------------------------------------------------------- the timeline
+
+#[test]
+fn a_click_on_the_timeline_puts_the_cursor_and_a_drag_selects_time() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(beat_x(10.0), ROW_C + 30.0));
+    let args = act(&calls, "select");
+    assert_eq!(args[0], 5, "track C");
+    assert!((num(&args[1]) - 10.0).abs() < 0.05, "at beat 10: {args:?}");
+    drag(&mut h, pos2(beat_x(2.0), ROW_B + 20.0), pos2(beat_x(6.0), ROW_C + 20.0));
+    let args = act(&calls, "select_range");
+    assert_eq!((args[0].clone(), args[2].clone()), (json!(2), json!(3)), "rows B to C");
+    assert!((num(&args[1]) - 2.0).abs() < 0.05 && (num(&args[3]) - 6.0).abs() < 0.05);
+}
+
+#[test]
+fn a_double_click_on_an_empty_lane_makes_a_clip() {
+    let (mut h, calls) = window();
+    double_click(&mut h, pos2(beat_x(20.3), ROW_C + 30.0));
+    let args = act(&calls, "add_clip");
+    assert_eq!(args[0], 5);
+    assert!((num(&args[1]) - 20.3).abs() < 0.05);
+}
+
+#[test]
+fn a_right_drag_chooses_clips_in_a_box_and_a_right_click_opens_the_menu() {
+    let (mut h, calls) = window();
+    drag_with(&mut h, pos2(beat_x(1.0), ROW_A + 10.0), pos2(beat_x(14.0), ROW_B + 30.0), PointerButton::Secondary, Modifiers::SHIFT);
+    let args = act(&calls, "select_clips_box");
+    assert_eq!((args[0].clone(), args[2].clone(), args[4].clone()), (json!(1), json!(2), json!("add")));
+    right_click(&mut h, pos2(beat_x(20.0), ROW_C + 30.0));
+    assert!(sent(&calls, "daw.frontend.menu(") && sent(&calls, "\"timeline\""), "the timeline's menu");
+    assert!(h.state().menu.is_some());
+}
+
+#[test]
+fn the_middle_button_pans_and_ctrl_and_the_wheel_zoom() {
+    let (mut h, _) = window();
+    // Wide enough to pan: a beat 80 pixels.
+    h.state_mut().arrange.zoom = 80.0;
+    h.run_steps(2);
+    drag_with(&mut h, pos2(700.0, ROW_C + 30.0), pos2(500.0, ROW_C + 30.0), PointerButton::Middle, Modifiers::NONE);
+    assert!(h.state().arrange.scroll.x > 150.0, "panned: {:?}", h.state().arrange.scroll);
+    let zoom = h.state().arrange.zoom;
+    h.event(Event::ModifiersChanged(Modifiers::CTRL));
+    h.event(Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta: vec2(0.0, 1.0), modifiers: Modifiers::CTRL, phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel });
+    h.run_steps(2);
+    assert!(h.state().arrange.zoom > zoom, "zoomed in");
+}
+
+// ----------------------------------------------------------------- clips
+
+#[test]
+fn a_click_chooses_a_clip_ctrl_toggles_and_shift_adds() {
+    let (mut h, calls) = window();
+    let body = pos2(beat_x(5.5), ROW_A + 40.0);
+    click(&mut h, body);
+    assert_eq!(act(&calls, "select_clip")[2], "only");
+    click_with(&mut h, body, PointerButton::Primary, Modifiers::CTRL);
+    assert_eq!(act(&calls, "select_clip")[2], "toggle");
+    click_with(&mut h, body, PointerButton::Primary, Modifiers::SHIFT);
+    assert_eq!(act(&calls, "select_clip")[2], "add");
+}
+
+#[test]
+fn a_clip_dragged_moves_by_beats_and_rows_and_ctrl_copies() {
+    let (mut h, calls) = window();
+    drag(&mut h, pos2(beat_x(5.5), ROW_A + 40.0), pos2(beat_x(13.5), ROW_B + 40.0));
+    let args = act(&calls, "drag_clips");
+    assert_eq!(args[0], 2);
+    assert!((num(&args[1]) - 8.0).abs() < 0.05, "eight beats: {args:?}");
+    assert_eq!((args[2].clone(), args[3].clone()), (json!(1), json!(false)), "a row down, not a copy");
+    drag_with(&mut h, pos2(beat_x(5.5), ROW_A + 40.0), pos2(beat_x(7.5), ROW_A + 40.0), PointerButton::Primary, Modifiers::CTRL);
+    assert_eq!(act(&calls, "drag_clips")[3], true, "Ctrl copies");
+}
+
+#[test]
+fn either_edge_of_a_clip_trims_it_and_alt_slips() {
+    let (mut h, calls) = window();
+    drag(&mut h, pos2(beat_x(8.0) - 4.0, ROW_A + 40.0), pos2(beat_x(10.0) - 4.0, ROW_A + 40.0));
+    let args = act(&calls, "trim_clips");
+    assert_eq!(args[1], "end");
+    assert!((num(&args[2]) - 2.0).abs() < 0.05);
+    drag_with(&mut h, pos2(beat_x(4.0) + 3.0, ROW_A + 40.0), pos2(beat_x(5.0) + 3.0, ROW_A + 40.0), PointerButton::Primary, Modifiers::ALT);
+    let args = act(&calls, "trim_clips");
+    assert_eq!((args[1].clone(), args[4].clone()), (json!("start"), json!(true)), "the start, slipped");
+}
+
+#[test]
+fn a_double_click_on_a_clip_opens_its_notes_and_a_right_click_its_menu() {
+    let (mut h, calls) = window();
+    double_click(&mut h, pos2(beat_x(5.5), ROW_A + 40.0));
+    assert_eq!(act(&calls, "open_clip"), [json!(2)]);
+    right_click(&mut h, pos2(beat_x(6.0), ROW_A + 40.0));
+    let menu = calls.borrow().iter().rev().find(|c| c.1[0].as_str().unwrap_or("").contains("daw.frontend.menu(")).cloned().unwrap();
+    assert_eq!(menu.1[1], "clip");
+    assert_eq!(menu.1[2][0], 2);
+    assert!((num(&menu.1[2][1]) - 6.0).abs() < 0.05, "the beat clicked");
+}
+
+#[test]
+fn an_audio_clips_fades_gain_and_warp_markers_take_the_pointer() {
+    let (mut h, calls) = window_with(|s| {
+        let clip = &mut s["clips"][0];
+        clip["midi"] = json!(false);
+        clip["stamp"] = Value::Null;
+        clip["waveform"] = json!("w");
+        clip["fade_in"] = json!(1);
+        clip["warps"] = json!([2]);
+    });
+    // The fade-in's handle is a beat in, at the top.
+    drag(&mut h, pos2(beat_x(5.0), ROW_A + 5.0), pos2(beat_x(6.0), ROW_A + 5.0));
+    let args = act(&calls, "set_fade");
+    assert_eq!(args[1], "in");
+    assert!((num(&args[2]) - 2.0).abs() < 0.1, "{args:?}");
+    // The gain line along the top.
+    drag(&mut h, pos2(beat_x(7.0), ROW_A + 3.0), pos2(beat_x(7.0), ROW_A + 23.0));
+    assert!((num(&act(&calls, "set_clip_gain")[1]) + 5.0).abs() < 0.5, "a quarter of a dB a pixel down");
+    // The warp marker's handle, two beats in.
+    drag(&mut h, pos2(beat_x(6.0), ROW_A + 4.0), pos2(beat_x(6.5), ROW_A + 4.0));
+    let args = act(&calls, "warp_move");
+    assert_eq!(args[1], 1);
+    // A double click on the top band puts a marker.
+    double_click(&mut h, pos2(beat_x(7.5), ROW_A + 8.0));
+    assert!((num(&act(&calls, "warp_add")[1]) - 7.5).abs() < 0.05);
+}
+
+// ------------------------------------------------------------- the ruler
+
+#[test]
+fn the_ruler_clicks_loops_and_moves_tempo_flags() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(beat_x(3.0), AREA_TOP + 20.0));
+    assert!((num(&act(&calls, "ruler_click")[0]) - 3.0).abs() < 0.05);
+    drag(&mut h, pos2(beat_x(2.0), AREA_TOP + 5.0), pos2(beat_x(6.0), AREA_TOP + 5.0));
+    let args = act(&calls, "set_loop");
+    assert!((num(&args[0]) - 2.0).abs() < 0.05 && (num(&args[1]) - 6.0).abs() < 0.05);
+    // The tempo flag at beat 16.
+    drag(&mut h, pos2(beat_x(16.0) + 8.0, AREA_TOP + 14.0), pos2(beat_x(18.0) + 8.0, AREA_TOP + 14.0));
+    let args = act(&calls, "tempo_mark");
+    assert_eq!((args[0].clone(), args[1].clone()), (json!("move"), json!("tempo")));
+    assert!((num(&args[3]) - 18.0).abs() < 0.05);
+    double_click(&mut h, pos2(beat_x(16.0) + 8.0, AREA_TOP + 14.0));
+    assert_eq!(act(&calls, "tempo_mark")[0], "edit");
+}
+
+#[test]
+fn a_marker_takes_a_click_and_a_drag() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(beat_x(8.0) + 12.0, AREA_TOP + 28.0 + 9.0));
+    assert!(sent(&calls, "marker.goto id=1"));
+    drag(&mut h, pos2(beat_x(8.0) + 12.0, AREA_TOP + 37.0), pos2(beat_x(10.0) + 12.0, AREA_TOP + 37.0));
+    assert!(sent(&calls, "marker.set id=1 beat=10"), "{:?}", calls.borrow());
+}
+
+// ------------------------------------------------------------- the headers
+
+#[test]
+fn a_header_selects_its_track_and_dragged_moves_it() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(70.0, ROW_B + 17.0));
+    assert_eq!(act(&calls, "select")[0], 3);
+    drag(&mut h, pos2(70.0, ROW_B + 17.0), pos2(70.0, ROW_C + 50.0));
+    assert_eq!(act(&calls, "move_track"), [json!(3), json!(3)]);
+}
+
+#[test]
+fn m_s_and_r_toggle_and_a_press_swept_sets_them_all() {
+    let (mut h, calls) = window();
+    // M is at 134 on a header's first line.
+    click(&mut h, pos2(134.0, ROW_B + 13.0));
+    assert_eq!(act(&calls, "toggle"), [json!(3), json!("mute")]);
+    drag(&mut h, pos2(134.0, ROW_A + 13.0), pos2(134.0, ROW_C + 13.0));
+    let args = act(&calls, "sweep_flag");
+    assert_eq!((args[0].clone(), args[1].clone(), args[2].clone()), (json!(1), json!(3), json!("mute")));
+}
+
+#[test]
+fn a_header_renames_on_a_double_click_and_its_edge_sets_the_height() {
+    let (mut h, calls) = window();
+    double_click(&mut h, pos2(70.0, ROW_C + 13.0));
+    assert!(h.state().arrange.renaming.is_some(), "a box to type the name in");
+    h.event(Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::CTRL });
+    h.event(Event::Text("Zebra".into()));
+    h.event(Event::Key { key: egui::Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(act(&calls, "rename_track"), [json!(5), json!("Zebra")]);
+    drag(&mut h, pos2(100.0, ROW_C + 64.0), pos2(100.0, ROW_C + 97.0));
+    let args = act(&calls, "set_track_height");
+    assert!((num(&args[1]) - 1.5).abs() < 0.05, "half as tall again: {args:?}");
+}
+
+#[test]
+fn a_headers_fader_sets_the_volume_and_a_double_click_puts_it_at_0_db() {
+    let (mut h, calls) = window();
+    // The fader's well runs from 38 to 128 on track C's second line.
+    drag(&mut h, pos2(80.0, ROW_C + 37.0), pos2(120.0, ROW_C + 37.0));
+    let args = act(&calls, "set_volume");
+    assert_eq!(args[0], 5);
+    assert!(sent(&calls, "\"volume\""), "held while dragged, for automation by touch");
+    double_click(&mut h, pos2(100.0, ROW_C + 37.0));
+    assert_eq!(act(&calls, "set_volume"), [json!(5), json!(0.0)]);
+}
+
+#[test]
+fn a_right_click_on_a_header_opens_the_tracks_menu_and_its_input_button_the_inputs() {
+    let (mut h, calls) = window();
+    right_click(&mut h, pos2(60.0, ROW_C + 50.0));
+    assert!(sent(&calls, "\"track\",[5]"), "{:?}", calls.borrow());
+    h.state_mut().menu = None;
+    click(&mut h, pos2(90.0, ROW_C + 13.0));
+    assert!(sent(&calls, "\"input\",[5]"));
+}
+
+// ---------------------------------------------------- lanes, automation, takes
+
+#[test]
+fn a_lane_row_takes_a_click_and_a_stroke() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(beat_x(20.0), LANE_ROW_A + 26.0));
+    let args = act(&calls, "add_point");
+    assert_eq!(args[0], 7);
+    drag(&mut h, pos2(beat_x(20.0), LANE_ROW_A + 45.0), pos2(beat_x(28.0), LANE_ROW_A + 8.0));
+    let args = act(&calls, "draw_lane");
+    assert_eq!(args[0], 7);
+    assert!(args[1].as_array().unwrap().len() > 3, "the stroke's points");
+}
+
+#[test]
+fn with_automation_shown_the_pencil_draws_over_the_clips() {
+    let (mut h, calls) = window();
+    h.state_mut().show_automation = true;
+    h.run_steps(2);
+    click(&mut h, pos2(beat_x(20.0), ROW_C + 20.0));
+    assert!(sent(&calls, "daw.frontend.act.lane("), "a lane made for the track");
+    assert_eq!(act(&calls, "add_point")[0], 7);
+}
+
+#[test]
+fn a_take_lane_takes_a_click_and_a_swipe() {
+    let (mut h, calls) = window_with(|s| {
+        s["tracks"][1]["take_rows"] = json!(2);
+        s["clips"][1]["take_rows"] = json!([{ "name": "take 1", "key": "a" }, { "name": "take 2", "key": "b" }]);
+    });
+    let lane = ROW_B + 66.0 + 66.0 * 0.6 + 10.0;
+    click(&mut h, pos2(beat_x(13.0), lane));
+    assert_eq!(&act(&calls, "take_click")[..2], [json!(3), json!(2)]);
+    drag(&mut h, pos2(beat_x(13.0), lane), pos2(beat_x(15.0), lane));
+    assert_eq!(&act(&calls, "comp")[..2], [json!(3), json!(2)]);
+}
+
+// ---------------------------------------------------------- the piano roll
+
+const ROLL_TOP: f32 = AREA_TOP + 500.0;
+
+/// The grid's top, under the toolbar and the ruler (and the chords' row
+/// when there are chords).
+fn roll_grid_top(h: &Harness<View>) -> f32 {
+    let chords = h.state().s.modal["roll"]["chords"].as_array().is_some_and(|c| !c.is_empty());
+    ROLL_TOP + 32.0 + 22.0 + if chords { 16.0 } else { 0.0 }
+}
+
+#[test]
+fn the_piano_roll_draws_chooses_moves_and_removes_notes() {
+    let (mut h, calls) = window();
+    h.run_steps(3);
+    let top = roll_grid_top(&h);
+    let roll = &h.state().roll;
+    let (zoom, row) = (roll.zoom, 12.0);
+    let scroll = h.state().roll.scrolled();
+    let at = |beat: f32, pitch: i64| pos2(64.0 + beat * zoom - scroll.x + 3.0, top + (127 - pitch) as f32 * row - scroll.y + 5.0);
+    // A note: a click chooses it, a drag moves it.
+    click(&mut h, at(0.3, 60));
+    assert_eq!(act(&calls, "select_note"), [json!(2), json!(1), json!("only")]);
+    drag(&mut h, at(0.3, 60), at(1.3, 62));
+    let args = act(&calls, "drag_notes");
+    assert_eq!(args[2].as_f64().map(|b| (b * 10.0).round()), Some(10.0), "a beat later: {args:?}");
+    assert_eq!(args[3], 2.0, "two semitones up");
+    // Empty grid: a drag draws a note.
+    drag(&mut h, at(3.0, 72), at(3.9, 72));
+    let args = act(&calls, "add_note");
+    assert_eq!(args[1], 72);
+    // The right button removes a note it clicks, and its box chooses.
+    right_click(&mut h, at(1.3, 64));
+    assert_eq!(act(&calls, "remove_note"), [json!(2), json!(2)]);
+    drag_with(&mut h, at(0.1, 70), at(2.9, 58), PointerButton::Secondary, Modifiers::NONE);
+    let args = act(&calls, "select_notes_box");
+    assert_eq!(args[5], "only");
+}
+
+#[test]
+fn the_rolls_keyboard_sounds_keys_and_its_strip_draws_velocities() {
+    let (mut h, calls) = window();
+    h.run_steps(3);
+    let top = roll_grid_top(&h);
+    let scroll = h.state().roll.scrolled();
+    click(&mut h, pos2(20.0, top + (127.0 - 60.0) * 12.0 - scroll.y + 6.0));
+    assert_eq!(act(&calls, "audition")[1], 60);
+    let strip = ROLL_TOP + 396.0 - 40.0;
+    drag(&mut h, pos2(80.0, strip + 30.0), pos2(400.0, strip - 30.0));
+    let args = act(&calls, "draw_velocities");
+    assert_eq!(args[0], 2);
+}
+
+#[test]
+fn the_rolls_toolbar_quantizes_snaps_and_closes() {
+    let (mut h, calls) = window();
+    h.run_steps(3);
+    let target = h.get_by_label("Quantize").rect().center();
+    click(&mut h, target);
+    assert_eq!(act(&calls, "quantize_notes"), [json!(2)]);
+    let target = h.get_by_label("List").rect().center();
+    click(&mut h, target);
+    assert_eq!(act(&calls, "open_event_list"), [json!(2)]);
+}
+
+// -------------------------------------------------- devices, mixer, transport
+
+#[test]
+fn the_device_box_finds_and_adds_a_device() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(1300.0, AREA_TOP + 64.0));
+    h.event(Event::Text("syn".into()));
+    h.run_steps(3);
+    assert!(sent(&calls, "search_devices"));
+    h.event(Event::Key { key: egui::Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    assert_eq!(act(&calls, "add_device"), [json!("synth"), json!("syn")]);
+}
+
+#[test]
+fn a_devices_power_button_and_its_parameters_take_the_pointer() {
+    let (mut h, calls) = window();
+    let power = h.get_by_label("power of Synth").rect().center();
+    click(&mut h, power);
+    assert!(acted(&calls, "toggle_bypass").is_some(), "the power button");
+}
+
+#[test]
+fn the_transport_buttons_and_the_file_menu() {
+    let (mut h, calls) = window();
+    let play = h.get_by_label("play").rect().center();
+    click(&mut h, play);
+    assert!(sent(&calls, "transport.toggle"));
+    click(&mut h, pos2(40.0, 20.0));
+    assert!(sent(&calls, "\"file\""));
+    // A menu's entry is chosen by its place; one the window does itself is done here.
+    let first = h.state().menu.as_ref().unwrap().at + vec2(40.0, 4.0 + 12.0);
+    click(&mut h, first);
+    let choose = act(&calls, "menu_choose");
+    assert_eq!(choose[0], "file");
+    assert_eq!(choose[2], json!([1]));
+}
+
+#[test]
+fn quitting_with_changes_asks_and_save_says_so_to_the_kernel() {
+    let (mut h, calls) = window();
+    h.state_mut().leave("quit");
+    h.run_steps(2);
+    assert!(h.state().dialogs.closing.is_some(), "the question");
+    let save = h.get_by_label("Save").rect().center();
+    click(&mut h, save);
+    assert_eq!(act(&calls, "leave"), [json!("save"), json!("quit")]);
+}
+
+// ------------------------------------------------------------------ keys
+
+#[test]
+fn keys_go_to_the_kernels_mappings_and_ctrl_a_in_the_roll_chooses_every_note() {
+    let (mut h, calls) = window();
+    h.event(Event::Key { key: egui::Key::J, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.event(Event::Text("j".into()));
+    h.run_steps(2);
+    assert!(calls.borrow().iter().any(|(m, p)| m == "keys" && p[0] == "j"));
+    h.event(Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::CTRL });
+    h.run_steps(2);
+    assert!(calls.borrow().iter().any(|(m, p)| m == "keys" && p[0] == "gA"), "the fixture's roll has the keys");
+}
+
+#[test]
+fn ctrl_and_plus_zoom_and_ctrl_0_shows_the_whole_song() {
+    let (mut h, _) = window();
+    let zoom = h.state().arrange.zoom;
+    h.event(Event::Key { key: egui::Key::Plus, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::CTRL });
+    h.run_steps(2);
+    assert!(h.state().arrange.zoom > zoom);
+    h.event(Event::Key { key: egui::Key::Num0, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::CTRL });
+    h.run_steps(2);
+    // The song and a bar across the timeline's 848 pixels, less a margin.
+    let s = &h.state().s;
+    let fit = (848.0 - 24.0) / (s.bar().max(crate::model::number(&s.project["length"]) + s.bar()));
+    assert!((h.state().arrange.zoom - fit).abs() < 0.01 && h.state().arrange.scroll.x == 0.0);
+}
+
+// ----------------------------------------------------------------- fonts
+
+#[test]
+fn japanese_lyrics_are_drawn_with_glyphs_of_their_own() {
+    let Some(cjk) = crate::theme::cjk_font() else {
+        eprintln!("no CJK font on this system: the test of its glyphs is skipped");
+        return;
+    };
+    let ctx = egui::Context::default();
+    ctx.set_fonts(crate::theme::fonts(Some(cjk)));
+    let _ = ctx.run_ui(egui::RawInput::default(), |_| {});
+    let galley = ctx.fonts_mut(|f| f.layout_no_wrap("さくら".into(), egui::FontId::proportional(14.0), egui::Color32::WHITE));
+    let glyphs: Vec<_> = galley.rows.iter().flat_map(|r| r.glyphs.iter()).collect();
+    assert_eq!(glyphs.len(), 3);
+    // The replacement box is as wide as for any other character it stands for.
+    let boxed = ctx.fonts_mut(|f| f.layout_no_wrap("\u{e000}".into(), egui::FontId::proportional(14.0), egui::Color32::WHITE));
+    let box_w = boxed.rows[0].glyphs[0].advance_width;
+    for g in glyphs {
+        assert!(g.advance_width > 0.0, "a glyph with no width");
+        assert!((g.advance_width - box_w).abs() > 0.5 || g.uv_rect.size.x > 0.0, "the replacement box");
+        assert!(!g.uv_rect.is_nothing(), "a glyph that draws nothing");
+    }
+}

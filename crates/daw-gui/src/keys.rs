@@ -49,7 +49,15 @@ pub struct Keys {
 }
 
 impl Keys {
-    pub fn notation(&mut self, event: &Event) -> Option<String> {
+    /// The keys of a frame's events. Text the system sends with a key held
+    /// with Control or Alt comes in the same frame as the key.
+    pub fn notations(&mut self, events: &[Event]) -> Vec<String> {
+        let keys = events.iter().filter_map(|e| self.notation(e)).collect();
+        self.skip_text = false;
+        keys
+    }
+
+    fn notation(&mut self, event: &Event) -> Option<String> {
         match event {
             Event::Key { key, pressed: true, modifiers, .. } => {
                 self.skip_text = false;
@@ -101,7 +109,8 @@ pub fn key_notation(key: Key, modifiers: Modifiers) -> Option<String> {
     if !(modifiers.ctrl || modifiers.alt) {
         return None;
     }
-    let symbol = key.symbol_or_name();
+    // The minus key's symbol is the true minus sign; the mappings write `-`.
+    let symbol = if key == Key::Minus { "-" } else { key.symbol_or_name() };
     let mut chars = symbol.chars();
     let c = chars.next()?;
     if chars.next().is_some() {
@@ -130,7 +139,7 @@ mod tests {
     #[test]
     fn keys_are_written_as_mappings_write_them() {
         let mut keys = Keys::default();
-        let mut all = |events: &[Event]| -> Vec<String> { events.iter().filter_map(|e| keys.notation(e)).collect() };
+        let mut all = |events: &[Event]| keys.notations(events);
         // A letter comes as its key and its text: the text is what counts.
         assert_eq!(all(&[key(Key::A, Modifiers::NONE), Event::Text("a".into())]), ["a"]);
         assert_eq!(all(&[key(Key::R, Modifiers::CTRL)]), ["<C-r>"]);

@@ -51,8 +51,7 @@ palette! {
     // The window's own: the caps of sliders and faders, faces under the
     // pointer, and the colours of modes and of a few marks.
     thumb = "#c9cbd1", thumb_low = "#a9abb2", bright = "#f4f6fa", accent = "#ffb86b",
-    green = "#9ad36a", yellow = "#f2c94c", magenta = "#b79cf2", cyan = "#7fd1c7",
-    dark = "#0b0c0f",
+    green = "#9ad36a", yellow = "#f2c94c", magenta = "#b79cf2",
 }
 
 /// `#rrggbb` or `#rrggbbaa`.
@@ -268,9 +267,6 @@ fn rasterize(icon: Icon, pixels: u32) -> egui::ColorImage {
     egui::ColorImage::from_rgba_premultiplied([size as usize, size as usize], pixmap.data())
 }
 
-/// Texture options for pictures drawn smaller or larger than they are.
-pub const SMOOTH: TextureOptions = TextureOptions::LINEAR;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,7 +284,7 @@ mod tests {
     fn an_icon_is_filled_with_its_holes() {
         let image = rasterize(crate::icons::CIRCLE, 32);
         let alpha = |x: usize, y: usize| image.pixels[y * 32 + x].a();
-        assert!(alpha(16, 2) > 200, "the ring is drawn");
+        assert!(alpha(16, 4) > 200, "the ring is drawn");
         assert_eq!(alpha(16, 16), 0, "its middle is a hole");
     }
 }

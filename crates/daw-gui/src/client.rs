@@ -215,27 +215,6 @@ impl Client {
     }
 }
 
-/// Send the sound and MIDI files among `paths` to a kernel on another machine (or
-/// one this window did not start), into its project's media folder, and
-/// return where they are there. The rest are left out, said to be refused.
-pub fn send_sounds(client: &mut Client, paths: &[String]) -> Result<Vec<String>> {
-    let mut there = Vec::new();
-    for path in paths {
-        let sound = client.eval(
-            "local path = ...; return daw.is_audio_file(path) or daw.midifile.is_midi_file(path)",
-            json!([path]),
-        )?;
-        if sound.as_bool() != Some(true) {
-            let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
-            let message = format!("cannot send {name}: only sound and MIDI files go to an instance on another machine");
-            client.eval("daw.notify(..., 'warn')", json!([message]))?;
-            continue;
-        }
-        there.push(client.connection.send_file(Path::new(path))?);
-    }
-    Ok(there)
-}
-
 /// Start a kernel without a UI and connect to it.
 pub fn start_kernel(args: &[String]) -> Result<(Client, Child)> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")

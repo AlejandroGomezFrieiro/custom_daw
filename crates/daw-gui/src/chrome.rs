@@ -60,6 +60,7 @@ impl View {
         ];
         for (name, shape, look) in buttons {
             let response = widgets::button(ui, row(x, h), Id::unique(("transport", name)), Some(shape), "", look);
+            widgets::name(&response, name);
             if name == "record" {
                 widgets::hint_on(&response, "record: starts a take on the armed tracks (R on a track), or on the selected one if none is armed · again to stop");
             }
@@ -395,7 +396,8 @@ impl View {
         let card = Rect::from_center_size(screen.center(), vec2(width, height));
         let mut events = Vec::new();
         let mut window = false;
-        egui::Area::new(Id::unique("float-backdrop")).order(Order::Foreground).fixed_pos(screen.min).show(&ctx, |ui| {
+        egui::Area::new(Id::unique("float-backdrop")).order(Order::Middle).fixed_pos(screen.min).show(&ctx, |ui| {
+            ui.expand_to_include_rect(screen);
             ui.painter().rect_filled(screen, CornerRadius::ZERO, Color32::from_black_alpha(0xaa));
             let response = ui.interact(screen, Id::unique("float-backdrop-touch"), Sense::click());
             if response.clicked() && !card.contains(response.interact_pointer_pos().unwrap_or_default()) {
@@ -403,6 +405,7 @@ impl View {
             }
         });
         egui::Area::new(Id::unique("float-card")).order(Order::Foreground).fixed_pos(card.min).show(&ctx, |ui| {
+            ui.expand_to_include_rect(card);
             ui.painter().rect(card, CornerRadius::same(6), t.card, Stroke::new(1.0, t.card_line), StrokeKind::Inside);
             ui.painter().text(card.min + vec2(14.0, 10.0), Align2::LEFT_TOP, &title, semi(T_TITLE), t.text);
             let body = Rect::from_min_max(card.min + vec2(14.0, 36.0), card.max - vec2(14.0, 8.0));

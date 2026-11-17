@@ -244,7 +244,9 @@ impl View {
         let head = Rect::from_min_size(card.min + vec2(4.0, 0.0), vec2(card.width() - 8.0, 26.0));
         let b = |i: f32| Rect::from_min_size(pos2(head.right() - (i + 1.0) * 24.0, head.top() + 2.0), vec2(22.0, 22.0));
         let power = Rect::from_min_size(pos2(head.left(), head.top() + 2.0), vec2(22.0, 22.0));
-        if widgets::button(ui, power, Id::unique(("power", id)), Some(icons::POWER), "", Look { idle_ink: Some(t.text_3), ..Look::quiet().on(!bypass) }).clicked() {
+        let response = widgets::button(ui, power, Id::unique(("power", id)), Some(icons::POWER), "", Look { idle_ink: Some(t.text_3), ..Look::quiet().on(!bypass) });
+        widgets::name(&response, &format!("power of {}", text(&d["name"])));
+        if response.clicked() {
             self.pass("toggle_bypass", json!([id]));
         }
         let mut right = 0.0;

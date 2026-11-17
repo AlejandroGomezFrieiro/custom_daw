@@ -122,11 +122,9 @@ impl View {
         }
         // Keys typed here are the view's.
         let events = ui.input(|i| i.events.clone());
-        for event in &events {
-            if let Some(keys) = self.keys.notation(event) {
-                self.eval("daw.canvas.key(...)", json!([name, keys]));
-                self.repaint = true;
-            }
+        for keys in self.keys.notations(&events) {
+            self.eval("daw.canvas.key(...)", json!([name, keys]));
+            self.repaint = true;
         }
         // The title, over the top of the view, with a way back as a pane.
         let heading = Rect::from_min_size(full.min, vec2(full.width(), HEADING_H));

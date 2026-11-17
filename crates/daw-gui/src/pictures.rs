@@ -153,7 +153,7 @@ mod tests {
         assert!(notes_picture(&[], 4.0).is_none(), "no notes, no picture");
         let wave = wave_picture(&[-0.5, 0.5, 0.25, -1.0, 1.0, 0.0]).unwrap();
         assert_eq!(wave.size, [2, 64]);
-        assert_eq!(wave.pixels[32].a(), 255, "the body in the middle");
+        assert_eq!(wave.pixels[32 * 2].a(), 255, "the body in the middle");
         assert_eq!(wave.pixels[2].a(), 0, "nothing past the reach");
         let notched = notched(wave_picture(&[0.0; 30]).unwrap(), &[0.5]);
         assert_eq!(notched.pixels[5].a(), 255, "a notch at the top");
