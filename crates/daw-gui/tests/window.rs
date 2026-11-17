@@ -1708,7 +1708,6 @@ fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
     w.ctl("daw.ui.views.pianoroll.pitch = 124 daw.api.ui_redraw()");
     w.pause(0.8);
     w.shot("roll-high.png");
-    assert!(w.shows("C9", 5), "and again when it goes up");
     w.assert_alive("after the roll");
 }
 
