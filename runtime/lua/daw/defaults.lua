@@ -2269,12 +2269,39 @@ for _, lhs in ipairs({ "ib", "ab" }) do
     return { view = "pianoroll", kind = "char", r0 = roll.pitch, r1 = roll.pitch, c0 = c0, c1 = c1 }
   end, "This bar, or N bars from it")
 end
-for _, lhs in ipairs({ "ic", "ac", "ie", "ae" }) do
+for _, lhs in ipairs({ "ie", "ae" }) do
   pobject(lhs, function()
     if not roll:clip() then return end
     local c0, c1 = roll:span()
     return { view = "pianoroll", kind = "char", r0 = roll.pitch, r1 = roll.pitch, c0 = c0, c1 = c1 }
   end, "Every note of the clip, or of the clips edited")
+end
+-- The chord: the notes that start with the one under the cursor (or at its
+-- beat); `ac` takes in the notes that sound over it as well.
+for _, lhs in ipairs({ "ic", "ac" }) do
+  pobject(lhs, function()
+    if not roll:clip() then return end
+    local at = roll:note_at(roll.pitch, roll.beat)
+    local start = at and at.start or roll.beat
+    local notes = roll:ordered()
+    local r0, r1, c0, c1
+    for _, n in ipairs(notes) do
+      if math.abs(n.start - start) < 1e-9 then
+        r0, r1 = math.min(r0 or n.pitch, n.pitch), math.max(r1 or n.pitch, n.pitch)
+        c0, c1 = math.min(c0 or n.start, n.start), math.max(c1 or 0, n.start + n.length)
+      end
+    end
+    if not c0 then return end
+    if lhs == "ac" then
+      for _, n in ipairs(notes) do
+        if n.start < c1 - 1e-9 and n.start + n.length > c0 + 1e-9 then
+          r0, r1 = math.min(r0, n.pitch), math.max(r1, n.pitch)
+          c0, c1 = math.min(c0, n.start), math.max(c1, n.start + n.length)
+        end
+      end
+    end
+    return { view = "pianoroll", kind = "block", r0 = r0, r1 = r1, c0 = c0, c1 = c1 }
+  end, lhs == "ic" and "The notes that sound together at the cursor" or "The chord and every note that overlaps it")
 end
 
 -- Piano roll: operators. They act on every clip the roll edits.
