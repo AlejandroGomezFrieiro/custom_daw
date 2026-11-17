@@ -4,6 +4,7 @@ local M = {}
 
 local defaults = {
   leader = ",",            -- what `<leader>` means in key mappings
+  localleader = "\\",      -- what `<localleader>` means: the leader of one view's own keys (the notation popovers)
   timeoutlen = 800,        -- ms to wait for the rest of a key sequence
   hint_delay = 500,        -- ms before the keys that can follow are listed; 0 for at once
   hints = true,            -- list the keys that can follow a half-typed command

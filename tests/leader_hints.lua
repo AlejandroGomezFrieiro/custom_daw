@@ -50,20 +50,27 @@ local function rows_with(text)
   return rows
 end
 
-test("leader: in the notation view , lists the popovers by name and stays up while the list is read", function()
+test("leader: in the notation view the local leader lists the popovers by name, and , lists the global keys", function()
   local view = song()
   local hints, wait = daw.opt.hint_delay, daw.opt.timeoutlen
   T.after(function() daw.opt.hint_delay, daw.opt.timeoutlen = hints, wait; daw.keymap.feed("<Esc>") end)
   daw.opt.hint_delay, daw.opt.timeoutlen = 20, 100
-  daw.keymap.feed(",")
+  daw.keymap.feed("<localleader>")
   daw.wait(400)
-  eq(daw.keymap.pending(), ",", "still waiting well after timeoutlen, the list is on")
+  eq(daw.keymap.pending(), daw.opt.localleader, "still waiting, the list is on")
   for _, key in ipairs({ "d", "t", "k", "m", "q", "l" }) do
-    eq((hint_of(key) or ""):match("^Popover: %a+") ~= nil, true, "," .. key .. " is listed as a popover")
+    eq((hint_of(key) or ""):match("^Popover: %a+") ~= nil, true, daw.opt.localleader .. key .. " is listed as a popover")
   end
   eq(hint_of("d"):match("^Popover: dynamics") ~= nil, true, "with its name")
   daw.keymap.feed("<Esc>")
   eq(daw.keymap.pending(), "", "Escape drops it")
+  -- The leader is the global one here: no popover on it.
+  daw.keymap.feed(",")
+  daw.wait(400)
+  eq(daw.keymap.pending(), ",", "the leader waits, with its list")
+  eq((hint_of("d") or ""):match("^Popover") == nil, true, ",d is not a popover")
+  eq(hint_of("m") ~= nil, true, "and the mixer is on it")
+  daw.keymap.feed("<Esc>")
   -- A key no leader map has: the motion runs, then the key is a command of its own.
   view:set(nil, 2)
   daw.keymap.feed("fe")
@@ -72,6 +79,16 @@ test("leader: in the notation view , lists the popovers by name and stays up whi
   daw.keymap.feed("<Esc>")
   eq(daw.keymap.pending(), "", "nothing left half typed")
   eq(at ~= nil, true, "the cursor is somewhere")
+end)
+
+test("leader: , m in the notation view is the mixer, as everywhere", function()
+  local view = song()
+  T.after(function() daw.ui.hide("mixer") end)
+  daw.ui.hide("mixer")
+  daw.keymap.feed(",m")
+  daw.wait(50)
+  eq(daw.ui.visible("mixer"), true, ",m reaches the global leader key in the notation view")
+  eq(view.popover.active(), false, "and no popover opened")
 end)
 
 test("leader: , in the notation view still goes back along an f after a pause, with no list to read", function()
@@ -93,7 +110,7 @@ test("popover: an empty prompt shows examples, and Tab fills the line", function
   local wait = daw.opt.timeoutlen
   T.after(function() daw.opt.timeoutlen = wait end)
   daw.opt.timeoutlen = 20
-  daw.keymap.feed(",d")
+  daw.keymap.feed("<localleader>d")
   daw.wait(150)
   eq(#rows_with("pp p mp mf f ff  mp<f  sfz") > 0, true, "dynamics examples")
   daw.keymap.feed("<Tab>")
@@ -101,7 +118,7 @@ test("popover: an empty prompt shows examples, and Tab fills the line", function
   daw.keymap.feed("<Esc>")
   for key, ghost in pairs({ t = "Allegro q=132  rit.  a tempo", k = "Eb  f#m  D dorian", m = "6/8  3+3+2/8", q = "Cmaj7  G/B  N.C.",
       l = "syllables, Space next, - hyphen" }) do
-    daw.keymap.feed("," .. key)
+    daw.keymap.feed("<localleader>" .. key)
     -- An extension's longer mapping (the pattern's `,t…`) makes the popover wait out `timeoutlen`.
     daw.wait(150)
     eq(#rows_with(ghost) > 0, true, "," .. key .. " shows " .. ghost .. " on\n" .. screen())
@@ -111,7 +128,7 @@ end)
 
 test("popover: it sits under the staff, so a tempo mark stays in sight", function()
   local view = song()
-  daw.keymap.feed(",tAllegro q=132")
+  daw.keymap.feed("<localleader>tAllegro q=132")
   local rows = rows_with("Allegro")
   eq(#rows >= 2, true, "the mark on the staff and the text in the prompt are both on the screen")
   daw.keymap.feed("<Esc>")

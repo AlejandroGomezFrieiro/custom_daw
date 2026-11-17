@@ -1,5 +1,5 @@
 -- Popovers: a one-line prompt at the caret for what is not a note, as
--- Dorico's popovers are, in the shape of a Vim prompt. `<leader>` and a
+-- Dorico's popovers are, in the shape of a Vim prompt. `<localleader>` and a
 -- letter opens one (in visual mode it is for the selection, and in insert
 -- mode after `<C-o>`, which goes back to entering notes after); it has its
 -- own history (`<Up>`), completion with what each choice means (`<Tab>`),
@@ -8,7 +8,7 @@
 --
 -- Each popover is sugar over an Ex command (`notation.dyn mp<f`), run with
 -- the selection's range when there is one (`:'<,'>notation.dyn mp<f`), so
--- `.`, macros, `@:` and `:5,8notation.dyn p` do the same. `<leader>.` opens
+-- `.`, macros, `@:` and `:5,8notation.dyn p` do the same. `<localleader>.` opens
 -- the last popover again with what was typed in it.
 --
 -- The preview is a trial (`daw.audition.try`): the command is run on the
@@ -23,7 +23,7 @@ local keymap = daw.keymap
 local P = { specs = {}, order = {} }
 view.popover = P
 
---- Define a popover: `key` (after the leader), `name`, `command`, `prompt`,
+--- Define a popover: `key` (after the local leader), `name`, `command`, `prompt`,
 --- `complete(text)`, `on_key(key, text)` for keys of its own, `hint` (the
 --- words shown before anything is typed).
 function P.define(spec)
@@ -124,7 +124,7 @@ local function preview(text)
 end
 
 --- Write the text for real: one undo step, remembered for `@:`, the
---- command line's history and `<leader>.`.
+--- command line's history and `<localleader>.`.
 local function commit(state, text)
   daw.audition.revert()
   view.ghost, view.cache = nil, nil
@@ -316,13 +316,13 @@ local function opener(name) return function() P.open(name) end end
 for _, name in ipairs(P.order) do
   local spec = P.specs[name]
   local desc = "Popover: " .. spec.name .. " (" .. spec.hint .. ")"
-  keymap.set("<leader>" .. spec.key, opener(name), { view = "notation", mode = { "n", "x" }, desc = desc })
+  keymap.set("<localleader>" .. spec.key, opener(name), { view = "notation", mode = { "n", "x" }, desc = desc })
 end
 local function again()
   if not P.last then return daw.notify("no popover yet", "warn") end
   P.open(P.last.name, { text = P.last.text })
 end
-keymap.set("<leader>.", again, { view = "notation", mode = { "n", "x" }, desc = "The last popover again, with what was typed in it" })
+keymap.set("<localleader>.", again, { view = "notation", mode = { "n", "x" }, desc = "The last popover again, with what was typed in it" })
 
 -- The ghost: the measures the preview changed, drawn in the accent.
 table.insert(view.decorators, function(layout)
