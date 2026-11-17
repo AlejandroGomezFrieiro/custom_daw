@@ -161,6 +161,7 @@ daw._kernel = K
 
 function K.startup()
   daw.ui.theme(require("daw.theme").groups)
+  daw.statusline = require("daw.statusline")
   for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
     require("daw.views." .. name)
   end
@@ -186,6 +187,7 @@ function K.startup()
   -- Listings edited as text (`:e daw://tracks`), and the kinds built in.
   daw.textbuf = require("daw.textbuf")
   require("daw.views.tracklist")
+  daw.files = require("daw.views.files")
   daw.recent = require("daw.recent")
   daw.learn = require("daw.learn")
   daw.remote = require("daw.remote")

@@ -20,6 +20,7 @@ pub mod midi_form;
 pub mod midi_out;
 pub mod pool;
 pub mod preview;
+pub mod probe;
 pub mod record;
 pub mod samples;
 pub mod tempo;

@@ -361,7 +361,7 @@ end
 function M.arrange(width, height)
   if not width then width, height = M.size() end
   local out = { nodes = {}, borders = {}, floating = {} }
-  local top = #M.tabs > 1 and 1 or 0
+  local top = (#M.tabs > 1 or daw.statusline.tabline_always()) and 1 or 0
   local below = 0
   for _, node in ipairs(M.bars) do
     if not node.hidden then below = below + node.size end
@@ -455,6 +455,9 @@ function M.titlebar(buf, opts)
   buf:text(0, 0, g.mark, focused and "TitleBarMarkFocus" or "TitleBarMark")
   local x = 2
   local right = opts.right and tostring(opts.right) or ""
+  -- What the winbar (`daw.statusline`) adds, at the end of the state.
+  local winbar = daw.statusline and M.drawing and daw.statusline.winbar(M.drawing, focused)
+  if winbar then right = right ~= "" and (winbar .. "  " .. right) or winbar end
   local right_w = api.str_width(right)
   if opts.pill then
     -- A coloured label ahead of the name, such as a clip in its track's colour.
@@ -604,6 +607,14 @@ function M.render(buf)
       x = x + used + 1
     end
     M.rects.tabline.spans = spans
+    -- What the tab line's own sections hold goes at the right end.
+    local right = daw.statusline.tabline(buf.width)
+    local used = 0
+    for _, piece in ipairs(right) do used = used + api.str_width(piece[1]) end
+    local at = buf.width - used - 1
+    if used > 0 and at > x then
+      for _, piece in ipairs(right) do at = at + line:text(at, 0, piece[1], piece[2]) end
+    end
   end
   if M.float and M.views[M.float.name] then
     local r = float_rect(buf.width, buf.height)

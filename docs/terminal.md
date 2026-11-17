@@ -566,7 +566,7 @@ left and above).
 | Keys or command | |
 | --- | --- |
 | `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; without a name, the same buffer as in Vim: a list edited as text shows in both windows, the arrange view's new window shows the piano roll and the roll's the arrange view, and any other view (one window at a time) leaves an empty window that says so (`Ctrl-w s`, `Ctrl-w v`); `:vnew` and `Ctrl-w n` always open an empty one |
-| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a buffer's or a view's name, or an address such as `daw://tracks`, is looked for before a file, and only a file is asked about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`); the next and previous buffer |
+| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a buffer's or a view's name, or an address such as `daw://tracks`, is looked for before a file, and only a file is asked about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`; a folder is listed as a [file buffer](#files)); the next and previous buffer |
 | `:ls`, `:bd roll` | list the buffers; close every window of one |
 | `:close` `Ctrl-w c`, `:q` `Ctrl-w q`, `:only` `Ctrl-w o` | close the window; close it, or in the last window quit (asking about unsaved changes as before); close every other window |
 | `Ctrl-w h` `j` `k` `l`, `Ctrl-w w` `W`, `Ctrl-w p` | the window left, below, above, right (a count goes further); the next and previous window; the window that had the keyboard before |
@@ -678,6 +678,58 @@ volume moved elsewhere in the meantime stays moved.
 device panel, on a marker it puts the cursor there. The graphical frontend
 shows a text buffer in a pane, as here; `:textbuf.window` (`Ctrl-w f`) pops it out
 into a window of its own, where it is edited with the same keys.
+
+## Files
+
+<!-- tags: files file-manager oil fyler -->
+Folders are edited as text as the lists above are, after oil.nvim, and a
+tree of one is shown as fyler.nvim shows it, so that moving files about and
+opening a sound file from the terminal are the same few keys as the rest.
+
+| | |
+| --- | --- |
+| `:e some/folder`, `:files [folder]` | the folder in this window: `daw://files/home/me/music`. `:files media` is the project's own media folder; `:files` alone, the folder of the buffer, else of the project, else where the program started |
+| `:Files [folder]`, `:files.tree` | the folder as a tree in a split: `daw://tree/home/me/music` |
+| `-` | up to the folder above; in the tree the tree is of that folder |
+| `Enter` | on a folder, goes in (in the tree opens or closes it, as `za` does); on a project, opens it, asking about unsaved work first; on a sound or MIDI file, places it at the cursor's track and time, or on a new track when the project has none |
+| `go` | a sound or MIDI file on a **new** track (`go` in a selection: one track for each file) |
+| `gh`, `gH` | hear the sound file (or MIDI file, through an instrument) under the cursor; `gH` hears each one as the cursor rests on it for `daw.opt.audition_delay` ms (`daw.opt.files_hear`, off) |
+| `g.` | show or hide the files that start with a dot (`daw.opt.files_hidden`) |
+| `za`, `zR`, `zM` | in a tree: open or close a folder, open all, close all |
+
+A line is a file, a folder ends in `/`, then what is known of it in columns:
+a sound file's length, sample rate and channels (from its header), the size;
+`unused` in the project's media folder for a sound file that no clip plays.
+
+```
+samples/
+songs/
+kick.wav        0.4s  8k    1ch  4.0K
+pad.mp3         2.0s  44.1k 2ch  2.5K
+notes.txt                        5B
+```
+
+Editing is the text's: `cw` renames, `dd` deletes, `yyp` and another name
+copies a file, `o` and a name makes a file (`name/` a folder), and a path in
+the name moves it: `songs/drums/kick.wav`, `../kick.wav`, `~/kick.wav`; the
+folders it needs are made. In the tree the indent says where a line is: a
+line indented under a folder is in it, so that taking a line one step left
+moves the file up. `:w` shows the plan (`rename kick.wav → kick-old.wav`,
+`delete notes.txt (to the trash)`), `y` does it. Files are never removed: a
+deleted file is moved to the freedesktop trash
+(`~/.local/share/Trash`, with the record the desktop needs to put it back),
+and a name that is taken is refused, not written over. A plan that fails
+partway puts back what it had done. Undoing a write in the project's history
+does not undo files: take a deleted file back from the trash.
+
+`:media.unused` lists the sound files in the project's media folder that no
+clip plays, to delete with `dd` and `:w` (see [Mixing](mixing.md#media-files),
+`:media.collect` copies in files from elsewhere). A file a clip that was
+deleted played may still be needed by `u`: the trash keeps it.
+
+An extension makes its own listing with `daw.textbuf.kind` (see
+[Scripting](scripting.md)); `daw.files.open(folder, { tree = true })` shows
+a folder, and `daw.files.sound_info(path)` reads a file's header.
 
 ## The quickfix list
 

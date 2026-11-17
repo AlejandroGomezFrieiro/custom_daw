@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod audio;
+pub mod fs_api;
 pub mod grid;
 pub mod history;
 pub mod io;
