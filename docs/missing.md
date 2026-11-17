@@ -94,9 +94,19 @@
   time signature written in the score sets the song's signature only at a
   bar that starts on one of the song's; writing a time signature writes
   the bars after it again in their values, and a tuplet there becomes plain
-  values; chord symbols, lyrics of verses after the first, rehearsal
-  marks, endings, tempo marks, ornaments and clef changes are not in the
-  MusicXML or LilyPond export; the roll's hatching of generated
+  values. MusicXML in and out: a stem direction set by hand, a beam
+  joined over a beat, a system kept on the line before (`zj`) and bars
+  to a system are not written out, and stems in a file are left to the
+  layout; cross-staff chords are split by staff; nested tuplets read as one
+  ratio; D.C., D.S., segno, coda, pedal, octave lines, fingering, string
+  and fret, bowings, glissandi, figured bass, cue notes, microtones and
+  tablature staves are counted and left out; a pickup is a first bar whose
+  start is before the clip, which shows its rests; a `rit.` read from a
+  file is written, not ramped in the tempo map; only the first part's time
+  signatures go to the song; the drag-and-drop of a file onto the window
+  and the file pickers do not offer MusicXML (`:open` and `:import` with a
+  path do); LilyPond writes chord symbols as text, not `ChordNames`. The
+  roll's hatching of generated
   notes is a pale veil in the window, its velocity strip shows no dynamic
   line there, and "only this pass" is offered for time, length and velocity
   only (a pitch or a delete of a generated note can be written, not
