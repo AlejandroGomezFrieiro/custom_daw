@@ -62,33 +62,64 @@ impl Client {
 
     /// Have `wake` called whenever the kernel sends something, so that the
     /// window draws again then and at no other time: what arrives goes
-    /// through a thread that waits for it.
+    /// through a thread that waits for it. What only moves with the song
+    /// (the playhead, the meters) is drawn 25 times a second at most.
     pub fn wake_on_events(&mut self, wake: impl Fn() + Send + 'static) {
         let (sender, receiver) = mpsc::channel();
         let from = std::mem::replace(&mut self.connection.events, receiver);
         std::thread::spawn(move || {
+            const SONG_FRAME: Duration = Duration::from_millis(40);
             // The engine's load wavers all the time: a frame is drawn for it
             // only when it has moved by 4%, as the bar that shows it can.
             let mut drawn: (Value, f64) = (Value::Null, 0.0);
-            while let Ok(event) = from.recv() {
+            // When a frame was last asked for, and one waiting for its time.
+            let mut woken = Instant::now();
+            let mut waiting: Option<Instant> = None;
+            loop {
+                let event = match waiting {
+                    Some(at) => match from.recv_timeout(at.saturating_duration_since(Instant::now())) {
+                        Ok(event) => event,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            waiting = None;
+                            woken = Instant::now();
+                            wake();
+                            continue;
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    },
+                    None => match from.recv() {
+                        Ok(event) => event,
+                        Err(_) => break,
+                    },
+                };
+                // None for nothing new; else whether only the song moved.
                 let news = match &event {
                     (name, payload) if name == "frontend.state" && payload.get("sections").is_none() => {
                         let cpu = payload["cpu"].as_f64().unwrap_or(0.0);
                         let mut rest = payload.clone();
                         rest["cpu"] = Value::Null;
                         let news = rest != drawn.0 || (cpu - drawn.1).abs() >= 0.04;
+                        let song = rest["modal"] == drawn.0["modal"];
                         if news {
                             drawn = (rest, cpu);
                         }
-                        news
+                        news.then_some(song)
                     }
-                    (name, _) => name != "audio.frame",
+                    (name, _) => (name != "audio.frame").then_some(false),
                 };
                 if sender.send(event).is_err() {
                     break;
                 }
-                if news {
-                    wake();
+                match news {
+                    Some(true) if woken.elapsed() < SONG_FRAME => {
+                        waiting.get_or_insert(woken + SONG_FRAME);
+                    }
+                    Some(_) => {
+                        waiting = None;
+                        woken = Instant::now();
+                        wake();
+                    }
+                    None => {}
                 }
             }
             // The kernel went away: the window must see that too.

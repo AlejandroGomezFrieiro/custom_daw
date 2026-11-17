@@ -646,7 +646,7 @@ impl View {
         }
         // From the right.
         let mut right = bar.right() - 6.0;
-        let mut tool = |ui: &mut Ui, right: &mut f32, shape: Option<icons::Icon>, label: &str, on: bool, tip: &str, key: &str| -> bool {
+        let tool = |ui: &mut Ui, right: &mut f32, shape: Option<icons::Icon>, label: &str, on: bool, tip: &str, key: &str| -> bool {
             let w = if label.is_empty() { 24.0 } else { widgets::text_width(ui, label, sans(T_SMALL)) + if shape.is_some() { 32.0 } else { 14.0 } };
             let rect = Rect::from_min_size(pos2(*right - w, top), vec2(w, 24.0));
             *right -= w + 4.0;

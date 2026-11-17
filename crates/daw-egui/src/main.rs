@@ -140,6 +140,11 @@ struct Window {
 }
 
 impl eframe::App for Window {
+    /// The window's surface, which every frame starts from.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        theme::th().surface.to_normalized_gamma_f32()
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.view.frame(ui);
     }
@@ -266,7 +271,9 @@ fn run() -> Result<()> {
             cc.egui_ctx.set_fonts(theme::fonts(cjk.join().ok().flatten()));
             cc.egui_ctx.set_visuals(visuals());
             let ctx = cc.egui_ctx.clone();
-            client.wake_on_events(move || ctx.request_repaint());
+            // A frame for what came, and one only: egui draws two for a
+            // request to draw at once.
+            client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
             let mut view = app::View::new(Box::new(client), ours);
             if let Some(zoom) = zoom {
                 view.arrange.zoom = zoom;

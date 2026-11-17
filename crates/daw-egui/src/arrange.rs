@@ -221,7 +221,6 @@ impl View {
         let geo = self.arrange_geo(rect);
         let headers = Rect::from_min_max(pos2(rect.left(), geo.lanes.top()), pos2(rect.left() + HEADER_W, rect.bottom()));
         self.arrange.last = Some((headers, geo.clone()));
-        ui.painter().rect_filled(lanes, CornerRadius::ZERO, t.surface);
         self.timeline(ui, &geo);
         self.ruler(ui, rect, &geo);
         self.headers(ui, rect, &geo);

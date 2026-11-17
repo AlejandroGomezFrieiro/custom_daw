@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use egui::{Color32, CornerRadius, Pos2, Rect, Ui, pos2, vec2};
+use egui::{Color32, Pos2, Rect, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::client::Client;
@@ -270,7 +270,7 @@ impl View {
         }
         self.repaint = true;
         if let Some(ctx) = &self.ctx {
-            ctx.request_repaint();
+            ctx.request_repaint_after(Duration::from_millis(1));
         }
     }
 
@@ -359,8 +359,10 @@ impl View {
             peak.update([level[0], level[1]], dt);
             falling |= peak.moving([level[0], level[1]]);
         }
-        if falling {
-            self.again = Some(Duration::from_millis(33));
+        // While the song plays its ticks draw the meters; after, a peak
+        // falls on frames of its own.
+        if falling && !self.s.playing {
+            self.again = Some(Duration::from_millis(40));
         }
     }
 
@@ -429,7 +431,6 @@ impl View {
         crate::widgets::new_frame();
         self.roll_frame();
         let full = ui.max_rect();
-        ui.painter().rect_filled(full, CornerRadius::ZERO, th().surface);
         let transport = Rect::from_min_size(full.min, vec2(full.width(), TRANSPORT_H));
         let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS_H), full.max);
         let area = Rect::from_min_max(pos2(full.left(), transport.bottom() + 1.0), pos2(full.right(), status.top() - 1.0));
