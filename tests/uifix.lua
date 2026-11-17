@@ -43,17 +43,17 @@ test("focus only ever goes to a view that is drawn", function()
 end)
 
 test("a command of a bundled extension that is not loaded says how to load it, and :ext.load does", function()
-  if daw.ext.loaded.undotree then return "undotree is loaded already" end
-  local ok, err = pcall(daw.commands.exec, "undotree")
+  if daw.ext.loaded.rpp then return "rpp is loaded already" end
+  local ok, err = pcall(daw.commands.exec, "rpp.open")
   eq(ok, false, "no command yet")
   eq(err:find("bundled extension that isn't loaded", 1, true) ~= nil, true, err)
-  eq(err:find(":ext.load undotree", 1, true) ~= nil, true, "it names the command: " .. err)
+  eq(err:find(":ext.load rpp", 1, true) ~= nil, true, "it names the command: " .. err)
   local names = {}
-  for _, c in ipairs(daw.commands.complete("ext.load und")) do names[#names + 1] = c.text end
-  eq(names[1], "ext.load undotree", "bundled names complete: " .. table.concat(names, ","))
-  daw.commands.exec("ext.load undotree")
-  eq(daw.ext.loaded.undotree ~= nil and daw.ext.loaded.undotree.ok, true, "loaded")
-  eq(daw.commands.get("undotree") ~= nil, true, "its commands exist")
+  for _, c in ipairs(daw.commands.complete("ext.load rp")) do names[#names + 1] = c.text end
+  eq(names[1], "ext.load rpp", "bundled names complete: " .. table.concat(names, ","))
+  daw.commands.exec("ext.load rpp")
+  eq(daw.ext.loaded.rpp ~= nil and daw.ext.loaded.rpp.ok, true, "loaded")
+  eq(daw.commands.get("rpp.import") ~= nil, true, "its commands exist")
   daw.commands.exec("ext.load nonesuch")
   eq(last_message():find("no bundled extension", 1, true) ~= nil, true, last_message())
 end)
