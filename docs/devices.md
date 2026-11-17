@@ -277,6 +277,27 @@ return dev
   highshelf), and `dsp.smoother(ms, sr)` with `:next(target)` for gliding
   to a new value. One filter or smoother per channel. Modules beside the
   file are found by `require`.
+- **Scripts talk to it.** `dev.call(method, data)` answers
+  `daw.api.device_call(device, method, data)` from the session's Lua: it
+  runs in the device's own state between two blocks (a block that comes
+  meanwhile waits for it, so keep it short), `data` is a string, and what it
+  returns (a string, a number or nothing) is the answer; an error is the
+  caller's error, and the device plays on. `daw.api.device_post(kind,
+  topic, data)` calls `dev.call(topic, data)` on every device of a kind:
+  those there now at once, and every one made later before its first
+  block, the private devices of an offline render among them. The latest
+  data of each topic is kept for those, so devices made at any time agree
+  (`nil` forgets a topic). `dev.values` holds the parameters as the last
+  block had them.
+- **Large data goes as files.** Sound for a device to play (a sampler's
+  samples, a singer's phrases) is too big to pass as a string each time:
+  the script writes it to a file of 32-bit floats and calls the device with
+  the path, and the device maps it with `dsp.map(path)`, which gives
+  `m.data[0]` to `m.data[m.n - 1]`, read in at once and shared by every
+  device that maps the same file. Map in `dev.call` or `dev.init`, never in
+  `process`; `m:close()` lets go of it. Write a new file for new data rather
+  than writing over one a device has mapped. extensions/utau plays its
+  singing this way.
 - **Where scripts are found.** `~/.config/daw/devices/`, and `devices/` in
   each extension: an extension ships devices by having that directory.
   A script in the configuration directory wins over an extension's of the

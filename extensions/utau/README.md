@@ -5,10 +5,7 @@ UTAU voicebanks, DiffSinger, ENUNU, Vogen, VOICEVOX), through ReaUtau's
 `reautau-engine`, with the core of ReaUtau's vocal editor.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/utau")   -- or link it into ~/.config/daw/extensions
-
-local vocal = daw.add_track({ name = "Vocal" })
-vocal:add_device("utau")
+local vocal = daw.track_kinds.add("vocal", { name = "Vocal", ask = false })
 require("utau").configure(vocal.id, { singer = "Kitane sno act5 VCV" })
 vocal:add_clip({ start = 0, length = 4, notes = {
   { pitch = "A3", start = 0, length = 1, meta = { lyric = "- あ" } },
@@ -17,38 +14,73 @@ vocal:add_clip({ start = 0, length = 4, notes = {
 daw.render("vocal.wav")   -- waits until every phrase is sung at final quality
 ```
 
-## What it needs
+The extension owns everything it is made of, and the core has no singing in
+it:
 
-- **`reautau-engine`**, ReaUtau's headless engine (.NET, built on OpenUtau.Core).
-  It is found through the `utau_engine` option, `$REAUTAU_ENGINE`,
-  `reautau-engine` on the `PATH`, or a ReaUtau install in
-  `~/.config/REAPER/UserPlugins/reautau-engine/`. Build it with ReaUtau's
-  flake (`nix build '.?submodules=1#reautau-engine'`) or take it from a ReaUtau
-  release; the release build needs no .NET install. The engine is used
-  unchanged.
+```
+extensions/utau/
+  init.lua, lua/utau/   the vocal editor, the commands, the talk with the engine
+  devices/utau.lua      the device that plays what was sung (a device written in Lua)
+  engine/               the engine's C# source, on OpenUtau.Core (engine/README.md)
+  nix/                  how the engine and the extension are built and packaged
+```
+
+## Enable it
+
+In a Nix configuration, take paw with the extension built in: the engine,
+OpenUtau and the Lua come with it, nothing else to install.
+
+```nix
+# home-manager, with this repository's flake as `paw`:
+imports = [ paw.homeManagerModules.default ];
+programs.paw = { enable = true; extensions = [ "utau" ]; };
+
+# or a package of your own:
+paw.packages.${system}.default.withExtensions (exts: [ exts.utau ])
+```
+
+`nix run .#paw-utau` runs it from the source tree. The extension is loaded at
+startup from the package, whatever `init.lua` says; plain `nix run .` has no
+.NET in it.
+
+What else it needs:
+
 - **Voicebanks** installed for OpenUtau, in `~/.local/share/OpenUtau/Singers`.
   The engine reads that folder (`utau_openutau_dir` or
   `$REAUTAU_OPENUTAU_DIR` points elsewhere), and keeps its own data in
   `~/.local/share/ReaUtau/openutau-data` and its render cache (with the AI
   pitch takes) in `~/.cache/ReaUtau`. `:utau.install` writes singers into
   that OpenUtau folder, as OpenUtau itself does.
-- **The `utau` device**, which is part of the `daw` binary (the `daw-utau`
-  crate). Without the engine the device and the editor still work; nothing
-  is sung, and an offline render says so.
 
-## Enable it
+Without the engine the device and the editor still work; nothing is sung,
+and an offline render says so.
 
-```sh
-ln -s /path/to/daw/extensions/utau ~/.config/daw/extensions/utau
-```
+## Working on it
 
-or `daw.ext.load("/path/to/daw/extensions/utau")` in `init.lua`.
+Without Nix packaging: link the extension into `~/.config/daw/extensions/utau`
+(or `daw.ext.load("/path/to/daw/extensions/utau")` in `init.lua`); its device
+is Lua and needs no build. The engine is found through the `utau_engine`
+option, `$REAUTAU_ENGINE`, `bin/reautau-engine` beside the extension (where
+the package puts it), `reautau-engine` on the `PATH`, or a ReaUtau install
+in `~/.config/REAPER/UserPlugins/reautau-engine/`. `nix build .#utau-engine`
+builds the engine alone from `engine/` (see engine/README.md for building it
+with `dotnet`); point `utau_engine` at `result/bin/reautau-engine` to try a
+change. The device is reloaded when its file changes (`:device.reload`).
+
+The tests are in `tests.lua`, run by the suite (`tests/tools/suite.sh only
+utau`); those that sing need the engine and a voicebank and say they were
+skipped without them.
 
 ## Using it
 
-`<leader>v` (`:utau.track [singer]`) adds a vocal track; `<leader>V`
-(`:utau.singer`) chooses its singer from a list. Enter on a clip of a vocal
-track opens the vocal editor instead of the piano roll.
+A vocal track is a kind of track (`daw.track_kinds`): `:track.add vocal
+[singer]`, `<leader>v` (`:utau.track [singer]`) or `:track.new` adds one,
+and the window offers "New vocal track" wherever it makes a track.
+`<leader>V` (`:utau.singer`) chooses its singer from a list. The header
+shows `V` before the track's name, `K` and the window's header say who
+sings, and Enter on a clip of a vocal track opens the vocal editor instead
+of the piano roll. Opened without the extension, a vocal track is an
+ordinary MIDI track.
 
 | Keys | Vocal editor |
 | --- | --- |
@@ -188,8 +220,12 @@ any other edit:
   `reautau-engine --convert` writes them (see `lua/utau/payload.lua`).
 - **Curves** (pitch deviation `pitd`, dynamics `dyn`, tension, breathiness,
   gender, voicing, tone shift, growl, cross synthesis) are the parameters of
-  the `utau` device: an automation lane on one is that curve, and a parameter
-  set without a lane holds the curve at that value.
+  the `utau` device (`lua:utau`): an automation lane on one is that curve,
+  and a parameter set without a lane holds the curve at that value.
+- **The kind** of a vocal track is `track.meta.kind = "vocal"`. A track
+  with the device and no kind (made before kinds of track) is one too, and
+  a project saved when the device was built into the program (kind `utau`)
+  gets the Lua device.
 - **The voice** (singer, phonemizer, renderer, resampler, wavtool, voice
   colour, other engine options) is `device.meta.utau`; so are which
   renderer curve each slot `x1` to `x8` draws (`curves`) and, for a frozen
@@ -212,9 +248,9 @@ opened again is sung again from that cache.
  Lua: extensions/utau                       reautau-engine (.NET, OpenUtau.Core)
    project ── snapshot/diff ── msgpack ─────▶ phonemize, render phrases
    editor  ◀── phonemes, sung pitch ────────
-   device_call("put", PCM) ◀── PhraseAudio ─
+   phrase files, device_post("voice.N") ◀── PhraseAudio ─
           │
-   utau device (daw-utau) plays each phrase at its time, on the audio thread
+   devices/utau.lua (lua:utau) maps the files and plays each phrase at its time
 ```
 
 - The extension starts `reautau-engine --socket <path>` with `daw.api.proc_spawn`
@@ -225,14 +261,25 @@ opened again is sung again from that cache.
   REAPER extension: after every edit it compares the vocal tracks with what it
   last sent and sends the difference.
 - Rendered phrases come back as audio with their place in seconds. The
-  extension hands them to the track's `utau` device with
-  `daw.api.device_call(device, "put", ...)`; the device keeps them per voice
-  and plays the ones under the playhead. Superseded phrases are dropped by
-  ReaUtau's rule: an old phrase keeps playing until its replacement arrives.
+  extension writes each to a file of 32-bit floats (in
+  `~/.cache/daw/utau-voices/<pid>`, gone when paw ends) and posts the list of
+  a voice's files to every `utau` device (`daw.api.device_post(kind,
+  "voice.<n>", list)`, `lua/utau/voices.lua`). Each device maps the files
+  (`dsp.map`) in its own process and plays the phrases of its voice under
+  the playhead; the sound is kept once, in the files. Superseded phrases are
+  dropped by ReaUtau's rule: an old phrase keeps playing until its
+  replacement arrives.
+- A device made later, an offline render's own among them, is given the
+  same lists before its first block, so it plays the same phrases. Phrases
+  are placed by whole frames of the song, so what is played live and what
+  is rendered agree bit for bit (`tests.lua` checks it), and a block of 512
+  frames with four phrases sounding costs about 16 µs of the 10.7 ms it
+  lasts.
 - `daw.render` emits `render.before`; the extension then waits until every
   phrase of every vocal track is final before rendering starts, so offline
-  renders are deterministic. The render's own instances of the device play
-  the same phrases.
+  renders are deterministic.
+- A device that crashes is stopped alone, like any device written in Lua,
+  and `:device.restart` brings it back with its voice.
 - The engine runs only while there is a vocal track or an editor command
   needs it, and stops with paw.
 - Curves follow clips by answering each clip edit with lane edits in the

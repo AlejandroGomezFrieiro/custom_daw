@@ -918,6 +918,9 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
             ));
         }
     }
+    if let Some(controller) = controller.as_mut() {
+        deliver_posts(&device.kind, controller.as_mut(), ctx);
+    }
     let mut params = match &controller {
         Some(controller) => controller.params(),
         None => factory.info().params.clone(),
@@ -981,6 +984,17 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
     );
 }
 
+/// Give a device that was just made what scripts posted to its kind
+/// ([`Registry::post`](daw_engine::Registry::post)), before its first block.
+fn deliver_posts(kind: &str, controller: &mut dyn daw_engine::Controller, ctx: &mut SyncCtx) {
+    for (topic, data) in ctx.registry.posts(kind) {
+        if let Err(err) = controller.call(topic, data) {
+            ctx.warnings
+                .push(format!("`{kind}` did not take `{topic}`: {err:#}"));
+        }
+    }
+}
+
 /// Whether a device's parameter is one of the host's (see `daw_engine::host`):
 /// the last two, by those keys.
 pub fn is_host(params: &[ParamInfo], index: usize) -> bool {
@@ -1020,6 +1034,9 @@ pub fn install(
         return;
     };
     let mut controller = instance.controller;
+    if let Some(controller) = controller.as_mut() {
+        deliver_posts(&device.kind, controller.as_mut(), ctx);
+    }
     let mut params = match &controller {
         Some(controller) => controller.params(),
         None => ctx

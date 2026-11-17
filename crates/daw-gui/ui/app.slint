@@ -45,6 +45,7 @@ export struct TrackData {
     name: string,
     color: color,
     chain: string,      // its devices, and where it goes if not the master
+    kind: string,       // the kind of track an extension made it, in a few words, or ""
     volume: float,      // fader position, 0..1
     pan: float,         // 0 is left, 0.5 centre, 1 right
     volume-text: string,
@@ -3252,7 +3253,7 @@ in property <string> render-stage;
                             // What the track's sound goes through; or, while
                             // automation is edited, which lane the track shows.
                             if !root.show-automation && track.clip-size * root.row-height >= 60px: Text {
-                                text: (track.input-label == "" ? "" : track.input-label + "  ›  ") + (track.chain == "" ? (track.master ? "" : "no devices") : track.chain);
+                                text: (track.kind == "" ? "" : track.kind + "  ·  ") + (track.input-label == "" ? "" : track.input-label + "  ›  ") + (track.chain == "" ? (track.master ? "" : "no devices") : track.chain);
                                 color: Theme.text-3;
                                 font-size: Theme.t-small;
                                 overflow: elide;

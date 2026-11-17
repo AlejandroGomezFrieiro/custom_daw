@@ -613,6 +613,8 @@ function M.state(known)
       input_label = not track.master and daw.audio.label(track) or nil,
       -- The colour everything of the track's is drawn in, as in the terminal.
       color = daw.draw.track_colour(track, i), chain = table.concat(chain, " › "),
+      -- Its kind, in a few words ("Vocal track · Kitane"), or nil.
+      kind = id ~= 0 and daw.track_kinds.describe(id) or nil,
       output = type(to) == "table" and to.name or nil,
       -- Its sends, for the mixer's strip: `{ name, level }` in dB each.
       sends = M.send_list(track),

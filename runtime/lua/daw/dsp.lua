@@ -27,6 +27,11 @@ if not pcall(ffi.typeof, "daw_event") then
   ffi.cdef([[
     typedef struct { int32_t frame, type, channel, key; double value; int32_t from, pad; } daw_event;
     typedef struct { double sample_rate, tempo, beat, seconds, bar_start, bar, sig_num, sig_den, playing; } daw_transport;
+    int daw_open(const char *path, int flags) __asm__("open");
+    int daw_close(int fd) __asm__("close");
+    int64_t daw_lseek(int fd, int64_t offset, int whence) __asm__("lseek");
+    void *daw_mmap(void *addr, size_t length, int prot, int flags, int fd, int64_t offset) __asm__("mmap");
+    int daw_munmap(void *addr, size_t length) __asm__("munmap");
   ]])
 end
 
@@ -82,6 +87,43 @@ end
 
 --- A float array of `n` zeros, counted from 0: a delay line, a table.
 function M.buffer(n) return ffi.new("float[?]", n) end
+
+local Mapped = {}
+Mapped.__index = Mapped
+
+--- Let go of the file now rather than when the map is collected.
+function Mapped:close()
+  if self.base then
+    ffi.C.daw_munmap(ffi.gc(self.base, nil), self.size)
+    self.base, self.data, self.n = nil, nil, 0
+  end
+end
+
+--- A file of 32-bit floats (little-endian, as written on this machine), as a
+--- read-only array counted from 0: `m.data[i]` for `i` below `m.n`. The file
+--- is mapped, not copied, so devices that map one file share its memory, and
+--- it is read in at once: map in `dev.call` or `dev.init`, never in
+--- `process`. `m:close()` lets it go; so does collecting `m`. Large data
+--- (sound for the device to play) reaches a device this way: the script
+--- that sends it writes a file and calls the device with its path.
+function M.map(path)
+  local C = ffi.C
+  local fd = C.daw_open(path, 0)
+  if fd < 0 then error("cannot open " .. tostring(path), 2) end
+  local size = C.daw_lseek(fd, 0, 2)
+  if size <= 0 then
+    C.daw_close(fd)
+    return setmetatable({ n = 0, size = 0 }, Mapped)
+  end
+  -- MAP_PRIVATE | MAP_POPULATE: read in now, not on the first touch.
+  local base = C.daw_mmap(nil, size, 1, 0x8002, fd, 0)
+  C.daw_close(fd)
+  if base == ffi.cast("void *", -1) then error("cannot map " .. tostring(path), 2) end
+  local m = setmetatable({ size = size, n = tonumber(size) / 4 - (tonumber(size) / 4) % 1 }, Mapped)
+  m.base = ffi.gc(base, function(p) C.daw_munmap(p, size) end)
+  m.data = ffi.cast("const float *", base)
+  return m
+end
 
 -- Filters ------------------------------------------------------------------------
 

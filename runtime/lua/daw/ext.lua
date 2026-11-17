@@ -17,9 +17,13 @@ local function exists(path)
   return file ~= nil
 end
 
---- Load one extension from a directory or a `.lua` file.
+--- Load one extension from a directory or a `.lua` file. One the program
+--- was built with is not loaded again from elsewhere: the configuration
+--- that names the source tree's copy gets the packaged one.
 function M.load(path)
   local name = path:match("([^/]+)$"):gsub("%.lua$", "")
+  local known = M.loaded[name]
+  if known and known.packaged then return known end
   local entry = { name = name, path = path, ok = true }
   M.loaded[name] = entry
   local init = path
@@ -51,6 +55,16 @@ function M.load(path)
     daw.notify("extension " .. name .. " failed: " .. tostring(err), "error")
   end
   return entry
+end
+
+--- Load the extensions the program was built with: `dirs` is a list of
+--- their directories separated by `:` (`$DAW_EXTENSIONS`, which the flake's
+--- `paw.withExtensions` sets).
+function M.load_packaged(dirs)
+  for dir in (dirs or ""):gmatch("[^:]+") do
+    local entry = M.load(dir)
+    entry.packaged = true
+  end
 end
 
 --- Load everything in a directory of extensions.

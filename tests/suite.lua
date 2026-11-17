@@ -2052,22 +2052,13 @@ test("scripts run helper processes and talk to them over sockets", function()
 end)
 
 -- Singing ---------------------------------------------------------------------
--- The `utau` device plays audio a script gives it; extensions/utau gets that
--- audio from reautau-engine. The tests that sing need the engine
+-- extensions/utau sings with reautau-engine; its own device and what it plays
+-- are tested in its tests.lua. The tests that sing need the engine
 -- (REAUTAU_ENGINE or reautau-engine on the PATH) and the voicebank below in
 -- OpenUtau's folder, and are skipped without them.
 
 local SINGER = os.getenv("REAUTAU_TEST_SINGER") or "Kitane sno act5 VCV"
 local SYLLABLES = { "- あ", "- い", "- う", "- え", "- お" }
-
---- A sine of `freq` Hz lasting `seconds`, as the `put` call of the utau device takes it.
-local function phrase(hash, start, freq, seconds)
-  local ffi = require("ffi")
-  local n = math.floor(seconds * 44100)
-  local buf = ffi.new("float[?]", n)
-  for i = 0, n - 1 do buf[i] = 0.5 * math.sin(2 * math.pi * freq * i / 44100) end
-  return string.format("%s %.17g 44100 1 1\n", hash, start) .. ffi.string(buf, n * 4)
-end
 
 --- The pitch of the left channel of a 16-bit render between two times, by
 --- autocorrelation: the shortest lag that correlates nearly as well as the best.
@@ -2103,41 +2094,6 @@ end
 
 local function midi_hz(note) return 440 * 2 ^ ((note - 69) / 12) end
 
-test("the utau device plays the phrases it is given, in time", function()
-  fresh()
-  daw.project.tempo = 120
-  local t = daw.add_track({ name = "Voice" })
-  local voice = t:add_device("utau", { voice = 40 })
-  t:add_clip({ start = 0, length = 8 })
-  api.device_call(voice.id, "clear")
-  api.device_call(voice.id, "put", phrase("11", 1.0, 330, 1.0))
-  api.device_call(voice.id, "put", phrase("12", 2.5, 440, 0.5))
-  eq(select(2, api.device_call(voice.id, "list"):gsub("\n", "")), 2, "two phrases")
-  fails(function() api.device_call(voice.id, "put", "1 0 44100 1 1\n" .. "abc") end, "whole frames", "bad audio")
-  fails(function() api.device_call(voice.id, "nothing") end, "no method", "unknown call")
-  local info = render({ bits = 16, ["end"] = 8, tail = 0 })
-  eq(channel_peaks(info, 0.1, 0.9) < 0.001, true, "silent before the first phrase")
-  near(channel_peaks(info, 1.1, 1.9), 0.5, 0.02, "the first phrase plays at its time")
-  near(frequency(info, 1.1, 1.9), 330, 5, "at its pitch")
-  near(frequency(info, 2.55, 2.95), 440, 6, "the second at its own")
-  eq(channel_peaks(info, 3.1, 3.9) < 0.001, true, "silent after")
-  api.device_call(voice.id, "keep", "12")
-  info = render({ bits = 16, ["end"] = 8, tail = 0 })
-  eq(channel_peaks(info, 1.1, 1.9) < 0.001, true, "a phrase that is not kept is gone")
-  -- In real time, too.
-  daw.transport.seek(5)
-  daw.transport.play()
-  local loudest = 0
-  local deadline = api.now() + 3000
-  while daw.transport.position < 5.9 and api.now() < deadline do
-    loudest = math.max(loudest, t:meter())
-    api.sleep(5)
-  end
-  daw.transport.stop()
-  eq(loudest > 0.2, true, "heard while playing")
-  api.device_call(voice.id, "clear")
-end)
-
 local utau
 
 local function load_utau()
@@ -2155,7 +2111,7 @@ end
 --- A vocal track with a clip of `pitches`, a beat each, sung on SYLLABLES.
 local function vocal(pitches)
   local track = daw.add_track({ name = "Vocal" })
-  track:add_device("utau")
+  track:add_device(load_utau().DEVICE)
   local list = {}
   for i, p in ipairs(pitches) do
     list[i] = { pitch = p, start = i - 1, length = 1, meta = { lyric = SYLLABLES[(i - 1) % #SYLLABLES + 1] } }
@@ -2833,7 +2789,7 @@ test("changing a lyric or a note sings it again", function()
   local function hashes()
     eq(utau.finish(120), true, "the engine finished")
     local out = {}
-    for line in api.device_call(device, "list"):gmatch("[^\n]+") do out[#out + 1] = line:match("^%S+") end
+    for _, p in ipairs(utau.voices.list(device)) do out[#out + 1] = p.hash end
     table.sort(out)
     return table.concat(out, " ")
   end

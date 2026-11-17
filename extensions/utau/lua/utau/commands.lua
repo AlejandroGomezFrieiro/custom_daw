@@ -34,20 +34,47 @@ local function set_singer(track, words)
   end
 end
 
+-- A vocal track is a kind of track (`daw.track_kinds`): `:track.add vocal`,
+-- `:track.new`, the window's menus that make a track, the header's `V`, `K`
+-- and Enter on its clips all come from here.
+daw.track_kinds.define("vocal", {
+  title = "Vocal track",
+  letter = "V",
+  desc = "sung by a singer of OpenUtau's",
+  -- The singing device first, then the singer: the words after the kind
+  -- (`track.add vocal Katyusha`), or chosen from a list (not with `ask = false`).
+  create = function(track, args)
+    if not utau.device_of(track.id) then track:add_device(utau.DEVICE, nil, { index = 1 }) end
+    utau.sync()
+    if args.ask ~= false then set_singer(track.id, args.words or {}) end
+  end,
+  editor = function(clip)
+    if clip:get().kind ~= "midi" then return false end
+    editor:edit(clip.id)
+    return true
+  end,
+  describe = function(id)
+    local config = utau.config(id)
+    local singer = config.singer and utau.find_singer(config.singer)
+    local words = singer and singer.name or config.singer or "no singer yet"
+    if utau.frozen(id) then words = words .. ", frozen" end
+    return words
+  end,
+  -- Vocal tracks made before there were kinds of track have the device.
+  is = function(id) return utau.device_of(id) ~= nil end,
+})
+
 command("utau.track", function(ctx)
-  local track = daw.add_track({ name = ctx.args.name or "Vocal" })
-  track:add_device("utau")
-  daw.cursor.set_track(track)
-  utau.sync()
-  set_singer(track.id, ctx.args)
-end, { desc = "Add a vocal track, with a singer: `utau.track Katyusha`" })
+  local args = { kind = "vocal", name = ctx.args.name or "Vocal" }
+  for i, word in ipairs(ctx.args) do args[i] = word end
+  daw.cmd("track.add", args)
+end, { desc = "Add a vocal track, with a singer: `utau.track Katyusha` (as `track.add vocal Katyusha`)" })
 
 command("utau.voice", function()
   local track = daw.cursor.track()
   if not track then return daw.notify("no track selected", "warn") end
   if utau.device_of(track.id) then return daw.notify("already a vocal track") end
-  track:add_device("utau", nil, { index = 1 })
-  utau.sync()
+  daw.track_kinds.set(track, "vocal", { ask = false })
 end, { desc = "Make the cursor track a vocal track" })
 
 command("utau.singer", function(ctx)

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>reautau-engine</AssemblyName>
+    <RootNamespace>ReaUtau.Engine</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The engine test/smoke project drives Session and ProjectMirror directly. -->
+    <InternalsVisibleTo Include="ReaUtau.Engine.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ReaUtau.Protocol/ReaUtau.Protocol.csproj" />
+    <ProjectReference Include="../../third_party/OpenUtau/OpenUtau.Core/OpenUtau.Core.csproj" />
+    <ProjectReference Include="../../third_party/OpenUtau/OpenUtau.Plugin.Builtin/OpenUtau.Plugin.Builtin.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The submodule's prebuilt worldline (the nixpkgs 0.1.565 .so is ABI-incompatible with 0.1.576). -->
+    <!-- ReaUtauNoWorldline=true (scripts/build-release.sh) leaves it out of the release: its licence is an open owner question (NOTICE). -->
+    <None Include="../../third_party/OpenUtau/runtimes/linux-x64/native/libworldline.so" Link="libworldline.so" CopyToOutputDirectory="PreserveNewest" Condition="'$(ReaUtauNoWorldline)' != 'true'" />
+  </ItemGroup>
+</Project>

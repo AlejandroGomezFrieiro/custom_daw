@@ -205,22 +205,27 @@ struct Buffers {
     transport: Transport,
 }
 
-/// The state and the function that runs a block.
+/// The state, the function that runs a block and the one that answers calls.
 struct Running {
     run: Function,
-    _lua: Lua,
+    call: Function,
+    lua: Lua,
 }
 
 // A Lua state may move between threads as long as one thread at a time uses
-// it: it is made on one, runs blocks on another, and is dropped on the
-// first, and nothing else holds any of its values.
+// it: blocks run on the audio thread and calls on the main thread, each
+// holding the lock, and nothing else holds any of its values.
 unsafe impl Send for Running {}
+
+/// The state, shared by the device and its controller. A call takes it
+/// between two blocks; a block that comes meanwhile waits for the call.
+type Shared = Arc<Mutex<Running>>;
 
 /// Why the script stopped, shared by the device and its controller.
 type Failure = Arc<Mutex<Option<String>>>;
 
 pub struct LuaDevice {
-    running: Running,
+    running: Shared,
     bufs: Box<Buffers>,
     max_block: usize,
     instrument: bool,
@@ -271,14 +276,16 @@ pub fn make(path: &Path, sample_rate: f32, max_block: usize) -> Result<Instance>
         host.get("run")
     };
     let run = bind(&mut bufs).map_err(lua_error)?;
+    let call = host.get("call").map_err(lua_error)?;
     // Ready: from here on a block is timed by whoever waits for it.
     lua.remove_hook();
+    let running = Arc::new(Mutex::new(Running { run, call, lua }));
     let failed: Failure = Arc::new(Mutex::new(None));
     let params: Vec<ParamInfo> = desc.params.iter().map(Param::info).collect();
     let values = desc.params.iter().map(|p| p.default as f64).collect();
     Ok(Instance {
         device: Box::new(LuaDevice {
-            running: Running { run, _lua: lua },
+            running: running.clone(),
             bufs,
             max_block,
             instrument: desc.category == "instrument",
@@ -287,6 +294,7 @@ pub fn make(path: &Path, sample_rate: f32, max_block: usize) -> Result<Instance>
             stopped: false,
         }),
         controller: Some(Box::new(LuaController {
+            running,
             path: path.to_path_buf(),
             params,
             values,
@@ -411,11 +419,10 @@ impl Device for LuaDevice {
             sig_den: ctx.sig_den as f64,
             playing: ctx.playing as u8 as f64,
         };
-        let sent = match self
-            .running
-            .run
-            .call::<i64>((frames as i64, count as i64, keyed))
-        {
+        // A lock poisoned by a call that panicked is as good as any: the
+        // state is Lua's, which does not stop halfway through a change.
+        let running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = match running.run.call::<i64>((frames as i64, count as i64, keyed)) {
             Ok(sent) => (sent.max(0) as usize).min(MAX_EVENTS),
             Err(err) => {
                 // Stopped for good: told through the controller, which the
@@ -427,6 +434,7 @@ impl Device for LuaDevice {
                 return self.without(io);
             }
         };
+        drop(running);
         io.left[..frames].copy_from_slice(&b.left[..frames]);
         io.right[..frames].copy_from_slice(&b.right[..frames]);
 
@@ -471,8 +479,10 @@ impl Device for LuaDevice {
     }
 }
 
-/// The main-thread side: the parameters, and why the script stopped.
+/// The main-thread side: the parameters, calls from scripts, and why the
+/// script stopped.
 pub struct LuaController {
+    running: Shared,
     path: PathBuf,
     params: Vec<ParamInfo>,
     values: Vec<f64>,
@@ -508,11 +518,20 @@ impl Controller for LuaController {
         self.failed.lock().ok().and_then(|failed| failed.clone())
     }
 
-    fn call(&mut self, method: &str, _data: &[u8]) -> Result<Vec<u8>> {
-        match method {
-            "lua.path" => Ok(self.path.to_string_lossy().into_owned().into_bytes()),
-            _ => anyhow::bail!("this device has no method `{method}`"),
+    /// `lua.path` is the script's file; every other method is the script's
+    /// own `dev.call(method, data)`, run in its state between two blocks.
+    /// What that returns (a string, a number or nothing) is the answer.
+    fn call(&mut self, method: &str, data: &[u8]) -> Result<Vec<u8>> {
+        if method == "lua.path" {
+            return Ok(self.path.to_string_lossy().into_owned().into_bytes());
         }
+        if let Some(why) = self.health() {
+            anyhow::bail!("the device has stopped: {why}");
+        }
+        let running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+        let data = running.lua.create_string(data).map_err(lua_error)?;
+        let answer: Option<mlua::LuaString> = running.call.call((method, data)).map_err(lua_error)?;
+        Ok(answer.map(|s| s.as_bytes().to_vec()).unwrap_or_default())
     }
 
     fn ports(&self) -> Ports {

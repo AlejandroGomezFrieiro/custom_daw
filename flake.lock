@@ -12,9 +12,27 @@
         "type": "indirect"
       }
     },
+    "openutau": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792370212,
+        "narHash": "sha256-4lbwv8F+RRSbj9QBVTdof6zec7uMj5i9ROID2l/F9yk=",
+        "owner": "openutau",
+        "repo": "OpenUtau",
+        "rev": "bc194b6fe4897427a73066390b286e11205fd10f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "openutau",
+        "repo": "OpenUtau",
+        "rev": "bc194b6fe4897427a73066390b286e11205fd10f",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "openutau": "openutau"
       }
     }
   },

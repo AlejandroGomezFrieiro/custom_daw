@@ -38,7 +38,7 @@ local SYLLABLES = { "- あ", "- い", "- う", "- え", "- お" }
 --- A vocal track with a clip of `pitches` from `at`, a beat each.
 local function vocal(name, pitches, at)
   local track = daw.add_track({ name = name or "Vocal" })
-  track:add_device("utau")
+  track:add_device(load().DEVICE)
   local list = {}
   for i, p in ipairs(pitches or { 60, 62, 64, 65 }) do
     list[i] = { pitch = p, start = i - 1, length = 1, meta = { lyric = SYLLABLES[(i - 1) % #SYLLABLES + 1] } }
@@ -74,6 +74,248 @@ local function sung()
   api.undo_checkpoint()
   return track, clip
 end
+
+-- The device -----------------------------------------------------------------------
+
+local ffi = require("ffi")
+
+--- A sine of `freq` Hz lasting `seconds` at `rate`, as 32-bit floats.
+local function sine(freq, seconds, rate)
+  local n = math.floor(seconds * rate)
+  local buf = ffi.new("float[?]", n)
+  for i = 0, n - 1 do buf[i] = 0.5 * math.sin(2 * math.pi * freq * i / rate) end
+  return ffi.string(buf, n * 4)
+end
+
+--- The left channel of a 32-bit render, as a float array counted from 0
+--- (kept alive with the string it points into), and its length.
+local function floats(info)
+  local data = T.read_file(info.path)
+  local at = data:find("data", 1, true) + 8
+  local frames = math.floor((#data - at + 1) / 8)
+  local all = ffi.cast("const float *", ffi.cast("const char *", data) + at - 1)
+  local left = ffi.new("float[?]", frames)
+  for i = 0, frames - 1 do left[i] = all[i * 2] end
+  return left, frames
+end
+
+--- A vocal track with a clip and no notes: what it plays is what it is given.
+local function voice_track(name)
+  local track = daw.add_track({ name = name })
+  track:add_device(load().DEVICE)
+  track:add_clip({ start = 0, length = 8 })
+  utau.assign_voices()
+  return track, utau.device_of(track.id)
+end
+
+local function wait_for(what, limit, fn)
+  local waited = 0
+  while not fn() do
+    if waited >= limit then error("waited " .. limit .. " ms for " .. what, 2) end
+    daw.wait(20)
+    waited = waited + 20
+  end
+end
+
+test("utau: the device plays the phrases it is given, in time", function()
+  T.fresh()
+  load()
+  daw.project.tempo = 120
+  local t, device = voice_track("Voice")
+  local v = utau.voices
+  v.put(device, "11", 1.0, 44100, 1, 1, sine(330, 1.0, 44100))
+  v.put(device, "12", 2.5, 44100, 1, 1, sine(440, 0.5, 44100))
+  eq(#v.list(device), 2, "two phrases")
+  v.put(device, "12", 2.5, 44100, 1, 0, sine(220, 0.5, 44100))
+  eq(v.list(device)[2].quality, 1, "a draft does not replace final audio")
+  fails(function() v.put(device, "1", 0, 44100, 1, 1, "abc") end, "whole frames", "bad audio")
+  fails(function() api.device_call(device, "nothing") end, "no method", "unknown call")
+  local info = T.render({ bits = 16, ["end"] = 8, tail = 0 })
+  eq(T.channel_peaks(info, 0.1, 0.9) < 0.001, true, "silent before the first phrase")
+  near(T.channel_peaks(info, 1.1, 1.9), 0.5, 0.02, "the first phrase plays at its time")
+  near(T.frequency(info, 1.1, 1.9), 330, 5, "at its pitch")
+  near(T.frequency(info, 2.55, 2.95), 440, 6, "the second at its own")
+  eq(T.channel_peaks(info, 3.1, 3.9) < 0.001, true, "silent after")
+  v.keep(device, { "12" })
+  eq(#v.list(device), 1, "one kept")
+  info = T.render({ bits = 16, ["end"] = 8, tail = 0 })
+  eq(T.channel_peaks(info, 1.1, 1.9) < 0.001, true, "a phrase that is not kept is gone")
+  -- In real time, too.
+  daw.transport.seek(5)
+  daw.transport.play()
+  local loudest = 0
+  local deadline = api.now() + 3000
+  while daw.transport.position < 5.9 and api.now() < deadline do
+    loudest = math.max(loudest, t:meter())
+    api.sleep(5)
+  end
+  daw.transport.stop()
+  eq(loudest > 0.2, true, "heard while playing")
+  v.clear(device)
+  eq(#v.list(device), 0, "cleared")
+end)
+
+test("utau: a device made later, a render's own and the one playing live sound exactly the same", function()
+  T.fresh()
+  load()
+  daw.project.tempo = 120
+  local first, device = voice_track("First")
+  local voice = utau.voices.voice_of(device)
+  local rate = T.render({ bits = 32, ["end"] = 1, tail = 0 }).sample_rate
+  -- At the project's rate, so that what is played is the samples as given.
+  local raw = sine(523.25, 1.5, rate)
+  utau.voices.put(device, "7", 0.5, rate, 1, 1, raw)
+  -- The track that was given the phrase goes; a new one takes its voice.
+  first:remove()
+  local track = daw.add_track({ name = "Later" })
+  local later = track:add_device(utau.DEVICE, { voice = voice })
+  track:add_clip({ start = 0, length = 8 })
+  daw.flush()
+  eq(utau.voices.voice_of(later.id), voice, "the new device has the voice")
+  eq(#utau.voices.list(later.id), 1, "and knows its phrase, given before it was made")
+  local given = ffi.cast("const float *", raw)
+  local at = math.floor(0.5 * rate + 0.5)
+  local count = math.floor(1.5 * rate)
+  -- Live: what the device plays while the song plays, kept by the device.
+  api.device_call(later.id, "capture", "0.25 2.25")
+  daw.transport.seek(0)
+  daw.transport.play()
+  wait_for("the song to play past 2.25 s", 10000, function() return daw.transport.position > 4.6 end)
+  daw.transport.stop()
+  local captured = api.device_call(later.id, "captured")
+  local live = ffi.cast("const float *", captured)
+  local from = math.floor(0.25 * rate + 0.5)
+  local differ = 0
+  for i = 0, count - 1 do
+    if live[at - from + i] ~= given[i] then differ = differ + 1 end
+  end
+  eq(differ, 0, "live, the device plays the samples bit for bit as they were given")
+  eq(live[at - from - 1], 0, "and nothing before them")
+  -- The render's own device, through the track's fader and the master's:
+  -- the render must be the samples given times the gain a fader has at its
+  -- centre, twice, rounded as the mixer rounds.
+  local left, frames = floats(T.render({ bits = 32, ["end"] = 6, tail = 0 }))
+  eq(frames > at + count, true, "the render is long enough")
+  local loudest = 0
+  for i = 0, count - 1 do
+    if math.abs(given[i]) > math.abs(given[loudest]) then loudest = i end
+  end
+  local g = ffi.new("union { float f; int32_t i; }")
+  g.f = math.sqrt(left[at + loudest] / given[loudest])
+  local base, matched = g.i, false
+  local product = ffi.new("float[1]")
+  for ulps = -4, 4 do
+    g.i = base + ulps
+    local all = true
+    for i = 0, count - 1 do
+      product[0] = given[i] * g.f
+      product[0] = product[0] * g.f
+      if product[0] ~= left[at + i] then all = false break end
+    end
+    matched = matched or all
+  end
+  eq(matched, true, "offline, the render's own device plays the same samples, bit for bit")
+  eq(left[at - 1], 0, "and nothing before them")
+end)
+
+test("utau: a vocal track is a kind of track: made, shown, described and opened as one", function()
+  T.fresh()
+  load()
+  daw.ui.focus("arrange")
+  local track = daw.cmd("track.add", { "vocal", ask = false })
+  eq(daw.track_kinds.of(track.id), "vocal", "track.add vocal makes a vocal track")
+  eq(utau.device_of(track.id) ~= nil, true, "with the singing device")
+  utau.configure(track.id, { singer = "Someone" })
+  eq(daw.track_kinds.describe(track.id), "Vocal track · Someone", "described with its singer")
+  local screen = table.concat(api.ui_snapshot(120, 30), "\n")
+  eq(screen:find("1VVocal", 1, true) ~= nil, true, "the header shows V before the name")
+  local clip = track:add_clip({ start = 0, length = 2, notes = { { pitch = 60, start = 0, length = 1 } } })
+  daw.cursor.set_track(track)
+  daw.cursor.set_beat(0.5)
+  daw.cmd("clip.edit")
+  eq(daw.ui.focused, "utau", "clip.edit opens the vocal editor")
+  eq(require("utau.editor").editor.clip_id, clip.id, "on the clip")
+  daw.ui.hide("utau")
+  daw.ui.focus("arrange")
+  -- A vocal track from before there were kinds of track: it has the device.
+  local old = daw.add_track({ name = "Old vocal" })
+  old:add_device(utau.DEVICE)
+  eq(daw.track_kinds.of(old.id), "vocal", "a track with the device is a vocal track")
+  -- utau.voice makes the cursor track one, without asking for a singer.
+  local plain = daw.add_track({ name = "Plain" })
+  daw.cursor.set_track(plain)
+  daw.cmd("utau.voice")
+  eq(plain.meta.kind .. " " .. tostring(utau.device_of(plain.id) ~= nil), "vocal true", "utau.voice makes it a vocal track")
+end)
+
+test("utau: a project saved when the device was built in sings with the Lua device", function()
+  T.fresh()
+  load()
+  daw.project.tempo = 120
+  local track = daw.add_track({ name = "Old" })
+  local old = track:add_device(utau.voices.OLD_DEVICE)
+  track:add_clip({ start = 0, length = 8 })
+  eq(old:get().kind, "utau", "the device keeps the kind it was saved with")
+  eq(utau.device_of(track.id), old.id, "and is the track's vocal device")
+  utau.assign_voices()
+  utau.voices.put(old.id, "31", 0.5, 44100, 1, 1, sine(440, 1, 44100))
+  near(T.channel_peaks(T.render({ bits = 16, ["end"] = 4, tail = 0 }), 0.6, 1.4), 0.5, 0.02, "it sings what it is given")
+end)
+
+test("utau: a vocal device that crashes is stopped alone, and started again sings its voice", function()
+  T.fresh()
+  load()
+  daw.project.tempo = 120
+  local _, device = voice_track("Voice")
+  utau.voices.put(device, "21", 0.5, 44100, 1, 1, sine(440, 1, 44100))
+  local pid = tonumber(api.device_call(device, "sandbox.pid"))
+  eq(pid ~= api.env().pid, true, "the device runs in a process of its own")
+  local stopped = {}
+  local handler = daw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
+  daw.transport.play()
+  api.sleep(100)
+  os.execute("kill -KILL " .. pid)
+  wait_for("the crash to be told", 5000, function() return #stopped > 0 end)
+  daw.transport.stop()
+  daw.off(handler)
+  eq(stopped[1].device, device, "the vocal device is the one stopped")
+  eq(#daw.tracks(), 1, "the session goes on")
+  daw.device(device):restart()
+  eq(daw.device(device):get().stopped, nil, "started again")
+  eq(#utau.voices.list(device), 1, "it was given its voice again")
+  near(T.channel_peaks(T.render({ bits = 16, ["end"] = 4, tail = 0 }), 0.6, 1.4), 0.5, 0.02, "and sings it")
+end)
+
+test("utau: a block of the vocal device costs little", function()
+  load()
+  -- The device's own code, run here on blocks of its own: eight vocal
+  -- tracks are eight of these, each in a process of its own.
+  local dev = assert(loadfile("extensions/utau/devices/utau.lua"))()
+  local rate, frames = 48000, 512
+  dev.init(rate)
+  local lines = {}
+  for k = 0, 7 do
+    local path = utau.voices.dir() .. "/bench-" .. k .. ".f32"
+    T.write_file(path, sine(220 + k * 30, 2, 44100))
+    lines[#lines + 1] = string.format("b%d %g 44100 1 1 %s", k, k * 0.25, path)
+  end
+  dev.call("voice.1", table.concat(lines, "\n"))
+  local b = { left = ffi.new("float[?]", frames), right = ffi.new("float[?]", frames), frames = frames,
+    params = { voice = 1 }, sample_rate = rate, playing = true, tempo = 120, seconds = 0 }
+  local blocks = 400
+  for _ = 1, 50 do dev.process(b) end
+  local started = os.clock()
+  for i = 1, blocks do
+    -- Where four phrases overlap at once.
+    b.seconds = 1.0 + (i % 40) * frames / rate
+    dev.process(b)
+  end
+  local each = (os.clock() - started) / blocks * 1e6
+  print(string.format("      a block of %d frames with four phrases sounding: %.1f us (the block lasts %.0f us)",
+    frames, each, frames / rate * 1e6))
+  eq(each < 1000, true, "well inside the block (" .. each .. " us)")
+  dev.call("voice.1", "")
+end)
 
 -- Curves that follow their clip ------------------------------------------------
 

@@ -293,9 +293,13 @@ and a keyboard's), and the editors of the extensions draw with it; keys go to th
 the terminal. The vocal editor of [extensions/utau](../extensions/utau) is made
 this way ([gui.lua](../extensions/utau/lua/utau/gui.lua)): notes with lyrics,
 the pitch that is drawn and the pitch that is sung, phonemes, a toolbar with
-the singer, tools and grid. An extension with an editor of its own for some
-clips adds a function to `daw.frontend.openers`, and a double click on such
-a clip opens it there.
+the singer, tools and grid. An extension with an editor of its own for the
+clips of a kind of track gives the kind an `editor` (see
+[Everything an extension can own](extensions.md#everything-an-extension-can-own)),
+and a double click on such a clip opens it there; for other clips it adds a
+function to `daw.frontend.openers`. A kind of track is offered by the "+
+Track" and "New track" menus, and the track header says what kind it is
+before its devices ("Vocal track · Kitane  ·  UTAU voice").
 
 **Menu entries for extensions.** The right-click menus of clips, track
 headers and the empty timeline take entries from `daw.frontend.menus`:

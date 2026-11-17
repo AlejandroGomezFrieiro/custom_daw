@@ -269,6 +269,23 @@ end, { desc = "Move the cursor to the playhead" })
 
 command("track.add", function(ctx)
   local index = cursor.index()
+  -- A kind of track an extension defines: `track.add vocal`, `kind=vocal`.
+  local kind = ctx.args.kind or daw.track_kinds.kinds[ctx.args[1] or ""] and ctx.args[1]
+  if kind then
+    -- The kind's own words follow it (`track.add vocal Kitane`: a singer).
+    local opts, words = {}, {}
+    for k, v in pairs(ctx.args) do
+      if type(k) ~= "number" and k ~= "kind" then opts[k] = v end
+    end
+    for i, word in ipairs(ctx.args) do
+      if not (i == 1 and word == kind and not ctx.args.kind) then words[#words + 1] = word end
+    end
+    opts.words = words
+    opts.index = index and (ctx.args.above and index or index + 1) or nil
+    local track = daw.track_kinds.add(kind, opts)
+    cursor.set_track(track)
+    return track
+  end
   local track = daw.add_track({
     name = ctx.args.name or ctx.args[1] and tostring(ctx.args[1]) or nil,
     index = index and (ctx.args.above and index or index + 1) or nil,
@@ -283,7 +300,25 @@ command("track.add", function(ctx)
   end
   cursor.set_track(track)
   return track
-end, { desc = "Add a track below the cursor, or above it: `track.add Bass device=synth`, `track.add above=true`" })
+end, { desc = "Add a track below the cursor, or above it: `track.add Bass device=synth`, `track.add above=true`; a kind an extension defines: `track.add vocal`", complete = function()
+  local out = {}
+  for _, spec in ipairs(daw.track_kinds.list()) do out[#out + 1] = { text = spec.name, desc = spec.title } end
+  return out
+end })
+command("track.new", function()
+  local items = { { text = "Track            an ordinary track" } }
+  for _, spec in ipairs(daw.track_kinds.list()) do
+    items[#items + 1] = { text = string.format("%-16s %s", spec.title, spec.desc or ""), kind = spec.name }
+  end
+  daw.pick({
+    title = "New track",
+    items = items,
+    format = function(item) return item.text end,
+    on_choose = function(item)
+      daw.cmd("track.add", item.kind and { kind = item.kind } or {})
+    end,
+  })
+end, { desc = "Add a track of a kind chosen from a list: an ordinary one, or one an extension defines (a vocal track, a drum track)" })
 command("track.remove", function()
   local track = need_track()
   if not track then return end
@@ -1807,6 +1842,8 @@ command("info", function()
     lines[#lines + 1] = ""
   end
   lines[#lines + 1] = { text = "Track  " .. t.name, style = "Title" }
+  local kind = daw.track_kinds.describe(track.id)
+  if kind then lines[#lines + 1] = "  kind    " .. kind end
   lines[#lines + 1] = string.format("  volume %+.1f dB, pan %+.2f%s%s%s", t.volume, t.pan, t.mute and ", muted" or "", t.solo and ", solo" or "", t.armed and ", armed" or "")
   lines[#lines + 1] = "  output  " .. (t.output and api.track_get(t.output).name or "Master")
   if t.input then lines[#lines + 1] = "  input   " .. t.input end

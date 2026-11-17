@@ -11,9 +11,13 @@ local api = daw.api
 local proto = require("utau.proto")
 local payload = require("utau.payload")
 local engine = require("utau.engine")
+local voices = require("utau.voices")
 
 local M = {
   engine = engine,
+  voices = voices,
+  -- The kind of the device that sings (devices/utau.lua).
+  DEVICE = voices.DEVICE,
   singers = {},       -- SingerList from the engine
   renderers = {},     -- RendererList: { renderers, resamplers, wavtools }
   phonemizers = {},
@@ -53,7 +57,8 @@ local function round(x) return math.floor(x + 0.5) end
 --- The `utau` device of a track, as a device id, or nil.
 function M.device_of(track_id)
   for _, id in ipairs(api.track_get(track_id).devices) do
-    if api.device_get(id).kind == "utau" then return id end
+    local kind = api.device_get(id).kind
+    if kind == voices.DEVICE or kind == voices.OLD_DEVICE then return id end
   end
 end
 
@@ -411,7 +416,7 @@ function M.assign_voices()
       voice = 1
       while used[voice] do voice = voice + 1 end
       api.device_set_param(vocal.device, "voice", voice)
-      api.device_call(vocal.device, "clear")
+      voices.clear(vocal.device)
       M.received[tostring(vocal.track)] = nil
     end
     used[voice] = vocal
@@ -422,7 +427,7 @@ end
 function M.clear_voices()
   M.layouts, M.received, M.phonemes, M.pitch = {}, {}, {}, {}
   M.assign_voices()
-  for _, vocal in ipairs(M.vocal_tracks()) do api.device_call(vocal.device, "clear") end
+  for _, vocal in ipairs(M.vocal_tracks()) do voices.clear(vocal.device) end
 end
 
 --- Bring the engine up to date with the project now. Starts the engine when
@@ -468,9 +473,7 @@ local function vocal_device(track_key_str)
 end
 
 local function put(device, message, raw)
-  local header = string.format("%s %.17g %d %d %d\n", message.hash, message.start, message.rate,
-    message.channels, message.quality)
-  api.device_call(device, "put", header .. raw)
+  voices.put(device, message.hash, message.start, message.rate, message.channels, message.quality, raw)
 end
 
 --- Which clips a layout keeps (ReaUtau protocol 7.2): those still in it, and
@@ -505,7 +508,7 @@ engine.handlers.PhraseLayout = function(m)
   local kept = {}
   for _, hash in ipairs(keep) do kept[hash] = have[hash] end
   M.received[m.track] = kept
-  if device then api.device_call(device, "keep", table.concat(keep, " ")) end
+  if device then voices.keep(device, keep) end
   api.ui_redraw()
 end
 

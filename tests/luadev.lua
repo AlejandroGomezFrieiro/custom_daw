@@ -289,3 +289,40 @@ test("a script in the configuration's devices wins over an extension's of the sa
   end
   eq(name, "High", "even after the lower one changes")
 end)
+
+test("scripts call a Lua device, and what is posted to its kind reaches every one, a render's too", function()
+  fresh()
+  scripts({ ["posted_level.lua"] = [[
+    local dsp = require("daw.dsp")
+    local dev = dsp.device { category = "instrument" }
+    local level = 0
+    function dev.call(method, data)
+      if method == "level" then level = tonumber(data) end
+      if method == "get" then return level end
+      if method == "map" then local m = dsp.map(data) level = m.data[1] m:close() end
+    end
+    function dev.process(b)
+      for i = 0, b.frames - 1 do b.left[i], b.right[i] = level, level end
+    end
+    return dev
+  ]] })
+  local a = daw.add_track({ name = "a" })
+  local first = a:add_device("lua:posted_level")
+  a:add_clip({ start = 0, length = 4 })
+  eq(api.device_call(first.id, "get"), "0", "a call answers")
+  eq(#api.device_post("lua:posted_level", "level", "0.25"), 0, "taken by every device")
+  eq(api.device_call(first.id, "get"), "0.25", "the device there is told at once")
+  near(render({ tail = 0, bits = 32, ["end"] = 2 }).peak, 0.25, 1e-6, "and so is the render's own")
+  local later = daw.add_track({ name = "b" }):add_device("lua:posted_level")
+  eq(api.device_call(later.id, "get"), "0.25", "a device made later is given what was posted")
+  -- Large data goes as a file, which the device maps.
+  local ffi = require("ffi")
+  local path = T.scratch .. "/posted.f32"
+  T.write_file(path, ffi.string(ffi.new("float[2]", 0.5, 0.125), 8))
+  api.device_post("lua:posted_level", "map", path)
+  eq(api.device_call(later.id, "get"), "0.125", "a file of floats is read by mapping it")
+  api.device_post("lua:posted_level", "map", nil)
+  local c = daw.add_track({ name = "c" }):add_device("lua:posted_level")
+  eq(api.device_call(c.id, "get"), "0.25", "a topic posted nil is forgotten")
+  api.device_post("lua:posted_level", "level", nil)
+end)

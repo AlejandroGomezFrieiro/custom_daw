@@ -42,6 +42,7 @@ pub mod notes;
 pub mod offline;
 pub mod panic;
 mod ports;
+mod posts;
 pub mod render;
 pub mod tags;
 mod tempo;
