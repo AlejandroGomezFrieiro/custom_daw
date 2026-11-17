@@ -75,7 +75,7 @@ daw.ui.view("curve_probe", {
 
 test("a curve in a window is drawn in braille dots, as in the terminal", function()
   start()
-  daw.opt.braille, daw.opt.ascii = true, false
+  daw.opt.braille, daw.opt.ascii, daw.opt.curve_glyphs = true, false, "braille"
   daw.canvas.open_view("curve_probe")
   local drawing = daw.canvas.paint("curve_probe", 400, 200, { cell = { w = 10, h = 20 }, fresh = true })
   local text = {}
@@ -84,6 +84,21 @@ test("a curve in a window is drawn in braille dots, as in the terminal", functio
   eq(shown:find("▁", 1, true) == nil and shown:find("─", 1, true) == nil and shown:find("▔", 1, true) == nil, true, "not as lines")
   eq(#dots(drawing.ops) > 20, true, "but as dots")
   daw.canvas.close("curve_probe")
+end)
+
+test("a curve in a window is drawn in sextants as rectangles, the font having none", function()
+  start()
+  daw.opt.braille, daw.opt.ascii, daw.opt.curve_glyphs = true, false, "sextant"
+  daw.canvas.open_view("curve_probe")
+  local drawing = daw.canvas.paint("curve_probe", 400, 200, { cell = { w = 10, h = 20 }, fresh = true })
+  local text = {}
+  for _, op in ipairs(drawing.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
+  eq(table.concat(text):find("[\240-\244]") == nil, true, "no sextant is left to the font")
+  local rects = 0
+  for _, op in ipairs(drawing.ops) do if op[1] == "r" and op[4] == 5 then rects = rects + 1 end end
+  eq(rects > 20, true, "but rectangles of half a cell")
+  daw.canvas.close("curve_probe")
+  daw.opt.curve_glyphs = "sextant"
 end)
 
 -- Comping with the mouse ---------------------------------------------------------------

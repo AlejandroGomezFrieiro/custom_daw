@@ -436,13 +436,74 @@ end
 local dots = { { 0x01, 0x02, 0x04, 0x40 }, { 0x08, 0x10, 0x20, 0x80 } }
 local lines3 = { unicode = { "▁", "─", "▔" }, ascii = { "_", "-", "'" } }
 
---- Draw a curve as a thin dotted line over `rows` rows of a buffer, from
---- row `y` down: `value(i)` gives the height, from 0 at the bottom to 1 at
---- the top, at the `i`th of two points per column. Only the cells the line
---- passes through are touched. Braille dots unless `daw.opt.braille` is off
---- or `daw.opt.ascii` on; then lines at three heights a row.
+--- How curves are drawn in cells: "sextant", "braille" or "line", by
+--- `daw.opt.curve_glyphs`; `daw.opt.braille = false` and `daw.opt.ascii`
+--- both mean "line" (ascii wins over all, and uses ASCII characters).
+function M.curve_glyphs()
+  if daw.opt.ascii or daw.opt.braille == false then return "line" end
+  local kind = daw.opt.curve_glyphs
+  if kind == "braille" or kind == "line" then return kind end
+  return "sextant"
+end
+
+--- The character for a set of sextants (U+1FB00 to U+1FB3B, two columns
+--- by three rows): bits 1 to 32 are top left, top right, middle left,
+--- middle right, bottom left, bottom right. The patterns that are not in
+--- that block are a space, the left half, the right half and the full block.
+function M.sextant(bits)
+  if bits == 0 then return " " end
+  if bits == 21 then return "▌" end
+  if bits == 42 then return "▐" end
+  if bits == 63 then return "█" end
+  local n = bits - 1
+  if bits > 21 then n = n - 1 end
+  if bits > 42 then n = n - 1 end
+  local cp = 0x1FB00 + n
+  return string.char(0xF0 + math.floor(cp / 262144), 0x80 + math.floor(cp / 4096) % 64, 0x80 + math.floor(cp / 64) % 64, 0x80 + cp % 64)
+end
+
+--- A braille character from its eight dots: bit k is dot k + 1.
+function M.braille(bits) return utf8(0x2800 + bits) end
+
+--- A connected line over a grid of cells, for a curve: `y(sx)` gives the
+--- row of the line, from the top, in `sub` rows a cell (3 for sextants, 4
+--- for braille), at the `sx`th of two samples a cell, from 0, or nil for
+--- none; `samples` of them. A jump is filled from the last row to this one,
+--- so that the line is unbroken. Returns `{ [row * width + col] = bits }`,
+--- the bits as `M.sextant` or `M.braille` take them.
+function M.trace(width, samples, y, sub, kind)
+  local cells, last = {}, nil
+  for sx = 0, samples - 1 do
+    local row = y(sx)
+    if row then
+      local a, b = row, row
+      if last then
+        a, b = math.min(row, last), math.max(row, last)
+        if math.abs(row - last) > 1 then
+          if row > last then a = last + 1 else b = last - 1 end
+        end
+      end
+      local side = sx % 2
+      for r = a, b do
+        local bit
+        if kind == "braille" then bit = dots[side + 1][r % 4 + 1] else bit = 2 ^ ((r % 3) * 2 + side) end
+        local key = math.floor(r / sub) * width + math.floor(sx / 2)
+        cells[key] = (cells[key] or 0) + bit  -- each cell and side comes from one sample
+      end
+      last = row
+    end
+  end
+  return cells
+end
+
+--- Draw a curve as a thin line over `rows` rows of a buffer, from row `y`
+--- down: `value(i)` gives the height, from 0 at the bottom to 1 at the top,
+--- at the `i`th of two points per column. Only the cells the line passes
+--- through are touched. Sextants (a connected line), braille dots or lines
+--- at three heights a row, as `M.curve_glyphs()` says.
 function M.curve(buf, y, rows, value, style)
-  if daw.opt.ascii or daw.opt.braille == false then
+  local kind = M.curve_glyphs()
+  if kind == "line" then
     local set = daw.opt.ascii and lines3.ascii or lines3.unicode
     for col = 0, buf.width - 1 do
       local v = value(col * 2)
@@ -453,20 +514,16 @@ function M.curve(buf, y, rows, value, style)
     end
     return
   end
-  local steps = rows * 4
-  for col = 0, buf.width - 1 do
-    local cells = {}
-    for side = 1, 2 do
-      local v = value(col * 2 + side - 1)
-      if v then
-        local level = math.min(steps - 1, math.floor(daw.util.clamp(v, 0, 1) * steps))
-        local row = rows - 1 - math.floor(level / 4)
-        cells[row] = (cells[row] or 0) + dots[side][4 - level % 4]
-      end
-    end
-    for row, bits in pairs(cells) do
-      buf:text(col, y + row, utf8(0x2800 + bits), style)
-    end
+  local sub = kind == "braille" and 4 or 3
+  local steps = rows * sub
+  local cells = M.trace(buf.width, buf.width * 2, function(sx)
+    local v = value(sx)
+    if not v then return nil end
+    return steps - 1 - math.min(steps - 1, math.floor(daw.util.clamp(v, 0, 1) * steps))
+  end, sub, kind)
+  local glyph = kind == "braille" and M.braille or M.sextant
+  for key, bits in pairs(cells) do
+    buf:text(key % buf.width, y + math.floor(key / buf.width), glyph(bits), style)
   end
 end
 
