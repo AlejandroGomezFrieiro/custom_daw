@@ -72,6 +72,26 @@ test("notation: every key of the view says the clip is gone when an undo took it
   paw.ui.focus("arrange")
 end)
 
+test("notation: on a long song the title does not read the song's key on every key, but once the edits pause", function()
+  local notes = {}
+  for i = 1, 3000 do notes[i] = N(57 + i % 12, (i - 1) * 0.25, 0.25) end
+  local view, clip = song(notes, 750)
+  paw.ui.focus("notation")
+  api.ui_snapshot(120, 30)
+  clip:add_note(N(60, 0.125, 0.125))
+  api.undo_checkpoint()
+  local t0 = api.now()
+  api.ui_snapshot(120, 30)
+  eq(paw.harmony.fresh(), false, "a draw after an edit leaves the reading for later")
+  for _ = 1, 200 do
+    if paw.harmony.fresh() then break end
+    paw.wait(25)
+  end
+  eq(paw.harmony.fresh(), true, "and it is read once the edits pause: after " .. (api.now() - t0) .. " ms")
+  eq(view:clip().id, clip.id, "")
+  paw.ui.focus("arrange")
+end)
+
 test("notation: a page of a few tall systems keeps them close, not spread over the page", function()
   load()
   local E = require("notation.engrave")

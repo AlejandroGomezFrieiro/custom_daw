@@ -64,9 +64,45 @@ end
 --- rather than C major; else the signature's major key.
 local MAJORS = { [-7] = "Cb", [-6] = "Gb", [-5] = "Db", [-4] = "Ab", [-3] = "Eb", [-2] = "Bb", [-1] = "F",
   [0] = "C", "G", "D", "A", "E", "B", "F#", "C#" }
+
+-- Reading the song's keys again after an edit takes a while on a long
+-- song (most of a second for 10000 notes): the title is drawn on every
+-- key, so in a song of more than `READ_NOW` notes it reads them only once
+-- the edits have paused for `READ_AFTER` ms, and draws again then.
+local READ_NOW, READ_AFTER = 2000, 600
+local stale_at, waiting
+
+local function song_notes()
+  local n = 0
+  for _, id in ipairs(api.track_list()) do
+    for _, c in ipairs(api.clip_list(id)) do n = n + (c.note_count or 0) end
+  end
+  return n
+end
+
+--- The key read at `beat` (`paw.harmony.key`) when the reading is up to
+--- date or quick, else nil, with a reading asked for once the edits pause.
+function view.read_key(beat)
+  if paw.harmony.fresh() or song_notes() <= READ_NOW then return paw.harmony.key(beat) end
+  stale_at = api.now()
+  if waiting then return nil end
+  waiting = true
+  local function later()
+    local idle = api.now() - stale_at
+    if idle < READ_AFTER then return paw.defer(later, READ_AFTER - idle) end
+    waiting = false
+    if not paw.harmony.fresh() then
+      pcall(paw.harmony.key, 0)
+      api.ui_redraw()
+    end
+  end
+  paw.defer(later, READ_AFTER)
+  return nil
+end
+
 function view.key_name(fifths, stored, beat)
   if stored and stored.root then return stored.root .. " " .. (stored.scale or "major") end
-  local ok, read = pcall(paw.harmony.key, beat)
+  local ok, read = pcall(view.read_key, beat)
   if ok and type(read) == "table" and read.mode == "minor" and read.name then
     local root = read.name:match("^(%S+)")
     if root and model.fifths_of(root, "minor") == fifths then return read.name end
@@ -424,7 +460,9 @@ function view:note()
   local _, written = self:event_at(self.beat, self.step)
   if not written then return nil end
   local clip = self:clip()
-  local note = clip and clip:notes()[written.index]
+  -- From the notes the score was written from, which the layout's places
+  -- count in, not all of the clip's fetched again on every draw.
+  local note = clip and view.notes_of(clip:get())[written.index]
   if note then return note, written.index, written end
 end
 

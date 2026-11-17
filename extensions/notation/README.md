@@ -231,7 +231,10 @@ The rest of the page:
   relative major. `:notation.key Eb major` sets it, `:notation.key off`
   clears it; with a clip open in the view it writes a key signature from
   the cursor's bar (`\k`, see Popovers), and the first bar's is the
-  project's key too.
+  project's key too. With no key set, the title names the minor key the
+  music is read in (`A minor` rather than `C major`); in a song of more
+  than 2000 notes that reading is done once the edits pause, as it takes
+  a while, and the title follows a moment later.
 - **Spelling**: notes of the key take its letters; the others lean the way
   the key does. Accidentals are remembered to the end of the bar, a tied
   note keeps its accidental across the barline without a sign, and a note
