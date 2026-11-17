@@ -28,6 +28,10 @@ local function file_name(name)
   return text
 end
 
+--- The name a template is kept under: `name` with the characters a file
+--- name cannot hold made `_`.
+M.file_name = file_name
+
 function M.path(kind, name)
   return M.dir() .. "/" .. kind .. "/" .. file_name(name) .. ".json"
 end

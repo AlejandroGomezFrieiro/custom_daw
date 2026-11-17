@@ -142,9 +142,10 @@ local function apply(id, pm)
   local compiled, err = M.compile(pm.text, pm.seed)
   if not compiled then return nil, err end
   local c = api.clip_get(id)
-  local notes = eval.notes(compiled, {
+  local ok, notes = pcall(eval.notes, compiled, {
     beats = cycle_beats(pm), length = c.length, velocity = paw.opt.velocity,
   })
+  if not ok then return nil, setmetatable({ message = tostring(notes), pos = 1, text = pm.text }, parser.Error) end
   local fresh = digest(notes)
   if fresh ~= digest(api.clip_notes(id)) then paw.clip(id):set_notes(notes) end
   local before = c.meta and c.meta.pattern or {}

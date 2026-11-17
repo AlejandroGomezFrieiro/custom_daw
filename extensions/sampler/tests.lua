@@ -151,6 +151,37 @@ test("sampler: loading an instrument is one undo step, kept with the project", f
   eq(sampler.describe(again).name, "basic", "the project brings it back")
 end)
 
+test("sampler: a file that is not there, or not an instrument, is said so in a line with no stack trace", function()
+  local track, device = sampler_track("basic.sfz")
+  if not track then return device end
+  paw.cursor.set_track(track)
+  paw.ui.focus("arrange")
+  local from = #paw.ui.messages
+  paw.commands.exec("sampler.load " .. T.scratch .. "/nonexistent.sfz")
+  eq(paw.ui.message and paw.ui.message.text, "sampler: no such file: " .. T.scratch .. "/nonexistent.sfz", "a missing file is said so")
+  local bytes = {}
+  for i = 0, 255 do bytes[#bytes + 1] = string.char((i * 37) % 256) end
+  for name, body in pairs({
+    junk = "\0\1\2 this is <not> an sfz {{{ <region> sample=\n\255\254",
+    binary = table.concat(bytes),
+    empty = "",
+    missing = "<region> sample=nowhere/at/all.wav lokey=0 hikey=127\n",
+    preset = "<?xml version='1.0'?><DecentSampler><groups><group><sample path='nope.wav'/></group></groups></DecentSampler>",
+  }) do
+    local path = T.scratch .. "/" .. name .. (name == "preset" and ".dspreset" or ".sfz")
+    write(path, body)
+    paw.commands.exec("sampler.load " .. path)
+    paw.commands.exec("sampler.track " .. path)
+  end
+  paw.commands.exec("sampler.track " .. T.scratch .. "/nonexistent.sfz")
+  eq(paw.ui.message and paw.ui.message.text, "sampler: no such file: " .. T.scratch .. "/nonexistent.sfz", "and when making a track")
+  local said = {}
+  for i = from + 1, #paw.ui.messages do said[#said + 1] = paw.ui.messages[i].text end
+  local text = table.concat(said, "\n")
+  eq(text:find("traceback", 1, true), nil, "no stack trace: " .. text)
+  eq(text:find("junk", 1, true) ~= nil, true, "the file is named: " .. text)
+end)
+
 test("sampler: an instrument heard in a trial is taken back without a trace", function()
   local track, device = sampler_track("basic.sfz")
   if not track then return device end

@@ -11,7 +11,28 @@ end
 local function named(given, start, done)
   if given and given ~= "" then return done(given) end
   paw.ui.input({ prompt = "Template name: ", text = start }, function(text)
-    if text and text ~= "" then done(text) end
+    if text and text:match("%S") then return done(text) end
+    paw.notify("no name given: nothing saved", "warn")
+  end)
+end
+
+--- Save a template of `kind` named `name` with `save(name)`, which returns
+--- the file's path; asks first when there is one of that name already, and
+--- says so when the name had to change to be a file's.
+local function saving(kind, name, save, said)
+  local ok, kept = pcall(templates.file_name, name)
+  if not ok then return paw.notify(clean(kept), "warn") end
+  local function go()
+    local done, path = pcall(save, name)
+    if not done then return paw.notify(clean(path), "error") end
+    paw.notify(said(kept, path) .. (kept ~= name and " (a file name cannot hold some of the characters)" or ""))
+  end
+  local file = io.open(templates.path(kind, name), "r")
+  if not file then return go() end
+  file:close()
+  paw.ui.input({ prompt = string.format("there is a template “%s”: replace it? (y/n) ", kept) }, function(answer)
+    if answer and answer:lower():match("^%s*y") then return go() end
+    paw.notify("nothing saved: the template “" .. kept .. "” stays as it was")
   end)
 end
 
@@ -20,9 +41,11 @@ command("template.save", function(ctx)
   if not track then return paw.notify("no track to save", "warn") end
   local group = paw.groups.is_group(track.id)
   named(ctx.args[1], track.name, function(name)
-    local ok, path = pcall(group and templates.save_group or templates.save_track, track, name)
-    if not ok then return paw.notify(clean(path), "error") end
-    paw.notify(string.format("%s “%s” saved as a template (%s)", group and "group" or "track", name, path))
+    saving(group and "group" or "track", name, function(n)
+      return (group and templates.save_group or templates.save_track)(track, n)
+    end, function(kept, path)
+      return string.format("%s “%s” saved as a template (%s)", group and "group" or "track", kept, path)
+    end)
   end)
 end, { desc = "Save the track as a template, or the group with every track in it: `template.save Lead vocal`", raw = true })
 
@@ -30,9 +53,9 @@ command("template.fx", function(ctx)
   local track = paw.cursor.track()
   if not track then return paw.notify("no track", "warn") end
   named(ctx.args[1], track.name .. " chain", function(name)
-    local ok, path = pcall(templates.save_fx, track, name)
-    if not ok then return paw.notify(clean(path), "error") end
-    paw.notify(string.format("the devices of “%s” saved as the chain “%s” (%s)", track.name, name, path))
+    saving("fx", name, function(n) return templates.save_fx(track, n) end, function(kept, path)
+      return string.format("the devices of “%s” saved as the chain “%s” (%s)", track.name, kept, path)
+    end)
   end)
 end, { desc = "Save the track's devices as a chain to add elsewhere: `template.fx Vocal chain`", raw = true })
 

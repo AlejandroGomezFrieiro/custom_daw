@@ -168,7 +168,7 @@ local function midi_item(clip, ctx, label)
   source:add(fmt.line("HASDATA", 1, M.PPQ, "QN"))
   source:add(fmt.line("CCINTERP", 32))
   source:add(fmt.line("POOLEDEVTS", ctx.guid()))
-  local notes, rounded = {}, 0
+  local notes, rounded, attrs = {}, 0, 0
   local shown = {}
   -- Notes before the clip's start are hidden by a trim, and not played.
   for _, n in ipairs(api.clip_notes(clip.id)) do
@@ -180,6 +180,7 @@ local function midi_item(clip, ctx, label)
     if math.abs(tick - n.start * M.PPQ) > 1e-6 or math.abs(stop - (n.start + n.length) * M.PPQ) > 1e-6 then
       rounded = rounded + 1
     end
+    if n.attr then attrs = attrs + 1 end
     local channel = n.meta and tonumber(n.meta.channel)
     notes[#notes + 1] = {
       tick = tick, length = math.max(1, stop - tick), pitch = n.pitch, velocity = n.velocity,
@@ -187,6 +188,8 @@ local function midi_item(clip, ctx, label)
     }
   end
   if rounded > 0 then ctx.report:count("Note times rounded to 1/960 beat", label, rounded) end
+  -- A REAPER project keeps MIDI 1.0, where a note has no attribute.
+  if attrs > 0 then ctx.report:count("Note attributes (MIDI 2.0 articulations)", label, attrs) end
   local length = math.floor(clip.length * M.PPQ + 0.5)
   for _, line in ipairs(midi.event_lines(notes, length)) do source:add(line) end
   source:add(fmt.line("CCINTERP", 32))
@@ -394,6 +397,16 @@ function M.doc(opts)
     line("MARKER", id, ctx.sec(r.start or 0), r.name or "", 1, r.color or 0, 1, "B", ctx.guid(), 0):quoted(3)
     line("MARKER", id, ctx.sec((r.start or 0) + (r.length or 0)), "", 1):quoted(3)
   end
+  -- Song sections (`project.meta.sections`, as the sections extension
+  -- keeps them) become regions, each up to where the next starts.
+  local ok, sections = pcall(require, "sections")
+  local parts = ok and sections.list() or {}
+  for _, s in ipairs(parts) do
+    n = n + 1
+    line("MARKER", n, ctx.sec(s.start), s.name, 1, 0, 1, "B", ctx.guid(), 0):quoted(3)
+    line("MARKER", n, ctx.sec(s.finish), "", 1):quoted(3)
+  end
+  if #parts > 0 then ctx.report:count("Sections written as regions (they come back as regions)", "sections", #parts) end
   local tempo_env = M.tempo_envelope(ctx)
   if tempo_env then root:add(tempo_env) end
   root:add(fmt.block("PROJBAY"))

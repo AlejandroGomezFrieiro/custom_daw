@@ -30,6 +30,9 @@ function M.caret(e)
   return e.text .. "\n" .. string.rep(" ", e.pos - 1) .. "^"
 end
 
+--- The most times `*` repeats a step.
+M.MAX_REPEAT = 256
+
 local P = {}
 P.__index = P
 
@@ -195,6 +198,11 @@ function P:step()
       self.pos = self.pos + 1
       if self:peek() == "" or self:peek():match("%s") then self:fail("expected a number after `" .. ch .. "`") end
       node = { t = ch == "*" and "fast" or "slow", node = node, by = self:numeric_term(), pos = pos }
+      -- More would make more notes than a clip can sensibly hold.
+      local by = node.by
+      if ch == "*" and by.t == "atom" and type(by.v) == "number" and by.v > M.MAX_REPEAT then
+        self:fail("at most " .. M.MAX_REPEAT .. " repeats in a step", pos)
+      end
     elseif ch == "(" then
       self.pos = self.pos + 1
       local args = {}
