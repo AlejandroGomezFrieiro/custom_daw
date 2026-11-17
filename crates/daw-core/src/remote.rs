@@ -26,6 +26,9 @@
 //! with `ops`, the drawing, only when it differs from what was last sent
 //! for that key: the drawing travels, and the far side makes the pixels.
 //! `under` places the pixels under the text, which is drawn there as usual.
+//! A strip partly off its window has `"offset": [cols, rows]` (where what
+//! shows is in the whole) and `"whole": [cols, rows]`, and its drawing is
+//! of the whole.
 //! The other side keeps a [`Grid`] and gives each event to [`apply`].
 
 use anyhow::{Result, bail};
@@ -166,6 +169,8 @@ pub fn apply(grid: &mut Grid, payload: &Value) -> Result<Option<(u16, u16)>> {
             covered,
             ops,
             open: false,
+            offset: (number(&s["offset"][0]), number(&s["offset"][1])),
+            whole: (number(&s["whole"][0]), number(&s["whole"][1])),
         });
     }
     let cursor = &payload["cursor"];
@@ -217,6 +222,10 @@ impl Frontend for RemoteFrontend {
                     "cell": [s.cell.0, s.cell.1], "under": s.under, "covered": s.covered_runs(),
                 });
                 let sent = self.shown.as_ref().and_then(|shown| shown.surfaces.iter().find(|b| b.key == s.key));
+                if s.whole != (0, 0) {
+                    out["offset"] = json!([s.offset.0, s.offset.1]);
+                    out["whole"] = json!([s.whole.0, s.whole.1]);
+                }
                 if sent.is_none_or(|sent| sent.ops != s.ops) {
                     out["ops"] = (*s.ops).clone();
                 }

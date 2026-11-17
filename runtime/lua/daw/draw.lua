@@ -412,11 +412,12 @@ end
 --- How far a sample of size `a` (0 to 1) reaches up a waveform, 0 to 1:
 --- as it is (`daw.opt.wave_scale` "linear", which shows a kick over a hat) or
 --- on a decibel scale from -48 (`"db"`, which shows quiet material).
-local function wave_reach(a)
+function M.wave_reach(a)
   a = math.min(math.abs(a), 1)
   if daw.opt.wave_scale ~= "db" then return a end
   return a <= 1e-4 and 0 or daw.util.clamp((20 * math.log10(a) + 48) / 48, 0, 1)
 end
+local wave_reach = M.wave_reach
 
 --- Peaks (`{ min, max }` pairs from -1 to 1, one per column) as a waveform
 --- of `rows` text rows, each column drawn from its lowest to its highest

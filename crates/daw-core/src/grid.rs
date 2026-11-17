@@ -195,9 +195,21 @@ pub struct Surface {
     /// Still being drawn by its view ([`Grid::seal_surfaces`]): what is
     /// written in its cells now is the view's own, not something over it.
     pub open: bool,
+    /// How many cells of the whole strip are left of and above what shows
+    /// (`rect`), when part of it is off its window: a clip scrolled in.
+    pub offset: (i32, i32),
+    /// The whole strip's size in cells, when part of it is off its window;
+    /// (0, 0) when all of it shows. Its drawing is of the whole, so that
+    /// scrolling it moves pieces already made.
+    pub whole: (i32, i32),
 }
 
 impl Surface {
+    /// The whole strip's size in cells: what shows, and what is off its window.
+    pub fn whole(&self) -> (i32, i32) {
+        if self.whole == (0, 0) { (self.rect.w, self.rect.h) } else { self.whole }
+    }
+
     pub fn is_covered(&self, col: u16, row: u16) -> bool {
         self.covered
             .get(row as usize * self.rect.w.max(0) as usize + col as usize)
@@ -282,8 +294,22 @@ impl Grid {
             covered: vec![false; (area.w * area.h) as usize],
             ops: Default::default(),
             open: under,
+            offset: (0, 0),
+            whole: (0, 0),
         });
         Some(self.surfaces.len() - 1)
+    }
+
+    /// [`Grid::surface`] for the part of `whole` inside `clip` that is on
+    /// the screen, keeping where that part is in the whole.
+    pub fn surface_part(&mut self, key: &str, whole: Rect, clip: Rect, cell: (u16, u16), under: bool) -> Option<usize> {
+        let index = self.surface(key, whole.intersect(&clip), cell, under)?;
+        let s = &mut self.surfaces[index];
+        s.offset = (s.rect.x - whole.x, s.rect.y - whole.y);
+        if (s.rect.w, s.rect.h) != (whole.w, whole.h) {
+            s.whole = (whole.w, whole.h);
+        }
+        Some(index)
     }
 
     /// The view that kept the open surfaces is done: what is written over

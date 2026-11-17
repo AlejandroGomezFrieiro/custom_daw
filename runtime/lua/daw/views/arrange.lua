@@ -26,8 +26,19 @@ daw.on("project.loaded", function() view.scroll, view.top, view.seen_beat = 0, 1
 
 -- Small piano rolls and waveforms drawn inside clips, and what a header says
 -- about its track's devices, kept until the project changes.
-local previews, chains = {}, {}
-daw.on("changed", function() previews, chains = {}, {} end)
+local previews, chains, waves = {}, {}, {}
+daw.on("changed", function() previews, chains, waves = {}, {}, {} end)
+
+--- An audio clip's waveform as `n` { min, max, rms } across it, kept: for
+--- `daw.plot.wave` and its twin in cells. Nothing for a missing file.
+local function wave_peaks(clip, n)
+  local key = clip.id .. ":" .. n
+  if not waves[key] then
+    local ok, peaks = pcall(api.clip_peaks, clip.id, n)
+    waves[key] = ok and peaks or {}
+  end
+  return waves[key]
+end
 
 --- The rows under a clip's name: its notes as a small piano roll, or its
 --- waveform.
@@ -350,7 +361,20 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       box:text(cw > 2 and 1 or 0, 0, badge and (label .. " ‹" .. badge .. "›") or label)
       if height >= 2 then
         box:fill(0, 1, cw, height - 1, " ", hue["body" .. kind])
-        if clip.kind == "audio" or clip.note_count > 0 then
+        if clip.kind == "audio" then
+          -- In pixels under the cells where the terminal shows them, the
+          -- whole clip's, so that scrolling moves pieces already made.
+          local body = box:sub(0, 1, cw, height - 1)
+          -- The colour the cells draw it in (`daw.draw.hue`'s body).
+          local colour = draw.mix(require("daw.theme").palette.bg, draw.track_colour(track), kind == "_off" and 0.30 or 0.75)
+          local pictured = body:strip(0, 0, cw, height - 1, {
+            key = "arrange:wave:" .. clip.id, under = true,
+            draw = function(g, px)
+              daw.plot.wave(g, px, { peaks = function(n) return wave_peaks(clip, n) end, color = colour })
+            end,
+          })
+          if not pictured then daw.plot.wave_cells(body, { peaks = function(n) return wave_peaks(clip, n) end }) end
+        elseif clip.note_count > 0 then
           local rows, runs = preview(clip, cw, height - 1, zoom)
           for row, text in ipairs(rows) do
             if runs then

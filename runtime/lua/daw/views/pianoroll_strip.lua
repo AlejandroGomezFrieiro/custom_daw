@@ -65,8 +65,18 @@ local function draw(self, buf)
   for place, c in ipairs(clip:controls()) do
     if controls.is(c, shown.kind, shown.number) then list[#list + 1] = { c = c, place = place } end
   end
-  local at = 1
   local length = clip.length
+  -- In pixels under the cells, where the terminal shows them: the value
+  -- held from each move as a line with the area under it, and a mark on
+  -- each move, the chosen brighter.
+  local scroll, zoom, kind = self.scroll, g.zoom, shown.kind
+  local pictured = lane:strip(0, 0, tw, rows, {
+    key = "pianoroll:strip", under = true,
+    draw = function(gp, px) M.picture(gp, px, { list = list, chosen = chosen, kind = kind, scroll = scroll, zoom = zoom,
+      length = length, color = daw.draw.track_colour(api.track_get(api.clip_get(clip.id).track)) }) end,
+  })
+  if pictured then return end
+  local at = 1
   for x = 0, tw - 1 do
     local from, to = self.scroll + x / g.zoom, self.scroll + (x + 1) / g.zoom
     -- Nothing plays past the clip's end.
@@ -84,6 +94,37 @@ local function draw(self, buf)
         local amount = level - (rows - 1 - row) * 8
         if amount >= 1 then lane:text(x, row, eighths[math.min(8, math.floor(amount))], style) end
       end
+    end
+  end
+end
+
+--- The strip's picture: `o.list` the moves shown (`{ c, place }` each),
+--- `o.chosen` the places chosen, `o.kind` "bend" or "cc", `o.scroll` and
+--- `o.zoom` the roll's, `o.length` the clip's, `o.color` the track's.
+function M.picture(g, px, o)
+  local P = require("daw.theme").palette
+  local ppb = o.zoom * px.cell.w
+  local function X(beat) return (beat - o.scroll) * ppb end
+  -- From the first move (the wheel rests in the middle before it) to the clip's end.
+  local first = o.list[1]
+  local x0 = o.kind == "bend" and 0 or (first and math.max(0, math.floor(X(first.c.start))) or px.w)
+  local x1 = math.min(px.w, math.floor(X(o.length) + 0.5))
+  if x1 <= x0 then return end
+  local points = {}
+  if o.kind == "bend" then points[1] = { beat = o.scroll - 1, value = 0.5, shape = "hold" } end
+  for _, item in ipairs(o.list) do
+    points[#points + 1] = { beat = item.c.start, value = controls.fraction(o.kind, item.c.value), shape = "hold" }
+  end
+  local part = { w = x1 - x0, h = px.h, cell = px.cell }
+  local _, Y = daw.plot.curve(g:sub(x0, 0, x1 - x0, px.h), part, {
+    points = points, from = o.scroll + x0 / ppb, pixels_per_beat = ppb, color = o.color,
+    guides = false, markers = false, grid = false, fill = 0.3,
+  })
+  for _, item in ipairs(o.list) do
+    local x = X(item.c.start)
+    if x >= x0 - 3 and x <= x1 + 3 then
+      local y = Y(controls.fraction(o.kind, item.c.value))
+      g:rect(x - 2, y - 2, 4, 4, { fill = o.chosen[item.place] and P.bright or o.color })
     end
   end
 end

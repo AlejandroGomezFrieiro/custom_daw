@@ -47,8 +47,9 @@ end
 
 --- Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal
 --- shows images: `g` a painter of `daw.canvas`, `px` `{ w, h, cell = { w,
---- h }, fg, bg }`, the strip's size and the terminal's cell in pixels and
---- its colours. Called once the screen is drawn. `opts.key` names the
+--- h }, fg, bg, view }`, the strip's size and the terminal's cell in pixels and
+--- its colours, and for a strip partly off its window the part that shows
+--- (`view`: x, y, w, h). Called once the screen is drawn. `opts.key` names the
 --- strip (images are kept by it: put the window's id in it for a view
 --- that can be in two windows; the view and its window by default).
 --- With `opts.under`, the cells the view draws there stay, above the

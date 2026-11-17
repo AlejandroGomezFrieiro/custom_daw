@@ -458,6 +458,38 @@ test("a curve opens in a window of its own and draws there", function()
   eq(table.concat(lines, "\n"):find("2 points", 1, true) ~= nil, true, "drawn in cells")
 end)
 
+test("in a window of its own the plot is drawn in pixels between the cells' backgrounds and their text", function()
+  start()
+  lane_with({ { 0, -12 }, { 4, 0 } })
+  daw.commands.exec("curve.window")
+  T.after(function() daw.canvas.close("curve") end)
+  local function drawing()
+    local d = daw.canvas.paint("curve", 800, 400, { fresh = true })
+    local kinds, sextants, first_poly, last_back, first_text = {}, 0, nil, 0, nil
+    for i, op in ipairs(d.ops) do
+      kinds[op[1]] = (kinds[op[1]] or 0) + 1
+      if op[1] == "p" and not first_poly then first_poly = i end
+      if op[1] == "m" then
+        if op[8] == "" and not first_text and first_poly then first_text = i end
+      end
+      -- The window draws the cells' sextants and dots as rectangles smaller than a cell.
+      if op[1] == "r" and op[4] < daw.canvas.cell.w - 0.01 and op[5] < daw.canvas.cell.h - 0.01 then sextants = sextants + 1 end
+      if op[1] == "r" and i > 1 and not first_poly then last_back = i end
+    end
+    return kinds, sextants, first_poly, last_back, first_text
+  end
+  local kinds, sextants, first_poly, last_back, first_text = drawing()
+  eq((kinds.p or 0) >= 2, true, "the line and the area under it, in pixels")
+  local dots = sextants
+  eq(first_poly > last_back, true, "over the cells' backgrounds")
+  eq(first_text ~= nil and first_text > first_poly, true, "and under their text")
+  daw.opt.graphics = false
+  T.after(function() daw.opt.graphics = true end)
+  kinds, sextants = drawing()
+  eq(kinds.p, nil, "graphics off: cells")
+  eq(sextants > dots + 20, true, string.format("the line in cells there and not with pictures: %d, %d", sextants, dots))
+end)
+
 -- Pictures ------------------------------------------------------------------------
 
 test("where the terminal shows pictures the plot is a strip under the cells, one for each window", function()

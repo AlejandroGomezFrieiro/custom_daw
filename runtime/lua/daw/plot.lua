@@ -11,6 +11,10 @@
 --         lo = 0, hi = 1, color = daw.draw.track_colour(track) })
 --     end })
 --
+-- `M.bars` and `M.wave` draw bars and a waveform the same way, and each
+-- has a twin in cells (`M.curve_cells`, `M.bars_cells`, `M.wave_cells`)
+-- for where there are no pictures.
+--
 -- The strip draws no background of its own unless asked (`background`):
 -- under the text (`under`), the cells' own backgrounds show through, the
 -- selection among them.
@@ -138,6 +142,158 @@ function M.curve(g, px, opts)
     end
   end
   return X, Y
+end
+
+--- The stretch of a strip worth drawing, in pixels from its left: what
+--- shows of it (`px.view`, all of it when it all shows) and a piece's width
+--- either side, in whole stretches of `step` pixels from the strip's left
+--- edge, so that a stretch drawn is the same however far the strip is
+--- scrolled. Returns the first and last pixel.
+function M.span(px, step)
+  local v = px.view or { x = 0, w = px.w }
+  local margin = 24 * (px.cell and px.cell.w or 8)
+  local a = max(0, floor((v.x - margin) / step) * step)
+  local b = min(px.w, (floor((v.x + v.w + margin) / step) + 1) * step)
+  return a, b
+end
+
+--- Bars over time in a strip, one for each of `opts.items`, `{ beat,
+--- value, color, bright }` (`value` from 0 at the bottom to 1 at the top,
+--- `bright` for one that is chosen), each `opts.width` pixels wide (3)
+--- from the bottom, with a head. `from` and `pixels_per_beat` as for
+--- `M.curve`; `color` for the bars that have none of their own.
+function M.bars(g, px, opts)
+  local P = palette()
+  local H = px.h
+  local from, ppb = opts.from or 0, opts.pixels_per_beat or 8
+  local width = opts.width or 3
+  local top, bottom = opts.top or 2, opts.bottom or 0
+  for _, item in ipairs(opts.items or {}) do
+    local x = floor((item.beat - from) * ppb)
+    if x >= -width and x <= px.w then
+      local v = max(0, min(1, item.value))
+      local y = floor(top + (1 - v) * (H - top - bottom))
+      local colour = item.bright and P.bright or item.color or opts.color or P.dim
+      g:rect(x, y, width, H - bottom - y, { fill = M.alpha(colour, 0.55) })
+      g:rect(x, y, width, 2, { fill = colour })
+    end
+  end
+end
+
+--- A waveform in a strip: for each pixel across, the lowest to the highest
+--- sample around the middle, its RMS as a brighter band inside that, and
+--- a column that reaches full scale in the clip colour. `opts`:
+---   peaks       `peaks(n)`: `n` `{ min, max, rms }` (-1 to 1) across the
+---               whole strip, as `api.clip_peaks` gives them; `n` is the
+---               strip's width in pixels, at most 65536
+---   color       the wave's colour (the theme's `dim`)
+---   rms         the RMS band's colour (the wave's, brighter); false for none
+---   clipped     the colour of a column at full scale (the theme's `red`)
+--- Heights follow `daw.opt.wave_scale`, as the cells do.
+function M.wave(g, px, opts)
+  local P = palette()
+  local W, H = px.w, px.h
+  local n = min(floor(W), 65536)
+  if n < 1 then return end
+  local peaks = opts.peaks(n) or {}
+  if #peaks == 0 then return end
+  local reach = daw.draw.wave_reach
+  local mid, half = H / 2, H / 2 - 1
+  local color = opts.color or P.dim
+  local rms = opts.rms
+  if rms == nil then rms = daw.draw.mix(color, "#ffffff", 0.35) end
+  local clipped = opts.clipped or P.red
+  local function at(x) return peaks[min(#peaks, floor(x * #peaks / W) + 1)] end
+  local function y_of(v) return mid - (v < 0 and -1 or 1) * reach(v) * half end
+  -- A stretch of eight cells at a time, so that one scrolled in is drawn
+  -- the same as before.
+  local step = 8 * (px.cell and px.cell.w or 8)
+  local a, b = M.span(px, step)
+  for s = a, b - 1, step do
+    local e = min(b, s + step)
+    local upper, lower, band_up, band_down = {}, {}, {}, {}
+    local run
+    for x = s, e do
+      local p = at(min(x, W - 1))
+      if p then
+        upper[#upper + 1], upper[#upper + 2] = x, min(y_of(p[2]), mid - 0.5)
+        lower[#lower + 1], lower[#lower + 2] = x, max(y_of(p[1]), mid + 0.5)
+        local r = p[3] or 0
+        band_up[#band_up + 1], band_up[#band_up + 2] = x, mid - reach(r) * half
+        band_down[#band_down + 1], band_down[#band_down + 2] = x, mid + reach(r) * half
+        local full = p[2] >= 0.999 or p[1] <= -0.999
+        if full and x < e then
+          run = run or x
+        elseif run then
+          g:rect(run, 0, x - run, H, { fill = M.alpha(clipped, 0.8) })
+          run = nil
+        end
+      end
+    end
+    if run then g:rect(run, 0, e - run, H, { fill = M.alpha(clipped, 0.8) }) end
+    local function shape(top, bottom)
+      local out = {}
+      for i = 1, #top do out[i] = top[i] end
+      for i = #bottom - 1, 1, -2 do out[#out + 1], out[#out + 2] = bottom[i], bottom[i + 1] end
+      return out
+    end
+    if #upper >= 4 then
+      g:poly(shape(upper, lower), { fill = color })
+      if rms then g:poly(shape(band_up, band_down), { fill = rms }) end
+    end
+  end
+end
+
+-- Twins in cells -------------------------------------------------------------------
+--
+-- What a view draws where a strip cannot be shown: the same data, in
+-- cells, as the views draw them (`daw.draw`). `buf` is the area the strip
+-- would have taken, and the options are the pixel version's, with `zoom`
+-- (cells a beat) for `pixels_per_beat` and `style` for the colour.
+
+--- `M.curve` in cells: a connected line of sextants (`daw.opt.curve_glyphs`).
+function M.curve_cells(buf, opts)
+  local points = opts.points or {}
+  if #points == 0 and opts.flat == nil then return end
+  local lo, hi = opts.lo or 0, opts.hi or 1
+  local frac = opts.frac or function(v) return (v - lo) / ((hi - lo) ~= 0 and (hi - lo) or 1) end
+  local from, zoom = opts.from or 0, opts.zoom or 1
+  local value_at = daw.curves.value_at
+  daw.draw.curve(buf, 0, buf.height, function(i)
+    local v = value_at(points, from + (i + 0.5) / (2 * zoom)) or opts.flat
+    return v and frac(v)
+  end, opts.style)
+end
+
+--- `M.bars` in cells: a column of eighth blocks for each item.
+function M.bars_cells(buf, opts)
+  local eighths = daw.draw.g.eighths
+  local rows = buf.height
+  local from, zoom = opts.from or 0, opts.zoom or 1
+  for _, item in ipairs(opts.items or {}) do
+    local x = floor((item.beat - from) * zoom + 0.5)
+    if x >= 0 and x < buf.width then
+      local level = max(0, min(1, item.value)) * rows * 8
+      local style = item.bright and "Bright" or item.style or opts.style
+      for row = 0, rows - 1 do
+        local amount = level - (rows - 1 - row) * 8
+        if amount >= 1 then buf:text(x, row, eighths[min(8, floor(amount))], style) end
+      end
+    end
+  end
+end
+
+-- Styles for the cells of a waveform that `daw.draw.waveform` marks.
+local wave_styles = { flip = "ClipWaveFlip", clip = "ClipWaveClip", clipflip = "ClipWaveClipFlip" }
+
+--- `M.wave` in cells: each column from its lowest to its highest sample in
+--- eighth blocks (`daw.draw.waveform`), a column at full scale in red.
+--- `opts.peaks(n)` is asked for one a column.
+function M.wave_cells(buf, opts)
+  local _, runs = daw.draw.waveform(opts.peaks(buf.width) or {}, buf.height)
+  for row, list in ipairs(runs) do
+    for _, run in ipairs(list) do buf:text(run.column, row - 1, run.text, wave_styles[run.mark] or opts.style) end
+  end
 end
 
 return M

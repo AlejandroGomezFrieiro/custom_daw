@@ -1216,8 +1216,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn grid_surface(_, sh, (key, x, y, w, h, cx, cy, cw, ch, under) => (String, f64, f64, f64, f64, f64, f64, f64, f64, Option<bool>)) {
             let cell_px = sh.caps.borrow().get(&sh.seat.get()).map_or((0, 0), |c| c.cell);
             let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
-            let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) }.intersect(&clip);
-            Ok(sh.grid.borrow_mut().surface(&key, area, cell_px, under.unwrap_or(false)).map(|i| i + 1))
+            let whole = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) };
+            Ok(sh.grid.borrow_mut().surface_part(&key, whole, clip, cell_px, under.unwrap_or(false)).map(|i| i + 1))
         }
         // The view being drawn is done with the surfaces it kept: what is
         // drawn over them from now on covers them.
