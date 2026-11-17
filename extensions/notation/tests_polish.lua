@@ -133,6 +133,21 @@ test("notation: in insert mode the title keeps the key and metre beside the INS 
   eq(title:find("quarter", 1, true) == title:find("INS quarter", 1, true) + 4, true, "the value once, in the badge: " .. title)
 end)
 
+test("notation: the title names a song in A minor so, not C major, with no key set", function()
+  local function title()
+    for _, row in ipairs(api.ui_snapshot(160, 50)) do
+      if row:find("4/4", 1, true) and row:find("tune", 1, true) then return row end
+    end
+  end
+  -- A minor: the tonic chord first and last, the leading tone G sharp before it.
+  song({ N(57, 0, 1), N(60, 1, 1), N(64, 2, 1), N(69, 3, 1), N(64, 4, 1), N(68, 5, 1), N(71, 6, 1), N(69, 7, 1) })
+  local row = title()
+  eq(row and row:find("A minor  4/4", 1, true) ~= nil, true, "the minor key the music is in: " .. tostring(row))
+  song(scale())
+  row = title()
+  eq(row and row:find("C major  4/4", 1, true) ~= nil, true, "and C major for music in C: " .. tostring(row))
+end)
+
 test("notation: in the cell view a low second voice's stems stop at their system, clear of the next", function()
   -- Whole notes over quarters: the only stems are the low voice's.
   local notes = {}

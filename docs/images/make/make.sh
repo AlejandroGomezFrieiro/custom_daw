@@ -40,7 +40,7 @@ scene() {
   echo "$name"
   rm -f "$WORK/$name.mkv"
   : > "$WORK/stills.list"
-  "$1" || exit 1
+  sh "$1" || exit 1
   if [ -f "$WORK/$name.mkv" ]; then
     python3 "$HERE/gif.py" "$name" || exit 1
     [ -z "$NOCOPY" ] && cp "$WORK/$name.gif" "$2/$name.gif"

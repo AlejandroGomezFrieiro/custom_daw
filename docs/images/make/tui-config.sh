@@ -3,8 +3,7 @@
 # :reload running it again while the song plays.
 . "$MAKE/rig.sh"
 SETUP=$TUI_DEMO
-HOME=$D CONFIG=$D/.config/daw
-export HOME
+CONFIG=$D/.config/daw
 EDIT=$CONFIG/init.lua
 export EDIT
 mkdir -p "$CONFIG"

@@ -12,6 +12,8 @@ track at once and as one undo step.
 daw.ext.load("extensions/sections")   -- or put it in ~/.config/daw/extensions
 ```
 
+![The demo song named Intro and Verse with ,Sa, [s and ]s going between them, ,S& repeating the verse after itself on every track, and u](images/tui-sections.gif)
+
 ## On screen
 
 Each section's name is on a second row of the arrange view's ruler, under

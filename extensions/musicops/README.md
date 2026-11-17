@@ -10,6 +10,8 @@ project's key, and a scale lock for entering and moving notes.
 daw.ext.load("/path/to/daw/extensions/musicops")   -- or link it into ~/.config/daw/extensions
 ```
 
+![The demo song's chords in the piano roll: gzpie arpeggiates every chord and u undoes it, gzsie strums them, gzhie humanizes, then played](images/tui-musicops.gif)
+
 Every key starts with `gz`.
 
 ## Operators
