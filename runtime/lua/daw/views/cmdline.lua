@@ -398,7 +398,16 @@ daw.ui.view("cmdline", {
     local pending = daw.keymap.pending()
     if pending ~= "" then buf:text(buf.width - #pending - 2, 0, pending, "Accent") end
     local message = daw.ui.message
-    if message then
+    if message and daw.keymap.mode == "i" and daw.opt.keybar and #daw.ui.keybar.entries() > 0 then
+      -- While typing, the keys are what is needed: the message goes at the
+      -- right end, cut to its share, and the keys keep the rest.
+      local first = message.text:match("^[^\n]*")
+      local share = math.floor(buf.width * 0.4)
+      local shown = api.str_width(first) > share and daw.util.fit(first, share) or first
+      local w = api.str_width(shown)
+      buf:text(buf.width - w - 1, 0, shown, levels[message.level] or "Info")
+      daw.draw.keys(buf, 1, 0, daw.ui.keybar.entries(), buf.width - w - 4)
+    elseif message then
       local first = message.text:match("^[^\n]*")
       local how = M.messages_hint()
       local more = (message.text:find("\n") or message.level == "error") and ("  " .. how .. " shows it all") or ""

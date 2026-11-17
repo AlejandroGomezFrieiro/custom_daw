@@ -37,6 +37,23 @@ function M.get(name)
   return registry[name]
 end
 
+--- Count a use of a command that was chosen by name (typed, or picked), so
+--- that pickers can put what is used often first. Kept in `daw.state`.
+function M.used(name)
+  local spec = registry[name]
+  name = spec and spec.alias_of or name
+  if not registry[name] then return end
+  local uses = daw.state.command_uses or {}
+  uses[name] = math.min((uses[name] or 0) + 1, 1000)
+  daw.state.command_uses = uses
+end
+
+--- How many times `used` has counted a command.
+function M.uses(name)
+  local uses = daw.state.command_uses
+  return type(uses) == "table" and uses[name] or 0
+end
+
 --- Every command, sorted by name.
 function M.list()
   local out = {}

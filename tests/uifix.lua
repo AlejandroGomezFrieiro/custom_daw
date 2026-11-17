@@ -58,6 +58,122 @@ test("a command of a bundled extension that is not loaded says how to load it, a
   eq(last_message():find("no bundled extension", 1, true) ~= nil, true, last_message())
 end)
 
+test("the command picker ranks by use and by the focused view, with exact and prefix matches first", function()
+  fresh()
+  daw.keymap.feed("<Esc><Esc>")
+  if daw.ui.float then daw.ui.close() end
+  daw.state.command_uses = nil
+  local pick = daw.pick
+  local function order(view, query)
+    daw.ui.focus(view)
+    daw.pick("commands")
+    daw.keymap.feed(query)
+    local out = {}
+    for i, line in ipairs(pick.state().matches) do out[line:match("^(%S+)")] = i end
+    daw.keymap.feed("<Esc>")
+    return out
+  end
+  local rank = order("arrange", "name")
+  eq(rank["track.rename"] < rank["scene.name"], true, "in the arrange view its own rename comes before the session's scene.name")
+  rank = order("session", "name")
+  eq(rank["scene.name"] < rank["track.rename"], true, "in the session view the scene's name does")
+  for _ = 1, 10 do daw.commands.used("track.rename") end
+  rank = order("session", "name")
+  eq(rank["track.rename"] < rank["scene.name"], true, "what is used often goes first, in any view")
+  eq(daw.commands.uses("track.rename"), 10, "the count is kept")
+  for _ = 1, 50 do daw.commands.used("scene.name") end
+  rank = order("arrange", "scene.name")
+  eq(rank["scene.name"], 1, "an exact match is first however much another is used")
+  daw.state.command_uses = nil
+  daw.ui.focus("arrange")
+end)
+
+test("panels stacked under the arrange view leave it a third of the rows, and the notation view at most half", function()
+  fresh()
+  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  local function heights()
+    local out = {}
+    for _, r in ipairs(daw.ui.arrange(160, 45)) do
+      if r.win then out[r.name] = r.h end
+    end
+    return out
+  end
+  daw.ui.show("pianoroll")
+  daw.ui.show("notation")
+  daw.ui.show("mixer")
+  local h = heights()
+  local total = h.arrange + h.pianoroll + h.notation + h.mixer
+  eq(h.arrange >= math.floor(total / 3), true, "the arrange view keeps a third: " .. h.arrange .. " of " .. total)
+  eq(h.notation <= math.floor(total / 2), true, "the notation view is at most half: " .. h.notation)
+  daw.ui.hide("pianoroll")
+  h = heights()
+  total = h.arrange + h.notation + h.mixer
+  eq(h.arrange >= math.floor(total / 3) and h.notation <= math.floor(total / 2), true,
+    "three views: arrange " .. h.arrange .. ", notation " .. h.notation .. ", mixer " .. h.mixer)
+  daw.ui.hide("mixer")
+  h = heights()
+  eq(h.arrange < h.notation, true, "with only two, the notation view keeps the larger share it had")
+  daw.cmd("view.equal")
+  daw.ui.show("mixer")
+  h = heights()
+  total = h.arrange + h.notation + h.mixer
+  eq(h.arrange >= math.floor(total / 3) - 1, true, "after `Ctrl-w =` the arrange view still has its third")
+  daw.ui.hide("notation")
+  daw.ui.hide("mixer")
+end)
+
+test("in insert mode a message goes beside the key line instead of hiding it", function()
+  fresh()
+  daw.keymap.feed("<Esc><Esc>")
+  daw.ui.keybar.set("arrange", "i", { { "zq", "test key" }, { "<Esc>", "done" } })
+  daw.keymap.set_mode("i")
+  daw.notify("now a score clip: notation writes it and its notes play it (:score.detach for plain MIDI again)")
+  local rows = api.ui_snapshot(100, 30)
+  local last = rows[#rows]
+  eq(last:find("test key", 1, true) ~= nil, true, "the keys stay: " .. last)
+  eq(last:find("now a score", 1, true) ~= nil, true, "and the message is there: " .. last)
+  daw.keymap.set_mode("n")
+  daw.ui.keybar.set("arrange", "i", nil)
+  daw.ui.message = nil
+  rows = api.ui_snapshot(100, 30)
+  eq(rows[#rows]:find("now a score", 1, true), nil, "gone with the message")
+end)
+
+test("the arrange view draws a volume curve only on the track the cursor is on", function()
+  fresh()
+  local pad = daw.add_track({ name = "Pad" })
+  local lead = daw.add_track({ name = "Lead" })
+  lead:add_clip({ start = 0, length = 2, name = "tune", notes = { { pitch = 60, start = 0, length = 1 } } })
+  pad:automate("volume"):set_points({ { beat = 0, value = -12 }, { beat = 8, value = 0 } })
+  daw.cursor.set_track(lead)
+  daw.ui.focus("arrange")
+  local braille = "[\226][\160-\163]"
+  eq(screen():find(braille) == nil, true, "no curve on a track the cursor is not on")
+  daw.cursor.set_track(pad)
+  eq(screen():find(braille) ~= nil, true, "the curve of the track the cursor is on")
+end)
+
+test("a picker's pane stops saying it is off the moment hearing is turned on, and marks what plays with a note", function()
+  fresh()
+  daw.keymap.feed("<Esc><Esc>")
+  if daw.ui.float then daw.ui.close() end
+  daw.state["pick.audition.zz uifix"] = false
+  daw.pick({ title = "Sounds", audition_key = "zz uifix", items = { "one", "two" }, on_choose = function() end,
+    audition = function(item) return "hearing " .. item end })
+  local function pane() return table.concat(api.ui_snapshot(120, 30), "\n") end
+  eq(pane():find("off · Ctrl-Space hears", 1, true) ~= nil, true, "off to begin with")
+  daw.keymap.feed("<C-Space>")
+  local text = pane()
+  eq(text:find("off · Ctrl-Space hears", 1, true), nil, "on at once")
+  eq(text:find("…", 1, true) ~= nil, true, "waiting to hear")
+  daw.wait(daw.opt.audition_delay + 200)
+  text = pane()
+  eq(text:find("♪ hearing one", 1, true) ~= nil, true, "a note marks what plays, the cursor stays an arrow: " .. text)
+  eq(text:find("▶ hearing", 1, true), nil, "the play mark is not the list cursor")
+  daw.keymap.feed("<Esc>")
+  daw.state["pick.audition.zz uifix"] = nil
+end)
+
 test("the mixer's scale and every strip's fader cap agree, whatever the strip holds", function()
   fresh()
   local plain = daw.add_track({ name = "Plain" })

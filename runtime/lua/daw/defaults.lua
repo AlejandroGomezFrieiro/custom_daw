@@ -1658,7 +1658,7 @@ command("cmdline", function(ctx)
   }, function(line)
     -- A number alone is a bar to go to, as it is a line in an editor.
     if line:match("^%s*%d+%s*$") then return daw.commands.run("cursor.bar", { tonumber(line) }) end
-    if line:match("%S") then daw.state.last_cmdline = line end
+    if line:match("%S") then daw.state.last_cmdline = line daw.commands.used(line:match("^%s*:?(%S+)")) end
     daw.commands.exec(line)
   end)
 end, { desc = "Type a command" })
