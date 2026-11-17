@@ -139,12 +139,13 @@ end
 
 --- The notes a score writes, by id: `{ pitch, s, len, staff, voice, ev,
 --- grace, mi, note }` with `s` in ticks from measure 1 and tied notes one note.
---- Grace notes are placed before their note, a 32nd each.
-function M.written(sc)
+--- Grace notes are placed before their note, a 32nd each. With `from` and
+--- `to`, those of measures `from` to `to` only (a tie is followed no further).
+function M.written(sc, from, to)
   local out = {}
   for _, st in ipairs(sc.staves) do
     for v = 1, 4 do
-      local seq = D.sequence(sc, st.id, v)
+      local seq = D.sequence(sc, st.id, v, from, to)
       local graces = {}
       for k, it in ipairs(seq) do
         local ev = it.ev
@@ -609,11 +610,37 @@ function M.sync(clip_id, before, after, own, fixed)
       top = math.max(top, n.id)
     end
   end
-  local wb, wa = M.written(before), M.written(after)
-  local db, da = M.decisions(before, wb), M.decisions(after, wa)
   local rb, ra = M.resolve(before), M.resolve(after)
   local known = sources(rb)
   local marks_changed = not same(known, sources(ra))
+  -- The measures the edit touched, and those either side, and back over
+  -- what is tied into them: the notes anywhere else are as they were
+  -- (unless a mark that plays changed, which reaches any of them).
+  local from, to
+  if not marks_changed and #before.measures == #after.measures and D.origin(before) == D.origin(after) then
+    for i, m in ipairs(after.measures) do
+      if m.v ~= before.measures[i].v then
+        from, to = from or i, i
+      end
+    end
+    if from then
+      from, to = math.max(1, from - 1), math.min(#after.measures, to + 1)
+      local function tied_out(sc, mi)
+        for _, entry in ipairs(sc.measures[mi].voices) do
+          local last = entry.events[#entry.events]
+          for _, n in ipairs(last and last.notes or {}) do
+            if n.tie then return true end
+          end
+        end
+        return false
+      end
+      while from > 1 and (tied_out(before, from - 1) or tied_out(after, from - 1)) do from = from - 1 end
+    else
+      from, to = 1, 0
+    end
+  end
+  local wb, wa = M.written(before, from, to), M.written(after, from, to)
+  local db, da = M.decisions(before, wb), M.decisions(after, wa)
   local ob, oa = D.origin(before), D.origin(after)
   local default = daw.opt.velocity or 100
   local set, remove, add, named = {}, {}, {}, {}
@@ -705,7 +732,7 @@ function M.sync(clip_id, before, after, own, fixed)
         change.meta, any = meta, true
       end
       if any then set[#set + 1] = change end
-    elseif not i then
+    elseif not b then
       adding[#adding + 1] = id
     end
   end

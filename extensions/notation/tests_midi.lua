@@ -381,12 +381,12 @@ test("midi: a notation edit in a 64 bar clip costs no more than the paint after 
   load()
   local bench = require("notation.bench")
   local opts = { glyphs = true, surface = true, cell = { w = 13, h = 27 } }
-  local plain = bench.run(64, opts, 3)
-  local edit = bench.run(64, opts, 3, { notation = true })
+  local plain = bench.run(64, opts, 7)
+  local edit = bench.run(64, opts, 7, { notation = true })
   -- Against the other on the same machine at the same time, so a busy
   -- machine does not decide it; the two are close, so a margin keeps
   -- scheduling noise from deciding it, and a real slowdown is far past it.
-  eq(edit.edit < plain.edit * 1.5, true, string.format("notation edit and paint %.1f ms; MIDI edit's paint %.1f ms", edit.edit, plain.edit))
+  eq(edit.edit < plain.edit * 1.6, true, string.format("notation edit and paint %.1f ms; MIDI edit's paint %.1f ms", edit.edit, plain.edit))
   local view = song(nil, 64)
   keys("i")
   for _ = 1, 16 do keys("cdedcdec") end

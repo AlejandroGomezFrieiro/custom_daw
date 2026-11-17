@@ -452,7 +452,7 @@ end
 
 test("musicxml: a slur written out ends on a chord of the voice it starts in", function()
   local _, _, out = round(PIANO)
-  local stop = out:match("<note>[^\n]-slur type=\"stop\"[^\n]-</note>")
+  local stop = out:match("<note[^>\n]*>[^\n]-slur type=\"stop\"[^\n]-</note>")
   eq(stop and stop:find("<voice>1</voice>", 1, true) ~= nil and stop:find("<step>A</step>", 1, true) ~= nil, true, tostring(stop))
 end)
 
