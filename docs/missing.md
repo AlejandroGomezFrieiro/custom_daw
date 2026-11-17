@@ -40,9 +40,9 @@
   location list stays with its window's number after the window closes.
   The window's status bar does not count it.
 - Ex (`:5,8d`, `:%s`, `:g`): `d`, `m` and `co` move clips, not automation,
-  tempo changes or markers in the range; `:s` and `:g` reach a score
-  clip's notes only where an extension writes them (notation does), and
-  `:m`, `:co` and `:>` move its notes as the piano roll does; a term of a pattern holds no
+  tempo changes or markers in the range; `:m`, `:co` and `:>` move notes as
+  the piano roll does; a spelling typed in a replacement (`:s/c4/db4/`) is
+  not kept for notation, which spells it by the key; a term of a pattern holds no
   spaces, so `name=` cannot name a clip with one; Vim's `:t` (copy) is not
   there, as `t` starts a range of tracks, nor `:k`, `:j!`, `:retab` and the
   like. Of the preview the window is handed the piano roll's matches and
@@ -80,7 +80,7 @@
   The session view's `m` and `n` still mean launch mode and a new clip, not
   Vim's mark and next match.
 
-- Score clips (notation): a tempo mark writes a point of the song's tempo
+- Notation: a tempo mark writes a point of the song's tempo
   map when it is written, and nothing keeps the two together after (moving
   the clip or the mark leaves the point where it was; no option makes the
   score own the song's tempo); repeats and endings are written, not
@@ -91,10 +91,16 @@
   rendered; no CC1 or CC11 is written for sustained instruments; a key
   change after the first bar is not read by `daw.harmony` (there is no key
   track in the core: the key the score starts in is the project's); a
-  time signature written in the score sets the song's signature only at a
-  bar that starts on one of the song's; writing a time signature writes
-  the bars after it again in their values, and a tuplet there becomes plain
-  values. MusicXML in and out: a stem direction set by hand, a beam
+  time signature written in notation is the song's, for every track. A mark
+  writes the MIDI only when it is written: notes the piano roll moves under
+  a dynamic later keep their velocities, and a slur writes nothing (the
+  notes are as long as they are). What notation keeps of a note does not
+  hold a tie the metre does not need (a tied note is one MIDI note, written
+  again as the metre divides it); a grace note before a clip's first beat
+  is kept before the clip, where it is hidden and does not play; the clefs
+  a clip was written on are kept where its notes would choose others, so a
+  note the roll puts far below a treble staff does not make it a grand
+  staff. MusicXML in and out: a stem direction set by hand, a beam
   joined over a beat, a system kept on the line before (`zj`) and bars
   to a system are not written out, and stems in a file are left to the
   layout; cross-staff chords are split by staff; nested tuplets read as one
@@ -105,17 +111,13 @@
   file is written, not ramped in the tempo map; only the first part's time
   signatures go to the song; the drag-and-drop of a file onto the window
   and the file pickers do not offer MusicXML (`:open` and `:import` with a
-  path do); LilyPond writes chord symbols as text, not `ChordNames`. The
-  roll's hatching of generated
-  notes is a pale veil in the window, its velocity strip shows no dynamic
-  line there, and "only this pass" is offered for time, length and velocity
-  only (a pitch or a delete of a generated note can be written, not
-  limited to a pass); the notation window outlines the roll's note in the
-  terminal only; joining, splitting or stretching a score clip in the arrange view and
-  recording into one work on its notes as on any MIDI clip, and the next
-  edit in notation renders the score over them; `:import song.mid score=yes`
-  does not exist (`:score.from-midi` after importing does it); the
-  several-tracks view and a track's export transcribe what the clips play.
+  path do); a score brought in from a file is written as the clip's
+  transcription when it goes out again; LilyPond writes chord symbols as
+  text, not `ChordNames`. The notation window outlines the roll's note in
+  the terminal only; the several-tracks view and a track's export
+  transcribe what the clips play. Tuplets are read from the MIDI within a
+  beat (and quarter-note triplets over two); nine to a beat, five over two
+  beats and the like are written only when said in notation.
   Of the grammar for music: `!` does not run a snippet (snippets expand in
   the piano roll) nor hand a filter MusicXML (it hands it a line of text an
   event); `in` takes no count; a chord tied only in some of its notes is

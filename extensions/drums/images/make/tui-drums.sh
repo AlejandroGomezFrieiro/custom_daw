@@ -1,0 +1,19 @@
+#!/bin/sh
+# The drum grid in the terminal, on the demo song's drums: claps put in by
+# name, a hit made harder, the bar repeated, and played.
+. "$MAKE/rig.sh"
+SETUP="$TUI_DEMO daw.ext.load('extensions/drums') daw.cursor.set_track(daw.tracks()[1]) daw.cmd('drums.map', { 'gm' })"
+rig_start
+term_start
+rec_start tui-drums
+cap "Enter on a drum track's clip opens the grid: a row for each piece"
+pause 0.5; key Return; pause 1.4
+cap "/ finds a piece by name; Enter puts a hit in, and it is heard"
+key slash; TYPE_DELAY=110 typ "clap"; key Return; pause 0.5
+keys 0.3 4 l Return; keys 0.3 8 l Return; pause 0.6
+cap "+ - make the hit under the cursor harder or softer"
+keys 0.3 minus minus minus; pause 0.6
+
+cap "& repeats the bar to the end of the clip; Space plays"
+key ampersand; pause 0.8; key space; pause 3.0; key space; pause 0.4
+rec_stop

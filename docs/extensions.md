@@ -42,7 +42,9 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/doctor` | a guided check of the real hardware (audio, MIDI, recording, plugins), with a written report: `:doctor`, `daw doctor` |
 | `crates/daw-mcp` | a Model Context Protocol server in front of the control socket |
 
-Each has a README of its own. Where a plugin needed something only the core
+Each has a README of its own, and the pictures in it are the extension's
+too: `extensions/<name>/images`, made by the scenes in its `images/make`
+(`docs/images/make/make.sh <name>`). Where a plugin needed something only the core
 could give (measuring loudness quickly, a tree of undo states, data for a
 device's every instance), that one thing went into the core as an API
 function, general enough for any extension, and the rest stayed outside.

@@ -17,26 +17,19 @@
 local view = require("notation")
 local model = require("notation.model")
 local D = require("notation.doc")
-local render = require("notation.render")
+local midi = require("notation.midi")
 
 local O = {}
 local EPS = 1e-6
 
 -- The score and the cursor --------------------------------------------------------------------
 
---- The open clip's score, to read: its own, or for a plain MIDI clip the
---- one it would be written as (with the ids its first edit gives it).
+--- The open clip's score, to read: what its notes are written as, with the
+--- ids an edit of it finds.
 function O.score()
   local clip = view:clip()
   if not clip then return nil end
-  local c = clip:get()
-  local sc = view.score_of(c)
-  if sc then return sc, clip end
-  local key = c.id .. ":" .. tostring(c.stamp) .. ":" .. tostring(c.note_count)
-  if O.cached and O.cached.key == key then return O.cached.score, clip end
-  sc = view.from_midi(clip)
-  O.cached = { key = key, score = sc }
-  return sc, clip
+  return view.score_of(clip:get()), clip
 end
 
 --- Ticks from measure 1 of a beat of the clip, and back.
@@ -323,7 +316,7 @@ local function slur_here(sc, cur)
   local t = it and it.s or cur.t
   for _, mk in ipairs(sc.marks or {}) do
     if mk.kind == "slur" and mk.staff == cur.staff then
-      local s, e = render.at_of(sc, f, mk.from), render.at_of(sc, f, mk.to)
+      local s, e = midi.at_of(sc, f, mk.from), midi.at_of(sc, f, mk.to)
       if s and e and t >= s and t <= e then return mk, s, e end
     end
   end

@@ -16,6 +16,8 @@ the keyboard, [keys.md](../../docs/course/keys.md).
 daw.ext.load("/path/to/daw/extensions/tutor")   -- in ~/.config/daw/init.lua
 ```
 
+![:tutor! opening lesson 1 in a practice project: the introduction, then the panel along the bottom saying which key to press and noticing each step done](images/tui-tutor.gif)
+
 or link the directory into `~/.config/daw/extensions`. Then, in paw:
 
 | | |

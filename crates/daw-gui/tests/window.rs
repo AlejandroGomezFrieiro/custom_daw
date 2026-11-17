@@ -1859,7 +1859,7 @@ fn a_count_typed_in_the_window_reaches_the_kernel() {
     w.key("ctrl+a");
     w.expect(
         "three added to the number, not one",
-        "require('daw.textbuf').buf().state.text:line(2):find('vol -1.0', 1, true) ~= nil",
+        "require('daw.textbuf').buf().state.text:line(2):find('vol -2.0', 1, true) ~= nil",
     );
     w.shot("count.png");
     w.assert_alive("after a count");

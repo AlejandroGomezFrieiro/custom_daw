@@ -14,7 +14,6 @@ local view = require("notation")
 local model = require("notation.model")
 local D = require("notation.doc")
 local O = require("notation.objects")
-local render = require("notation.render")
 
 local P = {}
 local floor = math.floor
@@ -209,7 +208,8 @@ function P.fragment(sc, sel)
   return { lines = order, base = base, length = math.max(0, finish - base) }
 end
 
---- A fragment as a register's value: the notes it plays too, for the piano roll.
+--- A fragment as a register's value: the clip's notes it writes too, as
+--- they play and with what they keep, for the piano roll.
 function P.value(sc, frag)
   local ids = {}
   for _, line in ipairs(frag.lines or {}) do
@@ -226,10 +226,11 @@ function P.value(sc, frag)
   end
   local from = O.beat(sc, frag.base)
   local notes, top = {}, 0
-  for _, r in ipairs(render.render(sc, { feel = false, written = true })) do
-    if ids[r.written.n] then
-      notes[#notes + 1] = { pitch = r.pitch, start = r.start - from, length = r.length, velocity = r.velocity }
-      top = math.max(top, r.pitch)
+  local clip = view:clip()
+  for _, n in ipairs(clip and clip:notes() or {}) do
+    if n.id and ids["n" .. n.id] then
+      notes[#notes + 1] = { pitch = n.pitch, start = n.start - from, length = n.length, velocity = n.velocity, meta = n.meta }
+      top = math.max(top, n.pitch)
     end
   end
   return { kind = "notes", shape = "char", top = top, length = frag.length / D.Q, notes = notes, score = frag }
@@ -311,7 +312,6 @@ function P.delete(sc, sel)
       for _, n in ipairs(it.notes) do
         if D.find_note(sc, n.id) then
           D.remove_note(sc, n.id)
-          if sc.feel then sc.feel[n.id] = nil end
         end
       end
     end
@@ -360,7 +360,7 @@ function P.put_fragment(sc, frag, t, cur, keep, after)
 end
 
 --- Move a selection by `by` ticks: written again there, with its ids (and
---- so its feel and marks), what is there giving way.
+--- so their notes and marks), what is there giving way.
 function P.shift(sc, sel, by)
   local frag = P.fragment(sc, sel)
   if not frag.lines or #frag.lines == 0 then return false end
@@ -651,10 +651,10 @@ end
 -- Running an operator --------------------------------------------------------------------------------
 
 --- Change the score over a region (if one is given) with `fn(sc, sel,
---- clip)`, as one edit (a plain MIDI clip is written as a score first).
+--- clip)`, as one edit of its notes.
 --- `fn` returning false changes nothing.
 function P.on(region, fn)
-  if view:readonly() or not view:ensure_score() then return end
+  if not view:editable() then return end
   local result
   view:write(function(sc, clip)
     result = fn(sc, region and O.of_region(sc, region), clip)
@@ -861,8 +861,28 @@ function P.repitch_enter(letter, add)
   end
 end
 
+--- Put a grace note (`kind` acciaccatura or appoggiatura, `sp` a model
+--- spelling) before the chord of a voice starting `at` ticks into measure
+--- `mi`. Returns whether there was one; a grace note leads only to a note.
+function P.put_grace(sc, mi, staff, v, at, kind, sp)
+  local entry = D.voice(sc.measures[mi], staff, v)
+  local x = 0
+  for i, ev in ipairs(entry and entry.events or {}) do
+    if x == at and not ev.grace then
+      if ev.kind ~= "chord" then return false end
+      table.insert(entry.events, i, { id = D.id(sc, "e"), kind = "chord", grace = kind, dur = { 1, 8 }, dots = 0,
+        notes = { { id = D.id(sc, "n"), step = sp.letter, alter = sp.alter, octave = sp.octave } } })
+      D.touch(sc, mi)
+      return true
+    end
+    x = x + D.length(ev)
+  end
+  return false
+end
+
 --- A grace note (`view.grace`: acciaccatura or appoggiatura) of a letter
 --- before the note at the cursor, in the voice entered; the cursor stays.
+--- Where no note starts yet, it goes in with the note entered there next.
 function P.grace_enter(letter)
   local fifths = key()
   local kind = view.grace
@@ -872,26 +892,12 @@ function P.grace_enter(letter)
   local ok = P.on(nil, function(sc)
     local mi, at = view.where(sc, view.beat)
     D.ensure(sc, mi)
-    local staff = view:staff_id(sc, sp.pitch)
-    local v = view.voice or 1
-    local entry = D.voice(sc.measures[mi], staff, v, true)
-    if #entry.events == 0 then
-      for _, it in ipairs(D.line(sc, mi, staff, v)) do entry.events[#entry.events + 1] = it.ev end
-    end
-    local x = 0
-    for i, ev in ipairs(entry.events) do
-      if x == at and not ev.grace then
-        table.insert(entry.events, i, { id = D.id(sc, "e"), kind = "chord", grace = kind, dur = { 1, 8 }, dots = 0,
-          notes = { { id = D.id(sc, "n"), step = sp.letter, alter = sp.alter, octave = sp.octave } } })
-        D.touch(sc, mi)
-        return true
-      end
-      x = x + D.length(ev)
-    end
-    daw.notify("a grace note goes before a note or a rest: put the cursor where one starts", "warn")
+    if P.put_grace(sc, mi, view:staff_id(sc, sp.pitch), view.voice or 1, at, kind, sp) then return true end
+    view.pending_grace = { kind = kind, sp = sp, beat = view.beat }
+    daw.notify("the " .. kind .. " goes in before the note entered here next")
     return false
   end)
-  if ok then
+  if ok ~= nil then
     view.last = { step = sp.step, pitch = sp.pitch, beat = view.beat }
     view.step = sp.step
     view:audition(sp.pitch)

@@ -1,55 +1,78 @@
 # paw
 
-paw is a personal audio workstation built the way Neovim is built: a small
-kernel, and everything you touch written in Lua on top of it. You drive it
-from the keyboard with modal editing, from a window with the mouse, or from
-a script, and all three are the same program.
+**A personal audio workstation you drive like Neovim and rebuild in Lua.**
 
-If you know Vim you already know most of it. A track is a line and a clip is
-a word; `3>ic` moves a clip three steps later, `:%s/c4/d4/gc` changes notes
-with a preview, `:e daw://tracks` edits your tracks as text, `:help gU`
-opens the manual, and your configuration is Lua that calls the same `daw`
-module the built-in keys are made with.
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
+![Linux](https://img.shields.io/badge/platform-Linux-informational)
+![Built with Nix](https://img.shields.io/badge/built%20with-Nix-5277C3)
+![Status: personal, work in progress](https://img.shields.io/badge/status-personal%20WIP-orange)
 
-![The window, playing the demo song](docs/images/gui.png)
+![The demo song playing in the terminal while the melody is moved with 3>ic, again with ., undone twice, and changed with :%s/e5/g5/g, previewed as it is typed](docs/images/tui-arrange.gif)
 
-![The same song in the terminal](docs/images/tui.png)
+- **Modal, on a timeline.** A track is a line and a clip is a word: `3>ic`
+  moves a clip three steps later, `:%s/c4/d4/gc` changes notes with a preview,
+  `:e daw://tracks` edits your tracks as text.
+- **Lua all the way up.** A small Rust kernel (audio engine, project model,
+  plugin hosting); the views, every command and every key are Lua your
+  `init.lua` can change, replace or extend.
+- **One program, three faces.** The terminal, a window for the mouse, and
+  scripts all drive the same kernel, and can be open on the same project.
 
-The kernel is Rust: a real-time audio engine, the project model with its undo
-tree, plugin hosting and a Lua host. The arrange view, the mixer, the piano
-roll, the score, every command and every key are Lua. The terminal UI and the
-window are two faces of one kernel, and both can be open on the same project.
-The terminal comes first: whatever the window does, the terminal does too.
+![The window playing the demo song, with the device panel of the keys](docs/images/gui.png)
 
 > [!NOTE]
-> This is an early, personal project. It runs on Linux (PipeWire, ALSA or
-> JACK) and is built with Nix. It plays, edits, records and renders MIDI and
-> audio through built-in devices and CLAP, LV2 and VST3 plugins, but most of
-> it has been tested against stand-ins, not real hardware. See
-> [what is missing](docs/missing.md).
+> paw is a **personal, work-in-progress** project, made first for one
+> person's music and taste. It runs on Linux (PipeWire, ALSA or JACK) and is
+> built with Nix. It plays, edits, records and renders MIDI and audio through
+> built-in devices and CLAP, LV2 and VST3 plugins, but most of it has been
+> tested against stand-ins, not real hardware, and things change without
+> notice. See [what is missing](docs/missing.md).
 
 ## Try it
 
-The programs keep short names for now: `daw` is paw's terminal interface, `daw-gui` its
-window, and the Lua module is `daw`.
+You need Linux and [Nix](https://nixos.org/download/) with flakes enabled
+(`experimental-features = nix-command flakes` in `nix.conf`).
+
+```sh
+git clone https://github.com/AlejandroGomezFrieiro/custom_daw paw && cd paw
+nix run . -- -e 'dofile("examples/demo-song.lua")'          # the terminal UI, with a demo song
+nix run .#daw-gui -- -e 'dofile("examples/demo-song.lua")'  # the window, with the same song
+```
+
+Then press `Space` to play, `?` to list every key of the view you are in,
+`:tutor` for a course of seventeen short lessons (also in
+[docs/course](docs/course/README.md)), `:help` for the manual, and `:q` to
+quit. `nix run . -- doctor` checks your sound devices, MIDI ports and plugins.
+
+To build it yourself, or install it:
 
 ```sh
 nix develop                      # the Rust toolchain and the system libraries
-cargo build --release
-
-target/release/daw -e 'dofile("examples/demo-song.lua")'       # the terminal UI, with a demo song
-target/release/daw-gui -e 'dofile("examples/demo-song.lua")'   # the window, with the same song
-target/release/daw doctor        # check your sound devices, MIDI ports and plugins
+cargo build --release            # target/release/daw and target/release/daw-gui
+nix profile install .            # or install both programs
 ```
 
-Or without the dev shell: `nix run .` (the terminal UI) and `nix run .#daw-gui`
-(the window); `nix profile install .` installs them
-([Installing with Nix](docs/running.md#installing-with-nix)).
+The programs keep short names for now: `daw` is paw's terminal interface,
+`daw-gui` its window, and the Lua module is `daw`. See
+[Installing with Nix](docs/running.md#installing-with-nix).
 
-In the terminal, `?` lists every key of the view you are in, `:` runs any
-command by name, `:help` opens the manual (`:help gU`, `:help quickfix-list`),
-and `:q` quits. A course of seventeen short lessons runs inside the program
-(`:tutor`) and can also be read in [docs/course](docs/course/README.md).
+## Is paw for you?
+
+paw is for people who like open programs they can take apart: who live in
+Neovim or a tiling window manager, keep their configuration in a repository,
+and would rather write ten lines of Lua than wait for a feature.
+
+| If you want | Look at |
+| --- | --- |
+| A keyboard-first, modal DAW you script and reshape, terminal or window | **paw** |
+| A mature, deeply customisable DAW on every platform | [REAPER](https://www.reaper.fm) |
+| A mature open-source DAW for recording and mixing on Linux | [Ardour](https://ardour.org) |
+| Sound design, modulation and performance | [Bitwig Studio](https://www.bitwig.com), [Ableton Live](https://www.ableton.com) |
+| Keyboard-driven composing in a tracker | [Renoise](https://www.renoise.com) |
+| Engraving first, playback second | [MuseScore](https://musescore.org), [Dorico](https://www.steinberg.net/dorico/) |
+
+paw is younger and smaller than all of them; choose it for the way it works,
+not for the size of its feature list.
 
 ## In the terminal
 
@@ -58,33 +81,35 @@ operators, motions, text objects, visual mode, registers, macros, marks and
 `.` all apply, and one rule holds in every view: `h` `j` `k` `l` only move,
 `+` `-` change the value under the cursor, `Esc` cancels and never leaves.
 
-![Moving, deleting, yanking and pasting clips, and running a command](docs/images/tui-arrange.gif)
+![The demo song in the terminal: drums, bass, keys, a melody and a reverb over eight bars](docs/images/tui.png)
 
 Notes are drawn or typed. `Enter` opens a clip; `i` draws a note with the
 cursor, and `I` turns the home row into a piano:
 
-![Typing notes into the piano roll, selecting and transposing them](docs/images/tui-pianoroll.gif)
+![The melody opened in the piano roll: a note drawn with i and 8l, two typed on the home row with I, the bar selected with vib and transposed with Ctrl-a and Ctrl-x](docs/images/tui-pianoroll.gif)
 
 The mixer, the device picker and the device panel are views like any other:
 
-![The mixer, adding a reverb from the picker, and changing its parameters](docs/images/tui-mixer.gif)
+![The mixer while the song plays: a fader moved, a strip muted with gcc, a chorus added from the picker and its mix raised in the device panel](docs/images/tui-mixer.gif)
+
+Recording goes round the loop into takes, shown as lanes and comped by
+choosing a take over a selection:
+
+![The lead armed with r and recorded round a one-bar loop with R, three takes played in by a script through daw.midi.inject in place of a keyboard; zt shows them as lanes, and :take 1 over the first half comps it](docs/images/tui-takes.gif)
 
 ### Score, engraved in the terminal
 
 A clip can be read and written as staff notation, drawn with a music font as
 pictures in terminals that show images (WezTerm, kitty, Ghostty), and in cells
 elsewhere. Notes are entered as in a notation program; dynamics, tempo, key
-and the rest are written with a prompt on the leader, as in Dorico, and you
+and the rest are written with a prompt on the local leader (`\`), as in Dorico, and you
 hear each one before you write it. The notation has a grammar of its own:
 `gUib` raises a bar a step in the key, `g(ip` slurs a phrase.
 
-![Entering notes, a dynamic, a tempo and a hairpin in the score](docs/images/tui-notation.gif)
-
-![The score, with the hairpin about to be written](docs/images/tui-notation.png)
-
-The piano roll beside the score edits the same clip, and shows what is
-written and what is played, the feel, apart. See the
-[notation extension](extensions/notation/README.md).
+The score is a view of the clip's MIDI, as REAPER's notation is: writing
+in it edits the notes, and the piano roll beside it edits the same notes.
+Without the extension the clip is plain MIDI that plays and edits as any
+other. See the [notation extension](extensions/notation/README.md).
 
 ### Ex, over bars and tracks
 
@@ -92,7 +117,7 @@ The command line takes Vim's Ex commands where a line is a bar and a range
 can be tracks: `:5,8d`, `:t2,t4 mute`, `:%s/c4/d4/gc`. What you type is
 previewed live, and `c` asks about each match.
 
-![A substitution with a live preview and confirmation, then tracks muted by range](docs/images/tui-ex.gif)
+![:%s/c5/d5/gc confirmed match by match in the piano roll and undone at once, then tracks 2 to 4 muted by a range and unmuted](docs/images/tui-ex.gif)
 
 ### Lists as text, the quickfix list, help
 
@@ -102,9 +127,9 @@ step. Problems found anywhere land in one quickfix list (`:copen`, `]q`).
 Pickers play what they would choose before you choose it. And the manual is
 inside, as Vim's is.
 
-![Editing the tracks as text, then writing the plan](docs/images/tui-textbuf.gif)
+![The tracks as text under the arrange view: a track renamed with cw and turned down with 3 Ctrl-x, then :w shows the plan and y applies it](docs/images/tui-textbuf.gif)
 
-![The manual: a key looked up, a link followed, back again](docs/images/tui-help.gif)
+![? listing the keys of the arrange view, the leader alone listing what follows it, K describing the clip under the cursor, and :help motions opening the manual](docs/images/tui-help.gif)
 
 | To | Press |
 | --- | --- |
@@ -127,29 +152,26 @@ The window is for the mouse, and shows the terminal's windows as panes you
 can drag the borders of: the arrange view with the device panel beside it,
 the piano roll, the score, a list of tracks as text, the quickfix list.
 
-![The window with its panes: the arrange view, the piano roll and the score](docs/images/gui-panes.png)
+![The window with its panes: the arrange view and the device panel, the melody in the piano roll, and the tracks as text beside it](docs/images/gui-panes.png)
 
 Clips are dragged, trimmed, copied and stretched; everything else is on the
 right button.
 
-![Moving, trimming and copying clips, the clip menu, zooming and playing](docs/images/gui-arrange.gif)
+![The melody copied over the first half with a Ctrl-drag and trimmed by its edge, the clip menu, zooming with Ctrl and the wheel, and playing](docs/images/gui-arrange.gif)
 
 The piano roll is a pencil: drag to draw, drag a note to move it, right-drag
 to select with a box, and draw velocities and controllers in the strip below.
 
-![Drawing notes, moving them, drawing velocities, selecting with a box](docs/images/gui-pianoroll.gif)
+![The melody in the piano roll: notes drawn in its last bar, one dragged a semitone up, velocities drawn in the strip, and played from the ruler](docs/images/gui-pianoroll.gif)
 
 The score is engraved with the same font, docked beside the piano roll; a
-click enters a note, with a shadow note under the pointer to show where.
-
-![The score beside the piano roll, a click entering notes](docs/images/gui-notation.gif)
-
-![The score engraved in the window](docs/images/gui-notation.png)
+click enters a note, with a shadow note under the pointer to show where. The
+[notation extension](extensions/notation/README.md) has its pictures.
 
 Devices are added by name, the mixer has a strip for every track, and a
 parameter is automated by drawing its curve:
 
-![Adding a reverb, the mixer while playing, drawing an automation curve](docs/images/gui-mix.gif)
+![A chorus added to the keys by name, the mixer while playing, a fader dragged, and the keys' cutoff automated by drawing its curve](docs/images/gui-mix.gif)
 
 Keys still work in the window: it passes them to the same mappings the
 terminal uses. [docs/window.md](docs/window.md) has every gesture.
@@ -187,6 +209,8 @@ terminal uses. [docs/window.md](docs/window.md) has every gesture.
 `~/.config/daw/init.lua` runs at startup, and `:reload` runs it again without
 stopping the sound. Nothing in it is special: these are the calls the
 built-in keys and commands are made with.
+
+![init.lua edited in Neovim above the program while the song plays: a colour for the playhead and a new key; :reload runs it, and the key adds a track](docs/images/tui-config.gif)
 
 ```lua
 daw.opt.grid = 0.5
@@ -265,7 +289,7 @@ Protocol.
 cargo test --release               # Rust tests, and the real window driven on a private display
 tests/tools/suite.sh               # the end-to-end suite, in Lua
 tests/tools/suite.sh plugins       # the same with real CLAP, LV2 and VST3 plugins
-docs/images/make/make.sh           # make the pictures on this page again
+docs/images/make/make.sh           # make the pictures on this page again (`all`: the extensions' too)
 ```
 
 The tests use a null audio backend and a private X display: they do not
@@ -273,4 +297,36 @@ touch your sound card or your screen. The pictures on this page are
 recordings of the real program, driven by the scripts in
 [docs/images/make](docs/images/make).
 
-The crates are declared as MIT OR Apache-2.0 in `Cargo.toml`.
+## Inspiration
+
+- [Neovim](https://neovim.io) and Vim: the modal grammar, Ex, the quickfix
+  list, `:help`, a small core with everything else in Lua, and
+  [oil.nvim](https://github.com/stevearc/oil.nvim) for lists edited as text.
+- [pi](https://pi.dev), the minimal coding agent: a tiny core that does
+  little and trusts you, with everything else added as extensions you own.
+- [REAPER](https://www.reaper.fm): a light, scriptable DAW, and notation as
+  a view over MIDI.
+- [Ardour](https://ardour.org), [Bitwig Studio](https://www.bitwig.com) and
+  [Renoise](https://www.renoise.com) for the DAW itself, and
+  [Dorico](https://www.steinberg.net/dorico/) and
+  [MuseScore](https://musescore.org) for the score (Dorico's popovers).
+- [TidalCycles](https://tidalcycles.org) for patterns written as text.
+
+## Contributing
+
+paw is a personal project that follows one person's taste, so it moves at
+its own pace. Bug reports, questions and ideas are welcome as GitHub issues.
+For anything larger than a small fix, open an issue before a pull request.
+The tests above must pass, and new behaviour comes with a test.
+
+## License
+
+paw is licensed under either of [MIT](LICENSE-MIT) or
+[Apache-2.0](LICENSE-APACHE), at your option. Unless you state otherwise,
+any contribution you submit for inclusion is licensed the same way, without
+additional terms or conditions.
+
+The window is made with [Slint](https://slint.dev), used under its
+royalty-free license:
+
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)

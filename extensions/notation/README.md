@@ -5,17 +5,24 @@ text cells, and engraved with a music font (Leland) wherever there are
 pixels: in a window of the graphical frontend, and on a terminal that shows
 images.
 
-A clip written in notation is a **score clip**: it keeps a written score,
-and its notes are what the score plays. Writing changes the score (a tie
-stays a tie, a dotted rhythm stays dotted, a voice stays a voice, a spelling
-stays a spelling), and the notes follow, in the same undo step. A plain
-MIDI clip is shown as a musician would write down what was played, to read;
-the first edit in notation (or `:score.from-midi`) writes it as a score,
-keeping how it was played.
+Notation is a view of the clip's MIDI, as REAPER's notation editor is: the
+notes are the truth, what plays and what every other view edits. The
+score is those notes written as a musician would write them down, with
+what you decide in notation (a spelling, a voice, a staccato, a dynamic)
+kept beside them. Writing in notation edits the MIDI: a note entered is a
+MIDI note where it is written and as long; a note raised, moved, made
+longer or deleted is that MIDI note changed; each edit is one undo step,
+and it changes no note it does not write.
 
 ```lua
 daw.ext.load("extensions/notation")   -- or put it in ~/.config/daw/extensions
 ```
+
+![The demo song's melody as a score in the terminal: its last bar entered by name with i, a hairpin written with the \\d popover and previewed before Enter, then played](images/tui-notation.gif)
+
+![The score beside the piano roll in the window: a hairpin written in the score sets the velocities in the roll, velocities drawn in the roll leave the marks alone, and g@ plays the notes as the marks say again](images/gui-notation.gif)
+
+![The score in the terminal, the hairpin's popover open and what it would write drawn in the accent](images/tui-notation.png)
 
 ## Opening it
 
@@ -32,81 +39,100 @@ so does closing the window. `Esc` in normal mode stays in the view, as it
 does in Vim: it drops a count, an operator or a selection, and pressed again
 soon it says how to leave.
 
-## Score clips
+## MIDI is the truth
 
-A score clip keeps its score in `clip.meta.score` (`notation.doc`): staves
-with their clefs, measures with their time signatures, and in each measure
-the voices of each staff, each a list of chords and rests that fills the
-bar. Values are fractions of a whole note (`{ 1, 4 }` a quarter) with their
-dots and tuplets, so nothing drifts however long the piece; pitches are
-spelled (`step` 0 to 6 from C, `alter`, `octave`); every measure, chord,
-note and mark has an id that stays. Dynamics, hairpins, slurs, text, tempo
-marks, chord symbols and playing techniques are marks at places in
-measures; key, clef and time-signature changes, barlines, repeat signs,
-endings and rehearsal marks are on the measures; articulations,
-ornaments, fermatas and lyrics (a verse each) are on the chords.
+Every MIDI clip opens as notation; there is nothing to convert first. The
+score of a clip is made from its notes each time they change (written and
+laid out again only in the bars that changed), with what notation keeps:
+
+| Kept | Where | What |
+| --- | --- | --- |
+| on each note | `note.meta.notation` | its spelling (`letter`, `alter`, and the `pitch` it was spelled for: a note given another pitch in the roll is spelled by the key again), `voice`, `staff` of a grand staff, `grace` (`acciaccatura`, `appoggiatura`), `strum`, `chord`, `beam`, its chord's `art`iculations, `orn`ament and `stem`, `lyrics` of verses after the first (the first is `note.meta.lyric`, where the `utau` extension keeps its own), and `len` with `sounding`: how long it is written while it is as long as notation made it (a staccato) |
+| with the clip | `clip.meta.notation`, in beats of the clip | `version`, how all this is laid out (1; a clip without one keeps it as before versions were written); the transcription's `settings`; `tuplets` written (or a stretch said to be plain); `marks` (dynamics, hairpins, slurs, text, tempo marks, chord symbols, playing techniques); `bars` (barlines, repeats, endings, rehearsal marks, key and clef changes, the beats' grouping); `layout` (system breaks, bars to a system); `staves`, the clefs it was written on where its notes would now choose others |
+| with the track | `track.meta.notation` | its clef, its tablature |
+| with the song | the tempo map, the signatures | what tempo marks and time signatures say |
+
+Written notes are named by their MIDI notes (`n41` writes note 41, which
+keeps its id however it is moved), and MusicXML written out carries those
+names as each `<note>`'s `id`. Because what is kept is on the note, it goes where the note goes: moved,
+copied, pasted or undone in the piano roll, a note keeps its spelling and
+its voice, and a note deleted takes its own away. Marks along the clip
+keep their beats.
+
+**What an edit in notation writes.** Each is an ordinary edit of the
+clip's notes (`daw.api.clip_notes_edit`), one undo step with what
+notation keeps:
+
+| In notation | The MIDI |
+| --- | --- |
+| a note entered | a note where it is written, as long as its written value (a tied note one note; a tuplet's on exact thirds or fifths; a grace note a 32nd before its note), as loud as the dynamic in force or as the piano roll enters notes |
+| a pitch, a respelling, a step of the key | the note's pitch; its spelling kept on it |
+| a chord moved, lengthened, dotted | its notes moved or made longer by as much as what is written, however they were played |
+| a note or chord deleted, a bar taken out | the notes gone; the notes after a bar taken out moved earlier |
+| a voice, a staff, a beam, an arpeggio sign, an ornament, a lyric | nothing in the MIDI: kept on the notes |
+| a dynamic, a hairpin | the velocities of the notes it reaches (to the next dynamic), a hairpin ramping them (to its end, or to a dynamic written inside it, where it is drawn to end), `sfz` `fp` and the like at their place |
+| an accent, a marcato | 20, 30 louder |
+| a staccato, staccatissimo, tenuto, fermata | half, a quarter of its written length, all of it |
+| a tempo mark, a time signature | the song's tempo map, its signature from that bar |
+
+That is all a mark does: it writes the MIDI when it is written, and the
+MIDI is then free. The piano roll can give a note marked `f` another
+velocity, or a staccato note another length, and the mark stays, a label.
+Taking a mark away puts back what it wrote where the note is still as the
+mark left it, and leaves a note changed since alone; a dynamic taken away
+puts back the loudness of the one before it. A slur, text, a repeat sign
+or a playing technique writes nothing.
 
 | | |
 | --- | --- |
-| `:score.from-midi` | write the clip under the cursor as a score: its transcription, keeping what was decided on its notes before (spellings, voices, hands, articulations, dynamics, slurs) and how it was played, as each note's feel |
-| `:score.detach` | plain MIDI again: the notes the score plays, without the score |
-| `:score.reset-performance`, `:notation.quantize` | forget every note's feel: the notes play exactly as written |
-| `:notation.retranscribe`, `g=` | write the score (or the bars of a selection) again from what its notes play |
+| `:notation.quantize`, `=` | quantize to the notation: each note starts where it is written and lasts as long as written (or as marked) |
+| `:notation.apply-marks`, `g@` | make the notes play as the marks say again, after the piano roll changed them: dynamics and hairpins set the velocity, staccato and tenuto the length |
+| `:notation.retranscribe`, `g=` | forget what notation decided about the notes (spellings, voices, hands, tuplets): written again from how they play |
 
-**What the notes play.** The score is rendered one way, measure by
-measure, and only the measures an edit changed are rendered again: tied
-notes are one note; an acciaccatura sounds a 32nd before its note, an
-appoggiatura on the beat, taking time from it; a note sounds 90% of its
-value, staccato half, staccatissimo a quarter, tenuto and notes under a
-slur all of it; the dynamic in force gives the velocity (`ppp` 25 to `fff`
-124, `mf` 80 where none is written), a hairpin ramps it to the next
-dynamic, an accent adds 20 and a marcato 30. Each note carries
-`meta.score = { e, n }`, the ids of its chord and its written note.
+**Projects from before.** A clip written in notation by an older version
+kept a score of its own in `clip.meta.score`, its notes rendered from it.
+Without this extension its notes play and edit as they are; with it the
+clip shows as that score said, and the first edit in notation keeps what
+the score said on the notes and the clip, the edit's undo step taking it
+back.
 
-**The piano roll on a score clip.** The roll (and anything else that
-writes notes, through `daw.Clip`) edits the same clip, and the score's
-owner (`notation.owner`, a clip owner of `daw.clips`) says what each
-change means:
+## Works without the extension
 
-| In the roll | | |
-| --- | --- | --- |
-| a note's pitch | written | the written note gets that pitch, spelled by the key |
-| a note added | written | it joins a chord of the same start and length, else fills silence in voice 1, else in voice 2, 3 or 4, on the staff its pitch belongs to |
-| a note deleted | written | its chord loses it, or becomes a rest |
-| moved or made longer or shorter by whole steps of the grid | written | written again where it starts, as long as it is, the values as the metre has them |
-| nudged off the grid, a velocity | feel | kept with the note as its feel, relative to what is written |
-| quantized | | the feel goes |
+Nothing in the core knows of notation. Without this extension a clip
+written in notation is a MIDI clip like any other: its notes play, and the
+piano roll, Ex, the language servers, MIDI export and every other view edit
+them as they are. What notation keeps rides along with them: on a note
+copied or pasted, on the clip moved or duplicated, saved with the project.
+Loaded again, notation shows the notes as they are now, with what it kept
+on the notes that are left; and an edit in notation changes only the notes
+it writes.
 
-The roll says what it shows is written: the title reads "written in
-notation (:vs notation)", the key line names the keys that write (`]` `[`
-`x` `i` `H` `L` `Alt-h` `Alt-l`) and what is feel (a velocity, a drag off
-the grid), and in the window a Notation chip opens the score. A note with
-feel has a thin tick where it is written (and where its written end is,
-when its length differs), so a nudge is seen; quantizing takes them away.
-In the velocity strip a note whose velocity is not the dynamic's has a
-line at the dynamic's level, and the note under the cursor reads, for
-example, `100 = mf 80+20`. A note the score makes up from a mark (a grace
-note) is hatched in the terminal and veiled in the window; changing its
-pitch or deleting it asks `[w]rite the mark, or only [t]his pass?`. Only
-the mark can take a pitch or a delete: a pass has no override of its own
-yet, so `t` there says so and changes nothing; for its time, length or
-velocity no question is asked, since those are already only that note's
-feel. With the roll and the notation view both on screen and both
-`:setlocal timebind`, the note under one's cursor is outlined in the other
-(`⟦ ⟧` in the roll, a `◉` head in the staff), found by the note's id.
+## Coming from REAPER
 
-Either way the note plays where the roll put it: the feel takes up what
-the writing does not say, and goes with the note when the writing changes
-(a pitch changed in notation keeps the note's nudge; a dynamic keeps the
-roll's accents over the new loudness). Undo goes back through both, one
-step per edit, score and notes together.
+The model is REAPER's: MIDI is the item's, and notation shows it, with
+what it cannot say kept as notation data on the notes (REAPER's
+"notation events": spelling, voice, articulation, text) and with the item
+(dynamics, clefs, key signatures). Entering in notation writes MIDI; a
+dynamic sets the velocities of the notes after it when it is written, as
+REAPER's does when it is set to; the piano roll edits the same notes. What
+differs: the transcription here reads played music for itself (strums,
+swing, drift, voices, hands, grace notes, tuplets) rather than quantizing
+for display only, and its settings are the clip's (`:notation.set`).
+
+## The piano roll beside it
+
+The roll edits the same notes, and nothing asks or refuses: it is a plain
+MIDI editor. With the roll and the notation view both on screen, on one
+clip and both `:setlocal timebind`, the note under one's cursor is outlined
+in the other (`⟦ ⟧` in the roll, a `◉` head in the staff), found by the
+note's id.
 
 ## What is written of a MIDI clip
 
-Between a MIDI clip's notes and the page is a transcription (`notation.score`),
-which is also how a MIDI clip is written as a score:
+Between a clip's notes and the page is a transcription (`notation.score`):
 the notes are transcribed into written chords, each knowing which played
-notes it stands for. Everything the score does not show (each note's offset
+notes it stands for, and with what notation keeps they are the score
+(`notation.midi`). Everything the score does not show (each note's offset
 from its written place, its real length, its velocity) stays in the notes as
 played.
 
@@ -116,9 +142,12 @@ played.
   written where it starts. A roll slower than 160 ms gets an arpeggio sign
   with its direction.
 - **Onsets** go on the simplest grid that explains each beat: the beat, its
-  halves, quarters or eighths, or triplets (in 6/8 the beat's eighths, or a
-  duplet), chosen per beat by how well it fits against how complex it is. A
-  lone triplet among plainly duple beats needs more to convince.
+  halves, quarters or eighths, triplets or sixths, or fifths and sevenths
+  (in 6/8 the beat's eighths, or two or four in its time), chosen per beat
+  by how well it fits against how complex it is. A tuplet has to fit
+  clearly better than the straight grid, its notes no shorter than the
+  `finest` value, and a lone one among plainly duple beats needs more to
+  convince: a straight part played loosely is not written in tuplets.
 - **Drift**: the player's distance from the grid is followed, first beat by
   beat and then by a line fitted through the onsets around each beat, so a
   part played ahead of the beat or slowing down (a ritardando against the
@@ -130,16 +159,25 @@ played.
   not a tie; otherwise the value nearest what was played, by proportion, so
   a long note let go early is still a long note.
 - **Grace notes**: a note shorter than 100 ms (and a sixth of a beat) just
-  before a longer note of another pitch, let go by the time it sounds.
+  before a longer note of another pitch, let go by the time it sounds, and
+  not a step of an even run (a fast tuplet's last note).
 - **Voices**: a note held well past the next onset under (or over) notes
   that move is a second voice, stems down (or up), with its own rests.
 - **Hands**: on a grand staff each chord's notes are split between the hands
   by where each hand has been, so a melody that goes below middle C stays in
   the right hand.
-- **Tuplets** are bracketed; quarter-note triplets over two beats are one
-  bracket. **Rests** are merged as the metre divides the bar.
+- **Tuplets** are bracketed with their number: `3` for triplets (quarter-note
+  triplets over two beats are one bracket), `6` for a beat of sixteenths in
+  sixes, `5` and `7` for quintuplets and septuplets of sixteenths (in the
+  time of four), and in 6/8 `2` for a duplet and `4` for four eighths in
+  the time of three. A tuplet said in notation (`,3`, `gt`) is kept over
+  what the notes would suggest, and so is a beat said to be plain.
+  **Rests** are merged as the metre divides the bar.
 - Notes drawn exactly on the grid (in the piano roll) are written as they
-  are: the interpretation is for what was played.
+  are: the interpretation is for what was played. A played note that lands
+  on the grid by chance (a MIDI file's ticks allow it now and then) is
+  read as played, unless the notes beside it are drawn too or notation
+  wrote it.
 
 Each of these has a setting, kept with the clip in `clip.meta.notation.settings`:
 
@@ -148,7 +186,8 @@ Each of these has a setting, kept with the clip in `clip.meta.notation.settings`
 | `chord` | 35 | ms: onsets this close are one chord |
 | `strum`, `strum_span` | 70, 450 | ms between strings of a strum (0 off); its longest |
 | `arpeggio` | 160 | ms: a strum this long gets an arpeggio sign (0 never) |
-| `triplets` | on | beats may be written in triplets (duplets in 6/8) |
+| `triplets` | on | beats may be written in triplets (duplets and quadruplets in 6/8) |
+| `tuplets` | on | beats may be written as quintuplets and septuplets |
 | `finest` | 0.25 | the shortest duple subdivision, in beats |
 | `simplicity` | 1 | how strongly simple grids are preferred (0 to 2) |
 | `gap` | 0.3 | a silence shorter than this share of the time to the next onset is articulation |
@@ -160,17 +199,20 @@ Each of these has a setting, kept with the clip in `clip.meta.notation.settings`
 | `follow` | on | follow the player's drift from the grid |
 | `mode` | score | `raw`: every note as played, rounded to `daw.opt.notation_grid` |
 
-`:notation.set` alone lists them, `:notation.set swing off` sets one,
+`:notation.set` alone lists them on a page, with the default of each the clip changed, `:notation.set swing off` sets one,
 `:notation.set swing default` forgets it, `:notation.reset` forgets them all.
 `:notation.raw` (`gR`) switches the raw view on and off: every note as it is,
 rounded to the grid, one chord per start, middle C splitting the hands, for
 checking.
 
-**What you decide** is kept, and survives changes made elsewhere: on each
-note in `meta.notation` (its voice, its hand, a grace note or not, a strum's
-arpeggio sign, notes that are one chord, a broken beam, its spelling, its
-articulations), and with the clip (triplets on a beat, dynamics, hairpins,
-text, repeats, slurs). A note's own marks go where the note goes.
+**What you decide** is kept, and survives changes made elsewhere (see
+[MIDI is the truth](#midi-is-the-truth)): a note's voice, hand, spelling,
+articulations, a grace note or not, a strum's arpeggio sign, notes that are
+one chord, a broken beam; the clip's tuplets, marks and bars. Notes entered
+in notation are drawn exactly on the grid and written as they are; a note
+marked staccato keeps its written length while it is as short as the mark
+made it. A tie is not kept: a tied note is one note, written again as the
+metre divides it.
 
 The rest of the page:
 
@@ -180,13 +222,15 @@ The rest of the page:
 - **Clef**: treble when the notes stay above A3, bass when they stay below
   E4, a grand staff when they need both. `:notation.clef bass` fixes it for
   the track (`treble`, `treble8` for guitar, `bass`, `bass8`, `alto`,
-  `tenor`, `grand`, `auto`), kept in `track.meta.notation`; a score keeps
-  its staves' clefs, and a clef change at a bar (`,C`, see Popovers).
+  `tenor`, `grand`, `auto`), kept in `track.meta.notation`. A clip written
+  in notation keeps the clefs it was written on where its notes would now
+  choose others (a melody taken a little under the treble staff stays on
+  it), and a clef change at a bar (`\C`, see Popovers).
 - **Key**: the project's key, as the `musicops` extension keeps it in
   `project.meta.musicops`; modes and minor keys take the signature of their
   relative major. `:notation.key Eb major` sets it, `:notation.key off`
-  clears it; in a score open in the view it writes a key signature from
-  the cursor's bar (`,k`, see Popovers), and the first bar's is the
+  clears it; with a clip open in the view it writes a key signature from
+  the cursor's bar (`\k`, see Popovers), and the first bar's is the
   project's key too.
 - **Spelling**: notes of the key take its letters; the others lean the way
   the key does. Accidentals are remembered to the end of the bar, a tied
@@ -214,9 +258,9 @@ The rest of the page:
 In the notation view. Counts, registers, `.`, macros and marks work as
 everywhere. The operators and text objects work on the written score (see
 [The grammar](#the-grammar)); the view's rows are pitches, so a visual
-selection and the roll's single keys on it work as in the piano roll. On a plain MIDI
-clip every key that edits writes it as a score first (one undo step with
-the edit), and says so.
+selection and the roll's single keys on it work as in the piano roll. Every
+key that edits writes the clip's MIDI (see
+[MIDI is the truth](#midi-is-the-truth)), one undo step.
 
 | Keys | |
 | --- | --- |
@@ -233,7 +277,7 @@ the edit), and says so.
 | `g.` | dot its chord, or take the dot away |
 | `g2` … `g7` | choose the value: 32nd, 16th, eighth, quarter, half, whole (the numbers MuseScore uses) |
 | `gd` | dotted values on or off |
-| `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, play the notes exactly as written (forget their feel), loop; the rest are in [The grammar](#the-grammar) |
+| `d` `y` `c` `>` `<` `=` `gl` | operators: delete, yank, change, move later or earlier by the chosen value, quantize the notes to the notation, loop; the rest are in [The grammar](#the-grammar) |
 | `v` `V` `Ctrl-v`, then `x` `Ctrl-a` `Ctrl-x` `Alt-k` `Alt-j` `}` `{` | on a selection, which takes in the note under the cursor, as Vim's takes the character |
 | `:` on a selection | a command for it: the line starts `:'<,'>` (`:'<,'>notation.cresc`) |
 | `p` `P` | paste after the note, at the cursor (a bar yanked with `yab`: after, before the cursor's bar) |
@@ -245,6 +289,7 @@ the edit), and says so.
 | `zs` | start a system at the cursor's bar; again, let the bar go where it fits |
 | `zj` | keep the cursor's bar on the system before; again, let it go where it fits |
 | `:notation.bars-per-system 4` | that many bars on every system; without a number, as they fit |
+| `K` | what is under the cursor: the note as written (its value, voice, marks and the dynamic in force) and the MIDI note it is, then the clip and the track |
 | `,n` | back to the arrange view |
 | `:q` `ZZ` `Ctrl-w c` | close the view |
 | `Esc` | stay: drop a count, an operator or a selection |
@@ -281,11 +326,10 @@ the barline. No other voice and no other staff is touched.
 A Vim grammar for music: an operator, then a motion or a text object, with
 counts, registers, `.` and undo as everywhere. Text objects are found in
 the score (events, measures, voices), not among notes in time, and every
-operator changes the score itself, so `d3ab`, `gUip`, `y2iv` and `.` after
-any of them are exact and each is one undo step. A motion acts in the
-cursor's staff and voice; a visual selection in every staff and voice (a
-block in its pitches). On a plain MIDI clip the first edit writes it as a
-score.
+operator changes the written score and so the notes it writes, so `d3ab`,
+`gUip`, `y2iv` and `.` after any of them are exact and each is one undo
+step. A motion acts in the cursor's staff and voice; a visual selection in
+every staff and voice (a block in its pitches).
 
 | Object | `i…` | `a…` |
 | --- | --- | --- |
@@ -306,7 +350,7 @@ is `ie` (as in the piano roll too).
 | Operator | |
 | --- | --- |
 | `d` `y` `c` | delete (chords become rests, notes leave their chords, bars go), yank (a fragment of the score, which pastes as written here and as played in the piano roll), change |
-| `>` `<` | move later, earlier by the chosen value, as written: ids, feel and marks go along, what is there gives way |
+| `>` `<` | move later, earlier by the chosen value, as written: the notes move by as much, with their marks, what is there gives way |
 | `gU` `gu` | up, down a step of the key, keeping chromatic notes chromatic; a count is the steps (`3gUib` a fourth up) |
 | `g+` `g-` | up, down a semitone, spelled as the key has it (an octave keeps the spelling); a count is the semitones |
 | `g~` | respell each note: G sharp, A flat, G sharp again; E, F flat (`g~in` the note under the cursor) |
@@ -320,7 +364,7 @@ is `ie` (as in the piano roll too).
 | --- | --- |
 | `f` `F` + letter | to the next, previous note of that name in the voice (`2fe`); with an operator the note found is taken in, as Vim's `df` |
 | `t` `T` + letter | to the note before (after) it |
-| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it lists the leader keys (the popovers by name) and waits a few seconds for one, then moves; `,` followed by a key no leader map has moves at once |
+| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is also the leader: alone it lists the leader keys and waits a few seconds for one, then moves; `,` followed by a key no leader map has moves at once. The popovers are on the local leader (`\`), so every `,` key means here what it means everywhere |
 | `)` `(` | the next, previous phrase: a note after a rest |
 | `]v` `[v` | the next, previous voice (then the next staff's); entering goes into it |
 | `Ctrl-j` `Ctrl-k` | the staff below, above |
@@ -344,23 +388,21 @@ view `R` is not record). The insert mode badge says `INS`, `PUSH` or
 | `Ctrl-r` and a register | paste it at the cursor and step past it (`Ctrl-r "`) |
 | `Tab` | take the suggestion `daw.complete` shows as ghost notes; in normal mode `3 Tab` takes three notes or chords of it (with none shown, `Tab` is the next view) |
 
-**Ex over a score clip.** `:s`, `:g` and `:d` over notes reach a score
-clip's notes where they are written, and change the score:
-`:%s/c4/db4/g` writes D flats (a replacement spelled with a flat or a sharp
-keeps it; `+12` keeps the spelling an octave up; any other pitch is spelled
-by the key), `:g/e4/d` makes the E4s leave their chords (a chord with none
-left is a rest). Velocity and length go as the piano roll's edits do.
+**Ex.** `:s`, `:g` and `:d` over notes change the clip's notes as they do
+in the piano roll, and the score shows them: `:%s/c4/db4/g` raises the C4s
+a semitone, spelled as the key has it; `:g/e4/d` deletes the E4s.
 
 **Editing the score.** These work on the written chord under the cursor;
-its notes keep their feel:
+its notes move and lengthen by as much as what is written, however they
+were played:
 
 | Keys | |
 | --- | --- |
 | `L` `H` | move the chord later, earlier by the chosen value, with its grace notes and marks; what is there in its voice gives way |
 | `Alt-l` `Alt-h` `g.` | its written length longer, shorter, dotted, ties included |
 | `X` | delete the chord: a rest (`x` deletes the one note) |
-| `=` | an operator: the notes exactly as written (their feel forgotten), e.g. `=in`, `=ib`, or on a selection |
-| `g=` | an operator: the bars written again from what the notes play |
+| `=` | an operator: the notes quantized to the notation, starting where they are written and as long, e.g. `=in`, `=ib`, or on a selection |
+| `g=` | an operator: what notation decided about the notes forgotten, the bars written again from how they play |
 | `gv` | the note (or the chord) into the other voice, and enter in that voice |
 | `gH` | the chord onto the other staff of a grand staff, in a voice free there |
 | `gs` | arpeggio sign up, down, none; on a selection, the chords one chord (a strum) |
@@ -372,8 +414,8 @@ its notes keep their feel:
 | `Alt-l` `Alt-h` | on a selection: each chord longer, shorter by the chosen value |
 | `gR` `gT` | the raw view; several tracks |
 
-`:notation.quantize` makes the whole clip play what is written,
-`:notation.retranscribe` writes it again from what it plays.
+`:notation.quantize` quantizes the whole clip to the notation,
+`:notation.retranscribe` writes it again from how it plays.
 `:notation.transpose 2` moves the chord under the cursor up two semitones,
 spelled by the key (`-1 steps` a step of the key down).
 
@@ -383,27 +425,43 @@ types from visual mode), `:5,8` bars 5 to 8, `:5` bar 5. So
 `:5,8notation.transpose 2`, `:'<,'>notation.slur`, `:9notation.dyn p`,
 `:1,4notation.repeat` (both signs around bars 1 to 4), `:5,8notation.quantize`.
 The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
-`repeat`, `quantize`, `retranscribe`, `transpose`, and those the popovers
+`repeat`, `quantize`, `apply-marks`, `retranscribe`, `transpose`, and those the popovers
 run: `tempo`, `meter`, `key`, `clef`, `bar`, `rehearsal`, `chord`, `lyric`,
 `orn`, `tech`, `interval`, `tuplet` and `voice`.
 
 **Marks that play.** `:notation.dyn mf` puts a dynamic at the cursor (`ppp` to
-`fff`, `off`): the notes from there to the next dynamic play at its
-loudness, each note's feel (how the player made it differ) on top. `:notation.cresc` and
-`:notation.dim` put a hairpin over the selection or range (or to the end of the bar)
-that ramps the loudness to the next dynamic. `:notation.slur` slurs the
-selection. `:notation.text Allegro` writes text above the staff, and
+`fff`, `off`): the velocities of the notes from there to the next dynamic
+are set to its loudness. `:notation.cresc` and `:notation.dim` put a
+hairpin over the selection or range (or to the end of the bar), which ramps
+the velocities to the next dynamic. `:notation.slur` slurs the selection.
+`:notation.text Allegro` writes text above the staff, and
 `:notation.repeat start` (`end`, `off`) a repeat sign at the cursor's bar;
-these two are written only (the song's timeline plays as it is). Staccato
-plays a note half its written length, tenuto its full length, an accent 20
-louder, a marcato 30.
+these three are written only (the song's timeline plays as it is). A
+staccato makes a note half its written length, a tenuto all of it, an
+accent 20 louder, a marcato 30. Each writes the MIDI when it is written;
+after that the notes are free to change (see
+[MIDI is the truth](#midi-is-the-truth)).
+
+**Marks follow notation edits.** A note entered, moved or pasted in
+notation takes the loudness the marks ask where it lands: the dynamic in
+force, a hairpin's ramp there, an accent's push; a note that stays under the
+same marks keeps the velocity it has, and a note no edit touched is never
+changed (a piano roll edit is left alone by a notation edit elsewhere). To
+bring back MIDI that drifted from the marks, `:notation.apply-marks` (with
+a range, `:5,8notation.apply-marks`, or on the selection) writes what the
+marks ask into the notes it covers, one undo step, and `g@` and a motion
+or selection (`g@ib`, `vjg@`) does it with a prompt: while it is open the
+change is heard and drawn in the accent, `Enter` writes it and `Esc` leaves
+nothing. It does it again to no effect (an accent is not added twice), and
+taking a mark away afterwards puts back what the note had before it was
+applied.
 
 ## Popovers
 
 Everything that is not a note is written with a popover, as in Dorico,
-in the shape of a Vim prompt: the leader (`,`) and a letter opens a
+in the shape of a Vim prompt: the local leader (`\`, option `daw.opt.localleader`) and a letter opens a
 one-line prompt at the caret. In visual mode it is for the selection; in
-insert mode `Ctrl-o` comes first (`Ctrl-o ,d`), and entering notes goes on
+insert mode `Ctrl-o` comes first (`Ctrl-o \d`), and entering notes goes on
 after it. `Tab` completes, each choice with what it means; `Up` and `Down`
 go through what was typed before in that popover; while it is typed the
 page shows what it would write in the accent's ink (and you hear it: it is
@@ -411,38 +469,41 @@ a trial, `daw.audition`), and the line says what it would do or why it
 cannot. `Enter` writes it, one undo step; `Esc` leaves no trace.
 
 Each popover is an Ex command with what was typed after it, run with the
-selection's range when there is one: `,d` `mp<f` on a selection runs
+selection's range when there is one: `\d` `mp<f` on a selection runs
 `:'<,'>notation.dyn mp<f`. So `.` writes it again at the cursor, `@:`
 runs the line again, a macro records it, and `:5,8notation.dyn p` or
-`:9notation.tempo rit.` say the same without the popover. `,.` opens the
+`:9notation.tempo rit.` say the same without the popover. `\.` opens the
 last popover again with what was typed in it.
 
 | Keys | Popover | Accepts | Writes |
 | --- | --- | --- | --- |
-| `,d` | dynamics | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<`, `off` | a dynamic at the cursor (the start of the selection); a hairpin over the selection, or to the next dynamic when there is no selection, and the dynamic it reaches. `sfz` `sf` `fz` `rfz` accent the notes there, `fp` `sfp` are loud there and soft after |
-| `,t` | tempo | `Allegro q=132`, `q.=60`, `Andante`, `rit.`, `accel.`, `a tempo`, `off` | a tempo mark, and a point of the song's tempo map: `rit.` and `accel.` ramp a fifth slower or faster to the end of the selection (or the bar), `a tempo` goes back to the last tempo marked; a word alone has its tempo (Allegro 132) |
-| `,m` | time signature | `6/8`, `3/4`, `3+3+2/8`, `C`, `¢` | from the cursor's bar: the music after it written again in the new bars (every note where it was, tied over the new barlines), and the song's signature there |
-| `,k` | key | `Eb`, `f#m` (a small letter is minor), `D dorian`, `off` | a key signature from the cursor's bar; in the first bar, the project's key too |
-| `,C` | clef | `treble`, `bass`, `alto`, `tenor`, `treble8`, `bass8` | a clef change at the cursor's bar on its staff; in the first bar, the staff's clef |
-| `,b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`, `1.`, `2.`, `off` | at the cursor's barline (the one before the bar when the cursor is at its start, else after it); an ending over the bars of the selection |
-| `,X` | text | `dolce`, `Solo` | text over the staff |
-| `,r` | rehearsal mark | `A`, `Intro`; Enter alone writes the next letter | a boxed mark at the bar, and a marker of the same name in the song |
-| `,q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`daw.harmony`) |
-| `,l` | lyrics | a syllable; `Space` the next note, `-` a hyphen, `_` an extender; `verse=2 ` first for verse 2 | under the note at the caret, and on to the next of its voice |
-| `,i` | intervals | `3`, `-6`, `8`, `m3`, `M6`, `P5` | a note that far above the top (below the lowest) note of each chord of the selection, in the key |
-| `,3` | tuplets | `3`, `5`, `5:4`, `7:8`, `off` | the beat at the cursor (or the selection) as that tuplet; in insert mode, the notes entered next |
-| `,v` | voice | `1` to `4` | the voice notes are entered in; with a selection, its chords moved into it |
-| `,o` | ornaments | `tr`, `mordent`, `prall`, `turn`, `fermata`, `trem`, `off` | on the chord, or each chord of the selection; a fermata holds its note's whole value |
-| `,p` | playing techniques | `pizz.`, `arco`, `con sord.`, `sul pont.` | text at the cursor (written only) |
-| `,.` | the last popover again | | with what was typed in it |
+| `\d` | dynamics | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<`, `off` | a dynamic at the cursor (the start of the selection); a hairpin over the selection, or to the next dynamic when there is no selection, and the dynamic it reaches. `sfz` `sf` `fz` `rfz` accent the notes there, `fp` `sfp` are loud there and soft after |
+| `\t` | tempo | `Allegro q=132`, `q.=60`, `Andante`, `rit.`, `accel.`, `a tempo`, `off` | a tempo mark, and a point of the song's tempo map: `rit.` and `accel.` ramp a fifth slower or faster to the end of the selection (or the bar), `a tempo` goes back to the last tempo marked; a word alone has its tempo (Allegro 132) |
+| `\m` | time signature | `6/8`, `3/4`, `3+3+2/8`, `C`, `¢` | the song's signature from the cursor's bar: every note stays where it is and is written in the new bars, tied over the new barlines; a grouping (`3+3+2/8`) and `C` `¢` kept with the clip |
+| `\k` | key | `Eb`, `f#m` (a small letter is minor), `D dorian`, `off` | a key signature from the cursor's bar; in the first bar, the project's key too |
+| `\C` | clef | `treble`, `bass`, `alto`, `tenor`, `treble8`, `bass8` | a clef change at the cursor's bar on its staff; in the first bar, the track's clef |
+| `\b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`, `1.`, `2.`, `off` | at the cursor's barline (the one before the bar when the cursor is at its start, else after it); an ending over the bars of the selection |
+| `\X` | text | `dolce`, `Solo` | text over the staff |
+| `\r` | rehearsal mark | `A`, `Intro`; Enter alone writes the next letter | a boxed mark at the bar, and a marker of the same name in the song |
+| `\q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`daw.harmony`) |
+| `\l` | lyrics | a syllable; `Space` the next note, `-` a hyphen, `_` an extender; `verse=2 ` first for verse 2 | under the note at the caret, and on to the next of its voice |
+| `\i` | intervals | `3`, `-6`, `8`, `m3`, `M6`, `P5` | a note that far above the top (below the lowest) note of each chord of the selection, in the key |
+| `\3` | tuplets | `3`, `5`, `5:4`, `7:8`, `off` | the beat at the cursor (or the selection) as that tuplet; in insert mode, the notes entered next |
+| `\v` | voice | `1` to `4` | the voice notes are entered in; with a selection, its chords moved into it |
+| `\o` | ornaments | `tr`, `mordent`, `prall`, `turn`, `fermata`, `trem`, `off` | on the chord, or each chord of the selection; a fermata holds its note's whole value |
+| `\p` | playing techniques | `pizz.`, `arco`, `con sord.`, `sul pont.` | text at the cursor (written only) |
+| `\.` | the last popover again | | with what was typed in it |
 
-The letters are Dorico's where Dorico's is not a note name. The two that
-clash with keys of every view take the capital: `,c` starts `,ca` (fixes
-and actions) and `,x` the mix measurements (`,xa` …), so the clef is `,C`
-and text `,X`. In the notation view `,d`, `,m`, `,l` and `,p` are the
-popovers, not the device panel, the mixer, the session view and the piano
-roll they show elsewhere (`:view.toggle devices` and the others do that
-there). `,,` stays the command list; `,.` repeats the last popover.
+The letters are Dorico's where Dorico's is not a note name. They sit on
+the local leader (`\`) and not on the leader (`,`), so that the leader keeps
+its meaning in the notation view: `,d` is the device panel, `,m` the mixer,
+`,l` the session view and `,p` the piano roll there as everywhere, and `,c`
+and `,x` start `,ca` (fixes and actions) and the mix measurements as they do
+elsewhere. The clef is `\C` and text `\X`.
+`\.` repeats the last popover. Change the local
+leader with `daw.opt.localleader`; a key of a view of your own that would
+sit on a leader key of the whole program belongs on `<localleader>` too (the
+key rule's check says so).
 
 The prompt is drawn under the caret's system in the terminal and on the
 engraved page (in a window, and on a terminal's pixel surface), so that what
@@ -451,11 +512,11 @@ not repeat it. Before anything is typed it shows examples of what to type,
 dim; `Tab` offers the choices.
 
 **Coming from Dorico.** The popovers are Dorico's (Shift and a letter
-there, the leader and a letter here), with the same words: `mp<f`,
+there, the local leader and a letter here), with the same words: `mp<f`,
 `p subito`, `niente<`, `Allegro q=132`, `rit.`, `a tempo`, `3+3+2/8`,
 `f#m`, `|:`, `1.`, `5:4`. What differs: there is no Write and Play mode,
-since the piano roll on the same clip is Play mode (see "The piano roll on
-a score clip"); a popover with a selection works on all of it, and its
+since the piano roll on the same clip is Play mode: both edit the clip's
+MIDI; a popover with a selection works on all of it, and its
 line is an Ex command you can type, repeat and record. **Coming from
 MuseScore**: the popovers stand for MuseScore's palettes and the
 `Ctrl-E`/`Ctrl-T`/`Ctrl-K`/`Ctrl-L` text entries; lyrics and chord
@@ -475,7 +536,11 @@ them. Rests look like rests: the whole hangs from the fourth line and the
 half sits on the third (`▄▄` `▀▀`), the quarter zigzags (`╲ ╱ ╲`), an eighth
 is a `7`, a sixteenth two. Ties and slurs are arcs (`╰──╯`, `╭──╮`), tuplets
 a bracket with their number, dynamics and hairpins under the staff (between
-a grand staff's two).
+a grand staff's two), a hairpin running on over barlines to where it ends.
+Notes low under the last staff with their stems down get rows of their own
+under it, so that nothing runs into the next system; the popover's prompt
+opens under the row of dynamics, so that a dynamic it previews stays in
+sight.
 
 At the usual zoom the staff is dense: each line has a row and each space is
 between two rows, so a staff takes five rows and a grand staff, with room
@@ -556,8 +621,8 @@ exists, and a bar is left alone on the last system only when everything
 else is worse. Every system but the last is spread to the width, and the
 last too when it is three quarters full. `zs` starts a system at the
 cursor's bar, `zj` keeps it on the system before, and
-`:notation.bars-per-system 4` fixes the count; they are kept in the score
-(`score.layout`, each break with an id and its measure's id), undone like
+`:notation.bars-per-system 4` fixes the count; they are kept with the clip
+(`clip.meta.notation.layout`, each break at its bar's beat), undone like
 any edit, and the terminal's cell view breaks the same way, in whole
 cells. A tie into a new system starts after the clef and key, as long as a
 tie.
@@ -635,17 +700,19 @@ enters, as in MuseScore outside note input.
 
 | | |
 | --- | --- |
-| `:open song.musicxml` | a new project of the score: a track for each part, each with a score clip |
+| `:open song.musicxml` | a new project of the score: a track for each part, each with a MIDI clip of what it plays and what its score says kept as notation data |
 | `:import song.mxl` | the parts on new tracks below the cursor's, the first bar at the cursor; `tempo=yes` brings the tempo marks and time signatures too |
 | `:notation.import song.xml` | the same as `:import` |
 | `:notation.export song.musicxml` | the clip's score as MusicXML; `.mxl` zipped, `.ly` LilyPond |
-| `:notation.export score.mxl all` | every track's score clip (or first MIDI clip) as a part of one score |
+| `:notation.export score.mxl all` | every track's first MIDI clip with notes as a part of one score |
 
 **MusicXML in.** `.musicxml`, `.xml` and `.mxl` (compressed) files, as
 MuseScore, Dorico, Sibelius and Finale write them, partwise or timewise
 (`notation.musicxml`, with its own small XML reader and unzip). A part is a
-track with one score clip; a part of two staves is a grand staff. Read into
-the score: the staves and their clefs, each staff's voices (MuseScore's
+track with one MIDI clip, the track keeping the part's clef or grand staff.
+The file is read into a score, and the score written into the clip as
+notation writes it (see [MIDI is the truth](#midi-is-the-truth)): its notes
+as MIDI notes, what they cannot say as notation data. Read into the score: the staves and their clefs, each staff's voices (MuseScore's
 voices 5 to 8 on a second staff are its 1 to 4), chords and rests with
 their written values from `<type>`, dots and tuplets (`<time-modification>`,
 split where the file starts or stops a tuplet), the length from
@@ -669,17 +736,18 @@ bars, a marker at each rehearsal mark, the drum kit for a part on channel
 10 or in a percussion clef, and each part's MIDI program as a program
 change in its clip.
 
-**Out.** MusicXML and LilyPond are written from the score itself, so
-everything it holds goes out and comes back: reading a written file gives
-the same score, bar for bar and mark for mark (the tests check each
-feature). MusicXML also carries what the page decides (accidentals, stems,
+**Out.** MusicXML and LilyPond are written from the clip's score, so
+everything it holds goes out; reading a written file gives the same score,
+bar for bar and mark for mark (the tests check each feature). A score
+brought into a clip and written out again is the clip's transcription:
+what the transcription writes its own way (a tie the metre does not need)
+comes back as it writes it. MusicXML also carries what the page decides (accidentals, stems,
 beams) and each part's channel and program; LilyPond has the staves,
 voices, `\partial`, `\tuplet`, grace notes, `\key`, `\clef`, `\time`,
 barlines and `\repeat` endings as volta brackets, `\mark`, `\tempo`,
 dynamics and hairpins, slurs, text and chord symbols as markup,
 articulations, ornaments, `\noBeam` for a beam broken by hand, and the
-lyrics under their voice (`--`, `__`). A plain MIDI clip is written as it
-would be as a score. `:notation.export lead.ly track` still writes every
+lyrics under their voice (`--`, `__`). `:notation.export lead.ly track` still writes every
 MIDI clip of the track on one timeline, as the views draw them. Without a
 path the file is named after the clip and written to the working
 directory. The clip is the one of the notation view when it has the
@@ -688,7 +756,8 @@ the message names it: `wrote 'melody' (Lead) to lead.pdf, 2 pages`.
 
 **Coming from MuseScore.** Export MusicXML there (File, Export, MusicXML,
 compressed or not) and `:open` it here; the parts come in as tracks with
-score clips, ready to edit with the keys above and to play. To go back,
+MIDI clips, ready to edit with the keys above, in the piano roll, and to
+play. To go back,
 `:notation.export song.mxl all` and open that in MuseScore. Dorico,
 Sibelius and Finale work the same way.
 
@@ -720,18 +789,24 @@ require("notation.files").open("song.musicxml")   -- or .import(path, { start = 
 
 -- Scores.
 local view, D = require("notation"), require("notation.doc")
-local sc = view.score_of(clip:get())            -- the clip's score, to read (nil for plain MIDI)
+local midi = require("notation.midi")
+local sc = view.score_of(clip:get())            -- the score its notes are written as, to read
 local s = sc.staves[1].id
 D.put_chord(sc, 2, s, 1, D.Q, 2 * D.Q, { { step = 4, alter = 0, octave = 4 } })   -- a half G4 on beat two of bar two
-require("notation.render").render(sc)           -- the notes it plays
+midi.written(sc)                                -- the notes it writes, by id (n41 is MIDI note 41)
 require("notation.layout").layout(sc, { length = 8 })   -- its layout, as model.layout's
 ```
 
-A score is changed by the view's `write(fn)`, which gives `fn` the clip's
-score to change and then keeps it and renders its notes, as one undo step:
-`view:write(function(sc) ... end)`. In the clip it is kept with each
-measure as JSON text and the feel as a line of text (`notation.doc`'s
-`encode` and `decode`), so that reading the clip stays quick.
+A score is changed by the view's `write(fn)`, which gives `fn` a copy of
+the clip's score to change and then writes what changed as MIDI edits (and
+what notation keeps on the notes and the clip), as one undo step:
+`view:write(function(sc) ... end)`. `midi.derive(notes, own, opts)` makes
+the score of notes (as `clip:notes()` gives them) with what a clip keeps
+(`clip.meta.notation`), each measure written once for what it is written
+from (`midi.memo = false` writes them all, as the tests compare);
+`midi.sync(clip_id, before, after, own)` writes the change from one score
+to another into the clip, comparing only the measures that changed and
+touching only the notes it changes.
 
 `notation.engrave` turns a layout into drawing operations for `daw.canvas`
 (`engrave.style`, `engrave.systems`, and each measure's and system's ink);
@@ -792,10 +867,18 @@ Petaluma (the kernel has them; nothing chooses them yet); staccato and
 tenuto inside a slur (a slur goes over every articulation), and slurs that
 keep clear of the staff lines; systems that interlock (each system's band
 holds all of its ink); the cell view places its marks on fixed rows, not
-against skylines; text in a PDF is outlines, so it cannot be searched. For score
-clips: repeats unfolded, trills played, swing, `!` through a snippet (snippets
-work in the piano roll), a filter that reads and writes MusicXML (it reads
-and writes the line text above), the piano roll showing which notes
-are written and their feel (see docs/missing.md). A plain MIDI clip is
-still transcribed whole after each change of its notes; a score clip is laid
-out, rendered and engraved again only in the measures an edit changed.
+against skylines; text in a PDF is outlines, so it cannot be searched.
+Tuplets read from the MIDI are a beat's (and quarter-note triplets over
+two); others, such as nine in a beat or five over two beats, are written
+when said in notation.
+Repeats unfolded, trills played, swing written into the MIDI, `!` through a
+snippet (snippets work in the piano roll), a filter that reads and writes
+MusicXML (it reads and writes the line text above). What notation keeps:
+a tie the metre does not need (a tied note is one note, written as the
+metre divides it); a spelling typed in an Ex replacement (`:s/c4/db4/` is
+spelled by the key); a grace note before a clip's first beat is kept
+before the clip, where it does not play. A clip's notes are read whole
+after each change (their chords, swing, drift, hands and voices, which
+reach across bars: some 6 ms for 64 bars); what each measure is then
+written as is kept by what it is written from, and only the measures
+that changed are written, laid out and engraved again.

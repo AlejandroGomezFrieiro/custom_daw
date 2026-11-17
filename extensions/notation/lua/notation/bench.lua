@@ -36,9 +36,11 @@ end
 
 --- Time the paint. `opts` are `daw.canvas.paint`'s. Returns the times in
 --- ms (`first`, `same`, `cursor`, `edit`, `relayout`, medians) and the
---- drawing's size (`ops`, `kinds`, `json` bytes). With `how.score` the clip
---- is written as a score first, and `edit` is the edit itself (the score
---- changed and rendered) and the paint after it.
+--- drawing's size (`ops`, `kinds`, `json` bytes). With `how.notation`
+--- the edit is made in notation (the note sharpened there: its score
+--- changed and written back as MIDI), and `edit` is the edit itself and
+--- the paint after it; else the note is changed in the clip and `edit` is
+--- the paint after it.
 function M.run(bars, opts, rounds, how)
   rounds = rounds or 20
   how = how or {}
@@ -48,7 +50,6 @@ function M.run(bars, opts, rounds, how)
   local id = api.clip_add(track, { start = 0, length = bars * 4, notes = notes })
   daw.flush()
   view:edit(id)
-  if how.score then view.commit(daw.clip(id), view.from_midi(daw.clip(id))) end
   local function paint() return daw.canvas.paint("notation", W, H, opts) end
   local function time(fn)
     local t = api.now()
@@ -69,9 +70,15 @@ function M.run(bars, opts, rounds, how)
     -- A note of a bar in the middle up a step, as an edit does.
     local at = math.floor(#notes / 2)
     local n = clip:notes()[at]
-    if how.score then
+    if how.notation then
+      -- The cursor on the note, then the edit as the key makes it.
+      for _, ev in ipairs(require("notation.model").events(view:layout())) do
+        for _, w in ipairs(ev.notes or {}) do
+          if w.index == at and not w.tied then view.beat, view.step = ev.start, w.step end
+        end
+      end
       edit[i] = time(function()
-        clip:set_note(at, { pitch = n.pitch + (i % 2 == 0 and -1 or 1) })
+        view:inflect(i % 2 == 0 and -1 or 1)
         return paint()
       end)
     else
@@ -89,6 +96,51 @@ function M.run(bars, opts, rounds, how)
   out.ops, out.kinds, out.json, out.bars, out.notes = #drawing.ops, kinds, #api.json_encode(drawing.ops), bars, #notes
   api.clip_remove(id)
   return out
+end
+
+--- A notation edit against a MIDI edit, each with the paint after it, one
+--- after the other on one clip of `bars` bars, `rounds` times: so that a
+--- busy machine slows both alike. Returns the medians in ms (`plain`,
+--- `notation`) and the median of each round's ratio of the two (`ratio`).
+function M.pair(bars, opts, rounds)
+  local view = require("notation")
+  local model = require("notation.model")
+  local notes = M.notes(bars)
+  local track = api.track_add({ name = "Bench" })
+  local id = api.clip_add(track, { start = 0, length = bars * 4, notes = notes })
+  daw.flush()
+  view:edit(id)
+  local function paint() return daw.canvas.paint("notation", W, H, opts) end
+  -- Each from a clean heap, so that neither pays for the other's garbage.
+  local function time(fn)
+    collectgarbage()
+    local t = api.now()
+    fn()
+    return api.now() - t
+  end
+  paint()
+  local clip = view:clip()
+  local at = math.floor(#notes / 2)
+  local plain, notation, ratio = {}, {}, {}
+  for i = 1, rounds do
+    local n = clip:notes()[at]
+    plain[i] = time(function()
+      clip:set_note(at, { pitch = n.pitch + 1 })
+      paint()
+    end)
+    for _, ev in ipairs(model.events(view:layout())) do
+      for _, w in ipairs(ev.notes or {}) do
+        if w.index == at and not w.tied then view.beat, view.step = ev.start, w.step end
+      end
+    end
+    notation[i] = time(function()
+      view:inflect(-1)
+      paint()
+    end)
+    ratio[i] = notation[i] / math.max(0.01, plain[i])
+  end
+  api.clip_remove(id)
+  return { plain = median(plain), notation = median(notation), ratio = median(ratio) }
 end
 
 function M.format(r)

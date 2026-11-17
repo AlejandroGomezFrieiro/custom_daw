@@ -14,6 +14,8 @@ templates.save_group(group, "String section")    -- a group and every track in i
 templates.load("Lead vocal")                     -- made again below the cursor track
 ```
 
+![The keys track saved with ,Ts as a template, then made again below another track with ,Tl and a part of its name, and its devices shown with ,d](images/tui-templates.gif)
+
 | Keys | Command | |
 | --- | --- | --- |
 | `,Ts` | `template.save [name]` | Save the cursor track; on a group, the group with every track in it |

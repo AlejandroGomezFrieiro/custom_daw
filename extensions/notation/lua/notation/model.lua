@@ -370,45 +370,83 @@ local function multiple(rel, of)
   return abs(v - floor(v + 0.5)) < 1e-4
 end
 
---- The tuplets a voice needs in a measure: beats whose divisions are not
---- plain, as `{ s, e, n, ratio }` (written = played * ratio). Two triplet
---- beats in quarter-note triplets are one tuplet.
-local function tuplet_spans(m, bounds)
+--- The written length a tuplet of `n` takes the time of: the power of two
+--- below it (3 in the time of 2, 5 of 4), and a duplet in the time of 3.
+function M.tuplet_normal(n)
+  if n == 2 then return 3 end
+  local normal = 1
+  while normal * 2 < n do normal = normal * 2 end
+  return normal
+end
+
+--- The tuplets voice `voice` of staff `staff` needs in a measure: the user's (`user`, `{ start,
+--- length, n, normal, staff?, voice? }` in clip beats, or `plain` for none), and beats whose
+--- divisions are not plain, as `{ s, e, n, ratio }` (written = played *
+--- ratio). Two triplet beats in quarter-note triplets are one tuplet.
+local function tuplet_spans(m, bounds, user, staff, voice)
   local spans = {}
   local bar = { start = m.start, num = m.meter.num, den = m.meter.den }
   local beats = score_layer.beats_of(bar)
-  for _, b in ipairs(beats) do
+  local said = {}
+  for _, tp in ipairs(user or {}) do
+    local mine = (not tp.staff or tp.staff == staff) and (not tp.voice or tp.voice == voice)
+    if mine and tp.start < m.start + m.length - EPS and tp.start + tp.length > m.start + EPS then
+      if not tp.plain then
+        local normal = tp.normal or M.tuplet_normal(tp.n)
+        spans[#spans + 1] = { s = tp.start, e = tp.start + tp.length, n = tp.n, ratio = tp.n / normal, user = true }
+      end
+      for bi, b in ipairs(beats) do
+        if b.s >= tp.start - EPS and b.e <= tp.start + tp.length + EPS then said[bi] = true end
+      end
+    end
+  end
+  for bi, b in ipairs(beats) do
     local need, fits3, fits2, fits4 = false, true, true, true
+    local fits5, fits6, fits7, sixths, halves = true, true, true, false, true
     local inner, on_eighth = 0, false
     for _, x in ipairs(bounds) do
       if x > b.s + EPS and x < b.e - EPS then
         local rel = x - b.s
         inner = inner + 1
-        if multiple(rel, b.len / 3) then on_eighth = true end
+        if multiple(rel, b.len / 3) then on_eighth = true else sixths = true end
         if not plain(rel) then need = true end
         if not multiple(rel, b.len / 12) then fits3 = false end
+        if not multiple(rel, b.len / 6) then fits6 = false end
+        if not multiple(rel, b.len / 20) then fits5 = false end
+        if not multiple(rel, b.len / 28) then fits7 = false end
+        if not multiple(rel, b.len / 2) then halves = false end
         if not multiple(rel, b.len / 4) then fits2 = false end
         if not multiple(rel, b.len / 8) then fits4 = false end
       end
     end
     -- In 6/8 a beat halved is a duplet, not two dotted eighths.
     if b.compound and inner > 0 and fits2 and not on_eighth then need = true end
-    if need then
-      if not b.compound and fits3 then
+    if need and not said[bi] then
+      if not b.compound and fits6 and sixths then
+        -- Sixteenths in sixes: a sextuplet.
+        spans[#spans + 1] = { s = b.s, e = b.e, n = 6, ratio = 1.5 }
+      elseif not b.compound and fits3 then
         spans[#spans + 1] = { s = b.s, e = b.e, n = 3, ratio = 1.5 }
-      elseif b.compound and fits2 then
+      elseif not b.compound and fits5 then
+        spans[#spans + 1] = { s = b.s, e = b.e, n = 5, ratio = 1.25 }
+      elseif not b.compound and fits7 then
+        spans[#spans + 1] = { s = b.s, e = b.e, n = 7, ratio = 1.75 }
+      elseif b.compound and fits2 and halves then
+        -- Two in the time of three eighths.
         spans[#spans + 1] = { s = b.s, e = b.e, n = 2, ratio = 2 / 3 }
       elseif b.compound and fits4 then
-        spans[#spans + 1] = { s = b.s, e = b.e, n = 4, ratio = 2 / 3 }
+        -- Four eighths (or sixteenths) in the time of three.
+        spans[#spans + 1] = { s = b.s, e = b.e, n = 4, ratio = 4 / 3 }
       end
     end
   end
   -- Quarter-note triplets over two beats.
+  table.sort(spans, function(a, b) return a.s < b.s end)
   local out, i = {}, 1
   while i <= #spans do
     local a, b = spans[i], spans[i + 1]
     local joined = false
-    if b and a.n == 3 and b.n == 3 and near(a.e, b.s) then
+    if b and a.n == 3 and b.n == 3 and near(a.e, b.s) and not a.user and not b.user then
       local len = b.e - a.s
       local all = true
       for _, x in ipairs(bounds) do
@@ -469,6 +507,7 @@ end
 ---             `mode = "raw"` for every note as played, rounded to `grid`
 ---   tuplets   the user's tuplets, `{ { start, length, n } }`
 ---   grid      the raw view's grid, and where a pointer lands (a sixteenth)
+---   stems     false leaves out stems and beams (for a score made of it)
 --- Returns `{ measures, staves, meter, fifths, grid, origin, score }`; each
 --- measure has `number` (the project's bar, from 1), `start` and `length`
 --- in clip beats, its `meter`, and `staves[i]`, a list of events by time:
@@ -482,6 +521,14 @@ end
 ---   stem     1 up, -1 down, nil for none; `beam` a group number or nil;
 ---            `flags` the number of beams or flags; `whole` a whole-bar rest
 function M.layout(notes, opts)
+  local sc, o = M.transcription(notes, opts)
+  return M.engrave_score(sc, o)
+end
+
+--- The transcription of notes (`notation.score`'s events) with what
+--- `M.engrave_score` writes it with: `{ bars, staves, fifths, grid,
+--- tuplets, stems }`. `opts` as `M.layout`'s.
+function M.transcription(notes, opts)
   opts = opts or {}
   local bars = opts.bars
   if not bars or #bars == 0 then
@@ -489,7 +536,6 @@ function M.layout(notes, opts)
   end
   local fifths = opts.fifths or 0
   local finish = bars[#bars].start + bars[#bars].num * 4 / bars[#bars].den
-  local origin = bars[1].start
 
   local pitches = {}
   for i, n in ipairs(notes) do pitches[i] = n.pitch end
@@ -499,20 +545,33 @@ function M.layout(notes, opts)
   if opts.grid and not (opts.settings and opts.settings.grid) then settings.grid = opts.grid end
   local ctx = { bars = bars, finish = finish, tempo = opts.tempo or 120, staves = staves, settings = settings, tuplets = opts.tuplets, debug = opts.debug }
   local sc = settings.mode == "raw" and score_layer.raw(notes, ctx) or score_layer.transcribe(notes, ctx)
-  return M.engrave_score(sc, { bars = bars, staves = staves, fifths = fifths, grid = opts.grid or settings.grid or 0.25 })
+  return sc, { bars = bars, staves = staves, fifths = fifths, grid = opts.grid or settings.grid or 0.25,
+    tuplets = settings.mode ~= "raw" and opts.tuplets or nil, stems = opts.stems }
 end
 
---- Measures of written events from score events (see `notation.score`).
-function M.engrave_score(sc, o)
-  local bars, staves = o.bars, o.staves
+--- The empty measures of bars (`{ start, num, den, number }`), each with a
+--- list of events for each of `staves` staves.
+function M.measures_of(bars, staves)
   local measures = {}
   for i, b in ipairs(bars) do
     local meter = meter_of(b.num, b.den)
     local m = { number = b.number or i, index = i, start = b.start, length = meter.bar, meter = meter, staves = {} }
-    for s = 1, #staves do m.staves[s] = {} end
+    for s = 1, staves do m.staves[s] = {} end
     measures[i] = m
   end
-  local origin = bars[1].start
+  return measures
+end
+
+local function by_start(a, b) return a.start < b.start end
+
+--- The lines a transcription (`sc`) is written in on measures: for each
+--- staff `s` and voice `v`, `lines[s][v] = { segments, pieces }`. A segment
+--- is a stretch of sound (`chord`, a score event) or silence, `{ s, e,
+--- chord? }`; `pieces[mi]` are the parts of segments in measure `mi`,
+--- `{ a, b, seg }` (a voice other than the first is silent only in the
+--- measures it sounds in).
+function M.lines(sc, measures, staves)
+  local origin = measures[1].start
   local finish = measures[#measures].start + measures[#measures].length
   local function measure_at(t)
     local lo, hi = 1, #measures
@@ -522,8 +581,8 @@ function M.engrave_score(sc, o)
     end
     return lo
   end
-
-  for s = 1, #staves do
+  local lines = {}
+  for s = 1, staves do
     local voices = {}
     for _, ev in ipairs(sc.events) do
       if ev.staff == s and ev.start < finish - EPS then
@@ -532,10 +591,10 @@ function M.engrave_score(sc, o)
       end
     end
     voices[1] = voices[1] or {}
+    lines[s] = {}
     for v, list in pairs(voices) do
-      table.sort(list, function(a, b) return a.start < b.start end)
-      -- Sound and silence; a voice other than the first is silent only in
-      -- the measures it sounds in.
+      table.sort(list, by_start)
+      -- Sound and silence.
       local segments, t = {}, origin
       local touched = {}
       for i, c in ipairs(list) do
@@ -549,9 +608,8 @@ function M.engrave_score(sc, o)
         end
       end
       if finish > t + EPS then segments[#segments + 1] = { s = t, e = finish } end
-
       -- Pieces of each segment, measure by measure.
-      local pieces_of = {}   -- measure index -> pieces
+      local pieces = {}
       for _, seg in ipairs(segments) do
         local a = seg.s
         seg.pieces = {}
@@ -560,100 +618,125 @@ function M.engrave_score(sc, o)
           local m = measures[mi]
           local b = math.min(seg.e, m.start + m.length)
           if seg.chord or v == 1 or touched[mi] then
-            local piece = { m = m, a = a, b = b, seg = seg }
-            pieces_of[mi] = pieces_of[mi] or {}
-            table.insert(pieces_of[mi], piece)
+            pieces[mi] = pieces[mi] or {}
+            table.insert(pieces[mi], { a = a, b = b, seg = seg })
           end
           a = b
         end
       end
-      for mi, pieces in pairs(pieces_of) do
-        local m = measures[mi]
-        local bounds = {}
-        for _, p in ipairs(pieces) do
-          bounds[#bounds + 1] = p.a
-          bounds[#bounds + 1] = p.b
-        end
-        local spans = tuplet_spans(m, bounds)
+      lines[s][v] = { segments = segments, pieces = pieces }
+    end
+  end
+  return lines
+end
+
+--- The written events of the pieces (as `M.lines` gives them) of staff `s`
+--- and voice `v` in measure `m`, each added to `m.staves[s]` and to its
+--- segment's `pieces` (and to the piece's `evs`, if it has that list), in
+--- time order within each piece. `tuplets` are the user's (see `M.layout`).
+function M.write_pieces(m, s, v, pieces, tuplets)
+  local bounds = {}
+  for _, p in ipairs(pieces) do
+    bounds[#bounds + 1] = p.a
+    bounds[#bounds + 1] = p.b
+  end
+  local spans = tuplet_spans(m, bounds, tuplets, s, v)
+  for k, sp in ipairs(spans) do
+    sp.id = s * 100000 + v * 10000 + m.index * 10 + k
+    sp.staff, sp.voice = s, v
+  end
+  for _, p in ipairs(pieces) do
+    local rest = not p.seg.chord
+    local out = {}
+    if rest and v == 1 and near(p.a, m.start) and near(p.b, m.start + m.length) then
+      out[1] = { p.a, p.b, whole = true }
+    else
+      -- Cut at the tuplets' edges; inside a tuplet by its values, outside by the metre.
+      local cuts = { p.a }
+      for _, sp in ipairs(spans) do
+        if sp.s > p.a + EPS and sp.s < p.b - EPS then cuts[#cuts + 1] = sp.s end
+        if sp.e > p.a + EPS and sp.e < p.b - EPS then cuts[#cuts + 1] = sp.e end
+      end
+      table.sort(cuts)
+      cuts[#cuts + 1] = p.b
+      for k = 1, #cuts - 1 do
+        local a, b = cuts[k], cuts[k + 1]
+        local inside
         for _, sp in ipairs(spans) do
-          sp.id = s * 100000 + v * 10000 + mi * 10 + _
-          sp.staff, sp.voice = s, v
+          if a >= sp.s - EPS and b <= sp.e + EPS then inside = sp end
         end
-        for _, p in ipairs(pieces) do
-          local rest = not p.seg.chord
-          local out = {}
-          if rest and v == 1 and near(p.a, m.start) and near(p.b, m.start + m.length) then
-            out[1] = { p.a, p.b, whole = true }
-          else
-            -- Cut at the tuplets' edges; inside a tuplet by its values, outside by the metre.
-            local cuts = { p.a }
-            for _, sp in ipairs(spans) do
-              if sp.s > p.a + EPS and sp.s < p.b - EPS then cuts[#cuts + 1] = sp.s end
-              if sp.e > p.a + EPS and sp.e < p.b - EPS then cuts[#cuts + 1] = sp.e end
-            end
-            table.sort(cuts)
-            cuts[#cuts + 1] = p.b
-            for k = 1, #cuts - 1 do
-              local a, b = cuts[k], cuts[k + 1]
-              local inside
-              for _, sp in ipairs(spans) do
-                if a >= sp.s - EPS and b <= sp.e + EPS then inside = sp end
-              end
-              if inside then
-                for _, piece in ipairs(split_tuplet(a, b, inside)) do out[#out + 1] = { piece[1], piece[2], tuplet = inside } end
-              else
-                for _, piece in ipairs(M.split(a - m.start, b - m.start, m.meter, rest)) do
-                  out[#out + 1] = { m.start + piece[1], m.start + piece[2] }
-                end
-              end
-            end
-          end
-          for _, piece in ipairs(out) do
-            local len = piece[2] - piece[1]
-            local base, dots = M.value_of(piece.tuplet and len * piece.tuplet.ratio or len, 2)
-            local ev = { kind = rest and "rest" or "note", start = piece[1], length = len, base = base, dots = dots or 0,
-              measure = m.index, staff = s, voice = v, tuplet = piece.tuplet, source = p.seg.chord }
-            if piece.whole then ev.whole, ev.base, ev.dots = true, 4, 0 end
-            table.insert(p.seg.pieces, ev)
-            table.insert(m.staves[s], ev)
+        if inside then
+          for _, piece in ipairs(split_tuplet(a, b, inside)) do out[#out + 1] = { piece[1], piece[2], tuplet = inside } end
+        else
+          for _, piece in ipairs(M.split(a - m.start, b - m.start, m.meter, rest)) do
+            out[#out + 1] = { m.start + piece[1], m.start + piece[2] }
           end
         end
       end
+    end
+    for _, piece in ipairs(out) do
+      local len = piece[2] - piece[1]
+      local base, dots = M.value_of(piece.tuplet and len * piece.tuplet.ratio or len, 2)
+      local ev = { kind = rest and "rest" or "note", start = piece[1], length = len, base = base, dots = dots or 0,
+        measure = m.index, staff = s, voice = v, tuplet = piece.tuplet, source = p.seg.chord }
+      if piece.whole then ev.whole, ev.base, ev.dots = true, 4, 0 end
+      table.insert(p.seg.pieces, ev)
+      table.insert(m.staves[s], ev)
+      if p.evs then p.evs[#p.evs + 1] = ev end
+    end
+  end
+end
+
+--- Tie written piece `ev` of a segment of chord `c` (or silence): `k` of
+--- `count` pieces the segment is written in.
+function M.tie_piece(ev, c, k, count)
+  if not c then return end
+  ev.notes = {}
+  for j, n in ipairs(c.notes) do
+    ev.notes[j] = { pitch = n.pitch, index = n.index, meta = n.meta, tie = k < count, tied = k > 1 }
+  end
+  if k == 1 then
+    ev.arpeggio, ev.staccato = c.arpeggio, c.staccato
+    if c.grace then
+      ev.grace = {}
+      for j, n in ipairs(c.grace) do ev.grace[j] = { pitch = n.pitch, index = n.index, meta = n.meta } end
+    end
+  end
+end
+
+local function by_start_voice(a, b)
+  if not near(a.start, b.start) then return a.start < b.start end
+  return a.voice < b.voice
+end
+
+--- Put a measure's events of each staff in time order, voice by voice.
+function M.order(m)
+  for _, evs in ipairs(m.staves) do table.sort(evs, by_start_voice) end
+end
+
+--- Measures of written events from score events (see `notation.score`).
+function M.engrave_score(sc, o)
+  local bars, staves = o.bars, o.staves
+  local measures = M.measures_of(bars, #staves)
+  local lines = M.lines(sc, measures, #staves)
+  for s, voices in ipairs(lines) do
+    for v, line in pairs(voices) do
+      for mi, pieces in pairs(line.pieces) do M.write_pieces(measures[mi], s, v, pieces, o.tuplets) end
       -- Ties from piece to piece of one segment.
-      for _, seg in ipairs(segments) do
-        table.sort(seg.pieces, function(a, b) return a.start < b.start end)
-        local c = seg.chord
+      for _, seg in ipairs(line.segments) do
+        table.sort(seg.pieces, by_start)
         for k, ev in ipairs(seg.pieces) do
           ev.next = seg.pieces[k + 1]
-          if c then
-            ev.notes = {}
-            for j, n in ipairs(c.notes) do
-              ev.notes[j] = { pitch = n.pitch, index = n.index, meta = n.meta, tie = k < #seg.pieces, tied = k > 1 }
-            end
-            if k == 1 then
-              ev.arpeggio, ev.staccato = c.arpeggio, c.staccato
-              if c.grace then
-                ev.grace = {}
-                for j, n in ipairs(c.grace) do ev.grace[j] = { pitch = n.pitch, index = n.index, meta = n.meta } end
-              end
-            end
-          end
+          M.tie_piece(ev, seg.chord, k, #seg.pieces)
         end
       end
     end
   end
-  for _, m in ipairs(measures) do
-    for s = 1, #staves do
-      table.sort(m.staves[s], function(a, b)
-        if not near(a.start, b.start) then return a.start < b.start end
-        return a.voice < b.voice
-      end)
-    end
-  end
-
-  local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = o.fifths or 0, grid = o.grid or 0.25, origin = origin, score = sc }
+  for _, m in ipairs(measures) do M.order(m) end
+  local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = o.fifths or 0, grid = o.grid or 0.25,
+    origin = bars[1].start, score = sc }
   M.spell_all(result)
-  M.stems_and_beams(result)
+  if o.stems ~= false then M.stems_and_beams(result) end
   return result
 end
 
@@ -661,50 +744,58 @@ end
 function M.spell_all(layout)
   for s, clef in ipairs(layout.staves) do
     local before = {}  -- steps left altered against the key by the last bar
-    for _, m in ipairs(layout.measures) do
-      -- A score's measures may change key and clef.
-      local fifths = m.fifths or layout.fifths
-      local bottom = M.CLEF_BOTTOM[m.clefs and m.clefs[s] or clef]
-      local state, reminded = {}, {}
-      local function spell_note(n, tied)
-        local sp
-        local want = n.meta and n.meta.notation
-        if n.spelled then
-          -- Written in a score: spelled as it is kept.
-          sp = M.spelled(n.letter, n.alter, n.pitch)
-        elseif type(want) == "table" and want.pitch == n.pitch and want.letter and want.alter then
-          sp = M.spelled(want.letter, want.alter, n.pitch)
-        else
-          sp = M.spell(n.pitch, fifths)
-        end
-        n.letter, n.alter, n.octave, n.step = sp.letter, sp.alter, sp.octave, sp.step
-        n.pos = sp.step - bottom
-        local key = M.key_alter(sp.letter, fifths)
-        if not tied then
-          local current = state[sp.step]
-          if current == nil then current = key end
-          if sp.alter ~= current then
-            n.acc = sp.alter
-          elseif before[sp.step] and not reminded[sp.step] and state[sp.step] == nil then
-            -- The bar before altered this note: say it is back.
-            n.acc, n.courtesy = sp.alter, true
-          end
-          state[sp.step] = sp.alter
-          reminded[sp.step] = true
-        end
-      end
-      local function by_step(a, b) return a.step < b.step or (a.step == b.step and a.pitch < b.pitch) end
-      for _, ev in ipairs(m.staves[s]) do
-        for _, n in ipairs(ev.grace or {}) do spell_note(n, false) end
-        for _, n in ipairs(ev.notes or {}) do spell_note(n, n.tied) end
-        if ev.notes then table.sort(ev.notes, by_step) end
-      end
-      before = {}
-      for step, alter in pairs(state) do
-        if alter ~= M.key_alter(step % 7, fifths) then before[step] = true end
-      end
-    end
+    for _, m in ipairs(layout.measures) do before = M.spell_measure(m, s, clef, m.fifths or layout.fifths, before) end
   end
+end
+
+--- Spell a note of a measure, with `state` (the bar's alterations so far),
+--- `reminded` and `before` (what the bar before left altered).
+local function spell_note(n, tied, fifths, bottom, state, reminded, before)
+  local sp
+  local want = n.meta and n.meta.notation
+  if n.spelled then
+    -- Written in a score: spelled as it is kept.
+    sp = M.spelled(n.letter, n.alter, n.pitch)
+  elseif type(want) == "table" and want.pitch == n.pitch and want.letter and want.alter then
+    sp = M.spelled(want.letter, want.alter, n.pitch)
+  else
+    sp = M.spell(n.pitch, fifths)
+  end
+  n.letter, n.alter, n.octave, n.step = sp.letter, sp.alter, sp.octave, sp.step
+  n.pos = sp.step - bottom
+  if not tied then
+    local current = state[sp.step]
+    if current == nil then current = M.key_alter(sp.letter, fifths) end
+    if sp.alter ~= current then
+      n.acc = sp.alter
+    elseif before[sp.step] and not reminded[sp.step] and state[sp.step] == nil then
+      -- The bar before altered this note: say it is back.
+      n.acc, n.courtesy = sp.alter, true
+    end
+    state[sp.step] = sp.alter
+    reminded[sp.step] = true
+  end
+end
+
+local function by_step(a, b) return a.step < b.step or (a.step == b.step and a.pitch < b.pitch) end
+
+--- Spell the notes of staff `s` of a measure and decide which accidentals
+--- are shown, `before` being the steps the bar before left altered against
+--- the key (`{ [step] = true }`). Returns the steps this bar leaves altered.
+function M.spell_measure(m, s, clef, fifths, before)
+  -- A score's measures may change clef.
+  local bottom = M.CLEF_BOTTOM[m.clefs and m.clefs[s] or clef]
+  local state, reminded = {}, {}
+  for _, ev in ipairs(m.staves[s]) do
+    for _, n in ipairs(ev.grace or {}) do spell_note(n, false, fifths, bottom, state, reminded, before) end
+    for _, n in ipairs(ev.notes or {}) do spell_note(n, n.tied, fifths, bottom, state, reminded, before) end
+    if ev.notes then table.sort(ev.notes, by_step) end
+  end
+  local out = {}
+  for step, alter in pairs(state) do
+    if alter ~= M.key_alter(step % 7, fifths) then out[step] = true end
+  end
+  return out
 end
 
 local function stem_for(events)

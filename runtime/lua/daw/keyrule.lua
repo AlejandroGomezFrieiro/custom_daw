@@ -39,6 +39,20 @@ function M.broken()
       by_scope[map.scope][keys] = map
     end
   end
+  -- A view's own keys never take a global leader key away: they sit on
+  -- `<localleader>`, so that `,m` is the mixer in every view.
+  local leader = {}
+  for _, map in ipairs(keymap.every()) do
+    if map.scope == "global" and map.lhs:lower():find("<leader>", 1, true) and (map.mode == "n" or map.mode == "x") then
+      leader[map.mode .. table.concat(map.keys)] = true
+    end
+  end
+  for _, map in ipairs(keymap.every()) do
+    if map.scope ~= "global" and (map.mode == "n" or map.mode == "x") then
+      local keys = table.concat(map.keys)
+      if leader["n" .. keys] or leader[map.mode .. keys] then bad(map, "shadows a global leader key: use `<localleader>`") end
+    end
+  end
   -- `+` and `Ctrl-a` go together, as do `-` and `Ctrl-x`: the second with a count.
   for scope, list in pairs(by_scope) do
     for a, b in pairs({ ["+"] = "<C-a>", ["-"] = "<C-x>" }) do

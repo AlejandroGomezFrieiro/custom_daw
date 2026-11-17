@@ -36,12 +36,6 @@ command("notation.clef", function(ctx)
   if not valid or want == "off" then
     return daw.notify("a clef is treble, treble8 (guitar), bass, bass8, alto, tenor, grand or auto", "warn")
   end
-  if clip and view.has_score(clip:get()) then
-    -- A score keeps its own staves.
-    local err = view.set_clef(clip, want)
-    if err then return daw.notify(err, "warn") end
-    return daw.notify("clef: " .. want)
-  end
   local own = type(meta.notation) == "table" and meta.notation or {}
   own.clef = want ~= "auto" and want or nil
   meta.notation = next(own) and own or nil
@@ -96,9 +90,17 @@ command("notation.set", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1])
   local set = view.settings_of(clip:get())
   if not name then
-    local words = {}
-    for _, k in ipairs(score.ORDER) do words[#words + 1] = k .. "=" .. tostring(set[k]) end
-    return daw.notify(table.concat(words, " "))
+    -- A page, as `K` shows one: a line a setting, and whether the clip changed it.
+    local own = view.own(clip:get()).settings or {}
+    local lines = { { text = "Transcription of " .. clip:get().name, style = "Title" } }
+    for _, k in ipairs(score.ORDER) do
+      local changed = own[k] ~= nil and own[k] ~= score.DEFAULTS[k]
+      lines[#lines + 1] = string.format("  %-11s %-8s%s", k, tostring(set[k]), changed and ("  (default " .. tostring(score.DEFAULTS[k]) .. ")") or "")
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "  :notation.set swing off sets one, swing default forgets it"
+    lines[#lines + 1] = "  :notation.reset forgets them all"
+    return daw.ui.page("Notation settings", lines)
   end
   if score.DEFAULTS[name] == nil then return daw.notify("no setting " .. name .. "; they are: " .. table.concat(score.ORDER, ", "), "warn") end
   if ctx.args[2] == nil then return daw.notify(name .. " = " .. tostring(set[name])) end
@@ -130,9 +132,9 @@ end
 
 --- The chords a mark goes on, by their ids in the score: the region's (by
 --- default the command's range or the selection), or the chord's under the
---- cursor. A plain MIDI clip is written as a score.
+--- cursor.
 local function target_notes(region, ctx)
-  local clip = view:ensure_score()
+  local clip = view:editable()
   region = region or ranged(ctx)
   if region and clip then
     local _, places = edit.roll.notes(clip, region)
@@ -214,8 +216,8 @@ command("notation.slur", function(ctx)
   if not clip then return daw.notify("no clip open as notation", "warn") end
   local from, to = mark_span(ctx)
   local on = marks.slur(clip, from, to - 1e-3, view:cursor_staff())
-  daw.notify(on and "slurred: the notes played legato" or "slur taken away")
-end, { range = true, desc = "A slur over the range or selection: the notes under it played legato" })
+  daw.notify(on and "slurred" or "slur taken away")
+end, { range = true, desc = "A slur over the range or selection (written only: the notes keep how they play)" })
 
 --- A region's stretch and pitches, as `quantize` and `retranscribe` take them.
 local function bounds(region)
@@ -227,33 +229,21 @@ end
 command("notation.quantize", function(ctx)
   if not view:clip() then return daw.notify("no clip open as notation", "warn") end
   local n = view:quantize(bounds(ranged(ctx)))
-  daw.notify(n .. " notes played as written")
-end, { range = true, desc = "Make the clip's notes (or the range's) play exactly what is written: forget their feel" })
-command("score.reset-performance", function() daw.cmd("notation.quantize") end,
-  { desc = "Forget the feel of every note of the score clip: it plays as written" })
+  daw.notify(n == 1 and "1 note moved to where it is written" or n .. " notes moved to where they are written")
+end, { range = true, desc = "Quantize the clip's notes (or the range's) to the notation: each starts where it is written and lasts as long as it is written" })
+
+command("notation.apply-marks", function(ctx)
+  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  local n = view:apply_marks(bounds(ranged(ctx)))
+  daw.notify(n == 0 and "the notes already play as the marks say"
+    or (n == 1 and "1 note" or n .. " notes") .. " made to play as the marks say")
+end, { range = true, desc = "Make the clip's notes (or the range's) play as the marks say: dynamics and hairpins set the velocity, staccato and tenuto the length. For MIDI that was changed since in the piano roll" })
 
 command("notation.retranscribe", function(ctx)
   if not view:clip() then return daw.notify("no clip open as notation", "warn") end
   view:retranscribe(bounds(ranged(ctx)))
   daw.notify("written again from the playing")
-end, { range = true, desc = "Write the score (or the range's bars) again from what its notes play: what was decided by hand is forgotten" })
-
-command("score.from-midi", function()
-  local clip = view.target()
-  if not clip then return daw.notify("no clip under the cursor", "warn") end
-  local c = clip:get()
-  if c.kind ~= "midi" then return daw.notify("only MIDI clips can be written as a score", "warn") end
-  if view.has_score(c) then return daw.notify("already a score clip") end
-  view.commit(clip, view.from_midi(clip))
-  daw.notify("written as a score: notation writes it, its notes play it (:score.detach for plain MIDI again)")
-end, { desc = "Write a MIDI clip as a score (transcribed, keeping how it was played): notation then edits the score" })
-
-command("score.detach", function()
-  local clip = view.target()
-  if not clip then return daw.notify("no clip under the cursor", "warn") end
-  if not view.detach(clip) then return daw.notify("not a score clip") end
-  daw.notify("plain MIDI: the notes as the score played them; the notation is transcribed from them again")
-end, { desc = "Keep the notes a score clip plays and forget its score: a plain MIDI clip" })
+end, { range = true, desc = "Write the clip (or the range's bars) again from what its notes play: what was decided in notation there (voices, spellings, tuplets) is forgotten" })
 
 command("notation.voice", function(ctx)
   -- Over a range or a selection, the chords into that voice.
@@ -377,11 +367,9 @@ command("notation.export", function(ctx)
   if whole_track then
     opts.bars, opts.tuplets, opts.length, opts.offset = nil, nil, nil, nil
     layout = export.track_layout(track, opts, view.bars)
-  elseif view.score_of(c) then
+  else
     layout = require("notation.layout").layout(view.score_of(c), { length = c.length, fifths = opts.fifths,
       number = opts.bars[1] and opts.bars[1].number })
-  else
-    layout = model.layout(clip:notes(), opts)
   end
   view.decorate(layout, clip)
   if engraved[ext] then
@@ -481,20 +469,24 @@ local function op(lhs, fn, desc)
     local clip = view:clip()
     if lhs ~= "gl" then
       if view:readonly() then return end
-      clip = view:ensure_score()
+      clip = view:editable()
     end
     if clip then return fn(clip, region, ctx) end
   end, { view = "notation", desc = desc })
 end
 op("=", function(_, region)
-  -- The performance made what is written: each note's feel forgotten.
+  -- The notes moved to what is written: a MIDI edit like any other.
   local n = view:quantize(bounds(region))
   daw.notify(n == 1 and "1 note played as written" or n .. " notes played as written")
-end, "Play as written: forget the feel of the notes (quantize to the notation)")
+end, "Play as written: the notes start where they are written and last as long (quantize to the notation)")
 op("g=", function(_, region)
   local n = view:retranscribe(bounds(region))
   daw.notify("written again from the playing" .. (n > 0 and (" (" .. n .. " notes)") or ""))
 end, "Write again from the playing: the bars transcribed afresh from what the notes play")
+op("g@", function(_, region)
+  -- Asks first, with the change heard and shown as a popover's is.
+  view.popover.open("apply-marks", { region = region })
+end, "Make the notes play as the marks say (dynamics, hairpins, articulations): a prompt shows the change; Enter writes it")
 op("gl", function(clip, region)
   local c0, c1 = region.c0, region.c1
   if region.kind == "line" then c0, c1 = 0, clip.length end
@@ -507,11 +499,10 @@ local function each_count(fn) return function(ctx)
 end end
 nmap("<CR>", function() view:toggle_note() end, "Add a note of the chosen value, or take away the one here")
 local function insert()
-  -- Entering notes writes a score: a plain MIDI clip becomes one now.
-  if not view.multi and not view:ensure_score() then return end
+  if not view.multi and not view:editable() then return end
   -- Entry goes into the voice of the note the cursor is on, if it is on one.
   view.last, view.chord, view.voice = nil, nil, view:cursor_voice()
-  view.push, view.repitch, view.grace = nil, nil, nil
+  view.push, view.repitch, view.grace, view.pending_grace = nil, nil, nil, nil
   keymap.set_mode("i")
 end
 nmap("i", insert, "Enter notes by letter name (a to g)")
@@ -659,7 +650,7 @@ nmap("ZZ", "close", "Close the notation")
 local function vmap(lhs, fn, desc)
   map(lhs, nil, { view = "notation", mode = "x", desc = desc, operator = function(region, ctx)
     if view:readonly() then return end
-    local clip = view:ensure_score()
+    local clip = view:editable()
     if clip then fn(clip, region, ctx) end
   end })
 end
@@ -919,7 +910,7 @@ do
     P.delete_region(region, ctx.register)
     if region.kind ~= "line" then view:set(nil, region.c0) end
     view.last, view.chord, view.voice = nil, nil, voice
-    view.push, view.repitch, view.grace = nil, nil, nil
+    view.push, view.repitch, view.grace, view.pending_grace = nil, nil, nil, nil
     keymap.set_mode("i")
   end, "Change: delete and enter notes")
   local function shift(dir) return function(region, ctx)
@@ -1092,9 +1083,9 @@ do
 
   -- Entry modes.
   local function enter_mode(push, repitch)
-    if not view.multi and not view:ensure_score() then return end
+    if not view.multi and not view:editable() then return end
     view.last, view.chord, view.voice = nil, nil, view:cursor_voice()
-    view.push, view.repitch, view.grace = push, repitch, nil
+    view.push, view.repitch, view.grace, view.pending_grace = push, repitch, nil, nil
     keymap.set_mode("i")
   end
   nmap("I", function() enter_mode(true, nil) end, "Enter notes, pushing later music along (push-insert)")

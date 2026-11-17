@@ -8,6 +8,8 @@ the file format itself, which scripts can use on their own.
 daw.ext.load("/path/to/daw/extensions/rpp")   -- or link it into ~/.config/daw/extensions
 ```
 
+![A REAPER project opened with :rpp.import! and the list of what could not be carried over, then the project itself and :w writing it back as .rpp](images/tui-rpp.gif)
+
 | Command | What it does |
 | --- | --- |
 | `:rpp.import song.rpp` | Replace the project with the REAPER project. `merge=true` adds its tracks to the current project instead; `instrument=synth` gives a device of that kind to MIDI tracks whose instrument stayed behind, so they can be heard. |

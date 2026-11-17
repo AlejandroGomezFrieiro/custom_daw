@@ -15,6 +15,8 @@ saving see ordinary notes and know nothing of patterns.
 daw.ext.load("extensions/pattern")   -- or put the directory in ~/.config/daw/extensions
 ```
 
+![A pattern clip typed with ,tt into the lead's empty first half while the demo song plays, then edited again and the clip following the text](images/tui-pattern.gif)
+
 ## Keys and commands
 
 In the arrange view, on the clip under the cursor:

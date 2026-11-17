@@ -10,6 +10,8 @@ daw.ext.load("/path/to/daw/extensions/drums")
 `extensions/drums/demo.lua` is a song to try it with
 (`daw -e 'dofile("extensions/drums/demo.lua")'`).
 
+![The demo song's drums in the grid: claps put in by name with / and Enter, one made softer, the bar repeated with &, and played](images/tui-drums.gif)
+
 ## What a drum track is
 
 An ordinary track whose clips are ordinary MIDI clips, so playback,

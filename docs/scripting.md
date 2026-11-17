@@ -50,31 +50,12 @@ daw.midifile.export("out.mid", { clips = { clip.id } })         -- or { tracks =
 local file = daw.midifile.read("song.mid")             -- parse(bytes) and encode(file) work on bytes
 ```
 
-**Clip owners.** An extension that keeps a clip's notes as the rendering
-of something of its own (the notation extension's written score) names
-itself the clip's owner, and is asked before any note of it is written
-through `daw.Clip` (and so by the piano roll, the window's gestures,
-`daw.edit` and fixes from language servers). It says what the change
-means and makes it its own way, or refuses it with a message; its own
-writes go through `daw.api`, which is not asked.
-
-```lua
-daw.clips.owner("myscore", {
-  claims = function(clip) return clip.meta.mine ~= nil end,   -- clip as daw.api.clip_get gives it
-  on_edit = function(clip, change)                            -- change: set / remove / add / replace
-    if change.remove then return { kind = "refuse", message = "these notes are mine" } end
-    return { kind = "written", apply = function() --[[ change it my way ]] end }
-  end,
-})
-daw.clips.owner_of(clip.id)    -- "myscore", or nil
-```
-
-`kind` is `"written"` or `"feel"` (both: `apply()` is called instead of
-the write, and what it returns is what `set_note` and `add_note` return),
-`"refuse"`, or nil for the write to go ahead as asked. `"ask"` writes
-nothing yet: `prompt` is put as a question answered with one key, and
-`choices` maps a key to `{ apply, message }`; any other key leaves the
-notes as they are (and says `cancel`).
+**What extensions keep with notes.** A clip's notes belong to nobody: any
+view or extension edits them, and nothing is asked. What an extension
+knows about a note that MIDI cannot say (a lyric, a spelling) it keeps in
+the note's `meta`, under a key of its own (`meta.lyric`, `meta.notation`),
+and about the clip in `clip.meta`; the core carries it with the note
+through moves, copies, undo and saving, and never reads it.
 
 **Transport.**
 
@@ -174,6 +155,7 @@ daw.ex.view("myview", { song = function(col) return clip_start + col end,
 daw.cmd("track.add", { "Bass", device = "synth" })
 daw.keymap.set("<leader>x", "command and arguments", { view = "arrange", desc = "..." })
 daw.keymap.set("gx", function(ctx) end)          -- ctx.count, ctx.register
+daw.keymap.set("<localleader>x", fn, { view = "myview" })  -- a view's own leader (a backslash); never `<leader>` for one view's keys
 daw.keymap.set("gz", fn, { mode = { "n", "x" } })    -- normal and visual mode; "i" is insert
 daw.keymap.set("}", fn, { view = "arrange", motion = true })  -- a motion: also after operators and in visual mode
 

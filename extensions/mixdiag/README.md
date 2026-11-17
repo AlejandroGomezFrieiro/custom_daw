@@ -9,6 +9,8 @@ would fix it, and a place (a track and a beat) that `]d` and `[d` jump to.
 daw.ext.load("extensions/mixdiag")      -- or put it in ~/.config/daw/extensions
 ```
 
+![The bass pushed 14 dB too loud, ,xa measuring the song and saying so on the status line, and ,xx listing the finding: the true peak over the ceiling at bar 5](images/tui-mixdiag.gif)
+
 `,xa` measures the song (in visual mode, the selection), `,xx` lists the
 findings, `]d` and `[d` go from one to the next in the arrange view.
 

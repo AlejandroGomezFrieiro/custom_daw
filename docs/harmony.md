@@ -82,8 +82,8 @@ window the row is the top of the ruler. `daw.opt.chords` says what is
 written: `"names"` (the default), `"roman"`, `"both"`, or `false` for no
 row. The arrange view does not show chords.
 
-Tested on the demo song (`examples/demo-song.lua`: A minor, Am F/C
-Fadd9/G Am7 Cmaj9 G) and on progressions written for the purpose:
+Tested on the demo song (`examples/demo-song.lua`: A minor, Am F C E
+twice) and on progressions written for the purpose:
 inversions, sevenths, half-diminished and diminished chords, a melody of
 passing notes over block chords, and a modulation from C to G major
 (`tests/harmony.lua`).

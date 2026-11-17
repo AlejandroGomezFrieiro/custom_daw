@@ -1,26 +1,17 @@
 #!/bin/sh
-# The stills that are not taken on the way through a scene.
-. "$(dirname "$0")/rig.sh"
-rig_start 1280x800
+# The stills that are not taken on the way through a scene: the window
+# playing the song, and its panes.
+. "$MAKE/rig.sh"
+rig_start $GUI_SIZE
 gui_start
-glide 48 284; xdotool click 1; pause 0.4
-glide 181 21; xdotool click 1; pause 0.3
-glide 700 600
+glide 181 21; xdotool click 1; pause 0.4
+glide 700 700
 pause 9.6
-shot gui.png
+still gui.png
 glide 149 21; xdotool click 1; pause 0.5
-app_stop
-term_start
-key j; pause 0.3; key w; pause 0.3; key Return; pause 1.2
-for k in l l l l k k; do key $k; pause 0.15; done
-pause 0.5
-shot tui-pianoroll.png
-app_stop
-# The window's panes: the arrange view, the piano roll and the score of the melody.
-SETUP="$GUI_DEMO daw.ext.load('extensions/notation')"
-gui_start
-glide 520 290; xdotool click --repeat 2 --delay 60 1; pause 1.2
-typ ":vs notation"; key Return; pause 1.2
-typ ":notation"; key Return; pause 2.0
+# The panes: the melody in the piano roll, the tracks as text beside it.
+glide 700 390; xdotool click --repeat 2 --delay 60 1; pause 1.2
+glide 600 550; xdotool keydown ctrl; xdotool click 5; xdotool keyup ctrl; pause 0.4
+typ ":vs daw://tracks"; key Return; pause 1.2
 glide 700 790 6; pause 0.4
-shot gui-panes.png
+still gui-panes.png
