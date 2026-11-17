@@ -42,14 +42,14 @@ local function rows_for(height, staves, extra, lines, most)
   local best
   extra = extra or 0
   for margin = most, 1, -1 do
-    local per = staves * (lines + 2 * margin) + extra
+    local per = staves * (lines + 2 * margin) + (type(extra) == "function" and extra(margin) or extra)
     -- The last system may lose a little of the room under it.
     local systems = floor((height + margin - 1) / per)
     -- More systems win; between as many, more room above and below.
     if systems >= 1 and (not best or systems > best[3]) and (margin >= 3 or not best) then best = { margin, per, systems } end
   end
   if best then return best[1], best[2], best[3] end
-  return 1, staves * (lines + 2) + extra, 1
+  return 1, staves * (lines + 2) + (type(extra) == "function" and extra(1) or extra), 1
 end
 
 --- Systems `width` wide from the one that holds measure `first`: broken
@@ -285,19 +285,22 @@ function view:render(buf, ctx)
   local extra = (layout.names and ("  " .. #layout.names .. " staves, to read") or "") .. (view.raw_view() and "  raw" or "")
     .. ((self.voice or 1) > 1 and ("  voice " .. self.voice) or "")
     .. (only and ("  " .. (only == 1 and "right hand" or "left hand") .. " (low panel)") or "")
+  -- How letters write: overwriting (as entered), pushing later music
+  -- along, re-pitching what is there; and a tuplet or grace note to come.
+  -- The title's right side stands clear of it.
+  local badge
+  if inserting then
+    local tp = self:entry_tuplet()
+    local how = self.repitch and " REPITCH " or self.push and " PUSH " or " INS "
+    badge = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
+  end
+  local right = (badge and "" or value .. "  ") .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra
   daw.ui.titlebar(real, {
     pill = { c.name, hue.pill }, name = track.name, focused = ctx.focused,
     context = string.format("%s  %s", here, daw.time.format(c.start + self.beat)),
-    right = value .. "  " .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra,
+    right = right .. (badge and string.rep(" ", api.str_width(badge) + 1) or ""),
   })
-  if inserting then
-    -- How letters write: overwriting (as entered), pushing later music
-    -- along, re-pitching what is there; and a tuplet or grace note to come.
-    local tp = self:entry_tuplet()
-    local how = self.repitch and " REPITCH " or self.push and " PUSH " or " INS "
-    local text = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
-    real:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
-  end
+  if badge then real:text(math.max(0, w - api.str_width(badge) - 1), 0, badge, "RulerInsert") end
   -- Where the terminal shows images, the engraved page (gui.lua) below the title.
   if real:surface(0, 1, w, h - 1) then return end
 
@@ -315,10 +318,26 @@ function view:render(buf, ctx)
       end
     end
   end
-  local margin, per, systems = rows_for(h - 1, staves, tab and (tab.strings + 1 + math.max(0, tab_room - 1)) or 0, lines, dense and (staves == 2 and 2 or 3) or 4)
+  local stem_len = dense and 6 or 5
+  -- Notes low under the last staff, their stems down, take rows of their
+  -- own under it, so that they do not run into the next system.
+  local below = 0
+  if not tab then
+    for _, m in ipairs(layout.measures) do
+      for _, ev in ipairs(m.staves[staves] or {}) do
+        if ev.kind == "note" then
+          local low = math.huge
+          for _, n in ipairs(ev.notes or {}) do low = math.min(low, n.pos) end
+          if (ev.stem or 0) < 0 and (ev.base or 1) < 4 then low = math.min(low - stem_len, 4) end
+          below = math.max(below, math.ceil(-low / step))
+        end
+      end
+    end
+  end
+  local extra = tab and (tab.strings + 1 + math.max(0, tab_room - 1)) or function(margin) return math.max(0, below - margin) end
+  local margin, per, systems = rows_for(h - 1, staves, extra, lines, dense and (staves == 2 and 2 or 3) or 4)
   if tab then tab_room = math.max(0, tab_room - margin) end
   local staff_rows = lines + 2 * margin
-  local stem_len = dense and 6 or 5
   -- Columns: a brace before a grand staff, the system's left edge, the
   -- clef, the key, the time.
   local edge = staves == 2 and 1 or 0
@@ -453,6 +472,9 @@ function view:render(buf, ctx)
         local evs = m.staves[s]
         local R = rows[s]
         local function row(pos) return R.above(pos) end
+        -- The row of a stem's end, its flags and beams: inside the system,
+        -- a stem shortened rather than run into the next system.
+        local function tip_row(pos) return util.clamp(R.above(pos), top, top + per - 1) end
         -- Where a chord's stem is: at its heads' right going up, their left going down.
         local function stem_x(ev) return xt(ev.start) + ((ev.stem or 1) > 0 and 1 or 0) end
         -- Beam groups: where the beam runs.
@@ -601,13 +623,13 @@ function view:render(buf, ctx)
                 buf:text(ex, R.below(low_pos), G.hollow_down, note_style)
               end
               local ya, yb
-              if up then ya, yb = row(tip), R.above(low_pos) - 1 else ya, yb = R.below(top_pos) + 1, row(tip) end
+              if up then ya, yb = tip_row(tip), R.above(low_pos) - 1 else ya, yb = R.below(top_pos) + 1, tip_row(tip) end
               for y = ya, yb do
                 if not taken[sx][y] then buf:text(sx, y, G.stem, note_style) end
               end
               if not b then
                 for f = 1, ev.flags or 0 do
-                  buf:text(sx + 1, row(tip - (f - 1) * step * ev.stem), up and G.flag_up or G.flag_down, note_style)
+                  buf:text(sx + 1, tip_row(tip - (f - 1) * step * ev.stem), up and G.flag_up or G.flag_down, note_style)
                 end
               end
             end
@@ -617,7 +639,7 @@ function view:render(buf, ctx)
         for _, b in pairs(beams) do
           local list = b.events
           for level = 1, 3 do
-            local y = row(b.tip - (level - 1) * b.dir * step)
+            local y = tip_row(b.tip - (level - 1) * b.dir * step)
             for i, ev in ipairs(list) do
               if (ev.flags or 0) >= level then
                 local x0 = stem_x(ev)
@@ -637,7 +659,7 @@ function view:render(buf, ctx)
               end
             end
           end
-          for _, ev in ipairs(list) do buf:text(stem_x(ev), row(b.tip), b.dir > 0 and G.beam_up or G.beam_down, note_style) end
+          for _, ev in ipairs(list) do buf:text(stem_x(ev), tip_row(b.tip), b.dir > 0 and G.beam_up or G.beam_down, note_style) end
         end
         -- Slurs: an arc over the notes, to where the slur ends in this system.
         for _, ev in ipairs(evs) do
@@ -692,11 +714,22 @@ function view:render(buf, ctx)
         end
       end
       -- Dynamics, hairpins and text; repeat signs at the barlines.
+      -- Under the first staff (between a grand staff's two); in a low
+      -- panel, on the last row there is.
+      local dyn_row = math.min(band(1) + staff_rows - 1, h - 1)
+      -- A hairpin from an earlier bar runs on through this one.
+      for k = m.index - 1, 1, -1 do
+        for _, mk in ipairs(layout.measures[k].marks or {}) do
+          if (mk.kind == "cresc" or mk.kind == "dim") and mk.to > m.start + EPS then
+            local x1 = mk.to >= m.start + m.length - EPS and bx - 1 or xt(mk.to)
+            local style = mk.ghost and "ExGhost" or note_style
+            for hx = mx - 1, x1 do buf:text(hx, dyn_row, G.hairpin, style) end
+            if mk.kind == "dim" and mk.to <= m.start + m.length + EPS then buf:text(x1, dyn_row, ">", style) end
+          end
+        end
+      end
       for _, mk in ipairs(m.marks or {}) do
         local mxp = xt(mk.at)
-        -- Under the first staff (between a grand staff's two); in a low
-        -- panel, on the last row there is.
-        local dyn_row = math.min(band(1) + staff_rows - 1, h - 1)
         local note_style = mk.ghost and "ExGhost" or note_style
         if mk.kind == "dyn" then
           buf:text(mxp, dyn_row, mk.value, mk.ghost and note_style or { fg = colour, bold = true, italic = true })
@@ -706,7 +739,11 @@ function view:render(buf, ctx)
             if other.kind == "dyn" and math.abs(other.at - mk.at) < EPS then mxp = mxp + #other.value + 1 end
           end
           for hx = mxp, x1 do buf:text(hx, dyn_row, G.hairpin, note_style) end
-          if mk.kind == "cresc" then buf:text(mxp, dyn_row, "<", note_style) else buf:text(x1, dyn_row, ">", note_style) end
+          if mk.kind == "cresc" then
+            buf:text(mxp, dyn_row, "<", note_style)
+          elseif mk.to <= m.start + m.length + EPS then
+            buf:text(x1, dyn_row, ">", note_style)
+          end
         elseif mk.kind == "text" then
           buf:text(mxp, band(1) + math.max(0, margin - 2) + (margin > 1 and 1 or 0), tostring(mk.value), mk.ghost and note_style or { fg = colour, italic = true })
         end
@@ -755,9 +792,11 @@ function view:render(buf, ctx)
           local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
           -- A popover opens under the system, at the caret's column, so that
           -- the staff and what it previews stay in sight; at the foot of the
-          -- panel when the system fills it.
+          -- panel when the system fills it. Under the row of dynamics too,
+          -- which is what a dynamic's popover previews.
           local last = sys.rows[#sys.rows]
-          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.min(h - 1, math.max(1, last.above(0) + 3)) }
+          local under_marks = math.max(last.above(0) + 3, sys.top + geometry.staff_rows)
+          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.min(h - 1, math.max(1, under_marks)) }
           local style = inserting and "InsertCursor" or "RollCursor"
           if selection then
             buf:fill(cx, R.above(pos), 2, 1, nil, style)
