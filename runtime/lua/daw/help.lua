@@ -610,7 +610,7 @@ end
 
 -- Where tag jumps came from, for `Ctrl-t`.
 local stack = {}
-daw.seats.keep("help", function() return stack end, function(s) stack = s end, function() return {} end)
+daw.seats.keep("help.tagstack", function() return stack end, function(s) stack = s end, function() return {} end)
 
 --- Show a page at a row: in the help window, else one split off this one
 --- (as Vim's `:help` splits), or in a window of its own in a graphical
