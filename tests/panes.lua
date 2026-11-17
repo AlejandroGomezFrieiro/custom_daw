@@ -170,7 +170,7 @@ test("panes: a view that paints is docked where it docks, and popped out it give
   eq(daw.canvas.open_views.panes_probe ~= nil, true, "a window of its own on request")
   eq(panes().panes_probe, nil, "and no pane")
   local runs = {}
-  for _, op in ipairs(daw.canvas.paint("panes_probe", 600, 300).ops) do
+  for _, op in ipairs(daw.canvas.paint("panes_probe", 600, 300, { bars = true }).ops) do
     if op[1] == "m" then runs[#runs + 1] = op[6] end
   end
   eq(table.concat(runs, " "):find("NOR", 1, true) ~= nil, true, "the status line under it, with the mode: " .. table.concat(runs, " "))

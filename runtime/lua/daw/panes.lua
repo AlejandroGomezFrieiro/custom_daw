@@ -154,7 +154,7 @@ function M.paint(id, width, height, opts)
   if not win then return nil end
   local view = daw.ui.views[win.view]
   if not view then return nil end
-  if view.paint then return daw.canvas.paint(win.view, width, height, daw.util.merge(opts or {}, { pane = true })) end
+  if view.paint then return daw.canvas.paint(win.view, width, height, opts) end
   -- Cells are laid out on the frontend's cell, as `daw.canvas.paint` takes it.
   if opts and opts.cell and (opts.cell.w or 0) > 0 then daw.canvas.cell = { w = opts.cell.w, h = opts.cell.h } end
   cells[id] = cells[id] or {}

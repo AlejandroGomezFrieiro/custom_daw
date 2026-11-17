@@ -4682,6 +4682,9 @@ fn run() -> Result<()> {
                     "cell": { "w": canvas.window.get_cell_width(), "h": canvas.window.get_cell_height() },
                     "fresh": canvas.items.row_count() == 0,
                     "glyphs": true,
+                    // The status line and the command line under the view: the
+                    // main window's are out of sight behind this one.
+                    "bars": true,
                 });
                 let drawing = client
                     .borrow_mut()

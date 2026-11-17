@@ -566,9 +566,9 @@ end
 --- paths, and the markers are left out), `surface` when the drawing goes
 --- into a terminal's cells (the view leaves out what the terminal's own
 --- bars show, and its background), `colors` `{ fg, bg }`, the terminal's,
---- and `pane` when it goes into a pane of a frontend's main area (a view in
---- a window of its own has the status line and the command line drawn
---- under it; a pane's frontend has them already). The view's `paint` is
+--- and `bars` from a frontend that shows a view in a window of its own,
+--- out of sight of its main window's bottom: the status line and the
+--- command line are drawn under the view there. The view's `paint` is
 --- given these in its context, as `cell`, `surface`, `fg` and `bg`. A view
 --- that draws cells answers `{ same = true }` when nothing would change.
 function M.paint(name, width, height, opts)
@@ -584,8 +584,8 @@ function M.paint(name, width, height, opts)
   if not view then return nil end
   local ops = {}
   -- In a window of its own the view has the two lines of the screen's
-  -- bottom under it; in a pane or a terminal the screen has them.
-  local under = window and not opts.surface and not opts.pane and 2 * M.cell.h or 0
+  -- bottom under it, when the frontend asks; a pane's frontend has them.
+  local under = window and opts.bars and not opts.surface and 2 * M.cell.h or 0
   local full = height
   height = math.max(1, height - under)
   local g = painter(ops, 0, 0, width, height)
