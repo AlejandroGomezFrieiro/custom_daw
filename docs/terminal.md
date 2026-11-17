@@ -807,7 +807,8 @@ A picture is a **strip**: a rectangle of cells a view keeps for pixels as
 it draws (`buf:strip`, see [Extensions](extensions.md)), under a key of its
 own, so that a view can have several, and the same view in two windows
 (`:vs`) has one in each, kept apart. The score is one strip over its
-window; the curve editor's plot (`gC`) is another. A strip is either over
+window; the curve editor's plot (`gC`) is another, and the utau vocal
+editor has two, the pitch lines under its notes and its curve. A strip is either over
 the text, with its cells left blank (the score), or **under** it: the
 view's cells are drawn as usual above the picture, so that the curve
 editor keeps its points, its cursor, the selection and the playhead as

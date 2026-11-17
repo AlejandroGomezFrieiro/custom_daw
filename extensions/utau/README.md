@@ -120,7 +120,13 @@ here), the state of each phrase in the ruler (grey pending, yellow rendering,
 blue draft, green final, red error), the pitch actually sung as a white line
 across the rows (`▔`, `─` and `▁` for the upper, middle and lower third of a
 semitone), the bends you drew as orange dots, and under the notes the chosen
-curve in cells (`daw.opt.curve_glyphs`) with its value at the cursor.
+curve in cells (`daw.opt.curve_glyphs`) with its value at the cursor. In a
+terminal that shows pictures (`buf:strip`, see the manual's Terminal page)
+these are lines in pixels under the notes instead: the pitch each note is
+sung on in orange (its transition from the note before, its vibrato, which
+a 25 cent one shows, and the bends you drew), the pitch the engine sang in
+white, and the curve with the area under it; the notes, lyrics, cursor and
+playhead stay cells over them. `:set graphics!` goes back to cells.
 
 Notes are heard as they are placed or clicked: sung by the engine with the
 track's voice when it is running and the track has a singer, else as a soft
