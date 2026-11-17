@@ -10,6 +10,7 @@ local notes = require("utau.notes")
 local lyrics = require("utau.lyrics")
 local proto = require("utau.proto")
 local shapes = require("utau.shapes")
+local strips = require("utau.strips")
 
 local KEYS = 5 -- columns for note names
 local TICKS = proto.TICKS
@@ -708,8 +709,21 @@ function view:render(buf, ctx)
     end
   end
 
+  -- Where the terminal shows pictures, the pitch each note is sung on and
+  -- the pitch the engine sang are lines in pixels under the notes.
+  local win_id = ctx.win and ctx.win.id or "float"
+  local pitd_lane = device and notes.lane(clip.track, device, "pitd")
+  local scroll, top = self.scroll, self.top
+  local pictured = roll:strip(0, 0, tw, rows, {
+    key = "utau:roll#" .. win_id, under = true,
+    draw = function(g, px)
+      strips.roll(g, px, { list = list, clip = clip, scroll = scroll, zoom = zoom, top = top,
+        pitd = pitd_lane and api.lane_points(pitd_lane), sung = utau.pitch[clip.id] })
+    end,
+  })
+
   -- The pitch the user drew, as dots, and the pitch that is sung, as a line.
-  if device then
+  if device and not pictured then
     local lane = notes.lane(clip.track, device, "pitd")
     local points = lane and api.lane_points(lane) or {}
     if #points > 0 then
@@ -728,7 +742,7 @@ function view:render(buf, ctx)
       end
     end
   end
-  local sung = utau.pitch[clip.id]
+  local sung = not pictured and utau.pitch[clip.id]
   if sung then
     local columns = {}
     for tick, cents in pairs(sung.ticks) do
@@ -792,14 +806,22 @@ function view:render(buf, ctx)
       local value = #points > 0 and notes.sampler(points, info.default) or function() return constant end
       local range = math.max(1e-9, info.max - info.min)
       local area = buf:sub(KEYS, cy, tw, curve_rows)
-      local level = math.min(curve_rows * 4 - 1, math.floor((info.default - info.min) / range * curve_rows * 4))
-      local base_row = curve_rows - 1 - math.floor(level / 4)
-      area:fill(0, base_row, tw, 1, "┄", "UtauCurveBase")
-      daw.draw.curve(area, 0, curve_rows, function(i)
-        local beat = self.scroll + (i + 0.5) / (zoom * 2)
-        if beat > clip.length then return nil end
-        return (value(clip.start + beat) - info.min) / range
-      end, "UtauCurve")
+      local drawn = area:strip(0, 0, tw, curve_rows, {
+        key = "utau:curve#" .. win_id, under = true,
+        draw = function(g, px)
+          strips.curve(g, px, { info = info, points = points, constant = constant, clip = clip, scroll = scroll, zoom = zoom })
+        end,
+      })
+      if not drawn then
+        local level = math.min(curve_rows * 4 - 1, math.floor((info.default - info.min) / range * curve_rows * 4))
+        local base_row = curve_rows - 1 - math.floor(level / 4)
+        area:fill(0, base_row, tw, 1, "┄", "UtauCurveBase")
+        daw.draw.curve(area, 0, curve_rows, function(i)
+          local beat = self.scroll + (i + 0.5) / (zoom * 2)
+          if beat > clip.length then return nil end
+          return (value(clip.start + beat) - info.min) / range
+        end, "UtauCurve")
+      end
       area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, nil, "RollCursor")
       local here = value(clip.start + self.beat)
       buf:text(0, cy, util.fit(info.key, KEYS), "UtauCurveName")

@@ -317,6 +317,98 @@ test("utau: a block of the vocal device costs little", function()
   dev.call("voice.1", "")
 end)
 
+-- The vocal editor in pictures -----------------------------------------------------
+
+--- The heights a drawing's lines reach between two x, in pixels: lowest and highest.
+local function reach(ops, colour, x0, x1)
+  local lo, hi
+  for _, op in ipairs(ops) do
+    if op[1] == "p" and op[3] == colour then
+      for x, y in op[2]:gmatch("[ML] ([%d.-]+) ([%d.-]+)") do
+        x, y = tonumber(x), tonumber(y)
+        if x >= x0 and x <= x1 then lo, hi = math.min(lo or y, y), math.max(hi or y, y) end
+      end
+    end
+  end
+  return lo, hi
+end
+
+test("utau: where the terminal shows pictures the pitch and the curve are strips under the notes", function()
+  T.fresh()
+  load()
+  local track, clip = vocal("Lead", { 60, 62, 64, 65 })
+  local notes = require("utau.notes")
+  -- The second note sings a vibrato 25 cents deep over its last half.
+  notes.change_props(clip.id, function(p) p.vb = { 50, 175, 25, 0, 0, 0, 0, 0 }; return true end, { [2] = true })
+  notes.stroke(track.id, utau.device_of(track.id), "dyn", { { 0, -50 }, { 2, 30 }, { 4, -20 } })
+  daw.flush()
+  local editor = require("utau.editor").editor
+  editor:edit(clip.id)
+  editor.curve = "dyn"
+  local W, H = 120, 36
+  local cells = api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "no pictures: cells")
+
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
+  T.after(function() api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } }) end)
+  api.ui_snapshot(W, H)
+  local strips = {}
+  for _, s in ipairs(daw.ui.rects.surfaces or {}) do strips[s.key:match("^utau:(%a+)#")] = s end
+  eq(strips.roll ~= nil and strips.curve ~= nil, true, "a strip for the roll and one for the curve")
+  eq(strips.roll.under and strips.curve.under, true, "under the cells")
+  local function ops_of(s) return daw.canvas.draw(s.draw, { w = s.w * 10, h = s.h * 20, cell = { w = 10, h = 20 } }) end
+  local roll = ops_of(strips.roll)
+  local P = require("daw.theme").palette
+  local ppb = daw.opt.note_zoom * 10
+  -- The vibrato swings 25 cents either side: half a row of 20 pixels from
+  -- top to bottom, in the second half of the second note.
+  local lo, hi = reach(roll, P.orange, 1.6 * ppb, 1.95 * ppb)
+  eq(lo ~= nil, true, "the second note's line is drawn")
+  eq(hi - lo >= 8, true, string.format("the vibrato shows: %.1f to %.1f", lo, hi))
+  lo, hi = reach(roll, P.orange, 0.1 * ppb, 0.4 * ppb)
+  eq(hi - lo < 1, true, "a note without one is level")
+  local curve = ops_of(strips.curve)
+  local lines = 0
+  for _, op in ipairs(curve) do if op[1] == "p" and op[3] == P.green then lines = lines + 1 end end
+  eq(lines >= 1, true, "the curve is a line in pixels")
+
+  -- The pitch the engine sang, a line of its own.
+  utau.pitch[clip.id] = { step = 5, ticks = {} }
+  for tick = 0, 4 * require("utau.proto").TICKS, 5 do utau.pitch[clip.id].ticks[tick] = 6000 + 10 * math.sin(tick / 50) end
+  T.after(function() utau.pitch[clip.id] = nil end)
+  api.ui_snapshot(W, H)
+  for _, s in ipairs(daw.ui.rects.surfaces or {}) do if s.key:find("^utau:roll#") then strips.roll = s end end
+  roll = ops_of(strips.roll)
+  lo = reach(roll, "#ffffff", 0, 4 * ppb)
+  eq(lo ~= nil, true, "the sung pitch is drawn")
+
+  -- The cursor moves: the same pictures.
+  daw.keymap.feed("l")
+  api.ui_snapshot(W, H)
+  for _, s in ipairs(daw.ui.rects.surfaces or {}) do strips[s.key:match("^utau:(%a+)#")] = s end
+  eq(daw.inspect(ops_of(strips.roll)) == daw.inspect(roll), true, "a cursor move changes nothing in the picture")
+
+  -- Pictures off, or a terminal without them: the cells as before.
+  utau.pitch[clip.id] = nil
+  api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
+  cells = api.ui_snapshot(W, H)
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
+  daw.opt.graphics = false
+  eq(table.concat(api.ui_snapshot(W, H), "\n"), table.concat(cells, "\n"), "graphics off draws the same cells")
+  eq(daw.ui.rects.surfaces, nil, "and keeps no strip")
+  daw.opt.graphics = true
+
+  -- Split: the editor is in one window at a time, its strips that window's.
+  daw.commands.exec("vs")
+  api.ui_snapshot(W, H)
+  local rolls = {}
+  for _, s in ipairs(daw.ui.rects.surfaces or {}) do
+    if s.key:find("^utau:roll#") then rolls[#rolls + 1] = s end
+  end
+  eq(#rolls, 1, "one roll")
+  eq(rolls[1].key, "utau:roll#" .. rolls[1].win, "under its window's key")
+end)
+
 -- Curves that follow their clip ------------------------------------------------
 
 local UNDER = { 4, 5, 6, 7, 7.9 }

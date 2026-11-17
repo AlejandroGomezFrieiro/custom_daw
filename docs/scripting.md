@@ -221,6 +221,18 @@ daw.ui.menu({ { label = "Rename", run = function() end }, "-", { label = "Delete
 daw.notify("message", "warn")
 ```
 
+Where the terminal shows pictures, a view can keep a rectangle of its
+buffer for pixels under its cells, and draw cells there only when it
+cannot (`daw.opt.graphics` off, tmux, a terminal without images):
+
+```lua
+local pictured = buf:strip(0, 1, buf.width, buf.height - 1, { key = "level", under = true,
+  draw = function(g, px) daw.plot.curve(g, px, { points = points, from = 0, pixels_per_beat = 4 * px.cell.w }) end })
+if not pictured then draw_it_in_cells() end
+```
+
+[Extensions](extensions.md) says more ("Pictures in the terminal").
+
 **Buffers, windows and tabs.** A view is a buffer type with one buffer,
 shown in one window at a time (see Windows, buffers and tabs in
 [the terminal interface](terminal.md)). `daw.buftype` makes a type that has
