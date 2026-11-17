@@ -47,12 +47,18 @@ pub fn frozen_file(track: &Track) -> Option<PathBuf> {
 
 /// Point a frozen track at another file (saving relative to the project,
 /// relinking a moved one). Returns whether it changed.
-pub fn map_frozen_file(track: &mut Track, f: &mut impl FnMut(&std::path::Path) -> Option<PathBuf>) -> bool {
+pub fn map_frozen_file(
+    track: &mut Track,
+    f: &mut impl FnMut(&std::path::Path) -> Option<PathBuf>,
+) -> bool {
     let Some(new) = frozen_file(track).and_then(|file| f(&file)) else {
         return false;
     };
     if let Some(Value::Object(frozen)) = track.meta.get_mut("frozen") {
-        frozen.insert("file".into(), Value::String(new.to_string_lossy().into_owned()));
+        frozen.insert(
+            "file".into(),
+            Value::String(new.to_string_lossy().into_owned()),
+        );
         return true;
     }
     false
@@ -87,13 +93,18 @@ pub fn played(project: &Project, extra: &HashMap<Id, PathBuf>) -> HashMap<Id, Pl
     let frozen: HashMap<Id, PathBuf> = project
         .tracks
         .iter()
-        .filter_map(|t| frozen_file(t).or_else(|| extra.get(&t.id).cloned()).map(|f| (t.id, f)))
+        .filter_map(|t| {
+            frozen_file(t)
+                .or_else(|| extra.get(&t.id).cloned())
+                .map(|f| (t.id, f))
+        })
         .collect();
     if frozen.is_empty() {
         return out;
     }
     for (&id, file) in &frozen {
-        out.entry(id).or_insert_with(|| Played::Frozen(file.clone()));
+        out.entry(id)
+            .or_insert_with(|| Played::Frozen(file.clone()));
         for fed in feeders(project, id) {
             out.insert(fed, Played::Held);
         }
@@ -133,8 +144,68 @@ pub fn alone(project: &mut Project, id: Id) -> Result<()> {
     track.mute = false;
     track.output = None;
     track.sends.clear();
-    track.lanes.retain(|l| !matches!(l.target, Target::Volume | Target::Pan));
+    track
+        .lanes
+        .retain(|l| !matches!(l.target, Target::Volume | Target::Pan));
     track.meta.remove("vcas");
     track.meta.remove("frozen");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Violins and cellos in Strings, which is frozen; drums apart.
+    fn song() -> Project {
+        let mut p = Project::default();
+        let mut strings = Track::new(1);
+        strings
+            .meta
+            .insert("frozen".into(), json!({ "file": "/m/strings.wav" }));
+        strings.volume = -6.0;
+        let mut violins = Track::new(2);
+        violins.output = Some(1);
+        let mut cellos = Track::new(3);
+        cellos.output = Some(1);
+        let drums = Track::new(4);
+        p.tracks = [strings, violins, cellos, drums]
+            .into_iter()
+            .map(Arc::new)
+            .collect();
+        p
+    }
+
+    #[test]
+    fn a_frozen_track_plays_its_file_and_what_feeds_it_is_held() {
+        let played = played(&song(), &HashMap::new());
+        assert_eq!(
+            played.get(&1),
+            Some(&Played::Frozen("/m/strings.wav".into()))
+        );
+        assert_eq!(played.get(&2), Some(&Played::Held));
+        assert_eq!(played.get(&3), Some(&Played::Held));
+        assert_eq!(played.get(&4), None);
+        let extra = HashMap::from([(4, PathBuf::from("/m/drums.wav"))]);
+        assert_eq!(
+            super::played(&song(), &extra).get(&4),
+            Some(&Played::Frozen("/m/drums.wav".into()))
+        );
+    }
+
+    #[test]
+    fn a_freeze_renders_the_track_alone_before_its_fader() {
+        let mut p = song();
+        alone(&mut p, 1).unwrap();
+        let t = p.track(1).unwrap();
+        assert_eq!((t.volume, t.mute, t.output), (0.0, false, None));
+        assert!(frozen_file(t).is_none(), "the track itself plays live");
+        assert!(
+            !p.track(2).unwrap().mute && !p.track(3).unwrap().mute,
+            "its members play"
+        );
+        assert!(p.track(4).unwrap().mute, "the rest is silent");
+        assert!(alone(&mut p, MASTER_ID).is_err());
+    }
 }
