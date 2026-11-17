@@ -1605,7 +1605,7 @@ fn the_status_bar_names_the_view_and_lists_its_keys() {
     let mut w = scene!("keybar", DEMO);
     // The mode names the view that has the keys, as the terminal's does,
     // and the line shows that view's keys while nothing else has it.
-    assert!(w.shows("commands", 8), "the key bar of the arrange view");
+    assert!(w.shows("commands", 20), "the key bar of the arrange view");
     w.xdotool(&["key", "comma", "m"]);
     w.expect("the mixer focused", "daw.ui.focused == 'mixer'");
     w.shot("keybar-mixer.png");
@@ -1697,8 +1697,9 @@ fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
     );
     w.ctl("daw.cursor.set_track(daw.tracks()[1].id) daw.keymap.feed('<CR>')");
     w.expect("the roll open", "daw.ui.visible('pianoroll')");
-    // It opens on the cursor (middle C), not on the top of the keyboard.
-    assert!(w.shows("C4", 8), "the roll opens on the cursor's row");
+    // It opens on the cursor, which the kernel puts on the clip's note
+    // (C7), not on a fixed top of the keyboard.
+    assert!(w.shows("C7", 15), "the roll opens on the cursor's row");
     // To a low note and to a high one: the row of the cursor is in view.
     w.ctl("daw.ui.views.pianoroll.pitch = 38 daw.api.ui_redraw()");
     w.pause(0.8);
