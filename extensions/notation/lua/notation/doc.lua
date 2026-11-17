@@ -13,6 +13,7 @@
 --                    clef? = { [staff id] = clef }, voices = { { staff, voice, events } } } },
 --     marks = { { id, kind, staff?, from = ref, to? = ref, value? } },
 --     style = { gate? }, feel = { [note id] = { dt, dlen, dvel } }, next,
+--     layout? = { breaks = { { id, measure = id, kind = "break" | "join" } }, per_system? },
 --   }
 --   event = { id, kind = "chord" | "rest", dur = { n, d }, dots, tuplet? = { id, actual, normal },
 --             notes = { { id, step = 0..6, alter, octave, tie? } }, grace? = "acciaccatura" | "appoggiatura",
@@ -87,6 +88,41 @@ end
 function M.touch(score, mi)
   local m = score.measures[mi]
   if m then m.v = token() end
+  score.rev = token()
+end
+
+-- The page's layout --------------------------------------------------------------------------------
+
+-- What the score asks of its page (`score.layout`), which the engraver
+-- breaks systems by (`notation.breaks`): a system break before a measure,
+-- a measure kept on the system before, and how many measures to a system.
+
+--- The break the score asks for before a measure (by id): "break",
+--- "join" or nil.
+function M.break_at(score, measure)
+  for _, b in ipairs(score.layout and score.layout.breaks or {}) do
+    if b.measure == measure then return b.kind end
+  end
+end
+
+--- Ask for a break (`kind` "break" or "join") before a measure, or for
+--- none with nil.
+function M.set_break(score, measure, kind)
+  local own = score.layout or {}
+  local list = {}
+  for _, b in ipairs(own.breaks or {}) do
+    if b.measure ~= measure then list[#list + 1] = b end
+  end
+  if kind then list[#list + 1] = { id = M.id(score, "l"), measure = measure, kind = kind } end
+  own.breaks = list
+  score.layout = own
+  score.rev = token()
+end
+
+--- Measures to a system, or as they fit with nil.
+function M.set_per_system(score, n)
+  score.layout = score.layout or { breaks = {} }
+  score.layout.per_system = n
   score.rev = token()
 end
 

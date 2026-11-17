@@ -209,10 +209,17 @@ end
 
 local function name_of(path) return tostring(path):match("([^/]+)$") or tostring(path) end
 
+--- Say what a render came to. The peak has its sign (`+6.2 dB` is over
+--- full scale) and a peak over it is a warning, as it clips.
+local function notify_rendered(path, info, more)
+  local peak = 20 * math.log10(math.max(info.peak, 1e-6))
+  daw.notify(string.format("rendered %s: %.1f s, peak %+.1f dB%s%s", name_of(path), info.seconds, peak, more,
+    peak > 0 and " (clips)" or ""), peak > 0 and "warn" or "info")
+end
+
 daw.on("render.progress", function() api.ui_redraw() end)
 daw.on("render.done", function(info)
-  daw.notify(string.format("rendered %s: %.1f s, peak %.1f dB%s", name_of(info.path), info.seconds,
-    20 * math.log10(math.max(info.peak, 1e-6)), info.loudness and string.format(", %.1f LUFS", info.loudness) or ""))
+  notify_rendered(info.path, info, info.loudness and string.format(", %.1f LUFS", info.loudness) or "")
   for _, why in ipairs(info.left_out or {}) do daw.notify(why, "warn") end
   next_in_queue()
 end)
@@ -305,8 +312,7 @@ daw.command("render", function(ctx)
   local path = a[1] and tostring(a[1]) or default_path()
   local info = M.render(path, opts)
   if info then
-    daw.notify(string.format("rendered %s: %.1f s, peak %.1f dB", name_of(path), info.seconds,
-      20 * math.log10(math.max(info.peak, 1e-6))))
+    notify_rendered(path, info, "")
   else
     daw.notify("rendering " .. name_of(path) .. " · Esc cancels")
   end

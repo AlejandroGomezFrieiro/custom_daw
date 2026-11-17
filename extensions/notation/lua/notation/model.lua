@@ -891,7 +891,11 @@ function M.space(layout, o)
       x = x + o.unit(nxt - times[k])
     end
     slots[#slots + 1] = { t = m.start + m.length, x = x }
-    m.slots, m.width = slots, x + o.tail
+    local width = x + o.tail
+    -- What stands right of the last event (a lyric) stays inside the measure.
+    local last = keys[#keys]
+    if room and last then width = math.max(width, slots[#keys].x + right[last] + o.gap) end
+    m.slots, m.width = slots, width
   end
 end
 

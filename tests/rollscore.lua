@@ -170,6 +170,14 @@ test("rollscore: with timebind the note under one window's cursor is outlined in
   local view, rollscore, clip = song()
   local roll = daw.ui.views.pianoroll
   eq(rollscore.partner("pianoroll"), nil, "not bound: no outline")
+  -- Whatever happens, leave no bound or extra windows for the tests after.
+  T.after(function()
+    for _, win in ipairs(daw.layout.windows(daw.ui.layout)) do
+      if win.view == "pianoroll" or win.view == "notation" then daw.layout.set_option(win, "timebind", false) end
+    end
+    daw.ui.hide("notation")
+    daw.ui.hide("pianoroll")
+  end)
   daw.ui.show("pianoroll")
   daw.ui.show("notation")
   for _, win in ipairs(daw.layout.windows(daw.ui.layout)) do

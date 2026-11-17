@@ -1599,3 +1599,148 @@ fn the_windows_position_is_kept_in_the_layout() {
     );
     w.assert_alive("after being moved");
 }
+
+#[test]
+fn the_status_bar_names_the_view_and_lists_its_keys() {
+    let mut w = scene!("keybar", DEMO);
+    // The mode names the view that has the keys, as the terminal's does,
+    // and the line shows that view's keys while nothing else has it.
+    // The pointer over the timeline has its own hint on the line.
+    w.mouse_to((700, 20));
+    assert!(w.shows("commands", 20), "the key bar of the arrange view");
+    w.xdotool(&["key", "comma", "m"]);
+    w.expect("the mixer focused", "daw.ui.focused == 'mixer'");
+    w.shot("keybar-mixer.png");
+    assert!(w.shows("pan", 10), "the mixer's keys");
+    // A prefix lists the keys that can follow it.
+    w.key("g");
+    w.expect("a prefix waiting", "daw.keymap.pending() == 'g'");
+    w.shot("keybar-which-key.png");
+    w.key("Escape");
+    w.assert_alive("after the key bar");
+}
+
+#[test]
+fn the_command_line_lists_what_it_could_complete() {
+    let mut w = scene!("complete", DEMO);
+    w.type_text(":tem");
+    w.expect("the prompt open", "daw.keymap.mode == 'c'");
+    w.shot("complete.png");
+    assert!(w.shows("tempo", 5), "tempo among the candidates");
+    w.key("Escape");
+    // Up walks back through what was run.
+    w.type_text(":set grid 1/8\n");
+    w.expect("the line run", "daw.keymap.mode == 'n'");
+    w.type_text(":");
+    w.key("Up");
+    w.expect(
+        "the last line back",
+        "require('daw.views.cmdline').state().before == 'set grid 1/8'",
+    );
+    w.key("Escape");
+    w.assert_alive("after the command line");
+}
+
+#[test]
+fn a_message_goes_at_the_next_key_or_change_of_mode() {
+    let mut w = scene!("message", DEMO);
+    // Reading the screen takes longer than a message is shown.
+    w.ctl("daw.opt.message_time = 600000");
+    w.ctl("daw.notify('tuning forks everywhere')");
+    assert!(w.shows("tuning forks", 5), "the message on the status bar");
+    w.key("j");
+    assert!(!w.shows("tuning forks", 1), "gone at the next key");
+    w.ctl("daw.notify('another message here')");
+    assert!(w.shows("another message", 5), "the next one shows");
+    w.xdotool(&["key", "colon"]);
+    w.expect("the command line open", "daw.keymap.mode == 'c'");
+    w.pause(0.6);
+    assert!(!w.shows("another message", 1), "gone with the mode");
+    w.key("Escape");
+    w.assert_alive("after messages");
+}
+
+#[test]
+fn a_render_says_its_peak_with_a_sign_and_warns_when_it_clips() {
+    let mut w = scene!("peaksign", DEMO);
+    w.ctl("daw.opt.message_time = 600000");
+    w.ctl("daw.emit('render.done', { path = '/x/loud.wav', seconds = 3, peak = 2.04 })");
+    assert!(w.shows("+6.2", 5), "the peak with its sign");
+    w.shot("peak-sign.png");
+    assert_eq!(
+        w.ctl("return daw.ui.message.level").trim(),
+        "warn",
+        "a clipping render is a warning"
+    );
+    w.assert_alive("after a render");
+}
+
+#[test]
+fn the_commands_list_fills_the_window() {
+    let mut w = scene!("picker", DEMO);
+    w.xdotool(&["key", "comma", "comma"]);
+    w.expect("the picker open", "daw.ui.float ~= nil");
+    w.pause(0.6);
+    w.shot("picker.png");
+    // The page is drawn as wide as the window has room for, not 104 columns.
+    let wide = w.ctl("local w = 0 for _, r in ipairs(daw.ui.rects) do w = math.max(w, r.w) end return w");
+    let columns: i32 = wide.trim().parse().unwrap_or(0);
+    assert!(columns > 120, "the page is wider than the old 104 columns: {columns}");
+    w.assert_alive("after the picker");
+}
+
+#[test]
+fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
+    let mut w = scene!(
+        "rollscroll",
+        "local t = daw.add_track({ name = 'Lead' })
+         t:add_clip({ start = 0, length = 8, name = 'Hook', notes = { { pitch = 98, start = 0, length = 1 } } })
+         daw.api.undo_checkpoint()"
+    );
+    w.ctl("daw.cursor.set_track(daw.tracks()[1].id) daw.keymap.feed('<CR>')");
+    w.expect("the roll open", "daw.ui.visible('pianoroll')");
+    w.shot("roll-open.png");
+    // To a low note and to a high one: the row of the cursor is in view.
+    w.ctl("daw.ui.views.pianoroll.pitch = 38 daw.api.ui_redraw()");
+    w.pause(0.8);
+    w.shot("roll-low.png");
+    assert!(w.shows("C2", 5), "the octave of the cursor is in view");
+    w.ctl("daw.ui.views.pianoroll.pitch = 124 daw.api.ui_redraw()");
+    w.pause(0.8);
+    w.shot("roll-high.png");
+    w.assert_alive("after the roll");
+}
+
+#[test]
+fn a_count_typed_in_the_window_reaches_the_kernel() {
+    let mut w = scene!("count", DEMO);
+    w.ctl("daw.keymap.feed(':e daw://tracks<CR>')");
+    w.expect("the tracks as text", "daw.ui.focused:match('^textbuf') ~= nil");
+    w.pause(0.5);
+    w.xdotool(&["key", "j"]);
+    w.xdotool(&["key", "3"]);
+    w.expect("the count waiting", "daw.keymap.pending() == '3'");
+    // Pressing Control must not end it: Ctrl-a then adds three, not one.
+    w.key("ctrl+a");
+    w.expect(
+        "three added to the number, not one",
+        "require('daw.textbuf').buf().state.text:line(2):find('vol -1.0', 1, true) ~= nil",
+    );
+    w.shot("count.png");
+    w.assert_alive("after a count");
+}
+
+#[test]
+fn an_ex_line_shows_its_count_and_marks_what_it_covers() {
+    let mut w = scene!("exline", DEMO);
+    w.type_text(":%s/c4/d4/g");
+    w.expect("the line open", "daw.keymap.mode == 'c'");
+    assert!(w.shows("match", 5), "the count at the end of the line");
+    w.shot("ex-preview.png");
+    w.key("Escape");
+    w.type_text(":%s/c4/d4/gc\n");
+    w.expect("the question asked", "daw.ex.shown() ~= nil and daw.ex.shown().current ~= nil");
+    assert!(w.shows("replace with", 5), "the question on the status bar");
+    w.key("q");
+    w.assert_alive("after the Ex line");
+}

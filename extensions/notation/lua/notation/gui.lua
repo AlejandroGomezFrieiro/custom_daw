@@ -21,6 +21,7 @@ local api = daw.api
 local util = daw.util
 local model = require("notation.model")
 local engrave = require("notation.engrave")
+local page = require("notation.page")
 local view = require("notation")
 
 local c = require("daw.canvas").palette
@@ -33,6 +34,7 @@ local gui = { bar_h = 44, scroll = 0, hscroll = 0, drag = nil, buttons = {}, hea
 view.gui = gui
 view.space = nil       -- the staff space chosen by zooming, in px; nil: by the size of a cell
 view.galley = false    -- one endless system, scrolled sideways
+view.page = false      -- the systems on pages of paper (`zp`)
 view.spread = 1        -- how widely notes are spaced
 
 local function round(v) return floor(v + 0.5) end
@@ -40,9 +42,10 @@ local function alpha(colour, a) return colour .. string.format("%02x", floor(a *
 
 --- The staff space for a paint: the zoom's, or about a third of a cell's
 --- height on a terminal's surface (a staff in a cell and a half), 12 px in
---- a window.
+--- a window; in the page view, the largest whose page fits the width.
 local function space_for(ctx)
   if view.space then return view.space end
+  if view.page then return page.space_for(ctx.width or 800) end
   if not ctx.surface then return 12 end
   local want, best = (ctx.cell and ctx.cell.h or 27) / 3, engrave.STEPS[1]
   for _, s in ipairs(engrave.STEPS) do
@@ -69,21 +72,30 @@ local function style_for(ctx)
     space = space_for(ctx), cell = cell, ink = ctx.fg or c.text, paper = ctx.bg or c.surface,
     accent = c.select, whole_cells = ctx.surface and true or false,
   }
+  if view.page and daw.opt.notation_paper == "white" then o.ink, o.paper = "#000000", "#ffffff" end
   local key = table.concat({ o.space, cell.w, cell.h, o.ink, o.paper, tostring(o.whole_cells) }, ":")
   styles[key] = styles[key] or engrave.style(o)
   gui.last_space = o.space
   return styles[key]
 end
 
---- The systems of a layout for a style and width, kept until either changes.
+--- The systems of a layout for a style and width, kept until either
+--- changes: wrapped, in the galley, or on pages.
 function view:engrave(layout, width, st, top)
-  local key = table.concat({ tostring(layout), st.key, width, tostring(view.galley), view.spread, top or 0 }, ":")
+  local geo = view.page and page.geometry(st.sp, st.whole and st.cell)
+  local key = table.concat({ tostring(layout), st.key, width, tostring(view.galley), view.spread, top or 0, geo and geo.key or "" }, ":")
   if gui.eng and gui.eng_key == key then return gui.eng end
-  local eng = engrave.systems(layout, st, { width = width, galley = view.galley, spread = view.spread, top = top or 0 })
-  -- The measures' ink is kept across layouts while the style holds.
+  -- The staves' ink is kept across layouts while the style holds.
   if gui.measures.style ~= st.key then gui.measures = { style = st.key, generation = 0 } end
   gui.measures.generation = gui.measures.generation + 1
   engrave.sweep(gui.measures)
+  local eng
+  if geo then
+    eng = page.systems(layout, st, geo, width, gui.measures)
+  else
+    eng = engrave.systems(layout, st, { width = width, galley = view.galley, spread = view.spread, top = top or 0,
+      cache = gui.measures })
+  end
   gui.eng, gui.eng_key, gui.page = eng, key, nil
   return eng
 end
@@ -133,6 +145,11 @@ local function page_ink(g, eng, layout, area)
   local out = g.ops
   gui.heads = {}
   local dy = area.top - gui.scroll
+  if eng.pages then
+    local clip = view:clip()
+    local title, composer = page.heading(clip and clip:get().name)
+    page.paper(out, eng, 0, dy, { shadow = true, title = title, composer = composer })
+  end
   for _, sys in ipairs(eng.systems) do
     if sys.y + sys.height + dy > area.top and sys.y + dy < area.bottom then
       system_ops(eng, sys, layout)
@@ -595,7 +612,7 @@ function view:paint(g, ctx)
     local fifths = layout.fifths
     local key_text = (fifths == 0 and "C") or (abs(fifths) .. (fifths > 0 and "♯" or "♭"))
     gui.key_text = key_text .. "  ·  " .. layout.meter.num .. "/" .. layout.meter.den .. "  ·  " .. track.name
-      .. (view.raw_view() and "  ·  raw" or "") .. (view.galley and "  ·  galley" or "")
+      .. (view.raw_view() and "  ·  raw" or "") .. (view.galley and "  ·  galley" or "") .. (view.page and "  ·  pages" or "")
     local iy = h - INFO
     g:rect(0, iy, w, INFO, { fill = c.control })
     g:text(12, iy + 6, self:status_text(), { color = c.text_2, width = w - 260 })
@@ -692,7 +709,8 @@ function view:menu_items(on_note, at)
     add("Paste here", "P", function() daw.keymap.normal("P") end)
   end
   items[#items + 1] = "-"
-  add(view.galley and "Wrapped systems" or "One long system (galley)", "zg", function() view.galley = not view.galley end)
+  add(view.galley and "Wrapped systems" or "One long system (galley)", "zg", function() view.galley, view.page = not view.galley, false end)
+  add(view.page and "Systems without pages" or "Pages (page view)", "zp", function() view.page, view.galley = not view.page, false end)
   return items
 end
 

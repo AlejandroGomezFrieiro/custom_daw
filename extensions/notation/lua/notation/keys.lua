@@ -353,6 +353,9 @@ command("notation.export", function(ctx)
   local track = clip:track()
   local name = whole_track and track.name or c.name
   local path = ctx.args[1] and tostring(ctx.args[1]) or (name:gsub("[^%w%-_]+", "_") .. ".musicxml")
+  -- `pdf`, `svg` or `png` alone: a file of that kind named after the clip.
+  local engraved = { pdf = true, svg = true, png = true }
+  if engraved[path] then path = name:gsub("[^%w%-_]+", "_") .. "." .. path end
   local _, stored = view.key()
   local opts = view.layout_opts(c)
   local layout
@@ -366,6 +369,14 @@ command("notation.export", function(ctx)
     layout = model.layout(clip:notes(), opts)
   end
   view.decorate(layout, clip)
+  local ext = path:match("%.(%w+)$")
+  if engraved[ext] then
+    -- The engraved pages, as the page view shows them.
+    local title, composer = require("notation.page").heading(name)
+    local ok, written = pcall(require("notation.page").export, layout, path, ext, { title = title, composer = composer })
+    if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(written), "error") end
+    return daw.notify("wrote " .. table.concat(written, ", "))
+  end
   local text
   if path:match("%.ly$") then
     text = export.lilypond(layout, { title = name, scale = stored and stored.scale })
@@ -375,7 +386,7 @@ command("notation.export", function(ctx)
   local ok, err = export.write(path, text)
   if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
   daw.notify("wrote " .. path)
-end, { desc = "Write the clip as MusicXML or LilyPond: `notation.export song.musicxml`, `notation.export lead.ly track`", complete = { "files", function() return { "track" } end } })
+end, { desc = "Write the clip as MusicXML, LilyPond, or engraved pages: `notation.export song.musicxml`, `notation.export lead.ly track`, `notation.export pdf`, `notation.export tune.svg`", complete = { "files", function() return { "track" } end } })
 
 -- Reaching it from the arrange view and the window's clip menu.
 map("<leader>n", "notation", { view = "arrange", desc = "Show the clip as notation" })
@@ -575,9 +586,46 @@ nmap("zo", function()
 end, "Draw the notes closer; on the engraved page, a smaller staff")
 nmap("zg", function()
   view.galley = not view.galley
+  view.page = view.page and not view.galley
   daw.notify(view.galley and "one long system, scrolled sideways (galley)" or "systems wrapped down the page")
   api.ui_redraw()
 end, "The engraved page as one long system (galley), or wrapped")
+
+-- The page's layout: system breaks the score keeps, measures to a
+-- system, the page view.
+local function bar_break(kind)
+  local layout = view:layout()
+  if not layout or view:readonly() then return end
+  local _, index = view:measure_at(view.beat, layout)
+  if not index or index <= 1 then return daw.notify("the first bar starts the first system", "warn") end
+  local now
+  view:write(function(sc)
+    local m = sc.measures[index]
+    if not m then return false end
+    local D = require("notation.doc")
+    now = D.break_at(sc, m.id) ~= kind and kind or nil
+    D.set_break(sc, m.id, now)
+  end)
+  daw.notify(now == "break" and ("a system starts at bar " .. layout.measures[index].number)
+    or now == "join" and ("bar " .. layout.measures[index].number .. " stays on the system before")
+    or ("bar " .. layout.measures[index].number .. " goes where it fits"))
+end
+nmap("zs", function() bar_break("break") end, "Start a system at this bar, or let it go where it fits again")
+nmap("zj", function() bar_break("join") end, "Keep this bar on the system before, or let it go where it fits again")
+nmap("zp", function()
+  view.page = not view.page
+  view.galley = view.galley and not view.page
+  daw.notify(view.page and "pages (in the window, or where the terminal shows images)" or "systems without pages")
+  api.ui_redraw()
+end, "The engraved systems on pages, with the title, or without")
+command("notation.bars-per-system", function(ctx)
+  local n = tonumber(ctx.args[1])
+  if ctx.args[1] and not (n and n >= 0 and n == math.floor(n)) then
+    return daw.notify("bars per system is a whole number; 0 or none lets them fit", "warn")
+  end
+  view:write(function(sc) require("notation.doc").set_per_system(sc, n and n > 0 and n or nil) end)
+  daw.notify(n and n > 0 and (n .. " bars to a system") or "bars go where they fit")
+end, { desc = "Fix how many bars go on each system: `notation.bars-per-system 4`; without a number they go where they fit" })
 -- Escape stays: a Vim hand presses it to be sure it is in normal mode, and
 -- the keys after it must not land in the arrange view. Counts, pending
 -- operators and selections are dropped by the keymap before this runs.
