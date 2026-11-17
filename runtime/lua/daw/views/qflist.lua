@@ -159,15 +159,17 @@ function view:on_mouse(event)
 end
 
 local map = daw.keymap.set
-local function qmap(lhs, rhs, desc) map(lhs, rhs, { view = "qflist", desc = desc }) end
-qmap("j", function(ctx) move(ctx.count or 1) end, "The next entry")
-qmap("k", function(ctx) move(-(ctx.count or 1)) end, "The entry above")
+local function qmap(lhs, rhs, desc, opts) map(lhs, rhs, daw.util.merge({ view = "qflist", desc = desc }, opts)) end
+-- Moving keys are motions, as in every view (docs/terminal.md, "Keys: one grammar").
+local motion = { motion = true }
+qmap("j", function(ctx) move(ctx.count or 1) end, "The next entry", motion)
+qmap("k", function(ctx) move(-(ctx.count or 1)) end, "The entry above", motion)
 qmap("<Down>", function(ctx) move(ctx.count or 1) end, "The next entry")
 qmap("<Up>", function(ctx) move(-(ctx.count or 1)) end, "The entry above")
 qmap("<C-d>", function() move(10) end, "Ten entries down")
 qmap("<C-u>", function() move(-10) end, "Ten entries up")
-qmap("gg", function(ctx) move(-math.huge) if ctx.count then move(ctx.count - 1) end end, "The first entry")
-qmap("G", function() move(math.huge) end, "The last entry")
+qmap("gg", function(ctx) move(-math.huge) if ctx.count then move(ctx.count - 1) end end, "The first entry", motion)
+qmap("G", function() move(math.huge) end, "The last entry", motion)
 qmap("<CR>", function() M.choose() end, "Go to the entry: the view that shows it gets the keyboard")
 qmap("<leader>ca", fix_here, "Make the entry's fix, as one undo step")
 qmap("q", function()

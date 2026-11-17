@@ -36,15 +36,19 @@ end
 
 --- Time the paint. `opts` are `daw.canvas.paint`'s. Returns the times in
 --- ms (`first`, `same`, `cursor`, `edit`, `relayout`, medians) and the
---- drawing's size (`ops`, `kinds`, `json` bytes).
-function M.run(bars, opts, rounds)
+--- drawing's size (`ops`, `kinds`, `json` bytes). With `how.score` the clip
+--- is written as a score first, and `edit` is the edit itself (the score
+--- changed and rendered) and the paint after it.
+function M.run(bars, opts, rounds, how)
   rounds = rounds or 20
+  how = how or {}
   local view = require("notation")
   local notes = M.notes(bars)
   local track = api.track_add({ name = "Bench" })
   local id = api.clip_add(track, { start = 0, length = bars * 4, notes = notes })
   daw.flush()
   view:edit(id)
+  if how.score then view.commit(daw.clip(id), view.from_midi(daw.clip(id))) end
   local function paint() return daw.canvas.paint("notation", W, H, opts) end
   local function time(fn)
     local t = api.now()
@@ -65,8 +69,15 @@ function M.run(bars, opts, rounds)
     -- A note of a bar in the middle up a step, as an edit does.
     local at = math.floor(#notes / 2)
     local n = clip:notes()[at]
-    clip:set_note(at, { pitch = n.pitch + (i % 2 == 0 and -1 or 1) })
-    edit[i] = time(paint)
+    if how.score then
+      edit[i] = time(function()
+        clip:set_note(at, { pitch = n.pitch + (i % 2 == 0 and -1 or 1) })
+        return paint()
+      end)
+    else
+      clip:set_note(at, { pitch = n.pitch + (i % 2 == 0 and -1 or 1) })
+      edit[i] = time(paint)
+    end
   end
   for i = 1, rounds do
     view.cache = nil

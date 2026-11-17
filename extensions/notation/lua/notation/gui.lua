@@ -115,7 +115,10 @@ local function system_ops(eng, sys, layout)
     local mi = engrave.measure(gui.measures, st, layout, sys, placed)
     placed.ops = mi.ops
     for _, h in ipairs(mi.heads) do
-      heads[#heads + 1] = util.merge(h, { x = h.x + placed.x, gx = h.gx + placed.x, y = h.y + sys.y, sys = sys })
+      -- A written note's ink is kept by its id; the note that plays it may
+      -- have another place among the clip's notes since.
+      local index = h.id and layout.places and layout.places[h.id] or h.index
+      heads[#heads + 1] = util.merge(h, { x = h.x + placed.x, gx = h.gx + placed.x, y = h.y + sys.y, sys = sys, index = index })
     end
   end
   sys.prefix, sys.spans, sys.heads = prefix.ops, spans.ops, heads
@@ -489,6 +492,8 @@ function view:status_text()
   if note then
     return string.format("%s  played at %s, %.2f beats long, velocity %d", model.name(written), daw.time.format(clip.start + note.start), note.length, note.velocity)
   end
+  local layout = self:layout()
+  if layout and layout.midi and not self.multi then return view.MIDI_LINE end
   if daw.keymap.mode == "i" then
     return "click the staff to enter a " .. (self.dot and "dotted " or "") .. model.NAMES[self.value] .. " there · letters enter notes · Esc ends"
   end
@@ -664,7 +669,7 @@ function view:menu_items(on_note, at)
     add("Delete the chord", "X", function() self:delete_chord() end)
     add("Sharpen", "Ctrl-a", function() self:inflect(1) end)
     add("Flatten", "Ctrl-x", function() self:inflect(-1) end)
-    add("Respell", "ge", function() self:respell() end)
+    add("Respell", "g~", function() self:respell() end)
     items[#items + 1] = "-"
     for _, kind in ipairs({ "staccato", "accent", "tenuto", "marcato" }) do
       add(kind:sub(1, 1):upper() .. kind:sub(2), nil, function() view.marks.toggle_art(kind, self:chord_indices()) end)
@@ -681,24 +686,50 @@ function view:menu_items(on_note, at)
   return items
 end
 
---- Move a clip's note (`index`, as it is now) to a line or space and a beat,
---- as a drag of it does: up or down the staff it keeps its distance from the
---- key (a sharp stays a sharp).
+--- Move a written note (the one the clip's note at `index` plays) to a
+--- line or space and a beat, as a drag of it does: up or down the staff it
+--- keeps its distance from the key (a sharp stays a sharp); in time it is
+--- written there in its voice, as long as it was, over what that voice has
+--- there (a note of a chord leaves the chord, and goes where a voice is free).
 function view:move_note(index, note, step, beat)
-  local clip = self:clip()
+  local clip = self:ensure_score()
   if not clip then return end
+  local D = require("notation.doc")
+  local id = require("notation.render").note_id(clip:notes()[index] or note)
+  if not id then return end
   local fifths = view.key()
-  local old = model.spell(note.pitch, fifths)
-  local want = note.meta and note.meta.notation
-  if type(want) == "table" and want.pitch == note.pitch then old = model.spelled(want.letter, want.alter, note.pitch) end
-  local bend = old.alter - model.key_alter(old.letter, fifths)
-  local pitch = util.clamp(model.key_pitch(step, fifths) + bend, 0, 127)
-  local meta = util.merge(note.meta or {}, {})
-  meta.notation = { letter = step % 7, alter = model.key_alter(step % 7, fifths) + bend, pitch = pitch }
-  self:grow(clip, beat + note.length)
-  clip:set_note(index, { start = beat, pitch = pitch, meta = meta })
+  local pitch
+  self:write(function(sc)
+    local n, ev, _, entry = D.find_note(sc, id)
+    if not n then return false end
+    local bend = n.alter - model.key_alter(n.step, fifths)
+    local alter = model.key_alter(step % 7, fifths) + bend
+    pitch = util.clamp(model.pitch_of(step, alter), 0, 127)
+    local sp = model.spelled(step % 7, alter, pitch)
+    local moved = { id = id, step = sp.letter, alter = sp.alter, octave = sp.octave }
+    local alone = #ev.notes == 1
+    local was = alone and view.lift(sc, ev.id)
+    local links = not alone and view.chain(sc, ev.id)
+    local f = D.frame(sc)
+    local len = was and was.len
+    if not alone then
+      local last = links[#links]
+      len = f.starts[last.mi] + last.at + D.length(last.ev) - (f.starts[links[1].mi] + links[1].at)
+      for _, c in ipairs(D.tied_on(sc, entry.staff, entry.voice, id)) do D.remove_note(sc, c.note.id) end
+      D.remove_note(sc, id)
+    end
+    local t = math.max(0, D.from_beats(beat) - D.origin(sc))
+    local staff = #sc.staves == 2 and sc.staves[self:staff_of_step(step)].id or entry.staff
+    if was then
+      was.notes = { moved }
+      view.drop(sc, was, t, len, staff, entry.voice)
+    elseif not view.add_sounding(sc, moved, t, len, staff) then
+      daw.notify("no voice free there: the note is not written", "warn")
+      return false
+    end
+  end)
   self:set(step, beat)
-  if pitch ~= note.pitch then self:audition(pitch) end
+  if pitch and pitch ~= note.pitch then self:audition(pitch) end
 end
 
 local function context_menu(self, hd, at, e)

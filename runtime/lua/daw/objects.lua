@@ -413,10 +413,15 @@ function Clip:note_at(pitch, beat) return api.clip_note_at(self.id, music.pitch(
 --- the note's place afterwards, since notes stay in the order they start.
 function Clip:set_note(index, fields)
   if fields.pitch then fields = daw.util.merge(fields, { pitch = music.pitch(fields.pitch) }) end
+  local owned, at = daw.clips.write(self.id, { set = { daw.util.merge(fields, { index = index }) } })
+  if owned then return at end
   return api.clip_note_set(self.id, index, fields)
 end
 
-function Clip:remove_note(index) api.clip_note_remove(self.id, index) end
+function Clip:remove_note(index)
+  if daw.clips.write(self.id, { remove = { index } }) then return end
+  api.clip_note_remove(self.id, index)
+end
 
 --- Change, remove and add several notes as one edit. Every index is a
 --- note's place before the call:
@@ -426,7 +431,9 @@ function Clip:edit_notes(edit)
   for i, change in ipairs(edit.set or {}) do
     set[i] = change.pitch and daw.util.merge(change, { pitch = music.pitch(change.pitch) }) or change
   end
-  api.clip_notes_edit(self.id, { set = set, remove = edit.remove or {}, add = M.notes(edit.add or {}) })
+  local add = M.notes(edit.add or {})
+  if daw.clips.write(self.id, { set = set, remove = edit.remove or {}, add = add }) then return end
+  api.clip_notes_edit(self.id, { set = set, remove = edit.remove or {}, add = add })
 end
 
 --- The waveform of an audio clip: `n` { min, max, rms } entries, each
@@ -435,7 +442,11 @@ end
 --- so drawing code can ask for it every frame.
 function Clip:peaks(n) return api.clip_peaks(self.id, n) end
 
-function Clip:set_notes(notes) api.clip_set_notes(self.id, M.notes(notes)) end
+function Clip:set_notes(notes)
+  notes = M.notes(notes)
+  if daw.clips.write(self.id, { replace = notes }) then return end
+  api.clip_set_notes(self.id, notes)
+end
 
 --- What the clip does besides notes: controller moves, the pitch wheel,
 --- pressure and program changes, each `{ start, type, value }` with `start`
@@ -456,11 +467,20 @@ function Clip:set_controls(controls)
   api.clip_set_controls(self.id, out)
 end
 
-function Clip:add_notes(notes) api.clip_add_notes(self.id, M.notes(notes)) end
+function Clip:add_notes(notes)
+  notes = M.notes(notes)
+  if daw.clips.write(self.id, { add = notes }) then return end
+  api.clip_add_notes(self.id, notes)
+end
 
 ---   clip:add_note({ pitch = "E4", start = 1, length = 0.5, velocity = 90 })
 --- Returns the note's place among the clip's notes.
-function Clip:add_note(note) return api.clip_note_add(self.id, M.notes({ note })[1]) end
+function Clip:add_note(note)
+  local add = M.notes({ note })
+  local owned, at = daw.clips.write(self.id, { add = add })
+  if owned then return at end
+  return api.clip_note_add(self.id, add[1])
+end
 
 --- The clip as plain data, for `daw.restore_clip`.
 function Clip:snapshot()

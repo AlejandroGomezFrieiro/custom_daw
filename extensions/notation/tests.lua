@@ -351,6 +351,11 @@ local function notes_of(clip)
   return table.concat(out, " ")
 end
 
+local function model_text_has(view, text)
+  local _, model = load()
+  return model.text((view:layout())):find(text, 1, true) ~= nil
+end
+
 test("notation: :notation opens the clip under the cursor, with the keyboard", function()
   local view, clip, track = song({ N(67, 1, 1) })
   daw.ui.focus("arrange")
@@ -377,11 +382,11 @@ end)
 test("notation: insert mode enters notes by letter, nearest the note before", function()
   local view, clip = song()
   keys("icdeb")
-  eq(notes_of(clip), "C4@0+1 D4@1+1 E4@2+1 B3@3+1", "quarters by letter, B below C rather than above")
+  eq(notes_of(clip), "C4@0+0.9 D4@1+0.9 E4@2+0.9 B3@3+0.9", "quarters by letter, B below C rather than above (each played 90% of its value)")
   keys("<Esc>")
   view:set(39, 0)
   keys("i4ga'")
-  eq(notes_of(clip), "G4@0+0.5 A5@0.5+0.5 D4@1+1 E4@2+1 B3@3+1", "eighths replace what was there; ' lifts the last an octave")
+  eq(notes_of(clip), "G4@0+0.45 A5@0.5+0.45 D4@1+0.9 E4@2+0.9 B3@3+0.9", "eighths replace what was there; ' lifts the last an octave")
 end)
 
 test("notation: entering in a key takes its sharps and flats; + and - change the last note", function()
@@ -389,23 +394,22 @@ test("notation: entering in a key takes its sharps and flats; + and - change the
   daw.cmd("notation.key", { "D", "major" })
   api.undo_checkpoint()
   keys("if")
-  eq(notes_of(clip), "F#4@0+1", "f is F sharp in D major")
+  eq(notes_of(clip), "F#4@0+0.9", "f is F sharp in D major")
   keys("+c-")
-  eq(notes_of(clip), "G4@0+1 C4@1+1", "+ raises the F sharp to G; c is C sharp, and - lowers it to C natural")
-  eq(clip:notes()[2].meta.notation.letter, 0, "written as a C")
-  eq(clip:notes()[2].meta.notation.alter, 0, "with a natural sign")
+  eq(notes_of(clip), "G4@0+0.9 C4@1+0.9", "+ raises the F sharp to G; c is C sharp, and - lowers it to C natural")
+  eq(model_text_has(view, "q G4 q Cn4"), true, "written as a C with a natural sign")
 end)
 
 test("notation: chords with capitals, rests, dots and the value keys", function()
   local view, clip = song(nil, 8)
   keys("iCEg")
-  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1", "C and E stay, g steps on")
+  eq(notes_of(clip), "C4@0+0.9 E4@0+0.9 G4@0+0.9", "C and E stay, g steps on")
   keys("6.c")
-  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1 C5@1+3", "a dotted half")
+  eq(notes_of(clip), "C4@0+0.9 E4@0+0.9 G4@0+0.9 C5@1+2.7", "a dotted half")
   keys("r")
   eq(view.beat, 7, "a rest steps on by the value")
   keys("<BS><BS>")
-  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1", "backspace steps back and removes")
+  eq(notes_of(clip), "C4@0+0.9 E4@0+0.9 G4@0+0.9", "backspace steps back and removes")
 end)
 
 test("notation: normal keys move by lines and spaces and edit the note under the cursor", function()
@@ -420,14 +424,14 @@ test("notation: normal keys move by lines and spaces and edit the note under the
   eq(notes_of(clip), "F4@0+1 G4@3+1", "flatten back, then up a step of the key")
   keys("}")
   eq(notes_of(clip), "F5@0+1 G4@3+1", "up an octave")
-  keys("+")
-  eq(notes_of(clip), "F5@0+2 G4@3+1", "lengthened by the chosen quarter")
+  keys("<A-l>")
+  eq(notes_of(clip), "F5@0+1.9 G4@3+1", "lengthened by the chosen quarter, played as long as before over 90%")
   keys("g.")
-  eq(notes_of(clip), "F5@0+3 G4@3+1", "dotted")
+  eq(notes_of(clip), "F5@0+2.8 G4@3+1", "dotted")
   keys("x")
   eq(notes_of(clip), "G4@3+1", "deleted")
   keys("u")
-  eq(notes_of(clip), "F5@0+3 G4@3+1", "and back with undo")
+  eq(notes_of(clip), "F5@0+2.8 G4@3+1", "and back with undo")
 end)
 
 test("notation: a note played loosely keeps its timing when it is edited", function()
@@ -436,18 +440,13 @@ test("notation: a note played loosely keeps its timing when it is edited", funct
   keys("<A-k>")
   local n = clip:notes()[1]
   eq(n.start, 0.02, "moving it up a step keeps when it was played")
-  keys("+")
+  keys("<A-l>")
   n = clip:notes()[1]
   eq(n.start, 0.02, "lengthened, it still starts as played")
-  eq(math.abs(n.length - 1.9) < 1e-9, true, "and its played length is doubled with the written quarter")
+  eq(math.abs(n.length - 1.85) < 1e-9, true, "and played as much longer than a half's 90% as it was than a quarter's")
   eq(n.velocity, 77, "as loud as it was")
-  eq(view:layout().score.events[1].length, 2, "written a half note")
+  eq(model_text_has(view, "h F4"), true, "written a half note")
 end)
-
-local function model_text_has(view, text)
-  local _, model = load()
-  return model.text((view:layout())):find(text, 1, true) ~= nil
-end
 
 local function played(clip)
   local out = {}
@@ -465,30 +464,31 @@ test("score editing: a chord moved, lengthened or deleted moves its played notes
   view.cache = nil
   eq(view:layout().score.events[1].start, 1, "the strum is written on beat two")
   view:set(37, 1)
-  keys("<A-l>")
+  keys("L")
   eq(played(clip), "E3@2.010+0.900/90 G#3@2.040+0.850/80 B3@2.070+0.800/70 C5@5.000+1.000/64",
     "a beat later, strummed and as loud as before")
   eq(view.beat, 2, "the cursor goes with it")
-  keys("+")
-  eq(played(clip):find("E3@2.010+1.800/90 G#3@2.040+1.700/80 B3@2.070+1.600/70", 1, true) ~= nil, true, "a half note: each played length doubled")
+  keys("<A-l>")
+  eq(played(clip):find("E3@2.010+1.800/90 G#3@2.040+1.750/80 B3@2.070+1.700/70", 1, true) ~= nil, true,
+    "a half note: each played as much shorter than written as it was")
   keys("X")
   eq(played(clip), "C5@5.000+1.000/64", "the chord deleted, all of it")
   keys("u")
   eq(#clip:notes(), 4, "and back")
 end)
 
-test("score editing: a note put in goes exactly on the grid, as loud as those around it", function()
+test("score editing: a note put in goes exactly on the grid, as loud as the dynamic there", function()
   local view, clip = song({ { pitch = 60, start = 0.03, length = 0.9, velocity = 50 }, { pitch = 62, start = 1.02, length = 0.9, velocity = 54 } })
   view:set(37, 2)
   keys("<CR>")
   local n = clip:notes()[3]
   eq(n.start, 2, "on beat three exactly")
-  eq(n.velocity, 52, "as loud as the notes near it")
+  eq(n.velocity, 80, "at the dynamic in force: mf, where none is written")
   view:set(35, 0)
   keys("i")
   keys("e")
   keys("<Esc>")
-  eq(played(clip):sub(1, 18), "E4@0.000+1.000/52 ", "entering over a loosely played C replaces it")
+  eq(played(clip):sub(1, 18), "E4@0.000+0.900/80 ", "entering over a loosely played C replaces it")
 end)
 
 test("score editing: quantize to the notation, and write again from the playing", function()
@@ -497,7 +497,7 @@ test("score editing: quantize to the notation, and write again from the playing"
   api.undo_checkpoint()
   daw.cmd("notation.quantize")
   api.undo_checkpoint()
-  eq(notes_of(clip), "C4@0+0.5 D4@0.5+0.5 E4@1+2", "each note as written")
+  eq(notes_of(clip), "C4@0+0.45 D4@0.5+0.45 E4@1+1.8", "each note as written")
   keys("u")
   eq(clip:notes()[1].start, 0.03, "undone")
   view:set(35, 0)
@@ -506,35 +506,29 @@ test("score editing: quantize to the notation, and write again from the playing"
   eq(clip:notes()[2].start, 0.52, "and on that one only")
 end)
 
-test("score editing: overrides are kept with the notes and survive edits elsewhere", function()
+test("score editing: voices, triplets, and writing again from the playing", function()
   local view, clip = song({ N(64, 0, 2), N(67, 0, 0.5), N(69, 0.5, 0.5), N(71, 1, 0.5), N(72, 1.5, 0.5), N(74, 2, 2) })
   local _, model = load()
   eq(model.text(view:layout(), 1, 2), "h E4 hr", "the held E is a second voice")
   view:set(37, 0)
   keys("gv")
-  eq(clip:notes()[1].meta.notation.voice, 1, "into the first voice, kept with the note")
-  eq(model.text(view:layout(), 1, 2), "", "no second voice left")
-  view:set(39, 0)
+  eq(model.text(view:layout(), 1, 2), "h E4 hr", "voice 1 has other notes there: the E stays")
+  view:set(43, 2)
   keys("gv")
-  eq(clip:notes()[2].meta.notation.voice, 2, "the G marked as the second voice")
-  -- An edit elsewhere: the last note moved; the G keeps its voice.
-  clip:set_note(6, { start = 3 })
-  view.cache = nil
-  local found
-  for _, ev in ipairs(view:layout().score.events) do
-    for _, n in ipairs(ev.notes) do
-      if n.pitch == 67 then found = ev.voice end
-    end
-  end
-  eq(found, 2, "the override is still there")
+  eq(model.text(view:layout(), 1, 1), "e G4 e A4 e B4 e C5 hr", "the D leaves voice 1")
+  eq(model.text(view:layout(), 1, 2), "h E4 h D5", "for voice 2, where it was silent")
+  -- An edit elsewhere: the voices stay as written.
+  view:set(39, 0)
+  keys("<C-a>")
+  eq(model.text(view:layout(), 1, 2), "h E4 h D5", "still in voice 2")
   view:set(41, 1)
   keys("gt")
-  eq(clip.meta.notation.tuplets[1].n, 3, "beat two in triplets, kept with the clip")
+  eq(model.text(view:layout(), 1, 1):find("3{", 1, true) ~= nil, true, "beat two in triplets")
   keys("gt")
-  eq(clip.meta.notation, nil, "and off")
+  eq(model.text(view:layout(), 1, 1):find("3{", 1, true), nil, "and not")
   daw.cmd("notation.retranscribe")
   api.undo_checkpoint()
-  eq((clip:notes()[2].meta or {}).notation, nil, "write again from the playing: overrides gone")
+  eq(model.text(view:layout(), 1, 2), "h E4 hr", "written again from the playing: the held E is voice 2, the D voice 1")
 end)
 
 test("score editing: grace notes, strums, beams and spelling by key", function()
@@ -550,7 +544,7 @@ test("score editing: grace notes, strums, beams and spelling by key", function()
   keys("gs")
   eq(model.text((view:layout())):find("<C4 E4 G4>^", 1, true) ~= nil, true, "an arpeggio sign on the chord")
   view:set(45, 1.5)
-  keys("ge")
+  keys("g~")
   eq(model.text((view:layout())):find("E#5", 1, true) ~= nil, true, "F respelled as E sharp")
 end)
 
@@ -558,7 +552,7 @@ test("notation: Enter adds a note of the chosen value at the cursor and takes it
   local view, clip = song()
   view:set(39, 2)
   keys("g4<CR>")
-  eq(notes_of(clip), "G4@2+0.5", "an eighth at the cursor")
+  eq(notes_of(clip), "G4@2+0.45", "an eighth at the cursor")
   keys("<CR>")
   eq(notes_of(clip), "", "and gone")
 end)
@@ -646,12 +640,11 @@ test("marks: articulations are written and played", function()
   view:set(42, 0)
   keys("g'")
   eq(clip:notes()[1].length, 0.5, "staccato: played half its written length")
-  eq(clip:notes()[1].meta.notation.art.staccato, true, "and kept as a mark on the note")
   local ev = view:layout().measures[1].staves[1][1]
   eq(ev.art.staccato, true, "the written note carries it")
   eq(model_text_has(view, "q C5"), true, "still written a quarter")
   keys("g'")
-  eq(clip:notes()[1].length, 0.9, "taken away: played long again")
+  eq(clip:notes()[1].length, 0.9, "taken away: played as written again (the mark replaced how it was played)")
   view:set(43, 1)
   local before = clip:notes()[2].velocity
   keys("g>")
@@ -660,7 +653,7 @@ test("marks: articulations are written and played", function()
   eq(clip:notes()[2].velocity, before, "and back")
   view:set(44, 2)
   keys("vlg_")
-  eq(clip:notes()[3].meta.notation.art.tenuto, true, "on a selection")
+  eq(view:layout().measures[1].staves[1][3].art.tenuto, true, "on a selection")
 end)
 
 test("marks: dynamics set the loudness, hairpins ramp it, slurs join the notes", function()
@@ -672,9 +665,8 @@ test("marks: dynamics set the loudness, hairpins ramp it, slurs join the notes",
   api.undo_checkpoint()
   local v = {}
   for i, n in ipairs(clip:notes()) do v[i] = n.velocity end
-  eq(v[1] >= 88 and v[1] <= 96, true, "f: the stretch moved to about 96")
-  eq(math.abs(v[2] - v[1] - 10) <= 2, true, "the player's difference between the notes stays")
-  eq(clip.meta.notation.marks[1].value, "f", "the dynamic is kept with the clip")
+  eq(v[1] .. " " .. v[2], "76 86", "f: 16 louder than the mf the notes were played against, as the player played them")
+  eq(view.score_of(clip:get()).marks[1].value, "f", "the dynamic is written in the score")
   view:set(42, 0)
   daw.cmd("notation.dyn", { "p" })
   view:set(42, 4)
@@ -685,7 +677,7 @@ test("marks: dynamics set the loudness, hairpins ramp it, slurs join the notes",
   keys("<Esc>")
   for i, n in ipairs(clip:notes()) do v[i] = n.velocity end
   eq(v[1] < v[3] and v[3] < v[5] and v[2] < v[4], true, "a crescendo from p to f: louder beat by beat, the player's accents kept")
-  eq(v[5] >= 91 and v[5] <= 101, true, "reaching the f")
+  eq(v[5], 76, "reaching the f")
   local m = view:layout().measures[1]
   eq(#m.marks >= 2, true, "the hairpin is on the measure, to be drawn")
   daw.cmd("notation.slur")
@@ -843,7 +835,7 @@ test("notation terminal: a double click enters notes; in insert mode a click ent
   eq(view.cell_hover and view.cell_hover.step, 41, "the shadow note follows the pointer")
   daw.mouse.forget()
   m("down", x, y) m("up", x, y)
-  eq(notes_of(clip), "G4@1+0.5", "a click enters an eighth G on beat two")
+  eq(notes_of(clip), "G4@1+0.45", "a click enters an eighth G on beat two")
   keys("<Esc>")
 end)
 
@@ -1010,7 +1002,7 @@ test("notation window: a double click enters notes there; in insert mode a click
   eq(heads, 1, "drawn half transparent in the caret's layer")
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip), "G4@1+0.5", "a click enters an eighth G on beat two")
+  eq(notes_of(clip), "G4@1+0.45", "a click enters an eighth G on beat two")
   keys("<Esc>")
 end)
 
@@ -1031,12 +1023,12 @@ test("notation window: the toolbar chooses the value, the accidental and rests",
   local x, y = spot(view, 2, 38)
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip), "E4@0+2 F#4@2+2", "an F sharp half note; the E is cut to end where it starts")
+  eq(notes_of(clip), "E4@0+2.125 F#4@2+1.8", "an F sharp half note; the E is written a half note, played as it was up to a 32nd past it")
   press("rest")
   paint(view)
   x, y = spot(view, 2, 38)
   pointer("down", x, y)
-  eq(notes_of(clip), "E4@0+2", "a rest clears it")
+  eq(notes_of(clip), "E4@0+2.125", "a rest clears it")
   view.gui.rest, view.gui.accidental = false, nil
 end)
 
@@ -1163,19 +1155,19 @@ test("notation insert: an interval above, a tie, triplets and the last chord aga
   local view, clip = song(nil, 4)
   keys("i")
   keys("C<A-3><A-3>")
-  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1", "Alt-3 twice: a third above, and a third above that, a chord")
+  eq(notes_of(clip), "C4@0+0.9 E4@0+0.9 G4@0+0.9", "Alt-3 twice: a third above, and a third above that, a chord")
   keys("<Space>")
   eq(view.beat, 1, "Space steps on")
   keys("R")
-  eq(notes_of(clip), "C4@0+1 E4@0+1 G4@0+1 C4@1+1 E4@1+1 G4@1+1", "R: the chord again")
+  eq(notes_of(clip), "C4@0+0.9 E4@0+0.9 G4@0+0.9 C4@1+0.9 E4@1+0.9 G4@1+0.9", "R: the chord again")
   keys("e~")
-  eq(notes_of(clip):match("E4@2%+2") ~= nil, true, "~ holds the note just entered on by the value")
+  eq(notes_of(clip):match("E4@2%+1.8") ~= nil, true, "~ holds the note just entered on by the value: one note, tied")
   eq(view.beat, 4, "and steps on")
   keys("<Esc>")
   local view2, clip2 = song(nil, 4)
   keys("i4tcde<Esc>")
   local _ = view2
-  eq(notes_of(clip2), "C4@0+0.333333 D4@0.333333+0.333333 E4@0.666667+0.333333", "t: eighth triplets")
+  eq(notes_of(clip2), "C4@0+0.3 D4@0.333333+0.3 E4@0.666667+0.3", "t: eighth triplets")
 end)
 
 -- The pointer's place in time ----------------------------------------------------------------
@@ -1201,7 +1193,7 @@ test("notation pointer: in the terminal a click and an insert-mode click snap to
   m("down", x, y) m("up", x, y)
   eq(view.beat, 3, "a quarter chosen: a click off the beat puts the cursor on the beat")
   keys("ig")
-  eq(notes_of(clip):match("G4@3%+1") ~= nil, true, "a G typed there is a quarter on beat four, not tied eighths")
+  eq(notes_of(clip):match("G4@3%+0%.9") ~= nil, true, "a G typed there is a quarter on beat four, not tied eighths")
   keys("<Esc>")
   shot()
   daw.mouse.forget()
@@ -1209,7 +1201,7 @@ test("notation pointer: in the terminal a click and an insert-mode click snap to
   keys("i")
   local x2, y2 = cell(view, 2.4, 37)
   m("down", x2, y2) m("up", x2, y2)
-  eq(notes_of(clip):match("E4@2%.5%+0%.5") ~= nil, true, "in insert mode a click enters an eighth on an eighth")
+  eq(notes_of(clip):match("E4@2%.5%+0%.45") ~= nil, true, "in insert mode a click enters an eighth on an eighth")
   keys("<Esc>")
 end)
 
@@ -1233,12 +1225,12 @@ test("notation pointer: in the window a click snaps to the value, Alt-click to t
   x, y = spot(view, 2.2, 39)
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip), "G4@2+0.5", "in insert mode a click enters an eighth on beat three")
+  eq(notes_of(clip), "G4@2+0.45", "in insert mode a click enters an eighth on beat three")
   view.triplets = true
   x, y = spot(view, 0.4, 39)
   pointer("down", x, y)
   pointer("up", x, y)
-  eq(notes_of(clip):match("G4@0%.333333%+0%.333333") ~= nil, true, "in triplets, on a third of the beat")
+  eq(notes_of(clip):match("G4@0%.333333%+0%.3") ~= nil, true, "in triplets, on a third of the beat")
   view.triplets = false
   keys("<Esc>")
 end)
@@ -1541,14 +1533,14 @@ test("notation entry: a bass note entered under a melody leaves the melody alone
   eq(#view:layout().staves, 1, "one staff before the bass")
   view:set(25, 0)
   keys("i7g<Esc>")
-  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D5@3+1 G2@0+4 G4@0+1", "the whole-note G2 is added and the melody of bar 1 kept")
+  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D5@3+1 G2@0+3.6 G4@0+1", "the whole-note G2 is added and the melody of bar 1 kept")
   eq(#view:layout().staves, 2, "now a grand staff")
   view:set(25, 0)
   keys("i5d<Esc>")
-  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D2@0+1 D5@3+1 G4@0+1", "on the bass staff, entry still replaces what is there")
+  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D2@0+0.9 D5@3+1 G4@0+1", "on the bass staff, entry still replaces what is there")
   view:set(25, 1)
   keys("ir<Esc>")
-  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D2@0+1 D5@3+1 G4@0+1", "a rest on the bass staff takes nothing from the treble")
+  eq(sorted_notes(clip), "A4@1+1 B4@2+1 D2@0+0.9 D5@3+1 G4@0+1", "a rest on the bass staff takes nothing from the treble")
 end)
 
 test("notation entry: a second voice under a first is left alone, and entered in on its own", function()
@@ -1557,15 +1549,13 @@ test("notation entry: a second voice under a first is left alone, and entered in
     { pitch = 72, start = 0, length = 2, meta = { notation = held } }, { pitch = 72, start = 2, length = 2, meta = { notation = held } } })
   view:set(44, 0)   -- E5, voice 1
   keys("i4ga<Esc>")
-  eq(sorted_notes(clip), "A5@0.5+0.5 C5@0+2 C5@2+2 F5@1+1 F5@3+1 G5@0+0.5 G5@2+1",
+  eq(sorted_notes(clip), "A5@0.5+0.45 C5@0+2 C5@2+2 F5@1+1 F5@3+1 G5@0+0.45 G5@2+1",
     "eighths in voice 1 replace its E; the held C of voice 2 stays")
   view:set(42, 2)   -- C5 on beat three, voice 2
   keys("i6b<Esc>")
-  eq(sorted_notes(clip), "A5@0.5+0.5 B4@2+2 C5@0+2 F5@1+1 F5@3+1 G5@0+0.5 G5@2+1",
+  eq(sorted_notes(clip), "A5@0.5+0.45 B4@2+1.8 C5@0+2 F5@1+1 F5@3+1 G5@0+0.45 G5@2+1",
     "entering on the voice-2 note replaces it alone, and the melody over it stays")
-  local b
-  for _, n in ipairs(clip:notes()) do if n.pitch == 71 then b = n end end
-  eq(b.meta.notation.voice, 2, "the new note is kept in voice 2")
+  eq(require("notation.model").text(view:layout(), 1, 2), "h C5 h B4", "the new note is written in voice 2")
 end)
 
 test("notation: Esc stays in the view; ,n, ZZ and :q leave it", function()
@@ -1591,9 +1581,9 @@ test("notation: a visual selection takes in the note under the cursor", function
   local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
   view:set(35, 0)
   keys("v3w(")
-  local slur = clip.meta.notation.slurs[1]
-  eq(slur.from, 0, "the slur starts on the first note")
-  eq(slur.to > 3.9, true, "and reaches over the fourth, under the cursor")
+  local evs = view:layout().measures[1].staves[1]
+  eq(evs[1].slur_to ~= nil, true, "the slur starts on the first note")
+  eq(evs[1].slur_to == evs[4], true, "and reaches over the fourth, under the cursor")
   view:set(35, 0)
   keys("v3wd")
   eq(notes_of(clip), "", "v3wd deletes the four notes")
@@ -1605,7 +1595,7 @@ test("notation: : from a selection runs a command over it, and commands take bar
   keys("vw:")
   eq(require("daw.views.cmdline").state().before, "'<,'>", "the prompt starts with the selection's range")
   keys("notation.cresc<CR>")
-  local mark = clip.meta.notation.marks[1]
+  local mark = view:layout().measures[1].marks[1]
   eq(mark.kind, "cresc", "a crescendo")
   eq(mark.at == 0 and mark.to == 2, true, "over the two selected notes, the second under the cursor included")
   daw.commands.exec("2,3notation.transpose 2")
@@ -1615,3 +1605,5 @@ test("notation: : from a selection runs a command over it, and commands take bar
   daw.commands.exec("'<,'>notation.transpose 12")
   eq(notes_of(clip), "B4@0+1 C5@1+1 D4@2+1 E4@3+1 A4@4+4 B4@8+4", "'<,'> typed later names the last selection again")
 end)
+
+assert(loadfile("extensions/notation/tests_score.lua"))(T)

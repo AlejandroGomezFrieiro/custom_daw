@@ -21,14 +21,28 @@ end
 --- a plugin with a window of its own shows it (`daw.opt.editor_on_add`), as
 --- REAPER does. Some instruments make no sound until it has been open once.
 function M.add(track, kind, opts)
+  local device = M.place(track, kind, opts)
+  M.added(device, kind, opts)
+  return device
+end
+
+--- The first half of `add`: the device on the track, set to the preset new
+--- ones start from. What the device picker tries out before it is chosen.
+function M.place(track, kind, opts)
   local device = track:add_device(kind, nil, { index = opts and opts.index })
-  M.note_used(kind, opts and opts.query)
   -- The preset the user marked as the one new instances start from.
   local default = M.default_preset(kind)
   if default then
     local ok, err = pcall(M.load, device, default)
     if not ok then daw.notify("the default preset `" .. default .. "` did not load: " .. tostring(err):match("^[^\n]*"), "warn") end
   end
+  return device
+end
+
+--- The second half of `add`, once the device is there: remembered as used,
+--- its window shown.
+function M.added(device, kind, opts)
+  M.note_used(kind, opts and opts.query)
   if daw.opt.editor_on_add and M.interactive() and device.editor == "closed" then
     local ok, err = pcall(api.device_editor, device.id, true)
     if not ok then daw.notify(tostring(err):match("^[^\n]*"), "warn") end
@@ -569,6 +583,16 @@ function M.pick(device)
       if not ok then return daw.notify(clean(err), "error") end
       daw.notify(d.name .. ": " .. p.name)
     end,
+    -- Loaded as a trial and heard with what the track plays around the
+    -- cursor; Escape puts the device back as it was.
+    audition_key = "presets",
+    audition = function(p)
+      daw.audition.try(function() M.load(device, p) end)
+      return {
+        label = p.name .. " · " .. daw.audition.through(d.track),
+        keep = function() daw.notify(d.name .. ": " .. p.name) end,
+      }
+    end,
     actions = {
       ["<C-s>"] = { desc = "default for new ones", fn = function(p)
         if not p then return end
@@ -663,47 +687,6 @@ function M.setup()
   local function dmap(lhs, rhs, desc) daw.keymap.set(lhs, rhs, { view = "devices", desc = desc }) end
   dmap("f", "param", "Find a parameter by name")
   dmap("t", "param.last", "The parameter last touched")
-  dmap("s", "preset", "Choose a preset")
-  dmap(">", "preset.next", "Next preset")
-  dmap("<lt>", "preset.prev", "Previous preset")
-  dmap("w", "preset.save", "Save as a preset")
-  dmap("W", "preset.default", "New ones start from this preset")
-
-  -- Copying and moving devices ---------------------------------------------------
-  -- `V` selects several in the device panel (each device is a row of the
-  -- selection however many of its parameter rows it covers); `y` `d` take
-  -- them, `p` `P` put them in.
-  local panel = daw.ui.views.devices
-  panel.grid = panel.grid or {
-    get = function() return panel.row, 0 end,
-    set = function(row) panel.row = row end,
-    step = function() return 1 end,
-    rows = true,   -- a step is a row, not a stretch of time
-  }
-  local function xmap(lhs, fn, desc) daw.keymap.set(lhs, fn, { view = "devices", mode = "x", desc = desc }) end
-  local function selected_devices()
-    local region, out, seen = daw.keymap.selection(), {}, {}
-    if not region then return out end
-    for i, row in ipairs(panel:rows()) do
-      if i >= region.r0 and i <= region.r1 and not seen[row.device.id] then
-        seen[row.device.id] = true
-        out[#out + 1] = daw.device(row.device.id)
-      end
-    end
-    return out
-  end
-  local function take(ctx, cut)
-    local list, snaps = selected_devices(), {}
-    for i, device in ipairs(list) do snaps[i] = device:snapshot() end
-    daw.keymap.setreg({ kind = "devices", devices = snaps }, ctx.register, not cut)
-    if cut then for _, device in ipairs(list) do device:remove() end end
-    daw.keymap.set_mode("n")
-    daw.notify(#snaps .. (#snaps == 1 and " device " or " devices ") .. (cut and "cut" or "yanked"))
-  end
-  xmap("j", function(ctx) panel.row = panel.row + (ctx.count or 1) end, "Select the next row too")
-  xmap("k", function(ctx) panel.row = math.max(1, panel.row - (ctx.count or 1)) end, "Select the previous row too")
-  xmap("y", function(ctx) take(ctx, false) end, "Yank the selected devices")
-  xmap("d", function(ctx) take(ctx, true) end, "Cut the selected devices")
 
   --- A track by name, by its place in the list, or by id.
   local function track_named(text)

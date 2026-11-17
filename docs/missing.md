@@ -13,6 +13,15 @@
   preview is drawn by the snippet's own layer rather than through
   `daw.complete.show`. A melody of eighth notes alone may be read as
   chords (a beat with two pitches in it is evidence of one).
+- Pickers you can hear: `daw.opt.audition_level` sets the level of sound
+  files only; a phrase plays through the track at the track's own level,
+  so that a preset is heard as it would be. A phrase is timed by the
+  kernel's timers rather than the engine, so it can be a few milliseconds
+  uneven under load. A plugin factory preset takes as long to try as to
+  load (some plugins hold the program up to a third of a second). The
+  pickers of templates, UTAU presets and singers, sends and drum maps are
+  not heard. The window shows a picker's pane as text, the outline of a
+  sound file in block characters, not as a drawn waveform.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the
@@ -51,6 +60,32 @@
   clips, lanes or notes yet. In the graphical frontend a text buffer is
   shown as the terminal draws it, in a window of its own (`:textbuf.window`),
   not among the window's panels.
+
+- One key grammar (docs/terminal.md, "Keys: one grammar"): the window's
+  mixer and device cards do not draw the row the cursor is on, though the
+  keys typed there move it and act on it as in the terminal; a selection
+  across mixer strips with different devices or sends picks rows by what
+  they are (the fader, the second send), and skips a strip that has none.
+  `]` and `[` wait a moment for `]d` `]g` and the like before they run, as
+  Vim's keys do when a longer mapping starts with them. `daw.opt.keys =
+  "classic"` brings back the keys of before, and is to go after a release.
+  The session view's `m` and `n` still mean launch mode and a new clip, not
+  Vim's mark and next match.
+
+- Score clips (notation): tempo marks are written only (`:notation.text`),
+  not tempo-map points, and no option makes the score own the song's
+  tempo; repeats and voltas are written, not unfolded; trills, tremolos,
+  fermatas, swing and expression maps are not rendered; no CC1 or CC11 is
+  written for sustained instruments; the piano roll does not mark a score
+  clip's notes as written or show a note's feel; with `timebind` the note
+  under one view's cursor is not outlined in the other; key, clef and
+  time-signature changes inside a clip are not edited per measure (a score
+  keeps the time signatures it was written with, and the project's key);
+  joining, splitting or stretching a score clip in the arrange view and
+  recording into one work on its notes as on any MIDI clip, and the next
+  edit in notation renders the score over them; `:import song.mid score=yes`
+  does not exist (`:score.from-midi` after importing does it); the
+  several-tracks view and a track's export transcribe what the clips play.
 
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but

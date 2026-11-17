@@ -934,6 +934,25 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         fn transport_record(_, sh, () => ()) { sh.session.borrow_mut().record().lua() }
 
+        // --- audition (session/audition.rs) ---
+        // Edits that `trial_end(false)` throws away, the project put back as
+        // it was and the undo history untouched; `trial_end(true)` keeps
+        // them as one step.
+        fn trial_begin(_, sh, () => ()) { sh.session.borrow_mut().trial_begin().lua() }
+        fn trial_end(_, sh, keep => Option<bool>) { Ok(sh.session.borrow_mut().trial_end(keep.unwrap_or(false))) }
+        fn trial_active(_, sh, () => ()) { Ok(sh.session.borrow().trial_active()) }
+        // A sound file heard on its own over everything, outside the project.
+        fn preview_play(_, sh, file => String) { sh.session.borrow_mut().preview_play(std::path::Path::new(&file)).lua() }
+        fn preview_stop(_, sh, () => ()) {
+            sh.session.borrow_mut().preview_stop();
+            Ok(())
+        }
+        fn preview_level(_, sh, db => f64) {
+            sh.session.borrow_mut().preview_set_level(db);
+            Ok(())
+        }
+        fn preview_get(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().preview_view()) }
+
         // --- MIDI input ---
         fn midi_inputs(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().midi_inputs()) }
         // A port of our own for other programs to send MIDI to; true from

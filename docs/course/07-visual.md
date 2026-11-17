@@ -44,7 +44,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
 11. `v` selects a stretch of time at every pitch. Press `v`, then `12<C-a>` to move everything that starts in it up an octave.
    - *Hint:* Type 1, 2, then Ctrl and a, while the status line still says VISUAL.
    - ✓ The chord is an octave higher. A count in visual mode is how much.
-12. Press `<Esc>` to go back to the arrange view, and `<Space>` to listen; `<Space>` stops.
+12. Press `<C-w>p` to go back to the arrange view, and `<Space>` to listen; `<Space>` stops.
    - ✓ The first chord rings out an octave up.
 
 ## What you did

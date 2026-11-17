@@ -286,6 +286,12 @@ view.grid = {
   get = function() return view.row, view.beat end,
   set = function(row, col) view:set(row, col) end,
   step = function() return view:step_size() end,
+  -- The step under the cursor is a cell: a selection takes it in, as Vim's
+  -- takes in the character under the cursor.
+  extent = function(_, col)
+    local step = view:step_size()
+    return (math.floor(col / step + 1e-9) + 1) * step
+  end,
   -- Pieces by name: `/snare` goes to the snare's row.
   search = function(text)
     local wanted, out = text:lower(), {}

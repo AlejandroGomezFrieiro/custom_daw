@@ -32,7 +32,7 @@ pixels, with buttons for what the keys do and a button for each answer.
 | `A` | run every check; `u` those that need nobody |
 | `y` `n` `s` `w` `r` `l` `b` `a` `d` | answer the question being asked (the keys are listed under it); `s` also skips the check going on |
 | `o` | where the report is |
-| `<Esc>` | stop the run; with none going, close the page |
+| `<Esc>` | stop the run; the page stays (`q` closes it) |
 | `q` | close the page |
 
 ## What each check needs from you

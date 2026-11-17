@@ -154,6 +154,23 @@ command("drums.beat", function(ctx)
     items = items,
     format = function(item) return item.text end,
     on_choose = function(item) apply(item.name) end,
+    -- Written into the clip as a trial, and its first bar played over and
+    -- over through the track; Escape gives the clip its notes back.
+    audition_key = "drums.beat",
+    audition = function(item)
+      local n = daw.audition.try(function() return beats.apply(clip, item.name) end)
+      local c = clip:get()
+      local bar = math.min(daw.time.bar(c.start), c.length)
+      local notes = {}
+      for _, note in ipairs(clip:notes()) do
+        if note.start < bar then notes[#notes + 1] = { pitch = note.pitch, start = note.start, length = note.length, velocity = note.velocity } end
+      end
+      daw.audition.phrase(c.track, notes, { length = bar, at = c.start })
+      return {
+        label = item.name .. " · its first bar",
+        keep = function() daw.notify(string.format("%s: %d hits", item.name, n)) end,
+      }
+    end,
     preview = function(item)
       local lines = { { text = beats.list[item.name].label, style = "Title" } }
       local notes = {}
@@ -323,10 +340,13 @@ local function paste(before) return function(ctx)
 end end
 gmap("p", paste(false), "Paste after the cursor")
 gmap("P", paste(true), "Paste at the cursor")
--- How hard: + and -, or ] and [ as in the piano roll (which wait a moment
--- for `]g` and `[g`).
-for lhs, sign in pairs({ ["+"] = 1, ["]"] = 1, ["-"] = -1, ["["] = -1 }) do
-  gmap(lhs, function(ctx) grid:velocity(sign * 16 * (ctx.count or 1)) end, sign > 0 and "Harder" or "Softer")
+-- How hard. A hit has no pitch to change, so its velocity is its main value
+-- (`+` `-`, `Ctrl-a` `Ctrl-x`) and, as in the piano roll, its second (`]`
+-- `[`, which wait a moment for `]g` and `[g`).
+local roles = { ["+"] = "main+", ["<C-a>"] = "main+", ["]"] = "second+", ["-"] = "main-", ["<C-x>"] = "main-", ["["] = "second-" }
+for lhs, role in pairs(roles) do
+  local sign = role:sub(-1) == "+" and 1 or -1
+  gmap(lhs, function(ctx) grid:velocity(sign * 16 * (ctx.count or 1)) end, sign > 0 and "Harder" or "Softer", { role = role })
 end
 -- The step: finer and coarser, as `[g` and `]g` make the arrange view's grid.
 gmap("[g", function() grid:set_step(E.next_step(grid:step_size(), 1)) end, "Finer steps", { mode = { "n", "x" } })
@@ -340,7 +360,9 @@ gmap("&", function(ctx)
 end, "Repeat this bar to the end of the clip (N: N times)")
 gmap("gh", function() grid:hear() end, "Hear the piece")
 gmap("gb", "drums.beat", "Fill the clip with a beat to start from")
-gmap("<Esc>", function() daw.ui.focus("arrange") end, "Back to the arrange view")
+-- Escape stays, as in every view; `<C-w>p` goes back to the window before.
+gmap("<Esc>", function() keymap.escape_hint() end, "Stay in the grid (Ctrl-w p leaves)", { repeatable = false })
+keymap.classic("<Esc>", function() daw.ui.focus("arrange") end, { view = "drums", desc = "Back to the arrange view" })
 
 -- On a selection.
 local function vx(lhs, fn, desc)
@@ -350,7 +372,7 @@ local function vx(lhs, fn, desc)
   end })
 end
 vx("x", function(clip, rows, region, ctx) keymap.setreg(E.delete(clip, rows, region), ctx.register) end, "Delete hits")
-for lhs, sign in pairs({ ["+"] = 1, ["]"] = 1, ["-"] = -1, ["["] = -1 }) do
+for lhs, sign in pairs({ ["+"] = 1, ["]"] = 1, ["<C-a>"] = 1, ["-"] = -1, ["["] = -1, ["<C-x>"] = -1 }) do
   vx(lhs, function(clip, rows, region, ctx)
     local by = sign * 16 * (ctx.count or 1)
     E.each(clip, rows, region, function(n) n.velocity = drums.clamp_velocity(n.velocity + by) end)
@@ -367,7 +389,7 @@ end, "Replace with the register")
 if daw.ui.keybar then
   daw.ui.keybar.set("drums", "n", {
     { "<CR>", "hit" }, { "+", "harder" }, { "-", "softer" }, { "[g", "finer" }, { "]g", "coarser" },
-    { "T", "triplets" }, { "&", "repeat bar" }, { "d", "clear row", "dd" }, { "gh", "hear" }, { "<Esc>", "back" },
+    { "T", "triplets" }, { "&", "repeat bar" }, { "d", "clear row", "dd" }, { "gh", "hear" }, { "<C-w>p", "back" },
   })
   daw.ui.keybar.set("drums", "x", {
     { "x", "delete" }, { "+", "harder" }, { "-", "softer" }, { "gs", "swing" }, { "y", "yank" }, { "<Esc>", "done" },
