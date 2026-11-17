@@ -24,6 +24,8 @@ end
 local function song()
   fresh()
   while daw.ui.float do daw.ui.close() end
+  -- A view another test left in a window of its own is not drawn in the terminal.
+  for name in pairs(daw.canvas.open_views) do daw.canvas.close(name) end
   L.restore(initial)
   local view = load()
   local track = daw.add_track({ name = "Lead" })
@@ -96,7 +98,7 @@ test("popover: an empty prompt shows examples, and Tab fills the line", function
   for key, ghost in pairs({ t = "Allegro q=132  rit.  a tempo", k = "Eb  f#m  D dorian", m = "6/8  3+3+2/8", q = "Cmaj7  G/B  N.C.",
       l = "syllables, Space next, - hyphen" }) do
     daw.keymap.feed("," .. key)
-    eq(#rows_with(ghost) > 0, true, "," .. key .. " shows " .. ghost)
+    eq(#rows_with(ghost) > 0, true, "," .. key .. " shows " .. ghost .. " on\n" .. screen())
     daw.keymap.feed("<Esc>")
   end
 end)
