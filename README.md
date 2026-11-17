@@ -218,8 +218,3 @@ paw is licensed under either of [MIT](LICENSE-MIT) or
 [Apache-2.0](LICENSE-APACHE), at your option. Unless you state otherwise,
 any contribution you submit for inclusion is licensed the same way, without
 additional terms or conditions.
-
-The window is made with [Slint](https://slint.dev), used under its
-royalty-free license:
-
-[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)

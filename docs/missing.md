@@ -225,9 +225,10 @@
   beyond the parameters' values (a pattern an arpeggiator keeps), more
   than one stereo output, and reporting latency of their own to delay
   compensation.
-- The window's GPU renderer as the default: it is tried only on a software
-  OpenGL (llvmpipe) so far, where it draws correctly but costs more than
-  the software renderer.
+- The window measured on a real graphics card: it is tried only on Mesa's
+  llvmpipe so far, where playing costs more than a core.
+- In the window, kanji, hanzi and hangul where the system has no font for
+  them: only kana are built in, and the rest show as boxes then.
 - In clip launching: follow actions (a clip that launches the next, or a
   random one, after so many bars); under a tempo ramp a slot's clip spreads
   each block's beats evenly over it, so its notes can land up to a frame or
