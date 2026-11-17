@@ -125,6 +125,7 @@ return function(pick)
   local kind_tags = { motion = "motion", operator = "operator", object = "object", visual = "visual", insert = "insert" }
 
   local function key_tag(entry)
+    if entry.other then return entry.other .. " view" end
     local where = entry.map.scope == "global" and "global" or entry.map.scope:gsub("^%a+%.", "")
     local kind = kind_tags[entry.kind]
     return kind and where .. " " .. kind or where
@@ -133,6 +134,10 @@ return function(pick)
   --- Run a mapping chosen in the keys picker, as if its keys were typed.
   local function run_key(entry)
     local map = entry.map
+    if entry.other then
+      daw.ui.focus(entry.other)
+      return daw.notify(daw.keymap.human(map.lhs) .. " is a key of the " .. entry.other .. " view, which has the keys now")
+    end
     if entry.kind == "object" then
       return daw.notify(daw.keymap.human(map.lhs) .. " names a region: type it after an operator such as `d` or `y`, or in a selection")
     end
@@ -190,6 +195,22 @@ return function(pick)
           if la ~= lb then return la < lb end
           return a.map.lhs:lower() .. a.map.lhs < b.map.lhs:lower() .. b.map.lhs
         end)
+        -- After them, the keys of the other views, so that a search for what
+        -- a key does finds it wherever it works: `send` in the mixer finds
+        -- the arrange view's `,s`.
+        local names = {}
+        for name, v in pairs(daw.ui.views) do
+          if name ~= view and v.focusable ~= false and not v.modal then names[#names + 1] = name end
+        end
+        table.sort(names)
+        for _, name in ipairs(names) do
+          for _, map in ipairs(daw.keymap.list("n", name)) do
+            if map.scope == name and not map.motion and map.desc then
+              out[#out + 1] = { map = map, kind = "key", other = name, human = daw.keymap.human(map.lhs), desc = map.desc }
+              out[#out].tag = key_tag(out[#out])
+            end
+          end
+        end
         return out
       end,
       format = function(e)

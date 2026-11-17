@@ -260,8 +260,8 @@ test("operators, yank and paste act on every clip edited, each note staying in i
   keys("v$<C-a>")
   eq(melody(s.keys) .. " | " .. melody(s.bass), "60@0+1 64@1+1 68@2+1 | 37@0+1 44@1+1 41@2+1", "<C-a> on a selection over both")
   keys("u")
-  keys("0yic")
-  eq(#daw.keymap.getreg().notes, 6, "ic is every note of the clips edited")
+  keys("0yie")
+  eq(#daw.keymap.getreg().notes, 6, "ie is every note of the clips edited")
   -- A note moved by a key stays in its clip: the bass's first note cannot go before the bass clip.
   roll:set(36, 2)
   keys("H")

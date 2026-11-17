@@ -32,7 +32,7 @@ end
 --- `force`, as when a take begins). Returns the file written, or nil.
 function M.copy(force)
   local p = api.project_get()
-  if not force and (not p.modified or p.edits == copied) then return nil end
+  if not force and (not daw.project.unsaved() or p.edits == copied) then return nil end
   -- Something being tried in a picker is not work to keep: the next copy has it if it stays.
   if not force and api.trial_active() then return nil end
   local file = M.file()
@@ -194,7 +194,7 @@ daw.on("transport.record", function(e)
   end
 end)
 daw.on("exit", function()
-  if M.discard or not api.project_get().modified then
+  if M.discard or not daw.project.unsaved() then
     -- Nothing unsaved, or `:q!` said the changes are not wanted.
     forget(current)
     forget()
