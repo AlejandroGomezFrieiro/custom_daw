@@ -1,6 +1,6 @@
 #!/bin/sh
 . "$(dirname "$0")/rig.sh"
-rig_start 1280x800
+rig_start 1100x420
 term_start
 rec_start tui-textbuf
 cap ":e daw://tracks lists the tracks as text, one a line"
@@ -15,5 +15,5 @@ key w; key w; pause 0.3
 key 3; key ctrl+x; pause 1.2
 cap ":w shows the plan; y applies it as one undo step"
 key colon; pause 0.3; typ "w"; key Return; pause 2.0
-key y; pause 1.4
+key y; pause 2.2
 rec_stop
