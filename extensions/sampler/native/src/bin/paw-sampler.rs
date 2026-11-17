@@ -96,41 +96,48 @@ fn render(path: &str, out: &str, notes: &[String]) -> Result<(), String> {
     write_wav(Path::new(out), rate as u32, 2, &interleaved, None, None).map_err(|e| e.to_string())
 }
 
-/// Holds `voices` notes across the instrument's range and times blocks.
+/// Holds `voices` notes across the instrument's range and times a
+/// quarter of a second of blocks, five times over; the best time counts,
+/// as the least disturbed by whatever else the machine does.
 fn bench(path: &str, voices: usize) -> Result<(), String> {
     let program = load(path)?;
     let (lo, hi) = program.instrument.range().ok_or("the instrument plays no key")?;
     let rate = 48000.0;
     let block = 256;
+    let blocks = 47;
     for quality in [0.0, 1.0, 2.0] {
-        let mut engine = Engine::new(rate);
-        engine.swap(Some(program.clone()));
-        let mut values: Vec<f64> = params::PARAMS.iter().map(|p| p.default).collect();
-        values[1] = 256.0;
-        values[9] = quality;
-        engine.settings = params::settings(&values);
-        let mut key = lo;
-        while engine.voice_count() < voices as u32 {
-            let before = engine.voice_count();
-            engine.note_on(key, 0.8, (engine.voice_count() % 16) as u8, None);
-            key = if key >= hi { lo } else { key + 1 };
-            if engine.voice_count() == before && key == lo {
-                break;
+        let mut best = f64::MAX;
+        let mut sounding = 0;
+        for _ in 0..5 {
+            let mut engine = Engine::new(rate);
+            engine.swap(Some(program.clone()));
+            let mut values: Vec<f64> = params::PARAMS.iter().map(|p| p.default).collect();
+            values[1] = 256.0;
+            values[9] = quality;
+            engine.settings = params::settings(&values);
+            let mut key = lo;
+            while engine.voice_count() < voices as u32 {
+                let before = engine.voice_count();
+                engine.note_on(key, 0.8, (engine.voice_count() % 16) as u8, None);
+                key = if key >= hi { lo } else { key + 1 };
+                if engine.voice_count() == before && key == lo {
+                    break;
+                }
             }
+            let (mut left, mut right) = (vec![0.0f32; block], vec![0.0f32; block]);
+            let started = Instant::now();
+            for _ in 0..blocks {
+                left.fill(0.0);
+                right.fill(0.0);
+                engine.render(&mut left, &mut right);
+            }
+            best = best.min(started.elapsed().as_secs_f64());
+            // Voices that ended meanwhile (a short sample) would make the rest look cheap.
+            sounding = engine.voice_count();
         }
-        let sounding = engine.voice_count();
-        let (mut left, mut right) = (vec![0.0f32; block], vec![0.0f32; block]);
-        let blocks = 2000;
-        let started = Instant::now();
-        for _ in 0..blocks {
-            left.fill(0.0);
-            right.fill(0.0);
-            engine.render(&mut left, &mut right);
-        }
-        let seconds = started.elapsed().as_secs_f64();
         let frames = (blocks * block) as f64;
-        let per_voice_frame = seconds / frames / sounding.max(1) as f64 * 1e9;
-        let load = seconds / (frames / rate) * 100.0;
+        let per_voice_frame = best / frames / sounding.max(1) as f64 * 1e9;
+        let load = best / (frames / rate) * 100.0;
         let name = params::to_text(&params::PARAMS[9], quality);
         println!(
             "{name}: {sounding} voices, {per_voice_frame:.1} ns per voice and frame, {load:.1} % of a core at 48 kHz ({:.2} % per voice)",

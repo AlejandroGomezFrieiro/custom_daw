@@ -117,16 +117,17 @@ silencedByTags silencingMode silencingDecay`; `<tags>` (`enabled`,
 `TAG_ENABLED` (and `swallowNotes`), and `<ui>` menus whose options do the
 same. `<effects>`, `<modulators>` and `<buses>` are reported, not played.
 
-Sound files: WAV (8, 16, 24 and 32-bit, float) and AIFF; files with more
-than two channels play their first two.
+Sound files: WAV (8, 16, 24 and 32-bit, float), AIFF, FLAC and Ogg Vorbis
+(these two through symphonia); files with more than two channels play
+their first two.
 
 A format is one reader (`native/src/formats/`) that fills the one model in
 `native/src/model.rs`; nothing else changes to add one.
 
 ## How it plays
 
-Samples are read whole into memory when the instrument is loaded, 16-bit
-ones kept as 16-bit. Voices come from a fixed pool (the polyphony
+Samples are read whole into memory when the instrument is loaded, on up
+to eight threads at once, 16-bit ones kept as 16-bit. Voices come from a fixed pool (the polyphony
 parameter, at most 256, and 32 more for stolen voices to fade in); a voice
 stolen is a released one first (the quietest), else the oldest, and fades
 in 6 ms. Nothing on the audio thread allocates, locks or reads a file (a
@@ -136,21 +137,28 @@ up to four times the sample's rate, so a note pitched up is filtered
 before it folds; Hermite and linear are cheaper settings. Round robins and
 random choices start the same at every reset, so renders repeat exactly.
 
-Measured on a machine running other builds at the same time (load about
-55 on 24 cores), so these are high: a voice costs about 70 ns per frame
-with sinc, 38 with Hermite, 31 linear: 64 voices at 48 kHz take about 21 %
-of a core with sinc. Through paw's plugin helper, each instance costs
-about 10 to 13 µs a block more than in the program's own process (an
-offline render of 20 s in 512-frame blocks: 1 instance 141 ms against
-123 ms in process, 16 instances 615 against 216, 64 instances 1929
-against 578).
+Measured (`paw-sampler bench`, the best of five runs, on a machine busy
+with other builds): a voice of a stereo sample costs about 20 ns a frame
+with sinc, 10 with Hermite, 6 linear, so 64 voices at 48 kHz take 6 % of a
+core with sinc and 256 voices 25 %. A library of 1000 stereo 24-bit files
+(550 MB on disk, 770 MB in memory) loads in about 110 ms when the files are
+in the system's cache.
+
+Through paw's plugin helper, each instance costs about 8 µs a block more
+than in the program's own process. Played in real time on the null
+backend, 512-frame blocks, each instance holding a note: 1 instance keeps
+the engine 0.8 % busy (0.5 % in process), 16 instances 3.1 % (1.3 %), 64
+instances 8.1 % (3.5 %), at most 13 % (5 %). An offline render of 20 s
+takes 132, 525 and 1549 ms with 1, 16 and 64 instances (118, 211 and 506
+in process). With small blocks the crossing weighs more, as it is paid per
+block; `--plugins-in-process` saves it.
 
 ## Testing
 
-`cargo test` in `native/` (in the dev shell): the readers, sixteen renders
+`cargo test` in `native/` (in the dev shell): the readers, seventeen renders
 of the fixture instruments checked by pitch and level (round robin order,
 keyswitches, attributes per note with fallback, release triggers and the
-pedal, loops without clicks, envelopes, choke groups, velocity layers,
+pedal, loops without clicks, envelopes, choke groups, velocity layers, a FLAC sample,
 polyphony), the plugin through its CLAP entry with MIDI 2.0 note-ons
 carrying attributes, and a counting allocator over everything the audio
 thread does. `native/test.sh` builds the plugin and runs the extension's

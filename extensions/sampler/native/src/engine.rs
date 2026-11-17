@@ -5,6 +5,8 @@
 use crate::audio::{PAD, Pcm, Sample, Store, Value};
 use crate::interp::{self, BEFORE, Quality, TAPS};
 use crate::model::*;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 use std::time::Instant;
@@ -44,26 +46,37 @@ impl Program {
     /// are left out and reported in the instrument's warnings.
     pub fn new(mut instrument: Instrument, store: &mut Store) -> Program {
         let started = Instant::now();
+        // Each file once, all read together.
+        let mut paths: Vec<PathBuf> = Vec::new();
+        let mut path_index: HashMap<PathBuf, usize> = HashMap::new();
+        for r in &instrument.regions {
+            if let Source::File(p) = &r.source {
+                path_index.entry(p.clone()).or_insert_with(|| {
+                    paths.push(p.clone());
+                    paths.len() - 1
+                });
+            }
+        }
         let mut samples: Vec<Arc<Sample>> = Vec::new();
+        let mut sample_of_path: Vec<Option<usize>> = Vec::with_capacity(paths.len());
+        for result in store.load_all(&paths) {
+            match result {
+                Ok(s) => {
+                    samples.push(s);
+                    sample_of_path.push(Some(samples.len() - 1));
+                }
+                Err(e) => {
+                    instrument.warn(e);
+                    sample_of_path.push(None);
+                }
+            }
+        }
         let mut waves: Vec<(Source, usize)> = Vec::new();
         let mut region_sample = Vec::new();
         let mut kept = Vec::new();
-        let mut failures = Vec::new();
         for region in std::mem::take(&mut instrument.regions) {
             let index = match &region.source {
-                Source::File(path) => match store.load(path) {
-                    Ok(s) => match samples.iter().position(|x| Arc::ptr_eq(x, &s)) {
-                        Some(i) => Some(i),
-                        None => {
-                            samples.push(s);
-                            Some(samples.len() - 1)
-                        }
-                    },
-                    Err(e) => {
-                        failures.push(e);
-                        None
-                    }
-                },
+                Source::File(path) => sample_of_path[path_index[path]],
                 source => Some(match waves.iter().find(|w| &w.0 == source) {
                     Some(w) => w.1,
                     None => {
@@ -80,9 +93,6 @@ impl Program {
                 region_sample.push(i);
                 kept.push(region);
             }
-        }
-        for e in failures {
-            instrument.warn(e);
         }
         instrument.regions = kept;
         let mut on_key = vec![Vec::new(); 128];

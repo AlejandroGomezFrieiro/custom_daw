@@ -308,6 +308,33 @@ fn polyphony_is_limited_and_voices_are_stolen() {
 }
 
 #[test]
+fn a_flac_sample_plays_like_a_wav() {
+    use flacenc::component::BitRepr;
+    use flacenc::error::Verify;
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("flac");
+    std::fs::create_dir_all(&dir).unwrap();
+    // Whole blocks of 4096: flacenc writes a short last block's size as the
+    // stream's smallest, and symphonia then cannot read the stream.
+    let samples: Vec<i32> = (0..12 * 4096).map(|i| ((i as f64 / RATE * 440.0 * std::f64::consts::TAU).sin() * 16000.0) as i32).collect();
+    let config = flacenc::config::Encoder::default().into_verified().unwrap();
+    let source = flacenc::source::MemSource::from_samples(&samples, 1, 16, 48000);
+    let stream = flacenc::encode_with_fixed_block_size(&config, source, config.block_size).unwrap();
+    let mut sink = flacenc::bitsink::ByteSink::new();
+    stream.write(&mut sink).unwrap();
+    std::fs::write(dir.join("a440.flac"), sink.as_slice()).unwrap();
+    std::fs::write(dir.join("flac.sfz"), "<region> sample=a440.flac pitch_keycenter=69\n").unwrap();
+    let instrument = formats::read(&dir.join("flac.sfz")).unwrap();
+    let program = Arc::new(Program::new(instrument, &mut Store::default()));
+    assert!(program.instrument.warnings.is_empty(), "{:?}", program.instrument.warnings);
+    let mut e = Engine::new(RATE);
+    e.swap(Some(program));
+    let x = play(&mut e, &[(0.0, Ev::On(81, 127)), (0.5, Ev::Off(81))], 0.5);
+    near(frequency(window(&x, 0.05, 0.45)), 880.0, 1.0, "an octave up");
+    near(rms(window(&x, 0.05, 0.45)), 16000.0 / 32768.0 / 2f64.sqrt(), 0.01, "its level");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn renders_repeat_exactly() {
     let run = || {
         let mut e = engine("rr.sfz");

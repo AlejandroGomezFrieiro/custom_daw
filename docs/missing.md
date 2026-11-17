@@ -30,8 +30,9 @@
   `amp_keytrack`, `sw_vel`, controllers on envelope times and offsets, and
   smoothing per controller (`_smoothccN`); Decent Sampler's effects,
   modulators, buses, glide, `legatoInterval` and oscillators. SoundFont 2,
-  folders of samples and `.dslibrary` archives are not read, nor FLAC or
-  Ogg samples. The plugin lists no presets for `:preset`, has no editor
+  folders of samples and `.dslibrary` archives are not read; FLAC samples
+  are kept as floats (twice the memory of 16-bit). The plugin lists no
+  presets for `:preset`, has no editor
   window of its own, one stereo output, and ignores per-note controllers,
   MPE and note-off velocity.
 - The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each

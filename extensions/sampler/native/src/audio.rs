@@ -147,13 +147,46 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn load(&mut self, path: &Path) -> Result<Arc<Sample>, String> {
-        if let Some(s) = self.files.get(path) {
-            return Ok(s.clone());
+    /// Every one of `paths`, read on several threads at once: a library is
+    /// thousands of files, and the disk and the decoding both go faster so.
+    pub fn load_all(&mut self, paths: &[PathBuf]) -> Vec<Result<Arc<Sample>, String>> {
+        let missing: Vec<&PathBuf> = paths.iter().filter(|p| !self.files.contains_key(*p)).collect();
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
+        let read: Vec<(usize, Result<Sample, String>)> = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..threads.min(missing.len()))
+                .map(|_| {
+                    scope.spawn(|| {
+                        let mut done = Vec::new();
+                        loop {
+                            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            let Some(path) = missing.get(i) else { break };
+                            done.push((i, read_file(path)));
+                        }
+                        done
+                    })
+                })
+                .collect();
+            workers.into_iter().flat_map(|w| w.join().unwrap_or_default()).collect()
+        });
+        let mut failed: HashMap<&Path, String> = HashMap::new();
+        for (i, result) in read {
+            match result {
+                Ok(sample) => {
+                    self.files.insert(missing[i].clone(), Arc::new(sample));
+                }
+                Err(e) => {
+                    failed.insert(missing[i].as_path(), e);
+                }
+            }
         }
-        let sample = Arc::new(read_file(path)?);
-        self.files.insert(path.to_path_buf(), sample.clone());
-        Ok(sample)
+        paths
+            .iter()
+            .map(|p| match self.files.get(p) {
+                Some(s) => Ok(s.clone()),
+                None => Err(failed.get(p.as_path()).cloned().unwrap_or_else(|| format!("{}: not read", p.display()))),
+            })
+            .collect()
     }
 
     /// Forgets samples nothing else holds.
@@ -168,10 +201,64 @@ pub fn read_file(path: &Path) -> Result<Sample, String> {
         read_wav(&bytes)
     } else if bytes.starts_with(b"FORM") && matches!(bytes.get(8..12), Some(b"AIFF") | Some(b"AIFC")) {
         read_aiff(&bytes)
+    } else if bytes.starts_with(b"fLaC") || bytes.starts_with(b"OggS") {
+        decode(path, bytes)
     } else {
-        Err("not a WAV or AIFF file".to_string())
+        Err("not a WAV, AIFF, FLAC or Ogg Vorbis file".to_string())
     };
     result.map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// FLAC and Ogg Vorbis, through symphonia.
+fn decode(path: &Path, bytes: Vec<u8>) -> Result<Sample, String> {
+    use symphonia::core::codecs::audio::AudioDecoderOptions;
+    use symphonia::core::formats::probe::Hint;
+    use symphonia::core::formats::{FormatOptions, TrackType};
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    let stream = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let mut format = symphonia::default::get_probe()
+        .probe(&hint, stream, FormatOptions::default(), MetadataOptions::default())
+        .map_err(|e| e.to_string())?;
+    let track = format.default_track(TrackType::Audio).ok_or("no audio in it")?;
+    let params = track.codec_params.as_ref().and_then(|p| p.audio()).ok_or("no audio in it")?;
+    let track_id = track.id;
+    let mut decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(params, &AudioDecoderOptions::default())
+        .map_err(|e| e.to_string())?;
+    let mut rate = params.sample_rate.unwrap_or(0);
+    let mut planes: Vec<Vec<f32>> = Vec::new();
+    let (mut left, mut right): (Vec<f32>, Vec<f32>) = (Vec::new(), Vec::new());
+    let mut stereo = false;
+    while let Ok(Some(packet)) = format.next_packet() {
+        if packet.track_id != track_id {
+            continue;
+        }
+        let Ok(buffer) = decoder.decode(&packet) else { continue };
+        if buffer.frames() == 0 || buffer.num_planes() == 0 {
+            continue;
+        }
+        rate = buffer.spec().rate();
+        buffer.copy_to_vecs_planar(&mut planes);
+        left.extend_from_slice(&planes[0]);
+        if let Some(r) = planes.get(1) {
+            stereo = true;
+            right.extend_from_slice(r);
+        }
+    }
+    if left.is_empty() || rate == 0 {
+        return Err("no audio decoded".into());
+    }
+    let data = if stereo {
+        left.iter().zip(&right).flat_map(|(l, r)| [*l, *r]).collect()
+    } else {
+        left
+    };
+    Ok(Sample::from_f32(rate as f64, if stereo { 2 } else { 1 }, data))
 }
 
 fn u16le(b: &[u8], at: usize) -> u16 {
