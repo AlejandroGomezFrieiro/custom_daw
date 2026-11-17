@@ -169,6 +169,18 @@ impl Session {
         Ok(value)
     }
 
+    /// The project as it was in state `id` (the current one by default), as
+    /// a project file holds it, for comparing it with another version.
+    pub fn undo_project(&mut self, id: Option<StateId>) -> Result<Project> {
+        self.history.set_current_snapshot(self.checkpoint.clone());
+        let id = id.unwrap_or(self.history.current());
+        let state = self
+            .history
+            .get(id)
+            .with_context(|| format!("no state {id} in the undo tree"))?;
+        Ok(state.snapshot.clone())
+    }
+
     // --- checkpoints on disk -------------------------------------------------
 
     /// Where this project's checkpoints go, or None for a project with no file.

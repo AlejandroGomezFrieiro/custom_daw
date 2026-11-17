@@ -2336,7 +2336,7 @@ function A.add_note(clip, pitch, start, length, free)
     length = math.max(free and 1 / 64 or daw.opt.note_grid, snap_note(length, free))
     roll:set_step(length)
   end
-  local index = c:add_note({ pitch = pitch, start = start, length = math.min(length, c.length - start), velocity = daw.opt.velocity })
+  local index = c:add_note(roll.new_note(c, { pitch = pitch, start = start, length = math.min(length, c.length - start), velocity = daw.opt.velocity }))
   c:track():play_note(pitch, daw.opt.velocity, 150)
   choose(part.id, { index })
   return index

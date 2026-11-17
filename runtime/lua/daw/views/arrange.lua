@@ -26,25 +26,41 @@ daw.on("project.loaded", function() view.scroll, view.top, view.seen_beat = 0, 1
 
 -- Small piano rolls and waveforms drawn inside clips, and what a header says
 -- about its track's devices, kept until the project changes.
-local previews, chains = {}, {}
-daw.on("changed", function() previews, chains = {}, {} end)
+local previews, chains, waves = {}, {}, {}
+daw.on("changed", function() previews, chains, waves = {}, {}, {} end)
+
+--- An audio clip's waveform as `n` { min, max, rms } across it, kept: for
+--- `daw.plot.wave` and its twin in cells. Nothing for a missing file.
+local function wave_peaks(clip, n)
+  local key = clip.id .. ":" .. n
+  if not waves[key] then
+    local ok, peaks = pcall(api.clip_peaks, clip.id, n)
+    waves[key] = ok and peaks or {}
+  end
+  return waves[key]
+end
 
 --- The rows under a clip's name: its notes as a small piano roll, or its
 --- waveform.
 local function preview(clip, width, rows, zoom)
-  local key = clip.id .. ":" .. width .. ":" .. rows .. ":" .. zoom
-  if previews[key] then return previews[key] end
-  local out
+  local key = clip.id .. ":" .. width .. ":" .. rows .. ":" .. zoom .. ":" .. tostring(daw.opt.wave_scale)
+    .. (daw.opt.ascii and "a" or "")
+  local kept = previews[key]
+  if kept then return kept[1], kept[2] end
+  local out, runs
   if clip.kind == "midi" then
     out = draw.miniroll(daw.stretch.sounding(clip, api.clip_notes(clip.id)), width, rows, zoom)
   else
     -- A file that has gone missing has been reported already; draw nothing.
     local ok, peaks = pcall(api.clip_peaks, clip.id, width)
-    out = draw.waveform(ok and peaks or {}, rows)
+    out, runs = draw.waveform(ok and peaks or {}, rows)
   end
-  previews[key] = out
-  return out
+  previews[key] = { out, runs }
+  return out, runs
 end
+
+--- Style names for the runs of a waveform that `draw.waveform` marks.
+local wave_style = { flip = "ClipWaveFlip", clip = "ClipWaveClip", clipflip = "ClipWaveClipFlip" }
 
 --- What a track's sound goes through, in a few words: `synth › delay`.
 local function chain(t)
@@ -345,8 +361,28 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       box:text(cw > 2 and 1 or 0, 0, badge and (label .. " ‹" .. badge .. "›") or label)
       if height >= 2 then
         box:fill(0, 1, cw, height - 1, " ", hue["body" .. kind])
-        if clip.kind == "audio" or clip.note_count > 0 then
-          for row, text in ipairs(preview(clip, cw, height - 1, zoom)) do box:text(0, row, text) end
+        if clip.kind == "audio" then
+          -- In pixels under the cells where the terminal shows them, the
+          -- whole clip's, so that scrolling moves pieces already made.
+          local body = box:sub(0, 1, cw, height - 1)
+          -- The colour the cells draw it in (`daw.draw.hue`'s body).
+          local colour = draw.mix(require("daw.theme").palette.bg, draw.track_colour(track), kind == "_off" and 0.30 or 0.75)
+          local pictured = body:strip(0, 0, cw, height - 1, {
+            key = "arrange:wave:" .. clip.id, under = true,
+            draw = function(g, px)
+              daw.plot.wave(g, px, { peaks = function(n) return wave_peaks(clip, n) end, color = colour })
+            end,
+          })
+          if not pictured then daw.plot.wave_cells(body, { peaks = function(n) return wave_peaks(clip, n) end }) end
+        elseif clip.note_count > 0 then
+          local rows, runs = preview(clip, cw, height - 1, zoom)
+          for row, text in ipairs(rows) do
+            if runs then
+              for _, run in ipairs(runs[row]) do box:text(run.column, row, run.text, wave_style[run.mark]) end
+            else
+              box:text(0, row, text)
+            end
+          end
         end
       end
       -- A notch where each repeat of a looped clip begins.

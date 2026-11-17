@@ -396,7 +396,7 @@ pub fn paint_with(pixmap: &mut Pixmap, items: &[Item], shift: Transform) {
                     Align::Center => x - run.min(*width) / 2.0,
                     Align::Right => x - run.min(*width),
                 };
-                // Slint puts a line's top at `y`: the baseline is an ascent below.
+                // A line's top is at `y`, as the window draws text: the baseline is an ascent below.
                 let baseline = y + font.ascent() * size;
                 draw_text(pixmap, shift, font, text, left, baseline, *size, *colour, left + width);
             }

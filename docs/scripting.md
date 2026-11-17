@@ -221,6 +221,18 @@ daw.ui.menu({ { label = "Rename", run = function() end }, "-", { label = "Delete
 daw.notify("message", "warn")
 ```
 
+Where the terminal shows pictures, a view can keep a rectangle of its
+buffer for pixels under its cells, and draw cells there only when it
+cannot (`daw.opt.graphics` off, tmux, a terminal without images):
+
+```lua
+local pictured = buf:strip(0, 1, buf.width, buf.height - 1, { key = "level", under = true,
+  draw = function(g, px) daw.plot.curve(g, px, { points = points, from = 0, pixels_per_beat = 4 * px.cell.w }) end })
+if not pictured then draw_it_in_cells() end
+```
+
+[Extensions](extensions.md) says more ("Pictures in the terminal").
+
 **Buffers, windows and tabs.** A view is a buffer type with one buffer,
 shown in one window at a time (see Windows, buffers and tabs in
 [the terminal interface](terminal.md)). `daw.buftype` makes a type that has
@@ -364,6 +376,13 @@ daw.curves.generate("sine", 0, 8, { rate = 1, depth = 0.5, unfrac = c.unfrac })
 daw.curves.editor.open("daw://tempo", { vertical = true })
 ```
 
+An extension makes a curve of its own of an address with
+`daw.curves.provide(name, fn)`: `fn(uri, parts)` returns a target with
+the fields above (`points`, `write`, `name`, `format`, `lo`, `hi`, ...),
+or nil to leave the address to the others. extensions/articulations draws
+several controllers as one this way
+(`daw://clip/7/control/cc/1#linked=dynamics`).
+
 **Completion.** `daw.complete` shows suggestions as ghost notes in the piano
 roll, from sources that extensions register; see "Writing a source" in
 [harmony.md](harmony.md) for the context and the items.
@@ -411,6 +430,24 @@ and a line on what its keys do to it.
 A chip's `act` names a `daw.frontend.act` function, called with the clip and
 `arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
 left. A failing layer is skipped, and the others are drawn.
+
+An instrument whose keys mean more than pitches (keyswitches, a playable
+range) says so with four more hooks, each by name, nil taking one away:
+
+```lua
+roll.rows("mine", function(pitch, track)       -- the keyboard edge and the row's shade
+  if pitch < 55 then return { shade = "RollOutside" } end
+  if pitch == 24 then return { label = "sus", style = "PianoC" } end
+end)
+roll.band("mine", 10, {                         -- a row of its own above the ruler
+  title = "art", active = function(clip) return true end,
+  paint = function(buf, b) buf:text(b.x(0), 0, "│sus") end,   -- b.x(beat), b.from, b.to, b.width, b.clip
+})
+roll.describer("mine", function(note, part) return { "  played as  sustain" } end)   -- lines K adds for a note
+roll.entering("mine", function(note, clip) note.velocity = 90 end)   -- a note the keys, insert mode or a click enter
+```
+
+extensions/articulations uses all four.
 
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are

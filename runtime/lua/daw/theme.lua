@@ -138,6 +138,11 @@ local function build()
     ClipNotes = { fg = "#283457" },
     Automation = { fg = c.automation },
     ClipWave = { fg = "#283457" },
+    -- Waveform cells that need their own style: a block that grows from the top
+    -- (the wave drawn in reverse video), and columns that reach full scale.
+    ClipWaveFlip = { reverse = true },
+    ClipWaveClip = { fg = c.red },
+    ClipWaveClipFlip = { fg = c.red, reverse = true },
     Playhead = { fg = c.accent },
     PlayheadClip = { fg = c.accent },
     PlayheadShade = { bg = c.playhead_clip },  -- where a step is a whole cell (the drum grid)

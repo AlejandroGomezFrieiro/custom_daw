@@ -267,6 +267,13 @@ function paint:pointer(e)
   end
 end
 
+--- In a terminal that shows pictures the whole view is the painted report;
+--- elsewhere it is the report in cells, which this view shares its keys with.
+function paint:render(buf, ctx)
+  if buf:surface(0, 0, buf.width, buf.height) then return end
+  list:render(buf, ctx)
+end
+
 function paint:on_key(key)
   -- A window of its own: Escape stays, as in every view, and `q` closes it.
   if key == "<Esc>" then return end
