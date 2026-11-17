@@ -47,10 +47,8 @@
           # Only what cargo reads, so that a change to the manual, an
           # extension or an example does not rebuild the program. The
           # runtime's Lua is compiled into the binary (`include_dir!`).
-          src = lib.fileset.toSource {
-            root = ./.;
-            fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./.cargo ./crates ./runtime ];
-          };
+          cargoFiles = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./.cargo ./crates ./runtime ];
+          src = lib.fileset.toSource { root = ./.; fileset = cargoFiles; };
           # The crates as cargo downloads them, each a store path, so every
           # file in them is read-only. LuaJIT's build copies its source tree
           # and then writes its version file over the copied one, which fails
@@ -143,8 +141,13 @@
               installPhaseCommand = "mkdir -p $out";
             };
             # The Rust tests that need no display, audio device or Lua
-            # suite: those of the libraries and the engine's own.
+            # suite: those of the libraries and the engine's own. Some read
+            # the sound files in tests/fixtures.
             tests = craneLib.cargoNextest (withDeps // {
+              src = lib.fileset.toSource {
+                root = ./.;
+                fileset = lib.fileset.unions [ cargoFiles ./tests/fixtures ];
+              };
               cargoNextestExtraArgs = "--workspace -E 'not (package(daw-gui) | binary(suite) | binary(remote) | binary(safety))'";
               doInstallCargoArtifacts = false;
             });
@@ -198,7 +201,7 @@
       # Every extension as a package holding `share/daw/extensions/<name>`.
       # Most are Lua and nothing else; one with native parts (an engine to
       # build, a library) has a `nix/default.nix` of its own, given the
-      # flake's inputs it asks for.
+      # flake's inputs it asks for, and crane for a Rust workspace of its own.
       extensionsFor = pkgs:
         let
           lib = pkgs.lib;
@@ -207,7 +210,7 @@
             mkdir -p $out/share/daw/extensions
             cp -r ${./extensions + "/${name}"} $out/share/daw/extensions/${name}
           '';
-          inputs = { inherit openutau; };
+          inputs = { inherit openutau; craneLib = crane.mkLib pkgs; };
           own = name:
             let f = import (./extensions + "/${name}/nix");
             in pkgs.callPackage f (builtins.intersectAttrs (builtins.functionArgs f) inputs);

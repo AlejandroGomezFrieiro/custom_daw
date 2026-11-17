@@ -329,7 +329,10 @@ was built into the program get the Lua device.
 `share/daw/extensions/<name>`. Most are their Lua copied; one with parts to
 build has a `nix/default.nix` of its own, which is given the flake inputs
 it asks for (utau's asks for `openutau`, the OpenUtau source its engine is
-built against, pinned in the flake). The program with some of them:
+built against, pinned in the flake). One with a Rust workspace of its own
+asks for `craneLib` and builds it as paw is built, its dependencies in a
+derivation of their own (the sampler's `nix/engine.nix`). The program with
+some of them:
 
 ```nix
 paw.packages.${system}.default.withExtensions (exts: [ exts.utau ])
