@@ -29,6 +29,7 @@ mod pictures;
 mod portal;
 mod roll;
 mod ruler;
+mod scene;
 mod session;
 #[cfg(test)]
 mod gestures;

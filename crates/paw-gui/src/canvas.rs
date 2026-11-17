@@ -1,18 +1,16 @@
 //! Views in windows of their own: an extension's editor drawn by its Lua
 //! in the kernel as rectangles, text, lines and music glyphs, or any view
-//! drawn in cells as the terminal draws it; made into one image by the
-//! rasterizer the terminal uses (crates/paw-raster), with the pointer and
-//! the keyboard passed back to it. See `paw.canvas`.
+//! drawn in cells as the terminal draws it; shown from its scene
+//! (crate::scene), with the pointer and the keyboard passed back to it. See
+//! `paw.canvas`.
 
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::collections::HashSet;
 
-use egui::{CornerRadius, Id, Rect, Stroke, TextureHandle, ViewportBuilder, ViewportId, pos2, vec2};
+use egui::{CornerRadius, Id, Rect, Stroke, ViewportBuilder, ViewportId, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::app::View;
 use crate::model::{flag, number, rows, text};
-use crate::panes::{cell, pointer_events, raster};
 use crate::theme::{T_MICRO, T_SMALL, mode_colour, sans, semi, th};
 use crate::widgets::{self, Look};
 
@@ -21,18 +19,10 @@ const HEADING_H: f32 = 28.0;
 const STATUS_H: f32 = 22.0;
 const PAD: f32 = 6.0;
 
-/// A window a view paints in: when and at what size it was painted, and
-/// the picture.
-struct Canvas {
-    painted: Instant,
-    size: (f32, f32),
-    ops: Value,
-    texture: Option<TextureHandle>,
-}
-
 #[derive(Default)]
 pub struct Canvases {
-    open: HashMap<String, Canvas>,
+    /// The views shown in windows of their own, by name.
+    open: HashSet<String>,
 }
 
 impl View {
@@ -40,8 +30,8 @@ impl View {
     pub fn canvas_windows(&mut self, ctx: &egui::Context) {
         let windows: Vec<Value> = rows(&self.s.modal["windows"]).to_vec();
         let names: Vec<String> = windows.iter().map(|w| text(&w["name"])).collect();
-        let gone = self.canvases.open.keys().any(|n| !names.contains(n));
-        self.canvases.open.retain(|name, _| names.contains(name));
+        let gone = self.canvases.open.iter().any(|n| !names.contains(n));
+        self.canvases.open.retain(|name| names.contains(name));
         if gone {
             // The keyboard comes back to the main window.
             ctx.send_viewport_cmd_to(ViewportId::ROOT, egui::ViewportCommand::Focus);
@@ -52,13 +42,12 @@ impl View {
             let cells = flag(&w["cells"]);
             let size = vec2(number(&w["width"]) + 2.0 * PAD, number(&w["height"]) + HEADING_H + STATUS_H + PAD * 2.0);
             let mut builder = ViewportBuilder::default().with_title(text(&w["title"])).with_min_inner_size([480.0, 280.0]);
-            if !self.canvases.open.contains_key(&name) {
+            if self.canvases.open.insert(name.clone()) {
                 builder = builder.with_inner_size(size);
                 // Over the middle of the main window.
                 if let Some(main) = main {
                     builder = builder.with_position(main.center() - size / 2.0);
                 }
-                self.canvases.open.insert(name.clone(), Canvas { painted: Instant::now() - Duration::from_secs(1), size: (0.0, 0.0), ops: Value::Null, texture: None });
             }
             let id = ViewportId::from_hash_of(("canvas", name.as_str()));
             let title = text(&w["title"]);
@@ -71,9 +60,6 @@ impl View {
                 }
             });
         }
-        if !self.canvases.open.is_empty() {
-            self.again = Some(self.again.map_or(Duration::from_millis(250), |a| a.min(Duration::from_millis(250))));
-        }
     }
 
     fn canvas_window(&mut self, ui: &mut egui::Ui, name: &str, title: &str, cells: bool) {
@@ -82,44 +68,12 @@ impl View {
         ui.painter().rect_filled(full, CornerRadius::ZERO, t.surface);
         // A view drawn in cells draws a title row of its own, hidden under
         // the window's title; it needs no inset above.
-        let (_, cell_h) = cell();
+        let (_, cell_h) = self.scenes.cell();
         let under = if cells { cell_h } else { 0.0 };
         let pad_top = if cells { 0.0 } else { PAD };
         let view = Rect::from_min_max(pos2(full.left() + PAD, full.top() + HEADING_H + pad_top - under), pos2(full.right() - PAD, full.bottom() - STATUS_H - PAD));
-        let size = (view.width().max(1.0), view.height().max(1.0));
-        // Painted again when something may have changed, at another size,
-        // now and then regardless; a view in cells every time (the kernel
-        // answers `same` when nothing has).
-        let canvas = self.canvases.open.get(name);
-        let stale = canvas.is_none_or(|c| c.painted.elapsed() > Duration::from_millis(250) || c.size != size);
-        if self.repaint || stale || cells {
-            let (cw, ch) = cell();
-            let fresh = canvas.is_none_or(|c| c.texture.is_none());
-            let opts = json!({ "cell": { "w": cw, "h": ch }, "fresh": fresh, "glyphs": true, "status": true });
-            let drawing = self.ask("return paw.canvas.paint(...)", json!([name, size.0, size.1, opts]));
-            let scale = ui.ctx().pixels_per_point();
-            if let Some(c) = self.canvases.open.get_mut(name) {
-                c.painted = Instant::now();
-                if drawing["same"] != true && !drawing["ops"].is_null() && (c.ops != drawing["ops"] || c.size != size) {
-                    let image = raster(&drawing["ops"], size, scale);
-                    c.texture = Some(ui.ctx().load_texture(format!("canvas-{name}"), image, egui::TextureOptions::LINEAR));
-                    c.ops = drawing["ops"].clone();
-                }
-                c.size = size;
-            }
-        }
-        if let Some(texture) = self.canvases.open.get(name).and_then(|c| c.texture.clone()) {
-            ui.painter().with_clip_rect(Rect::from_min_max(pos2(view.left(), full.top() + HEADING_H), view.max)).image(
-                texture.id(),
-                view,
-                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                egui::Color32::WHITE,
-            );
-        }
-        for event in pointer_events(ui, view, Id::unique(("canvas-pointer", name))) {
-            self.eval("paw.canvas.pointer(...)", json!([name, event]));
-            self.repaint = true;
-        }
+        let shown = Rect::from_min_max(pos2(view.left(), full.top() + HEADING_H), view.max);
+        self.scene(ui, &format!("view:{name}"), view, shown);
         // Keys typed here are the view's.
         let events = ui.input(|i| i.events.clone());
         for keys in self.keys.notations(&events) {

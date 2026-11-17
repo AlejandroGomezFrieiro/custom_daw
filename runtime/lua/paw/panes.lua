@@ -6,12 +6,12 @@
 -- state (`state`) where every window of the current tab goes, which has the
 -- keyboard, the borders between them and the tabs. It draws the views it
 -- has its own drawing for (`native`: the arrange view, the device panel,
--- the piano roll, the mixer, the session view) in their panes, and paints
--- every other through `paint`, which gives `paw.canvas` drawings: a view
--- that paints, at the pane's size, or any other cell by cell as the
--- terminal draws it. Pointer events in a pane come to `pointer`; a press
--- anywhere in one gives it the keyboard (`focus`). Keys need nothing: they
--- go to the key mappings with the focused window, as from the terminal.
+-- the piano roll, the mixer, the session view) in their panes, and is sent
+-- every other as a scene (paw/scene.lua): a view that paints as a picture
+-- at the pane's size, any other cell by cell as the terminal draws it.
+-- Pointer events in a pane come to `pointer`; a press anywhere in one gives
+-- it the keyboard (`focus`). Keys need nothing: they go to the key mappings
+-- with the focused window, as from the terminal.
 local api = paw.api
 local L = require("paw.layout")
 
@@ -27,14 +27,13 @@ local M = {
   tabline = 28,
 }
 
--- Each seat has its own area and windows: its size in pixels, the last
--- arrangement (for the borders dragged), and what each pane drawn in cells
--- drew last.
-local area, last, cells = { w = 0, h = 0 }, nil, {}
+-- Each seat has its own area and windows: its size in pixels, and the last
+-- arrangement (for the borders dragged).
+local area, last = { w = 0, h = 0 }, nil
 paw.seats.keep("panes",
-  function() return area, last, cells end,
-  function(a, l, c) area, last, cells = a, l, c end,
-  function() return { w = 0, h = 0 }, nil, {} end)
+  function() return area, last end,
+  function(a, l) area, last = a, l end,
+  function() return { w = 0, h = 0 }, nil end)
 
 --- A copy of a tree with its sizes in pixels: a size along a row is in
 --- columns, along a column in rows. `map` takes each copy back to its node.
@@ -147,24 +146,10 @@ function M.focus(id)
   end
 end
 
---- Paint a pane that the frontend does not draw itself, at its size: what
---- `paw.canvas.paint` gives (`opts` as there).
-function M.paint(id, width, height, opts)
-  local win = window(id)
-  if not win then return nil end
-  local view = paw.ui.views[win.view]
-  if not view then return nil end
-  if view.paint then return paw.canvas.paint(win.view, width, height, opts) end
-  -- Cells are laid out on the frontend's cell, as `paw.canvas.paint` takes it.
-  if opts and opts.cell and (opts.cell.w or 0) > 0 then paw.canvas.cell = { w = opts.cell.w, h = opts.cell.h } end
-  cells[id] = cells[id] or {}
-  return paw.canvas.paint_cells(win.view, cells[id], width, height, opts or {}, win)
-end
-
 --- A pointer event in a pane, in pixels from its corner (as
 --- `paw.canvas.pointer` takes them): a press gives it the keyboard first.
---- `drawn`, for a pane drawn in cells, says how: its `cell`, `cols` and
---- `rows` (what `paint` drew last, without).
+--- `drawn`, for a pane drawn in cells, says how: its `cell` and its size in
+--- them, `cols` and `rows`; it keeps the button held in a drag.
 function M.pointer(id, event, drawn)
   local win = window(id)
   if not win then return end
@@ -174,7 +159,7 @@ function M.pointer(id, event, drawn)
   if view.paint then
     if view.pointer then view:pointer(event) end
   else
-    drawn = drawn or cells[id] or {}
+    drawn = drawn or {}
     local e = paw.canvas.cell_event(drawn, event, true)
     if e and view.on_mouse then
       e.win, e.w, e.h = id, drawn.cols, drawn.rows

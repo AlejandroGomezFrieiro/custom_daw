@@ -1,12 +1,10 @@
 //! The main area as the kernel's tabs and windows lay it out
 //! (`runtime/lua/paw/panes.lua`): where each view the window draws itself
-//! goes, the pictures of the views the kernel paints, the borders, the tabs
-//! and the pane with the keyboard. Gestures go back to `paw.panes`.
+//! goes, the scenes of the views the kernel draws (crate::scene), the
+//! borders, the tabs and the pane with the keyboard. Gestures go back to
+//! `paw.panes`.
 
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
-
-use egui::{Align2, ColorImage, CornerRadius, Id, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, Ui, pos2, vec2};
+use egui::{Align2, CornerRadius, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::app::View;
@@ -15,8 +13,6 @@ use crate::model::{number, rows, text};
 use crate::theme::{T_SMALL, alpha, semi, th};
 use crate::widgets::{self, Look};
 
-/// The size of the monospace font a view drawn in cells is painted in.
-const MONO_SIZE: f32 = 13.0;
 /// The height of a kernel's pane's title along its top, and the inset of
 /// its picture from the pane's sides and bottom.
 pub const HEADING: f32 = 24.0;
@@ -24,39 +20,10 @@ pub const PAD: f32 = 6.0;
 /// The row of tabs along the top, when there is more than one.
 const TABS: f32 = 28.0;
 
-/// A cell of the monospace font as the rasterizer draws it: `paw.canvas`
-/// lays a view drawn in cells out on it.
-pub fn cell() -> (f32, f32) {
-    // A run is drawn at the size that fills the cell's height: the width
-    // is a character's at that size, so that a run fills its cells exactly.
-    let font = paw_raster::Font::Mono;
-    let height = (font.line_height() * MONO_SIZE).ceil();
-    (paw_raster::measure(font, "M", height / font.line_height()), height)
-}
-
-/// A drawing (see `paw.canvas.paint`) as an image of `size` logical pixels,
-/// at the screen's scale.
-pub fn raster(ops: &Value, size: (f32, f32), scale: f32) -> ColorImage {
-    let (width, height) = ((size.0 * scale).round().max(1.0) as u32, (size.1 * scale).round().max(1.0) as u32);
-    match paw_raster::Drawing::parse(ops).paint_scaled(width, height, scale) {
-        Some(pixmap) => ColorImage::from_rgba_premultiplied([width as usize, height as usize], pixmap.data()),
-        None => ColorImage::new([width as usize, height as usize], vec![egui::Color32::TRANSPARENT; (width * height) as usize]),
-    }
-}
-
-/// What a painted pane shows, and when and at what size it was painted.
-struct Drawn {
-    painted: Instant,
-    size: (f32, f32),
-    ops: Value,
-    texture: TextureHandle,
-}
-
 #[derive(Default)]
 pub struct Panes {
     /// The size of the main area the kernel was last told.
     told: (f32, f32),
-    drawn: HashMap<i64, Drawn>,
     /// A border being dragged, by its place.
     border: Option<usize>,
 }
@@ -152,62 +119,26 @@ impl View {
         }
     }
 
-    /// The panes the kernel paints, the borders, the ring round the pane
+    /// The panes the kernel draws, the borders, the ring round the pane
     /// with the keyboard, and the tabs.
     pub fn draw_kernel_panes(&mut self, ui: &mut Ui, area: Rect, state: &Value) {
         let t = th();
         let all = rows(&state["panes"]).to_vec();
-        let shown: Vec<i64> = all.iter().filter_map(|p| p["win"].as_i64()).collect();
-        self.panes.drawn.retain(|win, _| shown.contains(win));
-        let scale = ui.ctx().pixels_per_point();
-        let (cell_w, cell_h) = cell();
-        let mut painted_any = false;
+        let (_, cell_h) = self.scenes.cell();
         for pane in &all {
             let kind = pane["kind"].as_str().unwrap_or("");
             if kind == "native" {
                 continue;
             }
-            painted_any = true;
             let win = pane["win"].as_i64().unwrap_or(0);
             let rect = pane_rect(pane).translate(area.min.to_vec2());
             let focused = pane["focused"] == true;
-            let cells = kind != "paint";
             // A view in cells draws a title row of its own, which the
             // pane's title covers.
-            let under = if cells { cell_h } else { 0.0 };
+            let under = if kind == "paint" { 0.0 } else { cell_h };
             ui.painter().rect_filled(rect, CornerRadius::ZERO, t.surface);
             let picture = Rect::from_min_max(pos2(rect.left() + PAD, rect.top() + HEADING - under), pos2(rect.right() - PAD, rect.bottom() - PAD));
-            let size = (picture.width().max(1.0), picture.height().max(1.0));
-            // Painted again when something happened, at another size, now
-            // and then regardless, and in cells every time (the kernel
-            // answers `same` when nothing changed).
-            let stale = self.panes.drawn.get(&win).is_none_or(|d| d.painted.elapsed() > Duration::from_millis(250) || d.size != size);
-            if self.repaint || stale || cells {
-                let fresh = !self.panes.drawn.contains_key(&win);
-                let opts = json!({ "cell": { "w": cell_w, "h": cell_h }, "fresh": fresh, "glyphs": true });
-                let drawing = self.ask("return paw.panes.paint(...)", json!([win, size.0, size.1, opts]));
-                if drawing["same"] == true {
-                    if let Some(d) = self.panes.drawn.get_mut(&win) {
-                        d.painted = Instant::now();
-                    }
-                } else if !drawing["ops"].is_null() {
-                    let unchanged = self.panes.drawn.get(&win).is_some_and(|d| d.ops == drawing["ops"] && d.size == size);
-                    if !unchanged {
-                        let image = raster(&drawing["ops"], size, scale);
-                        let texture = ui.ctx().load_texture(format!("pane-{win}"), image, egui::TextureOptions::LINEAR);
-                        self.panes.drawn.insert(win, Drawn { painted: Instant::now(), size, ops: drawing["ops"].clone(), texture });
-                    } else if let Some(d) = self.panes.drawn.get_mut(&win) {
-                        d.painted = Instant::now();
-                    }
-                }
-            }
-            if let Some(d) = self.panes.drawn.get(&win) {
-                ui.painter().with_clip_rect(rect).image(d.texture.id(), picture, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), egui::Color32::WHITE);
-            }
-            for event in pointer_events(ui, picture, Id::unique(("pane-pointer", win))) {
-                self.eval("paw.panes.pointer(...)", json!([win, event]));
-                self.repaint = true;
-            }
+            self.scene(ui, &win.to_string(), picture, rect);
             // The title over the top, over the picture's own title row.
             let title = Rect::from_min_size(rect.min, vec2(rect.width(), HEADING));
             ui.painter().rect_filled(title, CornerRadius::ZERO, if focused { t.panel_sel } else { t.panel });
@@ -231,9 +162,6 @@ impl View {
             if response.clicked() {
                 self.eval("paw.panes.close(...)", json!([win]));
             }
-        }
-        if painted_any {
-            self.again = Some(self.again.map_or(Duration::from_millis(250), |a| a.min(Duration::from_millis(250))));
         }
         // The borders between panes, dragged to share the room.
         for (i, border) in rows(&state["borders"]).iter().enumerate() {

@@ -21,10 +21,14 @@ const FIXTURE: &str = include_str!("../tests/fixture.json");
 
 type Calls = Rc<RefCell<Vec<(String, Value)>>>;
 
+/// The scenes' patches a test has the stand-in kernel push.
+type Patches = Rc<RefCell<Vec<Value>>>;
+
 /// A kernel that answers from the fixture and keeps every call.
 struct Fake {
     state: Option<Value>,
     calls: Calls,
+    patches: Patches,
 }
 
 impl Kernel for Fake {
@@ -55,6 +59,9 @@ impl Kernel for Fake {
     fn listening(&self) -> bool {
         false
     }
+    fn patches(&mut self) -> Vec<Value> {
+        std::mem::take(&mut *self.patches.borrow_mut())
+    }
 }
 
 /// The main area as the kernel lays it out for a window of 1500 by 960:
@@ -74,13 +81,22 @@ fn panes() -> Value {
 
 /// A window drawn from the fixture, `change` applied to the state first.
 fn window_with(change: impl FnOnce(&mut Value)) -> (Harness<'static, View>, Calls) {
+    let (harness, calls, _) = window_and_patches(change);
+    calls.borrow_mut().clear();
+    (harness, calls)
+}
+
+/// The same, with the calls of its first frames kept, and a way to push it
+/// the scenes' patches.
+fn window_and_patches(change: impl FnOnce(&mut Value)) -> (Harness<'static, View>, Calls, Patches) {
     let fixture: Value = serde_json::from_str(FIXTURE).unwrap();
     crate::theme::set_theme(crate::theme::Theme::from_palette(&fixture["palette"]));
     let mut state = fixture["state"].clone();
     state["modal"]["panes"] = panes();
     change(&mut state);
     let calls: Calls = Rc::default();
-    let view = View::new(Box::new(Fake { state: Some(state), calls: calls.clone() }), true);
+    let patches: Patches = Rc::default();
+    let view = View::new(Box::new(Fake { state: Some(state), calls: calls.clone(), patches: patches.clone() }), true);
     // The window's fonts are given in the first frame and drawn with from the next.
     let mut first = true;
     let mut harness = Harness::builder().with_size(vec2(1500.0, 960.0)).with_step_dt(1.0 / 60.0).build_ui_state(
@@ -94,8 +110,7 @@ fn window_with(change: impl FnOnce(&mut Value)) -> (Harness<'static, View>, Call
         view,
     );
     harness.run_steps(3);
-    calls.borrow_mut().clear();
-    (harness, calls)
+    (harness, calls, patches)
 }
 
 fn window() -> (Harness<'static, View>, Calls) {
@@ -821,4 +836,77 @@ fn what_the_window_writes_has_glyphs() {
         }
     }
     assert!(missing.is_empty(), "no glyph for {missing:?}");
+}
+
+// ------------------------------------------------------------ the kernel's panes
+
+/// A window with the piano roll's pane given to a view the kernel draws
+/// in cells, and the patches it is sent.
+fn kernel_pane_window() -> (Harness<'static, View>, Calls, Patches) {
+    window_and_patches(|s| {
+        s["modal"]["panes"]["panes"][1]["view"] = json!("help");
+        s["modal"]["panes"]["panes"][1]["kind"] = json!("cells");
+    })
+}
+
+/// The text of every piece of text the window drew in its last frame.
+fn drawn_text(h: &Harness<View>) -> String {
+    let mut out = String::new();
+    for clipped in &h.output().shapes {
+        if let egui::Shape::Text(text) = &clipped.shape {
+            out.push_str(text.galley.text());
+            out.push('\n');
+        }
+    }
+    out
+}
+
+#[test]
+fn a_pane_the_kernel_draws_is_sized_in_cells_and_drawn_from_its_scene() {
+    let (mut h, calls, patches) = kernel_pane_window();
+    let cell = h.state().scenes.cell.expect("the cell measured in the first frames");
+    assert!(calls.borrow().iter().any(|(m, _)| m == "scene.watch"), "scenes watched");
+    let area = calls.borrow().iter().find(|(m, _)| m == "scene.area").map(|(_, p)| p.clone()).expect("the pane's size said");
+    assert_eq!(area[0], "2", "named by its window");
+    // The pane is 1088 wide, inset 6 each side; 396 high, less the title
+    // and the inset under it, and with the view's own title row, which the
+    // window's title covers.
+    let (cw, ch) = (cell.0 as f64, cell.1 as f64);
+    assert!((num(&area[1]) - (1088.0 - 12.0) / cw).abs() < 0.01, "{area:?} in cells of {cell:?}");
+    assert!((num(&area[2]) - (396.0 - 24.0 - 6.0 + ch) / ch).abs() < 0.01, "{area:?}");
+    assert!(!drawn_text(&h).contains("from the kernel"), "nothing before a scene comes");
+    let mut scene = paw_scene::Scene::new([40.0, 10.0]);
+    (scene.fg, scene.bg) = ("#c9ced8".into(), "#101216".into());
+    scene.push(None, paw_scene::Node::new("t0,1", paw_scene::Kind::Run { text: "drawn from the kernel".into() }, [0.0, 1.0, 21.0, 1.0]));
+    let mut patch = paw_scene::Scene::diff(&paw_scene::Scene::default(), &scene, "2");
+    patch.full = true;
+    patches.borrow_mut().push(serde_json::to_value(&patch).unwrap());
+    h.run_steps(2);
+    assert!(drawn_text(&h).contains("drawn from the kernel"), "{}", drawn_text(&h));
+    // Then only what changed comes, and is drawn.
+    let mut next = scene.clone();
+    next.nodes.get_mut("t0,1").unwrap().kind = paw_scene::Kind::Run { text: "changed by the kernel".into() };
+    patches.borrow_mut().push(serde_json::to_value(paw_scene::Scene::diff(&scene, &next, "2")).unwrap());
+    h.run_steps(2);
+    let text = drawn_text(&h);
+    assert!(text.contains("changed by the kernel") && !text.contains("drawn from the kernel"), "{text}");
+}
+
+#[test]
+fn a_press_in_a_pane_the_kernel_draws_goes_back_in_cells() {
+    let (mut h, calls, _) = kernel_pane_window();
+    let cell = h.state().scenes.cell.unwrap();
+    calls.borrow_mut().clear();
+    // Three cells and a half in, two rows and a half under the picture's top.
+    let top = AREA_TOP + 500.0 + 24.0 - cell.1;
+    let at = pos2(6.0 + 3.5 * cell.0, top + 2.5 * cell.1);
+    click(&mut h, at);
+    let input = calls
+        .borrow()
+        .iter()
+        .find(|(m, p)| m == "scene.input" && p[1]["kind"] == "down")
+        .map(|(_, p)| p.clone())
+        .expect("the press passed on");
+    assert_eq!(input[0], "2");
+    assert!((num(&input[1]["x"]) - 3.5).abs() < 0.01 && (num(&input[1]["y"]) - 2.5).abs() < 0.01, "{input:?}");
 }

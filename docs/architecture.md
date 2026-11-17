@@ -16,6 +16,7 @@
 | `paw-core` | The project model, undo, the sync that drives the engine from the model, the Lua host and `paw.api`, the cell grid, the event loop, the control socket. |
 | `paw-plugins` | CLAP, LV2 and VST3 hosting: scanning, the scan cache, and for each format a device for the audio thread and a controller for the main thread. |
 | `paw-luadev` | Devices written in Lua: a script in a LuaJIT state of its own, run in a plugin helper process, and the directories scripts are found in. |
+| `paw-scene` | What every frontend shares of a view: the cells and their styles (the grid writes through it), and the scene, a view's drawing as nodes in cell units, kept by key, sent as patches, hit-tested and lowered to cells. No Lua, no UI. |
 | `paw-tui` | The terminal frontend and the `paw` binary. |
 | `paw-gui` | The graphical frontend, written with egui. A client of the control socket and nothing more. |
 | `runtime/lua/paw` | Everything else. Compiled into the binary; `--runtime <dir>` loads it from disk instead. |
@@ -37,6 +38,7 @@ The rules the design rests on:
   up on one thread in a fixed order. A render is the same file, byte for
   byte, on one thread or sixteen.
 - **The screen is a grid of cells.** Lua draws into it and a frontend shows it.
-  A frontend only needs to display cells and report input.
+  A frontend only needs to display cells and report input. A graphical one
+  is sent the same drawing as scenes, which lowered to cells are that grid.
 - **`paw.api` passes plain data only**, so it can be served over the socket as
   it is, and reloading Lua cannot leave anything dangling.

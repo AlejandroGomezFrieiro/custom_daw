@@ -185,8 +185,8 @@ function M.closed(client)
   retime()
 end
 
---- Who is watching, for tests and `:checkhealth`-like listings: `{ client,
---- windows }` each, `windows` the names of those with an area.
+--- Who is watching: `{ client, windows }` each, `windows` the names of
+--- those it has said the size of.
 function M.watchers()
   local out = {}
   for client, w in pairs(watchers) do

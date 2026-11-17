@@ -525,8 +525,9 @@ function M.strip(buf, x, y, w, h, opts)
   opts = opts or {}
   if paw.opt.graphics == false then return false end
   if not M.screen then
-    -- A view drawn in cells for a window (`paw.canvas.paint_cells`): the
-    -- window draws the strip's picture with the cells, under their text.
+    -- A view drawn in cells for a window (`M.render_scene`,
+    -- `paw.canvas.paint_cells`): the window draws the strip's picture with
+    -- the cells, under their text.
     if not (M.pictures and opts.draw and opts.under) then return false end
     x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
     local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)

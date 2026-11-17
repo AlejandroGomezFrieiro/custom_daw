@@ -51,8 +51,9 @@ local M = {
   -- the window that shows it.
   titles = {},
   -- The size of a cell of the window's monospace font in pixels. A window
-  -- measures it and says so with each paint; this is JetBrains Mono at
-  -- 13 px until one has.
+  -- measures it and says so when it watches scenes (paw/scene.lua), and a
+  -- caller of `paint` may give it; this is JetBrains Mono at 13 px until
+  -- one has.
   cell = { w = 7.8, h = 17 },
 }
 
@@ -473,18 +474,15 @@ end
 --- Drawn again only when a redraw has been asked for since, once a second
 --- for what changes on its own (times), and on every call while playing;
 --- `{ same = true }` when what it would draw is what it drew last.
---- `window` keeps what was drawn. With `win`, a window of the layout (a
---- pane of a frontend's main area), that window is drawn, and nothing
---- under it: the frontend's own status line shows prompts and messages;
---- without, the view in a window of its own, with a line under it for
---- them and the view's keys, unless the frontend draws a status line there
---- itself (`opts.status`).
-function M.paint_cells(name, window, width, height, opts, win)
+--- `window` keeps what was drawn. The view in a window of its own has a
+--- line under it for prompts, messages and the view's keys, unless the
+--- frontend draws a status line there itself (`opts.status`). A graphical
+--- frontend is sent its windows as scenes instead (`paw.ui.render_scene`).
+function M.paint_cells(name, window, width, height, opts)
   local cell = M.cell
   window.cell = cell
-  -- Nothing under the view in a pane, or in a window that has a status line
-  -- of its own (`opts.status`).
-  local bare = win ~= nil or opts.status == true
+  -- Nothing under the view in a window that has a status line of its own.
+  local bare = opts.status == true
   window.bare = bare
   local cols, rows = math.max(1, math.floor(width / cell.w)), math.max(bare and 1 or 2, math.floor(height / cell.h))
   local redraws, now = api.ui_redraws(), api.now()
@@ -493,13 +491,12 @@ function M.paint_cells(name, window, width, height, opts, win)
     return { title = window.title, same = true }
   end
   local focused = paw.ui.focused == name
-  paw.ui.view_win = win
   -- The strips the view keeps under its cells (`buf:strip`), drawn here
   -- between the cells' backgrounds and their text.
   paw.ui.pictures = {}
   local ok, snap = pcall(api.ui_view_snapshot, name, cols, bare and rows or rows - 1)
   local pictures = paw.ui.pictures
-  paw.ui.view_win, paw.ui.pictures = nil, nil
+  paw.ui.pictures = nil
   if not ok then error(snap, 0) end
   local ops = { { "r", 0, 0, width, height, snap.bg, "", 1, 0 } }
   local function add(lines, top, layer)
