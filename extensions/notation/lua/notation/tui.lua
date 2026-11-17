@@ -125,7 +125,7 @@ end
 room_for_changes = function(layout)
   for i, m in ipairs(layout.measures) do
     local extra = 0
-    if m.clef_change then extra = extra + 3 end
+    if m.clef_change then extra = extra + 3 + (m.repeat_start and 2 or 0) end
     if m.key_change and i > 1 then
       extra = extra + math.max(1, math.abs(m.fifths or 0), m.fifths == 0 and math.abs(m.key_from or 0) or 0) + 1
     end
@@ -151,7 +151,8 @@ draw_directions = function(buf, layout, m, inside, o)
   -- marks and tempo; the row under it for chord symbols and techniques.
   local top_row = o.top + math.max(0, o.margin - 2)
   local text_row = top_row + (o.margin > 1 and 1 or 0)
-  local x = o.mx
+  -- After a start repeat's barline and dots.
+  local x = o.mx + (m.repeat_start and 2 or 0)
   local before = layout.measures[m.index - 1]
   for s, clef in ipairs(layout.staves) do
     local R = o.rows[s]

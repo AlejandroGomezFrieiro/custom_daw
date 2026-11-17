@@ -503,3 +503,35 @@ test("popover: the engraved page draws what the popovers wrote", function()
     eq(texts[text], true, text .. " is drawn")
   end
 end)
+
+test("score: after an undo the page names the score's own chords, not ones an edit changed since", function()
+  local view, clip = song({ N(67, 0, 1), N(69, 1, 1) }, 4)
+  local D = require("notation.doc")
+  view:layout()
+  view:set(nil, 0)
+  keys("vl:notation.voice 2<CR>")
+  local moved = 0
+  D.each(score_of(clip), function(ev, _, _, v) if ev.kind == "chord" and v == 2 then moved = moved + 1 end end)
+  eq(moved, 2, "both chords moved into voice 2")
+  view:layout()
+  keys("u")
+  local sc = score_of(clip)
+  local bad = {}
+  for _, m in ipairs(view:layout().measures) do
+    for _, evs in ipairs(m.staves) do
+      for _, ev in ipairs(evs) do
+        if ev.source and ev.source.id ~= "" then
+          local _, _, _, _, found = D.find(sc, ev.source.id)
+          if found ~= ev.source then bad[#bad + 1] = ev.source.id end
+        end
+      end
+    end
+  end
+  eq(table.concat(bad, " "), "", "every event's source is the score's")
+  -- And an edit through them reaches the score.
+  view:set(nil, 0)
+  keys(",otr<CR>")
+  local first
+  D.each(score_of(clip), function(ev) if ev.kind == "chord" and not first then first = ev end end)
+  eq(first.orn, "trill", "the chord under the cursor took the trill")
+end)

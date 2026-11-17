@@ -43,7 +43,30 @@ end
 --- measures on either side (ties, the bar's accidentals), the staves, the
 --- key and where they are.
 local kept, kept_count = {}, 0
+local rebind
 M.stats = { measures = 0 }
+
+--- Point the events of a measure laid out before at the score's own
+--- events, by the ids they had then. The same measure (by its token) may
+--- come back in another score object, after an undo or a trial taken back,
+--- while the objects the events were made from have been changed in place
+--- by an edit since (`notation.view`'s `lift` gives a moved chord's old
+--- place a new id): what reads `source` must find this score's.
+rebind = function(staves, sm)
+  if not sm then return end
+  local by = {}
+  for _, entry in ipairs(sm.voices) do
+    for _, sev in ipairs(entry.events) do by[sev.id] = sev end
+  end
+  for _, evs in ipairs(staves) do
+    for _, ev in ipairs(evs) do
+      if ev.sid and by[ev.sid] then ev.source = by[ev.sid] end
+      for _, g in ipairs(ev.grace or {}) do
+        if g.sid and by[g.sid] then g.source = by[g.sid] end
+      end
+    end
+  end
+end
 
 --- The page's layout of a score. `opts`: `length` (the clip's, in beats),
 --- `fifths`, `grid`, `number` (the bar number of the first measure).
@@ -62,7 +85,7 @@ function M.layout(score, opts)
   local tuplet_serial = 0
   local function add(m, s, v, sev, t, len, extra)
     local ev = { kind = sev.kind == "chord" and "note" or "rest", start = (origin + starts[m.index] + t) / Q, length = len / Q,
-      base = D.ticks(sev.dur) / Q, dots = sev.dots or 0, measure = m.index, staff = s, voice = v, source = sev,
+      base = D.ticks(sev.dur) / Q, dots = sev.dots or 0, measure = m.index, staff = s, voice = v, source = sev, sid = sev.id,
       mi = m.index, at = t, staff_id = score.staves[s].id }
     for k, x in pairs(extra or {}) do ev[k] = x end
     if sev.kind == "chord" then
@@ -103,7 +126,8 @@ function M.layout(score, opts)
         if sev.grace then
           graces = graces or {}
           for _, n in ipairs(sev.notes or {}) do
-            graces[#graces + 1] = { pitch = D.pitch(n), id = n.id, letter = n.step, alter = n.alter, octave = n.octave, spelled = true, source = sev }
+            graces[#graces + 1] = { pitch = D.pitch(n), id = n.id, letter = n.step, alter = n.alter, octave = n.octave, spelled = true, source = sev,
+              sid = sev.id }
           end
         else
           local len = D.length(sev)
@@ -181,6 +205,7 @@ function M.layout(score, opts)
     local hit = kept[key]
     if hit then
       m.staves, m.incomplete, m.overfull = hit.staves, hit.incomplete, hit.overfull
+      rebind(hit.staves, sm)
     else
       for s = 1, #staves do m.staves[s] = {} end
       build(m, i)

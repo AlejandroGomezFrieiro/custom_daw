@@ -108,9 +108,6 @@ local function preview(text)
   end
   if not text:match("%S") and not state.spec.empty then return state.spec.hint end
   local before = snapshot()
-  -- The trial changes a score of its own: the one the page was laid out
-  -- from stays as it was, for when the trial is taken back.
-  view.forget_scores()
   W.entering = state.mode == "i"
   local said, level = quietly(function()
     daw.audition.try(function() daw.commands.exec(line_of(state, text)) end)
@@ -130,7 +127,6 @@ end
 --- command line's history and `<leader>.`.
 local function commit(state, text)
   daw.audition.revert()
-  view.forget_scores()
   view.ghost, view.cache = nil, nil
   if not text:match("%S") and not state.spec.empty then return end
   local line = line_of(state, text)
