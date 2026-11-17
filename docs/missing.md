@@ -225,8 +225,8 @@
   compensation.
 - The window measured on a real graphics card: it is tried only on Mesa's
   llvmpipe so far, where playing costs more than a core.
-- In the window, a bundled font for Japanese, Chinese and Korean where the
-  system has none: such words show as boxes then.
+- In the window, kanji, hanzi and hangul where the system has no font for
+  them: only kana are built in, and the rest show as boxes then.
 - In clip launching: follow actions (a clip that launches the next, or a
   random one, after so many bars); under a tempo ramp a slot's clip spreads
   each block's beats evenly over it, so its notes can land up to a frame or

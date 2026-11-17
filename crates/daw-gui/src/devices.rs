@@ -250,15 +250,22 @@ impl View {
             self.pass("toggle_bypass", json!([id]));
         }
         let mut right = 0.0;
-        if widgets::button(ui, b(right), Id::unique(("dev-x", id)), Some(icons::X), "", Look::quiet()).clicked() {
+        let device_name = text(&d["name"]);
+        let response = widgets::button(ui, b(right), Id::unique(("dev-x", id)), Some(icons::X), "", Look::quiet());
+        widgets::name(&response, &format!("remove {device_name}"));
+        if response.clicked() {
             self.eval("return daw.api.device_remove(...)", json!([id]));
         }
         right += 1.0;
-        if widgets::button(ui, b(right), Id::unique(("dev-down", id)), Some(icons::CARET_DOWN), "", Look::quiet().enabled(at + 1 < count)).clicked() {
+        let response = widgets::button(ui, b(right), Id::unique(("dev-down", id)), Some(icons::CARET_DOWN), "", Look::quiet().enabled(at + 1 < count));
+        widgets::name(&response, &format!("move {device_name} down"));
+        if response.clicked() {
             self.pass("move_device", json!([id, 1]));
         }
         right += 1.0;
-        if widgets::button(ui, b(right), Id::unique(("dev-up", id)), Some(icons::CARET_UP), "", Look::quiet().enabled(at > 0)).clicked() {
+        let response = widgets::button(ui, b(right), Id::unique(("dev-up", id)), Some(icons::CARET_UP), "", Look::quiet().enabled(at > 0));
+        widgets::name(&response, &format!("move {device_name} up"));
+        if response.clicked() {
             self.pass("move_device", json!([id, -1]));
         }
         right += 1.0;

@@ -65,8 +65,9 @@ values) in JetBrains Mono; both fonts are built into the program
 (`crates/daw-gui/fonts`, under the SIL Open Font License), so the window
 looks the same on any machine. Japanese, Chinese and Korean (a lyric such
 as さくら) are drawn with the system's font for them, found through
-fontconfig (Noto Sans CJK, Source Han Sans and the like); without one such
-words show as boxes. Icons are Phosphor's (MIT,
+fontconfig (Noto Sans CJK, Source Han Sans and the like). Where there is
+none, kana are still drawn, with Noto Sans CJK JP cut down to them (60 KB,
+OFL, built in); kanji and hangul then show as boxes. Icons are Phosphor's (MIT,
 `crates/daw-gui/fonts/Phosphor-LICENSE`).
 
 Each track header has its number, its name, the input, monitor, `M`, `S`

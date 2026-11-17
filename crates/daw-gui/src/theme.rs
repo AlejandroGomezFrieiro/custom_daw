@@ -185,7 +185,7 @@ fn find_cjk() -> Option<(std::path::PathBuf, u32)> {
 }
 
 /// The bundled fonts, with `cjk` (a file and a face in it) after them where
-/// they have no glyph.
+/// they have no glyph, and the bundled kana after that.
 pub fn fonts(cjk: Option<(Vec<u8>, u32)>) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let mut add = |name: &str, bytes: &'static [u8]| {
@@ -205,6 +205,10 @@ pub fn fonts(cjk: Option<(Vec<u8>, u32)>) -> FontDefinitions {
         fonts.font_data.insert("CJK".into(), data.into());
         tail.push("CJK".into());
     }
+    // Where the system has no font for Japanese, kana (a lyric such as さくら)
+    // are still drawn: Noto Sans CJK JP cut down to them.
+    fonts.font_data.insert("Kana".into(), FontData::from_static(include_bytes!("../fonts/NotoSansJP-Kana.otf")).into());
+    tail.push("Kana".into());
     let family = |first: &[&str]| -> Vec<String> {
         first.iter().map(|s| s.to_string()).chain(tail.iter().cloned()).collect()
     };

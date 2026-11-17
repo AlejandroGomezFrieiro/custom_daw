@@ -140,6 +140,7 @@ impl View {
         if !track.vca {
             let knob = Rect::from_center_size(pos2(rect.center().x, y + 13.0), vec2(24.0, 24.0));
             let (response, moved) = widgets::knob(ui, knob, Id::unique(("strip-pan", id)), (track.pan + 1.0) / 2.0);
+            widgets::name(&response, &format!("pan of {}", track.name));
             if kind == "pan" {
                 p.circle_stroke(knob.center(), 12.0, Stroke::new(1.0, t.select));
             }
@@ -170,6 +171,7 @@ impl View {
             p.rect_stroke(plate, CornerRadius::ZERO, Stroke::new(1.0, egui::Color32::WHITE), StrokeKind::Inside);
         }
         let plate_response = ui.interact(plate, Id::unique(("strip-plate", id)), Sense::click());
+        widgets::name(&plate_response, &format!("strip of {}", track.name));
         if plate_response.clicked() {
             self.pass("select", json!([id, self.s.cursor]));
         }
@@ -183,7 +185,9 @@ impl View {
             let start = flags.center().x - (3.0 * 20.0 + 2.0 * 2.0) / 2.0;
             for (i, (label, name, on, lit)) in [("M", "mute", track.mute, t.mute), ("S", "solo", track.solo, t.solo), ("R", "armed", track.armed, t.rec)].into_iter().enumerate() {
                 let r = Rect::from_min_size(pos2(start + i as f32 * 22.0, flags.top() + 1.0), vec2(20.0, 18.0));
-                if widgets::flag(ui, r, Id::unique(("strip-flag", id, name)), label, on, lit).clicked() {
+                let response = widgets::flag(ui, r, Id::unique(("strip-flag", id, name)), label, on, lit);
+                widgets::name(&response, &format!("{name} of {}", track.name));
+                if response.clicked() {
                     self.pass("toggle", json!([id, name]));
                 }
                 if kind == "toggle" && field == name {
@@ -212,7 +216,8 @@ impl View {
             p.text(pos2(body.left() + 18.0, my), Align2::RIGHT_CENTER, said, semi(T_MICRO), t.text_3);
         }
         let fader = Rect::from_min_size(pos2(body.left() + 20.0, body.top()), vec2(24.0, body.height()));
-        let (_, moved) = widgets::fader(ui, fader, Id::unique(("strip-fader", id)), track.volume);
+        let (response, moved) = widgets::fader(ui, fader, Id::unique(("strip-fader", id)), track.volume);
+        widgets::name(&response, &format!("fader of {}", track.name));
         for m in moved {
             match m {
                 Moved::To(db) => self.pass("set_volume", json!([id, db])),

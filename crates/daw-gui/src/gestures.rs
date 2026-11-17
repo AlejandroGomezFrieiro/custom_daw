@@ -581,24 +581,203 @@ fn ctrl_and_plus_zoom_and_ctrl_0_shows_the_whole_song() {
 
 // ----------------------------------------------------------------- fonts
 
+/// Whether every character of `text` has a glyph of its own in the
+/// window's fonts, with `cjk` as the system's font for Japanese, and is laid
+/// out wide and drawn: not the replacement box.
+fn drawn_with_glyphs_of_their_own(cjk: Option<(Vec<u8>, u32)>, text: &str) -> bool {
+    let ctx = egui::Context::default();
+    ctx.set_fonts(crate::theme::fonts(cjk));
+    let _ = ctx.run_ui(egui::RawInput::default(), |_| {});
+    let font = egui::FontId::proportional(14.0);
+    let laid = ctx.fonts_mut(|f| f.layout_no_wrap(text.into(), font.clone(), egui::Color32::WHITE));
+    let glyphs: Vec<_> = laid.rows.iter().flat_map(|r| r.glyphs.iter()).collect();
+    assert_eq!(glyphs.len(), text.chars().count());
+    for g in &glyphs {
+        assert!(g.advance_width > 0.0, "{} has no width", g.chr);
+        assert!(!g.uv_rect.is_nothing(), "{} draws nothing", g.chr);
+    }
+    ctx.fonts_mut(|f| text.chars().all(|ch| f.has_glyph(&font, ch)))
+}
+
 #[test]
 fn japanese_lyrics_are_drawn_with_glyphs_of_their_own() {
+    // With the bundled kana alone, as on a system with no font for Japanese.
+    assert!(drawn_with_glyphs_of_their_own(None, "さくらサクラ"));
+    // The test can fail: a kanji with no font for it is the box.
+    assert!(!drawn_with_glyphs_of_their_own(None, "桜"));
+    // With the system's font, kanji too.
     let Some(cjk) = crate::theme::cjk_font() else {
-        eprintln!("no CJK font on this system: the test of its glyphs is skipped");
+        eprintln!("no CJK font on this system: its kanji are not tried");
         return;
     };
-    let ctx = egui::Context::default();
-    ctx.set_fonts(crate::theme::fonts(Some(cjk)));
-    let _ = ctx.run_ui(egui::RawInput::default(), |_| {});
-    let galley = ctx.fonts_mut(|f| f.layout_no_wrap("さくら".into(), egui::FontId::proportional(14.0), egui::Color32::WHITE));
-    let glyphs: Vec<_> = galley.rows.iter().flat_map(|r| r.glyphs.iter()).collect();
-    assert_eq!(glyphs.len(), 3);
-    // The replacement box is as wide as for any other character it stands for.
-    let boxed = ctx.fonts_mut(|f| f.layout_no_wrap("\u{e000}".into(), egui::FontId::proportional(14.0), egui::Color32::WHITE));
-    let box_w = boxed.rows[0].glyphs[0].advance_width;
-    for g in glyphs {
-        assert!(g.advance_width > 0.0, "a glyph with no width");
-        assert!((g.advance_width - box_w).abs() > 0.5 || g.uv_rect.size.x > 0.0, "the replacement box");
-        assert!(!g.uv_rect.is_nothing(), "a glyph that draws nothing");
+    assert!(drawn_with_glyphs_of_their_own(Some(cjk), "さくら桜"));
+}
+
+// --------------------------------------------------- the transport bar's rest
+
+#[test]
+fn the_views_buttons_show_views_and_more_and_track_open_menus() {
+    let (mut h, calls) = window();
+    for (label, words) in [("Session", "view.toggle session"), ("Mixer", "view.toggle mixer"), ("Piano roll", "view.toggle pianoroll")] {
+        let at = h.get_by_label(label).rect().center();
+        click(&mut h, at);
+        assert!(sent(&calls, words), "{label}");
     }
+    let shown = h.state().show_automation;
+    let at = h.get_by_label("Automation").rect().center();
+    click(&mut h, at);
+    assert_ne!(h.state().show_automation, shown, "Automation shows the lanes over the clips");
+    for (label, kind) in [("More", "\"views\""), ("Track", "\"add_track\"")] {
+        h.state_mut().menu = None;
+        let at = h.get_by_label(label).rect().center();
+        click(&mut h, at);
+        assert!(sent(&calls, kind), "{label}'s menu");
+    }
+}
+
+#[test]
+fn the_transport_buttons_tempo_and_engine_take_the_pointer() {
+    let (mut h, calls) = window();
+    for (name, words) in [("stop", "transport.stop"), ("loop", "transport.loop"), ("click", "transport.metronome")] {
+        let at = h.get_by_label(name).rect().center();
+        click(&mut h, at);
+        assert!(sent(&calls, words), "{name}");
+    }
+    let at = h.get_by_label("record").rect().center();
+    click(&mut h, at);
+    assert!(acted(&calls, "record").is_some());
+    let at = h.get_by_label("start").rect().center();
+    click(&mut h, at);
+    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return daw.api.transport_seek(...)" && p[1] == 0.0), "back to the start");
+    // The tempo: dragged up, a step up; the wheel down, a step down; a
+    // double click types it.
+    let tempo = h.get_by_label("tempo").rect().center();
+    drag(&mut h, tempo, tempo - vec2(0.0, 30.0));
+    assert!(sent(&calls, "tempo by=1"));
+    h.hover_at(tempo);
+    h.event(Event::MouseWheel { unit: egui::MouseWheelUnit::Line, delta: vec2(0.0, -1.0), modifiers: Modifiers::NONE, phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel });
+    h.run_steps(2);
+    assert!(sent(&calls, "tempo by=-1"));
+    double_click(&mut h, tempo);
+    assert!(calls.borrow().iter().any(|(m, p)| m == "eval" && p.to_string().contains(":tempo ")), "the command line, with :tempo typed");
+    let engine = h.get_by_label("engine").rect().center();
+    click(&mut h, engine);
+    assert!(sent(&calls, "\"engine\""), "the engine's menu");
+}
+
+#[test]
+fn the_loops_edges_drag_and_a_double_click_on_the_ruler_turns_it_on_or_off() {
+    let (mut h, calls) = window_with(|s| {
+        s["project"]["loop_enabled"] = json!(true);
+        s["project"]["loop_start"] = json!(4);
+        s["project"]["loop_end"] = json!(12);
+    });
+    drag(&mut h, pos2(beat_x(12.0), AREA_TOP + 5.0), pos2(beat_x(14.0), AREA_TOP + 5.0));
+    let args = act(&calls, "set_loop_edge");
+    assert_eq!(args[0], "end");
+    assert!((num(&args[1]) - 14.0).abs() < 0.05, "{args:?}");
+    double_click(&mut h, pos2(beat_x(20.0), AREA_TOP + 5.0));
+    assert!(sent(&calls, "transport.loop"));
+}
+
+// ------------------------------------------------------------------ the mixer
+
+fn mixer_window() -> (Harness<'static, View>, Calls) {
+    window_with(|s| {
+        s["modal"]["panes"]["panes"][1]["view"] = json!("mixer");
+    })
+}
+
+#[test]
+fn a_strips_fader_pan_and_switches_take_the_pointer() {
+    let (mut h, calls) = mixer_window();
+    let fader = h.get_by_label("fader of B").rect();
+    drag(&mut h, pos2(fader.center().x, fader.bottom() - 30.0), pos2(fader.center().x, fader.top() + 40.0));
+    let args = act(&calls, "set_volume");
+    assert_eq!(args[0], 3);
+    assert!(num(&args[1]) > -5.0, "up is louder: {args:?}");
+    assert!(sent(&calls, "\"volume\""), "held while dragged, for automation by touch");
+    let pan = h.get_by_label("pan of B").rect().center();
+    drag(&mut h, pan, pan - vec2(0.0, 40.0));
+    assert!(num(&act(&calls, "set_pan")[1]) > 0.0, "up is to the right");
+    double_click(&mut h, pan);
+    assert_eq!(act(&calls, "set_pan"), [json!(3), json!(0.0)]);
+    for name in ["mute", "solo", "armed"] {
+        let at = h.get_by_label(&format!("{name} of C")).rect().center();
+        click(&mut h, at);
+        assert_eq!(act(&calls, "toggle"), [json!(5), json!(name)]);
+    }
+}
+
+#[test]
+fn a_strips_name_chooses_its_track_and_a_right_click_opens_its_menu() {
+    let (mut h, calls) = mixer_window();
+    let plate = h.get_by_label("strip of C").rect().center();
+    click(&mut h, plate);
+    assert_eq!(act(&calls, "select")[0], 5);
+    right_click(&mut h, plate);
+    assert!(sent(&calls, "\"track\",[5]"));
+}
+
+// ---------------------------------------------------------------- the devices
+
+#[test]
+fn a_devices_buttons_remove_and_move_it() {
+    let (mut h, calls) = window_with(|s| {
+        let synth = s["devices"][0].clone();
+        let mut delay = synth.clone();
+        delay["id"] = json!(9);
+        delay["name"] = json!("Delay");
+        s["devices"] = json!([synth, delay]);
+    });
+    let at = h.get_by_label("move Delay up").rect().center();
+    click(&mut h, at);
+    assert_eq!(act(&calls, "move_device"), [json!(9), json!(-1)]);
+    let at = h.get_by_label("move Synth down").rect().center();
+    click(&mut h, at);
+    assert_eq!(act(&calls, "move_device"), [json!(8), json!(1)]);
+    let at = h.get_by_label("remove Synth").rect().center();
+    click(&mut h, at);
+    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return daw.api.device_remove(...)" && p[1] == 8));
+}
+
+// ------------------------------------------------------------ the session view
+
+#[test]
+fn the_session_views_bar_stops_goes_back_captures_and_quantizes() {
+    let (mut h, calls) = window_with(|s| {
+        s["modal"]["panes"]["panes"][1]["view"] = json!("session");
+        s["modal"]["session"] = json!(true);
+    });
+    let at = h.get_by_label("Stop all").rect().center();
+    click(&mut h, at);
+    assert!(acted(&calls, "stop_slots").is_some());
+    let at = h.get_by_label("Back to timeline").rect().center();
+    click(&mut h, at);
+    assert!(acted(&calls, "back_to_timeline").is_some());
+    let at = h.get_by_label("Capture").rect().center();
+    click(&mut h, at);
+    assert!(sent(&calls, "launch.capture"));
+    let at = h.get_by_label("2bars").rect().center();
+    click(&mut h, at);
+    assert!(sent(&calls, "launch.quantize 2bars"));
+}
+
+// ------------------------------------------------------------------ the panes
+
+#[test]
+fn a_border_between_panes_dragged_shares_the_room() {
+    let (mut h, calls) = window();
+    // The border under the arrange view, 500 down the main area.
+    drag(&mut h, pos2(500.0, AREA_TOP + 500.0), pos2(500.0, AREA_TOP + 420.0));
+    let last = calls.borrow().iter().rev().find(|(_, p)| p[0] == "daw.panes.border(...)").cloned().expect("the border moved");
+    assert_eq!(last.1[1], 1);
+    assert!((num(&last.1[3]) - 420.0).abs() < 2.0, "{last:?}");
+}
+
+#[test]
+fn a_press_in_a_pane_gives_it_the_keyboard() {
+    let (mut h, calls) = window();
+    click(&mut h, pos2(1300.0, AREA_TOP + 600.0));
+    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "daw.panes.focus(...)" && p[1] == 3), "the device panel");
 }

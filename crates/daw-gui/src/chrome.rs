@@ -87,6 +87,7 @@ impl View {
         // Tempo: the wheel changes it, or a drag up and down; a double click types it.
         let tempo = row(x, 64.0);
         let response = ui.interact(tempo, Id::unique("tempo"), Sense::click_and_drag());
+        widgets::name(&response, "tempo");
         ui.painter().rect_filled(tempo, CornerRadius::same(4), if response.hovered() { t.control_press } else { t.well });
         let bpm = self.s.tick["tempo"].as_f64().or(self.s.project["tempo"].as_f64()).unwrap_or(120.0);
         ui.painter().text(pos2(tempo.right() - 6.0 - 22.0, tempo.center().y), Align2::RIGHT_CENTER, format!("{bpm}"), mono_medium(T_BASE), t.text);
@@ -166,6 +167,7 @@ impl View {
         let engine_w = 220.0f32.min((bar.right() - 12.0 - segment.right() - 16.0).max(48.0));
         let engine = Rect::from_min_size(pos2(bar.right() - 12.0 - engine_w, top), vec2(engine_w, h));
         let response = ui.interact(engine, Id::unique("engine"), Sense::click());
+        widgets::name(&response, "engine");
         if response.hovered() {
             ui.painter().rect_filled(engine, CornerRadius::same(4), Color32::from_white_alpha(0x12));
         }
