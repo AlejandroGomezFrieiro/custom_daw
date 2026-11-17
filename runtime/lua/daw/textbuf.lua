@@ -2094,7 +2094,7 @@ local function cmdline(from_visual)
       prompt = ":", history = "cmdline", text = text,
       complete = function(line) return daw.commands.complete(line) end,
     }, function(line)
-      if line:match("%S") then daw.state.last_cmdline = line end
+      if line:match("%S") then daw.state.last_cmdline = line daw.commands.used(line:match("^%s*:?(%S+)")) end
       daw.commands.exec(line)
     end)
   end

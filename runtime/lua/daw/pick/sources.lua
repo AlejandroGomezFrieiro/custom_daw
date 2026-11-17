@@ -75,9 +75,23 @@ return function(pick)
     return keys_now[name] or {}
   end
 
+  --- The commands the focused view has keys of its own for, by name.
+  local function view_commands()
+    local out = {}
+    local view = daw.ui.focused
+    for _, mode in ipairs({ "n", "x" }) do
+      for _, map in ipairs(daw.keymap.list(mode, view)) do
+        if map.scope == view and type(map.rhs) == "string" then out[map.rhs:match("^(%S+)")] = true end
+      end
+    end
+    return out
+  end
+
+  local view_set = {}
+
   local function edit_command(spec)
     daw.ui.input({ prompt = ":", history = "cmdline", text = spec.name .. " " }, function(line)
-      if line:match("%S") then daw.state.last_cmdline = line end
+      if line:match("%S") then daw.state.last_cmdline = line daw.commands.used(line:match("^%s*:?(%S+)")) end
       daw.commands.exec(line)
     end)
   end
@@ -87,6 +101,7 @@ return function(pick)
     title = "Commands",
     items = function()
       keys_now = key_index()
+      view_set = view_commands()
       return daw.commands.list()
     end,
     format = function(spec)
@@ -95,8 +110,14 @@ return function(pick)
       return string.format("%-24s %-10s %s", spec.name, key, spec.alias_of and "→ " .. spec.alias_of or spec.desc)
     end,
     primary = function(spec) return spec.name end,
+    -- Commands used before come first, and those the focused view has keys for.
+    boost = function(spec)
+      local name = spec.alias_of or spec.name
+      return math.min(daw.commands.uses(name), 10) * 8 + (view_set[name] and 40 or 0)
+    end,
     on_choose = function(spec)
       daw.state.last_cmdline = spec.name
+      daw.commands.used(spec.name)
       daw.commands.run(spec.name)
     end,
     actions = { ["<C-e>"] = { fn = function(spec) if spec then edit_command(spec) end end, desc = "edit arguments" } },
@@ -161,6 +182,8 @@ return function(pick)
       desc = "Every key that works in the focused view",
       title = "Keys · " .. tostring(view),
       empty = "No keys are mapped here.",
+      -- The view's own keys before the global ones, and those before the keys of other views.
+      boost = function(entry) return entry.other and 0 or entry.map.scope == "global" and 20 or 40 end,
       items = function()
         -- Ranked rather than alphabetical: what the view itself adds, then
         -- what works everywhere; plain keys before motions, operators and

@@ -641,11 +641,14 @@ signs, articulations, key, clefs (the guitar's too), time signatures where
 they change, and the grand staff. MusicXML also carries the accidentals,
 stems, beams, dynamics, hairpins, text, slurs, lyrics and each note's
 string and fret when there is tablature. Without a path the file is named
-after the clip and written to the working directory.
+after the clip and written to the working directory. The clip is the one of
+the notation view when it has the keyboard, else the one under the arrange
+cursor on the cursor's track, and the message names it: `wrote 'melody'
+(Lead) to lead.pdf, 2 pages`.
 
 `:notation.export pdf` (or a path ending in `.pdf`) writes the engraved
 pages as the page view lays them out, on white paper, as a PDF of as many
-pages as there are; `svg` writes each page as an SVG file (numbered after
+pages as there are, the last ending under its last system; `svg` writes each page as an SVG file (numbered after
 the first), `png` the first page as an image. They are drawn from the same
 drawing operations as the screen (`daw.api.canvas_export`, in
 crates/daw-raster), with the music font's glyphs and the text as outlines,

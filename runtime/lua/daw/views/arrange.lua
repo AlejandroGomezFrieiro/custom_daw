@@ -364,9 +364,13 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       daw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
     end
   end
-  -- The volume curve runs over the empty lane, never over clips.
+  -- The volume curve runs over the empty lane, never over clips, and only
+  -- on the track the cursor is on: drawn on every track it ran along the
+  -- clips' edges and made the notes harder to read, and the curve of a
+  -- track is a thing to look at while working on that track (the others
+  -- show an `A` in their header; `,a` opens their lanes as rows).
   for _, l in ipairs(lanes) do
-    if height >= 2 and l.target == "volume" and l.point_count > 0 then
+    if selected and height >= 2 and l.target == "volume" and l.point_count > 0 then
       local function over_clip(col)
         for _, span in ipairs(spans) do
           if col >= span[1] and col < span[2] then return true end
