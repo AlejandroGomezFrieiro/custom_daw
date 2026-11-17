@@ -391,10 +391,16 @@ test("utau: where the terminal shows pictures the pitch and the curve are strips
   -- Pictures off, or a terminal without them: the cells as before.
   utau.pitch[clip.id] = nil
   api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
+  -- A message running out between the two would differ.
+  daw.ui.message = nil
   cells = api.ui_snapshot(W, H)
   api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
   daw.opt.graphics = false
-  eq(table.concat(api.ui_snapshot(W, H), "\n"), table.concat(cells, "\n"), "graphics off draws the same cells")
+  local now = api.ui_snapshot(W, H)
+  -- The editor's rows: the master's meter above may fall back meanwhile.
+  local rect
+  for _, r in ipairs(daw.ui.rects) do if r.name == "utau" then rect = r end end
+  for i = rect.y + 1, rect.y + rect.h do eq(now[i], cells[i], "graphics off draws the same cells, row " .. i) end
   eq(daw.ui.rects.surfaces, nil, "and keeps no strip")
   daw.opt.graphics = true
 
@@ -407,6 +413,33 @@ test("utau: where the terminal shows pictures the pitch and the curve are strips
   end
   eq(#rolls, 1, "one roll")
   eq(rolls[1].key, "utau:roll#" .. rolls[1].win, "under its window's key")
+end)
+
+test("utau: the pitch line in pixels meets each note's edges where its cells do", function()
+  load()
+  local strips = require("utau.strips")
+  -- Three cells a beat: a note from beat 0.35 is drawn from cell 1 (1.05
+  -- rounds down), not 10.5 pixels in; one ending at 1.35 ends at cell 4.
+  local list = { { pitch = 60, start = 0.35, length = 1 }, { pitch = 62, start = 2, length = 0.5 } }
+  local x_at, beat_at = strips.warp(list, 0, 3, 10)
+  eq(x_at(0.35), 10, "the note's start, on its cell's edge")
+  eq(x_at(1.35), 40, "its end too")
+  eq(x_at(2), 60, "the next note's start")
+  eq(math.abs(beat_at(x_at(1.7)) - 1.7) < 1e-9, true, "and back")
+  local ops = daw.canvas.draw(function(g, px)
+    strips.roll(g, px, { list = list, clip = { start = 0, length = 4 }, scroll = 0, zoom = 3, top = 72 })
+  end, { w = 200, h = 400, cell = { w = 10, h = 20 } })
+  local left, right
+  for _, op in ipairs(ops) do
+    if op[1] == "p" and op[3] == require("daw.theme").palette.orange then
+      for x in op[2]:gmatch("[ML] ([%d.-]+) [%d.-]+") do
+        x = tonumber(x)
+        if x < 50 then left, right = math.min(left or x, x), math.max(right or x, x) end
+      end
+    end
+  end
+  eq(left, 10, "the line starts on the note's first cell")
+  eq(right, 40, "and ends on its last cell's edge")
 end)
 
 -- Curves that follow their clip ------------------------------------------------

@@ -807,8 +807,13 @@ A picture is a **strip**: a rectangle of cells a view keeps for pixels as
 it draws (`buf:strip`, see [Extensions](extensions.md)), under a key of its
 own, so that a view can have several, and the same view in two windows
 (`:vs`) has one in each, kept apart. The score is one strip over its
-window; the curve editor's plot (`gC`) is another, and the utau vocal
-editor has two, the pitch lines under its notes and its curve. A strip is either over
+window; the curve editor's plot (`gC`) is another, the piano roll's
+controller strip (the pitch wheel and the controllers) another, each audio
+clip's waveform in the arrange view one (the lowest to the highest sample
+a pixel across, the RMS a brighter band inside, full scale in red), and
+the utau vocal editor has two, the pitch lines under its notes and its
+curve. An audio clip's strip is the whole clip's, so that scrolling places
+pieces already sent instead of sending them again. A strip is either over
 the text, with its cells left blank (the score), or **under** it: the
 view's cells are drawn as usual above the picture, so that the curve
 editor keeps its points, its cursor, the selection and the playhead as
@@ -821,8 +826,10 @@ draws nothing. Konsole, and any terminal not known by its name, puts a
 coloured background above such a picture, which would hide it: there the
 cells' backgrounds (the lane, the notes, a selection) are painted into the
 picture and the cells written on the terminal's own background, while a
-background only a few cells have (a cursor block) shows as cells, the
-picture left out of them, so that a cursor moving sends no pixels.
+background that is a single run along one row (a cursor block, the note
+under the cursor) shows as cells, the picture left out of them and keeping
+there what those cells had before, so that a cursor moving on or off
+something sends no pixels.
 
 `daw attach` from a terminal that shows images shows them too: it tells
 the instance what its terminal can do, and is sent each strip's drawing

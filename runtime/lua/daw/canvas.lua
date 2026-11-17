@@ -494,25 +494,44 @@ function M.paint_cells(name, window, width, height, opts, win)
   end
   local focused = daw.ui.focused == name
   daw.ui.view_win = win
+  -- The strips the view keeps under its cells (`buf:strip`), drawn here
+  -- between the cells' backgrounds and their text.
+  daw.ui.pictures = {}
   local ok, snap = pcall(api.ui_view_snapshot, name, cols, bare and rows or rows - 1)
-  daw.ui.view_win = nil
+  local pictures = daw.ui.pictures
+  daw.ui.view_win, daw.ui.pictures = nil, nil
   if not ok then error(snap, 0) end
   local ops = { { "r", 0, 0, width, height, snap.bg, "", 1, 0 } }
-  local function add(lines, top)
+  local function add(lines, top, layer)
     for r, row in ipairs(lines) do
       local y = (top + r - 1) * cell.h
       for _, run in ipairs(row) do
+        local back = run.bg == snap.bg and "" or run.bg
+        if layer == "back" then
+          if back ~= "" then ops[#ops + 1] = { "r", run.x * cell.w, y, run.w * cell.w, cell.h, back, "", 1, 0 } end
         -- Spaces on the window's own background need nothing drawn.
-        if run.text:find("[^ ]") or run.bg ~= snap.bg or band(run.attrs, 8 + 32) ~= 0 then
+        elseif run.text:find("[^ ]") or (back ~= "" and layer ~= "text") or band(run.attrs, 8 + 32) ~= 0 then
           local chars = {}
           for ch in run.text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
-          add_run(ops, run.x * cell.w, y, run.w * cell.w, cell.h, chars, run.fg,
-            run.bg == snap.bg and "" or run.bg, run.attrs)
+          add_run(ops, run.x * cell.w, y, run.w * cell.w, cell.h, chars, run.fg, layer == "text" and "" or back, run.attrs)
         end
       end
     end
   end
-  add(snap.rows, 0)
+  if #pictures == 0 then
+    add(snap.rows, 0)
+  else
+    add(snap.rows, 0, "back")
+    for _, p in ipairs(pictures) do
+      local px = { w = p.whole_w * cell.w, h = p.whole_h * cell.h, cell = { w = cell.w, h = cell.h },
+        view = { x = p.left * cell.w, y = p.top * cell.h, w = p.w * cell.w, h = p.h * cell.h } }
+      local g = painter(ops, p.x * cell.w, p.y * cell.h, p.w * cell.w, p.h * cell.h)
+      g.ox, g.oy = (p.x - p.left) * cell.w, (p.y - p.top) * cell.h
+      local drawn, err = xpcall(p.draw, debug.traceback, g, px)
+      if not drawn then api.log("a strip failed to draw: " .. tostring(err)) end
+    end
+    add(snap.rows, 0, "text")
+  end
   local cursor = snap.cursor and { snap.cursor.x, snap.cursor.y }
   if focused and not bare then
     -- The line under the view: a prompt, a message, or the view's keys.
@@ -667,7 +686,7 @@ function M.draw(draw, px)
     local g = painter(ops, 0, 0, px.w, px.h)
     local row = 0
     for line in tostring(err):gmatch("[^\n]+") do
-      g:text(4, 2 + row * 14, line:gsub("\t", "  "), { color = c.error })
+      g:text(4 + (px.view and px.view.x or 0), 2 + (px.view and px.view.y or 0) + row * 14, line:gsub("\t", "  "), { color = c.error })
       row = row + 1
     end
   end

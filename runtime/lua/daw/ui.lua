@@ -520,14 +520,30 @@ end
 --- whole drawing, `buf:surface`).
 function M.strip(buf, x, y, w, h, opts)
   opts = opts or {}
-  -- Pictures only on the screen a terminal shows, not in a window's cells.
-  if daw.opt.graphics == false or not M.screen then return false end
+  if daw.opt.graphics == false then return false end
+  if not M.screen then
+    -- A view drawn in cells for a window (`daw.canvas.paint_cells`): the
+    -- window draws the strip's picture with the cells, under their text.
+    if not (M.pictures and opts.draw and opts.under) then return false end
+    x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
+    local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
+    local x1, y1 = math.min(x + w, buf.cx + buf.cw), math.min(y + h, buf.cy + buf.ch)
+    if x1 <= x0 or y1 <= y0 then return false end
+    M.pictures[#M.pictures + 1] = { x = x0, y = y0, w = x1 - x0, h = y1 - y0, left = x0 - x, top = y0 - y,
+      whole_w = w, whole_h = h, draw = opts.draw }
+    return true
+  end
   local caps = api.ui_caps()
   if not caps.pixels or (opts.under and not caps.under) then return false end
   local name = opts.view or M.drawing
   local win = M.drawing_win
   local key = opts.key or (tostring(name) .. "#" .. tostring(win and win.id or "float"))
   x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
+  if opts.paint then
+    -- A view's paint lays out what shows of it.
+    local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
+    x, y, w, h = x0, y0, math.min(x + w, buf.cx + buf.cw) - x0, math.min(y + h, buf.cy + buf.ch) - y0
+  end
   local index = api.grid_surface(key, x, y, w, h, buf.cx, buf.cy, buf.cw, buf.ch, opts.under == true)
   if not index then return false end
   -- What shows of it inside the buffer.
@@ -536,6 +552,7 @@ function M.strip(buf, x, y, w, h, opts)
   M.rects.surfaces = M.rects.surfaces or {}
   table.insert(M.rects.surfaces, {
     key = key, name = name, win = win and win.id, index = index, x = x0, y = y0, w = x1 - x0, h = y1 - y0,
+    left = x0 - x, top = y0 - y, whole_w = w, whole_h = h,
     cell = caps.cell, under = opts.under == true, draw = opts.draw, paint = opts.paint,
   })
   return true
@@ -554,10 +571,16 @@ end
 local function paint_surfaces()
   local caps = api.ui_caps()
   for _, s in ipairs(M.rects.surfaces or {}) do
-    local w, h = s.w * s.cell.w, s.h * s.cell.h
+    local cw, ch = s.cell.w, s.cell.h
+    local w, h = s.w * cw, s.h * ch
     local ops
     if s.draw then
-      ops = daw.canvas.draw(s.draw, { w = w, h = h, cell = s.cell, fg = caps.fg, bg = caps.bg })
+      -- The whole strip, of which `view` shows: a strip partly off its
+      -- window draws what shows and a piece's width either side of it.
+      ops = daw.canvas.draw(s.draw, {
+        w = s.whole_w * cw, h = s.whole_h * ch, cell = s.cell, fg = caps.fg, bg = caps.bg,
+        view = { x = s.left * cw, y = s.top * ch, w = w, h = h },
+      })
     else
       local drawing = daw.canvas.paint(s.name, w, h, {
         surface = true, glyphs = true, cell = s.cell, colors = { fg = caps.fg, bg = caps.bg },
