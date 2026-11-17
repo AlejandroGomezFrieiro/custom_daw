@@ -260,3 +260,13 @@ test("panes: the window is told the mixer's cursor row, which the keys move", fu
   daw.ui.focus("arrange")
   eq(daw.frontend.state(-1).modal.mixer_row, nil, "and nothing while the mixer has not the keyboard")
 end)
+
+test("panes: the piano roll with no clip open is drawn in cells, as the terminal draws it", function()
+  start()
+  daw.ui.views.pianoroll.clip_id = nil
+  daw.ui.focus("pianoroll")
+  local by, focused = panes()
+  eq(by.pianoroll and by.pianoroll.kind, "cells", "the kernel draws it")
+  eq(focused and focused.view, "pianoroll", "with the keyboard")
+  eq(painted(by.pianoroll) ~= "", true, "and something is drawn")
+end)

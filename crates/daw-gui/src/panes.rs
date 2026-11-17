@@ -39,8 +39,11 @@ pub struct Panes {
 /// A cell of the monospace font as the rasterizer draws it: `daw.canvas`
 /// lays a view drawn in cells out on it.
 fn cell() -> (f32, f32) {
+    // A run is drawn at the size that fills the cell's height: the width
+    // is a character's at that size, so that a run fills its cells exactly.
     let font = daw_raster::Font::Mono;
-    (daw_raster::measure(font, "M", MONO_SIZE), (font.line_height() * MONO_SIZE).ceil())
+    let height = (font.line_height() * MONO_SIZE).ceil();
+    (daw_raster::measure(font, "M", height / font.line_height()), height)
 }
 
 fn rect(value: &Value) -> PaneRect {
