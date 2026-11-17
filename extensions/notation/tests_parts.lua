@@ -240,7 +240,7 @@ test("the terminal's cell view draws the score's names and a part's multi-measur
   eq(view.parts and view.parts.kind, "score", "\\Ps shows the score")
   local text = table.concat(api.ui_snapshot(140, 60), "\n")
   ok(text:find("Flute 1", 1, true), "the first flute named")
-  ok(text:find("the score, 4 instruments, to read", 1, true), "the info line says what is shown")
+  ok(text:find("the full score, staff 4 of 4", 1, true), "the info line says what is shown, and the cello's staff is the active one")
   daw.commands.exec("part Violoncello")
   text = table.concat(api.ui_snapshot(140, 60), "\n")
   ok(text:find("━━ 4 ━━", 1, true), "the cello's four bars of rest as one")
@@ -250,7 +250,7 @@ test("the terminal's cell view draws the score's names and a part's multi-measur
   eq(view.parts.track, P.instruments()[1].id, "\\Pn goes round to the first part")
   daw.keymap.feed("\\Po")
   api.undo_checkpoint()
-  eq(view.parts, nil, "\\Po: the clip again, to edit")
+  eq(view.parts, nil, "\\Po: the clip alone again")
 end)
 
 test(":help notation-parts finds the parts' section", function()

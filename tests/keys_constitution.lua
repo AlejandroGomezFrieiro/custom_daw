@@ -1,5 +1,5 @@
 -- One key rule in every view (docs/terminal.md, "Keys: one grammar"): the
--- motion keys only move, `<` `>` are the time operators, `+` `-` `Ctrl-a`
+-- motion keys only move (the structural `]]` `[[` `]s` `[s` `[{` `]}` too), `<` `>` are the time operators, `+` `-` `Ctrl-a`
 -- `Ctrl-x` change the main value and `[` `]` the second, `K` describes,
 -- `ge` is the plugin window, `gc` mutes and `gC` opens a curve, and Escape
 -- cancels and stays. The first tests walk every view's mappings; the others
@@ -53,7 +53,27 @@ test("every view's keys keep to the one rule, the bundled extensions' too", func
   eq(table.concat(wrong, "\n"), "", "with every extension loaded")
 end)
 
+test("the structural keys are motions wherever they are mapped: the arrange view's groups, the piano roll", function()
+  start()
+  local found = {}
+  for _, map in ipairs(keymap.every()) do
+    local keys = table.concat(map.keys)
+    if map.mode == "n" and (keys == "]]" or keys == "[[" or keys == "[{" or keys == "]}" or keys == "]s" or keys == "[s") then
+      found[#found + 1] = map.scope .. " " .. keys
+    end
+  end
+  table.sort(found)
+  local text = table.concat(found, ", ")
+  eq(text:find("arrange [{", 1, true) ~= nil and text:find("arrange ]}", 1, true) ~= nil, true, "the arrange view's group keys: " .. text)
+  eq(text:find("pianoroll ]]", 1, true) ~= nil, true, "the roll's next note of a pitch")
+  keymap.set("]}", function() end, { view = "keyrule.test", desc = "test: not a motion" })
+  local wrong = table.concat(broken(), "\n")
+  keymap.del("]}", { view = "keyrule.test" })
+  eq(wrong:find("keyrule.test n ]}: a motion key that does not move", 1, true) ~= nil, true, wrong)
+end)
+
 test("the rule holds for a mapping made later, and says what it broke", function()
+
   start()
   keymap.set("j", function() end, { view = "keyrule.test", desc = "test: a fader on j" })
   local found = table.concat(broken(), "\n")

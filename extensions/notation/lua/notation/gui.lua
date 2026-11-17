@@ -182,12 +182,14 @@ end
 
 --- A note head drawn over the page, at a staff step and beat, with its
 --- ledger lines: the caret's note to enter, a suggestion, a dragged note.
-local function lone_head(g, eng, layout, beat, step, colour, base, area, accidental)
+--- `beat` is the page's; the staff is the open clip's at `step`, in the
+--- score where the clip is a staff of it (`F`, `view:frame`).
+local function lone_head(g, eng, layout, beat, step, colour, base, area, accidental, F)
   local st = eng.style
   local sys, x = at_beat(eng, beat)
   if not sys then return end
-  local staff = view:staff_of_step(step, layout)
-  local pos = step - model.CLEF_BOTTOM[layout.staves[staff]]
+  local staff = (F and F.base or 0) + view:staff_of_step(step)
+  local pos = step + (F and F.dstep or 0) - model.CLEF_BOTTOM[layout.staves[staff]]
   local dx = view.galley and -gui.hscroll or 0
   local dy = area.top - gui.scroll
   local y = engrave.y_of(st, sys, staff, pos) + dy
@@ -227,21 +229,32 @@ local function tint(g, eng, h, colour)
   g:glyph(h.gx, round(h.y), st.em, gl.cp, colour, st.font.name)
 end
 
-local function heads_of(places)
+--- The heads of notes by their places among a clip's notes: on the staves
+--- `first` to `last` of the page (all of them without), of `clip` (in a
+--- score, where a staff shows several).
+local function heads_of(places, first, last, clip)
   local set, out = {}, {}
   for _, p in ipairs(places) do set[p] = true end
   for _, h in ipairs(gui.heads) do
-    if set[h.index] then out[#out + 1] = h end
+    if set[h.index] and (not first or (h.staff >= first and h.staff <= last)) and (not clip or not h.clip or h.clip == clip) then
+      out[#out + 1] = h
+    end
   end
   return out
 end
 
---- The selection: a faint band over its stretch, and its notes in the accent.
-local function draw_selection(g, eng, layout, clip, selection, area)
+--- The active staves of a frame: the first and the last.
+local function mine(F) return F.base + 1, F.base + F.count end
+
+--- The selection: a faint band over its stretch, and its notes in the
+--- accent; in a score, over each staff it takes.
+local function draw_selection(g, eng, layout, F, selection, area)
   if not selection then return end
   local st = eng.style
   local dy = area.top - gui.scroll
   local dx = view.galley and -gui.hscroll or 0
+  local S = view.staves
+  local parts = S.split(F, selection)
   for _, sys in ipairs(eng.systems) do
     for _, placed in ipairs(sys.measures) do
       local m = placed.m
@@ -249,20 +262,62 @@ local function draw_selection(g, eng, layout, clip, selection, area)
         local x0 = selection.kind == "line" and placed.x or placed.x + model.x_of(placed.p, max(selection.c0, m.start))
         local x1 = (selection.kind == "line" or selection.c1 >= m.start + m.length - EPS) and placed.x + placed.p.width
           or placed.x + model.x_of(placed.p, selection.c1)
-        local y0 = engrave.y_of(st, sys, 1, 8) - 2 * st.sp
-        local y1 = engrave.y_of(st, sys, #layout.staves, 0) + 2 * st.sp
-        g.ops[#g.ops + 1] = { "r", round(x0 + dx), round(y0 + dy), round(x1 - x0), round(y1 - y0), alpha(st.accent, 0.15), "", 1, 0 }
+        for _, part in ipairs(parts) do
+          local u = F.multi and layout.units[part.unit]
+          local y0 = engrave.y_of(st, sys, u and u.first or 1, 8) - 2 * st.sp
+          local y1 = engrave.y_of(st, sys, u and u.last or #layout.staves, 0) + 2 * st.sp
+          g.ops[#g.ops + 1] = { "r", round(x0 + dx), round(y0 + dy), round(x1 - x0), round(y1 - y0), alpha(st.accent, 0.15), "", 1, 0 }
+        end
       end
     end
   end
-  local _, places = daw.edit.roll.notes(clip, selection)
-  for _, h in ipairs(heads_of(places)) do tint(g, eng, h, st.accent) end
+  for _, part in ipairs(parts) do
+    local u = F.multi and layout.units[part.unit]
+    for _, id in ipairs(part.clips) do
+      local c = api.clip_get(id)
+      local shift = c.start - F.start
+      local region = util.merge(part.region, { c0 = part.region.c0 - shift, c1 = part.region.c1 - shift })
+      local _, places = daw.edit.roll.notes(daw.clip(id), region)
+      for _, h in ipairs(heads_of(places, u and u.first, u and u.last, id)) do tint(g, eng, h, st.accent) end
+    end
+  end
+end
+
+--- In a score, the staves not under the cursor dimmed (`score_dim`) or
+--- tinted in their tracks' colours (`score_colors`), and a mark at the
+--- active staff's start on every system.
+local function draw_staves(g, eng, layout, F, area)
+  local st = eng.style
+  local dy = area.top - gui.scroll
+  local first, last = mine(F)
+  for _, sys in ipairs(eng.systems) do
+    -- Each staff's band: halfway to the staves either side.
+    local function edge(s)
+      if s < 1 then return engrave.y_of(st, sys, 1, 8) - 3 * st.sp end
+      if s >= #layout.staves then return engrave.y_of(st, sys, #layout.staves, 0) + 3 * st.sp end
+      return (engrave.y_of(st, sys, s, 0) + engrave.y_of(st, sys, s + 1, 8)) / 2
+    end
+    for s = 1, #layout.staves do
+      if s < first or s > last then
+        local id = layout.tracks and layout.tracks[s]
+        local colour = daw.opt.score_dim and alpha(st.paper, 0.55)
+          or daw.opt.score_colors and id and alpha(daw.draw.track_colour(api.track_get(id)), 0.16)
+        if colour then
+          local y0, y1 = edge(s - 1), edge(s)
+          g.ops[#g.ops + 1] = { "r", 0, round(y0 + dy), round(area.width), round(y1 - y0), colour, "", 1, 0 }
+        end
+      end
+    end
+    local y0 = engrave.y_of(st, sys, first, 8)
+    local y1 = engrave.y_of(st, sys, last, 0)
+    g.ops[#g.ops + 1] = { "r", 3, round(y0 + dy), max(2, round(st.sp / 3)), round(y1 - y0), st.accent, "", 1, 0 }
+  end
 end
 
 --- Suggestions from `daw.complete`, laid out as real notes would be (the
 --- clip's notes with the suggestion's, written together), faint, in a
 --- second accent.
-local function draw_ghosts(g, eng, layout, clip, area)
+local function draw_ghosts(g, eng, layout, clip, area, F)
   local complete = daw.complete
   local cur = complete and complete.current and complete.current()
   if not (cur and cur.clip == clip.id and cur.item and #cur.item.notes > 0) then return end
@@ -289,7 +344,7 @@ local function draw_ghosts(g, eng, layout, clip, area)
     gui.ghost_key, gui.ghosts = key, ghosts
   end
   local colour = alpha(c.play_on, 0.45)
-  for _, gh in ipairs(gui.ghosts or {}) do lone_head(g, eng, layout, gh.beat, gh.step, colour, gh.base, area, gh.acc) end
+  for _, gh in ipairs(gui.ghosts or {}) do lone_head(g, eng, layout, gh.beat + F.off, gh.step, colour, gh.base, area, gh.acc, F) end
 end
 
 local SEVERITY_COLOUR = { c.error, c.warn, c.select, c.text_3 }
@@ -298,7 +353,7 @@ local function fmt_n(v) return string.format("%.1f", v) end
 
 --- Diagnostics of the clip: a wavy line under the staff across each one's
 --- stretch, its notes tinted, and a mark in the system's left margin.
-local function draw_diagnostics(g, eng, layout, clip, area)
+local function draw_diagnostics(g, eng, layout, clip, area, F)
   local diag = daw.diagnostic
   if not (diag and diag.get) then return end
   local list = diag.get(clip.id)
@@ -309,14 +364,14 @@ local function draw_diagnostics(g, eng, layout, clip, area)
   local marked = {}
   for _, d in ipairs(list) do
     local colour = SEVERITY_COLOUR[d.severity] or c.warn
-    local from, to = d.at, d.at + max(d.length, layout.grid or 0.25)
+    local from, to = d.at + F.off, d.at + F.off + max(d.length, layout.grid or 0.25)
     for _, sys in ipairs(eng.systems) do
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
         if to > m.start + EPS and from < m.start + m.length - EPS then
           local x0 = placed.x + model.x_of(placed.p, max(from, m.start)) - st.sp * 0.6
           local x1 = placed.x + model.x_of(placed.p, min(to, m.start + m.length)) + st.sp * 0.6
-          local y = engrave.y_of(st, sys, #layout.staves, 0) + 1.6 * st.sp + dy
+          local y = engrave.y_of(st, sys, F.base + F.count, 0) + 1.6 * st.sp + dy
           local pts, x, k = { "M", fmt_n(x0 + dx), fmt_n(y) }, x0, 0
           while x < x1 do
             x = min(x1, x + st.sp * 0.4)
@@ -330,41 +385,45 @@ local function draw_diagnostics(g, eng, layout, clip, area)
         end
       end
     end
-    for _, h in ipairs(heads_of(diag.places(d))) do tint(g, eng, h, colour) end
+    local first, last = mine(F)
+    for _, h in ipairs(heads_of(diag.places(d), first, last, clip.id)) do tint(g, eng, h, colour) end
   end
   for sys, severity in pairs(marked) do
-    local y = engrave.y_of(st, sys, 1, 4) + dy
+    local y = engrave.y_of(st, sys, F.base + 1, 4) + dy
     g.ops[#g.ops + 1] = { "r", 1, round(y - st.sp), max(2, round(st.sp / 3)), round(2 * st.sp), SEVERITY_COLOUR[severity] or c.warn, "", 1, 0 }
   end
 end
 
 --- The cursor: a hairline across the staff at its beat, and the note that
 --- would be entered there (half transparent), or its note tinted.
-local function draw_caret(g, eng, layout, area, under_index, inserting)
+local function draw_caret(g, eng, layout, area, under_index, inserting, F)
   local st = eng.style
   local beat, step = view.beat, view.step
   if gui.hover and inserting then beat, step = gui.hover.beat, gui.hover.step end
-  local sys, x = at_beat(eng, beat)
+  local sys, x = at_beat(eng, beat + F.off)
   if not sys then return end
   local dy = area.top - gui.scroll
   local dx = view.galley and -gui.hscroll or 0
-  local top = engrave.y_of(st, sys, 1, 8) - 1.5 * st.sp
-  local bottom = engrave.y_of(st, sys, #layout.staves, 0) + 1.5 * st.sp
+  -- Across the active staves (in a score, the cursor's instrument).
+  local top = engrave.y_of(st, sys, F.base + 1, 8) - 1.5 * st.sp
+  local bottom = engrave.y_of(st, sys, F.base + F.count, 0) + 1.5 * st.sp
   g.ops[#g.ops + 1] = { "r", round(x + dx), round(top + dy), 1, round(bottom - top), alpha(st.accent, 0.7), "", 1, 0 }
   if under_index and not (gui.hover and inserting) then
-    for _, h in ipairs(heads_of({ under_index })) do
-      if abs(h.start - view.beat) < EPS or (h.start <= view.beat + EPS) then tint(g, eng, h, st.accent) end
+    local here = view.beat + F.off
+    local first, last = mine(F)
+    for _, h in ipairs(heads_of({ under_index }, first, last, view.clip_id)) do
+      if (h.player or 1) == F.player and (abs(h.start - here) < EPS or (h.start <= here + EPS)) then tint(g, eng, h, st.accent) end
     end
   else
     local value = view:entry_length()
     local base = model.value_of(value) or 1
-    lone_head(g, eng, layout, beat, step, alpha(inserting and c.play_on or st.accent, 0.5), base, area, gui.accidental)
+    lone_head(g, eng, layout, beat + F.off, step, alpha(inserting and c.play_on or st.accent, 0.5), base, area, gui.accidental, F)
   end
 end
 
-local function draw_playhead(g, eng, layout, clip, area)
+local function draw_playhead(g, eng, layout, F, area)
   local t = api.transport_get()
-  local at = t.position - clip:get().start
+  local at = t.position - F.start
   local sys, x = at_beat(eng, at)
   if not sys or at < 0 then return end
   local st = eng.style
@@ -559,7 +618,9 @@ function view:paint(g, ctx)
   local data = clip:get()
   local track = api.track_get(data.track)
   local colour = daw.draw.track_colour(track)
-  local layout = self:layout()
+  -- The clip's staff, or the score it is a staff of (`view:frame`).
+  local F = self:frame()
+  local layout = F.layout
   local st = style_for(ctx)
   local rows
   if chrome then
@@ -576,17 +637,21 @@ function view:paint(g, ctx)
 
   local _, under_index = self:note()
   local selection = ctx.focused and daw.keymap.selection()
+  if F.multi then
+    g:layer("staves")
+    draw_staves(g, eng, layout, F, area)
+  end
   g:layer("selection")
-  if selection and selection.view == "notation" then draw_selection(g, eng, layout, clip, selection, area) end
+  if selection and selection.view == "notation" then draw_selection(g, eng, layout, F, selection, area) end
   g:layer("ghost")
-  draw_ghosts(g, eng, layout, clip, area)
+  draw_ghosts(g, eng, layout, clip, area, F)
   g:layer("diagnostic")
-  draw_diagnostics(g, eng, layout, clip, area)
+  draw_diagnostics(g, eng, layout, clip, area, F)
   g:layer("caret")
-  if ctx.focused then draw_caret(g, eng, layout, area, under_index, daw.keymap.mode == "i") end
+  if ctx.focused then draw_caret(g, eng, layout, area, under_index, daw.keymap.mode == "i", F) end
   local drag = gui.drag
   if drag and drag.moved and drag.to_beat then
-    lone_head(g, eng, layout, drag.to_beat, drag.to_step, alpha(st.accent, 0.8), 1, area)
+    lone_head(g, eng, layout, drag.to_beat + F.off, drag.to_step, alpha(st.accent, 0.8), 1, area, nil, F)
   end
   if gui.box then
     local b = gui.box
@@ -594,15 +659,15 @@ function view:paint(g, ctx)
     g:rect(x0, y0, abs(b.x1 - b.x0), abs(b.y1 - b.y0), { fill = alpha(st.accent, 0.12), stroke = st.accent, width = 1 })
   end
   g:layer("playhead")
-  draw_playhead(g, eng, layout, clip, area)
+  draw_playhead(g, eng, layout, F, area)
   -- A popover is drawn under the caret's system, so that the staff and what
   -- it previews stay in sight (at the foot of the page when the system
   -- reaches it); `paint` takes the line its box ends on.
   local popover = view.popover
   if popover and popover.active() then
-    local sys, x = at_beat(eng, view.beat)
+    local sys, x = at_beat(eng, view.beat + F.off)
     if sys then
-      local foot = engrave.y_of(st, sys, #layout.staves, 0) + 3 * st.sp + area.top - gui.scroll
+      local foot = engrave.y_of(st, sys, F.base + F.count, 0) + 3 * st.sp + area.top - gui.scroll
       g:layer("popover")
       popover.paint(g, x + (view.galley and -gui.hscroll or 0), math.min(math.max(area.top + 26, foot + 24), h - INFO - 2), w, c)
     end
@@ -613,7 +678,9 @@ function view:paint(g, ctx)
     local fifths = layout.fifths
     local key_text = view.key_name(fifths, select(2, view.key()), clip and clip.start)
     gui.key_text = key_text .. "  ·  " .. layout.meter.num .. "/" .. layout.meter.den .. "  ·  " .. track.name
-      .. (view.raw_view() and "  ·  raw" or "") .. (view.galley and "  ·  galley" or "") .. (view.page and "  ·  pages" or "")
+      .. (F.multi and ("  ·  staff " .. (F.base + 1) .. " of " .. #layout.staves) or "")
+      .. (view.raw_view() and "  ·  raw" or "") .. (view.galley and "  ·  galley" or "")
+      .. (view.page and (view.parts and view.parts.check and "  ·  pages, to check" or "  ·  pages") or "")
     local iy = h - INFO
     g:rect(0, iy, w, INFO, { fill = c.control })
     g:text(12, iy + 6, self:status_text(), { color = c.text_2, width = w - 260 })
@@ -624,11 +691,14 @@ end
 -- The pointer ----------------------------------------------------------------------------------
 
 --- What is at a point of the paint: the system, staff, measure, the beat
---- and the staff step there. The beat is on the chosen value within the
---- beat (`view:snap`, in `notation.tui`), or with `fine` on the grid.
-function view:locate(x, y, fine)
+--- and the staff step there, in the clip's beats and staves. The beat is
+--- on the chosen value within the beat (`view:snap`, in `notation.tui`),
+--- or with `fine` on the grid. In a score, a point on another staff makes
+--- that staff the active one with `activate`, and is nothing without it.
+function view:locate(x, y, fine, activate)
   local eng, area = gui.engraved, gui.area
-  local layout = self:layout()
+  local F = self:frame()
+  local layout = F and F.layout
   if not (eng and layout and area) then return nil end
   local st = eng.style
   local py = y - area.top + gui.scroll
@@ -643,14 +713,16 @@ function view:locate(x, y, fine)
       end
       local pos = floor((engrave.y_of(st, sys, staff, 0) - py) / (st.sp / 2) + 0.5)
       local step = model.CLEF_BOTTOM[layout.staves[staff]] + pos
+      local beat, measure
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
         if px >= placed.x and px < placed.x + placed.p.width then
-          local beat = self:snap(m, model.t_of(placed.p, px - placed.x) - m.start, fine) + m.start
-          return { sys = sys, staff = staff, step = step, beat = beat, measure = m }
+          beat, measure = self:snap(m, model.t_of(placed.p, px - placed.x) - m.start, fine) + m.start, m
         end
       end
-      return { sys = sys, staff = staff, step = step }
+      if not self:onto_staff(F, staff, nil, activate, beat) then return nil end
+      F = self:frame()
+      return { sys = sys, staff = staff - F.base, step = step - F.dstep, beat = beat and beat - F.off, measure = measure }
     end
   end
 end
@@ -800,26 +872,17 @@ function view:pointer(e)
   end
   local in_page = not chrome or e.y < gui.size.h - INFO
   if (e.kind == "down" or e.kind == "double") and in_page then
+    -- A click on another staff of a score makes it the active one first:
+    -- its note's (a condensed staff's player too), else the staff's.
     local hd = head_at(e.x, e.y)
-    local at = self:locate(e.x, e.y, e.alt)
-    if self.multi then
-      -- Several tracks, to read: a click sounds a note and puts the cursor there.
-      if hd then
-        self:set(hd.step, max(0, hd.start))
-        local layout = self:layout()
-        local ok, track = pcall(daw.track, layout.tracks[hd.staff])
-        local pitch
-        for _, ev in ipairs(model.events(layout, hd.staff)) do
-          for _, n in ipairs(ev.notes or {}) do
-            if n.step == hd.step and abs(ev.start - hd.start) < EPS then pitch = n.pitch end
-          end
-        end
-        if ok and track and pitch then track:play_note(pitch, daw.opt.velocity, 220) end
-      elseif at and at.beat then
-        self:set(at.step, at.beat)
-      end
-      return
+    if hd then
+      local F = self:frame()
+      self:onto_staff(F, hd.staff, hd.player, true, nil, hd.clip)
+      F = self:frame()
+      hd = util.merge(hd, { start = hd.start - F.off, step = hd.step - F.dstep })
     end
+    local at = self:locate(e.x, e.y, e.alt, true)
+    if self:readonly() then return end
     if e.button == "right" then
       if hd then self:set(hd.step, max(0, hd.start)) elseif at and at.beat then self:set(at.step, at.beat) end
       return context_menu(self, hd, at, e)
@@ -849,7 +912,7 @@ function view:pointer(e)
     if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
     if hd then
       self:set(hd.step, max(0, hd.start))
-      local note = clip:notes()[hd.index]
+      local note = self:clip():notes()[hd.index]
       if note then self:audition(note.pitch) end
       -- A drag moves it on the grid, from where it was taken.
       local from = self:locate(e.x, e.y, true)

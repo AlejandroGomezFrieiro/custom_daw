@@ -240,7 +240,10 @@ function view:render(buf, ctx)
   local track = api.track_get(c.track)
   local hue = daw.draw.track_hue(track)
   local colour = daw.draw.track_colour(track)
-  local layout = self:layout()
+  -- The clip's own staff, or the score it is a staff of: the cursor's
+  -- staff is the active one, drawn in full ink with a mark at its start.
+  local F = self:frame()
+  local layout = F.layout
   model.space(layout, { lead = 2, acc = 1, grace = 2, tail = 1, unit = unit })
   room_for_changes(layout)
   self.caret_cell = nil
@@ -253,7 +256,7 @@ function view:render(buf, ctx)
   -- A grand staff in a panel too low for both staves: the cursor's staff alone.
   local only
   if #layout.staves == 2 and h - 1 < 2 * (lines + 2 * (dense and 2 or 1)) then
-    only = self:cursor_staff(layout)
+    only = F.base + self:cursor_staff()
     local full = layout
     local measures = {}
     for i, m in ipairs(full.measures) do
@@ -279,13 +282,15 @@ function view:render(buf, ctx)
   local _, _, written = self:note()
   -- The note under the piano roll's cursor, when the two are bound in time.
   local partner = require("notation.roll").partner_place()
-  local here = written and model.name(written) or model.name(model.spell(model.key_pitch(self.step, fifths), fifths))
+  -- In a transposed part, the name as written.
+  local wf = fifths + F.dfifths
+  local here = written and model.name(written) or model.name(model.spell(model.key_pitch(self.step + F.dstep, wf), wf))
   local value = (model.NAMES[self.value] or "?") .. (self.dot and " dotted" or "")
   local clip = self:clip()
   local keyname = view.key_name(fifths, stored, clip and clip.start)
-  local extra = (layout.names and ("  " .. #layout.names .. " staves, to read") or "")
-    .. (layout.labels and ("  the score, " .. #layout.labels .. " instruments, to read") or "")
-    .. (layout.part_name and ("  part: " .. layout.part_name .. ", to read") or "") .. (view.raw_view() and "  raw" or "")
+  local extra = (layout.labels and ("  " .. view.score_name() .. ", staff " .. (F.base + 1) .. " of " .. #layout.staves) or "")
+    .. (layout.part_name and ("  part: " .. layout.part_name) or "") .. (self.parts and self.parts.check and ", to check" or "")
+    .. (view.raw_view() and "  raw" or "")
     .. ((self.voice or 1) > 1 and ("  voice " .. self.voice) or "")
     .. (only and ("  " .. (only == 1 and "right hand" or "left hand") .. " (low panel)") or "")
   -- How letters write: overwriting (as entered), pushing later music
@@ -360,7 +365,7 @@ function view:render(buf, ctx)
     return p
   end
   -- Scroll by whole measures to keep the cursor's measure on screen.
-  local _, cursor_measure = self:measure_at(self:follow_beat(), layout)
+  local _, cursor_measure = self:measure_at(self:follow_beat() + F.off, layout)
   if cursor_measure < self.first then self.first = cursor_measure end
   self.first = util.clamp(self.first, 1, #layout.measures)
   local rows_out, last = pack(layout, self.first, w, systems, prefix)
@@ -370,6 +375,21 @@ function view:render(buf, ctx)
   end
 
   local note_style = { fg = colour }
+  -- In a score, the other staves dimmed or in their tracks' colours
+  -- (`score_dim`, `score_colors`), the active one in full ink.
+  local function active(s) return only ~= nil or (s > F.base and s <= F.base + F.count) end
+  local staff_styles = {}
+  for s in ipairs(layout.staves) do
+    local id = F.multi and not active(s) and layout.tracks and layout.tracks[s]
+    if id then
+      local tint = daw.opt.score_colors and daw.draw.track_colour(api.track_get(id)) or colour
+      if daw.opt.score_dim then
+        staff_styles[s] = { fg = daw.draw.mix(tint, "#101216", 0.55) }
+      elseif daw.opt.score_colors then
+        staff_styles[s] = { fg = tint }
+      end
+    end
+  end
   local faint = { fg = daw.draw.mix(colour, "#101216", 0.55) }
   local faint_ink = { fg = daw.draw.mix(colour, "#101216", 0.3) }
   local clef_style = { fg = colour, bold = true }
@@ -410,7 +430,7 @@ function view:render(buf, ctx)
       clef = first.clefs and first.clefs[s] or clef
       local fifths = first.fifths or fifths
       for pos = 0, 8, 2 do buf:fill(edge, R.above(pos), sys.width - edge, 1, G.line, staff_style) end
-      for _, r in ipairs(cells.clef(clef, dense)) do ink(buf, edge + 1, R.above(r[1]), r[2], clef_style) end
+      for _, r in ipairs(cells.clef(clef, dense)) do ink(buf, edge + 1, R.above(r[1]), r[2], staff_styles[s] or clef_style) end
       if clef == "treble8" or clef == "bass8" then buf:text(edge + 1, R.above(-4), "8", clef_style) end
       if layout.names and layout.names[s] ~= "" then buf:text(edge + 1, band(s), layout.names[s], "Dim") end
       -- A score's instrument names: in full on the first system, short after.
@@ -433,6 +453,12 @@ function view:render(buf, ctx)
       local mid = floor((b0 + b1) / 2)
       for y = b0, b1 do
         buf:text(0, y, y == b0 and G.brace[1] or y == b1 and G.brace[4] or y == mid and G.brace[3] or G.brace[2], clef_style)
+      end
+    end
+    -- Where keys go: a mark at the active staff's start, over the brace.
+    if F.multi then
+      for s in ipairs(layout.staves) do
+        if active(s) then buf:text(0, rows[s].above(4), daw.opt.ascii and ">" or "▶", "RollCursor") end
       end
     end
     -- Tablature under the staves: a row for each string, the highest first.
@@ -464,11 +490,13 @@ function view:render(buf, ctx)
         if selection.c1 > m.start and selection.c0 < m.start + m.length and x1 > x0 then
           for s, clef in ipairs(layout.staves) do
             local ya, yb = band(s), band(s) + staff_rows - 1
-            if selection.kind ~= "char" and selection.kind ~= "line" then
+            local pitches = self:selected_staff(selection, F, only and F.base + 1 or s)
+            if pitches and (pitches[1] > 0 or pitches[2] < 127) then
               local bottom = model.CLEF_BOTTOM[m.clefs and m.clefs[s] or clef]
-              ya = math.max(ya, rows[s].above(model.spell(selection.r1, fifths).step - bottom))
-              yb = math.min(yb, rows[s].below(model.spell(selection.r0, fifths).step - bottom))
+              ya = math.max(ya, rows[s].above(model.spell(pitches[2], fifths).step - bottom))
+              yb = math.min(yb, rows[s].below(model.spell(pitches[1], fifths).step - bottom))
             end
+            if not pitches then yb = ya - 1 end
             if selection.kind == "line" then x0, x1 = mx, bx end
             if yb >= ya then buf:fill(x0, ya, x1 - x0, yb - ya + 1, nil, "Visual") end
           end
@@ -478,6 +506,8 @@ function view:render(buf, ctx)
       for s in ipairs(layout.staves) do
         local evs = m.staves[s]
         local R = rows[s]
+        local note_style = not m.ghost and staff_styles[s] or note_style
+        local mine = active(s)
         local function row(pos) return R.above(pos) end
         -- The row of a stem's end, its flags and beams: inside the system,
         -- a stem shortened rather than run into the next system.
@@ -554,9 +584,11 @@ function view:render(buf, ctx)
             local boxed = dense and hollow
             for i, n in ipairs(ev.notes) do
               local hx = ex + (shifted[i] and 2 or 0)
-              local is_cursor = under and ctx.focused and n.index == written.index and ev.start <= self.beat + EPS and self.beat < ev.start + ev.length - EPS
+              local is_cursor = under and ctx.focused and mine and (ev.player or 1) == F.player and (ev.clip or c.id) == c.id
+                and n.index == written.index
+                and ev.start <= self.beat + F.off + EPS and self.beat + F.off < ev.start + ev.length - EPS
               -- The note under the piano roll's cursor stands out.
-              head(buf, G, R, hx, n.pos, hollow, is_cursor and "NoteCursor" or partner == n.index and "Bright" or note_style)
+              head(buf, G, R, hx, n.pos, hollow, is_cursor and "NoteCursor" or mine and partner == n.index and "Bright" or note_style)
               for _, y in ipairs({ R.above(n.pos), R.below(n.pos) }) do
                 taken[hx][y], taken[hx + 1][y] = true, true
               end
@@ -726,12 +758,15 @@ function view:render(buf, ctx)
       end
       -- Dynamics, hairpins and text; repeat signs at the barlines.
       -- Under the first staff (between a grand staff's two); in a low
-      -- panel, on the last row there is.
-      local dyn_row = math.min(band(1) + staff_rows - 1, h - 1)
+      -- panel, on the last row there is. In a score, under the staff the
+      -- mark is on.
+      local function band_of(mk) return band(F.multi and not only and util.clamp(mk.staff or 1, 1, staves) or 1) end
+      local function dyn_row_of(mk) return math.min(band_of(mk) + staff_rows - 1, h - 1) end
       -- A hairpin from an earlier bar runs on through this one.
       for k = m.index - 1, 1, -1 do
         for _, mk in ipairs(layout.measures[k].marks or {}) do
           if (mk.kind == "cresc" or mk.kind == "dim") and mk.to > m.start + EPS then
+            local dyn_row = dyn_row_of(mk)
             local x1 = mk.to >= m.start + m.length - EPS and bx - 1 or xt(mk.to)
             local style = mk.ghost and "ExGhost" or note_style
             for hx = mx - 1, x1 do buf:text(hx, dyn_row, G.hairpin, style) end
@@ -742,6 +777,7 @@ function view:render(buf, ctx)
       for _, mk in ipairs(m.marks or {}) do
         local mxp = xt(mk.at)
         local note_style = mk.ghost and "ExGhost" or note_style
+        local dyn_row = dyn_row_of(mk)
         if mk.kind == "dyn" then
           buf:text(mxp, dyn_row, mk.value, mk.ghost and note_style or { fg = colour, bold = true, italic = true })
         elseif mk.kind == "cresc" or mk.kind == "dim" then
@@ -756,7 +792,7 @@ function view:render(buf, ctx)
             buf:text(x1, dyn_row, ">", note_style)
           end
         elseif mk.kind == "text" then
-          buf:text(mxp, band(1) + math.max(0, margin - 2) + (margin > 1 and 1 or 0), tostring(mk.value), mk.ghost and note_style or { fg = colour, italic = true })
+          buf:text(mxp, band_of(mk) + math.max(0, margin - 2) + (margin > 1 and 1 or 0), tostring(mk.value), mk.ghost and note_style or { fg = colour, italic = true })
         end
       end
       for st in ipairs(layout.staves) do
@@ -777,8 +813,8 @@ function view:render(buf, ctx)
         note_style = note_style, colour = colour, bar_style = bar_style, bottom = h - 1, top = top })
 
       -- The playhead.
-      if t.position >= c.start + m.start - EPS and t.position < c.start + m.start + m.length - EPS then
-        local px = xt(t.position - c.start)
+      if t.position >= F.start + m.start - EPS and t.position < F.start + m.start + m.length - EPS then
+        local px = xt(t.position - F.start)
         buf:fill(px, y0, 1, y1 - y0 + 1, nil, "Playhead")
       end
     end
@@ -788,16 +824,17 @@ function view:render(buf, ctx)
   -- note `Enter` or a letter would put there (the shadow note); in insert
   -- mode that follows the pointer while it is over the staff.
   if ctx.focused then
-    local beat, cstep, s = self.beat, self.step, nil
+    local beat, cstep, s = self.beat + F.off, self.step + F.dstep, nil
     local hover = view.cell_hover
     if inserting and hover and hover.from_beat == self.beat and hover.from_step == self.step then
-      beat, cstep, s, under = hover.beat, hover.step, only and 1 or self:staff_of_step(hover.step, layout), nil
+      beat, cstep, s, under = hover.beat + F.off, hover.step + F.dstep, only and 1 or F.base + self:staff_of_step(hover.step), nil
     end
     for _, sys in ipairs(geometry.systems) do
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
         if beat >= m.start - EPS and (beat < m.start + m.length - EPS or (m.index == #layout.measures and beat <= m.start + m.length + EPS)) then
-          s = s or (only and 1 or self:cursor_staff(layout))
+          s = s or (only and 1 or F.base + self:cursor_staff())
+
           local R = sys.rows[s]
           local pos = cstep - model.CLEF_BOTTOM[m.clefs and m.clefs[s] or layout.staves[s]]
           local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
@@ -846,10 +883,13 @@ end
 
 --- What is at a cell of the view: the line or space, the beat there
 --- (`view:snap`, `fine` on the grid), its staff, and `note` when the cell is
---- a note's head.
-function view:cell_at(x, y, fine)
+--- a note's head; in the clip's beats and staves. In a score, a cell on
+--- another staff makes that staff the active one with `activate`, and is
+--- nothing without it.
+function view:cell_at(x, y, fine, activate)
   local g = self.geometry
-  local layout = self:layout()
+  local F = self:frame()
+  local layout = F and F.layout
   if not (g and layout) then return nil end
   for _, sys in ipairs(g.systems) do
     for _, placed in ipairs(sys.measures) do
@@ -862,18 +902,27 @@ function view:cell_at(x, y, fine)
           if pos >= -reach - 1 and pos <= 8 + reach + 1 then
             local step = model.CLEF_BOTTOM[m.clefs and m.clefs[s] or clef] + pos
             local at = { step = step, beat = m.start + self:snap(m, model.t_of(m, x - placed.x) - m.start, fine) }
-            at.staff = self:staff_of_step(step, layout)
+            local staff = g.staves and #g.staves == 1 and F.base + 1 or s
             -- A head is drawn at its chord's start, two cells wide, or two
             -- columns right beside a second; on the dense staff a head in a
             -- space is on the rows either side of it.
+            local player, owner
             for _, near in ipairs(R.step == 2 and { step, step + 1, step - 1 } or { step }) do
-              local ev, n = self:event_at(at.beat, near)
-              local hx = ev and placed.x + floor(model.x_of(m, ev.start) + 0.5)
-              if n and x >= hx and x <= hx + 3 then
-                at.note, at.beat, at.step = n.index, ev.start, near
-                break
+              for _, ev in ipairs(m.staves[s] or {}) do
+                local hx = placed.x + floor(model.x_of(m, ev.start) + 0.5)
+                for _, n in ipairs(ev.notes or {}) do
+                  if not at.note and n.step == near and at.beat >= ev.start - EPS and at.beat < ev.start + ev.length - EPS
+                    and x >= hx and x <= hx + 3 then
+                    at.note, at.beat, at.step, player, owner = n.index, ev.start, near, ev.player, ev.clip
+                  end
+                end
               end
             end
+            if not self:onto_staff(F, staff, player, activate, at.beat, owner) then return nil end
+            F = self:frame()
+            at.beat = at.beat - F.off
+            at.staff = staff - F.base
+            at.step = at.step - F.dstep
             return at
           end
         end
@@ -892,15 +941,17 @@ local function hint(self, at)
 end
 
 function view:on_mouse(e)
-  local layout = self:layout()
+  local F = self:frame()
+  local layout = F and F.layout
   if not (self.geometry and layout) then return end
   local wheel = daw.mouse.wheel(e)
   if wheel then
     self.first = util.clamp(self.first + wheel, 1, #layout.measures)
     return api.ui_redraw()
   end
-  local at = self:cell_at(e.x, e.y, daw.mouse.has(e, "A"))
   local inserting = daw.keymap.mode == "i"
+  -- A press on another staff of a score makes it the active one.
+  local at = self:cell_at(e.x, e.y, daw.mouse.has(e, "A"), e.kind == "down")
   if e.kind == "move" then
     view.cell_hover = inserting and at and { beat = at.beat, step = at.step, from_beat = self.beat, from_step = self.step } or nil
     hint(self, at)
@@ -908,14 +959,8 @@ function view:on_mouse(e)
   end
   if e.kind ~= "down" or not at then return end
   view.cell_hover = nil
-  if self.multi or e.button == "right" then
+  if e.button == "right" then
     self:set(at.step, at.beat)
-    if self.multi then
-      -- Several tracks, to read: a click sounds the note.
-      local note = self:note()
-      if note then self:audition(note.pitch) end
-      return
-    end
     return daw.ui.menu(self:menu_items(at.note ~= nil, at), { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) })
   end
   if e.button ~= "left" then return end

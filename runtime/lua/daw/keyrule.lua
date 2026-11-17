@@ -4,8 +4,12 @@
 local keymap = daw.keymap
 local M = {}
 
---- Keys that are Vim's motions, and only ever motions in every view.
-M.motions = { "h", "j", "k", "l", "w", "b", "e", "0", "^", "$", "gg", "G" }
+--- Keys that are Vim's motions, and only ever motions in every view: the
+--- structural ones too, by Vim's and Tree-sitter's meanings (`]]` `[[`
+--- the next or previous of the same kind, `]s` `[s` a sibling, `[{` `]}`
+--- up to the enclosing group and its end).
+M.motions = { "h", "j", "k", "l", "w", "b", "e", "0", "^", "$", "gg", "G", "]]", "[[", "]s", "[s", "[{", "]}" }
+
 
 --- What the value keys change: the main value, or the second.
 M.values = { ["+"] = "main+", ["<C-a>"] = "main+", ["-"] = "main-", ["<C-x>"] = "main-", ["]"] = "second+", ["["] = "second-" }

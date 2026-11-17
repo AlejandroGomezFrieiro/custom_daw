@@ -246,8 +246,9 @@ local function is_drums(track)
   return type(track.meta) == "table" and track.meta.drums ~= nil
 end
 
---- The tracks whose notes could show behind the roll's: every track but
---- the active clip's, with MIDI clips. `{ id, name, color, drums, on }`
+--- The tracks whose notes could show behind the roll's: every track (of
+--- the scope, in a narrowed tab) but the active clip's, with MIDI clips.
+--- `{ id, name, color, drums, on }`
 --- each, `on` saying whether its notes show.
 function M.tracks()
   local a = midi(M.active())
@@ -259,7 +260,9 @@ function M.tracks()
     for _, id in ipairs(option) do listed[id] = true end
   end
   local out = {}
-  for _, id in ipairs(api.track_list()) do
+  -- In a tab narrowed to a group (`daw.scope`), the group's tracks alone.
+  local scope = rawget(daw, "scope")
+  for _, id in ipairs(scope and scope.tracks() or api.track_list()) do
     local t = api.track_get(id)
     if id ~= a.track and not t.master then
       local has_midi = false
@@ -357,6 +360,61 @@ function M.sounding(beat)
     if ok and type(chord) == "table" then name = chord.name end
   end
   return out, name
+end
+
+-- The active track -------------------------------------------------------------
+
+--- The tracks whose notes the roll shows, in the order of the track list:
+--- the active clip's and those shown behind it.
+function M.visible()
+  local a = midi(M.active())
+  if not a then return {} end
+  local on = { [a.track] = true }
+  for _, t in ipairs(M.tracks()) do
+    if t.on then on[t.id] = true end
+  end
+  local out = {}
+  for _, id in ipairs(api.track_list()) do
+    if on[id] then out[#out + 1] = id end
+  end
+  return out
+end
+
+--- A track's MIDI clip to edit from the roll: the one under the roll's
+--- cursor in the song, else the one nearest it.
+local function clip_of(track, at)
+  local best, gap
+  for _, c in ipairs(api.clip_list(track)) do
+    if c.kind == "midi" then
+      local d = at < c.start and c.start - at or at >= c.start + c.length and at - (c.start + c.length) + EPS or 0
+      if not gap or d < gap then best, gap = c, d end
+    end
+  end
+  return best
+end
+
+--- Make the track `n` places after the active clip's among those the roll
+--- shows (before it with a negative `n`) the active one: its clip under
+--- the cursor takes new notes, and the old one's notes show behind. With
+--- `wrap` it goes round. False when the roll shows no other track.
+function M.step_track(n, wrap)
+  local view, list = roll(), M.visible()
+  local a = midi(M.active())
+  if not a or #list < 2 then return false end
+  local at = 1
+  for i, id in ipairs(list) do
+    if id == a.track then at = i end
+  end
+  local to = at + n
+  if wrap then to = (to - 1) % #list + 1 end
+  to = math.max(1, math.min(#list, to))
+  if to == at then
+    daw.notify(n > 0 and "the last track the roll shows" or "the first track the roll shows", "warn")
+    return true
+  end
+  local c = clip_of(list[to], a.start + view.beat)
+  if c then M.activate(c.id) end
+  return true
 end
 
 -- Choosing --------------------------------------------------------------------

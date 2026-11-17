@@ -249,9 +249,10 @@ The rest of the page:
 - **Lyrics**: a note's `meta.lyric` (the `utau` extension's vocal clips keep
   theirs there) is written under it.
 - **Several tracks**: `:notation.tracks` (`gT`) shows every track with MIDI
-  over the open clip's stretch as one system of staves, each named, to read;
-  a click on a note sounds it. The same again goes back to the clip alone, to
-  edit. The full score and each instrument's part are in [Parts](#parts).
+  over the open clip's stretch as a score, a staff each, the open clip's the
+  one edited; the same again goes back to the clip alone. Every track, a
+  group's or a selection's are in [The score](#scores), the parts in
+  [Parts](#parts).
 
 ## Keys
 
@@ -696,6 +697,114 @@ else; and in normal mode the letters are motions and operators, so notes
 are only entered by letter in insert mode. A click chooses rather than
 enters, as in MuseScore outside note input.
 
+## Scores
+
+A score of several tracks is edited where it is read, as Dorico and
+MuseScore edit theirs: each staff is a line, and the staff the cursor is on
+is the track every key writes. There is no other state to keep: moving
+between staves is moving the cursor, and what an edit writes is an ordinary
+edit of that track's clip (see [MIDI is the truth](#midi-is-the-truth)).
+
+![The quartet's score in the terminal: `[[` and `]]` go from instrument to instrument, the clarinet's staff marked and the others dimmed; a block over three staves, then gU on each](images/tui-score.gif)
+
+![The score in the terminal, the clarinet's staff the one edited, the others dimmed (score_dim)](images/tui-score-active.png)
+
+![The score in the terminal: a block of bars 5 and 6 over the flutes and the clarinet (Ctrl-v, Ctrl-k)](images/tui-score-block.png)
+
+![The score in the window: a block of bars over the flutes and the clarinet, the first flute's staff marked as the cursor's](images/gui-score-block.png)
+
+| | |
+| --- | --- |
+| `:score` | the score of the tracks the tab is narrowed to (`:narrow`, `zn`; it follows the scope), else of every track |
+| `:score all`, `:part.score`, `\Ps` | every track with MIDI |
+| `:score Strings` | a group's tracks (by its name, or part of it) |
+| `:score selection`, `:'<,'>score` | the tracks of the arrange view's selection |
+| `:notation.tracks`, `gT` | the tracks with MIDI over the open clip's stretch |
+| `:score off`, `:part off`, `\Po` | the clip alone |
+| `:score.check`, `zp` | the score's pages as they will be exported, to read: the one view where nothing is edited, and it says so; again to edit |
+
+The instruments stand in score order (see [Parts](#parts)). A staff is
+every MIDI clip of its track on the song's timeline (with `gT`, those over
+the clip's stretch): clips pasted one after another read as one line, a
+bar no clip plays is a bar of rest, and where clips overlap the one that
+starts later is written. The open clip is the one under the cursor: moving
+past its end (`l`, `w`, `W`) goes on into the next clip, which becomes the
+one edited, and back past its start into the clip before. A note entered
+in a gap goes into the clip before it, which grows to hold it (as a clip
+grows when notes are entered past its end); before a track's first clip
+nothing is entered. Clips of one track whose notes would choose different
+clefs are written on one grand staff. The cursor's staff is drawn in full ink with a mark at its start, and
+the title (in the window, the line at the bottom) names its track and says
+which staff it is: `the full score, staff 4 of 6`. With `:set score_dim` the
+other staves are drawn dimmer, with `:set score_colors` in their tracks'
+colours (both in the terminal's cells, on its pixels and in the window).
+
+**Moving between staves.** `j` and `k` move the cursor's pitch, as
+everywhere in the view, and note entry goes by them. The staves are
+reached by Vim's structural keys, as Tree-sitter's are:
+
+| Keys | |
+| --- | --- |
+| `Ctrl-j` `Ctrl-k` | a staff down, up: a grand staff's two, then on into the next instrument |
+| `]]` `[[` | the next, previous instrument (a grand staff is one) |
+| `]s` `[s` | the next, previous instrument in the same group |
+| `[{` `]}` | the first, last instrument of the group (Woodwinds, Strings); there already, of the group before or after |
+| a click | on another staff, makes it the cursor's, on its note or its line |
+
+Each takes a count (`3]]`) and is a motion: `d]]` deletes this staff and
+the next whole, `Ctrl-v` stretches a block over the staves it reaches, and
+`V` over staves takes them whole. The group is the one the track is in
+(`daw.groups`), else the family its name says, as the score's brackets
+show. On a grand staff `Ctrl-j` goes to the lower hand first; the hands'
+voices are reached with `]v` `[v`.
+
+**Every edit goes to the cursor's staff**: entering by letter, the
+operators and text objects, the popovers, `:art`, the marks, `x`, `p`,
+undo. A passage yanked on one staff pastes into another (`yib`, `]]`,
+`P`), written as it was. **A selection over staves** (`Ctrl-v` then
+`Ctrl-j`, or `V`) is bars by staves: `x`, `d`, `y`, `gU`, `g+`, `>`, `<`,
+`g@`, `g'` and the rest act on each staff's clip over those bars (every
+pitch of each staff; within one staff, a block keeps its pitches), and a
+popover or `:` on it runs on each staff in turn (`\d` `p` writes a `p` on
+each). All of it is one undo step, however many tracks it touched.
+
+**Ex over staves.** In a score a staff is a clip to Ex: `s4` the fourth
+staff, `s2,s5` the second to the fifth, `s.` the cursor's, `s$` the last,
+and a group's or a family's name (`Strings`, `Woodwinds`) its instruments,
+before or after the bars:
+
+| | |
+| --- | --- |
+| `:5,8 s4 d` | bars 5 to 8 of the fourth staff, emptied |
+| `:s2,s3 5,8>` | moved later, on the second and third staves |
+| `:5,8 Strings notation.dyn p` | a `p` at bar 5 on each string instrument |
+| `:5,8 Woodwinds art stc` | staccato on the woodwinds' notes (with the articulations extension) |
+| `:s1,s4 g/c4/d` | the C4s of the first four staves deleted |
+
+Ex's own commands (`d`, `y`, `>`, `<`, `s`, `g`, `transpose`) work on the
+staves' notes; a command of the view runs on each staff's clip in turn, as
+if the cursor were there.
+
+**A transposed part is edited as written.** In a part (`:part Clarinet`)
+the letters typed are the notes written: in a part in B flat `c` writes a
+C, which the clip's MIDI keeps as the B flat it sounds; the cursor, a
+click and the motions go by the written staff. The part's own layout
+(`zs` and `zj` there, `:part.break`, `:part.join`) stays the part's.
+
+**A condensed staff is two players** (`:part.condense`): voice 1 is the
+first player's clip and voice 2 the second's (`]v` `[v`, and `v` in insert
+mode, go from one to the other). An edit in bars written `a2` is made for
+both; `:score.split` (on the cursor's bar, a range or a selection) writes
+them apart there, as two voices, so that an edit is one player's, and
+again joins them.
+
+From Lua: `require("notation.staves")` has `show(tracks, label)`,
+`split(frame, region)` (a region of the score as each clip has it),
+`operate(fn, region, ctx)`, `within(clip_id, fn)` (run with another clip
+open), and the motions `staff`, `unit`, `sibling` and `edge`;
+`view:frame()` says what the view shows and where the open clip is in it,
+`view:activate(clip_id)` makes a staff the cursor's.
+
 ## Import and export
 
 | | |
@@ -772,8 +881,8 @@ so the files need no fonts.
 ## Parts
 
 A song of several instruments is a score, and each instrument has a part
-to play from. Every track with MIDI is an instrument (its first MIDI clip
-with notes); nothing is copied: the score and the parts are made from the
+to play from. Every track with MIDI is an instrument, every MIDI clip of it
+on the song's timeline (see [The score](#scores)); nothing is copied: the score and the parts are made from the
 clips' MIDI each time they change, with what notation keeps on the notes,
 so a part is never out of date.
 
@@ -783,11 +892,12 @@ so a part is never out of date.
 
 | | |
 | --- | --- |
-| `:part.score`, `\Ps` | the full score in the notation view, to read |
+| `:part.score`, `\Ps` | the full score in the notation view, to edit ([The score](#scores)) |
 | `:part.condense`, `\Pc` | two players of an instrument on one staff, or each on their own |
-| `:part`, `\Pp` | the part of the open clip's track; `:part Flute 1` an instrument's (by name, its start, or its place in the score) |
+| `:part`, `\Pp` | the part of the open clip's track, to edit as it is written; `:part Flute 1` an instrument's (by name, its start, or its place in the score) |
 | `:part.next` `:part.prev`, `\Pn` `\PN` | the next, previous part, in score order |
-| `:part off`, `\Po` | the clip again, to edit |
+| `:part off`, `\Po` | the clip alone again |
+
 | `:part.transpose Bb` | how the track's part is written (below) |
 | `:5,8part.cue Oboe` | the oboe's notes as a cue in this part's rests of bars 5 to 8 (or a selection); `:part.cue off` |
 | `:part.break`, `\Pb`; `:part.join`, `\Pj` | in the part: a system starts at the cursor's bar; the bar stays on the system before; again, as it fits |
@@ -795,8 +905,9 @@ so a part is never out of date.
 | `:part.name Flute 1 \| Fl. 1` | the names the score and the part give the instrument, in full and short |
 | `:part.export flute.pdf`, `\Pe` | the part shown (or the score) as engraved pages; `all` a file for each part, `score` the full score; `.musicxml` or `.mxl` every part in one file |
 
-The score and the parts are read only, as the several-tracks view is: the
-keys that edit say so, and `zg`, `zp`, `zi`, `zo` and the motions work.
+The score and the parts are edited as they are read: see
+[The score](#scores). Only their pages to check before export
+(`:score.check`, `zp`) are read only.
 
 **The full score.** The instruments stand in an orchestra's order:
 woodwinds, brass, percussion, harp and keyboards, voices, strings, and
@@ -952,10 +1063,13 @@ on each staff: notes and rests with their start, value (`base`, `dots`),
 
 ## Not done
 
-Editing several tracks at once, and editing in the score or a part
-(they are shown to read). Of the parts: a score written transposed (it is
-at concert pitch); chord symbols transposed in a part; a track's later
-MIDI clips (an instrument is its first clip with notes); cue notes beamed
+Of the score and the parts: a score written transposed (it is at concert
+pitch); in a transposed part, a key or clef written in a popover is the
+sounding one, and `:s` goes by sounding pitches; a passage pasted into
+another instrument is written as it was, not moved into its range; chord
+symbols transposed in a part; ties across the join of two clips (each
+clip's notes are its own); cue notes beamed
+
 (they have flags) and cues on a part's second staff; condensing more than
 two players, chords of two players on one stem (they are two voices), and
 accidentals that carry from one player to the other on a condensed staff;

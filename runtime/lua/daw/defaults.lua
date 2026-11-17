@@ -2545,7 +2545,19 @@ pmap("[", function(ctx)
   roll:change(function(n) n.velocity = math.max(1, n.velocity - 10 * (ctx.count or 1)) end)
 end, "Softer", { role = "second-" })
 pmap("gh", function() roll:audition() end, "Hear the pitch under the cursor")
--- The clips the roll edits (`daw.roll_clips`).
+-- The clips the roll edits (`daw.roll_clips`). The tracks it shows are
+-- REAPER's editable and visible: `]t` `[t` make the next or previous one
+-- active (its notes the ones edited, the old ones behind), and `Tab`
+-- `Shift-Tab` go round them; with no other track shown, `Tab` is the next
+-- view as everywhere.
+pmap("]t", function(ctx) daw.roll_clips.step_track(ctx.count or 1) end, "The next track shown becomes the one edited")
+pmap("[t", function(ctx) daw.roll_clips.step_track(-(ctx.count or 1)) end, "The track shown before becomes the one edited")
+pmap("<Tab>", function(ctx)
+  if not daw.roll_clips.step_track(ctx.count or 1, true) then daw.cmd("view.next") end
+end, "The next track shown becomes the one edited, round; else the next view")
+pmap("<S-Tab>", function(ctx)
+  if not daw.roll_clips.step_track(-(ctx.count or 1), true) then daw.cmd("view.prev") end
+end, "The track shown before becomes the one edited, round; else the view before")
 local function clip_here()
   -- The clip of the note under the cursor: one edited, or one shown behind.
   local _, _, part = roll:note_at(roll.pitch, roll.beat)

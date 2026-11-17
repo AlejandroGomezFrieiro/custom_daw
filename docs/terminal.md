@@ -271,7 +271,12 @@ clips at once (REAPER's editability follows selection). One is active: new
 notes go there, its name is in the title, and the title says how many more
 are edited. `ga` on another track's note makes its clip the active one (in
 place of the old), `gE` edits that clip too or no longer, `gn` `gN` make the
-next or previous clip edited active, `:roll.only` goes back to one clip, and
+next or previous clip edited active, `]t` `[t` make the next or previous
+track shown the one edited (its clip at the cursor; the old one's notes then
+show behind, as REAPER's editable and visible tracks), `Tab` `Shift-Tab` go
+round the tracks shown (with none shown, `Tab` is the next view), a click on
+a note behind makes its clip the active one, `:roll.only` goes back to one clip, and
+
 `Enter` on a clip in `:roll.tracks` adds it or takes it out (`Ctrl-a` there
 makes it active). Opening several clips at once: select them in the arrange
 view (`v` over them, or the pointer) and press `Enter`. Motions, operators,
@@ -1269,10 +1274,13 @@ daw.query.field("note", "channel", function(n) return n.data.meta.channel end)  
 | --- | --- | --- |
 | `]]` `[[` | arrange | the next or previous clip of the same kind on the track: the same name without a number or "copy" at its end (`pizz 2` is a `pizz`), and MIDI or audio alike |
 | `]s` `[s` | arrange | the next or previous track beside this one in its group (or at the top) |
-| `[u` `]u` | arrange | up to the group the track is in; down into a group, to its first track |
+| `[{` `]}` | arrange | up to the group the track is in (as Vim's `[{` goes to the brace around); the group's last track (there already, the last of the group around it) |
+| `]u` | arrange | down into a group, to its first track (`[u` is `[{` too) |
 | `ig` `ag` | arrange | the tracks of the group the cursor is in; with the group track |
 | `]]` `[[` | piano roll | the next or previous note of the same pitch |
+| `]]` `[[` `]s` `[s` `[{` `]}` | notation, in a score | the next or previous instrument; in its group; the group's first and last (see the notation README, "The score") |
 
 They take a count and are motions for the operators (`d]]` deletes up to
-the next clip of the kind); `]]`, `[[` and `[u` go in the jump list. `:g`
+the next clip of the kind), wherever they are mapped (the key rule checks
+it); `]]`, `[[`, `[{` and `]}` go in the jump list. `:g`
 and `:v` (Ex, above) are the other way to act on what a pattern finds.
