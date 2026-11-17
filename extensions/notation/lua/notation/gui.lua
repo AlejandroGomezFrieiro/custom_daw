@@ -596,14 +596,16 @@ function view:paint(g, ctx)
   end
   g:layer("playhead")
   draw_playhead(g, eng, layout, clip, area)
-  -- A popover is drawn over the caret's staff, the page under it.
+  -- A popover is drawn under the caret's system, so that the staff and what
+  -- it previews stay in sight (at the foot of the page when the system
+  -- reaches it); `paint` takes the line its box ends on.
   local popover = view.popover
   if popover and popover.active() then
     local sys, x = at_beat(eng, view.beat)
     if sys then
-      local top = engrave.y_of(st, sys, 1, 8) - 2 * st.sp + area.top - gui.scroll
+      local foot = engrave.y_of(st, sys, #layout.staves, 0) + 3 * st.sp + area.top - gui.scroll
       g:layer("popover")
-      popover.paint(g, x + (view.galley and -gui.hscroll or 0), math.max(area.top + 26, top), w, c)
+      popover.paint(g, x + (view.galley and -gui.hscroll or 0), math.min(math.max(area.top + 26, foot + 24), h - INFO - 2), w, c)
     end
   end
 

@@ -320,7 +320,7 @@ is `ie` (as in the piano roll too).
 | --- | --- |
 | `f` `F` + letter | to the next, previous note of that name in the voice (`2fe`); with an operator the note found is taken in, as Vim's `df` |
 | `t` `T` + letter | to the note before (after) it |
-| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it waits a moment (`timeoutlen`) for a leader key, then moves; `,` followed by a key no leader map has moves at once |
+| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it lists the leader keys (the popovers by name) and waits a few seconds for one, then moves; `,` followed by a key no leader map has moves at once |
 | `)` `(` | the next, previous phrase: a note after a rest |
 | `]v` `[v` | the next, previous voice (then the next staff's); entering goes into it |
 | `Ctrl-j` `Ctrl-k` | the staff below, above |
@@ -444,9 +444,11 @@ popovers, not the device panel, the mixer, the session view and the piano
 roll they show elsewhere (`:view.toggle devices` and the others do that
 there). `,,` stays the command list; `,.` repeats the last popover.
 
-The prompt is drawn over the caret's staff in the terminal and on the
-engraved page (in a window, and on a terminal's pixel surface), and on
-the command line of the window as well.
+The prompt is drawn under the caret's system in the terminal and on the
+engraved page (in a window, and on a terminal's pixel surface), so that what
+it previews stays in sight, and only there: the window's status line does
+not repeat it. Before anything is typed it shows examples of what to type,
+dim; `Tab` offers the choices.
 
 **Coming from Dorico.** The popovers are Dorico's (Shift and a letter
 there, the leader and a letter here), with the same words: `mp<f`,

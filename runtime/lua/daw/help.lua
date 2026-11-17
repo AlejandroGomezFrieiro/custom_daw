@@ -498,7 +498,11 @@ local function build()
         -- Where the manual names a thing comes before where the course
         -- or an extension's page does.
         local after = source.group == "manual" and 0 or 3
-        for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, (a.first and 2 or 4) + after) end
+        -- A row of the key table is a one-line entry for its keys: it beats
+        -- every mention in prose, and a key's own heading.
+        local prio = (a.first and 2 or 4) + after
+        if a.first and source.name == "course/keys.md" then prio = 1 end
+        for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, prio) end
       end
     end
   end
@@ -629,9 +633,12 @@ function M.show(source, row, col)
     win = layout.show_in(win, "textbuf", buf.id)
   else
     local new = layout.split({ view = "textbuf", buf = buf.id })
-    -- Help takes two thirds of what it was split from, as Vim gives it
-    -- 'helpheight' rows.
-    if new and not new.size then new.weight = (new.weight or 1) * 2 end
+    -- Help takes half the screen, as Vim gives it 'helpheight' rows, whatever
+    -- else shares the column.
+    if new then
+      local _, height = daw.ui.size()
+      new.size, new.weight = math.max(8, math.floor(height / 2)), nil
+    end
     win = new or layout.show_in(layout.current(), "textbuf", buf.id)
   end
   place(win, row, col)
@@ -812,7 +819,7 @@ daw.textbuf.kind("help", {
   parse = function() return {} end,
   title = function(ctx)
     local source = build().by_name[ctx.args[1]]
-    return "help · " .. (source and source.title or tostring(ctx.args[1]))
+    return "Help · " .. (source and source.title or tostring(ctx.args[1]))
   end,
   hint = "Ctrl-] follows a link or looks up the word · Ctrl-o back · K looks up · :helpgrep searches · - contents",
   paint = function(canvas, x, y, text, _, maxw, row, buf)

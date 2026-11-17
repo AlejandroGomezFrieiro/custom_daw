@@ -754,8 +754,11 @@ function view:render(buf, ctx)
           local R = sys.rows[s]
           local pos = cstep - model.CLEF_BOTTOM[m.clefs and m.clefs[s] or layout.staves[s]]
           local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
-          -- A popover opens over the caret's staff.
-          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.max(1, R.above(8) - 2) }
+          -- A popover opens under the system, at the caret's column, so that
+          -- the staff and what it previews stay in sight; at the foot of the
+          -- panel when the system fills it.
+          local last = sys.rows[#sys.rows]
+          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.min(h - 1, math.max(1, last.above(0) + 3)) }
           local style = inserting and "InsertCursor" or "RollCursor"
           if selection then
             buf:fill(cx, R.above(pos), 2, 1, nil, style)

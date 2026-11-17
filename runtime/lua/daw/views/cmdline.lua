@@ -3,7 +3,7 @@
 local api = daw.api
 local M = {}
 
-local active      -- { prompt, chars, pos, on_submit, complete, preview, note, history, index, matches, match, anchor, on_key }
+local active      -- { prompt, chars, pos, on_submit, complete, preview, note, history, index, matches, match, anchor, on_key, ghost }
 local histories = {}
 -- A prompt open in one seat is that seat's; the history is everyone's.
 daw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
@@ -191,7 +191,8 @@ end
 --- what it is about, or nil for the bottom row), `on_key(key, text)` (a
 --- key the prompt handles itself before the line does: it returns true
 --- when it took the key, or the new text of the line), `mode` (the mode to
---- go back to when it closes, "n" unless said). `text` comes selected, so
+--- go back to when it closes, "n" unless said), `ghost` (examples shown
+--- dimly in the empty line). `text` comes selected, so
 --- that typing replaces it (`select = false` keeps it to be added to; so
 --- does the `:` line). Candidates are strings, or
 --- `{ text = whole line, label = the part shown, desc = ... }`. They are
@@ -203,7 +204,7 @@ function M.open(opts, on_submit)
   histories[name] = histories[name] or {}
   active = {
     prompt = opts.prompt or "", on_submit = on_submit, complete = opts.complete, preview = opts.preview or opts.on_change,
-    anchor = opts.anchor, on_key = opts.on_key, back = opts.mode,
+    anchor = opts.anchor, on_key = opts.on_key, back = opts.mode, ghost = opts.ghost,
     label = opts.label or (opts.prompt or ""):match("^(%a[^:]*%a)"),
     history = histories[name], history_name = name, chars = {}, pos = 0,
   }
@@ -249,7 +250,7 @@ function M.state()
     prompt = active.prompt, before = table.concat(active.chars, "", 1, active.pos),
     after = table.concat(active.chars, "", active.pos + 1), selected = active.selected or nil,
     matches = active.matches, match = active.match, note = active.note, note_level = active.note_level,
-    anchored = active.anchor ~= nil, history = active.history_name,
+    anchored = active.anchor ~= nil, history = active.history_name, ghost = active.ghost,
   }
 end
 
@@ -329,7 +330,8 @@ daw.ui.draw_popup = M.draw_popup
 function M.draw_anchored(buf, a, at)
   local typed = text()
   local note = a.note or ""
-  local width = api.str_width(a.prompt) + math.max(api.str_width(typed) + 1, 12) + 2
+  local ghost = typed == "" and a.ghost or nil
+  local width = api.str_width(a.prompt) + math.max(api.str_width(typed) + 1, ghost and api.str_width(ghost) + 1 or 12) + 2
   if note ~= "" then width = width + api.str_width(note) + 2 end
   width = math.min(math.max(width, 24), buf.width)
   local x = math.max(0, math.min(at.x, buf.width - width))
@@ -338,6 +340,8 @@ function M.draw_anchored(buf, a, at)
   local used = buf:text(x + 1, y, a.prompt, "PmenuSel")
   local room = width - used - 2
   buf:text(x + 1 + used, y, daw.util.fit(typed, math.max(1, room)), "Pmenu")
+  -- Examples of what to type, dim, until something is typed over them.
+  if ghost then buf:text(x + 1 + used, y, daw.util.fit(ghost, math.max(1, room)), "PmenuDesc") end
   if note ~= "" then
     local w = math.min(api.str_width(note), math.max(0, room - api.str_width(typed) - 2))
     if w >= 4 then buf:text(x + width - 1 - w, y, daw.util.fit(note, w), a.note_level == "error" and "Warn" or "PmenuDesc") end

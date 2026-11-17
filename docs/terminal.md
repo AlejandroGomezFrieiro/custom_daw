@@ -546,10 +546,13 @@ one above another. The status line and the bottom line stay along the
 bottom of every tab. In insert mode a message goes at the right end of the
 bottom line and the keys keep the rest. When three or more panels stack, the
 arrange view keeps a third of the rows (as `Ctrl-w =` gives it) and the
-notation view takes at most half. `:view.focus` of a view that is not shown
+notation view takes at most half; in a column the arrange view keeps two fifths
+of the rows whatever else is stacked with it, the panels with a size of their
+own giving way last. `:help` splits off half the screen, as Vim gives its help
+half. `:view.focus` of a view that is not shown
 puts it in the current window, so that focus is never on what is not drawn. On start there is one tab and the screen is as it
 always was: the arrange view, with the panels coming and going in their
-places (`,m`, `,d`, `,p`, `Enter` on a clip). `,m` in a window that is the mixer alone (after `Ctrl-w o`) brings the arrange view back in its place.
+places (`,m`, `,d`, `,p`, `Enter` on a clip). `,p` with no clip open opens the piano roll on the clip under the cursor; with none there it says so and leaves the screen alone. `,m` in a window that is the mixer alone (after `Ctrl-w o`) brings the arrange view back in its place.
 
 `:vs roll` splits the window in two side by side and shows the piano roll in
 the new half; `Ctrl-w h` and `Ctrl-w l` go between them, and each takes its
@@ -803,7 +806,7 @@ place that topic is described:
 
 | Topic | Goes to |
 | --- | --- |
-| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way |
+| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way: its row in the key table (`course/keys.md`) when it has one |
 | `:help :s`, `:help :helpgrep` | a command |
 | `:help 'timebind'` | an option |
 | `:help daw.qf`, `:help daw.qf.feed` | a Lua module or function |
