@@ -104,8 +104,9 @@ setting), `<A-j>` `<A-k>` reorder, `gS` the track the device listens to
 
 | Keys | A | R |
 | --- | --- | --- |
-| `ic` | the clip under the cursor | every note of the clip |
-| `ac` | the clip and the gap after it | every note of the clip |
+| `ic` | the clip under the cursor | the notes that sound together at the cursor |
+| `ac` | the clip and the gap after it | the same and every note that overlaps them |
+| `ie` | the entire project | every note of the clip |
 | `in` | | the note under the cursor |
 | `ib` | this bar (`2ib` two) | this bar |
 | `il` | the loop | |
@@ -331,8 +332,8 @@ work on what is written, and each edit is one undo step that `.` repeats.
   grace notes and ties), `i.` `a.` the beat (`a.` in every voice), `ib` what
   the bar holds and `ab` the bar itself (`dab` takes it out, `p` puts it
   back), `ip` `ap` the phrase, `iv` `av` the voice, `is` `as` the staff,
-  `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (`ic` is the clip
-  in the piano roll).
+  `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (as in the piano
+  roll).
 - Operators: `gU` `gu` a step of the key (`3gUib` three steps), `g+` `g-`
   a semitone, `g~` respell, `g(` slur (`g(ip`), `g?` retrograde (`2g?`
   inverts), `gq` tidy, `!` filter (`!ib reverse`, `!ib tac`).

@@ -16,6 +16,12 @@
 --                      called instead of the write, and what it returns is
 --                      returned to the caller (a note's place, for `set_note`)
 --   "refuse"           nothing is written; `message` says why
+--   "ask"              nothing is written yet: `prompt` is put to the person
+--                      as a question answered with one key, `choices` maps a
+--                      key to `{ apply, message }` as above (any other key
+--                      leaves the notes as they are, with `message` if the
+--                      answer has `cancel`); the caller is told the change
+--                      was taken, and gets no place back
 --   nil, or no answer  the write goes ahead as asked
 -- The owner's own writes go through `daw.api` (`clip_notes_edit`,
 -- `clip_set_notes`), which is not asked. Every note write of `daw.Clip`,
@@ -43,6 +49,15 @@ function M.write(id, change)
       if type(answer) ~= "table" or answer.kind == nil then return false end
       if answer.kind == "refuse" then
         daw.notify(answer.message or ("these notes are written by " .. name), "warn")
+        return true
+      end
+      if answer.kind == "ask" then
+        require("daw.views.cmdline").ask_key(answer.prompt, function(key)
+          local choice = answer.choices[key]
+          if not choice then return daw.notify(answer.cancel or "left as it was") end
+          if choice.apply then choice.apply() end
+          if choice.message then daw.notify(choice.message) end
+        end)
         return true
       end
       local result = answer.apply and answer.apply()

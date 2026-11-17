@@ -74,6 +74,24 @@ change means:
 | nudged off the grid, a velocity | feel | kept with the note as its feel, relative to what is written |
 | quantized | | the feel goes |
 
+The roll says what it shows is written: the title reads "written in
+notation (:vs notation)", the key line names the keys that write (`]` `[`
+`x` `i` `H` `L` `Alt-h` `Alt-l`) and what is feel (a velocity, a drag off
+the grid), and in the window a Notation chip opens the score. A note with
+feel has a thin tick where it is written (and where its written end is,
+when its length differs), so a nudge is seen; quantizing takes them away.
+In the velocity strip a note whose velocity is not the dynamic's has a
+line at the dynamic's level, and the note under the cursor reads, for
+example, `100 = mf 80+20`. A note the score makes up from a mark (a grace
+note) is hatched in the terminal and veiled in the window; changing its
+pitch or deleting it asks `[w]rite the mark, or only [t]his pass?`. Only
+the mark can take a pitch or a delete: a pass has no override of its own
+yet, so `t` there says so and changes nothing; for its time, length or
+velocity no question is asked, since those are already only that note's
+feel. With the roll and the notation view both on screen and both
+`:setlocal timebind`, the note under one's cursor is outlined in the other
+(`⟦ ⟧` in the roll, a `◉` head in the staff), found by the note's id.
+
 Either way the note plays where the roll put it: the feel takes up what
 the writing does not say, and goes with the note when the writing changes
 (a pitch changed in notation keeps the note's nudge; a dynamic keeps the

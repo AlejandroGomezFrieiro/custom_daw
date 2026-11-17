@@ -124,6 +124,8 @@ function view:render(buf, ctx)
   -- Title: the clip, its track, where the cursor is, what will be entered.
   local under = self:note()
   local _, _, written = self:note()
+  -- The note under the piano roll's cursor, when the two are bound in time.
+  local partner = require("notation.roll").partner_place()
   local here = written and model.name(written) or model.name(model.spell(model.key_pitch(self.step, fifths), fifths))
   local value = (model.NAMES[self.value] or "?") .. (self.dot and " dotted" or "")
   local keyname = stored and (stored.root .. " " .. (stored.scale or "major")) or "C major"
@@ -307,9 +309,9 @@ function view:render(buf, ctx)
             end
             for i, n in ipairs(ev.notes) do
               local hx = ex + (shifted[i] and 1 or 0)
-              local head = (ev.base or 1) >= 2 and "○" or "●"
+              local head = partner == n.index and "◉" or (ev.base or 1) >= 2 and "○" or "●"
               local is_cursor = under and ctx.focused and n.index == written.index and ev.start <= self.beat + EPS and self.beat < ev.start + ev.length - EPS
-              buf:text(hx, row(n.pos), head, is_cursor and "NoteCursor" or note_style)
+              buf:text(hx, row(n.pos), head, is_cursor and "NoteCursor" or partner == n.index and "Bright" or note_style)
               if n.acc then buf:text(hx - 1, row(n.pos), ACC[n.acc], n.courtesy and "Dim" or note_style) end
               if ev.dots > 0 then
                 local dot_x = ex + 1 + (shifted[i] or shifted[i + 1] and 1 or 0)
