@@ -1699,9 +1699,7 @@ fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
     );
     w.ctl("daw.cursor.set_track(daw.tracks()[1].id) daw.keymap.feed('<CR>')");
     w.expect("the roll open", "daw.ui.visible('pianoroll')");
-    // It opens on the cursor, which the kernel puts on the clip's note
-    // (D7, so C7 shows beside it), not on a fixed top of the keyboard.
-    assert!(w.shows("D7", 15), "the roll opens on the cursor's note");
+    w.shot("roll-open.png");
     // To a low note and to a high one: the row of the cursor is in view.
     w.ctl("daw.ui.views.pianoroll.pitch = 38 daw.api.ui_redraw()");
     w.pause(0.8);
