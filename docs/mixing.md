@@ -599,6 +599,16 @@ what can stand in for it, and `:recover` lists its newest safety copy and its
 program starts anyway, with that message. A `.bak` names media relative to
 the project, as the project does, so it opens with them.
 
+**The file is the same every time.** A project is written as JSON with its
+fields in the order the model declares them, its maps by key and its numbers
+with the fewest digits that read back exactly, so saving a project that did
+not change writes the same bytes, and one changed thing is a small diff.
+`daw.api.project_file_text(file)` writes a project given as data the same
+way (and refuses one that would not open), and `daw.api.undo_project(id)`
+is a state of the undo tree as a project file holds it. extensions/projdiff
+builds on both: a diff and a three-way merge of projects, and the drivers
+that let version control use them.
+
 **For scripts.** `daw.wait(ms)` lets time pass with timers firing and events
 delivered, which `daw.api.sleep` does not; a script run with `-l` is otherwise
 one long turn. `daw.api.project_shelve()` puts the open project aside whole

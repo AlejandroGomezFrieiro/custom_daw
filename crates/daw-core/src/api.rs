@@ -1157,6 +1157,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn undo_diff(lua, sh, (a, b) => (Option<u64>, Option<u64>)) {
             to_lua(lua, &sh.session.borrow_mut().undo_diff(a, b).lua()?)
         }
+        // A state's project as a project file holds it (the current state's
+        // by default), and the text of a project file for a project given as
+        // data: see extensions/projdiff.
+        fn undo_project(lua, sh, id => Option<u64>) {
+            to_lua(lua, &sh.session.borrow_mut().undo_project(id).lua()?)
+        }
+        fn project_file_text(lua, _sh, value => LuaValue) {
+            crate::session::project_file_text(from_lua(lua, value)?).lua()
+        }
         fn undo_label(_, sh, text => String) {
             sh.session.borrow_mut().undo_label(text);
             Ok(())
