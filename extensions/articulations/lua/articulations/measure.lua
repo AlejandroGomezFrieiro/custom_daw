@@ -117,6 +117,17 @@ function M.measure(track)
   os.execute("mkdir -p '" .. (path:match("^(.*)/")):gsub("'", "'\\''") .. "'")
   local info
   daw.audition.try(function()
+    -- The sound as the instrument makes it: the core plays notes early by
+    -- the delays already in the map, which is not what is measured.
+    local sent = art.attr_map(track)
+    if sent and pcall(api.track_get, track) and api.track_get(track).attr_map then
+      local plain = daw.util.merge(sent, { arts = {} })
+      plain.delay = nil
+      for code, e in pairs(sent.arts or {}) do
+        plain.arts[code] = type(e) == "table" and { out = e.out } or e
+      end
+      api.track_set(track, "attr_map", plain)
+    end
     local clip = daw.track(track):add_clip({ start = start, length = length, name = "measure", notes = notes })
     if #controls > 0 then clip:set_controls(controls) end
     daw.flush()

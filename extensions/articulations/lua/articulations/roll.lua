@@ -101,6 +101,9 @@ end, function(clip_id)
   return out
 end)
 
+-- The core's own chip for a note's attribute says less than the layer above.
+roll.layer("attr", nil)
+
 -- The window, under the notes: the rows outside the range shaded and the
 -- keyswitch rows tinted and named (the terminal shades them as it draws them).
 roll.layer("articulations.rows", 5, nil, function(clip_id)
