@@ -23,7 +23,8 @@ test("the window is told the keys of the focused view when there is no message",
   eq(keys[1].key .. " " .. keys[1].desc, daw.ui.keybar.entries()[1][1] .. " " .. daw.ui.keybar.entries()[1][2], "the first as the terminal shows it")
   daw.ui.focus("mixer")
   local mixer = modal().keys
-  eq(mixer[1].desc, "next", "the mixer's own")
+  eq(mixer[1].desc, daw.ui.keybar.entries()[1][2], "the mixer's own")
+  eq(mixer[1].desc ~= keys[1].desc, true, "not the arrange view's")
   daw.notify("something happened")
   eq(modal().keys, nil, "a message has the line")
   eq(modal().message.time ~= nil, true, "and says when it was made")
