@@ -34,6 +34,12 @@ end
 local function fresh()
   daw.project.new()
   daw.transport.loop_enabled = false
+  -- The panes an earlier test opened would share the screen with this one's.
+  for _, win in ipairs(require("daw.layout").windows(daw.ui.layout)) do
+    if win.view ~= "arrange" then daw.ui.hide(win.view) end
+  end
+  daw.ui.close()
+  daw.ui.focus("arrange")
   daw.flush()
 end
 
