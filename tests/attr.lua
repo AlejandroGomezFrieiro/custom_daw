@@ -469,3 +469,37 @@ test("Ex matches and sets a note's articulation by its code", function()
   eq(clip:notes()[1].attr, nil, "and none again")
   fails(function() daw.commands.exec("%s/d4/attr=99.1/g") end, "99.1", "a code there is not")
 end)
+
+-- paw's sampler (extensions/sampler): a note's attribute reaches the plugin
+-- as MIDI 2.0 and chooses the articulation by itself, with no keyswitch.
+-- Played when the plugin is built (extensions/sampler/native/test.sh runs
+-- this with it); skipped otherwise.
+test("sampler: a note's attribute chooses the articulation, with no keyswitch and no attr_map", function()
+  daw.ext.load("extensions/sampler")
+  local s = require("sampler")
+  if not s.available() then return "skipped: the sampler plugin is not built (extensions/sampler/native/build.sh)" end
+  local loaded = daw.ext.loaded.sampler
+  local dir = T.scratch .. "/attr-sampler-fixtures"
+  if os.execute("'" .. loaded.path .. "/bin/paw-sampler' fixtures '" .. dir .. "' 2>/dev/null") ~= 0 then
+    return "skipped: extensions/sampler/bin/paw-sampler is not built"
+  end
+  fresh()
+  daw.project.tempo = 120
+  local track = daw.add_track({ name = "Strings" })
+  daw.track_kinds.set(track, "sampler", { path = dir .. "/ks.sfz", ask = false })
+  local device = s.device_of(track.id)
+  for _ = 1, 400 do
+    if api.device_get(device).status == "running" then break end
+    daw.wait(50)
+  end
+  eq(track.attr_map, nil, "no keyswitches are sent for it")
+  track:add_clip({ start = 0, length = 8, notes = {
+    { pitch = 69, start = 0, length = 1, velocity = 100 },
+    { pitch = 69, start = 2, length = 1, velocity = 100, attr = daw.attr.m2("11.0") },
+    { pitch = 69, start = 4, length = 1, velocity = 100 },
+  } })
+  local info = render({ bits = 16, tail = 0, ["end"] = 6 })
+  near(T.frequency(info, 0.05, 0.45), 440, 8, "sustain with no attribute")
+  near(T.frequency(info, 1.05, 1.45), 660, 10, "staccato from the note's attribute")
+  near(T.frequency(info, 2.05, 2.45), 440, 8, "and only for that note")
+end)

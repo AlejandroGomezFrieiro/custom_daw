@@ -74,7 +74,14 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   every parameter's value; `defaults.json` beside them names the default of
   each kind. From Lua: `daw.fx.save(device, name)`, `daw.fx.load(device,
   name)`, `daw.fx.presets(device)`, `daw.fx.step(device, 1)`,
-  `daw.fx.set_default(kind, name)`.
+  `daw.fx.set_default(kind, name)`. A CLAP plugin that loads files (an
+  instrument, a patch) takes one by path:
+  `daw.api.device_load(device, { name = "Violins", factory = "file:/path/Violins.sfz" })`,
+  one undo step, or `daw.api.device_call(device, "preset.load", "file:/path")`.
+- **paw's sampler.** extensions/sampler brings `paw sampler`
+  (`clap:dev.paw.sampler`), which plays SFZ and Decent Sampler instruments
+  with articulations chosen per note by MIDI 2.0 attribute or by keyswitch,
+  and sampler tracks to play it on: see its README.
 - **Plugins with hundreds of parameters.** `:param` (`f` in the device
   panel, or the "and N more parameters" line on the window's card) finds one
   by typing part of its name; Enter chooses it in the panel and shows it
