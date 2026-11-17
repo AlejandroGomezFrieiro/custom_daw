@@ -1,7 +1,7 @@
 #!/bin/sh
 # The piano roll: the melody's open last bar drawn with the cursor and
 # typed on the home row, then selected and taken up an octave.
-. "$(dirname "$0")/rig.sh"
+. "$MAKE/rig.sh"
 SETUP=$TUI_DEMO
 rig_start
 term_start

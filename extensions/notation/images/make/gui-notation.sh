@@ -3,7 +3,7 @@
 # score sets the velocities the roll shows; velocities drawn in the roll
 # change the MIDI and leave the marks alone; g@ in the score plays the
 # notes as the marks say again.
-. "$(dirname "$0")/rig.sh"
+. "$MAKE/rig.sh"
 SETUP="$GUI_DEMO daw.ext.load('extensions/notation')"
 rig_start $GUI_SIZE
 gui_start
@@ -32,5 +32,5 @@ glide 1150 700 8; xdotool click 1; pause 0.3
 key g at i e; pause 1.4
 shot x-gn4.png
 key Return; pause 1.6
-shot x-gn5.png
+still gui-notation.png
 rec_stop

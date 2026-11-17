@@ -5,11 +5,15 @@
 #
 #   rig_start [WxH]    start Xvfb and openbox: the terminal's size, or the window's
 #   gui_start          a kernel with the demo song, and the window on it
-#   term_start         the terminal UI in WezTerm (see wezterm.lua)
+#   term_start         the terminal UI in WezTerm (see wezterm.lua); with
+#                      CONFIG, that configuration directory instead of
+#                      --clean, and with EDIT, Neovim on that file in a pane
+#                      above it
 #   rec_start name     record the screen into $WORK/name.mkv
 #   cap "text"         the caption from now on
 #   rec_stop           stop recording
-#   shot name.png      a still, into $WORK
+#   shot name.png      a screenshot, into $WORK
+#   still name.png     a still for the set: a screenshot that make.sh copies
 #   key, typ           keys, by xdotool; while recording they are written down
 #                      for the key-cast in the GIF's corner (gif.sh)
 #   glide, drag, stroke, rclick: the pointer
@@ -18,7 +22,7 @@
 # Every terminal scene is the same terminal (TERM_SIZE, wezterm.lua's font
 # and colours) and every window scene the same window (GUI_SIZE), so that the
 # pictures read as one set.
-HERE=$(cd "$(dirname "$0")" && pwd)
+HERE=${MAKE:?run the scenes through make.sh}
 ROOT=$(cd "$HERE/../../.." && pwd)
 WORK=${WORK:-$ROOT/target/test-scratch/media}
 D=$WORK/home
@@ -88,7 +92,8 @@ term_start() {
   # Nothing of the session this is run from: not its agent, not its mux.
   unset SSH_AUTH_SOCK WEZTERM_UNIX_SOCKET WEZTERM_PANE
   wezterm --config-file "$HERE/wezterm.lua" start --always-new-process --cwd "$ROOT" -- \
-    "$BIN/daw" --clean --no-plugins --audio null --listen "$SOCK" -e "${SETUP:-$DEMO}" >"$D/term.out" 2>&1 &
+    "$BIN/daw" ${CONFIG:+--config "$CONFIG"} $([ -z "$CONFIG" ] && echo --clean) --no-plugins --audio null --listen "$SOCK" \
+    -e "${SETUP:-$DEMO}" >"$D/term.out" 2>&1 &
   APP=$!
   sleep 6
   xdotool mousemove 4000 4000
@@ -115,6 +120,7 @@ cap() { printf '%s\t%s\n' "$(since "$T0")" "$1" >> "$WORK/$NAME.caps"; }
 # What the key-cast shows: a key by its xdotool name, typed text as it is.
 cast() { [ -n "$REC" ] && printf '%s\t%s\t%s\n' "$(since "$T0")" "$1" "$2" >> "$WORK/$NAME.keys"; }
 shot() { import -window root "$WORK/$1"; }
+still() { shot "$1"; echo "$1" >> "$WORK/stills.list"; }
 ctl() { "$BIN/daw" ctl --socket "$SOCK" eval "$1"; }
 key() { for k in "$@"; do cast key "$k"; xdotool key "$k"; sleep 0.06; done; }
 typ() { cast "type ${TYPE_DELAY:-110}" "$1"; xdotool type --delay "${TYPE_DELAY:-110}" "$1"; }

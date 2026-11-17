@@ -12,6 +12,8 @@ the song plays.
 daw.ext.load("extensions/undotree")   -- or put the directory in ~/.config/daw/extensions
 ```
 
+![The melody moved with 3>ic, undone and moved with 2>ic instead; ,uu shows both branches, and Enter goes back to the first](images/tui-undotree.gif)
+
 The tree itself is in the kernel, so `u` and `Ctrl-r` walk it whether or not
 this extension is loaded; the extension is the interface to the rest of it.
 

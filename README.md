@@ -7,7 +7,7 @@
 ![Built with Nix](https://img.shields.io/badge/built%20with-Nix-5277C3)
 ![Status: personal, work in progress](https://img.shields.io/badge/status-personal%20WIP-orange)
 
-![The demo song playing in the terminal while a clip is moved with 3>ic and undone, the melody changed with :%s/e5/g5/g previewed as it is typed, and the same clip opened as a score with ,n](docs/images/tui-arrange.gif)
+![The demo song playing in the terminal while the melody is moved with 3>ic, again with ., undone twice, and changed with :%s/e5/g5/g, previewed as it is typed](docs/images/tui-arrange.gif)
 
 - **Modal, on a timeline.** A track is a line and a clip is a word: `3>ic`
   moves a clip three steps later, `:%s/c4/d4/gc` changes notes with a preview,
@@ -101,10 +101,6 @@ and the rest are written with a prompt on the local leader (`\`), as in Dorico, 
 hear each one before you write it. The notation has a grammar of its own:
 `gUib` raises a bar a step in the key, `g(ip` slurs a phrase.
 
-![The melody as a score: its last bar entered by name with i, a hairpin written with \\d mp<f and previewed before Enter, then played](docs/images/tui-notation.gif)
-
-![The score in the terminal, the hairpin's popover open and its preview drawn](docs/images/tui-notation.png)
-
 The score is a view of the clip's MIDI, as REAPER's notation is: writing
 in it edits the notes, and the piano roll beside it edits the same notes.
 Without the extension the clip is plain MIDI that plays and edits as any
@@ -116,6 +112,8 @@ The command line takes Vim's Ex commands where a line is a bar and a range
 can be tracks: `:5,8d`, `:t2,t4 mute`, `:%s/c4/d4/gc`. What you type is
 previewed live, and `c` asks about each match.
 
+![:%s/c5/d5/gc confirmed match by match in the piano roll and undone at once, then tracks 2 to 4 muted by a range and unmuted](docs/images/tui-ex.gif)
+
 ### Lists as text, the quickfix list, help
 
 Tracks, sends, devices and markers are text buffers, as directories are in
@@ -126,7 +124,7 @@ inside, as Vim's is.
 
 ![The tracks as text under the arrange view: a track renamed with cw and turned down with 3 Ctrl-x, then :w shows the plan and y applies it](docs/images/tui-textbuf.gif)
 
-![K describing the clip under the cursor, :help g@ opening the manual there, a link followed with Ctrl-] and back with Ctrl-t](docs/images/tui-help.gif)
+![? listing the keys of the arrange view, the leader alone listing what follows it, K describing the clip under the cursor, and :help motions opening the manual](docs/images/tui-help.gif)
 
 | To | Press |
 | --- | --- |
@@ -149,29 +147,26 @@ The window is for the mouse, and shows the terminal's windows as panes you
 can drag the borders of: the arrange view with the device panel beside it,
 the piano roll, the score, a list of tracks as text, the quickfix list.
 
-![The window with its panes: the arrange view and the device panel, the piano roll and the score of the melody](docs/images/gui-panes.png)
+![The window with its panes: the arrange view and the device panel, the melody in the piano roll, and the tracks as text beside it](docs/images/gui-panes.png)
 
 Clips are dragged, trimmed, copied and stretched; everything else is on the
 right button.
 
-![The melody copied with a Ctrl-drag and trimmed by its edge, the clip menu, zooming with Ctrl and the wheel, and playing](docs/images/gui-arrange.gif)
+![The melody copied over the first half with a Ctrl-drag and trimmed by its edge, the clip menu, zooming with Ctrl and the wheel, and playing](docs/images/gui-arrange.gif)
 
 The piano roll is a pencil: drag to draw, drag a note to move it, right-drag
 to select with a box, and draw velocities and controllers in the strip below.
 
-![The melody opened with a double click: notes drawn in its last bar, one dragged to another pitch, velocities drawn, and played](docs/images/gui-pianoroll.gif)
+![The melody in the piano roll: notes drawn in its last bar, one dragged a semitone up, velocities drawn in the strip, and played from the ruler](docs/images/gui-pianoroll.gif)
 
 The score is engraved with the same font, docked beside the piano roll; a
-click enters a note, with a shadow note under the pointer to show where.
-
-![The score beside the piano roll: a hairpin written in the score sets the velocities in the roll, velocities drawn in the roll leave the marks alone, and g@ plays the notes as the marks say again](docs/images/gui-notation.gif)
-
-![The keys' phrase in two voices, engraved in the window](docs/images/gui-notation.png)
+click enters a note, with a shadow note under the pointer to show where. The
+[notation extension](extensions/notation/README.md) has its pictures.
 
 Devices are added by name, the mixer has a strip for every track, and a
 parameter is automated by drawing its curve:
 
-![A chorus added by name, the mixer while playing, and an automation curve drawn with the pointer](docs/images/gui-mix.gif)
+![A chorus added to the keys by name, the mixer while playing, a fader dragged, and the keys' cutoff automated by drawing its curve](docs/images/gui-mix.gif)
 
 Keys still work in the window: it passes them to the same mappings the
 terminal uses. [docs/window.md](docs/window.md) has every gesture.
@@ -209,6 +204,8 @@ terminal uses. [docs/window.md](docs/window.md) has every gesture.
 `~/.config/daw/init.lua` runs at startup, and `:reload` runs it again without
 stopping the sound. Nothing in it is special: these are the calls the
 built-in keys and commands are made with.
+
+![init.lua edited in Neovim above the program while the song plays: a colour for the playhead and a new key; :reload runs it, and the key adds a track](docs/images/tui-config.gif)
 
 ```lua
 daw.opt.grid = 0.5
@@ -287,7 +284,7 @@ Protocol.
 cargo test --release               # Rust tests, and the real window driven on a private display
 tests/tools/suite.sh               # the end-to-end suite, in Lua
 tests/tools/suite.sh plugins       # the same with real CLAP, LV2 and VST3 plugins
-docs/images/make/make.sh           # make the pictures on this page again
+docs/images/make/make.sh           # make the pictures on this page again (`all`: the extensions' too)
 ```
 
 The tests use a null audio backend and a private X display: they do not

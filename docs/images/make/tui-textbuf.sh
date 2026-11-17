@@ -1,7 +1,7 @@
 #!/bin/sh
 # The tracks as a text buffer under the arrange view, edited with Vim's
 # keys and written as a plan.
-. "$(dirname "$0")/rig.sh"
+. "$MAKE/rig.sh"
 SETUP=$TUI_DEMO
 rig_start
 term_start

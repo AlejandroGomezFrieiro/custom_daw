@@ -1,7 +1,7 @@
 #!/bin/sh
 # The mixer while the song plays, a device added from the picker (which
 # plays what it would add), and its parameters.
-. "$(dirname "$0")/rig.sh"
+. "$MAKE/rig.sh"
 SETUP=$TUI_DEMO
 rig_start
 term_start

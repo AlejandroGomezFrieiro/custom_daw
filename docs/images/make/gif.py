@@ -30,7 +30,7 @@ NAMES = {
     "comma": ",", "colon": ":", "plus": "+", "minus": "-", "dollar": "$", "slash": "/",
     "backslash": "\\", "less": "<", "greater": ">", "at": "@", "period": ".", "question": "?",
     "bracketright": "]", "bracketleft": "[", "apostrophe": "'", "parenleft": "(",
-    "parenright": ")", "asciitilde": "~", "underscore": "_", "numbersign": "#", "equal": "=",
+    "parenright": ")", "asciitilde": "~", "ampersand": "&", "asterisk": "*", "underscore": "_", "numbersign": "#", "equal": "=",
     "Up": "<Up>", "Down": "<Down>", "Left": "<Left>", "Right": "<Right>",
 }
 

@@ -1,7 +1,13 @@
 #!/bin/sh
-# Make every picture in docs/images again, from the release build:
+# Make the pictures again, from the release build:
 #
-#   cargo build --release && docs/images/make/make.sh [scene...]
+#   cargo build --release && docs/images/make/make.sh [set or scene...]
+#
+# With no argument, the core's pictures in docs/images (the README's). An
+# extension's name makes that extension's, from the scenes in
+# extensions/<name>/images/make into extensions/<name>/images; `all` makes
+# the core's and every extension's. A scene's name (tui-arrange) makes that
+# one alone.
 #
 # Each scene (tui-*.sh, gui-*.sh, stills.sh) drives the real program on a
 # private X display (RIG_DISPLAY, 177 unless set) with xdotool, as
@@ -16,26 +22,49 @@ if ! command -v wezterm >/dev/null || ! command -v gifsicle >/dev/null || [ -z "
   CURSORS=$(nix build nixpkgs#vanilla-dmz --no-link --print-out-paths)/share/icons
   export CURSORS
   exec nix shell nixpkgs#wezterm nixpkgs#gifsicle nixpkgs#bc nixpkgs#xdotool nixpkgs#openbox \
-    nixpkgs#imagemagick nixpkgs#ffmpeg-full nixpkgs#python3 -c "$0" "$@"
+    nixpkgs#imagemagick nixpkgs#ffmpeg-full nixpkgs#python3 nixpkgs#neovim -c "$0" "$@"
 fi
 ROOT=$(cd "$HERE/../../.." && pwd)
 WORK=${WORK:-$ROOT/target/test-scratch/media}
-export WORK
-GIFS="tui-arrange tui-pianoroll tui-notation tui-mixer tui-textbuf tui-help gui-arrange gui-pianoroll gui-notation gui-mix"
-[ $# -eq 0 ] && set -- $GIFS stills
-for scene in "$@"; do
-  echo "$scene"
-  rm -f "$WORK/$scene.mkv"
-  "$HERE/$scene.sh" || exit 1
-  if [ -f "$WORK/$scene.mkv" ]; then
-    python3 "$HERE/gif.py" "$scene" || exit 1
-    [ -z "$NOCOPY" ] && cp "$WORK/$scene.gif" "$HERE/../$scene.gif"
-  fi
-done
-# The stills the scenes took on the way.
-if [ -z "$NOCOPY" ]; then
-  for still in gui.png gui-notation.png gui-panes.png tui.png tui-notation.png; do
-    [ -f "$WORK/$still" ] && cp "$WORK/$still" "$HERE/../$still"
+MAKE=$HERE
+export WORK MAKE
+
+# make_set dir out: every scene in dir, the GIFs and stills into out.
+make_set() {
+  for script in "$1"/tui-*.sh "$1"/gui-*.sh "$1"/stills.sh; do
+    [ -f "$script" ] && scene "$script" "$2"
   done
-fi
-ls -la "$HERE/.."
+}
+scene() {
+  name=$(basename "$1" .sh)
+  echo "$name"
+  rm -f "$WORK/$name.mkv"
+  : > "$WORK/stills.list"
+  "$1" || exit 1
+  if [ -f "$WORK/$name.mkv" ]; then
+    python3 "$HERE/gif.py" "$name" || exit 1
+    [ -z "$NOCOPY" ] && cp "$WORK/$name.gif" "$2/$name.gif"
+  fi
+  # The stills the scene took on the way (rig.sh's `still`).
+  if [ -z "$NOCOPY" ]; then
+    while read -r still; do cp "$WORK/$still" "$2/$still"; done < "$WORK/stills.list"
+  fi
+}
+
+[ $# -eq 0 ] && set -- core
+for arg in "$@"; do
+  case "$arg" in
+    core) make_set "$HERE" "$HERE/.." ;;
+    all)
+      make_set "$HERE" "$HERE/.."
+      for dir in "$ROOT"/extensions/*/images/make; do make_set "$dir" "$dir/.."; done ;;
+    *)
+      if [ -d "$ROOT/extensions/$arg/images/make" ]; then
+        make_set "$ROOT/extensions/$arg/images/make" "$ROOT/extensions/$arg/images"
+      else
+        found=$(ls "$HERE/$arg.sh" "$ROOT"/extensions/*/images/make/"$arg.sh" 2>/dev/null | head -1)
+        [ -z "$found" ] && { echo "no set or scene $arg"; exit 1; }
+        scene "$found" "$(dirname "$found")/.."
+      fi ;;
+  esac
+done
