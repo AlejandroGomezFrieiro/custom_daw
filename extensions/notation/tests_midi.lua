@@ -377,25 +377,126 @@ end)
 
 -- Speed ------------------------------------------------------------------------------------------
 
-test("midi: a notation edit in a 64 bar clip costs no more than the paint after a MIDI edit, and lays out only the bars it changed", function()
+test("midi: a notation edit in a 64 bar clip costs at most half again the paint after a MIDI edit, and writes and lays out only the bars it changed", function()
   load()
   local bench = require("notation.bench")
   local opts = { glyphs = true, surface = true, cell = { w = 13, h = 27 } }
-  local plain = bench.run(64, opts, 7)
-  local edit = bench.run(64, opts, 7, { notation = true })
-  -- Against the other on the same machine at the same time, so a busy
-  -- machine does not decide it; the two are close, so a margin keeps
-  -- scheduling noise from deciding it, and a real slowdown is far past it.
-  eq(edit.edit < plain.edit * 1.6, true, string.format("notation edit and paint %.1f ms; MIDI edit's paint %.1f ms", edit.edit, plain.edit))
+  -- A MIDI edit and a notation edit on one clip, one after the other, each
+  -- round: a busy machine slows both alike, and the ratio is what is held.
+  local r = bench.pair(64, opts, 9)
+  eq(r.ratio <= 1.5, true, string.format("notation edit and paint %.1f ms; MIDI edit's paint %.1f ms; ratio %.2f", r.notation, r.plain, r.ratio))
   local view = song(nil, 64)
   keys("i")
   for _ = 1, 16 do keys("cdedcdec") end
   keys("<Esc>")
   view:layout()
-  local L = require("notation.layout")
-  local was = L.stats.measures
+  local L, midi = require("notation.layout"), require("notation.midi")
+  local laid, written = L.stats.measures, midi.stats.measures
   view:set(36, 33)
   keys("<C-a>")
   view:layout()
-  eq(L.stats.measures - was <= 3, true, "a note sharpened in bar nine lays out its bar again, and the ones beside it (" .. (L.stats.measures - was) .. ")")
+  eq(midi.stats.measures - written <= 3, true, "a note sharpened in bar nine writes its bar again, and the ones beside it ("
+    .. (midi.stats.measures - written) .. ")")
+  eq(L.stats.measures - laid <= 3, true, "and lays them out again (" .. (L.stats.measures - laid) .. ")")
+end)
+
+-- The score written measure by measure ------------------------------------------------------------
+
+test("midi: the score of a 64 bar clip written measure by measure is the score written whole, edit after edit", function()
+  load()
+  local midi = require("notation.midi")
+  local seed = 5
+  local function rnd(n)
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed % n
+  end
+  local function chance(k) return rnd(k) == 0 end
+  -- 64 bars, 3/4 from bar 20 and 6/8 from bar 40 for four bars each.
+  local bars, at = {}, 0
+  for i = 1, 64 do
+    local num, den = 4, 4
+    if i >= 20 and i < 24 then num = 3 end
+    if i >= 40 and i < 44 then num, den = 6, 8 end
+    bars[i] = { start = at, num = num, den = den, number = i }
+    at = at + num * 4 / den
+  end
+  local length = at
+  local notes, next_id = {}, 1
+  local function add(n)
+    n.id, n.velocity, next_id = next_id, 80, next_id + 1
+    notes[#notes + 1] = n
+  end
+  -- Chords, notes held over barlines, triplets and quintuplets, notes played
+  -- off the beat, grace notes, and held notes under the melody (a second
+  -- voice, and a grand staff).
+  for _, b in ipairs(bars) do
+    local len, t = b.num * 4 / b.den, 0
+    while t < len - 1e-9 do
+      local d = ({ 0.25, 0.5, 0.5, 1, 1, 1.5, 2 })[rnd(7) + 1]
+      if b.den == 4 and chance(8) and t + 1 <= len then
+        local n = chance(2) and 3 or 5
+        for k = 0, n - 1 do add({ pitch = 64 + rnd(12), start = b.start + t + k / n, length = 1 / n }) end
+        d = 1
+      else
+        local p = 62 + rnd(18)
+        add({ pitch = p, start = math.max(0, b.start + t + (chance(4) and (rnd(5) - 2) * 0.015 or 0)),
+          length = math.min(d, len - t) + (chance(8) and (1 + rnd(3)) or 0) })
+        if chance(4) then add({ pitch = p - 3 - rnd(4), start = b.start + t, length = math.min(d, len - t) }) end
+        if chance(10) and t > 0 then add({ pitch = p + 2, start = b.start + t - 0.06, length = 0.04 }) end
+      end
+      t = t + d
+    end
+    if chance(3) then add({ pitch = 45 + rnd(10), start = b.start, length = len * (chance(2) and 1 or 0.75) }) end
+  end
+  -- What notation decides about some notes.
+  local function decide(n)
+    local own = ({ { voice = 2 }, { letter = n.pitch % 7, alter = 1, pitch = n.pitch }, { art = { staccato = true } },
+      { beam = "break" }, { orn = "trill" }, { staff = 1 }, {} })[rnd(7) + 1]
+    n.meta = next(own) and { notation = own } or nil
+    if chance(12) then n.meta = { notation = own, lyric = "la" } end
+  end
+  for _, n in ipairs(notes) do
+    if chance(6) then decide(n) end
+  end
+  local own = { tuplets = { { start = bars[10].start + 1, length = 1, n = 5, normal = 4 }, { start = bars[12].start, length = 1, plain = true } },
+    marks = { { kind = "dynamic", at = 4, value = "p" } } }
+  local opts = { length = length, offset = 0, bars = bars, fifths = -1, tempo = 100, grid = 0.25 }
+  local function score(memo)
+    table.sort(notes, function(a, b) return a.start < b.start or (a.start == b.start and (a.pitch < b.pitch or (a.pitch == b.pitch and a.id < b.id))) end)
+    midi.memo = memo
+    local sc = midi.derive(notes, own, opts)
+    midi.memo = true
+    local out = {}
+    for k, v in pairs(sc) do
+      if k ~= "rev" and k ~= "_frame" and k ~= "_transcribed" then out[k] = v end
+    end
+    return midi.serial(out)
+  end
+  eq(score(true) == score(false), true, "as written")
+  local written, edits = midi.stats.measures, 0
+  for round = 1, 60 do
+    local k = rnd(#notes) + 1
+    local n = notes[k]
+    local what = ({ "pitch", "move", "nudge", "length", "delete", "add", "decide", "tuplet", "held" })[rnd(9) + 1]
+    if what == "pitch" then n.pitch = n.pitch + (chance(2) and 1 or -1)
+    elseif what == "move" then n.start = math.max(0, n.start + (chance(2) and 0.25 or -0.25))
+    elseif what == "nudge" then n.start = math.max(0, n.start + (rnd(3) - 1) * 0.02)
+    elseif what == "length" then n.length = math.max(0.1, n.length + (chance(2) and 0.5 or -0.5))
+    elseif what == "delete" then table.remove(notes, k)
+    elseif what == "add" then add({ pitch = 60 + rnd(20), start = rnd(math.floor(length * 4)) / 4, length = 0.25 * (1 + rnd(8)) })
+    elseif what == "decide" then decide(n)
+    elseif what == "tuplet" then
+      own.tuplets[#own.tuplets + 1] = { start = bars[rnd(64) + 1].start + rnd(3), length = 1, n = ({ 3, 5, 6, 7 })[rnd(4) + 1] }
+    else add({ pitch = 40 + rnd(10), start = rnd(math.floor(length)), length = 2 + rnd(6) }) end
+    -- Two notes of one pitch at one time are one.
+    for i = #notes, 2, -1 do
+      local a, b = notes[i], notes[i - 1]
+      if a.pitch == b.pitch and math.abs(a.start - b.start) < 1e-6 then table.remove(notes, i) end
+    end
+    local memo = score(true)
+    edits = edits + 1
+    eq(memo == score(false), true, "after edit " .. round .. " (" .. what .. ")")
+  end
+  local per = (midi.stats.measures - written) / edits
+  eq(per < 4, true, string.format("each edit wrote %.1f of 64 measures again", per))
 end)

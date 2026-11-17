@@ -135,7 +135,9 @@ function M.frame(score)
   f = { meters = {}, starts = {}, lengths = {}, index = {}, count = #score.measures, rev = score.rev }
   local meter, at = { 4, 4 }, 0
   for i, m in ipairs(score.measures) do
-    if m.meter then meter = m.groups and { m.meter[1], m.meter[2], groups = m.groups } or m.meter end
+    -- Read without copying a measure of a copied score (see `M.copy`).
+    local own, groups = M.peek(m, "meter"), M.peek(m, "groups")
+    if own then meter = groups and { own[1], own[2], groups = groups } or own end
     f.meters[i], f.starts[i], f.lengths[i], f.index[m.id] = meter, at, meter[1] * W / meter[2], i
     at = at + f.lengths[i]
   end
@@ -598,11 +600,33 @@ end
 --- the ticks into the measure it starts at.
 function M.find(score, eid)
   for mi, m in ipairs(score.measures) do
-    for _, entry in ipairs(m.voices) do
-      local t = 0
-      for k, ev in ipairs(entry.events) do
-        if ev.id == eid then return mi, entry, k, t, ev end
-        t = t + M.length(ev)
+    -- Looked for without copying (see `M.copy`), then in the measure itself.
+    for _, entry in ipairs(M.peek(m, "voices")) do
+      for _, ev in ipairs(entry.events) do
+        if ev.id == eid then return M.find_in(score, mi, eid) end
+      end
+    end
+  end
+end
+
+--- Where an event of measure `mi` is, as `M.find` says.
+function M.find_in(score, mi, eid)
+  for _, entry in ipairs(score.measures[mi].voices) do
+    local t = 0
+    for k, ev in ipairs(entry.events) do
+      if ev.id == eid then return mi, entry, k, t, ev end
+      t = t + M.length(ev)
+    end
+  end
+end
+
+--- The note with an id among a measure's voices: it, its event, voice
+--- entry and place in the chord.
+local function note_in(voices, nid)
+  for _, entry in ipairs(voices) do
+    for _, ev in ipairs(entry.events) do
+      for k, n in ipairs(ev.notes or {}) do
+        if n.id == nid then return n, ev, entry, k end
       end
     end
   end
@@ -611,19 +635,17 @@ end
 --- The note of a chord with an id, and its event.
 function M.find_note(score, nid)
   for mi, m in ipairs(score.measures) do
-    for _, entry in ipairs(m.voices) do
-      for _, ev in ipairs(entry.events) do
-        for k, n in ipairs(ev.notes or {}) do
-          if n.id == nid then return n, ev, mi, entry, k end
-        end
-      end
+    -- Looked for without copying (see `M.copy`), then in the measure itself.
+    if note_in(M.peek(m, "voices"), nid) then
+      local n, ev, entry, k = note_in(score.measures[mi].voices, nid)
+      return n, ev, mi, entry, k
     end
   end
 end
 
---- The notes a tie joins to `nid`, forwards: the ids of the tied-on ones.
-function M.tied_on(score, staff, v, nid)
-  local seq = M.sequence(score, staff, v)
+--- The notes a tie joins to note `nid` along a voice's items (as
+--- `M.sequence` gives them), and whether the ties go on past the last.
+local function ties_along(seq, nid)
   local out = {}
   local current, pitch
   for i, it in ipairs(seq) do
@@ -638,7 +660,8 @@ function M.tied_on(score, staff, v, nid)
       local k = i
       while cur_note and cur_note.tie do
         local nxt = seq[k + 1]
-        if not (nxt and nxt.ev.kind == "chord") then break end
+        if not nxt then return out, true end
+        if nxt.ev.kind ~= "chord" then break end
         local found
         for _, n in ipairs(nxt.ev.notes) do
           if M.pitch(n) == pitch then found = n end
@@ -647,10 +670,23 @@ function M.tied_on(score, staff, v, nid)
         out[#out + 1] = { note = found, item = nxt }
         cur_note, k = found, k + 1
       end
-      return out
+      return out, false
     end
   end
-  return out
+  return out, false
+end
+
+--- The notes a tie joins to `nid`, forwards: the ids of the tied-on ones.
+function M.tied_on(score, staff, v, nid)
+  local _, _, from = M.find_note(score, nid)
+  if not from then return {} end
+  -- From the note's measure on, as many measures as the ties reach.
+  local count, to = M.frame(score).count, from
+  while true do
+    local out, open = ties_along(M.sequence(score, staff, v, from, to), nid)
+    if not open or to >= count then return out end
+    to = math.min(count, to + (to - from + 1))
+  end
 end
 
 --- Take a note out of its chord; a chord left with none is a rest. The
@@ -704,12 +740,71 @@ function M.each(score, fn)
   end
 end
 
---- A deep copy, without what is cached on the table.
-function M.copy(v)
+-- A score copied to be changed copies each of its measures when the
+-- measure is first read: a measure not yet copied is an empty table that
+-- stands for the one it was copied from (`lazy`), answering what is read
+-- of it that is not a table from that one, and made a copy of it at the
+-- first table read from it or anything written to it.
+local lazy = setmetatable({}, { __mode = "k" })
+local Lazy = {}
+local copy
+
+--- Make a measure that stands for another the copy of it.
+local function materialize(m)
+  local from = lazy[m]
+  if not from then return m end
+  lazy[m] = nil
+  setmetatable(m, nil)
+  for k, x in next, from do
+    if type(x) == "table" then m[k] = copy(x) else m[k] = x end
+  end
+  return m
+end
+
+Lazy.__index = function(m, k)
+  local x = lazy[m][k]
+  if type(x) ~= "table" then return x end
+  return materialize(m)[k]
+end
+Lazy.__newindex = function(m, k, v)
+  rawset(materialize(m), k, v)
+end
+
+copy = function(v)
+  if lazy[v] then materialize(v) end
+  local out = {}
+  for k, x in next, v do
+    if type(x) == "table" then out[k] = copy(x) else out[k] = x end
+  end
+  return out
+end
+
+--- What a measure has for `k`, without copying it if it stands for another
+--- (see above): to read only.
+function M.peek(m, k)
+  local from = lazy[m]
+  if from then return from[k] end
+  return m[k]
+end
+
+--- A deep copy, without what is cached on the table. With `lazily`, of a
+--- score that is not changed after (as a clip's score is not), its
+--- measures are copied as they are read.
+function M.copy(v, lazily)
   if type(v) ~= "table" then return v end
+  if lazy[v] then materialize(v) end
   local out = {}
   for k, x in pairs(v) do
-    if k ~= "_frame" and k ~= "_transcribed" then out[k] = M.copy(x) end
+    if lazily and k == "measures" and type(x) == "table" then
+      local list = {}
+      for i, m in ipairs(x) do
+        list[i] = setmetatable({}, Lazy)
+        lazy[list[i]] = lazy[m] or m
+      end
+      out[k] = list
+    elseif k ~= "_frame" and k ~= "_transcribed" then
+      if type(x) == "table" then out[k] = copy(x) else out[k] = x end
+    end
   end
   return out
 end

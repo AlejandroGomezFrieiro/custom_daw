@@ -388,22 +388,31 @@ function M.clip_part(sc)
 end
 
 --- The tuplets of a score, in beats of the clip: `{ [key] = { start,
---- length, n, normal, staff, voice } }`, `staff` by its index.
-local function tuplets_of(sc)
+--- length, n, normal, staff, voice } }`, `staff` by its index; with `from`
+--- and `to`, those of measures `from` to `to` only.
+local function tuplets_of(sc, from, to)
   local out = {}
   local origin = D.origin(sc)
-  D.each(sc, function(ev, _, staff, voice, s, e)
-    local tp = ev.tuplet
-    if tp and not ev.grace then
-      local key = staff .. ":" .. voice .. ":" .. tp.id
-      local span = out[key]
-      if span then
-        span.e = math.max(span.e, e)
-      else
-        out[key] = { s = s, e = e, n = tp.actual, normal = tp.normal, staff = D.staff_index(sc, staff) or 1, voice = voice }
+  local f = D.frame(sc)
+  for mi = from or 1, math.min(to or f.count, f.count) do
+    for _, entry in ipairs(sc.measures[mi].voices) do
+      local s = f.starts[mi]
+      for _, ev in ipairs(entry.events) do
+        local e = s + D.length(ev)
+        local tp = ev.tuplet
+        if tp and not ev.grace then
+          local key = entry.staff .. ":" .. entry.voice .. ":" .. tp.id
+          local span = out[key]
+          if span then
+            span.e = math.max(span.e, e)
+          else
+            out[key] = { s = s, e = e, n = tp.actual, normal = tp.normal, staff = D.staff_index(sc, entry.staff) or 1, voice = entry.voice }
+          end
+        end
+        s = e
       end
     end
-  end)
+  end
   local list = {}
   for _, span in pairs(out) do
     local tp = { start = (origin + span.s) / Q, length = (span.e - span.s) / Q, n = span.n, normal = span.normal,
@@ -486,39 +495,31 @@ local function put_clip_part(sc, own)
 end
 
 --- Put what each note says (its chord's marks, ornament, stem, lyrics, a
---- grace note's kind) on the chords of a score just transcribed.
-local function put_note_part(sc, by_id)
-  D.each(sc, function(ev)
-    if ev.kind ~= "chord" then return end
-    local art = ev.art and util.merge(ev.art, {}) or {}
-    for _, n in ipairs(ev.notes) do
-      local note = by_id[n.id]
-      if note then
-        local own = own_of(note)
-        if type(own.art) == "table" then
-          for k, v in pairs(own.art) do art[k] = v end
-        end
-        ev.orn = ev.orn or own.orn
-        ev.stem = ev.stem or own.stem
-        if own.grace == "appoggiatura" and ev.grace then ev.grace = "appoggiatura" end
-        local lyric = note.meta and note.meta.lyric
-        if not ev.lyric and type(lyric) == "string" and lyric ~= "" then ev.lyric = lyric end
-        if not ev.lyrics and type(own.lyrics) == "table" then ev.lyrics = own.lyrics end
+--- grace note's kind) on a chord of a score just transcribed.
+local function put_note_part(ev, by_id)
+  if ev.kind ~= "chord" then return end
+  local art = ev.art and util.merge(ev.art, {}) or {}
+  for _, n in ipairs(ev.notes) do
+    local note = by_id[n.id]
+    if note then
+      local own = own_of(note)
+      if type(own.art) == "table" then
+        for k, v in pairs(own.art) do art[k] = v end
       end
+      ev.orn = ev.orn or own.orn
+      ev.stem = ev.stem or own.stem
+      if own.grace == "appoggiatura" and ev.grace then ev.grace = "appoggiatura" end
+      local lyric = note.meta and note.meta.lyric
+      if not ev.lyric and type(lyric) == "string" and lyric ~= "" then ev.lyric = lyric end
+      if not ev.lyrics and type(own.lyrics) == "table" then ev.lyrics = own.lyrics end
     end
-    ev.art = next(art) and art or nil
-  end)
+  end
+  ev.art = next(art) and art or nil
 end
 
---- A measure's music as text, which changes when it does: what the caches
---- by measure go by.
-local function token_of(m)
-  local out = { m.id }
-  for _, k in ipairs(BAR_KEYS) do
-    if m[k] ~= nil then out[#out + 1] = k .. "=" .. serial(m[k]) end
-  end
-  if m.meter then out[#out + 1] = "meter=" .. m.meter[1] .. "/" .. m.meter[2] end
-  if m.clef then out[#out + 1] = "clef=" .. serial(m.clef) end
+--- A measure's voices as text, which changes when they do.
+local function voices_token(m)
+  local out = {}
   for _, entry in ipairs(m.voices) do
     out[#out + 1] = "|" .. entry.staff .. ":" .. entry.voice
     for _, ev in ipairs(entry.events) do
@@ -534,33 +535,214 @@ local function token_of(m)
   return table.concat(out, ";")
 end
 
+--- A measure's music as text, which changes when it does: what the caches
+--- by measure go by. `voices` is its voices' (`voices_token`), if known.
+local function token_of(m, voices)
+  local out = { m.id }
+  for _, k in ipairs(BAR_KEYS) do
+    if m[k] ~= nil then out[#out + 1] = k .. "=" .. serial(m[k]) end
+  end
+  if m.meter then out[#out + 1] = "meter=" .. m.meter[1] .. "/" .. m.meter[2] end
+  if m.clef then out[#out + 1] = "clef=" .. serial(m.clef) end
+  out[#out + 1] = voices or voices_token(m)
+  return table.concat(out, ";")
+end
+
+-- Written measures --------------------------------------------------------------------------------
+--
+-- A clip's score is written measure by measure from its transcription
+-- (`notation.model`'s lines of sound and silence, values, ties, tuplets,
+-- spelling, then the score's events and what the notes say of them), and
+-- what each measure is written as is kept by everything it is written from:
+-- its bar, the staves and key, the transcribed chords and silences in it
+-- with their notes and what notation keeps on them, the tuplets said in it,
+-- and what comes in from the measures before (the accidentals the bar
+-- before left, how many written notes a held chord has had). An edit
+-- writes again only the measures whose key changed; the rest are as they
+-- were, and the score is the same as one written whole (`M.memo = false`
+-- writes every measure, for the tests to compare).
+
+M.memo = true
+local written_memo, written_count = {}, 0
+M.stats = { measures = 0 }   -- measures written, not found in the memo
+
+local function num(x) return string.format("%.17g", x) end
+
+--- What the written measures read of a played note (a transcription's):
+--- its id, pitch, spelling, beam, articulations, ornament, stem, grace
+--- kind and lyrics.
+local function note_key(n, keep)
+  local meta = n.meta
+  local own = type(meta) == "table" and type(meta.notation) == "table" and meta.notation or nil
+  local lyric = type(meta) == "table" and meta.lyric or nil
+  if not own then return table.concat({ keep[n.index] or "?", n.pitch, lyric and serial(lyric) or "" }, ",") end
+  return table.concat({ keep[n.index] or "?", n.pitch, lyric and serial(lyric) or "", tostring(own.letter), tostring(own.alter),
+    tostring(own.pitch), tostring(own.beam), tostring(own.orn), tostring(own.stem), tostring(own.grace),
+    own.art ~= nil and serial(own.art) or "", own.lyrics ~= nil and serial(own.lyrics) or "" }, ",")
+end
+
+--- A transcribed chord as text, for the keys of the measures it is in;
+--- each made once, in `known`.
+local function chord_key(c, keep, known)
+  local hit = known[c]
+  if hit then return hit end
+  local out = { tostring(c.arpeggio), tostring(c.staccato) }
+  for _, n in ipairs(c.notes) do out[#out + 1] = note_key(n, keep) end
+  out[#out + 1] = "/"
+  for _, n in ipairs(c.grace or {}) do out[#out + 1] = note_key(n, keep) end
+  hit = table.concat(out, ";")
+  known[c] = hit
+  return hit
+end
+
+local function sorted_keys(t)
+  local out = {}
+  for k in pairs(t) do out[#out + 1] = k end
+  table.sort(out)
+  return out
+end
+
+--- Write a transcription (`tr`, with `o` as `notation.model.transcription`
+--- gives them) as a score, measure by measure, each from the memo where
+--- what it is written from has not changed. `keep` names the played notes
+--- (see `notation.layout`'s import), `next` is where counted ids start.
+--- Returns nil where only writing the whole score at once can give the
+--- same ids (a note without an id, an id counted).
+local function write_measures(tr, o, keep, next_id, by_id)
+  local measures = model.measures_of(o.bars, #o.staves)
+  local lines = model.lines(tr, measures, #o.staves)
+  local bars = {}
+  for i, m in ipairs(measures) do bars[i] = { start = m.start, num = m.meter.num, den = m.meter.den } end
+  local score = D.new(bars, o.staves)
+  score.next = math.max(score.next, next_id)
+  local voices_of = {}
+  for s, voices in ipairs(lines) do voices_of[s] = sorted_keys(voices) end
+  local head = table.concat(o.staves, ",") .. "|" .. tostring(o.fifths)
+  local before = {}   -- by staff: the steps the bar before left altered
+  for s = 1, #o.staves do before[s] = {} end
+  local count = {}    -- by segment: the written pieces it has had
+  local tokens, known = {}, {}
+  for i, m in ipairs(measures) do
+    local stop = m.start + m.length
+    -- The key: everything measure `i` is written from.
+    local key = { i, num(m.start), m.meter.num, m.meter.den, head }
+    for _, tp in ipairs(o.tuplets or {}) do
+      if tp.start < stop + 1e-3 and tp.start + tp.length > m.start - 1e-3 then
+        key[#key + 1] = table.concat({ "t", num(tp.start), num(tp.length), tostring(tp.n), tostring(tp.normal), tostring(tp.staff),
+          tostring(tp.voice), tostring(tp.plain) }, ",")
+      end
+    end
+    for s = 1, #o.staves do
+      key[#key + 1] = "a" .. table.concat(sorted_keys(before[s]), ",")
+      for _, v in ipairs(voices_of[s]) do
+        local pieces = lines[s][v].pieces[i]
+        if pieces then
+          key[#key + 1] = "v" .. s .. ":" .. v
+          for _, p in ipairs(pieces) do
+            local c = p.seg.chord
+            key[#key + 1] = table.concat({ num(p.a), num(p.b), count[p.seg] or 0, p.seg.e > stop + 1e-6 and "~" or "",
+              c and chord_key(c, keep, known) or "r" }, ",")
+          end
+        end
+      end
+    end
+    key = table.concat(key, "|")
+    local hit = written_memo[key]
+    if not hit then
+      local mark = score.next
+      for s = 1, #o.staves do
+        for _, v in ipairs(voices_of[s]) do
+          local pieces = lines[s][v].pieces[i]
+          if pieces then
+            for _, p in ipairs(pieces) do p.evs = {} end
+            model.write_pieces(m, s, v, pieces, o.tuplets)
+          end
+        end
+      end
+      -- Ties within the measure, and to the measures either side.
+      local st = { keep = keep, stable = true, used = {}, pieces = {}, written = {} }
+      local made = {}
+      for s = 1, #o.staves do
+        for _, v in ipairs(voices_of[s]) do
+          for _, p in ipairs(lines[s][v].pieces[i] or {}) do
+            local c, had = p.seg.chord, count[p.seg] or 0
+            table.sort(p.evs, function(a, b) return a.start < b.start end)
+            local total = had + #p.evs + (p.seg.e > stop + 1e-6 and 1 or 0)
+            for k, ev in ipairs(p.evs) do model.tie_piece(ev, c, had + k, total) end
+            if c and had > 0 then
+              for _, n in ipairs(c.notes) do st.pieces[n.index] = had end
+            end
+            made[#made + 1] = #p.evs
+          end
+        end
+      end
+      model.order(m)
+      local spelled = {}
+      for s, clef in ipairs(o.staves) do spelled[s] = model.spell_measure(m, s, clef, o.fifths or 0, before[s]) end
+      L.import_measure(score, i, m, st)
+      L.normalize_measure(score, i)
+      if score.next ~= mark then return nil end
+      local sm = score.measures[i]
+      for _, entry in ipairs(sm.voices) do
+        for _, ev in ipairs(entry.events) do put_note_part(ev, by_id) end
+      end
+      hit = { voices = sm.voices, token = voices_token(sm), before = spelled, made = made }
+      M.stats.measures = M.stats.measures + 1
+      if written_count > 4000 then written_memo, written_count = {}, 0 end
+      written_memo[key], written_count = hit, written_count + 1
+    end
+    local sm = score.measures[i]
+    sm.id, sm.voices = "m" .. i, hit.voices
+    tokens[i] = hit.token
+    before = hit.before
+    local k = 0
+    for s = 1, #o.staves do
+      for _, v in ipairs(voices_of[s]) do
+        for _, p in ipairs(lines[s][v].pieces[i] or {}) do
+          k = k + 1
+          count[p.seg] = (count[p.seg] or 0) + hit.made[k]
+        end
+      end
+    end
+  end
+  return score, tokens
+end
+
 --- The score of a clip: transcribed from its notes (`notes`, as the clip
 --- gives them), with what notation decided, kept on the notes and with the
 --- clip (`own`). `opts` are the layout's (`view.layout_opts`). Every
 --- written note's id is its MIDI note's (`n41` writes note 41), every
 --- chord's its first note's, so the same notes give the same score.
 function M.derive(notes, own, opts)
-  local layout = model.layout(notes, util.merge(opts, { stems = false }))
+  local tr, o = model.transcription(notes, util.merge(opts, { stems = false }))
   local keep, top = {}, 0
   local by_id = {}
+  local named = true
   for i, n in ipairs(notes) do
     if n.id then
       keep[i] = "n" .. n.id
       by_id[keep[i]] = n
       top = math.max(top, n.id)
+    else
+      named = false
     end
   end
   for _, mk in ipairs(own.marks or {}) do
     local k = tonumber(tostring(mk.id or ""):match("(%d+)$"))
     if k then top = math.max(top, k) end
   end
-  local sc = L.import(layout, { keep = keep, next = top + 1 })
+  local sc, tokens
+  if M.memo and named then sc, tokens = write_measures(tr, o, keep, top + 1, by_id) end
+  if not sc then
+    sc = L.import(model.engrave_score(tr, o), { keep = keep, next = top + 1 })
+    D.each(sc, function(ev) put_note_part(ev, by_id) end)
+    tokens = {}
+  end
   -- The transcription itself, for what reads it from the layout (`layout.score`).
-  sc._transcribed = layout.score
+  sc._transcribed = tr
   sc.layout = { breaks = {} }
-  put_note_part(sc, by_id)
   put_clip_part(sc, own)
-  for _, m in ipairs(sc.measures) do m.v = token_of(m) end
+  for i, m in ipairs(sc.measures) do m.v = token_of(m, tokens[i]) end
   sc.rev = D.token()
   sc._frame = nil
   return sc, by_id
@@ -779,7 +961,7 @@ function M.sync(clip_id, before, after, own, fixed)
     staves = not same(model.choose_clef(pitches), clefs) and clefs or nil
   end
   local pb, pa = M.clip_part(before), M.clip_part(after)
-  local tb, ta = tuplets_of(before), tuplets_of(after)
+  local tb, ta = tuplets_of(before, from, to), tuplets_of(after, from, to)
   local tuplets_changed = false
   for key in pairs(ta) do
     if not tb[key] then tuplets_changed = true end
