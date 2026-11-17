@@ -1179,18 +1179,8 @@ dependencies = [
  "daw-luadev",
  "daw-plugins",
  "daw-raster",
- "daw-utau",
  "libc",
  "serde_json",
-]
-
-[[package]]
-name = "daw-utau"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "daw-engine",
- "rtrb",
 ]
 
 [[package]]

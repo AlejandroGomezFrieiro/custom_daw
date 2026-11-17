@@ -36,7 +36,7 @@ end
 
 command("utau.track", function(ctx)
   local track = daw.add_track({ name = ctx.args.name or "Vocal" })
-  track:add_device("utau")
+  track:add_device(utau.DEVICE)
   daw.cursor.set_track(track)
   utau.sync()
   set_singer(track.id, ctx.args)
@@ -46,7 +46,7 @@ command("utau.voice", function()
   local track = daw.cursor.track()
   if not track then return daw.notify("no track selected", "warn") end
   if utau.device_of(track.id) then return daw.notify("already a vocal track") end
-  track:add_device("utau", nil, { index = 1 })
+  track:add_device(utau.DEVICE, nil, { index = 1 })
   utau.sync()
 end, { desc = "Make the cursor track a vocal track" })
 

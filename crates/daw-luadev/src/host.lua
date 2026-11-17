@@ -76,4 +76,19 @@ function H.run(frames, nevents, keyed)
   return b.nout
 end
 
+--- A call from a script in the session (`daw.api.device_call`, or a post to
+--- every device of this kind): the device's own `dev.call(method, data)`,
+--- run between two blocks. A number answers as its text.
+function H.call(method, data)
+  if type(dev.call) ~= "function" then
+    error("this device has no method `" .. method .. "`", 0)
+  end
+  local answer = dev.call(method, data)
+  if type(answer) == "number" then return tostring(answer) end
+  if answer ~= nil and type(answer) ~= "string" then
+    error("dev.call answers with a string, a number or nothing, not a " .. type(answer), 0)
+  end
+  return answer
+end
+
 return H

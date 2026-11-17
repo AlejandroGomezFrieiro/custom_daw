@@ -498,8 +498,6 @@ fn run() -> Result<i32> {
     if let Ok(exe) = std::env::current_exe() {
         daw_luadev::set_helper(exe, daw_plugins::sandbox::remote);
     }
-    // The native half of extensions/utau; it does nothing until that is loaded.
-    daw_utau::register(&mut registry);
     let mut plugin_notes = if args.no_plugins {
         Vec::new()
     } else {

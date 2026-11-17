@@ -16,8 +16,8 @@ local M = { request = 0, pending = {}, last = 0, heard = {} }
 
 local RATE = 44100
 
---- A soft tone at `pitch` for `ms` milliseconds, as the device's `audition`
---- method takes it: a header line, then 32-bit floats.
+--- A soft tone at `pitch` for `ms` milliseconds: its sample rate, its
+--- channels, and its samples as 32-bit floats.
 function M.tone(pitch, ms)
   local frames = math.floor(RATE * ms / 1000)
   local buf = ffi.new("float[?]", frames)
@@ -29,11 +29,11 @@ function M.tone(pitch, ms)
     local t = 2 * math.pi * hz * i / RATE
     buf[i] = env * 0.12 * (math.sin(t) + 0.3 * math.sin(2 * t))
   end
-  return string.format("0 0 %d 1 1\n", RATE) .. ffi.string(buf, frames * 4)
+  return RATE, 1, ffi.string(buf, frames * 4)
 end
 
-local function play(device, data)
-  local ok, err = pcall(api.device_call, device, "audition", data)
+local function play(device, rate, channels, raw)
+  local ok, err = pcall(utau.voices.audition, device, rate, channels, raw)
   if not ok then M.error = tostring(err) end
   return ok
 end
@@ -81,8 +81,7 @@ utau.on_audition = function(m, raw)
   M.pending = {}
   -- Too late to belong to the click any more.
   if api.now() - wanted.at > 3000 then return end
-  local header = string.format("%s 0 %d %d 1\n", m.hash, m.rate, m.channels)
-  play(wanted.device, header .. raw)
+  play(wanted.device, m.rate, m.channels, raw)
 end
 
 return M

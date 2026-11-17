@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::Result;
 
@@ -342,6 +343,9 @@ pub type Rescan = Rc<dyn Fn(&mut Registry, Option<&str>) -> Vec<String>>;
 pub struct Registry {
     factories: BTreeMap<String, Rc<dyn DeviceFactory>>,
     rescan: Option<Rescan>,
+    /// What scripts posted to every device of a kind: by kind, each topic
+    /// with its latest data, in the order the topics were first posted.
+    posts: BTreeMap<String, Vec<(String, Arc<[u8]>)>>,
 }
 
 impl Registry {
@@ -374,5 +378,25 @@ impl Registry {
 
     pub fn iter(&self) -> impl Iterator<Item = &Rc<dyn DeviceFactory>> {
         self.factories.values()
+    }
+
+    /// Keep `data` as the latest under `topic` for devices of `kind`, to be
+    /// given to every one made from now on (a render's included) through
+    /// [`Controller::call`] before its first block; `None` forgets the topic.
+    pub fn post(&mut self, kind: &str, topic: &str, data: Option<Arc<[u8]>>) {
+        let posts = self.posts.entry(kind.to_string()).or_default();
+        match (posts.iter().position(|(t, _)| t == topic), data) {
+            (Some(at), Some(data)) => posts[at].1 = data,
+            (None, Some(data)) => posts.push((topic.to_string(), data)),
+            (Some(at), None) => {
+                posts.remove(at);
+            }
+            (None, None) => {}
+        }
+    }
+
+    /// What is posted to devices of `kind`: each topic and its latest data.
+    pub fn posts(&self, kind: &str) -> &[(String, Arc<[u8]>)] {
+        self.posts.get(kind).map_or(&[], Vec::as_slice)
     }
 }

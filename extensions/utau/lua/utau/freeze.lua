@@ -35,7 +35,7 @@ function M.freeze(track_id)
     error("nothing on the track to freeze", 0)
   end
   utau.configure(track_id, { frozen = { track = bounced.id, muted = was_muted or nil } })
-  api.device_call(utau.device_of(track_id), "clear")
+  utau.voices.clear(utau.device_of(track_id))
   utau.received[tostring(track_id)] = nil
   utau.layouts[tostring(track_id)] = nil
   -- The engine forgets the track now, and sings it whole when it is back.

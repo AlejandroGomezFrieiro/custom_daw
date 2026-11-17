@@ -434,7 +434,7 @@ test("musicops: operators and text objects in the vocal editor", function()
   if not package.loaded["utau"] then daw.ext.load("extensions/utau") end
   local editor = require("utau.editor").editor
   local track = daw.add_track({ name = "Vocal" })
-  track:add_device("utau")
+  track:add_device(require("utau").DEVICE)
   local clip = track:add_clip({ start = 0, length = 8, notes = {
     N(60, 0, 1, 100, { lyric = "ka" }), N(62, 1, 1, 100, { lyric = "ki" }), N(64, 2, 1, 100, { lyric = "ku" }),
     N(65, 4, 1, 100, { lyric = "ke" }),

@@ -92,7 +92,7 @@ and macros work with them.]],
       keys = { ":tutor.try utau", "<CR>", "o", ":utau.voice", "<CR>" },
       check = function(_, look)
         for _, t in ipairs(daw.tracks()) do
-          if look.device(t, "utau") then return loaded("utau") end
+          if look.device(t, "lua:utau") then return loaded("utau") end
         end
       end,
       done = "A vocal track. It sings once `reautau-engine` and a voicebank are installed (see extensions/utau/README.md); `,v` then adds a vocal track and asks for its singer in one go.",

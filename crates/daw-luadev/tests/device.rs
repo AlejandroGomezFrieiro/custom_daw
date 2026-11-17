@@ -172,6 +172,54 @@ fn a_script_that_fails_stops_and_says_why() {
 }
 
 #[test]
+fn calls_reach_the_script_between_blocks_and_files_are_mapped() {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("luadev");
+    std::fs::create_dir_all(&dir).unwrap();
+    let floats = dir.join("ramp.f32");
+    let ramp: Vec<u8> = (0..8).flat_map(|i| (i as f32 / 8.0).to_le_bytes()).collect();
+    std::fs::write(&floats, ramp).unwrap();
+    let path = script(
+        "called.lua",
+        r#"
+        local dsp = require("daw.dsp")
+        local dev = dsp.device { category = "instrument" }
+        local level, table = 0, nil
+        function dev.call(method, data)
+          if method == "level" then level = tonumber(data) return level * 2 end
+          if method == "map" then
+            if table then table:close() end
+            table = dsp.map(data)
+            return tostring(table.n)
+          end
+          if method == "fail" then error("refused") end
+        end
+        function dev.process(b)
+          for i = 0, b.frames - 1 do
+            b.left[i] = level + (table and table.n > 0 and table.data[i % table.n] or 0)
+          end
+        end
+        return dev
+        "#,
+    );
+    let mut dev = daw_luadev::make(&path, 48000.0, 64).unwrap();
+    let call = |dev: &mut Instance, method: &str, data: &[u8]| {
+        dev.controller.as_mut().unwrap().call(method, data)
+    };
+    assert_eq!(call(&mut dev, "level", b"0.5").unwrap(), b"1");
+    assert_eq!(run(&mut dev, 0.0, 16, &[]).0[3], 0.5, "the block sees what the call set");
+    let floats = floats.to_string_lossy().into_owned();
+    assert_eq!(call(&mut dev, "map", floats.as_bytes()).unwrap(), b"8");
+    assert_eq!(run(&mut dev, 0.0, 16, &[]).0[3], 0.5 + 3.0 / 8.0, "and reads the file");
+    assert!(call(&mut dev, "nothing", b"").unwrap().is_empty(), "nothing answered");
+    let err = call(&mut dev, "fail", b"").unwrap_err().to_string();
+    assert!(err.ends_with("refused"), "{err}");
+    assert_eq!(dev.controller.as_mut().unwrap().health(), None, "a refused call does not stop it");
+    let mut plain = daw_luadev::make(&script("plain.lua", GAIN), 48000.0, 64).unwrap();
+    let err = call(&mut plain, "level", b"1").unwrap_err().to_string();
+    assert!(err.contains("no method `level`"), "{err}");
+}
+
+#[test]
 fn a_script_that_does_not_load_says_why() {
     let err = daw_luadev::make(&script("syntax.lua", "return {\n x = = 1 }"), 48000.0, 64)
         .err()

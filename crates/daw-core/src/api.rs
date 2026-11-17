@@ -692,6 +692,18 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let answer = sh.session.borrow_mut().device_call(id, &method, &data).lua()?;
             lua.create_string(answer)
         }
+        // Data for every device of a kind, now and made later (a render's
+        // too); nil forgets the topic. Returns `{ { device, error } }` for
+        // those that refused it.
+        fn device_post(lua, sh, (kind, topic, data) => (String, String, Option<LuaString>)) {
+            let data = data.as_ref().map(|d| d.as_bytes().to_vec());
+            let refused = sh.session.borrow_mut().device_post(&kind, &topic, data.as_deref());
+            let list: Vec<Value> = refused
+                .into_iter()
+                .map(|(device, error)| json!({ "device": device, "error": error }))
+                .collect();
+            to_lua(lua, &Value::Array(list))
+        }
 
         // --- clips ---
         fn clip_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().clip_list(track).lua()?) }
