@@ -233,7 +233,7 @@ the edit), and says so.
 | `p` `P` | paste after the note, at the cursor (a bar yanked with `yab`: after, before the cursor's bar) |
 | `i`, `a`, `I`, `R` | enter notes at the cursor, after the note; pushing later music along; re-pitching what is there |
 | `gh`, `gp` | hear the cursor's pitch; playhead to the cursor |
-| `zi` `zo` | spread the notes out, draw them closer; on the engraved page, a larger, smaller staff |
+| `zi` `zo` | spread the notes out, draw them closer; in the cell view zoomed in, a row for every line and space; on the engraved page, a larger, smaller staff |
 | `zg` | the engraved page as one long system scrolled sideways (the galley), or wrapped |
 | `zp` | the engraved systems on pages of paper, under the title and composer (the page view), or without pages |
 | `zs` | start a system at the cursor's bar; again, let the bar go where it fits |
@@ -390,6 +390,37 @@ these two are written only (the song's timeline plays as it is). Staccato
 plays a note half its written length, tenuto its full length, an accent 20
 louder, a marcato 30.
 
+## The staff in cells
+
+Where the terminal cannot show pictures (tmux, a plain terminal, a remote
+shell) the staff is drawn in text cells, in characters every common
+monospace font has (DejaVu Sans Mono, JetBrains Mono, Fira Code, Noto Sans
+Mono). The staff lines run unbroken from the clef to the end of the system
+and the barlines join them (`┬ ┼ ┴`); a grand staff has a brace. Heads are
+two cells wide, filled (`██`) or open (`()`), with their stems up from the
+right side and down from the left, flags (`╲ ╱`) or beams (`━`) at the tips,
+dots after them, accidentals before them and ledger lines through or under
+them. Rests look like rests: the whole hangs from the fourth line and the
+half sits on the third (`▄▄` `▀▀`), the quarter zigzags (`╲ ╱ ╲`), an eighth
+is a `7`, a sixteenth two. Ties and slurs are arcs (`╰──╯`, `╭──╮`), tuplets
+a bracket with their number, dynamics and hairpins under the staff (between
+a grand staff's two).
+
+At the usual zoom the staff is dense: each line has a row and each space is
+between two rows, so a staff takes five rows and a grand staff, with room
+for two ledger lines and the stems, eighteen. A head in a space is drawn
+across the rows either side (`▄▄` over `▀▀`, an open one `╭╮` over `╰╯`).
+`zi` opens it out to a row for every line and space, nine a staff, which is
+easier to read and lets the pointer reach the spaces; `zo` goes back. A
+panel too low for both staves of a grand staff shows the cursor's. With
+`daw.opt.ascii` the staff is drawn open in plain ASCII (`-` `|` `+`, heads
+`@@` and `()`, `#` `b` `n`, the treble clef `&`, the bass clef `?:`).
+
+The accidentals `♯ ♭ ♮` are the one exception to the common set: Fira Code
+and JetBrains Mono lack some of them, and terminals take them from a font
+that has them (DejaVu Sans Mono or Noto Sans Mono, on nearly every system);
+they stay one cell wide.
+
 ## The engraved page
 
 In a window, and on a terminal's pixel surface where the terminal shows
@@ -399,8 +430,7 @@ defaults for the thickness of staff lines, stems, beams, ties and slurs,
 and stems attached where the font says. Everything that is a line is drawn
 on whole pixels; the staff space is a whole number of pixels (`zi` `zo` step
 through 6 to 24), a third of a cell's height on a terminal (9 px in a 27 px
-cell), so a staff of one hand fits in five or six rows, where the cell view
-needs eleven or more. On a terminal each measure is a whole number of
+cell), so a staff of one hand fits in five or six rows, as in the cell view. On a terminal each measure is a whole number of
 columns wide and each system a whole number of rows high, and the drawing
 says where the barlines are, so the terminal is sent the page as images
 cut at barlines and an edit re-sends only the measure it changed.
@@ -506,7 +536,8 @@ say it.
 
 Every key of the terminal view works in the window too, and the pointer
 works the same in the terminal's cell view, a cell at a time: a click on a
-head chooses that note, on a line or space that place and time; the drag,
+head chooses that note, on a line or space that place and time (on the dense
+staff a row is a line: a space is reached with `zi`, or with the keys); the drag,
 Shift, the double click, the click in insert mode and the right click's menu
 are as above, and the wheel scrolls by measures. There the cursor off a note
 is drawn as the note that would be entered (a shadow note), and in insert
@@ -625,6 +656,14 @@ tablature in the several-tracks view and as its own staff in MusicXML (the
 string and fret are on each note); first and second endings, D.C. and D.S.;
 clefs other than treble, the guitar's treble and bass; key changes within a
 clip; trills and other ornaments; a mark's own room in the terminal when the
+<<<<<<< HEAD
+panel is low (dynamics then fall below what shows); in the cell view, a
+grace note's slash and a beam's slope (beams are flat). On the engraved page:
+collision avoidance between marks, dynamics and the notes of the other
+staff; slurs that bend round the notes under them; line breaking that
+balances every system (only a bar alone at the end is avoided); a choice of Bravura
+or Petaluma (the kernel has them; nothing chooses them yet). For score
+=======
 panel is low (dynamics then fall below what shows). On the engraved page:
 page breaks of one's own (pages fill as systems come), the style as a
 buffer to edit (staff size, spacing, slur height), a choice of Bravura or
@@ -633,6 +672,7 @@ tenuto inside a slur (a slur goes over every articulation), and slurs that
 keep clear of the staff lines; systems that interlock (each system's band
 holds all of its ink); the cell view places its marks on fixed rows, not
 against skylines; text in a PDF is outlines, so it cannot be searched. For score
+>>>>>>> main
 clips: tempo marks that play, repeats unfolded, trills and fermatas played,
 swing, key and clef changes per measure, `!` through a snippet (snippets
 work in the piano roll), a filter that reads and writes MusicXML (it reads
