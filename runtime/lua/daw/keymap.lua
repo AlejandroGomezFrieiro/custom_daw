@@ -214,6 +214,61 @@ function M.del(lhs, opts)
   if scope then scope[table.concat(M.parse(lhs))] = nil end
 end
 
+-- The keys as they were before every view kept to one rule (docs/terminal.md,
+-- "Keys: one grammar"), made only with `daw.opt.keys = "classic"`.
+local classic = {}
+
+--- Make a classic mapping, keeping what it covers to put back.
+local function apply(entry)
+  local lhs, rhs, opts = entry[1], entry[2], entry[3]
+  local modes = type(opts.mode) == "table" and opts.mode or opts.mode and { opts.mode }
+    or (opts.motion or opts.operator) and { "n", "x", "o" } or { "n" }
+  local scope, keys = opts.view or "global", table.concat(M.parse(lhs))
+  entry.covered = {}
+  for _, mode in ipairs(modes) do
+    if mode == "v" then mode = "x" end
+    entry.covered[mode] = maps[mode] and maps[mode][scope] and maps[mode][scope][keys] or false
+    if rhs == false then
+      if maps[mode] and maps[mode][scope] then maps[mode][scope][keys] = nil end
+    end
+  end
+  if rhs ~= false then M.set(lhs, rhs, opts) end
+end
+
+--- Take a classic mapping away again, putting back what it covered.
+local function revert(entry)
+  local scope, keys = entry[3].view or "global", table.concat(M.parse(entry[1]))
+  for mode, map in pairs(entry.covered or {}) do
+    maps[mode] = maps[mode] or {}
+    maps[mode][scope] = maps[mode][scope] or {}
+    maps[mode][scope][keys] = map or nil
+  end
+  entry.covered = nil
+end
+
+--- A mapping as it was before the rule: made when `daw.opt.keys` is
+--- "classic", now or later, over the mapping the rule gives the same keys,
+--- and taken away again when the option changes back. A false `rhs` takes
+--- the keys away instead.
+---   daw.keymap.classic("j", "track.volume by=-1", { view = "mixer", desc = "Volume down 1 dB" })
+function M.classic(lhs, rhs, opts)
+  local entry = { lhs, rhs, opts or {} }
+  classic[#classic + 1] = entry
+  if daw.opt.keys == "classic" then apply(entry) end
+end
+
+daw.on("option.changed", function(e)
+  if e.name ~= "keys" then return end
+  if e.value == "classic" then
+    for _, entry in ipairs(classic) do apply(entry) end
+  elseif e.old == "classic" then
+    for i = #classic, 1, -1 do revert(classic[i]) end
+  end
+end)
+
+--- The names given to prefixes with `group`: scope -> keys -> name.
+function M.groups() return groups end
+
 --- Mappings that apply in `mode` for `view`, the view's own first.
 function M.list(mode, view)
   local out = {}
@@ -223,6 +278,23 @@ function M.list(mode, view)
     table.sort(list, function(a, b) return a.lhs:lower() .. a.lhs < b.lhs:lower() .. b.lhs end)
     for _, map in ipairs(list) do out[#out + 1] = map end
   end
+  return out
+end
+
+--- Every mapping in every mode and scope, sorted by scope, mode and keys.
+--- What checks the key rules walks (`tests/keys_constitution.lua`).
+function M.every()
+  local out = {}
+  for _, by_scope in pairs(maps) do
+    for _, by_keys in pairs(by_scope) do
+      for _, map in pairs(by_keys) do out[#out + 1] = map end
+    end
+  end
+  table.sort(out, function(a, b)
+    if a.scope ~= b.scope then return a.scope < b.scope end
+    if a.mode ~= b.mode then return a.mode < b.mode end
+    return a.lhs < b.lhs
+  end)
   return out
 end
 
@@ -715,6 +787,24 @@ local function lookup(seq)
   return exact, longer
 end
 
+-- Escape cancels and stays, in every view, as in Vim: a Vim hand presses it
+-- to be sure it is in normal mode, and the keys after it must land where
+-- they were going. Leaving is `<C-w>p`, `:q`, `ZZ` or the view's own key.
+-- A second one soon after says so.
+local escaped_at = -math.huge
+
+--- After an Escape that had nothing to cancel: a second one within two
+--- seconds outside the arrange view says how to leave.
+function M.escape_hint()
+  local now = api.now()
+  if now - escaped_at < 2000 and daw.ui.focused and daw.ui.focused ~= "arrange" then
+    daw.notify("normal mode: <C-w>p goes back to the window before, :q closes this one")
+    escaped_at = -math.huge
+    return
+  end
+  escaped_at = now
+end
+
 --- Whether a part of the focused view (not the view itself, nor the global
 --- mappings) maps `key` in this mode.
 local function held(key)
@@ -856,6 +946,7 @@ handle = function(key)
     local view = daw.ui.views[daw.ui.focused]
     if key == "<Esc>" then
       daw.emit("escape", {})
+      M.escape_hint()
     elseif view and view.on_key then
       view:on_key(key)
     end

@@ -80,8 +80,8 @@ M.lines.arrange = {
 }
 M.lines.pianoroll = {
   n = {
-    { "<CR>", "note" }, { "i", "draw notes" }, { "x", "delete" }, { "+", "longer" }, { "-", "shorter" },
-    { "w", "next note" }, { "<Space>", "play" }, { "<Esc>", "back" }, { "?", "keys" },
+    { "<CR>", "note" }, { "i", "draw notes" }, { "x", "delete" }, { "+", "up" }, { "<A-l>", "longer" },
+    { "w", "next note" }, { "<Space>", "play" }, { "<C-w>p", "back" }, { "?", "keys" },
   },
   x = { { "d", "delete" }, { "y", "copy" }, { ">", "later" }, { "<lt>", "earlier" }, { "<C-a>", "up" }, { "<Esc>", "done" } },
   -- Insert mode: the note being drawn, then the keys that draw it.
@@ -105,22 +105,24 @@ M.lines["pianoroll.keys"] = {
     { "z", "octave down" }, { "x", "octave up" }, { "<Esc>", "done" },
   },
 }
+-- The mixer's first: what the rule changed (`j` `k` move, `+` `-` change).
 M.lines.mixer = {
   n = {
-    { "l", "next" }, { "h", "previous" }, { "k", "louder" }, { "j", "quieter" }, { ">", "pan right" }, { "<lt>", "pan left" },
-    { "M", "mute" }, { "s", "solo" }, { "r", "arm" }, { "<C-w>c", "close" },
+    { "j", "row" }, { "+", "up" }, { "-", "down" }, { "]", "pan" }, { "l", "strip" }, { "gc", "mute" },
+    { "s", "solo" }, { "x", "clear" }, { "?", "keys" },
   },
+  x = { { "+", "up" }, { "-", "down" }, { "]", "pan" }, { "x", "clear" }, { "<Esc>", "done" } },
 }
 M.lines.session = {
   n = {
-    { "<CR>", "launch" }, { "L", "scene" }, { "s", "stop" }, { "b", "timeline" }, { "n", "new clip" },
-    { "e", "notes" }, { "m", "mode" }, { "<Space>", "play" }, { "?", "keys" },
+    { "<CR>", "launch" }, { "L", "scene" }, { "S", "stop" }, { "B", "timeline" }, { "n", "new clip" },
+    { "i", "notes" }, { "m", "mode" }, { "<Space>", "play" }, { "?", "keys" },
   },
 }
 M.lines.devices = {
   n = {
-    { "j", "next" }, { "l", "raise" }, { "h", "lower" }, { "a", "add" }, { "b", "bypass" }, { "e", "window" },
-    { "x", "remove" }, { "<C-w>c", "close" },
+    { "j", "row" }, { "w", "device" }, { "+", "raise" }, { "-", "lower" }, { "a", "add" }, { "gc", "bypass" },
+    { "<CR>", "curve" }, { "x", "remove" }, { "?", "keys" },
   },
 }
 

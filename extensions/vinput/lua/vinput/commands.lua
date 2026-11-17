@@ -191,24 +191,30 @@ local function move(by) return function(ctx)
   panel:current()
   api.ui_redraw()
 end end
-pmap("j", move(1), "Down a row")
-pmap("k", move(-1), "Up a row")
-pmap("<Down>", move(1), "Down a row")
-pmap("<Up>", move(-1), "Up a row")
-pmap("gg", function() panel.row = 1 api.ui_redraw() end, "The first row")
-pmap("G", function() panel.row = #panel:rows() api.ui_redraw() end, "The last row")
+-- `j` `k` only move, as in every view; the value under the cursor is `+`
+-- `-` (and `Ctrl-a` `Ctrl-x`, with a count).
+local motion = { motion = true }
+pmap("j", move(1), "Down a row", motion)
+pmap("k", move(-1), "Up a row", motion)
+pmap("<Down>", move(1), "Down a row", motion)
+pmap("<Up>", move(-1), "Up a row", motion)
+pmap("gg", function(ctx) panel.row = ctx.count or 1 api.ui_redraw() end, "The first row, or row N", motion)
+pmap("G", function(ctx) panel.row = ctx.count or #panel:rows() api.ui_redraw() end, "The last row, or row N", motion)
 local function adjust(steps) return function(ctx)
   local row = panel:current()
   if not row then return end
   if row.heading then return vinput.set(row.input.name, "on", steps > 0) end
   if row.setting then vinput.nudge(row.input.name, row.setting.key, steps * (ctx.count or 1)) end
 end end
-pmap("l", adjust(1), "More; on")
-pmap("h", adjust(-1), "Less; off")
+pmap("+", adjust(1), "More; on", { role = "main+" })
+pmap("-", adjust(-1), "Less; off", { role = "main-" })
+pmap("<C-a>", adjust(1), "More by the count; on", { role = "main+" })
+pmap("<C-x>", adjust(-1), "Less by the count; off", { role = "main-" })
 pmap("<Right>", adjust(1), "More; on")
 pmap("<Left>", adjust(-1), "Less; off")
-pmap("L", adjust(10), "Much more")
-pmap("H", adjust(-10), "Much less")
+for lhs, steps in pairs({ l = 1, h = -1, L = 10, H = -10 }) do
+  daw.keymap.classic(lhs, adjust(steps), { view = "vinput", desc = steps > 0 and "More; on" or "Less; off" })
+end
 pmap("<CR>", function() M.activate((panel:current())) end, "Change this: on or off, choose, type")
 pmap("=", function()
   local row = panel:current()
@@ -229,12 +235,14 @@ end, "Look for audio ports again")
 pmap("s", "vinput.source", "Choose the source")
 pmap("t", "vinput.track", "A track that takes the input")
 pmap("g", "vinput.gain", "Take the gain the tracker asked for")
-pmap("<Esc>", function() daw.ui.focus("arrange") end, "Back to the arrange view")
+-- Escape stays, as in every view; `<C-w>p` goes back to the window before.
+pmap("<Esc>", function() daw.keymap.escape_hint() end, "Stay in the panel (Ctrl-w p leaves)", { repeatable = false })
+daw.keymap.classic("<Esc>", function() daw.ui.focus("arrange") end, { view = "vinput", desc = "Back to the arrange view" })
 
 if daw.ui.keybar then
   daw.ui.keybar.set("vinput", "n", {
-    { "<CR>", "change" }, { "h", "less" }, { "l", "more" }, { "o", "on/off" }, { "s", "source" }, { "a", "add" },
-    { "t", "track" }, { "g", "take gain" }, { "r", "restart" }, { "D", "remove" }, { "<Esc>", "back" },
+    { "<CR>", "change" }, { "-", "less" }, { "+", "more" }, { "o", "on/off" }, { "s", "source" }, { "a", "add" },
+    { "t", "track" }, { "g", "take gain" }, { "r", "restart" }, { "D", "remove" }, { "<C-w>p", "back" },
   })
 end
 

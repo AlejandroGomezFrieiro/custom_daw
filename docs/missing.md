@@ -61,6 +61,17 @@
   shown as the terminal draws it, in a window of its own (`:textbuf.window`),
   not among the window's panels.
 
+- One key grammar (docs/terminal.md, "Keys: one grammar"): the window's
+  mixer and device cards do not draw the row the cursor is on, though the
+  keys typed there move it and act on it as in the terminal; a selection
+  across mixer strips with different devices or sends picks rows by what
+  they are (the fader, the second send), and skips a strip that has none.
+  `]` and `[` wait a moment for `]d` `]g` and the like before they run, as
+  Vim's keys do when a longer mapping starts with them. `daw.opt.keys =
+  "classic"` brings back the keys of before, and is to go after a release.
+  The session view's `m` and `n` still mean launch mode and a new clip, not
+  Vim's mark and next match.
+
 - Score clips (notation): a tempo mark writes a point of the song's tempo
   map when it is written, and nothing keeps the two together after (moving
   the clip or the mark leaves the point where it was; no option makes the
@@ -79,7 +90,8 @@
   marks, endings, tempo marks, ornaments and clef changes are not in the
   MusicXML or LilyPond export; the piano roll does not mark a score
   clip's notes as written or show a note's feel; with `timebind` the note
-  under one view's cursor is not outlined in the other; joining, splitting or stretching a score clip in the arrange view and
+  under one view's cursor is not outlined in the other; joining, splitting
+  or stretching a score clip in the arrange view and
   recording into one work on its notes as on any MIDI clip, and the next
   edit in notation renders the score over them; `:import song.mid score=yes`
   does not exist (`:score.from-midi` after importing does it); the
