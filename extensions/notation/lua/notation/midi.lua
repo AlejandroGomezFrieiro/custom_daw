@@ -16,6 +16,9 @@
 --     wrote                  what marks wrote: { velocity = { { v, from }, ... }, length = { v, from } },
 --                            each velocity a mark wrote over the one before
 --   on the clip, `meta.notation`, in beats from the clip's start:
+--     version                the layout of all this, `M.VERSION`, for the
+--                            clip and its notes; none is the layout before
+--                            there was one (marks as `dyn`, `cresc`, `slurs`)
 --     settings, tuplets      how it is transcribed; tuplets said (or `plain`)
 --     staves                 the clefs notation wrote on, where the notes would choose others
 --     marks                  { id, kind, at, to?, staff?, value, ... }: dynamics, hairpins,
@@ -42,6 +45,10 @@ local model = require("notation.model")
 
 local M = {}
 local Q = D.Q
+
+-- The layout of what notation keeps (see above); written with every clip
+-- it writes, read as the layout before it where a clip has none.
+M.VERSION = 1
 local EPS = 1e-6
 
 M.DYNAMICS = { ppp = 25, pp = 38, p = 52, mp = 66, mf = 80, f = 96, ff = 112, fff = 124, pppp = 16, ffff = 127, niente = 8 }
@@ -411,8 +418,11 @@ end
 --- "cresc", "dim", "text", "repeat", and `slurs`) as marks and bars now.
 local function legacy(own)
   local marks, bars = {}, {}
+  local old = own.version == nil
   for _, mk in ipairs(own.marks or {}) do
-    if mk.kind == "dyn" then
+    if not old then
+      marks[#marks + 1] = mk
+    elseif mk.kind == "dyn" then
       marks[#marks + 1] = { kind = "dynamic", at = mk.at, value = mk.value }
     elseif mk.kind == "cresc" or mk.kind == "dim" then
       marks[#marks + 1] = { kind = "hairpin", at = mk.at, to = mk.to or mk.at, value = mk.kind }
@@ -750,9 +760,11 @@ function M.sync(clip_id, before, after, own, fixed)
   for key in pairs(tb) do
     if not ta[key] then tuplets_changed = true end
   end
-  if not same(pb, pa) or tuplets_changed or not same(staves, own.staves) or own.slurs or M.is_legacy(own) then
+  local stamped = own.version == M.VERSION or (#set == 0 and #add == 0)
+  if not same(pb, pa) or tuplets_changed or not same(staves, own.staves) or own.slurs or M.is_legacy(own) or not stamped then
     local mine = util.merge(own, {})
     mine.marks, mine.bars, mine.layout, mine.slurs, mine.staves = pa.marks, pa.bars, pa.layout, nil, staves
+    mine.version = M.VERSION
     if tuplets_changed then mine.tuplets = M.tuplets_kept(own.tuplets, tb, ta) end
     local c = api.clip_get(clip_id)
     local meta = util.merge(c.meta or {}, {})
@@ -765,6 +777,7 @@ end
 
 --- Whether a clip's `meta.notation` keeps marks the old way.
 function M.is_legacy(own)
+  if own.version then return false end
   for _, mk in ipairs(own.marks or {}) do
     if mk.kind == "dyn" or mk.kind == "cresc" or mk.kind == "dim" or mk.kind == "repeat" then return true end
   end
@@ -833,7 +846,7 @@ function M.legacy_notes(c, notes)
   end
   local part = M.clip_part(sc)
   local own = util.merge(type(c.meta.notation) == "table" and c.meta.notation or {}, {})
-  own.marks, own.bars, own.layout = part.marks, part.bars, part.layout
+  own.marks, own.bars, own.layout, own.version = part.marks, part.bars, part.layout, M.VERSION
   local tuplets = {}
   for _, tp in pairs(tuplets_of(sc)) do tuplets[#tuplets + 1] = tp end
   table.sort(tuplets, function(a, b) return a.start < b.start end)

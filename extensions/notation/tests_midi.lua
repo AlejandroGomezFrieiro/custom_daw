@@ -184,6 +184,13 @@ test("midi: entered notes are MIDI notes at the written place and length, with w
   eq(clip:get().meta.score, nil, "the clip keeps no score")
   local own = clip:notes()[2].meta.notation
   eq(own.voice .. " " .. own.letter .. " " .. own.pitch, "1 1 62", "a note keeps its voice and spelling")
+  eq(clip:get().meta.notation.version, 1, "and the clip the version of how it is kept")
+  local xml_path = T.scratch .. "/midi-ids.musicxml"
+  require("notation.files").export(xml_path, { clip })
+  local f = io.open(xml_path)
+  local xml = f:read("*a")
+  f:close()
+  eq(xml:find('<note id="n' .. clip:notes()[2].id .. '">', 1, true) ~= nil, true, "MusicXML carries each note's id")
   view:set(36, 1)
   keys("<C-a>")
   eq(written(view), "q C4 q D#4 q E4 qr | R", "sharpened")

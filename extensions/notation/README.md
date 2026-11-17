@@ -42,11 +42,13 @@ again only in the bars that changed), with what notation keeps:
 | Kept | Where | What |
 | --- | --- | --- |
 | on each note | `note.meta.notation` | its spelling (`letter`, `alter`, and the `pitch` it was spelled for: a note given another pitch in the roll is spelled by the key again), `voice`, `staff` of a grand staff, `grace` (`acciaccatura`, `appoggiatura`), `strum`, `chord`, `beam`, its chord's `art`iculations, `orn`ament and `stem`, `lyrics` of verses after the first (the first is `note.meta.lyric`, where the `utau` extension keeps its own), and `len` with `sounding`: how long it is written while it is as long as notation made it (a staccato) |
-| with the clip | `clip.meta.notation`, in beats of the clip | the transcription's `settings`; `tuplets` written (or a stretch said to be plain); `marks` (dynamics, hairpins, slurs, text, tempo marks, chord symbols, playing techniques); `bars` (barlines, repeats, endings, rehearsal marks, key and clef changes, the beats' grouping); `layout` (system breaks, bars to a system); `staves`, the clefs it was written on where its notes would now choose others |
+| with the clip | `clip.meta.notation`, in beats of the clip | `version`, how all this is laid out (1; a clip without one keeps it as before versions were written); the transcription's `settings`; `tuplets` written (or a stretch said to be plain); `marks` (dynamics, hairpins, slurs, text, tempo marks, chord symbols, playing techniques); `bars` (barlines, repeats, endings, rehearsal marks, key and clef changes, the beats' grouping); `layout` (system breaks, bars to a system); `staves`, the clefs it was written on where its notes would now choose others |
 | with the track | `track.meta.notation` | its clef, its tablature |
 | with the song | the tempo map, the signatures | what tempo marks and time signatures say |
 
-Because what is kept is on the note, it goes where the note goes: moved,
+Written notes are named by their MIDI notes (`n41` writes note 41, which
+keeps its id however it is moved), and MusicXML written out carries those
+names as each `<note>`'s `id`. Because what is kept is on the note, it goes where the note goes: moved,
 copied, pasted or undone in the piano roll, a note keeps its spelling and
 its voice, and a note deleted takes its own away. Marks along the clip
 keep their beats.

@@ -1396,7 +1396,9 @@ local function part_xml(w, part, pid, divisions, g)
                 .. (#tnot > 0 and ("<notations>" .. table.concat(tnot) .. "</notations>") or "") .. "</note>")
             else
               for i, n in ipairs(ev.notes) do
-                local parts = { "      <note>" }
+                -- The note's id goes out with it: `n41` is the clip's MIDI note 41.
+                local id = type(n.id) == "string" and n.id:match("^n[%d.]+$")
+                local parts = { id and ('      <note id="' .. id .. '">') or "      <note>" }
                 if ev.grace then parts[#parts + 1] = ev.grace == "acciaccatura" and '<grace slash="yes"/>' or "<grace/>" end
                 if i > 1 then parts[#parts + 1] = "<chord/>" end
                 parts[#parts + 1] = "<pitch><step>" .. LETTERS[n.step] .. "</step>" .. ((n.alter or 0) ~= 0 and ("<alter>" .. n.alter .. "</alter>") or "")
