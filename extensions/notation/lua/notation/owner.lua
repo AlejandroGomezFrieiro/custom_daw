@@ -14,6 +14,13 @@
 --
 -- Either way the notes end up where the roll put them: the feel takes up
 -- what the writing does not say. One undo step, score and notes together.
+--
+-- A note the score makes up from a mark (a grace note's realisation) is
+-- not quite written: a pitch or a delete there asks whether to write the
+-- mark or change only this pass. Only the mark can take a pitch or a
+-- delete, since a pass has no override of its own yet (a grace note plays
+-- once; what a trill or an unfolded repeat makes is not rendered), so
+-- "only this pass" is offered for a note's time, length and velocity.
 local api = daw.api
 local view = require("notation")
 local model = require("notation.model")
@@ -55,6 +62,25 @@ local function normalize(change, notes)
   return sets, removes, adds
 end
 
+--- Whether the score makes a note up from a mark, not just writes it: what
+--- kind (`"grace"`), or nil.
+function M.generated(sc, id)
+  local _, ev = D.find_note(sc, id)
+  if ev and ev.grace then return "grace" end
+end
+
+--- The same plan as feel only: what a pass can take (time, length, velocity).
+local function pass_of(plan)
+  local out = {}
+  for _, p in ipairs(plan) do
+    local q = {}
+    for k, v in pairs(p) do q[k] = v end
+    q.pitch, q.move = nil, nil
+    out[#out + 1] = q
+  end
+  return out
+end
+
 --- What a change of a score clip's notes means, and how to make it.
 function M.on_edit(c, change)
   local notes = api.clip_notes(c.id)
@@ -79,7 +105,30 @@ function M.on_edit(c, change)
   if #removes > 0 or #adds > 0 then written, any = true, true end
   -- Only what extensions keep on notes changed: written as asked.
   if not any then return nil end
-  return { kind = written and "written" or "feel", apply = function() return M.apply(c.id, plan, removes, adds, notes) end }
+  local function apply() return M.apply(c.id, plan, removes, adds, notes) end
+  -- A pitch or a delete of a made-up note: the mark or only this pass?
+  local sc, made = view.score_of(c), nil
+  for _, p in ipairs(plan) do
+    made = made or (p.pitch and M.generated(sc, p.id))
+  end
+  for _, i in ipairs(removes) do
+    local id = notes[i] and render.note_id(notes[i])
+    made = made or (id and M.generated(sc, id))
+  end
+  if made then
+    local feel = #removes == 0 and #adds == 0
+    return {
+      kind = "ask", prompt = "A " .. made .. " note is made from its mark: [w]rite the mark, or only [t]his pass? ",
+      cancel = "left as it was",
+      choices = {
+        w = { apply = apply },
+        t = feel and { apply = function() return M.apply(c.id, pass_of(plan), removes, adds, notes) end,
+          message = "only this pass: its time, length and velocity changed; a pitch has no override of a pass yet, write the mark for that" }
+          or { message = "a delete has no override of a pass yet: [w]rite the mark" },
+      },
+    }
+  end
+  return { kind = written and "written" or "feel", apply = apply }
 end
 
 --- Make a planned change: the written part in the score, then each note's

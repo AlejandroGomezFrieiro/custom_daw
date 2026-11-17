@@ -76,9 +76,12 @@
   not tempo-map points, and no option makes the score own the song's
   tempo; repeats and voltas are written, not unfolded; trills, tremolos,
   fermatas, swing and expression maps are not rendered; no CC1 or CC11 is
-  written for sustained instruments; the piano roll does not mark a score
-  clip's notes as written or show a note's feel; with `timebind` the note
-  under one view's cursor is not outlined in the other; key, clef and
+  written for sustained instruments; the roll's hatching of generated
+  notes is a pale veil in the window, its velocity strip shows no dynamic
+  line there, and "only this pass" is offered for time, length and velocity
+  only (a pitch or a delete of a generated note can be written, not
+  limited to a pass); the notation window outlines the roll's note in the
+  terminal only; key, clef and
   time-signature changes inside a clip are not edited per measure (a score
   keeps the time signatures it was written with, and the project's key);
   joining, splitting or stretching a score clip in the arrange view and

@@ -8,6 +8,7 @@ require("notation.tui")
 require("notation.gui")
 require("notation.keys")
 require("notation.owner")
+require("notation.roll")
 
 daw.ui.view("notation", view)
 daw.ui.dock("notation", { side = "bottom", hidden = true })
