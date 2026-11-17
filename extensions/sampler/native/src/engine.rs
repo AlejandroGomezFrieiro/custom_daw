@@ -128,6 +128,14 @@ impl Program {
     pub fn memory(&self) -> usize {
         self.samples.iter().map(|s| s.bytes()).sum()
     }
+
+    /// Seconds from where a region starts playing (its `offset`) to the
+    /// attack of its sample.
+    pub fn onset(&self, region: usize) -> f64 {
+        let sample = &self.samples[self.region_sample[region]];
+        let offset = self.instrument.regions[region].offset;
+        sample.onset.saturating_sub(offset) as f64 / sample.rate
+    }
 }
 
 /// What the plugin's parameters set, as the engine uses them.

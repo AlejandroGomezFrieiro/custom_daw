@@ -5,7 +5,7 @@
 
 use crate::engine::Program;
 use crate::m2;
-use crate::model::Instrument;
+use crate::model::{Instrument, Trigger};
 use crate::params::{PARAMS, to_text};
 use serde_json::{Value, json};
 
@@ -61,6 +61,7 @@ pub fn describe(program: Option<&Program>, path: &str, error: Option<&str>, valu
             v["samples"] = json!(p.samples.len());
             v["memory"] = json!(p.memory());
             v["load_ms"] = json!((p.load_ms * 10.0).round() / 10.0);
+            delays(p, &mut v);
             v
         }
         None => json!({ "name": "", "format": "", "path": path, "range": Value::Null,
@@ -78,4 +79,29 @@ pub fn describe(program: Option<&Program>, path: &str, error: Option<&str>, valu
         })
         .collect();
     v
+}
+
+/// The onset delay of the instrument's attack samples (`delay_ms`), and of
+/// each articulation's, as the median over its regions: how much earlier
+/// a note must start for its attack to land on the beat.
+fn delays(p: &Program, v: &mut Value) {
+    let inst = &p.instrument;
+    let attack = |r: &crate::model::Region| matches!(r.trigger, Trigger::Attack | Trigger::First | Trigger::Legato);
+    let median = |mut d: Vec<f64>| -> Option<f64> {
+        if d.is_empty() {
+            return None;
+        }
+        d.sort_by(f64::total_cmp);
+        Some((d[d.len() / 2] * 10000.0).round() / 10.0)
+    };
+    let all: Vec<f64> = (0..inst.regions.len()).filter(|&i| attack(&inst.regions[i])).map(|i| p.onset(i)).collect();
+    v["delay_ms"] = json!(median(all));
+    for (a, art) in inst.articulations.iter().enumerate() {
+        let state = (inst.default_switch & !art.mask) | art.values;
+        let plays = |r: &crate::model::Region| {
+            attack(r) && (r.switch_any == 0 || state & r.switch_any != 0) && state & r.switch_all == r.switch_all
+        };
+        let d: Vec<f64> = (0..inst.regions.len()).filter(|&i| plays(&inst.regions[i])).map(|i| p.onset(i)).collect();
+        v["articulations"][a]["delay_ms"] = json!(median(d));
+    }
 }

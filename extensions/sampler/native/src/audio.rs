@@ -52,6 +52,23 @@ pub struct Sample {
     pub keycenter: Option<u8>,
     /// Cents, from the file.
     pub fine_tune: f32,
+    /// Frames before the attack: the first frame that reaches a tenth
+    /// (-20 dB) of the sample's peak. What `describe` reports as a delay.
+    pub onset: u64,
+}
+
+/// The fraction of a sample's peak that counts as its attack.
+const ONSET: f32 = 0.1;
+
+/// The first frame of `data` (interleaved, padded) that reaches `ONSET` of
+/// its peak, counted from the first frame after the padding.
+fn onset<S: Value>(data: &[S]) -> u64 {
+    let peak = data.iter().fold(0.0f32, |m, v| m.max(v.f().abs()));
+    if peak == 0.0 {
+        return 0;
+    }
+    let first = data.iter().position(|v| v.f().abs() >= peak * ONSET).unwrap_or(0);
+    first as u64
 }
 
 impl Sample {
@@ -70,6 +87,7 @@ impl Sample {
             rate,
             channels,
             frames,
+            onset: (onset(&padded) / channels as u64).saturating_sub(PAD as u64),
             pcm: Pcm::F32(padded.into_boxed_slice()),
             loop_points: None,
             keycenter: None,
@@ -85,6 +103,7 @@ impl Sample {
             rate,
             channels,
             frames,
+            onset: (onset(&padded) / channels as u64).saturating_sub(PAD as u64),
             pcm: Pcm::I16(padded.into_boxed_slice()),
             loop_points: None,
             keycenter: None,

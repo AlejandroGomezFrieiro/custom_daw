@@ -342,3 +342,15 @@ fn renders_repeat_exactly() {
     };
     assert_eq!(run(), run());
 }
+
+#[test]
+fn describe_measures_each_articulations_onset_delay() {
+    let instrument = formats::read(&dir().join("delay.sfz")).unwrap();
+    let program = Program::new(instrument, &mut Store::default());
+    let v = paw_sampler::describe::describe(Some(&program), "", None, &[0.0; 10]);
+    let delay = |i: usize| v["articulations"][i]["delay_ms"].as_f64().unwrap();
+    near(delay(0), 0.0, 0.1, "sustain starts at once");
+    near(delay(1), 30.0, 0.5, "staccato's sample starts 30 ms late");
+    near(delay(2), 20.0, 0.5, "pizzicato skips 10 ms of it");
+    near(v["delay_ms"].as_f64().unwrap(), 20.0, 0.5, "the instrument's median");
+}

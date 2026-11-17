@@ -51,6 +51,14 @@ pub const INSTRUMENTS: &[(&str, &str)] = &[
         "<region> sample=loop.wav key=69 loop_mode=loop_continuous loop_start=4800 loop_end=14399 ampeg_release=0.01\n",
     ),
     ("smpl.sfz", "<region> sample=smpl.wav pitch_keycenter=sample ampeg_release=0.01\n"),
+    (
+        "delay.sfz",
+        "// Staccato's sample starts 30 ms late; pizzicato skips 10 ms of it.\n\
+         <global> sw_default=24 key=69\n\
+         <group> sw_last=24 sw_label=Sustain <region> sample=a440.wav\n\
+         <group> sw_last=25 sw_label=Staccato <region> sample=late.wav\n\
+         <group> sw_last=26 sw_label=Pizzicato <region> sample=late.wav offset=480\n",
+    ),
     ("envelope.sfz", "<region> sample=*sine ampeg_attack=0.5 ampeg_release=0.3\n"),
     (
         "choke.sfz",
@@ -112,6 +120,10 @@ pub fn write(dir: &Path) -> std::io::Result<()> {
     // 480 Hz: a period of exactly 100 frames, so a loop of whole periods
     // joins without a step.
     wav("loop.wav", sine(480.0, 0.4, 0.5), Some(69), None)?;
+    // 30 ms of silence before the sound.
+    let mut late = vec![0.0f32; 1440];
+    late.extend(sine(660.0, 0.5, 0.5));
+    wav("late.wav", late, Some(69), None)?;
     // Its own key (A3) and loop in the file's `smpl` chunk.
     wav("smpl.wav", sine(220.0, 0.25, 0.5), Some(57), Some((2400, 7199)))?;
     for (name, text) in INSTRUMENTS {

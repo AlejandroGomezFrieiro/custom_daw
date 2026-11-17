@@ -594,7 +594,6 @@ fn opcode(ctx: &mut Ctx, r: &mut Region, sw: &mut SwitchOps, b: &mut Build, name
         "sw_down" => r.sw_down = key(value),
         "sw_up" => r.sw_up = key(value),
         "sw_previous" => r.sw_previous = key(value),
-        "sw_vel" => {}
         "trigger" => {
             r.trigger = match value {
                 "release" => Trigger::Release,
@@ -618,7 +617,6 @@ fn opcode(ctx: &mut Ctx, r: &mut Region, sw: &mut SwitchOps, b: &mut Build, name
         "offset_random" => r.offset_random = frames(),
         "end" => r.end = Some(frames()),
         "delay" => r.delay = f(),
-        "count" | "delay_random" => {}
         "loop_mode" | "loopmode" => {
             r.loop_mode = Some(match value {
                 "one_shot" => LoopMode::OneShot,

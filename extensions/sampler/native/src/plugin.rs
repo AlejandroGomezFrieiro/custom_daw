@@ -668,24 +668,18 @@ static CALL: paw_plugin_call = paw_plugin_call { call: Some(call) };
 unsafe extern "C" fn call(
     plugin: *const clap_plugin,
     method: *const c_char,
-    data: *const u8,
-    size: usize,
+    _data: *const u8,
+    _size: usize,
     out: *mut c_void,
     write: Option<unsafe extern "C" fn(out: *mut c_void, data: *const u8, size: usize)>,
 ) -> bool {
     let p = unsafe { this(plugin) };
     let method = unsafe { CStr::from_ptr(method) }.to_string_lossy();
-    let data = if data.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(data, size) } };
-    let describe = || {
-        let main = p.main();
-        describe::describe(main.program.as_deref(), &main.path, main.error.as_deref(), &p.values()).to_string()
-    };
     let (ok, answer) = match method.as_ref() {
-        "describe" => (true, describe()),
-        "load" => match p.load(&String::from_utf8_lossy(data)) {
-            Ok(()) => (true, describe()),
-            Err(e) => (false, e),
-        },
+        "describe" => {
+            let main = p.main();
+            (true, describe::describe(main.program.as_deref(), &main.path, main.error.as_deref(), &p.values()).to_string())
+        }
         _ => (false, format!("the sampler has no method `{method}`")),
     };
     if let Some(write) = write {

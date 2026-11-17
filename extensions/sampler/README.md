@@ -78,10 +78,20 @@ profile (M2-123) from its name (`Staccato` is 11.0, `Pizz` 11.A, `Legato`
 
 `daw.api.device_call(device, "describe")` answers JSON: `name`, `format`,
 `path`, `range` (`[lo, hi]`, keyswitches left out), `keyswitches` (`{ pitch,
-name }`), `articulations` (`{ name, m2, keyswitch?, default?, custom? }`),
-`ccs` and `keys` (labels), `regions`, `samples`, `memory` (bytes),
-`load_ms`, `round_robin`, `release_triggers`, `warnings`, `error`, and
-`params`. `paw-sampler describe file.sfz` prints the same from a shell.
+name }`), `articulations` (`{ name, m2, keyswitch?, default?, custom?,
+delay_ms }`), `delay_ms`, `ccs` and `keys` (labels), `regions`, `samples`,
+`memory` (bytes), `load_ms`, `round_robin`, `release_triggers`,
+`warnings`, `error`, and `params`. `paw-sampler describe file.sfz` prints
+the same from a shell.
+
+`delay_ms` is how late the attack comes in the samples: for each sample,
+measured once as it is loaded, the time from where the region starts
+playing (after its `offset`) to the first frame that reaches a tenth
+(-20 dB) of the sample's peak; for an articulation, the median over the
+attack regions it plays, and for the instrument over all of them (null
+when there are none). The articulations extension writes it into the
+instrument's `.art.toml` as `delay`, so that such notes can be played
+earlier.
 
 ## What it reads
 
@@ -91,7 +101,7 @@ Mapping: `sample` (files and `*sine *saw *square *triangle *noise
 *silence`), `default_path`, `key lokey hikey lovel hivel lochan hichan`,
 `note_offset octave_offset`, `loccN hiccN`, `lorand hirand`, `seq_length
 seq_position`. Keyswitches: `sw_lokey sw_hikey sw_last sw_lolast sw_hilast
-sw_default sw_label sw_down sw_up sw_previous`. Triggers: `trigger`
+sw_default sw_label sw_down sw_up sw_previous` (not `sw_vel`). Triggers: `trigger`
 (attack, release, release_key, first, legato), `rt_decay`. Pitch:
 `pitch_keycenter` (a key or `sample`), `pitch_keytrack tune transpose
 pitch_veltrack bend_up bend_down`, `pitcheg_*`. The sample: `offset
