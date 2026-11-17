@@ -197,6 +197,9 @@ end
 --- end not included) and `kind`: "char" for a stretch of time, "line" for
 --- whole rows, "block" for a rectangle.
 ---   daw.keymap.operator("gl", function(region) ... end, { view = "arrange", desc = "Loop" })
+--- With `count = "operator"` the count typed before the operator is its
+--- own (how far, how many times: `3gUib` is three steps up over a bar), as
+--- `ctx.op_count`, and `ctx.count` is the motion's or object's alone.
 function M.operator(lhs, fn, opts)
   M.set(lhs, nil, daw.util.merge(opts or {}, { mode = { "n", "x" }, operator = fn }))
 end
@@ -696,7 +699,11 @@ local function run(map, char)
     op = nil
     M.set_mode("n")
     if o.map.desc then api.undo_label(o.map.desc) end
-    ctx.count, ctx.register = times(o.count, ctx.count), o.register
+    if o.map.count == "operator" then
+      ctx.op_count, ctx.register = o.count, o.register
+    else
+      ctx.count, ctx.register = times(o.count, ctx.count), o.register
+    end
     local r, c = g.get()
     local reg
     if map.object then
@@ -720,6 +727,7 @@ local function run(map, char)
       M.set_mode("n")
       if not reg then return end
       if map.desc then api.undo_label(map.desc) end
+      if map.count == "operator" then ctx.op_count = ctx.count end
       if reg.kind == "line" then g.set(first_row(g, reg), col) else g.set(first_row(g, reg), reg.c0) end
       return map.operator(reg, ctx)
     end
@@ -827,6 +835,12 @@ local text_changes = 0
 --- lines), so that `.` repeats the command that made it.
 function M.changed() text_changes = text_changes + 1 end
 
+local after   -- { fn, armed }: to run once the next whole command is done
+
+--- Run `fn` once the next whole command has been typed and done, as
+--- insert mode's Ctrl-o goes back to insert mode after one command.
+function M.after_next(fn) after = { fn = fn } end
+
 --- Once a command is complete, remember it for `.` if it changed the project.
 local function finish_command()
   if not idle() then return end
@@ -836,6 +850,16 @@ local function finish_command()
     last_change = track.keys
   end
   track = {}
+  -- The command that asked is done now; the one after it is the one waited for.
+  if after and depth == 0 then
+    if after.armed then
+      local fn = after.fn
+      after = nil
+      fn()
+    else
+      after.armed = true
+    end
+  end
 end
 
 --- Run a mapping, or wait for the key it wants first (`ma`, `"ayy`, `@q`).
@@ -897,7 +921,7 @@ handle = function(key)
       local row, col = g.get()
       local reg = region(row, col, row + (n - 1) * (g.down or 1), col, "line")
       if o.map.desc then api.undo_label(o.map.desc) end
-      return o.map.operator(reg, { count = n, register = o.register, keys = o.map.lhs .. key })
+      return o.map.operator(reg, { count = n, op_count = o.count, register = o.register, keys = o.map.lhs .. key })
     end
   end
 

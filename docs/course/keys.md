@@ -323,3 +323,23 @@ insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
 Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
 the other voice, `R` repeats the chord, and the numbers choose the value (5
 a quarter). zg shows the engraved page as one long system.
+
+The grammar in notation is about the score: operators and text objects
+work on what is written, and each edit is one undo step that `.` repeats.
+
+- Objects: `in` `an` the note (with its ties), `ic` `ac` the chord (with
+  grace notes and ties), `i.` `a.` the beat (`a.` in every voice), `ib` what
+  the bar holds and `ab` the bar itself (`dab` takes it out, `p` puts it
+  back), `ip` `ap` the phrase, `iv` `av` the voice, `is` `as` the staff,
+  `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (`ic` is the clip
+  in the piano roll).
+- Operators: `gU` `gu` a step of the key (`3gUib` three steps), `g+` `g-`
+  a semitone, `g~` respell, `g(` slur (`g(ip`), `g?` retrograde (`2g?`
+  inverts), `gq` tidy, `!` filter (`!ib reverse`, `!ib tac`).
+- Motions: `f` `F` `t` `T` and a letter, `;` `,` again (`,` waits a moment:
+  it is the leader), `)` `(` by phrase, `]v` `[v` by voice, `Ctrl-j`
+  `Ctrl-k` by staff.
+- Entering: `I` pushes later music along (`Insert` toggles), `r` and a
+  letter re-pitches a note, `R` re-pitches in turn (not record here); in
+  insert mode `/` `//` a grace note, `Ctrl-t` a tuplet, `Ctrl-o` one normal
+  command, `Ctrl-r` a register, `Tab` the suggestion.

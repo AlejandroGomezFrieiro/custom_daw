@@ -137,7 +137,11 @@ function view:render(buf, ctx)
     right = value .. "  " .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra,
   })
   if inserting then
-    local text = " INS " .. value .. " "
+    -- How letters write: overwriting (as entered), pushing later music
+    -- along, re-pitching what is there; and a tuplet or grace note to come.
+    local tp = self:entry_tuplet()
+    local how = self.repitch and " REPITCH " or self.push and " PUSH " or " INS "
+    local text = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
     real:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
   -- Where the terminal shows images, the engraved page (gui.lua) below the title.
@@ -552,7 +556,7 @@ end
 function view:snap(m, rel, fine)
   local grid = self:layout().grid
   if fine then return util.clamp(floor(rel / grid + 0.5) * grid, 0, m.length - grid) end
-  return model.snap(m.meter, rel, self.value * (self.triplets and 2 / 3 or 1))
+  return model.snap(m.meter, rel, self.value * (self:entry_tuplet() and self:entry_tuplet()[2] / self:entry_tuplet()[1] or 1))
 end
 
 --- What is at a cell of the view: the line or space, the beat there
