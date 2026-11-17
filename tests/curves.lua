@@ -62,6 +62,43 @@ end
 
 -- Curves by address ----------------------------------------------------------------
 
+test("curves in cells are connected sextants, and steep jumps have no gaps", function()
+  local draw = daw.draw
+  eq(draw.sextant(0), " ", "no sextants is a space")
+  eq(draw.sextant(21), "▌", "the left column is a half block")
+  eq(draw.sextant(42), "▐", "the right column")
+  eq(draw.sextant(63), "█", "all six is the full block")
+  eq(draw.sextant(1), "\240\159\172\128", "the top left one is U+1FB00")
+  eq(draw.sextant(62), "\240\159\172\187", "and 62 of them are U+1FB3B")
+  local function plot(value, glyphs)
+    local was = daw.opt.curve_glyphs
+    daw.opt.curve_glyphs = glyphs
+    local cells = {}
+    local buf = { width = 6, text = function(_, x, y, ch) cells[y * 6 + x] = ch end }
+    draw.curve(buf, 0, 2, value, "Normal")
+    daw.opt.curve_glyphs = was
+    return cells
+  end
+  -- A step from the bottom to the top at the middle of six columns: six
+  -- sextant rows over two cell rows. The line runs along the bottom, then
+  -- goes up the left of the fourth column with no gap, and along the top.
+  local cells = plot(function(i) return i < 6 and 0 or 1 end, "sextant")
+  eq(cells[6 + 0], draw.sextant(48), "along the bottom")
+  eq(cells[6 + 2], draw.sextant(48), "to the step")
+  eq(cells[6 + 3], draw.sextant(1 + 4), "the lower cell of the jump, filled up from the bottom")
+  eq(cells[3], draw.sextant(1 + 2 + 4 + 16), "the upper cell, filled to the top")
+  eq(cells[4], draw.sextant(3), "along the top")
+  daw.opt.ascii = false
+  local braille = plot(function(i) return i / 12 end, "braille")
+  local any = false
+  for _, ch in pairs(braille) do any = any or ch:find("^\226[\160-\163]") ~= nil end
+  eq(any, true, "braille on request")
+  local lines = plot(function(i) return i / 12 end, "line")
+  local ok = true
+  for _, ch in pairs(lines) do ok = ok and (ch == "▁" or ch == "─" or ch == "▔") end
+  eq(ok, true, "and lines")
+end)
+
 test("every kind of curve reads and writes through its address", function()
   start()
   local t = daw.add_track({ name = "Lead" })
@@ -134,7 +171,7 @@ test("a curve is a buffer named by its address, shown in a window split off", fu
   local text = screen()
   eq(text:find("2 points", 1, true) ~= nil, true, "the editor shows how many points")
   eq(text:find("-12.0 dB", 1, true) ~= nil, true, "and the value in its unit")
-  eq(text:find("[⠁-⣿]") ~= nil, true, "the curve drawn in braille")
+  eq(text:find("[\240][\159][\172-\175]") ~= nil or text:find("[▌▐█]") ~= nil, true, "the curve drawn in sextants")
   daw.commands.exec("close")
   daw.commands.exec("vs " .. uri)
   eq(daw.win.current().view, "curve", ":vs takes an address")

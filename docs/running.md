@@ -1,5 +1,9 @@
 # Running it
 
+The programs keep short names for now: `daw` is paw's terminal interface,
+`daw-gui` its window, `daw-mcp` the bridge for AI assistants, and the Lua
+module is `daw`.
+
 The dev shell provides the Rust toolchain and the PipeWire libraries.
 
 ```sh

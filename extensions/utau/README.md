@@ -14,6 +14,10 @@ vocal:add_clip({ start = 0, length = 4, notes = {
 daw.render("vocal.wav")   -- waits until every phrase is sung at final quality
 ```
 
+![A vocal track added to the demo song with :track.add vocal, its singer chosen with ,V and its phonemizer with :utau.phonemizer, the melody pasted in, lyrics typed in romaji with :utau.lyrics and made kana with :utau.batch romaji_to_hiragana; the phrases turn green as the engine sings them](images/tui-utau.gif)
+
+![The vocal editor on the sung melody: the phonemes under the notes, ~ putting a vibrato on the long note, \]c and } raising its dynamics, r singing it again, and Space playing it](images/tui-utau-editor.gif)
+
 The extension owns everything it is made of, and the core has no singing in
 it:
 
@@ -116,7 +120,7 @@ here), the state of each phrase in the ruler (grey pending, yellow rendering,
 blue draft, green final, red error), the pitch actually sung as a white line
 across the rows (`▔`, `─` and `▁` for the upper, middle and lower third of a
 semitone), the bends you drew as orange dots, and under the notes the chosen
-curve in braille with its value at the cursor.
+curve in cells (`daw.opt.curve_glyphs`) with its value at the cursor.
 
 Notes are heard as they are placed or clicked: sung by the engine with the
 track's voice when it is running and the track has a singer, else as a soft

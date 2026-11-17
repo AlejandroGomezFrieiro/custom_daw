@@ -50,7 +50,9 @@ end
 -- daw.opt.header_width = "auto" -- columns for the terminal's track headers
 -- daw.opt.termcolors = "auto"   -- "true" for 24-bit colour, "256", or "auto" to ask the terminal
 -- daw.opt.ascii = false         -- draw the terminal with plain ASCII characters only
--- daw.opt.braille = true        -- curves in braille dots; false for lines
+-- daw.opt.curve_glyphs = "sextant" -- curves in cells: "sextant" (connected), "braille" (dots) or "line"
+-- daw.opt.braille = true        -- false draws curves as lines, whatever curve_glyphs says
+-- daw.opt.graphics = true       -- pictures (kitty graphics protocol) where the terminal shows them; false: cells only
 -- daw.opt.grid = 1              -- beats the cursor and clips snap to
 -- daw.opt.note_grid = 0.25      -- beats notes snap to (a sixteenth)
 -- daw.opt.autosave = 60         -- seconds between safety copies; 0 for none

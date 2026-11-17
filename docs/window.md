@@ -234,8 +234,11 @@ view (`q`, `daw.ui.close()`) closes the window. It is drawn again only when
 a redraw has been asked for and what it would show has changed, at most 30
 times a second. The font has no braille, so the window draws each braille
 character (U+2800 to U+28FF) itself, as small squares in the cell's two
-columns and four rows of dots, and curves there are braille as in the
-terminal (`daw.opt.braille` off draws lines instead). A view that has a
+columns and four rows of dots, and curves there are drawn as in the
+terminal. The font has no sextants (U+1FB00 to U+1FB3B, the default for
+curves) either, so each is drawn as up to six rectangles, a half cell by a
+third. `daw.opt.curve_glyphs` chooses, and `daw.opt.braille` off draws lines
+instead. A view that has a
 painted twin (`painted = "name"` on its table, as the undo tree and the mix
 report have) is offered under More as the twin. A terminal
 attached to the same kernel is not disturbed: the view is drawn on a grid of
