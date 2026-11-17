@@ -321,6 +321,10 @@ pub unsafe fn clap_presets(
 /// The parts of a CLAP preset id: location kind, location (none for one
 /// inside the plugin), load key (none when there is none).
 pub fn clap_preset_parts(id: &str) -> Result<(u32, Option<CString>, Option<CString>)> {
+    // A file named by a script: `file:<path>`.
+    if let Some(path) = id.strip_prefix("file:").filter(|p| !p.is_empty()) {
+        return Ok((CLAP_PRESET_DISCOVERY_LOCATION_FILE, Some(CString::new(path)?), None));
+    }
     let mut parts = id.splitn(3, SEP);
     let kind: u32 = parts
         .next()

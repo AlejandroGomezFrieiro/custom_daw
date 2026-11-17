@@ -169,9 +169,15 @@ end
 --- the surface the press was on, wherever the pointer has gone. True when
 --- the event went there.
 function M.to_surface(target, event)
+  -- A view's own drawing (`buf:surface`) in the window the event is in, or
+  -- for a drag the one the press was on; a strip drawn by a view under its
+  -- cells (`buf:strip`) leaves the pointer to the view's `on_mouse`.
   local surface
+  local held = (event.kind == "drag" or event.kind == "up") and state.surface
   for _, s in ipairs(daw.ui.rects.surfaces or {}) do
-    if s.name == target.name then surface = s end
+    if s.paint and (held and s.key == held or not held and s.name == target.name and s.win == target.win) then
+      surface = s
+    end
   end
   local view = surface and daw.ui.views[surface.name]
   if not (view and view.pointer) then
@@ -181,9 +187,9 @@ function M.to_surface(target, event)
   local s, kind = surface, event.kind
   local inside = event.x >= s.x and event.x < s.x + s.w and event.y >= s.y and event.y < s.y + s.h
   if kind == "down" then
-    state.surface = inside and s.name or nil
+    state.surface = inside and s.key or nil
   elseif kind == "drag" or kind == "up" then
-    inside = state.surface == s.name
+    inside = state.surface == s.key
     if kind == "up" then state.surface = nil end
   end
   if not inside then return false end

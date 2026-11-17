@@ -74,7 +74,16 @@ Colours are 24-bit when the terminal says it can show them (`COLORTERM` of
 `truecolor` or `24bit`, or a `TERM` ending in `-direct`) and otherwise the
 nearest of the 256 (`daw.opt.termcolors = "true"`, `"256"` or `"auto"`).
 `daw.opt.ascii = true` draws with plain ASCII characters only, and
-`daw.opt.braille = false` draws curves with lines instead of braille dots.
+`daw.opt.curve_glyphs` chooses how curves are drawn in cells: `"sextant"`
+(the default: a connected line of sextant characters, two columns by three
+rows a cell, with steep slopes filled so that it has no gaps), `"braille"`
+(dots, two by four) or `"line"` (lines at three heights a row).
+`daw.opt.braille = false` means `"line"`, and `daw.opt.ascii` wins over all.
+`daw.opt.wave_scale` is how audio clips draw their sound in cells: `"linear"`
+(the default, which shows hits) or `"db"` (which shows quiet sound).
+`daw.opt.graphics = false` keeps views that paint to plain terminal cells; the
+default shows pixels (the kitty graphics protocol) where the terminal can show
+them. `:set graphics!` toggles it.
 
 Views and extensions draw from the same pieces, in `daw.draw`: `hue(colour)`
 and `track_hue(track)` give highlight groups in the shades of a colour, `g`

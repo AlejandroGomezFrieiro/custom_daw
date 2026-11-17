@@ -394,7 +394,7 @@ M.min_width, M.min_height = 60, 16
 local backgrounds = { status = "StatusLine", cmdline = "KeyBar" }
 M.backgrounds = backgrounds
 
-local function draw(view, buf, ctx)
+local function draw_view(view, buf, ctx)
   M.drawing = view.name
   if view.surface == true and view.paint and buf:surface(0, 0, buf.width, buf.height) then return end
   if view.paint and not view.render then
@@ -414,6 +414,15 @@ local function draw(view, buf, ctx)
       row = row + 1
     end
   end
+end
+
+--- Draw a view; the strips it kept are its own until it is done, and what
+--- is drawn over them after (a menu, a float) covers them.
+local function draw(view, buf, ctx)
+  M.drawing_win = ctx and ctx.win
+  draw_view(view, buf, ctx)
+  M.drawing_win = nil
+  if M.rects.surfaces then api.grid_surfaces_seal() end
 end
 
 local function float_rect(width, height)
@@ -507,40 +516,92 @@ local function too_small(buf)
   end
 end
 
---- Keep an area of a buffer for a view's pixels: see `Buf:surface`.
---- Where it is kept is in `daw.ui.rects.surfaces`: `{ name, x, y, w, h,
---- cell = { w, h } }` each, in cells of the screen.
-function M.surface(buf, x, y, w, h, name)
+--- Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept
+--- is in `daw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = {
+--- w, h }, under, draw, paint }` each, in cells of the screen (`name` the
+--- view that kept it, `win` the id of its window, `paint` for a view's
+--- whole drawing, `buf:surface`).
+function M.strip(buf, x, y, w, h, opts)
+  opts = opts or {}
   if daw.opt.graphics == false then return false end
+  if not M.screen then
+    -- A view drawn in cells for a window (`daw.canvas.paint_cells`): the
+    -- window draws the strip's picture with the cells, under their text.
+    if not (M.pictures and opts.draw and opts.under) then return false end
+    x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
+    local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
+    local x1, y1 = math.min(x + w, buf.cx + buf.cw), math.min(y + h, buf.cy + buf.ch)
+    if x1 <= x0 or y1 <= y0 then return false end
+    M.pictures[#M.pictures + 1] = { x = x0, y = y0, w = x1 - x0, h = y1 - y0, left = x0 - x, top = y0 - y,
+      whole_w = w, whole_h = h, draw = opts.draw }
+    return true
+  end
   local caps = api.ui_caps()
-  if not caps.pixels then return false end
-  name = name or M.drawing
-  local view = M.views[name]
-  if not (view and view.paint) then return false end
+  if not caps.pixels or (opts.under and not caps.under) then return false end
+  local name = opts.view or M.drawing
+  local win = M.drawing_win
+  local key = opts.key or (tostring(name) .. "#" .. tostring(win and win.id or "float"))
   x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
-  local index = api.grid_surface(name, x, y, w, h, buf.cx, buf.cy, buf.cw, buf.ch)
+  if opts.paint then
+    -- A view's paint lays out what shows of it.
+    local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
+    x, y, w, h = x0, y0, math.min(x + w, buf.cx + buf.cw) - x0, math.min(y + h, buf.cy + buf.ch) - y0
+  end
+  local index = api.grid_surface(key, x, y, w, h, buf.cx, buf.cy, buf.cw, buf.ch, opts.under == true)
   if not index then return false end
   -- What shows of it inside the buffer.
   local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
   local x1, y1 = math.min(x + w, buf.cx + buf.cw), math.min(y + h, buf.cy + buf.ch)
   M.rects.surfaces = M.rects.surfaces or {}
-  table.insert(M.rects.surfaces, { name = name, index = index, x = x0, y = y0, w = x1 - x0, h = y1 - y0, cell = caps.cell })
+  table.insert(M.rects.surfaces, {
+    key = key, name = name, win = win and win.id, index = index, x = x0, y = y0, w = x1 - x0, h = y1 - y0,
+    left = x0 - x, top = y0 - y, whole_w = w, whole_h = h,
+    cell = caps.cell, under = opts.under == true, draw = opts.draw, paint = opts.paint,
+  })
   return true
 end
 
---- Paint what the views kept surfaces for, once the screen is drawn.
+--- Keep an area of a buffer for a view's pixels: see `Buf:surface`. A
+--- strip, kept for the view's window, whose drawing is the view's `paint`.
+function M.surface(buf, x, y, w, h, name)
+  name = name or M.drawing
+  local view = M.views[name]
+  if not (view and view.paint) then return false end
+  return M.strip(buf, x, y, w, h, { view = name, paint = true })
+end
+
+--- Paint what the views kept strips for, once the screen is drawn.
 local function paint_surfaces()
   local caps = api.ui_caps()
   for _, s in ipairs(M.rects.surfaces or {}) do
-    local drawing = daw.canvas.paint(s.name, s.w * s.cell.w, s.h * s.cell.h, {
-      surface = true, glyphs = true, cell = s.cell, colors = { fg = caps.fg, bg = caps.bg },
-    })
-    api.grid_surface_ops(s.index, drawing and drawing.ops or {})
+    local cw, ch = s.cell.w, s.cell.h
+    local w, h = s.w * cw, s.h * ch
+    local ops
+    if s.draw then
+      -- The whole strip, of which `view` shows: a strip partly off its
+      -- window draws what shows and a piece's width either side of it.
+      ops = daw.canvas.draw(s.draw, {
+        w = s.whole_w * cw, h = s.whole_h * ch, cell = s.cell, fg = caps.fg, bg = caps.bg,
+        view = { x = s.left * cw, y = s.top * ch, w = w, h = h },
+      })
+    else
+      local drawing = daw.canvas.paint(s.name, w, h, {
+        surface = true, glyphs = true, cell = s.cell, colors = { fg = caps.fg, bg = caps.bg },
+      })
+      ops = drawing and drawing.ops
+    end
+    api.grid_surface_ops(s.index, ops or {})
   end
 end
 
 --- Draw the whole screen. Called by the kernel.
 function M.render(buf)
+  M.screen = true
+  M.render_screen(buf)
+  M.screen = false
+end
+
+function M.render_screen(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
   api.ui_mouse(daw.opt.mouse ~= false)
   if buf.width < M.min_width or buf.height < M.min_height then return too_small(buf) end
@@ -645,6 +706,7 @@ end
 --- its main area shows a window of the layout (`M.view_win`, while it is
 --- drawn). Braille is drawn there as dots (`daw.canvas`), as the font has none.
 function M.render_view(name, buf)
+  M.screen = false
   local view = M.views[name]
   buf:fill(0, 0, buf.width, buf.height, " ", backgrounds[name] or "Normal")
   if not view then return end

@@ -114,7 +114,12 @@ function M.track(id)
     { label = "New group with this track…", run = run("track.group") },
     { label = "Move into a group…", run = run("track.into") },
     { label = is_group and "Dissolve the group" or "Take out of its group", enabled = is_group or depth > 0, run = run("track.ungroup") },
+    { label = "Link the faders of the group", enabled = is_group or depth > 0, run = run("group.link") },
     { label = groups.folded(id) and "Open the group" or "Fold the group away", enabled = is_group or depth > 0, run = run("track.fold") },
+    { label = "New VCA with this track…", enabled = not daw.vca.is_vca(id), run = run("vca.make") },
+    { label = "Put under a VCA…", enabled = not daw.vca.is_vca(id), run = run("vca.assign") },
+    { label = daw.vca.is_vca(id) and "Dissolve the VCA" or "Take out of its VCAs",
+      enabled = daw.vca.is_vca(id) or #daw.vca.of(id) > 0, run = run(daw.vca.is_vca(id) and "vca.dissolve" or "vca.release") },
     "-",
     { label = "Automation", items = {
       auto("read", "Read: the lanes play"),

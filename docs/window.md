@@ -30,26 +30,30 @@ program cannot say, so none is kept and the window opens where the compositor
 puts it. A saved position that no screen shows any more (a monitor that is
 gone) is not used: the window goes to the top left of the main screen.
 
-It keeps no project state. Thirty times a second it calls
-`daw.frontend.state(revision)` over the socket, and everything the user does
-goes back as commands, so it and a terminal UI or a script can drive the same
-session at once.
+It keeps no project state. The kernel sends it the state when it changes
+(`frontend.watch`, at most thirty times a second), what it shows is drawn
+from that, and everything the user does goes back as calls to
+`daw.frontend.act` and as keys, so it and a terminal UI or a script can
+drive the same session at once. Its menus are the kernel's too
+(`daw.frontend.menu`, in `runtime/lua/daw/window_menus.lua` beside the
+terminal's mouse menus): the window lays them out and says which entry was
+chosen.
 
-The window is drawn on the processor (Slint's software renderer), which works
-everywhere. `daw-gui --renderer gpu`, or `DAW_GUI_RENDERER=gpu`, draws it
-with OpenGL on the graphics card instead: worth trying on a large screen,
-where the processor has many pixels to fill while playing. It needs the
-system's OpenGL driver (on NixOS, `hardware.graphics.enable`); where OpenGL
-cannot start, the window says so in one line and draws on the processor. It
-has not been tried on a real graphics card yet, so it is not the default.
-Either way the window draws again only what has changed: the playhead, the
-clock and the meters while playing, next to nothing at rest. The piano roll
+The window is written with [egui](https://github.com/emilk/egui) and drawn
+with OpenGL (eframe's glow renderer), on whatever driver the system has: the
+graphics card's, or Mesa's llvmpipe on the processor where there is none
+(on NixOS the driver comes from `hardware.graphics.enable`). `daw-gui
+--renderer software`, or `DAW_GUI_RENDERER=software`, asks Mesa for llvmpipe
+even where a card is there; `--renderer gpu` is the default. Where OpenGL
+cannot start at all, the window says so in one line. It draws a frame only
+when something has changed: nothing at rest, and while playing at most 25
+frames a second for the playhead, the clock and the meters. The piano roll
 and the timeline are handed only the notes, lines and points near what
 shows, so a clip of thousands of notes opens and scrolls as fast as a short
-one. Measured with the demo song in a 1500x960 window (software renderer,
-on a busy machine): 1–2% of a core at rest, 17–42% playing, 9–21% scrolling,
-25% playing with the piano roll open; maximised on a 3840x2160 screen, 2% at
-rest and 48% playing.
+one. Measured with the demo song in a 1500x960 window on llvmpipe (no
+graphics card, the worst case): 0% of a core at rest, about 105% playing
+(a frame takes 4 ms of the window's own work; the rest is llvmpipe filling
+pixels on its threads). On a graphics card the filling is the card's.
 
 It looks like a mixing desk rather than a web page. Surfaces are neutral
 greys, and colour means something: blue is the selection, the edit cursor
@@ -58,9 +62,13 @@ recording and arming; orange mute; yellow solo. A track's own colour is on
 its stripe, its clips, its notes and its name plate in the mixer, and
 nowhere else. Words are in Inter and numbers that change (the clock, levels,
 values) in JetBrains Mono; both fonts are built into the program
-(`crates/daw-gui/ui/fonts`, under the SIL Open Font License), so the window
-looks the same on any machine. Icons are Phosphor's (MIT,
-`crates/daw-gui/ui/icons-LICENSE`).
+(`crates/daw-gui/fonts`, under the SIL Open Font License), so the window
+looks the same on any machine. Japanese, Chinese and Korean (a lyric such
+as さくら) are drawn with the system's font for them, found through
+fontconfig (Noto Sans CJK, Source Han Sans and the like). Where there is
+none, kana are still drawn, with Noto Sans CJK JP cut down to them (60 KB,
+OFL, built in); kanji and hangul then show as boxes. Icons are Phosphor's (MIT,
+`crates/daw-gui/fonts/Phosphor-LICENSE`).
 
 Each track header has its number, its name, the input, monitor, `M`, `S`
 and `R` switches (lit in their colours when on), a fader with its level in
@@ -243,8 +251,11 @@ view (`q`, `daw.ui.close()`) closes the window. It is drawn again only when
 a redraw has been asked for and what it would show has changed, at most 30
 times a second. The font has no braille, so the window draws each braille
 character (U+2800 to U+28FF) itself, as small squares in the cell's two
-columns and four rows of dots, and curves there are braille as in the
-terminal (`daw.opt.braille` off draws lines instead). A view that has a
+columns and four rows of dots, and curves there are drawn as in the
+terminal. The font has no sextants (U+1FB00 to U+1FB3B, the default for
+curves) either, so each is drawn as up to six rectangles, a half cell by a
+third. `daw.opt.curve_glyphs` chooses, and `daw.opt.braille` off draws lines
+instead. A view that has a
 painted twin (`painted = "name"` on its table, as the undo tree and the mix
 report have) is offered under More as the twin. A terminal
 attached to the same kernel is not disturbed: the view is drawn on a grid of
@@ -293,7 +304,11 @@ its `render` with `buf:surface(x, y, w, h)`, which is false where the
 terminal shows only cells (see "Pictures" in [The terminal
 interface](terminal.md)); `ctx.surface` then says the drawing goes there,
 `ctx.cell` is the terminal's cell size, and `ctx.fg`, `ctx.bg` its
-colours. A frontend that cannot draw a music font's glyphs is given each
+colours. That is a strip of the view's whole drawing; a view that draws
+cells can also keep strips of its own for part of itself, each drawn by a
+function, with `buf:strip(x, y, w, h, { key, draw, under })`, and
+`daw.plot` draws curves over time in them (see
+[Pictures in the terminal](extensions.md#pictures-in-the-terminal)). A frontend that cannot draw a music font's glyphs is given each
 as a path from the font's outline (`daw.canvas.glyph_outline`). `daw.canvas.palette` holds the
 window's colours under the names the window itself uses (`surface`, `lane`,
 `panel`, `well`, `control`, `line_bar`, `text`, `text_2`, `text_3`,

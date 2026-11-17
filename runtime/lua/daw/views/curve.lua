@@ -110,14 +110,6 @@ end
 
 -- Drawing ----------------------------------------------------------------------------
 
--- A braille character from its eight dots: bit k is dot k + 1, as Unicode
--- numbers them (two columns of four).
-local function braille(bits)
-  local cp = 0x2800 + bits
-  return string.char(0xE0 + math.floor(cp / 4096), 0x80 + math.floor(cp / 64) % 64, 0x80 + cp % 64)
-end
-local DOTS = { [0] = { 0x01, 0x02, 0x04, 0x40 }, [1] = { 0x08, 0x10, 0x20, 0x80 } }
-
 --- The beats a region covers, as points are chosen by it: from one end to
 --- the other, both included in a selection (a point is an instant), the
 --- end left out after a motion, and the whole curve for whole rows.
@@ -129,6 +121,22 @@ local function span_of(region)
 end
 
 local function in_span(q, from, to) return q.beat >= from - EPS and q.beat <= to + EPS end
+
+--- The plot in pixels (a strip under the cells, `buf:strip`): the grid,
+--- the curve and the area under it, through `daw.plot`. A value is as high
+--- as the middle of the dot the cells would put it in (`s.sub` dots a
+--- cell down, as `daw.opt.curve_glyphs` has them), so that the points and
+--- the cursor, drawn in cells over it, sit on the line.
+function M.picture(g, px, t, points, s)
+  local track = t.track and api.track_get(t.track) or { master = true }
+  local dot = px.cell.h / (s.sub or 4)
+  daw.plot.curve(g, px, {
+    points = points, from = s.left, pixels_per_beat = s.zoom * px.cell.w,
+    frac = t.frac, flat = #points == 0 and t.flat and t.flat() or nil,
+    color = daw.draw.track_colour(track), top = dot / 2, bottom = dot / 2,
+    beats = s.zoom >= 4, markers = false,
+  })
+end
 
 local function render(win, canvas, ctx)
   local t, why = M.target(win)
@@ -167,9 +175,17 @@ local function render(win, canvas, ctx)
   local lines = daw.draw.beats(canvas:sub(AXIS, 1, pw, 1), s.left, span, s.zoom, 0)
   local plot = canvas:sub(AXIS, top, pw, rows)
   plot:fill(0, 0, pw, rows, " ", "Lane")
+  -- Where the terminal shows pictures, the grid and the curve are one under
+  -- the cells, which keep the points, the cursor and the playhead.
+  local pictured = plot:strip(0, 0, pw, rows, {
+    key = "curve:" .. tostring(win.id), under = true,
+    draw = function(gp, px)
+      M.picture(gp, px, t, points, { left = s.left, zoom = s.zoom, sub = daw.draw.curve_glyphs() == "braille" and 4 or 3 })
+    end,
+  })
   -- Beats only once they are far enough apart not to be noise, as in the arrange view.
   for _, line in ipairs(lines) do
-    if line.x >= 0 and line.x < pw and (line.bar or s.zoom >= 4) then
+    if not pictured and line.x >= 0 and line.x < pw and (line.bar or s.zoom >= 4) then
       plot:fill(line.x, 0, 1, rows, line.bar and g.bar or g.beat, line.bar and "LaneBar" or "LaneBeat")
     end
   end
@@ -191,35 +207,30 @@ local function render(win, canvas, ctx)
   end
   canvas:fill(AXIS - 1, top, 1, rows, g.v, "Rule")
 
-  -- The curve, two dots a cell across and four down.
+  -- The curve, two samples a cell across, joined into a line.
   local hue = daw.draw.track_hue(t.track and api.track_get(t.track) or { master = true })
-  local dots = rows * 4
+  local kind = daw.draw.curve_glyphs()
+  local sub = kind == "braille" and 4 or 3
+  local dots = rows * sub
   local function dot_y(v) return util.clamp(math.floor((1 - t.frac(v)) * (dots - 1) + 0.5), 0, dots - 1) end
-  local cells = {}
-  local last
   local have = #points > 0 or t.flat
-  if have then
-    for sx = 0, pw * 2 - 1 do
-      local beat = s.left + (sx + 0.5) / (2 * s.zoom)
-      local y = dot_y(value_at(t, points, beat))
-      local a, b = y, y
-      if last then a, b = math.min(y, last), math.max(y, last) end
-      -- A jump is a line down or up the column, so that the curve is unbroken.
-      if last and math.abs(y - last) > 1 then
-        if y > last then a = last + 1 else b = last - 1 end
+  if have and not pictured then
+    if kind == "line" then
+      for cx = 0, pw - 1 do
+        local beat = s.left + (cx + 0.5) / s.zoom
+        local y = dot_y(value_at(t, points, beat))
+        plot:text(cx, math.floor(y / sub), daw.opt.ascii and "*" or "─", hue.fg)
       end
-      for dy = a, b do
-        local cx, cy = math.floor(sx / 2), math.floor(dy / 4)
-        local key = cy * pw + cx
-        cells[key] = bit.bor(cells[key] or 0, DOTS[sx % 2][dy % 4 + 1])
+    else
+      local cells = daw.draw.trace(pw, pw * 2, function(sx)
+        return dot_y(value_at(t, points, s.left + (sx + 0.5) / (2 * s.zoom)))
+      end, sub, kind)
+      local glyph = kind == "braille" and daw.draw.braille or daw.draw.sextant
+      for key, bits in pairs(cells) do
+        plot:text(key % pw, math.floor(key / pw), glyph(bits), hue.fg)
       end
-      last = y
     end
-    for key, bits in pairs(cells) do
-      local cx, cy = key % pw, math.floor(key / pw)
-      plot:text(cx, cy, daw.opt.ascii and "*" or braille(bits), hue.fg)
-    end
-  else
+  elseif not have then
     plot:text(1, 0, "No points yet: `o` adds one at the cursor, `i` draws.", "Empty")
   end
 
@@ -227,7 +238,7 @@ local function render(win, canvas, ctx)
   for _, q in ipairs(points) do
     local x = math.floor((q.beat - s.left) * s.zoom + EPS)
     if x >= 0 and x < pw then
-      local y = math.floor(dot_y(q.value) / 4)
+      local y = math.floor(dot_y(q.value) / sub)
       local style = sel and sel.view == "curve" and in_span(q, span_of(sel)) and "CursorVisual" or hue.note
       if inserting and in_span(q, insert.from, insert.to) then style = "InsertCursor" end
       plot:text(x, y, q.shape == "hold" and "■" or q.shape == "smooth" and "●" or g.point, style)
@@ -239,7 +250,7 @@ local function render(win, canvas, ctx)
   if play >= 0 and play < pw then plot:fill(play, 0, 1, rows, g.playhead, "Playhead") end
   local cx = math.floor((s.beat - s.left) * s.zoom + EPS)
   if cx >= 0 and cx < pw then
-    local cy = math.floor(dot_y(s.value) / 4)
+    local cy = math.floor(dot_y(s.value) / sub)
     local under = point_at(points, s.beat, s.zoom)
     plot:text(cx, cy, under and g.point or "┼", ctx.focused and (mode == "i" and "InsertCursor" or "Cursor") or "Dim")
   end

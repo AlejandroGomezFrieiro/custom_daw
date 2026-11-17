@@ -34,6 +34,8 @@ pub struct Terminal {
     probe: Probe,
     /// Images, when the terminal shows them.
     graphics: Option<Graphics>,
+    /// What strips under the text had painted in, where backgrounds hide them.
+    backing: graphics::Backing,
     /// A cell's size in pixels, as width << 16 | height, for the thread
     /// that reads the pointer in pixels.
     cell: Arc<AtomicU32>,
@@ -150,6 +152,7 @@ impl Terminal {
                 mouse: true,
                 probe,
                 graphics,
+                backing: graphics::Backing::default(),
                 cell,
             },
             width,
@@ -166,6 +169,7 @@ impl Terminal {
             pixel_mouse: self.probe.pixel_mouse,
             fg: self.probe.fg,
             bg: self.probe.bg,
+            under: self.graphics.is_some(),
         }
     }
 
@@ -268,6 +272,10 @@ fn term_color(color: Color) -> TermColor {
 
 impl Frontend for Terminal {
     fn present(&mut self, grid: &Grid, cursor_at: Option<(u16, u16)>) -> Result<()> {
+        // Where a coloured background would hide a strip under the text,
+        // the strip paints it instead.
+        let backed = if self.graphics.is_some() && !self.probe.under() { self.backing.backed(grid) } else { None };
+        let grid = backed.as_ref().unwrap_or(grid);
         let same_size = self
             .shown
             .as_ref()
