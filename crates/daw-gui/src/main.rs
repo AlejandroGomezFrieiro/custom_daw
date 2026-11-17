@@ -510,8 +510,6 @@ fn capitalised(name: &str) -> String {
     })
 }
 
-/// How many keys of the piano roll show at once.
-const ROLL_ROWS: i32 = 18;
 
 /// A colour as the kernel writes it, `#rrggbb`.
 fn colour(value: &Value) -> Color {
@@ -1350,6 +1348,17 @@ struct View {
     roll_revision: i64,
     notes: Rc<VecModel<NoteData>>,
     hints: Rc<VecModel<HintData>>,
+    /// The key bar and the command line's candidates, shown like the hints.
+    keys: Rc<VecModel<HintData>>,
+    matches: Rc<VecModel<HintData>>,
+    /// The rows and clips an Ex line being typed covers.
+    ex_rows: Rc<VecModel<i32>>,
+    ex_marks: Rc<VecModel<ExMark>>,
+    /// When the message on the status bar was made, the one a key or a
+    /// change of mode put away, and the mode the last state had.
+    message_time: f64,
+    message_dismissed: f64,
+    last_mode: String,
     clip_entries: Rc<VecModel<MenuEntry>>,
     /// The tracks the selected one can play into, by id, the master first.
     route_ids: Vec<i64>,
@@ -1362,6 +1371,9 @@ struct View {
     /// meters were last read.
     peaks: HashMap<i32, PeakHold>,
     meters_at: Option<Instant>,
+    /// Whether the transport was playing at the last meter, to put the clip
+    /// lights out when it starts again.
+    meters_playing: bool,
 }
 
 impl View {
@@ -1514,6 +1526,11 @@ impl View {
             .meters_at
             .map_or(0.0, |at| now.duration_since(at).as_secs_f32().min(0.5));
         self.meters_at = Some(now);
+        // A light that came on in the last take is not news in the next.
+        if playing && !self.meters_playing {
+            self.peaks.clear();
+        }
+        self.meters_playing = playing;
         for (index, level) in levels.chunks_exact(2).enumerate() {
             let input = inputs.get(index).copied().unwrap_or(0.0);
             let (Some(track), Some(mut meter)) =
@@ -1653,7 +1670,11 @@ impl View {
     /// message, the selection, the hints, and the panels' cursors.
     fn modal(&mut self, ui: &App, client: &mut Client, modal: &Value) -> Result<()> {
         ui.set_mode(text(&modal["mode"]));
-        ui.set_mode_name(text(&modal["name"]));
+        // The view that has the keys, as the terminal's status line says.
+        ui.set_mode_name(match modal["focused"].as_str() {
+            Some(view) if !view.is_empty() => format!("{}·{view}", text(&modal["name"])).into(),
+            _ => text(&modal["name"]),
+        });
         ui.set_pending(text(&modal["pending"]));
         ui.set_macro(text(&modal["recording"]));
         ui.set_focused(text(&modal["focused"]));
@@ -1704,7 +1725,98 @@ impl View {
         ui.set_prompt(text(&prompt["prompt"]));
         ui.set_prompt_before(text(&prompt["before"]));
         ui.set_prompt_after(text(&prompt["after"]));
-        ui.set_status(text(&modal["message"]["text"]));
+        let matches = &prompt["matches"];
+        let items: Vec<HintData> = rows(&matches["items"])
+            .iter()
+            .map(|m| HintData {
+                key: text(&m["label"]),
+                desc: text(&m["desc"]),
+            })
+            .collect();
+        // Columns as wide as the longest entry shown, at about the width of
+        // a character of the type used.
+        let widest = |f: fn(&HintData) -> &SharedString| {
+            items
+                .iter()
+                .map(|i| f(i).chars().count())
+                .max()
+                .unwrap_or(0) as f32
+        };
+        ui.set_match_label_px(widest(|i| &i.key) * 7.5);
+        ui.set_match_desc_px(widest(|i| &i.desc) * 6.5);
+        ui.set_match_chosen(matches["chosen"].as_i64().unwrap_or(0) as i32);
+        ui.set_match_total(matches["total"].as_i64().unwrap_or(0) as i32);
+        sync(&self.matches, items);
+        let keys: Vec<HintData> = rows(&modal["keys"])
+            .iter()
+            .map(|k| HintData {
+                key: text(&k["key"]),
+                desc: text(&k["desc"]),
+            })
+            .collect();
+        sync(&self.keys, keys);
+        ui.set_prompt_note(text(&prompt["note"]));
+        ui.set_prompt_note_level(i32::from(prompt["note_level"] == "error"));
+        let ex = &modal["ex"];
+        let (from, to) = if ex.is_object() && !ex["from"].is_null() {
+            (number(&ex["from"]), number(&ex["to"]))
+        } else {
+            (-1.0, -1.0)
+        };
+        ui.set_ex_from(from);
+        ui.set_ex_to(to);
+        let row_of = |id: i64| {
+            self.tracks
+                .iter()
+                .position(|t| i64::from(t.id) == id)
+                .map(|row| row as i32)
+        };
+        let ex_rows: Vec<i32> = rows(&ex["tracks"])
+            .iter()
+            .filter_map(|id| row_of(id.as_i64()?))
+            .collect();
+        let current = ex["current"].as_i64();
+        let ex_marks: Vec<ExMark> = rows(&ex["clips"])
+            .iter()
+            .filter_map(|m| {
+                let id = m["id"].as_i64()?;
+                let clip = self.clips.iter().find(|c| i64::from(c.id) == id)?;
+                Some(ExMark {
+                    row: clip.track,
+                    start: clip.start,
+                    length: clip.length,
+                    count: if m["notes"].as_bool().unwrap_or(false) {
+                        m["count"].as_i64().unwrap_or(0) as i32
+                    } else {
+                        0
+                    },
+                    current: current == Some(id),
+                })
+            })
+            .collect();
+        sync(&self.ex_rows, ex_rows);
+        sync(&self.ex_marks, ex_marks);
+        let row = &modal["mixer_row"];
+        ui.set_mixer_row_track(row["track"].as_i64().map_or(-1, |id| id as i32));
+        ui.set_mixer_row_kind(text(&row["kind"]));
+        ui.set_mixer_row_index(row["index"].as_i64().unwrap_or(0) as i32);
+        ui.set_mixer_row_field(text(&row["field"]));
+        ui.set_qf(text(&modal["qf"]["text"]));
+        ui.set_qf_level(modal["qf"]["level"].as_i64().unwrap_or(0) as i32);
+        // A message stays until the next key or a change of mode, as well as
+        // for the time the kernel gives it.
+        let mode = text(&modal["mode"]).to_string();
+        self.message_time = modal["message"]["time"].as_f64().unwrap_or(0.0);
+        if mode != self.last_mode {
+            self.message_dismissed = self.message_time;
+            self.last_mode = mode;
+        }
+        let shown = self.message_time != self.message_dismissed;
+        ui.set_status(if shown {
+            text(&modal["message"]["text"])
+        } else {
+            SharedString::default()
+        });
         ui.set_status_level(match modal["message"]["level"].as_str() {
             Some("error") => 2,
             Some("warn") => 1,
@@ -1771,7 +1883,10 @@ impl View {
 
         // A floating page is drawn by the kernel as text.
         if modal["float"].is_string() {
-            let float = client.eval("daw.frontend.float(104, 40)", json!([]))?;
+            let float = client.eval(
+                "daw.frontend.float(...)",
+                json!([ui.get_float_cols(), ui.get_float_rows()]),
+            )?;
             let lines: Vec<&str> = rows(&float["lines"])
                 .iter()
                 .filter_map(Value::as_str)
@@ -1868,15 +1983,6 @@ impl View {
                 SharedString::default()
             };
             for shown in self.rolls(ui) {
-                if pitch != shown.get_pitch() {
-                    // Keep the cursor's row among the ones that show.
-                    let (row, top) = (127 - pitch, shown.get_top());
-                    if row < top + 1 {
-                        shown.set_top((row - 3).clamp(0, 105));
-                    } else if row > top + ROLL_ROWS - 2 {
-                        shown.set_top((row - ROLL_ROWS + 4).clamp(0, 105));
-                    }
-                }
                 shown.set_pitch(pitch);
                 shown.set_cursor(number(&roll["beat"]) - self.roll_origin);
                 shown.set_chord(text(&roll["chord"]));
@@ -1889,10 +1995,6 @@ impl View {
             self.show_marks(&roll["marks"]);
         }
         ui.set_row_device(modal["device"].as_i64().unwrap_or(0) as i32);
-        // The mixer's cursor row; a strip shows its sends together, as one.
-        let mixer_row = modal["mixer_row"]["key"].as_str().unwrap_or("");
-        ui.set_mixer_track(modal["mixer_row"]["track"].as_i64().unwrap_or(-1) as i32);
-        ui.set_mixer_row(if mixer_row.starts_with("send") { "send".into() } else { mixer_row.into() });
         ui.set_row_param(modal["param"].as_i64().unwrap_or(-1) as i32);
         Ok(())
     }
@@ -2005,8 +2107,6 @@ impl View {
             })
             .collect();
         sync(&self.vel_preview, Vec::new());
-        let was_open = ui.global::<Roll>().get_open();
-        let highest = notes.iter().map(|n| n.pitch).max().unwrap_or(72);
         self.roll_notes = notes;
         self.roll_ghosts = ghosts;
         self.roll_controls = rows(&clip["controls"]).to_vec();
@@ -2022,10 +2122,6 @@ impl View {
         )
         .into();
         for roll in self.rolls(ui) {
-            if !was_open {
-                // Open with the highest note a few rows from the top.
-                roll.set_top((127 - highest - 4).clamp(0, 105));
-            }
             roll.set_title(text(&clip["name"]));
             roll.set_track(track.clone());
             roll.set_color(colour(&clip["color"]));
@@ -2467,6 +2563,18 @@ impl View {
                     master: t["master"].as_bool().unwrap_or(false),
                     number: index as i32 + 1,
                     output: t["output"].as_str().unwrap_or("Master").into(),
+                    sends: ModelRc::from(Rc::new(VecModel::from(
+                        rows(&t["sends"])
+                            .iter()
+                            .map(|send| {
+                                SharedString::from(format!(
+                                    "{}  {}",
+                                    text(&send["name"]),
+                                    decibels(number(&send["level"]))
+                                ))
+                            })
+                            .collect::<Vec<_>>(),
+                    ))),
                     inserts: ModelRc::from(Rc::new(VecModel::from(
                         text(&t["chain"])
                             .split(" › ")
@@ -2859,6 +2967,13 @@ fn run() -> Result<()> {
         roll_revision: -1,
         notes: Rc::new(VecModel::default()),
         hints: Rc::new(VecModel::default()),
+        keys: Rc::new(VecModel::default()),
+        matches: Rc::new(VecModel::default()),
+        ex_rows: Rc::new(VecModel::default()),
+        ex_marks: Rc::new(VecModel::default()),
+        message_time: 0.0,
+        message_dismissed: 0.0,
+        last_mode: String::new(),
         clip_entries: Rc::new(VecModel::default()),
         route_ids: Vec::new(),
         route_targets: Rc::new(VecModel::default()),
@@ -2868,8 +2983,13 @@ fn run() -> Result<()> {
         message_until: None,
         peaks: HashMap::new(),
         meters_at: None,
+        meters_playing: false,
     }));
     ui.set_hints(ModelRc::from(view.borrow().hints.clone()));
+    ui.set_keys(ModelRc::from(view.borrow().keys.clone()));
+    ui.set_matches(ModelRc::from(view.borrow().matches.clone()));
+    ui.set_ex_rows(ModelRc::from(view.borrow().ex_rows.clone()));
+    ui.set_ex_marks(ModelRc::from(view.borrow().ex_marks.clone()));
     ui.set_clip_entries(ModelRc::from(view.borrow().clip_entries.clone()));
     ui.set_route_targets(ModelRc::from(view.borrow().route_targets.clone()));
     ui.set_route_sends(ModelRc::from(view.borrow().route_sends.clone()));
@@ -3917,11 +4037,14 @@ fn run() -> Result<()> {
         }
     });
     roll_window.on_key({
-        let (act, weak) = (act.clone(), ui.as_weak());
+        let (act, weak, view) = (act.clone(), ui.as_weak(), view.clone());
         move |key, ctrl, alt, shift| {
             let focused = weak.upgrade().map(|ui| ui.get_focused());
             if let Some(keys) = notation(&key, ctrl, alt, shift) {
                 let keys = window_keys(keys, focused.as_deref() == Some("pianoroll"));
+                if let Ok(mut view) = view.try_borrow_mut() {
+                    view.message_dismissed = view.message_time;
+                }
                 act(&|c| c.call("keys", json!([keys])))
             }
         }
@@ -4099,11 +4222,14 @@ fn run() -> Result<()> {
         move |id| pass("open_clip", json!([id]))
     });
     ui.on_key({
-        let (act, weak) = (act.clone(), ui.as_weak());
+        let (act, weak, view) = (act.clone(), ui.as_weak(), view.clone());
         move |key, ctrl, alt, shift| {
             let focused = weak.upgrade().map(|ui| ui.get_focused());
             if let Some(keys) = notation(&key, ctrl, alt, shift) {
                 let keys = window_keys(keys, focused.as_deref() == Some("pianoroll"));
+                if let Ok(mut view) = view.try_borrow_mut() {
+                    view.message_dismissed = view.message_time;
+                }
                 act(&|c| c.call("keys", json!([keys])))
             }
         }

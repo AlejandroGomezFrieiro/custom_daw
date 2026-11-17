@@ -22,11 +22,14 @@
 //! moves without the page being sent again.
 //!
 //! Colours are `#rrggbb` or `#rrggbbaa`; an empty string is none.
+//!
+//! `vector` writes a drawing as SVG or PDF instead of pixels.
 
 pub mod fonts;
 pub mod kitty;
 pub mod probe;
 pub mod tiles;
+pub mod vector;
 
 use std::hash::{Hash, Hasher};
 
@@ -462,7 +465,7 @@ fn rect(pixmap: &mut Pixmap, shift: Transform, x: f32, y: f32, w: f32, h: f32, f
     }
 }
 
-fn rounded(area: Rect, radius: f32) -> Option<Path> {
+pub(crate) fn rounded(area: Rect, radius: f32) -> Option<Path> {
     let r = radius.min(area.width() / 2.0).min(area.height() / 2.0);
     // How far along the edge a cubic's handles go to make a quarter circle.
     let k = r * 0.4477;

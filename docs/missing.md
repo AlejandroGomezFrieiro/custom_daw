@@ -96,6 +96,12 @@
   takes suggestions made for the piano roll's clip (notation does not ask
   for them); `Ctrl-t` asks on the command line, not in a popover.
 
+- Engraved notation: page breaks of one's own (pages fill as systems
+  come), and the engraving options as a buffer to edit (staff size,
+  spacing, font); articulations inside a slur; systems whose skylines
+  interlock; in the terminal's cell view marks keep fixed rows rather than
+  skylines; the text of an exported PDF is outlines, not searchable text.
+
 - Language servers: documents are sent whole, never as incremental
   changes; the related notes of other tracks a diagnostic names are kept but
   not drawn; annotations are drawn on mixer strips, devices and the ruler,

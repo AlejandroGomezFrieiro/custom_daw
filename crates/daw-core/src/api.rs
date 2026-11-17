@@ -1228,6 +1228,33 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 None => Ok(LuaValue::Nil),
             }
         }
+        // Write drawings (the operations of `daw.canvas.paint`) to a file:
+        // `format` "pdf" (a page for each), "svg" or "png" (the first).
+        // Each page is `{ ops, width, height }` in pixels; `scale` is points
+        // to a pixel in a PDF (0.75: 96 pixels to the inch).
+        fn canvas_export(lua, _sh, (path, format, pages, scale) => (String, String, LuaValue, Option<f32>)) {
+            let pages: Vec<Value> = lua.from_value(pages)?;
+            let drawn: Vec<(daw_raster::Drawing, f32, f32)> = pages
+                .iter()
+                .map(|p| {
+                    let size = |k: &str| p[k].as_f64().unwrap_or(1.0).max(1.0) as f32;
+                    (daw_raster::Drawing::parse(&p["ops"]), size("width"), size("height"))
+                })
+                .collect();
+            let Some((first, width, height)) = drawn.first() else {
+                return Err(mlua::Error::runtime("nothing to write"));
+            };
+            let bytes = match format.as_str() {
+                "pdf" => daw_raster::vector::pdf(&drawn, scale.unwrap_or(0.75)),
+                "svg" => daw_raster::vector::svg(first, *width, *height).into_bytes(),
+                "png" => first
+                    .paint_all(*width as u32, *height as u32)
+                    .and_then(|p| p.encode_png().ok())
+                    .ok_or_else(|| mlua::Error::runtime("could not paint the drawing"))?,
+                other => return Err(mlua::Error::runtime(format!("no format `{other}`: pdf, svg or png"))),
+            };
+            std::fs::write(&path, bytes).map_err(|e| mlua::Error::runtime(format!("{path}: {e}")))
+        }
         fn hl_set(_, sh, (name, def, full) => (String, LuaValue, LuaValue)) {
             // `full` is the group in 24-bit colour, given when `def` is a
             // nearer form of it for a terminal that shows fewer colours.

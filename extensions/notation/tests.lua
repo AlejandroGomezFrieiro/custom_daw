@@ -604,10 +604,10 @@ test("notation: the terminal draws the staff, clef, key, heads, stems and beams"
   local view = song({ N(72, 0, 0.5), N(74, 0.5, 0.5), N(76, 1, 1), N(65, 2, 2) })
   daw.cmd("notation.key", { "D", "major" })
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
-  eq(text:find("G", 1, true) ~= nil, true, "a treble clef")
+  eq(text:find("│●┼╮", 1, true) ~= nil, true, "a treble clef, curled round its G line")
   eq(select(2, text:gsub("♯", "")) >= 2, true, "two sharps in the key signature")
-  eq(select(2, text:gsub("●", "")) >= 3, true, "filled heads for the eighths and the quarter")
-  eq(text:find("○", 1, true) ~= nil, true, "an open head for the half note")
+  eq(select(2, text:gsub("██", "")) + select(2, text:gsub("▄▄", "")) >= 3, true, "filled heads for the eighths and the quarter")
+  eq(text:find("╭┤", 1, true) ~= nil, true, "an open head for the half note, in its space, with its stem")
   eq(text:find("♮", 1, true) ~= nil, true, "F natural against the key")
   eq(text:find("━", 1, true) ~= nil, true, "a beam over the eighths")
   eq(text:find("tune", 1, true) ~= nil and text:find("D major", 1, true) ~= nil, true, "the title says the clip and the key")
@@ -831,7 +831,7 @@ test("notation terminal: a double click enters notes; in insert mode a click ent
   local hx, hy = cell(view, 2, 41)
   m("move", hx, hy, "")
   local screen = shot()
-  eq(screen[hy + 1]:find("●", 1, true) ~= nil, true, "the note to enter is drawn where the pointer is")
+  eq(screen[hy + 1]:find("██", 1, true) ~= nil, true, "the note to enter is drawn where the pointer is")
   eq(view.cell_hover and view.cell_hover.step, 41, "the shadow note follows the pointer")
   daw.mouse.forget()
   m("down", x, y) m("up", x, y)
@@ -847,12 +847,182 @@ test("notation terminal: off a note the cursor is the note Enter would put there
   local row = screen[y + 1]
   local col = 0
   for ch in row:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-    if col == x then eq(ch, "●", "a quarter's head at the cursor") break end
+    if col == x then eq(ch, "█", "a quarter's head at the cursor") break end
     col = col + 1
   end
   view.value = 2
   screen = shot()
-  eq(screen[y + 1]:find("○", 1, true) ~= nil, true, "a half note's when halves are chosen")
+  eq(screen[y + 1]:find("()", 1, true) ~= nil, true, "a half note's when halves are chosen")
+end)
+
+-- The staff in cells -----------------------------------------------------------------------------
+
+--- The notation panel of a snapshot: its rows (from 0) of characters (from 1).
+local function panel(w, h)
+  local screen = api.ui_snapshot(w, h)
+  local rect
+  for _, r in ipairs(daw.ui.rects) do if r.name == "notation" then rect = r end end
+  local rows = {}
+  for y = rect.y, rect.y + rect.h - 1 do
+    local chars, col = {}, 0
+    for ch in (screen[y + 1] or ""):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+      if col >= rect.x and col < rect.x + rect.w then chars[#chars + 1] = ch end
+      col = col + 1
+    end
+    rows[y - rect.y] = chars
+  end
+  return rows, rect
+end
+
+--- The first event of a measure's staff that `pred` holds for.
+local function find_event(view, mi, pred)
+  for _, ev in ipairs(view:layout().measures[mi].staves[1]) do
+    if pred(ev) then return ev end
+  end
+end
+
+test("notation terminal: staff lines run unbroken from the clef to the end, the barlines join them", function()
+  local view = song({ N(67, 0, 1), N(69, 1, 1), N(71, 2, 1), N(72, 3, 1) }, 8)
+  daw.ui.focus("notation")
+  local rows = panel(120, 40)
+  local sys = view.geometry.systems[1]
+  eq(view.geometry.dense, true, "dense at the usual zoom")
+  local first, last = sys.measures[1], sys.measures[#sys.measures]
+  local x_end = last.x + last.m.width
+  for pos = 0, 8, 2 do
+    local r = rows[sys.row_of(1, pos)]
+    for x = 0, x_end do
+      eq(r[x + 1] ~= " ", true, "the line at step " .. pos .. " has no gap at column " .. x)
+    end
+    eq(rows[sys.row_of(1, pos) + 1][x_end + 1] ~= "─", true, "and each line has a row of its own")
+  end
+  local bx = first.x + first.m.width
+  eq(rows[sys.row_of(1, 8)][bx + 1] .. rows[sys.row_of(1, 4)][bx + 1] .. rows[sys.row_of(1, 0)][bx + 1], "┬┼┴",
+    "a barline joins the lines it crosses")
+  eq(rows[sys.row_of(1, 8)][x_end + 1] .. rows[sys.row_of(1, 0)][x_end + 1], "┐┘", "the system's last barline closes them")
+  eq(rows[sys.row_of(1, 8)][1] .. rows[sys.row_of(1, 0)][1], "┌└", "and its first opens them")
+  eq(sys.row_of(1, 0) - sys.row_of(1, 8), 4, "five lines in five rows")
+end)
+
+test("notation terminal: heads show their value, a quarter has a stem, an eighth a flag, rests look like rests", function()
+  -- q G4, quarter rest, e G4, eighth rest, q G4 | whole rest | h D5 (stem down), half rest
+  local view = song({ N(67, 0, 1), N(67, 2, 0.5), N(67, 3, 1), N(74, 8, 2) }, 12)
+  daw.ui.focus("notation")
+  view:set(30, 11)
+  local rows = panel(160, 45)
+  local sys = view.geometry.systems[1]
+  local function at(mi, beat) for _, p in ipairs(sys.measures) do if p.m.index == mi then return p.x + math.floor(require("notation.model").x_of(p.m, beat) + 0.5) end end end
+  local function ch(x, pos) return rows[sys.row_of(1, pos)][x + 1] end
+  -- The quarter G4: a filled head on the second line, its stem up from its right side.
+  local x = at(1, 0)
+  eq(ch(x, 2) .. ch(x + 1, 2), "██", "a quarter's head is filled, two cells wide")
+  for y = sys.row_of(1, 8), sys.row_of(1, 2) - 1 do
+    eq(rows[y][x + 2] == "│" or rows[y][x + 2] == "┼", true, "its stem runs up from the head (row " .. y .. ")")
+  end
+  -- The eighth: a flag at the stem's tip.
+  local e = at(1, 2)
+  eq(ch(e + 2, 8), "╲", "an eighth alone has a flag")
+  -- Rests.
+  local q = find_event(view, 1, function(ev) return ev.kind == "rest" and ev.base == 1 end)
+  local qx = at(1, q.start)
+  eq(ch(qx, 6) .. rows[sys.row_of(1, 6) + 1][qx + 1] .. rows[sys.row_of(1, 6) + 2][qx + 1], "╲╱╲", "a quarter rest zigzags down the staff")
+  local r8 = find_event(view, 1, function(ev) return ev.kind == "rest" and ev.base == 0.5 end)
+  eq(ch(at(1, r8.start), 4), "7", "an eighth rest is a flag on a stroke")
+  local whole = table.concat(rows[sys.row_of(1, 6)], "", at(2, 4) + 1, at(2, 4) + sys.measures[2].m.width)
+  eq(whole:find("▄▄", 1, true) ~= nil, true, "an empty bar's whole rest hangs from the fourth line")
+  local h2 = at(3, 8)
+  eq(ch(h2, 6) .. ch(h2 + 1, 6), "()", "a half note's head is open")
+  eq(ch(h2, 4) == "│" or ch(h2, 4) == "┼", true, "its stem goes down from its left side, above the middle line")
+  local hr = find_event(view, 3, function(ev) return ev.kind == "rest" and ev.base == 2 end)
+  eq(ch(at(3, hr.start), 4), "▀", "a half rest sits on the middle line")
+end)
+
+test("notation terminal: a head in a space lies across two rows; accidentals before heads, ties as arcs", function()
+  -- F#4 in the first space; G4 from beat four tied over the barline.
+  local view = song({ N(66, 0, 1), N(67, 3, 2) }, 8)
+  daw.ui.focus("notation")
+  view:set(30, 6)
+  local rows = panel(160, 45)
+  local sys = view.geometry.systems[1]
+  local R = sys.rows[1]
+  local model = require("notation.model")
+  local p1, p2 = sys.measures[1], sys.measures[2]
+  local fx = p1.x + math.floor(model.x_of(p1.m, 0) + 0.5)
+  eq(rows[R.above(1)][fx + 1] .. rows[R.above(1)][fx + 2], "▄▄", "F4 in the first space: the lower half of the row above")
+  eq(rows[R.below(1)][fx + 1] .. rows[R.below(1)][fx + 2], "▀▀", "and the upper half of the row below")
+  eq(rows[R.above(1)][fx], "♯", "its sharp before it")
+  local gx = p1.x + math.floor(model.x_of(p1.m, 3) + 0.5)
+  local nx = p2.x + math.floor(model.x_of(p2.m, 4) + 0.5)
+  local arc = table.concat(rows[R.below(1)], "", gx + 3, nx)
+  eq(arc:gsub("─", ""), "╰╯", "a tie under the G, over the barline to the next G: " .. arc)
+end)
+
+test("notation terminal: a grand staff fits in eighteen rows; zoomed in, every line and space has a row", function()
+  -- The view with the arrange view alone, whatever other tests left open.
+  daw.cmd("view.only")
+  local view = song({ N(36, 0, 1), N(43, 1, 1), N(76, 0, 1), N(79, 1, 1) }, 4)
+  daw.ui.focus("notation")
+  local rows, rect = panel(120, 50)
+  eq(rect.h >= 20, true, "a panel of twenty rows or more: " .. rect.h)
+  local g = view.geometry
+  eq(#g.staves, 2, "both staves are drawn")
+  local sys = g.systems[1]
+  eq(sys.row_of(2, 0) - sys.row_of(1, 8) + 1 <= 14, true, "from the treble's top line to the bass's bottom one in fourteen rows or fewer")
+  eq(g.staff_rows * 2 <= 18, true, "the whole system, with room for ledger lines and stems, in eighteen")
+  eq(rows[sys.row_of(1, 8)][1], "⎧", "a brace before the system")
+  -- The keys zoom the window's page too.
+  T.after(function() view.zoom, view.space = 1, nil end)
+  keys("zi")
+  rows = panel(120, 50)
+  g = view.geometry
+  eq(g.dense, false, "zoomed in, the staff is open")
+  sys = g.systems[1]
+  eq(sys.row_of(1, 0) - sys.row_of(1, 8), 8, "nine rows from the top line to the bottom one")
+  eq(rows[sys.row_of(1, 1)][sys.measures[1].x + 1] ~= "─", true, "a space has a row between the lines")
+  keys("zo")
+  eq(view.dense(), true, "and back")
+end)
+
+test("notation terminal: the staff is drawn only in characters the common monospace fonts have", function()
+  load()
+  -- Checked against DejaVu Sans Mono, JetBrains Mono, Fira Code and Noto
+  -- Sans Mono; the accidentals are the one exception (cells.lua says why).
+  local common = "─━│┆┌┐└┘├┤┬┳┴┻┼║╭╮╯╰╱╲╵╷╸╺▀▄█●·–•⎧⎨⎩⎪" .. "♯♭♮"
+  local seen = {}
+  local function walk(v)
+    if type(v) == "table" then for _, x in pairs(v) do walk(x) end return end
+    if type(v) ~= "string" then return end
+    for ch in v:gmatch("[\194-\244][\128-\191]*") do
+      if not common:find(ch, 1, true) then seen[#seen + 1] = ch end
+    end
+  end
+  local cells = require("notation.cells")
+  walk(cells.unicode)
+  for _, clef in ipairs({ "treble", "bass" }) do walk(cells.clef(clef, true)) end
+  eq(table.concat(seen, " "), "", "characters outside the common set")
+  seen = {}
+  local function ascii(v)
+    if type(v) == "table" then for _, x in pairs(v) do ascii(x) end return end
+    if type(v) == "string" and v:find("[\128-\255]") then seen[#seen + 1] = v end
+  end
+  ascii(cells.ascii)
+  eq(table.concat(seen, " "), "", "the ASCII set is ASCII")
+end)
+
+test("notation terminal: with daw.opt.ascii the staff is drawn in plain ASCII", function()
+  local view = song({ N(67, 0, 0.5), N(69, 0.5, 0.5), N(71, 1, 1), N(66, 2, 2) }, 8)
+  daw.ui.focus("notation")
+  T.after(function() daw.opt.ascii = false end)
+  daw.opt.ascii = true
+  local rows = panel(120, 40)
+  daw.opt.ascii = false
+  local text = {}
+  for y = 1, #rows do text[#text + 1] = table.concat(rows[y]) end
+  text = table.concat(text, "\n")
+  eq(text:find("[\128-\255]"), nil, "no character outside ASCII:\n" .. text)
+  eq(view.geometry.dense, false, "open: ASCII has no half blocks")
+  eq(text:find("@@", 1, true) ~= nil and text:find("()", 1, true) ~= nil, true, "filled and open heads")
+  eq(text:find("&", 1, true) ~= nil, true, "a treble clef")
 end)
 
 -- The window -----------------------------------------------------------------------------------
@@ -1607,4 +1777,5 @@ test("notation: : from a selection runs a command over it, and commands take bar
 end)
 
 assert(loadfile("extensions/notation/tests_score.lua"))(T)
+assert(loadfile("extensions/notation/tests_layout.lua"))(T)
 assert(loadfile("extensions/notation/tests_grammar.lua"))(T)

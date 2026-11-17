@@ -69,9 +69,11 @@ a meter for each side with a clip light on top. Rows show less as they get
 shorter: at the shortest only the first line. Meters are coloured by level
 (green to −18 dB, then yellow-green, yellow, orange, red from 0 dB), hold
 their peak for a moment as a thin line, and light the clip light when a
-level reaches 0 dB; it stays lit until it is clicked. The mixer has a strip
+level reaches 0 dB; it stays lit until it is clicked or the transport starts
+playing again. The mixer has a strip
 per track, with the master at the right: where it plays into, its devices
-(a click on one picks it in the device panel), pan, a fader with a scale
+(a click on one picks it in the device panel), its sends with their levels,
+pan, a fader with a scale (+6, 0, −6, −12, −24, −48, as in the terminal)
 beside its meters, the fader's level and the peak held, `M` `S` `R`, and
 its name on its colour. A VCA has a strip too, after the tracks, naming the
 tracks under it; right-click a strip or a track's header to make a VCA with the
@@ -141,9 +143,17 @@ device, a quarter of a second late or more.
 
 Every key still goes to the kernel's key mappings, so the window is also
 driven exactly as the terminal UI is: the same modes, operators, registers
-and macros, with the mode, the prompt, messages and half-typed keys in the
-status line, the selection and both cursors drawn, the keys that can follow
-listed, and help and other pages shown over the window. `Ctrl-z`, `Ctrl-y`,
+and macros, with the mode and the view that has the keys (`NORMAL·mixer`),
+the prompt, messages and half-typed keys in the status line, the selection
+and both cursors drawn, the keys that can follow listed, and help and other
+pages shown over the window. The status line shows the keys worth knowing in
+the view that has the keyboard (the terminal's key bar, `daw.opt.keybar`), the
+quickfix count (`qf E1 W2`) in the colour of the worst entry, and, while a
+command is typed, the list of what it could become, with each one's
+description, above the line (Tab and Shift-Tab move through it, Up and Down
+go through what was typed before). A message stays until the next key or a
+change of mode, or for `message_time`. Pages such as the commands list are
+drawn as wide as the window. `Ctrl-z`, `Ctrl-y`,
 `Ctrl-s` and `Delete` do what they do elsewhere. The piano roll and mixer are
 the kernel's: opening one puts the keyboard in it.
 
@@ -251,7 +261,10 @@ the rasterizer the terminal uses ([crates/daw-raster](../crates/daw-raster)),
 so the two show the same pixels. `g:glyph(x, y, size, codepoint, colour,
 font)` draws a glyph of a SMuFL music font built in (Leland, Bravura,
 Petaluma), `size` pixels to the em; `daw.api.smufl(font)` gives the font's
-metadata (engraving defaults, glyph boxes and anchors, glyph names). A
+metadata (engraving defaults, glyph boxes and anchors, glyph names);
+`daw.api.canvas_export(path, "pdf", pages)` writes drawings as a PDF (a
+page for each `{ ops, width, height }`), `"svg"` or `"png"` the first, the
+glyphs and text as outlines. A
 view that also shows its pixels in the terminal keeps cells for them in
 its `render` with `buf:surface(x, y, w, h)`, which is false where the
 terminal shows only cells (see "Pictures" in [The terminal

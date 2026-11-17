@@ -1,21 +1,24 @@
--- The staff in the terminal: one row for each line and space, a note head
--- in one cell, its stem above or below it in the same column, beams along
--- the stems' ends, measures packed into as many systems as the panel has
--- room for, from the first measure scrolled to.
+-- The staff in the terminal, for terminals that cannot show the engraved
+-- page: lines that run unbroken from the clef to the system's end, joined by
+-- the barlines; heads filled or open, stems, flags and beams, rests that
+-- look like rests, ties and slurs as arcs; measures packed into as many
+-- systems as the panel has room for, from the first measure scrolled to.
+-- At the usual zoom the staff is dense, a row for each line and the spaces
+-- between rows (`notation.cells`); zoomed in (`zi`) every line and space has
+-- a row of its own.
 local api = daw.api
 local util = daw.util
 local model = require("notation.model")
+local cells = require("notation.cells")
+local breaks = require("notation.breaks")
+local engrave = require("notation.engrave")
 local view = require("notation")
 
 local floor = math.floor
 local EPS = 1e-6
 
-view.zoom = 1   -- how wide the terminal spaces notes: 1 is a sixteenth in two columns
+view.zoom = 1   -- how wide the terminal spaces notes: 1 gives a sixteenth three columns; above 1 the staff is open too
 
--- Characters: what a note head, a rest or an accidental looks like in a cell.
-local ACC = { [1] = "♯", [-1] = "♭", [0] = "♮", [2] = "x", [-2] = "♭" }
-local REST = { [1] = "ζ", [0.5] = "γ", [0.25] = "ɣ", [0.125] = "ɣ" }
-local CLEF = { treble = { "G", 2 }, bass = { "F", 6 }, treble8 = { "G", 2 } }
 -- Where a key signature's sharps and flats go on the treble staff, in order;
 -- the bass staff has them two steps lower.
 local SHARP_POS = { 8, 5, 9, 6, 3, 7, 4 }
@@ -29,53 +32,100 @@ local function key_positions(fifths, clef)
 end
 view.key_positions = key_positions
 
---- Whether a chord has a head at a staff position (where its stem is not drawn).
-local function has_head(ev, pos)
-  for _, n in ipairs(ev.notes) do
-    if n.pos == pos then return true end
-  end
-  return false
+--- Whether the staff is drawn dense: lines on rows, spaces between them.
+--- ASCII has no half blocks to put a head between two rows.
+function view.dense()
+  return view.zoom <= 1 and not daw.opt.ascii
 end
 
 local function unit(d)
-  return math.max(2, floor(2 * view.zoom * math.sqrt(d / 0.25) + 0.5))
+  -- A head is two cells wide: at least one clear after it.
+  return 1 + math.max(2, floor(2 * view.zoom * math.sqrt(d / 0.25) + 0.5))
 end
 
---- How the panel is divided: staves per system, rows above and below each
---- staff, and how many systems fit.
-local function rows_for(height, staves, extra)
+--- How the panel is divided: rows above and below each staff (`lines` rows
+--- for its own lines), the rows of a system, and how many systems fit.
+local function rows_for(height, staves, extra, lines, most)
   local best
   extra = extra or 0
-  for margin = 4, 1, -1 do
-    local per = staves * (9 + 2 * margin) + extra
+  for margin = most, 1, -1 do
+    local per = staves * (lines + 2 * margin) + extra
     -- The last system may lose a little of the room under it.
     local systems = floor((height + margin - 1) / per)
     -- More systems win; between as many, more room above and below.
     if systems >= 1 and (not best or systems > best[3]) and (margin >= 3 or not best) then best = { margin, per, systems } end
   end
   if best then return best[1], best[2], best[3] end
-  return 1, staves * 11 + extra, 1
+  return 1, staves * (lines + 2) + extra, 1
 end
 
---- Measures from `first` packed into systems `width` wide.
+--- Systems `width` wide from the one that holds measure `first`: broken
+--- as the engraved page is (`notation.breaks`), balanced over the whole
+--- clip, where the score asks for breaks too. Returns them and the last
+--- measure they show.
 local function pack(layout, first, width, systems, prefix)
-  local out = {}
-  local i = first
-  for _ = 1, systems do
-    if i > #layout.measures then break end
-    local row = { measures = {}, prefix = prefix(i) }
+  local widths = {}
+  for i, m in ipairs(layout.measures) do widths[i] = m.width + 1 end
+  local starts = breaks.lines(widths, prefix, width, engrave.asked(layout))
+  local k = 1
+  while starts[k + 1] and starts[k + 1] <= first do k = k + 1 end
+  local out, last = {}, starts[k] - 1
+  for s = k, math.min(#starts, k + systems - 1) do
+    local row = { measures = {}, prefix = prefix(starts[s]) }
     local x = row.prefix
-    repeat
-      local m = layout.measures[i]
-      if #row.measures > 0 and x + m.width + 1 > width then break end
-      row.measures[#row.measures + 1] = { m = m, x = x }
-      x = x + m.width + 1
-      i = i + 1
-    until i > #layout.measures
+    last = (starts[s + 1] or #layout.measures + 1) - 1
+    for j = starts[s], last do
+      row.measures[#row.measures + 1] = { m = layout.measures[j], x = x }
+      x = x + layout.measures[j].width + 1
+    end
     row.width = x
     out[#out + 1] = row
   end
-  return out, i - 1
+  return out, last
+end
+
+--- The column of a beat of measure `index` in a system, if the system has it.
+local function x_in(sys, index, beat)
+  for _, placed in ipairs(sys.measures) do
+    if placed.m.index == index then return placed.x + floor(model.x_of(placed.m, beat) + 0.5) end
+  end
+end
+
+--- Text with its spaces left out, so that what is under them shows.
+local function ink(buf, x, y, text, style)
+  local col = x
+  for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    if ch ~= " " then buf:text(col, y, ch, style) end
+    col = col + 1
+  end
+end
+
+--- A head at step `pos`: in one cell on a row, across two rows in a space
+--- of the dense staff.
+local function head(buf, G, R, x, pos, hollow, style)
+  if R.step == 1 or pos % 2 == 0 then
+    buf:text(x, R.above(pos), hollow and G.hollow or G.filled, style)
+  else
+    local pair = hollow and G.hollow_space or G.filled_space
+    buf:text(x, R.above(pos), pair[1], style)
+    buf:text(x, R.below(pos), pair[2], style)
+  end
+end
+
+--- Ledger lines from the staff out to step `pos`, centred on column `x`.
+local function ledgers(buf, G, R, x, pos, style)
+  for p = -2, pos, -2 do buf:text(x - 1, R.above(p), G.ledger, style) end
+  for p = 10, pos, 2 do buf:text(x - 1, R.above(p), G.ledger, style) end
+end
+
+--- An arc from column `x0` to `x1` on row `y` (ties and slurs); `open`
+--- when it goes on into the next system.
+local function arc(buf, set, x0, x1, y, style, open)
+  if x1 < x0 then return end
+  if x1 == x0 then return buf:text(x0, y, set[2], style) end
+  buf:text(x0, y, set[1], style)
+  for x = x0 + 1, x1 - 1 do buf:text(x, y, set[2], style) end
+  buf:text(x1, y, open and set[2] or set[3], style)
 end
 
 function view:render(buf, ctx)
@@ -97,9 +147,13 @@ function view:render(buf, ctx)
   model.space(layout, { lead = 2, acc = 1, grace = 2, tail = 1, unit = unit })
   local fifths, stored = view.key()
   local inserting = ctx.focused and daw.keymap.mode == "i"
+  local G = cells.glyphs()
+  local dense = view.dense()
+  local step = dense and 2 or 1          -- staff steps a row
+  local lines = dense and 5 or 9         -- rows from the top line to the bottom one
   -- A grand staff in a panel too low for both staves: the cursor's staff alone.
   local only
-  if #layout.staves == 2 and h - 1 < 22 then
+  if #layout.staves == 2 and h - 1 < 2 * (lines + 2 * (dense and 2 or 1)) then
     only = self:cursor_staff(layout)
     local full = layout
     local measures = {}
@@ -152,27 +206,37 @@ function view:render(buf, ctx)
   -- Room: systems of staves down the panel.
   local staves = #layout.staves
   local tab = layout.tab
-  -- Tablature goes below the lowest note and stem of the last staff.
+  -- Tablature goes below the lowest note and stem of the last staff, in rows.
   local tab_room = 0
   if tab then
     for _, m in ipairs(layout.measures) do
       for _, ev in ipairs(m.staves[staves] or {}) do
         for _, n in ipairs(ev.notes or {}) do
-          tab_room = math.max(tab_room, -(n.pos - ((ev.stem or 0) < 0 and 4 or 0)))
+          tab_room = math.max(tab_room, math.ceil(-(n.pos - ((ev.stem or 0) < 0 and 4 or 0)) / step))
         end
       end
     end
   end
-  local margin, per, systems = rows_for(h - 1, staves, tab and (tab.strings + 1 + math.max(0, tab_room - 1)) or 0)
+  local margin, per, systems = rows_for(h - 1, staves, tab and (tab.strings + 1 + math.max(0, tab_room - 1)) or 0, lines, dense and (staves == 2 and 2 or 3) or 4)
   if tab then tab_room = math.max(0, tab_room - margin) end
-  local staff_rows = 9 + 2 * margin
+  local staff_rows = lines + 2 * margin
+  local stem_len = dense and 6 or 5
+  -- Columns: a brace before a grand staff, the system's left edge, the
+  -- clef, the key, the time.
+  local edge = staves == 2 and 1 or 0
+  local clef_w = 0
+  for _, clef in ipairs(layout.staves) do clef_w = math.max(clef_w, cells.clef_width(clef)) end
+  local key_x = edge + 2 + clef_w
   local function meter_changes(i)
     local m, before = layout.measures[i], layout.measures[i - 1]
     return i == 1 or (before and before.meter ~= m.meter)
   end
   local function prefix(i)
-    local p = 3 + math.abs(fifths) + 1
-    if meter_changes(i) then p = p + 3 end
+    local p = key_x + math.abs(fifths) + 1
+    if meter_changes(i) then
+      local meter = layout.measures[i].meter
+      p = p + math.max(#tostring(meter.num), #tostring(meter.den)) + 1
+    end
     return p
   end
   -- Scroll by whole measures to keep the cursor's measure on screen.
@@ -188,54 +252,77 @@ function view:render(buf, ctx)
   local note_style = { fg = colour }
   local faint = { fg = daw.draw.mix(colour, "#101216", 0.55) }
   local faint_ink = { fg = daw.draw.mix(colour, "#101216", 0.3) }
+  local clef_style = { fg = colour, bold = true }
   local staff_style, bar_style = "Faint", "Dim"
-  local geometry = { systems = {}, margin = margin, staff_rows = staff_rows, staves = layout.staves }
+  local geometry = { systems = {}, margin = margin, staff_rows = staff_rows, staves = layout.staves, dense = dense }
   self.geometry = geometry
   local t = api.transport_get()
   local selection = ctx.focused and daw.keymap.selection()
 
   for si, sys in ipairs(rows_out) do
     local top = 1 + (si - 1) * per
-    local function row_of(s, pos) return top + (s - 1) * staff_rows + margin + 8 - pos end
-    geometry.systems[si] = { top = top, measures = sys.measures, row_of = row_of, width = sys.width }
-    -- Staff lines, clef, key.
+    -- Each staff's rows: its band from `band(s)` for `staff_rows`, its
+    -- bottom line `margin + lines - 1` rows into the band.
+    local function band(s) return top + (s - 1) * staff_rows end
+    local rows = {}
+    for s in ipairs(layout.staves) do rows[s] = cells.rows(band(s) + margin + lines - 1, dense) end
+    local function row_of(s, pos) return rows[s].above(pos) end
+    geometry.systems[si] = { top = top, measures = sys.measures, row_of = row_of, rows = rows, width = sys.width }
+    local y0, y1 = row_of(1, 8), row_of(staves, 0)
+    -- Rows a line runs along, for the barlines to join.
+    local line_row = {}
+    for s in ipairs(layout.staves) do
+      for pos = 0, 8, 2 do line_row[row_of(s, pos)] = true end
+    end
+    --- A barline from the top line to the bottom one, joining the lines with `set`.
+    local function barline(x, set)
+      for y = y0, y1 do
+        local ch = G.bar
+        if line_row[y] then ch = y == y0 and set[1] or y == y1 and set[3] or set[2] end
+        buf:text(x, y, ch, bar_style)
+      end
+    end
+    -- Staff lines from the system's edge to its last barline; clef, key, time.
     for s, clef in ipairs(layout.staves) do
-      for pos = 0, 8, 2 do buf:fill(0, row_of(s, pos), sys.width, 1, "─", staff_style) end
-      buf:text(1, row_of(s, CLEF[clef][2]), CLEF[clef][1], { fg = colour, bold = true })
-      if clef == "treble8" then buf:text(1, row_of(s, -1), "8", { fg = colour }) end
-      if layout.names and layout.names[s] ~= "" then buf:text(2, row_of(s, 10), layout.names[s], "Dim") end
+      local R = rows[s]
+      for pos = 0, 8, 2 do buf:fill(edge, R.above(pos), sys.width - edge, 1, G.line, staff_style) end
+      for _, r in ipairs(cells.clef(clef, dense)) do ink(buf, edge + 1, R.above(r[1]), r[2], clef_style) end
+      if clef == "treble8" then buf:text(edge + 1, R.above(-4), "8", clef_style) end
+      if layout.names and layout.names[s] ~= "" then buf:text(edge + 1, band(s), layout.names[s], "Dim") end
       for i, pos in ipairs(key_positions(fifths, clef)) do
-        buf:text(2 + i, row_of(s, pos), fifths > 0 and "♯" or "♭", "Dim")
+        buf:text(key_x + i - 1, R.above(pos), fifths > 0 and G.acc[1] or G.acc[-1], note_style)
       end
       local first = sys.measures[1].m
       if meter_changes(first.index) then
-        local tx = 3 + math.abs(fifths) + 1
-        buf:text(tx, row_of(s, 6), tostring(first.meter.num), "Bright")
-        buf:text(tx, row_of(s, 2), tostring(first.meter.den), "Bright")
+        local tx = key_x + math.abs(fifths) + (fifths ~= 0 and 1 or 0)
+        buf:text(tx, R.above(6), tostring(first.meter.num), "Bright")
+        buf:text(tx, R.above(2), tostring(first.meter.den), "Bright")
       end
     end
-    -- The system's left edge, and a brace for a grand staff.
-    local y0, y1 = row_of(1, 8), row_of(staves, 0)
+    barline(edge, G.first)
+    -- A grand staff's brace.
+    if staves == 2 then
+      local b0, b1 = row_of(1, 8), row_of(2, 0)
+      local mid = floor((b0 + b1) / 2)
+      for y = b0, b1 do
+        buf:text(0, y, y == b0 and G.brace[1] or y == b1 and G.brace[4] or y == mid and G.brace[3] or G.brace[2], clef_style)
+      end
+    end
     -- Tablature under the staves: a row for each string, the highest first.
     local tab_top = top + staves * staff_rows + tab_room
     if tab then
       for i = 1, tab.strings do
-        buf:fill(2, tab_top + i - 1, sys.width - 2, 1, "─", staff_style)
+        buf:fill(2, tab_top + i - 1, sys.width - 2, 1, G.line, staff_style)
         buf:text(0, tab_top + i - 1, (daw.music.name(tab.tuning[tab.strings - i + 1]):gsub("%-?%d+$", "")):sub(1, 2), "Dim")
       end
     end
-    for y = y0, y1 do buf:text(0, y, "│", bar_style) end
-    if staves == 2 then
-      for y = row_of(1, -1), row_of(2, 9) do buf:text(0, y, "│", bar_style) end
-    end
 
-    for _, placed in ipairs(sys.measures) do
+    for pi, placed in ipairs(sys.measures) do
       local m, mx = placed.m, placed.x
       local function xt(beat) return mx + floor(model.x_of(m, beat) + 0.5) end
-      -- Barline after, the bar's number over it.
+      -- Barline after, the bar's number over the measure.
       local bx = mx + m.width
-      for y = y0, y1 do buf:text(bx, y, "│", bar_style) end
-
+      barline(bx, pi == #sys.measures and G.last or G.join)
       buf:text(mx, top + math.max(0, margin - 2), tostring(m.number), "Faint")
       if placed ~= sys.measures[1] and meter_changes(m.index) then
         buf:text(mx + 1 + #tostring(m.number), top + math.max(0, margin - 2), m.meter.num .. "/" .. m.meter.den, "Bright")
@@ -247,11 +334,11 @@ function view:render(buf, ctx)
         local x1 = selection.c1 >= m.start + m.length - EPS and bx or xt(math.min(selection.c1, m.start + m.length))
         if selection.c1 > m.start and selection.c0 < m.start + m.length and x1 > x0 then
           for s, clef in ipairs(layout.staves) do
-            local ya, yb = row_of(s, 8 + margin), row_of(s, -margin)
+            local ya, yb = band(s), band(s) + staff_rows - 1
             if selection.kind ~= "char" and selection.kind ~= "line" then
               local bottom = model.CLEF_BOTTOM[clef]
-              ya = row_of(s, math.min(8 + margin, model.spell(selection.r1, fifths).step - bottom))
-              yb = row_of(s, math.max(-margin, model.spell(selection.r0, fifths).step - bottom))
+              ya = math.max(ya, rows[s].above(model.spell(selection.r1, fifths).step - bottom))
+              yb = math.min(yb, rows[s].below(model.spell(selection.r0, fifths).step - bottom))
             end
             if selection.kind == "line" then x0, x1 = mx, bx end
             if yb >= ya then buf:fill(x0, ya, x1 - x0, yb - ya + 1, nil, "Visual") end
@@ -261,7 +348,10 @@ function view:render(buf, ctx)
 
       for s in ipairs(layout.staves) do
         local evs = m.staves[s]
-        local function row(pos) return row_of(s, pos) end
+        local R = rows[s]
+        local function row(pos) return R.above(pos) end
+        -- Where a chord's stem is: at its heads' right going up, their left going down.
+        local function stem_x(ev) return xt(ev.start) + ((ev.stem or 1) > 0 and 1 or 0) end
         -- Beam groups: where the beam runs.
         local beams = {}
         for _, ev in ipairs(evs) do
@@ -275,8 +365,10 @@ function view:render(buf, ctx)
           local tip = b.dir > 0 and -math.huge or math.huge
           for _, ev in ipairs(b.events) do
             local top_pos, low_pos = ev.notes[#ev.notes].pos, ev.notes[1].pos
-            if b.dir > 0 then tip = math.max(tip, top_pos + 4, 4) else tip = math.min(tip, low_pos - 4, 4) end
+            if b.dir > 0 then tip = math.max(tip, top_pos + stem_len, 4) else tip = math.min(tip, low_pos - stem_len, 4) end
           end
+          -- On the dense staff a beam runs along a row.
+          if dense then tip = b.dir > 0 and tip + tip % 2 or tip - tip % 2 end
           b.tip = tip
         end
 
@@ -284,45 +376,77 @@ function view:render(buf, ctx)
           local ex = xt(ev.start)
           if ev.kind == "rest" then
             local sh = ev.shift or 0
-            if ev.whole then
-              buf:text(mx + floor(m.width / 2), row(5 + sh), "▀", note_style)
-            elseif ev.base >= 4 then
-              buf:text(ex, row(5 + sh), "▀", note_style)
-            elseif ev.base >= 2 then
-              buf:text(ex, row(5 + sh), "▄", note_style)
+            local rx = ev.whole and mx + floor(m.width / 2) or ex
+            local value = ev.whole and 4 or ev.base
+            if value >= 4 or value >= 2 then
+              -- The whole rest hangs from the fourth line, the half sits on the third.
+              local whole = value >= 4
+              if dense then
+                buf:text(rx, row((whole and 6 or 4) + sh), whole and G.whole or G.half, note_style)
+              else
+                local pair = whole and G.whole_open or G.half_open
+                buf:text(rx, row((whole and 6 or 4) + sh), pair[1], note_style)
+                buf:text(rx, row(5 + sh), pair[2], note_style)
+              end
+            elseif value >= 1 then
+              if dense then
+                for i, ch in ipairs(G.quarter) do buf:text(rx, row(6 + sh) + i - 1, ch, note_style) end
+              else
+                for i, part in ipairs(G.quarter_open) do buf:text(rx + part[1], row(7 + sh) + i - 1, part[2], note_style) end
+              end
             else
-              buf:text(ex, row(4 + sh), REST[ev.base] or "γ", note_style)
-              if ev.base <= 0.25 then buf:text(ex, row(3 + sh), "ˈ", note_style) end
+              -- A flag for each beam the value would have, down a slanted stroke.
+              local flags = math.max(1, model.flags(value))
+              for f = 1, flags do
+                buf:text(rx + flags - f, row(4 + sh + (flags > 1 and 2 or 0) - (f - 1) * 2), G.flag_rest, note_style)
+              end
             end
-            if ev.dots > 0 and not ev.whole then buf:text(ex + 1, row(5 + sh), "·", note_style) end
+            if ev.dots > 0 and not ev.whole then
+              buf:text(rx + (value >= 2 and 2 or value < 1 and math.max(1, model.flags(value)) or 1), row(5 + sh), dense and G.space_dot or G.dot, note_style)
+            end
           else
-            -- Heads, ledger lines and accidentals.
+            local hollow = (ev.base or 1) >= 2
+            -- Heads, ledger lines and accidentals; a second's upper head beside the stem.
             local shifted = {}
             for i, n in ipairs(ev.notes) do
               local prev = ev.notes[i - 1]
               shifted[i] = prev and n.step - prev.step == 1 and not shifted[i - 1] or false
             end
+            for i, n in ipairs(ev.notes) do ledgers(buf, G, R, ex + (shifted[i] and 2 or 0), n.pos, faint) end
+            -- Cells the heads take, by column and row, for the stem to pass by.
+            local taken = { [ex] = {}, [ex + 1] = {}, [ex + 2] = {}, [ex + 3] = {} }
+            local boxed = dense and hollow
             for i, n in ipairs(ev.notes) do
-              local hx = ex + (shifted[i] and 1 or 0)
-              for p = -2, n.pos, -2 do buf:text(hx - 1, row(p), "───", faint) end
-              for p = 10, n.pos, 2 do buf:text(hx - 1, row(p), "───", faint) end
-            end
-            for i, n in ipairs(ev.notes) do
-              local hx = ex + (shifted[i] and 1 or 0)
-              local head = partner == n.index and "◉" or (ev.base or 1) >= 2 and "○" or "●"
+              local hx = ex + (shifted[i] and 2 or 0)
               local is_cursor = under and ctx.focused and n.index == written.index and ev.start <= self.beat + EPS and self.beat < ev.start + ev.length - EPS
-              buf:text(hx, row(n.pos), head, is_cursor and "NoteCursor" or partner == n.index and "Bright" or note_style)
-              if n.acc then buf:text(hx - 1, row(n.pos), ACC[n.acc], n.courtesy and "Dim" or note_style) end
+              -- The note under the piano roll's cursor stands out.
+              head(buf, G, R, hx, n.pos, hollow, is_cursor and "NoteCursor" or partner == n.index and "Bright" or note_style)
+              for _, y in ipairs({ R.above(n.pos), R.below(n.pos) }) do
+                taken[hx][y], taken[hx + 1][y] = true, true
+              end
+              -- Open heads in spaces a third apart share a row.
+              local prev = ev.notes[i - 1]
+              if boxed and prev and n.pos % 2 ~= 0 and n.pos - prev.pos == 2 and not shifted[i] and not shifted[i - 1] then
+                buf:text(hx, R.below(n.pos), G.hollow_join, note_style)
+              end
+              if n.acc then buf:text(hx - 1, row(n.pos), G.acc[n.acc], n.courtesy and "Dim" or note_style) end
               if ev.dots > 0 then
-                local dot_x = ex + 1 + (shifted[i] or shifted[i + 1] and 1 or 0)
-                buf:text(dot_x, row(n.pos % 2 == 0 and n.pos + 1 or n.pos), "·", note_style)
+                local dot_x = ex + 2 + (shifted[i] or shifted[i + 1] and 2 or 0)
+                -- In the space: a line's note has its dot in the space above.
+                if dense then
+                  buf:text(dot_x, row(n.pos % 2 == 0 and n.pos + 1 or n.pos), G.space_dot, note_style)
+                else
+                  buf:text(dot_x, row(n.pos % 2 == 0 and n.pos + 1 or n.pos), G.dot, note_style)
+                end
               end
               -- A tie to the next event: under the head when the stem is up.
               if n.tie then
                 local nxt = ev.next
-                local tx1 = (nxt and nxt.measure == ev.measure) and xt(nxt.start) or bx
-                local ty = (ev.stem or 1) > 0 and row(n.pos - 1) or row(n.pos + 1)
-                for tx = ex + 1 + (ev.dots > 0 and 1 or 0), tx1 - 1 do buf:text(tx, ty, (ev.stem or 1) > 0 and "‿" or "⁀", note_style) end
+                local tx1 = nxt and x_in(sys, nxt.measure, nxt.start)
+                local stem_up = (ev.stem or 1) > 0
+                local ty = stem_up and R.below(n.pos - 1) or R.above(n.pos + 1)
+                local tx0 = hx + 2 + (ev.dots > 0 and 1 or 0)
+                arc(buf, stem_up and G.tie_under or G.tie_over, tx0, (tx1 or sys.width) - 1, ty, note_style, not tx1)
               end
             end
             -- Grace notes before the chord, an arpeggio's wave, a staccato dot.
@@ -331,15 +455,15 @@ function view:render(buf, ctx)
               if n.acc then left = ex - 2 end
             end
             if ev.arpeggio then
-              for p = ev.notes[1].pos, ev.notes[#ev.notes].pos do buf:text(left, row(p), "≀", note_style) end
-              buf:text(left, row(ev.arpeggio > 0 and ev.notes[#ev.notes].pos + 1 or ev.notes[1].pos - 1), ev.arpeggio > 0 and "^" or "v", note_style)
+              for p = ev.notes[1].pos, ev.notes[#ev.notes].pos do buf:text(left, row(p), G.arpeggio, note_style) end
+              buf:text(left, row(ev.arpeggio > 0 and ev.notes[#ev.notes].pos + step or ev.notes[1].pos - step), ev.arpeggio > 0 and "^" or "v", note_style)
               left = left - 1
             end
             if ev.grace then
               for gi = #ev.grace, 1, -1 do
                 local gn = ev.grace[gi]
-                buf:text(left, row(gn.pos), "•", faint_ink)
-                if gn.acc then buf:text(left - 1, row(gn.pos), ACC[gn.acc], faint_ink) end
+                buf:text(left, row(gn.pos), G.grace, faint_ink)
+                if gn.acc then buf:text(left - 1, row(gn.pos), G.acc[gn.acc], faint_ink) end
                 left = left - 2
               end
             end
@@ -348,33 +472,39 @@ function view:render(buf, ctx)
               local up = (ev.stem or 1) > 0
               local p = up and ev.notes[1].pos - 2 or ev.notes[#ev.notes].pos + 2
               local art = ev.art or {}
-              for _, mark in ipairs({ { ev.staccato or art.staccato, "·" }, { art.tenuto, "–" }, { art.accent, ">" }, { art.marcato, "^" } }) do
+              for _, mark in ipairs({ { ev.staccato or art.staccato, G.staccato }, { art.tenuto, G.tenuto }, { art.accent, ">" }, { art.marcato, "^" } }) do
                 if mark[1] then
-                  buf:text(ex, row(p), mark[2], note_style)
-                  p = p + (up and -1 or 1)
+                  buf:text(ex, up and R.below(p) or R.above(p), mark[2], note_style)
+                  p = p + (up and -step or step)
                 end
               end
             end
-            if ev.lyric and s == 1 then buf:text(ex, row(-margin + (staves == 2 and 0 or 1)), ev.lyric, "Normal") end
-            -- The stem, from the head furthest along it.
+            if ev.lyric and s == 1 then buf:text(ex, band(1) + staff_rows - (staves == 2 and 1 or 2), ev.lyric, "Normal") end
+            -- The stem, at the heads' right side going up and their left
+            -- going down, from the head furthest along it to its tip.
             if ev.stem then
               local top_pos, low_pos = ev.notes[#ev.notes].pos, ev.notes[1].pos
               local b = ev.beam and beams[ev.beam]
-              if ev.stem > 0 then
-                local tip = b and b.tip or math.max(top_pos + 4, 4)
-                for p = low_pos + 1, tip do
-                  if not has_head(ev, p) then buf:text(ex, row(p), "│", note_style) end
-                end
-                if not b then
-                  for f = 1, ev.flags or 0 do buf:text(ex + 1, row(tip - f + 1), "╲", note_style) end
-                end
-              else
-                local tip = b and b.tip or math.min(low_pos - 4, 4)
-                for p = top_pos - 1, tip, -1 do
-                  if not has_head(ev, p) then buf:text(ex, row(p), "│", note_style) end
-                end
-                if not b then
-                  for f = 1, ev.flags or 0 do buf:text(ex + 1, row(tip + f - 1), "╱", note_style) end
+              local up = ev.stem > 0
+              local tip = b and b.tip
+              if not tip then
+                tip = up and math.max(top_pos + stem_len, 4) or math.min(low_pos - stem_len, 4)
+                if dense then tip = up and tip + tip % 2 or tip - tip % 2 end
+              end
+              local sx = stem_x(ev)
+              if boxed and up and top_pos % 2 ~= 0 then
+                buf:text(ex, R.above(top_pos), G.hollow_up, note_style)
+              elseif boxed and not up and low_pos % 2 ~= 0 then
+                buf:text(ex, R.below(low_pos), G.hollow_down, note_style)
+              end
+              local ya, yb
+              if up then ya, yb = row(tip), R.above(low_pos) - 1 else ya, yb = R.below(top_pos) + 1, row(tip) end
+              for y = ya, yb do
+                if not taken[sx][y] then buf:text(sx, y, G.stem, note_style) end
+              end
+              if not b then
+                for f = 1, ev.flags or 0 do
+                  buf:text(sx + 1, row(tip - (f - 1) * step * ev.stem), up and G.flag_up or G.flag_down, note_style)
                 end
               end
             end
@@ -384,45 +514,39 @@ function view:render(buf, ctx)
         for _, b in pairs(beams) do
           local list = b.events
           for level = 1, 3 do
-            local y = row(b.tip - (level - 1) * b.dir)
+            local y = row(b.tip - (level - 1) * b.dir * step)
             for i, ev in ipairs(list) do
               if (ev.flags or 0) >= level then
-                local x0 = xt(ev.start)
+                local x0 = stem_x(ev)
                 local nxt = list[i + 1]
                 if nxt and (nxt.flags or 0) >= level then
-                  for bx2 = x0, xt(nxt.start) do buf:text(bx2, y, "━", note_style) end
+                  for bx2 = x0, stem_x(nxt) do buf:text(bx2, y, G.beam, note_style) end
                 elseif level > 1 and not (list[i - 1] and (list[i - 1].flags or 0) >= level) then
                   -- A part beam toward the neighbour.
                   if nxt then
-                    buf:text(x0, y, "━╸", note_style)
+                    buf:text(x0, y, G.stub_right, note_style)
                   else
-                    buf:text(x0 - 1, y, "╺━", note_style)
+                    buf:text(x0 - 1, y, G.stub_left, note_style)
                   end
                 elseif level == 1 then
-                  buf:text(x0, y, "━", note_style)
+                  buf:text(x0, y, G.beam, note_style)
                 end
               end
             end
           end
-          for _, ev in ipairs(list) do buf:text(xt(ev.start), row(b.tip), b.dir > 0 and "┳" or "┻", note_style) end
+          for _, ev in ipairs(list) do buf:text(stem_x(ev), row(b.tip), b.dir > 0 and G.beam_up or G.beam_down, note_style) end
         end
         -- Slurs: an arc over the notes, to where the slur ends in this system.
         for _, ev in ipairs(evs) do
           if ev.slur_to then
-            local last = ev.slur_to
+            local last_ev = ev.slur_to
             local x0 = xt(ev.start)
-            local x1
-            for _, placed2 in ipairs(sys.measures) do
-              if placed2.m.index == last.measure then x1 = placed2.x + floor(model.x_of(placed2.m, last.start) + 0.5) end
-            end
-            x1 = x1 or sys.width - 1
-            local top = math.max(ev.notes[#ev.notes].pos, last.notes and last.notes[#last.notes].pos or 0)
-            local up = (ev.stem or 1) < 0
-            local y = up and row(top + 2) or row(math.min(ev.notes[1].pos, last.notes and last.notes[1].pos or 0) - 2)
-            if x1 > x0 + 1 then
-              buf:text(x0, y, up and "╭" or "╰", faint)
-              for sx = x0 + 1, x1 - 1 do buf:text(sx, y, "─", faint) end
-              buf:text(x1, y, up and "╮" or "╯", faint)
+            local x1 = x_in(sys, last_ev.measure, last_ev.start)
+            local top_pos = math.max(ev.notes[#ev.notes].pos, last_ev.notes and last_ev.notes[#last_ev.notes].pos or 0)
+            local over = (ev.stem or 1) < 0
+            local y = over and R.above(top_pos + 2) or R.below(math.min(ev.notes[1].pos, last_ev.notes and last_ev.notes[1].pos or 0) - 2)
+            if (x1 or sys.width) > x0 + 1 then
+              arc(buf, over and G.tie_over or G.tie_under, x0, (x1 or sys.width), y, faint, not x1)
             end
           end
         end
@@ -439,24 +563,20 @@ function view:render(buf, ctx)
         for span, tp in pairs(tuplets) do
           local x0, x1 = xt(tp.events[1].start), xt(tp.events[#tp.events].start)
           local up = tp.up >= 0
-          local edge = up and 10 or -2
+          local edge_pos = up and 10 or -2
           for _, ev in ipairs(tp.events) do
             for _, n in ipairs(ev.notes or {}) do
-              if up then edge = math.max(edge, n.pos + 5) else edge = math.min(edge, n.pos - 5) end
+              if up then edge_pos = math.max(edge_pos, n.pos + stem_len + 1) else edge_pos = math.min(edge_pos, n.pos - stem_len - 1) end
             end
           end
-          local y = row(edge)
-          if x1 > x0 + 1 then
-            buf:text(x0, y, up and "┌" or "└", faint)
-            for bx2 = x0 + 1, x1 - 1 do buf:text(bx2, y, "─", faint) end
-            buf:text(x1, y, up and "┐" or "┘", faint)
-          end
+          local y = up and R.above(edge_pos) or R.below(edge_pos)
+          if x1 > x0 + 1 then arc(buf, up and G.bracket_over or G.bracket_under, x0, x1, y, faint) end
           buf:text(floor((x0 + x1) / 2), y, tostring(span.n), note_style)
         end
       end
 
       if tab then
-        for i = 1, tab.strings do buf:text(bx, tab_top + i - 1, "│", bar_style) end
+        for i = 1, tab.strings do buf:text(bx, tab_top + i - 1, G.bar, bar_style) end
         -- Frets, at the notes' places; a tied note's continuation is not played again.
         for st = 1, staves do
           for _, ev in ipairs(m.staves[st]) do
@@ -471,32 +591,32 @@ function view:render(buf, ctx)
       -- Dynamics, hairpins and text; repeat signs at the barlines.
       for _, mk in ipairs(m.marks or {}) do
         local mxp = xt(mk.at)
-        -- Under the first staff; in a low panel, on the last row there is.
-        local dyn_row = math.min(row_of(1, -margin), h - 1)
+        -- Under the first staff (between a grand staff's two); in a low
+        -- panel, on the last row there is.
+        local dyn_row = math.min(band(1) + staff_rows - 1, h - 1)
         if mk.kind == "dyn" then
-          buf:text(mxp, dyn_row, mk.value, { fg = colour, bold = true })
+          buf:text(mxp, dyn_row, mk.value, { fg = colour, bold = true, italic = true })
         elseif mk.kind == "cresc" or mk.kind == "dim" then
           local x1 = mk.to >= m.start + m.length - EPS and bx - 1 or xt(mk.to)
-          local y = dyn_row
           for _, other in ipairs(m.marks) do
             if other.kind == "dyn" and math.abs(other.at - mk.at) < EPS then mxp = mxp + #other.value + 1 end
           end
-          for hx = mxp, x1 do buf:text(hx, y, "─", note_style) end
-          if mk.kind == "cresc" then buf:text(mxp, y, "<", note_style) else buf:text(x1, y, ">", note_style) end
+          for hx = mxp, x1 do buf:text(hx, dyn_row, G.hairpin, note_style) end
+          if mk.kind == "cresc" then buf:text(mxp, dyn_row, "<", note_style) else buf:text(x1, dyn_row, ">", note_style) end
         elseif mk.kind == "text" then
-          buf:text(mxp, row_of(1, 8 + margin - 1), tostring(mk.value), { fg = colour, italic = true })
+          buf:text(mxp, band(1) + math.max(0, margin - 2) + (margin > 1 and 1 or 0), tostring(mk.value), { fg = colour, italic = true })
         end
       end
       for st in ipairs(layout.staves) do
-        if m.repeat_start then
-          for pp = 0, 8 do buf:text(mx, row_of(st, pp), "║", bar_style) end
-          buf:text(mx + 1, row_of(st, 3), ":", note_style)
-          buf:text(mx + 1, row_of(st, 5), ":", note_style)
-        end
-        if m.repeat_end then
-          for pp = 0, 8 do buf:text(bx, row_of(st, pp), "║", bar_style) end
-          buf:text(bx - 1, row_of(st, 3), ":", note_style)
-          buf:text(bx - 1, row_of(st, 5), ":", note_style)
+        local R = rows[st]
+        for _, at in ipairs({ m.repeat_start and { mx, 1 } or nil, m.repeat_end and { bx, -1 } or nil }) do
+          for y = R.above(8), R.above(0) do buf:text(at[1], y, G.repeat_bar, bar_style) end
+          if dense then
+            buf:text(at[1] + at[2], R.above(4), ":", note_style)
+          else
+            buf:text(at[1] + at[2], R.above(3), G.dot, note_style)
+            buf:text(at[1] + at[2], R.above(5), G.dot, note_style)
+          end
         end
       end
 
@@ -512,27 +632,27 @@ function view:render(buf, ctx)
   -- note `Enter` or a letter would put there (the shadow note); in insert
   -- mode that follows the pointer while it is over the staff.
   if ctx.focused then
-    local beat, step, s = self.beat, self.step, nil
+    local beat, cstep, s = self.beat, self.step, nil
     local hover = view.cell_hover
     if inserting and hover and hover.from_beat == self.beat and hover.from_step == self.step then
-      beat, step, s, under = hover.beat, hover.step, only and 1 or self:staff_of_step(hover.step, layout), nil
+      beat, cstep, s, under = hover.beat, hover.step, only and 1 or self:staff_of_step(hover.step, layout), nil
     end
     for _, sys in ipairs(geometry.systems) do
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
         if beat >= m.start - EPS and (beat < m.start + m.length - EPS or (m.index == #layout.measures and beat <= m.start + m.length + EPS)) then
           s = s or (only and 1 or self:cursor_staff(layout))
-          local pos = step - model.CLEF_BOTTOM[layout.staves[s]]
+          local R = sys.rows[s]
+          local pos = cstep - model.CLEF_BOTTOM[layout.staves[s]]
           local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
           local style = inserting and "InsertCursor" or "RollCursor"
           if selection then
-            buf:fill(cx, sys.row_of(s, pos), 1, 1, nil, style)
+            buf:fill(cx, R.above(pos), 2, 1, nil, style)
           elseif not under then
-            for p = -2, pos, -2 do buf:text(cx - 1, sys.row_of(s, p), "───", faint) end
-            for p = 10, pos, 2 do buf:text(cx - 1, sys.row_of(s, p), "───", faint) end
-            buf:text(cx, sys.row_of(s, pos), (model.value_of(self:entry_length()) or 1) >= 2 and "○" or "●", style)
+            ledgers(buf, G, R, cx, pos, faint)
+            head(buf, G, R, cx, pos, (model.value_of(self:entry_length()) or 1) >= 2, style)
           elseif inserting then
-            buf:fill(cx, sys.row_of(s, pos), 1, 1, nil, style)
+            buf:fill(cx, R.above(pos), 2, 1, nil, style)
           end
           return
         end
@@ -573,16 +693,24 @@ function view:cell_at(x, y, fine)
       local m = placed.m
       if x >= placed.x and x <= placed.x + m.width then
         for s, clef in ipairs(g.staves or layout.staves) do
-          local pos = sys.row_of(s, 0) - y
-          if pos >= -g.margin - 1 and pos <= 8 + g.margin + 1 then
+          local R = sys.rows[s]
+          local pos = R.pos_of(y)
+          local reach = g.margin * R.step
+          if pos >= -reach - 1 and pos <= 8 + reach + 1 then
             local step = model.CLEF_BOTTOM[clef] + pos
             local at = { step = step, beat = m.start + self:snap(m, model.t_of(m, x - placed.x) - m.start, fine) }
             at.staff = self:staff_of_step(step, layout)
-            -- A head is drawn at its chord's start, or a column right of it
-            -- beside a second.
-            local ev, n = self:event_at(at.beat, step)
-            local hx = ev and placed.x + floor(model.x_of(m, ev.start) + 0.5)
-            if n and x >= hx and x <= hx + 1 then at.note, at.beat = n.index, ev.start end
+            -- A head is drawn at its chord's start, two cells wide, or two
+            -- columns right beside a second; on the dense staff a head in a
+            -- space is on the rows either side of it.
+            for _, near in ipairs(R.step == 2 and { step, step + 1, step - 1 } or { step }) do
+              local ev, n = self:event_at(at.beat, near)
+              local hx = ev and placed.x + floor(model.x_of(m, ev.start) + 0.5)
+              if n and x >= hx and x <= hx + 3 then
+                at.note, at.beat, at.step = n.index, ev.start, near
+                break
+              end
+            end
             return at
           end
         end
