@@ -17,7 +17,7 @@ then `:tutor` in paw. These pages are made from the tutor's own lessons, so the 
 | 3 | [Tracks, clips and notes](03-making.md) | You made a track, gave it a name and an instrument, entered notes, repeated and deleted clips, and undid a change. |
 | 4 | [The piano roll and entering notes](04-pianoroll.md) | You moved by pitch and time, added and changed a note in normal mode, and drew a line and a chord in insert mode. |
 | 5 | [The grammar: operators, motions, text objects](05-grammar.md) | Operator plus motion (`dw`, `d2W`), operator plus text object (`dic`, `gcic`, `glic`), twice for tracks (`dd`), and `.` to repeat. |
-| 6 | [The same grammar on notes](06-grammar-notes.md) | `dw`, `.`, `>in`, `yic` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes. |
+| 6 | [The same grammar on notes](06-grammar-notes.md) | `dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes. |
 | 7 | [Visual mode: select, then act](07-visual.md) | `v` and `V` with motions, then `x` `y` `~` or a count and `<C-a>`; `gv` to select again; the same in the piano roll. |
 | 8 | [Yank, paste, registers and macros](08-registers.md) | `yic` and `p` with counts, named registers, `:registers`, `2u`, and a macro recorded with `qq` and played with `@q` and `@@`. |
 | 9 | [Devices, parameters and plugins](09-devices.md) | The device panel, choosing and changing parameters, adding and bypassing a device, and where plugins' windows open. |

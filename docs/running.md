@@ -108,7 +108,7 @@ then what the command takes (tracks by name for `:send`, devices for
 `:device.add`, files for `:open`, `:import`, `:render`, `:write`, options
 for `:set`). `Tab` and `Shift-Tab` (or `Ctrl-n` `Ctrl-p`) choose one into the
 line, `Enter` runs the line, and on a directory goes into it. `:set zoom 4`,
-`:set zoom=4` and `:set follow!` change options; `:open` opens a project, a
+`:set zoom=4` and `:set follow!` change options, `:set zoom?` shows one (a name that is no option is an error, `E518`); a prompt that comes with a name to change, such as `grn`, has it selected, so typing replaces it (`Left` or `Home` to edit it instead); `:notation` alone runs `:notation.open` where an extension has one, and otherwise names the commands it could mean; `:open` opens a project, a
 MIDI file (as a new project) or a sound file. A project with unsaved work
 (changes, or no file yet and something in it, as one opened from a MIDI file
 or a REAPER project is) is not replaced without asking: `:open`, `:edit`,

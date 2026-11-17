@@ -43,7 +43,8 @@ selection. Typed twice they take whole lines: `dd` is a track, `3dd` three.
 **Text objects** name a region: `ic` the clip under the cursor, `ac` the clip
 and the gap after it, `ib` this bar (`2ib` two), `il` the loop, `it` everything
 on the track, `ie` the entire project. In the piano roll: `in` the note, `ib`
-the bar, `ic` every note of the clip.
+the bar, `ic` the notes that sound together at the cursor (`ac` with every
+note that overlaps them), `ie` every note of the clip.
 
 **Visual mode** selects first: `v` a stretch of time, stretched across tracks
 with `j` and `k`; `V` whole tracks; in the piano roll `v` a stretch of time at
@@ -533,7 +534,7 @@ event list, help, an extension's view (`notation`, `drums`, `utau`, ...). A
 one above another. The status line and the bottom line stay along the
 bottom of every tab. On start there is one tab and the screen is as it
 always was: the arrange view, with the panels coming and going in their
-places (`,m`, `,d`, `,p`, `Enter` on a clip).
+places (`,m`, `,d`, `,p`, `Enter` on a clip). `,m` in a window that is the mixer alone (after `Ctrl-w o`) brings the arrange view back in its place.
 
 `:vs roll` splits the window in two side by side and shows the piano roll in
 the new half; `Ctrl-w h` and `Ctrl-w l` go between them, and each takes its
@@ -546,8 +547,8 @@ left and above).
 
 | Keys or command | |
 | --- | --- |
-| `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; an empty window without a name (`Ctrl-w s`, `Ctrl-w v`, `:vnew`, `Ctrl-w n`) |
-| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a file that is not a buffer's name opens as `:open` does: `:e song.json`, `:e song.mid`, `:e take.wav`); the next and previous buffer |
+| `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; without a name, the same buffer as in Vim: a list edited as text shows in both windows, the arrange view's new window shows the piano roll and the roll's the arrange view, and any other view (one window at a time) leaves an empty window that says so (`Ctrl-w s`, `Ctrl-w v`); `:vnew` and `Ctrl-w n` always open an empty one |
+| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a buffer's or a view's name, or an address such as `daw://tracks`, is looked for before a file, and only a file is asked about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`); the next and previous buffer |
 | `:ls`, `:bd roll` | list the buffers; close every window of one |
 | `:close` `Ctrl-w c`, `:q` `Ctrl-w q`, `:only` `Ctrl-w o` | close the window; close it, or in the last window quit (asking about unsaved changes as before); close every other window |
 | `Ctrl-w h` `j` `k` `l`, `Ctrl-w w` `W`, `Ctrl-w p` | the window left, below, above, right (a count goes further); the next and previous window; the window that had the keyboard before |
@@ -787,8 +788,8 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 
 | Keys | Command | Lists | Enter |
 | --- | --- | --- | --- |
-| `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description | runs it; `Ctrl-e` types it on the command line instead, for arguments |
-| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`) | runs it |
+| `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description, a name that is the word typed or starts with it above the rest (`arrange` finds `:arrange`) | runs it; `Ctrl-e` types it on the command line instead, for arguments |
+| `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`). Last come the keys of the other views, tagged `arrange view` and so on, so that `send` in the mixer finds the arrange view's `,s`; choosing one goes to that view | runs it |
 | `,ft` | `pick.tracks` | tracks | moves the cursor to the track |
 | `,fl` | `pick.clips` | every clip, with its track | goes to it |
 | `,fa` | `pick.devices` | devices and plugins that can be added | adds it to the cursor's track |

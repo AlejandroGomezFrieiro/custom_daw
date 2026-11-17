@@ -143,11 +143,20 @@ local NOTES = 20
 --- label takes the last slot); `act` and `arg` for what a click on it does,
 --- the name of a `daw.frontend.act` function given the clip and `arg`, and
 --- `tip` for what the pointer on it says. A failing layer is skipped.
-function view.layer(name, order, paint, marks)
+---
+--- `more`, if given, says what else the layer adds to a clip it knows (each
+--- function is given the clip as `daw.api.clip_get` has it): `lane(p)` draws
+--- on the velocity lane after the lane's own bars, `p` as above with `lane`
+--- (a cell buffer) and `vel` (its rows); `title(clip)` returns what the title
+--- says of the clip, and `keys(clip)` a line on what the keys do to it, nil
+--- where the layer has nothing to say.
+function view.layer(name, order, paint, marks, more)
   for i = #view.layers, 1, -1 do
     if view.layers[i].name == name then table.remove(view.layers, i) end
   end
-  if paint or marks then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint, marks = marks } end
+  if paint or marks or more then
+    view.layers[#view.layers + 1] = { name = name, order = order, paint = paint, marks = marks, more = more or {} }
+  end
   table.sort(view.layers, function(a, b) return a.order < b.order end)
   api.ui_redraw()
 end
@@ -160,6 +169,19 @@ local function paint_layers(p, from, to)
     end
   end
 end
+
+--- What the layers say with `more.<what>(clip)`: the first answer, or nil.
+local function layers_say(what, clip)
+  for _, layer in ipairs(view.layers) do
+    local fn = layer.more and layer.more[what]
+    if fn then
+      local ok, text = pcall(fn, clip)
+      if ok and text then return text end
+      if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(text)) end
+    end
+  end
+end
+view.says = layers_say
 
 --- What the window draws of the layers for `clip_id`: those behind the
 --- clip's notes and those in front of them.
@@ -273,13 +295,17 @@ function view:render(buf, ctx)
   local grid_text = daw.ui.views.status.grid_text
   local right = string.format("grid %s  len %s  vel %d  oct %d", grid_text(grid), grid_text(self:step_length()),
     daw.opt.velocity, daw.opt.octave)
+  -- A clip that something keeps the notes of says so, and which keys write
+  -- what it keeps and which only change how it is played.
+  local says, keys = layers_say("title", c), layers_say("keys", c)
+  if keys then right = w >= 150 and keys .. "  " .. right or w >= 90 and keys or nil end
   local sounding, chord = clips.sounding(self.beat)
   local place = music.name(self.pitch) .. "  " .. daw.time.format(c.start + self.beat)
   daw.ui.titlebar(buf, {
     pill = { c.name, hue.pill }, focused = ctx.focused,
     name = #parts > 1 and string.format("%s  +%d clip%s", track.name, #parts - 1, #parts == 2 and "" or "s") or track.name,
-    context = chord and place .. "  " .. chord or place,
-    right = w >= 90 and right or nil,
+    context = (says and says .. "  " or "") .. (chord and place .. "  " .. chord or place),
+    right = (keys or w >= 90) and right or nil,
   })
   if inserting then
     local text = " " .. daw.roll_draw.label() .. " "
@@ -374,6 +400,16 @@ function view:render(buf, ctx)
           lane:text(x0 + 1, 0, text, "Bright")
         end
       end
+    end
+  end
+
+  if vel > 0 then
+    L.lane, L.vel = buf:sub(KEYS, head + rows, tw, vel), vel
+    for _, layer in ipairs(view.layers) do
+      local fn = layer.more and layer.more.lane
+      local ok, err = true, nil
+      if fn then ok, err = pcall(fn, L) end
+      if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(err)) end
     end
   end
 
