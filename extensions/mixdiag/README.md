@@ -108,7 +108,7 @@ findings. When a track's contribution is measured, they are left out.
 | `<leader>xk` | `mix.analyze track` | the cursor track's contribution: the song with that track as if soloed |
 | `<leader>xx` | `mix.list` | the findings, in `daw.pick` when there is one, else in the report |
 | `<leader>xr` | `mix.report` | the report: what was measured (or how far a measurement has got), the numbers, the findings by severity and the target; `j` `k` choose a finding, Enter goes there, `a` measures the song, `l` the loop, `t` the cursor's track, `T` the next target, `q` closes |
-| `<leader>xp` | `view.open mixdiag_paint` | the painted report, in pixels where the terminal shows them (`daw.opt.graphics`), else in the window |
+| `<leader>xp` | `view.open mixdiag_paint` | the painted report, in pixels where the terminal shows them (`daw.opt.graphics`), else the report in cells |
 | `<leader>xs` | `mix.summary` | LUFS, true peak, LRA, short-term maximum and mono loss of the last measurement |
 | `<leader>xt` | `mix.target [name]` | the next delivery target, or the one named |
 | `<leader>xc` | `mix.clear` | forget the findings |

@@ -142,6 +142,16 @@ leaves insert mode. See [harmony.md](harmony.md).
 | `Ctrl-w <` `Ctrl-w >`, `Ctrl-w _` | narrower or wider window (the device panel's `devices_width`; with the arrange view alone, its track headers); give the window the whole tab, and again to put the others back |
 | `ZZ` `ZQ` | save and quit; quit |
 
+**Audio waveforms.** An audio clip draws its sound under its name, one cell
+column for each column of the timeline, from the lowest to the highest
+sample of that stretch, around the middle of the rows (so a clip three rows
+tall has about twenty levels each way) with eighth blocks; a block that
+grows from the top is drawn in reverse video. The scale is linear, so that
+a kick stands over a hat: `daw.opt.wave_scale = "db"` shows quiet sound too,
+at the cost of the hits. Columns that reach full scale after the clip's gain
+are red. `zi` and `zo` draw it again from the peaks the kernel keeps, never
+from the file. It is cells everywhere, with or without pictures.
+
 **Automation lanes as rows.** `,aa` shows a track's automation lanes as
 rows under it, two lines each, and hides them again (`za`, `zM` and `zR`
 fold groups, not lanes); `,al` chooses a lane to make or show, from volume,

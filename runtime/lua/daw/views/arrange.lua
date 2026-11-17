@@ -32,19 +32,24 @@ daw.on("changed", function() previews, chains = {}, {} end)
 --- The rows under a clip's name: its notes as a small piano roll, or its
 --- waveform.
 local function preview(clip, width, rows, zoom)
-  local key = clip.id .. ":" .. width .. ":" .. rows .. ":" .. zoom
-  if previews[key] then return previews[key] end
-  local out
+  local key = clip.id .. ":" .. width .. ":" .. rows .. ":" .. zoom .. ":" .. tostring(daw.opt.wave_scale)
+    .. (daw.opt.ascii and "a" or "")
+  local kept = previews[key]
+  if kept then return kept[1], kept[2] end
+  local out, runs
   if clip.kind == "midi" then
     out = draw.miniroll(daw.stretch.sounding(clip, api.clip_notes(clip.id)), width, rows, zoom)
   else
     -- A file that has gone missing has been reported already; draw nothing.
     local ok, peaks = pcall(api.clip_peaks, clip.id, width)
-    out = draw.waveform(ok and peaks or {}, rows)
+    out, runs = draw.waveform(ok and peaks or {}, rows)
   end
-  previews[key] = out
-  return out
+  previews[key] = { out, runs }
+  return out, runs
 end
+
+--- Style names for the runs of a waveform that `draw.waveform` marks.
+local wave_style = { flip = "ClipWaveFlip", clip = "ClipWaveClip", clipflip = "ClipWaveClipFlip" }
 
 --- What a track's sound goes through, in a few words: `synth › delay`.
 local function chain(t)
@@ -346,7 +351,14 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       if height >= 2 then
         box:fill(0, 1, cw, height - 1, " ", hue["body" .. kind])
         if clip.kind == "audio" or clip.note_count > 0 then
-          for row, text in ipairs(preview(clip, cw, height - 1, zoom)) do box:text(0, row, text) end
+          local rows, runs = preview(clip, cw, height - 1, zoom)
+          for row, text in ipairs(rows) do
+            if runs then
+              for _, run in ipairs(runs[row]) do box:text(run.column, row, run.text, wave_style[run.mark]) end
+            else
+              box:text(0, row, text)
+            end
+          end
         end
       end
       -- A notch where each repeat of a looped clip begins.

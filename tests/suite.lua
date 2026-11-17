@@ -698,19 +698,16 @@ test("audio clips report their waveform", function()
   eq(#clip:peaks(5000), 5000, "more points than samples")
 
   -- The arrange view draws it under the name, over the rows a track has
-  -- left, on a decibel scale: the louder part fills more of them.
+  -- left, from each column's lowest to highest sample around the middle (the
+  -- waveform's own tests are in tests/waves.lua).
   daw.opt.zoom, daw.opt.track_height = 8, 3
   daw.cursor.set_track(t)
   local text = table.concat(api.ui_snapshot(100, 30), "\n")
   daw.opt.zoom, daw.opt.track_height = 2, "auto"
   local rows = daw.draw.waveform(clip:peaks(8), 2)
-  eq(rows[1]:find("▇", 1, true) ~= nil, true, "the loud parts reach well into the upper row: " .. rows[1])
-  eq(rows[2]:find("█", 1, true) ~= nil, true, "over a full lower one: " .. rows[2])
-  eq(rows[2]:sub(1, 1), " ", "silence draws nothing")
-  -- A column for each part of the file: nothing, then -6, -2.5 and -12 dB,
-  -- 3 dB to a level over the two rows under the clip's name.
-  eq(text:find("▅▇▃", 1, true) ~= nil, true, "waveform on screen, its top row")
-  eq(text:find("███", 1, true) ~= nil, true, "and the full row under it")
+  eq(rows[1], "  ▄▄▆▆  ", "silence draws nothing, a column reaches as far as the wave does: " .. rows[1])
+  eq(rows[2], "  ▄▄▂▂──", "below the middle, drawn in reverse so the glyph is what is left, and a level held below it is a line: " .. rows[2])
+  eq(text:find("▄▆", 1, true) ~= nil, true, "waveform on screen, at four columns for the clip")
 
   -- Only the part the clip plays, and silence past the end of the file.
   clip.offset, clip.length = 0.0625, 0.25
