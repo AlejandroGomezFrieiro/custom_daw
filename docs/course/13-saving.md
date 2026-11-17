@@ -2,7 +2,7 @@
 
 # Lesson 13: Saving and rendering
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 13`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 13`.*
 
 A project is a file (JSON) with everything in it: tracks, devices and their settings, clips and notes, automation, the loop. Recordings sit in a `media` folder beside it. Rendering plays the whole song into a WAV file that any other program can play.
 

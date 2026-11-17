@@ -249,32 +249,52 @@ local function spread(children, sizes, others, amount)
   return moved
 end
 
--- Where three or more views share a node, the weights alone can leave the
--- arrange view a sliver: it keeps a third of the room, as `Ctrl-w =` gives
--- it, and the notation view takes at most half.
-local function limit_shares(children, sizes, total)
+-- Where views share a node, the weights and the sizes of the panels beside
+-- the arrange view can leave it a sliver: in a column it keeps two fifths of
+-- the height, taken first from the panels that share by weight and then from
+-- those with a size of their own (down to their `min`, else one row). Where
+-- three or more share it keeps a third of the room, as `Ctrl-w =` gives it,
+-- and the notation view takes at most half.
+local function limit_shares(children, sizes, total, vertical)
   local flexible = {}
   for i, child in ipairs(children) do
     if not child.size then flexible[#flexible + 1] = i end
   end
-  if #flexible < 3 then return end
-  local function others_of(i)
+  local function others_of(i, list)
     local out = {}
-    for _, j in ipairs(flexible) do
+    for _, j in ipairs(list) do
       if j ~= i then out[#out + 1] = j end
     end
     return out
   end
-  for _, i in ipairs(flexible) do
-    local half = math.floor(total / 2)
-    if holds(children[i], "notation") and sizes[i] > half then
-      sizes[i] = sizes[i] - spread(children, sizes, others_of(i), sizes[i] - half)
+  if #flexible >= 3 then
+    for _, i in ipairs(flexible) do
+      local half = math.floor(total / 2)
+      if holds(children[i], "notation") and sizes[i] > half then
+        sizes[i] = sizes[i] - spread(children, sizes, others_of(i, flexible), sizes[i] - half)
+      end
+    end
+    for _, i in ipairs(flexible) do
+      local third = math.floor(total / 3)
+      if holds(children[i], "arrange") and sizes[i] < third then
+        sizes[i] = sizes[i] + spread(children, sizes, others_of(i, flexible), sizes[i] - third)
+      end
     end
   end
-  for _, i in ipairs(flexible) do
-    local third = math.floor(total / 3)
-    if holds(children[i], "arrange") and sizes[i] < third then
-      sizes[i] = sizes[i] + spread(children, sizes, others_of(i), sizes[i] - third)
+  if not vertical or #children < 2 then return end
+  for i, child in ipairs(children) do
+    local want = math.floor(total * 2 / 5)
+    if holds(child, "arrange") and sizes[i] < want then
+      local all = {}
+      for j in ipairs(children) do all[#all + 1] = j end
+      local fixed = {}
+      for _, j in ipairs(all) do
+        if j ~= i and children[j].size then fixed[#fixed + 1] = j end
+      end
+      local need = want - sizes[i]
+      need = need - spread(children, sizes, others_of(i, flexible), -need)
+      if need > 0 then need = need - spread(children, sizes, fixed, -need) end
+      sizes[i] = want - need
     end
   end
 end
@@ -299,7 +319,7 @@ local function place(node, x, y, w, h, out, screen_w, after)
     end
   end
   local sizes = shares(children, total)
-  limit_shares(children, sizes, total)
+  limit_shares(children, sizes, total, vertical)
   local pos = 0
   for i, child in ipairs(children) do
     local size = math.max(0, math.min(sizes[i] or 0, total - pos))

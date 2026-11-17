@@ -2,7 +2,7 @@
 
 # Lesson 16: The bundled extensions
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 16`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 16`.*
 
 Much of what paw can do comes in extensions: directories of Lua in `extensions/` beside the program, which use the same `daw` module as your `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with `:tutor.try` and tries one thing in it; to have one always, link its directory into `~/.config/daw/extensions`.
 

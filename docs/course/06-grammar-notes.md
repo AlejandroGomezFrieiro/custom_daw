@@ -2,7 +2,7 @@
 
 # Lesson 6: The same grammar on notes
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 6`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 6`.*
 
 Everything from the last lesson works in the piano roll, with notes in place of clips and pitches in place of tracks. `w` goes to the next note, so `dw` deletes up to it; `in` is the note under the cursor, `ic` the notes that sound together there, `ie` every note of the clip; `dd` deletes a whole row, which here is every note of one pitch; `.` repeats; `y` and `p` copy.
 

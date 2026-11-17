@@ -2,11 +2,11 @@
 
 # Lesson 5: The grammar: operators, motions, text objects
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 5`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 5`.*
 
 This is the heart of paw. Most editing is a short sentence: an operator (what to do) followed by a motion or a text object (what to do it to). `d` is delete, `w` is "to the next clip", so `dw` deletes up to the next clip. `ic` is "the clip I am in", so `dic` deletes this clip. A count says how many: `d2W` deletes two bars. Typing the operator twice takes whole tracks: `dd`. And `.` repeats the last change wherever the cursor is now.
 
-The Beat track has four clips: kick, snare, fill, crash. Bass plays under them.
+In this practice project the Beat track has four clips: kick, snare, fill, crash. Bass plays under them.
 
 ## The idea
 
