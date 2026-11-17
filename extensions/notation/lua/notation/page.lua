@@ -83,8 +83,9 @@ function P.paper(out, eng, dx, dy, opts)
   for i, page in ipairs(eng.pages) do
     if not opts.only or opts.only == i then
       local x, y = eng.page_x + dx, page.y + dy
-      if opts.shadow then out[#out + 1] = { "r", x + 3, y + 3, geo.width, geo.height, "#00000040", "", 1, 0 } end
-      out[#out + 1] = { "r", x, y, geo.width, geo.height, st.paper, "", 1, 0 }
+      local height = opts.heights and opts.heights[i] or geo.height
+      if opts.shadow then out[#out + 1] = { "r", x + 3, y + 3, geo.width, height, "#00000040", "", 1, 0 } end
+      out[#out + 1] = { "r", x, y, geo.width, height, st.paper, "", 1, 0 }
       if i == 1 then
         out[#out + 1] = { "t", x + geo.width / 2, y + geo.margin, title, st.ink, round(2.6 * s), 1, "center", geo.width - 2 * geo.margin }
         if composer ~= "" then
@@ -121,7 +122,8 @@ end
 --- Write a layout's pages to `path` as "pdf" (every page), "svg" (a file
 --- for each page, numbered after the first) or "png" (the first page): on
 --- white paper in black, the sheet `notation_sheet` at 1.75 mm to the staff
---- space. Returns the files written.
+--- space. The last page ends under its last system instead of at the foot
+--- of the sheet. Returns the files written, and the number of pages.
 function P.export(layout, path, format, heading)
   local sp = 10
   local st = engrave.style({ space = sp, cell = { w = 1, h = 1 }, ink = "#000000", paper = "#ffffff", accent = "#000000",
@@ -131,10 +133,14 @@ function P.export(layout, path, format, heading)
   local eng = P.systems(layout, st, geo, geo.width)
   local pages = {}
   for i, page in ipairs(eng.pages) do
+    local height = geo.height
+    if i == #eng.pages and #page.systems > 0 then
+      height = math.min(height, page.at - page.y + geo.margin)
+    end
     local ops = {}
-    P.paper(ops, eng, 0, -page.y, { only = i, title = heading.title, composer = heading.composer })
+    P.paper(ops, eng, 0, -page.y, { only = i, title = heading.title, composer = heading.composer, heights = { [i] = height } })
     P.music(ops, eng, layout, 0, -page.y, i)
-    pages[i] = { ops = ops, width = geo.width, height = geo.height }
+    pages[i] = { ops = ops, width = geo.width, height = height }
   end
   local size = P.SIZES[daw.opt.notation_sheet] or P.SIZES.a4
   -- Points to a pixel: the sheet's width in points over its width in pixels.
@@ -151,7 +157,7 @@ function P.export(layout, path, format, heading)
       written[#written + 1] = file
     end
   end
-  return written
+  return written, #pages
 end
 
 return P

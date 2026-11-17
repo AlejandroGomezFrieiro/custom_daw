@@ -1611,6 +1611,23 @@ command("commands", function()
   end
   daw.ui.page("Commands", lines)
 end, { desc = "List every command" })
+command("ext.load", function(ctx)
+  local name = tostring(ctx.args[1] or "")
+  if name == "" then return daw.notify("which extension? `:ext.load notation`; `:extensions` lists the loaded ones", "warn") end
+  if daw.ext.loaded[name] then return daw.notify(name .. " is loaded already") end
+  local entry, err = daw.ext.load_bundled(name)
+  if not entry then return daw.notify(err, "warn") end
+  if entry.ok then daw.notify(name .. " loaded for this session: `daw.ext.load` in init.lua keeps it") end
+end, {
+  desc = "Load a bundled extension now: `ext.load notation`",
+  complete = function()
+    local out = {}
+    for _, name in ipairs(daw.ext.bundled()) do
+      if not daw.ext.loaded[name] then out[#out + 1] = name end
+    end
+    return out
+  end,
+})
 command("extensions", function()
   local lines = {}
   for _, e in ipairs(daw.ext.list()) do
@@ -1951,7 +1968,7 @@ smap("s", "track.solo", "Solo")
 smap("M", "track.mute", "Mute the track")
 smap("S", "launch.stop", "Stop the track's clip")
 smap("gS", "launch.stop all", "Stop every clip")
-smap("B", "launch.back", "Back to the track's timeline")
+smap("B", "launch.back", "Resume the track's timeline: stop its slot so the arranged clips play again")
 smap("gB", "launch.back all", "Every track back to its timeline")
 smap("n", "slot.new", "A new MIDI clip in the slot")
 smap("i", "slot.edit", "Open the clip's notes, to enter some")

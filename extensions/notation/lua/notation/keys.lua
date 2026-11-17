@@ -350,6 +350,9 @@ command("notation.export", function(ctx)
   local c = clip:get()
   local track = clip:track()
   local name = whole_track and track.name or c.name
+  -- The message names what was written, so that a clip chosen by the notation
+  -- view or the arrange cursor is not a surprise.
+  local what = whole_track and ("track '" .. track.name .. "'") or ("'" .. (c.name ~= "" and c.name or "clip") .. "' (" .. track.name .. ")")
   local path = ctx.args[1] and tostring(ctx.args[1]) or (name:gsub("[^%w%-_]+", "_") .. ".musicxml")
   -- `pdf`, `svg` or `png` alone: a file of that kind named after the clip.
   local engraved = { pdf = true, svg = true, png = true }
@@ -371,9 +374,9 @@ command("notation.export", function(ctx)
   if engraved[ext] then
     -- The engraved pages, as the page view shows them.
     local title, composer = require("notation.page").heading(name)
-    local ok, written = pcall(require("notation.page").export, layout, path, ext, { title = title, composer = composer })
+    local ok, written, pages = pcall(require("notation.page").export, layout, path, ext, { title = title, composer = composer })
     if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(written), "error") end
-    return daw.notify("wrote " .. table.concat(written, ", "))
+    return daw.notify("wrote " .. what .. " to " .. table.concat(written, ", ") .. ", " .. pages .. (pages == 1 and " page" or " pages"))
   end
   local text
   if path:match("%.ly$") then
@@ -383,7 +386,7 @@ command("notation.export", function(ctx)
   end
   local ok, err = export.write(path, text)
   if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
-  daw.notify("wrote " .. path)
+  daw.notify("wrote " .. what .. " to " .. path)
 end, { desc = "Write the clip as MusicXML, LilyPond, or engraved pages: `notation.export song.musicxml`, `notation.export lead.ly track`, `notation.export pdf`, `notation.export tune.svg`", complete = { "files", function() return { "track" } end } })
 
 -- Reaching it from the arrange view and the window's clip menu.

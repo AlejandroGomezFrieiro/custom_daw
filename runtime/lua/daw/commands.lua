@@ -57,6 +57,15 @@ end
 --- with it, if there are any.
 function M.unknown(name)
   name = tostring(name)
+  local ext = daw.ext
+  local stem = name:match("^[^.]+")
+  if ext and stem and not ext.loaded[stem] then
+    for _, bundled in ipairs(ext.bundled()) do
+      if bundled == stem then
+        return stem .. " is a bundled extension that isn't loaded: `:ext.load " .. stem .. "` loads it now, `daw.ext.load` in init.lua keeps it"
+      end
+    end
+  end
   local near = {}
   for _, other in ipairs(M.list()) do
     if #near < 5 and #name >= 2 and other.name:sub(1, #name) == name then near[#near + 1] = ":" .. other.name end

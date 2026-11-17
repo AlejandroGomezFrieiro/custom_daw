@@ -95,7 +95,14 @@ function M.hide(name)
     local view = M.views[name]
     if view and view.on_hide then view:on_hide() end
   end
-  if M.focused == name then M.focus_next() end
+  if M.focused == name then
+    M.focus_next()
+    -- The last window of the tab does not close: the arrange view takes
+    -- the keyboard, or this view stays if it is the arrange view.
+    if M.focused == name and not M.visible(name) then
+      M.focus("arrange")
+    end
+  end
   api.ui_redraw()
 end
 
@@ -132,6 +139,14 @@ function M.focus(name)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
   local win = L.reveal(name, true)
   if win then return L.enter(win) end
+  if not (M.float and M.float.name == name) then
+    -- A view with no window and no place of its own (its window showed a
+    -- buffer since) goes into the current window, as `:b` would: focus is
+    -- never given to a view that is not drawn.
+    local cur = L.current()
+    if not cur then error("no window to show `" .. name .. "` in", 2) end
+    return L.show_in(cur, name)
+  end
   if M.focused ~= name then
     local old = M.focused
     M.focused = name
