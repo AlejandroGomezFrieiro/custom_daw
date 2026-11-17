@@ -45,7 +45,12 @@ local function fail(text, ...) error(string.format(text, ...), 0) end
 -- which clips it edits: `daw.ex.view(name, { song = function(col) ... end,
 -- col = function(beat) ... end, clips = function() return ids end,
 -- track = function() return id end })`. A view not named here counts in
--- beats of the song.
+-- beats of the song. A view of several clips may also say: `clips_at(s, i)`,
+-- the clips an address of its own at `i` names and where it ends (the
+-- notation view's staves, `s4`), which a range then holds as `clips`;
+-- `selection(region, r)`, what a selection of its grid is as a range (its
+-- `pitches`, its `clips`); `each_clip(r, run)`, how a command of its own
+-- is run on a range of its clips, `run(r)` for each.
 
 M.views = {}
 
@@ -95,7 +100,10 @@ local function cursor_track()
 end
 
 --- The clips the focused view edits, or nil when it is about the whole song.
-local function view_clips()
+--- The clips the focused view edits: those a range names of them (`r.clips`,
+--- the notation view's staves), else the view's own.
+local function view_clips(r)
+  if r and r.clips then return r.clips end
   local a = adapter()
   return a.clips and a.clips() or nil
 end
@@ -229,6 +237,7 @@ function M.selection_range()
     if region.kind ~= "line" then r.from, r.to = song(region.c0), song(region.c1) end
     -- Rows are pitches in the views that have clips of notes.
     if spec.clips and region.kind ~= "char" then r.pitches = { region.r0, region.r1 } end
+    if spec.selection then spec.selection(region, r) end
   end
   return finish_range(r)
 end
@@ -340,15 +349,27 @@ end
 function M.range(line)
   local ok, r, rest = pcall(function()
     local i = line:match("^%s*()")
-    local tracks, j = track_range(line, i)
+    -- The view's own clips by an address of its own (the notation
+    -- view's staves), before or after the time: `:s4 5,8>`, `:5,8 s4 >`.
+    local own = adapter().clips_at
+    local clips, j = nil, i
+    if own then clips, j = own(line, i) end
+    local tracks
+    if not clips then tracks, j = track_range(line, i) end
     local k = line:match("^%s*()", j)
     local time, e = time_range(line, k)
-    if not tracks and not time then return nil, line end
+    if time and not tracks and not clips and own then
+      local after = line:match("^%s*()", e)
+      local found, e2 = own(line, after)
+      if found then clips, e = found, e2 end
+    end
+    if not tracks and not time and not clips then return nil, line end
     local r = time or {}
     if tracks then
       -- A selection's own tracks give way to tracks named outright.
       r.tracks, r.track_range, r.single = tracks, true, nil
     end
+    if clips then r.clips, r.tracks, r.single = clips, nil, nil end
     local finish = time and e or j
     r.text = line:sub(i, finish - 1):match("^(.-)%s*$")
     return finish_range(r), line:sub(finish)
@@ -395,7 +416,7 @@ local function scope_clips(r)
   if r.tracks then
     for _, id in ipairs(r.tracks) do add_track(id) end
   else
-    local ids = view_clips()
+    local ids = view_clips(r)
     if ids then
       for _, id in ipairs(ids) do out[#out + 1] = api.clip_get(id) end
     else
@@ -871,7 +892,7 @@ end
 
 --- Whether a range is about the notes of the clips the focused view edits.
 local function in_view_clips(r)
-  return not r.tracks and not r.items and view_clips() ~= nil
+  return not r.tracks and not r.items and view_clips(r) ~= nil
 end
 
 local function bang(ctx) return (ctx.name or ""):sub(-1) == "!" end
@@ -941,7 +962,7 @@ local function delete_or_yank(ctx, yank_only)
     local items = M.items(r, "note")
     if #items == 0 then return daw.notify("no notes in " .. M.describe(r), "warn") end
     remove_items(items, ctx, yank_only)
-    if bang(ctx) and not yank_only then ripple_notes(view_clips(), r.to, r.from - r.to) end
+    if bang(ctx) and not yank_only then ripple_notes(view_clips(r), r.to, r.from - r.to) end
     return
   end
   local rows = {}
@@ -1480,9 +1501,17 @@ function M.exec(line, ctx)
   api.undo_label(":" .. text)
   ctx.range = range
   if spec.range then
-    if range.selection then return daw.keymap.with_selection(range.region, commands.run, name, parsed, ctx) end
-    return commands.run(name, parsed, ctx)
+    local function run(r)
+      local c = util.merge(ctx, { range = r })
+      if r.selection then return daw.keymap.with_selection(r.region, commands.run, name, parsed, c) end
+      return commands.run(name, parsed, c)
+    end
+    -- A view of several clips runs its own commands on each in its own way.
+    local each = adapter().each_clip
+    if range.clips and each then return each(range, run) end
+    return run(range)
   end
+
   if range.selection and not range.track_range then
     return daw.keymap.with_selection(range.region, commands.run, name, parsed, ctx)
   end

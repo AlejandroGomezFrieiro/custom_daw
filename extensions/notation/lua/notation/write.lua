@@ -44,8 +44,7 @@ local function region(ctx)
     local c = clip:get()
     return { view = "notation", kind = "char", r0 = 0, r1 = 127, c0 = math.max(0, range.from - c.start), c1 = math.min(c.length, range.to - c.start) }
   end
-  local sel = keymap.selection()
-  if sel and sel.view == "notation" then return sel end
+  return view:selection()
 end
 W.region = region
 

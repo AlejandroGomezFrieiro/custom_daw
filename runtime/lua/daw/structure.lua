@@ -3,7 +3,8 @@
 --
 --   ]]  [[    the next or previous clip of the same kind on the track
 --   ]s  [s    the next or previous track beside this one in its group
---   [u  ]u    up to the group the track is in; down to the group's first track
+--   [{  ]}    up to the group the track is in; to the group's last track
+--   [u  ]u    up to the group (as `[{`); down into the group: its first track
 --   ig  ag    the tracks of the group the cursor is in; with the group track
 --   ]]  [[    in the piano roll: the next or previous note of the same pitch
 --
@@ -98,6 +99,29 @@ local function to_parent(ctx)
   cursor.set_track(id)
 end
 
+--- The rows (places in the track list) a group takes; see below.
+local group_rows
+
+--- To the last track of the group the cursor's track is in (of the group
+--- around that one, when it is there already; a count goes out further).
+local function to_group_end(ctx)
+  local id = cursor.track_id()
+  local list = api.track_list()
+  for _ = 1, ctx.count or 1 do
+    local group = id and groups.of(id)
+    if not group then break end
+    local _, finish = group_rows(group)
+    if list[finish] == id then
+      group = groups.of(group)
+      if not group then break end
+      _, finish = group_rows(group)
+    end
+    id = list[finish]
+  end
+  if not id or id == cursor.track_id() then return daw.notify("the track is in no group, or at its end", "warn") end
+  cursor.set_track(id)
+end
+
 local function to_child()
   local id = cursor.track_id()
   local first = id and groups.is_group(id) and groups.members(id)[1]
@@ -117,7 +141,7 @@ end
 
 --- The rows (places in the track list) a group takes, members and members'
 --- members included: from the group track, and from its first member.
-local function group_rows(group)
+group_rows = function(group)
   local list = api.track_list()
   local at
   for i, id in ipairs(list) do
@@ -180,7 +204,9 @@ amap("]]", to_same_clip(1), "The next clip of the same kind on the track", { mot
 amap("[[", to_same_clip(-1), "The clip of the same kind before, on the track", { motion = true, jump = true })
 amap("]s", to_sibling(1), "The next track in the same group", { motion = true, linewise = true })
 amap("[s", to_sibling(-1), "The track before in the same group", { motion = true, linewise = true })
-amap("[u", to_parent, "Up to the group the track is in", { motion = true, linewise = true, jump = true })
+amap("[{", to_parent, "Up to the group the track is in", { motion = true, linewise = true, jump = true })
+amap("]}", to_group_end, "The last track of the group", { motion = true, linewise = true, jump = true })
+amap("[u", to_parent, "Up to the group the track is in (as [{)", { motion = true, linewise = true, jump = true })
 amap("]u", to_child, "Down into the group: its first track", { motion = true, linewise = true })
 keymap.textobject("ig", group_object(false), { view = "arrange", desc = "The tracks of the group" })
 keymap.textobject("ag", group_object(true), { view = "arrange", desc = "The group with its tracks" })

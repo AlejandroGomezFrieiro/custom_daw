@@ -219,8 +219,10 @@ See [Harmony, completion and snippets](../harmony.md).
 | in a picker | Tab marks a line, Ctrl-q sends the marked (or all) to the quickfix list; Ctrl-v, Ctrl-x, Ctrl-t open it beside, below, in a tab; Ctrl-r steps fuzzy, exact, regex; Alt-d deletes; Ctrl-Up what was typed before |
 | `:vimgrep /pizz/` | every text in the project that matches, in the quickfix list |
 | `:select clip[name~=pizz] > note[pitch>=C5]` | choose what a query finds; `:query` lists it |
-| `]]` `[[` | next, previous clip of the same kind on the track (R: note of the same pitch) |
-| `]s` `[s` `[u` `]u` | next, previous track in the group; up to the group; down into it |
+| `]]` `[[` | next, previous clip of the same kind on the track (R: note of the same pitch; in a score, instrument) |
+| `]s` `[s` | next, previous track in the group (in a score, instrument in the group) |
+| `[{` `]}` | up to the group the track is in; its last track (in a score, the group's first and last instrument); `[u` is `[{` too |
+| `]u` | down into the group: its first track |
 | `ig` `ag` | the group's tracks; with the group track |
 
 Stop half way through a sequence and the keys that can follow are listed.
@@ -404,11 +406,39 @@ The popovers are keys of the notation view (its README has them all):
 | playing techniques | `\p` | `pizz.`, `arco`, `con sord.` |
 | the last popover again, with its text | `\.` | |
 
+A score of several tracks (`:help notation-the-score`) is edited where it
+is read: each staff is a line, and the staff under the cursor is the
+track every key writes. `:score` shows the tab's scope (or every track),
+`:score Strings` a group, `:score selection` the arrange view's selected
+tracks, `gT` the tracks over the clip's stretch; `:score.check` (and `zp`)
+the pages to check before export, the one view that is only read.
+
+| Keys | In a score |
+| --- | --- |
+| `j` `k` | the cursor's pitch, as on one staff (entering goes by it) |
+| `<C-j>` `<C-k>` | a staff down, up: a grand staff's two, then the next instrument |
+| `]]` `[[` | the next, previous instrument (a grand staff is one) |
+| `]s` `[s` | the next, previous instrument in the same group |
+| `[{` `]}` | the group's first, last instrument (again: the group before, after) |
+| `<C-v>` then those | a block of bars by staves: `x`, `d`, `y`, `gU`, `>`, `\d`... on each staff, one undo step |
+| `V` then those | whole staves |
+| `]v` `[v` | on a condensed staff, the other player (voice 2 is the second's clip) |
+| `:5,8 s4 d` `:5,8 Strings notation.dyn p` | Ex over staves: `s4`, `s2,s5`, `s.` the cursor's, a group's name |
+
+`:set score_dim` dims the other staves, `:set score_colors` tints them in
+their tracks' colours.
+
 The full score and the parts (`:help notation-parts`) are on `\P`, to
-read: `\Ps` the score, `\Pc` condensed (two players to a staff), `\Pp`
-this track's part, `\Pn` `\PN` the next and previous part, `\Po` the clip
-again, `\Pb` `\Pj` a system break in the part, `\Pe` export
+edit: `\Ps` the score, `\Pc` condensed (two players to a staff), `\Pp`
+this track's part (letters typed in a transposed part are the written
+notes), `\Pn` `\PN` the next and previous part, `\Po` the clip alone,
+`\Pb` `\Pj` a system break in the part, `\Pe` export
 (`:part.export parts.pdf all`).
+
+In the piano roll the other tracks' notes show behind in their colours
+(REAPER's visible tracks): `]t` `[t` make the next or previous of them the
+one edited, `<Tab>` `<S-Tab>` go round them (with none shown, `<Tab>` is the
+next view), and a click on a note behind makes its track the one edited.
 
 ## Articulations
 

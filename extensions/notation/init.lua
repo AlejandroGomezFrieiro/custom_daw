@@ -13,6 +13,8 @@ require("notation.popover")
 require("notation.files")
 require("notation.search")
 require("notation.part_keys")
+-- Last: it takes in every key of the view for the score's staves.
+require("notation.staves")
 
 daw.ui.view("notation", view)
 daw.ui.dock("notation", { side = "bottom", hidden = true })

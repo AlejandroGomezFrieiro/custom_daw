@@ -1,0 +1,58 @@
+-- The piano roll over several tracks, as REAPER's editable and visible
+-- tracks: the other tracks' notes behind in their colours, `]t` `[t` and
+-- `Tab` making another shown track the one edited, a click on a note
+-- behind doing the same, and edits going to the active track's clip.
+-- Loaded by tests/suite.lua with its helpers.
+local T = ...
+local test, eq, fresh = T.test, T.eq, T.fresh
+local api = daw.api
+local keymap = daw.keymap
+
+local function keys(text)
+  keymap.feed(text)
+  api.undo_checkpoint()
+end
+
+local function three()
+  fresh()
+  local clips = {}
+  for i, name in ipairs({ "Violin", "Viola", "Cello" }) do
+    local t = daw.add_track({ name = name })
+    clips[i] = t:add_clip({ start = 0, length = 8, name = name, notes = { { pitch = 76 - 7 * i, start = 0, length = 1, velocity = 90 } } })
+  end
+  daw.flush()
+  api.undo_checkpoint()
+  keymap.set_mode("n")
+  daw.ui.views.pianoroll:edit(clips[2])
+  daw.ui.focus("pianoroll")
+  return daw.ui.views.pianoroll, clips
+end
+
+local function track_of(roll) return api.track_get(roll:clip():get().track).name end
+
+test("the piano roll: ]t [t and Tab make the next shown track the one edited, its notes then edited", function()
+  local roll, clips = three()
+  eq(track_of(roll), "Viola", "the clip opened is edited")
+  eq(#daw.roll_clips.context(), 2, "the other two tracks' notes behind")
+  keys("]t")
+  eq(track_of(roll), "Cello", "]t: the next track")
+  eq(#daw.roll_clips.context(), 2, "the viola's notes behind now")
+  keys("2[t")
+  eq(track_of(roll), "Violin", "2[t: two before")
+  keys("<Tab>")
+  eq(track_of(roll), "Viola", "Tab: the next")
+  keys("<Tab><Tab>")
+  eq(track_of(roll), "Violin", "and round")
+  -- An edit goes to the active track's clip alone.
+  roll:set(62, 2)
+  keys("<CR>")
+  eq(#clips[1]:notes() .. " " .. #clips[2]:notes() .. " " .. #clips[3]:notes(), "2 1 1", "a note entered into the violin's clip")
+  -- A click on a note behind makes its clip the one edited.
+  daw.frontend.act.add_note(clips[1].id, 55, 0)
+  eq(track_of(roll), "Cello", "a click on the cello's note behind")
+  -- With nothing shown behind, Tab is the next view as everywhere.
+  daw.opt.roll_context = "none"
+  keys("<Tab>")
+  eq(daw.ui.focused ~= "pianoroll", true, "Tab goes to the next view")
+  daw.opt.roll_context = "all"
+end)

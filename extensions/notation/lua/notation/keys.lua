@@ -126,8 +126,7 @@ local function ranged(ctx)
     local c = clip:get()
     return { view = "notation", kind = "char", r0 = 0, r1 = 127, c0 = math.max(0, range.from - c.start), c1 = math.min(c.length, range.to - c.start) }
   end
-  local sel = keymap.selection()
-  if sel and sel.view == "notation" then return sel end
+  return view:selection()
 end
 
 --- The chords a mark goes on, by their ids in the score: the region's (by
@@ -307,9 +306,10 @@ end, { desc = "Tablature under the staff for a guitar or bass track: `notation.t
 command("notation.tracks", function(ctx)
   local clip = view:clip() or view.target()
   if not clip then return daw.notify("no clip open as notation", "warn") end
-  if view.multi and not ctx.args[1] then
-    view.multi, view.cache = nil, nil
-    return daw.notify("notation: this clip alone, to edit")
+  if view.parts and not ctx.args[1] then
+    view.parts, view.cache = nil, nil
+    api.ui_redraw()
+    return daw.notify("notation: this clip alone")
   end
   if not view:clip() then view:edit(clip) end
   local c = clip:get()
@@ -323,9 +323,10 @@ command("notation.tracks", function(ctx)
       end
     end
   end
-  view.multi, view.cache = ids, nil
-  daw.notify("notation: " .. #ids .. " tracks, to read; :notation.tracks again to edit this clip")
-end, { desc = "Show every track's MIDI over this clip's stretch as one system of staves (to read), or this clip alone again" })
+  -- The score of those tracks' clips over this one's stretch, to edit.
+  view.staves.show(ids, "the score of " .. #ids .. " tracks", { from = c.start, to = c.start + c.length })
+  daw.notify("notation: " .. #ids .. " tracks, a staff each, this clip's the active one; :notation.tracks again for the clip alone")
+end, { desc = "Show every track's MIDI over this clip's stretch as a score, a staff each, to edit; or this clip alone again" })
 
 command("notation.value", function(ctx)
   local names = { whole = 4, half = 2, quarter = 1, eighth = 0.5, ["16th"] = 0.25, ["32nd"] = 0.125 }
@@ -401,7 +402,7 @@ end
 
 local motion, linewise = { motion = true }, { motion = true, linewise = true }
 local far = { motion = true, jump = true }
---- Keys that edit do nothing (and say why) while several tracks are shown.
+--- Keys that edit do nothing (and say why) while the pages are shown to check.
 local function guarded(rhs)
   if type(rhs) ~= "function" then return rhs end
   return function(...)
@@ -499,7 +500,7 @@ local function each_count(fn) return function(ctx)
 end end
 nmap("<CR>", function() view:toggle_note() end, "Add a note of the chosen value, or take away the one here")
 local function insert()
-  if not view.multi and not view:editable() then return end
+  if not view:editable() then return end
   -- Entry goes into the voice of the note the cursor is on, if it is on one.
   view.last, view.chord, view.voice = nil, nil, view:cursor_voice()
   view.push, view.repitch, view.grace, view.pending_grace = nil, nil, nil, nil
@@ -580,7 +581,7 @@ nmap("gd", function()
 end, "Dotted values on or off, for entering")
 nmap("gh", function() view:audition() end, "Hear the pitch under the cursor")
 nmap("gR", function() daw.cmd("notation.raw") end, "Raw view: every note as played, or interpreted again")
-nmap("gT", function() daw.cmd("notation.tracks") end, "Every track over this stretch, to read, or this clip alone")
+nmap("gT", function() daw.cmd("notation.tracks") end, "Every track over this stretch as a score, or this clip alone")
 nmap("zi", function()
   view.zoom = math.min(4, view.zoom + 0.5)
   view.gui.zoom(1)
@@ -601,6 +602,8 @@ end, "The engraved page as one long system (galley), or wrapped")
 local function bar_break(kind)
   local layout = view:layout()
   if not layout or view:readonly() then return end
+  -- In a part, its own breaks: the score's stay as they are.
+  if view.parts and view.parts.kind == "part" then return daw.cmd(kind == "break" and "part.break" or "part.join") end
   local _, index = view:measure_at(view.beat, layout)
   if not index or index <= 1 then return daw.notify("the first bar starts the first system", "warn") end
   local now
@@ -618,11 +621,13 @@ end
 nmap("zs", function() bar_break("break") end, "Start a system at this bar, or let it go where it fits again")
 nmap("zj", function() bar_break("join") end, "Keep this bar on the system before, or let it go where it fits again")
 nmap("zp", function()
+  -- A score's or a part's pages are the check before export, to read.
+  if view.parts then return daw.cmd("score.check") end
   view.page = not view.page
   view.galley = view.galley and not view.page
   daw.notify(view.page and "pages (in the window, or where the terminal shows images)" or "systems without pages")
   api.ui_redraw()
-end, "The engraved systems on pages, with the title, or without")
+end, "The engraved systems on pages, with the title, or without; in a score, its pages to check before export")
 command("notation.bars-per-system", function(ctx)
   local n = tonumber(ctx.args[1])
   if ctx.args[1] and not (n and n >= 0 and n == math.floor(n)) then
@@ -729,6 +734,8 @@ for interval = 2, 8 do
 end
 imap("~", function() view:tie_last() end, "Hold the note just entered on by the chosen value (tied), and step on")
 imap("v", function()
+  -- On a condensed staff the other voice is the other player.
+  if view.staves.player() then return end
   view.voice = (view.voice or 1) == 1 and 2 or 1
   daw.notify("entering in voice " .. view.voice)
   api.ui_redraw()
@@ -774,11 +781,12 @@ view.grid = {
 }
 
 -- How Ex lines (`:'<,'>`, `:.`, `:%s/c4/d4/`) read this view: its beats
--- count from the start of its clip, and it edits that clip's notes.
+-- count from the start of its clip (of the score, when one is shown; see
+-- `notation.staves` for its staves), and it edits that clip's notes.
 daw.ex.view("notation", {
   song = function(col)
-    local clip = view:clip()
-    return (clip and clip.start or 0) + col
+    local F = view:frame()
+    return (F and F.start or 0) + col
   end,
   clips = function()
     local clip = view:clip()
@@ -852,6 +860,17 @@ do
   local P = require("notation.operators")
   local D = require("notation.doc")
   local LETTERS = { c = 0, d = 1, e = 2, f = 3, g = 4, a = 5, b = 6 }
+  --- A letter as the clip's notes have it: in a transposed part letters
+  --- name notes as written (a C in a B flat part sounds B flat), and the
+  --- clip's notes sound.
+  local function sounding(letter)
+    local F = view:frame()
+    local d = F and F.dstep or 0
+    if d == 0 or not LETTERS[letter:lower()] then return letter end
+    local i = (LETTERS[letter:lower()] - d) % 7
+    local out = ("cdefgab"):sub(i + 1, i + 1)
+    return letter:lower() == letter and out or out:upper()
+  end
 
   -- Text objects. Each also stays with a visual selection it makes, so
   -- that `viv` then `d` deletes the voice and not every voice there.
@@ -1002,7 +1021,7 @@ do
   end
   local last_find
   local function find(key, dir, till, count)
-    local letter = key and LETTERS[key:lower()]
+    local letter = key and LETTERS[sounding(key):lower()]
     local sc = O.score()
     if not (letter and sc) then return end
     last_find = { key = key, dir = dir, till = till }
@@ -1065,6 +1084,8 @@ do
     for i, x in ipairs(list) do
       if x.staff == cur.staff and x.voice == cur.voice then k = i end
     end
+    -- On a condensed staff the voices are the two players': their clips.
+    if view.staves.player(dir) then return end
     local to = list[util.clamp(k + dir * (ctx.count or 1), 1, #list)]
     if to then go_voice(sc, cur, to) end
   end end
@@ -1074,16 +1095,20 @@ do
     local sc = O.score()
     if not sc then return end
     local cur = O.cursor(sc)
-    local si = util.clamp(cur.staff_index + dir * (ctx.count or 1), 1, #sc.staves)
+    local si = cur.staff_index + dir * (ctx.count or 1)
+    -- In a score, on past the instrument's staves into the next one's.
+    if (si < 1 or si > #sc.staves) and view.staves.staff(dir, ctx.count) then return end
+    si = util.clamp(si, 1, #sc.staves)
     if si == cur.staff_index then return end
     go_voice(sc, cur, { staff = sc.staves[si].id, voice = 1 })
   end end
-  nmap("<C-j>", staves(1), "The staff below", motion)
-  nmap("<C-k>", staves(-1), "The staff above", motion)
+  nmap("<C-j>", staves(1), "The staff below (in a score, on into the next instrument)", linewise)
+  nmap("<C-k>", staves(-1), "The staff above (in a score, on into the instrument before)", linewise)
 
   -- Entry modes.
   local function enter_mode(push, repitch)
-    if not view.multi and not view:editable() then return end
+    if not view:editable() then return end
+
     view.last, view.chord, view.voice = nil, nil, view:cursor_voice()
     view.push, view.repitch, view.grace, view.pending_grace = push, repitch, nil, nil
     keymap.set_mode("i")
@@ -1091,19 +1116,21 @@ do
   nmap("I", function() enter_mode(true, nil) end, "Enter notes, pushing later music along (push-insert)")
   nmap("R", function() enter_mode(nil, true) end, "Re-pitch: letters change the notes there in turn, the rhythm stays")
   nmap("r", function(ctx)
-    if ctx.char and LETTERS[ctx.char:lower()] then P.repitch_letter(ctx.char:lower(), ctx.count) end
+    if ctx.char and LETTERS[ctx.char:lower()] then P.repitch_letter(sounding(ctx.char):lower(), ctx.count) end
   end, "Re-pitch the note to a letter, keeping its rhythm: rd", { char = true })
   for letter in pairs(LETTERS) do
     local name = letter:upper()
     imap(letter, function()
-      if view.grace then return P.grace_enter(letter) end
-      if view.repitch then return P.repitch_enter(letter, false) end
-      view:enter(letter, true)
+      local l = sounding(letter)
+      if view.grace then return P.grace_enter(l) end
+      if view.repitch then return P.repitch_enter(l, false) end
+      view:enter(l, true)
     end, "Enter " .. name .. " and step on (a grace note after /, the note there in re-pitch mode)")
     imap(name, function()
-      if view.grace then return P.grace_enter(letter) end
-      if view.repitch then return P.repitch_enter(letter, true) end
-      view:enter(letter, false)
+      local l = sounding(letter)
+      if view.grace then return P.grace_enter(l) end
+      if view.repitch then return P.repitch_enter(l, true) end
+      view:enter(l, false)
     end, "Enter " .. name .. " and stay, for a chord")
   end
   imap("<Insert>", function()

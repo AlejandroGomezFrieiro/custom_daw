@@ -395,6 +395,7 @@ command that touches several clips is one undo step.
 | make the clip of a note shown behind active | `ga` on the note | click the note |
 | edit it too, or no longer | `gE` on the note | Ctrl and a click, or the box in the side panel |
 | the next, the previous clip edited active | `gn` `gN` | a click on its name in the side panel |
+| the next, the previous track shown the one edited (its clip at the cursor) | `]t` `[t`; `Tab` `Shift-Tab` round them | click one of its notes |
 | open several clips together | select them in the arrange view, `Enter` | choose them, double click one |
 | back to one clip | `:roll.only`, or open a clip | open a clip |
 
@@ -408,6 +409,10 @@ cursor keeps its place in the song.
   many beats after the active clip it starts), `span()` (the stretch they
   cover, in the roll's beats).
 - `open(ids, active)`, `only()`, `activate(id)`, `toggle(id)`, `cycle(n)`.
+- `visible()` (the tracks the roll shows, the active clip's among them, in
+  the order of the track list), `step_track(n, wrap)` (the track `n` places
+  on the one edited: `]t` `[t` `Tab`).
+
 - `notes(range)`: the notes of every clip edited in the roll's beats, each
   with `clip` and `place` (its place in its clip, for `Clip:edit_notes`);
   `note_at(pitch, beat)`.

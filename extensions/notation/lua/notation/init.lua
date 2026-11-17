@@ -178,65 +178,56 @@ function view.decorate(layout, clip)
   return layout
 end
 
---- Several tracks as one system: the notes of each track's MIDI clips
---- over the open clip's stretch of the song, a staff (or two) each, all
---- spaced together. Read only.
-function view:multi_layout(c, opts)
-  local from, to = c.start, c.start + c.length
-  local parts = {}
-  for _, id in ipairs(self.multi) do
-    local ok, track = pcall(daw.track, id)
-    if ok and track then
-      local notes = {}
-      for _, other in ipairs(track:clips()) do
-        local oc = other:get()
-        if oc.kind == "midi" and oc.start < to and oc.start + oc.length > from then
-          for _, n in ipairs(other:notes()) do
-            local at = oc.start + n.start - from
-            if n.start < oc.length and at >= 0 and at < c.length then
-              notes[#notes + 1] = util.merge(n, { start = at })
-            end
-          end
-        end
-      end
-      table.sort(notes, function(a, b) return a.start < b.start or (a.start == b.start and a.pitch < b.pitch) end)
-      local t = track:get()
-      local own = util.merge(opts, { clef = view.track_clef(id) })
-      parts[#parts + 1] = { name = t.name, layout = model.layout(notes, own), track = id }
-    end
-  end
-  if #parts == 0 then return nil end
-  local out = setmetatable({ staves = {}, names = {}, tracks = {}, readonly = true }, { __index = parts[1].layout })
-  out.measures = {}
-  for i, m in ipairs(parts[1].layout.measures) do
-    out.measures[i] = setmetatable({ staves = {} }, { __index = m })
-  end
-  for _, part in ipairs(parts) do
-    for k, clef in ipairs(part.layout.staves) do
-      out.staves[#out.staves + 1] = clef
-      out.names[#out.staves] = k == 1 and part.name or ""
-      out.tracks[#out.staves] = part.track
-      for i, m in ipairs(part.layout.measures) do
-        local evs = m.staves[k]
-        for _, ev in ipairs(evs) do ev.staff = #out.staves end
-        out.measures[i].staves[#out.staves] = evs
-      end
-    end
-  end
-  return out
-end
-
---- Whether the view shows several tracks (and so cannot be edited).
+--- Whether the view shows what is only to be read: the score's pages
+--- checked before they are exported (`:score.check`). Says so.
 function view:readonly()
-  if self.parts then
-    daw.notify("the " .. self.parts.kind .. " is shown, to read: :part off to edit this clip again", "warn")
-    return true
-  end
-  if self.multi then
-    daw.notify("several tracks are shown, to read: :notation.tracks to edit this clip again", "warn")
+  if self.parts and self.parts.check then
+    daw.notify("the pages are shown to check before export, to read: :score.check again (or zp) to edit", "warn")
     return true
   end
   return false
+end
+
+--- What the view shows: the open clip's own layout, or the score (or a
+--- part) the clip is a staff of (`notation.parts`), the open clip being
+--- the staff the cursor is on, the active one. `{ layout, off, base,
+--- count, unit, player, start, dstep, dfifths }`: `off` beats are added
+--- to the clip's for the score's, `base` staves to the clip's for the
+--- score's, `count` staves are the clip's there, `unit` is its place in
+--- `layout.units` (`player` its clip's on a condensed staff), `start` is
+--- the song's beat at the score's beat 0, and a transposed part is
+--- written `dstep` staff steps and `dfifths` fifths from the clip's notes,
+--- which the cursor and every edit go by.
+function view:frame()
+  local clip = self:clip()
+  if not clip then return nil end
+  local c = clip:get()
+  if self.parts then
+    local layout = require("notation.parts").view_layout(self)
+    if layout then
+      local found, player
+      for k, u in ipairs(layout.units) do
+        for p, id in ipairs(u.clips) do
+          if id == c.id then found, player = k, p end
+        end
+      end
+      if not found then
+        -- The open clip is not shown: the first staff is the active one.
+        found, player = 1, 1
+        self.clip_id = layout.units[1].clips[1]
+        clip = self:clip()
+        c = clip:get()
+      end
+      local u = layout.units[found]
+      local start = layout.start_beat or c.start
+      local written = layout.written or { steps = 0, fifths = 0 }
+      return { layout = layout, off = c.start - start, base = u.first - 1, count = u.last - u.first + 1, unit = found,
+        player = player, start = start, multi = true, dstep = written.steps, dfifths = written.fifths }
+    end
+  end
+  local layout = self:layout()
+  return { layout = layout, off = 0, base = 0, count = layout and #layout.staves or 1, unit = 1, player = 1, start = c.start,
+    dstep = 0, dfifths = 0 }
 end
 
 --- The layout of the open clip, made fresh when the clip or the project
@@ -249,29 +240,7 @@ function view:layout()
     return nil
   end
   local clip = daw.clip(c.id)
-  -- The full score or a part (`notation.parts`), to read.
-  if self.parts then
-    local layout = require("notation.parts").view_layout(self)
-    if layout then return layout, clip:notes() end
-  end
   local opts = view.layout_opts(c)
-  if self.multi then
-    local parts = { c.id, c.start, c.length, opts.fifths, tostring(opts.tempo), serial(opts.bars) }
-    for _, id in ipairs(self.multi) do
-      local ok, track = pcall(daw.track, id)
-      if ok and track then
-        for _, other in ipairs(track:clips()) do
-          local oc = other:get()
-          parts[#parts + 1] = oc.id .. "/" .. tostring(oc.stamp) .. "/" .. oc.start .. "/" .. tostring(view.track_clef(id))
-        end
-      end
-    end
-    local stamp = "multi:" .. table.concat(parts, ":")
-    if self.cache and self.cache.stamp == stamp then return self.cache.layout, self.cache.notes end
-    local layout = self:multi_layout(c, opts)
-    self.cache = { stamp = stamp, layout = layout, notes = clip:notes() }
-    return layout, self.cache.notes
-  end
   -- Laid out from the score the clip's notes are written as.
   local sc = view.score_of(c)
   local stamp = table.concat({ tostring(sc), c.length, opts.fifths, daw.opt.notation_grid,
@@ -599,7 +568,7 @@ end
 
 -- Writing ---------------------------------------------------------------------------------------
 
---- The open clip, to edit: nil while several tracks are shown.
+--- The open clip, to edit: nil while the pages are shown to check.
 function view:editable()
   if self:readonly() then return nil end
   return self:clip()
@@ -634,8 +603,8 @@ end
 --- The id a written note has now, after the last write named new notes.
 function view.now_id(id) return view.renamed and view.renamed[id] or id end
 
---- Change the open clip's score with `fn(score, clip)` (unless several
---- tracks are shown), and write what changed as MIDI edits, one undo
+--- Change the open clip's score with `fn(score, clip)` (unless the pages
+--- are shown to check), and write what changed as MIDI edits, one undo
 --- step. `fn` returning false changes nothing.
 function view:write(fn)
   local clip = self:editable()
@@ -1764,7 +1733,7 @@ function view:edit(clip)
   if type(clip) == "number" then clip = daw.clip(clip) end
   if not clip then return daw.notify("no clip here", "warn") end
   if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be shown as notation", "warn") end
-  self.clip_id, self.beat, self.first, self.chord, self.last, self.cache, self.multi = clip.id, 0, 1, nil, nil, nil, nil
+  self.clip_id, self.beat, self.first, self.chord, self.last, self.cache = clip.id, 0, 1, nil, nil, nil
   self.parts = nil
   self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace, self.pending_grace = false, nil, nil, nil, nil, nil, nil
   local layout = self:layout()

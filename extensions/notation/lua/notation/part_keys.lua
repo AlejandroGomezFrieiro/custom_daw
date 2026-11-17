@@ -1,10 +1,10 @@
 -- Commands and keys for the full score and the parts (`notation.parts`):
 --
---   :part.score            -- the full score in the notation view, to read
+--   :part.score            -- the full score in the notation view, to edit (`notation.staves`)
 --   :part.condense         -- two players of an instrument on one staff, or not
 --   :part Flute 1          -- an instrument's part (by name or place); alone, the open clip's track's
 --   :part.next, :part.prev -- the next, previous part
---   :part off              -- the clip alone again, to edit
+--   :part off              -- the clip alone again
 --   :part.transpose Bb     -- the part written for an instrument in B flat (`Eb up`, `Bb octave`, `off`)
 --   :5,8part.cue Oboe      -- the oboe's notes as a cue in this part's rests of bars 5 to 8 (`off`)
 --   :part.break, :part.join, :part.bars-per-system 4   -- the part's own system breaks
@@ -39,10 +39,16 @@ end
 local function show(parts)
   if not opened() then return end
   -- The cursor at the start, on the middle line of the first staff.
-  view.parts, view.cache, view.first, view.beat, view.step = parts, nil, 1, 0, 41
-  local layout = view:layout()
+  view.parts, view.cache, view.first = parts, nil, 1
+  -- The part's track is the active staff; in the score, the open clip's.
+  if parts.track then
+    for _, e in ipairs(P.instruments()) do
+      if e.id == parts.track then view:activate(e.clip.id) end
+    end
+  end
+  local F = view:frame()
   if not view.parts then return end
-  view.multi = layout and layout.tracks or {}
+  local layout = F and F.layout
   daw.ui.focus("notation")
   -- In the graphical frontend, the notation's window.
   if daw.canvas and not daw.canvas.open_views.notation then
@@ -86,9 +92,9 @@ local function complete_names() return names(P.instruments()) end
 command("part.score", function()
   local condensed = view.parts and view.parts.condensed or false
   if show({ kind = "score", condensed = condensed }) then
-    daw.notify("the full score at concert pitch, to read" .. (condensed and ", condensed" or "") .. "; :part off to edit the clip")
+    daw.notify("the full score at concert pitch" .. (condensed and ", condensed" or "") .. ": the cursor's staff is the track edited; :part off for the clip alone")
   end
-end, { desc = "Show the full score: every track with MIDI as an instrument, in orchestral order, to read" })
+end, { desc = "Show the full score to edit: every track with MIDI as an instrument, in orchestral order, the cursor's staff the track edited" })
 
 command("part.condense", function(ctx)
   local word = ctx.args[1]
@@ -101,14 +107,14 @@ end, { desc = "Condense the full score: two players of one instrument on one sta
 
 local function show_part(e)
   if show({ kind = "part", track = e.id }) then
-    daw.notify("part: " .. e.name .. (e.transpose and (" (written in " .. e.transpose.name .. ")") or "") .. "; :part off to edit the clip")
+    daw.notify("part: " .. e.name .. (e.transpose and (" (written in " .. e.transpose.name .. ")") or "") .. ", to edit; :part off for the clip alone")
   end
 end
 
 command("part", function(ctx)
   local words = ctx.args[1]
   if words == "off" then
-    view.parts, view.multi, view.cache = nil, nil, nil
+    view.parts, view.cache = nil, nil
     api.ui_redraw()
     return daw.notify("notation: the clip alone, to edit")
   end
@@ -124,7 +130,7 @@ command("part", function(ctx)
   local e, list = instrument(words)
   if not e then return daw.notify("no part '" .. words .. "': " .. table.concat(names(list), ", "), "warn") end
   show_part(e)
-end, { raw = true, desc = "Show a part to play from: `part Flute 1` (by name or place in the score), alone the open clip's track's, `part off` the clip again", complete = complete_names })
+end, { raw = true, desc = "Show a part to play from, to edit as it is written: `part Flute 1` (by name or place in the score), alone the open clip's track's, `part off` the clip alone again", complete = complete_names })
 
 local function step(by)
   local list = P.instruments()
@@ -163,9 +169,9 @@ end, { raw = true, desc = "How a track's part is written: `part.transpose Bb` (c
 local function stretch(ctx)
   local range = ctx.range
   if range and range.from then return range.from, range.to end
-  local start = view:layout() and view:layout().start_beat or (view:clip() and view:clip():get().start or 0)
-  local sel = keymap.selection()
-  if sel and sel.view == "notation" then return start + sel.c0, start + sel.c1 end
+  local start = view:clip() and view:clip():get().start or 0
+  local sel = view:selection()
+  if sel then return start + sel.c0, start + sel.c1 end
   local m = view:measure_at(view.beat)
   if m then return start + m.start, start + m.start + m.length end
 end
@@ -346,12 +352,12 @@ end, { desc = "Write the part shown (or the score) as engraved pages: `part.expo
 
 local function key(lhs, rhs, desc) keymap.set("<localleader>P" .. lhs, rhs, { view = "notation", desc = desc }) end
 keymap.group("<localleader>P", "score and parts", { view = "notation" })
-key("s", "part.score", "The full score, to read")
+key("s", "part.score", "The full score, to edit")
 key("c", "part.condense", "The full score condensed, or not")
 key("p", "part", "This track's part")
 key("n", "part.next", "The next part")
 key("N", "part.prev", "The previous part")
-key("o", "part off", "Back to the clip, to edit")
+key("o", "part off", "Back to the clip alone")
 key("b", "part.break", "In the part: a system starts at this bar, or not")
 key("j", "part.join", "In the part: this bar on the system before, or not")
 key("e", function() keymap.feed(":part.export ") end, "Export the part or score: a PDF, or MusicXML")
