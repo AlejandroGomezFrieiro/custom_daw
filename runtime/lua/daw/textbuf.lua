@@ -1616,7 +1616,7 @@ local FOOTER = "y or Enter: apply, as one undo step · n or Esc: back"
 local verbs = { delete = "Error", remove = "Error", add = "Info", copy = "Info", new = "Info" }
 
 function confirm:render(canvas)
-  local lines = self.shown
+  local lines = self.shown or {}
   local h = canvas.height - 1
   self.scroll = util.clamp(self.scroll, 0, math.max(0, #lines - h))
   for row = 0, h - 1 do

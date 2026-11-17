@@ -14,7 +14,8 @@
 -- (or `{ fn = ..., desc = ..., keep = true }` to leave the picker open),
 -- `multi = true` to mark several with Tab and get them in
 -- `on_choose_multi(items)`, `width` and `height`, `top = true` to sit at the
--- top of the screen (leaving what is below in view), `empty` (what to say
+-- top of the screen (leaving what is below in view), `choose` (what Enter does,
+-- for the key line), `empty` (what to say
 -- when there is nothing to choose from), and `primary(item)`: the part of
 -- the line that counts first, so that lines matching there rank above
 -- lines matching only elsewhere.
@@ -777,6 +778,20 @@ function view:render(buf, ctx)
 end
 
 daw.ui.view("pick", view)
+
+-- The key line while a picker is open: what the keys of this one do (the
+-- keys themselves are not mapped: the picker takes every key).
+daw.ui.keybar.set("pick", "n", function()
+  local out = { { "", active and active.spec.choose or "choose", "Enter" } }
+  local keys = {}
+  for key, a in pairs(active and active.spec.actions or {}) do
+    if type(a) == "table" and a.desc then keys[#keys + 1] = { "", a.desc, daw.ui.keybar.show(key) } end
+  end
+  table.sort(keys, function(a, b) return a[3] < b[3] end)
+  for _, entry in ipairs(keys) do out[#out + 1] = entry end
+  out[#out + 1] = { "", "close", "Esc" }
+  return out
+end)
 
 local function footer_of(spec)
   local parts = { "Enter choose", "Esc cancel", "C-n/C-p move" }

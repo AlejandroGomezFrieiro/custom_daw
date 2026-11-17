@@ -278,6 +278,18 @@ test("Ctrl-] in the keys picker opens the help of the key chosen", function()
   eq(at:find(":helpgrep", 1, true) ~= nil, true, "at the command: " .. tostring(at))
 end)
 
+test("the keys picker shows the help of the key chosen, wide columns, and a key line", function()
+  start()
+  daw.pick("keys", { query = "Ctrl-w o" })
+  local text = table.concat(api.ui_snapshot(200, 40), "\n")
+  eq(text:find("Ctrl-w o", 1, true) ~= nil, true, "the key is listed")
+  eq(text:find("terminal", 1, true) ~= nil, true, "the manual's page is named in the preview")
+  local shown = {}
+  for _, e in ipairs(daw.ui.keybar.entries()) do shown[#shown + 1] = e[1] .. " " .. e[2] end
+  eq(table.concat(shown, " · "), "Enter run · Ctrl-] help · Esc close", "the key line")
+  daw.ui.close()
+end)
+
 test("the key line names the view's topic of help, and every such topic is a tag", function()
   start()
   eq(H.topic_of("arrange"), "terminal", "the arrange view's")
@@ -290,16 +302,19 @@ test("the key line names the view's topic of help, and every such topic is a tag
   eq(bottom:find(":help terminal", 1, true) ~= nil, true, "on the bottom line: " .. bottom)
 end)
 
-test("in the graphical frontend help opens in a window of its own", function()
+test("in the graphical frontend help opens as a docked pane, and pops out on request", function()
   start()
   local listeners = daw.remote.listeners
   daw.remote.listeners = function() return { { client = 9, watching = true } } end
   local ok, err = pcall(daw.cmd, "help", { "gU" })
   daw.remote.listeners = listeners
   assert(ok, err)
-  eq(daw.canvas.open_views.textbuf ~= nil, true, "a window for the frontend")
-  eq(daw.ui.focused, "textbuf", "with the keyboard")
-  local _, line = here()
+  eq(daw.canvas.open_views.textbuf, nil, "no window of its own")
+  eq(daw.ui.focused, "textbuf", "the pane has the keyboard")
+  local name, line = here()
+  eq(name:match("^help://") ~= nil, true, "a help pane in the layout")
   eq(line:find("gU", 1, true) ~= nil, true, "at the key")
+  daw.cmd("textbuf.window")
+  eq(daw.canvas.open_views.textbuf ~= nil, true, "popped out to a window of its own")
   daw.canvas.close("textbuf")
 end)
