@@ -2,7 +2,7 @@
 
 # Lesson 1: First steps: the screen, playing, quitting
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 1`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 1`.*
 
 paw is driven from the keyboard. Everything on the screen is a view: the arrange view in the middle has a row per track and time running to the right, the status line at the bottom says which mode you are in (`NORMAL` now), and the line below it is where commands are typed and messages appear. This panel at the bottom is the tutor: it says what to do and notices when you have done it.
 

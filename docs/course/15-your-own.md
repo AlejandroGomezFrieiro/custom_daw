@@ -2,7 +2,7 @@
 
 # Lesson 15: Making it your own: options, keys, commands
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 15`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 15`.*
 
 Every key you have used is an ordinary mapping, and every command an ordinary Lua function, defined with the same calls you can use yourself. Your own file, `~/.config/daw/init.lua`, runs at startup: options, mappings and commands put there are yours every time.
 

@@ -106,7 +106,7 @@ local function preview(text)
     api.ui_redraw()
     return
   end
-  if not text:match("%S") and not state.spec.empty then return state.spec.hint end
+  if not text:match("%S") and not state.spec.empty then return end
   local before = snapshot()
   W.entering = state.mode == "i"
   local said, level = quietly(function()
@@ -167,7 +167,7 @@ function P.open(name, opts)
   local state = open_now
   cmdline.open({
     prompt = spec.prompt, history = "notation." .. spec.name, label = spec.label, text = opts.text,
-    complete = spec.complete, on_change = preview, anchor = anchor, mode = state.mode,
+    complete = spec.complete, on_change = preview, anchor = anchor, mode = state.mode, ghost = spec.hint,
     on_key = spec.on_key and function(key, text) return spec.on_key(key, text, state) end,
   }, function(text) commit(state, text) end)
 end
@@ -233,11 +233,11 @@ local INTERVAL_ITEMS = {
 local VOICE_ITEMS = { { "1", "up stems" }, { "2", "down stems" }, { "3" }, { "4" } }
 
 P.define({ key = "d", name = "dynamics", command = "notation.dyn", prompt = "dynamic ", label = "Write a dynamic",
-  complete = items(DYNAMIC_ITEMS), hint = "mp  sfz  fp  p subito  mp<f  <  niente<" })
+  complete = items(DYNAMIC_ITEMS), hint = "pp p mp mf f ff  mp<f  sfz" })
 P.define({ key = "t", name = "tempo", command = "notation.tempo", prompt = "tempo ", label = "Write a tempo mark",
   complete = items(TEMPO_ITEMS), hint = "Allegro q=132  rit.  a tempo" })
 P.define({ key = "m", name = "meter", command = "notation.meter", prompt = "time ", label = "Write a time signature",
-  complete = items(METER_ITEMS), hint = "6/8  3/4  3+3+2/8  C" })
+  complete = items(METER_ITEMS), hint = "6/8  3+3+2/8" })
 P.define({ key = "k", name = "key", command = "notation.key", prompt = "key ", label = "Write a key signature",
   complete = items(KEY_ITEMS), hint = "Eb  f#m  D dorian" })
 P.define({ key = "C", name = "clef", command = "notation.clef", prompt = "clef ", label = "Write a clef",
@@ -274,7 +274,7 @@ local function next_note()
 end
 
 P.define({ key = "l", name = "lyrics", command = "notation.lyric", prompt = "lyric ", label = "Write a lyric",
-  hint = "a syllable; Space next note, - hyphen, _ extender; verse=2 first for the second verse",
+  hint = "syllables, Space next, - hyphen",
   on_key = function(key, text, state)
     local ending = (key == "-" and "-") or (key == "_" and "_") or ((key == "<Space>" or key == " ") and "") or nil
     if not ending then return nil end
@@ -294,7 +294,7 @@ P.define({ key = "l", name = "lyrics", command = "notation.lyric", prompt = "lyr
 })
 
 P.define({ key = "q", name = "chords", command = "notation.chord", prompt = "chord ", label = "Write a chord symbol",
-  complete = function(text) return W.chord_candidates(text) end, hint = "Cmaj7  G/B  N.C.; Space next beat, Tab what sounds",
+  complete = function(text) return W.chord_candidates(text) end, hint = "Cmaj7  G/B  N.C.",
   on_key = function(key, text, state)
     if key ~= "<Space>" and key ~= " " then return nil end
     if text:match("%S") then commit(state, text) end
@@ -338,13 +338,15 @@ function P.paint(g, x, y, width, colours)
   if not (open_now and st) then return end
   local text = st.before .. st.after
   local note = st.note or ""
-  local w = math.min(width - 8, math.max(220, 8 * (#st.prompt + #text + #note) + 40))
+  local ghost = text == "" and st.ghost or nil
+  local w = math.min(width - 8, math.max(220, 8 * (#st.prompt + #text + #note + #(ghost or "")) + 40))
   local h = 24
   x = math.max(4, math.min(x - 12, width - w - 4))
   y = math.max(2, y - h)
   g:rect(x, y, w, h, { fill = colours.control, stroke = colours.select, width = 1, radius = 4 })
   local used = g:text(x + 8, y + 4, st.prompt, { color = colours.select, bold = true }) or (8 * #st.prompt)
   g:text(x + 8 + used, y + 4, text, { color = colours.text })
+  if ghost then g:text(x + 8 + used + 8, y + 4, ghost, { color = colours.text_2, width = w - used - 24 }) end
   local cx = x + 8 + used + 8 * api.str_width(st.before)
   g:rect(cx, y + 4, 1, h - 8, { fill = colours.text })
   if note ~= "" then

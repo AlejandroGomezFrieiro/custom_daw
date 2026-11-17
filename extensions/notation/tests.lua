@@ -356,6 +356,23 @@ local function model_text_has(view, text)
   return model.text((view:layout())):find(text, 1, true) ~= nil
 end
 
+test("notation: the piano roll opened from the notation view takes its clip", function()
+  local _, clip = song({ N(67, 1, 1) })
+  local roll = daw.ui.views.pianoroll
+  roll.clip_id = nil
+  daw.ui.hide("pianoroll")
+  daw.ui.focus("notation")
+  -- (`,p` is the popover for pitch in the notation view: the toggle is the command.)
+  daw.cmd("view.toggle", { "pianoroll" })
+  eq(roll.clip_id, clip.id, "the toggle opens the notation view's clip")
+  daw.ui.hide("pianoroll")
+  roll.clip_id = nil
+  daw.ui.focus("notation")
+  daw.cmd("vs", { "pianoroll" })
+  eq(roll.clip_id, clip.id, "so does a split")
+  eq(daw.layout.find(daw.ui.layout, "pianoroll") ~= nil, true, "and it is in a window")
+end)
+
 test("notation: :notation opens the clip under the cursor, with the keyboard", function()
   local view, clip, track = song({ N(67, 1, 1) })
   daw.ui.focus("arrange")
@@ -1780,3 +1797,4 @@ assert(loadfile("extensions/notation/tests_score.lua"))(T)
 assert(loadfile("extensions/notation/tests_layout.lua"))(T)
 assert(loadfile("extensions/notation/tests_grammar.lua"))(T)
 assert(loadfile("extensions/notation/tests_popover.lua"))(T)
+assert(loadfile("extensions/notation/tests_musicxml.lua"))(T)

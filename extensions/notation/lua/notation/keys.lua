@@ -359,6 +359,18 @@ command("notation.export", function(ctx)
   -- `pdf`, `svg` or `png` alone: a file of that kind named after the clip.
   local engraved = { pdf = true, svg = true, png = true }
   if engraved[path] then path = name:gsub("[^%w%-_]+", "_") .. "." .. path end
+  local ext = (path:match("%.(%w+)$") or ""):lower()
+  local all = ctx.args[2] == "all"
+  if (ext == "musicxml" or ext == "xml" or ext == "mxl" or ext == "ly") and not whole_track then
+    -- Written from the score itself: every bar, voice and mark it holds.
+    local files = require("notation.files")
+    local title, composer = require("notation.page").heading(name)
+    local clips = all and files.all_clips() or { clip }
+    local ok, err = pcall(files.export, path, clips, { title = title, composer = composer })
+    if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
+    if all then what = #clips .. (#clips == 1 and " track" or " tracks") end
+    return daw.notify("wrote " .. what .. " to " .. path)
+  end
   local _, stored = view.key()
   local opts = view.layout_opts(c)
   local layout
@@ -372,7 +384,6 @@ command("notation.export", function(ctx)
     layout = model.layout(clip:notes(), opts)
   end
   view.decorate(layout, clip)
-  local ext = path:match("%.(%w+)$")
   if engraved[ext] then
     -- The engraved pages, as the page view shows them.
     local title, composer = require("notation.page").heading(name)
@@ -389,7 +400,7 @@ command("notation.export", function(ctx)
   local ok, err = export.write(path, text)
   if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
   daw.notify("wrote " .. what .. " to " .. path)
-end, { desc = "Write the clip as MusicXML, LilyPond, or engraved pages: `notation.export song.musicxml`, `notation.export lead.ly track`, `notation.export pdf`, `notation.export tune.svg`", complete = { "files", function() return { "track" } end } })
+end, { desc = "Write the clip's score as MusicXML (`.mxl` zipped), LilyPond, or engraved pages: `notation.export song.musicxml`, `notation.export score.mxl all` (every track), `notation.export lead.ly track`, `notation.export pdf`, `notation.export tune.svg`", complete = { "files", function() return { "all", "track" } end } })
 
 -- Reaching it from the arrange view and the window's clip menu.
 map("<leader>n", "notation", { view = "arrange", desc = "Show the clip as notation" })

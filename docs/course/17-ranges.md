@@ -2,7 +2,7 @@
 
 # Lesson 17: Ranges, :s and :g: editing by line
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 17`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 17`.*
 
 Operators and visual mode act where the cursor is. The command line can act anywhere at once: a range in front of a command says where, as in Vim's Ex, with bars for lines. `:2,3d` empties bars 2 and 3, `:t2 4d` bar 4 of track 2 alone, `:%s/c4/d4/g` makes every C4 of the song a D4.
 

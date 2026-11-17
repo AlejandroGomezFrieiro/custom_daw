@@ -2,7 +2,7 @@
 
 # Lesson 4: The piano roll and entering notes
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 4`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 4`.*
 
 The piano roll shows the notes of one clip: a row per pitch, with the names on the left, and time running to the right in steps of a sixteenth note. In normal mode you move about and change single notes; in insert mode you draw notes with the cursor, as long as you like, and they are written when you leave it.
 

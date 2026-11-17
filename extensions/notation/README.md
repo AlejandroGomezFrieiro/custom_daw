@@ -320,7 +320,7 @@ is `ie` (as in the piano roll too).
 | --- | --- |
 | `f` `F` + letter | to the next, previous note of that name in the voice (`2fe`); with an operator the note found is taken in, as Vim's `df` |
 | `t` `T` + letter | to the note before (after) it |
-| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it waits a moment (`timeoutlen`) for a leader key, then moves; `,` followed by a key no leader map has moves at once |
+| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it lists the leader keys (the popovers by name) and waits a few seconds for one, then moves; `,` followed by a key no leader map has moves at once |
 | `)` `(` | the next, previous phrase: a note after a rest |
 | `]v` `[v` | the next, previous voice (then the next staff's); entering goes into it |
 | `Ctrl-j` `Ctrl-k` | the staff below, above |
@@ -444,9 +444,11 @@ popovers, not the device panel, the mixer, the session view and the piano
 roll they show elsewhere (`:view.toggle devices` and the others do that
 there). `,,` stays the command list; `,.` repeats the last popover.
 
-The prompt is drawn over the caret's staff in the terminal and on the
-engraved page (in a window, and on a terminal's pixel surface), and on
-the command line of the window as well.
+The prompt is drawn under the caret's system in the terminal and on the
+engraved page (in a window, and on a terminal's pixel surface), so that what
+it previews stays in sight, and only there: the window's status line does
+not repeat it. Before anything is typed it shows examples of what to type,
+dim; `Tab` offers the choices.
 
 **Coming from Dorico.** The popovers are Dorico's (Shift and a letter
 there, the leader and a letter here), with the same words: `mp<f`,
@@ -629,22 +631,66 @@ else; and in normal mode the letters are motions and operators, so notes
 are only entered by letter in insert mode. A click chooses rather than
 enters, as in MuseScore outside note input.
 
-## Export
+## Import and export
 
-`:notation.export tune.musicxml` writes the clip under the cursor (or the
-one open in the view) as MusicXML, which MuseScore, Finale, Sibelius and
-Dorico open; a path ending in `.ly` writes LilyPond source instead.
-`:notation.export lead.ly track` writes every MIDI clip of the track on one
-timeline. Both are made from the score layer's result, as the views draw
-it: values, ties, tuplets, both voices of a staff, grace notes, arpeggio
-signs, articulations, key, clefs (the guitar's too), time signatures where
-they change, and the grand staff. MusicXML also carries the accidentals,
-stems, beams, dynamics, hairpins, text, slurs, lyrics and each note's
-string and fret when there is tablature. Without a path the file is named
-after the clip and written to the working directory. The clip is the one of
-the notation view when it has the keyboard, else the one under the arrange
-cursor on the cursor's track, and the message names it: `wrote 'melody'
-(Lead) to lead.pdf, 2 pages`.
+| | |
+| --- | --- |
+| `:open song.musicxml` | a new project of the score: a track for each part, each with a score clip |
+| `:import song.mxl` | the parts on new tracks below the cursor's, the first bar at the cursor; `tempo=yes` brings the tempo marks and time signatures too |
+| `:notation.import song.xml` | the same as `:import` |
+| `:notation.export song.musicxml` | the clip's score as MusicXML; `.mxl` zipped, `.ly` LilyPond |
+| `:notation.export score.mxl all` | every track's score clip (or first MIDI clip) as a part of one score |
+
+**MusicXML in.** `.musicxml`, `.xml` and `.mxl` (compressed) files, as
+MuseScore, Dorico, Sibelius and Finale write them, partwise or timewise
+(`notation.musicxml`, with its own small XML reader and unzip). A part is a
+track with one score clip; a part of two staves is a grand staff. Read into
+the score: the staves and their clefs, each staff's voices (MuseScore's
+voices 5 to 8 on a second staff are its 1 to 4), chords and rests with
+their written values from `<type>`, dots and tuplets (`<time-modification>`,
+split where the file starts or stops a tuplet), the length from
+`<duration>` where a note has no type, ties, grace notes (slashed or not),
+spellings, key, clef and time signature changes (a clef written at the end
+of a bar is the next bar's, as MuseScore writes it), a pickup (the score's
+origin), a bar of another length (it gets a time signature of its own),
+barlines, repeats and endings, rehearsal marks, tempo marks (the text, the
+metronome mark and `<sound tempo>`), dynamics (`p` with `subito`, `n` as
+niente), hairpins (niente too), slurs, text, playing techniques, chord
+symbols (the `text` of `<kind>`, else its kind and degrees, the bass, N.C.),
+articulations, fermatas, ornaments, arpeggios, lyrics in verses with
+hyphens and extenders, system breaks, and beams where the file breaks one
+the metre would join. A transposing part is written at concert pitch. What
+the score cannot hold is counted by element and said: `opened song.mxl: 412
+notes on 3 tracks; left out: 12 <fingering>, 2 <pedal>`. `:open` names the
+project after the file and gives it no file of its own (`:w` asks where to
+save it), takes the title and composer for the page view, the key, the
+song's tempo map from the tempo marks and its time signatures from the
+bars, a marker at each rehearsal mark, the drum kit for a part on channel
+10 or in a percussion clef, and each part's MIDI program as a program
+change in its clip.
+
+**Out.** MusicXML and LilyPond are written from the score itself, so
+everything it holds goes out and comes back: reading a written file gives
+the same score, bar for bar and mark for mark (the tests check each
+feature). MusicXML also carries what the page decides (accidentals, stems,
+beams) and each part's channel and program; LilyPond has the staves,
+voices, `\partial`, `\tuplet`, grace notes, `\key`, `\clef`, `\time`,
+barlines and `\repeat` endings as volta brackets, `\mark`, `\tempo`,
+dynamics and hairpins, slurs, text and chord symbols as markup,
+articulations, ornaments, `\noBeam` for a beam broken by hand, and the
+lyrics under their voice (`--`, `__`). A plain MIDI clip is written as it
+would be as a score. `:notation.export lead.ly track` still writes every
+MIDI clip of the track on one timeline, as the views draw them. Without a
+path the file is named after the clip and written to the working
+directory. The clip is the one of the notation view when it has the
+keyboard, else the one under the arrange cursor on the cursor's track, and
+the message names it: `wrote 'melody' (Lead) to lead.pdf, 2 pages`.
+
+**Coming from MuseScore.** Export MusicXML there (File, Export, MusicXML,
+compressed or not) and `:open` it here; the parts come in as tracks with
+score clips, ready to edit with the keys above and to play. To go back,
+`:notation.export song.mxl all` and open that in MuseScore. Dorico,
+Sibelius and Finale work the same way.
 
 `:notation.export pdf` (or a path ending in `.pdf`) writes the engraved
 pages as the page view lays them out, on white paper, as a PDF of as many
@@ -663,7 +709,14 @@ print(model.text(layout))           -- "q. F4 e G4 ... | R"
 model.layout(notes, { length = 4, settings = { mode = "raw" } })   -- note for note
 require("notation.score").transcribe(notes, ctx)   -- the score events alone
 model.spell(70, -1)                 -- { letter = 6, alter = -1, octave = 4, step = 41 }: B flat
-require("notation.export").lilypond(layout, { title = "tune" })   -- or .musicxml(layout, { title, part })
+require("notation.export").lilypond(layout, { title = "tune" })   -- a transcription's layout, or .musicxml(layout, { title, part })
+
+-- MusicXML and LilyPond of scores.
+local mx = require("notation.musicxml")
+local file = mx.read("song.mxl")    -- { title, composer, parts = { { name, score, program, drums, tempos } }, skipped }
+local text = mx.write({ { name = "Piano", score = file.parts[1].score } }, { title = file.title })
+require("notation.lilypond").write({ { name = "Piano", score = sc } }, { title = "tune" })
+require("notation.files").open("song.musicxml")   -- or .import(path, { start = 8, tempo = true })
 
 -- Scores.
 local view, D = require("notation"), require("notation.doc")
@@ -725,12 +778,12 @@ on each staff: notes and rests with their start, value (`base`, `dots`),
 
 ## Not done
 
-Importing MusicXML; editing several tracks at once (they are shown to read);
+Editing several tracks at once (they are shown to read);
 tablature in the several-tracks view and as its own staff in MusicXML (the
 string and fret are on each note); D.C., D.S., segno and coda; endings and
 repeats played (they are written); trills and other ornaments played (they
-are written); percussion clefs; key, clef and tempo changes, chord symbols
-and endings in MusicXML and LilyPond; a mark's own room in the terminal when the
+are written); percussion clefs; what MusicXML and LilyPond leave out
+(docs/missing.md); a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows); in the cell view, a
 grace note's slash and a beam's slope (beams are flat). On the engraved page:
 page breaks of one's own (pages fill as systems come), the style as a

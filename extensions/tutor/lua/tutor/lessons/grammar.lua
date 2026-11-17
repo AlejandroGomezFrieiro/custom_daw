@@ -10,7 +10,7 @@ This is the heart of paw. Most editing is a short sentence: an operator
 `d2W` deletes two bars. Typing the operator twice takes whole tracks: `dd`.
 And `.` repeats the last change wherever the cursor is now.
 
-The Beat track has four clips: kick, snare, fill, crash. Bass plays under them.]],
+In this practice project the Beat track has four clips: kick, snare, fill, crash. Bass plays under them.]],
   idea = [[
 Operators: `d` delete, `y` yank (copy), `c` change, `>` `<` move later and
 earlier, `=` snap to the grid, `gc` mute, `gl` loop. Motions: every key from

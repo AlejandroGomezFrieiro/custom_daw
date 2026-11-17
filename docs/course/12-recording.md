@@ -2,7 +2,7 @@
 
 # Lesson 12: Recording audio and MIDI
 
-*About ten minutes. In paw, with the tutor loaded: `:tutor 12`.*
+*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 12`.*
 
 A track records what comes in: audio from an input of your sound card (a microphone, a guitar), or notes from a MIDI keyboard. Arm the tracks that should record, press record, play, stop: each armed track gets a new clip where recording began.
 

@@ -937,7 +937,14 @@ handle = function(key)
     -- the wait end by itself, in favour of that one; a bare prefix stays
     -- until it is finished or Escape drops it.
     if exact then
-      timer = api.timer_start(daw.opt.timeoutlen, false, function()
+      -- The leader that is also a motion (`,` again in the notation view)
+      -- waits longer, so that the list of what can follow it has its time
+      -- on the screen before the motion is taken.
+      local wait = daw.opt.timeoutlen
+      if daw.opt.hints and #pending == 1 and key == daw.opt.leader then
+        wait = math.max(wait, daw.opt.hint_delay + 2000)
+      end
+      timer = api.timer_start(wait, false, function()
         timer = nil
         take(exact)
         finish_command()

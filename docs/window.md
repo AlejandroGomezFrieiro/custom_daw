@@ -71,11 +71,13 @@ shorter: at the shortest only the first line. Meters are coloured by level
 their peak for a moment as a thin line, and light the clip light when a
 level reaches 0 dB; it stays lit until it is clicked or the transport starts
 playing again. The mixer has a strip
-per track, with the master at the right: where it plays into, its devices
+per track from its left edge, with the master at the right: where it plays
+into (the master's own output), its devices
 (a click on one picks it in the device panel), its sends with their levels,
 pan, a fader with a scale (+6, 0, −6, −12, −24, −48, as in the terminal)
 beside its meters, the fader's level and the peak held, `M` `S` `R`, and
-its name on its colour. A VCA has a strip too, after the tracks, naming the
+its name on its colour. Every strip keeps rows for as many sends as the
+track with most has, so the faders share a baseline. A VCA has a strip too, after the tracks, naming the
 tracks under it; right-click a strip or a track's header to make a VCA with the
 track, put it under one or take it out. The status line at the bottom says what the pointer
 does wherever it is.
@@ -146,7 +148,8 @@ driven exactly as the terminal UI is: the same modes, operators, registers
 and macros, with the mode and the view that has the keys (`NORMAL·mixer`),
 the prompt, messages and half-typed keys in the status line, the selection
 and both cursors drawn, the keys that can follow listed, and help and other
-pages shown over the window. `:help` opens the manual in a window of its own, drawn as the
+pages shown over the window. `:help` opens the manual in a docked pane, split off like the terminal's
+(`gw` or `:textbuf.window` pops it out into a window of its own), drawn as the
 terminal draws it and moved through with the same keys (see Help in [the
 terminal interface](terminal.md)). The status line shows the keys worth knowing in
 the view that has the keyboard (the terminal's key bar, `daw.opt.keybar`), the
@@ -167,11 +170,13 @@ rules, a size in cells taken as so many of the monospace font's cells in
 pixels (and never less than what the window's own drawing of a view needs).
 The arrange view, the device panel, the piano roll, the mixer and the
 session view are drawn by the window itself in their panes; any other
-buffer is drawn by the kernel at the pane's size: a view that paints (the
-notation, the drum grid, the vocal editor, the undo tree) as a picture
-under a title with buttons to pop it out and to close it, any other (a
-curve `daw://lane/3`, the quickfix list, a text buffer `daw://tracks`, an
-empty window) cell by cell as the terminal draws it. So `:vs daw://lane/3`,
+buffer is drawn by the kernel at the pane's size, inset a little, under
+the window's own title with buttons to pop it out and to close it: a view
+that paints (the notation, the drum grid, the vocal editor, the undo tree)
+as a picture, any other (a curve `daw://lane/3`, the quickfix list, a text
+buffer `daw://tracks`, an empty window) cell by cell in the monospace font
+as the terminal draws it, the title row the terminal gives it hidden under
+the window's title. So `:vs daw://lane/3`,
 `Enter` on a lane row, `:copen`, `:sp quickfix`, `:e daw://tracks`,
 `Ctrl-w` and its keys, `:q`, `:only`, `:tabnew mixer`, `gt` and `:layout
 edit` do in the window what they do in the terminal. A ring of the
@@ -206,13 +211,18 @@ marks each clip `selected`.
 window of its own on request: `:view.window undotree` (the focused view, or
 the page floating over the others, without a name), `Ctrl-w f` in a curve
 or a text buffer, the button on a painted pane's title, or "Open in a
-window" on a floating page. A view docked in a pane leaves it while it is in
-a window. The keyboard is the window's while it is in front; closing it (its
-close button, `:q`, or the view's own `q`; `Esc` stays in the view, as
-everywhere) gives the keyboard back to the main window, in the pane that had
-it before, and so do keys typed in the main window meanwhile. A view that
-paints has the status line and the command line under it there, so its
-mode, a prompt typed in it and messages show where it is. The kernel draws the view by itself
+window" on a floating page. The window opens over the middle of the main
+window, the view inset under a title with a Dock button, and a status line
+along its bottom as the main window's: the mode, then a prompt being typed,
+a message, or the view's keys. A view docked in a pane leaves it while it is
+in a window. The keyboard is the window's while it is in front. Closing the
+window with its close button, the Dock button or `Ctrl-w d` (`:view.dock`)
+puts the view back in the main window as a pane: where it was, else where
+it docks, else in a window split from the one with the keyboard, which it
+then has. `:q` or the view's own `q` close the view instead (`Esc` stays
+in the view, as everywhere), and the keyboard goes back to the main window,
+in the pane that had it before; so do keys typed in the main window
+meanwhile. The kernel draws the view by itself
 at the window's size, in cells of the bundled JetBrains Mono (their size is
 measured on the font, so box-drawing characters join), with the theme's
 colours in 24 bits whatever the terminal shows, and sends it as runs of text

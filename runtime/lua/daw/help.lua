@@ -498,7 +498,11 @@ local function build()
         -- Where the manual names a thing comes before where the course
         -- or an extension's page does.
         local after = source.group == "manual" and 0 or 3
-        for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, (a.first and 2 or 4) + after) end
+        -- A row of the key table is a one-line entry for its keys: it beats
+        -- every mention in prose, and a key's own heading.
+        local prio = (a.first and 2 or 4) + after
+        if a.first and source.name == "course/keys.md" then prio = 1 end
+        for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, prio) end
       end
     end
   end
@@ -577,18 +581,6 @@ local function source_of(buf)
   return name and build().by_name[name]
 end
 
---- Whether the keys come from a graphical frontend: its seat, or the
---- instance's when it has no terminal and a window watches it.
-local function windowed()
-  local seat = daw.seats.current
-  local watching = false
-  for _, l in ipairs(daw.remote.listeners()) do
-    if l.watching and (seat == 0 or l.client == seat) then watching = true end
-  end
-  if seat ~= 0 then return watching end
-  return watching and not api.ui_attached()
-end
-
 --- The window showing help in this tab, if any.
 local function help_window()
   local cur = layout.current()
@@ -613,15 +605,10 @@ local stack = {}
 daw.seats.keep("help.tagstack", function() return stack end, function(s) stack = s end, function() return {} end)
 
 --- Show a page at a row: in the help window, else one split off this one
---- (as Vim's `:help` splits), or in a window of its own in a graphical
---- frontend. Returns the window.
+--- (as Vim's `:help` splits), in a graphical frontend as a docked pane
+--- (`gw` pops it out). Returns the window.
 function M.show(source, row, col)
   local name = "help://" .. source.name
-  if windowed() then
-    local win = daw.textbuf.open(name, { window = true })
-    if win then place(win, row, col) end
-    return win
-  end
   local buf = layout.buf_create("textbuf", name)
   local win = help_window()
   if win then
@@ -629,9 +616,12 @@ function M.show(source, row, col)
     win = layout.show_in(win, "textbuf", buf.id)
   else
     local new = layout.split({ view = "textbuf", buf = buf.id })
-    -- Help takes two thirds of what it was split from, as Vim gives it
-    -- 'helpheight' rows.
-    if new and not new.size then new.weight = (new.weight or 1) * 2 end
+    -- Help takes half the screen, as Vim gives it 'helpheight' rows, whatever
+    -- else shares the column.
+    if new then
+      local _, height = daw.ui.size()
+      new.size, new.weight = math.max(8, math.floor(height / 2)), nil
+    end
     win = new or layout.show_in(layout.current(), "textbuf", buf.id)
   end
   place(win, row, col)
@@ -812,7 +802,7 @@ daw.textbuf.kind("help", {
   parse = function() return {} end,
   title = function(ctx)
     local source = build().by_name[ctx.args[1]]
-    return "help · " .. (source and source.title or tostring(ctx.args[1]))
+    return "Help · " .. (source and source.title or tostring(ctx.args[1]))
   end,
   hint = "Ctrl-] follows a link or looks up the word · Ctrl-o back · K looks up · :helpgrep searches · - contents",
   paint = function(canvas, x, y, text, _, maxw, row, buf)
@@ -869,27 +859,72 @@ local function mention(text)
   end
 end
 
---- Go to the help of the first of `names` that is a tag, else to where the
---- first of them is named; say so when none is.
-local function help_for(names, shown)
+--- Where the help of the first of `names` is: a tag, else where it is
+--- named. Nil when there is none.
+local function place_for(names)
   local tags = build().tags
   for _, name in ipairs(names) do
-    if tags[name] then return M.jump(tags[name]) end
+    if tags[name] then return tags[name] end
   end
   for _, name in ipairs(names) do
     local place = mention(name)
-    if place then return M.jump(place) end
+    if place then return place end
   end
+end
+
+--- Go to the help of the first of `names` that is a tag, else to where the
+--- first of them is named; say so when none is.
+local function help_for(names, shown)
+  local place = place_for(names)
+  if place then return M.jump(place) end
   daw.notify("no help for " .. shown .. ": `:helpgrep " .. shown .. "` searches every page", "warn")
+end
+
+local function names_of(map)
+  local human = daw.keymap.human(map.lhs)
+  local names = { human, map.lhs }
+  if type(map.rhs) == "string" then names[#names + 1] = ":" .. map.rhs:match("^%S+") end
+  return names, human
 end
 
 --- The help for a key mapping: of its keys, else of the command it runs
 --- (what `Ctrl-]` does in the keys picker).
 function M.for_map(map)
-  local human = daw.keymap.human(map.lhs)
-  local names = { human, map.lhs }
-  if type(map.rhs) == "string" then names[#names + 1] = ":" .. map.rhs:match("^%S+") end
-  return help_for(names, human)
+  return help_for(names_of(map))
+end
+
+--- A line cut into pieces of at most `width` columns at spaces.
+local function wrapped(text, width)
+  local out, line = {}, ""
+  for word in text:gmatch("%S+") do
+    if line ~= "" and api.str_width(line .. " " .. word) > width then
+      out[#out + 1], line = line, word
+    else
+      line = line == "" and word or line .. " " .. word
+    end
+  end
+  out[#out + 1] = line
+  return out
+end
+
+--- The section of help that `for_map` would go to, as at most `rows` lines
+--- `{ text, style }` wrapped to `width`, for a pane beside a list of keys.
+--- The page's name comes first; nil when there is no help for the key.
+function M.excerpt_for_map(map, width, rows)
+  local place = place_for((names_of(map)))
+  if not place then return nil end
+  local out = { { text = place.source.title or place.source.name, style = "HelpSection" }, { text = "" } }
+  local blank = 0
+  for row = place.row, #place.source.doc.lines do
+    local text = place.source.doc.lines[row].text
+    blank = text:match("%S") and 0 or blank + 1
+    if blank == 2 then break end
+    for _, part in ipairs(wrapped(text, width)) do
+      if #out >= rows then return out end
+      out[#out + 1] = { text = part }
+    end
+  end
+  return out
 end
 
 --- The help for a command (what `Ctrl-]` does in the commands picker).

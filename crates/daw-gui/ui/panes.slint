@@ -21,6 +21,9 @@ export struct PaneData {
     h: length,
     focused: bool,
     image: image,
+    // How much of the picture's top is the view's own title row, hidden
+    // under the pane's title (a view drawn in cells draws one).
+    under: length,
 }
 
 // Where a pane the window draws itself goes, and whether it shows.
@@ -45,13 +48,16 @@ export struct TabData {
     current: bool,
 }
 
-// The height of a painted pane's title along its top.
+// The height of a kernel's pane's title along its top, and the inset of
+// its picture from the pane's sides and bottom.
 export global PaneSizes {
     out property <length> heading: 24px;
+    out property <length> pad: 6px;
 }
 
-// A pane the kernel paints: its picture, the pointer passed back, and for
-// a view that paints, a title with buttons to pop it out and to close it.
+// A pane the kernel paints: its picture, inset, the pointer passed back,
+// and a title with buttons to pop it out and to close it, as the panes the
+// window draws itself have.
 export component PaneView inherits Rectangle {
     in property <PaneData> pane;
     // kind (0 down, 1 up, 2 move with a button held, 3 double, 4 hover), x, y in the picture, button (0 left, 1 right, 2 middle), ctrl, shift, alt
@@ -60,7 +66,8 @@ export component PaneView inherits Rectangle {
     callback window();
     callback close();
     callback hint(string);
-    property <length> top: root.pane.kind == 1 ? PaneSizes.heading : 0px;
+    property <length> top: PaneSizes.heading;
+    property <length> pad: PaneSizes.pad;
     x: root.pane.x;
     y: root.pane.y;
     width: root.pane.w;
@@ -68,7 +75,55 @@ export component PaneView inherits Rectangle {
     background: Theme.surface;
     clip: true;
 
-    if root.pane.kind == 1: Rectangle {
+    // The picture starts under the title, its own title row hidden there.
+    Image {
+        x: root.pad;
+        y: root.top - root.pane.under;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - root.top + root.pane.under - root.pad;
+        source: root.pane.image;
+        image-fit: fill;
+    }
+    TouchArea {
+        x: root.pad;
+        y: root.top - root.pane.under;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - root.top + root.pane.under - root.pad;
+        // Held by any button: `pressed` is only the left one, and a right
+        // drag moves too.
+        property <bool> held;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.move && !self.held && !self.pressed) {
+                root.pointer(4, self.mouse-x, self.mouse-y, 0, false, false, false);
+            }
+            if (event.kind == PointerEventKind.down) {
+                self.held = true;
+                root.pointer(0, self.mouse-x, self.mouse-y,
+                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
+                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            }
+            if (event.kind == PointerEventKind.up) {
+                self.held = false;
+                root.pointer(1, self.mouse-x, self.mouse-y,
+                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
+                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            }
+        }
+        moved => {
+            if (self.pressed || self.held) {
+                root.pointer(2, self.mouse-x, self.mouse-y, 0, false, false, false);
+            }
+        }
+        double-clicked => {
+            root.pointer(3, self.mouse-x, self.mouse-y, 0, false, false, false);
+        }
+        scroll-event(event) => {
+            root.wheel(self.mouse-x, self.mouse-y, event.delta-x, event.delta-y, event.modifiers.control, event.modifiers.shift);
+            accept
+        }
+    }
+    // The title over the top, over the picture's own title row.
+    Rectangle {
         x: 0;
         y: 0;
         height: PaneSizes.heading;
@@ -114,50 +169,6 @@ export component PaneView inherits Rectangle {
                     root.hint(self.has-hover ? "close the window (:q)" : "");
                 }
             }
-        }
-    }
-    Image {
-        x: 0;
-        y: root.top;
-        width: parent.width;
-        height: parent.height - root.top;
-        source: root.pane.image;
-        image-fit: fill;
-    }
-    TouchArea {
-        y: root.top;
-        height: parent.height - root.top;
-        // Held by any button: `pressed` is only the left one, and a right
-        // drag moves too.
-        property <bool> held;
-        pointer-event(event) => {
-            if (event.kind == PointerEventKind.move && !self.held && !self.pressed) {
-                root.pointer(4, self.mouse-x, self.mouse-y, 0, false, false, false);
-            }
-            if (event.kind == PointerEventKind.down) {
-                self.held = true;
-                root.pointer(0, self.mouse-x, self.mouse-y,
-                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
-                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
-            }
-            if (event.kind == PointerEventKind.up) {
-                self.held = false;
-                root.pointer(1, self.mouse-x, self.mouse-y,
-                    event.button == PointerEventButton.right ? 1 : event.button == PointerEventButton.middle ? 2 : 0,
-                    event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
-            }
-        }
-        moved => {
-            if (self.pressed || self.held) {
-                root.pointer(2, self.mouse-x, self.mouse-y, 0, false, false, false);
-            }
-        }
-        double-clicked => {
-            root.pointer(3, self.mouse-x, self.mouse-y, 0, false, false, false);
-        }
-        scroll-event(event) => {
-            root.wheel(self.mouse-x, self.mouse-y, event.delta-x, event.delta-y, event.modifiers.control, event.modifiers.shift);
-            accept
         }
     }
 }

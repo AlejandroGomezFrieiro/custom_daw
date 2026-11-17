@@ -240,6 +240,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `<C-w>h` `<C-w>j` `<C-w>k` `<C-w>l` | the window left, below, above, right |
 | `<C-w>H` `<C-w>J` `<C-w>K` `<C-w>L` | move the window to the far left, bottom, top, right |
 | `<C-w>x` `<C-w>r` `<C-w>T` | exchange the window with the next, rotate them, the window to a tab of its own |
+| `<C-w>d` | in the graphical window: a view in a window of its own back into the main window, as a pane |
 | `gt` `gT` | next tab, previous tab (`:tabnew` makes one) |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |
@@ -346,9 +347,18 @@ work on what is written, and each edit is one undo step that `.` repeats.
   back), `ip` `ap` the phrase, `iv` `av` the voice, `is` `as` the staff,
   `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (as in the piano
   roll).
-- Operators: `gU` `gu` a step of the key (`3gUib` three steps), `g+` `g-`
-  a semitone, `g~` respell, `g(` slur (`g(ip`), `g?` retrograde (`2g?`
-  inverts), `gq` tidy, `!` filter (`!ib reverse`, `!ib tac`).
+- Operators:
+
+  | Keys | In notation |
+  | --- | --- |
+  | `gU` `gu` | up, down a step of the key (`3gUib` three steps) |
+  | `g+` `g-` | up, down a semitone |
+  | `g~` | respell |
+  | `g(` | slur (`g(ip`) |
+  | `g?` | retrograde (`2g?` inverts) |
+  | `gq` | tidy |
+  | `!` | filter (`!ib reverse`, `!ib tac`) |
+
 - Motions: `f` `F` `t` `T` and a letter, `;` `,` again (`,` waits a moment:
   it is the leader), `)` `(` by phrase, `]v` `[v` by voice, `Ctrl-j`
   `Ctrl-k` by staff.

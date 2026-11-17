@@ -417,6 +417,25 @@ function M.close(name)
   api.ui_redraw()
 end
 
+--- Put a view in a window of its own back into the layout, with the
+--- keyboard: where it was before it popped out, else where it docks, else
+--- in a window split from the current one. What closing its window of its
+--- own does; `Ctrl-w d` in it does the same.
+function M.dock(name)
+  name = name or daw.ui.focused
+  if not M.open_views[name] then return end
+  M.open_views[name] = nil
+  local L = daw.layout
+  if daw.panes.native[name] or L.reveal(name) then return daw.ui.focus(name) end
+  -- A type with a buffer for each target shows the buffer it showed.
+  local def = L.types[name]
+  local loose = def and def.window and def.window()
+  local win = L.split({ view = name, buf = loose and loose.buf or nil })
+  if not win then L.show_in(L.current(), name, loose and loose.buf or nil) end
+  focus(name)
+  api.ui_redraw()
+end
+
 --- The windows that are open, for a frontend: `{ name, title, width, height, cells }`
 --- each, `cells` for a view drawn as the terminal draws it.
 function M.windows()
@@ -440,11 +459,16 @@ end
 --- pane of a frontend's main area), that window is drawn, and nothing
 --- under it: the frontend's own status line shows prompts and messages;
 --- without, the view in a window of its own, with a line under it for
---- them and the view's keys.
+--- them and the view's keys, unless the frontend draws a status line there
+--- itself (`opts.status`).
 function M.paint_cells(name, window, width, height, opts, win)
   local cell = M.cell
   window.cell = cell
-  local cols, rows = math.max(1, math.floor(width / cell.w)), math.max(win and 1 or 2, math.floor(height / cell.h))
+  -- Nothing under the view in a pane, or in a window that has a status line
+  -- of its own (`opts.status`).
+  local bare = win ~= nil or opts.status == true
+  window.bare = bare
+  local cols, rows = math.max(1, math.floor(width / cell.w)), math.max(bare and 1 or 2, math.floor(height / cell.h))
   local redraws, now = api.ui_redraws(), api.now()
   if not opts.fresh and window.drawn == redraws and window.cols == cols and window.rows == rows
     and now - window.at < (api.transport_get().playing and 30 or 1000) then
@@ -452,7 +476,7 @@ function M.paint_cells(name, window, width, height, opts, win)
   end
   local focused = daw.ui.focused == name
   daw.ui.view_win = win
-  local ok, snap = pcall(api.ui_view_snapshot, name, cols, win and rows or rows - 1)
+  local ok, snap = pcall(api.ui_view_snapshot, name, cols, bare and rows or rows - 1)
   daw.ui.view_win = nil
   if not ok then error(snap, 0) end
   local ops = { { "r", 0, 0, width, height, snap.bg, "", 1, 0 } }
@@ -472,7 +496,7 @@ function M.paint_cells(name, window, width, height, opts, win)
   end
   add(snap.rows, 0)
   local cursor = snap.cursor and { snap.cursor.x, snap.cursor.y }
-  if focused and not win then
+  if focused and not bare then
     -- The line under the view: a prompt, a message, or the view's keys.
     local line = api.ui_view_snapshot("cmdline", cols, 1)
     add(line.rows, rows - 1)
@@ -640,7 +664,7 @@ function M.cell_event(window, event, bare)
   if kind:match("^scroll") then button = "" end
   local x, y = math.floor((event.x or 0) / cell.w), math.floor((event.y or 0) / cell.h)
   -- The line under the view is not the view's.
-  if not bare and window.rows and y >= window.rows - 1 and kind ~= "up" and kind ~= "drag" then return nil end
+  if not (bare or window.bare) and window.rows and y >= window.rows - 1 and kind ~= "up" and kind ~= "drag" then return nil end
   local mods = (event.ctrl and "C" or "") .. (event.alt and "A" or "") .. (event.shift and "S" or "")
   return { kind = kind, x = x, y = y, button = button, mods = mods }
 end
