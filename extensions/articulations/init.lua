@@ -10,6 +10,8 @@ package.loaded["daw.articulations"] = art
 require("articulations.roll")
 require("articulations.commands")
 require("articulations.diagnostics").schedule()
+require("articulations.measure")
+require("articulations.linked")
 
 -- With the notation extension, the score shows the articulations and sets them.
 local function with_notation()

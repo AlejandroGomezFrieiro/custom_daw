@@ -97,10 +97,12 @@ end
 function M.compile(map, default)
   local arts = {}
   for _, art in ipairs(map.arts) do
-    if not arts[art.code] then arts[art.code] = { out = art.out } end
+    -- `delay`: how far the kernel moves the articulation's notes, in ms
+    -- (-80: 80 ms early, for a sound that starts 80 ms late).
+    if not arts[art.code] then arts[art.code] = { out = art.out, delay = art.delay or map.delay } end
   end
   local d = map.by_id[default or map.default] or map.by_id[map.default]
-  return { send = map.send, chase = map.chase, default = d and d.code or nil, arts = arts }
+  return { send = map.send, chase = map.chase, default = d and d.code or nil, arts = arts, delay = map.delay }
 end
 
 --- Hand the core a track's downgrade map (nil takes it away). A core that

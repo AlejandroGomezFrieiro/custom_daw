@@ -73,6 +73,44 @@ to `Violins.sfz`), in `articulations/` inside any loaded extension, and in
 without `.art.toml` (`examples/violin-section`); `:art.map` takes an id, the
 end of one, a name or a file.
 
+## Delays
+
+Many libraries start an articulation's sound late (the attack of a legato
+sample, a bow's start). `delay = "-80ms"` on an articulation, or on the
+whole instrument at the top of its map, moves those notes that much
+earlier when they play, so that they sit on the grid: it goes into the
+track's downgrade map (`attr_map.arts[code].delay`, and `attr_map.delay`
+for the instrument), which the kernel applies. `K` on a note says its
+delay.
+
+`:art.measure` finds them: it renders one note of each articulation
+offline through the track's own instrument (after what tells it the
+articulation: keyswitch, controllers, program, and the attribute), finds
+where each sound starts, and shows the delays it would write.
+`:art.measure!` writes them into the instrument's map (each articulation's
+line, comments kept) and sends them to the track (one undo step). The
+onset is the first 1 ms block whose peak reaches 20 dB under the loudest
+block of the note's first two seconds.
+
+## Linked controllers
+
+An instrument often plays one gesture from several controllers (dynamics
+on CC1 and CC11, a vibrato on CC21 and CC1). The map links them:
+
+```toml
+[linked]
+dynamics = { cc = [1, 11], curve = ["linear", "0:0.4 1:1"], default = 0.7, name = "Dynamics" }
+```
+
+`\c` in the piano roll (or `:art.lane dynamics`) opens them as **one**
+curve in the curve view, drawn and edited with its keys and the mouse,
+in the terminal and the window; each point writes every controller of the
+link through its own curve (`linear`, `exp`, `log`, `s`, or points
+`"x:y x:y"`), in one edit. With no moves the lane stands at the
+instrument's `default`, and a drawing that starts after the clip's start
+begins at it. The controllers are ordinary moves of the clip: any
+instrument plays them.
+
 ## In the piano roll
 
 With a map bound, the roll sets itself up: rows outside the range are dark
@@ -89,6 +127,7 @@ as ks=E1", or which articulation the profile's fallback plays.
 | `\A` | a modifier of the map (`con sord.`) over the note or the selection: its controllers at the start, `off` at the end |
 | `\a` in insert mode | the pen: the articulation notes are entered with from now on |
 | `ia` `aa` | the run of notes with the articulation under the cursor (`aa` with the gap after it): `dia`, `yaa`, `v` `ia` |
+| `\c` | the instrument's linked controllers (dynamics) as one curve |
 
 Notes entered with the keys, in insert mode or by a click take the pen.
 
@@ -107,6 +146,8 @@ Notes entered with the keys, in insert mode or by a click take the pen.
 | `:art.new name` | a map to fill in |
 | `:art.from-keyswitches` | keyswitch notes and CC32 (UACC) moves of the clip into the articulations of the notes after them |
 | `:art.check` | the problems of the bound tracks' notes, in the quickfix list |
+| `:art.measure`, `:art.measure!` | how late each articulation sounds, measured; then written into the map |
+| `:art.lane [name]` | a linked lane of controllers as one curve |
 
 The `art` field matches and sets a note's articulation in patterns:
 `:g/art=pz/`, `:s/art=stc/art=spc/`.

@@ -123,6 +123,44 @@ function M.out_text(events)
   return table.concat(words, " ")
 end
 
+--- A delay as a map writes it (`"-80ms"`, `"-0.08s"`, `-80` in ms), in
+--- milliseconds, or nil.
+function M.delay(v)
+  if type(v) == "number" then return v end
+  local n, unit = tostring(v or ""):gsub("%s", ""):match("^([%+%-]?[%d%.]+)(m?s)$")
+  n = tonumber(n)
+  if not n then return nil end
+  return unit == "s" and n * 1000 or n
+end
+
+--- A delay written back: `"-80ms"`.
+function M.delay_text(ms)
+  local r = math.floor(ms + 0.5)
+  return (r > 0 and "+" or "") .. r .. "ms"
+end
+
+--- The shape of a linked controller: `linear`, `exp`, `log`, `s`, or
+--- points `"0:0 0.5:0.3 1:1"`, as a function of 0..1 to 0..1; nil and why.
+function M.curve(text)
+  text = tostring(text or "linear")
+  if text == "linear" then return function(x) return x end end
+  if text == "exp" then return function(x) return x * x end end
+  if text == "log" then return function(x) return math.sqrt(x) end end
+  if text == "s" then return function(x) return x * x * (3 - 2 * x) end end
+  local pts = {}
+  for a, b in text:gmatch("([%d%.]+):([%d%.]+)") do pts[#pts + 1] = { tonumber(a), tonumber(b) } end
+  if #pts < 2 then return nil, "`" .. text .. "` is not a curve: linear, exp, log, s, or points such as \"0:0 0.5:0.3 1:1\"" end
+  table.sort(pts, function(p, q) return p[1] < q[1] end)
+  return function(x)
+    if x <= pts[1][1] then return pts[1][2] end
+    for i = 2, #pts do
+      local p, q = pts[i - 1], pts[i]
+      if x <= q[1] then return p[2] + (q[2] - p[2]) * (x - p[1]) / math.max(1e-9, q[1] - p[1]) end
+    end
+    return pts[#pts][2]
+  end
+end
+
 --- A short hash of a text (FNV-1a, 32 bits), to tell whether a file changed.
 function M.hash(text)
   local h = 0x811c9dc5
@@ -134,10 +172,10 @@ function M.hash(text)
 end
 
 local ART_FIELDS = { m2 = true, out = true, tag = true, name = true, class = true, colour = true, color = true, mark = true,
-  text = true, range = true, mono = true, group = true, program = true, icon = true }
+  text = true, range = true, mono = true, group = true, program = true, icon = true, delay = true }
 local TOP_FIELDS = { format = true, name = true, family = true, match = true, range = true, comfortable = true,
   keyswitches = true, default = true, send = true, chase = true, labels = true, art = true, mod = true, generated = true,
-  source = true }
+  source = true, delay = true, linked = true }
 
 --- Read a map from its text. Returns the map, or nil and what is wrong.
 function M.parse(text, file)
@@ -180,6 +218,10 @@ function M.parse(text, file)
       program = tonumber(a.program), icon = a.icon,
     }
     art.colour = M.colour(art.class)
+    if a.delay ~= nil then
+      art.delay = M.delay(a.delay)
+      if not art.delay then return bad("articulation `" .. id .. "`: `delay` is written \"-80ms\"") end
+    end
     if a.range then
       art.range = M.range(a.range)
       if not art.range then return bad("articulation `" .. id .. "`: `range` is written `G3-E7`") end
@@ -199,6 +241,25 @@ function M.parse(text, file)
       map.mods[#map.mods + 1] = { id = id, m2 = m.m2, out = m.out or "", off = m.off or "", on_events = on, off_events = off,
         text = m.text, name = m.name or m.text or id, group = m.group, tag = m.tag or id:sub(1, 3) }
     end
+  end
+  if t.delay ~= nil then
+    map.delay = M.delay(t.delay)
+    if not map.delay then return bad("`delay` is written \"-80ms\"") end
+  end
+  -- Controllers drawn as one: `dynamics = { cc = [1, 11], curve = ["linear", "s"], default = 0.7 }`.
+  map.linked = {}
+  for _, id in ipairs(t.linked and toml.keys(t.linked) or {}) do
+    local l = t.linked[id]
+    if type(l) ~= "table" or type(l.cc) ~= "table" or #l.cc == 0 then return bad("linked `" .. id .. "` names its controllers: `cc = [1, 11]`") end
+    local entry = { id = id, name = l.name or (id:gsub("^%l", string.upper)), cc = {}, curves = {}, curve_text = {}, default = tonumber(l.default) }
+    for i, n in ipairs(l.cc) do
+      if type(n) ~= "number" or n < 0 or n > 127 then return bad("linked `" .. id .. "`: a controller runs from 0 to 127") end
+      local text = type(l.curve) == "table" and l.curve[i] or l.curve or "linear"
+      local fn, why = M.curve(text)
+      if not fn then return bad("linked `" .. id .. "`: " .. why) end
+      entry.cc[i], entry.curves[i], entry.curve_text[i] = n, fn, text
+    end
+    map.linked[#map.linked + 1] = entry
   end
   local default = t.default
   if default ~= nil and not map.by_id[default] then return bad("`default = \"" .. tostring(default) .. "\"` names no articulation of the map") end

@@ -409,6 +409,7 @@ README has them all):
 | a modifier (con sord.) over the note or the selection | `\A` |
 | the pen: what notes are entered with, in insert mode | `\a` |
 | the run of notes with the articulation under the cursor | `ia` `aa` |
+| the instrument's linked controllers (dynamics) as one curve | `\c` |
 
 `:'<,'>art stc`, `:5,8art pizz` and `:g/art=pz/art arco` do the same on
 ranges and matches.

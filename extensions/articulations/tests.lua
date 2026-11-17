@@ -427,3 +427,111 @@ test("articulations: the score shows the articulations as marks and technique te
   eq(codes(clip), "67:11.0 69:- 71:- 72:-", "arco: the default from there")
   daw.ui.hide("notation")
 end)
+
+-- Delays and linked controllers ------------------------------------------------------------
+
+test("articulations: delays go from the map into the downgrade map, and K says them", function()
+  local track, _, roll = strings()
+  local am = art.attr_map(track.id)
+  eq(table.concat({ am.delay, am.arts["10.2"].delay, am.arts["11.0"].delay }, " "), "-30 -80 -30", "the instrument's, legato's own, the instrument's again")
+  daw.ui.focus("pianoroll")
+  daw.commands.exec("art leg")
+  local text = {}
+  for i, l in ipairs(roll:describe()) do text[i] = type(l) == "table" and l.text or l end
+  eq(table.concat(text, "\n"):find("delay         -80ms", 1, true) ~= nil, true, table.concat(text, "\n"))
+end)
+
+-- An instrument that starts each articulation's sound late: 20 ms for each
+-- key above C1 its last keyswitch was (C1 0, C#1 20, D1 40).
+local LATE = [[
+local dsp = require("daw.dsp")
+local dev = dsp.device { name = "Late", category = "instrument", params = {} }
+local sr, art, wait, on, phase = 48000, 0, nil, false, 0
+function dev.init(rate) sr = rate end
+function dev.process(b)
+  for k = 0, b.nevents - 1 do
+    local e = b.events[k]
+    if e.type == dsp.NOTE_ON and e.key < 36 then
+      art = e.key - 24
+    elseif e.type == dsp.NOTE_ON then
+      wait, on = e.frame + math.floor(art * 20 * sr / 1000), false
+    elseif e.type == dsp.NOTE_OFF and e.key >= 36 then
+      wait, on = nil, false
+    end
+  end
+  for i = 0, b.frames - 1 do
+    if wait and i >= wait then on, wait = true, nil end
+    if on then
+      phase = phase + 2 * math.pi * 220 / sr
+      local v = 0.5 * math.sin(phase)
+      b.left[i] = b.left[i] + v
+      b.right[i] = b.right[i] + v
+    end
+  end
+  if wait then wait = wait - b.frames end
+end
+return dev
+]]
+
+test("articulations: :art.measure renders each articulation, finds how late it sounds, and :art.measure! writes the delays", function()
+  load()
+  fresh()
+  local dir = T.scratch .. "/art-late"
+  os.execute("mkdir -p '" .. dir .. "/devices'")
+  T.write_file(dir .. "/devices/late.lua", LATE)
+  daw.luadev.add_dir(dir .. "/devices")
+  local file = dir .. "/late.art.toml"
+  T.write_file(file, table.concat({
+    "format = 1", 'name = "Late"', 'range = "C4-C5"', "", "[art]",
+    'sustain = { m2 = "10.0", out = "ks=C1" }  # long',
+    'staccato = { m2 = "11.0", out = "ks=C#1" }',
+    'pizzicato = { m2 = "11.A", out = "ks=D1", delay = "-5ms" }', "" }, "\n"))
+  local track = daw.add_track({ name = "Late" })
+  track:add_device("lua:late")
+  daw.flush()
+  art.maps.forget()
+  art.bind(track.id, file)
+  api.undo_checkpoint()
+  daw.cursor.set_track(track)
+  local measure = require("articulations.measure")
+  local results = measure.measure(track.id)
+  -- To the millisecond block the onset falls in: one either way.
+  for i, want in ipairs({ 0, 20, 40 }) do
+    T.near(results[i].onset or -100, want, 1, results[i].art.id .. "'s onset in ms")
+  end
+  eq(#api.clip_list(track.id), 0, "the rendering left nothing behind")
+  daw.commands.exec("art.measure")
+  daw.ui.close()
+  daw.commands.exec("art.measure!")
+  local text = T.read_file(file)
+  local sent = art.attr_map(track.id).arts
+  T.near(sent["11.0"].delay, -20, 1, "staccato's delay sent")
+  local function written(code) return 'delay = "' .. art.maps.delay_text(sent[code].delay) .. '" }' end
+  eq(text:find('staccato = { m2 = "11.0", out = "ks=C#1", ' .. written("11.0"), 1, true) ~= nil, true, text)
+  eq(text:find('pizzicato = { m2 = "11.A", out = "ks=D1", ' .. written("11.A"), 1, true) ~= nil, true, "a delay replaced:\n" .. text)
+  eq(text:find(written("10.0") .. "  # long", 1, true) ~= nil, true, "a comment kept:\n" .. text)
+end)
+
+test("articulations: linked controllers are one lane, written through their curves into every controller", function()
+  local track, clip = strings()
+  local linked = require("articulations.linked")
+  local entry = linked.entry(track.id)
+  eq(entry.id .. " " .. table.concat(entry.cc, ","), "dynamics 1,11", "from the map")
+  local t = assert(daw.curves.target(linked.uri(clip.id, entry)))
+  eq(t.name(), "Dynamics (CC1 CC11) · line", "one lane")
+  eq(t.flat(), 0.7, "standing at the instrument's default")
+  t.write({ { beat = 2, value = 0.5 }, { beat = 4, value = 1 } })
+  api.undo_checkpoint()
+  local moves = {}
+  for _, c in ipairs(clip:controls()) do moves[#moves + 1] = string.format("%g:cc%d=%d", c.start, c.number, math.floor(c.value * 127 + 0.5)) end
+  eq(table.concat(moves, " "), "0:cc1=89 0:cc11=104 2:cc1=64 2:cc11=89 4:cc1=127 4:cc11=127", "both controllers, from the default at the start")
+  local back = {}
+  for i, q in ipairs(t.points()) do back[i] = string.format("%g=%.2f", q.beat, q.value) end
+  eq(table.concat(back, " "), "0=0.70 2=0.50 4=1.00", "read back as one")
+  daw.ui.focus("pianoroll")
+  keys("u")
+  eq(#clip:controls(), 0, "one undo step")
+  keys("\\c")
+  eq(daw.ui.focused, "curve", "\\c opens it in the curve view")
+  daw.ui.hide("curve")
+end)

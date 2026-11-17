@@ -140,7 +140,10 @@
   profile's registered controllers (mute type, playing position);
   `:art.edit` (a map edited in a text buffer) is not there; a generated map
   is not made again when its library changes; Kontakt and SF2 are not
-  read.
+  read. `:art.measure` finds onsets by level alone (a sample with a slow
+  swell reads late), and does not yet use the onsets a sampler's
+  `describe` could report; linked controllers are a curve of their own,
+  not one of the choices of the strip under the roll.
 
 - Engraved notation: page breaks of one's own (pages fill as systems
   come), and the engraving options as a buffer to edit (staff size,

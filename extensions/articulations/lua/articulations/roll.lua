@@ -190,13 +190,19 @@ roll.describer("articulations", function(note, part)
   end
   if not attr then
     local d = art.default_of(track, map)
-    return { "  articulation  none: the track's default plays, " .. (d and d.name or "?") }
+    local lines = { "  articulation  none: the track's default plays, " .. (d and d.name or "?") }
+    local delay = d and d.delay or map.delay
+    if delay then lines[2] = "  delay         " .. art.maps.delay_text(delay) end
+    return lines
   end
   local a, exact = art.resolve(map, attr)
   if not a then return { "  articulation  " .. m2.describe(attr) .. ", which " .. map.name .. " cannot play" } end
   local sent = a.out ~= "" and ", sent as " .. a.out or ""
   local how = exact and "" or ", played as " .. a.name .. " (" .. a.code .. ") by M2-123's fallback"
-  return { "  articulation  " .. (exact and a.name .. " (" .. a.code .. ")" or m2.describe(attr)) .. how .. sent }
+  local lines = { "  articulation  " .. (exact and a.name .. " (" .. a.code .. ")" or m2.describe(attr)) .. how .. sent }
+  local delay = a.delay or map.delay
+  if delay then lines[2] = "  delay         " .. art.maps.delay_text(delay) .. (a.delay and "" or " (the instrument's)") end
+  return lines
 end)
 
 -- New notes take the pen of their track.

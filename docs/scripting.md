@@ -376,6 +376,13 @@ daw.curves.generate("sine", 0, 8, { rate = 1, depth = 0.5, unfrac = c.unfrac })
 daw.curves.editor.open("daw://tempo", { vertical = true })
 ```
 
+An extension makes a curve of its own of an address with
+`daw.curves.provide(name, fn)`: `fn(uri, parts)` returns a target with
+the fields above (`points`, `write`, `name`, `format`, `lo`, `hi`, ...),
+or nil to leave the address to the others. extensions/articulations draws
+several controllers as one this way
+(`daw://clip/7/control/cc/1#linked=dynamics`).
+
 **Completion.** `daw.complete` shows suggestions as ghost notes in the piano
 roll, from sources that extensions register; see "Writing a source" in
 [harmony.md](harmony.md) for the context and the items.
