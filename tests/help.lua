@@ -290,16 +290,19 @@ test("the key line names the view's topic of help, and every such topic is a tag
   eq(bottom:find(":help terminal", 1, true) ~= nil, true, "on the bottom line: " .. bottom)
 end)
 
-test("in the graphical frontend help opens in a window of its own", function()
+test("in the graphical frontend help opens as a docked pane, and pops out on request", function()
   start()
   local listeners = daw.remote.listeners
   daw.remote.listeners = function() return { { client = 9, watching = true } } end
   local ok, err = pcall(daw.cmd, "help", { "gU" })
   daw.remote.listeners = listeners
   assert(ok, err)
-  eq(daw.canvas.open_views.textbuf ~= nil, true, "a window for the frontend")
-  eq(daw.ui.focused, "textbuf", "with the keyboard")
-  local _, line = here()
+  eq(daw.canvas.open_views.textbuf, nil, "no window of its own")
+  eq(daw.ui.focused, "textbuf", "the pane has the keyboard")
+  local name, line = here()
+  eq(name:match("^help://") ~= nil, true, "a help pane in the layout")
   eq(line:find("gU", 1, true) ~= nil, true, "at the key")
+  daw.cmd("textbuf.window")
+  eq(daw.canvas.open_views.textbuf ~= nil, true, "popped out to a window of its own")
   daw.canvas.close("textbuf")
 end)

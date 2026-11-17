@@ -577,18 +577,6 @@ local function source_of(buf)
   return name and build().by_name[name]
 end
 
---- Whether the keys come from a graphical frontend: its seat, or the
---- instance's when it has no terminal and a window watches it.
-local function windowed()
-  local seat = daw.seats.current
-  local watching = false
-  for _, l in ipairs(daw.remote.listeners()) do
-    if l.watching and (seat == 0 or l.client == seat) then watching = true end
-  end
-  if seat ~= 0 then return watching end
-  return watching and not api.ui_attached()
-end
-
 --- The window showing help in this tab, if any.
 local function help_window()
   local cur = layout.current()
@@ -613,15 +601,10 @@ local stack = {}
 daw.seats.keep("help.tagstack", function() return stack end, function(s) stack = s end, function() return {} end)
 
 --- Show a page at a row: in the help window, else one split off this one
---- (as Vim's `:help` splits), or in a window of its own in a graphical
---- frontend. Returns the window.
+--- (as Vim's `:help` splits), in a graphical frontend as a docked pane
+--- (`gw` pops it out). Returns the window.
 function M.show(source, row, col)
   local name = "help://" .. source.name
-  if windowed() then
-    local win = daw.textbuf.open(name, { window = true })
-    if win then place(win, row, col) end
-    return win
-  end
   local buf = layout.buf_create("textbuf", name)
   local win = help_window()
   if win then
