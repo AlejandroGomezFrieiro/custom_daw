@@ -231,6 +231,8 @@ test("panes: every kind of buffer paints in a pane without failing", function()
           eq(text:find("traceback", 1, true), nil, name .. " paints: " .. text:sub(1, 300))
         end
       end
+      -- Closed, so that an empty window's buffer is forgotten with it.
+      L.close(made)
     end
   end
 end)
