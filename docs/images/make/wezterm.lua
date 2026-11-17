@@ -19,7 +19,10 @@ local edit = os.getenv('EDIT')
 if edit then
   wezterm.on('gui-startup', function(cmd)
     local _, pane = wezterm.mux.spawn_window(cmd or {})
-    pane:split({ direction = 'Top', size = 0.3, args = { 'nvim', '--clean', '-c', 'set nu', edit } })
+    -- The file is shown as it is named in a home directory, not by the
+    -- scratch directory the scene keeps it in.
+    pane:split({ direction = 'Top', size = 0.3, args = { 'nvim', '--clean', '-c', 'set nu', '-c', 'cd %:h',
+      '-c', 'set statusline=~/.config/daw/init.lua\\ %m%=%l,%c', edit } })
   end)
 end
 return config

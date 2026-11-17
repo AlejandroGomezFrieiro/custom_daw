@@ -92,6 +92,11 @@ The mixer, the device picker and the device panel are views like any other:
 
 ![The mixer while the song plays: a fader moved, a strip muted with gcc, a chorus added from the picker and its mix raised in the device panel](docs/images/tui-mixer.gif)
 
+Recording goes round the loop into takes, shown as lanes and comped by
+choosing a take over a selection:
+
+![The lead armed with r and recorded round a one-bar loop with R, three takes played in by a script through daw.midi.inject in place of a keyboard; zt shows them as lanes, and :take 1 over the first half comps it](docs/images/tui-takes.gif)
+
 ### Score, engraved in the terminal
 
 A clip can be read and written as staff notation, drawn with a music font as

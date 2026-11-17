@@ -17,6 +17,8 @@ exists, what changed since.
 daw doctor           from the shell: the checks that need nobody, report on standard output
 ```
 
+![:doctor on the null backend with a test signal: the page of checks, then :doctor unattended running the sound system, input levels and dropouts checks](images/tui-doctor.gif)
+
 Load it in `init.lua` (`config/init.lua` has the line) or with
 `daw.ext.load("/path/to/daw/extensions/doctor")`. `daw doctor` needs neither:
 it loads the extension from the source tree beside the binary, or from

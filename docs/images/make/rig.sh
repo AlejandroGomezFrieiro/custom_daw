@@ -133,13 +133,13 @@ glide() {
   n=${3:-12}; i=1
   while [ $i -le $n ]; do
     xdotool mousemove $(( X + ($1 - X) * i / n )) $(( Y + ($2 - Y) * i / n ))
-    sleep 0.03; i=$((i + 1))
+    sleep 0.018; i=$((i + 1))
   done
 }
 # drag x1 y1 x2 y2 [button]
 drag() {
-  glide $1 $2; sleep 0.15; xdotool mousedown ${5:-1}; sleep 0.15
-  glide $3 $4 16; sleep 0.2; xdotool mouseup ${5:-1}; sleep 0.3
+  glide $1 $2; sleep 0.1; xdotool mousedown ${5:-1}; sleep 0.1
+  glide $3 $4 12; sleep 0.15; xdotool mouseup ${5:-1}; sleep 0.2
 }
 # A right click held long enough to be one (menus open on release).
 rclick() { glide $1 $2; pause 0.3; xdotool mousedown 3; sleep 0.12; xdotool mouseup 3; pause 0.6; }
