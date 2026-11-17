@@ -383,14 +383,23 @@ test("ex: an extension adds a pattern field and a command that takes a range", f
   ex.fields.lyric = nil
 end)
 
-test("ex: a score clip nothing writes is refused with a reason", function()
+test("ex: a clip whatever an extension keeps with it is MIDI, edited as any other", function()
   local t = song()
-  -- What an extension (notation) would add to read and write it.
-  local writers = daw.ex.writers
-  daw.ex.writers = {}
-  T.after(function() daw.ex.writers = writers end)
-  t:clips()[1].meta = { score = { measures = {} } }
-  fails(function() daw.commands.exec("%s/c4/d4/g") end, "is a score")
+  -- A clip an older notation kept a score with: its notes are still the clip's.
+  local clip = t:clips()[1]
+  clip.meta = { score = { measures = {} } }
+  local before, c4 = #clip:notes(), 0
+  for _, n in ipairs(clip:notes()) do
+    if n.pitch == 60 then c4 = c4 + 1 end
+  end
+  eq(c4 > 0, true, "the clip has C4s")
+  daw.commands.exec("%s/c4/d4/g")
+  c4 = 0
+  for _, n in ipairs(clip:notes()) do
+    if n.pitch == 60 then c4 = c4 + 1 end
+  end
+  eq(c4, 0, "every C4 is a D4 now")
+  eq(#clip:notes(), before, "and no note is lost")
 end)
 
 test("ex: in a text buffer a line's ranges are lines, as the buffer reads them", function()

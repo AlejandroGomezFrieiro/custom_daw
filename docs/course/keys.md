@@ -327,10 +327,9 @@ text as in Vim; nothing changes in the project until `:w`.
 
 The notation extension (`,n` on a MIDI clip) has its own keys, listed in
 [its README](../../extensions/notation/README.md) and by `?` in the view.
-What is written in notation is a score kept with the clip, and the clip's
-notes play it; a plain MIDI clip is shown as it would be written, and the
-first edit (or `:score.from-midi`) writes it as a score; `:score.detach`
-makes it plain MIDI again. Normal mode takes the piano roll's grammar;
+Notation is a view of the clip's MIDI: every edit in it is an edit of the
+notes, and what it decides (a spelling, a voice, a dynamic) is kept beside
+them. Normal mode takes the piano roll's grammar;
 insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
 Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
 the other voice, `R` repeats the chord, and the numbers choose the value (5

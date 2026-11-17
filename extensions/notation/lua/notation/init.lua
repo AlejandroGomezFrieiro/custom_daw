@@ -1,19 +1,17 @@
 -- The notation view's state and what it does to a clip: the cursor, the
--- value chosen for entering notes, and every edit. A score clip keeps a
--- written score (`notation.doc`, in `clip.meta.score`) and every edit
--- changes the score; its notes are rendered from it (`notation.render`)
--- in the same undo step, so the piano roll plays what is written. A plain
--- MIDI clip is shown as it would be written (the transcription,
--- `notation.score`) and becomes a score clip with the first edit.
--- Drawing is in notation.tui (cells) and notation.gui (pixels); keys are in
--- notation.keys.
+-- value chosen for entering notes, and every edit. The clip's MIDI is the
+-- truth; the score is a view of it (`notation.midi`): transcribed from the
+-- notes with what notation decided, kept on the notes and the clip. Every
+-- edit changes that score (`notation.doc`) and is written back as MIDI
+-- edits, one undo step. Drawing is in notation.tui (cells) and
+-- notation.gui (pixels); keys are in notation.keys.
 local api = daw.api
 local util = daw.util
 local model = require("notation.model")
 local score = require("notation.score")
 local D = require("notation.doc")
 local L = require("notation.layout")
-local render = require("notation.render")
+local midi = require("notation.midi")
 
 local EPS = 1e-6
 
@@ -140,14 +138,19 @@ function view.raw_view()
   return clip and view.settings_of(clip:get()).mode == "raw" or false
 end
 
---- The options a clip is laid out with.
-function view.layout_opts(c)
+--- The options a clip is laid out with (`own` in place of what it keeps).
+function view.layout_opts(c, own)
   local fifths = view.key()
-  local own = view.own(c)
+  own = own or view.own(c)
+  local settings = score.settings(own.settings)
+  settings.grid = (own.settings or {}).grid or daw.opt.notation_grid
+  -- The track's clef, else the staves the clip was written on in notation.
+  local staves = type(own.staves) == "table" and own.staves or nil
+  local clef = view.track_clef(c.track) or (staves and (#staves == 2 and "grand" or staves[1]))
   return {
     length = c.length, offset = c.start, bars = view.bars(c.start, c.length), fifths = fifths,
-    clef = view.track_clef(c.track), grid = daw.opt.notation_grid, tempo = view.tempo_at(c.start),
-    settings = view.settings_of(c), tuplets = own.tuplets,
+    clef = clef, grid = daw.opt.notation_grid, tempo = view.tempo_at(c.start),
+    settings = settings, tuplets = own.tuplets,
   }
 end
 
@@ -244,110 +247,66 @@ function view:layout()
     self.cache = { stamp = stamp, layout = layout, notes = clip:notes() }
     return layout, self.cache.notes
   end
+  -- Laid out from the score the clip's notes are written as.
   local sc = view.score_of(c)
-  if sc then
-    -- A score clip: laid out from what is written.
-    local stamp = table.concat({ "score", c.id, tostring(c.stamp), tostring(sc.rev), c.length, c.start, opts.fifths,
-      daw.opt.notation_grid, tostring(opts.bars[1] and opts.bars[1].number), serial(view.track_meta(c.track)) }, ":")
-    if self.cache and self.cache.stamp == stamp then return self.cache.layout, self.cache.notes end
-    local layout = L.layout(sc, { length = c.length, fifths = opts.fifths, grid = daw.opt.notation_grid,
-      number = opts.bars[1] and opts.bars[1].number })
-    -- Each written note knows the note that plays it, by its place among
-    -- the clip's: as the score's last rendering left them, or asked.
-    local place
-    local last = render.last
-    if last and last.key == c.id .. ":" .. tostring(sc.rev) and last.count == c.note_count then
-      place = last.places
-    else
-      place = {}
-      for i, n in ipairs(clip:notes()) do
-        local id = render.note_id(n)
-        if id then place[id] = i end
-      end
-    end
-    layout.places = {}
-    for _, m in ipairs(layout.measures) do
-      for _, evs in ipairs(m.staves) do
-        for _, ev in ipairs(evs) do
-          for _, n in ipairs(ev.notes or {}) do
-            n.index = place[n.head or n.id]
-            layout.places[n.id] = n.index
-          end
-          for _, n in ipairs(ev.grace or {}) do n.index = place[n.id] end
+  local stamp = table.concat({ tostring(sc), c.length, opts.fifths, daw.opt.notation_grid,
+    tostring(opts.bars[1] and opts.bars[1].number), serial(view.track_meta(c.track)) }, ":")
+  if self.cache and self.cache.stamp == stamp then return self.cache.layout end
+  local layout = L.layout(sc, { length = c.length, fifths = opts.fifths, grid = daw.opt.notation_grid,
+    number = opts.bars[1] and opts.bars[1].number })
+  -- Each written note knows the note that plays it, by its place among the clip's.
+  local place = {}
+  for i, n in ipairs(clip:notes()) do
+    if n.id then place["n" .. n.id] = i end
+  end
+  layout.places = {}
+  for _, m in ipairs(layout.measures) do
+    for _, evs in ipairs(m.staves) do
+      for _, ev in ipairs(evs) do
+        for _, n in ipairs(ev.notes or {}) do
+          n.index = place[n.head or n.id]
+          layout.places[n.id] = n.index
         end
+        for _, n in ipairs(ev.grace or {}) do n.index = place[n.id] end
       end
     end
-    view.decorate(layout, clip)
-    self.cache = { stamp = stamp, layout = layout }
-    return layout
   end
-  local stamp = table.concat({ c.id, tostring(c.stamp), c.length, c.start, opts.fifths, opts.tempo, tostring(opts.clef),
-    serial(view.own(c)), daw.opt.notation_grid, serial(opts.bars) }, ":")
-  if self.cache and self.cache.stamp == stamp then return self.cache.layout, self.cache.notes end
-  local notes = clip:notes()
-  local layout = view.decorate(model.layout(notes, opts), clip)
-  -- What is shown of a plain MIDI clip is read; an edit makes it a score.
-  layout.midi = true
-  self.cache = { stamp = stamp, layout = layout, notes = notes }
-  return layout, notes
+  view.decorate(layout, clip)
+  self.cache = { stamp = stamp, layout = layout }
+  return layout
 end
 
---- Whether a clip (as `clip:get()` gives it) keeps a score.
-function view.has_score(c)
-  local sc = c and type(c.meta) == "table" and c.meta.score
-  return type(sc) == "table" and type(sc.measures) == "table"
-end
+-- The scores derived last, by clip.
+local derived, derived_count = {}, 0
 
--- The score last written, kept in Lua tables as it was written so that the
--- next read or edit of it need not decode it again; and the last read.
-local live, reading = {}, {}
-
---- The score a clip keeps, to read (it must not be changed), or nil for a
---- plain MIDI clip.
+--- The score a clip's notes are written as (see `notation.midi`), to read:
+--- it must not be changed. Kept until the clip, what notation keeps with
+--- it, or the song's bars or key change.
 function view.score_of(c)
-  if not view.has_score(c) then return nil end
-  local key = c.id .. ":" .. tostring(c.meta.score.rev)
-  if live.key == key then return live.score end
-  if reading.key ~= key then reading = { key = key, score = D.decode(c.meta.score) } end
-  return reading.score
-end
-
---- The score a clip keeps, to change: the one last written while it is
---- what the clip keeps (it comes back to be kept when it is written).
-function view.edit_score_of(c)
-  if not view.has_score(c) then return nil end
-  local key = c.id .. ":" .. tostring(c.meta.score.rev)
-  if live.key == key then
-    local sc = live.score
-    live, reading = {}, {}
-    return sc
+  if not (c and c.kind == "midi") then return nil end
+  local own = view.own(c)
+  local old = type(c.meta) == "table" and type(c.meta.score) == "table" and c.meta.score or nil
+  local opts = view.layout_opts(c, own)
+  local key = table.concat({ c.id, tostring(c.stamp), tostring(c.note_count), c.length, c.start, opts.fifths, tostring(opts.tempo),
+    tostring(opts.clef), serial(own), serial(opts.bars), daw.opt.notation_grid, old and tostring(old.rev) or "" }, ":")
+  local hit = derived[c.id]
+  if hit and hit.key == key then return hit.score end
+  local notes = api.clip_notes(c.id)
+  if old then
+    -- Kept as a score the old way: read as the notes and marks it means.
+    notes, own = midi.legacy_notes(c, notes)
+    opts = view.layout_opts(c, own)
   end
-  return D.decode(c.meta.score)
-end
-
---- Keep a score just written for the clip.
-function view.keep_score(id, sc)
-  live = { key = id .. ":" .. tostring(sc.rev), score = sc }
-end
-
---- Forget the scores kept in Lua tables: an edit stopped half way.
-function view.forget_scores()
-  live, reading = {}, {}
+  local sc = midi.derive(notes, own, opts)
+  if derived_count > 8 then derived, derived_count = {}, 0 end
+  derived[c.id], derived_count = { key = key, score = sc }, derived_count + 1
+  return sc
 end
 
 --- What the track keeps for notation (its clef, its tablature).
 function view.track_meta(track_id)
   local ok, t = pcall(api.track_get, track_id)
   return ok and t.meta and t.meta.notation or nil
-end
-
---- What a plain MIDI clip's notation says: it is read until it is written.
-view.MIDI_LINE = "MIDI clip, shown as it would be written: :score.from-midi (or i, or any edit) to write it in notation"
-
---- Whether the open clip is a score clip.
-function view:is_score()
-  local clip = self:clip()
-  return clip ~= nil and view.has_score(clip:get())
 end
 
 -- The cursor ------------------------------------------------------------------------------
@@ -572,16 +531,22 @@ function view:to_extreme(dir)
   if best then self:set(best, nil) end
 end
 
--- Writing the score ------------------------------------------------------------------------
+-- Writing ---------------------------------------------------------------------------------------
 
---- Make the clip's notes what its score plays (`want`, if it is rendered
---- already) and keep the score with it: one undoable step with whatever
---- else this turn changes. The clip grows to hold every measure with
---- something written in it.
-function view.commit(clip, sc, want)
+--- The open clip, to edit: nil while several tracks are shown.
+function view:editable()
+  if self:readonly() then return nil end
+  return self:clip()
+end
+
+--- Write a change of a clip's score as MIDI: `before` is the score derived
+--- from the clip, `sc` what an edit made of it (see `notation.midi`). The
+--- clip grows to hold every measure with something written in it. One
+--- undoable step with whatever else this turn changes.
+function view.store(clip, before, sc)
   sc._frame = nil
-  sc.rev = D.token()
   local c = clip:get()
+  local named = midi.sync(clip.id, before, sc, view.own(c), view.track_clef(c.track))
   local f = D.frame(sc)
   local last = 0
   for i, m in ipairs(sc.measures) do
@@ -591,97 +556,32 @@ function view.commit(clip, sc, want)
   end
   if last > 0 then
     local finish = (D.origin(sc) + f.starts[last] + f.lengths[last]) / D.Q
-    if finish > c.length + EPS then api.clip_set(clip.id, "length", finish) end
+    if finish > clip:get().length + EPS then api.clip_set(clip.id, "length", finish) end
   end
-  sc._frame = nil
-  local meta = util.merge(c.meta or {}, {})
-  meta.score = D.encode(sc)
-  api.clip_set(clip.id, "meta", meta)
-  render.apply(clip.id, sc, want)
   view.cache = nil
-  view.keep_score(clip.id, sc)
+  -- New notes are named by their MIDI notes from now on.
+  view.renamed = {}
+  for id, k in pairs(named) do view.renamed[id] = "n" .. k end
+  return named
 end
 
---- Marks kept with a MIDI clip (`meta.notation.marks`, `slurs`, in beats)
---- as the score's, placed in its measures.
-local function import_marks(sc, own)
-  local function ref(beat)
-    local mi, at = D.locate(sc, D.from_beats(beat) - D.origin(sc))
-    D.ensure(sc, mi)
-    return { measure = sc.measures[mi].id, at = D.ratio(at) }, mi, at
-  end
-  local KIND = { dyn = "dynamic", cresc = "hairpin", dim = "hairpin", text = "text" }
-  for _, mk in ipairs(own.marks or {}) do
-    if mk.kind == "repeat" then
-      local mi, at = D.locate(sc, D.from_beats(mk.at) - D.origin(sc))
-      if mk.value == "start" and sc.measures[mi] then sc.measures[mi].repeat_start = true end
-      if mk.value == "end" and at == 0 and sc.measures[mi - 1] then sc.measures[mi - 1].barline = ":|" end
-    elseif KIND[mk.kind] then
-      local mark = { id = D.id(sc, "k"), kind = KIND[mk.kind], from = ref(mk.at) }
-      if mk.kind == "dyn" or mk.kind == "text" then mark.value = mk.value end
-      if mk.kind == "cresc" or mk.kind == "dim" then mark.value, mark.to = mk.kind, ref(mk.to or mk.at) end
-      sc.marks[#sc.marks + 1] = mark
-    end
-  end
-  for _, sl in ipairs(own.slurs or {}) do
-    local st = sc.staves[sl.staff or 1] or sc.staves[1]
-    sc.marks[#sc.marks + 1] = { id = D.id(sc, "k"), kind = "slur", staff = st.id, from = ref(sl.from), to = ref(sl.to) }
-  end
-end
-
---- A score written from what a MIDI clip plays: its transcription, with
---- what was decided by hand on its notes and kept with it (`meta.notation`:
---- spellings, voices, hands, marks, slurs, articulations); the playing
---- itself is kept as each note's feel, so the clip sounds as before.
-function view.from_midi(clip)
-  local c = clip:get()
-  local notes = clip:notes()
-  local opts = view.layout_opts(c)
-  local layout = view.decorate(model.layout(notes, opts), clip)
-  local sc, written = L.import(layout)
-  import_marks(sc, view.own(c))
-  sc.feel = {}
-  local plain = render.render(sc, { feel = false })
-  local by = {}
-  for _, r in ipairs(plain) do by[r.meta.score.n] = r end
-  for i, n in ipairs(notes) do
-    local r = written[i] and by[written[i]]
-    if r then
-      local fe = { dt = n.start - r.start, dlen = n.length - r.length, dvel = n.velocity - r.velocity }
-      if math.abs(fe.dt) < 1e-9 then fe.dt = nil end
-      if math.abs(fe.dlen) < 1e-9 then fe.dlen = nil end
-      if fe.dvel == 0 then fe.dvel = nil end
-      if next(fe) then sc.feel[written[i]] = fe end
-    end
-  end
-  return sc
-end
-
---- Make the open clip a score clip if it is not one: written from its
---- notes, which keep sounding as they did. Returns the clip.
-function view:ensure_score()
-  local clip = self:clip()
-  if not clip or self.multi then return nil end
-  if view.has_score(clip:get()) then return clip end
-  view.commit(clip, view.from_midi(clip))
-  daw.notify("now a score clip: notation writes it and its notes play it (:score.detach for plain MIDI again)")
-  return clip
-end
+--- The id a written note has now, after the last write named new notes.
+function view.now_id(id) return view.renamed and view.renamed[id] or id end
 
 --- Change the open clip's score with `fn(score, clip)` (unless several
---- tracks are shown), then render it; a plain MIDI clip is written as a
---- score first. `fn` returning false changes nothing.
+--- tracks are shown), and write what changed as MIDI edits, one undo
+--- step. `fn` returning false changes nothing.
 function view:write(fn)
-  if self:readonly() then return end
-  local clip = self:ensure_score()
+  local clip = self:editable()
   if not clip then return end
-  local sc = view.edit_score_of(clip:get())
+  -- A clip kept as a score the old way is kept as MIDI and notation data
+  -- first, in the same step.
+  if midi.migrate(clip.id) then self.cache = nil end
+  local before = view.score_of(clip:get())
+  local sc = D.copy(before)
   local ok, result = pcall(fn, sc, clip)
-  if not ok then
-    view.forget_scores()
-    error(result, 0)
-  end
-  if result ~= false then view.commit(clip, sc) else view.forget_scores() end
+  if not ok then error(result, 0) end
+  if result ~= false then view.store(clip, before, sc) end
   daw.ui.poke()
   return result
 end
@@ -708,9 +608,9 @@ end
 
 --- The written event under the cursor and the note there, from the layout
 --- (whose events name the score's: `source`, `mi`, `at`, `staff_id`), to
---- edit: a plain MIDI clip is written as a score first.
+--- edit.
 function view:here()
-  if self:readonly() or not self:ensure_score() then return nil end
+  if not self:editable() then return nil end
   local ev, n = self:event_at(self.beat, self.step)
   if ev and ev.source and ev.source.id ~= "" then return ev, n end
 end
@@ -917,6 +817,12 @@ function view:put(sc, note, beat, length, chord)
   end
   local ev = D.put_chord(sc, mi, staff, v, at, D.from_beats(length), { note })
   D.fix_ties(sc, staff, v, math.max(1, mi - 1), mi)
+  -- A grace note typed before there was a note here leads to this one.
+  local grace = self.pending_grace
+  if grace and math.abs(grace.beat - beat) < EPS then
+    self.pending_grace = nil
+    require("notation.operators").put_grace(sc, mi, staff, v, at, grace.kind, grace.sp)
+  end
   return ev.notes[1].id
 end
 
@@ -958,7 +864,7 @@ function view:place(pitch, beat, length, keep, spell)
       return false
     end
   end)
-  return id
+  return id and view.now_id(id)
 end
 
 --- Clear a stretch of one staff (by its index) in the entry voice: a rest written there.
@@ -1020,7 +926,7 @@ function view:lengthen(by) return self:relength(function(l) return l + by end) e
 
 --- Lengthen (or with `by` below 0, shorten) every chord of a region by `by` beats.
 function view:relength_region(region, by)
-  if self:readonly() or not self:ensure_score() then return end
+  if not self:editable() then return end
   local layout = self:layout()
   if not layout then return end
   local ids = {}
@@ -1061,8 +967,8 @@ function view:toggle_dot()
 end
 
 --- Move the chord under the cursor by `by` beats as written: it is written
---- there (what is there in its voice gives way), with its grace notes, its
---- marks and its notes' feel.
+--- there (what is there in its voice gives way), with its grace notes and
+--- its marks; its notes move by as much, however they were played.
 function view:move_chord(by)
   local source = self:score_chord()
   if not source then return false end
@@ -1084,118 +990,82 @@ function view:delete_chord()
   return self:write(function(sc) return lift(sc, source.id) ~= nil end) ~= false
 end
 
---- Make the notes play exactly as written: forget the feel of the notes
---- written from `from` to `to` (clip beats), `low` to `high` (pitches); all
---- optional. Returns how many notes had any.
-function view:quantize(from, to, low, high)
-  local count = 0
-  self:write(function(sc, clip)
-    local feel = sc.feel or {}
-    for _, n in ipairs(clip:notes()) do
-      local id = render.note_id(n)
-      local fe = id and feel[id]
-      if fe then
-        local at = n.start - (fe.dt or 0)
-        if (not from or at >= from - EPS or n.start >= from - EPS) and (not to or at < to - EPS) and (not low or n.pitch >= low) and (not high or n.pitch <= high) then
-          feel[id] = nil
-          count = count + 1
-        end
-      end
-    end
-    sc.feel = feel
-    sc.rev = D.token()
-    return count > 0
-  end)
-  return count
-end
-
---- Write again from the playing: the measures from `from` to `to` (clip
---- beats; all of them without) transcribed afresh from what the clip plays,
---- feel included, as a MIDI clip is written as a score. What was decided by
---- hand there (voices, ties, spellings, triplets) is forgotten; marks stay.
---- Returns how many notes were written again.
-function view:retranscribe(from, to)
-  local count = 0
-  self:write(function(sc, clip)
-    local f = D.frame(sc)
-    local m0 = from and where(sc, from) or 1
-    local m1 = to and where(sc, math.max(0, to - EPS)) or f.count
-    count = view.renotate(sc, clip, m0, math.min(m1, f.count), { feel = true })
-  end)
-  return count
-end
-
---- Write measures `m0` to `m1` of a score again from notes: the transcription
---- of `opts.notes` (in clip beats), by default of what the score plays there
---- (with `opts.feel`, as the player played it). Notes that say which
---- written note they are (`meta.score`) keep its id, and with `opts.hints`
---- its spelling, voice, staff and articulations. `opts.settings` and
---- `opts.tuplets` (in clip beats) go to the transcription. Returns how many
---- notes were written.
-function view.renotate(sc, clip, m0, m1, opts)
-  opts = opts or {}
-  local f = D.frame(sc)
+--- The clip's notes written from `from` to `to` (clip beats), `low` to
+--- `high` (pitches), all optional: `{ { index, note, w } }`, `w` how each
+--- is written (`notation.midi.written`), with the score.
+local function written_in(clip, from, to, low, high)
+  local sc = view.score_of(clip:get())
   local origin = D.origin(sc)
-  local s0 = origin + f.starts[m0]
-  local s1 = origin + f.starts[m1] + f.lengths[m1]
-  local notes = opts.notes
-  if not notes then
-    notes = {}
-    for _, r in ipairs(render.render(sc, { feel = opts.feel, gate = not opts.feel and 1 or nil, written = true })) do
-      local t = D.from_beats(r.start)
-      local w = r.written
-      if (opts.feel and t >= s0 - 1 and t < s1 - 1) or (not opts.feel and origin + w.s >= s0 and origin + w.s < s1) then
-        local n = { pitch = r.pitch, start = r.start, length = r.length, velocity = r.velocity, meta = r.meta }
-        if opts.hints then
-          local note, ev, _, entry = D.find_note(sc, w.n)
-          if note then
-            n.meta = util.merge(r.meta, { notation = { letter = note.step, alter = note.alter, pitch = r.pitch,
-              voice = entry.voice, staff = D.staff_index(sc, entry.staff), art = ev.art, grace = ev.grace and true or nil } })
-          end
-        end
-        notes[#notes + 1] = n
+  local place = {}
+  for i, n in ipairs(clip:notes()) do
+    if n.id then place[n.id] = { index = i, note = n } end
+  end
+  local out = {}
+  for id, w in pairs(midi.written(sc)) do
+    local at = (origin + w.s) / D.Q
+    local hit = place[midi.midi_id(id) or -1]
+    if hit and (not from or at >= from - EPS) and (not to or at < to - EPS) and (not low or w.pitch >= low) and (not high or w.pitch <= high) then
+      out[#out + 1] = { index = hit.index, note = hit.note, w = w, at = at }
+    end
+  end
+  table.sort(out, function(a, b) return a.index < b.index end)
+  return out, sc
+end
+
+--- Quantize to the notation: the notes written from `from` to `to` (clip
+--- beats), `low` to `high` (pitches), all optional, made to start where
+--- they are written and last as long, as marked (a staccato half). A MIDI
+--- edit, one undo step. Returns how many notes changed.
+function view:quantize(from, to, low, high)
+  local clip = self:editable()
+  if not clip then return 0 end
+  local set = {}
+  for _, x in ipairs(written_in(clip, from, to, low, high)) do
+    local length = math.max(1 / 64, x.w.len / D.Q * (midi.gate(x.w.ev.art) or 1))
+    if math.abs(x.note.start - x.at) > EPS or math.abs(x.note.length - length) > EPS then
+      set[#set + 1] = { index = x.index, start = math.max(0, x.at), length = length }
+    end
+  end
+  if #set > 0 then api.clip_notes_edit(clip.id, { set = set, remove = {}, add = {} }) end
+  daw.ui.poke()
+  return #set
+end
+
+--- Write again from the playing: forget what notation decided about the
+--- notes written from `from` to `to` (clip beats; all of them without):
+--- voices, hands, spellings, grace notes, chords, articulations, tuplets.
+--- They are transcribed afresh from how they play; marks along the clip
+--- stay. Returns how many notes were written again.
+function view:retranscribe(from, to)
+  local clip = self:editable()
+  if not clip then return 0 end
+  if midi.migrate(clip.id) then self.cache = nil end
+  local set = {}
+  local list = written_in(clip, from, to)
+  for _, x in ipairs(list) do
+    local own = x.note.meta and x.note.meta.notation
+    if type(own) == "table" then
+      local keep = { string = own.string }
+      local meta = util.merge(x.note.meta, {})
+      meta.notation = next(keep) and keep or nil
+      set[#set + 1] = { index = x.index, meta = meta }
+    end
+  end
+  if #set > 0 then api.clip_notes_edit(clip.id, { set = set, remove = {}, add = {} }) end
+  -- The tuplets said there go too.
+  local own = view.own(clip:get())
+  if own.tuplets then
+    view.keep(clip, function(mine)
+      local kept = {}
+      for _, tp in ipairs(mine.tuplets or {}) do
+        if (from and tp.start + tp.length <= from + EPS) or (to and tp.start >= to - EPS) then kept[#kept + 1] = tp end
       end
-    end
+      mine.tuplets = #kept > 0 and kept or nil
+    end)
   end
-  local inside = {}
-  for _, n in ipairs(notes) do
-    local t = D.from_beats(n.start)
-    if t >= s0 - 1 and t < s1 - 1 then
-      inside[#inside + 1] = util.merge(n, { start = (t - s0) / D.Q, length = math.min(n.length, (s1 - t) / D.Q) })
-    end
-  end
-  table.sort(inside, function(a, b) return a.start < b.start or (a.start == b.start and a.pitch < b.pitch) end)
-  local bars = {}
-  for i = m0, m1 do bars[#bars + 1] = { start = (f.starts[i] - f.starts[m0]) / D.Q, num = f.meters[i][1], den = f.meters[i][2], number = i } end
-  local clefs = {}
-  for i, st in ipairs(sc.staves) do clefs[i] = st.clef end
-  local c = clip:get()
-  local tuplets
-  for _, tp in ipairs(opts.tuplets or {}) do
-    tuplets = tuplets or {}
-    tuplets[#tuplets + 1] = { start = tp.start - (s0 - D.from_beats(0)) / D.Q, length = tp.length, n = tp.n }
-  end
-  local settings = util.merge(view.settings_of(c), opts.settings or {})
-  settings.mode = "score"
-  local layout = model.layout(inside, { length = (s1 - s0) / D.Q, bars = bars, clef = #clefs == 2 and "grand" or clefs[1],
-    fifths = (view.key()), tempo = view.tempo_at(c.start), settings = settings, tuplets = tuplets })
-  local keep = {}
-  for i, n in ipairs(inside) do keep[i] = render.note_id(n) end
-  local sub = L.import(layout, { score = sc, keep = keep })
-  for k = 1, m1 - m0 + 1 do
-    local m, from_m = sc.measures[m0 + k - 1], sub.measures[k]
-    m.voices = {}
-    for _, entry in ipairs(from_m and from_m.voices or {}) do
-      local idx = tonumber(entry.staff:match("%d+"))
-      local st = sc.staves[idx] or sc.staves[1]
-      m.voices[#m.voices + 1] = { staff = st.id, voice = entry.voice, events = entry.events }
-    end
-    D.touch(sc, m0 + k - 1)
-  end
-  for _, st in ipairs(sc.staves) do
-    for v = 1, 4 do D.fix_ties(sc, st.id, v, math.max(1, m0 - 1), m1) end
-  end
-  return #inside
+  self.cache = nil
+  daw.ui.poke()
+  return #list
 end
 
 --- The ids of the notes of the chord under the cursor's events, or of a
@@ -1391,7 +1261,7 @@ end
 --- again: each chord where the nearest sixteenth puts it. Returns whether
 --- the beat is a tuplet now.
 function view:toggle_tuplet()
-  if self:readonly() or not self:ensure_score() then return end
+  if not self:editable() then return end
   local layout = self:layout()
   if not layout then return end
   local m = self:measure_at(self.beat, layout)
@@ -1543,7 +1413,6 @@ function view:delete()
     if not note then return false end
     for _, c in ipairs(D.tied_on(sc, entry.staff, entry.voice, id)) do D.remove_note(sc, c.note.id) end
     D.remove_note(sc, id)
-    if sc.feel then sc.feel[id] = nil end
   end) ~= false
 end
 
@@ -1615,39 +1484,6 @@ function view:merge_chords(ids)
   return count
 end
 
---- A score clip's staves: one in a clef (treble, treble8, bass), or a
---- grand staff. A lower staff with notes is not taken away. Returns why
---- not, or nil.
-function view.set_clef(clip, want)
-  local sc = view.edit_score_of(clip:get())
-  if want == "auto" then return "a score keeps the clefs it has: treble, treble8, bass or grand" end
-  if want == "grand" then
-    if #sc.staves == 2 then return nil end
-    sc.staves[1].clef = "treble"
-    sc.staves[2] = { id = D.id(sc, "s"), clef = "bass" }
-  else
-    if #sc.staves == 2 then
-      local lower = sc.staves[2].id
-      for _, m in ipairs(sc.measures) do
-        for _, e in ipairs(m.voices) do
-          if e.staff == lower and #e.events > 0 then return "the lower staff has notes: move them up first (gH)" end
-        end
-      end
-      for _, m in ipairs(sc.measures) do
-        local keep = {}
-        for _, e in ipairs(m.voices) do
-          if e.staff ~= lower then keep[#keep + 1] = e end
-        end
-        m.voices = keep
-      end
-      sc.staves[2] = nil
-    end
-    sc.staves[1].clef = want
-  end
-  for i in ipairs(sc.measures) do D.touch(sc, i) end
-  view.commit(clip, sc)
-end
-
 -- Insert mode -----------------------------------------------------------------------------
 
 local LETTER_STEP = { c = 0, d = 1, e = 2, f = 3, g = 4, a = 5, b = 6 }
@@ -1716,7 +1552,7 @@ function view:repeat_chord()
   self:write(function(sc)
     for k, p in ipairs(again.pitches) do id = self:put(sc, spelled(p), self.beat, self:entry_length(), k > 1) end
   end)
-  self.last = { id = id, step = again.step or self.step, pitch = again.pitches[#again.pitches], beat = self.beat }
+  self.last = { id = id and view.now_id(id), step = again.step or self.step, pitch = again.pitches[#again.pitches], beat = self.beat }
   self.chord = nil
   self:step_on(1)
 end
@@ -1832,23 +1668,6 @@ function view:choose(value)
   api.ui_redraw()
 end
 
---- Plain MIDI again: the clip keeps the notes its score plays and forgets
---- the score. One undoable step.
-function view.detach(clip)
-  local c = clip:get()
-  if not view.has_score(c) then return false end
-  local meta = util.merge(c.meta or {}, {})
-  meta.score = nil
-  local notes = api.clip_notes(clip.id)
-  for _, n in ipairs(notes) do
-    if n.meta then n.meta.score = nil end
-  end
-  api.clip_set(clip.id, "meta", meta)
-  api.clip_set_notes(clip.id, notes)
-  view.cache = nil
-  return true
-end
-
 -- Opening ---------------------------------------------------------------------------------
 
 --- Open a MIDI clip as notation, in the terminal and in a window.
@@ -1857,7 +1676,7 @@ function view:edit(clip)
   if not clip then return daw.notify("no clip here", "warn") end
   if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be shown as notation", "warn") end
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache, self.multi = clip.id, 0, 1, nil, nil, nil, nil
-  self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace = false, nil, nil, nil, nil, nil
+  self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace, self.pending_grace = false, nil, nil, nil, nil, nil, nil
   local layout = self:layout()
   local first = model.events(layout)[1]
   self.step = 35

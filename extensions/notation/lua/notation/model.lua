@@ -370,14 +370,37 @@ local function multiple(rel, of)
   return abs(v - floor(v + 0.5)) < 1e-4
 end
 
---- The tuplets a voice needs in a measure: beats whose divisions are not
---- plain, as `{ s, e, n, ratio }` (written = played * ratio). Two triplet
---- beats in quarter-note triplets are one tuplet.
-local function tuplet_spans(m, bounds)
+--- The written length a tuplet of `n` takes the time of: the power of two
+--- below it (3 in the time of 2, 5 of 4), and a duplet in the time of 3.
+function M.tuplet_normal(n)
+  if n == 2 then return 3 end
+  local normal = 1
+  while normal * 2 < n do normal = normal * 2 end
+  return normal
+end
+
+--- The tuplets voice `voice` of staff `staff` needs in a measure: the user's (`user`, `{ start,
+--- length, n, normal, staff?, voice? }` in clip beats, or `plain` for none), and beats whose
+--- divisions are not plain, as `{ s, e, n, ratio }` (written = played *
+--- ratio). Two triplet beats in quarter-note triplets are one tuplet.
+local function tuplet_spans(m, bounds, user, staff, voice)
   local spans = {}
   local bar = { start = m.start, num = m.meter.num, den = m.meter.den }
   local beats = score_layer.beats_of(bar)
-  for _, b in ipairs(beats) do
+  local said = {}
+  for _, tp in ipairs(user or {}) do
+    local mine = (not tp.staff or tp.staff == staff) and (not tp.voice or tp.voice == voice)
+    if mine and tp.start < m.start + m.length - EPS and tp.start + tp.length > m.start + EPS then
+      if not tp.plain then
+        local normal = tp.normal or M.tuplet_normal(tp.n)
+        spans[#spans + 1] = { s = tp.start, e = tp.start + tp.length, n = tp.n, ratio = tp.n / normal, user = true }
+      end
+      for bi, b in ipairs(beats) do
+        if b.s >= tp.start - EPS and b.e <= tp.start + tp.length + EPS then said[bi] = true end
+      end
+    end
+  end
+  for bi, b in ipairs(beats) do
     local need, fits3, fits2, fits4 = false, true, true, true
     local inner, on_eighth = 0, false
     for _, x in ipairs(bounds) do
@@ -393,7 +416,7 @@ local function tuplet_spans(m, bounds)
     end
     -- In 6/8 a beat halved is a duplet, not two dotted eighths.
     if b.compound and inner > 0 and fits2 and not on_eighth then need = true end
-    if need then
+    if need and not said[bi] then
       if not b.compound and fits3 then
         spans[#spans + 1] = { s = b.s, e = b.e, n = 3, ratio = 1.5 }
       elseif b.compound and fits2 then
@@ -404,11 +427,12 @@ local function tuplet_spans(m, bounds)
     end
   end
   -- Quarter-note triplets over two beats.
+  table.sort(spans, function(a, b) return a.s < b.s end)
   local out, i = {}, 1
   while i <= #spans do
     local a, b = spans[i], spans[i + 1]
     local joined = false
-    if b and a.n == 3 and b.n == 3 and near(a.e, b.s) then
+    if b and a.n == 3 and b.n == 3 and near(a.e, b.s) and not a.user and not b.user then
       local len = b.e - a.s
       local all = true
       for _, x in ipairs(bounds) do
@@ -469,6 +493,7 @@ end
 ---             `mode = "raw"` for every note as played, rounded to `grid`
 ---   tuplets   the user's tuplets, `{ { start, length, n } }`
 ---   grid      the raw view's grid, and where a pointer lands (a sixteenth)
+---   stems     false leaves out stems and beams (for a score made of it)
 --- Returns `{ measures, staves, meter, fifths, grid, origin, score }`; each
 --- measure has `number` (the project's bar, from 1), `start` and `length`
 --- in clip beats, its `meter`, and `staves[i]`, a list of events by time:
@@ -499,7 +524,8 @@ function M.layout(notes, opts)
   if opts.grid and not (opts.settings and opts.settings.grid) then settings.grid = opts.grid end
   local ctx = { bars = bars, finish = finish, tempo = opts.tempo or 120, staves = staves, settings = settings, tuplets = opts.tuplets, debug = opts.debug }
   local sc = settings.mode == "raw" and score_layer.raw(notes, ctx) or score_layer.transcribe(notes, ctx)
-  return M.engrave_score(sc, { bars = bars, staves = staves, fifths = fifths, grid = opts.grid or settings.grid or 0.25 })
+  return M.engrave_score(sc, { bars = bars, staves = staves, fifths = fifths, grid = opts.grid or settings.grid or 0.25,
+    tuplets = settings.mode ~= "raw" and opts.tuplets or nil, stems = opts.stems })
 end
 
 --- Measures of written events from score events (see `notation.score`).
@@ -574,7 +600,7 @@ function M.engrave_score(sc, o)
           bounds[#bounds + 1] = p.a
           bounds[#bounds + 1] = p.b
         end
-        local spans = tuplet_spans(m, bounds)
+        local spans = tuplet_spans(m, bounds, o.tuplets, s, v)
         for _, sp in ipairs(spans) do
           sp.id = s * 100000 + v * 10000 + mi * 10 + _
           sp.staff, sp.voice = s, v
@@ -653,7 +679,7 @@ function M.engrave_score(sc, o)
 
   local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = o.fifths or 0, grid = o.grid or 0.25, origin = origin, score = sc }
   M.spell_all(result)
-  M.stems_and_beams(result)
+  if o.stems ~= false then M.stems_and_beams(result) end
   return result
 end
 

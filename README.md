@@ -82,9 +82,10 @@ hear each one before you write it. The notation has a grammar of its own:
 
 ![The score, with the hairpin about to be written](docs/images/tui-notation.png)
 
-The piano roll beside the score edits the same clip, and shows what is
-written and what is played, the feel, apart. See the
-[notation extension](extensions/notation/README.md).
+The score is a view of the clip's MIDI, as REAPER's notation is: writing
+in it edits the notes, and the piano roll beside it edits the same notes.
+Without the extension the clip is plain MIDI that plays and edits as any
+other. See the [notation extension](extensions/notation/README.md).
 
 ### Ex, over bars and tracks
 

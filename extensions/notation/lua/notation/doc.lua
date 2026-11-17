@@ -1,8 +1,8 @@
--- The written score: the document a score clip keeps in `clip.meta.score`,
--- and every edit made to it. The document is the truth; the clip's notes
--- are rendered from it (`notation.render`), and the page is laid out from
--- it (`M.layout`). Plain Lua tables, so that saving, undo, copying and the
--- remote protocol need nothing new.
+-- The written score: the document the notation view shows and edits, and
+-- every edit made to it. A clip's score is made from its MIDI notes and
+-- what notation keeps beside them (`notation.midi`), each edit changes it,
+-- and what changed is written back as MIDI edits; the page is laid out from
+-- it (`notation.layout`). Plain Lua tables.
 --
 --   score = {
 --     version = 1, rev,          -- rev changes with every edit
@@ -11,8 +11,7 @@
 --     measures = { { id, v, meter? = { num, den }, groups? = { 3, 3, 2 }, barline? = "||" | "|." | ":|",
 --                    repeat_start?, volta? = n, rehearsal? = "A", key? = { fifths, name },
 --                    clef? = { [staff id] = clef }, voices = { { staff, voice, events } } } },
---     marks = { { id, kind, staff?, from = ref, to? = ref, value? } },
---     style = { gate? }, feel = { [note id] = { dt, dlen, dvel } }, next,
+--     marks = { { id, kind, staff?, from = ref, to? = ref, value? } }, next,
 --     layout? = { breaks = { { id, measure = id, kind = "break" | "join" } }, per_system? },
 --   }
 --   event = { id, kind = "chord" | "rest", dur = { n, d }, dots, tuplet? = { id, actual, normal },
@@ -710,67 +709,18 @@ function M.copy(v)
   if type(v) ~= "table" then return v end
   local out = {}
   for k, x in pairs(v) do
-    if k ~= "_frame" and k ~= "_src" and k ~= "_srcv" then out[k] = M.copy(x) end
+    if k ~= "_frame" and k ~= "_transcribed" then out[k] = M.copy(x) end
   end
   return out
 end
 
--- As the clip keeps it --------------------------------------------------------------------------
+-- Scores kept the old way -----------------------------------------------------------------------
 --
--- In `clip.meta.score` each measure is kept as JSON text and the feel as a
--- line of text, so that reading the clip (which everything that draws it
--- does) hands Lua a few strings rather than thousands of small tables,
--- and an edit encodes again only the measures it changed.
+-- A clip written in notation before notation was a view of MIDI kept its
+-- score in `clip.meta.score`, each measure as JSON text. `notation.midi`
+-- reads such a score to keep what it says as notation data.
 
-local parsed, parsed_count = {}, 0
-
---- The feel as text: `id dt dlen dvel;` for each note that has any.
-local function feel_text(feel)
-  local out = {}
-  for id, fe in pairs(feel or {}) do
-    out[#out + 1] = string.format("%s %.17g %.17g %d;", id, fe.dt or 0, fe.dlen or 0, fe.dvel or 0)
-  end
-  table.sort(out)
-  return table.concat(out)
-end
-
-local function feel_of(text)
-  local out = {}
-  if type(text) == "table" then return text end
-  for id, dt, dlen, dvel in tostring(text or ""):gmatch("(%S+) (%S+) (%S+) (%S+);") do
-    local fe = { dt = tonumber(dt), dlen = tonumber(dlen), dvel = tonumber(dvel) }
-    if fe.dt == 0 then fe.dt = nil end
-    if fe.dlen == 0 then fe.dlen = nil end
-    if fe.dvel == 0 then fe.dvel = nil end
-    if next(fe) then out[id] = fe end
-  end
-  return out
-end
-
---- A score as the clip keeps it, from one in Lua tables.
-function M.encode(score)
-  local out = {}
-  for k, v in pairs(score) do
-    if k ~= "_frame" and k ~= "measures" and k ~= "feel" then out[k] = v end
-  end
-  out.measures = {}
-  for i, m in ipairs(score.measures) do
-    if m._src and m._srcv == m.v then
-      out.measures[i] = m._src
-    else
-      local clean = M.copy(m)
-      local text = daw.api.json_encode(clean)
-      out.measures[i] = text
-      m._src, m._srcv = text, m.v
-      if parsed_count > 4000 then parsed, parsed_count = {}, 0 end
-      parsed[text], parsed_count = clean, parsed_count + 1
-    end
-  end
-  out.feel = feel_text(score.feel)
-  return out
-end
-
---- A score in Lua tables, to read and change, from what the clip keeps.
+--- A score in Lua tables from what a clip kept, or nil.
 function M.decode(stored)
   if type(stored) ~= "table" or type(stored.measures) ~= "table" then return nil end
   local score = {}
@@ -779,26 +729,13 @@ function M.decode(stored)
   end
   score.measures = {}
   for i, text in ipairs(stored.measures) do
-    local m
-    if type(text) == "string" then
-      local template = parsed[text]
-      if not template then
-        template = daw.api.json_decode(text)
-        if parsed_count > 4000 then parsed, parsed_count = {}, 0 end
-        parsed[text], parsed_count = template, parsed_count + 1
-      end
-      m = M.copy(template)
-      m._src, m._srcv = text, m.v
-    else
-      m = M.copy(text)
-    end
+    local m = type(text) == "string" and daw.api.json_decode(text) or M.copy(text)
     m.voices = m.voices or {}
     for _, entry in ipairs(m.voices) do entry.events = entry.events or {} end
     score.measures[i] = m
   end
   score.marks = score.marks or {}
   score.staves = score.staves or {}
-  score.feel = feel_of(stored.feel)
   return score
 end
 
