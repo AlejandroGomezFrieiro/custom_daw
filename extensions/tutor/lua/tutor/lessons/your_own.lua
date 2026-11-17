@@ -14,7 +14,7 @@ quit, except the grid, which the tutor puts back when you leave it.]],
   idea = [[
 `daw.opt.name = value` sets an option (`:lua daw.opt.grid = 0.5`; `,fo` lists
 them). `daw.keymap.set(keys, command or function, { desc = ..., view = ... })`
-maps keys; `<leader>` stands for the leader (`,`). `daw.command(name, function(ctx)
+maps keys; `<leader>` stands for the leader (`,`), `<localleader>` for the leader of one view's own keys (a backslash). `daw.command(name, function(ctx)
 ... end, { desc = ... })` defines a command, which `:name` then runs and a
 mapping can name. `:reload` runs `init.lua` again without touching the project.]],
   vim = [[
