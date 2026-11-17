@@ -138,6 +138,32 @@ function M.band_state()
   return { rows = rows, entries = out }
 end
 
+--- The candidates a prompt offers, as the terminal lists them above the
+--- line: the ones in view around the one chosen, `{ label, desc }`, with
+--- `chosen` the place of the one chosen among them (0 for none).
+function M.completions(prompt)
+  local all = prompt.matches
+  if not all or #all == 0 then return nil end
+  local rows = 10
+  local first = math.max(1, math.min((prompt.match or 0) - rows + 1, #all - rows + 1))
+  local list = { total = #all, chosen = (prompt.match or 0) > 0 and prompt.match - first + 1 or 0, items = {} }
+  for i = first, math.min(#all, first + rows - 1) do
+    local c = all[i]
+    list.items[#list.items + 1] = { label = c.label, desc = c.desc and (c.desc:match("^[^\n]*"):gsub(":? `.*$", "")) or "" }
+  end
+  return list
+end
+
+--- A track's sends as `{ name, level }`, the level in dB.
+function M.send_list(track)
+  local out = {}
+  for i, send in ipairs(track.sends or {}) do
+    local ok, to = pcall(api.track_get, send.target)
+    out[i] = { name = ok and to.name or "?", level = send.level }
+  end
+  return out
+end
+
 local mode_names = { n = "NORMAL", c = "COMMAND", i = "INSERT", o = "PENDING" }
 local visual_names = { v = "VISUAL", V = "V-LINE", b = "V-BLOCK", clips = "CLIPS" }
 
@@ -165,8 +191,36 @@ local function modal()
   local prompt = require("daw.views.cmdline").state()
   if prompt then
     out.prompt = prompt
+    out.prompt.matches = M.completions(prompt)
   elseif ui.message then
-    out.message = { text = ui.message.text:match("^[^\n]*"), level = ui.message.level }
+    out.message = { text = ui.message.text:match("^[^\n]*"), level = ui.message.level, time = ui.message.time }
+  elseif daw.opt.keybar and keymap.pending() == "" then
+    -- With nothing to say, the keys worth knowing here, as the terminal's
+    -- bottom line shows them.
+    out.keys = {}
+    for i, entry in ipairs(ui.keybar.entries()) do out.keys[i] = { key = entry[1], desc = entry[2] } end
+  end
+  -- What an Ex line being typed would act on: the stretch of time, the
+  -- tracks, and the clips that match with how many matches each holds.
+  local shown = daw.ex and daw.ex.shown()
+  if shown then
+    out.ex = { from = shown.from, to = shown.to, tracks = {}, clips = {}, current = shown.current and shown.current.clip and shown.current.clip.id }
+    for id in pairs(shown.tracks or {}) do out.ex.tracks[#out.ex.tracks + 1] = id end
+    for id, n in pairs(shown.clips or {}) do out.ex.clips[#out.ex.clips + 1] = { id = id, count = n, notes = shown.notes[id] ~= nil } end
+  end
+  -- The row of a strip the keyboard is on in the mixer.
+  if out.mixer and ui.focused == "mixer" then
+    local row, id = require("daw.mixer_rows").current()
+    if row then out.mixer_row = { track = id, kind = row.kind, index = row.index or 0, field = row.field or "" } end
+  end
+  local qf = daw.qf and daw.qf.status()
+  if qf then
+    local text, worst = {}, 0
+    for _, piece in ipairs(qf) do
+      text[#text + 1] = piece[1]
+      worst = math.max(worst, piece[2] == "StatusError" and 2 or piece[2] == "StatusWarn" and 1 or 0)
+    end
+    out.qf = { text = table.concat(text), level = worst }
   end
   if daw.opt.hints then
     local hints, title = keymap.hints()
@@ -556,6 +610,8 @@ function M.state(known)
       -- The colour everything of the track's is drawn in, as in the terminal.
       color = daw.draw.track_colour(track, i), chain = table.concat(chain, " › "),
       output = type(to) == "table" and to.name or nil,
+      -- Its sends, for the mixer's strip: `{ name, level }` in dB each.
+      sends = M.send_list(track),
       -- Groups: how many groups the track is inside, whether it is one,
       -- whether it is folded, and how many tracks it holds.
       depth = id ~= 0 and daw.groups.depth(id) or 0,
