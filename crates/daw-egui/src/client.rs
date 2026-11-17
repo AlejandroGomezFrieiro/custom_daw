@@ -1,0 +1,255 @@
+//! The connection to a kernel's control socket: calls are answered, and the
+//! state to draw is pushed by the kernel when it changes (`frontend.watch`:
+//! see docs/protocol.md), in parts, and put together again here.
+
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use anyhow::{Context, Result, anyhow, bail};
+use serde_json::{Value, json};
+
+pub struct Client {
+    pub connection: daw_proto::Connection,
+    /// What moves on its own (the playhead, the meters, the mode), as last sent.
+    tick: Value,
+    /// The parts of the state that change with the project, as last sent.
+    sections: serde_json::Map<String, Value>,
+    /// Some part arrived that the window has not drawn yet; and the list
+    /// of device kinds did, which is only sent at first.
+    fresh: bool,
+    fresh_kinds: bool,
+    /// The kernel's sound, played here (`:listen`, the engine menu).
+    pub player: Option<daw_listen::Player>,
+}
+
+impl Client {
+    /// Connect to a kernel on this machine: with a seat of its own (a cursor,
+    /// mode and selection), or in the instance's own (`shared`), as a window
+    /// that started its kernel itself is.
+    pub fn connect(path: &Path, shared: bool) -> Result<Self> {
+        Self::watching(daw_proto::Connection::unix(path)?, shared)
+    }
+
+    /// Connect to a kernel on another machine (or this one) over the network.
+    pub fn connect_tcp(address: &str, token: &str, wire: &daw_proto::Wire) -> Result<Self> {
+        let connection = daw_proto::Connection::tcp_with(address, token, wire)?;
+        if let Some(print) = &connection.trusted_now {
+            eprintln!(
+                "daw-gui: {address} is trusted from now on: its certificate is {print} \
+                 (remembered in {})",
+                daw_proto::tls::known_path().display()
+            );
+        }
+        Self::watching(connection, false)
+    }
+
+    fn watching(connection: daw_proto::Connection, shared: bool) -> Result<Self> {
+        let mut client = Self {
+            connection,
+            tick: Value::Null,
+            sections: serde_json::Map::new(),
+            fresh: false,
+            fresh_kinds: false,
+            player: None,
+        };
+        let seat = if shared { "instance" } else { "own" };
+        client.call("frontend.watch", json!([{ "seat": seat }]))?;
+        Ok(client)
+    }
+
+    /// Have `wake` called whenever the kernel sends something, so that the
+    /// window draws again then and at no other time: what arrives goes
+    /// through a thread that waits for it.
+    pub fn wake_on_events(&mut self, wake: impl Fn() + Send + 'static) {
+        let (sender, receiver) = mpsc::channel();
+        let from = std::mem::replace(&mut self.connection.events, receiver);
+        std::thread::spawn(move || {
+            // The engine's load wavers all the time: a frame is drawn for it
+            // only when it has moved by 4%, as the bar that shows it can.
+            let mut drawn: (Value, f64) = (Value::Null, 0.0);
+            while let Ok(event) = from.recv() {
+                let news = match &event {
+                    (name, payload) if name == "frontend.state" && payload.get("sections").is_none() => {
+                        let cpu = payload["cpu"].as_f64().unwrap_or(0.0);
+                        let mut rest = payload.clone();
+                        rest["cpu"] = Value::Null;
+                        let news = rest != drawn.0 || (cpu - drawn.1).abs() >= 0.04;
+                        if news {
+                            drawn = (rest, cpu);
+                        }
+                        news
+                    }
+                    (name, _) => name != "audio.frame",
+                };
+                if sender.send(event).is_err() {
+                    break;
+                }
+                if news {
+                    wake();
+                }
+            }
+            // The kernel went away: the window must see that too.
+            wake();
+        });
+    }
+
+    pub fn call(&mut self, method: &str, params: Value) -> Result<Value> {
+        self.connection.call(method, params).map_err(|err| {
+            // Lua errors carry a traceback; the first line says what happened.
+            let text = err.to_string();
+            anyhow!("{}", text.lines().next().unwrap_or(&text))
+        })
+    }
+
+    /// Run Lua in the kernel with `args` as `...`.
+    pub fn eval(&mut self, code: &str, args: Value) -> Result<Value> {
+        let mut params = vec![json!(code)];
+        params.extend(args.as_array().cloned().unwrap_or_default());
+        self.call("eval", Value::Array(params))
+    }
+
+    /// Start playing the kernel's sound here, or stop.
+    pub fn toggle_listening(&mut self) -> Result<()> {
+        if self.player.take().is_some() {
+            return self.connection.notify("monitor.unlisten", json!([]));
+        }
+        let player = daw_listen::Player::device()?;
+        self.call("monitor.listen", json!([]))?;
+        self.player = Some(player);
+        Ok(())
+    }
+
+    /// The state to draw, in the shape `daw.frontend.state` gives it: what
+    /// moves on its own always, and the project's parts (`project`,
+    /// `tracks`, `clips`, ...) only when one of them has changed since the
+    /// last time this was asked. None when nothing has arrived since.
+    pub fn state(&mut self) -> Result<Option<Value>> {
+        let mut any = false;
+        loop {
+            match self.connection.events.try_recv() {
+                Ok((name, mut payload)) if name == "frontend.state" => {
+                    if let Some(Value::Object(parts)) =
+                        payload.as_object_mut().and_then(|p| p.remove("sections"))
+                    {
+                        self.fresh = true;
+                        self.fresh_kinds |= parts.contains_key("kinds");
+                        self.sections.extend(parts);
+                    }
+                    self.tick = payload;
+                    any = true;
+                }
+                Ok((name, payload)) if name == "audio.frame" => {
+                    if let Some(player) = &self.player {
+                        let _ = player.push(&payload);
+                    }
+                }
+                Ok((name, _)) if name == "monitor.toggle" => {
+                    if let Err(err) = self.toggle_listening() {
+                        let message = format!("cannot play the instance's sound here: {err:#}");
+                        let _ = self.eval("daw.notify(..., 'error')", json!([message]));
+                    }
+                }
+                Ok(_) => {}
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => bail!("the kernel went away"),
+            }
+        }
+        if !any {
+            return Ok(None);
+        }
+        let mut state = self.tick.clone();
+        if std::mem::take(&mut self.fresh)
+            && let Some(state) = state.as_object_mut()
+        {
+            let part = |name: &str| self.sections.get(name).cloned().unwrap_or(Value::Null);
+            // The bar and beat lines travel apart from the rest of the project.
+            let mut project = part("project");
+            if project.is_object() {
+                project["lines"] = part("lines");
+            }
+            state.insert("project".into(), project);
+            for name in ["tracks", "clips", "devices", "routing", "slots"] {
+                state.insert(name.into(), part(name));
+            }
+            state.insert("selected".into(), part("view")["selected"].clone());
+            state.insert("cursor".into(), part("view")["cursor"].clone());
+            if std::mem::take(&mut self.fresh_kinds) {
+                state.insert("kinds".into(), part("kinds"));
+            }
+        }
+        Ok(Some(state))
+    }
+}
+
+/// Send the sound and MIDI files among `paths` to a kernel on another machine (or
+/// one this window did not start), into its project's media folder, and
+/// return where they are there. The rest are left out, said to be refused.
+pub fn send_sounds(client: &mut Client, paths: &[String]) -> Result<Vec<String>> {
+    let mut there = Vec::new();
+    for path in paths {
+        let sound = client.eval(
+            "local path = ...; return daw.is_audio_file(path) or daw.midifile.is_midi_file(path)",
+            json!([path]),
+        )?;
+        if sound.as_bool() != Some(true) {
+            let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
+            let message = format!("cannot send {name}: only sound and MIDI files go to an instance on another machine");
+            client.eval("daw.notify(..., 'warn')", json!([message]))?;
+            continue;
+        }
+        there.push(client.connection.send_file(Path::new(path))?);
+    }
+    Ok(there)
+}
+
+/// Start a kernel without a UI and connect to it.
+pub fn start_kernel(args: &[String]) -> Result<(Client, Child)> {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let socket = runtime.join(format!("daw-gui-{}.sock", std::process::id()));
+    // The `daw` binary beside this one, else whichever is on the path.
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("daw")));
+    let binary = std::env::var_os("DAW_BIN")
+        .map(PathBuf::from)
+        .or(beside.filter(|path| path.is_file()))
+        .unwrap_or_else(|| PathBuf::from("daw"));
+    let mut child = Command::new(&binary);
+    child
+        .arg("--headless")
+        .arg("--listen")
+        .arg(&socket)
+        .args(args)
+        .stdin(Stdio::null());
+    // If this program dies without saying goodbye, the kernel must not be left
+    // running with the audio device.
+    unsafe {
+        child.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            Ok(())
+        });
+    }
+    let mut child = child
+        .spawn()
+        .with_context(|| format!("starting {}", binary.display()))?;
+    // The first start can take a while: it looks through every installed plugin.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        if let Ok(client) = Client::connect(&socket, true) {
+            return Ok((client, child));
+        }
+        if let Some(status) = child.try_wait()? {
+            bail!("the kernel stopped before it was ready ({status})");
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            bail!("the kernel did not open its socket");
+        }
+        std::thread::sleep(Duration::from_millis(30));
+    }
+}

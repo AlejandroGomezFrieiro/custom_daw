@@ -144,6 +144,8 @@ daw.stretch = require("daw.stretch")
 daw.harmony = require("daw.harmony")
 daw.snippet = require("daw.snippet")
 daw.launcher = require("daw.launcher")
+-- The window's menus, shown by it and built here (daw/window_menus.lua).
+require("daw.window_menus")
 
 -- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
 -- gives text, `daw.json.decode(text)` the value, or nil and the reason.
