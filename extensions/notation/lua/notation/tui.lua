@@ -6,8 +6,8 @@
 -- At the usual zoom the staff is dense, a row for each line and the spaces
 -- between rows (`notation.cells`); zoomed in (`zi`) every line and space has
 -- a row of its own.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local model = require("notation.model")
 local cells = require("notation.cells")
 local breaks = require("notation.breaks")
@@ -28,7 +28,7 @@ local room_for_changes, draw_directions
 --- Whether the staff is drawn dense: lines on rows, spaces between them.
 --- ASCII has no half blocks to put a head between two rows.
 function view.dense()
-  return view.zoom <= 1 and not daw.opt.ascii
+  return view.zoom <= 1 and not paw.opt.ascii
 end
 
 local function unit(d)
@@ -146,7 +146,7 @@ local ORN_ASCII = { trill = "tr", mordent = "~", prall = "~", turn = "S", turn_i
 --- system's first measure (whose clef and key the system's start says).
 draw_directions = function(buf, layout, m, inside, o)
   local G, ink = o.G, o.note_style
-  local ascii = daw.opt.ascii
+  local ascii = paw.opt.ascii
   -- Over the first staff: the bar number's row for endings, rehearsal
   -- marks and tempo; the row under it for chord symbols and techniques.
   local top_row = o.top + math.max(0, o.margin - 2)
@@ -230,16 +230,16 @@ function view:render(buf, ctx)
   local clip = self:clip()
   buf:fill(0, 0, w, h, " ", "Normal")
   if not clip then
-    daw.ui.titlebar(buf, { name = "Notation", focused = ctx.focused })
+    paw.ui.titlebar(buf, { name = "Notation", focused = ctx.focused })
     local x = 2 + buf:text(2, 2, "No clip open. Put the cursor on a MIDI clip in the arrange view and press", "Empty")
-    x = x + 1 + buf:text(x + 1, 2, daw.ui.keybar.show("<leader>n"), "EmptyKey")
+    x = x + 1 + buf:text(x + 1, 2, paw.ui.keybar.show("<leader>n"), "EmptyKey")
     buf:text(x + 1, 2, "or :notation.", "Empty")
     return
   end
   local c = clip:get()
   local track = api.track_get(c.track)
-  local hue = daw.draw.track_hue(track)
-  local colour = daw.draw.track_colour(track)
+  local hue = paw.draw.track_hue(track)
+  local colour = paw.draw.track_colour(track)
   -- The clip's own staff, or the score it is a staff of: the cursor's
   -- staff is the active one, drawn in full ink with a mark at its start.
   local F = self:frame()
@@ -248,7 +248,7 @@ function view:render(buf, ctx)
   room_for_changes(layout)
   self.caret_cell = nil
   local fifths, stored = view.key()
-  local inserting = ctx.focused and daw.keymap.mode == "i"
+  local inserting = ctx.focused and paw.keymap.mode == "i"
   local G = cells.glyphs()
   local dense = view.dense()
   local step = dense and 2 or 1          -- staff steps a row
@@ -303,9 +303,9 @@ function view:render(buf, ctx)
     badge = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
   end
   local right = (badge and "" or value .. "  ") .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra
-  daw.ui.titlebar(real, {
+  paw.ui.titlebar(real, {
     pill = { c.name, hue.pill }, name = track.name, focused = ctx.focused,
-    context = string.format("%s  %s", here, daw.time.format(c.start + self.beat)),
+    context = string.format("%s  %s", here, paw.time.format(c.start + self.beat)),
     right = right .. (badge and string.rep(" ", api.str_width(badge) + 1) or ""),
   })
   if badge then real:text(math.max(0, w - api.str_width(badge) - 1), 0, badge, "RulerInsert") end
@@ -382,22 +382,22 @@ function view:render(buf, ctx)
   for s in ipairs(layout.staves) do
     local id = F.multi and not active(s) and layout.tracks and layout.tracks[s]
     if id then
-      local tint = daw.opt.score_colors and daw.draw.track_colour(api.track_get(id)) or colour
-      if daw.opt.score_dim then
-        staff_styles[s] = { fg = daw.draw.mix(tint, "#101216", 0.55) }
-      elseif daw.opt.score_colors then
+      local tint = paw.opt.score_colors and paw.draw.track_colour(api.track_get(id)) or colour
+      if paw.opt.score_dim then
+        staff_styles[s] = { fg = paw.draw.mix(tint, "#101216", 0.55) }
+      elseif paw.opt.score_colors then
         staff_styles[s] = { fg = tint }
       end
     end
   end
-  local faint = { fg = daw.draw.mix(colour, "#101216", 0.55) }
-  local faint_ink = { fg = daw.draw.mix(colour, "#101216", 0.3) }
+  local faint = { fg = paw.draw.mix(colour, "#101216", 0.55) }
+  local faint_ink = { fg = paw.draw.mix(colour, "#101216", 0.3) }
   local clef_style = { fg = colour, bold = true }
   local staff_style, bar_style = "Faint", "Dim"
   local geometry = { systems = {}, margin = margin, staff_rows = staff_rows, staves = layout.staves, dense = dense }
   self.geometry = geometry
   local t = api.transport_get()
-  local selection = ctx.focused and daw.keymap.selection()
+  local selection = ctx.focused and paw.keymap.selection()
 
   for si, sys in ipairs(rows_out) do
     local top = 1 + (si - 1) * per
@@ -458,7 +458,7 @@ function view:render(buf, ctx)
     -- Where keys go: a mark at the active staff's start, over the brace.
     if F.multi then
       for s in ipairs(layout.staves) do
-        if active(s) then buf:text(0, rows[s].above(4), daw.opt.ascii and ">" or "▶", "RollCursor") end
+        if active(s) then buf:text(0, rows[s].above(4), paw.opt.ascii and ">" or "▶", "RollCursor") end
       end
     end
     -- Tablature under the staves: a row for each string, the highest first.
@@ -466,7 +466,7 @@ function view:render(buf, ctx)
     if tab then
       for i = 1, tab.strings do
         buf:fill(2, tab_top + i - 1, sys.width - 2, 1, G.line, staff_style)
-        buf:text(0, tab_top + i - 1, (daw.music.name(tab.tuning[tab.strings - i + 1]):gsub("%-?%d+$", "")):sub(1, 2), "Dim")
+        buf:text(0, tab_top + i - 1, (paw.music.name(tab.tuning[tab.strings - i + 1]):gsub("%-?%d+$", "")):sub(1, 2), "Dim")
       end
     end
 
@@ -933,25 +933,25 @@ end
 
 --- Say on the status line what the pointer is over.
 local function hint(self, at)
-  if not at then return daw.mouse.hint(nil) end
+  if not at then return paw.mouse.hint(nil) end
   local fifths = view.key()
   local note = at.note and self:clip() and self:clip():notes()[at.note]
-  local name = note and daw.music.name(note.pitch) or model.name(model.spell(model.key_pitch(at.step, fifths), fifths))
-  daw.mouse.hint(string.format("%s  %s", name, daw.time.format(self:clip():get().start + at.beat)))
+  local name = note and paw.music.name(note.pitch) or model.name(model.spell(model.key_pitch(at.step, fifths), fifths))
+  paw.mouse.hint(string.format("%s  %s", name, paw.time.format(self:clip():get().start + at.beat)))
 end
 
 function view:on_mouse(e)
   local F = self:frame()
   local layout = F and F.layout
   if not (self.geometry and layout) then return end
-  local wheel = daw.mouse.wheel(e)
+  local wheel = paw.mouse.wheel(e)
   if wheel then
     self.first = util.clamp(self.first + wheel, 1, #layout.measures)
     return api.ui_redraw()
   end
-  local inserting = daw.keymap.mode == "i"
+  local inserting = paw.keymap.mode == "i"
   -- A press on another staff of a score makes it the active one.
-  local at = self:cell_at(e.x, e.y, daw.mouse.has(e, "A"), e.kind == "down")
+  local at = self:cell_at(e.x, e.y, paw.mouse.has(e, "A"), e.kind == "down")
   if e.kind == "move" then
     view.cell_hover = inserting and at and { beat = at.beat, step = at.step, from_beat = self.beat, from_step = self.step } or nil
     hint(self, at)
@@ -961,7 +961,7 @@ function view:on_mouse(e)
   view.cell_hover = nil
   if e.button == "right" then
     self:set(at.step, at.beat)
-    return daw.ui.menu(self:menu_items(at.note ~= nil, at), { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) })
+    return paw.ui.menu(self:menu_items(at.note ~= nil, at), { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) })
   end
   if e.button ~= "left" then return end
   if inserting then
@@ -972,13 +972,13 @@ function view:on_mouse(e)
   if e.double then
     self:set(at.step, at.beat)
     self.last, self.chord = nil, nil
-    return daw.keymap.set_mode("i")
+    return paw.keymap.set_mode("i")
   end
-  if daw.mouse.has(e, "S") then
-    if daw.keymap.mode ~= "x" then daw.keymap.visual_start("v") end
+  if paw.mouse.has(e, "S") then
+    if paw.keymap.mode ~= "x" then paw.keymap.visual_start("v") end
     return self:set(at.step, at.beat)
   end
-  if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
+  if paw.keymap.mode == "x" then paw.keymap.set_mode("n") end
   self:set(at.step, at.beat)
   local clip = self:clip()
   local note = at.note and clip:notes()[at.note]
@@ -986,7 +986,7 @@ function view:on_mouse(e)
     self:audition(note.pitch)
     -- A drag of the note moves it: the cursor, off the note, shows where.
     local to
-    return daw.mouse.grab(e, {
+    return paw.mouse.grab(e, {
       drag = function(d)
         local there = self:cell_at(d.x, d.y, true)
         if not (d.moved and there) then return end
@@ -1001,11 +1001,11 @@ function view:on_mouse(e)
     })
   end
   -- A drag on the paper selects a block.
-  daw.mouse.grab(e, {
+  paw.mouse.grab(e, {
     drag = function(d)
       local there = self:cell_at(d.x, d.y, true)
       if not (d.moved and there) then return end
-      if daw.keymap.mode ~= "x" then daw.keymap.visual_start("b") end
+      if paw.keymap.mode ~= "x" then paw.keymap.visual_start("b") end
       self:set(there.step, there.beat)
     end,
   })

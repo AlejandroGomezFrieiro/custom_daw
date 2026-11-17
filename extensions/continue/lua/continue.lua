@@ -82,7 +82,7 @@ end
 --- The suggestions for a completion context: `ctx.notes` (the clip's),
 --- `ctx.at` (where to go on from, in the clip's beats), `ctx.bar` (the
 --- length of a bar there) and optionally `ctx.key` (a key as
---- `daw.harmony.key` gives it; guessed from the notes without one).
+--- `paw.harmony.key` gives it; guessed from the notes without one).
 function M.suggest(ctx)
   local at, bar = ctx.at, ctx.bar or 4
   local phrase = {}

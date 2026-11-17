@@ -9,7 +9,7 @@ and restored after reopening it, and two states can be compared by ear while
 the song plays.
 
 ```lua
-daw.ext.load("extensions/undotree")   -- or put the directory in ~/.config/daw/extensions
+paw.ext.load("extensions/undotree")   -- or put the directory in ~/.config/paw/extensions
 ```
 
 ![The melody moved with 3>ic, undone and moved with 2>ic instead; ,uu shows both branches, and Enter goes back to the first](images/tui-undotree.gif)
@@ -132,7 +132,7 @@ than drop one.
 
 ## API
 
-In `daw.api`, plain data only:
+In `paw.api`, plain data only:
 
 | Function | |
 | --- | --- |
@@ -151,7 +151,7 @@ In `daw.api`, plain data only:
 | `checkpoint_restore(file)` | a path from the list or a file name in the folder; the new state's id |
 | `checkpoint_delete(file)` | |
 
-`daw.undo()` and `daw.redo()` are unchanged. `undo_checkpoint()` is the older
+`paw.undo()` and `paw.redo()` are unchanged. `undo_checkpoint()` is the older
 call that closes the open undo step; it is not about checkpoints on disk.
 
 Notes are compared within clips present in both states: a note at the same

@@ -1,11 +1,11 @@
--- `daw.track_kinds`: kinds of track that extensions define.
+-- `paw.track_kinds`: kinds of track that extensions define.
 --
 -- A track is a track: clips, devices, a fader. A kind says what a track is
 -- for, and so how it is made and how its clips are edited: a vocal track is
 -- made with a singing device and its clips open in the vocal editor, a drum
 -- track's in the drum grid. An extension defines one:
 --
---   daw.track_kinds.define("vocal", {
+--   paw.track_kinds.define("vocal", {
 --     title = "Vocal track",            -- how it is offered and described
 --     letter = "V",                     -- what the track header shows before the name
 --     create = function(track, args) end, -- make an ordinary track this kind
@@ -19,13 +19,13 @@
 -- the track header, `K` and `clip.edit` all know it. The kind is kept in the
 -- track's `meta.kind`, saved with the project: opened without the
 -- extension, the track is an ordinary one, and `K` says which kind it was.
-local api = daw.api
+local api = paw.api
 
 local M = { kinds = {}, order = {} }
 
 local function track_of(which)
   if type(which) == "table" then return which end
-  return daw.track(which)
+  return paw.track(which)
 end
 
 --- Define a kind of track (see above). `name` is a word: what is typed
@@ -39,7 +39,7 @@ function M.define(name, spec)
   if not M.kinds[name] then M.order[#M.order + 1] = name end
   M.kinds[name] = spec
   local label = "New " .. spec.title:sub(1, 1):lower() .. spec.title:sub(2)
-  local menu = daw.frontend.menus.timeline
+  local menu = paw.frontend.menus.timeline
   for i = #menu, 1, -1 do
     if menu[i].track_kind == name then table.remove(menu, i) end
   end
@@ -93,7 +93,7 @@ function M.add(name, opts)
   opts = opts or {}
   local spec = M.kinds[name]
   if not spec then error("no kind of track `" .. tostring(name) .. "`" .. M.known_words(), 2) end
-  local track = daw.add_track({
+  local track = paw.add_track({
     name = opts.name or spec.title:gsub("%s*[Tt]rack$", ""),
     index = opts.index,
   })
@@ -140,15 +140,15 @@ end
 function M.open(clip)
   local data = type(clip) == "table" and clip:get() or api.clip_get(clip)
   local spec = M.spec(data.track)
-  if spec and spec.editor then return spec.editor(daw.clip(data.id)) == true end
+  if spec and spec.editor then return spec.editor(paw.clip(data.id)) == true end
   return false
 end
 
 -- Enter, a double click and `clip.edit` ask the track's kind first.
-table.insert(daw.frontend.openers, 1, M.open)
+table.insert(paw.frontend.openers, 1, M.open)
 
 -- The kind's letter in the track header, in the free column before the name.
-daw.ui.layer("arrange", "header", "track_kinds", 20, function(c)
+paw.ui.layer("arrange", "header", "track_kinds", 20, function(c)
   local spec = M.spec(c.track)
   if spec then c.buf:text(c.x, c.y, spec.letter:sub(1, 1), "TrackIndex") end
 end)

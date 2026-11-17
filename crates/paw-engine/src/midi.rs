@@ -84,7 +84,7 @@ impl MidiInputs {
     }
 
     /// Make a port of this program's for other programs to send MIDI to,
-    /// shown to them as `daw: <name>`. What arrives there goes with the
+    /// shown to them as `paw: <name>`. What arrives there goes with the
     /// [`port_key`] of `name`, and the port is listed among the inputs.
     pub fn open_port(&self, name: &str) {
         let _ = self.commands.send(Command::Open(name.to_string()));
@@ -212,7 +212,7 @@ mod imp {
             )?;
             let seq = Seq(handle);
             check(
-                snd_seq_set_client_name(seq.0, c"daw".as_ptr()),
+                snd_seq_set_client_name(seq.0, c"paw".as_ptr()),
                 "naming the client",
             )?;
             // Ask for MIDI 2.0: the sequencer then hands over Universal MIDI
@@ -252,7 +252,7 @@ mod imp {
         };
         client.refresh();
         let thread = std::thread::Builder::new()
-            .name("daw-midi-in".into())
+            .name("paw-midi-in".into())
             .spawn(move || client.run(rx))?;
         Ok(thread)
     }

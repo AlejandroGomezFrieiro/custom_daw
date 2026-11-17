@@ -2,7 +2,7 @@
 # The undo tree: an edit undone and another made in its place, and the tree
 # window going back to the first branch.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/undotree')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/undotree')"
 rig_start
 term_start
 key j w; pause 0.4

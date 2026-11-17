@@ -10,7 +10,7 @@
 //! takes too long stays a stand-in, stopped, with the reason
 //! (`device.stopped`), and keeps its saved state for the next try.
 //!
-//! [`DeviceFactory::starts_apart`]: daw_engine::DeviceFactory::starts_apart
+//! [`DeviceFactory::starts_apart`]: paw_engine::DeviceFactory::starts_apart
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use daw_engine::MAX_BLOCK;
-use daw_engine::device::Starting;
+use paw_engine::MAX_BLOCK;
+use paw_engine::device::Starting;
 use serde_json::json;
 
 use super::Session;

@@ -1,22 +1,22 @@
 -- Tests of the doctor; tests/suite.lua runs them. Everything runs on the null
 -- backend, whose test input gives two channels of tone and whose test MIDI
--- port is played with `daw.midi.inject`. The real hardware is out of reach
+-- port is played with `paw.midi.inject`. The real hardware is out of reach
 -- of tests: what they check is that the checks run, measure what arrives,
 -- ask, report, and leave nothing behind.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
-local api = daw.api
+local api = paw.api
 
 local doctor, loaded
 
 local function load()
   if not loaded then
-    daw.ext.load("extensions/doctor")
+    paw.ext.load("extensions/doctor")
     loaded = true
   end
   doctor = require("doctor")
-  daw.opt.doctor_dir = T.scratch .. "/doctor"
-  daw.opt.doctor_plugins = {}
+  paw.opt.doctor_dir = T.scratch .. "/doctor"
+  paw.opt.doctor_plugins = {}
   return doctor
 end
 
@@ -58,7 +58,7 @@ local function state()
     t.clip_list = api.clip_list(id)
     tracks[#tracks + 1] = t
   end
-  return daw.json.encode({
+  return paw.json.encode({
     project = project, tree = api.undo_tree(), tracks = tracks,
     transport = { position = api.transport_get().position, loop = api.transport_get().loop_enabled },
   })
@@ -143,9 +143,9 @@ test("the doctor's MIDI check records the port, channel, note and controller tha
       if sent[prompt.question] then return nil end
       sent[prompt.question] = true
       if prompt.question:find("key", 1, true) then
-        daw.midi.inject({ type = "note_on", pitch = 62, velocity = 99, channel = 3, port = "Keys A" })
+        paw.midi.inject({ type = "note_on", pitch = 62, velocity = 99, channel = 3, port = "Keys A" })
       else
-        daw.midi.inject({ type = "cc", number = 74, value = 0.5, channel = 3, port = "Keys A" })
+        paw.midi.inject({ type = "cc", number = 74, value = 0.5, channel = 3, port = "Keys A" })
       end
     end,
   })
@@ -169,10 +169,10 @@ test("midi.in names the port a message came from", function()
   null_backend()
   fresh()
   local seen
-  local handler = daw.on("midi.in", function(event) seen = event end)
-  daw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" })
-  daw.flush()
-  daw.off(handler)
+  local handler = paw.on("midi.in", function(event) seen = event end)
+  paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" })
+  paw.flush()
+  paw.off(handler)
   eq(seen.port, "Keys A", "the port")
   eq(seen.pitch, 60, "and the note")
 end)
@@ -181,20 +181,20 @@ test("a project put aside comes back with its undo tree, and the scratch one is 
   load()
   null_backend()
   fresh()
-  local t = daw.add_track({ name = "Mine" })
-  daw.flush()
+  local t = paw.add_track({ name = "Mine" })
+  paw.flush()
   api.undo_checkpoint()
   t:add_clip({ start = 0, length = 4, notes = { { pitch = "C4", start = 0, length = 1 } } })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local before = state()
   api.project_shelve()
   eq(api.project_shelved(), true, "put aside")
   eq(#api.track_list(), 0, "an empty project in its place")
-  daw.add_track({ name = "scratch" })
-  daw.flush()
+  paw.add_track({ name = "scratch" })
+  paw.flush()
   api.project_unshelve()
-  daw.flush()
+  paw.flush()
   eq(api.project_shelved(), false, "back")
   eq(state(), before, "exactly as it was, undo tree and all")
   eq(api.track_get(api.track_list()[1]).name, "Mine", "the track")
@@ -206,24 +206,24 @@ test("a whole doctor run leaves the open project exactly as it was, and nothing 
   load()
   null_backend()
   fresh()
-  local t = daw.add_track({ name = "Keep" })
+  local t = paw.add_track({ name = "Keep" })
   t:add_device("synth")
   t:add_clip({ start = 0, length = 4, notes = { { pitch = "C4", start = 0, length = 1 }, { pitch = "E4", start = 1, length = 1 } } })
-  daw.add_track({ name = "Other" })
-  daw.flush()
+  paw.add_track({ name = "Other" })
+  paw.flush()
   api.undo_checkpoint()
-  daw.transport.seek(6)
+  paw.transport.seek(6)
   local before = state()
   local recordings = listing(api.env().data_dir .. "/recordings")
-  local streamed = daw.opt.media_stream
-  daw.opt.media_stream = 2
-  local autosave = daw.opt.autosave
-  daw.opt.autosave = 30
+  local streamed = paw.opt.media_stream
+  paw.opt.media_stream = 2
+  local autosave = paw.opt.autosave
+  paw.opt.autosave = 30
 
   local asked, during = {}, nil
   local r = run({
     auto = function(prompt, check)
-      during = daw.opt.autosave
+      during = paw.opt.autosave
       asked[#asked + 1] = prompt.question
       for _, choice in ipairs(prompt.choices) do
         if choice[1] == "y" then return "y" end
@@ -231,10 +231,10 @@ test("a whole doctor run leaves the open project exactly as it was, and nothing 
       return "d"
     end,
   })
-  daw.opt.media_stream = streamed
+  paw.opt.media_stream = streamed
   eq(during, 0, "autosave was turned off while the doctor ran")
-  eq(daw.opt.autosave, 30, "and put back")
-  daw.opt.autosave = autosave
+  eq(paw.opt.autosave, 30, "and put back")
+  paw.opt.autosave = autosave
   eq(#r.done >= 9, true, "every check ran")
   eq(r.running, false, "the run is over")
   eq(api.project_shelved(), false, "the person's project is back")
@@ -243,18 +243,18 @@ test("a whole doctor run leaves the open project exactly as it was, and nothing 
   eq(listing(T.scratch .. "/doctor"):find("tmp-", 1, true), nil, "the run's own files are gone")
   eq(listing(T.scratch .. "/doctor"):find("open-project", 1, true), nil, "and the safety copy of the project")
   eq(#asked > 0, true, "the person was asked things")
-  eq(daw.transport.recording, false, "not recording")
-  eq(daw.transport.playing, false, "not playing")
+  eq(paw.transport.recording, false, "not recording")
+  eq(paw.transport.playing, false, "not playing")
 end)
 
 test("the doctor's dropout check runs, reports its numbers and takes its file away", function()
   load()
   null_backend()
   fresh()
-  local streamed = daw.opt.media_stream
-  daw.opt.media_stream = 2
+  local streamed = paw.opt.media_stream
+  paw.opt.media_stream = 2
   local r = run({ only = { "dropouts" }, unattended = true })
-  daw.opt.media_stream = streamed
+  paw.opt.media_stream = streamed
   local c = result(r, "dropouts")
   eq(c.status ~= "fail", true, c.summary)
   local joined = table.concat(c.lines, "\n")
@@ -312,8 +312,8 @@ test("cancelling a doctor run mid-question ends it, cleans up and writes the rep
   load()
   null_backend()
   fresh()
-  daw.add_track({ name = "Keep" })
-  daw.flush()
+  paw.add_track({ name = "Keep" })
+  paw.flush()
   api.undo_checkpoint()
   local before = state()
   table.insert(doctor.checks, {
@@ -327,11 +327,11 @@ test("cancelling a doctor run mid-question ends it, cleans up and writes the rep
   table.insert(doctor.checks, { id = "never", name = "Never", run = function() return "ok", "ran" end })
   local started = doctor.start({ only = { "asks", "never" } })
   local limit = api.now() + 5000
-  while not started.prompt and api.now() < limit do daw.wait(20) end
+  while not started.prompt and api.now() < limit do paw.wait(20) end
   eq(started.prompt ~= nil, true, "the question is shown")
   eq(doctor.answer("x"), false, "a key that is not an answer is not one")
   eq(doctor.cancel(), true, "cancelled")
-  while started.running and api.now() < limit + 5000 do daw.wait(20) end
+  while started.running and api.now() < limit + 5000 do paw.wait(20) end
   table.remove(doctor.checks)
   table.remove(doctor.checks)
   eq(started.running, false, "ended")
@@ -406,23 +406,23 @@ test("the doctor's page lists the checks and the question being asked", function
   load()
   null_backend()
   fresh()
-  daw.ui.open("doctor", { title = "Doctor", width = 100, height = 30 })
-  daw.flush()
+  paw.ui.open("doctor", { title = "Doctor", width = 100, height = 30 })
+  paw.flush()
   local screen = table.concat(api.ui_snapshot(110, 34), "\n")
   eq(screen:find("The sound system", 1, true) ~= nil, true, "the list is on the page")
   eq(screen:find("Plugins", 1, true) ~= nil, true, "all of it")
-  daw.ui.close()
-  daw.cmd("doctor")
-  eq(daw.ui.focused, "doctor", "with no terminal, the page has the keyboard")
-  eq(daw.ui.visible("doctor") and require("daw.canvas").titles.doctor, "Doctor", "docked for a graphical frontend, under its title")
-  daw.cmd("doctor.close")
-  daw.flush()
-  eq(daw.ui.float, nil, "closed")
-  eq(daw.ui.focused, "arrange", "the keyboard is back")
-  eq(require("daw.canvas").open_views.doctor, nil, "and the window with it")
+  paw.ui.close()
+  paw.cmd("doctor")
+  eq(paw.ui.focused, "doctor", "with no terminal, the page has the keyboard")
+  eq(paw.ui.visible("doctor") and require("paw.canvas").titles.doctor, "Doctor", "docked for a graphical frontend, under its title")
+  paw.cmd("doctor.close")
+  paw.flush()
+  eq(paw.ui.float, nil, "closed")
+  eq(paw.ui.focused, "arrange", "the keyboard is back")
+  eq(require("paw.canvas").open_views.doctor, nil, "and the window with it")
 end)
 
-test("daw doctor runs from the shell without the extension in the configuration", function()
+test("paw doctor runs from the shell without the extension in the configuration", function()
   local out = T.scratch .. "/shell-out.txt"
   local state = T.scratch .. "/shell-state"
   os.execute("mkdir -p '" .. state .. "'")
@@ -434,18 +434,18 @@ test("daw doctor runs from the shell without the extension in the configuration"
     state, state, out))
   local report = text(out)
   eq(code == 0 or code == true, true, "it exits with 0 when nothing failed")
-  eq(report:find("# daw doctor", 1, true) ~= nil, true, "a report on the standard output")
+  eq(report:find("# paw doctor", 1, true) ~= nil, true, "a report on the standard output")
   eq(report:find("The sound system", 1, true) ~= nil, true, "with the checks asked for")
   eq(report:find("Round trip", 1, true), nil, "and none that needs a person")
-  eq(listing(state .. "/daw/doctor"):find(".md", 1, true) ~= nil, true, "and one written to the state directory")
+  eq(listing(state .. "/paw/doctor"):find(".md", 1, true) ~= nil, true, "and one written to the state directory")
 end)
 
 test("the doctor's window paints the checks and its buttons answer the question", function()
   load()
   null_backend()
   fresh()
-  daw.cmd("doctor")
-  local canvas = require("daw.canvas")
+  paw.cmd("doctor")
+  local canvas = require("paw.canvas")
   local words = {}
   for _, op in ipairs(canvas.paint("doctor", 900, 560).ops) do
     if op[1] == "t" then words[#words + 1] = op[4] end
@@ -455,15 +455,15 @@ test("the doctor's window paints the checks and its buttons answer the question"
   table.insert(doctor.checks, { id = "asks", name = "Asks", run = function(ctx) return ctx:ask("Heard it?") == "y" and "ok" or "fail", "" end })
   local started = doctor.start({ only = { "asks" } })
   local limit = api.now() + 5000
-  while not started.prompt and api.now() < limit do daw.wait(20) end
+  while not started.prompt and api.now() < limit do paw.wait(20) end
   local at
   for _, op in ipairs(canvas.paint("doctor", 900, 560).ops) do
     if op[1] == "t" and op[4]:find("yes  (y)", 1, true) then at = op end
   end
   eq(at ~= nil, true, "a button for yes")
   canvas.pointer("doctor", { kind = "down", button = "left", x = at[2] + 2, y = at[3] + 2 })
-  while started.running and api.now() < limit + 5000 do daw.wait(20) end
+  while started.running and api.now() < limit + 5000 do paw.wait(20) end
   table.remove(doctor.checks)
   eq(result(started, "asks").status, "ok", "a click on the button answered")
-  daw.cmd("doctor.close")
+  paw.cmd("doctor.close")
 end)

@@ -1,4 +1,4 @@
--- MIDI LSP's dialect, as an adapter for `daw.lsp`: its `initialize` with a
+-- MIDI LSP's dialect, as an adapter for `paw.lsp`: its `initialize` with a
 -- protocol version and the configuration, `midi/didOpen|didChange|didClose`
 -- with the clip subject's document (MIDI LSP's take snapshot), and its
 -- answers (`midi/publishDiagnostics` in ticks and note ids,
@@ -6,8 +6,8 @@
 -- `midi/velocity`, `midi/cc`) turned into this program's locations and
 -- workspace edits. Any server that speaks MIDI LSP's protocol uses it with
 -- `adapter = "midi-lsp"`.
-local api = daw.api
-local A = daw.address
+local api = paw.api
+local A = paw.address
 
 local PPQ = 960
 local function beats(ticks) return (tonumber(ticks) or 0) / PPQ end
@@ -19,7 +19,7 @@ local M = { handlers = {} }
 
 -- Protocol version 2; the engine takes its rule configuration at initialize.
 function M.initialize(_, offer)
-  return daw.util.merge(offer, { protocolVersion = 2 })
+  return paw.util.merge(offer, { protocolVersion = 2 })
 end
 
 -- Version 2's capabilities, or version 1's booleans read as them.
@@ -42,7 +42,7 @@ function M.capabilities(_, result)
 end
 
 function M.initialized(_, result)
-  if (tonumber(result.protocolVersion) or 1) >= 2 then return "initialized", require("daw.lsp.rpc").object() end
+  if (tonumber(result.protocolVersion) or 1) >= 2 then return "initialized", require("paw.lsp.rpc").object() end
 end
 
 -- Requests: the engine answers them, and refuses a document it cannot read.
@@ -81,7 +81,7 @@ M.handlers["midi/publishDiagnostics"] = function(client, params, lsp)
   lsp.publish(client, doc, list)
 end
 
--- Chords and keys in project beats, as `daw.harmony` has them.
+-- Chords and keys in project beats, as `paw.harmony` has them.
 M.handlers["midi/publishAnalysis"] = function(client, params, lsp)
   local doc = lsp.document(client, params.uri)
   if not doc or (params.hash and params.hash ~= doc.key) then return end
@@ -172,12 +172,12 @@ end
 -- Notes after `at`; with a selection, a line under it and velocities for
 -- it; with a controller, a curve for it; each as the server's lanes allow.
 function M.complete(client, doc, ctx)
-  local lsp = daw.lsp
+  local lsp = paw.lsp
   local base = { uri = doc.uri, hash = doc.key }
   local asks = {}
   if lsp.has(client, "completion", "notes") then
     asks[#asks + 1] = { method = "midi/completion",
-      params = daw.util.merge(base, { position = tick(ctx.at or 0), count = ctx.count or 3, mode = ctx.mode or "auto" }),
+      params = paw.util.merge(base, { position = tick(ctx.at or 0), count = ctx.count or 3, mode = ctx.mode or "auto" }),
       translate = function(result)
         local out = {}
         for _, item in ipairs(result.items or {}) do
@@ -188,14 +188,14 @@ function M.complete(client, doc, ctx)
   end
   local selected = ctx.selection and ids_of(ctx.clip, ctx.selection)
   if selected and #selected > 0 and lsp.has(client, "completion", "line") then
-    asks[#asks + 1] = { method = "midi/line", params = daw.util.merge(base, { notes = selected }), translate = function(result)
+    asks[#asks + 1] = { method = "midi/line", params = paw.util.merge(base, { notes = selected }), translate = function(result)
       local out = {}
       for _, item in ipairs(result.items or {}) do out[#out + 1] = { label = item.label or "line", detail = item.kind, notes = ghost_notes(item.notes) } end
       return out
     end }
   end
   if selected and #selected > 0 and lsp.has(client, "completion", "velocity") then
-    asks[#asks + 1] = { method = "midi/velocity", params = daw.util.merge(base, { notes = selected }), translate = function(result)
+    asks[#asks + 1] = { method = "midi/velocity", params = paw.util.merge(base, { notes = selected }), translate = function(result)
       local out = {}
       for _, item in ipairs(result.items or {}) do
         local velocities = {}
@@ -209,7 +209,7 @@ function M.complete(client, doc, ctx)
     end }
   end
   if ctx.controller and lsp.has(client, "completion", "cc") then
-    asks[#asks + 1] = { method = "midi/cc", params = daw.util.merge(base, { cc = ctx.controller }), translate = function(result)
+    asks[#asks + 1] = { method = "midi/cc", params = paw.util.merge(base, { cc = ctx.controller }), translate = function(result)
       local out = {}
       for _, item in ipairs(result.items or {}) do
         local controls = {}
@@ -224,5 +224,5 @@ function M.complete(client, doc, ctx)
   return asks
 end
 
-daw.lsp.adapter("midi-lsp", M)
+paw.lsp.adapter("midi-lsp", M)
 return M

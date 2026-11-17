@@ -3,7 +3,7 @@
 -- over the changes inside a track, a clip or a device that folds them away.
 local projdiff = require("projdiff")
 local diff = projdiff.diff
-local api = daw.api
+local api = paw.api
 
 local view = {
   title = "Project diff",
@@ -48,7 +48,7 @@ function view:refresh(keep)
       if row.node == keep then self.sel = i end
     end
   end
-  self.sel = daw.util.clamp(self.sel, 1, math.max(1, #self.rows))
+  self.sel = paw.util.clamp(self.sel, 1, math.max(1, #self.rows))
 end
 
 local function selected() return view.rows[view.sel] end
@@ -57,7 +57,7 @@ function view:render(buf)
   local height = buf.height - 2
   if self.sel <= self.scroll then self.scroll = self.sel - 1 end
   if self.sel > self.scroll + height then self.scroll = self.sel - height end
-  buf:text(1, 0, daw.util.fit(self.title_text, buf.width - 2), "HelpSection")
+  buf:text(1, 0, paw.util.fit(self.title_text, buf.width - 2), "HelpSection")
   if #self.rows == 0 then buf:text(1, 2, "no difference", "Dim") end
   for r = 0, height - 1 do
     local row = self.rows[r + 1 + self.scroll]
@@ -71,7 +71,7 @@ function view:render(buf)
       local style = at and "Selected" or (n.change and STYLES[n.sign] or (#n.children > 0 and "Title" or "Dim"))
       local text = n.sign .. " " .. n.text
       if #n.children > 0 and not is_open(n) then text = text .. "  (" .. #n.children .. ")" end
-      buf:text(x + 2, r + 1, daw.util.fit(text, math.max(1, buf.width - x - 3)), style)
+      buf:text(x + 2, r + 1, paw.util.fit(text, math.max(1, buf.width - x - 3)), style)
     end
   end
   buf:text(1, buf.height - 1, "j/k move  Enter go  za fold  zR zM all  ]c [c change  Q quickfix  q", "Dim")
@@ -107,14 +107,14 @@ end
 local function go()
   local row = selected()
   if not row or not row.node.address then return end
-  local qf = daw.qf
-  daw.ui.close()
+  local qf = paw.qf
+  paw.ui.close()
   qf.go({ location = { uri = row.node.address } })
 end
 
 local function to_quickfix()
   local n = projdiff.to_quickfix(view.tree, view.title_text)
-  daw.notify(n .. " changes are in the quickfix list (`:copen`, `]q`)")
+  paw.notify(n .. " changes are in the quickfix list (`:copen`, `]q`)")
 end
 
 local keys = {
@@ -128,8 +128,8 @@ local keys = {
   ["<CR>"] = go,
   ["<Tab>"] = function() local r = selected() if r then toggle(r.node) view:refresh(r.node) end end,
   ["Q"] = to_quickfix,
-  ["q"] = function() daw.ui.close() end,
-  ["<Esc>"] = function() daw.ui.close() end,
+  ["q"] = function() paw.ui.close() end,
+  ["<Esc>"] = function() paw.ui.close() end,
 }
 
 -- Two keys: `za` `zo` `zc` `zR` `zM`, `]c` `[c`, `gq`.
@@ -156,7 +156,7 @@ function view:on_key(key)
   elseif keys[key] then
     keys[key]()
   end
-  self.sel = daw.util.clamp(self.sel, 1, math.max(1, #self.rows))
+  self.sel = paw.util.clamp(self.sel, 1, math.max(1, #self.rows))
   api.ui_redraw()
 end
 
@@ -171,11 +171,11 @@ function view:on_mouse(event)
       self:refresh(row.node)
     end
   end
-  self.sel = daw.util.clamp(self.sel, 1, math.max(1, #self.rows))
+  self.sel = paw.util.clamp(self.sel, 1, math.max(1, #self.rows))
   api.ui_redraw()
 end
 
-daw.ui.view("projdiff", view)
+paw.ui.view("projdiff", view)
 
 --- Show the changes from one version of a project to another.
 function view.open(tree, title)
@@ -183,7 +183,7 @@ function view.open(tree, title)
   view.folded, view.sel, view.scroll, view.pending = {}, 1, 0, ""
   default_folds(tree)
   view:refresh()
-  daw.ui.open("projdiff", { title = "Project diff", width = 110, height = 32 })
+  paw.ui.open("projdiff", { title = "Project diff", width = 110, height = 32 })
 end
 
 return view

@@ -1,9 +1,9 @@
 -- Working with devices the way one does all day: adding them by hand,
--- presets, favourites, wet/dry, controller learn. `daw.fx`.
-local api = daw.api
+-- presets, favourites, wet/dry, controller learn. `paw.fx`.
+local api = paw.api
 local M = {}
 
-daw.option.define("editor_on_add", true) -- a plugin added by hand opens its own window
+paw.option.define("editor_on_add", true) -- a plugin added by hand opens its own window
 
 -- Adding by hand ----------------------------------------------------------------
 
@@ -12,13 +12,13 @@ daw.option.define("editor_on_add", true) -- a plugin added by hand opens its own
 --- kernel nobody is looking at are not.
 function M.interactive()
   if api.ui_attached() then return true end
-  local polled = daw.frontend.polled
+  local polled = paw.frontend.polled
   return polled ~= nil and api.now() - polled < 5000
 end
 
 --- Add a device as a person does, from the device picker, the window's
 --- "Add a device" box or `:device.add`: like `track:add_device`, and then
---- a plugin with a window of its own shows it (`daw.opt.editor_on_add`), as
+--- a plugin with a window of its own shows it (`paw.opt.editor_on_add`), as
 --- REAPER does. Some instruments make no sound until it has been open once.
 function M.add(track, kind, opts)
   local device = M.place(track, kind, opts)
@@ -34,7 +34,7 @@ function M.place(track, kind, opts)
   local default = M.default_preset(kind)
   if default then
     local ok, err = pcall(M.load, device, default)
-    if not ok then daw.notify("the default preset `" .. default .. "` did not load: " .. tostring(err):match("^[^\n]*"), "warn") end
+    if not ok then paw.notify("the default preset `" .. default .. "` did not load: " .. tostring(err):match("^[^\n]*"), "warn") end
   end
   return device
 end
@@ -43,11 +43,11 @@ end
 --- its window shown.
 function M.added(device, kind, opts)
   M.note_used(kind, opts and opts.query)
-  if daw.opt.editor_on_add and M.interactive() and device.editor == "closed" then
+  if paw.opt.editor_on_add and M.interactive() and device.editor == "closed" then
     local ok, err = pcall(api.device_editor, device.id, true)
-    if not ok then daw.notify(tostring(err):match("^[^\n]*"), "warn") end
+    if not ok then paw.notify(tostring(err):match("^[^\n]*"), "warn") end
   end
-  daw.emit("device.added_by_hand", { id = device.id, kind = kind })
+  paw.emit("device.added_by_hand", { id = device.id, kind = kind })
   return device
 end
 
@@ -77,11 +77,11 @@ function M.set_gain(device, db) api.device_set_param(id_of(device), "fx_gain", d
 --- `{ device = id, param = key, from = "editor" | "host" }`.
 M.last_touched = nil
 
-daw.on("param.touched", function(e)
+paw.on("param.touched", function(e)
   M.last_touched = { device = e.device, param = e.param, from = e.from }
   -- One moved in the plugin's own window shows itself in the device panel.
   if e.from == "editor" then
-    local panel = daw.ui.views.devices
+    local panel = paw.ui.views.devices
     for i, row in ipairs(panel:rows()) do
       if row.param and row.device.id == e.device and row.param.key == e.param then panel.row = i end
     end
@@ -143,7 +143,7 @@ end
 
 --- Put the device panel's row on one parameter of a device.
 function M.focus_param(id, key)
-  local panel = daw.ui.views.devices
+  local panel = paw.ui.views.devices
   for i, row in ipairs(panel:rows()) do
     if row.param and row.device.id == id and row.param.key == key then panel.row = i end
   end
@@ -159,11 +159,11 @@ function M.pick_param(device)
   local shown = {}
   for _, k in ipairs(shown_of(d)) do shown[k] = true end
   for _, p in ipairs(d.param_info) do items[#items + 1] = p end
-  daw.pick({
+  paw.pick({
     title = "Parameters · " .. d.name,
     items = items,
     format = function(p)
-      return string.format("%s %-34s %s", shown[p.key] and "●" or " ", p.name, daw.frontend.format_value(p, d.params[p.key]))
+      return string.format("%s %-34s %s", shown[p.key] and "●" or " ", p.name, paw.frontend.format_value(p, d.params[p.key]))
     end,
     on_choose = function(p)
       if not M.host_params[p.key] then M.show_param(d.id, p.key) end
@@ -182,13 +182,13 @@ end
 -- state (base64) and every parameter's value. It loads into the same kind
 -- of device in any project. Factory presets are the plugin's own (CLAP
 -- preset discovery, `.vstpreset` files, LV2 presets) or, for built-in
--- devices, the tables in `daw/device_presets.lua` (also `daw.params.presets`).
+-- devices, the tables in `paw/device_presets.lua` (also `paw.params.presets`).
 
-M.factory = require("daw.device_presets") -- the built-in devices' presets, by kind
+M.factory = require("paw.device_presets") -- the built-in devices' presets, by kind
 M.menu_size = 16 -- presets in the window's menu around the one loaded
 
 function M.presets_dir()
-  local dir = daw.opt.presets_dir
+  local dir = paw.opt.presets_dir
   if dir and dir ~= "" then return dir end
   return api.env().data_dir .. "/presets"
 end
@@ -208,7 +208,7 @@ local function kind_dir(kind) return M.presets_dir() .. "/" .. safe(kind) end
 local function read_json(path)
   local file = io.open(path, "r")
   if not file then return nil end
-  local data = daw.json.decode(file:read("*a"))
+  local data = paw.json.decode(file:read("*a"))
   file:close()
   return data
 end
@@ -217,12 +217,12 @@ local function write_json(path, data)
   os.execute("mkdir -p '" .. (path:match("^(.*)/[^/]*$")):gsub("'", "'\\''") .. "'")
   local file = io.open(path, "w")
   if not file then error("cannot write " .. path, 3) end
-  file:write(daw.json.encode(data, true), "\n")
+  file:write(paw.json.encode(data, true), "\n")
   file:close()
 end
 
 local function as_device(device)
-  if type(device) == "number" then return daw.device(device) end
+  if type(device) == "number" then return paw.device(device) end
   return device
 end
 
@@ -242,7 +242,7 @@ function M.user_presets(kind)
 end
 
 --- The device's own presets: a plugin's, or a built-in device's from
---- `daw.fx.factory`. `{ name, category, id }`, in the order the plugin gives.
+--- `paw.fx.factory`. `{ name, category, id }`, in the order the plugin gives.
 function M.factory_presets(device)
   device = as_device(device)
   local d = device:get()
@@ -253,7 +253,7 @@ function M.factory_presets(device)
   end
   local ok, answer = pcall(api.device_call, d.id, "presets", "")
   if not ok then return {} end
-  return daw.json.decode(answer) or {}
+  return paw.json.decode(answer) or {}
 end
 
 --- Every preset of the device: the user's first, then the factory's.
@@ -310,7 +310,7 @@ local function find(device, preset)
 end
 
 --- Load a preset into the device by name (the user's first), or one from
---- `daw.fx.presets(device)`. One undo step.
+--- `paw.fx.presets(device)`. One undo step.
 function M.load(device, preset)
   device = as_device(device)
   local p = find(device, preset)
@@ -328,14 +328,14 @@ function M.load(device, preset)
     for key, value in pairs(type(d.overrides) == "table" and d.overrides or {}) do params[key] = value end
     for key, value in pairs(p.params) do
       local info = by_key[key] or error("preset `" .. p.name .. "` sets `" .. key .. "`, which " .. d.kind .. " does not have", 2)
-      params[key] = daw.params.preset_value(info, value)
+      params[key] = paw.params.preset_value(info, value)
     end
     api.device_load(d.id, { name = p.name, params = params })
   else
     api.device_load(d.id, { name = p.name, factory = p.id })
   end
   api.undo_label("preset " .. p.name)
-  daw.emit("preset.loaded", { id = d.id, name = p.name })
+  paw.emit("preset.loaded", { id = d.id, name = p.name })
   return p
 end
 
@@ -432,7 +432,7 @@ function M.device_list(wanted)
   local lib = M.library()
   local recency = {}
   for i, kind in ipairs(lib.recent) do recency[kind] = i end
-  local out = daw.device_types()
+  local out = paw.device_types()
   for _, info in ipairs(out) do
     info.favourite = lib.favourites[info.kind] == true
     info.recent = recency[info.kind]
@@ -475,10 +475,10 @@ end
 --- the rest (a track with an instrument, the master, a track of audio).
 function M.preferred(track_id)
   if not track_id or track_id == 0 then return "effect" end
-  local track = daw.track(track_id)
+  local track = paw.track(track_id)
   if not track then return "effect" end
   local category = {}
-  for _, info in ipairs(daw.device_types()) do category[info.kind] = info.category end
+  for _, info in ipairs(paw.device_types()) do category[info.kind] = info.category end
   for _, device in ipairs(track:devices()) do
     if category[device:get().kind] == "instrument" then return "effect" end
   end
@@ -506,9 +506,9 @@ function M.rank(info, query, line, wanted)
   local rest = table.concat(words, " ")
   local score = 0
   if rest ~= "" then
-    score = daw.pick.match(rest, line or M.device_line(info), false)
+    score = paw.pick.match(rest, line or M.device_line(info), false)
     if not score then return nil end
-    local in_name = daw.pick.match(rest, info.name, false)
+    local in_name = paw.pick.match(rest, info.name, false)
     if in_name then score = score + 1000 + in_name end
     -- The whole name, or its start, typed: that one first.
     local name, typed = info.name:lower(), rest:lower()
@@ -553,8 +553,8 @@ end
 --- The device the preset commands act on: the one selected in the device
 --- panel (its row stays where it was when another view has the keys).
 function M.target()
-  local device = daw.ui.views.devices:selected()
-  if not device then daw.notify("no device here: add one with `a` in the device panel", "warn") end
+  local device = paw.ui.views.devices:selected()
+  if not device then paw.notify("no device here: add one with `a` in the device panel", "warn") end
   return device
 end
 
@@ -574,31 +574,31 @@ function M.pick(device)
   local d = device:get()
   local list = M.presets(device)
   local current, default = M.current(device), M.default_preset(d.kind)
-  daw.pick({
+  paw.pick({
     title = "Presets · " .. d.name,
     items = list,
     empty = "No presets for " .. d.name .. " yet. `:preset.save <name>` keeps how it is now.",
     format = function(p) return preset_line(p, current, default) end,
     on_choose = function(p)
       local ok, err = pcall(M.load, device, p)
-      if not ok then return daw.notify(clean(err), "error") end
-      daw.notify(d.name .. ": " .. p.name)
+      if not ok then return paw.notify(clean(err), "error") end
+      paw.notify(d.name .. ": " .. p.name)
     end,
     -- Loaded as a trial and heard with what the track plays around the
     -- cursor; Escape puts the device back as it was.
     audition_key = "presets",
     audition = function(p)
-      daw.audition.try(function() M.load(device, p) end)
+      paw.audition.try(function() M.load(device, p) end)
       return {
-        label = p.name .. " · " .. daw.audition.through(d.track),
-        keep = function() daw.notify(d.name .. ": " .. p.name) end,
+        label = p.name .. " · " .. paw.audition.through(d.track),
+        keep = function() paw.notify(d.name .. ": " .. p.name) end,
       }
     end,
     actions = {
       ["<C-s>"] = { desc = "default for new ones", fn = function(p)
         if not p then return end
         M.set_default(d.kind, p.name)
-        daw.notify(p.name .. " is what new " .. d.name .. " devices start from")
+        paw.notify(p.name .. " is what new " .. d.name .. " devices start from")
       end },
     },
     preview = function(p)
@@ -611,42 +611,42 @@ function M.pick(device)
 end
 
 function M.setup()
-  local command = daw.command
+  local command = paw.command
   local function with_device(fn) return function(ctx)
     local device = M.target()
     if not device then return end
     local ok, err = pcall(fn, device, ctx)
-    if not ok then daw.notify(clean(err), "error") end
+    if not ok then paw.notify(clean(err), "error") end
   end end
   command("preset", with_device(function(device, ctx)
     local name = ctx.args[1] and table.concat(ctx.args, " ")
     if not name then return M.pick(device) end
     local p = M.load(device, name)
-    daw.notify(device:get().name .. ": " .. p.name)
+    paw.notify(device:get().name .. ": " .. p.name)
   end), { desc = "Load a preset into the device: `preset Soft pad`; with no name, choose in a picker (yours first, then the factory's)" })
   command("preset.save", with_device(function(device, ctx)
     local function save(name)
       if not name or name == "" then return end
       local ok, path = pcall(M.save, device, name)
-      if not ok then return daw.notify(clean(path), "error") end
-      daw.notify("saved the preset “" .. name .. "” (" .. path .. ")")
+      if not ok then return paw.notify(clean(path), "error") end
+      paw.notify("saved the preset “" .. name .. "” (" .. path .. ")")
     end
     if ctx.args[1] then return save(table.concat(ctx.args, " ")) end
-    daw.ui.input({ prompt = "Preset name: ", text = M.current(device) or "" }, save)
+    paw.ui.input({ prompt = "Preset name: ", text = M.current(device) or "" }, save)
   end), { desc = "Save the device as it is now as a preset of yours: `preset.save Warm`" })
   command("preset.next", with_device(function(device, ctx)
     local p = M.step(device, ctx.count or 1)
-    daw.notify(device:get().name .. ": " .. p.name)
+    paw.notify(device:get().name .. ": " .. p.name)
   end), { desc = "Load the device's next preset" })
   command("preset.prev", with_device(function(device, ctx)
     local p = M.step(device, -(ctx.count or 1))
-    daw.notify(device:get().name .. ": " .. p.name)
+    paw.notify(device:get().name .. ": " .. p.name)
   end), { desc = "Load the device's previous preset" })
   command("preset.default", with_device(function(device, ctx)
     local kind, name = device.kind, ctx.args[1] and table.concat(ctx.args, " ") or M.current(device)
     if name == "none" then
       M.set_default(kind, nil)
-      return daw.notify("new " .. device:get().name .. " devices start as the plugin makes them")
+      return paw.notify("new " .. device:get().name .. " devices start as the plugin makes them")
     end
     if not name then
       -- Nothing loaded yet: keep the device as it is, and start from that.
@@ -654,13 +654,13 @@ function M.setup()
       M.save(device, name)
     end
     M.set_default(kind, name)
-    daw.notify("new " .. device:get().name .. " devices start from “" .. name .. "”")
+    paw.notify("new " .. device:get().name .. " devices start from “" .. name .. "”")
   end), { desc = "New devices of this kind start from this preset (or the one named); `preset.default none` stops that" })
   command("preset.delete", with_device(function(device, ctx)
     local name = ctx.args[1] and table.concat(ctx.args, " ") or M.current(device)
-    if not name then return daw.notify("usage: preset.delete <name>", "warn") end
+    if not name then return paw.notify("usage: preset.delete <name>", "warn") end
     M.delete(device.kind, name)
-    daw.notify("deleted the preset “" .. name .. "”")
+    paw.notify("deleted the preset “" .. name .. "”")
   end), { desc = "Delete one of your presets of this device: `preset.delete Warm`" })
 
   command("param", with_device(function(device) M.pick_param(device) end),
@@ -668,16 +668,16 @@ function M.setup()
   command("param.last", function(ctx)
     local last = M.last_touched
     if not (last and pcall(api.device_get, last.device)) then
-      return daw.notify("no parameter touched yet: move one in a plugin's window, or here", "warn")
+      return paw.notify("no parameter touched yet: move one in a plugin's window, or here", "warn")
     end
     local d = api.device_get(last.device)
-    daw.cursor.set_track(d.track)
-    daw.ui.focus("devices")
+    paw.cursor.set_track(d.track)
+    paw.ui.focus("devices")
     M.focus_param(last.device, last.param)
     local what = ctx.args[1]
     if what == "automate" then
-      daw.device(last.device):automate(last.param)
-      daw.notify("automating " .. d.name .. " · " .. last.param)
+      paw.device(last.device):automate(last.param)
+      paw.notify("automating " .. d.name .. " · " .. last.param)
     elseif what == "learn" and M.learn then
       M.learn(last.device, last.param)
     elseif what == "show" then
@@ -685,43 +685,43 @@ function M.setup()
     end
   end, { desc = "Go to the parameter last touched; `param.last automate`, `param.last learn` or `param.last show` act on it" })
 
-  local function dmap(lhs, rhs, desc) daw.keymap.set(lhs, rhs, { view = "devices", desc = desc }) end
+  local function dmap(lhs, rhs, desc) paw.keymap.set(lhs, rhs, { view = "devices", desc = desc }) end
   dmap("f", "param", "Find a parameter by name")
   dmap("t", "param.last", "The parameter last touched")
 
   --- A track by name, by its place in the list, or by id.
   local function track_named(text)
     local n = tonumber(text)
-    local rows = daw.groups.rows()
-    if n and rows[n] then return daw.track(rows[n]) end
-    return daw.track(text)
+    local rows = paw.groups.rows()
+    if n and rows[n] then return paw.track(rows[n]) end
+    return paw.track(text)
   end
   local function to_track(copy) return function(ctx)
     local device = M.target()
     if not device then return end
     local name = table.concat(ctx.args, " ")
     local track = name ~= "" and track_named(name)
-    if not track then return daw.notify("usage: device." .. (copy and "copy_to" or "move_to") .. " <track name or number>", "warn") end
+    if not track then return paw.notify("usage: device." .. (copy and "copy_to" or "move_to") .. " <track name or number>", "warn") end
     if copy then
-      daw.restore_device(device:snapshot(), track)
+      paw.restore_device(device:snapshot(), track)
     else
       device:move(#track:devices() + 1, track)
     end
-    daw.notify(device:get().name .. (copy and " copied to " or " moved to ") .. track.name)
+    paw.notify(device:get().name .. (copy and " copied to " or " moved to ") .. track.name)
   end end
   command("device.copy_to", to_track(true), { desc = "Copy the device, with its state, to the end of another track: `device.copy_to Bass`, `device.copy_to 3`" })
   command("device.move_to", to_track(false), { desc = "Move the device to the end of another track: `device.move_to Bass`" })
 
   -- What the window's device card does: the same, for the device clicked.
-  local A = daw.frontend.act
+  local A = paw.frontend.act
   --- A card dropped on a track's header: the device moves there, or with
   --- Ctrl a copy of it goes there.
   function A.drop_device(id, track, copy)
-    local device = daw.device(id)
+    local device = paw.device(id)
     local d = device:get()
-    local target = daw.track(track)
+    local target = paw.track(track)
     if copy then
-      daw.restore_device(device:snapshot(), target)
+      paw.restore_device(device:snapshot(), target)
     elseif d.track ~= track then
       device:move(#target:devices() + 1, target)
     end
@@ -729,25 +729,25 @@ function M.setup()
   --- A card dropped in the list: before the card at `index` (from 1; one
   --- past the end for last), or a copy there with Ctrl.
   function A.place_device(id, index, copy)
-    local device = daw.device(id)
+    local device = paw.device(id)
     local d = device:get()
     if copy then
-      daw.restore_device(device:snapshot(), d.track, index)
+      paw.restore_device(device:snapshot(), d.track, index)
     else
       device:move(d.index < index and index - 1 or index)
     end
   end
-  local A = daw.frontend.act
+  local A = paw.frontend.act
   function A.preset_step(id, step)
     local ok, err = pcall(M.step, id, step)
-    if not ok then daw.notify(clean(err), "warn") end
+    if not ok then paw.notify(clean(err), "warn") end
   end
   --- The names in the card's preset menu: the user's presets and those
   --- around the one loaded, at most `menu_size`, then "All presets…" when
   --- there are more (a plugin may have thousands).
   local menu_map = {}
   function A.preset_menu(id)
-    local device = daw.device(id)
+    local device = paw.device(id)
     local current, default = M.current(device), M.default_preset(device.kind)
     local list = M.presets(device)
     local at = 1
@@ -776,13 +776,13 @@ function M.setup()
     local p = M.presets(id)[at]
     if not p then return end
     local ok, err = pcall(M.load, id, p)
-    if not ok then daw.notify(clean(err), "error") end
+    if not ok then paw.notify(clean(err), "error") end
   end
   --- The window's "Add a device" box: the devices matching what is typed,
   --- each as the line to show and its kind.
   function A.search_devices(query)
     local out = {}
-    for i, info in ipairs(M.search(query, 40, M.preferred(daw.cursor.track_id()))) do
+    for i, info in ipairs(M.search(query, 40, M.preferred(paw.cursor.track_id()))) do
       out[i] = { kind = info.kind, line = (info.favourite and "★ " or "") .. info.name
         .. (info.vendor ~= "" and "  · " .. info.vendor or "") .. "  · " .. info.format .. " " .. info.category }
     end
@@ -792,13 +792,13 @@ function M.setup()
   --- A preset command, on the device clicked: it is selected in the panel first.
   function A.device_command(id, line)
     M.select(id)
-    daw.commands.exec(line)
+    paw.commands.exec(line)
   end
 end
 
 --- Put the device panel's row on a device of the cursor track.
 function M.select(id)
-  local panel = daw.ui.views.devices
+  local panel = paw.ui.views.devices
   for i, row in ipairs(panel:rows()) do
     if row.device.id == id and not row.param and not row.picture then panel.row = i end
   end

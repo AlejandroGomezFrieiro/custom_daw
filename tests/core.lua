@@ -2,8 +2,8 @@
 -- fades, sends before the fader, delay compensation.
 local T = ...
 local test, eq, near, fresh, render = T.test, T.eq, T.near, T.fresh, T.render
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 --- Write a 16-bit WAV file from one list of samples per channel.
 local function write_wav(path, left, right, rate)
@@ -55,7 +55,7 @@ T.write_wav, T.samples = write_wav, samples
 test("audio clips fade in and out, and a cut edge does not click", function()
   fresh()
   local file = steady("steady", 4, 0.5)
-  local t = daw.add_track()
+  local t = paw.add_track()
   -- At 120 bpm a beat is half a second, 24000 frames.
   local clip = t:add_clip({ file = file, start = 0, length = 4 })
   local s = samples(render({ tail = 0, bits = 16 }))
@@ -85,21 +85,21 @@ test("audio clips fade in and out, and a cut edge does not click", function()
 
   -- Fades survive saving, and cutting a clip keeps each with its own edge.
   clip.offset, clip.length, clip.fade_in, clip.fade_out = 0, 4, 1, 1
-  local path = daw.project.save(T.scratch .. "/fades.json")
+  local path = paw.project.save(T.scratch .. "/fades.json")
   fresh()
-  daw.project.load(path)
-  t = daw.tracks()[1]
+  paw.project.load(path)
+  t = paw.tracks()[1]
   eq(t:clips()[1].fade_out, 1, "saved and loaded")
-  daw.cursor.set_track(t)
-  daw.cursor.set_beat(2)
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc>S")
+  paw.cursor.set_track(t)
+  paw.cursor.set_beat(2)
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc>S")
   local a, b = t:clips()[1], t:clips()[2]
   eq(a.fade_in .. "," .. a.fade_out .. " " .. b.fade_in .. "," .. b.fade_out, "1,0 0,1", "a split keeps the fades at the outer edges")
 
-  daw.commands.exec("clip.fade 0")
-  daw.cursor.set_beat(0)
-  daw.commands.exec("clip.crossfade 1")
+  paw.commands.exec("clip.fade 0")
+  paw.cursor.set_beat(0)
+  paw.commands.exec("clip.crossfade 1")
   a, b = t:clips()[1], t:clips()[2]
   eq(a.length .. " " .. a.fade_out .. " " .. b.fade_in, "3 1 1", "a crossfade runs the first clip on under the second")
   s = samples(render({ tail = 0, bits = 16 }))
@@ -110,8 +110,8 @@ end)
 test("a send can be taken before the fader", function()
   fresh()
   local file = steady("level", 2, 0.5)
-  local source = daw.add_track({ name = "Source" })
-  local bus = daw.add_track({ name = "Bus" })
+  local source = paw.add_track({ name = "Source" })
+  local bus = paw.add_track({ name = "Bus" })
   source:add_clip({ file = file, start = 0, length = 4 })
   source:send(bus, -6)
   eq(source.sends[1].pre, nil, "sends follow the fader unless told otherwise")
@@ -126,20 +126,20 @@ test("a send can be taken before the fader", function()
   source.mute = true
   near(samples(render({ tail = 0, bits = 16 }))[1000], 0, 0.001, "but muting the track silences it")
   source.mute = false
-  local path = daw.project.save(T.scratch .. "/pre.json")
+  local path = paw.project.save(T.scratch .. "/pre.json")
   fresh()
-  daw.project.load(path)
-  eq(daw.tracks()[1].sends[1].pre, true, "saved and loaded")
-  local copy = daw.tracks()[1]:duplicate()
+  paw.project.load(path)
+  eq(paw.tracks()[1].sends[1].pre, true, "saved and loaded")
+  local copy = paw.tracks()[1]:duplicate()
   eq(copy.sends[1].pre, true, "and kept by a copy of the track")
 end)
 
 test("the limiter holds its ceiling and reports how far it looks ahead", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = steady("loud", 2, 0.9), start = 0, length = 4 })
   near(render({ tail = 0.1 }).peak, 0.9, 0.001, "loud to begin with")
-  daw.master:add_device("limiter", { ceiling = -12 })
+  paw.master:add_device("limiter", { ceiling = -12 })
   local peak = render({ tail = 0.1 }).peak
   eq(peak <= 10 ^ (-12 / 20) + 0.0005, true, "nothing above the ceiling: " .. peak)
   eq(peak > 10 ^ (-12 / 20) * 0.9, true, "and close under it")
@@ -149,8 +149,8 @@ end)
 test("tracks whose devices look ahead are lined up with the rest", function()
   fresh()
   local file = impulse("click", 1, 0.25, 0.2)
-  local a = daw.add_track({ name = "Late" })
-  local b = daw.add_track({ name = "Plain" })
+  local a = paw.add_track({ name = "Late" })
+  local b = paw.add_track({ name = "Plain" })
   a:add_clip({ file = file, start = 0, length = 2 })
   b:add_clip({ file = file, start = 0, length = 2 })
   local function peaks()
@@ -167,21 +167,21 @@ test("tracks whose devices look ahead are lined up with the rest", function()
   eq(peaks(), "12000:0.40", "a bypassed device holds nothing back")
   limiter.bypass = false
   -- Through a bus that is late as well, and a send that is not.
-  local bus = daw.add_track({ name = "Bus" })
+  local bus = paw.add_track({ name = "Bus" })
   bus:add_device("limiter", { ceiling = 0 })
   a.output = bus
   b:send(bus, 0)
   eq(peaks(), "12000:0.60", "every path arrives together: both tracks, and the send into the bus")
-  daw.master:add_device("limiter", { ceiling = 0 })
+  paw.master:add_device("limiter", { ceiling = 0 })
   eq(peaks(), "12000:0.60", "a late master moves nothing either")
-  daw.flush()
+  paw.flush()
   near(api.engine_get().latency, 15, 0.01, "three devices in a row are 15 ms")
 end)
 
 --- A track with the built-in synth set to a plain sine, so that its pitch
 --- can be read from the render.
 local function sine_track()
-  local t = daw.add_track({ name = "Sine" })
+  local t = paw.add_track({ name = "Sine" })
   t:add_device("synth", { wave = 0, attack = 0.001, release = 0.02, sustain = 1 })
   return t
 end
@@ -231,26 +231,26 @@ test("MIDI clips hold controller moves, and the synth follows the wheel and the 
   api.undo_checkpoint()
   clip:set_controls({})
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(#clip:controls(), 5, "undo brings them back")
-  local path = daw.project.save(T.scratch .. "/controls.json")
+  local path = paw.project.save(T.scratch .. "/controls.json")
   fresh()
-  daw.project.load(path)
-  t = daw.tracks()[1]
+  paw.project.load(path)
+  t = paw.tracks()[1]
   clip = t:clips()[1]
   eq(clip:controls()[5].value, 0.123456789, "saved and loaded exactly")
   local copy = clip:duplicate()
   eq(#copy:controls(), 5, "a copy has them")
   copy:remove()
-  daw.cursor.set_track(t)
-  daw.cursor.set_beat(1.5)
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc>S")
+  paw.cursor.set_track(t)
+  paw.cursor.set_beat(1.5)
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc>S")
   local left, right = t:clips()[1], t:clips()[2]
   eq(#left:controls() .. " " .. #right:controls(), "3 2", "a split gives each half the moves in it")
   eq(right:controls()[1].start, 0.5, "counted from its own start")
-  daw.cursor.set_beat(0)
-  daw.keymap.feed("J")
+  paw.cursor.set_beat(0)
+  paw.keymap.feed("J")
   eq(#t:clips() .. " " .. #t:clips()[1]:controls(), "1 5", "and a join puts them together again")
 end)
 
@@ -272,12 +272,12 @@ end)
 test("MIDI input reaches scripts, at the resolution it came in", function()
   fresh()
   local seen = {}
-  local handler = daw.on("midi.in", function(event) seen[#seen + 1] = event end)
-  daw.midi.inject({ type = "note_on", pitch = "C4", velocity = 100, channel = 2 })
-  daw.midi.inject({ type = "cc", number = 1, value = 0.5 })
-  daw.midi.inject({ type = "bend", value = -0.25, channel = 3 })
-  daw.midi.inject({ type = "pressure", key = "E4", value = 0.75 })
-  daw.flush()
+  local handler = paw.on("midi.in", function(event) seen[#seen + 1] = event end)
+  paw.midi.inject({ type = "note_on", pitch = "C4", velocity = 100, channel = 2 })
+  paw.midi.inject({ type = "cc", number = 1, value = 0.5 })
+  paw.midi.inject({ type = "bend", value = -0.25, channel = 3 })
+  paw.midi.inject({ type = "pressure", key = "E4", value = 0.75 })
+  paw.flush()
   eq(#seen, 4, "one event per message")
   eq(seen[1].type .. seen[1].pitch .. "/" .. seen[1].velocity .. "/" .. seen[1].channel, "note_on60/100/2", "a note")
   eq(seen[2].type .. seen[2].number .. "/" .. seen[2].value, "cc1/0.5", "a controller")
@@ -285,40 +285,40 @@ test("MIDI input reaches scripts, at the resolution it came in", function()
   eq(seen[4].type .. seen[4].key .. "/" .. seen[4].value, "pressure64/0.75", "one note's pressure")
 
   -- Universal MIDI Packets, both ways.
-  local words = daw.midi.ump({ type = "cc", number = 74, value = 1, channel = 2 })
+  local words = paw.midi.ump({ type = "cc", number = 74, value = 1, channel = 2 })
   eq(string.format("%08x %08x", words[1], words[2]), "40b14a00 ffffffff", "an event as a MIDI 2.0 packet")
-  words = daw.midi.ump({ type = "bend", key = "C4", value = 0 })
+  words = paw.midi.ump({ type = "bend", key = "C4", value = 0 })
   eq(string.format("%08x %08x", words[1], words[2]), "40603c00 80000000", "a note's own bend, at rest")
   seen = {}
-  eq(daw.midi.inject_ump({ 0x40b14a00, 0x12345678 }), true, "a MIDI 2.0 packet is taken")
-  eq(daw.midi.inject_ump({ 0x20903c60 }), true, "and a MIDI 1.0 one")
-  eq(daw.midi.inject_ump({ 0x10000000 }), false, "what is not a channel message is not")
-  daw.flush()
+  eq(paw.midi.inject_ump({ 0x40b14a00, 0x12345678 }), true, "a MIDI 2.0 packet is taken")
+  eq(paw.midi.inject_ump({ 0x20903c60 }), true, "and a MIDI 1.0 one")
+  eq(paw.midi.inject_ump({ 0x10000000 }), false, "what is not a channel message is not")
+  paw.flush()
   near(seen[1].value, 0x12345678 / 0xffffffff, 1e-12, "all 32 bits of the value arrive")
   eq(seen[1].number .. "/" .. seen[1].channel, "74/2", "with its controller and channel")
   eq(seen[2].type .. seen[2].pitch, "note_on60", "the MIDI 1.0 note")
-  daw.off(handler)
+  paw.off(handler)
 end)
 
 test("recording keeps controller moves, and can be moved earlier to line up", function()
   fresh()
   api.engine_restart({ backend = "null" })
-  local keys = daw.add_track({ name = "keys" })
+  local keys = paw.add_track({ name = "keys" })
   keys:add_device("synth")
   keys.armed = true
-  daw.flush()
-  daw.transport.record_offset = 0
+  paw.flush()
+  paw.transport.record_offset = 0
   api.undo_checkpoint()
-  daw.transport.record()
+  paw.transport.record()
   api.sleep(200)
-  daw.midi.note_on("C4", 90)
-  daw.midi.inject({ type = "cc", number = 1, value = 0.5 })
+  paw.midi.note_on("C4", 90)
+  paw.midi.inject({ type = "cc", number = 1, value = 0.5 })
   api.sleep(150)
-  daw.midi.inject({ type = "bend", value = 0.5 })
-  daw.midi.inject({ type = "pressure", key = "C4", value = 0.25 })
-  daw.midi.note_off("C4")
+  paw.midi.inject({ type = "bend", value = 0.5 })
+  paw.midi.inject({ type = "pressure", key = "C4", value = 0.25 })
+  paw.midi.note_off("C4")
   api.sleep(100)
-  daw.transport.stop()
+  paw.transport.stop()
   local clip = keys:clips()[1]
   local moves = clip:controls()
   eq(#moves, 3, "three controller moves in the take")
@@ -328,40 +328,40 @@ test("recording keeps controller moves, and can be moved earlier to line up", fu
   local first = clip:notes()[1].start
 
   -- With an offset, what is recorded lands that much earlier.
-  daw.undo()
-  daw.transport.record_offset = 100
-  eq(daw.transport.record_offset, 100, "the offset reads back")
-  daw.transport.seek(0)
-  daw.transport.record()
+  paw.undo()
+  paw.transport.record_offset = 100
+  eq(paw.transport.record_offset, 100, "the offset reads back")
+  paw.transport.seek(0)
+  paw.transport.record()
   api.sleep(200)
-  daw.midi.note_on("C4", 90)
+  paw.midi.note_on("C4", 90)
   api.sleep(150)
-  daw.midi.note_off("C4")
-  daw.transport.stop()
+  paw.midi.note_off("C4")
+  paw.transport.stop()
   local shifted = keys:clips()[1]:notes()[1].start
   -- 100 ms at 120 bpm is 0.2 beats; the two takes were played by hand, a few
   -- hundredths of a beat apart.
   near(first - shifted, 0.2, 0.08, "100 ms earlier")
-  daw.transport.record_offset = 0
+  paw.transport.record_offset = 0
 end)
 
 test("unsaved work is copied aside, and offered again after a session that ended badly", function()
   fresh()
-  local autosave = daw.autosave
+  local autosave = paw.autosave
   local dir = T.scratch .. "/recovery"
   autosave.dir = dir
-  local t = daw.add_track({ name = "Idea" })
+  local t = paw.add_track({ name = "Idea" })
   t:add_clip({ start = 0, length = 4, name = "riff" })
   api.undo_checkpoint()
   eq(#api.read_dir(dir), 0, "nothing is copied while it is turned off")
-  daw.opt.autosave = 0.05
-  daw.wait(200)
+  paw.opt.autosave = 0.05
+  paw.wait(200)
   local file = autosave.file()
   eq(io.open(file) ~= nil, true, "a changed project is copied after a while")
   eq(api.project_get().path, nil, "without becoming the project's file")
-  eq(daw.project.modified, true, "or counting as saved")
+  eq(paw.project.modified, true, "or counting as saved")
   local before = T.read_file(file)
-  daw.wait(150)
+  paw.wait(150)
   eq(T.read_file(file), before, "and not copied again until it changes")
   eq(#autosave.left_behind(), 0, "a running session's copy is not offered")
 
@@ -370,52 +370,52 @@ test("unsaved work is copied aside, and offered again after a session that ended
   T.write_file(orphan, (before:gsub('"pid":%d+', '"pid":999999999')))
   local list = autosave.left_behind()
   eq(#list .. list[1].name, "1untitled", "what it left is found")
-  daw.project.new()
-  daw.commands.exec("recover 1")
-  eq(daw.tracks()[1].name .. "/" .. daw.tracks()[1]:clips()[1].name, "Idea/riff", "and opens as it was")
-  eq(daw.project.modified, true, "still unsaved")
+  paw.project.new()
+  paw.commands.exec("recover 1")
+  eq(paw.tracks()[1].name .. "/" .. paw.tracks()[1]:clips()[1].name, "Idea/riff", "and opens as it was")
+  eq(paw.project.modified, true, "still unsaved")
   eq(io.open(orphan), nil, "the copy is used up")
 
   -- Saving makes the copy unnecessary.
-  daw.tracks()[1].volume = -3
+  paw.tracks()[1].volume = -3
   api.undo_checkpoint()
-  daw.wait(150)
+  paw.wait(150)
   local mine = autosave.file()
   eq(io.open(mine) ~= nil, true, "copied again")
-  daw.project.save(T.scratch .. "/kept.json")
-  daw.flush()
+  paw.project.save(T.scratch .. "/kept.json")
+  paw.flush()
   eq(io.open(mine), nil, "and removed once saved")
-  daw.opt.autosave = 0
+  paw.opt.autosave = 0
 
   -- Quitting is refused while there is unsaved work.
-  daw.tracks()[1].volume = -6
+  paw.tracks()[1].volume = -6
   api.undo_checkpoint()
-  local messages = #daw.ui.messages
-  daw.commands.exec("quit")
-  eq(daw.ui.messages[#daw.ui.messages].text:find("unsaved", 1, true) ~= nil and #daw.ui.messages > messages, true, "quit says why it will not")
+  local messages = #paw.ui.messages
+  paw.commands.exec("quit")
+  eq(paw.ui.messages[#paw.ui.messages].text:find("unsaved", 1, true) ~= nil and #paw.ui.messages > messages, true, "quit says why it will not")
 end)
 
 test("scripts can wait while timers fire", function()
   fresh()
   local fired = 0
-  local every = daw.every(10, function() fired = fired + 1 end)
+  local every = paw.every(10, function() fired = fired + 1 end)
   local once = false
-  daw.defer(function() once = true end, 30)
+  paw.defer(function() once = true end, 30)
   api.sleep(60)
   eq(fired .. tostring(once), "0false", "sleeping holds timers up")
-  daw.wait(80)
+  paw.wait(80)
   eq(fired >= 4 and once, true, "waiting lets them run: " .. fired)
-  daw.cancel(every)
+  paw.cancel(every)
 end)
 
 test("an LV2 plugin that follows the song's tempo is told it", function()
   local kind
-  for _, info in ipairs(daw.device_types()) do
+  for _, info in ipairs(paw.device_types()) do
     if info.format == "lv2" and info.kind:find("slap_delay_mono", 1, true) then kind = info.kind end
   end
   if not kind then return "skipped: test plugins not found" end
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = impulse("tick", 4, 0.25, 0.5), start = 0, length = 4 })
   -- One echo a quarter of a bar after the sound, and nothing of the sound itself.
   local delay = t:add_device(kind, { dm0 = 3, df0 = 0.25, ds0 = 4, dry = 0, wet = 1 })
@@ -427,22 +427,22 @@ test("an LV2 plugin that follows the song's tempo is told it", function()
     return at / 48000 - 0.25
   end
   delay:set("sync", 0)
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local own = echo()
   eq(own > 0.05, true, "there is an echo: " .. own)
-  daw.project.tempo = 60
+  paw.project.tempo = 60
   near(echo(), own, 0.005, "left to itself it keeps its own tempo")
   delay:set("sync", 1)
   local slow = echo()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local fast = echo()
   near(slow / fast, 2, 0.05, "following the song, half the tempo is twice the delay")
 end)
 
 test("a render can be one track, dithered, or brought to a level", function()
   fresh()
-  local a = daw.add_track({ name = "Left" })
-  local b = daw.add_track({ name = "Right/odd" })
+  local a = paw.add_track({ name = "Left" })
+  local b = paw.add_track({ name = "Right/odd" })
   a:add_clip({ file = steady("a", 2, 0.25), start = 0, length = 4 })
   b:add_clip({ file = steady("b", 2, 0.5), start = 0, length = 4 })
   near(render({ tail = 0 }).peak, 0.75, 0.001, "the mix is both")
@@ -450,13 +450,13 @@ test("a render can be one track, dithered, or brought to a level", function()
   T.fails(function() render({ tracks = { 999 } }) end, "999", "a track that is not there")
   eq(a.solo or b.solo, false, "and nothing in the project is changed by it")
 
-  local files = daw.render_stems(T.scratch .. "/stems", { tail = 0, bits = 16 })
+  local files = paw.render_stems(T.scratch .. "/stems", { tail = 0, bits = 16 })
   eq(#files, 2, "one stem per track")
   eq(files[2]:match("[^/]+$"), "Right_odd.wav", "named after it, safely")
   local sum = samples({ path = files[1] })[1000] + samples({ path = files[2] })[1000]
   near(sum, 0.75, 0.001, "the stems add up to the mix")
   b.mute = true
-  eq(#daw.render_stems(T.scratch .. "/stems2", { tail = 0 }), 1, "muted tracks are left out")
+  eq(#paw.render_stems(T.scratch .. "/stems2", { tail = 0 }), 1, "muted tracks are left out")
   b.mute = false
 
   local info = render({ tail = 0, normalize = -6, bits = 16 })
@@ -470,7 +470,7 @@ test("a render can be one track, dithered, or brought to a level", function()
   a:clips()[1]:remove()
   b:clips()[1].gain = -60
   local function steps(opts)
-    local seen, s = {}, samples(render(daw.util.merge({ tail = 0, bits = 16 }, opts)))
+    local seen, s = {}, samples(render(paw.util.merge({ tail = 0, bits = 16 }, opts)))
     for i = 1000, 3000 do seen[s[i]] = true end
     local n = 0
     for _ in pairs(seen) do n = n + 1 end
@@ -487,24 +487,24 @@ test("moving a fader while the song plays writes automation", function()
   fresh()
   api.engine_restart({ backend = "null" })
   local t = T.tone("tone", 32)
-  daw.transport.write = true
-  eq(daw.transport.write, true, "write mode reads back")
+  paw.transport.write = true
+  eq(paw.transport.write, true, "write mode reads back")
   t.volume = -3
-  daw.flush()
+  paw.flush()
   eq(t:lane("volume"), nil, "nothing is written while stopped")
-  daw.transport.seek(0)
-  daw.transport.play()
-  daw.wait(150)
+  paw.transport.seek(0)
+  paw.transport.play()
+  paw.wait(150)
   eq(t:lane("volume"), nil, "or before anything is moved")
-  local first = daw.transport.position
+  local first = paw.transport.position
   t.volume = -12
-  daw.wait(300)
-  local second = daw.transport.position
+  paw.wait(300)
+  local second = paw.transport.position
   t.volume = -24
-  daw.wait(200)
-  daw.transport.stop()
-  local last = daw.transport.position
-  daw.flush()
+  paw.wait(200)
+  paw.transport.stop()
+  local last = paw.transport.position
+  paw.flush()
   local lane = t:lane("volume")
   eq(lane ~= nil, true, "a lane was made")
   near(lane:value_at(0), -3, 0.001, "before the move the song keeps the level it had")
@@ -513,21 +513,21 @@ test("moving a fader while the song plays writes automation", function()
   near(lane:value_at(last), -24, 0.001, "until it was moved again")
   eq(#lane:points() <= 8, true, "a held value is two points, not one every tick: " .. #lane:points())
   -- A second pass writes over what the first left.
-  daw.transport.seek(0)
-  daw.transport.play()
-  daw.wait(50)
+  paw.transport.seek(0)
+  paw.transport.play()
+  paw.wait(50)
   t.volume = 0
-  daw.wait(700)
-  daw.transport.stop()
-  daw.flush()
+  paw.wait(700)
+  paw.transport.stop()
+  paw.flush()
   near(lane:value_at(second), 0, 0.001, "the new pass replaces the old moves it passes")
-  daw.transport.write = false
-  daw.transport.play()
-  daw.wait(50)
+  paw.transport.write = false
+  paw.transport.play()
+  paw.wait(50)
   local points = #lane:points()
   t.volume = -6
-  daw.wait(100)
-  daw.transport.stop()
+  paw.wait(100)
+  paw.transport.stop()
   eq(#lane:points(), points, "with write off, a move writes nothing")
 end)
 
@@ -537,9 +537,9 @@ test("a track is bounced to audio, and takes MIDI messages by hand", function()
   local t = sine_track()
   t:add_clip({ start = 0, length = 4, notes = { { pitch = "A3", start = 0, length = 4 } } })
   local before = render({ tail = 0 }).peak
-  daw.cursor.set_track(t)
-  daw.commands.exec("track.bounce")
-  local bounced = daw.cursor.track()
+  paw.cursor.set_track(t)
+  paw.commands.exec("track.bounce")
+  local bounced = paw.cursor.track()
   eq(bounced.name .. " " .. tostring(t.mute), "Sine (bounced) true", "a new track beside a muted original")
   local clip = bounced:clips()[1]
   eq(clip.kind .. " " .. clip.start, "audio 0", "holding the sound as audio")
@@ -547,11 +547,11 @@ test("a track is bounced to audio, and takes MIDI messages by hand", function()
   os.remove(clip.file)
   -- The same from a script, and the render is announced like any other.
   local heard = 0
-  local handler = daw.on("render.before", function() heard = heard + 1 end)
-  local again = daw.bounce(t, { name = "Sine (again)", tail = 0 })
-  daw.off(handler)
-  eq(again.name, "Sine (again)", "daw.bounce names the new track as asked")
-  eq(heard, 1, "and renders through daw.render")
+  local handler = paw.on("render.before", function() heard = heard + 1 end)
+  local again = paw.bounce(t, { name = "Sine (again)", tail = 0 })
+  paw.off(handler)
+  eq(again.name, "Sine (again)", "paw.bounce names the new track as asked")
+  eq(heard, 1, "and renders through paw.render")
   os.remove(again:clips()[1].file)
   again:remove()
 
@@ -559,16 +559,16 @@ test("a track is bounced to audio, and takes MIDI messages by hand", function()
   t.mute = false
   bounced:remove()
   t:note_on("A3", 100)
-  daw.wait(150)
+  paw.wait(150)
   eq(select(1, t:meter()) > 0.01, true, "a note played by hand sounds")
   t:midi({ type = "bend", value = 1 })
   t:midi({ type = "cc", number = 64, value = 1 })
   t:note_off("A3")
-  daw.wait(400)
+  paw.wait(400)
   eq(select(1, t:meter()) > 0.01, true, "and the pedal, pressed by hand, holds it after the key is let go")
   t:midi({ type = "cc", number = 64, value = 0 })
   -- The meter falls slowly after the sound has gone.
-  daw.wait(2000)
+  paw.wait(2000)
   eq(select(1, t:meter()) < 0.005, true, "until the pedal comes up")
   T.fails(function() t:midi({ type = "bend", value = 3 }) end, "range", "a bend out of range")
 end)
@@ -576,12 +576,12 @@ end)
 for _, format in ipairs({ "clap", "vst3", "lv2" }) do
   test(format .. " instruments follow the pitch wheel", function()
     local kind
-    for _, info in ipairs(daw.device_types()) do
+    for _, info in ipairs(paw.device_types()) do
       if info.format == format and info.name == "Surge XT" then kind = info.kind end
     end
     if not kind then return "skipped: test plugins not found" end
     fresh()
-    local t = daw.add_track({ name = "surge" })
+    local t = paw.add_track({ name = "surge" })
     t:add_device(kind)
     local clip = t:add_clip({ start = 0, length = 4, notes = { { pitch = "A3", start = 0, length = 4 } } })
     local plain = T.frequency(render({ tail = 0, bits = 16 }), 0.5, 1.5)
@@ -600,7 +600,7 @@ end
 
 test("one note is added, changed and removed without the others crossing over", function()
   fresh()
-  local t = daw.add_track({ name = "notes" })
+  local t = paw.add_track({ name = "notes" })
   local clip = t:add_clip({ start = 0, length = 8, notes = {
     { pitch = "C4", start = 0, length = 1 },
     { pitch = "E4", start = 1, length = 1, meta = { lyric = "la" } },
@@ -661,7 +661,7 @@ test("one note is added, changed and removed without the others crossing over", 
   eq(#clip:notes(), 4, "a refused edit changes nothing")
 
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(#clip:notes(), 3, "and the lot is one undo step per turn")
 
   -- What the engine plays follows.
@@ -678,11 +678,11 @@ test("tracks are processed on several threads, and sound the same", function()
   fresh()
   -- Sixteen voices into two buses, one of them through a late send from
   -- before the fader, so that there is something to get wrong.
-  local a, b = daw.add_track({ name = "bus a" }), daw.add_track({ name = "bus b" })
+  local a, b = paw.add_track({ name = "bus a" }), paw.add_track({ name = "bus b" })
   a:add_device("delay", { time = 110, mix = 0.4 })
   b:add_device("limiter")
   for i = 1, 16 do
-    local t = daw.add_track({ name = "voice " .. i, pan = (i - 8) / 10 })
+    local t = paw.add_track({ name = "voice " .. i, pan = (i - 8) / 10 })
     t:add_device("synth", { wave = i % 4, attack = 0.002, release = 0.05 })
     if i % 2 == 0 then t:add_device("delay", { time = 50 * i, mix = 0.3 }) end
     local notes = {}
@@ -693,7 +693,7 @@ test("tracks are processed on several threads, and sound the same", function()
     if i % 5 == 0 then t:send(b, -3, { pre = true }) end
     t:automate("volume"):set_points({ { 0, -9 }, { 8, -3 } })
   end
-  daw.flush()
+  paw.flush()
   local alone = render({ tail = 0.5, threads = 1 })
   eq(alone.threads, 1, "a render on one thread says so")
   eq(alone.peak > 0.05, true, "something sounds")
@@ -705,18 +705,18 @@ test("tracks are processed on several threads, and sound the same", function()
   end
 
   -- The live engine takes a number too, and 0 leaves it to the machine.
-  local before = daw.opt.threads
-  daw.opt.threads = 3
-  daw.wait(100)
+  local before = paw.opt.threads
+  paw.opt.threads = 3
+  paw.wait(100)
   eq(api.engine_get().threads, 3, "the engine runs on as many threads as asked for")
-  daw.transport.play()
-  daw.wait(300)
-  daw.opt.threads = 1
-  daw.wait(200)
+  paw.transport.play()
+  paw.wait(300)
+  paw.opt.threads = 1
+  paw.wait(200)
   eq(api.engine_get().threads, 1, "the number changes while the song plays")
-  daw.transport.stop()
-  daw.opt.threads = before
-  daw.wait(100)
+  paw.transport.stop()
+  paw.opt.threads = before
+  paw.wait(100)
   eq(api.engine_get().threads >= 1, true, "and goes back")
   T.fails(function() api.engine_set_threads(1000) end, "too many", "an absurd number")
 end)
@@ -736,34 +736,34 @@ end
 test("the audio devices are listed, and a name that matches none is refused", function()
   with_test_input(function()
     fresh()
-    local list = daw.audio.devices()
+    local list = paw.audio.devices()
     eq(#list.inputs, 1, "the test input is the one input device")
     eq(list.inputs[1].name .. " " .. list.inputs[1].channels, "test signal 2", "with its name and channels")
     eq(list.input, "test signal", "and it is the one open")
-    local ok, err = pcall(daw.audio.use, { input = "Steinberg" })
+    local ok, err = pcall(paw.audio.use, { input = "Steinberg" })
     eq(ok, false, "an input that is not there is refused")
     eq(tostring(err):find("test signal", 1, true) ~= nil, true, "saying what there is: " .. tostring(err))
     eq(api.engine_get().input_device, "test signal", "and nothing changes")
-    daw.audio.use({ input = "test", buffer = 256 })
+    paw.audio.use({ input = "test", buffer = 256 })
     eq(api.engine_get().buffer_size, 256, "a part of the name and a block size are taken")
     eq(api.engine_get().input_channels, 2, "the input is open again")
-    eq(daw.audio.summary(), "null · 48 kHz", "the engine in a few words")
+    eq(paw.audio.summary(), "null · 48 kHz", "the engine in a few words")
   end)
 end)
 
 test("each input channel is metered whether or not a track hears it", function()
   with_test_input(function()
     fresh()
-    local t = daw.add_track({ name = "guitar" })
+    local t = paw.add_track({ name = "guitar" })
     t.input = "2"
-    daw.flush()
+    paw.flush()
     api.sleep(150)
-    local levels = daw.audio.levels()
+    local levels = paw.audio.levels()
     eq(#levels, 2, "a level for each channel of the device")
     near(levels[1], test_level, 0.01, "channel 1 arrives")
-    near(daw.audio.level(t:get()), test_level, 0.01, "the track's input level, not armed and not monitored")
+    near(paw.audio.level(t:get()), test_level, 0.01, "the track's input level, not armed and not monitored")
     eq(select(1, t:meter()), 0, "while the track itself is silent")
-    local state = daw.frontend.state(-1)
+    local state = paw.frontend.state(-1)
     near(state.inputs[1], test_level, 0.01, "the frontend is told it with the meters")
     eq(state.tracks[1].input_label, "test signal · 2", "and what the track takes in, in words")
     eq(state.inputs[#state.inputs], 0, "the master has no input")
@@ -774,36 +774,36 @@ test("a track takes MIDI from one port and channel, playing and recording", func
   with_test_input(function()
     fresh()
     local ports = {}
-    for i, p in ipairs(daw.midi.inputs()) do ports[i] = p.name end
+    for i, p in ipairs(paw.midi.inputs()) do ports[i] = p.name end
     eq(table.concat(ports, ", "), "Keys A, Keys B", "the ports to choose from")
-    local a, any = daw.add_track({ name = "a" }), daw.add_track({ name = "any" })
+    local a, any = paw.add_track({ name = "a" }), paw.add_track({ name = "any" })
     for _, t in ipairs({ a, any }) do t:add_device("synth") t.armed = true end
     a.midi_input = { port = "Keys A", channel = 2 }
     eq(a.midi_input.port .. "/" .. a.midi_input.channel, "Keys A/2", "the choice reads back")
-    daw.flush()
-    daw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys B", channel = 2 })
+    paw.flush()
+    paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys B", channel = 2 })
     api.sleep(150)
     eq(select(1, a:meter()), 0, "another port is not heard")
     eq(select(1, any:meter()) > 0.01, true, "by a track that takes every port")
-    daw.midi.inject({ type = "note_off", pitch = 60, port = "Keys B", channel = 2 })
-    daw.midi.inject({ type = "note_on", pitch = 62, velocity = 100, port = "Keys A", channel = 1 })
+    paw.midi.inject({ type = "note_off", pitch = 60, port = "Keys B", channel = 2 })
+    paw.midi.inject({ type = "note_on", pitch = 62, velocity = 100, port = "Keys A", channel = 1 })
     api.sleep(150)
     eq(select(1, a:meter()), 0, "nor another channel")
-    daw.midi.inject({ type = "note_off", pitch = 62, port = "Keys A", channel = 1 })
-    daw.midi.inject({ type = "note_on", pitch = 64, velocity = 100, port = "Keys A", channel = 2 })
+    paw.midi.inject({ type = "note_off", pitch = 62, port = "Keys A", channel = 1 })
+    paw.midi.inject({ type = "note_on", pitch = 64, velocity = 100, port = "Keys A", channel = 2 })
     api.sleep(150)
     eq(select(1, a:meter()) > 0.01, true, "the port and channel chosen are")
-    daw.midi.inject({ type = "note_off", pitch = 64, port = "Keys A", channel = 2 })
+    paw.midi.inject({ type = "note_off", pitch = 64, port = "Keys A", channel = 2 })
 
-    daw.transport.record()
+    paw.transport.record()
     api.sleep(100)
     for _, n in ipairs({ { 65, "Keys A", 2 }, { 67, "Keys B", 2 }, { 69, "Keys A", 3 } }) do
-      daw.midi.inject({ type = "note_on", pitch = n[1], velocity = 100, port = n[2], channel = n[3] })
+      paw.midi.inject({ type = "note_on", pitch = n[1], velocity = 100, port = n[2], channel = n[3] })
       api.sleep(60)
-      daw.midi.inject({ type = "note_off", pitch = n[1], port = n[2], channel = n[3] })
+      paw.midi.inject({ type = "note_off", pitch = n[1], port = n[2], channel = n[3] })
     end
     api.sleep(60)
-    daw.transport.stop()
+    paw.transport.stop()
     local pitches = function(t)
       local out = {}
       for i, n in ipairs(t:clips()[1]:notes()) do out[i] = n.pitch end
@@ -813,9 +813,9 @@ test("a track takes MIDI from one port and channel, playing and recording", func
     eq(pitches(any), "65 67 69", "and one from every port keeps everything")
 
     local path = T.scratch .. "/midi-input.json"
-    daw.project.save(path)
-    daw.project.load(path)
-    local loaded = daw.track("a")
+    paw.project.save(path)
+    paw.project.load(path)
+    local loaded = paw.track("a")
     eq(loaded.midi_input.port .. "/" .. loaded.midi_input.channel, "Keys A/2", "saved with the project by port name")
     loaded.midi_input = nil
     eq(loaded.midi_input, nil, "and back to every port")
@@ -825,25 +825,25 @@ end)
 test("a whole first session: input, monitoring, an effect, a take that plays back through it", function()
   with_test_input(function()
     fresh()
-    local gtr = daw.add_track({ name = "Guitar" })
+    local gtr = paw.add_track({ name = "Guitar" })
     -- Chosen the way a menu or the picker chooses it.
     local choice
-    for _, c in ipairs(daw.audio.choices(gtr)) do
+    for _, c in ipairs(paw.audio.choices(gtr)) do
       if c.label == "test signal · 1/2" then choice = c end
     end
     eq(choice ~= nil, true, "the pair is offered by name")
-    daw.audio.choose(gtr, choice)
+    paw.audio.choose(gtr, choice)
     eq(gtr.input, "1/2", "and taken")
     gtr.monitor = true
     gtr:add_device("gain", { gain = -6 })
-    daw.flush()
+    paw.flush()
     api.sleep(600)
     near(select(1, gtr:meter()), test_level / 2, 0.01, "the input is heard through the effect")
     gtr.armed = true
-    daw.transport.record()
+    paw.transport.record()
     api.sleep(800)
-    daw.transport.stop()
-    daw.flush()
+    paw.transport.stop()
+    paw.flush()
     local clips = gtr:clips()
     eq(#clips, 1, "the take is a clip")
     local c = clips[1]:get()
@@ -868,52 +868,52 @@ end)
 test("old projects keep their inputs", function()
   fresh()
   local path = T.scratch .. "/old-input.json"
-  local t = daw.add_track({ name = "old" })
+  local t = paw.add_track({ name = "old" })
   t.input = "1/2"
-  daw.project.save(path)
+  paw.project.save(path)
   local text = T.read_file(path)
   eq(text:find('"midi_input"', 1, true), nil, "nothing is written for MIDI from everywhere")
-  daw.project.load(path)
-  eq(daw.track("old").input, "1/2", "a pair as text loads as it was")
+  paw.project.load(path)
+  eq(paw.track("old").input, "1/2", "a pair as text loads as it was")
 end)
 
 test("an edit answered by a handler is one undo step, and undo is not answered again", function()
   fresh()
-  local track = daw.add_track({ name = "Keys" })
+  local track = paw.add_track({ name = "Keys" })
   local clip = track:add_clip({ start = 0, length = 4 })
   local marker = track:add_clip({ start = 16, length = 1 })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local seen = {}
   -- A handler that keeps the marker one bar after the clip, as an extension
   -- keeps what belongs to a clip with it.
-  local handler = daw.on("clip.changed", function(event)
+  local handler = paw.on("clip.changed", function(event)
     seen[#seen + 1] = event
     if event.restored or event.id ~= clip.id then return end
     marker.start = clip.start + 16
   end)
   clip.start = 8
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   eq(marker.start, 24, "the handler answered the edit")
   eq(seen[1].restored, nil, "an edit is not marked restored")
   seen = {}
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.flush()
   eq(clip.start .. "/" .. marker.start, "0/16", "one undo takes back the edit and the answer")
   eq(#seen > 0, true, "undo reports the change")
   for _, event in ipairs(seen) do eq(event.restored, true, "and marks it restored") end
   seen = {}
-  daw.redo()
-  daw.flush()
+  paw.redo()
+  paw.flush()
   eq(clip.start .. "/" .. marker.start, "8/24", "redo brings both back")
   eq(seen[1].restored, true, "redo is restored too")
-  daw.off(handler)
+  paw.off(handler)
 end)
 
 test("a device's meta goes with it when its track is copied", function()
   fresh()
-  local track = daw.add_track({ name = "Lead" })
+  local track = paw.add_track({ name = "Lead" })
   local synth = track:add_device("synth")
   api.device_set(synth.id, "meta", { mine = { colour = "red" } })
   local copy = track:duplicate()
@@ -923,44 +923,44 @@ end)
 
 test("a MIDI port of the program's own is one more input for a track to take", function()
   fresh()
-  T.fails(function() daw.midi.open_port("") end, "name", "a port with no name")
-  daw.midi.open_port("Guitar to MIDI")
-  daw.midi.open_port("Guitar to MIDI")
+  T.fails(function() paw.midi.open_port("") end, "name", "a port with no name")
+  paw.midi.open_port("Guitar to MIDI")
+  paw.midi.open_port("Guitar to MIDI")
   local own = {}
-  for _, p in ipairs(daw.midi.inputs()) do
+  for _, p in ipairs(paw.midi.inputs()) do
     if p.own then own[#own + 1] = p.name .. (p.open and " open" or " closed") end
   end
   eq(table.concat(own, ", "), "Guitar to MIDI open", "it is listed once among the inputs, as our own")
-  local track = daw.add_track({ name = "Pad" })
+  local track = paw.add_track({ name = "Pad" })
   track:add_device("synth")
   local offered
-  for _, choice in ipairs(daw.audio.choices(track.id)) do
+  for _, choice in ipairs(paw.audio.choices(track.id)) do
     if choice.group == "midi" and choice.label == "Guitar to MIDI" then offered = choice end
   end
   eq(offered ~= nil, true, "and offered where a track's input is chosen")
-  daw.audio.choose(track.id, offered.value)
+  paw.audio.choose(track.id, offered.value)
   eq(track.midi_input.port, "Guitar to MIDI", "choosing it there is choosing the port by name")
   track.armed = true
-  daw.flush()
-  daw.midi.inject({ type = "note_on", pitch = 60, velocity = 100 })
+  paw.flush()
+  paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100 })
   api.sleep(150)
   eq(select(1, track:meter()), 0, "what other ports send is not heard")
-  daw.midi.inject({ type = "note_off", pitch = 60 })
-  daw.midi.inject({ type = "note_on", pitch = 64, velocity = 100, port = "Guitar to MIDI" })
+  paw.midi.inject({ type = "note_off", pitch = 60 })
+  paw.midi.inject({ type = "note_on", pitch = 64, velocity = 100, port = "Guitar to MIDI" })
   api.sleep(150)
   eq(select(1, track:meter()) > 0.01, true, "what arrives at the port is")
-  daw.midi.inject({ type = "note_off", pitch = 64, port = "Guitar to MIDI" })
-  eq(daw.midi.close_port("Guitar to MIDI"), true, "the port is taken away")
-  eq(daw.midi.close_port("Guitar to MIDI"), false, "once")
-  for _, p in ipairs(daw.midi.inputs()) do eq(p.own, false, "and no longer listed") end
+  paw.midi.inject({ type = "note_off", pitch = 64, port = "Guitar to MIDI" })
+  eq(paw.midi.close_port("Guitar to MIDI"), true, "the port is taken away")
+  eq(paw.midi.close_port("Guitar to MIDI"), false, "once")
+  for _, p in ipairs(paw.midi.inputs()) do eq(p.own, false, "and no longer listed") end
 end)
 
 test("JSON goes to text and back, and a helper process is asked to finish", function()
-  local text = daw.json.encode({ name = "Guitar", gain = 1.5, on = true, split = { { pitch = 52, channel = 2 } } })
-  local back = daw.json.decode(text)
+  local text = paw.json.encode({ name = "Guitar", gain = 1.5, on = true, split = { { pitch = 52, channel = 2 } } })
+  local back = paw.json.decode(text)
   eq(back.name .. " " .. back.gain .. " " .. tostring(back.on) .. " " .. back.split[1].pitch, "Guitar 1.5 true 52", "a table survives the trip")
-  eq(daw.json.encode({ a = 1 }, true):find("\n") ~= nil, true, "pretty text is on several lines")
-  local value, why = daw.json.decode("{ not json")
+  eq(paw.json.encode({ a = 1 }, true):find("\n") ~= nil, true, "pretty text is on several lines")
+  local value, why = paw.json.decode("{ not json")
   eq(value == nil and type(why) == "string", true, "what is not JSON gives nil and the reason")
 
   -- A helper that would run for a minute is asked to finish, and does.
@@ -977,49 +977,49 @@ end)
 test("a sound file is brought in on a track of its own, from a command, a path or a list of files", function()
   fresh()
   -- Something to import: two seconds of a tone, rendered.
-  local source = daw.add_track({ name = "tone" })
+  local source = paw.add_track({ name = "tone" })
   source:add_device("synth")
   source:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 4 } } })
   os.execute("mkdir -p '" .. T.scratch .. "/sounds/more'")
   local file = T.scratch .. "/sounds/My take.wav"
-  daw.render(file, { ["end"] = 4, tail = 0 })
+  paw.render(file, { ["end"] = 4, tail = 0 })
   fresh()
-  eq(daw.is_audio_file("a/b/Take.MP3") and daw.is_audio_file("x.flac") and not daw.is_audio_file("song.json"), true, "sound files are told by their ending")
+  eq(paw.is_audio_file("a/b/Take.MP3") and paw.is_audio_file("x.flac") and not paw.is_audio_file("song.json"), true, "sound files are told by their ending")
 
-  daw.cursor.set_beat(8)
-  daw.cmd("import", { file })
-  local track = daw.tracks()[1]
+  paw.cursor.set_beat(8)
+  paw.cmd("import", { file })
+  local track = paw.tracks()[1]
   local clip = track:clips()[1]
   eq(track.name .. " " .. clip.kind .. " " .. clip.start, "My take audio 8", "the file is a clip on a new track named after it, at the cursor")
   near(clip.length, 4, 0.05, "as long as it sounds")
-  eq(daw.cursor.track_id(), track.id, "and the cursor is on the track")
+  eq(paw.cursor.track_id(), track.id, "and the cursor is on the track")
   eq(render({ tail = 0 }).peak > 0.01, true, "it plays")
-  local before = #daw.tracks()
-  daw.cmd("import", { T.scratch .. "/sounds/nothing.wav" })
-  eq(#daw.tracks(), before, "a file that is not there leaves no empty track behind")
+  local before = #paw.tracks()
+  paw.cmd("import", { T.scratch .. "/sounds/nothing.wav" })
+  eq(#paw.tracks(), before, "a file that is not there leaves no empty track behind")
 
-  daw.cmd("import", { "tests/fixtures/tone-stereo-44k.mp3" })
-  eq(daw.tracks()[#daw.tracks()].name .. " " .. daw.tracks()[#daw.tracks()]:clips()[1].kind, "tone-stereo-44k audio", "an mp3 comes in the same way")
+  paw.cmd("import", { "tests/fixtures/tone-stereo-44k.mp3" })
+  eq(paw.tracks()[#paw.tracks()].name .. " " .. paw.tracks()[#paw.tracks()]:clips()[1].kind, "tone-stereo-44k audio", "an mp3 comes in the same way")
 
   -- From the command line a sound file starts the project.
   fresh()
-  daw.open(file)
-  eq(daw.tracks()[1]:clips()[1].start, 0, "opened as a file, it starts at the beginning")
+  paw.open(file)
+  eq(paw.tracks()[1]:clips()[1].start, 0, "opened as a file, it starts at the beginning")
 
   -- The list of files: directories first, only sound files, Enter walks in.
   fresh()
   local other = io.open(T.scratch .. "/sounds/notes.txt", "w")
   other:write("x")
   other:close()
-  daw.cmd("import", {})
-  eq(daw.ui.float ~= nil, true, "with no path the command opens the list")
-  daw.keymap.feed("<Esc>")
+  paw.cmd("import", {})
+  eq(paw.ui.float ~= nil, true, "with no path the command opens the list")
+  paw.keymap.feed("<Esc>")
   local chosen
-  daw.pick.file({ dir = T.scratch .. "/sounds", extensions = { "wav" }, on_choose = function(path) chosen = path end })
+  paw.pick.file({ dir = T.scratch .. "/sounds", extensions = { "wav" }, on_choose = function(path) chosen = path end })
   local lines = table.concat(api.ui_snapshot(100, 30), "\n")
   eq(lines:find("more/", 1, true) ~= nil and lines:find("My take.wav", 1, true) ~= nil, true, "directories and sound files are listed")
   eq(lines:find("notes.txt", 1, true), nil, "other files are not")
-  daw.keymap.feed("My<CR>")
+  paw.keymap.feed("My<CR>")
   eq(chosen, file, "choosing a file gives its path")
 end)
 
@@ -1028,14 +1028,14 @@ test("tracks are grouped: members sound through the group, stand under it, and f
   local names = { "Drums", "Violins", "Violas", "Cellos", "Bass" }
   local t = {}
   for i, name in ipairs(names) do
-    t[i] = daw.add_track({ name = name })
+    t[i] = paw.add_track({ name = name })
     t[i]:add_device("synth")
     t[i]:add_clip({ start = 0, length = 2, notes = { { pitch = 48 + i, start = 0, length = 2 } } })
   end
-  local groups = daw.groups
+  local groups = paw.groups
   local function order()
     local out = {}
-    for i, track in ipairs(daw.tracks()) do out[i] = string.rep(">", groups.depth(track.id)) .. track.name end
+    for i, track in ipairs(paw.tracks()) do out[i] = string.rep(">", groups.depth(track.id)) .. track.name end
     return table.concat(out, " ")
   end
   local function rows()
@@ -1059,30 +1059,30 @@ test("tracks are grouped: members sound through the group, stand under it, and f
   -- Folding.
   groups.fold(strings, true)
   eq(rows(), "Drums Strings Bass", "a folded group's members are not among the rows that are drawn")
-  local state = daw.frontend.state(-1)
+  local state = paw.frontend.state(-1)
   eq(#state.tracks .. " " .. tostring(state.tracks[2].folded) .. " " .. state.tracks[2].members, "4 true 3", "a frontend is given the rows, and told the group is folded and how many it holds")
   local clip_rows = {}
   for _, clip in ipairs(state.clips) do clip_rows[#clip_rows + 1] = clip.track end
   table.sort(clip_rows)
   eq(table.concat(clip_rows, " "), "0 2", "and no clips of tracks that are out of sight")
-  daw.cursor.set_track(t[1])
-  daw.keymap.feed("j")
-  eq(daw.cursor.track().name, "Strings", "the cursor steps over what is folded away")
-  daw.keymap.feed("j")
-  eq(daw.cursor.track().name, "Bass", "to the next row")
-  daw.cursor.set_track(strings)
-  daw.keymap.feed("za")
+  paw.cursor.set_track(t[1])
+  paw.keymap.feed("j")
+  eq(paw.cursor.track().name, "Strings", "the cursor steps over what is folded away")
+  paw.keymap.feed("j")
+  eq(paw.cursor.track().name, "Bass", "to the next row")
+  paw.cursor.set_track(strings)
+  paw.keymap.feed("za")
   eq(rows(), "Drums Strings Violins Cellos Violas Bass", "za opens the group again")
-  daw.cursor.set_track(t[3])
-  daw.keymap.feed("za")
-  eq(daw.cursor.track().name, "Strings", "folding from a member leaves the cursor on the group")
-  daw.keymap.feed("zR")
+  paw.cursor.set_track(t[3])
+  paw.keymap.feed("za")
+  eq(paw.cursor.track().name, "Strings", "folding from a member leaves the cursor on the group")
+  paw.keymap.feed("zR")
 
   -- Colour: a member is in its group's.
   strings.color = "#123456"
-  eq(daw.draw.track_colour(t[3]:get()), "#123456", "members take the group's colour")
+  eq(paw.draw.track_colour(t[3]:get()), "#123456", "members take the group's colour")
   t[3].color = "#abcdef"
-  eq(daw.draw.track_colour(t[3]:get()), "#abcdef", "unless they have their own")
+  eq(paw.draw.track_colour(t[3]:get()), "#abcdef", "unless they have their own")
 
   -- A group inside a group, and no loops.
   local section = groups.make({ strings, t[5] }, "Orchestra")
@@ -1093,24 +1093,24 @@ test("tracks are grouped: members sound through the group, stand under it, and f
   groups.remove(t[3])
   eq(order(), "Drums Orchestra >Strings >>Violins >>Cellos >Violas >Bass", "a track taken out goes up a level")
   eq(t[3].output, section.id, "and sounds where its old group sounds")
-  daw.cursor.set_track(strings)
-  daw.cmd("track.ungroup", {})
+  paw.cursor.set_track(strings)
+  paw.cmd("track.ungroup", {})
   eq(order(), "Drums Orchestra >Violins >Cellos >Violas >Bass", "a dissolved group, empty of its own, goes; its members stay a level up")
   api.undo_checkpoint()
   section:remove()
   api.undo_checkpoint()
   eq(order(), "Drums Violins Cellos Violas Bass", "members of a group that is removed stand free")
-  daw.undo()
+  paw.undo()
   eq(order(), "Drums Orchestra >Violins >Cellos >Violas >Bass", "and undo puts the group and its members back as one step")
 
   -- The commands on a selection.
   fresh()
-  for i = 1, 3 do daw.add_track({ name = "T" .. i }) end
-  daw.cursor.set_track(daw.tracks()[2])
-  daw.keymap.feed("Vj")
-  daw.cmd("track.group", { "Pair" })
+  for i = 1, 3 do paw.add_track({ name = "T" .. i }) end
+  paw.cursor.set_track(paw.tracks()[2])
+  paw.keymap.feed("Vj")
+  paw.cmd("track.group", { "Pair" })
   eq(order(), "T1 Pair >T2 >T3", "track.group groups the selected tracks")
-  daw.cursor.set_track(daw.tracks()[1])
-  daw.cmd("track.into", { "pai" })
+  paw.cursor.set_track(paw.tracks()[1])
+  paw.cmd("track.into", { "pai" })
   eq(order(), "Pair >T1 >T2 >T3", "track.into moves a track into a group by name")
 end)

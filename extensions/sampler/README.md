@@ -28,7 +28,7 @@ From the source tree, `extensions/sampler/native/build.sh` builds it (in the
 dev shell, into `target/sampler`) and puts it where the extension looks:
 `clap/paw-sampler.clap` and `bin/paw-sampler` beside this file. The
 `sampler_plugin_dir` option names another folder. The extension adds that
-folder to the plugin scan (`daw.plugins.add_dir`); until a build of paw has
+folder to the plugin scan (`paw.plugins.add_dir`); until a build of paw has
 that, put the folder in `CLAP_PATH` or link the plugin into `~/.clap`.
 
 ## Using it
@@ -39,8 +39,8 @@ that, put the folder in `CLAP_PATH` or link the plugin into `~/.clap`.
 - `:sampler.load [file or words]` chooses the instrument of the cursor's
   sampler track; the track menu has "Sampler instrument…".
 - The picker lists every `.sfz` and `.dspreset` under the folders in
-  `daw.opt.sampler_libraries` (separated by `:`) and under
-  `~/.local/share/daw/instruments`. As the selection rests on one, it is
+  `paw.opt.sampler_libraries` (separated by `:`) and under
+  `~/.local/share/paw/instruments`. As the selection rests on one, it is
   loaded as a trial and a short phrase in its range plays through the
   track; Enter keeps it (one undo step), Escape puts back what was there.
 - `:sampler.info` says what the instrument is: its range, articulations
@@ -76,7 +76,7 @@ profile (M2-123) from its name (`Staccato` is 11.0, `Pizz` 11.A, `Legato`
   same moment, before the note, counts, and it sticks, as in SFZ.
 - The plugin names its keyswitch keys through CLAP `note-name`.
 
-`daw.api.device_call(device, "describe")` answers JSON: `name`, `format`,
+`paw.api.device_call(device, "describe")` answers JSON: `name`, `format`,
 `path`, `range` (`[lo, hi]`, keyswitches left out), `keyswitches` (`{ pitch,
 name }`), `articulations` (`{ name, m2, keyswitch?, default?, custom?,
 delay_ms }`), `delay_ms`, `ccs` and `keys` (labels), `regions`, `samples`,

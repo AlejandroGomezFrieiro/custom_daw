@@ -5,7 +5,7 @@
 -- to lower a fader. So `:diagnostics`, `]d`, the marks on strips and
 -- headers, and `,ca` agree with the mix report.
 local mixdiag = require("mixdiag")
-local A = daw.address
+local A = paw.address
 
 local M = {}
 
@@ -17,13 +17,13 @@ local ctx, doc
 -- and fixes in `data`.
 function M.diagnostic(f)
   local track = f.track or 0
-  local ok = pcall(daw.api.track_get, track)
+  local ok = pcall(paw.api.track_get, track)
   local uri = ok and A.track(track) or A.project()
   local location = { uri = uri, selector = f.beat and { time = { f.beat, f.beat } } or nil }
   local fixes = {}
   if f.lower and ok then
-    local name = daw.api.track_get(track).name
-    local now = daw.api.track_get(track).volume
+    local name = paw.api.track_get(track).name
+    local now = paw.api.track_get(track).volume
     fixes[1] = {
       title = string.format("Lower %s by %.1f dB", track == 0 and "the master" or name, f.lower),
       edit = { { uri = A.track(track), set = { volume = now - f.lower } } },
@@ -44,11 +44,11 @@ function M.publish()
   ctx.notify("textDocument/publishDiagnostics", { uri = doc, diagnostics = list })
 end
 
--- The handlers `daw.lsp` calls, as it would a server's methods.
+-- The handlers `paw.lsp` calls, as it would a server's methods.
 M.server = {
   initialize = function(_, c)
     ctx = c
-    return { serverInfo = { name = "mixdiag" }, capabilities = { daw = { subjects = { "mix" } } } }
+    return { serverInfo = { name = "mixdiag" }, capabilities = { paw = { subjects = { "mix" } } } }
   end,
   ["textDocument/didOpen"] = function(params)
     doc = params.textDocument.uri

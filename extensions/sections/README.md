@@ -1,6 +1,6 @@
 # sections
 
-Song sections for daw: intro, verse, chorus and the rest as named stretches of
+Song sections for paw: intro, verse, chorus and the rest as named stretches of
 the timeline. A section has a name and a start, and runs to the start of the
 next one; the last runs to the end of the project (at least one bar). They are
 text objects and motions, so the operators you already use work on a whole
@@ -9,7 +9,7 @@ the verse, repeat it, cut it out, put a copy of it somewhere else, on every
 track at once and as one undo step.
 
 ```lua
-daw.ext.load("extensions/sections")   -- or put it in ~/.config/daw/extensions
+paw.ext.load("extensions/sections")   -- or put it in ~/.config/paw/extensions
 ```
 
 ![The demo song named Intro and Verse with ,Sa, [s and ]s going between them, ,S& repeating the verse after itself on every track, and u](images/tui-sections.gif)
@@ -51,12 +51,12 @@ In the arrange view.
 | `<leader>Sc` | insert a copy of a section, chosen from the list, before the section at the cursor |
 
 With the text objects the built-in operators need nothing more: `dis` empties
-the section on every track (or closes the gap with `daw.opt.ripple`), `yis`
+the section on every track (or closes the gap with `paw.opt.ripple`), `yis`
 yanks it, `glis` loops it, `>is` nudges its clips, `vis` selects it. `<leader>Sd`
 then `<leader>SP` elsewhere is how a section is moved further than past its
 neighbour. Registers (`"a<leader>Sy`), counts and `.` work as everywhere else.
 
-`<leader>Ss` and `<leader>Sc` choose with `daw.pick` when there is one;
+`<leader>Ss` and `<leader>Sc` choose with `paw.pick` when there is one;
 without it they ask for a name on the command line (Tab completes).
 `<leader>Sl` shows the list of sections, floating over the views, to go to
 one, rename it, add one at the cursor or remove one (see `section.list`).
@@ -127,14 +127,14 @@ sections.copy("Chorus", 128)
 sections.yank("Chorus")
 sections.rebuild(plan)          -- the general form; see lua/sections/arrange.lua
 
-daw.on("sections.changed", function(event) print(#event.sections) end)
+paw.on("sections.changed", function(event) print(#event.sections) end)
 ```
 
 Sections are stored in the project as `project.meta.sections`, a list of
 `{ name, start }`, so they are saved and loaded with it and every change is
 undone with `u` like any edit. `sections.changed` is emitted when the list
 changes for any reason, edits, undo, redo, a new or loaded project included,
-once the command that changed it has returned (or on `daw.flush()`).
+once the command that changed it has returned (or on `paw.flush()`).
 
 A register value from `sections.yank` or `sections.delete` is an ordinary
 `range` value, so `p` and `P` paste it too (from the cursor's track down,

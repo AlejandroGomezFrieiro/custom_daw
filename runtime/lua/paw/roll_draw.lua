@@ -1,4 +1,4 @@
--- `daw.roll_draw`: the piano roll's insert mode, drawing notes with the
+-- `paw.roll_draw`: the piano roll's insert mode, drawing notes with the
 -- cursor. `i` starts a note at the cursor, nothing long yet; `l` and `h`
 -- make it a grid step longer and shorter, `j` and `k` move its pitch, and
 -- the cursor stays at its end, so what shows is what will be written.
@@ -10,18 +10,18 @@
 -- is written at once, which makes the whole of it one undo step and lets
 -- `.` draw the same shape again at the cursor, as Vim repeats an insert.
 --
--- The other way in, `daw.opt.roll_insert = "keys"` or `I`, turns the
+-- The other way in, `paw.opt.roll_insert = "keys"` or `I`, turns the
 -- keyboard into a piano instead (`view:enter`); this module then stays out
 -- of the way.
-local api = daw.api
-local util = daw.util
-local music = daw.music
-local clips = daw.roll_clips
+local api = paw.api
+local util = paw.util
+local music = paw.music
+local clips = paw.roll_clips
 local M = {}
 
 -- How insert mode in the piano roll enters notes: "draw" with the cursor,
 -- or "keys", the keyboard as a piano.
-daw.option.define("roll_insert", "draw")
+paw.option.define("roll_insert", "draw")
 
 -- Beats here are the project's, so that what is drawn stays put when the
 -- active clip changes: `notes` kept so far, as `{ pitch, start, length,
@@ -29,14 +29,14 @@ daw.option.define("roll_insert", "draw")
 -- `count`, digits typed for the next key.
 local session
 local keys_once   -- `I` asked for the piano keys this time
-daw.seats.keep("roll_draw", function() return session, keys_once end,
+paw.seats.keep("roll_draw", function() return session, keys_once end,
   function(s, k) session, keys_once = s, k end,
   function() return nil, nil end)
 
-local function roll() return daw.ui.views.pianoroll end
+local function roll() return paw.ui.views.pianoroll end
 
 local function changed()
-  if daw.frontend then daw.frontend.refresh() else api.ui_redraw() end
+  if paw.frontend then paw.frontend.refresh() else api.ui_redraw() end
 end
 
 --- Where the active clip starts in the project, or nil with none open.
@@ -48,7 +48,7 @@ end
 --- Whether a note is being drawn: insert mode in the piano roll, the
 --- drawing kind.
 function M.active()
-  return session ~= nil and daw.keymap.mode == "i"
+  return session ~= nil and paw.keymap.mode == "i"
 end
 
 --- Bring the note being drawn to the cursor, if something else moved it
@@ -78,7 +78,7 @@ function M.start(after)
   local at = origin()
   if not at then return end
   local r = roll()
-  session = { notes = {}, pitch = r.pitch, start = r.beat + at + (after or 0) * daw.opt.note_grid, length = 0 }
+  session = { notes = {}, pitch = r.pitch, start = r.beat + at + (after or 0) * paw.opt.note_grid, length = 0 }
   place()
 end
 
@@ -103,7 +103,7 @@ function M.grow(steps)
   if not session then return end
   sync()
   local n = take_count()
-  session.length = math.max(0, session.length + steps * n * daw.opt.note_grid)
+  session.length = math.max(0, session.length + steps * n * paw.opt.note_grid)
   place()
 end
 
@@ -119,7 +119,7 @@ function M.pitch(semitones, step)
   place()
   local at = origin()
   local part = at and clips.target(session.start - at)
-  if part then part.clip:track():play_note(session.pitch, daw.opt.velocity, 180) end
+  if part then part.clip:track():play_note(session.pitch, paw.opt.velocity, 180) end
 end
 
 --- Keep the note being drawn among those to write, replacing one drawn
@@ -131,7 +131,7 @@ local function put()
     if n.pitch == session.pitch and math.abs(n.start - session.start) < 1e-9 then table.remove(session.notes, i) end
   end
   session.notes[#session.notes + 1] = {
-    pitch = session.pitch, start = session.start, length = session.length, velocity = daw.opt.velocity,
+    pitch = session.pitch, start = session.start, length = session.length, velocity = paw.opt.velocity,
   }
 end
 
@@ -144,7 +144,7 @@ function M.next(how)
   local n = take_count()
   put()
   if how == "chord" then return place() end
-  session.start = session.start + session.length + (how == "rest" and n * daw.opt.note_grid or 0)
+  session.start = session.start + session.length + (how == "rest" and n * paw.opt.note_grid or 0)
   session.length = 0
   place()
 end
@@ -189,7 +189,7 @@ local function drawn()
     if not (drawing and n.pitch == session.pitch and math.abs(n.start - session.start) < 1e-9) then list[#list + 1] = n end
   end
   if drawing then
-    list[#list + 1] = { pitch = session.pitch, start = session.start, length = session.length, velocity = daw.opt.velocity, pending = true }
+    list[#list + 1] = { pitch = session.pitch, start = session.start, length = session.length, velocity = paw.opt.velocity, pending = true }
   end
   return list
 end
@@ -206,7 +206,7 @@ local function write()
     local part, clip = entry.part, entry.part.clip
     local finish, add, remove, seen = 0, {}, {}, {}
     for _, n in ipairs(entry.notes) do
-      add[#add + 1] = daw.ui.views.pianoroll.new_note(clip, { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity })
+      add[#add + 1] = paw.ui.views.pianoroll.new_note(clip, { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity })
       finish = math.max(finish, n.start + n.length)
       local found, places = clip:notes({ from = n.start - 1e-9, to = n.start + 2e-9, low = n.pitch, high = n.pitch })
       for i, old in ipairs(found) do
@@ -217,11 +217,11 @@ local function write()
       end
     end
     if finish > part.length + 1e-9 then
-      clip.length = daw.time.bar_ceil(part.start + finish - 1e-9) - part.start
+      clip.length = paw.time.bar_ceil(part.start + finish - 1e-9) - part.start
     end
     clip:edit_notes({ remove = remove, add = add })
   end
-  daw.ui.poke()
+  paw.ui.poke()
 end
 
 --- End the drawing: write it, and forget it.
@@ -241,7 +241,7 @@ end
 -- Entering insert mode in the piano roll starts a note at the cursor, unless
 -- the keys are a piano this time; leaving it writes what was drawn.
 local entered   -- { clip, notes it held } when insert mode began
-daw.on("mode.changed", function(e)
+paw.on("mode.changed", function(e)
   if e.old == "i" then
     keys_once = nil
     M.finish()
@@ -251,14 +251,14 @@ daw.on("mode.changed", function(e)
     if from then
       local ok, notes = pcall(function() return #from.clip:notes() end)
       local added = ok and notes - from.notes or 0
-      if added > 0 then daw.notify(string.format("wrote %d note%s", added, added == 1 and "" or "s")) end
+      if added > 0 then paw.notify(string.format("wrote %d note%s", added, added == 1 and "" or "s")) end
     end
     return
   end
-  if e.mode == "i" and daw.ui.focused == "pianoroll" and roll():clip() then
+  if e.mode == "i" and paw.ui.focused == "pianoroll" and roll():clip() then
     local clip = roll():clip()
     entered = { clip = clip, notes = #clip:notes() }
-    if keys_once or daw.opt.roll_insert == "keys" then return end
+    if keys_once or paw.opt.roll_insert == "keys" then return end
     M.start()
   end
 end)
@@ -267,7 +267,7 @@ end)
 
 --- A length in grid steps and in beats: "2 steps · 0.5 beats".
 local function length_text(length)
-  local steps = length / daw.opt.note_grid
+  local steps = length / paw.opt.note_grid
   return string.format("%g step%s · %g beat%s", steps, steps == 1 and "" or "s", length, length == 1 and "" or "s")
 end
 
@@ -282,17 +282,17 @@ end
 function M.label()
   if not M.active() then
     local r = roll()
-    return string.format("INS C%d  step %g  vel %d", daw.opt.octave, r:step_length(), daw.opt.velocity)
+    return string.format("INS C%d  step %g  vel %d", paw.opt.octave, r:step_length(), paw.opt.velocity)
   end
   sync()
   return string.format("DRAW %s%s  %s  vel %d", session.count and session.count .. " " or "", music.name(session.pitch),
-    length_text(session.length), daw.opt.velocity)
+    length_text(session.length), paw.opt.velocity)
 end
 
 --- What the window says while in insert mode.
 function M.status()
   if not M.active() then
-    return string.format("entering notes · a is C%d · step %g · Esc to stop", daw.opt.octave, roll():step_length())
+    return string.format("entering notes · a is C%d · step %g · Esc to stop", paw.opt.octave, roll():step_length())
   end
   return "drawing " .. M.describe() .. " · l h longer, shorter · Enter next · Esc writes"
 end
@@ -313,10 +313,10 @@ local styles = {}
 --- The terminal's look for the note being drawn: the insert mode's colour,
 --- faint behind and bright in front, unlike any clip's notes.
 local function pending_style()
-  local palette = require("daw.theme").palette
+  local palette = require("paw.theme").palette
   local key = palette.bg .. palette.insert
   if not styles[key] then
-    daw.ui.hl("NoteDrawing", { fg = palette.insert, bg = daw.draw.mix(palette.bg, palette.insert, 0.3), bold = true })
+    paw.ui.hl("NoteDrawing", { fg = palette.insert, bg = paw.draw.mix(palette.bg, palette.insert, 0.3), bold = true })
     styles[key] = "NoteDrawing"
   end
   return styles[key]
@@ -327,14 +327,14 @@ end
 roll().layer("draw", 35, function(L)
   if not M.active() then return end
   sync()
-  local g = daw.draw.g
+  local g = paw.draw.g
   local at = L.data.start
   for _, n in ipairs(drawn()) do
     local row = L.row(n.pitch)
     local x0, x1 = L.x(n.start - at), L.x(n.start + n.length - at)
     if row and x1 > 0 and x0 < L.width then
       local w = math.max(1, x1 - x0)
-      L.roll:fill(x0, row, w, 1, " ", n.pending and pending_style() or daw.draw.note_style(L.hue, n.velocity))
+      L.roll:fill(x0, row, w, 1, " ", n.pending and pending_style() or paw.draw.note_style(L.hue, n.velocity))
       L.roll:text(x0, row, g.clip_start)
       if w >= 4 then L.roll:text(x0 + 1, row, music.name(n.pitch):sub(1, w - 1)) end
     end
@@ -342,7 +342,7 @@ roll().layer("draw", 35, function(L)
 end, function(clip_id)
   if not M.active() then return {} end
   sync()
-  local palette = require("daw.theme").palette
+  local palette = require("paw.theme").palette
   local entry = by_clip(drawn())[clip_id]
   local out = {}
   -- The one being drawn is fainter than those kept, with the same edge.

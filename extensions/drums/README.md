@@ -4,11 +4,11 @@ A drum track made in one step, and a grid to program it on whose rows are
 the pieces of the kit, by name: in the terminal and in a window.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/drums")
+paw.ext.load("/path/to/paw/extensions/drums")
 ```
 
 `extensions/drums/demo.lua` is a song to try it with
-(`daw -e 'dofile("extensions/drums/demo.lua")'`).
+(`paw -e 'dofile("extensions/drums/demo.lua")'`).
 
 ![The demo song's drums in the grid: claps put in by name with / and Enter, one made softer, the bar repeated with &, and played](images/tui-drums.gif)
 
@@ -49,7 +49,7 @@ or change one:
 local maps = require("drums").maps
 maps.mykit = { label = "My kit", rows = { { note = 36, name = "Kick" }, { note = "E2", name = "Snare" } } }
 maps.gm.rows[2].name = "Snare (top)"
-daw.opt.drums_map = "mykit"          -- what new drum tracks get
+paw.opt.drums_map = "mykit"          -- what new drum tracks get
 ```
 
 | Map | Rows |
@@ -126,7 +126,7 @@ their names (`kick`, `BD`, `snare`, `hh closed`, `OpenHat`, `pedal hat`,
 files it does not recognise go on notes from 60 up. The grid's rows are
 named after the files. The kit is the device's state, so it is saved in
 the project, undone like any edit and heard in renders; the files are read
-when the project opens, and `daw.api.device_call(id, "status")` says which
+when the project opens, and `paw.api.device_call(id, "status")` says which
 were found.
 
 ```lua

@@ -1,9 +1,9 @@
 -- The curve editor: a buffer for each curve (an automation lane, a
 -- parameter, a clip's controller, one note's expression, the tempo map),
 -- named by its address, shown in any number of windows. docs/terminal.md
--- says how it is used; `daw.curves` reads and writes the curves.
+-- says how it is used; `paw.curves` reads and writes the curves.
 --
---   :vs daw://lane/9          :e daw://tempo          :curve.open
+--   :vs paw://lane/9          :e paw://tempo          :curve.open
 --
 -- Editing is modal, as in the piano roll: the cursor is a beat and a value,
 -- points are words (`w` `b`), operators take motions and selections, and
@@ -11,11 +11,11 @@
 -- step when it is left. A window keeps its own time (`left`, `zoom`),
 -- cursor (`beat`, `value`) and grid in `win.state`, so that two windows on
 -- one curve look at different stretches of it.
-local api = daw.api
-local util = daw.util
-local curves = daw.curves
-local layout = daw.layout
-local mouse = daw.mouse
+local api = paw.api
+local util = paw.util
+local curves = paw.curves
+local layout = paw.layout
+local mouse = paw.mouse
 
 local M = {}
 local EPS = 1e-9
@@ -25,7 +25,7 @@ local AXIS = 10  -- the columns of the value axis at the left
 -- mode has drawn (`{ win, from, to, points }`), a wave made with `g~`
 -- whose choices can still be stepped through, and what the pointer drags.
 local insert, gen, drag
-daw.seats.keep("curve", function() return insert, gen, drag end,
+paw.seats.keep("curve", function() return insert, gen, drag end,
   function(i, g, d) insert, gen, drag = i, g, d end,
   function() return nil, nil, nil end)
 
@@ -40,7 +40,7 @@ local loose
 function M.current()
   local win = layout.current()
   if win and win.view == "curve" then return win end
-  if daw.ui.focused == "curve" and loose then return loose end
+  if paw.ui.focused == "curve" and loose then return loose end
 end
 
 local function uri_of(win)
@@ -57,9 +57,9 @@ end
 
 local function state(win, t)
   local s = win.state
-  s.zoom = s.zoom or daw.opt.zoom
-  s.grid = s.grid or daw.opt.grid
-  s.beat = s.beat or daw.cursor.beat
+  s.zoom = s.zoom or paw.opt.zoom
+  s.grid = s.grid or paw.opt.grid
+  s.beat = s.beat or paw.cursor.beat
   s.left = s.left or math.max(0, s.beat - 2)
   if not s.value and t then
     local points = t.points()
@@ -98,7 +98,7 @@ end
 --- A value `n` key presses away: a hundredth of the slider for a
 --- parameter, as the device panel moves it, else the curve's step.
 local function nudge(t, v, n)
-  if t.param then return daw.params.step(t.param, v, n) end
+  if t.param then return paw.params.step(t.param, v, n) end
   return util.clamp(v + n * t.step, t.min, t.max)
 end
 
@@ -123,17 +123,17 @@ end
 local function in_span(q, from, to) return q.beat >= from - EPS and q.beat <= to + EPS end
 
 --- The plot in pixels (a strip under the cells, `buf:strip`): the grid,
---- the curve and the area under it, through `daw.plot`. A value is as high
+--- the curve and the area under it, through `paw.plot`. A value is as high
 --- as the middle of the dot the cells would put it in (`s.sub` dots a
---- cell down, as `daw.opt.curve_glyphs` has them), so that the points and
+--- cell down, as `paw.opt.curve_glyphs` has them), so that the points and
 --- the cursor, drawn in cells over it, sit on the line.
 function M.picture(g, px, t, points, s)
   local track = t.track and api.track_get(t.track) or { master = true }
   local dot = px.cell.h / (s.sub or 4)
-  daw.plot.curve(g, px, {
+  paw.plot.curve(g, px, {
     points = points, from = s.left, pixels_per_beat = s.zoom * px.cell.w,
     frac = t.frac, flat = #points == 0 and t.flat and t.flat() or nil,
-    color = daw.draw.track_colour(track), top = dot / 2, bottom = dot / 2,
+    color = paw.draw.track_colour(track), top = dot / 2, bottom = dot / 2,
     beats = s.zoom >= 4, markers = false,
   })
 end
@@ -142,17 +142,17 @@ local function render(win, canvas, ctx)
   local t, why = M.target(win)
   local W, H = canvas.width, canvas.height
   if not t then
-    daw.ui.titlebar(canvas, { name = uri_of(win) or "curve", focused = ctx.focused })
+    paw.ui.titlebar(canvas, { name = uri_of(win) or "curve", focused = ctx.focused })
     canvas:text(2, 2, why or "nothing to show", "Empty")
     return
   end
   local s = state(win, t)
-  local g = daw.draw.g
+  local g = paw.draw.g
   local points = shown_points(win, t)
   local inserting = insert and insert.win == win.id
-  local mode = ctx.focused and daw.keymap.mode or "n"
-  local where = daw.time.format(s.beat) .. "  " .. t.format(s.value)
-  daw.ui.titlebar(canvas, { name = t.name(), context = where, focused = ctx.focused,
+  local mode = ctx.focused and paw.keymap.mode or "n"
+  local where = paw.time.format(s.beat) .. "  " .. t.format(s.value)
+  paw.ui.titlebar(canvas, { name = t.name(), context = where, focused = ctx.focused,
     right = string.format("%d point%s", #points, #points == 1 and "" or "s") })
   if inserting and ctx.focused then
     local text = " INS draw "
@@ -172,7 +172,7 @@ local function render(win, canvas, ctx)
 
   -- The ruler and the grid: bars and beats on the left edge of their cell.
   canvas:fill(0, 1, W, 1, " ", "Ruler")
-  local lines = daw.draw.beats(canvas:sub(AXIS, 1, pw, 1), s.left, span, s.zoom, 0)
+  local lines = paw.draw.beats(canvas:sub(AXIS, 1, pw, 1), s.left, span, s.zoom, 0)
   local plot = canvas:sub(AXIS, top, pw, rows)
   plot:fill(0, 0, pw, rows, " ", "Lane")
   -- Where the terminal shows pictures, the grid and the curve are one under
@@ -180,7 +180,7 @@ local function render(win, canvas, ctx)
   local pictured = plot:strip(0, 0, pw, rows, {
     key = "curve:" .. tostring(win.id), under = true,
     draw = function(gp, px)
-      M.picture(gp, px, t, points, { left = s.left, zoom = s.zoom, sub = daw.draw.curve_glyphs() == "braille" and 4 or 3 })
+      M.picture(gp, px, t, points, { left = s.left, zoom = s.zoom, sub = paw.draw.curve_glyphs() == "braille" and 4 or 3 })
     end,
   })
   -- Beats only once they are far enough apart not to be noise, as in the arrange view.
@@ -191,7 +191,7 @@ local function render(win, canvas, ctx)
   end
 
   -- A selection: its stretch of time, behind the curve.
-  local sel = ctx.focused and daw.keymap.selection()
+  local sel = ctx.focused and paw.keymap.selection()
   if sel and sel.view == "curve" then
     local from, to = span_of(sel)
     local x0 = math.max(0, math.floor((from - s.left) * s.zoom))
@@ -208,8 +208,8 @@ local function render(win, canvas, ctx)
   canvas:fill(AXIS - 1, top, 1, rows, g.v, "Rule")
 
   -- The curve, two samples a cell across, joined into a line.
-  local hue = daw.draw.track_hue(t.track and api.track_get(t.track) or { master = true })
-  local kind = daw.draw.curve_glyphs()
+  local hue = paw.draw.track_hue(t.track and api.track_get(t.track) or { master = true })
+  local kind = paw.draw.curve_glyphs()
   local sub = kind == "braille" and 4 or 3
   local dots = rows * sub
   local function dot_y(v) return util.clamp(math.floor((1 - t.frac(v)) * (dots - 1) + 0.5), 0, dots - 1) end
@@ -219,13 +219,13 @@ local function render(win, canvas, ctx)
       for cx = 0, pw - 1 do
         local beat = s.left + (cx + 0.5) / s.zoom
         local y = dot_y(value_at(t, points, beat))
-        plot:text(cx, math.floor(y / sub), daw.opt.ascii and "*" or "─", hue.fg)
+        plot:text(cx, math.floor(y / sub), paw.opt.ascii and "*" or "─", hue.fg)
       end
     else
-      local cells = daw.draw.trace(pw, pw * 2, function(sx)
+      local cells = paw.draw.trace(pw, pw * 2, function(sx)
         return dot_y(value_at(t, points, s.left + (sx + 0.5) / (2 * s.zoom)))
       end, sub, kind)
-      local glyph = kind == "braille" and daw.draw.braille or daw.draw.sextant
+      local glyph = kind == "braille" and paw.draw.braille or paw.draw.sextant
       for key, bits in pairs(cells) do
         plot:text(key % pw, math.floor(key / pw), glyph(bits), hue.fg)
       end
@@ -246,7 +246,7 @@ local function render(win, canvas, ctx)
   end
 
   -- The playhead, then the cursor: a beat and a value.
-  local play = math.floor((daw.transport.position - s.left) * s.zoom + EPS)
+  local play = math.floor((paw.transport.position - s.left) * s.zoom + EPS)
   if play >= 0 and play < pw then plot:fill(play, 0, 1, rows, g.playhead, "Playhead") end
   local cx = math.floor((s.beat - s.left) * s.zoom + EPS)
   if cx >= 0 and cx < pw then
@@ -264,11 +264,11 @@ local function render(win, canvas, ctx)
   if gen and gen.win == win.id then
     text = M.gen_text()
   elseif q then
-    text = string.format("point %d: %s at %s · %s%s", at, t.format(q.value), daw.time.format(q.beat), q.shape,
+    text = string.format("point %d: %s at %s · %s%s", at, t.format(q.value), paw.time.format(q.beat), q.shape,
       q.shape == "smooth" and string.format(" %+.2f", q.tension) or "")
   else
-    text = string.format("curve %s at %s · grid %s", t.format(value_at(t, points, s.beat)), daw.time.format(s.beat),
-      daw.ui.views.status.grid_text(s.grid))
+    text = string.format("curve %s at %s · grid %s", t.format(value_at(t, points, s.beat)), paw.time.format(s.beat),
+      paw.ui.views.status.grid_text(s.grid))
   end
   canvas:text(1, bottom, util.fit(text, W - 2), "Dim")
 end
@@ -300,7 +300,7 @@ local def = layout.buftype("curve", {
     end,
   },
 })
-local view = daw.ui.views.curve
+local view = paw.ui.views.curve
 view.title = "Curve"
 
 -- What modal editing works on: rows are steps of the value, counting upwards.
@@ -325,7 +325,7 @@ view.grid = {
   end,
   step = function()
     local win = M.current()
-    return win and state(win).grid or daw.opt.grid
+    return win and state(win).grid or paw.opt.grid
   end,
 }
 
@@ -350,7 +350,7 @@ function M.open(uri, opts)
   if opts.window then
     loose = layout.leaf("curve", { buf = buf.id })
     win = loose
-    daw.canvas.open_view("curve", { title = t.name() })
+    paw.canvas.open_view("curve", { title = t.name() })
   else
     for _, w in ipairs(layout.windows()) do
       if w.view == "curve" and w.buf == buf.id then win = w end
@@ -379,23 +379,23 @@ end
 --- strip's controller in the piano roll (with `note`, that of the note
 --- under the cursor alone). Nil and why not when it is on none.
 function M.under_cursor(note)
-  local focused = daw.ui.focused
+  local focused = paw.ui.focused
   if focused == "curve" then
     local win = M.current()
     return win and uri_of(win)
   end
   if focused == "devices" then
-    local _, row = daw.ui.views.devices:selected()
+    local _, row = paw.ui.views.devices:selected()
     if not (row and row.param) then return nil, "no parameter under the cursor" end
-    return daw.address.param(row.device.id, row.param.key)
+    return paw.address.param(row.device.id, row.param.key)
   end
   if focused == "pianoroll" then
-    local roll = daw.ui.views.pianoroll
+    local roll = paw.ui.views.pianoroll
     local clip = roll:clip()
     if not clip then return nil, "no clip in the piano roll" end
-    local shown = require("daw.views.pianoroll_strip").shown()
+    local shown = require("paw.views.pianoroll_strip").shown()
     local kind, number = shown.kind or "cc", shown.kind and shown.number or 1
-    local uri = daw.address.clip(clip.id) .. "/control/" .. kind .. (kind == "cc" and "/" .. number or "")
+    local uri = paw.address.clip(clip.id) .. "/control/" .. kind .. (kind == "cc" and "/" .. number or "")
     if note then
       local n = roll:note_at(roll.pitch, roll.beat)
       if not n then return nil, "no note under the cursor" end
@@ -404,13 +404,13 @@ function M.under_cursor(note)
     return uri
   end
   if focused == "arrange" then
-    local lane = daw.cursor.lane_id()
-    if lane then return daw.address.lane(lane) end
-    if daw.tempolane.shown() then return daw.address.tempo() end
+    local lane = paw.cursor.lane_id()
+    if lane then return paw.address.lane(lane) end
+    if paw.tempolane.shown() then return paw.address.tempo() end
     return nil, "not on a lane row: `,aa` shows the lanes, `,al` chooses one"
   end
   -- A view that knows the curve of what is under its cursor (the mixer's fader).
-  local view = daw.ui.views[focused]
+  local view = paw.ui.views[focused]
   if view and view.curve_uri then return view:curve_uri() end
   return nil, "no curve under the cursor here"
 end
@@ -423,14 +423,14 @@ local function here()
   if not win then return nil end
   local t, why = M.target(win)
   if not t then
-    daw.notify(why, "warn")
+    paw.notify(why, "warn")
     return nil
   end
   return win, t, state(win, t), t.points()
 end
 
 local function say(t, q)
-  daw.notify(string.format("%s: %s at %s", t.name(), t.format(q.value), daw.time.format(q.beat)))
+  paw.notify(string.format("%s: %s at %s", t.name(), t.format(q.value), paw.time.format(q.beat)))
 end
 
 --- Move the cursor along the grid, `n` steps.
@@ -498,7 +498,7 @@ function M.remove(n)
   local win, t, s, points = here()
   if not win then return end
   local at = point_at(points, s.beat, s.zoom)
-  if not at then return daw.notify("no point under the cursor", "warn") end
+  if not at then return paw.notify("no point under the cursor", "warn") end
   for _ = 1, n or 1 do
     if points[at] then table.remove(points, at) end
   end
@@ -510,7 +510,7 @@ function M.nudge_point(n)
   local win, t, s, points = here()
   if not win then return end
   local at, q = point_at(points, s.beat, s.zoom)
-  if not at then return daw.notify("no point under the cursor: `o` adds one", "warn") end
+  if not at then return paw.notify("no point under the cursor: `o` adds one", "warn") end
   q.value = nudge(t, q.value, n)
   s.value = q.value
   write(t, points, "Change a point")
@@ -523,7 +523,7 @@ function M.type_value()
   if not win then return end
   local at, q = point_at(points, s.beat, s.zoom)
   local now = q and q.value or s.value
-  daw.ui.ask_value({ label = t.name(), now = now * t.scale, min = t.min * t.scale, max = t.max * t.scale,
+  paw.ui.ask_value({ label = t.name(), now = now * t.scale, min = t.min * t.scale, max = t.max * t.scale,
     show = function(v) return t.format(v / t.scale) end }, function(v)
     v = v / t.scale
     local list = t.points()
@@ -538,7 +538,7 @@ local SHAPES = { "linear", "hold", "smooth" }
 --- Give the stretches that leave the points `list` (indices) a shape: the
 --- next one in turn after the first's when `shape` is nil.
 local function shape_points(t, points, list, shape)
-  if #list == 0 then return daw.notify("no point there", "warn") end
+  if #list == 0 then return paw.notify("no point there", "warn") end
   if not shape then
     local now = points[list[1]].shape
     for i, name in ipairs(SHAPES) do
@@ -553,11 +553,11 @@ local function shape_points(t, points, list, shape)
     end
   end
   if not t.has(shape) then
-    return daw.notify(t.name() .. " has no " .. shape .. " stretches" .. (t.kind == "control" and ": a controller's moves hold until the next" or ""), "warn")
+    return paw.notify(t.name() .. " has no " .. shape .. " stretches" .. (t.kind == "control" and ": a controller's moves hold until the next" or ""), "warn")
   end
   for _, i in ipairs(list) do points[i].shape = shape end
   write(t, points, "Shape the curve")
-  daw.notify(shape .. (shape == "smooth" and ": `[` `]` bend it" or ""))
+  paw.notify(shape .. (shape == "smooth" and ": `[` `]` bend it" or ""))
 end
 
 --- The next shape for the stretch from the point under the cursor.
@@ -565,7 +565,7 @@ function M.cycle_shape()
   local win, t, s, points = here()
   if not win then return end
   local at = point_at(points, s.beat, s.zoom)
-  if not at then return daw.notify("no point under the cursor", "warn") end
+  if not at then return paw.notify("no point under the cursor", "warn") end
   shape_points(t, points, { at }, nil)
 end
 
@@ -574,10 +574,10 @@ function M.tension(by)
   local win, t, s, points = here()
   if not win then return end
   local at, q = point_at(points, s.beat, s.zoom)
-  if not (q and q.shape == "smooth") then return daw.notify("no smooth stretch from here: `~` makes one", "warn") end
+  if not (q and q.shape == "smooth") then return paw.notify("no smooth stretch from here: `~` makes one", "warn") end
   q.tension = util.clamp((q.tension or 0) + by, -1, 1)
   write(t, points, "Bend the curve")
-  daw.notify(string.format("tension %+.2f", q.tension))
+  paw.notify(string.format("tension %+.2f", q.tension))
 end
 
 --- The indices of the points in a region.
@@ -617,7 +617,7 @@ local function yank(points, list, register)
     q.beat = q.beat - first
     out[#out + 1] = q
   end
-  daw.keymap.setreg({ kind = "curve", points = out }, register, true)
+  paw.keymap.setreg({ kind = "curve", points = out }, register, true)
   return #out
 end
 
@@ -628,7 +628,7 @@ M.ops = {
     write(t, without(points, list))
   end),
   yank = on_region(function(_, points, list, _, ctx)
-    daw.notify(yank(points, list, ctx.register) .. " points yanked")
+    paw.notify(yank(points, list, ctx.register) .. " points yanked")
   end),
   raise = function(n) return on_region(function(t, points, list, _, ctx)
     for _, i in ipairs(list) do points[i].value = nudge(t, points[i].value, n * (ctx.count or 1)) end
@@ -654,14 +654,14 @@ M.ops = {
       if not covered then keep[#keep + 1] = q end
     end
     write(t, keep)
-    if daw.keymap.visual then
-      daw.keymap.visual.col = math.max(0, daw.keymap.visual.col + by)
+    if paw.keymap.visual then
+      paw.keymap.visual.col = math.max(0, paw.keymap.visual.col + by)
       s.beat = math.max(0, s.beat + by)
     end
   end) end,
   shape = on_region(function(t, points, list) shape_points(t, points, list, nil) end),
   thin = on_region(function(t, points, list, region)
-    if #list < 3 and region.kind ~= "line" then return daw.notify("thinning needs three points or more", "warn") end
+    if #list < 3 and region.kind ~= "line" then return paw.notify("thinning needs three points or more", "warn") end
     local a, b = list[1], list[#list]
     local part = {}
     for i = a, b do part[#part + 1] = points[i] end
@@ -671,10 +671,10 @@ M.ops = {
     for _, q in ipairs(thinned) do out[#out + 1] = q end
     for i = b + 1, #points do out[#out + 1] = points[i] end
     write(t, out)
-    daw.notify(string.format("%d points, %d before", #out, #points))
+    paw.notify(string.format("%d points, %d before", #out, #points))
   end),
   smooth = on_region(function(t, points, list, _, ctx)
-    if #list < 3 then return daw.notify("smoothing needs three points or more", "warn") end
+    if #list < 3 then return paw.notify("smoothing needs three points or more", "warn") end
     local a, b = list[1], list[#list]
     local part = {}
     for i = a, b do part[#part + 1] = points[i] end
@@ -703,8 +703,8 @@ M.ops = {
 function M.paste(register, count)
   local win, t, s, points = here()
   if not win then return end
-  local value = daw.keymap.getreg(register)
-  if not (value and value.kind == "curve") then return daw.notify("no points in the register: `y` some first", "warn") end
+  local value = paw.keymap.getreg(register)
+  if not (value and value.kind == "curve") then return paw.notify("no points in the register: `y` some first", "warn") end
   local new, at = {}, s.beat
   local length = 0
   for _, q in ipairs(value.points) do length = math.max(length, q.beat) end
@@ -730,7 +730,7 @@ function M.insert_start(on_curve)
   if on_curve then s.value = value_at(t, points, s.beat) end
   insert = { win = win.id, from = s.beat, to = s.beat, points = {} }
   M.insert_mark()
-  daw.keymap.set_mode("i")
+  paw.keymap.set_mode("i")
 end
 
 --- Put the cursor's beat and value among the points drawn.
@@ -761,7 +761,7 @@ function M.insert_finish()
   api.ui_redraw()
 end
 
-daw.on("mode.changed", function(e)
+paw.on("mode.changed", function(e)
   if e.old == "i" and insert then M.insert_finish() end
 end)
 
@@ -795,19 +795,19 @@ local function gen_write(first)
 end
 
 --- Make a wave over a stretch of the curve, from beat `from` to `to`:
---- `wave` by name or number in `daw.curves.waves`; `opts.rate` and
+--- `wave` by name or number in `paw.curves.waves`; `opts.rate` and
 --- `opts.depth` as numbers or places in their lists. The choices can then
 --- be stepped through until `<C-y>` or `<Esc>` keeps them.
 function M.generate(wave, from, to, opts)
   opts = opts or {}
   local win, t, _, points = here()
   if not win then return end
-  if to - from < EPS then return daw.notify("a wave needs a stretch of time: select one, or give a motion", "warn") end
+  if to - from < EPS then return paw.notify("a wave needs a stretch of time: select one, or give a motion", "warn") end
   local index = tonumber(wave)
   for i, name in ipairs(curves.waves) do
     if name == wave then index = i end
   end
-  if not (index and curves.waves[index]) then return daw.notify("no wave `" .. tostring(wave) .. "`: " .. table.concat(curves.waves, ", "), "warn") end
+  if not (index and curves.waves[index]) then return paw.notify("no wave `" .. tostring(wave) .. "`: " .. table.concat(curves.waves, ", "), "warn") end
   local function place(list, v, default)
     for i, entry in ipairs(list) do
       if math.abs(entry[1] - (tonumber(v) or -1)) < EPS then return i end
@@ -849,7 +849,7 @@ local function wave_menu(from, to, where)
   for i, name in ipairs(curves.waves) do
     items[#items + 1] = { label = name:sub(1, 1):upper() .. name:sub(2), keys = tostring(i), run = function() M.generate(i, from, to) end }
   end
-  daw.ui.menu(items, where or { x = 4, y = 4 })
+  paw.ui.menu(items, where or { x = 4, y = 4 })
 end
 M.wave_menu = wave_menu
 
@@ -866,7 +866,7 @@ function M.grid(factor)
   local win, _, s = here()
   if not win then return end
   s.grid = util.clamp(s.grid * factor, 1 / 64, 16)
-  daw.notify("grid " .. daw.ui.views.status.grid_text(s.grid))
+  paw.notify("grid " .. paw.ui.views.status.grid_text(s.grid))
 end
 
 -- The mouse ------------------------------------------------------------------------------
@@ -959,9 +959,9 @@ function def.on_mouse(win, e)
   if e.button == "right" then
     return mouse.grab(e, { up = function(u)
       if u.moved then return end
-      if at then return daw.ui.menu(point_menu(win, t, at), where) end
+      if at then return paw.ui.menu(point_menu(win, t, at), where) end
       s.beat, s.value = snapped(s, beat), value
-      daw.ui.menu(curve_menu(win, t, where), where)
+      paw.ui.menu(curve_menu(win, t, where), where)
     end })
   end
   if e.button ~= "left" then return end
@@ -1039,27 +1039,27 @@ function M.automate(device_id, key)
   for _, p in ipairs(d.param_info) do
     if p.key == key then info = p end
   end
-  if not info then return daw.notify("no parameter `" .. tostring(key) .. "` on " .. d.name, "warn") end
-  local device = daw.device(device_id)
+  if not info then return paw.notify("no parameter `" .. tostring(key) .. "` on " .. d.name, "warn") end
+  local device = paw.device(device_id)
   local lane = device:lane(key)
-  local beat = daw.cursor.beat
+  local beat = paw.cursor.beat
   if lane then
-    daw.notify(daw.lanes.name(lane.id) .. " is automated already: `gc` edits its curve")
+    paw.notify(paw.lanes.name(lane.id) .. " is automated already: `gc` edits its curve")
   else
     api.undo_label("Automate " .. info.name)
     lane = device:automate(key)
     lane:add(beat, d.params[key])
-    daw.notify(string.format("%s automated: a point at %s, %s · `gc` edits the curve", daw.lanes.name(lane.id),
-      daw.time.format(beat), daw.frontend.format_value(info, d.params[key])))
+    paw.notify(string.format("%s automated: a point at %s, %s · `gc` edits the curve", paw.lanes.name(lane.id),
+      paw.time.format(beat), paw.frontend.format_value(info, d.params[key])))
   end
-  daw.lanes.open(d.track)
-  daw.cursor.set_track(d.track, lane.id)
+  paw.lanes.open(d.track)
+  paw.cursor.set_track(d.track, lane.id)
   return lane
 end
 
 -- Commands and keys ---------------------------------------------------------------------
 
-local command, map = daw.command, daw.keymap.set
+local command, map = paw.command, paw.keymap.set
 
 command("curve.open", function(ctx)
   local uri = ctx.args[1] and tostring(ctx.args[1])
@@ -1068,33 +1068,33 @@ command("curve.open", function(ctx)
     opts[uri], uri = true, nil
   end
   for i = 2, #ctx.args do opts[tostring(ctx.args[i])] = true end
-  if ctx.args.device and ctx.args.param then uri = daw.address.param(tonumber(ctx.args.device), tostring(ctx.args.param)) end
+  if ctx.args.device and ctx.args.param then uri = paw.address.param(tonumber(ctx.args.device), tostring(ctx.args.param)) end
   local why
   if not uri then uri, why = M.under_cursor(opts.note) end
-  if not uri then return daw.notify(why, "warn") end
-  local beat = daw.ui.focused ~= "curve" and daw.cursor.beat or nil
-  if daw.ui.focused == "pianoroll" then
-    local roll = daw.ui.views.pianoroll
+  if not uri then return paw.notify(why, "warn") end
+  local beat = paw.ui.focused ~= "curve" and paw.cursor.beat or nil
+  if paw.ui.focused == "pianoroll" then
+    local roll = paw.ui.views.pianoroll
     local clip = roll:clip()
     beat = clip and clip.start + roll.beat
   end
   local win, err = M.open(uri, { window = opts.window, here = opts.here, vertical = opts.vertical, beat = beat })
-  if not win then return daw.notify(err, "warn") end
+  if not win then return paw.notify(err, "warn") end
 end, {
-  desc = "Edit a curve: `curve.open daw://lane/3`, `curve.open daw://tempo`; without one, what the cursor is on (a lane row, a parameter, the piano roll's strip; `note` the note's own); `window` in a window of its own",
-  complete = function() return { "window", "here", "note", "vertical", "daw://tempo" } end,
+  desc = "Edit a curve: `curve.open paw://lane/3`, `curve.open paw://tempo`; without one, what the cursor is on (a lane row, a parameter, the piano roll's strip; `note` the note's own); `window` in a window of its own",
+  complete = function() return { "window", "here", "note", "vertical", "paw://tempo" } end,
 })
 command("curve.window", function()
   local win = M.current()
   local uri = win and uri_of(win)
-  if not uri then return daw.notify("no curve here: `:curve.open` opens one", "warn") end
+  if not uri then return paw.notify("no curve here: `:curve.open` opens one", "warn") end
   M.open(uri, { window = true })
 end, { desc = "Show this curve in a window of its own, in the graphical frontend" })
 command("param.automate", function(ctx)
   local device, key = tonumber(ctx.args[1]), ctx.args[2] and tostring(ctx.args[2])
   if not (device and key) then
-    local _, row = daw.ui.views.devices:selected()
-    if not (row and row.param) then return daw.notify("no parameter under the cursor", "warn") end
+    local _, row = paw.ui.views.devices:selected()
+    if not (row and row.param) then return paw.notify("no parameter under the cursor", "warn") end
     device, key = row.device.id, row.param.key
   end
   M.automate(device, key)
@@ -1102,10 +1102,10 @@ end, { desc = "Automate a parameter (the device panel's under the cursor): its l
 command("curve.generate", function(ctx)
   local win, _, s = here()
   if not win then return end
-  local sel = daw.keymap.selection()
+  local sel = paw.keymap.selection()
   local from, to = s.left, s.left + (s.geo and s.geo.w or 40) / s.zoom
   if sel and sel.view == "curve" then from, to = sel.c0, sel.c1 end
-  daw.keymap.set_mode("n")
+  paw.keymap.set_mode("n")
   M.generate(ctx.args[1] and tostring(ctx.args[1]) or "sine", from, to, { rate = ctx.args.rate, depth = ctx.args.depth })
 end, {
   desc = "Draw a wave over the selection, or what shows: `curve.generate sine rate=1 depth=0.5` (rate in beats a cycle, depth a fraction of the height)",
@@ -1206,14 +1206,14 @@ gmap("<C-n>", function() M.gen_step(1) end, "Change the choice")
 gmap("<C-p>", function() M.gen_step(-1) end, "Change the choice back")
 gmap("<C-y>", M.gen_finish, "Keep the wave")
 gmap("<Esc>", M.gen_finish, "Keep the wave")
-daw.on("view.focused", function() if gen then M.gen_finish() end end)
+paw.on("view.focused", function() if gen then M.gen_finish() end end)
 
-daw.ui.keybar.set("curve", "n", {
+paw.ui.keybar.set("curve", "n", {
   { "i", "draw" }, { "o", "point" }, { "x", "remove" }, { "w", "next" }, { "~", "shape" }, { "g~", "wave" }, { "?", "keys" },
 })
-daw.ui.keybar.set("curve", "i", { { "h", "back" }, { "l", "right" }, { "k", "up" }, { "j", "down" }, { "<Esc>", "write" } })
-daw.ui.keybar.set("curve", "x", { { "d", "delete" }, { "+", "raise" }, { "<lt>", "earlier" }, { ">", "later" }, { "gs", "smooth" }, { "g~", "wave" } })
-daw.ui.keybar.set("curve.gen", "n", { { "<Tab>", "next choice" }, { "<C-n>", "change" }, { "<C-y>", "keep" } })
+paw.ui.keybar.set("curve", "i", { { "h", "back" }, { "l", "right" }, { "k", "up" }, { "j", "down" }, { "<Esc>", "write" } })
+paw.ui.keybar.set("curve", "x", { { "d", "delete" }, { "+", "raise" }, { "<lt>", "earlier" }, { ">", "later" }, { "gs", "smooth" }, { "g~", "wave" } })
+paw.ui.keybar.set("curve.gen", "n", { { "<Tab>", "next choice" }, { "<C-n>", "change" }, { "<C-y>", "keep" } })
 
 -- Where it opens from: `gC` or Enter on a lane row, a parameter, the mixer's
 -- fader or pan, the piano roll's strip (`gX` the note's own expression).
@@ -1224,8 +1224,8 @@ map("A", "param.automate", { view = "devices", desc = "Automate the parameter: i
 map("gC", "curve.open", { view = "pianoroll", desc = "Edit the strip's controller as a curve" })
 map("gX", "curve.open note", { view = "pianoroll", desc = "Edit the note's own expression as a curve" })
 
--- The keys the curve editor had before the rule (`daw.opt.keys = "classic"`).
-local function classic(lhs, rhs, desc, opts) daw.keymap.classic(lhs, rhs, util.merge({ view = "curve", desc = desc }, opts)) end
+-- The keys the curve editor had before the rule (`paw.opt.keys = "classic"`).
+local function classic(lhs, rhs, desc, opts) paw.keymap.classic(lhs, rhs, util.merge({ view = "curve", desc = desc }, opts)) end
 classic("K", count(function(n) M.climb(10 * n) end), "Ten steps higher", motion)
 classic("J", count(function(n) M.climb(-10 * n) end), "Ten steps lower", motion)
 classic("s", M.cycle_shape, "The next shape of the stretch from the point: straight, held, smooth")
@@ -1233,12 +1233,12 @@ classic(">", count(function(n) M.tension(0.25 * n) end), "Bend the smooth stretc
 classic("<lt>", count(function(n) M.tension(-0.25 * n) end), "Bend the smooth stretch: move late", { mode = "n" })
 classic("gw", "curve.window", "Show the curve in a window of its own")
 classic("gn", nil, "Draw a wave", { mode = nx, operator = M.ops.wave })
-daw.keymap.classic("gc", "curve.open", { view = "pianoroll", desc = "Edit the strip's controller as a curve" })
-daw.keymap.classic("gC", "curve.open note", { view = "pianoroll", desc = "Edit the note's own expression as a curve" })
-daw.keymap.classic("gc", "curve.open", { view = "devices", desc = "Edit the parameter's curve" })
+paw.keymap.classic("gc", "curve.open", { view = "pianoroll", desc = "Edit the strip's controller as a curve" })
+paw.keymap.classic("gC", "curve.open note", { view = "pianoroll", desc = "Edit the note's own expression as a curve" })
+paw.keymap.classic("gc", "curve.open", { view = "devices", desc = "Edit the parameter's curve" })
 
 -- The frontends' menus and gestures.
-daw.frontend.act.automate_param = function(device, key) return M.automate(device, key) end
-daw.frontend.act.open_curve = function(uri, window) return M.open(uri, { window = window }) end
+paw.frontend.act.automate_param = function(device, key) return M.automate(device, key) end
+paw.frontend.act.open_curve = function(uri, window) return M.open(uri, { window = window }) end
 
 return M

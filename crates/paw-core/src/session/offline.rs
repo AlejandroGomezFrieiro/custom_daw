@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
-use daw_engine::{Engine, EngineHandle, Msg, Slot};
+use paw_engine::{Engine, EngineHandle, Msg, Slot};
 
 use super::{RenderOpts, Session};
 use crate::model::{Id, MASTER_ID, Project};
@@ -98,10 +98,10 @@ impl Session {
         // now and throw it away, so that what is measured starts where the
         // song does, as a render to a file does.
         let mut late = map.latency as usize;
-        let mut scratch = vec![0.0f32; 2 * daw_engine::MAX_BLOCK];
+        let mut scratch = vec![0.0f32; 2 * paw_engine::MAX_BLOCK];
         while late > 0 {
-            let n = late.min(daw_engine::MAX_BLOCK);
-            let (left, right) = scratch.split_at_mut(daw_engine::MAX_BLOCK);
+            let n = late.min(paw_engine::MAX_BLOCK);
+            let (left, right) = scratch.split_at_mut(paw_engine::MAX_BLOCK);
             engine.process(&mut left[..n], &mut right[..n]);
             late -= n;
         }

@@ -12,9 +12,9 @@
 --   :render out.wav range=Verse     -- a region is a range to render
 --   :render.regions out/    -- every region to a file of its own
 --
--- In scripts: `daw.markers.add(16, "Chorus")`, `daw.markers.add(0, "Intro", { length = 16 })`,
--- `daw.markers.list()`, `daw.markers.find("Chorus")`, `daw.markers.remove(id)`.
-local api = daw.api
+-- In scripts: `paw.markers.add(16, "Chorus")`, `paw.markers.add(0, "Intro", { length = 16 })`,
+-- `paw.markers.list()`, `paw.markers.find("Chorus")`, `paw.markers.remove(id)`.
+local api = paw.api
 local M = {}
 
 --- Every marker and region, in order of time: { id, beat, name, length, color }.
@@ -130,7 +130,7 @@ end
 --- The marker or region start nearest a beat within `reach` beats (half a
 --- grid step by default), or the region the beat is inside.
 function M.at(beat, reach)
-  reach = reach or daw.opt.grid / 2
+  reach = reach or paw.opt.grid / 2
   local best, far
   for _, m in ipairs(M.list()) do
     local d = math.abs(m.beat - beat)
@@ -158,9 +158,9 @@ function M.prev(beat)
   return found
 end
 
--- A region is a range to render: `daw.render(path, { range = "Verse" })`.
+-- A region is a range to render: `paw.render(path, { range = "Verse" })`.
 do
-  local ranges = require("daw.render").ranges
+  local ranges = require("paw.render").ranges
   setmetatable(ranges, {
     __index = function(_, name)
       local region = M.region(name)
@@ -170,7 +170,7 @@ do
 end
 
 --- Render every region to a file of its own in `dir`, named after it:
---- `01 Intro.wav`. `opts` is as for `daw.render`, plus `format` ("wav",
+--- `01 Intro.wav`. `opts` is as for `paw.render`, plus `format` ("wav",
 --- "flac", "mp3", "ogg" or "opus"). Returns the files.
 function M.render_regions(dir, opts)
   opts = opts or {}
@@ -185,7 +185,7 @@ function M.render_regions(dir, opts)
     each.start, each["end"] = region.beat, region.beat + region.length
     local name = M.label(region):gsub("[/%z]", "_")
     files[i] = string.format("%s/%02d %s.%s", dir, i, name, opts.format or "wav")
-    daw.render(files[i], each)
+    paw.render(files[i], each)
   end
   return files
 end
@@ -193,7 +193,7 @@ end
 -- Commands -----------------------------------------------------------------------
 
 local function describe(m)
-  return (m.length and "region " or "marker ") .. "“" .. M.label(m) .. "” at " .. daw.time.format(m.beat)
+  return (m.length and "region " or "marker ") .. "“" .. M.label(m) .. "” at " .. paw.time.format(m.beat)
 end
 
 local function names()
@@ -209,132 +209,132 @@ end
 local function wanted(ctx, regions_only)
   if ctx.args.id then
     local m = M.find({ id = tonumber(ctx.args.id) })
-    if not m then daw.notify("that marker is gone", "warn") end
+    if not m then paw.notify("that marker is gone", "warn") end
     return m
   end
   local word = ctx.args[1] and table.concat(ctx.args, " ")
   local m
   if word then
     m = regions_only and M.region(word) or M.find(word)
-    if not m then daw.notify("no " .. (regions_only and "region" or "marker") .. " `" .. word .. "`", "warn") end
+    if not m then paw.notify("no " .. (regions_only and "region" or "marker") .. " `" .. word .. "`", "warn") end
   else
-    m = M.at(daw.cursor.beat)
+    m = M.at(paw.cursor.beat)
     if m and regions_only and not m.length then m = nil end
-    if not m then daw.notify("no " .. (regions_only and "region" or "marker") .. " at the cursor", "warn") end
+    if not m then paw.notify("no " .. (regions_only and "region" or "marker") .. " at the cursor", "warn") end
   end
   return m
 end
 
-daw.command("marker", function(ctx)
-  local m = M.add(tonumber(ctx.args.at) or daw.cursor.beat, table.concat(ctx.args, " "))
-  daw.notify(describe(m))
+paw.command("marker", function(ctx)
+  local m = M.add(tonumber(ctx.args.at) or paw.cursor.beat, table.concat(ctx.args, " "))
+  paw.notify(describe(m))
 end, { desc = "Put a marker at the cursor: `marker`, `marker Chorus`; `at=` a beat instead" })
 
-daw.command("marker.remove", function(ctx)
+paw.command("marker.remove", function(ctx)
   local m = wanted(ctx)
   if not m then return end
   M.remove(m.id)
-  daw.notify("removed the " .. describe(m))
+  paw.notify("removed the " .. describe(m))
 end, { desc = "Remove the marker or region at the cursor, or the one named or numbered: `marker.remove Chorus`", complete = names })
 
-daw.command("marker.rename", function(ctx)
-  local m = ctx.args.id and M.find({ id = tonumber(ctx.args.id) }) or M.at(daw.cursor.beat)
-  if not m then return daw.notify("no marker at the cursor", "warn") end
+paw.command("marker.rename", function(ctx)
+  local m = ctx.args.id and M.find({ id = tonumber(ctx.args.id) }) or M.at(paw.cursor.beat)
+  if not m then return paw.notify("no marker at the cursor", "warn") end
   if ctx.args[1] then return M.set(m.id, { name = table.concat(ctx.args, " ") }) end
-  daw.ui.input({ prompt = (m.length and "Region" or "Marker") .. " name: ", text = m.name }, function(name)
+  paw.ui.input({ prompt = (m.length and "Region" or "Marker") .. " name: ", text = m.name }, function(name)
     M.set(m.id, { name = name })
   end)
 end, { desc = "Name the marker or region at the cursor: `marker.rename Bridge`; alone, asks" })
 
 -- For a frontend, where a marker is dragged: `marker.set id=3 beat=17.5`.
-daw.command("marker.set", function(ctx)
+paw.command("marker.set", function(ctx)
   local id = tonumber(ctx.args.id)
-  if not (id and M.find({ id = id })) then return daw.notify("that marker is gone", "warn") end
+  if not (id and M.find({ id = id })) then return paw.notify("that marker is gone", "warn") end
   M.set(id, { beat = tonumber(ctx.args.beat), length = tonumber(ctx.args.length), name = ctx.args.name and tostring(ctx.args.name) })
 end, { desc = "Move or change a marker by its id: `marker.set id=3 beat=16`" })
 
-daw.command("marker.move", function()
-  local m = M.at(daw.cursor.beat, math.huge)
-  if not m then return daw.notify("there are no markers", "warn") end
-  M.set(m.id, { beat = daw.cursor.beat })
+paw.command("marker.move", function()
+  local m = M.at(paw.cursor.beat, math.huge)
+  if not m then return paw.notify("there are no markers", "warn") end
+  M.set(m.id, { beat = paw.cursor.beat })
 end, { desc = "Bring the nearest marker to the cursor" })
 
-daw.command("marker.next", function(ctx)
-  local beat = daw.cursor.beat
+paw.command("marker.next", function(ctx)
+  local beat = paw.cursor.beat
   for _ = 1, ctx.count or 1 do
     local m = M.next(beat)
     if not m then break end
     beat = m.beat
   end
-  daw.cursor.set_beat(beat)
+  paw.cursor.set_beat(beat)
 end, { desc = "Go to the next marker or region start" })
 
-daw.command("marker.prev", function(ctx)
-  local beat = daw.cursor.beat
+paw.command("marker.prev", function(ctx)
+  local beat = paw.cursor.beat
   for _ = 1, ctx.count or 1 do
     local m = M.prev(beat)
     if not m then break end
     beat = m.beat
   end
-  daw.cursor.set_beat(beat)
+  paw.cursor.set_beat(beat)
 end, { desc = "Go to the marker or region start before the cursor" })
 
-daw.command("marker.goto", function(ctx)
+paw.command("marker.goto", function(ctx)
   local m = wanted(ctx)
-  if m then daw.cursor.set_beat(m.beat) end
+  if m then paw.cursor.set_beat(m.beat) end
 end, { desc = "Go to a marker or region by number or name: `marker.goto 3`, `marker.goto Chorus`", complete = names })
 
-daw.command("marker.list", function()
+paw.command("marker.list", function()
   local list = M.list()
-  if #list == 0 then return daw.notify("there are no markers: `:marker name` puts one at the cursor") end
+  if #list == 0 then return paw.notify("there are no markers: `:marker name` puts one at the cursor") end
   local items = {}
   for i, m in ipairs(list) do
-    local where = daw.time.format(m.beat)
-    if m.length then where = where .. " – " .. daw.time.format(m.beat + m.length) end
+    local where = paw.time.format(m.beat)
+    if m.length then where = where .. " – " .. paw.time.format(m.beat + m.length) end
     items[i] = { text = string.format("%2d  %-7s %-24s %s", i, m.length and "region" or "marker", M.label(m), where), beat = m.beat }
   end
-  daw.pick({ title = "Markers and regions", items = items, on_choose = function(item) daw.cursor.set_beat(item.beat) end })
+  paw.pick({ title = "Markers and regions", items = items, on_choose = function(item) paw.cursor.set_beat(item.beat) end })
 end, { desc = "List the markers and regions; choose one to go there" })
 
-daw.command("region", function(ctx)
+paw.command("region", function(ctx)
   local from, to
-  local sel = daw.keymap.selection()
+  local sel = paw.keymap.selection()
   if sel and sel.c0 and sel.c1 and sel.c1 > sel.c0 then
     from, to = sel.c0, sel.c1
   else
     local t = api.transport_get()
     if t.loop_end > t.loop_start then from, to = t.loop_start, t.loop_end end
   end
-  if not from then return daw.notify("a region is made over the selection or the loop: select a stretch of time first", "warn") end
+  if not from then return paw.notify("a region is made over the selection or the loop: select a stretch of time first", "warn") end
   local m = M.add(from, table.concat(ctx.args, " "), { length = to - from })
-  daw.notify(describe(m) .. ", " .. string.format("%g", to - from) .. " beats")
+  paw.notify(describe(m) .. ", " .. string.format("%g", to - from) .. " beats")
 end, { desc = "Make a region over the selection, or over the loop: `region Verse`" })
 
-daw.command("region.remove", function(ctx)
+paw.command("region.remove", function(ctx)
   local m = wanted(ctx, true)
   if not m then return end
   M.remove(m.id)
-  daw.notify("removed the " .. describe(m))
+  paw.notify("removed the " .. describe(m))
 end, { desc = "Remove the region at the cursor, or the one named", complete = names })
 
-daw.command("region.loop", function(ctx)
+paw.command("region.loop", function(ctx)
   local m = wanted(ctx, true)
   if not m then return end
-  local t = daw.transport
+  local t = paw.transport
   t.loop_start, t.loop_end, t.loop_enabled = m.beat, m.beat + m.length, true
-  daw.notify("looping " .. describe(m))
+  paw.notify("looping " .. describe(m))
 end, { desc = "Loop the region at the cursor, or the one named: `region.loop Verse`", complete = names })
 
-daw.command("render.regions", function(ctx)
+paw.command("render.regions", function(ctx)
   local dir = ctx.args[1]
-  if not dir then return daw.notify("render.regions: which directory? `render.regions out`", "warn") end
+  if not dir then return paw.notify("render.regions: which directory? `render.regions out`", "warn") end
   local opts = {}
   for k, v in pairs(ctx.args) do
     if type(k) == "string" then opts[k] = v end
   end
   opts.background = api.ui_attached() or nil
   local files = M.render_regions(dir, opts)
-  daw.notify(string.format("rendering %d region%s into %s", #files, #files == 1 and "" or "s", dir))
+  paw.notify(string.format("rendering %d region%s into %s", #files, #files == 1 and "" or "s", dir))
 end, { desc = "Render every region to a file of its own: `render.regions out`, `render.regions out format=flac bits=24`, `render.regions out format=mp3 quality=best`" })
 
 -- On the arrange view's ruler ------------------------------------------------------
@@ -362,13 +362,13 @@ local function draw(view, layer)
     if x >= 0 and x < width and stop > x then
       local text = (m.length and "▏" or "▼") .. M.label(m)
       -- Cut where the next one starts; nothing is padded over a region's band.
-      if api.str_width(text) > stop - x then text = daw.util.fit(text, stop - x) end
+      if api.str_width(text) > stop - x then text = paw.util.fit(text, stop - x) end
       ruler:text(x, 0, text, m.length and "RegionName" or "Marker")
     end
   end
 end
 
-local arrange = daw.ui.views.arrange
+local arrange = paw.ui.views.arrange
 if arrange and arrange.layers then
   arrange.layers.timeline_markers = draw
   arrange.ruler2.timeline_markers = function() return #M.list() > 0 end

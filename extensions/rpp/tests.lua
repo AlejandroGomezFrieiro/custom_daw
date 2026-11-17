@@ -1,7 +1,7 @@
--- Tests of the REAPER bridge, run by tests/suite.lua (`daw --clean -l tests/suite.lua rpp`).
+-- Tests of the REAPER bridge, run by tests/suite.lua (`paw --clean -l tests/suite.lua rpp`).
 local T = ...
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local test, eq, near, fails = T.test, T.eq, T.near, T.fails
 
 local HERE = "extensions/rpp"
@@ -10,7 +10,7 @@ local FIXTURES = HERE .. "/fixtures/"
 local rpp
 local function load()
   if not rpp then
-    daw.ext.load(HERE)
+    paw.ext.load(HERE)
     rpp = require("rpp")
   end
   return rpp
@@ -58,7 +58,7 @@ local function project_dir(fixture)
 end
 
 local function by_name(name)
-  local t = daw.track(name)
+  local t = paw.track(name)
   assert(t, "no track " .. name)
   return t
 end
@@ -184,24 +184,24 @@ test("rpp: import, track by track and clip by clip", function()
   local dir = project_dir("song.rpp")
   local result = r.import(dir .. "/song.rpp")
   local report = result.report
-  daw.flush()
-  local p = daw.project.get()
+  paw.flush()
+  local p = paw.project.get()
   eq(p.tempo, 90, "first tempo")
   eq(p.sig_num .. "/" .. p.sig_den, "3/4", "time signature")
   -- The tempo envelope: 90 for 100 seconds (150 beats), then 120.
-  local points = daw.tempo.points()
+  local points = paw.tempo.points()
   eq(#points, 2, "the tempo change comes in")
   near(points[2].beat, 150, 1e-9, "at its beat")
   eq(points[2].bpm, 120, "with its tempo")
   eq(p.name, "song", "name")
-  local tr = daw.transport.get()
+  local tr = paw.transport.get()
   eq(tr.loop_enabled, true, "loop on")
   near(tr.loop_start, 3, 1e-9, "loop start (2 s at 90 BPM)")
   near(tr.loop_end, 9, 1e-9, "loop end")
-  near(daw.master.volume, -6.0206, 1e-3, "master volume")
+  near(paw.master.volume, -6.0206, 1e-3, "master volume")
 
   local names = {}
-  for i, t in ipairs(daw.tracks()) do names[i] = t.name end
+  for i, t in ipairs(paw.tracks()) do names[i] = t.name end
   eq(table.concat(names, ","), "Band,Keys,Gtr DI,Verb", "tracks in order")
   local band, keys, gtr, verb = by_name("Band"), by_name("Keys"), by_name("Gtr DI"), by_name("Verb")
 
@@ -320,7 +320,7 @@ test("rpp: import, track by track and clip by clip", function()
   near(meta.regions[1].start, 12, 1e-9, "region start")
   near(meta.regions[1].length, 6, 1e-9, "region length")
   -- The master's JSFX is a placeholder.
-  eq(daw.master.meta.rpp_placeholders[1].format, "JSFX", "master placeholder")
+  eq(paw.master.meta.rpp_placeholders[1].format, "JSFX", "master placeholder")
 end)
 
 test("rpp: what is not carried over is reported, grouped", function()
@@ -377,7 +377,7 @@ test("rpp: MIDI timing follows the project tempo", function()
     }, "\n"))
     r.format.save(doc, T.scratch .. "/tempo.rpp")
     r.import(T.scratch .. "/tempo.rpp")
-    local clip = daw.track("M"):clips()[1]
+    local clip = paw.track("M"):clips()[1]
     local beats = bpm / 60
     near(clip.start, 1.5 * beats, 1e-9, bpm .. " BPM: item start")
     near(clip.length, 3 * beats, 1e-9, bpm .. " BPM: item length")
@@ -406,7 +406,7 @@ test("rpp: an envelope's points become an automation lane", function()
   }, "\n"))
   r.format.save(doc, T.scratch .. "/env.rpp")
   r.import(T.scratch .. "/env.rpp")
-  local lane = daw.track("E"):lane("volume")
+  local lane = paw.track("E"):lane("volume")
   local pts = lane:points()
   eq(#pts, 3, "points")
   near(pts[2][1], 2, 1e-9, "1 s is beat 2 at 120")
@@ -419,50 +419,50 @@ end)
 test("rpp: commands, and edit and write on .rpp files", function()
   load()
   local dir = project_dir("song.rpp")
-  daw.project.new()
-  daw.cmd("rpp.import", { dir .. "/song.rpp" })
-  eq(#daw.tracks(), 4, "rpp.import")
-  daw.project.new()
-  daw.commands.exec("edit " .. dir .. "/song.rpp")
-  eq(#daw.tracks(), 4, "edit song.rpp")
-  daw.project.new()
-  daw.commands.exec("e " .. dir .. "/song.rpp")
-  eq(#daw.tracks(), 4, "e song.rpp")
+  paw.project.new()
+  paw.cmd("rpp.import", { dir .. "/song.rpp" })
+  eq(#paw.tracks(), 4, "rpp.import")
+  paw.project.new()
+  paw.commands.exec("edit " .. dir .. "/song.rpp")
+  eq(#paw.tracks(), 4, "edit song.rpp")
+  paw.project.new()
+  paw.commands.exec("e " .. dir .. "/song.rpp")
+  eq(#paw.tracks(), 4, "e song.rpp")
   -- What was opened has no file of its own yet: the next open asks first.
-  daw.commands.exec("rpp.import " .. dir .. "/song.rpp merge=true")
-  local tracks = #daw.tracks()
-  daw.commands.exec("rpp.import " .. dir .. "/song.rpp")
-  daw.commands.exec("edit " .. dir .. "/song.rpp")
-  eq(#daw.tracks(), tracks, "rpp.import and edit leave an unsaved project alone; merge adds")
-  daw.commands.exec("rpp.import! " .. dir .. "/song.rpp")
-  eq(#daw.tracks(), 4, "rpp.import! replaces it")
-  daw.commands.exec("rpp.export " .. dir .. "/out.rpp")
+  paw.commands.exec("rpp.import " .. dir .. "/song.rpp merge=true")
+  local tracks = #paw.tracks()
+  paw.commands.exec("rpp.import " .. dir .. "/song.rpp")
+  paw.commands.exec("edit " .. dir .. "/song.rpp")
+  eq(#paw.tracks(), tracks, "rpp.import and edit leave an unsaved project alone; merge adds")
+  paw.commands.exec("rpp.import! " .. dir .. "/song.rpp")
+  eq(#paw.tracks(), 4, "rpp.import! replaces it")
+  paw.commands.exec("rpp.export " .. dir .. "/out.rpp")
   eq(T.read_file(dir .. "/out.rpp"):sub(1, 15), "<REAPER_PROJECT", "rpp.export")
-  daw.commands.exec("w " .. dir .. "/out2.rpp")
+  paw.commands.exec("w " .. dir .. "/out2.rpp")
   eq(T.read_file(dir .. "/out2.rpp"):sub(1, 15), "<REAPER_PROJECT", "w out.rpp")
   -- Other files still go to the original commands.
-  daw.commands.exec("w " .. dir .. "/song.json")
+  paw.commands.exec("w " .. dir .. "/song.json")
   eq(T.read_file(dir .. "/song.json"):sub(1, 1), "{", "w song.json saves as before")
-  daw.project.new()
-  daw.commands.exec("e " .. dir .. "/song.json")
-  eq(#daw.tracks(), 4, "e song.json loads as before")
+  paw.project.new()
+  paw.commands.exec("e " .. dir .. "/song.json")
+  eq(#paw.tracks(), 4, "e song.json loads as before")
 end)
 
 -- Export ------------------------------------------------------------------------------
 
 --- The project as plain data, for comparing two projects.
 local function describe()
-  local p = daw.project.get()
-  local tr = daw.transport.get()
+  local p = paw.project.get()
+  local tr = paw.transport.get()
   local out = {
     tempo = p.tempo, sig = p.sig_num .. "/" .. p.sig_den,
     loop = tr.loop_enabled and string.format("%.6f-%.6f", tr.loop_start, tr.loop_end) or "off",
-    master = string.format("%.4f %.4f %s", daw.master.volume, daw.master.pan, tostring(daw.master.mute)),
+    master = string.format("%.4f %.4f %s", paw.master.volume, paw.master.pan, tostring(paw.master.mute)),
     tracks = {},
   }
   local name_of = {}
-  for _, t in ipairs(daw.tracks()) do name_of[t.id] = t.name end
-  for _, t in ipairs(daw.tracks()) do
+  for _, t in ipairs(paw.tracks()) do name_of[t.id] = t.name end
+  for _, t in ipairs(paw.tracks()) do
     local g = t:get()
     local d = {
       string.format("%s vol %.4f pan %.4f mute %s solo %s armed %s out %s input %s monitor %s",
@@ -510,19 +510,19 @@ end
 
 local function build(dir)
   T.fresh()
-  daw.project.tempo = 100
-  daw.project.sig_num = 3
-  daw.project.sig_den = 4
-  daw.transport.loop_start, daw.transport.loop_end = 3, 12
-  daw.transport.loop_enabled = true
-  daw.master.volume = -2
-  daw.master.pan = 0.1
-  local bus = daw.add_track({ name = "Drum Bus", volume = -1.5 })
-  local kick = daw.add_track({ name = "Kick", output = bus, pan = -0.2 })
-  local snare = daw.add_track({ name = "Snare", output = bus, volume = -4 })
-  local keys = daw.add_track({ name = "Keys", volume = -6, pan = 0.3 })
-  local verb = daw.add_track({ name = "Verb" })
-  local gtr = daw.add_track({ name = "Gtr" })
+  paw.project.tempo = 100
+  paw.project.sig_num = 3
+  paw.project.sig_den = 4
+  paw.transport.loop_start, paw.transport.loop_end = 3, 12
+  paw.transport.loop_enabled = true
+  paw.master.volume = -2
+  paw.master.pan = 0.1
+  local bus = paw.add_track({ name = "Drum Bus", volume = -1.5 })
+  local kick = paw.add_track({ name = "Kick", output = bus, pan = -0.2 })
+  local snare = paw.add_track({ name = "Snare", output = bus, volume = -4 })
+  local keys = paw.add_track({ name = "Keys", volume = -6, pan = 0.3 })
+  local verb = paw.add_track({ name = "Verb" })
+  local gtr = paw.add_track({ name = "Gtr" })
   kick.mute = true
   snare.solo = true
   keys.armed = true
@@ -546,9 +546,9 @@ local function build(dir)
   pan:set_points({ { 0, -1 }, { 6, 0.5 } })
   pan.enabled = false
   bus:automate("volume"):set_points({ { 2, 3 } })
-  daw.project.meta = { markers = { { name = "Intro", beat = 0 }, { name = "Drop", beat = 9 } },
+  paw.project.meta = { markers = { { name = "Intro", beat = 0 }, { name = "Drop", beat = 9 } },
     regions = { { name = "Verse", start = 3, length = 6 } } }
-  daw.flush()
+  paw.flush()
 end
 
 test("rpp: export, then import, gives the same project", function()
@@ -575,7 +575,7 @@ test("rpp: export, then import, gives the same project", function()
   r.import(dir .. "/built.rpp")
   local after = describe()
   same(before, after)
-  local meta = daw.project.get().meta
+  local meta = paw.project.get().meta
   eq(meta.markers[2].name, "Drop", "marker")
   near(meta.markers[2].beat, 9, 1e-9, "marker beat")
   eq(meta.regions[1].name, "Verse", "region")
@@ -590,14 +590,14 @@ test("rpp: plugins go out and come back with their settings", function()
   local vst3 = "vst3:Gate Mono"
   if not (has(clap) and has(lv2) and has(vst3)) then return "skipped: LSP plugins not installed" end
   T.fresh()
-  local t = daw.add_track({ name = "FX" })
+  local t = paw.add_track({ name = "FX" })
   local a = t:add_device(clap)
   a:set("output_gain", -6)
   local b = t:add_device(lv2)
   b:set("scr", 37)
   b.bypass = true
   t:add_device(vst3)
-  daw.flush()
+  paw.flush()
   api.sleep(300) -- plugins take new values with their next audio block
   local result = r.export(dir .. "/fx.rpp")
   eq(has_item(result.report, "Plugins not written", "vst3:Gate Mono"), true, "a VST3 made here is not written")
@@ -606,7 +606,7 @@ test("rpp: plugins go out and come back with their settings", function()
   eq(chain:child("CLAP"):child("STATE") ~= nil, true, "CLAP state")
   eq(chain:child("LV2"):arg(2), "http://lsp-plug.in/plugins/lv2/gate_mono", "LV2 uri")
   r.import(dir .. "/fx.rpp")
-  local devs = daw.track("FX"):devices()
+  local devs = paw.track("FX"):devices()
   eq(#devs, 2, "the CLAP and the LV2 plugin")
   eq(devs[1].kind, clap, "CLAP back")
   near(devs[1].params.output_gain, -6, 1e-3, "CLAP setting from its state")
@@ -623,10 +623,10 @@ test("rpp: plugins go out and come back with their settings", function()
   local fx = require("rpp.fx")
   local b64 = require("rpp.base64")
   T.fresh()
-  local g = daw.add_track({ name = "tmp" }):add_device(vst3)
+  local g = paw.add_track({ name = "tmp" }):add_device(vst3)
   local key = "sidechain_reactivity"
   g:set(key, 0.2)
-  daw.flush()
+  paw.flush()
   -- A VST3 takes a new value with its next audio block; its saved state
   -- only has it after that.
   api.sleep(300)
@@ -642,7 +642,7 @@ test("rpp: plugins go out and come back with their settings", function()
   vdoc.project:child("TRACK"):child("FXCHAIN"):child("VST"):set_data({ b64.encode(header), b64.encode(reaper_state), "AAAAAAAA" })
   r.save(vdoc, dir .. "/vst3.rpp")
   r.import(dir .. "/vst3.rpp")
-  local v = daw.track("V"):devices()[1]
+  local v = paw.track("V"):devices()[1]
   eq(v.kind, vst3, "VST3 found by name")
   near(v.params[key], want, 1e-6, "VST3 setting from REAPER's chunk")
   r.export(dir .. "/vst3-out.rpp")
@@ -650,16 +650,16 @@ test("rpp: plugins go out and come back with their settings", function()
   eq(out:arg(1), "VST3: Gate Mono (LSP VST3)", "written back under REAPER's name for it")
   eq(b64.decode(out:data_groups()[1]):sub(1, 8), header:sub(1, 8), "with REAPER's header")
   r.import(dir .. "/vst3-out.rpp")
-  near(daw.track("V"):devices()[1].params[key], want, 1e-6, "and back again")
+  near(paw.track("V"):devices()[1].params[key], want, 1e-6, "and back again")
 end)
 
 test("rpp: routing a folder cannot hold is written as a send", function()
   local r = load()
   T.fresh()
-  local bus = daw.add_track({ name = "Bus" })
-  daw.add_track({ name = "Between" })
-  daw.add_track({ name = "Late", output = bus })
-  daw.flush()
+  local bus = paw.add_track({ name = "Bus" })
+  paw.add_track({ name = "Between" })
+  paw.add_track({ name = "Late", output = bus })
+  paw.flush()
   local result = r.export(T.scratch .. "/route.rpp")
   eq(has_item(result.report, "Routing written as a send (REAPER folders need the child right after its parent)", "Late -> Bus"), true, "reported")
   local late = r.read(T.scratch .. "/route.rpp").project:blocks("TRACK")[3]
@@ -673,7 +673,7 @@ test("rpp: an imported project with audio and MIDI renders", function()
   local dir = project_dir("render.rpp")
   local result = r.import(dir .. "/render.rpp", { instrument = "synth" })
   eq(has_item(result.report, "Plugins left as placeholders", "ReaSynth"), true, "ReaSynth stays behind")
-  eq(daw.track("Synth"):devices()[1].kind, "synth", "a synth for the MIDI track")
+  eq(paw.track("Synth"):devices()[1].kind, "synth", "a synth for the MIDI track")
   local info = T.render({ bits = 16, tail = 0 })
   local audio = T.channel_peaks(info, 0.2, 1.8)
   local notes = T.channel_peaks(info, 2.2, 3.8)
@@ -686,11 +686,11 @@ end)
 test("rpp: the tempo map goes out as TEMPOENVEX and comes back", function()
   local r = load()
   T.fresh()
-  daw.project.tempo = 120
-  daw.tempo.set(8, 120, { ramp = true })
-  daw.tempo.set(16, 90)
-  daw.tempo.set_signature(9, 6, 8)
-  local track = daw.add_track({ name = "Keys" })
+  paw.project.tempo = 120
+  paw.tempo.set(8, 120, { ramp = true })
+  paw.tempo.set(16, 90)
+  paw.tempo.set_signature(9, 6, 8)
+  local track = paw.add_track({ name = "Keys" })
   track:add_clip({ start = 34, length = 3, notes = { { pitch = 60, start = 0, length = 1 } } })
   local path = T.scratch .. "/map.rpp"
   r.export(path)
@@ -698,17 +698,17 @@ test("rpp: the tempo map goes out as TEMPOENVEX and comes back", function()
   eq(text:find("<TEMPOENVEX", 1, true) ~= nil, true, "a tempo envelope is written")
   eq(text:find("PT 4.000000000000 120 0", 1, true) ~= nil, true, "the ramp starts at 4 s, shape 0")
   eq(text:find(" 524294 0 1", 1, true) ~= nil, true, "6/8 packed as 6 + 8 * 65536")
-  local seconds = daw.tempo.beats_to_seconds(34)
+  local seconds = paw.tempo.beats_to_seconds(34)
   T.fresh()
   r.import(path)
-  local points = daw.tempo.points()
+  local points = paw.tempo.points()
   eq(#points, 4, "three tempo points and one where the 6/8 starts")
   eq(points[2].ramp, true, "the ramp")
   near(points[3].beat, 16, 1e-6, "the ramp's end lands on its beat")
-  eq(daw.tempo.bar_of(32), 9, "the 6/8 starts bar 9")
-  local num, den = daw.tempo.signature_at(33)
+  eq(paw.tempo.bar_of(32), 9, "the 6/8 starts bar 9")
+  local num, den = paw.tempo.signature_at(33)
   eq(num .. "/" .. den, "6/8", "in 6/8")
-  local clip = daw.tracks()[1]:clips()[1]
+  local clip = paw.tracks()[1]:clips()[1]
   near(clip.start, 34, 1e-6, "the clip at its beat")
-  near(daw.tempo.beats_to_seconds(clip.start), seconds, 1e-6, "and its time")
+  near(paw.tempo.beats_to_seconds(clip.start), seconds, 1e-6, "and its time")
 end)

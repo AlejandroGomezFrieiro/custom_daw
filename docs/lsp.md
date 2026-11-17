@@ -50,16 +50,16 @@ the language servers say about it".
 ## Addresses
 
 Everything has a URI built from ids, so it survives edits
-(`daw.address`, see [Scripting](scripting.md) for the whole list):
-`daw://project`, `daw://track/12` (`daw://track/0` is the master),
-`daw://track/12/device/3`, `daw://track/12/device/3/param/cutoff`,
-`daw://track/12/send/5`, `daw://clip/7`, `daw://clip/7/note/41`,
-`daw://lane/9`, `daw://tempo`, `daw://marker/5`,
-`daw://render/<the file's path>`. Extensions add kinds of their own.
+(`paw.address`, see [Scripting](scripting.md) for the whole list):
+`paw://project`, `paw://track/12` (`paw://track/0` is the master),
+`paw://track/12/device/3`, `paw://track/12/device/3/param/cutoff`,
+`paw://track/12/send/5`, `paw://clip/7`, `paw://clip/7/note/41`,
+`paw://lane/9`, `paw://tempo`, `paw://marker/5`,
+`paw://render/<the file's path>`. Extensions add kinds of their own.
 
 **Notes have ids.** Every note in the model has an id that stays with it
 through every move and change, given when it is made; a copy pasted beside
-its original is another note with an id of its own. `daw://clip/7/note/41`
+its original is another note with an id of its own. `paw://clip/7/note/41`
 is that note wherever it goes, so a diagnostic stays on its notes and a fix
 changes the right one after other edits. (Before, notes were found again
 by pitch and start; that is gone.)
@@ -85,17 +85,17 @@ subject is not the address's own):
 
 | Subject | Document | What it holds | By focus |
 | --- | --- | --- | --- |
-| `clip` | `daw://clip/7` | MIDI LSP's take: the notes in ticks (960 to the beat) with their ids, the track and its devices, the signature and bar the clip starts in, the tempo map over it, the key, the controller moves, and as `context` the notes of other tracks that sound with it | the clips open in a piano roll |
-| `track` | `daw://track/3` | the track's fader, pan, mute, solo, output, sends, its devices with their parameters' values and ranges, and its clips | the track a cursor is on |
-| `mix` | `daw://project#mix` | every track as above with its address, the master, the tempo and signatures, the sample rate, the loudness targets (`daw.opt.loudness_target`, `daw.opt.true_peak_target`), the last render's options | |
-| `project` | `daw://project` | the whole, summarised: tracks with how many clips and devices, markers, the tempo, its length | |
-| `render` | `daw://render/...` | a rendered file: its path, format, rate, bits, channels, length, peak and loudness as measured, the options it was made with, the master's devices | |
+| `clip` | `paw://clip/7` | MIDI LSP's take: the notes in ticks (960 to the beat) with their ids, the track and its devices, the signature and bar the clip starts in, the tempo map over it, the key, the controller moves, and as `context` the notes of other tracks that sound with it | the clips open in a piano roll |
+| `track` | `paw://track/3` | the track's fader, pan, mute, solo, output, sends, its devices with their parameters' values and ranges, and its clips | the track a cursor is on |
+| `mix` | `paw://project#mix` | every track as above with its address, the master, the tempo and signatures, the sample rate, the loudness targets (`paw.opt.loudness_target`, `paw.opt.true_peak_target`), the last render's options | |
+| `project` | `paw://project` | the whole, summarised: tracks with how many clips and devices, markers, the tempo, its length | |
+| `render` | `paw://render/...` | a rendered file: its path, format, rate, bits, channels, length, peak and loudness as measured, the options it was made with, the master's devices | |
 
 A document is sent when a server becomes attached to it, again (debounced)
 when the addresses it depends on change and it comes out different, and
 closed when it goes. A server is attached by its config,
 `attach = { subjects = { "mix", "render" }, where = { focus = true, tracks = { "Flute*" }, drums = false } }`,
-or else by what it asks for at initialize (`capabilities.daw.subjects`), or
+or else by what it asks for at initialize (`capabilities.paw.subjects`), or
 else to clips. `focus = true` means only what someone is looking at (the
 open piano roll's clip, the cursor's track); without it, a mix or render
 server is sent the whole, all the time.
@@ -103,7 +103,7 @@ server is sent the whole, all the time.
 ## Running a server
 
 ```lua
-daw.lsp.config("mixcheck", {
+paw.lsp.config("mixcheck", {
   cmd = { "python3", "/home/me/servers/mixcheck.py" },  -- or a function giving it
   framing = "lines",                       -- or "headers" (Content-Length)
   attach = { subjects = { "mix" } },
@@ -111,14 +111,14 @@ daw.lsp.config("mixcheck", {
   settings = { strict = true },            -- sent at initialize, and again when changed
   restart = { max = 3, within_s = 60 },    -- restarts after it dies (none by default)
 })
-daw.lsp.enable("mixcheck")
+paw.lsp.enable("mixcheck")
 ```
 
 A server is one of three things:
 
 - **A process** speaking JSON-RPC on its standard input and output, one
   message a line or with LSP's `Content-Length` headers. Its errors go to
-  `$XDG_STATE_HOME/daw/lsp-<name>.log`.
+  `$XDG_STATE_HOME/paw/lsp-<name>.log`.
 - **A one-shot command** (`kind = "oneshot"`), run once per version of each
   subject it is attached to, with a timeout (`timeout_ms`). In `cmd`,
   `{file}` (a render's path), `{input}` (a file holding the subject as JSON,
@@ -141,29 +141,29 @@ The protocol is LSP's own; this program's locations and workspace edits
 travel in the `data` fields LSP leaves free. A server must:
 
 1. answer `initialize` with its capabilities, saying which subjects it wants:
-   `{ "capabilities": { "hoverProvider": true, "codeActionProvider": true, "daw": { "subjects": ["mix"], "annotations": true } } }`;
-   the client offers `capabilities.daw = { subjects, addresses, workspaceEdit, features }`;
-2. take `textDocument/didOpen` (`{ textDocument: { uri, languageId: "daw-mix", version, text } }`,
+   `{ "capabilities": { "hoverProvider": true, "codeActionProvider": true, "paw": { "subjects": ["mix"], "annotations": true } } }`;
+   the client offers `capabilities.paw = { subjects, addresses, workspaceEdit, features }`;
+2. take `textDocument/didOpen` (`{ textDocument: { uri, languageId: "paw-mix", version, text } }`,
    `text` the subject as JSON), `didChange` (the whole text again) and
    `didClose`;
 3. publish what it finds with `textDocument/publishDiagnostics`:
 
 ```json
-{ "uri": "daw://project#mix",
+{ "uri": "paw://project#mix",
   "diagnostics": [ { "severity": 2, "code": "hot-fader", "source": "mixcheck",
     "message": "Bass's fader is at +3.0 dB: it may clip",
-    "data": { "location": { "uri": "daw://track/4" },
+    "data": { "location": { "uri": "paw://track/4" },
               "fixes": [ { "title": "Bring Bass to 0 dB",
-                           "edit": [ { "uri": "daw://track/4", "set": { "volume": 0 } } ] } ] } } ] }
+                           "edit": [ { "uri": "paw://track/4", "set": { "volume": 0 } } ] } ] } } ] }
 ```
 
-and may also send `daw/publishAnnotations` (`{ uri, annotations: [ { location, label, kind } ] }`,
-labels on things), `daw/publishAnalysis` (`{ uri, chords, keys, key }` in
-project beats, for `daw.harmony`), answer `textDocument/hover` and
-`textDocument/codeAction` (both with `params.daw.location`, what is asked
-about; actions are `{ title, edit: { daw: changes } }` or `{ title, command }`),
-`textDocument/completion` on clips (`params.daw.at`; items' `data.notes`),
-and ask for `workspace/applyEdit` (`{ edit: { daw: changes }, label }`).
+and may also send `paw/publishAnnotations` (`{ uri, annotations: [ { location, label, kind } ] }`,
+labels on things), `paw/publishAnalysis` (`{ uri, chords, keys, key }` in
+project beats, for `paw.harmony`), answer `textDocument/hover` and
+`textDocument/codeAction` (both with `params.paw.location`, what is asked
+about; actions are `{ title, edit: { paw: changes } }` or `{ title, command }`),
+`textDocument/completion` on clips (`params.paw.at`; items' `data.notes`),
+and ask for `workspace/applyEdit` (`{ edit: { paw: changes }, label }`).
 `tests/fixtures/mix_lint.py` is a complete server for the mix in a hundred
 lines, and `tests/fixtures/range_lint.py` one for clips.
 
@@ -171,8 +171,8 @@ lines, and `tests/fixtures/range_lint.py` one for clips.
 
 ```lua
 local doc
-daw.lsp.config("loud", { server = {
-  initialize = function() return { capabilities = { daw = { subjects = { "mix" } } } } end,
+paw.lsp.config("loud", { server = {
+  initialize = function() return { capabilities = { paw = { subjects = { "mix" } } } } end,
   ["textDocument/didOpen"] = function(p, ctx)
     doc = p.textDocument.uri
     local list = {}
@@ -185,7 +185,7 @@ daw.lsp.config("loud", { server = {
   end,
   ["textDocument/didChange"] = function(p, ctx) end,
 } })
-daw.lsp.enable("loud")
+paw.lsp.enable("loud")
 ```
 
 extensions/mixdiag is such a server: its measurements' findings become
@@ -195,25 +195,25 @@ how much to lower a fader, so its report and `:diagnostics` agree.
 ### Dialects
 
 A server that speaks another protocol gets an **adapter**
-(`daw.lsp.adapter(name, spec)` and `adapter = name` in its config): small
+(`paw.lsp.adapter(name, spec)` and `adapter = name` in its config): small
 functions that turn the subject into its messages and its answers into
-locations and workspace edits (see `runtime/lua/daw/lsp/standard.lua` for
+locations and workspace edits (see `runtime/lua/paw/lsp/standard.lua` for
 what an adapter has). MIDI LSP's `midi/*` dialect is one, in
 `extensions/midilsp/lua/midilsp/adapter.lua`.
 
 ## Diagnostics from Lua
 
-A plugin need not be a server. `daw.diagnostic` is open to any Lua:
+A plugin need not be a server. `paw.diagnostic` is open to any Lua:
 
 ```lua
-daw.diagnostic.set("mylint", "mylint", {
-  { location = { uri = "daw://track/3" }, severity = "warning", message = "too loud",
-    fixes = { { title = "Lower it", edit = { { uri = "daw://track/3", set = { volume = -6 } } } } } },
+paw.diagnostic.set("mylint", "mylint", {
+  { location = { uri = "paw://track/3" }, severity = "warning", message = "too loud",
+    fixes = { { title = "Lower it", edit = { { uri = "paw://track/3", set = { volume = -6 } } } } } },
 })
 ```
 
 The older form for the notes of a clip still works:
-`daw.diagnostic.set("mylint", clip, { { notes = { 3 }, message = "...", fixes = { { title, edits = { { note = 3, pitch = 72 } } } } } })`,
+`paw.diagnostic.set("mylint", clip, { { notes = { 3 }, message = "...", fixes = { { title, edits = { { note = 3, pitch = 72 } } } } } })`,
 with notes by their place when published.
 
 ## MIDI LSP
@@ -225,22 +225,22 @@ velocities and controller curves; its delivery and settings checks look at
 rendered masters.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/midilsp")
+paw.ext.load("/path/to/paw/extensions/midilsp")
 ```
 
-The engine is found in `daw.opt.midilsp_cmd` (words, such as `"reaper-midi-lsp
+The engine is found in `paw.opt.midilsp_cmd` (words, such as `"reaper-midi-lsp
 --rules /home/me/rules"`), else `$MIDI_LSP_ENGINE`, else `reaper-midi-lsp`
 on the PATH. To build one: `nix build <openutau_reaper_editor>#midi-lsp-engine`.
-It is started when the extension loads (`daw.opt.midilsp_autostart`), as
+It is started when the extension loads (`paw.opt.midilsp_autostart`), as
 two servers on clips in MIDI LSP's dialect: `midi-lsp`, the language role,
-and `midi-lsp-suggest`, the suggestion role (`daw.opt.midilsp_suggest`).
+and `midi-lsp-suggest`, the suggestion role (`paw.opt.midilsp_suggest`).
 
-With `daw.opt.midilsp_render_checks` (on by default) two one-shot servers
+With `paw.opt.midilsp_render_checks` (on by default) two one-shot servers
 check every render, when their programs are installed beside the engine:
 
 - `midilsp-delivery` runs `reaper-midi-lsp-delivery` on each WAV render:
   integrated loudness, true peak, clipping, the loudest passage and the
-  loudness range, against `daw.opt.midilsp_delivery_target` (`spotify`,
+  loudness range, against `paw.opt.midilsp_delivery_target` (`spotify`,
   `ebu-r128`, or empty for information only). Too loud, or over the
   true-peak ceiling, comes with a fix that lowers the master by what is
   over.

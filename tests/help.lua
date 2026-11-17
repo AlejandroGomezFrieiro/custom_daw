@@ -1,24 +1,24 @@
--- Tests of help (daw/help.lua and daw/markdown.lua): the Markdown made into
+-- Tests of help (paw/help.lua and paw/markdown.lua): the Markdown made into
 -- text, tags, `:help` and its completion, following links and coming back,
 -- `K`, `:helpgrep`, pages of extensions that are not loaded, and help in a
 -- window of the graphical frontend. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local api = daw.api
-local L = daw.layout
-local H = daw.help
-local md = daw.markdown
+local api = paw.api
+local L = paw.layout
+local H = paw.help
+local md = paw.markdown
 
 local initial = L.capture()
 
 local function clean()
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
   for _, buf in ipairs(L.buffers_list()) do
     if buf.type == "textbuf" then L.buf_delete(buf) end
   end
   L.restore(initial)
-  daw.ui.focus("arrange")
+  paw.ui.focus("arrange")
 end
 
 local function start()
@@ -31,14 +31,14 @@ end
 --- The help window the keyboard is in: its buffer's name, the line under
 --- its cursor and the cursor.
 local function here()
-  local win, buf, t, s = daw.textbuf.here()
+  local win, buf, t, s = paw.textbuf.here()
   if not win then return nil end
   return buf.name, t:line(s.row), s
 end
 
 --- Put the cursor on the first line that holds `text`, on its first character.
 local function cursor_on(text)
-  local win, _, t, s = daw.textbuf.here()
+  local win, _, t, s = paw.textbuf.here()
   for row = 1, t:count() do
     local at = t:line(row):find(text, 1, true)
     if at then
@@ -49,7 +49,7 @@ local function cursor_on(text)
   error("no line holds " .. text, 2)
 end
 
-local function message() return daw.ui.message and daw.ui.message.text or "" end
+local function message() return paw.ui.message and paw.ui.message.text or "" end
 
 -- Markdown --------------------------------------------------------------------------
 
@@ -71,7 +71,7 @@ test("Markdown is made into text: headings with their tag, bullets, aligned tabl
     "| `yy` | yank it |",
     "",
     "```lua",
-    "daw.opt.keys = \"classic\"",
+    "paw.opt.keys = \"classic\"",
     "```",
   }, "\n")), { width = 60, heading_tag = function(b) return b.level == 1 and "title" or "a-section" end })
   local text = {}
@@ -86,7 +86,7 @@ test("Markdown is made into text: headings with their tag, bullets, aligned tabl
   eq(shown:find("      • a nested item", 1, true) ~= nil, true, "a nested item deeper")
   eq(shown:find("\n 1. first", 1, true) ~= nil, true, "a number")
   eq(shown:find("Key  What\n───  ──────────────\ndd   delete a track\nyy   yank it", 1, true) ~= nil, true, "the table's columns aligned: " .. shown)
-  eq(shown:find("\n    daw.opt.keys = \"classic\"", 1, true) ~= nil, true, "code indented")
+  eq(shown:find("\n    paw.opt.keys = \"classic\"", 1, true) ~= nil, true, "code indented")
   -- What each piece is drawn as, and the link's target.
   local para
   for _, line in ipairs(doc.lines) do
@@ -118,7 +118,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
   eq(where("gU"), "course/keys.md gU", "a key: its row in the key table")
   eq(where(":s"), "terminal.md :s", "a command")
   eq(where("'timebind'"), "terminal.md 'timebind'", "an option")
-  eq(where("daw.qf"), "scripting.md daw.qf", "a Lua module")
+  eq(where("paw.qf"), "scripting.md paw.qf", "a Lua module")
   eq(where("key-rule"), "terminal.md key-rule", "a section named in the page")
   eq(where("quickfix-list"), "terminal.md quickfix-list", "a heading")
   eq(where("terminal"), "terminal.md terminal", "a page")
@@ -140,9 +140,9 @@ test("a topic finds the tag itself first, then those that start with it, then th
   found = H.find("qflst", 5)
   eq(found[1] ~= nil and found[1].name:find("q") ~= nil, true, "letters in order")
   eq(H.find("gU", 1)[1].name, "gU", "the tag itself")
-  local completion = daw.commands.complete("help key-r")
+  local completion = paw.commands.complete("help key-r")
   eq(completion[1] and completion[1].text, "help key-rule", "Tab completes the tag")
-  completion = daw.commands.complete("help quickfx")
+  completion = paw.commands.complete("help quickfx")
   local any = false
   for _, c in ipairs(completion) do any = any or c.label == "quickfix-list" end
   eq(any, true, "a fuzzy match is offered too")
@@ -153,23 +153,23 @@ end)
 test(":help opens the contents in a window split off, which cannot be changed", function()
   start()
   local before = #L.windows()
-  daw.cmd("help")
+  paw.cmd("help")
   local name, line = here()
   eq(name, "help://index", "the contents")
   eq(#L.windows(), before + 1, "in a window of its own")
   eq(line:find("paw help", 1, true) ~= nil, true, "at the top")
-  local count = daw.textbuf.buf().state.text:count()
-  daw.keymap.feed("dd")
-  daw.keymap.feed("x")
-  eq(daw.textbuf.buf().state.text:count(), count, "dd removed nothing")
+  local count = paw.textbuf.buf().state.text:count()
+  paw.keymap.feed("dd")
+  paw.keymap.feed("x")
+  eq(paw.textbuf.buf().state.text:count(), count, "dd removed nothing")
   eq(message():find("cannot be changed", 1, true) ~= nil, true, "and says why: " .. message())
-  daw.keymap.feed("i")
-  eq(daw.keymap.mode, "n", "no insert mode")
+  paw.keymap.feed("i")
+  eq(paw.keymap.mode, "n", "no insert mode")
   -- Text in it can be chosen and yanked as any text.
-  daw.keymap.feed("ggVy")
-  eq(daw.keymap.getreg('"').kind, "lines", "yanked")
+  paw.keymap.feed("ggVy")
+  eq(paw.keymap.getreg('"').kind, "lines", "yanked")
   -- A second :help reuses the window.
-  daw.cmd("help", { "gU" })
+  paw.cmd("help", { "gU" })
   eq(#L.windows(), before + 1, "the same window")
   local _, at = here()
   eq(at:find("gU", 1, true) ~= nil, true, "on the key: " .. at)
@@ -177,42 +177,42 @@ end)
 
 test(":help with a topic puts the cursor on its line, and says when there is none", function()
   start()
-  daw.cmd("help", { "key-rule" })
+  paw.cmd("help", { "key-rule" })
   local name, line = here()
   eq(name, "help://terminal.md", "the page")
   eq(line:find("Every view keeps to one rule", 1, true) ~= nil, true, "the paragraph: " .. line)
-  daw.cmd("help", { "zzzzqqqqxxxx" })
+  paw.cmd("help", { "zzzzqqqqxxxx" })
   eq(message():find("no help for zzzzqqqqxxxx", 1, true) ~= nil, true, message())
 end)
 
 test("Ctrl-] follows a link, Ctrl-t and Ctrl-o come back", function()
   start()
-  daw.cmd("help")
+  paw.cmd("help")
   local row = cursor_on("The terminal interface")
-  daw.keymap.feed("<C-]>")
+  paw.keymap.feed("<C-]>")
   local name = here()
   eq(name, "help://terminal.md", "followed")
-  daw.keymap.feed("<C-t>")
+  paw.keymap.feed("<C-t>")
   local back, _, s = here()
   eq(back, "help://index", "Ctrl-t comes back")
   eq(s.row, row, "to the line")
-  daw.keymap.feed("<C-]>")
+  paw.keymap.feed("<C-]>")
   eq((here()), "help://terminal.md", "followed again")
-  daw.keymap.feed("<C-o>")
+  paw.keymap.feed("<C-o>")
   eq((here()), "help://index", "Ctrl-o comes back too")
   -- On code, Ctrl-] goes to its tag; Enter does what Ctrl-] does.
-  daw.cmd("help", { "terminal" })
+  paw.cmd("help", { "terminal" })
   cursor_on(":only")
-  daw.keymap.feed("<CR>")
+  paw.keymap.feed("<CR>")
   local _, line = here()
   eq(line:find(":only", 1, true) ~= nil, true, "Enter followed the code: " .. line)
 end)
 
 test("K looks up the word under the cursor", function()
   start()
-  daw.cmd("help", { "terminal" })
+  paw.cmd("help", { "terminal" })
   cursor_on("quickfix")
-  daw.keymap.feed("K")
+  paw.keymap.feed("K")
   local name, line = here()
   eq(name ~= nil, true, "a page")
   eq(line:lower():find("quickfix", 1, true) ~= nil, true, "where quickfix is: " .. line)
@@ -220,15 +220,15 @@ end)
 
 test(":helpgrep puts every line that holds the words in the quickfix list and goes to the first", function()
   start()
-  daw.cmd("helpgrep", { "timebind" })
-  local list = daw.qf.current()
+  paw.cmd("helpgrep", { "timebind" })
+  local list = paw.qf.current()
   eq(list.title, "helpgrep timebind", "the list")
   eq(#list.entries > 1, true, "with entries")
   for _, e in ipairs(list.entries) do eq(e.text:lower():find("timebind", 1, true) ~= nil, true, "each holds it") end
-  eq(daw.qf.where(list.entries[1]):match("^.+:%d+$") ~= nil, true, "named by page and line: " .. daw.qf.where(list.entries[1]))
+  eq(paw.qf.where(list.entries[1]):match("^.+:%d+$") ~= nil, true, "named by page and line: " .. paw.qf.where(list.entries[1]))
   local _, line = here()
   eq(line and line:lower():find("timebind", 1, true) ~= nil, true, "the cursor on the first")
-  daw.cmd("cnext")
+  paw.cmd("cnext")
   local _, second = here()
   eq(second:lower():find("timebind", 1, true) ~= nil, true, "]q goes on to the next")
 end)
@@ -239,56 +239,56 @@ test("the page of an extension that is not loaded says how to load it", function
   os.execute("mkdir -p '" .. dir .. "'")
   T.write_file(dir .. "/README.md", "# helpdemo\n\nAn extension for the help tests.\n\n## Popovers\n\nThey pop.\n")
   H.add(dir .. "/README.md", { tag = "helpdemo", ext = "helpdemo", dir = dir })
-  daw.cmd("help", { "helpdemo-popovers" })
+  paw.cmd("help", { "helpdemo-popovers" })
   local name = here()
   eq(name, "help://helpdemo.md", "its page")
   eq(message():find("helpdemo is not loaded", 1, true) ~= nil, true, "said: " .. message())
-  local text = table.concat(daw.textbuf.buf().state.text.lines[3] and { daw.textbuf.buf().state.text.lines[3].text } or {}, "")
+  local text = table.concat(paw.textbuf.buf().state.text.lines[3] and { paw.textbuf.buf().state.text.lines[3].text } or {}, "")
   local all = {}
-  for _, l in ipairs(daw.textbuf.buf().state.text.lines) do all[#all + 1] = l.text end
+  for _, l in ipairs(paw.textbuf.buf().state.text.lines) do all[#all + 1] = l.text end
   all = table.concat(all, " ")
   eq(all:find("This extension is not loaded", 1, true) ~= nil, true, "the page says so: " .. text)
-  eq(all:find("daw.ext.load(\"" .. H.normalize(dir) .. "\")", 1, true) ~= nil, true, "and how to load it")
+  eq(all:find("paw.ext.load(\"" .. H.normalize(dir) .. "\")", 1, true) ~= nil, true, "and how to load it")
   table.remove(H.extra)
   H.dirty = true
   -- A bundled one is loaded by its name.
   local name
-  for _, ext in ipairs(daw.ext.bundled()) do
-    if not daw.ext.loaded[ext] and io.open("extensions/" .. ext .. "/README.md") then name = name or ext end
+  for _, ext in ipairs(paw.ext.bundled()) do
+    if not paw.ext.loaded[ext] and io.open("extensions/" .. ext .. "/README.md") then name = name or ext end
   end
   if name then
-    daw.cmd("help", { name })
+    paw.cmd("help", { name })
     local text = {}
-    for _, l in ipairs(daw.textbuf.buf().state.text.lines) do text[#text + 1] = l.text end
+    for _, l in ipairs(paw.textbuf.buf().state.text.lines) do text[#text + 1] = l.text end
     eq(table.concat(text, "\n"):find(":ext.load " .. name, 1, true) ~= nil, true, name .. "'s page names :ext.load")
   end
 end)
 
 test("Ctrl-] in the keys picker opens the help of the key chosen", function()
   start()
-  daw.pick("keys", { query = "Ctrl-w o" })
-  daw.keymap.feed("<C-]>")
+  paw.pick("keys", { query = "Ctrl-w o" })
+  paw.keymap.feed("<C-]>")
   local name, line = here()
   eq(name, "help://course/keys.md", "the key table: " .. message())
   eq(line:find("<C-w>o", 1, true) ~= nil, true, "at the key: " .. tostring(line))
   -- And in the commands picker, the command's.
-  daw.pick("commands", { query = "helpgrep" })
-  daw.keymap.feed("<C-]>")
+  paw.pick("commands", { query = "helpgrep" })
+  paw.keymap.feed("<C-]>")
   local _, at = here()
   eq(at:find(":helpgrep", 1, true) ~= nil, true, "at the command: " .. tostring(at))
 end)
 
 test("the keys picker shows the help of the key chosen, wide columns, and a key line", function()
   start()
-  daw.pick("keys", { query = "Ctrl-w o" })
+  paw.pick("keys", { query = "Ctrl-w o" })
   local text = table.concat(api.ui_snapshot(200, 40), "\n")
   eq(text:find("Ctrl-w o", 1, true) ~= nil, true, "the key is listed")
   -- A key's help is its row in the key table, so the preview names that page.
   eq(text:find("Keys, by idea", 1, true) ~= nil, true, "the manual's page is named in the preview")
   local shown = {}
-  for _, e in ipairs(daw.ui.keybar.entries()) do shown[#shown + 1] = e[1] .. " " .. e[2] end
+  for _, e in ipairs(paw.ui.keybar.entries()) do shown[#shown + 1] = e[1] .. " " .. e[2] end
   eq(table.concat(shown, " · "), "Enter run · Ctrl-] help · Esc close", "the key line")
-  daw.ui.close()
+  paw.ui.close()
 end)
 
 test("the key line names the view's topic of help, and every such topic is a tag", function()
@@ -297,7 +297,7 @@ test("the key line names the view's topic of help, and every such topic is a tag
   for view, topic in pairs(H.view_topics) do
     eq(H.index().tags[topic] ~= nil, true, view .. "'s topic " .. topic .. " is a tag")
   end
-  daw.ui.message = nil
+  paw.ui.message = nil
   local W = 200
   local bottom = api.ui_snapshot(W, 40)[40]
   eq(bottom:find(":help terminal", 1, true) ~= nil, true, "on the bottom line: " .. bottom)
@@ -305,17 +305,17 @@ end)
 
 test("in the graphical frontend help opens as a docked pane, and pops out on request", function()
   start()
-  local listeners = daw.remote.listeners
-  daw.remote.listeners = function() return { { client = 9, watching = true } } end
-  local ok, err = pcall(daw.cmd, "help", { "gU" })
-  daw.remote.listeners = listeners
+  local listeners = paw.remote.listeners
+  paw.remote.listeners = function() return { { client = 9, watching = true } } end
+  local ok, err = pcall(paw.cmd, "help", { "gU" })
+  paw.remote.listeners = listeners
   assert(ok, err)
-  eq(daw.canvas.open_views.textbuf, nil, "no window of its own")
-  eq(daw.ui.focused, "textbuf", "the pane has the keyboard")
+  eq(paw.canvas.open_views.textbuf, nil, "no window of its own")
+  eq(paw.ui.focused, "textbuf", "the pane has the keyboard")
   local name, line = here()
   eq(name:match("^help://") ~= nil, true, "a help pane in the layout")
   eq(line:find("gU", 1, true) ~= nil, true, "at the key")
-  daw.cmd("textbuf.window")
-  eq(daw.canvas.open_views.textbuf ~= nil, true, "popped out to a window of its own")
-  daw.canvas.close("textbuf")
+  paw.cmd("textbuf.window")
+  eq(paw.canvas.open_views.textbuf ~= nil, true, "popped out to a window of its own")
+  paw.canvas.close("textbuf")
 end)

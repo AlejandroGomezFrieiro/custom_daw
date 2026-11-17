@@ -5,7 +5,7 @@ local eval = require("pattern.eval")
 local names = require("pattern.names")
 local core = require("pattern.core")
 
-local api = daw.api
+local api = paw.api
 local M = {
   drums = names.drums,     -- word -> General MIDI note, for the drum names
   chords = names.chords,   -- chord name -> semitones above the root
@@ -54,9 +54,9 @@ end
 function M.notes(text, cycles, opts)
   opts = opts or {}
   local compiled = compiled_or_error(text, opts.seed)
-  local beats = opts.beats or daw.time.bar()
+  local beats = opts.beats or paw.time.bar()
   return eval.notes(compiled, {
-    beats = beats, length = opts.length or (cycles or 1) * beats, velocity = opts.velocity or daw.opt.velocity,
+    beats = beats, length = opts.length or (cycles or 1) * beats, velocity = opts.velocity or paw.opt.velocity,
   })
 end
 
@@ -93,7 +93,7 @@ end
 M.digest = digest
 
 local function cycle_beats(pm)
-  return tonumber(pm.beats) or daw.time.bar()
+  return tonumber(pm.beats) or paw.time.bar()
 end
 
 --- The pattern a clip follows: { text, seed, beats, ... } or nil.
@@ -126,7 +126,7 @@ end
 M.label = label
 
 local function rename(id, pm, c)
-  if not daw.opt.pattern_names then return end
+  if not paw.opt.pattern_names then return end
   local want = label(pm.text)
   -- Only a name we gave it, or the default one, is ours to change.
   if c.name == want then pm.name = want return end
@@ -143,10 +143,10 @@ local function apply(id, pm)
   if not compiled then return nil, err end
   local c = api.clip_get(id)
   local notes = eval.notes(compiled, {
-    beats = cycle_beats(pm), length = c.length, velocity = daw.opt.velocity,
+    beats = cycle_beats(pm), length = c.length, velocity = paw.opt.velocity,
   })
   local fresh = digest(notes)
-  if fresh ~= digest(api.clip_notes(id)) then daw.clip(id):set_notes(notes) end
+  if fresh ~= digest(api.clip_notes(id)) then paw.clip(id):set_notes(notes) end
   local before = c.meta and c.meta.pattern or {}
   local stale = c.meta and c.meta.pattern_detached ~= nil
   pm.digest = digest(api.clip_notes(id))
@@ -187,7 +187,7 @@ function M.detach(clip, why)
   local pm = M.get(id)
   if not pm then return false end
   write_meta(id, nil, { pattern_detached = pm.text })
-  if why then daw.notify("pattern detached: " .. why .. " (`:pattern.edit` brings it back)", "warn") end
+  if why then paw.notify("pattern detached: " .. why .. " (`:pattern.edit` brings it back)", "warn") end
   return true
 end
 
@@ -206,14 +206,14 @@ function M.refresh(clip)
     -- (a split cuts them where the shorter pattern does).
     local compiled = M.compile(pm.text, pm.seed)
     local fresh = compiled and digest(eval.notes(compiled, {
-      beats = cycle_beats(pm), length = c.length, velocity = daw.opt.velocity,
+      beats = cycle_beats(pm), length = c.length, velocity = paw.opt.velocity,
     }))
     if fresh ~= current then
       return M.detach(id, "the notes of `" .. c.name .. "` were edited")
     end
   end
   local _, err = apply(id, pm)
-  if err then daw.notify("pattern: " .. tostring(err), "error") end
+  if err then paw.notify("pattern: " .. tostring(err), "error") end
 end
 
 --- Every clip that follows a pattern, as clip ids.

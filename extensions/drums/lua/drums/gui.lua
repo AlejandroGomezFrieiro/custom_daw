@@ -1,5 +1,5 @@
 -- The drum grid in a graphical frontend: the terminal grid's view, painted
--- in pixels and worked with the pointer (see runtime/lua/daw/canvas.lua).
+-- in pixels and worked with the pointer (see runtime/lua/paw/canvas.lua).
 --
 --   toolbar   the clip, play and loop the clip, the step (straight and
 --             triplet), the clip's length in bars
@@ -10,13 +10,13 @@
 --   velocity  how hard each hit of the selected row is: click or drag
 --
 -- Every key of the terminal grid works in the window too.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local drums = require("drums")
 local E = require("drums.edit")
 local view = require("drums.grid")
 
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 local TOOLBAR, RULER, NAMES, ROW, VEL, INFO = 40, 24, 132, 26, 72, 26
 local EPS = 1e-6
 
@@ -25,7 +25,7 @@ local EPS = 1e-6
 local gui = { cellw = nil, scroll = 0, top = 0, drag = nil, buttons = {}, layout = nil }
 view.gui = gui
 
-local function mix(a, b, t) return daw.draw.mix(a, b, t) end
+local function mix(a, b, t) return paw.draw.mix(a, b, t) end
 
 --- A button of the toolbar: drawn, and remembered for the pointer.
 local function button(g, x, label, on, action, opts)
@@ -38,7 +38,7 @@ end
 
 --- Play the clip round and round from its start, or stop.
 local function play_clip(clip)
-  local t = daw.transport
+  local t = paw.transport
   if api.transport_get().playing then return t.stop() end
   t.loop_start, t.loop_end, t.loop_enabled = clip.start, clip.start + clip.length, true
   t.seek(clip.start)
@@ -58,7 +58,7 @@ function view:paint(g, ctx)
   end
   local data = clip:get()
   local track = api.track_get(data.track)
-  local hue = daw.draw.track_colour(track)
+  local hue = paw.draw.track_colour(track)
   local rows = self:rows()
   local step = self:step_size()
   local total = math.max(1, math.ceil(data.length / step - EPS))
@@ -96,7 +96,7 @@ function view:paint(g, ctx)
     x = button(g, x, s[2], math.abs(step - s[1]) < EPS, function() view:set_step(s[1]) end)
   end
   x = x + 10
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   local bars = data.length / bar
   x = button(g, x, "−", false, function() E.set_bars(clip, math.max(1, math.ceil(bars - EPS) - 1)) end, { width = 24 })
   g:text(x + 2, 13, string.format(bars % 1 < EPS and "%d bar%s" or "%.2f bars", bars, bars == 1 and "" or "s"), { color = c.text })
@@ -145,7 +145,7 @@ function view:paint(g, ctx)
           local velocity = hit and hit.velocity
           -- What a drag is about to do shows before it is done.
           if drag and drag.row == index and drag.cells and drag.cells[cell] ~= nil then
-            velocity = drag.cells[cell] and daw.opt.drums_velocity or nil
+            velocity = drag.cells[cell] and paw.opt.drums_velocity or nil
           end
           if drag and drag.mode == "velocity" and index == self.row and velocity and drag.values[cell] then
             velocity = drag.values[cell]
@@ -214,7 +214,7 @@ function view:paint(g, ctx)
   local under = piece and E.hit(clip, piece.note, E.cell(self.beat, step) * step, step)
   local info = "click a cell for a hit · drag along a row paints, from a hit erases · right click removes · click a name to hear it · drag in the velocity lane"
   if under then
-    info = string.format("%s  %s  velocity %d   ·   %s", piece.name, daw.time.format(data.start + under.start), under.velocity, info)
+    info = string.format("%s  %s  velocity %d   ·   %s", piece.name, paw.time.format(data.start + under.start), under.velocity, info)
   end
   g:text(12, iy + 6, info, { color = c.text_2, width = w - 24 })
 end
@@ -261,7 +261,7 @@ local function finish(drag)
     end
     for cell, on in pairs(drag.cells) do
       if on and not existing[cell] and cell * step < clip.length - EPS then
-        add[#add + 1] = { pitch = piece.note, start = cell * step, length = math.min(step, clip.length - cell * step), velocity = daw.opt.drums_velocity }
+        add[#add + 1] = { pitch = piece.note, start = cell * step, length = math.min(step, clip.length - cell * step), velocity = paw.opt.drums_velocity }
       end
     end
     if #add > 0 or #remove > 0 then clip:edit_notes({ add = add, remove = remove }) end
@@ -355,18 +355,18 @@ function gui.open()
   local rows = #view:rows()
   local height = TOOLBAR + RULER + math.min(rows, 18) * ROW + VEL + INFO + 4
   gui.top, gui.scroll, gui.drag, gui.cellw = 0, 0, nil, nil
-  daw.canvas.open("drums", { title = "Drum grid", width = 1040, height = height })
+  paw.canvas.open("drums", { title = "Drum grid", width = 1040, height = height })
 end
 
 --- Closing the window puts the keyboard back in the arrange view, and
 --- leaving the grid from the keyboard closes the window.
 function view:on_close()
   gui.drag = nil
-  daw.ui.hide("drums")
+  paw.ui.hide("drums")
 end
 
 function view:on_hide()
-  daw.canvas.close("drums")
+  paw.canvas.close("drums")
 end
 
 return gui

@@ -8,9 +8,9 @@ local M = {}
 local handlers = {} -- pattern -> list of { id, fn, once }
 local next_id = 0
 
---- Listen for an event. Returns a handle for `daw.off`.
+--- Listen for an event. Returns a handle for `paw.off`.
 function M.on(pattern, fn, opts)
-  assert(type(pattern) == "string" and type(fn) == "function", "usage: daw.on(event, function)")
+  assert(type(pattern) == "string" and type(fn) == "function", "usage: paw.on(event, function)")
   next_id = next_id + 1
   handlers[pattern] = handlers[pattern] or {}
   table.insert(handlers[pattern], { id = next_id, fn = fn, once = opts and opts.once })
@@ -34,7 +34,7 @@ local function run(list, name, payload)
   -- Copy, so handlers may add or remove handlers while running.
   for _, h in ipairs({ unpack(list) }) do
     if h.once then M.off(h.id) end
-    daw.try(daw.limit.named, "a handler of `" .. name .. "`", h.fn, payload, name)
+    paw.try(paw.limit.named, "a handler of `" .. name .. "`", h.fn, payload, name)
   end
 end
 

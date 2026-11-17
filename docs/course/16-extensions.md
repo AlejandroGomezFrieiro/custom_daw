@@ -4,7 +4,7 @@
 
 *About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 16`.*
 
-Much of what paw can do comes in extensions: directories of Lua in `extensions/` beside the program, which use the same `daw` module as your `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with `:tutor.try` and tries one thing in it; to have one always, link its directory into `~/.config/daw/extensions`.
+Much of what paw can do comes in extensions: directories of Lua in `extensions/` beside the program, which use the same `paw` module as your `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with `:tutor.try` and tries one thing in it; to have one always, link its directory into `~/.config/paw/extensions`.
 
 Each extension's README.md says everything it does. Their keys live under their own prefixes: `]s` `[s` and `,S` (sections), `gz` (musicops), `,t` (pattern), `,x` and `]d` `[d` (mixdiag), `,u` `g-` `g+` (undotree), `,v` (utau).
 

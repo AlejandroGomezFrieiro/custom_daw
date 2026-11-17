@@ -1,12 +1,12 @@
 [package]
-name = "daw-luadev"
+name = "paw-luadev"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Devices written in Lua, each run in a LuaJIT state of its own."
 
 [dependencies]
-daw-engine.workspace = true
+paw-engine.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

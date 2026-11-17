@@ -6,7 +6,7 @@
 //! aliases, and no images of the old rate are left above the audio band. The
 //! engine then plays the converted samples one for one.
 
-use daw_engine::{AudioData, Sink};
+use paw_engine::{AudioData, Sink};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };

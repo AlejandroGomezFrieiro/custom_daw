@@ -8,9 +8,9 @@
 --   local track = drums.make_track({ name = "Beat" })     -- the built-in kit and the GM map
 --   drums.set_map(some_track, "gm-full")                    -- any track, any instrument
 --   drums.rows(track)                                       -- { { note = 36, name = "Kick" }, ... }
-local api = daw.api
-local util = daw.util
-local music = daw.music
+local api = paw.api
+local util = paw.util
+local music = paw.music
 
 local M = {}
 M.maps = require("drums.maps")
@@ -20,7 +20,7 @@ M.colour = "#e8c765"
 
 local function track_of(which)
   if type(which) == "table" then return which end
-  return daw.track(which)
+  return paw.track(which)
 end
 
 local function copy_rows(rows)
@@ -50,7 +50,7 @@ function M.set_map(which, map, label)
   if type(map) == "table" then
     rows, name = map, label or "custom"
   else
-    name = map or daw.opt.drums_map
+    name = map or paw.opt.drums_map
     local def = M.maps[name]
     if not def then error("no drum map `" .. tostring(name) .. "`: there are " .. table.concat(M.map_names(), ", "), 0) end
     rows = def.rows
@@ -123,7 +123,7 @@ end
 --- `opts`: `name`, `index`, `map`, `kit`, `colour`.
 function M.make_track(opts)
   opts = opts or {}
-  return daw.track_kinds.add("drums", util.merge(opts, { name = opts.name or "Drums" }))
+  return paw.track_kinds.add("drums", util.merge(opts, { name = opts.name or "Drums" }))
 end
 
 --- Make an ordinary track a drum track: its colour, the kit (`opts.kit`, a
@@ -142,7 +142,7 @@ end
 --- Sound one piece now, on the track's own instrument.
 function M.hear(which, note, velocity)
   local track = track_of(which)
-  track:play_note(note, velocity or daw.opt.drums_velocity, 150)
+  track:play_note(note, velocity or paw.opt.drums_velocity, 150)
 end
 
 --- Clamp a velocity to MIDI's.

@@ -4,11 +4,11 @@
 -- tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation"), require("notation.parts")
 end
 
@@ -39,11 +39,11 @@ local function quartet(bars)
   for b = 6, bars - 1 do bar(vc, b, 48) end
   local tracks = {}
   for _, spec in ipairs({ { "Violoncello", vc }, { "Flute 1", fl1 }, { "Flute 2", fl2 }, { "Clarinet in Bb", cl } }) do
-    local track = daw.add_track({ name = spec[1] })
+    local track = paw.add_track({ name = spec[1] })
     track:add_clip({ start = 0, length = bars * 4, name = spec[1], notes = spec[2] })
     tracks[spec[1]] = track
   end
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   return view, P, tracks
 end
@@ -89,10 +89,10 @@ test("a part for an instrument in B flat is written a major second up, in its ke
   eq(layout.fifths, 2, "D major's two sharps")
   eq(pitches(layout.measures[1].staves[1]), "D4 E4 F#4 G4", "each note a tone up, spelled in the key")
   eq(layout.part_name, "Clarinet in Bb", "the part is named")
-  daw.commands.exec("part Clarinet")
-  daw.commands.exec("part.transpose A")
+  paw.commands.exec("part Clarinet")
+  paw.commands.exec("part.transpose A")
   eq(pitches(P.part_layout(id).measures[1].staves[1]), "Eb4 F4 G4 Ab4", "in A a minor third up")
-  daw.commands.exec("part.transpose off")
+  paw.commands.exec("part.transpose off")
   eq(pitches(P.part_layout(id).measures[1].staves[1]), "C4 D4 E4 F4", "off: as it sounds")
 end)
 
@@ -120,8 +120,8 @@ end)
 test("a cue writes another instrument's notes small in a part's rests", function()
   local view, P, tracks = quartet()
   view:edit(tracks["Violoncello"]:clips()[1])
-  daw.commands.exec("part Violoncello")
-  daw.commands.exec("2,3part.cue Flute 1")
+  paw.commands.exec("part Violoncello")
+  paw.commands.exec("2,3part.cue Flute 1")
   local own = P.own(tracks["Violoncello"].id)
   eq(#own.cues, 1, "kept with the track's part")
   local layout = P.part_layout(tracks["Violoncello"].id)
@@ -134,7 +134,7 @@ test("a cue writes another instrument's notes small in a part's rests", function
   eq(pitches({ cue[1] }), "D5", "as the flute plays them")
   eq(layout.measures[2].marks[1].value, "Fl. 1", "named over them")
   eq(layout.measures[4].multirest, 2, "the rest after the cue counts on")
-  daw.commands.exec("2,3part.cue off")
+  paw.commands.exec("2,3part.cue off")
   eq(P.own(tracks["Violoncello"].id).cues, nil, "taken away")
 end)
 
@@ -147,9 +147,9 @@ test("a part's pages turn where it rests", function()
   for b = 0, 159 do
     if b % 11 ~= 10 then bar(notes, b, 48) end
   end
-  local track = daw.add_track({ name = "Violoncello" })
+  local track = paw.add_track({ name = "Violoncello" })
   track:add_clip({ start = 0, length = 160 * 4, name = "cello", notes = notes })
-  daw.flush()
+  paw.flush()
   local layout = P.part_layout(track.id)
   local st = engrave.style({ space = 10, cell = { w = 1, h = 1 }, ink = "#000000", paper = "#ffffff", accent = "#000000" })
   local geo = page.geometry(10)
@@ -198,7 +198,7 @@ test("a condensed score puts two flutes on one staff: a2, 1., and two voices", f
     if ev.kind == "note" and ev.voice == 2 and ev.stem == -1 then down = down + 1 end
   end
   eq(up .. " " .. down, "4 4", "different lines: two voices, stems apart")
-  daw.commands.exec("part.condense")
+  paw.commands.exec("part.condense")
 end)
 
 test("parts and the score export as PDF pages and MusicXML with parts", function()
@@ -206,8 +206,8 @@ test("parts and the score export as PDF pages and MusicXML with parts", function
   view:edit(tracks["Flute 1"]:clips()[1])
   local dir = T.scratch .. "/parts"
   os.execute("mkdir -p " .. dir)
-  daw.commands.exec("part Flute 1")
-  local wrote, pages = daw.commands.get("part.export").run({ args = { dir .. "/q.pdf", "all" } })
+  paw.commands.exec("part Flute 1")
+  local wrote, pages = paw.commands.get("part.export").run({ args = { dir .. "/q.pdf", "all" } })
   eq(#wrote, 4, "a file for each part")
   eq(pages, 4, "each part on one page")
   local f = io.open(dir .. "/q-Clarinet_in_Bb.pdf", "rb")
@@ -215,7 +215,7 @@ test("parts and the score export as PDF pages and MusicXML with parts", function
   f:close()
   local _, count = pdf:gsub("/Type%s*/Page[^s]", "")
   eq(count, 1, "the clarinet's part is one page")
-  wrote, pages = daw.commands.get("part.export").run({ args = { dir .. "/score.pdf", "score" } })
+  wrote, pages = paw.commands.get("part.export").run({ args = { dir .. "/score.pdf", "score" } })
   eq(#wrote == 1 and pages >= 1, true, "the score in a file")
   local n = P.musicxml(dir .. "/score.musicxml")
   eq(n, 4, "four parts")
@@ -233,28 +233,28 @@ end)
 test("the terminal's cell view draws the score's names and a part's multi-measure rest", function()
   local view, P, tracks = quartet()
   view:edit(tracks["Violoncello"]:clips()[1])
-  daw.ui.focus("notation")
-  daw.keymap.set_mode("n")
-  daw.keymap.feed("\\Ps")
+  paw.ui.focus("notation")
+  paw.keymap.set_mode("n")
+  paw.keymap.feed("\\Ps")
   api.undo_checkpoint()
   eq(view.parts and view.parts.kind, "score", "\\Ps shows the score")
   local text = table.concat(api.ui_snapshot(140, 60), "\n")
   ok(text:find("Flute 1", 1, true), "the first flute named")
   ok(text:find("the full score, staff 4 of 4", 1, true), "the info line says what is shown, and the cello's staff is the active one")
-  daw.commands.exec("part Violoncello")
+  paw.commands.exec("part Violoncello")
   text = table.concat(api.ui_snapshot(140, 60), "\n")
   ok(text:find("━━ 4 ━━", 1, true), "the cello's four bars of rest as one")
   ok(text:find("part: Violoncello", 1, true), "the part named")
-  daw.keymap.feed("\\Pn")
+  paw.keymap.feed("\\Pn")
   api.undo_checkpoint()
   eq(view.parts.track, P.instruments()[1].id, "\\Pn goes round to the first part")
-  daw.keymap.feed("\\Po")
+  paw.keymap.feed("\\Po")
   api.undo_checkpoint()
   eq(view.parts, nil, "\\Po: the clip alone again")
 end)
 
 test(":help notation-parts finds the parts' section", function()
   load()
-  local tag = daw.help.lookup("notation-parts")
+  local tag = paw.help.lookup("notation-parts")
   eq(tag and (tag.source.name .. " " .. tag.name), "notation/README.md notation-parts", "the README's section")
 end)

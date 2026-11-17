@@ -22,7 +22,7 @@ if edit then
     -- The file is shown as it is named in a home directory, not by the
     -- scratch directory the scene keeps it in.
     pane:split({ direction = 'Top', size = 0.3, args = { 'nvim', '--clean', '-c', 'set nu', '-c', 'cd %:h',
-      '-c', 'set statusline=~/.config/daw/init.lua\\ %m%=%l,%c', edit } })
+      '-c', 'set statusline=~/.config/paw/init.lua\\ %m%=%l,%c', edit } })
   end)
 end
 return config

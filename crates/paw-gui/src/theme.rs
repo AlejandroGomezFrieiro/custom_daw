@@ -3,7 +3,7 @@
 //! playhead and loop, green play, red record, orange mute, yellow solo) and
 //! for what belongs to a track (its stripe, clips, notes and name plate).
 //!
-//! The colours are the kernel's (`daw.canvas.palette`), so that a view an
+//! The colours are the kernel's (`paw.canvas.palette`), so that a view an
 //! extension paints and the window's own drawing agree; what the palette
 //! does not name is kept here.
 

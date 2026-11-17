@@ -6,14 +6,14 @@
 --   lyric, tuning in cents, the phonemizer for these notes, the vibrato and
 --   its numbers, the transition, the per-note expressions the track's
 --   renderer has (velocity, volume, attack, ...), and the note's phonemes.
-local api = daw.api
-local util = daw.util
-local music = daw.music
+local api = paw.api
+local util = paw.util
+local music = paw.music
 local utau = require("utau")
 local notes = require("utau.notes")
 local shapes = require("utau.shapes")
 local lyrics = require("utau.lyrics")
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 
 local ROW = 21
 
@@ -198,7 +198,7 @@ return function(gui)
       return
     end
     local first = list[targets[1]]
-    local title = #targets == 1 and string.format("%s  ·  %s", music.name(first.pitch), daw.time.format(S.clip.start + first.start))
+    local title = #targets == 1 and string.format("%s  ·  %s", music.name(first.pitch), paw.time.format(S.clip.start + first.start))
       or string.format("%d notes", #targets)
     g:text(14, 10, title, { color = c.text, bold = true, size = 14, width = w - 20 })
     g:text(14, 30, #targets == 1 and string.format("length %g", first.length) or "a value set here goes to all of them", { color = c.text_3, size = 10, width = w - 20 })
@@ -292,7 +292,7 @@ return function(gui)
       return
     end
     local v = tonumber((text:gsub("[^%d%.%-+]", "")))
-    if not v then return daw.notify("not a number: " .. text, "warn") end
+    if not v then return paw.notify("not a number: " .. text, "warn") end
     v = util.clamp(v, f.min, f.max)
     M.apply(view, function(p, n) f.set(p, v, n) end)
   end

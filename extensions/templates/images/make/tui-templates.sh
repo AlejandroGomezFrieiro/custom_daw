@@ -2,7 +2,7 @@
 # Templates: the keys track saved with its chain and levels, and made again
 # under another name in the same song.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/templates')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/templates')"
 rig_start
 term_start
 rec_start tui-templates

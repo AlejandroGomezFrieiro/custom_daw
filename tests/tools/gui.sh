@@ -3,7 +3,7 @@
 #
 #   SETUP='lua run in the kernel at start' tests/tools/gui.sh out.png step...
 #
-# Starts Xvfb, a window manager and `daw-gui --clean --no-plugins --audio
+# Starts Xvfb, a window manager and `paw-gui --clean --no-plugins --audio
 # null` (with examples/demo-song.lua unless SETUP says otherwise), runs the
 # steps, takes a last screenshot and ends everything it started. A step is:
 #
@@ -23,7 +23,7 @@
 if ! command -v xdotool >/dev/null || ! command -v openbox >/dev/null || ! command -v import >/dev/null; then
   exec nix shell nixpkgs#xdotool nixpkgs#imagemagick nixpkgs#openbox -c "$0" "$@"
 fi
-export DISPLAY=:$DAW_TEST_DISPLAY
+export DISPLAY=:$PAW_TEST_DISPLAY
 unset WAYLAND_DISPLAY XAUTHORITY
 Xvfb "$DISPLAY" -screen 0 "${SCREEN:-1500x960}x24" >/dev/null 2>&1 &
 xvfb=$!
@@ -32,7 +32,7 @@ openbox >/dev/null 2>&1 &
 wm=$!
 sleep 0.7
 cd "$ROOT" || exit 1
-RUST_BACKTRACE=1 "$BIN/daw-gui" --clean --no-plugins --audio null \
+RUST_BACKTRACE=1 "$BIN/paw-gui" --clean --no-plugins --audio null \
   -e "${SETUP:-dofile('examples/demo-song.lua')}" > "$SCRATCH/gui.out" 2>&1 &
 gui=$!
 trap 'kill $gui 2>/dev/null; sleep 0.4; kill $wm $xvfb 2>/dev/null' EXIT INT TERM
@@ -45,11 +45,11 @@ for step in "$@"; do
   case "$step" in
     sleep*) $step ;;
     shot*) import -window root "$SCRATCH/shots/${step#shot }" ;;
-    ctl*) "$BIN/daw" ctl --socket "${XDG_RUNTIME_DIR:-/tmp}/daw-gui-$gui.sock" eval "${step#ctl }" ;;
+    ctl*) "$BIN/paw" ctl --socket "${XDG_RUNTIME_DIR:-/tmp}/paw-gui-$gui.sock" eval "${step#ctl }" ;;
     alive) kill -0 $gui 2>/dev/null && echo "window alive" || echo "window gone" ;;
     ps) ps -o pcpu,cputime,etime -p $gui ;;
     *) xdotool $step ;;
   esac
 done
 [ -n "$png" ] && import -window root "$SCRATCH/shots/$png"
-grep -n "panicked\|daw_gui::\|^daw-gui:" "$SCRATCH/gui.out" | cut -c1-200 | head -12
+grep -n "panicked\|paw_gui::\|^paw-gui:" "$SCRATCH/gui.out" | cut -c1-200 | head -12

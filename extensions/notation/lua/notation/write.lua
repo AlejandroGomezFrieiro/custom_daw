@@ -22,14 +22,14 @@
 -- chord symbols and techniques as marks; ornaments and lyrics on the
 -- notes. Tempo marks also write the song's tempo map, and time signatures
 -- the song's signatures, so they play.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local view = require("notation")
 local model = require("notation.model")
 local D = require("notation.doc")
 local midi = require("notation.midi")
 local marks = require("notation.marks")
-local keymap, command = daw.keymap, daw.command
+local keymap, command = paw.keymap, paw.command
 
 local W = {}
 local EPS = 1e-6
@@ -71,7 +71,7 @@ local function chords(ctx)
   local clip = view:editable()
   local r = region(ctx)
   if r and clip then
-    local _, places = daw.edit.roll.notes(clip, r)
+    local _, places = paw.edit.roll.notes(clip, r)
     return view:events_of(places)
   end
   return view:chord_indices()
@@ -85,7 +85,7 @@ end
 
 local function need_clip()
   if view:clip() then return true end
-  daw.notify("no clip open as notation", "warn")
+  paw.notify("no clip open as notation", "warn")
   return false
 end
 
@@ -166,10 +166,10 @@ function W.dynamic(ctx)
   local a, b, ranged = span(ctx)
   if text == "off" then
     view:write(function(sc) put_mark(sc, a, "dynamic", false) end)
-    return daw.notify("no dynamic here")
+    return paw.notify("no dynamic here")
   end
   local d, why = W.parse_dynamic(text)
-  if not d then return daw.notify(why, "warn") end
+  if not d then return paw.notify(why, "warn") end
   view:write(function(sc)
     local finish = b
     -- A hairpin with nowhere said to go reaches the next dynamic.
@@ -184,7 +184,7 @@ function W.dynamic(ctx)
   local said = {}
   if d.from then said[#said + 1] = d.from .. (d.subito and " subito" or "") end
   if d.pin then said[#said + 1] = (d.pin == "<" and "crescendo" or "diminuendo") .. (d.to and (" to " .. d.to) or "") end
-  daw.notify(table.concat(said, ", "))
+  paw.notify(table.concat(said, ", "))
 end
 
 -- Tempo ----------------------------------------------------------------------------------------
@@ -231,21 +231,21 @@ function W.tempo(ctx)
   local a, b = span(ctx)
   if text == "off" then
     view:write(function(sc) put_mark(sc, a, "tempo", false) end)
-    pcall(daw.tempo.remove, c.start + a)
-    return daw.notify("no tempo mark here")
+    pcall(paw.tempo.remove, c.start + a)
+    return paw.notify("no tempo mark here")
   end
   local t, why = W.parse_tempo(text)
-  if not t then return daw.notify(why, "warn") end
+  if not t then return paw.notify(why, "warn") end
   local song = c.start + a
   view:write(function(sc)
     put_mark(sc, a, "tempo", { value = t.text, bpm = t.bpm, change = t.change })
   end)
   -- The mark plays: the song's tempo map follows it.
   if t.bpm then
-    daw.tempo.set(song, t.bpm)
-    return daw.notify(t.text .. ": " .. util.round(t.bpm, 0.1) .. " beats a minute from here")
+    paw.tempo.set(song, t.bpm)
+    return paw.notify(t.text .. ": " .. util.round(t.bpm, 0.1) .. " beats a minute from here")
   end
-  local now = daw.tempo.at(song)
+  local now = paw.tempo.at(song)
   if t.change == "a tempo" then
     -- Back to the last tempo a mark said, or to what held before the change.
     local sc = view.score_of(c)
@@ -258,19 +258,19 @@ function W.tempo(ctx)
         if mk.bpm then
           back, at = mk.bpm, beat
         elseif mk.change and mk.change ~= "a tempo" then
-          back, at = daw.tempo.at(c.start + beat - EPS), beat
+          back, at = paw.tempo.at(c.start + beat - EPS), beat
         end
       end
     end
-    back = back or daw.tempo.at(c.start)
-    daw.tempo.set(song, back)
-    return daw.notify("a tempo: " .. util.round(back, 0.1) .. " beats a minute")
+    back = back or paw.tempo.at(c.start)
+    paw.tempo.set(song, back)
+    return paw.notify("a tempo: " .. util.round(back, 0.1) .. " beats a minute")
   end
   -- rit. and accel. ramp to a fifth slower or faster by the end of the stretch.
   local to = t.change == "rit." and now * 0.8 or now * 1.2
-  daw.tempo.set(song, now, { ramp = true })
-  daw.tempo.set(c.start + b, to)
-  daw.notify(string.format("%s: %g to %g beats a minute", t.change, util.round(now, 0.1), util.round(to, 0.1)))
+  paw.tempo.set(song, now, { ramp = true })
+  paw.tempo.set(c.start + b, to)
+  paw.notify(string.format("%s: %g to %g beats a minute", t.change, util.round(now, 0.1), util.round(to, 0.1)))
 end
 
 -- Metre ---------------------------------------------------------------------------------------
@@ -300,12 +300,12 @@ end
 function W.meter(ctx)
   if not need_clip() then return end
   local m, why = W.parse_meter(words(ctx))
-  if not m then return daw.notify(why, "warn") end
+  if not m then return paw.notify(why, "warn") end
   local first = measures(ctx)
   local clip = view:clip()
   local c = clip:get()
   local beat = c.start + first.start
-  daw.tempo.set_signature(daw.time.bar_of(beat + EPS), m.num, m.den)
+  paw.tempo.set_signature(paw.time.bar_of(beat + EPS), m.num, m.den)
   view.cache = nil
   view:write(function(sc)
     local sm, mi = measure(sc, first.start)
@@ -314,7 +314,7 @@ function W.meter(ctx)
     sc._frame = nil
     D.touch(sc, mi)
   end)
-  daw.notify(m.num .. "/" .. m.den .. (m.groups and (" (" .. table.concat(m.groups, "+") .. ")") or "") .. " from bar " .. first.number)
+  paw.notify(m.num .. "/" .. m.den .. (m.groups and (" (" .. table.concat(m.groups, "+") .. ")") or "") .. " from bar " .. first.number)
 end
 
 -- Key -------------------------------------------------------------------------------------
@@ -350,7 +350,7 @@ function W.key(ctx)
   local text = words(ctx)
   local clip = view:clip()
   -- Without a score open, the project's key, as before scores.
-  if not (clip and (daw.ui.focused == "notation" or ctx.range)) then return false end
+  if not (clip and (paw.ui.focused == "notation" or ctx.range)) then return false end
   local first = measures(ctx)
   if text == "off" then
     view:write(function(sc)
@@ -358,10 +358,10 @@ function W.key(ctx)
       m.key = nil
       D.touch(sc, mi)
     end)
-    return daw.notify("no key change at bar " .. first.number)
+    return paw.notify("no key change at bar " .. first.number)
   end
   local k, why = W.parse_key(text)
-  if not k then return daw.notify(why, "warn") end
+  if not k then return paw.notify(why, "warn") end
   local at_start
   view:write(function(sc)
     local m, mi = measure(sc, first.start)
@@ -370,8 +370,8 @@ function W.key(ctx)
     D.touch(sc, mi)
   end)
   -- The key the piece starts in is the project's too, which harmony reads.
-  if at_start then pcall(daw.harmony.set_key, k.name) end
-  daw.notify(k.name .. " from bar " .. first.number .. " (" .. math.abs(k.fifths) .. (k.fifths >= 0 and " sharps)" or " flats)"))
+  if at_start then pcall(paw.harmony.set_key, k.name) end
+  paw.notify(k.name .. " from bar " .. first.number .. " (" .. math.abs(k.fifths) .. (k.fifths >= 0 and " sharps)" or " flats)"))
   return true
 end
 
@@ -381,7 +381,7 @@ end
 --- for a score's bar after the first (the staff's own clef is set then).
 function W.clef(ctx, want)
   local clip = view:clip()
-  if not (clip and daw.ui.focused == "notation") then return false end
+  if not (clip and paw.ui.focused == "notation") then return false end
   local first = measures(ctx)
   if first.index == 1 then return false end
   local staff_index = view:cursor_staff()
@@ -393,7 +393,7 @@ function W.clef(ctx, want)
     m.clef = next(clef) and clef or nil
     D.touch(sc, mi)
   end)
-  daw.notify(want == "off" and ("no clef change at bar " .. first.number) or (want .. " clef from bar " .. first.number))
+  paw.notify(want == "off" and ("no clef change at bar " .. first.number) or (want .. " clef from bar " .. first.number))
   return true
 end
 
@@ -406,7 +406,7 @@ W.BARLINES = { ["|"] = "a plain barline", ["||"] = "a double barline", ["|."] = 
 function W.bar(ctx)
   if not need_clip() then return end
   local what = words(ctx)
-  if not W.BARLINES[what] then return daw.notify("a barline: ||, |., |:, :|, :|:, 1., 2., off", "warn") end
+  if not W.BARLINES[what] then return paw.notify("a barline: ||, |., |:, :|, :|:, 1., 2., off", "warn") end
   local first, last, ranged = measures(ctx)
   -- The barline the cursor is at: before its bar when it is at the bar's
   -- start, else at the bar's end.
@@ -440,7 +440,7 @@ function W.bar(ctx)
       set(ending, "barline", what)
     end
   end)
-  daw.notify(W.BARLINES[what])
+  paw.notify(W.BARLINES[what])
 end
 
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -471,12 +471,12 @@ function W.rehearsal(ctx)
   end)
   -- The song's marker of the same name, so that the arrangement and the
   -- score share their sections.
-  for _, mk in ipairs(daw.markers.list()) do
-    if math.abs(mk.beat - beat) < EPS and (mk.name == old or mk.name == name) then daw.markers.remove(mk.id) end
+  for _, mk in ipairs(paw.markers.list()) do
+    if math.abs(mk.beat - beat) < EPS and (mk.name == old or mk.name == name) then paw.markers.remove(mk.id) end
   end
-  if name == "off" then return daw.notify("no rehearsal mark at bar " .. first.number) end
-  daw.markers.add(beat, name)
-  daw.notify("rehearsal mark " .. name .. " at bar " .. first.number .. ", and a marker in the song")
+  if name == "off" then return paw.notify("no rehearsal mark at bar " .. first.number) end
+  paw.markers.add(beat, name)
+  paw.notify("rehearsal mark " .. name .. " at bar " .. first.number .. ", and a marker in the song")
 end
 
 -- Chord symbols ----------------------------------------------------------------------------
@@ -493,12 +493,12 @@ function W.chord(ctx)
   local a = span(ctx)
   if text == "off" or text == "" then
     view:write(function(sc) put_mark(sc, a, "chord", false) end)
-    return daw.notify("no chord symbol here")
+    return paw.notify("no chord symbol here")
   end
-  if not W.is_chord(text) then return daw.notify("a chord symbol: C, Cmaj7, F#m7b5, G/B, N.C.", "warn") end
+  if not W.is_chord(text) then return paw.notify("a chord symbol: C, Cmaj7, F#m7b5, G/B, N.C.", "warn") end
   if text == "NC" or text == "N.C" then text = "N.C." end
   view:write(function(sc) put_mark(sc, a, "chord", { value = text }) end)
-  daw.notify(text)
+  paw.notify(text)
 end
 
 --- Chord symbols to offer at a beat of the clip: what the harmony reads
@@ -515,10 +515,10 @@ function W.chord_candidates(typed)
   end
   if clip then
     local beat = clip:get().start + view.beat
-    local ok, here = pcall(daw.harmony.at, beat)
+    local ok, here = pcall(paw.harmony.at, beat)
     if ok and here then add(here.name, "what sounds here") end
-    local ok2, list = pcall(daw.harmony.chords, beat, beat + 8)
-    for _, ch in ipairs(ok2 and list or {}) do add(ch.name, "sounds at " .. daw.time.format(ch.at)) end
+    local ok2, list = pcall(paw.harmony.chords, beat, beat + 8)
+    for _, ch in ipairs(ok2 and list or {}) do add(ch.name, "sounds at " .. paw.time.format(ch.at)) end
   end
   local root = typed:match("^([A-G][#b]?)")
   if root then
@@ -562,7 +562,7 @@ function W.lyric(ctx)
     return ""
   end)
   local ev = chord_from(view.beat)
-  if not (ev and ev.start <= view.beat + EPS) then return daw.notify("no note here for a syllable", "warn") end
+  if not (ev and ev.start <= view.beat + EPS) then return paw.notify("no note here for a syllable", "warn") end
   local id = ev.source.id
   view:write(function(sc)
     local mi, _, _, _, sev = D.find(sc, id)
@@ -590,9 +590,9 @@ function W.ornament(ctx)
   if not need_clip() then return end
   local text = words(ctx):lower()
   local kind = W.ORNAMENTS[text]
-  if not kind then return daw.notify("an ornament: tr, mordent, prall, turn, fermata, trem, off", "warn") end
+  if not kind then return paw.notify("an ornament: tr, mordent, prall, turn, fermata, trem, off", "warn") end
   local ids = chords(ctx)
-  if #ids == 0 then return daw.notify("no chord here for an ornament", "warn") end
+  if #ids == 0 then return paw.notify("no chord here for an ornament", "warn") end
   view:write(function(sc)
     for _, id in ipairs(ids) do
       local mi, _, _, _, ev = D.find(sc, id)
@@ -612,7 +612,7 @@ function W.ornament(ctx)
       end
     end
   end)
-  daw.notify(kind == "off" and "no ornaments" or (text .. " on " .. #ids .. (#ids == 1 and " chord" or " chords")))
+  paw.notify(kind == "off" and "no ornaments" or (text .. " on " .. #ids .. (#ids == 1 and " chord" or " chords")))
 end
 
 W.TECHNIQUES = { "pizz.", "arco", "con sord.", "senza sord.", "trem.", "harm.", "col legno", "sul pont.", "sul tasto", "ord.",
@@ -624,7 +624,7 @@ function W.technique(ctx)
   local a, b, ranged = span(ctx)
   view:write(function(sc) put_mark(sc, a, "technique", (text ~= "" and text ~= "off") and { value = text } or false) end)
   marks.tell({ kind = "technique", text = text, from = a, to = ranged and b or nil, clip = view:clip() })
-  daw.notify(text ~= "" and text ~= "off" and text or "no technique here")
+  paw.notify(text ~= "" and text ~= "off" and text or "no technique here")
 end
 
 -- Intervals, tuplets, voices ----------------------------------------------------------------------
@@ -665,9 +665,9 @@ end
 function W.interval(ctx)
   if not need_clip() then return end
   local iv, why = W.parse_interval(words(ctx))
-  if not iv then return daw.notify(why, "warn") end
+  if not iv then return paw.notify(why, "warn") end
   local ids = chords(ctx)
-  if #ids == 0 then return daw.notify("no chord here to add to", "warn") end
+  if #ids == 0 then return paw.notify("no chord here to add to", "warn") end
   local added = 0
   view:write(function(sc)
     local layout = view:layout()
@@ -691,7 +691,7 @@ function W.interval(ctx)
     end
     if added == 0 then return false end
   end)
-  daw.notify(added == 1 and "1 note added" or added .. " notes added")
+  paw.notify(added == 1 and "1 note added" or added .. " notes added")
 end
 
 --- Read a tuplet: `{ actual, normal }`, or false for none, or nil and why.
@@ -724,21 +724,21 @@ local function make_tuplet(a, b, actual, normal)
     local finish = math.min(f.lengths[mi], at + D.from_beats(b - a))
     local width = finish - at
     if width <= 0 or width % normal ~= 0 then
-      daw.notify("that stretch does not divide into " .. normal, "warn")
+      paw.notify("that stretch does not divide into " .. normal, "warn")
       return false
     end
     local found = {}
     for _, it in ipairs(D.line(sc, mi, staff, v)) do
       if it.ev.kind == "chord" and not it.ev.grace and it.s < finish and it.e > at then
         if it.s < at or it.e > finish then
-          daw.notify("a note goes over the edge of the stretch: shorten it first", "warn")
+          paw.notify("a note goes over the edge of the stretch: shorten it first", "warn")
           return false
         end
         found[#found + 1] = it
       end
     end
     if #found > actual then
-      daw.notify("more notes than the tuplet has places", "warn")
+      paw.notify("more notes than the tuplet has places", "warn")
       return false
     end
     local value = width / normal
@@ -763,14 +763,14 @@ end
 function W.tuplet(ctx)
   if not need_clip() then return end
   local tp, why = W.parse_tuplet(words(ctx))
-  if tp == nil then return daw.notify(why, "warn") end
+  if tp == nil then return paw.notify(why, "warn") end
   if W.entering or keymap.mode == "i" then
     -- Entering: the values typed next are of that tuplet.
     view.tuplet, view.triplets = tp and { tp.actual, tp.normal } or nil, false
     api.ui_redraw()
-    return daw.notify(tp and ("entering " .. tp.actual .. ":" .. tp.normal) or "entering plain values")
+    return paw.notify(tp and ("entering " .. tp.actual .. ":" .. tp.normal) or "entering plain values")
   end
-  if not tp then return daw.notify("a tuplet is taken away by writing its notes again: select them and `notation.tuplet 2:2`", "warn") end
+  if not tp then return paw.notify("a tuplet is taken away by writing its notes again: select them and `notation.tuplet 2:2`", "warn") end
   local a, b, ranged = span(ctx)
   if not ranged then
     -- The beat under the cursor.
@@ -779,7 +779,7 @@ function W.tuplet(ctx)
     a = m.start + math.floor((view.beat - m.start) / beat + EPS) * beat
     b = a + beat
   end
-  if make_tuplet(a, b, tp.actual, tp.normal) ~= false then daw.notify(tp.actual .. ":" .. tp.normal) end
+  if make_tuplet(a, b, tp.actual, tp.normal) ~= false then paw.notify(tp.actual .. ":" .. tp.normal) end
 end
 
 --- The chords of the region into voice `v`, each where it is, where that
@@ -788,7 +788,7 @@ function W.voice(ctx)
   local v = tonumber(words(ctx))
   if not v then return false end
   if v < 1 or v > 4 then
-    daw.notify("a voice is 1 to 4", "warn")
+    paw.notify("a voice is 1 to 4", "warn")
     return true
   end
   v = math.floor(v)
@@ -818,7 +818,7 @@ function W.voice(ctx)
     end
     if moved == 0 then return false end
   end)
-  daw.notify(moved .. (moved == 1 and " chord" or " chords") .. " into voice " .. v .. "; entering in voice " .. v)
+  paw.notify(moved .. (moved == 1 and " chord" or " chords") .. " into voice " .. v .. "; entering in voice " .. v)
   return true
 end
 

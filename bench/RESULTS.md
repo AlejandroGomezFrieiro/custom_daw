@@ -11,7 +11,7 @@ matrix before it).
 The two largest weaknesses below were taken up after these results were
 written. The engine now processes tracks that do not feed each other on a
 pool of worker threads (one thread per core by default; renders are
-bit-identical whatever the number), and `daw.api` has calls for one note
+bit-identical whatever the number), and `paw.api` has calls for one note
 (`clip_note_set`, `clip_note_add`, `clip_note_remove`, `clip_notes_edit`),
 which the piano roll and the graphical frontend use. Measured on the same
 machine, under load from other jobs (load average 5 to 15), each figure the
@@ -175,7 +175,7 @@ Each has a test in `tests/suite.lua` or a Rust test that fails on the code befor
 | 6 | Loops through sends were accepted (`would_cycle` only followed outputs); the engine then silently dropped one side | review, then test | `would_cycle` follows outputs and sends; suite: "sends cannot make a loop either" |
 | 7 | A refused edit still made an (empty) undo step and marked the project modified: the next undo did nothing | review, then test | only successful edits count; suite: "a refused edit leaves no undo step behind" |
 | 8 | A track added past the engine's 1024-track limit never got a slot, even after tracks were removed; adding a device to it failed with "could not load `synth`" | abuse cases | a slot-less track is built when there is room, and the schedule rebuilt; suite: "a track the engine had no room for sounds once there is room" |
-| 9 | Replacing one track's clips while playing (any clip edit) sent all-notes-off and re-triggered every held note on every track: every edit made every sustained note in the project swell | review, then test | the flush and chase are per track; `crates/daw-engine/tests/clips.rs` |
+| 9 | Replacing one track's clips while playing (any clip edit) sent all-notes-off and re-triggered every held note on every track: every edit made every sustained note in the project swell | review, then test | the flush and chase are per track; `crates/paw-engine/tests/clips.rs` |
 | 10 | An audio clip gain of 1e9 dB (finite, so accepted) rendered as infinity; a send level of 1e9 was saved into a file that the new validation refused; parameter values and parameter-lane points from a file reached devices unclamped | fuzzer (seeds 4 and 11) | gains and sends clamped like volumes, files checked, parameter values clamped to their declared range in sync; suite: "levels are kept within range" |
 | 11 | `device_get` right after an undo that brought a device back reported it as missing, with no parameters, until the end of the turn | fuzzer (seeds 11 and 14) | `device_get` syncs first; suite: "a device brought back by undo reads as loaded at once" |
 | 12 | The null backend and offline renders did not treat denormals as zero, unlike the cpal callback | review | same flag on both (scoped for renders, restored afterwards); no measurable speed change with the built-in devices; suite checks the main thread's float mode is restored |
@@ -204,7 +204,7 @@ documented pruning rule; it is a large silent jump for a user.
   project; every bad input is refused with a message. Before the fixes: 4
   hangs, 1 abort (out of memory), 2 panics, 5 projects that saved but would not
   load.
-- **Allocation guard** (`crates/daw-engine/tests/no_alloc.rs`): no allocation
+- **Allocation guard** (`crates/paw-engine/tests/no_alloc.rs`): no allocation
   or free on the audio thread across every engine message, every built-in
   device, recording, loops, seeks, live and injected MIDI, and a full garbage
   queue (which leaks rather than frees, as designed). Passes after the merge
@@ -262,7 +262,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Offline render (ms of wall time for 32 s of audio)
 
-| kind | fx | automation | tracks | daw×1 render_ms | tracktion×1 render_ms | tracktion×N render_ms |
+| kind | fx | automation | tracks | paw×1 render_ms | tracktion×1 render_ms | tracktion×N render_ms |
 | --- | --- | --- | --- | ---: | ---: | ---: |
 | audio | 0 | 0 | 1 | 48.4 | 555 | 543 |
 | audio | 0 | 0 | 10 | 180 | 794 | 719 |
@@ -287,7 +287,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Offline render, per-block processing time (ms; budget 10.7 ms)
 
-| kind | fx | automation | tracks | daw block_p99_ms | daw block_max_ms | tracktion×1 block_p99_ms | tracktion×1 block_max_ms | tracktion×N block_p99_ms | tracktion×N block_max_ms |
+| kind | fx | automation | tracks | paw block_p99_ms | paw block_max_ms | tracktion×1 block_p99_ms | tracktion×1 block_max_ms | tracktion×N block_p99_ms | tracktion×N block_max_ms |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | audio | 0 | 0 | 1 | 0.013 | 0.028 | 10.1 | 11.4 | 10.1 | 11.2 |
 | audio | 0 | 0 | 10 | 0.076 | 0.11 | 10.1 | 11.6 | 10.2 | 11.4 |
@@ -312,7 +312,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Real-time playback, ms per callback (DAW: null backend on a real-time clock; Tracktion: hosted device, back to back)
 
-| kind | tracks | buffer | edits | daw p50_ms | daw p99_ms | daw max_ms | tracktion×1 p50_ms | tracktion×1 p99_ms | tracktion×1 max_ms | tracktion×N p50_ms | tracktion×N p99_ms | tracktion×N max_ms |
+| kind | tracks | buffer | edits | paw p50_ms | paw p99_ms | paw max_ms | tracktion×1 p50_ms | tracktion×1 p99_ms | tracktion×1 max_ms | tracktion×N p50_ms | tracktion×N p99_ms | tracktion×N max_ms |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | audio | 500 | 256 | 0 | 2.05 | 2.90 | 3.46 | 3.90 | 7.85 | 8.23 | 1.19 | 3.00 | 5.10 |
 | audio | 500 | 256 | 239 | 2.05 | 3.44 | 3.69 | – | – | – | – | – | – |
@@ -322,7 +322,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Clip edits, one undo step each (ms for all of them)
 
-| clips | daw add_ms | daw move_ms | daw delete_ms | daw undo_ms | daw redo_ms | tracktion add_ms | tracktion move_ms | tracktion delete_ms | tracktion undo_ms | tracktion redo_ms |
+| clips | paw add_ms | paw move_ms | paw delete_ms | paw undo_ms | paw redo_ms | tracktion add_ms | tracktion move_ms | tracktion delete_ms | tracktion undo_ms | tracktion redo_ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 100 | 1.37 | 0.85 | 1.02 | 2.84 | 3.79 | 1.54 | 0.12 | 0.13 | 1.19 | 1.14 |
 | 1000 | 70.2 | 50.1 | 73.0 | 66.6 | 66.1 | 19.1 | 3.53 | 3.53 | 31.0 | 30.4 |
@@ -330,7 +330,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Clip edits without the sync to the engine (DAW) — what Tracktion's numbers above measure
 
-| clips | daw add_ms | daw move_ms | daw delete_ms | daw undo_ms | daw redo_ms |
+| clips | paw add_ms | paw move_ms | paw delete_ms | paw undo_ms | paw redo_ms |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 100 | 0.27 | 0.14 | 0.085 | 0.066 | 0.058 |
 | 1000 | 6.38 | 11.8 | 10.6 | 0.46 | 0.43 |
@@ -338,7 +338,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Note edits without the sync to the engine (DAW)
 
-| notes | daw add_ms | daw move_ms | daw delete_ms |
+| notes | paw add_ms | paw move_ms | paw delete_ms |
 | --- | ---: | ---: | ---: |
 | 100 | 0.29 | 6.01 | 3.25 |
 | 1000 | 13.3 | 859 | 408 |
@@ -346,7 +346,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Clip edits: ms per edit, first and last tenth
 
-| clips | daw add_first_ms | daw add_last_ms | daw move_first_ms | daw move_last_ms |
+| clips | paw add_first_ms | paw add_last_ms | paw move_first_ms | paw move_last_ms |
 | --- | ---: | ---: | ---: | ---: |
 | 100 | 0.012 | 0.015 | 0.009 | 0.008 |
 | 1000 | 0.019 | 0.14 | 0.049 | 0.051 |
@@ -354,7 +354,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Note edits in one clip, one undo step each (ms for all of them)
 
-| notes | daw add_ms | daw move_ms | daw delete_ms | tracktion add_ms | tracktion move_ms | tracktion delete_ms |
+| notes | paw add_ms | paw move_ms | paw delete_ms | tracktion add_ms | tracktion move_ms | tracktion delete_ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | 100 | 0.88 | 9.76 | 5.29 | 0.19 | 0.16 | 0.15 |
 | 1000 | 24.9 | 625 | 319 | 2.44 | 1.84 | 4.38 |
@@ -362,7 +362,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### One edit in a project of N tracks (ms, median of 50)
 
-| tracks | daw build_ms | daw volume_ms | daw clip_move_ms | daw undo_ms | daw redo_ms | daw track_add_ms |
+| tracks | paw build_ms | paw volume_ms | paw clip_move_ms | paw undo_ms | paw redo_ms | paw track_add_ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | 10 | 3.19 | 0.007 | 0.026 | 0.021 | 0.020 | 0.026 |
 | 100 | 43.7 | 0.046 | 0.066 | 0.065 | 0.063 | 0.11 |
@@ -371,7 +371,7 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Save and load (ms)
 
-| tracks | clips_per_track | daw build_ms | daw save_ms | daw load_ms | daw file_bytes | tracktion build_ms | tracktion save_ms | tracktion load_ms | tracktion file_bytes |
+| tracks | clips_per_track | paw build_ms | paw save_ms | paw load_ms | paw file_bytes | tracktion build_ms | tracktion save_ms | tracktion load_ms | tracktion file_bytes |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 10 | 8 | 1.37 | 0.42 | 0.66 | 190332 | 8.72 | 16.4 | 10.4 | 82179 |
 | 100 | 8 | 20.8 | 3.14 | 12.4 | 1899263 | 109 | 44.4 | 81.3 | 812888 |
@@ -379,20 +379,20 @@ documented pruning rule; it is a large silent jump for a user.
 
 ### Resident memory (kB)
 
-| tracks | clips_per_track | undo_steps | daw rss_built_kb | daw rss_undo_kb | tracktion rss_built_kb | tracktion rss_undo_kb |
+| tracks | clips_per_track | undo_steps | paw rss_built_kb | paw rss_undo_kb | tracktion rss_built_kb | tracktion rss_undo_kb |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
 | 100 | 8 | 1000 | 37308 | 41120 | 112632 | 112844 |
 | 500 | 8 | 1000 | 170448 | 257628 | 498588 | 498792 |
 
 ### Memory over repeated build/edit/render/load rounds (kB)
 
-| rounds | daw rss_first_kb | daw rss_mid_kb | daw rss_last_kb | daw growth_kb_per_round |
+| rounds | paw rss_first_kb | paw rss_mid_kb | paw rss_last_kb | paw growth_kb_per_round |
 | --- | ---: | ---: | ---: | ---: |
 | 30 | 15980 | 59308 | 59604 | 19.7 |
 
 ### Startup (ms)
 
-| plugins | daw ms | tracktion ms |
+| plugins | paw ms | tracktion ms |
 | --- | ---: | ---: |
 | cached scan | 15.4 | – |
 | cold scan | 1269 | – |

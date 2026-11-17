@@ -1,7 +1,7 @@
--- `daw.regex`: regular expressions of the common kind, made into Lua
--- patterns, for the pickers' regex mode, `:vimgrep` and `daw.query`.
+-- `paw.regex`: regular expressions of the common kind, made into Lua
+-- patterns, for the pickers' regex mode, `:vimgrep` and `paw.query`.
 --
---   local re = daw.regex.compile("pizz|spicc")
+--   local re = paw.regex.compile("pizz|spicc")
 --   re:find("Violins pizz")   --> 9, 12
 --
 -- What is understood: `.` `*` `+` `?` `{n}` `{n,m}` `{n,}` `^` `$`,

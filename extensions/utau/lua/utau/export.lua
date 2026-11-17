@@ -7,7 +7,7 @@
 -- same mapping the live engine uses, then saves it with OpenUtau's own
 -- writers. The format follows the file's extension; a `.ust` holds one part,
 -- so a second part goes to `name-2.ust`, and so on.
-local api = daw.api
+local api = paw.api
 local utau = require("utau")
 local engine = require("utau.engine")
 local json = require("utau.json")
@@ -118,10 +118,10 @@ function M.open_path()
   return string.format("%s/%s.ustx", dir, stem)
 end
 
---- What starts OpenUtau on a file: `daw.opt.utau_openutau`, else
+--- What starts OpenUtau on a file: `paw.opt.utau_openutau`, else
 --- `$REAUTAU_OPENUTAU` as ReaUtau reads it, else `OpenUtau` on the PATH.
 function M.open_command(path)
-  local command = daw.opt.utau_openutau
+  local command = paw.opt.utau_openutau
   if not command or command == "" then command = os.getenv("REAUTAU_OPENUTAU") end
   if not command or command == "" then command = "OpenUtau" end
   local argv = {}

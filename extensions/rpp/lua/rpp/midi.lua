@@ -4,7 +4,7 @@
 -- Both give notes in ticks from the start of the source, plus counts of what
 -- is not a note, so an import can say what it left out.
 local fmt = require("rpp.format")
-local smf = require("daw.midifile")
+local smf = require("paw.midifile")
 local M = {}
 
 --- Pair note-ons with note-offs. `events` is a list of
@@ -120,7 +120,7 @@ function M.event_lines(notes, length)
 end
 
 -- Standard MIDI Files: read and written by the program's own reader
--- (runtime/lua/daw/midifile.lua), in the shape a source's events have here.
+-- (runtime/lua/paw/midifile.lua), in the shape a source's events have here.
 
 local CONTROL_NAMES = { cc = "CC", bend = "pitch bend", pressure = "channel pressure", program = "program change" }
 

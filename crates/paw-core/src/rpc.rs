@@ -1,7 +1,7 @@
 //! The control socket: other processes, on this machine or another, call
 //! into a running kernel and hear from it, one JSON object per line.
 //!
-//! Request: `{"id": 1, "method": "eval", "params": ["return daw.transport.position"]}`
+//! Request: `{"id": 1, "method": "eval", "params": ["return paw.transport.position"]}`
 //! Reply: `{"id": 1, "result": 3.5}` or `{"id": 1, "error": "..."}`
 //! Pushed: `{"event": "transport.play", "payload": {"position": 0}}`
 //!
@@ -24,9 +24,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
-pub use daw_proto::tls::known_path;
-pub use daw_proto::{ClientId, Connection, VERSION, Wire, proof, sha256};
-use daw_proto::hex;
+pub use paw_proto::tls::known_path;
+pub use paw_proto::{ClientId, Connection, VERSION, Wire, proof, sha256};
+use paw_proto::hex;
 use serde_json::{Value, json};
 
 use crate::kernel::KernelMsg;
@@ -52,7 +52,7 @@ const PLAIN_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// What a client that does not speak TLS is told by a port that only does.
 const TLS_ONLY: &str = "this instance takes network connections in TLS only (protocol 3): \
-    connect with a daw as new as it, or start the instance with --no-tls";
+    connect with a paw as new as it, or start the instance with --no-tls";
 
 /// One connection's way out.
 struct Out {
@@ -127,7 +127,7 @@ pub fn default_path() -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    dir.join("daw.sock")
+    dir.join("paw.sock")
 }
 
 /// Listen on `path` and forward calls to the kernel.
@@ -211,7 +211,7 @@ pub fn serve_tcp(
                 let Ok(server) = rustls::ServerConnection::new(config) else {
                     return;
                 };
-                if let Ok((reader, writer)) = daw_proto::tls::split(server.into(), stream) {
+                if let Ok((reader, writer)) = paw_proto::tls::split(server.into(), stream) {
                     connection(reader, writer, kernel, clients, Some(token), close, trusted);
                 }
             });
@@ -249,9 +249,9 @@ fn refuse_plain(mut stream: std::net::TcpStream) {
 }
 
 /// Where the token for network connections is kept on this machine:
-/// `$XDG_STATE_HOME/daw/token`.
+/// `$XDG_STATE_HOME/paw/token`.
 pub fn token_path() -> PathBuf {
-    daw_proto::state_dir().join("token")
+    paw_proto::state_dir().join("token")
 }
 
 /// The token in `path`, made and written there (readable by its owner

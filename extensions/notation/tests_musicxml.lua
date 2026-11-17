@@ -4,11 +4,11 @@
 -- then plays. Loaded by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation.musicxml"), require("notation.doc")
 end
 
@@ -481,14 +481,14 @@ test("musicxml: :open makes a project of the file, its tempo, title, key and mar
   load()
   local path = T.scratch .. "/mx-piano.musicxml"
   write_file(path, PIANO)
-  daw.commands.exec("open! " .. path)
-  local tracks = daw.tracks()
+  paw.commands.exec("open! " .. path)
+  local tracks = paw.tracks()
   eq(#tracks, 1, "a track for the part")
   eq(tracks[1].name, "Piano", "named after it")
   eq(api.project_get().name, "mx-piano", "the project is named after the file")
   eq(api.project_get().path, nil, "and has no file of its own")
   eq(api.project_get().meta.title, "Little Piece", "the title for the page")
-  eq(math.floor(daw.tempo.at(0) + 0.5), 72, "the tempo mark's bpm is the song's tempo")
+  eq(math.floor(paw.tempo.at(0) + 0.5), 72, "the tempo mark's bpm is the song's tempo")
   local clip = tracks[1]:clips()[1]
   local view = require("notation")
   eq((clip:notes()[1].meta or {}).notation ~= nil, true, "a MIDI clip whose notes keep what the score decided")
@@ -514,13 +514,13 @@ test("musicxml: grace notes play before the beat or on it, and a pickup's clip s
   load()
   local path = T.scratch .. "/mx-tuplets.musicxml"
   write_file(path, TUPLETS)
-  daw.cursor.set_beat(8)
-  daw.commands.exec("import " .. path)
-  local track = daw.tracks()[1]
+  paw.cursor.set_beat(8)
+  paw.commands.exec("import " .. path)
+  local track = paw.tracks()[1]
   local clip = track:clips()[1]
   eq(clip:get().start, 8, "the first bar at the cursor")
   local at = {}
-  for _, n in ipairs(clip:notes()) do at[#at + 1] = string.format("%s@%g+%g", daw.music.name(n.pitch), math.floor(n.start * 1e4 + 0.5) / 1e4, math.floor(n.length * 1e4 + 0.5) / 1e4) end
+  for _, n in ipairs(clip:notes()) do at[#at + 1] = string.format("%s@%g+%g", paw.music.name(n.pitch), math.floor(n.start * 1e4 + 0.5) / 1e4, math.floor(n.length * 1e4 + 0.5) / 1e4) end
   local text = table.concat(at, " ")
   eq(text:find("D5@1.875+0.125", 1, true) ~= nil, true, "the acciaccatura a 32nd before beat 3: " .. text)
   eq(text:find("B4@2.875+0.125", 1, true) ~= nil and text:find("A4@3+", 1, true) ~= nil, true, "the appoggiatura a 32nd before beat 4, its note on the beat: " .. text)
@@ -528,15 +528,15 @@ test("musicxml: grace notes play before the beat or on it, and a pickup's clip s
   fresh()
   path = T.scratch .. "/mx-lead.musicxml"
   write_file(path, LEAD)
-  daw.cursor.set_beat(0)
-  daw.commands.exec("import " .. path .. " tempo=yes")
-  clip = daw.tracks()[1]:clips()[1]
+  paw.cursor.set_beat(0)
+  paw.commands.exec("import " .. path .. " tempo=yes")
+  clip = paw.tracks()[1]:clips()[1]
   eq(clip:get().start, 2, "the pickup's note on beat 3 of the first bar")
   eq(clip:notes()[1].start, 0, "where the clip starts")
   local names = {}
-  for _, m in ipairs(require("daw.markers").list()) do names[#names + 1] = m.name .. "@" .. m.beat end
+  for _, m in ipairs(require("paw.markers").list()) do names[#names + 1] = m.name .. "@" .. m.beat end
   eq(table.concat(names, " "), "A@3", "a marker at the rehearsal mark")
-  local num, den = daw.tempo.signature_at(1)
+  local num, den = paw.tempo.signature_at(1)
   eq(num .. "/" .. den, "3/4", "the time signature with tempo=yes")
 end)
 
@@ -545,18 +545,18 @@ test("musicxml: :notation.export writes the score clip back, and `all` every tra
   local mx = load()
   local path = T.scratch .. "/mx-changes.musicxml"
   write_file(path, CHANGES)
-  daw.commands.exec("open! " .. path)
-  local track = daw.tracks()[1]
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(0)
+  paw.commands.exec("open! " .. path)
+  local track = paw.tracks()[1]
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(0)
   local out = T.scratch .. "/mx-changes-out.musicxml"
-  daw.commands.exec("notation.export " .. out)
+  paw.commands.exec("notation.export " .. out)
   local again = assert(mx.read(out))
   eq(describe(again.parts[1].score), describe(assert(mx.parse(CHANGES)).parts[1].score), "the score as it came in")
-  local other = daw.add_track({ name = "Bass" })
+  local other = paw.add_track({ name = "Bass" })
   other:add_clip({ start = 0, length = 4, notes = { { pitch = 40, start = 0, length = 4, velocity = 80 } } })
-  daw.flush()
-  daw.commands.exec("notation.export " .. T.scratch .. "/mx-all.mxl all")
+  paw.flush()
+  paw.commands.exec("notation.export " .. T.scratch .. "/mx-all.mxl all")
   local both = assert(mx.read(T.scratch .. "/mx-all.mxl"))
   eq(#both.parts, 2, "two parts")
   eq(both.parts[2].name, "Bass", "the plain MIDI clip's track too, written as a score")

@@ -1,14 +1,14 @@
--- `daw.midifile`: Standard MIDI Files, read and written.
+-- `paw.midifile`: Standard MIDI Files, read and written.
 --
 --   :open song.mid                 -- a new project from it (asks nothing: see below)
 --   :import song.mid               -- into this one: new tracks below the cursor's, at the cursor
 --   :import song.mid tempo=yes     -- and its tempo map from the cursor on
 --   :export song.mid               -- the project; `:export song.mid clip`, `selection`
 --
---   local file = daw.midifile.read("song.mid")    -- what is in it, in ticks
---   daw.midifile.open("song.mid")   daw.midifile.import("song.mid", { start = 16, tempo = true })
---   daw.midifile.export("out.mid", { clips = { clip.id } })
---   daw.midifile.parse(bytes)   daw.midifile.encode(file)   -- bytes and back
+--   local file = paw.midifile.read("song.mid")    -- what is in it, in ticks
+--   paw.midifile.open("song.mid")   paw.midifile.import("song.mid", { start = 16, tempo = true })
+--   paw.midifile.export("out.mid", { clips = { clip.id } })
+--   paw.midifile.parse(bytes)   paw.midifile.encode(file)   -- bytes and back
 --
 -- A file opens as a project of its own: one track for each of the file's
 -- tracks that has notes (a format 0 file, whose one track holds every
@@ -556,7 +556,7 @@ end
 
 local function stem(path) return (path:match("([^/]+)$") or path):gsub("%.[^.]+$", "") end
 
---- The file's tempo map in beats from `at`, as `daw.tempo.set_points` takes it.
+--- The file's tempo map in beats from `at`, as `paw.tempo.set_points` takes it.
 local function tempo_map(file, at)
   local tempos, signatures = {}, {}
   for _, t in ipairs(file.tempos) do tempos[#tempos + 1] = { beat = at + t.tick / file.ppq, bpm = math.max(1, math.min(960, t.bpm)) } end
@@ -568,22 +568,22 @@ end
 local function put_tempo_map(file, at)
   local tempos, signatures = tempo_map(file, at)
   local keep_t, keep_s = {}, {}
-  for _, t in ipairs(daw.tempo.points()) do
+  for _, t in ipairs(paw.tempo.points()) do
     if t.beat < at - 1e-9 then keep_t[#keep_t + 1] = { beat = t.beat, bpm = t.bpm, ramp = t.ramp } end
   end
-  for _, s in ipairs(daw.tempo.signatures()) do
+  for _, s in ipairs(paw.tempo.signatures()) do
     if s.beat < at - 1e-9 then keep_s[#keep_s + 1] = { beat = s.beat, num = s.num, den = s.den } end
   end
   -- The tempo and signature in force where the file starts carry on when it names none there.
-  if not tempos[1] or tempos[1].beat > at + 1e-9 then table.insert(tempos, 1, { beat = at, bpm = daw.tempo.at(at) }) end
+  if not tempos[1] or tempos[1].beat > at + 1e-9 then table.insert(tempos, 1, { beat = at, bpm = paw.tempo.at(at) }) end
   if not signatures[1] or signatures[1].beat > at + 1e-9 then
-    local num, den = daw.tempo.signature_at(at)
+    local num, den = paw.tempo.signature_at(at)
     if at == 0 or #keep_s == 0 then num, den = 4, 4 end
     table.insert(signatures, 1, { beat = at, num = num, den = den })
   end
   for _, t in ipairs(tempos) do keep_t[#keep_t + 1] = t end
   for _, s in ipairs(signatures) do keep_s[#keep_s + 1] = s end
-  daw.tempo.set_points(keep_t, keep_s)
+  paw.tempo.set_points(keep_t, keep_s)
 end
 
 --- Add the parts of a file as tracks below `index` (nil: at the end), each
@@ -591,7 +591,7 @@ end
 local function add_parts(file, parts, at, index)
   local tracks = {}
   for i, part in ipairs(parts) do
-    local track = daw.add_track({ name = part.name, index = index and index + i or nil })
+    local track = paw.add_track({ name = part.name, index = index and index + i or nil })
     if part.drums then track:add_device("drums") end
     track:add_clip(clip_of(file, part, at))
     tracks[#tracks + 1] = track
@@ -600,7 +600,7 @@ local function add_parts(file, parts, at, index)
 end
 
 local function add_markers(file, at)
-  local markers = require("daw.markers")
+  local markers = require("paw.markers")
   for _, m in ipairs(file.markers) do
     if m.text ~= "" then markers.add(at + m.tick / file.ppq, m.text) end
   end
@@ -627,15 +627,15 @@ function M.open(path)
   local file, why = M.read(path)
   if not file then error(why, 0) end
   local parts = M.parts(file)
-  daw.api.project_new()
-  daw.api.project_set("name", stem(path))
+  paw.api.project_new()
+  paw.api.project_set("name", stem(path))
   put_tempo_map(file, 0)
   local tracks = add_parts(file, parts, 0, nil)
   add_markers(file, 0)
   -- It opens as a project file does: nothing to undo, nothing changed yet.
-  daw.api.undo_reset()
-  if tracks[1] then daw.cursor.set_track(tracks[1]) end
-  daw.state.pick_dir = path:match("^(.*)/[^/]*$") or daw.state.pick_dir
+  paw.api.undo_reset()
+  if tracks[1] then paw.cursor.set_track(tracks[1]) end
+  paw.state.pick_dir = path:match("^(.*)/[^/]*$") or paw.state.pick_dir
   return { tracks = tracks, notes = notes_in(parts), skipped = M.skipped_text(file) }
 end
 
@@ -648,8 +648,8 @@ function M.import(path, opts)
   opts = opts or {}
   local file, why = M.read(path)
   if not file then error(why, 0) end
-  local at = opts.start or daw.cursor.beat
-  local track = opts.track and (type(opts.track) == "table" and opts.track or daw.track(opts.track))
+  local at = opts.start or paw.cursor.beat
+  local track = opts.track and (type(opts.track) == "table" and opts.track or paw.track(opts.track))
   local parts = M.parts(file, track ~= nil)
   if #parts == 0 then error("there are no notes in it", 0) end
   if opts.tempo then put_tempo_map(file, at) end
@@ -660,11 +660,11 @@ function M.import(path, opts)
     clips[1] = track:add_clip(clip)
     tracks[1] = track
   else
-    tracks = add_parts(file, parts, at, daw.cursor.index())
+    tracks = add_parts(file, parts, at, paw.cursor.index())
     for _, t in ipairs(tracks) do clips[#clips + 1] = t:clips()[1] end
   end
   add_markers(file, at)
-  if tracks[1] then daw.cursor.set_track(tracks[1]) end
+  if tracks[1] then paw.cursor.set_track(tracks[1]) end
   return { tracks = tracks, clips = clips, notes = notes_in(parts), skipped = M.skipped_text(file) }
 end
 
@@ -683,17 +683,17 @@ end
 
 --- The tempo map in ticks; a ramp is written as a step every sixteenth.
 local function export_tempos(to)
-  local points, out = daw.tempo.points(), {}
+  local points, out = paw.tempo.points(), {}
   for i, t in ipairs(points) do
     out[#out + 1] = { tick = t.beat * EXPORT_PPQ, bpm = t.bpm }
     local nxt = points[i + 1]
     if t.ramp and nxt then
       for beat = t.beat + 0.25, nxt.beat - 1e-9, 0.25 do
-        out[#out + 1] = { tick = beat * EXPORT_PPQ, bpm = daw.tempo.at(beat) }
+        out[#out + 1] = { tick = beat * EXPORT_PPQ, bpm = paw.tempo.at(beat) }
       end
     elseif t.ramp then
       for beat = t.beat + 0.25, math.max(t.beat, to) - 1e-9, 0.25 do
-        out[#out + 1] = { tick = beat * EXPORT_PPQ, bpm = daw.tempo.at(beat) }
+        out[#out + 1] = { tick = beat * EXPORT_PPQ, bpm = paw.tempo.at(beat) }
       end
     end
   end
@@ -752,18 +752,18 @@ function M.export(path, opts)
     local seen = {}
     for _, id in ipairs(opts.clips) do
       only[id] = true
-      local track = daw.clip(id):track()
+      local track = paw.clip(id):track()
       if not seen[track.id] then
         seen[track.id] = true
         tracks[#tracks + 1] = track
       end
     end
   elseif opts.tracks then
-    for _, t in ipairs(opts.tracks) do tracks[#tracks + 1] = type(t) == "table" and t or daw.track(t) end
+    for _, t in ipairs(opts.tracks) do tracks[#tracks + 1] = type(t) == "table" and t or paw.track(t) end
   else
-    tracks = daw.tracks()
+    tracks = paw.tracks()
   end
-  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = daw.api.project_get().name } }, signatures = {}, markers = {} }
+  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get().name } }, signatures = {}, markers = {} }
   local notes, last = 0, 0
   for _, track in ipairs(tracks) do
     local t, ends = export_track(track, only)
@@ -773,8 +773,8 @@ function M.export(path, opts)
     end
   end
   file.tempos = export_tempos(last)
-  for _, s in ipairs(daw.tempo.signatures()) do file.signatures[#file.signatures + 1] = { tick = s.beat * EXPORT_PPQ, num = s.num, den = s.den } end
-  for _, m in ipairs(require("daw.markers").list()) do file.markers[#file.markers + 1] = { tick = m.beat * EXPORT_PPQ, text = m.name } end
+  for _, s in ipairs(paw.tempo.signatures()) do file.signatures[#file.signatures + 1] = { tick = s.beat * EXPORT_PPQ, num = s.num, den = s.den } end
+  for _, m in ipairs(require("paw.markers").list()) do file.markers[#file.markers + 1] = { tick = m.beat * EXPORT_PPQ, text = m.name } end
   local f, err = io.open(path, "wb")
   if not f then error((tostring(err):gsub("^[^:]*: ", "")), 0) end
   f:write(M.encode(file))

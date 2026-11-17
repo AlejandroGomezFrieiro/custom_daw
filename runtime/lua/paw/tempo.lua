@@ -1,20 +1,20 @@
--- `daw.tempo`: the tempo map. Tempo and time signature can change along the
+-- `paw.tempo`: the tempo map. Tempo and time signature can change along the
 -- song; everything that turns beats into seconds or bars asks here.
 --
---   daw.tempo.at(17)                       -- BPM at beat 17
---   daw.tempo.set(16, 96)                  -- 96 BPM from beat 16 on
---   daw.tempo.set(8, 120, { ramp = true }) -- from beat 8, ramp to the next point
---   daw.tempo.remove(16)
---   daw.tempo.points()                     -- { { beat, bpm, ramp }, ... }
---   daw.tempo.set_signature(9, 6, 8)       -- bar 9 and on in 6/8
---   daw.tempo.signature_at(33)             -- 6, 8
---   daw.tempo.beats_to_seconds(16)  daw.tempo.seconds_to_beats(8)
---   daw.tempo.bar_of(33)                   -- 9 (bars count from 1)
+--   paw.tempo.at(17)                       -- BPM at beat 17
+--   paw.tempo.set(16, 96)                  -- 96 BPM from beat 16 on
+--   paw.tempo.set(8, 120, { ramp = true }) -- from beat 8, ramp to the next point
+--   paw.tempo.remove(16)
+--   paw.tempo.points()                     -- { { beat, bpm, ramp }, ... }
+--   paw.tempo.set_signature(9, 6, 8)       -- bar 9 and on in 6/8
+--   paw.tempo.signature_at(33)             -- 6, 8
+--   paw.tempo.beats_to_seconds(16)  paw.tempo.seconds_to_beats(8)
+--   paw.tempo.bar_of(33)                   -- 9 (bars count from 1)
 --
 -- A ramp changes the tempo linearly in time, as REAPER's does. A signature
 -- change starts a new bar where it is, cutting short a bar it falls inside.
--- `daw.project.tempo` is the tempo at the start.
-local api = require("daw.api")
+-- `paw.project.tempo` is the tempo at the start.
+local api = require("paw.api")
 
 local M = {}
 
@@ -99,7 +99,7 @@ end
 --- A place given to a command: a bar (`17`), a bar and beat (`17.3`), or
 --- `cursor` / `here`; the cursor's beat when nothing is given.
 function M.place(text)
-  if text == nil or text == "cursor" or text == "here" then return daw.cursor.beat end
+  if text == nil or text == "cursor" or text == "here" then return paw.cursor.beat end
   local bar, beat = tostring(text):match("^(%d+)%.?(%d*)$")
   if not bar then error("a place is a bar (17), a bar and beat (17.3) or `cursor`, not " .. tostring(text), 0) end
   bar = tonumber(bar)
@@ -119,7 +119,7 @@ end
 --- What a position reads as in commands' messages: "bar 9" or "9.2.50".
 local function where(beat)
   if api.tempo_is_bar_line(beat) then return "bar " .. M.bar_of(beat) end
-  return daw.time.format(beat)
+  return paw.time.format(beat)
 end
 
 --- "120 bpm 4/4 at bar 1; 90 bpm from bar 3, ramping; ..." for the whole map.
@@ -153,37 +153,37 @@ function M.commands(command)
   command("tempo", function(ctx)
     local a = ctx.args
     local bpm = tonumber(a[1])
-    if a.by then bpm = daw.project.tempo + a.by end
+    if a.by then bpm = paw.project.tempo + a.by end
     if not bpm then
-      local beat = daw.cursor.beat
-      return daw.notify(string.format("tempo is %g bpm at the start, %g at the cursor (%s)", daw.project.tempo, M.at(beat), where(beat)))
+      local beat = paw.cursor.beat
+      return paw.notify(string.format("tempo is %g bpm at the start, %g at the cursor (%s)", paw.project.tempo, M.at(beat), where(beat)))
     end
     bpm = math.max(1, math.min(999, bpm))
     local at = a.at or (a[2] == "at" and (a[3] or "cursor")) or ((a[2] == "here" or a[2] == "cursor") and "cursor")
     if not at then
-      daw.project.tempo = bpm
+      paw.project.tempo = bpm
     else
       local beat = M.place(at)
       api.tempo_set(beat, bpm)
-      daw.notify(string.format("%g bpm from %s", bpm, where(beat)))
+      paw.notify(string.format("%g bpm from %s", bpm, where(beat)))
     end
   end, {
     desc = "Show or set the tempo: `tempo 140` (at the start), `tempo 96 at 17` (bar 17), `tempo 96 here`, `tempo by=-1`",
     label = "Set the tempo",
     complete = function(text, info)
-      if info.index == 1 then return { tostring(math.floor(M.at(daw.cursor.beat) + 0.5)) } end
+      if info.index == 1 then return { tostring(math.floor(M.at(paw.cursor.beat) + 0.5)) } end
       return places(text, info)
     end,
   })
 
   command("tempo.ramp", function(ctx)
     local a = ctx.args
-    local beat = (a[1] or a.at) and M.place(a.at or (a[1] == "at" and a[2] or a[1])) or daw.cursor.beat
+    local beat = (a[1] or a.at) and M.place(a.at or (a[1] == "at" and a[2] or a[1])) or paw.cursor.beat
     local p = M.point_at(beat)
     local on = not p.ramp
     if a.off or a[1] == "off" then on = false end
     api.tempo_set(p.beat, p.bpm, on)
-    daw.notify(string.format("%g bpm at %s %s", p.bpm, where(p.beat), on and "ramps to the next change" or "holds"))
+    paw.notify(string.format("%g bpm at %s %s", p.bpm, where(p.beat), on and "ramps to the next change" or "holds"))
   end, {
     desc = "Make the tempo change before the cursor ramp to the next one, or hold again: `tempo.ramp`, `tempo.ramp 9`",
     label = "Ramp the tempo",
@@ -192,11 +192,11 @@ function M.commands(command)
 
   command("tempo.remove", function(ctx)
     local a = ctx.args
-    local beat = a[1] and M.place(a[1]) or daw.cursor.beat
+    local beat = a[1] and M.place(a[1]) or paw.cursor.beat
     local p = M.point_at(beat)
     if p.beat == 0 then error("no tempo change at or before " .. where(beat) .. " but the start's", 0) end
     api.tempo_remove(p.beat)
-    daw.notify("removed the tempo change at " .. where(p.beat))
+    paw.notify("removed the tempo change at " .. where(p.beat))
   end, {
     desc = "Remove the tempo change at or before the cursor, or at a bar: `tempo.remove 17`",
     label = "Remove a tempo change",
@@ -211,7 +211,7 @@ function M.commands(command)
 
   command("tempo.list", function()
     local lines = M.describe()
-    daw.notify(table.concat(lines, " · "))
+    paw.notify(table.concat(lines, " · "))
     return lines
   end, { desc = "List the tempo and time signature changes" })
 
@@ -220,27 +220,27 @@ function M.commands(command)
     if #taps > 0 and now - taps[#taps] > 2000 then taps = {} end
     taps[#taps + 1] = now
     while #taps > 8 do table.remove(taps, 1) end
-    if #taps < 2 then return daw.notify("tap again in time") end
+    if #taps < 2 then return paw.notify("tap again in time") end
     local bpm = 60000 * (#taps - 1) / (taps[#taps] - taps[1])
     bpm = math.floor(math.max(1, math.min(999, bpm)) * 10 + 0.5) / 10
-    local p = M.point_at(daw.cursor.beat)
+    local p = M.point_at(paw.cursor.beat)
     api.tempo_set(p.beat, bpm)
-    daw.notify(string.format("tapped %g bpm at %s", bpm, where(p.beat)))
+    paw.notify(string.format("tapped %g bpm at %s", bpm, where(p.beat)))
   end, { desc = "Tap in time, again and again, to set the tempo in effect at the cursor", label = "Tap the tempo" })
 
   command("timesig", function(ctx)
     local a = ctx.args
     local text = a[1]
     if text == nil then
-      local num, den = M.signature_at(daw.cursor.beat)
-      return daw.notify(string.format("%d/%d at %s", num, den, where(daw.cursor.beat)))
+      local num, den = M.signature_at(paw.cursor.beat)
+      return paw.notify(string.format("%d/%d at %s", num, den, where(paw.cursor.beat)))
     end
     local num, den = tostring(text):match("^(%d+)/(%d+)$")
     if not num then error("write a time signature as 6/8", 0) end
     local at = a.at or (a[2] == "at" and a[3]) or a[2]
-    local beat = at and M.place(at) or daw.time.bar_floor(daw.cursor.beat)
+    local beat = at and M.place(at) or paw.time.bar_floor(paw.cursor.beat)
     api.signature_set(beat, tonumber(num), tonumber(den))
-    daw.notify(string.format("%s/%s from %s", num, den, where(beat)))
+    paw.notify(string.format("%s/%s from %s", num, den, where(beat)))
   end, {
     desc = "Set the time signature from the cursor's bar on, or from a bar: `timesig 6/8`, `timesig 3/4 at 9`",
     label = "Set the time signature",
@@ -251,14 +251,14 @@ function M.commands(command)
   })
 
   command("timesig.remove", function(ctx)
-    local beat = ctx.args[1] and M.place(ctx.args[1]) or daw.cursor.beat
+    local beat = ctx.args[1] and M.place(ctx.args[1]) or paw.cursor.beat
     local found
     for _, s in ipairs(M.signatures()) do
       if s.beat <= beat + 1e-9 then found = s end
     end
     if found.beat == 0 then error("no signature change at or before " .. where(beat) .. " but the start's", 0) end
     api.signature_remove(found.beat)
-    daw.notify("removed the signature change at bar " .. found.bar)
+    paw.notify("removed the signature change at bar " .. found.bar)
   end, {
     desc = "Remove the time signature change at or before the cursor, or at a bar",
     label = "Remove a time signature change",

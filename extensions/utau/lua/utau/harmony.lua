@@ -10,7 +10,7 @@
 -- repeatable differences: each note's onset moves up to 18 ticks either way
 -- (a timing take, kept as the first phoneme's offset), and its tuning up to
 -- 8 cents either way.
-local api = daw.api
+local api = paw.api
 local utau = require("utau")
 
 local M = {}
@@ -19,7 +19,7 @@ M.SCALES = {
   major = { 0, 2, 4, 5, 7, 9, 11 },
   minor = { 0, 2, 3, 5, 7, 8, 10 },
 }
-for name, steps in pairs(daw.music and daw.music.scales or {}) do
+for name, steps in pairs(paw.music and paw.music.scales or {}) do
   if not M.SCALES[name] then M.SCALES[name] = steps end
 end
 M.NAMES = { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" }
@@ -173,7 +173,7 @@ function M.create(track_id, opts)
   for i, id in ipairs(api.track_list()) do
     if id == track_id then index = i end
   end
-  local src = daw.track(track_id)
+  local src = paw.track(track_id)
   local snap = src:snapshot()
   snap.name = string.format("%s (%s)", src.name, iv.name)
   snap.volume = (snap.volume or 0) + (opts.gain or -3)
@@ -205,7 +205,7 @@ function M.create(track_id, opts)
       count = count + 1
     end
   end
-  local track = daw.restore_track(snap, index + 1)
+  local track = paw.restore_track(snap, index + 1)
   if opts.preset then require("utau.singer_presets").apply(track.id, opts.preset) end
   utau.schedule()
   return track, { notes = count, key = key, key_source = source, interval = iv }

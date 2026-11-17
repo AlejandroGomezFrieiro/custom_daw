@@ -1,7 +1,7 @@
 //! The window's gestures, driven in-process (egui_kittest): the window is
 //! drawn from what a kernel told it (tests/fixture.json, made by
 //! tests/fixture.sh), a stand-in kernel takes its calls, and each test says
-//! which `daw.frontend.act` a gesture sends, with what. What a gesture then
+//! which `paw.frontend.act` a gesture sends, with what. What a gesture then
 //! means is the kernel's, tested in the Lua suite; the window tests in
 //! tests/window.rs drive a real window and kernel end to end.
 
@@ -32,15 +32,15 @@ impl Kernel for Fake {
         self.calls.borrow_mut().push((method.to_string(), params.clone()));
         let fixture: Value = serde_json::from_str(FIXTURE)?;
         let code = params[0].as_str().unwrap_or("");
-        Ok(if code.contains("daw.frontend.menu(") {
+        Ok(if code.contains("paw.frontend.menu(") {
             json!([{ "label": "First" }, { "separator": true }, { "label": "More", "items": [{ "label": "Inner" }] }, { "label": "Quit", "window": "quit" }])
-        } else if code.contains("daw.frontend.clip(") {
+        } else if code.contains("paw.frontend.clip(") {
             fixture["clip"].clone()
         } else if code.contains("search_devices") {
             json!([{ "line": "Synth  · builtin instrument", "kind": "synth" }])
-        } else if code.contains("daw.frontend.closing()") {
+        } else if code.contains("paw.frontend.closing()") {
             json!({ "modified": true, "name": "song" })
-        } else if code.contains("daw.frontend.act.lane(") {
+        } else if code.contains("paw.frontend.act.lane(") {
             json!(7)
         } else {
             Value::Null
@@ -151,9 +151,9 @@ fn drag(h: &mut Harness<View>, from: Pos2, to: Pos2) {
     drag_with(h, from, to, PointerButton::Primary, Modifiers::NONE);
 }
 
-/// The arguments of the last `daw.frontend.act.<name>` the window sent.
+/// The arguments of the last `paw.frontend.act.<name>` the window sent.
 fn acted(calls: &Calls, name: &str) -> Option<Vec<Value>> {
-    let code = format!("return daw.frontend.act.{name}(...)");
+    let code = format!("return paw.frontend.act.{name}(...)");
     calls.borrow().iter().rev().find(|(m, p)| m == "eval" && p[0] == code.as_str()).map(|(_, p)| p.as_array().unwrap()[1..].to_vec())
 }
 
@@ -216,7 +216,7 @@ fn a_right_drag_chooses_clips_in_a_box_and_a_right_click_opens_the_menu() {
     let args = act(&calls, "select_clips_box");
     assert_eq!((args[0].clone(), args[2].clone(), args[4].clone()), (json!(1), json!(2), json!("add")));
     right_click(&mut h, pos2(beat_x(20.0), ROW_C + 30.0));
-    assert!(sent(&calls, "daw.frontend.menu(") && sent(&calls, "\"timeline\""), "the timeline's menu");
+    assert!(sent(&calls, "paw.frontend.menu(") && sent(&calls, "\"timeline\""), "the timeline's menu");
     assert!(h.state().menu.is_some());
 }
 
@@ -279,7 +279,7 @@ fn a_double_click_on_a_clip_opens_its_notes_and_a_right_click_its_menu() {
     double_click(&mut h, pos2(beat_x(5.5), ROW_A + 40.0));
     assert_eq!(act(&calls, "open_clip"), [json!(2)]);
     right_click(&mut h, pos2(beat_x(6.0), ROW_A + 40.0));
-    let menu = calls.borrow().iter().rev().find(|c| c.1[0].as_str().unwrap_or("").contains("daw.frontend.menu(")).cloned().unwrap();
+    let menu = calls.borrow().iter().rev().find(|c| c.1[0].as_str().unwrap_or("").contains("paw.frontend.menu(")).cloned().unwrap();
     assert_eq!(menu.1[1], "clip");
     assert_eq!(menu.1[2][0], 2);
     assert!((num(&menu.1[2][1]) - 6.0).abs() < 0.05, "the beat clicked");
@@ -419,7 +419,7 @@ fn with_automation_shown_the_pencil_draws_over_the_clips() {
     h.state_mut().show_automation = true;
     h.run_steps(2);
     click(&mut h, pos2(beat_x(20.0), ROW_C + 20.0));
-    assert!(sent(&calls, "daw.frontend.act.lane("), "a lane made for the track");
+    assert!(sent(&calls, "paw.frontend.act.lane("), "a lane made for the track");
     assert_eq!(act(&calls, "add_point")[0], 7);
 }
 
@@ -648,7 +648,7 @@ fn the_transport_buttons_tempo_and_engine_take_the_pointer() {
     assert!(acted(&calls, "record").is_some());
     let at = h.get_by_label("start").rect().center();
     click(&mut h, at);
-    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return daw.api.transport_seek(...)" && p[1] == 0.0), "back to the start");
+    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return paw.api.transport_seek(...)" && p[1] == 0.0), "back to the start");
     // The tempo: dragged up, a step up; the wheel down, a step down; a
     // double click types it.
     let tempo = h.get_by_label("tempo").rect().center();
@@ -738,7 +738,7 @@ fn a_devices_buttons_remove_and_move_it() {
     assert_eq!(act(&calls, "move_device"), [json!(8), json!(1)]);
     let at = h.get_by_label("remove Synth").rect().center();
     click(&mut h, at);
-    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return daw.api.device_remove(...)" && p[1] == 8));
+    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return paw.api.device_remove(...)" && p[1] == 8));
 }
 
 // ------------------------------------------------------------ the session view
@@ -770,7 +770,7 @@ fn a_border_between_panes_dragged_shares_the_room() {
     let (mut h, calls) = window();
     // The border under the arrange view, 500 down the main area.
     drag(&mut h, pos2(500.0, AREA_TOP + 500.0), pos2(500.0, AREA_TOP + 420.0));
-    let last = calls.borrow().iter().rev().find(|(_, p)| p[0] == "daw.panes.border(...)").cloned().expect("the border moved");
+    let last = calls.borrow().iter().rev().find(|(_, p)| p[0] == "paw.panes.border(...)").cloned().expect("the border moved");
     assert_eq!(last.1[1], 1);
     assert!((num(&last.1[3]) - 420.0).abs() < 2.0, "{last:?}");
 }
@@ -779,7 +779,7 @@ fn a_border_between_panes_dragged_shares_the_room() {
 fn a_press_in_a_pane_gives_it_the_keyboard() {
     let (mut h, calls) = window();
     click(&mut h, pos2(1300.0, AREA_TOP + 600.0));
-    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "daw.panes.focus(...)" && p[1] == 3), "the device panel");
+    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "paw.panes.focus(...)" && p[1] == 3), "the device panel");
 }
 
 /// Every character the window's own code and the kernel's menus for it
@@ -802,8 +802,8 @@ fn what_the_window_writes_has_glyphs() {
         include_str!("ruler.rs"),
         include_str!("session.rs"),
         include_str!("widgets.rs"),
-        include_str!("../../../runtime/lua/daw/window_menus.lua"),
-        include_str!("../../../runtime/lua/daw/mouse_menus.lua"),
+        include_str!("../../../runtime/lua/paw/window_menus.lua"),
+        include_str!("../../../runtime/lua/paw/mouse_menus.lua"),
     ];
     let ctx = egui::Context::default();
     ctx.set_fonts(crate::theme::fonts(None));

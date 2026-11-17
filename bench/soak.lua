@@ -1,8 +1,8 @@
 -- Soak: play for several minutes on the null backend while editing all the
 -- time, and watch for dropouts, slow blocks, leaks and memory growth.
---   daw --clean --no-plugins -l bench/soak.lua <minutes> [tracks]
-local daw = require("daw")
-local api = daw.api
+--   paw --clean --no-plugins -l bench/soak.lua <minutes> [tracks]
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local minutes, tracks = ...
@@ -10,10 +10,10 @@ minutes, tracks = tonumber(minutes) or 3, tonumber(tracks) or 40
 
 api.engine_restart({ backend = "null", buffer_size = 256, sample_rate = 48000 })
 local ids = B.build({ tracks = tracks, kind = "midi", fx = true, automation = true, bars = 16 })
-daw.transport.loop_start, daw.transport.loop_end = 0, 64
-daw.transport.loop_enabled = true
-daw.transport.play()
-daw.flush()
+paw.transport.loop_start, paw.transport.loop_end = 0, 64
+paw.transport.loop_enabled = true
+paw.transport.play()
+paw.flush()
 api.sleep(500)
 api.engine_reset_stats()
 
@@ -55,7 +55,7 @@ while api.now() < deadline do
     -- Replace a track entirely now and then: a new one in its place.
     local i = rand(#ids)
     api.track_remove(ids[i])
-    daw.flush()
+    paw.flush()
     local t = api.track_add({ name = "new" })
     api.device_add(t, "synth")
     api.device_add(t, "delay")
@@ -65,7 +65,7 @@ while api.now() < deadline do
     local lane = api.lane_list(id)[1]
     if lane then api.lane_add_point(lane.id, rand(64) - 1, -rand(20)) end
   end
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   -- Undo may have brought back removed tracks, or taken away new ones.
   if what == 5 or what == 6 then ids = api.track_list() end
@@ -77,7 +77,7 @@ while api.now() < deadline do
   api.sleep(10)
 end
 local info = api.engine_get()
-daw.transport.stop()
+paw.transport.stop()
 local half = math.max(1, math.floor(#samples / 2))
 B.emit({
   workload = "soak", minutes = minutes, tracks = tracks, edits = edits, blocks = info.blocks.count,

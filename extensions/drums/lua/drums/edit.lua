@@ -4,10 +4,10 @@
 --
 -- A hit is a note. It sits in the cell of its row whose step it starts in;
 -- rows are the places in a list from `drums.rows`, and a region from
--- `daw.keymap` has rows `r0` to `r1` in that list and beats `c0` up to `c1`
+-- `paw.keymap` has rows `r0` to `r1` in that list and beats `c0` up to `c1`
 -- from the start of the clip: "char" is a stretch of time on every row,
 -- "block" only on some rows, "line" whole rows.
-local util = daw.util
+local util = paw.util
 local drums = require("drums")
 local EPS = 1e-6
 
@@ -51,7 +51,7 @@ function E.next_step(step, dir)
 end
 
 local function clip_of(clip)
-  if type(clip) == "number" then return daw.clip(clip) end
+  if type(clip) == "number" then return paw.clip(clip) end
   return clip
 end
 
@@ -84,7 +84,7 @@ function E.set(clip, pitch, beat, step, on, velocity)
   if on and not note then
     if beat >= clip.length - EPS then return false end
     clip:add_note({ pitch = pitch, start = beat, length = hit_length(clip, beat, step),
-      velocity = drums.clamp_velocity(velocity or daw.opt.drums_velocity) })
+      velocity = drums.clamp_velocity(velocity or paw.opt.drums_velocity) })
   elseif not on and note then
     clip:remove_note(index)
   elseif on and note and velocity and note.velocity ~= velocity then
@@ -170,9 +170,9 @@ end
 --- pasted stretch ends.
 function E.paste(clip, rows, value, row, beat, step)
   clip = clip_of(clip)
-  if not value then return daw.notify("nothing to paste yet", "warn") end
+  if not value then return paw.notify("nothing to paste yet", "warn") end
   if value.kind ~= "drums" and value.kind ~= "notes" then
-    return daw.notify("that register holds " .. tostring(value.kind) .. ", not hits", "warn")
+    return paw.notify("that register holds " .. tostring(value.kind) .. ", not hits", "warn")
   end
   local add, finish = {}, beat
   for _, n in ipairs(value.notes) do
@@ -193,7 +193,7 @@ function E.paste(clip, rows, value, row, beat, step)
   for index, old in ipairs(clip:notes()) do
     if taken[old.pitch .. ":" .. E.cell(old.start, step)] then remove[#remove + 1] = index end
   end
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   if finish > clip.length + EPS then clip.length = math.ceil((finish - EPS) / bar) * bar end
   if #add > 0 or #remove > 0 then clip:edit_notes({ remove = remove, add = add }) end
   return value.shape == "line" and beat or finish
@@ -203,7 +203,7 @@ end
 --- to the end of the clip when nil. The clip grows to hold them.
 function E.repeat_bar(clip, beat, times)
   clip = clip_of(clip)
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   local b0 = math.floor(beat / bar + EPS) * bar
   local last = times and b0 + bar * (times + 1) or math.max(b0 + bar, math.ceil(clip.length / bar - EPS) * bar)
   if last <= b0 + bar + EPS then last = b0 + 2 * bar end
@@ -263,7 +263,7 @@ end
 function E.set_bars(clip, bars)
   clip = clip_of(clip)
   bars = math.max(1, math.floor(bars + 0.5))
-  clip.length = bars * daw.time.bar()
+  clip.length = bars * paw.time.bar()
   return bars
 end
 

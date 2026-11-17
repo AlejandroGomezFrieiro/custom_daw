@@ -1,15 +1,15 @@
--- `daw.attr`: the MIDI 2.0 attribute a note may carry on its start, and
+-- `paw.attr`: the MIDI 2.0 attribute a note may carry on its start, and
 -- the articulations of the Note On Orchestral Articulation Profile
 -- (M2-123) that are the attribute's commonest use.
 --
 --   note.attr = { type = 0x11, data = 0xA000 }   -- on a note; nil for none
---   daw.attr.m2("11.A")                -- { type = 0x11, data = 0xA000 }: pizzicato
---   daw.attr.m2("10.23")               -- legato, its variation 3 ("10.2.3" too)
---   daw.attr.m2("11.A", { direction = "up", string = 4 })
---   daw.attr.m2({ type = 0x11, data = 0xA000 })   -- "11.A"
---   daw.attr.parts(attr)               -- { type, subclass, variation, direction, reset, string }
---   daw.attr.describe(attr)            -- { code = "11.A", tag = "pz", name = "Pizzicato", ... }
---   daw.attr.delay_of(track, attr)     -- milliseconds the track's attr_map moves such a note: -80
+--   paw.attr.m2("11.A")                -- { type = 0x11, data = 0xA000 }: pizzicato
+--   paw.attr.m2("10.23")               -- legato, its variation 3 ("10.2.3" too)
+--   paw.attr.m2("11.A", { direction = "up", string = 4 })
+--   paw.attr.m2({ type = 0x11, data = 0xA000 })   -- "11.A"
+--   paw.attr.parts(attr)               -- { type, subclass, variation, direction, reset, string }
+--   paw.attr.describe(attr)            -- { code = "11.A", tag = "pz", name = "Pizzicato", ... }
+--   paw.attr.delay_of(track, attr)     -- milliseconds the track's attr_map moves such a note: -80
 --
 -- A code is the classification (the attribute type, 10 to 1F in hex), a
 -- dot, the subclass (one hex digit), and the variation (one more hex
@@ -161,7 +161,7 @@ end
 --- (below 0) or late by the track's `attr_map`, so that a library slow to
 --- speak still sounds on the beat; 0 without a map.
 function M.delay_of(track, attr)
-  return daw.api.track_attr_delay(type(track) == "table" and track.id or track, attr)
+  return paw.api.track_attr_delay(type(track) == "table" and track.id or track, attr)
 end
 
 --- The same attribute: both none, or the same type and data.

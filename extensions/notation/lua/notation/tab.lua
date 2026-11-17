@@ -4,8 +4,8 @@
 -- chosen so a chord's notes are on different strings within a hand's reach
 -- and the hand moves as little as it can. `meta.notation.string` on a note
 -- fixes its string.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local view = require("notation")
 
 local M = {}
@@ -141,7 +141,7 @@ function M.set(track, words)
     else
       tuning = {}
       for _, w in ipairs(words) do
-        local ok, p = pcall(daw.music.pitch, w)
+        local ok, p = pcall(paw.music.pitch, w)
         if not ok then return nil, "not a note: " .. tostring(w) end
         tuning[#tuning + 1] = p
       end

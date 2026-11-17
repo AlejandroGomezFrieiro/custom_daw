@@ -121,9 +121,9 @@ a controller presses when the value goes past the middle. Letting go of a
 pad lets go of a gate clip.
 
 ```lua
-daw.learn.bind({ note = 36, channel = 10 }, { track = drums.id, target = "launch", slot = 0 })
-daw.learn.bind({ cc = 20 }, { target = "scene", slot = 1 })
-daw.learn.bind({ note = 48 }, { target = "stop" })          -- every clip
+paw.learn.bind({ note = 36, channel = 10 }, { track = drums.id, target = "launch", slot = 0 })
+paw.learn.bind({ cc = 20 }, { target = "scene", slot = 1 })
+paw.learn.bind({ note = 48 }, { target = "stop" })          -- every clip
 ```
 
 ## Rendering and capturing
@@ -139,23 +139,23 @@ played.
 ## In scripts
 
 The clips are clips like any other, saved with the project and undone like
-any edit; `daw.api.clip_add` puts one in a slot when given a `slot` (rows
+any edit; `paw.api.clip_add` puts one in a slot when given a `slot` (rows
 count from 0 in scripts, from 1 on screen and in commands).
 
 ```lua
-local id = daw.api.clip_add(track.id, { slot = 0, length = 8, notes = { ... }, mode = "gate", quantize = "1/4" })
-daw.api.clip_set(id, "row", 2)                -- also "track", "mode", "legato", "quantize"
-daw.api.slot_list(track.id)                    -- the clips in its slots, each with `slot`, `mode`, ...
-daw.api.clip_to_slot(clip.id, track.id, 1)     -- a copy of a clip in a slot
+local id = paw.api.clip_add(track.id, { slot = 0, length = 8, notes = { ... }, mode = "gate", quantize = "1/4" })
+paw.api.clip_set(id, "row", 2)                -- also "track", "mode", "legato", "quantize"
+paw.api.slot_list(track.id)                    -- the clips in its slots, each with `slot`, `mode`, ...
+paw.api.clip_to_slot(clip.id, track.id, 1)     -- a copy of a clip in a slot
 
-daw.launcher.launch(track.id, 0)               -- or press(track, row) / release(track, row), by its mode
-daw.launcher.scene(1)
-daw.launcher.stop(track.id)                    -- with no track, every clip
-daw.launcher.back()                            -- every track back to its timeline
-daw.launcher.state()                           -- by track: slot or stopped, phase, length, since, queued, at
-daw.api.launch({ { track = a, slot = 0 }, { track = b, stop = true }, { track = c, arrangement = true } })
+paw.launcher.launch(track.id, 0)               -- or press(track, row) / release(track, row), by its mode
+paw.launcher.scene(1)
+paw.launcher.stop(track.id)                    -- with no track, every clip
+paw.launcher.back()                            -- every track back to its timeline
+paw.launcher.state()                           -- by track: slot or stopped, phase, length, since, queued, at
+paw.api.launch({ { track = a, slot = 0 }, { track = b, stop = true }, { track = c, arrangement = true } })
 ```
 
-`daw.api.launch` sends launches that are timed together, each with its own
+`paw.api.launch` sends launches that are timed together, each with its own
 `quantize` and `legato` if not its slot's. Scene names are kept in
 `project.meta.scenes`.

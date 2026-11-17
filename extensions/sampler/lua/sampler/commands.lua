@@ -1,7 +1,7 @@
 -- The sampler's kind of track, its commands, and the instrument picker.
-local api = daw.api
+local api = paw.api
 local sampler = require("sampler")
-local command = daw.command
+local command = paw.command
 
 local function exists(path)
   local f = io.open(path, "rb")
@@ -11,22 +11,22 @@ end
 
 --- The sampler device of the cursor's track, or a warning.
 local function cursor_device()
-  local id = daw.cursor.track_id()
+  local id = paw.cursor.track_id()
   local device = id and sampler.device_of(id)
-  if not device then daw.notify("not a sampler track: `:sampler.track` adds one", "warn") end
+  if not device then paw.notify("not a sampler track: `:sampler.track` adds one", "warn") end
   return device, id
 end
 
 local function loaded(d)
-  daw.notify("sampler: " .. sampler.summary(d))
+  paw.notify("sampler: " .. sampler.summary(d))
   for _, w in ipairs(d.warnings or {}) do
-    daw.notify("sampler: " .. w, "warn")
+    paw.notify("sampler: " .. w, "warn")
   end
 end
 
 local function load(device, path)
   local d, err = sampler.load(device, path)
-  if not d then return daw.notify("sampler: " .. tostring(err), "error") end
+  if not d then return paw.notify("sampler: " .. tostring(err), "error") end
   loaded(d)
   return d
 end
@@ -36,9 +36,9 @@ end
 --- a short phrase through the track. Escape puts back what was there.
 function sampler.pick(track_id, query)
   local device = sampler.device_of(track_id)
-  if not device then return daw.notify("the track has no sampler", "warn") end
+  if not device then return paw.notify("the track has no sampler", "warn") end
   local roots = sampler.roots()
-  daw.pick({
+  paw.pick({
     title = "Instruments",
     items = function() return sampler.instruments() end,
     query = query,
@@ -46,15 +46,15 @@ function sampler.pick(track_id, query)
       return string.format("%-24s %-4s %s", i.name, i.format == "dspreset" and "DS" or "SFZ", i.folder)
     end,
     primary = function(i) return i.name end,
-    empty = "no instruments in " .. table.concat(roots, ", ") .. " (the folders are daw.opt.sampler_libraries)",
+    empty = "no instruments in " .. table.concat(roots, ", ") .. " (the folders are paw.opt.sampler_libraries)",
     on_choose = function(i) load(device, i.path) end,
     audition_key = "sampler.instrument",
     -- Reading a library takes a moment: wait a little longer before trying one.
     audition_delay = function(_, ms) return ms * 2 end,
     audition = function(i)
-      local d, err = daw.audition.try(function() return sampler.load(device, i.path) end)
+      local d, err = paw.audition.try(function() return sampler.load(device, i.path) end)
       if not d then return i.name .. " · " .. tostring(err) end
-      daw.audition.phrase(track_id, sampler.phrase(d), { length = 4, label = d.name })
+      paw.audition.phrase(track_id, sampler.phrase(d), { length = 4, label = d.name })
       return { label = sampler.summary(d), keep = function() loaded(d) end }
     end,
     preview = function(i)
@@ -62,10 +62,10 @@ function sampler.pick(track_id, query)
       local d = sampler.known(device)
       if d and d.path == i.path then
         if type(d.range) == "table" and d.range[1] then
-          lines[#lines + 1] = "plays " .. daw.music.name(d.range[1]) .. " to " .. daw.music.name(d.range[2])
+          lines[#lines + 1] = "plays " .. paw.music.name(d.range[1]) .. " to " .. paw.music.name(d.range[2])
         end
         for _, a in ipairs(d.articulations or {}) do
-          local ks = a.keyswitch and ("  keyswitch " .. daw.music.name(a.keyswitch)) or ""
+          local ks = a.keyswitch and ("  keyswitch " .. paw.music.name(a.keyswitch)) or ""
           lines[#lines + 1] = string.format("  %-24s %-6s%s", a.name, a.m2 or "", ks)
         end
         if #(d.warnings or {}) > 0 then lines[#lines + 1] = #d.warnings .. " things in the file are not played" end
@@ -75,10 +75,10 @@ function sampler.pick(track_id, query)
   })
 end
 
--- A sampler track is a kind of track (`daw.track_kinds`): `:track.add
+-- A sampler track is a kind of track (`paw.track_kinds`): `:track.add
 -- sampler`, `:track.new`, the window's menus that make a track, the
 -- header's `S` and `K` come from here. Its clips open in the piano roll.
-daw.track_kinds.define("sampler", {
+paw.track_kinds.define("sampler", {
   title = "Sampler track",
   letter = "S",
   desc = "an SFZ or Decent Sampler instrument, played by paw's sampler",
@@ -111,7 +111,7 @@ daw.track_kinds.define("sampler", {
 command("sampler.track", function(ctx)
   local args = { kind = "sampler", name = ctx.args.name or "Sampler" }
   for i, word in ipairs(ctx.args) do args[i] = word end
-  daw.cmd("track.add", args)
+  paw.cmd("track.add", args)
 end, { desc = "Add a sampler track, with an instrument: a file, words to find one by, or chosen from a list" })
 
 command("sampler.load", function(ctx)
@@ -127,19 +127,19 @@ command("sampler.info", function()
   local device = cursor_device()
   if not device then return end
   local d = sampler.describe(device)
-  if not d then return daw.notify("sampler: not running", "warn") end
+  if not d then return paw.notify("sampler: not running", "warn") end
   local lines = { sampler.summary(d) }
   if d.path and d.path ~= "" then lines[#lines + 1] = d.path end
   if d.error then lines[#lines + 1] = d.error end
   if type(d.range) == "table" and d.range[1] then
-    lines[#lines + 1] = "plays " .. daw.music.name(d.range[1]) .. " to " .. daw.music.name(d.range[2])
+    lines[#lines + 1] = "plays " .. paw.music.name(d.range[1]) .. " to " .. paw.music.name(d.range[2])
   end
   for _, a in ipairs(d.articulations or {}) do
     lines[#lines + 1] = string.format("%s (%s)%s", a.name, a.m2,
-      a.keyswitch and (", keyswitch " .. daw.music.name(a.keyswitch)) or "")
+      a.keyswitch and (", keyswitch " .. paw.music.name(a.keyswitch)) or "")
   end
   for _, w in ipairs(d.warnings or {}) do lines[#lines + 1] = "not played: " .. w end
-  daw.notify(table.concat(lines, "\n"))
+  paw.notify(table.concat(lines, "\n"))
 end, { desc = "What the sampler's instrument is: range, articulations, what it does not play" })
 
-table.insert(daw.frontend.menus.track, { label = "Sampler instrument…", command = "sampler.load" })
+table.insert(paw.frontend.menus.track, { label = "Sampler instrument…", command = "sampler.load" })

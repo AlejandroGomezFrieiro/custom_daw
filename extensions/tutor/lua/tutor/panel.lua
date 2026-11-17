@@ -1,20 +1,20 @@
 -- The tutor's panel along the bottom of the screen: what to do next, what
 -- was just done, a hint when asked for, and the tutor's own keys.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 M.height = 9
 
-daw.ui.hl("TutorDone", { fg = "#9ece6a", bold = true })
-daw.ui.hl("TutorKey", { fg = "#ff9e64", bold = true })
-daw.ui.hl("TutorText", { fg = "#c0caf5" })
-daw.ui.hl("TutorHint", { fg = "#e0af68" })
-daw.ui.hl("TutorDim", { fg = "#565f89" })
+paw.ui.hl("TutorDone", { fg = "#9ece6a", bold = true })
+paw.ui.hl("TutorKey", { fg = "#ff9e64", bold = true })
+paw.ui.hl("TutorText", { fg = "#c0caf5" })
+paw.ui.hl("TutorHint", { fg = "#e0af68" })
+paw.ui.hl("TutorDim", { fg = "#565f89" })
 
 --- Write keys the way the learner's leader reads: `,hh` becomes `\hh` when
 --- the leader is a backslash.
 function M.keys(text)
-  local leader = daw.opt.leader
+  local leader = paw.opt.leader
   if leader == "," then return text end
   return (text:gsub("`([^`]*)`", function(code)
     if code:sub(1, 1) == "," and #code > 1 then code = leader .. code:sub(2) end
@@ -108,7 +108,7 @@ function view:render(buf)
     title = string.format("Tutor · lesson %d of %d: %s", tutor.number(lesson), #tutor.lessons, lesson.title)
     if step then title = title .. string.format(" · step %d of %d", index, #lesson.steps) end
   end
-  local inner = daw.ui.box(buf, title, "BorderFocus")
+  local inner = paw.ui.box(buf, title, "BorderFocus")
   local w, h = inner.width, inner.height
   local y = 0
   local body_rows = h - 1
@@ -138,15 +138,15 @@ function view:render(buf)
   end
 end
 
-daw.ui.view("tutor", view)
+paw.ui.view("tutor", view)
 
 function M.show()
-  if not daw.ui.visible("tutor") then daw.ui.dock("tutor", { side = "bottom", size = M.height }) end
-  daw.ui.show("tutor")
+  if not paw.ui.visible("tutor") then paw.ui.dock("tutor", { side = "bottom", size = M.height }) end
+  paw.ui.show("tutor")
 end
 
 function M.hide()
-  if daw.ui.visible("tutor") then daw.ui.hide("tutor") end
+  if paw.ui.visible("tutor") then paw.ui.hide("tutor") end
 end
 
 --- The panel as lines of text, for tests and for reading.

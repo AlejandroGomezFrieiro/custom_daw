@@ -1,18 +1,18 @@
 -- Where the tutor keeps its files, and reading and writing the progress file.
 --
 -- Everything goes in one directory of the tutor's own: the option
--- `tutor_dir` when it is set, else `$XDG_STATE_HOME/daw/tutor`
--- (`~/.local/state/daw/tutor`). Nothing is ever written to a project the
+-- `tutor_dir` when it is set, else `$XDG_STATE_HOME/paw/tutor`
+-- (`~/.local/state/paw/tutor`). Nothing is ever written to a project the
 -- learner has open, nor to their configuration.
 local M = {}
 
 --- The tutor's directory, made if it is not there yet.
 function M.dir()
-  local dir = daw.opt.tutor_dir
+  local dir = paw.opt.tutor_dir
   if not dir or dir == "" then
     local base = os.getenv("XDG_STATE_HOME")
     if not base or base == "" then base = (os.getenv("HOME") or ".") .. "/.local/state" end
-    dir = base .. "/daw/tutor"
+    dir = base .. "/paw/tutor"
   end
   return dir
 end
@@ -76,7 +76,7 @@ function M.save(data)
   local path = M.progress_path()
   local tmp = path .. ".tmp"
   local file = assert(io.open(tmp, "w"))
-  file:write("-- The daw tutor's progress. Delete this file to start again.\nreturn ", encode(data), "\n")
+  file:write("-- The paw tutor's progress. Delete this file to start again.\nreturn ", encode(data), "\n")
   file:close()
   assert(os.rename(tmp, path))
 end

@@ -28,7 +28,7 @@
       # Plugins built elsewhere open the display's libraries by name when
       # they make a window, and name others as needed. Nothing is on the
       # loader's path on NixOS, so the build writes down where these are
-      # (`crates/daw-plugins/src/libs.rs`).
+      # (`crates/paw-plugins/src/libs.rs`).
       pluginLibs = pkgs: with pkgs; [
         libx11 libxext libxrender libxrandr libxinerama libxcursor libxcomposite
         libxfixes libxi libxcb libGL alsa-lib fontconfig freetype zlib curl
@@ -63,14 +63,14 @@
           };
           common = {
             inherit src cargoVendorDir;
-            pname = "daw";
+            pname = "paw";
             version = "0.1.0";
             strictDeps = true;
             nativeBuildInputs = with pkgs; [ pkg-config rustPlatform.bindgenHook ];
             buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
             # `.cargo/config.toml` sets this for LuaJIT; saying it here as
             # well makes it hold however cargo is set up in the build,
-            # because without it `daw.limit` cannot stop a compiled loop.
+            # because without it `paw.limit` cannot stop a compiled loop.
             # LuaJIT is a dependency, so `deps` must have it too.
             TARGET_CFLAGS = "-DLUAJIT_ENABLE_CHECKHOOK";
             # Frame pointers, as nixpkgs' own Rust builds have them (for
@@ -90,29 +90,29 @@
           withDeps = common // { cargoArtifacts = deps; };
         in {
           inherit deps;
-          # `daw` (the terminal, `--headless`, `ctl`), `daw-gui` and
-          # `daw-mcp`, as cargo builds them.
+          # `paw` (the terminal, `--headless`, `ctl`), `paw-gui` and
+          # `paw-mcp`, as cargo builds them.
           programs = craneLib.buildPackage (withDeps // {
-            pname = "daw-programs";
+            pname = "paw-programs";
             nativeBuildInputs = withDeps.nativeBuildInputs ++ [ pkgs.patchelf ];
             # The window's build script writes where its libraries are into
             # the binary, so that it runs from any shell; so does the plugin
             # host.
-            DAW_GUI_LIBS = lib.makeLibraryPath (guiLibs pkgs);
-            DAW_PLUGIN_LIB_DIRS = lib.makeLibraryPath (pluginLibs pkgs);
+            PAW_GUI_LIBS = lib.makeLibraryPath (guiLibs pkgs);
+            PAW_PLUGIN_LIB_DIRS = lib.makeLibraryPath (pluginLibs pkgs);
             # The tests are the checks (`nix flake check`) and the dev shell's.
             doCheck = false;
             # The fixup phase trims the binaries' library paths to what they
             # are linked against, which drops the window's: it opens those by
             # name. They are put back here, after it.
             postFixup = ''
-              patchelf --add-rpath ${lib.makeLibraryPath (guiLibs pkgs)} $out/bin/daw-gui
+              patchelf --add-rpath ${lib.makeLibraryPath (guiLibs pkgs)} $out/bin/paw-gui
             '';
           });
           # What `nix flake check` runs, each from `deps`. The Lua suite and
           # the window's tests need a private X server, plugins and their own
           # directories, which a build sandbox has none of: they run in the
-          # dev shell (`tests/tools/suite.sh`, `cargo test -p daw-gui`).
+          # dev shell (`tests/tools/suite.sh`, `cargo test -p paw-gui`).
           # Nothing is built on top of a check, so none keeps its `target`.
           checks = {
             clippy = craneLib.cargoClippy (withDeps // {
@@ -126,7 +126,7 @@
             # `craneLib.cargoFmt` makes it a check that fails.
             fmt = craneLib.mkCargoDerivation {
               inherit src;
-              pname = "daw";
+              pname = "paw";
               version = "0.1.0";
               pnameSuffix = "-fmt";
               cargoArtifacts = null;
@@ -148,19 +148,19 @@
                 root = ./.;
                 fileset = lib.fileset.unions [ cargoFiles ./tests/fixtures ];
               };
-              cargoNextestExtraArgs = "--workspace -E 'not (package(daw-gui) | binary(suite) | binary(remote) | binary(safety))'";
+              cargoNextestExtraArgs = "--workspace -E 'not (package(paw-gui) | binary(suite) | binary(remote) | binary(safety))'";
               doInstallCargoArtifacts = false;
             });
           };
         };
 
       # The programs ready to run, with what they need beside them.
-      daw = pkgs:
+      paw = pkgs:
         let inherit (rust pkgs) programs deps;
         in pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
-          pname = "daw";
+          pname = "paw";
           version = "0.1.0";
-          # The extensions, examples and configuration go in `share/daw`.
+          # The extensions, examples and configuration go in `share/paw`.
           # They are not in the Rust build's source, so a change to one of
           # them only remakes this, in a second.
           src = pkgs.lib.fileset.toSource {
@@ -169,17 +169,17 @@
           };
           nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
           installPhase = ''
-            mkdir -p $out/share/daw
-            cp -r extensions examples config $out/share/daw/
-            # `DAW_HOME` is where `daw doctor` finds its script. ffmpeg is
+            mkdir -p $out/share/paw
+            cp -r extensions examples config $out/share/paw/
+            # `PAW_HOME` is where `paw doctor` finds its script. ffmpeg is
             # there for MP3, Ogg and Opus export (no codec is linked into the
             # program); it goes last on the PATH, so that the user's own wins.
             # fc-list is how the window finds a font for Japanese and the like.
-            # The window starts the `daw` beside its binary, which is the
+            # The window starts the `paw` beside its binary, which is the
             # unwrapped one; it inherits these from the window's wrapper.
-            for bin in daw daw-gui daw-mcp; do
+            for bin in paw paw-gui paw-mcp; do
               makeWrapper ${programs}/bin/$bin $out/bin/$bin \
-                --set-default DAW_HOME $out/share/daw \
+                --set-default PAW_HOME $out/share/paw \
                 --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless pkgs.fontconfig.bin ]}
             done
           '';
@@ -193,12 +193,12 @@
           meta = {
             description = "A hackable DAW with a small Rust kernel and everything else in Lua";
             license = with pkgs.lib.licenses; [ mit asl20 ];
-            mainProgram = "daw";
+            mainProgram = "paw";
             platforms = [ "x86_64-linux" "aarch64-linux" ];
           };
         });
 
-      # Every extension as a package holding `share/daw/extensions/<name>`.
+      # Every extension as a package holding `share/paw/extensions/<name>`.
       # Most are Lua and nothing else; one with native parts (an engine to
       # build, a library) has a `nix/default.nix` of its own, given the
       # flake's inputs it asks for, and crane for a Rust workspace of its own.
@@ -207,8 +207,8 @@
           lib = pkgs.lib;
           dirs = lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./extensions);
           plain = name: pkgs.runCommand "paw-extension-${name}" { passthru.extensionName = name; } ''
-            mkdir -p $out/share/daw/extensions
-            cp -r ${./extensions + "/${name}"} $out/share/daw/extensions/${name}
+            mkdir -p $out/share/paw/extensions
+            cp -r ${./extensions + "/${name}"} $out/share/paw/extensions/${name}
           '';
           inputs = { inherit openutau; craneLib = crane.mkLib pkgs; };
           own = name:
@@ -219,37 +219,37 @@
           if builtins.pathExists (./extensions + "/${name}/nix/default.nix") then own name else plain name) dirs;
 
       # The program with extensions: each one is loaded at startup from its
-      # package (`DAW_EXTENSIONS`), before the configuration, whatever the
+      # package (`PAW_EXTENSIONS`), before the configuration, whatever the
       # configuration says.
       withExtensions = pkgs: base: exts: pkgs.symlinkJoin {
         name = "paw-with-${pkgs.lib.concatMapStringsSep "-" (e: e.extensionName) exts}";
         paths = [ base ] ++ exts;
         nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
         postBuild = ''
-          for bin in daw daw-gui daw-mcp; do
+          for bin in paw paw-gui paw-mcp; do
             rm $out/bin/$bin
             makeWrapper ${base}/bin/$bin $out/bin/$bin \
-              --prefix DAW_EXTENSIONS : ${pkgs.lib.concatMapStringsSep ":" (e: "${e}/share/daw/extensions/${e.extensionName}") exts}
+              --prefix PAW_EXTENSIONS : ${pkgs.lib.concatMapStringsSep ":" (e: "${e}/share/paw/extensions/${e.extensionName}") exts}
           done
         '';
         passthru = { extensions = exts; };
-        meta = base.meta // { mainProgram = "daw"; };
+        meta = base.meta // { mainProgram = "paw"; };
       };
 
       # One program of that build, by name.
       only = pkgs: name: pkgs.runCommand name { meta.mainProgram = name; } ''
         mkdir -p $out/bin
-        ln -s ${daw pkgs}/bin/${name} $out/bin/${name}
+        ln -s ${paw pkgs}/bin/${name} $out/bin/${name}
       '';
 
       # paw that sings: the program with extensions/utau and its engine.
-      pawUtau = pkgs: (daw pkgs).withExtensions (exts: [ exts.utau ]);
+      pawUtau = pkgs: (paw pkgs).withExtensions (exts: [ exts.utau ]);
     in {
       packages = forAll (pkgs: {
-        default = daw pkgs;
-        daw = only pkgs "daw";
-        daw-gui = only pkgs "daw-gui";
-        daw-mcp = only pkgs "daw-mcp";
+        default = paw pkgs;
+        paw = only pkgs "paw";
+        paw-gui = only pkgs "paw-gui";
+        paw-mcp = only pkgs "paw-mcp";
         paw-utau = pawUtau pkgs;
         utau-engine = (extensionsFor pkgs).utau.engine;
         # extensions/sampler's plugin and command, on their own.
@@ -258,15 +258,15 @@
 
       # `nix flake check`: clippy, rustfmt, the Rust tests a sandbox can run,
       # and the program itself.
-      checks = forAll (pkgs: (rust pkgs).checks // { daw = daw pkgs; });
+      checks = forAll (pkgs: (rust pkgs).checks // { paw = paw pkgs; });
 
       apps = forAll (pkgs:
-        nixpkgs.lib.genAttrs [ "daw" "daw-gui" "daw-mcp" ] (name: {
+        nixpkgs.lib.genAttrs [ "paw" "paw-gui" "paw-mcp" ] (name: {
           type = "app";
           program = "${only pkgs name}/bin/${name}";
         }) // {
-          default = { type = "app"; program = "${daw pkgs}/bin/daw"; };
-          paw-utau = { type = "app"; program = "${pawUtau pkgs}/bin/daw"; };
+          default = { type = "app"; program = "${paw pkgs}/bin/paw"; };
+          paw-utau = { type = "app"; program = "${pawUtau pkgs}/bin/paw"; };
         });
 
       # For a home-manager configuration:
@@ -308,20 +308,20 @@
           RUSTC_WRAPPER = "sccache";
           SCCACHE_CACHE_SIZE = "40G";
           CARGO_INCREMENTAL = "0";
-          # What the window tests (`crates/daw-gui/tests/window.rs`) drive: a
+          # What the window tests (`crates/paw-gui/tests/window.rs`) drive: a
           # private X server, a window manager, a pointer and key sender, and
           # tesseract to find words on a screenshot.
           packages = with pkgs; [ xvfb openbox xdotool imagemagick tesseract ];
           buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
           # The graphical frontend's libraries are on the path here;
-          # `DAW_GUI_LIBS` is where its build script finds them, to write
+          # `PAW_GUI_LIBS` is where its build script finds them, to write
           # into the binary, so that the binary also runs from a shell that
           # is not this one.
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (guiLibs pkgs);
-          DAW_GUI_LIBS = pkgs.lib.makeLibraryPath (guiLibs pkgs);
-          DAW_PLUGIN_LIB_DIRS = pkgs.lib.makeLibraryPath (pluginLibs pkgs);
+          PAW_GUI_LIBS = pkgs.lib.makeLibraryPath (guiLibs pkgs);
+          PAW_PLUGIN_LIB_DIRS = pkgs.lib.makeLibraryPath (pluginLibs pkgs);
           # Plugins in all three formats for the test suite to host.
-          DAW_TEST_PLUGINS = "${pkgs.lsp-plugins}/lib:${pkgs.surge-xt}/lib";
+          PAW_TEST_PLUGINS = "${pkgs.lsp-plugins}/lib:${pkgs.surge-xt}/lib";
         };
       });
     };

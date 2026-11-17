@@ -2,16 +2,16 @@
 -- open, each of its lanes (volume, pan, a device's parameter) is a row of its
 -- own, two lines high, that the cursor can stand on.
 --
---   daw.lanes.open(track)             -- show the track's lanes as rows
---   daw.lanes.toggle(track)
---   daw.lanes.lines()                 -- every row: { track = id } or { track = id, lane = id }
---   daw.lanes.name(lane), daw.lanes.format(lane, value)
+--   paw.lanes.open(track)             -- show the track's lanes as rows
+--   paw.lanes.toggle(track)
+--   paw.lanes.lines()                 -- every row: { track = id } or { track = id, lane = id }
+--   paw.lanes.name(lane), paw.lanes.format(lane, value)
 --
 -- Which tracks have their lanes open is kept for the session (it survives
 -- `:reload`), not in the project: opening lanes is not an edit to undo.
--- `daw.groups.rows({ lanes = true })` is `lines()`; the cursor is on a lane
--- when `daw.cursor.lane_id()` says so.
-local api = daw.api
+-- `paw.groups.rows({ lanes = true })` is `lines()`; the cursor is on a lane
+-- when `paw.cursor.lane_id()` says so.
+local api = paw.api
 local M = {}
 
 local open = {}
@@ -30,7 +30,7 @@ local function save()
   api.state_set("lanes_open", out)
   api.ui_redraw()
   -- A graphical frontend draws them too.
-  if daw.emit then daw.emit("lanes.changed", {}) end
+  if paw.emit then paw.emit("lanes.changed", {}) end
 end
 
 local function id_of(track) return type(track) == "table" and track.id or track end
@@ -69,7 +69,7 @@ end
 --- when they are open.
 function M.lines()
   local out = {}
-  for _, id in ipairs(daw.groups.rows()) do
+  for _, id in ipairs(paw.groups.rows()) do
     out[#out + 1] = { track = id }
     for _, lane in ipairs(M.shown(id)) do out[#out + 1] = { track = id, lane = lane.id } end
   end
@@ -111,9 +111,9 @@ end
 function M.format(lane, value)
   if type(lane) == "number" then lane = api.lane_get(lane) end
   if lane.target == "volume" then return string.format("%.1f dB", value) end
-  if lane.target == "pan" then return daw.draw.pan_text(value) end
+  if lane.target == "pan" then return paw.draw.pan_text(value) end
   local p = param_of(lane)
-  return p and daw.frontend.format_value(p, value) or string.format("%g", value)
+  return p and paw.frontend.format_value(p, value) or string.format("%g", value)
 end
 
 --- How far `+` and `-` move a point: a dB, 5% of pan, one choice, or a
@@ -161,7 +161,7 @@ function M.edit(lane_id, fn)
 end
 
 -- A track that goes away takes its open lanes with it.
-daw.on("track.removed", function(event)
+paw.on("track.removed", function(event)
   if open[event.id] then
     open[event.id] = nil
     save()

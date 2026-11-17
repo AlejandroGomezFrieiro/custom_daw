@@ -1,4 +1,4 @@
-//! `daw.api.fs_*`: what the file manager (`daw/files.lua`) does to files.
+//! `paw.api.fs_*`: what the file manager (`paw/files.lua`) does to files.
 //! Nothing here removes a file: a file leaves its place by being moved, to
 //! another place or to the trash, and what would overwrite is refused.
 
@@ -165,7 +165,7 @@ pub fn install(lua: &Lua, api: &Table) -> mlua::Result<()> {
         "fs_sound",
         lua.create_function(|lua, path: String| {
             let probe =
-                daw_engine::probe::probe(Path::new(&path)).map_err(|e| fail(e.to_string()))?;
+                paw_engine::probe::probe(Path::new(&path)).map_err(|e| fail(e.to_string()))?;
             let t = lua.create_table()?;
             t.set("rate", probe.sample_rate)?;
             t.set("channels", probe.channels)?;

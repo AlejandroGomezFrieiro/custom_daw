@@ -1,18 +1,18 @@
 -- Tests for the mix diagnostics, run by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fresh, scratch = T.test, T.eq, T.near, T.fresh, T.scratch
-local api = daw.api
+local api = paw.api
 
 local mixdiag
 
 local function load()
   if not mixdiag then
-    daw.ext.load("extensions/mixdiag")
+    paw.ext.load("extensions/mixdiag")
     mixdiag = require("mixdiag")
   end
   mixdiag.clear()
-  daw.opt.mixdiag_target = "streaming"
-  daw.opt.mixdiag_ignore = ""
+  paw.opt.mixdiag_target = "streaming"
+  paw.opt.mixdiag_ignore = ""
   return mixdiag
 end
 
@@ -52,7 +52,7 @@ end
 
 --- A synth track holding notes over a stretch of beats.
 local function synth(name, start, length, opts)
-  local t = daw.add_track({ name = name, volume = opts and opts.volume or 0 })
+  local t = paw.add_track({ name = name, volume = opts and opts.volume or 0 })
   t:add_device("synth", { wave = opts and opts.wave or 0, attack = 0.005, release = 0.05, sustain = 1 })
   t:add_clip({ name = name, start = start, length = length,
     notes = { { pitch = opts and opts.pitch or "A3", start = 0, length = length } } })
@@ -60,7 +60,7 @@ local function synth(name, start, length, opts)
 end
 
 local function audio(name, start, path)
-  local t = daw.add_track({ name = name })
+  local t = paw.add_track({ name = name })
   t:add_clip({ name = name, start = start, file = path })
   return t
 end
@@ -94,7 +94,7 @@ local function none(findings, rule)
 end
 
 local function measure(scope)
-  daw.flush()
+  paw.flush()
   return mixdiag.analyze(scope or "song", { wait = true, quiet = true })
 end
 
@@ -115,17 +115,17 @@ end)
 test("mixdiag: a track's contribution is measured alone", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local a = synth("A", 0, 8, { volume = 0 })
   synth("B", 0, 8, { volume = -20, pitch = "E4" })
-  daw.flush()
+  paw.flush()
   local both = api.measure({ start = 0, ["end"] = 8 })
   local alone = api.measure({ start = 0, ["end"] = 8, track = a.id })
-  local b_alone = api.measure({ start = 0, ["end"] = 8, track = daw.track("B").id })
+  local b_alone = api.measure({ start = 0, ["end"] = 8, track = paw.track("B").id })
   eq(alone.track, a.id, "the result says which track")
   near(alone.integrated, both.integrated, 0.2, "A is most of the mix")
   near(alone.integrated - b_alone.integrated, 20, 1, "B alone is 20 dB lower")
-  eq(daw.track("B").solo, false, "the project's solos are untouched")
+  eq(paw.track("B").solo, false, "the project's solos are untouched")
   near(alone.seconds, 4 + 1, 0.01, "8 beats at 120 bpm and a 1 s tail")
 end)
 
@@ -134,9 +134,9 @@ end)
 test("mixdiag: a clean mix has no findings", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   synth("Pad", 0, 16, { volume = -6 })
-  daw.opt.mixdiag_target = "none"
+  paw.opt.mixdiag_target = "none"
   local findings = measure()
   eq(describe(findings), "", "no findings")
   local r = mixdiag.result
@@ -147,14 +147,14 @@ end)
 test("mixdiag: meeting EBU R 128 after following the advice", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   synth("Pad", 0, 16, { volume = 0 })
-  daw.opt.mixdiag_target = "ebu"
+  paw.opt.mixdiag_target = "ebu"
   local f = one(measure(), "loudness", "EBU R 128")
   eq(f.severity, "error", "a delivery rule")
   local r = mixdiag.result
   -- "lower the master by X dB": do it and measure again.
-  daw.master.volume = daw.master.volume + (-23 - r.integrated)
+  paw.master.volume = paw.master.volume + (-23 - r.integrated)
   local after = measure()
   none(after, "loudness")
   none(after, "true_peak")
@@ -164,7 +164,7 @@ end)
 test("mixdiag: clipping, true peak, loudness and a track over full scale", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   synth("Quiet", 0, 24, { volume = -18 })
   local hot = synth("Hot", 8, 8, { volume = 18, wave = 1 })
   local findings = measure()
@@ -182,41 +182,41 @@ end)
 test("mixdiag: the findings are diagnostics on their tracks, fixed from the mixer", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   synth("Quiet", 0, 24, { volume = -18 })
   local hot = synth("Hot", 8, 8, { volume = 18, wave = 1 })
   local findings = measure()
-  daw.lsp.settle()
+  paw.lsp.settle()
   local over = one(findings, "track_over", "Hot")
-  local about = daw.diagnostic.get(daw.address.track(hot.id), { namespace = "mixdiag" })
+  local about = paw.diagnostic.get(paw.address.track(hot.id), { namespace = "mixdiag" })
   eq(#about, 1, "the track over full scale is a diagnostic on the track")
   eq(about[1].message, mixdiag.format(over), "saying what the report says")
-  eq(#daw.diagnostic.get(nil, { namespace = "mixdiag" }), #findings, "one for each finding")
+  eq(#paw.diagnostic.get(nil, { namespace = "mixdiag" }), #findings, "one for each finding")
   -- The mixer marks the strip, and the fix is offered there.
-  daw.ui.show("mixer")
-  daw.ui.focus("mixer")
-  daw.cursor.set_track(hot.id)
+  paw.ui.show("mixer")
+  paw.ui.focus("mixer")
+  paw.cursor.set_track(hot.id)
   local screen = table.concat(api.ui_snapshot(140, 50), "\n")
-  eq(screen:find(daw.draw.g.warn, 1, true) ~= nil or screen:find(daw.draw.g.error, 1, true) ~= nil, true, "the strip is marked:\n" .. screen)
+  eq(screen:find(paw.draw.g.warn, 1, true) ~= nil or screen:find(paw.draw.g.error, 1, true) ~= nil, true, "the strip is marked:\n" .. screen)
   api.undo_checkpoint()
-  daw.keymap.feed(",ca")
-  local state = daw.pick.state()
+  paw.keymap.feed(",ca")
+  local state = paw.pick.state()
   eq(state and state.matches[1]:find("Lower Hot by", 1, true) ~= nil, true, "the fix, in the picker")
-  daw.keymap.feed("<CR>")
+  paw.keymap.feed("<CR>")
   api.undo_checkpoint()
-  near(daw.track(hot.id).volume, 18 - over.lower, 1e-6, "the fader comes down by what the finding says")
-  daw.undo()
-  eq(daw.track(hot.id).volume, 18, "one undo puts it back")
-  daw.ui.hide("mixer")
-  daw.ui.focus("arrange")
+  near(paw.track(hot.id).volume, 18 - over.lower, 1e-6, "the fader comes down by what the finding says")
+  paw.undo()
+  eq(paw.track(hot.id).volume, 18, "one undo puts it back")
+  paw.ui.hide("mixer")
+  paw.ui.focus("arrange")
   mixdiag.clear()
-  eq(#daw.diagnostic.get(nil, { namespace = "mixdiag" }), 0, "cleared with the findings")
+  eq(#paw.diagnostic.get(nil, { namespace = "mixdiag" }), 0, "cleared with the findings")
 end)
 
 test("mixdiag: true peak over the ceiling without clipping", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   audio("Tone", 0, wav("hot.wav", 6, sine(1000, -0.4)))
   local findings = measure()
   none(findings, "clip")
@@ -224,14 +224,14 @@ test("mixdiag: true peak over the ceiling without clipping", function()
   near(f.beat, 0, 12, "placed in the song")
   -- Louder than -14 LUFS, so the stricter -2 dBTP applies.
   eq(mixdiag.format(f):find("-2.0 dBTP") ~= nil, true, "Spotify's ceiling for loud masters: " .. mixdiag.format(f))
-  daw.opt.mixdiag_target = "none"
+  paw.opt.mixdiag_target = "none"
   none(measure(), "true_peak")
 end)
 
 test("mixdiag: a passage out of phase, and a mix that cancels in mono", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   synth("Bed", 0, 24, { volume = -12 })
   local flipped = wav("flipped.wav", 3, function(t)
     local x = 0.5 * math.sin(2 * math.pi * 300 * t)
@@ -250,7 +250,7 @@ end)
 test("mixdiag: DC offset, infrasonic energy and silence at the ends", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   audio("Offset", 8, wav("dc.wav", 4, function(t)
     local x = 0.2 * math.sin(2 * math.pi * 200 * t)
     return x + 0.05, x
@@ -259,7 +259,7 @@ test("mixdiag: DC offset, infrasonic energy and silence at the ends", function()
     local x = 0.5 * math.sin(2 * math.pi * 12 * t)
     return x, x
   end))
-  local tail = daw.add_track({ name = "Late" })
+  local tail = paw.add_track({ name = "Late" })
   tail:add_device("synth")
   tail:add_clip({ start = 28, length = 8, notes = {} })   -- an empty clip keeps the song going
   local findings = measure()
@@ -279,7 +279,7 @@ end)
 test("mixdiag: things that look forgotten", function()
   load()
   fresh()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local a = synth("Lead", 0, 8)
   a:devices()[1].bypass = true
   local b = synth("Pad", 0, 8, { volume = -10 })
@@ -302,7 +302,7 @@ test("mixdiag: things that look forgotten", function()
   c.solo = true
   one(measure(), "forgotten", "soloed")
   -- Rules can be switched off by name.
-  daw.opt.mixdiag_ignore = "forgotten, no_sound"
+  paw.opt.mixdiag_ignore = "forgotten, no_sound"
   local quiet = measure()
   none(quiet, "forgotten")
   none(quiet, "no_sound")
@@ -339,11 +339,11 @@ end
 test("mixdiag: measuring in the background, the loop and a selection", function()
   load()
   fresh()
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc><Esc>")
-  daw.project.tempo = 120
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  paw.project.tempo = 120
   synth("Pad", 0, 32, { volume = -6 })
-  daw.flush()
+  paw.flush()
   local done
   mixdiag.analyze("song", { quiet = true, done = function(f) done = f end })
   eq(mixdiag.job ~= nil, true, "running")
@@ -353,19 +353,19 @@ test("mixdiag: measuring in the background, the loop and a selection", function(
   near(mixdiag.result.seconds, 16 + 1, 0.01, "the whole song")
   eq(mixdiag.result.elapsed < 10, true, "measured quickly")
 
-  daw.transport.loop_start, daw.transport.loop_end = 8, 16
-  daw.cmd("mix.analyze", { "loop" })
+  paw.transport.loop_start, paw.transport.loop_end = 8, 16
+  paw.cmd("mix.analyze", { "loop" })
   settle()
   eq(mixdiag.result.start, 8, "the loop's start")
   near(mixdiag.result.seconds, 4 + 1, 0.01, "the loop's length")
   eq(mixdiag.range_measured.label, "loop", "labelled")
 
   -- In visual mode <leader>xa measures the selection.
-  daw.opt.grid = 1
-  daw.cursor.set_track(daw.track("Pad"))
-  daw.cursor.set_beat(4)
-  daw.keymap.feed("v3l<leader>xa")
-  eq(daw.keymap.mode, "n", "back to normal mode")
+  paw.opt.grid = 1
+  paw.cursor.set_track(paw.track("Pad"))
+  paw.cursor.set_beat(4)
+  paw.keymap.feed("v3l<leader>xa")
+  eq(paw.keymap.mode, "n", "back to normal mode")
   settle()
   eq(mixdiag.range_measured.label, "selection", "the selection")
   eq(mixdiag.result.start, 4, "from the selection's start")
@@ -384,10 +384,10 @@ end)
 local function findings_at_known_places()
   load()
   fresh()
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc><Esc>")
-  daw.project.tempo = 120
-  daw.opt.mixdiag_target = "none"
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  paw.project.tempo = 120
+  paw.opt.mixdiag_target = "none"
   local hot = synth("Hot", 8, 4, { volume = 18, wave = 1 })
   audio("Wide", 20, wav("flipped2.wav", 3, function(t)
     local x = 0.5 * math.sin(2 * math.pi * 300 * t)
@@ -406,47 +406,47 @@ test("mixdiag: ]d and [d go from finding to finding", function()
     if f.beat then placed[#placed + 1] = f end
   end
   eq(#placed >= 3, true, "findings with places:\n" .. describe(mixdiag.findings))
-  daw.cursor.set_track(keys)
-  daw.cursor.set_beat(2)
+  paw.cursor.set_track(keys)
+  paw.cursor.set_beat(2)
   T.keys("]d")
-  near(daw.cursor.beat, 8, 0.01, "]d goes to the clipping on the master")
-  eq(daw.cursor.track_id(), keys.id, "which leaves the cursor's track alone")
-  eq(daw.ui.message.text:find("clips at bar 3", 1, true) ~= nil, true, "its message is shown: " .. daw.ui.message.text)
+  near(paw.cursor.beat, 8, 0.01, "]d goes to the clipping on the master")
+  eq(paw.cursor.track_id(), keys.id, "which leaves the cursor's track alone")
+  eq(paw.ui.message.text:find("clips at bar 3", 1, true) ~= nil, true, "its message is shown: " .. paw.ui.message.text)
   T.keys("]d")
-  near(daw.cursor.beat, 8, 0.1, "then to the track that went over, in the same block")
-  eq(daw.cursor.track_id(), hot.id, "on that track")
-  daw.cursor.set_beat(12)
+  near(paw.cursor.beat, 8, 0.1, "then to the track that went over, in the same block")
+  eq(paw.cursor.track_id(), hot.id, "on that track")
+  paw.cursor.set_beat(12)
   T.keys("]d")
-  near(daw.cursor.beat, 20, 0.01, "the passage out of phase")
+  near(paw.cursor.beat, 20, 0.01, "the passage out of phase")
   T.keys("]d")
-  near(daw.cursor.beat, 26, 0.1, "the silence after the last sound")
+  near(paw.cursor.beat, 26, 0.1, "the silence after the last sound")
   T.keys("]d")
-  near(daw.cursor.beat, 28, 1e-6, "the muted clip")
-  eq(daw.cursor.track_id(), keys.id, "on its track")
+  near(paw.cursor.beat, 28, 1e-6, "the muted clip")
+  eq(paw.cursor.track_id(), keys.id, "on its track")
   T.keys("2[d")
-  near(daw.cursor.beat, 20, 0.01, "2[d goes back two")
+  near(paw.cursor.beat, 20, 0.01, "2[d goes back two")
   T.keys("[d")
-  eq(daw.cursor.beat < 19, true, "a count goes further: " .. daw.cursor.beat .. "\n" .. describe(placed))
+  eq(paw.cursor.beat < 19, true, "a count goes further: " .. paw.cursor.beat .. "\n" .. describe(placed))
   -- Past the last finding it wraps to the first.
-  daw.cursor.set_beat(40)
+  paw.cursor.set_beat(40)
   T.keys("]d")
-  eq(daw.cursor.beat, placed[1].beat, "wraps to the first")
+  eq(paw.cursor.beat, placed[1].beat, "wraps to the first")
   -- <C-o> comes back from a jump.
-  daw.cursor.set_beat(12)
+  paw.cursor.set_beat(12)
   T.keys("]d")
   T.keys("<C-o>")
-  eq(daw.cursor.beat, 12, "<C-o> returns")
+  eq(paw.cursor.beat, 12, "<C-o> returns")
   mixdiag.clear()
 end)
 
 test("mixdiag: the list of findings, in a picker or in its own view", function()
   findings_at_known_places()
-  local had = daw.pick
+  local had = paw.pick
   -- Without a picker: a list of its own.
-  daw.pick = nil
-  daw.cursor.set_beat(0)
+  paw.pick = nil
+  paw.cursor.set_beat(0)
   T.keys("<leader>xx")
-  eq(daw.ui.float and daw.ui.float.name, "mixdiag", "the list is open")
+  eq(paw.ui.float and paw.ui.float.name, "mixdiag", "the list is open")
   local screen = table.concat(api.ui_snapshot(140, 40), "\n")
   eq(screen:find("clips at bar 3", 1, true) ~= nil, true, "it shows the clipping")
   eq(screen:find("error", 1, true) ~= nil, true, "with its severity")
@@ -455,13 +455,13 @@ test("mixdiag: the list of findings, in a picker or in its own view", function()
   for i, item in ipairs(view.items) do
     if item.finding.rule == "phase" then wanted = i end
   end
-  for _ = 1, wanted - 1 do daw.keymap.feed("j") end
-  daw.keymap.feed("<CR>")
-  eq(daw.ui.float, nil, "Enter closes it")
-  near(daw.cursor.beat, 20, 0.01, "and goes to the finding")
+  for _ = 1, wanted - 1 do paw.keymap.feed("j") end
+  paw.keymap.feed("<CR>")
+  eq(paw.ui.float, nil, "Enter closes it")
+  near(paw.cursor.beat, 20, 0.01, "and goes to the finding")
   -- With a picker, the list goes to it.
   local spec
-  daw.pick = function(s) spec = s end
+  paw.pick = function(s) spec = s end
   mixdiag.list()
   eq(spec.title, "Mix", "picker title")
   eq(#spec.items, #mixdiag.findings, "an item per finding")
@@ -471,16 +471,16 @@ test("mixdiag: the list of findings, in a picker or in its own view", function()
   end
   eq(item.text:find("^error") ~= nil, true, "text starts with the severity: " .. item.text)
   near(item.beat, 8, 0.1, "the item has a beat")
-  daw.cursor.set_beat(30)
+  paw.cursor.set_beat(30)
   spec.on_choose(item)
-  near(daw.cursor.beat, 8, 0.1, "choosing goes there")
-  daw.pick = had
+  near(paw.cursor.beat, 8, 0.1, "choosing goes there")
+  paw.pick = had
   mixdiag.clear()
 end)
 
 --- What a window of the report shows, as one string of its runs.
 local function report_text()
-  local painted = daw.canvas.paint("mixdiag", 1200, 400, { cell = { w = 10, h = 20 }, fresh = true })
+  local painted = paw.canvas.paint("mixdiag", 1200, 400, { cell = { w = 10, h = 20 }, fresh = true })
   local text = {}
   for _, op in ipairs(painted.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
   return table.concat(text, " ")
@@ -489,13 +489,13 @@ end
 test("mixdiag: the report in a window of its own measures, reads and goes to findings", function()
   load()
   fresh()
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc><Esc>")
-  daw.canvas.open_view("mixdiag")
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  paw.canvas.open_view("mixdiag")
   eq(report_text():find("nothing measured yet", 1, true) ~= nil, true, "before a measurement")
   synth("Hot", 8, 4, { volume = 18, wave = 1 })
-  daw.flush()
-  daw.canvas.key("mixdiag", "a")
+  paw.flush()
+  paw.canvas.key("mixdiag", "a")
   eq(mixdiag.job ~= nil, true, "a measures the song")
   eq(report_text():find("measuring the song", 1, true) ~= nil, true, "and the report says so")
   settle()
@@ -504,28 +504,28 @@ test("mixdiag: the report in a window of its own measures, reads and goes to fin
   eq(text:find("clips at bar 3", 1, true) ~= nil, true, "and the findings")
   -- The findings with a place are in a band under the window's ruler.
   local flag
-  for _, e in ipairs(daw.frontend.band_state().entries) do
+  for _, e in ipairs(paw.frontend.band_state().entries) do
     if e.name:match("^clip") then flag = e end
   end
-  eq(flag ~= nil and flag.color == daw.canvas.palette.error, true, "the clipping is flagged in the colour of an error")
-  daw.cursor.set_beat(0)
-  daw.frontend.act.band(flag.band, flag.index)
-  near(daw.cursor.beat, 8, 0.01, "a click on it goes there")
+  eq(flag ~= nil and flag.color == paw.canvas.palette.error, true, "the clipping is flagged in the colour of an error")
+  paw.cursor.set_beat(0)
+  paw.frontend.act.band(flag.band, flag.index)
+  near(paw.cursor.beat, 8, 0.01, "a click on it goes there")
   -- In the report, Enter goes to the finding chosen and leaves it open.
-  daw.cursor.set_beat(0)
+  paw.cursor.set_beat(0)
   local items = mixdiag.items()
   for i, item in ipairs(items) do
     if item.finding.rule == "clip" then
-      for _ = 1, i - 1 do daw.canvas.key("mixdiag", "j") end
+      for _ = 1, i - 1 do paw.canvas.key("mixdiag", "j") end
     end
   end
-  daw.canvas.key("mixdiag", "<CR>")
-  near(daw.cursor.beat, 8, 0.01, "Enter goes to the finding")
-  eq(daw.canvas.open_views.mixdiag ~= nil, true, "and the report stays open")
-  daw.canvas.close("mixdiag")
+  paw.canvas.key("mixdiag", "<CR>")
+  near(paw.cursor.beat, 8, 0.01, "Enter goes to the finding")
+  eq(paw.canvas.open_views.mixdiag ~= nil, true, "and the report stays open")
+  paw.canvas.close("mixdiag")
   mixdiag.clear()
   flag = nil
-  for _, e in ipairs(daw.frontend.band_state().entries) do
+  for _, e in ipairs(paw.frontend.band_state().entries) do
     if e.name:match("^clip") then flag = e end
   end
   eq(flag, nil, "cleared, the flags go")
@@ -533,15 +533,15 @@ end)
 
 test("mixdiag: marks above the arrange view, and the summary", function()
   findings_at_known_places()
-  daw.opt.zoom = 2
+  paw.opt.zoom = 2
   local screen = api.ui_snapshot(120, 20)
   eq(screen[1]:find("mix", 1, true) ~= nil, true, "the strip is docked on top: " .. screen[1])
   eq(screen[1]:find("E", 1, true) ~= nil, true, "with a mark for the clipping: " .. screen[1])
   T.keys("<leader>xs")
-  eq(daw.ui.message.text:find("LUFS", 1, true) ~= nil, true, "summary: " .. daw.ui.message.text)
+  eq(paw.ui.message.text:find("LUFS", 1, true) ~= nil, true, "summary: " .. paw.ui.message.text)
   T.keys("<leader>xt")
-  eq(daw.opt.mixdiag_target ~= "none", true, "<leader>xt goes to the next target")
-  daw.opt.mixdiag_target = "streaming"
+  eq(paw.opt.mixdiag_target ~= "none", true, "<leader>xt goes to the next target")
+  paw.opt.mixdiag_target = "streaming"
   mixdiag.clear()
   screen = api.ui_snapshot(120, 20)
   eq(screen[1]:find("^ mix") == nil, true, "the strip goes with the findings")
@@ -552,15 +552,15 @@ test("mixdiag: plugins are measured on the worker thread as a render plays them"
   local ran = 0
   for _, format in ipairs({ "clap", "lv2", "vst3" }) do
     local kind
-    for _, info in ipairs(daw.device_types()) do
+    for _, info in ipairs(paw.device_types()) do
       if not kind and info.format == format and info.name:find("Limiter Stereo$") then kind = info.kind end
     end
     if kind then
       fresh()
-      daw.project.tempo = 120
+      paw.project.tempo = 120
       local t = synth("Lead", 0, 8, { volume = 6, wave = 1 })
       t:add_device(kind)
-      daw.flush()
+      paw.flush()
       local rendered = T.render({ tail = 1, bits = 32 })
       local r = api.measure({ start = 0, ["end"] = 8, tail = 1 })
       near(r.sample_peak, 20 * math.log10(rendered.peak), 0.05, format .. ": the same peak as a render")
@@ -574,23 +574,23 @@ end)
 test("mixdiag: the painted report draws meters, a spectrum and the findings, which can be clicked", function()
   load()
   fresh()
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc><Esc>")
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
   local offered = {}
-  for _, entry in ipairs(daw.canvas.openable()) do offered[entry.name] = true end
+  for _, entry in ipairs(paw.canvas.openable()) do offered[entry.name] = true end
   eq(offered.mixdiag_paint, true, "the window offers the painted report")
   eq(offered.mixdiag, nil, "instead of the terminal's")
-  daw.canvas.open("mixdiag_paint")
+  paw.canvas.open("mixdiag_paint")
   local function drawn()
-    local ops = daw.canvas.paint("mixdiag_paint", 1000, 560, { fresh = true }).ops
+    local ops = paw.canvas.paint("mixdiag_paint", 1000, 560, { fresh = true }).ops
     local texts = {}
     for _, op in ipairs(ops) do if op[1] == "t" then texts[#texts + 1] = op[4] end end
     return ops, table.concat(texts, "\n")
   end
   eq(select(2, drawn()):find("nothing measured yet", 1, true) ~= nil, true, "before a measurement")
   synth("Hot", 8, 4, { volume = 18, wave = 1 })
-  daw.flush()
-  daw.canvas.key("mixdiag_paint", "a")
+  paw.flush()
+  paw.canvas.key("mixdiag_paint", "a")
   eq(mixdiag.job ~= nil, true, "a measures the song")
   settle()
   local ops, text = drawn()
@@ -600,8 +600,8 @@ test("mixdiag: the painted report draws meters, a spectrum and the findings, whi
   local shape, outline, meters = 0, 0, 0
   for _, op in ipairs(ops) do
     if op[1] == "p" and op[5] ~= "" then shape = shape + 1 end
-    if op[1] == "p" and op[3] == daw.canvas.palette.select and op[4] == 2 then outline = outline + 1 end
-    if op[1] == "r" and op[6] == daw.canvas.palette.meter_clip then meters = meters + 1 end
+    if op[1] == "p" and op[3] == paw.canvas.palette.select and op[4] == 2 then outline = outline + 1 end
+    if op[1] == "r" and op[6] == paw.canvas.palette.meter_clip then meters = meters + 1 end
   end
   eq(shape, 1, "the spectrum is one filled shape")
   eq(outline >= 1, true, "with its outline")
@@ -611,18 +611,18 @@ test("mixdiag: the painted report draws meters, a spectrum and the findings, whi
   for i, item in ipairs(mixdiag.items()) do
     if item.finding.rule == "clip" then wanted = i end
   end
-  local paint = daw.ui.views.mixdiag_paint
+  local paint = paw.ui.views.mixdiag_paint
   local function row_y() return paint.findings_top + paint.top + (wanted - 1 - paint.first) * 22 + 11 end
-  daw.cursor.set_beat(0)
-  daw.canvas.pointer("mixdiag_paint", { kind = "down", x = paint.right_x + 20, y = row_y(), button = "left" })
+  paw.cursor.set_beat(0)
+  paw.canvas.pointer("mixdiag_paint", { kind = "down", x = paint.right_x + 20, y = row_y(), button = "left" })
   eq(require("mixdiag.view").list_view.at, wanted, "a click chooses the finding")
-  eq(daw.cursor.beat, 0, "without going there")
-  daw.canvas.pointer("mixdiag_paint", { kind = "down", x = paint.right_x + 20, y = row_y(), button = "left" })
-  near(daw.cursor.beat, 8, 0.01, "the second click goes there")
-  daw.canvas.pointer("mixdiag_paint", { kind = "hover", x = paint.right_x + 20, y = row_y() })
+  eq(paw.cursor.beat, 0, "without going there")
+  paw.canvas.pointer("mixdiag_paint", { kind = "down", x = paint.right_x + 20, y = row_y(), button = "left" })
+  near(paw.cursor.beat, 8, 0.01, "the second click goes there")
+  paw.canvas.pointer("mixdiag_paint", { kind = "hover", x = paint.right_x + 20, y = row_y() })
   eq(select(2, drawn()):find("clips", 1, true) ~= nil, true, "resting on it shows it in full")
-  daw.canvas.key("mixdiag_paint", "q")
-  eq(daw.canvas.open_views.mixdiag_paint, nil, "q closes the window")
+  paw.canvas.key("mixdiag_paint", "q")
+  eq(paw.canvas.open_views.mixdiag_paint, nil, "q closes the window")
   mixdiag.clear()
 end)
 
@@ -630,24 +630,24 @@ test("mixdiag: <leader>xp opens the painted report in pixels where the terminal 
   load()
   fresh()
   local function closed()
-    daw.keymap.feed("<Esc><Esc>")
-    while daw.ui.float do daw.ui.close() end
-    daw.ui.hide("mixdiag_paint")
-    daw.ui.focus("arrange")
+    paw.keymap.feed("<Esc><Esc>")
+    while paw.ui.float do paw.ui.close() end
+    paw.ui.hide("mixdiag_paint")
+    paw.ui.focus("arrange")
   end
   T.after(function()
     api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
-    daw.opt.graphics = true
+    paw.opt.graphics = true
     closed()
   end)
   for _, on in ipairs({ true, false }) do
     closed()
     api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, pixel_mouse = true, fg = "#cdd6f4" })
-    daw.opt.graphics = on
-    daw.keymap.feed("<leader>xp")
-    eq(daw.ui.focused, "mixdiag_paint", "the key opens it, graphics " .. tostring(on))
+    paw.opt.graphics = on
+    paw.keymap.feed("<leader>xp")
+    eq(paw.ui.focused, "mixdiag_paint", "the key opens it, graphics " .. tostring(on))
     local lines = api.ui_snapshot(100, 30)
-    local surface = (daw.ui.rects.surfaces or {})[1]
+    local surface = (paw.ui.rects.surfaces or {})[1]
     if on then
       eq(surface and surface.name, "mixdiag_paint", "pixels: it keeps a surface")
     else

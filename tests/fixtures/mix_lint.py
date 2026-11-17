@@ -1,4 +1,4 @@
-"""A small language server for the mix, for the tests of daw.lsp: LSP's own
+"""A small language server for the mix, for the tests of paw.lsp: LSP's own
 shapes, attached to the `mix` subject. A track whose fader is above 0 dB may
 clip: a warning on it, fixed by bringing the fader to 0 dB. Every track gets
 a label with its fader; hover says what a track's fader and pan are; a code
@@ -36,7 +36,7 @@ def publish(uri):
                          "fixes": [{"title": f"Bring {t['name']} to 0 dB", "edit": [{"uri": t["address"], "set": {"volume": 0}}]}]},
             })
     send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {"uri": uri, "diagnostics": diagnostics}})
-    send({"jsonrpc": "2.0", "method": "daw/publishAnnotations", "params": {"uri": uri, "annotations": labels}})
+    send({"jsonrpc": "2.0", "method": "paw/publishAnnotations", "params": {"uri": uri, "annotations": labels}})
 
 
 def track_at(uri):
@@ -51,18 +51,18 @@ def answer(method, params):
     if method == "initialize":
         return {"serverInfo": {"name": "mix-lint"},
                 "capabilities": {"hoverProvider": True, "codeActionProvider": True,
-                                 "daw": {"subjects": ["mix"], "annotations": True}}}
+                                 "paw": {"subjects": ["mix"], "annotations": True}}}
     if method == "textDocument/hover":
-        t = track_at(params["daw"]["location"]["uri"])
+        t = track_at(params["paw"]["location"]["uri"])
         if not t:
             return None
         return {"contents": f"{t['name']}: fader {t['volume']:+.1f} dB, pan {t['pan']:+.2f}"}
     if method == "textDocument/codeAction":
-        t = track_at(params["daw"]["location"]["uri"])
+        t = track_at(params["paw"]["location"]["uri"])
         if not t:
             return []
         return [{"title": f"Lower {t['name']} by 6 dB",
-                 "edit": {"daw": [{"uri": t["address"], "set": {"volume": t["volume"] - 6}}]}}]
+                 "edit": {"paw": [{"uri": t["address"], "set": {"volume": t["volume"] - 6}}]}}]
     if method == "shutdown":
         return None
     raise KeyError(method)

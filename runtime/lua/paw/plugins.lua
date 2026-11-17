@@ -1,10 +1,10 @@
--- `daw.plugins`: plugins an extension ships, and what plugins call their keys.
+-- `paw.plugins`: plugins an extension ships, and what plugins call their keys.
 --
---   daw.plugins.add_dir(dir)        -- look for CLAP and VST3 plugins in `dir` too
---   daw.plugins.from["clap:dev.paw.sampler"]   -- "sampler": who added it
---   daw.plugins.note_names(device)  -- { [36] = "Kick", ... } (CLAP note-name)
---   daw.plugins.key_names(track)    -- the same for a track's devices together
-local api = daw.api
+--   paw.plugins.add_dir(dir)        -- look for CLAP and VST3 plugins in `dir` too
+--   paw.plugins.from["clap:dev.paw.sampler"]   -- "sampler": who added it
+--   paw.plugins.note_names(device)  -- { [36] = "Kick", ... } (CLAP note-name)
+--   paw.plugins.key_names(track)    -- the same for a track's devices together
+local api = paw.api
 
 local M = {}
 
@@ -23,7 +23,7 @@ M.names_ttl = 2000
 --- whose directory `dir` is in, else `dir`). Works with `--no-plugins` too.
 --- Returns `{ kinds, notes }`: the device kinds found and what could not be
 --- used; nil where plugins cannot be looked for.
----   daw.plugins.add_dir(here .. "/result/lib/clap")   -- `here`: the extension's directory
+---   paw.plugins.add_dir(here .. "/result/lib/clap")   -- `here`: the extension's directory
 function M.add_dir(dir, name)
   dir = tostring(dir)
   local found = api.plugins_add_dir(dir)
@@ -41,7 +41,7 @@ function M.add_dir(dir, name)
       if added[d.kind] and d.missing then pcall(api.device_restart, device) end
     end
   end
-  daw.emit("plugins.scanned", { notes = found.notes, dir = dir, kinds = found.kinds })
+  paw.emit("plugins.scanned", { notes = found.notes, dir = dir, kinds = found.kinds })
   return found
 end
 
@@ -71,7 +71,7 @@ function M.key_names(track)
   return out
 end
 
-daw.on("device.removed", function(e) if e and e.id then names[e.id] = nil end end)
-daw.on("device.changed", function(e) if e and e.id then names[e.id] = nil end end)
+paw.on("device.removed", function(e) if e and e.id then names[e.id] = nil end end)
+paw.on("device.changed", function(e) if e and e.id then names[e.id] = nil end end)
 
 return M

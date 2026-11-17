@@ -2,21 +2,21 @@
 -- protocol (`midi/didOpen`, `midi/didChange`), as its REAPER client builds
 -- it from a take (client/lib/snapshot.lua there). Times are ticks from the
 -- clip's start at `PPQ` to the beat; a note's id is its own (the model's,
--- `daw://clip/7/note/41`), so `notes = { 41 }` in an answer is that note
+-- `paw://clip/7/note/41`), so `notes = { 41 }` in an answer is that note
 -- wherever it has gone since.
 --
 -- What sounds with the clip goes along as `context`: the notes of other
 -- tracks' MIDI clips that overlap it, in this clip's ticks, with their
 -- track's name and devices; and the tempo map, signatures and key over it.
-local api = daw.api
+local api = paw.api
 
 local M = { PPQ = 960, MAX_CONTEXT_NOTES = 4000 }
 
---- The URI that names a clip: `daw://clip/12`.
-function M.uri(id) return "daw://clip/" .. id end
+--- The URI that names a clip: `paw://clip/12`.
+function M.uri(id) return "paw://clip/" .. id end
 
 --- The clip a URI names, or nil.
-function M.clip_of(uri) return tonumber(tostring(uri):match("^daw://clip/(%d+)$")) end
+function M.clip_of(uri) return tonumber(tostring(uri):match("^paw://clip/(%d+)$")) end
 
 local function tick(beats) return math.floor(beats * M.PPQ + 0.5) end
 
@@ -40,11 +40,11 @@ end
 local LETTERS = { c = 0, d = 2, e = 4, f = 5, g = 7, a = 9, b = 11 }
 
 --- The project's key at a beat as `{ root = 0..11, scale = "major" }`:
---- from `daw.harmony` when there is one, else the key extensions/musicops
+--- from `paw.harmony` when there is one, else the key extensions/musicops
 --- keeps in the project. Nil when nobody has said.
 function M.key(beat)
-  if daw.harmony and daw.harmony.key then
-    local ok, key = pcall(daw.harmony.key, beat)
+  if paw.harmony and paw.harmony.key then
+    local ok, key = pcall(paw.harmony.key, beat)
     if ok and key and key.tonic then return { root = key.tonic % 12, scale = tostring(key.mode or "major"):gsub("_", " ") } end
   end
   local stored = (api.project_get().meta or {}).musicops
@@ -94,20 +94,20 @@ end
 -- at the bar line at or before its start, the first tempo at its start, and
 -- the change after its end too (where a ramp running into it ends).
 local function tempo_map(c)
-  local first_bar = daw.time.bar_start(daw.time.bar_of(c.start))
-  local num, den = daw.tempo.signature_at(c.start)
+  local first_bar = paw.time.bar_start(paw.time.bar_of(c.start))
+  local num, den = paw.tempo.signature_at(c.start)
   local meters = { { tick = tick(first_bar - c.start), num = num, denom = den } }
-  for _, s in ipairs(daw.tempo.signatures()) do
+  for _, s in ipairs(paw.tempo.signatures()) do
     if s.beat > c.start and s.beat < c.start + c.length then
       meters[#meters + 1] = { tick = tick(s.beat - c.start), num = s.num, denom = s.den }
     end
   end
   local in_force
-  for _, t in ipairs(daw.tempo.points()) do
+  for _, t in ipairs(paw.tempo.points()) do
     if t.beat <= c.start then in_force = t end
   end
-  local tempi = { { tick = 0, bpm = daw.tempo.at(c.start), ramp = in_force and in_force.ramp or nil } }
-  for _, t in ipairs(daw.tempo.points()) do
+  local tempi = { { tick = 0, bpm = paw.tempo.at(c.start), ramp = in_force and in_force.ramp or nil } }
+  for _, t in ipairs(paw.tempo.points()) do
     if t.beat > c.start then
       tempi[#tempi + 1] = { tick = tick(t.beat - c.start), bpm = t.bpm, ramp = t.ramp or nil }
       if t.beat >= c.start + c.length then break end
@@ -146,8 +146,8 @@ function M.key_of(id)
   for _, other in ipairs(overlapping(c)) do
     parts[#parts + 1] = string.format("%d:%s:%.9g:%.9g", other.id, tostring(other.stamp), other.start, other.length)
   end
-  for _, t in ipairs(daw.tempo.points()) do parts[#parts + 1] = string.format("t%.9g,%.9g,%s", t.beat, t.bpm, tostring(t.ramp)) end
-  for _, s in ipairs(daw.tempo.signatures()) do parts[#parts + 1] = string.format("s%.9g,%d/%d", s.beat, s.num, s.den) end
+  for _, t in ipairs(paw.tempo.points()) do parts[#parts + 1] = string.format("t%.9g,%.9g,%s", t.beat, t.bpm, tostring(t.ramp)) end
+  for _, s in ipairs(paw.tempo.signatures()) do parts[#parts + 1] = string.format("s%.9g,%d/%d", s.beat, s.num, s.den) end
   local key = M.key(c.start)
   if key then parts[#parts + 1] = key.root .. key.scale end
   local text = table.concat(parts, "|")

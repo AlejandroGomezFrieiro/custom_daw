@@ -22,8 +22,8 @@ runCommand "paw-extension-utau" {
     license = lib.licenses.mit;
   };
 } ''
-  dir=$out/share/daw/extensions/utau
-  mkdir -p $out/share/daw/extensions
+  dir=$out/share/paw/extensions/utau
+  mkdir -p $out/share/paw/extensions
   cp -r ${lua} $dir
   chmod -R u+w $dir
   mkdir -p $dir/bin

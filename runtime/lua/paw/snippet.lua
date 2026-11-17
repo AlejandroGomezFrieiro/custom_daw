@@ -1,8 +1,8 @@
--- `daw.snippet`: named music made from its context, written at the cursor
+-- `paw.snippet`: named music made from its context, written at the cursor
 -- of the piano roll or over a selection, with choices to step through
 -- afterwards. As `vim.snippet` or LuaSnip, for notes.
 --
---   daw.snippet.add({
+--   paw.snippet.add({
 --     name = "dominant", desc = "the dominant seventh of the next chord, up to it",
 --     views = { "pianoroll" },
 --     expand = function(ctx)
@@ -18,7 +18,7 @@
 --
 -- `expand(ctx)` returns `{ notes, choices, remove }` or nil and a reason.
 -- Notes are a note set in project beats: `{ pitch, start, length, velocity }`
--- (velocity 1..127, `daw.opt.velocity` when left out). `remove` lists notes
+-- (velocity 1..127, `paw.opt.velocity` when left out). `remove` lists notes
 -- of `ctx.selection` the snippet replaces. Each choice is `{ name, values }`
 -- and optionally `apply(result, value)` returning the notes; without it the
 -- snippet is expanded again with `ctx.values[name]` set to the value chosen.
@@ -27,8 +27,8 @@
 -- `<Tab>` and `<S-Tab>` go from choice to choice, `<C-n>` and `<C-p>` step
 -- the current one (rewriting the notes within the same undo step), `<C-y>`,
 -- `<Esc>` or the cursor leaving the snippet's span ends it.
-local api = daw.api
-local harmony = daw.harmony
+local api = paw.api
+local harmony = paw.harmony
 local M = { list = {} }
 
 local RANK = { extension = 1, config = 2 }
@@ -37,8 +37,8 @@ local RANK = { extension = 1, config = 2 }
 --- extension never replaces one from the user's configuration.
 function M.add(spec)
   assert(type(spec) == "table" and type(spec.name) == "string" and type(spec.expand) == "function",
-    "usage: daw.snippet.add({ name = ..., expand = function(ctx) ... end })")
-  local source = spec.source or M.loading or (daw.ext.current and "extension") or "config"
+    "usage: paw.snippet.add({ name = ..., expand = function(ctx) ... end })")
+  local source = spec.source or M.loading or (paw.ext.current and "extension") or "config"
   local old = M.list[spec.name]
   if old and RANK[old.source] > RANK[source] then return old end
   local entry = {}
@@ -59,7 +59,7 @@ end
 
 --- The snippets offered in `view` (the focused one when nil), by name.
 function M.offered(view)
-  view = view or daw.ui.focused
+  view = view or paw.ui.focused
   local out = {}
   for _, s in pairs(M.list) do
     for _, v in ipairs(s.views) do
@@ -70,7 +70,7 @@ function M.offered(view)
   return out
 end
 
---- Load every `*.lua` file of a directory: each calls `daw.snippet.add` or
+--- Load every `*.lua` file of a directory: each calls `paw.snippet.add` or
 --- returns a list of snippets. `source` is "config" or "extension".
 function M.load_dir(dir, source)
   local ok, entries = pcall(api.read_dir, dir)
@@ -82,11 +82,11 @@ function M.load_dir(dir, source)
       M.loading = source
       local chunk, err = loadfile(path)
       local done, result = false, err
-      if chunk then done, result = xpcall(daw.limit.untrusted(chunk), debug.traceback) end
+      if chunk then done, result = xpcall(paw.limit.untrusted(chunk), debug.traceback) end
       if done and type(result) == "table" then
         for _, spec in ipairs(result.name and { result } or result) do M.add(spec) end
       elseif not done then
-        daw.notify("snippets " .. path .. ": " .. tostring(result), "error")
+        paw.notify("snippets " .. path .. ": " .. tostring(result), "error")
       end
       M.loading = nil
     end
@@ -149,7 +149,7 @@ end
 --- led from what this clip plays before `opts.from` (the cursor) and into
 --- what it plays at `opts.to`; where it plays nothing, from and into what
 --- the other tracks play in its range. Options as
---- `daw.harmony.voice.voice`; the style is the `voicing` choice when there
+--- `paw.harmony.voice.voice`; the style is the `voicing` choice when there
 --- is one.
 function Ctx:voice(tones, opts)
   opts = opts or {}
@@ -182,7 +182,7 @@ end
 function Ctx:until_next()
   local nxt = self.harmony.next(self.at)
   if nxt then return nxt.at, nxt end
-  return daw.time.bar_ceil(self.at + 1e-9)
+  return paw.time.bar_ceil(self.at + 1e-9)
 end
 
 --- The context of an expansion in the piano roll, or nil and why not.
@@ -190,7 +190,7 @@ end
 --- `selection` (a region; the visual selection's when nil).
 function M.context(opts)
   opts = opts or {}
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   local clip = roll and roll:clip()
   if not clip then return nil, "open a MIDI clip in the piano roll" end
   local c = clip:get()
@@ -201,15 +201,15 @@ function M.context(opts)
   local ctx = setmetatable({
     view = "pianoroll", clip = clip, clip_id = c.id, track = clip:track(), track_id = c.track,
     at = opts.at or (c.start + roll.beat), pitch = roll.pitch, start = c.start,
-    harmony = harmony, grid = daw.opt.note_grid, count = opts.count or 1, opt = daw.opt,
-    range = harmony.range(c.track), velocity = daw.opt.velocity, values = opts.values or {}, notes = notes,
+    harmony = harmony, grid = paw.opt.note_grid, count = opts.count or 1, opt = paw.opt,
+    range = harmony.range(c.track), velocity = paw.opt.velocity, values = opts.values or {}, notes = notes,
   }, Ctx)
   ctx.key = harmony.key(ctx.at)
   local region = opts.selection
-  if region == nil and daw.ui.focused == "pianoroll" then region = daw.keymap.selection() end
+  if region == nil and paw.ui.focused == "pianoroll" then region = paw.keymap.selection() end
   if region then
     ctx.selected_region = region
-    local found, places = daw.edit.roll.notes(clip, region)
+    local found, places = paw.edit.roll.notes(clip, region)
     ctx.selection = {}
     for i, n in ipairs(found) do
       ctx.selection[i] = { pitch = n.pitch, start = c.start + n.start, length = n.length, velocity = n.velocity, place = places[i] }
@@ -242,7 +242,7 @@ local function run(spec, opts, index)
   local all, remove, choices = {}, {}, nil
   local at = ctx.at
   for k = 1, times do
-    local c = k == 1 and ctx or M.context(daw.util.merge(opts, { at = at, selection = false }))
+    local c = k == 1 and ctx or M.context(paw.util.merge(opts, { at = at, selection = false }))
     if k > 1 then c.count = 1 end
     c.values = chosen(choices or spec.choices, index)
     local ok, result, reason = xpcall(spec.expand, debug.traceback, c)
@@ -295,14 +295,14 @@ local active      -- the snippet being edited: see `expand`
 M.previewing = nil -- the open picker's context and what each snippet would write there
 local from_visual  -- the selection the command line was opened over, for `:snippet`
 -- All three are what one person is in the middle of: each seat has its own.
-daw.seats.keep("snippet",
+paw.seats.keep("snippet",
   function() return active, M.previewing, from_visual end,
   function(a, p, v) active, M.previewing, from_visual = a, p, v end,
   function() return nil, nil, nil end)
 
 --- Write `result` into its clip in place of what the clip held before.
 local function write(state, result)
-  local clip = daw.clip(state.clip)
+  local clip = paw.clip(state.clip)
   local start = state.start
   local removed = {}
   for _, n in ipairs(result.remove) do
@@ -316,12 +316,12 @@ local function write(state, result)
   for _, n in ipairs(result.notes) do
     local s = (n.start or n.at) - start
     if s >= -1e-9 then
-      list[#list + 1] = { pitch = n.pitch, start = math.max(0, s), length = n.length, velocity = n.velocity or daw.opt.velocity, meta = n.meta, attr = n.attr }
+      list[#list + 1] = { pitch = n.pitch, start = math.max(0, s), length = n.length, velocity = n.velocity or paw.opt.velocity, meta = n.meta, attr = n.attr }
       finish = math.max(finish, s + n.length)
     end
   end
   local length = state.length
-  if finish > length + 1e-9 then length = daw.time.bar_ceil(start + finish - 1e-9) - start end
+  if finish > length + 1e-9 then length = paw.time.bar_ceil(start + finish - 1e-9) - start end
   if math.abs(clip.length - length) > 1e-9 then clip.length = length end
   api.clip_set_notes(state.clip, list)
   state.notes, state.span = result.notes, { from = result.ctx.at, to = result.ctx.at }
@@ -371,7 +371,7 @@ function M.expand(name, opts)
   local clip = result.ctx.clip
   local c = clip:get()
   -- Leave visual mode: the selection is what the snippet worked on.
-  if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
+  if paw.keymap.mode == "x" then paw.keymap.set_mode("n") end
   api.undo_label("snippet " .. name)
   local state = {
     name = name, spec = spec, opts = { count = opts.count, at = result.ctx.at, selection = result.ctx.selected_region or false },
@@ -380,8 +380,8 @@ function M.expand(name, opts)
   }
   write(state, result)
   active = state
-  daw.emit("snippet.expanded", { name = name, clip = c.id })
-  daw.notify(describe(state))
+  paw.emit("snippet.expanded", { name = name, clip = c.id })
+  paw.notify(describe(state))
   api.ui_redraw()
   return state
 end
@@ -390,7 +390,7 @@ end
 --- other than through it, or the piano roll's cursor left its span.
 function M.active()
   if not active then return nil end
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   local clip = roll and roll:clip()
   local stale = api.project_get().edits ~= active.edits or not pcall(api.clip_get, active.clip)
   local away = not clip or clip.id ~= active.clip
@@ -404,7 +404,7 @@ function M.finish()
   if not active then return end
   local name = active.name
   active = nil
-  daw.emit("snippet.finished", { name = name })
+  paw.emit("snippet.finished", { name = name })
   api.ui_redraw()
 end
 
@@ -415,12 +415,12 @@ local function rewrite(state)
   -- Stepped in the same turn as it was written (keys typed at once, a
   -- script), the step is still open: there is nothing to join.
   if api.undo_current() ~= state.undo_before then api.undo_join(api.undo_current()) end
-  local clip = daw.clip(state.clip)
+  local clip = paw.clip(state.clip)
   api.clip_set_notes(state.clip, state.before)
   if math.abs(clip.length - state.length) > 1e-9 then clip.length = state.length end
   local result, why = run(state.spec, state.opts, state.index)
   if not result then
-    daw.notify(why, "warn")
+    paw.notify(why, "warn")
     return M.finish()
   end
   write(state, result)
@@ -441,11 +441,11 @@ function M.jump(dir)
   if not state then return false end
   local n = #state.choices
   if n == 0 then
-    daw.notify(state.name .. " has no choices")
+    paw.notify(state.name .. " has no choices")
     return true
   end
   state.current = (state.current - 1 + (dir or 1)) % n + 1
-  daw.notify(describe(state))
+  paw.notify(describe(state))
   api.ui_redraw()
   return true
 end
@@ -456,7 +456,7 @@ function M.step(dir)
   local state = M.active()
   if not state then return false end
   if #state.choices == 0 then
-    daw.notify(state.name .. " has no choices")
+    paw.notify(state.name .. " has no choices")
     return true
   end
   if state.current == 0 then state.current = 1 end
@@ -470,7 +470,7 @@ function M.step(dir)
     rewrite(state)
     if not active or signature(state.notes) ~= was then break end
   end
-  daw.notify(describe(state))
+  paw.notify(describe(state))
   api.ui_redraw()
   return true
 end
@@ -499,7 +499,7 @@ local function note_names(notes)
   end
   table.sort(pitches)
   local out = {}
-  for i, p in ipairs(pitches) do out[i] = daw.music.name(p) end
+  for i, p in ipairs(pitches) do out[i] = paw.music.name(p) end
   return table.concat(out, " ")
 end
 
@@ -541,7 +541,7 @@ function M.describe_preview(spec, opts, result, why)
       lines[#lines + 1] = string.format("… and %d more", #order - 8)
       break
     end
-    lines[#lines + 1] = string.format("%-8s %s", daw.time.format(g.at), note_names(g.notes))
+    lines[#lines + 1] = string.format("%-8s %s", paw.time.format(g.at), note_names(g.notes))
   end
   if #result.choices > 0 then
     lines[#lines + 1] = ""
@@ -556,15 +556,15 @@ end
 --- expands the one chosen, `count` times.
 function M.pick(opts)
   opts = opts or {}
-  local view = daw.ui.focused
+  local view = paw.ui.focused
   local items = M.offered(view)
   -- The context is the cursor's now, before the picker takes the keys.
-  local region = opts.selection or (view == "pianoroll" and daw.keymap.selection()) or nil
+  local region = opts.selection or (view == "pianoroll" and paw.keymap.selection()) or nil
   local run_opts = { count = opts.count, selection = region or false }
   -- What each snippet would write here, made once while the picker is open:
   -- its pane and the ghosts in the roll both show it.
   M.previewing = { opts = run_opts, results = {} }
-  return daw.pick({
+  return paw.pick({
     title = "Snippets",
     items = items,
     -- Above the piano roll, so that its ghosts show under it.
@@ -573,7 +573,7 @@ function M.pick(opts)
     query = opts.query,
     format = function(s) return string.format("%-12s %s", s.name, s.desc) end,
     primary = function(s) return s.name end,
-    empty = "No snippets here. Load extensions/snippets, or add your own with daw.snippet.add.",
+    empty = "No snippets here. Load extensions/snippets, or add your own with paw.snippet.add.",
     preview = function(s)
       local found = M.previewing and previewed(s.name)
       return (M.describe_preview(s, run_opts, found and found.result or nil, found and found.why or nil))
@@ -613,13 +613,13 @@ function M.pick(opts)
           end
         end
       end
-      daw.audition.phrase(ctx.track_id, notes, { length = to - from, at = from, loop = false })
-      return s.name .. " · " .. daw.time.format(from)
+      paw.audition.phrase(ctx.track_id, notes, { length = to - from, at = from, loop = false })
+      return s.name .. " · " .. paw.time.format(from)
     end,
     on_choose = function(s)
       M.previewing = nil
       local _, why = M.expand(s.name, run_opts)
-      if why then daw.notify(why, "warn") end
+      if why then paw.notify(why, "warn") end
     end,
     on_cancel = function() M.previewing = nil end,
   })
@@ -628,7 +628,7 @@ end
 --- The notes the snippet under the picker's selection would write, in the
 --- clip's beats, for drawing; nil when no picker of snippets is open.
 function M.preview_marks(clip_id)
-  local state = M.previewing and daw.pick.state()
+  local state = M.previewing and paw.pick.state()
   local item = state and state.title == "Snippets" and state.item
   local found = item and previewed(item.name)
   local result = found and found.result
@@ -643,7 +643,7 @@ end
 --- along the bottom with what Tab and `<C-n>` work on; what the picker
 --- would write, as ghosts.
 function M.paint(p)
-  local roll, glyphs = p.roll, daw.draw.g
+  local roll, glyphs = p.roll, paw.draw.g
   for _, n in ipairs(M.preview_marks(p.clip.id) or {}) do
     local row = p.row(n.pitch)
     if row then
@@ -651,7 +651,7 @@ function M.paint(p)
       local w = math.max(1, p.x(n.start + n.length) - x0)
       roll:fill(x0, row, w, 1, " ", "SnippetGhost")
       roll:text(x0, row, glyphs.clip_start, "SnippetGhost")
-      if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetGhost") end
+      if w >= 4 then roll:text(x0 + 1, row, paw.music.name(n.pitch):sub(1, w - 1), "SnippetGhost") end
     end
   end
   local m = M.marks(p.clip.id)
@@ -663,7 +663,7 @@ function M.paint(p)
       local w = math.max(1, p.x(n.start + n.length) - x0)
       roll:fill(x0, row, w, 1, " ", "SnippetNote")
       roll:text(x0, row, glyphs.clip_start, "SnippetNote")
-      if w >= 4 then roll:text(x0 + 1, row, daw.music.name(n.pitch):sub(1, w - 1), "SnippetNote") end
+      if w >= 4 then roll:text(x0 + 1, row, paw.music.name(n.pitch):sub(1, w - 1), "SnippetNote") end
     end
   end
   local width = roll.width
@@ -673,7 +673,7 @@ function M.paint(p)
     -- past it when the span is short.
     local label = " " .. m.label .. " "
     roll:fill(x0, p.rows - 1, x1 - x0, 1, " ", "SnippetSpan")
-    roll:text(x0, p.rows - 1, daw.util.fit(label, math.min(api.str_width(label), width - x0)), "SnippetSpan")
+    roll:text(x0, p.rows - 1, paw.util.fit(label, math.min(api.str_width(label), width - x0)), "SnippetSpan")
   end
 end
 
@@ -702,7 +702,7 @@ function M.window_marks(clip_id)
   return out
 end
 
---- Snippets as a source of suggestions (`daw.complete`): on `<C-Space>`,
+--- Snippets as a source of suggestions (`paw.complete`): on `<C-Space>`,
 --- each snippet of the piano roll that has something to write at the
 --- suggestion's place is offered, its notes as the ghost. Taking one
 --- writes its notes as they are; its choices are for `<C-s>`. Not asked
@@ -725,17 +725,17 @@ M.source = {
     done(items)
   end,
 }
-daw.on("startup", function()
-  if daw.complete then daw.complete.register(M.source) end
+paw.on("startup", function()
+  if paw.complete then paw.complete.register(M.source) end
 end)
 
-daw.on("escape", function() M.finish() end)
+paw.on("escape", function() M.finish() end)
 -- Another project (or a new one): nothing of this one's snippet is left.
-daw.on("project.loaded", function() M.finish() end)
-daw.on("mode.changed", function(e)
+paw.on("project.loaded", function() M.finish() end)
+paw.on("mode.changed", function(e)
   if e.old == "i" and e.mode == "n" then M.finish() end
   -- `:` typed over a selection: the command works on it.
-  if e.mode == "c" then from_visual = e.old == "x" and daw.ui.focused == "pianoroll" and daw.keymap.selection() or nil end
+  if e.mode == "c" then from_visual = e.old == "x" and paw.ui.focused == "pianoroll" and paw.keymap.selection() or nil end
 end)
 
 --- The selection the command line was opened over, once: what

@@ -19,18 +19,18 @@ nothing you try here can do lasting harm.]],
 cursor (or a new one) in the piano roll in insert mode, where the cursor draws
 notes rather than typing text. `grn` renames, as in Neovim's LSP keys.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums" })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums" })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 16, notes = look.drums(look.beat, 4) })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 16, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 16, true
   end,
   steps = {
     {
       say = "`o` adds a track below the one the cursor is on. Press `o`.",
       keys = { "o" },
-      start = function(ctx) ctx.tracks = #daw.tracks() end,
-      check = function(ctx) return #daw.tracks() == ctx.tracks + 1 end,
+      start = function(ctx) ctx.tracks = #paw.tracks() end,
+      check = function(ctx) return #paw.tracks() == ctx.tracks + 1 end,
       done = "A new, empty track, and the cursor is on it.",
     },
     {

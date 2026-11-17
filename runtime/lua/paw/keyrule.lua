@@ -1,7 +1,7 @@
 -- The one key rule every view keeps (docs/terminal.md, "Keys: one grammar"),
 -- as a check over the mappings: what `tests/keys_constitution.lua` runs, and
--- anyone writing an extension can run with `:lua =daw.keyrule.broken()`.
-local keymap = daw.keymap
+-- anyone writing an extension can run with `:lua =paw.keyrule.broken()`.
+local keymap = paw.keymap
 local M = {}
 
 --- Keys that are Vim's motions, and only ever motions in every view: the
@@ -14,7 +14,7 @@ M.motions = { "h", "j", "k", "l", "w", "b", "e", "0", "^", "$", "gg", "G", "]]",
 --- What the value keys change: the main value, or the second.
 M.values = { ["+"] = "main+", ["<C-a>"] = "main+", ["-"] = "main-", ["<C-x>"] = "main-", ["]"] = "second+", ["["] = "second-" }
 
---- Views that are text, edited as in Vim (`daw.textbuf`): their value keys
+--- Views that are text, edited as in Vim (`paw.textbuf`): their value keys
 --- are Vim's own on text (`Ctrl-a` adds to a number, `-` goes up, as in
 --- oil.nvim), so only the motion and operator parts of the rule hold there.
 M.text = { textbuf = true }

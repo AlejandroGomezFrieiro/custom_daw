@@ -1,6 +1,6 @@
 -- The undo tree in a floating window: the tree on the left, newest at the
 -- top, and on the right what the selected state changed.
-local api = daw.api
+local api = paw.api
 local undotree = require("undotree")
 
 local view = {
@@ -32,7 +32,7 @@ function view:render(buf)
   if #self.rows == 0 then self:refresh() end
   local tree_w = math.max(20, math.floor(buf.width * 0.55))
   local rows = buf.height - 1
-  self.sel = daw.util.clamp(self.sel, 1, #self.rows)
+  self.sel = paw.util.clamp(self.sel, 1, #self.rows)
   if self.sel <= self.scroll then self.scroll = self.sel - 1 end
   if self.sel > self.scroll + rows then self.scroll = self.sel - rows end
   for r = 0, rows - 1 do
@@ -42,11 +42,11 @@ function view:render(buf)
       local style = s.current and "Accent" or (s.name and "Title" or "Normal")
       if r + 1 + self.scroll == self.sel then buf:fill(0, r, tree_w - 1, 1, " ", "Selected") end
       local x = buf:text(1, r, row.graph, "Dim") + 2
-      buf:text(x, r, daw.util.fit(undotree.describe(s), math.max(1, tree_w - x - 2)),
+      buf:text(x, r, paw.util.fit(undotree.describe(s), math.max(1, tree_w - x - 2)),
         r + 1 + self.scroll == self.sel and "Selected" or style)
     end
   end
-  for r = 0, rows - 1 do buf:text(tree_w, r, daw.draw.g.rule, "Rule") end
+  for r = 0, rows - 1 do buf:text(tree_w, r, paw.draw.g.rule, "Rule") end
 
   -- What the selected state changed.
   local row = selected()
@@ -63,15 +63,15 @@ function view:render(buf)
     else
       title = s.parent and string.format("what #%d changed (from #%d)", s.id, s.parent) or "the project as opened"
     end
-    right:text(0, 0, daw.util.fit(title, right.width), "HelpSection")
+    right:text(0, 0, paw.util.fit(title, right.width), "HelpSection")
     local line = 2
     if from and from ~= to then
       local diff = api.undo_diff(from, to)
-      right:text(0, 1, daw.util.fit(undotree.summary(diff), right.width), "Dim")
+      right:text(0, 1, paw.util.fit(undotree.summary(diff), right.width), "Dim")
       for _, item in ipairs(diff.items) do
         if line >= right.height then break end
         local style = item:sub(1, 1) == "+" and "Info" or item:sub(1, 1) == "-" and "Warn" or "Normal"
-        right:text(0, line, daw.util.fit(item, right.width), style)
+        right:text(0, line, paw.util.fit(item, right.width), style)
         line = line + 1
       end
     else
@@ -100,11 +100,11 @@ local actions = {
     if row then go(row.id) end
   end,
   ["u"] = function()
-    if not daw.undo() then daw.notify("nothing to undo") end
+    if not paw.undo() then paw.notify("nothing to undo") end
     view:refresh(api.undo_current())
   end,
   ["<C-r>"] = function()
-    if not daw.redo() then daw.notify("nothing to redo") end
+    if not paw.redo() then paw.notify("nothing to redo") end
     view:refresh(api.undo_current())
   end,
   ["-"] = function() view:refresh(undotree.travel(-1, nil, 1) or api.undo_current()) end,
@@ -116,32 +116,32 @@ local actions = {
   end,
   ["b"] = function()
     local where, why = undotree.toggle()
-    daw.notify(where and ("playing " .. where) or why, where and "info" or "warn")
+    paw.notify(where and ("playing " .. where) or why, where and "info" or "warn")
     view:refresh(api.undo_current())
   end,
   ["n"] = function()
     local row = selected()
     if not row then return end
-    daw.ui.input({ prompt = "Name #" .. row.id .. ": ", text = row.state.name or "" }, function(text)
+    paw.ui.input({ prompt = "Name #" .. row.id .. ": ", text = row.state.name or "" }, function(text)
       api.undo_name(text, row.id)
       view:refresh()
     end)
   end,
   ["c"] = function()
-    daw.ui.input({ prompt = "Checkpoint name: " }, function(text)
+    paw.ui.input({ prompt = "Checkpoint name: " }, function(text)
       local ok, err = pcall(undotree.checkpoint, text)
-      if not ok then daw.notify(tostring(err), "error") end
+      if not ok then paw.notify(tostring(err), "error") end
       view:refresh()
     end)
   end,
   ["d"] = function() view.against = view.against == "parent" and "current" or "parent" end,
   ["<Space>"] = function()
-    if api.transport_get().playing then daw.transport.stop() else daw.transport.play() end
+    if api.transport_get().playing then paw.transport.stop() else paw.transport.play() end
   end,
-  ["q"] = function() daw.ui.close() end,
+  ["q"] = function() paw.ui.close() end,
   -- Escape closes the tree only while it floats, as a prompt does; in a
   -- window of its own it stays, and `q` closes it.
-  ["<Esc>"] = function() if daw.ui.float then daw.ui.close() end end,
+  ["<Esc>"] = function() if paw.ui.float then paw.ui.close() end end,
 }
 actions["<Down>"], actions["<Up>"] = actions.j, actions.k
 actions["<BS>"] = actions["-"]
@@ -159,13 +159,13 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("undotree", view)
+paw.ui.view("undotree", view)
 
 --- Open the tree with the current state selected.
 function view.open()
   view.rows = {}
   view:refresh(api.undo_current())
-  daw.ui.open("undotree", { title = "Undo tree", width = 120, height = 34 })
+  paw.ui.open("undotree", { title = "Undo tree", width = 120, height = 34 })
 end
 
 return view

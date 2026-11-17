@@ -4,7 +4,7 @@ Devices written in Lua, to use and to start your own from. Loading the
 extension adds them to the device picker beside the built-in ones:
 
 ```lua
-daw.ext.load("extensions/luafx")   -- or put the directory in ~/.config/daw/extensions
+paw.ext.load("extensions/luafx")   -- or put the directory in ~/.config/paw/extensions
 ```
 
 | Device | Kind | What it does |
@@ -16,7 +16,7 @@ daw.ext.load("extensions/luafx")   -- or put the directory in ~/.config/daw/exte
 
 They are the files in `devices/`. An extension ships devices by having that
 directory, and needs nothing else for it. To change one, copy it into
-`~/.config/daw/devices/` (a script there wins over one of the same name in
+`~/.config/paw/devices/` (a script there wins over one of the same name in
 an extension) and edit it there: it is loaded again when it is saved, and
 the devices made from it keep their parameters. How to write one is in
 "Writing a device in Lua" in [docs/devices.md](../../docs/devices.md).

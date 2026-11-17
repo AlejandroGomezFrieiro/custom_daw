@@ -4,13 +4,13 @@ local projdiff = require("projdiff")
 local view = require("projdiff.view")
 local mergeview = require("projdiff.mergeview")
 
-local command, map = daw.command, daw.keymap.set
-daw.keymap.group("<leader>P", "project diff")
+local command, map = paw.command, paw.keymap.set
+paw.keymap.group("<leader>P", "project diff")
 
 local function compare(ctx)
   local versions, err = projdiff.compare(ctx.args)
   if not versions then
-    daw.notify(err, "warn")
+    paw.notify(err, "warn")
     return
   end
   local tree = projdiff.diff.diff(versions.from.project, versions.to.project)
@@ -26,7 +26,7 @@ end
 command("Pdiff", function(ctx)
   local tree, title = compare(ctx)
   if not tree then return end
-  if tree.count == 0 then return daw.notify(title .. " (nothing differs)") end
+  if tree.count == 0 then return paw.notify(title .. " (nothing differs)") end
   view.open(tree, title)
 end, {
   desc = "What changed in the project: `Pdiff` since it was saved, `Pdiff HEAD~2` (git), `Pdiff #7` (undo state), `Pdiff snap:name`, `Pdiff other.json`, `Pdiff a b`",
@@ -37,32 +37,32 @@ command("Pdiff.qf", function(ctx)
   local tree, title = compare(ctx)
   if not tree then return end
   local n = projdiff.to_quickfix(tree, title)
-  daw.notify(title .. ": " .. n .. " in the quickfix list")
+  paw.notify(title .. ": " .. n .. " in the quickfix list")
 end, { desc = "The changes of `Pdiff` as a quickfix list, each a place to jump to", complete = versions_complete })
 
 command("Psnapshot", function(ctx)
   local name, file = projdiff.snapshot(table.concat(ctx.args, " "))
-  daw.notify("snapshot " .. name .. (file and " written beside the project" or " kept for this session") .. "; `:Pdiff snap:" .. name .. "` compares with it")
+  paw.notify("snapshot " .. name .. (file and " written beside the project" or " kept for this session") .. "; `:Pdiff snap:" .. name .. "` compares with it")
 end, { desc = "Keep the project as it is, to compare with later: `Psnapshot before the bridge`", raw = true })
 
 command("Pmerge", function(ctx)
-  local path = ctx.args[1] or daw.api.project_get().path
-  if not path then return daw.notify("the project has no file: `:Pmerge file.json`", "warn") end
+  local path = ctx.args[1] or paw.api.project_get().path
+  if not path then return paw.notify("the project has no file: `:Pmerge file.json`", "warn") end
   mergeview.open(path)
 end, { desc = "Settle the conflicts a git merge left in a project (the open one, or `Pmerge file.json`)", complete = { "files" } })
 
 command("Pgit", function()
   local root = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or "extensions/projdiff"
-  daw.ui.page("Git for projects", {
+  paw.ui.page("Git for projects", {
     { text = "Add this to .gitattributes", style = "HelpSection" },
     "*.json diff=paw merge=paw   (or the names of your project files)",
     "",
     { text = "And this to the repository (git config) or ~/.gitconfig", style = "HelpSection" },
     "[diff \"paw\"]",
-    "  textconv = daw --clean --no-plugins --no-listen --audio null -l " .. root .. "/git.lua textconv",
+    "  textconv = paw --clean --no-plugins --no-listen --audio null -l " .. root .. "/git.lua textconv",
     "[merge \"paw\"]",
     "  name = paw project merge",
-    "  driver = daw --clean --no-plugins --no-listen --audio null -l " .. root .. "/git.lua merge %O %A %B %L %P",
+    "  driver = paw --clean --no-plugins --no-listen --audio null -l " .. root .. "/git.lua merge %O %A %B %L %P",
     "",
     "Conflicts are written into the merged project (meta.merge_conflicts); `:Pmerge` settles them.",
   })
@@ -71,14 +71,14 @@ end, { desc = "How to make git diff and merge projects with paw" })
 map("<leader>Pd", "Pdiff", { desc = "What changed since the project was saved", repeatable = false })
 map("<leader>Pm", "Pmerge", { desc = "Settle merge conflicts", repeatable = false })
 map("<leader>Ps", function()
-  daw.ui.input({ prompt = "Snapshot name: " }, function(text) daw.cmd("Psnapshot", { text }) end)
+  paw.ui.input({ prompt = "Snapshot name: " }, function(text) paw.cmd("Psnapshot", { text }) end)
 end, { desc = "Keep a snapshot of the project", repeatable = false })
 
 -- A project a merge left conflicts in says so whenever it is opened.
-daw.on("project.loaded", function()
-  local meta = daw.api.project_get().meta
+paw.on("project.loaded", function()
+  local meta = paw.api.project_get().meta
   local list = meta and meta.merge_conflicts
   if type(list) == "table" and #list > 0 then
-    daw.notify(#list .. " merge conflict" .. (#list == 1 and "" or "s") .. " left in this project: `:Pmerge` settles them", "warn")
+    paw.notify(#list .. " merge conflict" .. (#list == 1 and "" or "s") .. " left in this project: `:Pmerge` settles them", "warn")
   end
 end)

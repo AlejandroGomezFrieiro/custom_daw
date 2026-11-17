@@ -2,10 +2,10 @@
 
 ## Mixing, MIDI and rendering in the core
 
-**Threads.** Playback and renders use one thread per core (`daw.opt.threads =
+**Threads.** Playback and renders use one thread per core (`paw.opt.threads =
 4` or `:engine threads=4` for another number, 1 for the audio thread alone,
-0 to leave it to the machine; `daw.render(path, { threads = 1 })` for one
-render). `daw.api.engine_get().threads` says how many are in use. When the
+0 to leave it to the machine; `paw.render(path, { threads = 1 })` for one
+render). `paw.api.engine_get().threads` says how many are in use. When the
 audio thread runs with real-time priority the workers take the same
 priority; if the system refuses them that, the engine stays on the audio
 thread rather than make it wait for threads that anything may push aside.
@@ -19,7 +19,7 @@ whether asked for or not, so that splitting and cutting audio does not click.
 **Tempo and time signature.** Both can change along the song. A tempo change
 either holds until the next one or ramps to it, the tempo moving linearly in
 time as REAPER's linear tempo points do; a time signature change starts a
-new bar where it is, cutting short a bar it falls inside. `daw.project.tempo`
+new bar where it is, cutting short a bar it falls inside. `paw.project.tempo`
 and the signature fields are the ones at the start, and a project with one
 tempo and one signature saves as it always has. The engine follows the map
 sample by sample: the playhead, the loop, MIDI clips, automation, the
@@ -29,12 +29,12 @@ the tempo, signature, bar and time at each block (CLAP transport, VST3
 process context, LV2 `time:Position`, through the sandbox too).
 
 ```lua
-daw.tempo.set(17, 96)                    -- 96 BPM from beat 17 on
-daw.tempo.set(32, 120, { ramp = true })  -- ramp from 120 at beat 32 to the next change
-daw.tempo.set_signature(9, 6, 8)         -- 6/8 from bar 9
-daw.tempo.at(40)  daw.tempo.signature_at(40)  daw.tempo.points()  daw.tempo.remove(17)
-daw.tempo.beats_to_seconds(16)  daw.tempo.seconds_to_beats(8)  daw.tempo.bar_of(33)
-daw.time.format(33.5)                    -- "9.4.00": bar 9, fourth eighth
+paw.tempo.set(17, 96)                    -- 96 BPM from beat 17 on
+paw.tempo.set(32, 120, { ramp = true })  -- ramp from 120 at beat 32 to the next change
+paw.tempo.set_signature(9, 6, 8)         -- 6/8 from bar 9
+paw.tempo.at(40)  paw.tempo.signature_at(40)  paw.tempo.points()  paw.tempo.remove(17)
+paw.tempo.beats_to_seconds(16)  paw.tempo.seconds_to_beats(8)  paw.tempo.bar_of(33)
+paw.time.format(33.5)                    -- "9.4.00": bar 9, fourth eighth
 ```
 
 `:tempo 96` sets the tempo at the start, `:tempo 96 at 17` from bar 17 (or
@@ -59,7 +59,7 @@ length on their beats, stretching its sound to fit (see
 [Stretching and looping clips](mixing.md#stretching-and-looping-clips)). MIDI clips
 and automation stay on their beats.
 
-**Groups of tracks.** `daw.groups.make({ violins, violas, cellos }, "Strings")`
+**Groups of tracks.** `paw.groups.make({ violins, violas, cellos }, "Strings")`
 (`:track.group Strings` on the selected tracks, `,g`) makes a group: a track
 the others belong to. The members play into it, so its fader, mute and
 devices act on all of them; they stand under it, a step in and in its
@@ -67,14 +67,14 @@ colour; and `za` folds them away into it (`zM` folds every group, `zR` opens
 them all). `:track.into Strings` moves a track in, `:track.ungroup` (`,G`)
 takes one out or dissolves a group. Groups hold groups. A group is an
 ordinary track marked in its `meta`, so it is saved, copied and undone like
-any other, and `daw.groups.rows()` is the list of tracks that are drawn:
+any other, and `paw.groups.rows()` is the list of tracks that are drawn:
 all but those folded away.
 
 **Linked faders.** `:group.link` (`,vl`) on a group, routed or not, links the
 faders of its members: moving one moves the others by as many dB, so their
 balance stays (a fader stops at its end, and the others go on). The group's
 own fader is left alone. It is an option of the group, kept in its `meta`
-(`daw.groups.link(group, true)`), and one undo step undoes the whole move.
+(`paw.groups.link(group, true)`), and one undo step undoes the whole move.
 
 <!-- tags: narrowing scope -->
 **Narrowing to a group.** In a large project, `:narrow Strings` (`zn` on a
@@ -84,7 +84,7 @@ subproject; `:widen` (`zw`) closes it and goes back to the tab it came from,
 and `gt` goes between them as between any tabs. It is the same project with
 one undo tree: an edit made in the narrowed tab is undone from any other. In
 that tab the arrange view, the mixer, the device panel, the session view,
-`daw://tracks`, the pickers, the track motions (`gg`, `G`, `j`) and the Ex
+`paw://tracks`, the pickers, the track motions (`gg`, `G`, `j`) and the Ex
 ranges see only those tracks (`t1` is the group, `t*` and `%` are its tracks,
 `:g` and `:s` look in them alone); the group's own fold is open there. The
 status line says `narrowed Strings`, the tab is named after the group, and a
@@ -98,10 +98,10 @@ and solos are not touched), and `frozen` renders each part of the rest in the
 background (each whole group, and each track outside a group) and plays the
 files, so that their devices rest; a part edited meanwhile plays live until it
 has been rendered again, and the files are let go when the tab is no longer
-in front. Neither changes the project. In Lua: `daw.scope.narrow(group)`,
-`daw.scope.widen()`, `daw.scope.current()`, `daw.scope.tracks()` (what the
-current tab sees), `daw.scope.contains(track)`; a tab's scope is its
-`scope` field. `daw.api.engine_audible(ids)` and `daw.api.engine_hold(track,
+in front. Neither changes the project. In Lua: `paw.scope.narrow(group)`,
+`paw.scope.widen()`, `paw.scope.current()`, `paw.scope.tracks()` (what the
+current tab sees), `paw.scope.contains(track)`; a tab's scope is its
+`scope` field. `paw.api.engine_audible(ids)` and `paw.api.engine_hold(track,
 file)` are what `mute` and `frozen` use, and are there for scripts too.
 
 <!-- tags: freezing frozen -->
@@ -125,10 +125,10 @@ and editing them on a frozen track asks once whether to unfreeze it (the
 edit is kept either way, and heard when the track is unfrozen). A render of
 the song plays the frozen file, and sounds as it did before freezing (the
 suite compares them sample by sample). Changing the tempo does not render it
-again: unfreeze and freeze. In Lua `daw.freeze.freeze(track, { tail = 2 })`,
-`daw.freeze.unfreeze(track)`, `daw.freeze.state(track)` (`"frozen"`,
-`"held"` or nil), and `daw.render(path, { freeze = id })` renders what a
-freeze of `id` would (the core's crates/daw-core/src/freeze.rs). The
+again: unfreeze and freeze. In Lua `paw.freeze.freeze(track, { tail = 2 })`,
+`paw.freeze.unfreeze(track)`, `paw.freeze.state(track)` (`"frozen"`,
+`"held"` or nil), and `paw.render(path, { freeze = id })` renders what a
+freeze of `id` would (the core's crates/paw-core/src/freeze.rs). The
 extensions/utau vocal freeze is its own, as it waits for the singing.
 
 **VCAs.** A VCA is a fader, a mute and a solo that belong to other tracks
@@ -145,15 +145,15 @@ lanes add to each member's own, in dB, so a member's level is its fader, plus
 its lane, plus every VCA's fader or lane. In a script:
 
 ```lua
-local drums = daw.vca.make({ kick, snare, hats }, "Drums")
+local drums = paw.vca.make({ kick, snare, hats }, "Drums")
 drums.volume = -3                 -- every member 3 dB quieter
 drums:automate("volume"):set_points({ { 0, 0 }, { 16, -12 } })
-daw.vca.assign(room, drums)       -- also `unassign`, `members`, `of`, `dissolve`
+paw.vca.assign(room, drums)       -- also `unassign`, `members`, `of`, `dissolve`
 ```
 
 A VCA is an ordinary track marked in its `meta` (and each member names its
 VCAs in its own), so it is saved, copied and undone like any other; it has no
-devices and plays nothing, and `daw.groups.rows()`, so the arrange view and
+devices and plays nothing, and `paw.groups.rows()`, so the arrange view and
 the window, put the VCAs after the other tracks. The sync folds the VCAs into
 each member: a fixed fader into the member's gain, and lanes into one lane for
 the member, which is the sum of the lines in dB (a point wherever any of them
@@ -167,7 +167,7 @@ release VCAs.
 **Outputs and sends from the keyboard.** `:track.output Drum bus` (`,o` for
 a list) plays the track into another, `:send Reverb -9` (`,s` for a list;
 `pre=1` for ahead of the fader) sends its sound to one as well (at -12 dB
-unless told, or at `daw.opt.send_level`; the list offers the tracks with no
+unless told, or at `paw.opt.send_level`; the list offers the tracks with no
 instrument of their own, the returns, first), and
 `:send.remove Reverb` takes the send away.
 
@@ -212,7 +212,7 @@ only where it is routed, as in REAPER, where it would sit unheard on
 channels 3 and up: `kit:set_output(2, kick)` (`kit.outputs` is a table of
 pair number to track), `:device.output 2 Kick` (`none` to take it away;
 alone, a list of pairs and then of tracks; `O` in the device panel), and
-`:device.spread` (`daw.routes.spread(kit)`) makes a track for each pair that
+`:device.spread` (`paw.routes.spread(kit)`) makes a track for each pair that
 plays nowhere, named after it, and puts them and the device's track in a
 group (`<track> outputs`, or the group the track is in already; the
 device's track cannot be the group itself, since its pairs feed the new
@@ -235,7 +235,7 @@ stereo track plays on both sides.
 (CLAP, VST3 and LV2 plugins do; of the built-in devices the `limiter` does).
 Every other path to the same place is held back by the difference, through
 buses and sends, so that everything arrives together; a render leaves the
-delay off the start of the file. `daw.api.engine_get().latency` is how far the
+delay off the start of the file. `paw.api.engine_get().latency` is how far the
 output is behind the transport, in milliseconds. A track's own clips are not
 held back to match what is routed into it.
 
@@ -254,9 +254,9 @@ clip:set_controls({
   { start = 4, type = "program", program = 12, bank = 258 },
 })
 track:midi({ type = "cc", number = 1, value = 0.3 })           -- now, to the track's devices
-daw.on("midi.in", function(e) end)       -- everything that arrives at a port, for scripts; `e.port` names the port
-daw.midi.ump({ type = "cc", number = 74, value = 1 })   -- as a MIDI 2.0 packet: two words
-daw.midi.inject_ump({ 0x40903c00, 0xc0000000 })         -- and a packet, as if from a port
+paw.on("midi.in", function(e) end)       -- everything that arrives at a port, for scripts; `e.port` names the port
+paw.midi.ump({ type = "cc", number = 74, value = 1 })   -- as a MIDI 2.0 packet: two words
+paw.midi.inject_ump({ 0x40903c00, 0xc0000000 })         -- and a packet, as if from a port
 ```
 
 They are recorded with the notes, chased when playback starts in the middle,
@@ -295,7 +295,7 @@ roll (`:notes.list`) floats it over the terminal; the window's piano roll
 opens it in a window of its own with List. `j` `k` `h` `l` move, `Enter`
 changes the cell under the cursor (or a double click), `x` deletes the row,
 `a` adds a move at its time, `u` undoes, `q` closes. Scripts have the same
-through `daw.controls` (`rows`, `cells`, `edit`, `select_box`, `move`,
+through `paw.controls` (`rows`, `cells`, `edit`, `select_box`, `move`,
 `line`).
 
 At the ports the program opens as a MIDI 2.0 client and reads Universal MIDI
@@ -311,7 +311,7 @@ a port: `track.midi_output = { port = "UM-ONE: UM-ONE MIDI 1", channel = 2 }`
 (`channel` nil keeps each message's own), `:track.midi_out UM-ONE 2` (part
 of the name will do; `none` for none), or the MIDI out entries of the input
 list (`I`) and of the window's input menu on the track's header.
-`daw.midi.outputs()` lists the ports.
+`paw.midi.outputs()` lists the ports.
 
 What goes out is MIDI 2.0 where the port takes it: when the sequencer has
 MIDI 2.0 (`CONFIG_SND_SEQ_UMP`) and the port's program speaks it, the notes,
@@ -346,15 +346,15 @@ the tracks. Stopping, jumping and going round the loop end the notes that
 are sounding there, with an All Notes Off on their channels; so do taking
 the port away and removing the track. Renders send nothing. Ports are
 opened when MIDI input is (with an audio device, or `engine_restart({ midi =
-true })`). `daw.midi.open_output("To Surge")` makes a port of the program's
-own that other programs read from (`daw out: To Surge`), and a track that
-sends to `To Surge` plays them; `daw.midi.close_output` takes it away.
+true })`). `paw.midi.open_output("To Surge")` makes a port of the program's
+own that other programs read from (`paw out: To Surge`), and a track that
+sends to `To Surge` plays them; `paw.midi.close_output` takes it away.
 Copies of the track send where it does; templates and project files keep
 the port by name.
 
 **Recording offset.** What is played along to the song is heard late and
 arrives late. Takes are moved earlier by what the audio system reports, plus
-`daw.transport.record_offset` milliseconds for what it does not: record the
+`paw.transport.record_offset` milliseconds for what it does not: record the
 metronome through a loop-back cable, measure, and set it once in `init.lua`.
 
 **Writing automation by moving things.** Each track has an automation mode
@@ -373,7 +373,7 @@ A control is a fader, a pan or a parameter, moved from the keyboard, a
 frontend, a MIDI controller or a plugin's own window. What is written goes
 into its lane at the playhead, over what the lane had there; a lane is made
 if there is none. In the window a control is held for as long as the
-pointer holds it (`daw.api.automation_hold`); anything else counts as held
+pointer holds it (`paw.api.automation_hold`); anything else counts as held
 for a little over half a second after its last move. `:lane.write` (`,aw`)
 is a switch for the whole song: while it is on, every track that is not
 writing in a way of its own latches. The terminal's track header shows `T`,
@@ -393,7 +393,7 @@ starts, so editing meanwhile changes the project and not the file. The file
 is written as `.mix.flac.part` beside the target and renamed when complete, so
 a render that fails or is cancelled leaves nothing under the name. Formats
 that need an encoder this program does not have (AAC, AIFF, WMA) are refused
-by name before anything is rendered; `daw.api.render_formats()` lists what
+by name before anything is rendered; `paw.api.render_formats()` lists what
 can be written (`{ name, extensions, bits, lossy, available, why }`).
 
 MP3 (`.mp3`), Ogg Vorbis (`.ogg`) and Opus (`.opus`) are made by `ffmpeg`,
@@ -415,7 +415,7 @@ which is shown every track's fader, pan, sends and devices, and
 extensions/mixdiag's findings are diagnostics on the tracks they name. Opus holds only 48 kHz and the usual lower rates, so ffmpeg
 resamples to 48 kHz; MP3 above 48 kHz is resampled to 48 kHz too. The project's
 name is the file's title tag (see "Tags" below). `ffmpeg` is the program found on the PATH; set
-`daw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an
+`paw.opt.ffmpeg = "/path/to/ffmpeg"` to name another. Without it, or with an
 ffmpeg built without the encoder, `:render mix.mp3` fails before anything is
 rendered, saying so and naming the formats that need nothing (WAV and FLAC),
 and `render_formats()` gives `available = false` and `why`; the window's
@@ -458,9 +458,9 @@ which keeps them (`project.meta.tags`, saved with it) for every render:
 :render.tags genre=           " an empty value takes one out
 ```
 
-In Lua `daw.render_tags()` gives the table and `daw.render_tags({ artist = "Ana" })`
+In Lua `paw.render_tags()` gives the table and `paw.render_tags({ artist = "Ana" })`
 sets those fields and keeps the others. `:render` takes the same words
-(`:render mix.mp3 artist=Bo`) and `daw.render` a `tags` table, for that file
+(`:render mix.mp3 artist=Bo`) and `paw.render` a `tags` table, for that file
 only; they go over the project's. The title of an MP3, Ogg or Opus file is the project's name unless one
 is given, and a lossy stem's is its track's name. A relative `cover` is from the
 project's directory; it must be a PNG or JPEG file of at most 8 MiB, and a
@@ -476,7 +476,7 @@ picture, and Ogg Vorbis and Opus in Vorbis comments, the cover in
 handed the tags in a file, not on its command line. A WAV has no cover that
 players read, so none is written to it.
 
-`daw.render(path, opts)` takes the same as a table (`range`, `start`, `end`,
+`paw.render(path, opts)` takes the same as a table (`range`, `start`, `end`,
 `tail`, `sample_rate` or `rate`, `bits`, `channels` (1, 2, "mono",
 "stereo"), `quality`, `bitrate`, `ffmpeg`, `dither`, `normalize`, `loudness`, `tracks = { id, ... }`,
 `master`, `threads`, `tags`) and waits for the file, returning `{ path, frames,
@@ -484,11 +484,11 @@ seconds, sample_rate, peak, gain, loudness, format, bits, channels, ... }`;
 with `background = true` it returns at once and the events follow:
 `render.progress` (`{ path, fraction, seconds, stage }`, a few times a second),
 then `render.done` (the table above), `render.failed` (`{ path, error }`) or
-`render.cancelled`. `daw.render_status()` gives the running render (`{ path,
-fraction, seconds, cancelling, stage, queued }`) and `daw.render_cancel()` stops it;
-the window finds the same in `daw.frontend.state().modal.render`.
-`daw.render_ranges.chorus = function() return 32, 48 end` adds a named range.
-`daw.render_stems(dir, opts)` writes one file per track, which add up to the
+`render.cancelled`. `paw.render_status()` gives the running render (`{ path,
+fraction, seconds, cancelling, stage, queued }`) and `paw.render_cancel()` stops it;
+the window finds the same in `paw.frontend.state().modal.render`.
+`paw.render_ranges.chorus = function() return 32, 48 end` adds a named range.
+`paw.render_stems(dir, opts)` writes one file per track, which add up to the
 mix. `:render stems` writes one file per group instead, each named after it,
 into `<project> stems` (or `:render stems out`): every group at the top and
 every track outside a group that has clips, each with what its sound passes
@@ -498,10 +498,10 @@ leaves it). `:render stems tracks` makes one per track; `:render Strings`
 renders one group to `Strings.wav` beside the project; in a narrowed tab,
 `:render stems` writes the parts of its group. The options of `:render`
 apply (`format=flac`, `tail=`, `bits=`, `master=false`, ...). In Lua
-`daw.stems.plan({ dir, format, tracks, group })` gives the list
-(`{ id, name, file, holds }`) and `daw.stems.render(plan, opts)` writes it. `:track.bounce` (`daw.bounce(track, { name = ... })`, which returns the
+`paw.stems.plan({ dir, format, tracks, group })` gives the list
+(`{ id, name, file, holds }`) and `paw.stems.render(plan, opts)` writes it. `:track.bounce` (`paw.bounce(track, { name = ... })`, which returns the
 new track) renders a track with its devices to audio on a new track and mutes
-the original. Stems and bounces go through `daw.render`, so `render.before` is
+the original. Stems and bounces go through `paw.render`, so `render.before` is
 heard. Plugins are told when a render is offline and given a moment to
 prepare before it starts: many load what a setting needs in the background,
 and would otherwise still be silent when a fast render was over.
@@ -514,19 +514,19 @@ that is not where the project says is looked for relative to the project
 and in the directories where other missing files turned up. Files found
 elsewhere make the project modified, so that saving keeps the new place.
 What is still missing is reported in one message; its clips stay in the
-project, silent, with `offline = true` in their state (`daw.clip(id).offline`,
-and in `daw.frontend.state`), and both frontends write "offline" before their
+project, silent, with `offline = true` in their state (`paw.clip(id).offline`,
+and in `paw.frontend.state`), and both frontends write "offline" before their
 names. Saving keeps the path a missing file was saved with. `:media.relink`
 lists the missing files: choose one and then the file it is now (the rest
 are then looked for beside it), or choose "Search a directory" and a
-directory (`daw.pick.file({ directory = true })`); `:media.relink <dir>` and
+directory (`paw.pick.file({ directory = true })`); `:media.relink <dir>` and
 `:media.relink <old> <new>` do the same from the command line, and
 `:media.missing` lists them. `:media.collect` copies every file from outside
 the project's folder into `media` beside it and points the clips at the
-copies; the originals stay. `daw.opt.copy_imports = true` makes importing do
-that from the start. In Lua: `daw.media.missing()`, `daw.media.list()`
-(`{ path, missing, inside }`), `daw.media.relink(old, new)`,
-`daw.media.search(dir)`, `daw.media.collect()`; each change is one undo step.
+copies; the originals stay. `paw.opt.copy_imports = true` makes importing do
+that from the start. In Lua: `paw.media.missing()`, `paw.media.list()`
+(`{ path, missing, inside }`), `paw.media.relink(old, new)`,
+`paw.media.search(dir)`, `paw.media.collect()`; each change is one undo step.
 The `media.missing` event (`{ files, found }`) follows opening a project with
 files missing or moved. Old projects with full paths open unchanged.
 
@@ -535,23 +535,23 @@ engine's (or than a render's) is converted once when it is loaded, with a
 band-limited windowed-sinc resampler (`rubato`, 256 taps): nothing above the
 new rate's Nyquist frequency folds back, and a tone keeps its level and
 place. Changing the engine's rate converts again. Each file's waveform
-overview is kept in `~/.cache/daw/peaks`, named after the file's path, size
+overview is kept in `~/.cache/paw/peaks`, named after the file's path, size
 and time of change, so that a long file drawn zoomed out after the first
 time is drawn from the overview without being decoded.
 
 **Long files are played from the disk.** A file whose decoded sound is
-larger than `daw.opt.media_stream` megabytes (64: about three minutes of
+larger than `paw.opt.media_stream` megabytes (64: about three minutes of
 stereo at 48 kHz) is not held in memory. It is decoded once, straight into
-files in `~/.cache/daw/media` (and converted there, if its rate is not the
+files in `~/.cache/paw/media` (and converted there, if its rate is not the
 engine's), and those are mapped into memory: the engine reads them like any
 other samples, the system brings the pages in from the disk and lets them go
 again when memory is short, and the kernel asks for the next seconds ahead
 of the playhead (and of the loop's start) so that the audio thread does not
 wait for the disk. The decoded sound is kept between runs under the
 identity of the file it came from, so an hour-long recording opens at once
-the second time; the cache is kept within `daw.opt.media_cache` gigabytes
-(16), the least recently used going first. `daw.media.list()` says of each
-file whether it is `on_disk`. `daw.opt.media_stream = 0` holds every file in
+the second time; the cache is kept within `paw.opt.media_cache` gigabytes
+(16), the least recently used going first. `paw.media.list()` says of each
+file whether it is `on_disk`. `paw.opt.media_stream = 0` holds every file in
 memory, as before. Renders read the same files and are the same to the bit.
 
 **Audio clip operations.** `:clip.reverse` plays the audio clip under the
@@ -561,11 +561,11 @@ its loudest sample to a level by setting its gain. `:clip.glue` joins it and
 the audio clips touching or overlapping it on its track into one clip,
 playing a new file of what they played together (gains, fades and overlaps,
 without the track's devices). None changes the original file; each is one
-undo step. In Lua: `daw.media.reverse(clip)`, `daw.media.normalize(clip,
-level)`, `daw.media.glue(clip)` or `daw.media.glue({ a, b, c })`.
+undo step. In Lua: `paw.media.reverse(clip)`, `paw.media.normalize(clip,
+level)`, `paw.media.glue(clip)` or `paw.media.glue({ a, b, c })`.
 
-**Safety copies.** Every `daw.opt.autosave` seconds (60; 0 for none) a project
-with unsaved changes is copied to `~/.local/state/daw/recovery`. The copy is
+**Safety copies.** Every `paw.opt.autosave` seconds (60; 0 for none) a project
+with unsaved changes is copied to `~/.local/state/paw/recovery`. The copy is
 removed when the project is saved or closed with nothing unsaved. One left by a
 session that ended badly is announced at the next start, and `:recover` opens
 it under the name of the project it was a copy of. `:q` refuses to quit with
@@ -583,8 +583,8 @@ the program writes a safety copy of unsaved work to the recovery directory
 before the program ends, restores the terminal, and says where the copy is;
 `:recover` offers it at the next start.
 
-**What went wrong while playing.** `daw.api.engine_get()` (and
-`daw.frontend.state()`, for the window and the status line) counts `xruns`,
+**What went wrong while playing.** `paw.api.engine_get()` (and
+`paw.frontend.state()`, for the window and the status line) counts `xruns`,
 `late_blocks` (blocks plugins did not deliver in time), `midi_dropped`
 (MIDI events dropped because a queue was full), `record_dropped` (frames of
 the take being recorded lost to a slow disk) and `devices_stopped`.
@@ -608,18 +608,18 @@ the project, as the project does, so it opens with them.
 fields in the order the model declares them, its maps by key and its numbers
 with the fewest digits that read back exactly, so saving a project that did
 not change writes the same bytes, and one changed thing is a small diff.
-`daw.api.project_file_text(file)` writes a project given as data the same
-way (and refuses one that would not open), and `daw.api.undo_project(id)`
+`paw.api.project_file_text(file)` writes a project given as data the same
+way (and refuses one that would not open), and `paw.api.undo_project(id)`
 is a state of the undo tree as a project file holds it. extensions/projdiff
 builds on both: a diff and a three-way merge of projects, and the drivers
 that let version control use them.
 
-**For scripts.** `daw.wait(ms)` lets time pass with timers firing and events
-delivered, which `daw.api.sleep` does not; a script run with `-l` is otherwise
-one long turn. `daw.api.project_shelve()` puts the open project aside whole
+**For scripts.** `paw.wait(ms)` lets time pass with timers firing and events
+delivered, which `paw.api.sleep` does not; a script run with `-l` is otherwise
+one long turn. `paw.api.project_shelve()` puts the open project aside whole
 (undo tree, playhead, changed flag) and opens an empty one to work in;
-`daw.api.project_unshelve()` closes that and brings the first back exactly as
-it was, and `daw.api.project_shelved()` says whether one is aside. It is for
+`paw.api.project_unshelve()` closes that and brings the first back exactly as
+it was, and `paw.api.project_shelved()` says whether one is aside. It is for
 tools that need tracks of their own without touching the person's work (the
 [doctor](../extensions/doctor) does). `tests/*.lua` and `extensions/*/tests.lua`
 are run by the suite, each given the suite's helpers.
@@ -686,12 +686,12 @@ what is saved, is where the moment would be heard with no markers, in
 seconds of the file before the clip's stretch, which still applies to the
 whole. They are saved, copied and cut with the clip, undone as any edit,
 and stay pinned to the file when the clip is trimmed or slipped. In
-scripts: `daw.stretch.warp_add(clip, beat)`, `daw.stretch.warp_move(clip, i,
-beat)`, `daw.stretch.warp_remove(clip, i)`, `daw.stretch.warp_snap(clip)`,
+scripts: `paw.stretch.warp_add(clip, beat)`, `paw.stretch.warp_move(clip, i,
+beat)`, `paw.stretch.warp_remove(clip, i)`, `paw.stretch.warp_snap(clip)`,
 or `clip.warp = {}` to take them all off.
 
 There are two ways of stretching, both written for this program in Rust
-(`crates/daw-core/src/stretch.rs`). `tonal` is a phase vocoder with
+(`crates/paw-core/src/stretch.rs`). `tonal` is a phase vocoder with
 identity phase locking that starts its phases afresh at each onset: for
 held and melodic sound, at any ratio. `percussive` overlaps pieces of the
 file at its own speed (WSOLA), each placed where it carries on best from
@@ -749,10 +749,10 @@ the clip's start. With a loop:
   playing take is drawn as it plays; another take is its file squeezed or
   spread in time as far as the clip stretches it, repeated as it loops.
 
-In scripts: `daw.stretch.set(clip, 1.5)`, `daw.stretch.to(clip, 8)`,
-`daw.stretch.fit(clip, from, to)`, `daw.stretch.reset(clip)`,
-`daw.stretch.pitch(clip, 3)`, `daw.stretch.follow(clip, bpm)`,
-`daw.stretch.loop(clip, true, 4)`, or the fields themselves
+In scripts: `paw.stretch.set(clip, 1.5)`, `paw.stretch.to(clip, 8)`,
+`paw.stretch.fit(clip, from, to)`, `paw.stretch.reset(clip)`,
+`paw.stretch.pitch(clip, 3)`, `paw.stretch.follow(clip, bpm)`,
+`paw.stretch.loop(clip, true, 4)`, or the fields themselves
 (`clip.stretch = 2` changes the ratio without changing the clip's length).
 
 ## Markers and regions
@@ -776,9 +776,9 @@ with the beats when the tempo changes, and are saved with the project.
 In the window: right click on the timeline puts a marker there or makes a
 region over the selection or the loop; a click on a marker goes to it, a
 drag moves it, its menu renames or removes it and loops a region.
-In scripts: `daw.markers.add(16, "Chorus")`, `daw.markers.add(0, "Intro", { length = 16 })`,
-`daw.markers.list()`, `daw.markers.find("Chorus")`, `daw.markers.set(id, { beat = 24 })`,
-`daw.markers.remove(id)`, `daw.markers.render_regions(dir, opts)`.
+In scripts: `paw.markers.add(16, "Chorus")`, `paw.markers.add(0, "Intro", { length = 16 })`,
+`paw.markers.list()`, `paw.markers.find("Chorus")`, `paw.markers.set(id, { beat = 24 })`,
+`paw.markers.remove(id)`, `paw.markers.render_regions(dir, opts)`.
 
 ## MIDI controllers
 
@@ -798,8 +798,8 @@ track's menu has the fader and the pan. The bindings belong to the project
 and are saved with it. A move from the controller is a move like any
 other: it writes automation when the track's mode says so, and a sweep is
 one undo step. A control only takes hold of its target once it has reached
-the target's value, instead of jumping it there (`daw.opt.learn_pickup =
+the target's value, instead of jumping it there (`paw.opt.learn_pickup =
 false` for jumping). A binding is by controller number and channel; which
 port a message came through is not told apart. In scripts:
-`daw.learn.bind({ cc = 74, channel = 1 }, { track = t.id, target = "param", device = d.id, param = "cutoff" })`,
-`daw.learn.bindings()`, `daw.learn.unbind(n)`, `daw.learn.start(target)`.
+`paw.learn.bind({ cc = 74, channel = 1 }, { track = t.id, target = "param", device = d.id, param = "cutoff" })`,
+`paw.learn.bindings()`, `paw.learn.unbind(n)`, `paw.learn.start(target)`.

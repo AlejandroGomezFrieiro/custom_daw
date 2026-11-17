@@ -8,7 +8,7 @@
 -- ramps and time signatures), which the project takes. MIDI is in ticks per
 -- quarter note, so it becomes beats directly, except in sources that ignore
 -- the project tempo, which run at a tempo of their own.
-local api = daw.api
+local api = paw.api
 local fmt = require("rpp.format")
 local midi = require("rpp.midi")
 local fx = require("rpp.fx")
@@ -446,7 +446,7 @@ function M.doc(doc, opts)
   -- Seconds in the file to beats in the project.
   ctx.beat = api.tempo_beat
   if opts.merge then
-    ctx.tempo = daw.project.tempo
+    ctx.tempo = paw.project.tempo
     if #map.tempos > 1 or #map.signatures > 1 or math.abs(bpm - ctx.tempo) > 1e-9 then
       ctx.report:add("Tempo", string.format("the project keeps its own tempo map (%g BPM at the start); the file's (%g BPM, %d changes) is not used",
         ctx.tempo, bpm, #map.tempos + #map.signatures - 2))

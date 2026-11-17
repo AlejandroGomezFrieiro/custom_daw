@@ -1,22 +1,22 @@
 -- The standard dialect: LSP's own shapes, which a server speaks unless its
--- config names another adapter (`daw.lsp.adapter`).
+-- config names another adapter (`paw.lsp.adapter`).
 --
---   initialize                     capabilities.daw = { subjects, annotations, analysis }
+--   initialize                     capabilities.paw = { subjects, annotations, analysis }
 --   textDocument/didOpen           { textDocument = { uri, languageId, version, text = the subject as JSON } }
 --   textDocument/didChange         full text each time
 --   textDocument/didClose
 --   textDocument/publishDiagnostics  diagnostics[i].data = { location = { uri, selector }, fixes = { { title, edit = { changes } } } }
---   daw/publishAnnotations         { uri, annotations = { { location, label, kind } } }
---   daw/publishAnalysis            { uri, chords, keys, key } in project beats
---   textDocument/hover             params.daw.location: what is asked about
---   textDocument/codeAction        params.daw.location; answered { title, edit = { daw = changes } } or { title, command }
---   textDocument/completion        params.daw = { location, at }; items' data = { notes, velocities, controls }
---   workspace/applyEdit            from the server: { edit = { daw = changes }, label }
+--   paw/publishAnnotations         { uri, annotations = { { location, label, kind } } }
+--   paw/publishAnalysis            { uri, chords, keys, key } in project beats
+--   textDocument/hover             params.paw.location: what is asked about
+--   textDocument/codeAction        params.paw.location; answered { title, edit = { paw = changes } } or { title, command }
+--   textDocument/completion        params.paw = { location, at }; items' data = { notes, velocities, controls }
+--   workspace/applyEdit            from the server: { edit = { paw = changes }, label }
 --
 -- A server run in-process (`server = table`) is sent the subject as a table
 -- (`textDocument.data`) instead of JSON text.
-local rpc = require("daw.lsp.rpc")
-local A = daw.address
+local rpc = require("paw.lsp.rpc")
+local A = paw.address
 
 local M = { name = "standard" }
 
@@ -30,16 +30,16 @@ function M.initialize(_, offer) return offer end
 
 function M.capabilities(_, result)
   local raw = type(result.capabilities) == "table" and result.capabilities or {}
-  local daw_caps = type(raw.daw) == "table" and raw.daw or {}
+  local paw_caps = type(raw.paw) == "table" and raw.paw or {}
   local completion = raw.completionProvider
   return {
-    subjects = daw_caps.subjects,
+    subjects = paw_caps.subjects,
     diagnostics = true,
     hover = raw.hoverProvider and true or false,
     actions = raw.codeActionProvider and true or false,
     completion = completion and { lanes = type(completion) == "table" and completion.lanes or { "notes" } } or nil,
-    annotations = daw_caps.annotations and true or false,
-    analysis = daw_caps.analysis,
+    annotations = paw_caps.annotations and true or false,
+    analysis = paw_caps.analysis,
     commands = type(raw.executeCommandProvider) == "table" and raw.executeCommandProvider.commands or nil,
     raw = raw,
   }
@@ -78,7 +78,7 @@ M.handlers["textDocument/publishDiagnostics"] = function(client, params, lsp)
   lsp.publish(client, doc, list)
 end
 
-M.handlers["daw/publishAnnotations"] = function(client, params, lsp)
+M.handlers["paw/publishAnnotations"] = function(client, params, lsp)
   local doc = lsp.document(client, params.uri)
   if not doc then return end
   local list = {}
@@ -88,13 +88,13 @@ M.handlers["daw/publishAnnotations"] = function(client, params, lsp)
   lsp.annotate(client, doc, list)
 end
 
-M.handlers["daw/publishAnalysis"] = function(client, params, lsp)
+M.handlers["paw/publishAnalysis"] = function(client, params, lsp)
   local doc = lsp.document(client, params.uri)
   if doc then lsp.analysis(client, doc, params) end
 end
 
 local function about(doc, location)
-  return { textDocument = { uri = doc.uri }, position = { line = 0, character = 0 }, daw = { location = location } }
+  return { textDocument = { uri = doc.uri }, position = { line = 0, character = 0 }, paw = { location = location } }
 end
 
 function M.hover(_, doc, location)
@@ -121,7 +121,7 @@ function M.actions(client, doc, location, lsp)
   return "textDocument/codeAction", params, function(result)
     local out = {}
     for _, a in ipairs(type(result) == "table" and result or {}) do
-      local changes = type(a.edit) == "table" and a.edit.daw
+      local changes = type(a.edit) == "table" and a.edit.paw
       local command = a.command and (type(a.command) == "table" and a.command or { command = a.command })
       if changes or command then
         out[#out + 1] = { title = a.title, edit = changes, run = command and function()
@@ -135,7 +135,7 @@ end
 
 function M.complete(_, doc, ctx)
   local params = about(doc, { uri = A.clip(ctx.clip), selector = { time = { ctx.at or 0, ctx.at or 0 } } })
-  params.daw.at, params.daw.selection = ctx.at, ctx.selection
+  params.paw.at, params.paw.selection = ctx.at, ctx.selection
   params.context = { triggerKind = ctx.trigger == "auto" and 3 or 1 }
   return { { method = "textDocument/completion", params = params, translate = function(result)
     local items = type(result) == "table" and (result.items or result) or {}

@@ -38,7 +38,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Result, bail};
-use daw_engine::{AudioData, Sink};
+use paw_engine::{AudioData, Sink};
 use realfft::RealFftPlanner;
 use realfft::num_complex::Complex;
 use serde::{Deserialize, Serialize};

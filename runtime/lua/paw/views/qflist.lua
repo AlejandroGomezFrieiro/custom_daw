@@ -1,12 +1,12 @@
--- The quickfix list's window (daw/qf.lua): a buffer type, so that `:copen`
+-- The quickfix list's window (paw/qf.lua): a buffer type, so that `:copen`
 -- docks it along the bottom, `:vs quickfix` shows it beside, `:lopen` shows
 -- a window's location list below it. A row for each entry: its level, where
 -- it is, what it says and who said it. Enter goes there; the graphical
 -- frontend shows it in a window of its own (`:qf.window`, or More).
-local api = daw.api
-local util = daw.util
-local layout = daw.layout
-local qf = daw.qf
+local api = paw.api
+local util = paw.util
+local layout = paw.layout
+local qf = paw.qf
 
 local M = {}
 
@@ -24,7 +24,7 @@ end
 function M.current()
   local win = layout.current()
   if win and win.view == "qflist" then return win end
-  if daw.ui.focused == "qflist" and loose then return loose end
+  if paw.ui.focused == "qflist" and loose then return loose end
 end
 
 local function state(win)
@@ -53,7 +53,7 @@ local function render(win, canvas, ctx)
   end
   local buf = layout.buf_of(win)
   local name = type(buf and buf.target) == "number" and "Location list" or "Quickfix list"
-  local body = daw.ui.titlebar(canvas, {
+  local body = paw.ui.titlebar(canvas, {
     name = name .. (list and list.title ~= "" and (" · " .. list.title) or ""),
     context = list and string.format("%d entr%s%s", n.total, n.total == 1 and "y" or "ies", #counts > 0 and ("  " .. table.concat(counts, " ")) or "") or "",
     right = #stack.lists > 1 and string.format("list %d of %d", stack.at, #stack.lists) or nil,
@@ -67,7 +67,7 @@ local function render(win, canvas, ctx)
   if s.row <= s.top then s.top = s.row - 1 end
   if s.row > s.top + h then s.top = s.row - h end
   s.top = util.clamp(s.top, 0, math.max(0, #entries - h))
-  local g = daw.draw.g
+  local g = paw.draw.g
   local where_w = util.clamp(math.floor(w / 4), 10, 28)
   local source_w = 0
   for _, e in ipairs(entries) do
@@ -111,7 +111,7 @@ layout.buftype("qflist", {
     return loose
   end,
 })
-local view = daw.ui.views.qflist
+local view = paw.ui.views.qflist
 view.title = "Quickfix list"
 -- The graphical frontend lists it among the views it can open (More).
 view.window = nil
@@ -140,14 +140,14 @@ local function fix_here()
   local list = qf.current(stack_of(win))
   local e = list and list.entries[state(win).row]
   if not e then return end
-  if not e.fix then return daw.notify("this entry has no fix", "warn") end
-  if qf.fix({ e }) > 0 then daw.notify("made: " .. qf.fix_title(e)) end
+  if not e.fix then return paw.notify("this entry has no fix", "warn") end
+  if qf.fix({ e }) > 0 then paw.notify("made: " .. qf.fix_title(e)) end
 end
 
 function view:on_mouse(event)
   local win = (event.win and layout.get(event.win)) or M.current()
   if not win then return end
-  local step = daw.mouse.wheel(event)
+  local step = paw.mouse.wheel(event)
   if step then return move(step * 3) end
   if (event.kind == "down" or event.kind == "double") and event.y >= 1 then
     if layout.current() ~= win and win ~= loose then layout.enter(win) end
@@ -158,8 +158,8 @@ function view:on_mouse(event)
   end
 end
 
-local map = daw.keymap.set
-local function qmap(lhs, rhs, desc, opts) map(lhs, rhs, daw.util.merge({ view = "qflist", desc = desc }, opts)) end
+local map = paw.keymap.set
+local function qmap(lhs, rhs, desc, opts) map(lhs, rhs, paw.util.merge({ view = "qflist", desc = desc }, opts)) end
 -- Moving keys are motions, as in every view (docs/terminal.md, "Keys: one grammar").
 local motion = { motion = true }
 qmap("j", function(ctx) move(ctx.count or 1) end, "The next entry", motion)
@@ -174,16 +174,16 @@ qmap("<CR>", function() M.choose() end, "Go to the entry: the view that shows it
 qmap("<leader>ca", fix_here, "Make the entry's fix, as one undo step")
 qmap("q", function()
   local win = M.current()
-  if win == loose then return daw.ui.close() end
-  if win and not layout.close(win) then daw.notify("the last window does not close", "warn") end
+  if win == loose then return paw.ui.close() end
+  if win and not layout.close(win) then paw.notify("the last window does not close", "warn") end
 end, "Close the window")
 
-daw.ui.keybar.set("qflist", "n", {
+paw.ui.keybar.set("qflist", "n", {
   { "j", "next" }, { "k", "previous" }, { "<CR>", "jump" }, { "<leader>ca", "fix" }, { "q", "close" }, { "?", "keys" },
 })
 
-daw.command("qf.window", function()
-  daw.canvas.open_view("qflist", { title = "Quickfix list", width = 760, height = 300 })
+paw.command("qf.window", function()
+  paw.canvas.open_view("qflist", { title = "Quickfix list", width = 760, height = 300 })
 end, { desc = "Show the quickfix list in a window of its own, in the graphical frontend" })
 
 return M

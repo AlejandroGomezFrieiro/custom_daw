@@ -5,15 +5,15 @@
 --   [linked]
 --   dynamics = { cc = [1, 11], curve = ["linear", "0:0.3 1:1"], default = 0.7 }
 --
--- and the lane is a curve of its own address (`daw.curves`):
--- `daw://clip/7/control/cc/1#linked=dynamics`, opened in the curve view
+-- and the lane is a curve of its own address (`paw.curves`):
+-- `paw://clip/7/control/cc/1#linked=dynamics`, opened in the curve view
 -- (`\c`, `:art.lane`) like any curve, drawn and edited with its keys;
 -- every point written writes every controller of the link through its
 -- curve, in one edit. With no moves the lane stands at the instrument's
 -- `default`, and a drawing that starts after the clip's start begins it
 -- there.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local art = require("articulations")
 
 local M = {}
@@ -40,10 +40,10 @@ end
 
 --- The address of a linked lane of a clip.
 function M.uri(clip_id, entry)
-  return "daw://clip/" .. clip_id .. "/control/cc/" .. entry.cc[1] .. "#linked=" .. entry.id
+  return "paw://clip/" .. clip_id .. "/control/cc/" .. entry.cc[1] .. "#linked=" .. entry.id
 end
 
-daw.curves.provide("articulations.linked", function(uri, parts)
+paw.curves.provide("articulations.linked", function(uri, parts)
   if parts.kind ~= "control" or not parts.fragment then return nil end
   local id = parts.fragment:match("^linked=([%w_%-]+)$")
   if not id then return nil end
@@ -99,8 +99,8 @@ end)
 
 --- Open a linked lane of the roll's clip (the map's first, or by id) in the curve view.
 function M.open(id)
-  local roll = daw.ui.views.pianoroll
-  local clip = roll:clip() or daw.cursor.clip()
+  local roll = paw.ui.views.pianoroll
+  local clip = roll:clip() or paw.cursor.clip()
   if not clip then error("no clip here", 0) end
   local c = clip:get()
   local entry = M.entry(c.track, id)
@@ -109,17 +109,17 @@ function M.open(id)
     error(map and ("the map links no controllers" .. (id and (" as `" .. id .. "`") or "") .. ": [linked] in " .. tostring(map.file))
       or "the track has no articulation map: :art.map", 0)
   end
-  local beat = roll:clip() and (c.start + roll.beat) or daw.cursor.beat
-  return require("daw.views.curve").open(M.uri(c.id, entry), { beat = beat })
+  local beat = roll:clip() and (c.start + roll.beat) or paw.cursor.beat
+  return require("paw.views.curve").open(M.uri(c.id, entry), { beat = beat })
 end
 
-daw.command("art.lane", function(ctx)
+paw.command("art.lane", function(ctx)
   local id = (tostring(ctx.args[1] or ""):match("^%s*(.-)%s*$"))
   local win, why = M.open(id ~= "" and id or nil)
   if not win and why then error(why, 0) end
 end, { raw = true, desc = "Open the clip's linked controllers (dynamics on CC1 and CC11) as one curve: `art.lane dynamics`; alone, the map's first" })
 
-daw.keymap.set("<localleader>c", function() daw.commands.exec("art.lane") end,
+paw.keymap.set("<localleader>c", function() paw.commands.exec("art.lane") end,
   { view = "pianoroll", desc = "The instrument's linked controllers (dynamics) as one curve", repeatable = false })
 
 return M

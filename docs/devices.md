@@ -16,14 +16,14 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
 - **Where they are found.** `~/.clap`, `~/.lv2`, `~/.vst3`, the Nix profiles and
   `/usr/lib`, or the directories in `CLAP_PATH`, `LV2_PATH` and `VST3_PATH`;
   and for CLAP and VST3, the directories extensions add with
-  `daw.plugins.add_dir(dir)` (even with `--no-plugins`): their plugins are
+  `paw.plugins.add_dir(dir)` (even with `--no-plugins`): their plugins are
   listed as coming from the extension.
 - **Notes.** A CLAP plugin gets notes as CLAP's own note events, or as MIDI
   2.0 when it prefers that: then a note's attribute (an articulation, see
   [Scripting](scripting.md)) reaches it on the note-on. A plugin that names
   its keys (CLAP's `note-name`: a drum kit's drums, a sampler's
   keyswitches) has them written on the piano roll's keys and said by `K`;
-  `daw.plugins.note_names(device)` and `daw.api.device_note_names(device)`
+  `paw.plugins.note_names(device)` and `paw.api.device_note_names(device)`
   give them as `{ [pitch] = name }`.
 - **Parameters** are listed per instance, with keys made from their names. VST3
   values are normalized to 0..1; CLAP and LV2 use the plugin's own ranges.
@@ -40,7 +40,7 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   "Add a device" box) opens its editor at once, as REAPER does: some
   instruments make no sound until it has been open. One added by a script,
   by loading a project, or with nobody at the program (`-l`, a kernel no
-  window is watching) does not. `daw.opt.editor_on_add = false` turns it off.
+  window is watching) does not. `paw.opt.editor_on_add = false` turns it off.
 
   | Editor kind | How it is shown |
   | --- | --- |
@@ -49,7 +49,7 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   | LV2 editors that are a bare Gtk 2 or Gtk 3 widget | Put in a Gtk window, using the copy of Gtk the editor brings. |
   | CLAP editors that can only float | Left to make their own window, a native Wayland one if they can. |
 
-  Editors are told the screen's scale (`Xft.dpi`, or `DAW_UI_SCALE=1.5`), so
+  Editors are told the screen's scale (`Xft.dpi`, or `PAW_UI_SCALE=1.5`), so
   they are not tiny or blurred on a dense screen. A plugin's X11 mistakes do
   not end the program, and editors that cannot be resized say so to the window
   manager. Not shown: an LV2 editor that is a bare Qt widget with no way to
@@ -68,16 +68,16 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   lists: CLAP preset discovery (Surge XT's patches, for one), `.vstpreset`
   files in `~/.vst3/presets/<vendor>/<plugin>`, `/usr/share/vst3/presets`,
   `$VST3_PRESET_PATH` and the plugin's bundle, LV2 presets known to lilv,
-  and for the built-in devices the tables in `runtime/lua/daw/device_presets.lua`.
-  Your presets are JSON files in `~/.local/share/daw/presets/<kind>/`
-  (`daw.opt.presets_dir` puts them elsewhere) holding the plugin's state and
+  and for the built-in devices the tables in `runtime/lua/paw/device_presets.lua`.
+  Your presets are JSON files in `~/.local/share/paw/presets/<kind>/`
+  (`paw.opt.presets_dir` puts them elsewhere) holding the plugin's state and
   every parameter's value; `defaults.json` beside them names the default of
-  each kind. From Lua: `daw.fx.save(device, name)`, `daw.fx.load(device,
-  name)`, `daw.fx.presets(device)`, `daw.fx.step(device, 1)`,
-  `daw.fx.set_default(kind, name)`. A CLAP plugin that loads files (an
+  each kind. From Lua: `paw.fx.save(device, name)`, `paw.fx.load(device,
+  name)`, `paw.fx.presets(device)`, `paw.fx.step(device, 1)`,
+  `paw.fx.set_default(kind, name)`. A CLAP plugin that loads files (an
   instrument, a patch) takes one by path:
-  `daw.api.device_load(device, { name = "Violins", factory = "file:/path/Violins.sfz" })`,
-  one undo step, or `daw.api.device_call(device, "preset.load", "file:/path")`.
+  `paw.api.device_load(device, { name = "Violins", factory = "file:/path/Violins.sfz" })`,
+  one undo step, or `paw.api.device_call(device, "preset.load", "file:/path")`.
 - **paw's sampler.** extensions/sampler brings `paw sampler`
   (`clap:dev.paw.sampler`), which plays SFZ and Decent Sampler instruments
   with articulations chosen per note by MIDI 2.0 attribute or by keyswitch,
@@ -114,7 +114,7 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   which, until the file changes or `:plugins.rescan` (every file) or
   `:plugins.rescan <name>` (files or plugins with that in their name) asks
   for it again.
-  `--plugins-in-process` (or `DAW_PLUGIN_SANDBOX=0`) loads them into the
+  `--plugins-in-process` (or `PAW_PLUGIN_SANDBOX=0`) loads them into the
   program itself, which saves the crossing and gives up the protection.
 - **Loading does not hold the program up.** When a project opens or a
   plugin is added, the device is there at once, marked `loading` (an
@@ -128,7 +128,7 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   device, when one could not be made. A device's `status` (in
   `device:get()` and the frontend's state) is `running`, `loading`,
   `stopped`, `offline` or `missing`. Scripts run with `-l` wait for each
-  plugin as it is added unless they call `daw.api.load_apart(true)`.
+  plugin as it is added unless they call `paw.api.load_apart(true)`.
 - **A plugin that is not installed** stays in the project as it was: shown
   under its name (`missing`, "not installed"), with its saved state and
   parameter values, passed over in the chain, and written back unchanged
@@ -139,15 +139,15 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   flag is saved with the project. `o` in the device panel or
   `:device.offline` sets the selected device offline or back online, as do
   `device:set_offline(true)` and the plug button on a plugin's card in the
-  window (an offline card says so and has an Online button). To open a project without its plugins: `daw --plugins-offline
-  song.json`, `:edit song.json offline`, `daw.open(path, { plugins_offline =
+  window (an offline card says so and has an Online button). To open a project without its plugins: `paw --plugins-offline
+  song.json`, `:edit song.json offline`, `paw.open(path, { plugins_offline =
   true })`, or the "(plugins offline)" entries of `:recover` (`:recover 1
   offline`). `:plugins.online` brings every offline device up, and
   `:plugins.offline` sets every plugin offline. Offline flags set this way
   are saved with the project like any other.
 - **A plugin that could not be loaded is remembered.** One that failed or
   hung while a project was opening is noted beside the project's other
-  state (`$XDG_STATE_HOME/daw/projects/`), not in the project file, and the
+  state (`$XDG_STATE_HOME/paw/projects/`), not in the project file, and the
   next time the project is opened it is opened offline, with a message
   saying so; `:edit song.json online` opens it without holding any back.
   Once it loads it is forgotten.
@@ -155,8 +155,8 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   to have the libraries it names. Where they are not on the loader's path
   (NixOS), they are looked for in the nix-ld directory, the system and user
   profiles, where the build found them (the dev shell says, in
-  `DAW_PLUGIN_LIB_DIRS`) and the usual places of other systems, and loaded
-  from there; `DAW_PLUGIN_LIBS` adds directories. The display's libraries
+  `PAW_PLUGIN_LIB_DIRS`) and the usual places of other systems, and loaded
+  from there; `PAW_PLUGIN_LIBS` adds directories. The display's libraries
   (`libX11` and its relatives) are loaded ahead for every plugin, because a
   plugin's toolkit opens them by name when it makes its window: without
   them an editor is an empty black window.
@@ -174,54 +174,54 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
 | --- | --- |
 | `synth` | `wave` (sine, saw, square, triangle), `attack`, `decay`, `sustain`, `release`, `cutoff`, `resonance`, `gain` |
 | `drums` | `gain`, `kick_tune`, `decay`. Output pairs Kit, Kick, Snare, Hats, Toms, Cymbals and Percussion (see [Instruments with several outputs](mixing.md#mixing-midi-and-rendering-in-the-core)). A synthesized kit on the General MIDI drum notes: kick (35, 36), rim (37), snare (38, 40), clap (39), closed, pedal and open hat (42, 44, 46; the closed and pedal hat cut the open one off), six toms (41 to 50), crashes, china and splash (49, 57, 52, 55), ride (51, 59), ride bell (53), tambourine (54), cowbell (56). |
-| `sampler` | `gain`. One sound file per note, each with a level, pan, tuning and choke group. The kit is the device's state: text lines `note level pan tune group path`, set with `daw.api.device_set(id, "state", base64)`; the files are read off the audio thread. `extensions/drums` makes kits from folders. |
+| `sampler` | `gain`. One sound file per note, each with a level, pan, tuning and choke group. The kit is the device's state: text lines `note level pan tune group path`, set with `paw.api.device_set(id, "state", base64)`; the files are read off the audio thread. `extensions/drums` makes kits from folders. |
 | `gain` | `gain` |
 | `delay` | Echoes: `time` (ms), or `sync` to a note length at the tempo of the moment (`1/8.`, `1/4T`...), `feedback`, `mix` (the echoes' level; the dry stays at full level), `mode` (stereo or ping-pong), `low_cut` and `high_cut` on the repeats (off at the ends of their ranges), `width`. A new time glides there, like tape. |
 | `chorus` | Doubles and widens a guitar or a pad: `rate` or `sync`, `depth`, `delay`, `feedback`, `spread` (the right side's LFO behind the left's), `mix`, `voices`. |
 | `flanger` | The jet sweep: `rate` or `sync`, `depth`, `delay`, `feedback` (negative for the hollow sound), `spread`, `mix`. |
 | `phaser` | `rate` or `sync`, `depth` (up to three octaves each way), `center`, `stages` (2 to 12), `feedback`, `spread`, `mix`. |
 | `tremolo` | `mode` (tremolo, or auto-pan at equal power), `rate` or `sync`, `depth`, `shape` (sine, triangle, a softened square). Synced LFOs lock to the song's position while it plays. |
-| `limiter` | The last device on the master: `ceiling` (default -1 dB), `gain` (drive into it), `release`, `true_peak` (on by default: the peaks between samples are held under the ceiling too, as a BS.1770 meter reads them, with 0.2 dB to spare). Looks 5 ms ahead, so nothing leaves it above the ceiling; the rest of the mix waits for it. `daw.params.read(l, "meters")` gives `gr` and `input` in dB. |
-| `eq` | A parametric equaliser for shaping any track or bus: eight bands, each with `bN_on`, `bN_type` (low cut 12 or 24 dB/oct, low shelf, bell, high shelf, high cut 12 or 24, notch, band pass), `bN_freq`, `bN_gain`, `bN_q`, and `output`. Flat until a band is moved; settings glide without clicks. `daw.params.read(eq, "curve", n)` gives its response in dB at `n` frequencies from 20 Hz to 20 kHz on a log scale, for drawing. |
-| `compressor` | Evens out a vocal, glues a drum bus, or (with `mix` below 100 %) compresses in parallel: `threshold`, `ratio` (the top of its range is a limit), `knee`, `attack`, `release`, `auto_release` (a fast release after short peaks, a slow one after sustained compression), `makeup`, `auto_makeup` (gives back half of what a 0 dB peak loses), `lookahead` (reported as latency), `detector_hp` (so the kick does not drive it), `detect` (peak or RMS), `mix`, `link`, `listen` (play the side-chain as the detector hears it). With a side-chain (see [Side-chains](mixing.md#mixing-midi-and-rendering-in-the-core)) the detector hears that track instead of its own input. `daw.params.read(c, "meters")` gives `gr`, `input` and `output` in dB; `"curve"` the static curve. |
+| `limiter` | The last device on the master: `ceiling` (default -1 dB), `gain` (drive into it), `release`, `true_peak` (on by default: the peaks between samples are held under the ceiling too, as a BS.1770 meter reads them, with 0.2 dB to spare). Looks 5 ms ahead, so nothing leaves it above the ceiling; the rest of the mix waits for it. `paw.params.read(l, "meters")` gives `gr` and `input` in dB. |
+| `eq` | A parametric equaliser for shaping any track or bus: eight bands, each with `bN_on`, `bN_type` (low cut 12 or 24 dB/oct, low shelf, bell, high shelf, high cut 12 or 24, notch, band pass), `bN_freq`, `bN_gain`, `bN_q`, and `output`. Flat until a band is moved; settings glide without clicks. `paw.params.read(eq, "curve", n)` gives its response in dB at `n` frequencies from 20 Hz to 20 kHz on a log scale, for drawing. |
+| `compressor` | Evens out a vocal, glues a drum bus, or (with `mix` below 100 %) compresses in parallel: `threshold`, `ratio` (the top of its range is a limit), `knee`, `attack`, `release`, `auto_release` (a fast release after short peaks, a slow one after sustained compression), `makeup`, `auto_makeup` (gives back half of what a 0 dB peak loses), `lookahead` (reported as latency), `detector_hp` (so the kick does not drive it), `detect` (peak or RMS), `mix`, `link`, `listen` (play the side-chain as the detector hears it). With a side-chain (see [Side-chains](mixing.md#mixing-midi-and-rendering-in-the-core)) the detector hears that track instead of its own input. `paw.params.read(c, "meters")` gives `gr`, `input` and `output` in dB; `"curve"` the static curve. |
 | `reverb` | Room and plate sounds for vocals, drums and buses: an eight-line feedback delay network whose lines drift slowly so that it does not ring. `size`, `decay` (seconds to fall 60 dB), `predelay`, `damp_high` and `damp_low` (where the highs and lows start dying sooner; off at the ends of their ranges), `diffusion`, `early` (early reflections against the tail), `width`, `mix` (the dry stays at full level up to 50 %, the wet reaches full level there). |
 | `utility` | Level and stereo fixes: `gain`, `pan` (a balance: the far side fades out), `width` (0 % is mono, 200 % twice as wide), `mono_below` (the sides taken out under this frequency; off at 20 Hz), `invert_l`, `invert_r`, `swap`, `dc` (a 5 Hz high-pass). |
 | `saturation` | Warmth or grit on a bass, a drum bus or a vocal: `drive`, `curve` (tape: soft and symmetric; tube: biased, adds even harmonics; hard clip), `oversample` (2x or 4x, so the harmonics do not fold back as noise), `tone` (a high shelf after the curve), `mix`, `output`. Quiet audio passes at its own level; 31 samples late (0.65 ms at 48 kHz), reported as latency. |
-| `meter` | Measures and passes the audio through untouched, for the master or any track: `daw.params.read(m, "meters")` gives `momentary`, `short_term` and `integrated` loudness (LUFS, EBU R 128 with its gates), `true_peak` (dBTP) and `sample_peak` held since `daw.params.read(m, "reset")` (or for 3 s with `hold`), `rms_l`, `rms_r` and `correlation` over 300 ms; `"spectrum", n` gives dB in `n` bands from 20 Hz to 20 kHz. Readings not taken yet are -200. |
-| `tuner` | Tunes a guitar or a bass: `daw.params.read(t, "pitch")` gives `freq`, `note` (`E2`), `midi`, `cents` and `confidence`, from the last 85 ms (YIN); `reference` sets A4, `mute` silences the track while tuning. |
+| `meter` | Measures and passes the audio through untouched, for the master or any track: `paw.params.read(m, "meters")` gives `momentary`, `short_term` and `integrated` loudness (LUFS, EBU R 128 with its gates), `true_peak` (dBTP) and `sample_peak` held since `paw.params.read(m, "reset")` (or for 3 s with `hold`), `rms_l`, `rms_r` and `correlation` over 300 ms; `"spectrum", n` gives dB in `n` bands from 20 Hz to 20 kHz. Readings not taken yet are -200. |
+| `tuner` | Tunes a guitar or a bass: `paw.params.read(t, "pitch")` gives `freq`, `note` (`E2`), `midi`, `cents` and `confidence`, from the last 85 ms (YIN); `reference` sets A4, `mute` silences the track while tuning. |
 | `gate` | Cuts the spill between hits on a drum track, or the noise between phrases: `mode` (gate or expander), `threshold`, `range`, `ratio` (expander), `attack`, `hold`, `release`, `hysteresis`, `lookahead`, `detector_hp`, `detect`, `link`, `listen`. Keyed by a side-chain like the compressor (a pad that opens on the hi-hat). The same meters as the compressor. |
 
 In the device panel the equaliser draws its curve, the compressor, gate and limiter their gain reduction, the meter its loudness and the tuner a needle, under their names. `:eq` and `:tuner` show the track's equaliser or tuner (adding one if it has none), `:loudness` the master's meter; in the window each opens a window of its own (also from the track menu, and the timeline's for the meter), and in the equaliser's window a band's dot is dragged to move it, the wheel over it changes its Q, and a double click turns a band off, or on as a bell where the empty space was clicked.
 
-`daw.params.presets(kind)` lists a device's starting points (vocal high-pass and presence, drum bus glue, plate, room and others, kept in [device_presets.lua](../runtime/lua/daw/device_presets.lua)) and `daw.params.apply(device, name)` sets one. `daw.params.format(param, value)` shows a value in its unit (`2.5 kHz`, `-18.0 dB`, `4:1`, `1/8.`); frequencies, times and ratios move on a log scale from the keyboard and on sliders. One instance of each costs, on one core at 48 kHz (`bench/devices.lua`): reverb 1.0 %, saturation 0.7 % (2x; about twice that at 4x), limiter 0.5 %, chorus 0.3 %, meter 0.3 %, phaser 0.3 %, EQ with every band working 0.2 %, flanger 0.2 %, compressor 0.1 %, gate, delay, tremolo, utility and tuner under 0.1 %.
+`paw.params.presets(kind)` lists a device's starting points (vocal high-pass and presence, drum bus glue, plate, room and others, kept in [device_presets.lua](../runtime/lua/paw/device_presets.lua)) and `paw.params.apply(device, name)` sets one. `paw.params.format(param, value)` shows a value in its unit (`2.5 kHz`, `-18.0 dB`, `4:1`, `1/8.`); frequencies, times and ratios move on a log scale from the keyboard and on sliders. One instance of each costs, on one core at 48 kHz (`bench/devices.lua`): reverb 1.0 %, saturation 0.7 % (2x; about twice that at 4x), limiter 0.5 %, chorus 0.3 %, meter 0.3 %, phaser 0.3 %, EQ with every band working 0.2 %, flanger 0.2 %, compressor 0.1 %, gate, delay, tremolo, utility and tuner under 0.1 %.
 
 **Every device, built in or a plugin, has a wet/dry mix and an output gain**
 from the host: two parameters after its own, `fx_wet` (Wet, 0 to 100 %)
 and `fx_gain` (Output, -24 to +24 dB). The dry part is the device's input,
 held back by the device's latency so that the two line up. They are set,
 automated, learnt and kept in presets like any other parameter
-(`daw.fx.set_wet(device, 50)`). The window's device card has both under the
+(`paw.fx.set_wet(device, 50)`). The window's device card has both under the
 preset; the terminal's device panel shows `wet 50%` on the device's line
 when it is not 100 %, `+` `-` there change it, and both are the last rows of
 the device. Bypassing a device or switching it on again, and any change of
 the mix, fades over 5 ms instead of clicking; a bypassed device holds
 nothing back.
 
-New devices implement the `Device` trait in `daw-engine` and are added to the
-registry in [devices/mod.rs](../crates/daw-engine/src/devices/mod.rs).
+New devices implement the `Device` trait in `paw-engine` and are added to the
+registry in [devices/mod.rs](../crates/paw-engine/src/devices/mod.rs).
 
 ## Writing a device in Lua
 
 A device can be a Lua file, in the spirit of REAPER's JSFX: parameters and a
 `process` function given each block of sound. Saved in
-`~/.config/daw/devices/`, it shows in the device picker beside the built-in
+`~/.config/paw/devices/`, it shows in the device picker beside the built-in
 devices and plugins as `lua:<file name>`, and its parameters are set,
 automated, learnt, saved with the project and kept in presets like any
 other device's.
 
 ```lua
--- ~/.config/daw/devices/tilt.lua: a tilt equaliser
-local dsp = require("daw.dsp")
+-- ~/.config/paw/devices/tilt.lua: a tilt equaliser
+local dsp = require("paw.dsp")
 
 local dev = dsp.device {
   name = "Tilt",
@@ -287,7 +287,7 @@ return dev
 - **A side-chain.** `sidechain = true` lets the device listen to another
   track (see [Side-chains](mixing.md#mixing-midi-and-rendering-in-the-core)):
   `b.key_left` and `b.key_right` hold it, nil when nothing is connected.
-- **The helpers** in `daw.dsp`: `dsp.gain(db)` and `dsp.db(gain)`,
+- **The helpers** in `paw.dsp`: `dsp.gain(db)` and `dsp.db(gain)`,
   `dsp.mtof(note)`, `dsp.pan(p)` (equal-power gains), `dsp.clamp`,
   `dsp.saturate(x)` (a soft clip), `dsp.buffer(n)` (a float array for a
   delay line), `dsp.onepole(hz, sr)` with `:lowpass(x)` and `:highpass(x)`,
@@ -297,11 +297,11 @@ return dev
   to a new value. One filter or smoother per channel. Modules beside the
   file are found by `require`.
 - **Scripts talk to it.** `dev.call(method, data)` answers
-  `daw.api.device_call(device, method, data)` from the session's Lua: it
+  `paw.api.device_call(device, method, data)` from the session's Lua: it
   runs in the device's own state between two blocks (a block that comes
   meanwhile waits for it, so keep it short), `data` is a string, and what it
   returns (a string, a number or nothing) is the answer; an error is the
-  caller's error, and the device plays on. `daw.api.device_post(kind,
+  caller's error, and the device plays on. `paw.api.device_post(kind,
   topic, data)` calls `dev.call(topic, data)` on every device of a kind:
   those there now at once, and every one made later before its first
   block, the private devices of an offline render among them. The latest
@@ -317,14 +317,14 @@ return dev
   `process`; `m:close()` lets go of it. Write a new file for new data rather
   than writing over one a device has mapped. extensions/utau plays its
   singing this way.
-- **Where scripts are found.** `~/.config/daw/devices/`, and `devices/` in
+- **Where scripts are found.** `~/.config/paw/devices/`, and `devices/` in
   each extension: an extension ships devices by having that directory.
   A script in the configuration directory wins over an extension's of the
   same name. `extensions/luafx` has four to start from (a gain and pan, a
-  drive, a chord maker and a sine instrument); `daw.luadev.add_dir(dir)`
+  drive, a chord maker and a sine instrument); `paw.luadev.add_dir(dir)`
   looks in another directory.
 - **Saved, it is loaded again.** Each second the files are looked at
-  (`daw.opt.lua_devices_watch`, in ms, 0 for never); a script that changed
+  (`paw.opt.lua_devices_watch`, in ms, 0 for never); a script that changed
   is loaded, and the devices made from it start again from the new code,
   keeping their parameters' values. A new parameter starts at its default.
   `:device.reload` does it at once for the device chosen in the panel, or

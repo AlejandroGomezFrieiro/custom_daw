@@ -6,7 +6,7 @@
 -- A program that ends by itself is started again a few times, then left
 -- with the reason shown. What a program prints goes to a file per input in
 -- the state directory, which is read for the level and the note count.
-local api = daw.api
+local api = paw.api
 local vinput = require("vinput")
 
 local R = {
@@ -21,10 +21,10 @@ local R = {
 }
 
 --- Whether programs are run at all: not on the null backend, where the
---- MIDI ports are not open for a program to send to (`daw.opt.vinput_run`
+--- MIDI ports are not open for a program to send to (`paw.opt.vinput_run`
 --- says otherwise for tests).
 function R.enabled()
-  local want = daw.opt.vinput_run
+  local want = paw.opt.vinput_run
   if want == true or want == false then return want end
   return api.engine_get().backend ~= "null"
 end
@@ -69,14 +69,14 @@ function R.remember()
   for _, job in pairs(R.jobs) do
     if job.proc then procs[#procs + 1] = job.proc end
   end
-  daw.state.vinput_procs = procs
+  paw.state.vinput_procs = procs
 end
 
-for _, proc in ipairs(daw.state.vinput_procs or {}) do
+for _, proc in ipairs(paw.state.vinput_procs or {}) do
   pcall(api.proc_stop, proc)
   pcall(api.proc_kill, proc)
 end
-daw.state.vinput_procs = nil
+paw.state.vinput_procs = nil
 
 local function job_of(name)
   local job = R.jobs[name]
@@ -137,8 +137,8 @@ local function step(input)
         api.proc_kill(job.proc)
         job.proc = nil
         if hard and vinput.get(name) then
-          daw.midi.close_port(name)
-          daw.midi.open_port(name)
+          paw.midi.close_port(name)
+          paw.midi.open_port(name)
           job.born = now
         end
         job.state = job.after or "off"
@@ -214,14 +214,14 @@ function R.tick()
   local busy = next(R.jobs) ~= nil
   for _, list in pairs(R.lists) do busy = busy or list.proc ~= nil end
   if not busy and R.ticker then
-    daw.cancel(R.ticker)
+    paw.cancel(R.ticker)
     R.ticker = nil
   end
-  if daw.ui.visible("vinput") then api.ui_redraw() end
+  if paw.ui.visible("vinput") then api.ui_redraw() end
 end
 
 local function watch()
-  if not R.ticker then R.ticker = daw.every(R.PERIOD, R.tick) end
+  if not R.ticker then R.ticker = paw.every(R.PERIOD, R.tick) end
 end
 
 --- The inputs or their settings have changed: bring the programs in line.
@@ -322,7 +322,7 @@ function R.sources(kind, refresh)
 end
 
 -- The programs end with paw.
-daw.on("exit", function()
+paw.on("exit", function()
   for _, job in pairs(R.jobs) do
     if job.proc then pcall(api.proc_stop, job.proc) end
   end
@@ -334,7 +334,7 @@ daw.on("exit", function()
   R.jobs = {}
 end)
 -- A new audio device, or none: the programs follow.
-daw.on("engine.started", function() R.sync() end)
+paw.on("engine.started", function() R.sync() end)
 
 package.loaded["vinput.run"] = R
 return R

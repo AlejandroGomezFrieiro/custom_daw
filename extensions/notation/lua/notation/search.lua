@@ -1,9 +1,9 @@
 -- What notation writes over its staves, the text and the dynamics, among
--- the text `:vimgrep` and `,fg` search (`daw.grep`).
-local api = daw.api
+-- the text `:vimgrep` and `,fg` search (`paw.grep`).
+local api = paw.api
 local WORDS = { text = "text", dynamic = "dynamic", dyn = "dynamic" }
 
-daw.grep.source("notation", function(add)
+paw.grep.source("notation", function(add)
   for _, id in ipairs(api.track_list()) do
     for _, c in ipairs(api.clip_list(id)) do
       local own = type(c.meta) == "table" and type(c.meta.notation) == "table" and c.meta.notation.marks
@@ -11,8 +11,8 @@ daw.grep.source("notation", function(add)
         local field = WORDS[mk.kind]
         if field and type(mk.value) == "string" and mk.value ~= "" then
           local at = tonumber(mk.at)
-          add({ text = mk.value, field = field, where = c.name .. (at and " " .. daw.time.format(c.start + at) or ""),
-            location = { uri = daw.address.clip(c.id), selector = at and { time = { at, at } } or nil } })
+          add({ text = mk.value, field = field, where = c.name .. (at and " " .. paw.time.format(c.start + at) or ""),
+            location = { uri = paw.address.clip(c.id), selector = at and { time = { at, at } } or nil } })
         end
       end
     end

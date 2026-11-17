@@ -284,7 +284,7 @@ pub fn spawn_writer(
 ) -> Result<JoinHandle<Written>> {
     let mut file = TakeFile::create(path, sample_rate, channels)?;
     let thread = std::thread::Builder::new()
-        .name("daw-recorder".into())
+        .name("paw-recorder".into())
         .spawn(move || {
             let mut buf = vec![0f32; 16384];
             let mut bytes = Vec::with_capacity(buf.len() * 4);
@@ -362,7 +362,7 @@ mod tests {
     /// full disk: the write fails with EFBIG.
     #[test]
     fn a_write_error_keeps_what_was_written_as_a_whole_file() {
-        let dir = std::env::temp_dir().join(format!("daw-record-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-record-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("take.wav");
         let mut child = Command::new(std::env::current_exe().unwrap());
@@ -372,7 +372,7 @@ mod tests {
                 "record::tests::child_writes_until_the_limit",
                 "--nocapture",
             ])
-            .env("DAW_TAKE_LIMITED", &path);
+            .env("PAW_TAKE_LIMITED", &path);
         // SAFETY: only async-signal-safe calls between fork and exec.
         unsafe {
             child.pre_exec(|| {
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn child_writes_until_the_limit() {
-        let Some(path) = std::env::var_os("DAW_TAKE_LIMITED") else {
+        let Some(path) = std::env::var_os("PAW_TAKE_LIMITED") else {
             return;
         };
         let written = record(Path::new(&path), 10);
@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn the_header_is_kept_up_to_date_while_recording() {
-        let dir = std::env::temp_dir().join(format!("daw-record-hdr-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-record-hdr-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("take.wav");
         let shared = Arc::new(TakeShared::default());

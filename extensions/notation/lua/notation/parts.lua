@@ -3,7 +3,7 @@
 --
 -- The score has every instrument's staves in the order of an orchestra
 -- (woodwinds, brass, percussion, keyboards and harp, voices, strings: by
--- the group a track is in, `daw.groups`, else by its name), a bracket over
+-- the group a track is in, `paw.groups`, else by its name), a bracket over
 -- each family with the barlines through it, a brace over an instrument of
 -- two staves, the names in full on the first system and short after. It
 -- is written at concert pitch. Condensed (`:part.condense`), two players
@@ -18,8 +18,8 @@
 -- track's `meta.notation.part`; what it shows is made from the MIDI each
 -- time (`notation.files`' parts, one aligned score per track), so a part
 -- is never out of date and never owns music of its own.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local view = require("notation")
 local D = require("notation.doc")
 local L = require("notation.layout")
@@ -220,7 +220,7 @@ function P.instruments(opts)
     for _, id in ipairs(opts.tracks) do wanted[id] = true end
   end
   local out = {}
-  for order, track in ipairs(daw.tracks()) do
+  for order, track in ipairs(paw.tracks()) do
     local clips = {}
     if not wanted or wanted[track.id] then
       for _, c in ipairs(track:clips()) do
@@ -234,7 +234,7 @@ function P.instruments(opts)
     if clip then
       local t = track:get()
       local own = P.own(t.id)
-      local group = daw.groups and daw.groups.of(t.id)
+      local group = paw.groups and paw.groups.of(t.id)
       local found = P.family(t.name)
       -- A track in a group named for a family ("Strings", "Flutes") is of that family.
       local by_group = group and P.family(api.track_get(group).name)
@@ -391,7 +391,7 @@ P.scores = scores
 local function lay(p, number)
   local sc = p.score
   local f = D.frame(sc)
-  local layout = L.layout(sc, { length = (D.origin(sc) + f.finish) / D.Q, fifths = p.fifths or 0, grid = daw.opt.notation_grid,
+  local layout = L.layout(sc, { length = (D.origin(sc) + f.finish) / D.Q, fifths = p.fifths or 0, grid = paw.opt.notation_grid,
     number = number })
   -- Each measure's notes are its clip's (`p.owners`), and say so (`clip`).
   local places = {}
@@ -835,16 +835,16 @@ function P.view_layout(v)
   local shown = v.parts
   -- A score that follows the scope shows the tracks the tab is narrowed to.
   local tracks = shown.tracks
-  local scope = shown.scope and rawget(daw, "scope")
+  local scope = shown.scope and rawget(paw, "scope")
   if scope and scope.current() then tracks = scope.tracks() end
   local p = api.project_get()
-  local stamp = { shown.kind, tostring(shown.track), tostring(shown.condensed), tostring(daw.opt.notation_grid),
+  local stamp = { shown.kind, tostring(shown.track), tostring(shown.condensed), tostring(paw.opt.notation_grid),
     table.concat(tracks or {}, ","), tostring(shown.from), tostring(shown.to) }
   -- The view asks for its layout many times a key: while nothing was
   -- edited or undone since, it is the one made last.
   local quick = table.concat(stamp, ":") .. ":" .. tostring(p.edits) .. ":" .. tostring(api.undo_current())
   if v.score_cache and v.score_cache.quick == quick then return v.score_cache.layout end
-  for _, t in ipairs(daw.tracks()) do
+  for _, t in ipairs(paw.tracks()) do
     local tt = t:get()
     stamp[#stamp + 1] = tt.id .. "/" .. tostring(tt.name) .. "/" .. serial(tt.meta)
     for _, c in ipairs(t:clips()) do
@@ -866,7 +866,7 @@ function P.view_layout(v)
     layout, err = P.score_layout({ condensed = shown.condensed, tracks = tracks, from = shown.from, to = shown.to })
   end
   if not layout then
-    daw.notify(err, "warn")
+    paw.notify(err, "warn")
     v.parts = nil
     return nil
   end

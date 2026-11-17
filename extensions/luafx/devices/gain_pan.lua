@@ -1,6 +1,6 @@
 -- Gain and pan: a level in decibels and a balance, glided so that moving
 -- them does not click. The smallest useful device, to start a new one from.
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 
 local dev = dsp.device {
   name = "Gain and pan (Lua)",

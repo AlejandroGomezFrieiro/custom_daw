@@ -1,13 +1,13 @@
 -- The status line, like lualine's: sections of components, set up in Lua.
 --
---   daw.statusline.setup({
+--   paw.statusline.setup({
 --     sections = { a = { "mode" }, c = { "transport", "tempo" }, z = { "project" } },
 --     theme = "default",
 --     views = { pianoroll = { sections = { c = { "cursor" } } } },
 --   })
 --
 -- Six sections, `a b c` from the left and `x y z` to the right edge. A
--- component is the name of one (`daw.statusline.components`), a function
+-- component is the name of one (`paw.statusline.components`), a function
 -- `fn(ctx)`, or a table `{ name_or_function, min = 90, rank = 6, style =
 -- "StatusDim", cond = fn, fmt = fn }`. What it returns is nothing (it has
 -- nothing to say), a string, or a list of `{ text, style }` pieces. `min`
@@ -15,15 +15,15 @@
 -- when the line is too long (higher goes first; 0 never). A component with
 -- `key(ctx)` is called again only when that changes, so that a line with
 -- many components costs what has changed. The window is told the same line
--- (`daw.frontend`), so that both show one status line.
+-- (`paw.frontend`), so that both show one status line.
 --
 -- Other bars use the same sections: `winbar` (on the title bar of the
 -- window with the keys) and `inactive_winbar` (of the others), and
 -- `tabline` (at the right of the tabs; `always = true` shows the row with
 -- one tab too). `views` changes sections for the view that has the keys;
 -- `inactive_sections` are used while a float has them.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 
 local M = { components = {}, themes = {}, stats = { calls = 0, cached = 0 } }
 
@@ -85,12 +85,12 @@ function M.config()
   return config
 end
 
---- Add a component, as an extension does: `daw.statusline.component("pulse",
+--- Add a component, as an extension does: `paw.statusline.component("pulse",
 --- function(ctx) return "♥" end)`, or with the fields of a table (`fn`,
 --- `min`, `rank`, `style`, `key`, `cond`).
 function M.component(name, spec)
   if type(spec) == "function" then spec = { fn = spec } end
-  assert(type(name) == "string" and type(spec) == "table" and type(spec.fn) == "function", "usage: daw.statusline.component(name, function(ctx) ... end)")
+  assert(type(name) == "string" and type(spec) == "table" and type(spec.fn) == "function", "usage: paw.statusline.component(name, function(ctx) ... end)")
   spec.name = name
   M.components[name] = spec
   api.ui_redraw()
@@ -137,18 +137,18 @@ end
 
 spec("mode", { rank = 0, pill = true, fn = function(ctx)
   local mode = ctx.mode
-  local name = mode == "x" and daw.keymap.visual and visual[daw.keymap.visual.kind] or modes[mode] or mode:upper()
+  local name = mode == "x" and paw.keymap.visual and visual[paw.keymap.visual.kind] or modes[mode] or mode:upper()
   if ctx.width < 80 then
     name = short[name] or short[mode] or name:sub(1, 3)
-  elseif daw.ui.focused then
+  elseif paw.ui.focused then
     -- The view that has the keys, so that focus can be told at a glance.
-    name = name .. ctx.g.dot .. daw.ui.focused
+    name = name .. ctx.g.dot .. paw.ui.focused
   end
   return { { " " .. name .. " ", ctx.theme.mode[mode] or ctx.theme.mode.n } }
 end })
 
 spec("macro", { rank = 1, fn = function()
-  local recording = daw.keymap.recording()
+  local recording = paw.keymap.recording()
   if recording then return { { "@" .. recording, "StatusMacro" } } end
 end })
 
@@ -159,19 +159,19 @@ spec("transport", { rank = 2, fn = function(ctx)
     -- Counting in: the beats left before the take starts, in place of the time.
     return { state, { " count " .. t.counting, "StatusRec" } }
   end
-  return { state, { " " .. daw.time.format(t.position), "StatusTime" } }
+  return { state, { " " .. paw.time.format(t.position), "StatusTime" } }
 end })
 
 -- The time in minutes and seconds.
 spec("clock", { min = 90, rank = 8, fn = function(ctx)
-  return { { daw.time.clock(ctx.transport.position), "StatusDim" } }
+  return { { paw.time.clock(ctx.transport.position), "StatusDim" } }
 end })
 
 -- Tempo and time signature where the playhead is.
 spec("tempo", { min = 70, rank = 5, fn = function(ctx)
   local position = ctx.transport.position
-  local num, den = daw.tempo.signature_at(position)
-  local bpm = math.floor(daw.tempo.at(position) * 10 + 0.5) / 10
+  local num, den = paw.tempo.signature_at(position)
+  local bpm = math.floor(paw.tempo.at(position) * 10 + 0.5) / 10
   return { { string.format("%g bpm %d/%d", bpm, num, den), "StatusLine" } }
 end })
 
@@ -180,15 +180,15 @@ spec("flags", { rank = 4, fn = function(ctx)
   local t, g = ctx.transport, ctx.g
   local on = {}
   if t.loop_enabled then
-    local bar = daw.time.bar()
+    local bar = paw.time.bar()
     local from = math.floor(t.loop_start / bar + 1e-9) + 1
     local to = math.max(from, math.ceil(t.loop_end / bar - 1e-9))
     on[#on + 1] = { "loop " .. from .. (g.ellipsis == "…" and "–" or "-") .. to, "StatusOn" }
   end
   if t.metronome then on[#on + 1] = { "click", "StatusOn" } end
   if t.punch_enabled and t.punch_end > t.punch_start then
-    local from = daw.time.bar_of(t.punch_start)
-    local to = math.max(from, daw.time.bar_of(t.punch_end - 1e-9))
+    local from = paw.time.bar_of(t.punch_start)
+    local to = math.max(from, paw.time.bar_of(t.punch_end - 1e-9))
     on[#on + 1] = { "punch " .. from .. (g.ellipsis == "…" and "–" or "-") .. to, "StatusRec" }
   end
   if (t.count_in or 0) > 0 then on[#on + 1] = { "count " .. t.count_in, "StatusOn" } end
@@ -218,14 +218,14 @@ spec("render", { fn = function(ctx)
 end })
 
 -- How many diagnostics of each kind, for the piano roll's clip or the project.
-spec("diagnostics", { fn = function() return daw.diagnostic and daw.diagnostic.status() end })
+spec("diagnostics", { fn = function() return paw.diagnostic and paw.diagnostic.status() end })
 
 -- The quickfix list, while it has entries.
-spec("qf", { fn = function() return daw.qf and daw.qf.status() end })
+spec("qf", { fn = function() return paw.qf and paw.qf.status() end })
 
 -- What is under the pointer, or what it would do there, in what room is left.
 spec("pointer", { fn = function(ctx)
-  local pointer = daw.mouse.hint_text()
+  local pointer = paw.mouse.hint_text()
   local room = ctx.width - 70
   if not (pointer and room >= 12) then return nil end
   if api.str_width(pointer) > room then pointer = util.fit(pointer, room) end
@@ -234,23 +234,23 @@ end })
 
 -- The grid of the view that has focus: the roll and the drums keep their own.
 spec("grid", { min = 100, rank = 9, fn = function()
-  local focused = daw.ui.views[daw.ui.focused]
+  local focused = paw.ui.views[paw.ui.focused]
   local cells = focused and focused.grid
   if not (cells and cells.step) or cells.rows then
-    cells = { step = function() return daw.opt.grid end }
+    cells = { step = function() return paw.opt.grid end }
   end
   return { { "grid " .. M.grid_text(cells.step()), "StatusDim" } }
 end })
 
 -- How much is selected, in visual mode.
 spec("selection", { min = 110, rank = 10, fn = function(ctx)
-  local selection = ctx.mode == "x" and daw.ui.focused == "arrange" and daw.keymap.selection()
+  local selection = ctx.mode == "x" and paw.ui.focused == "arrange" and paw.keymap.selection()
   if not selection then return nil end
   local tracks = selection.r1 - selection.r0 + 1
   local text = tracks .. (tracks == 1 and " track" or " tracks")
   if selection.kind ~= "line" then
     local beats = selection.c1 - selection.c0
-    local bars = beats / daw.time.bar()
+    local bars = beats / paw.time.bar()
     text = text .. " " .. (math.abs(bars - math.floor(bars + 0.5)) < 1e-9 and string.format("%g bar%s", bars, bars == 1 and "" or "s")
       or string.format("%g beats", beats))
   end
@@ -259,16 +259,16 @@ end })
 
 -- Keys typed so far, or the register chosen.
 spec("keys", { fn = function()
-  local pending = daw.keymap.pending()
+  local pending = paw.keymap.pending()
   if pending ~= "" then return { { pending, "StatusOn" } } end
 end })
 
 -- The group a narrowed tab shows, and what the rest of the song does.
 spec("scope", { rank = 2, fn = function(ctx)
-  local scope = daw.scope and daw.scope.current()
+  local scope = paw.scope and paw.scope.current()
   if not scope then return end
-  local out = { { "narrowed " .. daw.api.track_get(scope).name, "StatusOn" } }
-  local rest = daw.opt.scope_rest
+  local out = { { "narrowed " .. paw.api.track_get(scope).name, "StatusOn" } }
+  local rest = paw.opt.scope_rest
   if rest ~= "play" and ctx.width >= 100 then out[2] = { " rest " .. rest, "StatusDim" } end
   return out
 end })
@@ -309,9 +309,9 @@ end })
 
 -- The track the cursor is on and the clip under it.
 spec("cursor", { min = 100, rank = 6, fn = function()
-  local track = daw.cursor.track()
+  local track = paw.cursor.track()
   if not track then return nil end
-  local clip = daw.cursor.clip()
+  local clip = paw.cursor.clip()
   local name = clip and clip.name ~= "" and clip.name or nil
   return { { track.name, "StatusName" }, { name and ("  " .. name) or "", "StatusDim" } }
 end })
@@ -324,8 +324,8 @@ end })
 
 -- The text buffer with the keys, with its name.
 spec("buffer", { rank = 4, fn = function(ctx)
-  if daw.ui.focused ~= "textbuf" then return nil end
-  local buf = daw.textbuf.buf()
+  if paw.ui.focused ~= "textbuf" then return nil end
+  local buf = paw.textbuf.buf()
   if not buf then return nil end
   -- A long address keeps its end, where the name is.
   local name = buf.name
@@ -335,10 +335,10 @@ end })
 
 -- MIDI coming in: lit for a moment after each message.
 local last_midi, midi_port = nil, nil
-daw.on("midi.in", function(event)
+paw.on("midi.in", function(event)
   last_midi, midi_port = api.now(), event.port
   api.ui_redraw()
-  daw.defer(function() api.ui_redraw() end, 400)
+  paw.defer(function() api.ui_redraw() end, 400)
 end)
 spec("midi", { min = 90, rank = 7, fn = function(ctx)
   if last_midi and api.now() - last_midi < 300 then
@@ -356,8 +356,8 @@ local function context(width, which, extra)
     transport = api.transport_get, project = api.project_get, engine = api.engine_get,
   }
   local ctx = {
-    width = width, which = which, mode = daw.keymap.mode, view = daw.ui.focused, g = daw.draw.g,
-    active = not daw.ui.float,
+    width = width, which = which, mode = paw.keymap.mode, view = paw.ui.focused, g = paw.draw.g,
+    active = not paw.ui.float,
   }
   for k, v in pairs(extra or {}) do ctx[k] = v end
   return setmetatable(ctx, { __index = function(t, k)
@@ -467,7 +467,7 @@ local function between(prev, seg, theme)
   if prev.pill then return " ", "StatusLine" end
   local c = M.config()
   local glyph = prev.section ~= seg.section and c.separators.section or c.separators.component
-  if glyph == nil then glyph = daw.draw.g.sep end
+  if glyph == nil then glyph = paw.draw.g.sep end
   if glyph == "" then return " ", "StatusLine" end
   return " " .. glyph .. " ", theme.sep
 end
@@ -558,7 +558,7 @@ function M.winbar(view, focused)
   local text = {}
   for _, side in ipairs({ s.left, s.right }) do
     for i, seg in ipairs(side) do
-      if #text > 0 or i > 1 then text[#text + 1] = " " .. (c.separators.component or daw.draw.g.sep) .. " " end
+      if #text > 0 or i > 1 then text[#text + 1] = " " .. (c.separators.component or paw.draw.g.sep) .. " " end
       for _, piece in ipairs(seg) do text[#text + 1] = piece[1] end
     end
   end

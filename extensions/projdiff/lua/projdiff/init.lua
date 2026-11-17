@@ -27,7 +27,7 @@ M.read = read
 
 --- A project file's text as a decoded file, or nil and why.
 function M.decode(content, what)
-  local doc, err = daw.api.json_decode(content or "")
+  local doc, err = paw.api.json_decode(content or "")
   if type(doc) ~= "table" or type(doc.project) ~= "table" then
     return nil, (what or "the text") .. " is not a project file" .. (err and (": " .. tostring(err)) or "")
   end
@@ -57,7 +57,7 @@ end
 
 --- The project as it is in an undo state (the current one by default).
 function M.state(id)
-  local ok, project = pcall(daw.api.undo_project, id)
+  local ok, project = pcall(paw.api.undo_project, id)
   if not ok then return nil, tostring(project):match("[^\n]*") end
   return { version = 1, project = project }
 end
@@ -65,7 +65,7 @@ end
 --- The snapshots there are: `{ name, file?, time? }`, the oldest first.
 function M.snapshots()
   local out = {}
-  for _, c in ipairs(daw.api.checkpoint_list()) do out[#out + 1] = { name = c.name, file = c.file, time = c.time } end
+  for _, c in ipairs(paw.api.checkpoint_list()) do out[#out + 1] = { name = c.name, file = c.file, time = c.time } end
   for _, name in ipairs(data.sorted_keys(memory)) do out[#out + 1] = { name = name } end
   return out
 end
@@ -75,11 +75,11 @@ end
 function M.snapshot(name)
   name = name and name:match("^%s*(.-)%s*$") or ""
   if name == "" then name = os.date("snapshot %H:%M:%S") end
-  if daw.api.checkpoint_dir() then
-    local made = daw.api.checkpoint_write(name)
+  if paw.api.checkpoint_dir() then
+    local made = paw.api.checkpoint_write(name)
     return name, made.file
   end
-  memory[name] = daw.api.undo_project(nil)
+  memory[name] = paw.api.undo_project(nil)
   return name
 end
 
@@ -98,7 +98,7 @@ end
 --- a revision of git (`HEAD`, `main~3`) for the project's own file.
 --- Returns the decoded file and a label for titles.
 function M.version(spec)
-  local project = daw.api.project_get()
+  local project = paw.api.project_get()
   if spec == "now" then
     local doc, err = M.state(nil)
     return doc, "now", err
@@ -128,7 +128,7 @@ end
 --- file against the project now, one version is it against now, two are
 --- from the first to the second. Returns `{ from, to, from_label, to_label }`.
 function M.compare(args)
-  local project = daw.api.project_get()
+  local project = paw.api.project_get()
   local first, second = args[1], args[2]
   if not first then
     if not project.path then return nil, "the project has no file to compare with: `:Pdiff #3` or `:Pdiff snap:name`" end
@@ -148,7 +148,7 @@ function M.to_quickfix(tree, title)
   for i, e in ipairs(diff.entries(tree)) do
     entries[i] = { address = e.address, text = e.text, level = e.sign == "-" and "warning" or "info" }
   end
-  daw.qf.set(entries, { title = title })
+  paw.qf.set(entries, { title = title })
   return #entries
 end
 

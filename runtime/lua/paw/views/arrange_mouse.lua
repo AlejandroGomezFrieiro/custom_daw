@@ -1,20 +1,20 @@
 -- The pointer in the arrange view: the window's gestures in cells. A press
 -- finds what is under it (a clip and which part, a header's control, the
 -- ruler's flags and edges, a lane's point), and the gesture calls
--- `daw.frontend.act` with beats, rows and values, as the window does. A
+-- `paw.frontend.act` with beats, rows and values, as the window does. A
 -- gesture that changes the project does so once, when the button is let
 -- go, and is drawn over the view until then; one that moves a control or
 -- a selection does so as it goes.
-local api = daw.api
-local util = daw.util
-local mouse = daw.mouse
-local menus = require("daw.mouse_menus")
-local view = daw.ui.views.arrange
-local A = daw.frontend.act
+local api = paw.api
+local util = paw.util
+local mouse = paw.mouse
+local menus = require("paw.mouse_menus")
+local view = paw.ui.views.arrange
+local A = paw.frontend.act
 
 local function col(self, beat) return math.floor((beat - self.scroll) * self.geometry.zoom + 0.5) end
 local function beat_at(self, tx) return mouse.beat(tx, self.scroll, self.geometry.zoom) end
-local function grid_at(self, tx) return mouse.on_grid(tx, self.scroll, self.geometry.zoom, daw.opt.grid) end
+local function grid_at(self, tx) return mouse.on_grid(tx, self.scroll, self.geometry.zoom, paw.opt.grid) end
 local function cells(self, d) return d / self.geometry.zoom end
 
 --- The clip of a track row under timeline column `tx`, and which part of it:
@@ -43,9 +43,9 @@ end
 --- The tempo and signature flags on the ruler, where they are drawn.
 local function ruler_marks(self)
   local out, mark_end = {}, -1
-  for _, mark in ipairs(daw.tempo.marks(self.scroll, self.scroll + self.geometry.span)) do
+  for _, mark in ipairs(paw.tempo.marks(self.scroll, self.scroll + self.geometry.span)) do
     local x = col(self, mark.beat)
-    if daw.tempo.is_bar_line(mark.beat) then x = x + #tostring(daw.time.bar_of(mark.beat)) end
+    if paw.tempo.is_bar_line(mark.beat) then x = x + #tostring(paw.time.bar_of(mark.beat)) end
     x = math.max(x, mark_end)
     local w = 1 + api.str_width(mark.text)
     out[#out + 1] = { x0 = x, x1 = x + w, mark = mark }
@@ -57,7 +57,7 @@ end
 --- The marker or region whose name (or band) is under column `tx` of the
 --- band under the ruler.
 local function marker_at(self, tx)
-  local list = daw.markers and daw.markers.list() or {}
+  local list = paw.markers and paw.markers.list() or {}
   local width = self.geometry.layout.tw
   local band
   for i, m in ipairs(list) do
@@ -67,7 +67,7 @@ local function marker_at(self, tx)
       local nx = col(self, list[j].beat)
       if nx > x then stop = math.min(stop, nx) break end
     end
-    local w = 1 + api.str_width(daw.markers.label(m))
+    local w = 1 + api.str_width(paw.markers.label(m))
     if tx >= x and tx < math.min(stop, x + w) then return m end
     if m.length and tx >= x and tx < col(self, m.beat + m.length) then band = m end
   end
@@ -99,7 +99,7 @@ local function hit(self, x, y)
   return out
 end
 
---- The row of a drawn track (its place in `daw.groups.rows()`) at line `y`
+--- The row of a drawn track (its place in `paw.groups.rows()`) at line `y`
 --- of the view, the nearest one above or below when it is off the tracks.
 local function row_index(self, y)
   local rows, best = self.geometry.layout.rows, nil
@@ -132,7 +132,7 @@ local function ghost(self, buf, row, start, length, text)
 end
 
 local function box(buf, x0, y0, x1, y1)
-  local g = daw.draw.g
+  local g = paw.draw.g
   local l, r, t, b = math.min(x0, x1), math.max(x0, x1), math.min(y0, y1), math.max(y0, y1)
   buf:fill(l, t, r - l + 1, 1, g.h, "MouseBox")
   buf:fill(l, b, r - l + 1, 1, g.h, "MouseBox")
@@ -144,7 +144,7 @@ end
 
 --- The clips a gesture on clip `id` moves: the chosen ones, if it is one.
 local function grabbed(id)
-  local ids = daw.frontend.chosen_clips()
+  local ids = paw.frontend.chosen_clips()
   for _, other in ipairs(ids) do
     if other == id then return ids end
   end
@@ -152,7 +152,7 @@ local function grabbed(id)
 end
 
 local function among_chosen(id)
-  local ids = daw.frontend.chosen_clips()
+  local ids = paw.frontend.chosen_clips()
   for _, other in ipairs(ids) do
     if other == id then return #ids > 1 end
   end
@@ -179,7 +179,7 @@ local function press_clip(self, e, h)
     return mouse.grab(e, {
       arrange = function(v, buf)
         local d = mouse.gesture().d
-        if d then timeline(v, buf):fill(col(v, m.beat) + d, h.row.y, 1, h.row.h, daw.draw.g.tick, "MouseGhost") end
+        if d then timeline(v, buf):fill(col(v, m.beat) + d, h.row.y, 1, h.row.h, paw.draw.g.tick, "MouseGhost") end
       end,
       drag = function(d) mouse.gesture().d = d.dx end,
       up = function(u)
@@ -197,15 +197,15 @@ local function press_clip(self, e, h)
       local dbeat = cells(v, d.dx)
       if edge then
         local at = edge == "start" and c.start or c.start + c.length
-        local to = free and math.max(0, at + dbeat) or math.max(0, daw.cursor.snap(at + dbeat))
+        local to = free and math.max(0, at + dbeat) or math.max(0, paw.cursor.snap(at + dbeat))
         local a, b = c.start, c.start + c.length
-        if edge == "start" then a = math.min(to, b - daw.opt.grid) else b = math.max(to, a + daw.opt.grid) end
+        if edge == "start" then a = math.min(to, b - paw.opt.grid) else b = math.max(to, a + paw.opt.grid) end
         return ghost(v, buf, h.row, a, b - a, c.name)
       end
-      local by = free and dbeat or util.round(dbeat, daw.opt.grid)
+      local by = free and dbeat or util.round(dbeat, paw.opt.grid)
       local drows = row_index(v, d.y) - h.row.index
       local rows = {}
-      for i, track in ipairs(daw.groups.rows()) do rows[track] = i end
+      for i, track in ipairs(paw.groups.rows()) do rows[track] = i end
       for _, id in ipairs(grabbed(c.id)) do
         local other = api.clip_get(id)
         local row = rows[other.track] and row_of(v, rows[other.track] + drows)
@@ -216,7 +216,7 @@ local function press_clip(self, e, h)
       mouse.gesture().d = d
       local dbeat = cells(self, d.dx)
       local held = edge and (edge == "start" and c.start or c.start + c.length) or c.start
-      mouse.hint(daw.time.format(math.max(0, held + dbeat)) .. (edge and "  trims the " .. edge or copy and "  copies" or "  moves"))
+      mouse.hint(paw.time.format(math.max(0, held + dbeat)) .. (edge and "  trims the " .. edge or copy and "  copies" or "  moves"))
     end,
     up = function(u)
       if not u.moved then return click() end
@@ -287,7 +287,7 @@ function view:menu_at(h, where)
       A.menu_target(h.clip.id, grid_at(self, h.tx))
       items = menus.clip(h.clip.id, grid_at(self, h.tx))
     else
-      local sel = daw.keymap.mode == "x" and daw.keymap.selection()
+      local sel = paw.keymap.mode == "x" and paw.keymap.selection()
       if sel and not sel.clips and sel.c0 and h.beat >= sel.c0 and h.beat < sel.c1
         and h.row.index >= sel.r0 and h.row.index <= sel.r1 then
         items = menus.selection()
@@ -306,7 +306,7 @@ function view:menu_at(h, where)
   elseif h.area == "tempo" then
     items = menus.tempo_lane()
   end
-  if items then daw.ui.menu(items, where) end
+  if items then paw.ui.menu(items, where) end
 end
 
 -- Headers ------------------------------------------------------------------------------
@@ -343,7 +343,7 @@ local function press_header(self, e, h)
         return mouse.grab(e, { drag = function(d) A.sweep_flag(row.index, row_index(self, d.y), field, on) end })
       end
     end
-    if daw.groups.is_group(id) and e.x == name_at + daw.groups.depth(id) then return A.fold(id) end
+    if paw.groups.is_group(id) and e.x == name_at + paw.groups.depth(id) then return A.fold(id) end
   end
   if row.h >= 2 and e.y == row.y + 1 and e.x >= name_at then
     if e.double then return A.set_volume(id, 0) end
@@ -431,7 +431,7 @@ local function automation(row)
   return {
     points = function()
       local l = api.lane_get(lane)
-      local lo, hi = daw.frontend.lane_span(l)
+      local lo, hi = paw.frontend.lane_span(l)
       local out = {}
       for i, p in ipairs(api.lane_points(lane)) do
         out[i] = { p[1], hi ~= lo and util.clamp((p[2] - lo) / (hi - lo), 0, 1) or 0.5 }
@@ -444,8 +444,8 @@ local function automation(row)
     remove = function(i) A.remove_point(lane, i) end,
     say = function(beat, f)
       local l = api.lane_get(lane)
-      local lo, hi = daw.frontend.lane_span(l)
-      return daw.time.format(math.max(0, beat)) .. "  " .. daw.lanes.format(l, lo + f * (hi - lo))
+      local lo, hi = paw.frontend.lane_span(l)
+      return paw.time.format(math.max(0, beat)) .. "  " .. paw.lanes.format(l, lo + f * (hi - lo))
     end,
   }
 end
@@ -453,15 +453,15 @@ end
 local tempo = {
   points = function()
     local out = {}
-    for i, p in ipairs(daw.tempo.points()) do out[i] = { p.beat, daw.tempolane.fraction(p.bpm), p = p } end
+    for i, p in ipairs(paw.tempo.points()) do out[i] = { p.beat, paw.tempolane.fraction(p.bpm), p = p } end
     return out
   end,
   add = function(beat, f) A.tempo_point_add(beat, f) end,
   draw = function(stroke) A.tempo_draw(stroke) end,
-  move = function(i, beat, f) A.tempo_point_move(daw.tempo.points()[i].beat, beat, f) end,
-  remove = function(i) A.tempo_point_remove(daw.tempo.points()[i].beat) end,
-  ramp = function(i) A.tempo_point_ramp(daw.tempo.points()[i].beat) end,
-  say = function(beat, f) return daw.time.format(math.max(0, beat)) .. "  " .. daw.tempolane.bpm(f) .. " bpm" end,
+  move = function(i, beat, f) A.tempo_point_move(paw.tempo.points()[i].beat, beat, f) end,
+  remove = function(i) A.tempo_point_remove(paw.tempo.points()[i].beat) end,
+  ramp = function(i) A.tempo_point_ramp(paw.tempo.points()[i].beat) end,
+  say = function(beat, f) return paw.time.format(math.max(0, beat)) .. "  " .. paw.tempolane.bpm(f) .. " bpm" end,
 }
 
 -- The ruler and the band of markers ----------------------------------------------------
@@ -478,11 +478,11 @@ local function press_ruler(self, e, h)
     if tx >= m.x0 and tx < m.x1 then
       local mark = m.mark
       if e.button == "right" then
-        return mouse.grab(e, { up = function() daw.ui.menu(menus.tempo_mark(mark.kind, mark.beat), where) end })
+        return mouse.grab(e, { up = function() paw.ui.menu(menus.tempo_mark(mark.kind, mark.beat), where) end })
       end
       if e.double then return A.tempo_mark("edit", mark.kind, mark.beat) end
       return mouse.grab(e, {
-        drag = function(d) mouse.hint(daw.time.format(math.max(0, mark.beat + cells(self, d.dx)))) end,
+        drag = function(d) mouse.hint(paw.time.format(math.max(0, mark.beat + cells(self, d.dx)))) end,
         up = function(u)
           if u.moved then A.tempo_mark("move", mark.kind, mark.beat, mark.beat + cells(self, u.dx)) end
         end,
@@ -519,7 +519,7 @@ local function press_ruler(self, e, h)
     up = function(u)
       if u.moved then return end
       if double then
-        daw.transport.loop_enabled = not api.transport_get().loop_enabled
+        paw.transport.loop_enabled = not api.transport_get().loop_enabled
       else
         A.ruler_click(grid_at(self, x0))
       end
@@ -537,16 +537,16 @@ local function press_markers(self, e, h)
   end
   local where = { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) }
   if e.button == "right" then
-    return mouse.grab(e, { up = function() daw.ui.menu(menus.marker(m), where) end })
+    return mouse.grab(e, { up = function() paw.ui.menu(menus.marker(m), where) end })
   end
-  if e.double then return daw.commands.exec("marker.rename id=" .. m.id) end
+  if e.double then return paw.commands.exec("marker.rename id=" .. m.id) end
   mouse.grab(e, {
-    drag = function(d) mouse.hint(daw.time.format(math.max(0, m.beat + cells(self, d.dx)))) end,
+    drag = function(d) mouse.hint(paw.time.format(math.max(0, m.beat + cells(self, d.dx)))) end,
     up = function(u)
-      if not u.moved then return daw.commands.exec("marker.goto id=" .. m.id) end
+      if not u.moved then return paw.commands.exec("marker.goto id=" .. m.id) end
       local to = m.beat + cells(self, u.dx)
-      to = mouse.has(u, "S") and math.max(0, to) or math.max(0, daw.cursor.snap(to))
-      daw.commands.exec(string.format("marker.set id=%d beat=%s", m.id, tostring(to)))
+      to = mouse.has(u, "S") and math.max(0, to) or math.max(0, paw.cursor.snap(to))
+      paw.commands.exec(string.format("marker.set id=%d beat=%s", m.id, tostring(to)))
     end,
   })
 end
@@ -555,7 +555,7 @@ end
 
 --- A drag across a take lane, as the window's: the cells from where the
 --- button went down to where it is now are marked, and on release that
---- take plays over them (`daw.frontend.act.comp`; a cell shorter than a
+--- take plays over them (`paw.frontend.act.comp`; a cell shorter than a
 --- grid step is a click, which chooses the take for the piece under it).
 local function press_take(self, e, h)
   local row = h.row
@@ -566,8 +566,8 @@ local function press_take(self, e, h)
     -- The label makes the take play wherever the track has it.
     local last = 0
     for _, clip in ipairs(api.clip_list(row.id)) do last = math.max(last, clip.start + clip.length) end
-    daw.takes.comp(row.id, row.take, 0, last)
-    return daw.cursor.set_track(row.id)
+    paw.takes.comp(row.id, row.take, 0, last)
+    return paw.cursor.set_track(row.id)
   end
   self.comp = { id = row.id, take = row.take, x0 = e.x, x1 = e.x }
   mouse.grab(e, {
@@ -592,16 +592,16 @@ local function wheel(self, e, h)
   local g = self.geometry
   if mouse.has(e, "C") and not sideways and h.timeline then
     -- Zoom in time, keeping the beat under the pointer where it is.
-    local zoom = util.clamp(daw.opt.zoom * (step < 0 and math.sqrt(2) or 1 / math.sqrt(2)), 0.125, 64)
+    local zoom = util.clamp(paw.opt.zoom * (step < 0 and math.sqrt(2) or 1 / math.sqrt(2)), 0.125, 64)
     local at = beat_at(self, h.tx)
-    daw.opt.zoom = zoom
+    paw.opt.zoom = zoom
     self.scroll = math.max(0, at - h.tx / zoom)
   elseif (mouse.has(e, "C") or mouse.has(e, "A")) and not sideways then
     -- Taller or shorter tracks, from the height they have now.
-    local now = tonumber(daw.opt.track_height) or g.th
-    daw.opt.track_height = util.clamp(now - step, 1, 12)
+    local now = tonumber(paw.opt.track_height) or g.th
+    paw.opt.track_height = util.clamp(now - step, 1, 12)
   elseif sideways or mouse.has(e, "S") then
-    self.scroll = math.max(0, self.scroll + step * daw.time.bar(self.scroll))
+    self.scroll = math.max(0, self.scroll + step * paw.time.bar(self.scroll))
   else
     self.top = math.max(1, self.top + step)
   end
@@ -631,15 +631,15 @@ local function hover(self, h)
     end
   elseif h.area == "markers" and h.timeline then
     local m = marker_at(self, h.tx)
-    text = m and (daw.markers.label(m) .. " · " .. hints.markers) or nil
+    text = m and (paw.markers.label(m) .. " · " .. hints.markers) or nil
   elseif h.area == "tempo" and h.timeline then
-    text = daw.time.format(h.beat) .. "  " .. string.format("%g bpm", daw.tempo.at(h.beat)) .. " · " .. hints.tempo
+    text = paw.time.format(h.beat) .. "  " .. string.format("%g bpm", paw.tempo.at(h.beat)) .. " · " .. hints.tempo
   elseif h.area == "lane" and h.timeline then
-    text = daw.time.format(h.beat) .. " · " .. hints.lane
+    text = paw.time.format(h.beat) .. " · " .. hints.lane
   elseif h.area == "take" then
     text = hints.take
   elseif h.area == "track" and h.timeline then
-    local at = daw.time.format(h.beat)
+    local at = paw.time.format(h.beat)
     if h.clip then
       text = at .. "  " .. h.clip.name .. " · " .. (h.part == "warp" and hints.warp or (h.part == "start" or h.part == "end") and hints.edge or hints.clip)
     else
@@ -674,14 +674,14 @@ function view:on_mouse(e)
   if area == "take" then return press_take(self, e, h) end
   if area == "lane" then
     if h.header then
-      daw.cursor.set_track(h.row.id, h.row.lane.id)
+      paw.cursor.set_track(h.row.id, h.row.lane.id)
       if e.button == "right" then
         return mouse.grab(e, { up = function() self:menu_at(h, { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) }) end })
       end
       return
     end
     if h.timeline then
-      daw.cursor.set_track(h.row.id, h.row.lane.id)
+      paw.cursor.set_track(h.row.id, h.row.lane.id)
       return press_lane(self, e, h, h.row.y, h.row.h, automation(h.row))
     end
   end

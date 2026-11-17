@@ -1,5 +1,5 @@
 -- The page in pixels: a layout's measures engraved with a SMuFL font,
--- snapped to the pixel grid, as `daw.canvas` drawing operations.
+-- snapped to the pixel grid, as `paw.canvas` drawing operations.
 --
 --   style    the staff space in whole pixels (one of STEPS), the font's
 --            engraving defaults turned into whole-pixel thicknesses, and

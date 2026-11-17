@@ -1,11 +1,11 @@
 -- Small pictures of what a built-in effect is doing, drawn under its name
 -- in the device panel: the equaliser's curve, gain reduction, loudness and
 -- the tuner's needle. Each is `{ rows = n, draw = function(buf, device) }`,
--- reading the device live through `daw.params.read`.
+-- reading the device live through `paw.params.read`.
 local M = {}
 
 local function read(device, method, data)
-  local ok, value = pcall(daw.params.read, device.id, method, data)
+  local ok, value = pcall(paw.params.read, device.id, method, data)
   return ok and value or nil
 end
 
@@ -20,14 +20,14 @@ local EQ_RANGE = 18
 M.eq = {
   rows = 5,
   draw = function(buf, device)
-    local g = daw.draw.g
+    local g = paw.draw.g
     local w = buf.width
     local rows = buf.height - 1
     if w < 8 then return end
     local curve = read(device, "curve", w * 2) or {}
     local mid = math.floor(rows / 2)
     buf:fill(0, mid, w, 1, g.meter_off, "MeterOff")
-    daw.draw.curve(buf:sub(0, 0, w, rows), 0, rows, function(i)
+    paw.draw.curve(buf:sub(0, 0, w, rows), 0, rows, function(i)
       local v = curve[i + 1]
       return v and (v + EQ_RANGE) / (2 * EQ_RANGE)
     end, "ParamBar")
@@ -45,7 +45,7 @@ M.eq = {
         local kind = math.floor((p["b" .. b .. "_type"] or 3) + 0.5)
         if kind < 2 or kind > 4 then gain = 0 end
         local y = math.floor((1 - (gain + EQ_RANGE) / (2 * EQ_RANGE)) * (rows - 1) + 0.5)
-        buf:text(daw.util.clamp(col(p["b" .. b .. "_freq"] or 1000), 0, w - 1), daw.util.clamp(y, 0, rows - 1), tostring(b), "Bright")
+        buf:text(paw.util.clamp(col(p["b" .. b .. "_freq"] or 1000), 0, w - 1), paw.util.clamp(y, 0, rows - 1), tostring(b), "Bright")
       end
     end
     buf:text(w - 7, 0, "+" .. EQ_RANGE .. " dB", "Faint")
@@ -54,13 +54,13 @@ M.eq = {
 
 -- Gain reduction: a bar growing from the left over 24 dB, and the number.
 local function reduction(buf, device)
-  local g = daw.draw.g
+  local g = paw.draw.g
   local m = read(device, "meters") or {}
   local gr = math.min(0, m.gr or 0)
   local text = string.format("%5.1f dB", gr)
   buf:text(0, 0, "GR", "Dim")
   local width = math.max(1, buf.width - 4 - #text - 1)
-  local lit = daw.util.clamp(-gr / 24, 0, 1) * width
+  local lit = paw.util.clamp(-gr / 24, 0, 1) * width
   for cell = 0, width - 1 do
     local amount = lit - cell
     local glyph = amount >= 0.75 and g.meter_full or amount >= 0.25 and g.meter_half or g.meter_off
@@ -98,7 +98,7 @@ M.meter = {
 M.tuner = {
   rows = 2,
   draw = function(buf, device)
-    local g = daw.draw.g
+    local g = paw.draw.g
     local p = read(device, "pitch") or {}
     local sure = (p.confidence or 0) > 0.6 and p.note ~= "-"
     local note = sure and tostring(p.note) or "-"
@@ -110,7 +110,7 @@ M.tuner = {
     buf:text(5 + centre, 0, g.pan_mark, "Dim")
     if sure then
       local cents = p.cents or 0
-      local at = daw.util.clamp(centre + math.floor(cents / 50 * centre + 0.5), 0, width - 1)
+      local at = paw.util.clamp(centre + math.floor(cents / 50 * centre + 0.5), 0, width - 1)
       local tuned = math.abs(cents) < 3
       buf:text(5 + at, 0, g.knob, tuned and "MeterLow" or math.abs(cents) < 15 and "MeterMid" or "MeterHigh")
       buf:text(5, 1, string.format("%+.1f ct  %.2f Hz", cents, p.freq or 0), tuned and "MeterLow" or "Param")

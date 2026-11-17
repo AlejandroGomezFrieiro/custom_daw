@@ -7,15 +7,15 @@
 -- It writes into the clip under the cursor, or makes one if there is none.
 local euclid = require("euclid")
 
-daw.command("euclid", function(ctx)
+paw.command("euclid", function(ctx)
   local hits, steps = tonumber(ctx.args[1]), tonumber(ctx.args[2]) or 16
-  if not hits then return daw.notify("usage: euclid <hits> [steps] [pitch=36] [step=0.25] [rotate=0]", "warn") end
-  local track = daw.cursor.track()
-  if not track then return daw.notify("no track selected", "warn") end
+  if not hits then return paw.notify("usage: euclid <hits> [steps] [pitch=36] [step=0.25] [rotate=0]", "warn") end
+  local track = paw.cursor.track()
+  if not track then return paw.notify("no track selected", "warn") end
 
   local step = tonumber(ctx.args.step) or 0.25
-  local pitch = daw.music.pitch(ctx.args.pitch or 36)
-  local clip = daw.cursor.clip() or track:add_clip({ start = daw.cursor.beat, length = steps * step, name = "euclid" })
+  local pitch = paw.music.pitch(ctx.args.pitch or 36)
+  local clip = paw.cursor.clip() or track:add_clip({ start = paw.cursor.beat, length = steps * step, name = "euclid" })
 
   -- Replace this pitch's notes and keep the others, so that patterns layer.
   local notes = {}
@@ -32,9 +32,9 @@ daw.command("euclid", function(ctx)
     end
   end
   clip:set_notes(notes)
-  daw.notify(string.format("euclid %d/%d on %s", hits, steps, daw.music.name(pitch)))
+  paw.notify(string.format("euclid %d/%d on %s", hits, steps, paw.music.name(pitch)))
 end, { desc = "Fill the clip with a Euclidean rhythm: `euclid 5 16 pitch=36`" })
 
-daw.keymap.set("<leader>e", function(ctx)
-  daw.cmd("euclid", { ctx.count or 4, 16 })
+paw.keymap.set("<leader>e", function(ctx)
+  paw.cmd("euclid", { ctx.count or 4, 16 })
 end, { view = "arrange", desc = "Euclidean rhythm with N hits (default 4)" })

@@ -396,7 +396,7 @@ function M.mirror(notes, opts)
   opts = opts or {}
   local out = sorted(notes)
   if #out == 0 then return out end
-  local axis = opts.axis and daw.music.pitch(opts.axis) or out[1].pitch
+  local axis = opts.axis and paw.music.pitch(opts.axis) or out[1].pitch
   if opts.key then
     local key = scale.parse(opts.key)
     local da = scale.degree(key, axis)

@@ -1,4 +1,4 @@
--- The tabs and windows of a seat (daw/layout.lua) as a graphical frontend
+-- The tabs and windows of a seat (paw/layout.lua) as a graphical frontend
 -- shows them: panes docked in its main area, laid out in pixels by the
 -- rules the terminal lays them out by in cells.
 --
@@ -7,13 +7,13 @@
 -- keyboard, the borders between them and the tabs. It draws the views it
 -- has its own drawing for (`native`: the arrange view, the device panel,
 -- the piano roll, the mixer, the session view) in their panes, and paints
--- every other through `paint`, which gives `daw.canvas` drawings: a view
+-- every other through `paint`, which gives `paw.canvas` drawings: a view
 -- that paints, at the pane's size, or any other cell by cell as the
 -- terminal draws it. Pointer events in a pane come to `pointer`; a press
 -- anywhere in one gives it the keyboard (`focus`). Keys need nothing: they
 -- go to the key mappings with the focused window, as from the terminal.
-local api = daw.api
-local L = require("daw.layout")
+local api = paw.api
+local L = require("paw.layout")
 
 local M = {
   -- Views a frontend draws in its own way.
@@ -31,7 +31,7 @@ local M = {
 -- arrangement (for the borders dragged), and what each pane drawn in cells
 -- drew last.
 local area, last, cells = { w = 0, h = 0 }, nil, {}
-daw.seats.keep("panes",
+paw.seats.keep("panes",
   function() return area, last, cells end,
   function(a, l, c) area, last, cells = a, l, c end,
   function() return { w = 0, h = 0 }, nil, {} end)
@@ -39,7 +39,7 @@ daw.seats.keep("panes",
 --- A copy of a tree with its sizes in pixels: a size along a row is in
 --- columns, along a column in rows. `map` takes each copy back to its node.
 local function in_pixels(node, across, map)
-  local cell = daw.canvas.cell
+  local cell = paw.canvas.cell
   local unit = across == "h" and cell.w or cell.h
   local copy = { dir = node.dir, view = node.view, id = node.id, hidden = node.hidden, weight = node.weight }
   if node.size then copy.size = math.floor(node.size * unit + 0.5) end
@@ -57,7 +57,7 @@ end
 
 --- How a pane is drawn: by the frontend itself, painted, or in cells.
 local function kind_of(name)
-  local view = daw.ui.views[name]
+  local view = paw.ui.views[name]
   -- The piano roll with no clip open is drawn as the terminal draws it,
   -- saying how to open one: the window's own draws a clip.
   if name == "pianoroll" and not view:clip() then return "cells" end
@@ -68,7 +68,7 @@ end
 --- What a pane is called: a painted view's title as it was opened, else
 --- its buffer's.
 local function title_of(win)
-  local named = daw.canvas.titles[win.view]
+  local named = paw.canvas.titles[win.view]
   if named then return named end
   local buf = L.buf_of(win)
   return buf and L.title(buf) or win.view
@@ -81,7 +81,7 @@ end
 function M.area(width, height)
   local started = area.started
   area = { w = math.max(0, math.floor(width)), h = math.max(0, math.floor(height)), started = started or width > 0 }
-  if not started and area.w > 0 and not daw.ui.visible("devices") then daw.ui.show("devices") end
+  if not started and area.w > 0 and not paw.ui.visible("devices") then paw.ui.show("devices") end
   api.ui_redraw()
 end
 
@@ -90,9 +90,9 @@ end
 --- frontend has said.
 function M.cells()
   if area.w <= 0 or area.h <= 0 then return nil end
-  local cell = daw.canvas.cell
+  local cell = paw.canvas.cell
   local bars = 0
-  for _, node in ipairs(daw.ui.bars) do bars = bars + node.size end
+  for _, node in ipairs(paw.ui.bars) do bars = bars + node.size end
   return { w = math.floor(area.w / cell.w), h = math.floor(area.h / cell.h) + bars }
 end
 
@@ -105,7 +105,7 @@ end
 --- until the frontend has said how big its area is.
 function M.state()
   if area.w <= 0 or area.h <= 0 then return nil end
-  local u = daw.ui
+  local u = paw.ui
   local top = #u.tabs > 1 and M.tabline or 0
   local map = {}
   local root = in_pixels(u.layout, "v", map)
@@ -119,7 +119,7 @@ function M.state()
       out.panes[#out.panes + 1] = {
         win = win.id, view = win.view, kind = kind_of(win.view), title = title_of(win),
         x = r.x, y = r.y, w = r.w, h = r.h,
-        focused = win == current and u.focused == win.view and not daw.canvas.open_views[win.view],
+        focused = win == current and u.focused == win.view and not paw.canvas.open_views[win.view],
       }
     end
   end
@@ -131,52 +131,52 @@ function M.state()
 end
 
 local function window(id)
-  local win = L.find_id(daw.ui.layout, id)
+  local win = L.find_id(paw.ui.layout, id)
   if win and not win.hidden then return win end
 end
 
 --- Give a pane's window the keyboard, as a click in it does.
 function M.focus(id)
   local win = window(id)
-  if not win or daw.ui.float then return end
-  local view = daw.ui.views[win.view]
+  if not win or paw.ui.float then return end
+  local view = paw.ui.views[win.view]
   if not view or view.focusable == false then return end
-  if L.current() ~= win or daw.ui.focused ~= win.view then
-    if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
+  if L.current() ~= win or paw.ui.focused ~= win.view then
+    if paw.keymap.mode == "x" then paw.keymap.set_mode("n") end
     L.enter(win)
   end
 end
 
 --- Paint a pane that the frontend does not draw itself, at its size: what
---- `daw.canvas.paint` gives (`opts` as there).
+--- `paw.canvas.paint` gives (`opts` as there).
 function M.paint(id, width, height, opts)
   local win = window(id)
   if not win then return nil end
-  local view = daw.ui.views[win.view]
+  local view = paw.ui.views[win.view]
   if not view then return nil end
-  if view.paint then return daw.canvas.paint(win.view, width, height, opts) end
-  -- Cells are laid out on the frontend's cell, as `daw.canvas.paint` takes it.
-  if opts and opts.cell and (opts.cell.w or 0) > 0 then daw.canvas.cell = { w = opts.cell.w, h = opts.cell.h } end
+  if view.paint then return paw.canvas.paint(win.view, width, height, opts) end
+  -- Cells are laid out on the frontend's cell, as `paw.canvas.paint` takes it.
+  if opts and opts.cell and (opts.cell.w or 0) > 0 then paw.canvas.cell = { w = opts.cell.w, h = opts.cell.h } end
   cells[id] = cells[id] or {}
-  return daw.canvas.paint_cells(win.view, cells[id], width, height, opts or {}, win)
+  return paw.canvas.paint_cells(win.view, cells[id], width, height, opts or {}, win)
 end
 
 --- A pointer event in a pane, in pixels from its corner (as
---- `daw.canvas.pointer` takes them): a press gives it the keyboard first.
+--- `paw.canvas.pointer` takes them): a press gives it the keyboard first.
 function M.pointer(id, event)
   local win = window(id)
   if not win then return end
   if event.kind == "down" then M.focus(id) end
-  local view = daw.ui.views[win.view]
+  local view = paw.ui.views[win.view]
   if not view then return end
   if view.paint then
     if view.pointer then view:pointer(event) end
   else
-    local e = daw.canvas.cell_event(cells[id] or {}, event, true)
+    local e = paw.canvas.cell_event(cells[id] or {}, event, true)
     if e and view.on_mouse then
       local drawn = cells[id] or {}
       e.win, e.w, e.h = id, drawn.cols, drawn.rows
-      daw.limit.named("the mouse", daw.mouse.to_view, view, e)
+      paw.limit.named("the mouse", paw.mouse.to_view, view, e)
     end
   end
   api.ui_redraw()
@@ -195,7 +195,7 @@ function M.border(index, x, y)
   local finish = across and z.x + z.w or z.y + z.h
   local at = math.max(start + 1, math.min(across and x or y, finish - 1))
   local axis = across and "width" or "height"
-  local cell = daw.canvas.cell
+  local cell = paw.canvas.cell
   local unit = across and cell.w or cell.h
   local first, second = last.map[b.a], last.map[b.b]
   if second.size and not first.size then
@@ -209,12 +209,12 @@ end
 --- Close a pane's window, as `:close` in it would.
 function M.close(id)
   local win = window(id)
-  if win and not L.close(win) then daw.notify("the last window does not close", "warn") end
+  if win and not L.close(win) then paw.notify("the last window does not close", "warn") end
 end
 
 --- A click on tab `i` goes to it.
 function M.tab(i)
-  if not daw.ui.float then L.tab_go(i) end
+  if not paw.ui.float then L.tab_go(i) end
 end
 
 return M

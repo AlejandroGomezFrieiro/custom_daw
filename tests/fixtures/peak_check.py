@@ -1,4 +1,4 @@
-"""A one-shot check for the tests of daw.lsp: given a render subject (a JSON
+"""A one-shot check for the tests of paw.lsp: given a render subject (a JSON
 file, as `{input}` names it), it prints a finding when the render's peak is
 over `--over` dBFS, as MIDI LSP's one-shot servers print theirs.
 `--garbage` prints something that is not JSON.

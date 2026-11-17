@@ -1,11 +1,11 @@
 -- Tests for the notation extension; run by tests/suite.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation"), require("notation.model")
 end
 
@@ -131,7 +131,7 @@ local function clean(text)
   local out = {}
   for item in text:gmatch("[^,]+") do
     local p, st, l = item:match("(%S+)%s+(%S+)%s+(%S+)")
-    for name in p:gmatch("[^+]+") do out[#out + 1] = { pitch = daw.music.pitch(name), start = tonumber(st), length = tonumber(l), velocity = 90 } end
+    for name in p:gmatch("[^+]+") do out[#out + 1] = { pitch = paw.music.pitch(name), start = tonumber(st), length = tonumber(l), velocity = 90 } end
   end
   table.sort(out, function(a, b) return a.start < b.start or (a.start == b.start and a.pitch < b.pitch) end)
   return out
@@ -175,7 +175,7 @@ local function play(notes, o)
     end
   end
   for _, g in ipairs(o.graces or {}) do
-    out[#out + 1] = { pitch = daw.music.pitch(g[1]), start = g[2] - ms(g[3]), length = ms(g[4]), velocity = 70 }
+    out[#out + 1] = { pitch = paw.music.pitch(g[1]), start = g[2] - ms(g[3]), length = ms(g[4]), velocity = 70 }
   end
   table.sort(out, function(a, b) return a.start < b.start or (a.start == b.start and a.pitch < b.pitch) end)
   return out
@@ -186,7 +186,7 @@ local function both(text, how, opts, staff, voice)
   local _, model = load()
   opts = opts or {}
   opts.length = opts.length or 4
-  local function copy() return daw.util.merge(opts, {}) end
+  local function copy() return paw.util.merge(opts, {}) end
   return model.text(model.layout(clean(text), copy()), staff, voice), model.text(model.layout(play(clean(text), how), copy()), staff, voice)
 end
 
@@ -380,25 +380,25 @@ end)
 local function song(notes, length)
   fresh()
   local view = load()
-  local track = daw.add_track({ name = "Lead" })
+  local track = paw.add_track({ name = "Lead" })
   track:add_device("synth")
   local clip = track:add_clip({ start = 0, length = length or 4, name = "tune", notes = notes or {} })
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
   view.value, view.dot = 1, false
   return view, clip, track
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
 --- The clip's notes as "C4@0+1 D4@1+0.5".
 local function notes_of(clip)
   local out = {}
-  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%g+%g", daw.music.name(n.pitch), n.start, n.length) end
+  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%g+%g", paw.music.name(n.pitch), n.start, n.length) end
   return table.concat(out, " ")
 end
 
@@ -409,39 +409,39 @@ end
 
 test("notation: the piano roll opened from the notation view takes its clip", function()
   local _, clip = song({ N(67, 1, 1) })
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll.clip_id = nil
-  daw.ui.hide("pianoroll")
-  daw.ui.focus("notation")
+  paw.ui.hide("pianoroll")
+  paw.ui.focus("notation")
   -- (`,p` is the popover for pitch in the notation view: the toggle is the command.)
-  daw.cmd("view.toggle", { "pianoroll" })
+  paw.cmd("view.toggle", { "pianoroll" })
   eq(roll.clip_id, clip.id, "the toggle opens the notation view's clip")
-  daw.ui.hide("pianoroll")
+  paw.ui.hide("pianoroll")
   roll.clip_id = nil
-  daw.ui.focus("notation")
-  daw.cmd("vs", { "pianoroll" })
+  paw.ui.focus("notation")
+  paw.cmd("vs", { "pianoroll" })
   eq(roll.clip_id, clip.id, "so does a split")
-  eq(daw.layout.find(daw.ui.layout, "pianoroll") ~= nil, true, "and it is in a window")
+  eq(paw.layout.find(paw.ui.layout, "pianoroll") ~= nil, true, "and it is in a window")
 end)
 
 test("notation: :notation opens the clip under the cursor, with the keyboard", function()
   local view, clip, track = song({ N(67, 1, 1) })
-  daw.ui.focus("arrange")
+  paw.ui.focus("arrange")
   view.clip_id = nil
-  daw.cursor.set_track(track)
-  daw.cursor.beat = 0
-  daw.cmd("notation")
+  paw.cursor.set_track(track)
+  paw.cursor.beat = 0
+  paw.cmd("notation")
   eq(view.clip_id, clip.id, "the clip is open")
-  eq(daw.ui.focused, "notation", "and has the keyboard")
+  eq(paw.ui.focused, "notation", "and has the keyboard")
   eq(view.step, 39, "the cursor on the first note's line (G4)")
   eq(view.beat, 1, "at its time")
   local found
-  for _, entry in ipairs(daw.frontend.menus.clip) do
+  for _, entry in ipairs(paw.frontend.menus.clip) do
     if entry.command == "notation.open" then found = entry end
   end
   eq(found and found.only, "midi", "the clip menu offers it for MIDI clips")
   local mapped
-  for _, m in ipairs(daw.keymap.list("n", "arrange")) do
+  for _, m in ipairs(paw.keymap.list("n", "arrange")) do
     if m.lhs == "<leader>n" then mapped = m.rhs end
   end
   eq(mapped, "notation", "and the arrange view has a key for it")
@@ -459,7 +459,7 @@ end)
 
 test("notation: entering in a key takes its sharps and flats; + and - change the last note", function()
   local view, clip = song()
-  daw.cmd("notation.key", { "D", "major" })
+  paw.cmd("notation.key", { "D", "major" })
   api.undo_checkpoint()
   keys("if")
   eq(notes_of(clip), "F#4@0+1", "f is F sharp in D major")
@@ -518,7 +518,7 @@ end)
 
 local function played(clip)
   local out = {}
-  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%.3f+%.3f/%d", daw.music.name(n.pitch), n.start, n.length, n.velocity) end
+  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%.3f+%.3f/%d", paw.music.name(n.pitch), n.start, n.length, n.velocity) end
   return table.concat(out, " ")
 end
 
@@ -528,7 +528,7 @@ test("score editing: a chord moved, lengthened or deleted moves its played notes
     { pitch = 59, start = 1.07, length = 0.8, velocity = 70 }, { pitch = 72, start = 5.0, length = 1, velocity = 64 },
   }
   local view, clip = song(strum, 8)
-  daw.cmd("notation.clef", { "treble" })
+  paw.cmd("notation.clef", { "treble" })
   view.cache = nil
   eq(view:layout().score.events[1].start, 1, "the strum is written on beat two")
   view:set(37, 1)
@@ -551,19 +551,19 @@ test("score editing: a note put in goes exactly on the grid, as loud as the dyna
   keys("<CR>")
   local n = clip:notes()[3]
   eq(n.start, 2, "on beat three exactly")
-  eq(n.velocity, daw.opt.velocity, "as loud as the piano roll enters notes, where no dynamic is written")
+  eq(n.velocity, paw.opt.velocity, "as loud as the piano roll enters notes, where no dynamic is written")
   view:set(35, 0)
   keys("i")
   keys("e")
   keys("<Esc>")
-  eq(played(clip):sub(1, 18), string.format("E4@0.000+1.000/%d", daw.opt.velocity):sub(1, 18), "entering over a loosely played C replaces it")
+  eq(played(clip):sub(1, 18), string.format("E4@0.000+1.000/%d", paw.opt.velocity):sub(1, 18), "entering over a loosely played C replaces it")
 end)
 
 test("score editing: quantize to the notation, and write again from the playing", function()
   local view, clip = song({ { pitch = 60, start = 0.03, length = 0.4, velocity = 80 }, { pitch = 62, start = 0.52, length = 0.45, velocity = 80 },
     { pitch = 64, start = 0.98, length = 1.9, velocity = 80 } })
   api.undo_checkpoint()
-  daw.cmd("notation.quantize")
+  paw.cmd("notation.quantize")
   api.undo_checkpoint()
   eq(notes_of(clip), "C4@0+0.5 D4@0.5+0.5 E4@1+2", "each note where it is written and as long")
   keys("u")
@@ -594,7 +594,7 @@ test("score editing: voices, triplets, and writing again from the playing", func
   eq(model.text(view:layout(), 1, 1):find("3{", 1, true) ~= nil, true, "beat two in triplets")
   keys("gt")
   eq(model.text(view:layout(), 1, 1):find("3{", 1, true), nil, "and not")
-  daw.cmd("notation.retranscribe")
+  paw.cmd("notation.retranscribe")
   api.undo_checkpoint()
   eq(model.text(view:layout(), 1, 2), "h E4 hr", "written again from the playing: the held E is voice 2, the D voice 1")
 end)
@@ -656,11 +656,11 @@ end)
 
 test("notation: :notation.key and :notation.clef keep the key with the project and the clef with the track", function()
   local view, clip, track = song({ N(72, 0, 1) })
-  daw.cmd("notation.key", { "Eb", "major" })
+  paw.cmd("notation.key", { "Eb", "major" })
   api.undo_checkpoint()
   eq(api.project_get().meta.musicops.root, "Eb", "the key is the project's, where musicops keeps it")
   eq(view:layout().fifths, -3, "three flats")
-  daw.cmd("notation.clef", { "bass" })
+  paw.cmd("notation.clef", { "bass" })
   api.undo_checkpoint()
   eq(track.meta.notation.clef, "bass", "the clef is the track's")
   eq(view:layout().staves[1], "bass", "and the notation follows")
@@ -670,7 +670,7 @@ end)
 
 test("notation: the terminal draws the staff, clef, key, heads, stems and beams", function()
   local view = song({ N(72, 0, 0.5), N(74, 0.5, 0.5), N(76, 1, 1), N(65, 2, 2) })
-  daw.cmd("notation.key", { "D", "major" })
+  paw.cmd("notation.key", { "D", "major" })
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("│●┼╮", 1, true) ~= nil, true, "a treble clef, curled round its G line")
   eq(select(2, text:gsub("♯", "")) >= 2, true, "two sharps in the key signature")
@@ -683,21 +683,21 @@ end)
 
 test("score: the clip keeps its settings, and the view reads the song's bars", function()
   local view, clip = song(clean("C4 0 0.5, D4 0.5 0.5"), 8)
-  daw.cmd("notation.set", { "voices", "off" })
+  paw.cmd("notation.set", { "voices", "off" })
   api.undo_checkpoint()
   eq(clip.meta.notation.settings.voices, false, "kept in clip.meta.notation")
   eq(view.settings_of(clip:get()).voices, false, "and read back")
-  daw.cmd("notation.raw")
+  paw.cmd("notation.raw")
   api.undo_checkpoint()
   eq(view:layout().score.swing, nil, "raw")
   eq(clip.meta.notation.settings.mode, "raw", "the raw view is a setting of the clip")
   keys("u")
   eq(clip.meta.notation.settings.mode, nil, "undone like any edit")
-  local was = daw.time.signature_at
-  daw.time.signature_at = function(beat) if beat < 4 then return 4, 4 end return 3, 4 end
+  local was = paw.time.signature_at
+  paw.time.signature_at = function(beat) if beat < 4 then return 4, 4 end return 3, 4 end
   view.cache = nil
   local layout = view:layout()
-  daw.time.signature_at = was
+  paw.time.signature_at = was
   eq(#layout.measures, 3, "a bar of 4/4 and two of 3/4 in eight beats")
   eq(layout.measures[2].meter.num, 3, "the second bar in 3/4")
   view.cache = nil
@@ -729,26 +729,26 @@ test("marks: dynamics set the loudness, hairpins ramp it, slurs join the notes",
   for i = 0, 7 do notes[#notes + 1] = { pitch = 72, start = i, length = 0.5, velocity = 60 + (i % 2) * 10 } end
   local view, clip = song(notes, 8)
   view:set(42, 0)
-  daw.cmd("notation.dyn", { "f" })
+  paw.cmd("notation.dyn", { "f" })
   api.undo_checkpoint()
   local v = {}
   for i, n in ipairs(clip:notes()) do v[i] = n.velocity end
   eq(v[1] .. " " .. v[2], "96 96", "f: the notes from there as loud as f")
   eq(view.score_of(clip:get()).marks[1].value, "f", "the dynamic is written in the score")
   view:set(42, 0)
-  daw.cmd("notation.dyn", { "p" })
+  paw.cmd("notation.dyn", { "p" })
   view:set(42, 4)
-  daw.cmd("notation.dyn", { "f" })
+  paw.cmd("notation.dyn", { "f" })
   view:set(42, 0)
   keys("vlll")
-  daw.cmd("notation.cresc")
+  paw.cmd("notation.cresc")
   keys("<Esc>")
   for i, n in ipairs(clip:notes()) do v[i] = n.velocity end
   eq(v[1] < v[3] and v[3] < v[5] and v[2] < v[4], true, "a crescendo from p to f: louder beat by beat")
   eq(v[5], 96, "reaching the f")
   local m = view:layout().measures[1]
   eq(#m.marks >= 2, true, "the hairpin is on the measure, to be drawn")
-  daw.cmd("notation.slur")
+  paw.cmd("notation.slur")
   local xml = require("notation.export").musicxml(view:layout(), {})
   eq(xml:find("<dynamics><f/></dynamics>", 1, true) ~= nil, true, "MusicXML carries the dynamic")
   eq(xml:find('<wedge type="crescendo"/>', 1, true) ~= nil, true, "and the hairpin")
@@ -756,7 +756,7 @@ end)
 
 test("tablature: a guitar track gets strings and frets, and the guitar's clef", function()
   local view, clip, track = song(clean("E2+B2+E3+G#3+B3+E4 0 1, A2 1 1, C4 2 1, G2+B2+D3+G3+B3+G4 3 1"), 4)
-  daw.cmd("notation.tab", { "guitar" })
+  paw.cmd("notation.tab", { "guitar" })
   api.undo_checkpoint()
   eq(track.meta.notation.tab.tuning[1], 40, "standard tuning kept with the track, low E first")
   view.cache = nil
@@ -776,16 +776,16 @@ test("tablature: a guitar track gets strings and frets, and the guitar's clef", 
   eq(frets[4], "6:3 5:2 4:0 3:0 2:0 1:3", "an open G chord")
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("E ─", 1, true) ~= nil or text:find("E─", 1, true) ~= nil, true, "the terminal draws the strings, named")
-  daw.cmd("notation.tab", { "off" })
+  paw.cmd("notation.tab", { "off" })
   view.cache = nil
   eq(view:layout().tab, nil, "and takes them away")
 end)
 
 test("several tracks: a staff each, the open clip's the one edited; lyrics under the notes", function()
   local view, clip, track = song({ { pitch = 72, start = 0, length = 1, velocity = 90, meta = { lyric = "la" } }, N(74, 1, 1) }, 4)
-  local bass = daw.add_track({ name = "Bass" })
+  local bass = paw.add_track({ name = "Bass" })
   local low = bass:add_clip({ start = 0, length = 4, notes = { N(40, 0, 2), N(43, 2, 2) } })
-  daw.flush()
+  paw.flush()
   local ev = view:layout().measures[1].staves[1][1]
   eq(ev.lyric, "la", "the note's lyric is written under it")
   local xml = require("notation.export").musicxml(view:layout(), {})
@@ -812,7 +812,7 @@ end)
 local function shot() return api.ui_snapshot(120, 40) end
 
 local function m(kind, x, y, button, mods)
-  daw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
+  paw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
   api.undo_checkpoint()
 end
 
@@ -820,7 +820,7 @@ end
 local function cell(view, beat, step)
   local model = require("notation.model")
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "notation" then rect = r end end
+  for _, r in ipairs(paw.ui.rects) do if r.name == "notation" then rect = r end end
   local g = view.geometry
   for _, sys in ipairs(g.systems) do
     for _, placed in ipairs(sys.measures) do
@@ -835,9 +835,9 @@ end
 
 local function terminal_song(notes)
   local view, clip = song(notes, 4)
-  daw.opt.mouse = true
-  daw.mouse.forget()
-  daw.ui.focus("notation")
+  paw.opt.mouse = true
+  paw.mouse.forget()
+  paw.ui.focus("notation")
   shot()
   return view, clip
 end
@@ -848,7 +848,7 @@ test("notation terminal: a click chooses, a drag moves a note, a right click ope
   m("down", x, y) m("up", x, y)
   eq(notes_of(clip), "G4@1+0.5", "a click on the paper adds nothing")
   eq(view.beat .. " " .. view.step, "2 39", "it puts the cursor on that line and time")
-  daw.mouse.forget()
+  paw.mouse.forget()
   local hx, hy = cell(view, 1, 39)
   local tx, ty = cell(view, 2, 41)
   m("down", hx, hy)
@@ -858,10 +858,10 @@ test("notation terminal: a click chooses, a drag moves a note, a right click ope
   m("up", tx, ty)
   eq(notes_of(clip), "B4@2+0.5", "dragged two steps up and a beat later")
   shot()
-  daw.mouse.forget()
+  paw.mouse.forget()
   local rx, ry = cell(view, 2, 41)
   m("down", rx, ry, "right")
-  eq(require("daw.menu").is_open(), true, "a right click opens a menu")
+  eq(require("paw.menu").is_open(), true, "a right click opens a menu")
   eq(table.concat(shot(), "\n"):find("Delete the note", 1, true) ~= nil, true, "of what can be done to the note")
   keys("<CR>")
   eq(notes_of(clip), "", "its first entry deletes the note")
@@ -871,22 +871,22 @@ test("notation terminal: Shift-click extends a selection, a drag on the paper se
   local view = terminal_song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
   local x, y = cell(view, 0, 35)
   m("down", x, y) m("up", x, y)
-  daw.mouse.forget()
+  paw.mouse.forget()
   local x2, y2 = cell(view, 2, 37)
   m("down", x2, y2, "left", "S") m("up", x2, y2, "left", "S")
-  local sel = daw.keymap.selection()
+  local sel = paw.keymap.selection()
   eq(sel and sel.c0, 0, "a selection from the cursor")
   eq(sel and sel.c1 >= 2, true, "to the note clicked with Shift")
   keys("<Esc>")
   shot()
-  daw.mouse.forget()
+  paw.mouse.forget()
   local ax, ay = cell(view, 1.5, 33)
   local bx, by = cell(view, 3.5, 40)
   m("down", ax, ay)
   m("drag", ax + 1, ay)
   m("drag", bx, by)
   m("up", bx, by)
-  sel = daw.keymap.selection()
+  sel = paw.keymap.selection()
   eq(sel and sel.kind, "block", "a box drawn on the paper selects a block")
   keys("<Esc>")
 end)
@@ -897,14 +897,14 @@ test("notation terminal: a double click enters notes; in insert mode a click ent
   local x, y = cell(view, 1, 39)
   m("down", x, y) m("up", x, y)
   m("down", x, y) m("up", x, y)
-  eq(daw.keymap.mode, "i", "a double click enters notes")
+  eq(paw.keymap.mode, "i", "a double click enters notes")
   eq(notes_of(clip), "", "and enters nothing itself")
   local hx, hy = cell(view, 2, 41)
   m("move", hx, hy, "")
   local screen = shot()
   eq(screen[hy + 1]:find("██", 1, true) ~= nil, true, "the note to enter is drawn where the pointer is")
   eq(view.cell_hover and view.cell_hover.step, 41, "the shadow note follows the pointer")
-  daw.mouse.forget()
+  paw.mouse.forget()
   m("down", x, y) m("up", x, y)
   eq(notes_of(clip), "G4@1+0.5", "a click enters an eighth G on beat two")
   keys("<Esc>")
@@ -932,7 +932,7 @@ end)
 local function panel(w, h)
   local screen = api.ui_snapshot(w, h)
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "notation" then rect = r end end
+  for _, r in ipairs(paw.ui.rects) do if r.name == "notation" then rect = r end end
   local rows = {}
   for y = rect.y, rect.y + rect.h - 1 do
     local chars, col = {}, 0
@@ -954,7 +954,7 @@ end
 
 test("notation terminal: staff lines run unbroken from the clef to the end, the barlines join them", function()
   local view = song({ N(67, 0, 1), N(69, 1, 1), N(71, 2, 1), N(72, 3, 1) }, 8)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   local rows = panel(120, 40)
   local sys = view.geometry.systems[1]
   eq(view.geometry.dense, true, "dense at the usual zoom")
@@ -978,7 +978,7 @@ end)
 test("notation terminal: heads show their value, a quarter has a stem, an eighth a flag, rests look like rests", function()
   -- q G4, quarter rest, e G4, eighth rest, q G4 | whole rest | h D5 (stem down), half rest
   local view = song({ N(67, 0, 1), N(67, 2, 0.5), N(67, 3, 1), N(74, 8, 2) }, 12)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view:set(30, 11)
   local rows = panel(160, 45)
   local sys = view.geometry.systems[1]
@@ -1011,7 +1011,7 @@ end)
 test("notation terminal: a head in a space lies across two rows; accidentals before heads, ties as arcs", function()
   -- F#4 in the first space; G4 from beat four tied over the barline.
   local view = song({ N(66, 0, 1), N(67, 3, 2) }, 8)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view:set(30, 6)
   local rows = panel(160, 45)
   local sys = view.geometry.systems[1]
@@ -1030,9 +1030,9 @@ end)
 
 test("notation terminal: a grand staff fits in eighteen rows; zoomed in, every line and space has a row", function()
   -- The view with the arrange view alone, whatever other tests left open.
-  daw.cmd("view.only")
+  paw.cmd("view.only")
   local view = song({ N(36, 0, 1), N(43, 1, 1), N(76, 0, 1), N(79, 1, 1) }, 4)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   local rows, rect = panel(120, 50)
   eq(rect.h >= 20, true, "a panel of twenty rows or more: " .. rect.h)
   local g = view.geometry
@@ -1080,13 +1080,13 @@ test("notation terminal: the staff is drawn only in characters the common monosp
   eq(table.concat(seen, " "), "", "the ASCII set is ASCII")
 end)
 
-test("notation terminal: with daw.opt.ascii the staff is drawn in plain ASCII", function()
+test("notation terminal: with paw.opt.ascii the staff is drawn in plain ASCII", function()
   local view = song({ N(67, 0, 0.5), N(69, 0.5, 0.5), N(71, 1, 1), N(66, 2, 2) }, 8)
-  daw.ui.focus("notation")
-  T.after(function() daw.opt.ascii = false end)
-  daw.opt.ascii = true
+  paw.ui.focus("notation")
+  T.after(function() paw.opt.ascii = false end)
+  paw.opt.ascii = true
   local rows = panel(120, 40)
-  daw.opt.ascii = false
+  paw.opt.ascii = false
   local text = {}
   for y = 1, #rows do text[#text + 1] = table.concat(rows[y]) end
   text = table.concat(text, "\n")
@@ -1099,11 +1099,11 @@ end)
 -- The window -----------------------------------------------------------------------------------
 
 local function paint(view)
-  return daw.canvas.paint("notation", 1100, 560)
+  return paw.canvas.paint("notation", 1100, 560)
 end
 
 local function pointer(kind, x, y, extra)
-  daw.canvas.pointer("notation", daw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
+  paw.canvas.pointer("notation", paw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
   api.undo_checkpoint()
 end
 
@@ -1128,7 +1128,7 @@ end
 
 test("notation window: it engraves notes, stems, beams and the clef with the music font", function()
   local view = song({ N(72, 0, 0.5), N(74, 0.5, 0.5), N(76, 1, 1), N(67, 2, 2) })
-  local drawing = daw.canvas.paint("notation", 1100, 560, { glyphs = true })
+  local drawing = paw.canvas.paint("notation", 1100, 560, { glyphs = true })
   local glyphs, layers, cuts = {}, {}, 0
   for _, op in ipairs(drawing.ops) do
     if op[1] == "g" and layers[#layers] == "ink" then glyphs[op[5]] = (glyphs[op[5]] or 0) + 1 end
@@ -1151,7 +1151,7 @@ end)
 
 test("notation window: staff lines, stems and barlines are on whole pixels, systems whole cell rows", function()
   local view = song({ N(72, 0, 0.5), N(74, 0.5, 0.5), N(76, 1, 1), N(67, 2, 2), N(60, 4, 4), N(64, 8, 1) }, 16)
-  local drawing = daw.canvas.paint("notation", 1053, 600, { glyphs = true, surface = true, cell = { w = 13, h = 27 }, colors = { fg = "#cdd6f4", bg = "#1e1e2e" } })
+  local drawing = paw.canvas.paint("notation", 1053, 600, { glyphs = true, surface = true, cell = { w = 13, h = 27 }, colors = { fg = "#cdd6f4", bg = "#1e1e2e" } })
   local whole = true
   for _, op in ipairs(drawing.ops) do
     if op[1] == "r" then
@@ -1172,7 +1172,7 @@ end)
 
 test("notation window: in normal mode a click chooses, a drag moves a note, a right click opens a menu", function()
   local view, clip = song({ N(67, 1, 0.5) }, 4)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   paint(view)
   local x, y = spot(view, 2, 39)
   pointer("down", x, y)
@@ -1191,21 +1191,21 @@ test("notation window: in normal mode a click chooses, a drag moves a note, a ri
   paint(view)
   local rx, ry = spot(view, 2, 41)
   pointer("down", rx, ry, { button = "right" })
-  eq(require("daw.menu").is_open(), true, "a right click opens a menu")
+  eq(require("paw.menu").is_open(), true, "a right click opens a menu")
   keys("<CR>")
   eq(notes_of(clip), "", "its first entry deletes the note")
 end)
 
 test("notation window: Shift extends a selection, a drag on the paper selects a box", function()
   local view = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) }, 4)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   paint(view)
   local x, y = spot(view, 0, 35)
   pointer("down", x, y)
   pointer("up", x, y)
   local x2, y2 = spot(view, 2, 37)
   pointer("down", x2, y2, { shift = true })
-  local sel = daw.keymap.selection()
+  local sel = paw.keymap.selection()
   eq(sel and sel.c0, 0, "a selection from the cursor")
   eq(sel and sel.c1 >= 2, true, "to the note clicked with Shift")
   keys("<Esc>")
@@ -1215,26 +1215,26 @@ test("notation window: Shift extends a selection, a drag on the paper selects a 
   pointer("down", ax, ay)
   pointer("move", bx, by)
   pointer("up", bx, by)
-  sel = daw.keymap.selection()
+  sel = paw.keymap.selection()
   eq(sel and sel.kind, "block", "a box drawn on the paper selects a block")
   keys("<Esc>")
 end)
 
 test("notation window: a double click enters notes there; in insert mode a click enters a note and the note to enter follows the pointer", function()
   local view, clip = song(nil, 4)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   paint(view)
   view.value = 0.5
   local x, y = spot(view, 1, 39)
   pointer("double", x, y)
-  eq(daw.keymap.mode, "i", "a double click enters notes")
+  eq(paw.keymap.mode, "i", "a double click enters notes")
   pointer("down", x, y)
   pointer("up", x, y)
   eq(notes_of(clip), "", "the double click's own second press enters nothing")
   local hx, hy = spot(view, 2, 41)
-  daw.canvas.pointer("notation", { kind = "hover", x = hx, y = hy })
+  paw.canvas.pointer("notation", { kind = "hover", x = hx, y = hy })
   eq(view.gui.hover and view.gui.hover.step, 41, "the note to enter follows the pointer")
-  local drawing = daw.canvas.paint("notation", 1100, 560, { glyphs = true })
+  local drawing = paw.canvas.paint("notation", 1100, 560, { glyphs = true })
   local in_caret, heads = false, 0
   for _, op in ipairs(drawing.ops) do
     if op[1] == "layer" then in_caret = op[2] == "caret" end
@@ -1276,7 +1276,7 @@ end)
 test("notation window: the toolbar's buttons are one height, labels centred, and wrap instead of overlapping", function()
   local view = song({ N(64, 0, 4) }, 4)
   for _, width in ipairs({ 1100, 520, 380 }) do
-    local drawing = daw.canvas.paint("notation", width, 560)
+    local drawing = paw.canvas.paint("notation", width, 560)
     local rows, labelled = {}, 0
     for i, a in ipairs(view.gui.buttons) do
       eq(a.h, 28, "every button is as high as the others")
@@ -1314,12 +1314,12 @@ local function layer_ops(drawing, name)
 end
 
 local function surface_paint()
-  return daw.canvas.paint("notation", 1053, 800, { glyphs = true, surface = true, cell = { w = 13, h = 27 } })
+  return paw.canvas.paint("notation", 1053, 800, { glyphs = true, surface = true, cell = { w = 13, h = 27 } })
 end
 
 test("notation page: the selection, suggestions, diagnostics and the playhead are layers over the ink", function()
   local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) }, 8)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view:set(35, 0)
   keys("vl")
   local d = surface_paint()
@@ -1327,14 +1327,14 @@ test("notation page: the selection, suggestions, diagnostics and the playhead ar
   eq(sel[1] and sel[1][1], "r", "a faint band over the selection")
   eq(#sel >= 2, true, "and its notes again in the accent")
   keys("<Esc>")
-  daw.complete.show({ { label = "next", notes = { { pitch = 67, start = 4, length = 1 } } } }, { clip = clip.id, keys = false })
+  paw.complete.show({ { label = "next", notes = { { pitch = 67, start = 4, length = 1 } } } }, { clip = clip.id, keys = false })
   local ghosts = 0
   for _, op in ipairs(layer_ops(surface_paint(), "ghost")) do
     if op[1] == "g" then ghosts = ghosts + 1 end
   end
   eq(ghosts, 1, "a suggested note laid out where it would be written")
-  daw.complete.dismiss()
-  daw.diagnostic.set("test", clip.id, { { notes = { 2 }, severity = "warning", message = "a leap" } })
+  paw.complete.dismiss()
+  paw.diagnostic.set("test", clip.id, { { notes = { 2 }, severity = "warning", message = "a leap" } })
   local diag = layer_ops(surface_paint(), "diagnostic")
   local wave, tinted = false, false
   for _, op in ipairs(diag) do
@@ -1347,9 +1347,9 @@ test("notation page: the selection, suggestions, diagnostics and the playhead ar
   view:set(35, 0)
   keys("]d")
   eq(view.beat .. " " .. view.step, "1 36", "]d goes to it in the notation view")
-  local here = daw.ui.location("notation")
+  local here = paw.ui.location("notation")
   eq(here and here.uri:match("/note/") ~= nil, true, "the view says which note is under its cursor")
-  daw.diagnostic.reset("test", clip.id)
+  paw.diagnostic.reset("test", clip.id)
   api.transport_seek(2)
   local play = layer_ops(surface_paint(), "playhead")
   eq(play[1] and play[1][4], 2, "a 2 px playhead")
@@ -1357,7 +1357,7 @@ end)
 
 test("notation page: a cursor move draws the page from what was engraved; an edit engraves only the measures it changed", function()
   local view, clip = song({ N(60, 0, 1), N(62, 4, 1), N(64, 8, 1), N(65, 12, 1) }, 16)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   surface_paint()
   local cache = view.gui.measures
   local made = cache.count
@@ -1378,7 +1378,7 @@ test("notation page: the galley is one long system that keeps the cursor in view
   local notes = {}
   for i = 0, 63 do notes[#notes + 1] = N(60 + i % 12, i, 1) end
   local view = song(notes, 64)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   keys("zg")
   eq(view.galley, true, "zg: one long system")
   surface_paint()
@@ -1437,7 +1437,7 @@ test("notation pointer: in the terminal a click and an insert-mode click snap to
   eq(notes_of(clip):match("G4@3%+1") ~= nil, true, "a G typed there is a quarter on beat four, not tied eighths")
   keys("<Esc>")
   shot()
-  daw.mouse.forget()
+  paw.mouse.forget()
   view.value = 0.5
   keys("i")
   local x2, y2 = cell(view, 2.4, 37)
@@ -1448,7 +1448,7 @@ end)
 
 test("notation pointer: in the window a click snaps to the value, Alt-click to the grid", function()
   local view, clip = song(nil, 4)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view.value = 0.5
   paint(view)
   local x, y = spot(view, 1.2, 39)
@@ -1483,8 +1483,8 @@ end)
 --- system's top).
 local function engraved(notes, length, width)
   local view = song(notes, length)
-  daw.ui.focus("notation")
-  daw.canvas.paint("notation", width or 1100, 560)
+  paw.ui.focus("notation")
+  paw.canvas.paint("notation", width or 1100, 560)
   local eng = view.gui.engraved
   local engrave = require("notation.engrave")
   local measures = {}
@@ -1671,8 +1671,8 @@ test("notation page: the last system never holds a bar alone when the one before
   for i = 0, 55 do notes[#notes + 1] = N(60 + (i * 5) % 14, i * 0.5, 0.5) end
   local view = song(notes, 28)
   local engrave = require("notation.engrave")
-  daw.ui.focus("notation")
-  daw.canvas.paint("notation", 1100, 560)
+  paw.ui.focus("notation")
+  paw.canvas.paint("notation", 1100, 560)
   local layout, st = view:layout(), view.gui.engraved.style
   local seen = 0
   for width = 300, 4000, 25 do
@@ -1751,7 +1751,7 @@ test("notation export: :notation.export writes a file for the clip or the whole 
   local _, clip, track = song({ N(72, 0, 1), N(74, 1, 1) })
   track:add_clip({ start = 8, length = 4, name = "more", notes = { N(76, 0, 4) } })
   local path = T.scratch .. "/notation-test.ly"
-  daw.cmd("notation.export", { path, "track" })
+  paw.cmd("notation.export", { path, "track" })
   local f = io.open(path, "rb")
   local text = f and f:read("*a") or ""
   if f then f:close() end
@@ -1764,7 +1764,7 @@ end)
 --- The clip's notes as a sorted list, for comparing whatever order they are kept in.
 local function sorted_notes(clip)
   local out = {}
-  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%g+%g", daw.music.name(n.pitch), n.start, n.length) end
+  for _, n in ipairs(clip:notes()) do out[#out + 1] = string.format("%s@%g+%g", paw.music.name(n.pitch), n.start, n.length) end
   table.sort(out)
   return table.concat(out, " ")
 end
@@ -1802,20 +1802,20 @@ end)
 test("notation: Esc stays in the view; ,n, ZZ and :q leave it", function()
   local view = song({ N(60, 0, 1) })
   keys("<Esc>")
-  eq(daw.ui.focused, "notation", "Esc in normal mode keeps the keyboard in the view")
+  eq(paw.ui.focused, "notation", "Esc in normal mode keeps the keyboard in the view")
   keys("2<Esc>")
-  eq(daw.ui.focused, "notation", "and drops a count")
+  eq(paw.ui.focused, "notation", "and drops a count")
   keys("d<Esc>")
-  eq(daw.keymap.mode, "n", "and a pending operator")
-  eq(daw.ui.focused, "notation", "staying")
+  eq(paw.keymap.mode, "n", "and a pending operator")
+  eq(paw.ui.focused, "notation", "staying")
   keys("<leader>n")
-  eq(daw.ui.focused, "arrange", ",n goes back to the arrange view")
+  eq(paw.ui.focused, "arrange", ",n goes back to the arrange view")
   view:edit(view:clip())
   keys("ZZ")
-  eq(daw.ui.focused, "arrange", "ZZ closes the notation")
+  eq(paw.ui.focused, "arrange", "ZZ closes the notation")
   view:edit(view:clip())
   keys(":q<CR>")
-  eq(daw.ui.focused, "arrange", ":q closes the notation, and the program runs on")
+  eq(paw.ui.focused, "arrange", ":q closes the notation, and the program runs on")
 end)
 
 test("notation: a visual selection takes in the note under the cursor", function()
@@ -1834,16 +1834,16 @@ test("notation: : from a selection runs a command over it, and commands take bar
   local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1), N(67, 4, 4), N(69, 8, 4) }, 12)
   view:set(35, 0)
   keys("vw:")
-  eq(require("daw.views.cmdline").state().before, "'<,'>", "the prompt starts with the selection's range")
+  eq(require("paw.views.cmdline").state().before, "'<,'>", "the prompt starts with the selection's range")
   keys("notation.cresc<CR>")
   local mark = view:layout().measures[1].marks[1]
   eq(mark.kind, "cresc", "a crescendo")
   eq(mark.at == 0 and mark.to == 2, true, "over the two selected notes, the second under the cursor included")
-  daw.commands.exec("2,3notation.transpose 2")
+  paw.commands.exec("2,3notation.transpose 2")
   eq(notes_of(clip), "C4@0+1 D4@1+1 E4@2+1 F4@3+1 A4@4+4 B4@8+4", "bars 2 and 3 a tone up")
-  daw.commands.exec("1notation.transpose -1 steps")
+  paw.commands.exec("1notation.transpose -1 steps")
   eq(notes_of(clip), "B3@0+1 C4@1+1 D4@2+1 E4@3+1 A4@4+4 B4@8+4", "bar 1 a step of the key down")
-  daw.commands.exec("'<,'>notation.transpose 12")
+  paw.commands.exec("'<,'>notation.transpose 12")
   eq(notes_of(clip), "B4@0+1 C5@1+1 D4@2+1 E4@3+1 A4@4+4 B4@8+4", "'<,'> typed later names the last selection again")
 end)
 

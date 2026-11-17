@@ -1,12 +1,12 @@
 -- The bottom row: a prompt while typing a command or answering a question,
 -- otherwise the latest message.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local active      -- { prompt, chars, pos, on_submit, complete, preview, note, history, index, matches, match, anchor, on_key, ghost }
 local histories = {}
 -- A prompt open in one seat is that seat's; the history is everyone's.
-daw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
+paw.seats.keep("cmdline", function() return active end, function(a) active = a end, function() return nil end)
 
 local function text()
   return table.concat(active.chars)
@@ -31,8 +31,8 @@ local function finish(submit)
   local state, value = active, text()
   preview(nil)
   active = nil
-  daw.ui.grabber = nil
-  daw.keymap.set_mode(state.back or "n")
+  paw.ui.grabber = nil
+  paw.keymap.set_mode(state.back or "n")
   api.ui_redraw()
   if submit and state.on_submit then
     if value ~= "" and state.history[#state.history] ~= value then table.insert(state.history, value) end
@@ -162,7 +162,7 @@ local function on_key(key, pasted)
     end
   elseif key == "<Up>" or key == "<Down>" then
     local h = a.history
-    a.index = daw.util.clamp((a.index or #h + 1) + (key == "<Up>" and -1 or 1), 1, #h + 1)
+    a.index = paw.util.clamp((a.index or #h + 1) + (key == "<Up>" and -1 or 1), 1, #h + 1)
     set_text(h[a.index] or "")
   else
     local ch = key == "<Space>" and " " or key == "<lt>" and "<" or key
@@ -211,8 +211,8 @@ function M.open(opts, on_submit)
   set_text(opts.text or "")
   active.selected = #active.chars > 0 and opts.select ~= false and opts.prompt ~= ":"
   if #active.chars > 0 then preview(text()) end
-  daw.ui.grabber = on_key
-  daw.keymap.set_mode("c")
+  paw.ui.grabber = on_key
+  paw.keymap.set_mode("c")
   api.ui_redraw()
 end
 
@@ -221,16 +221,16 @@ end
 --- too). It may ask again.
 function M.ask_key(prompt, on_key)
   active = { prompt = prompt, chars = {}, pos = 0, history = {}, single = true }
-  daw.ui.grabber = function(key)
+  paw.ui.grabber = function(key)
     if active and active.single then
       active = nil
-      daw.ui.grabber = nil
-      daw.keymap.set_mode("n")
+      paw.ui.grabber = nil
+      paw.keymap.set_mode("n")
     end
     on_key(key)
     api.ui_redraw()
   end
-  daw.keymap.set_mode("c")
+  paw.keymap.set_mode("c")
   api.ui_redraw()
 end
 
@@ -308,9 +308,9 @@ function M.draw_popup(buf)
     local sel = i == a.match
     buf:fill(x, y + row, width, 1, " ", sel and "PmenuSel" or "Pmenu")
     if sel then buf:text(x, y + row, "▶", "PmenuSel") end
-    buf:text(x + 2, y + row, daw.util.fit(c.label, label_w), sel and "PmenuSel" or "Pmenu")
+    buf:text(x + 2, y + row, paw.util.fit(c.label, label_w), sel and "PmenuSel" or "Pmenu")
     if desc_w > 0 and c.desc then
-      buf:text(x + 2 + label_w + 2, y + row, daw.util.fit(brief(c.desc), desc_w), sel and "PmenuSelDesc" or "PmenuDesc")
+      buf:text(x + 2 + label_w + 2, y + row, paw.util.fit(brief(c.desc), desc_w), sel and "PmenuSelDesc" or "PmenuDesc")
     end
   end
   -- More than fit: a thumb on the right edge says where in the list this is.
@@ -322,7 +322,7 @@ function M.draw_popup(buf)
     end
   end
 end
-daw.ui.draw_popup = M.draw_popup
+paw.ui.draw_popup = M.draw_popup
 
 --- A prompt drawn beside what it is about (`anchor`): one line in a small
 --- float with the few words its preview says, and the candidates under it
@@ -339,12 +339,12 @@ function M.draw_anchored(buf, a, at)
   buf:fill(x, y, width, 1, " ", "Pmenu")
   local used = buf:text(x + 1, y, a.prompt, "PmenuSel")
   local room = width - used - 2
-  buf:text(x + 1 + used, y, daw.util.fit(typed, math.max(1, room)), "Pmenu")
+  buf:text(x + 1 + used, y, paw.util.fit(typed, math.max(1, room)), "Pmenu")
   -- Examples of what to type, dim, until something is typed over them.
-  if ghost then buf:text(x + 1 + used, y, daw.util.fit(ghost, math.max(1, room)), "PmenuDesc") end
+  if ghost then buf:text(x + 1 + used, y, paw.util.fit(ghost, math.max(1, room)), "PmenuDesc") end
   if note ~= "" then
     local w = math.min(api.str_width(note), math.max(0, room - api.str_width(typed) - 2))
-    if w >= 4 then buf:text(x + width - 1 - w, y, daw.util.fit(note, w), a.note_level == "error" and "Warn" or "PmenuDesc") end
+    if w >= 4 then buf:text(x + width - 1 - w, y, paw.util.fit(note, w), a.note_level == "error" and "Warn" or "PmenuDesc") end
   end
   local before = table.concat(a.chars, "", 1, a.pos)
   api.ui_cursor(x + 1 + used + api.str_width(before), y)
@@ -372,9 +372,9 @@ function M.draw_anchored(buf, a, at)
     local c = a.matches[i]
     local sel = i == a.match
     buf:fill(lx, ly + row, list_w, 1, " ", sel and "PmenuSel" or "Pmenu")
-    buf:text(lx + 1, ly + row, daw.util.fit(c.label, label_w), sel and "PmenuSel" or "Pmenu")
+    buf:text(lx + 1, ly + row, paw.util.fit(c.label, label_w), sel and "PmenuSel" or "Pmenu")
     if desc_w > 0 and c.desc then
-      buf:text(lx + 2 + label_w + 1, ly + row, daw.util.fit(brief(c.desc), desc_w), sel and "PmenuSelDesc" or "PmenuDesc")
+      buf:text(lx + 2 + label_w + 1, ly + row, paw.util.fit(brief(c.desc), desc_w), sel and "PmenuSelDesc" or "PmenuDesc")
     end
   end
 end
@@ -382,7 +382,7 @@ end
 -- The pointer on the list: a click puts a candidate in the line, a second
 -- click on it (or a double click) runs the line; the wheel moves through
 -- the list.
-daw.mouse.overlays[#daw.mouse.overlays + 1] = function(e)
+paw.mouse.overlays[#paw.mouse.overlays + 1] = function(e)
   local a = active
   local p = a and a.matches and #a.matches > 0 and a.popup
   if not p or e.x < p.x or e.x >= p.x + p.w or e.y < p.y or e.y >= p.y + p.rows then return false end
@@ -394,7 +394,7 @@ daw.mouse.overlays[#daw.mouse.overlays + 1] = function(e)
       if again or e.double then on_key("<CR>") end
     end
   else
-    local step = daw.mouse.wheel(e)
+    local step = paw.mouse.wheel(e)
     if step then complete(step) end
   end
   api.ui_redraw()
@@ -420,7 +420,7 @@ end
 
 --- Ask for an exact value on the command line: a number, `+2` and `-3` to
 --- step from the value now, `=-6` for a value below zero.
----   daw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
+---   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
 --- Options: `show(value)` for how the value now is written, `parse(text)`
 --- for reading one absolute value, `min` and `max` to keep it within.
 function M.ask_value(opts, set)
@@ -429,13 +429,13 @@ function M.ask_value(opts, set)
   M.open({ prompt = string.format("%s %s → (6, +2, -3, =-6): ", opts.label, shown), history = "value",
     label = "Set " .. opts.label }, function(text)
     local value = M.read_value(text, now, opts.parse)
-    if not value then return daw.notify("not a value: `" .. text .. "`", "warn") end
+    if not value then return paw.notify("not a value: `" .. text .. "`", "warn") end
     if opts.min then value = math.max(opts.min, value) end
     if opts.max then value = math.min(opts.max, value) end
     set(value)
   end)
 end
-daw.ui.ask_value = M.ask_value
+paw.ui.ask_value = M.ask_value
 
 local levels = { info = "Info", warn = "Warn", error = "Error" }
 
@@ -446,7 +446,7 @@ local seen_at = 0
 
 --- The last error, if it has not been read in the messages since.
 function M.unread_error()
-  local list = daw.ui.messages
+  local list = paw.ui.messages
   for i = #list, math.max(1, #list - 50), -1 do
     local m = list[i]
     if m.level == "error" then
@@ -458,30 +458,30 @@ end
 
 --- How to see every message: the key for the messages, and the command.
 function M.messages_hint()
-  for _, map in ipairs(daw.keymap.list("n")) do
-    if map.rhs == "pick.messages" or map.rhs == "messages" then return daw.keymap.human(map.lhs) .. " or :messages" end
+  for _, map in ipairs(paw.keymap.list("n")) do
+    if map.rhs == "pick.messages" or map.rhs == "messages" then return paw.keymap.human(map.lhs) .. " or :messages" end
   end
   return ":messages"
 end
 
-daw.on("command.pre", function(e)
+paw.on("command.pre", function(e)
   if e.command == "messages" or e.command == "pick.messages" then seen_at = api.now() end
 end)
 
-daw.ui.view("cmdline", {
+paw.ui.view("cmdline", {
   focusable = false,
   render = function(_, buf, ctx)
     if active and not anchored(active) then
       local used = buf:text(0, 0, active.prompt, "Accent")
       local typed = buf:text(used, 0, text(), active.selected and "Visual" or "Normal")
-      if typed == 0 and active.ghost then buf:text(used, 0, daw.util.fit(active.ghost, math.max(1, buf.width - used - 1)), "Dim") end
+      if typed == 0 and active.ghost then buf:text(used, 0, paw.util.fit(active.ghost, math.max(1, buf.width - used - 1)), "Dim") end
       -- What the line would do, at the right end while there is room.
       local note = active.note
       if note and note ~= "" then
         local w = api.str_width(note)
         local room = buf.width - used - typed - 3
         if room >= 8 then
-          buf:text(buf.width - math.min(w, room) - 1, 0, w > room and daw.util.fit(note, room) or note,
+          buf:text(buf.width - math.min(w, room) - 1, 0, w > room and paw.util.fit(note, room) or note,
             active.note_level == "error" and "Warn" or "Dim")
         end
       end
@@ -489,26 +489,26 @@ daw.ui.view("cmdline", {
       api.ui_cursor(ctx.x + used + api.str_width(before), ctx.y)
       return
     end
-    local pending = daw.keymap.pending()
+    local pending = paw.keymap.pending()
     if pending ~= "" then buf:text(buf.width - #pending - 2, 0, pending, "Accent") end
-    local message = daw.ui.message
-    if message and daw.keymap.mode == "i" and daw.opt.keybar and #daw.ui.keybar.entries() > 0 then
+    local message = paw.ui.message
+    if message and paw.keymap.mode == "i" and paw.opt.keybar and #paw.ui.keybar.entries() > 0 then
       -- While typing, the keys are what is needed: the message goes at the
       -- right end, cut to its share, and the keys keep the rest.
       local first = message.text:match("^[^\n]*")
       local share = math.floor(buf.width * 0.4)
-      local shown = api.str_width(first) > share and daw.util.fit(first, share) or first
+      local shown = api.str_width(first) > share and paw.util.fit(first, share) or first
       local w = api.str_width(shown)
       buf:text(buf.width - w - 1, 0, shown, levels[message.level] or "Info")
-      daw.draw.keys(buf, 1, 0, daw.ui.keybar.entries(), buf.width - w - 4)
+      paw.draw.keys(buf, 1, 0, paw.ui.keybar.entries(), buf.width - w - 4)
     elseif message then
       local first = message.text:match("^[^\n]*")
       local how = M.messages_hint()
       local more = (message.text:find("\n") or message.level == "error") and ("  " .. how .. " shows it all") or ""
       local room = math.max(10, buf.width - api.str_width(more) - 1)
-      local used = buf:text(0, 0, api.str_width(first) > room and daw.util.fit(first, room) or first, levels[message.level] or "Info")
+      local used = buf:text(0, 0, api.str_width(first) > room and paw.util.fit(first, room) or first, levels[message.level] or "Info")
       if more ~= "" then buf:text(used, 0, more, "Dim") end
-    elseif daw.opt.keybar and pending == "" then
+    elseif paw.opt.keybar and pending == "" then
       -- With nothing to say, the line shows the keys worth knowing here,
       -- and a word on how to read an error that has gone by unread.
       -- The note goes at the right end, the keys keep their places.
@@ -523,14 +523,14 @@ daw.ui.view("cmdline", {
         room = buf.width - w - 3
       else
         -- Else the topic of help for the view, where there is room for it.
-        local topic = daw.help and daw.help.topic_of(daw.ui.focused)
+        local topic = paw.help and paw.help.topic_of(paw.ui.focused)
         local hint = topic and ":help " .. topic
         if hint and api.str_width(hint) + 40 < room then
           buf:text(buf.width - api.str_width(hint) - 1, 0, hint, "KeyBarText")
           room = room - api.str_width(hint) - 3
         end
       end
-      daw.draw.keys(buf, 1, 0, daw.ui.keybar.entries(), room)
+      paw.draw.keys(buf, 1, 0, paw.ui.keybar.entries(), room)
     end
   end,
 })

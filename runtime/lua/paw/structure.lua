@@ -1,4 +1,4 @@
--- Motions and text objects that follow the project's tree (`daw.query`),
+-- Motions and text objects that follow the project's tree (`paw.query`),
 -- as Tree-sitter's do in Neovim:
 --
 --   ]]  [[    the next or previous clip of the same kind on the track
@@ -9,10 +9,10 @@
 --   ]]  [[    in the piano roll: the next or previous note of the same pitch
 --
 -- `:select` and `:query` run a query (docs/terminal.md, "Structural queries").
-local api = daw.api
-local keymap = daw.keymap
-local cursor = daw.cursor
-local groups = daw.groups
+local api = paw.api
+local keymap = paw.keymap
+local cursor = paw.cursor
+local groups = paw.groups
 local M = {}
 
 local EPS = 1e-9
@@ -56,7 +56,7 @@ end
 local function to_same_clip(dir)
   return function(ctx)
     local c = M.same_clip(dir, ctx.count)
-    if not c then return daw.notify(dir > 0 and "no later clip of this kind on the track" or "no earlier clip of this kind on the track", "warn") end
+    if not c then return paw.notify(dir > 0 and "no later clip of this kind on the track" or "no earlier clip of this kind on the track", "warn") end
     cursor.set_beat(c.start)
   end
 end
@@ -81,7 +81,7 @@ local function to_sibling(dir)
     for i, other in ipairs(list) do
       if other == id then
         local to = list[i + dir * (ctx.count or 1)]
-        if not to then return daw.notify(dir > 0 and "the last track of its group" or "the first track of its group", "warn") end
+        if not to then return paw.notify(dir > 0 and "the last track of its group" or "the first track of its group", "warn") end
         return cursor.set_track(to)
       end
     end
@@ -95,7 +95,7 @@ local function to_parent(ctx)
     if not up then break end
     id = up
   end
-  if not id or id == cursor.track_id() then return daw.notify("the track is in no group", "warn") end
+  if not id or id == cursor.track_id() then return paw.notify("the track is in no group", "warn") end
   cursor.set_track(id)
 end
 
@@ -118,14 +118,14 @@ local function to_group_end(ctx)
     end
     id = list[finish]
   end
-  if not id or id == cursor.track_id() then return daw.notify("the track is in no group, or at its end", "warn") end
+  if not id or id == cursor.track_id() then return paw.notify("the track is in no group, or at its end", "warn") end
   cursor.set_track(id)
 end
 
 local function to_child()
   local id = cursor.track_id()
   local first = id and groups.is_group(id) and groups.members(id)[1]
-  if not first then return daw.notify("not a group with tracks in it", "warn") end
+  if not first then return paw.notify("not a group with tracks in it", "warn") end
   if groups.folded(id) then groups.fold(id, false) end
   cursor.set_track(first)
 end
@@ -174,7 +174,7 @@ end
 
 local function to_same_note(dir)
   return function(ctx)
-    local roll = daw.ui.views.pianoroll
+    local roll = paw.ui.views.pianoroll
     if not roll:clip() then return end
     local pitch = roll.pitch
     local beat = roll.beat
@@ -192,14 +192,14 @@ local function to_same_note(dir)
       if not step then break end
       found, beat = step, step.start
     end
-    if not found then return daw.notify("no other " .. daw.music.name(pitch) .. (dir > 0 and " after it" or " before it"), "warn") end
+    if not found then return paw.notify("no other " .. paw.music.name(pitch) .. (dir > 0 and " after it" or " before it"), "warn") end
     roll:set(pitch, found.start)
   end
 end
 
 -- Keys ---------------------------------------------------------------------------------
 
-local function amap(lhs, fn, desc, opts) keymap.set(lhs, fn, daw.util.merge({ view = "arrange", desc = desc }, opts)) end
+local function amap(lhs, fn, desc, opts) keymap.set(lhs, fn, paw.util.merge({ view = "arrange", desc = desc }, opts)) end
 amap("]]", to_same_clip(1), "The next clip of the same kind on the track", { motion = true, jump = true })
 amap("[[", to_same_clip(-1), "The clip of the same kind before, on the track", { motion = true, jump = true })
 amap("]s", to_sibling(1), "The next track in the same group", { motion = true, linewise = true })
@@ -220,9 +220,9 @@ local function query_text(ctx) return (ctx.args[1] or ""):match("^%s*(.-)%s*$") 
 
 local function run(ctx, opts)
   local q = query_text(ctx)
-  if q == "" then return daw.notify("usage: " .. ctx.name .. " clip[name~=pizz] > note[pitch>=c5]", "warn") end
-  local ok, nodes = pcall(daw.query.select, q, opts)
-  if not ok then return daw.notify(tostring(nodes), "error") end
+  if q == "" then return paw.notify("usage: " .. ctx.name .. " clip[name~=pizz] > note[pitch>=c5]", "warn") end
+  local ok, nodes = pcall(paw.query.select, q, opts)
+  if not ok then return paw.notify(tostring(nodes), "error") end
   local counts, order = {}, {}
   for _, n in ipairs(nodes) do
     local k = n.kind == "group" and "track" or n.kind
@@ -231,23 +231,23 @@ local function run(ctx, opts)
   end
   local parts = {}
   for _, k in ipairs(order) do parts[#parts + 1] = counts[k] .. " " .. k .. (counts[k] == 1 and "" or "s") end
-  daw.notify(#nodes == 0 and "nothing in the project is " .. q or ((opts.choose == false and "found " or "chose ") .. table.concat(parts, ", ")))
+  paw.notify(#nodes == 0 and "nothing in the project is " .. q or ((opts.choose == false and "found " or "chose ") .. table.concat(parts, ", ")))
   return nodes
 end
 
 local function complete_query(text)
   local out = {}
-  for _, k in ipairs(daw.query.KINDS) do
+  for _, k in ipairs(paw.query.KINDS) do
     if k:sub(1, #text) == text then out[#out + 1] = k end
   end
   return out
 end
 
-daw.command("select", function(ctx) run(ctx, {}) end, { raw = true, complete = complete_query,
+paw.command("select", function(ctx) run(ctx, {}) end, { raw = true, complete = complete_query,
   desc = "Choose what a query finds (its clips, or its notes in the piano roll) and list it in the quickfix list: `select clip[name~=pizz] > note[pitch>=c5]`" })
-daw.command("query", function(ctx) run(ctx, { choose = false, title = "query" }) end, { raw = true, complete = complete_query,
+paw.command("query", function(ctx) run(ctx, { choose = false, title = "query" }) end, { raw = true, complete = complete_query,
   desc = "List what a query finds in the quickfix list: `query note[lyric=la]`, `query group[name=Strings] clip`" })
-daw.command("lquery", function(ctx) run(ctx, { choose = false, title = "query", loc = true }) end, { raw = true, complete = complete_query,
+paw.command("lquery", function(ctx) run(ctx, { choose = false, title = "query", loc = true }) end, { raw = true, complete = complete_query,
   desc = "As `query`, into the window's location list" })
 
 return M

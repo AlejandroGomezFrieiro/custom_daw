@@ -1,4 +1,4 @@
--- Options: `daw.opt.zoom = 4`. Any name can be set; the ones the runtime
+-- Options: `paw.opt.zoom = 4`. Any name can be set; the ones the runtime
 -- reads are defined below. Changing one emits `option.changed`.
 local M = {}
 
@@ -15,7 +15,7 @@ local defaults = {
   ripple = false,          -- deleting time closes the gap, pasting makes room
   -- Seconds between safety copies of unsaved work; 0 for none. Off when
   -- started with --clean, which is how tests and experiments run.
-  autosave = require("daw.api").env().clean and 0 or 60,
+  autosave = require("paw.api").env().clean and 0 or 60,
   reopen_last = false,     -- start with the project that was open last, when none is named
   threads = 0,            -- threads to process tracks on; 0 for one per core
   octave = 4,              -- where note entry in insert mode starts: `a` is C of this octave
@@ -62,8 +62,8 @@ local opt = setmetatable({}, {
     local old = self[name]
     values[name] = value
     if old ~= value then
-      daw.emit("option.changed", { name = name, value = value, old = old })
-      daw.api.ui_redraw()
+      paw.emit("option.changed", { name = name, value = value, old = old })
+      paw.api.ui_redraw()
     end
   end,
 })

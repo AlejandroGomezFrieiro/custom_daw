@@ -5,29 +5,29 @@
 #
 #   nix develop -c bench/run.sh [name] [quick]
 #
-# Build first:  nix develop -c cargo build --release -p daw-tui
+# Build first:  nix develop -c cargo build --release -p paw-tui
 #               bench/tracktion/build.sh          (optional, for the comparison)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 name="${1:-$(date +%Y%m%d-%H%M%S)}"
 quick="${2:-}"
-daw="$root/target/release/daw"
+paw="$root/target/release/paw"
 te="$root/third_party/build-te_bench/te_bench_artefacts/Release/te_bench"
 [ -x "$te" ] || te=""
 reps="${REPS:-3}"
 
-export BENCH_TMP="${BENCH_TMP:-/tmp/daw-bench}"
+export BENCH_TMP="${BENCH_TMP:-/tmp/paw-bench}"
 mkdir -p "$BENCH_TMP/home" "$here/results"
 # Keep both programs away from the real configuration, caches and data.
 export XDG_CACHE_HOME="$BENCH_TMP/home/cache" XDG_DATA_HOME="$BENCH_TMP/home/data" XDG_CONFIG_HOME="$BENCH_TMP/home/config"
 out="$here/results/$name.jsonl"
 
-d() { "$daw" --clean --no-plugins -l "$here/$1" "${@:2}" 2>/dev/null | grep '^{' >> "$out" || echo "FAILED: daw $*" >&2; }
+d() { "$paw" --clean --no-plugins -l "$here/$1" "${@:2}" 2>/dev/null | grep '^{' >> "$out" || echo "FAILED: paw $*" >&2; }
 t() { [ -n "$te" ] && { HOME="$BENCH_TMP/home" "$te" "$@" 2>/dev/null | grep '^{' >> "$out" || echo "FAILED: te_bench $*" >&2; }; return 0; }
 
 # The audio file both engines play.
-"$daw" --clean --no-plugins -e "dofile('$here/lib.lua').wav()" -l /dev/null >/dev/null 2>&1 || true
+"$paw" --clean --no-plugins -e "dofile('$here/lib.lua').wav()" -l /dev/null >/dev/null 2>&1 || true
 wav="$BENCH_TMP/bench-2s.wav"
 [ -f "$wav" ] || { echo "cannot make $wav" >&2; exit 1; }
 
@@ -82,6 +82,6 @@ done
 d memory.lua churn 30
 
 echo "startup" >&2
-"$here/startup.sh" "$daw" "$te" 10 >> "$out"
+"$here/startup.sh" "$paw" "$te" 10 >> "$out"
 
-"$daw" --clean --no-plugins -l "$here/summarize.lua" "$out"
+"$paw" --clean --no-plugins -l "$here/summarize.lua" "$out"

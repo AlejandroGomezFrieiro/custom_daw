@@ -1,7 +1,7 @@
 //! Tracks processed on several threads: the output is the same, bit for
 //! bit, as on one, and a schedule that is wrong does no harm.
 
-use daw_engine::{
+use paw_engine::{
     AutoLane, AutoTarget, Automation, ClipSet, Delay, Engine, EngineHandle, MASTER, MAX_BLOCK, Msg,
     NO_SLOT, Pool, Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt,
 };
@@ -12,7 +12,7 @@ fn send(handle: &mut EngineHandle, engine: &mut Engine, msg: Msg) {
     handle.send_while(msg, engine);
 }
 
-fn device(kind: &str) -> Box<dyn daw_engine::Device> {
+fn device(kind: &str) -> Box<dyn paw_engine::Device> {
     Registry::with_builtins()
         .get(kind)
         .unwrap()

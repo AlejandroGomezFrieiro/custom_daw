@@ -13,8 +13,8 @@
 --     arts = { { id, code = "11.A", attr = { type, data }, out = "ks=E1",
 --                events, tag, name, class, colour, mark, text, range, mono, group }, ... },
 --     by_id, by_code, mods = { { id, m2, out, off, text, group } }, hash }
-local api = daw.api
-local music = daw.music
+local api = paw.api
+local music = paw.music
 local toml = require("articulations.toml")
 local m2 = require("articulations.m2")
 
@@ -303,7 +303,7 @@ end
 function M.dirs()
   local env = api.env()
   local out = { { dir = env.config_dir .. "/articulations", kind = "user" } }
-  for _, ext in ipairs(daw.ext.list()) do
+  for _, ext in ipairs(paw.ext.list()) do
     if ext.ok and not ext.path:match("%.lua$") then out[#out + 1] = { dir = ext.path .. "/articulations", kind = "extension" } end
   end
   out[#out + 1] = { dir = M.generated_dir(), kind = "generated" }

@@ -1,9 +1,9 @@
 [package]
-name = "daw-raster"
+name = "paw-raster"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Drawings of views (daw.canvas ops) to pixels, music fonts included, and the kitty graphics protocol that shows them in a terminal."
+description = "Drawings of views (paw.canvas ops) to pixels, music fonts included, and the kitty graphics protocol that shows them in a terminal."
 
 [dependencies]
 serde_json.workspace = true

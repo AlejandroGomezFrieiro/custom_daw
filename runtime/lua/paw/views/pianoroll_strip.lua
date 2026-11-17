@@ -8,14 +8,14 @@
 -- head (the top of its bar) chooses it (Ctrl or Shift adds it or takes it
 -- out) and a drag moves the chosen, Ctrl and a drag chooses the moves in a
 -- box, the right button dragged draws a straight line and clicked opens
--- the menu. Each through `daw.frontend.act`, as the window's strip.
-local api = daw.api
-local util = daw.util
-local mouse = daw.mouse
-local controls = daw.controls
-local menus = require("daw.mouse_menus")
-local view = daw.ui.views.pianoroll
-local A = daw.frontend.act
+-- the menu. Each through `paw.frontend.act`, as the window's strip.
+local api = paw.api
+local util = paw.util
+local mouse = paw.mouse
+local controls = paw.controls
+local menus = require("paw.mouse_menus")
+local view = paw.ui.views.pianoroll
+local A = paw.frontend.act
 
 local M = {
   -- What the strip can show, in the order the menu lists them.
@@ -30,7 +30,7 @@ local M = {
 
 -- What the strip shows, for each seat: one of `M.kinds`.
 local shown = M.kinds[1]
-daw.seats.keep("pianoroll.strip", function() return shown end, function(s) shown = s end, function() return M.kinds[1] end)
+paw.seats.keep("pianoroll.strip", function() return shown end, function(s) shown = s end, function() return M.kinds[1] end)
 
 --- What the strip shows now: `{ label, short, kind, number }`, `kind` nil
 --- for the velocities.
@@ -52,13 +52,13 @@ local function draw(self, buf)
   local g = self.geometry
   local clip = self:clip()
   if not (shown.kind and clip and g and g.vel and g.vel > 0) then return end
-  local eighths = daw.draw.g.eighths
+  local eighths = paw.draw.g.eighths
   local top, rows, keys = g.head + g.rows, g.vel, g.keys
   local tw = buf.width - keys
   buf:fill(0, top, buf.width, rows, " ", "VelocityLane")
   buf:text(1, top + rows - 1, shown.short, "VelocityLane")
   local lane = buf:sub(keys, top, tw, rows)
-  local hue = daw.draw.track_hue(api.track_get(api.clip_get(clip.id).track))
+  local hue = paw.draw.track_hue(api.track_get(api.clip_get(clip.id).track))
   local list, value = {}, shown.kind == "bend" and 0 or nil
   local chosen = {}
   for _, place in ipairs(controls.chosen(clip.id)) do chosen[place] = true end
@@ -73,7 +73,7 @@ local function draw(self, buf)
   local pictured = lane:strip(0, 0, tw, rows, {
     key = "pianoroll:strip", under = true,
     draw = function(gp, px) M.picture(gp, px, { list = list, chosen = chosen, kind = kind, scroll = scroll, zoom = zoom,
-      length = length, color = daw.draw.track_colour(api.track_get(api.clip_get(clip.id).track)) }) end,
+      length = length, color = paw.draw.track_colour(api.track_get(api.clip_get(clip.id).track)) }) end,
   })
   if pictured then return end
   local at = 1
@@ -102,7 +102,7 @@ end
 --- `o.chosen` the places chosen, `o.kind` "bend" or "cc", `o.scroll` and
 --- `o.zoom` the roll's, `o.length` the clip's, `o.color` the track's.
 function M.picture(g, px, o)
-  local P = require("daw.theme").palette
+  local P = require("paw.theme").palette
   local ppb = o.zoom * px.cell.w
   local function X(beat) return (beat - o.scroll) * ppb end
   -- From the first move (the wheel rests in the middle before it) to the clip's end.
@@ -116,7 +116,7 @@ function M.picture(g, px, o)
     points[#points + 1] = { beat = item.c.start, value = controls.fraction(o.kind, item.c.value), shape = "hold" }
   end
   local part = { w = x1 - x0, h = px.h, cell = px.cell }
-  local _, Y = daw.plot.curve(g:sub(x0, 0, x1 - x0, px.h), part, {
+  local _, Y = paw.plot.curve(g:sub(x0, 0, x1 - x0, px.h), part, {
     points = points, from = o.scroll + x0 / ppb, pixels_per_beat = ppb, color = o.color,
     guides = false, markers = false, grid = false, fill = 0.3,
   })
@@ -145,7 +145,7 @@ local function choose_kind(where)
   for _, k in ipairs(M.kinds) do
     items[#items + 1] = { label = k.label, checked = k == shown, run = function() M.show(k.kind, k.number) end }
   end
-  daw.ui.menu(items, where)
+  paw.ui.menu(items, where)
 end
 
 --- A press on the strip, `e` in the view's cells: the strip's name opens
@@ -171,13 +171,13 @@ function M.press(self, e, clip)
       strip = function(_, buf)
         local d = mouse.gesture().d
         if d and d.moved then
-          buf:text(x0, y0, daw.draw.g.point, "MouseBox")
-          buf:text(d.x, util.clamp(d.y, top, top + rows - 1), daw.draw.g.point, "MouseBox")
+          buf:text(x0, y0, paw.draw.g.point, "MouseBox")
+          buf:text(d.x, util.clamp(d.y, top, top + rows - 1), paw.draw.g.point, "MouseBox")
         end
       end,
       drag = function(d) mouse.gesture().d = d end,
       up = function(u)
-        if not u.moved then return daw.ui.menu(menus.strip(clip.id, kind, number), where) end
+        if not u.moved then return paw.ui.menu(menus.strip(clip.id, kind, number), where) end
         A.line_controls(clip.id, kind, number, beat(x0), fraction(y0), beat(u.x), fraction(u.y), mouse.has(u, "S"))
       end,
     })

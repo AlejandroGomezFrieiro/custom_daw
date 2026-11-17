@@ -16,7 +16,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use daw_engine::{
+use paw_engine::{
     Controller, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, ParamInfo, Ports,
     ProcessCtx, Registry, ump,
 };
@@ -34,7 +34,7 @@ const BOUNDED_BLOCK: &CStr = c"http://lv2plug.in/ns/ext/buf-size#boundedBlockLen
 const WORKER_SCHEDULE: &CStr = c"http://lv2plug.in/ns/ext/worker#schedule";
 const WORKER_INTERFACE: &CStr = c"http://lv2plug.in/ns/ext/worker#interface";
 const LOAD_DEFAULT_STATE: &CStr = c"http://lv2plug.in/ns/ext/state#loadDefaultState";
-const STATE_URI: &CStr = c"urn:daw:state";
+const STATE_URI: &CStr = c"urn:paw:state";
 
 /// Bytes of event data an atom port can hold per block.
 const ATOM_CAPACITY: usize = 32 * 1024;
@@ -1038,7 +1038,7 @@ impl DeviceFactory for Lv2Factory {
             // each named after its left one.
             let out_pairs: Vec<crate::OutPair> = (0..audio_out.len())
                 .step_by(2)
-                .take(daw_engine::MAX_PAIRS)
+                .take(paw_engine::MAX_PAIRS)
                 .map(|left| crate::OutPair {
                     port: 0,
                     left,
@@ -1439,8 +1439,8 @@ const IDLE_INTERFACE: &CStr = c"http://lv2plug.in/ns/extensions/ui#idleInterface
 /// links none of them. A bare Gtk widget is put in a Gtk window here.
 unsafe fn find_ui(plugin: *const LilvPlugin) -> Option<UiInfo> {
     let w = world();
-    // For trying a particular kind: `DAW_LV2_UI=x11|shows|external|gtk`.
-    let only = std::env::var("DAW_LV2_UI").ok();
+    // For trying a particular kind: `PAW_LV2_UI=x11|shows|external|gtk`.
+    let only = std::env::var("PAW_LV2_UI").ok();
     unsafe {
         let uri = |text: String| {
             let text = CString::new(text).unwrap();

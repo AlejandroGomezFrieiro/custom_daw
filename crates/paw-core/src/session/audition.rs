@@ -5,7 +5,7 @@
 //! and heard as any others, then either thrown away, the project put back
 //! exactly as it was, or kept as one undo step: a preset tried on a device,
 //! an instrument tried on a track. The preview is a sound file heard on
-//! its own over everything else ([`daw_engine::preview`]), at a level of
+//! its own over everything else ([`paw_engine::preview`]), at a level of
 //! its own, decoded on a thread of its own so that a long file holds
 //! nothing up.
 
@@ -16,7 +16,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
-use daw_engine::{AudioData, Msg, Preview};
+use paw_engine::{AudioData, Msg, Preview};
 use serde_json::{Value, json};
 
 use super::Session;
@@ -183,7 +183,7 @@ impl Session {
         let voice = Preview::new(
             data.clone(),
             self.handle.sample_rate,
-            daw_engine::db_to_gain(self.preview_level),
+            paw_engine::db_to_gain(self.preview_level),
             id,
         );
         self.handle.send(Msg::SetPreview(Some(Box::new(voice))));
@@ -206,7 +206,7 @@ impl Session {
     pub fn preview_set_level(&mut self, db: f64) {
         self.preview_level = db.clamp(-120.0, 12.0);
         self.handle
-            .send(Msg::SetPreviewGain(daw_engine::db_to_gain(self.preview_level)));
+            .send(Msg::SetPreviewGain(paw_engine::db_to_gain(self.preview_level)));
     }
 
     /// Take up a file decoded since the last look, and ask for what is

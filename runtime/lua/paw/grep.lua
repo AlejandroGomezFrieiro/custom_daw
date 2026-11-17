@@ -1,4 +1,4 @@
--- `daw.grep`: every piece of text in the project, searched as Vim's
+-- `paw.grep`: every piece of text in the project, searched as Vim's
 -- `:vimgrep` searches files, the places found going into the quickfix list.
 --
 --   :vimgrep /pizz/            track, clip, marker and device names, lyrics,
@@ -10,11 +10,11 @@
 -- text it is ("track", "lyric"), where it is (an address or a location),
 -- and that place in a few words. Extensions add theirs:
 --
---   daw.grep.source("chords", function(add)
---     add({ text = "Cmaj7", field = "chord", location = "daw://clip/4", where = "Verse 5.1.00" })
+--   paw.grep.source("chords", function(add)
+--     add({ text = "Cmaj7", field = "chord", location = "paw://clip/4", where = "Verse 5.1.00" })
 --   end)
-local api = daw.api
-local A = daw.address
+local api = paw.api
+local A = paw.address
 
 local M = { sources = {}, order = {} }
 
@@ -50,7 +50,7 @@ M.source("clips", function(add)
     local track = api.track_get(id).name
     for _, c in ipairs(api.clip_list(id)) do
       local loc = { uri = A.clip(c.id) }
-      local where = track .. " " .. daw.time.format(c.start)
+      local where = track .. " " .. paw.time.format(c.start)
       add({ text = c.name, field = "clip", location = loc, where = where })
       local comment = type(c.meta) == "table" and str(c.meta.comment)
       if comment then add({ text = comment, field = "comment", location = loc, where = where }) end
@@ -62,12 +62,12 @@ M.source("clips", function(add)
             local nloc = n.id and { uri = A.note(c.id, n.id) } or loc
             local nwhere
             local function at()
-              nwhere = nwhere or (c.name .. " " .. daw.time.format(c.start + n.start) .. " " .. daw.music.name(n.pitch))
+              nwhere = nwhere or (c.name .. " " .. paw.time.format(c.start + n.start) .. " " .. paw.music.name(n.pitch))
               return nwhere
             end
             local lyric = str(m.lyric)
             if lyric then add({ text = lyric, field = "lyric", location = nloc, where = at() }) end
-            for _, name in ipairs(daw.query.articulations({ data = n })) do
+            for _, name in ipairs(paw.query.articulations({ data = n })) do
               add({ text = name, field = "art", location = nloc, where = at() })
             end
           end
@@ -78,11 +78,11 @@ M.source("clips", function(add)
 end)
 
 M.source("markers", function(add)
-  for _, m in ipairs(daw.markers.list()) do
+  for _, m in ipairs(paw.markers.list()) do
     local name = str(m.name)
     if name then
       add({ text = name, field = m.length and "region" or "marker", location = { uri = A.marker(m.id), selector = { time = { m.beat, m.beat } } },
-        where = daw.time.format(m.beat) })
+        where = paw.time.format(m.beat) })
     end
   end
 end)
@@ -113,16 +113,16 @@ function M.records()
   return out
 end
 
---- A test of text: `mode` "regex" (`daw.regex`), "exact" (the words, each
+--- A test of text: `mode` "regex" (`paw.regex`), "exact" (the words, each
 --- anywhere) or "fuzzy" (as the pickers match). Raises an error for a bad
 --- regular expression.
 function M.matcher(pattern, mode)
   mode = mode or "regex"
   if mode == "regex" then
-    local re = daw.regex.compile(pattern)
+    local re = paw.regex.compile(pattern)
     return function(text) return re:find(text) ~= nil end
   end
-  return function(text) return daw.pick.match(pattern, text, false, mode) ~= nil end
+  return function(text) return paw.pick.match(pattern, text, false, mode) ~= nil end
 end
 
 --- The records whose text matches `pattern`; `opts.mode` as `matcher`
@@ -189,15 +189,15 @@ end
 function M.vimgrep(arg, opts)
   opts = opts or {}
   local pattern, flags, fields = parse(arg)
-  if not pattern or pattern == "" then return daw.notify("usage: vimgrep /pattern/ [fields]: `vimgrep /pizz/`, `vimgrep /^la/ lyric`", "warn") end
+  if not pattern or pattern == "" then return paw.notify("usage: vimgrep /pattern/ [fields]: `vimgrep /pizz/`, `vimgrep /^la/ lyric`", "warn") end
   local ok, found = pcall(M.search, pattern, { mode = "regex", fields = fields })
-  if not ok then return daw.notify(tostring(found), "error") end
-  if #found == 0 then return daw.notify("nothing in the project matches /" .. pattern .. "/", "warn") end
+  if not ok then return paw.notify(tostring(found), "error") end
+  if #found == 0 then return paw.notify("nothing in the project matches /" .. pattern .. "/", "warn") end
   local entries = M.entries(found)
   local title = "vimgrep /" .. pattern .. "/"
-  local stack = opts.loc and daw.qf.loc_stack(nil, true) or daw.qf.stack()
+  local stack = opts.loc and paw.qf.loc_stack(nil, true) or paw.qf.stack()
   if opts.add then
-    local list = daw.qf.current(stack)
+    local list = paw.qf.current(stack)
     if list then
       title = list.title
       local before = {}
@@ -206,13 +206,13 @@ function M.vimgrep(arg, opts)
       entries = before
     end
   end
-  daw.qf.set(entries, { title = title, win = opts.loc or nil, source = "vimgrep" })
-  daw.notify(string.format("%d match%s of /%s/", #found, #found == 1 and "" or "es", pattern))
-  if not flags:find("j", 1, true) then daw.qf.jump(1, stack) end
+  paw.qf.set(entries, { title = title, win = opts.loc or nil, source = "vimgrep" })
+  paw.notify(string.format("%d match%s of /%s/", #found, #found == 1 and "" or "es", pattern))
+  if not flags:find("j", 1, true) then paw.qf.jump(1, stack) end
   return found
 end
 
-local command = daw.command
+local command = paw.command
 local function complete_fields(_, info) return info.index > 1 and M.fields() or {} end
 command("vimgrep", function(ctx) M.vimgrep(ctx.args[1]) end, { raw = true, complete = complete_fields,
   desc = "Every piece of text in the project that matches a regular expression, in the quickfix list: `vimgrep /pizz/`, `vimgrep /^la/ lyric`; `/j` stays where it is" })

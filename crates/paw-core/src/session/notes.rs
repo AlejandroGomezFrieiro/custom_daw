@@ -1,11 +1,11 @@
-//! One note at a time: `daw.api.clip_note_*`.
+//! One note at a time: `paw.api.clip_note_*`.
 //!
 //! A clip's notes are kept in the order they start, lower pitches first
 //! within a chord, and a note is named by its place in that order. These
 //! calls change one note, or a few, without the whole list crossing into Lua
 //! and back, which is what an editor does most.
 //!
-//! Indices here count from 0; `daw.api` shows them counting from 1.
+//! Indices here count from 0; `paw.api` shows them counting from 1.
 
 use std::cmp::Ordering;
 

@@ -3,12 +3,12 @@
 -- extensions/sampler/native/test.sh runs them; elsewhere they are skipped.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
-local api = daw.api
+local api = paw.api
 
 local sampler
 local function load()
   if not sampler then
-    daw.ext.load("extensions/sampler")
+    paw.ext.load("extensions/sampler")
     sampler = require("sampler")
   end
   return sampler
@@ -25,7 +25,7 @@ end
 local fixtures
 local function fixture_dir()
   if fixtures == nil then
-    local loaded = daw.ext.loaded.sampler
+    local loaded = paw.ext.loaded.sampler
     local cli = loaded and (loaded.path .. "/bin/paw-sampler")
     local dir = T.scratch .. "/sampler-fixtures"
     fixtures = cli and os.execute("'" .. cli .. "' fixtures '" .. dir .. "' 2>/dev/null") == 0 and dir or false
@@ -37,7 +37,7 @@ end
 local function running(device)
   for _ = 1, 400 do
     if api.device_get(device).status == "running" then return device end
-    daw.wait(50)
+    paw.wait(50)
   end
   return device
 end
@@ -49,8 +49,8 @@ local function sampler_track(instrument)
   local dir = fixture_dir()
   if not dir then return nil, "extensions/sampler/bin/paw-sampler is not built" end
   fresh()
-  local track = daw.add_track({ name = "Strings" })
-  daw.track_kinds.set(track, "sampler", { path = dir .. "/" .. instrument, ask = false })
+  local track = paw.add_track({ name = "Strings" })
+  paw.track_kinds.set(track, "sampler", { path = dir .. "/" .. instrument, ask = false })
   api.undo_checkpoint()
   return track, s.device_of(track.id)
 end
@@ -90,7 +90,7 @@ end)
 
 test("sampler: a sampler track is a kind of track, S in the header", function()
   load()
-  local kind = daw.track_kinds.kinds.sampler
+  local kind = paw.track_kinds.kinds.sampler
   eq(kind and kind.letter, "S", "the letter")
   eq(kind.title, "Sampler track", "the title")
 end)
@@ -117,7 +117,7 @@ test("sampler: describe gives keyswitches and articulations with their M2-123 co
   eq(d.range[1] .. "-" .. d.range[2], "48-96", "range")
   eq(#d.keyswitches, 2, "keyswitches")
   eq(d.articulations[2].name .. " " .. d.articulations[2].m2 .. " " .. d.articulations[2].keyswitch, "Staccato 11.0 25", "staccato")
-  eq(daw.track_kinds.describe(track.id), "Sampler track · ks · SFZ · 2 articulations", "what K and the header say")
+  eq(paw.track_kinds.describe(track.id), "Sampler track · ks · SFZ · 2 articulations", "what K and the header say")
 end)
 
 test("sampler: a keyswitch note chooses the articulation in a render", function()
@@ -141,46 +141,46 @@ test("sampler: loading an instrument is one undo step, kept with the project", f
   sampler.load(device, fixture_dir() .. "/rr.sfz")
   eq(sampler.describe(device).name, "rr", "loaded")
   eq(api.device_get(device).meta.preset, "rr", "named as the device's preset")
-  daw.cmd("undo")
-  daw.flush()
+  paw.cmd("undo")
+  paw.flush()
   eq(sampler.describe(running(device)).name, "basic", "undo takes the load back")
   local path = T.scratch .. "/sampler-project.json"
-  daw.project.save(path)
-  daw.open(path)
-  local again = running(sampler.device_of(daw.tracks()[1].id))
+  paw.project.save(path)
+  paw.open(path)
+  local again = running(sampler.device_of(paw.tracks()[1].id))
   eq(sampler.describe(again).name, "basic", "the project brings it back")
 end)
 
 test("sampler: an instrument heard in a trial is taken back without a trace", function()
   local track, device = sampler_track("basic.sfz")
   if not track then return device end
-  local d = daw.audition.try(function() return sampler.load(device, fixture_dir() .. "/vel.sfz") end)
+  local d = paw.audition.try(function() return sampler.load(device, fixture_dir() .. "/vel.sfz") end)
   eq(d.name, "vel", "heard")
-  daw.audition.stop()
-  daw.flush()
+  paw.audition.stop()
+  paw.flush()
   eq(sampler.describe(running(device)).name, "basic", "put back")
 end)
 
 test("sampler: the picker lists the library, hears the instrument under the selection, and Escape puts the old one back", function()
   local track, device = sampler_track("basic.sfz")
   if not track then return device end
-  local before = daw.opt.sampler_libraries
+  local before = paw.opt.sampler_libraries
   T.after(function()
-    daw.opt.sampler_libraries = before
-    daw.keymap.feed("<Esc><Esc>")
+    paw.opt.sampler_libraries = before
+    paw.keymap.feed("<Esc><Esc>")
   end)
-  daw.opt.sampler_libraries = fixture_dir()
-  daw.cmd("sampler.load")
+  paw.opt.sampler_libraries = fixture_dir()
+  paw.cmd("sampler.load")
   local screen = table.concat(api.ui_snapshot(120, 30), "\n")
   assert(screen:find("Instruments", 1, true), "the picker is open:\n" .. screen)
   assert(screen:find("ks%s+DS") and screen:find("ks%s+SFZ"), "it lists the fixtures in both formats:\n" .. screen)
-  daw.keymap.feed("vel")
+  paw.keymap.feed("vel")
   local limit = api.now() + 5000
-  while api.now() < limit and sampler.known(device).name ~= "vel" do daw.wait(20) end
+  while api.now() < limit and sampler.known(device).name ~= "vel" do paw.wait(20) end
   eq(sampler.known(device).name, "vel", "heard: loaded as a trial")
   screen = table.concat(api.ui_snapshot(120, 30), "\n")
   assert(screen:find("vel · SFZ", 1, true), "the pane says what plays:\n" .. screen)
-  daw.keymap.feed("<Esc>")
-  daw.flush()
+  paw.keymap.feed("<Esc>")
+  paw.flush()
   eq(sampler.describe(running(device)).name, "basic", "Escape puts the old one back")
 end)

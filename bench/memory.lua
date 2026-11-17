@@ -1,12 +1,12 @@
 -- Resident memory.
---   daw --clean --no-plugins -l bench/memory.lua project <tracks> <clips per track> <undo steps>
+--   paw --clean --no-plugins -l bench/memory.lua project <tracks> <clips per track> <undo steps>
 --       a large project (as in saveload.lua), then a long undo history of
 --       one-note edits on its first clip, as in the Tracktion driver's `memory`
---   daw --clean --no-plugins -l bench/memory.lua churn <rounds>
+--   paw --clean --no-plugins -l bench/memory.lua churn <rounds>
 --       build, edit, render, undo and clear the same project over and over:
 --       resident memory should level off rather than keep growing
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local mode, a, b, c = ...
@@ -25,7 +25,7 @@ if mode == "project" then
     end
   end
   api.undo_checkpoint()
-  daw.flush()
+  paw.flush()
   -- Let the engine run for a moment so that device buffers are touched.
   api.sleep(500)
   local rss_built = B.rss()
@@ -34,7 +34,7 @@ if mode == "project" then
     local n = notes[(i - 1) % #notes + 1]
     n.velocity = 1 + i % 126
     api.clip_set_notes(first, notes)
-    daw.flush()
+    paw.flush()
     api.undo_checkpoint()
   end
   local rss_undo = B.rss()
@@ -47,19 +47,19 @@ elseif mode == "churn" then
   local samples = {}
   for round = 1, rounds do
     api.project_new()
-    daw.flush()
+    paw.flush()
     B.build({ tracks = 20, kind = "midi", fx = true, automation = true, bars = 4 })
     for _, id in ipairs(api.track_list()) do
       api.track_set(id, "volume", -3)
-      daw.flush()
+      paw.flush()
       api.undo_checkpoint()
     end
     for _ = 1, 10 do api.undo() end
-    daw.flush()
-    daw.render(B.tmp .. "/churn.wav", { tail = 0 })
+    paw.flush()
+    paw.render(B.tmp .. "/churn.wav", { tail = 0 })
     api.project_save(B.tmp .. "/churn.json")
     api.project_load(B.tmp .. "/churn.json")
-    daw.flush()
+    paw.flush()
     samples[round] = B.rss()
   end
   os.remove(B.tmp .. "/churn.wav")

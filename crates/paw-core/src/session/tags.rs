@@ -234,7 +234,7 @@ pub fn vorbis_comments(tags: &Tags) -> Vec<u8> {
         out.extend((s.len() as u32).to_le_bytes());
         out.extend(s.as_bytes());
     };
-    put(&mut out, "daw");
+    put(&mut out, "paw");
     let fields = tags.fields();
     out.extend((fields.len() as u32).to_le_bytes());
     for (key, value) in fields {
@@ -355,11 +355,11 @@ mod tests {
 
     #[test]
     fn a_wav_gets_an_info_chunk_and_a_right_size() {
-        let dir = std::env::temp_dir().join(format!("daw-tags-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-tags-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.wav");
         // Mono, 24 bits, 3 frames: an odd number of data bytes.
-        let mut w = daw_engine::wav::Writer::with_channels(&path, 44100, 24, false, 1).unwrap();
+        let mut w = paw_engine::wav::Writer::with_channels(&path, 44100, 24, false, 1).unwrap();
         for _ in 0..3 {
             w.write(0.5).unwrap();
         }

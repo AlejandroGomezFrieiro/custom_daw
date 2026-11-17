@@ -1,6 +1,6 @@
 -- What the snippets of this set share: where a snippet ends, the chords of
 -- the dominant family, and spans of time split into parts on the grid.
-local H = daw.harmony
+local H = paw.harmony
 local M = {}
 
 M.voicings = { name = "voicing", values = { "smooth", "close", "drop2", "open", "spread" } }
@@ -10,7 +10,7 @@ M.lengths = { name = "length", values = { "to the chord", "1 beat", "2 beats", "
 --- says: all the way, or a beat, two, a bar, whichever ends first.
 function M.until_(ctx, to)
   local v = ctx.values.length
-  local want = v == "1 beat" and 1 or v == "2 beats" and 2 or v == "1 bar" and daw.time.bar(ctx.at) or nil
+  local want = v == "1 beat" and 1 or v == "2 beats" and 2 or v == "1 bar" and paw.time.bar(ctx.at) or nil
   if want then return math.min(to, ctx.at + want) end
   return to
 end

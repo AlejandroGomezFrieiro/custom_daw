@@ -2,10 +2,10 @@
 -- and peaks of the mix as bars (with the target marked), each track's peak
 -- as a meter, the spectrum as a shape, and the findings to go to. It works
 -- on the terminal report's selection (`list_view`), so its keys work here.
-local api = daw.api
+local api = paw.api
 local mixdiag = require("mixdiag")
 local list = require("mixdiag.view").list_view
-local canvas = require("daw.canvas")
+local canvas = require("paw.canvas")
 local c = canvas.palette
 
 local NAME = "mixdiag_paint"
@@ -19,7 +19,7 @@ local paint = {
   hover = nil,         -- the finding under the pointer, and where the pointer is
 }
 -- Each window looking at it points on its own.
-daw.seats.fields("mixdiag.paint", paint, { "hover" })
+paw.seats.fields("mixdiag.paint", paint, { "hover" })
 
 --- The colour of a meter at `db`, by the window's own steps.
 local function meter_colour(db)
@@ -37,7 +37,7 @@ end
 --- A bar from `low` to `high` dB along `width`: `at` is where `db` falls
 --- on it, 0 to 1.
 local function fraction(db, low, high)
-  return daw.util.clamp((db - low) / (high - low), 0, 1)
+  return paw.util.clamp((db - low) / (high - low), 0, 1)
 end
 
 --- One row of bars: a label, a bar to `db`, the number, and a mark at the
@@ -144,7 +144,7 @@ local function draw_findings(self, g, items)
   local rows = math.max(1, math.floor((g.height - 26) / ROW))
   if list.at < list.scroll + 1 then list.scroll = list.at - 1 end
   if list.at > list.scroll + rows then list.scroll = list.at - rows end
-  list.scroll = daw.util.clamp(list.scroll, 0, math.max(0, #items - rows))
+  list.scroll = paw.util.clamp(list.scroll, 0, math.max(0, #items - rows))
   self.first, self.rows, self.top = list.scroll, rows, 26
   if mixdiag.result and #items == 0 then g:text(0, 28, "no findings", { color = c.text_3 }) end
   for r = 1, rows do
@@ -225,7 +225,7 @@ function paint:paint(g, ctx)
   draw_head(g, width)
   local items = mixdiag.result and mixdiag.items() or {}
   list.items = items
-  list.at = daw.util.clamp(list.at, 1, math.max(1, #items))
+  list.at = paw.util.clamp(list.at, 1, math.max(1, #items))
   local body = height - HEAD - FOOT
   local left_w = math.floor(width * 0.46)
   local right_x, right_w = left_w + 24, width - left_w - 38
@@ -281,7 +281,7 @@ function paint:on_key(key)
   list:on_key(key)
 end
 
-daw.ui.view(NAME, paint)
+paw.ui.view(NAME, paint)
 list.painted = NAME
 
 return paint

@@ -7,16 +7,16 @@
 -- with `number`, moves of the whole channel (not those of one note).
 -- Heights in it are fractions, 0 at the bottom; the wheel rests in the
 -- middle.
-local api = daw.api
-local util = daw.util
-local music = daw.music
+local api = paw.api
+local util = paw.util
+local music = paw.music
 local M = {}
 
 -- The moves chosen with the pointer: places in one clip's list of moves,
 -- kept while the clip's moves are what these edits left (as the piano
 -- roll keeps its chosen notes).
 local chosen = { clip = nil, places = {}, stamp = nil }
-daw.seats.keep("controls.chosen", function() return chosen end, function(c) chosen = c end,
+paw.seats.keep("controls.chosen", function() return chosen end, function(c) chosen = c end,
   function() return { clip = nil, places = {}, stamp = nil } end)
 
 local function stamp_of(clip)
@@ -55,8 +55,8 @@ end
 --- A beat on the piano roll's grid, or unless `free` to the nearest of 960
 --- ticks a beat.
 local function snap(beat, free)
-  if free or not daw.opt.note_snap then return math.floor(beat * 960 + 0.5) / 960 end
-  return util.round(beat, daw.opt.note_grid)
+  if free or not paw.opt.note_snap then return math.floor(beat * 960 + 0.5) / 960 end
+  return util.round(beat, paw.opt.note_grid)
 end
 
 --- Put a clip's moves back, sorted by time as the core keeps them, and
@@ -73,7 +73,7 @@ local function store(clip, list, marked)
     sorted[i] = entry.control
     if marked and marked[entry.control] then places[#places + 1] = i end
   end
-  daw.clip(clip):set_controls(sorted)
+  paw.clip(clip):set_controls(sorted)
   choose(clip, places)
 end
 
@@ -99,7 +99,7 @@ function M.select_box(clip, kind, number, beat0, low, beat1, high, mode)
   if mode == "add" or mode == "toggle" then
     for _, p in ipairs(M.chosen(clip)) do set[p] = true end
   end
-  for place, control in ipairs(daw.clip(clip):controls()) do
+  for place, control in ipairs(paw.clip(clip):controls()) do
     local f = M.fraction(kind, control.value)
     if M.is(control, kind, number) and control.start >= beat0 - 1e-9 and control.start <= beat1 + 1e-9
       and f >= low - 1e-9 and f <= high + 1e-9 then
@@ -122,7 +122,7 @@ end
 function M.move(clip, dbeat, dfraction, free)
   local places = M.chosen(clip)
   if #places == 0 then return 0 end
-  local c = daw.clip(clip)
+  local c = paw.clip(clip)
   local list = c:controls()
   local first = list[places[1]]
   local by = snap(first.start + (dbeat or 0), free) - first.start
@@ -150,7 +150,7 @@ function M.remove(clip)
   local gone = {}
   for _, place in ipairs(places) do gone[place] = true end
   local out = {}
-  for place, control in ipairs(daw.clip(clip):controls()) do
+  for place, control in ipairs(paw.clip(clip):controls()) do
     if not gone[place] then out[#out + 1] = control end
   end
   store(clip, out)
@@ -163,7 +163,7 @@ end
 --- both ends included. The new moves are then the chosen ones.
 function M.line(clip, kind, number, beat0, f0, beat1, f1, free)
   if beat0 > beat1 then beat0, f0, beat1, f1 = beat1, f1, beat0, f0 end
-  local c = daw.clip(clip)
+  local c = paw.clip(clip)
   beat0, beat1 = math.max(0, snap(beat0, free)), math.min(c.length - 1e-6, snap(beat1, free))
   if beat1 < beat0 then return 0 end
   local out = {}
@@ -172,7 +172,7 @@ function M.line(clip, kind, number, beat0, f0, beat1, f1, free)
       out[#out + 1] = control
     end
   end
-  local step = (free or not daw.opt.note_snap) and 1 / 32 or daw.opt.note_grid
+  local step = (free or not paw.opt.note_snap) and 1 / 32 or paw.opt.note_grid
   local steps = math.max(0, math.floor((beat1 - beat0) / step + 1e-6))
   local marked, made = {}, 0
   local function add(beat)
@@ -197,7 +197,7 @@ M.columns = { "time", "kind", "which", "value", "length" }
 --- place, start, control }`. Notes come before moves at the same time.
 --- Notes and moves hidden by a trim of the clip's edges are left out.
 function M.rows(clip)
-  local c = daw.clip(clip)
+  local c = paw.clip(clip)
   local length = c.length
   local rows = {}
   for place, n in ipairs(c:notes()) do
@@ -235,7 +235,7 @@ end
 --- The text of each column of a row, by the names in `M.columns`.
 function M.cells(clip, row)
   local c = api.clip_get(clip)
-  local time = daw.time.format(c.start + row.start)
+  local time = paw.time.format(c.start + row.start)
   if row.kind == "note" then
     local n = row.note
     return { time = time, kind = "note", which = music.name(n.pitch), value = tostring(n.velocity), length = trim(n.length) }
@@ -258,7 +258,7 @@ end
 local function parse_time(clip, text)
   local bar, beat, part = text:match("^%s*(%d+)%.?(%d*)%.?(%d*)%s*$")
   if not bar then error("a time is bar.beat.hundredths, like 3.2.50", 0) end
-  local at = daw.time.bar_start(tonumber(bar))
+  local at = paw.time.bar_start(tonumber(bar))
   local _, den = api.tempo_signature(at)
   local unit = 4 / (den or 4)
   at = at + ((tonumber(beat) or 1) - 1 + (tonumber(part) or 0) / 100) * unit
@@ -274,7 +274,7 @@ end
 --- Change one cell of a row from text written as the list shows it.
 --- Errors say what is wrong.
 function M.edit(clip, row, column, text)
-  local c = daw.clip(clip)
+  local c = paw.clip(clip)
   text = tostring(text)
   if column == "kind" then error("a row's kind stays; delete it and add another", 0) end
   if row.kind == "note" then
@@ -333,7 +333,7 @@ end
 
 --- Take a row away.
 function M.remove_row(clip, row)
-  local c = daw.clip(clip)
+  local c = paw.clip(clip)
   if row.kind == "note" then return c:remove_note(row.place) end
   local list = c:controls()
   table.remove(list, row.place)
@@ -343,7 +343,7 @@ end
 --- Add a move at `start` beats into the clip: of `kind` ("cc" with
 --- `number`, "bend", "pressure", "program"), at rest or 0. Returns it.
 function M.add(clip, start, kind, number)
-  local c = daw.clip(clip)
+  local c = paw.clip(clip)
   local control = { start = start, type = kind }
   if kind == "cc" then control.number, control.value = number or 1, 0 end
   if kind == "bend" or kind == "pressure" then control.value = 0 end

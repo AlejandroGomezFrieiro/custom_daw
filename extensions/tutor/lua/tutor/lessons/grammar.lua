@@ -24,18 +24,18 @@ operator twice for whole lines (tracks); `.` with a new count. `gc` is
 commenting out, here muting. `gl` (loop) is new. `c` empties the stretch and
 opens a fresh clip in insert mode.]],
   setup = function(look)
-    daw.project.tempo = 104
-    local beat = daw.add_track({ name = "Beat" })
+    paw.project.tempo = 104
+    local beat = paw.add_track({ name = "Beat" })
     beat:add_device("drums")
     beat:add_clip({ name = "kick", start = 0, length = 4, notes = look.drums({ [36] = "x...x...x...x..." }) })
     beat:add_clip({ name = "snare", start = 4, length = 4, notes = look.drums({ [36] = "x.......x.......", [38] = "....x.......x..." }) })
     beat:add_clip({ name = "fill", start = 8, length = 4, notes = look.drums({ [36] = "x.......", [38] = "........x.x.xxxx" }) })
     beat:add_clip({ name = "crash", start = 12, length = 4, notes = look.drums({ [36] = "x...", [46] = "x......." }) })
-    local bass = daw.add_track({ name = "Bass", volume = -6 })
+    local bass = paw.add_track({ name = "Bass", volume = -6 })
     bass:add_device("synth", { wave = 2, cutoff = 600, release = 0.05 })
     bass:add_clip({ name = "bass", start = 0, length = 16, notes = look.pulse("E2", 16) })
   end,
-  at = function() daw.cursor.set_track(daw.track("Beat")) end,
+  at = function() paw.cursor.set_track(paw.track("Beat")) end,
   steps = {
     {
       say = "The cursor is at the start of `kick`. `d` is the delete operator and `w` the motion to the next clip: press `dw`.",
@@ -101,14 +101,14 @@ opens a fresh clip in insert mode.]],
     {
       say = "`p` puts what was deleted back after the cursor: for a track, below it. Press `p`.",
       keys = { "p" },
-      check = function(ctx, look) return look.became(ctx, "back", look.track("Bass") ~= nil and #daw.tracks() == 2) end,
+      check = function(ctx, look) return look.became(ctx, "back", look.track("Bass") ~= nil and #paw.tracks() == 2) end,
       done = "Bass is back, with its synth and clip. Deleting is cutting.",
     },
     {
       say = "`gl` is the loop operator. Go up to Beat with `k`, put the cursor on `snare` with `0` and `w`, then press `glic`.",
       keys = { "k", "0", "w", "glic" },
       check = function()
-        return daw.transport.loop_enabled and daw.transport.loop_start == 4 and daw.transport.loop_end == 8
+        return paw.transport.loop_enabled and paw.transport.loop_start == 4 and paw.transport.loop_end == 8
       end,
       done = "The loop is the snare clip: the ruler shows it.",
     },

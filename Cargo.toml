@@ -8,13 +8,13 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-daw-engine = { path = "crates/daw-engine" }
-daw-core = { path = "crates/daw-core" }
-daw-plugins = { path = "crates/daw-plugins" }
-daw-luadev = { path = "crates/daw-luadev" }
-daw-proto = { path = "crates/daw-proto" }
-daw-listen = { path = "crates/daw-listen" }
-daw-raster = { path = "crates/daw-raster" }
+paw-engine = { path = "crates/paw-engine" }
+paw-core = { path = "crates/paw-core" }
+paw-plugins = { path = "crates/paw-plugins" }
+paw-luadev = { path = "crates/paw-luadev" }
+paw-proto = { path = "crates/paw-proto" }
+paw-listen = { path = "crates/paw-listen" }
+paw-raster = { path = "crates/paw-raster" }
 anyhow = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 # Exact round trips of every f64 through a saved project.

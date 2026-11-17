@@ -7,7 +7,7 @@
 --     name = "My interface",                  -- shown in the list and the report
 --     id = "mine",                            -- optional; the name in lower case by default
 --     help = "What it needs from the person", -- optional
---     unattended = true,                      -- can run with nobody there (`daw doctor`)
+--     unattended = true,                      -- can run with nobody there (`paw doctor`)
 --     limit = 60,                             -- seconds before it is stopped; 120 by default
 --     run = function(ctx)
 --       ctx:say("looking")
@@ -20,7 +20,7 @@
 -- Every check runs in a coroutine that the runner wakes from a timer, so
 -- that waiting never holds the program up; `ctx` has what a check needs and
 -- takes back everything it added.
-local api = daw.api
+local api = paw.api
 local M = { checks = {}, results = {}, order = {} }
 
 -- What a check is stopped with: all the user pressed Esc, one the user skipped,
@@ -33,13 +33,13 @@ local S -- the run in progress, or the last one
 function M.settings(opts)
   local o = opts or {}
   return {
-    seconds = o.seconds or tonumber(daw.opt.doctor_seconds) or 20,
+    seconds = o.seconds or tonumber(paw.opt.doctor_seconds) or 20,
     tone = o.tone or 1,
     input_seconds = o.input_seconds or 10,
     record_seconds = o.record_seconds or 4,
     wait_seconds = o.wait_seconds or 20,
     plugin_seconds = o.plugin_seconds or 1.5,
-    plugins = o.plugins or daw.opt.doctor_plugins or {},
+    plugins = o.plugins or paw.opt.doctor_plugins or {},
     round_trips = o.round_trips or 3,
     voices = o.voices or 8,
   }
@@ -47,7 +47,7 @@ end
 
 --- The directory reports are written to.
 function M.dir()
-  local dir = daw.opt.doctor_dir
+  local dir = paw.opt.doctor_dir
   if type(dir) ~= "string" or dir == "" then dir = api.env().state_dir .. "/doctor" end
   return dir
 end
@@ -175,7 +175,7 @@ function Ctx:cleanup(fn) table.insert(self.cleanups, fn) end
 --- A track that is taken away when the check is over.
 function Ctx:track(opts)
   self:scratch()
-  local track = daw.add_track(opts)
+  local track = paw.add_track(opts)
   self:cleanup(function() if track:exists() then track:remove() end end)
   return track
 end
@@ -198,22 +198,22 @@ end
 
 --- Stop the transport, and what it was recording or playing.
 function Ctx:stop()
-  daw.transport.recording = false
-  daw.transport.stop()
+  paw.transport.recording = false
+  paw.transport.stop()
 end
 
 --- Play the scratch project from `beat` for `seconds`, then stop it.
 function Ctx:play(beat, seconds, each)
   self:scratch()
   self:cleanup(function() self:stop() end)
-  daw.transport.seek(beat or 0)
-  daw.transport.play()
+  paw.transport.seek(beat or 0)
+  paw.transport.play()
   local to = api.now() + seconds * 1000
   pause(self.run, function()
     if each then each() end
     return api.now() >= to
   end)
-  daw.transport.stop()
+  paw.transport.stop()
 end
 
 -- The scratch project ---------------------------------------------------------
@@ -310,15 +310,15 @@ local function finish(run)
   local ok, err = pcall(close_scratch, run)
   if not ok then run.problem = "the project that was open could not be put back: " .. tostring(err) end
   if run.tmp then os.execute("rm -rf '" .. run.tmp:gsub("'", "'\\''") .. "'") end
-  daw.opt.autosave = run.autosave
-  if run.timer then daw.cancel(run.timer) end
+  paw.opt.autosave = run.autosave
+  if run.timer then paw.cancel(run.timer) end
   run.timer = nil
   run.running = false
   run.finished = api.now()
   local wrote, path = pcall(M.write_report, run)
   if wrote then run.report = path else run.problem = (run.problem and run.problem .. "; " or "") .. "no report: " .. tostring(path) end
-  daw.emit("doctor.done", { report = run.report, problem = run.problem })
-  if run.on_done then daw.try(run.on_done, run) end
+  paw.emit("doctor.done", { report = run.report, problem = run.problem })
+  if run.on_done then paw.try(run.on_done, run) end
 end
 
 local function body(run)
@@ -380,17 +380,17 @@ function M.start(opts)
   if S and S.running then error("the doctor is running already", 2) end
   local run = {
     running = true, attended = not opts.unattended, opts = opts, settings = M.settings(opts),
-    list = select_checks(opts), done = {}, started = api.now(), autosave = daw.opt.autosave,
+    list = select_checks(opts), done = {}, started = api.now(), autosave = paw.opt.autosave,
   }
   if #run.list == 0 then error("no check to run", 2) end
   S = run
   -- A safety copy of the scratch project would replace the person's own.
-  daw.opt.autosave = 0
+  paw.opt.autosave = 0
   run.co = coroutine.create(function()
     local ok, err = xpcall(body, debug.traceback, run)
     if not ok then run.problem = tostring(err) end
   end)
-  run.timer = daw.every(25, tick)
+  run.timer = paw.every(25, tick)
   api.ui_redraw()
   return run
 end
@@ -441,12 +441,12 @@ end
 function M.run_to_end(opts, limit)
   local run = M.start(opts)
   local at = api.now() + (limit or 3600) * 1000
-  while run.running and api.now() < at do daw.wait(20) end
-  if run.running then M.cancel() while run.running do daw.wait(20) end end
+  while run.running and api.now() < at do paw.wait(20) end
+  if run.running then M.cancel() while run.running do paw.wait(20) end end
   return run
 end
 
---- What `daw doctor` runs: the checks that need nobody, and the report on
+--- What `paw doctor` runs: the checks that need nobody, and the report on
 --- the standard output. Returns the exit code: 1 if a check failed.
 function M.unattended(opts)
   opts = opts or {}

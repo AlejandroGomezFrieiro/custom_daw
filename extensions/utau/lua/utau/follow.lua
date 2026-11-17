@@ -20,7 +20,7 @@
 --
 -- Changes the core reports as `restored` (undo, redo, opening a project)
 -- already hold the curves where they belong; they are only taken note of.
-local api = daw.api
+local api = paw.api
 local notes = require("utau.notes")
 
 local M = {
@@ -308,10 +308,10 @@ function M.attach()
     if event and event.restored then return M.refresh() end
     M.follow()
   end
-  daw.on("clip.*", on_change)
-  daw.on("track.*", on_change)
-  daw.on("device.*", on_change)
-  daw.on("project.loaded", function() M.kept = {}; M.refresh() end)
+  paw.on("clip.*", on_change)
+  paw.on("track.*", on_change)
+  paw.on("device.*", on_change)
+  paw.on("project.loaded", function() M.kept = {}; M.refresh() end)
   M.refresh()
 end
 

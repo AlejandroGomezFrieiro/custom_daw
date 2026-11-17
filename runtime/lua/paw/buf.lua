@@ -11,7 +11,7 @@
 -- anything drawn outside the buffer is clipped. A style is the name of a
 -- highlight group, a table such as `{ fg = "#ff9e64", bold = true }`, or nil
 -- to keep the colours already there.
-local api = daw.api
+local api = paw.api
 local grid_text, grid_fill = api.grid_text, api.grid_fill
 local floor, max, min = math.floor, math.max, math.min
 
@@ -42,11 +42,11 @@ end
 --- for the view to draw them instead:
 ---   if buf:surface(0, 1, buf.width, buf.height - 1) then return end
 function Buf:surface(x, y, w, h, name)
-  return daw.ui.surface(self, x, y, w, h, name)
+  return paw.ui.surface(self, x, y, w, h, name)
 end
 
 --- Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal
---- shows images: `g` a painter of `daw.canvas`, `px` `{ w, h, cell = { w,
+--- shows images: `g` a painter of `paw.canvas`, `px` `{ w, h, cell = { w,
 --- h }, fg, bg, view }`, the strip's size and the terminal's cell in pixels and
 --- its colours, and for a strip partly off its window the part that shows
 --- (`view`: x, y, w, h). Called once the screen is drawn. `opts.key` names the
@@ -54,15 +54,15 @@ end
 --- that can be in two windows; the view and its window by default).
 --- With `opts.under`, the cells the view draws there stay, above the
 --- picture (its cursor, labels, the playhead); else they are left blank.
---- False where there are no pixels (`daw.opt.graphics` off, a terminal
+--- False where there are no pixels (`paw.opt.graphics` off, a terminal
 --- without images, tmux, or one that cannot put text over an image under
 --- it), for the view to draw cells there instead:
 ---   local pictured = plot:strip(0, 0, plot.width, plot.height, {
 ---     key = "curve:" .. win.id, under = true,
----     draw = function(g, px) daw.plot.curve(g, px, { ... }) end,
+---     draw = function(g, px) paw.plot.curve(g, px, { ... }) end,
 ---   })
 function Buf:strip(x, y, w, h, opts)
-  return daw.ui.strip(self, x, y, w, h, opts)
+  return paw.ui.strip(self, x, y, w, h, opts)
 end
 
 function Buf:sub(x, y, w, h)

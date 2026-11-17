@@ -1,13 +1,13 @@
 -- The pointer in the mixer, the device panel and the session view: faders,
 -- pans, sends and parameters dragged, buttons clicked, slots chosen,
--- launched and moved, as in the window, through `daw.frontend.act`. A
+-- launched and moved, as in the window, through `paw.frontend.act`. A
 -- control follows the pointer as it moves; moves of one control close
 -- together are one undo step.
-local api = daw.api
-local util = daw.util
-local mouse = daw.mouse
-local menus = require("daw.mouse_menus")
-local A = daw.frontend.act
+local api = paw.api
+local util = paw.util
+local mouse = paw.mouse
+local menus = require("paw.mouse_menus")
+local A = paw.frontend.act
 
 local function screen(e) return { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) } end
 
@@ -23,7 +23,7 @@ end
 
 -- The mixer ------------------------------------------------------------------------------
 
-local mixer = daw.ui.views.mixer
+local mixer = paw.ui.views.mixer
 
 -- The fader's travel, as the mixer draws it: most of it is the top twenty decibels.
 local function fader_position(volume) return util.clamp((volume + 60) / 66, 0, 1) ^ 2.5 end
@@ -31,7 +31,7 @@ local function fader_volume(position) return util.clamp(position, 0, 1) ^ (1 / 2
 
 local flags = { "mute", "solo", "armed", "monitor" }
 
-local function draw_db(volume) return daw.draw.db_text(volume) .. " dB" end
+local function draw_db(volume) return paw.draw.db_text(volume) .. " dB" end
 
 function mixer:on_mouse(e)
   local g = self.geometry
@@ -48,7 +48,7 @@ function mixer:on_mouse(e)
   if step then
     if sideways or mouse.has(e, "S") then
       -- The strips scroll with the track the cursor is on.
-      daw.cursor.move_track(step)
+      paw.cursor.move_track(step)
     else
       A.set_volume(id, api.track_get(id).volume - step)
     end
@@ -59,10 +59,10 @@ function mixer:on_mouse(e)
     return mouse.hint(t.name .. " · " .. draw_db(t.volume) .. " · drag the fader or the pan · double click resets · right click for more")
   end
   if e.kind ~= "down" then return end
-  if id ~= 0 then daw.cursor.set_track(id) end
+  if id ~= 0 then paw.cursor.set_track(id) end
   if e.button == "right" then
     if id == 0 then return end
-    return mouse.grab(e, { up = function(u) if not u.moved then daw.ui.menu(menus.track(id), screen(e)) end end })
+    return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(menus.track(id), screen(e)) end end })
   end
   if e.button ~= "left" then return end
   if y >= s.fader and y < s.fader + s.rows then
@@ -100,7 +100,7 @@ end
 
 -- The device panel ---------------------------------------------------------------------
 
-local devices = daw.ui.views.devices
+local devices = paw.ui.views.devices
 
 --- Where the parts of a parameter's line are on a panel `w` wide, as the
 --- panel draws them: the slider's first column and its width.
@@ -134,13 +134,13 @@ function devices:on_mouse(e)
   -- fixes and what the servers say of it.
   if e.kind == "down" and e.button == "right" and row and not row.picture then
     self.row = index
-    local uri = row.param and daw.address.param(row.device.id, row.param.key) or daw.address.device(row.device.id)
+    local uri = row.param and paw.address.param(row.device.id, row.param.key) or paw.address.device(row.device.id)
     local items = row.param and menus.param(row.device.id, row.param.key) or {}
     local lens = menus.lens({ uri = uri })
     if #items > 0 and #lens > 0 then items[#items + 1] = "-" end
     for _, item in ipairs(lens) do items[#items + 1] = item end
     if #items > 0 then
-      return mouse.grab(e, { up = function(u) if not u.moved then daw.ui.menu(items, screen(e)) end end })
+      return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(items, screen(e)) end end })
     end
     return api.ui_redraw()
   end
@@ -154,7 +154,7 @@ function devices:on_mouse(e)
     local at, width = slider(w)
     local function fraction(x) return util.clamp((x - at + 0.5) / width, 0, 1) end
     if e.x >= at and e.x < at + width then A.set_param(d.id, key, fraction(e.x)) end
-    return drag(e, function() return daw.params.fraction(row.param, api.device_get(d.id).params[key]) end, function(start, m)
+    return drag(e, function() return paw.params.fraction(row.param, api.device_get(d.id).params[key]) end, function(start, m)
       if mouse.has(m, "S") then
         A.set_param(d.id, key, util.clamp(start + m.dx / (width * 8), 0, 1))
       else
@@ -171,7 +171,7 @@ end
 
 -- The session view -----------------------------------------------------------------------
 
-local session = daw.ui.views.session
+local session = paw.ui.views.session
 
 local slot_hints = {
   clip = "clip: its play mark launches it · click chooses · double click opens its notes · drag moves it, Ctrl copies · right click for more",
@@ -190,13 +190,13 @@ end
 function session:on_mouse(e)
   local geo = self.geometry
   if not geo then return end
-  local launcher = daw.launcher
+  local launcher = paw.launcher
   -- Under the title bar, in the body's own lines.
   local x, y = e.x, e.y - 1
   local row = self.top + y - 1
   local step, sideways = mouse.wheel(e)
   if step then
-    if sideways or mouse.has(e, "S") then daw.cursor.move_track(step) else self.top = math.max(0, self.top + step) end
+    if sideways or mouse.has(e, "S") then paw.cursor.move_track(step) else self.top = math.max(0, self.top + step) end
     return api.ui_redraw()
   end
   local in_slots = y >= 1 and y <= geo.shown
@@ -222,7 +222,7 @@ function session:on_mouse(e)
   if e.button == "right" then
     if clip then
       local where = screen(e)
-      mouse.grab(e, { up = function(u) if not u.moved then daw.ui.menu(menus.clip(clip.id, clip.start), where) end end })
+      mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(menus.clip(clip.id, clip.start), where) end end })
     end
     return
   end

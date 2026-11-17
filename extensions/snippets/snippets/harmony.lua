@@ -3,7 +3,7 @@
 -- chord the song has (on any pitched track), voiced in the track's range
 -- and led smoothly from what this clip plays before.
 local S = require("snippets")
-local H = daw.harmony
+local H = paw.harmony
 
 local KINDS = { name = "kind", values = { "7", "9", "7b9", "7sus4", "triad" } }
 
@@ -120,7 +120,7 @@ return {
       local key = ctx.key
       local minor = key.scale == "minor" or key.scale == "harmonic_minor" or key.scale == "dorian"
       local tonic = key.root
-      local each = ctx.values.each == "2 beats" and 2 or ctx.values.each == "2 bars" and 2 * daw.time.bar(ctx.at) or daw.time.bar(ctx.at)
+      local each = ctx.values.each == "2 beats" and 2 or ctx.values.each == "2 bars" and 2 * paw.time.bar(ctx.at) or paw.time.bar(ctx.at)
       local plan = ({
         ["V-I"] = { "V", "I" }, ["IV-V-I"] = { "IV", "V", "I" }, ["ii-V-I"] = { "ii", "V", "I" }, ["IV-I"] = { "IV", "I" },
       })[ctx.values.kind or "V-I"]

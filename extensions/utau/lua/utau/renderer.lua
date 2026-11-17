@@ -8,7 +8,7 @@
 -- and keeps what the engine answers about each note. Timing takes are
 -- stored in the project instead: a seeded offset of each note's first
 -- phoneme, as in ReaUtau.
-local api = daw.api
+local api = paw.api
 local utau = require("utau")
 local proto = require("utau.proto")
 local json = require("utau.json")
@@ -114,11 +114,11 @@ engine.handlers.BatchEditResult = function(m)
   M.last = answer
   if p.action ~= "info" then
     if not m.ok or answer.error then
-      daw.notify("utau: " .. tostring(answer.error or m.message), "warn")
+      paw.notify("utau: " .. tostring(answer.error or m.message), "warn")
     elseif answer.changed > 0 then
-      daw.notify(string.format("utau: %s take for %d phrase%s, singing it", p.kind, answer.changed, answer.changed == 1 and "" or "s"))
+      paw.notify(string.format("utau: %s take for %d phrase%s, singing it", p.kind, answer.changed, answer.changed == 1 and "" or "s"))
     else
-      daw.notify("utau: no other " .. p.kind .. " take there")
+      paw.notify("utau: no other " .. p.kind .. " take there")
     end
   end
   api.ui_redraw()

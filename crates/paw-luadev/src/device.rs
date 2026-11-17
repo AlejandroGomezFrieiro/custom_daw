@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
-use daw_engine::device::{Controller, Device, Instance, Io, ParamInfo, Ports};
-use daw_engine::{Attr, Ctl, Event, EventKind, ProcessCtx};
+use paw_engine::device::{Controller, Device, Instance, Io, ParamInfo, Ports};
+use paw_engine::{Attr, Ctl, Event, EventKind, ProcessCtx};
 use mlua::{Function, HookTriggers, LightUserData, Lua, Table, VmState};
 use serde::{Deserialize, Serialize};
 
@@ -23,12 +23,12 @@ pub const MAX_EVENTS: usize = 1024;
 /// ends there is reported instead of holding everything up.
 const LOAD_LIMIT: Duration = Duration::from_secs(5);
 
-/// The library scripts are written with (`require("daw.dsp")`).
-const DSP: &str = include_str!("../../../runtime/lua/daw/dsp.lua");
+/// The library scripts are written with (`require("paw.dsp")`).
+const DSP: &str = include_str!("../../../runtime/lua/paw/dsp.lua");
 /// What loads a script and runs its blocks, in its own state.
 const HOST: &str = include_str!("host.lua");
 
-// Event types as `daw.dsp` names them.
+// Event types as `paw.dsp` names them.
 const NOTE_ON: i32 = 1;
 const NOTE_OFF: i32 = 2;
 const CC: i32 = 3;
@@ -38,7 +38,7 @@ const PROGRAM: i32 = 6;
 const ALL_NOTES_OFF: i32 = 7;
 const OTHER: i32 = 8;
 
-/// An event as a script sees it (`daw_event` in `daw.dsp`).
+/// An event as a script sees it (`paw_event` in `paw.dsp`).
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct LuaEvent {
@@ -55,7 +55,7 @@ struct LuaEvent {
     attr: i32,
 }
 
-/// The transport for one block (`daw_transport` in `daw.dsp`).
+/// The transport for one block (`paw_transport` in `paw.dsp`).
 #[repr(C)]
 #[derive(Default)]
 struct Transport {
@@ -151,7 +151,7 @@ fn load(path: &Path) -> mlua::Result<(Lua, Table)> {
         .unwrap_or_default();
     let host: Table = lua
         .load(HOST)
-        .set_name("@daw/luadev-host.lua")
+        .set_name("@paw/luadev-host.lua")
         .call((path.to_string_lossy().into_owned(), name, DSP))?;
     Ok((lua, host))
 }

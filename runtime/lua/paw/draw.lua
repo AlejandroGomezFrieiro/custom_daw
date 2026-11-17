@@ -2,13 +2,13 @@
 -- meters, sliders, small piano rolls and curves. Views and extensions share
 -- these so that everything on screen looks like part of the same program.
 --
---   local hue = daw.draw.track_hue(track, index)   -- highlight groups in the track's colour
---   local g = daw.draw.g                           -- the characters, ASCII under `daw.opt.ascii`
+--   local hue = paw.draw.track_hue(track, index)   -- highlight groups in the track's colour
+--   local g = paw.draw.g                           -- the characters, ASCII under `paw.opt.ascii`
 --   buf:text(0, 0, g.stripe, hue.fg)
---   daw.draw.meter(buf, x, y, width, peak)
---   daw.draw.slider(buf, x, y, width, fraction)
-local api = daw.api
-local theme = require("daw.theme")
+--   paw.draw.meter(buf, x, y, width, peak)
+--   paw.draw.slider(buf, x, y, width, fraction)
+local api = paw.api
+local theme = require("paw.theme")
 local M = {}
 
 local function rgb(hex)
@@ -77,11 +77,11 @@ function M.nearest256(hex)
   return index, string.format("#%02x%02x%02x", cr, cg, cb)
 end
 
---- Whether the terminal shows 24-bit colour: `daw.opt.termcolors` "true" or
+--- Whether the terminal shows 24-bit colour: `paw.opt.termcolors` "true" or
 --- "256", or with "auto" (the default) what the environment says: COLORTERM
 --- of truecolor or 24bit, or a TERM that ends in -direct.
 function M.truecolor()
-  local want = tostring(daw.opt.termcolors or "auto")
+  local want = tostring(paw.opt.termcolors or "auto")
   if want == "true" or want == "truecolor" or want == "24bit" then return true end
   if want == "256" then return false end
   local colorterm = (os.getenv("COLORTERM") or ""):lower()
@@ -136,12 +136,12 @@ local ascii = {
 }
 
 --- The characters views draw with, by what they are for. The same table
---- holds plain ASCII ones while `daw.opt.ascii` is on.
+--- holds plain ASCII ones while `paw.opt.ascii` is on.
 M.g = {}
 M.glyphs = { unicode = unicode, ascii = ascii }
 
 function M.use_glyphs()
-  local from = daw.opt.ascii and ascii or unicode
+  local from = paw.opt.ascii and ascii or unicode
   for k, v in pairs(from) do M.g[k] = v end
 end
 
@@ -185,7 +185,7 @@ function M.hue(colour)
   local names = {}
   for name, def in pairs(defs) do
     names[name] = "Hue_" .. name .. "_" .. key
-    daw.ui.hl(names[name], def)
+    paw.ui.hl(names[name], def)
   end
   hues[colour] = names
   return names
@@ -203,7 +203,7 @@ function M.track_colour(track, index)
   if track.color and track.color:match("^#%x%x%x%x%x%x$") then return track.color end
   if track.master then return theme.palette.dim end
   -- A member of a group is in its group's colour, so a section reads as one.
-  local group = track.id and daw.groups and daw.groups.of(track.id)
+  local group = track.id and paw.groups and paw.groups.of(track.id)
   if group then return M.track_colour(api.track_get(group)) end
   -- By its place in the list, which folding a group away does not change.
   return theme.hues[((track.index or index or 1) - 1) % #theme.hues + 1]
@@ -229,12 +229,12 @@ end
 --- How far up a meter a linear peak reaches, from 0 to 1 over 60 dB.
 function M.level(peak)
   local db = 20 * math.log10(math.max(peak, 1e-6))
-  return daw.util.clamp((db + 60) / 60, 0, 1)
+  return paw.util.clamp((db + 60) / 60, 0, 1)
 end
 
 --- Where on a meter `width` cells long a level in dB falls, from 0.
 function M.db_cell(db, width)
-  return math.floor(daw.util.clamp((db + 60) / 60, 0, 1) * (width - 1) + 0.5)
+  return math.floor(paw.util.clamp((db + 60) / 60, 0, 1) * (width - 1) + 0.5)
 end
 
 --- A level meter `width` cells wide for a linear peak: a thin rail, lit
@@ -287,7 +287,7 @@ end
 --- the upper half of each cell, the right in the lower.
 function M.stereo_meter(buf, x, y, width, left, right)
   local g = M.g
-  if daw.opt.ascii then
+  if paw.opt.ascii then
     M.meter(buf, x, y, width, math.max(left, right))
     return
   end
@@ -301,7 +301,7 @@ function M.stereo_meter(buf, x, y, width, left, right)
     local name = "MeterLR_" .. up .. "_" .. down
     if not stereo_groups[name] then
       stereo_groups[name] = true
-      daw.ui.hl(name, { fg = colours[up], bg = colours[down] })
+      paw.ui.hl(name, { fg = colours[up], bg = colours[down] })
     end
     buf:text(x + cell, y, g.upper, name)
   end
@@ -323,7 +323,7 @@ end
 --- A slider `width` cells wide with its knob `fraction` of the way along.
 function M.slider(buf, x, y, width, fraction, on, off)
   local g = M.g
-  local at = math.floor(daw.util.clamp(fraction, 0, 1) * (width - 1) + 0.5)
+  local at = math.floor(paw.util.clamp(fraction, 0, 1) * (width - 1) + 0.5)
   if at > 0 then buf:text(x, y, string.rep(g.slider_on, at), on or "ParamBar") end
   buf:text(x + at, y, g.knob, on or "ParamBar")
   if at < width - 1 then buf:text(x + at + 1, y, string.rep(g.slider_off, width - 1 - at), off or "ParamBarOff") end
@@ -333,7 +333,7 @@ end
 --- with a mark where the sound sits, `───┃───` in the middle.
 function M.pan(buf, x, y, width, pan, style)
   local g = M.g
-  local at = math.floor((daw.util.clamp(pan, -1, 1) + 1) / 2 * (width - 1) + 0.5)
+  local at = math.floor((paw.util.clamp(pan, -1, 1) + 1) / 2 * (width - 1) + 0.5)
   buf:text(x, y, string.rep(g.pan_rail, width), "FaderTrack")
   buf:text(x + at, y, g.pan_mark, style or (math.abs(pan) < 0.005 and "TrackInfo" or "Bright"))
 end
@@ -410,12 +410,12 @@ function M.miniroll(notes, width, rows, zoom, from)
 end
 
 --- How far a sample of size `a` (0 to 1) reaches up a waveform, 0 to 1:
---- as it is (`daw.opt.wave_scale` "linear", which shows a kick over a hat) or
+--- as it is (`paw.opt.wave_scale` "linear", which shows a kick over a hat) or
 --- on a decibel scale from -48 (`"db"`, which shows quiet material).
 function M.wave_reach(a)
   a = math.min(math.abs(a), 1)
-  if daw.opt.wave_scale ~= "db" then return a end
-  return a <= 1e-4 and 0 or daw.util.clamp((20 * math.log10(a) + 48) / 48, 0, 1)
+  if paw.opt.wave_scale ~= "db" then return a end
+  return a <= 1e-4 and 0 or paw.util.clamp((20 * math.log10(a) + 48) / 48, 0, 1)
 end
 local wave_reach = M.wave_reach
 
@@ -430,7 +430,7 @@ local wave_reach = M.wave_reach
 --- reaches full scale, "clipflip" for both.
 function M.waveform(peaks, rows)
   local g = M.g
-  local plain = daw.opt.ascii
+  local plain = paw.opt.ascii
   local half = rows * 4
   local cells, flips, clips = {}, {}, {}
   for row = 1, rows do cells[row], flips[row] = {}, {} end
@@ -495,11 +495,11 @@ local dots = { { 0x01, 0x02, 0x04, 0x40 }, { 0x08, 0x10, 0x20, 0x80 } }
 local lines3 = { unicode = { "▁", "─", "▔" }, ascii = { "_", "-", "'" } }
 
 --- How curves are drawn in cells: "sextant", "braille" or "line", by
---- `daw.opt.curve_glyphs`; `daw.opt.braille = false` and `daw.opt.ascii`
+--- `paw.opt.curve_glyphs`; `paw.opt.braille = false` and `paw.opt.ascii`
 --- both mean "line" (ascii wins over all, and uses ASCII characters).
 function M.curve_glyphs()
-  if daw.opt.ascii or daw.opt.braille == false then return "line" end
-  local kind = daw.opt.curve_glyphs
+  if paw.opt.ascii or paw.opt.braille == false then return "line" end
+  local kind = paw.opt.curve_glyphs
   if kind == "braille" or kind == "line" then return kind end
   return "sextant"
 end
@@ -562,11 +562,11 @@ end
 function M.curve(buf, y, rows, value, style)
   local kind = M.curve_glyphs()
   if kind == "line" then
-    local set = daw.opt.ascii and lines3.ascii or lines3.unicode
+    local set = paw.opt.ascii and lines3.ascii or lines3.unicode
     for col = 0, buf.width - 1 do
       local v = value(col * 2)
       if v then
-        local level = math.min(rows * 3 - 1, math.floor(daw.util.clamp(v, 0, 1) * rows * 3))
+        local level = math.min(rows * 3 - 1, math.floor(paw.util.clamp(v, 0, 1) * rows * 3))
         buf:text(col, y + rows - 1 - math.floor(level / 3), set[level % 3 + 1], style)
       end
     end
@@ -577,7 +577,7 @@ function M.curve(buf, y, rows, value, style)
   local cells = M.trace(buf.width, buf.width * 2, function(sx)
     local v = value(sx)
     if not v then return nil end
-    return steps - 1 - math.min(steps - 1, math.floor(daw.util.clamp(v, 0, 1) * steps))
+    return steps - 1 - math.min(steps - 1, math.floor(paw.util.clamp(v, 0, 1) * steps))
   end, sub, kind)
   local glyph = kind == "braille" and M.braille or M.sextant
   for key, bits in pairs(cells) do
@@ -591,29 +591,29 @@ end
 --- of a piano roll: black keys are short, the Cs are named, and so is the
 --- pitch the cursor is on.
 function M.piano_key(buf, row, pitch, cursor, width, name)
-  local music = daw.music
+  local music = paw.music
   local step = pitch % 12
   if music.is_black(pitch) then
     buf:fill(0, row, width - 2, 1, " ", "PianoBlack")
     buf:fill(width - 2, row, 2, 1, " ", "PianoWhite")
   else
     -- Two white keys with no black one between them get a line instead.
-    buf:fill(0, row, width, 1, (step == 0 or step == 5) and (daw.opt.ascii and "_" or "▁") or " ", "PianoWhite")
+    buf:fill(0, row, width, 1, (step == 0 or step == 5) and (paw.opt.ascii and "_" or "▁") or " ", "PianoWhite")
     if step == 0 and not name then buf:text(1, row, music.name(pitch), "PianoC") end
   end
   -- A key the instrument names (a drum, a keyswitch) shows its name.
-  if name then buf:text(0, row, daw.util.fit(name, width - 1), "PianoC") end
-  if cursor then buf:text(0, row, daw.util.fit(music.name(pitch), width - 1) .. " ", "PianoCursor") end
+  if name then buf:text(0, row, paw.util.fit(name, width - 1), "PianoC") end
+  if cursor then buf:text(0, row, paw.util.fit(music.name(pitch), width - 1) .. " ", "PianoCursor") end
 end
 
 --- The bars and beats from `from` for `span` beats, as the project counts
 --- them: `{ beat = b, bar = n }` for a bar line (n from 1) and `{ beat = b }`
---- for a beat inside a bar. Bar lines come from `daw.time.bar_start`, so a
+--- for a beat inside a bar. Bar lines come from `paw.time.bar_start`, so a
 --- change of time signature moves them.
 function M.bar_lines(from, span)
   -- From the tempo map: bars, and the beats of the signature in each.
   local out = {}
-  for _, line in ipairs(daw.tempo.lines(from - 1e-9, from + span + 1e-9)) do
+  for _, line in ipairs(paw.tempo.lines(from - 1e-9, from + span + 1e-9)) do
     out[#out + 1] = line.index == 0 and { beat = line.beat, bar = line.bar } or { beat = line.beat }
   end
   return out
@@ -626,7 +626,7 @@ end
 function M.beats(ruler, scroll, span, zoom, origin)
   local g = M.g
   local lines = {}
-  local every = math.max(1, math.ceil(4 / (daw.time.bar(origin + scroll) * zoom)))
+  local every = math.max(1, math.ceil(4 / (paw.time.bar(origin + scroll) * zoom)))
   local free = 0
   for _, line in ipairs(M.bar_lines(origin + scroll, span)) do
     local at = math.floor((line.beat - origin - scroll) * zoom + 0.5)

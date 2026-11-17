@@ -1,4 +1,4 @@
--- Stretching, pitch shifting and looping clips: `daw.stretch`.
+-- Stretching, pitch shifting and looping clips: `paw.stretch`.
 --
 -- An audio clip plays its file `clip.stretch` times as long (2 is half
 -- speed) and `clip.pitch` semitones higher, each without changing the
@@ -21,7 +21,7 @@
 -- `clip.loop_length` beats, again and again to its end. Trimming its start
 -- turns the loop round rather than running out of it; a cut gives both
 -- pieces the same loop, each from where it begins.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local EPS = 1e-9
@@ -47,9 +47,9 @@ end
 function M.file_at(c, by)
   local warp = c.warp or {}
   if #warp == 0 and not c.bent then
-    return c.offset + daw.time.seconds(by, c.start) / (c.stretch or 1)
+    return c.offset + paw.time.seconds(by, c.start) / (c.stretch or 1)
   end
-  local played = c.bent and by * 60 / c.source_tempo or daw.time.seconds(by, c.start) / (c.stretch or 1)
+  local played = c.bent and by * 60 / c.source_tempo or paw.time.seconds(by, c.start) / (c.stretch or 1)
   if #warp == 0 then return c.offset + played end
   return unstretched(warp, unstretched(warp, c.offset) + played, true)
 end
@@ -58,7 +58,7 @@ end
 --- (its start when left out) play.
 function M.file_seconds(c, beats, at)
   if #(c.warp or {}) == 0 and not c.bent then
-    return daw.time.seconds(beats, at or c.start) / (c.stretch or 1)
+    return paw.time.seconds(beats, at or c.start) / (c.stretch or 1)
   end
   local from = (at or c.start) - c.start
   return M.file_at(c, from + beats) - M.file_at(c, from)
@@ -71,7 +71,7 @@ function M.lead(c)
   local u = #warp > 0 and unstretched(warp, c.offset) - unstretched(warp, 0) or c.offset
   if c.bent then
     local beats = u * c.source_tempo / 60
-    return daw.time.seconds(beats, c.start - beats)
+    return paw.time.seconds(beats, c.start - beats)
   end
   return u * (c.stretch or 1)
 end
@@ -112,7 +112,7 @@ function M.move_content(id, by)
       for _, move in ipairs(controls) do move.start = move.start + m.shift end
       api.clip_set_controls(id, controls)
     end
-    daw.takes.shift(id, m.shift)
+    paw.takes.shift(id, m.shift)
   end
   if m.loop_start then api.clip_set(id, "loop_start", m.loop_start) end
 end
@@ -140,8 +140,8 @@ end
 --- with it, from its start. With `set`, its stretch too.
 local function scale(c, k, set)
   if set then api.clip_set(c.id, "stretch", c.stretch * k) end
-  local seconds = daw.time.seconds(c.length, c.start) * k
-  local length = daw.time.to_beat(daw.time.to_seconds(c.start) + seconds) - c.start
+  local seconds = paw.time.seconds(c.length, c.start) * k
+  local length = paw.time.to_beat(paw.time.to_seconds(c.start) + seconds) - c.start
   api.clip_set(c.id, "length", length)
   local ratio = length / c.length
   api.clip_set(c.id, "fade_in", math.min(c.fade_in * ratio, length))
@@ -165,7 +165,7 @@ function M.to(id, beats)
   local c = api.clip_get(id)
   need_audio(c)
   if beats <= 0 then error("a clip lasts more than 0 beats", 2) end
-  local k = daw.time.seconds(beats, c.start) / daw.time.seconds(c.length, c.start)
+  local k = paw.time.seconds(beats, c.start) / paw.time.seconds(c.length, c.start)
   scale(c, k, true)
 end
 
@@ -223,9 +223,9 @@ function M.warp_near(c, beat)
 end
 
 --- Move every warp marker of a clip onto the nearest line of a grid of
---- `step` beats (`daw.opt.grid` when left out), from the first on.
+--- `step` beats (`paw.opt.grid` when left out), from the first on.
 function M.warp_snap(id, step)
-  step = step or daw.opt.grid
+  step = step or paw.opt.grid
   local n = #(api.clip_get(id).warp or {})
   local i = 1
   while i <= n do
@@ -293,7 +293,7 @@ function M.sounding(c, notes, limit)
       if n.start >= from - EPS and n.start < from + period - EPS then
         local at = base + n.start - from
         if at >= -EPS and at < c.length - EPS and #out < (limit or math.huge) then
-          local note = daw.util.merge(n, { start = at, length = math.min(n.length, base + period - at) })
+          local note = paw.util.merge(n, { start = at, length = math.min(n.length, base + period - at) })
           out[#out + 1] = note
         end
       end
@@ -308,7 +308,7 @@ end
 --- "×1.5 +3st ⟳", and "stretching…" while its sound is being made; nil
 --- for a plain clip.
 function M.badge(c)
-  local ascii = daw.opt.ascii
+  local ascii = paw.opt.ascii
   local parts = {}
   if c.stretching then parts[#parts + 1] = ascii and "stretching~" or "stretching…" end
   if c.stretch and math.abs(c.stretch - 1) > EPS then

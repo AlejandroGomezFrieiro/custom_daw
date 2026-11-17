@@ -1,22 +1,22 @@
--- Tests of narrowing to a group (daw.scope), freezing tracks and groups
--- (daw.freeze, crates/daw-core/src/freeze.rs) and stems by group
--- (daw.stems). Loaded by tests/suite.lua with its helpers.
+-- Tests of narrowing to a group (paw.scope), freezing tracks and groups
+-- (paw.freeze, crates/paw-core/src/freeze.rs) and stems by group
+-- (paw.stems). Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fails, fresh = T.test, T.eq, T.near, T.fails, T.fresh
-local api = daw.api
+local api = paw.api
 local ffi = require("ffi")
-local L = daw.layout
+local L = paw.layout
 
 local W, H = 160, 48
 
 local initial = L.capture()
 
 local function reset()
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
   L.restore(initial)
-  daw.opt.scope_rest = "play"
-  daw.ui.focus("arrange")
+  paw.opt.scope_rest = "play"
+  paw.ui.focus("arrange")
 end
 
 local function start()
@@ -26,7 +26,7 @@ local function start()
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -42,14 +42,14 @@ local function wait_for(what, limit, fn)
   local waited = 0
   while not fn() do
     if waited >= limit then error("waited " .. limit .. " ms for " .. what, 2) end
-    daw.wait(20)
+    paw.wait(20)
     waited = waited + 20
   end
 end
 
 --- A track with a synth playing a few notes.
 local function synth(name, pitch)
-  local t = daw.add_track({ name = name })
+  local t = paw.add_track({ name = name })
   t:add_device("synth", { attack = 0.001, release = 0.05 })
   t:add_clip({ start = 0, length = 4, notes = {
     { pitch = pitch, start = 0, length = 1 }, { pitch = pitch + 4, start = 1, length = 1 }, { pitch = pitch + 7, start = 2, length = 2 },
@@ -62,15 +62,15 @@ end
 local function orchestra()
   local violins, cellos, horns = synth("Violins", 72), synth("Cellos", 48), synth("Horns", 60)
   local drums = synth("Drums", 36)
-  local strings = daw.groups.make({ violins, cellos }, "Strings")
-  local brass = daw.groups.make({ horns }, "Brass")
-  local orch = daw.groups.make({ strings, brass }, "Orchestra")
-  daw.flush()
+  local strings = paw.groups.make({ violins, cellos }, "Strings")
+  local brass = paw.groups.make({ horns }, "Brass")
+  local orch = paw.groups.make({ strings, brass }, "Orchestra")
+  paw.flush()
   api.undo_checkpoint()
   return { violins = violins, cellos = cellos, horns = horns, drums = drums, strings = strings, brass = brass, orchestra = orch }
 end
 
---- The samples of a 32-bit float WAV file written by `daw.render`.
+--- The samples of a 32-bit float WAV file written by `paw.render`.
 local function samples(path)
   local data = T.read_file(path)
   local at = data:find("data", 1, true)
@@ -96,7 +96,7 @@ end
 local renders = 0
 local function render(opts)
   renders = renders + 1
-  return daw.render(T.scratch .. "/scope" .. renders .. ".wav", daw.util.merge({ bits = 32, tail = 1 }, opts or {}))
+  return paw.render(T.scratch .. "/scope" .. renders .. ".wav", paw.util.merge({ bits = 32, tail = 1 }, opts or {}))
 end
 
 -- Narrowing ---------------------------------------------------------------------------
@@ -104,79 +104,79 @@ end
 test("narrowing to a group opens a tab of its tracks alone, and widening comes back", function()
   start()
   local o = orchestra()
-  daw.cursor.set_track(o.drums)
-  daw.scope.narrow("Strings")
-  eq(#daw.ui.tabs, 2, "a tab of its own")
-  eq(daw.ui.tab, 2, "gone to")
-  eq(L.tab_title(daw.ui.tabs[2]), "Strings", "named after the group")
-  eq(names(daw.groups.rows()), "Strings Violins Cellos", "the arrange view's rows")
-  eq(daw.cursor.track_id(), o.strings.id, "the cursor came inside")
+  paw.cursor.set_track(o.drums)
+  paw.scope.narrow("Strings")
+  eq(#paw.ui.tabs, 2, "a tab of its own")
+  eq(paw.ui.tab, 2, "gone to")
+  eq(L.tab_title(paw.ui.tabs[2]), "Strings", "named after the group")
+  eq(names(paw.groups.rows()), "Strings Violins Cellos", "the arrange view's rows")
+  eq(paw.cursor.track_id(), o.strings.id, "the cursor came inside")
   local text = screen()
   eq(text:find("Violins", 1, true) ~= nil and text:find("Horns", 1, true) == nil and text:find("Drums", 1, true) == nil, true,
     "drawn: only the strings")
   eq(text:find("narrowed Strings", 1, true) ~= nil, true, "the status line says so")
   -- The rest of the program sees the scope too.
-  local items = daw.pick.sources.tracks.items()
+  local items = paw.pick.sources.tracks.items()
   eq(#items, 3, "the track picker lists its tracks")
-  eq(names(daw.scope.tracks()), "Strings Violins Cellos", "daw.scope.tracks")
-  daw.ui.show("mixer")
+  eq(names(paw.scope.tracks()), "Strings Violins Cellos", "paw.scope.tracks")
+  paw.ui.show("mixer")
   eq(screen():find("Horns", 1, true), nil, "the mixer has no strip for the rest")
-  daw.ui.hide("mixer")
+  paw.ui.hide("mixer")
   -- Motions stay inside.
   keys("G")
-  eq(daw.cursor.track_id(), o.cellos.id, "G: the last track of the scope")
+  eq(paw.cursor.track_id(), o.cellos.id, "G: the last track of the scope")
   keys("gg")
-  eq(daw.cursor.track_id(), o.strings.id, "gg: the first")
+  eq(paw.cursor.track_id(), o.strings.id, "gg: the first")
   -- Folding the group itself does not empty its tab.
-  daw.groups.fold(o.strings.id, true)
-  eq(names(daw.groups.rows()), "Strings Violins Cellos", "the scope's own fold is open in it")
-  daw.groups.fold(o.strings.id, false)
+  paw.groups.fold(o.strings.id, true)
+  eq(names(paw.groups.rows()), "Strings Violins Cellos", "the scope's own fold is open in it")
+  paw.groups.fold(o.strings.id, false)
   -- Back out.
-  eq(daw.scope.widen(), true, "widened")
-  eq(#daw.ui.tabs, 1, "the tab closed")
-  eq(daw.scope.current(), nil, "no scope")
-  eq(#daw.groups.rows(), 7, "every track again")
+  eq(paw.scope.widen(), true, "widened")
+  eq(#paw.ui.tabs, 1, "the tab closed")
+  eq(paw.scope.current(), nil, "no scope")
+  eq(#paw.groups.rows(), 7, "every track again")
   reset()
 end)
 
 test("zn narrows to the group at the cursor and zw widens; scopes open side by side in tabs", function()
   start()
   local o = orchestra()
-  daw.cursor.set_track(o.violins)
+  paw.cursor.set_track(o.violins)
   keys("zn")
-  eq(daw.scope.current(), o.strings.id, "zn on a member: its group")
-  local seen = daw.frontend.revision
+  eq(paw.scope.current(), o.strings.id, "zn on a member: its group")
+  local seen = paw.frontend.revision
   keys("gt")
-  eq(daw.frontend.revision > seen, true, "a window is told to draw the other tab's tracks")
-  eq(daw.scope.current(), nil, "the first tab is wide")
-  eq(#daw.groups.rows(), 7, "and shows everything")
-  daw.cursor.set_track(o.brass)
+  eq(paw.frontend.revision > seen, true, "a window is told to draw the other tab's tracks")
+  eq(paw.scope.current(), nil, "the first tab is wide")
+  eq(#paw.groups.rows(), 7, "and shows everything")
+  paw.cursor.set_track(o.brass)
   keys("zn")
-  eq(#daw.ui.tabs, 3, "a second scope, in a tab of its own")
-  eq(names(daw.groups.rows()), "Brass Horns", "the brass")
-  daw.scope.narrow("Strings")
-  eq(#daw.ui.tabs, 3, "narrowing to a group that has a tab goes there")
-  eq(daw.scope.current(), o.strings.id, "the strings' tab")
-  eq(names(daw.groups.rows()), "Strings Violins Cellos", "with its rows")
+  eq(#paw.ui.tabs, 3, "a second scope, in a tab of its own")
+  eq(names(paw.groups.rows()), "Brass Horns", "the brass")
+  paw.scope.narrow("Strings")
+  eq(#paw.ui.tabs, 3, "narrowing to a group that has a tab goes there")
+  eq(paw.scope.current(), o.strings.id, "the strings' tab")
+  eq(names(paw.groups.rows()), "Strings Violins Cellos", "with its rows")
   keys("zw")
-  eq(#daw.ui.tabs, 2, "zw closed it")
-  eq(daw.scope.current(), nil, "back in the wide tab")
+  eq(#paw.ui.tabs, 2, "zw closed it")
+  eq(paw.scope.current(), nil, "back in the wide tab")
   reset()
 end)
 
 test("in a scope Ex ranges, :g and :s see only its tracks", function()
   start()
   local o = orchestra()
-  daw.scope.narrow("Strings")
-  local function range(text) return names(daw.ex.range(text).tracks) end
+  paw.scope.narrow("Strings")
+  local function range(text) return names(paw.ex.range(text).tracks) end
   eq(range("t*"), "Strings Violins Cellos", "t*")
   eq(range("t2"), "Violins", "t2 is the scope's second track")
   eq(range("t$"), "Cellos", "t$ its last")
   eq(range("t/o/"), "Violins Cellos", "t/o/ searches the scope's names")
-  local _, _, err = daw.ex.range("t5")
+  local _, _, err = paw.ex.range("t5")
   eq(tostring(err):find("3 tracks", 1, true) ~= nil, true, "t5 is past its end: " .. tostring(err))
   keys(":%s/c3/d3/<CR>")
-  daw.flush()
+  paw.flush()
   local function first(t) return t:clips()[1]:notes()[1].pitch end
   eq(first(o.cellos), 50, ":%s changed the scope's notes")
   eq(first(o.drums), 36, "and not the rest's")
@@ -190,24 +190,24 @@ end)
 test("a track added in a scope goes into its group; one undo tree across the tabs", function()
   start()
   local o = orchestra()
-  daw.scope.narrow("Strings")
-  local violas = daw.add_track({ name = "Violas" })
-  daw.flush()
-  daw.wait(20)
-  eq(daw.groups.of(violas.id), o.strings.id, "the new track is in Strings")
-  eq(names(daw.groups.rows()), "Strings Violins Cellos Violas", "and in sight")
+  paw.scope.narrow("Strings")
+  local violas = paw.add_track({ name = "Violas" })
+  paw.flush()
+  paw.wait(20)
+  eq(paw.groups.of(violas.id), o.strings.id, "the new track is in Strings")
+  eq(names(paw.groups.rows()), "Strings Violins Cellos Violas", "and in sight")
   api.undo_checkpoint()
   o.violins.name = "First violins"
   api.undo_checkpoint()
-  daw.scope.widen()
-  daw.undo()
+  paw.scope.widen()
+  paw.undo()
   eq(o.violins.name, "Violins", "the rename made in the scope is undone from outside it")
-  daw.undo()
+  paw.undo()
   eq(pcall(api.track_get, violas.id), false, "and so is the track added there")
   reset()
 end)
 
-test("daw://tracks in a scope lists its tracks, and writing it leaves the rest alone", function()
+test("paw://tracks in a scope lists its tracks, and writing it leaves the rest alone", function()
   start()
   local o = orchestra()
   -- A buffer an earlier test read is forgotten, so that this one reads afresh.
@@ -219,12 +219,12 @@ test("daw://tracks in a scope lists its tracks, and writing it leaves the rest a
   forget()
   T.after(forget)
   -- One read wide is read again in the narrowed tab.
-  keys(":e daw://tracks<CR>")
+  keys(":e paw://tracks<CR>")
   keys(":b arrange<CR>")
-  daw.scope.narrow("Strings")
-  keys(":e daw://tracks<CR>")
+  paw.scope.narrow("Strings")
+  keys(":e paw://tracks<CR>")
   local lines = {}
-  for i, l in ipairs(daw.textbuf.buf().state.text.lines) do lines[i] = l.text end
+  for i, l in ipairs(paw.textbuf.buf().state.text.lines) do lines[i] = l.text end
   local text = table.concat(lines, "\n")
   eq(text:find("Violins", 1, true) ~= nil and text:find("Horns", 1, true) == nil, true, "only the strings: " .. text)
   -- Rename the cellos and write: the rest keeps its tracks and their order.
@@ -242,18 +242,18 @@ end)
 test("scope_rest=mute silences the rest while the scope's tab is in front", function()
   start()
   local o = orchestra()
-  daw.project.tempo = 60
-  daw.scope.narrow("Strings")
-  daw.opt.scope_rest = "mute"
-  daw.transport.seek(0)
-  daw.transport.play()
+  paw.project.tempo = 60
+  paw.scope.narrow("Strings")
+  paw.opt.scope_rest = "mute"
+  paw.transport.seek(0)
+  paw.transport.play()
   wait_for("the violins", 3000, function() return select(1, o.violins:meter()) > 0.01 end)
-  daw.wait(100)
+  paw.wait(100)
   eq(select(1, o.drums:meter()) < 1e-4, true, "the drums are silent")
   eq(select(1, o.orchestra:meter()) > 0.01, true, "the group the strings pass through is not")
   keys("gt")
   wait_for("the drums", 3000, function() return select(1, o.drums:meter()) > 0.01 end)
-  daw.transport.stop()
+  paw.transport.stop()
   eq(o.drums.mute, false, "the project's mute was not touched")
   reset()
 end)
@@ -261,11 +261,11 @@ end)
 test("scope_rest=frozen plays the rest from files rendered in the background", function()
   start()
   local o = orchestra()
-  daw.scope.narrow("Strings")
+  paw.scope.narrow("Strings")
   local edits = api.project_get().edits
-  eq(names(daw.scope.rest_parts()), "Brass Drums", "the parts of the rest: whole groups, not the scope's own")
-  daw.opt.scope_rest = "frozen"
-  wait_for("the rest to be frozen", 20000, function() return #daw.scope.held() == 2 end)
+  eq(names(paw.scope.rest_parts()), "Brass Drums", "the parts of the rest: whole groups, not the scope's own")
+  paw.opt.scope_rest = "frozen"
+  wait_for("the rest to be frozen", 20000, function() return #paw.scope.held() == 2 end)
   table.sort(api.engine_held())
   eq(#api.engine_held(), 2, "the engine plays them from files")
   eq(api.project_get().edits, edits, "the project is not changed")
@@ -275,10 +275,10 @@ test("scope_rest=frozen plays the rest from files rendered in the background", f
   eq(#api.engine_held(), 2, "back in the scope, the files are there already")
   -- An edit to a frozen part plays it live until it is rendered again.
   o.horns:clips()[1]:set_notes({ { pitch = 62, start = 0, length = 2 } })
-  daw.flush()
-  daw.wait(50)
-  wait_for("the brass again", 20000, function() return #daw.scope.held() == 2 end)
-  daw.scope.widen()
+  paw.flush()
+  paw.wait(50)
+  wait_for("the brass again", 20000, function() return #paw.scope.held() == 2 end)
+  paw.scope.widen()
   eq(#api.engine_held(), 0, "widening lets it go")
   reset()
 end)
@@ -289,10 +289,10 @@ test("a frozen track renders as it did live, and its fader stays live", function
   start()
   local t = synth("Lead", 60)
   t:add_device("delay", {})
-  daw.flush()
+  paw.flush()
   local live = render()
-  daw.freeze.freeze(t)
-  eq(daw.freeze.state(t), "frozen", "frozen")
+  paw.freeze.freeze(t)
+  eq(paw.freeze.state(t), "frozen", "frozen")
   eq(#t:clips(), 1, "its clips are as they were")
   local frozen = render()
   local worst, peak = difference(live, frozen)
@@ -309,15 +309,15 @@ test("a frozen group renders as it did live; its members are held", function()
   local o = orchestra()
   o.strings:add_device("delay", {})
   o.violins.volume = -3
-  daw.flush()
+  paw.flush()
   local live = render()
-  daw.freeze.freeze(o.strings)
-  eq(daw.freeze.state(o.violins), "held", "a member is held")
-  eq(daw.freeze.state(o.strings), "frozen", "the group frozen")
+  paw.freeze.freeze(o.strings)
+  eq(paw.freeze.state(o.violins), "held", "a member is held")
+  eq(paw.freeze.state(o.strings), "frozen", "the group frozen")
   local worst, peak = difference(live, render())
   eq(peak > 0.05, true, "it sounds")
   eq(worst < 1e-5, true, "the song is the same: " .. worst)
-  fails(function() daw.freeze.freeze(o.violins) end, "unfreeze that first", "a held track is not frozen again")
+  fails(function() paw.freeze.freeze(o.violins) end, "unfreeze that first", "a held track is not frozen again")
   -- The group's fader and mute stay live.
   o.strings.mute = true
   local without = render()
@@ -330,46 +330,46 @@ end)
 test("freezing is one undo step and saved with the project, the file beside it", function()
   start()
   local t = synth("Pad", 55)
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  local file = daw.freeze.freeze(t)
+  local file = paw.freeze.freeze(t)
   api.undo_checkpoint()
-  daw.undo()
-  eq(daw.freeze.state(t), nil, "undone")
-  daw.redo()
-  eq(daw.freeze.frozen(t).file, file, "and redone")
+  paw.undo()
+  eq(paw.freeze.state(t), nil, "undone")
+  paw.redo()
+  eq(paw.freeze.frozen(t).file, file, "and redone")
   local dir = T.scratch .. "/frozen-project"
   os.execute("mkdir -p '" .. dir .. "'")
-  daw.cmd("write", { dir .. "/song.json" })
+  paw.cmd("write", { dir .. "/song.json" })
   local saved = T.read_file(dir .. "/song.json")
   eq(saved:find('"media/Pad%-frozen') ~= nil, true, "the file is named relative to the project")
-  daw.project.new()
-  daw.open(dir .. "/song.json")
-  local pad = daw.track(api.track_list()[1])
-  local frozen = daw.freeze.frozen(pad)
+  paw.project.new()
+  paw.open(dir .. "/song.json")
+  local pad = paw.track(api.track_list()[1])
+  local frozen = paw.freeze.frozen(pad)
   eq(frozen and frozen.file:find("^/") ~= nil and io.open(frozen.file) ~= nil, true, "it opens frozen, the file found")
-  daw.freeze.unfreeze(pad)
-  eq(daw.freeze.state(pad), nil, ":unfreeze")
+  paw.freeze.unfreeze(pad)
+  eq(paw.freeze.state(pad), nil, ":unfreeze")
   reset()
 end)
 
 test(":freeze and :unfreeze, and an edit to a frozen track asks to unfreeze it", function()
   start()
   local t = synth("Keys", 64)
-  daw.cursor.set_track(t)
+  paw.cursor.set_track(t)
   keys(":freeze<CR>")
-  eq(daw.freeze.state(t), "frozen", ":freeze the cursor's track")
+  eq(paw.freeze.state(t), "frozen", ":freeze the cursor's track")
   local clip = t:clips()[1]
   clip:set_notes({ { pitch = 70, start = 0, length = 1 } })
-  daw.flush()
-  daw.wait(20)
+  paw.flush()
+  paw.wait(20)
   eq(screen():find("Keys is frozen: unfreeze it", 1, true) ~= nil, true, "asked")
   keys("y<CR>")
-  eq(daw.freeze.state(t), nil, "y: unfrozen")
+  eq(paw.freeze.state(t), nil, "y: unfrozen")
   keys(":freeze Keys<CR>")
-  eq(daw.freeze.state(t), "frozen", ":freeze by name")
+  eq(paw.freeze.state(t), "frozen", ":freeze by name")
   keys(":unfreeze<CR>")
-  eq(daw.freeze.state(t), nil, ":unfreeze")
+  eq(paw.freeze.state(t), nil, ":unfreeze")
   reset()
 end)
 
@@ -378,7 +378,7 @@ test("a frozen track's heavy Lua device rests: the engine works far less", funct
   local dir = T.scratch .. "/heavy-devices"
   os.execute("mkdir -p '" .. dir .. "'")
   T.write_file(dir .. "/heavy.lua", [[
-local dev = require("daw.dsp").device { name = "Heavy" }
+local dev = require("paw.dsp").device { name = "Heavy" }
 local x = 0
 function dev.process(b)
   for i = 0, b.frames - 1 do
@@ -390,21 +390,21 @@ function dev.process(b)
 end
 return dev
 ]])
-  daw.luadev.add_dir(dir)
+  paw.luadev.add_dir(dir)
   local t = synth("Heavy", 60)
   t:add_device("lua:heavy")
-  daw.flush()
+  paw.flush()
   local function load()
     api.engine_reset_stats()
-    daw.transport.seek(0)
-    daw.transport.play()
-    daw.wait(1500)
-    daw.transport.stop()
+    paw.transport.seek(0)
+    paw.transport.play()
+    paw.wait(1500)
+    paw.transport.stop()
     return api.engine_get().blocks.mean
   end
   local live = load()
-  daw.freeze.freeze(t)
-  daw.flush()
+  paw.freeze.freeze(t)
+  paw.flush()
   local frozen = load()
   print(string.format("      block time: %.3f ms live, %.3f ms frozen", live, frozen))
   eq(frozen < live * 0.3, true, string.format("frozen %.3f ms against %.3f ms a block", frozen, live))
@@ -416,11 +416,11 @@ end)
 test(":render stems shows a plan of one file per group, and they add up to the mix", function()
   start()
   local o = orchestra()
-  daw.flush()
+  paw.flush()
   local mix = render({ master = false })
   local dir = T.scratch .. "/group-stems"
   keys(":render stems " .. dir .. " wait=true bits=32 tail=1<CR>")
-  eq(daw.ui.float and daw.ui.float.name, "render.plan", "a plan first")
+  eq(paw.ui.float and paw.ui.float.name, "render.plan", "a plan first")
   local text = screen()
   eq(text:find("Orchestra.wav", 1, true) ~= nil and text:find("Drums.wav", 1, true) ~= nil, true, "a file per group: " .. text)
   eq(text:find("Violins, Cellos, Horns", 1, true) ~= nil, true, "saying what each holds")
@@ -436,19 +436,19 @@ test(":render stems shows a plan of one file per group, and they add up to the m
   for i = 0, math.min(n, k) - 1 do worst = math.max(worst, math.abs(x[i] + y[i] - m[i])) end
   eq(worst < 1e-5, true, "they add up to the mix: " .. worst)
   -- Narrowed, the parts of the group; and one group on its own.
-  daw.scope.narrow("Orchestra")
-  local plan = daw.stems.plan({ dir = dir })
+  paw.scope.narrow("Orchestra")
+  local plan = paw.stems.plan({ dir = dir })
   local list = {}
   for i, s in ipairs(plan) do list[i] = s.file:match("([^/]+)$") end
   eq(table.concat(list, " "), "Strings.wav Brass.wav", "in a scope: its groups")
-  plan = daw.stems.plan({ dir = dir, tracks = true })
+  plan = paw.stems.plan({ dir = dir, tracks = true })
   list = {}
   for i, s in ipairs(plan) do list[i] = s.name end
   eq(table.concat(list, " "), "Violins Cellos Horns", "per track")
-  daw.scope.widen()
+  paw.scope.widen()
   keys(":render Strings bits=32 wait=true<CR>")
-  eq(daw.ui.float and daw.ui.float.name, "render.plan", "one group: a plan too")
+  eq(paw.ui.float and paw.ui.float.name, "render.plan", "one group: a plan too")
   keys("<Esc>")
-  eq(daw.ui.float, nil, "Esc leaves it")
+  eq(paw.ui.float, nil, "Esc leaves it")
   reset()
 end)

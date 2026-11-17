@@ -3,16 +3,16 @@
 -- modes, and Ex over a score clip. Loaded by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation")
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -20,11 +20,11 @@ end
 local function song(typed, length)
   fresh()
   local view = load()
-  local track = daw.add_track({ name = "Lead" })
+  local track = paw.add_track({ name = "Lead" })
   track:add_device("synth")
   local clip = track:add_clip({ start = 0, length = length or 8, name = "tune", notes = {} })
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
   view.value, view.dot, view.voice, view.triplets, view.tuplet = 1, false, 1, false, nil
   if typed then
@@ -115,7 +115,7 @@ test("grammar: il is the slur's notes, al the slur too, and g( slurs over a moti
   eq(evs[1].slur_to == evs[3], true, "g(3w: a slur from C over E")
   view:set(D4, 1)
   keys("yil")
-  eq(#daw.keymap.getreg().notes, 3, "yil: the three notes under it")
+  eq(#paw.keymap.getreg().notes, 3, "yil: the three notes under it")
   keys("dal")
   eq(written(view), "hr qr q F4 | R", "dal: the notes and the slur")
 end)
@@ -272,7 +272,7 @@ test("grammar: ) and ( go by phrase, ]v by voice, Ctrl-j by staff", function()
   keys("]v")
   eq(view.voice, 2, "]v: voice 2")
   eq(view.step, 32, "on its G")
-  daw.cmd("notation.clef", { "grand" })
+  paw.cmd("notation.clef", { "grand" })
   view:set(C4, 0)
   keys("<C-j>")
   eq(view:cursor_staff(), 2, "Ctrl-j: the staff below")
@@ -311,9 +311,9 @@ test("grammar: in insert mode Ctrl-o runs one command, Ctrl-r pastes a register"
   keys("yib")
   view:set(C4, 2)
   keys("i<C-o>")
-  eq(daw.keymap.mode, "n", "Ctrl-o: normal mode")
+  eq(paw.keymap.mode, "n", "Ctrl-o: normal mode")
   keys("w")
-  eq(daw.keymap.mode, "i", "back to entering after one command")
+  eq(paw.keymap.mode, "i", "back to entering after one command")
   view:set(C4, 4)
   keys("<C-r>\"")
   eq(written(view), "q C4 q D4 hr | q C4 q D4 hr", "Ctrl-r \": the bar pasted")
@@ -337,7 +337,7 @@ end)
 
 test("grammar: Tab takes the suggestion shown as ghost notes", function()
   local view, clip = song("c")
-  daw.complete.show({ { notes = { { pitch = 62, start = 1, length = 1 }, { pitch = 64, start = 2, length = 1 } } } },
+  paw.complete.show({ { notes = { { pitch = 62, start = 1, length = 1 }, { pitch = 64, start = 2, length = 1 } } } },
     { clip = clip.id })
   view:set(C4, 1)
   keys("1<Tab>")

@@ -10,12 +10,12 @@
 --     never contain NaN or infinity
 --   * every id a view lists can be looked up
 --
---   XDG_DATA_HOME=<scratch> daw --clean --no-plugins -l bench/fuzz.lua <seed> <steps> [verbose]
+--   XDG_DATA_HOME=<scratch> paw --clean --no-plugins -l bench/fuzz.lua <seed> <steps> [verbose]
 --
 -- Prints one JSON line with what it did, and exits 1 on the first broken
 -- invariant, naming the seed and step to reproduce it.
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local seed, steps, verbose = ...
@@ -322,13 +322,13 @@ local function check_views(step)
 end
 
 local function check_undo(step)
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local before = dump()
   if api.undo() then
-    daw.flush()
+    paw.flush()
     if not api.redo() then fail(step, "undo", "redo refused right after an undo") end
-    daw.flush()
+    paw.flush()
     local after = dump()
     if after ~= before then fail(step, "undo", "undo then redo changed the project: " .. first_difference(before, after)) end
     stats.checks.undo = stats.checks.undo + 1
@@ -341,7 +341,7 @@ local function check_save(step)
   api.project_save(a)
   local saved = dump()
   api.project_load(a)
-  daw.flush()
+  paw.flush()
   local loaded = dump()
   if loaded ~= saved then fail(step, "save", "load changed the project: " .. first_difference(saved, loaded)) end
   api.project_save(b)
@@ -386,7 +386,7 @@ for step = 1, steps do
     print(step, op[2])
   end
   if chance(0.5) then
-    daw.flush()
+    paw.flush()
     api.undo_checkpoint()
   end
   if step % 7 == 0 then check_undo(step) end

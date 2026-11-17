@@ -1,7 +1,7 @@
 # LuaJIT is built from source by `mlua` (the `vendored` feature). This makes
 # its compiled code look for a hook at every loop, which is what lets the
 # kernel stop Lua that runs away without keeping extensions out of the
-# compiler (crates/daw-core/src/watchdog.rs). Without it the program still
-# builds and works: `daw.limit` then falls back to interpreting such code.
+# compiler (crates/paw-core/src/watchdog.rs). Without it the program still
+# builds and works: `paw.limit` then falls back to interpreting such code.
 [env]
 TARGET_CFLAGS = "-DLUAJIT_ENABLE_CHECKHOOK"

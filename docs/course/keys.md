@@ -258,10 +258,10 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `<C-s>` `:w` | save |
 | `ZZ` `ZQ` `:q` | save and quit, quit, close the window (quit in the last one) |
 
-## Edit lists as text (`:e daw://tracks`)
+## Edit lists as text (`:e paw://tracks`)
 
 The tracks, sends, a track's devices and the markers as lines of text
-(`daw://tracks`, `daw://sends`, `daw://track/2/devices`, `daw://markers`).
+(`paw://tracks`, `paw://sends`, `paw://track/2/devices`, `paw://markers`).
 Every motion, operator, count, register, selection and `.` works on the
 text as in Vim; nothing changes in the project until `:w`.
 

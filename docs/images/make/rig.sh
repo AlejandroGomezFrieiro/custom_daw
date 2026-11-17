@@ -38,13 +38,13 @@ TERM_SIZE=1120x700
 GUI_SIZE=1280x800
 # The song every scene starts from; the scenes load extensions on top.
 DEMO="dofile('examples/demo-song.lua')"
-NOTATION="$DEMO daw.ext.load('extensions/notation')"
+NOTATION="$DEMO paw.ext.load('extensions/notation')"
 # The terminal starts with the eight bars across: 11 cells a bar.
-TUI_DEMO="$DEMO daw.opt.zoom = 2.75"
-TUI_NOTATION="$TUI_DEMO daw.ext.load('extensions/notation') require('notation').space = 14"
+TUI_DEMO="$DEMO paw.opt.zoom = 2.75"
+TUI_NOTATION="$TUI_DEMO paw.ext.load('extensions/notation') require('notation').space = 14"
 # The window starts with the eight bars across, beside the device panel:
 # x = 241 + 22 a beat; the tracks' rows 90 high.
-GUI_DEMO="$DEMO daw.frontend.layout_set({ zoom = 22, row_height = 90 })"
+GUI_DEMO="$DEMO paw.frontend.layout_set({ zoom = 22, row_height = 90 })"
 
 rig_start() {
   SIZE=${1:-$TERM_SIZE}
@@ -77,11 +77,11 @@ rig_stop() {
 gui_start() {
   cd "$ROOT" || exit 1
   POINTER=1
-  "$BIN/daw" --headless --clean --no-plugins --audio null --listen "$SOCK" \
+  "$BIN/paw" --headless --clean --no-plugins --audio null --listen "$SOCK" \
     -e "${SETUP:-$GUI_DEMO}" 2>"$D/kernel.err" &
   KERNEL=$!
   sleep 2
-  "$BIN/daw-gui" --socket "$SOCK" >"$D/gui.out" 2>&1 &
+  "$BIN/paw-gui" --socket "$SOCK" >"$D/gui.out" 2>&1 &
   APP=$!
   sleep 3.5
   xdotool mousemove 640 600
@@ -92,7 +92,7 @@ term_start() {
   # Nothing of the session this is run from: not its agent, not its mux.
   unset SSH_AUTH_SOCK WEZTERM_UNIX_SOCKET WEZTERM_PANE
   wezterm --config-file "$HERE/wezterm.lua" start --always-new-process --cwd "$ROOT" -- \
-    "$BIN/daw" ${CONFIG:+--config "$CONFIG"} $([ -z "$CONFIG" ] && echo --clean) --no-plugins --audio null --listen "$SOCK" \
+    "$BIN/paw" ${CONFIG:+--config "$CONFIG"} $([ -z "$CONFIG" ] && echo --clean) --no-plugins --audio null --listen "$SOCK" \
     -e "${SETUP:-$DEMO}" >"$D/term.out" 2>&1 &
   APP=$!
   sleep 6
@@ -121,7 +121,7 @@ cap() { printf '%s\t%s\n' "$(since "$T0")" "$1" >> "$WORK/$NAME.caps"; }
 cast() { [ -n "$REC" ] && printf '%s\t%s\t%s\n' "$(since "$T0")" "$1" "$2" >> "$WORK/$NAME.keys"; }
 shot() { import -window root "$WORK/$1"; }
 still() { shot "$1"; echo "$1" >> "$WORK/stills.list"; }
-ctl() { "$BIN/daw" ctl --socket "$SOCK" eval "$1"; }
+ctl() { "$BIN/paw" ctl --socket "$SOCK" eval "$1"; }
 key() { for k in "$@"; do cast key "$k"; xdotool key "$k"; sleep 0.06; done; }
 typ() { cast "type ${TYPE_DELAY:-110}" "$1"; xdotool type --delay "${TYPE_DELAY:-110}" "$1"; }
 pause() { sleep "$1"; }

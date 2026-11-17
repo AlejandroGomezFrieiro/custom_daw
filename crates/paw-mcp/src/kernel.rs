@@ -48,26 +48,26 @@ pub struct Kernel {
     pub notice: Option<String>,
 }
 
-/// Where `daw` listens unless told otherwise, as `daw ctl` finds it.
+/// Where `paw` listens unless told otherwise, as `paw ctl` finds it.
 pub fn default_socket() -> PathBuf {
-    if let Some(path) = std::env::var_os("DAW_SOCKET") {
+    if let Some(path) = std::env::var_os("PAW_SOCKET") {
         return path.into();
     }
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    dir.join("daw.sock")
+    dir.join("paw.sock")
 }
 
-/// The `daw` binary: `$DAW_BIN`, the one beside this program, or `daw` on the path.
+/// The `paw` binary: `$PAW_BIN`, the one beside this program, or `paw` on the path.
 pub fn default_binary() -> PathBuf {
     let beside = std::env::current_exe()
         .ok()
-        .and_then(|exe| Some(exe.parent()?.join("daw")));
-    std::env::var_os("DAW_BIN")
+        .and_then(|exe| Some(exe.parent()?.join("paw")));
+    std::env::var_os("PAW_BIN")
         .map(PathBuf::from)
         .or(beside.filter(|path| path.is_file()))
-        .unwrap_or_else(|| PathBuf::from("daw"))
+        .unwrap_or_else(|| PathBuf::from("paw"))
 }
 
 impl Kernel {
@@ -84,7 +84,7 @@ impl Kernel {
     }
 
     pub fn spawned(opts: SpawnOpts, timeout: Duration) -> Self {
-        let name = format!("daw-mcp-{}.sock", std::process::id());
+        let name = format!("paw-mcp-{}.sock", std::process::id());
         let socket = [
             std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from),
             Some(std::env::temp_dir()),
@@ -148,7 +148,7 @@ impl Kernel {
         }
         let mut child = command.spawn().map_err(|err| {
             CallError::Unavailable(format!(
-                "could not start the kernel `{}`: {err}. Build it with `cargo build -p daw-tui`, or say where it is with --daw or DAW_BIN.",
+                "could not start the kernel `{}`: {err}. Build it with `cargo build -p paw-tui`, or say where it is with --paw or PAW_BIN.",
                 opts.binary.display()
             ))
         })?;
@@ -192,10 +192,10 @@ impl Kernel {
             "The kernel this server started is gone; the next call starts a new one.".to_string()
         } else {
             format!(
-                "Start one with `daw --headless --listen {0}`{1}; this server reconnects on the next call.",
+                "Start one with `paw --headless --listen {0}`{1}; this server reconnects on the next call.",
                 self.socket.display(),
                 if self.socket == default_socket() {
-                    " (or run `daw` with its UI, which listens there by default)"
+                    " (or run `paw` with its UI, which listens there by default)"
                 } else {
                     ""
                 }

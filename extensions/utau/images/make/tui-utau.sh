@@ -4,7 +4,7 @@
 # for the Japanese voicebank, and the phonemes the engine made of them.
 . "$MAKE/rig.sh"
 . "$(dirname "$0")/engine.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/utau')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/utau')"
 rig_start
 term_start
 key j; pause 0.4

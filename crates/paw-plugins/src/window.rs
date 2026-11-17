@@ -209,12 +209,12 @@ fn tolerate_x_errors() {
 /// X11 has no per-window scale, and plugins that are not told draw at 1 and
 /// come out tiny or blurred on a dense screen. Desktops publish the scale as
 /// the `Xft.dpi` resource (96 is 1), which a Wayland compositor also sets for
-/// its X11 programs when it lets them scale themselves. `DAW_UI_SCALE`
+/// its X11 programs when it lets them scale themselves. `PAW_UI_SCALE`
 /// overrides it.
 pub(crate) fn ui_scale() -> f64 {
     static SCALE: OnceLock<f64> = OnceLock::new();
     *SCALE.get_or_init(|| {
-        let from_env = std::env::var("DAW_UI_SCALE")
+        let from_env = std::env::var("PAW_UI_SCALE")
             .ok()
             .and_then(|text| text.parse::<f64>().ok());
         let from_x = || {
@@ -429,7 +429,7 @@ impl HostWindow {
             id,
             AtomEnum::WM_CLASS,
             AtomEnum::STRING,
-            b"daw\0daw-plugin\0",
+            b"paw\0paw-plugin\0",
         )?;
         // Ask to be told when the user closes the window, instead of being killed.
         conn.change_property32(

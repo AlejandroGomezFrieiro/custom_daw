@@ -1,5 +1,5 @@
 -- The virtual inputs in a graphical frontend: the panel's view painted in
--- pixels and worked with the pointer (see runtime/lua/daw/canvas.lua).
+-- pixels and worked with the pointer (see runtime/lua/paw/canvas.lua).
 --
 --   top      a tab for each input, and a button for a new one
 --   chain    the input's stages from left to right, each with what it is
@@ -9,14 +9,14 @@
 --   bottom   what the tracker says, and a track that takes the input
 --
 -- Every key of the terminal panel works in the window too.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local vinput = require("vinput")
 local run = require("vinput.run")
 local view = require("vinput.panel")
 local commands = require("vinput.commands")
 
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 local TOP, CHAIN, ROW, BOTTOM, PAD = 46, 112, 34, 40, 16
 local LABEL, SLIDER = 120, 250
 
@@ -25,7 +25,7 @@ local LABEL, SLIDER = 120, 250
 local gui = { shown = nil, hits = {}, drag = nil, list = nil }
 view.gui = gui
 
-local function mix(a, b, t) return daw.draw.mix(a, b, t) end
+local function mix(a, b, t) return paw.draw.mix(a, b, t) end
 
 --- Remember a place the pointer can act on. `on` has `down`, `drag`,
 --- `double` and `wheel`, each given the event.
@@ -266,7 +266,7 @@ function view:paint(g, ctx)
   g:text(PAD + 18, h - BOTTOM + 13, said, { color = status.state == "failed" and c.error or c.text, width = w - 2 * PAD - 230 })
   button(g, w - PAD - 190, h - BOTTOM + 8, "New track from this input", function()
     local track = vinput.make_track(input.name)
-    daw.notify("track “" .. track.name .. "” plays what “" .. input.name .. "” hears")
+    paw.notify("track “" .. track.name .. "” plays what “" .. input.name .. "” hears")
   end, { width = 190 })
 
   if gui.list and vinput.get(gui.list.input) then

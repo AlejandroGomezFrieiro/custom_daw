@@ -3,20 +3,20 @@
 -- in the piano roll as plain MIDI (a note moved, one raised, one deleted,
 -- one added, a velocity, a note copied, an undo and a redo), and saved.
 -- Prints one line for each thing wrong, each starting `wrong:`, then `done`.
---   PLAIN_IN=in.daw PLAIN_OUT=out.daw daw --clean --no-plugins --no-listen --audio null -l extensions/notation/fixtures/plain_roll.lua
-local api = daw.api
+--   PLAIN_IN=in.paw PLAIN_OUT=out.paw paw --clean --no-plugins --no-listen --audio null -l extensions/notation/fixtures/plain_roll.lua
+local api = paw.api
 local function wrong(text) print("wrong: " .. text) end
 local ok, err = pcall(function()
-  if package.loaded["notation"] or daw.ext.loaded.notation then wrong("the notation extension is loaded") end
-  daw.cmd("open!", { os.getenv("PLAIN_IN") })
-  daw.flush()
-  local clip = daw.tracks()[1]:clips()[1]
-  local roll = daw.ui.views.pianoroll
+  if package.loaded["notation"] or paw.ext.loaded.notation then wrong("the notation extension is loaded") end
+  paw.cmd("open!", { os.getenv("PLAIN_IN") })
+  paw.flush()
+  local clip = paw.tracks()[1]:clips()[1]
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
-  daw.ui.focus("pianoroll")
-  daw.keymap.set_mode("n")
+  paw.ui.focus("pianoroll")
+  paw.keymap.set_mode("n")
   local function keys(text)
-    daw.keymap.feed(text)
+    paw.keymap.feed(text)
     api.undo_checkpoint()
   end
   local function place(pitch, start)
@@ -24,7 +24,7 @@ local ok, err = pcall(function()
       if n.pitch == pitch and math.abs(n.start - start) < 1e-6 then return i end
     end
   end
-  daw.opt.note_grid = 0.25
+  paw.opt.note_grid = 0.25
   -- The D a step later, the E up a semitone, the G deleted.
   roll:set(62, 1)
   keys("L")
@@ -47,7 +47,7 @@ local ok, err = pcall(function()
   keys("u")
   keys("<C-r>")
   if not place(65, 7) then wrong("the copy is not at beat 7") end
-  daw.cmd("write", { os.getenv("PLAIN_OUT") })
+  paw.cmd("write", { os.getenv("PLAIN_OUT") })
 end)
 if not ok then wrong(tostring(err)) end
 print("done")

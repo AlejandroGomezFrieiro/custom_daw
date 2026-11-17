@@ -1,6 +1,6 @@
 //! The window: what the kernel says to draw, kept as it last said it, and
 //! every frame drawn from that. A gesture is passed to the kernel's
-//! `daw.frontend.act`, which says what it means; the window decides
+//! `paw.frontend.act`, which says what it means; the window decides
 //! nothing about the project.
 
 use std::cell::RefCell;
@@ -211,10 +211,10 @@ impl View {
 
     // ------------------------------------------------------------ the kernel
 
-    /// Pass a gesture on: `daw.frontend.act.<name>(args...)`, at the end of
+    /// Pass a gesture on: `paw.frontend.act.<name>(args...)`, at the end of
     /// the frame. What it means is the kernel's to say.
     pub fn pass(&self, name: &str, args: Value) {
-        self.eval(&format!("return daw.frontend.act.{name}(...)"), args);
+        self.eval(&format!("return paw.frontend.act.{name}(...)"), args);
     }
 
     /// Run Lua in the kernel with `args` as `...`, at the end of the frame.
@@ -292,7 +292,7 @@ impl View {
         self.take(state);
     }
 
-    /// Take in a state as `daw.frontend.state` gives it.
+    /// Take in a state as `paw.frontend.state` gives it.
     pub fn take(&mut self, state: Value) {
         let playing = flag(&state["playing"]);
         let recording = flag(&state["recording"]);
@@ -374,7 +374,7 @@ impl View {
         self.s.modal = modal.clone();
         // A floating page is drawn by the kernel as text.
         self.float = if modal["float"].is_string() {
-            let page = self.ask("return daw.frontend.float(...)", json!([self.float_size.0, self.float_size.1]));
+            let page = self.ask("return paw.frontend.float(...)", json!([self.float_size.0, self.float_size.1]));
             Some((text(&page["title"]), rows(&page["lines"]).iter().map(text).collect()))
         } else {
             None
@@ -557,7 +557,7 @@ impl View {
     /// Leaving the project (quitting, a new one, opening another) asks first
     /// when there are changes to save. Returns whether it asked.
     pub fn leave(&mut self, what: &str) -> bool {
-        let closing = self.ask("return daw.frontend.closing()", json!([]));
+        let closing = self.ask("return paw.frontend.closing()", json!([]));
         // A kernel that was running before this window is not this
         // window's to save or to end.
         if flag(&closing["modified"]) && (self.ours || what != "quit") {
@@ -617,7 +617,7 @@ impl View {
     }
 
     /// The desktop's own file dialog, where the kernel is this window's own
-    /// child (its disk is ours) and `daw.opt.native_dialogs` is on. It runs
+    /// child (its disk is ours) and `paw.opt.native_dialogs` is on. It runs
     /// on a thread, so that the window goes on; the answer comes back to
     /// `answers`. Returns whether a dialog is being shown.
     pub fn native(&mut self, purpose: Purpose, render_path: &str, stems: bool) -> bool {
@@ -630,7 +630,7 @@ impl View {
         if self.portal_busy {
             return true;
         }
-        let info = self.ask("return daw.frontend.dialog_info()", json!([]));
+        let info = self.ask("return paw.frontend.dialog_info()", json!([]));
         if !flag(&info["native"]) {
             return false;
         }
@@ -706,12 +706,12 @@ impl View {
             let mut there = Vec::new();
             for path in &paths {
                 let sound = self.ask(
-                    "local path = ...; return daw.is_audio_file(path) or daw.midifile.is_midi_file(path)",
+                    "local path = ...; return paw.is_audio_file(path) or paw.midifile.is_midi_file(path)",
                     json!([path]),
                 );
                 if sound.as_bool() != Some(true) {
                     let name = Path::new(path).file_name().map_or(path.clone(), |n| n.to_string_lossy().into_owned());
-                    self.eval("daw.notify(..., 'warn')", json!([format!("cannot send {name}: only sound and MIDI files go to an instance on another machine")]));
+                    self.eval("paw.notify(..., 'warn')", json!([format!("cannot send {name}: only sound and MIDI files go to an instance on another machine")]));
                     continue;
                 }
                 let sent = self.k.borrow_mut().send_file(Path::new(path));
@@ -725,7 +725,7 @@ impl View {
             }
             paths = there;
         }
-        let done = self.ask("return daw.frontend.act.drop(...)", json!([paths]));
+        let done = self.ask("return paw.frontend.act.drop(...)", json!([paths]));
         if let Some(project) = done["open"].as_str() {
             self.leave(&format!("open:{project}"));
         }
@@ -769,7 +769,7 @@ impl View {
 
     fn layout_save(&mut self, ctx: &egui::Context) {
         let layout = self.layout(ctx);
-        let _ = self.k.borrow_mut().call("eval", json!(["daw.frontend.layout_set(...)", layout]));
+        let _ = self.k.borrow_mut().call("eval", json!(["paw.frontend.layout_set(...)", layout]));
     }
 
     /// Keep the layout once a change has stood for a second.
@@ -783,7 +783,7 @@ impl View {
         } else if keep.seen != keep.done && keep.since.elapsed() >= Duration::from_secs(1) {
             keep.done = keep.seen.clone();
             let layout = keep.done.clone().unwrap_or_default();
-            self.eval("daw.frontend.layout_set(...)", json!([layout]));
+            self.eval("paw.frontend.layout_set(...)", json!([layout]));
             self.flush();
         } else if keep.seen != keep.done {
             self.again = Some(Duration::from_millis(250));

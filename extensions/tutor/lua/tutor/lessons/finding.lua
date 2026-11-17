@@ -23,23 +23,23 @@ necessarily together), `<C-n>` `<C-p>` move, `<CR>` chooses, `<Esc>` cancels.
 Hints are which-key's, built in. The pickers are Telescope's way: fuzzy, with
 `<C-n>` `<C-p>`. `:` completes with Tab and keeps a history (`<Up>`).]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 8, notes = look.drums(look.beat, 2) })
-    local bass = daw.add_track({ name = "Bass", volume = 0 })
+    local bass = paw.add_track({ name = "Bass", volume = 0 })
     bass:add_device("synth", { wave = 2, cutoff = 700, release = 0.05 })
     bass:add_clip({ name = "bass", start = 0, length = 8, notes = look.pulse("C2", 8) })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 8, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 8, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Drums")) end,
+  at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
       say = "Press `g` and wait: after half a second a box lists every key that can follow `g`. Then press `<Esc>` to drop it.",
       keys = { "g", { wait = 700 }, "<Esc>" },
       check = function(ctx)
-        if daw.keymap.hints() then ctx.hints = true end
-        return ctx.hints and daw.keymap.pending() == ""
+        if paw.keymap.hints() then ctx.hints = true end
+        return ctx.hints and paw.keymap.pending() == ""
       end,
       done = "Any half-typed command shows what can come next: try `,` or `d` or `\"` some time.",
       hint = "Wait without pressing anything until the box appears.",
@@ -59,14 +59,14 @@ Hints are which-key's, built in. The pickers are Telescope's way: fuzzy, with
     {
       say = "`,,` opens a picker of every command: type a few letters and `<CR>` runs the one on top. Press `,,`, type `metro` and `<CR>`.",
       keys = { ",,", "metro", "<CR>" },
-      check = function() return daw.transport.metronome end,
+      check = function() return paw.transport.metronome end,
       done = "The metronome is on: you ran `transport.metronome` without knowing its name or its key.",
     },
     {
       say = "`,fk` finds a key by what it does. Press `,fk`, type `loop` to see every key about looping, then `<Esc>`.",
       keys = { ",fk", "loop", "<Esc>" },
       check = function(ctx, look)
-        local state = daw.pick.state()
+        local state = paw.pick.state()
         if state and state.query == "loop" then ctx.found = true end
         return ctx.found and not look.float()
       end,
@@ -87,7 +87,7 @@ Hints are which-key's, built in. The pickers are Telescope's way: fuzzy, with
     {
       say = "Listen with the click: `<Space>`, then `<Space>` to stop and `gm` to switch the click off.",
       keys = { "<Space>", { wait = 300 }, "<Space>", "gm" },
-      check = function(ctx, look) return look.played(ctx) and not daw.transport.metronome end,
+      check = function(ctx, look) return look.played(ctx) and not paw.transport.metronome end,
       done = "The quieter bass, with the click you found by name.",
     },
   },

@@ -17,14 +17,14 @@
 -- pointer is, and the note to be entered follows the pointer. A click lands
 -- on the chosen value within the beat, Alt-click on the grid. A right
 -- click opens a menu of what can be done there.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local model = require("notation.model")
 local engrave = require("notation.engrave")
 local page = require("notation.page")
 local view = require("notation")
 
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 local floor, max, min, abs = math.floor, math.max, math.min, math.abs
 local EPS = 1e-6
 local INFO = 26
@@ -72,7 +72,7 @@ local function style_for(ctx)
     space = space_for(ctx), cell = cell, ink = ctx.fg or c.text, paper = ctx.bg or c.surface,
     accent = c.select, whole_cells = ctx.surface and true or false,
   }
-  if view.page and daw.opt.notation_paper == "white" then o.ink, o.paper = "#000000", "#ffffff" end
+  if view.page and paw.opt.notation_paper == "white" then o.ink, o.paper = "#000000", "#ffffff" end
   local key = table.concat({ o.space, cell.w, cell.h, o.ink, o.paper, tostring(o.whole_cells) }, ":")
   styles[key] = styles[key] or engrave.style(o)
   gui.last_space = o.space
@@ -277,7 +277,7 @@ local function draw_selection(g, eng, layout, F, selection, area)
       local c = api.clip_get(id)
       local shift = c.start - F.start
       local region = util.merge(part.region, { c0 = part.region.c0 - shift, c1 = part.region.c1 - shift })
-      local _, places = daw.edit.roll.notes(daw.clip(id), region)
+      local _, places = paw.edit.roll.notes(paw.clip(id), region)
       for _, h in ipairs(heads_of(places, u and u.first, u and u.last, id)) do tint(g, eng, h, st.accent) end
     end
   end
@@ -300,8 +300,8 @@ local function draw_staves(g, eng, layout, F, area)
     for s = 1, #layout.staves do
       if s < first or s > last then
         local id = layout.tracks and layout.tracks[s]
-        local colour = daw.opt.score_dim and alpha(st.paper, 0.55)
-          or daw.opt.score_colors and id and alpha(daw.draw.track_colour(api.track_get(id)), 0.16)
+        local colour = paw.opt.score_dim and alpha(st.paper, 0.55)
+          or paw.opt.score_colors and id and alpha(paw.draw.track_colour(api.track_get(id)), 0.16)
         if colour then
           local y0, y1 = edge(s - 1), edge(s)
           g.ops[#g.ops + 1] = { "r", 0, round(y0 + dy), round(area.width), round(y1 - y0), colour, "", 1, 0 }
@@ -314,11 +314,11 @@ local function draw_staves(g, eng, layout, F, area)
   end
 end
 
---- Suggestions from `daw.complete`, laid out as real notes would be (the
+--- Suggestions from `paw.complete`, laid out as real notes would be (the
 --- clip's notes with the suggestion's, written together), faint, in a
 --- second accent.
 local function draw_ghosts(g, eng, layout, clip, area, F)
-  local complete = daw.complete
+  local complete = paw.complete
   local cur = complete and complete.current and complete.current()
   if not (cur and cur.clip == clip.id and cur.item and #cur.item.notes > 0) then return end
   local key = tostring(cur.item) .. ":" .. tostring(clip:get().stamp)
@@ -354,7 +354,7 @@ local function fmt_n(v) return string.format("%.1f", v) end
 --- Diagnostics of the clip: a wavy line under the staff across each one's
 --- stretch, its notes tinted, and a mark in the system's left margin.
 local function draw_diagnostics(g, eng, layout, clip, area, F)
-  local diag = daw.diagnostic
+  local diag = paw.diagnostic
   if not (diag and diag.get) then return end
   local list = diag.get(clip.id)
   if #list == 0 then return end
@@ -517,18 +517,18 @@ local function bar_groups(g, name, colour)
   art("staccato", "articStaccatoAbove")
   art("accent", "articAccentAbove")
   art("tenuto", "articTenutoAbove")
-  shapes[#shapes + 1] = { w = 28, label = "slur", action = function() daw.cmd("notation.slur") end,
+  shapes[#shapes + 1] = { w = 28, label = "slur", action = function() paw.cmd("notation.slur") end,
     draw = function(cx, cy, ink2) g:poly({ cx - 8, cy + 3, cx - 4, cy - 2, cx + 4, cy - 2, cx + 8, cy + 3 }, { color = ink2, width = 1.6 }) end }
   shapes[#shapes + 1] = { w = 28, label = "triplet", action = function() view:toggle_tuplet() end,
     draw = function(cx, cy, ink2) icon(g, "tuplet3", floor(cx - 3), floor(cy + 5), ink2) end }
   shapes[#shapes + 1] = { w = 32, label = "voice", action = function() view:toggle_voice() end,
     draw = function(cx, cy, ink2) g:text(cx, cy - 7.5, "v2", { color = ink2, size = 12, align = "center" }) end }
   for _, d in ipairs({ "p", "mf", "f" }) do
-    dynamics[#dynamics + 1] = { w = 32, label = d, action = function() daw.cmd("notation.dyn", { d }) end }
+    dynamics[#dynamics + 1] = { w = 32, label = d, action = function() paw.cmd("notation.dyn", { d }) end }
   end
-  dynamics[#dynamics + 1] = { w = 28, label = "cresc", action = function() daw.cmd("notation.cresc") end,
+  dynamics[#dynamics + 1] = { w = 28, label = "cresc", action = function() paw.cmd("notation.cresc") end,
     draw = function(cx, cy, ink2) g:poly({ cx + 8, cy - 4, cx - 8, cy, cx + 8, cy + 4 }, { color = ink2, width = 1.4 }) end }
-  dynamics[#dynamics + 1] = { w = 28, label = "dim", action = function() daw.cmd("notation.dim") end,
+  dynamics[#dynamics + 1] = { w = 28, label = "dim", action = function() paw.cmd("notation.dim") end,
     draw = function(cx, cy, ink2) g:poly({ cx - 8, cy - 4, cx + 8, cy, cx - 8, cy + 4 }, { color = ink2, width = 1.4 }) end }
   return { { { w = #name * 7 + 22, label = name, fill = colour } }, values, accidentals, shapes, dynamics }
 end
@@ -556,7 +556,7 @@ function view:status_text()
   local clip = self:clip()
   if not clip then return "" end
   local note, index, written = self:note()
-  local diag = daw.diagnostic
+  local diag = paw.diagnostic
   if diag and diag.get then
     for _, d in ipairs(diag.get(clip.id)) do
       local inside = self.beat >= d.at - EPS and self.beat < d.at + max(d.length, EPS) + EPS
@@ -566,10 +566,10 @@ function view:status_text()
     end
   end
   if note then
-    return string.format("%s  played at %s, %.2f beats long, velocity %d", model.name(written), daw.time.format(clip.start + note.start), note.length, note.velocity)
+    return string.format("%s  played at %s, %.2f beats long, velocity %d", model.name(written), paw.time.format(clip.start + note.start), note.length, note.velocity)
   end
   local layout = self:layout()
-  if daw.keymap.mode == "i" then
+  if paw.keymap.mode == "i" then
     return "click the staff to enter a " .. (self.dot and "dotted " or "") .. model.NAMES[self.value] .. " there · letters enter notes · Esc ends"
   end
   if gui.rest then return "rest: click the staff to clear a " .. model.NAMES[self.value] .. (self.dot and " dotted" or "") .. " there" end
@@ -617,7 +617,7 @@ function view:paint(g, ctx)
   end
   local data = clip:get()
   local track = api.track_get(data.track)
-  local colour = daw.draw.track_colour(track)
+  local colour = paw.draw.track_colour(track)
   -- The clip's staff, or the score it is a staff of (`view:frame`).
   local F = self:frame()
   local layout = F.layout
@@ -636,7 +636,7 @@ function view:paint(g, ctx)
   page_ink(g, eng, layout, area)
 
   local _, under_index = self:note()
-  local selection = ctx.focused and daw.keymap.selection()
+  local selection = ctx.focused and paw.keymap.selection()
   if F.multi then
     g:layer("staves")
     draw_staves(g, eng, layout, F, area)
@@ -648,7 +648,7 @@ function view:paint(g, ctx)
   g:layer("diagnostic")
   draw_diagnostics(g, eng, layout, clip, area, F)
   g:layer("caret")
-  if ctx.focused then draw_caret(g, eng, layout, area, under_index, daw.keymap.mode == "i", F) end
+  if ctx.focused then draw_caret(g, eng, layout, area, under_index, paw.keymap.mode == "i", F) end
   local drag = gui.drag
   if drag and drag.moved and drag.to_beat then
     lone_head(g, eng, layout, drag.to_beat + F.off, drag.to_step, alpha(st.accent, 0.8), 1, area, nil, F)
@@ -779,7 +779,7 @@ function view:menu_items(on_note, at)
   else
     add("Enter a " .. model.NAMES[self.value] .. " here", "Enter", function() if at and at.beat then self:enter_at(at) end end)
     add("Rest here", "r", function() if at and at.beat then self:rest(at.beat, self:entry_length(), at.staff) end end)
-    add("Paste here", "P", function() daw.keymap.normal("P") end)
+    add("Paste here", "P", function() paw.keymap.normal("P") end)
   end
   items[#items + 1] = "-"
   add(view.galley and "Wrapped systems" or "One long system (galley)", "zg", function() view.galley, view.page = not view.galley, false end)
@@ -826,7 +826,7 @@ function view:move_note(index, note, step, beat)
       was.notes = { moved }
       view.drop(sc, was, t, len, staff, entry.voice)
     elseif not view.add_sounding(sc, moved, t, len, staff) then
-      daw.notify("no voice free there: the note is not written", "warn")
+      paw.notify("no voice free there: the note is not written", "warn")
       return false
     end
   end)
@@ -835,9 +835,9 @@ function view:move_note(index, note, step, beat)
 end
 
 local function context_menu(self, hd, at, e)
-  if daw.ui.menu then
-    local cell = daw.canvas.cell
-    daw.ui.menu(self:menu_items(hd ~= nil, at), { x = e.col or floor((e.x or 0) / cell.w), y = e.row or floor((e.y or 0) / cell.h) })
+  if paw.ui.menu then
+    local cell = paw.canvas.cell
+    paw.ui.menu(self:menu_items(hd ~= nil, at), { x = e.col or floor((e.x or 0) / cell.w), y = e.row or floor((e.y or 0) / cell.h) })
   end
 end
 
@@ -863,7 +863,7 @@ function view:pointer(e)
     end
     return
   end
-  local inserting = daw.keymap.mode == "i"
+  local inserting = paw.keymap.mode == "i"
   if e.kind == "hover" then
     gui.gesture = nil
     local at = self:locate(e.x, e.y, e.alt)
@@ -893,7 +893,7 @@ function view:pointer(e)
       if at and at.beat then self:set(at.step, at.beat) end
       self.last, self.chord = nil, nil
       gui.gesture = { x = e.x, y = e.y }
-      daw.keymap.set_mode("i")
+      paw.keymap.set_mode("i")
       return
     end
     local second = gui.gesture and abs(gui.gesture.x - e.x) < 4 and abs(gui.gesture.y - e.y) < 4
@@ -905,11 +905,11 @@ function view:pointer(e)
     end
     if e.shift then
       -- Stretch a selection from the cursor to here.
-      if daw.keymap.mode ~= "x" then daw.keymap.visual_start("v") end
+      if paw.keymap.mode ~= "x" then paw.keymap.visual_start("v") end
       if hd then self:set(hd.step, max(0, hd.start)) elseif at and at.beat then self:set(at.step, at.beat) end
       return
     end
-    if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
+    if paw.keymap.mode == "x" then paw.keymap.set_mode("n") end
     if hd then
       self:set(hd.step, max(0, hd.start))
       local note = self:clip():notes()[hd.index]
@@ -929,7 +929,7 @@ function view:pointer(e)
       b.x1, b.y1 = e.x, e.y
       if not b.started and (abs(b.x1 - b.x0) > 4 or abs(b.y1 - b.y0) > 4) then
         b.started = true
-        daw.keymap.visual_start("b")
+        paw.keymap.visual_start("b")
       end
       local at = self:locate(e.x, e.y, true)
       if b.started and at and at.beat then self:set(at.step, at.beat) end
@@ -958,11 +958,11 @@ end
 --- leaving the view from the keyboard closes the window.
 function view:on_close()
   gui.drag, gui.box, gui.hover = nil, nil, nil
-  daw.ui.hide("notation")
+  paw.ui.hide("notation")
 end
 
 function view:on_hide()
-  if daw.canvas and daw.canvas.open_views.notation then daw.canvas.close("notation") end
+  if paw.canvas and paw.canvas.open_views.notation then paw.canvas.close("notation") end
 end
 
 return gui

@@ -3,19 +3,19 @@
 -- controller, value and length; each cell is changed in place. In the
 -- terminal it floats over the screen (`E` in the piano roll,
 -- `:notes.list`); the window opens it in a window of its own.
-local api = daw.api
-local util = daw.util
-local controls = require("daw.controls")
+local api = paw.api
+local util = paw.util
+local controls = require("paw.controls")
 
 -- `modal` sends every key to `on_key`, bypassing the mappings behind it.
 local view = { title = "Events", row = 1, column = 4, scroll = 0, modal = true }
-daw.seats.fields("eventlist", view, { "row", "column", "scroll" }, { row = 1, column = 4, scroll = 0 })
+paw.seats.fields("eventlist", view, { "row", "column", "scroll" }, { row = 1, column = 4, scroll = 0 })
 
 local HEADINGS = { time = "Time", kind = "Kind", which = "Which", value = "Value", length = "Length" }
 local WIDTHS = { time = 11, kind = 11, which = 10, value = 11, length = 8 }
 
 function view:clip()
-  return daw.ui.views.pianoroll:clip()
+  return paw.ui.views.pianoroll:clip()
 end
 
 --- The rows of the clip open in the piano roll, with the cursor kept on one.
@@ -71,9 +71,9 @@ function view:edit()
   if not row then return end
   local name = controls.columns[self.column]
   local current = controls.cells(clip.id, row)[name]
-  daw.ui.input({ prompt = HEADINGS[name] .. ": ", text = current }, function(text)
+  paw.ui.input({ prompt = HEADINGS[name] .. ": ", text = current }, function(text)
     local ok, err = pcall(controls.edit, clip.id, row, name, text)
-    if not ok then return daw.notify(tostring(err), "warn") end
+    if not ok then return paw.notify(tostring(err), "warn") end
     api.ui_redraw()
   end)
 end
@@ -84,10 +84,10 @@ function view:add()
   local rows, clip = self:rows()
   if not clip then return end
   local at = rows[self.row] and rows[self.row].start or 0
-  daw.ui.input({ prompt = "Add a move (cc 74, bend, pressure, program): ", text = "cc 1" }, function(text)
+  paw.ui.input({ prompt = "Add a move (cc 74, bend, pressure, program): ", text = "cc 1" }, function(text)
     local kind, number = text:match("^%s*(%a+)%s*(%d*)%s*$")
     if not (kind == "cc" or kind == "bend" or kind == "pressure" or kind == "program") then
-      return daw.notify("a move is cc and its number, bend, pressure or program", "warn")
+      return paw.notify("a move is cc and its number, bend, pressure or program", "warn")
     end
     local made = controls.add(clip.id, at, kind, tonumber(number))
     for i, r in ipairs(controls.rows(clip.id)) do
@@ -129,13 +129,13 @@ function view:on_key(key)
   elseif key == "a" or key == "o" then
     return self:add()
   elseif key == "u" then
-    daw.undo()
+    paw.undo()
   elseif key == "<C-r>" then
-    daw.redo()
+    paw.redo()
   elseif key == ":" then
-    return daw.commands.exec("cmdline")
+    return paw.commands.exec("cmdline")
   elseif key == "q" or key == "<Esc>" then
-    return daw.ui.close()
+    return paw.ui.close()
   end
   self:rows()
   api.ui_redraw()
@@ -157,5 +157,5 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("eventlist", view)
+paw.ui.view("eventlist", view)
 return view

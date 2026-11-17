@@ -73,7 +73,7 @@ local serial = 0
 --- A token that differs from every other made in this run and before it.
 local function token()
   serial = serial + 1
-  return string.format("%x.%x", floor((daw and daw.api and daw.api.now() or os.clock() * 1000) * 1000) % 0xfffffff, serial)
+  return string.format("%x.%x", floor((paw and paw.api and paw.api.now() or os.clock() * 1000) * 1000) % 0xfffffff, serial)
 end
 M.token = token
 
@@ -824,7 +824,7 @@ function M.decode(stored)
   end
   score.measures = {}
   for i, text in ipairs(stored.measures) do
-    local m = type(text) == "string" and daw.api.json_decode(text) or M.copy(text)
+    local m = type(text) == "string" and paw.api.json_decode(text) or M.copy(text)
     m.voices = m.voices or {}
     for _, entry in ipairs(m.voices) do entry.events = entry.events or {} end
     score.measures[i] = m

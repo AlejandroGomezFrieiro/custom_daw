@@ -196,7 +196,7 @@ impl View {
 
     /// A call of the control protocol, at the end of the frame.
     pub fn k_call(&self, method: &str, params: serde_json::Value) {
-        self.eval(&format!("return daw.api.{method}(...)"), params);
+        self.eval(&format!("return paw.api.{method}(...)"), params);
     }
 
     /// The status line: the mode, then the prompt or the last message, or
@@ -387,7 +387,7 @@ impl View {
         if (cols, lines) != self.float_size {
             self.float_size = (cols, lines);
             if self.float.is_some() {
-                let page = self.ask("return daw.frontend.float(...)", json!([cols, lines]));
+                let page = self.ask("return paw.frontend.float(...)", json!([cols, lines]));
                 self.float = Some((text(&page["title"]), rows(&page["lines"]).iter().map(text).collect()));
             }
         }

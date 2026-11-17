@@ -1,6 +1,6 @@
 -- The edit cursor: a track and a position in beats. Commands act on it and
 -- views draw it. It survives a reload.
-local api = daw.api
+local api = paw.api
 local M = { beat = 0 }
 
 local track_id
@@ -11,15 +11,15 @@ do
 end
 
 -- Each seat has a cursor of its own, starting where the instance's is.
-daw.seats.keep("cursor",
+paw.seats.keep("cursor",
   function() return track_id, M.beat, lane_id end,
   function(track, beat, lane) track_id, M.beat, lane_id = track, beat, lane end,
   function(track, beat, lane) return track, beat or 0, lane end)
 
 local function save()
   -- The instance's own is the one that outlives a reload.
-  if daw.seats.current == 0 then api.state_set("cursor", { track = track_id, beat = M.beat, lane = lane_id }) end
-  daw.emit("cursor.changed", { track = track_id, beat = M.beat, lane = lane_id })
+  if paw.seats.current == 0 then api.state_set("cursor", { track = track_id, beat = M.beat, lane = lane_id }) end
+  paw.emit("cursor.changed", { track = track_id, beat = M.beat, lane = lane_id })
   api.ui_redraw()
 end
 
@@ -33,7 +33,7 @@ end
 
 function M.track()
   local id = M.track_id()
-  return id and daw.track(id) or nil
+  return id and paw.track(id) or nil
 end
 
 --- 1-based position of the cursor track in the track list.
@@ -48,17 +48,17 @@ end
 --- same as `index` until a group is folded.
 function M.row()
   local id = M.track_id()
-  for i, other in ipairs(daw.groups.rows()) do
+  for i, other in ipairs(paw.groups.rows()) do
     if other == id then return i end
   end
 end
 
 --- The automation lane row the cursor is on: a lane of the cursor track
---- shown as a row (see `daw.lanes`), or nil when it is on the track itself.
+--- shown as a row (see `paw.lanes`), or nil when it is on the track itself.
 function M.lane_id()
   if not lane_id then return nil end
   local id = M.track_id()
-  for _, lane in ipairs(id and daw.lanes.shown(id) or {}) do
+  for _, lane in ipairs(id and paw.lanes.shown(id) or {}) do
     if lane.id == lane_id then return lane_id end
   end
 end
@@ -66,7 +66,7 @@ end
 --- 1-based row of the cursor among every row drawn, lanes included.
 function M.line()
   local id, lane = M.track_id(), M.lane_id()
-  for i, line in ipairs(daw.groups.rows({ lanes = true })) do
+  for i, line in ipairs(paw.groups.rows({ lanes = true })) do
     if line.track == id and line.lane == lane then return i end
   end
 end
@@ -81,15 +81,15 @@ end
 --- Move by rows. In normal mode the rows of open automation lanes count;
 --- after an operator or in a selection only tracks do, as for `dj`.
 function M.move_track(delta)
-  if daw.lanes.any_open() and daw.keymap.mode == "n" then
-    local lines = daw.groups.rows({ lanes = true })
+  if paw.lanes.any_open() and paw.keymap.mode == "n" then
+    local lines = paw.groups.rows({ lanes = true })
     if #lines == 0 then return end
-    local to = lines[daw.util.clamp((M.line() or 1) + delta, 1, #lines)]
+    local to = lines[paw.util.clamp((M.line() or 1) + delta, 1, #lines)]
     return M.set_track(to.track, to.lane)
   end
-  local list = daw.groups.rows()
+  local list = paw.groups.rows()
   if #list == 0 then return end
-  M.set_track(list[daw.util.clamp((M.row() or 1) + delta, 1, #list)])
+  M.set_track(list[paw.util.clamp((M.row() or 1) + delta, 1, #list)])
 end
 
 function M.set_beat(beat)
@@ -98,14 +98,14 @@ function M.set_beat(beat)
 end
 
 -- Another project starts at its start, on its first track.
-daw.on("project.loaded", function()
+paw.on("project.loaded", function()
   track_id, lane_id, M.beat = nil, nil, 0
   save()
 end)
 
 --- Round a position to the arrange grid.
 function M.snap(beat)
-  return daw.util.round(beat, daw.opt.grid)
+  return paw.util.round(beat, paw.opt.grid)
 end
 
 --- The clip under the cursor, if any.

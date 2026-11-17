@@ -54,7 +54,7 @@ end
 --- An empty list that the model reads as a list: a plain empty table reads
 --- as an empty object.
 local function empty_list()
-  return daw.api.json_decode("[]")
+  return paw.api.json_decode("[]")
 end
 
 local function appended(path, seg)
@@ -265,7 +265,7 @@ end
 
 local function copy(v)
   if type(v) ~= "table" then return v end
-  if next(v) == nil then return daw.api.json_encode(v) == "[]" and empty_list() or {} end
+  if next(v) == nil then return paw.api.json_encode(v) == "[]" and empty_list() or {} end
   local out = {}
   for k, x in pairs(v) do out[k] = copy(x) end
   return out

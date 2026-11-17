@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
-use daw_engine::device::assign_keys;
-use daw_engine::{
+use paw_engine::device::assign_keys;
+use paw_engine::{
     Controller, Ctl, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, NOTE_BEND_RANGE,
     NoteCtl, ParamInfo, Ports, ProcessCtx, Registry,
 };
@@ -270,7 +270,7 @@ impl Class for Host {
 impl IHostApplicationTrait for Host {
     unsafe fn getName(&self, name: *mut String128) -> tresult {
         unsafe {
-            for (slot, unit) in (*name).iter_mut().zip("daw\0".encode_utf16()) {
+            for (slot, unit) in (*name).iter_mut().zip("paw\0".encode_utf16()) {
                 *slot = unit as TChar;
             }
         }

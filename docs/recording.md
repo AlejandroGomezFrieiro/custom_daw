@@ -5,15 +5,15 @@
 **Devices.** The engine opens one output device and one input device. Which
 ones is the machine's business, not the project's: chosen with `:audio`, the
 engine indicator in the window, `--output`/`--input`, or from Lua, and kept
-in `$XDG_STATE_HOME/daw/audio.json` for the next start. A remembered device
+in `$XDG_STATE_HOME/paw/audio.json` for the next start. A remembered device
 that is not connected is replaced by the system's default, with a message.
 
 ```lua
-daw.audio.devices()      -- { outputs = { { name, id, channels, sample_rate, min_block, max_block }, ... }, inputs = {...}, output, input }
-daw.audio.use({ input = "UR22" })                 -- by name, id or a part of the name; "default" for the system's
-daw.audio.use({ output = "UR22mkII Stereo", buffer = 128 })   -- buffer 0: the device's own block size
-daw.audio.levels()       -- the level arriving at each input channel, 0 to 1
-daw.api.engine_get()     -- device, input_device, sample_rate, block, input_latency, output_latency (ms)
+paw.audio.devices()      -- { outputs = { { name, id, channels, sample_rate, min_block, max_block }, ... }, inputs = {...}, output, input }
+paw.audio.use({ input = "UR22" })                 -- by name, id or a part of the name; "default" for the system's
+paw.audio.use({ output = "UR22mkII Stereo", buffer = 128 })   -- buffer 0: the device's own block size
+paw.audio.levels()       -- the level arriving at each input channel, 0 to 1
+paw.api.engine_get()     -- device, input_device, sample_rate, block, input_latency, output_latency (ms)
 ```
 
 `:audio` lists the outputs, inputs and block sizes, with the sample rate,
@@ -35,15 +35,15 @@ neighbouring channels of the input device. The input is added to the track
 ahead of its devices, so a guitar goes through the amp simulator on its track.
 
 ```lua
-local gtr = daw.add_track({ name = "Guitar" })
+local gtr = paw.add_track({ name = "Guitar" })
 gtr.input = "1/2"            -- or "1", "3", nil for none
 gtr.monitor = true           -- hear it without arming
 gtr.armed = true             -- record it
-daw.transport.record()       -- recording on, and play
-daw.transport.stop()         -- the take becomes a clip at the position recording began
-daw.transport.recording = false
+paw.transport.record()       -- recording on, and play
+paw.transport.stop()         -- the take becomes a clip at the position recording began
+paw.transport.recording = false
 
-local keys = daw.add_track({ name = "Keys" })
+local keys = paw.add_track({ name = "Keys" })
 keys.midi_input = { port = "Keystation 49", channel = 1 }   -- MIDI from one port (and channel); nil for all
 ```
 
@@ -53,8 +53,8 @@ each channel and each neighbouring pair, named with the device:
 `UR22mkII · 1`, `UR22mkII · 1/2`), MIDI (every port, or one) and MIDI channel
 (every channel, or one), and where the track sends MIDI (MIDI out, and its
 channel: see [MIDI output to hardware](mixing.md#mixing-midi-and-rendering-in-the-core)).
-`daw.audio.choices(track)` is that list and
-`daw.audio.choose(track, choice)` takes one; a choice that is saved but not
+`paw.audio.choices(track)` is that list and
+`paw.audio.choose(track, choice)` takes one; a choice that is saved but not
 there now (a pair the device lacks, a port that is unplugged) is listed as
 chosen and marked missing. `:track.input 1/2` and `:track.midi Keystation ch=1`
 set them by name for scripts, and Tab completes both.
@@ -68,7 +68,7 @@ and the loudspeaker beside the input button in the window, switch monitoring;
 - **Monitoring.** A track's input is heard when the track is armed or its
   monitor switch is on. Arming always monitors, so what is recorded is what you
   hear. A track with no input ignores both.
-- **What records.** While `daw.transport.recording` is on and the transport
+- **What records.** While `paw.transport.recording` is on and the transport
   plays, every armed track with an input records its dry input (before its
   devices) to a WAV file, and every armed track without one plays and records
   MIDI input: from every port, or from the port (and channel) in its
@@ -82,22 +82,22 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   own before it. The first time round counts if it began at the loop's start
   or before; the last if it got at least half way. With the loop off a take
   is one continuous clip. See [Takes](recording.md#takes).
-- **Count-in.** `daw.opt.count_in` is how many bars the metronome counts
+- **Count-in.** `paw.opt.count_in` is how many bars the metronome counts
   before a take begun with the song stopped (0, the default, for none):
   `:countin 1`, `:countin off`, or `:countin` alone to turn it off and on;
-  `gM` does the same. The record button, `R` and `daw.transport.record()`
+  `gM` does the same. The record button, `R` and `paw.transport.record()`
   count in, and so does playing with record mode on; punching in by hand
   while playing does not. The clicks are at the tempo and in the signature
   at the playhead, a click on every beat of the signature and a higher one
   on each bar's first, whether or not the metronome is on, and heard as late
   as the song is. The playhead stays where it is while counting, and the
   song and the take start on the frame after the count, so what is recorded
-  lines up exactly as without one. `daw.transport.counting` is the number of
+  lines up exactly as without one. `paw.transport.counting` is the number of
   beats still to count (0 when none is under way); the status line reads
   `count 3` and so does the window's clock, with the record button blinking
   on the beats. Stop, or `Esc`, during the count calls it off: no take,
   nothing recorded, record mode off.
-- **Punch in and out.** With `daw.transport.punch_enabled` on, a take is
+- **Punch in and out.** With `paw.transport.punch_enabled` on, a take is
   recorded only from `punch_start` to `punch_end` (beats) while the song
   plays on either side: capturing starts and stops on the frame at those
   points, and the clip made covers exactly the range (a note held across the
@@ -114,8 +114,8 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   range is saved with the project, like the loop, and is not undoable. It is
   red on the ruler of both frontends, under the loop in the window, where
   its ends are dragged like the loop's; the timeline's menu has the entries.
-- **Pre-roll.** `daw.opt.pre_roll` (whole bars, 0 to 16) and
-  `daw.opt.pre_roll_seconds` (0 to 30) say how long before the punch in a
+- **Pre-roll.** `paw.opt.pre_roll` (whole bars, 0 to 16) and
+  `paw.opt.pre_roll_seconds` (0 to 30) say how long before the punch in a
   take punched in from a stop starts playing: `:preroll 2`, `:preroll 3s`,
   `:preroll off`, or `:preroll` alone to turn it off and on (the window's
   timeline menu has the same). With punch on, the transport stopped and
@@ -129,7 +129,7 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   at the pre-roll's start, and the song plays from there when it is done.
   The pre-roll is yours, as the count-in is: it is not saved with a project.
 - **Files** go in a `media` directory beside the project file. A project that
-  has never been saved records into `~/.local/share/daw/recordings`; saving it
+  has never been saved records into `~/.local/share/paw/recordings`; saving it
   links or copies those files into `media` beside it and points the clips
   there, leaving the originals for earlier undo steps.
 - **Takes that end badly.** A take's WAV header is brought up to date and
@@ -143,26 +143,26 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   has been moved. If a file cannot be written (the
   disk is full), recording stops, what was written is kept as a clip, and a
   message says why. Recording that starts with room on the disk for less
-  than `daw.opt.record_warn_minutes` (30) minutes says how many are left.
+  than `paw.opt.record_warn_minutes` (30) minutes says how many are left.
 - **MIDI input** comes from every ALSA sequencer port, which with PipeWire
-  includes its MIDI devices, and from ports that appear later. `daw.midi.inputs()`
-  lists them, `daw.midi.select({ "Keystation" })` keeps only some open (by id or
+  includes its MIDI devices, and from ports that appear later. `paw.midi.inputs()`
+  lists them, `paw.midi.select({ "Keystation" })` keeps only some open (by id or
   part of a name, `nil` for all). A track's `midi_input` names its port by name,
   so it is found again when the keyboard is plugged in later or elsewhere.
   Notes held on a port that goes away are released. Ports are only opened with
   a real audio device; scripts on the null backend can play
-  `daw.midi.note_on("C4", 100)` and `daw.midi.note_off("C4")`, or
-  `daw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" })`
+  `paw.midi.note_on("C4", 100)` and `paw.midi.note_off("C4")`, or
+  `paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" })`
   as if from a port. `:midi.inputs` and `:midi.select` do the same from the UI.
-- **MIDI from other programs.** `daw.midi.open_port("Guitar")` makes a port of
+- **MIDI from other programs.** `paw.midi.open_port("Guitar")` makes a port of
   the program's own that others send to: PipeWire and the sequencer show it
-  as `daw: Guitar`, it is listed among the inputs, and a track takes it by
+  as `paw: Guitar`, it is listed among the inputs, and a track takes it by
   that name like any port. What arrives there is that port's, whoever sent
-  it. `daw.midi.close_port("Guitar")` takes it away. The
+  it. `paw.midi.close_port("Guitar")` takes it away. The
   [vinput](../extensions/vinput) extension feeds such a port from a guitar.
 - **Sound files** are brought in with `:import take.mp3` (alone, it lists
-  files to choose from; `daw.pick.file` is that list for extensions),
-  `daw.import_audio(path, { track = ..., start = ... })`, or by naming the
+  files to choose from; `paw.pick.file` is that list for extensions),
+  `paw.import_audio(path, { track = ..., start = ... })`, or by naming the
   file where a project would be named on the command line. `:clip.import`
   puts one on the cursor track.
 - **MIDI files** (`.mid`, `.midi`, `.smf`, `.kar`; format 0, 1 and 2, any
@@ -171,7 +171,7 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   file's tracks that has notes (a format 0 file is split by channel), named
   after it or "Channel N", one clip on each over the bars it plays, with its
   controllers, pitch bend, pressure and program changes as the clip's
-  controls (the curve editor's `daw://clip/C/control/cc/N`), the file's tempo
+  controls (the curve editor's `paw://clip/C/control/cc/N`), the file's tempo
   map, time signatures and markers, and its lyrics on the notes they start
   (`note.meta.lyric`). A track that plays on channel 10 alone gets the
   built-in drum kit; the others get no instrument, as a new track has none.
@@ -186,11 +186,11 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   `:export song.mid` writes the project as a format 1 file with its tempo
   map, time signatures and markers; `:export riff.mid clip` the clip at the
   cursor, `:export part.mid selection` the selected tracks. In scripts:
-  `daw.midifile` (see [Scripting](scripting.md)).
+  `paw.midifile` (see [Scripting](scripting.md)).
 - **Latency.** cpal runs input and output as separate streams, joined by a
   ring that holds at most one input period plus one output block; when the
   clocks drift, the excess is dropped or the last frame repeated.
-  `daw.api.engine_get()` reports `input_latency` (the system's capture delay
+  `paw.api.engine_get()` reports `input_latency` (the system's capture delay
   plus that ring) and `output_latency`, in milliseconds, as the backend
   measures them. `--no-input` leaves the input closed.
 - **A device that goes away.** When the audio device is lost (a USB
@@ -200,21 +200,21 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   Every three seconds it looks for the device, and once it is back opens it
   again with the same sample rate, block size and input, saying so; the
   tracks keep their inputs. `:audio.reconnect` tries at once, and
-  `daw.opt.audio_reconnect = false` leaves reopening to that command. The
+  `paw.opt.audio_reconnect = false` leaves reopening to that command. The
   engine indicator reads `lost: UR22mkII` meanwhile, and
-  `daw.api.engine_get().lost` names the device. A MIDI input that goes away
+  `paw.api.engine_get().lost` names the device. A MIDI input that goes away
   and comes back is told of both times, with the tracks that take it; they
   take it again by its name.
 - **Testing without hardware.** The null backend can generate input: input
   channel `n` carries a sine at `n` times the frequency, offered as the input
   device `test signal`; `test_midi` gives it MIDI ports to list.
-  `daw.api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 }, test_midi = { "Keys A" } })`.
+  `paw.api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 }, test_midi = { "Keys A" } })`.
   With `midi = true` the null backend opens the real MIDI ports all the same,
   for trying MIDI from hardware or another program with no sound. The
   `test` backend is the null backend with a pretend device that can be
-  unplugged: `daw.api.audio_test_device({ fail_after = 100, back_after =
+  unplugged: `paw.api.audio_test_device({ fail_after = 100, back_after =
   2000 })` loses it 100 blocks into the next stream and brings it back two
-  seconds later; `daw.api.midi_test_ports({ "Keys A" })` changes the MIDI
+  seconds later; `paw.api.midi_test_ports({ "Keys A" })` changes the MIDI
   ports the null backend lists.
 
 ## Takes
@@ -265,19 +265,19 @@ each under the track, read-only: the playing take is lit and named, and
 comping is `:take 2` over a selection. Which tracks show take lanes is kept
 for the session, like automation lanes shown as rows, not in the project.
 
-In scripts: `daw.takes.count(clip)`, `daw.takes.select(clip, n)`,
-`daw.takes.step(clip, 1)`, `daw.takes.new(clip)`, `daw.takes.remove(clip, n)`,
-`daw.takes.keep(clip)`, `daw.takes.explode(clip)`,
-`daw.takes.comp(track, n, from, to)` (take n over beats `from` to `to`,
-then the joining above), `daw.takes.choose_at(track, n, beat)`,
-`daw.takes.join_pieces(track, from, to)`, `daw.takes.content(clip, n)`
+In scripts: `paw.takes.count(clip)`, `paw.takes.select(clip, n)`,
+`paw.takes.step(clip, 1)`, `paw.takes.new(clip)`, `paw.takes.remove(clip, n)`,
+`paw.takes.keep(clip)`, `paw.takes.explode(clip)`,
+`paw.takes.comp(track, n, from, to)` (take n over beats `from` to `to`,
+then the joining above), `paw.takes.choose_at(track, n, beat)`,
+`paw.takes.join_pieces(track, from, to)`, `paw.takes.content(clip, n)`
 (what take n plays: file, offset and gain, or notes), and
-`daw.takes.show_lanes(track, on)`, `daw.takes.lane_count(track)`. The
-window's gestures are `daw.frontend.act.take_lanes(track)`,
+`paw.takes.show_lanes(track, on)`, `paw.takes.lane_count(track)`. The
+window's gestures are `paw.frontend.act.take_lanes(track)`,
 `act.comp(track, n, from, to, free)` and `act.take_click(track, n, beat)`;
-`daw.frontend.take_preview(clip, n, points)` draws a take that is not
-playing, from `daw.api.media_peaks(file, offset, seconds, points)`, the
+`paw.frontend.take_preview(clip, n, points)` draws a take that is not
+playing, from `paw.api.media_peaks(file, offset, seconds, points)`, the
 waveform of any stretch of a file. They are kept in
-`clip.meta.takes` (`runtime/lua/daw/takes.lua` says how); the files of takes
+`clip.meta.takes` (`runtime/lua/paw/takes.lua` says how); the files of takes
 that are not playing count as the project's files, are moved into `media`
 when it is first saved, and are found again when they go missing.

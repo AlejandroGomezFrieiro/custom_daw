@@ -1,4 +1,4 @@
-name: daw vocal import test
+name: paw vocal import test
 comment: Three notes for the utau import test.
 output_dir: Vocal
 cache_dir: UCache

@@ -1,8 +1,8 @@
 //! MIDI output: a track sends what it plays to a port (see
-//! `daw_engine::midi_out`), and ports of our own that other programs read.
+//! `paw_engine::midi_out`), and ports of our own that other programs read.
 
 use anyhow::{Result, bail};
-use daw_engine::midi_out::MidiOutputs;
+use paw_engine::midi_out::MidiOutputs;
 use serde_json::{Value, json};
 
 use super::{Session, de};
@@ -25,7 +25,7 @@ pub fn parse(value: Value) -> Result<Option<MidiOutput>> {
         value => de::<MidiOutput>("midi_output", value)?,
     };
     if out.port.is_empty() {
-        bail!("a MIDI output needs a port: one of daw.midi.outputs()");
+        bail!("a MIDI output needs a port: one of paw.midi.outputs()");
     }
     if out.channel.is_some_and(|ch| !(1..=16).contains(&ch)) {
         bail!("a MIDI channel is from 1 to 16");
@@ -78,7 +78,7 @@ impl Session {
     }
 
     /// Make a MIDI port of this program's for other programs to read from:
-    /// they see it as `daw out: <name>`, and tracks send to it by `name`.
+    /// they see it as `paw out: <name>`, and tracks send to it by `name`.
     /// It is kept through engine restarts.
     pub fn midi_open_output(&mut self, name: &str) -> Result<()> {
         if name.is_empty() || name.contains('\0') {

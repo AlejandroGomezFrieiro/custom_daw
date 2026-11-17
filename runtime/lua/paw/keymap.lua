@@ -19,9 +19,9 @@
 -- of them, so an extension that adds one operator gets all of that with it.
 --
 -- A view takes part by having a `grid`: `get()` returns the cursor as a row
--- and a column in beats, and `set(row, col)` moves it. See `daw.edit` for the
+-- and a column in beats, and `set(row, col)` moves it. See `paw.edit` for the
 -- regions the built-in views work on.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local maps = {}     -- mode -> scope -> lhs -> mapping
@@ -51,7 +51,7 @@ M.registers = registers
 
 -- Everything above but the mappings is each seat's own: two people can be
 -- half way through two commands, in two modes, with registers of their own.
-daw.seats.keep("keymap",
+paw.seats.keep("keymap",
   function()
     return pending, count, register, op, awaiting, timer, hint_at, track, last_change, macro, last_macro,
       registers, marks, jumps, M.mode, M.visual, M.last_visual, M.search_text
@@ -65,8 +65,8 @@ daw.seats.keep("keymap",
 
 --- Write `<leader>` and `<localleader>` as the keys the options name.
 function M.expand(lhs)
-  return (lhs:gsub("<[Ll]ocal[Ll]eader>", function() return daw.opt.localleader end)
-    :gsub("<[Ll]eader>", function() return daw.opt.leader end))
+  return (lhs:gsub("<[Ll]ocal[Ll]eader>", function() return paw.opt.localleader end)
+    :gsub("<[Ll]eader>", function() return paw.opt.leader end))
 end
 
 --- Split `gg<C-x>` into { "g", "g", "<C-x>" }, expanding `<leader>` and `<localleader>`.
@@ -125,7 +125,7 @@ function M.all(view)
   local out = {}
   local shadowed = {}   -- mode .. keys the part of the view takes over
   -- A part of the view the cursor is in comes first: its keys win.
-  if view == daw.ui.focused then
+  if view == paw.ui.focused then
     local sub = M.scopes()
     for i = 1, #sub - 2 do
       for _, mode in ipairs({ "n", "x", "i" }) do
@@ -160,8 +160,8 @@ function M.all(view)
 end
 
 --- Map keys.
----   daw.keymap.set("M", "track.mute", { desc = "Mute track" })
----   daw.keymap.set("<leader>x", function(ctx) ... end, { view = "arrange" })
+---   paw.keymap.set("M", "track.mute", { desc = "Mute track" })
+---   paw.keymap.set("<leader>x", function(ctx) ... end, { view = "arrange" })
 --- `ctx` has `count`, `register` and, for mappings made with `char = true`,
 --- the key typed after the mapping as `char`.
 ---
@@ -191,7 +191,7 @@ end
 
 --- Name a prefix that only leads to more keys, so that the hints after it
 --- say `+mixer` where they would say how many keys are behind it.
----   daw.keymap.group("<leader>x", "mix checks")
+---   paw.keymap.group("<leader>x", "mix checks")
 --- With `opts.view` the name holds only while that view has focus.
 function M.group(prefix, name, opts)
   local scope = opts and opts.view or "global"
@@ -203,19 +203,19 @@ end
 --- view. A region has `r0`, `r1` (rows, inclusive), `c0`, `c1` (beats, the
 --- end not included) and `kind`: "char" for a stretch of time, "line" for
 --- whole rows, "block" for a rectangle.
----   daw.keymap.operator("gl", function(region) ... end, { view = "arrange", desc = "Loop" })
+---   paw.keymap.operator("gl", function(region) ... end, { view = "arrange", desc = "Loop" })
 --- With `count = "operator"` the count typed before the operator is its
 --- own (how far, how many times: `3gUib` is three steps up over a bar), as
 --- `ctx.op_count`, and `ctx.count` is the motion's or object's alone.
 function M.operator(lhs, fn, opts)
-  M.set(lhs, nil, daw.util.merge(opts or {}, { mode = { "n", "x" }, operator = fn }))
+  M.set(lhs, nil, paw.util.merge(opts or {}, { mode = { "n", "x" }, operator = fn }))
 end
 
 --- Define a text object: `fn(ctx)` returns a region, or nil when there is
 --- nothing of that kind at the cursor.
----   daw.keymap.textobject("ic", function() ... end, { view = "arrange", desc = "The clip" })
+---   paw.keymap.textobject("ic", function() ... end, { view = "arrange", desc = "The clip" })
 function M.textobject(lhs, fn, opts)
-  M.set(lhs, nil, daw.util.merge(opts or {}, { mode = { "o", "x" }, object = fn }))
+  M.set(lhs, nil, paw.util.merge(opts or {}, { mode = { "o", "x" }, object = fn }))
 end
 
 function M.del(lhs, opts)
@@ -225,7 +225,7 @@ function M.del(lhs, opts)
 end
 
 -- The keys as they were before every view kept to one rule (docs/terminal.md,
--- "Keys: one grammar"), made only with `daw.opt.keys = "classic"`.
+-- "Keys: one grammar"), made only with `paw.opt.keys = "classic"`.
 local classic = {}
 
 --- Make a classic mapping, keeping what it covers to put back.
@@ -256,18 +256,18 @@ local function revert(entry)
   entry.covered = nil
 end
 
---- A mapping as it was before the rule: made when `daw.opt.keys` is
+--- A mapping as it was before the rule: made when `paw.opt.keys` is
 --- "classic", now or later, over the mapping the rule gives the same keys,
 --- and taken away again when the option changes back. A false `rhs` takes
 --- the keys away instead.
----   daw.keymap.classic("j", "track.volume by=-1", { view = "mixer", desc = "Volume down 1 dB" })
+---   paw.keymap.classic("j", "track.volume by=-1", { view = "mixer", desc = "Volume down 1 dB" })
 function M.classic(lhs, rhs, opts)
   local entry = { lhs, rhs, opts or {} }
   classic[#classic + 1] = entry
-  if daw.opt.keys == "classic" then apply(entry) end
+  if paw.opt.keys == "classic" then apply(entry) end
 end
 
-daw.on("option.changed", function(e)
+paw.on("option.changed", function(e)
   if e.name ~= "keys" then return end
   if e.value == "classic" then
     for _, entry in ipairs(classic) do apply(entry) end
@@ -315,7 +315,7 @@ function M.has(mode, map)
 end
 
 local function grid()
-  local view = daw.ui.views[daw.ui.focused]
+  local view = paw.ui.views[paw.ui.focused]
   return view and view.grid
 end
 
@@ -332,15 +332,15 @@ function M.set_mode(mode)
   local old = M.mode
   if M.visual and mode ~= "x" and mode ~= "c" then
     local g = grid()
-    if g and M.visual.view == daw.ui.focused then
+    if g and M.visual.view == paw.ui.focused then
       local row, col = g.get()
-      M.last_visual = daw.util.merge(M.visual, { cursor_row = row, cursor_col = col })
+      M.last_visual = paw.util.merge(M.visual, { cursor_row = row, cursor_col = col })
     end
     M.visual = nil
   end
   if mode == old then return end
   M.mode = mode
-  daw.emit("mode.changed", { mode = mode, old = old })
+  paw.emit("mode.changed", { mode = mode, old = old })
   api.ui_redraw()
 end
 
@@ -356,7 +356,7 @@ end
 
 local function region(r, c, r2, c2, kind)
   return {
-    view = daw.ui.focused, kind = kind,
+    view = paw.ui.focused, kind = kind,
     r0 = math.min(r, r2), r1 = math.max(r, r2), c0 = math.min(c, c2), c1 = math.max(c, c2),
   }
 end
@@ -371,21 +371,21 @@ end
 --- "b" a rectangle. The same kind again leaves visual mode.
 function M.visual_start(kind)
   local g = grid()
-  if not g then return daw.notify("nothing to select in this view", "warn") end
+  if not g then return paw.notify("nothing to select in this view", "warn") end
   if M.visual and M.visual.kind == kind then return M.set_mode("n") end
   if M.visual then
     M.visual.kind, M.visual.region = kind, nil
     return api.ui_redraw()
   end
   local row, col = g.get()
-  M.visual = { kind = kind, row = row, col = col, view = daw.ui.focused }
+  M.visual = { kind = kind, row = row, col = col, view = paw.ui.focused }
   M.set_mode("x")
 end
 
 --- Open the last selection again.
 function M.visual_restore()
   local g, last = grid(), M.last_visual
-  if not (g and last and last.view == daw.ui.focused) then return end
+  if not (g and last and last.view == paw.ui.focused) then return end
   M.visual = { kind = last.kind, row = last.row, col = last.col, view = last.view }
   g.set(last.cursor_row, last.cursor_col)
   M.set_mode("x")
@@ -434,7 +434,7 @@ local ranged   -- the region `:'<,'>` names while its command runs
 function M.selection()
   if ranged then return ranged end
   local v, g = M.visual, grid()
-  if not (v and g) or v.view ~= daw.ui.focused then return nil end
+  if not (v and g) or v.view ~= paw.ui.focused then return nil end
   local row, col = g.get()
   return selected(v, g, row, col)
 end
@@ -445,7 +445,7 @@ function M.last_selection()
   local open = M.selection()
   if open then return open end
   local last, g = M.last_visual, grid()
-  if not (last and g) or last.view ~= daw.ui.focused then return nil end
+  if not (last and g) or last.view ~= paw.ui.focused then return nil end
   return selected(last, g, last.cursor_row, last.cursor_col)
 end
 
@@ -501,8 +501,8 @@ end
 function M.push_jump()
   local g = grid()
   if not g then return end
-  local list = jumps[daw.ui.focused] or {}
-  jumps[daw.ui.focused] = list
+  local list = jumps[paw.ui.focused] or {}
+  jumps[paw.ui.focused] = list
   if list.at then
     for i = #list, list.at + 1, -1 do list[i] = nil end
     list.at = nil
@@ -515,14 +515,14 @@ end
 
 --- Go back (or with a negative `n` forward again) through the places jumped from.
 function M.jump(n)
-  local g, list = grid(), jumps[daw.ui.focused]
+  local g, list = grid(), jumps[paw.ui.focused]
   if not (g and list) or #list == 0 then return end
   if not list.at then
     local here = position(g)
     if not same(list[#list], here) then list[#list + 1] = here end
     list.at = #list
   end
-  list.at = daw.util.clamp(list.at - n, 1, #list)
+  list.at = paw.util.clamp(list.at - n, 1, #list)
   go(g, list[list.at])
 end
 
@@ -530,8 +530,8 @@ end
 local function push_change()
   local g = grid()
   if not g then return end
-  local list = changes[daw.ui.focused] or {}
-  changes[daw.ui.focused] = list
+  local list = changes[paw.ui.focused] or {}
+  changes[paw.ui.focused] = list
   list.at = nil
   local here = position(g)
   if list[#list] and same(list[#list], here) then return end
@@ -542,30 +542,30 @@ end
 --- Go to where an earlier edit happened (`n` back, a negative `n` forward
 --- again). The first step from the place of the last edit goes to the one before.
 function M.change(n)
-  local g, list = grid(), changes[daw.ui.focused]
-  if not (g and list) or #list == 0 then return daw.notify("no changes yet in this view", "warn") end
+  local g, list = grid(), changes[paw.ui.focused]
+  if not (g and list) or #list == 0 then return paw.notify("no changes yet in this view", "warn") end
   local at = list.at
   if not at then
     at = #list + 1
     if same(list[#list], position(g)) then at = at - 1 end
   end
   local to = at - n
-  if to < 1 then return daw.notify("at the oldest change", "warn") end
-  if to > #list then return daw.notify("at the newest change", "warn") end
+  if to < 1 then return paw.notify("at the oldest change", "warn") end
+  if to > #list then return paw.notify("at the newest change", "warn") end
   list.at = to
   go(g, list[to])
 end
 
 --- The places edits happened in a view, oldest first.
 function M.changes(view)
-  return changes[view or daw.ui.focused] or {}
+  return changes[view or paw.ui.focused] or {}
 end
 
 function M.mark(name)
   local g = grid()
   if not g or not name:match("^%a$") then return end
-  marks[daw.ui.focused] = marks[daw.ui.focused] or {}
-  marks[daw.ui.focused][name] = position(g)
+  marks[paw.ui.focused] = marks[paw.ui.focused] or {}
+  marks[paw.ui.focused][name] = position(g)
 end
 
 --- Move to a mark; `'` or a backtick as the name goes back to where the last
@@ -574,21 +574,21 @@ function M.goto_mark(name)
   local g = grid()
   if not g then return end
   if name == "." then
-    local list = changes[daw.ui.focused]
-    if not list or #list == 0 then return daw.notify("no changes yet in this view", "warn") end
+    local list = changes[paw.ui.focused]
+    if not list or #list == 0 then return paw.notify("no changes yet in this view", "warn") end
     M.push_jump()
     return go(g, list[#list])
   end
   if name == "'" or name == "`" then
-    local list = jumps[daw.ui.focused]
+    local list = jumps[paw.ui.focused]
     if not list or #list == 0 then return end
     local here = position(g)
     go(g, list[#list])
     list[#list], list.at = here, nil
     return
   end
-  local pos = marks[daw.ui.focused] and marks[daw.ui.focused][name]
-  if not pos then return daw.notify("mark `" .. name .. "` is not set", "warn") end
+  local pos = marks[paw.ui.focused] and marks[paw.ui.focused][name]
+  if not pos then return paw.notify("mark `" .. name .. "` is not set", "warn") end
   M.push_jump()
   go(g, pos)
 end
@@ -629,7 +629,7 @@ end
 
 --- The marks of a view: name -> position.
 function M.marks(view)
-  return marks[view or daw.ui.focused] or {}
+  return marks[view or paw.ui.focused] or {}
 end
 
 -- Search ----------------------------------------------------------------------
@@ -639,9 +639,9 @@ end
 function M.search_next(dir, n)
   local g = grid()
   if not (g and g.search) then return end
-  if not M.search_text then return daw.notify("nothing searched for yet: `/`", "warn") end
+  if not M.search_text then return paw.notify("nothing searched for yet: `/`", "warn") end
   local hits = g.search(M.search_text)
-  if #hits == 0 then return daw.notify("nothing matches `" .. M.search_text .. "`", "warn") end
+  if #hits == 0 then return paw.notify("nothing matches `" .. M.search_text .. "`", "warn") end
   table.sort(hits, function(a, b)
     if a.col ~= b.col then return a.col < b.col end
     return a.row < b.row
@@ -684,9 +684,9 @@ local function exec(map, ctx)
   -- others (`.`, `@a`) leave the name to what they replay.
   if map.desc and not map.norepeat then api.undo_label(map.desc) end
   if type(map.rhs) == "function" then
-    return daw.limit.named("the key " .. M.human(map.lhs) .. (map.desc and " (" .. map.desc .. ")" or ""), map.rhs, ctx)
+    return paw.limit.named("the key " .. M.human(map.lhs) .. (map.desc and " (" .. map.desc .. ")" or ""), map.rhs, ctx)
   end
-  return daw.commands.exec(map.rhs, ctx)
+  return paw.commands.exec(map.rhs, ctx)
 end
 
 local function times(a, b)
@@ -738,7 +738,7 @@ local function run(map, char)
       if reg.kind == "line" then g.set(first_row(g, reg), col) else g.set(first_row(g, reg), reg.c0) end
       return map.operator(reg, ctx)
     end
-    if not g then return daw.notify("nothing in this view for `" .. map.lhs .. "` to act on", "warn") end
+    if not g then return paw.notify("nothing in this view for `" .. map.lhs .. "` to act on", "warn") end
     op = { map = map, count = ctx.count, register = ctx.register, key = map.keys[#map.keys] }
     return M.set_mode("o")
   end
@@ -769,8 +769,8 @@ end
 --- such as "arrange.lane" on an automation lane row, or a list of them,
 --- first first), the view, then everywhere.
 local function scopes()
-  local name = daw.ui.focused
-  local view = name and daw.ui.views[name]
+  local name = paw.ui.focused
+  local view = name and paw.ui.views[name]
   local out = {}
   if view and view.subscope then
     local ok, sub = pcall(view.subscope, view)
@@ -812,8 +812,8 @@ local escaped_at = -math.huge
 --- seconds outside the arrange view says how to leave.
 function M.escape_hint()
   local now = api.now()
-  if now - escaped_at < 2000 and daw.ui.focused and daw.ui.focused ~= "arrange" then
-    daw.notify("normal mode: <C-w>p goes back to the window before, :q closes this one")
+  if now - escaped_at < 2000 and paw.ui.focused and paw.ui.focused ~= "arrange" then
+    paw.notify("normal mode: <C-w>p goes back to the window before, :q closes this one")
     escaped_at = -math.huge
     return
   end
@@ -832,7 +832,7 @@ end
 
 local function idle()
   return M.mode == "n" and #pending == 0 and not count and not register and not op and not awaiting
-    and not daw.ui.grabber
+    and not paw.ui.grabber
 end
 
 -- Changes made outside the project that `.` repeats too: a text buffer's.
@@ -882,8 +882,8 @@ local handle
 
 --- Handle one key press.
 handle = function(key)
-  if daw.ui.grabber then return daw.ui.grabber(key) end
-  local focused = daw.ui.views[daw.ui.focused]
+  if paw.ui.grabber then return paw.ui.grabber(key) end
+  local focused = paw.ui.views[paw.ui.focused]
   if focused and focused.modal then return focused:on_key(key) end
   if awaiting then
     local fn = awaiting
@@ -914,7 +914,7 @@ handle = function(key)
       if map and map.record then
         macro.keys[#macro.keys] = nil
         registers[macro.name] = { kind = "keys", keys = table.concat(macro.keys) }
-        daw.notify("recorded @" .. macro.name)
+        paw.notify("recorded @" .. macro.name)
         macro = nil
         return api.ui_redraw()
       end
@@ -946,9 +946,9 @@ handle = function(key)
       -- The leader that is also a motion (`,` again in the notation view)
       -- waits longer, so that the list of what can follow it has its time
       -- on the screen before the motion is taken.
-      local wait = daw.opt.timeoutlen
-      if daw.opt.hints and #pending == 1 and key == daw.opt.leader then
-        wait = math.max(wait, daw.opt.hint_delay + 2000)
+      local wait = paw.opt.timeoutlen
+      if paw.opt.hints and #pending == 1 and key == paw.opt.leader then
+        wait = math.max(wait, paw.opt.hint_delay + 2000)
       end
       timer = api.timer_start(wait, false, function()
         timer = nil
@@ -974,16 +974,16 @@ handle = function(key)
       -- rest, rather than run the last key as if it were typed alone.
       local typed = M.human(keys)
       reset()
-      return daw.notify(typed .. " is not mapped", "warn")
+      return paw.notify(typed .. " is not mapped", "warn")
     end
     for i = n + 1, #keys do handle(keys[i]) end
   else
     local mode = M.mode
     reset()
     if mode ~= "n" then return end
-    local view = daw.ui.views[daw.ui.focused]
+    local view = paw.ui.views[paw.ui.focused]
     if key == "<Esc>" then
-      daw.emit("escape", {})
+      paw.emit("escape", {})
       M.escape_hint()
     elseif view and view.on_key then
       view:on_key(key)
@@ -1005,8 +1005,8 @@ function M.dispatch(key)
   if #pending > 0 or op then
     -- Something is half typed: offer what can follow, after a moment.
     if not hint_at then
-      hint_at = api.now() + daw.opt.hint_delay
-      daw.defer(api.ui_redraw, daw.opt.hint_delay + 1)
+      hint_at = api.now() + paw.opt.hint_delay
+      paw.defer(api.ui_redraw, paw.opt.hint_delay + 1)
     end
   else
     hint_at = nil
@@ -1023,17 +1023,17 @@ local function replay(keys)
   track = {}
   local ok = true
   for _, key in ipairs(keys) do
-    ok = daw.try(M.dispatch, key)
+    ok = paw.try(M.dispatch, key)
     if not ok then break end
   end
   track, depth = outer, depth - 1
   return ok
 end
 
---- Type keys as if from the keyboard: `daw.keymap.feed("jj<Space>")`.
+--- Type keys as if from the keyboard: `paw.keymap.feed("jj<Space>")`.
 function M.feed(keys)
   for _, key in ipairs(M.parse(keys)) do
-    daw.try(M.dispatch, key)
+    paw.try(M.dispatch, key)
   end
 end
 
@@ -1047,7 +1047,7 @@ end
 
 --- Do the last change again, with `n` in place of its count if given.
 function M.repeat_last(n)
-  if not last_change then return daw.notify("nothing to repeat yet") end
+  if not last_change then return paw.notify("nothing to repeat yet") end
   local keys = {}
   for i, key in ipairs(last_change) do keys[i] = key end
   if n then
@@ -1064,7 +1064,7 @@ end
 
 --- Start recording keys into a register, or stop with no name.
 function M.record(name)
-  if not name:match("^%a$") then return daw.notify("a macro goes in a register named a to z", "warn") end
+  if not name:match("^%a$") then return paw.notify("a macro goes in a register named a to z", "warn") end
   macro = { name = name:lower(), keys = {} }
   api.ui_redraw()
 end
@@ -1079,7 +1079,7 @@ function M.play(name, n)
   if name == "@" then name = last_macro end
   local value = name and registers[name:lower()]
   if not (value and value.kind == "keys") then
-    return daw.notify("no macro in register `" .. tostring(name) .. "`", "warn")
+    return paw.notify("no macro in register `" .. tostring(name) .. "`", "warn")
   end
   last_macro = name
   local keys = M.parse(value.keys)
@@ -1141,7 +1141,7 @@ function M.hints()
 end
 
 -- Changing view ends whatever was half done in the old one.
-daw.on("view.focused", function()
+paw.on("view.focused", function()
   if M.mode == "x" or M.mode == "i" or M.mode == "o" then
     reset()
     M.set_mode("n")
@@ -1149,6 +1149,6 @@ daw.on("view.focused", function()
 end)
 
 -- A seat that closes leaves no key waiting to run in it.
-daw.on("seat.closing", function() reset() end)
+paw.on("seat.closing", function() reset() end)
 
 return setmetatable(M, { __call = function(_, ...) return M.set(...) end })

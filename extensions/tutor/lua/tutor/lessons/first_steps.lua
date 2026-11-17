@@ -23,40 +23,40 @@ you are.]],
 commands by name (`:tempo 120`), and Ex commands over bars and tracks
 (`:5,8d`, `:%s/c4/d4/g`): lesson 17.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums" })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums" })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 8, notes = look.drums(look.beat, 2) })
-    local bass = daw.add_track({ name = "Bass", volume = -4 })
+    local bass = paw.add_track({ name = "Bass", volume = -4 })
     bass:add_device("synth", { wave = 2, cutoff = 600, release = 0.05 })
     local line = look.pulse("A1", 4)
     for _, n in ipairs(look.pulse("F1", 4, 4)) do line[#line + 1] = n end
     bass:add_clip({ name = "bass", start = 0, length = 8, notes = line })
-    local keys = daw.add_track({ name = "Keys", volume = -10 })
+    local keys = paw.add_track({ name = "Keys", volume = -10 })
     keys:add_device("synth", { wave = 3, attack = 0.05, release = 0.4, cutoff = 2000 })
     local chords = look.chord({ "A3", "C4", "E4" }, 4)
     for _, n in ipairs(look.chord({ "F3", "A3", "C4" }, 4, 4)) do chords[#chords + 1] = n end
     keys:add_clip({ name = "chords", start = 0, length = 8, notes = chords })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 8, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 8, true
   end,
   steps = {
     {
       say = "This short song has three tracks: Drums, Bass and Keys. Press `<Space>` to play it.",
       keys = { "<Space>" },
-      check = function() return daw.transport.playing end,
+      check = function() return paw.transport.playing end,
       done = "It plays, round and round: the loop is on (the status line says `loop`).",
       hint = "`<Space>` is the space bar. Watch the ▶ in the status line and the playhead moving across the clips.",
     },
     {
       say = "Press `<Space>` again to stop.",
       keys = { "<Space>" },
-      check = function(ctx, look) return look.became(ctx, "stopped", not daw.transport.playing) end,
+      check = function(ctx, look) return look.became(ctx, "stopped", not paw.transport.playing) end,
       done = "Stopped. The playhead stays where it stopped.",
     },
     {
       say = "`gs` puts the playhead back at the start: press `g`, then `s`.",
       keys = { "gs" },
-      check = function(ctx, look) return look.ran(ctx, "transport.start") and daw.transport.position == 0 end,
+      check = function(ctx, look) return look.ran(ctx, "transport.start") and paw.transport.position == 0 end,
       done = "The playhead is at the start: the clock in the status line says 1.1.00 (bar 1, beat 1).",
       hint = "Type the two keys one after the other, not together.",
     },
@@ -77,7 +77,7 @@ commands by name (`:tempo 120`), and Ex commands over bars and tracks
     {
       say = "`:` opens the command line at the bottom. Type `:tempo 130` and press `<CR>` (Enter) to speed the song up.",
       keys = { ":tempo 130", "<CR>" },
-      check = function() return daw.project.tempo == 130 end,
+      check = function() return paw.project.tempo == 130 end,
       done = "130 beats per minute: the status line shows it.",
       hint = "Type the colon too. `<Esc>` abandons a command line you have started; `<BS>` on an empty one closes it.",
     },

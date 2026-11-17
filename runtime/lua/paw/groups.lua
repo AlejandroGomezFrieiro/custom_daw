@@ -3,17 +3,17 @@
 -- output is the group, so its fader, mute and devices act on all of them),
 -- are drawn under it, a step in, and can be folded away into it.
 --
---   local strings = daw.groups.make({ violins, violas, cellos }, "Strings")
---   daw.groups.fold(strings, true)
---   daw.groups.add(basses, strings)
---   daw.groups.remove(violas)
+--   local strings = paw.groups.make({ violins, violas, cellos }, "Strings")
+--   paw.groups.fold(strings, true)
+--   paw.groups.add(basses, strings)
+--   paw.groups.remove(violas)
 --
 -- A group is an ordinary track marked in its `meta`, and each member names
 -- its group in its own, so groups are saved, undone and copied with the
 -- tracks. Groups may hold groups.
-local api = daw.api
+local api = paw.api
 local M = {}
-local util = daw.util
+local util = paw.util
 local volumes = {}
 
 local function id_of(track) return type(track) == "table" and track.id or track end
@@ -77,19 +77,19 @@ function M.hidden(track, top)
 end
 
 --- The tracks that are drawn, in order: all but those folded away, and in
---- a narrowed tab only those of its group (`daw.scope`). Rows of the
+--- a narrowed tab only those of its group (`paw.scope`). Rows of the
 --- arrange view and of a graphical frontend are places in this list.
 --- With `{ lanes = true }`, every row: `{ track = id }` for a track and
 --- `{ track = id, lane = id }` for an automation lane shown under it
---- (see `daw.lanes`).
+--- (see `paw.lanes`).
 function M.rows(opts)
-  if opts and opts.lanes then return daw.lanes.lines() end
+  if opts and opts.lanes then return paw.lanes.lines() end
   local out, vcas = {}, {}
-  local scope = daw.scope and daw.scope.current()
-  for _, id in ipairs(daw.scope and daw.scope.tracks(scope) or api.track_list()) do
+  local scope = paw.scope and paw.scope.current()
+  for _, id in ipairs(paw.scope and paw.scope.tracks(scope) or api.track_list()) do
     if not M.hidden(id, scope) then
       -- VCAs come after the tracks they move.
-      local list = daw.vca.is_vca(id) and vcas or out
+      local list = paw.vca.is_vca(id) and vcas or out
       list[#list + 1] = id
     end
   end
@@ -170,7 +170,7 @@ function M.make(tracks, name)
     local at = position(id)
     if at and (not first or at < first) then first = at end
   end
-  local group = daw.add_track({ name = name or "Group", index = first })
+  local group = paw.add_track({ name = name or "Group", index = first })
   set_meta(group.id, "group_head", true)
   -- Tracks that were together in a group stay in it, one level down.
   local outer = ids[1] and M.of(ids[1])
@@ -208,8 +208,8 @@ function M.fold(group, on)
   if on == nil then on = not M.folded(group) end
   set_meta(group, "group_folded", on and true or nil)
   -- The cursor does not stay on a track that is out of sight.
-  local cursor = daw.cursor.track_id()
-  if cursor and M.hidden(cursor) then daw.cursor.set_track(group) end
+  local cursor = paw.cursor.track_id()
+  if cursor and M.hidden(cursor) then paw.cursor.set_track(group) end
 end
 
 --- Note the faders of a group's members: linked faders move by what they
@@ -233,7 +233,7 @@ function M.link(group, on)
   note(group)
 end
 
-daw.on("track.*", function(event, name)
+paw.on("track.*", function(event, name)
   local group = event.id and M.of(event.id)
   if not group or not M.linked(group) then return end
   -- Undo, redo and opening a project restore every fader themselves.
@@ -254,7 +254,7 @@ end)
 
 -- A group that is removed lets its members go: they keep sounding, on the
 -- master, and stand at the top level.
-daw.on("track.removed", function(event)
+paw.on("track.removed", function(event)
   if event.restored then return end
   for _, id in ipairs(api.track_list()) do
     local m = meta(id)

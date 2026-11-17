@@ -6,7 +6,7 @@ it (tracks, devices, clips, notes, automation, the tempo map, markers) and not
 on lines.
 
 ```lua
-daw.ext.load("extensions/projdiff")   -- or put the directory in ~/.config/daw/extensions
+paw.ext.load("extensions/projdiff")   -- or put the directory in ~/.config/paw/extensions
 ```
 
 ## Seeing what changed
@@ -76,10 +76,10 @@ two hooks, run by paw itself without a window:
 ```
 # git config (in the repository), or ~/.gitconfig
 [diff "paw"]
-  textconv = daw --clean --no-plugins --no-listen --audio null -l /path/to/extensions/projdiff/git.lua textconv
+  textconv = paw --clean --no-plugins --no-listen --audio null -l /path/to/extensions/projdiff/git.lua textconv
 [merge "paw"]
   name = paw project merge
-  driver = daw --clean --no-plugins --no-listen --audio null -l /path/to/extensions/projdiff/git.lua merge %O %A %B %L %P
+  driver = paw --clean --no-plugins --no-listen --audio null -l /path/to/extensions/projdiff/git.lua merge %O %A %B %L %P
 ```
 
 `:Pgit` prints these with the right path. After that `git diff`, `git log
@@ -124,14 +124,14 @@ local pd = require("projdiff")
 local from, to = pd.file("a.json"), pd.file("b.json")
 local tree = pd.diff.diff(from.project, to.project)   -- { children, count }
 pd.diff.lines(tree)                                    -- the text of the view
-pd.diff.entries(tree)                                  -- { address, text } for daw.qf
+pd.diff.entries(tree)                                  -- { address, text } for paw.qf
 pd.text.text(to.project)                               -- the text git shows
 local merged, conflicts = pd.merge.files(base, ours, theirs)
 pd.merge.resolve(merged, conflicts[1], "theirs")
-daw.api.project_file_text(merged)                      -- the file's text, as paw writes it
+paw.api.project_file_text(merged)                      -- the file's text, as paw writes it
 ```
 
-`daw.api.undo_project(id)` (the core's) is a state of the undo tree as the
+`paw.api.undo_project(id)` (the core's) is a state of the undo tree as the
 project file holds it; `pd.version("#7")` and `pd.version("snap:x")` turn the
 words of `:Pdiff` into one.
 

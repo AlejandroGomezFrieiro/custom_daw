@@ -5,13 +5,13 @@
 local view = require("notation")
 
 local M = {}
-local roll = daw.ui.views.pianoroll
+local roll = paw.ui.views.pianoroll
 
 --- Whether the roll and the notation view are on screen, each with
 --- `timebind`, both on this clip.
 function M.bound(id)
   local have = {}
-  for _, win in ipairs(daw.layout.windows(daw.ui.layout)) do
+  for _, win in ipairs(paw.layout.windows(paw.ui.layout)) do
     if win.opts and win.opts.timebind then have[win.view] = true end
   end
   return have.pianoroll and have.notation and view.clip_id == id and roll.clip_id == id or false
@@ -37,7 +37,7 @@ function M.partner_place()
 end
 
 local function glyphs()
-  local ascii = daw.opt.ascii
+  local ascii = paw.opt.ascii
   return { open = ascii and "[" or "⟦", close = ascii and "]" or "⟧", one = ascii and "*" or "◆" }
 end
 
@@ -66,7 +66,7 @@ end
 local function marks(id)
   local outline = M.partner("pianoroll")
   if not outline then return {} end
-  for _, n in ipairs(daw.clip(id):notes()) do
+  for _, n in ipairs(paw.clip(id):notes()) do
     if n.id == outline then
       return { { pitch = n.pitch, start = n.start, length = n.length, fill = "#ffffff", alpha = 0, edge = "#ffd34d",
         tip = "the note under the cursor of the notation window" } }

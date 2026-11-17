@@ -1,12 +1,12 @@
 -- Helpers shared by the bench scripts: timing, JSON output, memory, and the
 -- workloads, built the same way the Tracktion driver builds them.
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local M = {}
 
 M.dir = debug.getinfo(1, "S").source:sub(2):match("(.*)/") or "."
-M.tmp = os.getenv("BENCH_TMP") or "/tmp/daw-bench"
+M.tmp = os.getenv("BENCH_TMP") or "/tmp/paw-bench"
 os.execute("mkdir -p '" .. M.tmp .. "'")
 
 M.now = api.now
@@ -44,7 +44,7 @@ M.json = encode
 
 --- Print one result line, tagged with the engine.
 function M.emit(record)
-  record.engine = record.engine or "daw"
+  record.engine = record.engine or "paw"
   print(encode(record))
   io.stdout:flush()
 end
@@ -116,7 +116,7 @@ end
 
 --- Build `tracks` tracks of `bars` bars: audio clips (one per bar) or one MIDI
 --- clip through the built-in synth, optionally with a delay and with volume
---- automation. Goes through `daw.api` directly, as one undo step.
+--- automation. Goes through `paw.api` directly, as one undo step.
 function M.build(opts)
   local tracks, bars = opts.tracks, opts.bars
   local wav = opts.kind == "audio" and M.wav() or nil
@@ -144,7 +144,7 @@ function M.build(opts)
     end
   end
   api.undo_checkpoint()
-  daw.flush()
+  paw.flush()
   return ids
 end
 

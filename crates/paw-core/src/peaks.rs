@@ -1,14 +1,14 @@
 //! Waveform overviews of audio files, for drawing clips.
 //!
 //! An overview is made once per file and kept on disk in the cache directory
-//! (`~/.cache/daw/peaks`), named after the file's path, size and time of
+//! (`~/.cache/paw/peaks`), named after the file's path, size and time of
 //! last change, so that drawing a long file zoomed out after the first time
 //! reads the overview and not the file.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use daw_engine::AudioData;
+use paw_engine::AudioData;
 
 /// Frames covered by each entry of a [`Summary`].
 const BLOCK: usize = 256;
@@ -23,7 +23,7 @@ pub struct Summary {
 }
 
 /// What a stored overview starts with: a name and a version.
-const MAGIC: &[u8; 8] = b"DAWPKS01";
+const MAGIC: &[u8; 8] = b"PAWPKS01";
 
 impl Summary {
     pub fn new(data: &AudioData) -> Self {
@@ -114,18 +114,18 @@ pub fn stored(dir: &Path, file: &Path) -> Option<(PathBuf, u64)> {
     Some((dir.join(format!("{hash:016x}.peaks")), hash))
 }
 
-/// The cache directory overviews are kept in: `$XDG_CACHE_HOME/daw/peaks`.
+/// The cache directory overviews are kept in: `$XDG_CACHE_HOME/paw/peaks`.
 pub fn cache_dir() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         .unwrap_or_else(std::env::temp_dir)
-        .join("daw")
+        .join("paw")
         .join("peaks")
 }
 
 /// The cache directory the decoded sound of long files is kept in and
-/// played from: `$XDG_CACHE_HOME/daw/media`.
+/// played from: `$XDG_CACHE_HOME/paw/media`.
 pub fn media_dir() -> PathBuf {
     cache_dir().with_file_name("media")
 }
@@ -222,11 +222,11 @@ mod tests {
 
     #[test]
     fn an_overview_is_kept_on_disk_and_used_without_decoding_the_file() {
-        let dir = std::env::temp_dir().join(format!("daw-peaks-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-peaks-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let wav = dir.join("tone.wav");
         let write = |level: f32| {
-            let mut w = daw_engine::wav::Writer::create(&wav, 48_000, 16, false).unwrap();
+            let mut w = paw_engine::wav::Writer::create(&wav, 48_000, 16, false).unwrap();
             for i in 0..48_000 * 4 {
                 let s = level * (i as f32 * 0.05).sin();
                 w.write(s).unwrap();

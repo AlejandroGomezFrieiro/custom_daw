@@ -2,7 +2,7 @@
 -- docs/terminal.md says how they are used, docs/scripting.md how an
 -- extension adds a kind of its own.
 --
---   :e daw://tracks          :vs daw://sends          :e daw://markers
+--   :e paw://tracks          :vs paw://sends          :e paw://markers
 --
 -- A buffer is lines of text, one thing of the project on each (a track, a
 -- send, a device, a marker), written by its kind. Each line carries the id
@@ -19,10 +19,10 @@
 -- column is passed to the grammar as `row * BIG + column`, so that the two
 -- ends of a selection across lines stay in order when the grammar takes
 -- the smaller and the larger. The buffer keeps its own undo of the text.
-local api = daw.api
-local util = daw.util
-local layout = daw.layout
-local keymap = daw.keymap
+local api = paw.api
+local util = paw.util
+local layout = paw.layout
+local keymap = paw.keymap
 
 local M = { kinds = {} }
 local BIG = 1000000
@@ -243,7 +243,7 @@ for _, name in ipairs({ "set", "delete_span", "insert", "delete_lines", "insert_
   local change = Text[name]
   Text[name] = function(self, row, col, ...)
     if not self.readonly then return change(self, row, col, ...) end
-    daw.notify(self.readonly, "warn")
+    paw.notify(self.readonly, "warn")
     if name == "insert" then return row, col end
     if name == "delete_lines" then return {} end
     if name == "delete_span" then return "" end
@@ -253,15 +253,15 @@ end
 -- Kinds -------------------------------------------------------------------------------
 
 --- Make a kind of text buffer, shown for the names its `pattern` matches
---- (`daw://` and the rest). See docs/scripting.md. A kind with `readonly`
+--- (`paw://` and the rest). See docs/scripting.md. A kind with `readonly`
 --- (what to say when a change is tried) cannot be changed; `gutter = false`
 --- leaves out the line numbers; `static` is not read again when the project
 --- changes; `paint(canvas, x, y, text, kind, width, row, buf)` draws a line
 --- in place of the plain colouring.
----   daw.textbuf.kind("clips", { pattern = "^daw://clips$", read = ..., format = ..., parse = ..., plan = ... })
+---   paw.textbuf.kind("clips", { pattern = "^paw://clips$", read = ..., format = ..., parse = ..., plan = ... })
 function M.kind(name, spec)
   spec.name = name
-  spec.pattern = spec.pattern or ("^daw://" .. name:gsub("%p", "%%%0") .. "$")
+  spec.pattern = spec.pattern or ("^paw://" .. name:gsub("%p", "%%%0") .. "$")
   M.kinds[name] = spec
   return spec
 end
@@ -439,7 +439,7 @@ local function sync_all()
     if buf.type == "textbuf" and buf.state and buf.state.kind then M.sync(buf) end
   end
 end
-for _, family in ipairs({ "track.*", "device.*", "project.*", "tempo.*" }) do daw.on(family, sync_all) end
+for _, family in ipairs({ "track.*", "device.*", "project.*", "tempo.*" }) do paw.on(family, sync_all) end
 
 --- What one line reads as: the fields, or nil and what is wrong. Kept by
 --- text, as lines are read on every redraw.
@@ -554,13 +554,13 @@ end
 local loose
 -- Insert mode under way: { win, buf, block }.
 local ins
-daw.seats.keep("textbuf", function() return ins end, function(i) ins = i end, function() return nil end)
+paw.seats.keep("textbuf", function() return ins end, function(i) ins = i end, function() return nil end)
 
 --- The text buffer window the keyboard is in.
 function M.current()
   local win = layout.current()
   if win and win.view == "textbuf" then return win end
-  if daw.ui.focused == "textbuf" and loose then return loose end
+  if paw.ui.focused == "textbuf" and loose then return loose end
 end
 
 local function win_by_id(id)
@@ -869,7 +869,7 @@ local insert_key
 local function insert_finish()
   local done = ins
   ins = nil
-  if daw.ui.grabber == insert_key then daw.ui.grabber = nil end
+  if paw.ui.grabber == insert_key then paw.ui.grabber = nil end
   if not done then return end
   local win = win_by_id(done.win)
   local buf = layout.buffers[done.buf]
@@ -909,7 +909,7 @@ insert_key = function(key, pasted)
   local buf = ins and layout.buffers[ins.buf]
   if not (win and buf) then
     ins = nil
-    daw.ui.grabber = nil
+    paw.ui.grabber = nil
     return
   end
   local t, s = buf.state.text, state(win)
@@ -970,7 +970,7 @@ end
 --- Hand the keyboard to insert mode in a window, its change begun.
 local function begin_insert(win, buf, block)
   ins = { win = win.id, buf = buf.id, block = block }
-  daw.ui.grabber = insert_key
+  paw.ui.grabber = insert_key
   keymap.set_mode("i")
   api.ui_redraw()
 end
@@ -981,7 +981,7 @@ end
 function M.insert(how, opts)
   local win, buf, t, s = here()
   if not win then return end
-  if t.readonly then return daw.notify(t.readonly, "warn") end
+  if t.readonly then return paw.notify(t.readonly, "warn") end
   if keymap.mode == "x" then keymap.set_mode("n") end
   t:begin(s.row, s.col)
   if how == "a" then
@@ -1001,7 +1001,7 @@ function M.insert(how, opts)
 end
 
 -- Insert mode ends when the window loses the keyboard.
-daw.on("mode.changed", function(e)
+paw.on("mode.changed", function(e)
   if e.old == "i" and e.mode ~= "i" and ins then insert_finish() end
 end)
 
@@ -1042,7 +1042,7 @@ M.ops.yank = on_span(function(t, sp, ctx, s, buf)
   keymap.setreg(value, ctx.register, true)
   if sp.kind ~= "line" then to_start(t, s, sp) end
   local n = value.lines and #value.lines or 0
-  if n > 2 then daw.notify(n .. " lines yanked") end
+  if n > 2 then paw.notify(n .. " lines yanked") end
 end)
 
 M.ops.change = on_span(function(t, sp, ctx, s, buf)
@@ -1162,7 +1162,7 @@ function M.put(before, register, count)
   local win, buf, t, s = here()
   if not win then return end
   local value = keymap.getreg(register)
-  if not value then return daw.notify("nothing to put yet", "warn") end
+  if not value then return paw.notify("nothing to put yet", "warn") end
   count = count or 1
   t:begin(s.row, s.col)
   if value.kind == "lines" or value.kind == "tracks" then
@@ -1175,7 +1175,7 @@ function M.put(before, register, count)
     end
     if #lines == 0 then
       t:finish()
-      return daw.notify("that register holds " .. value.kind .. ", which is not text", "warn")
+      return paw.notify("that register holds " .. value.kind .. ", which is not text", "warn")
     end
     local at = before and s.row or s.row + 1
     if t:count() == 1 and t:line(1) == "" and not t.lines[1].id then at = 1 end
@@ -1205,7 +1205,7 @@ function M.put(before, register, count)
     s.col = col
   else
     t:finish()
-    return daw.notify("that register holds " .. tostring(value.kind) .. ", which is not text", "warn")
+    return paw.notify("that register holds " .. tostring(value.kind) .. ", which is not text", "warn")
   end
   t:finish()
   clamp(t, s)
@@ -1268,7 +1268,7 @@ function M.undo(redo, n)
     s.row, s.col, done = row, col, done + 1
   end
   if done == 0 then
-    return daw.notify(redo and "already at the newest change" or "already at the oldest change: the project's own undo is `:undo`")
+    return paw.notify(redo and "already at the newest change" or "already at the oldest change: the project's own undo is `:undo`")
   end
   clamp(t, s)
   buf.state.modified = t:modified()
@@ -1490,7 +1490,7 @@ local function edit_lines(fn)
     c.t:finish()
     clamp(c.t, c.s)
     changed(c.buf)
-    if err then daw.notify(err, "warn") end
+    if err then paw.notify(err, "warn") end
   end
 end
 
@@ -1498,7 +1498,7 @@ ex.s = edit_lines(function(c)
   local count, lines = substitute(c.t, c.a, c.b, c.args)
   if not count then return lines end
   if count == 0 then return "pattern not found" end
-  daw.notify(string.format("%d substitution%s on %d line%s", count, count == 1 and "" or "s", lines, lines == 1 and "" or "s"))
+  paw.notify(string.format("%d substitution%s on %d line%s", count, count == 1 and "" or "s", lines, lines == 1 and "" or "s"))
 end)
 ex.substitute = ex.s
 ex.sort = edit_lines(function(c)
@@ -1544,20 +1544,20 @@ ex.e = function(c)
   if c.args ~= "" then return false end
   if c.bang or not c.t:modified() then
     M.reload(c.buf)
-    return daw.notify(c.buf.name .. " read again")
+    return paw.notify(c.buf.name .. " read again")
   end
-  daw.notify("the buffer has changes: `:e!` throws them away and reads it again, `:w` applies them", "warn")
+  paw.notify("the buffer has changes: `:e!` throws them away and reads it again, `:w` applies them", "warn")
 end
 ex.edit = ex.e
 ex.wq = function(c)
   if not c.t:modified() then return false end
-  daw.notify("the buffer has changes: `:w` applies them first", "warn")
+  paw.notify("the buffer has changes: `:w` applies them first", "warn")
 end
 ex.x = ex.wq
 ex.q = function(c)
   if c.bang then M.reload(c.buf) end
   if not c.t:modified() then return false end
-  daw.notify("the buffer has changes: `:w` applies them, `:q!` closes the window without", "warn")
+  paw.notify("the buffer has changes: `:w` applies them, `:q!` closes the window without", "warn")
 end
 ex.quit = ex.q
 ex.close = ex.q
@@ -1599,7 +1599,7 @@ function M.apply(buf, steps)
         for i = #state.undo, 1, -1 do pcall(state.undo[i]) end
         if api.project_get().edits ~= before then
           api.undo_checkpoint()
-          daw.undo()
+          paw.undo()
         end
         buf.state.seen = api.project_get().edits
         return false, string.format("%s failed, and nothing was changed: %s", step.text, reason(err))
@@ -1613,7 +1613,7 @@ end
 -- The plan shown before writing, as oil.nvim shows it: a float that takes
 -- y or Enter to apply, n, q or Esc to leave it.
 local confirm = { modal = true, focusable = true, window = false, scroll = 0, steps = {} }
-daw.seats.fields("textbuf.plan", confirm, { "scroll", "steps", "shown", "buf", "loose" }, { scroll = 0, steps = {}, shown = {} })
+paw.seats.fields("textbuf.plan", confirm, { "scroll", "steps", "shown", "buf", "loose" }, { scroll = 0, steps = {}, shown = {} })
 
 local FOOTER = "y or Enter: apply, as one undo step · n or Esc: back"
 local verbs = { delete = "Error", remove = "Error", add = "Info", copy = "Info", new = "Info" }
@@ -1637,8 +1637,8 @@ end
 local function close_plan()
   local back = confirm.loose
   confirm.loose = nil
-  daw.ui.close()
-  if back and daw.canvas.open_views.textbuf then daw.ui.focus("textbuf") end
+  paw.ui.close()
+  if back and paw.canvas.open_views.textbuf then paw.ui.focus("textbuf") end
 end
 
 function confirm:on_key(key)
@@ -1649,9 +1649,9 @@ function confirm:on_key(key)
     if not (buf and layout.buffers[buf.id]) then return end
     local ok, err = M.apply(buf, steps)
     if ok then
-      daw.notify(string.format("%s written: %d change%s, one undo step", buf.name, n, n == 1 and "" or "s"))
+      paw.notify(string.format("%s written: %d change%s, one undo step", buf.name, n, n == 1 and "" or "s"))
     else
-      daw.notify(err, "error")
+      paw.notify(err, "error")
     end
   elseif key == "n" or key == "q" or key == "<Esc>" or key == "<C-c>" then
     self.steps, self.shown, self.buf = {}, {}, nil
@@ -1664,7 +1664,7 @@ function confirm:on_key(key)
   api.ui_redraw()
 end
 
-daw.ui.view("textbuf.plan", confirm)
+paw.ui.view("textbuf.plan", confirm)
 
 --- `:w` in a text buffer: the plan, to confirm; with `force` even when the
 --- project changed since the buffer was read.
@@ -1673,10 +1673,10 @@ function M.write(buf, force)
   M.sync(buf)
   if not st.text:modified() then
     -- Nothing to apply: `:w` saves the project, as it does anywhere else.
-    return daw.commands.run("write", {})
+    return paw.commands.run("write", {})
   end
   if st.conflict and not force then
-    return daw.notify(buf.name .. " changed in the project since it was read: `:e!` reads it again (your changes go), `:w!` applies them over it", "warn")
+    return paw.notify(buf.name .. " changed in the project since it was read: `:e!` reads it again (your changes go), `:w!` applies them over it", "warn")
   end
   local steps, err, e = M.plan(buf)
   if not steps then
@@ -1684,7 +1684,7 @@ function M.write(buf, force)
       local win = M.current()
       if win then state(win).row, state(win).col = e.row, 0 end
     end
-    return daw.notify(err, "error")
+    return paw.notify(err, "error")
   end
   -- Steps marked `quiet` are applied but not listed: they carry out what
   -- the listed ones say.
@@ -1694,18 +1694,18 @@ function M.write(buf, force)
   end
   if #shown == 0 then
     M.reload(buf)
-    return daw.notify("nothing to change: " .. buf.name .. " read again")
+    return paw.notify("nothing to change: " .. buf.name .. " read again")
   end
   confirm.steps, confirm.shown, confirm.buf, confirm.scroll = steps, shown, buf, 0
   local w = width(FOOTER) + 4
   for _, step in ipairs(shown) do w = math.max(w, width(step.text) + 4) end
   local win = M.current()
-  daw.ui.open("textbuf.plan", { title = "Write " .. buf.name .. ": " .. #shown .. " change" .. (#shown == 1 and "" or "s"),
+  paw.ui.open("textbuf.plan", { title = "Write " .. buf.name .. ": " .. #shown .. " change" .. (#shown == 1 and "" or "s"),
     width = math.min(w, 110), height = math.min(#shown + 3, 30) })
   -- Typed in a graphical frontend's window, the plan opens in one too.
-  if win and win == loose and daw.canvas.open_views.textbuf then
+  if win and win == loose and paw.canvas.open_views.textbuf then
     confirm.loose = true
-    daw.canvas.open_view("textbuf.plan")
+    paw.canvas.open_view("textbuf.plan")
   end
 end
 
@@ -1766,7 +1766,7 @@ local function render(win, canvas, ctx)
   local buf = ctx.buf
   local st = buf and buf.state
   if not (st and st.text) then
-    daw.ui.titlebar(canvas, { name = buf and buf.name or "text", focused = ctx.focused })
+    paw.ui.titlebar(canvas, { name = buf and buf.name or "text", focused = ctx.focused })
     canvas:text(2, 2, "nothing to show", "Empty")
     return
   end
@@ -1777,7 +1777,7 @@ local function render(win, canvas, ctx)
   local title = st.kind.title and st.kind.title(ctx_of(buf)) or buf.name
   local right = (modified and "[+] " or "") .. t:count() .. " line" .. (t:count() == 1 and "" or "s")
   if st.conflict then right = "changed elsewhere · " .. right end
-  daw.ui.titlebar(canvas, { name = buf.name, context = title ~= buf.name and title or nil, focused = ctx.focused, right = right })
+  paw.ui.titlebar(canvas, { name = buf.name, context = title ~= buf.name and title or nil, focused = ctx.focused, right = right })
   local W, H = canvas.width, canvas.height
   local rows = H - 2
   if rows < 1 then return end
@@ -1871,7 +1871,7 @@ local def = layout.buftype("textbuf", {
   render = render,
   window = function() return loose end,
 })
-local view = daw.ui.views.textbuf
+local view = paw.ui.views.textbuf
 view.title = "Text"
 
 view.grid = {
@@ -1924,7 +1924,7 @@ function def.on_mouse(win, e)
   local buf = layout.buf_of(win)
   if not (buf and buf.state.text) then return end
   local t, s = buf.state.text, state(win)
-  local step_ = daw.mouse.wheel(e)
+  local step_ = paw.mouse.wheel(e)
   if step_ then
     s.top = math.max(1, s.top + step_ * 3)
     s.row = util.clamp(s.row, s.top, s.top + (s.height or 10) - 1)
@@ -1959,7 +1959,7 @@ function M.open(name, opts)
   if opts.window then
     loose = layout.leaf("textbuf", { buf = buf.id })
     win = loose
-    daw.canvas.open_view("textbuf", { title = buf.name })
+    paw.canvas.open_view("textbuf", { title = buf.name })
   elseif opts.here then
     win = layout.show_in(layout.current(), "textbuf", buf.id)
   else
@@ -2116,16 +2116,16 @@ tmap("<CR>", function()
   local win, buf, t, s = here()
   if not win then return end
   local open = buf.state.kind.open
-  if not open then return daw.notify("nothing to open from this line", "warn") end
+  if not open then return paw.notify("nothing to open from this line", "warn") end
   open(ctx_of(buf), t.lines[s.row], t:line(s.row))
 end, "Open what the line stands for: a track's devices", { repeatable = false })
 tmap("-", function()
   local win, buf = here()
   if not win then return end
   local up = buf.state.kind.parent and buf.state.kind.parent(ctx_of(buf))
-  if not up then return daw.notify("nothing above this buffer", "warn") end
+  if not up then return paw.notify("nothing above this buffer", "warn") end
   M.open(up, { here = true })
-end, "The buffer this one is part of: daw://tracks from a track's devices", { repeatable = false })
+end, "The buffer this one is part of: paw://tracks from a track's devices", { repeatable = false })
 tmap("gw", function()
   local _, buf = here()
   if buf then M.open(buf.name, { window = true }) end
@@ -2140,63 +2140,63 @@ local function cmdline(from_visual)
       keymap.set_mode("n")
       text = "'<,'>"
     end
-    daw.ui.input({
+    paw.ui.input({
       prompt = ":", history = "cmdline", text = text,
-      complete = function(line) return daw.commands.complete(line) end,
+      complete = function(line) return paw.commands.complete(line) end,
     }, function(line)
-      if line:match("%S") then daw.state.last_cmdline = line daw.commands.used(line:match("^%s*:?(%S+)")) end
-      daw.commands.exec(line)
+      if line:match("%S") then paw.state.last_cmdline = line paw.commands.used(line:match("^%s*:?(%S+)")) end
+      paw.commands.exec(line)
     end)
   end
 end
 tmap(":", cmdline(false), "Type a command: the buffer's own (`:w`, `:s`, `:sort`, `:e!`) or any", { repeatable = false })
 map(":", cmdline(true), { view = "textbuf", mode = "x", desc = "Type a command on the lines selected", repeatable = false })
 
-daw.ui.keybar.set("textbuf", "n", {
+paw.ui.keybar.set("textbuf", "n", {
   { "c", "change" }, { "d", "delete" }, { "y", "yank" }, { "p", "put" }, { "<C-a>", "+1" }, { ":", "command, :w applies" },
   { "<CR>", "open" }, { "?", "keys" },
 })
-daw.ui.keybar.set("textbuf", "i", { { "<Esc>", "normal" } })
-daw.ui.keybar.set("textbuf", "x", { { "d", "delete" }, { "y", "yank" }, { "c", "change" }, { "<C-a>", "+1" }, { "I", "insert" }, { ":", "on lines" } })
+paw.ui.keybar.set("textbuf", "i", { { "<Esc>", "normal" } })
+paw.ui.keybar.set("textbuf", "x", { { "d", "delete" }, { "y", "yank" }, { "c", "change" }, { "<C-a>", "+1" }, { "I", "insert" }, { ":", "on lines" } })
 
 -- Commands -------------------------------------------------------------------------------------
 
 -- Lines typed after `:` in a text buffer are its own first.
-table.insert(daw.commands.line_handlers, function(line) return M.exec(line) end)
+table.insert(paw.commands.line_handlers, function(line) return M.exec(line) end)
 
 -- By name too, for completion and scripts; typed after `:` in a text buffer
 -- these lines are taken before they get here.
-daw.command("sort", function(ctx)
+paw.command("sort", function(ctx)
   if not M.exec("sort" .. (ctx.args[1] ~= "" and " " .. ctx.args[1] or "")) then
-    daw.notify("`:sort` sorts the lines of a text buffer: `:e daw://tracks` opens one", "warn")
+    paw.notify("`:sort` sorts the lines of a text buffer: `:e paw://tracks` opens one", "warn")
   end
 end, { desc = "Sort the lines of a text buffer: `sort`, `sort!` the other way, `sort n` by number, `sort i` ignoring case", raw = true })
 
-daw.command("textbuf.open", function(ctx)
-  local name = ctx.args[1] and tostring(ctx.args[1]) or "daw://tracks"
-  if not name:find("://") then name = "daw://" .. name end
+paw.command("textbuf.open", function(ctx)
+  local name = ctx.args[1] and tostring(ctx.args[1]) or "paw://tracks"
+  if not name:find("://") then name = "paw://" .. name end
   local opts = {}
   for i = 2, #ctx.args do opts[tostring(ctx.args[i])] = true end
   local win, err = M.open(name, opts)
-  if not win then daw.notify(err, "warn") end
+  if not win then paw.notify(err, "warn") end
 end, {
   desc = "Edit a listing as text: `textbuf.open tracks`, `sends`, `markers`, `track/2/devices`; `vertical`, `here` or `window` says where",
   complete = function(_, info)
     if info.index > 1 then return { "vertical", "here", "window" } end
     local out = {}
-    for name in pairs(M.kinds) do out[#out + 1] = "daw://" .. name end
-    out[#out + 1] = "daw://track/1/devices"
+    for name in pairs(M.kinds) do out[#out + 1] = "paw://" .. name end
+    out[#out + 1] = "paw://track/1/devices"
     table.sort(out)
     return out
   end,
 })
-daw.command("textbuf.window", function()
+paw.command("textbuf.window", function()
   local _, buf = here()
-  if not buf then return daw.notify("no text buffer here: `:e daw://tracks` opens one", "warn") end
+  if not buf then return paw.notify("no text buffer here: `:e paw://tracks` opens one", "warn") end
   M.open(buf.name, { window = true })
 end, { desc = "Show this text buffer in a window of its own, in the graphical frontend" })
 
 -- The frontends' menus.
-daw.frontend.act.open_textbuf = function(name, window) return M.open(name, { window = window }) end
+paw.frontend.act.open_textbuf = function(name, window) return M.open(name, { window = window }) end
 
 return M

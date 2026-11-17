@@ -1,41 +1,41 @@
-# daw-mcp
+# paw-mcp
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server for paw,
 so that an assistant such as Claude can look at a session and work in it:
 build a song, edit it, mix it, render it, and read the render's levels and
 spectrum in place of listening.
 
-It is a client of the kernel's control socket, like `daw ctl` and the
+It is a client of the kernel's control socket, like `paw ctl` and the
 graphical frontend, and adds nothing to the kernel. Each tool call is sent as
 one `eval` of [mcp.lua](src/mcp.lua) with the tool's arguments, so a call is
-one kernel turn, every change goes through `daw.api`, and a call that writes is
+one kernel turn, every change goes through `paw.api`, and a call that writes is
 exactly one undo step. A call that fails part-way is rolled back.
 
 ## Run it
 
 ```sh
-nix develop -c cargo build --release -p daw-tui -p daw-mcp
+nix develop -c cargo build --release -p paw-tui -p paw-mcp
 
 # Attach to a paw that is already running (the terminal UI listens on
-# $XDG_RUNTIME_DIR/daw.sock by default; a headless kernel can too):
-daw --headless --listen /tmp/daw.sock &
-target/release/daw-mcp --socket /tmp/daw.sock
+# $XDG_RUNTIME_DIR/paw.sock by default; a headless kernel can too):
+paw --headless --listen /tmp/paw.sock &
+target/release/paw-mcp --socket /tmp/paw.sock
 
 # Or let the server start a headless kernel of its own, stopped when the
-# server exits. Everything after `--` goes to `daw`:
-target/release/daw-mcp --spawn song.json -- --audio null
+# server exits. Everything after `--` goes to `paw`:
+target/release/paw-mcp --spawn song.json -- --audio null
 ```
 
 The server speaks MCP on stdin and stdout and logs to stderr. Without
-`--socket` or `--spawn` it attaches where `daw ctl` would: `$DAW_SOCKET`, else
-`$XDG_RUNTIME_DIR/daw.sock`. The connection is made when the first tool needs
+`--socket` or `--spawn` it attaches where `paw ctl` would: `$PAW_SOCKET`, else
+`$XDG_RUNTIME_DIR/paw.sock`. The connection is made when the first tool needs
 it; if the kernel goes away, calls fail with a message saying so, and the
 server connects again once a kernel is back. A kernel started with `--spawn`
 that stops is started afresh on the next call, which then says the previous
 session was lost.
 
-With `--spawn` the `daw` binary is `--daw <path>`, else `$DAW_BIN`, else the one
-beside `daw-mcp`, else `daw` on the path. The kernel uses your configuration
+With `--spawn` the `paw` binary is `--paw <path>`, else `$PAW_BIN`, else the one
+beside `paw-mcp`, else `paw` on the path. The kernel uses your configuration
 and extensions and the default audio device unless you pass `--clean` or
 `--audio null` after `--`.
 
@@ -45,10 +45,10 @@ These are instructions for you to run; the server does not register itself.
 
 ```sh
 # Attach to paw you have open:
-claude mcp add daw -- /path/to/custom_daw/target/release/daw-mcp
+claude mcp add paw -- /path/to/custom_daw/target/release/paw-mcp
 
 # Or a private headless session, with the escape hatches on:
-claude mcp add daw -- /path/to/custom_daw/target/release/daw-mcp --spawn --allow-eval -- --audio null
+claude mcp add paw -- /path/to/custom_daw/target/release/paw-mcp --spawn --allow-eval -- --audio null
 ```
 
 Add `--scope user` to have it in every project, or put the same in a
@@ -57,8 +57,8 @@ project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "daw": {
-      "command": "/path/to/custom_daw/target/release/daw-mcp",
+    "paw": {
+      "command": "/path/to/custom_daw/target/release/paw-mcp",
       "args": ["--spawn", "--", "--audio", "null"]
     }
   }
@@ -77,16 +77,16 @@ Config) and restart Claude Desktop:
 ```json
 {
   "mcpServers": {
-    "daw": {
-      "command": "/path/to/custom_daw/target/release/daw-mcp",
-      "args": ["--root", "/home/you/music", "--socket", "/run/user/1000/daw.sock"]
+    "paw": {
+      "command": "/path/to/custom_daw/target/release/paw-mcp",
+      "args": ["--root", "/home/you/music", "--socket", "/run/user/1000/paw.sock"]
     }
   }
 }
 ```
 
 Claude Desktop does not start servers in a directory of your choosing, so give
-`--root`. Use the socket path of the running paw (`echo $XDG_RUNTIME_DIR/daw.sock`),
+`--root`. Use the socket path of the running paw (`echo $XDG_RUNTIME_DIR/paw.sock`),
 or `"--spawn"` instead of `"--socket", ...`.
 
 ## Tools
@@ -138,8 +138,8 @@ RMS is not LUFS.
 | Flag | Effect |
 | --- | --- |
 | `--socket <path>` | Attach to the kernel at this socket. |
-| `--spawn [project] [-- daw options]` | Start a headless kernel, stop it on exit. |
-| `--daw <path>` | The `daw` binary for `--spawn`. |
+| `--spawn [project] [-- paw options]` | Start a headless kernel, stop it on exit. |
+| `--paw <path>` | The `paw` binary for `--spawn`. |
 | `--root <dir>` | Where relative paths start and files may be written. Default: the current directory. |
 | `--allow-eval` | Offer `run_command`, `send_keys` and `eval_lua`. |
 | `--allow-any-path` | Let `render` and `project_file` save write outside `--root`. |
@@ -159,7 +159,7 @@ cannot quit the kernel. Paths are checked after resolving `..` and symbolic
 links.
 
 **`--allow-eval`** adds the escape hatches, which are arbitrary code in the
-kernel process with the user's rights: Lua with the whole `daw` interface and
+kernel process with the user's rights: Lua with the whole `paw` interface and
 LuaJIT's `io`, `os` and `ffi`, commands (which include `:lua`, `:w <path>` and
 `:q`), and keys. Through them an assistant can read and write any file, start
 programs, and quit paw; `--root` does not apply to them. Each call is one
@@ -194,8 +194,8 @@ read-only tool here, which a model can call when it needs it.
 on the null backend: the handshake for each revision, the tool schemas, a song
 built with the typed tools only, read back, rendered and measured, undo, a
 rolled-back call, the argument errors, the escape hatches, and a kernel that
-goes away and comes back. Run it with `nix develop -c cargo test -p daw-mcp`
-(it builds `daw` if it is not built yet).
+goes away and comes back. Run it with `nix develop -c cargo test -p paw-mcp`
+(it builds `paw` if it is not built yet).
 
 ## Not done
 

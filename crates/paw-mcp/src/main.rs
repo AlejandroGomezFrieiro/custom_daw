@@ -1,8 +1,8 @@
-//! `daw-mcp`: a Model Context Protocol server for paw.
+//! `paw-mcp`: a Model Context Protocol server for paw.
 //!
 //! It speaks MCP (JSON-RPC 2.0, one message per line) on stdin and stdout and
 //! drives a paw kernel through the kernel's control socket. Everything it
-//! does to the project goes through `daw.api`, so it is undoable like any
+//! does to the project goes through `paw.api`, so it is undoable like any
 //! other edit. Logs go to stderr; stdout carries protocol messages only.
 
 mod audio;
@@ -23,20 +23,20 @@ use kernel::{Kernel, SpawnOpts};
 use tools::{Policy, ToolError, Tools};
 
 const HELP: &str = "\
-daw-mcp: a Model Context Protocol server for paw, on stdin and stdout
+paw-mcp: a Model Context Protocol server for paw, on stdin and stdout
 
 Usage:
-  daw-mcp [options]                     attach to a running kernel
-  daw-mcp --spawn [project] [-- kernel options...]
+  paw-mcp [options]                     attach to a running kernel
+  paw-mcp --spawn [project] [-- kernel options...]
                                         start a headless kernel of its own
 
 Options:
-  --socket <path>     the kernel's control socket (default: $DAW_SOCKET, else
-                      $XDG_RUNTIME_DIR/daw.sock, where `daw` listens)
-  --spawn             start `daw --headless` and stop it on exit; anything
+  --socket <path>     the kernel's control socket (default: $PAW_SOCKET, else
+                      $XDG_RUNTIME_DIR/paw.sock, where `paw` listens)
+  --spawn             start `paw --headless` and stop it on exit; anything
                       after `--` is passed to it (such as --audio null)
-  --daw <path>        the `daw` binary for --spawn (default: $DAW_BIN, the one
-                      beside this program, or `daw` on the path)
+  --paw <path>        the `paw` binary for --spawn (default: $PAW_BIN, the one
+                      beside this program, or `paw` on the path)
   --root <dir>        where relative paths start and files may be written
                       (default: the current directory)
   --allow-eval        offer the escape hatches: run_command, send_keys and
@@ -57,7 +57,7 @@ struct Args {
     socket: Option<PathBuf>,
     spawn: bool,
     project: Option<PathBuf>,
-    daw: Option<PathBuf>,
+    paw: Option<PathBuf>,
     kernel_args: Vec<String>,
     policy: Policy,
     timeout: u64,
@@ -69,7 +69,7 @@ fn parse_args() -> Result<Option<Args>> {
         socket: None,
         spawn: false,
         project: None,
-        daw: None,
+        paw: None,
         kernel_args: Vec::new(),
         policy: Policy {
             root: std::env::current_dir().context("no working directory")?,
@@ -85,12 +85,12 @@ fn parse_args() -> Result<Option<Args>> {
                 return Ok(None);
             }
             "-V" | "--version" => {
-                eprintln!("daw-mcp {}", env!("CARGO_PKG_VERSION"));
+                eprintln!("paw-mcp {}", env!("CARGO_PKG_VERSION"));
                 return Ok(None);
             }
             "--socket" => args.socket = Some(value("--socket")?.into()),
             "--spawn" => args.spawn = true,
-            "--daw" => args.daw = Some(value("--daw")?.into()),
+            "--paw" => args.paw = Some(value("--paw")?.into()),
             "--root" => {
                 let root = PathBuf::from(value("--root")?);
                 args.policy.root = std::path::absolute(&root)?
@@ -173,7 +173,7 @@ impl Server {
 
     fn notification(&mut self, method: &str, _params: &Value) {
         match method {
-            "notifications/initialized" => eprintln!("daw-mcp: client ready"),
+            "notifications/initialized" => eprintln!("paw-mcp: client ready"),
             // Calls run one at a time and to completion; nothing to cancel.
             "notifications/cancelled" => {}
             _ => {}
@@ -222,7 +222,7 @@ impl Server {
         };
         let client = &params["clientInfo"];
         eprintln!(
-            "daw-mcp: {} {} asked for protocol {requested}; speaking {version}",
+            "paw-mcp: {} {} asked for protocol {requested}; speaking {version}",
             client["name"].as_str().unwrap_or("a client"),
             client["version"].as_str().unwrap_or("")
         );
@@ -250,7 +250,7 @@ impl Server {
             Err(ToolError(text)) => (text, true),
         };
         eprintln!(
-            "daw-mcp: {name} {} in {} ms",
+            "paw-mcp: {name} {} in {} ms",
             if is_error { "failed" } else { "done" },
             started.elapsed().as_millis()
         );
@@ -267,7 +267,7 @@ fn capabilities() -> Value {
 
 fn server_info() -> Value {
     json!({
-        "name": "daw-mcp",
+        "name": "paw-mcp",
         "title": "paw",
         "version": env!("CARGO_PKG_VERSION"),
     })
@@ -293,7 +293,7 @@ fn run() -> Result<()> {
         };
         Kernel::spawned(
             SpawnOpts {
-                binary: args.daw.clone().unwrap_or_else(kernel::default_binary),
+                binary: args.paw.clone().unwrap_or_else(kernel::default_binary),
                 project,
                 args: args.kernel_args.clone(),
             },
@@ -309,11 +309,11 @@ fn run() -> Result<()> {
         // Start now, so the first tool call is quick and a broken setup shows
         // in the log at once; a failure is reported again on each call.
         if let Err(err) = kernel.start() {
-            eprintln!("daw-mcp: {err}");
+            eprintln!("paw-mcp: {err}");
         }
     }
     eprintln!(
-        "daw-mcp: kernel socket {}; root {}; eval {}; writes {}",
+        "paw-mcp: kernel socket {}; root {}; eval {}; writes {}",
         kernel.socket.display(),
         args.policy.root.display(),
         if args.policy.allow_eval {
@@ -360,7 +360,7 @@ fn run() -> Result<()> {
         }
     }
     eprintln!(
-        "daw-mcp: stdin closed{}",
+        "paw-mcp: stdin closed{}",
         if server.tools.kernel.is_spawned() {
             "; stopping the kernel"
         } else {
@@ -376,7 +376,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("daw-mcp: {err:#}");
+            eprintln!("paw-mcp: {err:#}");
             ExitCode::FAILURE
         }
     }

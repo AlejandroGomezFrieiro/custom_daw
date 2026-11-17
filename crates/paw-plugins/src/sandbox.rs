@@ -38,10 +38,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
-use daw_engine::device::{
+use paw_engine::device::{
     Controller, Device, DeviceFactory, DeviceInfo, Instance, Io, ParamInfo, Ports, Starting,
 };
-use daw_engine::{Event, MAX_PAIRS, ProcessCtx, Registry};
+use paw_engine::{Event, MAX_PAIRS, ProcessCtx, Registry};
 use serde_json::{Value, json};
 
 /// How the helper is started: this program and its first arguments.
@@ -84,9 +84,9 @@ pub fn set_host_command(argv: Vec<String>, cache: Option<&Path>) {
 }
 
 /// Whether plugins get processes of their own: the helper is known, and
-/// `DAW_PLUGIN_SANDBOX=0` has not turned it off.
+/// `PAW_PLUGIN_SANDBOX=0` has not turned it off.
 pub fn enabled() -> bool {
-    HOST.get().is_some() && std::env::var("DAW_PLUGIN_SANDBOX").as_deref() != Ok("0")
+    HOST.get().is_some() && std::env::var("PAW_PLUGIN_SANDBOX").as_deref() != Ok("0")
 }
 
 pub(crate) fn host_command() -> Option<&'static Vec<String>> {
@@ -237,7 +237,7 @@ impl Shm {
     /// A new block of memory, zeroed, for blocks of up to `max_block` frames.
     fn create(max_block: usize) -> Result<Self> {
         let len = Self::layout(max_block).len;
-        let fd = unsafe { libc::memfd_create(c"daw-plugin".as_ptr(), libc::MFD_CLOEXEC) };
+        let fd = unsafe { libc::memfd_create(c"paw-plugin".as_ptr(), libc::MFD_CLOEXEC) };
         if fd < 0 {
             bail!("no shared memory: {}", std::io::Error::last_os_error());
         }
@@ -928,9 +928,9 @@ fn param_to(param: &ParamInfo) -> Value {
 }
 
 /// How long a plugin may take to be made: [`CREATE_LIMIT`], or the seconds
-/// in `DAW_PLUGIN_CREATE_LIMIT` (for tests).
+/// in `PAW_PLUGIN_CREATE_LIMIT` (for tests).
 fn create_limit() -> Duration {
-    std::env::var("DAW_PLUGIN_CREATE_LIMIT")
+    std::env::var("PAW_PLUGIN_CREATE_LIMIT")
         .ok()
         .and_then(|text| text.parse::<f64>().ok())
         .filter(|secs| secs.is_finite() && *secs > 0.0)
@@ -970,7 +970,7 @@ impl RemoteFactory {
             command.env(crate::ADDED_DIRS_ENV, dirs);
         }
         if TEST_HANG.load(Ordering::Relaxed) {
-            command.env("DAW_PLUGIN_TEST_HANG", "1");
+            command.env("PAW_PLUGIN_TEST_HANG", "1");
         }
         if let Some(cache) = CACHE.lock().unwrap().as_ref() {
             command.arg(cache);
@@ -1275,9 +1275,9 @@ impl Controller for NoController {
 
 /// The helper's audio thread: do each block that is asked for.
 fn audio_loop(shm: Arc<Shm>, mut device: Box<dyn Device>) {
-    daw_engine::no_denormals();
+    paw_engine::no_denormals();
     let header = shm.header();
-    let mut events = daw_engine::EventBuf::with_capacity(EVENTS);
+    let mut events = paw_engine::EventBuf::with_capacity(EVENTS);
     // The further output pairs, filled by the plugin and then copied over;
     // those not asked for are put aside while it runs.
     let mut outs: Vec<Option<[Vec<f32>; 2]>> = (0..MAX_PAIRS - 1)
@@ -1407,13 +1407,13 @@ pub fn serve_with(
         if shm.header().magic != MAGIC {
             bail!("the shared memory is not the DAW's");
         }
-        if std::env::var_os("DAW_PLUGIN_TEST_HANG").is_some() {
+        if std::env::var_os("PAW_PLUGIN_TEST_HANG").is_some() {
             TEST_HANG.store(true, Ordering::Relaxed);
         }
-        // For tests: `DAW_PLUGIN_HOST_HANG=<part of a kind>:<seconds>` makes
+        // For tests: `PAW_PLUGIN_HOST_HANG=<part of a kind>:<seconds>` makes
         // the helper of a matching plugin wait that long before it makes
         // it, as one that waits on a dead network mount does.
-        if let Ok(hang) = std::env::var("DAW_PLUGIN_HOST_HANG")
+        if let Ok(hang) = std::env::var("PAW_PLUGIN_HOST_HANG")
             && let Some((part, secs)) = hang.rsplit_once(':')
             && kind.contains(part)
             && let Ok(secs) = secs.parse::<f64>()

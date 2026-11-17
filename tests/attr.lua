@@ -5,11 +5,11 @@
 local T = ...
 local test, eq, near, fails, fresh, render = T.test, T.eq, T.near, T.fails, T.fresh, T.render
 local channel_peaks = T.channel_peaks
-local api = daw.api
+local api = paw.api
 
 local PIZZ = { type = 0x11, data = 0xA000 }
 
-local function same(a, b, what) eq(daw.inspect(a), daw.inspect(b), what) end
+local function same(a, b, what) eq(paw.inspect(a), paw.inspect(b), what) end
 
 local dirs = 0
 
@@ -19,14 +19,14 @@ local function lua_device(name, text)
   local dir = T.scratch .. "/attr-dev" .. dirs
   os.execute("mkdir -p '" .. dir .. "'")
   T.write_file(dir .. "/" .. name .. ".lua", text)
-  daw.luadev.add_dir(dir)
+  paw.luadev.add_dir(dir)
   return "lua:" .. name
 end
 
 -- An instrument that shows what it is given: while a note sounds, the
 -- left side is its attribute's type / 256 and the right its subclass / 16.
 local SHOWS_ATTR = [[
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 local dev = dsp.device { category = "instrument" }
 local l, r = 0, 0
 function dev.process(b)
@@ -49,7 +49,7 @@ return dev
 -- is the key chosen when it started / 100; the right is how many
 -- keyswitches it has been given / 100.
 local KEYSWITCHED = [[
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 local dev = dsp.device { category = "instrument" }
 local chosen, playing, switches = 0, 0, 0
 function dev.process(b)
@@ -77,7 +77,7 @@ return dev
 
 test("a note's attribute survives edits, undo, copies, pastes and a save and load", function()
   fresh()
-  local t = daw.add_track({ name = "Strings" })
+  local t = paw.add_track({ name = "Strings" })
   local clip = t:add_clip({ start = 0, length = 4, notes = { { pitch = "C4", start = 0, length = 1 } } })
   local at = clip:add_note({ pitch = "E4", start = 1, length = 1, attr = PIZZ })
   same(clip:notes()[at].attr, PIZZ, "added with it")
@@ -86,91 +86,91 @@ test("a note's attribute survives edits, undo, copies, pastes and a save and loa
   clip:set_note(at, { length = 2 })
   same(clip:notes()[at].attr, PIZZ, "a change that leaves it out keeps it")
   api.undo_checkpoint()
-  clip:set_note(at, { attr = daw.attr.m2("10.2") })
-  eq(daw.attr.m2(clip:notes()[at].attr), "10.2", "changed")
+  clip:set_note(at, { attr = paw.attr.m2("10.2") })
+  eq(paw.attr.m2(clip:notes()[at].attr), "10.2", "changed")
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   same(clip:notes()[at].attr, PIZZ, "undone")
-  daw.redo()
-  eq(daw.attr.m2(clip:notes()[at].attr), "10.2", "redone")
+  paw.redo()
+  eq(paw.attr.m2(clip:notes()[at].attr), "10.2", "redone")
   clip:set_note(at, { attr = false })
   eq(clip:notes()[at].attr, nil, "taken away with false")
   clip:set_note(at, { attr = PIZZ })
   fails(function() clip:add_note({ pitch = 60, attr = { type = 300 } }) end, "attribute", "a type past 255")
   fails(function() clip:set_note(at, { attr = { data = 1 } }) end, "attribute", "no type")
   -- Through the workspace edits of addresses.
-  local _, place = daw.address.find_note(clip.id, clip:notes()[at].id)
+  local _, place = paw.address.find_note(clip.id, clip:notes()[at].id)
   eq(place, at, "the note has an address")
-  assert(daw.address.edit({ { uri = daw.address.note(clip.id, clip:notes()[at].id), set = { attr = daw.attr.m2("11.5") } } }))
-  eq(daw.attr.m2(clip:notes()[at].attr), "11.5", "set by its address")
+  assert(paw.address.edit({ { uri = paw.address.note(clip.id, clip:notes()[at].id), set = { attr = paw.attr.m2("11.5") } } }))
+  eq(paw.attr.m2(clip:notes()[at].attr), "11.5", "set by its address")
   clip:set_note(at, { attr = PIZZ })
 
   -- Yanked and put in the roll, and copied with the clip.
-  local value = daw.edit.roll.yank(clip, { kind = "char", c0 = 0, c1 = 4, r0 = 0, r1 = 127 })
-  daw.edit.roll.paste(clip, value, 0, 4)
+  local value = paw.edit.roll.yank(clip, { kind = "char", c0 = 0, c1 = 4, r0 = 0, r1 = 127 })
+  paw.edit.roll.paste(clip, value, 0, 4)
   same(clip:notes()[#clip:notes()].attr, PIZZ, "pasted with it")
   same(clip:duplicate():notes()[2].attr, PIZZ, "a copy of the clip keeps it")
 
   local path = T.scratch .. "/attr.json"
-  daw.project.save(path)
-  daw.project.load(path)
-  local back = daw.track("Strings"):clips()[1]:notes()
+  paw.project.save(path)
+  paw.project.load(path)
+  local back = paw.track("Strings"):clips()[1]:notes()
   same(back[2].attr, PIZZ, "saved and loaded")
   eq(back[1].attr, nil, "a note saved with none loads with none")
 end)
 
-test("daw.attr names the articulations of M2-123 and reads their fields", function()
-  same(daw.attr.m2("11.A"), PIZZ, "pizzicato")
-  eq(daw.attr.m2(PIZZ), "11.A", "and back")
-  same(daw.attr.m2("10.23"), { type = 0x10, data = 0x2300 }, "legato, its variation 3")
-  same(daw.attr.m2("10.2.3"), { type = 0x10, data = 0x2300 }, "written with a dot too")
-  eq(daw.attr.m2({ type = 0x10, data = 0x2300 }), "10.23", "and back")
-  local p = daw.attr.parts(daw.attr.m2("11.A", { direction = "up", string = 4, reset = true }))
+test("paw.attr names the articulations of M2-123 and reads their fields", function()
+  same(paw.attr.m2("11.A"), PIZZ, "pizzicato")
+  eq(paw.attr.m2(PIZZ), "11.A", "and back")
+  same(paw.attr.m2("10.23"), { type = 0x10, data = 0x2300 }, "legato, its variation 3")
+  same(paw.attr.m2("10.2.3"), { type = 0x10, data = 0x2300 }, "written with a dot too")
+  eq(paw.attr.m2({ type = 0x10, data = 0x2300 }), "10.23", "and back")
+  local p = paw.attr.parts(paw.attr.m2("11.A", { direction = "up", string = 4, reset = true }))
   eq(string.format("%X %d %d %s %d", p.subclass, p.variation, p.direction, tostring(p.reset), p.string), "A 0 2 true 4",
     "the fields of Figure 1")
-  local said = daw.attr.describe(PIZZ)
+  local said = paw.attr.describe(PIZZ)
   eq(said.tag .. " | " .. said.text .. " | " .. said.class, "pz | Pizzicato (11.A) | Staccatos and shorts", "described")
-  eq(daw.attr.describe({ type = 0x1B, data = 0x3000 }).code, "1B.3", "a library's own")
-  eq(daw.attr.describe({ type = 3, data = 512 * 2 }).name, "pitch 2.00", "a pitch in 7.9")
-  eq(daw.attr.describe({ type = 2, data = 5 }).text, "attr 0x02 0x0005", "any other type")
-  eq(daw.attr.describe(nil), nil, "none")
-  eq(daw.attr.m2({ type = 3, data = 0 }), nil, "a pitch is no articulation")
-  fails(function() daw.attr.m2("21.0") end, "code", "not a classification")
+  eq(paw.attr.describe({ type = 0x1B, data = 0x3000 }).code, "1B.3", "a library's own")
+  eq(paw.attr.describe({ type = 3, data = 512 * 2 }).name, "pitch 2.00", "a pitch in 7.9")
+  eq(paw.attr.describe({ type = 2, data = 5 }).text, "attr 0x02 0x0005", "any other type")
+  eq(paw.attr.describe(nil), nil, "none")
+  eq(paw.attr.m2({ type = 3, data = 0 }), nil, "a pitch is no articulation")
+  fails(function() paw.attr.m2("21.0") end, "code", "not a classification")
 end)
 
 test("a MIDI file keeps a note's attribute in an event other programs pass over", function()
   fresh()
-  local t = daw.add_track({ name = "Violin" })
+  local t = paw.add_track({ name = "Violin" })
   t:add_clip({ start = 0, length = 4, notes = {
     { pitch = "G4", start = 0, length = 1, attr = PIZZ }, { pitch = "A4", start = 1, length = 1 },
   } })
   local path = T.scratch .. "/attr.mid"
-  daw.midifile.export(path)
-  local file = assert(daw.midifile.read(path))
+  paw.midifile.export(path)
+  local file = assert(paw.midifile.read(path))
   local notes = file.tracks[2].notes
   same(notes[1].attr, PIZZ, "read back from the file")
   eq(notes[2].attr, nil, "only on its note")
   eq(next(file.skipped), nil, "nothing passed over")
   fresh()
-  daw.midifile.import(path, { start = 0 })
-  same(daw.tracks()[1]:clips()[1]:notes()[1].attr, PIZZ, "imported onto the note")
+  paw.midifile.import(path, { start = 0 })
+  same(paw.tracks()[1]:clips()[1]:notes()[1].attr, PIZZ, "imported onto the note")
 end)
 
 test("a recorded MIDI 2.0 note-on keeps its attribute", function()
   fresh()
   api.engine_restart({ backend = "null" })
-  local keys = daw.add_track({ name = "keys" })
+  local keys = paw.add_track({ name = "keys" })
   keys.armed = true
-  daw.flush()
-  daw.transport.record_offset = 0
-  daw.transport.record()
+  paw.flush()
+  paw.transport.record_offset = 0
+  paw.transport.record()
   api.sleep(150)
   -- Note on, channel 1, middle C, velocity 0xC000, type 0x11, data 0xA000.
-  eq(daw.midi.inject_ump({ 0x40903c11, 0xc000a000 }), true, "a MIDI 2.0 note-on")
+  eq(paw.midi.inject_ump({ 0x40903c11, 0xc000a000 }), true, "a MIDI 2.0 note-on")
   api.sleep(150)
-  daw.midi.inject_ump({ 0x40803c00, 0 })
+  paw.midi.inject_ump({ 0x40803c00, 0 })
   api.sleep(50)
-  daw.transport.stop()
+  paw.transport.stop()
   local notes = keys:clips()[1]:notes()
   same(notes[1].attr, PIZZ, "on the note recorded")
 end)
@@ -178,8 +178,8 @@ end)
 test("a Lua device is given each note's attribute", function()
   fresh()
   local kind = lua_device("shows_attr", SHOWS_ATTR)
-  daw.project.tempo = 120
-  local t = daw.add_track({ name = "shows" })
+  paw.project.tempo = 120
+  local t = paw.add_track({ name = "shows" })
   t:add_device(kind)
   t:add_clip({ start = 0, length = 4, notes = {
     { pitch = "C4", start = 0, length = 1, attr = PIZZ }, { pitch = "D4", start = 2, length = 1 },
@@ -197,15 +197,15 @@ end)
 local function keyswitched(map)
   fresh()
   local kind = lua_device("keyswitched", KEYSWITCHED)
-  daw.project.tempo = 120
-  local t = daw.add_track({ name = "Violins" })
+  paw.project.tempo = 120
+  local t = paw.add_track({ name = "Violins" })
   t:add_device(kind)
   t:add_clip({ start = 0, length = 8, notes = {
     { pitch = "C4", start = 0, length = 1 },
-    { pitch = "D4", start = 1, length = 1, attr = daw.attr.m2("11.0") },
-    { pitch = "E4", start = 2, length = 1, attr = daw.attr.m2("11.0") },
+    { pitch = "D4", start = 1, length = 1, attr = paw.attr.m2("11.0") },
+    { pitch = "E4", start = 2, length = 1, attr = paw.attr.m2("11.0") },
     -- Staccatissimo is not in the map: staccato (11.0) plays.
-    { pitch = "F4", start = 3, length = 1, attr = daw.attr.m2("11.4") },
+    { pitch = "F4", start = 3, length = 1, attr = paw.attr.m2("11.4") },
     { pitch = "G4", start = 4, length = 1, attr = PIZZ },
   } })
   t.attr_map = map
@@ -226,7 +226,7 @@ test("an attribute map sends a keyswitch ahead of its note, only when it changes
   end
   local _, r = channel_peaks(info, 2.6, 2.9)
   near(r, 3 / 100, 2e-3, "three keyswitches for three changes")
-  t.attr_map = daw.util.merge(MAP, { send = "every" })
+  t.attr_map = paw.util.merge(MAP, { send = "every" })
   _, r = channel_peaks(render({ tail = 0, bits = 16, ["end"] = 6 }), 2.6, 2.9)
   near(r, 5 / 100, 2e-3, "with send = every, one before every note")
   t.attr_map = nil
@@ -248,8 +248,8 @@ end)
 test("the map the articulations extension writes plays: a default named by its code, variations, milliseconds", function()
   local t = keyswitched({ send = "change", chase = { 1, 11, 64 }, default = "10.0", delay = 0,
     arts = { ["10.0"] = { out = "ks=24" }, ["11.0"] = { out = "ks=D1:100", delay = 0 }, ["11.A2"] = { out = "ks=E1" } } })
-  t:clips()[1]:set_note(5, { attr = daw.attr.m2("11.A2") })
-  eq(daw.attr.m2(t:clips()[1]:notes()[5].attr), "11.A2", "a variation's code")
+  t:clips()[1]:set_note(5, { attr = paw.attr.m2("11.A2") })
+  eq(paw.attr.m2(t:clips()[1]:notes()[5].attr), "11.A2", "a variation's code")
   local info = render({ tail = 0, bits = 16, ["end"] = 6 })
   for i, key in ipairs({ 24, 26, 26, 26, 28 }) do
     near(channel_peaks(info, (i - 1) * 0.5 + 0.05, (i - 1) * 0.5 + 0.4), key / 100, 2e-3, "note " .. i .. " plays " .. key)
@@ -268,14 +268,14 @@ test("an attribute map is checked, undone, saved and copied with its track", fun
   t.attr_map = { send = "every", by_type = { [0x11] = { out = "hold=D1 cc32=40", name = "shorts" } }, chase = { 1 } }
   eq(t.attr_map.by_type["17"].name, "shorts", "a classification's entry, and what else it carries")
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(t.attr_map.arts["11.A"].out, "ks=E1", "undone")
-  daw.redo()
+  paw.redo()
   local path = T.scratch .. "/attr-map.json"
-  daw.project.save(path)
-  daw.project.load(path)
-  eq(daw.track("Violins").attr_map.by_type["17"].out, "hold=D1 cc32=40", "saved and loaded")
-  eq(daw.track("Violins"):duplicate().attr_map ~= nil, true, "a copy of the track keeps it")
+  paw.project.save(path)
+  paw.project.load(path)
+  eq(paw.track("Violins").attr_map.by_type["17"].out, "hold=D1 cc32=40", "saved and loaded")
+  eq(paw.track("Violins"):duplicate().attr_map ~= nil, true, "a copy of the track keeps it")
 end)
 
 --- The first time from `from` seconds on at which the left side of a
@@ -300,12 +300,12 @@ local LATE = { default = { out = "ks=C1" }, arts = { ["11.0"] = { out = "ks=D1",
 local function delayed()
   fresh()
   local kind = lua_device("keyswitched", KEYSWITCHED)
-  daw.project.tempo = 120
-  local t = daw.add_track({ name = "Violins" })
+  paw.project.tempo = 120
+  local t = paw.add_track({ name = "Violins" })
   t:add_device(kind)
   t:add_clip({ start = 0, length = 4, notes = {
     { pitch = "C4", start = 0, length = 0.5 },
-    { pitch = "D4", start = 2, length = 0.5, attr = daw.attr.m2("11.0") },
+    { pitch = "D4", start = 2, length = 0.5, attr = paw.attr.m2("11.0") },
   } })
   t.attr_map = LATE
   return t
@@ -313,20 +313,20 @@ end
 
 test("a delay in an attribute map plays its notes that much earlier, and the rest where they are", function()
   local t = delayed()
-  eq(daw.attr.delay_of(t, daw.attr.m2("11.0")), -100, "the staccato's delay, in milliseconds")
-  eq(daw.attr.delay_of(t, daw.attr.m2("11.4")), -100, "and what falls back to it")
-  eq(daw.attr.delay_of(t, nil), 0, "a note with none is not moved")
+  eq(paw.attr.delay_of(t, paw.attr.m2("11.0")), -100, "the staccato's delay, in milliseconds")
+  eq(paw.attr.delay_of(t, paw.attr.m2("11.4")), -100, "and what falls back to it")
+  eq(paw.attr.delay_of(t, nil), 0, "a note with none is not moved")
   local info = render({ tail = 0, bits = 16, ["end"] = 4 })
   near(onset(info, 0), 0, 1e-3, "the plain note on its beat")
   near(onset(info, 0.5), 0.9, 2e-3, "the staccato a tenth of a second before its beat (1 s)")
   near(channel_peaks(info, 0.92, 0.98), 0.26, 2e-3, "with its keyswitch before it")
   -- At another tempo it is still a tenth of a second.
-  daw.project.tempo = 60
+  paw.project.tempo = 60
   near(onset(render({ tail = 0, bits = 16, ["end"] = 4 }), 1), 1.9, 2e-3, "a tenth before 2 s at 60 bpm")
-  daw.project.tempo = 120
-  t.attr_map = daw.util.merge(LATE, { delay = 50 })
+  paw.project.tempo = 120
+  t.attr_map = paw.util.merge(LATE, { delay = 50 })
   near(onset(render({ tail = 0, bits = 16, ["end"] = 4 }), 0), 0.05, 2e-3, "the map's own delay for the rest")
-  fails(function() t.attr_map = daw.util.merge(LATE, { delay = 5000 }) end, "delay", "milliseconds are checked")
+  fails(function() t.attr_map = paw.util.merge(LATE, { delay = 5000 }) end, "delay", "milliseconds are checked")
 end)
 
 test("a note moved before where playback starts is started there", function()
@@ -336,7 +336,7 @@ test("a note moved before where playback starts is started there", function()
   near(onset(info, 0), 0, 1e-3, "sounding from the start of the render")
   near(channel_peaks(info, 0.01, 0.04), 0.26, 2e-3, "as staccato")
   -- At the very start of the song.
-  t:clips()[1]:set_note(1, { attr = daw.attr.m2("11.0") })
+  t:clips()[1]:set_note(1, { attr = paw.attr.m2("11.0") })
   info = render({ tail = 0, bits = 16, ["end"] = 4 })
   near(onset(info, 0), 0, 1e-3, "a note on the first beat cannot be earlier: it starts at once")
   near(channel_peaks(info, 0.01, 0.04), 0.26, 2e-3, "with its keyswitch")
@@ -344,36 +344,36 @@ end)
 
 test("a delayed note plays as early live as it renders", function()
   local t = delayed()
-  daw.flush()
-  daw.transport.seek(0)
-  daw.transport.play()
+  paw.flush()
+  paw.transport.seek(0)
+  paw.transport.play()
   -- The staccato's beat is 2; it should be heard from 1.8 on.
   local heard
   local deadline = api.now() + 10000
   while not heard and api.now() < deadline do
-    local pos = daw.transport.position
+    local pos = paw.transport.position
     if pos > 1.2 and t:meter() > 0.2 then heard = pos end
-    daw.wait(2)
+    paw.wait(2)
   end
-  daw.transport.stop()
+  paw.transport.stop()
   eq(heard ~= nil, true, "heard")
   eq(heard >= 1.75 and heard < 1.97, true, "heard before its beat, from about 1.8: " .. tostring(heard))
   -- Going round a loop, every time.
-  daw.transport.loop_start, daw.transport.loop_end = 1, 3
-  daw.transport.loop_enabled = true
-  T.after(function() daw.transport.loop_enabled = false end)
-  daw.transport.seek(1)
-  daw.transport.play()
+  paw.transport.loop_start, paw.transport.loop_end = 1, 3
+  paw.transport.loop_enabled = true
+  T.after(function() paw.transport.loop_enabled = false end)
+  paw.transport.seek(1)
+  paw.transport.play()
   local onsets, was = {}, false
   deadline = api.now() + 15000
   while #onsets < 3 and api.now() < deadline do
-    local pos, on = daw.transport.position, t:meter() > 0.2
+    local pos, on = paw.transport.position, t:meter() > 0.2
     -- (What the meter still shows from before is passed over.)
     if on and not was and pos > 1.5 then onsets[#onsets + 1] = pos end
     was = on
-    daw.wait(2)
+    paw.wait(2)
   end
-  daw.transport.stop()
+  paw.transport.stop()
   eq(#onsets, 3, "heard three times round")
   for i, pos in ipairs(onsets) do
     eq(pos >= 1.75 and pos < 1.97, true, "round " .. i .. " before its beat: " .. tostring(pos))
@@ -382,16 +382,16 @@ end)
 
 test("a note played live with an attribute is preceded by what the map sends", function()
   local t = keyswitched(MAP)
-  daw.flush()
+  paw.flush()
   t:note_on("C5", 100, PIZZ)
-  daw.flush()
+  paw.flush()
   api.sleep(150)
   local l = t:meter()
   t:note_off("C5")
   near(l, 28 / 100, 0.02, "the pizzicato keyswitch, then the note")
 end)
 
---- The test plugin built by `cargo test -p daw-plugins`, in a directory of
+--- The test plugin built by `cargo test -p paw-plugins`, in a directory of
 --- its own; nil when it has not been built.
 local function stub_plugin()
   local built = "target/release/examples/libstub_clap.so"
@@ -402,7 +402,7 @@ local function stub_plugin()
 end
 
 local function has_kind(kind)
-  for _, info in ipairs(daw.device_types()) do
+  for _, info in ipairs(paw.device_types()) do
     if info.kind == kind then return info end
   end
 end
@@ -410,14 +410,14 @@ end
 test("a plugin an extension ships is found once its directory is added, plays attributes and names its keys", function()
   fresh()
   local dir = stub_plugin()
-  if not dir then return "skipped: `cargo test -p daw-plugins` builds the test plugin" end
+  if not dir then return "skipped: `cargo test -p paw-plugins` builds the test plugin" end
   local kind = "clap:dev.paw.stub"
   eq(has_kind(kind), nil, "not found before")
-  local found = daw.plugins.add_dir(dir, "stubs")
+  local found = paw.plugins.add_dir(dir, "stubs")
   eq(found.kinds[1], kind, "found in the directory")
   eq(has_kind(kind).from, "stubs", "listed as the extension's")
-  daw.project.tempo = 120
-  local t = daw.add_track({ name = "Stub" })
+  paw.project.tempo = 120
+  local t = paw.add_track({ name = "Stub" })
   t:add_device(kind)
   local clip = t:add_clip({ start = 0, length = 4, notes = {
     { pitch = "C4", start = 0, length = 1, attr = PIZZ }, { pitch = "D1", start = 2, length = 1 },
@@ -425,10 +425,10 @@ test("a plugin an extension ships is found once its directory is added, plays at
   local l, r = channel_peaks(render({ tail = 0, bits = 16, ["end"] = 2 }), 0.1, 0.4)
   near(l, 0x11 / 256, 2e-3, "the plugin took the note as MIDI 2.0, with its type")
   near(r, 0xA / 16, 2e-3, "and its data")
-  eq(daw.plugins.key_names(t.id)[24], "Sustain", "the names it gives its keys")
+  eq(paw.plugins.key_names(t.id)[24], "Sustain", "the names it gives its keys")
   -- The piano roll writes them on its keys, and K says what is under the cursor.
-  daw.ui.views.pianoroll:edit(clip)
-  local roll = daw.ui.views.pianoroll
+  paw.ui.views.pianoroll:edit(clip)
+  local roll = paw.ui.views.pianoroll
   roll.pitch, roll.beat, roll.top = 30, 2, 30
   local screen = table.concat(api.ui_snapshot(160, 50), "\n")
   eq(screen:find("Sus…", 1, true) ~= nil and screen:find("Sta…", 1, true) ~= nil, true, "the names on their keys")
@@ -439,10 +439,10 @@ end)
 
 test("the piano roll writes a note's articulation on it, and K names it", function()
   fresh()
-  local t = daw.add_track({ name = "Strings" })
+  local t = paw.add_track({ name = "Strings" })
   local clip = t:add_clip({ start = 0, length = 4, notes = { { pitch = "C4", start = 0, length = 2, attr = PIZZ } } })
-  daw.ui.views.pianoroll:edit(clip)
-  local roll = daw.ui.views.pianoroll
+  paw.ui.views.pianoroll:edit(clip)
+  local roll = paw.ui.views.pianoroll
   roll.pitch, roll.beat = 60, 0
   local screen = table.concat(api.ui_snapshot(160, 50), "\n")
   eq(screen:find("pz", 1, true) ~= nil, true, "the tag on the note")
@@ -456,18 +456,18 @@ end)
 
 test("Ex matches and sets a note's articulation by its code", function()
   fresh()
-  local t = daw.add_track({ name = "Strings" })
+  local t = paw.add_track({ name = "Strings" })
   local clip = t:add_clip({ start = 0, length = 4, notes = {
     { pitch = 60, start = 0, length = 1 }, { pitch = 62, start = 1, length = 1, attr = PIZZ },
   } })
-  daw.cursor.set_track(t)
-  daw.commands.exec("%s/attr=11.A/attr=11.0/g")
-  eq(daw.attr.m2(clip:notes()[2].attr), "11.0", "the pizzicato made staccato")
-  daw.commands.exec("%s/attr=none/attr=10.2/g")
-  eq(daw.attr.m2(clip:notes()[1].attr), "10.2", "the note with none made legato")
-  daw.commands.exec("%s/c4/attr=none/g")
+  paw.cursor.set_track(t)
+  paw.commands.exec("%s/attr=11.A/attr=11.0/g")
+  eq(paw.attr.m2(clip:notes()[2].attr), "11.0", "the pizzicato made staccato")
+  paw.commands.exec("%s/attr=none/attr=10.2/g")
+  eq(paw.attr.m2(clip:notes()[1].attr), "10.2", "the note with none made legato")
+  paw.commands.exec("%s/c4/attr=none/g")
   eq(clip:notes()[1].attr, nil, "and none again")
-  fails(function() daw.commands.exec("%s/d4/attr=99.1/g") end, "99.1", "a code there is not")
+  fails(function() paw.commands.exec("%s/d4/attr=99.1/g") end, "99.1", "a code there is not")
 end)
 
 -- paw's sampler (extensions/sampler): a note's attribute reaches the plugin
@@ -475,27 +475,27 @@ end)
 -- Played when the plugin is built (extensions/sampler/native/test.sh runs
 -- this with it); skipped otherwise.
 test("sampler: a note's attribute chooses the articulation, with no keyswitch and no attr_map", function()
-  daw.ext.load("extensions/sampler")
+  paw.ext.load("extensions/sampler")
   local s = require("sampler")
   if not s.available() then return "skipped: the sampler plugin is not built (extensions/sampler/native/build.sh)" end
-  local loaded = daw.ext.loaded.sampler
+  local loaded = paw.ext.loaded.sampler
   local dir = T.scratch .. "/attr-sampler-fixtures"
   if os.execute("'" .. loaded.path .. "/bin/paw-sampler' fixtures '" .. dir .. "' 2>/dev/null") ~= 0 then
     return "skipped: extensions/sampler/bin/paw-sampler is not built"
   end
   fresh()
-  daw.project.tempo = 120
-  local track = daw.add_track({ name = "Strings" })
-  daw.track_kinds.set(track, "sampler", { path = dir .. "/ks.sfz", ask = false })
+  paw.project.tempo = 120
+  local track = paw.add_track({ name = "Strings" })
+  paw.track_kinds.set(track, "sampler", { path = dir .. "/ks.sfz", ask = false })
   local device = s.device_of(track.id)
   for _ = 1, 400 do
     if api.device_get(device).status == "running" then break end
-    daw.wait(50)
+    paw.wait(50)
   end
   eq(track.attr_map, nil, "no keyswitches are sent for it")
   track:add_clip({ start = 0, length = 8, notes = {
     { pitch = 69, start = 0, length = 1, velocity = 100 },
-    { pitch = 69, start = 2, length = 1, velocity = 100, attr = daw.attr.m2("11.0") },
+    { pitch = 69, start = 2, length = 1, velocity = 100, attr = paw.attr.m2("11.0") },
     { pitch = 69, start = 4, length = 1, velocity = 100 },
   } })
   local info = render({ bits = 16, tail = 0, ["end"] = 6 })

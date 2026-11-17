@@ -3,18 +3,18 @@
 -- clear of what it previews, `K` on a note. Loaded by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation"), require("notation.model")
 end
 
 local function N(pitch, start, length, velocity) return { pitch = pitch, start = start, length = length, velocity = velocity or 80 } end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -22,11 +22,11 @@ end
 local function song(notes, length)
   fresh()
   local view = load()
-  local track = daw.add_track({ name = "Lead" })
+  local track = paw.add_track({ name = "Lead" })
   track:add_device("synth")
   local clip = track:add_clip({ start = 0, length = length or 8, name = "tune", notes = notes or {} })
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
   view.value, view.dot, view.voice, view.triplets, view.tuplet = 1, false, 1, false, nil
   api.undo_checkpoint()
@@ -158,7 +158,7 @@ test("notation: in the cell view a low second voice's stems stop at their system
     notes[#notes + 1] = low
   end
   song(notes, 16)
-  daw.cmd("notation.clef", { "treble" })
+  paw.cmd("notation.clef", { "treble" })
   local rows = api.ui_snapshot(80, 100)
   local numbers
   for i, row in ipairs(rows) do
@@ -191,7 +191,7 @@ end)
 
 test("notation: :notation.set alone lists every setting on a page, saying which the clip changed", function()
   song(scale())
-  daw.cmd("notation.set", { "swing", "off" })
+  paw.cmd("notation.set", { "swing", "off" })
   keys(":notation.set<CR>")
   local text = screen(160, 50)
   keys("q")

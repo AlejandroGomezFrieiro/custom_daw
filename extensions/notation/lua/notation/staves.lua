@@ -16,9 +16,9 @@
 -- step; Ex reads staves as tracks (`:5,8 s4 >`, `:5,8 Strings art pizz`).
 -- A condensed staff is two players: the cursor's voice says whose clip
 -- is edited, and an edit where they play `a2` is made for both.
-local api = daw.api
-local util = daw.util
-local keymap = daw.keymap
+local api = paw.api
+local util = paw.util
+local keymap = paw.keymap
 local view = require("notation")
 local model = require("notation.model")
 local P = require("notation.parts")
@@ -27,8 +27,8 @@ local S = {}
 local EPS = 1e-6
 local ROWS = 128   -- rows of the grid an instrument takes: its pitches
 
-daw.option.define("score_dim", false)     -- the staves not under the cursor drawn dimmer
-daw.option.define("score_colors", false)  -- the staves not under the cursor in their tracks' colours
+paw.option.define("score_dim", false)     -- the staves not under the cursor drawn dimmer
+paw.option.define("score_colors", false)  -- the staves not under the cursor in their tracks' colours
 
 -- Staves and instruments ---------------------------------------------------------------------------
 
@@ -51,9 +51,9 @@ function S.runs(layout)
   return out
 end
 
---- The group the song is narrowed to (`daw.scope`), or nil.
+--- The group the song is narrowed to (`paw.scope`), or nil.
 local function scope_group()
-  local scope = rawget(daw, "scope")
+  local scope = rawget(paw, "scope")
   return scope and scope.current()
 end
 
@@ -93,7 +93,7 @@ end
 --- staff, or "last"), else onto its middle line.
 function view:activate(id, opts)
   opts = opts or {}
-  local old, new = self:clip(), daw.clip(id)
+  local old, new = self:clip(), paw.clip(id)
   if not (old and new) then return end
   if old.id ~= id then
     local song = old:get().start + self.beat
@@ -168,12 +168,12 @@ function S.player(dir)
   if to == F.player then return false end
   local step = view.step
   view:activate(S.clip_at(u, to, S.song()), { step = step })
-  daw.notify("voice " .. to .. ": " .. api.track_get(u.tracks[to]).name)
+  paw.notify("voice " .. to .. ": " .. api.track_get(u.tracks[to]).name)
   return true
 end
 
 local function alone()
-  daw.notify("the clip alone: :score shows every track's staff", "warn")
+  paw.notify("the clip alone: :score shows every track's staff", "warn")
 end
 
 --- A staff down (1) or up (-1), `count` times: through a grand staff's two,
@@ -193,7 +193,7 @@ function S.unit(dir, count)
   if not (F and F.multi) then return alone() end
   local units = F.layout.units
   local k = util.clamp(F.unit + dir * (count or 1), 1, #units)
-  if k == F.unit then return daw.notify(dir > 0 and "the last instrument of the score" or "the first instrument of the score", "warn") end
+  if k == F.unit then return paw.notify(dir > 0 and "the last instrument of the score" or "the first instrument of the score", "warn") end
   view:activate(S.clip_at(units[k], 1, S.song()))
 end
 
@@ -211,7 +211,7 @@ function S.sibling(dir, count)
   local run = run_of(F)
   local k = F.unit + dir * (count or 1)
   if not run or k < run.first or k > run.last then
-    return daw.notify(dir > 0 and "the last instrument of its group" or "the first instrument of its group", "warn")
+    return paw.notify(dir > 0 and "the last instrument of its group" or "the first instrument of its group", "warn")
   end
   view:activate(S.clip_at(F.layout.units[k], 1, S.song()))
 end
@@ -543,16 +543,16 @@ function S.show(tracks, label, opts)
     local list = P.instruments({ tracks = tracks })
     clip = list[1] and list[1].clip
   end
-  if not clip then return daw.notify(tracks and "none of those tracks has MIDI" or "no track has MIDI", "warn") end
+  if not clip then return paw.notify(tracks and "none of those tracks has MIDI" or "no track has MIDI", "warn") end
   if not view:clip() or view:clip().id ~= clip.id then view:edit(clip) end
   view.parts = { kind = "score", condensed = view.parts and view.parts.condensed or opts.condensed, tracks = tracks,
     label = label, from = opts.from, to = opts.to, check = opts.check, scope = opts.scope }
   view.cache = nil
   local F = view:frame()
   if not (F and F.multi) then return end
-  daw.ui.focus("notation")
-  if daw.canvas and not daw.canvas.open_views.notation then
-    daw.canvas.open("notation", { title = "Notation", width = 1100, height = 560 })
+  paw.ui.focus("notation")
+  if paw.canvas and not paw.canvas.open_views.notation then
+    paw.canvas.open("notation", { title = "Notation", width = 1100, height = 560 })
   end
   api.ui_redraw()
   return F
@@ -566,7 +566,7 @@ local function selected_tracks()
     if not (last and last.view == "arrange") then return nil end
     region = { r0 = math.min(last.row, last.cursor_row or last.row), r1 = math.max(last.row, last.cursor_row or last.row) }
   end
-  local rows, out = daw.groups.rows(), {}
+  local rows, out = paw.groups.rows(), {}
   for r = math.max(1, region.r0), region.r1 do
     if rows[r] then out[#out + 1] = rows[r] end
   end
@@ -575,16 +575,16 @@ end
 
 local function shown_message(F)
   local count = #F.layout.units
-  daw.notify(view.score_name() .. ": " .. count .. (count == 1 and " instrument" or " instruments")
+  paw.notify(view.score_name() .. ": " .. count .. (count == 1 and " instrument" or " instruments")
     .. ", editing " .. api.track_get(api.clip_get(view.clip_id).track).name .. "; Ctrl-j Ctrl-k ]] [[ move between staves")
 end
 
-daw.command("score", function(ctx)
+paw.command("score", function(ctx)
   local words = tostring(ctx.args[1] or ""):match("^%s*(.-)%s*$")
   if words == "off" then
     view.parts, view.cache = nil, nil
     api.ui_redraw()
-    return daw.notify("notation: the clip alone")
+    return paw.notify("notation: the clip alone")
   end
   local tracks, label
   if ctx.range and ctx.range.tracks then
@@ -593,12 +593,12 @@ daw.command("score", function(ctx)
     tracks = nil
   elseif words == "selection" then
     tracks = selected_tracks()
-    if not tracks then return daw.notify("select tracks in the arrange view first (V)", "warn") end
+    if not tracks then return paw.notify("select tracks in the arrange view first (V)", "warn") end
     label = "the score of " .. #tracks .. " tracks"
   elseif words ~= "" then
-    local scope = daw.scope
+    local scope = paw.scope
     local group = scope.find(words)
-    if not group then return daw.notify("no group '" .. words .. "': `:score` alone, `all`, `selection`, or a group's name", "warn") end
+    if not group then return paw.notify("no group '" .. words .. "': `:score` alone, `all`, `selection`, or a group's name", "warn") end
     tracks, label = scope.tracks(group), "the score of " .. api.track_get(group).name
   end
   -- Alone: the tracks the tab is narrowed to, whichever they are then.
@@ -609,29 +609,29 @@ end, { raw = true, range = true,
   complete = function()
     local out = { "all", "selection", "off" }
     for _, id in ipairs(api.track_list()) do
-      if daw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
     end
     return out
   end })
 
-daw.command("score.check", function()
+paw.command("score.check", function()
   if view.parts and view.parts.check then
     view.parts.check, view.page = nil, false
     api.ui_redraw()
-    return daw.notify("the score to edit again")
+    return paw.notify("the score to edit again")
   end
   if not (view.parts and view:frame() and view:frame().multi) then
     if not S.show(nil, nil, { scope = true }) then return end
   end
   view.parts.check, view.page, view.galley = true, true, false
   api.ui_redraw()
-  daw.notify("the pages as they will be exported, to read: :score.check again (or zp) to edit")
+  paw.notify("the pages as they will be exported, to read: :score.check again (or zp) to edit")
 end, { desc = "Show the score's pages as they will be exported, to check them (read only); again, back to editing" })
 
-daw.command("score.split", function(ctx)
+paw.command("score.split", function(ctx)
   local F = view:frame()
   local u = F and F.multi and F.layout.units[F.unit]
-  if not (u and u.condensed) then return daw.notify("not on a condensed staff (`:part.condense`)", "warn") end
+  if not (u and u.condensed) then return paw.notify("not on a condensed staff (`:part.condense`)", "warn") end
   local bars = {}
   local from, to
   if ctx.range and ctx.range.from then
@@ -660,7 +660,7 @@ daw.command("score.split", function(ctx)
   end)
   view.cache = nil
   api.ui_redraw()
-  daw.notify(joined and "written a2 again where the players play the same; an edit there is made for both"
+  paw.notify(joined and "written a2 again where the players play the same; an edit there is made for both"
     or "the two players written apart there: an edit is the cursor's player's alone")
 end, { range = true, desc = "On a condensed staff: write the two players apart in the cursor's bar (or the range, or selection) though they play the same, so that an edit there is one player's; again, together (a2)" })
 
@@ -673,7 +673,7 @@ end, { range = true, desc = "On a condensed staff: write the two players apart i
 -- notation.dyn p`). Ex's own commands work on their notes; a command of
 -- the view runs on each staff's clip in turn, as if the cursor were there.
 
-local A = daw.ex.views.notation
+local A = paw.ex.views.notation
 
 --- The clips of the staves `a` to `b` of the score.
 local function staff_clips(layout, a, b)
@@ -715,7 +715,7 @@ A.clips_at = function(s, i)
   end
   -- A group or a family by its name, followed by a command.
   local word, e = s:match("^(%a[%w_]*)()", i)
-  if word and s:match("^%s", e) and not daw.commands.get(word) then
+  if word and s:match("^%s", e) and not paw.commands.get(word) then
     local low, out = word:lower(), {}
     for _, u in ipairs(layout.units) do
       local group = u.group and api.track_get(u.group).name:lower()

@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use daw_engine::backend::{self, BackendOptions, find_device};
+use paw_engine::backend::{self, BackendOptions, find_device};
 use serde_json::{Value, json};
 
 use super::Session;
@@ -230,7 +230,7 @@ impl Session {
             return;
         };
         let tracks = |session: &Session, port: &str| -> Vec<String> {
-            let key = daw_engine::midi::port_key(port);
+            let key = paw_engine::midi::port_key(port);
             session
                 .project
                 .tracks
@@ -239,7 +239,7 @@ impl Session {
                     t.midi_input
                         .as_ref()
                         .and_then(|m| m.port.as_deref())
-                        .is_some_and(|p| daw_engine::midi::port_key(p) == key)
+                        .is_some_and(|p| paw_engine::midi::port_key(p) == key)
                 })
                 .map(|t| t.name.clone())
                 .collect()

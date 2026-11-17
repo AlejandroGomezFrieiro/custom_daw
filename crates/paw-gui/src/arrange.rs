@@ -1,6 +1,6 @@
 //! The arrange view: the ruler along the top, the tracks' headers down the
 //! left, and the timeline with the clips beside them. What is drawn is only
-//! what shows; what a gesture means is the kernel's (`daw.frontend.act`).
+//! what shows; what a gesture means is the kernel's (`paw.frontend.act`).
 
 use std::collections::HashMap;
 
@@ -734,7 +734,7 @@ impl View {
     fn lane_of(&self, row: usize) -> Option<i64> {
         let track = self.s.tracks.get(row)?;
         self.shown_lane(row).map(|l| l.id).or_else(|| {
-            self.ask("return daw.frontend.act.lane(...)", json!([track.id, "volume"])).as_i64()
+            self.ask("return paw.frontend.act.lane(...)", json!([track.id, "volume"])).as_i64()
         })
     }
 
@@ -749,8 +749,8 @@ impl View {
     /// Which lane a track shows: volume, pan, or one of its parameters'.
     pub fn show_lane(&mut self, track: i64, choice: usize) {
         let made = match choice {
-            0 => self.ask("return daw.frontend.act.lane(...)", json!([track, "volume"])).as_i64(),
-            1 => self.ask("return daw.frontend.act.lane(...)", json!([track, "pan"])).as_i64(),
+            0 => self.ask("return paw.frontend.act.lane(...)", json!([track, "volume"])).as_i64(),
+            1 => self.ask("return paw.frontend.act.lane(...)", json!([track, "pan"])).as_i64(),
             _ => self.s.track(track).and_then(|t| t.lanes.iter().filter(|l| l.param).nth(choice - 2)).map(|l| l.id),
         };
         if let Some(lane) = made {
@@ -763,7 +763,7 @@ impl View {
     /// track shows.
     pub fn automate_param(&mut self, device: i64, key: &str) {
         let track = self.s.selected;
-        if let Some(lane) = self.ask("return daw.frontend.act.lane(...)", json!([track, "param", device, key])).as_i64() {
+        if let Some(lane) = self.ask("return paw.frontend.act.lane(...)", json!([track, "param", device, key])).as_i64() {
             self.arrange.shown.insert(track, lane);
             self.show_automation = true;
         }
@@ -971,9 +971,9 @@ impl View {
         let k = &self.k;
         self.pictures.get(ctx, (id, 0), &key, || {
             let call = if midi {
-                json!(["return daw.frontend.preview(...)", id])
+                json!(["return paw.frontend.preview(...)", id])
             } else {
-                json!(["return daw.frontend.peaks(...)", id, points])
+                json!(["return paw.frontend.peaks(...)", id, points])
             };
             let flat: Vec<f32> = k.borrow_mut().call("eval", call).map(|v| rows(&v).iter().map(number).collect()).unwrap_or_default();
             let picture = if midi { pictures::notes_picture(&flat, length) } else { pictures::wave_picture(&flat) };
@@ -1163,7 +1163,7 @@ impl View {
                 let texture = self.pictures.get(&ctx, (id, index + 1), &pkey, || {
                     let flat: Vec<f32> = k
                         .borrow_mut()
-                        .call("eval", json!(["return daw.frontend.take_preview(...)", id, take, points]))
+                        .call("eval", json!(["return paw.frontend.take_preview(...)", id, take, points]))
                         .map(|v| rows(&v).iter().map(number).collect())
                         .unwrap_or_default();
                     let picture = if midi { pictures::notes_picture(&flat, length) } else { pictures::wave_picture(&flat) };

@@ -1,5 +1,5 @@
 //! Hearing an instance on another machine: the `audio.frame` events it
-//! sends a connection that listens (see `daw_proto::monitor`), played here
+//! sends a connection that listens (see `paw_proto::monitor`), played here
 //! through this machine's sound device, or written to a file in its place.
 //!
 //! Frames arrive when the network brings them, which is not evenly. They
@@ -47,7 +47,7 @@ impl Jitter {
 
     /// Take an `audio.frame` payload.
     pub fn push(&mut self, payload: &Value) -> Result<()> {
-        let frame = daw_proto::monitor::decode(payload)?;
+        let frame = paw_proto::monitor::decode(payload)?;
         if frame.rate != self.rate {
             self.queue.clear();
             self.rate = frame.rate;
@@ -229,7 +229,7 @@ impl Wav {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daw_proto::monitor::Encoder;
+    use paw_proto::monitor::Encoder;
 
     /// `seconds` of a sine at `hz`, as frames from an engine at 48 kHz.
     fn frames(seconds: f64, hz: f32) -> Vec<Value> {
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn the_file_holds_what_would_have_been_played() {
-        let dir = std::env::temp_dir().join(format!("daw-listen-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-listen-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("heard.wav");
         let player = Player::file(&path, 48000).unwrap();

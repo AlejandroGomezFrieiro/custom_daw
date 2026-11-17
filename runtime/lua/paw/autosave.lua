@@ -4,9 +4,9 @@
 -- project is saved or closed with nothing unsaved; one left behind by a
 -- session that ended badly is offered again at the next start.
 --
---   daw.opt.autosave = 60     -- seconds between copies; 0 turns them off
+--   paw.opt.autosave = 60     -- seconds between copies; 0 turns them off
 --   :recover                  -- list what was left behind, and open one
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local env = api.env()
@@ -32,7 +32,7 @@ end
 --- `force`, as when a take begins). Returns the file written, or nil.
 function M.copy(force)
   local p = api.project_get()
-  if not force and (not daw.project.unsaved() or p.edits == copied) then return nil end
+  if not force and (not paw.project.unsaved() or p.edits == copied) then return nil end
   -- Something being tried in a picker is not work to keep: the next copy has it if it stays.
   if not force and api.trial_active() then return nil end
   local file = M.file()
@@ -82,12 +82,12 @@ end
 --- one of them is what ended the session.
 function M.recover(file, opts)
   opts = opts or {}
-  if not daw.project.guard("recover", opts.force) then return end
+  if not paw.project.guard("recover", opts.force) then return end
   api.project_recover(file, opts)
   if not opts.as_path then os.remove(file) end
   copied = nil
   M.offered = nil
-  daw.notify("recovered " .. (api.project_get().path or "an unsaved project") .. ": save it to keep it")
+  paw.notify("recovered " .. (api.project_get().path or "an unsaved project") .. ": save it to keep it")
 end
 
 local function readable(file)
@@ -129,13 +129,13 @@ function M.offer(path, err)
   if #alternatives == 0 then return 0 end
   M.offered = { path = path, error = err, list = alternatives }
   -- What can be done first: the reason is long, and a narrow line cuts it.
-  daw.notify(string.format("%s will not open; `:recover` opens %s instead (%s)", path:match("[^/]+$") or path,
+  paw.notify(string.format("%s will not open; `:recover` opens %s instead (%s)", path:match("[^/]+$") or path,
     #alternatives == 1 and ("its " .. alternatives[1].kind) or "its backup or safety copy", err), "error")
   return #alternatives
 end
 
 -- Opening a project that fails to parse names what can be opened instead,
--- however it is opened (`daw.project.load`, `daw.open`, `:edit`).
+-- however it is opened (`paw.project.load`, `paw.open`, `:edit`).
 local function guarded(load)
   return function(path, ...)
     local ok, err = pcall(load, path, ...)
@@ -147,60 +147,60 @@ local function guarded(load)
     error(err, 0)
   end
 end
-rawset(daw.project, "load", guarded(daw.project.load))
+rawset(paw.project, "load", guarded(paw.project.load))
 api.project_load = guarded(api.project_load)
 
 local function restart()
-  if timer then daw.cancel(timer) end
+  if timer then paw.cancel(timer) end
   timer = nil
-  local seconds = tonumber(daw.opt.autosave) or 0
+  local seconds = tonumber(paw.opt.autosave) or 0
   if seconds > 0 then
-    timer = daw.every(seconds * 1000, function() daw.try(M.copy) end)
+    timer = paw.every(seconds * 1000, function() paw.try(M.copy) end)
   end
 end
 
-daw.on("option.changed", function(e)
+paw.on("option.changed", function(e)
   if e.name == "autosave" then restart() end
 end)
 -- What is saved needs no copy; neither does a project that was replaced by
 -- another, whether its changes were saved or thrown away on purpose.
 local current = nil
-daw.on("project.saved", function()
+paw.on("project.saved", function()
   forget(current)
   forget()
   current, copied = M.file(), api.project_get().edits
 end)
-daw.on("project.loaded", function()
+paw.on("project.loaded", function()
   forget(current)
   current, copied = M.file(), nil
   local takes = M.orphan_takes()
   if #takes > 0 then
-    daw.notify(string.format("%d recorded take%s in media/ %s not in the project: `:recover` to bring %s in",
+    paw.notify(string.format("%d recorded take%s in media/ %s not in the project: `:recover` to bring %s in",
       #takes, #takes == 1 and "" or "s", #takes == 1 and "is" or "are", #takes == 1 and "it" or "them"), "warn")
   end
 end)
 
 -- A take is in the safety copy from the moment it begins, and a disk that
 -- will soon be full is mentioned before it is.
-daw.on("transport.record", function(e)
-  if (tonumber(daw.opt.autosave) or 0) > 0 and e.files and #e.files > 0 then daw.try(M.copy, true) end
+paw.on("transport.record", function(e)
+  if (tonumber(paw.opt.autosave) or 0) > 0 and e.files and #e.files > 0 then paw.try(M.copy, true) end
   local rate = tonumber(e.bytes_per_second) or 0
   if rate > 0 and e.free then
     local minutes = e.free / rate / 60
-    if minutes < (tonumber(daw.opt.record_warn_minutes) or 30) then
-      daw.notify(string.format("the disk has room for %d minute%s of recording (%.1f GB free)",
+    if minutes < (tonumber(paw.opt.record_warn_minutes) or 30) then
+      paw.notify(string.format("the disk has room for %d minute%s of recording (%.1f GB free)",
         math.floor(minutes), math.floor(minutes) == 1 and "" or "s", e.free / 1e9), "warn")
     end
   end
 end)
-daw.on("exit", function()
-  if M.discard or not daw.project.unsaved() then
+paw.on("exit", function()
+  if M.discard or not paw.project.unsaved() then
     -- Nothing unsaved, or `:q!` said the changes are not wanted.
     forget(current)
     forget()
-  elseif (tonumber(daw.opt.autosave) or 0) > 0 then
+  elseif (tonumber(paw.opt.autosave) or 0) > 0 then
     -- Ended some other way, such as its window being closed: keep the latest.
-    daw.try(M.copy)
+    paw.try(M.copy)
   end
 end)
 
@@ -261,11 +261,11 @@ end
 function M.import_take(file)
   local name = file:match("([^/]+)%-take%d+[%-%d]*%.wav$")
   local track
-  for _, t in ipairs(daw.tracks()) do
+  for _, t in ipairs(paw.tracks()) do
     if name and t.name:gsub("[^%w%-_]", "_") == name then track = t end
   end
-  local clip = daw.import_audio(file, { start = 0, track = track and track.id })
-  daw.notify(string.format("imported the take %s: %.1f beats on track “%s”", file:match("([^/]+)$"), clip.length, clip:track().name))
+  local clip = paw.import_audio(file, { start = 0, track = track and track.id })
+  paw.notify(string.format("imported the take %s: %.1f beats on track “%s”", file:match("([^/]+)$"), clip.length, clip:track().name))
   return clip
 end
 
@@ -288,13 +288,13 @@ function M.choices()
   return list
 end
 
-daw.command("recover", function(ctx)
-  local force = daw.project.discarding()
+paw.command("recover", function(ctx)
+  local force = paw.project.discarding()
   local list = M.choices()
-  if #list == 0 then return daw.notify("nothing was left behind to recover") end
+  if #list == 0 then return paw.notify("nothing was left behind to recover") end
   local which = tonumber(ctx.args[1])
   if which then
-    if not list[which] then return daw.notify("there are " .. #list .. " to choose from", "warn") end
+    if not list[which] then return paw.notify("there are " .. #list .. " to choose from", "warn") end
     local item = list[which]
     if item.take then return M.import_take(item.file) end
     return M.recover(item.file, { as_path = item.as_path, plugins_offline = ctx.args[2] == "offline", force = force })
@@ -309,25 +309,25 @@ daw.command("recover", function(ctx)
       items[#items + 1] = { text = text .. "  (plugins offline)", file = item.file, as_path = item.as_path, offline = true }
     end
   end
-  if daw.pick then
-    return daw.pick({ title = "Recover", items = items, on_choose = function(item)
+  if paw.pick then
+    return paw.pick({ title = "Recover", items = items, on_choose = function(item)
       if item.take then return M.import_take(item.file) end
       M.recover(item.file, { as_path = item.as_path, plugins_offline = item.offline or false, force = force })
     end })
   end
   local lines = { "Unsaved work and takes that can be brought back. `:recover 1` opens the first, `:recover 1 offline` with every plugin offline.", "" }
   for i, item in ipairs(items) do lines[i + 2] = item.text end
-  daw.ui.page("Recover", lines)
+  paw.ui.page("Recover", lines)
 end, { desc = "Open a project that a session which ended badly left unsaved: `recover`, `recover 1`, `recover 1 offline` (plugins offline)" })
-daw.project.allow_discard("recover")
+paw.project.allow_discard("recover")
 
-daw.on("startup", function()
+paw.on("startup", function()
   current = M.file()
   restart()
-  if (tonumber(daw.opt.autosave) or 0) <= 0 then return end
+  if (tonumber(paw.opt.autosave) or 0) <= 0 then return end
   local list = M.left_behind()
   if #list > 0 then
-    daw.notify(string.format("%d unsaved project%s left by a session that ended badly: `:recover`", #list, #list == 1 and "" or "s"), "warn")
+    paw.notify(string.format("%d unsaved project%s left by a session that ended badly: `:recover`", #list, #list == 1 and "" or "s"), "warn")
   end
 end)
 

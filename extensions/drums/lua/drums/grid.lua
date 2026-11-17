@@ -3,8 +3,8 @@
 -- drawn as tall as it is hard. It is a piano roll whose rows are the pieces
 -- of the kit, and takes the same grammar: motions, counts, operators, text
 -- objects, visual mode, registers and `.`.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local drums = require("drums")
 local E = require("drums.edit")
 
@@ -16,13 +16,13 @@ local view = {
   clip_id = nil,
   row = 1,         -- cursor row, a place in `rows()`
   beat = 0,        -- cursor, in beats from the start of the clip
-  step = nil,      -- beats a column is; daw.opt.drums_step until changed
+  step = nil,      -- beats a column is; paw.opt.drums_step until changed
   first = 1,       -- the row at the top of the screen
   scroll = 0,      -- the cell at the left edge
 }
 
 function view:clip()
-  if self.clip_id and pcall(api.clip_get, self.clip_id) then return daw.clip(self.clip_id) end
+  if self.clip_id and pcall(api.clip_get, self.clip_id) then return paw.clip(self.clip_id) end
   self.clip_id = nil
 end
 
@@ -39,7 +39,7 @@ function view:rows()
 end
 
 function view:step_size()
-  return self.step or daw.opt.drums_step
+  return self.step or paw.opt.drums_step
 end
 
 --- The piece under the cursor: `{ note, name }`.
@@ -49,8 +49,8 @@ end
 
 --- Open a clip of a drum track in the grid, with the cursor on its first hit.
 function view:edit(clip)
-  if type(clip) == "number" then clip = daw.clip(clip) end
-  if clip.kind ~= "midi" then return daw.notify("only MIDI clips open in the drum grid", "warn") end
+  if type(clip) == "number" then clip = paw.clip(clip) end
+  if clip.kind ~= "midi" then return paw.notify("only MIDI clips open in the drum grid", "warn") end
   self.clip_id, self.beat, self.scroll, self.first = clip.id, 0, 0, 1
   self.row = 1
   local rows = drums.rows(clip:get().track, clip)
@@ -60,23 +60,23 @@ function view:edit(clip)
       if row.note == first.pitch then self.row, self.beat = i, E.cell(first.start, self:step_size()) * self:step_size() end
     end
   end
-  daw.ui.focus("drums")
+  paw.ui.focus("drums")
 end
 
 local eighths = { "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" }
 
 --- How a hit of some velocity is drawn: a bar as tall as it is hard.
 function view.glyph(velocity)
-  return daw.draw.g.eighths[util.clamp(math.ceil(velocity / 127 * 8), 1, 8)]
+  return paw.draw.g.eighths[util.clamp(math.ceil(velocity / 127 * 8), 1, 8)]
 end
 
 function view:render(buf, ctx)
   local w, h = buf.width, buf.height
   local clip = self:clip()
-  local g = daw.draw.g
+  local g = paw.draw.g
   buf:fill(0, 0, w, h, " ", "Normal")
   if not clip then
-    daw.ui.titlebar(buf, { name = "Drum grid", focused = ctx.focused })
+    paw.ui.titlebar(buf, { name = "Drum grid", focused = ctx.focused })
     buf:text(2, 2, "No clip open. Put the cursor on a clip of a drum track and press", "Empty")
     buf:text(67, 2, "Enter", "EmptyKey")
     buf:text(2, 4, ":drums.track", "EmptyKey")
@@ -87,7 +87,7 @@ function view:render(buf, ctx)
   end
   local c = clip:get()
   local track = api.track_get(c.track)
-  local hue = daw.draw.track_hue(track)
+  local hue = paw.draw.track_hue(track)
   local rows = self:rows()
   local step = self:step_size()
   local info = drums.info(c.track)
@@ -115,16 +115,16 @@ function view:render(buf, ctx)
   local piece = rows[self.row]
   local under = piece and E.hit(clip, piece.note, cur * step, step)
   local status = string.format("step %s  vel %d%s  %s", E.step_label(step),
-    under and under.velocity or daw.opt.drums_velocity, under and "" or " new", info and info.map or "")
-  daw.ui.titlebar(buf, {
+    under and under.velocity or paw.opt.drums_velocity, under and "" or " new", info and info.map or "")
+  paw.ui.titlebar(buf, {
     pill = { c.name, hue.pill }, name = track.name, focused = ctx.focused,
-    context = string.format("%s  %s", piece and piece.name or "-", daw.time.format(c.start + self.beat)),
+    context = string.format("%s  %s", piece and piece.name or "-", paw.time.format(c.start + self.beat)),
     right = status,
   })
 
   -- The ruler: bars as the project counts them, beats between as ticks, as in the roll.
   buf:fill(0, 1, w, 1, " ", "Ruler")
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   for i = 0, cells - 1 do
     local cell = self.scroll + i
     if cell >= total then break end
@@ -141,7 +141,7 @@ function view:render(buf, ctx)
 
   -- The rows: name, then a cell per step.
   local hits = E.cells(clip, step, self.scroll * step, (self.scroll + cells) * step)
-  local selection = ctx.focused and daw.keymap.selection()
+  local selection = ctx.focused and paw.keymap.selection()
   for r = 0, body - 1 do
     local index = self.first + r
     local row = rows[index]
@@ -242,7 +242,7 @@ end
 function view:to_bar(n)
   local clip = self:clip()
   if not clip then return end
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   local at = (clip.start + self.beat) / bar
   local to = n > 0 and math.floor(at + EPS) + n or math.ceil(at - EPS) + n
   self:set(nil, to * bar - clip.start)
@@ -256,7 +256,7 @@ function view:toggle()
   if not (clip and piece) then return end
   local step = self:step_size()
   local beat = E.cell(self.beat, step) * step
-  if E.set(clip, piece.note, beat, step, nil, daw.opt.drums_velocity) then self:hear() end
+  if E.set(clip, piece.note, beat, step, nil, paw.opt.drums_velocity) then self:hear() end
 end
 
 function view:hear(note)
@@ -270,14 +270,14 @@ function view:velocity(by)
   if not (clip and piece) then return end
   local step = self:step_size()
   local v = E.velocity(clip, piece.note, E.cell(self.beat, step) * step, step, by)
-  if v then daw.notify(piece.name .. " velocity " .. v) end
+  if v then paw.notify(piece.name .. " velocity " .. v) end
 end
 
 function view:set_step(step)
   self.step = step
   -- The cursor stays on a step of the new grid.
   self.beat = E.cell(self.beat, step) * step
-  daw.notify("step " .. E.step_label(step))
+  paw.notify("step " .. E.step_label(step))
   api.ui_redraw()
 end
 
@@ -323,7 +323,7 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("drums", view)
-daw.ui.dock("drums", { side = "bottom", hidden = true })
+paw.ui.view("drums", view)
+paw.ui.dock("drums", { side = "bottom", hidden = true })
 
 return view

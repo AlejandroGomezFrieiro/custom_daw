@@ -1,7 +1,7 @@
 -- The report: what is known of the machine, what each check found, and what
 -- changed since the report before. Written as Markdown, with the same in
 -- JSON beside it for the next report to compare with.
-local api = daw.api
+local api = paw.api
 
 local MARKS = { ok = "ok", warn = "WARN", fail = "FAIL", skip = "skipped" }
 
@@ -28,7 +28,7 @@ return function(M, util)
     local out = {}
     local function add(label, value) if value and value ~= "" then out[#out + 1] = { label, tostring(value) } end end
     local function line(path) return (read(path) or ""):match("^[^\n]*") end
-    add("Program", "daw " .. tostring(daw.version))
+    add("Program", "paw " .. tostring(paw.version))
     add("Kernel", line("/proc/sys/kernel/osrelease"))
     add("System", (read("/etc/os-release") or ""):match('PRETTY_NAME="?([^"\n]*)"?'))
     add("Host", line("/proc/sys/kernel/hostname"))
@@ -66,7 +66,7 @@ return function(M, util)
       if name and (not newest or name > newest) then newest = name end
     end
     if not newest then return nil end
-    local decoded = daw.json.decode(read(M.dir() .. "/" .. newest .. ".json") or "")
+    local decoded = paw.json.decode(read(M.dir() .. "/" .. newest .. ".json") or "")
     return decoded, newest
   end
 
@@ -113,9 +113,9 @@ return function(M, util)
     run.machine = run.machine or M.machine()
     local lines = {}
     local function add(text) lines[#lines + 1] = text or "" end
-    add("# daw doctor, " .. os.date("%Y-%m-%d %H:%M", math.floor(run.started_at or os.time())))
+    add("# paw doctor, " .. os.date("%Y-%m-%d %H:%M", math.floor(run.started_at or os.time())))
     add()
-    add(string.format("%s run, %s. Written by `:doctor` or `daw doctor`.",
+    add(string.format("%s run, %s. Written by `:doctor` or `paw doctor`.",
       run.attended and "An attended" or "An unattended", seconds(((run.finished or api.now()) - run.started) / 1000)))
     add()
     add("## This machine")
@@ -174,7 +174,7 @@ return function(M, util)
     file:write(M.markdown(run), "\n")
     file:close()
     local json = assert(io.open(base .. ".json", "w"))
-    json:write(daw.json.encode(summary_of(run)))
+    json:write(paw.json.encode(summary_of(run)))
     json:close()
     return base .. ".md"
   end

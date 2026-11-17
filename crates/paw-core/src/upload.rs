@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn a_file_arrives_in_pieces_and_takes_a_free_name() {
-        let dir = std::env::temp_dir().join(format!("daw-upload-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-upload-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("take.wav"), b"old").unwrap();

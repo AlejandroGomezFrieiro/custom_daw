@@ -6,11 +6,11 @@
 --   :recent                 -- choose one from a list
 --   :recent 2               -- open the second without asking
 --   :recent.clear           -- forget them all
---   daw.opt.reopen_last = true   -- start with the project that was open last
+--   paw.opt.reopen_last = true   -- start with the project that was open last
 --
--- In scripts: `daw.recent.list()` gives `{ { path, name, time } }`, newest
--- first, without the files that are gone; `daw.recent.clear()`.
-local api = daw.api
+-- In scripts: `paw.recent.list()` gives `{ { path, name, time } }`, newest
+-- first, without the files that are gone; `paw.recent.clear()`.
+local api = paw.api
 local M = {}
 
 local env = api.env()
@@ -86,8 +86,8 @@ local function remember(path)
   write(list)
 end
 
-daw.on("project.loaded", function(e) remember(e.path) end)
-daw.on("project.saved", function(e) remember(e.path) end)
+paw.on("project.loaded", function(e) remember(e.path) end)
+paw.on("project.saved", function(e) remember(e.path) end)
 
 --- Open a project from the list, by its place in it or its path; says so
 --- when it will not open. Returns whether it did.
@@ -96,25 +96,25 @@ function M.open(which)
   if type(which) == "number" then
     local entry = M.list()[which]
     if not entry then
-      daw.notify("there are " .. #M.list() .. " recent projects", "warn")
+      paw.notify("there are " .. #M.list() .. " recent projects", "warn")
       return false
     end
     path = entry.path
   end
-  local ok, err = pcall(daw.open, path)
+  local ok, err = pcall(paw.open, path)
   if not ok then
-    daw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error")
+    paw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error")
     return false
   end
-  daw.notify("opened " .. path)
+  paw.notify("opened " .. path)
   return true
 end
 
 --- At the start, with no project named: open the newest one when
---- `daw.opt.reopen_last` asks for it. A project that will not open is a
+--- `paw.opt.reopen_last` asks for it. A project that will not open is a
 --- message, not the end of the program.
 function M.reopen_last()
-  if not daw.opt.reopen_last or not recording then return false end
+  if not paw.opt.reopen_last or not recording then return false end
   local entry = M.list()[1]
   return entry ~= nil and M.open(entry.path)
 end
@@ -128,17 +128,17 @@ function M.menu()
   return out
 end
 
-daw.command("recent", function(ctx)
-  if not daw.project.guard("recent") then return end
+paw.command("recent", function(ctx)
+  if not paw.project.guard("recent") then return end
   local list = M.list()
-  if #list == 0 then return daw.notify("no project has been opened yet") end
+  if #list == 0 then return paw.notify("no project has been opened yet") end
   local which = tonumber(ctx.args[1])
   if which then return M.open(which) end
-  daw.pick("recent")
+  paw.pick("recent")
 end, { desc = "Open a recent project: `recent` chooses from a list, `recent 2` opens the second" })
 
 -- The picker of them: `Alt-d` forgets one.
-daw.pick.sources.recent = {
+paw.pick.sources.recent = {
   desc = "Open a recent project",
   title = "Recent projects",
   empty = "No project has been opened yet.",
@@ -163,11 +163,11 @@ daw.pick.sources.recent = {
     write(kept)
   end,
 }
-daw.project.allow_discard("recent")
+paw.project.allow_discard("recent")
 
-daw.command("recent.clear", function()
+paw.command("recent.clear", function()
   M.clear()
-  daw.notify("the list of recent projects is empty")
+  paw.notify("the list of recent projects is empty")
 end, { desc = "Forget the recent projects" })
 
 return M

@@ -4,7 +4,7 @@
 local projdiff = require("projdiff")
 local merge = projdiff.merge
 local data = projdiff.data
-local api = daw.api
+local api = paw.api
 
 local view = {
   title = "Merge conflicts",
@@ -33,27 +33,27 @@ local function settle(list, side)
     for _, c in ipairs(list) do merge.resolve(view.doc, c, side) end
     write()
   end)
-  if not ok then return daw.notify("cannot settle: " .. tostring(err):match("[^\n]*"), "error") end
+  if not ok then return paw.notify("cannot settle: " .. tostring(err):match("[^\n]*"), "error") end
   local left = #conflicts()
   if left == 0 then
-    daw.notify("every conflict is settled; `git add` the project to finish the merge")
-    daw.ui.close()
+    paw.notify("every conflict is settled; `git add` the project to finish the merge")
+    paw.ui.close()
   end
 end
 
 function view:render(buf)
   local list = conflicts()
-  self.sel = daw.util.clamp(self.sel, 1, math.max(1, #list))
+  self.sel = paw.util.clamp(self.sel, 1, math.max(1, #list))
   local rows = buf.height - 8
   if self.sel <= self.scroll then self.scroll = self.sel - 1 end
   if self.sel > self.scroll + rows then self.scroll = self.sel - rows end
-  buf:text(1, 0, daw.util.fit(string.format("%s: %d conflict%s", self.path:match("[^/]*$"), #list, #list == 1 and "" or "s"), buf.width - 2), "HelpSection")
+  buf:text(1, 0, paw.util.fit(string.format("%s: %d conflict%s", self.path:match("[^/]*$"), #list, #list == 1 and "" or "s"), buf.width - 2), "HelpSection")
   for r = 0, rows - 1 do
     local c = list[r + 1 + self.scroll]
     if c then
       local at = r + 1 + self.scroll == self.sel
       if at then buf:fill(0, r + 1, buf.width, 1, " ", "Selected") end
-      buf:text(1, r + 1, daw.util.fit(merge.describe(self.doc, c.path), buf.width - 2), at and "Selected" or "Normal")
+      buf:text(1, r + 1, paw.util.fit(merge.describe(self.doc, c.path), buf.width - 2), at and "Selected" or "Normal")
     end
   end
   local c = list[self.sel]
@@ -94,9 +94,9 @@ function view:on_key(key)
   elseif key == "k" or key == "<Up>" then
     self.sel = self.sel - 1
   elseif key == "q" or key == "<Esc>" then
-    daw.ui.close()
+    paw.ui.close()
   end
-  self.sel = daw.util.clamp(self.sel, 1, math.max(1, #conflicts()))
+  self.sel = paw.util.clamp(self.sel, 1, math.max(1, #conflicts()))
   api.ui_redraw()
 end
 
@@ -105,22 +105,22 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("projmerge", view)
+paw.ui.view("projmerge", view)
 
 --- Show the conflicts of the project file at `path`; returns how many there are.
 function view.open(path)
   local doc, err = projdiff.file(path)
   if not doc then
-    daw.notify(err, "error")
+    paw.notify(err, "error")
     return 0
   end
   view.path, view.doc, view.sel, view.scroll, view.pending = path, doc, 1, 0, ""
   local n = #conflicts()
   if n == 0 then
-    daw.notify(path:match("[^/]*$") .. " has no merge conflicts")
+    paw.notify(path:match("[^/]*$") .. " has no merge conflicts")
     return 0
   end
-  daw.ui.open("projmerge", { title = "Merge conflicts", width = 100, height = 24 })
+  paw.ui.open("projmerge", { title = "Merge conflicts", width = 100, height = 24 })
   return n
 end
 

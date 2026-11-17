@@ -32,5 +32,5 @@ with a .NET 10 SDK and OpenUtau checked out at the commit above in
 dotnet publish ReaUtau.Engine -c Release -o out
 ```
 
-and point the extension at it: `daw.opt.utau_engine = "/path/to/out/reautau-engine"`
+and point the extension at it: `paw.opt.utau_engine = "/path/to/out/reautau-engine"`
 or `REAUTAU_ENGINE=/path/to/out/reautau-engine`.

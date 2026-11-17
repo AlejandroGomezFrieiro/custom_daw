@@ -6,7 +6,7 @@ Each finding has a severity, a message with the number that caused it, what
 would fix it, and a place (a track and a beat) that `]d` and `[d` jump to.
 
 ```lua
-daw.ext.load("extensions/mixdiag")      -- or put it in ~/.config/daw/extensions
+paw.ext.load("extensions/mixdiag")      -- or put it in ~/.config/paw/extensions
 ```
 
 ![The bass pushed 14 dB too loud, ,xa measuring the song and saying so on the status line, and ,xx listing the finding: the true peak over the ceiling at bar 5](images/tui-mixdiag.gif)
@@ -16,9 +16,9 @@ findings, `]d` and `[d` go from one to the next in the arrange view.
 
 ## What is measured, and by which standard
 
-The measuring is Rust, in `crates/daw-core/src/measure/`, and is open to any
-script as `daw.api.measure*` (below). The project is rendered by a private
-engine, the same way `daw.render` renders it, but into memory, on a worker
+The measuring is Rust, in `crates/paw-core/src/measure/`, and is open to any
+script as `paw.api.measure*` (below). The project is rendered by a private
+engine, the same way `paw.render` renders it, but into memory, on a worker
 thread, and measured as it is rendered.
 
 | Measurement | How | Standard |
@@ -38,7 +38,7 @@ thread, and measured as it is rendered.
 
 ### Checked against
 
-Rust tests (`cargo test -p daw-core --lib measure`) generate the signals:
+Rust tests (`cargo test -p paw-core --lib measure`) generate the signals:
 
 | Signal | Expected | Read |
 | --- | --- | --- |
@@ -62,12 +62,12 @@ Rust tests (`cargo test -p daw-core --lib measure`) generate the signals:
 | 1 kHz tone; 100 Hz and 4 kHz tones of equal level | all in the 1k band; -3.01 dB in each | as expected |
 
 The extension's tests read a 16-bit WAV of a 1 kHz sine at -23 dBFS back
-through `daw.api.measure` as -23 LUFS.
+through `paw.api.measure` as -23 LUFS.
 
 ### How long it takes
 
 A song of 5 minutes, 9 tracks of built-in synths, drums and delays, measured
-in about 3 s in a debug build (the workspace's dev profile), where `daw.render`
+in about 3 s in a debug build (the workspace's dev profile), where `paw.render`
 of the same song alone takes most of that. The render and the analysis run on
 two worker threads, a few pieces apart. The interface is held for about 1 ms
 to set the engine up (more with plugins, which are instantiated afresh, as for
@@ -106,9 +106,9 @@ findings. When a track's contribution is measured, they are left out.
 | `<leader>xa` | `mix.analyze` | measure the song; in visual mode the selection |
 | `<leader>xl` | `mix.analyze loop` | the loop |
 | `<leader>xk` | `mix.analyze track` | the cursor track's contribution: the song with that track as if soloed |
-| `<leader>xx` | `mix.list` | the findings, in `daw.pick` when there is one, else in the report |
+| `<leader>xx` | `mix.list` | the findings, in `paw.pick` when there is one, else in the report |
 | `<leader>xr` | `mix.report` | the report: what was measured (or how far a measurement has got), the numbers, the findings by severity and the target; `j` `k` choose a finding, Enter goes there, `a` measures the song, `l` the loop, `t` the cursor's track, `T` the next target, `q` closes |
-| `<leader>xp` | `view.open mixdiag_paint` | the painted report, in pixels where the terminal shows them (`daw.opt.graphics`), else the report in cells |
+| `<leader>xp` | `view.open mixdiag_paint` | the painted report, in pixels where the terminal shows them (`paw.opt.graphics`), else the report in cells |
 | `<leader>xs` | `mix.summary` | LUFS, true peak, LRA, short-term maximum and mono loss of the last measurement |
 | `<leader>xt` | `mix.target [name]` | the next delivery target, or the one named |
 | `<leader>xc` | `mix.clear` | forget the findings |
@@ -145,7 +145,7 @@ one goes there.
 ## The Lua module
 
 ```lua
-local mixdiag = require("mixdiag")          -- also package.loaded["daw.mixdiag"]
+local mixdiag = require("mixdiag")          -- also package.loaded["paw.mixdiag"]
 
 mixdiag.analyze("song")                     -- or "loop", "selection", "track",
                                             -- { start = 0, ["end"] = 32, track = id }, { file = "x.wav" }
@@ -177,14 +177,14 @@ A rule's `ctx` has `result`, `range` (`start`, `end`, `label`, `track`),
 and the helpers `beat(seconds)`, `where(beat, seconds)` and `track_name(id)`.
 `mixdiag.done` is emitted when findings are ready.
 
-### `daw.api.measure`
+### `paw.api.measure`
 
 ```lua
-daw.api.measure({ start = 0, ["end"] = 64, tail = 1, sample_rate = 48000, track = id })  -- waits
-daw.api.measure({ file = "master.wav" })
-local id = daw.api.measure_start(opts)          -- on a worker thread
-daw.api.measure_poll(id)    -- { done = false, progress = 0.4, elapsed } or { done = true, result | error }
-daw.api.measure_cancel(id)
+paw.api.measure({ start = 0, ["end"] = 64, tail = 1, sample_rate = 48000, track = id })  -- waits
+paw.api.measure({ file = "master.wav" })
+local id = paw.api.measure_start(opts)          -- on a worker thread
+paw.api.measure_poll(id)    -- { done = false, progress = 0.4, elapsed } or { done = true, result | error }
+paw.api.measure_cancel(id)
 ```
 
 The result: `integrated`, `momentary_max`, `short_term_max`, `lra`, `lra_low`,

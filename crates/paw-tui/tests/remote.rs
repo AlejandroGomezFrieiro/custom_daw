@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use daw_core::grid::Grid;
-use daw_core::rpc::{Connection, Wire};
+use paw_core::grid::Grid;
+use paw_core::rpc::{Connection, Wire};
 use serde_json::{Value, json};
 
 /// A kernel without a UI, listening on a socket and on a TCP port of its
@@ -32,7 +32,7 @@ impl Drop for Instance {
 /// A scratch directory of the test's own, empty.
 fn scratch(name: &str) -> PathBuf {
     // A short path: a Unix socket's must fit in 108 bytes.
-    let dir = std::env::temp_dir().join(format!("daw-rt-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("paw-rt-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -47,9 +47,9 @@ fn start(name: &str) -> Instance {
 fn start_with(name: &str, state: Option<&std::path::Path>, more: &[&str]) -> Instance {
     let dir = scratch(name);
     let state = state.unwrap_or(&dir).to_path_buf();
-    let socket = dir.join("daw.sock");
+    let socket = dir.join("paw.sock");
     let token_file = state.join("token");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_daw"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_paw"))
         .args(["--headless", "--clean", "--no-plugins", "--audio", "null"])
         .arg("--listen")
         .arg(&socket)
@@ -62,12 +62,12 @@ fn start_with(name: &str, state: Option<&std::path::Path>, more: &[&str]) -> Ins
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("starting daw");
+        .expect("starting paw");
     // It says where it listens once it does.
     let mut address = String::new();
     let stderr = child.stderr.take().unwrap();
     for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-        assert!(!line.starts_with("daw: listening on /"), "{line}");
+        assert!(!line.starts_with("paw: listening on /"), "{line}");
         if let Some(rest) = line.split("listening on ").nth(1) {
             address = rest.split_whitespace().next().unwrap().to_string();
             break;
@@ -223,7 +223,7 @@ fn the_certificate_is_trusted_the_first_time_and_held_to_after() {
     assert_eq!(c.call("eval", json!(["return 1"])).unwrap(), json!(1));
     drop((c, again));
     // One that made a new certificate is refused, naming both.
-    std::fs::remove_dir_all(state.join("daw/tls")).unwrap();
+    std::fs::remove_dir_all(state.join("paw/tls")).unwrap();
     let other = start_with("pin3", Some(&state), &[]);
     std::fs::write(other.known(), line(&other.address, &print)).unwrap();
     let err = format!("{:#}", other.tcp().err().expect("refused"));
@@ -245,7 +245,7 @@ fn the_certificate_is_trusted_the_first_time_and_held_to_after() {
 fn a_watching_frontend_is_sent_what_changed_and_nothing_when_nothing_did() {
     let instance = start("watch");
     let mut c = Connection::unix(&instance.socket).unwrap();
-    c.call("eval", json!(["daw.add_track({ name = 'one' })"])).unwrap();
+    c.call("eval", json!(["paw.add_track({ name = 'one' })"])).unwrap();
     c.call("frontend.watch", json!([])).unwrap();
     let first = event(&c, "frontend.state");
     let sections = first["sections"].as_object().expect("the whole state at first");
@@ -256,14 +256,14 @@ fn a_watching_frontend_is_sent_what_changed_and_nothing_when_nothing_did() {
     assert!(first["modal"].is_object() && first["levels"].is_array());
     assert!(quiet(&c, Duration::from_millis(400)), "an idle kernel sends nothing");
     // A change sends the parts it touched, and not the bar lines again.
-    c.call("eval", json!(["daw.add_track({ name = 'two' })"])).unwrap();
+    c.call("eval", json!(["paw.add_track({ name = 'two' })"])).unwrap();
     let next = event(&c, "frontend.state");
     let changed = next["sections"].as_object().expect("something changed");
     assert_eq!(changed["tracks"][1]["name"], "two");
     assert!(!changed.contains_key("lines"), "the lines did not change: {:?}", changed.keys());
     assert!(!changed.contains_key("kinds"));
     // While playing, the position comes without being asked for.
-    c.call("eval", json!(["daw.tracks()[1]:add_clip({ start = 0, length = 64 })"])).unwrap();
+    c.call("eval", json!(["paw.tracks()[1]:add_clip({ start = 0, length = 64 })"])).unwrap();
     c.call("cmd", json!(["transport.play"])).unwrap();
     let mut moved = false;
     for _ in 0..40 {
@@ -277,7 +277,7 @@ fn a_watching_frontend_is_sent_what_changed_and_nothing_when_nothing_did() {
     c.call("cmd", json!(["transport.stop"])).unwrap();
     c.call("frontend.unwatch", json!([])).unwrap();
     while !quiet(&c, Duration::from_millis(300)) {}
-    c.call("eval", json!(["daw.add_track({ name = 'three' })"])).unwrap();
+    c.call("eval", json!(["paw.add_track({ name = 'three' })"])).unwrap();
     assert!(quiet(&c, Duration::from_millis(300)), "no longer watching");
 }
 
@@ -297,7 +297,7 @@ fn screen(c: &Connection, grid: &mut Grid, ready: impl Fn(&str) -> bool) -> Stri
         let wait = until.saturating_duration_since(Instant::now());
         match c.events.recv_timeout(wait) {
             Ok((name, payload)) if name == "ui.grid" => {
-                daw_core::remote::apply(grid, &payload).unwrap();
+                paw_core::remote::apply(grid, &payload).unwrap();
             }
             Ok(_) => {}
             Err(_) => panic!("the screen never showed what was waited for:\n{text}"),
@@ -309,7 +309,7 @@ fn screen(c: &Connection, grid: &mut Grid, ready: impl Fn(&str) -> bool) -> Stri
 fn a_terminal_attaches_to_a_kernel_without_one_types_and_leaves() {
     let instance = start("attach");
     let mut c = instance.tcp().unwrap();
-    c.call("eval", json!(["daw.add_track({ name = 'Remote bass' })"])).unwrap();
+    c.call("eval", json!(["paw.add_track({ name = 'Remote bass' })"])).unwrap();
     assert!(c.call("ui.input", json!([{ "key": "j" }])).is_err(), "not before attaching");
     c.call("ui.attach", json!([100, 30])).unwrap();
     let mut grid = Grid::new(1, 1);
@@ -321,7 +321,7 @@ fn a_terminal_attaches_to_a_kernel_without_one_types_and_leaves() {
         c.notify("ui.input", json!([{ "key": key }])).unwrap();
     }
     screen(&c, &mut grid, |t| t.contains("Track 2"));
-    assert_eq!(c.call("eval", json!(["return #daw.tracks()"])).unwrap(), json!(2));
+    assert_eq!(c.call("eval", json!(["return #paw.tracks()"])).unwrap(), json!(2));
     // A smaller terminal: the screen is sent whole again at the new size.
     c.notify("ui.input", json!([{ "resize": [60, 20] }])).unwrap();
     screen(&c, &mut grid, |t| t.lines().count() == 20 && t.contains("Track 2"));
@@ -330,8 +330,8 @@ fn a_terminal_attaches_to_a_kernel_without_one_types_and_leaves() {
         c.notify("ui.input", json!([{ "key": key }])).unwrap();
     }
     event(&c, "ui.detached");
-    assert_eq!(c.call("eval", json!(["return daw.api.ui_attached()"])).unwrap(), json!(false));
-    assert_eq!(c.call("eval", json!(["return #daw.tracks()"])).unwrap(), json!(2));
+    assert_eq!(c.call("eval", json!(["return paw.api.ui_attached()"])).unwrap(), json!(false));
+    assert_eq!(c.call("eval", json!(["return #paw.tracks()"])).unwrap(), json!(2));
 }
 
 #[test]
@@ -344,7 +344,7 @@ fn connections_that_misbehave_are_closed_and_the_kernel_goes_on() {
     let instance = start_with("rude", None, &["--no-tls"]);
     let mut good = Connection::unix(&instance.socket).unwrap();
     let open = |good: &mut Connection| {
-        good.call("eval", json!(["return #daw.api.rpc_clients()"])).unwrap().as_u64().unwrap()
+        good.call("eval", json!(["return #paw.api.rpc_clients()"])).unwrap().as_u64().unwrap()
     };
     assert_eq!(open(&mut good), 1);
 
@@ -394,7 +394,7 @@ fn two_terminals_attached_have_a_seat_each_in_one_project() {
     let instance = start("seats");
     let mut a = instance.tcp().unwrap();
     let mut b = Connection::unix(&instance.socket).unwrap();
-    a.call("eval", json!(["daw.add_track({ name = 'Drums' }); daw.add_track({ name = 'Bass' })"])).unwrap();
+    a.call("eval", json!(["paw.add_track({ name = 'Drums' }); paw.add_track({ name = 'Bass' })"])).unwrap();
     a.call("ui.attach", json!([100, 30])).unwrap();
     b.call("ui.attach", json!([90, 24])).unwrap();
     let (mut ga, mut gb) = (Grid::new(1, 1), Grid::new(1, 1));
@@ -404,10 +404,10 @@ fn two_terminals_attached_have_a_seat_each_in_one_project() {
     // A selection opened in one terminal is that terminal's alone.
     type_keys(&mut a, &["j", "V"]);
     screen(&a, &mut ga, |t| t.contains("V-LINE"));
-    let mode = |c: &mut Connection| c.call("eval", json!(["return daw.keymap.mode"])).unwrap();
+    let mode = |c: &mut Connection| c.call("eval", json!(["return paw.keymap.mode"])).unwrap();
     assert_eq!(mode(&mut a), json!("x"), "a call over a terminal's connection is in its seat");
     assert_eq!(mode(&mut b), json!("n"));
-    let at = |c: &mut Connection| c.call("eval", json!(["return daw.cursor.track().name"])).unwrap();
+    let at = |c: &mut Connection| c.call("eval", json!(["return paw.cursor.track().name"])).unwrap();
     assert_eq!(at(&mut a), json!("Bass"));
     assert_eq!(at(&mut b), json!("Drums"), "the other cursor did not move");
     // What one adds, the other sees, and can take back: one history.
@@ -415,12 +415,12 @@ fn two_terminals_attached_have_a_seat_each_in_one_project() {
     screen(&b, &mut gb, |t| t.contains("Track 3"));
     type_keys(&mut b, &["u"]);
     screen(&a, &mut ga, |t| !t.contains("Track 3"));
-    // The instance's own seat (as `daw ctl` sees it) is neither.
+    // The instance's own seat (as `paw ctl` sees it) is neither.
     let mut ctl = Connection::unix(&instance.socket).unwrap();
     assert_eq!(mode(&mut ctl), json!("n"));
     assert_eq!(at(&mut ctl), json!("Drums"));
     // A terminal that leaves takes its seat with it.
-    let seats = |c: &mut Connection| c.call("eval", json!(["return #daw.seats.list()"])).unwrap();
+    let seats = |c: &mut Connection| c.call("eval", json!(["return #paw.seats.list()"])).unwrap();
     assert_eq!(seats(&mut ctl), json!(3));
     drop(a);
     let until = Instant::now() + Duration::from_secs(20);
@@ -457,10 +457,10 @@ fn a_file_from_the_clients_disk_is_sent_and_imported() {
     let here = instance.dir.join("client take.wav");
     tone_file(&here, 3.0);
     let there = c.send_and_import(&here).unwrap();
-    let media = c.call("eval", json!(["return daw.api.media_dir()"])).unwrap();
+    let media = c.call("eval", json!(["return paw.api.media_dir()"])).unwrap();
     assert!(there.starts_with(media.as_str().unwrap()), "{there} is in the project's media folder");
     assert_eq!(std::fs::read(&there).unwrap(), std::fs::read(&here).unwrap(), "every byte arrived");
-    let clips = c.call("eval", json!(["local t = daw.tracks()[1]; return t and #t:clips()"])).unwrap();
+    let clips = c.call("eval", json!(["local t = paw.tracks()[1]; return t and #t:clips()"])).unwrap();
     assert_eq!(clips, json!(1), "imported on a track of its own");
     // The same name again does not overwrite it.
     let again = c.send_file(&here).unwrap();
@@ -479,13 +479,13 @@ fn the_instances_sound_is_heard_where_the_client_is() {
     // A long note on a synth, playing, on the null device.
     c.call(
         "eval",
-        json!(["local t = daw.add_track({ name = 'Lead' }); t:add_device('synth', { attack = 0.001 })
+        json!(["local t = paw.add_track({ name = 'Lead' }); t:add_device('synth', { attack = 0.001 })
                t:add_clip({ start = 0, length = 64, notes = { { pitch = 'A4', start = 0, length = 64 } } })
-               daw.transport.play()"]),
+               paw.transport.play()"]),
     )
     .unwrap();
     let heard = instance.dir.join("heard.wav");
-    let player = daw_listen::Player::file(&heard, 48000).unwrap();
+    let player = paw_listen::Player::file(&heard, 48000).unwrap();
     let answer = c.call("monitor.listen", json!([])).unwrap();
     assert_eq!(answer["format"], "s16le");
     assert_eq!(answer["rate"], json!(24000));

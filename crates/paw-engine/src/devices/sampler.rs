@@ -535,7 +535,7 @@ mod tests {
 
     #[test]
     fn plays_each_note_s_file_with_level_pan_tune_and_choke() {
-        let dir = std::env::temp_dir().join(format!("daw-sampler-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-sampler-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let (one, ramp) = (dir.join("one.wav"), dir.join("ramp.wav"));
         wav(&one, 1000, &[0.5; 100]);

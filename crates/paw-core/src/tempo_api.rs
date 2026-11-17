@@ -1,10 +1,10 @@
-//! `daw.api.tempo_*`: the tempo map for Lua. The conversions are called for
+//! `paw.api.tempo_*`: the tempo map for Lua. The conversions are called for
 //! every clip and line a view draws, so they read the project's map in
 //! place: a binary search, no copying.
 
 use std::rc::Rc;
 
-use daw_engine::{SigPoint, TempoMap, TempoPoint};
+use paw_engine::{SigPoint, TempoMap, TempoPoint};
 use mlua::{Lua, Table, Value as LuaValue};
 use serde::Deserialize;
 
@@ -60,7 +60,7 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
     reader(lua, api, shared, "tempo_signature", |_, m, beat: f64| {
         Ok(m.signature(beat))
     })?;
-    // Bars count from 0 here; `daw.tempo` and `daw.time` count from 1.
+    // Bars count from 0 here; `paw.tempo` and `paw.time` count from 1.
     reader(lua, api, shared, "tempo_bar_of", |_, m, beat: f64| {
         Ok(m.bar_of(beat))
     })?;

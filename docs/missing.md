@@ -11,9 +11,9 @@
   views, but nothing opens the picker there yet). Taken as a suggestion
   (`Ctrl-Space`) a snippet has no choices to step through, and the picker's
   preview is drawn by the snippet's own layer rather than through
-  `daw.complete.show`. A melody of eighth notes alone may be read as
+  `paw.complete.show`. A melody of eighth notes alone may be read as
   chords (a beat with two pitches in it is evidence of one).
-- Pickers you can hear: `daw.opt.audition_level` sets the level of sound
+- Pickers you can hear: `paw.opt.audition_level` sets the level of sound
   files only; a phrase plays through the track at the track's own level,
   so that a preset is heard as it would be. A phrase is timed by the
   kernel's timers rather than the engine, so it can be a few milliseconds
@@ -35,10 +35,10 @@
   presets for `:preset`, has no editor
   window of its own, one stereo output, and ignores per-note controllers,
   MPE and note-off velocity.
-- The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
+- The waveform of an audio clip in cells (`paw.opt.wave_scale`) draws each
   column's lowest to highest sample and nothing of its loudness: there is no
   darker inner band for the RMS. The window draws a clip's peaks from the
-  same data (`daw.frontend.peaks`: the lowest, the highest and the loudness
+  same data (`paw.frontend.peaks`: the lowest, the highest and the loudness
   of each point) as it did before.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
@@ -49,7 +49,7 @@
   drawn by each view itself, layouts are not saved with the project, and
   the graphical frontend keeps its own layout of panels. `:new` still
   starts a new project; `:vnew` and `Ctrl-w n` open an empty window.
-  A view's locator (`daw.ui.locator`, where in the project the view's
+  A view's locator (`paw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
 - The quickfix list: `:g/pattern/` and `:vimgrep` fill it, but no `:grep`
@@ -85,10 +85,10 @@
   are made the first time help is asked for, in about half a second) and
   no help in other languages. The Nix package installs the extensions
   beside the program but not `docs/`, so installed, help has the
-  extensions' pages and not the manual's, until `DAW_HOME` names a source
+  extensions' pages and not the manual's, until `PAW_HOME` names a source
   tree.
 
-- Lists edited as text (`daw://tracks` and the others): a track's input,
+- Lists edited as text (`paw://tracks` and the others): a track's input,
   MIDI ports, height and automation, a device's side-chain, outputs and
   parameters, and a send's place among a track's sends are not fields of
   their lines (a copy keeps them); a device is not renamed or replaced by
@@ -106,7 +106,7 @@
   across mixer strips with different devices or sends picks rows by what
   they are (the fader, the second send), and skips a strip that has none.
   `]` and `[` wait a moment for `]d` `]g` and the like before they run, as
-  Vim's keys do when a longer mapping starts with them. `daw.opt.keys =
+  Vim's keys do when a longer mapping starts with them. `paw.opt.keys =
   "classic"` brings back the keys of before, and is to go after a release.
   The session view's `m` and `n` still mean launch mode and a new clip, not
   Vim's mark and next match.
@@ -121,7 +121,7 @@
   on a track with an articulation map (extensions/articulations), and
   only from where they are written to the end of the clip or the range;
   swing is not rendered; no CC1 or CC11 is written for sustained instruments; a key
-  change after the first bar is not read by `daw.harmony` (there is no key
+  change after the first bar is not read by `paw.harmony` (there is no key
   track in the core: the key the score starts in is the project's); a
   time signature written in notation is the song's, for every track. A mark
   writes the MIDI only when it is written: notes the piano roll moves under
@@ -223,7 +223,7 @@
 - In the curve editor: send levels and clip gain are not curves yet; a
   controller's moves only hold (a ramp is written as many moves); the
   window draws a lane's held and smooth stretches straight, though they
-  play as shaped; waves are not `daw.snippet` snippets, which write notes.
+  play as shaped; waves are not `paw.snippet` snippets, which write notes.
 - The mouse in the terminal: an audio clip's fades and gain are not dragged
   (the keys and the clip's commands set them), a track's height is not
   dragged (the wheel with Ctrl over the headers changes every track's), and
@@ -258,7 +258,7 @@
   keyswitch goes before its own note but a controller or program change
   is in force for the whole chord (route one with `ch=`); a MIDI file
   keeps the attribute in an event of this program's, not in the NRPN form
-  some other programs read; `daw.plugins.add_dir` finds CLAP and VST3
+  some other programs read; `paw.plugins.add_dir` finds CLAP and VST3
   plugins, not LV2; only CLAP plugins' key names are read, and the window's
   piano roll shows a note's articulation as a chip but not the names on
   its keyboard. A note an articulation's `delay` moves before the loop's
@@ -274,7 +274,7 @@
   track inside a frozen group to a track outside it is not heard while the
   group is frozen, and a frozen track is not rendered again by itself when
   the tempo changes. The window draws no `F` on a frozen track's header yet
-  (the terminal does; `daw.freeze.state(id)` says it).
+  (the terminal does; `paw.freeze.state(id)` says it).
 - A narrowed tab is not kept by `:layout save` (a group's id belongs to its
   project), and the window's own drawing has no mark for it beyond its tab's
   name. With `scope_rest=frozen` a part of the rest edited from another tab
@@ -368,14 +368,14 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
-- The status line and the files: the window does not draw `daw.statusline`'s
+- The status line and the files: the window does not draw `paw.statusline`'s
   line (it is told the pieces, `modal.statusline`) nor the tab line's own
   sections, and `tabline.always` is the terminal's. A "scope" component has
   no meaning here, so there is none; disk recording shows as `take N`, with no
   count of bytes written (the engine does not report one). The file manager
   moves nothing between disks as a folder (a file is copied and then moved),
   has no undo of a file operation but the trash, and cannot drag a line into
-  `daw://tracks` (to bring a file in, Enter or `go`); `daw` started with a folder
+  `paw://tracks` (to bring a file in, Enter or `go`); `paw` started with a folder
   does not open it. The graphical window shows a files buffer as any text buffer.
 - Project diff and merge (extensions/projdiff): the diff and conflict views
   are drawn in cells, as the window draws any such view, with no painted

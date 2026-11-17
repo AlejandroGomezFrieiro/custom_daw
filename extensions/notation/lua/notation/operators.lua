@@ -8,8 +8,8 @@
 -- What is yanked is a fragment of the score (`value.score`) with the notes
 -- it plays (`value.notes`), so a register pastes into notation as written
 -- and into the piano roll as played.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local view = require("notation")
 local model = require("notation.model")
 local D = require("notation.doc")
@@ -672,15 +672,15 @@ function P.yank(region, register)
   local sc = O.score()
   if not sc then return end
   local value = P.value(sc, P.fragment(sc, O.of_region(sc, region)))
-  daw.keymap.setreg(value, register, true)
+  paw.keymap.setreg(value, register, true)
   O.reach = nil
-  daw.notify("yanked " .. counted(#value.notes, "note"))
+  paw.notify("yanked " .. counted(#value.notes, "note"))
 end
 
 --- Delete a region, keeping it in a register.
 function P.delete_region(region, register)
   P.on(region, function(sc, sel)
-    daw.keymap.setreg(P.value(sc, P.fragment(sc, sel)), register)
+    paw.keymap.setreg(P.value(sc, P.fragment(sc, sel)), register)
     P.delete(sc, sel)
   end)
 end
@@ -691,7 +691,7 @@ end
 function P.paste(value, before, count)
   local clip = view:clip()
   if not clip then return end
-  if not value then return daw.notify("nothing to paste yet", "warn") end
+  if not value then return paw.notify("nothing to paste yet", "warn") end
   if not value.score then
     local at = view.beat
     if not before then
@@ -701,7 +701,7 @@ function P.paste(value, before, count)
     local start, finish = at, at
     for _ = 1, count or 1 do
       start = finish
-      finish = daw.edit.roll.paste(clip, value, view:cursor_pitch(), finish)
+      finish = paw.edit.roll.paste(clip, value, view:cursor_pitch(), finish)
       if not finish then return end
     end
     view:set(nil, start)
@@ -779,7 +779,7 @@ function P.repitch_letter(letter, count)
   P.on(nil, function(sc)
     local it, note, cur, i, seq = O.chord_here(sc)
     if not it then
-      daw.notify("no note here to re-pitch", "warn")
+      paw.notify("no note here to re-pitch", "warn")
       return false
     end
     local left = count or 1
@@ -836,7 +836,7 @@ function P.repitch_enter(letter, add)
       if not target and x.ev.kind == "chord" and not x.ev.grace and x.e > cur.t then target = x end
     end
     if not target then
-      daw.notify("no more notes to re-pitch in this voice", "warn")
+      paw.notify("no more notes to re-pitch in this voice", "warn")
       return false
     end
     local ev = target.ev
@@ -894,7 +894,7 @@ function P.grace_enter(letter)
     D.ensure(sc, mi)
     if P.put_grace(sc, mi, view:staff_id(sc, sp.pitch), view.voice or 1, at, kind, sp) then return true end
     view.pending_grace = { kind = kind, sp = sp, beat = view.beat }
-    daw.notify("the " .. kind .. " goes in before the note entered here next")
+    paw.notify("the " .. kind .. " goes in before the note entered here next")
     return false
   end)
   if ok ~= nil then

@@ -4,10 +4,10 @@
 local path, name, dsp_source = ...
 local ffi = require("ffi")
 
-package.preload["daw.dsp"] = function()
-  return assert(loadstring(dsp_source, "@daw/dsp.lua"))()
+package.preload["paw.dsp"] = function()
+  return assert(loadstring(dsp_source, "@paw/dsp.lua"))()
 end
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 -- A device may keep modules of its own beside it.
 local dir = path:match("^(.*)/[^/]*$") or "."
 package.path = dir .. "/?.lua;" .. dir .. "/?/init.lua;" .. package.path
@@ -46,7 +46,7 @@ local b, P, T, keys, key_left, key_right
 function H.bind(ptr, max_block, max_events, sample_rate)
   b = dsp._block(dev, ptr, max_block, max_events, sample_rate)
   P = ffi.cast("double*", ptr.params)
-  T = ffi.cast("daw_transport*", ptr.transport)
+  T = ffi.cast("paw_transport*", ptr.transport)
   key_left, key_right = ffi.cast("float*", ptr.key_left), ffi.cast("float*", ptr.key_right)
   keys = {}
   for i, s in ipairs(dev._specs) do keys[i] = s.key end
@@ -76,7 +76,7 @@ function H.run(frames, nevents, keyed)
   return b.nout
 end
 
---- A call from a script in the session (`daw.api.device_call`, or a post to
+--- A call from a script in the session (`paw.api.device_call`, or a post to
 --- every device of this kind): the device's own `dev.call(method, data)`,
 --- run between two blocks. A number answers as its text.
 function H.call(method, data)

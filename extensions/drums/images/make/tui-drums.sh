@@ -2,7 +2,7 @@
 # The drum grid in the terminal, on the demo song's drums: claps put in by
 # name, a hit made harder, the bar repeated, and played.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/drums') daw.cursor.set_track(daw.tracks()[1]) daw.cmd('drums.map', { 'gm' })"
+SETUP="$TUI_DEMO paw.ext.load('extensions/drums') paw.cursor.set_track(paw.tracks()[1]) paw.cmd('drums.map', { 'gm' })"
 rig_start
 term_start
 rec_start tui-drums

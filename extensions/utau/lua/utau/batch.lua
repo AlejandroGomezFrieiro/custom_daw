@@ -1,6 +1,6 @@
 -- Batch edits and tuning presets for a vocal clip, ported from ReaUtau's
 -- batch and tuning modules. Each runs as one edit, so one undo step.
-local api = daw.api
+local api = paw.api
 local notes = require("utau.notes")
 local kana = require("utau.kana")
 

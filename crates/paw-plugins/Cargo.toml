@@ -1,12 +1,12 @@
 [package]
-name = "daw-plugins"
+name = "paw-plugins"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Hosts CLAP, LV2 and VST3 plugins as engine devices."
 
 [dependencies]
-daw-engine.workspace = true
+paw-engine.workspace = true
 anyhow.workspace = true
 rtrb = "0.4"
 serde.workspace = true

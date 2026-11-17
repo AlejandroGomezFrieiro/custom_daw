@@ -665,7 +665,7 @@ mod tests {
     use super::*;
 
     fn store(name: &str, limit: u64) -> DiskStore {
-        let dir = std::env::temp_dir().join(format!("daw-samples-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-samples-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         DiskStore { dir, limit }
     }
@@ -783,7 +783,7 @@ mod tests {
     #[test]
     fn a_store_that_cannot_be_written_leaves_the_sound_in_memory() {
         let store = DiskStore {
-            dir: PathBuf::from("/proc/daw-no-such-place"),
+            dir: PathBuf::from("/proc/paw-no-such-place"),
             limit: 100,
         };
         let mut sink = Sink::new(Some((&store, "c-src".into())));

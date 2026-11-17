@@ -1,5 +1,5 @@
--- The default colours. Override any group with `daw.ui.hl(name, def)`, or
--- change `palette` and call `daw.ui.theme(require("daw.theme").build())`.
+-- The default colours. Override any group with `paw.ui.hl(name, def)`, or
+-- change `palette` and call `paw.ui.theme(require("paw.theme").build())`.
 --
 -- What is content stays neutral: names, numbers, the grid. Colour is spent
 -- on what matters now: amber for focus, the playhead and keys to press; the
@@ -9,7 +9,7 @@
 -- Tracks take their colour from `hues` in turn (or from `track.color`), and
 -- everything that belongs to a track is drawn in shades of it: its clips,
 -- its notes in the piano roll, its strip in the mixer. Those shades are made
--- on demand by `daw.draw.hue`. The window uses the same twelve hues.
+-- on demand by `paw.draw.hue`. The window uses the same twelve hues.
 local c = {
   bg = "#101216",        -- the screen
   bg_dark = "#0c0d10",   -- outside a clip, black keys' rows, automation
@@ -76,7 +76,7 @@ local function build()
     Panel = { fg = c.fg, bg = alt },
     PanelTitle = { fg = c.dim, bg = alt, bold = true },
     PanelTitleFocus = { fg = c.bright, bg = alt, bold = true },
-    -- A docked panel's title bar (`daw.ui.titlebar`).
+    -- A docked panel's title bar (`paw.ui.titlebar`).
     TitleBar = { fg = c.dim, bg = alt },
     TitleBarName = { fg = c.dim, bg = alt, bold = true },
     TitleBarFocus = { fg = c.bg, bg = c.accent },
@@ -223,13 +223,13 @@ local function build()
     SnippetNote = { fg = c.bg, bg = c.visual, bold = true },
     SnippetSpan = { fg = c.bg, bg = c.visual },
     SnippetGhost = { fg = c.visual, bg = c.bg_hl },
-    -- What an Ex line being typed acts on (daw.ex): its stretch of time,
+    -- What an Ex line being typed acts on (paw.ex): its stretch of time,
     -- the things that match, the one asked about, what a change would make.
     ExRange = { bg = "#3a3352" },
     ExMatch = { fg = c.bg, bg = c.solo },
     ExCurrent = { fg = c.bg, bg = c.accent, bold = true },
     ExGhost = { fg = c.visual, bg = c.bg_hl },
-    -- Diagnostics (daw.diagnostic): the mark, a note underlined, the message
+    -- Diagnostics (paw.diagnostic): the mark, a note underlined, the message
     -- after it.
     DiagnosticError = { fg = c.red, bold = true },
     DiagnosticWarn = { fg = c.mute, bold = true },
@@ -243,7 +243,7 @@ local function build()
     DiagnosticVirtualTextWarn = { fg = c.mute, italic = true },
     DiagnosticVirtualTextInfo = { fg = c.normal, italic = true },
     DiagnosticVirtualTextHint = { fg = c.faint, italic = true },
-    -- A label a server puts on something (daw.annotation).
+    -- A label a server puts on something (paw.annotation).
     Annotation = { fg = c.monitor, italic = true },
 
     DeviceName = { fg = c.bright, bold = true },

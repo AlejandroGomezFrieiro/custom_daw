@@ -5,9 +5,9 @@
 -- the cursor, or a device's wet/dry mix on its own row; `d` `y` `p` cut,
 -- copy and paste whole devices or the settings of parameters; `gc` bypasses;
 -- `V` over rows and any of these does it to them all, and `.` again.
-local api, util = daw.api, daw.util
-local keymap = daw.keymap
-local panel = daw.ui.views.devices
+local api, util = paw.api, paw.util
+local keymap = paw.keymap
+local panel = paw.ui.views.devices
 local M = {}
 
 local function rows() return panel:rows() end
@@ -119,18 +119,18 @@ dmap("x", function()
   local _, row = panel:selected()
   if not row then return end
   if row.param then return reset({ row }) end
-  daw.cmd("device.remove")
+  paw.cmd("device.remove")
 end, "Remove the device; on a parameter, put it back at its default")
 dmap("c", function()
   local _, row = panel:selected()
   if not row then return end
-  daw.cmd(row.param and "device.value" or "preset")
+  paw.cmd(row.param and "device.value" or "preset")
 end, "Change: type the parameter's value; on a device, choose a preset")
 dmap("=", "device.value", "Type the parameter's value")
 dmap("<CR>", function()
   local _, row = panel:selected()
   if not row then return end
-  daw.cmd(row.param and "curve.open" or "device.editor")
+  paw.cmd(row.param and "curve.open" or "device.editor")
 end, "Edit the parameter's curve; on a device, show or hide its window")
 dmap("]p", "preset.next", "Next preset")
 dmap("[p", "preset.prev", "Previous preset")
@@ -159,16 +159,16 @@ function panel:describe()
   if row.param then
     local p = row.param
     out[#out + 1] = { text = "Parameter  " .. p.name, style = "Title" }
-    out[#out + 1] = "  now      " .. daw.frontend.format_value(p, panel.value(row))
-    out[#out + 1] = "  from     " .. daw.frontend.format_value(p, p.min) .. " to " .. daw.frontend.format_value(p, p.max)
-    if p.default ~= nil then out[#out + 1] = "  default  " .. daw.frontend.format_value(p, p.default) end
+    out[#out + 1] = "  now      " .. paw.frontend.format_value(p, panel.value(row))
+    out[#out + 1] = "  from     " .. paw.frontend.format_value(p, p.min) .. " to " .. paw.frontend.format_value(p, p.max)
+    if p.default ~= nil then out[#out + 1] = "  default  " .. paw.frontend.format_value(p, p.default) end
     out[#out + 1] = ""
   end
   out[#out + 1] = { text = "Device  " .. d.name, style = "Title" }
   out[#out + 1] = string.format("  %s%s, %d parameters", d.format or "", d.bypass and ", bypassed" or "", #(d.param_info or {}))
   local preset = type(d.meta) == "table" and d.meta.preset
   if preset then out[#out + 1] = "  preset   " .. preset end
-  local key = daw.routes.sidechain_text(d)
+  local key = paw.routes.sidechain_text(d)
   if key then out[#out + 1] = "  listens to " .. key end
   return out
 end
@@ -180,7 +180,7 @@ end
 --- The register value for whole devices: one, or several in their order.
 local function taken(devices)
   local snaps = {}
-  for i, id in ipairs(devices) do snaps[i] = daw.device(id):snapshot() end
+  for i, id in ipairs(devices) do snaps[i] = paw.device(id):snapshot() end
   if #snaps == 1 then return { kind = "device", device = snaps[1] }, 1 end
   return { kind = "devices", devices = snaps }, #snaps
 end
@@ -190,8 +190,8 @@ op("d", function(region, ctx)
   if #devices > 0 then
     local value, n = taken(devices)
     keymap.setreg(value, ctx.register)
-    for _, id in ipairs(devices) do daw.device(id):remove() end
-    daw.notify(n .. (n == 1 and " device cut" or " devices cut"))
+    for _, id in ipairs(devices) do paw.device(id):remove() end
+    paw.notify(n .. (n == 1 and " device cut" or " devices cut"))
   end
   reset(params)
 end, "Delete: devices are cut, parameters go back to their defaults")
@@ -200,12 +200,12 @@ op("y", function(region, ctx)
   if #devices > 0 then
     local value, n = taken(devices)
     keymap.setreg(value, ctx.register, true)
-    return daw.notify(n .. (n == 1 and " device yanked" or " devices yanked"))
+    return paw.notify(n .. (n == 1 and " device yanked" or " devices yanked"))
   end
   local values = {}
   for _, row in ipairs(params) do values[#values + 1] = { key = row.param.key, value = panel.value(row) } end
   keymap.setreg({ kind = "params", values = values }, ctx.register, true)
-  daw.notify(#values .. (#values == 1 and " setting yanked" or " settings yanked"))
+  paw.notify(#values .. (#values == 1 and " setting yanked" or " settings yanked"))
 end, "Yank: devices whole, or the settings of parameters")
 op("gc", function(region)
   local list, ids, seen = rows(), {}, {}
@@ -218,7 +218,7 @@ op("gc", function(region)
   end
   local all = #ids > 0
   for _, id in ipairs(ids) do all = all and api.device_get(id).bypass end
-  for _, id in ipairs(ids) do daw.device(id).bypass = not all end
+  for _, id in ipairs(ids) do paw.device(id).bypass = not all end
 end, "Bypass the devices, or let them play again", { role = "mute" })
 
 -- On a selection the value keys change every parameter selected.
@@ -228,7 +228,7 @@ local function vop(lhs, sign, desc, role)
     for i = region.r0, region.r1 do
       local row = list[i]
       if row and row.param then
-        api.device_set_param(row.device.id, row.param.key, daw.params.step(row.param, panel.value(row), sign * (ctx.count or 1)))
+        api.device_set_param(row.device.id, row.param.key, paw.params.step(row.param, panel.value(row), sign * (ctx.count or 1)))
       end
     end
   end })
@@ -239,27 +239,27 @@ vop("<C-a>", 1, "Raise the parameters selected by the count", "main+")
 vop("<C-x>", -1, "Lower the parameters selected by the count", "main-")
 
 local function paste(offset) return function(ctx)
-  local value, track = keymap.getreg(ctx.register), daw.cursor.track()
-  if not track then return daw.notify("no track selected", "warn") end
+  local value, track = keymap.getreg(ctx.register), paw.cursor.track()
+  if not track then return paw.notify("no track selected", "warn") end
   local device = panel:selected()
   -- Settings: onto the device under the cursor, by the parameters' keys.
   if value and value.kind == "params" then
     if not device then return end
     for _, v in ipairs(value.values) do api.device_set_param(device.id, v.key, v.value) end
-    return daw.notify(#value.values .. " settings pasted on " .. device.name)
+    return paw.notify(#value.values .. " settings pasted on " .. device.name)
   end
   if not (value and (value.kind == "device" or value.kind == "devices")) then
-    return daw.notify("no device in the register: `yy` or `dd` on one first", "warn")
+    return paw.notify("no device in the register: `yy` or `dd` on one first", "warn")
   end
   local at = device and device.index + offset or nil
   -- Several devices, from a selection, go in in their order.
-  for i, snap in ipairs(value.devices or { value.device }) do daw.restore_device(snap, track, at and at + i - 1) end
+  for i, snap in ipairs(value.devices or { value.device }) do paw.restore_device(snap, track, at and at + i - 1) end
 end end
 dmap("p", paste(1), "Paste devices after this one, or settings onto it")
 dmap("P", paste(0), "Paste devices before this one, or settings onto it")
 
 
--- The keys the panel had before the rule (`daw.opt.keys = "classic"`).
+-- The keys the panel had before the rule (`paw.opt.keys = "classic"`).
 local function classic(lhs, rhs, desc, opts) keymap.classic(lhs, rhs, util.merge({ view = "devices", desc = desc, mode = "n" }, opts)) end
 classic("l", adjust(1), "Raise the parameter")
 classic("h", adjust(-1), "Lower the parameter")

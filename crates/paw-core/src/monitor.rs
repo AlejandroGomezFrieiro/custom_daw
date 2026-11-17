@@ -1,5 +1,5 @@
 //! What the instance plays, sent to the connections that listen
-//! (`monitor.listen`, `monitor.unlisten`): see `daw_proto::monitor` for the
+//! (`monitor.listen`, `monitor.unlisten`): see `paw_proto::monitor` for the
 //! frames. A thread of its own reads the engine's copy of its output and
 //! sends it on, so that the kernel's turns do not hold it up; the engine
 //! only copies while someone listens.
@@ -9,7 +9,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use daw_proto::monitor::Encoder;
+use paw_proto::monitor::Encoder;
 use rtrb::Consumer;
 use serde_json::{Value, json};
 
@@ -53,7 +53,7 @@ impl Monitor {
                     "rate": Encoder::new(rate).rate,
                     "channels": 2,
                     "format": "s16le",
-                    "frame_ms": daw_proto::monitor::FRAME_MS,
+                    "frame_ms": paw_proto::monitor::FRAME_MS,
                 }))
             }
             "monitor.unlisten" => {

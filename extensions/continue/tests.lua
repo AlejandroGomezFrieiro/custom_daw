@@ -1,11 +1,11 @@
 -- Tests for the continue extension, run by tests/suite.lua.
 local T = ...
 local test, eq = T.test, T.eq
-local api = daw.api
-local roll = daw.ui.views.pianoroll
+local api = paw.api
+local roll = paw.ui.views.pianoroll
 
 local function ext()
-  daw.ext.load("extensions/continue")
+  paw.ext.load("extensions/continue")
   return require("continue")
 end
 
@@ -22,29 +22,29 @@ end
 local function with_bar(fn)
   local continue = ext()
   T.fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
-  local t = daw.add_track({ name = "Lead" })
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
+  local t = paw.add_track({ name = "Lead" })
   local clip = t:add_clip({ start = 0, length = 4, notes = { n(60, 0), n(62, 1), n(64, 2), n(67, 3) } })
   roll:edit(clip)
   roll:set(67, 4)
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  daw.opt.complete_auto = false
+  paw.opt.complete_auto = false
   local ok, err = xpcall(fn, debug.traceback, continue, clip)
-  daw.complete.dismiss()
-  daw.complete.unregister("continue")
-  daw.opt.complete_auto = true
-  daw.opt.complete_idle_ms = 1200
-  daw.keymap.feed("<Esc><Esc>")
-  daw.ui.hide("pianoroll")
-  daw.ui.focus("arrange")
+  paw.complete.dismiss()
+  paw.complete.unregister("continue")
+  paw.opt.complete_auto = true
+  paw.opt.complete_idle_ms = 1200
+  paw.keymap.feed("<Esc><Esc>")
+  paw.ui.hide("pianoroll")
+  paw.ui.focus("arrange")
   if not ok then error(err, 0) end
 end
 
 test("continue guesses the key from how long each pitch sounds", function()
   local continue = ext()
-  daw.complete.unregister("continue")
+  paw.complete.unregister("continue")
   eq(continue.guess_key({ n(60, 0), n(64, 1), n(67, 2), n(62, 3), n(65, 4) }).name, "C major", "C major")
   eq(continue.guess_key({ n(57, 0, 3), n(60, 3), n(64, 4), n(62, 5), n(59, 6) }).name, "A minor", "A minor")
   local tune = { n(60, 0), n(62, 1), n(64, 2), n(67, 3), n(65, 4), n(64, 5), n(62, 6), n(60, 7),
@@ -58,7 +58,7 @@ end)
 
 test("continue offers the bar again, a step higher and lower in the key, and the motif rising", function()
   with_bar(function(continue)
-    local items = continue.suggest({ notes = daw.clip(roll.clip_id):notes(), at = 4, bar = 4 })
+    local items = continue.suggest({ notes = paw.clip(roll.clip_id):notes(), at = 4, bar = 4 })
     local got = {}
     for i, item in ipairs(items) do got[i] = item.label .. ": " .. list(item.notes) end
     eq(got[1], "the bar again: 60@4 62@5 64@6 67@7", "the bar again")
@@ -71,34 +71,34 @@ end)
 
 test("continue's suggestion is accepted with tab in insert mode as one undo step", function()
   with_bar(function(_, clip)
-    daw.keymap.feed("i<C-Space>")
-    local cur = daw.complete.current()
+    paw.keymap.feed("i<C-Space>")
+    local cur = paw.complete.current()
     eq(cur and #cur.items, 4, "four alternatives")
     eq(cur.item.source, "continue", "from this source")
-    daw.keymap.feed("<C-n>")
+    paw.keymap.feed("<C-n>")
     T.keys("<Tab>")
     eq(T.melody(clip), "60@0+1 62@1+1 64@2+1 67@3+1 62@4+1 64@5+1 65@6+1 69@7+1", "the sequence a step higher is written")
     eq(roll.beat, 8, "the cursor goes on after it, to enter more")
-    eq(daw.keymap.mode, "i", "still entering notes")
-    daw.keymap.feed("<Esc>")
-    daw.undo()
+    eq(paw.keymap.mode, "i", "still entering notes")
+    paw.keymap.feed("<Esc>")
+    paw.undo()
     eq(T.melody(clip), "60@0+1 62@1+1 64@2+1 67@3+1", "one undo takes it away")
   end)
 end)
 
 test("continue suggests by itself after a pause, and again after what was accepted", function()
   with_bar(function(_, clip)
-    daw.opt.complete_idle_ms = 30
-    daw.opt.complete_auto = true
+    paw.opt.complete_idle_ms = 30
+    paw.opt.complete_auto = true
     clip:add_note(n(48, 0, 4))
-    daw.flush()
+    paw.flush()
     local limit = api.now() + 5000
-    while not daw.complete.current() and api.now() < limit do daw.wait(10) end
-    eq(daw.complete.current() ~= nil, true, "a suggestion came")
-    daw.keymap.feed("<Tab>")
-    daw.flush()
+    while not paw.complete.current() and api.now() < limit do paw.wait(10) end
+    eq(paw.complete.current() ~= nil, true, "a suggestion came")
+    paw.keymap.feed("<Tab>")
+    paw.flush()
     limit = api.now() + 5000
-    while not daw.complete.current() and api.now() < limit do daw.wait(10) end
-    eq(daw.complete.current() and daw.complete.current().item.notes[1].start, 8, "the next one goes on from there")
+    while not paw.complete.current() and api.now() < limit do paw.wait(10) end
+    eq(paw.complete.current() and paw.complete.current().item.notes[1].start, 8, "the next one goes on from there")
   end)
 end)

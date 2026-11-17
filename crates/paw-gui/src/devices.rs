@@ -161,13 +161,13 @@ impl View {
         y
     }
 
-    /// The search box lists what the kernel finds (`daw.fx.search`).
+    /// The search box lists what the kernel finds (`paw.fx.search`).
     fn search_devices(&mut self, query: &str) {
         self.devices.query = query.to_string();
         self.devices.hits = if query.trim().is_empty() {
             Vec::new()
         } else {
-            let found = self.ask("return daw.frontend.act.search_devices(...)", json!([query]));
+            let found = self.ask("return paw.frontend.act.search_devices(...)", json!([query]));
             rows(&found).iter().map(|h| (text(&h["line"]), text(&h["kind"]))).collect()
         };
     }
@@ -254,7 +254,7 @@ impl View {
         let response = widgets::button(ui, b(right), Id::unique(("dev-x", id)), Some(icons::X), "", Look::quiet());
         widgets::name(&response, &format!("remove {device_name}"));
         if response.clicked() {
-            self.eval("return daw.api.device_remove(...)", json!([id]));
+            self.eval("return paw.api.device_remove(...)", json!([id]));
         }
         right += 1.0;
         let response = widgets::button(ui, b(right), Id::unique(("dev-down", id)), Some(icons::CARET_DOWN), "", Look::quiet().enabled(at + 1 < count));
@@ -281,7 +281,7 @@ impl View {
         let editor = text(&d["editor"]);
         if !editor.is_empty() {
             if widgets::button(ui, b(right), Id::unique(("dev-editor", id)), Some(icons::ARROW_SQUARE_OUT), "", Look::quiet().on(editor == "open")).clicked() {
-                self.eval("return daw.api.device_editor(...)", json!([id]));
+                self.eval("return paw.api.device_editor(...)", json!([id]));
             }
             right += 1.0;
         }

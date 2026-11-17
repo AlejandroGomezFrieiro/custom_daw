@@ -1,5 +1,5 @@
 -- Lesson 10: faders, pan, mute, solo, buses, sends, automation.
-local api = daw.api
+local api = paw.api
 
 local function near(a, b) return math.abs(a - b) < 1e-6 end
 
@@ -28,32 +28,32 @@ The mixer turns the grid sideways: `h` `l` move between tracks because tracks
 are its columns, and `j` `k` only ever move, as everywhere. `6<C-x>` lowers the
 row by six, as `<C-x>` lowers a number in Vim. `<C-w>c` closes it.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 16, notes = look.drums(look.beat, 4) })
-    local bass = daw.add_track({ name = "Bass", volume = -4 })
+    local bass = paw.add_track({ name = "Bass", volume = -4 })
     bass:add_device("synth", { wave = 2, cutoff = 600, release = 0.05 })
     local line = {}
     for i, root in ipairs({ "A1", "F1", "C2", "G1" }) do
       for _, n in ipairs(look.pulse(root, 4, (i - 1) * 4)) do line[#line + 1] = n end
     end
     bass:add_clip({ name = "bass", start = 0, length = 16, notes = line })
-    local keys = daw.add_track({ name = "Keys", volume = -10 })
+    local keys = paw.add_track({ name = "Keys", volume = -10 })
     keys:add_device("synth", { wave = 3, attack = 0.05, release = 0.4, cutoff = 1800 })
     local chords = {}
     for i, chord in ipairs({ { "A3", "C4", "E4" }, { "F3", "A3", "C4" }, { "G3", "C4", "E4" }, { "G3", "B3", "D4" } }) do
       for _, n in ipairs(look.chord(chord, 4, (i - 1) * 4)) do chords[#chords + 1] = n end
     end
     keys:add_clip({ name = "chords", start = 0, length = 16, notes = chords })
-    local lead = daw.add_track({ name = "Lead", volume = -8 })
+    local lead = paw.add_track({ name = "Lead", volume = -8 })
     lead:add_device("synth", { wave = 1, cutoff = 2400, release = 0.2 })
     lead:add_clip({ name = "melody", start = 0, length = 16, notes = look.notes("E5:0:1 C5:1:1 A4:2:2 F4:4:1 A4:5:1 C5:6:2 E5:8:1 G5:9:1 E5:10:2 D5:12:2 B4:14:2") })
-    local echo = daw.add_track({ name = "Echo", volume = -6 })
+    local echo = paw.add_track({ name = "Echo", volume = -6 })
     echo:add_device("delay", { mix = 1, feedback = 0.45 })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 16, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 16, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Drums")) end,
+  at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
       say = "Press `,m` to open the mixer along the bottom: a strip per track, with its fader and meter.",
@@ -107,8 +107,8 @@ row by six, as `<C-x>` lowers a number in Vim. `<C-w>c` closes it.]],
       done = "Keys now plays through Bus: Bus's fader turns the chords up and down, with anything else you route there.",
     },
     {
-      say = "A send copies some of a track to another, here to Echo, which has a delay. There is no key for it yet: type `:lua daw.track(\"Lead\"):send(daw.track(\"Echo\"), -6)` and `<CR>`.",
-      keys = { ":lua daw.track(\"Lead\"):send(daw.track(\"Echo\"), -6)", "<CR>" },
+      say = "A send copies some of a track to another, here to Echo, which has a delay. There is no key for it yet: type `:lua paw.track(\"Lead\"):send(paw.track(\"Echo\"), -6)` and `<CR>`.",
+      keys = { ":lua paw.track(\"Lead\"):send(paw.track(\"Echo\"), -6)", "<CR>" },
       check = function(_, look)
         for _, send in ipairs(api.track_get(look.track("Lead").id).sends) do
           if send.target == look.track("Echo").id and near(send.level, -6) then return true end

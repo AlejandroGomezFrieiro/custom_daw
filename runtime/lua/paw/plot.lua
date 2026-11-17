@@ -1,14 +1,14 @@
 -- Plots of time in pixels: what a view draws in a strip (`buf:strip`) to
 -- show a curve, so that every curve the program shows looks alike and is
 -- sent to the terminal alike. A drawing is made with the painter of
--- `daw.canvas` (`g`), at the strip's size in pixels (`px`, as `buf:strip`
+-- `paw.canvas` (`g`), at the strip's size in pixels (`px`, as `buf:strip`
 -- gives it), and is cut at the barlines (`g:cut`), snapped to whole
 -- cells, so that an edit sends again only the bars it touched.
 --
 --   plot:strip(0, 0, plot.width, plot.height, { key = "lane:" .. win.id, under = true,
 --     draw = function(g, px)
---       daw.plot.curve(g, px, { points = points, from = left, pixels_per_beat = zoom * px.cell.w,
---         lo = 0, hi = 1, color = daw.draw.track_colour(track) })
+--       paw.plot.curve(g, px, { points = points, from = left, pixels_per_beat = zoom * px.cell.w,
+--         lo = 0, hi = 1, color = paw.draw.track_colour(track) })
 --     end })
 --
 -- `M.bars` and `M.wave` draw bars and a waveform the same way, and each
@@ -22,7 +22,7 @@ local M = {}
 
 local floor, max, min = math.floor, math.max, math.min
 
-local function palette() return require("daw.theme").palette end
+local function palette() return require("paw.theme").palette end
 
 --- A colour `#rrggbb` at `alpha` (0 to 1), as `#rrggbbaa`.
 function M.alpha(colour, alpha)
@@ -36,7 +36,7 @@ end
 function M.lines(w, from, ppb, cell_w)
   local out = {}
   if ppb <= 0 then return out end
-  for _, line in ipairs(daw.draw.bar_lines(from, w / ppb + 1)) do
+  for _, line in ipairs(paw.draw.bar_lines(from, w / ppb + 1)) do
     local x = (line.beat - from) * ppb
     if x >= 0 and x < w then
       out[#out + 1] = {
@@ -51,13 +51,13 @@ end
 --- Draw a curve over time in a strip: its grid, the area under it, the
 --- line, and its points. `px` is the strip's size as `buf:strip` gives it
 --- (`w`, `h`, `cell`). `opts`:
----   points            `{ beat, value, shape, tension }` each, in order, as `daw.curves` has them
+---   points            `{ beat, value, shape, tension }` each, in order, as `paw.curves` has them
 ---   from              the beat at the left edge
 ---   pixels_per_beat   the zoom
 ---   frac              `frac(value)` from 0 (bottom) to 1 (top); else `lo` and `hi`
 ---   flat              the value shown when there are no points (else nothing is)
 ---   color             the line's colour, `#rrggbb` (the theme's `dim` by default):
----                     a track's own is `daw.draw.track_colour(track)`
+---                     a track's own is `paw.draw.track_colour(track)`
 ---   fill              how opaque the area under the line is, 0 to 1 (0.16); false for none
 ---   width             the line's width in pixels (1.5)
 ---   top, bottom       pixels kept clear above 1 and below 0 (2 each)
@@ -107,7 +107,7 @@ function M.curve(g, px, opts)
   local points = opts.points or {}
   if #points == 0 and opts.flat == nil then return X, Y end
   local color = opts.color or P.dim
-  local value_at = daw.curves.value_at
+  local value_at = paw.curves.value_at
   local function value(beat) return value_at(points, beat) or opts.flat end
 
   -- The line and the area under it, one stretch between two cuts at a
@@ -189,7 +189,7 @@ end
 ---   color       the wave's colour (the theme's `dim`)
 ---   rms         the RMS band's colour (the wave's, brighter); false for none
 ---   clipped     the colour of a column at full scale (the theme's `red`)
---- Heights follow `daw.opt.wave_scale`, as the cells do.
+--- Heights follow `paw.opt.wave_scale`, as the cells do.
 function M.wave(g, px, opts)
   local P = palette()
   local W, H = px.w, px.h
@@ -197,11 +197,11 @@ function M.wave(g, px, opts)
   if n < 1 then return end
   local peaks = opts.peaks(n) or {}
   if #peaks == 0 then return end
-  local reach = daw.draw.wave_reach
+  local reach = paw.draw.wave_reach
   local mid, half = H / 2, H / 2 - 1
   local color = opts.color or P.dim
   local rms = opts.rms
-  if rms == nil then rms = daw.draw.mix(color, "#ffffff", 0.35) end
+  if rms == nil then rms = paw.draw.mix(color, "#ffffff", 0.35) end
   local clipped = opts.clipped or P.red
   local function at(x) return peaks[min(#peaks, floor(x * #peaks / W) + 1)] end
   local function y_of(v) return mid - (v < 0 and -1 or 1) * reach(v) * half end
@@ -247,19 +247,19 @@ end
 -- Twins in cells -------------------------------------------------------------------
 --
 -- What a view draws where a strip cannot be shown: the same data, in
--- cells, as the views draw them (`daw.draw`). `buf` is the area the strip
+-- cells, as the views draw them (`paw.draw`). `buf` is the area the strip
 -- would have taken, and the options are the pixel version's, with `zoom`
 -- (cells a beat) for `pixels_per_beat` and `style` for the colour.
 
---- `M.curve` in cells: a connected line of sextants (`daw.opt.curve_glyphs`).
+--- `M.curve` in cells: a connected line of sextants (`paw.opt.curve_glyphs`).
 function M.curve_cells(buf, opts)
   local points = opts.points or {}
   if #points == 0 and opts.flat == nil then return end
   local lo, hi = opts.lo or 0, opts.hi or 1
   local frac = opts.frac or function(v) return (v - lo) / ((hi - lo) ~= 0 and (hi - lo) or 1) end
   local from, zoom = opts.from or 0, opts.zoom or 1
-  local value_at = daw.curves.value_at
-  daw.draw.curve(buf, 0, buf.height, function(i)
+  local value_at = paw.curves.value_at
+  paw.draw.curve(buf, 0, buf.height, function(i)
     local v = value_at(points, from + (i + 0.5) / (2 * zoom)) or opts.flat
     return v and frac(v)
   end, opts.style)
@@ -267,7 +267,7 @@ end
 
 --- `M.bars` in cells: a column of eighth blocks for each item.
 function M.bars_cells(buf, opts)
-  local eighths = daw.draw.g.eighths
+  local eighths = paw.draw.g.eighths
   local rows = buf.height
   local from, zoom = opts.from or 0, opts.zoom or 1
   for _, item in ipairs(opts.items or {}) do
@@ -283,14 +283,14 @@ function M.bars_cells(buf, opts)
   end
 end
 
--- Styles for the cells of a waveform that `daw.draw.waveform` marks.
+-- Styles for the cells of a waveform that `paw.draw.waveform` marks.
 local wave_styles = { flip = "ClipWaveFlip", clip = "ClipWaveClip", clipflip = "ClipWaveClipFlip" }
 
 --- `M.wave` in cells: each column from its lowest to its highest sample in
---- eighth blocks (`daw.draw.waveform`), a column at full scale in red.
+--- eighth blocks (`paw.draw.waveform`), a column at full scale in red.
 --- `opts.peaks(n)` is asked for one a column.
 function M.wave_cells(buf, opts)
-  local _, runs = daw.draw.waveform(opts.peaks(buf.width) or {}, buf.height)
+  local _, runs = paw.draw.waveform(opts.peaks(buf.width) or {}, buf.height)
   for row, list in ipairs(runs) do
     for _, run in ipairs(list) do buf:text(run.column, row - 1, run.text, wave_styles[run.mark] or opts.style) end
   end

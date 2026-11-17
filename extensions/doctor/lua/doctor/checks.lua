@@ -1,5 +1,5 @@
 -- The checks that come with the doctor, in the order they are listed.
-local api = daw.api
+local api = paw.api
 local wav = require("doctor.wav")
 
 local SILENT = 1e-3 -- about -60 dBFS: below that nothing was played
@@ -50,15 +50,15 @@ end
 --- Returns the clip that came of it, and its file's name.
 local function record(ctx, track, from, seconds)
   local started = api.now()
-  daw.transport.seek(daw.time.to_beat(from))
+  paw.transport.seek(paw.time.to_beat(from))
   ctx:cleanup(function() ctx:stop() end)
-  daw.transport.record()
+  paw.transport.record()
   local dropped = 0
   while api.now() - started < seconds * 1000 do
     dropped = math.max(dropped, api.engine_get().record_dropped)
     ctx:sleep(50)
   end
-  daw.transport.stop()
+  paw.transport.stop()
   local got = ctx:wait_for(function() return #track:clips() > 0 end, 3000)
   if not got then return nil, nil, dropped end
   local clip = track:clips()[1]
@@ -84,7 +84,7 @@ return function(M)
     unattended = true,
     run = function(ctx)
       local e = api.engine_get()
-      local list = daw.audio.devices()
+      local list = paw.audio.devices()
       ctx:fact("backend", e.backend)
       ctx:fact("output", e.device)
       ctx:fact("input", e.input_device)
@@ -111,7 +111,7 @@ return function(M)
         local chosen = entry(list.outputs, list.output) or {}
         if bluetooth({ name = e.device, id = e.device_id }) or bluetooth(chosen) then
           ctx:warn("the output is a Bluetooth device (" .. e.device .. "): its latency is high, and playing along or recording against it is late. "
-            .. "Choose the interface with `:audio.output`, or set it in `init.lua` with `daw.audio.use`.")
+            .. "Choose the interface with `:audio.output`, or set it in `init.lua` with `paw.audio.use`.")
         end
         if e.output_latency > 80 then
           ctx:warn(string.format("the output latency is %.0f ms, too much to play along with", e.output_latency))
@@ -173,7 +173,7 @@ return function(M)
     run = function(ctx)
       local e = api.engine_get()
       local path = ctx:file(ctx:dir() .. "/tone.wav")
-      local total = daw.limit.unhurried(M.tone_file, path, e.sample_rate, ctx.settings.tone)
+      local total = paw.limit.unhurried(M.tone_file, path, e.sample_rate, ctx.settings.tone)
       local track = ctx:track({ name = "doctor tone" })
       track:add_clip({ start = 0, file = path })
       if e.backend == "null" then
@@ -220,7 +220,7 @@ return function(M)
       local peaks = {}
       for ch = 1, n do peaks[ch] = 0 end
       local function sample()
-        local levels = daw.audio.levels()
+        local levels = paw.audio.levels()
         for ch = 1, n do peaks[ch] = math.max(peaks[ch], levels[ch] or 0) end
         ctx.run.meters = levels
         api.ui_redraw()
@@ -305,7 +305,7 @@ return function(M)
       click_file(path, e.sample_rate)
       local rec_from, click_at = 2, 1
       local click = ctx:track({ name = "doctor click" })
-      click:add_clip({ start = daw.time.to_beat(rec_from + click_at), file = path })
+      click:add_clip({ start = paw.time.to_beat(rec_from + click_at), file = path })
       local capture = ctx:track({ name = "doctor capture", volume = -120 })
       -- Armed, a track is heard: a loop-back must not hear itself.
       capture.mute = true
@@ -333,7 +333,7 @@ return function(M)
       local spread = trips[#trips] - trips[1]
       ctx:measure("round_trip_ms", string.format("%.2f", trip))
       ctx:measure("spread_ms", string.format("%.2f", spread))
-      local now = daw.transport.record_offset or 0
+      local now = paw.transport.record_offset or 0
       local wanted = now + residual
       ctx:fact("record_offset_ms", string.format("%.1f", now))
       ctx:log(string.format("the recording offset is %.1f ms; %.1f ms would put a take where it was played", now, wanted))
@@ -341,9 +341,9 @@ return function(M)
       if math.abs(residual) >= 1 then
         local set = ctx:ask(string.format("Set the recording offset to %.1f ms (now %.1f)?", wanted, now))
         if set == "y" then
-          daw.transport.record_offset = wanted
+          paw.transport.record_offset = wanted
           ctx:fact("record_offset_ms", string.format("%.1f", wanted))
-          ctx:log(string.format("set for this session; to keep it, put `daw.transport.record_offset = %.1f` in init.lua", wanted))
+          ctx:log(string.format("set for this session; to keep it, put `paw.transport.record_offset = %.1f` in init.lua", wanted))
         end
       end
       return "ok", string.format("round trip %.1f ms; the offset should be %.1f ms (it is %.1f)", trip, wanted, now)
@@ -420,24 +420,24 @@ return function(M)
 
       -- A file past `media_stream` megabytes, once decoded, is read from the
       -- disk while it plays. Written here, a quiet tone, as long as it takes.
-      local streamed = tonumber(daw.opt.media_stream) or 64
+      local streamed = tonumber(paw.opt.media_stream) or 64
       local length = streamed > 0 and math.ceil(streamed * 1e6 / (8 * e.sample_rate) * 1.15) + 5 or 30
       local path = ctx:file(ctx:dir() .. "/long.wav")
       ctx:say(string.format("writing a sound file of %d s", length))
-      daw.limit.unhurried(wav.write, path, e.sample_rate, 2, length * e.sample_rate, function(f)
+      paw.limit.unhurried(wav.write, path, e.sample_rate, 2, length * e.sample_rate, function(f)
         return 0.1 * math.sin(2 * math.pi * 220 * f / e.sample_rate)
       end)
       local disk = ctx:track({ name = "doctor disk" })
       ctx:say("bringing the file in")
       disk:add_clip({ start = 0, file = path })
       local on_disk
-      for _, m in ipairs(daw.media.list()) do
+      for _, m in ipairs(paw.media.list()) do
         if m.path == path then on_disk = m.on_disk end
       end
       local two = phase(ctx, "playing many voices and a file from the disk", seconds)
       report_phase(ctx, "disk", on_disk and "with a file read from the disk" or "with a file held in memory", two)
       if not on_disk then
-        ctx:log("the file was held in memory, not read from the disk (daw.opt.media_stream is " .. streamed .. "): the second run says nothing about disk reads")
+        ctx:log("the file was held in memory, not read from the disk (paw.opt.media_stream is " .. streamed .. "): the second run says nothing about disk reads")
       end
       ctx:fact("media_stream_mb", streamed)
       ctx:fact("voices", ctx.settings.voices)
@@ -463,7 +463,7 @@ return function(M)
     unattended = true,
     limit = 150,
     run = function(ctx)
-      local ports = daw.midi.inputs()
+      local ports = paw.midi.inputs()
       local names = {}
       for _, p in ipairs(ports) do
         names[#names + 1] = p.name
@@ -476,12 +476,12 @@ return function(M)
       if not ctx:attended() then return "ok", #ports .. (#ports == 1 and " port: " or " ports: ") .. table.concat(names, ", ") end
 
       local seen = { note = nil, cc = nil, count = 0 }
-      local handler = daw.on("midi.in", function(event)
+      local handler = paw.on("midi.in", function(event)
         seen.count = seen.count + 1
         if event.type == "note_on" and not seen.note then seen.note = event end
         if event.type == "cc" and not seen.cc then seen.cc = event end
       end)
-      ctx:cleanup(function() daw.off(handler) end)
+      ctx:cleanup(function() paw.off(handler) end)
       local wait = ctx.settings.wait_seconds
       local function which(event)
         return string.format("port %s, channel %s", event.port and ("“" .. event.port .. "”") or "unknown", event.channel or "?")
@@ -623,7 +623,7 @@ return function(M)
   table.insert(checks, {
     id = "plugins",
     name = "Plugins",
-    help = "Nothing from you, unless a plugin is silent: then it offers to open its editor. Plugins named in `daw.opt.doctor_plugins` are loaded and played.",
+    help = "Nothing from you, unless a plugin is silent: then it offers to open its editor. Plugins named in `paw.opt.doctor_plugins` are loaded and played.",
     unattended = true,
     limit = function(s) return 120 + 70 * #s.plugins end,
     run = function(ctx)
@@ -740,7 +740,7 @@ return function(M)
         ctx:warn("the free space where recordings go could not be read")
       end
 
-      local gdi2m = daw.opt.vinput_gdi2m
+      local gdi2m = paw.opt.vinput_gdi2m
       for _, program in ipairs({ "ffmpeg", "gdi2m" }) do
         local path = on_path(program)
         if not path and program == "gdi2m" and type(gdi2m) == "string" and gdi2m ~= "" and exists(gdi2m) then path = gdi2m end

@@ -13,7 +13,7 @@
 //! and `attrs` are the bits of [`crate::grid`]. `full` says that the screen
 //! is to be cleared first (the first event, and after a change of size).
 //! `mouse` false asks the terminal to leave the pointer to its own
-//! selection (`daw.opt.mouse` off).
+//! selection (`paw.opt.mouse` off).
 //!
 //! A terminal that said with `ui.attach` that it shows images (its third
 //! parameter, `{ "graphics": true, "cell": [w, h], ... }`, see

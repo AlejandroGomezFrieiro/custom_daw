@@ -2,11 +2,11 @@
 -- carrying their sound, as on a desk. Nothing is routed: the members play
 -- where they played, each at its own fader, and the VCA moves them all.
 --
---   local drums = daw.vca.make({ kick, snare, hats }, "Drums")
+--   local drums = paw.vca.make({ kick, snare, hats }, "Drums")
 --   drums.volume = -3        -- every member 3 dB quieter than its own fader
 --   drums.mute = true        -- and silent
---   daw.vca.assign(room, drums)
---   daw.vca.unassign(snare, drums)
+--   paw.vca.assign(room, drums)
+--   paw.vca.unassign(snare, drums)
 --
 -- A track may be in several VCAs; their gains add in dB. The VCA is a track
 -- marked in its `meta`, which is how its fader can have automation lanes
@@ -14,7 +14,7 @@
 -- undone and copied with the tracks. The sync reads the marks: it folds the
 -- VCAs' faders into each member's gain, and their lanes into the member's
 -- own, so what is heard (and rendered) is the sum, sample by sample.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local function id_of(track) return type(track) == "table" and track.id or track end
@@ -93,7 +93,7 @@ end
 --- A new VCA over `tracks` (ids or tracks), after the last track. Returns
 --- its track.
 function M.make(tracks, name)
-  local vca = daw.add_track({ name = name or "VCA" })
+  local vca = paw.add_track({ name = name or "VCA" })
   set_meta(vca.id, "vca", true)
   for _, track in ipairs(tracks or {}) do M.assign(track, vca.id) end
   return vca
@@ -110,7 +110,7 @@ end
 
 -- A VCA that is removed (or restored) leaves its members' lists holding an id
 -- that names nothing, which is ignored; they are tidied when it is removed.
-daw.on("track.removed", function(event)
+paw.on("track.removed", function(event)
   if event.restored then return end
   for _, id in ipairs(api.track_list()) do
     local list = meta(id).vcas

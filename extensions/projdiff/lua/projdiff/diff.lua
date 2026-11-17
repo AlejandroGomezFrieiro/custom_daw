@@ -5,7 +5,7 @@
 -- in their files (decoded JSON), so it needs nothing of the kernel.
 --
 -- A node is `{ sign, text, address, trail, change, children }`: `sign` is
--- "+", "-" or "~"; `address` says where in the project it is (daw://...) so
+-- "+", "-" or "~"; `address` says where in the project it is (paw://...) so
 -- that a view can go there; `trail` is the text of the way to it, for a
 -- quickfix entry; `change` is set on what changed itself, as against a
 -- heading over what changed inside it.
@@ -95,7 +95,7 @@ end
 
 --- What changed among the notes of a clip, under one heading.
 local function notes_node(a, b, clip)
-  local address = "daw://clip/" .. clip.id
+  local address = "paw://clip/" .. clip.id
   local trail = clip.trail
   local field = data.key_field(a, b)
   local lines, added, removed, changed = {}, 0, 0, 0
@@ -173,7 +173,7 @@ local function controls_node(a, b, clip)
     local k = data.canon(c)
     seen[k] = (seen[k] or 0) + 1
   end
-  local where = { address = "daw://clip/" .. clip.id, trail = clip.trail .. " › controls", change = true }
+  local where = { address = "paw://clip/" .. clip.id, trail = clip.trail .. " › controls", change = true }
   local added, removed = 0, 0
   for _, c in ipairs(b) do
     local k = data.canon(c)
@@ -214,7 +214,7 @@ end
 
 local function clip_node(a, b, track)
   local c = b or a
-  local address = "daw://clip/" .. c.id
+  local address = "paw://clip/" .. c.id
   local trail = track.trail .. " › " .. clip_label(c)
   if not a or not b then
     return node(a and "-" or "+", clip_label(c) .. ", " .. num(c.start) .. " for " .. num(c.length) .. " beats, "
@@ -289,7 +289,7 @@ local function point_text(p) return "beat " .. num(p[1]) .. " = " .. num(p[2]) e
 
 local function lane_node(a, b, track)
   local l = b or a
-  local address = "daw://lane/" .. l.id
+  local address = "paw://lane/" .. l.id
   local trail = track.trail .. " › " .. lane_label(l)
   if not a or not b then
     return node(a and "-" or "+", lane_label(l) .. ", " .. plural(#(l.points or {}), "point"),
@@ -349,10 +349,10 @@ end
 
 local function track_node(a, b)
   local t = b or a
-  local address = "daw://track/" .. t.id
+  local address = "paw://track/" .. t.id
   local track = { address = address, trail = track_label(t) }
   if not a or not b then
-    local head = node(a and "-" or "+", track_label(t), { address = a and "daw://project" or address, trail = track.trail, change = true })
+    local head = node(a and "-" or "+", track_label(t), { address = a and "paw://project" or address, trail = track.trail, change = true })
     local from = t
     for _, d in ipairs(from.devices or {}) do add(head, node(" ", device_label(d))) end
     for _, c in ipairs(from.clips or {}) do add(head, node(" ", clip_label(c) .. ", " .. clip_summary(c))) end
@@ -395,8 +395,8 @@ end
 local TEMPO_FIELDS = { tempo = true, sig_num = true, sig_den = true, tempo_ramp = true }
 
 local function tempo_group(a, b)
-  local head = node("~", "Tempo map", { address = "daw://tempo", trail = "tempo map" })
-  local o = { address = "daw://tempo", trail = "tempo map" }
+  local head = node("~", "Tempo map", { address = "paw://tempo", trail = "tempo map" })
+  local o = { address = "paw://tempo", trail = "tempo map" }
   fields(head, a, b, setmetatable({}, { __index = function(_, k) return not TEMPO_FIELDS[k] end }), o)
   for _, p in ipairs((match(a.tempo_changes, b.tempo_changes, "beat"))) do
     if not data.equal(p.a, p.b) then
@@ -424,11 +424,11 @@ local function marker_text(m)
 end
 
 local function markers_group(a, b)
-  local head = node("~", "Markers", { address = "daw://project", trail = "markers" })
+  local head = node("~", "Markers", { address = "paw://project", trail = "markers" })
   for _, p in ipairs((match(a, b, "id"))) do
     if not data.equal(p.a, p.b) then
       local m = p.b or p.a
-      local where = { address = p.b and ("daw://marker/" .. p.key) or "daw://project", trail = "markers › " .. show(m.name or p.key), change = true }
+      local where = { address = p.b and ("paw://marker/" .. p.key) or "paw://project", trail = "markers › " .. show(m.name or p.key), change = true }
       if not p.a or not p.b then
         add(head, node(sign_of(p), marker_text(m), where))
       else
@@ -449,19 +449,19 @@ function M.diff(a, b)
   a, b = a or {}, b or {}
   local root = { children = {} }
 
-  local project = node("~", "Project", { address = "daw://project", trail = "project" })
+  local project = node("~", "Project", { address = "paw://project", trail = "project" })
   local skip = setmetatable({ tracks = true, master = true, meta = true }, { __index = function(_, k) return TEMPO_FIELDS[k] or k == "tempo_changes" or k == "sig_changes" or nil end })
-  fields(project, a, b, skip, { address = "daw://project", trail = "project" })
+  fields(project, a, b, skip, { address = "paw://project", trail = "project" })
   local ma, mb = a.meta or {}, b.meta or {}
   for _, k in ipairs(union_keys(ma, mb)) do
     if k ~= "markers" and not data.equal(ma[k], mb[k]) then
       add(project, node(ma[k] == nil and "+" or mb[k] == nil and "-" or "~", "meta." .. k .. ": " .. show(ma[k]) .. " -> " .. show(mb[k]),
-        { address = "daw://project", trail = "project › meta." .. k, change = true }))
+        { address = "paw://project", trail = "project › meta." .. k, change = true }))
     end
   end
   local tracks, TA, TB = match(a.tracks, b.tracks, "id")
   if reordered(TA, TB) then
-    add(project, node("~", "tracks in another order", { address = "daw://project", trail = "project", change = true }))
+    add(project, node("~", "tracks in another order", { address = "paw://project", trail = "project", change = true }))
   end
   add(root, #project.children > 0 and project or nil)
   add(root, tempo_group(a, b))

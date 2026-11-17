@@ -5,12 +5,12 @@
 -- the pages to check, read only. Driven with real keys. Loaded by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
-local keymap = daw.keymap
+local paw = require("paw")
+local api = paw.api
+local keymap = paw.keymap
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation")
 end
 
@@ -49,19 +49,19 @@ local function quartet()
     { "Violoncello", line(48, 4) },
   }
   for _, spec in ipairs(specs) do
-    local t = daw.add_track({ name = spec[1] })
+    local t = paw.add_track({ name = spec[1] })
     t:add_device("synth")
     tracks[spec[1]] = t
     clips[spec[1]] = t:add_clip({ start = 0, length = 16, name = spec[1], notes = spec[2] })
   end
-  daw.groups.make({ tracks["Flute 1"], tracks["Flute 2"], tracks["Clarinet"] }, "Woodwinds")
-  daw.groups.make({ tracks["Violoncello"] }, "Strings")
-  daw.flush()
+  paw.groups.make({ tracks["Flute 1"], tracks["Flute 2"], tracks["Clarinet"] }, "Woodwinds")
+  paw.groups.make({ tracks["Violoncello"] }, "Strings")
+  paw.flush()
   api.undo_checkpoint()
   keymap.set_mode("n")
   view:edit(clips["Flute 1"])
   view.value, view.dot = 1, false
-  daw.commands.exec("score all")
+  paw.commands.exec("score all")
   api.undo_checkpoint()
   return view, clips, tracks
 end
@@ -71,7 +71,7 @@ local function active(view) return api.track_get(view:clip():get().track).name e
 
 local function names(clip)
   local out = {}
-  for _, n in ipairs(clip:notes()) do out[#out + 1] = daw.music.name(n.pitch) .. "@" .. n.start end
+  for _, n in ipairs(clip:notes()) do out[#out + 1] = paw.music.name(n.pitch) .. "@" .. n.start end
   return table.concat(out, " ")
 end
 
@@ -132,14 +132,14 @@ test("every edit in a score goes to the staff under the cursor, as an ordinary M
   keys("icdef<Esc>")
   local found = {}
   for _, n in ipairs(clips["Violoncello"]:notes()) do
-    if n.start >= 12 then found[#found + 1] = daw.music.name(n.pitch) end
+    if n.start >= 12 then found[#found + 1] = paw.music.name(n.pitch) end
   end
   eq(table.concat(found, " "), "C3 D3 E3 F3", "the letters wrote the cello's MIDI, in its octave")
   eq(names(clips["Flute 1"]), before["Flute 1"], "the flute's clip is untouched")
   -- A popover on the active staff.
   keys("[[")
   view:set(nil, 0)
-  daw.commands.exec("notation.dyn f")
+  paw.commands.exec("notation.dyn f")
   api.undo_checkpoint()
   local marks = (clips["Piano"]:get().meta.notation or {}).marks or {}
   eq(#marks, 1, "the dynamic is kept with the piano's clip")
@@ -186,7 +186,7 @@ test("a passage yanked from one staff pastes into another instrument's", functio
   keys("P")
   local found = {}
   for _, n in ipairs(clips["Violoncello"]:notes()) do
-    if n.start >= 8 and n.start < 12 then found[#found + 1] = daw.music.name(n.pitch) end
+    if n.start >= 8 and n.start < 12 then found[#found + 1] = paw.music.name(n.pitch) end
   end
   eq(table.concat(found, " "), "C5 D5 E5 F5", "the flute's bar in the cello's clip")
   eq(count(clips["Flute 1"]), 16, "and still in the flute's")
@@ -196,46 +196,46 @@ test("Ex in a score: staves by number, by group, before or after the bars", func
   local view, clips = quartet()
   local before = {}
   for name, clip in pairs(clips) do before[name] = names(clip) end
-  daw.commands.exec("2 s3 d")
+  paw.commands.exec("2 s3 d")
   api.undo_checkpoint()
   eq(count(clips["Clarinet"]), 12, ":2 s3 d deletes bar 2 of the third staff")
   eq(names(clips["Flute 1"]), before["Flute 1"], "and nothing else")
   keys("u")
-  daw.commands.exec("s1,s2 1 d")
+  paw.commands.exec("s1,s2 1 d")
   api.undo_checkpoint()
   eq(count(clips["Flute 1"]) .. " " .. count(clips["Flute 2"]) .. " " .. count(clips["Clarinet"]), "12 12 16", "staves first, then bars")
   keys("u")
-  daw.commands.exec("1 Woodwinds notation.transpose 12")
+  paw.commands.exec("1 Woodwinds notation.transpose 12")
   api.undo_checkpoint()
   eq(names(clips["Clarinet"]):sub(1, 6), "C5@0 D", "a group by name: the clarinet an octave up")
   eq(names(clips["Flute 2"]):sub(1, 6), "G5@0 A", "and the flutes")
   eq(names(clips["Violoncello"]), before["Violoncello"], "the strings are not woodwinds")
   keys("u")
   eq(names(clips["Flute 1"]), before["Flute 1"], "one undo for the group")
-  daw.commands.exec("s1,s2 g/c5/d")
+  paw.commands.exec("s1,s2 g/c5/d")
   api.undo_checkpoint()
   eq(count(clips["Flute 1"]) .. " " .. count(clips["Flute 2"]) .. " " .. count(clips["Clarinet"]), "12 12 16", ":s1,s2 g/c5/d: the C5s of the two flutes")
   keys("u")
-  daw.commands.exec("5 s3 d")
+  paw.commands.exec("5 s3 d")
   api.undo_checkpoint()
   eq(count(clips["Clarinet"]), 16, "a bar past the clip's end holds nothing")
 end)
 
 test(":score shows a group's score, or the arrange view's selected tracks; a click on a staff makes it active", function()
   local view, clips, tracks = quartet()
-  daw.commands.exec("score Strings")
+  paw.commands.exec("score Strings")
   eq(#view:frame().layout.staves, 1, "the strings' score: the cello alone")
   eq(active(view), "Violoncello", "and its staff active")
-  daw.commands.exec("score all")
+  paw.commands.exec("score all")
   -- The tracks of a selection in the arrange view.
-  daw.ui.focus("arrange")
-  daw.cursor.set_track(tracks["Clarinet"])
+  paw.ui.focus("arrange")
+  paw.cursor.set_track(tracks["Clarinet"])
   keys("V")
-  daw.cursor.set_track(tracks["Piano"])
-  daw.commands.exec("score selection")
+  paw.cursor.set_track(tracks["Piano"])
+  paw.commands.exec("score selection")
   keymap.set_mode("n")
   eq(#view:frame().layout.units, 2, "the clarinet and the piano")
-  daw.commands.exec("score all")
+  paw.commands.exec("score all")
   -- A click on another staff in the terminal.
   view:activate(clips["Flute 1"].id)
   api.ui_snapshot(140, 60)
@@ -249,12 +249,12 @@ end)
 
 test("the pages to check before export are read only, and say so", function()
   local view, clips = quartet()
-  daw.commands.exec("score.check")
+  paw.commands.exec("score.check")
   api.undo_checkpoint()
   view:set(nil, 0)
   keys("x")
   eq(count(clips["Flute 1"]), 16, "x deletes nothing")
-  ok((daw.ui.message and daw.ui.message.text or ""):find("to check before export", 1, true), "and says why")
+  ok((paw.ui.message and paw.ui.message.text or ""):find("to check before export", 1, true), "and says why")
   keys("zp")
   keys("x")
   eq(count(clips["Flute 1"]), 15, "zp back to editing")
@@ -275,19 +275,19 @@ for _, case in ipairs({
     local view, clips = quartet()
     local clip = clips["Clarinet"]
     view:activate(clip.id)
-    daw.commands.exec("part.transpose " .. key)
-    daw.commands.exec("part Clarinet")
+    paw.commands.exec("part.transpose " .. key)
+    paw.commands.exec("part Clarinet")
     api.undo_checkpoint()
     eq(active(view), "Clarinet", "the part's track is the one edited")
     -- Bar 3 emptied, then the letters typed there from the part's C4.
-    daw.commands.exec("3 s. d")
+    paw.commands.exec("3 s. d")
     api.undo_checkpoint()
     eq(#clip:notes(), 12, "bar 3 emptied")
     view:set(35 - view:frame().dstep, 8)
     keys("icdef<Esc>")
     local found = {}
     for _, n in ipairs(clip:notes()) do
-      if n.start >= 8 and n.start < 12 then found[#found + 1] = daw.music.name(n.pitch) end
+      if n.start >= 8 and n.start < 12 then found[#found + 1] = paw.music.name(n.pitch) end
     end
     eq(table.concat(found, " "), sounds, "the clip's MIDI at concert pitch")
     local model = require("notation.model")
@@ -305,7 +305,7 @@ for _, case in ipairs({
     eq(table.concat(written, " "), "C D E F", "written in the part as typed")
     keys("u")
     eq(#clip:notes(), 12, "one undo takes the letters back")
-    daw.commands.exec("part.transpose off")
+    paw.commands.exec("part.transpose off")
   end)
 end
 
@@ -322,7 +322,7 @@ test("a condensed staff: voice 2 is the second player, an edit where they play a
   end
   f2:set_notes(notes)
   api.undo_checkpoint()
-  daw.commands.exec("part.condense on")
+  paw.commands.exec("part.condense on")
   api.undo_checkpoint()
   local F = view:frame()
   eq(#F.layout.staves, 5, "the flutes share a staff")
@@ -338,39 +338,39 @@ test("a condensed staff: voice 2 is the second player, an edit where they play a
   keys("u")
   eq(count(clips["Flute 1"]) .. " " .. count(clips["Flute 2"]), "16 16", "one undo for both")
   view:set(42, 12)
-  daw.commands.exec("score.split")
+  paw.commands.exec("score.split")
   api.undo_checkpoint()
   eq(view:frame().layout.units[1].condensed[4], "div.", "split: two voices, though the same")
   view:set(42, 12)
   keys("x")
   eq(count(clips["Flute 1"]) .. " " .. count(clips["Flute 2"]), "15 16", "an edit there is the first player's alone")
-  daw.commands.exec("part.condense off")
+  paw.commands.exec("part.condense off")
 end)
 
 test(":help notation-scores finds the score's section, and :help :score the command", function()
   load()
-  local tag = daw.help.lookup("notation-scores")
+  local tag = paw.help.lookup("notation-scores")
   eq(tag and (tag.source.name .. " " .. tag.name), "notation/README.md notation-scores", "the README's section")
-  eq(daw.help.lookup(":score") ~= nil, true, "the command")
+  eq(paw.help.lookup(":score") ~= nil, true, "the command")
 end)
 
 test("a staff is every clip of its track: pasted clips in a row, a gap as rests, the cursor and edits going to the clip there", function()
   fresh()
   local view = load()
-  local violin = daw.add_track({ name = "Violin" })
+  local violin = paw.add_track({ name = "Violin" })
   violin:add_device("synth")
   -- Four one-bar clips, as pasted in the arrange view, the fourth after a bar of nothing.
   local clips = {}
   for i, at in ipairs({ 0, 4, 8, 16 }) do
     clips[i] = violin:add_clip({ start = at, length = 4, name = "v" .. i, notes = line(72 + 2 * (i - 1), 1) })
   end
-  local cello = daw.add_track({ name = "Violoncello" })
+  local cello = paw.add_track({ name = "Violoncello" })
   cello:add_clip({ start = 0, length = 20, name = "vc", notes = line(48, 5) })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   keymap.set_mode("n")
   view:edit(clips[1])
-  daw.commands.exec("score all")
+  paw.commands.exec("score all")
   api.undo_checkpoint()
   local F = view:frame()
   eq(#F.layout.units[1].clips, 4, "the violin's staff shows its four clips")

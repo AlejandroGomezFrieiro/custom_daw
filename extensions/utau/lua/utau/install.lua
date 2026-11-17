@@ -3,11 +3,11 @@
 -- dependency package (.oudep) into OpenUtau's data folder, as OpenUtau's
 -- own window does, finding the singer type and the file name encoding by
 -- itself. A voicebank that is already a folder is copied into the
--- `Singers` folder there. The folder is `daw.opt.utau_openutau_dir`, else
+-- `Singers` folder there. The folder is `paw.opt.utau_openutau_dir`, else
 -- `$REAUTAU_OPENUTAU_DIR`, else `~/.local/share/OpenUtau` (under
 -- `$XDG_DATA_HOME`); the engine reads voicebanks from it. After an install
 -- the running engine looks for singers again.
-local api = daw.api
+local api = paw.api
 local engine = require("utau.engine")
 local proto = require("utau.proto")
 

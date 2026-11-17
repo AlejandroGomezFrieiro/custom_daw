@@ -1,4 +1,4 @@
-//! Measuring the mix: `daw.api.measure*`.
+//! Measuring the mix: `paw.api.measure*`.
 //!
 //! The project (or a stretch of it, or one track's part in it) is rendered by
 //! a private engine on a worker thread and measured as it is rendered, so the
@@ -29,7 +29,7 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use anyhow::{Result, anyhow, bail};
-use daw_engine::{AudioData, Engine, EngineHandle, MAX_BLOCK};
+use paw_engine::{AudioData, Engine, EngineHandle, MAX_BLOCK};
 use mlua::{Lua, Table, Value as LuaValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -273,7 +273,7 @@ fn analysis_db(level: f32) -> f64 {
     }
 }
 
-/// Add the `measure*` functions to the `daw.api` table.
+/// Add the `measure*` functions to the `paw.api` table.
 pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> {
     let jobs: Rc<RefCell<HashMap<u64, Job>>> = Rc::default();
     let next = Rc::new(std::cell::Cell::new(0u64));

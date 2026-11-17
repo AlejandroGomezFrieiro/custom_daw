@@ -2,7 +2,7 @@
 # The course inside the program: :tutor opens the first lesson in a
 # practice project, and its panel follows what you do.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/tutor')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/tutor')"
 rig_start
 term_start
 rec_start tui-tutor

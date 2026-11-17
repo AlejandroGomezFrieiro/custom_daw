@@ -5,14 +5,14 @@ local M = {}
 local registry = {}
 
 --- Define or replace a command.
----   daw.command("track.mute", function(ctx) ... end, { desc = "Mute the track" })
+---   paw.command("track.mute", function(ctx) ... end, { desc = "Mute the track" })
 --- The handler receives `ctx` with `ctx.args` (positional and named arguments)
 --- and `ctx.count` (the number typed before a key mapping, or nil).
 --- With `opts.raw` the command line passes its text unsplit as `ctx.args[1]`.
 --- With `opts.range` it takes a range of bars in front (`:5,8name`) as
 --- `ctx.range`; see Ranges below.
 function M.define(name, run, opts)
-  assert(type(name) == "string" and type(run) == "function", "usage: daw.command(name, function, opts)")
+  assert(type(name) == "string" and type(run) == "function", "usage: paw.command(name, function, opts)")
   opts = opts or {}
   registry[name] = { name = name, run = run, desc = opts.desc or "", raw = opts.raw, complete = opts.complete, label = opts.label, range = opts.range }
 end
@@ -38,19 +38,19 @@ function M.get(name)
 end
 
 --- Count a use of a command that was chosen by name (typed, or picked), so
---- that pickers can put what is used often first. Kept in `daw.state`.
+--- that pickers can put what is used often first. Kept in `paw.state`.
 function M.used(name)
   local spec = registry[name]
   name = spec and spec.alias_of or name
   if not registry[name] then return end
-  local uses = daw.state.command_uses or {}
+  local uses = paw.state.command_uses or {}
   uses[name] = math.min((uses[name] or 0) + 1, 1000)
-  daw.state.command_uses = uses
+  paw.state.command_uses = uses
 end
 
 --- How many times `used` has counted a command.
 function M.uses(name)
-  local uses = daw.state.command_uses
+  local uses = paw.state.command_uses
   return type(uses) == "table" and uses[name] or 0
 end
 
@@ -74,12 +74,12 @@ end
 --- with it, if there are any.
 function M.unknown(name)
   name = tostring(name)
-  local ext = daw.ext
+  local ext = paw.ext
   local stem = name:match("^[^.]+")
   if ext and stem and not ext.loaded[stem] then
     for _, bundled in ipairs(ext.bundled()) do
       if bundled == stem then
-        return stem .. " is a bundled extension that isn't loaded: `:ext.load " .. stem .. "` loads it now, `daw.ext.load` in init.lua keeps it"
+        return stem .. " is a bundled extension that isn't loaded: `:ext.load " .. stem .. "` loads it now, `paw.ext.load` in init.lua keeps it"
       end
     end
   end
@@ -102,13 +102,13 @@ function M.run(name, args, ctx)
   ctx.args, ctx.name = args or {}, name
   -- Names the undo step this command makes, as its description says it;
   -- the outermost command (or the key that ran it) wins.
-  daw.api.undo_label(M.label(spec))
+  paw.api.undo_label(M.label(spec))
   -- `name` is what was typed, which may be an alias; `command` is the
   -- command it stands for, which is what a listener usually cares about.
   local command = spec.alias_of or name
-  daw.emit("command.pre", { name = name, command = command, args = ctx.args })
-  local result = daw.limit.named("the command `" .. name .. "`", spec.run, ctx)
-  daw.emit("command.post", { name = name, command = command, args = ctx.args })
+  paw.emit("command.pre", { name = name, command = command, args = ctx.args })
+  local result = paw.limit.named("the command `" .. name .. "`", spec.run, ctx)
+  paw.emit("command.post", { name = name, command = command, args = ctx.args })
   return result
 end
 
@@ -164,22 +164,22 @@ end
 --
 -- A command line may start with a range, as in Vim: of time (`:5,8`, `%`,
 -- `.`, `$`, `'a,'b`, `'<,'>`) and of tracks (`:t2,t4`, `t*`, `t/Drums/`).
--- `daw.ex` (runtime/lua/daw/ex.lua) reads them, runs its own commands on
+-- `paw.ex` (runtime/lua/paw/ex.lua) reads them, runs its own commands on
 -- them (`:5,8d`, `:%s/c4/d4/`, `:g/vel<20/d`), and gives the range to a
 -- command defined with `range = true` as `ctx.range`: `{ bars = { first,
 -- last }, from, to }` for time, `from` and `to` in beats of the song, the
 -- end not included; `tracks` (ids) for tracks; `{ selection = true, region
--- }` for `'<,'>`, while `daw.keymap.selection()` returns that region. A
+-- }` for `'<,'>`, while `paw.keymap.selection()` returns that region. A
 -- number right before a command without a range is its count: `:3snippet arp`.
 
 --- Split a range off the front of a command line: the range, and the rest.
 --- Nil for the range when there is none; an error message instead of the
 --- rest when the range names nothing.
-function M.range(line) return daw.ex.range(line) end
+function M.range(line) return paw.ex.range(line) end
 
 --- Functions that may take a whole line before it is read as a command:
 --- `fn(line, ctx)` returns true when it ran it. A text buffer takes `:w`,
---- `:s/a/b/` and its ranges of lines this way (daw/textbuf.lua).
+--- `:s/a/b/` and its ranges of lines this way (paw/textbuf.lua).
 M.line_handlers = {}
 
 --- Run a command line, as typed after `:`, with a range in front if it has one.
@@ -187,7 +187,7 @@ function M.exec(line, ctx)
   for _, handler in ipairs(M.line_handlers) do
     if handler(line, ctx) then return end
   end
-  return daw.ex.exec(line, ctx)
+  return paw.ex.exec(line, ctx)
 end
 
 -- Completion ------------------------------------------------------------------
@@ -198,7 +198,7 @@ end
 --   complete = { "tracks", "devices" }       -- the first a track, the second a device
 --   complete = function(text, info) return { "on", "off" } end
 --
--- A name is one of `daw.commands.completers` below; a function gets the
+-- A name is one of `paw.commands.completers` below; a function gets the
 -- text after the command's name and `info` with `word` (the word being
 -- typed), `index` (which argument it is, from 1) and `words` (those before
 -- it), and returns candidates: strings, or `{ text = ..., desc = ... }`.
@@ -221,7 +221,7 @@ local function files(word, extensions)
   local typed_dir, stem = word:match("^(.*/)([^/]*)$")
   typed_dir, stem = typed_dir or "", stem or word
   local dir = typed_dir == "" and "." or typed_dir:gsub("^~/", home .. "/")
-  local ok, entries = pcall(daw.api.read_dir, dir)
+  local ok, entries = pcall(paw.api.read_dir, dir)
   if not ok then return {} end
   local out = {}
   for _, entry in ipairs(entries) do
@@ -256,13 +256,13 @@ M.completers = {
   end,
   tracks = function()
     local out = {}
-    for _, id in ipairs(daw.api.track_list()) do out[#out + 1] = item(daw.api.track_get(id).name, "track") end
+    for _, id in ipairs(paw.api.track_list()) do out[#out + 1] = item(paw.api.track_get(id).name, "track") end
     out[#out + 1] = item("master", "the master track")
     return out
   end,
   devices = function()
     local out = {}
-    for _, info in ipairs(daw.device_types()) do
+    for _, info in ipairs(paw.device_types()) do
       out[#out + 1] = item(info.kind, info.name ~= info.kind and info.name or info.format)
     end
     table.sort(out, function(a, b) return a.text < b.text end)
@@ -270,7 +270,7 @@ M.completers = {
   end,
   track_devices = function()
     local out = {}
-    local track = daw.cursor.track()
+    local track = paw.cursor.track()
     for _, device in ipairs(track and track:devices() or {}) do
       local d = device:get()
       out[#out + 1] = item(d.kind, d.name)
@@ -279,12 +279,12 @@ M.completers = {
   end,
   options = function()
     local out = {}
-    for _, o in ipairs(daw.option.list()) do out[#out + 1] = item(o.name, "now " .. tostring(daw.opt[o.name])) end
+    for _, o in ipairs(paw.option.list()) do out[#out + 1] = item(o.name, "now " .. tostring(paw.opt[o.name])) end
     return out
   end,
   views = function()
     local out = {}
-    for name, view in pairs(daw.ui.views) do
+    for name, view in pairs(paw.ui.views) do
       if view.focusable ~= false then out[#out + 1] = item(name) end
     end
     table.sort(out, function(a, b) return a.text < b.text end)
@@ -292,7 +292,7 @@ M.completers = {
   end,
   pickers = function()
     local out = {}
-    for name, source in pairs(daw.pick.sources) do
+    for name, source in pairs(paw.pick.sources) do
       out[#out + 1] = item(name, type(source) == "table" and source.desc or nil)
     end
     table.sort(out, function(a, b) return a.text < b.text end)
@@ -332,10 +332,10 @@ local function starts(text, stem) return text:sub(1, #stem):lower() == stem:lowe
 
 --- What could finish a command line: a list of `{ text, label, desc }` with
 --- `text` the whole line it would become and `label` the part shown.
----   daw.commands.complete("track.co")   --> { { text = "track.color", label = "track.color", desc = ... } }
+---   paw.commands.complete("track.co")   --> { { text = "track.color", label = "track.color", desc = ... } }
 function M.complete(line)
   -- Marks after `'`, tracks after `t/`, fields in a pattern.
-  local special = daw.ex.complete_range(line) or daw.ex.complete_pattern(line)
+  local special = paw.ex.complete_range(line) or paw.ex.complete_pattern(line)
   if special then return special end
   -- A range in front stays as it is; what follows it is completed.
   local range, rest = M.range(line)

@@ -1,13 +1,13 @@
 -- Commands and keys of the notation view. The view takes the grammar of the
 -- piano roll: motions, operators with any of them, text objects, visual
 -- mode, registers, counts and `.`; its rows are pitches, so the runtime's
--- note editing (`daw.edit.roll`) works on it unchanged.
-local api = daw.api
-local util = daw.util
+-- note editing (`paw.edit.roll`) works on it unchanged.
+local api = paw.api
+local util = paw.util
 local model = require("notation.model")
 local view = require("notation")
-local keymap, edit = daw.keymap, daw.edit
-local map, command = keymap.set, daw.command
+local keymap, edit = paw.keymap, paw.edit
+local map, command = keymap.set, paw.command
 
 local EPS = 1e-6
 
@@ -15,10 +15,10 @@ local EPS = 1e-6
 
 command("notation", function()
   local clip = view.target()
-  if not clip then return daw.notify("no clip under the cursor", "warn") end
+  if not clip then return paw.notify("no clip under the cursor", "warn") end
   view:edit(clip)
 end, { desc = "Show the clip under the cursor as notation, to read and edit" })
-command("notation.open", function() daw.cmd("notation") end, { desc = "Show the clip under the cursor as notation" })
+command("notation.open", function() paw.cmd("notation") end, { desc = "Show the clip under the cursor as notation" })
 
 command("notation.clef", function(ctx)
   local want = ctx.args[1] and tostring(ctx.args[1])
@@ -26,21 +26,21 @@ command("notation.clef", function(ctx)
   -- On a score's bar after the first: a clef change there.
   if valid and want ~= "grand" and want ~= "auto" and require("notation.write").clef(ctx, want) then return end
   local clip = view.target()
-  local track = clip and clip:track() or daw.cursor.track()
-  if not track then return daw.notify("no track", "warn") end
+  local track = clip and clip:track() or paw.cursor.track()
+  if not track then return paw.notify("no track", "warn") end
   local meta = track.meta or {}
   if not want then
     local fixed = type(meta.notation) == "table" and meta.notation.clef
-    return daw.notify("clef: " .. (fixed or "chosen by the notes"))
+    return paw.notify("clef: " .. (fixed or "chosen by the notes"))
   end
   if not valid or want == "off" then
-    return daw.notify("a clef is treble, treble8 (guitar), bass, bass8, alto, tenor, grand or auto", "warn")
+    return paw.notify("a clef is treble, treble8 (guitar), bass, bass8, alto, tenor, grand or auto", "warn")
   end
   local own = type(meta.notation) == "table" and meta.notation or {}
   own.clef = want ~= "auto" and want or nil
   meta.notation = next(own) and own or nil
   track.meta = meta
-  daw.notify("clef: " .. (own.clef or "chosen by the notes"))
+  paw.notify("clef: " .. (own.clef or "chosen by the notes"))
 end, { range = true, desc = "Fix the track's clef: `notation.clef bass` (treble, treble8, bass, bass8, alto, tenor, grand, auto); in a score after its first bar, a clef change at the cursor's bar" })
 
 command("notation.key", function(ctx)
@@ -50,7 +50,7 @@ command("notation.key", function(ctx)
   for _, a in ipairs(ctx.args) do words[#words + 1] = tostring(a) end
   if #words == 0 then
     local fifths, stored = view.key()
-    return daw.notify("key: " .. (stored and (stored.root .. " " .. (stored.scale or "major")) or "none (C major)") .. ", " .. math.abs(fifths) .. (fifths >= 0 and " sharps" or " flats"))
+    return paw.notify("key: " .. (stored and (stored.root .. " " .. (stored.scale or "major")) or "none (C major)") .. ", " .. math.abs(fifths) .. (fifths >= 0 and " sharps" or " flats"))
   end
   local meta = api.project_get().meta or {}
   local stored = type(meta.musicops) == "table" and meta.musicops or {}
@@ -58,18 +58,18 @@ command("notation.key", function(ctx)
     stored.root, stored.scale = nil, nil
   else
     local root = words[1]:sub(1, 1):upper() .. words[1]:sub(2)
-    if not root:match("^[A-G][#b]?$") then return daw.notify("a key is a root and a scale: `notation.key Bb major`", "warn") end
+    if not root:match("^[A-G][#b]?$") then return paw.notify("a key is a root and a scale: `notation.key Bb major`", "warn") end
     stored.root, stored.scale = root, words[2] or "major"
   end
   meta.musicops = next(stored) and stored or nil
   api.project_set("meta", meta)
-  daw.emit("musicops.key", { key = stored.root and (stored.root .. " " .. stored.scale) or nil })
+  paw.emit("musicops.key", { key = stored.root and (stored.root .. " " .. stored.scale) or nil })
 end, { range = true, desc = "Set the key: in a score open in the view, from the cursor's bar (`notation.key Eb`, `f#m`, `D dorian`, `off`); else the project's, as musicops keeps it" })
 
 --- The clip the settings commands work on.
 local function settings_clip()
   local clip = view.target()
-  if not clip then daw.notify("no clip under the cursor", "warn") end
+  if not clip then paw.notify("no clip under the cursor", "warn") end
   return clip
 end
 
@@ -100,10 +100,10 @@ command("notation.set", function(ctx)
     lines[#lines + 1] = ""
     lines[#lines + 1] = "  :notation.set swing off sets one, swing default forgets it"
     lines[#lines + 1] = "  :notation.reset forgets them all"
-    return daw.ui.page("Notation settings", lines)
+    return paw.ui.page("Notation settings", lines)
   end
-  if score.DEFAULTS[name] == nil then return daw.notify("no setting " .. name .. "; they are: " .. table.concat(score.ORDER, ", "), "warn") end
-  if ctx.args[2] == nil then return daw.notify(name .. " = " .. tostring(set[name])) end
+  if score.DEFAULTS[name] == nil then return paw.notify("no setting " .. name .. "; they are: " .. table.concat(score.ORDER, ", "), "warn") end
+  if ctx.args[2] == nil then return paw.notify(name .. " = " .. tostring(set[name])) end
   local value = parse_value(tostring(ctx.args[2]), score.DEFAULTS[name])
   if ctx.args[2] == "default" then value = nil end
   view.keep(clip, function(own)
@@ -111,7 +111,7 @@ command("notation.set", function(ctx)
     own.settings[name] = value
     if not next(own.settings) then own.settings = nil end
   end)
-  daw.notify(name .. " = " .. tostring(view.settings_of(clip:get())[name]))
+  paw.notify(name .. " = " .. tostring(view.settings_of(clip:get())[name]))
 end, { desc = "Set how the clip is transcribed: `notation.set strum 80`, `notation.set swing off`, `notation.set voices off`; alone, list them" })
 
 -- Marks: articulations, dynamics, hairpins, slurs, text, repeats.
@@ -144,9 +144,9 @@ end
 
 command("notation.art", function(ctx)
   local kind = tostring(ctx.args[1] or "")
-  if not marks.ARTICULATIONS[kind] then return daw.notify("an articulation is staccato, accent, tenuto or marcato", "warn") end
+  if not marks.ARTICULATIONS[kind] then return paw.notify("an articulation is staccato, accent, tenuto or marcato", "warn") end
   local on = marks.toggle_art(kind, target_notes(nil, ctx))
-  if on ~= nil then daw.notify(kind .. (on and " on" or " off")) end
+  if on ~= nil then paw.notify(kind .. (on and " on" or " off")) end
 end, { range = true, desc = "Staccato, accent, tenuto or marcato on the chord under the cursor, or the range: `notation.art accent`" })
 
 --- Where a mark goes: the start and end of the range or the selection, or
@@ -163,7 +163,7 @@ command("notation.dyn", function(ctx)
   local value = tostring(ctx.args[1] or ""):match("^%s*(.-)%s*$")
   if marks.DYNAMICS[value] and view:clip() then
     marks.put(view:clip(), { at = (mark_span(ctx)), kind = "dyn", value = value })
-    return daw.notify(value .. ": notes from here as loud as " .. marks.DYNAMICS[value])
+    return paw.notify(value .. ": notes from here as loud as " .. marks.DYNAMICS[value])
   end
   require("notation.write").dynamic(ctx)
 end, { range = true, raw = true, desc = "A dynamic at the cursor (or the start of the range), which sets how loud the notes from there play: `notation.dyn mf`; `sfz`, `fp`, `p subito`; a hairpin to the next dynamic `<`, `>`, or `mp<f` over the range" })
@@ -171,16 +171,16 @@ end, { range = true, raw = true, desc = "A dynamic at the cursor (or the start o
 for _, kind in ipairs({ "cresc", "dim" }) do
   command("notation." .. kind, function(ctx)
     local clip = view:clip()
-    if not clip then return daw.notify("no clip open as notation", "warn") end
+    if not clip then return paw.notify("no clip open as notation", "warn") end
     local from, to = mark_span(ctx)
     marks.put(clip, { at = from, to = to, kind = kind })
-    daw.notify((kind == "cresc" and "crescendo" or "diminuendo") .. " to " .. daw.time.format(clip.start + to))
+    paw.notify((kind == "cresc" and "crescendo" or "diminuendo") .. " to " .. paw.time.format(clip.start + to))
   end, { range = true, desc = (kind == "cresc" and "A crescendo" or "A diminuendo") .. " hairpin over the range or selection (or to the end of the bar), ramping the loudness" })
 end
 
 command("notation.text", function(ctx)
   local clip = view:clip()
-  if not clip then return daw.notify("no clip open as notation", "warn") end
+  if not clip then return paw.notify("no clip open as notation", "warn") end
   local text = tostring(ctx.args[1] or ""):match("^%s*(.-)%s*$")
   local region = ranged(ctx)
   marks.put(clip, { at = region and math.max(0, region.c0) or view.beat, kind = "text", value = text ~= "" and text or false })
@@ -188,7 +188,7 @@ end, { raw = true, range = true, desc = "Text above the staff at the cursor (or 
 
 command("notation.repeat", function(ctx)
   local clip = view:clip()
-  if not clip then return daw.notify("no clip open as notation", "warn") end
+  if not clip then return paw.notify("no clip open as notation", "warn") end
   local which = tostring(ctx.args[1] or "")
   -- Over a range: its first bar's start and its last bar's end.
   local region = ranged(ctx)
@@ -206,16 +206,16 @@ command("notation.repeat", function(ctx)
     marks.put(clip, { at = from, kind = "repeat", value = false })
     marks.put(clip, { at = to, kind = "repeat", value = false })
   else
-    return daw.notify("a repeat sign is start, end, both or off", "warn")
+    return paw.notify("a repeat sign is start, end, both or off", "warn")
   end
 end, { range = true, desc = "A repeat sign at the start or end of the cursor's bar, or around the range (written only): `notation.repeat start`, `:5,8notation.repeat`" })
 
 command("notation.slur", function(ctx)
   local clip = view:clip()
-  if not clip then return daw.notify("no clip open as notation", "warn") end
+  if not clip then return paw.notify("no clip open as notation", "warn") end
   local from, to = mark_span(ctx)
   local on = marks.slur(clip, from, to - 1e-3, view:cursor_staff())
-  daw.notify(on and "slurred" or "slur taken away")
+  paw.notify(on and "slurred" or "slur taken away")
 end, { range = true, desc = "A slur over the range or selection (written only: the notes keep how they play)" })
 
 --- A region's stretch and pitches, as `quantize` and `retranscribe` take them.
@@ -226,42 +226,42 @@ local function bounds(region)
 end
 
 command("notation.quantize", function(ctx)
-  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  if not view:clip() then return paw.notify("no clip open as notation", "warn") end
   local n = view:quantize(bounds(ranged(ctx)))
-  daw.notify(n == 1 and "1 note moved to where it is written" or n .. " notes moved to where they are written")
+  paw.notify(n == 1 and "1 note moved to where it is written" or n .. " notes moved to where they are written")
 end, { range = true, desc = "Quantize the clip's notes (or the range's) to the notation: each starts where it is written and lasts as long as it is written" })
 
 command("notation.apply-marks", function(ctx)
-  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  if not view:clip() then return paw.notify("no clip open as notation", "warn") end
   local n = view:apply_marks(bounds(ranged(ctx)))
-  daw.notify(n == 0 and "the notes already play as the marks say"
+  paw.notify(n == 0 and "the notes already play as the marks say"
     or (n == 1 and "1 note" or n .. " notes") .. " made to play as the marks say")
 end, { range = true, desc = "Make the clip's notes (or the range's) play as the marks say: dynamics and hairpins set the velocity, staccato and tenuto the length. For MIDI that was changed since in the piano roll" })
 
 command("notation.retranscribe", function(ctx)
-  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  if not view:clip() then return paw.notify("no clip open as notation", "warn") end
   view:retranscribe(bounds(ranged(ctx)))
-  daw.notify("written again from the playing")
+  paw.notify("written again from the playing")
 end, { range = true, desc = "Write the clip (or the range's bars) again from what its notes play: what was decided in notation there (voices, spellings, tuplets) is forgotten" })
 
 command("notation.voice", function(ctx)
   -- Over a range or a selection, the chords into that voice.
   if require("notation.write").voice(ctx) then return end
   local v = tonumber(ctx.args[1])
-  if not v then return daw.notify("entering in voice " .. (view.voice or 1)) end
-  if v < 1 or v > 4 then return daw.notify("a voice is 1 to 4", "warn") end
+  if not v then return paw.notify("entering in voice " .. (view.voice or 1)) end
+  if v < 1 or v > 4 then return paw.notify("a voice is 1 to 4", "warn") end
   view.voice = math.floor(v)
   api.ui_redraw()
-  daw.notify("entering in voice " .. view.voice)
+  paw.notify("entering in voice " .. view.voice)
 end, { range = true, desc = "Choose the voice notes are entered in, on the cursor's staff: `notation.voice 2` (1 to 4); over a range or selection, its chords into that voice" })
 
 command("notation.transpose", function(ctx)
-  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  if not view:clip() then return paw.notify("no clip open as notation", "warn") end
   local by = tonumber(ctx.args[1])
-  if not by then return daw.notify("transpose by semitones, or by steps of the key: `notation.transpose -12`, `notation.transpose 2 steps`", "warn") end
+  if not by then return paw.notify("transpose by semitones, or by steps of the key: `notation.transpose -12`, `notation.transpose 2 steps`", "warn") end
   local steps = ctx.args[2] == "steps" or ctx.args[2] == "step"
   local n = view:transpose_events(target_notes(nil, ctx), by, steps)
-  daw.notify(n == 1 and "1 note transposed" or n .. " notes transposed")
+  paw.notify(n == 1 and "1 note transposed" or n .. " notes transposed")
 end, { range = true, desc = "Transpose the chord under the cursor, or the range or selection, by semitones or steps of the key: `:5,8notation.transpose 2`, `notation.transpose -1 steps`" })
 
 command("notation.raw", function()
@@ -273,48 +273,48 @@ command("notation.raw", function()
     own.settings.mode = raw and "raw" or nil
     if not next(own.settings) then own.settings = nil end
   end)
-  daw.notify(raw and "notation: every note as played (raw)" or "notation: as a musician would write it")
+  paw.notify(raw and "notation: every note as played (raw)" or "notation: as a musician would write it")
 end, { desc = "Show the clip note for note as played, or interpreted again" })
 
 command("notation.reset", function()
   local clip = settings_clip()
   if not clip then return end
   view.keep(clip, function(own) own.settings = nil end)
-  daw.notify("notation: default transcription")
+  paw.notify("notation: default transcription")
 end, { desc = "Forget the clip's transcription settings" })
 
 command("notation.tab", function(ctx)
   local tab = require("notation.tab")
   local clip = view.target()
-  local track = clip and clip:track() or daw.cursor.track()
-  if not track then return daw.notify("no track", "warn") end
+  local track = clip and clip:track() or paw.cursor.track()
+  if not track then return paw.notify("no track", "warn") end
   local words = {}
   for _, a in ipairs(ctx.args) do words[#words + 1] = tostring(a) end
   if #words == 0 then
     local own = tab.of_track(track.id)
-    if not own then return daw.notify("no tablature: `notation.tab guitar`, `bass`, `dropd`, `7string`, `bass5`, or the strings' notes") end
+    if not own then return paw.notify("no tablature: `notation.tab guitar`, `bass`, `dropd`, `7string`, `bass5`, or the strings' notes") end
     local names = {}
-    for i, p in ipairs(own.tuning) do names[i] = daw.music.name(p) end
-    return daw.notify("tablature: " .. table.concat(names, " "))
+    for i, p in ipairs(own.tuning) do names[i] = paw.music.name(p) end
+    return paw.notify("tablature: " .. table.concat(names, " "))
   end
   local own, err = tab.set(track, words)
-  if err then return daw.notify(err, "warn") end
+  if err then return paw.notify(err, "warn") end
   view.cache = nil
-  daw.notify(own and ("tablature: " .. #own.tuning .. " strings") or "no tablature")
+  paw.notify(own and ("tablature: " .. #own.tuning .. " strings") or "no tablature")
 end, { desc = "Tablature under the staff for a guitar or bass track: `notation.tab guitar` (bass, dropd, dadgad, 7string, bass5, or `E2 A2 D3 G3 B3 E4`), `notation.tab off`" })
 
 command("notation.tracks", function(ctx)
   local clip = view:clip() or view.target()
-  if not clip then return daw.notify("no clip open as notation", "warn") end
+  if not clip then return paw.notify("no clip open as notation", "warn") end
   if view.parts and not ctx.args[1] then
     view.parts, view.cache = nil, nil
     api.ui_redraw()
-    return daw.notify("notation: this clip alone")
+    return paw.notify("notation: this clip alone")
   end
   if not view:clip() then view:edit(clip) end
   local c = clip:get()
   local ids = {}
-  for _, t in ipairs(daw.tracks()) do
+  for _, t in ipairs(paw.tracks()) do
     for _, other in ipairs(t:clips()) do
       local oc = other:get()
       if oc.kind == "midi" and oc.start < c.start + c.length and oc.start + oc.length > c.start and oc.note_count > 0 then
@@ -325,20 +325,20 @@ command("notation.tracks", function(ctx)
   end
   -- The score of those tracks' clips over this one's stretch, to edit.
   view.staves.show(ids, "the score of " .. #ids .. " tracks", { from = c.start, to = c.start + c.length })
-  daw.notify("notation: " .. #ids .. " tracks, a staff each, this clip's the active one; :notation.tracks again for the clip alone")
+  paw.notify("notation: " .. #ids .. " tracks, a staff each, this clip's the active one; :notation.tracks again for the clip alone")
 end, { desc = "Show every track's MIDI over this clip's stretch as a score, a staff each, to edit; or this clip alone again" })
 
 command("notation.value", function(ctx)
   local names = { whole = 4, half = 2, quarter = 1, eighth = 0.5, ["16th"] = 0.25, ["32nd"] = 0.125 }
   local v = names[tostring(ctx.args[1] or "")]
-  if not v then return daw.notify("a value is whole, half, quarter, eighth, 16th or 32nd", "warn") end
+  if not v then return paw.notify("a value is whole, half, quarter, eighth, 16th or 32nd", "warn") end
   view:choose(v)
 end, { desc = "Choose the value notes are entered with: `notation.value eighth`" })
 
 command("notation.export", function(ctx)
   local export = require("notation.export")
   local clip = view.target()
-  if not clip then return daw.notify("no clip under the cursor", "warn") end
+  if not clip then return paw.notify("no clip under the cursor", "warn") end
   local whole_track = ctx.args.track == "yes" or ctx.args.track == true or ctx.args[2] == "track"
   local c = clip:get()
   local track = clip:track()
@@ -358,9 +358,9 @@ command("notation.export", function(ctx)
     local title, composer = require("notation.page").heading(name)
     local clips = all and files.all_clips() or { clip }
     local ok, err = pcall(files.export, path, clips, { title = title, composer = composer })
-    if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
+    if not ok then return paw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
     if all then what = #clips .. (#clips == 1 and " track" or " tracks") end
-    return daw.notify("wrote " .. what .. " to " .. path)
+    return paw.notify("wrote " .. what .. " to " .. path)
   end
   local _, stored = view.key()
   local opts = view.layout_opts(c)
@@ -377,8 +377,8 @@ command("notation.export", function(ctx)
     -- The engraved pages, as the page view shows them.
     local title, composer = require("notation.page").heading(name)
     local ok, written, pages = pcall(require("notation.page").export, layout, path, ext, { title = title, composer = composer })
-    if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(written), "error") end
-    return daw.notify("wrote " .. what .. " to " .. table.concat(written, ", ") .. ", " .. pages .. (pages == 1 and " page" or " pages"))
+    if not ok then return paw.notify("could not write " .. path .. ": " .. tostring(written), "error") end
+    return paw.notify("wrote " .. what .. " to " .. table.concat(written, ", ") .. ", " .. pages .. (pages == 1 and " page" or " pages"))
   end
   local text
   if path:match("%.ly$") then
@@ -387,15 +387,15 @@ command("notation.export", function(ctx)
     text = export.musicxml(layout, { title = name, part = track.name })
   end
   local ok, err = export.write(path, text)
-  if not ok then return daw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
-  daw.notify("wrote " .. what .. " to " .. path)
+  if not ok then return paw.notify("could not write " .. path .. ": " .. tostring(err), "error") end
+  paw.notify("wrote " .. what .. " to " .. path)
 end, { desc = "Write the clip's score as MusicXML (`.mxl` zipped), LilyPond, or engraved pages: `notation.export song.musicxml`, `notation.export score.mxl all` (every track), `notation.export lead.ly track`, `notation.export pdf`, `notation.export tune.svg`", complete = { "files", function() return { "all", "track" } end } })
 
 -- Reaching it from the arrange view and the window's clip menu.
 map("<leader>n", "notation", { view = "arrange", desc = "Show the clip as notation" })
 map("<leader>n", "notation", { view = "pianoroll", desc = "Show this clip as notation" })
-if daw.frontend and daw.frontend.menus then
-  table.insert(daw.frontend.menus.clip, { label = "Open as notation", command = "notation.open", only = "midi" })
+if paw.frontend and paw.frontend.menus then
+  table.insert(paw.frontend.menus.clip, { label = "Open as notation", command = "notation.open", only = "midi" })
 end
 
 -- Keys in the view ------------------------------------------------------------------------
@@ -460,7 +460,7 @@ nmap("gg", function() view:to_extreme(1) end, "The highest note's line", util.me
 nmap("G", function() view:to_extreme(-1) end, "The lowest note's line", util.merge(far, { linewise = true }))
 nmap("gp", function()
   local clip = view:clip()
-  if clip then daw.transport.seek(clip.start + view.beat) end
+  if clip then paw.transport.seek(clip.start + view.beat) end
 end, "Playhead to the cursor")
 
 -- Operators on how the score plays, and the loop; the operators that edit
@@ -478,11 +478,11 @@ end
 op("=", function(_, region)
   -- The notes moved to what is written: a MIDI edit like any other.
   local n = view:quantize(bounds(region))
-  daw.notify(n == 1 and "1 note played as written" or n .. " notes played as written")
+  paw.notify(n == 1 and "1 note played as written" or n .. " notes played as written")
 end, "Play as written: the notes start where they are written and last as long (quantize to the notation)")
 op("g=", function(_, region)
   local n = view:retranscribe(bounds(region))
-  daw.notify("written again from the playing" .. (n > 0 and (" (" .. n .. " notes)") or ""))
+  paw.notify("written again from the playing" .. (n > 0 and (" (" .. n .. " notes)") or ""))
 end, "Write again from the playing: the bars transcribed afresh from what the notes play")
 op("g@", function(_, region)
   -- Asks first, with the change heard and shown as a popover's is.
@@ -491,7 +491,7 @@ end, "Make the notes play as the marks say (dynamics, hairpins, articulations): 
 op("gl", function(clip, region)
   local c0, c1 = region.c0, region.c1
   if region.kind == "line" then c0, c1 = 0, clip.length end
-  daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = clip.start + c0, clip.start + c1, true
+  paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = clip.start + c0, clip.start + c1, true
 end, "Loop")
 
 -- Single keys.
@@ -526,21 +526,21 @@ keymap.classic("<A-l>", guarded(move_chord(1)), { view = "notation", desc = "Mov
 keymap.classic("<A-h>", guarded(move_chord(-1)), { view = "notation", desc = "Move the chord earlier by the chosen value, as played" })
 nmap("gv", function()
   local v = view:toggle_voice()
-  if v then daw.notify("voice " .. v .. "; entering in voice " .. v) end
+  if v then paw.notify("voice " .. v .. "; entering in voice " .. v) end
 end, "The note (or chord) into the other voice, and enter in it")
 nmap("gH", function()
   local s = view:toggle_staff()
-  if s then daw.notify(s == 1 and "right hand" or "left hand") end
+  if s then paw.notify(s == 1 and "right hand" or "left hand") end
 end, "The chord onto the other staff (hand)")
 nmap("gs", function()
   local mark = view:cycle_strum()
-  daw.notify("arpeggio: " .. tostring(mark or "as played"))
+  paw.notify("arpeggio: " .. tostring(mark or "as played"))
 end, "Arpeggio sign: up, down, none, as played")
-nmap("gG", function() daw.notify(view:toggle_grace() and "grace note" or "not a grace note") end, "The note a grace note, or the chord's grace note not one")
-nmap("gb", function() daw.notify(view:toggle_beam() and "beam broken here" or "beam joined") end, "Break the beam before the chord, or join it")
+nmap("gG", function() paw.notify(view:toggle_grace() and "grace note" or "not a grace note") end, "The note a grace note, or the chord's grace note not one")
+nmap("gb", function() paw.notify(view:toggle_beam() and "beam broken here" or "beam joined") end, "Break the beam before the chord, or join it")
 nmap("gt", function()
   local on = view:toggle_tuplet()
-  if on ~= nil then daw.notify(on and "this beat in triplets" or "triplets as played") end
+  if on ~= nil then paw.notify(on and "this beat in triplets" or "triplets as played") end
 end, "This beat in triplets (a duplet in 6/8), or as played")
 -- `ge` is the plugin window in every view; `g~` (an operator, with the
 -- grammar below) changes how notes are written, as Vim's changes the case
@@ -549,7 +549,7 @@ keymap.classic("ge", guarded(function() view:respell() end), { view = "notation"
 for lhs, kind in pairs({ ["g'"] = "staccato", ["g>"] = "accent", ["g_"] = "tenuto", ["g^"] = "marcato" }) do
   nmap(lhs, function()
     local on = marks.toggle_art(kind, view:chord_indices())
-    if on ~= nil then daw.notify(kind .. (on and " on" or " off")) end
+    if on ~= nil then paw.notify(kind .. (on and " on" or " off")) end
   end, kind:sub(1, 1):upper() .. kind:sub(2) .. " on the chord, or off")
 end
 nmap("D", function() keymap.normal("d$") end, "Delete to the end of the clip")
@@ -580,8 +580,8 @@ nmap("gd", function()
   api.ui_redraw()
 end, "Dotted values on or off, for entering")
 nmap("gh", function() view:audition() end, "Hear the pitch under the cursor")
-nmap("gR", function() daw.cmd("notation.raw") end, "Raw view: every note as played, or interpreted again")
-nmap("gT", function() daw.cmd("notation.tracks") end, "Every track over this stretch as a score, or this clip alone")
+nmap("gR", function() paw.cmd("notation.raw") end, "Raw view: every note as played, or interpreted again")
+nmap("gT", function() paw.cmd("notation.tracks") end, "Every track over this stretch as a score, or this clip alone")
 nmap("zi", function()
   view.zoom = math.min(4, view.zoom + 0.5)
   view.gui.zoom(1)
@@ -593,7 +593,7 @@ end, "Draw the notes closer; on the engraved page, a smaller staff")
 nmap("zg", function()
   view.galley = not view.galley
   view.page = view.page and not view.galley
-  daw.notify(view.galley and "one long system, scrolled sideways (galley)" or "systems wrapped down the page")
+  paw.notify(view.galley and "one long system, scrolled sideways (galley)" or "systems wrapped down the page")
   api.ui_redraw()
 end, "The engraved page as one long system (galley), or wrapped")
 
@@ -603,9 +603,9 @@ local function bar_break(kind)
   local layout = view:layout()
   if not layout or view:readonly() then return end
   -- In a part, its own breaks: the score's stay as they are.
-  if view.parts and view.parts.kind == "part" then return daw.cmd(kind == "break" and "part.break" or "part.join") end
+  if view.parts and view.parts.kind == "part" then return paw.cmd(kind == "break" and "part.break" or "part.join") end
   local _, index = view:measure_at(view.beat, layout)
-  if not index or index <= 1 then return daw.notify("the first bar starts the first system", "warn") end
+  if not index or index <= 1 then return paw.notify("the first bar starts the first system", "warn") end
   local now
   view:write(function(sc)
     local m = sc.measures[index]
@@ -614,7 +614,7 @@ local function bar_break(kind)
     now = D.break_at(sc, m.id) ~= kind and kind or nil
     D.set_break(sc, m.id, now)
   end)
-  daw.notify(now == "break" and ("a system starts at bar " .. layout.measures[index].number)
+  paw.notify(now == "break" and ("a system starts at bar " .. layout.measures[index].number)
     or now == "join" and ("bar " .. layout.measures[index].number .. " stays on the system before")
     or ("bar " .. layout.measures[index].number .. " goes where it fits"))
 end
@@ -622,19 +622,19 @@ nmap("zs", function() bar_break("break") end, "Start a system at this bar, or le
 nmap("zj", function() bar_break("join") end, "Keep this bar on the system before, or let it go where it fits again")
 nmap("zp", function()
   -- A score's or a part's pages are the check before export, to read.
-  if view.parts then return daw.cmd("score.check") end
+  if view.parts then return paw.cmd("score.check") end
   view.page = not view.page
   view.galley = view.galley and not view.page
-  daw.notify(view.page and "pages (in the window, or where the terminal shows images)" or "systems without pages")
+  paw.notify(view.page and "pages (in the window, or where the terminal shows images)" or "systems without pages")
   api.ui_redraw()
 end, "The engraved systems on pages, with the title, or without; in a score, its pages to check before export")
 command("notation.bars-per-system", function(ctx)
   local n = tonumber(ctx.args[1])
   if ctx.args[1] and not (n and n >= 0 and n == math.floor(n)) then
-    return daw.notify("bars per system is a whole number; 0 or none lets them fit", "warn")
+    return paw.notify("bars per system is a whole number; 0 or none lets them fit", "warn")
   end
   view:write(function(sc) require("notation.doc").set_per_system(sc, n and n > 0 and n or nil) end)
-  daw.notify(n and n > 0 and (n .. " bars to a system") or "bars go where they fit")
+  paw.notify(n and n > 0 and (n .. " bars to a system") or "bars go where they fit")
 end, { desc = "Fix how many bars go on each system: `notation.bars-per-system 4`; without a number they go where they fit" })
 -- Escape stays: a Vim hand presses it to be sure it is in normal mode, and
 -- the keys after it must not land in the arrange view. Counts, pending
@@ -644,11 +644,11 @@ local escaped_at = -math.huge
 nmap("<Esc>", function()
   local now = api.now()
   if now - escaped_at < 2000 then
-    daw.notify("normal mode: " .. keymap.human("<leader>n") .. " goes back to the arrange view, :q or ZZ closes the notation")
+    paw.notify("normal mode: " .. keymap.human("<leader>n") .. " goes back to the arrange view, :q or ZZ closes the notation")
   end
   escaped_at = now
 end, "Stay in the view (,n leaves)", { repeatable = false })
-nmap("<leader>n", function() daw.ui.focus("arrange") end, "Back to the arrange view")
+nmap("<leader>n", function() paw.ui.focus("arrange") end, "Back to the arrange view")
 nmap("ZZ", "close", "Close the notation")
 
 -- On a selection.
@@ -680,7 +680,7 @@ end, "Down a semitone")
 vmap("gs", function(clip, region)
   local _, places = edit.roll.notes(clip, region)
   local n = view:merge_chords(view:events_of(places))
-  if n then daw.notify(n .. " notes as one chord") end
+  if n then paw.notify(n .. " notes as one chord") end
 end, "The notes one chord, where the first starts and as long (a strum)")
 vmap("<C-a>", function(clip, region, ctx)
   local by = ctx.count or 1
@@ -737,12 +737,12 @@ imap("v", function()
   -- On a condensed staff the other voice is the other player.
   if view.staves.player() then return end
   view.voice = (view.voice or 1) == 1 and 2 or 1
-  daw.notify("entering in voice " .. view.voice)
+  paw.notify("entering in voice " .. view.voice)
   api.ui_redraw()
 end, "Enter in the other voice (1 or 2) of the staff")
 imap("t", function()
   view.triplets, view.tuplet = not (view.triplets or view.tuplet), nil
-  daw.notify(view.triplets and "entering triplets" or "entering plain values")
+  paw.notify(view.triplets and "entering triplets" or "entering plain values")
   api.ui_redraw()
 end, "Enter triplets, or plain values again")
 imap("R", function() view:repeat_chord() end, "Enter the last chord again and step on")
@@ -783,7 +783,7 @@ view.grid = {
 -- How Ex lines (`:'<,'>`, `:.`, `:%s/c4/d4/`) read this view: its beats
 -- count from the start of its clip (of the score, when one is shown; see
 -- `notation.staves` for its staves), and it edits that clip's notes.
-daw.ex.view("notation", {
+paw.ex.view("notation", {
   song = function(col)
     local F = view:frame()
     return (F and F.start or 0) + col
@@ -804,9 +804,9 @@ daw.ex.view("notation", {
 
 -- Where the view shows things with an address, so that diagnostics, hover
 -- and fixes (`]d` `[d`, `gK`, `,ca`) work on what is under its cursor.
-if daw.ui.locator and daw.address then
-  local A = daw.address
-  daw.ui.locator("notation", {
+if paw.ui.locator and paw.address then
+  local A = paw.address
+  paw.ui.locator("notation", {
     at = function()
       local clip = view:clip()
       if not clip then return nil end
@@ -832,8 +832,8 @@ if daw.ui.locator and daw.address then
     end,
     go = function(location)
       local p = A.parse(location.uri)
-      if p.clip ~= view.clip_id then view:edit(daw.clip(p.clip)) end
-      local at = daw.ui.locators.notation.place(location)
+      if p.clip ~= view.clip_id then view:edit(paw.clip(p.clip)) end
+      local at = paw.ui.locators.notation.place(location)
       if at and at[2] and at[2] > 0 then
         local pitch = 127 - at[2]
         view:set(model.spell(pitch, (view.key())).step, at[1])
@@ -842,11 +842,11 @@ if daw.ui.locator and daw.address then
       end
     end,
   })
-  nmap("]d", function(ctx) daw.diagnostic.jump(1, ctx.count) end, "Next diagnostic here", { jump = true })
-  nmap("[d", function(ctx) daw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic here", { jump = true })
-  if daw.lsp then
-    nmap("gK", function() daw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
-    nmap("<leader>ca", function() daw.lsp.code_actions() end, "Fixes and actions for the note")
+  nmap("]d", function(ctx) paw.diagnostic.jump(1, ctx.count) end, "Next diagnostic here", { jump = true })
+  nmap("[d", function(ctx) paw.diagnostic.jump(-1, ctx.count) end, "Previous diagnostic here", { jump = true })
+  if paw.lsp then
+    nmap("gK", function() paw.lsp.show_hover() end, "What the diagnostics and language servers say about the note")
+    nmap("<leader>ca", function() paw.lsp.code_actions() end, "Fixes and actions for the note")
   end
 end
 
@@ -968,7 +968,7 @@ do
     O.reach = nil
     local staff = sel.staff and D.staff_index(sc, sel.staff) or view:cursor_staff()
     local on = marks.slur(view:clip(), O.beat(sc, a), O.beat(sc, b) - 1e-3, staff)
-    daw.notify(on and "slurred: the notes played legato" or "slur taken away")
+    paw.notify(on and "slurred: the notes played legato" or "slur taken away")
   end
   -- `s` is solo wherever there is a track; `(` and `)` go by phrase.
   sop("g(", slur, "Slur over the notes (again: taken away)")
@@ -976,7 +976,7 @@ do
     P.on(region, function(sc, sel)
       if ctx.op_count then return P.invert(sc, sel) > 0 end
       if sel.notes or sel.pitches then
-        daw.notify("a retrograde takes whole chords: ic, i., ib, ip, iv", "warn")
+        paw.notify("a retrograde takes whole chords: ic, i., ib, ip, iv", "warn")
         return false
       end
       return P.retrograde(sc, sel)
@@ -985,7 +985,7 @@ do
   sop("gq", function(region) P.on(region, function(sc, sel) P.tidy(sc, sel) end) end,
     "Tidy: spelled in the key, beamed and written as the metre has it")
   sop("!", function(region)
-    daw.ui.input({ prompt = "!", history = "notation.filter", label = "Filter",
+    paw.ui.input({ prompt = "!", history = "notation.filter", label = "Filter",
       complete = function(text)
         local out = {}
         for name, f in pairs(P.filters) do
@@ -1003,7 +1003,7 @@ do
           return false
         end
       end)
-      if why then daw.notify(why, "warn") end
+      if why then paw.notify(why, "warn") end
     end)
   end, "Filter through a filter (reverse, transpose, rhythm) or a shell command: !ib tac")
 
@@ -1036,7 +1036,7 @@ do
     -- An operator reaches over the note found (f), or up to it (t): the
     -- operator this motion is for, not one typed later.
     O.reach = dir > 0 and { at = O.beat(sc, land.s), to = O.beat(sc, till and it.s or it.e) } or nil
-    daw.defer(function() O.reach = nil end, 0)
+    paw.defer(function() O.reach = nil end, 0)
   end
   local function finder(dir, till) return function(ctx) find(ctx.char, dir, till, ctx.count) end end
   local chars = util.merge(motion, { char = true })
@@ -1074,7 +1074,7 @@ do
     end
     view:set(step or nil, nil)
     local si = D.staff_index(sc, to.staff)
-    daw.notify("voice " .. to.voice .. (#sc.staves > 1 and (si == 1 and ", upper staff" or ", lower staff") or ""))
+    paw.notify("voice " .. to.voice .. (#sc.staves > 1 and (si == 1 and ", upper staff" or ", lower staff") or ""))
   end
   local function voices(dir) return function(ctx)
     local sc = O.score()
@@ -1136,12 +1136,12 @@ do
   imap("<Insert>", function()
     if view.repitch then return end
     view.push = not view.push or nil
-    daw.notify(view.push and "entering pushes later music along" or "entering writes over what is there")
+    paw.notify(view.push and "entering pushes later music along" or "entering writes over what is there")
     api.ui_redraw()
   end, "Push later music along, or write over it")
   imap("/", function()
     view.grace = ({ acciaccatura = "appoggiatura" })[view.grace or ""] or (not view.grace and "acciaccatura") or nil
-    daw.notify(view.grace and ("next letter: an " .. view.grace) or "no grace note")
+    paw.notify(view.grace and ("next letter: an " .. view.grace) or "no grace note")
     api.ui_redraw()
   end, "The next letter a grace note (an acciaccatura; // an appoggiatura)")
   imap("<C-o>", function()
@@ -1150,7 +1150,7 @@ do
     view.once_normal = true
     keymap.after_next(function()
       view.once_normal = nil
-      if daw.ui.focused == "notation" and keymap.mode == "n" then keymap.set_mode("i") end
+      if paw.ui.focused == "notation" and keymap.mode == "n" then keymap.set_mode("i") end
     end)
   end, "One command of normal mode, then back to entering")
   map("<C-r>", guarded(function(ctx)
@@ -1159,13 +1159,13 @@ do
   end), { view = "notation", mode = "i", char = true, desc = "Paste a register at the cursor and step past it: Ctrl-r a" })
   imap("<C-t>", function()
     local tp = view:entry_tuplet()
-    daw.ui.input({ prompt = "tuplet (3, 5, 5:4, off): ", text = tp and (tp[1] .. ":" .. tp[2]) or "3" }, function(text)
+    paw.ui.input({ prompt = "tuplet (3, 5, 5:4, off): ", text = tp and (tp[1] .. ":" .. tp[2]) or "3" }, function(text)
       keymap.set_mode("i")
       local a, n = text:match("^%s*(%d+)%s*:?%s*(%d*)%s*$")
       a, n = tonumber(a), tonumber(n)
       if not a or a < 2 then
         view.tuplet, view.triplets = nil, false
-        return daw.notify("entering plain values")
+        return paw.notify("entering plain values")
       end
       if not n then
         n = 1
@@ -1173,13 +1173,13 @@ do
         if a == 2 then n = 3 end
       end
       view.tuplet, view.triplets = { a, n }, false
-      daw.notify("entering " .. a .. " in the time of " .. n)
+      paw.notify("entering " .. a .. " in the time of " .. n)
     end)
   end, "Enter a tuplet: 3, 5, 5:4, 2:3 (off for plain values)")
 
-  -- Suggestions (`daw.complete`) shown as ghost notes: Tab takes them.
+  -- Suggestions (`paw.complete`) shown as ghost notes: Tab takes them.
   local function accept(count)
-    local cur = daw.complete and daw.complete.current()
+    local cur = paw.complete and paw.complete.current()
     local clip = view:clip()
     if not (cur and clip and cur.clip == clip.id and cur.item) then return false end
     local onsets, finish = {}, view.beat
@@ -1196,31 +1196,31 @@ do
     end
     if count then
       for _ = 1, count do
-        if not daw.complete.accept(true) then break end
+        if not paw.complete.accept(true) then break end
       end
     else
-      daw.complete.accept()
+      paw.complete.accept()
     end
     view:set(nil, finish)
     return true
   end
   imap("<Tab>", function() accept() end, "Take the suggestion shown")
   nmap("<Tab>", function(ctx)
-    if not accept(ctx.count) then daw.cmd("view.next") end
+    if not accept(ctx.count) then paw.cmd("view.next") end
   end, "Take the suggestion shown (a count: so many notes or chords), else the next view")
 end
 
-if daw.ui.keybar then
-  daw.ui.keybar.set("notation", "n", {
+if paw.ui.keybar then
+  paw.ui.keybar.set("notation", "n", {
     { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" },
     { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
   })
-  daw.ui.keybar.set("notation", "i", {
+  paw.ui.keybar.set("notation", "i", {
     { "c", "C..B", "a-g" }, { "C", "chord", "A-G" }, { "<A-3>", "+3rd", "Alt-2…8" }, { "5", "value", "2-7" }, { ".", "dot" },
     { "t", "triplets" }, { "~", "tie" }, { "R", "again" }, { "r", "rest" }, { "+", "sharp" }, { "-", "flat" },
     { "'", "8va" }, { ",", "8vb" }, { "<BS>", "back" },
   })
-  daw.ui.keybar.set("notation", "x", {
+  paw.ui.keybar.set("notation", "x", {
     { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" }, { "}", "8va" }, { "{", "8vb" },
     { "g>", "accent" }, { "g(", "slur" }, { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "<Esc>", "done" },
   })

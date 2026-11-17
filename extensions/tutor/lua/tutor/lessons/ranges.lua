@@ -24,9 +24,9 @@ Ranges, `:d` `:y` `:co` `:m` `:>` `:j` `:normal`, `:s` with `g`, `c` and `n`,
 is Neovim's. Without `g` only the first match in each bar changes, as in Vim
 only the first on each line. Vim's `:t` is not here: `t` starts tracks.]],
   setup = function(look)
-    daw.project.tempo = 100
+    paw.project.tempo = 100
     local function track(name, device, params, make)
-      local t = daw.add_track({ name = name, volume = name == "Keys" and -10 or -4 })
+      local t = paw.add_track({ name = name, volume = name == "Keys" and -10 or -4 })
       t:add_device(device, params)
       for i = 1, 4 do t:add_clip({ name = name:sub(1, 1):lower() .. i, start = (i - 1) * 4, length = 4, notes = make(i) }) end
     end
@@ -35,9 +35,9 @@ only the first on each line. Vim's `:t` is not here: `t` starts tracks.]],
     track("Bass", "synth", { wave = 2, cutoff = 600, release = 0.05 }, function(i) return look.pulse(roots[i], 4) end)
     local chords = { { "A3", "C4", "E4" }, { "F3", "A3", "C4" }, { "G3", "C4", "E4" }, { "G3", "B3", "D4" } }
     track("Keys", "synth", { wave = 3, attack = 0.05, release = 0.4, cutoff = 1800 }, function(i) return look.chord(chords[i], 4) end)
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 16, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 16, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Drums")) end,
+  at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
       say = "Type `:2,3d` (bars 2 to 3, delete). Before Enter, see the right end of the line say `bars 2–3` and the ruler shade them; then press `<CR>`.",

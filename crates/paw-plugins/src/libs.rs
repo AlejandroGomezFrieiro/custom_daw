@@ -36,17 +36,17 @@ const OPENED_LATER: &[&str] = &[
 ];
 
 /// Where the build environment kept the libraries plugins look for, when it
-/// said (`DAW_PLUGIN_LIB_DIRS`, set by the dev shell on a system that has
+/// said (`PAW_PLUGIN_LIB_DIRS`, set by the dev shell on a system that has
 /// them nowhere else).
-const BUILT_WITH: Option<&str> = option_env!("DAW_PLUGIN_LIB_DIRS");
+const BUILT_WITH: Option<&str> = option_env!("PAW_PLUGIN_LIB_DIRS");
 
-/// Where to look for a library the loader did not find: `DAW_PLUGIN_LIBS`
+/// Where to look for a library the loader did not find: `PAW_PLUGIN_LIBS`
 /// (directories separated by colons) first, then where nix-ld and the
 /// system profiles keep them, then where the build found them, then the
 /// usual places of other systems.
 pub fn search_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
-    for variable in ["DAW_PLUGIN_LIBS", "NIX_LD_LIBRARY_PATH"] {
+    for variable in ["PAW_PLUGIN_LIBS", "NIX_LD_LIBRARY_PATH"] {
         if let Some(list) = std::env::var_os(variable) {
             dirs.extend(std::env::split_paths(&list));
         }
@@ -112,7 +112,7 @@ fn open_with(path: &Path, depth: usize) -> Result<Library> {
             {
                 if !preload(name, depth) {
                     return Err(anyhow!(
-                        "{err} (looked for {name} in {} too; set DAW_PLUGIN_LIBS to where it is)",
+                        "{err} (looked for {name} in {} too; set PAW_PLUGIN_LIBS to where it is)",
                         search_dirs()
                             .iter()
                             .map(|d| d.display().to_string())

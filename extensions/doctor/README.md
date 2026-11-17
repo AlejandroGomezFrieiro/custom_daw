@@ -14,15 +14,15 @@ exists, what changed since.
 :doctor input        run one (by name or number); :doctor unattended runs those that need nobody
 :doctor stop         end a run, tidy up, write the report
 :doctor report       where the last report is
-daw doctor           from the shell: the checks that need nobody, report on standard output
+paw doctor           from the shell: the checks that need nobody, report on standard output
 ```
 
 ![:doctor on the null backend with a test signal: the page of checks, then :doctor unattended running the sound system, input levels and dropouts checks](images/tui-doctor.gif)
 
 Load it in `init.lua` (`config/init.lua` has the line) or with
-`daw.ext.load("/path/to/daw/extensions/doctor")`. `daw doctor` needs neither:
+`paw.ext.load("/path/to/paw/extensions/doctor")`. `paw doctor` needs neither:
 it loads the extension from the source tree beside the binary, or from
-`$DAW_HOME`.
+`$PAW_HOME`.
 
 The page floats over the terminal; in the window the same page is painted in
 pixels, with buttons for what the keys do and a button for each answer.
@@ -44,8 +44,8 @@ pixels, with buttons for what the keys do and a button for each answer.
 | 1. The sound system | nothing | runs |
 | 2. Output | listen to a gentle tone (-18 dB), a second each on the left, the right and both; say whether and where you heard it, or play it again | not run |
 | 3. Input levels | play or speak into each input; the level of each channel is shown live, and the loudest each reached is kept; press `d` when done. A channel that stayed silent is named | listens for three seconds |
-| 4. Round trip latency | connect an output to an input with a cable, or let a microphone hear the speakers (the click is loud: turn the volume down); say yes. Three clicks are played and recorded; the median delay is measured and the recording offset (`daw.transport.record_offset`) offered | not run |
-| 5. Dropouts | nothing: a song of many synth voices plays for twenty seconds (`daw.opt.doctor_seconds`), then again while a long sound file is read from the disk. Counts of xruns and late plugin blocks, the CPU load and how long a block took are reported for both | runs |
+| 4. Round trip latency | connect an output to an input with a cable, or let a microphone hear the speakers (the click is loud: turn the volume down); say yes. Three clicks are played and recorded; the median delay is measured and the recording offset (`paw.transport.record_offset`) offered | not run |
+| 5. Dropouts | nothing: a song of many synth voices plays for twenty seconds (`paw.opt.doctor_seconds`), then again while a long sound file is read from the disk. Counts of xruns and late plugin blocks, the CPU load and how long a block took are reported for both | runs |
 | 6. MIDI input | press a key, then move a knob or fader, within twenty seconds each; the port, channel, note and controller that arrived are recorded | lists the ports |
 | 7. Recording | play or speak for four seconds while a track records from the first input (the first pair, if there are two); the take is played back, its peak shown, and you say whether you heard it | records what arrives, and says if it is silent |
 | 8. Plugins | nothing, unless a plugin you named is silent: it offers to open its editor, which some instruments need once before they sound | runs |
@@ -59,15 +59,15 @@ the run goes on.
 ### What they look at
 
 1. **The sound system**: the backend, the output and input chosen and every
-   one found (`daw.audio.devices()`), the sample rate, the block, the latencies
-   reported (`daw.api.engine_get()`). It warns about the traps known so far:
+   one found (`paw.audio.devices()`), the sample rate, the block, the latencies
+   reported (`paw.api.engine_get()`). It warns about the traps known so far:
    a Bluetooth output (its latency is high; headphones that are the system's
    default catch everything), an output latency over 80 ms, the interface
    connected but not the output in use, a device whose own sample rate is
    not the program's, a block over 25 ms, no input open, and the null
    backend.
 2. **Output**: a tone made for the check, played from a track of its own.
-3. **Input levels**: `daw.audio.levels()` sampled every few hundredths of a
+3. **Input levels**: `paw.audio.levels()` sampled every few hundredths of a
    second. Below -60 dBFS counts as silent; a channel that reached full scale
    is warned about.
 4. **Round trip latency**: a track plays a click, a muted track armed on the
@@ -78,19 +78,19 @@ the run goes on.
    `init.lua` to keep it. A tone or noise that was there before the click
    was played is told apart from a loop-back, and so is silence.
 5. **Dropouts**: `xruns`, `late_blocks`, MIDI events dropped and the CPU load
-   from `daw.api.engine_get()`, with `engine_reset_stats` before each run.
+   from `paw.api.engine_get()`, with `engine_reset_stats` before each run.
    The long file is a quiet tone written for the check, long enough that
-   its decoded sound is past `daw.opt.media_stream`; it is brought in and
-   played, and `daw.media.list()` says whether it was read from the disk.
-   The decoded copy stays in `~/.cache/daw/media`, where the cache's own limit
+   its decoded sound is past `paw.opt.media_stream`; it is brought in and
+   played, and `paw.media.list()` says whether it was read from the disk.
+   The decoded copy stays in `~/.cache/paw/media`, where the cache's own limit
    takes care of it.
-6. **MIDI input**: the ports from `daw.midi.inputs()`, and the `midi.in`
+6. **MIDI input**: the ports from `paw.midi.inputs()`, and the `midi.in`
    events, which name the port they came from.
 7. **Recording**: the take's file is read back for its peak per channel, its
    length and its format.
 8. **Plugins**: how many of each format the scan found, and what the scan
    said about files it could not use (the log lines "plugin scan: …"). For
-   each name fragment in `daw.opt.doctor_plugins` (`{ "MT-PowerDrumKit",
+   each name fragment in `paw.opt.doctor_plugins` (`{ "MT-PowerDrumKit",
    "Ugritone" }`), a plugin whose name has it is loaded on a track, sent five
    notes (a drum plugin plays kick, snare, hat and more), and the track's
    meter says whether sound came out. Windows plugins through yabridge are
@@ -101,7 +101,7 @@ the run goes on.
    program sees them (after it has put a stale display name right), whether
    the sockets and the authority file are there, the free space where
    recordings go, whether `ffmpeg` and `gdi2m` are on the `PATH`, the
-   kernel's version, `daw.api.limit_async` and the engine's threads.
+   kernel's version, `paw.api.limit_async` and the engine's threads.
 
 ## Your project is not touched
 
@@ -109,7 +109,7 @@ A check needs tracks, clips and recordings of its own. The doctor does not
 add them to your project and take them away: that would leave steps in its
 undo history and move things. When a check first needs one, your project is
 put aside whole, with its undo tree, its transport and its changed flag
-(`daw.api.project_shelve`), and an empty scratch project opens in its place;
+(`paw.api.project_shelve`), and an empty scratch project opens in its place;
 when the run ends, however it ends, the scratch project is closed and yours
 comes back exactly as it was, down to the playhead. The checks that only
 look (1, 3, 6, 9, and 8 with nothing named) never put anything aside.
@@ -136,8 +136,8 @@ last report: a device that went, a rate that moved, a plugin that stopped
 sounding. Measurements that are never the same twice (peaks, CPU, latency)
 are reported but not compared.
 
-`daw doctor` takes `--seconds 20` (the length of the dropout runs),
-`--plugin MT-PowerDrumKit` (repeatable; else `daw.opt.doctor_plugins`),
+`paw doctor` takes `--seconds 20` (the length of the dropout runs),
+`--plugin MT-PowerDrumKit` (repeatable; else `paw.opt.doctor_plugins`),
 `--only system,plugins`, and the program's audio options (`--audio`,
 `--output`, `--input`, `--buffer`, `--rate`). Unlike other scripts it opens
 the sound device, since that is what it looks at; it makes sound while it
@@ -156,8 +156,8 @@ table.insert(require("doctor").checks, {
   limit = 60,                                -- seconds before it is stopped (120 by default)
   run = function(ctx)
     local pressed = false
-    local handler = daw.on("midi.in", function(e) if e.type == "cc" and e.number == 64 then pressed = true end end)
-    ctx:cleanup(function() daw.off(handler) end)
+    local handler = paw.on("midi.in", function(e) if e.type == "cc" and e.number == 64 then pressed = true end end)
+    ctx:cleanup(function() paw.off(handler) end)
     ctx:ask("Press the footswitch.", { { "s", "skip" } }, { timeout = 15, done = function() return pressed end, default = "timeout" })
     if not pressed then return "fail", "no pedal message arrived" end
     ctx:fact("pedal", "sustain")
@@ -190,7 +190,7 @@ check with one).
 ## What it cannot do
 
 It has been run on the null backend only, where a test input gives two
-channels of tone and `daw.midi.inject` stands in for a controller. The
+channels of tone and `paw.midi.inject` stands in for a controller. The
 hardware paths (a Bluetooth output, a UR22mkII, PipeWire's own latency, a
 loop-back cable, real plugin windows) are written from the program's own
 reports and have not been run against the devices themselves.

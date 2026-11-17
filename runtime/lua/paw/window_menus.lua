@@ -1,20 +1,20 @@
 -- The window's menus, built here so that the window only shows them: the
--- context menus are the terminal's (`daw.mouse_menus`), entry for entry,
+-- context menus are the terminal's (`paw.mouse_menus`), entry for entry,
 -- and the menus only the window has (the File menu, "+ Track", More, the
 -- audio devices, a track's input, a device's presets and routing) are here.
 --
---   daw.frontend.menu("clip", { id, beat })      -- entries to show
---   daw.frontend.act.menu_choose("clip", { id, beat }, { 9, 2 })  -- the 2nd of the 9th's submenu
+--   paw.frontend.menu("clip", { id, beat })      -- entries to show
+--   paw.frontend.act.menu_choose("clip", { id, beat }, { 9, 2 })  -- the 2nd of the 9th's submenu
 --
 -- An entry is `{ label, keys, enabled, checked, items }`, or
 -- `{ separator = true }`. An entry the window does itself names it in
 -- `window` (a dialog of its own, leaving the project): "new", "open",
 -- "open:<path>", "saveas", "import", "render", "quit", "listen".
-local api = daw.api
+local api = paw.api
 local M = {}
 
-local function act() return daw.frontend.act end
-local function run(line) return function() daw.commands.exec(line) end end
+local function act() return paw.frontend.act end
+local function run(line) return function() paw.commands.exec(line) end end
 
 -- A menu of choices as the frontend lists them (`{ label, checked }`),
 -- each passed to `choose` with its place from 1.
@@ -36,7 +36,7 @@ end
 --- The File menu, from the project's name.
 function M.file()
   local recent = {}
-  for i, entry in ipairs(daw.frontend.recent_menu()) do
+  for i, entry in ipairs(paw.frontend.recent_menu()) do
     recent[i] = { label = entry.label, window = "open:" .. entry.path }
   end
   recent[#recent + 1] = "-"
@@ -71,8 +71,8 @@ function M.add_track()
     { label = "Empty track", run = run("track.add") },
     { label = "From a sound file…", window = "import" },
   }
-  for index, entry in ipairs(daw.frontend.menus.timeline) do
-    items[#items + 1] = { label = entry.label, run = function() act().menu("timeline", index, daw.cursor.track_id(), -1) end }
+  for index, entry in ipairs(paw.frontend.menus.timeline) do
+    items[#items + 1] = { label = entry.label, run = function() act().menu("timeline", index, paw.cursor.track_id(), -1) end }
   end
   return items
 end
@@ -80,7 +80,7 @@ end
 --- More: every view to open in a pane, the extensions' among them.
 function M.views()
   local items = {}
-  for i, v in ipairs(daw.canvas.openable()) do
+  for i, v in ipairs(paw.canvas.openable()) do
     items[i] = { label = v.title, run = run("view.open " .. v.name) }
   end
   if #items == 0 then items[1] = heading("No other views") end
@@ -92,7 +92,7 @@ end
 --- (`listening`).
 function M.engine(opts)
   opts = opts or {}
-  local menu = daw.frontend.engine_menu()
+  local menu = paw.frontend.engine_menu()
   local items = {}
   for _, line in ipairs(menu.info) do items[#items + 1] = heading(line.label) end
   items[#items + 1] = "-"
@@ -114,7 +114,7 @@ end
 --- A track's input button: its audio inputs, MIDI ports and channels,
 --- monitoring, and where it sends MIDI.
 function M.input(track)
-  local menu = daw.frontend.input_menu(track)
+  local menu = paw.frontend.input_menu(track)
   local function group(name) return function(i) act().choose_input(track, name, i) end end
   local items = { heading("Audio") }
   append(items, choices(menu.audio, group("audio")))
@@ -134,7 +134,7 @@ end
 
 --- Where a track plays into: the master or another track.
 function M.output(track)
-  local routing = daw.frontend.routing(track)
+  local routing = paw.frontend.routing(track)
   local items = {}
   for i, t in ipairs(routing.targets) do
     items[i] = { label = t.name, checked = t.id == routing.output_id, run = function() act().set_output(track, t.id) end }
@@ -145,7 +145,7 @@ end
 --- A track to send a track's sound to as well.
 function M.send(track)
   local items = {}
-  for i, t in ipairs(daw.frontend.routing(track).targets) do
+  for i, t in ipairs(paw.frontend.routing(track).targets) do
     items[i] = { label = t.name, enabled = t.id ~= 0, run = function() act().add_send(track, t.id) end }
   end
   return items
@@ -166,13 +166,13 @@ end
 
 --- What a device listens to on its side-chain.
 function M.sidechain(device)
-  return choices(daw.frontend.sidechain_menu(device), function(i) act().choose_sidechain(device, i) end)
+  return choices(paw.frontend.sidechain_menu(device), function(i) act().choose_sidechain(device, i) end)
 end
 
 --- Where a device's further output pairs play.
 function M.outputs(device)
   local items = {}
-  for p, pair in ipairs(daw.frontend.outputs_menu(device)) do
+  for p, pair in ipairs(paw.frontend.outputs_menu(device)) do
     items[p] = { label = pair.label, items = choices(pair.choices, function(i) act().route_pair(device, p + 1, i) end) }
   end
   append(items, { "-", { label = "Spread the outputs over new tracks", run = function() act().device_command(device, "device.spread") end } })
@@ -183,7 +183,7 @@ end
 --- menu takes them.
 function M.items(kind, args)
   args = args or {}
-  local build = M[kind] ~= nil and kind ~= "items" and kind ~= "describe" and kind ~= "choose" and M[kind] or require("daw.mouse_menus")[kind]
+  local build = M[kind] ~= nil and kind ~= "items" and kind ~= "describe" and kind ~= "choose" and M[kind] or require("paw.mouse_menus")[kind]
   if not build then error("no menu " .. tostring(kind)) end
   return build(unpack(args)) or {}
 end
@@ -221,7 +221,7 @@ function M.choose(kind, args, path)
   if item and item.enabled ~= false and item.run then item.run() end
 end
 
-daw.frontend.menu = M.describe
-daw.frontend.act.menu_choose = M.choose
+paw.frontend.menu = M.describe
+paw.frontend.act.menu_choose = M.choose
 
 return M

@@ -1,30 +1,30 @@
 -- Tests of the templates extension; tests/suite.lua runs them.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
-local api = daw.api
+local api = paw.api
 
 local templates
 local function load()
   if not templates then
-    daw.opt.templates_dir = T.scratch .. "/templates"
-    daw.ext.load("extensions/templates")
+    paw.opt.templates_dir = T.scratch .. "/templates"
+    paw.ext.load("extensions/templates")
     templates = require("templates")
   end
-  daw.opt.templates_dir = T.scratch .. "/templates"
+  paw.opt.templates_dir = T.scratch .. "/templates"
   return templates
 end
 
 local function order()
   local out = {}
-  for i, track in ipairs(daw.tracks()) do out[i] = string.rep(">", daw.groups.depth(track.id)) .. track.name end
+  for i, track in ipairs(paw.tracks()) do out[i] = string.rep(">", paw.groups.depth(track.id)) .. track.name end
   return table.concat(out, " ")
 end
 
 test("templates: a track comes back with its devices and settings, in another project", function()
   fresh()
   load()
-  local bus = daw.add_track({ name = "Bus" })
-  local track = daw.add_track({ name = "Lead", volume = -7, pan = 0.25 })
+  local bus = paw.add_track({ name = "Bus" })
+  local track = paw.add_track({ name = "Lead", volume = -7, pan = 0.25 })
   track:add_device("synth", { cutoff = 900 })
   track:add_device("delay", { mix = 0.4 })
   track.output = bus
@@ -36,7 +36,7 @@ test("templates: a track comes back with its devices and settings, in another pr
   eq(#templates.list("track") .. " " .. templates.list()[1].name, "1 Lead sound", "and is listed")
 
   fresh()
-  daw.add_track({ name = "First" })
+  paw.add_track({ name = "First" })
   local made = templates.load("Lead sound")
   eq(made.name .. " " .. made.volume .. " " .. made.pan, "Lead -7 0.25", "the track is made again with its settings")
   eq(order(), "First Lead", "below the cursor track")
@@ -45,7 +45,7 @@ test("templates: a track comes back with its devices and settings, in another pr
   near(devices[2].params.mix, 0.4, 1e-6, "each of them")
   eq(#made:clips() .. " " .. #made:lanes(), "0 1", "its automation, and not its clips")
   eq(tostring(made.output) .. " " .. #made.sends, "nil 0", "nor where it played into: that belonged to the other project")
-  templates.save_track(daw.tracks()[1], "With music", { clips = true })
+  templates.save_track(paw.tracks()[1], "With music", { clips = true })
   eq(templates.delete("Lead sound"), true, "a template is deleted")
   eq(#templates.list("track"), 1, "and gone from the list")
   T.fails(function() templates.load("Lead sound") end, "no template", "a template that is not there")
@@ -54,19 +54,19 @@ end)
 test("templates: a chain of devices is added to another track", function()
   fresh()
   load()
-  local a = daw.add_track({ name = "Vocal" })
+  local a = paw.add_track({ name = "Vocal" })
   a:add_device("gain", { gain = -3 })
   a:add_device("delay", { time = 0.25 })
   templates.save_fx(a, "Vocal chain")
-  local b = daw.add_track({ name = "Other" })
+  local b = paw.add_track({ name = "Other" })
   b:add_device("limiter")
-  daw.cursor.set_track(b)
-  daw.cmd("template.load", { "vocal ch" })
+  paw.cursor.set_track(b)
+  paw.cmd("template.load", { "vocal ch" })
   local kinds = {}
   for i, d in ipairs(b:devices()) do kinds[i] = d.kind end
   eq(table.concat(kinds, " "), "limiter gain delay", "the chain is added after what the track has")
   eq(b:devices()[2].params.gain, -3, "with its settings")
-  T.fails(function() templates.save_fx(daw.add_track({ name = "Empty" }), "Nothing") end, "no devices", "a chain of nothing")
+  T.fails(function() templates.save_fx(paw.add_track({ name = "Empty" }), "Nothing") end, "no devices", "a chain of nothing")
 end)
 
 test("templates: a group comes back with every track in it", function()
@@ -75,23 +75,23 @@ test("templates: a group comes back with every track in it", function()
   local names = { "Violins", "Violas", "Cellos" }
   local members = {}
   for i, name in ipairs(names) do
-    members[i] = daw.add_track({ name = name })
+    members[i] = paw.add_track({ name = name })
     members[i]:add_device("synth")
   end
-  local strings = daw.groups.make(members, "Strings")
+  local strings = paw.groups.make(members, "Strings")
   strings:add_device("limiter")
-  daw.groups.make({ members[1] }, "Firsts")
+  paw.groups.make({ members[1] }, "Firsts")
   eq(order(), "Strings >Firsts >>Violins >Violas >Cellos", "a group with a group inside")
-  daw.cursor.set_track(strings)
-  daw.cmd("template.save", { "String section" })
+  paw.cursor.set_track(strings)
+  paw.cmd("template.save", { "String section" })
   eq(templates.list("group")[1].name, "String section", "saving a group's track saves the group")
 
   fresh()
-  daw.add_track({ name = "Piano" })
+  paw.add_track({ name = "Piano" })
   local made = templates.load("String section")
   eq(order(), "Piano Strings >Firsts >>Violins >Violas >Cellos", "the whole group is made again, under the cursor track")
   eq(made:devices()[1].kind, "limiter", "the group's own devices with it")
-  local violas = daw.track("Violas")
+  local violas = paw.track("Violas")
   eq(violas.output, made.id, "and its tracks play into it")
   eq(violas:devices()[1].kind, "synth", "each with its devices")
 end)
@@ -100,8 +100,8 @@ test("templates: the window's menus offer them", function()
   fresh()
   load()
   local labels = {}
-  for _, entry in ipairs(daw.frontend.menus.timeline) do labels[entry.label] = true end
-  for _, entry in ipairs(daw.frontend.menus.track) do labels[entry.label] = true end
+  for _, entry in ipairs(paw.frontend.menus.timeline) do labels[entry.label] = true end
+  for _, entry in ipairs(paw.frontend.menus.track) do labels[entry.label] = true end
   eq(labels["From a template…"] and labels["Save as a template…"] and labels["Save its devices as a chain…"] and labels["Add devices from a template…"], true,
     "making and saving are in the track button's menu and a track's own")
 end)

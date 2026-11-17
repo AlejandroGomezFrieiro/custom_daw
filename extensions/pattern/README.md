@@ -12,7 +12,7 @@ evaluates to over the clip's length. Playback, rendering, the piano roll and
 saving see ordinary notes and know nothing of patterns.
 
 ```lua
-daw.ext.load("extensions/pattern")   -- or put the directory in ~/.config/daw/extensions
+paw.ext.load("extensions/pattern")   -- or put the directory in ~/.config/paw/extensions
 ```
 
 ![A pattern clip typed with ,tt into the lead's empty first half while the demo song plays, then edited again and the clip following the text](images/tui-pattern.gif)
@@ -42,9 +42,9 @@ When the text has a mistake nothing changes, and the message says where:
 `pattern: col 4: missing ] for the bracket at col 4`. In the prompt, the
 prompt opens again with the text as typed and the error in front of it.
 
-Options: `daw.opt.pattern_names` (true) names a clip after its text, as
+Options: `paw.opt.pattern_names` (true) names a clip after its text, as
 `≈ bd*2 [~ sn]`, so the text shows on the clip in the arrange view and `/` can
-find it; a clip you have renamed keeps your name. `daw.opt.pattern_cycles` (4)
+find it; a clip you have renamed keeps your name. `paw.opt.pattern_cycles` (4)
 is the length of a clip made by `pattern.set`, in cycles.
 
 ## How a clip follows its text
@@ -182,7 +182,7 @@ c'maj e'min # oct -1 # add <0 5>
 
 | Parameter | Values | Effect |
 | --- | --- | --- |
-| `vel` | 0–1, or above 1 | Velocity: 0–1 is a share of 127 (rounded), above 1 a MIDI velocity (at most 127). 0 drops the note. Without it, notes have `daw.opt.velocity` (100). |
+| `vel` | 0–1, or above 1 | Velocity: 0–1 is a share of 127 (rounded), above 1 a MIDI velocity (at most 127). 0 drops the note. Without it, notes have `paw.opt.velocity` (100). |
 | `legato` | number | Note length as a share of the event's length (1 by default). Notes are cut at the end of the clip. 0 drops the note. |
 | `add` | whole number | Semitones up (or down); for degrees, steps along the scale. |
 | `oct` | whole number | Octaves up or down. |
@@ -245,7 +245,7 @@ a whole and a part, and only onsets become notes); `pattern.core` has `pure`,
 - Patterned `@`, `!` and `?` amounts, and `?` and `|` giving exactly Tidal's
   random values: the choices are deterministic per seed but are not Tidal's.
 - Tidal numbers degrees from 0 and calls middle C `c5`; here degrees count from
-  1, as `daw.music.degree` does, and middle C is `c4`.
+  1, as `paw.music.degree` does, and middle C is `c4`.
 - Variables (`^name`) and the `-` rest.
 - Cycles are counted from the start of each clip, not from the start of the
   song.

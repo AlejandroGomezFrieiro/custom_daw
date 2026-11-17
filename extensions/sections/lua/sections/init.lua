@@ -15,7 +15,7 @@
 --
 -- Arranging by section lives in `sections.arrange` and is re-exported here:
 -- `move`, `duplicate`, `delete`, `yank`, `insert`, `copy`.
-local api = daw.api
+local api = paw.api
 local M = {}
 local EPS = 1e-9
 local KEY = "sections"
@@ -58,7 +58,7 @@ M.write = write
 --- Where the last section ends: the end of the project, but at least a bar
 --- after it starts.
 local function last_finish(start)
-  return math.max(daw.project.length or 0, start + daw.time.bar(start))
+  return math.max(paw.project.length or 0, start + paw.time.bar(start))
 end
 
 --- Every section, in order: { index, name, start, finish }.
@@ -83,7 +83,7 @@ end
 
 --- The section under the edit cursor.
 function M.current()
-  return M.at(daw.cursor.beat)
+  return M.at(paw.cursor.beat)
 end
 
 --- A section by name: exactly, then ignoring case, then by the start of the
@@ -133,7 +133,7 @@ end
 --- Add a section starting at a beat (the cursor's by default). Returns the
 --- new section; fails if one starts there already.
 function M.add(name, start)
-  start = math.max(0, start or daw.cursor.beat)
+  start = math.max(0, start or paw.cursor.beat)
   name = tostring(name or "")
   if name == "" then error("a section needs a name", 0) end
   local list = read()
@@ -196,11 +196,11 @@ local function check()
   local now = fingerprint(read())
   if now == seen then return end
   seen = now
-  daw.emit("sections.changed", { sections = M.list() })
+  paw.emit("sections.changed", { sections = M.list() })
   api.ui_redraw()
 end
-daw.on("project.changed", check)
-daw.on("project.loaded", check)
+paw.on("project.changed", check)
+paw.on("project.loaded", check)
 
 -- `sections.move`, `sections.duplicate` and the rest come from `sections.arrange`.
 return setmetatable(M, { __index = function(_, key) return require("sections.arrange")[key] end })

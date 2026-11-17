@@ -12,6 +12,6 @@ glide 149 21; xdotool click 1; pause 0.5
 # The panes: the melody in the piano roll, the tracks as text beside it.
 glide 700 390; xdotool click --repeat 2 --delay 60 1; pause 1.2
 glide 600 550; xdotool keydown ctrl; xdotool click 5; xdotool keyup ctrl; pause 0.4
-typ ":vs daw://tracks"; key Return; pause 1.2
+typ ":vs paw://tracks"; key Return; pause 1.2
 glide 700 790 6; pause 0.4
 still gui-panes.png

@@ -8,8 +8,8 @@ use std::cell::Cell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use daw_engine::record::{AudioCapture, Take, TakeShared};
-use daw_engine::{
+use paw_engine::record::{AudioCapture, Take, TakeShared};
+use paw_engine::{
     Attr, AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
     EngineHandle, EventKind, KeyRt, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, OutRt, Pool,
     Registry, SchedEntry, Schedule, SendRt, Slot, Switch, TrackRt,
@@ -88,7 +88,7 @@ fn send(handle: &mut EngineHandle, msg: Msg) {
     assert!(handle.try_send(msg).is_ok(), "message queue full");
 }
 
-fn device(kind: &str) -> Box<dyn daw_engine::Device> {
+fn device(kind: &str) -> Box<dyn paw_engine::Device> {
     Registry::with_builtins()
         .get(kind)
         .unwrap()
@@ -353,9 +353,9 @@ fn the_audio_thread_never_allocates() {
                     port: 99 + i as u32,
                     channel: if i == 0 { 5 } else { 0 },
                     form: if i == 0 {
-                        daw_engine::midi_form::Form::Mpe(15)
+                        paw_engine::midi_form::Form::Mpe(15)
                     } else {
-                        daw_engine::midi_form::Form::Auto
+                        paw_engine::midi_form::Form::Auto
                     },
                 },
             );
@@ -365,7 +365,7 @@ fn the_audio_thread_never_allocates() {
                 &mut handle,
                 Msg::SetKey {
                     device: keyed_device(i),
-                    key: Some(daw_engine::key_buf()),
+                    key: Some(paw_engine::key_buf()),
                 },
             );
         }
@@ -374,7 +374,7 @@ fn the_audio_thread_never_allocates() {
                 &mut handle,
                 Msg::SetOutputs {
                     device: kit_device(i),
-                    outs: Some(daw_engine::out_bufs(&[0, 2])),
+                    outs: Some(paw_engine::out_bufs(&[0, 2])),
                 },
             );
         }
@@ -391,14 +391,14 @@ fn the_audio_thread_never_allocates() {
     send(&mut handle, Msg::SetTimeSig { num: 7, den: 8 });
     // A map with ramps and signature changes, swapped in whole.
     let ramps: Vec<_> = (0..64)
-        .map(|i| daw_engine::TempoPoint {
+        .map(|i| paw_engine::TempoPoint {
             beat: i as f64 * 0.75,
             bpm: 80.0 + (i * 7 % 60) as f64,
             ramp: i % 2 == 0,
         })
         .collect();
     let sigs: Vec<_> = (0..16)
-        .map(|i| daw_engine::SigPoint {
+        .map(|i| paw_engine::SigPoint {
             beat: i as f64 * 2.5,
             num: 3 + i % 4,
             den: 8,
@@ -406,7 +406,7 @@ fn the_audio_thread_never_allocates() {
         .collect();
     send(
         &mut handle,
-        Msg::SetTempoMap(Box::new(daw_engine::TempoMap::new(&ramps, &sigs))),
+        Msg::SetTempoMap(Box::new(paw_engine::TempoMap::new(&ramps, &sigs))),
     );
     send(&mut handle, Msg::SetTempo(133.0));
     send(
@@ -440,7 +440,7 @@ fn the_audio_thread_never_allocates() {
     // Clip launching: slots given and replaced, launched on every kind of
     // boundary, legato, stopped, back to the arrangement, across seeks, the
     // loop going round and the song stopping.
-    use daw_engine::launch::{Launch, Quantize, SlotClip, Slots, Target};
+    use paw_engine::launch::{Launch, Quantize, SlotClip, Slots, Target};
     let slots = |round: usize| {
         let rows = (0..4)
             .map(|row| {
@@ -664,7 +664,7 @@ fn the_audio_thread_never_allocates() {
                     &mut handle,
                     Msg::SetKey {
                         device: keyed_device(i),
-                        key: (round % 2 == 1).then(daw_engine::key_buf),
+                        key: (round % 2 == 1).then(paw_engine::key_buf),
                     },
                 );
             }
@@ -673,7 +673,7 @@ fn the_audio_thread_never_allocates() {
                     &mut handle,
                     Msg::SetOutputs {
                         device: kit_device(i),
-                        outs: (round % 2 == 0).then(|| daw_engine::out_bufs(&[0, 2])),
+                        outs: (round % 2 == 0).then(|| paw_engine::out_bufs(&[0, 2])),
                     },
                 );
             }
@@ -777,7 +777,7 @@ fn the_audio_thread_never_allocates() {
 /// old one fading out), its level changed, played to its end and stopped,
 /// all without allocating. Run from the test above.
 fn a_file_heard_on_its_own_never_allocates() {
-    use daw_engine::Preview;
+    use paw_engine::Preview;
     let (mut engine, mut handle) = Engine::new(SR);
     let tone: Vec<f32> = (0..44100).map(|i| (i as f32 * 0.05).sin()).collect();
     let data = Arc::new(AudioData {
@@ -805,7 +805,7 @@ fn a_file_heard_on_its_own_never_allocates() {
 /// A sound played while it is made, run out of and caught up with, is
 /// played without allocating. Run from the test above.
 fn a_sound_being_made_never_allocates() {
-    use daw_engine::Sink;
+    use paw_engine::Sink;
     let (mut engine, mut handle) = Engine::new(SR);
     let mut sink = Sink::growing(SR as usize * 4, SR as u32, None).unwrap();
     let mut clips = ClipSet::default();
@@ -853,8 +853,8 @@ fn a_sound_being_made_never_allocates() {
 /// old ones back, all without allocating on the audio thread. Run from the
 /// test above, so that the counter is not shared with it.
 fn the_sampler_never_allocates() {
-    use daw_engine::{Event, EventBuf, Io, ProcessCtx};
-    let dir = std::env::temp_dir().join(format!("daw-noalloc-sampler-{}", std::process::id()));
+    use paw_engine::{Event, EventBuf, Io, ProcessCtx};
+    let dir = std::env::temp_dir().join(format!("paw-noalloc-sampler-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("hit.wav");
     let spec = hound::WavSpec {
@@ -935,7 +935,7 @@ fn the_sampler_never_allocates() {
 /// its range while it plays, and its face asked for its readings meanwhile.
 #[test]
 fn built_in_effects_do_not_allocate() {
-    use daw_engine::{EventBuf, Io, ProcessCtx};
+    use paw_engine::{EventBuf, Io, ProcessCtx};
     let registry = Registry::with_builtins();
     let ctx = ProcessCtx::at(SR as f32, 120.0, 4, 4, true);
     for factory in registry.iter() {

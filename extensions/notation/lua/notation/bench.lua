@@ -1,7 +1,7 @@
 -- The notation view's paint, timed: what `tools/paintbench.lua` prints and
 -- the tests hold to. A clip of `bars` bars of random melody with some
 -- chords is opened as notation and painted at 1053 x 1215 px.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local W, H = 1053, 1215
@@ -34,7 +34,7 @@ local function median(list)
   return list[math.floor(#list / 2) + 1]
 end
 
---- Time the paint. `opts` are `daw.canvas.paint`'s. Returns the times in
+--- Time the paint. `opts` are `paw.canvas.paint`'s. Returns the times in
 --- ms (`first`, `same`, `cursor`, `edit`, `relayout`, medians) and the
 --- drawing's size (`ops`, `kinds`, `json` bytes). With `how.notation`
 --- the edit is made in notation (the note sharpened there: its score
@@ -48,9 +48,9 @@ function M.run(bars, opts, rounds, how)
   local notes = M.notes(bars)
   local track = api.track_add({ name = "Bench" })
   local id = api.clip_add(track, { start = 0, length = bars * 4, notes = notes })
-  daw.flush()
+  paw.flush()
   view:edit(id)
-  local function paint() return daw.canvas.paint("notation", W, H, opts) end
+  local function paint() return paw.canvas.paint("notation", W, H, opts) end
   local function time(fn)
     local t = api.now()
     local r = fn()
@@ -108,9 +108,9 @@ function M.pair(bars, opts, rounds)
   local notes = M.notes(bars)
   local track = api.track_add({ name = "Bench" })
   local id = api.clip_add(track, { start = 0, length = bars * 4, notes = notes })
-  daw.flush()
+  paw.flush()
   view:edit(id)
-  local function paint() return daw.canvas.paint("notation", W, H, opts) end
+  local function paint() return paw.canvas.paint("notation", W, H, opts) end
   -- Each from a clean heap, so that neither pays for the other's garbage.
   local function time(fn)
     collectgarbage()

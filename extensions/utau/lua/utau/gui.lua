@@ -1,7 +1,7 @@
 -- The vocal editor in a graphical frontend: the same view as the terminal's,
 -- painted in pixels and worked with the pointer. It is also the example of
 -- how an extension gives itself a window: a view with `paint(g, ctx)` and
--- `pointer(event)`, opened with `daw.canvas.open` (see runtime/lua/daw/canvas.lua).
+-- `pointer(event)`, opened with `paw.canvas.open` (see runtime/lua/paw/canvas.lua).
 --
 --   toolbar    the clip, the singer (click to choose), what the engine is
 --              doing, the tool, the panels, the grid, zoom
@@ -16,16 +16,16 @@
 --
 -- The panels are in gui_pitch.lua, gui_curves.lua and gui_inspector.lua.
 -- Every key of the terminal editor works in the window too.
-local api = daw.api
-local util = daw.util
-local music = daw.music
+local api = paw.api
+local util = paw.util
+local music = paw.music
 local utau = require("utau")
 local notes = require("utau.notes")
 local proto = require("utau.proto")
 local audition = require("utau.audition")
 local view = require("utau.editor").editor
 
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 local TOOLBAR, RULER, KEYS, PHONEMES, INFO = 38, 24, 64, 30, 26
 local TABS, GRAPH, INSPECTOR = 22, 92, 252
 local STATE_COLOUR = {
@@ -57,7 +57,7 @@ local function pitch_at(y) return gui.top - y / gui.row end
 gui.x_of, gui.y_of, gui.beat_at, gui.pitch_at = x_of, y_of, beat_at, pitch_at
 
 local function snap(beat)
-  local grid = daw.opt.note_grid
+  local grid = paw.opt.note_grid
   return math.max(0, math.floor(beat / grid + 0.5) * grid)
 end
 gui.snap = snap
@@ -120,12 +120,12 @@ function view:paint(g, ctx)
   end
   local track = api.track_get(clip.track)
   local device = utau.device_of(clip.track)
-  local hue = daw.draw.track_colour(track)
+  local hue = paw.draw.track_colour(track)
   local config = utau.config(clip.track)
   local list = notes.list(clip.id)
-  local grid = daw.opt.note_grid
+  local grid = paw.opt.note_grid
   -- Vibratos and pitch points are in milliseconds: at the tempo where the clip is.
-  local tempo = daw.tempo.at(clip.start)
+  local tempo = paw.tempo.at(clip.start)
   local transport = api.transport_get()
   local side = gui.inspector and INSPECTOR or 0
   local curve_h = (gui.curves and device) and (TABS + GRAPH) or 0
@@ -150,7 +150,7 @@ function view:paint(g, ctx)
   S.under = under
   local region = self:visual_region()
   for i, n in ipairs(list) do
-    if (region and daw.edit.roll.inside(n, region)) or (not region and self.sel[view.key_of(n)]) then S.selected[i] = true end
+    if (region and paw.edit.roll.inside(n, region)) or (not region and self.sel[view.key_of(n)]) then S.selected[i] = true end
   end
   for i in pairs(S.selected) do S.targets[#S.targets + 1] = i end
   table.sort(S.targets)
@@ -187,7 +187,7 @@ function view:paint(g, ctx)
   from_right("−", false, function() gui.zoom = math.max(16, gui.zoom / 1.3) end)
   right = right - 8
   for _, step in ipairs({ { "1/32", 0.125 }, { "1/16", 0.25 }, { "1/8", 0.5 }, { "1/4", 1 } }) do
-    from_right(step[1], grid == step[2], function() daw.opt.note_grid = step[2] end)
+    from_right(step[1], grid == step[2], function() paw.opt.note_grid = step[2] end)
   end
   right = right - 8
   from_right("Inspector", gui.inspector, function() gui.inspector = not gui.inspector end)
@@ -202,11 +202,11 @@ function view:paint(g, ctx)
   local ruler = g:sub(KEYS, top, roll_w, RULER)
   local layout = utau.layouts[tostring(clip.track)]
   for _, p in ipairs(layout and layout.phrases or {}) do
-    local x0 = x_of(daw.tempo.seconds_to_beats(p.start) - clip.start)
-    local x1 = x_of(daw.tempo.seconds_to_beats(p.stop) - clip.start)
+    local x0 = x_of(paw.tempo.seconds_to_beats(p.start) - clip.start)
+    local x1 = x_of(paw.tempo.seconds_to_beats(p.stop) - clip.start)
     ruler:rect(x0, RULER - 5, math.max(2, x1 - x0), 4, { fill = STATE_COLOUR[p.state] or c.control_hover, radius = 2 })
   end
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   local roll = g:sub(KEYS, top + RULER, roll_w, roll_h)
   S.roll = roll
   -- Rows: black keys' rows darker, a line under each C.
@@ -251,7 +251,7 @@ function view:paint(g, ctx)
       if drag.mode == "stretch" then length = math.max(grid, length + drag.dlen) end
     end
     if start + length >= view_left and start <= view_right and pitch >= low and pitch <= high then
-      local lyric = notes.lyric(note) or daw.opt.utau_default_lyric
+      local lyric = notes.lyric(note) or paw.opt.utau_default_lyric
       local bad = false
       for _, p in ipairs(phonemes and phonemes.notes[index] or {}) do bad = bad or p.flags % 2 == 1 end
       local fill = notes.is_rest(lyric) and c.control_hover or bad and c.error or hue
@@ -416,7 +416,7 @@ function view:paint(g, ctx)
   else
     local note = under and list[under]
     if note and #S.targets <= 1 then
-      info = string.format("%s  %s  length %g  “%s”", music.name(note.pitch), daw.time.format(clip.start + note.start), note.length, notes.lyric(note) or daw.opt.utau_default_lyric)
+      info = string.format("%s  %s  length %g  “%s”", music.name(note.pitch), paw.time.format(clip.start + note.start), note.length, notes.lyric(note) or paw.opt.utau_default_lyric)
     elseif #S.targets > 1 then
       info = #S.targets .. " notes selected: drag one to move them all, its right edge to stretch them · Del removes · Ctrl+C copies"
     else
@@ -488,7 +488,7 @@ local function finish_drag(self, clip, drag)
       if index then hear(clip, index) end
     end
   elseif drag.mode == "stretch" and math.abs(drag.dlen) > 1e-9 then
-    local grid = daw.opt.note_grid
+    local grid = paw.opt.note_grid
     self:change_targets(function(n) n.length = math.max(grid, n.length + drag.dlen) end)
   end
 end
@@ -584,7 +584,7 @@ function view:pointer(e)
     if gui.tool == "pitch" and pitch_panel.pointer(self, e, clip, list, x, y) then return end
     local note, index, edge = note_at(list, x, y)
     self.pitch = util.clamp(math.floor(pitch_at(y) + 1), 0, 127)
-    self.beat = util.clamp(note and note.start or snap(beat_at(x) - daw.opt.note_grid / 2), 0, clip.length)
+    self.beat = util.clamp(note and note.start or snap(beat_at(x) - paw.opt.note_grid / 2), 0, clip.length)
     if e.button == "right" then
       if not note then return end
       if gui.tool == "pitch" and device then
@@ -592,9 +592,9 @@ function view:pointer(e)
       elseif self.sel[view.key_of(note)] then
         local remove = self:selected(list)
         self:clear_selection()
-        daw.clip(clip.id):edit_notes({ remove = remove })
+        paw.clip(clip.id):edit_notes({ remove = remove })
       else
-        daw.clip(clip.id):remove_note(index)
+        paw.clip(clip.id):remove_note(index)
       end
     elseif gui.tool == "pitch" then
       gui.drag = { mode = "pitch", samples = {}, line = {} }
@@ -617,7 +617,7 @@ function view:pointer(e)
       gui.drag = { mode = "box", x0 = x, y0 = y, x1 = x, y1 = y, add = e.shift }
     else
       self:clear_selection()
-      gui.drag = { mode = "new", pitch = self.pitch, start = self.beat, length = daw.opt.note_grid * 2 }
+      gui.drag = { mode = "new", pitch = self.pitch, start = self.beat, length = paw.opt.note_grid * 2 }
     end
     return
   end
@@ -626,7 +626,7 @@ function view:pointer(e)
   if not drag then return end
   if drag.panel then return drag.panel(self, e, clip, x, y) end
   if e.kind == "move" then
-    local grid = daw.opt.note_grid
+    local grid = paw.opt.note_grid
     if drag.mode == "move" then
       local start = snap(drag.from.start + beat_at(x) - drag.from.beat)
       drag.dbeat = math.max(-drag.min_start, start - drag.from.start)
@@ -658,8 +658,8 @@ function view:pointer(e)
     elseif drag.mode == "box" then
       self:select(notes_in_box(list, drag.x0, drag.y0, drag.x1, drag.y1), drag.add)
     elseif drag.mode == "new" and drag.start < clip.length then
-      local c_obj = daw.clip(clip.id)
-      local index = c_obj:add_note({ pitch = drag.pitch, start = drag.start, length = math.min(drag.length, clip.length - drag.start), velocity = daw.opt.velocity })
+      local c_obj = paw.clip(clip.id)
+      local index = c_obj:add_note({ pitch = drag.pitch, start = drag.start, length = math.min(drag.length, clip.length - drag.start), velocity = paw.opt.velocity })
       if index then
         self:select({ index })
         hear(clip, index)
@@ -676,11 +676,11 @@ end
 function view:on_close()
   if self.entry then self:close_entry() end
   gui.singers, gui.drag, gui.popup = false, nil, nil
-  daw.ui.hide("utau")
+  paw.ui.hide("utau")
 end
 
 function view:on_hide()
-  daw.canvas.close("utau")
+  paw.canvas.close("utau")
 end
 
 -- Opening a vocal clip (the vocal track kind's editor) opens this editor, in
@@ -693,12 +693,12 @@ function view:edit(clip_id)
   local high = 60
   for _, n in ipairs(list) do high = math.max(high, n.pitch) end
   gui.top, gui.scroll, gui.drag, gui.singers, gui.popup = high + 5, 0, nil, false, nil
-  daw.canvas.open("utau", { title = "Vocal editor", width = 1180, height = 620 })
+  paw.canvas.open("utau", { title = "Vocal editor", width = 1180, height = 620 })
 end
 
 -- In the window's track menu: singing for a track that is there already.
 -- A new vocal track is offered wherever a track is made, as a kind of
 -- track (see utau.commands).
-table.insert(daw.frontend.menus.track, { label = "Make this a vocal track", command = "utau.voice" })
+table.insert(paw.frontend.menus.track, { label = "Make this a vocal track", command = "utau.voice" })
 
 return gui

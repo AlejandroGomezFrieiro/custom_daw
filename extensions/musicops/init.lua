@@ -2,7 +2,7 @@
 -- `gz` (humanize, strum, arpeggiate, quantize, crescendo, transpose in the
 -- key, ...), phrase and chord text objects, and the project's key. The
 -- functions themselves are in `require("musicops")`. See README.md.
-local define = daw.option.define
+local define = paw.option.define
 
 define("musicops_seed", nil)                -- fixed seed for `gzh`; nil: a new one each time
 define("musicops_humanize_timing", 0.02)    -- beats either way

@@ -1,5 +1,5 @@
 -- Drive: a soft clipper with a tone filter after it, and a dry/wet mix.
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 
 local dev = dsp.device {
   name = "Drive (Lua)",

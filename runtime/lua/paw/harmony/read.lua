@@ -1,6 +1,6 @@
 -- The built-in reading of harmony: which chord sounds when, and in which key,
 -- from notes alone. Pure functions on note sets in project beats
--- `{ pitch, start, length, velocity }`; `daw.harmony` feeds them the song.
+-- `{ pitch, start, length, velocity }`; `paw.harmony` feeds them the song.
 --
 -- Chords. Time is cut into windows (`step` beats). Each window weighs its
 -- pitch classes by how long they sound in it, a short note off the beat

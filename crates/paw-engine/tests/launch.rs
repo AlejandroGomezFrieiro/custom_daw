@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use daw_engine::launch::{Launch, Quantize, SlotClip, Slots, Target};
-use daw_engine::{
+use paw_engine::launch::{Launch, Quantize, SlotClip, Slots, Target};
+use paw_engine::{
     AudioData, AudioRegion, ClipSet, Engine, EngineHandle, MASTER, Msg, NO_SLOT, SchedEntry,
     Schedule, Slot, TempoMap, TempoPoint,
 };
@@ -50,7 +50,7 @@ fn engine(length: f64, sounding: f64) -> (Engine, EngineHandle) {
         &mut handle,
         Msg::InsertTrack {
             slot: TRACK,
-            track: daw_engine::TrackRt::new(),
+            track: paw_engine::TrackRt::new(),
         },
     );
     let mut timeline = ClipSet::default();
@@ -272,7 +272,7 @@ fn boundaries_follow_bars_and_the_signature() {
             bpm: 120.0,
             ramp: false,
         }],
-        &[daw_engine::SigPoint {
+        &[paw_engine::SigPoint {
             beat: 0.0,
             num: 6,
             den: 8,

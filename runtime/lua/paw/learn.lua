@@ -5,7 +5,7 @@
 --   :learn volume          -- the selected track's fader (or `pan`, or a parameter's name)
 --   :learn.list            -- what is bound; choose one to take it away
 --   :learn.remove 2        -- take the second away
---   daw.learn.bind({ cc = 74, channel = 1 }, { track = t.id, target = "param", device = d.id, param = "cutoff" })
+--   paw.learn.bind({ cc = 74, channel = 1 }, { track = t.id, target = "param", device = d.id, param = "cutoff" })
 --
 -- The bindings belong to the project (`project.meta.learn`): they name its
 -- tracks and devices, are saved with it and undone like any edit. A move
@@ -14,11 +14,11 @@
 --
 -- A controller is where it was left, the song is not: so a control only
 -- takes hold of its target once it has reached the target's value
--- (`daw.opt.learn_pickup`, on by default), instead of jumping it there.
-local api = daw.api
+-- (`paw.opt.learn_pickup`, on by default), instead of jumping it there.
+local api = paw.api
 local M = {}
 
-daw.option.define("learn_pickup", true)
+paw.option.define("learn_pickup", true)
 
 -- What is waiting for a controller: the target `:learn` was asked for.
 M.learning = nil
@@ -48,7 +48,7 @@ function M.source_name(b)
   return b.channel and (what .. " ch " .. b.channel) or what
 end
 
--- What a button or a pad does rather than moves (`daw.launcher`): launch a
+-- What a button or a pad does rather than moves (`paw.launcher`): launch a
 -- slot (`track`, `slot`), launch a scene (`slot`), stop a track's clip or
 -- every clip (`track` or none).
 local triggers = { launch = true, scene = true, stop = true }
@@ -58,7 +58,7 @@ function M.is_trigger(target) return triggers[target.target] == true end
 
 --- What a binding moves, as text: "Lead › volume", "Lead › Filter › Cutoff".
 function M.target_name(t)
-  if t.target == "scene" then return "launch " .. daw.launcher.scene_name(t.slot) end
+  if t.target == "scene" then return "launch " .. paw.launcher.scene_name(t.slot) end
   if t.target == "stop" and not t.track then return "stop every clip" end
   local ok, track = pcall(api.track_get, t.track)
   if ok and t.target == "launch" then return track.name .. " › launch slot " .. (t.slot + 1) end
@@ -185,7 +185,7 @@ local function position(b)
   if b.target == "volume" then return fader_fraction(api.track_get(b.track).volume) end
   if b.target == "pan" then return (api.track_get(b.track).pan + 1) / 2 end
   local p = param_of(b)
-  return p and daw.params.fraction(p, api.device_get(b.device).params[b.param]) or 0
+  return p and paw.params.fraction(p, api.device_get(b.device).params[b.param]) or 0
 end
 
 local function move(b, f)
@@ -197,7 +197,7 @@ local function move(b, f)
     api.track_set(b.track, "pan", math.abs(pan) < 0.02 and 0 or pan)
   else
     local p = param_of(b)
-    if p then api.device_set_param(b.device, b.param, daw.params.from_fraction(p, f)) end
+    if p then api.device_set_param(b.device, b.param, paw.params.from_fraction(p, f)) end
   end
 end
 
@@ -208,7 +208,7 @@ local function apply(b, f)
   local now = position(b)
   -- Moved by something else since: the control has to catch it again.
   if state.set and math.abs(now - state.set) > 0.02 then state.held = false end
-  if not state.held and daw.opt.learn_pickup then
+  if not state.held and paw.opt.learn_pickup then
     local reached = math.abs(f - now) <= 0.04 or (state.last and (state.last - now) * (f - now) <= 0)
     state.last = f
     if not reached then return false end
@@ -227,7 +227,7 @@ local function press(b, f)
   local down = f >= 0.5
   if down == (state.down or false) then return end
   state.down = down
-  local launcher = daw.launcher
+  local launcher = paw.launcher
   if b.target == "launch" then
     if down then launcher.press(b.track, b.slot) else launcher.release(b.track, b.slot) end
   elseif down and b.target == "scene" then
@@ -242,21 +242,21 @@ end
 function M.start(target)
   target = target or M.last
   if not target then
-    return daw.notify("learn: move a fader, a pan or a parameter first, or say which: `:learn volume`", "warn")
+    return paw.notify("learn: move a fader, a pan or a parameter first, or say which: `:learn volume`", "warn")
   end
   check(target)
   M.learning = target
   api.ui_redraw()
-  daw.notify("learn: move a knob or fader of the controller for " .. M.target_name(target) .. " (`:learn.cancel` gives up)")
+  paw.notify("learn: move a knob or fader of the controller for " .. M.target_name(target) .. " (`:learn.cancel` gives up)")
 end
 
 function M.cancel()
-  if M.learning then daw.notify("learn: given up") end
+  if M.learning then paw.notify("learn: given up") end
   M.learning = nil
   api.ui_redraw()
 end
 
-daw.on("midi.in", function(event)
+paw.on("midi.in", function(event)
   local source = M.source(event)
   if not source then return end
   if M.learning then
@@ -267,11 +267,11 @@ daw.on("midi.in", function(event)
     if (source.source == "note" and not trigger) or (trigger and source.value < 0.5) then return end
     M.learning = nil
     local ok, b = pcall(M.bind, source, target)
-    if not ok then return daw.notify("learn: " .. tostring(b), "error") end
+    if not ok then return paw.notify("learn: " .. tostring(b), "error") end
     -- It is where it is: no waiting for it to reach the target, and the
     -- press that taught it launches nothing.
     hold[key(b)] = { held = true, last = source.value, down = trigger or nil }
-    daw.notify(M.source_name(b) .. " now moves " .. M.target_name(b))
+    paw.notify(M.source_name(b) .. " now moves " .. M.target_name(b))
     api.ui_redraw()
     return
   end
@@ -285,7 +285,7 @@ end)
 
 -- What was moved last, for `:learn` without a word. Parameters say so
 -- themselves; a fader or pan is found by what changed on its track.
-daw.on("param.touched", function(e)
+paw.on("param.touched", function(e)
   local ok, device = pcall(api.device_get, e.device)
   if ok then M.last = { track = device.track, target = "param", device = e.device, param = e.param } end
 end)
@@ -304,21 +304,21 @@ local function look_all()
   for _, id in ipairs(api.track_list()) do look(id) end
   look(0)
 end
-daw.on("track.changed", function(e) if e.id then look(e.id) end end)
-daw.on("track.added", function(e) if e.id then look(e.id) end end)
-daw.on("project.loaded", function()
+paw.on("track.changed", function(e) if e.id then look(e.id) end end)
+paw.on("track.added", function(e) if e.id then look(e.id) end end)
+paw.on("project.loaded", function()
   M.learning, M.last, hold = nil, nil, {}
   look_all()
 end)
-daw.on("startup", look_all)
+paw.on("startup", look_all)
 
 --- The target a word names on the selected track: "volume", "pan", or a
 --- parameter of one of its devices by key or name.
 function M.target_for(word)
-  local track = daw.cursor.track_id()
+  local track = paw.cursor.track_id()
   word = tostring(word):lower()
   -- Buttons of the launcher, by the session view's cursor.
-  local row = daw.launcher.row
+  local row = paw.launcher.row
   if word == "scene" then return { target = "scene", slot = row } end
   if word == "stop all" then return { target = "stop" } end
   if not track then error("no track selected", 0) end
@@ -338,7 +338,7 @@ end
 --- What the keyboard is on, if that is something a controller can move:
 --- the parameter under the device panel's cursor, the mixer's fader.
 function M.under_cursor()
-  local ui = daw.ui
+  local ui = paw.ui
   if ui.focused == "devices" then
     local panel = ui.views.devices
     local row = panel:rows()[panel.row]
@@ -346,67 +346,67 @@ function M.under_cursor()
       return { track = api.device_get(row.device.id).track, target = "param", device = row.device.id, param = row.param.key }
     end
   elseif ui.focused == "mixer" then
-    local track = daw.cursor.track_id()
+    local track = paw.cursor.track_id()
     if track then return { track = track, target = "volume" } end
   elseif ui.focused == "session" then
     -- The slot under the cursor: a pad launches it.
-    local track = daw.cursor.track_id()
-    if track then return { track = track, target = "launch", slot = daw.launcher.row } end
+    local track = paw.cursor.track_id()
+    if track then return { track = track, target = "launch", slot = paw.launcher.row } end
   end
 end
 
-daw.command("learn", function(ctx)
+paw.command("learn", function(ctx)
   local word = ctx.args[1] and table.concat(ctx.args, " ")
   M.start(word and M.target_for(word) or M.under_cursor() or M.last)
 end, {
   desc = "Bind a MIDI controller: `learn` for what was moved last (in the session view, the slot under the cursor), `learn volume`, `learn pan`, `learn cutoff`, `learn launch`, `learn scene`, `learn stop`, `learn stop all`, then move the controller or press the pad",
   complete = function()
     local words = { "volume", "pan" }
-    local track = daw.cursor.track_id()
+    local track = paw.cursor.track_id()
     for _, id in ipairs(track and api.track_get(track).devices or {}) do
       for _, p in ipairs(api.device_get(id).param_info) do words[#words + 1] = p.key end
     end
     return words
   end,
 })
-daw.command("learn.cancel", M.cancel, { desc = "Stop waiting for a controller" })
+paw.command("learn.cancel", M.cancel, { desc = "Stop waiting for a controller" })
 -- For a frontend's menus, which know the device and the parameter.
-daw.command("learn.param", function(ctx)
+paw.command("learn.param", function(ctx)
   local device = tonumber(ctx.args[1])
   local d = device and api.device_get(device)
   M.start({ track = d.track, target = "param", device = device, param = tostring(ctx.args[2]) })
 end, { desc = "Bind a MIDI controller to a parameter of a device, by their ids: `learn.param 12 cutoff`" })
--- `:param.last learn` (daw.fx) learns the parameter touched last.
-daw.fx.learn = function(device, param)
+-- `:param.last learn` (paw.fx) learns the parameter touched last.
+paw.fx.learn = function(device, param)
   M.start({ track = api.device_get(device).track, target = "param", device = device, param = param })
 end
-daw.command("learn.remove", function(ctx)
+paw.command("learn.remove", function(ctx)
   local which = tonumber(ctx.args[1])
   if not which then
     local target = ctx.args[1] and M.target_for(table.concat(ctx.args, " ")) or M.under_cursor() or M.last
-    if not target or M.unbind(target) == 0 then return daw.notify("learn: no controller moves that", "warn") end
-    return daw.notify("learn: nothing moves " .. M.target_name(target) .. " now")
+    if not target or M.unbind(target) == 0 then return paw.notify("learn: no controller moves that", "warn") end
+    return paw.notify("learn: nothing moves " .. M.target_name(target) .. " now")
   end
   local b = M.bindings()[which]
-  if not b then return daw.notify("learn: there are " .. #M.bindings() .. " bindings", "warn") end
+  if not b then return paw.notify("learn: there are " .. #M.bindings() .. " bindings", "warn") end
   M.unbind(which)
-  daw.notify("learn: " .. M.source_name(b) .. " no longer moves " .. M.target_name(b))
+  paw.notify("learn: " .. M.source_name(b) .. " no longer moves " .. M.target_name(b))
 end, { desc = "Take a controller binding away: `learn.remove 2` (as `learn.list` numbers them), `learn.remove volume`" })
-daw.command("learn.clear", function()
+paw.command("learn.clear", function()
   M.clear()
-  daw.notify("learn: every controller binding is gone")
+  paw.notify("learn: every controller binding is gone")
 end, { desc = "Take every controller binding away" })
-daw.command("learn.list", function()
+paw.command("learn.list", function()
   local list = M.bindings()
-  if #list == 0 then return daw.notify("learn: no controller is bound; `:learn` binds one") end
+  if #list == 0 then return paw.notify("learn: no controller is bound; `:learn` binds one") end
   local items = {}
   for i, b in ipairs(list) do
     items[i] = { text = string.format("%d  %-18s → %s", i, M.source_name(b), M.target_name(b)), index = i }
   end
-  daw.pick({
+  paw.pick({
     title = "Controllers (Enter takes one away)",
     items = items,
-    on_choose = function(item) daw.commands.run("learn.remove", { item.index }) end,
+    on_choose = function(item) paw.commands.run("learn.remove", { item.index }) end,
   })
 end, { desc = "List the controller bindings; choosing one takes it away" })
 

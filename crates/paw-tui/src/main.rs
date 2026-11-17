@@ -1,4 +1,4 @@
-//! The `daw` command: start the kernel with a terminal UI, without one, to run
+//! The `paw` command: start the kernel with a terminal UI, without one, to run
 //! a script, or to talk to an instance that is already running.
 
 mod graphics;
@@ -8,27 +8,27 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
-use daw_core::{Kernel, KernelOpts, rpc};
-use daw_engine::Registry;
-use daw_engine::backend::BackendOptions;
+use paw_core::{Kernel, KernelOpts, rpc};
+use paw_engine::Registry;
+use paw_engine::backend::BackendOptions;
 use serde_json::Value;
 
 const HELP: &str = "\
 paw: a personal audio workstation
 
 Usage:
-  daw [options] [project]         open the terminal UI (a sound file starts a project with it)
-  daw -l <script.lua> [args...]   run a Lua script without a UI, then exit
-  daw --headless [project]        run without a UI until told to quit
-  daw ctl <method> [params...]    call a running instance over its socket
-  daw attach                      show a running instance's terminal UI here
-  daw doctor [options]            check the audio, MIDI, plugins and environment, and print a report
+  paw [options] [project]         open the terminal UI (a sound file starts a project with it)
+  paw -l <script.lua> [args...]   run a Lua script without a UI, then exit
+  paw --headless [project]        run without a UI until told to quit
+  paw ctl <method> [params...]    call a running instance over its socket
+  paw attach                      show a running instance's terminal UI here
+  paw doctor [options]            check the audio, MIDI, plugins and environment, and print a report
 
 Options:
   -e <lua>          run Lua code after startup (repeatable)
   --keys <keys>     type keys after startup, such as 'jj<Space>'
   --clean           skip your configuration and extensions
-  --config <dir>    configuration directory (default: ~/.config/daw)
+  --config <dir>    configuration directory (default: ~/.config/paw)
   --runtime <dir>   load the Lua runtime from disk instead of the built-in copy
   --audio <name>    audio backend: auto, null, pipewire, alsa, jack
   --rate <hz>       sample rate
@@ -36,7 +36,7 @@ Options:
   --output <name>   output device by name or part of it (see :audio)
   --input <name>    input device by name or part of it
   --no-input        do not open the audio device's input
-  --listen <path>   control socket path (default: $XDG_RUNTIME_DIR/daw.sock)
+  --listen <path>   control socket path (default: $XDG_RUNTIME_DIR/paw.sock)
   --no-listen       do not open a control socket
   --listen-tcp <address>
                     also take connections from the network, on host:port
@@ -45,7 +45,7 @@ Options:
   --no-tls          take them in the clear instead: for a network you trust
   --token-file <path>
                     where the token for network connections is kept
-                    (default: ~/.local/state/daw/token, made if missing)
+                    (default: ~/.local/state/paw/token, made if missing)
   --no-plugins      do not look for CLAP, LV2 and VST3 plugins
   --plugins-in-process
                     load plugins into this process, not each into its own
@@ -56,7 +56,7 @@ Options:
 ctl and attach reach the instance on this machine's socket, or:
   --socket <path>           another socket
   --connect <host:port>     an instance listening on the network, with
-  --token <token> or --token-file <path> (or $DAW_TOKEN)
+  --token <token> or --token-file <path> (or $PAW_TOKEN)
   --accept-certificate      take the certificate it shows though another was
                             remembered for it (after it made a new one)
   --no-tls                  connect in the clear, to one started with --no-tls
@@ -66,10 +66,10 @@ doctor options: --seconds <n> (length of the dropout runs), --plugin <name> (rep
   --only <ids> (comma separated), and the audio options above (--audio, --output, ...)
 
 ctl examples:
-  daw ctl eval 'return daw.transport.position'
-  daw ctl cmd transport.toggle
-  daw ctl track_add '{\"name\": \"Bass\"}'
-  daw ctl --connect studio:7700 --token-file studio.token cmd transport.toggle
+  paw ctl eval 'return paw.transport.position'
+  paw ctl cmd transport.toggle
+  paw ctl track_add '{\"name\": \"Bass\"}'
+  paw ctl --connect studio:7700 --token-file studio.token cmd transport.toggle
 
 In an attached terminal, `:detach` leaves and the instance runs on, and
 `:upload <file>` brings a sound file from this machine into the project.
@@ -100,7 +100,7 @@ struct Args {
     no_plugins: bool,
     plugins_in_process: bool,
     plugins_offline: bool,
-    /// Run as `daw doctor`: a script, but with the sound device unless told otherwise.
+    /// Run as `paw doctor`: a script, but with the sound device unless told otherwise.
     doctor: bool,
 }
 
@@ -162,7 +162,7 @@ fn config_dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("daw")
+    base.join("paw")
 }
 
 /// The terminal's stderr, kept while fd 2 points at a log file.
@@ -199,7 +199,7 @@ fn cache_dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("daw")
+    base.join("paw")
 }
 
 /// Connect to the instance `ctl` and `attach` are pointed at by the options
@@ -207,7 +207,7 @@ fn cache_dir() -> PathBuf {
 fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Result<rpc::Connection> {
     let mut socket = rpc::default_path();
     let mut address = None;
-    let mut token = std::env::var("DAW_TOKEN").ok();
+    let mut token = std::env::var("PAW_TOKEN").ok();
     let mut wire = rpc::Wire::default();
     let mut accept_new = false;
     while let Some(option) = argv.peek().filter(|a| a.starts_with("--")).cloned() {
@@ -235,7 +235,7 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
                 Some(token) => token,
                 None => std::fs::read_to_string(rpc::token_path())
                     .map(|text| text.trim().to_string())
-                    .context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?,
+                    .context("--connect needs the token: --token, --token-file or $PAW_TOKEN")?,
             };
             if let rpc::Wire::Tls { accept_new: accept, .. } = &mut wire {
                 *accept = accept_new;
@@ -243,7 +243,7 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
             let connection = rpc::Connection::tcp_with(&address, &token, &wire)?;
             if let Some(print) = &connection.trusted_now {
                 eprintln!(
-                    "daw: {address} is trusted from now on: its certificate is {print} \
+                    "paw: {address} is trusted from now on: its certificate is {print} \
                      (remembered in {})",
                     rpc::known_path().display()
                 );
@@ -254,13 +254,13 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
     }
 }
 
-/// `daw ctl <method> [params...]`: each parameter is JSON, or a plain string
+/// `paw ctl <method> [params...]`: each parameter is JSON, or a plain string
 /// when it does not parse as JSON.
 fn ctl(argv: impl Iterator<Item = String>) -> Result<()> {
     let mut argv = argv.peekable();
     let mut connection = connect(&mut argv)?;
     let method = argv.next().context(
-        "usage: daw ctl [--socket <path> | --connect <host:port>] <method> [params...]",
+        "usage: paw ctl [--socket <path> | --connect <host:port>] <method> [params...]",
     )?;
     let params: Vec<Value> = argv
         .map(|p| serde_json::from_str(&p).unwrap_or(Value::String(p)))
@@ -282,7 +282,7 @@ enum Hear {
 
 /// Start hearing the instance here, or stop. What went wrong is said on
 /// the instance's screen.
-fn listen(connection: &mut rpc::Connection, player: &mut Option<daw_listen::Player>, hear: Option<&Hear>) {
+fn listen(connection: &mut rpc::Connection, player: &mut Option<paw_listen::Player>, hear: Option<&Hear>) {
     let started = match hear {
         None => {
             *player = None;
@@ -290,8 +290,8 @@ fn listen(connection: &mut rpc::Connection, player: &mut Option<daw_listen::Play
         }
         Some(hear) => (|| {
             let opened = match hear {
-                Hear::Device => daw_listen::Player::device()?,
-                Hear::File(path) => daw_listen::Player::file(path, 48000)?,
+                Hear::Device => paw_listen::Player::device()?,
+                Hear::File(path) => paw_listen::Player::file(path, 48000)?,
             };
             connection.call("monitor.listen", serde_json::json!([]))?;
             *player = Some(opened);
@@ -300,11 +300,11 @@ fn listen(connection: &mut rpc::Connection, player: &mut Option<daw_listen::Play
     };
     if let Err(err) = started {
         let message = format!("cannot play the instance's sound here: {err:#}");
-        let _ = connection.notify("eval", serde_json::json!(["daw.notify(..., 'error')", message]));
+        let _ = connection.notify("eval", serde_json::json!(["paw.notify(..., 'error')", message]));
     }
 }
 
-/// `daw attach`: this terminal becomes a terminal of a running instance,
+/// `paw attach`: this terminal becomes a terminal of a running instance,
 /// which may be on another machine, with a seat of its own there: its own
 /// cursor, mode and selection in the one project. `:detach` leaves, and so
 /// does the instance ending. With `--listen-audio` it plays what the
@@ -335,14 +335,14 @@ fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
     if hear.is_some() {
         listen(&mut connection, &mut player, hear.as_ref());
     }
-    let mut grid = daw_core::grid::Grid::new(width, height);
-    use daw_core::Frontend;
+    let mut grid = paw_core::grid::Grid::new(width, height);
+    use paw_core::Frontend;
     loop {
         // What was typed goes out; what the instance shows comes in.
         let mut idle = true;
         while let Ok(event) = typed.try_recv() {
             idle = false;
-            connection.notify("ui.input", serde_json::json!([daw_core::remote::input_json(&event)]))?;
+            connection.notify("ui.input", serde_json::json!([paw_core::remote::input_json(&event)]))?;
         }
         loop {
             match connection.events.try_recv() {
@@ -350,7 +350,7 @@ fn attach(argv: impl Iterator<Item = String>) -> Result<()> {
                     idle = false;
                     match name.as_str() {
                         "ui.grid" => {
-                            let cursor = daw_core::remote::apply(&mut grid, &payload)?;
+                            let cursor = paw_core::remote::apply(&mut grid, &payload)?;
                             screen.present(&grid, cursor)?;
                         }
                         "ui.detached" => return Ok(()),
@@ -395,14 +395,14 @@ fn send_wanted(connection: &mut rpc::Connection, payload: &Value) {
     };
     if let Err(err) = sent {
         let message = format!("could not send {asked}: {err:#}");
-        let _ = connection.notify("eval", serde_json::json!(["daw.notify(..., 'error')", message]));
+        let _ = connection.notify("eval", serde_json::json!(["paw.notify(..., 'error')", message]));
     }
 }
 
-/// Where `extensions/doctor/shell.lua` is: under `$DAW_HOME`, or beside the
+/// Where `extensions/doctor/shell.lua` is: under `$PAW_HOME`, or beside the
 /// binary in a source tree (the binary is in `target/release`), or here.
 fn doctor_script() -> Result<PathBuf> {
-    let mut roots: Vec<PathBuf> = std::env::var_os("DAW_HOME").map(PathBuf::from).into_iter().collect();
+    let mut roots: Vec<PathBuf> = std::env::var_os("PAW_HOME").map(PathBuf::from).into_iter().collect();
     if let Ok(exe) = std::env::current_exe() {
         roots.extend(exe.ancestors().skip(1).take(4).map(PathBuf::from));
     }
@@ -411,10 +411,10 @@ fn doctor_script() -> Result<PathBuf> {
         .iter()
         .map(|root| root.join("extensions/doctor/shell.lua"))
         .find(|path| path.is_file())
-        .context("cannot find extensions/doctor/shell.lua: set DAW_HOME to the source tree")
+        .context("cannot find extensions/doctor/shell.lua: set PAW_HOME to the source tree")
 }
 
-/// `daw doctor [options]`: the options the doctor itself takes become the
+/// `paw doctor [options]`: the options the doctor itself takes become the
 /// script's arguments (`--seconds=20`); the rest are the program's own.
 fn doctor_args(argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
     let mut own = Vec::new();
@@ -463,18 +463,18 @@ fn run() -> Result<i32> {
             let args: Vec<String> = argv.skip(1).collect();
             // A device written in Lua is held the way a plugin is.
             if args.first().is_some_and(|kind| kind.starts_with("lua:")) {
-                return Ok(daw_plugins::sandbox::serve_with(&args, |_, rate, block| {
-                    daw_luadev::serve_make(rate, block)
+                return Ok(paw_plugins::sandbox::serve_with(&args, |_, rate, block| {
+                    paw_luadev::serve_make(rate, block)
                 }));
             }
-            return Ok(daw_plugins::sandbox::serve(&args));
+            return Ok(paw_plugins::sandbox::serve(&args));
         }
         Some("plugin-scan") => {
             let args: Vec<String> = argv.skip(1).collect();
             if args.first().map(String::as_str) == Some("lua") {
-                return Ok(daw_luadev::scan_main(&args[1..]));
+                return Ok(paw_luadev::scan_main(&args[1..]));
             }
-            return Ok(daw_plugins::scan_main(&args));
+            return Ok(paw_plugins::scan_main(&args));
         }
         _ => {}
     }
@@ -485,7 +485,7 @@ fn run() -> Result<i32> {
     let scripted = args.script.is_some();
     // A terminal older than the display it names cannot open a plugin's
     // window. Put that right while this is still the only thread.
-    let display_note = daw_plugins::repair_display_env();
+    let display_note = paw_plugins::repair_display_env();
 
     // A script only makes sound if it asks for a device.
     let backend = args
@@ -496,14 +496,14 @@ fn run() -> Result<i32> {
     // Devices written in Lua always run in helpers: Lua must not run on
     // the audio thread.
     if let Ok(exe) = std::env::current_exe() {
-        daw_luadev::set_helper(exe, daw_plugins::sandbox::remote);
+        paw_luadev::set_helper(exe, paw_plugins::sandbox::remote);
     }
     // Directories an extension adds are looked in even without the
     // plugins installed on the machine.
     let cache = cache_dir().join("plugins.json");
     registry.set_add_dir(std::rc::Rc::new({
         let cache = cache.clone();
-        move |registry, dir| daw_plugins::add_dir(registry, Some(&cache), dir)
+        move |registry, dir| paw_plugins::add_dir(registry, Some(&cache), dir)
     }));
     let mut plugin_notes = if args.no_plugins {
         Vec::new()
@@ -512,15 +512,15 @@ fn run() -> Result<i32> {
         if !args.plugins_in_process
             && let Ok(exe) = std::env::current_exe()
         {
-            daw_plugins::sandbox::set_host_command(
+            paw_plugins::sandbox::set_host_command(
                 vec![exe.to_string_lossy().into_owned(), "plugin-host".into()],
                 Some(&cache),
             );
         }
-        let notes = daw_plugins::register(&mut registry, Some(&cache));
-        daw_plugins::sandbox::wrap(&mut registry);
+        let notes = paw_plugins::register(&mut registry, Some(&cache));
+        paw_plugins::sandbox::wrap(&mut registry);
         registry.set_rescan(std::rc::Rc::new(move |registry, name| {
-            daw_plugins::rescan(registry, Some(&cache), name)
+            paw_plugins::rescan(registry, Some(&cache), name)
         }));
         notes
     };
@@ -542,7 +542,7 @@ fn run() -> Result<i32> {
         runtime_dir: args
             .runtime
             .clone()
-            .or_else(|| std::env::var_os("DAW_RUNTIME").map(PathBuf::from)),
+            .or_else(|| std::env::var_os("PAW_RUNTIME").map(PathBuf::from)),
         clean: args.clean,
         scripted,
         argv: args.script_args.clone(),
@@ -552,14 +552,14 @@ fn run() -> Result<i32> {
     // and reports) writes a safety copy of the project before the program ends.
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        if daw_engine::guard::in_device() {
+        if paw_engine::guard::in_device() {
             return;
         }
-        let copy = daw_core::session::panic::write_copy(&info.to_string());
+        let copy = paw_core::session::panic::write_copy(&info.to_string());
         hook(info);
         if let Some(copy) = copy {
             eprintln!(
-                "daw: the unsaved project was kept in {}; `:recover` opens it at the next start",
+                "paw: the unsaved project was kept in {}; `:recover` opens it at the next start",
                 copy.display()
             );
         }
@@ -572,13 +572,13 @@ fn run() -> Result<i32> {
         quiet_stderr(&cache_dir().join("stderr.log"));
         let sender = kernel.sender();
         let (terminal, width, height) = terminal::Terminal::start(move |event| {
-            sender.send(daw_core::KernelMsg::Input(event)).is_ok()
+            sender.send(paw_core::KernelMsg::Input(event)).is_ok()
         })?;
         // A panic message printed into the alternate screen would be lost.
         // Only one on the main thread ends the program; a device's is caught.
         let hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            if !daw_engine::guard::in_device() && std::thread::current().name() == Some("main") {
+            if !paw_engine::guard::in_device() && std::thread::current().name() == Some("main") {
                 terminal::restore();
                 restore_stderr();
             }
@@ -590,24 +590,24 @@ fn run() -> Result<i32> {
     }
     kernel.boot()?;
     if let Some(line) = &described {
-        kernel.eval("daw.api.log(...)", &[line])?;
+        kernel.eval("paw.api.log(...)", &[line])?;
     }
     if !scripted {
         // Opening a project or adding a plugin does not wait for plugins
         // to be made: they come in as they are ready.
-        kernel.eval("daw.api.load_apart(true)", &[])?;
+        kernel.eval("paw.api.load_apart(true)", &[])?;
     }
     for note in &plugin_notes {
-        kernel.eval("daw.api.log('plugin scan: ' .. ...)", &[note])?;
+        kernel.eval("paw.api.log('plugin scan: ' .. ...)", &[note])?;
         // Plugin files passed over because they failed before, in one line.
         if note.starts_with("skipped ") {
-            kernel.eval("daw.notify(..., 'warn')", &[note])?;
+            kernel.eval("paw.notify(..., 'warn')", &[note])?;
         }
     }
-    // The same notes, for the quickfix list's Problems (daw/qf.lua).
+    // The same notes, for the quickfix list's Problems (paw/qf.lua).
     if scanned > 0 {
         let notes: Vec<&str> = plugin_notes[..scanned].iter().map(String::as_str).collect();
-        kernel.eval("daw.emit('plugins.scanned', { notes = { ... } })", &notes)?;
+        kernel.eval("paw.emit('plugins.scanned', { notes = { ... } })", &notes)?;
     }
 
     let _server = if scripted || args.no_listen {
@@ -619,7 +619,7 @@ fn run() -> Result<i32> {
             // The socket is a convenience: carry on without it when it is taken.
             Err(err) if args.listen.is_none() => {
                 kernel.eval(
-                    "daw.notify(..., 'warn')",
+                    "paw.notify(..., 'warn')",
                     &[&format!("no control socket: {err:#}")],
                 )?;
                 None
@@ -635,7 +635,7 @@ fn run() -> Result<i32> {
         let identity = if args.no_tls {
             None
         } else {
-            Some(daw_core::tls::identity(&daw_core::tls::default_dir())?)
+            Some(paw_core::tls::identity(&paw_core::tls::default_dir())?)
         };
         let config = identity.as_ref().map(|identity| identity.config.clone());
         let bound = rpc::serve_tcp(address, token, config, kernel.sender(), kernel.clients())?;
@@ -648,34 +648,34 @@ fn run() -> Result<i32> {
             token_file.display()
         );
         // Without a terminal attached this goes to stderr as well.
-        kernel.eval("daw.notify(...)", &[&note])?;
+        kernel.eval("paw.notify(...)", &[&note])?;
     }
 
     if let Some(project) = &args.project {
         // A project, or a sound file to start a project from.
         let open = if args.plugins_offline {
-            "daw.open(..., { plugins_offline = true })"
+            "paw.open(..., { plugins_offline = true })"
         } else {
-            "daw.open(...)"
+            "paw.open(...)"
         };
         // One that will not open but has a backup or safety copy starts the
         // program anyway, with those offered (`:recover`).
         kernel.eval(
             &format!(
                 "local ok, err = pcall(function(...) {open} end, ...)
-                 if not ok and not (daw.autosave and daw.autosave.offered) then error(err, 0) end"
+                 if not ok and not (paw.autosave and paw.autosave.offered) then error(err, 0) end"
             ),
             &[&project.to_string_lossy()],
         )?;
     } else {
-        // Nothing named: `daw.opt.reopen_last` may ask for the last project.
-        kernel.eval("daw.recent.reopen_last()", &[])?;
+        // Nothing named: `paw.opt.reopen_last` may ask for the last project.
+        kernel.eval("paw.recent.reopen_last()", &[])?;
     }
     for expr in &args.exprs {
         kernel.eval(expr, &[])?;
     }
     for keys in &args.keys {
-        kernel.eval("daw.keymap.feed(...)", &[keys])?;
+        kernel.eval("paw.keymap.feed(...)", &[keys])?;
     }
     if let Some(script) = &args.script {
         kernel.run_file(script, args.script_args.clone())?;
@@ -690,7 +690,7 @@ fn main() -> ExitCode {
     match result {
         Ok(code) => ExitCode::from(code.clamp(0, 255) as u8),
         Err(err) => {
-            eprintln!("daw: {err:#}");
+            eprintln!("paw: {err:#}");
             ExitCode::FAILURE
         }
     }

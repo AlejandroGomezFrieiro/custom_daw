@@ -5,7 +5,7 @@
 A course for the first days with paw, by doing. Each lesson takes about ten minutes, opens a small practice project of its own, and ends with something you made or changed and can hear. The same lessons run inside paw, where the tutor says what to do next and notices when you have done it:
 
 ```lua
-daw.ext.load("extensions/tutor")   -- in ~/.config/daw/init.lua, or link the directory into ~/.config/daw/extensions
+paw.ext.load("extensions/tutor")   -- in ~/.config/paw/init.lua, or link the directory into ~/.config/paw/extensions
 ```
 
 then `:tutor` in paw. These pages are made from the tutor's own lessons, so the two say the same. [keys.md](keys.md) is a page of keys to keep beside the keyboard.

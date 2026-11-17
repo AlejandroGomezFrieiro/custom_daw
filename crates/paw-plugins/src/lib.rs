@@ -1,7 +1,7 @@
 //! Hosts CLAP, LV2 and VST3 plugins as engine devices.
 //!
 //! Each format module scans for installed plugins and registers a
-//! [`DeviceFactory`](daw_engine::DeviceFactory) for every one it finds. A
+//! [`DeviceFactory`](paw_engine::DeviceFactory) for every one it finds. A
 //! created plugin is split in two, like any device with a controller: the part
 //! that processes audio moves to the audio thread, and a controller stays on
 //! the main thread for parameters and state.
@@ -28,7 +28,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread::ThreadId;
 use std::time::UNIX_EPOCH;
 
-use daw_engine::{Event, EventKind, Registry};
+use paw_engine::{Event, EventKind, Registry};
 use serde::{Deserialize, Serialize};
 
 static MAIN_THREAD: OnceLock<ThreadId> = OnceLock::new();
@@ -106,7 +106,7 @@ static ADDED_DIRS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 
 /// How the directories added are handed to a plugin's helper, which has to
 /// find the plugin where this process did.
-pub(crate) const ADDED_DIRS_ENV: &str = "DAW_PLUGIN_DIRS";
+pub(crate) const ADDED_DIRS_ENV: &str = "PAW_PLUGIN_DIRS";
 
 /// Look in `dir` for CLAP and VST3 plugins from now on, as well as where
 /// plugins are usually installed (an extension that ships its own plugins
@@ -559,7 +559,7 @@ pub(crate) struct OutPair {
 /// with the channels' numbers where a port has more than two. Ports are
 /// given as their channel count and name. At most [`MAX_PAIRS`].
 ///
-/// [`MAX_PAIRS`]: daw_engine::MAX_PAIRS
+/// [`MAX_PAIRS`]: paw_engine::MAX_PAIRS
 pub(crate) fn out_pairs(ports: &[(usize, String)]) -> Vec<OutPair> {
     let mut pairs = Vec::new();
     for (port, (channels, name)) in ports.iter().enumerate() {
@@ -578,11 +578,11 @@ pub(crate) fn out_pairs(ports: &[(usize, String)]) -> Vec<OutPair> {
             });
         }
     }
-    pairs.truncate(daw_engine::MAX_PAIRS);
+    pairs.truncate(paw_engine::MAX_PAIRS);
     pairs
 }
 
-/// The names of a plugin's output pairs, for [`daw_engine::Ports::outputs`]:
+/// The names of a plugin's output pairs, for [`paw_engine::Ports::outputs`]:
 /// none for a plugin with one.
 pub(crate) fn pair_names(pairs: &[OutPair]) -> Vec<String> {
     if pairs.len() < 2 {

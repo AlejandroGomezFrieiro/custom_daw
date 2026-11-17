@@ -7,17 +7,17 @@
 --   templates.load("Lead vocal")                     -- make it again, here
 --
 -- A template is a JSON file of what `Track:snapshot()` gives, in
--- `<data directory>/templates/<kind>/<name>.json` (`~/.local/share/daw` by
--- default; `daw.opt.templates_dir` puts them elsewhere). Clips are left out
+-- `<data directory>/templates/<kind>/<name>.json` (`~/.local/share/paw` by
+-- default; `paw.opt.templates_dir` puts them elsewhere). Clips are left out
 -- unless asked for: a template is a way of working, not a piece of music.
 -- Plugins come back with the state they had.
-local api = daw.api
+local api = paw.api
 local M = { kinds = { "track", "group", "fx" } }
 
 local titles = { track = "track", group = "group of tracks", fx = "device chain" }
 
 function M.dir()
-  local dir = daw.opt.templates_dir
+  local dir = paw.opt.templates_dir
   if dir and dir ~= "" then return dir end
   return api.env().data_dir .. "/templates"
 end
@@ -37,7 +37,7 @@ local function write(kind, name, data)
   os.execute("mkdir -p '" .. (path:match("^(.*)/[^/]*$")):gsub("'", "'\\''") .. "'")
   local file = io.open(path, "w")
   if not file then error("cannot write " .. path, 3) end
-  file:write(daw.json.encode({ version = 1, kind = kind, name = file_name(name), data = data }, true), "\n")
+  file:write(paw.json.encode({ version = 1, kind = kind, name = file_name(name), data = data }, true), "\n")
   file:close()
   return path
 end
@@ -45,7 +45,7 @@ end
 local function read(kind, name)
   local file = io.open(M.path(kind, name), "r")
   if not file then return nil end
-  local data = daw.json.decode(file:read("*a"))
+  local data = paw.json.decode(file:read("*a"))
   file:close()
   return data and data.data
 end
@@ -76,13 +76,13 @@ end
 
 --- Save a track: `opts.clips` keeps its clips too. Returns the file's path.
 function M.save_track(track, name, opts)
-  track = type(track) == "table" and track or daw.track(track)
+  track = type(track) == "table" and track or paw.track(track)
   return write("track", name, portable(track, opts and opts.clips))
 end
 
 --- Save a track's devices, with their settings, as a chain to add elsewhere.
 function M.save_fx(track, name)
-  track = type(track) == "table" and track or daw.track(track)
+  track = type(track) == "table" and track or paw.track(track)
   local devices = {}
   for i, device in ipairs(track:devices()) do devices[i] = device:snapshot() end
   if #devices == 0 then error("the track has no devices to save", 2) end
@@ -92,13 +92,13 @@ end
 --- Save a group: the group's own track and every track in it, groups
 --- inside it included.
 function M.save_group(group, name, opts)
-  group = type(group) == "table" and group or daw.track(group)
-  if not daw.groups.is_group(group.id) then error("not a group", 2) end
+  group = type(group) == "table" and group or paw.track(group)
+  if not paw.groups.is_group(group.id) then error("not a group", 2) end
   local function pack(id)
-    local node = { track = portable(daw.track(id), opts and opts.clips), members = {} }
-    for i, member in ipairs(daw.groups.members(id)) do
-      node.members[i] = daw.groups.is_group(member) and pack(member)
-        or { track = portable(daw.track(member), opts and opts.clips) }
+    local node = { track = portable(paw.track(id), opts and opts.clips), members = {} }
+    for i, member in ipairs(paw.groups.members(id)) do
+      node.members[i] = paw.groups.is_group(member) and pack(member)
+        or { track = portable(paw.track(member), opts and opts.clips) }
     end
     return node
   end
@@ -142,34 +142,34 @@ function M.load(name, opts)
   local kind, full = find(name, opts.kind)
   if not kind then error("no template `" .. tostring(name) .. "`", 2) end
   local data = read(kind, full or name)
-  local below = daw.cursor.index() and daw.cursor.index() + 1 or nil
+  local below = paw.cursor.index() and paw.cursor.index() + 1 or nil
   if kind == "track" then
-    local track = daw.restore_track(data, below)
-    daw.cursor.set_track(track)
+    local track = paw.restore_track(data, below)
+    paw.cursor.set_track(track)
     return track, kind
   elseif kind == "fx" then
-    local track = opts.track and daw.track(opts.track) or daw.cursor.track()
+    local track = opts.track and paw.track(opts.track) or paw.cursor.track()
     if not track then error("no track to add the devices to", 2) end
     local made = {}
-    for i, device in ipairs(data.devices or {}) do made[i] = daw.restore_device(device, track) end
+    for i, device in ipairs(data.devices or {}) do made[i] = paw.restore_device(device, track) end
     return made, kind
   end
   -- A group: its own track first, then its members under it, in order.
   local function unpack_node(node, index, into)
-    local track = daw.restore_track(node.track, index)
+    local track = paw.restore_track(node.track, index)
     if node.members then
       local m = api.track_get(track.id).meta or {}
       m.group_head = true
       api.track_set(track.id, "meta", m)
     end
-    if into then daw.groups.add(track, into) end
+    if into then paw.groups.add(track, into) end
     for _, member in ipairs(node.members or {}) do
       unpack_node(member, nil, track)
     end
     return track
   end
   local group = unpack_node(data, below)
-  daw.cursor.set_track(group)
+  paw.cursor.set_track(group)
   return group, kind
 end
 

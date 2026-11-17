@@ -6,7 +6,7 @@
 --
 -- Thresholds are fields of the rule, so a configuration can change them:
 --   require("mixdiag").rules.dc.limit = 0.005
-local api = daw.api
+local api = paw.api
 local mixdiag = require("mixdiag")
 local rules = mixdiag.rules
 

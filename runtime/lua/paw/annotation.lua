@@ -3,11 +3,11 @@
 -- a word on a device, a mark on a stretch of time. Kept by namespace and
 -- document as diagnostics are, and drawn by the views that can place them.
 --
---   daw.annotation.set("mixcheck", "daw://project#mix", {
---     { location = { uri = "daw://track/3" }, label = "-9.1 LUFS", kind = "loudness" },
+--   paw.annotation.set("mixcheck", "paw://project#mix", {
+--     { location = { uri = "paw://track/3" }, label = "-9.1 LUFS", kind = "loudness" },
 --   })
-local api = daw.api
-local A = daw.address
+local api = paw.api
+local A = paw.address
 
 local M = {}
 
@@ -22,7 +22,7 @@ function M.set(namespace, doc, list)
   end
   store[namespace] = store[namespace] or {}
   store[namespace][doc] = #out > 0 and out or nil
-  daw.emit("annotation.changed", { namespace = namespace, document = doc })
+  paw.emit("annotation.changed", { namespace = namespace, document = doc })
   api.ui_redraw()
 end
 
@@ -53,34 +53,34 @@ end
 -- readout (the meter still holds the peak); a
 -- device's after its name in the device panel; stretches of time on the
 -- arrange view's ruler.
-daw.ui.layer("mixer", "strip_foot", "annotations", 40, function(c)
+paw.ui.layer("mixer", "strip_foot", "annotations", 40, function(c)
   if not next(store) then return end
   local list = M.get(A.track(c.track), true)
   if #list > 0 and c.width > 1 then
     local text = list[1].label
-    if api.str_width(text) > c.width then text = daw.util.fit(text, c.width) end
+    if api.str_width(text) > c.width then text = paw.util.fit(text, c.width) end
     c.buf:fill(c.x, c.y, c.width, 1, " ", nil)
     c.buf:text(c.x + c.width - api.str_width(text), c.y, text, "Annotation")
   end
 end)
-daw.ui.layer("devices", "device", "annotations", 40, function(c)
+paw.ui.layer("devices", "device", "annotations", 40, function(c)
   if not next(store) then return end
   local list = M.get(A.device(c.device), true)
   if #list > 0 and c.width > #list[1].label + 2 then
     c.buf:text(c.x + c.width - api.str_width(list[1].label), c.y, list[1].label, "Annotation")
   end
 end)
-daw.ui.views.arrange.layers.annotations = function(_, c)
+paw.ui.views.arrange.layers.annotations = function(_, c)
   if not next(store) then return end
   for _, a in ipairs(M.get()) do
     local t = a.location.selector and a.location.selector.time
     if t then
       local x = c.x(t[1])
-      if x >= 0 and x < c.ruler.width then c.ruler:text(x, 0, daw.util.fit(a.label, math.max(1, c.ruler.width - x)):gsub("%s+$", ""), "Annotation") end
+      if x >= 0 and x < c.ruler.width then c.ruler:text(x, 0, paw.util.fit(a.label, math.max(1, c.ruler.width - x)):gsub("%s+$", ""), "Annotation") end
     end
   end
 end
 
-daw.on("project.loaded", function() if next(store) then M.reset() end end)
+paw.on("project.loaded", function() if next(store) then M.reset() end end)
 
 return M

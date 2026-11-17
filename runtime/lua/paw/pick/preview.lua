@@ -1,7 +1,7 @@
 -- What the pickers' preview pane draws of a clip: a small piano roll of a
 -- MIDI clip's notes, a waveform of an audio clip's sound, as lines of text
--- for `preview(item)` to return (`daw.pick.preview`).
-local api = daw.api
+-- for `preview(item)` to return (`paw.pick.preview`).
+local api = paw.api
 local M = {}
 
 local EPS = 1e-9
@@ -26,7 +26,7 @@ function M.roll(clip_id, width, height, focus)
     for _, n in ipairs(notes) do
       if n.id == focus then f = n end
     end
-    if f then from = daw.time.bar_start(daw.time.bar_of(c.start + f.start)) - c.start end
+    if f then from = paw.time.bar_start(paw.time.bar_of(c.start + f.start)) - c.start end
     span = cols * per
   end
   local lo, hi = 127, 0
@@ -45,9 +45,9 @@ function M.roll(clip_id, width, height, focus)
     for x = 1, cols do grid[r][x] = " " end
   end
   -- Bar lines, on the left edge of the column a bar starts in.
-  local bar = daw.time.bar_of(c.start + from)
+  local bar = paw.time.bar_of(c.start + from)
   while true do
-    local b = daw.time.bar_start(bar) - c.start
+    local b = paw.time.bar_start(bar) - c.start
     if b >= from + span - EPS then break end
     local x = math.floor((b - from) / per + EPS) + 1
     if x >= 1 and x <= cols then
@@ -65,10 +65,10 @@ function M.roll(clip_id, width, height, focus)
   local out = {}
   for r = 1, rows do
     local pitch = lo + (rows - r) * step
-    local name = (pitch % 12 == 0 or r == 1 or r == rows) and daw.music.name(pitch) or ""
+    local name = (pitch % 12 == 0 or r == 1 or r == rows) and paw.music.name(pitch) or ""
     out[r] = { text = string.format("%-4s ", name) .. table.concat(grid[r]), style = "PickRoll" }
   end
-  out[#out + 1] = { text = string.format("     %s, %g beats from %s", c.name, span, daw.time.format(c.start + from)), style = "Dim" }
+  out[#out + 1] = { text = string.format("     %s, %g beats from %s", c.name, span, paw.time.format(c.start + from)), style = "Dim" }
   return out
 end
 
@@ -79,7 +79,7 @@ function M.wave(clip_id, width, rows)
   local outline = {}
   for i, p in ipairs(peaks) do outline[i] = math.max(math.abs(p[1] or 0), math.abs(p[2] or 0)) end
   local out = {}
-  for _, row in ipairs(daw.audition.outline_lines(outline, width, rows or 4)) do out[#out + 1] = { text = row.text, style = "PickWave" } end
+  for _, row in ipairs(paw.audition.outline_lines(outline, width, rows or 4)) do out[#out + 1] = { text = row.text, style = "PickWave" } end
   return out
 end
 
@@ -91,13 +91,13 @@ function M.clip(clip_id, width, height, focus)
   return M.wave(clip_id, width, math.min(height, 6))
 end
 
---- The width of the preview pane of a picker as wide as `daw.pick.open`
+--- The width of the preview pane of a picker as wide as `paw.pick.open`
 --- makes one, for previews that draw to fit.
 function M.width()
   local w = api.ui_size()
   return math.max(20, math.floor(math.min(120, w - 4) * 0.4) - 2)
 end
 
-api.hl_set("PickRoll", { fg = require("daw.theme").palette.green })
+api.hl_set("PickRoll", { fg = require("paw.theme").palette.green })
 
 return M

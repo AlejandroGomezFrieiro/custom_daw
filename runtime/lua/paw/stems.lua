@@ -2,18 +2,18 @@
 -- of the group a narrowed tab shows, named after it. `:render stems` shows
 -- what it would write first, and renders on `y`.
 --
---   daw.stems.plan({ dir = "out", format = "flac" })   -- what would be written
---   daw.stems.plan({ tracks = true })                  -- one per track instead
---   daw.stems.plan({ group = strings })                -- that group alone
---   daw.stems.render(plan, opts)                       -- write it: the files
+--   paw.stems.plan({ dir = "out", format = "flac" })   -- what would be written
+--   paw.stems.plan({ tracks = true })                  -- one per track instead
+--   paw.stems.plan({ group = strings })                -- that group alone
+--   paw.stems.render(plan, opts)                       -- write it: the files
 --
 -- A stem is its track as when it is soloed: with what its sound passes
 -- through on the way to the master (a reverb its sends reach among them),
 -- so that the stems add up to the mix.
-local api = daw.api
+local api = paw.api
 local M = {}
 
-local groups = daw.groups
+local groups = paw.groups
 
 local function name_of(id) return api.track_get(id).name end
 
@@ -30,7 +30,7 @@ end
 local function holds(id)
   local out = {}
   for _, other in ipairs(api.track_list()) do
-    if other ~= id and daw.scope.contains(other, id) and #api.clip_list(other) > 0 then out[#out + 1] = name_of(other) end
+    if other ~= id and paw.scope.contains(other, id) and #api.clip_list(other) > 0 then out[#out + 1] = name_of(other) end
   end
   return out
 end
@@ -42,18 +42,18 @@ end
 --- (that group, or track, alone). In a narrowed tab, the parts of its group.
 function M.plan(opts)
   opts = opts or {}
-  local scope = daw.scope.current()
+  local scope = paw.scope.current()
   local ext = opts.format or "wav"
   local dir = opts.dir
   if not dir then
-    local base = require("daw.render").default_path():gsub("%.wav$", "")
+    local base = require("paw.render").default_path():gsub("%.wav$", "")
     dir = opts.group and (base:match("^(.*)/[^/]*$") or ".") or (base .. " stems")
   end
   local ids = {}
   if opts.group then
     ids[1] = opts.group
   else
-    for _, id in ipairs(daw.scope.tracks(scope)) do
+    for _, id in ipairs(paw.scope.tracks(scope)) do
       local t = api.track_get(id)
       local wanted
       if opts.tracks then
@@ -63,7 +63,7 @@ function M.plan(opts)
         local parent = groups.of(id)
         wanted = scope and parent == scope or (not scope and parent == nil)
       end
-      if wanted and not t.mute and not daw.vca.is_vca(id) and sounds(id) then ids[#ids + 1] = id end
+      if wanted and not t.mute and not paw.vca.is_vca(id) and sounds(id) then ids[#ids + 1] = id end
     end
   end
   local out, used = {}, {}
@@ -77,7 +77,7 @@ function M.plan(opts)
   return out, dir
 end
 
---- Write the stems of a plan, with `daw.render`'s options (`background`
+--- Write the stems of a plan, with `paw.render`'s options (`background`
 --- renders them one after another). Returns the files.
 function M.render(plan, opts)
   opts = opts or {}
@@ -88,8 +88,8 @@ function M.render(plan, opts)
     local ext = stem.file:match("%.(%w+)$")
     -- A lossy stem is titled after its track, unless the options say otherwise.
     local lossy = ext ~= "wav" and ext ~= "flac"
-    local tags = daw.util.merge(lossy and { title = stem.name } or {}, opts.tags or {})
-    daw.render(stem.file, daw.util.merge(opts, { tracks = { stem.id }, format = false, tags = tags }))
+    local tags = paw.util.merge(lossy and { title = stem.name } or {}, opts.tags or {})
+    paw.render(stem.file, paw.util.merge(opts, { tracks = { stem.id }, format = false, tags = tags }))
     files[#files + 1] = stem.file
   end
   return files
@@ -99,14 +99,14 @@ end
 
 local FOOTER = "y or Enter: render · n or Esc: back"
 local confirm = { modal = true, focusable = true, window = false, scroll = 0, lines = {} }
-daw.seats.fields("render.plan", confirm, { "scroll", "lines", "plan", "opts" }, { scroll = 0, lines = {} })
+paw.seats.fields("render.plan", confirm, { "scroll", "lines", "plan", "opts" }, { scroll = 0, lines = {} })
 
 function confirm:render(canvas)
   local h = canvas.height - 1
-  self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #self.lines - h))
+  self.scroll = paw.util.clamp(self.scroll, 0, math.max(0, #self.lines - h))
   for row = 0, h - 1 do
     local line = self.lines[row + 1 + self.scroll]
-    if line then canvas:text(1, row, daw.util.fit(line, canvas.width - 2), "Normal") end
+    if line then canvas:text(1, row, paw.util.fit(line, canvas.width - 2), "Normal") end
   end
   canvas:fill(0, canvas.height - 1, canvas.width, 1, " ", "FloatFooter")
   canvas:text(1, canvas.height - 1, FOOTER, "FloatFooter")
@@ -116,12 +116,12 @@ function confirm:on_key(key)
   if key == "y" or key == "<CR>" then
     local plan, opts = self.plan, self.opts
     self.plan, self.opts, self.lines = nil, nil, {}
-    daw.ui.close()
+    paw.ui.close()
     local files = M.render(plan or {}, opts)
-    daw.notify(string.format("rendering %d stem%s", #files, #files == 1 and "" or "s"))
+    paw.notify(string.format("rendering %d stem%s", #files, #files == 1 and "" or "s"))
   elseif key == "n" or key == "q" or key == "<Esc>" or key == "<C-c>" then
     self.plan, self.opts, self.lines = nil, nil, {}
-    daw.ui.close()
+    paw.ui.close()
   elseif key == "j" or key == "<Down>" then
     self.scroll = self.scroll + 1
   elseif key == "k" or key == "<Up>" then
@@ -130,11 +130,11 @@ function confirm:on_key(key)
   api.ui_redraw()
 end
 
-daw.ui.view("render.plan", confirm)
+paw.ui.view("render.plan", confirm)
 
 --- Show a plan and render it on `y`.
 function M.confirm(plan, dir, opts)
-  if #plan == 0 then return daw.notify("nothing to render: no group or track here has clips", "warn") end
+  if #plan == 0 then return paw.notify("nothing to render: no group or track here has clips", "warn") end
   local lines, w = {}, api.str_width(FOOTER) + 4
   for _, stem in ipairs(plan) do
     local file = stem.file:match("([^/]+)$")
@@ -143,7 +143,7 @@ function M.confirm(plan, dir, opts)
     w = math.max(w, api.str_width(line) + 4)
   end
   confirm.plan, confirm.opts, confirm.lines, confirm.scroll = plan, opts, lines, 0
-  daw.ui.open("render.plan", { title = string.format("Render %d stem%s into %s", #plan, #plan == 1 and "" or "s", dir),
+  paw.ui.open("render.plan", { title = string.format("Render %d stem%s into %s", #plan, #plan == 1 and "" or "s", dir),
     width = math.min(w, 110), height = math.min(#lines + 3, 30) })
 end
 
@@ -155,7 +155,7 @@ function M.command(ctx, opts)
     local dir = a[2] ~= "tracks" and a[2] or a[3]
     how.dir = dir and tostring(dir) or nil
   else
-    how.group = daw.scope.find(a[1])
+    how.group = paw.scope.find(a[1])
   end
   local plan, dir = M.plan(how)
   M.confirm(plan, dir, opts)
@@ -164,7 +164,7 @@ end
 --- Whether `:render <word>` names a group to render on its own, rather than
 --- a file: a group's name, with no extension.
 function M.names_group(word)
-  return type(word) == "string" and not word:find("[./]") and daw.scope.find(word) ~= nil
+  return type(word) == "string" and not word:find("[./]") and paw.scope.find(word) ~= nil
 end
 
 return M

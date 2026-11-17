@@ -1,7 +1,7 @@
 -- Plugins offline: opening a project without them, setting one device
 -- offline, and remembering the plugins that could not be loaded.
 --
---   daw.open("song.json", { plugins_offline = true })   -- every plugin offline
+--   paw.open("song.json", { plugins_offline = true })   -- every plugin offline
 --   :edit song.json offline                             -- the same
 --   :plugins.online                                     -- bring them all up
 --   :device.offline                                     -- the selected device, on or off
@@ -11,7 +11,7 @@
 -- or hung past its time limit) is remembered in the project's state
 -- directory, and the next time the project is opened it is opened offline,
 -- with a message saying so, until it loads again.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local env = api.env()
@@ -60,7 +60,7 @@ function M.suggested(path)
   return out
 end
 
-daw.on("device.stopped", function(event)
+paw.on("device.stopped", function(event)
   local path = api.project_get().path
   if not event.loading or not path then return end
   local data = M.memory(path)
@@ -72,7 +72,7 @@ daw.on("device.stopped", function(event)
 end)
 
 -- One that loads is no longer suggested offline.
-daw.on("device.ready", function(event)
+paw.on("device.ready", function(event)
   local path = api.project_get().path
   if not path then return end
   local data = M.memory(path)
@@ -104,19 +104,19 @@ function M.open(path, opts)
     if ok and device.kind == entry.kind and device.offline then names[#names + 1] = entry.name end
   end
   if opts.plugins_offline then
-    daw.notify("opened with every plugin offline: `:plugins.online` brings them up, `o` in the device panel one at a time")
+    paw.notify("opened with every plugin offline: `:plugins.online` brings them up, `o` in the device panel one at a time")
   elseif #names > 0 then
-    daw.notify(string.format("%s could not be loaded last time and %s offline: `:plugins.online` tries again",
+    paw.notify(string.format("%s could not be loaded last time and %s offline: `:plugins.online` tries again",
       table.concat(names, ", "), #names == 1 and "is" or "are"), "warn")
   end
 end
 
 --- Every device of the project, with its track.
 local function each_device(fn)
-  for _, track in ipairs(daw.tracks()) do
+  for _, track in ipairs(paw.tracks()) do
     for _, device in ipairs(track:devices()) do fn(device) end
   end
-  for _, device in ipairs(daw.master:devices()) do fn(device) end
+  for _, device in ipairs(paw.master:devices()) do fn(device) end
 end
 
 --- Bring every offline device up. Returns how many.
@@ -144,26 +144,26 @@ function M.offline()
   return count
 end
 
-daw.command("plugins.online", function()
+paw.command("plugins.online", function()
   local count = M.online()
-  daw.notify(count == 0 and "no device is offline" or string.format("%d device%s coming up", count, count == 1 and "" or "s"))
+  paw.notify(count == 0 and "no device is offline" or string.format("%d device%s coming up", count, count == 1 and "" or "s"))
 end, { desc = "Bring every offline device up" })
 
-daw.command("plugins.offline", function()
+paw.command("plugins.offline", function()
   local count = M.offline()
-  daw.notify(string.format("%d plugin%s offline", count, count == 1 and "" or "s"))
+  paw.notify(string.format("%d plugin%s offline", count, count == 1 and "" or "s"))
 end, { desc = "Set every plugin offline: not run, passed over, kept with its state" })
 
 --- Set one device offline, or back online.
 function M.toggle(device)
   local on = not device.offline
   device:set_offline(on)
-  daw.notify(string.format("%s is %s", device:get().name, on and "offline" or "coming up"))
+  paw.notify(string.format("%s is %s", device:get().name, on and "offline" or "coming up"))
 end
 
-daw.command("device.offline", function()
-  local device = daw.ui.views.devices and daw.ui.views.devices:selected()
-  if not device then return daw.notify("select a device in the device panel first", "warn") end
+paw.command("device.offline", function()
+  local device = paw.ui.views.devices and paw.ui.views.devices:selected()
+  if not device then return paw.notify("select a device in the device panel first", "warn") end
   M.toggle(device)
 end, { desc = "Set the selected device offline (not run, kept with its state), or back online" })
 

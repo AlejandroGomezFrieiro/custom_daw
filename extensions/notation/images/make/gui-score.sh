@@ -2,7 +2,7 @@
 # The quartet's score in the window: the clarinet's staff active, the
 # others dimmed, and a block over three staves.
 . "$MAKE/rig.sh"
-SETUP="dofile('extensions/notation/fixtures/quartet.lua') daw.opt.score_dim = true"
+SETUP="dofile('extensions/notation/fixtures/quartet.lua') paw.opt.score_dim = true"
 rig_start $GUI_SIZE
 gui_start
 typ ":view.window notation"; key Return; pause 2

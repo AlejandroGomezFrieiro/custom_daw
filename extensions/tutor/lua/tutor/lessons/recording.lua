@@ -1,12 +1,12 @@
 -- Lesson 12: recording audio and MIDI.
-local api = daw.api
+local api = paw.api
 
 --- What a person does with a MIDI keyboard, done by the tests: three notes.
 local function play_three_notes()
   for _, pitch in ipairs({ "C4", "E4", "G4" }) do
-    daw.midi.note_on(pitch, 100)
+    paw.midi.note_on(pitch, 100)
     api.sleep(150)
-    daw.midi.note_off(pitch)
+    paw.midi.note_off(pitch)
     api.sleep(50)
   end
 end
@@ -37,15 +37,15 @@ take is one undo step.]],
 `r` here arms a track; it does not replace anything. `R` is record, not replace
 mode.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 16, notes = look.drums(look.beat, 4) })
-    daw.add_track({ name = "Voice" })
-    local keys = daw.add_track({ name = "Keys", volume = -6 })
+    paw.add_track({ name = "Voice" })
+    local keys = paw.add_track({ name = "Keys", volume = -6 })
     keys:add_device("synth", { wave = 3, attack = 0.01, release = 0.3, cutoff = 2000 })
   end,
-  at = function() daw.cursor.set_track(daw.track("Voice")) end,
+  at = function() paw.cursor.set_track(paw.track("Voice")) end,
   -- The tests' audio engine plays a test tone as its input, the way the suite
   -- tests recording.
   test = {
@@ -71,7 +71,7 @@ mode.]],
       keys = { "R", { wait = 1000 }, "R", "<Space>" },
       check = function(_, look)
         local clip = look.clips("Voice")[1]
-        return clip and clip.kind == "audio" and not daw.transport.playing and not daw.transport.recording
+        return clip and clip.kind == "audio" and not paw.transport.playing and not paw.transport.recording
       end,
       hint = "Stop recording with `R` before `<Space>`: after `<Space>` alone, record mode stays on (`rec` is lit in the status line) and the next `<Space>` records again.",
       done = "A new audio clip with your take, where recording began; its waveform is drawn in it.",
@@ -88,7 +88,7 @@ mode.]],
       keys = { "gs", "R", { sim = play_three_notes, instead = {} }, "R", "<Space>" },
       check = function(_, look)
         local clip = look.clips("Keys")[1]
-        return clip and clip.kind == "midi" and #clip:notes() > 0 and not daw.transport.playing and not daw.transport.recording
+        return clip and clip.kind == "midi" and #clip:notes() > 0 and not paw.transport.playing and not paw.transport.recording
       end,
       done = "A MIDI clip with what you played: `<CR>` on it opens it in the piano roll.",
     },

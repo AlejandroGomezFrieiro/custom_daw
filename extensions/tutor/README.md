@@ -13,12 +13,12 @@ the keyboard, [keys.md](../../docs/course/keys.md).
 ## Start it
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/tutor")   -- in ~/.config/daw/init.lua
+paw.ext.load("/path/to/paw/extensions/tutor")   -- in ~/.config/paw/init.lua
 ```
 
 ![:tutor! opening lesson 1 in a practice project: the introduction, then the panel along the bottom saying which key to press and noticing each step done](images/tui-tutor.gif)
 
-or link the directory into `~/.config/daw/extensions`. Then, in paw:
+or link the directory into `~/.config/paw/extensions`. Then, in paw:
 
 | | |
 | --- | --- |
@@ -52,8 +52,8 @@ is closed while you practise, and reopened, as it was on disk, by `,hq`.
 
 ### Where your progress is kept
 
-In the tutor's own directory: `$XDG_STATE_HOME/daw/tutor`
-(`~/.local/state/daw/tutor`), or wherever the option `tutor_dir` says.
+In the tutor's own directory: `$XDG_STATE_HOME/paw/tutor`
+(`~/.local/state/paw/tutor`), or wherever the option `tutor_dir` says.
 `progress.lua` holds the lesson and step you are on and the steps you have
 done; `practice/<lesson>.json` are the practice projects (and `practice/media`
 their recordings). Quitting paw in a lesson (`:q`, `ZZ`, `ZQ`) saves the
@@ -111,16 +111,16 @@ require("tutor").register({
   idea = [[The idea behind the keys.]],    -- optional
   vim = [[Where this differs from Vim.]],  -- optional
   setup = function(look)                   -- builds the practice project, with the public API
-    local t = daw.add_track({ name = "Drums" })
+    local t = paw.add_track({ name = "Drums" })
     t:add_device("drums")
   end,
-  at = function(look) daw.cursor.set_track(daw.track("Drums")) end,   -- optional: where to start
+  at = function(look) paw.cursor.set_track(paw.track("Drums")) end,   -- optional: where to start
   steps = {
     {
       say = "Press `o` to add a track.",   -- one or two sentences, with every key in backticks
       keys = { "o" },                     -- exactly what the learner types, for the tests
-      start = function(ctx, look) ctx.tracks = #daw.tracks() end,      -- optional
-      check = function(ctx, look) return #daw.tracks() == ctx.tracks + 1 end,
+      start = function(ctx, look) ctx.tracks = #paw.tracks() end,      -- optional
+      check = function(ctx, look) return #paw.tracks() == ctx.tracks + 1 end,
       done = "A new track.",              -- said once it is done
       hint = "`o` is a small o.",         -- optional, for `,hh`
     },
@@ -173,7 +173,7 @@ lesson list. A new lesson is tested by adding it; nothing else to write.
 **The text.** After changing a lesson, run
 
 ```sh
-daw --clean --no-plugins -l extensions/tutor/make-docs.lua
+paw --clean --no-plugins -l extensions/tutor/make-docs.lua
 ```
 
 from the top of the repository to write `docs/course/`; the tests fail while
@@ -189,9 +189,9 @@ tests stand in for it, and two steps are not checked at all:
 | --- | --- | --- |
 | 1, 8 | `:q` quits paw | announce `:q` (`command.pre`) without quitting; the tutor saves the place on that |
 | 12, 1 to 3 | records from a microphone | the silent engine's test tone is the input |
-| 12, 5 | plays a MIDI keyboard | `daw.midi.note_on` and `note_off`, as if from a port |
+| 12, 5 | plays a MIDI keyboard | `paw.midi.note_on` and `note_off`, as if from a port |
 | 9, 9 | adds a plugin and opens its window | **unchecked**: which plugins exist differs between computers, and a window needs a desktop |
-| 15, 4 | copies lines into `~/.config/daw/init.lua` and `:reload`s | **unchecked**: the tutor neither reads nor writes your configuration |
+| 15, 4 | copies lines into `~/.config/paw/init.lua` and `:reload`s | **unchecked**: the tutor neither reads nor writes your configuration |
 
 Listening steps are checked by the transport having played and stopped; what
 was heard is not. Lesson 16's mixdiag step checks that measuring started, not
@@ -201,29 +201,29 @@ built-in device (that it has no window).
 ## What the extension interface could not do
 
 - **A key hook.** There is no event for "a key was handled", and closing a
-  floating window (`daw.ui.close`) or the key hints appearing make no event, so
-  the tutor also looks on a 200 ms timer. Timers do not run in `daw -l`
+  floating window (`paw.ui.close`) or the key hints appearing make no event, so
+  the tutor also looks on a 200 ms timer. Timers do not run in `paw -l`
   scripts, so the tests call `tutor.poll()` after each key in the timer's
-  place. Wanted: an event `key.done` emitted by `daw._kernel.key` after each
+  place. Wanted: an event `key.done` emitted by `paw._kernel.key` after each
   key, with the key and the mode, and `ui.float_closed`.
-- **A state directory.** `daw.api.env()` gives `config_dir` only; the tutor
-  works out `$XDG_STATE_HOME/daw` itself. Wanted: `env().state_dir` (and
+- **A state directory.** `paw.api.env()` gives `config_dir` only; the tutor
+  works out `$XDG_STATE_HOME/paw` itself. Wanted: `env().state_dir` (and
   `data_dir`, where recordings go), so that extensions and the runtime agree,
   and tests can move it with one variable.
-- **Writing a copy of the project.** `daw.project.save(path)` makes `path` the
+- **Writing a copy of the project.** `paw.project.save(path)` makes `path` the
   project's file (Vim's `:saveas`). The tutor can only save the practice
   project in place, so a step's state is kept only when the practice project
   is saved (on leaving, quitting, or `:w`); after a crash the lesson resumes
-  at the step the file was last saved at. Wanted: `daw.project.write_copy(path)`
+  at the step the file was last saved at. Wanted: `paw.project.write_copy(path)`
   or `save(path, { copy = true })`.
 - **Resetting a view's remembered state** has no call: the tutor sets
-  `daw.ui.views.devices.row = 1` and `daw.ui.views.pianoroll:set_step(nil)`
+  `paw.ui.views.devices.row = 1` and `paw.ui.views.pianoroll:set_step(nil)`
   directly at the start of a lesson.
 
 ## What the course does not cover
 
-The graphical frontend (`daw-gui`) and the mouse; the control socket
-(`daw ctl`) and the MCP server; writing extensions beyond a mapping and a
+The graphical frontend (`paw-gui`) and the mouse; the control socket
+(`paw ctl`) and the MCP server; writing extensions beyond a mapping and a
 command (operators, text objects and views of your own are in the main
 README); the Lua API beyond `:lua` one-liners; plugin parameters through
 automation (`:lane.add ... device=`) and pan automation; audio clip editing
@@ -243,7 +243,7 @@ where it came up and what would make it easier for a newcomer.
 | Lesson | What happens | What would help |
 | --- | --- | --- |
 | 12 | After `<Space>` stops a take, record mode stays on (`rec` lit): the next `R` switches recording *off* instead of recording, and the next `<Space>` records again. The lesson has to teach `R` then `<Space>`. | Stopping the transport ends record mode, or `R` always starts a take when stopped. |
-| 10 | Sends have no key and no command: the lesson types `:lua daw.track("Lead"):send(daw.track("Echo"), -6)`. | `:track.send Echo -6` and a key in the mixer. |
+| 10 | Sends have no key and no command: the lesson types `:lua paw.track("Lead"):send(paw.track("Echo"), -6)`. | `:track.send Echo -6` and a key in the mixer. |
 | 9 | The device panel keeps its row when the track changes, so `,d` can open on a row of another device's list. | Start at the top for a new track. |
 | 3, 10 | Prompts come filled in (`grn` with the old name, `A` with the current value), and typing appends: the lesson must teach `<C-u>` first. | The first key typed replaces the filled-in text, as the vocal editor's lyric prompt does. |
 | 4 | The note length set with a digit in insert mode lasts for the rest of the session, across clips, and is also the length `<CR>` gives a new note in normal mode; nothing shows it outside insert mode. | Reset it when insert mode ends, or show it in the piano roll's title row always. |
@@ -256,5 +256,5 @@ where it came up and what would make it easier for a newcomer.
 | 13 | `:render name.wav` writes relative to the folder paw was started from, `~` is not expanded, and the message gives only the name. | Expand `~`, and say the full path. |
 | 14 | Key hints group `grn` and `grc` as `r +2 more` under `g`, hiding the rename keys. | List the group's keys when there are few. |
 | — | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`); an extension listening for `quit` misses `:q`. | Add the command's own name to the event. |
-| — | In a script, `daw.project.save` while an undo step is open counts edits made later in that step as saved (`modified` is false after adding a track). | Close the open step before saving. |
-| — | `extensions/sections/tests.lua` sets `daw.pick = nil` and does not put it back, so every test after it runs without pickers. | Restore it, as the mixdiag and undotree tests do. |
+| — | In a script, `paw.project.save` while an undo step is open counts edits made later in that step as saved (`modified` is false after adding a track). | Close the open step before saving. |
+| — | `extensions/sections/tests.lua` sets `paw.pick = nil` and does not put it back, so every test after it runs without pickers. | Restore it, as the mixdiag and undotree tests do. |

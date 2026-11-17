@@ -2,7 +2,7 @@
 -- to go to, rename, add and remove. Floating over the terminal's views from
 -- `:section.list`, and in a window of its own in the graphical frontend
 -- (`:view.window sections`, or the views menu's More).
-local api = daw.api
+local api = paw.api
 local S = require("sections")
 local ui = require("sections.ui")
 
@@ -13,7 +13,7 @@ local function rows() return S.list() end
 --- The section the selection is on, after keeping it in the list.
 function view:selected()
   local list = rows()
-  self.sel = daw.util.clamp(self.sel, 1, math.max(1, #list))
+  self.sel = paw.util.clamp(self.sel, 1, math.max(1, #list))
   return list[self.sel], list
 end
 
@@ -37,9 +37,9 @@ function view:render(buf, ctx)
     -- The section under the cursor is marked as on the ruler.
     if here then buf:text(1, r, "▍", "SectionCurrent") end
     local x = 4 + buf:text(3, r, string.format("%2d", i), "Dim")
-    buf:text(x + 1, r, daw.util.fit(ui.describe(item), math.max(1, buf.width - x - 2)), chosen and "Selected" or (here and "Title" or "Normal"))
+    buf:text(x + 1, r, paw.util.fit(ui.describe(item), math.max(1, buf.width - x - 2)), chosen and "Selected" or (here and "Title" or "Normal"))
   end
-  buf:text(1, buf.height - 1, daw.util.fit("j/k move  Enter go there  r rename  a add at the cursor  x remove  q close", buf.width - 2), "Dim")
+  buf:text(1, buf.height - 1, paw.util.fit("j/k move  Enter go there  r rename  a add at the cursor  x remove  q close", buf.width - 2), "Dim")
 end
 
 local function act(fn)
@@ -56,16 +56,16 @@ local actions = {
   G = function() view.sel = #rows() end,
   -- Floating, the list closes first; in a window of its own it stays open.
   ["<CR>"] = act(function(s)
-    if daw.ui.float and daw.ui.float.name == "sections" then daw.ui.close() end
+    if paw.ui.float and paw.ui.float.name == "sections" then paw.ui.close() end
     ui.jump(s)
   end),
-  r = act(function(s) daw.cmd("section.rename", { section = s.index }) end),
-  a = function() daw.cmd("section.add") end,
-  x = act(function(s) daw.cmd("section.remove", { s.index }) end),
-  q = function() daw.ui.close() end,
+  r = act(function(s) paw.cmd("section.rename", { section = s.index }) end),
+  a = function() paw.cmd("section.add") end,
+  x = act(function(s) paw.cmd("section.remove", { s.index }) end),
+  q = function() paw.ui.close() end,
   -- Escape closes the list only while it floats, as a prompt does; in a
   -- window of its own it stays, and `q` closes it.
-  ["<Esc>"] = function() if daw.ui.float then daw.ui.close() end end,
+  ["<Esc>"] = function() if paw.ui.float then paw.ui.close() end end,
 }
 actions["<Down>"], actions["<Up>"], actions.l = actions.j, actions.k, actions["<CR>"]
 
@@ -91,7 +91,7 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("sections", view)
+paw.ui.view("sections", view)
 
 --- On the section under the cursor whenever it is shown.
 function view:on_show()
@@ -105,7 +105,7 @@ function view.open()
   -- The marks, the number and the description, inside the box.
   local width = 48
   for _, s in ipairs(rows()) do width = math.max(width, api.str_width(ui.describe(s)) + 12) end
-  daw.ui.open("sections", { title = "Sections", width = math.min(width, 80), height = math.min(#rows() + 3, 30) })
+  paw.ui.open("sections", { title = "Sections", width = math.min(width, 80), height = math.min(#rows() + 3, 30) })
 end
 
 return view

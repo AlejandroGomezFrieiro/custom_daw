@@ -1,8 +1,8 @@
 -- Starting points for the built-in effects: for each device kind, a list
 -- of presets, each a name and the parameters it sets (the rest stay where
 -- they are). A choice is given by its name ("Low cut 24", "1/4") or its
--- position from 0. `daw.params.presets(kind)` lists them and
--- `daw.params.apply(device, name)` sets one.
+-- position from 0. `paw.params.presets(kind)` lists them and
+-- `paw.params.apply(device, name)` sets one.
 return {
   eq = {
     { name = "Vocal: high-pass and presence", params = {

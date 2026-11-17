@@ -7,7 +7,7 @@
 -- same order, with REAPER's defaults for the settings paw does not have.
 -- Beats become seconds by the project's tempo map, which is written as
 -- REAPER's tempo envelope (TEMPOENVEX) when it has more than one point.
-local api = daw.api
+local api = paw.api
 local fmt = require("rpp.format")
 local midi = require("rpp.midi")
 local fx = require("rpp.fx")
@@ -326,7 +326,7 @@ function M.doc(opts)
     report = reports.new("Not written to " .. (opts.name or "the REAPER project") .. ":"),
   }
   local doc = fmt.document("\r\n")
-  local root = doc:add(fmt.block("REAPER_PROJECT", 0.1, "7.0/daw-rpp", opts.timestamp or os.time(), 0)):quoted(2)
+  local root = doc:add(fmt.block("REAPER_PROJECT", 0.1, "7.0/paw-rpp", opts.timestamp or os.time(), 0)):quoted(2)
   local function line(...) return root:add(fmt.line(...)) end
   line("RIPPLE", 0, 0)
   line("GROUPOVERRIDE", 0, 0, 0, 0)

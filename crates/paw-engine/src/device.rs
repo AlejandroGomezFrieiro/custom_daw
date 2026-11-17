@@ -151,7 +151,7 @@ pub trait Controller {
     }
     /// A request from a script, for devices that are fed from outside the
     /// timeline: `method` names it, `data` is whatever bytes it takes, and the
-    /// answer is bytes too, so it can cross `daw.api` as plain strings.
+    /// answer is bytes too, so it can cross `paw.api` as plain strings.
     fn call(&mut self, method: &str, _data: &[u8]) -> Result<Vec<u8>> {
         anyhow::bail!("this device has no method `{method}`")
     }

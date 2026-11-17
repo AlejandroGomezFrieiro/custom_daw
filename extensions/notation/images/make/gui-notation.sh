@@ -4,7 +4,7 @@
 # change the MIDI and leave the marks alone; g@ in the score plays the
 # notes as the marks say again.
 . "$MAKE/rig.sh"
-SETUP="$GUI_DEMO daw.ext.load('extensions/notation')"
+SETUP="$GUI_DEMO paw.ext.load('extensions/notation')"
 rig_start $GUI_SIZE
 gui_start
 # The melody docked in the piano roll, the score beside it, the roll zoomed

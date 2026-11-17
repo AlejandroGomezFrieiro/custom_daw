@@ -1,4 +1,4 @@
-//! Speaks MCP to `daw-mcp` over stdio, with a headless kernel on the null
+//! Speaks MCP to `paw-mcp` over stdio, with a headless kernel on the null
 //! audio backend behind it: the handshake, the tool list, a short song built
 //! with typed tools only, a render, undo, and the ways calls go wrong.
 
@@ -9,24 +9,24 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-/// The `daw` binary, built beside this crate's when it is not there yet.
-fn daw_binary() -> PathBuf {
-    if let Some(path) = std::env::var_os("DAW_BIN") {
+/// The `paw` binary, built beside this crate's when it is not there yet.
+fn paw_binary() -> PathBuf {
+    if let Some(path) = std::env::var_os("PAW_BIN") {
         return path.into();
     }
-    let dir = Path::new(env!("CARGO_BIN_EXE_daw-mcp")).parent().unwrap();
-    let daw = dir.join("daw");
-    if !daw.is_file() {
+    let dir = Path::new(env!("CARGO_BIN_EXE_paw-mcp")).parent().unwrap();
+    let paw = dir.join("paw");
+    if !paw.is_file() {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let mut command = Command::new(cargo);
-        command.args(["build", "-p", "daw-tui", "--bin", "daw"]);
+        command.args(["build", "-p", "paw-tui", "--bin", "paw"]);
         if dir.ends_with("release") {
             command.arg("--release");
         }
-        let status = command.status().expect("running cargo build -p daw-tui");
-        assert!(status.success(), "could not build the daw binary");
+        let status = command.status().expect("running cargo build -p paw-tui");
+        assert!(status.success(), "could not build the paw binary");
     }
-    daw
+    paw
 }
 
 /// A fresh directory under the target's temporary directory.
@@ -57,11 +57,11 @@ struct Client {
 impl Client {
     fn start(dir: &Path, args: &[&str]) -> Self {
         let name = dir.file_name().unwrap().to_str().unwrap();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_daw-mcp"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_paw-mcp"))
             .arg("--root")
             .arg(dir)
-            .arg("--daw")
-            .arg(daw_binary())
+            .arg("--paw")
+            .arg(paw_binary())
             .args(args)
             .current_dir(dir)
             .env("XDG_RUNTIME_DIR", socket_dir(name))
@@ -72,7 +72,7 @@ impl Client {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .expect("starting daw-mcp");
+            .expect("starting paw-mcp");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         Self {
@@ -151,12 +151,12 @@ impl Client {
         let deadline = Instant::now() + Duration::from_secs(15);
         loop {
             if let Some(status) = self.child.try_wait().unwrap() {
-                assert!(status.success(), "daw-mcp exited with {status}");
+                assert!(status.success(), "paw-mcp exited with {status}");
                 return;
             }
             assert!(
                 Instant::now() < deadline,
-                "daw-mcp did not exit when stdin closed"
+                "paw-mcp did not exit when stdin closed"
             );
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -272,7 +272,7 @@ fn handshake_and_tool_list() {
         let result = client.initialize(version);
         assert_eq!(result["protocolVersion"], version);
         assert!(result["capabilities"]["tools"].is_object());
-        assert_eq!(result["serverInfo"]["name"], "daw-mcp");
+        assert_eq!(result["serverInfo"]["name"], "paw-mcp");
         assert!(result["instructions"].as_str().unwrap().contains("beats"));
     }
     assert_eq!(
@@ -588,7 +588,7 @@ fn escape_hatches_with_allow_eval() {
 
     // The kernel this server started goes away: the next call starts another
     // and says so.
-    c.ok("eval_lua", json!({ "code": "daw.api.quit(0)" }));
+    c.ok("eval_lua", json!({ "code": "paw.api.quit(0)" }));
     std::thread::sleep(Duration::from_millis(300));
     let text = c.ok("get_project", json!({}));
     assert!(
@@ -606,7 +606,7 @@ fn kernel_gone_and_back() {
     let dir = scratch("gone");
     let socket = socket_dir("gone").join("k.sock");
     let kernel = || {
-        let child = Command::new(daw_binary())
+        let child = Command::new(paw_binary())
             .args(["--headless", "--listen"])
             .arg(&socket)
             .args(KERNEL_ARGS)

@@ -7,7 +7,7 @@ work with them. Also phrase and chord text objects, phrase motions, the
 project's key, and a scale lock for entering and moving notes.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/musicops")   -- or link it into ~/.config/daw/extensions
+paw.ext.load("/path/to/paw/extensions/musicops")   -- or link it into ~/.config/paw/extensions
 ```
 
 ![The demo song's chords in the piano roll: gzpie arpeggiates every chord and u undoes it, gzsie strums them, gzhie humanizes, then played](images/tui-musicops.gif)
@@ -66,7 +66,7 @@ of the vocal editor: it sings one voice, and new notes would repeat lyrics.
 In the vocal editor notes keep their lyrics and tuning through every edit.
 
 `gzh` uses a new seed each time and says which (`humanized, seed 1234`); set
-`daw.opt.musicops_seed` to that number to get the same result again, or to
+`paw.opt.musicops_seed` to that number to get the same result again, or to
 any number to make every humanize reproducible.
 
 Notes pushed past the end of their clip (half time, an arpeggio) make the
@@ -90,7 +90,7 @@ the chord, `gzsih` strums it, `d)` deletes to the next phrase.
 
 ## Key and scale
 
-The project's key is the core's (`daw.harmony.key`, see
+The project's key is the core's (`paw.harmony.key`, see
 [docs/harmony.md](../../docs/harmony.md)), still kept in
 `project.meta.musicops` (`{ root = "D", scale = "minor" }`), so it is saved
 with the project and undone like any edit. Without one, the operators work
@@ -108,7 +108,7 @@ in C major (not in the key the core reads from the notes).
 Scales: `major` (`ionian`), `minor` (`aeolian`), `harmonic_minor`,
 `melodic_minor`, `dorian`, `phrygian`, `lydian`, `mixolydian`, `locrian`,
 `pentatonic`, `minor_pentatonic`, `blues`, `whole_tone`, `chromatic`, and any
-other in `daw.music.scales`.
+other in `paw.music.scales`.
 
 **Scale lock** (`musicops_scale_lock`, `gzL`). While it is on:
 
@@ -135,7 +135,7 @@ lengths of at least 1/64 beat.
 
 ```lua
 local mo = require("musicops")
-local clip = daw.tracks()[1]:clips()[1]
+local clip = paw.tracks()[1]:clips()[1]
 clip:set_notes(mo.humanize(clip:notes(), { timing = 0.02, velocity = 8, seed = 7 }))
 clip:set_notes(mo.arpeggiate(clip:notes(), { mode = "updown", step = 0.25 }))
 clip:set_notes(mo.transpose_scale(clip:notes(), 2, "D minor"))
@@ -207,7 +207,7 @@ views, fn)` to add an operator of your own the same way.
 
 ## Tests
 
-`tests.lua` beside this file is run by the suite (`daw --clean --no-plugins -l
+`tests.lua` beside this file is run by the suite (`paw --clean --no-plugins -l
 tests/suite.lua musicops`): every function on known notes with exact results,
 the operators through typed keys in the piano roll, the arrange view and the
 vocal editor with `.`, counts and visual counts, the text objects and
@@ -236,4 +236,4 @@ motions, the key through undo, redo, save and load, and the scale lock.
 - The `]p`/`[p` style of motion is not used, so that `]` and `[` (velocity in
   the piano roll) do not wait for a second key.
 - Not tried by hand in a terminal: everything was checked through
-  `daw.keymap.feed` in the suite.
+  `paw.keymap.feed` in the suite.

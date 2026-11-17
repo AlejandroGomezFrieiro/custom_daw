@@ -1,16 +1,16 @@
 -- Tests of surfaces: the cells a view that paints keeps for its pixels in a
 -- terminal that shows images (`buf:surface`), the pointer over them in
 -- pixels, and the music fonts' metadata. The pixels themselves are made
--- in the frontend; crates/daw-raster and crates/daw-tui test those.
+-- in the frontend; crates/paw-raster and crates/paw-tui test those.
 -- Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh, after = T.test, T.eq, T.fresh, T.after
-local api = daw.api
+local api = paw.api
 
 local W, H = 100, 30
 
 --- Tables alike in what they hold.
-local function same(got, want, what) eq(daw.inspect(got), daw.inspect(want), what) end
+local function same(got, want, what) eq(paw.inspect(got), paw.inspect(want), what) end
 
 --- A terminal that shows images, cells of 10 by 20 pixels, until the test ends.
 local function images(on)
@@ -18,7 +18,7 @@ local function images(on)
   after(function() api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } }) end)
 end
 
-local probe = daw.ui.view("surface_probe", {
+local probe = paw.ui.view("surface_probe", {
   title = "Probe",
   render = function(self, buf)
     buf:text(0, 0, "title row", "Normal")
@@ -35,24 +35,24 @@ local probe = daw.ui.view("surface_probe", {
 
 local function start()
   fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
-  daw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
+  paw.ui.focus("arrange")
   probe.events, probe.ctx = {}, nil
-  daw.mouse.forget()
+  paw.mouse.forget()
   -- The tests after these find the screen as it was.
   after(function()
-    while daw.ui.float do daw.ui.close() end
-    daw.ui.focus("arrange")
-    daw.mouse.forget()
+    while paw.ui.float do paw.ui.close() end
+    paw.ui.focus("arrange")
+    paw.mouse.forget()
   end)
 end
 
 --- Open the probe floating, draw the screen, and return its surface.
 local function shown()
-  daw.ui.open("surface_probe", { title = "Probe", width = 40, height = 12 })
+  paw.ui.open("surface_probe", { title = "Probe", width = 40, height = 12 })
   local lines = api.ui_snapshot(W, H)
-  return (daw.ui.rects.surfaces or {})[1], lines
+  return (paw.ui.rects.surfaces or {})[1], lines
 end
 
 test("a view keeps cells for its pixels where the terminal shows images, and draws cells elsewhere", function()
@@ -75,29 +75,29 @@ test("a view keeps cells for its pixels where the terminal shows images, and dra
   eq(probe.ctx.cell.w, 10, "told the terminal's cell size")
   eq(probe.ctx.fg, "#cdd6f4", "and its colours")
 
-  daw.opt.graphics = false
-  after(function() daw.opt.graphics = true end)
-  eq(shown(), nil, "daw.opt.graphics off keeps cells")
+  paw.opt.graphics = false
+  after(function() paw.opt.graphics = true end)
+  eq(shown(), nil, "paw.opt.graphics off keeps cells")
 end)
 
 test("a view that is all pixels says so, and the window's views keep cells", function()
   start()
   images()
-  local whole = daw.ui.view("surface_whole", {
+  local whole = paw.ui.view("surface_whole", {
     surface = true,
     render = function(_, buf) buf:text(0, 0, "never", "Normal") end,
     paint = function(_, g, ctx) g:rect(0, 0, ctx.width, ctx.height, { fill = "#000000" }) end,
   })
-  after(function() daw.ui.views.surface_whole = nil end)
-  daw.ui.open("surface_whole", { width = 20, height = 6 })
+  after(function() paw.ui.views.surface_whole = nil end)
+  paw.ui.open("surface_whole", { width = 20, height = 6 })
   local lines = api.ui_snapshot(W, H)
-  local s = daw.ui.rects.surfaces[1]
+  local s = paw.ui.rects.surfaces[1]
   same({ s.name, s.w, s.h }, { "surface_whole", 18, 4 }, "the whole inside of the float")
   eq(table.concat(lines, "\n"):find("never", 1, true), nil, "its cells are not drawn")
   eq(whole.surface, true)
-  daw.ui.close()
+  paw.ui.close()
   api.ui_snapshot(W, H)
-  eq(daw.ui.rects.surfaces, nil, "the arrange view keeps cells")
+  eq(paw.ui.rects.surfaces, nil, "the arrange view keeps cells")
 end)
 
 test("the pointer over a surface reaches the view's pointer in pixels of its drawing", function()
@@ -108,7 +108,7 @@ test("the pointer over a surface reaches the view's pointer in pixels of its dra
   local function m(kind, x, y, extra)
     local e = { kind = kind, x = math.floor(x / 10), y = math.floor(y / 20), button = kind:match("scroll") and "" or "left", mods = "", px = x, py = y }
     for k, v in pairs(extra or {}) do e[k] = v end
-    daw.ui.mouse(e)
+    paw.ui.mouse(e)
   end
   m("move", x0 + 37, y0 + 45, { button = "" })
   m("down", x0 + 37, y0 + 45, { mods = "C" })
@@ -122,7 +122,7 @@ test("the pointer over a surface reaches the view's pointer in pixels of its dra
     { "hover", 37, 45, false }, { "down", 37, 45, true }, { "move", 52, 49, false },
     { "move", -30, -50, false }, { "up", -30, -50, false },
   }, "hover, press, drags and release, exact to the pixel")
-  eq(daw.ui.focused, "surface_probe", "a press gives it the keyboard")
+  eq(paw.ui.focused, "surface_probe", "a press gives it the keyboard")
 
   probe.events = {}
   m("down", x0 + 5, y0 + 5)
@@ -139,14 +139,14 @@ test("the pointer over a surface reaches the view's pointer in pixels of its dra
 
   -- A terminal that reports cells: the middle of the cell.
   probe.events = {}
-  daw.ui.mouse({ kind = "down", x = s.x + 2, y = s.y + 1, button = "left", mods = "" })
+  paw.ui.mouse({ kind = "down", x = s.x + 2, y = s.y + 1, button = "left", mods = "" })
   same({ probe.events[1].x, probe.events[1].y }, { 25, 30 }, "the middle of the cell")
   same({ probe.events[1].col, probe.events[1].row }, { s.x + 2, s.y + 1 }, "and the screen cell, for a menu")
-  daw.ui.mouse({ kind = "up", x = s.x + 2, y = s.y + 1, button = "left", mods = "" })
+  paw.ui.mouse({ kind = "up", x = s.x + 2, y = s.y + 1, button = "left", mods = "" })
 
   -- The title row is cells: the view's on_mouse would have it, not pointer.
   probe.events = {}
-  daw.ui.mouse({ kind = "down", x = s.x + 2, y = s.y - 1, button = "left", mods = "" })
+  paw.ui.mouse({ kind = "down", x = s.x + 2, y = s.y - 1, button = "left", mods = "" })
   eq(#probe.events, 0, "outside the surface it is not pixels")
 end)
 
@@ -162,7 +162,7 @@ test("a music font's metadata is read from the font built in", function()
 end)
 
 test("a drawing marks glyphs, barlines and layers for the frontend to make into pixels", function()
-  daw.ui.view("surface_marks", {
+  paw.ui.view("surface_marks", {
     paint = function(_, g)
       local part = g:sub(10, 20, 200, 100)
       part:glyph(5, 40, 32, 0xE050)
@@ -171,13 +171,13 @@ test("a drawing marks glyphs, barlines and layers for the frontend to make into 
       part:glyph(500, 40, 32, 0xE0A4)
     end,
   })
-  after(function() daw.ui.views.surface_marks = nil end)
-  local window_cell = daw.canvas.cell
-  local ops = daw.canvas.paint("surface_marks", 400, 200, { surface = true, glyphs = true, cell = { w = 11, h = 23 } }).ops
+  after(function() paw.ui.views.surface_marks = nil end)
+  local window_cell = paw.canvas.cell
+  local ops = paw.canvas.paint("surface_marks", 400, 200, { surface = true, glyphs = true, cell = { w = 11, h = 23 } }).ops
   same(ops, {
-    { "g", 15, 60, 32, 0xE050, daw.canvas.palette.text, "Leland" },
+    { "g", 15, 60, 32, 0xE050, paw.canvas.palette.text, "Leland" },
     { "cut", 110, 20, 100 },
     { "layer", "caret" },
   }, "placed from the part's corner, and a glyph outside it left out")
-  eq(daw.canvas.cell, window_cell, "a terminal's cell is not taken for the window's")
+  eq(paw.canvas.cell, window_cell, "a terminal's cell is not taken for the window's")
 end)

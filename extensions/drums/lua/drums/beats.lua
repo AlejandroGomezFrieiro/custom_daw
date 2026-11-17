@@ -3,7 +3,7 @@
 -- Add your own the same way:
 --
 --   require("drums.beats").list.shuffle = { label = "Shuffle", rows = { [36] = "x.....x.x.......", ... } }
-local util = daw.util
+local util = paw.util
 local M = {}
 
 local VELOCITY = { x = 100, X = 124, o = 52 }
@@ -72,10 +72,10 @@ end
 --- Fill a clip with a beat, a bar at a time to its end, in place of what it
 --- had. One edit.
 function M.apply(clip, name)
-  if type(clip) == "number" then clip = daw.clip(clip) end
+  if type(clip) == "number" then clip = paw.clip(clip) end
   local beat = M.list[name]
   if not beat then error("no beat `" .. tostring(name) .. "`: there are " .. table.concat(M.names(), ", "), 0) end
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   -- Sixteen steps make a bar of 4/4; other bars take the steps they hold.
   local step = 0.25
   local per_bar = math.floor(bar / step + 0.5)

@@ -22,9 +22,9 @@ typed in visual mode before `>` `<` or `<C-a>` is the amount, as in Vim.
 In the arrange view `v` stretched with `j` `k` is already a block of time on
 some tracks; `V` whole tracks are Vim's whole lines.]],
   setup = function(look)
-    daw.project.tempo = 100
+    paw.project.tempo = 100
     local function track(name, device, params, make)
-      local t = daw.add_track({ name = name, volume = name == "Keys" and -10 or -4 })
+      local t = paw.add_track({ name = name, volume = name == "Keys" and -10 or -4 })
       t:add_device(device, params)
       for i = 1, 4 do t:add_clip({ name = name:sub(1, 1):lower() .. i, start = (i - 1) * 4, length = 4, notes = make(i) }) end
     end
@@ -33,15 +33,15 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
     track("Bass", "synth", { wave = 2, cutoff = 600, release = 0.05 }, function(i) return look.pulse(roots[i], 4) end)
     local chords = { { "A3", "C4", "E4" }, { "F3", "A3", "C4" }, { "G3", "C4", "E4" }, { "G3", "B3", "D4" } }
     track("Keys", "synth", { wave = 3, attack = 0.05, release = 0.4, cutoff = 1800 }, function(i) return look.chord(chords[i], 4) end)
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 16, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 16, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Drums")) end,
+  at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
       say = "Press `v` to start selecting (the status line says VISUAL), then `W` to stretch the selection over the first bar.",
       keys = { "v", "W" },
       check = function()
-        local s = daw.keymap.selection()
+        local s = paw.keymap.selection()
         return s and s.kind == "char" and s.c0 == 0 and s.c1 == 4
       end,
       done = "The first bar of Drums is selected.",
@@ -50,7 +50,7 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
       say = "`j` stretches it down to the next track. Press `j`.",
       keys = { "j" },
       check = function()
-        local s = daw.keymap.selection()
+        local s = paw.keymap.selection()
         return s and s.r0 == 1 and s.r1 == 2 and s.c1 == 4
       end,
       done = "The first bar of Drums and Bass.",
@@ -71,8 +71,8 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
       say = "`V` selects whole tracks. Press `V`, `j` to take Drums and Bass, and `y` to yank (copy) them.",
       keys = { "V", "j", "y" },
       check = function()
-        local r = daw.keymap.getreg()
-        return r and r.kind == "tracks" and #r.tracks == 2 and daw.keymap.mode == "n"
+        local r = paw.keymap.getreg()
+        return r and r.kind == "tracks" and #r.tracks == 2 and paw.keymap.mode == "n"
       end,
       done = "Two tracks are in the register.",
       hint = "`<Esc>` leaves visual mode if it went wrong; then `gg` and start again.",
@@ -80,13 +80,13 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
     {
       say = "`G` goes to the last track and `p` pastes the tracks below it. Press `G`, then `p`.",
       keys = { "G", "p" },
-      check = function() return #daw.tracks() == 5 end,
+      check = function() return #paw.tracks() == 5 end,
       done = "Five tracks: copies of Drums and Bass at the bottom.",
     },
     {
       say = "Press `u` to take the copies away again.",
       keys = { "u" },
-      check = function(ctx, look) return look.ran(ctx, "undo") and #daw.tracks() == 3 end,
+      check = function(ctx, look) return look.ran(ctx, "undo") and #paw.tracks() == 3 end,
       done = "Three tracks.",
     },
     {
@@ -115,7 +115,7 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
       keys = { "v", "12<C-a>" },
       check = function(_, look)
         local _, clip = look.roll()
-        return clip and look.melody(clip) == "69@0+4 72@0+4 76@0+4" and daw.keymap.mode == "n"
+        return clip and look.melody(clip) == "69@0+4 72@0+4 76@0+4" and paw.keymap.mode == "n"
       end,
       done = "The chord is an octave higher. A count in visual mode is how much.",
       hint = "Type 1, 2, then Ctrl and a, while the status line still says VISUAL.",

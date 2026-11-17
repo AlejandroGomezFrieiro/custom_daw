@@ -3,10 +3,10 @@
 -- on a node going there, and what a step was when the pointer rests on it.
 -- It works on the terminal view's rows and selection (`undotree.view`), so
 -- every key of that view works here too.
-local api = daw.api
+local api = paw.api
 local undotree = require("undotree")
 local term = require("undotree.view")
-local canvas = require("daw.canvas")
+local canvas = require("paw.canvas")
 local c = canvas.palette
 
 local NAME = "undotree_paint"
@@ -21,7 +21,7 @@ local paint = {
   seen = nil,          -- the selected state the scroll last kept in view
 }
 -- Each window looking at it points and scrolls on its own.
-daw.seats.fields("undotree.paint", paint, { "scroll", "hover", "seen" }, { scroll = 0 })
+paw.seats.fields("undotree.paint", paint, { "scroll", "hover", "seen" }, { scroll = 0 })
 
 --- The ids from the current state back to the first: the branch that
 --- leads here.
@@ -59,7 +59,7 @@ local function draw_tree(self, g, rows, tree, width, height)
     if term.sel <= self.scroll then self.scroll = term.sel - 1 end
     if term.sel > self.scroll + shown then self.scroll = term.sel - shown end
   end
-  self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #rows - shown))
+  self.scroll = paw.util.clamp(self.scroll, 0, math.max(0, #rows - shown))
   local view = g:sub(0, 0, width, height)
   local tree_g = view:sub(0, -self.scroll * ROW, width, #rows * ROW)
   local graph_w = LEFT
@@ -214,7 +214,7 @@ function paint:on_key(key)
   keys(term, key)
 end
 
-daw.ui.view(NAME, paint)
+paw.ui.view(NAME, paint)
 term.painted = NAME
 
 return paint

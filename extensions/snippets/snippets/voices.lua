@@ -1,5 +1,5 @@
 -- Snippets on the selected notes, as LuaSnip's work on the selected text.
-local H = daw.harmony
+local H = paw.harmony
 
 --- The selection's notes in chords: those starting within a sixteenth.
 local function groups(notes)

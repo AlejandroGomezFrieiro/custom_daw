@@ -1,21 +1,21 @@
--- `daw.curves`: every curve of the project read and written alike, by its
+-- `paw.curves`: every curve of the project read and written alike, by its
 -- address. A curve is a list of points in project beats, each with the
 -- shape of the stretch that leaves it:
 --
 --   { beat, value, shape = "linear" | "hold" | "smooth", tension = -1..1 }
 --
--- What a curve can be, and its address (see `daw.address`):
+-- What a curve can be, and its address (see `paw.address`):
 --
---   daw://lane/9                               an automation lane
---   daw://track/3/device/5/param/cutoff        a device parameter (its lane,
+--   paw://lane/9                               an automation lane
+--   paw://track/3/device/5/param/cutoff        a device parameter (its lane,
 --                                              made at the first edit)
---   daw://clip/7/control/cc/74                 a MIDI clip's controller moves;
---   daw://clip/7/control/bend                  `bend` and `pressure` too, and
---   daw://clip/7/control/pressure#key=60       one note's own (per-note
+--   paw://clip/7/control/cc/74                 a MIDI clip's controller moves;
+--   paw://clip/7/control/bend                  `bend` and `pressure` too, and
+--   paw://clip/7/control/pressure#key=60       one note's own (per-note
 --                                              expression) with `#key=`
---   daw://tempo                                the tempo map
+--   paw://tempo                                the tempo map
 --
---   local c = daw.curves.target("daw://lane/9")
+--   local c = paw.curves.target("paw://lane/9")
 --   c.points()  c.write(points)  c.format(value)  c.lo, c.hi, c.step
 --
 -- `lo` and `hi` are what the drawing spans, `min` and `max` what a value
@@ -28,8 +28,8 @@
 -- shape the curve does not have is written as the many short steps or
 -- ramps it is played as. The tools (`thin`, `smooth`, `quantize`,
 -- `generate`) take and give point lists, and edit nothing themselves.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 
 local M = {}
 
@@ -38,16 +38,16 @@ M.fine = 1 / 16
 
 local function lane_target(lane_id, uri)
   local l = api.lane_get(lane_id)
-  local p = daw.lanes.param_of(l)
+  local p = paw.lanes.param_of(l)
   local t = {
     uri = uri, kind = "lane", lane = lane_id, track = l.track,
     shapes = { linear = true, hold = true, smooth = true },
-    min = l.min, max = l.max, lo = l.min, hi = l.max, step = daw.lanes.step(l),
+    min = l.min, max = l.max, lo = l.min, hi = l.max, step = paw.lanes.step(l),
   }
   if l.target == "volume" then t.lo, t.hi = -60, 12 end
   if l.target == "pan" then t.scale = 100 end
-  t.name = function() return daw.lanes.name(lane_id) end
-  t.format = function(v) return daw.lanes.format(l, v) end
+  t.name = function() return paw.lanes.name(lane_id) end
+  t.format = function(v) return paw.lanes.format(l, v) end
   t.param = p
   t.points = function()
     local shapes = {}
@@ -80,9 +80,9 @@ local function lane_target(lane_id, uri)
 end
 
 local function param_target(parts, uri)
-  local found = daw.address.resolve(uri)
+  local found = paw.address.resolve(uri)
   if not found then return nil, uri .. " is gone" end
-  local device = daw.device(parts.device)
+  local device = paw.device(parts.device)
   local lane = device:lane(parts.param)
   if lane then
     local t = lane_target(lane.id, uri)
@@ -98,7 +98,7 @@ local function param_target(parts, uri)
     step = #p.choices > 0 and 1 or (p.max - p.min) / 100,
   }
   t.name = function() return api.device_get(parts.device).name .. " › " .. p.name end
-  t.format = function(v) return daw.frontend.format_value(p, v) end
+  t.format = function(v) return paw.frontend.format_value(p, v) end
   t.points = function() return {} end
   t.flat = function() return api.device_get(parts.device).params[parts.param] end
   t.write = function(points)
@@ -114,7 +114,7 @@ local function control_target(parts, uri)
   local clip = api.clip_get(parts.clip)
   local kind, number = parts.control, parts.number
   if kind ~= "cc" and kind ~= "bend" and kind ~= "pressure" then return nil, "no controller `" .. tostring(kind) .. "`" end
-  if kind == "cc" and not number then return nil, "a controller needs its number: daw://clip/" .. parts.clip .. "/control/cc/74" end
+  if kind == "cc" and not number then return nil, "a controller needs its number: paw://clip/" .. parts.clip .. "/control/cc/74" end
   local key = parts.fragment and tonumber(parts.fragment:match("^key=(%d+)$"))
   local bend = kind == "bend"
   local t = {
@@ -125,7 +125,7 @@ local function control_target(parts, uri)
   t.name = function()
     local what = bend and "Pitch wheel" or kind == "pressure" and "Pressure"
       or ("CC " .. number .. (CONTROL_NAMES[number] and " " .. CONTROL_NAMES[number] or ""))
-    return what .. (key and " of " .. daw.music.name(key) or "") .. " · " .. api.clip_get(parts.clip).name
+    return what .. (key and " of " .. paw.music.name(key) or "") .. " · " .. api.clip_get(parts.clip).name
   end
   t.format = function(v)
     if bend then return string.format("%+d%%", math.floor(v * 100 + 0.5 * (v < 0 and -1 or 1))) end
@@ -162,14 +162,14 @@ local function tempo_target(uri)
     uri = uri, kind = "tempo", shapes = { linear = true, hold = true }, min = 1, max = 960, step = 1,
   }
   local lo, hi = math.huge, -math.huge
-  for _, q in ipairs(daw.tempo.points()) do lo, hi = math.min(lo, q.bpm), math.max(hi, q.bpm) end
+  for _, q in ipairs(paw.tempo.points()) do lo, hi = math.min(lo, q.bpm), math.max(hi, q.bpm) end
   t.lo = math.max(1, math.floor((lo - 30) / 10) * 10)
   t.hi = math.ceil((hi + 30) / 10) * 10
   t.name = function() return "Tempo" end
   t.format = function(v) return string.format("%g BPM", math.floor(v * 100 + 0.5) / 100) end
   t.points = function()
     local out = {}
-    for i, q in ipairs(daw.tempo.points()) do
+    for i, q in ipairs(paw.tempo.points()) do
       out[i] = { beat = q.beat, value = q.bpm, shape = q.ramp and "linear" or "hold", tension = 0 }
     end
     return out
@@ -186,7 +186,7 @@ local function tempo_target(uri)
     if #tempos == 0 then return end
     if tempos[1].beat > 1e-9 then table.insert(tempos, 1, { beat = 0, bpm = tempos[1].bpm }) end
     tempos[1].beat = 0
-    daw.tempo.set_points(tempos, nil)
+    paw.tempo.set_points(tempos, nil)
   end
   return t
 end
@@ -200,7 +200,7 @@ function M.provide(name, fn) M.providers[name] = fn end
 
 --- The curve at an address, or nil and why not.
 function M.target(uri)
-  local parts = daw.address.parse(uri)
+  local parts = paw.address.parse(uri)
   if not parts then return nil, "not an address: " .. tostring(uri) end
   local ok, t, why = pcall(function()
     for _, fn in pairs(M.providers) do
@@ -220,11 +220,11 @@ function M.target(uri)
   -- Where a value sits between the bottom and the top of the drawing: on a
   -- log scale for a parameter that moves on one.
   t.frac = function(v)
-    if t.param and t.param.min == t.lo and t.param.max == t.hi then return daw.params.fraction(t.param, v) end
+    if t.param and t.param.min == t.lo and t.param.max == t.hi then return paw.params.fraction(t.param, v) end
     return (v - t.lo) / (t.hi - t.lo)
   end
   t.unfrac = function(f)
-    if t.param and t.param.min == t.lo and t.param.max == t.hi then return daw.params.from_fraction(t.param, f) end
+    if t.param and t.param.min == t.lo and t.param.max == t.hi then return paw.params.from_fraction(t.param, f) end
     return t.lo + util.clamp(f, 0, 1) * (t.hi - t.lo)
   end
   return t
@@ -232,14 +232,14 @@ end
 
 --- Whether a text names a curve: an address `target` can read.
 function M.is_curve(uri)
-  local p = daw.address.parse(uri)
+  local p = paw.address.parse(uri)
   return p ~= nil and (p.kind == "lane" or p.kind == "param" or p.kind == "control" or p.kind == "tempo")
 end
 
 -- Reading a curve ------------------------------------------------------------------
 
 --- Where a stretch is `t` of the way from one point to the next, 0 to 1,
---- as the model plays it (crates/daw-core/src/model.rs, `smooth`).
+--- as the model plays it (crates/paw-core/src/model.rs, `smooth`).
 function M.ease(shape, t, tension)
   if shape == "hold" then return t >= 1 and 1 or 0 end
   if shape == "smooth" then

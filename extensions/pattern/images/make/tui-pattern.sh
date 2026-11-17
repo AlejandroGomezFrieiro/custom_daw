@@ -2,7 +2,7 @@
 # A pattern clip for the lead's empty first half, typed as a line of text
 # and changed while the song plays.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/pattern')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/pattern')"
 rig_start
 term_start
 key j; pause 0.4

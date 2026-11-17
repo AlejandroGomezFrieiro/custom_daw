@@ -1,10 +1,10 @@
 -- Mix diagnostics: measure the mix and report what is wrong with it the way a
 -- language server reports problems in code, as findings that each point at a
 -- place. See README.md beside this extension.
-local api = daw.api
+local api = paw.api
 
 local M = {
-  --- The latest measurement, as `daw.api.measure` returned it, and its findings.
+  --- The latest measurement, as `paw.api.measure` returned it, and its findings.
   result = nil,
   findings = {},
   --- The measurement running now: { id, range, timer, progress }.
@@ -41,11 +41,11 @@ M.targets = {
 
 --- The rules, by name. Each is `{ desc, check = function(ctx, add) end }`,
 --- with optional thresholds of its own; see rules.lua. Other extensions add
---- theirs here, and `daw.opt.mixdiag_ignore` turns rules off by name.
+--- theirs here, and `paw.opt.mixdiag_ignore` turns rules off by name.
 M.rules = {}
 
 function M.target()
-  local name = daw.opt.mixdiag_target
+  local name = paw.opt.mixdiag_target
   return M.targets[name] or M.targets.none, name
 end
 
@@ -59,7 +59,7 @@ end
 function M.range(scope)
   scope = scope or "song"
   if type(scope) == "table" then
-    local range = daw.util.merge({ label = scope.file and scope.file:match("[^/]+$") or "stretch" }, scope)
+    local range = paw.util.merge({ label = scope.file and scope.file:match("[^/]+$") or "stretch" }, scope)
     range.kind = range.file and "file" or range.track and "track" or "mix"
     return range
   end
@@ -72,12 +72,12 @@ function M.range(scope)
     if t.loop_end <= t.loop_start then error("the loop is empty", 0) end
     return { start = t.loop_start, ["end"] = t.loop_end, label = "loop", kind = "mix" }
   elseif scope == "selection" then
-    local sel = daw.keymap.selection()
+    local sel = paw.keymap.selection()
     if not sel then
-      local last = daw.keymap.last_visual
+      local last = paw.keymap.last_visual
       if last and last.view == "arrange" then
         sel = { c0 = math.min(last.col, last.cursor_col), c1 = math.max(last.col, last.cursor_col), kind = last.kind }
-        if sel.c1 - sel.c0 < 1e-9 then sel.c1 = sel.c0 + daw.opt.grid end
+        if sel.c1 - sel.c0 < 1e-9 then sel.c1 = sel.c0 + paw.opt.grid end
       end
     end
     if not sel then error("nothing selected: select a stretch with `v` first", 0) end
@@ -86,7 +86,7 @@ function M.range(scope)
     end
     return { start = sel.c0, ["end"] = sel.c1, label = "selection", kind = "mix" }
   elseif scope == "track" then
-    local id = daw.cursor.track_id()
+    local id = paw.cursor.track_id()
     if not id then error("no track under the cursor", 0) end
     if length <= 0 then error("the project has no clips to measure", 0) end
     return { start = 0, ["end"] = length, track = id, label = api.track_get(id).name, kind = "track", whole = true }
@@ -96,7 +96,7 @@ end
 
 local function measure_args(range)
   if range.file then return { file = range.file } end
-  return { start = range.start, ["end"] = range["end"], tail = range.tail or daw.opt.mixdiag_tail, track = range.track }
+  return { start = range.start, ["end"] = range["end"], tail = range.tail or paw.opt.mixdiag_tail, track = range.track }
 end
 
 --- Measure and diagnose. Without `opts.wait` the measurement runs on a
@@ -107,8 +107,8 @@ function M.analyze(scope, opts)
   local range = M.range(scope)
   if not range.file then
     -- Extensions that make audio of their own finish it first, as for a render.
-    daw.emit("render.before", { path = nil, opts = measure_args(range), measure = true })
-    daw.flush()
+    paw.emit("render.before", { path = nil, opts = measure_args(range), measure = true })
+    paw.flush()
   end
   if opts.wait then
     local result = api.measure(measure_args(range))
@@ -117,8 +117,8 @@ function M.analyze(scope, opts)
   M.cancel()
   local id = api.measure_start(measure_args(range))
   M.job = { id = id, range = range, progress = 0, started = api.now(), done = opts.done, quiet = opts.quiet }
-  M.job.timer = daw.every(50, function() M.poll() end)
-  if not opts.quiet then daw.notify("mix: measuring the " .. range.label .. "…") end
+  M.job.timer = paw.every(50, function() M.poll() end)
+  if not opts.quiet then paw.notify("mix: measuring the " .. range.label .. "…") end
   M.show_strip()
   return id
 end
@@ -133,10 +133,10 @@ function M.poll()
     api.ui_redraw()
     return
   end
-  daw.cancel(job.timer)
+  paw.cancel(job.timer)
   M.job = nil
   if status.error then
-    daw.notify("mix: " .. status.error, "error")
+    paw.notify("mix: " .. status.error, "error")
     api.ui_redraw()
     return
   end
@@ -147,7 +147,7 @@ end
 function M.cancel()
   local job = M.job
   if not job then return false end
-  daw.cancel(job.timer)
+  paw.cancel(job.timer)
   api.measure_cancel(job.id)
   M.job = nil
   api.ui_redraw()
@@ -156,14 +156,14 @@ end
 
 local function ignored()
   local out = {}
-  for name in tostring(daw.opt.mixdiag_ignore or ""):gmatch("[%w_]+") do out[name] = true end
+  for name in tostring(paw.opt.mixdiag_ignore or ""):gmatch("[%w_]+") do out[name] = true end
   return out
 end
 
 --- What a rule's `check` gets.
 function M.context(result, range)
   local target, target_name = M.target()
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
   local ctx = {
     result = result,
     range = range,
@@ -177,11 +177,11 @@ function M.context(result, range)
   --- Beat for a time in seconds from the start of the measurement; nil for a file.
   function ctx.beat(seconds)
     if not result.tempo or not seconds then return nil end
-    return daw.tempo.seconds_to_beats(daw.tempo.beats_to_seconds(result.start) + seconds)
+    return paw.tempo.seconds_to_beats(paw.tempo.beats_to_seconds(result.start) + seconds)
   end
   --- "bar 12" for a beat, or "1:23.4" for a time in a file.
   function ctx.where(beat, seconds)
-    if beat then return "bar " .. daw.time.bar_of(beat + 1e-9) end
+    if beat then return "bar " .. paw.time.bar_of(beat + 1e-9) end
     if seconds then return string.format("%d:%04.1f", math.floor(seconds / 60), seconds % 60) end
     return ""
   end
@@ -222,7 +222,7 @@ function M.diagnose(result, range)
         list[#list + 1] = f
       end
       local ok, err = pcall(rule.check, ctx, add, rule)
-      if not ok then daw.notify("mix: rule " .. name .. " failed: " .. tostring(err), "error") end
+      if not ok then paw.notify("mix: rule " .. name .. " failed: " .. tostring(err), "error") end
     end
   end
   return sort_findings(list)
@@ -267,9 +267,9 @@ function M.finish(result, range, quiet)
     for _, f in ipairs(M.findings) do
       if f.severity == "error" then worst = "error" elseif f.severity == "warn" and worst ~= "error" then worst = "warn" end
     end
-    daw.notify(M.line, worst == "error" and "warn" or "info")
+    paw.notify(M.line, worst == "error" and "warn" or "info")
   end
-  daw.emit("mixdiag.done", { count = #M.findings })
+  paw.emit("mixdiag.done", { count = #M.findings })
   require("mixdiag.lens").publish()
   M.show_strip()
   api.ui_redraw()
@@ -287,7 +287,7 @@ function M.clear()
   require("mixdiag.lens").publish()
   M.hide_strip()
   -- The findings' band in the graphical frontend goes too.
-  daw.frontend.refresh()
+  paw.frontend.refresh()
 end
 
 --- Findings that have a place on the timeline, for a ruler: { beat, severity, text }.
@@ -320,10 +320,10 @@ end
 
 --- Put the cursor on a finding and show its message.
 function M.jump(f)
-  if f.track and f.track ~= 0 and pcall(api.track_get, f.track) then daw.cursor.set_track(f.track) end
-  if f.beat then daw.cursor.set_beat(math.max(0, f.beat)) end
+  if f.track and f.track ~= 0 and pcall(api.track_get, f.track) then paw.cursor.set_track(f.track) end
+  if f.beat then paw.cursor.set_beat(math.max(0, f.beat)) end
   M.current = f
-  daw.notify(string.format("%s: %s", f.severity, M.format(f)), f.severity == "error" and "error" or f.severity == "warn" and "warn" or "info")
+  paw.notify(string.format("%s: %s", f.severity, M.format(f)), f.severity == "error" and "error" or f.severity == "warn" and "warn" or "info")
 end
 
 --- The next (`dir` 1) or previous (-1) finding from the cursor, `count` times,
@@ -331,11 +331,11 @@ end
 function M.step(dir, count)
   local list = placed()
   if #list == 0 then
-    daw.notify(M.result and "mix: no findings with a place" or "mix: nothing measured yet: <leader>xa", "warn")
+    paw.notify(M.result and "mix: no findings with a place" or "mix: nothing measured yet: <leader>xa", "warn")
     return nil
   end
-  local beat = daw.cursor.beat
-  local row = daw.cursor.index() or 0
+  local beat = paw.cursor.beat
+  local row = paw.cursor.index() or 0
   -- On a finding about the master, the cursor's track says nothing about
   -- where in the list we are: the finding last jumped to does.
   local current = M.current
@@ -378,7 +378,7 @@ function M.items()
   for _, f in ipairs(M.findings) do
     local where = ctx and ctx.where(f.beat, f.seconds) or ""
     local track = f.track and f.track ~= 0 and ctx and ctx.track_name(f.track) or ""
-    local text = string.format("%-5s  %-9s %-10s %s", f.severity, where, daw.util.fit and daw.util.fit(track, 10) or track, M.format(f))
+    local text = string.format("%-5s  %-9s %-10s %s", f.severity, where, paw.util.fit and paw.util.fit(track, 10) or track, M.format(f))
     items[#items + 1] = { text = text, beat = f.beat, track = f.track, finding = f, severity = f.severity }
   end
   return items
@@ -386,9 +386,9 @@ end
 
 --- Show the findings: in the picker when there is one, else in a list of our own.
 function M.list()
-  if not M.result then return daw.notify("mix: nothing measured yet: <leader>xa", "warn") end
-  if daw.pick then
-    return daw.pick({
+  if not M.result then return paw.notify("mix: nothing measured yet: <leader>xa", "warn") end
+  if paw.pick then
+    return paw.pick({
       title = "Mix",
       items = M.items(),
       on_choose = function(item) if item and item.finding then M.jump(item.finding) end end,
@@ -407,7 +407,7 @@ end
 -- The strip of marks above the arrange view ----------------------------------
 
 function M.show_strip()
-  if not daw.opt.mixdiag_strip then return end
+  if not paw.opt.mixdiag_strip then return end
   require("mixdiag.view").strip(true)
 end
 

@@ -1,5 +1,5 @@
 //! Menus at the pointer. Their entries are the kernel's
-//! (`daw.frontend.menu`, runtime/lua/daw/window_menus.lua): the window shows
+//! (`paw.frontend.menu`, runtime/lua/paw/window_menus.lua): the window shows
 //! them and says which was chosen, by its place. A few belong to the window
 //! alone (which lane a track shows, the piano roll's grid), built here.
 
@@ -77,7 +77,7 @@ impl View {
 
     /// Open the kernel's menu `kind` for `args` at `at`.
     pub fn open_menu(&mut self, kind: &str, args: Value, at: Pos2) {
-        let list = self.ask("return daw.frontend.menu(...)", json!([kind, args]));
+        let list = self.ask("return paw.frontend.menu(...)", json!([kind, args]));
         let items = items(&list);
         if items.is_empty() {
             return;

@@ -24,18 +24,18 @@ is one project open at a time; `:e` replaces it. `:w name.json` is Vim's
 `:saveas`: the project goes on in the new file. Vim's `:w name` writes a copy
 and stays in the old one; there is no such copy here.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 8, notes = look.drums(look.beat, 2) })
-    local keys = daw.add_track({ name = "Keys", volume = -8 })
+    local keys = paw.add_track({ name = "Keys", volume = -8 })
     keys:add_device("synth", { wave = 3, attack = 0.02, release = 0.5, cutoff = 1800 })
     keys:add_device("delay", { time = 450, feedback = 0.35, mix = 0.25 })
     local chords = look.chord({ "D4", "F4", "A4" }, 4)
     for _, n in ipairs(look.chord({ "C4", "E4", "G4" }, 4, 4)) do chords[#chords + 1] = n end
     keys:add_clip({ name = "chords", start = 0, length = 8, notes = chords })
   end,
-  at = function() daw.cursor.set_track(daw.track("Keys")) end,
+  at = function() paw.cursor.set_track(paw.track("Keys")) end,
   test = {
     -- Rendering writes beside where paw was started; the test tidies up.
     after = function() os.remove("tutor-song.wav") end,
@@ -44,13 +44,13 @@ and stays in the old one; there is no such copy here.]],
     {
       say = "Change something first: `&` repeats the chords after themselves. Press `&`: the status line's project name gets a `[+]`.",
       keys = { "&" },
-      check = function() return daw.project.modified and #daw.track("Keys"):clips() == 2 end,
+      check = function() return paw.project.modified and #paw.track("Keys"):clips() == 2 end,
       done = "`[+]`: there are changes that are not saved.",
     },
     {
       say = "Type `:w` and `<CR>` to save. (`<C-s>` does the same.)",
       keys = { ":w", "<CR>" },
-      check = function(ctx, look) return look.saw(ctx, "project.saved") and not daw.project.modified end,
+      check = function(ctx, look) return look.saw(ctx, "project.saved") and not paw.project.modified end,
       done = "Saved: the `[+]` is gone, and the message line says where.",
     },
     {

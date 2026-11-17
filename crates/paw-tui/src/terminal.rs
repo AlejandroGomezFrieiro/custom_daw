@@ -16,10 +16,10 @@ use crossterm::style::{
     Attribute, Color as TermColor, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
 };
 use crossterm::{cursor, execute, queue, terminal};
-use daw_core::grid::{self, Caps, Cell, Color, Grid};
-use daw_core::{Frontend, InputEvent};
-use daw_raster::kitty;
-use daw_raster::probe::{self, Probe};
+use paw_core::grid::{self, Caps, Cell, Color, Grid};
+use paw_core::{Frontend, InputEvent};
+use paw_raster::kitty;
+use paw_raster::probe::{self, Probe};
 
 use crate::graphics::{self, Graphics};
 
@@ -28,7 +28,7 @@ pub struct Terminal {
     /// What is on screen now, to send only the cells that changed.
     shown: Option<Grid>,
     /// Whether the terminal reports the pointer, or keeps it for its own
-    /// selection (`daw.opt.mouse` off).
+    /// selection (`paw.opt.mouse` off).
     mouse: bool,
     /// What the terminal said about itself at startup.
     probe: Probe,

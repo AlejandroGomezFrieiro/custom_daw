@@ -4,7 +4,7 @@
 -- tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local api = daw.api
+local api = paw.api
 
 --- A mono 16-bit file of one second at 48 kHz that is silent but for one
 --- burst of `level`, alternating in sign, from 0.25 s to 0.28125 s: inside a single column of a
@@ -45,15 +45,15 @@ end
 
 local function clip_with(level, gain)
   fresh()
-  local t = daw.add_track({ name = "hits" })
+  local t = paw.add_track({ name = "hits" })
   local clip = t:add_clip({ start = 0, file = burst_file("burst" .. level, level), gain = gain })
-  daw.cursor.set_track(t)
+  paw.cursor.set_track(t)
   return t, clip
 end
 
 test("a hit shows in its own column of the waveform, as a thin line when quiet and a tall one when loud", function()
   local _, clip = clip_with(0.8)
-  local rows = daw.draw.waveform(clip:peaks(16), 4)
+  local rows = paw.draw.waveform(clip:peaks(16), 4)
   local lit = lit_columns(rows)
   eq(lit[4], true, "the hit is in the column where it sounds")
   local count = 0
@@ -65,7 +65,7 @@ test("a hit shows in its own column of the waveform, as a thin line when quiet a
   eq(chars(rows[4])[5], "▃", "and the bottom one from its top down, three eighths, drawn in reverse")
 
   local _, quiet = clip_with(0.1)
-  rows = daw.draw.waveform(quiet:peaks(16), 4)
+  rows = paw.draw.waveform(quiet:peaks(16), 4)
   eq(chars(rows[1])[5], " ", "a quiet hit does not reach the top row")
   eq(chars(rows[2])[5] ~= " " and chars(rows[3])[5] ~= " ", true, "it is drawn on both sides of the middle")
 end)
@@ -73,7 +73,7 @@ end)
 test("columns that reach full scale, after the clip's gain, are drawn in the error colour", function()
   local function marks(level, gain)
     local _, clip = clip_with(level, gain)
-    local _, runs = daw.draw.waveform(clip:peaks(16), 3)
+    local _, runs = paw.draw.waveform(clip:peaks(16), 3)
     local out = {}
     for row = 1, 3 do
       for _, run in ipairs(runs[row]) do
@@ -89,25 +89,25 @@ test("columns that reach full scale, after the clip's gain, are drawn in the err
 
   -- On the screen the column is red whichever way up its cells are drawn.
   local _, clip = clip_with(1.0)
-  daw.opt.zoom, daw.opt.track_height = 8, 4
-  local red = require("daw.theme").palette.red
+  paw.opt.zoom, paw.opt.track_height = 8, 4
+  local red = require("paw.theme").palette.red
   local found = 0
   for _, row in ipairs(api.ui_view_snapshot("arrange", 100, 30).rows) do
     for _, run in ipairs(row) do
       if run.fg == red or run.bg == red then found = found + 1 end
     end
   end
-  daw.opt.zoom, daw.opt.track_height = 2, "auto"
+  paw.opt.zoom, paw.opt.track_height = 2, "auto"
   eq(found >= 3, true, "the clipping cells are red on the screen: " .. found)
 end)
 
 test("zooming draws the waveform again from the peaks, and the hit stays at its time", function()
   clip_with(0.8)
-  daw.opt.track_height = 4
+  paw.opt.track_height = 4
   local function column_of_hit(zoom)
-    daw.opt.zoom = zoom
+    paw.opt.zoom = zoom
     local lines = api.ui_snapshot(100, 30)
-    local hw = daw.ui.views.arrange.geometry.hw
+    local hw = paw.ui.views.arrange.geometry.hw
     for y, line in ipairs(lines) do
       if line:find("burst", 1, true) or (line:find("hits", 1, true) and line:find("▏", 1, true)) then
         local rows = { lines[y + 1], lines[y + 2], lines[y + 3] }
@@ -120,33 +120,33 @@ test("zooming draws the waveform again from the peaks, and the hit stays at its 
   end
   eq(column_of_hit(4), 2, "a quarter of a second is half a beat: two columns at 4 to a beat")
   eq(column_of_hit(8), 4, "and four columns at 8")
-  daw.opt.zoom, daw.opt.track_height = 2, "auto"
+  paw.opt.zoom, paw.opt.track_height = 2, "auto"
 end)
 
 test("the waveform is the same in cells with graphics on and off, and in ASCII it is still a shape", function()
   local _, clip = clip_with(1.0)
-  daw.opt.zoom, daw.opt.track_height = 8, 4
-  daw.opt.graphics = true
+  paw.opt.zoom, paw.opt.track_height = 8, 4
+  paw.opt.graphics = true
   local on = table.concat(api.ui_snapshot(100, 30), "\n")
-  daw.opt.graphics = false
+  paw.opt.graphics = false
   local off = table.concat(api.ui_snapshot(100, 30), "\n")
-  daw.opt.graphics = true
+  paw.opt.graphics = true
   eq(on, off, "pure cells either way")
-  daw.opt.ascii = true
-  local rows = daw.draw.waveform(clip:peaks(16), 3)
-  daw.opt.ascii = false
+  paw.opt.ascii = true
+  local rows = paw.draw.waveform(clip:peaks(16), 3)
+  paw.opt.ascii = false
   local lit = lit_columns(rows)
   eq(lit[4], true, "ASCII draws the hit too")
   for _, row in ipairs(rows) do eq(row:find("[\128-\255]") == nil, true, "with nothing outside ASCII: " .. row) end
-  daw.opt.zoom, daw.opt.track_height = 2, "auto"
+  paw.opt.zoom, paw.opt.track_height = 2, "auto"
 end)
 
 test("a decibel scale makes quiet sound reach further than the linear one does", function()
   local _, clip = clip_with(0.05)
-  local linear = daw.draw.waveform(clip:peaks(16), 3)
-  daw.opt.wave_scale = "db"
-  local db = daw.draw.waveform(clip:peaks(16), 3)
-  daw.opt.wave_scale = "linear"
+  local linear = paw.draw.waveform(clip:peaks(16), 3)
+  paw.opt.wave_scale = "db"
+  local db = paw.draw.waveform(clip:peaks(16), 3)
+  paw.opt.wave_scale = "linear"
   eq(chars(linear[1])[5], " ", "linear: -26 dB is too small to leave the middle row")
   eq(chars(db[1])[5] ~= " ", true, "decibels: it reaches the top row")
 end)

@@ -1,22 +1,22 @@
 -- Tests of the pointer in the terminal: presses, drags, releases, the wheel
--- and modifiers fed to `daw.ui.mouse` in screen cells, as the terminal
+-- and modifiers fed to `paw.ui.mouse` in screen cells, as the terminal
 -- sends them, and what they did read back through the API and the screen.
 -- Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
-local api = daw.api
+local api = paw.api
 
 local W, H = 140, 44
-local arrange = daw.ui.views.arrange
-local roll = daw.ui.views.pianoroll
+local arrange = paw.ui.views.arrange
+local roll = paw.ui.views.pianoroll
 local saved = {}
-for _, name in ipairs({ "zoom", "grid", "track_height", "note_zoom", "note_grid", "mouse", "note_snap" }) do saved[name] = daw.opt[name] end
+for _, name in ipairs({ "zoom", "grid", "track_height", "note_zoom", "note_grid", "mouse", "note_snap" }) do saved[name] = paw.opt[name] end
 
 local function shot(height) return api.ui_snapshot(W, height or H) end
 local function screen() return table.concat(shot(), "\n") end
 
 local function m(kind, x, y, button, mods)
-  daw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
+  paw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
 end
 local function click(x, y, button, mods)
   m("down", x, y, button, mods)
@@ -29,20 +29,20 @@ local function drag(x0, y0, x1, y1, button, mods)
   m("up", x1, y1, button, mods)
 end
 --- Let time pass since the last press, so that the next is not a double click.
-local function apart() daw.mouse.forget() end
+local function apart() paw.mouse.forget() end
 
 local function start()
   fresh()
   api.engine_restart({ backend = "null" })
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
-  require("daw.menu").close(0)
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do daw.ui.hide(name) end
-  daw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
+  require("paw.menu").close(0)
+  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
+  paw.ui.focus("arrange")
   arrange.scroll, arrange.top = 0, 1
-  daw.opt.mouse, daw.opt.zoom, daw.opt.grid, daw.opt.track_height = true, 4, 1, 3
-  daw.opt.note_zoom, daw.opt.note_grid, daw.opt.note_snap = 8, 0.25, true
-  daw.tempolane.show(false)
+  paw.opt.mouse, paw.opt.zoom, paw.opt.grid, paw.opt.track_height = true, 4, 1, 3
+  paw.opt.note_zoom, paw.opt.note_grid, paw.opt.note_snap = 8, 0.25, true
+  paw.tempolane.show(false)
   apart()
 end
 
@@ -83,12 +83,12 @@ end
 --- Two tracks with two clips of four beats on the first, at 0 and 8.
 local function two_tracks()
   start()
-  local a = daw.add_track({ name = "A" })
-  local b = daw.add_track({ name = "B" })
+  local a = paw.add_track({ name = "A" })
+  local b = paw.add_track({ name = "B" })
   a:add_clip({ name = "x", start = 0, length = 4 })
   a:add_clip({ name = "y", start = 8, length = 4 })
-  daw.cursor.set_track(a)
-  daw.cursor.set_beat(0)
+  paw.cursor.set_track(a)
+  paw.cursor.set_beat(0)
   api.undo_checkpoint()
   shot()
   return a, b
@@ -99,12 +99,12 @@ end
 test("a click on an empty lane puts the cursor on that track at that beat and lets go of the chosen clips", function()
   local a, b = two_tracks()
   click(x_of(1), row_y(a.id))
-  eq(#daw.frontend.chosen_clips(), 1, "a click on a clip chooses it")
+  eq(#paw.frontend.chosen_clips(), 1, "a click on a clip chooses it")
   click(x_of(5) + 1, row_y(b.id) + 1)
-  eq(daw.cursor.track_id(), b.id, "the cursor is on the track clicked")
-  eq(daw.cursor.beat, 5, "at the grid step the cell is in")
-  eq(#daw.frontend.chosen_clips(), 0, "and the chosen clip is let go")
-  eq(daw.ui.focused, "arrange", "the arrange view has the keyboard")
+  eq(paw.cursor.track_id(), b.id, "the cursor is on the track clicked")
+  eq(paw.cursor.beat, 5, "at the grid step the cell is in")
+  eq(#paw.frontend.chosen_clips(), 0, "and the chosen clip is let go")
+  eq(paw.ui.focused, "arrange", "the arrange view has the keyboard")
 end)
 
 test("a click on a clip chooses it, Ctrl and a click adds another, Shift takes in those between", function()
@@ -112,15 +112,15 @@ test("a click on a clip chooses it, Ctrl and a click adds another, Shift takes i
   a:add_clip({ name = "z", start = 16, length = 4 })
   shot()
   click(x_of(1), row_y(a.id))
-  eq(daw.frontend.chosen_clips()[1], a:clips()[1].id, "the clip clicked is chosen")
+  eq(paw.frontend.chosen_clips()[1], a:clips()[1].id, "the clip clicked is chosen")
   click(x_of(9), row_y(a.id), "left", "C")
-  eq(#daw.frontend.chosen_clips(), 2, "Ctrl adds the second")
-  eq(daw.keymap.mode, "x", "two chosen clips are visual mode's selection")
-  daw.keymap.feed("<Esc>")
+  eq(#paw.frontend.chosen_clips(), 2, "Ctrl adds the second")
+  eq(paw.keymap.mode, "x", "two chosen clips are visual mode's selection")
+  paw.keymap.feed("<Esc>")
   apart()
   click(x_of(1), row_y(a.id))
   click(x_of(17), row_y(a.id), "left", "S")
-  eq(#daw.frontend.chosen_clips(), 3, "Shift takes in the clips from the first to the third")
+  eq(#paw.frontend.chosen_clips(), 3, "Shift takes in the clips from the first to the third")
 end)
 
 test("dragging a clip moves it by whole grid steps, onto another track, as one undo step", function()
@@ -134,7 +134,7 @@ test("dragging a clip moves it by whole grid steps, onto another track, as one u
   api.undo_checkpoint()
   eq(clips(b), "x@2+4", "the clip lands two beats on, on the track below")
   eq(clips(a), "y@8+4", "and leaves its own track")
-  daw.undo()
+  paw.undo()
   eq(clips(a), "x@0+4 y@8+4", "one undo takes the whole drag back")
 end)
 
@@ -157,8 +157,8 @@ end)
 test("a drag across empty lanes selects that stretch of time on the tracks it crosses", function()
   local a, b = two_tracks()
   drag(x_of(4), row_y(a.id) + 1, x_of(8) - 1, row_y(b.id) + 1)
-  local sel = daw.keymap.selection()
-  eq(daw.keymap.mode, "x", "visual mode")
+  local sel = paw.keymap.selection()
+  eq(paw.keymap.mode, "x", "visual mode")
   eq(sel and (sel.r0 .. "-" .. sel.r1 .. " " .. sel.c0 .. "-" .. sel.c1), "1-2 4-8", "two tracks, beats 4 to 8")
 end)
 
@@ -168,19 +168,19 @@ test("a drag with the right button draws a box that chooses the clips it touches
   shot()
   m("down", x_of(2), row_y(a.id) + 1, "right")
   m("drag", x_of(5), row_y(b.id) + 1, "right")
-  eq(cell(x_of(3), row_y(a.id) + 1), daw.draw.g.h, "the box is drawn")
+  eq(cell(x_of(3), row_y(a.id) + 1), paw.draw.g.h, "the box is drawn")
   m("up", x_of(5), row_y(b.id) + 1, "right")
-  eq(#daw.frontend.chosen_clips(), 2, "x and w are chosen, y is not")
+  eq(#paw.frontend.chosen_clips(), 2, "x and w are chosen, y is not")
 end)
 
 test("a double click on a clip opens it in the piano roll, and on an empty lane makes a clip of a bar", function()
   local a, b = two_tracks()
   click(x_of(1), row_y(a.id))
   click(x_of(1), row_y(a.id))
-  eq(daw.ui.focused, "pianoroll", "the piano roll has the clip")
+  eq(paw.ui.focused, "pianoroll", "the piano roll has the clip")
   eq(roll.clip_id, a:clips()[1].id, "the clip clicked")
-  daw.ui.hide("pianoroll")
-  daw.ui.focus("arrange")
+  paw.ui.hide("pianoroll")
+  paw.ui.focus("arrange")
   shot()
   apart()
   click(x_of(5), row_y(b.id) + 1)
@@ -204,15 +204,15 @@ test("a menu answers the keys: j and k move, l opens a submenu, Enter chooses, E
   local a, b = two_tracks()
   click(3, row_y(a.id) + 1, "right")
   eq(screen():find("Bounce to audio", 1, true) ~= nil, true, "the track's menu")
-  daw.keymap.feed("jl")
+  paw.keymap.feed("jl")
   eq(screen():find("Coral", 1, true) ~= nil, true, "the colours open beside it")
-  daw.keymap.feed("<CR>")
+  paw.keymap.feed("<CR>")
   eq(a:get().color ~= nil, true, "Enter chooses the first, coral")
   click(3, row_y(a.id) + 1, "right")
-  daw.keymap.feed("<Esc>")
+  paw.keymap.feed("<Esc>")
   eq(screen():find("Bounce to audio", 1, true), nil, "Esc lets the menu go")
-  daw.keymap.feed("j")
-  eq(daw.cursor.track_id(), b.id, "and the keys are the view's again")
+  paw.keymap.feed("j")
+  eq(paw.cursor.track_id(), b.id, "and the keys are the view's again")
 end)
 
 test("a click outside a menu lets it go without doing anything else", function()
@@ -220,12 +220,12 @@ test("a click outside a menu lets it go without doing anything else", function()
   click(x_of(1), row_y(a.id), "right")
   click(x_of(20), row_y(b.id) + 1)
   eq(screen():find("Split at the pointer", 1, true), nil, "the menu is gone")
-  eq(daw.cursor.track_id(), a.id, "the click did not reach the lane")
+  eq(paw.cursor.track_id(), a.id, "the click did not reach the lane")
 end)
 
 test("a header's M, S, R and I switch, and a press on M swept down mutes the tracks it crosses", function()
   local a, b = two_tracks()
-  local c = daw.add_track({ name = "C" })
+  local c = paw.add_track({ name = "C" })
   shot()
   local flags = arrange.flags
   click(flags.solo, row_y(a.id))
@@ -273,7 +273,7 @@ end)
 
 test("the loop's edges drag on the ruler", function()
   two_tracks()
-  daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 4, 8, true
+  paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 4, 8, true
   shot()
   drag(x_of(8) - 1, 0, x_of(12) - 1, 0)
   eq(api.transport_get().loop_end, 12, "the end follows")
@@ -300,7 +300,7 @@ end)
 
 test("the tempo lane: a click adds a change, a drag on one moves it, a right click on one removes it", function()
   two_tracks()
-  daw.tempolane.show(true)
+  paw.tempolane.show(true)
   shot()
   local y0 = arrange.geometry.layout.ruler_rows - 2
   click(x_of(8), y0 + 1)
@@ -309,37 +309,37 @@ test("the tempo lane: a click adds a change, a drag on one moves it, a right cli
   eq(tempos[2].beat, 8, "at beat 8")
   shot()
   local x = x_of(8)
-  local line = daw.tempolane.fraction(tempos[2].bpm) >= 0.5 and y0 or y0 + 1
+  local line = paw.tempolane.fraction(tempos[2].bpm) >= 0.5 and y0 or y0 + 1
   apart()
   drag(x, line, x + 8, line - 2)
   tempos = api.tempo_points().tempos
   eq(tempos[2].beat, 10, "dragged two beats on")
   shot()
-  line = daw.tempolane.fraction(tempos[2].bpm) >= 0.5 and y0 or y0 + 1
+  line = paw.tempolane.fraction(tempos[2].bpm) >= 0.5 and y0 or y0 + 1
   apart()
   click(x_of(10), line, "right")
   eq(#api.tempo_points().tempos, 1, "and removed with the right button")
-  daw.tempolane.show(false)
+  paw.tempolane.show(false)
 end)
 
 test("a marker drags in its band under the ruler, and a click on it goes there", function()
   two_tracks()
-  local mk = daw.markers.add(8, "Chorus")
+  local mk = paw.markers.add(8, "Chorus")
   shot()
   local x, y = find("Chorus")
   drag(x, y, x + 8, y)
-  eq(daw.markers.find({ id = mk.id }).beat, 10, "two beats on")
+  eq(paw.markers.find({ id = mk.id }).beat, 10, "two beats on")
   shot()
   x, y = find("Chorus")
   apart()
-  daw.cursor.set_beat(0)
+  paw.cursor.set_beat(0)
   click(x, y)
-  eq(daw.cursor.beat, 10, "a click goes to it")
+  eq(paw.cursor.beat, 10, "a click goes to it")
 end)
 
 test("automation lanes shown as rows: a click adds a point, a right click on it removes it, a drag draws", function()
   local a = two_tracks()
-  daw.frontend.act.lane_rows(a.id)
+  paw.frontend.act.lane_rows(a.id)
   shot()
   local lane = api.lane_list(a.id)[1].id
   local y = row_y(a.id, "lane")
@@ -360,26 +360,26 @@ test("a warp marker of an audio clip drags along it", function()
   local source = T.tone("source", 8)
   local wav = T.render({ tail = 0, bits = 32 })
   source:remove()
-  local t = daw.add_track({ name = "audio" })
+  local t = paw.add_track({ name = "audio" })
   local clip = t:add_clip({ file = wav.path, start = 0, length = 8 })
-  daw.frontend.act.warp_add(clip.id, 4)
+  paw.frontend.act.warp_add(clip.id, 4)
   shot()
   local warps = api.clip_get(clip.id).warp
   eq(#warps, 1, "a warp marker")
   drag(x_of(warps[1].beat), row_y(t.id) + 1, x_of(warps[1].beat) + 4, row_y(t.id) + 1)
-  local _, off = daw.stretch.warp_near(api.clip_get(clip.id), 5)
+  local _, off = paw.stretch.warp_near(api.clip_get(clip.id), 5)
   near(off, 0, 1e-6, "it plays a beat later")
 end)
 
 test("the wheel scrolls the tracks, with Shift sideways, and with Ctrl zooms in time where the pointer is", function()
   local a = two_tracks()
   m("scroll_down", x_of(2), row_y(a.id), "", "S")
-  eq(arrange.scroll, daw.time.bar(), "a bar sideways")
+  eq(arrange.scroll, paw.time.bar(), "a bar sideways")
   m("scroll_up", x_of(2), row_y(a.id), "", "S")
   eq(arrange.scroll, 0, "and back")
   local x = x_of(8)
   m("scroll_up", x, row_y(a.id), "", "C")
-  eq(daw.opt.zoom > 4, true, "Ctrl and the wheel zoom in")
+  eq(paw.opt.zoom > 4, true, "Ctrl and the wheel zoom in")
   shot()
   near(arrange.scroll + (x - arrange.geometry.hw) / arrange.geometry.zoom, 8, 0.01, "keeping beat 8 under the pointer")
 end)
@@ -393,14 +393,14 @@ test("the pointer going over a clip says on the status line what it is and what 
   eq(screen():find("click chooses", 1, true), nil, "and nothing once the pointer has left")
 end)
 
-test("with daw.opt.mouse off the pointer reaches nothing, and the terminal is asked to keep it", function()
+test("with paw.opt.mouse off the pointer reaches nothing, and the terminal is asked to keep it", function()
   local a = two_tracks()
-  daw.opt.mouse = false
+  paw.opt.mouse = false
   click(x_of(9), row_y(a.id))
-  eq(#daw.frontend.chosen_clips(), 0, "the click was not taken")
-  daw.opt.mouse = true
+  eq(#paw.frontend.chosen_clips(), 0, "the click was not taken")
+  paw.opt.mouse = true
   click(x_of(9), row_y(a.id))
-  eq(#daw.frontend.chosen_clips(), 1, "and is again with it on")
+  eq(#paw.frontend.chosen_clips(), 1, "and is again with it on")
 end)
 
 -- The piano roll -------------------------------------------------------------------------------
@@ -409,14 +409,14 @@ end)
 --- a pitch and a beat are on the screen.
 local function rolled(notes)
   start()
-  local t = daw.add_track({ name = "keys" })
+  local t = paw.add_track({ name = "keys" })
   local clip = t:add_clip({ name = "riff", start = 0, length = 8, notes = notes or {} })
   roll:edit(clip)
   roll.top, roll.scroll, roll.pitch, roll.beat = 72, 0, 60, 0
   api.undo_checkpoint()
   shot()
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "pianoroll" then rect = r end end
+  for _, r in ipairs(paw.ui.rects) do if r.name == "pianoroll" then rect = r end end
   local g = roll.geometry
   local function at(pitch, beat)
     return rect.x + g.keys + math.floor((beat - roll.scroll) * g.zoom + 0.5), rect.y + g.head + (roll.top - pitch)
@@ -435,7 +435,7 @@ test("a click on empty grid draws a note of the roll's length, and a drag draws 
   local x, y = at(64, 1)
   click(x, y)
   eq(notes_of(clip), "64@1+0.25", "a click: a note of one step where it was clicked")
-  eq(daw.frontend.chosen_notes(clip.id)[1], 1, "which is chosen")
+  eq(paw.frontend.chosen_notes(clip.id)[1], 1, "which is chosen")
   x, y = at(67, 2)
   m("down", x, y)
   m("drag", x + 3, y)
@@ -443,23 +443,23 @@ test("a click on empty grid draws a note of the roll's length, and a drag draws 
   m("drag", x + 7, y)
   m("up", x + 7, y)
   eq(notes_of(clip), "64@1+0.25 67@2+1", "dragged across eight cells, a beat long")
-  daw.ui.views.pianoroll:set_step(nil)
+  paw.ui.views.pianoroll:set_step(nil)
 end)
 
 test("a click on a note chooses it, a drag moves it, and Ctrl leaves a copy behind", function()
   local clip, at = rolled({ { pitch = 60, start = 0, length = 1 }, { pitch = 62, start = 2, length = 1 } })
   local x, y = at(60, 0.5)
   click(x, y)
-  eq(daw.frontend.chosen_notes(clip.id)[1], 1, "chosen")
+  eq(paw.frontend.chosen_notes(clip.id)[1], 1, "chosen")
   eq(notes_of(clip), "60@0+1 62@2+1", "and left as it was")
   local x2, y2 = at(62, 2.5)
   click(x2, y2, "left", "C")
-  eq(#daw.frontend.chosen_notes(clip.id), 2, "Ctrl adds the other")
+  eq(#paw.frontend.chosen_notes(clip.id), 2, "Ctrl adds the other")
   apart()
   drag(x, y, x + 8, y - 2)
   api.undo_checkpoint()
   eq(notes_of(clip), "62@1+1 64@3+1", "both move a beat on and two semitones up")
-  daw.undo()
+  paw.undo()
   eq(notes_of(clip), "60@0+1 62@2+1", "one undo step")
   shot()
   apart()
@@ -483,7 +483,7 @@ test("the right button: a box chooses notes, a click removes a note, on empty gr
   local x0, y0 = at(63, 0)
   local x1, y1 = at(59, 3)
   drag(x0, y0, x1, y1, "right")
-  eq(table.concat(daw.frontend.chosen_notes(clip.id), ","), "1,2", "the two notes in the box")
+  eq(table.concat(paw.frontend.chosen_notes(clip.id), ","), "1,2", "the two notes in the box")
   local x, y = at(70, 4.5)
   click(x, y, "right")
   eq(notes_of(clip), "60@0+1 62@2+1", "a right click removes the note")
@@ -492,7 +492,7 @@ test("the right button: a box chooses notes, a click removes a note, on empty gr
   local ex, ey = find("Choose every note")
   eq(ex ~= nil, true, "the grid's menu")
   click(ex, ey)
-  eq(#daw.frontend.chosen_notes(clip.id), 2, "whose first entry chooses every note")
+  eq(#paw.frontend.chosen_notes(clip.id), 2, "whose first entry chooses every note")
 end)
 
 test("a double click on a note removes it, and Alt and a drag erases every note it crosses", function()
@@ -514,7 +514,7 @@ test("the piano roll's keyboard sounds a key, and a right drag down it chooses t
   local _, y64 = at(64, 0)
   click(rect.x + 1, y60)
   drag(rect.x + 1, y64, rect.x + 1, y60, "right")
-  eq(table.concat(daw.frontend.chosen_notes(clip.id), ","), "1,2", "C4 to E4")
+  eq(table.concat(paw.frontend.chosen_notes(clip.id), ","), "1,2", "C4 to E4")
 end)
 
 test("drawing across the velocity strip sets how hard the notes under the stroke play", function()
@@ -534,7 +534,7 @@ end)
 
 test("the strip under the piano roll shows a controller chosen by its name, drawn on and its moves chosen and moved", function()
   local clip, at, rect = rolled()
-  local strip = require("daw.views.pianoroll_strip")
+  local strip = require("paw.views.pianoroll_strip")
   local g = roll.geometry
   local top = rect.y + g.head + g.rows
   click(rect.x + 1, top + g.vel - 1)
@@ -583,7 +583,7 @@ test("the wheel in the piano roll scrolls the pitches, and Ctrl zooms in time", 
   m("scroll_up", x, y, "", "")
   eq(roll.top, 74, "two rows up")
   m("scroll_down", x, y, "", "C")
-  eq(daw.opt.note_zoom < 8, true, "zoomed out")
+  eq(paw.opt.note_zoom < 8, true, "zoomed out")
 end)
 
 -- The mixer and the device panel -------------------------------------------------------------------
@@ -596,17 +596,17 @@ local function mixer_node()
       if found then return found end
     end
   end
-  return find(daw.ui.layout)
+  return find(paw.ui.layout)
 end
 
 local function mixed()
   start()
-  local a = daw.add_track({ name = "A" })
-  local b = daw.add_track({ name = "B" })
+  local a = paw.add_track({ name = "A" })
+  local b = paw.add_track({ name = "B" })
   a:add_device("synth")
   api.track_set(a.id, "sends", { { target = b.id, level = -6 } })
-  daw.cursor.set_track(a)
-  daw.ui.show("mixer")
+  paw.cursor.set_track(a)
+  paw.ui.show("mixer")
   -- Tall enough for the strips to show their devices and sends; the
   -- layout is put back as it was by the last test.
   local node = mixer_node()
@@ -615,8 +615,8 @@ local function mixed()
   api.undo_checkpoint()
   shot(90)
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "mixer" then rect = r end end
-  local s = daw.ui.views.mixer.geometry.strips[1]
+  for _, r in ipairs(paw.ui.rects) do if r.name == "mixer" then rect = r end end
+  local s = paw.ui.views.mixer.geometry.strips[1]
   -- From the strip's own lines (under the title bar) to the screen.
   local function at(x, y) return rect.x + x, rect.y + 1 + y end
   return a, b, s, at
@@ -650,7 +650,7 @@ test("a send in a mixer strip drags sideways, and a click on a device picks it i
   near(a:get().sends[1].level, -3, 1e-9, "three cells, three decibels")
   x, y = at(s.x + 2, s.devices)
   click(x, y)
-  eq(daw.ui.focused, "devices", "the device panel has the keyboard")
+  eq(paw.ui.focused, "devices", "the device panel has the keyboard")
 end)
 
 test("a right click on a mixer strip opens the track's menu", function()
@@ -658,19 +658,19 @@ test("a right click on a mixer strip opens the track's menu", function()
   local x, y = at(s.x + 2, 0)
   click(x, y, "right")
   eq(screen():find("Bounce to audio", 1, true) ~= nil, true, "the track's menu")
-  daw.keymap.feed("<Esc>")
+  paw.keymap.feed("<Esc>")
 end)
 
 test("a parameter's slider in the device panel follows the pointer, a double click puts it back, on and off bypass", function()
   start()
-  local t = daw.add_track({ name = "S" })
+  local t = paw.add_track({ name = "S" })
   local d = t:add_device("synth")
-  daw.cursor.set_track(t)
-  daw.ui.show("devices")
+  paw.cursor.set_track(t)
+  paw.ui.show("devices")
   shot()
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "devices" then rect = r end end
-  local panel = daw.ui.views.devices
+  for _, r in ipairs(paw.ui.rects) do if r.name == "devices" then rect = r end end
+  local panel = paw.ui.views.devices
   -- The " on " chip at the right of the device's line.
   local x, y = rect.x + rect.w - 4, rect.y + 1
   click(x, y)
@@ -688,7 +688,7 @@ test("a parameter's slider in the device panel follows the pointer, a double cli
   local bar_at = 2 + name_w + 1
   local bar = math.max(3, w - bar_at - 10)
   click(rect.x + bar_at + bar - 1, ly)
-  near(daw.params.fraction(p, api.device_get(d.id).params[p.key]), 1 - 0.5 / bar, 0.02, "the last cell of the slider")
+  near(paw.params.fraction(p, api.device_get(d.id).params[p.key]), 1 - 0.5 / bar, 0.02, "the last cell of the slider")
   apart()
   click(rect.x + bar_at, ly)
   click(rect.x + bar_at, ly)
@@ -697,20 +697,20 @@ end)
 
 test("in the piano roll a note of another clip edited with the active one is chosen and dragged in its own clip", function()
   start()
-  local t = daw.add_track({ name = "keys" })
+  local t = paw.add_track({ name = "keys" })
   local first = t:add_clip({ name = "a", start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
   local second = t:add_clip({ name = "b", start = 4, length = 4, notes = { { pitch = 62, start = 1, length = 1 } } })
   roll:edit(first)
-  daw.roll_clips.open({ first.id, second.id }, first.id)
+  paw.roll_clips.open({ first.id, second.id }, first.id)
   roll.top, roll.scroll = 72, 0
   shot()
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "pianoroll" then rect = r end end
+  for _, r in ipairs(paw.ui.rects) do if r.name == "pianoroll" then rect = r end end
   local g = roll.geometry
   local function at(pitch, beat) return rect.x + g.keys + math.floor(beat * g.zoom + 0.5), rect.y + g.head + (roll.top - pitch) end
   local x, y = at(62, 5.5)
   click(x, y)
-  eq(daw.frontend.chosen_notes(second.id)[1], 1, "the second clip's note is chosen")
+  eq(paw.frontend.chosen_notes(second.id)[1], 1, "the second clip's note is chosen")
   apart()
   drag(x, y, x + 8, y)
   eq(notes_of(second), "62@2+1", "and moved a beat on in its own clip")
@@ -719,27 +719,27 @@ end)
 
 test("the session view: a click chooses a slot, its play mark launches it, a double click makes a clip, a drag moves one", function()
   start()
-  local launcher = daw.launcher
-  local t = daw.add_track({ name = "Keys" })
+  local launcher = paw.launcher
+  local t = paw.add_track({ name = "Keys" })
   t:add_device("synth")
   launcher.new_clip(t.id, 0)
-  daw.ui.show("session")
+  paw.ui.show("session")
   shot()
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "session" then rect = r end end
-  local view = daw.ui.views.session
+  for _, r in ipairs(paw.ui.rects) do if r.name == "session" then rect = r end end
+  local view = paw.ui.views.session
   local col = view.geometry.columns[1]
   local function slot(row) return rect.x + col.x, rect.y + 1 + (row - view.top) + 1 end
   local x, y = slot(1)
   click(x + 4, y)
-  eq(launcher.row .. " " .. daw.ui.focused, "1 session", "a click chooses the slot")
+  eq(launcher.row .. " " .. paw.ui.focused, "1 session", "a click chooses the slot")
   apart()
   x, y = slot(2)
   click(x + 4, y)
   click(x + 4, y)
   eq(launcher.clip(t.id, 2) ~= nil, true, "a double click on an empty slot makes a clip there")
-  eq(daw.ui.focused, "pianoroll", "and opens it")
-  daw.ui.hide("pianoroll")
+  eq(paw.ui.focused, "pianoroll", "and opens it")
+  paw.ui.hide("pianoroll")
   shot()
   apart()
   x, y = slot(0)
@@ -749,22 +749,22 @@ test("the session view: a click chooses a slot, its play mark launches it, a dou
     local s = launcher.state()[t.id] or {}
     return s.slot == 0 or s.queued == 0
   end
-  while not launched() and api.now() < deadline do daw.wait(5) end
+  while not launched() and api.now() < deadline do paw.wait(5) end
   eq(launched(), true, "the play mark launches the clip")
   launcher.stop(nil)
-  daw.transport.stop()
+  paw.transport.stop()
   apart()
   local _, y3 = slot(3)
   drag(x + 4, y, x + 4, y3)
   eq(launcher.clip(t.id, 3) ~= nil and launcher.clip(t.id, 0) == nil, true, "a drag moves the clip to another slot")
-  daw.ui.hide("session")
+  paw.ui.hide("session")
 end)
 
 -- What floats over the views ------------------------------------------------------------------------
 
 test("the command line's list: a click puts a candidate in the line, a second click runs it", function()
   start()
-  daw.keymap.feed(":tempo.la")
+  paw.keymap.feed(":tempo.la")
   local x, y = find("tempo.lane")
   eq(x ~= nil, true, "the list is shown")
   local lines = shot()
@@ -776,17 +776,17 @@ test("the command line's list: a click puts a candidate in the line, a second cl
     end
   end
   click(x, y)
-  eq(require("daw.views.cmdline").state().before, "tempo.lane", "the candidate is in the line")
+  eq(require("paw.views.cmdline").state().before, "tempo.lane", "the candidate is in the line")
   click(x, y)
-  eq(require("daw.views.cmdline").state(), nil, "and run")
-  eq(daw.tempolane.shown(), true, "it ran")
-  daw.tempolane.show(false)
+  eq(require("paw.views.cmdline").state(), nil, "and run")
+  eq(paw.tempolane.shown(), true, "it ran")
+  paw.tempolane.show(false)
 end)
 
 test("a picker's row is chosen with two clicks, and the wheel moves through it", function()
   start()
   local chosen
-  daw.pick({ title = "Fruit", items = { { text = "apple" }, { text = "banana" }, { text = "cherry" } }, on_choose = function(item) chosen = item.text end })
+  paw.pick({ title = "Fruit", items = { { text = "apple" }, { text = "banana" }, { text = "cherry" } }, on_choose = function(item) chosen = item.text end })
   local x, y = find("banana")
   click(x, y)
   click(x, y)
@@ -796,8 +796,8 @@ end)
 test("the pointer's tests leave the options as they found them", function()
   if saved.mixer_size ~= nil then mixer_node().size = saved.mixer_size or nil end
   saved.mixer_size = nil
-  for name, value in pairs(saved) do daw.opt[name] = value end
-  daw.ui.hide("mixer")
-  daw.ui.hide("devices")
-  eq(daw.opt.mouse, true, "the pointer is on")
+  for name, value in pairs(saved) do paw.opt[name] = value end
+  paw.ui.hide("mixer")
+  paw.ui.hide("devices")
+  eq(paw.opt.mouse, true, "the pointer is on")
 end)

@@ -1,11 +1,11 @@
 -- `:help all`: the keys that work where the cursor is, as one long list.
--- `?` shows them in a picker (daw/pick/sources.lua), and `:help` with a
--- topic opens the manual (daw/help.lua).
-local api = daw.api
+-- `?` shows them in a picker (paw/pick/sources.lua), and `:help` with a
+-- topic opens the manual (paw/help.lua).
+local api = paw.api
 
 -- `modal` sends every key to `on_key`, bypassing the mappings behind the window.
 local view = { scroll = 0, lines = {}, modal = true }
-daw.seats.fields("help", view, { "scroll", "lines" }, { scroll = 0, lines = {} })
+paw.seats.fields("help", view, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
 local function collect(target)
   local lines = {}
@@ -14,13 +14,13 @@ local function collect(target)
     lines[#lines + 1] = { title = title }
     for _, map in ipairs(list) do
       local what = map.desc or (type(map.rhs) == "string" and map.rhs) or "(function)"
-      lines[#lines + 1] = { key = daw.keymap.human(map.lhs), text = what }
+      lines[#lines + 1] = { key = paw.keymap.human(map.lhs), text = what }
     end
     lines[#lines + 1] = {}
   end
   local function of(mode, keep)
     local own, global = {}, {}
-    for _, map in ipairs(daw.keymap.list(mode, target)) do
+    for _, map in ipairs(paw.keymap.list(mode, target)) do
       if not keep or keep(map) then table.insert(map.scope == "global" and global or own, map) end
     end
     return own, global
@@ -36,14 +36,14 @@ local function collect(target)
   section("motions: alone, after an operator, or to stretch a selection", join(of("n", function(map) return map.motion end)))
   section("operators: then a motion or text object, twice for whole rows, or on a selection", join(of("n", function(map) return map.operator end)))
   section("text objects: after an operator, or in a selection", join(of("o", function(map) return map.object end)))
-  section("on a selection (v, V, <C-v>)", join(of("x", function(map) return not map.motion and not map.object and not daw.keymap.has("n", map) end)))
+  section("on a selection (v, V, <C-v>)", join(of("x", function(map) return not map.motion and not map.object and not paw.keymap.has("n", map) end)))
   section("insert mode", join(of("i")))
   return lines
 end
 
 function view:render(buf)
   local rows = buf.height - 1
-  self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #self.lines - rows))
+  self.scroll = paw.util.clamp(self.scroll, 0, math.max(0, #self.lines - rows))
   for row = 0, rows - 1 do
     local line = self.lines[row + 1 + self.scroll]
     if line and line.title then
@@ -66,7 +66,7 @@ function view:on_key(key)
   elseif key == "<C-u>" or key == "<PageUp>" then
     self.scroll = self.scroll - 10
   else
-    daw.ui.close()
+    paw.ui.close()
   end
   api.ui_redraw()
 end
@@ -77,26 +77,26 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("help", view)
+paw.ui.view("help", view)
 
-daw.command("help", function(ctx)
+paw.command("help", function(ctx)
   local topic = (ctx.args[1] or ""):gsub("^%s+", ""):gsub("%s+$", "")
   if topic == "all" then
-    local target = daw.ui.focused
+    local target = paw.ui.focused
     view.lines, view.scroll = collect(target), 0
-    return daw.ui.open("help", { title = "Keys · " .. tostring(target) .. " · all", width = 76, height = 30 })
+    return paw.ui.open("help", { title = "Keys · " .. tostring(target) .. " · all", width = 76, height = 30 })
   end
-  daw.help.open(topic)
+  paw.help.open(topic)
 end, {
-  desc = "The manual: `help` its contents, `help gU` a key, `help :s` a command, `help 'timebind'` an option, `help daw.qf` a module, `help key-rule` a section (Tab completes). `help all` lists every key",
+  desc = "The manual: `help` its contents, `help gU` a key, `help :s` a command, `help 'timebind'` an option, `help paw.qf` a module, `help key-rule` a section (Tab completes). `help all` lists every key",
   raw = true,
-  complete = function(rest) return daw.help.complete(rest) end,
+  complete = function(rest) return paw.help.complete(rest) end,
 })
 
 -- A scrollable list of text lines, used for `:messages` and similar. Lines
 -- longer than the window go on over the next rows, indented.
 local pager = { scroll = 0, lines = {}, modal = true }
-daw.seats.fields("pager", pager, { "scroll", "lines" }, { scroll = 0, lines = {} })
+paw.seats.fields("pager", pager, { "scroll", "lines" }, { scroll = 0, lines = {} })
 
 --- The first `n` characters of `text` (not bytes), and the rest.
 local function split(text, n)
@@ -136,7 +136,7 @@ function pager:render(buf)
   for _, line in ipairs(self.lines) do
     for _, part in ipairs(wrap(line.text, math.max(8, buf.width - 2))) do rows[#rows + 1] = { text = part, style = line.style } end
   end
-  self.scroll = daw.util.clamp(self.scroll, 0, math.max(0, #rows - buf.height))
+  self.scroll = paw.util.clamp(self.scroll, 0, math.max(0, #rows - buf.height))
   for row = 0, buf.height - 1 do
     local line = rows[row + 1 + self.scroll]
     if line then buf:text(1, row, line.text, line.style or "Normal") end
@@ -144,12 +144,12 @@ function pager:render(buf)
 end
 
 pager.on_key, pager.on_mouse = view.on_key, view.on_mouse
-daw.ui.view("pager", pager)
+paw.ui.view("pager", pager)
 
 --- Show lines of text in a floating window. Each line is a string or
 --- `{ text = ..., style = ... }`. With `opts.bottom` it opens at the end;
 --- `opts.width` and `opts.height` size it (100 by 30).
-function daw.ui.page(title, lines, opts)
+function paw.ui.page(title, lines, opts)
   pager.lines, pager.scroll = {}, opts and opts.bottom and math.huge or 0
   for _, line in ipairs(lines) do
     line = type(line) == "table" and line or { text = line }
@@ -157,5 +157,5 @@ function daw.ui.page(title, lines, opts)
       pager.lines[#pager.lines + 1] = { text = part:gsub("\t", "  "), style = line.style }
     end
   end
-  daw.ui.open("pager", { title = title, width = opts and opts.width or 100, height = opts and opts.height or 30 })
+  paw.ui.open("pager", { title = title, width = opts and opts.width or 100, height = opts and opts.height or 30 })
 end

@@ -1,6 +1,6 @@
 //! The client's side of the kernel's control protocol: one JSON object per
 //! line over a Unix socket, or over TCP inside TLS. docs/protocol.md
-//! describes it; the server's side is `daw_core::rpc`. Kept apart from the
+//! describes it; the server's side is `paw_core::rpc`. Kept apart from the
 //! kernel so that a program that only talks to one (the window, a remote
 //! terminal) need not be built with it.
 
@@ -24,13 +24,13 @@ pub use tls::Wire;
 pub const VERSION: u32 = 3;
 
 /// Where this program keeps what it learns on this machine:
-/// `$XDG_STATE_HOME/daw`, by default `~/.local/state/daw`.
+/// `$XDG_STATE_HOME/paw`, by default `~/.local/state/paw`.
 pub fn state_dir() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
         .unwrap_or_else(std::env::temp_dir)
-        .join("daw")
+        .join("paw")
 }
 
 /// A connection, as the kernel names it. 0 is no connection at all: the
@@ -49,8 +49,8 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// A connection to a kernel, for programs that talk to one: `daw ctl`,
-/// `daw attach`, the window. Replies come back from [`call`](Self::call);
+/// A connection to a kernel, for programs that talk to one: `paw ctl`,
+/// `paw attach`, the window. Replies come back from [`call`](Self::call);
 /// what the kernel pushes waits in [`events`](Self::events).
 pub struct Connection {
     writer: Box<dyn Write + Send>,
@@ -245,7 +245,7 @@ impl Connection {
     /// a new track, as `:import` does there. Returns its path there.
     pub fn send_and_import(&mut self, path: &Path) -> Result<String> {
         let there = self.send_file(path)?;
-        self.call("eval", json!(["daw.commands.run('import', { ... })", there]))?;
+        self.call("eval", json!(["paw.commands.run('import', { ... })", there]))?;
         Ok(there)
     }
 }

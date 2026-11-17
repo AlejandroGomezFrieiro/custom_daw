@@ -3,8 +3,8 @@
 -- An object is only an id with methods: reading `track.volume` asks the
 -- kernel, writing it tells the kernel. Objects stay valid across undo, and
 -- raise an error when the thing they point at no longer exists.
-local api = daw.api
-local music = require("daw.music")
+local api = paw.api
+local music = require("paw.music")
 
 local Track, Device, Clip, Lane = {}, {}, {}, {}
 local M = { Track = Track, Device = Device, Clip = Clip, Lane = Lane }
@@ -72,7 +72,7 @@ end
 ---   track:add_clip({ start = 8, file = "take1.wav" })
 function Track:add_clip(opts)
   opts = opts or {}
-  if opts.notes then opts = daw.util.merge(opts, { notes = M.notes(opts.notes) }) end
+  if opts.notes then opts = paw.util.merge(opts, { notes = M.notes(opts.notes) }) end
   return wrap(Clip, api.clip_add(self.id, opts))
 end
 
@@ -95,10 +95,10 @@ end
 function Track:meter() return api.track_meter(self.id) end
 
 --- Start a note now, outside the timeline. `pitch` may be a name like "C4".
---- With `attr`, a MIDI 2.0 attribute (`daw.attr`), the note carries it, and
+--- With `attr`, a MIDI 2.0 attribute (`paw.attr`), the note carries it, and
 --- what the track's `attr_map` sends for it goes first.
 function Track:note_on(pitch, velocity, attr)
-  daw.ui.poke()
+  paw.ui.poke()
   api.note_on(self.id, music.pitch(pitch), velocity, attr)
 end
 
@@ -113,15 +113,15 @@ end
 ---   track:midi({ type = "bend", value = -0.25 })
 ---   track:midi({ type = "bend", key = "C4", value = 0.1 })
 function Track:midi(event)
-  if event.key then event = daw.util.merge(event, { key = music.pitch(event.key) }) end
-  if event.pitch then event = daw.util.merge(event, { pitch = music.pitch(event.pitch) }) end
+  if event.key then event = paw.util.merge(event, { key = music.pitch(event.key) }) end
+  if event.pitch then event = paw.util.merge(event, { pitch = music.pitch(event.pitch) }) end
   api.midi_send(self.id, event)
 end
 
 --- Play a note for `ms` milliseconds (default 200), with `attr` if given.
 function Track:play_note(pitch, velocity, ms, attr)
   self:note_on(pitch, velocity, attr)
-  daw.defer(function() if self:exists() then self:note_off(pitch) end end, ms or 200)
+  paw.defer(function() if self:exists() then self:note_off(pitch) end end, ms or 200)
 end
 
 --- Send some of this track's output to another track. `level` is in dB.
@@ -134,7 +134,7 @@ function Track:send(target, level, opts)
 end
 
 --- Everything about the track as plain data: its settings, devices (plugins
---- with their state), clips and automation. `daw.restore_track` makes a
+--- with their state), clips and automation. `paw.restore_track` makes a
 --- track from it again, in this project or after the original is gone.
 function Track:snapshot()
   local t = self:get()
@@ -154,7 +154,7 @@ function Track:snapshot()
     snap.devices[i] = device:snapshot()
   end
   for i, clip in ipairs(self:clips()) do snap.clips[i] = clip:snapshot() end
-  -- The clips in its slots, each knowing its row (`daw.launcher`).
+  -- The clips in its slots, each knowing its row (`paw.launcher`).
   for _, clip in ipairs(api.slot_list(self.id)) do snap.clips[#snap.clips + 1] = wrap(Clip, clip.id):snapshot() end
   for i, lane in ipairs(api.lane_list(self.id)) do
     snap.lanes[i] = {
@@ -282,7 +282,7 @@ function Device:info()
   end
 end
 
---- The device as plain data, for `daw.restore_device`. A plugin is captured
+--- The device as plain data, for `paw.restore_device`. A plugin is captured
 --- by its state, which holds more than its parameters do.
 function Device:snapshot()
   local d = self:get()
@@ -300,7 +300,7 @@ end
 --- own track) into a track, or nowhere with nil. `device.outputs` is a table
 --- of pair number to track id; `device.ports.outputs` names the pairs.
 function Device:set_output(pair, track)
-  require("daw.routes").set_output(self.id, pair, id_of(track))
+  require("paw.routes").set_output(self.id, pair, id_of(track))
   return self
 end
 
@@ -399,14 +399,14 @@ function Clip:track() return wrap(Track, api.clip_get(self.id).track) end
 --- with `start` in beats from the start of the clip, `meta`, a table of
 --- extension data such as a lyric, on notes that have any, and `attr`, the
 --- MIDI 2.0 attribute of the note's start (`{ type, data }`, see
---- `daw.attr`), on notes that have one.
+--- `paw.attr`), on notes that have one.
 ---
 --- With a range, only the notes sounding within it, and as a second value
 --- the place of each in the whole list, for `set_note` and `remove_note`:
 ---   local notes, at = clip:notes({ from = 4, to = 8, low = "C3", high = "C5" })
 function Clip:notes(range)
   if range and (range.low or range.high) then
-    range = daw.util.merge(range, { low = range.low and music.pitch(range.low), high = range.high and music.pitch(range.high) })
+    range = paw.util.merge(range, { low = range.low and music.pitch(range.low), high = range.high and music.pitch(range.high) })
   end
   return api.clip_notes(self.id, range)
 end
@@ -420,7 +420,7 @@ function Clip:note_at(pitch, beat) return api.clip_note_at(self.id, music.pitch(
 --- the note's place afterwards, since notes stay in the order they start.
 --- `attr = false` takes its attribute away.
 function Clip:set_note(index, fields)
-  if fields.pitch then fields = daw.util.merge(fields, { pitch = music.pitch(fields.pitch) }) end
+  if fields.pitch then fields = paw.util.merge(fields, { pitch = music.pitch(fields.pitch) }) end
   return api.clip_note_set(self.id, index, fields)
 end
 
@@ -432,7 +432,7 @@ function Clip:remove_note(index) api.clip_note_remove(self.id, index) end
 function Clip:edit_notes(edit)
   local set = {}
   for i, change in ipairs(edit.set or {}) do
-    set[i] = change.pitch and daw.util.merge(change, { pitch = music.pitch(change.pitch) }) or change
+    set[i] = change.pitch and paw.util.merge(change, { pitch = music.pitch(change.pitch) }) or change
   end
   api.clip_notes_edit(self.id, { set = set, remove = edit.remove or {}, add = M.notes(edit.add or {}) })
 end
@@ -459,7 +459,7 @@ function Clip:controls() return api.clip_controls(self.id) end
 function Clip:set_controls(controls)
   local out = {}
   for i, c in ipairs(controls) do
-    out[i] = c.key and daw.util.merge(c, { key = music.pitch(c.key) }) or c
+    out[i] = c.key and paw.util.merge(c, { key = music.pitch(c.key) }) or c
   end
   api.clip_set_controls(self.id, out)
 end
@@ -467,11 +467,11 @@ end
 function Clip:add_notes(notes) api.clip_add_notes(self.id, M.notes(notes)) end
 
 ---   clip:add_note({ pitch = "E4", start = 1, length = 0.5, velocity = 90 })
----   clip:add_note({ pitch = "G4", start = 2, attr = daw.attr.m2("11.A") })   -- pizzicato
+---   clip:add_note({ pitch = "G4", start = 2, attr = paw.attr.m2("11.A") })   -- pizzicato
 --- Returns the note's place among the clip's notes.
 function Clip:add_note(note) return api.clip_note_add(self.id, M.notes({ note })[1]) end
 
---- The clip as plain data, for `daw.restore_clip`.
+--- The clip as plain data, for `paw.restore_clip`.
 function Clip:snapshot()
   local c = self:get()
   local snap = {
@@ -480,7 +480,7 @@ function Clip:snapshot()
     -- How it plays: an audio clip's timebase, stretch and shift; looping.
     timebase = c.timebase, stretch = c.stretch, pitch = c.pitch, stretch_mode = c.stretch_mode,
     source_tempo = c.source_tempo, loop = c.loop or nil, loop_length = c.loop_length, loop_start = c.loop_start,
-    warp = daw.stretch.markers(c), formants = c.formants or nil,
+    warp = paw.stretch.markers(c), formants = c.formants or nil,
     -- What extensions keep with the clip goes where the clip goes.
     meta = next(c.meta) and c.meta or nil,
     -- A clip in a slot: its row, and how it launches.
@@ -548,10 +548,10 @@ function M.notes(notes)
       pitch = music.pitch(note.pitch or note[1]),
       start = note.start or note[2] or 0,
       length = note.length or note[3] or 1,
-      velocity = note.velocity or note[4] or daw.opt.velocity,
+      velocity = note.velocity or note[4] or paw.opt.velocity,
       meta = note.meta,
       attr = note.attr,
-      -- A note given back keeps its name (`daw.address`); a new one gets one.
+      -- A note given back keeps its name (`paw.address`); a new one gets one.
       id = note.id,
     }
   end
@@ -560,7 +560,7 @@ end
 
 --- Add a clip from a snapshot to a track.
 function M.restore_clip(snap, track)
-  local opts = daw.util.merge(snap, {})
+  local opts = paw.util.merge(snap, {})
   opts.muted = nil
   local clip = wrap(Clip, api.clip_add(id_of(track), opts))
   if snap.muted then clip.muted = true end
@@ -580,14 +580,14 @@ function M.restore_device(snap, track, index)
   if snap.sidechain then
     local ok = pcall(device.set_sidechain, device, snap.sidechain, { pre = snap.sidechain_pre })
     if not ok then
-      daw.notify(string.format("%s no longer has its side-chain: track %s is gone or would make a loop",
+      paw.notify(string.format("%s no longer has its side-chain: track %s is gone or would make a loop",
         device.name, tostring(snap.sidechain)), "warn")
     end
   end
   -- So are the tracks its further output pairs played into.
   for pair, track in pairs(snap.outputs or {}) do
     if not pcall(device.set_output, device, tonumber(pair), track) then
-      daw.notify(string.format("%s output pair %s no longer plays anywhere: track %s is gone or would make a loop",
+      paw.notify(string.format("%s output pair %s no longer plays anywhere: track %s is gone or would make a loop",
         device.name, tostring(pair), tostring(track)), "warn")
     end
   end
@@ -595,7 +595,7 @@ function M.restore_device(snap, track, index)
 end
 
 function M.add_track(opts)
-  if opts and opts.output then opts = daw.util.merge(opts, { output = id_of(opts.output) }) end
+  if opts and opts.output then opts = paw.util.merge(opts, { output = id_of(opts.output) }) end
   return wrap(Track, api.track_add(opts))
 end
 
@@ -619,7 +619,7 @@ function M.lane(id) return wrap(Lane, id) end
 
 M.master = wrap(Track, 0)
 
--- `daw.project.tempo = 140`, `daw.project.save("song.json")`
+-- `paw.project.tempo = 140`, `paw.project.save("song.json")`
 M.project = setmetatable({
   new = api.project_new,
   load = api.project_load,
@@ -630,17 +630,17 @@ M.project = setmetatable({
   __newindex = function(_, key, value) api.project_set(key, value) end,
 })
 
--- `daw.transport.play()`, `daw.transport.position`, `daw.transport.loop_enabled = true`
+-- `paw.transport.play()`, `paw.transport.position`, `paw.transport.loop_enabled = true`
 M.transport = setmetatable({
   play = api.transport_play,
   stop = function()
-    daw.ui.poke()
+    paw.ui.poke()
     api.transport_stop()
   end,
   --- Turn recording on and play. Each armed track records a take until the
   --- transport stops or `recording` is turned off.
   record = function()
-    daw.ui.poke()
+    paw.ui.poke()
     api.transport_record()
   end,
   seek = api.transport_seek,
@@ -678,7 +678,7 @@ end)
 --- `force` is for a choice made later from a list, which asked before.
 rawset(M.project, "guard", function(what, force)
   if force or discarding or not M.project.unsaved() then return true end
-  daw.notify(string.format("the project has unsaved work: `:w` saves it, `:%s!` goes on without it", what), "error")
+  paw.notify(string.format("the project has unsaved work: `:w` saves it, `:%s!` goes on without it", what), "error")
   return false
 end)
 
@@ -687,10 +687,10 @@ rawset(M.project, "discarding", function() return discarding end)
 
 --- Define `<name>!`, which is `name` with the unsaved work thrown away.
 rawset(M.project, "allow_discard", function(name)
-  local spec = daw.commands.get(name)
-  daw.command(name .. "!", function(ctx)
+  local spec = paw.commands.get(name)
+  paw.command(name .. "!", function(ctx)
     discarding = true
-    local ok, err = pcall(daw.commands.get(name).run, ctx)
+    local ok, err = pcall(paw.commands.get(name).run, ctx)
     discarding = false
     if not ok then error(err, 0) end
   end, { desc = (spec.desc:gsub("%.$", "")) .. "; the unsaved work is thrown away", raw = spec.raw, complete = spec.complete })
@@ -698,12 +698,12 @@ end)
 
 -- MIDI input -----------------------------------------------------------------
 
--- `daw.midi.inputs()`, `daw.midi.select({ "Keystation" })`, `daw.midi.note_on("C4", 100)`
+-- `paw.midi.inputs()`, `paw.midi.select({ "Keystation" })`, `paw.midi.note_on("C4", 100)`
 M.midi = {
   --- Every port that can send MIDI: { id, name, open, own }.
   inputs = api.midi_inputs,
   --- A port of this program's for other programs to send MIDI to: they see
-  --- it as `daw: <name>`, it is listed among the inputs with `own` set, and
+  --- it as `paw: <name>`, it is listed among the inputs with `own` set, and
   --- a track takes it by `name` like any other port. `close_port` takes it
   --- away, and says whether there was one.
   open_port = api.midi_open_port,
@@ -719,15 +719,15 @@ M.midi = {
   --- a controller move as `Clip:controls` describes them. What arrives,
   --- from here or from a port, is also the event `midi.in` for scripts.
   inject = function(event)
-    if event.pitch then event = daw.util.merge(event, { pitch = music.pitch(event.pitch) }) end
-    if event.key then event = daw.util.merge(event, { key = music.pitch(event.key) }) end
+    if event.pitch then event = paw.util.merge(event, { pitch = music.pitch(event.pitch) }) end
+    if event.key then event = paw.util.merge(event, { key = music.pitch(event.key) }) end
     api.midi_inject(event)
   end,
   --- An event as a MIDI 2.0 packet: two 32-bit words. And the other way:
   --- deliver a Universal MIDI Packet (MIDI 1.0 or 2.0) as if from a port.
   ump = function(event)
-    if event.pitch then event = daw.util.merge(event, { pitch = music.pitch(event.pitch) }) end
-    if event.key then event = daw.util.merge(event, { key = music.pitch(event.key) }) end
+    if event.pitch then event = paw.util.merge(event, { pitch = music.pitch(event.pitch) }) end
+    if event.key then event = paw.util.merge(event, { key = music.pitch(event.key) }) end
     return api.midi_ump(event)
   end,
   inject_ump = api.midi_inject_ump,
@@ -735,7 +735,7 @@ M.midi = {
   --- sends what it plays to one with `track.midi_output = { port = name,
   --- channel = 1 }` (channel nil: each message's own).
   outputs = api.midi_outputs,
-  --- A port of this program's that other programs read from (`daw out:
+  --- A port of this program's that other programs read from (`paw out:
   --- <name>`): a track sending to `name` plays a synth in another program.
   open_output = api.midi_open_output,
   close_output = api.midi_close_output,
@@ -754,7 +754,7 @@ end
 local time = {}
 M.time = time
 
--- These ask the tempo map (`daw.tempo`): bars follow the signature changes
+-- These ask the tempo map (`paw.tempo`): bars follow the signature changes
 -- along the song and seconds follow the tempo changes.
 
 --- Length in beats of the bar at beat `at` (the first bar if left out).
@@ -763,7 +763,7 @@ function time.bar(at) return api.tempo_bar_length(at or 0) end
 --- Beat where bar `n` (1-based) starts.
 function time.bar_start(n) return api.tempo_bar_start(n - 1) end
 
---- The signature (two numbers) and the tempo at a beat, as `daw.tempo` has them.
+--- The signature (two numbers) and the tempo at a beat, as `paw.tempo` has them.
 function time.signature_at(beat) return api.tempo_signature(beat or 0) end
 function time.tempo_at(beat) return api.tempo_at(beat or 0) end
 

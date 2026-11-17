@@ -1,38 +1,38 @@
 -- A guided check of the real hardware: audio, MIDI, recording, plugins and
--- the environment, with a written report. `:doctor` opens it, `daw doctor`
+-- the environment, with a written report. `:doctor` opens it, `paw doctor`
 -- runs what needs nobody from the shell. See README.md beside this file.
-daw.option.define("doctor_plugins", {}) -- name fragments of plugins to load and play: { "MT-PowerDrumKit", "Ugritone" }
-daw.option.define("doctor_seconds", 20) -- seconds each of the two dropout runs lasts
-daw.option.define("doctor_dir", "")     -- where reports go; "" is `doctor` in the state directory
+paw.option.define("doctor_plugins", {}) -- name fragments of plugins to load and play: { "MT-PowerDrumKit", "Ugritone" }
+paw.option.define("doctor_seconds", 20) -- seconds each of the two dropout runs lasts
+paw.option.define("doctor_dir", "")     -- where reports go; "" is `doctor` in the state directory
 
 local doctor = require("doctor")
 local panel = require("doctor.panel")
 require("doctor.gui")
 
-local command, map = daw.command, daw.keymap.set
+local command, map = paw.command, paw.keymap.set
 
 -- Where a window has no terminal to float over, the page is only in its own
 -- window, and the keyboard goes there through this hidden place in the layout.
-daw.ui.dock("doctor", { side = "bottom", hidden = true })
+paw.ui.dock("doctor", { side = "bottom", hidden = true })
 
 --- Show the page: floating over the terminal if there is one, and in a
 --- window of its own where a graphical frontend is attached.
 local function open()
-  if daw.api.ui_attached() then
-    daw.ui.open("doctor", { title = "Doctor", width = 100, height = 30 })
+  if paw.api.ui_attached() then
+    paw.ui.open("doctor", { title = "Doctor", width = 100, height = 30 })
   else
-    daw.ui.focus("doctor")
+    paw.ui.focus("doctor")
   end
-  daw.canvas.open("doctor", { title = "Doctor", width = 900, height = 560 })
+  paw.canvas.open("doctor", { title = "Doctor", width = 900, height = 560 })
 end
 
 local function close()
   if doctor.running() then doctor.cancel() end
-  daw.canvas.close("doctor")
-  if daw.ui.float and daw.ui.float.name == "doctor" then daw.ui.close() end
-  if daw.ui.focused == "doctor" then daw.ui.focus("arrange") end
+  paw.canvas.close("doctor")
+  if paw.ui.float and paw.ui.float.name == "doctor" then paw.ui.close() end
+  if paw.ui.focused == "doctor" then paw.ui.focus("arrange") end
   -- Taking the keyboard showed its place in the layout: it goes again.
-  daw.ui.hide("doctor")
+  paw.ui.hide("doctor")
 end
 
 local function names()
@@ -46,11 +46,11 @@ command("doctor", function(ctx)
   open()
   if what == "report" then
     local run = doctor.run()
-    return daw.notify(run and run.report and ("report: " .. run.report) or "no report yet: `:doctor all` runs the checks", run and run.report and nil or "warn")
+    return paw.notify(run and run.report and ("report: " .. run.report) or "no report yet: `:doctor all` runs the checks", run and run.report and nil or "warn")
   end
   if what == "stop" then return doctor.cancel() end
   if what == nil then return end
-  if doctor.running() then return daw.notify("the doctor is running: `:doctor stop` ends it", "warn") end
+  if doctor.running() then return paw.notify("the doctor is running: `:doctor stop` ends it", "warn") end
   local ok, err
   if what == "all" then
     ok, err = pcall(doctor.start)
@@ -59,7 +59,7 @@ command("doctor", function(ctx)
   else
     ok, err = pcall(doctor.start, { only = { tonumber(what) or what } })
   end
-  if not ok then daw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+  if not ok then paw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
 end, {
   desc = "Check the hardware: `doctor` opens the page, `doctor all` runs every check, `doctor input` one, `doctor unattended` those that need nobody",
   complete = names,
@@ -69,11 +69,11 @@ command("doctor.close", close, { desc = "Close the doctor's page, and stop a run
 
 -- The page's keys. A key that answers the question being asked does that;
 -- otherwise it does what is written here.
-local function pmap(lhs, rhs, desc, opts) map(lhs, rhs, daw.util.merge({ view = "doctor", desc = desc }, opts)) end
+local function pmap(lhs, rhs, desc, opts) map(lhs, rhs, paw.util.merge({ view = "doctor", desc = desc }, opts)) end
 local function move(by) return function(ctx)
   panel.row = panel.row + by * (ctx.count or 1)
   panel:current()
-  daw.api.ui_redraw()
+  paw.api.ui_redraw()
 end end
 pmap("j", move(1), "Down a check", { motion = true })
 pmap("k", move(-1), "Up a check", { motion = true })
@@ -96,20 +96,20 @@ pmap("A", function() if not doctor.running() then doctor.start() end end, "Run e
 pmap("u", function() if not doctor.running() then doctor.start({ unattended = true }) end end, "Run the checks that need nobody")
 pmap("o", function()
   local run = doctor.run()
-  daw.notify(run and run.report and ("report: " .. run.report) or "no report yet", run and run.report and nil or "warn")
+  paw.notify(run and run.report and ("report: " .. run.report) or "no report yet", run and run.report and nil or "warn")
 end, "Where the report is")
 -- Escape cancels the run and stays, as it cancels anything in every view;
 -- `q` closes the page.
 pmap("<Esc>", function()
-  if doctor.running() then doctor.cancel() else daw.keymap.escape_hint() end
+  if doctor.running() then doctor.cancel() else paw.keymap.escape_hint() end
 end, "Stop the run", { repeatable = false })
-daw.keymap.classic("<Esc>", function()
+paw.keymap.classic("<Esc>", function()
   if doctor.running() then doctor.cancel() else close() end
 end, { view = "doctor", desc = "Stop the run; close the page when none is going" })
 pmap("q", close, "Close the page")
 
-if daw.ui.keybar then
-  daw.ui.keybar.set("doctor", "n", {
+if paw.ui.keybar then
+  paw.ui.keybar.set("doctor", "n", {
     { "<CR>", "run this" }, { "A", "run all" }, { "u", "no person" }, { "y", "yes" }, { "n", "no" }, { "s", "skip" }, { "o", "report" }, { "<Esc>", "stop" }, { "q", "close" },
   })
 end

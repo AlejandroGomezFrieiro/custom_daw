@@ -2,7 +2,7 @@
 # Song sections: the demo song named Intro and Verse, gone between, and the
 # verse repeated after itself, every track at once.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/sections')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/sections')"
 rig_start
 term_start
 rec_start tui-sections

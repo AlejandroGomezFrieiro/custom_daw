@@ -7,7 +7,7 @@
 -- 1.75 mm (a staff 7 mm high, Gould's size for most parts) is 120 spaces
 -- wide, so the page scales with the staff, and on the screen the staff
 -- space is the largest whose page fits the width (unless zoomed).
-local api = daw.api
+local api = paw.api
 local engrave = require("notation.engrave")
 
 local floor, max, round = math.floor, math.max, function(v) return math.floor(v + 0.5) end
@@ -23,21 +23,21 @@ P.MARGIN_MM = 13
 --- Between pages on the screen, in pixels.
 P.GAP = 16
 
-daw.option.define("notation_paper", "white")   -- the page view's paper: "white", or "theme" for the theme's colours
-daw.option.define("notation_sheet", "a4")      -- the page view's and the PDF's sheet: "a4" or "letter"
+paw.option.define("notation_paper", "white")   -- the page view's paper: "white", or "theme" for the theme's colours
+paw.option.define("notation_sheet", "a4")      -- the page view's and the PDF's sheet: "a4" or "letter"
 
 --- The pages' geometry for a staff space `sp` in px (and a cell, for whole
 --- cells): `width`, `height`, `margin`, `header` (more room above the first
 --- page's music, for the title), `gap`.
 function P.geometry(sp, cell)
-  local size = P.SIZES[daw.opt.notation_sheet] or P.SIZES.a4
+  local size = P.SIZES[paw.opt.notation_sheet] or P.SIZES.a4
   local px = sp / P.SPACE_MM
   local cw, ch = cell and cell.w or 1, cell and cell.h or 1
   local function cols(v) return math.ceil(v / cw) * cw end
   local function rows(v) return math.ceil(v / ch) * ch end
   return {
     width = cols(size[1] * px), height = rows(size[2] * px), margin = cols(P.MARGIN_MM * px),
-    header = rows(10 * sp), gap = rows(P.GAP), key = table.concat({ sp, cw, ch, daw.opt.notation_sheet }, ":"),
+    header = rows(10 * sp), gap = rows(P.GAP), key = table.concat({ sp, cw, ch, paw.opt.notation_sheet }, ":"),
   }
 end
 
@@ -147,7 +147,7 @@ function P.export(layout, path, format, heading)
     P.music(ops, eng, layout, 0, -page.y, i)
     pages[i] = { ops = ops, width = geo.width, height = height }
   end
-  local size = P.SIZES[daw.opt.notation_sheet] or P.SIZES.a4
+  local size = P.SIZES[paw.opt.notation_sheet] or P.SIZES.a4
   -- Points to a pixel: the sheet's width in points over its width in pixels.
   local scale = size[1] / 25.4 * 72 / geo.width
   local written = {}

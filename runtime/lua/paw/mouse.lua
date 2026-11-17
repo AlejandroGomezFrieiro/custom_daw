@@ -4,25 +4,25 @@
 -- A terminal reports a press, a release, the pointer moving with a button
 -- held (a drag) or without (a move, for what is under it), and the wheel,
 -- each in cells with the modifiers held (`mods`: any of `C`, `A`, `S`).
--- `daw.ui.mouse` gives each one first to what floats over the views (a menu,
+-- `paw.ui.mouse` gives each one first to what floats over the views (a menu,
 -- the command line's list), then to a gesture that holds the pointer, then
 -- to the view under it, with coordinates relative to the view.
 --
 -- What a gesture means is the window's: views turn cells into beats,
--- pitches, tracks and values and call `daw.frontend.act`, so both frontends
+-- pitches, tracks and values and call `paw.frontend.act`, so both frontends
 -- do the same with the same gesture.
 --
 --   function view:on_mouse(e)
 --     if e.kind == "down" then
---       daw.mouse.grab(e, {
+--       paw.mouse.grab(e, {
 --         drag = function(d) ... d.x, d.y, d.dx, d.dy, d.moved ... end,
 --         up = function(u) ... end,
 --       })
 --     end
 --   end
 --
--- `daw.opt.mouse = false` leaves the pointer to the terminal's own selection.
-local api = daw.api
+-- `paw.opt.mouse = false` leaves the pointer to the terminal's own selection.
+local api = paw.api
 local M = {
   -- Two presses of a button on one cell within this many milliseconds are a
   -- double click, which a terminal does not report itself.
@@ -36,7 +36,7 @@ local M = {
 -- Each seat has its own: the gesture under way, the last press, what the
 -- status line says about the pointer.
 local state = {}
-daw.seats.keep("mouse", function() return state end, function(s) state = s end, function() return {} end)
+paw.seats.keep("mouse", function() return state end, function(s) state = s end, function() return {} end)
 
 --- Whether a press is the second of a double click: the same button on the
 --- same cell soon after the first, which was not itself a second.
@@ -88,7 +88,7 @@ end
 
 local function feed_gesture(event)
   local g = state.gesture
-  local e = daw.util.merge(event, { x = event.x - g.ox, y = event.y - g.oy })
+  local e = paw.util.merge(event, { x = event.x - g.ox, y = event.y - g.oy })
   e.dx, e.dy = e.x - g.x0, e.y - g.y0
   g.moved = g.moved or e.dx ~= 0 or e.dy ~= 0
   e.moved = g.moved
@@ -96,7 +96,7 @@ local function feed_gesture(event)
     -- What the drag said is over; the next move says what is under the pointer.
     state.gesture, state.hint = nil, nil
     -- Whatever the view saw of the press is over too.
-    daw.ui.pressed = nil
+    paw.ui.pressed = nil
     if g.handlers.up then g.handlers.up(e) end
   elseif g.handlers.drag then
     g.handlers.drag(e)
@@ -119,10 +119,10 @@ function M.hint_text()
   return state.hint
 end
 
---- Called by `daw.ui.mouse` first: true when the event was taken here and
+--- Called by `paw.ui.mouse` first: true when the event was taken here and
 --- goes no further.
 function M.take(event)
-  if daw.opt.mouse == false then return true end
+  if paw.opt.mouse == false then return true end
   event.mods = event.mods or ""
   mark_double(event)
   local g = state.gesture
@@ -144,7 +144,7 @@ function M.take(event)
 end
 
 --- Give an event in a view's own cells to the view, for a view drawn in a
---- window of its own (`daw.canvas.pointer`): a gesture under way has it
+--- window of its own (`paw.canvas.pointer`): a gesture under way has it
 --- first, as in the terminal.
 function M.to_view(view, event)
   event.mods = event.mods or ""
@@ -155,12 +155,12 @@ function M.to_view(view, event)
     state.gesture = nil
     if g.handlers.cancel then g.handlers.cancel() end
   end
-  if view.on_mouse then view:on_mouse(daw.util.merge(event, { view_x = 0, view_y = 0 })) end
+  if view.on_mouse then view:on_mouse(paw.util.merge(event, { view_x = 0, view_y = 0 })) end
 end
 
---- Called by `daw.ui.mouse` for the view an event goes to: over the
+--- Called by `paw.ui.mouse` for the view an event goes to: over the
 --- pixels the view shows (`buf:surface`), the event goes to the view's
---- `pointer` as a window gives it (`daw.canvas`), in pixels of its drawing:
+--- `pointer` as a window gives it (`paw.canvas`), in pixels of its drawing:
 --- where the terminal reports the pointer in pixels, exactly; elsewhere at
 --- the middle of the cell. `kind` is "down", "up", "move" (a button held),
 --- "hover", "double" (after the second press) or "wheel" (`dx`, `dy`); the
@@ -174,12 +174,12 @@ function M.to_surface(target, event)
   -- cells (`buf:strip`) leaves the pointer to the view's `on_mouse`.
   local surface
   local held = (event.kind == "drag" or event.kind == "up") and state.surface
-  for _, s in ipairs(daw.ui.rects.surfaces or {}) do
+  for _, s in ipairs(paw.ui.rects.surfaces or {}) do
     if s.paint and (held and s.key == held or not held and s.name == target.name and s.win == target.win) then
       surface = s
     end
   end
-  local view = surface and daw.ui.views[surface.name]
+  local view = surface and paw.ui.views[surface.name]
   if not (view and view.pointer) then
     state.surface = nil
     return false
@@ -213,15 +213,15 @@ function M.to_surface(target, event)
   else
     e.kind = kind
   end
-  daw.limit.named("the mouse", view.pointer, view, e)
+  paw.limit.named("the mouse", view.pointer, view, e)
   if kind == "down" and event.double then
-    daw.limit.named("the mouse", view.pointer, view, daw.util.merge(e, { kind = "double" }))
+    paw.limit.named("the mouse", view.pointer, view, paw.util.merge(e, { kind = "double" }))
   end
   api.ui_redraw()
   return true
 end
 
---- Called by `daw.ui.mouse` last: a move over nothing that says what it is
+--- Called by `paw.ui.mouse` last: a move over nothing that says what it is
 --- under the pointer clears what the status line said.
 function M.done(event)
   if event.kind == "move" and not state.hinted and state.hint then

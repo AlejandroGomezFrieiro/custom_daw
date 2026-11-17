@@ -1,10 +1,10 @@
 //! Devices written in Lua, in the spirit of REAPER's JSFX: a file with
-//! parameters and a `process` function, made with `daw.dsp`
-//! (runtime/lua/daw/dsp.lua), that shows among the devices as `lua:<name>`.
+//! parameters and a `process` function, made with `paw.dsp`
+//! (runtime/lua/paw/dsp.lua), that shows among the devices as `lua:<name>`.
 //!
 //! LuaJIT allocates as it runs and the audio thread must not, so a Lua
 //! device never runs in the engine's process. Each instance gets a helper
-//! process of its own, the same one plugins get (`daw_plugins::sandbox`):
+//! process of its own, the same one plugins get (`paw_plugins::sandbox`):
 //! the engine hands it each block through shared memory and waits for it
 //! within the block, so it adds no latency, and a script that fails, hangs
 //! or crashes is stopped alone and shown as stopped. In the helper the
@@ -27,8 +27,8 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use daw_engine::device::{DeviceFactory, DeviceInfo, Instance};
-use daw_engine::Registry;
+use paw_engine::device::{DeviceFactory, DeviceInfo, Instance};
+use paw_engine::Registry;
 
 pub use device::{Descriptor, describe, make};
 
@@ -40,7 +40,7 @@ pub type Remote = fn(DeviceInfo, Vec<String>, Vec<(String, String)>) -> Rc<dyn D
 static HELPER: OnceLock<(PathBuf, Remote)> = OnceLock::new();
 
 /// What tells a helper which script to run.
-const SCRIPT_ENV: &str = "DAW_LUA_DEVICE";
+const SCRIPT_ENV: &str = "PAW_LUA_DEVICE";
 
 /// How long looking into scripts may take before the helper doing it is ended.
 const SCAN_LIMIT: Duration = Duration::from_secs(30);

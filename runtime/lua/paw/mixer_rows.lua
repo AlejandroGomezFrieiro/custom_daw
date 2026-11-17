@@ -5,9 +5,9 @@
 -- `Ctrl-a` `Ctrl-x` with a count) change the row under the cursor, `[` `]`
 -- the strip's pan; `d` clears rows, `y` `p` copy them from strip to strip,
 -- `gc` mutes, and a selection over strips does any of these to them all.
-local api, util = daw.api, daw.util
-local keymap = daw.keymap
-local view = daw.ui.views.mixer
+local api, util = paw.api, paw.util
+local keymap = paw.keymap
+local view = paw.ui.views.mixer
 local M = {}
 
 local TOGGLES = { mute = "Mute", solo = "Solo", armed = "Arm", monitor = "Monitor" }
@@ -53,7 +53,7 @@ end
 
 --- The row under the cursor, and the track it is on.
 function M.current()
-  local id = daw.cursor.track_id()
+  local id = paw.cursor.track_id()
   if not id then return nil end
   local i, rows = index_on(id)
   return rows[i], id, i
@@ -61,7 +61,7 @@ end
 
 --- Put the cursor on row `i` (1 for the top) of the cursor track's strip.
 function M.to(i)
-  local id = daw.cursor.track_id()
+  local id = paw.cursor.track_id()
   if not id then return end
   local rows = M.rows(id)
   local row = rows[util.clamp(i, 1, #rows)]
@@ -72,7 +72,7 @@ end
 --- What a row is called and holds, for the title bar and `K`.
 function M.describe_row(id, row)
   local t = api.track_get(id)
-  if row.kind == "volume" then return "volume", daw.draw.db_text(t.volume) end
+  if row.kind == "volume" then return "volume", paw.draw.db_text(t.volume) end
   if row.kind == "pan" then return "pan", string.format("%+.2f", t.pan or 0) end
   if row.kind == "send" then
     local ok, to = pcall(api.track_get, row.send.target)
@@ -90,7 +90,7 @@ end
 --- Move the value of a row by `steps`: decibels on the fader and the sends,
 --- tenths on the pan, and on or off for the rest (`steps` above 0 is on).
 local function nudge(id, row, steps)
-  local track = daw.track(id)
+  local track = paw.track(id)
   if row.kind == "volume" then
     track.volume = util.clamp(track.volume + steps, -60, 6)
   elseif row.kind == "pan" then
@@ -103,7 +103,7 @@ local function nudge(id, row, steps)
       api.track_set(id, "sends", sends)
     end
   elseif row.kind == "insert" then
-    daw.device(row.device).bypass = steps < 0
+    paw.device(row.device).bypass = steps < 0
   elseif row.kind == "toggle" then
     track[row.field] = steps > 0
   end
@@ -112,7 +112,7 @@ end
 --- Put a row back as a new track has it: the fader at 0 dB, the pan in the
 --- middle, toggles off; a send or an insert is taken away.
 local function clear(id, rows)
-  local track = daw.track(id)
+  local track = paw.track(id)
   local sends, devices = {}, {}
   for _, row in ipairs(rows) do
     if row.kind == "volume" then track.volume = 0
@@ -124,9 +124,9 @@ local function clear(id, rows)
   end
   -- From the last, so that the places of those before stay where they were.
   for i = #api.track_get(id).sends, 1, -1 do
-    if sends[i] then daw.frontend.act.remove_send(id, i) end
+    if sends[i] then paw.frontend.act.remove_send(id, i) end
   end
-  for _, device in ipairs(devices) do daw.device(device):remove() end
+  for _, device in ipairs(devices) do paw.device(device):remove() end
 end
 
 --- What a row holds, to paste on another strip.
@@ -135,11 +135,11 @@ local function value_of(id, row)
   if row.kind == "volume" or row.kind == "pan" then return t[row.kind] end
   if row.kind == "toggle" then return t[row.field] end
   if row.kind == "send" then return util.merge({}, row.send) end
-  if row.kind == "insert" then return daw.device(row.device):snapshot() end
+  if row.kind == "insert" then return paw.device(row.device):snapshot() end
 end
 
 local function paste_row(id, entry)
-  local track = daw.track(id)
+  local track = paw.track(id)
   if entry.kind == "volume" or entry.kind == "pan" then
     track[entry.kind] = entry.value
   elseif entry.kind == "toggle" then
@@ -155,18 +155,18 @@ local function paste_row(id, entry)
     if not found then sends[#sends + 1] = util.merge({}, entry.value) end
     api.track_set(id, "sends", sends)
   elseif entry.kind == "insert" then
-    daw.restore_device(entry.value, track)
+    paw.restore_device(entry.value, track)
   end
 end
 
 -- Another project starts on the fader again.
-daw.on("project.loaded", function() view.row = "volume" end)
+paw.on("project.loaded", function() view.row = "volume" end)
 
 -- The grid ------------------------------------------------------------------------------
 
 --- The tracks whose strips a region covers.
 local function strips(region)
-  local list, out = daw.groups.rows(), {}
+  local list, out = paw.groups.rows(), {}
   for r = region.r0, region.r1 do
     if list[r] then out[#out + 1] = list[r] end
   end
@@ -187,7 +187,7 @@ local function rows_in(id, region)
   local last = region.visual and math.ceil(region.c1 - 0.5) - 1 or math.floor(region.c1 + 0.5)
   -- The columns count the rows of the strip the cursor is on; another strip
   -- may have more devices or sends, so its rows are found by what they are.
-  local here = daw.cursor.track_id()
+  local here = paw.cursor.track_id()
   local wanted = {}
   for i, row in ipairs(here and M.rows(here) or rows) do
     if i >= first and i <= math.max(first, last) then wanted[row.key] = true end
@@ -203,14 +203,14 @@ end
 -- a strip from the top, counted from 1.
 view.grid = {
   get = function()
-    local id = daw.cursor.track_id()
-    return daw.cursor.row() or 1, id and (index_on(id)) or 1
+    local id = paw.cursor.track_id()
+    return paw.cursor.row() or 1, id and (index_on(id)) or 1
   end,
   set = function(row, col)
-    local list = daw.groups.rows()
+    local list = paw.groups.rows()
     local id = list[util.clamp(row, 1, math.max(1, #list))]
     local _, before = view.grid.get()
-    if id and id ~= daw.cursor.track_id() then daw.cursor.set_track(id) end
+    if id and id ~= paw.cursor.track_id() then paw.cursor.set_track(id) end
     -- Going to another strip keeps the kind of row (the fader stays the
     -- fader); only a column that moved picks a row by its place.
     if col and math.floor(col + 0.5) ~= before then M.to(math.floor(col + 0.5)) end
@@ -240,16 +240,16 @@ mmap("<Down>", function(ctx) local _, _, i = M.current() if i then M.to(i + (ctx
 mmap("<Up>", function(ctx) local _, _, i = M.current() if i then M.to(i - (ctx.count or 1)) end end, "Up the strip: the row above", motion)
 mmap("gg", function(ctx) M.to(ctx.count or 1) end, "The strip's top row, or row N", far)
 mmap("G", function(ctx)
-  local id = daw.cursor.track_id()
+  local id = paw.cursor.track_id()
   if id then M.to(ctx.count or #M.rows(id)) end
 end, "The strip's bottom row, or row N", far)
 mmap("0", "cursor.first_track", "The first strip", far)
 mmap("^", "cursor.first_track", "The first strip", far)
 mmap("$", "cursor.last_track", "The last strip", far)
 mmap("|", function(ctx)
-  local list = daw.groups.rows()
+  local list = paw.groups.rows()
   local id = list[util.clamp(ctx.count or 1, 1, math.max(1, #list))]
-  if id then daw.cursor.set_track(id) end
+  if id then paw.cursor.set_track(id) end
 end, "Strip N", far)
 mmap("w", function(ctx) M.to_kind(1, ctx.count) end, "The next kind of row: inserts, sends, fader, toggles", motion)
 mmap("b", function(ctx) M.to_kind(-1, ctx.count) end, "The kind of row before", motion)
@@ -259,7 +259,7 @@ mmap("e", function(ctx) M.to_kind_end(ctx.count) end, "The last row of this kind
 function M.to_kind(dir, n)
   local row, _, i = M.current()
   if not row then return end
-  local rows = M.rows(daw.cursor.track_id())
+  local rows = M.rows(paw.cursor.track_id())
   for _ = 1, n or 1 do
     local kind = rows[i].kind == "toggle" and "toggle" or rows[i].kind
     local j = i + dir
@@ -277,7 +277,7 @@ end
 function M.to_kind_end(n)
   local row, _, i = M.current()
   if not row then return end
-  local rows = M.rows(daw.cursor.track_id())
+  local rows = M.rows(paw.cursor.track_id())
   for _ = 1, n or 1 do
     local j = i
     if rows[j + 1] and rows[j + 1].kind ~= rows[j].kind then j = j + 1 end
@@ -293,7 +293,7 @@ local function main(sign) return function(ctx)
   if row then nudge(id, row, sign * (ctx.count or 1)) end
 end end
 local function second(sign) return function(ctx)
-  local track = daw.cursor.track()
+  local track = paw.cursor.track()
   if track and not (track:get().meta or {}).vca then
     track.pan = util.clamp(util.round(track.pan + count(0.1, ctx) * sign, 0.01), -1, 1)
   end
@@ -313,16 +313,16 @@ end, "Clear the row: 0 dB, centre, off; a send or insert goes")
 mmap("<CR>", function()
   local row = M.current()
   if not row then return end
-  if row.kind == "volume" then return daw.commands.exec("track.volume.set") end
-  if row.kind == "pan" then return daw.commands.exec("track.pan.set") end
+  if row.kind == "volume" then return paw.commands.exec("track.volume.set") end
+  if row.kind == "pan" then return paw.commands.exec("track.pan.set") end
   local _, id = M.current()
   if row.kind == "insert" then
-    if not daw.device(row.device).editor then return daw.notify("this device has no window of its own", "warn") end
+    if not paw.device(row.device).editor then return paw.notify("this device has no window of its own", "warn") end
     return api.device_editor(row.device)
   end
   if row.kind == "send" then
     local name = M.describe_row(id, row)
-    return daw.ui.ask_value({ label = name, now = row.send.level, unit = "dB", min = -60, max = 6 }, function(v)
+    return paw.ui.ask_value({ label = name, now = row.send.level, unit = "dB", min = -60, max = 6 }, function(v)
       local sends = api.track_get(id).sends
       if sends[row.index] then
         sends[row.index].level = v
@@ -330,14 +330,14 @@ mmap("<CR>", function()
       end
     end)
   end
-  daw.track(id)[row.field] = not api.track_get(id)[row.field]
+  paw.track(id)[row.field] = not api.track_get(id)[row.field]
 end, "Type the row's value, switch it, or show the insert's window")
 
 --- The curve of the row under the cursor, for `gC` and `:curve.open`.
 function view:curve_uri()
   local row, id = M.current()
   if row and (row.kind == "volume" or row.kind == "pan") then
-    return daw.address.lane(daw.track(id):automate(row.kind).id)
+    return paw.address.lane(paw.track(id):automate(row.kind).id)
   end
   return nil, "only the fader and the pan have curves here"
 end
@@ -354,7 +354,7 @@ end
 --- The insert under the cursor, for `ge`.
 function M.device()
   local row = M.current()
-  return row and row.kind == "insert" and daw.device(row.device) or nil
+  return row and row.kind == "insert" and paw.device(row.device) or nil
 end
 
 -- Operators over strips and rows.
@@ -367,15 +367,15 @@ end
 op("d", function(region, ctx)
   if region.kind == "line" then
     local first = region.r0
-    keymap.setreg(daw.edit.arrange.delete(region), ctx.register)
+    keymap.setreg(paw.edit.arrange.delete(region), ctx.register)
     local list = api.track_list()
-    if #list > 0 then daw.cursor.set_track(daw.groups.rows()[util.clamp(first, 1, #daw.groups.rows())]) end
+    if #list > 0 then paw.cursor.set_track(paw.groups.rows()[util.clamp(first, 1, #paw.groups.rows())]) end
     return
   end
   each(region, clear)
 end, "Delete: whole strips cut the tracks, rows go back to how a new track has them")
 op("y", function(region, ctx)
-  if region.kind == "line" then return keymap.setreg(daw.edit.arrange.yank(region), ctx.register, true) end
+  if region.kind == "line" then return keymap.setreg(paw.edit.arrange.yank(region), ctx.register, true) end
   local id = strips(region)[1]
   if not id then return end
   local out = {}
@@ -383,23 +383,23 @@ op("y", function(region, ctx)
     out[#out + 1] = { kind = row.kind, field = row.field, value = value_of(id, row) }
   end
   keymap.setreg({ kind = "mixrows", rows = out }, ctx.register, true)
-  daw.notify(#out .. (#out == 1 and " row" or " rows") .. " yanked")
+  paw.notify(#out .. (#out == 1 and " row" or " rows") .. " yanked")
 end, "Yank: whole strips their tracks, rows their settings")
 op("gc", function(region)
   local ids = strips(region)
   local all = #ids > 0
   for _, id in ipairs(ids) do all = all and api.track_get(id).mute end
-  for _, id in ipairs(ids) do daw.track(id).mute = not all end
+  for _, id in ipairs(ids) do paw.track(id).mute = not all end
 end, "Mute or unmute the strips", { role = "mute" })
 
 local function paste(before) return function(ctx)
   local value = keymap.getreg(ctx.register)
   if value and value.kind == "mixrows" then
-    local id = daw.cursor.track_id()
+    local id = paw.cursor.track_id()
     if id then for _, entry in ipairs(value.rows) do paste_row(id, entry) end end
     return
   end
-  daw.edit.arrange.paste(value, before, ctx.count)
+  paw.edit.arrange.paste(value, before, ctx.count)
 end end
 mmap("p", paste(false), "Paste rows' settings on this strip, or tracks after it")
 mmap("P", paste(true), "Paste rows' settings on this strip, or tracks before it")
@@ -419,7 +419,7 @@ vop("<C-a>", each_value(1), "The rows selected up by the count", "main+")
 vop("<C-x>", each_value(-1), "The rows selected down by the count", "main-")
 local function each_pan(sign) return function(region, ctx)
   for _, id in ipairs(strips(region)) do
-    local track = daw.track(id)
+    local track = paw.track(id)
     if not (api.track_get(id).meta or {}).vca then
       track.pan = util.clamp(util.round(track.pan + count(0.1, ctx) * sign, 0.01), -1, 1)
     end
@@ -430,14 +430,14 @@ vop("[", each_pan(-1), "Pan the strips selected left", "second-")
 vop("x", function(region) each(region, clear) end, "Clear the rows selected")
 vop("p", function(region, ctx)
   local value = keymap.getreg(ctx.register)
-  if not (value and value.kind == "mixrows") then return daw.notify("no rows in the register: `y` on some first", "warn") end
+  if not (value and value.kind == "mixrows") then return paw.notify("no rows in the register: `y` on some first", "warn") end
   for _, id in ipairs(strips(region)) do
     for _, entry in ipairs(value.rows) do paste_row(id, entry) end
   end
 end, "Paste the rows' settings on every strip selected")
 
 
--- The keys the mixer had before the rule (`daw.opt.keys = "classic"`).
+-- The keys the mixer had before the rule (`paw.opt.keys = "classic"`).
 local classic = keymap.classic
 local function cmap(lhs, rhs, desc, opts) classic(lhs, rhs, util.merge({ view = "mixer", desc = desc }, opts)) end
 cmap("k", "track.volume by=1", "Volume up 1 dB", { mode = "n" })

@@ -25,10 +25,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use daw_core::grid::{self, Color, Grid, Surface};
-use daw_raster::kitty::{Images, Place, Transfer};
-use daw_raster::tiles::{self, Cells};
-use daw_raster::{Drawing, Layers, straight_rgba};
+use paw_core::grid::{self, Color, Grid, Surface};
+use paw_raster::kitty::{Images, Place, Transfer};
+use paw_raster::tiles::{self, Cells};
+use paw_raster::{Drawing, Layers, straight_rgba};
 use serde_json::Value;
 
 /// What is known of one surface's drawing.
@@ -138,7 +138,7 @@ impl Graphics {
                         None
                     } else {
                         let (w, h) = (area[2] as u32, area[3] as u32);
-                        shown.pieces.insert(key, Some(daw_raster::kitty::hash(&rgba, w, h)));
+                        shown.pieces.insert(key, Some(paw_raster::kitty::hash(&rgba, w, h)));
                         Some(self.images.image(out, &rgba, w, h))
                     }
                 }
@@ -328,7 +328,7 @@ pub fn under_pixels(grid: &Grid, x: u16, y: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daw_core::grid::{Rect, Style};
+    use paw_core::grid::{Rect, Style};
     use serde_json::json;
 
     fn grid_with(ops: Value) -> Grid {

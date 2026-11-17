@@ -3,11 +3,11 @@
 # :reload running it again while the song plays.
 . "$MAKE/rig.sh"
 SETUP=$TUI_DEMO
-CONFIG=$D/.config/daw
+CONFIG=$D/.config/paw
 EDIT=$CONFIG/init.lua
 export EDIT
 mkdir -p "$CONFIG"
-printf -- '-- ~/.config/daw/init.lua\ndaw.opt.zoom = 2.75\n' > "$EDIT"
+printf -- '-- ~/.config/paw/init.lua\npaw.opt.zoom = 2.75\n' > "$EDIT"
 rig_start
 term_start
 # Neovim, in the pane above, has the keyboard; Ctrl-Shift and an arrow
@@ -18,8 +18,8 @@ cap "Space plays; init.lua, above, is your configuration, in Lua"
 pause 0.5; key space; pause 1.2
 xdotool key ctrl+shift+Up; pause 0.5
 cap "Add a colour and a key to it, and write it"
-key G o; TYPE_DELAY=35 typ 'daw.ui.hl("Playhead", { bg = "#f38ba8" })'
-key Return; TYPE_DELAY=35 typ 'daw.keymap.set("<leader>T", "track.add Strings device=synth")'
+key G o; TYPE_DELAY=35 typ 'paw.ui.hl("Playhead", { bg = "#f38ba8" })'
+key Return; TYPE_DELAY=35 typ 'paw.keymap.set("<leader>T", "track.add Strings device=synth")'
 key Escape; key colon; typ "w"; key Return; pause 0.6
 xdotool key ctrl+shift+Down; pause 0.4
 cap ":reload runs it again without stopping the sound"

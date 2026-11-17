@@ -2,7 +2,7 @@
 # Mix diagnostics: the bass pushed far too loud, the song measured, and what
 # is wrong listed as findings with places to jump to.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/mixdiag')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/mixdiag')"
 rig_start
 term_start
 rec_start tui-mixdiag

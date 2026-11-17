@@ -287,14 +287,14 @@ function M.track_layout(track, opts, bars_of)
       finish = math.max(finish, c.start + c.length)
       for _, n in ipairs(clip:notes()) do
         if n.start >= 0 and n.start < c.length then
-          local copy = daw.util.merge(n, { start = c.start + n.start, length = math.min(n.length, c.length - n.start) })
+          local copy = paw.util.merge(n, { start = c.start + n.start, length = math.min(n.length, c.length - n.start) })
           notes[#notes + 1] = copy
         end
       end
     end
   end
   table.sort(notes, function(a, b) return a.start < b.start or (a.start == b.start and a.pitch < b.pitch) end)
-  return model.layout(notes, daw.util.merge(opts, { length = finish, offset = 0, bars = bars_of and bars_of(0, finish) or nil }))
+  return model.layout(notes, paw.util.merge(opts, { length = finish, offset = 0, bars = bars_of and bars_of(0, finish) or nil }))
 end
 
 --- Write a file; returns nil and the error when it cannot be written.

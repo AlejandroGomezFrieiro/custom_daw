@@ -1,8 +1,8 @@
 # Running it
 
-The programs keep short names for now: `daw` is paw's terminal interface,
-`daw-gui` its window, `daw-mcp` the bridge for AI assistants, and the Lua
-module is `daw`.
+The programs keep short names for now: `paw` is paw's terminal interface,
+`paw-gui` its window, `paw-mcp` the bridge for AI assistants, and the Lua
+module is `paw`.
 
 The dev shell provides the Rust toolchain and the PipeWire libraries.
 
@@ -11,7 +11,7 @@ nix develop
 cargo run -- -e 'dofile("examples/demo.lua")'       # open a demo song in the UI
 cargo run -- --config examples/config                # the same UI with an example configuration
 cargo run -- -l examples/demo.lua demo.wav           # no UI: build the song and render it
-cargo run -p daw-gui -- -e 'dofile("examples/demo.lua")'   # the graphical frontend
+cargo run -p paw-gui -- -e 'dofile("examples/demo.lua")'   # the graphical frontend
 cargo test                                           # the end-to-end suite
 cargo run -- --output UR22 --input UR22              # open these audio devices (a part of the name is enough)
 cargo run -- doctor                                  # check the audio, plugins and environment, and print a report
@@ -24,16 +24,16 @@ without the dev shell, on any Linux with Nix and flakes (no NixOS or
 home-manager is needed):
 
 ```sh
-nix run .                       # the terminal UI (`daw`)
-nix run .#daw-gui               # the window; `.#daw` and `.#daw-mcp` are the others
-nix build                       # ./result/bin/{daw,daw-gui,daw-mcp}
-nix profile install .           # into your profile: daw, daw-gui and daw-mcp on the PATH
-nix profile remove daw          # and out again
+nix run .                       # the terminal UI (`paw`)
+nix run .#paw-gui               # the window; `.#paw` and `.#paw-mcp` are the others
+nix build                       # ./result/bin/{paw,paw-gui,paw-mcp}
+nix profile install .           # into your profile: paw, paw-gui and paw-mcp on the PATH
+nix profile remove paw          # and out again
 ```
 
-Run these in a checkout, where `.` is the flake. One build gives all three programs, and `.#daw`, `.#daw-gui` and `.#daw-mcp` are
+Run these in a checkout, where `.` is the flake. One build gives all three programs, and `.#paw`, `.#paw-gui` and `.#paw-mcp` are
 only the one named, out of it. The window starts its own kernel, which is the
-`daw` beside it, so it needs no other install.
+`paw` beside it, so it needs no other install.
 
 What the package takes care of, which the dev shell does otherwise:
 
@@ -42,15 +42,15 @@ What the package takes care of, which the dev shell does otherwise:
   programs, so they run from any shell. The OpenGL driver the window draws
   with is the system's (on NixOS `hardware.graphics.enable`).
 - LuaJIT is built with `LUAJIT_ENABLE_CHECKHOOK`, as `.cargo/config.toml`
-  asks, so that `daw.limit` can stop a runaway loop.
+  asks, so that `paw.limit` can stop a runaway loop.
 - The runtime's Lua and the window's fonts are compiled into the binaries.
   The extensions, `examples` and `config` are installed under
-  `share/daw`, and the programs start with `DAW_HOME` pointing there (unless
-  you set it): `daw doctor` finds its script that way, and
-  `daw.ext.load(os.getenv("DAW_HOME") .. "/extensions/sections")` loads an
+  `share/paw`, and the programs start with `PAW_HOME` pointing there (unless
+  you set it): `paw doctor` finds its script that way, and
+  `paw.ext.load(os.getenv("PAW_HOME") .. "/extensions/sections")` loads an
   extension from the package.
 - `ffmpeg` is on the programs' PATH, after your own, for rendering to MP3,
-  Ogg Vorbis and Opus; nothing else needs it. `daw.opt.ffmpeg` names
+  Ogg Vorbis and Opus; nothing else needs it. `paw.opt.ffmpeg` names
   another.
 - The tests do not run in the build. `nix flake check` builds the program
   and runs clippy, rustfmt and the Rust tests that need no display, audio
@@ -78,33 +78,33 @@ programs as cargo builds them are `.#default.programs`, the dependencies
 `.#default.deps`.
 
 The project's state (recent projects, the window's layout, the plugin cache)
-is kept under your home directory as with any build, in `~/.local/state/daw`
-and `~/.cache/daw`.
+is kept under your home directory as with any build, in `~/.local/state/paw`
+and `~/.cache/paw`.
 
 The audio devices are the system's default output and input until others are
 chosen: with `:audio` (a list of every output, input and block size), with a
 click on the engine indicator at the right of the window's transport bar, or
 with `--output` and `--input`. A choice made in the program belongs to the
-machine, not to a project: it is kept in `~/.local/state/daw/audio.json` and
+machine, not to a project: it is kept in `~/.local/state/paw/audio.json` and
 opened at the next start; when a remembered device is not connected, the
 default is opened instead and the program says so.
 
 Every project opened or saved is remembered, newest first, twenty at most, in
-`~/.local/state/daw/recent.json`; the list belongs to the machine, and a file
+`~/.local/state/paw/recent.json`; the list belongs to the machine, and a file
 that is gone drops out of it. `:recent` chooses from it (`,fR`), `:recent 2`
 opens the second, `:recent.clear` forgets them, and the window's File menu has
 them under "Open recent", asking about unsaved changes as "Open" does. With
-`daw.opt.reopen_last = true` a start with no project named opens the newest
+`paw.opt.reopen_last = true` a start with no project named opens the newest
 one; if it will not open, that is a message and the program starts anyway.
 Nothing is remembered under `--clean` or in a script. In Lua:
-`daw.recent.list()` gives `{ path, name, time }` for each.
+`paw.recent.list()` gives `{ path, name, time }` for each.
 
 The suite hosts real plugins in all three formats. The dev shell provides them
-(LSP Plugins and Surge XT, through `DAW_TEST_PLUGINS`); outside it those tests
+(LSP Plugins and Surge XT, through `PAW_TEST_PLUGINS`); outside it those tests
 are skipped.
 
-`cargo test -p daw-gui` also drives the real window
-(`crates/daw-gui/tests/window.rs`): each scenario starts Xvfb on a free display
+`cargo test -p paw-gui` also drives the real window
+(`crates/paw-gui/tests/window.rs`): each scenario starts Xvfb on a free display
 from `:120` up, openbox and the window (with no session bus, so that nothing
 reaches the desktop), makes pointer and key gestures with xdotool, and asks
 the kernel what it holds afterwards. Menu entries and dialog buttons are found
@@ -120,7 +120,7 @@ are any.
 
 The first start looks through every installed plugin, which can take several
 seconds (bridged Windows plugins each start Wine). The result is cached in
-`~/.cache/daw/plugins.json`; after that a plugin file is only loaded when it
+`~/.cache/paw/plugins.json`; after that a plugin file is only loaded when it
 changes or when one of its plugins is used. `--no-plugins` skips plugins
 altogether.
 
@@ -156,38 +156,38 @@ program, in the manner of `vimtutor`: load `extensions/tutor` (see
 ## On another machine
 
 An instance can be worked on from other terminals and windows, on the
-same machine or another: `daw attach` in a terminal, `daw-gui --socket` or
-`daw-gui --connect` for a window. Each of them has a seat of its own: its
+same machine or another: `paw attach` in a terminal, `paw-gui --socket` or
+`paw-gui --connect` for a window. Each of them has a seat of its own: its
 own cursor, mode, selection, keys half typed, registers, prompt and panels
 shown, while the project is one. What one does the others see at once;
 two edits of the same thing are two steps in the one undo history, and the
 last one stands. `u` undoes the last step whoever made it. Options
-(`daw.opt`, such as the zoom) are the instance's and shared. A window that
-started its own kernel shares that kernel's seat, so `daw ctl` acts in what
-it shows; so does every connection that has not attached (`daw ctl`,
+(`paw.opt`, such as the zoom) are the instance's and shared. A window that
+started its own kernel shares that kernel's seat, so `paw ctl` acts in what
+it shows; so does every connection that has not attached (`paw ctl`,
 scripts).
 
 Over the network, start the instance with `--listen-tcp`:
 
 ```sh
-daw --listen-tcp 0.0.0.0:7700            # every network the machine is on
-daw --headless --listen-tcp 127.0.0.1:7700
+paw --listen-tcp 0.0.0.0:7700            # every network the machine is on
+paw --headless --listen-tcp 127.0.0.1:7700
 ```
 
 Connections are encrypted with TLS. The first time it listens the instance
-makes a certificate of its own and keeps it in `~/.local/state/daw/tls`;
+makes a certificate of its own and keeps it in `~/.local/state/paw/tls`;
 it says its fingerprint when it starts (`listening on … certificate
 9f1c:…`). A connection must also show that it knows the token in
-`~/.local/state/daw/token` on the instance's machine (made at the first
+`~/.local/state/paw/token` on the instance's machine (made at the first
 start; copy it to the other machine); the token itself is never sent.
 
 ```sh
-daw attach --connect studio:7700 --token-file studio.token
-daw-gui --connect studio:7700 --token-file studio.token
+paw attach --connect studio:7700 --token-file studio.token
+paw-gui --connect studio:7700 --token-file studio.token
 ```
 
 The first connection to an address trusts the certificate it is shown and
-remembers its fingerprint in `~/.local/state/daw/known_instances` on the
+remembers its fingerprint in `~/.local/state/paw/known_instances` on the
 client's machine; compare it with the one the instance said. Afterwards a
 different certificate is refused, with both fingerprints named: either
 the instance made a new one (its state directory was lost, or it moved
@@ -197,8 +197,8 @@ the clear, for a network you trust; an instance that only takes TLS tells
 a client in the clear so. SSH needs nothing from the program either:
 
 ```sh
-ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
-daw attach --socket /tmp/studio.sock
+ssh -N -L /tmp/studio.sock:/run/user/1000/paw.sock studio &
+paw attach --socket /tmp/studio.sock
 ```
 
 **Files from the machine you sit at.** Import and Open browse the
@@ -209,8 +209,8 @@ an attached terminal. It is sent over the connection in pieces into the
 project's `media` folder on the instance's machine (beside a saved project,
 else a scratch folder) and imported on a new track.
 
-**Hearing it.** The sound plays on the instance's machine. `daw attach
---listen-audio` and `daw-gui --connect … --listen-audio` also play it
+**Hearing it.** The sound plays on the instance's machine. `paw attach
+--listen-audio` and `paw-gui --connect … --listen-audio` also play it
 through the client's own sound device, and `:listen` (or "Hear it on this
 machine" in the window's engine menu) starts and stops that. It is sent as
 16-bit samples at half the engine's rate (24 kHz for 48 kHz), about
@@ -218,7 +218,7 @@ machine" in the window's engine menu) starts and stops that. It is sent as
 a slow link. The client waits until a fifth of a second has arrived before
 it plays and keeps at most a second, so it is heard a quarter of a second
 late or more: for monitoring a mix, not for playing along.
-`daw attach --listen-audio-to heard.wav` writes what it would play to a
+`paw attach --listen-audio-to heard.wav` writes what it would play to a
 file instead.
 
 What stays on the instance's machine: plugin windows, the files that Save

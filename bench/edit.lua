@@ -1,10 +1,10 @@
 -- Editing at scale. Every edit is one "turn" as the UI makes it: the call,
--- then `daw.flush()` (sync to the engine, deliver events), then an undo step.
---   daw --clean --no-plugins -l bench/edit.lua clips <n>     add, move, delete n clips; undo and redo all
---   daw --clean --no-plugins -l bench/edit.lua notes <n>     add, move, delete n notes in one clip
---   daw --clean --no-plugins -l bench/edit.lua scale <tracks> one small edit, undo and redo in a big project
-local daw = require("daw")
-local api = daw.api
+-- then `paw.flush()` (sync to the engine, deliver events), then an undo step.
+--   paw --clean --no-plugins -l bench/edit.lua clips <n>     add, move, delete n clips; undo and redo all
+--   paw --clean --no-plugins -l bench/edit.lua notes <n>     add, move, delete n notes in one clip
+--   paw --clean --no-plugins -l bench/edit.lua scale <tracks> one small edit, undo and redo in a big project
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local mode, n, nosync = ...
@@ -17,7 +17,7 @@ nosync = nosync == "nosync"
 local function turn(fn, ...)
   local t = api.now()
   fn(...)
-  if not nosync then daw.flush() end
+  if not nosync then paw.flush() end
   api.undo_checkpoint()
   return api.now() - t
 end
@@ -38,7 +38,7 @@ end
 
 if mode == "clips" then
   local track = api.track_add({ name = "T" })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local ids, add, move, del = {}, {}, {}, {}
   for i = 1, n do
@@ -56,7 +56,7 @@ if mode == "clips" then
     -- further than that jumps back to the empty project: stop short of it.
     for _ = 1, math.min(3 * n, 998) do
       if not api.undo() then break end
-      if not nosync then daw.flush() end
+      if not nosync then paw.flush() end
       k = k + 1
     end
     return k
@@ -66,7 +66,7 @@ if mode == "clips" then
   local redo_ms, redone = B.time(function()
     local k = 0
     while api.redo() do
-      if not nosync then daw.flush() end
+      if not nosync then paw.flush() end
       k = k + 1
     end
     return k
@@ -83,7 +83,7 @@ if mode == "clips" then
 elseif mode == "notes" then
   local track = api.track_add({ name = "T" })
   local clip = api.clip_add(track, { start = 0, length = n + 4 })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local add, move, del = {}, {}, {}
   for i = 1, n do
@@ -134,11 +134,11 @@ elseif mode == "scale" then
     clipmove[i] = turn(api.clip_set, clip, "start", i % 4)
     local t = api.now()
     api.undo()
-    daw.flush()
+    paw.flush()
     undo[i] = api.now() - t
     t = api.now()
     api.redo()
-    daw.flush()
+    paw.flush()
     redo[i] = api.now() - t
   end
   local add_track = turn(api.track_add, { name = "one more" })

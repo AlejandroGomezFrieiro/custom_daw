@@ -1,9 +1,9 @@
 -- Language servers ("lenses"), as `vim.lsp`, over anything with an address.
--- A server is told about subjects (daw/lsp/subjects.lua: a clip, a track,
+-- A server is told about subjects (paw/lsp/subjects.lua: a clip, a track,
 -- the mix, a render, the project, or one an extension adds), and what it
--- says goes to the generic stores: diagnostics (`daw.diagnostic`), labels
--- (`daw.annotation`), the chords and key it hears (`daw.harmony`),
--- suggestions (`daw.complete`), hover and fixes asked for by location.
+-- says goes to the generic stores: diagnostics (`paw.diagnostic`), labels
+-- (`paw.annotation`), the chords and key it hears (`paw.harmony`),
+-- suggestions (`paw.complete`), hover and fixes asked for by location.
 -- Nothing here knows any server by name.
 --
 -- A server is one of three things:
@@ -12,21 +12,21 @@
 --   a command run once per version of a subject, reading it from a file or
 --     its input and printing what it found (`kind = "oneshot"`);
 --   a Lua table in this process with the same handlers (`server = { ... }`).
--- Its dialect is LSP's own (daw/lsp/standard.lua) unless its config names
--- an adapter (`daw.lsp.adapter`), as MIDI LSP's extension does for `midi/*`.
+-- Its dialect is LSP's own (paw/lsp/standard.lua) unless its config names
+-- an adapter (`paw.lsp.adapter`), as MIDI LSP's extension does for `midi/*`.
 --
---   daw.lsp.config("mixcheck", { cmd = { "python3", "mixcheck.py" }, attach = { subjects = { "mix" } } })
---   daw.lsp.enable("mixcheck")
-local api = daw.api
-local A = daw.address
-local rpc = require("daw.lsp.rpc")
-local document = require("daw.lsp.document")
-local subjects = require("daw.lsp.subjects")
+--   paw.lsp.config("mixcheck", { cmd = { "python3", "mixcheck.py" }, attach = { subjects = { "mix" } } })
+--   paw.lsp.enable("mixcheck")
+local api = paw.api
+local A = paw.address
+local rpc = require("paw.lsp.rpc")
+local document = require("paw.lsp.document")
+local subjects = require("paw.lsp.subjects")
 
 local M = {
   configs = {},     -- name -> config
   handlers = {},    -- method -> function(client, params, message): what a server sends, in any dialect
-  adapters = { standard = require("daw.lsp.standard") },
+  adapters = { standard = require("paw.lsp.standard") },
   analysis = {},    -- clip id -> { key, keys, chords, client }: the last a server heard there
   debounce_ms = 250,
   log = {},         -- the last messages to and from servers, for `:lsp log`
@@ -36,11 +36,11 @@ local M = {
 local clients = {}  -- name -> client
 local by_proc = {}  -- process id -> client, or a one-shot run
 
-for _, id in ipairs(daw.state.lsp_procs or {}) do pcall(api.proc_kill, id) end
+for _, id in ipairs(paw.state.lsp_procs or {}) do pcall(api.proc_kill, id) end
 local function remember_procs()
   local ids = {}
   for id in pairs(by_proc) do ids[#ids + 1] = id end
-  daw.state.lsp_procs = ids
+  paw.state.lsp_procs = ids
 end
 
 -- Settings are objects to a server, even when they are empty.
@@ -63,10 +63,10 @@ local function client_of(which)
   return clients[which]
 end
 
---- Add a subject (see daw/lsp/subjects.lua).
+--- Add a subject (see paw/lsp/subjects.lua).
 function M.subject(name, spec) subjects.define(name, spec) end
 
---- Add a dialect: how a kind of server is spoken to (see daw/lsp/standard.lua
+--- Add a dialect: how a kind of server is spoken to (see paw/lsp/standard.lua
 --- for the functions an adapter has; any it leaves out are the standard ones).
 function M.adapter(name, spec)
   M.adapters[name] = setmetatable(spec, { __index = M.adapters.standard })
@@ -166,7 +166,7 @@ end
 local function attachment(client)
   local attach = client.config.attach or {}
   local names = attach.subjects or attach.kinds or (client.caps and client.caps.subjects) or { "clip" }
-  local where = daw.util.merge({ tracks = attach.tracks, drums = attach.drums }, attach.where or {})
+  local where = paw.util.merge({ tracks = attach.tracks, drums = attach.drums }, attach.where or {})
   return names, where
 end
 
@@ -178,7 +178,7 @@ function M.attaches(which, address, subject)
   for _, name in ipairs(names) do
     local spec = subjects.list[name]
     if spec and (not subject or subject == name) then
-      for _, target in ipairs(spec.targets(daw.util.merge(where, { focus = false }))) do
+      for _, target in ipairs(spec.targets(paw.util.merge(where, { focus = false }))) do
         if target == address then return true end
       end
     end
@@ -193,7 +193,7 @@ function M.document(which, uri)
 end
 
 local function publish(client, doc, list)
-  daw.diagnostic.set(client.name, doc.uri, list)
+  paw.diagnostic.set(client.name, doc.uri, list)
 end
 
 local function close_doc(client, uri)
@@ -204,8 +204,8 @@ local function close_doc(client, uri)
     local method, params = client.adapter.close(client, doc)
     if method then M.notify(client, method, params) end
   end
-  daw.diagnostic.reset(client.name, uri)
-  if daw.annotation then daw.annotation.reset(client.name, uri) end
+  paw.diagnostic.reset(client.name, uri)
+  if paw.annotation then paw.annotation.reset(client.name, uri) end
   if doc.subject == "clip" then
     local id = A.parse(doc.address).clip
     if M.analysis[id] and M.analysis[id].client == client.name then M.analysis[id] = nil end
@@ -264,7 +264,7 @@ local function ready(client) return client.status == "running" or client.status 
 --- they are about what is there.
 function M.sync()
   if M.timer then
-    daw.cancel(M.timer)
+    paw.cancel(M.timer)
     M.timer = nil
   end
   for _, client in pairs(clients) do
@@ -275,7 +275,7 @@ function M.sync()
         local spec = subjects.list[name]
         if spec then
           local w = where
-          if w.focus == nil then w = daw.util.merge(where, { focus = spec.focus ~= false and (name == "clip" or name == "track") }) end
+          if w.focus == nil then w = paw.util.merge(where, { focus = spec.focus ~= false and (name == "clip" or name == "track") }) end
           for _, address in ipairs(spec.targets(w)) do wanted[subjects.uri(name, address)] = { name, address } end
         end
       end
@@ -293,7 +293,7 @@ end
 -- What changed is sent once the edits have paused for `debounce_ms`.
 local function schedule()
   if M.timer or not next(clients) then return end
-  M.timer = daw.defer(function()
+  M.timer = paw.defer(function()
     M.timer = nil
     M.sync()
   end, M.debounce_ms)
@@ -322,13 +322,13 @@ end
 local lsp = {
   document = function(client, uri) return client.docs[uri] end,
   publish = publish,
-  annotate = function(client, doc, list) if daw.annotation then daw.annotation.set(client.name, doc.uri, list) end end,
+  annotate = function(client, doc, list) if paw.annotation then paw.annotation.set(client.name, doc.uri, list) end end,
   request = function(...) return M.request(...) end,
   notify = function(...) return M.notify(...) end,
 }
 M.adapter_api = lsp
 
--- What the servers heard, offered to `daw.harmony` for the stretch asked.
+-- What the servers heard, offered to `paw.harmony` for the stretch asked.
 local function harmony_provider(from, to)
   local chords, keys = {}, {}
   for _, a in pairs(M.analysis) do
@@ -352,20 +352,20 @@ function lsp.analysis(client, doc, analysis)
   local id = A.parse(doc.address) and A.parse(doc.address).clip
   if not id then return end
   M.analysis[id] = { chords = analysis.chords or {}, keys = analysis.keys or {}, key = analysis.key, client = client.name }
-  if not provided and daw.harmony and daw.harmony.provide then
-    daw.harmony.provide("lsp", harmony_provider, 50)
+  if not provided and paw.harmony and paw.harmony.provide then
+    paw.harmony.provide("lsp", harmony_provider, 50)
     provided = true
-  elseif daw.harmony and daw.harmony.invalidate then
+  elseif paw.harmony and paw.harmony.invalidate then
     -- An answer that comes after the edit it is about: read anew.
-    daw.harmony.invalidate()
+    paw.harmony.invalidate()
   end
-  daw.emit("lsp.analysis", { clip = id, client = client.name })
+  paw.emit("lsp.analysis", { clip = id, client = client.name })
 end
 
 M.handlers["window/logMessage"] = function(client, params) note(client, tostring(params.message)) end
 M.handlers["window/showMessage"] = function(client, params)
   note(client, tostring(params.message))
-  daw.notify(client.name .. ": " .. tostring(params.message), params.type == 1 and "error" or params.type == 2 and "warn" or "info")
+  paw.notify(client.name .. ": " .. tostring(params.message), params.type == 1 and "error" or params.type == 2 and "warn" or "info")
 end
 M.handlers["workspace/configuration"] = function(client, params)
   local out = {}
@@ -374,7 +374,7 @@ M.handlers["workspace/configuration"] = function(client, params)
 end
 -- A server asks for an edit: made as one undo step, as any fix is.
 M.handlers["workspace/applyEdit"] = function(_, params)
-  local changes = type(params.edit) == "table" and params.edit.daw or {}
+  local changes = type(params.edit) == "table" and params.edit.paw or {}
   local ok, why = A.edit(changes, params.label or "An edit a server asked for")
   return { applied = ok == true, failureReason = why }
 end
@@ -488,7 +488,7 @@ run_oneshot = function(client, doc)
   remember_procs()
   client.status, client.running = "running", (client.running or 0) + 1
   note(client, "runs " .. table.concat(argv, " "))
-  run.timer = daw.defer(function()
+  run.timer = paw.defer(function()
     if by_proc[proc] ~= run then return end
     by_proc[proc] = nil
     pcall(api.proc_kill, proc)
@@ -502,7 +502,7 @@ end
 local function oneshot_done(proc, run)
   by_proc[proc] = nil
   remember_procs()
-  if run.timer then daw.cancel(run.timer) end
+  if run.timer then paw.cancel(run.timer) end
   os.remove(run.input)
   local client = run.client
   client.running = math.max(0, (client.running or 1) - 1)
@@ -516,13 +516,13 @@ local function oneshot_done(proc, run)
     client.error = type(out) == "table" and out.error and tostring(out.error)
       or (text == "" and "printed nothing" or "printed what is not JSON") .. (code and (" (exit " .. code .. ")") or "")
     note(client, "failed: " .. client.error)
-    daw.emit("lsp.status", { client = client.name, status = "failed" })
+    paw.emit("lsp.status", { client = client.name, status = "failed" })
     return
   end
   client.status, client.error = (client.running or 0) > 0 and "running" or "ready", nil
   publish(client, run.doc, findings(client, run.doc, out))
   note(client, string.format("%s: %d finding%s", run.doc.uri, #(out.findings or {}), #(out.findings or {}) == 1 and "" or "s"))
-  daw.emit("lsp.status", { client = client.name, status = client.status, document = run.doc.uri })
+  paw.emit("lsp.status", { client = client.name, status = client.status, document = run.doc.uri })
 end
 
 -- Starting and stopping ------------------------------------------------------
@@ -543,13 +543,13 @@ local function forget(client, status, why)
   client.status, client.error = status, why or client.error
   for uri in pairs(client.docs) do close_doc(client, uri) end
   client.docs = {}
-  daw.diagnostic.reset(client.name)
-  if daw.annotation then daw.annotation.reset(client.name) end
+  paw.diagnostic.reset(client.name)
+  if paw.annotation then paw.annotation.reset(client.name) end
   for id, a in pairs(M.analysis) do
     if a.client == client.name then M.analysis[id] = nil end
   end
   note(client, status .. (why and (": " .. why) or ""))
-  daw.emit("lsp.status", { client = client.name, status = status })
+  paw.emit("lsp.status", { client = client.name, status = status })
   api.ui_redraw()
 end
 
@@ -567,13 +567,13 @@ local function died(client)
   client.restarts = recent
   if #recent < (restart.max or 0) then
     client.restarts[#client.restarts + 1] = now
-    daw.defer(function()
+    paw.defer(function()
       if clients[client.name] == client and client.status == "dead" then start(client) end
     end, 500)
   end
 end
 
-daw.on("proc.output", function(event)
+paw.on("proc.output", function(event)
   local owner = by_proc[event.id]
   if not owner then return end
   if owner.oneshot then
@@ -603,7 +603,7 @@ end
 
 --- Where a server's errors are written.
 function M.log_path(name)
-  return api.env().state_dir .. "/daw/lsp-" .. tostring(name):gsub("[^%w%-_.]", "_") .. ".log"
+  return api.env().state_dir .. "/paw/lsp-" .. tostring(name):gsub("[^%w%-_.]", "_") .. ".log"
 end
 
 local function subject_names()
@@ -656,8 +656,8 @@ start = function(client)
   client.status, client.error = "starting", nil
   local offer = {
     processId = nil,
-    clientInfo = { name = "daw", version = daw.version },
-    capabilities = { daw = { subjects = subject_names(), addresses = true, workspaceEdit = true,
+    clientInfo = { name = "paw", version = paw.version },
+    capabilities = { paw = { subjects = subject_names(), addresses = true, workspaceEdit = true,
       features = { "diagnostics", "annotations", "hover", "codeAction", "completion", "analysis" } } },
     initializationOptions = object(config.init_options),
     configuration = object(config.settings),
@@ -674,7 +674,7 @@ start = function(client)
     if method then M.notify(client, method, params) end
     client.status = "running"
     note(client, "running" .. (client.info.name and (": " .. client.info.name .. " " .. tostring(client.info.version or "")) or ""))
-    daw.emit("lsp.status", { client = client.name, status = "running" })
+    paw.emit("lsp.status", { client = client.name, status = "running" })
     M.sync()
   end)
 end
@@ -687,7 +687,7 @@ local function stop(client, status)
     M.request(client, "shutdown", nil)
     M.notify(client, "exit")
     pcall(api.proc_close_input, proc)
-    daw.defer(function() pcall(api.proc_kill, proc) end, 1000)
+    paw.defer(function() pcall(api.proc_kill, proc) end, 1000)
     by_proc[proc] = nil
     client.proc = nil
   elseif client.transport == "lua" then
@@ -744,7 +744,7 @@ function M.enable(name, on)
     return
   end
   local config = M.configs[name]
-  if not config then error("no server `" .. tostring(name) .. "`: daw.lsp.config it first", 2) end
+  if not config then error("no server `" .. tostring(name) .. "`: paw.lsp.config it first", 2) end
   if client and live(client) then return client end
   client = client or { name = name, restarts = {}, pending = {}, docs = {}, caps = {}, next_id = 0 }
   client.config = config
@@ -805,7 +805,7 @@ function M.settle(ms)
       busy = busy or client.status == "starting" or (client.proc and next(client.pending) ~= nil) or (client.running or 0) > 0
     end
     if not busy then return true end
-    daw.wait(10)
+    paw.wait(10)
   end
   return false
 end
@@ -900,27 +900,27 @@ local function title_of(location)
   if p and p.kind == "note" then
     local n = A.resolve(location.uri)
     local ok, c = pcall(api.clip_get, p.clip)
-    if n and ok then return daw.music.name(n.pitch) .. " " .. daw.time.format(c.start + n.start) end
+    if n and ok then return paw.music.name(n.pitch) .. " " .. paw.time.format(c.start + n.start) end
   end
-  return daw.diagnostic.where({ location = location })
+  return paw.diagnostic.where({ location = location })
 end
 
 --- Show what is known about a location (by default what is under the
 --- cursor of the focused view): the diagnostics about it and what it holds,
 --- then each server's hover, in a float.
 function M.show_hover(id, pitch, beat)
-  local location = type(id) == "table" and id or id and clip_location(id, pitch, beat) or daw.ui.location()
-  if not location then return daw.notify("nothing here to ask about", "warn") end
+  local location = type(id) == "table" and id or id and clip_location(id, pitch, beat) or paw.ui.location()
+  if not location then return paw.notify("nothing here to ask about", "warn") end
   local lines = {}
-  for _, d in ipairs(daw.diagnostic.get(location.uri)) do
-    lines[#lines + 1] = { text = daw.diagnostic.format(d), style = daw.diagnostic.group("Diagnostic", d.severity) }
+  for _, d in ipairs(paw.diagnostic.get(location.uri)) do
+    lines[#lines + 1] = { text = paw.diagnostic.format(d), style = paw.diagnostic.group("Diagnostic", d.severity) }
     for _, fix in ipairs(d.fixes) do lines[#lines + 1] = "  fix: " .. tostring(fix.title) end
   end
-  for _, a in ipairs(daw.annotation and daw.annotation.get(location.uri) or {}) do lines[#lines + 1] = a.label end
+  for _, a in ipairs(paw.annotation and paw.annotation.get(location.uri) or {}) do lines[#lines + 1] = a.label end
   -- The answers may come in another person's turn: the float is shown to whoever asked.
-  local seat = daw.seats and daw.seats.current
+  local seat = paw.seats and paw.seats.current
   M.hover_at(location, function(sections)
-    if seat and seat ~= daw.seats.current then return daw.seats.within(seat, M.show_lines, location, lines, sections) end
+    if seat and seat ~= paw.seats.current then return paw.seats.within(seat, M.show_lines, location, lines, sections) end
     M.show_lines(location, lines, sections)
   end)
 end
@@ -932,35 +932,35 @@ function M.show_lines(location, lines, sections)
     lines[#lines + 1] = { text = s.client, style = "Title" }
     for _, line in ipairs(s.lines) do lines[#lines + 1] = "  " .. line end
   end
-  if #lines == 0 then return daw.notify("nothing to say about " .. title_of(location)) end
+  if #lines == 0 then return paw.notify("nothing to say about " .. title_of(location)) end
   local width = 20
   for _, line in ipairs(lines) do width = math.max(width, api.str_width(type(line) == "table" and line.text or line) + 4) end
-  daw.ui.page(title_of(location), lines, { width = math.min(100, width), height = math.min(30, #lines + 3) })
+  paw.ui.page(title_of(location), lines, { width = math.min(100, width), height = math.min(30, #lines + 3) })
 end
 
 --- Pick a fix or an action for a location (by default what is under the
 --- cursor of the focused view; off a note in the piano roll, the
 --- diagnostics where the cursor is), and carry it out as one undo step.
 function M.code_actions(location)
-  location = location or daw.ui.location()
-  if not location then return daw.notify("nothing here to act on", "warn") end
+  location = location or paw.ui.location()
+  if not location then return paw.notify("nothing here to act on", "warn") end
   local p = A.parse(location.uri)
   local fixes
   if p and p.kind == "clip" and location.selector and location.selector.time then
     -- Off a note: the diagnostics of the clip that cover this time.
     fixes = {}
     local at = location.selector.time[1]
-    for _, d in ipairs(daw.diagnostic.get(p.clip)) do
+    for _, d in ipairs(paw.diagnostic.get(p.clip)) do
       if at >= (d.at or 0) - 1e-9 and at < (d.at or 0) + math.max(d.length or 0, 1e-6) then
         for _, fix in ipairs(d.fixes) do
-          fixes[#fixes + 1] = { title = fix.title, diagnostic = d, run = function() return daw.diagnostic.apply(d, fix) end }
+          fixes[#fixes + 1] = { title = fix.title, diagnostic = d, run = function() return paw.diagnostic.apply(d, fix) end }
         end
       end
     end
   else
-    fixes = daw.diagnostic.actions(location.uri)
+    fixes = paw.diagnostic.actions(location.uri)
   end
-  local seat = daw.seats and daw.seats.current
+  local seat = paw.seats and paw.seats.current
   M.actions_at(location, function(more)
     local items = {}
     for _, a in ipairs(fixes) do
@@ -969,19 +969,19 @@ function M.code_actions(location)
     for _, a in ipairs(more) do
       items[#items + 1] = { text = string.format("%s  (%s)", a.title, a.source), run = a.run or function()
         local ok, why = A.edit(a.edit or {}, a.title)
-        if not ok then daw.notify("cannot: " .. tostring(why), "warn") end
+        if not ok then paw.notify("cannot: " .. tostring(why), "warn") end
       end }
     end
-    if #items == 0 then return daw.notify("no fixes here") end
+    if #items == 0 then return paw.notify("no fixes here") end
     local function show()
-      daw.pick({
+      paw.pick({
         title = "Code actions",
         items = items,
         on_choose = function(item) if item then item.run() end end,
       })
     end
     -- The answers may come in another person's turn: the picker is theirs who asked.
-    if seat and seat ~= daw.seats.current then return daw.seats.within(seat, show) end
+    if seat and seat ~= paw.seats.current then return paw.seats.within(seat, show) end
     show()
   end)
 end
@@ -989,14 +989,14 @@ end
 -- Completion -------------------------------------------------------------------
 
 --- A completion source over every running server that suggests, in the
---- shape `daw.complete.register` takes: `ctx` names the `clip` and where
+--- shape `paw.complete.register` takes: `ctx` names the `clip` and where
 --- the suggestion starts (`at`, beats from the clip's start), with an
 --- optional `selection` (a note set of the clip) and `controller`.
 --- `done(items)` is called once.
 function M.complete(ctx, done)
   local id = ctx.clip and (type(ctx.clip) == "table" and ctx.clip.id or ctx.clip)
   if not id then return done(nil) end
-  ctx = daw.util.merge(ctx, { clip = id })
+  ctx = paw.util.merge(ctx, { clip = id })
   local items, asked, ids = {}, 1, {}
   local function finish()
     asked = asked - 1
@@ -1032,28 +1032,28 @@ function M.complete_cancel()
   M.pending_completion = nil
 end
 
--- Offered to `daw.complete` when it is there, whichever is loaded first.
+-- Offered to `paw.complete` when it is there, whichever is loaded first.
 local offered = false
 local function offer()
-  if offered or not (daw.complete and daw.complete.register) then return end
+  if offered or not (paw.complete and paw.complete.register) then return end
   offered = true
-  daw.complete.register({
+  paw.complete.register({
     name = "lsp", priority = 100, views = { "pianoroll" }, auto = true,
     complete = function(ctx, done) M.complete(ctx, done) end,
     cancel = function() M.complete_cancel() end,
   })
 end
 offer()
-daw.on("startup", offer)
+paw.on("startup", offer)
 
 -- Following the project ------------------------------------------------------------
 
-daw.on("pianoroll.opened", function() if next(clients) then M.sync() end end)
-daw.on("address.changed", schedule)
-daw.on("cursor.changed", schedule)
+paw.on("pianoroll.opened", function() if next(clients) then M.sync() end end)
+paw.on("address.changed", schedule)
+paw.on("cursor.changed", schedule)
 -- Every clip the piano roll edits is open with the servers, not only the active one.
-daw.on("roll_clips.changed", function() if next(clients) then M.sync() end end)
-daw.on("exit", function() M.stop() end)
+paw.on("roll_clips.changed", function() if next(clients) then M.sync() end end)
+paw.on("exit", function() M.stop() end)
 
 -- `:lsp` -------------------------------------------------------------------------
 
@@ -1064,7 +1064,7 @@ function M.info_lines()
   local names = {}
   for name in pairs(M.configs) do names[#names + 1] = name end
   table.sort(names)
-  if #names == 0 then return { "No language servers are configured.", "", "daw.lsp.config(name, { cmd = { ... } }) and daw.lsp.enable(name)." } end
+  if #names == 0 then return { "No language servers are configured.", "", "paw.lsp.config(name, { cmd = { ... } }) and paw.lsp.enable(name)." } end
   for _, name in ipairs(names) do
     local client, config = clients[name], M.configs[name]
     lines[#lines + 1] = { text = name .. "  " .. (client and client.status or "off"), style = "Title" }
@@ -1098,9 +1098,9 @@ end
 function M.command(ctx)
   local verb, name = ctx.args[1] or "info", ctx.args[2]
   if verb == "info" then
-    daw.ui.page("Language servers", M.info_lines())
+    paw.ui.page("Language servers", M.info_lines())
   elseif verb == "log" then
-    daw.ui.page("Language servers: log", #M.log > 0 and M.log or { "Nothing yet." }, { bottom = true })
+    paw.ui.page("Language servers: log", #M.log > 0 and M.log or { "Nothing yet." }, { bottom = true })
   elseif verb == "stop" then
     M.stop(name)
   elseif verb == "start" or verb == "restart" then
@@ -1108,10 +1108,10 @@ function M.command(ctx)
     if name then names[1] = name else for n in pairs(M.configs) do names[#names + 1] = n end end
     for _, n in ipairs(names) do
       local ok, err = pcall(verb == "start" and M.enable or M.restart, n)
-      if not ok then daw.notify(tostring(err), "error") end
+      if not ok then paw.notify(tostring(err), "error") end
     end
   else
-    daw.notify("lsp: info, start, stop, restart or log", "warn")
+    paw.notify("lsp: info, start, stop, restart or log", "warn")
   end
 end
 
@@ -1122,7 +1122,7 @@ function M.command_complete()
 end
 
 -- The window's gestures on the piano roll's notes.
-function daw.frontend.act.note_hover(clip, place)
+function paw.frontend.act.note_hover(clip, place)
   local n = api.clip_notes(clip)[place]
   if n then M.show_hover(clip, n.pitch, n.start) end
 end

@@ -38,7 +38,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Context, Result, bail};
-use daw_engine::{Attr, ClipSet, Ctl, EventKind, MidiEv, Switch, TempoMap};
+use paw_engine::{Attr, ClipSet, Ctl, EventKind, MidiEv, Switch, TempoMap};
 use serde::{Deserialize, Serialize};
 
 /// How long a keyswitch that is struck is held, in beats.
@@ -491,7 +491,7 @@ impl Plan {
 }
 
 fn on_channel(kind: EventKind, ch: u8) -> EventKind {
-    daw_engine::midi_out::on_channel(kind, Some(ch))
+    paw_engine::midi_out::on_channel(kind, Some(ch))
 }
 
 /// Put what a track's map sends into its sorted events: before each note

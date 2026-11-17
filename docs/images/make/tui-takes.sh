@@ -1,19 +1,19 @@
 #!/bin/sh
 # Recording round the loop into takes, and comping them. There is no
 # keyboard here: a script plays a lead-in to the melody (bar 4) into the program
-# through daw.midi.inject, as a MIDI controller would, a little differently
+# through paw.midi.inject, as a MIDI controller would, a little differently
 # each time round.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.api.engine_restart({ backend = 'null', test_midi = { 'Keys A' } })
-daw.transport.loop_start, daw.transport.loop_end = 12, 16 daw.transport.loop_enabled = true daw.transport.seek(12)"
+SETUP="$TUI_DEMO paw.api.engine_restart({ backend = 'null', test_midi = { 'Keys A' } })
+paw.transport.loop_start, paw.transport.loop_end = 12, 16 paw.transport.loop_enabled = true paw.transport.seek(12)"
 rig_start
 term_start
 # One time round the loop (a bar at 108 bpm), a phrase of four notes.
 phrase() {
   for p in "$@"; do
-    ctl "daw.midi.note_on($p, 96)" >/dev/null
+    ctl "paw.midi.note_on($p, 96)" >/dev/null
     sleep 0.40
-    ctl "daw.midi.note_off($p)" >/dev/null
+    ctl "paw.midi.note_off($p)" >/dev/null
     sleep 0.09
   done
 }

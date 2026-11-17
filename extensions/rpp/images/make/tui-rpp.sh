@@ -2,7 +2,7 @@
 # A REAPER project opened in the terminal (the extension's own test
 # project), and what paw could not bring over listed.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/rpp')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/rpp')"
 rig_start
 term_start
 rec_start tui-rpp

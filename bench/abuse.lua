@@ -1,13 +1,13 @@
 -- Malformed files, missing media, absurd values and limits. Each case runs
 -- in its own process (see abuse.sh) so that a crash or a hang is recorded
 -- rather than ending the run.
---   daw --clean --no-plugins -l bench/abuse.lua <case>
---   daw --clean --no-plugins -l bench/abuse.lua list
+--   paw --clean --no-plugins -l bench/abuse.lua <case>
+--   paw --clean --no-plugins -l bench/abuse.lua list
 -- A case prints one JSON line: `outcome` is "ok" (it worked and the result is
 -- sane), "rejected" (a clean error, with the message) or "BAD" (it went
 -- through but left something broken, with what).
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local name = ...
@@ -35,10 +35,10 @@ local function valid_project()
   api.device_add(t, "delay")
   api.clip_add(t, { start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
   api.lane_add(t, { target = "volume", points = { { 0, -6 }, { 4, 0 } } })
-  daw.flush()
+  paw.flush()
   local path = api.project_save(dir .. "/valid.json")
   api.project_new()
-  daw.flush()
+  paw.flush()
   return read(path)
 end
 
@@ -47,7 +47,7 @@ end
 local function load(text)
   local path = write(dir .. "/case.json", text)
   api.project_load(path)
-  daw.flush()
+  paw.flush()
   local length = api.project_get().length
   local info = api.render(dir .. "/case.wav", { ["end"] = math.max(1, math.min(length, 8)), tail = 0 })
   if info.nonfinite > 0 then return "BAD", "renders NaN or infinity" end
@@ -102,7 +102,7 @@ case("file: parameter 1e300", function() return load((valid_project():gsub('"par
 case("file: missing audio file", function()
   local t = api.track_add({})
   api.clip_add(t, { start = 0, length = 4, file = B.wav() })
-  daw.flush()
+  paw.flush()
   local text = read(api.project_save(dir .. "/audio.json"))
   api.project_new()
   return load((text:gsub("bench%-2s%.wav", "does-not-exist.wav")))
@@ -137,7 +137,7 @@ local function synth_track()
   local t = api.track_add({})
   local d = api.device_add(t, "synth")
   api.clip_add(t, { start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 2 } } })
-  daw.flush()
+  paw.flush()
   return t, d
 end
 
@@ -224,7 +224,7 @@ case("api: engine sample rate 0", function()
   synth_track()
   api.transport_play()
   api.sleep(200)
-  return "BAD", "the engine runs at 0 Hz: " .. daw.inspect(api.engine_get().sample_rate)
+  return "BAD", "the engine runs at 0 Hz: " .. paw.inspect(api.engine_get().sample_rate)
 end)
 case("api: engine buffer 0", function()
   api.engine_restart({ backend = "null", buffer_size = 0 })
@@ -242,8 +242,8 @@ case("api: engine buffer 1e9", function()
 end)
 case("api: tiny loop under load", function()
   for _ = 1, 50 do synth_track() end
-  daw.transport.loop_start, daw.transport.loop_end = 0, 0.0001
-  daw.transport.loop_enabled = true
+  paw.transport.loop_start, paw.transport.loop_end = 0, 0.0001
+  paw.transport.loop_enabled = true
   api.engine_reset_stats()
   api.transport_play()
   api.sleep(1000)
@@ -261,16 +261,16 @@ case("api: seek to 1e300 and play", function()
 end)
 case("api: 2000 tracks", function()
   for i = 1, 2000 do api.track_add({}) end
-  daw.flush()
+  paw.flush()
   local warnings = api.warnings()
   -- Remove the first 1000: the rest should now all get an engine slot.
   local list = api.track_list()
   for i = 1, 1000 do api.track_remove(list[i]) end
-  daw.flush()
+  paw.flush()
   local t = list[2000]
   local d = api.device_add(t, "synth")
   api.clip_add(t, { start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 2 } } })
-  daw.flush()
+  paw.flush()
   api.note_on(t, 60, 100)
   api.sleep(150)
   local l = api.track_meter(t)
@@ -293,7 +293,7 @@ case("api: 1e6 notes in one clip", function()
   for i = 1, 1000000 do notes[i] = { pitch = 36 + i % 48, start = i * 0.001, length = 0.01 } end
   local t0 = api.now()
   api.clip_add(t, { start = 0, length = 1001, notes = notes })
-  daw.flush()
+  paw.flush()
   local add = api.now() - t0
   t0 = api.now()
   local info = api.render(dir .. "/many.wav", { ["end"] = 64, tail = 0 })

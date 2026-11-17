@@ -7,8 +7,8 @@
 -- (`stemUpSE` and the like), in staff spaces with y up as SMuFL gives them.
 --
 -- It is read from the fonts the kernel embeds for its rasterizer
--- (`daw.api.smufl`), which also gives a frontend that cannot draw the font
--- each glyph's outline (`daw.canvas.glyph_outline`).
+-- (`paw.api.smufl`), which also gives a frontend that cannot draw the font
+-- each glyph's outline (`paw.canvas.glyph_outline`).
 local M = { fonts = {} }
 
 M.DEFAULT = "Leland"
@@ -36,7 +36,7 @@ end
 function M.font(name)
   name = name or M.DEFAULT
   if M.fonts[name] then return M.fonts[name] end
-  local meta = daw.api.smufl(name) or daw.api.smufl(M.DEFAULT)
+  local meta = paw.api.smufl(name) or paw.api.smufl(M.DEFAULT)
   local font = { name = meta.fontName, defaults = meta.engravingDefaults, glyphs = glyphs_of(meta) }
   M.fonts[name] = font
   return font

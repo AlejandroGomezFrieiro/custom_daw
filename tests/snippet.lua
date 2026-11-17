@@ -1,11 +1,11 @@
--- Tests of the snippet engine, `daw.snippet`, with snippets defined here:
+-- Tests of the snippet engine, `paw.snippet`, with snippets defined here:
 -- expanding, choices stepped through within one undo step, how a snippet
 -- ends, the picker, counts, loading from files, and the keys falling back
 -- to what they otherwise do. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local eq, fresh = T.eq, T.fresh
-local api = daw.api
-local S = daw.snippet
+local api = paw.api
+local S = paw.snippet
 
 -- The snippets made here are taken away after each test, so that they are
 -- not offered to the tests that follow (they would be suggestions too).
@@ -17,10 +17,10 @@ local function test(name, fn)
     if not ok then error(err, 0) end
   end)
 end
-local music = daw.music
+local music = paw.music
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -70,14 +70,14 @@ end
 local function open(start)
   fresh()
   api.engine_restart({ backend = "null" })
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
   define()
-  local track = daw.add_track({ name = "Keys" })
+  local track = paw.add_track({ name = "Keys" })
   local clip = track:add_clip({ start = start or 0, length = 16, notes = {} })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
   roll:set(60, 0)
   return clip, roll
@@ -90,7 +90,7 @@ test("snippet: expanding writes the notes as one undo step and makes the snippet
   local state = S.active()
   eq(state and state.name, "stack", "active")
   eq(state.current, 0, "no choice yet")
-  daw.undo()
+  paw.undo()
   eq(melody(clip), "", "one undo takes it away")
   eq(S.active(), nil, "and ends it")
 end)
@@ -116,9 +116,9 @@ test("snippet: Tab goes to a choice, C-n and C-p step it, all within the one und
   eq(S.active().current, 1, "S-Tab: back")
   keys("<Tab><Tab>")
   eq(S.active().current, 1, "Tab past the last goes round")
-  daw.undo()
+  paw.undo()
   eq(melody(clip), "", "one undo takes the whole snippet away")
-  daw.redo()
+  paw.redo()
   eq(melody(clip), "60@0+2 65@0+2 70@0+2", "redo brings it back as it was left")
 end)
 
@@ -136,21 +136,21 @@ test("snippet: it ends on C-y, Escape, leaving its span, or another edit", funct
   keys("<C-y>")
   eq(S.active(), nil, "C-y ends it")
   eq(melody(clip), "60@0+1 63@0+1 66@0+1", "keeping its notes")
-  daw.undo()
+  paw.undo()
   keys(":snippet stack<CR>")
   keys("<Esc>")
   eq(S.active(), nil, "Escape ends it")
-  daw.undo()
+  paw.undo()
   keys(":snippet stack<CR>")
   keys("l")
   eq(S.active() ~= nil, true, "moving inside the span keeps it")
   roll:set(nil, 3)
   eq(S.active(), nil, "leaving the span ends it")
-  daw.undo()
+  paw.undo()
   roll:set(60, 0)
   keys(":snippet stack<CR>")
   clip:add_note({ pitch = 40, start = 2, length = 1 })
-  daw.flush()
+  paw.flush()
   eq(S.active(), nil, "another edit ends it")
   keys("<C-n>")
   eq(melody(clip), "60@0+1 63@0+1 66@0+1 40@2+1", "and C-n no longer changes it")
@@ -158,14 +158,14 @@ end)
 
 test("snippet: the keys do what they otherwise do when no snippet is active", function()
   local clip = open()
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys("<Tab>")
-  eq(daw.ui.focused ~= "pianoroll", true, "Tab goes to the next view")
-  daw.ui.focus("pianoroll")
+  eq(paw.ui.focused ~= "pianoroll", true, "Tab goes to the next view")
+  paw.ui.focus("pianoroll")
   clip:add_note({ pitch = 50, start = 0, length = 1 })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(melody(clip), "", "undone")
   keys("<C-y>")
   eq(melody(clip), "50@0+1", "C-y redoes")
@@ -175,9 +175,9 @@ test("snippet: a count repeats the snippet one after another", function()
   local clip = open()
   keys(":3snippet walk<CR>")
   eq(melody(clip), "60@0+1 61@1+1 62@2+1", ":3snippet: three, each where the last ended")
-  daw.undo()
+  paw.undo()
   keys("2<C-s>")
-  eq(daw.pick.state() ~= nil, true, "the picker is open")
+  eq(paw.pick.state() ~= nil, true, "the picker is open")
   keys("walk<CR>")
   eq(melody(clip), "60@0+1 61@1+1", "2<C-s>: two")
 end)
@@ -186,23 +186,23 @@ test("snippet: one that does not fit says why and writes nothing", function()
   local clip = open()
   keys(":snippet nothing<CR>")
   eq(melody(clip), "", "nothing written")
-  eq(daw.ui.message and daw.ui.message.text, "nothing fits here", "the reason")
+  eq(paw.ui.message and paw.ui.message.text, "nothing fits here", "the reason")
   eq(S.active(), nil, "nothing active")
   keys(":snippet nosuch<CR>")
-  eq(daw.ui.message.text, "no snippet nosuch", "an unknown name")
+  eq(paw.ui.message.text, "no snippet nosuch", "an unknown name")
 end)
 
 test("snippet: the picker lists the snippets of the view, previews them and expands the one chosen", function()
   local clip = open()
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys("<C-s>")
-  local state = daw.pick.state()
+  local state = paw.pick.state()
   eq(state ~= nil, true, "open")
   local names = {}
   for _, line in ipairs(state.matches) do names[#names + 1] = line:match("^(%S+)") end
   eq(table.concat(names, " "), "nothing stack walk", "the snippets, by name")
   keys("sta")
-  eq(daw.pick.state().matches[1]:match("^(%S+)"), "stack", "filtered")
+  eq(paw.pick.state().matches[1]:match("^(%S+)"), "stack", "filtered")
   -- The preview pane: the notes it would write, and the ghosts in the roll.
   api.ui_snapshot(120, 40)
   local ghosts = S.preview_marks(clip.id)
@@ -217,7 +217,7 @@ test("snippet: the picker lists the snippets of the view, previews them and expa
   keys("<C-y>")
   keys("<C-s>")
   keys("<Esc>")
-  eq(daw.pick.state(), nil, "Escape closes it")
+  eq(paw.pick.state(), nil, "Escape closes it")
   eq(melody(clip), "60@0+1 63@0+1 66@0+1", "writing nothing")
 end)
 
@@ -241,13 +241,13 @@ test("snippet: notes past the clip's end make it longer", function()
   keys("<Tab><Tab><C-n>")
   eq(melody(clip), "60@15+2 63@15+2 66@15+2", "written")
   eq(clip.length, 20, "the clip grew to the next bar")
-  daw.undo()
+  paw.undo()
   eq(clip.length, 16, "and undo shrinks it")
 end)
 
 test("snippet: the active snippet is drawn in the terminal and told to the window", function()
   local clip, roll = open()
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys(":snippet stack<CR><Tab>")
   local screen = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(screen:find("stack · interval: 3 (1/3)", 1, true) ~= nil, true, "its choice along the bottom")
@@ -259,7 +259,7 @@ test("snippet: the active snippet is drawn in the terminal and told to the windo
   eq(notes, 3, "its notes")
   eq(chips, 1, "and a chip saying its choice")
   eq(marks[4].label, "stack · interval: 3 (1/3)", "which it names")
-  local over = daw.frontend.state(0).modal.roll.over
+  local over = paw.frontend.state(0).modal.roll.over
   local sent = 0
   for _, m in ipairs(over) do
     if m.fill == "#ac93e6" then sent = sent + 1 end
@@ -289,7 +289,7 @@ return {
   { name = "file-b", desc = "another", views = { "pianoroll", "arrange" }, expand = function(ctx) return { notes = {} } end },
 }
 ]])
-  T.write_file(dir .. "/two.lua", [[daw.snippet.add({ name = "file-c", expand = function() end })]])
+  T.write_file(dir .. "/two.lua", [[paw.snippet.add({ name = "file-c", expand = function() end })]])
   S.load_dir(dir, "config")
   eq(S.get("file-a").desc, "from a list", "a file returning a list")
   eq(S.get("file-c") ~= nil, true, "a file calling add")
@@ -303,6 +303,6 @@ end)
 test("snippet: the command completes the names", function()
   open()
   local found = {}
-  for _, c in ipairs(daw.commands.complete("snippet st")) do found[#found + 1] = c.text or c end
+  for _, c in ipairs(paw.commands.complete("snippet st")) do found[#found + 1] = c.text or c end
   eq(table.concat(found, " "):find("stack") ~= nil, true, "stack: " .. table.concat(found, " "))
 end)

@@ -224,7 +224,7 @@ impl View {
         }
     }
 
-    /// Extensions' bands (`daw.frontend.bands`), a row each under the
+    /// Extensions' bands (`paw.frontend.bands`), a row each under the
     /// markers: an entry over its stretch, or a flag where it is, in its
     /// colour; a click runs what it stands for.
     fn bands(&mut self, ui: &mut Ui, pane: Rect, geo: &Geo) {

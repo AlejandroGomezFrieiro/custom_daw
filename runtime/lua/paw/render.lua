@@ -1,12 +1,12 @@
--- Rendering: `daw.render`, stems, the `:render` command, and the render
+-- Rendering: `paw.render`, stems, the `:render` command, and the render
 -- that runs in the background with its progress and cancelling. The work is
--- in the kernel (crates/daw-core/src/session/render.rs).
-local api = daw.api
+-- in the kernel (crates/paw-core/src/session/render.rs).
+local api = paw.api
 local M = {}
 
 --- Named ranges a render can take besides beats: each a function giving
 --- `start, end` in beats, or nil and why not. Extensions may add their own
---- (`daw.render_ranges.chorus = function() return 32, 48 end`).
+--- (`paw.render_ranges.chorus = function() return 32, 48 end`).
 M.ranges = {
   song = function() return 0, nil end,
   loop = function()
@@ -15,7 +15,7 @@ M.ranges = {
     return t.loop_start, t.loop_end
   end,
   selection = function()
-    local sel = daw.keymap.selection()
+    local sel = paw.keymap.selection()
     if not (sel and sel.c0 and sel.c1 and sel.c1 > sel.c0) then return nil, "nothing is selected: select a stretch of time first" end
     return sel.c0, sel.c1
   end,
@@ -30,7 +30,7 @@ local function kernel_opts(opts)
   out.range, out.background, out.format = nil, nil, nil
   if out.channels == "mono" then out.channels = 1 elseif out.channels == "stereo" then out.channels = 2 end
   if out.rate then out.sample_rate, out.rate = out.rate, nil end
-  out.ffmpeg = out.ffmpeg or daw.opt.ffmpeg
+  out.ffmpeg = out.ffmpeg or paw.opt.ffmpeg
   out.bitrate = tonumber(out.bitrate)
   if out.tags and next(out.tags) == nil then out.tags = nil end
   if range and range ~= "song" then
@@ -49,7 +49,7 @@ local function kernel_opts(opts)
 end
 
 local function check(path)
-  local why = api.render_check(path, daw.opt.ffmpeg)
+  local why = api.render_check(path, paw.opt.ffmpeg)
   if why then error(why, 0) end
 end
 
@@ -57,17 +57,17 @@ end
 local queue = {}
 
 local function start(path, opts)
-  daw.emit("render.before", { path = path, opts = opts })
+  paw.emit("render.before", { path = path, opts = opts })
   api.render_start(path, opts)
-  daw.ui.poke()
+  paw.ui.poke()
 end
 
 --- Render the project to a file: WAV or FLAC, or MP3, Ogg Vorbis or Opus
---- when ffmpeg is installed (`daw.opt.ffmpeg` says where it is, if not on
+--- when ffmpeg is installed (`paw.opt.ffmpeg` says where it is, if not on
 --- the PATH), by the file's extension. A lossy file is rendered to a
 --- temporary WAV, which ffmpeg then encodes.
 --- `opts` (all optional):
----   range       "song" (the default), "loop", "selection", or a name in `daw.render_ranges`
+---   range       "song" (the default), "loop", "selection", or a name in `paw.render_ranges`
 ---   start, end  beats, instead of a range (`end` defaults to the end of the last clip)
 ---   tail        seconds after the end, for reverbs and delays to ring out (1)
 ---   sample_rate (or rate) Hz; the engine's by default
@@ -77,7 +77,7 @@ end
 ---   quality     for MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the
 ---               default) or "best"; `bitrate` (kbit/s) instead of it for a number
 ---   tags        { title, artist, album, track, year, genre, comment, cover } written into
----               the file, over the project's own (`daw.render_tags`); `cover` is a PNG or
+---               the file, over the project's own (`paw.render_tags`); `cover` is a PNG or
 ---               JPEG file (a WAV holds no cover); the title of a lossy file is the project's name by default
 ---   normalize   bring the loudest sample to this level in dB, such as -1
 ---   loudness    bring the integrated loudness to this level in LUFS, such as -14;
@@ -108,20 +108,20 @@ function M.render(path, opts)
     end
     return nil
   end
-  daw.emit("render.before", { path = path, opts = opts })
+  paw.emit("render.before", { path = path, opts = opts })
   local info = api.render(path, opts)
   -- What the render had to leave out (a plugin that stopped answering).
-  for _, why in ipairs(info.left_out or {}) do daw.notify(why, "warn") end
+  for _, why in ipairs(info.left_out or {}) do paw.notify(why, "warn") end
   -- As `render.done` says of a render in the background.
-  daw.emit("render.finished", daw.util.merge(info, { path = info.path or path }))
+  paw.emit("render.finished", paw.util.merge(info, { path = info.path or path }))
   return info
 end
 
 M.tag_names = { "title", "artist", "album", "track", "year", "genre", "comment", "cover" }
 
 --- What the project's rendered files are tagged with (`project.meta.tags`):
---- `daw.render_tags()` gives `{ title, artist, album, track, year, genre, comment, cover }`
---- as far as set; `daw.render_tags({ artist = "Me" })` sets those fields and keeps the others,
+--- `paw.render_tags()` gives `{ title, artist, album, track, year, genre, comment, cover }`
+--- as far as set; `paw.render_tags({ artist = "Me" })` sets those fields and keeps the others,
 --- an empty string takes one out. A relative `cover` is from the project's directory.
 function M.tags(set)
   local meta = api.project_get().meta
@@ -163,7 +163,7 @@ end
 --- Render each track on its own into a directory, one file per track named
 --- after it: stems. A track is rendered with what it passes through on the
 --- way to the master, as when it is soloed, so that the stems add up to the
---- mix. `opts` is as for `daw.render`, plus `tracks` to choose which (all
+--- mix. `opts` is as for `paw.render`, plus `tracks` to choose which (all
 --- that are not muted, by default) and `format` ("wav", "flac", "mp3", "ogg"
 --- or "opus"). With
 --- `background`, they are rendered one after another. Returns the files.
@@ -176,7 +176,7 @@ function M.stems(dir, opts)
   local tracks = opts.tracks
   if not tracks then
     tracks = {}
-    for _, track in ipairs(daw.tracks()) do
+    for _, track in ipairs(paw.tracks()) do
       if not track.mute and #track:clips() > 0 then tracks[#tracks + 1] = track.id end
     end
   end
@@ -189,8 +189,8 @@ function M.stems(dir, opts)
     local path = string.format("%s/%s.%s", dir, name, ext)
     -- A lossy stem is titled after its track, unless the options say otherwise.
     local lossy = ext ~= "wav" and ext ~= "flac"
-    local tags = daw.util.merge(lossy and { title = name } or {}, opts.tags or {})
-    M.render(path, daw.util.merge(opts, { tracks = { id }, format = false, tags = tags }))
+    local tags = paw.util.merge(lossy and { title = name } or {}, opts.tags or {})
+    M.render(path, paw.util.merge(opts, { tracks = { id }, format = false, tags = tags }))
     out[#out + 1] = path
   end
   return out
@@ -201,7 +201,7 @@ local function next_in_queue()
   if nxt then
     local ok, err = pcall(start, nxt.path, nxt.opts)
     if not ok then
-      daw.notify("could not render " .. nxt.path .. ": " .. tostring(err), "error")
+      paw.notify("could not render " .. nxt.path .. ": " .. tostring(err), "error")
       return next_in_queue()
     end
   end
@@ -213,26 +213,26 @@ local function name_of(path) return tostring(path):match("([^/]+)$") or tostring
 --- full scale) and a peak over it is a warning, as it clips.
 local function notify_rendered(path, info, more)
   local peak = 20 * math.log10(math.max(info.peak, 1e-6))
-  daw.notify(string.format("rendered %s: %.1f s, peak %+.1f dB%s%s", name_of(path), info.seconds, peak, more,
+  paw.notify(string.format("rendered %s: %.1f s, peak %+.1f dB%s%s", name_of(path), info.seconds, peak, more,
     peak > 0 and " (clips)" or ""), peak > 0 and "warn" or "info")
 end
 
-daw.on("render.progress", function() api.ui_redraw() end)
-daw.on("render.done", function(info)
+paw.on("render.progress", function() api.ui_redraw() end)
+paw.on("render.done", function(info)
   notify_rendered(info.path, info, info.loudness and string.format(", %.1f LUFS", info.loudness) or "")
-  for _, why in ipairs(info.left_out or {}) do daw.notify(why, "warn") end
+  for _, why in ipairs(info.left_out or {}) do paw.notify(why, "warn") end
   next_in_queue()
 end)
-daw.on("render.failed", function(e)
-  daw.notify("render of " .. name_of(e.path) .. " failed: " .. tostring(e.error), "error")
+paw.on("render.failed", function(e)
+  paw.notify("render of " .. name_of(e.path) .. " failed: " .. tostring(e.error), "error")
   next_in_queue()
 end)
-daw.on("render.cancelled", function(e)
+paw.on("render.cancelled", function(e)
   queue = {}
-  daw.notify("render of " .. name_of(e.path) .. " cancelled; no file written")
+  paw.notify("render of " .. name_of(e.path) .. " cancelled; no file written")
 end)
 -- `Esc` in normal mode, with nothing else to cancel, stops a render.
-daw.on("escape", function()
+paw.on("escape", function()
   if api.render_status() then M.cancel() end
 end)
 
@@ -278,7 +278,7 @@ M.default_path = default_path
 local function track_list(spec)
   if spec == nil or spec == "all" then return nil end
   if spec == "selected" then
-    local id = daw.cursor.track_id()
+    local id = paw.cursor.track_id()
     if not id then error("no track is selected", 0) end
     return { id }
   end
@@ -287,7 +287,7 @@ local function track_list(spec)
   return ids
 end
 
-daw.command("render", function(ctx)
+paw.command("render", function(ctx)
   local a = ctx.args
   local opts = {
     range = a.range, start = tonumber(a.start), ["end"] = tonumber(a["end"]), tail = tonumber(a.tail),
@@ -305,22 +305,22 @@ daw.command("render", function(ctx)
   opts.tags = next(tags) ~= nil and tags or nil
   if opts.start or opts["end"] then opts.range = nil end
   -- `:render stems` and `:render Strings`: by group, the plan shown first.
-  local stems = require("daw.stems")
+  local stems = require("paw.stems")
   if a[1] == "stems" or stems.names_group(a[1]) then
     opts.tracks = nil
     return stems.command(ctx, opts)
   end
   if a.stems == true then
     local dir = a[1] and tostring(a[1]) or (default_path():gsub("%.wav$", "") .. " stems")
-    local files = M.stems(dir, daw.util.merge(opts, { format = a.format }))
-    return daw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))
+    local files = M.stems(dir, paw.util.merge(opts, { format = a.format }))
+    return paw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))
   end
   local path = a[1] and tostring(a[1]) or default_path()
   local info = M.render(path, opts)
   if info then
     notify_rendered(path, info, "")
   else
-    daw.notify("rendering " .. name_of(path) .. " · Esc cancels")
+    paw.notify("rendering " .. name_of(path) .. " · Esc cancels")
   end
 end, {
   desc = "Render to WAV or FLAC by the file's extension, or MP3, Ogg or Opus with ffmpeg installed: `render mix.flac "
@@ -333,7 +333,7 @@ end, {
     if before == "" and not key then
       out[1] = "stems"
       for _, id in ipairs(api.track_list()) do
-        if daw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+        if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
       end
     end
     for _, o in ipairs(M.options) do
@@ -347,7 +347,7 @@ end, {
   end,
 })
 
-daw.command("render.tags", function(ctx)
+paw.command("render.tags", function(ctx)
   local set = {}
   for _, key in ipairs(M.tag_names) do
     if ctx.args[key] ~= nil and ctx.args[key] ~= true then set[key] = ctx.args[key] end
@@ -357,25 +357,25 @@ daw.command("render.tags", function(ctx)
   for _, key in ipairs(M.tag_names) do
     if tags[key] then words[#words + 1] = key .. "=" .. tostring(tags[key]) end
   end
-  daw.notify(#words > 0 and ("rendered files are tagged " .. table.concat(words, ", "))
+  paw.notify(#words > 0 and ("rendered files are tagged " .. table.concat(words, ", "))
     or "no tags: set some with `render.tags artist=Me album=First`")
 end, {
   desc = "Show or set the tags of the project's rendered files: `render.tags artist=Me album=\"First one\" track=3 "
     .. "year=2026 genre=Ambient comment=\"a note\" cover=cover.png`; an empty value takes one out",
 })
 
-daw.command("render.cancel", function()
-  if not M.cancel() then daw.notify("nothing is being rendered") end
+paw.command("render.cancel", function()
+  if not M.cancel() then paw.notify("nothing is being rendered") end
 end, { desc = "Stop the render running in the background; it leaves no file" })
 
-daw.command("stems", function(ctx)
+paw.command("stems", function(ctx)
   local dir = tostring(ctx.args[1] or "stems")
   local files = M.stems(dir, {
     tail = tonumber(ctx.args.tail), bits = tonumber(ctx.args.bits), format = ctx.args.format,
     quality = ctx.args.quality and tostring(ctx.args.quality) or nil, bitrate = tonumber(ctx.args.bitrate),
     master = ctx.args.master ~= false and nil or false, background = ctx.args.wait ~= true,
   })
-  daw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))
+  paw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))
 end, { desc = "Render each track on its own into a directory: `stems out tail=2 bits=24 format=flac master=false`" })
 
 return M

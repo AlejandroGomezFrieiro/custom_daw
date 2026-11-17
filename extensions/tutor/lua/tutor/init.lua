@@ -9,22 +9,22 @@
 --
 -- Lessons are registered in order with `tutor.register(lesson)`; the built-in
 -- ones are in `tutor.lessons.*`.
-local api = daw.api
+local api = paw.api
 local store = require("tutor.store")
 local look = require("tutor.look")
 
 local M = { lessons = {}, by_id = {} }
 
-daw.option.define("tutor_dir", "")   -- where progress and practice projects go; "" for $XDG_STATE_HOME/daw/tutor
+paw.option.define("tutor_dir", "")   -- where progress and practice projects go; "" for $XDG_STATE_HOME/paw/tutor
 
--- What the tutor is doing now. Kept in `daw.state` too, so that `:reload`
+-- What the tutor is doing now. Kept in `paw.state` too, so that `:reload`
 -- (which runs the extension again) does not lose the learner's place.
-local S = daw.state.tutor or { active = false }
+local S = paw.state.tutor or { active = false }
 local ctx                        -- the current step's record of what happened since it began
 local progress                   -- the progress file, read when first needed
 
 local function remember()
-  daw.state.tutor = S
+  paw.state.tutor = S
 end
 
 local function data()
@@ -131,36 +131,36 @@ end
 local OPTIONS = { "grid", "note_grid", "octave", "velocity", "ripple", "clip_length" }
 
 local function in_practice()
-  return S.active and S.practice ~= nil and daw.project.path == S.practice
+  return S.active and S.practice ~= nil and paw.project.path == S.practice
 end
 M.in_practice = in_practice
 
 --- Whether opening a practice project now would lose unsaved work.
 local function unsaved_work()
   if in_practice() then return false end
-  return daw.project.unsaved()
+  return paw.project.unsaved()
 end
 
 local function tidy_screen()
-  if daw.ui.float then daw.ui.close() end
-  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do daw.ui.hide(name) end
+  if paw.ui.float then paw.ui.close() end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do paw.ui.hide(name) end
   -- The note length chosen in insert mode lasts the session, and the device
   -- panel keeps its row from track to track: lessons start from the top.
-  daw.ui.views.pianoroll:set_step(nil)
-  daw.ui.views.devices.row = 1
-  daw.ui.focus("arrange")
-  if daw.keymap.mode ~= "n" then daw.keymap.set_mode("n") end
+  paw.ui.views.pianoroll:set_step(nil)
+  paw.ui.views.devices.row = 1
+  paw.ui.focus("arrange")
+  if paw.keymap.mode ~= "n" then paw.keymap.set_mode("n") end
 end
 
 --- Save the practice project, and remember which step it was saved at, so
 --- that coming back resumes where the project and the step agree.
 local function save_practice()
   if not in_practice() then return end
-  local ok = pcall(daw.project.save)
+  local ok = pcall(paw.project.save)
   if ok and S.lesson then
     local rec = M.record(S.lesson)
     rec.saved_step = S.step
-    rec.cursor = { track = daw.cursor.index(), beat = daw.cursor.beat }
+    rec.cursor = { track = paw.cursor.index(), beat = paw.cursor.beat }
   end
 end
 
@@ -169,7 +169,7 @@ end
 local function new_ctx()
   -- The last message so far: the history keeps only so many, so a count
   -- of them stops moving once it is full.
-  return { commands = {}, events = {}, messages = daw.ui.messages[#daw.ui.messages] }
+  return { commands = {}, events = {}, messages = paw.ui.messages[#paw.ui.messages] }
 end
 
 local function begin_step()
@@ -177,7 +177,7 @@ local function begin_step()
   ctx = new_ctx()
   S.hint, S.error = false, nil
   remember()
-  if step and step.start then daw.try(step.start, ctx, look) end
+  if step and step.start then paw.try(step.start, ctx, look) end
   api.ui_redraw()
 end
 
@@ -245,11 +245,11 @@ end
 -- What steps record about what happened since they began.
 --- The command an alias stands for: `q` is `quit`, `w` is `write`.
 local function command_name(name)
-  local spec = name and daw.commands.get(name)
+  local spec = name and paw.commands.get(name)
   return spec and spec.alias_of or name
 end
 
-daw.on("*", function(payload, name)
+paw.on("*", function(payload, name)
   if not S.active then return end
   local command = (name == "command.pre" or name == "command.post") and command_name(payload.name)
   if ctx then
@@ -261,7 +261,7 @@ daw.on("*", function(payload, name)
   if name == "project.saved" and in_practice() and S.lesson then
     local rec = M.record(S.lesson)
     rec.saved_step = S.step
-    rec.cursor = { track = daw.cursor.index(), beat = daw.cursor.beat }
+    rec.cursor = { track = paw.cursor.index(), beat = paw.cursor.beat }
   end
   if name == "command.pre" and (command == "quit" or command == "wq") then
     M.leaving()
@@ -281,25 +281,25 @@ end
 
 --- Build a lesson's practice project and save it in the tutor's directory.
 local function build(lesson)
-  daw.project.new()
-  daw.flush()
-  daw.transport.loop_enabled = false
+  paw.project.new()
+  paw.flush()
+  paw.transport.loop_enabled = false
   if lesson.setup then lesson.setup(look) end
-  daw.project.name = "tutor " .. lesson.id
+  paw.project.name = "tutor " .. lesson.id
   local path = store.practice(lesson.id)
-  daw.project.save(path)
+  paw.project.save(path)
   -- Opening the file starts the undo history at the practice project, so
   -- `u` cannot take the lesson's own building apart.
-  daw.project.load(path)
-  daw.flush()
+  paw.project.load(path)
+  paw.flush()
   return path
 end
 
 local function place_cursor(lesson)
   local first = api.track_list()[1]
-  if first then daw.cursor.set_track(first) end
-  daw.cursor.set_beat(0)
-  daw.transport.seek(0)
+  if first then paw.cursor.set_track(first) end
+  paw.cursor.set_beat(0)
+  paw.transport.seek(0)
   if lesson.at then lesson.at(look) end
 end
 
@@ -317,46 +317,46 @@ function M.start(which, opts)
     if lesson then resume = cur.step else lesson = M.lessons[1] end
   else
     lesson, n = M.find(which)
-    if not lesson then return daw.notify("no lesson `" .. tostring(which) .. "`: `:tutor list` shows them", "warn") end
+    if not lesson then return paw.notify("no lesson `" .. tostring(which) .. "`: `:tutor list` shows them", "warn") end
     local cur = data().current
     if cur and cur.lesson == lesson.id and not opts.fresh then resume = cur.step end
   end
   n = M.number(lesson)
 
   if unsaved_work() and not opts.force then
-    return daw.notify("Your project has changes that are not saved. Save them with `:w` (or `:w name.json`) "
+    return paw.notify("Your project has changes that are not saved. Save them with `:w` (or `:w name.json`) "
       .. "and start again, or `:tutor! " .. n .. "` to start anyway and lose them.", "warn")
   end
 
   local first = not S.active
   if not S.active then
     -- Remember the learner's own project, to reopen it when they leave.
-    local p = daw.project.get()
+    local p = paw.project.get()
     S.back = { path = p.path }
     S.options = {}
-    for _, name in ipairs(OPTIONS) do S.options[name] = daw.opt[name] end
+    for _, name in ipairs(OPTIONS) do S.options[name] = paw.opt[name] end
   else
     save_practice()   -- the lesson being left keeps its place
   end
 
-  daw.transport.stop()
+  paw.transport.stop()
   tidy_screen()
-  daw.opt.grid, daw.opt.note_grid, daw.opt.octave, daw.opt.velocity, daw.opt.ripple, daw.opt.clip_length = 1, 0.25, 4, 100, false, 4
+  paw.opt.grid, paw.opt.note_grid, paw.opt.octave, paw.opt.velocity, paw.opt.ripple, paw.opt.clip_length = 1, 0.25, 4, 100, false, 4
 
   local path = store.practice(lesson.id)
   local step = 1
   -- The practice file is as it was when last saved: resume at that step.
   local saved = M.record(lesson.id).saved_step
   if resume and saved then resume = math.min(resume, saved) end
-  if resume and resume <= #lesson.steps and store.exists(path) and pcall(daw.project.load, path) then
-    daw.flush()
+  if resume and resume <= #lesson.steps and store.exists(path) and pcall(paw.project.load, path) then
+    paw.flush()
     step = resume
     place_cursor(lesson)
     local where = M.record(lesson.id).cursor
     local list = api.track_list()
     if where and where.track and list[where.track] then
-      daw.cursor.set_track(list[where.track])
-      daw.cursor.set_beat(where.beat or 0)
+      paw.cursor.set_track(list[where.track])
+      paw.cursor.set_beat(where.beat or 0)
     end
   else
     path = build(lesson)
@@ -371,7 +371,7 @@ function M.start(which, opts)
   data().current = { lesson = lesson.id, step = step }
   write()
   remember()
-  daw.flush()
+  paw.flush()
   begin_step()
   show_panel()
   M.show_intro(lesson)
@@ -379,7 +379,7 @@ function M.start(which, opts)
   if first and S.back.path then
     note = note .. " " .. S.back.path .. " is closed while you practise, unchanged; `,hq` reopens it."
   end
-  daw.notify(note)
+  paw.notify(note)
   return lesson
 end
 
@@ -397,7 +397,7 @@ function M.show_intro(lesson)
   section("The idea", lesson.idea)
   section("If you know Vim", lesson.vim)
   lines[#lines + 1] = { text = "Press any key to begin. The panel at the bottom says what to do.", style = "TutorHint" }
-  daw.ui.page(string.format("Lesson %d: %s", M.number(lesson), lesson.title), lines)
+  paw.ui.page(string.format("Lesson %d: %s", M.number(lesson), lesson.title), lines)
 end
 
 --- Save the practice project and the learner's place, for leaving the program.
@@ -415,31 +415,31 @@ end
 --- Leave the tutor: save the practice project, put the learner's options and
 --- project back.
 function M.quit()
-  if not S.active then return daw.notify("the tutor is not running") end
+  if not S.active then return paw.notify("the tutor is not running") end
   save_practice()
-  daw.transport.stop()
+  paw.transport.stop()
   tidy_screen()
-  for name, value in pairs(S.options or {}) do daw.opt[name] = value end
+  for name, value in pairs(S.options or {}) do paw.opt[name] = value end
   local back = S.back or {}
   S.active, S.finished, S.paused = false, false, false
   remember()
   hide_panel()
   if back.path then
-    local ok, err = pcall(daw.project.load, back.path)
-    if not ok then daw.notify("could not reopen " .. back.path .. ": " .. tostring(err), "error") end
+    local ok, err = pcall(paw.project.load, back.path)
+    if not ok then paw.notify("could not reopen " .. back.path .. ": " .. tostring(err), "error") end
   else
-    daw.project.new()
+    paw.project.new()
   end
-  daw.flush()
+  paw.flush()
   local first = api.track_list()[1]
-  if first then daw.cursor.set_track(first) end
+  if first then paw.cursor.set_track(first) end
   write()
-  daw.notify(back.path and ("Left the tutor; reopened " .. back.path) or "Left the tutor. `:tutor` comes back to where you were.")
+  paw.notify(back.path and ("Left the tutor; reopened " .. back.path) or "Left the tutor. `:tutor` comes back to where you were.")
 end
 
 function M.hint()
   local _, step = M.current()
-  if not step then return daw.notify("the tutor is not running: `:tutor`") end
+  if not step then return paw.notify("the tutor is not running: `:tutor`") end
   S.hint = true
   remember()
   api.ui_redraw()
@@ -449,21 +449,21 @@ function M.skip()
   local _, step = M.current()
   if not step then
     if S.active and S.finished then return M.next_lesson() end
-    return daw.notify("the tutor is not running: `:tutor`")
+    return paw.notify("the tutor is not running: `:tutor`")
   end
   advance("skipped")
 end
 
 function M.restart()
   local lesson = M.current() or (S.active and M.by_id[S.lesson])
-  if not lesson then return daw.notify("the tutor is not running: `:tutor`") end
+  if not lesson then return paw.notify("the tutor is not running: `:tutor`") end
   M.start(lesson.id, { fresh = true, force = true })
 end
 
 function M.next_lesson()
   local lesson = S.active and M.by_id[S.lesson]
   local n = lesson and M.number(lesson) or 0
-  if not M.lessons[n + 1] then return daw.notify("That was the last lesson.") end
+  if not M.lessons[n + 1] then return paw.notify("That was the last lesson.") end
   M.start(n + 1, { fresh = true })
 end
 
@@ -477,7 +477,7 @@ function M.list()
       text = string.format("%2d  %-6s %s", i, mark == "done" and "✓" or mark, lesson.title),
     }
   end
-  daw.pick({
+  paw.pick({
     title = "Lessons",
     items = items,
     format = function(item) return item.text end,
@@ -494,7 +494,7 @@ end
 function M.reset()
   progress = { version = 1, lessons = {} }
   write()
-  daw.notify("tutor progress forgotten")
+  paw.notify("tutor progress forgotten")
 end
 
 return M

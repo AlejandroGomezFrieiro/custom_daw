@@ -5,13 +5,13 @@ UTAU voicebanks, DiffSinger, ENUNU, Vogen, VOICEVOX), through ReaUtau's
 `reautau-engine`, with the core of ReaUtau's vocal editor.
 
 ```lua
-local vocal = daw.track_kinds.add("vocal", { name = "Vocal", ask = false })
+local vocal = paw.track_kinds.add("vocal", { name = "Vocal", ask = false })
 require("utau").configure(vocal.id, { singer = "Kitane sno act5 VCV" })
 vocal:add_clip({ start = 0, length = 4, notes = {
   { pitch = "A3", start = 0, length = 1, meta = { lyric = "- あ" } },
   { pitch = "C4", start = 1, length = 1, meta = { lyric = "- い" } },
 } })
-daw.render("vocal.wav")   -- waits until every phrase is sung at final quality
+paw.render("vocal.wav")   -- waits until every phrase is sung at final quality
 ```
 
 ![A vocal track added to the demo song with :track.add vocal, its singer chosen with ,V and its phonemizer with :utau.phonemizer, the melody pasted in, lyrics typed in romaji with :utau.lyrics and made kana with :utau.batch romaji_to_hiragana; the phrases turn green as the engine sings them](images/tui-utau.gif)
@@ -61,8 +61,8 @@ and an offline render says so.
 
 ## Working on it
 
-Without Nix packaging: link the extension into `~/.config/daw/extensions/utau`
-(or `daw.ext.load("/path/to/daw/extensions/utau")` in `init.lua`); its device
+Without Nix packaging: link the extension into `~/.config/paw/extensions/utau`
+(or `paw.ext.load("/path/to/paw/extensions/utau")` in `init.lua`); its device
 is Lua and needs no build. The engine is found through the `utau_engine`
 option, `$REAUTAU_ENGINE`, `bin/reautau-engine` beside the extension (where
 the package puts it), `reautau-engine` on the `PATH`, or a ReaUtau install
@@ -77,7 +77,7 @@ skipped without them.
 
 ## Using it
 
-A vocal track is a kind of track (`daw.track_kinds`): `:track.add vocal
+A vocal track is a kind of track (`paw.track_kinds`): `:track.add vocal
 [singer]`, `<leader>v` (`:utau.track [singer]`) or `:track.new` adds one,
 and the window offers "New vocal track" wherever it makes a track.
 `<leader>V` (`:utau.singer`) chooses its singer from a list. The header
@@ -120,7 +120,7 @@ here), the state of each phrase in the ruler (grey pending, yellow rendering,
 blue draft, green final, red error), the pitch actually sung as a white line
 across the rows (`▔`, `─` and `▁` for the upper, middle and lower third of a
 semitone), the bends you drew as orange dots, and under the notes the chosen
-curve in cells (`daw.opt.curve_glyphs`) with its value at the cursor. In a
+curve in cells (`paw.opt.curve_glyphs`) with its value at the cursor. In a
 terminal that shows pictures (`buf:strip`, see the manual's Terminal page)
 these are lines in pixels under the notes instead: the pitch each note is
 sung on in orange (its transition from the note before, its vibrato, which
@@ -130,7 +130,7 @@ playhead stay cells over them. `:set graphics!` goes back to cells.
 
 Notes are heard as they are placed or clicked: sung by the engine with the
 track's voice when it is running and the track has a singer, else as a soft
-tone (`daw.opt.utau_audition = false` turns it off).
+tone (`paw.opt.utau_audition = false` turns it off).
 
 The lyric sheet (`s`, `:utau.sheet`) shows the clip's lyrics one line per
 phrase, with the note being sung highlighted; `c` retypes a line and the words
@@ -152,7 +152,7 @@ go to its notes in order, `K` splits Japanese into one kana per note.
 
 A double click on a clip of a vocal track opens the vocal editor in a window
 of its own. It is painted by this extension (`lua/utau/gui.lua` and the
-`gui_*.lua` panels beside it), through `daw.canvas`, and is the example of how
+`gui_*.lua` panels beside it), through `paw.canvas`, and is the example of how
 an extension makes a window.
 
 | Where | With the pointer |
@@ -176,7 +176,7 @@ to keep the playhead in sight.
 | Command | |
 | --- | --- |
 | `utau.export <file> [all=1] [clip=1]` | the vocal track (every vocal track, the clip under the cursor) to OpenUtau's `.ustx`, UTAU's `.ust` or MIDI with lyrics (`.mid`), by the file's extension. A `.ust` holds one part: further parts go to `name-2.ust` and on |
-| `utau.openutau` | write the vocal tracks to `<project>.ustx` beside the project file (`~/.local/share/daw/utau/openutau/` for a project not saved yet) and start OpenUtau on it: `daw.opt.utau_openutau`, else `$REAUTAU_OPENUTAU`, else `OpenUtau` |
+| `utau.openutau` | write the vocal tracks to `<project>.ustx` beside the project file (`~/.local/share/paw/utau/openutau/` for a project not saved yet) and start OpenUtau on it: `paw.opt.utau_openutau`, else `$REAUTAU_OPENUTAU`, else `OpenUtau` |
 | `utau.freeze`, `utau.unfreeze` | render the vocal track to audio on a track below it, "Vocal (frozen)", mute it and stop singing it; sing it again and remove the audio |
 | `utau.singer_save <name>`, `utau.singer_preset [name]`, `utau.singer_delete <name>` | save the track's voice as a singer preset; give a track a preset (with no name, from a list); delete one |
 | `utau.install <archive or folder>`, `utau.singers` | install a voicebank (zip, rar, 7z, uar, a folder), Vogen singer (`.vogeon`) or dependency package (`.oudep`); list the installed singers, and choose one for the track |
@@ -193,11 +193,11 @@ to keep the playhead in sight.
   OpenUtau's readers. A `.ustx` comes back with the same notes, lyrics,
   note properties, singer and curves (to OpenUtau's whole-number grid).
   OpenUtau gives notes without pitch points its default ones.
-- **Freezing** is the core's bounce (`daw.bounce`), after the engine has
+- **Freezing** is the core's bounce (`paw.bounce`), after the engine has
   sung every phrase at final quality. The frozen track keeps its notes,
   curves and voice; the bounced file is in the project's media folder.
-- **Singer presets** are JSON files in `~/.local/share/daw/utau/presets`
-  (`daw.opt.utau_presets_dir`), in the shape of ReaUtau's, so presets from
+- **Singer presets** are JSON files in `~/.local/share/paw/utau/presets`
+  (`paw.opt.utau_presets_dir`), in the shape of ReaUtau's, so presets from
   ReaUtau work here. A preset holds the singer, phonemizer, renderer,
   resampler, wavtool, voice colour, the engine's options (AI pitch, unison,
   shifts) and the value each curve holds where it has no lane; applying one
@@ -224,7 +224,7 @@ Everything is ordinary project data, so it is saved, loaded and undone like
 any other edit:
 
 - **Notes** are the clip's notes. A note's lyric is `note.meta.lyric`; a note
-  without one sings `daw.opt.utau_default_lyric` (`a`), and `R` is a rest.
+  without one sings `paw.opt.utau_default_lyric` (`a`), and `R` is a rest.
 - **Note properties** (tuning, vibrato, pitch transitions, phoneme overrides,
   expressions, phonemizer override) are `note.meta.utau`, in the shape
   `reautau-engine --convert` writes them (see `lua/utau/payload.lua`).
@@ -263,8 +263,8 @@ opened again is sung again from that cache.
    devices/utau.lua (lua:utau) maps the files and plays each phrase at its time
 ```
 
-- The extension starts `reautau-engine --socket <path>` with `daw.api.proc_spawn`
-  and listens on that socket with `daw.api.sock_listen`; the engine connects,
+- The extension starts `reautau-engine --socket <path>` with `paw.api.proc_spawn`
+  and listens on that socket with `paw.api.sock_listen`; the engine connects,
   as it does to ReaUtau's REAPER extension, and the two speak ReaUtau's
   protocol (`docs/protocol.md` in ReaUtau), written here in Lua
   (`lua/utau/proto.lua`, `msgpack.lua`). The extension takes the place of the
@@ -272,8 +272,8 @@ opened again is sung again from that cache.
   last sent and sends the difference.
 - Rendered phrases come back as audio with their place in seconds. The
   extension writes each to a file of 32-bit floats (in
-  `~/.cache/daw/utau-voices/<pid>`, gone when paw ends) and posts the list of
-  a voice's files to every `utau` device (`daw.api.device_post(kind,
+  `~/.cache/paw/utau-voices/<pid>`, gone when paw ends) and posts the list of
+  a voice's files to every `utau` device (`paw.api.device_post(kind,
   "voice.<n>", list)`, `lua/utau/voices.lua`). Each device maps the files
   (`dsp.map`) in its own process and plays the phrases of its voice under
   the playhead; the sound is kept once, in the files. Superseded phrases are
@@ -285,7 +285,7 @@ opened again is sung again from that cache.
   is rendered agree bit for bit (`tests.lua` checks it), and a block of 512
   frames with four phrases sounding costs about 16 µs of the 10.7 ms it
   lasts.
-- `daw.render` emits `render.before`; the extension then waits until every
+- `paw.render` emits `render.before`; the extension then waits until every
   phrase of every vocal track is final before rendering starts, so offline
   renders are deterministic.
 - A device that crashes is stopped alone, like any device written in Lua,
@@ -309,5 +309,5 @@ From ReaUtau, not (yet) here:
 - Several parts in one clip: a clip is a part.
 - Clips that loop or play at another rate.
 - Tempo ramps in OpenUtau: the engine and `.ustx` export get a ramp as steps of a quarter beat, each as long as that stretch of the ramp, and an import away from the song's start keeps the song's own tempo map.
-- Curves following a clip through a ripple delete (`daw.opt.ripple`): the pieces after the cut move without their curves.
+- Curves following a clip through a ripple delete (`paw.opt.ripple`): the pieces after the cut move without their curves.
 - Curves going with part of a clip: yanking and pasting a stretch of time that cuts a clip pastes its notes without its curves.

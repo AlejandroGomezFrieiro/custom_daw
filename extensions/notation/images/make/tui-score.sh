@@ -4,7 +4,7 @@
 # the next instrument, notes are entered there by name, and a block over
 # three staves takes their bars.
 . "$MAKE/rig.sh"
-SETUP="dofile('extensions/notation/fixtures/quartet.lua') require('notation').space = 9 daw.opt.score_dim = true"
+SETUP="dofile('extensions/notation/fixtures/quartet.lua') require('notation').space = 9 paw.opt.score_dim = true"
 rig_start
 term_start
 key ctrl+w o; pause 1.2

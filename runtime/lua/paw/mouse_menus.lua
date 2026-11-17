@@ -1,18 +1,18 @@
 -- The terminal's context menus: what a right click opens, entry for entry
 -- the window's, each doing what the window's does (a command run with the
--- cursor put where the click was, or a `daw.frontend.act`).
+-- cursor put where the click was, or a `paw.frontend.act`).
 --
---   daw.ui.menu(daw.mouse_menus.clip(id, beat), { x = x, y = y })
-local api = daw.api
+--   paw.ui.menu(paw.mouse_menus.clip(id, beat), { x = x, y = y })
+local api = paw.api
 local M = {}
 
-local function act() return daw.frontend.act end
+local function act() return paw.frontend.act end
 
---- The entries extensions add (`daw.frontend.menus[kind]`), for `target`
+--- The entries extensions add (`paw.frontend.menus[kind]`), for `target`
 --- (a clip or a track) clicked at `beat`.
 local function added(kind, target, beat, midi)
   local out = {}
-  for index, entry in ipairs(daw.frontend.menus[kind] or {}) do
+  for index, entry in ipairs(paw.frontend.menus[kind] or {}) do
     local fits = not entry.only or entry.only == "" or (entry.only == "midi") == midi
     out[#out + 1] = { label = entry.label, enabled = fits, run = function() act().menu(kind, index, target, beat) end }
   end
@@ -25,15 +25,15 @@ local function append(list, more)
 end
 
 --- What the diagnostics and language servers have for a location
---- (daw/address.lua): its fixes and the servers' actions, and what they say
+--- (paw/address.lua): its fixes and the servers' actions, and what they say
 --- about it. Empty when nothing is said of it and no server is running.
 function M.lens(location)
-  if not (daw.lsp and daw.diagnostic) then return {} end
-  local said = #daw.diagnostic.get(location.uri) > 0
-  if not said and #daw.lsp.clients() == 0 then return {} end
+  if not (paw.lsp and paw.diagnostic) then return {} end
+  local said = #paw.diagnostic.get(location.uri) > 0
+  if not said and #paw.lsp.clients() == 0 then return {} end
   return {
-    { label = "Fixes and actions…", run = function() daw.lsp.code_actions(location) end },
-    { label = "What the language servers say about it", run = function() daw.lsp.show_hover(location) end },
+    { label = "Fixes and actions…", run = function() paw.lsp.code_actions(location) end },
+    { label = "What the language servers say about it", run = function() paw.lsp.show_hover(location) end },
   }
 end
 
@@ -41,7 +41,7 @@ end
 function M.clip(id, beat)
   local c = api.clip_get(id)
   local midi = c.kind == "midi"
-  local takes, take = daw.takes.count(id)
+  local takes, take = paw.takes.count(id)
   local many = takes > 1
   local function run(line) return function() act().clip_command(id, beat, line) end end
   local function on_audio(item)
@@ -96,7 +96,7 @@ local colours = { "Coral", "Gold", "Lime", "Teal", "Sky", "Violet", "Pink", "San
 function M.track(id)
   local t = api.track_get(id)
   if t.master then return {} end
-  local groups = daw.groups
+  local groups = paw.groups
   local is_group, depth = groups.is_group(id), groups.depth(id)
   local function run(line) return function() act().track_command(id, line) end end
   local colour = {}
@@ -116,10 +116,10 @@ function M.track(id)
     { label = is_group and "Dissolve the group" or "Take out of its group", enabled = is_group or depth > 0, run = run("track.ungroup") },
     { label = "Link the faders of the group", enabled = is_group or depth > 0, run = run("group.link") },
     { label = groups.folded(id) and "Open the group" or "Fold the group away", enabled = is_group or depth > 0, run = run("track.fold") },
-    { label = "New VCA with this track…", enabled = not daw.vca.is_vca(id), run = run("vca.make") },
-    { label = "Put under a VCA…", enabled = not daw.vca.is_vca(id), run = run("vca.assign") },
-    { label = daw.vca.is_vca(id) and "Dissolve the VCA" or "Take out of its VCAs",
-      enabled = daw.vca.is_vca(id) or #daw.vca.of(id) > 0, run = run(daw.vca.is_vca(id) and "vca.dissolve" or "vca.release") },
+    { label = "New VCA with this track…", enabled = not paw.vca.is_vca(id), run = run("vca.make") },
+    { label = "Put under a VCA…", enabled = not paw.vca.is_vca(id), run = run("vca.assign") },
+    { label = paw.vca.is_vca(id) and "Dissolve the VCA" or "Take out of its VCAs",
+      enabled = paw.vca.is_vca(id) or #paw.vca.of(id) > 0, run = run(paw.vca.is_vca(id) and "vca.dissolve" or "vca.release") },
     "-",
     { label = "Automation", items = {
       auto("read", "Read: the lanes play"),
@@ -134,14 +134,14 @@ function M.track(id)
     { label = "MIDI controller", items = {
       { label = "Learn for the fader…", run = run("learn volume") },
       { label = "Learn for the pan…", run = run("learn pan") },
-      { label = "What is bound…", run = function() daw.commands.exec("learn.list") end },
+      { label = "What is bound…", run = function() paw.commands.exec("learn.list") end },
     } },
     "-",
     { label = "Bounce to audio", run = run("track.bounce") },
     { label = "New track below", run = run("track.add") },
   }
   append(items, added("track", id, 0, false))
-  local lens = M.lens({ uri = daw.address.track(id) })
+  local lens = M.lens({ uri = paw.address.track(id) })
   if #lens > 0 then
     items[#items + 1] = "-"
     append(items, lens)
@@ -155,7 +155,7 @@ end
 --- put there first, as the window does.
 function M.timeline(track, beat)
   local t = api.transport_get()
-  local function run(line) return function() daw.commands.exec(line) end end
+  local function run(line) return function() paw.commands.exec(line) end end
   local items = {
     { label = "New clip here", run = run("clip.add") },
     { label = "Import a sound file…", run = run("import") },
@@ -169,9 +169,9 @@ function M.timeline(track, beat)
       enabled = t.punch_enabled or t.punch_end > t.punch_start, run = run("punch") },
     { label = (t.count_in or 0) > 0 and "No count-in before a take" or "Count a bar in before a take",
       run = run((t.count_in or 0) > 0 and "countin off" or "countin 1") },
-    { label = ((daw.opt.pre_roll or 0) > 0 or (daw.opt.pre_roll_seconds or 0) > 0) and "No pre-roll before a punch"
+    { label = ((paw.opt.pre_roll or 0) > 0 or (paw.opt.pre_roll_seconds or 0) > 0) and "No pre-roll before a punch"
       or "Pre-roll two bars before a punch", run = run("preroll") },
-    { label = daw.tempolane.shown() and "Hide the tempo lane" or "Show the tempo lane", run = run("tempo.lane") },
+    { label = paw.tempolane.shown() and "Hide the tempo lane" or "Show the tempo lane", run = run("tempo.lane") },
     { label = "Show or hide the track's take lanes", run = run("take.lanes") },
     "-",
     { label = "New track", run = run("track.add") },
@@ -201,7 +201,7 @@ end
 function M.lane(lane)
   local l = api.lane_get(lane)
   return {
-    { label = "Edit the curve…", run = function() act().open_curve(daw.address.lane(lane)) end },
+    { label = "Edit the curve…", run = function() act().open_curve(paw.address.lane(lane)) end },
     { label = "Clear this lane", run = function() act().clear_lane(lane) end },
     { label = l.enabled and "Turn this lane off" or "Turn this lane on", run = function() act().toggle_lane(lane) end },
     "-",
@@ -221,7 +221,7 @@ end
 --- The tempo lane under the ruler.
 function M.tempo_lane()
   return {
-    { label = "Edit the tempo as a curve…", run = function() act().open_curve(daw.address.tempo()) end },
+    { label = "Edit the tempo as a curve…", run = function() act().open_curve(paw.address.tempo()) end },
     { label = "Hide the tempo lane", run = function() act().tempo_lane(false) end },
   }
 end
@@ -230,13 +230,13 @@ end
 function M.param(device, key)
   return {
     { label = "Automate this parameter", run = function() act().automate_param(device, key) end },
-    { label = "Edit its curve…", run = function() act().open_curve(daw.address.param(device, key)) end },
+    { label = "Edit its curve…", run = function() act().open_curve(paw.address.param(device, key)) end },
   }
 end
 
 --- A marker or region in the band under the ruler.
 function M.marker(m)
-  local function run(line) return function() daw.commands.exec(line .. " id=" .. m.id) end end
+  local function run(line) return function() paw.commands.exec(line .. " id=" .. m.id) end end
   return {
     { label = "Rename…", run = run("marker.rename") },
     { label = "Loop this region", enabled = m.length ~= nil, run = run("region.loop") },
@@ -258,7 +258,7 @@ function M.roll(clip)
     { label = "Delete the chosen notes", run = function() act().remove_chosen_notes(clip) end },
     { label = "Quantize the chosen notes (or all) to the grid", run = function() act().quantize_notes(clip) end },
     "-",
-    { label = "Snap to the grid", checked = daw.opt.note_snap, run = function() act().toggle_note_snap() end },
+    { label = "Snap to the grid", checked = paw.opt.note_snap, run = function() act().toggle_note_snap() end },
   }
 end
 
@@ -267,11 +267,11 @@ end
 --- can do about the note, and taking the note away.
 function M.note(clip, place)
   local items = {}
-  for n, action in ipairs(daw.diagnostic and daw.diagnostic.actions(clip, place) or {}) do
+  for n, action in ipairs(paw.diagnostic and paw.diagnostic.actions(clip, place) or {}) do
     items[#items + 1] = { label = action.title, run = function() act().note_action(clip, place, n) end }
   end
   local note = api.clip_notes(clip)[place]
-  if note and note.id and daw.address then append(items, M.lens({ uri = daw.address.note(clip, note.id) })) end
+  if note and note.id and paw.address then append(items, M.lens({ uri = paw.address.note(clip, note.id) })) end
   if #items > 0 then items[#items + 1] = "-" end
   items[#items + 1] = { label = "Remove the note", run = function() act().remove_note(clip, place) end }
   return items

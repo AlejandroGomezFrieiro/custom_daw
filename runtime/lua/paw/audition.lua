@@ -1,23 +1,23 @@
--- `daw.audition`: hear something before choosing it, without the project or
+-- `paw.audition`: hear something before choosing it, without the project or
 -- its undo history keeping a trace. The pickers use it as their selection
--- moves (`audition` in `daw.pick`), and scripts can too:
+-- moves (`audition` in `paw.pick`), and scripts can too:
 --
---   daw.audition.try(function() daw.fx.load(device, "Plate") end)  -- an edit that can be taken back
---   daw.audition.phrase(track.id, notes, { length = 4, label = "loop bar 5" })
---   daw.audition.file("/samples/kick.wav")
---   daw.audition.stop()                       -- silence, and take the edit back
+--   paw.audition.try(function() paw.fx.load(device, "Plate") end)  -- an edit that can be taken back
+--   paw.audition.phrase(track.id, notes, { length = 4, label = "loop bar 5" })
+--   paw.audition.file("/samples/kick.wav")
+--   paw.audition.stop()                       -- silence, and take the edit back
 --
 -- A trial (`try`) makes its edits as any others, so that they are heard and
 -- seen; `revert` puts the project back exactly as it was, and `keep` makes
 -- them one undo step. A phrase is played through a track as notes played
 -- live, over and over until stopped, and is not played while the transport
 -- runs: the song is what is heard then. A file is heard on its own over
--- everything else at `daw.opt.audition_level` dB.
-local api = daw.api
+-- everything else at `paw.opt.audition_level` dB.
+local api = paw.api
 local M = {}
 
-daw.option.define("audition_level", -12) -- dB a sound file heard in a picker plays at
-daw.option.define("audition_delay", 150) -- ms the selection rests on an item before it is heard
+paw.option.define("audition_level", -12) -- dB a sound file heard in a picker plays at
+paw.option.define("audition_delay", 150) -- ms the selection rests on an item before it is heard
 
 local EPS = 1e-9
 
@@ -29,10 +29,10 @@ M.heard = {} -- the notes played lately, `{ track, pitch, velocity }`, newest la
 -- item asked for anything: what came before is stopped when it did not.
 M.asked = 0
 
-daw.seats.keep("audition", function() return phrase end, function(p) phrase = p end, function() return nil end)
+paw.seats.keep("audition", function() return phrase end, function(p) phrase = p end, function() return nil end)
 
 local function silence()
-  for _, t in ipairs(timers) do daw.cancel(t) end
+  for _, t in ipairs(timers) do paw.cancel(t) end
   timers = {}
   for key in pairs(sounding) do
     local track, pitch = key:match("^(%d+):(%d+)$")
@@ -73,7 +73,7 @@ end
 --- one, else at the project's there.
 local function ms_between(from, to, tempo)
   if tempo then return math.max(0, (to - from) * 60000 / tempo) end
-  return math.max(0, (daw.time.to_seconds(to) - daw.time.to_seconds(from)) * 1000)
+  return math.max(0, (paw.time.to_seconds(to) - paw.time.to_seconds(from)) * 1000)
 end
 
 local function remember(track, n)
@@ -91,18 +91,18 @@ local function pass()
     local on = ms_between(at, at + n.start, tempo)
     local off = math.max(on + 20, ms_between(at, at + math.min(n.start + n.length, p.length), tempo) - 5)
     local key = track .. ":" .. n.pitch
-    timers[#timers + 1] = daw.defer(function()
+    timers[#timers + 1] = paw.defer(function()
       if phrase ~= p then return end
       sounding[key] = true
       remember(track, n)
       pcall(api.note_on, track, n.pitch, n.velocity)
     end, on)
-    timers[#timers + 1] = daw.defer(function()
+    timers[#timers + 1] = paw.defer(function()
       sounding[key] = nil
       pcall(api.note_off, track, n.pitch)
     end, off)
   end
-  timers[#timers + 1] = daw.defer(function()
+  timers[#timers + 1] = paw.defer(function()
     if phrase ~= p then return end
     -- Each pass leaves its own timers behind: only the next pass's are kept.
     timers = {}
@@ -128,7 +128,7 @@ function M.phrase(track, notes, opts)
   silence()
   phrase = {
     track = track, notes = notes, length = length, label = opts.label, key = opts.key,
-    loop = opts.loop ~= false, at = opts.at or daw.cursor.beat or 0, tempo = opts.tempo,
+    loop = opts.loop ~= false, at = opts.at or paw.cursor.beat or 0, tempo = opts.tempo,
   }
   if api.transport_get().playing then
     phrase.silent = "the song is playing"
@@ -148,25 +148,25 @@ local DRUMS = {
 --- track; else the key's tonic chord held, then arpeggiated up and back,
 --- in the track's range. `{ notes, length, label }`.
 function M.builtin(track, at)
-  at = at or daw.cursor.beat or 0
+  at = at or paw.cursor.beat or 0
   local notes = {}
-  if track and daw.harmony.is_drums(track) then
+  if track and paw.harmony.is_drums(track) then
     for i, d in ipairs(DRUMS) do notes[i] = { pitch = d[1], start = d[2], length = 0.25, velocity = d[3] } end
     return { notes = notes, length = 4, label = "a built-in beat" }
   end
-  local key = daw.harmony.key(at)
-  local range = track and daw.harmony.range(track) or daw.harmony.default_range
+  local key = paw.harmony.key(at)
+  local range = track and paw.harmony.range(track) or paw.harmony.default_range
   -- The tonic nearest the middle of the range, a third and a fifth above.
   local middle = math.floor((range.low + range.high) / 2)
   local root = middle - ((middle - key.root) % 12)
   if root + 7 > range.high then root = root - 12 end
-  local chord = { root, daw.harmony.step(key, root, 2), daw.harmony.step(key, root, 4) }
+  local chord = { root, paw.harmony.step(key, root, 2), paw.harmony.step(key, root, 4) }
   for _, pitch in ipairs(chord) do notes[#notes + 1] = { pitch = pitch, start = 0, length = 1.75, velocity = 90 } end
   local line = { chord[1], chord[2], chord[3], chord[1] + 12, chord[3], chord[2] }
   for i, pitch in ipairs(line) do
     notes[#notes + 1] = { pitch = pitch, start = 2 + (i - 1) / 3, length = 1 / 3, velocity = 85 }
   end
-  return { notes = notes, length = 4, label = "a built-in phrase in " .. daw.harmony.key_name(key) }
+  return { notes = notes, length = 4, label = "a built-in phrase in " .. paw.harmony.key_name(key) }
 end
 
 --- What a track plays around the cursor, as a phrase: the bar of its MIDI
@@ -174,14 +174,14 @@ end
 --- else the first that has any; `builtin` when it has none.
 --- `{ notes, length, label, at }`.
 function M.track_phrase(track)
-  local cursor = daw.cursor.beat or 0
+  local cursor = paw.cursor.beat or 0
   local bars = {}
   for _, c in ipairs(track and api.clip_list(track) or {}) do
     if c.kind == "midi" and not c.muted then
       for _, n in ipairs(api.clip_notes(c.id)) do
         local s = c.start + n.start
         if n.start >= -EPS and n.start < c.length - EPS then
-          local bar = daw.time.bar_floor(s + EPS)
+          local bar = paw.time.bar_floor(s + EPS)
           local list = bars[bar] or {}
           bars[bar] = list
           list[#list + 1] = { pitch = n.pitch, start = s - bar, length = n.length, velocity = n.velocity }
@@ -189,7 +189,7 @@ function M.track_phrase(track)
       end
     end
   end
-  local here = daw.time.bar_floor(cursor + EPS)
+  local here = paw.time.bar_floor(cursor + EPS)
   local chosen = bars[here] and here
   if not chosen then
     local before, first
@@ -204,19 +204,19 @@ function M.track_phrase(track)
     b.at = cursor
     return b
   end
-  local length = daw.time.bar(chosen)
+  local length = paw.time.bar(chosen)
   local notes = {}
   for _, n in ipairs(bars[chosen]) do
     if n.start < length - EPS then notes[#notes + 1] = n end
   end
   table.sort(notes, function(a, b) return a.start < b.start end)
-  return { notes = notes, length = length, at = chosen, label = "loop bar " .. daw.time.bar_of(chosen) }
+  return { notes = notes, length = length, at = chosen, label = "loop bar " .. paw.time.bar_of(chosen) }
 end
 
 --- Whether a track has an instrument to play notes with.
 function M.has_instrument(track)
   local category = {}
-  for _, info in ipairs(daw.device_types()) do category[info.kind] = info.category end
+  for _, info in ipairs(paw.device_types()) do category[info.kind] = info.category end
   for _, id in ipairs(api.track_get(track).devices) do
     local ok, d = pcall(api.device_get, id)
     if ok and not d.bypass and category[d.kind] == "instrument" then return true end
@@ -249,10 +249,10 @@ end
 --- else one added as a trial (with the built-in synth, or drums) that
 --- `revert` takes away. `drums` asks for a drum kit.
 function M.player(drums)
-  local track = daw.cursor.track_id()
-  if track and M.has_instrument(track) and (not drums or daw.harmony.is_drums(track)) then return track end
+  local track = paw.cursor.track_id()
+  if track and M.has_instrument(track) and (not drums or paw.harmony.is_drums(track)) then return track end
   if not api.trial_active() then api.trial_begin() end
-  local t = daw.add_track({ name = drums and "Audition drums" or "Audition" })
+  local t = paw.add_track({ name = drums and "Audition drums" or "Audition" })
   t:add_device(drums and "drums" or "synth")
   return t.id
 end
@@ -261,7 +261,7 @@ end
 --- once: pitched parts through `player()`, its drums (channel 10) through
 --- a kit. Returns the label.
 function M.midi_file(path, bars)
-  local file, why = daw.midifile.read(path)
+  local file, why = paw.midifile.read(path)
   if not file then error(why, 0) end
   local ppq = file.ppq
   local sig = file.signatures[1] or { num = 4, den = 4 }
@@ -293,11 +293,11 @@ function M.file(path)
   M.asked = M.asked + 1
   silence()
   phrase = nil
-  api.preview_level(daw.opt.audition_level)
+  api.preview_level(paw.opt.audition_level)
   api.preview_play(path)
 end
 
-daw.on("option.changed", function(e)
+paw.on("option.changed", function(e)
   if e.name == "audition_level" then pcall(api.preview_level, tonumber(e.value) or -12) end
 end)
 
@@ -323,7 +323,7 @@ function M.state()
   local file = api.preview_get()
   local out
   if file then
-    out = daw.util.merge(file, { kind = "file" })
+    out = paw.util.merge(file, { kind = "file" })
   elseif phrase then
     out = { kind = "phrase", label = phrase.label, track = phrase.track, notes = phrase.notes, length = phrase.length, silent = phrase.silent }
   end

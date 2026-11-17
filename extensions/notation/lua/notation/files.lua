@@ -6,7 +6,7 @@
 --   :notation.import song.xml      -- the same as :import
 --   :notation.export song.musicxml -- the clip's score (`all`: every track's), `.mxl` zipped, `.ly` LilyPond
 --
--- A file opens as `daw.midifile` opens a MIDI file: a project of its own
+-- A file opens as `paw.midifile` opens a MIDI file: a project of its own
 -- with no file (saving asks for a name, never writing over the score), the
 -- song's tempo map from the tempo marks (each mark's `sound tempo`), its
 -- time signatures from the bars, a marker at each rehearsal mark, the
@@ -14,8 +14,8 @@
 -- channel 10 or in a percussion clef gets the drum kit; a part's MIDI
 -- program goes in its clip as a program change. What could not be kept is
 -- counted and said.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local view = require("notation")
 local D = require("notation.doc")
 local mx = require("notation.musicxml")
@@ -56,16 +56,16 @@ local function put_tempo_map(file, at)
     end
   end
   local keep_t, keep_s = {}, {}
-  for _, t in ipairs(daw.tempo.points()) do
+  for _, t in ipairs(paw.tempo.points()) do
     if t.beat < at - EPS then keep_t[#keep_t + 1] = { beat = t.beat, bpm = t.bpm, ramp = t.ramp } end
   end
-  for _, s in ipairs(daw.tempo.signatures()) do
+  for _, s in ipairs(paw.tempo.signatures()) do
     if s.beat < at - EPS then keep_s[#keep_s + 1] = { beat = s.beat, num = s.num, den = s.den } end
   end
-  if not tempos[1] or tempos[1].beat > at + EPS then table.insert(tempos, 1, { beat = at, bpm = daw.tempo.at(at) }) end
+  if not tempos[1] or tempos[1].beat > at + EPS then table.insert(tempos, 1, { beat = at, bpm = paw.tempo.at(at) }) end
   for _, t in ipairs(tempos) do keep_t[#keep_t + 1] = t end
   for _, s in ipairs(signatures) do keep_s[#keep_s + 1] = s end
-  daw.tempo.set_points(keep_t, keep_s)
+  paw.tempo.set_points(keep_t, keep_s)
 end
 
 --- A track for each part below `index` (nil: at the end), each with a
@@ -79,7 +79,7 @@ local function add_parts(file, at, index, name)
     local sc = part.score
     local f = D.frame(sc)
     local origin = D.origin(sc)
-    local track = daw.add_track({ name = part.name, index = index and index + i or nil })
+    local track = paw.add_track({ name = part.name, index = index and index + i or nil })
     if part.drums then track:add_device("drums") end
     local meta = track.meta or {}
     meta.notation = util.merge(type(meta.notation) == "table" and meta.notation or {},
@@ -98,7 +98,7 @@ end
 
 --- A marker in the song at each rehearsal mark (each place once).
 local function add_markers(file, at)
-  local markers, seen = require("daw.markers"), {}
+  local markers, seen = require("paw.markers"), {}
   for _, part in ipairs(file.parts) do
     for _, r in ipairs(part.rehearsals) do
       local beat = at + r.t / D.Q
@@ -128,14 +128,14 @@ function F.open(path)
   meta.title, meta.composer = file.title, file.composer
   api.project_set("meta", meta)
   local first = file.parts[1].score.measures[1]
-  if first and first.key and first.key.name then pcall(daw.harmony.set_key, first.key.name) end
+  if first and first.key and first.key.name then pcall(paw.harmony.set_key, first.key.name) end
   put_tempo_map(file, 0)
   local tracks, notes = add_parts(file, 0, nil, stem(path))
   add_markers(file, 0)
   -- It opens as a project file does: nothing to undo, nothing changed yet.
   api.undo_reset()
-  if tracks[1] then daw.cursor.set_track(tracks[1]) end
-  daw.state.pick_dir = path:match("^(.*)/[^/]*$") or daw.state.pick_dir
+  if tracks[1] then paw.cursor.set_track(tracks[1]) end
+  paw.state.pick_dir = path:match("^(.*)/[^/]*$") or paw.state.pick_dir
   return { tracks = tracks, notes = notes, skipped = mx.skipped_text(file) }
 end
 
@@ -145,13 +145,13 @@ end
 function F.import(path, opts)
   opts = opts or {}
   local file = read(path)
-  local at = opts.start or daw.cursor.beat
+  local at = opts.start or paw.cursor.beat
   if opts.tempo then put_tempo_map(file, at) end
-  local tracks, notes = add_parts(file, at, daw.cursor.index(), stem(path))
+  local tracks, notes = add_parts(file, at, paw.cursor.index(), stem(path))
   add_markers(file, at)
   local clips = {}
   for _, t in ipairs(tracks) do clips[#clips + 1] = t:clips()[1] end
-  if tracks[1] then daw.cursor.set_track(tracks[1]) end
+  if tracks[1] then paw.cursor.set_track(tracks[1]) end
   return { tracks = tracks, clips = clips, notes = notes, skipped = mx.skipped_text(file) }
 end
 
@@ -251,7 +251,7 @@ end
 --- MIDI clip with notes.
 function F.all_clips()
   local out = {}
-  for _, track in ipairs(daw.tracks()) do
+  for _, track in ipairs(paw.tracks()) do
     for _, clip in ipairs(track:clips()) do
       local c = clip:get()
       if c.kind == "midi" and c.note_count > 0 then
@@ -267,16 +267,16 @@ end
 
 local function import_command(path, tempo)
   local ok, done = pcall(F.import, path, { tempo = tempo == true or tempo == "yes" or tempo == "on" })
-  if not ok then return daw.notify("could not import " .. path .. ": " .. tostring(done):gsub("^[^:]*:%d+: ", ""), "error") end
-  daw.notify("imported " .. F.said(path, done))
+  if not ok then return paw.notify("could not import " .. path .. ": " .. tostring(done):gsub("^[^:]*:%d+: ", ""), "error") end
+  paw.notify("imported " .. F.said(path, done))
   return done
 end
 
 local function open_command(path)
-  if not daw.project.guard("open", daw.project.discarding()) then return end
+  if not paw.project.guard("open", paw.project.discarding()) then return end
   local ok, done = pcall(F.open, path)
-  if not ok then return daw.notify("could not open " .. path .. ": " .. tostring(done):gsub("^[^:]*:%d+: ", ""), "error") end
-  daw.notify("opened " .. F.said(path, done) .. " (`:w` asks where to save it)")
+  if not ok then return paw.notify("could not open " .. path .. ": " .. tostring(done):gsub("^[^:]*:%d+: ", ""), "error") end
+  paw.notify("opened " .. F.said(path, done) .. " (`:w` asks where to save it)")
   return done
 end
 
@@ -288,31 +288,31 @@ local function path_and_tempo(line)
   return (path:gsub("^~", os.getenv("HOME") or "~")), tempo
 end
 
-daw.command("notation.import", function(ctx)
+paw.command("notation.import", function(ctx)
   local path, tempo = path_and_tempo(ctx.args[1])
-  if path == "" then return daw.notify("usage: notation.import <score.musicxml|.mxl> [tempo=yes]", "warn") end
+  if path == "" then return paw.notify("usage: notation.import <score.musicxml|.mxl> [tempo=yes]", "warn") end
   return import_command(path, tempo or ctx.args.tempo)
 end, { raw = true, desc = "Bring a MusicXML score in: a track for each part at the cursor, each a MIDI clip with its notation: `notation.import song.musicxml`, `song.mxl tempo=yes` (its tempo marks and time signatures too)", complete = "files" })
 
 -- `:open`, `:edit` and `:import` of a MusicXML file come here; other files
 -- go to the commands as they were.
 local function hook(name, run)
-  local spec = daw.commands.get(name)
+  local spec = paw.commands.get(name)
   if not spec or spec.musicxml_hooked then return end
   local original = spec.run
-  daw.command(name, function(ctx)
+  paw.command(name, function(ctx)
     local path, tempo = path_and_tempo(ctx.args and ctx.args[1])
     if path ~= "" and mx.is_file(path) then return run(path, tempo or ctx.args.tempo) end
     return original(ctx)
   end, { desc = spec.desc .. " (or a MusicXML score: .musicxml, .mxl)", raw = spec.raw, complete = spec.complete, range = spec.range })
-  daw.commands.get(name).musicxml_hooked = true
+  paw.commands.get(name).musicxml_hooked = true
 end
 
 hook("open", open_command)
 hook("edit", open_command)
 hook("import", import_command)
 -- An alias keeps the command it was made for.
-if daw.commands.get("e") then daw.command.alias("e", "edit") end
+if paw.commands.get("e") then paw.command.alias("e", "edit") end
 
 view.files = F
 return F

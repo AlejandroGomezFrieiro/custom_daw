@@ -3,13 +3,13 @@
 --
 --   :help                the contents
 --   :help gU             a key        :help :s           a command
---   :help 'timebind'     an option    :help daw.qf       a Lua module
+--   :help 'timebind'     an option    :help paw.qf       a Lua module
 --   :help key-rule       a section    :helpgrep stretch  every line that says it
 --
 -- The pages are the Markdown of docs/*.md, docs/course/*.md, every
 -- extension's README.md and doc/*.md (bundled beside the program or in the
--- configuration, loaded or not), and what `daw.help.add` names, made into
--- text by daw/markdown.lua and shown in text buffers (`help://terminal.md`)
+-- configuration, loaded or not), and what `paw.help.add` names, made into
+-- text by paw/markdown.lua and shown in text buffers (`help://terminal.md`)
 -- that cannot be changed. Their keys are the text buffers' own (motions,
 -- `v`, `y`, `/`), with `Ctrl-]` (or `Enter`, or a double click) to follow
 -- the link or look up the word under the cursor, `K` to look a word up,
@@ -19,13 +19,13 @@
 -- page's name for its title, the heading's words joined by `-` below it,
 -- after the extension's name or `course-N` in theirs), from `<!-- tags: a b
 -- -->` comments, and from every key, command (`:s`), option (`'timebind'`),
--- Lua name (`daw.qf.feed`) and address (`daw://tracks`) written as code:
+-- Lua name (`paw.qf.feed`) and address (`paw://tracks`) written as code:
 -- each at the first place it is described (a table's first column, the
 -- start of a list item), else where it is first named.
-local api = daw.api
-local util = daw.util
-local md = daw.markdown
-local layout = daw.layout
+local api = paw.api
+local util = paw.util
+local md = paw.markdown
+local layout = paw.layout
 
 local M = { width = 78, extra = {} }
 
@@ -69,7 +69,7 @@ M.normalize = normalize
 local function dir_of(path) return path:match("^(.*)/[^/]*$") or "." end
 
 --- The directories that may be a copy of the source tree, the manual and
---- the bundled extensions in it: `$DAW_HOME` (where an installed program
+--- the bundled extensions in it: `$PAW_HOME` (where an installed program
 --- keeps them), the runtime's parent (`--runtime`), the tree a loaded
 --- extension is in, and the working directory.
 function M.roots()
@@ -82,10 +82,10 @@ function M.roots()
       out[#out + 1] = dir
     end
   end
-  add(os.getenv("DAW_HOME"))
+  add(os.getenv("PAW_HOME"))
   local env = api.env()
   if env.runtime_dir then add(env.runtime_dir .. "/..") end
-  for _, entry in ipairs(daw.ext.list()) do
+  for _, entry in ipairs(paw.ext.list()) do
     local tree = normalize(entry.path):match("^(.*)/extensions/[^/]+$")
     add(tree)
   end
@@ -99,7 +99,7 @@ local DOC_ORDER = {
 }
 
 local function ext_loaded(name)
-  local entry = daw.ext.loaded[name]
+  local entry = paw.ext.loaded[name]
   return entry ~= nil and entry.ok ~= false
 end
 
@@ -162,7 +162,7 @@ function M.sources()
     exts[name] = path
     order[#order + 1] = name
   end
-  for _, entry in ipairs(daw.ext.list()) do
+  for _, entry in ipairs(paw.ext.list()) do
     if not entry.path:match("%.lua$") then add_ext(entry.name, normalize(entry.path)) end
   end
   for _, item in ipairs(list_dir(api.env().config_dir .. "/extensions")) do
@@ -199,7 +199,7 @@ end
 --- `opts.ext` the extension it is about and `opts.dir` where that is, for
 --- the note shown while it is not loaded. An extension's README.md and
 --- doc/*.md need no adding.
----   daw.help.add("/path/to/mine/notes.md", { tag = "mine-notes" })
+---   paw.help.add("/path/to/mine/notes.md", { tag = "mine-notes" })
 function M.add(path, opts)
   opts = opts or {}
   path = normalize(path)
@@ -243,9 +243,9 @@ local known_keys
 local function keys_known()
   if known_keys then return known_keys end
   known_keys = {}
-  for _, map in ipairs(daw.keymap.every()) do
+  for _, map in ipairs(paw.keymap.every()) do
     known_keys[map.lhs] = true
-    known_keys[daw.keymap.human(map.lhs)] = true
+    known_keys[paw.keymap.human(map.lhs)] = true
   end
   return known_keys
 end
@@ -254,7 +254,7 @@ local known_options
 local function option_known(name)
   if not known_options then
     known_options = {}
-    for _, o in ipairs(daw.option.list()) do known_options[o.name] = true end
+    for _, o in ipairs(paw.option.list()) do known_options[o.name] = true end
   end
   return known_options[name] == true
 end
@@ -278,24 +278,24 @@ local function tags_of_code(text, first)
     end
     return out
   end
-  local opt = text:match("^daw%.opt%.([%w_]+)")
+  local opt = text:match("^paw%.opt%.([%w_]+)")
   if opt then
     out[#out + 1] = "'" .. opt .. "'"
     return out
   end
-  local lua = text:match("^(daw[%.:][%w_%.:]*[%w_])")
+  local lua = text:match("^(paw[%.:][%w_%.:]*[%w_])")
   if lua then
     out[#out + 1] = lua
     local parent = lua
     while true do
       parent = parent:match("^(.+)[%.:][^%.:]+$")
-      if not parent or parent == "daw" then break end
+      if not parent or parent == "paw" then break end
       out[#out + 1] = parent
     end
     return out
   end
-  if text:match("^daw://") then
-    out[#out + 1] = text:match("^(daw://[%w_/%.%*]+)")
+  if text:match("^paw://") then
+    out[#out + 1] = text:match("^(paw://[%w_/%.%*]+)")
     return out
   end
   if text:match("^'[%w_]+'$") then
@@ -303,10 +303,10 @@ local function tags_of_code(text, first)
     return out
   end
   if text:match("^[%w_]+$") and option_known(text) and text:find("_") then out[#out + 1] = "'" .. text .. "'" end
-  if daw.commands.get(text) and text:find("%.") then out[#out + 1] = ":" .. text end
+  if paw.commands.get(text) and text:find("%.") then out[#out + 1] = ":" .. text end
   -- Keys written as mappings write them (`<C-w>o`) are named as people
   -- write them (`Ctrl-w o`), as the docs do.
-  if text:match("^<%a%-.->") or text:match("^<%u%a+>$") then text = daw.keymap.human(text) end
+  if text:match("^<%a%-.->") or text:match("^<%u%a+>$") then text = paw.keymap.human(text) end
   local short = #text <= 16 and not text:find("  ") and not text:find("^%s")
   local keyish = short and (not text:find(" ") or text:match("^%u%l+%-%S+ %S+$"))
   if keyish and (keys_known()[text] or first) then out[#out + 1] = text end
@@ -328,7 +328,7 @@ local function index_text(sources)
       .. "`Ctrl-]` (or `Enter`, or a double click) on a link or a word follows it; "
       .. "`Ctrl-o` and `Ctrl-t` go back. `K` looks up the word under the cursor. "
       .. "`:help` with a topic goes to it (`Tab` completes): a key (`:help gU`), a command "
-      .. "(`:help :s`), an option (`:help 'timebind'`), a Lua module (`:help daw.qf`) or a "
+      .. "(`:help :s`), an option (`:help 'timebind'`), a Lua module (`:help paw.qf`) or a "
       .. "section (`:help key-rule`). `:helpgrep` with words lists every line of help that "
       .. "holds them in the quickfix list (`]q` goes through them). `?` lists the keys of "
       .. "the view you are in, `:q` closes this window, `-` comes back here.",
@@ -337,7 +337,7 @@ local function index_text(sources)
   for _, source in ipairs(sources) do has_manual = has_manual or source.group == "manual" end
   if not has_manual then
     out[#out + 1] = ""
-    out[#out + 1] = "The manual (`docs/`) was not found: run the program from its source tree, or set `DAW_HOME` to a copy of it."
+    out[#out + 1] = "The manual (`docs/`) was not found: run the program from its source tree, or set `PAW_HOME` to a copy of it."
   end
   local groups = {
     { "manual", "The manual" }, { "course", "The course" }, { "extensions", "Extensions" }, { "added", "Added" },
@@ -371,9 +371,9 @@ end
 local function unloaded_note(source)
   local env = api.env()
   -- A bundled extension is loaded by its name.
-  local bundled = daw.ext.bundled_dir and daw.ext.bundled_dir()
+  local bundled = paw.ext.bundled_dir and paw.ext.bundled_dir()
   local by_name = bundled and normalize(bundled) == dir_of(source.dir)
-  local now = by_name and ":ext.load " .. source.ext or ":lua daw.ext.load(\"" .. source.dir .. "\")"
+  local now = by_name and ":ext.load " .. source.ext or ":lua paw.ext.load(\"" .. source.dir .. "\")"
   return table.concat({
     "**This extension is not loaded.** For this session:",
     "",
@@ -424,7 +424,7 @@ end
 local function build()
   -- The files are looked at again at most every two seconds.
   local loaded = {}
-  for _, entry in ipairs(daw.ext.list()) do loaded[#loaded + 1] = entry.name .. tostring(entry.ok) end
+  for _, entry in ipairs(paw.ext.list()) do loaded[#loaded + 1] = entry.name .. tostring(entry.ok) end
   loaded = table.concat(loaded, " ")
   if built and not M.dirty and built.loaded == loaded and api.now() - built.checked < 2000 then return built end
   local sources = M.sources()
@@ -545,7 +545,7 @@ function M.find(topic, limit)
   topic = (topic or ""):gsub("^%s+", ""):gsub("%s+$", "")
   if topic == "" then return { index.tags.help } end
   local exact = index.tags[topic]
-  if not exact and topic:match("^<.+>") then exact = index.tags[daw.keymap.human(topic)] end
+  if not exact and topic:match("^<.+>") then exact = index.tags[paw.keymap.human(topic)] end
   local q = topic:lower()
   local found = {}
   for _, tag in ipairs(index.list) do
@@ -602,7 +602,7 @@ end
 
 -- Where tag jumps came from, for `Ctrl-t`.
 local stack = {}
-daw.seats.keep("help.tagstack", function() return stack end, function(s) stack = s end, function() return {} end)
+paw.seats.keep("help.tagstack", function() return stack end, function(s) stack = s end, function() return {} end)
 
 --- Show a page at a row: in the help window, else one split off this one
 --- (as Vim's `:help` splits), in a graphical frontend as a docked pane
@@ -619,7 +619,7 @@ function M.show(source, row, col)
     -- Help takes half the screen, as Vim gives it 'helpheight' rows, whatever
     -- else shares the column.
     if new then
-      local _, height = daw.ui.size()
+      local _, height = paw.ui.size()
       new.size, new.weight = math.max(8, math.floor(height / 2)), nil
     end
     win = new or layout.show_in(layout.current(), "textbuf", buf.id)
@@ -630,21 +630,21 @@ end
 
 --- Go to a tag: remember where from (for `Ctrl-t` and `Ctrl-o`) and show it.
 function M.jump(tag)
-  local win, buf, _, s = daw.textbuf.here()
+  local win, buf, _, s = paw.textbuf.here()
   if win and buf then
     stack[#stack + 1] = { name = buf.name, row = s.row, col = s.col }
     if #stack > 50 then table.remove(stack, 1) end
-    daw.keymap.push_jump()
+    paw.keymap.push_jump()
   end
   local source = tag.source
-  if source.ext and not source.loaded then daw.notify(source.ext .. " is not loaded: the page says how to load it", "warn") end
+  if source.ext and not source.loaded then paw.notify(source.ext .. " is not loaded: the page says how to load it", "warn") end
   return M.show(source, tag.row, tag.col)
 end
 
 --- `:help topic`: go to the best tag for it, or say there is none.
 function M.open(topic)
   local tag = M.lookup(topic)
-  if not tag then return daw.notify("no help for " .. tostring(topic), "warn") end
+  if not tag then return paw.notify("no help for " .. tostring(topic), "warn") end
   return M.jump(tag)
 end
 
@@ -654,7 +654,7 @@ function M.back(n)
   for _ = 1, n or 1 do
     local last = table.remove(stack)
     if not last then
-      if not win then daw.notify("at the bottom of the tag stack", "warn") end
+      if not win then paw.notify("at the bottom of the tag stack", "warn") end
       return win
     end
     local source = source_of({ name = last.name })
@@ -711,7 +711,7 @@ end
 
 --- What is under the cursor of a help window: a link, code, or a word.
 local function under_cursor()
-  local win, buf, t, s = daw.textbuf.here()
+  local win, buf, t, s = paw.textbuf.here()
   if not (win and is_help(buf)) then return nil end
   local source = source_of(buf)
   local line = source and source.doc.lines[s.row]
@@ -730,11 +730,11 @@ end
 --- word there.
 function M.follow()
   local here = under_cursor()
-  if not here then return daw.notify("Ctrl-] follows links in help: `:help` opens it", "warn") end
+  if not here then return paw.notify("Ctrl-] follows links in help: `:help` opens it", "warn") end
   if here.link then
     local tag, other = link_target(here.source, here.link)
     if tag then return M.jump(tag) end
-    return daw.notify(other and ("not a page of help: " .. other) or "the link leads nowhere", "warn")
+    return paw.notify(other and ("not a page of help: " .. other) or "the link leads nowhere", "warn")
   end
   local text = here.code or here.word
   if not text then return end
@@ -743,26 +743,26 @@ function M.follow()
     for _, name in ipairs(tags_of_code(text, true)) do tag = tag or build().tags[name] end
   end
   tag = tag or lookup_word(text)
-  if not tag then return daw.notify("no help for " .. text, "warn") end
+  if not tag then return paw.notify("no help for " .. text, "warn") end
   return M.jump(tag)
 end
 
 --- `K`: look up the word under the cursor, in help or any text.
 function M.keyword()
-  local win, buf, t, s = daw.textbuf.here()
+  local win, buf, t, s = paw.textbuf.here()
   if not win then return end
   local here = is_help(buf) and under_cursor() or { word = word_at(t:line(s.row), s.col) }
   local text = here.code or here.word
   if not text then return end
   local tag = lookup_word(text)
-  if not tag then return daw.notify("no help for " .. text, "warn") end
+  if not tag then return paw.notify("no help for " .. text, "warn") end
   return M.jump(tag)
 end
 
 -- `:helpgrep`: every line of help that holds the words, in the quickfix list.
 function M.grep(pattern)
   pattern = (pattern or ""):gsub("^%s+", ""):gsub("%s+$", "")
-  if pattern == "" then return daw.notify("usage: helpgrep words", "warn") end
+  if pattern == "" then return paw.notify("usage: helpgrep words", "warn") end
   -- Case counts only when the words have a capital, as with 'smartcase'.
   local fold = not pattern:find("%u")
   local needle = fold and pattern:lower() or pattern
@@ -773,20 +773,20 @@ function M.grep(pattern)
       local at = text:find(needle, 1, true)
       if at then
         entries[#entries + 1] = {
-          location = { uri = "daw://help/" .. source.name, selector = { line = row, col = md.width(line.text:sub(1, at - 1)) } },
+          location = { uri = "paw://help/" .. source.name, selector = { line = row, col = md.width(line.text:sub(1, at - 1)) } },
           text = (line.text:gsub("^%s+", "")), source = "helpgrep",
         }
       end
     end
   end
-  if #entries == 0 then return daw.notify("no help holds " .. pattern, "warn") end
-  daw.qf.set(entries, { title = "helpgrep " .. pattern })
-  daw.qf.jump(1)
+  if #entries == 0 then return paw.notify("no help holds " .. pattern, "warn") end
+  paw.qf.set(entries, { title = "helpgrep " .. pattern })
+  paw.qf.jump(1)
   return entries
 end
 
 -- Help as a kind of text buffer, and where its entries in the quickfix list go.
-daw.textbuf.kind("help", {
+paw.textbuf.kind("help", {
   pattern = "^help://(.+)$",
   readonly = "help cannot be changed: its pages are the Markdown files under docs/ and in the extensions",
   gutter = false,
@@ -821,14 +821,14 @@ daw.textbuf.kind("help", {
   parent = function(ctx) return ctx.args[1] ~= "index" and "help://index" or nil end,
 })
 
-daw.address.scheme("help", {
-  resolve = function(uri) return build().by_name[uri:match("^daw://help/(.+)$") or ""] end,
+paw.address.scheme("help", {
+  resolve = function(uri) return build().by_name[uri:match("^paw://help/(.+)$") or ""] end,
   where = function(loc)
-    local name = loc.uri:match("^daw://help/(.+)$") or "?"
+    local name = loc.uri:match("^paw://help/(.+)$") or "?"
     return name .. ":" .. tostring(loc.selector and loc.selector.line or 1)
   end,
   go = function(loc)
-    local source = build().by_name[loc.uri:match("^daw://help/(.+)$") or ""]
+    local source = build().by_name[loc.uri:match("^paw://help/(.+)$") or ""]
     if not source then return false end
     local sel = loc.selector or {}
     M.show(source, sel.line or 1, sel.col or 0)
@@ -838,12 +838,12 @@ daw.address.scheme("help", {
 
 -- Keys and commands ------------------------------------------------------------------
 
-local map = daw.keymap.set
+local map = paw.keymap.set
 map("<C-]>", M.follow, { view = "textbuf", desc = "Help: follow the link, or look up the word, under the cursor", repeatable = false })
 map("<C-t>", function(ctx) M.back(ctx.count or 1) end, { view = "textbuf", desc = "Help: back to where the last link was followed from", repeatable = false })
 map("K", function()
-  if is_help(daw.textbuf.buf()) then return M.keyword() end
-  daw.commands.run("info")
+  if is_help(paw.textbuf.buf()) then return M.keyword() end
+  paw.commands.run("info")
 end, { view = "textbuf", role = "describe", desc = "Look up the word under the cursor in help (`:help`)", repeatable = false })
 
 --- The first line of help that names `text` as code, the manual's first.
@@ -877,11 +877,11 @@ end
 local function help_for(names, shown)
   local place = place_for(names)
   if place then return M.jump(place) end
-  daw.notify("no help for " .. shown .. ": `:helpgrep " .. shown .. "` searches every page", "warn")
+  paw.notify("no help for " .. shown .. ": `:helpgrep " .. shown .. "` searches every page", "warn")
 end
 
 local function names_of(map)
-  local human = daw.keymap.human(map.lhs)
+  local human = paw.keymap.human(map.lhs)
   local names = { human, map.lhs }
   if type(map.rhs) == "string" then names[#names + 1] = ":" .. map.rhs:match("^%S+") end
   return names, human
@@ -933,9 +933,9 @@ function M.for_command(name)
 end
 
 -- The key line of a help window: its own keys, not those that edit.
-local text_keys = daw.ui.keybar.lines.textbuf and daw.ui.keybar.lines.textbuf.n
-daw.ui.keybar.set("textbuf", "n", function()
-  if is_help(daw.textbuf.buf()) then
+local text_keys = paw.ui.keybar.lines.textbuf and paw.ui.keybar.lines.textbuf.n
+paw.ui.keybar.set("textbuf", "n", function()
+  if is_help(paw.textbuf.buf()) then
     return {
       { "<C-]>", "follow" }, { "<C-t>", "back" }, { "K", "look up" }, { "-", "contents" }, { "v", "select" }, { "y", "yank" },
       { "?", "keys" },
@@ -944,7 +944,7 @@ daw.ui.keybar.set("textbuf", "n", function()
   return type(text_keys) == "function" and text_keys() or text_keys or {}
 end)
 
-daw.command("helpgrep", function(ctx) M.grep(ctx.args[1]) end, {
+paw.command("helpgrep", function(ctx) M.grep(ctx.args[1]) end, {
   desc = "Every line of help that holds the words, in the quickfix list: `helpgrep stretch`",
   raw = true,
 })
@@ -960,10 +960,10 @@ end
 --- The topic of help for a view, for the key line: its `help` field, a
 --- section of the manual, or the page of the extension it is from.
 function M.topic_of(view)
-  if view == "textbuf" and is_help(daw.textbuf.buf()) then return "help" end
-  local v = daw.ui.views[view]
+  if view == "textbuf" and is_help(paw.textbuf.buf()) then return "help" end
+  local v = paw.ui.views[view]
   if v and v.help then return v.help end
-  return M.view_topics[view] or (daw.ext.loaded[view] and view) or nil
+  return M.view_topics[view] or (paw.ext.loaded[view] and view) or nil
 end
 
 M.view_topics = {

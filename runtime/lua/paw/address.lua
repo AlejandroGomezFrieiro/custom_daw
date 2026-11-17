@@ -1,18 +1,18 @@
 -- Addresses: a URI for everything a language server, a lint or a person
 -- could talk about, built from ids so that it survives edits.
 --
---   daw://project
---   daw://track/12                        daw://track/0 is the master
---   daw://track/12/device/3               daw://track/12/device/3/param/cutoff
---   daw://track/12/send/5                 the send to track 5
---   daw://clip/7                          daw://clip/7/note/41 (the note's own id)
---   daw://clip/7/control/cc/74            daw://lane/9
---   daw://tempo                           daw://marker/5
---   daw://render/<the file's path, %-encoded>
+--   paw://project
+--   paw://track/12                        paw://track/0 is the master
+--   paw://track/12/device/3               paw://track/12/device/3/param/cutoff
+--   paw://track/12/send/5                 the send to track 5
+--   paw://clip/7                          paw://clip/7/note/41 (the note's own id)
+--   paw://clip/7/control/cc/74            paw://lane/9
+--   paw://tempo                           paw://marker/5
+--   paw://render/<the file's path, %-encoded>
 --
 -- A note's id is the model's: every note has one from the moment it is
 -- made, kept through every move and change, and only a note that is copied
--- next to its original gets a new one (crates/daw-core/src/model.rs,
+-- next to its original gets a new one (crates/paw-core/src/model.rs,
 -- `Note::id`).
 --
 -- A **selector** narrows an address to a part of it: `{ time = { from, to } }`
@@ -20,9 +20,9 @@
 -- A **location** is `{ uri = ..., selector = ... }`.
 --
 -- A **workspace edit** is a list of changes, each `{ uri, set = { ... } }`,
--- `{ uri, insert = { ... } }` or `{ uri, delete = true }`: `daw.address.edit`
+-- `{ uri, insert = { ... } }` or `{ uri, delete = true }`: `paw.address.edit`
 -- checks every one before it does anything and makes them one undo step.
-local api = daw.api
+local api = paw.api
 
 local M = { schemes = {} }
 
@@ -34,7 +34,7 @@ local function encode(s) return (s:gsub("[^%w%-%._~/]", function(c) return strin
 --- nil when it is not one. The fragment (`#mix`) is kept as `fragment`.
 function M.parse(uri)
   if type(uri) ~= "string" then return nil end
-  local body, fragment = uri:match("^daw://([^#]*)#?(.*)$")
+  local body, fragment = uri:match("^paw://([^#]*)#?(.*)$")
   if not body then return nil end
   local seg = {}
   for part in body:gmatch("[^/]+") do seg[#seg + 1] = part end
@@ -74,19 +74,19 @@ end
 
 -- Constructors ---------------------------------------------------------------
 
-function M.project() return "daw://project" end
-function M.tempo() return "daw://tempo" end
-function M.track(id) return "daw://track/" .. id end
-function M.clip(id) return "daw://clip/" .. id end
-function M.note(clip, id) return "daw://clip/" .. clip .. "/note/" .. id end
-function M.lane(id) return "daw://lane/" .. id end
-function M.marker(id) return "daw://marker/" .. id end
-function M.render(path) return "daw://render/" .. encode(path) end
-function M.send(track, target) return "daw://track/" .. track .. "/send/" .. target end
+function M.project() return "paw://project" end
+function M.tempo() return "paw://tempo" end
+function M.track(id) return "paw://track/" .. id end
+function M.clip(id) return "paw://clip/" .. id end
+function M.note(clip, id) return "paw://clip/" .. clip .. "/note/" .. id end
+function M.lane(id) return "paw://lane/" .. id end
+function M.marker(id) return "paw://marker/" .. id end
+function M.render(path) return "paw://render/" .. encode(path) end
+function M.send(track, target) return "paw://track/" .. track .. "/send/" .. target end
 
 function M.device(id)
   local d = api.device_get(id)
-  return "daw://track/" .. d.track .. "/device/" .. id
+  return "paw://track/" .. d.track .. "/device/" .. id
 end
 
 function M.param(device, key) return M.device(device) .. "/param/" .. encode(key) end
@@ -94,15 +94,15 @@ function M.param(device, key) return M.device(device) .. "/param/" .. encode(key
 --- A location: an address and, optionally, a part of it.
 function M.location(uri, selector) return { uri = uri, selector = selector } end
 
---- The address of an object of the scripting interface (`daw.track(3)`,
---- `daw.clip(7)`, a device) or of a table `daw.api` gave (with its fields).
+--- The address of an object of the scripting interface (`paw.track(3)`,
+--- `paw.clip(7)`, a device) or of a table `paw.api` gave (with its fields).
 function M.of(object)
   if type(object) == "string" and M.parse(object) then return object end
   if type(object) ~= "table" then return nil end
   local mt = getmetatable(object)
-  if mt == daw.Track then return M.track(object.id) end
-  if mt == daw.Clip then return M.clip(object.id) end
-  if mt == daw.Device then return M.device(object.id) end
+  if mt == paw.Track then return M.track(object.id) end
+  if mt == paw.Clip then return M.clip(object.id) end
+  if mt == paw.Device then return M.device(object.id) end
   if object.param_info and object.id then return M.device(object.id) end
   if object.kind and object.track and object.id and object.length then return M.clip(object.id) end
   if object.sends and object.devices and object.id then return M.track(object.id) end
@@ -128,7 +128,7 @@ function M.find_note(clip, id)
   end
 end
 
---- What an address names, as `daw.api` has it (a note also says its
+--- What an address names, as `paw.api` has it (a note also says its
 --- `place`; a parameter is `{ key, value, info }`), or nil when it is gone.
 function M.resolve(uri)
   local p = M.parse(uri)
@@ -155,7 +155,7 @@ function M.resolve(uri)
   if p.kind == "clip" then return p.clip and try(api.clip_get, p.clip) end
   if p.kind == "note" then
     local n, place = M.find_note(p.clip, p.note)
-    if n then return daw.util.merge(n, { place = place, clip = p.clip }) end
+    if n then return paw.util.merge(n, { place = place, clip = p.clip }) end
     return nil
   end
   if p.kind == "control" then
@@ -167,7 +167,7 @@ function M.resolve(uri)
   end
   if p.kind == "lane" then return p.lane and try(api.lane_get, p.lane) end
   if p.kind == "marker" then
-    for _, m in ipairs(daw.markers and daw.markers.list() or {}) do
+    for _, m in ipairs(paw.markers and paw.markers.list() or {}) do
       if m.id == p.marker then return m end
     end
     return nil
@@ -184,7 +184,7 @@ function M.parent(uri)
   local p = M.parse(uri)
   if not p then return nil end
   if p.kind == "note" or p.kind == "control" then return M.clip(p.clip) end
-  if p.kind == "param" then return "daw://track/" .. p.track .. "/device/" .. p.device end
+  if p.kind == "param" then return "paw://track/" .. p.track .. "/device/" .. p.device end
   if p.kind == "device" or p.kind == "send" then return M.track(p.track) end
   if p.kind == "clip" then
     local c = try(api.clip_get, p.clip)
@@ -211,7 +211,7 @@ function M.children(uri)
     out[#out + 1] = M.tempo()
   elseif p.kind == "track" then
     local t = try(api.track_get, p.track)
-    for _, d in ipairs(t and t.devices or {}) do out[#out + 1] = "daw://track/" .. p.track .. "/device/" .. d end
+    for _, d in ipairs(t and t.devices or {}) do out[#out + 1] = "paw://track/" .. p.track .. "/device/" .. d end
     for _, s in ipairs(t and t.sends or {}) do out[#out + 1] = M.send(p.track, s.target) end
     for _, c in ipairs(t and try(api.clip_list, p.track) or {}) do out[#out + 1] = M.clip(c.id) end
   elseif p.kind == "device" then
@@ -251,16 +251,16 @@ function M.track_of(uri)
   end
 end
 
---- Add a kind of address: `daw://<name>/...`, for what an extension keeps
+--- Add a kind of address: `paw://<name>/...`, for what an extension keeps
 --- (the vocal editor's phrases, a score's measures). `spec.resolve(uri,
 --- parts)` gives the thing or nil; optional `of(object)`, `children(uri,
 --- parts)`, `parent(uri, parts)`, `go(location, parts)` and `where(location,
 --- parts)` for the quickfix list (going there, and naming it in a few words),
 --- and `edit(change, parts)` to apply a
 --- workspace edit's change to it (which must make its edits through
---- `daw.api`, so that they join the undo step).
+--- `paw.api`, so that they join the undo step).
 function M.scheme(name, spec)
-  assert(type(spec) == "table" and spec.resolve, "usage: daw.address.scheme(name, { resolve = fn, ... })")
+  assert(type(spec) == "table" and spec.resolve, "usage: paw.address.scheme(name, { resolve = fn, ... })")
   M.schemes[name] = spec
 end
 
@@ -324,8 +324,8 @@ end
 --- Carry out a workspace edit: every change is checked first, and nothing
 --- is done unless all can be; then all are made as one undo step labelled
 --- `label`. Returns true, or nil and why not.
----   daw.address.edit({ { uri = "daw://track/3", set = { volume = -6 } },
----                      { uri = "daw://clip/7/note/41", set = { pitch = 62 } } }, "Lower the bass")
+---   paw.address.edit({ { uri = "paw://track/3", set = { volume = -6 } },
+---                      { uri = "paw://clip/7/note/41", set = { pitch = 62 } } }, "Lower the bass")
 function M.edit(changes, label)
   local plans = {}
   for i, change in ipairs(changes or {}) do
@@ -346,7 +346,7 @@ function M.edit(changes, label)
       local _, place = M.find_note(p.clip, p.note)
       local e = clip_edit(p.clip)
       if change.delete then e.remove[#e.remove + 1] = place
-      else e.set[#e.set + 1] = daw.util.merge(change.set, { index = place }) end
+      else e.set[#e.set + 1] = paw.util.merge(change.set, { index = place }) end
     elseif p.kind == "clip" then
       if change.delete then api.clip_remove(p.clip)
       elseif change.insert then
@@ -381,7 +381,7 @@ function M.edit(changes, label)
       local sends = {}
       for _, s in ipairs(api.track_get(p.track).sends) do
         if s.target ~= p.send then sends[#sends + 1] = s
-        elseif not change.delete then sends[#sends + 1] = daw.util.merge(s, change.set) end
+        elseif not change.delete then sends[#sends + 1] = paw.util.merge(s, change.set) end
       end
       api.track_set(p.track, "sends", sends)
     elseif p.kind == "render" then
@@ -390,12 +390,12 @@ function M.edit(changes, label)
       M.schemes[p.kind].edit(change, p)
     end
   end
-  for id, e in pairs(by_clip) do daw.clip(id):edit_notes(e) end
+  for id, e in pairs(by_clip) do paw.clip(id):edit_notes(e) end
   -- A render is not an edit of the project: it is made again afterwards,
   -- with what was set over the options it was made with.
   for _, r in ipairs(renders) do
     local before = M.renders[r.path] and M.renders[r.path].opts or {}
-    daw.render(r.path, daw.util.merge(daw.util.merge(before, r.opts), { background = true }))
+    paw.render(r.path, paw.util.merge(paw.util.merge(before, r.opts), { background = true }))
   end
   return true
 end
@@ -407,18 +407,18 @@ end
 M.renders = {}
 
 local pending_opts = {}
-daw.on("render.before", function(e) pending_opts[e.path] = e.opts end)
+paw.on("render.before", function(e) pending_opts[e.path] = e.opts end)
 local function rendered(info)
   if type(info) ~= "table" or not info.path then return end
-  local entry = daw.util.merge(info, { opts = pending_opts[info.path] or {}, at = api.now() })
+  local entry = paw.util.merge(info, { opts = pending_opts[info.path] or {}, at = api.now() })
   pending_opts[info.path] = nil
   M.renders[info.path] = entry
-  daw.emit("address.changed", { uris = { M.render(info.path) }, revision = api.project_get().edits, rendered = entry })
+  paw.emit("address.changed", { uris = { M.render(info.path) }, revision = api.project_get().edits, rendered = entry })
 end
-daw.on("render.done", rendered)
-daw.on("render.finished", rendered)
+paw.on("render.done", rendered)
+paw.on("render.finished", rendered)
 -- Another project, other renders.
-daw.on("project.loaded", function() M.renders = {} end)
+paw.on("project.loaded", function() M.renders = {} end)
 
 -- Change events --------------------------------------------------------------
 
@@ -435,33 +435,33 @@ local function tell()
   for uri in pairs(pending) do uris[#uris + 1] = uri end
   table.sort(uris)
   pending = {}
-  daw.emit("address.changed", { uris = uris, revision = api.project_get().edits })
+  paw.emit("address.changed", { uris = uris, revision = api.project_get().edits })
 end
 local function changed(uris)
   for _, uri in ipairs(uris) do pending[uri] = true end
   if not scheduled then
     scheduled = true
-    daw.defer(tell, 0)
+    paw.defer(tell, 0)
   end
 end
-daw.on("track.*", function(e) if e.id then changed({ M.track(e.id) }) end end)
-daw.on("clip.*", function(e) if e.id then changed({ M.clip(e.id) }) end end)
-daw.on("device.*", function(e)
+paw.on("track.*", function(e) if e.id then changed({ M.track(e.id) }) end end)
+paw.on("clip.*", function(e) if e.id then changed({ M.clip(e.id) }) end end)
+paw.on("device.*", function(e)
   if not e.id then return end
   local ok, d = pcall(api.device_get, e.id)
-  changed({ ok and ("daw://track/" .. d.track .. "/device/" .. e.id) or M.project() })
+  changed({ ok and ("paw://track/" .. d.track .. "/device/" .. e.id) or M.project() })
 end)
-daw.on("lane.*", function(e) if e.id then changed({ M.lane(e.id) }) end end)
-daw.on("project.*", function() changed({ M.project() }) end)
+paw.on("lane.*", function(e) if e.id then changed({ M.lane(e.id) }) end end)
+paw.on("project.*", function() changed({ M.project() }) end)
 -- What changes without an event of its own (the tempo map, the project's
 -- meta) is the project's.
-daw.on("changed", function()
+paw.on("changed", function()
   changed({ M.project() })
   tell()
 end)
 
---- Whether an address matches a pattern: `daw://track/*` (one level),
---- `daw://track/**` (any depth), or an exact address.
+--- Whether an address matches a pattern: `paw://track/*` (one level),
+--- `paw://track/**` (any depth), or an exact address.
 function M.matches(pattern, uri)
   if pattern == uri then return true end
   local lua = "^" .. pattern:gsub("[%^%$%(%)%%%.%[%]%+%-%?]", "%%%0"):gsub("%*%*", "\1"):gsub("%*", "[^/]*"):gsub("\1", ".*") .. "$"

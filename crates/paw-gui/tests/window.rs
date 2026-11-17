@@ -132,26 +132,26 @@ fn tools() -> Result<Tools, String> {
     }
 }
 
-/// The `daw` binary beside the window's, built when it is not there.
+/// The `paw` binary beside the window's, built when it is not there.
 fn kernel_binary() -> PathBuf {
-    let gui = PathBuf::from(env!("CARGO_BIN_EXE_daw-gui"));
+    let gui = PathBuf::from(env!("CARGO_BIN_EXE_paw-gui"));
     let dir = gui.parent().unwrap().to_path_buf();
-    let daw = dir.join("daw");
+    let paw = dir.join("paw");
     static BUILD: Once = Once::new();
     BUILD.call_once(|| {
-        if daw.is_file() {
+        if paw.is_file() {
             return;
         }
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let mut build = Command::new(cargo);
-        build.args(["build", "-p", "daw-tui"]);
+        build.args(["build", "-p", "paw-tui"]);
         if dir.file_name().is_some_and(|name| name == "release") {
             build.arg("--release");
         }
         let status = build.current_dir(repo()).status();
-        assert!(status.is_ok_and(|s| s.success()), "building the daw binary");
+        assert!(status.is_ok_and(|s| s.success()), "building the paw binary");
     });
-    daw
+    paw
 }
 
 fn repo() -> PathBuf {
@@ -205,7 +205,7 @@ struct Scene {
     /// Where that kernel listens on the network.
     tcp: Option<String>,
     socket: PathBuf,
-    daw: PathBuf,
+    paw: PathBuf,
     envs: Vec<(&'static str, PathBuf)>,
     /// Where the window's content starts on the screen.
     origin: Point,
@@ -280,7 +280,7 @@ fn runtime_dir(dir: &Path, name: &str) -> PathBuf {
     if here.as_os_str().len() < 60 {
         here
     } else {
-        std::env::temp_dir().join(format!("daw-window-{}-{name}", std::process::id()))
+        std::env::temp_dir().join(format!("paw-window-{}-{name}", std::process::id()))
     }
 }
 
@@ -306,7 +306,7 @@ impl Scene {
             }
         };
         let slot = Slot::take();
-        let daw = kernel_binary();
+        let paw = kernel_binary();
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join("window")
             .join(name);
@@ -332,7 +332,7 @@ impl Scene {
             }
         }
         let (xvfb, display) = start_xvfb(&tools, &dir);
-        envs.push(("DAW_BIN", daw.clone()));
+        envs.push(("PAW_BIN", paw.clone()));
 
         let mut command = Command::new(&tools.openbox);
         command
@@ -363,7 +363,7 @@ impl Scene {
             let token = dir.join("token");
             fs::write(&token, "window-test-token\n").unwrap();
             let unix = run.join("kernel.sock");
-            let mut command = Command::new(&daw);
+            let mut command = Command::new(&paw);
             command
                 .args([
                     "--headless",
@@ -401,7 +401,7 @@ impl Scene {
             socket = Some(unix);
             tcp = Some(format!("127.0.0.1:{port}"));
         }
-        let mut command = Command::new(env!("CARGO_BIN_EXE_daw-gui"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_paw-gui"));
         command
             .args(&window_args)
             .current_dir(repo())
@@ -416,7 +416,7 @@ impl Scene {
             command.env(key, value);
         }
         let gui = spawn_group(&mut command);
-        let socket = socket.unwrap_or_else(|| run.join(format!("daw-gui-{}.sock", gui.id())));
+        let socket = socket.unwrap_or_else(|| run.join(format!("paw-gui-{}.sock", gui.id())));
 
         let mut scene = Scene {
             name: name.to_string(),
@@ -429,7 +429,7 @@ impl Scene {
             kernel,
             tcp,
             socket,
-            daw,
+            paw,
             envs,
             origin: (0, 0),
             size: (0, 0),
@@ -486,7 +486,7 @@ impl Scene {
     // ------------------------------------------------------ the kernel
 
     fn try_ctl(&self, lua: &str) -> Option<Result<String, String>> {
-        let output = Command::new(&self.daw)
+        let output = Command::new(&self.paw)
             .arg("ctl")
             .arg("--socket")
             .arg(&self.socket)
@@ -510,7 +510,7 @@ impl Scene {
         match self.try_ctl(lua) {
             Some(Ok(text)) => text,
             Some(Err(err)) => panic!("the kernel answered `{lua}` with an error: {err}"),
-            None => panic!("could not run daw ctl"),
+            None => panic!("could not run paw ctl"),
         }
     }
 
@@ -685,10 +685,10 @@ impl Scene {
     }
 
     /// A number about the pane that shows `view` (`p.x`, `p.w`...), from
-    /// where the kernel lays the main area out (`daw.panes.state`).
+    /// where the kernel lays the main area out (`paw.panes.state`).
     fn pane(&self, view: &str, part: &str) -> i32 {
         self.number(&format!(
-            "for _, p in ipairs(daw.panes.state().panes) do if p.view == '{view}' then return {part} end end"
+            "for _, p in ipairs(paw.panes.state().panes) do if p.view == '{view}' then return {part} end end"
         )) as i32
     }
 
@@ -983,36 +983,36 @@ fn demo_song_shows_and_answers_the_pointer() {
     // It starts with the demo song and shows it.
     w.pause(3.0);
     w.assert_alive("after showing the demo song");
-    assert_eq!(w.number("return #daw.api.track_list()"), 5.0);
+    assert_eq!(w.number("return #paw.api.track_list()"), 5.0);
     w.shot("demo.png");
 
     // A click on a header selects the track.
-    let keys = w.number("return daw.api.track_list()[3]") as i32;
+    let keys = w.number("return paw.api.track_list()[3]") as i32;
     assert_eq!(
-        w.ctl(&format!("return daw.api.track_get({keys}).name")),
+        w.ctl(&format!("return paw.api.track_get({keys}).name")),
         "Keys"
     );
     w.click((70, place::row_top(2, false) + 17));
     w.expect(
         "the cursor on Keys",
-        &format!("daw.cursor.track_id() == {keys}"),
+        &format!("paw.cursor.track_id() == {keys}"),
     );
-    let first = w.number("return daw.api.track_list()[1]") as i32;
+    let first = w.number("return paw.api.track_list()[1]") as i32;
     w.click((70, place::row_top(0, false) + 17));
     w.expect(
         "the cursor on Drums",
-        &format!("daw.cursor.track_id() == {first}"),
+        &format!("paw.cursor.track_id() == {first}"),
     );
 
     // The M button mutes the track, and again lets it sound.
-    let bass = w.number("return daw.api.track_list()[2]") as i32;
+    let bass = w.number("return paw.api.track_list()[2]") as i32;
     let mute = (134, place::row_top(1, false) + 17);
     w.click(mute);
-    w.expect("Bass muted", &format!("daw.api.track_get({bass}).mute"));
+    w.expect("Bass muted", &format!("paw.api.track_get({bass}).mute"));
     w.click(mute);
     w.expect(
         "Bass sounding",
-        &format!("not daw.api.track_get({bass}).mute"),
+        &format!("not paw.api.track_get({bass}).mute"),
     );
 
     // The file menu opens from the project's name; Render… opens the dialog,
@@ -1037,15 +1037,15 @@ fn wait_for_file(path: &Path, size: u64) {
 
 /// A song with a project file, so that Save has somewhere to write.
 fn saved_song(path: &Path) -> String {
-    format!("{DEMO}\ndaw.project.save('{}')", path.display())
+    format!("{DEMO}\npaw.project.save('{}')", path.display())
 }
 
 #[test]
 fn closing_with_unsaved_changes_asks() {
     // Autosave on: a copy of the unsaved project is made and must go when
     // it is thrown away.
-    let mut w = scene!("closing", &format!("daw.opt.autosave = 1\n{DEMO}"));
-    let recovery = w.env_path("XDG_STATE_HOME").join("daw/recovery");
+    let mut w = scene!("closing", &format!("paw.opt.autosave = 1\n{DEMO}"));
+    let recovery = w.env_path("XDG_STATE_HOME").join("paw/recovery");
     let copies = || -> usize {
         fs::read_dir(&recovery)
             .map(|dir| dir.filter_map(Result::ok).count())
@@ -1065,7 +1065,7 @@ fn closing_with_unsaved_changes_asks() {
     w.assert_alive("after Cancel");
     w.expect(
         "the project still unsaved",
-        "daw.api.project_get().modified",
+        "paw.api.project_get().modified",
     );
 
     // Don't save ends it, and the copy goes with it.
@@ -1085,8 +1085,8 @@ fn closing_with_a_project_file_saves_it() {
         dir
     };
     let mut w = scene!("closing-saves", &saved_song(&file));
-    w.ctl("daw.add_track({ name = 'Added after saving' })");
-    w.expect("the added track unsaved", "daw.api.project_get().modified");
+    w.ctl("paw.add_track({ name = 'Added after saving' })");
+    w.expect("the added track unsaved", "paw.api.project_get().modified");
     let saved = fs::read_to_string(&file).unwrap();
     assert!(
         !saved.contains("Added after saving"),
@@ -1107,19 +1107,19 @@ fn closing_with_a_project_file_saves_it() {
 #[test]
 fn lane_rows_take_drawn_points_and_markers_take_clicks() {
     let mut w = scene!("lanes", DEMO);
-    w.ctl("return daw.markers.add(8, 'Verse').id");
+    w.ctl("return paw.markers.add(8, 'Verse').id");
 
     // The first track's lanes as rows, and a drag across the row draws.
-    let drums = w.number("return daw.api.track_list()[1]") as i32;
-    w.ctl(&format!("return daw.frontend.act.lane_rows({drums})"));
+    let drums = w.number("return paw.api.track_list()[1]") as i32;
+    w.ctl(&format!("return paw.frontend.act.lane_rows({drums})"));
     w.expect(
         "a lane row on Drums",
-        &format!("#daw.frontend.state(0).tracks[1].lane_rows == 1"),
+        &format!("#paw.frontend.state(0).tracks[1].lane_rows == 1"),
     );
     w.pause(0.8);
-    let lane = w.number(&format!("return daw.api.lane_list({drums})[1].id")) as i32;
+    let lane = w.number(&format!("return paw.api.lane_list({drums})[1].id")) as i32;
     assert_eq!(
-        w.number(&format!("return #daw.api.lane_points({lane})")),
+        w.number(&format!("return #paw.api.lane_points({lane})")),
         0.0
     );
     let band = place::row_top(0, true) + place::ROW_H;
@@ -1131,42 +1131,42 @@ fn lane_rows_take_drawn_points_and_markers_take_clicks() {
     w.shot("lane-drawn.png");
     w.expect(
         "points drawn",
-        &format!("#daw.api.lane_points({lane}) >= 6"),
+        &format!("#paw.api.lane_points({lane}) >= 6"),
     );
     w.expect(
         "points between the beats dragged across",
         &format!(
-            "(function() local lo, hi = 1e9, -1e9 for _, p in ipairs(daw.api.lane_points({lane})) do lo = math.min(lo, p[1]) hi = math.max(hi, p[1]) end return lo >= 1.5 and hi <= 10.5 and hi >= 8 end)()"
+            "(function() local lo, hi = 1e9, -1e9 for _, p in ipairs(paw.api.lane_points({lane})) do lo = math.min(lo, p[1]) hi = math.max(hi, p[1]) end return lo >= 1.5 and hi <= 10.5 and hi >= 8 end)()"
         ),
     );
     w.expect(
         "a curve, not one level",
         &format!(
-            "(function() local pts = daw.api.lane_points({lane}) return math.abs(pts[1][2] - pts[#pts][2]) > 0.5 end)()"
+            "(function() local pts = paw.api.lane_points({lane}) return math.abs(pts[1][2] - pts[#pts][2]) > 0.5 end)()"
         ),
     );
     w.assert_alive("after drawing in a lane");
 
     // A click on the marker puts the edit cursor at it.
-    w.expect("the cursor elsewhere", "daw.cursor.beat ~= 8");
+    w.expect("the cursor elsewhere", "paw.cursor.beat ~= 8");
     w.click((place::beat_x(8.0) + 24, place::marker_y()));
-    w.expect("the edit cursor at the marker", "daw.cursor.beat == 8");
+    w.expect("the edit cursor at the marker", "paw.cursor.beat == 8");
     w.assert_alive("after clicking a marker");
 }
 
 /// A track with a clip and an empty one, for gestures on clips.
 const CLIP_SONG: &str = "
-local a = daw.add_track({ name = 'A' })
-daw.add_track({ name = 'B' })
+local a = paw.add_track({ name = 'A' })
+paw.add_track({ name = 'B' })
 a:add_clip({ start = 4, length = 4, name = 'c', notes = { { pitch = 60, start = 0, length = 1 } } })
 ";
 
 #[test]
 fn clips_move_trim_and_are_made_by_the_pointer() {
     let mut w = scene!("clips", CLIP_SONG);
-    let a = w.number("return daw.api.track_list()[1]") as i32;
-    let b = w.number("return daw.api.track_list()[2]") as i32;
-    let clip = |field: &str| format!("daw.api.clip_get(daw.api.clip_list({a})[1].id).{field}");
+    let a = w.number("return paw.api.track_list()[1]") as i32;
+    let b = w.number("return paw.api.track_list()[2]") as i32;
+    let clip = |field: &str| format!("paw.api.clip_get(paw.api.clip_list({a})[1].id).{field}");
     let top = place::row_top(0, false);
     let body = top + place::ROW_H * 2 / 3;
     assert_eq!(w.number(&format!("return {}", clip("start"))), 4.0);
@@ -1206,30 +1206,30 @@ fn clips_move_trim_and_are_made_by_the_pointer() {
     );
 
     // A double click on an empty stretch of the second track makes a clip.
-    assert_eq!(w.number(&format!("return #daw.api.clip_list({b})")), 0.0);
+    assert_eq!(w.number(&format!("return #paw.api.clip_list({b})")), 0.0);
     w.double_click((
         place::beat_x(20.3),
         place::row_top(1, false) + place::ROW_H / 2,
     ));
-    w.expect("a clip on B at bar 20", &format!("#daw.api.clip_list({b}) == 1 and daw.api.clip_get(daw.api.clip_list({b})[1].id).start == 20"));
+    w.expect("a clip on B at bar 20", &format!("#paw.api.clip_list({b}) == 1 and paw.api.clip_get(paw.api.clip_list({b})[1].id).start == 20"));
     w.assert_alive("after editing clips");
 }
 
 /// 4000 beats: long clips (one with a note every few beats), a long region,
 /// and an automation lane with points all across it.
 const LONG_SONG: &str = "
-daw.project.tempo = 120
-local track = daw.add_track({ name = 'Long' })
+paw.project.tempo = 120
+local track = paw.add_track({ name = 'Long' })
 local notes = {}
 for beat = 0, 2996, 4 do notes[#notes + 1] = { pitch = 48 + math.floor(beat / 4) % 24, start = beat, length = 2 } end
 track:add_clip({ start = 0, length = 3000, name = 'long', notes = notes })
 track:add_clip({ start = 3000, length = 1000, name = 'tail', notes = { { pitch = 60, start = 0, length = 4 } } })
-daw.add_track({ name = 'Other' }):add_clip({ start = 100, length = 2000, name = 'other', notes = { { pitch = 50, start = 0, length = 8 } } })
-daw.markers.add(100, 'Region', { length = 3000 })
-daw.markers.add(2000, 'Middle')
-local id = daw.api.track_list()[1]
-local lane = daw.api.lane_add(id, { target = 'volume' })
-for beat = 0, 4000, 8 do daw.api.lane_add_point(lane, beat, beat % 16 == 0 and -3 or -12) end
+paw.add_track({ name = 'Other' }):add_clip({ start = 100, length = 2000, name = 'other', notes = { { pitch = 50, start = 0, length = 8 } } })
+paw.markers.add(100, 'Region', { length = 3000 })
+paw.markers.add(2000, 'Middle')
+local id = paw.api.track_list()[1]
+local lane = paw.api.lane_add(id, { target = 'volume' })
+for beat = 0, 4000, 8 do paw.api.lane_add_point(lane, beat, beat % 16 == 0 and -3 or -12) end
 ";
 
 #[test]
@@ -1237,9 +1237,9 @@ fn a_very_long_song_does_not_hurt_the_window() {
     let mut w = scene!("long", LONG_SONG);
     w.expect(
         "the song 4000 beats long",
-        "daw.api.project_get().length >= 4000",
+        "paw.api.project_get().length >= 4000",
     );
-    w.ctl("return daw.frontend.act.lane_rows(daw.api.track_list()[1])");
+    w.ctl("return paw.frontend.act.lane_rows(paw.api.track_list()[1])");
     w.pause(3.0);
     w.assert_alive("after showing it");
     let idle = w.cpu_percent(3.0);
@@ -1271,11 +1271,11 @@ fn a_very_long_song_does_not_hurt_the_window() {
     );
     for _ in 0..3 {
         w.double_click(notes_at);
-        if w.wait_for("daw.ui.visible('pianoroll')", 5).is_ok() {
+        if w.wait_for("paw.ui.visible('pianoroll')", 5).is_ok() {
             break;
         }
     }
-    w.expect("the piano roll open", "daw.ui.visible('pianoroll')");
+    w.expect("the piano roll open", "paw.ui.visible('pianoroll')");
     w.pause(1.0);
     w.assert_alive("after opening the piano roll");
     w.shot("long-roll.png");
@@ -1286,9 +1286,9 @@ fn a_very_long_song_does_not_hurt_the_window() {
 #[test]
 fn a_piano_roll_on_a_very_long_clip_is_idle() {
     let mut w = scene!("long-roll", LONG_SONG);
-    let clip = w.number("return daw.api.clip_list(daw.api.track_list()[1])[1].id") as i32;
-    w.ctl(&format!("return daw.frontend.act.open_clip({clip})"));
-    w.expect("the piano roll open", "daw.ui.visible('pianoroll')");
+    let clip = w.number("return paw.api.clip_list(paw.api.track_list()[1])[1].id") as i32;
+    w.ctl(&format!("return paw.frontend.act.open_clip({clip})"));
+    w.expect("the piano roll open", "paw.ui.visible('pianoroll')");
     w.pause(3.0);
     let busy = w.cpu_percent(3.0);
     assert!(
@@ -1323,21 +1323,21 @@ fn the_file_menu_lists_recent_projects_and_opens_one() {
     let dir = files_dir("recent");
     let file = dir.join("recentsong.json");
     let setup = format!(
-        "daw.recent.use('{}/recent.json')\n{DEMO}\ndaw.project.save('{}')\ndaw.project.new()",
+        "paw.recent.use('{}/recent.json')\n{DEMO}\npaw.project.save('{}')\npaw.project.new()",
         dir.display(),
         file.display()
     );
     let mut w = scene!("recent", &setup);
-    w.expect("an empty project", "daw.api.project_get().path == nil");
+    w.expect("an empty project", "paw.api.project_get().path == nil");
     w.open_file_menu();
     w.click_text("Open recent");
     w.shot("recent-menu.png");
     w.click_text("recentsong");
     w.expect(
         "the saved project open",
-        &format!("daw.api.project_get().path == '{}'", file.display()),
+        &format!("paw.api.project_get().path == '{}'", file.display()),
     );
-    w.expect("its tracks", "#daw.api.track_list() == 5");
+    w.expect("its tracks", "#paw.api.track_list() == 5");
     w.assert_alive("after opening a recent project");
 }
 
@@ -1366,22 +1366,22 @@ fn the_render_dialog_offers_mp3() {
 #[test]
 fn take_lanes_show_the_takes_and_a_click_chooses_one() {
     let setup = "
-local track = daw.add_track({ name = 'T' })
-local id = daw.api.track_list()[1]
+local track = paw.add_track({ name = 'T' })
+local id = paw.api.track_list()[1]
 track:add_clip({ start = 0, length = 8, name = 'c', notes = { { pitch = 60, start = 0, length = 1 } } })
-daw.takes.new(daw.api.clip_list(id)[1].id)
-daw.cursor.set_track(id)
+paw.takes.new(paw.api.clip_list(id)[1].id)
+paw.cursor.set_track(id)
 ";
     let mut w = scene!("takes", setup);
-    let clip = "daw.api.clip_list(daw.api.track_list()[1])[1].id";
+    let clip = "paw.api.clip_list(paw.api.track_list()[1])[1].id";
     w.expect(
         "two takes, the second playing",
-        &format!("select(2, daw.takes.count({clip})) == 2"),
+        &format!("select(2, paw.takes.count({clip})) == 2"),
     );
-    w.ctl("return daw.commands.exec('take.lanes')");
+    w.ctl("return paw.commands.exec('take.lanes')");
     w.expect(
         "two take rows",
-        "daw.frontend.state(0).tracks[1].take_rows == 2",
+        "paw.frontend.state(0).tracks[1].take_rows == 2",
     );
     w.pause(0.8);
     w.shot("take-lanes.png");
@@ -1391,7 +1391,7 @@ daw.cursor.set_track(id)
     w.click((place::beat_x(2.0), first));
     w.expect(
         "the first take playing",
-        &format!("select(2, daw.takes.count({clip})) == 1"),
+        &format!("select(2, paw.takes.count({clip})) == 1"),
     );
     w.assert_alive("after choosing a take");
 }
@@ -1400,16 +1400,16 @@ daw.cursor.set_track(id)
 fn the_more_menu_docks_a_view_in_a_pane_that_pops_out_on_request() {
     let mut w = scene!(
         "more",
-        &format!("{DEMO}\ndaw.ext.load('extensions/undotree')")
+        &format!("{DEMO}\npaw.ext.load('extensions/undotree')")
     );
     w.click_text("More");
     w.shot("more-menu.png");
     w.click_text("Undo tree");
     w.expect(
         "the undo tree docked in a pane, painted, with the keyboard",
-        "(function() for _, p in ipairs(daw.panes.state().panes) do if p.view == 'undotree_paint' then return p.kind == 'paint' and p.focused end end end)()",
+        "(function() for _, p in ipairs(paw.panes.state().panes) do if p.view == 'undotree_paint' then return p.kind == 'paint' and p.focused end end end)()",
     );
-    assert_eq!(w.number("return #daw.canvas.windows()"), 0.0);
+    assert_eq!(w.number("return #paw.canvas.windows()"), 0.0);
     w.shot("more-pane.png");
     // The first button on its title pops it out into a window of its own;
     // its own `q` there closes it, and keys reach the main window again.
@@ -1418,15 +1418,15 @@ fn the_more_menu_docks_a_view_in_a_pane_that_pops_out_on_request() {
     w.click((right - 37, top + 12));
     w.expect(
         "the undo tree in a window of its own",
-        "#daw.canvas.windows() == 1 and daw.canvas.windows()[1].name == 'undotree_paint'",
+        "#paw.canvas.windows() == 1 and paw.canvas.windows()[1].name == 'undotree_paint'",
     );
     w.pause(0.6);
     w.key("q");
-    w.expect("its window closed", "#daw.canvas.windows() == 0");
-    w.expect("the keyboard back in the main window", "daw.ui.focused == 'arrange'");
-    let row = w.number("return daw.cursor.track().index");
+    w.expect("its window closed", "#paw.canvas.windows() == 0");
+    w.expect("the keyboard back in the main window", "paw.ui.focused == 'arrange'");
+    let row = w.number("return paw.cursor.track().index");
     w.key("j");
-    w.expect("keys reach it", &format!("daw.cursor.track().index == {}", row + 1.0));
+    w.expect("keys reach it", &format!("paw.cursor.track().index == {}", row + 1.0));
     w.assert_alive("after a view in a pane and in a window");
 }
 
@@ -1434,46 +1434,46 @@ fn the_more_menu_docks_a_view_in_a_pane_that_pops_out_on_request() {
 /// the cursor on it.
 const LANE_SONG: &str = "
 dofile('examples/demo-song.lua')
-local t = daw.tracks()[1]
+local t = paw.tracks()[1]
 local lane = t:automate('volume')
 lane:set_points({ { 0, -12 }, { 8, 0 } })
-daw.lanes.open(t)
-daw.cursor.set_track(t.id, lane.id)
+paw.lanes.open(t)
+paw.cursor.set_track(t.id, lane.id)
 ";
 
 #[test]
 fn enter_on_a_lane_row_shows_its_curve_in_a_pane() {
     let mut w = scene!("curve-pane", LANE_SONG);
     w.key("Return");
-    w.expect("the curve has the keyboard", "daw.ui.focused == 'curve'");
+    w.expect("the curve has the keyboard", "paw.ui.focused == 'curve'");
     w.expect(
         "in a pane drawn in cells, with room",
-        "(function() for _, p in ipairs(daw.panes.state().panes) do if p.view == 'curve' then return p.kind == 'cells' and p.w > 200 and p.h > 100 and p.focused end end end)()",
+        "(function() for _, p in ipairs(paw.panes.state().panes) do if p.view == 'curve' then return p.kind == 'cells' and p.w > 200 and p.h > 100 and p.focused end end end)()",
     );
     // What the kernel draws there shows: the curve's scale along its left.
     w.find_text("dB", 0);
     w.shot("curve-pane.png");
     // Its keys work in it: a point added at the cursor.
-    let lane = w.number("return daw.api.lane_list(daw.tracks()[1].id)[1].id") as i32;
-    let before = w.number(&format!("return #daw.api.lane_points({lane})"));
+    let lane = w.number("return paw.api.lane_list(paw.tracks()[1].id)[1].id") as i32;
+    let before = w.number(&format!("return #paw.api.lane_points({lane})"));
     w.key("l");
     w.key("l");
     w.key("o");
     w.expect(
         "a point added from the pane",
-        &format!("#daw.api.lane_points({lane}) == {}", before + 1.0),
+        &format!("#paw.api.lane_points({lane}) == {}", before + 1.0),
     );
     // `:q` closes the pane and gives the keyboard back.
     w.type_text(":q");
     w.key("Return");
-    w.expect("the pane gone", "daw.ui.focused ~= 'curve'");
+    w.expect("the pane gone", "paw.ui.focused ~= 'curve'");
     w.assert_alive("after the curve's pane");
 }
 
 /// The demo song and a quickfix list of one entry.
 const QF_SONG: &str = "
 dofile('examples/demo-song.lua')
-daw.qf.set({ { address = daw.address.project(), text = 'zebra crossing', level = 'error' } }, { title = 'Tests' })
+paw.qf.set({ { address = paw.address.project(), text = 'zebra crossing', level = 'error' } }, { title = 'Tests' })
 ";
 
 #[test]
@@ -1481,33 +1481,33 @@ fn copen_docks_the_list_and_focus_moves_between_panes_and_comes_back() {
     let mut w = scene!("copen", QF_SONG);
     w.type_text(":copen");
     w.key("Return");
-    w.expect("the list has the keyboard", "daw.ui.focused == 'qflist'");
+    w.expect("the list has the keyboard", "paw.ui.focused == 'qflist'");
     w.find_text("zebra crossing", 0);
     w.shot("copen.png");
     // Ctrl-w k goes up to the arrange view, a click in the list back to it.
     w.key("ctrl+w");
     w.key("k");
-    w.expect("the arrange view has the keyboard", "daw.ui.focused == 'arrange'");
+    w.expect("the arrange view has the keyboard", "paw.ui.focused == 'arrange'");
     w.click(w.pane_middle("qflist"));
-    w.expect("a click gives the list the keyboard", "daw.ui.focused == 'qflist'");
+    w.expect("a click gives the list the keyboard", "paw.ui.focused == 'qflist'");
     // A click in the arrange view's pane takes it back.
     w.click((place::HEADER_W / 2, place::row_top(0, false) + 10));
-    w.expect("a click gives the arrange view the keyboard", "daw.ui.focused == 'arrange'");
+    w.expect("a click gives the arrange view the keyboard", "paw.ui.focused == 'arrange'");
     // Popped out, the list leaves its pane for a window of its own; `q`
     // there closes it and the keyboard is the main window's again.
     w.type_text(":qf.window");
     w.key("Return");
     w.expect(
         "the list in a window of its own, not in a pane",
-        "#daw.canvas.windows() == 1 and daw.ui.focused == 'qflist' and #daw.panes.state().panes == 2",
+        "#paw.canvas.windows() == 1 and paw.ui.focused == 'qflist' and #paw.panes.state().panes == 2",
     );
     w.pause(0.6);
     w.key("q");
-    w.expect("its window closed", "#daw.canvas.windows() == 0");
-    w.expect("the keyboard back in the arrange view", "daw.ui.focused == 'arrange'");
+    w.expect("its window closed", "#paw.canvas.windows() == 0");
+    w.expect("the keyboard back in the arrange view", "paw.ui.focused == 'arrange'");
     w.key("ctrl+w");
     w.key("l");
-    w.expect("keys reach the main window again", "daw.ui.focused == 'devices'");
+    w.expect("keys reach the main window again", "paw.ui.focused == 'devices'");
     w.assert_alive("after moving between panes");
 }
 
@@ -1516,20 +1516,20 @@ fn tabs_show_along_the_top_and_a_click_or_gt_goes_to_one() {
     let mut w = scene!("tabs", DEMO);
     w.type_text(":tabnew mixer");
     w.key("Return");
-    w.expect("two tabs, the second current", "#daw.ui.tabs == 2 and daw.ui.tab == 2");
+    w.expect("two tabs, the second current", "#paw.ui.tabs == 2 and paw.ui.tab == 2");
     w.expect(
         "the mixer fills the second",
-        "(function() local s = daw.panes.state() return #s.panes == 1 and s.panes[1].view == 'mixer' and s.top > 0 end)()",
+        "(function() local s = paw.panes.state() return #s.panes == 1 and s.panes[1].view == 'mixer' and s.top > 0 end)()",
     );
     w.shot("tabs.png");
     w.click_text("arrange");
-    w.expect("a click on the first tab goes there", "daw.ui.tab == 1");
+    w.expect("a click on the first tab goes there", "paw.ui.tab == 1");
     w.key("g");
     w.key("t");
-    w.expect("gt to the next", "daw.ui.tab == 2");
+    w.expect("gt to the next", "paw.ui.tab == 2");
     w.type_text(":tabclose");
     w.key("Return");
-    w.expect("one tab again", "#daw.ui.tabs == 1");
+    w.expect("one tab again", "#paw.ui.tabs == 1");
     w.assert_alive("after tabs");
 }
 
@@ -1537,12 +1537,12 @@ fn tabs_show_along_the_top_and_a_click_or_gt_goes_to_one() {
 fn the_window_follows_a_change_made_from_outside() {
     let mut w = scene!("pushed", DEMO);
     assert!(!w.shows("Zebra", 0), "the track is there before it is made");
-    w.ctl("return daw.add_track({ name = 'Zebra' }).id");
+    w.ctl("return paw.add_track({ name = 'Zebra' }).id");
     assert!(
         w.shows("Zebra", 10),
         "a track added from outside does not show in the window"
     );
-    w.ctl("return daw.api.track_set(daw.api.track_list()[6], 'name', 'Okapi')");
+    w.ctl("return paw.api.track_set(paw.api.track_list()[6], 'name', 'Okapi')");
     assert!(
         w.shows("Okapi", 10),
         "a track renamed from outside does not show"
@@ -1554,14 +1554,14 @@ fn the_window_follows_a_change_made_from_outside() {
 fn a_window_connects_to_a_kernel_over_tcp_and_a_wrong_token_is_refused() {
     let mut w = scene!("remote", DEMO, remote);
     assert!(w.shows("Drums", 20), "the remote project does not show");
-    w.ctl("return daw.add_track({ name = 'Zebra' }).id");
+    w.ctl("return paw.add_track({ name = 'Zebra' }).id");
     assert!(
         w.shows("Zebra", 10),
         "a change at the remote kernel does not show"
     );
     w.assert_alive("while connected");
 
-    let refused = Command::new(env!("CARGO_BIN_EXE_daw-gui"))
+    let refused = Command::new(env!("CARGO_BIN_EXE_paw-gui"))
         .args([
             "--connect",
             w.tcp.as_deref().unwrap(),
@@ -1582,7 +1582,7 @@ fn a_window_connects_to_a_kernel_over_tcp_and_a_wrong_token_is_refused() {
 
 /// How reliably the screen is read, for whoever changes how: every text the
 /// tests click, in each place they click it, over fresh windows. Run it
-/// with `cargo test -p daw-gui --test window -- --ignored --nocapture
+/// with `cargo test -p paw-gui --test window -- --ignored --nocapture
 /// reading_the_screen`; it says how many readings found each text.
 #[test]
 #[ignore = "a measurement, not a test: it takes minutes"]
@@ -1592,7 +1592,7 @@ fn reading_the_screen_is_reliable() {
     for run in 0..RUNS {
         let w = scene!(
             "reading",
-            &format!("{DEMO}\ndaw.ext.load('extensions/undotree')")
+            &format!("{DEMO}\npaw.ext.load('extensions/undotree')")
         );
         let mut check = |w: &Scene, texts: &[(&str, i32)]| {
             for &(text, nth) in texts {
@@ -1644,40 +1644,40 @@ fn keys_reach_the_window_after_an_entry_of_a_submenu() {
     let mut w = scene!("submenu", DEMO);
     let header = (70, place::row_top(0, false) + 17);
     w.click(header);
-    w.expect("the first track under the cursor", "daw.cursor.track().index == 1");
+    w.expect("the first track under the cursor", "paw.cursor.track().index == 1");
     w.mouse_to(header);
     w.xdotool(&["click", "3"]);
     w.pause(0.4);
     w.click_text("Colour");
     w.shot("submenu.png");
     w.click_text("Teal");
-    w.expect("the colour taken", "daw.tracks()[1].color ~= nil");
+    w.expect("the colour taken", "paw.tracks()[1].color ~= nil");
     // The menus are shut: what is typed goes to the kernel's mappings.
     w.key("j");
-    w.expect("the cursor on the second track", "daw.cursor.track().index == 2");
+    w.expect("the cursor on the second track", "paw.cursor.track().index == 2");
     w.assert_alive("after a submenu");
 }
 
 /// Two tracks, clips in slots, two named scenes, and the session view shown.
 const SESSION_SONG: &str = "
-local api = daw.api
-local keys = daw.add_track({ name = 'Keys' })
+local api = paw.api
+local keys = paw.add_track({ name = 'Keys' })
 keys:add_clip({ start = 0, length = 8, name = 'Chorus', notes = { { pitch = 60, start = 0, length = 2 } } })
-local bass = daw.add_track({ name = 'Bass' })
+local bass = paw.add_track({ name = 'Bass' })
 api.clip_add(keys.id, { slot = 0, length = 4, name = 'Riff', notes = { { pitch = 67, start = 0, length = 1 } } })
 api.clip_add(bass.id, { slot = 0, length = 4, name = 'Walk', notes = { { pitch = 36, start = 0, length = 1 } } })
-daw.launcher.set_scene_name(0, 'Verse')
-daw.launcher.set_scene_name(1, 'Bridge')
+paw.launcher.set_scene_name(0, 'Verse')
+paw.launcher.set_scene_name(1, 'Bridge')
 api.undo_checkpoint()
-daw.ui.show('session')
+paw.ui.show('session')
 ";
 
 #[test]
 fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     let mut w = scene!("session", SESSION_SONG);
-    let keys = w.number("return daw.api.track_list()[1]") as i32;
-    let bass = w.number("return daw.api.track_list()[2]") as i32;
-    let playing = |track: i32| format!("(daw.launcher.state()[{track}] or {{}}).slot");
+    let keys = w.number("return paw.api.track_list()[1]") as i32;
+    let bass = w.number("return paw.api.track_list()[2]") as i32;
+    let playing = |track: i32| format!("(paw.launcher.state()[{track}] or {{}}).slot");
 
     // A scene launches its row on both tracks together.
     w.click_text("Verse");
@@ -1689,10 +1689,10 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     w.click_text("Stop all");
     w.expect(
         "every clip stopped",
-        &format!("(daw.launcher.state()[{keys}] or {{}}).stopped == true"),
+        &format!("(paw.launcher.state()[{keys}] or {{}}).stopped == true"),
     );
     w.click_text("Back to timeline");
-    w.expect("the timeline again", "next(daw.launcher.state()) == nil");
+    w.expect("the timeline again", "next(paw.launcher.state()) == nil");
 
     // A clip dragged from the timeline onto an empty slot of the bass is
     // copied into it: the slot under the bass's clip, in the second row.
@@ -1705,12 +1705,12 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     w.expect(
         "a copy of the chorus in the bass's second slot",
         &format!(
-            "daw.launcher.clip({bass}, 1) ~= nil and daw.launcher.clip({bass}, 1).name == 'Chorus'"
+            "paw.launcher.clip({bass}, 1) ~= nil and paw.launcher.clip({bass}, 1).name == 'Chorus'"
         ),
     );
     w.expect(
         "the chorus still on the timeline",
-        &format!("#daw.api.clip_list({keys}) == 1"),
+        &format!("#paw.api.clip_list({keys}) == 1"),
     );
 
     // A double click on a clip in a slot opens its notes.
@@ -1718,7 +1718,7 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     w.double_click(riff);
     w.expect(
         "the riff in the piano roll",
-        &format!("daw.ui.views.pianoroll:clip().id == daw.launcher.clip({keys}, 0).id"),
+        &format!("paw.ui.views.pianoroll:clip().id == paw.launcher.clip({keys}, 0).id"),
     );
     w.shot("session-roll.png");
     w.assert_alive("after the session view");
@@ -1733,7 +1733,7 @@ fn the_windows_position_is_kept_in_the_layout() {
     // It is written once a position has stood for a second.
     w.expect(
         "the position in the kernel's layout",
-        "(function() local l = daw.frontend.layout_get() return l.x ~= nil and math.abs(l.x - 420) < 40 and math.abs(l.y - 180) < 40 end)()",
+        "(function() local l = paw.frontend.layout_get() return l.x ~= nil and math.abs(l.x - 420) < 40 and math.abs(l.y - 180) < 40 end)()",
     );
     w.assert_alive("after being moved");
 }
@@ -1747,12 +1747,12 @@ fn the_status_bar_names_the_view_and_lists_its_keys() {
     w.mouse_to((700, 20));
     assert!(w.shows("commands", 20), "the key bar of the arrange view");
     w.xdotool(&["key", "comma", "m"]);
-    w.expect("the mixer focused", "daw.ui.focused == 'mixer'");
+    w.expect("the mixer focused", "paw.ui.focused == 'mixer'");
     w.shot("keybar-mixer.png");
     assert!(w.shows("pan", 10), "the mixer's keys");
     // A prefix lists the keys that can follow it.
     w.key("g");
-    w.expect("a prefix waiting", "daw.keymap.pending() == 'g'");
+    w.expect("a prefix waiting", "paw.keymap.pending() == 'g'");
     w.shot("keybar-which-key.png");
     w.key("Escape");
     w.assert_alive("after the key bar");
@@ -1762,19 +1762,19 @@ fn the_status_bar_names_the_view_and_lists_its_keys() {
 fn the_command_line_lists_what_it_could_complete() {
     let mut w = scene!("complete", DEMO);
     w.type_text(":tem");
-    w.expect("the prompt open", "daw.keymap.mode == 'c'");
+    w.expect("the prompt open", "paw.keymap.mode == 'c'");
     w.shot("complete.png");
     assert!(w.shows("tempo", 5), "tempo among the candidates");
     w.key("Escape");
     // Up walks back through what was run.
     w.type_text(":set grid 1/8");
     w.key("Return");
-    w.expect("the line run", "daw.keymap.mode == 'n'");
+    w.expect("the line run", "paw.keymap.mode == 'n'");
     w.type_text(":");
     w.key("Up");
     w.expect(
         "the last line back",
-        "require('daw.views.cmdline').state().before == 'set grid 1/8'",
+        "require('paw.views.cmdline').state().before == 'set grid 1/8'",
     );
     w.key("Escape");
     w.assert_alive("after the command line");
@@ -1784,15 +1784,15 @@ fn the_command_line_lists_what_it_could_complete() {
 fn a_message_goes_at_the_next_key_or_change_of_mode() {
     let mut w = scene!("message", DEMO);
     // Reading the screen takes longer than a message is shown.
-    w.ctl("daw.opt.message_time = 600000");
-    w.ctl("daw.notify('tuning forks everywhere')");
+    w.ctl("paw.opt.message_time = 600000");
+    w.ctl("paw.notify('tuning forks everywhere')");
     assert!(w.shows("tuning forks", 5), "the message on the status bar");
     w.key("j");
     assert!(!w.shows("tuning forks", 1), "gone at the next key");
-    w.ctl("daw.notify('another message here')");
+    w.ctl("paw.notify('another message here')");
     assert!(w.shows("another message", 5), "the next one shows");
     w.xdotool(&["key", "colon"]);
-    w.expect("the command line open", "daw.keymap.mode == 'c'");
+    w.expect("the command line open", "paw.keymap.mode == 'c'");
     w.pause(0.6);
     assert!(!w.shows("another message", 1), "gone with the mode");
     w.key("Escape");
@@ -1802,12 +1802,12 @@ fn a_message_goes_at_the_next_key_or_change_of_mode() {
 #[test]
 fn a_render_says_its_peak_with_a_sign_and_warns_when_it_clips() {
     let mut w = scene!("peaksign", DEMO);
-    w.ctl("daw.opt.message_time = 600000");
-    w.ctl("daw.emit('render.done', { path = '/x/loud.wav', seconds = 3, peak = 2.04 })");
+    w.ctl("paw.opt.message_time = 600000");
+    w.ctl("paw.emit('render.done', { path = '/x/loud.wav', seconds = 3, peak = 2.04 })");
     assert!(w.shows("+6.2", 5), "the peak with its sign");
     w.shot("peak-sign.png");
     assert_eq!(
-        w.ctl("return daw.ui.message.level").trim(),
+        w.ctl("return paw.ui.message.level").trim(),
         "warn",
         "a clipping render is a warning"
     );
@@ -1818,11 +1818,11 @@ fn a_render_says_its_peak_with_a_sign_and_warns_when_it_clips() {
 fn the_commands_list_fills_the_window() {
     let mut w = scene!("picker", DEMO);
     w.xdotool(&["key", "comma", "comma"]);
-    w.expect("the picker open", "daw.ui.float ~= nil");
+    w.expect("the picker open", "paw.ui.float ~= nil");
     w.pause(0.6);
     w.shot("picker.png");
     // The page is drawn as wide as the window has room for, not 104 columns.
-    let wide = w.ctl("local w = 0 for _, r in ipairs(daw.ui.rects) do w = math.max(w, r.w) end return w");
+    let wide = w.ctl("local w = 0 for _, r in ipairs(paw.ui.rects) do w = math.max(w, r.w) end return w");
     let columns: i32 = wide.trim().parse().unwrap_or(0);
     assert!(columns > 120, "the page is wider than the old 104 columns: {columns}");
     w.assert_alive("after the picker");
@@ -1832,19 +1832,19 @@ fn the_commands_list_fills_the_window() {
 fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
     let mut w = scene!(
         "rollscroll",
-        "local t = daw.add_track({ name = 'Lead' })
+        "local t = paw.add_track({ name = 'Lead' })
          t:add_clip({ start = 0, length = 8, name = 'Hook', notes = { { pitch = 98, start = 0, length = 1 } } })
-         daw.api.undo_checkpoint()"
+         paw.api.undo_checkpoint()"
     );
-    w.ctl("daw.cursor.set_track(daw.tracks()[1].id) daw.keymap.feed('<CR>')");
-    w.expect("the roll open", "daw.ui.visible('pianoroll')");
+    w.ctl("paw.cursor.set_track(paw.tracks()[1].id) paw.keymap.feed('<CR>')");
+    w.expect("the roll open", "paw.ui.visible('pianoroll')");
     w.shot("roll-open.png");
     // To a low note and to a high one: the row of the cursor is in view.
-    w.ctl("daw.ui.views.pianoroll.pitch = 38 daw.api.ui_redraw()");
+    w.ctl("paw.ui.views.pianoroll.pitch = 38 paw.api.ui_redraw()");
     w.pause(0.8);
     w.shot("roll-low.png");
     assert!(w.shows("C2", 5), "the octave of the cursor is in view");
-    w.ctl("daw.ui.views.pianoroll.pitch = 124 daw.api.ui_redraw()");
+    w.ctl("paw.ui.views.pianoroll.pitch = 124 paw.api.ui_redraw()");
     w.pause(0.8);
     w.shot("roll-high.png");
     w.assert_alive("after the roll");
@@ -1853,17 +1853,17 @@ fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
 #[test]
 fn a_count_typed_in_the_window_reaches_the_kernel() {
     let mut w = scene!("count", DEMO);
-    w.ctl("daw.keymap.feed(':e daw://tracks<CR>')");
-    w.expect("the tracks as text", "daw.ui.focused:match('^textbuf') ~= nil");
+    w.ctl("paw.keymap.feed(':e paw://tracks<CR>')");
+    w.expect("the tracks as text", "paw.ui.focused:match('^textbuf') ~= nil");
     w.pause(0.5);
     w.xdotool(&["key", "j"]);
     w.xdotool(&["key", "3"]);
-    w.expect("the count waiting", "daw.keymap.pending() == '3'");
+    w.expect("the count waiting", "paw.keymap.pending() == '3'");
     // Pressing Control must not end it: Ctrl-a then adds three, not one.
     w.key("ctrl+a");
     w.expect(
         "three added to the number, not one",
-        "require('daw.textbuf').buf().state.text:line(2):find('vol -2.0', 1, true) ~= nil",
+        "require('paw.textbuf').buf().state.text:line(2):find('vol -2.0', 1, true) ~= nil",
     );
     w.shot("count.png");
     w.assert_alive("after a count");
@@ -1873,13 +1873,13 @@ fn a_count_typed_in_the_window_reaches_the_kernel() {
 fn an_ex_line_shows_its_count_and_marks_what_it_covers() {
     let mut w = scene!("exline", DEMO);
     w.type_text(":%s/c4/d4/g");
-    w.expect("the line open", "daw.keymap.mode == 'c'");
+    w.expect("the line open", "paw.keymap.mode == 'c'");
     assert!(w.shows("match", 5), "the count at the end of the line");
     w.shot("ex-preview.png");
     w.key("Escape");
     w.type_text(":%s/c4/d4/gc");
     w.key("Return");
-    w.expect("the question asked", "daw.ex.shown() ~= nil and daw.ex.shown().current ~= nil");
+    w.expect("the question asked", "paw.ex.shown() ~= nil and paw.ex.shown().current ~= nil");
     assert!(w.shows("replace with", 5), "the question on the status bar");
     w.key("q");
     w.assert_alive("after the Ex line");

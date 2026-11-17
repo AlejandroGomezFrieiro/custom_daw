@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Result, bail};
-use daw_engine::{MAX_PAIRS, Ports};
+use paw_engine::{MAX_PAIRS, Ports};
 use serde_json::{Value, json};
 
 use super::Session;

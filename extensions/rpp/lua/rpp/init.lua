@@ -28,9 +28,9 @@ function M.export(path, opts) return require("rpp.export").file(path, opts) end
 
 --- Show a report in a page, and a one-line summary.
 function M.show(report, summary)
-  daw.notify(summary .. (report:empty() and "" or "; see the list of what was not carried over"),
+  paw.notify(summary .. (report:empty() and "" or "; see the list of what was not carried over"),
     report:empty() and "info" or "warn")
-  if not report:empty() then pcall(daw.ui.page, "REAPER bridge", report:lines(30)) end
+  if not report:empty() then pcall(paw.ui.page, "REAPER bridge", report:lines(30)) end
 end
 
 return M

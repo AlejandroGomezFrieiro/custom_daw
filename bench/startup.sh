@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Startup time: from exec to exit of a script that does nothing, median of N.
-#   bench/startup.sh <daw binary> [te_bench binary] [runs]
+#   bench/startup.sh <paw binary> [te_bench binary] [runs]
 # Prints JSON lines. Run inside `nix develop` for the plugin case: it reads
-# DAW_TEST_PLUGINS (LSP Plugins and Surge XT) like the test suite does.
+# PAW_TEST_PLUGINS (LSP Plugins and Surge XT) like the test suite does.
 set -euo pipefail
-daw="$1"
+paw="$1"
 te="${2:-}"
 runs="${3:-10}"
-tmp="${BENCH_TMP:-/tmp/daw-bench}/startup"
+tmp="${BENCH_TMP:-/tmp/paw-bench}/startup"
 rm -rf "$tmp"
 mkdir -p "$tmp/cache" "$tmp/home"
-echo 'daw.api.quit(0)' > "$tmp/empty.lua"
+echo 'paw.api.quit(0)' > "$tmp/empty.lua"
 
 ms() { date +%s%N; }
 
@@ -29,16 +29,16 @@ median() {
 
 export XDG_CACHE_HOME="$tmp/cache" XDG_DATA_HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/home"
 
-echo "{\"engine\":\"daw\",\"workload\":\"startup\",\"plugins\":\"none\",\"ms\":$(median "$daw" --clean --no-plugins -l "$tmp/empty.lua")}"
+echo "{\"engine\":\"paw\",\"workload\":\"startup\",\"plugins\":\"none\",\"ms\":$(median "$paw" --clean --no-plugins -l "$tmp/empty.lua")}"
 
-if [ -n "${DAW_TEST_PLUGINS:-}" ]; then
-  paths() { local out=(); IFS=: read -ra dirs <<< "$DAW_TEST_PLUGINS"; for d in "${dirs[@]}"; do out+=("$d/$1"); done; (IFS=:; echo "${out[*]}"); }
+if [ -n "${PAW_TEST_PLUGINS:-}" ]; then
+  paths() { local out=(); IFS=: read -ra dirs <<< "$PAW_TEST_PLUGINS"; for d in "${dirs[@]}"; do out+=("$d/$1"); done; (IFS=:; echo "${out[*]}"); }
   export CLAP_PATH="$(paths clap)" LV2_PATH="$(paths lv2)" VST3_PATH="$(paths vst3)"
   # Cold: an empty scan cache every time.
-  cold() { rm -rf "$XDG_CACHE_HOME/daw"; "$daw" --clean -l "$tmp/empty.lua"; }
-  echo "{\"engine\":\"daw\",\"workload\":\"startup\",\"plugins\":\"cold scan\",\"ms\":$(median cold)}"
-  "$daw" --clean -l "$tmp/empty.lua" > /dev/null 2>&1
-  echo "{\"engine\":\"daw\",\"workload\":\"startup\",\"plugins\":\"cached scan\",\"ms\":$(median "$daw" --clean -l "$tmp/empty.lua")}"
+  cold() { rm -rf "$XDG_CACHE_HOME/paw"; "$paw" --clean -l "$tmp/empty.lua"; }
+  echo "{\"engine\":\"paw\",\"workload\":\"startup\",\"plugins\":\"cold scan\",\"ms\":$(median cold)}"
+  "$paw" --clean -l "$tmp/empty.lua" > /dev/null 2>&1
+  echo "{\"engine\":\"paw\",\"workload\":\"startup\",\"plugins\":\"cached scan\",\"ms\":$(median "$paw" --clean -l "$tmp/empty.lua")}"
 fi
 
 if [ -n "$te" ]; then

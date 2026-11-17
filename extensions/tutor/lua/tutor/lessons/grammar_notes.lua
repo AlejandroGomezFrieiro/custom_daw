@@ -20,24 +20,24 @@ from the middle of a gap deletes nothing.]],
 `in` stands where `iw` would. `dd` takes a whole row, which is a pitch.
 `/d4` searches for a pitch by name, `n` goes on to the next.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -4 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -4 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 16, notes = look.drums(look.beat, 4) })
-    local lead = daw.add_track({ name = "Lead" })
+    local lead = paw.add_track({ name = "Lead" })
     lead:add_device("synth", { wave = 1, cutoff = 2400, release = 0.2 })
     lead:add_clip({ name = "riff", start = 0, length = 8, notes = look.notes("C4:0:1 D4:1:1 E4:2:1 G4:3:1 E4:4:1 D4:5:1 C4:6:1") })
   end,
   at = function(look)
-    local lead = daw.track("Lead")
-    daw.cursor.set_track(lead)
-    daw.ui.views.pianoroll:edit(look.clip(lead, "riff"))
+    local lead = paw.track("Lead")
+    paw.cursor.set_track(lead)
+    paw.ui.views.pianoroll:edit(look.clip(lead, "riff"))
   end,
   steps = {
     {
       say = "The cursor is on the first note. `w` goes to the next note, wherever its pitch is. Press `w` twice.",
       keys = { "w", "w" },
-      check = function() local roll = daw.ui.views.pianoroll return roll.beat == 2 and roll.pitch == 64 end,
+      check = function() local roll = paw.ui.views.pianoroll return roll.beat == 2 and roll.pitch == 64 end,
       done = "On E4, the third note.",
     },
     {
@@ -77,7 +77,7 @@ from the middle of a gap deletes nothing.]],
       keys = { "^", "cin", "7k", "4l", "<Esc>" },
       check = function(_, look)
         local m = look.melody(look.clip("Lead"))
-        return m:find("^67@0%+1") ~= nil and not m:find("^60@0") and daw.keymap.mode == "n"
+        return m:find("^67@0%+1") ~= nil and not m:find("^60@0") and paw.keymap.mode == "n"
       end,
       done = "The riff starts on G now.",
       hint = "`7k` moves the new note up to G, `4l` makes it a beat long.",

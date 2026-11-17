@@ -242,8 +242,8 @@ pub unsafe fn clap_presets(
         let mut data = Box::new(Found::default());
         let indexer = clap_preset_discovery_indexer {
             clap_version: CLAP_VERSION,
-            name: c"daw".as_ptr(),
-            vendor: c"daw".as_ptr(),
+            name: c"paw".as_ptr(),
+            vendor: c"paw".as_ptr(),
             url: c"".as_ptr(),
             version: c"0.1.0".as_ptr(),
             indexer_data: &mut *data as *mut Found as *mut c_void,

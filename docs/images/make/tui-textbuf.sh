@@ -6,8 +6,8 @@ SETUP=$TUI_DEMO
 rig_start
 term_start
 rec_start tui-textbuf
-cap ":sp daw://tracks shows the tracks as text, one a line"
-pause 0.5; key colon; TYPE_DELAY=90 typ "sp daw://tracks"; pause 0.3; key Return; pause 1.2
+cap ":sp paw://tracks shows the tracks as text, one a line"
+pause 0.5; key colon; TYPE_DELAY=90 typ "sp paw://tracks"; pause 0.3; key Return; pause 1.2
 cap "Vim's own keys edit it: cw renames a track, 3 Ctrl-x takes 3 dB off"
 keys 0.25 j j j; TYPE_DELAY=160 typ "cw"; TYPE_DELAY=100 typ "Melody"; key Escape; pause 0.5
 keys 0.25 w w 3 ctrl+x; pause 0.9

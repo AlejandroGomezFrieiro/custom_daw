@@ -9,7 +9,7 @@
 -- The onset: the rendering is cut into 1 ms blocks from the note's start;
 -- the first block whose peak reaches 20 dB under the loudest block of the
 -- note's first two seconds is where its sound starts.
-local api = daw.api
+local api = paw.api
 local art = require("articulations")
 local maps = art.maps
 local toml = art.toml
@@ -111,33 +111,33 @@ function M.measure(track)
   local map = art.map_of(track)
   if not map then error("the track has no articulation map: :art.map", 0) end
   local notes, controls, at = M.score(map)
-  local start = daw.time.bar_ceil(song_end() + 1e-9) + 4
+  local start = paw.time.bar_ceil(song_end() + 1e-9) + 4
   local length = at[#at] + SPACING
   local path = api.env().data_dir .. "/articulations/measure.wav"
   os.execute("mkdir -p '" .. (path:match("^(.*)/")):gsub("'", "'\\''") .. "'")
   local info
-  daw.audition.try(function()
+  paw.audition.try(function()
     -- The sound as the instrument makes it: the core plays notes early by
     -- the delays already in the map, which is not what is measured.
     local sent = art.attr_map(track)
     if sent and pcall(api.track_get, track) and api.track_get(track).attr_map then
-      local plain = daw.util.merge(sent, { arts = {} })
+      local plain = paw.util.merge(sent, { arts = {} })
       plain.delay = nil
       for code, e in pairs(sent.arts or {}) do
         plain.arts[code] = type(e) == "table" and { out = e.out } or e
       end
       api.track_set(track, "attr_map", plain)
     end
-    local clip = daw.track(track):add_clip({ start = start, length = length, name = "measure", notes = notes })
+    local clip = paw.track(track):add_clip({ start = start, length = length, name = "measure", notes = notes })
     if #controls > 0 then clip:set_controls(controls) end
-    daw.flush()
-    info = daw.render(path, { start = start, ["end"] = start + length, tracks = { track }, tail = 0, bits = 16 })
+    paw.flush()
+    info = paw.render(path, { start = start, ["end"] = start + length, tracks = { track }, tail = 0, bits = 16 })
   end)
-  daw.audition.revert()
-  local origin = daw.time.to_seconds(start)
+  paw.audition.revert()
+  local origin = paw.time.to_seconds(start)
   local out = {}
   for i, a in ipairs(map.arts) do
-    local from = daw.time.to_seconds(start + at[i]) - origin
+    local from = paw.time.to_seconds(start + at[i]) - origin
     local b = blocks(info.path or path, from, from + WINDOW)
     local loudest = 0
     for _, v in ipairs(b) do loudest = math.max(loudest, v) end
@@ -219,21 +219,21 @@ end
 
 local plan  -- the last measurement: { track, results }
 
-daw.command("art.measure", function()
-  local track = daw.ui.views.pianoroll:clip() and daw.ui.views.pianoroll:clip():get().track or (daw.cursor.track() and daw.cursor.track().id)
+paw.command("art.measure", function()
+  local track = paw.ui.views.pianoroll:clip() and paw.ui.views.pianoroll:clip():get().track or (paw.cursor.track() and paw.cursor.track().id)
   if not track then error("no track here", 0) end
   local results = M.measure(track)
   plan = { track = track, results = results }
-  daw.ui.page("Articulation delays", M.lines(art.map_of(track), results))
+  paw.ui.page("Articulation delays", M.lines(art.map_of(track), results))
 end, { desc = "Measure how late each articulation of the track's instrument sounds (one note each, rendered offline), and show the delays to write" })
 
-daw.command("art.measure!", function()
-  local track = daw.ui.views.pianoroll:clip() and daw.ui.views.pianoroll:clip():get().track or (daw.cursor.track() and daw.cursor.track().id)
+paw.command("art.measure!", function()
+  local track = paw.ui.views.pianoroll:clip() and paw.ui.views.pianoroll:clip():get().track or (paw.cursor.track() and paw.cursor.track().id)
   if not track then error("no track here", 0) end
   local results = plan and plan.track == track and plan.results or M.measure(track)
   plan = nil
   local file = M.apply(track, results)
-  daw.notify("delays written into " .. file)
+  paw.notify("delays written into " .. file)
 end, { label = "Articulation delays", desc = "Write the delays :art.measure found (or measure now) into the instrument's map, and send them" })
 
 return M

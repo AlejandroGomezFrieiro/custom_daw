@@ -79,7 +79,7 @@ impl Dialogs {
 }
 
 /// The desktop's dialog for `purpose`, starting where `info` (from the
-/// kernel's `daw.frontend.dialog_info`) says, or beside the render's path.
+/// kernel's `paw.frontend.dialog_info`) says, or beside the render's path.
 pub fn portal_ask(purpose: Purpose, info: &Value, render_path: &str, stems: bool) -> portal::Ask {
     let dir = text(&info["dir"]);
     let ask = |kind, title: &str, files: &str| portal::Ask {
@@ -192,7 +192,7 @@ impl View {
 
     /// The render dialog: what it starts from is asked for when it opens.
     pub fn open_render(&mut self) {
-        let info = self.ask("return daw.frontend.render_dialog()", json!([]));
+        let info = self.ask("return paw.frontend.render_dialog()", json!([]));
         if info.is_null() {
             return;
         }

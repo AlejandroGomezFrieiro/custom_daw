@@ -1,8 +1,8 @@
 -- A long session on the null backend: play, edit, undo, record from the test
 -- input, open and close projects, over and over. Prints resident memory.
---   daw --clean --no-plugins -l bench/session-soak.lua <minutes> <dir>
-local daw = require("daw")
-local api = daw.api
+--   paw --clean --no-plugins -l bench/session-soak.lua <minutes> <dir>
+local paw = require("paw")
+local api = paw.api
 local minutes, dir = tonumber((...)) or 20, select(2, ...)
 local function rss()
   local f = io.open("/proc/self/status")
@@ -39,10 +39,10 @@ while api.now() - start < minutes * 60000 do
   -- A new file each round, as importing new material would.
   local file = string.format("%s/sound-%d.wav", dir, round % 50)
   wav(file, 10)
-  daw.project.new()
+  paw.project.new()
   local tracks = {}
   for i = 1, 6 do
-    local t = daw.add_track({ name = "t" .. i })
+    local t = paw.add_track({ name = "t" .. i })
     t:add_device(i % 2 == 0 and "synth" or "gain")
     if i % 2 == 0 then
       t:add_clip({ start = 0, length = 8, notes = { { pitch = 60, start = 0, length = 4 }, { pitch = 64, start = 4, length = 4 } } })
@@ -54,20 +54,20 @@ while api.now() - start < minutes * 60000 do
   api.undo_checkpoint()
   local mic = tracks[1]
   mic.input, mic.armed = "1", true
-  daw.project.save(string.format("%s/song-%d.json", dir, round % 5))
-  daw.transport.record()
-  daw.wait(1500)
-  daw.transport.stop()
+  paw.project.save(string.format("%s/song-%d.json", dir, round % 5))
+  paw.transport.record()
+  paw.wait(1500)
+  paw.transport.stop()
   for i = 1, 20 do
     tracks[i % 6 + 1].volume = -(i % 12)
     api.undo_checkpoint()
   end
-  for _ = 1, 10 do daw.undo() end
-  daw.transport.play()
-  daw.wait(1000)
-  daw.transport.stop()
-  daw.project.save()
-  daw.project.load(string.format("%s/song-%d.json", dir, round % 5))
+  for _ = 1, 10 do paw.undo() end
+  paw.transport.play()
+  paw.wait(1000)
+  paw.transport.stop()
+  paw.project.save()
+  paw.project.load(string.format("%s/song-%d.json", dir, round % 5))
   if round % 10 == 0 then
     local e = api.engine_get()
     print(string.format("round %d  %.1f min  rss %d kB  audio files %d  xruns %d", round, (api.now() - start) / 60000, rss(), e.audio_files or -1, e.xruns))

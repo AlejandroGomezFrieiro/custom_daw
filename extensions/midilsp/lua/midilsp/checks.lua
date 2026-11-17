@@ -12,13 +12,13 @@
 -- with a fix wherever one can be made: the master lowered by what is over,
 -- a render made again with dither or at the project's rate, a bypassed
 -- limiter switched on.
-local api = daw.api
-local A = daw.address
+local api = paw.api
+local A = paw.address
 
 local M = { DELIVERY = "midilsp-delivery", SETTINGS = "midilsp-settings" }
 
-daw.option.define("midilsp_render_checks", true)    -- check every render with the engine's delivery and settings checks
-daw.option.define("midilsp_delivery_target", "spotify") -- "spotify", "ebu-r128", or "" for information only
+paw.option.define("midilsp_render_checks", true)    -- check every render with the engine's delivery and settings checks
+paw.option.define("midilsp_delivery_target", "spotify") -- "spotify", "ebu-r128", or "" for information only
 
 -- A program installed beside the engine (as the engine's package installs
 -- them), else on the PATH.
@@ -112,7 +112,7 @@ function M.settings_of(doc)
     fx[#fx + 1] = { name = d.name, ident = d.kind or "", original_name = d.name, enabled = not d.bypass, offline = false }
   end
   return {
-    schema = 1, source = "daw",
+    schema = 1, source = "paw",
     project_srate = api.engine_get().sample_rate, project_srate_forced = true,
     render = {
       settings = 0, srate = opts.sample_rate or 0, dither = opts.dither and 1 or 0,
@@ -139,11 +139,11 @@ end
 
 --- Configure both checks (when their programs are there) and start them.
 function M.start()
-  if not daw.opt.midilsp_render_checks then return end
+  if not paw.opt.midilsp_render_checks then return end
   local delivery, settings = tool("reaper-midi-lsp-delivery"), tool("reaper-midi-lsp-settings")
   if delivery then
-    local target = daw.opt.midilsp_delivery_target
-    daw.lsp.config(M.DELIVERY, {
+    local target = paw.opt.midilsp_delivery_target
+    paw.lsp.config(M.DELIVERY, {
       kind = "oneshot", cmd = { delivery, "--target", "{target}", "{file}" },
       attach = { subjects = { "render" } },
       settings = { target = target ~= "" and target or nil },
@@ -152,23 +152,23 @@ function M.start()
       timeout_ms = 120000,
       diagnostic = M.delivery_diagnostic,
     })
-    daw.lsp.enable(M.DELIVERY)
+    paw.lsp.enable(M.DELIVERY)
   end
   if settings then
-    daw.lsp.config(M.SETTINGS, {
+    paw.lsp.config(M.SETTINGS, {
       kind = "oneshot", cmd = { settings, "--settings-json", "{input}" },
       attach = { subjects = { "render" } },
       input = M.settings_of,
       timeout_ms = 30000,
       diagnostic = M.settings_diagnostic,
     })
-    daw.lsp.enable(M.SETTINGS)
+    paw.lsp.enable(M.SETTINGS)
   end
 end
 
 function M.stop()
-  daw.lsp.enable(M.DELIVERY, false)
-  daw.lsp.enable(M.SETTINGS, false)
+  paw.lsp.enable(M.DELIVERY, false)
+  paw.lsp.enable(M.SETTINGS, false)
 end
 
 return M

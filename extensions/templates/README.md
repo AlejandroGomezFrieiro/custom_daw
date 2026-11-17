@@ -5,7 +5,7 @@ again in any project: a vocal track with its chain and levels, a string
 section with every instrument, a mastering chain.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/templates")   -- or link it into ~/.config/daw/extensions
+paw.ext.load("/path/to/paw/extensions/templates")   -- or link it into ~/.config/paw/extensions
 
 local templates = require("templates")
 templates.save_track(track, "Lead vocal")        -- devices with their settings, levels, automation
@@ -41,6 +41,6 @@ from a template…".
 Left out on purpose: the track a template's track played into and the
 tracks it was sent to. Those belong to the project it came from.
 
-Templates are JSON files in `~/.local/share/daw/templates/<kind>/<name>.json`
-(`daw.opt.templates_dir` puts them elsewhere), in the shape
+Templates are JSON files in `~/.local/share/paw/templates/<kind>/<name>.json`
+(`paw.opt.templates_dir` puts them elsewhere), in the shape
 `Track:snapshot()` gives.

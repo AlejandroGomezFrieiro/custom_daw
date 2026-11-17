@@ -1,7 +1,7 @@
 //! The instance's side of TLS: the certificate it shows to whoever
 //! connects over the network. It is made the first time the instance
 //! listens on TCP and kept in the state directory, so that clients, which
-//! remember it the first time they see it (`daw_proto::tls`), see the
+//! remember it the first time they see it (`paw_proto::tls`), see the
 //! same one every time.
 
 use std::io::Write;
@@ -11,11 +11,11 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
-pub use daw_proto::tls::fingerprint;
+pub use paw_proto::tls::fingerprint;
 
-/// Where the certificate and its key are kept: `$XDG_STATE_HOME/daw/tls`.
+/// Where the certificate and its key are kept: `$XDG_STATE_HOME/paw/tls`.
 pub fn default_dir() -> PathBuf {
-    daw_proto::state_dir().join("tls")
+    paw_proto::state_dir().join("tls")
 }
 
 /// The instance's certificate and private key, from `dir`, made and written
@@ -29,7 +29,7 @@ fn load_or_make(dir: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
         return Ok((cert, key));
     }
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    let made = rcgen::generate_simple_self_signed(vec!["daw-instance".to_string()])
+    let made = rcgen::generate_simple_self_signed(vec!["paw-instance".to_string()])
         .context("making a certificate")?;
     let (cert, key) = (made.cert.der().to_vec(), made.signing_key.serialize_der());
     use std::os::unix::fs::OpenOptionsExt;
@@ -57,7 +57,7 @@ pub struct Identity {
 pub fn identity(dir: &Path) -> Result<Identity> {
     let (cert, key) = load_or_make(dir)?;
     let fingerprint = fingerprint(&cert);
-    let mut config = rustls::ServerConfig::builder_with_provider(daw_proto::tls::provider())
+    let mut config = rustls::ServerConfig::builder_with_provider(paw_proto::tls::provider())
         .with_safe_default_protocol_versions()?
         .with_no_client_auth()
         .with_single_cert(

@@ -5,7 +5,7 @@
 The keyboard works the way Neovim's does, on a timeline instead of a text. In
 the arrange view a track is a line, a beat is a column and a clip is a word; in
 the piano roll a pitch is a line and a note is a word. Everything below is an
-ordinary mapping made in `runtime/lua/daw/defaults.lua` with the calls under
+ordinary mapping made in `runtime/lua/paw/defaults.lua` with the calls under
 [Configure it](configuration.md), so any of it can be changed.
 
 **Motions** move the cursor. A count repeats them: `3W` is three bars on.
@@ -59,7 +59,7 @@ bars in front: `:5,8notation.transpose 2`, `:5notation.dyn mf`; the Ex commands
 **Registers, repeating, macros.** `p` pastes after the clip or note under the
 cursor (tracks: below), `P` right at the cursor (tracks: above); `3p` pastes
 three times in a row, and `p` again carries on from the last. Pasted time
-replaces what was there; `:lua daw.opt.ripple = true` makes deleting close the
+replaces what was there; `:lua paw.opt.ripple = true` makes deleting close the
 gap and pasting push what follows along instead. `"a` before a command names a
 register (`"ayy`, `"ap`), `"_` discards, `"0` holds the last yank, `:registers`
 shows them. `.` repeats the last change, with a new count if one is given.
@@ -147,7 +147,7 @@ column for each column of the timeline, from the lowest to the highest
 sample of that stretch, around the middle of the rows (so a clip three rows
 tall has about twenty levels each way) with eighth blocks; a block that
 grows from the top is drawn in reverse video. The scale is linear, so that
-a kick stands over a hat: `daw.opt.wave_scale = "db"` shows quiet sound too,
+a kick stands over a hat: `paw.opt.wave_scale = "db"` shows quiet sound too,
 at the cost of the hits. Columns that reach full scale after the clip's gain
 are red. `zi` and `zo` draw it again from the peaks the kernel keeps, never
 from the file. It is cells everywhere, with or without pictures.
@@ -159,7 +159,7 @@ pan and every parameter of the track's devices. A lane's header names what it
 moves, its value at the cursor, and whether it is read or bypassed; its curve
 and points (`◆`) are drawn along the timeline instead of over the clips. `j`
 and `k` step onto lane rows as onto tracks. With the lanes closed, the
-track the cursor is on draws its volume curve (sextants; `daw.opt.curve_glyphs`) in the empty stretches
+track the cursor is on draws its volume curve (sextants; `paw.opt.curve_glyphs`) in the empty stretches
 of its row, never over clips; the other tracks show an `A` in their header
 and draw nothing, so that the notes stay readable. On a lane row `h` `l` and the
 other motions move in time, `w` `b` go to the next and previous point, `A`
@@ -187,12 +187,12 @@ wheel, pressure, any CC), one note's own expression, and the tempo map.
 there too), on a parameter in the device panel (`Enter` too), on the
 mixer's fader or pan, in the piano roll the controller its strip shows (`gX`
 that of the note under the cursor alone).
-The curve is a buffer named by its address, so `:vs daw://lane/3`, `:e
-daw://tempo` or `:sp daw://clip/7/control/cc/74` show one, and `:setlocal
+The curve is a buffer named by its address, so `:vs paw://lane/3`, `:e
+paw://tempo` or `:sp paw://clip/7/control/cc/74` show one, and `:setlocal
 timebind` scrolls it with the arrange view. A window showing a lane that
 the project no longer has (another project was opened) closes, or, when it
 is the last, is left empty. It draws the curve in
-sextants (`daw.opt.curve_glyphs`) over the bars and beats, the values in their unit along the left, each
+sextants (`paw.opt.curve_glyphs`) over the bars and beats, the values in their unit along the left, each
 point as `◆` (`■` where the stretch after it holds, `●` where it eases),
 and along the bottom the point under the cursor or the curve's value there.
 
@@ -254,7 +254,7 @@ carries an articulation (its MIDI 2.0 attribute) shows a short tag of it
 track's instrument names (a drum kit's drums, a sampler's keyswitches)
 have their names on the keyboard, and `K` says them too.
 Over the ruler a row names the chords that sound, read over every pitched
-track, with the key on the left (`daw.opt.chords`); `Ctrl-s` writes a
+track, with the key on the left (`paw.opt.chords`); `Ctrl-s` writes a
 snippet such as the dominant of the next chord, and `Tab`, `Ctrl-n` step
 through its choices (see [Harmony, completion and snippets](harmony.md)).
 
@@ -262,7 +262,7 @@ Behind the clip's notes the piano roll shows the notes of other tracks that
 sound at the same time, so the harmony can be seen where it is written:
 each a dashed line (`╌`) on a faint shade of its track's colour, without a
 name, where the clip's own notes are solid and named. Drum tracks are left out. Which
-tracks: `daw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
+tracks: `paw.opt.roll_context` (`"all"`, `"group"` for the tracks of the
 clip's group, `"none"`, or a list of track ids), and `:roll.tracks` lists
 them with their clips: `Enter` on a track shows or hides its notes. A dot on
 the keyboard marks the keys that sound at the cursor, and the title names
@@ -347,8 +347,8 @@ Every view keeps to one rule, so that a key learnt in one view means the
 same in the next, as in Vim, where `j` is a line down in any buffer.
 `tests/keys_constitution.lua` walks the mappings of every view, those of the
 bundled extensions too, and fails on one that breaks the rule
-(`:lua =daw.keyrule.broken()` runs the same check on your own mappings).
-Buffers that are text (`:e daw://tracks`) keep Vim's own keys for text:
+(`:lua =paw.keyrule.broken()` runs the same check on your own mappings).
+Buffers that are text (`:e paw://tracks`) keep Vim's own keys for text:
 there `Ctrl-a` adds to the number under the cursor and `-` goes up to the
 buffer above, as in oil.nvim; their motions and operators keep the rule.
 
@@ -427,7 +427,7 @@ Where the views used to differ, the rule chose:
 
 ### The old keys
 
-`daw.opt.keys = "classic"` in `init.lua` (or `:set keys=classic`) brings back
+`paw.opt.keys = "classic"` in `init.lua` (or `:set keys=classic`) brings back
 the keys as they were before the rule, for a while; `:set keys=default`
 takes them away again. What changed:
 
@@ -585,7 +585,7 @@ left and above).
 | Keys or command | |
 | --- | --- |
 | `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; without a name, the same buffer as in Vim: a list edited as text shows in both windows, the arrange view's new window shows the piano roll and the roll's the arrange view, and any other view (one window at a time) leaves an empty window that says so (`Ctrl-w s`, `Ctrl-w v`); `:vnew` and `Ctrl-w n` always open an empty one |
-| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a buffer's or a view's name, or an address such as `daw://tracks`, is looked for before a file, and only a file is asked about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`; a folder is listed as a [file buffer](#files)); the next and previous buffer |
+| `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a buffer's or a view's name, or an address such as `paw://tracks`, is looked for before a file, and only a file is asked about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`; a folder is listed as a [file buffer](#files)); the next and previous buffer |
 | `:ls`, `:bd roll` | list the buffers; close every window of one |
 | `:close` `Ctrl-w c`, `:q` `Ctrl-w q`, `:only` `Ctrl-w o` | close the window; close it, or in the last window quit (asking about unsaved changes as before); close every other window |
 | `Ctrl-w h` `j` `k` `l`, `Ctrl-w w` `W`, `Ctrl-w p` | the window left, below, above, right (a count goes further); the next and previous window; the window that had the keyboard before |
@@ -615,24 +615,24 @@ directory, and `:layout edit` puts them back. A configuration can name
 layouts of its own, and start with one:
 
 ```lua
-daw.layouts.edit = {
+paw.layouts.edit = {
   { name = "Edit", layout = { dir = "h", "arrange", "roll" } },
   { name = "Mix", layout = "mixer" },
 }
-daw.opt.layout = "edit"
+paw.opt.layout = "edit"
 ```
 
 `dir = "h"` puts windows side by side, `dir = "v"` one above another, and a
 window may have a `size` in cells or a `weight` (its share, 1 by default).
-Every terminal attached with `daw attach` has tabs and windows of its own.
+Every terminal attached with `paw attach` has tabs and windows of its own.
 
 **Narrowed tabs.** A tab can be narrowed to a group (`:narrow Strings`,
 `zn`): it starts with the windows of the tab it came from, and everything in
 it (the arrange view, the mixer, the device panel, the session view,
-`daw://tracks`, the pickers, the motions and the Ex ranges) sees only that
+`paw://tracks`, the pickers, the motions and the Ex ranges) sees only that
 group's tracks; `:widen` (`zw`) closes it and goes back. The status line says
 `narrowed Strings`. Each tab has its own, so `gt` goes from the whole song to
-the strings and on to the brass. `daw://tracks` in a narrowed tab lists the
+the strings and on to the brass. `paw://tracks` in a narrowed tab lists the
 group's tracks, and `:w` leaves the others where they are.
 
 ## Lists edited as text
@@ -643,12 +643,12 @@ Vim's keys, and `:w` makes the project what the lines say.
 
 | Buffer | A line | |
 | --- | --- | --- |
-| `daw://tracks` | `Bass  vol -6.0  pan L10  M--  out Bus A  group  in Strings  color #ff9e64  ▸ Synth, EQ` | a track: its name, volume in dB, pan, flags (`M` muted, `S` soloed, `R` armed, `-` not), the track it plays into (the master without `out`), `group` on a group, the group it is in, its colour, its devices |
-| `daw://sends` | `Drums  → Verb  -12.0 dB  post` | a send: the track it is from, the track it goes to, its level, `pre` or `post` the fader |
-| `daw://track/2/devices` | `Comp  on  wet 80%  preset Glue` | the device chain of the second track (`master` for the master's): the device, `on` or `off` (bypassed), its wet share, the preset it was set to |
-| `daw://markers` | `9.1  Chorus  to 13.1  color #9ece6a` | a marker at bar 9, beat 1; with `to`, a region that ends at bar 13 |
+| `paw://tracks` | `Bass  vol -6.0  pan L10  M--  out Bus A  group  in Strings  color #ff9e64  ▸ Synth, EQ` | a track: its name, volume in dB, pan, flags (`M` muted, `S` soloed, `R` armed, `-` not), the track it plays into (the master without `out`), `group` on a group, the group it is in, its colour, its devices |
+| `paw://sends` | `Drums  → Verb  -12.0 dB  post` | a send: the track it is from, the track it goes to, its level, `pre` or `post` the fader |
+| `paw://track/2/devices` | `Comp  on  wet 80%  preset Glue` | the device chain of the second track (`master` for the master's): the device, `on` or `off` (bypassed), its wet share, the preset it was set to |
+| `paw://markers` | `9.1  Chorus  to 13.1  color #9ece6a` | a marker at bar 9, beat 1; with `to`, a region that ends at bar 13 |
 
-`:e daw://tracks` shows one in this window, `:vs daw://sends` beside it,
+`:e paw://tracks` shows one in this window, `:vs paw://sends` beside it,
 `:textbuf.open markers` below. Fields are two spaces apart and every field
 but the first starts with its word, so they can come in any order and a
 missing one has its plain value (0 dB, centre, not muted, the master, no
@@ -702,7 +702,7 @@ elsewhere` once the project changes under it, and `:w` then refuses; `:w!`
 applies your changes anyway, and only the fields your lines changed, so a
 volume moved elsewhere in the meantime stays moved.
 
-`Enter` on a track's line opens its devices (`daw://track/N/devices`), and
+`Enter` on a track's line opens its devices (`paw://track/N/devices`), and
 `-` there goes back up to the tracks; on a device `Enter` shows it in the
 device panel, on a marker it puts the cursor there. The graphical frontend
 shows a text buffer in a pane, as here; `:textbuf.window` (`Ctrl-w f`) pops it out
@@ -717,13 +717,13 @@ opening a sound file from the terminal are the same few keys as the rest.
 
 | | |
 | --- | --- |
-| `:e some/folder`, `:files [folder]` | the folder in this window: `daw://files/home/me/music`. `:files media` is the project's own media folder; `:files` alone, the folder of the buffer, else of the project, else where the program started |
-| `:Files [folder]`, `:files.tree` | the folder as a tree in a split: `daw://tree/home/me/music` |
+| `:e some/folder`, `:files [folder]` | the folder in this window: `paw://files/home/me/music`. `:files media` is the project's own media folder; `:files` alone, the folder of the buffer, else of the project, else where the program started |
+| `:Files [folder]`, `:files.tree` | the folder as a tree in a split: `paw://tree/home/me/music` |
 | `-` | up to the folder above; in the tree the tree is of that folder |
 | `Enter` | on a folder, goes in (in the tree opens or closes it, as `za` does); on a project, opens it, asking about unsaved work first; on a sound or MIDI file, places it at the cursor's track and time, or on a new track when the project has none |
 | `go` | a sound or MIDI file on a **new** track (`go` in a selection: one track for each file) |
-| `gh`, `gH` | hear the sound file (or MIDI file, through an instrument) under the cursor; `gH` hears each one as the cursor rests on it for `daw.opt.audition_delay` ms (`daw.opt.files_hear`, off) |
-| `g.` | show or hide the files that start with a dot (`daw.opt.files_hidden`) |
+| `gh`, `gH` | hear the sound file (or MIDI file, through an instrument) under the cursor; `gH` hears each one as the cursor rests on it for `paw.opt.audition_delay` ms (`paw.opt.files_hear`, off) |
+| `g.` | show or hide the files that start with a dot (`paw.opt.files_hidden`) |
 | `za`, `zR`, `zM` | in a tree: open or close a folder, open all, close all |
 
 A line is a file, a folder ends in `/`, then what is known of it in columns:
@@ -756,9 +756,9 @@ clip plays, to delete with `dd` and `:w` (see [Mixing](mixing.md#media-files),
 `:media.collect` copies in files from elsewhere). A file a clip that was
 deleted played may still be needed by `u`: the trash keeps it.
 
-An extension makes its own listing with `daw.textbuf.kind` (see
-[Scripting](scripting.md)); `daw.files.open(folder, { tree = true })` shows
-a folder, and `daw.files.sound_info(path)` reads a file's header.
+An extension makes its own listing with `paw.textbuf.kind` (see
+[Scripting](scripting.md)); `paw.files.open(folder, { tree = true })` shows
+a folder, and `paw.files.sound_info(path)` reads a file's header.
 
 ## The quickfix list
 
@@ -800,7 +800,7 @@ out into a window of its own.
 
 The mouse does in the terminal what it does in the window (see
 [What the pointer does](window.md)), in cells. Each gesture goes to the
-function in the kernel the window's goes to (`daw.frontend.act`), so the two
+function in the kernel the window's goes to (`paw.frontend.act`), so the two
 mean the same by it, and the keys are as they were. A press gives the view
 under the pointer the keyboard. A gesture that changes the project does so
 when the button is let go, as one undo step, and is drawn where it will
@@ -832,9 +832,9 @@ says on the status line what it is and what a click there does.
 
 A menu opens at the pointer and takes the keys while it is open: `j` `k`
 move, `l` or Enter opens a submenu or chooses, `h` goes back out, `Esc` lets
-go. An extension's entries (`daw.frontend.menus`) are in it as in the
-window's. A script opens one with `daw.ui.menu(items, { x = x, y = y })`
-(see `runtime/lua/daw/menu.lua`).
+go. An extension's entries (`paw.frontend.menus`) are in it as in the
+window's. A script opens one with `paw.ui.menu(items, { x = x, y = y })`
+(see `runtime/lua/paw/menu.lua`).
 
 **The terminal and multiplexers.** The program asks the terminal to report
 every press, release and move of the pointer, held or not (modes 1000, 1002
@@ -847,7 +847,7 @@ it on to the terminal. Most terminals (WezTerm, kitty, foot,
 xterm, Alacritty) keep a press with Shift held for their own selection of
 text, so Shift and a drag still selects text on the screen; there Shift
 does not reach the program, and `:set grid=…` or `:set note_snap!` is the
-way off the grid. `:set mouse!` (`daw.opt.mouse = false`) stops the
+way off the grid. `:set mouse!` (`paw.opt.mouse = false`) stops the
 reporting altogether, leaving the pointer to the terminal; the same again
 takes it back.
 
@@ -902,12 +902,12 @@ under the cursor) shows as cells, the picture left out of them and keeping
 there what those cells had before, so that a cursor moving on or off
 something sends no pixels.
 
-`daw attach` from a terminal that shows images shows them too: it tells
+`paw attach` from a terminal that shows images shows them too: it tells
 the instance what its terminal can do, and is sent each strip's drawing
 (only when it changed), which it makes into pixels itself. Where the
 terminal shows no images (tmux, which does not pass them on, a terminal
-without the protocol, `daw attach` from one) the view draws in cells as
-before. `:set graphics!` (`daw.opt.graphics = false`) keeps cells
+without the protocol, `paw attach` from one) the view draws in cells as
+before. `:set graphics!` (`paw.opt.graphics = false`) keeps cells
 everywhere; the same again takes the pictures back.
 
 ## Help
@@ -921,8 +921,8 @@ place that topic is described:
 | `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way: its row in the key table (`course/keys.md`) when it has one |
 | `:help :s`, `:help :helpgrep` | a command |
 | `:help 'timebind'` | an option |
-| `:help daw.qf`, `:help daw.qf.feed` | a Lua module or function |
-| `:help daw://tracks` | an address |
+| `:help paw.qf`, `:help paw.qf.feed` | a Lua module or function |
+| `:help paw://tracks` | an address |
 | `:help key-rule`, `:help quickfix-list`, `:help motions` | a section of the manual |
 | `:help terminal`, `:help course-5`, `:help notation`, `:help notation-keys` | a page: of the manual, a lesson of the course, an extension's (by its name), a section of one |
 
@@ -930,7 +930,7 @@ The pages are the manual (`docs/*.md`), the course (`docs/course/*.md`)
 and every extension's `README.md` and `doc/*.md`, those in your
 configuration and those bundled with the program, loaded or not; the page
 of an extension that is not loaded says how to load it. They are read from
-the source tree the program runs from, or from `$DAW_HOME`, where an
+the source tree the program runs from, or from `$PAW_HOME`, where an
 installed program keeps them.
 
 A topic is found as Vim finds it: the tag itself first, then the tags that
@@ -1009,7 +1009,7 @@ whole name typed ranks first, and the device you chose for the same words
 last time comes first. The window's "Add a device" box takes the same words,
 lists the same way, and marks a favourite with the `☆` beside each line.
 Favourites, recent devices and those choices are kept in
-`~/.local/state/daw/devices.json`. Whether a plugin is an instrument comes
+`~/.local/state/paw/devices.json`. Whether a plugin is an instrument comes
 from what it declares (CLAP features, VST3 subcategories, LV2 classes),
 kept in the scan cache. `:pick tracks` opens a picker by name, and
 `:pick devices query=reverb` or `:pick.devices reverb` starts it with text
@@ -1031,7 +1031,7 @@ picker has one: a clip's notes as a small piano roll (the note chosen drawn
 | `Tab` `Shift-Tab` | mark the line and move on (`+` marks it); `Ctrl-a` marks every line that matches, or none |
 | `Ctrl-v` `Ctrl-x` `Ctrl-t` | open what is chosen in a window beside this one, below it, or in a new tab: a MIDI clip or a note in the piano roll, a device in the device panel, the rest in the arrange view, a help tag as a page |
 | `Ctrl-q` | the marked lines, or every line that matches, to the quickfix list (titled by the picker and what was typed), and its window opens; `Ctrl-l` to the window's location list |
-| `Ctrl-y` | type the line on the command line (a Lua function: `lua daw.x(`) |
+| `Ctrl-y` | type the line on the command line (a Lua function: `lua paw.x(`) |
 | `Alt-d` | delete what is marked, or the line: tracks, clips, notes, markers, recent projects; the picker stays open, and `u` brings it back |
 | `Ctrl-r` | the next mode: fuzzy, exact, regex |
 | `Ctrl-Up` `Ctrl-Down` | what was typed in this picker before, newest first |
@@ -1046,14 +1046,14 @@ an audio file; the tracks picker starts with it off.
 (`,fa`), files (`,ff`, and the file picker of `:import`), beats
 (`:drums.beat`) and snippets (`Ctrl-s` in the piano roll), the item under
 the selection is heard once the selection has rested on it for
-`daw.opt.audition_delay` ms (150), as Telescope previews a file. The top of
+`paw.opt.audition_delay` ms (150), as Telescope previews a file. The top of
 the pane says what plays: `▶ Soft pad · loop bar 5`.
 
 | Picker | What is heard |
 | --- | --- |
 | presets | the preset loaded into the device, with the track's own notes: the bar of its MIDI clip at the cursor (else the last bar before it with notes), over and over. A track without notes plays a built-in phrase in the song's key (a beat on a drum track). Moving on loads the next preset over the same loop |
 | devices | the device added to the cursor's track, with the same phrase. A plugin is made apart, so the selection rests on it 600 ms first, and the pane says `… loading` until it plays |
-| files | a sound file on its own, from its start, over everything else at `daw.opt.audition_level` dB (-12), with its outline drawn in the pane and the place it has got to; a MIDI file's first two bars, at its own tempo, through the cursor's track when it has an instrument, else through a synth (and a kit for its drums) added for the purpose |
+| files | a sound file on its own, from its start, over everything else at `paw.opt.audition_level` dB (-12), with its outline drawn in the pane and the place it has got to; a MIDI file's first two bars, at its own tempo, through the cursor's track when it has an instrument, else through a synth (and a kit for its drums) added for the purpose |
 | beats | the beat written into the clip, its first bar over and over |
 | snippets | what the snippet would write, once, with what the other pitched tracks play over the same beats |
 
@@ -1089,11 +1089,11 @@ place of the list.
 **From Lua**:
 
 ```lua
-daw.pick({
+paw.pick({
   title = "Tracks",
   items = { { text = "Bass", id = 3 }, { text = "Drums", id = 4 } },   -- or a function returning the list; an item may be a plain string
   format = function(item) return item.text end,   -- optional: the line shown and matched
-  on_choose = function(item) daw.cursor.set_track(item.id) end,
+  on_choose = function(item) paw.cursor.set_track(item.id) end,
   on_cancel = function() end,                     -- optional: Escape
 })
 ```
@@ -1110,7 +1110,7 @@ daw.pick({
 | `boost(item)` | a number (up to 120) added to the score of an item that matches: what is used often, what belongs to the focused view |
 | `primary(item)` | the part of the line that counts first: lines that match there rank above lines that match only elsewhere |
 | `audition(item)` | makes the item heard when the selection rests on it; returns the label the pane shows, or `{ label, loading = function, keep = function(item) }`: `keep` runs in place of `on_choose` when the item heard is chosen, its trial kept. `audition_key` names the setting `Ctrl-Space` keeps, `audition_default = false` starts it off, `audition_delay(item, ms)` rests longer on a slow item |
-| `location(item)` | the item's address (`daw://clip/7`) or location: `Ctrl-v`, `Ctrl-x`, `Ctrl-t` open it and `Ctrl-q` sends it to the quickfix list with it |
+| `location(item)` | the item's address (`paw://clip/7`) or location: `Ctrl-v`, `Ctrl-x`, `Ctrl-t` open it and `Ctrl-q` sends it to the quickfix list with it |
 | `open(item, how)` | opens it some way of its own, `how` "vsplit", "split" or "tab", in place of `location` |
 | `delete(items)` | `Alt-d`: deletes them (the marked ones, or the line) |
 | `insert(item)` | `Ctrl-y`, in place of typing the line on the command line |
@@ -1119,25 +1119,25 @@ daw.pick({
 | `prompt`, `width`, `height` | |
 
 `preview(item, width, height)` is given the pane's size, for drawing to fit;
-`require("daw.pick.preview").clip(id, width, height, note_id)` draws a clip
-as the clips picker does. `daw.pick.show(location, how)` opens a location
-beside, below or in a tab as `Ctrl-v` does. `daw.pick.match(query, line,
+`require("paw.pick.preview").clip(id, width, height, note_id)` draws a clip
+as the clips picker does. `paw.pick.show(location, how)` opens a location
+beside, below or in a tab as `Ctrl-v` does. `paw.pick.match(query, line,
 true, mode)` returns the score and the positions that matched,
-`daw.pick.filter(query, items, format, primary, mode)` the items that match,
-best first. `daw.pick.state()` is the open picker's query, mode, matches,
-marked items and selection. `daw.pick.resume()` opens the last picker again,
-as it was. `daw.pick.keys` holds the keys every picker has.
+`paw.pick.filter(query, items, format, primary, mode)` the items that match,
+best first. `paw.pick.state()` is the open picker's query, mode, matches,
+marked items and selection. `paw.pick.resume()` opens the last picker again,
+as it was. `paw.pick.keys` holds the keys every picker has.
 
-**Hearing from Lua.** `daw.audition` is what the pickers use:
+**Hearing from Lua.** `paw.audition` is what the pickers use:
 
 ```lua
-daw.audition.try(function() daw.fx.load(device, "Plate") end)   -- an edit that can be taken back
-daw.audition.through(track.id)        -- play the track's bar at the cursor through it, over and over
-daw.audition.phrase(track.id, { { pitch = 60, start = 0, length = 1, velocity = 100 } }, { length = 4 })
-daw.audition.file("/samples/kick.wav")  -- heard on its own at daw.opt.audition_level
-daw.audition.keep()                     -- the trial becomes one undo step
-daw.audition.stop()                     -- silence, and the trial taken back
-daw.audition.state()                    -- what plays: a phrase's notes, or a file's place and outline
+paw.audition.try(function() paw.fx.load(device, "Plate") end)   -- an edit that can be taken back
+paw.audition.through(track.id)        -- play the track's bar at the cursor through it, over and over
+paw.audition.phrase(track.id, { { pitch = 60, start = 0, length = 1, velocity = 100 } }, { length = 4 })
+paw.audition.file("/samples/kick.wav")  -- heard on its own at paw.opt.audition_level
+paw.audition.keep()                     -- the trial becomes one undo step
+paw.audition.stop()                     -- silence, and the trial taken back
+paw.audition.state()                    -- what plays: a phrase's notes, or a file's place and outline
 ```
 
 Underneath, `api.trial_begin()` and `api.trial_end(keep)` bracket the
@@ -1146,21 +1146,21 @@ edits, and `api.preview_play(path)`, `api.preview_stop()`,
 voice in the engine added after the master, which is never recorded,
 rendered or saved.
 
-**Adding a picker.** `daw.pick.sources` holds the pickers by name. Add a table
+**Adding a picker.** `paw.pick.sources` holds the pickers by name. Add a table
 of the same fields with a `desc`, or a function returning one, and it opens
-with `daw.pick("name")` and `:pick name`, and is listed by `,fp`:
+with `paw.pick("name")` and `:pick name`, and is listed by `,fp`:
 
 ```lua
-daw.pick.sources.tempo = {
+paw.pick.sources.tempo = {
   desc = "Set the tempo from a list",
   title = "Tempo",
   items = function()
     return { { bpm = 90, text = "90 hip hop" }, { bpm = 124, text = "124 house" }, { bpm = 174, text = "174 drum and bass" } }
   end,
-  on_choose = function(item) daw.project.tempo = item.bpm end,
-  preview = function(item) return { "now " .. daw.project.tempo .. " bpm", "then " .. item.bpm .. " bpm" } end,
+  on_choose = function(item) paw.project.tempo = item.bpm end,
+  preview = function(item) return { "now " .. paw.project.tempo .. " bpm", "then " .. item.bpm .. " bpm" } end,
 }
-daw.keymap.set("<leader>fT", function() daw.pick("tempo") end, { desc = "Choose a tempo" })
+paw.keymap.set("<leader>fT", function() paw.pick("tempo") end, { desc = "Choose a tempo" })
 ```
 
 `items` as a function is called each time the picker opens, so the list is
@@ -1170,11 +1170,11 @@ typing on narrows the last matches rather than starting again and only the
 lines on screen are drawn.
 
 The graphical frontend shows a picker as it shows any floating view, through
-`daw.frontend.float`, so the selected line is marked with `▶` and not only
+`paw.frontend.float`, so the selected line is marked with `▶` and not only
 with a colour, and the preview pane, its piano roll and waveform with it.
 
 ## Searching the project's text
-<!-- tags: vimgrep :vimgrep :lvimgrep project-grep grep daw.grep -->
+<!-- tags: vimgrep :vimgrep :lvimgrep project-grep grep paw.grep -->
 
 `:vimgrep /pattern/` finds every piece of text in the project that matches
 a regular expression (as the pickers' regex mode reads it) and puts the
@@ -1198,18 +1198,18 @@ The list is then worked through as any: `]q` and `[q`, `:copen`, and
 (`:vimgrep /^Viol/ track` then `:cdo track.mute`). `,fg` is the same text in
 a picker, narrowed as you type, `Ctrl-q` sending what is left to the list.
 
-From Lua, `daw.grep.search(pattern, { mode = "regex", fields = { lyric = true } })`
+From Lua, `paw.grep.search(pattern, { mode = "regex", fields = { lyric = true } })`
 gives the records found, `{ text, field, location, where }`, and
-`daw.grep.records()` all of them. An extension adds a source:
+`paw.grep.records()` all of them. An extension adds a source:
 
 ```lua
-daw.grep.source("chords", function(add)
-  add({ text = "Cmaj7", field = "chord", location = "daw://clip/4", where = "Verse 5.1.00" })
+paw.grep.source("chords", function(add)
+  add({ text = "Cmaj7", field = "chord", location = "paw://clip/4", where = "Verse 5.1.00" })
 end)
 ```
 
 ## Structural queries
-<!-- tags: query select :select :query daw.query -->
+<!-- tags: query select :select :query paw.query -->
 
 A query finds things by where they sit in the project, as a Tree-sitter
 query or a CSS selector finds nodes in a tree:
@@ -1236,13 +1236,13 @@ holds the words; `pitch=c4|e4` is either. A field alone holds when it is
 set (`track[mute]`), `!field` when it is not (`clip[!muted]`). Pitches are
 `c4`, `c#4`, `60`, or `c` in any octave; lengths are beats or note values
 (`note[len<1/8]`); text is compared without case. The fields are what
-`daw.api` gives for each kind (a note's `pitch` `velocity` `start`
+`paw.api` gives for each kind (a note's `pitch` `velocity` `start`
 `length`, a clip's `name` `start` `length` `kind` `file`, a track's `name`
 `volume` `pan` `mute` `solo`), and besides:
 
 | Kind | Fields |
 | --- | --- |
-| note | `vel` `len` `end` `at` (the song's beat) `bar` `lyric` `art` (its articulations: any may match) `channel`, and the fields of `:s` and `:g` (`daw.ex.field`) |
+| note | `vel` `len` `end` `at` (the song's beat) `bar` `lyric` `art` (its articulations: any may match) `channel`, and the fields of `:s` and `:g` (`paw.ex.field`) |
 | clip | `end` `bar` `notes` (how many) `muted` `track` (its track's name) |
 | track, group | `index` `group` `devices` (how many) |
 | marker, region | `name` `start` `end` `bar` |
@@ -1256,16 +1256,16 @@ arrange view, as visual mode's selection) and lists it all in the quickfix
 list; `:query` only lists it, `:lquery` in the window's location list.
 From there `:cdo` acts on each.
 
-From Lua, `daw.query(q)` returns the nodes, `{ kind, id, data, parent,
-track, clip, location }`, `data` the thing as `daw.api` gives it. A query
+From Lua, `paw.query(q)` returns the nodes, `{ kind, id, data, parent,
+track, clip, location }`, `data` the thing as `paw.api` gives it. A query
 may also be a table of steps, each a string or a table of the kind and its
 tests, `">"` between two for a step right inside:
 
 ```lua
-for _, n in ipairs(daw.query("clip[name~=pizz] > note[pitch>=C5]")) do print(n.data.pitch) end
-daw.query({ { "clip", name = "~= pizz" }, ">", { "note", pitch = ">= C5", function(n) return n.data.velocity > 90 end } })
-daw.query.select("note[lyric=la]")            -- what :select does
-daw.query.field("note", "channel", function(n) return n.data.meta.channel end)   -- a field of your own
+for _, n in ipairs(paw.query("clip[name~=pizz] > note[pitch>=C5]")) do print(n.data.pitch) end
+paw.query({ { "clip", name = "~= pizz" }, ">", { "note", pitch = ">= C5", function(n) return n.data.velocity > 90 end } })
+paw.query.select("note[lyric=la]")            -- what :select does
+paw.query.field("note", "channel", function(n) return n.data.meta.channel end)   -- a field of your own
 ```
 
 **Motions and text objects of the tree**, where they keep the key rule:

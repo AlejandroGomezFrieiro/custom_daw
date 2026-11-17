@@ -1,6 +1,6 @@
 -- The arrange view: track headers on the left, clips on a timeline on the right.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 
 local view = {
   scroll = 0,    -- beat at the left edge of the timeline
@@ -8,7 +8,7 @@ local view = {
   flags = {},    -- header columns of the M, S, R and I chips, for the mouse
   -- What extensions draw on the timeline, by name, in name order, once the
   -- ruler and the tracks are drawn and before the playhead:
-  --   daw.ui.views.arrange.layers.marks = function(view, layer) ... end
+  --   paw.ui.views.arrange.layers.marks = function(view, layer) ... end
   -- `layer.ruler` is the timeline's part of the ruler row, `layer.ruler2`
   -- its second row when `view.ruler2` asks for one (else nil), and
   -- `layer.lanes` the timeline below, down to the master track;
@@ -16,21 +16,21 @@ local view = {
   -- `top`, `rows` and `th` (the first track shown, how many, rows per track).
   layers = {},
 }
-daw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry", "comp" },
+paw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry", "comp" },
   { scroll = 0, top = 1, flags = {} })
 
-local draw = daw.draw
+local draw = paw.draw
 
--- Another project is shown from its start, as the cursor is (daw/cursor.lua).
-daw.on("project.loaded", function() view.scroll, view.top, view.seen_beat = 0, 1, nil end)
+-- Another project is shown from its start, as the cursor is (paw/cursor.lua).
+paw.on("project.loaded", function() view.scroll, view.top, view.seen_beat = 0, 1, nil end)
 
 -- Small piano rolls and waveforms drawn inside clips, and what a header says
 -- about its track's devices, kept until the project changes.
 local previews, chains, waves = {}, {}, {}
-daw.on("changed", function() previews, chains, waves = {}, {}, {} end)
+paw.on("changed", function() previews, chains, waves = {}, {}, {} end)
 
 --- An audio clip's waveform as `n` { min, max, rms } across it, kept: for
---- `daw.plot.wave` and its twin in cells. Nothing for a missing file.
+--- `paw.plot.wave` and its twin in cells. Nothing for a missing file.
 local function wave_peaks(clip, n)
   local key = clip.id .. ":" .. n
   if not waves[key] then
@@ -43,13 +43,13 @@ end
 --- The rows under a clip's name: its notes as a small piano roll, or its
 --- waveform.
 local function preview(clip, width, rows, zoom)
-  local key = clip.id .. ":" .. width .. ":" .. rows .. ":" .. zoom .. ":" .. tostring(daw.opt.wave_scale)
-    .. (daw.opt.ascii and "a" or "")
+  local key = clip.id .. ":" .. width .. ":" .. rows .. ":" .. zoom .. ":" .. tostring(paw.opt.wave_scale)
+    .. (paw.opt.ascii and "a" or "")
   local kept = previews[key]
   if kept then return kept[1], kept[2] end
   local out, runs
   if clip.kind == "midi" then
-    out = draw.miniroll(daw.stretch.sounding(clip, api.clip_notes(clip.id)), width, rows, zoom)
+    out = draw.miniroll(paw.stretch.sounding(clip, api.clip_notes(clip.id)), width, rows, zoom)
   else
     -- A file that has gone missing has been reported already; draw nothing.
     local ok, peaks = pcall(api.clip_peaks, clip.id, width)
@@ -78,9 +78,9 @@ end
 view.meter = draw.meter
 
 --- Columns for the track headers on a screen `w` wide, the rule on their
---- right included: `daw.opt.header_width`, or by the width with "auto".
+--- right included: `paw.opt.header_width`, or by the width with "auto".
 function view.header_width(w)
-  local want = tonumber(daw.opt.header_width)
+  local want = tonumber(paw.opt.header_width)
   if not want then
     want = w >= 120 and 26 or w >= 100 and 22 or w >= 80 and 18 or 12
   end
@@ -88,9 +88,9 @@ function view.header_width(w)
 end
 
 --- Rows a track takes when `count` tracks share `room` rows:
---- `daw.opt.track_height`, or with "auto" as many as fit, from 3 to 6.
+--- `paw.opt.track_height`, or with "auto" as many as fit, from 3 to 6.
 function view.track_height(count, room)
-  local want = tonumber(daw.opt.track_height)
+  local want = tonumber(paw.opt.track_height)
   if want then return math.max(1, math.floor(want)) end
   if count < 1 then return 3 end
   return util.clamp(math.floor(room / count), 3, 6)
@@ -98,7 +98,7 @@ end
 
 --- Whether the ruler has a second row: when something registered in
 --- `view.ruler2` (by name, a function of the view) has something to show.
----   daw.ui.views.arrange.ruler2.marks = function(view) return #my_marks > 0 end
+---   paw.ui.views.arrange.ruler2.marks = function(view) return #my_marks > 0 end
 view.ruler2 = {}
 
 local function wants_ruler2(self)
@@ -114,23 +114,23 @@ end
 --- h }` from the first track shown, then the master's. All placement is
 --- here, so that rows of other kinds can be added in one place.
 function view:layout(w, h)
-  local tracks = daw.groups.rows()
+  local tracks = paw.groups.rows()
   local hw = view.header_width(w)
   -- The ruler, its second row if something asks for one, and the tempo
   -- lane's two rows when it is shown.
-  local tempo_rows = daw.tempolane.shown() and 2 or 0
+  local tempo_rows = paw.tempolane.shown() and 2 or 0
   local ruler_rows = (wants_ruler2(self) and 2 or 1) + tempo_rows
   local master_rows = 2
   local room = math.max(1, h - ruler_rows - master_rows)
   -- Take lanes (a line each) and automation lanes shown as rows (two
   -- lines each) take their lines first.
   local lane_lines = 0
-  for _, id in ipairs(tracks) do lane_lines = lane_lines + daw.takes.lane_count(id) + 2 * #daw.lanes.shown(id) end
+  for _, id in ipairs(tracks) do lane_lines = lane_lines + paw.takes.lane_count(id) + 2 * #paw.lanes.shown(id) end
   local th = view.track_height(#tracks, math.max(1, room - lane_lines))
   -- Squeezed by panels below, a track takes what there is rather than vanish.
-  if not tonumber(daw.opt.track_height) and room < th then th = math.max(1, room) end
+  if not tonumber(paw.opt.track_height) and room < th then th = math.max(1, room) end
   local fit = math.max(1, math.floor(room / th))
-  local cursor_index = daw.cursor.row() or 1
+  local cursor_index = paw.cursor.row() or 1
   if lane_lines > 0 then
     local rows, y = self:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     return {
@@ -221,7 +221,7 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
     before = before - 2
   end
   -- An `F` on a frozen track, an `f` on one held inside a frozen group.
-  local frozen = not t.master and daw.freeze and daw.freeze.state(t.id)
+  local frozen = not t.master and paw.freeze and paw.freeze.state(t.id)
   if frozen then
     buf:text(before - 1, y, frozen == "frozen" and "F" or "f", "TrackInfo")
     before = before - 2
@@ -238,7 +238,7 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   -- that says whether it is open, and when folded how many tracks it holds.
   local name = t.name
   if not t.master then
-    local groups = daw.groups
+    local groups = paw.groups
     name = string.rep(" ", groups.depth(t.id)) .. name
     if groups.is_group(t.id) then
       name = (groups.folded(t.id) and g.closed or g.open) .. " " .. name
@@ -248,9 +248,9 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   local room = math.max(1, before - name_at)
   if api.str_width(name) > room then name = util.fit(name, room) end
   buf:text(name_at, y, name, selected and "TrackNameSel" or "TrackName")
-  -- What modules mark on the header (`daw.ui.layer("arrange", "header", ...)`):
+  -- What modules mark on the header (`paw.ui.layer("arrange", "header", ...)`):
   -- `x` is the free column before the name.
-  daw.ui.paint("arrange", "header", { buf = buf, x = name_at - 1, y = y, width = w, height = height, track = t.id })
+  paw.ui.paint("arrange", "header", { buf = buf, x = name_at - 1, y = y, width = w, height = height, track = t.id })
 
   if height >= 2 then
     local left, r = api.track_meter(t.id)
@@ -268,7 +268,7 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   if height >= 3 then
     lines[#lines + 1] = "route"
     if #(t.sends or {}) > 0 then lines[#lines + 1] = "sends" end
-    if not t.master and (t.input or daw.audio.label(t)) and height >= 4 then lines[#lines + 1] = "input" end
+    if not t.master and (t.input or paw.audio.label(t)) and height >= 4 then lines[#lines + 1] = "input" end
   end
   for i, kind in ipairs(lines) do
     local row = y + 1 + i
@@ -305,11 +305,11 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
     elseif kind == "input" then
       -- What the track takes in, with the level arriving there whether or
       -- not it is heard, so that a guitar can be seen before anything is armed.
-      local label = daw.audio.label(t)
+      local label = paw.audio.label(t)
       if label then
         local heard = t.input and (t.monitor or t.armed)
         if t.input then
-          local level = daw.audio.level(t)
+          local level = paw.audio.level(t)
           buf:text(x, row, view.level_glyph(level), level > 0.001 and "Input" or "TrackIndex")
           x = x + 2
         end
@@ -359,10 +359,10 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       local box = buf:sub(x0, y, cw, height)
       box:fill(0, 0, cw, 1, " ", hue["title" .. kind])
       -- A clip with takes says which plays: `take 3 ‹2/4›`.
-      local badge = daw.takes.badge(clip)
+      local badge = paw.takes.badge(clip)
       local label = clip.offline and ("offline · " .. clip.name) or clip.name
       -- Stretched, shifted, looped: `×1.5 ⟳ drums`.
-      local mark = daw.stretch.badge(clip)
+      local mark = paw.stretch.badge(clip)
       if mark then label = mark .. " " .. label end
       box:text(cw > 2 and 1 or 0, 0, badge and (label .. " ‹" .. badge .. "›") or label)
       if height >= 2 then
@@ -371,15 +371,15 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
           -- In pixels under the cells where the terminal shows them, the
           -- whole clip's, so that scrolling moves pieces already made.
           local body = box:sub(0, 1, cw, height - 1)
-          -- The colour the cells draw it in (`daw.draw.hue`'s body).
-          local colour = draw.mix(require("daw.theme").palette.bg, draw.track_colour(track), kind == "_off" and 0.30 or 0.75)
+          -- The colour the cells draw it in (`paw.draw.hue`'s body).
+          local colour = draw.mix(require("paw.theme").palette.bg, draw.track_colour(track), kind == "_off" and 0.30 or 0.75)
           local pictured = body:strip(0, 0, cw, height - 1, {
             key = "arrange:wave:" .. clip.id, under = true,
             draw = function(g, px)
-              daw.plot.wave(g, px, { peaks = function(n) return wave_peaks(clip, n) end, color = colour })
+              paw.plot.wave(g, px, { peaks = function(n) return wave_peaks(clip, n) end, color = colour })
             end,
           })
-          if not pictured then daw.plot.wave_cells(body, { peaks = function(n) return wave_peaks(clip, n) end }) end
+          if not pictured then paw.plot.wave_cells(body, { peaks = function(n) return wave_peaks(clip, n) end }) end
         elseif clip.note_count > 0 then
           local rows, runs = preview(clip, cw, height - 1, zoom)
           for row, text in ipairs(rows) do
@@ -392,7 +392,7 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
         end
       end
       -- A notch where each repeat of a looped clip begins.
-      for _, at in ipairs(daw.stretch.repeats(clip)) do
+      for _, at in ipairs(paw.stretch.repeats(clip)) do
         local nx = math.floor(at * zoom + 0.5)
         if nx > 0 and nx < cw and height >= 2 then box:fill(nx, 1, 1, height - 1, g.step, "ClipEdge") end
       end
@@ -403,7 +403,7 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
       end
       -- A hairline where the clip starts, so that clips side by side stay apart.
       box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
-      daw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
+      paw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
     end
   end
   -- The volume curve runs over the empty lane, never over clips, and only
@@ -440,7 +440,7 @@ local function welcome(buf)
     { ":", "run a command by name" },
     { ":help", "the manual, inside the program" },
   }
-  if daw.commands.get("tutor") then lines[#lines + 1] = { ":tutor", "take the course, ten minutes a lesson" } end
+  if paw.commands.get("tutor") then lines[#lines + 1] = { ":tutor", "take the course, ten minutes a lesson" } end
   local x, y = math.max(2, math.floor((buf.width - 52) / 2)), math.max(1, math.floor((buf.height - #lines - 3) / 2))
   buf:text(x, y, "A new project", "WelcomeTitle")
   buf:text(x, y + 1, "Everything is driven from the keyboard. To begin:", "Dim")
@@ -488,12 +488,12 @@ function view:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
       if #out > 0 and y + th > bottom then break end
       out[#out + 1] = { kind = "track", id = id, index = index, y = y, h = th }
       y = y + th
-      for k = 1, daw.takes.lane_count(id) do
+      for k = 1, paw.takes.lane_count(id) do
         if y + 1 > bottom then return out, y, false end
         out[#out + 1] = { kind = "take", id = id, take = k, index = index, y = y, h = 1 }
         y = y + 1
       end
-      for _, l in ipairs(daw.lanes.shown(id)) do
+      for _, l in ipairs(paw.lanes.shown(id)) do
         if y + 2 > bottom then return out, y, false end
         out[#out + 1] = { kind = "lane", id = id, lane = l, index = index, y = y, h = 2 }
         y = y + 2
@@ -502,7 +502,7 @@ function view:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     return out, y, true
   end
   local function shows_cursor(rows)
-    local lane = daw.cursor.lane_id()
+    local lane = paw.cursor.lane_id()
     for _, row in ipairs(rows) do
       if row.index == cursor_index and ((row.kind == "track" and not lane) or (row.lane and row.lane.id == lane)) then
         return true
@@ -510,7 +510,7 @@ function view:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     end
     return false
   end
-  local lane = daw.cursor.lane_id()
+  local lane = paw.cursor.lane_id()
   if cursor_index ~= self.seen_index or lane ~= self.seen_lane then
     if cursor_index < self.top then self.top = cursor_index end
     while self.top < cursor_index and not shows_cursor((place(self.top))) do self.top = self.top + 1 end
@@ -532,17 +532,17 @@ end
 function view:draw_lane_row(headers, timeline, row, lines)
   local l, y = row.lane, row.y
   local zoom, scroll = self.geometry.zoom, self.scroll
-  local beat = daw.cursor.beat
+  local beat = paw.cursor.beat
   local hw, tw = headers.width, timeline.width
-  local on = daw.cursor.lane_id() == l.id
+  local on = paw.cursor.lane_id() == l.id
   local hue = draw.track_hue(api.track_get(row.id), row.index)
   local style = on and "TrackHeaderSel" or "TrackHeader"
   headers:fill(0, y, hw, 2, " ", style)
   for r = 0, 1 do headers:text(0, y + r, "▏", hue.fg) end
-  headers:text(2, y, util.fit("↳ " .. daw.lanes.name(l), math.max(1, hw - 3)), style)
+  headers:text(2, y, util.fit("↳ " .. paw.lanes.name(l), math.max(1, hw - 3)), style)
   local state = l.enabled and "read" or "bypass"
   headers:text(math.max(2, hw - #state - 1), y + 1, state, l.enabled and "Automation" or "FlagOff")
-  headers:text(4, y + 1, util.fit(daw.lanes.format(l, daw.lanes.value_at(l, beat)), math.max(1, hw - #state - 5)), "TrackInfo")
+  headers:text(4, y + 1, util.fit(paw.lanes.format(l, paw.lanes.value_at(l, beat)), math.max(1, hw - #state - 5)), "TrackInfo")
   timeline:fill(0, y, tw, 2, " ", on and hue.lane_sel or "Lane")
   for _, line in ipairs(lines) do
     if line.bar then timeline:fill(line.x, y, 1, 2, draw.g.bar, "LaneBar") end
@@ -562,15 +562,15 @@ function view:draw_lane_row(headers, timeline, row, lines)
   end
   if not on then return end
   -- A selection on this lane: the stretch of time chosen.
-  local selection = daw.keymap.selection()
+  local selection = paw.keymap.selection()
   if selection then
     local x0 = math.max(0, math.floor((selection.c0 - scroll) * zoom + 0.5))
     local x1 = math.min(tw, math.floor((selection.c1 - scroll) * zoom + 0.5))
     if x1 > x0 then timeline:fill(x0, y, x1 - x0, 2, nil, "Visual") end
   end
   local x = math.floor((beat - scroll) * zoom + 0.5)
-  local cw = math.max(1, math.floor(daw.opt.grid * zoom))
-  timeline:fill(x, y, cw, 1, nil, daw.keymap.mode == "x" and "CursorVisual" or "Cursor")
+  local cw = math.max(1, math.floor(paw.opt.grid * zoom))
+  timeline:fill(x, y, cw, 1, nil, paw.keymap.mode == "x" and "CursorVisual" or "Cursor")
   timeline:fill(x, y + 1, cw, 1, nil, "CursorTail")
 end
 
@@ -580,25 +580,25 @@ end
 function view:draw_tempo_row(headers, timeline, y, lines)
   local zoom, scroll = self.geometry.zoom, self.scroll
   local hw, tw = headers.width, timeline.width
-  local beat = daw.cursor.beat
+  local beat = paw.cursor.beat
   headers:fill(0, y, hw, 2, " ", "TrackHeader")
   headers:text(2, y, util.fit("tempo", math.max(1, hw - 3)), "TrackHeader")
-  headers:text(2, y + 1, util.fit(string.format("%g bpm", daw.tempo.at(beat)), math.max(1, hw - 3)), "TrackInfo")
+  headers:text(2, y + 1, util.fit(string.format("%g bpm", paw.tempo.at(beat)), math.max(1, hw - 3)), "TrackInfo")
   timeline:fill(0, y, tw, 2, " ", "Lane")
   for _, line in ipairs(lines) do
     if line.bar then timeline:fill(line.x, y, 1, 2, draw.g.bar, "LaneBar") end
   end
-  local lo, hi = daw.tempolane.range()
+  local lo, hi = paw.tempolane.range()
   local function level(bpm) return util.clamp((bpm - lo) / (hi - lo), 0, 1) end
   draw.curve(timeline:sub(0, y, tw, 2), 0, 2, function(i)
-    return level(daw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
+    return level(paw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
   end, "Automation")
-  for _, p in ipairs(daw.tempo.points()) do
+  for _, p in ipairs(paw.tempo.points()) do
     local x = math.floor((p.beat - scroll) * zoom + 0.5)
-    if x >= 0 and x < tw then timeline:text(x, level(p.bpm) >= 0.5 and y or y + 1, (daw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆")), "Automation") end
+    if x >= 0 and x < tw then timeline:text(x, level(p.bpm) >= 0.5 and y or y + 1, (paw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆")), "Automation") end
   end
   local x = math.floor((beat - scroll) * zoom + 0.5)
-  timeline:fill(x, y, math.max(1, math.floor(daw.opt.grid * zoom)), 1, nil, "Cursor")
+  timeline:fill(x, y, math.max(1, math.floor(paw.opt.grid * zoom)), 1, nil, "Cursor")
 end
 
 --- One take lane: take `row.take` of every clip of the track that has that
@@ -619,7 +619,7 @@ function view:draw_take_row(headers, timeline, row, lines)
     if line.bar then timeline:fill(line.x, y, 1, 1, draw.g.bar, "LaneBar") end
   end
   for _, clip in ipairs(api.clip_list(row.id)) do
-    local takes = daw.takes.of(clip)
+    local takes = paw.takes.of(clip)
     local entry = takes and takes.list[k]
     if entry then
       local x0 = math.floor((clip.start - scroll) * zoom + 0.5)
@@ -645,28 +645,28 @@ end
 --- The time this view shows, for windows bound in time (`timebind`): the
 --- beat at the left edge, columns per beat, and beats shown.
 function view:time_axis()
-  return self.scroll, daw.opt.zoom, self.geometry and self.geometry.span
+  return self.scroll, paw.opt.zoom, self.geometry and self.geometry.span
 end
 
 function view:set_time_axis(left, zoom)
   self.scroll = math.max(0, left)
-  if zoom and daw.opt.zoom ~= zoom then daw.opt.zoom = zoom end
+  if zoom and paw.opt.zoom ~= zoom then paw.opt.zoom = zoom end
 end
 
 --- On an automation lane row the lane's own keys come first.
 function view:subscope()
-  return daw.cursor.lane_id() and "arrange.lane" or nil
+  return paw.cursor.lane_id() and "arrange.lane" or nil
 end
 
 function view:render(buf, ctx)
   local g = draw.g
   local w, h = buf.width, buf.height
-  local opt = daw.opt
+  local opt = paw.opt
   local zoom = opt.zoom
   local t = api.transport_get()
-  local cursor = daw.cursor
+  local cursor = paw.cursor
   local cursor_track = cursor.track_id()
-  local bar = daw.time.bar()
+  local bar = paw.time.bar()
 
   local L = self:layout(w, h)
   local hw, tw = L.hw, L.tw
@@ -678,11 +678,11 @@ function view:render(buf, ctx)
   local led = ctx.follower
   if t.playing and opt.follow and not led then
     if t.position < self.scroll or t.position >= self.scroll + span then
-      self.scroll = daw.time.bar_floor(t.position)
+      self.scroll = paw.time.bar_floor(t.position)
     end
   elseif cursor.beat ~= self.seen_beat and not led then
     if cursor.beat < self.scroll then
-      self.scroll = daw.time.bar_floor(cursor.beat)
+      self.scroll = paw.time.bar_floor(cursor.beat)
     elseif cursor.beat >= self.scroll + span - 1 / zoom then
       self.scroll = math.max(0, math.ceil((cursor.beat - span) / bar + 1) * bar)
     end
@@ -703,7 +703,7 @@ function view:render(buf, ctx)
   local ruler = buf:sub(hw, 0, tw, 1)
   ruler:fill(0, 0, tw, 1, " ", "Ruler")
   if hw >= 12 then
-    local pos = daw.time.format(cursor.beat)
+    local pos = paw.time.format(cursor.beat)
     if hw - 2 >= #pos + 5 then
       buf:text(1, 0, "cur", "RulerCornerLabel")
       buf:text(5, 0, pos, "RulerCorner")
@@ -732,7 +732,7 @@ function view:render(buf, ctx)
   local in_loop = function(x) return loop and x >= loop[1] and x < loop[2] end
   local in_punch = function(x) return punch and x >= punch[1] and x < punch[2] end
   -- Skip bar numbers that would run into each other when zoomed out.
-  local every = math.max(1, math.ceil(5 / (daw.time.bar(self.scroll) * zoom)))
+  local every = math.max(1, math.ceil(5 / (paw.time.bar(self.scroll) * zoom)))
   local free = 0 -- the first column a label has not taken
   for _, line in ipairs(lines) do
     if line.bar then
@@ -755,9 +755,9 @@ function view:render(buf, ctx)
   end
   -- Tempo and signature changes: a mark and the value, after the bar number.
   local mark_end = -1
-  for _, mark in ipairs(daw.tempo.marks(self.scroll, self.scroll + span)) do
+  for _, mark in ipairs(paw.tempo.marks(self.scroll, self.scroll + span)) do
     local x = col(mark.beat)
-    if daw.tempo.is_bar_line(mark.beat) then x = x + #tostring(daw.time.bar_of(mark.beat)) end
+    if paw.tempo.is_bar_line(mark.beat) then x = x + #tostring(paw.time.bar_of(mark.beat)) end
     x = math.max(x, mark_end)
     mark_end = x + ruler:text(x, 0, (mark.kind == "tempo" and "▾" or "‖") .. mark.text, "RulerTempo") + 1
   end
@@ -786,19 +786,19 @@ function view:render(buf, ctx)
       header(self, headers, y, row.h, track, row.index, selected and not cursor_lane, automation, hue)
       -- With its lanes open as rows, a track's curve is drawn there, not here.
       covered[row] = lane(lanes, y, row.h, track, selected, self.scroll, zoom, cursor_clip,
-        daw.lanes.is_open(row.id) and {} or automation, hue, lines, loop)
+        paw.lanes.is_open(row.id) and {} or automation, hue, lines, loop)
       if selected and not cursor_lane then
         local x = col(cursor.beat)
         -- In the mode's colour where the clips' names are, a shadow below.
         local cw = math.max(1, math.floor(opt.grid * zoom))
-        local mode = daw.keymap.mode
+        local mode = paw.keymap.mode
         lanes:fill(x, y, cw, 1, nil, mode == "x" and "CursorVisual" or mode == "i" and "InsertCursor" or "Cursor")
         if row.h > 1 then lanes:fill(x, y + 1, cw, row.h - 1, nil, "CursorTail") end
       end
     end
   end
   -- The selection of visual mode: whole tracks, or a stretch of time on some.
-  local selection = daw.keymap.selection()
+  local selection = paw.keymap.selection()
   if selection then
     for _, row in ipairs(cursor_lane and {} or L.rows) do
       if row.kind == "track" and row.index >= selection.r0 and row.index <= selection.r1 then
@@ -871,39 +871,39 @@ end
 function view:center()
   local g = self.geometry
   if not g then return end
-  self.scroll = math.max(0, daw.time.bar_floor(math.max(0, daw.cursor.beat - g.span / 2)))
+  self.scroll = math.max(0, paw.time.bar_floor(math.max(0, paw.cursor.beat - g.span / 2)))
   api.ui_redraw()
 end
 
 --- Scroll by bars without moving the cursor.
 function view:scroll_by(bars)
-  self.scroll = math.max(0, self.scroll + bars * daw.time.bar(self.scroll))
+  self.scroll = math.max(0, self.scroll + bars * paw.time.bar(self.scroll))
   api.ui_redraw()
 end
 
 -- What modal editing works on: rows are positions in the track list.
 view.grid = {
-  get = function() return daw.cursor.row() or 1, daw.cursor.beat end,
+  get = function() return paw.cursor.row() or 1, paw.cursor.beat end,
   set = function(row, col)
-    local list = daw.groups.rows()
+    local list = paw.groups.rows()
     local id = list[util.clamp(row, 1, #list)]
     -- Staying on the same track keeps the cursor on the lane row it is on.
-    if #list > 0 and id ~= daw.cursor.track_id() then daw.cursor.set_track(id) end
-    daw.cursor.set_beat(col)
+    if #list > 0 and id ~= paw.cursor.track_id() then paw.cursor.set_track(id) end
+    paw.cursor.set_beat(col)
   end,
-  step = function() return daw.opt.grid end,
+  step = function() return paw.opt.grid end,
   -- A mark stays with its track when tracks are moved around.
-  mark = function() return { track = daw.cursor.track_id(), beat = daw.cursor.beat } end,
+  mark = function() return { track = paw.cursor.track_id(), beat = paw.cursor.beat } end,
   jump = function(pos)
-    if pos.track and pcall(api.track_get, pos.track) then daw.cursor.set_track(pos.track) end
-    daw.cursor.set_beat(pos.beat)
+    if pos.track and pcall(api.track_get, pos.track) then paw.cursor.set_track(pos.track) end
+    paw.cursor.set_beat(pos.beat)
   end,
   -- Clips by name where they start, and tracks by name at the cursor's beat.
   search = function(text)
     local wanted, hits = text:lower(), {}
-    for row, id in ipairs(daw.groups.rows()) do
+    for row, id in ipairs(paw.groups.rows()) do
       if api.track_get(id).name:lower():find(wanted, 1, true) then
-        hits[#hits + 1] = { row = row, col = daw.cursor.beat }
+        hits[#hits + 1] = { row = row, col = paw.cursor.beat }
       end
       for _, clip in ipairs(api.clip_list(id)) do
         if clip.name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = row, col = clip.start } end
@@ -913,5 +913,5 @@ view.grid = {
   end,
 }
 
-daw.ui.view("arrange", view)
+paw.ui.view("arrange", view)
 return view

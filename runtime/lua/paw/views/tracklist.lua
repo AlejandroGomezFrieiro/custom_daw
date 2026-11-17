@@ -1,20 +1,20 @@
--- The listings of the project that are edited as text (daw/textbuf.lua):
+-- The listings of the project that are edited as text (paw/textbuf.lua):
 --
---   daw://tracks             a track a line: name, volume, pan, flags, output, group, colour, devices
---   daw://sends              a send a line: from, to, level, before or after the fader
---   daw://track/N/devices    the device chain of track N (or `master`): name, on, wet, preset
---   daw://markers            a marker or region a line: where, name, where it ends
+--   paw://tracks             a track a line: name, volume, pan, flags, output, group, colour, devices
+--   paw://sends              a send a line: from, to, level, before or after the fader
+--   paw://track/N/devices    the device chain of track N (or `master`): name, on, wet, preset
+--   paw://markers            a marker or region a line: where, name, where it ends
 --
 -- Each kind reads the project into lines of fields two spaces apart, reads
 -- a line back into fields, and turns what changed into the steps of a
 -- plan. A line reads back as the same fields it was written from, so a
 -- line left alone is no change, whatever the project rounds.
-local api = daw.api
-local tb = daw.textbuf
+local api = paw.api
+local tb = paw.textbuf
 local quote, unquote, cells = tb.quote, tb.unquote, tb.cells
 
-local function arrow() return daw.opt.ascii and "->" or "→" end
-local function chain() return daw.opt.ascii and ">" or "▸" end
+local function arrow() return paw.opt.ascii and "->" or "→" end
+local function chain() return paw.opt.ascii and ">" or "▸" end
 
 local function fmt(v)
   local text = string.format("%.1f", v)
@@ -63,7 +63,7 @@ end
 
 local function plural(n, word) return n .. " " .. word .. (n == 1 and "" or "s") end
 
--- daw://tracks -------------------------------------------------------------------------
+-- paw://tracks -------------------------------------------------------------------------
 
 local TRACK_FIELDS = "the name first, then vol, pan, flags (M S R), out, group, in, color and " .. chain() .. " devices"
 
@@ -119,7 +119,7 @@ end
 --- What a device's name or kind names, of the devices there are: its kind.
 local function device_kind(name)
   local lower = name:lower()
-  local types = daw.device_types()
+  local types = paw.device_types()
   for _, info in ipairs(types) do
     if info.kind:lower() == lower then return info.kind end
   end
@@ -139,11 +139,11 @@ local function resolver(lines, what)
   return function(name, row)
     local list = by_name[name]
     -- A narrowed tab lists its group's tracks: the others are named as they are.
-    if not list and daw.scope.current() then
+    if not list and paw.scope.current() then
       for _, id in ipairs(api.track_list()) do
-        if api.track_get(id).name == name and not daw.scope.contains(id) then
+        if api.track_get(id).name == name and not paw.scope.contains(id) then
           list = list or {}
-          list[#list + 1] = { id = id, fields = { name = name, head = daw.groups.is_group(id) or nil } }
+          list[#list + 1] = { id = id, fields = { name = name, head = paw.groups.is_group(id) or nil } }
         end
       end
     end
@@ -167,12 +167,12 @@ tb.kind("tracks", {
   read = function()
     local out = {}
     -- In a narrowed tab, the tracks of its group: the others are left as they are.
-    for i, id in ipairs(daw.scope.tracks()) do out[i] = { id = id, track = api.track_get(id) } end
+    for i, id in ipairs(paw.scope.tracks()) do out[i] = { id = id, track = api.track_get(id) } end
     return out
   end,
   format = function(item)
     local t = item.track
-    local group = daw.groups.of(t.id)
+    local group = paw.groups.of(t.id)
     -- A member sounding through its group says so with `in` alone.
     local out = t.output and t.output ~= group and track_name(t.output)
     local names = device_names(t)
@@ -180,7 +180,7 @@ tb.kind("tracks", {
       quote(t.name), "vol " .. db_text(t.volume), "pan " .. pan_text(t.pan),
       (t.mute and "M" or "-") .. (t.solo and "S" or "-") .. (t.armed and "R" or "-"),
       out and "out " .. quote(out) or "",
-      daw.groups.is_group(t.id) and "group" or "",
+      paw.groups.is_group(t.id) and "group" or "",
       group and "in " .. quote(track_name(group)) or "",
       t.color and "color " .. t.color or "",
       #names > 0 and chain() .. " " .. table.concat(names, ", ") or "",
@@ -192,8 +192,8 @@ tb.kind("tracks", {
     for i, id in ipairs(api.track_list()) do
       if id == line.id then index = i end
     end
-    if not index then return daw.notify("a new track has no devices yet: `:w` makes it first", "warn") end
-    tb.open("daw://track/" .. index .. "/devices", { here = true })
+    if not index then return paw.notify("a new track has no devices yet: `:w` makes it first", "warn") end
+    tb.open("paw://track/" .. index .. "/devices", { here = true })
   end,
   plan = function(ch)
     local steps = {}
@@ -211,7 +211,7 @@ tb.kind("tracks", {
         if g == e then error(string.format("line %d: a group cannot be inside itself", e.row), 0) end
       end
       if e.base and not tb.same(f.devices, e.base.devices) then
-        error(string.format("line %d: a track's devices are edited in daw://track/N/devices (Enter on its line)", e.row), 0)
+        error(string.format("line %d: a track's devices are edited in paw://track/N/devices (Enter on its line)", e.row), 0)
       end
       if not e.base then
         for _, name in ipairs(f.devices) do
@@ -274,14 +274,14 @@ tb.kind("tracks", {
         local t = api.track_get(e.copy_of)
         made[#made + 1] = e
         step(string.format("copy %s as %s (%s, %s)", quote(t.name), quote(e.fields.name), plural(#t.devices, "device"), plural(#t.clips, "clip")), function(st)
-          local snap = daw.track(e.copy_of):snapshot()
+          local snap = paw.track(e.copy_of):snapshot()
           -- The tracks the original's further output pairs play into stay the original's.
           for _, device in ipairs(snap.devices) do device.outputs = nil end
           -- The copy is what its line says: where it plays and which group
           -- it is in are set with the others' below.
           snap.name, snap.volume, snap.pan, snap.color = e.fields.name, e.fields.vol, e.fields.pan, e.fields.color
           snap.mute, snap.output = e.fields.mute, nil
-          local track = daw.restore_track(snap)
+          local track = paw.restore_track(snap)
           st.made[e.row] = track.id
           if e.fields.solo then api.track_set(track.id, "solo", true) end
           if e.fields.armed then api.track_set(track.id, "armed", true) end
@@ -294,7 +294,7 @@ tb.kind("tracks", {
         local kinds = {}
         for _, name in ipairs(f.devices) do kinds[#kinds + 1] = device_kind(name) end
         step(string.format("add %s%s", quote(f.name), #kinds > 0 and " with " .. table.concat(kinds, ", ") or ""), function(st)
-          local track = daw.add_track({ name = f.name, volume = f.vol, pan = f.pan, color = f.color })
+          local track = paw.add_track({ name = f.name, volume = f.vol, pan = f.pan, color = f.color })
           st.made[e.row] = track.id
           for key, value in pairs({ mute = f.mute, solo = f.solo, armed = f.armed }) do
             if value then api.track_set(track.id, key, true) end
@@ -317,7 +317,7 @@ tb.kind("tracks", {
         local g = f.group and resolve(f.group, e.row)
         step(f.group and string.format("%s: into the group %s", quote(f.name), quote(f.group)) or string.format("%s: out of the group %s", quote(f.name), quote(base.group)), function(st)
           local id = id_of(e, st)
-          if g then daw.groups.add(id, id_of(g, st)) else daw.groups.remove(id, true) end
+          if g then paw.groups.add(id, id_of(g, st)) else paw.groups.remove(id, true) end
         end)
       end
       if new and f.out or (base and not e.copy_of and f.out ~= base.out) then
@@ -337,7 +337,7 @@ tb.kind("tracks", {
       step("order the tracks as the lines are", function(st)
         -- In a narrowed tab, its tracks keep the place in the list they had.
         local i = 0
-        local first = daw.scope.current() and daw.scope.tracks()[1]
+        local first = paw.scope.current() and paw.scope.tracks()[1]
         for k, id in ipairs(first and api.track_list() or {}) do
           if id == first then i = k - 1 end
         end
@@ -354,7 +354,7 @@ tb.kind("tracks", {
   end,
 })
 
--- daw://sends --------------------------------------------------------------------------------
+-- paw://sends --------------------------------------------------------------------------------
 
 local function parse_send(text)
   local list = cells(text)
@@ -479,15 +479,15 @@ tb.kind("sends", {
   end,
 })
 
--- daw://track/N/devices ------------------------------------------------------------------------
+-- paw://track/N/devices ------------------------------------------------------------------------
 
 --- The track a devices buffer is of: N its place in the list, or `master`.
 local function chain_track(ctx)
   local which = ctx.args[1]
-  if which == "master" then return daw.master.id end
+  if which == "master" then return paw.master.id end
   local n = tonumber(which)
   local id = n and api.track_list()[n]
-  if not id then error("no track " .. tostring(which) .. ": daw://track/N/devices takes the track's place in the list, or master", 0) end
+  if not id then error("no track " .. tostring(which) .. ": paw://track/N/devices takes the track's place in the list, or master", 0) end
   return id
 end
 
@@ -518,9 +518,9 @@ local function wet_text(v)
   return text
 end
 
---- A preset of a device by name, the way `daw.fx.load` finds one; nil without.
+--- A preset of a device by name, the way `paw.fx.load` finds one; nil without.
 local function find_preset(device, name)
-  local list = daw.fx.presets(device)
+  local list = paw.fx.presets(device)
   for _, p in ipairs(list) do
     if p.name == name then return p end
   end
@@ -530,11 +530,11 @@ local function find_preset(device, name)
 end
 
 tb.kind("devices", {
-  pattern = "^daw://track/([%w]+)/devices$",
-  example = "daw://track/1/devices",
+  pattern = "^paw://track/([%w]+)/devices$",
+  example = "paw://track/1/devices",
   title = function(ctx)
     local ok, id = pcall(chain_track, ctx)
-    return ok and "Devices of " .. (id == daw.master.id and "the master" or track_name(id)) or "Devices"
+    return ok and "Devices of " .. (id == paw.master.id and "the master" or track_name(id)) or "Devices"
   end,
   keywords = { wet = true, preset = true },
   hint = "edit the chain and `:w` · `o` and a device's name adds one, `dd` removes, `yyp` copies, `ddp` moves one down · `-` the tracks",
@@ -559,18 +559,18 @@ tb.kind("devices", {
     }
   end,
   parse = parse_device,
-  parent = function() return "daw://tracks" end,
+  parent = function() return "paw://tracks" end,
   open = function(ctx, line)
-    if not line.id then return daw.notify("a new device opens once `:w` has made it", "warn") end
+    if not line.id then return paw.notify("a new device opens once `:w` has made it", "warn") end
     -- The device panel, on the device's own row.
     local track = chain_track(ctx)
-    if track ~= daw.master.id then daw.cursor.set_track(track) end
-    daw.ui.show("devices")
-    local panel = daw.ui.views.devices
+    if track ~= paw.master.id then paw.cursor.set_track(track) end
+    paw.ui.show("devices")
+    local panel = paw.ui.views.devices
     for i, row in ipairs(panel:rows()) do
       if row.device and row.device.id == line.id and not row.param then panel.row = i break end
     end
-    daw.ui.focus("devices")
+    paw.ui.focus("devices")
   end,
   plan = function(ch, ctx)
     local track = chain_track(ctx)
@@ -602,7 +602,7 @@ tb.kind("devices", {
       end
       if f.preset ~= (base and base.preset) then
         if f.preset then
-          step(string.format("%s: preset %s", quote(f.name), quote(f.preset)), function(st) daw.fx.load(id_of(e, st), f.preset) end)
+          step(string.format("%s: preset %s", quote(f.name), quote(f.preset)), function(st) paw.fx.load(id_of(e, st), f.preset) end)
         else
           step(string.format("%s: forget the preset's name", quote(f.name)), function(st)
             local id = id_of(e, st)
@@ -617,12 +617,12 @@ tb.kind("devices", {
     for _, e in ipairs(ch.lines) do
       if e.copy_of then
         step("copy " .. quote(e.base.name), function(st)
-          st.made[e.row] = daw.restore_device(daw.device(e.copy_of):snapshot(), track).id
+          st.made[e.row] = paw.restore_device(paw.device(e.copy_of):snapshot(), track).id
         end)
         settle(e, e.base)
       elseif not e.id then
         local kind = device_kind(e.fields.name)
-        step("add " .. kind, function(st) st.made[e.row] = daw.track(track):add_device(kind).id end)
+        step("add " .. kind, function(st) st.made[e.row] = paw.track(track):add_device(kind).id end)
         settle(e, { on = true, wet = 100 })
       end
     end
@@ -643,7 +643,7 @@ tb.kind("devices", {
   end,
 })
 
--- daw://markers -------------------------------------------------------------------------------
+-- paw://markers -------------------------------------------------------------------------------
 
 --- `bar.beat`, with hundredths of a beat when it is not on one.
 local function position_text(beat)
@@ -657,7 +657,7 @@ end
 local function parse_position(text)
   local bar, beat, part = text:match("^(%d+)%.?(%d*)%.?(%d*)$")
   if not bar or tonumber(bar) < 1 then error("a position is bar.beat, like 5.1, or bar.beat.hundredths", 0) end
-  local at = daw.time.bar_start(tonumber(bar))
+  local at = paw.time.bar_start(tonumber(bar))
   local _, den = api.tempo_signature(at)
   local unit = 4 / (den or 4)
   return at + ((tonumber(beat) or 1) - 1 + (tonumber(part) or 0) / 100) * unit
@@ -706,7 +706,7 @@ tb.kind("markers", {
   end,
   read = function()
     local out = {}
-    for i, m in ipairs(daw.markers.list()) do out[i] = { id = m.id, marker = m } end
+    for i, m in ipairs(paw.markers.list()) do out[i] = { id = m.id, marker = m } end
     return out
   end,
   format = function(item)
@@ -721,25 +721,25 @@ tb.kind("markers", {
   open = function(_, line, text)
     local f = parse_marker(text)
     if not f then return end
-    daw.cursor.set_beat(f.beat)
-    daw.notify(marker_text(f))
+    paw.cursor.set_beat(f.beat)
+    paw.notify(marker_text(f))
   end,
   plan = function(ch)
     local steps = {}
     for _, d in ipairs(ch.deleted) do
-      steps[#steps + 1] = { text = "delete the " .. marker_text(d.base), run = function() daw.markers.remove(d.id) end }
+      steps[#steps + 1] = { text = "delete the " .. marker_text(d.base), run = function() paw.markers.remove(d.id) end }
     end
     for _, e in ipairs(ch.changed) do
       local f = e.fields
       steps[#steps + 1] = { text = "change the " .. marker_text(e.base) .. " to " .. marker_text(f), run = function()
-        daw.markers.set(e.id, { beat = f.beat, name = f.name, length = f.finish and f.finish - f.beat or false, color = f.color or false })
+        paw.markers.set(e.id, { beat = f.beat, name = f.name, length = f.finish and f.finish - f.beat or false, color = f.color or false })
       end }
     end
     for _, e in ipairs(ch.lines) do
       if not e.base or e.copy_of then
         local f = e.fields
         steps[#steps + 1] = { text = "add the " .. marker_text(f), run = function()
-          daw.markers.add(f.beat, f.name, { length = f.finish and f.finish - f.beat or nil, color = f.color })
+          paw.markers.add(f.beat, f.name, { length = f.finish and f.finish - f.beat or nil, color = f.color })
         end }
       end
     end

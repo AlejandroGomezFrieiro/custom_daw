@@ -1,11 +1,11 @@
 -- Tests for the undo tree extension, run by tests/suite.lua.
 local T = ...
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local test, eq, near = T.test, T.eq, T.near
 
 local function ext()
-  if not daw.ext.loaded.undotree then daw.ext.load("extensions/undotree") end
+  if not paw.ext.loaded.undotree then paw.ext.load("extensions/undotree") end
   return require("undotree")
 end
 
@@ -13,9 +13,9 @@ end
 local function start()
   local u = ext()
   T.fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  daw.ui.close()
-  daw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  paw.ui.close()
+  paw.ui.focus("arrange")
   u.clear_ab()
   return u
 end
@@ -36,13 +36,13 @@ test("undotree: undo then edit keeps the old branch reachable", function()
   start()
   local t
   local root = api.undo_current()
-  local s1 = step(function() t = daw.add_track({ name = "T" }) end)
+  local s1 = step(function() t = paw.add_track({ name = "T" }) end)
   local s2 = step(function() t:add_clip({ name = "old", start = 0, length = 4 }) end)
-  eq(daw.undo(), true, "undo")
+  eq(paw.undo(), true, "undo")
   eq(names(t), "", "the clip is gone")
   local s3 = step(function() t:add_clip({ name = "new", start = 4, length = 4 }) end)
   eq(names(t), "new", "the new branch")
-  eq(daw.redo(), false, "nothing to redo at the end of a branch")
+  eq(paw.redo(), false, "nothing to redo at the end of a branch")
   local tree = ext().tree()
   eq(#tree.states, 4, "four states")
   eq(tree.by_id[s2].parent, s1, "the old branch hangs from #" .. s1)
@@ -50,20 +50,20 @@ test("undotree: undo then edit keeps the old branch reachable", function()
   eq(tree.by_id[s1].parent, root, "from the root")
   eq(api.undo_goto(s2), true, "go to the old branch")
   eq(names(t), "old", "the old clip is back")
-  eq(daw.undo(), true, "undo")
-  eq(daw.redo(), true, "redo follows the branch last visited")
+  eq(paw.undo(), true, "undo")
+  eq(paw.redo(), true, "redo follows the branch last visited")
   eq(names(t), "old", "back on the old branch")
   eq(api.undo_goto(s3), true, "and to the new one")
   eq(names(t), "new", "the new clip")
   eq(api.undo_goto(999999), false, "no such state")
   -- A state knows when it was made and what made it.
-  daw.cmd("track.add", { "Cmd" })
+  paw.cmd("track.add", { "Cmd" })
   api.undo_checkpoint()
   local last = ext().tree().by_id[api.undo_current()]
   eq(last.label, "Add a track below the cursor", "the command's description is the label")
   near(last.time, os.time(), 5, "made now")
-  daw.ui.focus("arrange")
-  daw._kernel.key("O")
+  paw.ui.focus("arrange")
+  paw._kernel.key("O")
   api.undo_checkpoint()
   last = ext().tree().by_id[api.undo_current()]
   eq(last.keys, "O", "the keys typed are kept")
@@ -73,13 +73,13 @@ test("undotree: g- and g+ visit every state in time order", function()
   local u = start()
   local ids = { api.undo_current() }
   local t
-  ids[#ids + 1] = step(function() t = daw.add_track({ name = "T" }) end)
+  ids[#ids + 1] = step(function() t = paw.add_track({ name = "T" }) end)
   ids[#ids + 1] = step(function() t.volume = -1 end)
-  daw.undo()
+  paw.undo()
   ids[#ids + 1] = step(function() t.volume = -2 end)
-  daw.undo()
-  daw.undo()
-  ids[#ids + 1] = step(function() daw.add_track({ name = "U" }) end)
+  paw.undo()
+  paw.undo()
+  ids[#ids + 1] = step(function() paw.add_track({ name = "U" }) end)
   local seen = { api.undo_current() }
   for _ = 1, #ids do
     T.keys("g-")
@@ -94,15 +94,15 @@ test("undotree: g- and g+ visit every state in time order", function()
   eq(table.concat(seen, " "), table.concat(ids, " "), "g+ forward through every state")
   T.keys("3g-")
   eq(api.undo_current(), ids[2], "a count")
-  eq(daw.tracks()[1].volume, 0, "and the project is that state")
+  eq(paw.tracks()[1].volume, 0, "and the project is that state")
   -- :earlier and :later, by count and by time.
-  daw.cmd("later", { 2 })
+  paw.cmd("later", { 2 })
   eq(api.undo_current(), ids[4], ":later 2")
-  eq(daw.tracks()[1].volume, -2, "the branch with -2 dB")
-  daw.cmd("earlier", { "1h" })
+  eq(paw.tracks()[1].volume, -2, "the branch with -2 dB")
+  paw.cmd("earlier", { "1h" })
   eq(api.undo_current(), ids[1], ":earlier 1h goes back to the start")
-  eq(#daw.tracks(), 0, "an empty project")
-  daw.cmd("later", { "10m" })
+  eq(#paw.tracks(), 0, "an empty project")
+  paw.cmd("later", { "10m" })
   eq(api.undo_current(), ids[5], ":later 10m to the newest")
   eq(u.parse_amount("2m").seconds, 120, "minutes")
   eq(u.parse_amount("30s").seconds, 30, "seconds")
@@ -115,7 +115,7 @@ test("undotree: what differs between two states", function()
   local t, clip
   local s0 = api.undo_current()
   local s1 = step(function()
-    t = daw.add_track({ name = "Bass" })
+    t = paw.add_track({ name = "Bass" })
     t:add_device("synth", { cutoff = 900 })
     clip = t:add_clip({ name = "riff", start = 0, length = 4,
       notes = { { pitch = 40, start = 0 }, { pitch = 43, start = 1 }, { pitch = 45, start = 2 } } })
@@ -129,7 +129,7 @@ test("undotree: what differs between two states", function()
     notes[#notes + 1] = { pitch = 47, start = 3 }
     notes[#notes + 1] = { pitch = 48, start = 3.5 }
     clip:set_notes(notes)
-    daw.add_track({ name = "Keys" })
+    paw.add_track({ name = "Keys" })
   end)
   local d = api.undo_diff(s0, s1)
   eq(d.tracks.added, 1, "a track added")
@@ -156,7 +156,7 @@ end)
 test("undotree: named states survive saving and reopening", function()
   local u = start()
   local path = T.scratch .. "/checkpoints-song.json"
-  local t = daw.add_track({ name = "T" })
+  local t = paw.add_track({ name = "T" })
   api.undo_checkpoint()
   eq(api.checkpoint_dir(), nil, "an unsaved project has no checkpoint folder")
   -- Before the project has a file the name is kept, and written on saving.
@@ -164,55 +164,55 @@ test("undotree: named states survive saving and reopening", function()
   eq(first.pending, true, "waiting for a file")
   t:add_clip({ name = "verse", start = 0, length = 4 })
   api.undo_checkpoint()
-  eq(daw.project.modified, true, "modified")
-  daw.project.save(path)
-  daw.flush()
-  eq(daw.project.modified, false, "not modified once saved")
+  eq(paw.project.modified, true, "modified")
+  paw.project.save(path)
+  paw.flush()
+  eq(paw.project.modified, false, "not modified once saved")
   local dir = api.checkpoint_dir()
   eq(dir, T.scratch .. "/checkpoints-song.checkpoints", "the folder beside the project")
   eq(#api.checkpoint_list(), 1, "the waiting one was written")
   eq(api.checkpoint_list()[1].name, "intro", "under its name")
-  daw.cmd("checkpoint", { "before the bridge" })
+  paw.cmd("checkpoint", { "before the bridge" })
   t:add_clip({ name = "bridge", start = 4, length = 4 })
   api.undo_checkpoint()
-  eq(daw.project.modified, true, "modified after an edit")
-  daw.undo()
-  eq(daw.project.modified, false, "and not after undoing back to what was saved")
-  daw.redo()
-  daw.project.save(path)
+  eq(paw.project.modified, true, "modified after an edit")
+  paw.undo()
+  eq(paw.project.modified, false, "and not after undoing back to what was saved")
+  paw.redo()
+  paw.project.save(path)
 
-  daw.project.load(path)
-  daw.flush()
-  eq(names(daw.tracks()[1]), "verse bridge", "reopened as saved")
+  paw.project.load(path)
+  paw.flush()
+  eq(names(paw.tracks()[1]), "verse bridge", "reopened as saved")
   local list = api.checkpoint_list()
   eq(#list, 2, "both checkpoints listed after reopening")
   eq(list[2].name, "before the bridge", "names with spaces")
   local items = u.items()
   eq(items[1].name, "before the bridge", "newest first")
-  daw.cmd("checkpoint.restore", { "intro" })
-  eq(names(daw.tracks()[1]), "", "the intro state is back")
+  paw.cmd("checkpoint.restore", { "intro" })
+  eq(names(paw.tracks()[1]), "", "the intro state is back")
   local tree = u.tree()
   eq(tree.by_id[tree.current].name, "intro", "as a named state")
-  eq(daw.undo(), true, "which undo leaves")
-  eq(names(daw.tracks()[1]), "verse bridge", "back to what was opened")
-  daw.cmd("checkpoint.restore", { "1" })
-  eq(names(daw.tracks()[1]), "verse", "by number")
+  eq(paw.undo(), true, "which undo leaves")
+  eq(names(paw.tracks()[1]), "verse bridge", "back to what was opened")
+  paw.cmd("checkpoint.restore", { "1" })
+  eq(names(paw.tracks()[1]), "verse", "by number")
   -- Without a picker the list is a page.
-  local pick = daw.pick
-  daw.pick = nil
-  daw.cmd("checkpoints")
+  local pick = paw.pick
+  paw.pick = nil
+  paw.cmd("checkpoints")
   local text = table.concat(api.ui_snapshot(100, 30), "\n")
   eq(text:find("before the bridge", 1, true) ~= nil, true, "the page lists them")
-  daw.ui.close()
+  paw.ui.close()
   -- With one, it gets the items.
   local got
-  daw.pick = function(opts) got = opts end
-  daw.cmd("checkpoints")
+  paw.pick = function(opts) got = opts end
+  paw.cmd("checkpoints")
   eq(got.title, "Checkpoints", "the picker is used")
   eq(#got.items, 2, "with every checkpoint")
   got.on_choose(got.items[2])
-  eq(names(daw.tracks()[1]), "", "choosing restores")
-  daw.pick = pick
+  eq(names(paw.tracks()[1]), "", "choosing restores")
+  paw.pick = pick
   api.checkpoint_delete(list[1].file)
   eq(#api.checkpoint_list(), 1, "deleted")
   T.fresh()
@@ -220,7 +220,7 @@ end)
 
 test("undotree: A/B while playing keeps the transport going", function()
   local u = start()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local t = T.tone("AB", 64)
   t.volume = -3
   api.undo_checkpoint()
@@ -233,31 +233,31 @@ test("undotree: A/B while playing keeps the transport going", function()
   eq(t.volume, -3, "A's mix")
   eq(u.toggle(), "B", "and back")
   eq(t.volume, -12, "B's mix")
-  daw.transport.seek(0)
-  daw.transport.play()
+  paw.transport.seek(0)
+  paw.transport.play()
   local deadline = api.now() + 3000
-  while daw.transport.position < 1 and api.now() < deadline do api.sleep(5) end
+  while paw.transport.position < 1 and api.now() < deadline do api.sleep(5) end
   for i = 1, 4 do
-    daw.flush()
-    local before = daw.transport.position
-    daw.cmd("ab.toggle")
-    daw.flush()
-    local after = daw.transport.position
-    eq(daw.transport.playing, true, "still playing after switch " .. i)
+    paw.flush()
+    local before = paw.transport.position
+    paw.cmd("ab.toggle")
+    paw.flush()
+    local after = paw.transport.position
+    eq(paw.transport.playing, true, "still playing after switch " .. i)
     eq(after >= before, true, "no jump back: " .. before .. " then " .. after)
     eq(after - before < 0.25, true, "no jump forward: " .. before .. " then " .. after)
     eq(api.undo_current(), i % 2 == 1 and a or b, "switch " .. i .. " went to " .. (i % 2 == 1 and "A" or "B"))
     eq(t.volume, i % 2 == 1 and -3 or -12, "and the engine has that mix")
-    local start = daw.transport.position
+    local start = paw.transport.position
     local wait = api.now() + 3000
-    while daw.transport.position < start + 0.2 and api.now() < wait do api.sleep(5) end
-    eq(daw.transport.position >= start + 0.2, true, "the position keeps moving after switch " .. i)
+    while paw.transport.position < start + 0.2 and api.now() < wait do api.sleep(5) end
+    eq(paw.transport.position >= start + 0.2, true, "the position keeps moving after switch " .. i)
   end
   eq(t:meter() > 0, true, "the track is sounding")
-  daw.transport.stop()
+  paw.transport.stop()
   -- The single key does the same.
-  daw.ui.focus("arrange")
-  T.keys(daw.opt.undotree_ab_key)
+  paw.ui.focus("arrange")
+  T.keys(paw.opt.undotree_ab_key)
   eq(api.undo_current(), a, "the A/B key")
   u.clear_ab()
 end)
@@ -265,12 +265,12 @@ end)
 test("undotree: the view draws the tree and goes to a state", function()
   local u = start()
   local t
-  local s1 = step(function() t = daw.add_track({ name = "T" }) end)
+  local s1 = step(function() t = paw.add_track({ name = "T" }) end)
   local s2 = step(function() t:add_clip({ name = "one", start = 0, length = 4 }) end)
-  daw.undo()
+  paw.undo()
   local s3 = step(function() t:add_clip({ name = "two", start = 4, length = 4 }) end)
   api.undo_name("chorus")
-  daw.cmd("undotree")
+  paw.cmd("undotree")
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("Undo tree", 1, true) ~= nil, true, "the window: " .. text)
   eq(text:find("#" .. s3, 1, true) ~= nil, true, "the newest state")
@@ -287,28 +287,28 @@ test("undotree: the view draws the tree and goes to a state", function()
   eq(rows[3].id, s1, "then where they split")
   eq(rows[3].graph, "*─┘", "joined")
   -- j moves down to the old branch, Enter goes there.
-  daw.keymap.feed("j<CR>")
+  paw.keymap.feed("j<CR>")
   eq(api.undo_current(), s2, "Enter went to the selected state")
   eq(names(t), "one", "the project is that state")
   text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("@", 1, true) ~= nil, true, "still open")
-  daw.keymap.feed("q")
-  eq(daw.ui.float, nil, "q closes it")
+  paw.keymap.feed("q")
+  eq(paw.ui.float, nil, "q closes it")
 end)
 
 test("undotree: in a window of its own it takes keys and clicks as in the terminal", function()
   start()
   local t
-  step(function() t = daw.add_track({ name = "T" }) end)
+  step(function() t = paw.add_track({ name = "T" }) end)
   local s2 = step(function() t:add_clip({ name = "one", start = 0, length = 4 }) end)
   local s3 = step(function() t:add_clip({ name = "two", start = 4, length = 4 }) end)
-  daw.cmd("undotree")
-  daw.cmd("view.window")
-  eq(daw.ui.float, nil, "the floating tree moves into a window")
-  eq(daw.canvas.open_views.undotree.title, "Undo tree", "with its title")
+  paw.cmd("undotree")
+  paw.cmd("view.window")
+  eq(paw.ui.float, nil, "the floating tree moves into a window")
+  eq(paw.canvas.open_views.undotree.title, "Undo tree", "with its title")
   local cell = { w = 10, h = 20 }
   local function shown()
-    local painted = daw.canvas.paint("undotree", 1200, 400, { cell = cell, fresh = true })
+    local painted = paw.canvas.paint("undotree", 1200, 400, { cell = cell, fresh = true })
     local text = {}
     for _, op in ipairs(painted.ops) do if op[1] == "m" then text[#text + 1] = op[6] end end
     return table.concat(text, " ")
@@ -318,25 +318,25 @@ test("undotree: in a window of its own it takes keys and clicks as in the termin
   for _, run in ipairs(snap.rows[1]) do first[#first + 1] = run.text end
   eq(table.concat(first):find("#" .. s3, 1, true) ~= nil, true, "the newest state first")
   eq(shown():find("#" .. s3, 1, true) ~= nil, true, "and in the window")
-  daw.canvas.key("undotree", "j")
-  daw.canvas.key("undotree", "<CR>")
+  paw.canvas.key("undotree", "j")
+  paw.canvas.key("undotree", "<CR>")
   eq(api.undo_current(), s2, "j and Enter go to the state below")
-  for _, key in ipairs({ "n", "<C-u>", "v", "e", "r", "s", "e", "<CR>" }) do daw.canvas.key("undotree", key) end
+  for _, key in ipairs({ "n", "<C-u>", "v", "e", "r", "s", "e", "<CR>" }) do paw.canvas.key("undotree", key) end
   eq(ext().tree().by_id[s2].name, "verse", "n names it, typed in the window")
   eq(shown():find('"verse"', 1, true) ~= nil, true, "which the window shows")
   -- A click on the first row chooses the newest state.
-  daw.canvas.pointer("undotree", { kind = "down", x = 15, y = 5, button = "left" })
-  daw.canvas.key("undotree", "<CR>")
+  paw.canvas.pointer("undotree", { kind = "down", x = 15, y = 5, button = "left" })
+  paw.canvas.key("undotree", "<CR>")
   eq(api.undo_current(), s3, "a click and Enter go there")
-  daw.canvas.key("undotree", "q")
-  eq(daw.canvas.open_views.undotree, nil, "q closes the window")
-  eq(daw.ui.focused, "arrange", "and the keyboard goes back")
+  paw.canvas.key("undotree", "q")
+  eq(paw.canvas.open_views.undotree, nil, "q closes the window")
+  eq(paw.ui.focused, "arrange", "and the keyboard goes back")
 end)
 
 --- What a painted window of the tree drew: its nodes (the round rectangles,
 --- by state, newest first), its texts and its paths.
 local function painted_tree()
-  local drawing = daw.canvas.paint("undotree_paint", 900, 500, { fresh = true })
+  local drawing = paw.canvas.paint("undotree_paint", 900, 500, { fresh = true })
   local nodes, texts, paths = {}, {}, {}
   for _, op in ipairs(drawing.ops) do
     if op[1] == "r" and op[9] > 0 and op[4] == op[5] and op[9] * 2 == op[4] then nodes[#nodes + 1] = op end
@@ -350,23 +350,23 @@ end
 test("undotree: the painted window draws the tree, goes where a node is clicked and says what a step was", function()
   start()
   local t
-  local s1 = step(function() t = daw.add_track({ name = "T" }) end)
+  local s1 = step(function() t = paw.add_track({ name = "T" }) end)
   local s2 = step(function() t:add_clip({ name = "old", start = 0, length = 4 }) end)
-  daw.undo()
+  paw.undo()
   local s3 = step(function() t:add_clip({ name = "new", start = 4, length = 4 }) end)
   local offered = {}
-  for _, entry in ipairs(daw.canvas.openable()) do offered[entry.name] = entry.title end
+  for _, entry in ipairs(paw.canvas.openable()) do offered[entry.name] = entry.title end
   eq(offered.undotree_paint, "Undo tree", "the window offers the painted tree")
   eq(offered.undotree, nil, "instead of the terminal's")
-  daw.canvas.open("undotree_paint")
+  paw.canvas.open("undotree_paint")
   local nodes, text, paths = painted_tree()
   eq(#nodes, 4, "a node for each state")
   local current = 0
   for _, node in ipairs(nodes) do
-    if node[7] == daw.canvas.palette.text then current = current + 1 end
+    if node[7] == paw.canvas.palette.text then current = current + 1 end
   end
   eq(current, 1, "one is ringed as the current state")
-  eq(nodes[1][6], daw.canvas.palette.select, "and the current state, the newest, is the highlight colour")
+  eq(nodes[1][6], paw.canvas.palette.select, "and the current state, the newest, is the highlight colour")
   local elbow = false
   for _, p in ipairs(paths) do
     if select(2, p[2]:gsub("L", "")) == 2 then elbow = true end
@@ -375,19 +375,19 @@ test("undotree: the painted window draws the tree, goes where a node is clicked 
   eq(text:find("#" .. s3, 1, true) ~= nil and text:find("#" .. s2, 1, true) ~= nil, true, "each state is labelled")
   -- A click on a node goes there.
   local node = nodes[2]
-  daw.canvas.pointer("undotree_paint", { kind = "down", x = node[2] + node[4] / 2, y = node[3] + node[5] / 2, button = "left" })
+  paw.canvas.pointer("undotree_paint", { kind = "down", x = node[2] + node[4] / 2, y = node[3] + node[5] / 2, button = "left" })
   eq(api.undo_current(), s2, "a click on the second node goes to #" .. s2 .. " (the old branch)")
   local now = painted_tree()
-  eq(now[2][6], daw.canvas.palette.select, "which is now the lit one")
+  eq(now[2][6], paw.canvas.palette.select, "which is now the lit one")
   -- Resting on a node says what the step was.
-  daw.canvas.pointer("undotree_paint", { kind = "hover", x = node[2], y = node[3] })
+  paw.canvas.pointer("undotree_paint", { kind = "hover", x = node[2], y = node[3] })
   local _, tip = painted_tree()
   eq(tip:find("after #" .. s1, 1, true) ~= nil, true, "the tip names the state it grew from")
   eq(tip:find("ago", 1, true) ~= nil, true, "and says when")
   -- The terminal's keys work in it, and q closes it.
-  daw.canvas.key("undotree_paint", "k")
-  daw.canvas.key("undotree_paint", "<CR>")
+  paw.canvas.key("undotree_paint", "k")
+  paw.canvas.key("undotree_paint", "<CR>")
   eq(api.undo_current(), s3, "k and Enter go to the node above")
-  daw.canvas.key("undotree_paint", "q")
-  eq(daw.canvas.open_views.undotree_paint, nil, "q closes the window")
+  paw.canvas.key("undotree_paint", "q")
+  eq(paw.canvas.open_views.undotree_paint, nil, "q closes the window")
 end)

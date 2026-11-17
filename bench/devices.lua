@@ -2,9 +2,9 @@
 -- with and without one instance of the effect on every track (at its
 -- defaults, or with `busy` settings below that make it work), and the
 -- difference per instance as a share of one core in real time.
---   daw --clean --no-plugins -l bench/devices.lua [tracks] [seconds] [kind...]
-local daw = require("daw")
-local api = daw.api
+--   paw --clean --no-plugins -l bench/devices.lua [tracks] [seconds] [kind...]
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local args = { ... }
@@ -29,7 +29,7 @@ local function build(kind)
     for bar = 0, bars - 1 do api.clip_add(id, { start = bar * 4, length = 4, file = wav }) end
     if kind then api.device_add(id, kind, { params = busy[kind] or {} }) end
   end
-  daw.flush()
+  paw.flush()
   return bars
 end
 
@@ -38,7 +38,7 @@ local function render(kind)
   local out = B.tmp .. "/devices.wav"
   local best
   for _ = 1, 3 do
-    local info = daw.render(out, { start = 0, ["end"] = bars * 4, tail = 0, threads = 1 })
+    local info = paw.render(out, { start = 0, ["end"] = bars * 4, tail = 0, threads = 1 })
     best = math.min(best or math.huge, info.processing)
   end
   os.remove(out)
@@ -58,4 +58,4 @@ for _, d in ipairs(api.device_types()) do
     })
   end
 end
-daw.api.quit(0)
+paw.api.quit(0)

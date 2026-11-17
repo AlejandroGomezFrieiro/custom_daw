@@ -327,7 +327,7 @@ fn interpolated_peak<const F: usize>(x: &[f32], taps: usize, beta: f64) -> f32 {
 }
 
 /// True peak as a BS.1770 meter reads it, and as this program's own
-/// measurements do (`daw-core`'s analysis): four times over, 24 taps.
+/// measurements do (`paw-core`'s analysis): four times over, 24 taps.
 #[cfg(test)]
 pub fn true_peak(x: &[f32]) -> f32 {
     interpolated_peak::<4>(x, 24, 7.0)

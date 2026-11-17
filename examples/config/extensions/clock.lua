@@ -7,26 +7,26 @@ local glyphs = {
   ["9"] = { "█▀█", "▀▀█", "▀▀▀" }, ["."] = { " ", " ", "▀" },
 }
 
-daw.ui.hl("ClockDigits", { fg = "#ff9e64", bold = true })
-daw.ui.hl("ClockPlaying", { fg = "#9ece6a", bold = true })
+paw.ui.hl("ClockDigits", { fg = "#ff9e64", bold = true })
+paw.ui.hl("ClockPlaying", { fg = "#9ece6a", bold = true })
 
-daw.ui.view("clock", {
+paw.ui.view("clock", {
   focusable = false,
   render = function(_, buf)
-    local transport = daw.transport.get()
-    local text = daw.time.format(transport.position)
+    local transport = paw.transport.get()
+    local text = paw.time.format(transport.position)
     local x = 2
     for ch in text:gmatch(".") do
       local glyph = glyphs[ch]
       for row, line in ipairs(glyph) do
         buf:text(x, row - 1, line, transport.playing and "ClockPlaying" or "ClockDigits")
       end
-      x = x + daw.api.str_width(glyph[1]) + 1
+      x = x + paw.api.str_width(glyph[1]) + 1
     end
-    buf:text(x + 2, 1, string.format("%g bpm", daw.project.tempo), "Dim")
+    buf:text(x + 2, 1, string.format("%g bpm", paw.project.tempo), "Dim")
   end,
 })
 
-daw.ui.dock("clock", { side = "top", size = 3 })
-daw.command("clock", function() daw.ui.toggle("clock") end, { desc = "Show or hide the big clock" })
-daw.keymap.set("<leader>c", "clock", { desc = "Show or hide the big clock" })
+paw.ui.dock("clock", { side = "top", size = 3 })
+paw.command("clock", function() paw.ui.toggle("clock") end, { desc = "Show or hide the big clock" })
+paw.keymap.set("<leader>c", "clock", { desc = "Show or hide the big clock" })

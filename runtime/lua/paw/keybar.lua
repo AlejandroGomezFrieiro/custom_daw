@@ -2,7 +2,7 @@
 -- first, for the view and the mode you are in. `?` lists them all.
 --
 -- An extension adds a line for its own view:
---   daw.ui.keybar.set("myview", "n", { { "<CR>", "open" }, { "x", "delete" } })
+--   paw.ui.keybar.set("myview", "n", { { "<CR>", "open" }, { "x", "delete" } })
 -- Each entry is a key as mappings write it and a word or two for what it
 -- does; a third value replaces how the key is shown. An entry whose key is
 -- "" is no key but news, shown as one: the note insert mode is drawing. A
@@ -13,33 +13,33 @@ local M = { lines = {} }
 function M.set(view, mode, entries)
   M.lines[view] = M.lines[view] or {}
   M.lines[view][mode] = entries
-  daw.api.ui_redraw()
+  paw.api.ui_redraw()
 end
 
 local names = { ["<Space>"] = "Space", ["<CR>"] = "Enter", ["<Esc>"] = "Esc", ["<BS>"] = "Bksp", ["<Tab>"] = "Tab", ["<lt>"] = "<" }
 
 --- A key as a person reads it: `<leader>m` is `,m`, `<C-w>c` is `Ctrl-w c`.
 function M.show(lhs)
-  local out = daw.keymap.expand(lhs)
+  local out = paw.keymap.expand(lhs)
   out = out:gsub("<C%-(.)>(.*)", "Ctrl-%1 %2"):gsub("%s+$", "")
   return names[out] or out
 end
 
 --- The entries for what has the keyboard now, as `{ shown key, text }`.
 function M.entries()
-  local view = daw.ui.focused
-  local mode = daw.keymap.mode
+  local view = paw.ui.focused
+  local mode = paw.keymap.mode
   local lines = M.lines[view]
   -- A part of the view whose keys come first (a suggestion showing) has
   -- its own line, when it sets one.
-  local v = daw.ui.views[view]
+  local v = paw.ui.views[view]
   if v and v.subscope then
     local ok, sub = pcall(v.subscope, v)
     if ok and type(sub) == "table" then sub = sub[1] end
     if ok and sub and M.lines[sub] and M.lines[sub][mode] then lines = M.lines[sub] end
   end
   -- A view that takes every key itself has none of the usual ones.
-  local modal = daw.ui.views[view] and daw.ui.views[view].modal
+  local modal = paw.ui.views[view] and paw.ui.views[view].modal
   if modal and not lines then return {} end
   local entries = lines and (lines[mode] or mode ~= "n" and {} or nil) or mode == "n" and M.lines.default.n or {}
   if type(entries) == "function" then entries = entries() end
@@ -56,7 +56,7 @@ function M.check()
     for mode, entries in pairs(modes) do
       if type(entries) == "function" then entries = entries() or {} end
       local mapped = {}
-      for _, map in ipairs(daw.keymap.list(mode, view ~= "default" and view or nil)) do mapped[map.lhs] = true end
+      for _, map in ipairs(paw.keymap.list(mode, view ~= "default" and view or nil)) do mapped[map.lhs] = true end
       for _, entry in ipairs(entries) do
         -- Leaving a mode with Escape is not a mapping: it always works.
         local built_in = entry[1] == "<Esc>" and mode ~= "n" or entry[1] == ""
@@ -86,7 +86,7 @@ M.lines.pianoroll = {
   x = { { "d", "delete" }, { "y", "copy" }, { ">", "later" }, { "<lt>", "earlier" }, { "<C-a>", "up" }, { "<Esc>", "done" } },
   -- Insert mode: the note being drawn, then the keys that draw it.
   i = function()
-    local now = daw.roll_draw and daw.roll_draw.describe()
+    local now = paw.roll_draw and paw.roll_draw.describe()
     local out = {
       { "l", "longer" }, { "h", "shorter" }, { "k", "up" }, { "j", "down" }, { "<CR>", "next" }, { "<Space>", "rest" },
       { "o", "chord" }, { "<Esc>", "write" },

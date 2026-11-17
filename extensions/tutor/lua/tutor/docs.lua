@@ -1,7 +1,7 @@
 -- The course as Markdown, made from the same lesson tables the tutor runs,
 -- so the text in `docs/course/` cannot say something the tutor does not.
 --
---   daw --clean --no-plugins -l extensions/tutor/make-docs.lua    writes docs/course/
+--   paw --clean --no-plugins -l extensions/tutor/make-docs.lua    writes docs/course/
 --
 -- The tests compare these with the files on disk.
 local M = {}
@@ -64,7 +64,7 @@ made or changed and can hear. The same lessons run inside paw, where the
 tutor says what to do next and notices when you have done it:]]))
   add("")
   add("```lua")
-  add('daw.ext.load("extensions/tutor")   -- in ~/.config/daw/init.lua, or link the directory into ~/.config/daw/extensions')
+  add('paw.ext.load("extensions/tutor")   -- in ~/.config/paw/init.lua, or link the directory into ~/.config/paw/extensions')
   add("```")
   add("")
   add(paragraphs([[

@@ -1,4 +1,4 @@
--- `daw.query`: find things by where they sit in the project, as a
+-- `paw.query`: find things by where they sit in the project, as a
 -- Tree-sitter query or a CSS selector finds nodes in a tree.
 --
 --   clip[name~=pizz] > note[pitch>=C5]     the high notes of the pizzicato clips
@@ -15,7 +15,7 @@
 -- anywhere inside it, and `,` joins two queries.
 --
 -- A test is `field op value`: `=` `!=` `<` `<=` `>` `>=`, `~=` a regular
--- expression (`daw.regex`) holds, `^=` starts with, `$=` ends with, `*=`
+-- expression (`paw.regex`) holds, `^=` starts with, `$=` ends with, `*=`
 -- holds the words. `value|value` is either. A field alone holds when it is
 -- set (`[mute]`), `!field` when it is not. Pitches are written `c4`, `c#4`
 -- or `60`, `c` meaning any octave; lengths in beats or as a note value
@@ -24,14 +24,14 @@
 -- In Lua, the same as text or as a table of steps, each a string or a table
 -- of the kind and its tests, with `">"` between two for a step right inside:
 --
---   daw.query("clip[name~=pizz] > note[pitch>=C5]")
---   daw.query({ { "clip", name = "~= pizz" }, ">", { "note", pitch = ">= C5", function(n) return n.data.velocity > 90 end } })
+--   paw.query("clip[name~=pizz] > note[pitch>=C5]")
+--   paw.query({ { "clip", name = "~= pizz" }, ">", { "note", pitch = ">= C5", function(n) return n.data.velocity > 90 end } })
 --
 -- Each result is a node: `{ kind, id, data, parent, track, clip, location, text }`,
--- `data` the thing as `daw.api` gives it. `daw.query.field(kind, name, get)`
--- adds a field; the fields of `daw.ex.field` are fields here as well.
-local api = daw.api
-local A = daw.address
+-- `data` the thing as `paw.api` gives it. `paw.query.field(kind, name, get)`
+-- adds a field; the fields of `paw.ex.field` are fields here as well.
+local api = paw.api
+local A = paw.address
 
 local M = {}
 
@@ -103,7 +103,7 @@ local function children(cache, node, wanted, out)
       for _, id in ipairs(t.top) do out[#out + 1] = track_node(cache, id, node) end
     end
     if wanted == "*" or wanted == "marker" or wanted == "region" then
-      for _, m in ipairs(daw.markers and daw.markers.list() or {}) do
+      for _, m in ipairs(paw.markers and paw.markers.list() or {}) do
         out[#out + 1] = { kind = m.length and "region" or "marker", id = m.id, data = m, parent = node }
       end
     end
@@ -181,7 +181,7 @@ local function song_beat(node)
   end
 end
 
---- A node's location, as the quickfix list and `daw.qf.go` take them.
+--- A node's location, as the quickfix list and `paw.qf.go` take them.
 function M.location(node)
   local k, d = node.kind, node.data
   if k == "track" or k == "group" then return { uri = A.track(node.id) } end
@@ -210,11 +210,11 @@ end
 function M.describe(node)
   local k, d = node.kind, node.data
   local at = song_beat(node)
-  local when = at and daw.time.format(at) or ""
+  local when = at and paw.time.format(at) or ""
   if k == "note" then
     local c = clip_of(node)
     local lyric = type(d.meta) == "table" and type(d.meta.lyric) == "string" and " “" .. d.meta.lyric .. "”" or ""
-    return string.format("%s vel %d len %g%s at %s · %s", daw.music.name(d.pitch), d.velocity or 0, d.length or 0, lyric, when, c and c.data.name or "")
+    return string.format("%s vel %d len %g%s at %s · %s", paw.music.name(d.pitch), d.velocity or 0, d.length or 0, lyric, when, c and c.data.name or "")
   elseif k == "cc" then
     return string.format("%s %s = %g at %s · %s", tostring(d.type or "cc"), tostring(d.number or ""), d.value or 0, when, clip_of(node).data.name)
   elseif k == "clip" then
@@ -224,11 +224,11 @@ function M.describe(node)
   elseif k == "device" then
     return string.format("device %s on %s", d.name, track_name(node))
   elseif k == "lane" then
-    return string.format("lane %s on %s", daw.lanes and daw.lanes.name(d) or tostring(d.target), track_name(node))
+    return string.format("lane %s on %s", paw.lanes and paw.lanes.name(d) or tostring(d.target), track_name(node))
   elseif k == "point" then
     return string.format("point %g at %s on %s", d.value, when, track_name(node))
   elseif k == "marker" or k == "region" then
-    return string.format("%s %s at %s", k, daw.markers.label(d), when)
+    return string.format("%s %s at %s", k, paw.markers.label(d), when)
   end
   return k
 end
@@ -239,7 +239,7 @@ M.fields = {}
 
 --- Add a field to a kind of node: `get(node)` returns its value (a number,
 --- text, a boolean, or a list of texts any of which may match).
----   daw.query.field("note", "channel", function(node) return node.data.meta.channel end)
+---   paw.query.field("note", "channel", function(node) return node.data.meta.channel end)
 function M.field(kind, name, get)
   assert(KIND[kind] or kind == "*", "no kind of node `" .. tostring(kind) .. "`")
   M.fields[kind] = M.fields[kind] or {}
@@ -273,14 +273,14 @@ for name, get in pairs({
   len = function(n) return n.data.length end,
   ["end"] = function(n) return n.data.start + n.data.length end,
   at = song_beat,
-  bar = function(n) return daw.time.bar_of(song_beat(n)) end,
+  bar = function(n) return paw.time.bar_of(song_beat(n)) end,
   lyric = function(n) return meta(n).lyric end,
   art = articulations,
   channel = function(n) return meta(n).channel or 1 end,
 }) do M.field("note", name, get) end
 for name, get in pairs({
   ["end"] = function(n) return n.data.start + n.data.length end,
-  bar = function(n) return daw.time.bar_of(n.data.start) end,
+  bar = function(n) return paw.time.bar_of(n.data.start) end,
   notes = function(n) return n.data.note_count end,
   muted = function(n) return n.data.muted end,
   track = track_name,
@@ -291,23 +291,23 @@ for _, kind in ipairs({ "track", "group" }) do
   M.field(kind, "devices", function(n) return #(n.data.devices or {}) end)
 end
 for _, kind in ipairs({ "marker", "region" }) do
-  M.field(kind, "name", function(n) return daw.markers.label(n.data) end)
+  M.field(kind, "name", function(n) return paw.markers.label(n.data) end)
   M.field(kind, "start", function(n) return n.data.beat end)
   M.field(kind, "end", function(n) return n.data.beat + (n.data.length or 0) end)
-  M.field(kind, "bar", function(n) return daw.time.bar_of(n.data.beat) end)
+  M.field(kind, "bar", function(n) return paw.time.bar_of(n.data.beat) end)
 end
 M.field("device", "index", function(n) return n.index end)
 M.field("device", "track", track_name)
-M.field("lane", "name", function(n) return daw.lanes and daw.lanes.name(n.data) or tostring(n.data.target) end)
+M.field("lane", "name", function(n) return paw.lanes and paw.lanes.name(n.data) or tostring(n.data.target) end)
 M.field("lane", "points", function(n) return n.data.point_count end)
 M.field("cc", "at", song_beat)
 M.field("point", "at", song_beat)
 M.field("*", "comment", function(n) return meta(n).comment end)
 
--- The level `daw.ex` gives its fields.
+-- The level `paw.ex` gives its fields.
 local EX_LEVEL = { note = "note", clip = "clip", track = "track", group = "track" }
 
---- What `daw.ex` reads its fields from: `{ kind, track, clip, note, place, at }`.
+--- What `paw.ex` reads its fields from: `{ kind, track, clip, note, place, at }`.
 local function ex_item(node)
   if node.ex then return node.ex end
   local level = EX_LEVEL[node.kind]
@@ -328,7 +328,7 @@ function M.get(node, name)
   name = name:lower()
   local own = M.fields[node.kind] and M.fields[node.kind][name] or (node.kind == "group" and M.fields.track and M.fields.track[name])
   if own then return own(node) end
-  local ex = daw.ex and daw.ex.fields[name]
+  local ex = paw.ex and paw.ex.fields[name]
   if ex and ex.level == EX_LEVEL[node.kind] then return ex.get(ex_item(node)) end
   if M.fields["*"][name] then return M.fields["*"][name](node) end
   local v = node.data[name]
@@ -376,7 +376,7 @@ end
 --- A test of one value against what a field holds.
 local function value_test(field, op, text, whole)
   if op == "~=" then
-    local re, err = daw.regex.try(text)
+    local re, err = paw.regex.try(text)
     if not re then fail("%s", err) end
     return function(v) return v ~= nil and re:find(tostring(v)) ~= nil end
   end
@@ -690,7 +690,7 @@ end }
 
 --- Every node a query finds, in the order of the tree (each query of a
 --- list of them in turn, none twice).
----   for _, n in ipairs(daw.query("note[pitch>=c6]")) do print(n.data.pitch) end
+---   for _, n in ipairs(paw.query("note[pitch>=c6]")) do print(n.data.pitch) end
 function M.run(q)
   local parsed = M.parse(q)
   local cache = {}
@@ -723,7 +723,7 @@ function M.select(q, opts)
   opts = opts or {}
   local nodes = M.run(q)
   local title = (opts.title or "select") .. " " .. (type(q) == "string" and q or "")
-  daw.qf.set(M.entries(nodes), { title = title, win = opts.loc or nil, source = "query" })
+  paw.qf.set(M.entries(nodes), { title = title, win = opts.loc or nil, source = "query" })
   if opts.choose == false then return nodes end
   local clips, notes = {}, {}
   local first_note
@@ -737,10 +737,10 @@ function M.select(q, opts)
     end
   end
   if next(notes) then
-    for clip, places in pairs(notes) do daw.frontend.choose_notes(clip, places) end
-    daw.qf.go({ location = first_note.location })
+    for clip, places in pairs(notes) do paw.frontend.choose_notes(clip, places) end
+    paw.qf.go({ location = first_note.location })
   elseif next(clips) then
-    daw.frontend.choose_clips(clips)
+    paw.frontend.choose_clips(clips)
   end
   api.ui_redraw()
   return nodes

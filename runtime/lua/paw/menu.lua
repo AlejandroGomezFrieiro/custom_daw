@@ -2,7 +2,7 @@
 -- window's context menus. It floats over everything and takes the keys and
 -- the pointer until an entry is chosen or it is let go.
 --
---   daw.ui.menu({
+--   paw.ui.menu({
 --     { label = "Rename", run = function() ... end },
 --     "-",
 --     { label = "Colour", items = { { label = "Coral", run = ... }, ... } },
@@ -15,14 +15,14 @@
 -- goes back out of one, Esc or `q` lets go. The pointer: a click chooses,
 -- moving over an entry selects it (and opens its submenu), a click outside
 -- lets go, the wheel moves.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local M = {}
 
 -- The menus open, the first at the bottom: `{ items, x, y, selected, rect }`,
 -- with what took the keys before.
 local open = { levels = {}, grabber = nil }
-daw.seats.keep("menu", function() return open end, function(o) open = o end,
+paw.seats.keep("menu", function() return open end, function(o) open = o end,
   function() return { levels = {}, grabber = nil } end)
 
 local function separator(item) return item == "-" or (type(item) == "table" and item.separator) end
@@ -41,8 +41,8 @@ local on_key
 function M.close(keep)
   keep = keep or 0
   for i = #open.levels, keep + 1, -1 do open.levels[i] = nil end
-  if #open.levels == 0 and daw.ui.grabber == on_key then
-    daw.ui.grabber = open.grabber
+  if #open.levels == 0 and paw.ui.grabber == on_key then
+    paw.ui.grabber = open.grabber
     open.grabber = nil
   end
   api.ui_redraw()
@@ -66,9 +66,9 @@ end
 function M.open(items, opts)
   opts = opts or {}
   if #items == 0 then return end
-  if #open.levels == 0 then open.grabber = daw.ui.grabber end
+  if #open.levels == 0 then open.grabber = paw.ui.grabber end
   open.levels = {}
-  daw.ui.grabber = on_key
+  paw.ui.grabber = on_key
   push(items, opts.x or 0, opts.y or 0)
 end
 
@@ -107,9 +107,9 @@ on_key = function(key)
   api.ui_redraw()
 end
 
---- Draw the menus over the screen. Called last by `daw.ui.render`.
+--- Draw the menus over the screen. Called last by `paw.ui.render`.
 function M.draw(buf)
-  local g = daw.draw.g
+  local g = paw.draw.g
   for _, level in ipairs(open.levels) do
     local items = level.items
     local label_w, keys_w = 0, 0
@@ -130,7 +130,7 @@ function M.draw(buf)
     end
     local y = util.clamp(level.y, 0, math.max(0, buf.height - h))
     level.rect = { x = x, y = y, w = w, h = h }
-    local inner = daw.ui.box(buf:sub(x, y, w, h), nil, "BorderFocus")
+    local inner = paw.ui.box(buf:sub(x, y, w, h), nil, "BorderFocus")
     inner:fill(0, 0, inner.width, inner.height, " ", "Pmenu")
     for i, item in ipairs(items) do
       local row = i - 1
@@ -167,7 +167,7 @@ end
 
 -- The pointer goes to the menu first while one is open; anything outside
 -- it lets it go.
-daw.mouse.overlays[#daw.mouse.overlays + 1] = function(e)
+paw.mouse.overlays[#paw.mouse.overlays + 1] = function(e)
   if #open.levels == 0 then return false end
   local at, index = under(e.x, e.y)
   local kind = e.kind
@@ -192,7 +192,7 @@ daw.mouse.overlays[#daw.mouse.overlays + 1] = function(e)
       choose(at, index)
     end
   elseif at then
-    local step = daw.mouse.wheel(e)
+    local step = paw.mouse.wheel(e)
     if step then
       local level = open.levels[at]
       level.selected = first_usable(level.items, (level.selected - 1 + step) % #level.items + 1, step) or level.selected
@@ -202,7 +202,7 @@ daw.mouse.overlays[#daw.mouse.overlays + 1] = function(e)
   return true
 end
 
-daw.ui.menu = M.open
-daw.ui.draw_menu = M.draw
+paw.ui.menu = M.open
+paw.ui.draw_menu = M.draw
 
 return M

@@ -19,11 +19,11 @@ local function span(ctx)
   if v == "to the next chord" then
     local here = ctx.harmony.at(ctx.at)
     local nxt = ctx.harmony.next(ctx.at)
-    return ctx.at, (here and here.at + here.length) or (nxt and nxt.at) or ctx.at + daw.time.bar(ctx.at)
+    return ctx.at, (here and here.at + here.length) or (nxt and nxt.at) or ctx.at + paw.time.bar(ctx.at)
   end
   local bars = v == "2 bars" and 2 or v == "4 bars" and 4 or 1
   local finish = ctx.at
-  for _ = 1, bars * math.max(1, ctx.count) do finish = finish + daw.time.bar(finish) end
+  for _ = 1, bars * math.max(1, ctx.count) do finish = finish + paw.time.bar(finish) end
   return ctx.at, finish
 end
 

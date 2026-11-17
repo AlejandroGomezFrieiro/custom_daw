@@ -1,11 +1,11 @@
 -- Commands and keys of the drums extension.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local drums = require("drums")
 local E = require("drums.edit")
 local grid = require("drums.grid")
-local keymap = daw.keymap
-local command, map = daw.command, keymap.set
+local keymap = paw.keymap
+local command, map = paw.command, keymap.set
 
 --- Open a clip in the drum grid: in the terminal, and in a window when a
 --- graphical frontend is attached.
@@ -19,19 +19,19 @@ drums.open = open
 -- Commands --------------------------------------------------------------------
 
 command("drums.track", function(ctx)
-  local index = daw.cursor.index()
+  local index = paw.cursor.index()
   local track = drums.make_track({
     name = ctx.args.name or ctx.args[1] and tostring(ctx.args[1]) or nil,
     map = ctx.args.map, kit = ctx.args.kit,
     index = index and index + 1 or nil,
   })
-  local bar = daw.time.bar()
-  local start = math.floor(daw.cursor.beat / bar + 1e-9) * bar
+  local bar = paw.time.bar()
+  local start = math.floor(paw.cursor.beat / bar + 1e-9) * bar
   local clip = track:add_clip({ start = start, length = bar * (tonumber(ctx.args.bars) or 1), name = "beat" })
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(start)
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(start)
   if ctx.args.open ~= false then open(clip) end
-  daw.notify("drum track " .. track.name .. ": program the beat in the grid (Enter on a cell), Esc goes back")
+  paw.notify("drum track " .. track.name .. ": program the beat in the grid (Enter on a cell), Esc goes back")
 end, {
   desc = "Add a drum track with the built-in kit and a clip to program: `drums.track`, `drums.track Beat map=gm-full kit=~/samples/808`",
 })
@@ -49,18 +49,18 @@ end
 local function apply_map(track, name)
   if name == "off" or name == "none" then
     drums.clear_map(track)
-    return daw.notify(track.name .. " is an ordinary track again")
+    return paw.notify(track.name .. " is an ordinary track again")
   end
   local info = drums.set_map(track, name)
-  daw.notify(string.format("%s is a drum track: map %s, %d rows", track.name, info.map, #info.rows))
+  paw.notify(string.format("%s is a drum track: map %s, %d rows", track.name, info.map, #info.rows))
 end
 
 command("drums.map", function(ctx)
-  local track = daw.cursor.track()
-  if not track then return daw.notify("no track under the cursor", "warn") end
+  local track = paw.cursor.track()
+  if not track then return paw.notify("no track under the cursor", "warn") end
   local name = ctx.args[1] and tostring(ctx.args[1])
   if name then return apply_map(track, name) end
-  daw.pick({
+  paw.pick({
     title = "Drum map for " .. track.name,
     items = map_items(),
     format = function(item) return item.text end,
@@ -83,22 +83,22 @@ end, {
 })
 
 command("drums.edit", function()
-  local clip = daw.cursor.clip()
-  if not clip then return daw.notify("no clip under the cursor", "warn") end
+  local clip = paw.cursor.clip()
+  if not clip then return paw.notify("no clip under the cursor", "warn") end
   if not drums.is_drum(clip:get().track) then
-    return daw.notify("not a drum track: `:drums.map` makes it one", "warn")
+    return paw.notify("not a drum track: `:drums.map` makes it one", "warn")
   end
   open(clip)
 end, { desc = "Open the clip under the cursor in the drum grid" })
 
 command("drums.rename", function(ctx)
   local view = grid
-  local track_id = view:track_id() or (daw.cursor.track() and daw.cursor.track().id)
+  local track_id = view:track_id() or (paw.cursor.track() and paw.cursor.track().id)
   local info = track_id and drums.info(track_id)
-  if not info then return daw.notify("not on a drum track", "warn") end
+  if not info then return paw.notify("not on a drum track", "warn") end
   local piece = view:piece()
   local name = table.concat(ctx.args, " ")
-  if not piece or piece.extra or name == "" then return daw.notify("put the cursor on a row of the map, then `drums.rename Name`", "warn") end
+  if not piece or piece.extra or name == "" then return paw.notify("put the cursor on a row of the map, then `drums.rename Name`", "warn") end
   local rows = info.rows
   for _, row in ipairs(rows) do
     if row.note == piece.note then row.name = name end
@@ -109,47 +109,47 @@ end, { desc = "Rename the drum grid's row under the cursor: `drums.rename Ghost 
 command("drums.kit", function(ctx)
   local kit = require("drums.kit")
   local dir = ctx.args[1] and tostring(ctx.args[1])
-  if not dir then return daw.notify("drums.kit takes a folder of sound files: `drums.kit ~/samples/808`", "warn") end
-  local track = daw.cursor.track()
+  if not dir then return paw.notify("drums.kit takes a folder of sound files: `drums.kit ~/samples/808`", "warn") end
+  local track = paw.cursor.track()
   if track and drums.is_drum(track) then
     kit.build(track, dir)
   else
-    local index = daw.cursor.index()
+    local index = paw.cursor.index()
     track = drums.make_track({ kit = dir, index = index and index + 1 or nil })
-    daw.cursor.set_track(track)
+    paw.cursor.set_track(track)
   end
   local pads = kit.pads(kit.device(track))
-  daw.notify(string.format("%s plays %d samples from %s", track.name, #pads, dir))
+  paw.notify(string.format("%s plays %d samples from %s", track.name, #pads, dir))
   if grid:clip() and grid:track_id() == track.id then api.ui_redraw() end
 end, { desc = "Play the drum track from a folder of samples, named by what they are: `drums.kit ~/samples/808`" })
 
 command("drums.pad", function(ctx)
   local kit = require("drums.kit")
-  local track_id = grid:track_id() or (daw.cursor.track() and daw.cursor.track().id)
+  local track_id = grid:track_id() or (paw.cursor.track() and paw.cursor.track().id)
   local device = track_id and kit.device(track_id)
-  if not device then return daw.notify("the track has no kit of samples: `drums.kit <folder>` gives it one", "warn") end
+  if not device then return paw.notify("the track has no kit of samples: `drums.kit <folder>` gives it one", "warn") end
   local piece = grid:clip() and grid:piece()
   local note = tonumber(ctx.args.note) or (piece and piece.note)
-  if not note then return daw.notify("open the grid on the row to change, or give `note=`", "warn") end
+  if not note then return paw.notify("open the grid on the row to change, or give `note=`", "warn") end
   local fields = {}
   for _, key in ipairs({ "level", "pan", "tune", "group" }) do fields[key] = tonumber(ctx.args[key]) end
   if ctx.args.file then fields.file = tostring(ctx.args.file) end
   local pad = kit.set_pad(device, note, fields)
-  daw.notify(string.format("%s: level %g dB, pan %g, tune %g, group %d", drums.piece(track_id, note), pad.level, pad.pan, pad.tune, pad.group))
+  paw.notify(string.format("%s: level %g dB, pan %g, tune %g, group %d", drums.piece(track_id, note), pad.level, pad.pan, pad.tune, pad.group))
 end, { desc = "Change the sample of the grid's row: `drums.pad level=-3 pan=0.3 tune=-2 group=1`, `drums.pad file=snare2.wav`" })
 
 command("drums.beat", function(ctx)
   local beats = require("drums.beats")
-  local clip = grid:clip() and daw.ui.focused == "drums" and grid:clip() or daw.cursor.clip()
-  if not clip then return daw.notify("put the cursor on a clip, or open one in the drum grid", "warn") end
+  local clip = grid:clip() and paw.ui.focused == "drums" and grid:clip() or paw.cursor.clip()
+  if not clip then return paw.notify("put the cursor on a clip, or open one in the drum grid", "warn") end
   local function apply(name)
     local n = beats.apply(clip, name)
-    daw.notify(string.format("%s: %d hits", name, n))
+    paw.notify(string.format("%s: %d hits", name, n))
   end
   if ctx.args[1] then return apply(tostring(ctx.args[1])) end
   local items = {}
   for _, name in ipairs(beats.names()) do items[#items + 1] = { name = name, text = string.format("%-9s %s", name, beats.list[name].label) } end
-  daw.pick({
+  paw.pick({
     title = "A beat to start from",
     items = items,
     format = function(item) return item.text end,
@@ -158,17 +158,17 @@ command("drums.beat", function(ctx)
     -- over through the track; Escape gives the clip its notes back.
     audition_key = "drums.beat",
     audition = function(item)
-      local n = daw.audition.try(function() return beats.apply(clip, item.name) end)
+      local n = paw.audition.try(function() return beats.apply(clip, item.name) end)
       local c = clip:get()
-      local bar = math.min(daw.time.bar(c.start), c.length)
+      local bar = math.min(paw.time.bar(c.start), c.length)
       local notes = {}
       for _, note in ipairs(clip:notes()) do
         if note.start < bar then notes[#notes + 1] = { pitch = note.pitch, start = note.start, length = note.length, velocity = note.velocity } end
       end
-      daw.audition.phrase(c.track, notes, { length = bar, at = c.start })
+      paw.audition.phrase(c.track, notes, { length = bar, at = c.start })
       return {
         label = item.name .. " · its first bar",
-        keep = function() daw.notify(string.format("%s: %d hits", item.name, n)) end,
+        keep = function() paw.notify(string.format("%s: %d hits", item.name, n)) end,
       }
     end,
     preview = function(item)
@@ -193,11 +193,11 @@ keymap.group("<leader>k", "drums", { view = "arrange" })
 map("<leader>kn", "drums.track", { view = "arrange", desc = "Add a drum track" })
 map("<leader>km", "drums.map", { view = "arrange", desc = "Choose the track's drum map" })
 
--- A drum track is a kind of track (`daw.track_kinds`): `:track.add drums`,
+-- A drum track is a kind of track (`paw.track_kinds`): `:track.add drums`,
 -- `:track.new` and the window's menus that make a track offer it, the
 -- header shows its `D`, and Enter (`clip.edit`) and a double click open its
 -- clips in the drum grid; other clips go to the piano roll as before.
-daw.track_kinds.define("drums", {
+paw.track_kinds.define("drums", {
   title = "Drum track",
   letter = "D",
   desc = "a kit, and a grid of its pieces by name",
@@ -214,9 +214,9 @@ daw.track_kinds.define("drums", {
   -- Drum tracks made before there were kinds of track keep their map.
   is = function(id) return drums.is_drum(id) end,
 })
-table.insert(daw.frontend.menus.clip, { label = "Open in the drum grid", command = "drums.edit", only = "midi" })
-table.insert(daw.frontend.menus.clip, { label = "Drum beat to start from…", command = "drums.beat", only = "midi" })
-table.insert(daw.frontend.menus.track, { label = "Drum map…", command = "drums.map" })
+table.insert(paw.frontend.menus.clip, { label = "Open in the drum grid", command = "drums.edit", only = "midi" })
+table.insert(paw.frontend.menus.clip, { label = "Drum beat to start from…", command = "drums.beat", only = "midi" })
+table.insert(paw.frontend.menus.track, { label = "Drum map…", command = "drums.map" })
 
 -- The grid's keys -----------------------------------------------------------------
 
@@ -253,7 +253,7 @@ gmap("gg", function() grid:set(1, nil) end, "The first row", far_lines)
 gmap("G", function(ctx) grid:set(ctx.count or #grid:rows(), nil) end, "The last row, or row N", far_lines)
 gmap("gp", function()
   local clip = grid:clip()
-  if clip then daw.transport.seek(clip.start + grid.beat) end
+  if clip then paw.transport.seek(clip.start + grid.beat) end
 end, "Playhead to the cursor")
 
 -- Text objects.
@@ -273,7 +273,7 @@ for _, lhs in ipairs({ "ib", "ab" }) do
   object(lhs, function(ctx)
     local clip = grid:clip()
     if not clip then return end
-    local bar = daw.time.bar()
+    local bar = paw.time.bar()
     local c0 = math.floor((clip.start + grid.beat) / bar + 1e-9) * bar - clip.start
     return { view = "drums", kind = "char", r0 = grid.row, r1 = grid.row, c0 = c0, c1 = c0 + bar * (ctx.count or 1) }
   end, "This bar on every row, or N bars")
@@ -302,7 +302,7 @@ op("d", function(clip, rows, region, ctx) keymap.setreg(E.delete(clip, rows, reg
 op("y", function(clip, rows, region, ctx)
   local value = E.yank(clip, rows, region)
   keymap.setreg(value, ctx.register, true)
-  daw.notify(#value.notes == 1 and "yanked 1 hit" or "yanked " .. #value.notes .. " hits")
+  paw.notify(#value.notes == 1 and "yanked 1 hit" or "yanked " .. #value.notes .. " hits")
 end, "Yank hits")
 local function shift(clip, rows, region, steps)
   local step = grid:step_size()
@@ -313,9 +313,9 @@ end
 op(">", function(clip, rows, region, ctx) shift(clip, rows, region, region.visual and ctx.count or 1) end, "Move hits a step later")
 op("<lt>", function(clip, rows, region, ctx) shift(clip, rows, region, -(region.visual and ctx.count or 1)) end, "Move hits a step earlier")
 op("gs", function(clip, rows, region, ctx)
-  local amount = ctx.count and ctx.count / 100 or daw.opt.drums_swing
+  local amount = ctx.count and ctx.count / 100 or paw.opt.drums_swing
   local moved = E.swing(clip, rows, region, amount, grid:step_size())
-  daw.notify(string.format("swung %d hits by %d%% of a step", moved, math.floor(amount * 100 + 0.5)))
+  paw.notify(string.format("swung %d hits by %d%% of a step", moved, math.floor(amount * 100 + 0.5)))
 end, "Swing: every other step later (a count is the percent of a step)")
 
 -- Single keys.
@@ -354,13 +354,13 @@ gmap("&", function(ctx)
   local clip = grid:clip()
   if not clip then return end
   local n = E.repeat_bar(clip, grid.beat, ctx.count)
-  daw.notify(n == 1 and "the bar is repeated once" or "the bar is repeated " .. n .. " times")
+  paw.notify(n == 1 and "the bar is repeated once" or "the bar is repeated " .. n .. " times")
 end, "Repeat this bar to the end of the clip (N: N times)")
 gmap("gh", function() grid:hear() end, "Hear the piece")
 gmap("gb", "drums.beat", "Fill the clip with a beat to start from")
 -- Escape stays, as in every view; `<C-w>p` goes back to the window before.
 gmap("<Esc>", function() keymap.escape_hint() end, "Stay in the grid (Ctrl-w p leaves)", { repeatable = false })
-keymap.classic("<Esc>", function() daw.ui.focus("arrange") end, { view = "drums", desc = "Back to the arrange view" })
+keymap.classic("<Esc>", function() paw.ui.focus("arrange") end, { view = "drums", desc = "Back to the arrange view" })
 
 -- On a selection.
 local function vx(lhs, fn, desc)
@@ -384,12 +384,12 @@ vx("p", function(clip, rows, region, ctx)
   keymap.setreg(replaced)
 end, "Replace with the register")
 
-if daw.ui.keybar then
-  daw.ui.keybar.set("drums", "n", {
+if paw.ui.keybar then
+  paw.ui.keybar.set("drums", "n", {
     { "<CR>", "hit" }, { "+", "harder" }, { "-", "softer" }, { "[g", "finer" }, { "]g", "coarser" },
     { "T", "triplets" }, { "&", "repeat bar" }, { "d", "clear row", "dd" }, { "gh", "hear" }, { "<C-w>p", "back" },
   })
-  daw.ui.keybar.set("drums", "x", {
+  paw.ui.keybar.set("drums", "x", {
     { "x", "delete" }, { "+", "harder" }, { "-", "softer" }, { "gs", "swing" }, { "y", "yank" }, { "<Esc>", "done" },
   })
 end

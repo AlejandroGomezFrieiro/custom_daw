@@ -1,12 +1,12 @@
 -- Tests for the project diff and merge extension, run by tests/suite.lua.
 local T = ...
 local test, eq, fresh, scratch = T.test, T.eq, T.fresh, T.scratch
-local api = daw.api
+local api = paw.api
 
 local projdiff
 
 local function load()
-  if not daw.ext.loaded.projdiff then daw.ext.load("extensions/projdiff") end
+  if not paw.ext.loaded.projdiff then paw.ext.load("extensions/projdiff") end
   projdiff = require("projdiff")
   return projdiff
 end
@@ -14,15 +14,15 @@ end
 local function start()
   load()
   fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  daw.ui.close()
+  paw.keymap.feed("<Esc><Esc>")
+  paw.ui.close()
 end
 
 --- A project with a lead (a synth, a clip of three notes, a volume lane), a
 --- bass, a tempo change and a marker, saved as `name`; returns its path.
 local function fixture(name)
   fresh()
-  local lead = daw.add_track({ name = "Lead" })
+  local lead = paw.add_track({ name = "Lead" })
   local synth = lead:add_device("synth", { cutoff = 800 })
   local riff = lead:add_clip({ name = "riff", start = 0, length = 4 })
   riff:add_note({ pitch = 60, start = 0, length = 1 })
@@ -31,10 +31,10 @@ local function fixture(name)
   local fade = lead:automate("volume")
   fade:add(0, -12)
   fade:add(8, 0)
-  local bass = daw.add_track({ name = "Bass" })
+  local bass = paw.add_track({ name = "Bass" })
   bass:add_clip({ name = "line", start = 4, length = 4 })
-  daw.add_track({ name = "Drums" })
-  daw.markers.add(8, "Chorus")
+  paw.add_track({ name = "Drums" })
+  paw.markers.add(8, "Chorus")
   api.undo_checkpoint()
   local path = scratch .. "/" .. name .. ".json"
   api.project_save(path)
@@ -130,13 +130,13 @@ test("projdiff: changes have addresses to go to, and become quickfix entries", f
   local by = {}
   for _, e in ipairs(entries) do by[#by + 1] = e.address end
   table.sort(by)
-  eq(by[1], "daw://clip/" .. lead.clips[1].id .. "/note/1", "the note")
-  eq(by[2], "daw://track/" .. lead.id .. "/device/" .. lead.devices[1].id .. "/param/cutoff", "the parameter")
+  eq(by[1], "paw://clip/" .. lead.clips[1].id .. "/note/1", "the note")
+  eq(by[2], "paw://track/" .. lead.id .. "/device/" .. lead.devices[1].id .. "/param/cutoff", "the parameter")
   start()
   local n = projdiff.to_quickfix(tree, "test diff")
   eq(n, 2, "sent")
-  eq(#daw.qf.current().entries, 2, "in the list")
-  eq(daw.qf.current().entries[1].location.uri:match("^daw://") ~= nil, true, "each goes somewhere")
+  eq(#paw.qf.current().entries, 2, "in the list")
+  eq(paw.qf.current().entries[1].location.uri:match("^paw://") ~= nil, true, "each goes somewhere")
 end)
 
 test("projdiff: the text form puts each thing on a line, so one change is one line", function()
@@ -217,7 +217,7 @@ test("projdiff: changes to different tracks, clips, notes and parameters merge w
   end
   eq(merged.project.meta.merge_conflicts, nil, "nothing recorded")
   reopen(merged)
-  eq(#daw.tracks(), 3, "the merged project opens")
+  eq(#paw.tracks(), 3, "the merged project opens")
 end)
 
 test("projdiff: tracks, notes and markers both sides added keep both, with new numbers where they clash", function()
@@ -249,7 +249,7 @@ test("projdiff: tracks, notes and markers both sides added keep both, with new n
   end
   eq(#merged.project.meta.markers, 3, "both markers")
   reopen(merged)
-  eq(#daw.tracks(), 6, "the merged project opens")
+  eq(#paw.tracks(), 6, "the merged project opens")
 end)
 
 test("projdiff: the same thing changed two ways is a conflict that holds ours and says what it was", function()
@@ -280,7 +280,7 @@ test("projdiff: the same thing changed two ways is a conflict that holds ours an
   local again = decode(reopen(merged))
   eq(#projdiff.merge.conflicts(again), 3, "still recorded in the file")
   eq(api.project_file_text(again), text, "and the file is stable")
-  eq(daw.api.project_get().meta.merge_conflicts ~= nil, true, "the open project holds them")
+  eq(paw.api.project_get().meta.merge_conflicts ~= nil, true, "the open project holds them")
 end)
 
 test("projdiff: conflicts are settled one by one, ours, theirs or what it was", function()
@@ -317,12 +317,12 @@ test("projdiff: :Pmerge shows the conflicts and co, ct settle them in the file",
   local file = assert(io.open(path, "wb"))
   file:write(api.project_file_text(merged))
   file:close()
-  daw.cmd("Pmerge", { path })
-  eq(daw.ui.float and daw.ui.float.name, "projmerge", "the conflict view is open")
-  daw.keymap.feed("ct")
+  paw.cmd("Pmerge", { path })
+  eq(paw.ui.float and paw.ui.float.name, "projmerge", "the conflict view is open")
+  paw.keymap.feed("ct")
   eq(#projdiff.merge.conflicts(decode(path)), 1, "one settled")
-  daw.keymap.feed("co")
-  eq(daw.ui.float, nil, "closed when the last is settled")
+  paw.keymap.feed("co")
+  eq(paw.ui.float, nil, "closed when the last is settled")
   local settled = decode(path)
   eq(#projdiff.merge.conflicts(settled), 0, "none left")
   eq(track(settled, "Lead").devices[1].params.cutoff, 300, "theirs for the first (the conflicts are in order of the file)")
@@ -334,45 +334,45 @@ test("projdiff: :Pdiff compares with the saved file, an undo state and a snapsho
   start()
   local path = fixture("views")
   api.project_load(path)
-  local lead = daw.tracks()[1]
-  daw.cmd("Pdiff")
-  eq(daw.ui.float, nil, "nothing differs from the saved file")
+  local lead = paw.tracks()[1]
+  paw.cmd("Pdiff")
+  eq(paw.ui.float, nil, "nothing differs from the saved file")
   lead.volume = -5
   api.undo_checkpoint()
   local state = api.undo_current()
-  daw.cmd("Psnapshot", { "loud" })
+  paw.cmd("Psnapshot", { "loud" })
   lead:add_clip({ name = "added", start = 16, length = 2 })
   api.undo_checkpoint()
-  daw.cmd("Pdiff")
-  eq(daw.ui.float and daw.ui.float.name, "projdiff", "the view is open")
+  paw.cmd("Pdiff")
+  eq(paw.ui.float and paw.ui.float.name, "projdiff", "the view is open")
   local view = require("projdiff.view")
   eq(view.title_text:find("saved → now: 2 changes", 1, true) ~= nil, true, view.title_text)
   eq(#view.rows >= 3, true, "a heading and its changes")
   -- Folding takes the lines under a heading away; unfolding brings them back.
   local open = #view.rows
-  daw.keymap.feed("zc")
+  paw.keymap.feed("zc")
   eq(#view.rows < open, true, "zc folds the track")
-  daw.keymap.feed("za")
+  paw.keymap.feed("za")
   eq(#view.rows, open, "za opens it again")
   -- `]c` goes to a change, and Enter to where it is.
-  daw.keymap.feed("]c")
+  paw.keymap.feed("]c")
   eq(view.rows[view.sel].node.change, true, "on a change")
-  daw.keymap.feed("Q")
-  eq(#daw.qf.current().entries, 2, "the quickfix list holds both")
-  daw.keymap.feed("<CR>")
-  eq(daw.ui.float, nil, "the view closes to go there")
+  paw.keymap.feed("Q")
+  eq(#paw.qf.current().entries, 2, "the quickfix list holds both")
+  paw.keymap.feed("<CR>")
+  eq(paw.ui.float, nil, "the view closes to go there")
   -- Against an undo state and a snapshot.
-  daw.cmd("Pdiff", { "#" .. state })
+  paw.cmd("Pdiff", { "#" .. state })
   eq(view.title_text:find("#" .. state .. " → now: 1 change", 1, true) ~= nil, true, view.title_text)
-  daw.keymap.feed("q")
-  daw.cmd("Pdiff", { "snap:loud" })
+  paw.keymap.feed("q")
+  paw.cmd("Pdiff", { "snap:loud" })
   eq(view.title_text:find("loud → now: 1 change", 1, true) ~= nil, true, view.title_text)
-  daw.keymap.feed("q")
-  daw.cmd("Pdiff", { path, "snap:loud" })
+  paw.keymap.feed("q")
+  paw.cmd("Pdiff", { path, "snap:loud" })
   eq(view.title_text:find("→ loud: 1 change", 1, true) ~= nil, true, view.title_text)
-  daw.keymap.feed("q")
-  daw.cmd("Pdiff.qf", { "snap:loud" })
-  eq(#daw.qf.current().entries, 1, "the added clip, in quickfix")
+  paw.keymap.feed("q")
+  paw.cmd("Pdiff.qf", { "snap:loud" })
+  eq(#paw.qf.current().entries, 1, "the added clip, in quickfix")
 end)
 
 -- Git ----------------------------------------------------------------------------
@@ -387,11 +387,11 @@ end
 test("projdiff: git shows a project as text and merges two branches that changed it apart", function()
   load()
   if os.execute("command -v git >/dev/null 2>&1") ~= 0 and os.execute("command -v git >/dev/null 2>&1") ~= true then return "no git" end
-  local bin = (os.getenv("DAW_TEST_BIN") or "target/release") .. "/daw"
+  local bin = (os.getenv("PAW_TEST_BIN") or "target/release") .. "/paw"
   local root = scratch .. "/repo"
   local script = io.popen("pwd"):read("*l") .. "/extensions/projdiff/git.lua"
-  local daw_cmd = bin:sub(1, 1) == "/" and bin or (io.popen("pwd"):read("*l") .. "/" .. bin)
-  local driver = daw_cmd .. " --clean --no-plugins --no-listen --audio null -l " .. script
+  local paw_cmd = bin:sub(1, 1) == "/" and bin or (io.popen("pwd"):read("*l") .. "/" .. bin)
+  local driver = paw_cmd .. " --clean --no-plugins --no-listen --audio null -l " .. script
   os.execute("rm -rf '" .. root .. "' && mkdir -p '" .. root .. "'")
   local function git(args) return run("cd '" .. root .. "' && git -c user.name=t -c user.email=t@t " .. args) end
   git("init -q -b main")

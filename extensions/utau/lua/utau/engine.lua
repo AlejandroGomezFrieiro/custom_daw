@@ -3,9 +3,9 @@
 -- The engine connects to a socket this side listens on, as it does with the
 -- REAPER extension, so it runs unchanged. Reading never blocks: `pump` takes
 -- whatever has arrived and hands each message to `handlers[name]`. The
--- process and socket handles are kept in `daw.state`, so that after
+-- process and socket handles are kept in `paw.state`, so that after
 -- `:reload` the old engine can be stopped rather than left running.
-local api = daw.api
+local api = paw.api
 local proto = require("utau.proto")
 
 local M = {
@@ -33,9 +33,9 @@ end
 --- puts it), `reautau-engine` on the PATH, or a ReaUtau install in REAPER's
 --- folder.
 function M.find()
-  local loaded = daw.ext.loaded.utau
+  local loaded = paw.ext.loaded.utau
   -- `false`, not nil, where there is nothing: the list must have no holes.
-  local candidates = { daw.opt.utau_engine or false, os.getenv("REAUTAU_ENGINE") or false,
+  local candidates = { paw.opt.utau_engine or false, os.getenv("REAUTAU_ENGINE") or false,
     loaded and loaded.path .. "/bin/reautau-engine" or false }
   for dir in (os.getenv("PATH") or ""):gmatch("[^:]+") do
     candidates[#candidates + 1] = dir .. "/reautau-engine"
@@ -49,7 +49,7 @@ end
 local function cache_dir()
   local base = os.getenv("XDG_CACHE_HOME")
   if not base or base == "" then base = home() .. "/.cache" end
-  return base .. "/daw"
+  return base .. "/paw"
 end
 
 --- The engine's own log file.
@@ -60,11 +60,11 @@ end
 local function socket_path()
   local dir = os.getenv("XDG_RUNTIME_DIR")
   if not dir or dir == "" then dir = (os.getenv("TMPDIR") or "/tmp") end
-  return string.format("%s/daw-utau/engine-%d-%d.sock", dir, os.time(), math.floor(api.now() * 1000) % 1000000)
+  return string.format("%s/paw-utau/engine-%d-%d.sock", dir, os.time(), math.floor(api.now() * 1000) % 1000000)
 end
 
 local function save()
-  daw.state.utau_link = link and { proc = link.proc, listener = link.listener, conn = link.conn, path = link.path }
+  paw.state.utau_link = link and { proc = link.proc, listener = link.listener, conn = link.conn, path = link.path }
 end
 
 --- Send an encoded frame. Returns false when there is no connection.
@@ -110,7 +110,7 @@ function M.fail(reason)
   end
   link = nil
   save()
-  daw.notify("utau: " .. reason, "error")
+  paw.notify("utau: " .. reason, "error")
 end
 
 --- Start the engine unless it is running. Returns whether it is starting or up.
@@ -118,21 +118,21 @@ function M.start()
   if link then return true end
   local engine = M.find()
   if not engine then
-    M.state, M.reason = "missing", "reautau-engine not found: set REAUTAU_ENGINE or daw.opt.utau_engine"
+    M.state, M.reason = "missing", "reautau-engine not found: set REAUTAU_ENGINE or paw.opt.utau_engine"
     return false
   end
   local path = socket_path()
   local listener = api.sock_listen(path)
-  local argv = { engine, "--socket", path, "--log-level", daw.opt.utau_log_level }
+  local argv = { engine, "--socket", path, "--log-level", paw.opt.utau_log_level }
   local function flag(name, value)
     if value and value ~= "" then
       argv[#argv + 1] = name
       argv[#argv + 1] = value
     end
   end
-  flag("--openutau-dir", daw.opt.utau_openutau_dir ~= "" and daw.opt.utau_openutau_dir or os.getenv("REAUTAU_OPENUTAU_DIR"))
-  flag("--data-dir", daw.opt.utau_data_dir)
-  flag("--cache-dir", daw.opt.utau_cache_dir)
+  flag("--openutau-dir", paw.opt.utau_openutau_dir ~= "" and paw.opt.utau_openutau_dir or os.getenv("REAUTAU_OPENUTAU_DIR"))
+  flag("--data-dir", paw.opt.utau_data_dir)
+  flag("--cache-dir", paw.opt.utau_cache_dir)
   os.execute("mkdir -p '" .. cache_dir() .. "'")
   local ok, proc = pcall(api.proc_spawn, argv, { log = M.log_path() })
   if not ok then
@@ -150,9 +150,9 @@ end
 --- connection may be in the middle of a frame, so a fresh start is safer
 --- than picking it up.
 function M.reset_stale()
-  local saved = daw.state.utau_link
+  local saved = paw.state.utau_link
   if not saved or link then return end
-  daw.state.utau_link = nil
+  paw.state.utau_link = nil
   if saved.conn then pcall(api.sock_close, saved.conn) end
   if saved.listener then pcall(api.sock_close, saved.listener) end
   if saved.proc then pcall(api.proc_kill, saved.proc) end
@@ -161,7 +161,7 @@ end
 --- OpenUtau's data folder the engine reads voicebanks from, or nil for
 --- its own default (`$XDG_DATA_HOME/OpenUtau`).
 function M.openutau_dir()
-  local dir = daw.opt.utau_openutau_dir ~= "" and daw.opt.utau_openutau_dir or os.getenv("REAUTAU_OPENUTAU_DIR")
+  local dir = paw.opt.utau_openutau_dir ~= "" and paw.opt.utau_openutau_dir or os.getenv("REAUTAU_OPENUTAU_DIR")
   if dir and dir ~= "" then return dir end
 end
 
@@ -172,7 +172,7 @@ function M.tmp(suffix)
   temps = temps + 1
   local dir = os.getenv("TMPDIR")
   if not dir or dir == "" then dir = "/tmp" end
-  return string.format("%s/daw-utau-%d-%d-%d%s", dir, api.env().pid, os.time(), temps, suffix or "")
+  return string.format("%s/paw-utau-%d-%d-%d%s", dir, api.env().pid, os.time(), temps, suffix or "")
 end
 
 --- Run the engine once for one of its one-shot modes (`--convert`,
@@ -180,7 +180,7 @@ end
 --- and what it printed.
 function M.tool(args, seconds)
   local exe = M.find()
-  if not exe then error("reautau-engine not found: set REAUTAU_ENGINE or daw.opt.utau_engine", 0) end
+  if not exe then error("reautau-engine not found: set REAUTAU_ENGINE or paw.opt.utau_engine", 0) end
   local argv = { exe }
   for _, a in ipairs(args) do argv[#argv + 1] = a end
   local dir = M.openutau_dir()
@@ -211,14 +211,14 @@ end
 local function dispatch(frame)
   local name = proto.name[frame.type]
   local ok, message = pcall(proto.message, frame)
-  if not ok then return daw.notify("utau: bad " .. tostring(name) .. " message: " .. tostring(message), "warn") end
+  if not ok then return paw.notify("utau: bad " .. tostring(name) .. " message: " .. tostring(message), "warn") end
   if frame.type == proto.type.Hello then
     M.info, M.state = message, "ready"
   elseif frame.type == proto.type.Ping then
     M.send(proto.encode.pong(message.nonce))
   end
   local handler = name and M.handlers[name]
-  if handler then daw.try(handler, message, frame) end
+  if handler then paw.try(handler, message, frame) end
 end
 
 --- Read whatever the engine has sent and act on it. Returns whether
@@ -232,7 +232,7 @@ function M.pump()
       link.conn = conn
       save()
       M.send(proto.encode.hello(0))
-      if M.on_connect then daw.try(M.on_connect) end
+      if M.on_connect then paw.try(M.on_connect) end
     end
   end
   if link and link.conn then

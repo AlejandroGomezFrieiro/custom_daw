@@ -1,7 +1,7 @@
 -- What the terminal's staff is drawn with: the characters, in a set every
 -- common monospace font has (DejaVu Sans Mono, JetBrains Mono, Fira Code,
 -- Noto Sans Mono: box drawing, half blocks, ● ○ and a few letters) and a
--- plain ASCII one under `daw.opt.ascii`; the clefs drawn in them; and the
+-- plain ASCII one under `paw.opt.ascii`; the clefs drawn in them; and the
 -- rows a staff's lines and spaces fall on.
 --
 -- Two scales. Dense (`dense`): a row for each line, a space between two
@@ -55,7 +55,7 @@ M.ascii = {
 }
 
 --- The characters in use.
-function M.glyphs() return daw.opt.ascii and M.ascii or M.unicode end
+function M.glyphs() return paw.opt.ascii and M.ascii or M.unicode end
 
 -- Clefs, as rows of text from their top, each with the staff step its row
 -- is on (the dense scale's rows: lines; the open scale fills between).
@@ -91,7 +91,7 @@ SMALL.treble8, SMALL.bass8 = SMALL.treble, SMALL.bass
 
 --- A clef changed inside a system, as rows `{ pos, text }`.
 function M.small_clef(clef)
-  if daw.opt.ascii then return ASCII_CLEFS[clef] or ASCII_CLEFS.treble end
+  if paw.opt.ascii then return ASCII_CLEFS[clef] or ASCII_CLEFS.treble end
   return SMALL[clef] or SMALL.treble
 end
 
@@ -108,7 +108,7 @@ end
 --- A clef's rows as `{ pos, text }`: in the open scale the rows between two
 --- of the drawing's continue the strokes that cross them.
 function M.clef(clef, dense)
-  if daw.opt.ascii then return ASCII_CLEFS[clef] or ASCII_CLEFS.treble end
+  if paw.opt.ascii then return ASCII_CLEFS[clef] or ASCII_CLEFS.treble end
   local art = CLEFS[clef] or CLEFS.treble
   if dense then return art end
   local out = {}
@@ -130,7 +130,7 @@ end
 --- How many columns a clef takes.
 function M.clef_width(clef)
   local w = 0
-  for _, r in ipairs((daw.opt.ascii and ASCII_CLEFS or CLEFS)[clef] or CLEFS.treble) do w = math.max(w, #chars(r[2])) end
+  for _, r in ipairs((paw.opt.ascii and ASCII_CLEFS or CLEFS)[clef] or CLEFS.treble) do w = math.max(w, #chars(r[2])) end
   return w
 end
 

@@ -25,7 +25,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use daw_engine::{AudioData, DiskStore, Sink, TempoMap};
+use paw_engine::{AudioData, DiskStore, Sink, TempoMap};
 
 use crate::model::{Clip, ClipContent};
 use crate::peaks::Summary;
@@ -101,7 +101,7 @@ impl Key {
             self.mode.name(),
             if self.formants { "-formants" } else { "" }
         );
-        daw_engine::store_name(&self.file, &what)
+        paw_engine::store_name(&self.file, &what)
     }
 }
 

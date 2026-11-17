@@ -2,8 +2,8 @@
 -- relative to the project, relinking what went missing.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function exists(path)
   local f = io.open(path, "rb")
@@ -15,15 +15,15 @@ test("a render to a format that cannot be written is refused before rendering", 
   fresh()
   T.tone("Synth", 2)
   local heard = false
-  local off = daw.on("render.before", function() heard = true end)
+  local off = paw.on("render.before", function() heard = true end)
   local path = T.scratch .. "/refused.m4a"
-  T.fails(function() daw.render(path, { tail = 0 }) end, "AAC", "an AAC render")
-  T.fails(function() daw.render(path, { tail = 0 }) end, "%.wav", "the message names what can be written")
-  T.fails(function() daw.render(T.scratch .. "/refused.xyz", { tail = 0 }) end, "xyz", "an unknown extension")
+  T.fails(function() paw.render(path, { tail = 0 }) end, "AAC", "an AAC render")
+  T.fails(function() paw.render(path, { tail = 0 }) end, "%.wav", "the message names what can be written")
+  T.fails(function() paw.render(T.scratch .. "/refused.xyz", { tail = 0 }) end, "xyz", "an unknown extension")
   eq(exists(path), false, "no file is written")
   eq(heard, false, "nothing is rendered, not even what renders before")
-  daw.off(off)
-  T.fails(function() daw.cmd("render", { path }) end, "AAC", "the command refuses it too")
+  paw.off(off)
+  T.fails(function() paw.cmd("render", { path }) end, "AAC", "the command refuses it too")
   eq(exists(path), false, "and writes nothing")
   local names = {}
   for _, f in ipairs(api.render_formats()) do names[#names + 1] = f.name end
@@ -56,13 +56,13 @@ end
 local function project_in(dir, outside)
   fresh()
   mkdir(dir .. "/media")
-  local t = daw.add_track({ name = "inside" })
+  local t = paw.add_track({ name = "inside" })
   t:add_clip({ file = steady(dir .. "/media/a.wav", 1, 0.25), start = 0, length = 2 })
   if outside then
-    local u = daw.add_track({ name = "outside" })
+    local u = paw.add_track({ name = "outside" })
     u:add_clip({ file = outside, start = 0, length = 2 })
   end
-  daw.project.save(dir .. "/song.json")
+  paw.project.save(dir .. "/song.json")
   return t
 end
 
@@ -76,13 +76,13 @@ test("a project folder that is moved opens with every file", function()
   eq(text:find(outside, 1, true) ~= nil, true, "one outside it by its full path")
   os.rename(root .. "/one", root .. "/two")
   api.warnings()
-  daw.project.load(root .. "/two/song.json")
+  paw.project.load(root .. "/two/song.json")
   eq(missing_warnings(), 0, "nothing is missing")
-  local clip = daw.tracks()[1]:clips()[1]
+  local clip = paw.tracks()[1]:clips()[1]
   eq(clip.file, root .. "/two/media/a.wav", "the clip plays the file in the folder's new place")
   eq(clip.offline, nil, "and is not offline")
   T.near(peak(), 0.75, 0.002, "both files play")
-  eq(daw.project.modified, false, "and opening it changes nothing")
+  eq(paw.project.modified, false, "and opening it changes nothing")
 end)
 
 test("an old project with full paths opens unchanged", function()
@@ -91,13 +91,13 @@ test("an old project with full paths opens unchanged", function()
   local text = T.read_file(dir .. "/song.json")
   local absolute = dir .. "/media/a.wav"
   T.write_file(dir .. "/old.json", (text:gsub('"media/a.wav"', '"' .. absolute .. '"')))
-  daw.project.load(dir .. "/old.json")
-  eq(daw.tracks()[1]:clips()[1].file, absolute, "the path is as it was")
+  paw.project.load(dir .. "/old.json")
+  eq(paw.tracks()[1]:clips()[1].file, absolute, "the path is as it was")
   T.near(peak(), 0.25, 0.002, "and it plays")
   -- Moved with the old full path in it: found by its place in the folder.
   os.rename(dir, dir .. "-moved")
-  daw.project.load(dir .. "-moved/old.json")
-  eq(daw.tracks()[1]:clips()[1].file, dir .. "-moved/media/a.wav", "a full path into the old folder is found in the new one")
+  paw.project.load(dir .. "-moved/old.json")
+  eq(paw.tracks()[1]:clips()[1].file, dir .. "-moved/media/a.wav", "a full path into the old folder is found in the new one")
   T.near(peak(), 0.25, 0.002, "and plays")
 end)
 
@@ -105,63 +105,63 @@ test("a renamed file is offline, reported once, kept on saving, and relinked", f
   local dir = T.scratch .. "/renamed"
   project_in(dir)
   T.tone("synth", 2)
-  daw.project.save()
+  paw.project.save()
   os.rename(dir .. "/media/a.wav", dir .. "/media/b.wav")
   api.warnings()
-  daw.project.load(dir .. "/song.json")
+  paw.project.load(dir .. "/song.json")
   eq(missing_warnings(), 1, "the missing file is reported once")
-  local clip = daw.tracks()[1]:clips()[1]
+  local clip = paw.tracks()[1]:clips()[1]
   eq(clip.offline, true, "its clip is offline")
-  eq(#daw.media.missing(), 1, "and listed as missing")
-  local state = daw.frontend.state(-1)
+  eq(#paw.media.missing(), 1, "and listed as missing")
+  local state = paw.frontend.state(-1)
   local drawn
   for _, c in ipairs(state.clips) do if c.id == clip.id then drawn = c end end
   eq(drawn.offline, true, "the window is told")
   eq(drawn.name:find("offline", 1, true) ~= nil, true, "and draws it as offline")
-  daw.flush()
+  paw.flush()
   eq(missing_warnings(), 0, "playing the project does not warn again")
-  daw.project.save()
+  paw.project.save()
   eq(T.read_file(dir .. "/song.json"):find('"media/a.wav"', 1, true) ~= nil, true, "saving keeps the original path")
 
-  local result = daw.media.relink(dir .. "/media/a.wav", dir .. "/media/b.wav")
+  local result = paw.media.relink(dir .. "/media/a.wav", dir .. "/media/b.wav")
   eq(result.clips, 1, "one clip is relinked")
-  clip = daw.tracks()[1]:clips()[1]
+  clip = paw.tracks()[1]:clips()[1]
   eq(clip.offline, nil, "it is online")
-  T.near(T.channel_peaks(T.render({ tail = 0, bits = 16, tracks = { daw.tracks()[1].id } })), 0.25, 0.002, "and plays")
+  T.near(T.channel_peaks(T.render({ tail = 0, bits = 16, tracks = { paw.tracks()[1].id } })), 0.25, 0.002, "and plays")
   api.undo_checkpoint()
-  daw.undo()
-  eq(daw.tracks()[1]:clips()[1].offline, true, "undo puts the old path back")
-  daw.redo()
-  daw.project.save()
+  paw.undo()
+  eq(paw.tracks()[1]:clips()[1].offline, true, "undo puts the old path back")
+  paw.redo()
+  paw.project.save()
   eq(T.read_file(dir .. "/song.json"):find('"media/b.wav"', 1, true) ~= nil, true, "the new path is saved")
 end)
 
 test("a missing file is found by name in the project's folder and beside others found", function()
   local dir = T.scratch .. "/byname"
   project_in(dir)
-  local u = daw.add_track()
+  local u = paw.add_track()
   u:add_clip({ file = steady(dir .. "/media/c.wav", 1, 0.5), start = 0, length = 2 })
-  daw.project.save()
+  paw.project.save()
   mkdir(dir .. "/deep/er")
   os.rename(dir .. "/media/a.wav", dir .. "/deep/er/a.wav")
   os.rename(dir .. "/media/c.wav", dir .. "/deep/er/c.wav")
   api.warnings()
-  daw.project.load(dir .. "/song.json")
+  paw.project.load(dir .. "/song.json")
   eq(missing_warnings(), 0, "nothing is reported missing")
-  eq(daw.tracks()[1]:clips()[1].file, dir .. "/deep/er/a.wav", "found where it went")
-  eq(daw.project.modified, true, "the project is modified, so that saving keeps the new place")
+  eq(paw.tracks()[1]:clips()[1].file, dir .. "/deep/er/a.wav", "found where it went")
+  eq(paw.project.modified, true, "the project is modified, so that saving keeps the new place")
   T.near(peak(), 0.75, 0.002, "both play")
 
   -- Elsewhere altogether: a directory to search.
   local away = T.scratch .. "/byname-away"
   mkdir(away .. "/sub")
-  daw.project.save()
+  paw.project.save()
   os.rename(dir .. "/deep/er/a.wav", away .. "/sub/a.wav")
-  daw.project.load(dir .. "/song.json")
-  eq(#daw.media.missing(), 1, "one is missing")
-  local result = daw.media.search(away)
+  paw.project.load(dir .. "/song.json")
+  eq(#paw.media.missing(), 1, "one is missing")
+  local result = paw.media.search(away)
   eq(result.found, 1, "a directory search finds it")
-  eq(#daw.media.missing(), 0, "and nothing is missing")
+  eq(#paw.media.missing(), 0, "and nothing is missing")
 end)
 
 test("collecting copies outside files into the project's media folder", function()
@@ -170,19 +170,19 @@ test("collecting copies outside files into the project's media folder", function
   local outside = steady(T.scratch .. "/loose/x.wav", 1, 0.5)
   project_in(dir, outside)
   api.undo_checkpoint()
-  local result = daw.media.collect()
+  local result = paw.media.collect()
   eq(result.copied, 1, "the one outside file is copied")
-  eq(daw.tracks()[2]:clips()[1].file, dir .. "/media/x.wav", "its clip plays the copy")
+  eq(paw.tracks()[2]:clips()[1].file, dir .. "/media/x.wav", "its clip plays the copy")
   eq(T.read_file(outside) ~= nil, true, "the original stays")
   T.near(peak(), 0.75, 0.002, "and everything plays")
   api.undo_checkpoint()
-  daw.undo()
-  eq(daw.tracks()[2]:clips()[1].file, outside, "one undo step")
-  daw.redo()
+  paw.undo()
+  eq(paw.tracks()[2]:clips()[1].file, outside, "one undo step")
+  paw.redo()
 
-  daw.opt.copy_imports = true
-  local clip = daw.import_audio(steady(T.scratch .. "/loose/y.wav", 1, 0.5), { start = 0 })
-  daw.opt.copy_imports = false
+  paw.opt.copy_imports = true
+  local clip = paw.import_audio(steady(T.scratch .. "/loose/y.wav", 1, 0.5), { start = 0 })
+  paw.opt.copy_imports = false
   eq(clip.file, dir .. "/media/y.wav", "with copy_imports, importing copies too")
 end)
 
@@ -193,22 +193,22 @@ test("a project with recordings, moved with its folder, plays them", function()
       fresh()
       local dir = T.scratch .. "/recorded-" .. tostring(saved_first)
       mkdir(dir)
-      if saved_first then daw.project.save(dir .. "/song.json") end
-      local t = daw.add_track({ name = "Mic" })
+      if saved_first then paw.project.save(dir .. "/song.json") end
+      local t = paw.add_track({ name = "Mic" })
       t.input = "1/2"
       t.armed = true
-      daw.flush()
-      daw.transport.record()
+      paw.flush()
+      paw.transport.record()
       api.sleep(500)
-      daw.transport.stop()
-      daw.flush()
+      paw.transport.stop()
+      paw.flush()
       t.armed = false
-      daw.project.save(dir .. "/song.json")
+      paw.project.save(dir .. "/song.json")
       local file = t:clips()[1].file
       eq(file:sub(1, #dir + 7), dir .. "/media/", "the take is in the project's folder (saved first: " .. tostring(saved_first) .. ")")
       os.rename(dir, dir .. "-moved")
-      daw.project.load(dir .. "-moved/song.json")
-      local clip = daw.tracks()[1]:clips()[1]
+      paw.project.load(dir .. "-moved/song.json")
+      local clip = paw.tracks()[1]:clips()[1]
       eq(clip.offline, nil, "the take is found after the move")
       local info = T.render({ start = clip.start, ["end"] = clip.start + clip.length, tail = 0, bits = 16 })
       T.near(info.peak, 10 ^ (-12 / 20), 0.02, "and plays")
@@ -236,58 +236,58 @@ test("a render gives the same samples as the renderer before it moved to a threa
   -- The references were written by the renderer as it was when it ran on
   -- the main thread (commit 330df77), from the demo song: bit for bit.
   dofile("examples/demo.lua")
-  local info = daw.render(T.scratch .. "/same32.wav", { bits = 32, tail = 1 })
+  local info = paw.render(T.scratch .. "/same32.wav", { bits = 32, tail = 1 })
   eq(info.frames, 870858, "as many frames")
   eq(checksum(info.path), "6966864 29c4bee4", "the same float samples")
-  info = daw.render(T.scratch .. "/same24.wav", { bits = 24, tail = 1, normalize = -1, dither = true, start = 4, ["end"] = 12 })
+  info = paw.render(T.scratch .. "/same24.wav", { bits = 24, tail = 1, normalize = -1, dither = true, start = 4, ["end"] = 12 })
   eq(checksum(info.path), "1522290 feb3b22f", "and the same normalized, dithered 24-bit samples")
 end)
 
 test("a render takes a range, a tail, a rate, a channel count and a sample size", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = steady(T.scratch .. "/half.wav", 8, 0.5), start = 0, length = 16 })
   -- At 120 bpm a beat is half a second.
-  daw.transport.loop_start, daw.transport.loop_end = 4, 8
-  local info = daw.render(T.scratch .. "/loop.wav", { range = "loop", tail = 0 })
+  paw.transport.loop_start, paw.transport.loop_end = 4, 8
+  local info = paw.render(T.scratch .. "/loop.wav", { range = "loop", tail = 0 })
   T.near(info.seconds, 2, 1e-3, "the loop is four beats")
-  info = daw.render(T.scratch .. "/between.wav", { start = 2, ["end"] = 6, tail = 1.5 })
+  info = paw.render(T.scratch .. "/between.wav", { start = 2, ["end"] = 6, tail = 1.5 })
   T.near(info.seconds, 2 + 1.5, 1e-3, "between two beats, with a tail in seconds")
-  T.fails(function() daw.render(T.scratch .. "/sel.wav", { range = "selection" }) end, "selected", "no selection, no range")
-  T.fails(function() daw.render(T.scratch .. "/x.wav", { range = "chorus" }) end, "loop", "an unknown range names the known ones")
-  daw.render_ranges.chorus = function() return 1, 3 end
-  T.near(daw.render(T.scratch .. "/chorus.wav", { range = "chorus", tail = 0 }).seconds, 1, 1e-3, "a range an extension adds")
-  daw.render_ranges.chorus = nil
+  T.fails(function() paw.render(T.scratch .. "/sel.wav", { range = "selection" }) end, "selected", "no selection, no range")
+  T.fails(function() paw.render(T.scratch .. "/x.wav", { range = "chorus" }) end, "loop", "an unknown range names the known ones")
+  paw.render_ranges.chorus = function() return 1, 3 end
+  T.near(paw.render(T.scratch .. "/chorus.wav", { range = "chorus", tail = 0 }).seconds, 1, 1e-3, "a range an extension adds")
+  paw.render_ranges.chorus = nil
 
-  info = daw.render(T.scratch .. "/mono.wav", { channels = "mono", bits = 16, rate = 44100, ["end"] = 2, tail = 0 })
+  info = paw.render(T.scratch .. "/mono.wav", { channels = "mono", bits = 16, rate = 44100, ["end"] = 2, tail = 0 })
   local head = T.read_file(info.path)
   eq(u16(head, 23), 1, "one channel")
   eq(u32(head, 25), 44100, "at the rate asked for")
   eq(u16(head, 35), 16, "of 16 bits")
   -- (At 44.1 kHz the file is converted, and its sudden start rings a little.)
-  T.near(daw.render(T.scratch .. "/mono48.wav", { channels = 1, ["end"] = 2, tail = 0 }).peak, 0.5, 0.002,
+  T.near(paw.render(T.scratch .. "/mono48.wav", { channels = 1, ["end"] = 2, tail = 0 }).peak, 0.5, 0.002,
     "both sides mixed at half each")
-  T.fails(function() daw.render(T.scratch .. "/x.flac", { bits = 32 }) end, "16, 24", "FLAC has no float samples")
-  T.fails(function() daw.render(T.scratch .. "/x.wav", { channels = 6 }) end, "mono", "only mono and stereo")
+  T.fails(function() paw.render(T.scratch .. "/x.flac", { bits = 32 }) end, "16, 24", "FLAC has no float samples")
+  T.fails(function() paw.render(T.scratch .. "/x.wav", { channels = 6 }) end, "mono", "only mono and stereo")
 end)
 
 test("FLAC renders read back as what was rendered", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = steady(T.scratch .. "/flac-src.wav", 3, 0.5), start = 0, length = 4 })
   for _, bits in ipairs({ 16, 24 }) do
     for _, channels in ipairs({ 1, 2 }) do
       local path = string.format("%s/out-%d-%d.flac", T.scratch, bits, channels)
-      local info = daw.render(path, { bits = bits, channels = channels, tail = 0 })
+      local info = paw.render(path, { bits = bits, channels = channels, tail = 0 })
       eq(T.read_file(path):sub(1, 4), "fLaC", "a FLAC file")
-      local back = daw.add_track()
+      local back = paw.add_track()
       local clip = back:add_clip({ file = path, start = 0 })
       T.near(clip.length, 4, 1e-3, string.format("as long as rendered (%d bits, %d channels)", bits, channels))
       eq(info.format, "FLAC", "and says so")
       back:remove()
     end
   end
-  local back = daw.add_track()
+  local back = paw.add_track()
   back:add_clip({ file = T.scratch .. "/out-24-2.flac", start = 0 })
   t.mute = true
   T.near(T.render({ tail = 0, ["end"] = 3 }).peak, 0.5, 0.0001, "the level comes back")
@@ -295,12 +295,12 @@ end)
 
 test("a render can leave out the master, or bring the song to a loudness", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = steady(T.scratch .. "/m.wav", 4, 0.5), start = 0, length = 8 })
-  daw.master.volume = -6
+  paw.master.volume = -6
   T.near(T.render({ tail = 0 }).peak, 0.25, 0.003, "through the master's fader")
   T.near(T.render({ tail = 0, master = false }).peak, 0.5, 0.001, "and without it")
-  daw.master.volume = 0
+  paw.master.volume = 0
   local info = T.render({ tail = 0, loudness = -20 })
   T.near(info.loudness, -20, 0.1, "brought to -20 LUFS")
   info = T.render({ tail = 0, loudness = -3, normalize = -6 })
@@ -310,32 +310,32 @@ end)
 --- Wait for the background render to end, gathering its events.
 local function finish()
   for _ = 1, 3000 do
-    if not daw.render_status() then return end
-    daw.wait(10)
+    if not paw.render_status() then return end
+    paw.wait(10)
   end
   error("the render did not end")
 end
 
 test("a render in the background reports progress, can be cancelled, and leaves no partial file", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = steady(T.scratch .. "/bg.wav", 4, 0.5), start = 0, length = 8 })
   local events = {}
   local handles = {}
   for _, name in ipairs({ "render.progress", "render.done", "render.cancelled", "render.failed" }) do
-    handles[#handles + 1] = daw.on(name, function(e) events[#events + 1] = { name = name, e = e } end)
+    handles[#handles + 1] = paw.on(name, function(e) events[#events + 1] = { name = name, e = e } end)
   end
   local path = T.scratch .. "/bg-out.wav"
   -- Long, so that there is time to look at it while it runs.
-  eq(daw.render(path, { ["end"] = 4000, tail = 0, background = true }), nil, "it returns at once")
-  eq(daw.render_status() ~= nil, true, "and is running")
+  eq(paw.render(path, { ["end"] = 4000, tail = 0, background = true }), nil, "it returns at once")
+  eq(paw.render_status() ~= nil, true, "and is running")
   eq(exists(path), false, "nothing is under the final name while it runs")
   t.volume = -60
-  daw.flush()
-  T.fails(function() daw.render(T.scratch .. "/other.wav", {}) end, "being rendered", "one render at a time")
-  daw.wait(300)
-  eq(daw.frontend.state(-1).modal.render ~= nil, true, "the window is told")
-  daw.cmd("render.cancel")
+  paw.flush()
+  T.fails(function() paw.render(T.scratch .. "/other.wav", {}) end, "being rendered", "one render at a time")
+  paw.wait(300)
+  eq(paw.frontend.state(-1).modal.render ~= nil, true, "the window is told")
+  paw.cmd("render.cancel")
   finish()
   eq(exists(path), false, "a cancelled render leaves no file")
   eq(exists(T.scratch .. "/.bg-out.wav.part"), false, "not even a partial one")
@@ -346,24 +346,24 @@ test("a render in the background reports progress, can be cancelled, and leaves 
   eq(progress > 0, true, "and reported progress before")
 
   events = {}
-  daw.render(path, { ["end"] = 8, tail = 0, background = true })
+  paw.render(path, { ["end"] = 8, tail = 0, background = true })
   t.volume = 0
   t:clips()[1]:remove()
-  daw.flush()
+  paw.flush()
   finish()
   eq(events[#events].name, "render.done", "a render ends with render.done")
   T.near(events[#events].e.peak, 10 ^ (-60 / 20) * 0.5, 0.0005, "of the project as it was when the render started")
   eq(exists(path), true, "under its name")
-  for _, h in ipairs(handles) do daw.off(h) end
+  for _, h in ipairs(handles) do paw.off(h) end
 end)
 
 test("the render command takes its options and completes them", function()
   fresh()
   T.tone("Synth", 2)
   local path = T.scratch .. "/cmd.flac"
-  daw.cmd("render", { path, tail = 0, bits = 16, channels = "mono", wait = true })
+  paw.cmd("render", { path, tail = 0, bits = 16, channels = "mono", wait = true })
   eq(T.read_file(path):sub(1, 4), "fLaC", "the command writes FLAC")
-  local spec = daw.commands.get("render")
+  local spec = paw.commands.get("render")
   local words = spec.complete("mix.wav ra")
   local found = false
   for _, w in ipairs(words) do if w == "mix.wav range=" then found = true end end
@@ -383,7 +383,7 @@ end
 
 test("a file at another rate is converted without aliases, and again when the rate changes", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   -- 30 kHz at 96 kHz: above what 48 kHz holds. Linear interpolation folds it
   -- back to 18 kHz at nearly full level; band-limited conversion removes it.
   t:add_clip({ file = tone_file(T.scratch .. "/high96.wav", 96000, 30000, 1, 0.5), start = 0, length = 2 })
@@ -411,16 +411,16 @@ end
 
 test("an audio clip is reversed, normalized and glued without touching its file", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   local src = ramp(T.scratch .. "/ramp.wav", 2, 0.5)
   local before = T.read_file(src)
   -- Plays the second half of the file: from 0.25 rising to 0.5.
   local clip = t:add_clip({ file = src, start = 0, length = 2, offset = 1 })
   clip.fade_in = 0.5
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  daw.media.reverse(clip)
-  daw.flush()
+  paw.media.reverse(clip)
+  paw.flush()
   eq(clip.file ~= src, true, "the clip plays a new file")
   eq(clip.offset, 0, "from its start")
   eq(clip.fade_out, 0.5, "and its fades change ends")
@@ -430,33 +430,33 @@ test("an audio clip is reversed, normalized and glued without touching its file"
   T.near(s[48000 - 10], 0, 0.01, "fading out at the end, where it faded in before")
   eq(T.read_file(src) == before, true, "the original file is unchanged")
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(clip.file, src, "one undo step puts it back")
   eq(clip.offset, 1, "offset and all")
 
-  local gain = daw.media.normalize(clip, -6)
+  local gain = paw.media.normalize(clip, -6)
   T.near(gain, -6 - 20 * math.log10(0.5), 0.01, "normalizing sets the clip's gain")
   T.near(T.render({ tail = 0, ["end"] = 2 }).peak, 10 ^ (-6 / 20), 0.01, "to bring its peak to the level")
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
 
   -- Two clips side by side, and one apart that is left alone.
   local b = t:add_clip({ file = steady(T.scratch .. "/g.wav", 1, 0.25), start = 2, length = 2 })
   local apart = t:add_clip({ file = steady(T.scratch .. "/h.wav", 1, 0.1), start = 8, length = 2 })
-  daw.flush()
+  paw.flush()
   local mix = T.render({ tail = 0, bits = 32 })
   api.undo_checkpoint()
-  local result = daw.media.glue(clip)
-  daw.flush()
+  local result = paw.media.glue(clip)
+  paw.flush()
   eq(result.glued, 2, "the clip and the one touching it are glued")
   eq(#t:clips(), 2, "into one clip, beside the one apart")
-  local glued = daw.clip(result.id)
+  local glued = paw.clip(result.id)
   eq(glued.start .. "/" .. glued.length, "0/4", "spanning both")
   eq(apart.start, 8, "the clip apart is left alone")
   local after = T.render({ tail = 0, bits = 32 })
   T.near(after.peak, mix.peak, 1e-4, "and it sounds the same")
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(#t:clips(), 3, "one undo step brings the clips back")
-  T.fails(function() daw.media.glue(apart) end, "nothing to glue", "a clip with nothing beside it")
+  T.fails(function() paw.media.glue(apart) end, "nothing to glue", "a clip with nothing beside it")
 end)

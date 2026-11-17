@@ -22,8 +22,8 @@ runCommand "paw-extension-sampler" {
     license = with lib.licenses; [ mit asl20 ];
   };
 } ''
-  dir=$out/share/daw/extensions/sampler
-  mkdir -p $out/share/daw/extensions
+  dir=$out/share/paw/extensions/sampler
+  mkdir -p $out/share/paw/extensions
   cp -r ${lua} $dir
   chmod -R u+w $dir
   ln -s ${engine}/lib/clap $dir/clap

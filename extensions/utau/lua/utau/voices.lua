@@ -3,14 +3,14 @@
 -- The `utau` device (devices/utau.lua, `lua:utau`) plays the phrases of the
 -- voice its `voice` parameter names. Each phrase is written here to a file
 -- of 32-bit floats, and what a voice holds is posted to every device of the
--- kind as the list of its files (`daw.api.device_post`): devices made later,
+-- kind as the list of its files (`paw.api.device_post`): devices made later,
 -- an offline render's among them, are given the same list before they play.
 -- The devices map the files, so the sound is kept once, in the files.
 --
 -- Voices outlive tracks and projects, but not the program: the files are
 -- under the cache, in a directory of this process's own, which goes when
 -- it ends (or, if it ended without saying, when the next one starts).
-local api = daw.api
+local api = paw.api
 
 local M = {
   DEVICE = "lua:utau",
@@ -28,7 +28,7 @@ local seq = 0
 local function cache_root()
   local base = os.getenv("XDG_CACHE_HOME")
   if not base or base == "" then base = (os.getenv("HOME") or "") .. "/.cache" end
-  return base .. "/daw/utau-voices"
+  return base .. "/paw/utau-voices"
 end
 
 local function quote(path) return "'" .. path:gsub("'", "'\\''") .. "'" end
@@ -51,7 +51,7 @@ function M.dir()
   return dir
 end
 
-daw.on("exit", function()
+paw.on("exit", function()
   if dir then os.execute("rm -rf " .. quote(dir)) end
 end)
 

@@ -3,24 +3,24 @@
 -- page view and its export. Loaded by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation")
 end
 
 local function N(pitch, start, length) return { pitch = pitch, start = start, length = length, velocity = 80 } end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
 local W, H = 1053, 900
 local function paint(view)
-  daw.canvas.paint("notation", W, H, { cell = { w = 7.8, h = 17 } })
+  paw.canvas.paint("notation", W, H, { cell = { w = 7.8, h = 17 } })
   return view.gui.engraved
 end
 
@@ -29,12 +29,12 @@ local function score(notes, length)
   fresh()
   local view = load()
   view.page, view.galley, view.space = false, false, nil
-  local track = daw.add_track({ name = "Piano" })
+  local track = paw.add_track({ name = "Piano" })
   local clip = track:add_clip({ start = 0, length = length, name = "tune", notes = notes })
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   api.undo_checkpoint()
   return view, clip
 end
@@ -279,12 +279,12 @@ test("notation layout: zs starts a system at the bar, zj keeps one on the system
   eq((" " .. firsts() .. " "):find(" " .. second .. " ") == nil, true, "no system starts there now")
   api.undo()
   eq(firsts(), before, "undone")
-  daw.commands.exec("notation.bars-per-system 2")
+  paw.commands.exec("notation.bars-per-system 2")
   eq(firsts(), "1 3 5 7", "two bars to a system")
-  daw.commands.exec("notation.bars-per-system")
+  paw.commands.exec("notation.bars-per-system")
   eq(firsts(), before)
   -- The terminal's cell view breaks the same way.
-  daw.commands.exec("notation.bars-per-system 3")
+  paw.commands.exec("notation.bars-per-system 3")
   view.first = 1
   view:set(nil, 0)
   api.ui_snapshot(140, 60)
@@ -297,7 +297,7 @@ end)
 
 test("notation layout: a tie into a new system starts after the clef and key, as long as a tie", function()
   local view = score({ N(67, 0, 4), N(69, 4, 8), N(71, 12, 4) }, 16)
-  daw.commands.exec("notation.bars-per-system 2")
+  paw.commands.exec("notation.bars-per-system 2")
   local eng = paint(view)
   local sys = eng.systems[2]
   eq(sys.first, 3)
@@ -322,7 +322,7 @@ test("notation layout: zp lays the systems on pages under the title, and export 
   api.project_set("meta", { title = "Dense Study", composer = "A. Tester" })
   keys("zp")
   eq(view.page, true)
-  local d = daw.canvas.paint("notation", W, H, { cell = { w = 7.8, h = 17 } })
+  local d = paw.canvas.paint("notation", W, H, { cell = { w = 7.8, h = 17 } })
   local eng = view.gui.engraved
   eq(eng.pages ~= nil and #eng.pages >= 1, true, "pages")
   local title, paper = false, false
@@ -337,7 +337,7 @@ test("notation layout: zp lays the systems on pages under the title, and export 
       "each system within its page's margins")
   end
   local base = "target/test-scratch/layout-test"
-  daw.cmd("notation.export", { base .. ".pdf" })
+  paw.cmd("notation.export", { base .. ".pdf" })
   local f = io.open(base .. ".pdf", "rb")
   local pdf = f and f:read("*a") or ""
   if f then f:close() end
@@ -348,7 +348,7 @@ test("notation layout: zp lays the systems on pages under the title, and export 
   local svg = f and f:read("*a") or ""
   if f then f:close() end
   eq(svg:find("^<svg") ~= nil and svg:find("</svg>") ~= nil, true)
-  daw.cmd("notation.export", { base .. ".png" })
+  paw.cmd("notation.export", { base .. ".png" })
   f = io.open(base .. ".png", "rb")
   eq(f and f:read(4):sub(2, 4), "PNG")
   if f then f:close() end

@@ -1,11 +1,11 @@
 -- The Markdown the manual is written in, made into lines of text for the
--- help buffers (daw/help.lua): headings, paragraphs, lists, tables, fenced
+-- help buffers (paw/help.lua): headings, paragraphs, lists, tables, fenced
 -- code, quotes, rules, and inside a line `code`, [links](target), **bold**
 -- and *italic*. Nothing else of Markdown is used in the docs, so nothing
 -- else is read; HTML comments are dropped, except `<!-- tags: a b -->`,
 -- which names the place it stands as help tags.
 --
---   local doc = daw.markdown.render(daw.markdown.parse(text), { width = 78 })
+--   local doc = paw.markdown.render(paw.markdown.parse(text), { width = 78 })
 --   doc.lines[3]   --> { text = "...", spans = { { c0, c1, style } }, links = { { c0, c1, target } }, codes = { ... } }
 --
 -- Columns are counted in characters from 0, as the text buffers count them.

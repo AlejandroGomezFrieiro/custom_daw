@@ -1,7 +1,7 @@
 //! The main area as the kernel's tabs and windows lay it out
-//! (`runtime/lua/daw/panes.lua`): where each view the window draws itself
+//! (`runtime/lua/paw/panes.lua`): where each view the window draws itself
 //! goes, the pictures of the views the kernel paints, the borders, the tabs
-//! and the pane with the keyboard. Gestures go back to `daw.panes`.
+//! and the pane with the keyboard. Gestures go back to `paw.panes`.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -24,21 +24,21 @@ pub const PAD: f32 = 6.0;
 /// The row of tabs along the top, when there is more than one.
 const TABS: f32 = 28.0;
 
-/// A cell of the monospace font as the rasterizer draws it: `daw.canvas`
+/// A cell of the monospace font as the rasterizer draws it: `paw.canvas`
 /// lays a view drawn in cells out on it.
 pub fn cell() -> (f32, f32) {
     // A run is drawn at the size that fills the cell's height: the width
     // is a character's at that size, so that a run fills its cells exactly.
-    let font = daw_raster::Font::Mono;
+    let font = paw_raster::Font::Mono;
     let height = (font.line_height() * MONO_SIZE).ceil();
-    (daw_raster::measure(font, "M", height / font.line_height()), height)
+    (paw_raster::measure(font, "M", height / font.line_height()), height)
 }
 
-/// A drawing (see `daw.canvas.paint`) as an image of `size` logical pixels,
+/// A drawing (see `paw.canvas.paint`) as an image of `size` logical pixels,
 /// at the screen's scale.
 pub fn raster(ops: &Value, size: (f32, f32), scale: f32) -> ColorImage {
     let (width, height) = ((size.0 * scale).round().max(1.0) as u32, (size.1 * scale).round().max(1.0) as u32);
-    match daw_raster::Drawing::parse(ops).paint_scaled(width, height, scale) {
+    match paw_raster::Drawing::parse(ops).paint_scaled(width, height, scale) {
         Some(pixmap) => ColorImage::from_rgba_premultiplied([width as usize, height as usize], pixmap.data()),
         None => ColorImage::new([width as usize, height as usize], vec![egui::Color32::TRANSPARENT; (width * height) as usize]),
     }
@@ -74,7 +74,7 @@ fn pane_rect(p: &Value) -> Rect {
     Rect::from_min_size(pos2(number(&p["x"]), number(&p["y"])), vec2(number(&p["w"]), number(&p["h"])))
 }
 
-/// A pointer event as `daw.panes.pointer` and `daw.canvas.pointer` take it.
+/// A pointer event as `paw.panes.pointer` and `paw.canvas.pointer` take it.
 pub fn pointer_event(kind: &str, at: Pos2, button: &str, m: egui::Modifiers) -> Value {
     json!({ "kind": kind, "x": at.x, "y": at.y, "button": button, "ctrl": m.ctrl, "shift": m.shift, "alt": m.alt })
 }
@@ -133,7 +133,7 @@ impl View {
         let size = (area.width().round(), area.height().round());
         if size != self.panes.told && size.0 > 0.0 && size.1 > 0.0 {
             self.panes.told = size;
-            self.eval("daw.panes.area(...)", json!([size.0, size.1]));
+            self.eval("paw.panes.area(...)", json!([size.0, size.1]));
         }
         if self.menu.is_some() || self.text_focus || self.dialogs.open() {
             return;
@@ -146,7 +146,7 @@ impl View {
         let at = pos - area.min.to_vec2();
         for pane in rows(&self.s.modal["panes"]["panes"]) {
             if pane_rect(pane).contains(at) && pane["focused"] != true {
-                self.eval("daw.panes.focus(...)", json!([pane["win"]]));
+                self.eval("paw.panes.focus(...)", json!([pane["win"]]));
                 break;
             }
         }
@@ -185,7 +185,7 @@ impl View {
             if self.repaint || stale || cells {
                 let fresh = !self.panes.drawn.contains_key(&win);
                 let opts = json!({ "cell": { "w": cell_w, "h": cell_h }, "fresh": fresh, "glyphs": true });
-                let drawing = self.ask("return daw.panes.paint(...)", json!([win, size.0, size.1, opts]));
+                let drawing = self.ask("return paw.panes.paint(...)", json!([win, size.0, size.1, opts]));
                 if drawing["same"] == true {
                     if let Some(d) = self.panes.drawn.get_mut(&win) {
                         d.painted = Instant::now();
@@ -205,7 +205,7 @@ impl View {
                 ui.painter().with_clip_rect(rect).image(d.texture.id(), picture, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), egui::Color32::WHITE);
             }
             for event in pointer_events(ui, picture, Id::unique(("pane-pointer", win))) {
-                self.eval("daw.panes.pointer(...)", json!([win, event]));
+                self.eval("paw.panes.pointer(...)", json!([win, event]));
                 self.repaint = true;
             }
             // The title over the top, over the picture's own title row.
@@ -229,7 +229,7 @@ impl View {
             let response = widgets::button(ui, close, Id::unique(("pane-close", win)), Some(icons::X), "", Look::quiet());
             widgets::hint_on(&response, "close the window (:q)");
             if response.clicked() {
-                self.eval("daw.panes.close(...)", json!([win]));
+                self.eval("paw.panes.close(...)", json!([win]));
             }
         }
         if painted_any {
@@ -261,7 +261,7 @@ impl View {
             {
                 let at = pos - area.min.to_vec2();
                 self.panes.border = Some(i);
-                self.eval("daw.panes.border(...)", json!([i + 1, at.x, at.y]));
+                self.eval("paw.panes.border(...)", json!([i + 1, at.x, at.y]));
             }
         }
         // The ring round the pane with the keyboard, when there are several.
@@ -293,7 +293,7 @@ impl View {
                 }
                 ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, font, if on { t.text } else { t.text_2 });
                 if response.clicked() {
-                    self.eval("daw.panes.tab(...)", json!([i + 1]));
+                    self.eval("paw.panes.tab(...)", json!([i + 1]));
                 }
                 x += w + 2.0;
             }

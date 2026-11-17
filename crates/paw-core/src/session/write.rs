@@ -17,7 +17,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use daw_engine::automation::value_at;
+use paw_engine::automation::value_at;
 
 use super::{LaneOpts, Session};
 use crate::model::{AutoMode, Id, Target};

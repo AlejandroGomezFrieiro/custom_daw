@@ -1,13 +1,13 @@
 -- The pickers that come with the runtime. Each is a table of the fields
--- `daw.pick` takes, with a `desc`, or a function that returns one; add your
--- own to `daw.pick.sources` the same way.
+-- `paw.pick` takes, with a `desc`, or a function that returns one; add your
+-- own to `paw.pick.sources` the same way.
 return function(pick)
-  local api = daw.api
+  local api = paw.api
   local S = {}
 
   local function need_track()
-    local track = daw.cursor.track()
-    if not track then daw.notify("no track selected", "warn") end
+    local track = paw.cursor.track()
+    if not track then paw.notify("no track selected", "warn") end
     return track
   end
 
@@ -40,8 +40,8 @@ return function(pick)
   local function key_index()
     local index = {}
     for _, mode in ipairs({ "n", "x" }) do
-      for _, scope in ipairs({ daw.ui.focused, "arrange", "pianoroll", "devices", "mixer" }) do
-        for _, map in ipairs(daw.keymap.list(mode, scope)) do
+      for _, scope in ipairs({ paw.ui.focused, "arrange", "pianoroll", "devices", "mixer" }) do
+        for _, map in ipairs(paw.keymap.list(mode, scope)) do
           if type(map.rhs) == "string" then
             local name = map.rhs:match("^(%S+)")
             local key = map.lhs .. (map.scope ~= "global" and " (" .. map.scope .. ")" or "")
@@ -59,7 +59,7 @@ return function(pick)
     for _, list in pairs(index) do
       for i, key in ipairs(list) do list[i] = { key = key, n = i } end
       table.sort(list, function(a, b)
-        local la, lb = #daw.keymap.human((a.key:gsub(" %(.*%)$", ""))), #daw.keymap.human((b.key:gsub(" %(.*%)$", "")))
+        local la, lb = #paw.keymap.human((a.key:gsub(" %(.*%)$", ""))), #paw.keymap.human((b.key:gsub(" %(.*%)$", "")))
         if la ~= lb then return la < lb end
         return a.n < b.n
       end)
@@ -78,9 +78,9 @@ return function(pick)
   --- The commands the focused view has keys of its own for, by name.
   local function view_commands()
     local out = {}
-    local view = daw.ui.focused
+    local view = paw.ui.focused
     for _, mode in ipairs({ "n", "x" }) do
-      for _, map in ipairs(daw.keymap.list(mode, view)) do
+      for _, map in ipairs(paw.keymap.list(mode, view)) do
         if map.scope == view and type(map.rhs) == "string" then out[map.rhs:match("^(%S+)")] = true end
       end
     end
@@ -90,9 +90,9 @@ return function(pick)
   local view_set = {}
 
   local function edit_command(spec)
-    daw.ui.input({ prompt = ":", history = "cmdline", text = spec.name .. " " }, function(line)
-      if line:match("%S") then daw.state.last_cmdline = line daw.commands.used(line:match("^%s*:?(%S+)")) end
-      daw.commands.exec(line)
+    paw.ui.input({ prompt = ":", history = "cmdline", text = spec.name .. " " }, function(line)
+      if line:match("%S") then paw.state.last_cmdline = line paw.commands.used(line:match("^%s*:?(%S+)")) end
+      paw.commands.exec(line)
     end)
   end
 
@@ -102,27 +102,27 @@ return function(pick)
     items = function()
       keys_now = key_index()
       view_set = view_commands()
-      return daw.commands.list()
+      return paw.commands.list()
     end,
     format = function(spec)
       local keys = keys_for(spec.alias_of or spec.name)
-      local key = keys[1] and daw.keymap.human((keys[1]:gsub(" %(.*%)$", ""))) or ""
+      local key = keys[1] and paw.keymap.human((keys[1]:gsub(" %(.*%)$", ""))) or ""
       return string.format("%-24s %-10s %s", spec.name, key, spec.alias_of and "→ " .. spec.alias_of or spec.desc)
     end,
     primary = function(spec) return spec.name end,
     -- Commands used before come first, and those the focused view has keys for.
     boost = function(spec)
       local name = spec.alias_of or spec.name
-      return math.min(daw.commands.uses(name), 10) * 8 + (view_set[name] and 40 or 0)
+      return math.min(paw.commands.uses(name), 10) * 8 + (view_set[name] and 40 or 0)
     end,
     on_choose = function(spec)
-      daw.state.last_cmdline = spec.name
-      daw.commands.used(spec.name)
-      daw.commands.run(spec.name)
+      paw.state.last_cmdline = spec.name
+      paw.commands.used(spec.name)
+      paw.commands.run(spec.name)
     end,
     actions = {
       ["<C-e>"] = { fn = function(spec) if spec then edit_command(spec) end end, desc = "edit arguments" },
-      ["<C-]>"] = { fn = function(spec) if spec then daw.help.for_command(spec.alias_of or spec.name) end end, desc = "help" },
+      ["<C-]>"] = { fn = function(spec) if spec then paw.help.for_command(spec.alias_of or spec.name) end end, desc = "help" },
     },
     preview = function(spec)
       local lines = { { text = spec.name, style = "Title" }, "" }
@@ -134,7 +134,7 @@ return function(pick)
         lines[#lines + 1] = { text = "Keys", style = "HelpSection" }
         for _, key in ipairs(keys) do
           local lhs, where = key:match("^(.-)( %(.*%))$")
-          lines[#lines + 1] = "  " .. daw.keymap.human(lhs or key) .. (where or "")
+          lines[#lines + 1] = "  " .. paw.keymap.human(lhs or key) .. (where or "")
         end
       end
       lines[#lines + 1] = ""
@@ -159,27 +159,27 @@ return function(pick)
   local function run_key(entry)
     local map = entry.map
     if entry.other then
-      daw.ui.focus(entry.other)
-      return daw.notify(daw.keymap.human(map.lhs) .. " is a key of the " .. entry.other .. " view, which has the keys now")
+      paw.ui.focus(entry.other)
+      return paw.notify(paw.keymap.human(map.lhs) .. " is a key of the " .. entry.other .. " view, which has the keys now")
     end
     if entry.kind == "object" then
-      return daw.notify(daw.keymap.human(map.lhs) .. " names a region: type it after an operator such as `d` or `y`, or in a selection")
+      return paw.notify(paw.keymap.human(map.lhs) .. " names a region: type it after an operator such as `d` or `y`, or in a selection")
     end
     if entry.kind == "insert" then
-      return daw.notify(daw.keymap.human(map.lhs) .. " works in insert mode: `i` first")
+      return paw.notify(paw.keymap.human(map.lhs) .. " works in insert mode: `i` first")
     end
-    if entry.kind == "visual" and daw.keymap.mode ~= "x" then
-      return daw.notify(daw.keymap.human(map.lhs) .. " acts on a selection: `v` or `V` first")
+    if entry.kind == "visual" and paw.keymap.mode ~= "x" then
+      return paw.notify(paw.keymap.human(map.lhs) .. " acts on a selection: `v` or `V` first")
     end
-    daw.keymap.normal(map.lhs)
+    paw.keymap.normal(map.lhs)
   end
 
   S.keys = function()
-    local view = daw.ui.focused
+    local view = paw.ui.focused
     -- The picker is as wide as the screen allows, the list on the left
     -- and, beside it, the help of the key chosen.
     -- (A window's main area is wider than the screen the kernel keeps for it.)
-    local cells = daw.panes.cells()
+    local cells = paw.panes.cells()
     local total = math.min(150, math.max((api.ui_size()), cells and cells.w or 0) - 4)
     local list_w = math.floor(total * 0.6)
     local preview_w = total - list_w - 3
@@ -198,9 +198,9 @@ return function(pick)
         -- the rest; short keys before long ones.
         local rank = { key = 1, operator = 2, motion = 3, object = 4, visual = 5, insert = 6 }
         local out, seen = {}, {}
-        for _, entry in ipairs(daw.keymap.all(view)) do
+        for _, entry in ipairs(paw.keymap.all(view)) do
           local map = entry.map
-          entry.human = daw.keymap.human(map.lhs)
+          entry.human = paw.keymap.human(map.lhs)
           entry.desc = map.desc or (type(map.rhs) == "string" and map.rhs) or "(no description)"
           entry.tag = key_tag(entry)
           -- Keys that do the same thing in the same place are one line.
@@ -230,14 +230,14 @@ return function(pick)
         -- a key does finds it wherever it works: `send` in the mixer finds
         -- the arrange view's `,s`.
         local names = {}
-        for name, v in pairs(daw.ui.views) do
+        for name, v in pairs(paw.ui.views) do
           if name ~= view and v.focusable ~= false and not v.modal then names[#names + 1] = name end
         end
         table.sort(names)
         for _, name in ipairs(names) do
-          for _, map in ipairs(daw.keymap.list("n", name)) do
+          for _, map in ipairs(paw.keymap.list("n", name)) do
             if map.scope == name and not map.motion and map.desc then
-              out[#out + 1] = { map = map, kind = "key", other = name, human = daw.keymap.human(map.lhs), desc = map.desc }
+              out[#out + 1] = { map = map, kind = "key", other = name, human = paw.keymap.human(map.lhs), desc = map.desc }
               out[#out].tag = key_tag(out[#out])
             end
           end
@@ -255,17 +255,17 @@ return function(pick)
         return out
       end,
       format = function(e)
-        return daw.util.fit(e.human, cols.key) .. " " .. daw.util.fit(e.desc, cols.desc) .. " " .. e.tag
+        return paw.util.fit(e.human, cols.key) .. " " .. paw.util.fit(e.desc, cols.desc) .. " " .. e.tag
       end,
       -- What the manual says of the key, or what it is for.
       preview = function(e)
-        local lines = daw.help.excerpt_for_map(e.map, preview_w, 24)
+        local lines = paw.help.excerpt_for_map(e.map, preview_w, 24)
         if lines then return lines end
         return { { text = e.human, style = "HelpKey" }, "", e.desc, "", { text = "the manual has nothing on it yet", style = "Dim" } }
       end,
       primary = function(e) return e.human end,
       on_choose = run_key,
-      actions = { ["<C-]>"] = { fn = function(e) if e then daw.help.for_map(e.map) end end, desc = "help" } },
+      actions = { ["<C-]>"] = { fn = function(e) if e then paw.help.for_map(e.map) end end, desc = "help" } },
     }
   end
 
@@ -281,15 +281,15 @@ return function(pick)
     title = "Tracks",
     items = function()
       local out = {}
-      for i, id in ipairs(daw.scope.tracks()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
+      for i, id in ipairs(paw.scope.tracks()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
       return out
     end,
     format = function(t) return string.format("%2d  %s", t.index, t.name) end,
-    location = function(t) return daw.address.track(t.id) end,
+    location = function(t) return paw.address.track(t.id) end,
     on_choose = function(t)
-      daw.keymap.push_jump()
-      daw.cursor.set_track(t.id)
-      if daw.ui.views.arrange.center then daw.ui.views.arrange:center() end
+      paw.keymap.push_jump()
+      paw.cursor.set_track(t.id)
+      if paw.ui.views.arrange.center then paw.ui.views.arrange:center() end
     end,
     delete = function(list)
       api.undo_label(#list == 1 and "Remove the track" or "Remove tracks")
@@ -300,7 +300,7 @@ return function(pick)
     -- What the track plays around the cursor, heard when asked for.
     audition_key = "tracks",
     audition_default = false,
-    audition = function(t) return t.name .. " · " .. daw.audition.through(t.id) end,
+    audition = function(t) return t.name .. " · " .. paw.audition.through(t.id) end,
     preview = function(t)
       local info = api.track_get(t.id)
       local lines = { { text = info.name, style = "Title" }, "" }
@@ -310,7 +310,7 @@ return function(pick)
       local clips = api.clip_list(t.id)
       lines[#lines + 1] = ""
       lines[#lines + 1] = plural(#clips, "clip")
-      for _, c in ipairs(clips) do lines[#lines + 1] = string.format("  %-10s %s", daw.time.format(c.start), c.name) end
+      for _, c in ipairs(clips) do lines[#lines + 1] = string.format("  %-10s %s", paw.time.format(c.start), c.name) end
       return lines
     end,
   }
@@ -320,7 +320,7 @@ return function(pick)
     title = "Clips",
     items = function()
       local out = {}
-      for _, id in ipairs(daw.scope.tracks()) do
+      for _, id in ipairs(paw.scope.tracks()) do
         local name = track_name(id)
         for _, c in ipairs(api.clip_list(id)) do
           out[#out + 1] = { id = c.id, track = id, track_name = name, name = c.name, start = c.start, length = c.length, kind = c.kind }
@@ -328,14 +328,14 @@ return function(pick)
       end
       return out
     end,
-    format = function(c) return string.format("%-20s %-14s %s", c.name, c.track_name, daw.time.format(c.start)) end,
-    location = function(c) return daw.address.clip(c.id) end,
+    format = function(c) return string.format("%-20s %-14s %s", c.name, c.track_name, paw.time.format(c.start)) end,
+    location = function(c) return paw.address.clip(c.id) end,
     on_choose = function(c)
-      daw.keymap.push_jump()
-      daw.ui.focus("arrange")
-      daw.cursor.set_track(c.track)
-      daw.cursor.set_beat(c.start)
-      daw.ui.views.arrange:center()
+      paw.keymap.push_jump()
+      paw.ui.focus("arrange")
+      paw.cursor.set_track(c.track)
+      paw.cursor.set_beat(c.start)
+      paw.ui.views.arrange:center()
     end,
     delete = function(list)
       api.undo_label(#list == 1 and "Remove the clip" or "Remove clips")
@@ -349,11 +349,11 @@ return function(pick)
       local lines = {
         { text = info.name, style = "Title" },
         "track   " .. c.track_name,
-        string.format("from    %s to %s, %g beats%s", daw.time.format(info.start), daw.time.format(info.start + info.length), info.length, info.muted and ", muted" or ""),
+        string.format("from    %s to %s, %g beats%s", paw.time.format(info.start), paw.time.format(info.start + info.length), info.length, info.muted and ", muted" or ""),
         info.kind == "midi" and plural(info.note_count, "note") or "audio   " .. tostring(info.file),
         "",
       }
-      local drawn = require("daw.pick.preview").clip(c.id, width or 40, math.max(4, (height or 20) - #lines - 3))
+      local drawn = require("paw.pick.preview").clip(c.id, width or 40, math.max(4, (height or 20) - #lines - 3))
       for _, line in ipairs(drawn) do lines[#lines + 1] = line end
       return lines
     end,
@@ -362,17 +362,17 @@ return function(pick)
     audition = function(c)
       local info = api.clip_get(c.id)
       if info.kind == "audio" then
-        daw.audition.file(info.file)
+        paw.audition.file(info.file)
         return info.name
       end
-      local length = math.min(info.length, daw.time.bar(info.start) * 2)
+      local length = math.min(info.length, paw.time.bar(info.start) * 2)
       local notes = {}
       for _, n in ipairs(api.clip_notes(c.id)) do
         if n.start >= 0 and n.start < length then
           notes[#notes + 1] = { pitch = n.pitch, start = n.start, length = n.length, velocity = n.velocity }
         end
       end
-      daw.audition.phrase(c.track, notes, { length = length, label = info.name, key = "clip" .. c.id })
+      paw.audition.phrase(c.track, notes, { length = length, label = info.name, key = "clip" .. c.id })
       return string.format("%s · %g beats on %s", info.name, length, c.track_name)
     end,
   }
@@ -385,53 +385,53 @@ return function(pick)
     desc = "Add a device or plugin to the track",
     title = "Add a device",
     -- Favourites first, then the ones used last; `@instrument`, `@clap`,
-    -- `@fav` or `@<vendor>` typed filter (see `daw.fx.rank`).
+    -- `@fav` or `@<vendor>` typed filter (see `paw.fx.rank`).
     items = function()
-      wanted = daw.fx.preferred(daw.cursor.track_id())
-      return daw.fx.device_list(wanted)
+      wanted = paw.fx.preferred(paw.cursor.track_id())
+      return paw.fx.device_list(wanted)
     end,
-    format = function(info) return daw.fx.device_line(info) end,
+    format = function(info) return paw.fx.device_line(info) end,
     rank = function(info, query, line)
       typed = query
-      return daw.fx.rank(info, query, line, wanted)
+      return paw.fx.rank(info, query, line, wanted)
     end,
     on_choose = function(info)
       local track = need_track()
       if not track then return end
-      daw.fx.add(track, info.kind, { query = typed })
-      daw.notify("added " .. info.name .. " to " .. track.name)
+      paw.fx.add(track, info.kind, { query = typed })
+      paw.notify("added " .. info.name .. " to " .. track.name)
     end,
     -- Heard on the track, with what it plays around the cursor: added as a
     -- trial, taken away again unless chosen. A plugin is made apart, so
     -- the selection rests on it longer first.
     audition = function(info)
-      local track = daw.cursor.track()
+      local track = paw.cursor.track()
       if not track then return "no track to try it on" end
-      local device = daw.audition.try(function() return daw.fx.place(track, info.kind) end)
+      local device = paw.audition.try(function() return paw.fx.place(track, info.kind) end)
       return {
-        label = info.name .. " · " .. daw.audition.through(track.id),
+        label = info.name .. " · " .. paw.audition.through(track.id),
         loading = function()
           local ok, d = pcall(api.device_get, device.id)
           return ok and d.status == "loading"
         end,
         keep = function()
-          daw.fx.added(device, info.kind, { query = typed })
-          daw.notify("added " .. info.name .. " to " .. track.name)
+          paw.fx.added(device, info.kind, { query = typed })
+          paw.notify("added " .. info.name .. " to " .. track.name)
         end,
       }
     end,
     audition_delay = function(info, ms) return info.format ~= "builtin" and math.max(ms, 600) or ms end,
     actions = {
       ["<C-f>"] = { desc = "favourite", fn = function(info, query)
-        if info then daw.fx.toggle_favourite(info.kind) end
-        daw.pick("devices", { query = query })
+        if info then paw.fx.toggle_favourite(info.kind) end
+        paw.pick("devices", { query = query })
       end },
       ["<C-t>"] = { desc = "instruments/effects", fn = function(_, query)
         -- Step the filter: none, instruments, effects.
         local q = query:gsub("%s*@instrument", ""):gsub("%s*@effect", "")
         local was = query:find("@instrument") and 1 or query:find("@effect") and 2 or 0
         local tag = ({ [0] = " @instrument", [1] = " @effect", [2] = "" })[was]
-        daw.pick("devices", { query = (q .. tag):gsub("^%s+", "") })
+        paw.pick("devices", { query = (q .. tag):gsub("^%s+", "") })
       end },
     },
     preview = function(info)
@@ -460,7 +460,7 @@ return function(pick)
     title = "Devices on the track",
     empty = "No devices on this track. `<leader>fa` adds one.",
     items = function()
-      local track, out = daw.cursor.track(), {}
+      local track, out = paw.cursor.track(), {}
       for i, device in ipairs(track and track:devices() or {}) do
         local d = device:get()
         out[#out + 1] = { id = d.id, index = i, name = d.name, kind = d.kind, bypass = d.bypass }
@@ -469,8 +469,8 @@ return function(pick)
     end,
     format = function(d) return string.format("%d. %s%s", d.index, d.name, d.bypass and "  (bypassed)" or "") end,
     on_choose = function(d)
-      local panel = daw.ui.views.devices
-      daw.ui.focus("devices")
+      local panel = paw.ui.views.devices
+      paw.ui.focus("devices")
       for i, row in ipairs(panel:rows()) do
         if row.device.id == d.id and not row.param and not row.picture then panel.row = i end
       end
@@ -484,7 +484,7 @@ return function(pick)
       local lines = { { text = info.name, style = "Title" }, "", "kind   " .. info.kind, "" }
       for i, p in ipairs(info.param_info) do
         if i > 40 then break end
-        lines[#lines + 1] = string.format("%-18s %s", p.name, daw.frontend.format_value(p, info.params[p.key]))
+        lines[#lines + 1] = string.format("%-18s %s", p.name, paw.frontend.format_value(p, info.params[p.key]))
       end
       return lines
     end,
@@ -499,7 +499,7 @@ return function(pick)
     items = function()
       local out = {}
       for _, view in ipairs({ "arrange", "pianoroll" }) do
-        local list = daw.keymap.marks(view)
+        local list = paw.keymap.marks(view)
         local names = {}
         for name in pairs(list) do names[#names + 1] = name end
         table.sort(names)
@@ -508,9 +508,9 @@ return function(pick)
           local where
           if view == "arrange" then
             local ok, t = pcall(api.track_get, pos.track)
-            where = daw.time.format(pos.beat) .. "  " .. (ok and t.name or "(track gone)")
+            where = paw.time.format(pos.beat) .. "  " .. (ok and t.name or "(track gone)")
           else
-            where = daw.music.name(pos[1]) .. "  beat " .. pos[2] + 1
+            where = paw.music.name(pos[1]) .. "  beat " .. pos[2] + 1
           end
           out[#out + 1] = { name = name, view = view, where = where }
         end
@@ -519,8 +519,8 @@ return function(pick)
     end,
     format = function(m) return string.format("%s  %-10s %s", m.name, m.view, m.where) end,
     on_choose = function(m)
-      if daw.ui.focused ~= m.view then daw.ui.focus(m.view) end
-      daw.keymap.goto_mark(m.name)
+      if paw.ui.focused ~= m.view then paw.ui.focus(m.view) end
+      paw.keymap.goto_mark(m.name)
     end,
   }
 
@@ -548,14 +548,14 @@ return function(pick)
     empty = "Nothing yanked or recorded yet.",
     items = function()
       local out = {}
-      for name, value in pairs(daw.keymap.registers) do out[#out + 1] = { name = name, value = value } end
+      for name, value in pairs(paw.keymap.registers) do out[#out + 1] = { name = name, value = value } end
       table.sort(out, function(a, b) return a.name < b.name end)
       return out
     end,
     format = function(r) return string.format('"%s  %s', r.name, describe(r.value)) end,
     on_choose = function(r)
-      if r.value.kind == "keys" then return daw.keymap.play(r.name) end
-      daw.keymap.normal('"' .. r.name .. "P")
+      if r.value.kind == "keys" then return paw.keymap.play(r.name) end
+      paw.keymap.normal('"' .. r.name .. "P")
     end,
   }
 
@@ -568,12 +568,12 @@ return function(pick)
     title = "Messages",
     empty = "No messages yet.",
     items = function()
-      local out, list = {}, daw.ui.messages
+      local out, list = {}, paw.ui.messages
       for i = #list, 1, -1 do out[#out + 1] = list[i] end
       return out
     end,
     format = function(m) return string.format("%-5s %s", m.level, m.text:match("^[^\n]*")) end,
-    on_choose = function(m) daw.ui.page("Message", { { text = m.text, style = levels[m.level] } }) end,
+    on_choose = function(m) paw.ui.page("Message", { { text = m.text, style = levels[m.level] } }) end,
     preview = function(m) return { { text = m.text, style = levels[m.level] } } end,
   }
 
@@ -605,7 +605,7 @@ return function(pick)
           local ext = (name:match("%.([^.]+)$") or ""):lower()
           if audio_ext[ext] then
             out[#out + 1] = { path = path, kind = "audio" }
-          elseif daw.midifile.is_midi_file(name) then
+          elseif paw.midifile.is_midi_file(name) then
             out[#out + 1] = { path = path, kind = "midi" }
           elseif ext == "json" and is_project(dir .. "/" .. name) then
             out[#out + 1] = { path = path, kind = "project" }
@@ -626,14 +626,14 @@ return function(pick)
     format = function(f) return f.path end,
     on_choose = function(f)
       if f.kind == "project" then
-        if not daw.project.guard("open") then return end
-        daw.open(f.path)
-        return daw.notify("opened " .. f.path)
+        if not paw.project.guard("open") then return end
+        paw.open(f.path)
+        return paw.notify("opened " .. f.path)
       end
-      if f.kind == "midi" then return daw.commands.run("import", { f.path }) end
+      if f.kind == "midi" then return paw.commands.run("import", { f.path }) end
       local track = need_track()
       if not track then return end
-      track:add_clip({ start = daw.cursor.beat, file = f.path })
+      track:add_clip({ start = paw.cursor.beat, file = f.path })
     end,
     audition_key = "files",
     audition = function(f) return pick.hear_file(f.path) end,
@@ -644,13 +644,13 @@ return function(pick)
       if f.kind == "midi" then
         return {
           { text = f.path, style = "Title" }, "", "A MIDI file.",
-          "Enter brings its tracks in at " .. daw.time.format(daw.cursor.beat) .. "; `:open` opens it as a project.",
+          "Enter brings its tracks in at " .. paw.time.format(paw.cursor.beat) .. "; `:open` opens it as a project.",
         }
       end
-      local track = daw.cursor.track()
+      local track = paw.cursor.track()
       return {
         { text = f.path, style = "Title" }, "", "Audio.",
-        "Enter adds it at " .. daw.time.format(daw.cursor.beat) .. (track and " on " .. track.name or ""),
+        "Enter adds it at " .. paw.time.format(paw.cursor.beat) .. (track and " on " .. track.name or ""),
       }
     end,
   }
@@ -666,24 +666,24 @@ return function(pick)
   S.options = {
     desc = "Set an option",
     title = "Options",
-    items = function() return daw.option.list() end,
-    format = function(o) return string.format("%-14s %s", o.name, tostring(daw.opt[o.name])) end,
+    items = function() return paw.option.list() end,
+    format = function(o) return string.format("%-14s %s", o.name, tostring(paw.opt[o.name])) end,
     on_choose = function(o)
-      local value = daw.opt[o.name]
+      local value = paw.opt[o.name]
       if type(value) == "boolean" then
-        daw.opt[o.name] = not value
-        return daw.notify(o.name .. " = " .. tostring(not value))
+        paw.opt[o.name] = not value
+        return paw.notify(o.name .. " = " .. tostring(not value))
       end
-      daw.ui.input({ prompt = o.name .. " = ", text = tostring(value) }, function(text)
+      paw.ui.input({ prompt = o.name .. " = ", text = tostring(value) }, function(text)
         if text == "" then return end
-        daw.opt[o.name] = convert(text)
-        daw.notify(o.name .. " = " .. tostring(daw.opt[o.name]))
+        paw.opt[o.name] = convert(text)
+        paw.notify(o.name .. " = " .. tostring(paw.opt[o.name]))
       end)
     end,
     preview = function(o)
       return {
         { text = o.name, style = "Title" }, "",
-        "now       " .. tostring(daw.opt[o.name]),
+        "now       " .. tostring(paw.opt[o.name]),
         "default   " .. tostring(o.default),
         "",
         { text = type(o.default) == "boolean" and "Enter switches it" or "Enter asks for a new value", style = "Dim" },
@@ -691,6 +691,6 @@ return function(pick)
     end,
   }
 
-  require("daw.pick.project")(pick, S)
+  require("paw.pick.project")(pick, S)
   return S
 end

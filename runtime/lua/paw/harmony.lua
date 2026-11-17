@@ -1,23 +1,23 @@
--- `daw.harmony`: which chords and which key sound at each moment of the song,
+-- `paw.harmony`: which chords and which key sound at each moment of the song,
 -- over every pitched track, and the theory to work with them (keys, scales,
 -- chord names, Roman numerals, voicings, an instrument's range).
 --
---   daw.harmony.chords(0, 16)     --> { { at = 0, length = 4, root = 9, quality = "min", name = "Am", roman = "i", ... }, ... }
---   daw.harmony.at(8)  daw.harmony.next(8)  daw.harmony.prev(8)
---   daw.harmony.key(8)            --> { tonic = 9, mode = "minor", name = "A minor", ... }
---   daw.harmony.provide("my-server", function(from, to) return chords, keys end, 100)
+--   paw.harmony.chords(0, 16)     --> { { at = 0, length = 4, root = 9, quality = "min", name = "Am", roman = "i", ... }, ... }
+--   paw.harmony.at(8)  paw.harmony.next(8)  paw.harmony.prev(8)
+--   paw.harmony.key(8)            --> { tonic = 9, mode = "minor", name = "A minor", ... }
+--   paw.harmony.provide("my-server", function(from, to) return chords, keys end, 100)
 --
 -- The reading comes from providers: the highest-priority one that answers
--- wins. The built-in one (`daw.harmony.read`) reads the notes themselves; a
+-- wins. The built-in one (`paw.harmony.read`) reads the notes themselves; a
 -- language server can answer instead. A reading is kept until the project
 -- changes, so asking on every key press costs nothing. `harmony.changed` is
 -- emitted when it changes.
-local api = daw.api
-local read = require("daw.harmony.read")
-local M = { read = read, voice = require("daw.harmony.voice") }
+local api = paw.api
+local read = require("paw.harmony.read")
+local M = { read = read, voice = require("paw.harmony.voice") }
 
-daw.option.define("chords", "names")          -- chord symbols in the piano roll's ruler: "names", "roman", "both" or false
-daw.option.define("harmony_step", 0.5)        -- beats: the shortest chord the built-in reading finds is about twice this
+paw.option.define("chords", "names")          -- chord symbols in the piano roll's ruler: "names", "roman", "both" or false
+paw.option.define("harmony_step", 0.5)        -- beats: the shortest chord the built-in reading finds is about twice this
 
 -- Theory: pitch classes, keys and scales -------------------------------------------
 
@@ -44,7 +44,7 @@ M.scales = {
   whole_tone = { 0, 2, 4, 6, 8, 10 },
   chromatic = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
 }
-for name, steps in pairs(daw.music.scales) do
+for name, steps in pairs(paw.music.scales) do
   if not M.scales[name] then M.scales[name] = steps end
 end
 local ALIASES = { ionian = "major", aeolian = "minor", maj = "major", min = "minor", m = "minor" }
@@ -341,7 +341,7 @@ end
 --- and `clip`. Muted clips and tracks are left out; so are notes hidden by
 --- a trim of the clip's edges. Kept until the project changes: this is
 --- what sounds, for the reading and for snippets alike. (The piano roll's
---- context notes, `daw.roll_clips.context`, are what it shows, in its own
+--- context notes, `paw.roll_clips.context`, are what it shows, in its own
 --- beats and only of the tracks chosen to show.)
 local notes_cache = {}
 function M.notes()
@@ -373,7 +373,7 @@ end
 local function bar_starts(last)
   local bars, n = {}, 1
   repeat
-    bars[#bars + 1] = daw.time.bar_start(n)
+    bars[#bars + 1] = paw.time.bar_start(n)
     n = n + 1
   until bars[#bars] > last or n > 100000
   return bars
@@ -384,7 +384,7 @@ function M.builtin(from, to)
   local notes = M.notes()
   local last = 0
   for _, n in ipairs(notes) do last = math.max(last, n.start + n.length) end
-  local chords = read.chords(notes, { from = from, to = to, step = daw.opt.harmony_step, bar = daw.time.bar(0) })
+  local chords = read.chords(notes, { from = from, to = to, step = paw.opt.harmony_step, bar = paw.time.bar(0) })
   local keys = read.keys(notes, bar_starts(last), chords)
   return chords, keys
 end
@@ -421,7 +421,7 @@ end
 
 local function signature()
   local stamp = api.project_get().edits
-  local parts = { tostring(stamp), tostring(daw.opt.harmony_step) }
+  local parts = { tostring(stamp), tostring(paw.opt.harmony_step) }
   for _, p in ipairs(providers) do parts[#parts + 1] = p.name end
   return table.concat(parts, "|")
 end
@@ -465,7 +465,7 @@ local function reading()
       end
       if to > from then covered[#covered + 1] = { from, to } end
     elseif not ok then
-      daw.notify("harmony provider " .. p.name .. ": " .. tostring(c), "warn")
+      paw.notify("harmony provider " .. p.name .. ": " .. tostring(c), "warn")
     end
   end
   local set = M.project_key()
@@ -499,7 +499,7 @@ local function reading()
   parts[#parts + 1] = set and set.name or ""
   -- Listeners hear of a reading that differs from the one before.
   local text = table.concat(parts, " ")
-  if last_text and text ~= last_text then daw.emit("harmony.changed", { provider = by }) end
+  if last_text and text ~= last_text then paw.emit("harmony.changed", { provider = by }) end
   last_text = text
   return cache
 end
@@ -570,10 +570,10 @@ function M.provider()
   return reading().provider
 end
 
---- A chord's label as `daw.opt.chords` (or `how`) asks: its name, its
+--- A chord's label as `paw.opt.chords` (or `how`) asks: its name, its
 --- numeral, or both ("G7 V7").
 function M.label(chord, how)
-  how = how or daw.opt.chords
+  how = how or paw.opt.chords
   if how == "roman" then return chord.roman end
   if how == "both" then return chord.name .. " " .. chord.roman end
   return chord.name
@@ -583,12 +583,12 @@ end
 --- beats from `scroll` at `zoom` columns a beat, beats counted from
 --- `origin` (a clip's start; 0 for the song). Each symbol starts on the
 --- left edge of the cell where its chord starts, and is cut short where
---- the next one starts. Labels as `daw.opt.chords` (or `how`) asks.
+--- the next one starts. Labels as `paw.opt.chords` (or `how`) asks.
 function M.draw(buf, scroll, span, zoom, origin, how)
-  how = how or daw.opt.chords
+  how = how or paw.opt.chords
   if not how then return end
   local list = M.chords(origin + scroll, origin + scroll + span)
-  local g = daw.draw.g
+  local g = paw.draw.g
   for i, c in ipairs(list) do
     local x0 = math.floor((c.at - origin - scroll) * zoom + 0.5)
     local nxt = list[i + 1]
@@ -601,7 +601,7 @@ function M.draw(buf, scroll, span, zoom, origin, how)
     end
     if x1 > x0 then
       buf:text(x0, 0, g.beat, "RulerChordEdge")
-      if label ~= "" then buf:text(x0 + 1, 0, daw.util.fit(label, math.max(0, math.min(api.str_width(label), x1 - x0 - 1))), "RulerChord") end
+      if label ~= "" then buf:text(x0 + 1, 0, paw.util.fit(label, math.max(0, math.min(api.str_width(label), x1 - x0 - 1))), "RulerChord") end
     end
   end
 end
@@ -611,11 +611,11 @@ end
 local pending
 function M.schedule()
   if pending then return end
-  pending = daw.defer(function()
+  pending = paw.defer(function()
     pending = nil
     reading()
   end, 30)
 end
-daw.on("changed", function() M.schedule() end)
+paw.on("changed", function() M.schedule() end)
 
 return M

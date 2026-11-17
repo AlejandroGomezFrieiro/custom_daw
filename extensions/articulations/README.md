@@ -6,7 +6,7 @@ sampler that reads MIDI 2.0, or any MIDI 1.0 instrument through its
 keyswitches, controllers or programs.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/articulations")
+paw.ext.load("/path/to/paw/extensions/articulations")
 ```
 
 ## What is kept where
@@ -67,9 +67,9 @@ Reaticulate's classes (`long`, `short`, `legato`, `fx`, `textured`, each
 Keys are named as paw names them: middle C is C4, 60.
 
 Maps are looked for, the first of an id winning, in
-`~/.config/daw/articulations/**`, beside a library (`Violins.art.toml` next
+`~/.config/paw/articulations/**`, beside a library (`Violins.art.toml` next
 to `Violins.sfz`), in `articulations/` inside any loaded extension, and in
-`~/.local/share/daw/articulations/generated/`. A map's id is its path there
+`~/.local/share/paw/articulations/generated/`. A map's id is its path there
 without `.art.toml` (`examples/violin-section`); `:art.map` takes an id, the
 end of one, a name or a file.
 
@@ -141,7 +141,7 @@ Notes entered with the keys, in insert mode or by a click take the pen.
 | `:art.mod name` | a modifier over the range or the note |
 | `:art.map [name]`, `:art.unmap`, `:art.maps` | bind a map (alone: the one whose `match` names a device of the track, else a list), take it away, list them all |
 | `:art.generate [library]` | make a map from an `.sfz`, a `.dspreset` or `.dslibrary`, a folder of samples named by articulation, or (alone) a device that describes its instrument, and bind it |
-| `:art.import file.reabank` | each bank of a Reaticulate file a map of its own, in `~/.config/daw/articulations/reaticulate` |
+| `:art.import file.reabank` | each bank of a Reaticulate file a map of its own, in `~/.config/paw/articulations/reaticulate` |
 | `:art.export reabank [file]` | the track's map as a Reaticulate bank |
 | `:art.new name` | a map to fill in |
 | `:art.from-keyswitches` | keyswitch notes and CC32 (UACC) moves of the clip into the articulations of the notes after them |
@@ -187,7 +187,7 @@ the score as its `mark` (a staccato dot), and a run of notes starts with
 its `text` (`pizz.`), with `ord.` where the default comes back. Writing a
 mark in the score (`g'` a staccato) or a technique (`\p pizz.`, `arco`)
 sets the attribute of the notes when the track's map has an articulation
-with that mark or text; `daw.opt.art_from_notation = false` stops it.
+with that mark or text; `paw.opt.art_from_notation = false` stops it.
 
 ## Not done
 

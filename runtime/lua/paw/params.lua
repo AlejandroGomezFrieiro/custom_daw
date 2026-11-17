@@ -3,7 +3,7 @@
 -- log scale for frequencies, times and ratios), and how far a key moves it.
 -- Both frontends go through here, so a device reads the same everywhere.
 --
--- `daw.params.read(device, method, data)` asks a built-in device for what it
+-- `paw.params.read(device, method, data)` asks a built-in device for what it
 -- measures or draws (an equaliser's curve, a compressor's gain reduction, a
 -- meter's loudness, a tuner's pitch) and turns the answer into Lua values.
 local M = {}
@@ -108,7 +108,7 @@ end
 --- `spectrum`) or a table of named numbers (`meters`, `pitch`).
 function M.read(device, method, data)
   local id = type(device) == "table" and device.id or device
-  local text = daw.api.device_call(id, method, data and tostring(data) or nil)
+  local text = paw.api.device_call(id, method, data and tostring(data) or nil)
   if text:find("\n") then
     local out = {}
     for name, value in text:gmatch("(%S+) (%S+)") do out[name] = tonumber(value) or value end
@@ -121,7 +121,7 @@ end
 
 --- The built-in presets of a device kind: a list of `{ name, params }`.
 function M.presets(kind)
-  return require("daw.device_presets")[kind] or {}
+  return require("paw.device_presets")[kind] or {}
 end
 
 --- A preset's value for a parameter as a number: a choice may be named.
@@ -136,14 +136,14 @@ function M.preset_value(p, value)
 end
 
 --- Set a device to one of its kind's presets, by name.
---- The same as loading it with `daw.fx.load` (`:preset`): one undo step,
+--- The same as loading it with `paw.fx.load` (`:preset`): one undo step,
 --- and the device then holds that preset.
 function M.apply(device, name)
   local id = type(device) == "table" and device.id or device
-  local d = daw.api.device_get(id)
+  local d = paw.api.device_get(id)
   for _, preset in ipairs(M.presets(d.kind)) do
     if preset.name == name then
-      daw.fx.load(id, { name = preset.name, params = preset.params, factory = true })
+      paw.fx.load(id, { name = preset.name, params = preset.params, factory = true })
       return preset
     end
   end

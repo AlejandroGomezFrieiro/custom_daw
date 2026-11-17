@@ -1,7 +1,7 @@
 -- JSON-RPC messages as bytes, both ways: newline-delimited JSON (one message
 -- a line, as MIDI LSP's engine speaks on `--stdio`) or LSP's
 -- `Content-Length` headers.
-local api = daw.api
+local api = paw.api
 
 local M = {}
 

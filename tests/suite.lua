@@ -1,11 +1,11 @@
--- End-to-end tests, run with `daw --clean -l tests/suite.lua`.
--- Each test drives the public `daw` module and checks what comes out,
+-- End-to-end tests, run with `paw --clean -l tests/suite.lua`.
+-- Each test drives the public `paw` module and checks what comes out,
 -- including rendered audio.
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local tmp = os.getenv("TMPDIR") or "/tmp"
-local scratch = tmp .. "/daw-test-" .. os.time() .. "-" .. math.floor(api.now() * 1000)
+local scratch = tmp .. "/paw-test-" .. os.time() .. "-" .. math.floor(api.now() * 1000)
 os.execute("mkdir -p '" .. scratch .. "'")
 
 local tests, failed = {}, 0
@@ -13,7 +13,7 @@ local function test(name, fn) tests[#tests + 1] = { name = name, fn = fn } end
 
 local function eq(got, want, what)
   if got ~= want then
-    error(string.format("%s: got %s, want %s", what or "value", daw.inspect(got), daw.inspect(want)), 2)
+    error(string.format("%s: got %s, want %s", what or "value", paw.inspect(got), paw.inspect(want)), 2)
   end
 end
 
@@ -32,32 +32,32 @@ local function fails(fn, pattern, what)
 end
 
 local function fresh()
-  daw.project.new()
-  daw.transport.loop_enabled = false
+  paw.project.new()
+  paw.transport.loop_enabled = false
   -- The panes an earlier test opened would share the screen with this one's.
-  for _, win in ipairs(require("daw.layout").windows(daw.ui.layout)) do
-    if win.view ~= "arrange" then daw.ui.hide(win.view) end
+  for _, win in ipairs(require("paw.layout").windows(paw.ui.layout)) do
+    if win.view ~= "arrange" then paw.ui.hide(win.view) end
   end
-  daw.ui.close()
-  daw.ui.focus("arrange")
-  daw.flush()
+  paw.ui.close()
+  paw.ui.focus("arrange")
+  paw.flush()
 end
 
 local renders = 0
 local function render(opts)
   renders = renders + 1
-  return daw.render(scratch .. "/render" .. renders .. ".wav", opts)
+  return paw.render(scratch .. "/render" .. renders .. ".wav", opts)
 end
 
 --- A track with a synth holding one note for `beats`.
 local function tone(name, beats, pitch)
-  local track = daw.add_track({ name = name })
+  local track = paw.add_track({ name = name })
   track:add_device("synth", { attack = 0.001, release = 0.01 })
   track:add_clip({ start = 0, length = beats, notes = { { pitch = pitch or "A3", start = 0, length = beats } } })
   return track
 end
 
---- Peak of each channel of a WAV file written by `daw.render` at 16 bits,
+--- Peak of each channel of a WAV file written by `paw.render` at 16 bits,
 --- optionally only between two times in seconds.
 local function channel_peaks(info, from, to)
   local file = assert(io.open(info.path, "rb"))
@@ -78,7 +78,7 @@ local function channel_peaks(info, from, to)
   return peaks[1], peaks[2]
 end
 
---- Frequency of the left channel of a WAV file written by `daw.render` at 16
+--- Frequency of the left channel of a WAV file written by `paw.render` at 16
 --- bits, between two times in seconds, from its rising zero crossings.
 local function frequency(info, from, to)
   local file = assert(io.open(info.path, "rb"))
@@ -117,15 +117,15 @@ end
 
 test("tracks have properties that read back", function()
   fresh()
-  local t = daw.add_track({ name = "Bass", volume = -3 })
+  local t = paw.add_track({ name = "Bass", volume = -3 })
   eq(t.name, "Bass", "name")
   eq(t.volume, -3, "volume")
   t.pan = 0.5
   t.mute = true
   eq(t.pan, 0.5, "pan")
   eq(t.mute, true, "mute")
-  eq(#daw.tracks(), 1, "track count")
-  eq(daw.track("Bass"), t, "lookup by name")
+  eq(#paw.tracks(), 1, "track count")
+  eq(paw.track("Bass"), t, "lookup by name")
   eq(t.index, 1, "index")
   t.volume = 100
   eq(t.volume, 24, "volume is clamped")
@@ -133,30 +133,30 @@ end)
 
 test("bad input is rejected with a useful message", function()
   fresh()
-  local t = daw.add_track()
-  fails(function() daw.add_track({ nmae = "typo" }) end, "nmae", "unknown option")
+  local t = paw.add_track()
+  fails(function() paw.add_track({ nmae = "typo" }) end, "nmae", "unknown option")
   fails(function() t:add_device("nope") end, "nope", "unknown device")
   fails(function() t:add_device("synth", { cutof = 1 }) end, "cutof", "unknown parameter")
   fails(function() t.colour = "red" end, "colour", "unknown field")
-  fails(function() daw.master:remove() end, "master", "removing the master")
+  fails(function() paw.master:remove() end, "master", "removing the master")
   fails(function() t:add_clip({ file = scratch .. "/missing.wav" }) end, "missing.wav", "missing file")
-  fails(function() daw.track(999).name = "x" end, "999", "missing track")
+  fails(function() paw.track(999).name = "x" end, "999", "missing track")
 end)
 
 test("tracks insert at an index and move", function()
   fresh()
-  local a, b = daw.add_track({ name = "a" }), daw.add_track({ name = "b" })
-  local c = daw.add_track({ name = "c", index = 1 })
+  local a, b = paw.add_track({ name = "a" }), paw.add_track({ name = "b" })
+  local c = paw.add_track({ name = "c", index = 1 })
   eq(c.index, 1, "inserted first")
   eq(a.index, 2, "a pushed down")
   b:move(1)
   eq(b.index, 1, "moved first")
-  eq(#daw.tracks(), 3, "count")
+  eq(#paw.tracks(), 3, "count")
 end)
 
 test("devices keep parameters, clamp them and reorder", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   local synth = t:add_device("synth", { cutoff = 900 })
   local delay = t:add_device("delay")
   eq(synth.params.cutoff, 900, "given parameter")
@@ -174,7 +174,7 @@ end)
 
 test("clips hold notes, sorted, with names for pitches", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   local clip = t:add_clip({ start = 4, notes = { { pitch = "E4", start = 2 }, { pitch = "C4", start = 0 } } })
   eq(clip.length, 4, "length defaults to whole bars")
   local notes = clip:notes()
@@ -189,93 +189,93 @@ test("clips hold notes, sorted, with names for pitches", function()
   local copy = clip:duplicate()
   eq(copy.start, 8, "duplicate follows the original")
   eq(#copy:notes(), 3, "duplicate has the notes")
-  eq(daw.project.length, 12, "project length")
+  eq(paw.project.length, 12, "project length")
 end)
 
 test("undo and redo step through edits", function()
   fresh()
   api.undo_checkpoint()
-  local t = daw.add_track({ name = "one" })
+  local t = paw.add_track({ name = "one" })
   api.undo_checkpoint()
   t.name = "two"
   t:add_device("synth")
   api.undo_checkpoint()
-  eq(daw.undo(), true, "undo")
+  eq(paw.undo(), true, "undo")
   eq(t.name, "one", "rename undone")
   eq(#t:devices(), 0, "device undone with it")
-  eq(daw.undo(), true, "undo again")
-  eq(#daw.tracks(), 0, "track undone")
-  eq(daw.redo(), true, "redo")
-  eq(daw.redo(), true, "redo again")
+  eq(paw.undo(), true, "undo again")
+  eq(#paw.tracks(), 0, "track undone")
+  eq(paw.redo(), true, "redo")
+  eq(paw.redo(), true, "redo again")
   eq(t.name, "two", "redone")
-  eq(daw.redo(), false, "nothing left to redo")
+  eq(paw.redo(), false, "nothing left to redo")
 end)
 
 test("events report what changed", function()
   fresh()
   local seen = {}
-  -- (What changed, said again as addresses, is daw.address's business: tests/address.lua.)
-  local handle = daw.on("*", function(payload, name)
+  -- (What changed, said again as addresses, is paw.address's business: tests/address.lua.)
+  local handle = paw.on("*", function(payload, name)
     if name ~= "address.changed" then seen[#seen + 1] = name .. ":" .. tostring(payload.id or "") end
   end)
-  local t = daw.add_track()
+  local t = paw.add_track()
   local d = t:add_device("gain")
-  daw.flush()
+  paw.flush()
   eq(table.concat(seen, " "), string.format("track.added:%d device.added:%d changed:", t.id, d.id), "after adding")
   seen = {}
   t.volume = -3
-  daw.flush()
+  paw.flush()
   eq(table.concat(seen, " "), string.format("track.changed:%d changed:", t.id), "after a change")
   seen = {}
   api.undo_checkpoint()
   t.volume = -9
-  daw.flush()
+  paw.flush()
   seen = {}
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.flush()
   eq(seen[1], "track.changed:" .. t.id, "undo reports changes too")
   seen = {}
-  daw.off(handle)
+  paw.off(handle)
   t.volume = -4
-  daw.flush()
-  eq(#seen, 0, "no events after daw.off")
+  paw.flush()
+  eq(#seen, 0, "no events after paw.off")
 
   local family = 0
-  daw.on("track.*", function() family = family + 1 end)
-  daw.emit("track.custom")
-  daw.emit("other.custom")
+  paw.on("track.*", function() family = family + 1 end)
+  paw.emit("track.custom")
+  paw.emit("other.custom")
   eq(family, 1, "family pattern")
 end)
 
 test("projects save and load", function()
   fresh()
-  local t = daw.add_track({ name = "Keys", pan = -0.25 })
+  local t = paw.add_track({ name = "Keys", pan = -0.25 })
   t:add_device("synth", { wave = 2 })
   t:add_clip({ start = 2, notes = { { pitch = 72, start = 0.5, length = 0.25, velocity = 64 } } })
-  daw.project.tempo = 97
-  daw.project.meta = { my_extension = { answer = 42 } }
-  daw.transport.loop_start, daw.transport.loop_end = 4, 12
-  local path = daw.project.save(scratch .. "/song.json")
+  paw.project.tempo = 97
+  paw.project.meta = { my_extension = { answer = 42 } }
+  paw.transport.loop_start, paw.transport.loop_end = 4, 12
+  local path = paw.project.save(scratch .. "/song.json")
   fresh()
-  eq(#daw.tracks(), 0, "new project is empty")
-  daw.project.load(path)
-  local loaded = daw.tracks()[1]
+  eq(#paw.tracks(), 0, "new project is empty")
+  paw.project.load(path)
+  local loaded = paw.tracks()[1]
   eq(loaded.name, "Keys", "name")
   eq(loaded.pan, -0.25, "pan")
   eq(loaded:device("synth").params.wave, 2, "device parameter")
   local note = loaded:clips()[1]:notes()[1]
   eq(note.pitch .. "/" .. note.start .. "/" .. note.length .. "/" .. note.velocity, "72/0.5/0.25/64", "note")
-  eq(daw.project.tempo, 97, "tempo")
-  eq(daw.project.meta.my_extension.answer, 42, "extension data")
-  eq(daw.transport.loop_end, 12, "loop")
+  eq(paw.project.tempo, 97, "tempo")
+  eq(paw.project.meta.my_extension.answer, 42, "extension data")
+  eq(paw.transport.loop_end, 12, "loop")
   -- Ids handed out after loading must not collide with loaded ones.
-  local another = daw.add_track()
+  local another = paw.add_track()
   eq(another.id > loaded:clips()[1].id, true, "fresh ids")
 end)
 
 test("notes carry extension data through edits, undo and saving", function()
   fresh()
-  local t = daw.add_track({ name = "Words" })
+  local t = paw.add_track({ name = "Words" })
   local clip = t:add_clip({ start = 0, length = 4, notes = {
     { pitch = 60, start = 1, length = 1, meta = { lyric = "la", extra = { 1, 2 } } },
     { pitch = 62, start = 0, length = 1 },
@@ -288,41 +288,41 @@ test("notes carry extension data through edits, undo and saving", function()
   notes[2].start = 2
   clip:set_notes(notes)
   eq(clip:notes()[2].meta.extra[2], 2, "kept when the note moves")
-  daw.undo()
+  paw.undo()
   eq(clip:notes()[2].start, 1, "undone")
   eq(clip:notes()[2].meta.lyric, "la", "and the data with it")
-  local path = daw.project.save(scratch .. "/words.json")
+  local path = paw.project.save(scratch .. "/words.json")
   eq(read_file(path):find('"lyric": "la"', 1, true) ~= nil, true, "saved in the project file")
   fresh()
-  daw.project.load(path)
-  eq(daw.tracks()[1]:clips()[1]:notes()[2].meta.lyric, "la", "loaded")
+  paw.project.load(path)
+  eq(paw.tracks()[1]:clips()[1]:notes()[2].meta.lyric, "la", "loaded")
 end)
 
 test("saving and loading keeps every number exactly", function()
   fresh()
-  local t = daw.add_track({ pan = 0.123456789012345678 })
+  local t = paw.add_track({ pan = 0.123456789012345678 })
   -- Found by the fuzzer: these came back from a saved file one bit off.
   t:add_clip({ start = 1.3859882354736328, length = 3.9661864042282104,
     notes = { { pitch = 60, start = 0.15935707092285156, length = 1.9014935493469238 } } })
   local before = t:clips()[1]
   local note = before:notes()[1]
-  daw.project.load(daw.project.save(scratch .. "/exact.json"))
-  local after = daw.tracks()[1]:clips()[1]
+  paw.project.load(paw.project.save(scratch .. "/exact.json"))
+  local after = paw.tracks()[1]:clips()[1]
   local loaded = after:notes()[1]
   eq(loaded.length, note.length, "note length")
   eq(loaded.start, note.start, "note start")
   eq(after.start, before.start, "clip start")
   eq(after.length, before.length, "clip length")
-  eq(daw.tracks()[1].pan, t.pan, "pan")
+  eq(paw.tracks()[1].pan, t.pan, "pan")
 end)
 
 test("numbers that are not finite are refused, so that a save always loads", function()
   fresh()
   local nan, inf = 0 / 0, 1 / 0
-  local t = daw.add_track()
+  local t = paw.add_track()
   local synth = t:add_device("synth")
-  fails(function() daw.add_track({ volume = nan }) end, "finite", "volume NaN")
-  fails(function() daw.add_track({ pan = inf }) end, "finite", "pan infinite")
+  fails(function() paw.add_track({ volume = nan }) end, "finite", "volume NaN")
+  fails(function() paw.add_track({ pan = inf }) end, "finite", "pan infinite")
   fails(function() synth:set("cutoff", nan) end, "finite", "parameter NaN")
   fails(function() t:add_clip({ notes = { { pitch = 60, start = inf, length = 1 } } }) end, "finite", "note start")
   fails(function() t:add_clip({ notes = { { pitch = 60, start = 0, length = nan } } }) end, "length", "note length NaN")
@@ -335,13 +335,13 @@ test("numbers that are not finite are refused, so that a save always loads", fun
   fails(function() t:add_clip({ file = "tests/fixtures/shape.wav", offset = -inf }) end, "offset", "clip offset")
   fails(function() api.note_on(t.id, 60, nan) end, "velocity", "live velocity NaN")
   fails(function() api.midi_inject({ type = "note_on", pitch = 60, velocity = inf }) end, "velocity", "MIDI velocity")
-  daw.project.load(daw.project.save(scratch .. "/finite.json"))
-  eq(#daw.tracks(), 1, "the project saved and loaded")
+  paw.project.load(paw.project.save(scratch .. "/finite.json"))
+  eq(#paw.tracks(), 1, "the project saved and loaded")
 end)
 
 test("note lists read and write the same through either path", function()
   fresh()
-  local clip = daw.add_track():add_clip({ start = 0, length = 8 })
+  local clip = paw.add_track():add_clip({ start = 0, length = 8 })
   local notes = { { pitch = 60, start = 0.5, length = 0.25 }, { pitch = 64, start = 0, length = 1.5, velocity = 7, extra = "ignored" } }
   api.clip_set_notes(clip.id, notes)
   local got = api.clip_notes(clip.id)
@@ -363,14 +363,14 @@ end)
 
 test("a device brought back by undo reads as loaded at once", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   api.undo_checkpoint()
   local synth = t:add_device("synth", { cutoff = 900 })
   api.undo_checkpoint()
   synth:remove()
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   -- No flush after the undo: found by the fuzzer.
   local view = api.device_get(synth.id)
   eq(view.missing, false, "not missing")
@@ -379,26 +379,26 @@ end)
 
 test("a refused edit leaves no undo step behind", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   api.undo_checkpoint()
   t.volume = -6
   api.undo_checkpoint()
   fails(function() api.track_set(t.id, "volume", "loud") end, "volume", "bad value")
   api.undo_checkpoint()
-  daw.undo()
+  paw.undo()
   eq(t.volume, 0, "one undo undoes the last edit that went through")
 end)
 
 test("a damaged project file is refused whole", function()
   fresh()
-  local t = daw.add_track({ name = "kept" })
+  local t = paw.add_track({ name = "kept" })
   t:add_device("synth")
   t:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
-  local good = read_file(daw.project.save(scratch .. "/good.json"))
+  local good = read_file(paw.project.save(scratch .. "/good.json"))
   local function load(text, pattern, what)
     write_file(scratch .. "/bad.json", text)
-    fails(function() daw.project.load(scratch .. "/bad.json") end, pattern, what)
-    eq(daw.tracks()[1].name, "kept", what .. ": the open project is untouched")
+    fails(function() paw.project.load(scratch .. "/bad.json") end, pattern, what)
+    eq(paw.tracks()[1].name, "kept", what .. ": the open project is untouched")
   end
   load(good:gsub('"tempo": 120.0', '"tempo": 0.0'), "tempo", "tempo 0, which made renders never end")
   load(good:gsub('"sig_den": 4', '"sig_den": 0'), "denominator", "time signature")
@@ -419,40 +419,40 @@ end)
 
 test("levels are kept within range, so that nothing turns into infinity", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   local clip = t:add_clip({ start = 0, length = 1, file = "tests/fixtures/shape.wav", gain = 1e9 })
   eq(clip.gain, 24, "clip gain at add")
   clip.gain = -1e9
   eq(clip.gain, -120, "clip gain set")
   clip.gain = 1e9
-  local bus = daw.add_track()
+  local bus = paw.add_track()
   api.track_set(t.id, "sends", { { target = bus.id, level = 1e9 } })
   eq(t.sends[1].level, 24, "send level")
   eq(render({ ["end"] = 1, tail = 0, bits = 32 }).nonfinite, 0, "the render is finite")
   -- Found by the fuzzer: a send level saved out of range made a file that does not load.
-  daw.project.load(daw.project.save(scratch .. "/levels.json"))
-  eq(#daw.tracks(), 2, "saved and loaded")
+  paw.project.load(paw.project.save(scratch .. "/levels.json"))
+  eq(#paw.tracks(), 2, "saved and loaded")
   -- Values in a file are kept within the device's range too.
   fresh()
-  local g = daw.add_track()
+  local g = paw.add_track()
   g:add_clip({ start = 0, length = 1, file = "tests/fixtures/shape.wav" })
   g:add_device("gain")
-  local text = read_file(daw.project.save(scratch .. "/param.json")):gsub('"params": {}', '"params": { "gain": 1e300 }', 1)
+  local text = read_file(paw.project.save(scratch .. "/param.json")):gsub('"params": {}', '"params": { "gain": 1e300 }', 1)
   write_file(scratch .. "/param.json", text)
-  daw.project.load(scratch .. "/param.json")
+  paw.project.load(scratch .. "/param.json")
   local info = render({ ["end"] = 1, tail = 0, bits = 32 })
   eq(info.nonfinite, 0, "a parameter of 1e300 in a file")
   eq(info.peak > 0, true, "still sounds")
   local lane = g:automate("volume")
   lane:add(0, 0)
-  text = read_file(daw.project.save(scratch .. "/lane.json")):gsub("%[%s*0%.0,%s*0%.0%s*%]", "[0.0, 1e300]", 1)
+  text = read_file(paw.project.save(scratch .. "/lane.json")):gsub("%[%s*0%.0,%s*0%.0%s*%]", "[0.0, 1e300]", 1)
   write_file(scratch .. "/lane.json", text)
-  fails(function() daw.project.load(scratch .. "/lane.json") end, "lane", "a volume point of 1e300")
+  fails(function() paw.project.load(scratch .. "/lane.json") end, "lane", "a volume point of 1e300")
 end)
 
 test("sends cannot make a loop either", function()
   fresh()
-  local a, b, c = daw.add_track(), daw.add_track(), daw.add_track()
+  local a, b, c = paw.add_track(), paw.add_track(), paw.add_track()
   a:send(b, -6)
   b:send(c, -6)
   fails(function() c:send(a, -6) end, "loop", "a loop through sends")
@@ -481,8 +481,8 @@ test("a track the engine had no room for sounds once there is room", function()
   local warnings = api.warnings()
   eq(#warnings > 0 and warnings[1]:find("too many tracks") ~= nil, true, "a warning for the tracks over the limit")
   for i = 1, 20 do api.track_remove(tracks[i]) end
-  daw.flush()
-  local last = daw.track(tracks[1030])
+  paw.flush()
+  local last = paw.track(tracks[1030])
   last:add_device("synth")
   last:note_on(60, 100)
   api.sleep(100)
@@ -520,18 +520,18 @@ test("playback that starts inside a note sounds that note", function()
   eq(render({ start = 3, ["end"] = 4, tail = 0 }).peak > 0.05, true, "render from the middle of the note")
   eq(render({ start = 9, ["end"] = 10, tail = 0 }).peak < 0.001, true, "nothing after the note ends")
   -- The same in real time, and after jumping while playing.
-  daw.project.tempo = 240
-  daw.transport.seek(2)
-  daw.transport.play()
+  paw.project.tempo = 240
+  paw.transport.seek(2)
+  paw.transport.play()
   api.sleep(150)
   eq(select(1, t:meter()) > 0.01, true, "playing from inside the note")
-  daw.transport.seek(40)
+  paw.transport.seek(40)
   api.sleep(1500)
   eq(select(1, t:meter()) < 0.005, true, "jumping past the note stops it")
-  daw.transport.seek(4)
+  paw.transport.seek(4)
   api.sleep(150)
   eq(select(1, t:meter()) > 0.01, true, "jumping back into the note starts it")
-  daw.transport.stop()
+  paw.transport.stop()
 end)
 
 test("the fader and pan do what they say", function()
@@ -554,7 +554,7 @@ end)
 test("solo silences the others but not what a soloed track feeds", function()
   fresh()
   local a, b = tone("a", 2, "A3"), tone("b", 2, "E4")
-  local bus = daw.add_track({ name = "bus" })
+  local bus = paw.add_track({ name = "bus" })
   a.output = bus
   local both = render().peak
   b.solo = true
@@ -572,7 +572,7 @@ end)
 test("routing refuses loops and survives removing a bus", function()
   fresh()
   local a = tone("a", 2)
-  local bus, bus2 = daw.add_track({ name = "bus" }), daw.add_track({ name = "bus2" })
+  local bus, bus2 = paw.add_track({ name = "bus" }), paw.add_track({ name = "bus2" })
   a.output = bus
   bus.output = bus2
   fails(function() bus2.output = a end, "loop", "output loop")
@@ -588,7 +588,7 @@ end)
 test("sends add signal to their target", function()
   fresh()
   local a = tone("a", 2)
-  local fx = daw.add_track({ name = "fx" })
+  local fx = paw.add_track({ name = "fx" })
   local dry = render().peak
   a:send(fx, 0)
   near(render().peak / dry, 2, 0.02, "an equal send doubles the level")
@@ -617,13 +617,13 @@ test("audio clips play back what was rendered", function()
   tone("tone", 2)
   local source = render({ tail = 0, bits = 24 })
   fresh()
-  local t = daw.add_track({ name = "audio" })
+  local t = paw.add_track({ name = "audio" })
   local clip = t:add_clip({ start = 1, file = source.path })
   eq(clip.kind, "audio", "kind")
   near(clip.length, 2, 0.01, "length follows the file")
   local out = render({ tail = 0 })
   near(out.peak, source.peak, 0.01, "same level")
-  eq(daw.render(scratch .. "/gap.wav", { start = 0, ["end"] = 0.9, tail = 0 }).peak < 0.001, true, "silent before the clip")
+  eq(paw.render(scratch .. "/gap.wav", { start = 0, ["end"] = 0.9, tail = 0 }).peak < 0.001, true, "silent before the clip")
   clip.gain = -6
   near(render({ tail = 0 }).peak / source.peak, 0.501, 0.02, "clip gain")
   -- A different sample rate must not change the pitch or length.
@@ -643,7 +643,7 @@ test("audio clips load WAV, AIFF, FLAC, MP3 and Ogg Vorbis", function()
   }) do
     local name, right, tolerance = f[1], f[2], f[3]
     fresh()
-    local clip = daw.add_track():add_clip({ start = 0, file = fixtures .. name })
+    local clip = paw.add_track():add_clip({ start = 0, file = fixtures .. name })
     eq(clip.kind, "audio", name .. " kind")
     near(clip.length, 0.5, 0.001, name .. " length: 0.25 s at 120 bpm")
     -- Each file plays at its own rate whatever the engine runs at.
@@ -660,7 +660,7 @@ end)
 
 test("unreadable audio files say what is wrong", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   local function add(path) return function() t:add_clip({ start = 0, file = path }) end end
   write_file(scratch .. "/notes.wav", "a text file named like a sound\n")
   fails(add(scratch .. "/notes.wav"), "notes%.wav is not an audio file", "text")
@@ -676,7 +676,7 @@ end)
 
 test("audio clips report their waveform", function()
   fresh()
-  local t = daw.add_track({ name = "shape" })
+  local t = paw.add_track({ name = "shape" })
   -- 0.25 s in four equal parts: silence, a sine peaking at 0.5, one peaking at
   -- 0.75, and -0.25 held.
   local clip = t:add_clip({ start = 0, file = fixtures .. "shape.wav" })
@@ -700,11 +700,11 @@ test("audio clips report their waveform", function()
   -- The arrange view draws it under the name, over the rows a track has
   -- left, from each column's lowest to highest sample around the middle (the
   -- waveform's own tests are in tests/waves.lua).
-  daw.opt.zoom, daw.opt.track_height = 8, 3
-  daw.cursor.set_track(t)
+  paw.opt.zoom, paw.opt.track_height = 8, 3
+  paw.cursor.set_track(t)
   local text = table.concat(api.ui_snapshot(100, 30), "\n")
-  daw.opt.zoom, daw.opt.track_height = 2, "auto"
-  local rows = daw.draw.waveform(clip:peaks(8), 2)
+  paw.opt.zoom, paw.opt.track_height = 2, "auto"
+  local rows = paw.draw.waveform(clip:peaks(8), 2)
   eq(rows[1], "  ▄▄▆▆  ", "silence draws nothing, a column reaches as far as the wave does: " .. rows[1])
   eq(rows[2], "  ▄▄▂▂──", "below the middle, drawn in reverse so the glyph is what is left, and a level held below it is a line: " .. rows[2])
   eq(text:find("▄▆", 1, true) ~= nil, true, "waveform on screen, at four columns for the clip")
@@ -714,32 +714,32 @@ test("audio clips report their waveform", function()
   check(clip:peaks(2), { parts[2], parts[3] }, "offset and length")
   clip.offset = 0.1875
   check(clip:peaks(2), { parts[4], { 0, 0 } }, "past the end")
-  daw.project.tempo = 60
+  paw.project.tempo = 60
   check(clip:peaks(2), { parts[4], { 0, 0 } }, "a slower tempo plays more of the file")
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   clip.gain = -6.0206
   check(clip:peaks(2), { { -0.125, -0.125 }, { 0, 0 } }, "clip gain")
 
-  local flat = daw.frontend.peaks(clip.id)
-  eq(#flat, 3 * daw.frontend.peak_points, "frontend peaks are flat: the reach each way and the loudness")
-  eq(#daw.frontend.peaks(clip.id, 512), 3 * 512, "at as many points as the frontend draws")
+  local flat = paw.frontend.peaks(clip.id)
+  eq(#flat, 3 * paw.frontend.peak_points, "frontend peaks are flat: the reach each way and the loudness")
+  eq(#paw.frontend.peaks(clip.id, 512), 3 * 512, "at as many points as the frontend draws")
 
-  local state = daw.frontend.state(-1)
+  local state = paw.frontend.state(-1)
   eq(type(state.clips[1].waveform), "string", "frontend state says when the waveform changes")
   local before = state.clips[1].waveform
   clip.gain = 0
-  eq(daw.frontend.state(-1).clips[1].waveform ~= before, true, "and it changes with the clip")
+  eq(paw.frontend.state(-1).clips[1].waveform ~= before, true, "and it changes with the clip")
   fails(function() t:add_clip({ start = 2, length = 1 }):peaks(4) end, "only audio clips", "MIDI clip")
 end)
 
 test("drums respond to the General MIDI drum notes", function()
   fresh()
-  local t = daw.add_track({ name = "drums" })
+  local t = paw.add_track({ name = "drums" })
   t:add_device("drums")
   t:add_clip({ start = 0, length = 4, notes = { { pitch = 36, start = 0, length = 0.25 }, { pitch = 42, start = 1, length = 0.25 } } })
-  eq(daw.render(scratch .. "/kick.wav", { start = 0, ["end"] = 0.5, tail = 0 }).peak > 0.1, true, "kick")
-  eq(daw.render(scratch .. "/hat.wav", { start = 1, ["end"] = 1.2, tail = 0 }).peak > 0.02, true, "hat")
-  eq(daw.render(scratch .. "/rest.wav", { start = 3, ["end"] = 4, tail = 0 }).peak < 0.001, true, "rest")
+  eq(paw.render(scratch .. "/kick.wav", { start = 0, ["end"] = 0.5, tail = 0 }).peak > 0.1, true, "kick")
+  eq(paw.render(scratch .. "/hat.wav", { start = 1, ["end"] = 1.2, tail = 0 }).peak > 0.02, true, "hat")
+  eq(paw.render(scratch .. "/rest.wav", { start = 3, ["end"] = 4, tail = 0 }).peak < 0.001, true, "rest")
 end)
 
 -- Automation -----------------------------------------------------------------
@@ -754,13 +754,13 @@ end
 
 test("lanes hold sorted points in their target's units", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   local lane = t:automate("volume")
   eq(t:automate("volume"), lane, "one lane per target")
   lane:add(8, 0)
   lane:add(0, -60)
   lane:add(8, -6)
-  eq(daw.inspect(lane:points()), daw.inspect({ { 0, -60 }, { 8, -6 } }), "sorted, and a point at the same beat replaced")
+  eq(paw.inspect(lane:points()), paw.inspect({ { 0, -60 }, { 8, -6 } }), "sorted, and a point at the same beat replaced")
   eq(lane:value_at(4), -33, "linear between points")
   eq(lane:value_at(-1) .. "/" .. lane:value_at(20), "-60/-6", "held outside them")
   lane:set_points({ { beat = 2, value = 100 } })
@@ -780,7 +780,7 @@ test("lanes hold sorted points in their target's units", function()
   eq(synth:lane("cutoff"), cutoff, "found again by parameter")
   eq(cutoff.target .. "/" .. cutoff.device .. "/" .. cutoff.param, "param/" .. synth.id .. "/cutoff", "fields")
   fails(function() t:automate("width") end, "width", "unknown target")
-  fails(function() daw.add_track():add_device("gain"):automate("nope") end, "nope", "unknown parameter")
+  fails(function() paw.add_track():add_device("gain"):automate("nope") end, "nope", "unknown parameter")
   pan:clear()
   eq(#pan:points(), 0, "cleared")
   pan:remove()
@@ -856,27 +856,27 @@ test("lanes are undone, saved and loaded", function()
   volume:add(4, -6)
   gain:automate("gain"):add(0, -20)
   api.undo_checkpoint()
-  daw.flush()
+  paw.flush()
   local seen = {}
-  daw.on("lane.*", function(event, name) seen[#seen + 1] = name .. ":" .. event.id end)
-  daw.undo()
-  daw.flush()
+  paw.on("lane.*", function(event, name) seen[#seen + 1] = name .. ":" .. event.id end)
+  paw.undo()
+  paw.flush()
   eq(#volume:points(), 2, "point undone")
   eq(gain:lane("gain"), nil, "lane undone")
   eq(seen[1], "lane.changed:" .. volume.id, "changes are reported")
-  daw.undo()
+  paw.undo()
   eq(volume:exists(), false, "lane gone")
-  daw.redo()
-  daw.redo()
+  paw.redo()
+  paw.redo()
   eq(#volume:points(), 3, "redone")
   volume.enabled = false
   local before = render({ tail = 0, bits = 16 })
-  local path = daw.project.save(scratch .. "/lanes.json")
+  local path = paw.project.save(scratch .. "/lanes.json")
   fresh()
-  daw.project.load(path)
-  local loaded = daw.tracks()[1]
+  paw.project.load(path)
+  local loaded = paw.tracks()[1]
   eq(#loaded:lanes(), 2, "lanes are back")
-  eq(daw.inspect(loaded:lane("volume"):points()), daw.inspect({ { 0, -60 }, { 4, -6 }, { 8, 0 } }), "with their points")
+  eq(paw.inspect(loaded:lane("volume"):points()), paw.inspect({ { 0, -60 }, { 4, -6 }, { 8, 0 } }), "with their points")
   eq(loaded:lane("volume").enabled, false, "and whether they are on")
   eq(loaded:device("gain"):lane("gain"):value_at(0), -20, "parameter lanes too")
   near(render({ tail = 0, bits = 16 }).peak, before.peak, 0.001, "and they sound the same")
@@ -894,7 +894,7 @@ test("removing a device drops its lanes", function()
   eq(#t:lanes(), 1, "only the device's lane went")
   eq(t:lanes()[1].target, "volume", "the track's lane stays")
   eq(render({ tail = 0 }).peak > 0.05, true, "and nothing is left of it in the engine")
-  daw.undo()
+  paw.undo()
   eq(#t:lanes(), 2, "undo brings both back")
   eq(render({ tail = 0 }).peak < 0.01, true, "and the lane applies again")
 end)
@@ -919,11 +919,11 @@ test("automation applies the same when playback starts in the middle", function(
 end)
 
 -- Plugins --------------------------------------------------------------------
--- These need the plugins the dev shell provides (see DAW_TEST_PLUGINS) and are
+-- These need the plugins the dev shell provides (see PAW_TEST_PLUGINS) and are
 -- skipped without them.
 
 local function plugin_kind(format, pattern)
-  for _, info in ipairs(daw.device_types()) do
+  for _, info in ipairs(paw.device_types()) do
     if info.format == format and info.name:find(pattern) then return info.kind end
   end
 end
@@ -959,23 +959,23 @@ for _, format in ipairs({ "clap", "lv2", "vst3" }) do
     near(render({ tail = 0.2 }).peak, dry, 0.01, "bypass")
     fx.bypass = false
 
-    local path = daw.project.save(scratch .. "/" .. format .. ".json")
+    local path = paw.project.save(scratch .. "/" .. format .. ".json")
     fresh()
-    daw.project.load(path)
-    local loaded = daw.tracks()[1]:devices()[2]
+    paw.project.load(path)
+    local loaded = paw.tracks()[1]:devices()[2]
     eq(loaded.kind, kind, "the plugin is back after loading")
     eq(loaded.params[gain.key], gain.min, "with its parameter")
     eq(render({ tail = 0.2 }).peak < dry * 0.05, true, "and it still takes effect")
 
     -- Playing in real time and removing a plugin while it runs must both be safe.
-    daw.transport.play()
+    paw.transport.play()
     api.sleep(150)
     loaded:remove()
-    daw.flush()
+    paw.flush()
     api.sleep(100)
-    daw.transport.stop()
-    eq(#daw.tracks()[1]:devices(), 1, "removed while playing")
-    fails(function() daw.tracks()[1]:add_device(format .. ":no-such-plugin") end, "no%-such%-plugin", "unknown plugin")
+    paw.transport.stop()
+    eq(#paw.tracks()[1]:devices(), 1, "removed while playing")
+    fails(function() paw.tracks()[1]:add_device(format .. ":no-such-plugin") end, "no%-such%-plugin", "unknown plugin")
   end)
 
   test(format .. " plugins run in a process of their own, and one that dies is lost alone", function()
@@ -993,23 +993,23 @@ for _, format in ipairs({ "clap", "lv2", "vst3" }) do
       if p.key == "output_gain" or p.key == "g_out" then gain = p end
     end
     fx:set(gain.key, gain.min)
-    daw.project.save(scratch .. "/" .. format .. "-crash.json")   -- the project now has the plugin's state
+    paw.project.save(scratch .. "/" .. format .. "-crash.json")   -- the project now has the plugin's state
     local stopped = {}
-    local handler = daw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
-    daw.transport.play()
+    local handler = paw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
+    paw.transport.play()
     api.sleep(100)
     os.execute("kill -KILL " .. pid)
-    daw.wait(400)
-    daw.transport.stop()
-    daw.off(handler)
+    paw.wait(400)
+    paw.transport.stop()
+    paw.off(handler)
     eq(#stopped, 1, "its crash is told, once")
     eq(stopped[1].device .. " " .. stopped[1].reason, fx.id .. " it was killed", "with the device and what happened")
     eq(fx:get().stopped ~= nil, true, "the device says that it has stopped")
     eq(#t:devices(), 2, "and is still in the project")
-    daw.transport.play()
+    paw.transport.play()
     api.sleep(150)
     eq(select(1, t:meter()) > dry * 0.3, true, "the track plays on, an effect that is gone passed through")
-    daw.transport.stop()
+    paw.transport.stop()
     fails(function() fx:open_editor() end, "not running", "asking a stopped plugin for something")
     fx:restart()
     eq(fx:get().stopped, nil, "started again, it is well")
@@ -1041,7 +1041,7 @@ for _, format in ipairs({ "clap", "lv2", "vst3" }) do
     local kind = plugin_kind(format, "^Surge XT$")
     if not kind then return "skipped: test plugins not found" end
     fresh()
-    local t = daw.add_track({ name = "surge" })
+    local t = paw.add_track({ name = "surge" })
     local synth = t:add_device(kind)
     eq(synth.format, format, "format")
     local clip = t:add_clip({ start = 0, length = 2, notes = { { pitch = "A3", start = 0, length = 1 } } })
@@ -1050,9 +1050,9 @@ for _, format in ipairs({ "clap", "lv2", "vst3" }) do
     eq(render({ tail = 0.3 }).peak < 0.001, true, "no notes, no sound")
     -- Its state survives being saved and loaded.
     clip.muted = false
-    local path = daw.project.save(scratch .. "/" .. format .. "-inst.json")
+    local path = paw.project.save(scratch .. "/" .. format .. "-inst.json")
     fresh()
-    daw.project.load(path)
+    paw.project.load(path)
     eq(render({ tail = 0.3 }).peak > 0.05, true, "sounds after loading")
   end)
 end
@@ -1061,53 +1061,53 @@ end
 
 test("the transport plays, seeks, loops and stops", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_device("synth")
   local notes = {}
   for beat = 0, 7 do notes[#notes + 1] = { pitch = "A3", start = beat, length = 1 } end
   t:add_clip({ start = 0, length = 8, notes = notes })
-  daw.project.tempo = 240 -- four beats a second
-  eq(daw.transport.playing, false, "starts stopped")
-  daw.transport.seek(2)
-  eq(daw.transport.position, 2, "seek is visible at once")
-  daw.transport.play()
+  paw.project.tempo = 240 -- four beats a second
+  eq(paw.transport.playing, false, "starts stopped")
+  paw.transport.seek(2)
+  eq(paw.transport.position, 2, "seek is visible at once")
+  paw.transport.play()
   api.sleep(300)
-  local pos = daw.transport.position
+  local pos = paw.transport.position
   eq(pos > 2.6 and pos < 4.2, true, "advanced about 1.2 beats, got " .. pos)
   eq(select(1, t:meter()) > 0.01, true, "meter moves")
-  daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 1, true
-  daw.transport.seek(0)
+  paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 1, true
+  paw.transport.seek(0)
   api.sleep(600)
-  eq(daw.transport.position < 1, true, "stays inside the loop")
-  daw.transport.stop()
-  local stopped = daw.transport.position
+  eq(paw.transport.position < 1, true, "stays inside the loop")
+  paw.transport.stop()
+  local stopped = paw.transport.position
   api.sleep(100)
-  eq(daw.transport.position, stopped, "holds still when stopped")
+  eq(paw.transport.position, stopped, "holds still when stopped")
 end)
 
 test("a lane wins over the fader while playing, and lets go when it is turned off", function()
   fresh()
   local t = tone("held", 64)
-  daw.project.tempo = 240
+  paw.project.tempo = 240
   local lane = t:automate("volume")
   lane:add(0, -60)
-  daw.transport.play()
+  paw.transport.play()
   api.sleep(200)
   eq(select(1, t:meter()) < 0.003, true, "the lane holds the track down")
   t.volume = 6
-  daw.flush()
+  paw.flush()
   api.sleep(200)
   eq(select(1, t:meter()) < 0.003, true, "moving the fader does not override it")
   lane.enabled = false
-  daw.flush()
+  paw.flush()
   api.sleep(200)
   eq(select(1, t:meter()) > 0.05, true, "turning the lane off returns to the fader")
-  daw.transport.stop()
+  paw.transport.stop()
 end)
 
 test("live notes sound without the transport", function()
   fresh()
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_device("synth")
   t:note_on("C4", 110)
   api.sleep(120)
@@ -1129,7 +1129,7 @@ local function with_input(fn)
 end
 
 --- Peak and frequency (from rising zero crossings) of the left channel of a
---- 16-bit WAV file written by `daw.render`, between two times in seconds.
+--- 16-bit WAV file written by `paw.render`, between two times in seconds.
 local function pitch_and_peak(info, from, to)
   local file = assert(io.open(info.path, "rb"))
   local data = file:read("*a")
@@ -1155,60 +1155,60 @@ test("input is heard through the track's devices when armed or monitored", funct
     fresh()
     local e = api.engine_get()
     eq(e.input_channels .. " " .. e.input_device, "2 test signal", "the engine reports its input")
-    local t = daw.add_track({ name = "guitar" })
+    local t = paw.add_track({ name = "guitar" })
     t.input = 1
     eq(t.input, "1", "inputs read back as text")
     api.sleep(100)
     eq(select(1, t:meter()), 0, "not heard while neither armed nor monitored")
     t.monitor = true
-    daw.flush()
+    paw.flush()
     api.sleep(150)
     near(select(1, t:meter()), level, 0.01, "monitoring reaches the meter at the input's level")
     t:add_device("gain", { gain = -6 })
-    daw.flush()
+    paw.flush()
     api.sleep(600)
     near(select(1, t:meter()), level / 2, 0.01, "the input goes through the devices")
     t.input = "1/2"
-    daw.flush()
+    paw.flush()
     api.sleep(150)
     local left, right = t:meter()
     near(left, level / 2, 0.01, "a pair: left")
     near(right, level / 2, 0.01, "a pair: right")
     t.monitor = false
     t.armed = true
-    daw.flush()
+    paw.flush()
     api.sleep(150)
     near(select(1, t:meter()), level / 2, 0.01, "armed tracks are heard")
     t.armed = false
-    daw.flush()
+    paw.flush()
     api.sleep(1600)
     eq(select(1, t:meter()) < 0.005, true, "and not once disarmed")
     fails(function() t.input = "1/3" end, "1/3", "a pair must be neighbours")
-    fails(function() daw.master.input = "1" end, "master", "the master has no input")
+    fails(function() paw.master.input = "1" end, "master", "the master has no input")
   end)
 end)
 
 test("recording the input makes a clip where recording began", function()
   with_input(function()
     fresh()
-    daw.project.save(scratch .. "/rec.json")
-    local mic = daw.add_track({ name = "mic" })
+    paw.project.save(scratch .. "/rec.json")
+    local mic = paw.add_track({ name = "mic" })
     mic.input, mic.armed = "2", true
-    local idle = daw.add_track({ name = "idle" })
+    local idle = paw.add_track({ name = "idle" })
     idle.input = "1"
     local added = 0
-    local handle = daw.on("clip.added", function() added = added + 1 end)
-    daw.transport.seek(4)
+    local handle = paw.on("clip.added", function() added = added + 1 end)
+    paw.transport.seek(4)
     api.undo_checkpoint()
-    daw.transport.record()
-    eq(daw.transport.recording, true, "record mode")
-    eq(daw.transport.take, 1, "a take is under way")
+    paw.transport.record()
+    eq(paw.transport.recording, true, "record mode")
+    eq(paw.transport.take, 1, "a take is under way")
     api.sleep(1000)
-    daw.transport.stop()
-    local stopped = daw.transport.position
-    daw.flush()
-    daw.off(handle)
-    eq(daw.transport.take, nil, "the take is over")
+    paw.transport.stop()
+    local stopped = paw.transport.position
+    paw.flush()
+    paw.off(handle)
+    eq(paw.transport.take, nil, "the take is over")
     eq(added, 1, "one clip.added event")
     eq(#idle:clips(), 0, "an unarmed track records nothing")
     local clips = mic:clips()
@@ -1219,16 +1219,16 @@ test("recording the input makes a clip where recording began", function()
     near(c.start + c.length, stopped, 0.03, "it ends where recording stopped")
     eq(c.file:sub(1, #scratch + 7), scratch .. "/media/", "the file is beside the project")
 
-    daw.transport.loop_enabled = false
+    paw.transport.loop_enabled = false
     local info = render({ start = c.start, ["end"] = c.start + c.length, tail = 0, bits = 16 })
     local peak, freq = pitch_and_peak(info, 0.05, info.seconds - 0.05)
     near(peak, level, 0.01, "the recording has the input's level")
     near(freq, 880, 5, "and its pitch: input 2 carries twice the frequency")
 
-    eq(daw.undo(), true, "undo")
+    eq(paw.undo(), true, "undo")
     eq(#mic:clips(), 0, "undo removes the take")
     eq(mic.armed, true, "and nothing else")
-    daw.redo()
+    paw.redo()
     eq(#mic:clips(), 1, "redo brings it back")
   end)
 end)
@@ -1236,14 +1236,14 @@ end)
 test("recordings of an unsaved project move beside it when it is saved", function()
   with_input(function()
     fresh()
-    local t = daw.add_track({ name = "draft" })
+    local t = paw.add_track({ name = "draft" })
     t.input, t.armed = "1", true
-    daw.transport.record()
+    paw.transport.record()
     api.sleep(300)
-    daw.transport.stop()
+    paw.transport.stop()
     local before = t:clips()[1].file
-    eq(before:find("/daw/recordings/", 1, true) ~= nil, true, "unsaved takes go to the data directory, got " .. before)
-    daw.project.save(scratch .. "/later.json")
+    eq(before:find("/paw/recordings/", 1, true) ~= nil, true, "unsaved takes go to the data directory, got " .. before)
+    paw.project.save(scratch .. "/later.json")
     local after = t:clips()[1].file
     eq(after, scratch .. "/media/" .. before:match("[^/]+$"), "saving brings the take beside the project")
     eq(io.open(after, "rb") ~= nil, true, "the file is there")
@@ -1255,41 +1255,41 @@ end)
 test("MIDI input plays armed tracks and records into a clip", function()
   with_input(function()
     fresh()
-    daw.project.save(scratch .. "/midi.json")
-    local keys = daw.add_track({ name = "keys" })
+    paw.project.save(scratch .. "/midi.json")
+    local keys = paw.add_track({ name = "keys" })
     keys:add_device("synth", { attack = 0.001, release = 0.01 })
     keys.armed = true
-    local other = daw.add_track({ name = "other" })
+    local other = paw.add_track({ name = "other" })
     other:add_device("synth")
-    local mic = daw.add_track({ name = "mic" })
+    local mic = paw.add_track({ name = "mic" })
     mic.input, mic.armed = "1", true
-    daw.flush()
+    paw.flush()
 
-    daw.midi.note_on("A3", 100)
+    paw.midi.note_on("A3", 100)
     api.sleep(150)
     eq(select(1, keys:meter()) > 0.01, true, "an armed track plays the note")
     eq(select(1, other:meter()), 0, "an unarmed one does not")
     keys.armed = false
-    daw.flush()
+    paw.flush()
     api.sleep(1600)
     eq(select(1, keys:meter()) < 0.005, true, "disarming releases held notes")
     keys.armed = true
 
-    daw.transport.seek(8)
+    paw.transport.seek(8)
     api.undo_checkpoint()
-    daw.transport.record()
+    paw.transport.record()
     api.sleep(250)
-    local c4 = daw.transport.position
-    daw.midi.note_on("C4", 90)
+    local c4 = paw.transport.position
+    paw.midi.note_on("C4", 90)
     api.sleep(500)
-    local c4_off = daw.transport.position
-    daw.midi.note_off("C4")
+    local c4_off = paw.transport.position
+    paw.midi.note_off("C4")
     api.sleep(100)
-    local e4 = daw.transport.position
-    daw.midi.inject({ type = "note_on", pitch = 64, velocity = 80, channel = 2 })
+    local e4 = paw.transport.position
+    paw.midi.inject({ type = "note_on", pitch = 64, velocity = 80, channel = 2 })
     api.sleep(250)
-    daw.transport.stop()
-    local stopped = daw.transport.position
+    paw.transport.stop()
+    local stopped = paw.transport.position
 
     eq(#other:clips(), 0, "the unarmed track records nothing")
     local clip = keys:clips()[1]
@@ -1307,9 +1307,9 @@ test("MIDI input plays armed tracks and records into a clip", function()
     local info = render({ start = clip.start + notes[1].start, ["end"] = clip.start + notes[1].start + 0.5, tail = 0 })
     eq(info.peak > 0.05, true, "the recorded notes play")
 
-    daw.undo()
+    paw.undo()
     eq(#keys:clips() + #mic:clips(), 0, "one undo step removes the whole take")
-    fails(function() daw.midi.inject({ type = "note_on" }) end, "pitch", "a note needs a pitch")
+    fails(function() paw.midi.inject({ type = "note_on" }) end, "pitch", "a note needs a pitch")
   end)
 end)
 
@@ -1321,83 +1321,83 @@ test("the status line shows recording", function()
     end
   end
   eq(status():find("rec", 1, true), nil, "the rec flag shows only when it is on")
-  daw.transport.recording = true
-  eq(daw.transport.recording, true, "record mode can be set")
+  paw.transport.recording = true
+  eq(paw.transport.recording, true, "record mode can be set")
   eq(status():find("rec", 1, true) ~= nil, true, "and then it is there")
-  daw.transport.play()
+  paw.transport.play()
   eq(status():find("●", 1, true) ~= nil, true, "the transport shows it is recording")
-  daw.transport.stop()
-  daw.transport.recording = false
+  paw.transport.stop()
+  paw.transport.recording = false
   eq(status():find("●", 1, true), nil, "and stops showing it")
 end)
 
 -- Commands and keys -----------------------------------------------------------
 
 test("command lines parse into arguments", function()
-  local name, args = daw.commands.parse('track.add "Lead Guitar" volume=-6 solo=true note="two words" plain')
+  local name, args = paw.commands.parse('track.add "Lead Guitar" volume=-6 solo=true note="two words" plain')
   eq(name, "track.add", "name")
   eq(args[1], "Lead Guitar", "quoted positional")
   eq(args.volume, -6, "number")
   eq(args.solo, true, "boolean")
   eq(args.note, "two words", "quoted named")
   eq(args[2], "plain", "second positional")
-  local _, raw = daw.commands.parse("lua  return 1 + 1 ")
+  local _, raw = paw.commands.parse("lua  return 1 + 1 ")
   eq(raw[1], "return 1 + 1", "raw commands keep their text")
 end)
 
 test("custom commands, mappings and counts work", function()
   fresh()
   local got
-  daw.command("test.echo", function(ctx) got = { ctx.args[1], ctx.args.loud, ctx.count } end, { desc = "test" })
-  daw.cmd("test.echo", { "hi", loud = true })
+  paw.command("test.echo", function(ctx) got = { ctx.args[1], ctx.args.loud, ctx.count } end, { desc = "test" })
+  paw.cmd("test.echo", { "hi", loud = true })
   eq(got[1], "hi", "positional")
   eq(got[2], true, "named")
-  daw.keymap.set("<leader>te", "test.echo mapped")
-  daw.keymap.feed("3,te")
+  paw.keymap.set("<leader>te", "test.echo mapped")
+  paw.keymap.feed("3,te")
   eq(got[1], "mapped", "mapping ran the command")
   eq(got[3], 3, "count")
-  fails(function() daw.cmd("no.such.command") end, "no.such.command", "unknown command")
+  fails(function() paw.cmd("no.such.command") end, "no.such.command", "unknown command")
 end)
 
 test("the default keys edit a project", function()
   fresh()
-  daw.cursor.set_beat(0)
-  daw.keymap.feed("oo")
-  eq(#daw.tracks(), 2, "o adds tracks")
-  eq(daw.cursor.index(), 2, "cursor follows")
-  daw.keymap.feed("k")
-  eq(daw.cursor.index(), 1, "k moves up")
-  daw.keymap.feed("Ms")
-  local t = daw.cursor.track()
+  paw.cursor.set_beat(0)
+  paw.keymap.feed("oo")
+  eq(#paw.tracks(), 2, "o adds tracks")
+  eq(paw.cursor.index(), 2, "cursor follows")
+  paw.keymap.feed("k")
+  eq(paw.cursor.index(), 1, "k moves up")
+  paw.keymap.feed("Ms")
+  local t = paw.cursor.track()
   eq(t.mute and t.solo, true, "M and s toggle")
-  daw.keymap.feed("3-")
+  paw.keymap.feed("3-")
   eq(t.volume, -3, "count with volume")
-  daw.keymap.feed("4l:clip.add<CR>")
+  paw.keymap.feed("4l:clip.add<CR>")
   local clip = t:clips()[1]
   eq(clip.start, 4, "clip at the cursor")
-  daw.keymap.feed("&")
+  paw.keymap.feed("&")
   eq(#t:clips(), 2, "& repeats the clip")
-  daw.keymap.feed("0x")
+  paw.keymap.feed("0x")
   eq(#t:clips(), 2, "x off a clip does nothing")
-  daw.keymap.feed("4lx")
+  paw.keymap.feed("4lx")
   eq(#t:clips(), 1, "x removes the clip")
-  daw.keymap.feed("ggdd")
-  eq(#daw.tracks(), 1, "dd removes the track")
-  daw.keymap.feed("O")
-  eq(daw.cursor.index(), 1, "O adds a track above")
-  eq(#daw.tracks(), 2, "O adds a track")
+  paw.keymap.feed("ggdd")
+  eq(#paw.tracks(), 1, "dd removes the track")
+  paw.keymap.feed("O")
+  eq(paw.cursor.index(), 1, "O adds a track above")
+  eq(#paw.tracks(), 2, "O adds a track")
 end)
 
 test("the built-in commands do what their descriptions say", function()
   fresh()
-  local run = daw.commands.exec
-  daw.cursor.set_beat(0)
+  local run = paw.commands.exec
+  paw.cursor.set_beat(0)
   run("track.add Lead device=synth")
-  local t = daw.cursor.track()
+  local t = paw.cursor.track()
   eq(t.name .. "/" .. t:devices()[1].kind, "Lead/synth", "track.add with a device")
   fails(function() run("track.add Broken device=nope") end, "nope", "track.add with a bad device")
-  eq(#daw.tracks(), 1, "which leaves no track behind")
-  daw.cursor.set_track(t)
+  eq(#paw.tracks(), 1, "which leaves no track behind")
+  paw.cursor.set_track(t)
   run('track.rename "Lead Guitar"')
   eq(t.name, "Lead Guitar", "track.rename")
   run("track.volume -6")
@@ -1413,7 +1413,7 @@ test("the built-in commands do what their descriptions say", function()
   run("clip.add length=8")
   local clip = t:clips()[1]
   clip:add_notes({ { pitch = 60, start = 1, length = 4 }, { pitch = 64, start = 6, length = 1 } })
-  daw.cursor.set_beat(4)
+  paw.cursor.set_beat(4)
   run("clip.split")
   local left, right = t:clips()[1], t:clips()[2]
   eq(left.length .. "+" .. right.length, "4+4", "clip.split lengths")
@@ -1429,70 +1429,70 @@ test("the built-in commands do what their descriptions say", function()
   eq(#t:clips(), 3, "clip.duplicate")
 
   run("track.duplicate")
-  local copy = daw.cursor.track()
+  local copy = paw.cursor.track()
   eq(copy.name, "Lead Guitar copy", "track.duplicate name")
   eq(copy.index, 2, "the copy follows the original")
   eq(#copy:clips() .. "/" .. #copy:devices(), "3/2", "with clips and devices")
   eq(copy:device("delay").params.time, 250, "and device parameters")
   run("track.add Bus")
-  daw.cursor.set_track(t)
+  paw.cursor.set_track(t)
   run("track.output Bus")
-  eq(t.output, daw.track("Bus").id, "track.output")
+  eq(t.output, paw.track("Bus").id, "track.output")
   run("track.move by=1")
   eq(t.index, 2, "track.move")
 
   run("tempo 140")
-  eq(daw.project.tempo, 140, "tempo")
+  eq(paw.project.tempo, 140, "tempo")
   run("transport.loop 2 3")
-  local tr = daw.transport.get()
+  local tr = paw.transport.get()
   eq(tr.loop_start .. "-" .. tr.loop_end .. " " .. tostring(tr.loop_enabled), "4-12 true", "transport.loop over bars")
   run("transport.seek 3")
-  eq(daw.transport.position, 8, "transport.seek to a bar")
+  eq(paw.transport.position, 8, "transport.seek to a bar")
   run("grid 0.5")
-  eq(daw.opt.grid, 0.5, "grid")
+  eq(paw.opt.grid, 0.5, "grid")
   run("zoom by=2")
-  eq(daw.opt.zoom, 4, "zoom")
-  daw.opt.grid, daw.opt.zoom = 1, 2
+  eq(paw.opt.zoom, 4, "zoom")
+  paw.opt.grid, paw.opt.zoom = 1, 2
 
   local song = scratch .. "/commands.json"
   run("write " .. song)
   run("new")
-  eq(#daw.tracks(), 0, "new")
+  eq(#paw.tracks(), 0, "new")
   run("edit " .. song)
-  eq(#daw.tracks(), 3, "write and edit round-trip")
+  eq(#paw.tracks(), 3, "write and edit round-trip")
   run("render " .. scratch .. "/commands.wav tail=0 bits=16")
   -- It renders in the background.
-  for _ = 1, 500 do if not daw.render_status() then break end daw.wait(10) end
+  for _ = 1, 500 do if not paw.render_status() then break end paw.wait(10) end
   eq(io.open(scratch .. "/commands.wav", "rb") ~= nil, true, "render wrote a file")
-  eq(daw.cmd("lua", { "return 6 * 7" }), nil, "lua runs")
+  eq(paw.cmd("lua", { "return 6 * 7" }), nil, "lua runs")
   fails(function() run("no.such") end, "no.such", "unknown command")
 end)
 
 test("automation is edited at the cursor, drawn and reported", function()
   fresh()
-  local run = daw.commands.exec
+  local run = paw.commands.exec
   local t = tone("Lead", 8)
-  daw.cursor.set_track(t)
-  daw.cursor.set_beat(0)
+  paw.cursor.set_track(t)
+  paw.cursor.set_beat(0)
   run("lane.add -60")
-  daw.cursor.set_beat(8)
+  paw.cursor.set_beat(8)
   run("lane.add 0")
   run("lane.add by=-3")
-  eq(daw.inspect(t:lane("volume"):points()), daw.inspect({ { 0, -60 }, { 8, -3 } }), "lane.add sets and nudges")
+  eq(paw.inspect(t:lane("volume"):points()), paw.inspect({ { 0, -60 }, { 8, -3 } }), "lane.add sets and nudges")
   run("lane.add 0.5 target=pan")
   eq(t:lane("pan"):value_at(0), 0.5, "lane.add target=pan")
   run("lane.add 800 target=cutoff device=synth")
   eq(t:device("synth"):lane("cutoff"):value_at(0), 800, "lane.add for a device parameter")
-  daw.keymap.feed(",at")
+  paw.keymap.feed(",at")
   eq(t:lane("volume").enabled, false, "<leader>at turns the lane off")
 
-  daw.opt.track_height = 3
+  paw.opt.track_height = 3
   local text = table.concat(api.ui_snapshot(100, 30), "\n")
-  daw.opt.track_height = "auto"
+  paw.opt.track_height = "auto"
   -- Past the clip the lane holds -3 dB: a line of sextants near the top.
   eq(text:find("(\240\159[\172-\175][\128-\191])%1%1") ~= nil, true, "the volume curve is drawn")
   run("lane.toggle")
-  local state = daw.frontend.state(-1)
+  local state = paw.frontend.state(-1)
   local lanes = state.tracks[1].lanes
   eq(#lanes, 3, "the frontend state lists the lanes")
   eq(lanes[1].target .. "/" .. tostring(lanes[1].enabled) .. "/" .. #lanes[1].points, "volume/true/2", "with their points")
@@ -1500,7 +1500,7 @@ test("automation is edited at the cursor, drawn and reported", function()
   local copy = t:duplicate()
   eq(#copy:lanes(), 3, "a duplicated track keeps its automation")
   eq(copy:device("synth"):lane("cutoff"):value_at(0), 800, "on its own devices")
-  daw.keymap.feed(",ax")
+  paw.keymap.feed(",ax")
   eq(#t:lane("volume"):points(), 0, "<leader>ax clears the lane")
   run("lane.remove target=pan")
   eq(t:lane("pan"), nil, "lane.remove")
@@ -1508,21 +1508,21 @@ end)
 
 test("the piano roll edits notes from the keyboard", function()
   fresh()
-  daw.cursor.set_beat(0)
-  daw.keymap.feed("o:clip.add<CR><CR>")
-  eq(daw.ui.focused, "pianoroll", "Enter opens the clip")
-  local clip = daw.cursor.track():clips()[1]
-  daw.keymap.feed("<CR>4lk<CR>")
+  paw.cursor.set_beat(0)
+  paw.keymap.feed("o:clip.add<CR><CR>")
+  eq(paw.ui.focused, "pianoroll", "Enter opens the clip")
+  local clip = paw.cursor.track():clips()[1]
+  paw.keymap.feed("<CR>4lk<CR>")
   local notes = clip:notes()
   eq(#notes, 2, "two notes")
   eq(notes[1].pitch .. "@" .. notes[1].start, "60@0", "first note")
   eq(notes[2].pitch .. "@" .. notes[2].start, "61@1", "second note, four 16ths later")
-  daw.keymap.feed("<A-l><A-l>")
+  paw.keymap.feed("<A-l><A-l>")
   eq(clip:notes()[2].length, 0.75, "Alt-l lengthens")
-  daw.keymap.feed("x")
+  paw.keymap.feed("x")
   eq(#clip:notes(), 1, "x removes")
-  daw.keymap.feed("<C-w>c")
-  eq(daw.ui.focused, "arrange", "<C-w>c returns to the arrange view")
+  paw.keymap.feed("<C-w>c")
+  eq(paw.ui.focused, "arrange", "<C-w>c returns to the arrange view")
 end)
 
 -- Modal editing ----------------------------------------------------------------
@@ -1530,18 +1530,18 @@ end)
 --- A track with a synth and three clips of four beats, a note on every beat.
 local function three_clips()
   fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  daw.ui.focus("arrange")
-  local t = daw.add_track({ name = "T" })
+  paw.keymap.feed("<Esc><Esc>")
+  paw.ui.focus("arrange")
+  local t = paw.add_track({ name = "T" })
   t:add_device("synth", { cutoff = 900 })
   for i, name in ipairs({ "a", "b", "c" }) do
     local notes = {}
     for beat = 0, 3 do notes[#notes + 1] = { pitch = 60 + beat, start = beat, length = 1 } end
     t:add_clip({ name = name, start = (i - 1) * 4, length = 4, notes = notes })
   end
-  daw.cursor.set_track(t)
-  daw.cursor.set_beat(0)
-  daw.opt.grid, daw.opt.note_grid, daw.opt.ripple = 1, 0.25, false
+  paw.cursor.set_track(t)
+  paw.cursor.set_beat(0)
+  paw.opt.grid, paw.opt.note_grid, paw.opt.ripple = 1, 0.25, false
   api.undo_checkpoint()
   return t
 end
@@ -1568,7 +1568,7 @@ end
 
 --- Type keys as one undo step.
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -1576,47 +1576,47 @@ test("an operator takes a motion, a text object or a count", function()
   local t = three_clips()
   keys("dw")
   eq(layout(t), "b@4+4 c@8+4", "dw deletes up to the next clip")
-  daw.undo()
+  paw.undo()
   keys("ld2l")
   eq(layout(t), "a@0+1 a@3+1 b@4+4 c@8+4", "d2l cuts two beats out of a clip")
   eq(melody(t:clips()[1]) .. " | " .. melody(t:clips()[2]), "60@0+1 | 63@0+1", "the notes stay with their halves")
-  eq(daw.cursor.beat, 1, "the cursor is where the gap starts")
-  daw.undo()
+  eq(paw.cursor.beat, 1, "the cursor is where the gap starts")
+  paw.undo()
   keys("d2ib")
   eq(layout(t), "c@8+4", "d2ib deletes two bars")
-  daw.undo()
+  paw.undo()
   keys("wd$")
   eq(layout(t), "a@0+4", "d$ deletes to the end of the track")
-  daw.undo()
+  paw.undo()
   keys("0dic")
   eq(layout(t), "b@4+4 c@8+4", "dic deletes the clip")
   keys("P")
   eq(layout(t), "a@0+4 b@4+4 c@8+4", "P puts it back at the cursor")
   eq(melody(t:clips()[1]), "60@0+1 61@1+1 62@2+1 63@3+1", "with its notes")
   keys("d3d")
-  eq(#daw.tracks(), 0, "d3d takes whole tracks, as many as there are")
-  daw.undo()
+  eq(#paw.tracks(), 0, "d3d takes whole tracks, as many as there are")
+  paw.undo()
   keys("dx")
-  eq(daw.keymap.mode .. layout(t), "na@0+4 b@4+4 c@8+4", "a key that is no motion calls the operator off")
+  eq(paw.keymap.mode .. layout(t), "na@0+4 b@4+4 c@8+4", "a key that is no motion calls the operator off")
   keys("d<Esc>l")
-  eq(daw.cursor.beat, 1, "and so does Escape")
+  eq(paw.cursor.beat, 1, "and so does Escape")
 end)
 
 test("yank and paste work on clips, stretches of time and whole tracks", function()
   local t = three_clips()
   keys("yicp")
   eq(layout(t), "a@0+4 a@4+4 c@8+4", "p puts the yanked clip after the one under the cursor, over what was there")
-  eq(daw.cursor.beat, 4, "and the cursor on it")
+  eq(paw.cursor.beat, 4, "and the cursor on it")
   keys("p")
   eq(layout(t), "a@0+4 a@4+4 a@8+4", "p again carries on")
   keys("2p")
   eq(layout(t), "a@0+4 a@4+4 a@8+4 a@12+4 a@16+4", "a count pastes that many times")
-  eq(daw.cursor.beat, 16, "the cursor is on the last copy")
-  daw.undo() daw.undo() daw.undo()
+  eq(paw.cursor.beat, 16, "the cursor is on the last copy")
+  paw.undo() paw.undo() paw.undo()
   eq(layout(t), "a@0+4 b@4+4 c@8+4", "each paste is one undo step")
 
   -- A named register is not disturbed by what is deleted later.
-  daw.cursor.set_beat(0)
+  paw.cursor.set_beat(0)
   keys('"qyicwdic')
   eq(layout(t), "a@0+4 c@8+4", "b is gone")
   keys('"qP')
@@ -1628,60 +1628,60 @@ test("yank and paste work on clips, stretches of time and whole tracks", functio
   t:automate("volume"):set_points({ { 0, -12 }, { 4, 0 } })
   api.undo_checkpoint()
   keys("yyp")
-  eq(#daw.tracks(), 2, "yyp duplicates the track")
-  local copy = daw.cursor.track()
-  eq(daw.cursor.index(), 2, "below, with the cursor on it")
+  eq(#paw.tracks(), 2, "yyp duplicates the track")
+  local copy = paw.cursor.track()
+  eq(paw.cursor.index(), 2, "below, with the cursor on it")
   eq(layout(copy), layout(t), "with its clips")
   eq(copy:devices()[1].params.cutoff, 900, "its devices as they were set")
   eq(#copy:lane("volume"):points(), 2, "and its automation")
   keys("dd")
-  eq(#daw.tracks(), 1, "dd removes it")
+  eq(#paw.tracks(), 1, "dd removes it")
   keys("P")
-  eq(daw.tracks()[1].id ~= t.id and layout(daw.tracks()[1]), layout(t), "P puts it back above")
+  eq(paw.tracks()[1].id ~= t.id and layout(paw.tracks()[1]), layout(t), "P puts it back above")
 
   -- A stretch of time across tracks.
-  daw.cursor.set_track(daw.tracks()[1])
-  daw.cursor.set_beat(4)
+  paw.cursor.set_track(paw.tracks()[1])
+  paw.cursor.set_beat(4)
   keys("vjWy")
-  local value = daw.keymap.getreg()
+  local value = paw.keymap.getreg()
   eq(value.kind .. value.length .. #value.rows, "range42", "v with j selects the same stretch on two tracks")
   keys("3Wk")
   keys("p")
-  eq(layout(daw.tracks()[1]) .. " | " .. layout(daw.tracks()[2]), "a@0+4 b@4+4 c@8+4 b@16+4 | a@0+4 b@4+4 c@8+4 b@16+4", "and it is pasted on both")
+  eq(layout(paw.tracks()[1]) .. " | " .. layout(paw.tracks()[2]), "a@0+4 b@4+4 c@8+4 b@16+4 | a@0+4 b@4+4 c@8+4 b@16+4", "and it is pasted on both")
 
-  daw.opt.ripple = true
-  daw.cursor.set_beat(0)
+  paw.opt.ripple = true
+  paw.cursor.set_beat(0)
   keys("dic")
-  eq(layout(daw.tracks()[1]), "b@0+4 c@4+4 b@12+4", "with ripple, deleting closes the gap")
+  eq(layout(paw.tracks()[1]), "b@0+4 c@4+4 b@12+4", "with ripple, deleting closes the gap")
   keys("P")
-  eq(layout(daw.tracks()[1]), "a@0+4 b@4+4 c@8+4 b@16+4", "and pasting makes room")
-  daw.opt.ripple = false
+  eq(layout(paw.tracks()[1]), "a@0+4 b@4+4 c@8+4 b@16+4", "and pasting makes room")
+  paw.opt.ripple = false
 end)
 
 test("visual mode selects time, tracks, and what a text object names", function()
   local t = three_clips()
-  local other = daw.add_track({ name = "U" })
+  local other = paw.add_track({ name = "U" })
   other:add_clip({ name = "u", start = 0, length = 12 })
   api.undo_checkpoint()
   keys("v")
-  local sel = daw.keymap.selection()
-  eq(daw.keymap.mode .. sel.c0 .. "-" .. sel.c1, "x0-1", "v starts with one grid step")
+  local sel = paw.keymap.selection()
+  eq(paw.keymap.mode .. sel.c0 .. "-" .. sel.c1, "x0-1", "v starts with one grid step")
   keys("WW")
-  sel = daw.keymap.selection()
+  sel = paw.keymap.selection()
   eq(sel.c0 .. "-" .. sel.c1 .. " rows " .. sel.r0 .. "-" .. sel.r1, "0-8 rows 1-1", "motions stretch it")
   keys("j")
-  eq(daw.keymap.selection().r1, 2, "onto other tracks too")
+  eq(paw.keymap.selection().r1, 2, "onto other tracks too")
   keys("o")
-  eq(daw.cursor.index() .. "@" .. daw.cursor.beat, "1@0", "o goes to the other end")
+  eq(paw.cursor.index() .. "@" .. paw.cursor.beat, "1@0", "o goes to the other end")
   keys("d")
-  eq(daw.keymap.mode, "n", "an operator ends visual mode")
+  eq(paw.keymap.mode, "n", "an operator ends visual mode")
   eq(layout(t) .. " | " .. layout(other), "c@8+4 | u@8+4", "and acts on the selection")
-  daw.undo()
+  paw.undo()
 
   keys("gv")
-  eq(daw.keymap.selection().c1, 8, "gv selects it again")
+  eq(paw.keymap.selection().c1, 8, "gv selects it again")
   keys("<Esc>wvic")
-  sel = daw.keymap.selection()
+  sel = paw.keymap.selection()
   eq(sel.c0 .. "-" .. sel.c1, "4-8", "a text object becomes the selection")
   keys("~")
   eq(layout(t), "a@0+4 b@4+4m c@8+4", "~ mutes the selected clips")
@@ -1702,16 +1702,16 @@ test("visual mode selects time, tracks, and what a text object names", function(
   eq(layout(t), "a@0+12", "J joins the selected clips")
   eq(#t:clips()[1]:notes(), 12, "with all their notes")
   keys("v")
-  daw.ui.focus("mixer")
-  eq(daw.keymap.mode, "n", "moving to another view ends visual mode")
-  daw.ui.hide("mixer")
-  daw.ui.focus("arrange")
+  paw.ui.focus("mixer")
+  eq(paw.keymap.mode, "n", "moving to another view ends visual mode")
+  paw.ui.hide("mixer")
+  paw.ui.focus("arrange")
 end)
 
 test("the other operators shift, quantize, loop and change", function()
   local t = three_clips()
   keys(">ic")
-  eq(layout(t) .. " cursor " .. daw.cursor.beat, "a@1+4 b@4+4 c@8+4 cursor 1", "> moves the clip a grid step, and the cursor with it")
+  eq(layout(t) .. " cursor " .. paw.cursor.beat, "a@1+4 b@4+4 c@8+4 cursor 1", "> moves the clip a grid step, and the cursor with it")
   keys("u")
   keys("3>>")
   eq(layout(t), "a@1+4 b@5+4 c@9+4", ">> moves every clip of the track")
@@ -1723,15 +1723,15 @@ test("the other operators shift, quantize, loop and change", function()
   keys("==")
   eq(layout(t) .. " " .. melody(t:clips()[2]), "a@0+4 b@4+4 c@8+4 60@0+0.5", "== snaps clips and their notes to the grid")
   keys("wglic")
-  eq(daw.transport.loop_start .. "-" .. daw.transport.loop_end .. tostring(daw.transport.loop_enabled), "4-8true", "gl loops what the motion covers")
-  daw.transport.loop_enabled = false
+  eq(paw.transport.loop_start .. "-" .. paw.transport.loop_end .. tostring(paw.transport.loop_enabled), "4-8true", "gl loops what the motion covers")
+  paw.transport.loop_enabled = false
   keys("cic")
-  eq(daw.ui.focused .. daw.keymap.mode, "pianorolli", "c opens a fresh clip for entering notes")
+  eq(paw.ui.focused .. paw.keymap.mode, "pianorolli", "c opens a fresh clip for entering notes")
   eq(layout(t), "a@0+4 b@4+4 c@8+4", "in place of the old one, under its name")
   eq(#t:clips()[2]:notes(), 0, "and empty")
   keys("<Esc>")
-  daw.ui.focus("arrange")
-  daw.cursor.set_beat(0)
+  paw.ui.focus("arrange")
+  paw.cursor.set_beat(0)
   keys("J")
   eq(layout(t), "a@0+8 c@8+4", "J joins the clip with the next")
   keys("S")
@@ -1745,61 +1745,61 @@ test("the dot, macros, marks, jumps and search repeat and find things", function
   keys("x")
   keys("w.")
   eq(layout(t), "c@8+4", ". repeats the last change")
-  daw.undo() daw.undo()
+  paw.undo() paw.undo()
   keys("0L")
   keys("3.")
   eq(layout(t), "a@4+4 b@4+4 c@8+4", "a count on . replaces the one it had")
-  daw.undo() daw.undo()
-  daw.cursor.set_beat(0)
+  paw.undo() paw.undo()
+  paw.cursor.set_beat(0)
   keys("j.")
   eq(layout(t), "a@1+4 b@4+4 c@8+4", "moving the cursor is not a change: . still repeats the one before")
-  daw.undo()
+  paw.undo()
 
   keys("0qqxwq")
-  eq(layout(t) .. daw.keymap.getreg("q").keys, "b@4+4 c@8+4xw", "q records keys into a register")
+  eq(layout(t) .. paw.keymap.getreg("q").keys, "b@4+4 c@8+4xw", "q records keys into a register")
   keys("2@q")
   eq(layout(t), "", "@ plays them, with a count")
   keys("@@")
-  eq(layout(t) .. daw.keymap.mode, "n", "@@ plays the last one again, here with nothing left to delete")
-  daw.undo() daw.undo()
+  eq(layout(t) .. paw.keymap.mode, "n", "@@ plays the last one again, here with nothing left to delete")
+  paw.undo() paw.undo()
   eq(layout(t), "a@0+4 b@4+4 c@8+4", "a macro is undone in one step")
   keys(":track.volume by=-2<CR>")
   keys("@:")
   eq(t.volume, -4, "@: runs the last command line again")
 
-  daw.cursor.set_beat(0)
-  local other = daw.add_track({ name = "Other" })
+  paw.cursor.set_beat(0)
+  local other = paw.add_track({ name = "Other" })
   other:add_clip({ name = "chorus", start = 16, length = 4 })
   api.undo_checkpoint()
   keys("WmaG$")
-  eq(daw.cursor.index() .. "@" .. daw.cursor.beat, "2@20", "G and $ move")
+  eq(paw.cursor.index() .. "@" .. paw.cursor.beat, "2@20", "G and $ move")
   keys("'a")
-  eq(daw.cursor.index() .. "@" .. daw.cursor.beat, "1@4", "'a returns to the mark")
+  eq(paw.cursor.index() .. "@" .. paw.cursor.beat, "1@4", "'a returns to the mark")
   keys("''")
-  eq(daw.cursor.index() .. "@" .. daw.cursor.beat, "2@20", "'' goes back")
+  eq(paw.cursor.index() .. "@" .. paw.cursor.beat, "2@20", "'' goes back")
   keys("gg0")
   keys("d'a")
   eq(layout(t), "b@4+4 c@8+4", "a mark is a motion for an operator")
-  daw.undo()
+  paw.undo()
   keys("/chor<CR>")
-  eq(daw.cursor.index() .. "@" .. daw.cursor.beat, "2@16", "/ finds a clip by name")
+  eq(paw.cursor.index() .. "@" .. paw.cursor.beat, "2@16", "/ finds a clip by name")
   keys("<C-o>")
-  eq(daw.cursor.index() .. "@" .. daw.cursor.beat, "1@0", "<C-o> goes back to where the search began")
+  eq(paw.cursor.index() .. "@" .. paw.cursor.beat, "1@0", "<C-o> goes back to where the search began")
   keys("/other<CR>")
-  eq(daw.cursor.index(), 2, "/ finds a track by name")
+  eq(paw.cursor.index(), 2, "/ finds a track by name")
   keys("9|")
-  eq(daw.cursor.beat, 32, "N| goes to a bar")
+  eq(paw.cursor.beat, 32, "N| goes to a bar")
   keys(":3<CR>")
-  eq(daw.cursor.beat, 8, "and so does a number on the command line")
+  eq(paw.cursor.beat, 8, "and so does a number on the command line")
 end)
 
 test("half-typed commands show what can follow, and are counted right", function()
   three_clips()
-  daw.opt.hint_delay = 0
-  daw.keymap.feed("2d3")
-  eq(daw.keymap.pending(), "2d3", "what was typed so far")
-  eq(daw.keymap.mode, "o", "an operator is waiting")
-  local hints, title = daw.keymap.hints()
+  paw.opt.hint_delay = 0
+  paw.keymap.feed("2d3")
+  eq(paw.keymap.pending(), "2d3", "what was typed so far")
+  eq(paw.keymap.mode, "o", "an operator is waiting")
+  local hints, title = paw.keymap.hints()
   local found = {}
   for _, hint in ipairs(hints) do found[hint.key] = hint.desc end
   eq(found.w, "Start of the next clip", "motions are offered")
@@ -1807,37 +1807,37 @@ test("half-typed commands show what can follow, and are counted right", function
   eq(title, "Delete …", "under the operator's name")
   local screen = table.concat(api.ui_snapshot(100, 30), "\n")
   eq(screen:find("Delete …", 1, true) ~= nil and screen:find("PENDING", 1, true) ~= nil, true, "on screen")
-  daw.keymap.feed("l")
-  eq(daw.keymap.pending() .. daw.keymap.mode, "n", "done")
-  eq(layout(daw.tracks()[1]), "b@6+2 c@8+4", "2d3l deleted six beats")
-  daw.keymap.feed("g")
-  hints = daw.keymap.hints()
+  paw.keymap.feed("l")
+  eq(paw.keymap.pending() .. paw.keymap.mode, "n", "done")
+  eq(layout(paw.tracks()[1]), "b@6+2 c@8+4", "2d3l deleted six beats")
+  paw.keymap.feed("g")
+  hints = paw.keymap.hints()
   eq(hints ~= nil and #hints > 5, true, "a prefix lists its continuations")
-  daw.keymap.feed("<Esc>")
-  eq(daw.keymap.hints(), nil, "Escape clears them")
-  daw.opt.hint_delay = 500
+  paw.keymap.feed("<Esc>")
+  eq(paw.keymap.hints(), nil, "Escape clears them")
+  paw.opt.hint_delay = 500
   -- An operator that fails leaves normal mode behind.
-  daw.keymap.operator("gz", function() error("boom") end, { view = "arrange", desc = "Fails" })
-  local messages = #daw.ui.messages
-  daw.keymap.feed("gzl")
-  eq(daw.keymap.mode .. daw.keymap.pending(), "n", "back to normal after an error")
-  eq(daw.ui.messages[#daw.ui.messages].text:find("boom") ~= nil and #daw.ui.messages > messages, true, "which is reported")
-  daw.keymap.del("gz", { view = "arrange" })
-  daw.keymap.del("gz", { view = "arrange", mode = "x" })
+  paw.keymap.operator("gz", function() error("boom") end, { view = "arrange", desc = "Fails" })
+  local messages = #paw.ui.messages
+  paw.keymap.feed("gzl")
+  eq(paw.keymap.mode .. paw.keymap.pending(), "n", "back to normal after an error")
+  eq(paw.ui.messages[#paw.ui.messages].text:find("boom") ~= nil and #paw.ui.messages > messages, true, "which is reported")
+  paw.keymap.del("gz", { view = "arrange" })
+  paw.keymap.del("gz", { view = "arrange", mode = "x" })
 end)
 
 test("insert mode the keys way enters notes from the keyboard as from a piano", function()
   local t = three_clips()
-  daw.opt.octave, daw.opt.velocity = 4, 100
+  paw.opt.octave, paw.opt.velocity = 4, 100
   -- Insert mode draws notes unless asked for the keys (tests/drawinsert.lua):
   -- as `I` does in the piano roll, this once.
-  daw.roll_draw.keys_once()
-  daw.cursor.set_beat(16)
+  paw.roll_draw.keys_once()
+  paw.cursor.set_beat(16)
   keys("i")
-  eq(daw.ui.focused .. daw.keymap.mode, "pianorolli", "i in the arrange view opens a new clip for typing")
+  eq(paw.ui.focused .. paw.keymap.mode, "pianorolli", "i in the arrange view opens a new clip for typing")
   local clip = t:clips()[4]
   eq(clip.start .. "+" .. clip.length, "16+4", "at the cursor")
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll.length = nil
   keys("asd")
   eq(melody(clip), "60@0+0.25 62@0.25+0.25 64@0.5+0.25", "the home row is the white keys")
@@ -1852,14 +1852,14 @@ test("insert mode the keys way enters notes from the keyboard as from a piano", 
   keys("8aa")
   eq(clip.length, 8, "the clip grows a bar when the notes run past its end")
   keys("<Esc>")
-  eq(daw.keymap.mode, "n", "Escape returns to normal mode")
+  eq(paw.keymap.mode, "n", "Escape returns to normal mode")
   local count = #clip:notes()
   keys("u")
   eq(#clip:notes(), count - 2, "undo takes the last notes back")
   keys("<Esc>")
-  eq(daw.ui.focused, "pianoroll", "Escape in normal mode stays in the piano roll")
+  eq(paw.ui.focused, "pianoroll", "Escape in normal mode stays in the piano roll")
   keys("<C-w>p")
-  eq(daw.ui.focused, "arrange", "Ctrl-w p goes back to the arrange view")
+  eq(paw.ui.focused, "arrange", "Ctrl-w p goes back to the arrange view")
 end)
 
 test("the piano roll has the same grammar for notes", function()
@@ -1872,7 +1872,7 @@ test("the piano roll has the same grammar for notes", function()
   })
   api.undo_checkpoint()
   keys("<CR>")
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   eq(roll.pitch .. "@" .. roll.beat, "60@0", "the roll opens on the first note")
   keys("w")
   eq(roll.pitch .. "@" .. roll.beat, "64@0.5", "w goes to the next note, whatever its pitch")
@@ -1909,22 +1909,22 @@ test("the piano roll has the same grammar for notes", function()
   keys("/c5<CR>")
   eq(roll.pitch .. "@" .. roll.beat, "72@1", "/ finds a note by its name")
   keys("glib")
-  eq(daw.transport.loop_start .. "-" .. daw.transport.loop_end, "0-4", "gl loops the bar")
-  daw.transport.loop_enabled = false
+  eq(paw.transport.loop_start .. "-" .. paw.transport.loop_end, "0-4", "gl loops the bar")
+  paw.transport.loop_enabled = false
   keys("<C-w>c")
-  eq(daw.ui.focused, "arrange", "<C-w>c closes the roll")
+  eq(paw.ui.focused, "arrange", "<C-w>c closes the roll")
 end)
 
 test("devices are cut, yanked and pasted in the device panel", function()
   local t = three_clips()
   t:add_device("delay", { mix = 0.7 })
-  local other = daw.add_track({ name = "U" })
+  local other = paw.add_track({ name = "U" })
   api.undo_checkpoint()
-  daw.ui.focus("devices")
-  local panel = daw.ui.views.devices
+  paw.ui.focus("devices")
+  local panel = paw.ui.views.devices
   panel.row = 1
   keys("yy")
-  eq(daw.keymap.getreg().device.kind, "synth", "yy takes the device under the cursor")
+  eq(paw.keymap.getreg().device.kind, "synth", "yy takes the device under the cursor")
   keys("p")
   local kinds = {}
   for i, d in ipairs(t:devices()) do kinds[i] = d.kind end
@@ -1932,21 +1932,21 @@ test("devices are cut, yanked and pasted in the device panel", function()
   eq(t:devices()[2].params.cutoff, 900, "with its settings")
   keys("dd")
   eq(#t:devices(), 2, "dd cuts it")
-  daw.cursor.set_track(other)
+  paw.cursor.set_track(other)
   keys("p")
   eq(other:devices()[1].params.cutoff, 900, "and p puts it on another track")
-  daw.ui.hide("devices")
-  daw.ui.focus("arrange")
+  paw.ui.hide("devices")
+  paw.ui.focus("arrange")
 end)
 
 test("views draw without errors at several sizes", function()
   fresh()
   local t = tone("tone", 4)
   t:add_device("delay")
-  for _, name in ipairs({ "mixer", "devices", "pianoroll" }) do daw.ui.show(name) end
-  daw.ui.views.pianoroll:edit(t:clips()[1])
+  for _, name in ipairs({ "mixer", "devices", "pianoroll" }) do paw.ui.show(name) end
+  paw.ui.views.pianoroll:edit(t:clips()[1])
   for _, size in ipairs({ { 120, 40 }, { 80, 24 }, { 30, 8 }, { 4, 2 } }) do
-    local rects = daw.ui.arrange(size[1], size[2])
+    local rects = paw.ui.arrange(size[1], size[2])
     local total = 0
     for _, r in ipairs(rects) do
       eq(r.x >= 0 and r.y >= 0 and r.x + r.w <= size[1] and r.y + r.h <= size[2], true, r.name .. " fits the screen")
@@ -1955,24 +1955,24 @@ test("views draw without errors at several sizes", function()
     end
     eq(total <= size[1] * size[2], true, "views do not overlap")
   end
-  for _, name in ipairs({ "mixer", "devices", "pianoroll" }) do daw.ui.hide(name) end
-  daw.ui.focus("arrange")
+  for _, name in ipairs({ "mixer", "devices", "pianoroll" }) do paw.ui.hide(name) end
+  paw.ui.focus("arrange")
 end)
 
 test("the screen draws what the project holds", function()
   fresh()
   local t = tone("Lead Synth", 4)
   t:add_device("delay")
-  daw.cursor.set_track(t)
+  paw.cursor.set_track(t)
   local function screen(width, height) return table.concat(api.ui_snapshot(width, height), "\n") end
   local text = screen(100, 30)
   eq(text:find("Lead Synth", 1, true) ~= nil, true, "track name is on screen")
   eq(text:find("Master", 1, true) ~= nil, true, "master track is on screen")
   eq(text:find("120 bpm", 1, true) ~= nil, true, "status line shows the tempo")
   eq(text:find("render failed", 1, true), nil, "no view failed to draw")
-  daw.ui.show("devices")
-  daw.ui.show("mixer")
-  daw.ui.views.pianoroll:edit(t:clips()[1])
+  paw.ui.show("devices")
+  paw.ui.show("mixer")
+  paw.ui.views.pianoroll:edit(t:clips()[1])
   text = screen(140, 50)
   eq(text:find("cutoff", 1, true) ~= nil, true, "device panel lists parameters")
   eq(text:find("A3", 1, true) ~= nil, true, "piano roll shows note names")
@@ -1982,14 +1982,14 @@ test("the screen draws what the project holds", function()
   collectgarbage()
   collectgarbage()
   -- A broken view shows its error in place and leaves the others alone.
-  daw.ui.view("status", { render = function() error("status is broken") end })
+  paw.ui.view("status", { render = function() error("status is broken") end })
   text = screen(100, 30)
   eq(text:find("status is broken", 1, true) ~= nil, true, "the error is shown")
   eq(text:find("Lead Synth", 1, true) ~= nil, true, "other views still draw")
-  package.loaded["daw.views.status"] = nil
-  require("daw.views.status")
-  for _, name in ipairs({ "mixer", "devices", "pianoroll" }) do daw.ui.hide(name) end
-  daw.ui.focus("arrange")
+  package.loaded["paw.views.status"] = nil
+  require("paw.views.status")
+  for _, name in ipairs({ "mixer", "devices", "pianoroll" }) do paw.ui.hide(name) end
+  paw.ui.focus("arrange")
 end)
 
 test("extensions load from a directory", function()
@@ -2001,14 +2001,14 @@ test("extensions load from a directory", function()
     f:close()
   end
   write(dir .. "/hello/lua/hello_lib.lua", "return { greeting = 'hi' }")
-  write(dir .. "/hello/init.lua", "daw.command('hello', function() return require('hello_lib').greeting end)")
-  write(dir .. "/single.lua", "daw.command('single', function() return 'one file' end)")
+  write(dir .. "/hello/init.lua", "paw.command('hello', function() return require('hello_lib').greeting end)")
+  write(dir .. "/single.lua", "paw.command('single', function() return 'one file' end)")
   write(dir .. "/broken.lua", "error('boom')")
-  daw.ext.load_dir(dir)
-  eq(daw.cmd("hello"), "hi", "directory extension with a module")
-  eq(daw.cmd("single"), "one file", "single-file extension")
-  eq(daw.ext.loaded.broken.ok, false, "a failing extension is recorded")
-  eq(daw.ext.loaded.hello.ok, true, "and does not stop the others")
+  paw.ext.load_dir(dir)
+  eq(paw.cmd("hello"), "hi", "directory extension with a module")
+  eq(paw.cmd("single"), "one file", "single-file extension")
+  eq(paw.ext.loaded.broken.ok, false, "a failing extension is recorded")
+  eq(paw.ext.loaded.hello.ok, true, "and does not stop the others")
 end)
 
 -- Helper processes ------------------------------------------------------------
@@ -2095,19 +2095,19 @@ local utau
 
 local function load_utau()
   if not utau then
-    daw.ext.load("extensions/utau")
+    paw.ext.load("extensions/utau")
     utau = require("utau")
   end
-  if daw.opt.utau_openutau_dir == "" and not os.getenv("REAUTAU_OPENUTAU_DIR") then
+  if paw.opt.utau_openutau_dir == "" and not os.getenv("REAUTAU_OPENUTAU_DIR") then
     -- The suite may run with its own XDG_DATA_HOME; the voicebanks stay where they are.
-    daw.opt.utau_openutau_dir = (os.getenv("HOME") or "") .. "/.local/share/OpenUtau"
+    paw.opt.utau_openutau_dir = (os.getenv("HOME") or "") .. "/.local/share/OpenUtau"
   end
   return utau
 end
 
 --- A vocal track with a clip of `pitches`, a beat each, sung on SYLLABLES.
 local function vocal(pitches)
-  local track = daw.add_track({ name = "Vocal" })
+  local track = paw.add_track({ name = "Vocal" })
   track:add_device(load_utau().DEVICE)
   local list = {}
   for i, p in ipairs(pitches) do
@@ -2136,7 +2136,7 @@ test("vocal tracks keep lyrics, properties and curves through undo and saving", 
   local notes = require("utau.notes")
   local track, clip = vocal({ 60, 62, 64 })
   local other = vocal({ 60 })
-  daw.flush()
+  paw.flush()
   local device = utau.device_of(track.id)
   local voice = api.device_get(device).params.voice
   eq(voice >= 1, true, "the device gets a voice of its own")
@@ -2168,18 +2168,18 @@ test("vocal tracks keep lyrics, properties and curves through undo and saving", 
   local peak = 0
   for _, k in ipairs(pitd.knots) do peak = math.max(peak, k[2]) end
   eq(peak, 50, "and the curve")
-  daw.undo()
+  paw.undo()
   eq(notes.lane(track.id, device, "pitd"), nil, "undo takes the curve away")
   eq(clip:notes()[1].meta and clip:notes()[1].meta.utau, nil, "and the vibrato")
   eq(clip:notes()[2].meta.lyric, "ら", "but not the lyric before them")
-  daw.undo()
+  paw.undo()
   eq(clip:notes()[2].meta.lyric, "- い", "and then the lyric")
-  daw.redo()
-  daw.redo()
-  local path = daw.project.save(scratch .. "/vocal.json")
+  paw.redo()
+  paw.redo()
+  local path = paw.project.save(scratch .. "/vocal.json")
   fresh()
-  daw.project.load(path)
-  track = daw.tracks()[1]
+  paw.project.load(path)
+  track = paw.tracks()[1]
   device = utau.device_of(track.id)
   clip = track:clips()[1]
   eq(clip:notes()[2].meta.lyric, "ら", "the lyric is loaded")
@@ -2194,36 +2194,36 @@ test("lyrics are typed note by note, from text, and by batch edits", function()
   load_utau()
   local editor = require("utau.editor").editor
   local track, clip = vocal({ 60, 62, 64, 65 })
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(0)
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<CR>")
-  eq(daw.ui.focused, "utau", "Enter on a vocal clip opens the vocal editor")
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(0)
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<CR>")
+  eq(paw.ui.focused, "utau", "Enter on a vocal clip opens the vocal editor")
   eq(editor.clip_id, clip.id, "on that clip")
-  daw.keymap.feed("cka<Tab>ki<Tab>ku<Esc>")
+  paw.keymap.feed("cka<Tab>ki<Tab>ku<Esc>")
   local function lyrics()
     local out = {}
     for i, n in ipairs(clip:notes()) do out[i] = n.meta and n.meta.lyric or "" end
     return table.concat(out, " ")
   end
   eq(lyrics(), "ka ki - う - え", "typing replaces the lyric, Tab keeps it and moves on, Esc drops it")
-  daw.cmd("utau.lyrics", { "ra ri" })
+  paw.cmd("utau.lyrics", { "ra ri" })
   eq(lyrics(), "ka ki ra ri", "words fill the notes from the cursor on")
-  daw.cmd("utau.batch", { "romaji_to_hiragana" })
+  paw.cmd("utau.batch", { "romaji_to_hiragana" })
   eq(lyrics(), "か き ら り", "a batch edit")
-  daw.cmd("utau.batch", { "replace", find = "り", replace = "る" })
+  paw.cmd("utau.batch", { "replace", find = "り", replace = "る" })
   eq(lyrics(), "か き ら る", "find and replace")
-  daw.cmd("utau.preset", { "vib_pop" })
+  paw.cmd("utau.preset", { "vib_pop" })
   eq(clip:notes()[1].meta.utau.vb[2], 150, "a tuning preset sets vibrato")
-  daw.cmd("utau.preset", { "raspy" })
+  paw.cmd("utau.preset", { "raspy" })
   local notes = require("utau.notes")
   eq(notes.curve_at(track.id, utau.device_of(track.id), "tenc", 1.5), 40, "and curves")
   local sheet = require("utau.lyrics")
   local text = sheet.sheet(clip.id)
   eq(text, "か き ら る", "the lyric sheet reads one line per phrase")
   eq(#sheet.tokens("きょうは", true), 3, "kana per note keeps small kana with the one before")
-  daw.ui.hide("utau")
-  daw.ui.focus("arrange")
+  paw.ui.hide("utau")
+  paw.ui.focus("arrange")
 end)
 
 test("the vocal editor takes operators, and notes keep their lyrics", function()
@@ -2231,10 +2231,10 @@ test("the vocal editor takes operators, and notes keep their lyrics", function()
   load_utau()
   local editor = require("utau.editor").editor
   local track, clip = vocal({ 60, 62, 64 })
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(0)
-  daw.ui.focus("arrange")
-  daw.keymap.feed("<Esc><CR>")
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(0)
+  paw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><CR>")
   local function sung()
     local notes = clip:notes()
     table.sort(notes, function(a, b) return a.start < b.start end)
@@ -2243,21 +2243,21 @@ test("the vocal editor takes operators, and notes keep their lyrics", function()
   end
   local first = clip:notes()[1].meta.lyric
   local before = sung()
-  daw.keymap.feed("yin$P")
+  paw.keymap.feed("yin$P")
   eq(sung(), before .. " " .. first .. ":60@4", "a yanked note is pasted with its lyric")
   eq(clip.length, 5, "and the clip grows to hold it")
-  daw.keymap.feed("0wdw")
+  paw.keymap.feed("0wdw")
   eq(#clip:notes(), 3, "dw deletes a note")
-  daw.keymap.feed("0vWy")
-  eq(#daw.keymap.getreg().notes, 2, "a selection yanks the notes in a bar")
+  paw.keymap.feed("0vWy")
+  eq(#paw.keymap.getreg().notes, 2, "a selection yanks the notes in a bar")
   local second = clip:notes()[2]
-  daw.keymap.feed("0/" .. second.meta.lyric .. "<CR>")
+  paw.keymap.feed("0/" .. second.meta.lyric .. "<CR>")
   eq(editor.pitch .. "@" .. editor.beat, second.pitch .. "@" .. second.start, "/ finds a note by its lyric")
-  daw.keymap.feed("<Esc>")
-  eq(daw.ui.focused, "utau", "Escape stays in the vocal editor")
-  daw.keymap.feed("<C-w>p")
-  eq(daw.ui.focused, "arrange", "Ctrl-w p goes back to the arrange view")
-  daw.ui.hide("utau")
+  paw.keymap.feed("<Esc>")
+  eq(paw.ui.focused, "utau", "Escape stays in the vocal editor")
+  paw.keymap.feed("<C-w>p")
+  eq(paw.ui.focused, "arrange", "Ctrl-w p goes back to the arrange view")
+  paw.ui.hide("utau")
 end)
 
 test("the vocal editor paints itself in a pane and is worked with the pointer", function()
@@ -2270,20 +2270,20 @@ test("the vocal editor paints itself in a pane and is worked with the pointer", 
   local function at(beat, pitch) return 64 + (beat - gui.scroll) * gui.zoom, 38 + 24 + (gui.top - pitch) * gui.row + gui.row / 2 end
   local function pointer(kind, beat, pitch, extra)
     local x, y = at(beat, pitch)
-    daw.canvas.pointer("utau", daw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
+    paw.canvas.pointer("utau", paw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
   end
   local function texts()
     local out = {}
-    for _, op in ipairs(daw.canvas.paint("utau", 1100, 600).ops) do
+    for _, op in ipairs(paw.canvas.paint("utau", 1100, 600).ops) do
       if op[1] == "t" then out[#out + 1] = op[4] end
     end
     return table.concat(out, "|")
   end
 
-  daw.frontend.act.open_clip(clip.id)
-  eq(#daw.frontend.state(-1).modal.windows, 0, "a double click on a vocal clip opens the vocal editor docked, in no window of its own")
-  eq(daw.ui.visible("utau") and daw.ui.focused, "utau", "with the keyboard")
-  eq(daw.frontend.state(-1).modal.roll, nil, "and not the piano roll")
+  paw.frontend.act.open_clip(clip.id)
+  eq(#paw.frontend.state(-1).modal.windows, 0, "a double click on a vocal clip opens the vocal editor docked, in no window of its own")
+  eq(paw.ui.visible("utau") and paw.ui.focused, "utau", "with the keyboard")
+  eq(paw.frontend.state(-1).modal.roll, nil, "and not the piano roll")
   local first = clip:notes()[1].meta.lyric
   eq(texts():find(first, 1, true) ~= nil, true, "the notes are painted with their lyrics")
   eq(texts():find("Notes", 1, true) ~= nil and texts():find("Pitch", 1, true) ~= nil, true, "with a toolbar")
@@ -2308,13 +2308,13 @@ test("the vocal editor paints itself in a pane and is worked with the pointer", 
 
   pointer("double", 0.5, 62)
   eq(editor.entry ~= nil, true, "a double click starts typing the note's lyric")
-  daw.keymap.feed("la<CR>")
+  paw.keymap.feed("la<CR>")
   eq(clip:notes()[1].meta.lyric, "la", "which the keyboard finishes")
 
   -- The pitch tool, from its button in the toolbar.
-  daw.canvas.paint("utau", 1100, 600)
+  paw.canvas.paint("utau", 1100, 600)
   for _, b in ipairs(gui.buttons) do
-    if b.label == "Pitch" then daw.canvas.pointer("utau", { kind = "down", x = b.x + 4, y = b.y + 4, button = "left" }) end
+    if b.label == "Pitch" then paw.canvas.pointer("utau", { kind = "down", x = b.x + 4, y = b.y + 4, button = "left" }) end
   end
   eq(gui.tool, "pitch", "a click on a toolbar button")
   pointer("down", 0.1, 62.3)
@@ -2335,11 +2335,11 @@ test("the vocal editor paints itself in a pane and is worked with the pointer", 
   pointer("down", 2.5, 67, { button = "right" })
   eq(#clip:notes(), 2, "with the notes tool, a right click removes a note")
   local zoom = gui.zoom
-  daw.canvas.pointer("utau", { kind = "wheel", x = 300, y = 300, dx = 0, dy = 60, ctrl = true })
+  paw.canvas.pointer("utau", { kind = "wheel", x = 300, y = 300, dx = 0, dy = 60, ctrl = true })
   eq(gui.zoom > zoom, true, "the wheel with Ctrl zooms")
-  daw.canvas.close("utau")
-  eq(#daw.frontend.state(-1).modal.windows, 0, "closing the window")
-  eq(daw.ui.focused, "arrange", "gives the keyboard back to the arrange view")
+  paw.canvas.close("utau")
+  eq(#paw.frontend.state(-1).modal.windows, 0, "closing the window")
+  eq(paw.ui.focused, "arrange", "gives the keyboard back to the arrange view")
 end)
 
 test("the vocal editor shows notes, lyrics, phonemes, render state and the lyric sheet", function()
@@ -2353,10 +2353,10 @@ test("the vocal editor shows notes, lyrics, phonemes, render state and the lyric
   utau.phonemes[clip.id] = { seq = 1, notes = { { { phoneme = "- あC4", alias = "", start = 0, stop = 480, flags = 0 } },
     { { phoneme = "xyz", alias = "", start = 480, stop = 960, flags = 1 } } } }
   utau.pitch[clip.id] = { step = 5, ticks = { [0] = 6000, [240] = 6000, [480] = 6390 } }
-  daw.ui.show("utau_lyrics")
+  paw.ui.show("utau_lyrics")
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("Vocal  Nobody", 1, true) ~= nil, true, "the header names the track and singer")
-  eq(table.concat(daw.ui.keybar.check(), ", "), "", "the keys the bottom line shows for it are all mapped")
+  eq(table.concat(paw.ui.keybar.check(), ", "), "", "the keys the bottom line shows for it are all mapped")
   eq(text:find("C4   - あ", 1, true) ~= nil, true, "notes show their lyric on their row")
   -- The keyboard names the Cs and the cursor's pitch; E4 is four rows above C4.
   local lines = api.ui_snapshot(120, 40)
@@ -2369,9 +2369,9 @@ test("the vocal editor shows notes, lyrics, phonemes, render state and the lyric
   eq(text:find("─", 1, true) ~= nil, true, "the sung pitch is drawn")
   eq(text:find("- あ - い", 1, true) ~= nil, true, "the lyric sheet")
   eq(text:find("traceback", 1, true), nil, "no view raised an error")
-  daw.ui.hide("utau_lyrics")
-  daw.ui.hide("utau")
-  daw.ui.focus("arrange")
+  paw.ui.hide("utau_lyrics")
+  paw.ui.hide("utau")
+  paw.ui.focus("arrange")
   utau.phonemes[clip.id], utau.pitch[clip.id] = nil, nil
 end)
 
@@ -2384,18 +2384,18 @@ local function vocal_window(pitches)
   local editor = require("utau.editor").editor
   local gui = require("utau.gui")
   local track, clip = vocal(pitches)
-  daw.flush()
-  daw.frontend.act.open_clip(clip.id)
+  paw.flush()
+  paw.frontend.act.open_clip(clip.id)
   -- Popped out into a window of its own, where Ctrl+V pastes.
-  daw.canvas.open("utau", { window = true })
+  paw.canvas.open("utau", { window = true })
   gui.tool, gui.curves, gui.inspector = "notes", true, true
   local win = { editor = editor, gui = gui, track = track, clip = clip }
-  function win.paint() return daw.canvas.paint("utau", 1180, 620) end
+  function win.paint() return paw.canvas.paint("utau", 1180, 620) end
   function win.at(beat, pitch)
     return 64 + (beat - gui.scroll) * gui.zoom, 38 + 24 + (gui.top - pitch) * gui.row + gui.row / 2
   end
   function win.press(kind, x, y, extra)
-    daw.canvas.pointer("utau", daw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
+    paw.canvas.pointer("utau", paw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
   end
   function win.note(kind, beat, pitch, extra)
     local x, y = win.at(beat, pitch)
@@ -2416,9 +2416,9 @@ local function vocal_window(pitches)
   end
   function win.close()
     if editor.entry then editor:close_entry() end
-    daw.canvas.close("utau")
-    daw.ui.hide("utau")
-    daw.ui.focus("arrange")
+    paw.canvas.close("utau")
+    paw.ui.hide("utau")
+    paw.ui.focus("arrange")
   end
   return win
 end
@@ -2451,25 +2451,25 @@ test("the vocal editor's window selects several notes, and moves, stretches, cop
   local xf = win.at(1.48, 63)
   win.drag(xe, ye, xf, ye)
   eq(shape_of(clip), "- あ:61@0+0.5 - い:63@1+0.5 - う:65@2+0.5 - え:65@3+1", "its right edge stretches them all")
-  daw.keymap.feed("<C-c>")
+  paw.keymap.feed("<C-c>")
   editor.beat = 5
-  daw.keymap.feed("<C-v>")
+  paw.keymap.feed("<C-v>")
   eq(#clip:notes(), 7, "Ctrl+C copies them and Ctrl+V pastes them at the cursor")
   eq(shape_of(clip):find("- あ:61@5+0.5 - い:63@6+0.5 - う:65@7+0.5", 1, true) ~= nil, true, "keeping pitches, lyrics and spacing")
   eq(#editor:selected(), 3, "the pasted notes are selected")
-  daw.keymap.feed("x")
+  paw.keymap.feed("x")
   eq(#clip:notes(), 4, "x removes the selection")
-  daw.canvas.key("utau", "<C-a>")
+  paw.canvas.key("utau", "<C-a>")
   eq(#editor:selected(), 4, "Ctrl+A in its window selects every note")
-  daw.keymap.feed("<Esc>")
-  eq(#editor:selected() .. daw.ui.focused, "0utau", "Escape forgets the selection first")
+  paw.keymap.feed("<Esc>")
+  eq(#editor:selected() .. paw.ui.focused, "0utau", "Escape forgets the selection first")
   -- Visual mode in the keys is the same selection.
   editor.pitch, editor.beat = 61, 0
-  daw.keymap.feed("vW")
+  paw.keymap.feed("vW")
   eq(#editor:selected(), 4, "a visual selection selects the notes in it")
   win.paint()
   eq(win.gui.S.selected[1] == true, true, "and the window shows them selected")
-  daw.keymap.feed("<Esc>")
+  paw.keymap.feed("<Esc>")
   win.close()
 end)
 
@@ -2481,10 +2481,10 @@ test("the vocal editor selects a phrase, from the window and with a text object"
   eq(table.concat(editor:selected(), ","), "1,2", "a double click on empty space selects the phrase there")
   win.note("double", 3.5, 70)
   eq(table.concat(editor:selected(), ","), "4,5", "a rest ends a phrase")
-  daw.keymap.feed("<Esc>")
+  paw.keymap.feed("<Esc>")
   editor.pitch, editor.beat = 60, 0
-  daw.keymap.feed("yip")
-  eq(#daw.keymap.getreg().notes, 2, "`ip` is the phrase at the cursor")
+  paw.keymap.feed("yip")
+  eq(#paw.keymap.getreg().notes, 2, "`ip` is the phrase at the cursor")
   win.close()
 end)
 
@@ -2518,16 +2518,16 @@ test("the vocal editor draws and erases expression curves under the notes", func
   near(notes.curve_at(track.id, device, "dyn", 0.6), 60, 3, "and no further")
   eq(notes.curve_at(track.id, device, "pitd", 1.5), 0, "other curves are left alone")
   -- In the terminal: the chosen curve under the notes, raised at the cursor.
-  daw.ui.focus("utau")
+  paw.ui.focus("utau")
   editor.curve, editor.beat, editor.pitch = "pitd", 2, 64
-  daw.keymap.feed("]c]c")
+  paw.keymap.feed("]c]c")
   eq(editor.curve, "tenc", "]c shows the next curve")
-  daw.keymap.feed("3}")
+  paw.keymap.feed("3}")
   eq(notes.curve_at(track.id, device, "tenc", clip.start + 2), 15, "} raises it at the cursor")
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("tenc", 1, true) ~= nil and text:find("15", 1, true) ~= nil, true, "the terminal shows the curve and its value at the cursor")
   eq(text:find("[\240][\159][\172-\175]") ~= nil or text:find("[▌▐█]") ~= nil, true, "drawn in sextants under the notes")
-  daw.keymap.feed("=")
+  paw.keymap.feed("=")
   eq(notes.curve_at(track.id, device, "tenc", clip.start + 2), 0, "= puts it back under the note")
   win.close()
 end)
@@ -2616,25 +2616,25 @@ test("the vocal editor moves and replaces phonemes, in the window and with keys"
   eq(ph and ph[1].index .. ":" .. ph[1].offset, "1:120", "dragging a phoneme's start sets its offset, in ticks")
   win.press("double", 64 + box.x0 + 20, y)
   eq(editor.entry and editor.entry.kind, "phoneme", "a double click types the phoneme")
-  daw.keymap.feed("<C-u>xi<CR>")
+  paw.keymap.feed("<C-u>xi<CR>")
   eq(clip:notes()[2].meta.utau.ph[1].phoneme, "xi", "which is then sung instead")
   win.press("down", 64 + box.x0 + 20, y, { button = "right" })
   eq(clip:notes()[2].meta.utau, nil, "a right click puts it back")
   -- The keys: ( and ) choose a phoneme, [ and ] move it, gr types it.
-  daw.ui.focus("utau")
+  paw.ui.focus("utau")
   editor.pitch, editor.beat, editor.ph = 62, 1, nil
-  daw.keymap.feed(")")
-  daw.keymap.feed(")")
+  paw.keymap.feed(")")
+  paw.keymap.feed(")")
   eq(editor.ph.note .. ":" .. editor.ph.k, "2:2", ") goes on to the next phoneme")
-  daw.keymap.feed("2])")
+  paw.keymap.feed("2])")
   eq(clip:notes()[2].meta.utau.ph[1].offset, 10, "] starts it later")
-  daw.keymap.feed("grya<CR>")
+  paw.keymap.feed("grya<CR>")
   eq(clip:notes()[2].meta.utau.ph[1].phoneme, "ya", "gr types the phoneme to sing")
   local text = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(text:find("[a (!い)]", 1, true) ~= nil, true, "the chosen phoneme is marked in the terminal")
-  daw.keymap.feed("gR")
+  paw.keymap.feed("gR")
   eq(clip:notes()[2].meta.utau, nil, "gR puts it back")
-  daw.keymap.feed("(")
+  paw.keymap.feed("(")
   eq(editor.ph.k, 1, "( goes back")
   utau.phonemes[clip.id] = nil
   win.close()
@@ -2661,7 +2661,7 @@ test("the vocal editor's inspector sets properties of every selected note", func
   win.press("down", fx, fy)
   win.press("up", fx, fy)
   eq(editor.entry and editor.entry.kind, "field", "a click types the value")
-  daw.keymap.feed("<C-u>-15<CR>")
+  paw.keymap.feed("<C-u>-15<CR>")
   n = clip:notes()
   eq(n[1].meta.utau.tu .. " " .. n[2].meta.utau.tu, "-15 -15", "which goes to all of them")
   fx, fy = field("Vibrato")
@@ -2685,12 +2685,12 @@ test("the vocal editor's inspector sets properties of every selected note", func
   eq(clip:notes()[1].meta.utau.tu, nil, "a right click puts a value back")
   fx, fy = field("Lyric")
   win.press("down", fx, fy)
-  daw.keymap.feed("<C-u>")
+  paw.keymap.feed("<C-u>")
   editor:entry_key("la li", true)
-  daw.keymap.feed("<CR>")
+  paw.keymap.feed("<CR>")
   eq(clip:notes()[1].meta.lyric .. " " .. clip:notes()[2].meta.lyric, "la li", "several words go to the notes in order")
   -- The same from the command line.
-  daw.cmd("utau.note", { tuning = "7", depth = "40" })
+  paw.cmd("utau.note", { tuning = "7", depth = "40" })
   eq(clip:notes()[1].meta.utau.tu .. " " .. clip:notes()[2].meta.utau.vb[3], "7 40", "`utau.note` sets them too")
   utau.phonemizers = {}
   win.close()
@@ -2707,14 +2707,14 @@ test("the vocal editor plays notes as they are placed, follows the playhead, and
   eq(audition.heard[#audition.heard], "tone", "is heard, as a tone without the engine")
   eq(audition.error, nil, "through the vocal device")
   clip.length = 64
-  daw.keymap.feed("<Space>")
-  eq(daw.transport.playing, true, "Space plays")
-  near(daw.transport.position, clip.start + editor.beat, 1e-6, "from the cursor")
-  daw.transport.seek(40)
+  paw.keymap.feed("<Space>")
+  eq(paw.transport.playing, true, "Space plays")
+  near(paw.transport.position, clip.start + editor.beat, 1e-6, "from the cursor")
+  paw.transport.seek(40)
   win.paint()
   eq(gui.scroll > 30, true, "the window follows the playhead")
-  daw.keymap.feed("<Space>")
-  eq(daw.transport.playing, false, "Space again stops")
+  paw.keymap.feed("<Space>")
+  eq(paw.transport.playing, false, "Space again stops")
   win.close()
 end)
 
@@ -2724,10 +2724,10 @@ test("OpenUtau projects import as vocal tracks", function()
   if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
   local ok, ids = pcall(require("utau.import").file, fixtures .. "vocal.ustx")
   eq(ok, true, "imported: " .. tostring(ids))
-  local track = daw.track(ids[1])
+  local track = paw.track(ids[1])
   eq(track.name, "Imported vocal", "a vocal track per OpenUtau track")
   eq(utau.config(track.id).singer, "Kitane sno act5 VCV", "with its singer")
-  eq(daw.project.tempo, 100, "the tempo")
+  eq(paw.project.tempo, 100, "the tempo")
   local clip = track:clips()[1]
   eq(clip.start .. "/" .. clip.length, "2/5", "a clip per part")
   local notes = clip:notes()
@@ -2743,7 +2743,7 @@ test("a phrase with lyrics is sung at the notes' pitch, and offline renders wait
   fresh()
   local why = need_singer()
   if why then return why end
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local track, clip = vocal({ 57, 60, 64 })
   utau.configure(track.id, { singer = SINGER })
   -- Rendering waits until the singing is final, so no waiting here.
@@ -2758,28 +2758,28 @@ test("a phrase with lyrics is sung at the notes' pitch, and offline renders wait
   local again = render({ bits = 16, tail = 0 })
   eq(read_file(again.path) == read_file(info.path), true, "offline renders are deterministic")
   -- And it plays in real time.
-  daw.transport.seek(0)
-  daw.transport.play()
+  paw.transport.seek(0)
+  paw.transport.play()
   local loudest, deadline = 0, api.now() + 3000
-  while daw.transport.position < 1.5 and api.now() < deadline do
+  while paw.transport.position < 1.5 and api.now() < deadline do
     loudest = math.max(loudest, track:meter())
     api.sleep(5)
   end
-  daw.transport.stop()
+  paw.transport.stop()
   eq(loudest > 0.05, true, "heard while playing")
   require("utau.editor").editor:edit(clip.id)
   local text = table.concat(api.ui_snapshot(100, 30), "\n")
   eq(text:find("ready", 1, true) ~= nil, true, "the editor says the track is rendered")
   eq(text:find("- あ", 1, true) ~= nil, true, "and shows phonemes from the voicebank")
-  daw.ui.hide("utau")
-  daw.ui.focus("arrange")
+  paw.ui.hide("utau")
+  paw.ui.focus("arrange")
 end)
 
 test("changing a lyric or a note sings it again", function()
   fresh()
   local why = need_singer()
   if why then return why end
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local track, clip = vocal({ 60, 60 })
   local device = utau.device_of(track.id)
   utau.configure(track.id, { singer = SINGER })
@@ -2794,13 +2794,13 @@ test("changing a lyric or a note sings it again", function()
   eq(first ~= "", true, "phrases are with the device")
   local notes = require("utau.notes")
   notes.set_lyric(clip.id, 2, "- お")
-  daw.flush()
+  paw.flush()
   local second = hashes()
   eq(second ~= first, true, "a new lyric is sung again")
   local list = clip:notes()
   list[2].pitch = 67
   clip:set_notes(list)
-  daw.flush()
+  paw.flush()
   eq(hashes() ~= second, true, "so is a new pitch")
   local info = render({ bits = 16, tail = 0 })
   near(pitch(info, 0.65, 0.95) or 0, midi_hz(67), midi_hz(67) * 0.03, "at the new pitch")

@@ -2,26 +2,26 @@
 -- keyswitch rows labelled with their articulations, each note's tag and
 -- colour, a band of the articulation in time above the ruler, the pen new
 -- notes are entered with, and `K` saying what a note plays.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local art = require("articulations")
 local m2 = art.m2
 
 local M = {}
-local roll = daw.ui.views.pianoroll
+local roll = paw.ui.views.pianoroll
 
-local function palette() return require("daw.theme").palette end
+local function palette() return require("paw.theme").palette end
 
 local function styles()
-  local c, mix = palette(), daw.draw.mix
-  daw.ui.hl("ArtOutOfRange", { fg = c.line, bg = "#08090b" })
-  daw.ui.hl("ArtUncomfortable", { fg = c.line, bg = mix(c.bg, "#08090b", 0.5) })
-  daw.ui.hl("ArtKeyswitchRow", { fg = c.line, bg = mix(c.bg, c.accent, 0.07) })
-  daw.ui.hl("ArtBand", { fg = c.dim, bg = c.bg_alt })
-  daw.ui.hl("ArtBandEdge", { fg = c.line_hi, bg = c.bg_alt })
+  local c, mix = palette(), paw.draw.mix
+  paw.ui.hl("ArtOutOfRange", { fg = c.line, bg = "#08090b" })
+  paw.ui.hl("ArtUncomfortable", { fg = c.line, bg = mix(c.bg, "#08090b", 0.5) })
+  paw.ui.hl("ArtKeyswitchRow", { fg = c.line, bg = mix(c.bg, c.accent, 0.07) })
+  paw.ui.hl("ArtBand", { fg = c.dim, bg = c.bg_alt })
+  paw.ui.hl("ArtBandEdge", { fg = c.line_hi, bg = c.bg_alt })
 end
 styles()
-daw.on("theme.changed", styles)
+paw.on("theme.changed", styles)
 
 --- The keyswitch keys of a map: `{ [pitch] = art }`.
 function M.keyswitch_keys(map)
@@ -43,7 +43,7 @@ local function inside(range, pitch) return range and pitch >= range[1] and pitch
 function M.row(map, pitch)
   local keys = M.keyswitch_keys(map)
   local a = keys[pitch]
-  if a then return { label = a.tag, style = daw.draw.hue(a.colour).note, shade = "ArtKeyswitchRow", art = a } end
+  if a then return { label = a.tag, style = paw.draw.hue(a.colour).note, shade = "ArtKeyswitchRow", art = a } end
   if inside(map.keyswitches, pitch) then return { shade = "ArtKeyswitchRow" } end
   if map.range and not inside(map.range, pitch) then return { shade = "ArtOutOfRange" } end
   if map.comfortable and not inside(map.comfortable, pitch) then return { shade = "ArtUncomfortable" } end
@@ -59,7 +59,7 @@ roll.layer("articulations", 22, function(L)
   for _, part in ipairs(L.parts) do
     local track = part.track
     local chosen = {}
-    for _, place in ipairs(daw.frontend.chosen_notes(part.id)) do chosen[place] = true end
+    for _, place in ipairs(paw.frontend.chosen_notes(part.id)) do chosen[place] = true end
     local shown, places = part.clip:notes({
       from = L.from - part.offset, to = L.to - part.offset, low = math.max(0, L.top - L.rows + 1), high = L.top,
     })
@@ -75,11 +75,11 @@ roll.layer("articulations", 22, function(L)
         if at_cursor then
           style = "NoteCursor"
         elseif chosen[places[k]] then
-          style = daw.draw.track_hue(api.track_get(track)).title_cur
+          style = paw.draw.track_hue(api.track_get(track)).title_cur
         else
-          style = daw.draw.note_style(daw.draw.hue(a and a.colour or art.maps.colour()), note.velocity)
+          style = paw.draw.note_style(paw.draw.hue(a and a.colour or art.maps.colour()), note.velocity)
           L.roll:fill(x0, row, nw, 1, " ", style)
-          L.roll:text(x0, row, daw.draw.g.clip_start, style)
+          L.roll:text(x0, row, paw.draw.g.clip_start, style)
         end
         if nw >= 3 and tag then L.roll:text(x0 + 1, row, util.fit(tag, nw - 1):gsub("%s+$", ""), style) end
       end
@@ -116,7 +116,7 @@ roll.layer("articulations.rows", 5, nil, function(clip_id)
     if look then
       out[#out + 1] = { pitch = pitch, start = 0, length = c.length, fill = look.art and look.art.colour or "#000000",
         alpha = look.art and 0.12 or (look.shade == "ArtUncomfortable" and 0.2 or 0.4), label = look.art and look.art.tag or nil,
-        tip = look.art and (look.art.name .. ": keyswitch " .. daw.music.name(pitch)) or nil }
+        tip = look.art and (look.art.name .. ": keyswitch " .. paw.music.name(pitch)) or nil }
     end
   end
   return out
@@ -162,12 +162,12 @@ roll.band("articulations", 10, {
   end,
   paint = function(buf, B)
     buf:fill(0, 0, B.width, 1, " ", "ArtBand")
-    local line = daw.opt.ascii and "-" or "─"
-    local edge = daw.opt.ascii and "|" or "│"
+    local line = paw.opt.ascii and "-" or "─"
+    local edge = paw.opt.ascii and "|" or "│"
     for _, s in ipairs(M.segments(B.clip)) do
       local x0, x1 = B.x(s.from), B.x(s.to)
       if x1 > 0 and x0 < B.width then
-        local style = s.art and daw.draw.hue(s.art.colour).fg or "ArtBand"
+        local style = s.art and paw.draw.hue(s.art.colour).fg or "ArtBand"
         buf:fill(math.max(0, x0), 0, math.max(0, math.min(B.width, x1) - math.max(0, x0)), 1, line, style)
         if x0 >= 0 then buf:text(x0, 0, edge .. s.tag, style) end
       end

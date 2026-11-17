@@ -1,7 +1,7 @@
 -- The virtual inputs in the terminal: every input with its chain and what
 -- it is doing, and under it its settings, one to a row.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local vinput = require("vinput")
 local run = require("vinput.run")
 
@@ -94,7 +94,7 @@ function view:render(buf, ctx)
   local row, rows = self:current()
   local inputs = 0
   for _, r in ipairs(rows) do if r.heading then inputs = inputs + 1 end end
-  local inner = daw.ui.titlebar(buf, {
+  local inner = paw.ui.titlebar(buf, {
     name = "Virtual inputs", context = "guitar to MIDI", focused = ctx.focused,
     right = inputs > 0 and tostring(inputs) or nil,
   })
@@ -115,7 +115,7 @@ function view:render(buf, ctx)
     local chosen = index == self.row and ctx.focused
     if chosen then
       inner:fill(-1, y, w + 1, 1, " ", "Selected")
-      buf:text(0, y + 1, daw.draw.g.mark, "SelectedMark")
+      buf:text(0, y + 1, paw.draw.g.mark, "SelectedMark")
     end
     local input = r.input
     if r.heading then
@@ -137,7 +137,7 @@ function view:render(buf, ctx)
       local x = 13
       if setting and setting.type == "number" then
         local bar = util.clamp(math.floor(w / 4), 8, 28)
-        daw.draw.slider(inner, x, y, bar, (input[setting.key] - setting.min) / (setting.max - setting.min),
+        paw.draw.slider(inner, x, y, bar, (input[setting.key] - setting.min) / (setting.max - setting.min),
           chosen and "ParamBar" or "Dim", "ParamBarOff")
         x = x + bar + 1
       end
@@ -162,7 +162,7 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("vinput", view)
-daw.ui.dock("vinput", { side = "bottom", hidden = true })
+paw.ui.view("vinput", view)
+paw.ui.dock("vinput", { side = "bottom", hidden = true })
 package.loaded["vinput.panel"] = view
 return view

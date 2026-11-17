@@ -25,67 +25,67 @@ Differences: `w` goes to clip starts (there is no WORD), `W` `B` are bars, `0` i
 the start of the project, `^` the first clip, `|` and `:5` take a bar number,
 not a column or a line.]],
   setup = function(look)
-    daw.project.tempo = 96
-    local drums = daw.add_track({ name = "Drums" })
+    paw.project.tempo = 96
+    local drums = paw.add_track({ name = "Drums" })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 28, notes = look.drums(look.beat, 7) })
-    local bass = daw.add_track({ name = "Bass", volume = -4 })
+    local bass = paw.add_track({ name = "Bass", volume = -4 })
     bass:add_device("synth", { wave = 2, cutoff = 700, release = 0.05 })
     bass:add_clip({ name = "verse", start = 0, length = 8, notes = look.pulse("D2", 8) })
     bass:add_clip({ name = "chorus", start = 12, length = 8, notes = look.pulse("G1", 8) })
     bass:add_clip({ name = "outro", start = 24, length = 4, notes = look.pulse("D2", 4) })
-    local lead = daw.add_track({ name = "Lead", volume = -8 })
+    local lead = paw.add_track({ name = "Lead", volume = -8 })
     lead:add_device("synth", { wave = 1, cutoff = 2500, release = 0.2 })
     lead:add_clip({ name = "melody", start = 16, length = 8, notes = look.notes("D5:0:1 F5:1:1 A5:2:2 G5:4:1 F5:5:1 E5:6:2") })
-    local pad = daw.add_track({ name = "Pad", volume = -12 })
+    local pad = paw.add_track({ name = "Pad", volume = -12 })
     pad:add_device("synth", { wave = 3, attack = 0.3, release = 0.6, cutoff = 1500 })
     pad:add_clip({ name = "pad", start = 16, length = 12, notes = look.chord({ "D4", "F4", "A4" }, 12) })
   end,
-  at = function() daw.cursor.set_track(daw.track("Bass")) end,
+  at = function() paw.cursor.set_track(paw.track("Bass")) end,
   steps = {
     {
       say = "The cursor is on the Bass track at the start. `l` moves it right one grid step (a beat), `h` left. Press `l` three times.",
       keys = { "l", "l", "l" },
-      check = function() return daw.cursor.beat == 3 end,
+      check = function() return paw.cursor.beat == 3 end,
       done = "Three beats on: the clock at the top left of the arrange view says 1.4.00, bar 1 beat 4.",
     },
     {
       say = "A number before a motion repeats it. Press `4l` to go four beats on.",
       keys = { "4l" },
-      check = function() return daw.cursor.beat == 7 end,
+      check = function() return paw.cursor.beat == 7 end,
       done = "Beat 7, near the end of the clip `verse`.",
       hint = "Type the 4 and then the l. If you went elsewhere, `0` goes to the start and `3l` back to beat 3.",
     },
     {
       say = "`0` goes back to the start of the project. Press `0`.",
       keys = { "0" },
-      check = function(ctx, look) return look.ran(ctx, "cursor.start") and daw.cursor.beat == 0 end,
+      check = function(ctx, look) return look.ran(ctx, "cursor.start") and paw.cursor.beat == 0 end,
       done = "Back at the start.",
     },
     {
       say = "A clip is like a word: `w` jumps to the start of the next clip on the track. Press `w`.",
       keys = { "w" },
-      check = function() return daw.cursor.beat == 12 end,
+      check = function() return paw.cursor.beat == 12 end,
       done = "On `chorus`, which starts at beat 12 (bar 4).",
     },
     {
       say = "`e` goes to the end of the clip and `b` back to its start. Press `e`, then `b`.",
       keys = { "e", "b" },
       check = function(ctx, look)
-        return look.ran(ctx, "cursor.clip_end") and look.ran(ctx, "cursor.prev_clip") and daw.cursor.beat == 12
+        return look.ran(ctx, "cursor.clip_end") and look.ran(ctx, "cursor.prev_clip") and paw.cursor.beat == 12
       end,
       done = "`w` `b` `e`: next start, this start, this end.",
     },
     {
       say = "`W` and `B` move by bars (four beats here). Press `2W` to go two bars on.",
       keys = { "2W" },
-      check = function() return daw.cursor.beat == 20 end,
+      check = function() return paw.cursor.beat == 20 end,
       done = "Bar 6 (beat 20).",
     },
     {
       say = "`$` goes to the end of the track's last clip (and `^` to its first clip). Press `$`.",
       keys = { "$" },
-      check = function() return daw.cursor.beat == 28 end,
+      check = function() return paw.cursor.beat == 28 end,
       done = "At the end of `outro`, where the song ends.",
     },
     {
@@ -97,20 +97,20 @@ not a column or a line.]],
     {
       say = "`5|` goes to bar 5 (typing `:5` and `<CR>` does the same). Press `5|`.",
       keys = { "5|" },
-      check = function() return daw.cursor.beat == 16 end,
+      check = function() return paw.cursor.beat == 16 end,
       done = "Bar 5, where the pad comes in.",
       hint = "`|` is the bar key, usually shift and backslash.",
     },
     {
       say = "Now the same keys in another mode. Press `v`: the status line says VISUAL, and moving stretches a selection. Press `l` twice to stretch it.",
       keys = { "v", "l", "l" },
-      check = function() return daw.keymap.mode == "x" and daw.cursor.beat == 18 end,
+      check = function() return paw.keymap.mode == "x" and paw.cursor.beat == 18 end,
       done = "In visual mode `l` still moves, but it also selects. Lesson 7 is about what to do with a selection.",
     },
     {
       say = "`<Esc>` always brings you back to NORMAL. Press `<Esc>`.",
       keys = { "<Esc>" },
-      check = function(ctx, look) return look.became(ctx, "normal", daw.keymap.mode == "n") end,
+      check = function(ctx, look) return look.became(ctx, "normal", paw.keymap.mode == "n") end,
       done = "NORMAL again.",
     },
     {
@@ -123,9 +123,9 @@ not a column or a line.]],
     {
       say = "Here the rows are pitches, so `k` goes up a semitone instead of a track. Press `k` twice (you hear each pitch).",
       keys = { "k", "k" },
-      start = function(ctx) ctx.pitch = daw.ui.views.pianoroll.pitch end,
+      start = function(ctx) ctx.pitch = paw.ui.views.pianoroll.pitch end,
       check = function(ctx, look)
-        return look.focused() == "pianoroll" and daw.ui.views.pianoroll.pitch == ctx.pitch + 2
+        return look.focused() == "pianoroll" and paw.ui.views.pianoroll.pitch == ctx.pitch + 2
       end,
       done = "Same key, different view, different meaning: but still 'up'.",
     },

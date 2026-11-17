@@ -5,10 +5,10 @@
 -- each view is scrolled to.
 --
 -- Seat 0 is the instance's own: its terminal, if it has one, and every
--- connection that has not taken a seat of its own (`daw ctl`, scripts).
--- A terminal attached with `daw attach` gets a seat, and so does a window
+-- connection that has not taken a seat of its own (`paw ctl`, scripts).
+-- A terminal attached with `paw attach` gets a seat, and so does a window
 -- unless it asks to share the instance's (as one that started its kernel
--- itself does). The kernel says whose turn it is (`daw._kernel.seat`)
+-- itself does). The kernel says whose turn it is (`paw._kernel.seat`)
 -- before it hands over a key, a call or a screen to draw.
 --
 -- Modules keep their state where they always have (in locals and fields);
@@ -17,14 +17,14 @@
 -- ever moves.
 --
 --   local pending, count = {}, nil
---   daw.seats.keep("mine",
+--   paw.seats.keep("mine",
 --     function() return pending, count end,
 --     function(p, c) pending, count = p, c end,
 --     function() return {}, nil end)
 --
 -- The last function gives what a new seat starts with; it is passed seat
 -- 0's state, to start from a copy of some of it.
-local api = daw.api
+local api = paw.api
 local M = { current = 0 }
 
 local keeps = {}   -- { name, get, set, fresh }, in the order kept
@@ -41,7 +41,7 @@ end
 
 --- Keep fields of a table (a view's scroll, say) for each seat: `keys`
 --- names them, `start` gives what a new seat starts with (nil if absent).
----   daw.seats.fields("mixer", view, { "scroll", "geometry" }, { scroll = 0 })
+---   paw.seats.fields("mixer", view, { "scroll", "geometry" }, { scroll = 0 })
 function M.fields(name, tbl, keys, start)
   M.keep(name,
     function()
@@ -134,7 +134,7 @@ function M.open(id, why)
   if not seat then
     seat = { values = {}, why = {} }
     seats[id] = seat
-    daw.emit("seat.opened", { seat = id })
+    paw.emit("seat.opened", { seat = id })
   end
   seat.why[why] = true
 end
@@ -147,7 +147,7 @@ function M.close(id, why)
   if why then seat.why[why] = nil else seat.why = {} end
   if next(seat.why) then return end
   -- Whatever was half done there ends with it.
-  M.within(id, daw.emit, "seat.closing", { seat = id })
+  M.within(id, paw.emit, "seat.closing", { seat = id })
   seats[id] = nil
   if M.current == id then
     restore(0)

@@ -12,10 +12,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use daw_engine::backend::{self, BackendOptions, Stream, StreamInfo};
-use daw_engine::midi::{MidiInputs, MidiSink, MidiTarget};
-use daw_engine::record::{self, AudioCapture, MidiCapture, Take, TakeShared};
-use daw_engine::{Engine, EngineHandle, EventKind, Msg, ParamInfo, Pool, Registry};
+use paw_engine::backend::{self, BackendOptions, Stream, StreamInfo};
+use paw_engine::midi::{MidiInputs, MidiSink, MidiTarget};
+use paw_engine::record::{self, AudioCapture, MidiCapture, Take, TakeShared};
+use paw_engine::{Engine, EngineHandle, EventKind, Msg, ParamInfo, Pool, Registry};
 use rtrb::RingBuffer;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
@@ -72,12 +72,12 @@ pub struct Transport {
     #[serde(skip)]
     pub recording: bool,
     /// Bars to count before a take that starts with the song stopped; 0
-    /// for none. Set from `daw.opt.count_in`, so not saved with a project.
+    /// for none. Set from `paw.opt.count_in`, so not saved with a project.
     #[serde(skip)]
     pub count_in: u32,
     /// Bars, and then seconds, that a take punched in from a stop starts
-    /// playing before the punch in. Set from `daw.opt.pre_roll` and
-    /// `daw.opt.pre_roll_seconds`, so not saved with a project.
+    /// playing before the punch in. Set from `paw.opt.pre_roll` and
+    /// `paw.opt.pre_roll_seconds`, so not saved with a project.
     #[serde(skip)]
     pub pre_roll: u32,
     #[serde(skip)]
@@ -400,7 +400,7 @@ pub struct Session {
     midi_without_audio: bool,
     /// MIDI output, open when MIDI input is, and ports of our own for other
     /// programs to read from: session/midi_out.rs.
-    midi_out: Option<daw_engine::midi_out::MidiOutputs>,
+    midi_out: Option<paw_engine::midi_out::MidiOutputs>,
     midi_out_own: Vec<String>,
     /// Threads to process tracks on, or 0 for as many as the machine has cores.
     threads: usize,
@@ -1673,14 +1673,14 @@ impl Session {
                 let fault = self
                     .handle
                     .shared
-                    .fault(slot, daw_engine::guard::NOT_FINITE);
-                if fault & daw_engine::guard::PANICKED != 0 && live.stopped.is_none() {
+                    .fault(slot, paw_engine::guard::NOT_FINITE);
+                if fault & paw_engine::guard::PANICKED != 0 && live.stopped.is_none() {
                     let why =
                         "it crashed while processing; it is bypassed until restarted".to_string();
                     live.stopped = Some(why.clone());
                     stopped.push((*id, why));
                 }
-                if fault & daw_engine::guard::NOT_FINITE != 0 {
+                if fault & paw_engine::guard::NOT_FINITE != 0 {
                     invalid.push(*id);
                 }
             }
@@ -2099,7 +2099,7 @@ impl Session {
                 clip.content.kind()
             );
         };
-        let gain = daw_engine::db_to_gain(*gain);
+        let gain = paw_engine::db_to_gain(*gain);
         let peaks = self.playing_peaks(&clip, n)?;
         Ok(peaks
             .iter()
@@ -2509,7 +2509,7 @@ impl Session {
     /// The lane's value at a beat, or nothing when it has no points.
     pub fn lane_value_at(&self, id: Id, beat: f64) -> Result<Option<f64>> {
         let lane = self.project.lane(id).with_context(|| format!("no lane {id}"))?;
-        Ok(daw_engine::automation::value_at(&lane.played(), beat))
+        Ok(paw_engine::automation::value_at(&lane.played(), beat))
     }
 
     // --- transport ---------------------------------------------------------
@@ -3068,7 +3068,7 @@ impl Session {
     /// Turn a track's recorded file into clips. A take that never went
     /// round the loop is one clip where it began. One that did becomes a
     /// clip over the loop whose takes are the times round, the last of them
-    /// the one that plays (`clip.meta.takes`, see `daw.takes`), and a clip
+    /// the one that plays (`clip.meta.takes`, see `paw.takes`), and a clip
     /// before the loop for what was played on the way in.
     fn add_recorded_audio(
         &mut self,
@@ -3172,7 +3172,7 @@ impl Session {
                 })
                 .collect();
             // `origin`: the offset of the clip itself while the others'
-            // offsets are as written here (see `daw.takes`).
+            // offsets are as written here (see `paw.takes`).
             meta.insert(
                 "takes".into(),
                 json!({
@@ -3405,7 +3405,7 @@ impl Session {
                 .test_ports
                 .iter()
                 .enumerate()
-                .map(|(i, name)| daw_engine::midi::PortInfo {
+                .map(|(i, name)| paw_engine::midi::PortInfo {
                     id: format!("test:{i}"),
                     name: name.clone(),
                     open: true,
@@ -3415,7 +3415,7 @@ impl Session {
             // Without a sequencer the ports of our own are still listed,
             // and `midi_inject` plays the part of whoever sends to them.
             ports.extend(self.midi_own.iter().enumerate().map(|(i, name)| {
-                daw_engine::midi::PortInfo {
+                paw_engine::midi::PortInfo {
                     id: format!("own:{i}"),
                     name: name.clone(),
                     open: true,
@@ -3432,7 +3432,7 @@ impl Session {
     }
 
     /// Make a MIDI port of this program's, for other programs to send to:
-    /// they see it as `daw: <name>`, and tracks choose it by `name` like
+    /// they see it as `paw: <name>`, and tracks choose it by `name` like
     /// any other port. It is kept through engine restarts.
     pub fn midi_open_port(&mut self, name: &str) -> Result<()> {
         if name.is_empty() || name.contains('\0') {
@@ -3483,7 +3483,7 @@ impl Session {
     /// named `port` or none in particular.
     pub fn midi_inject(&mut self, kind: EventKind, port: Option<&str>) {
         self.flush();
-        let port = port.map_or(0, daw_engine::midi::port_key);
+        let port = port.map_or(0, paw_engine::midi::port_key);
         self.handle.send(Msg::MidiIn { port, kind });
         self.midi_event(port, kind);
     }
@@ -3527,7 +3527,7 @@ impl Session {
             ports
                 .iter()
                 .filter_map(|p| p["name"].as_str())
-                .find(|name| daw_engine::midi::port_key(name) == port)
+                .find(|name| paw_engine::midi::port_key(name) == port)
                 .map(str::to_string)
         });
         if let Some(name) = name {
@@ -3638,7 +3638,7 @@ impl Session {
 
     /// Play a note on a track now, with its attribute: what the track's
     /// attribute map sends for it goes first.
-    pub fn live_note(&mut self, track: Id, key: u8, vel: f32, attr: daw_engine::Attr) -> Result<()> {
+    pub fn live_note(&mut self, track: Id, key: u8, vel: f32, attr: paw_engine::Attr) -> Result<()> {
         let plan = self
             .project
             .track(track)
@@ -3651,13 +3651,13 @@ impl Session {
         for event in before {
             self.live(track, event)?;
         }
-        let attr = if keep { attr } else { daw_engine::Attr::NONE };
+        let attr = if keep { attr } else { paw_engine::Attr::NONE };
         let ch = ch.unwrap_or(0);
         self.live(track, EventKind::NoteOn { key, vel, ch, attr })
     }
 
     /// The milliseconds a note with `attr` is moved by the track's attribute map.
-    pub fn attr_delay(&self, track: Id, attr: daw_engine::Attr) -> Result<f64> {
+    pub fn attr_delay(&self, track: Id, attr: paw_engine::Attr) -> Result<f64> {
         let track = self
             .project
             .track(track)
@@ -3722,7 +3722,7 @@ impl Session {
             // of the take being recorded lost to a slow disk, devices that
             // have stopped, and decoded audio files held in memory.
             "late_blocks": self.live.values().filter_map(|l| l.controller.as_ref()).map(|c| c.late_blocks()).sum::<u64>(),
-            "midi_dropped": daw_engine::event::dropped(),
+            "midi_dropped": paw_engine::event::dropped(),
             "record_dropped": self.take.as_ref().map_or(0, |t| t.shared.dropped()),
             "devices_stopped": self.live.values().filter(|l| l.stopped.is_some()).count(),
             "audio_files": self.audio.len(),
@@ -4011,7 +4011,7 @@ fn scratch_media_dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("daw").join("recordings")
+    base.join("paw").join("recordings")
 }
 
 /// A name made of letters, digits, `-` and `_`, for use in a file name.
@@ -4087,7 +4087,7 @@ fn start_engine(opts: &BackendOptions) -> Result<(EngineHandle, Stream)> {
 }
 
 /// Processing times per engine callback, in milliseconds.
-fn block_json(s: &daw_engine::BlockSummary, sample_rate: u32) -> Value {
+fn block_json(s: &paw_engine::BlockSummary, sample_rate: u32) -> Value {
     let ms = |ns: f64| ns / 1e6;
     let mean = if s.count > 0 {
         s.total_ns as f64 / s.count as f64
@@ -4169,8 +4169,8 @@ pub(crate) fn settle_plugins(engine: &mut Engine, live: &LiveDevices) {
     if !live.values().any(|device| device.controller.is_some()) {
         return;
     }
-    let mut scratch = vec![0.0f32; 2 * daw_engine::MAX_BLOCK];
-    let (left, right) = scratch.split_at_mut(daw_engine::MAX_BLOCK);
+    let mut scratch = vec![0.0f32; 2 * paw_engine::MAX_BLOCK];
+    let (left, right) = scratch.split_at_mut(paw_engine::MAX_BLOCK);
     for _ in 0..4 {
         engine.process(left, right);
         std::thread::sleep(Duration::from_millis(12));

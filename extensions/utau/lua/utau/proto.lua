@@ -92,7 +92,7 @@ local encode = {}
 M.encode = encode
 
 function encode.hello(pid)
-  return M.frame(T.Hello, mp.array(6) .. mp.uint(M.VERSION) .. mp.uint(0) .. mp.str("daw-utau 0.1")
+  return M.frame(T.Hello, mp.array(6) .. mp.uint(M.VERSION) .. mp.uint(0) .. mp.str("paw-utau 0.1")
     .. mp.str("") .. mp.uint(pid or 0) .. mp.array(0))
 end
 

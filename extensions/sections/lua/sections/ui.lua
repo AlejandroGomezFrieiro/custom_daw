@@ -1,8 +1,8 @@
 -- Commands, keys, the list to jump from, and the ruler.
-local api = daw.api
+local api = paw.api
 local S = require("sections")
 local A = require("sections.arrange")
-local keymap, cursor = daw.keymap, daw.cursor
+local keymap, cursor = paw.keymap, paw.cursor
 local EPS = 1e-9
 
 local M = {}
@@ -25,22 +25,22 @@ local function complete(text)
 end
 
 local function bar_of(beat)
-  return daw.time.bar_of(beat + EPS)
+  return paw.time.bar_of(beat + EPS)
 end
 
 --- One line describing a section, for lists.
 function M.describe(s)
   -- Whole bars of the signature map, and the part of one left over.
-  local first, last = daw.time.bar_of(s.start + EPS), daw.time.bar_of(s.finish - EPS)
-  local bars = last - first + (s.finish - daw.time.bar_start(last)) / daw.time.bar(s.finish - EPS)
-    - (s.start - daw.time.bar_start(first)) / daw.time.bar(s.start + EPS)
+  local first, last = paw.time.bar_of(s.start + EPS), paw.time.bar_of(s.finish - EPS)
+  local bars = last - first + (s.finish - paw.time.bar_start(last)) / paw.time.bar(s.finish - EPS)
+    - (s.start - paw.time.bar_start(first)) / paw.time.bar(s.start + EPS)
   bars = math.floor(bars * 1000 + 0.5) / 1000
   return string.format("%-16s bar %-4d %g bar%s", s.name, bar_of(s.start), bars, bars == 1 and "" or "s")
 end
 
 --- Go to a section's start, remembering where the cursor was for `<C-o>`.
 function M.jump(s)
-  if daw.ui.focused ~= "arrange" then daw.ui.focus("arrange") end
+  if paw.ui.focused ~= "arrange" then paw.ui.focus("arrange") end
   keymap.push_jump()
   cursor.set_beat(s.start)
 end
@@ -49,11 +49,11 @@ end
 --- otherwise by typing its name (Tab completes).
 function M.choose(title, fn)
   local list = S.list()
-  if #list == 0 then return daw.notify("no sections yet: `<leader>Sa` adds one at the cursor", "warn") end
-  if daw.pick then
+  if #list == 0 then return paw.notify("no sections yet: `<leader>Sa` adds one at the cursor", "warn") end
+  if paw.pick then
     local items = {}
     for i, s in ipairs(list) do items[i] = { text = M.describe(s), start = s.start, section = s } end
-    return daw.pick({
+    return paw.pick({
       title = title,
       items = items,
       on_choose = function(item)
@@ -62,7 +62,7 @@ function M.choose(title, fn)
       end,
     })
   end
-  daw.ui.input({
+  paw.ui.input({
     prompt = title .. ": ",
     complete = function(text)
       local out = {}
@@ -74,14 +74,14 @@ function M.choose(title, fn)
   }, function(text)
     if text == "" then return end
     local s = tonumber(text) and S.get(tonumber(text)) or S.find(text)
-    if not s then return daw.notify("no section `" .. text .. "`", "warn") end
+    if not s then return paw.notify("no section `" .. text .. "`", "warn") end
     fn(s)
   end)
 end
 
 -- Commands --------------------------------------------------------------------------
 
-local command = daw.command
+local command = paw.command
 
 --- The section a command names (`ctx.args[1]`), or the one under the cursor.
 local function target(ctx, key)
@@ -91,7 +91,7 @@ end
 local function guarded(fn)
   return function(ctx)
     local ok, err = pcall(fn, ctx)
-    if not ok then daw.notify(tostring(err), "warn") end
+    if not ok then paw.notify(tostring(err), "warn") end
   end
 end
 
@@ -100,11 +100,11 @@ command("section.add", guarded(function(ctx)
   local function add(name)
     if name == "" then return end
     local ok, err = pcall(S.add, name, at)
-    if not ok then daw.notify(tostring(err), "warn") end
+    if not ok then paw.notify(tostring(err), "warn") end
   end
   if ctx.args[1] then return add(table.concat(ctx.args, " ")) end
   local here = S.at(at)
-  daw.ui.input({ prompt = "Section at bar " .. bar_of(at) .. ": ", complete = complete,
+  paw.ui.input({ prompt = "Section at bar " .. bar_of(at) .. ": ", complete = complete,
     text = here and math.abs(here.start - at) < EPS and here.name or nil }, add)
 end), { desc = "Add a section at the cursor: `section.add Chorus`, `section.add Outro at=64`" })
 
@@ -113,16 +113,16 @@ command("section.rename", guarded(function(ctx)
   local function rename(name)
     if name == "" then return end
     local ok, err = pcall(S.rename, s.start and { start = s.start }, name)
-    if not ok then daw.notify(tostring(err), "warn") end
+    if not ok then paw.notify(tostring(err), "warn") end
   end
   if ctx.args[1] then return rename(table.concat(ctx.args, " ")) end
-  daw.ui.input({ prompt = "Rename " .. s.name .. " to: ", text = s.name, complete = complete }, rename)
+  paw.ui.input({ prompt = "Rename " .. s.name .. " to: ", text = s.name, complete = complete }, rename)
 end), { desc = "Rename the section at the cursor: `section.rename Hook`, or another: `section.rename Hook section=Chorus`" })
 
 command("section.remove", guarded(function(ctx)
   local s = target(ctx)
   S.remove({ start = s.start })
-  daw.notify("removed section " .. s.name .. "; what was in it stays")
+  paw.notify("removed section " .. s.name .. "; what was in it stays")
 end), { desc = "Remove the section marker at the cursor, or a named one; the timeline stays as it is" })
 
 command("section.list", function() require("sections.view").open() end, { desc = "List the sections, to go to, rename, add and remove" })
@@ -130,7 +130,7 @@ command("section.list", function() require("sections.view").open() end, { desc =
 command("section.goto", function(ctx)
   if ctx.args[1] then
     local s = tonumber(ctx.args[1]) and S.get(tonumber(ctx.args[1])) or S.find(table.concat(ctx.args, " "))
-    if not s then return daw.notify("no section `" .. table.concat(ctx.args, " ") .. "`", "warn") end
+    if not s then return paw.notify("no section `" .. table.concat(ctx.args, " ") .. "`", "warn") end
     return M.jump(s)
   end
   M.choose("Go to section", M.jump)
@@ -160,13 +160,13 @@ command("section.delete", guarded(function(ctx)
   local s = target(ctx)
   keymap.setreg(A.delete({ start = s.start }), ctx.register)
   cursor.set_beat(s.start)
-  daw.notify("deleted section " .. s.name)
+  paw.notify("deleted section " .. s.name)
 end), { desc = "Delete the section from every track and close the gap; `section.put` puts it back elsewhere" })
 
 command("section.yank", guarded(function(ctx)
   local s = target(ctx)
   keymap.setreg(A.yank({ start = s.start }), ctx.register, true)
-  daw.notify("yanked section " .. s.name)
+  paw.notify("yanked section " .. s.name)
 end), { desc = "Yank the section on every track, with its automation and marker" })
 
 --- Where to insert: before or after the section at the cursor, or at the
@@ -192,7 +192,7 @@ command("section.copy", guarded(function(ctx)
       local new = A.copy({ start = s.start }, insert_point(after))
       if new then cursor.set_beat(new.start) end
     end)
-    if not ok then daw.notify(tostring(err), "warn") end
+    if not ok then paw.notify(tostring(err), "warn") end
   end
   if ctx.args[1] then return copy(S.need(table.concat(ctx.args, " "))) end
   M.choose(after and "Copy after this section" or "Copy before this section", copy)
@@ -201,7 +201,7 @@ end), { desc = "Insert a copy of a section before the one at the cursor: `sectio
 -- Keys ------------------------------------------------------------------------------
 
 local function amap(lhs, rhs, desc, opts)
-  keymap.set(lhs, rhs, daw.util.merge({ view = "arrange", desc = desc }, opts or {}))
+  keymap.set(lhs, rhs, paw.util.merge({ view = "arrange", desc = desc }, opts or {}))
 end
 
 local function to_section(dir) return function(ctx)
@@ -211,7 +211,7 @@ local function to_section(dir) return function(ctx)
     if dir > 0 then
       -- Past the last section: the end of the project.
       found = S.next_start(beat)
-      local length = daw.project.length or 0
+      local length = paw.project.length or 0
       if not found and length > beat + EPS then found = length end
     else
       -- Before the first: the start of the project.
@@ -235,8 +235,8 @@ local function section_region(ctx, whole_bars)
   local last = S.list()[math.min(#S.list(), s.index + (ctx.count or 1) - 1)]
   local c0, c1 = s.start, last.finish
   if whole_bars then
-    c0 = daw.time.bar_floor(c0 + EPS)
-    if not daw.tempo.is_bar_line(c1) then c1 = daw.time.bar_start(daw.time.bar_of(c1) + 1) end
+    c0 = paw.time.bar_floor(c0 + EPS)
+    if not paw.tempo.is_bar_line(c1) then c1 = paw.time.bar_start(paw.time.bar_of(c1) + 1) end
   end
   return { view = "arrange", kind = "block", r0 = 1, r1 = n, c0 = c0, c1 = c1 }
 end
@@ -252,23 +252,23 @@ amap("<leader>Sr", "section.rename", "Rename the section")
 amap("<leader>Sx", "section.remove", "Remove the section marker, keeping the timeline")
 amap("<leader>Ss", "section.goto", "Go to a section from the list")
 amap("<leader>Sl", "section.list", "List the sections")
-amap("<leader>SL", function(ctx) daw.cmd("section.move", { by = 1 }, { count = ctx.count }) end, "Move the section later, past the next")
-amap("<leader>SH", function(ctx) daw.cmd("section.move", { by = -1 }, { count = ctx.count }) end, "Move the section earlier, past the one before")
-amap("<leader>S&", function(ctx) daw.cmd("section.duplicate", {}, { count = ctx.count }) end, "Repeat the section after itself")
-amap("<leader>Sd", function(ctx) daw.cmd("section.delete", {}, { register = ctx.register }) end, "Delete the section and close the gap")
-amap("<leader>Sy", function(ctx) daw.cmd("section.yank", {}, { register = ctx.register }) end, "Yank the section with its marker and automation")
-amap("<leader>Sp", function(ctx) daw.cmd("section.put", {}, { register = ctx.register, count = ctx.count }) end, "Insert the register after this section")
-amap("<leader>SP", function(ctx) daw.cmd("section.put", { before = true }, { register = ctx.register, count = ctx.count }) end, "Insert the register before this section")
+amap("<leader>SL", function(ctx) paw.cmd("section.move", { by = 1 }, { count = ctx.count }) end, "Move the section later, past the next")
+amap("<leader>SH", function(ctx) paw.cmd("section.move", { by = -1 }, { count = ctx.count }) end, "Move the section earlier, past the one before")
+amap("<leader>S&", function(ctx) paw.cmd("section.duplicate", {}, { count = ctx.count }) end, "Repeat the section after itself")
+amap("<leader>Sd", function(ctx) paw.cmd("section.delete", {}, { register = ctx.register }) end, "Delete the section and close the gap")
+amap("<leader>Sy", function(ctx) paw.cmd("section.yank", {}, { register = ctx.register }) end, "Yank the section with its marker and automation")
+amap("<leader>Sp", function(ctx) paw.cmd("section.put", {}, { register = ctx.register, count = ctx.count }) end, "Insert the register after this section")
+amap("<leader>SP", function(ctx) paw.cmd("section.put", { before = true }, { register = ctx.register, count = ctx.count }) end, "Insert the register before this section")
 amap("<leader>Sc", "section.copy", "Insert a copy of a section before this one")
 
 -- The ruler ---------------------------------------------------------------------------
 
 -- On the theme's palette: a section is a quiet pill, the one at the cursor
 -- lit in the colour of focus.
-local palette = require("daw.theme").palette
-daw.ui.hl("Section", { fg = palette.fg, bg = palette.raise })
-daw.ui.hl("SectionCurrent", { fg = palette.bg, bg = palette.accent, bold = true })
-daw.ui.hl("SectionEdge", { fg = palette.faint })
+local palette = require("paw.theme").palette
+paw.ui.hl("Section", { fg = palette.fg, bg = palette.raise })
+paw.ui.hl("SectionCurrent", { fg = palette.bg, bg = palette.accent, bold = true })
+paw.ui.hl("SectionEdge", { fg = palette.faint })
 
 --- The first characters of a text that fit in `width` cells.
 local function clip_text(text, width)
@@ -306,32 +306,32 @@ function M.draw(_, layer)
   end
 end
 
-local arrange = daw.ui.views.arrange
+local arrange = paw.ui.views.arrange
 if arrange and arrange.layers then
   arrange.layers.sections = M.draw
   -- The ruler has a row for them while there are any.
   if arrange.ruler2 then arrange.ruler2.sections = function() return #S.list() > 0 end end
 else
-  daw.notify("sections: this arrange view has no layers to draw on; sections are not shown on the ruler", "warn")
+  paw.notify("sections: this arrange view has no layers to draw on; sections are not shown on the ruler", "warn")
 end
 
 -- In the graphical frontend, a band of their own under the ruler: each
 -- section over its stretch, the one at the cursor in the colour of focus,
 -- and a click goes there.
-if daw.frontend and daw.frontend.bands then
-  table.insert(daw.frontend.bands, function()
+if paw.frontend and paw.frontend.bands then
+  table.insert(paw.frontend.bands, function()
     local current = S.current()
     local out = {}
     for i, s in ipairs(S.list()) do
       out[i] = { beat = s.start, length = s.finish - s.start, name = s.name, command = "section.goto " .. i,
         hint = "section " .. s.name .. ": click goes to its start",
-        color = current and current.index == i and daw.canvas.palette.select or nil }
+        color = current and current.index == i and paw.canvas.palette.select or nil }
     end
     return out
   end)
 end
 
 -- A change made elsewhere (undo, loading) redraws the ruler.
-daw.on("sections.changed", function() api.ui_redraw() end)
+paw.on("sections.changed", function() api.ui_redraw() end)
 
 return M

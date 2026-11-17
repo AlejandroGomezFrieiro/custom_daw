@@ -4,13 +4,13 @@
 -- note by itself with the track's voice (ReaUtau's `Audition` message), and
 -- the track's `utau` device plays that at once (a classic voicebank answers
 -- in a fraction of a second). Without the engine or a singer, a soft tone at
--- the note's pitch stands in. `daw.opt.utau_audition` turns it off.
-local api = daw.api
+-- the note's pitch stands in. `paw.opt.utau_audition` turns it off.
+local api = paw.api
 local ffi = require("ffi")
 local utau = require("utau")
 local proto = require("utau.proto")
 
-daw.option.define("utau_audition", true) -- hear notes as they are placed or clicked in the vocal editor
+paw.option.define("utau_audition", true) -- hear notes as they are placed or clicked in the vocal editor
 
 local M = { request = 0, pending = {}, last = 0, heard = {} }
 
@@ -41,7 +41,7 @@ end
 --- Hear a note of a vocal track: `pitch`, `lyric`, for `ms` (at most a
 --- second). Returns how it is heard: "engine", "tone", or nil.
 function M.play(track_id, pitch, lyric, ms)
-  if not daw.opt.utau_audition then return nil end
+  if not paw.opt.utau_audition then return nil end
   local device = utau.device_of(track_id)
   if not device then return nil end
   -- Not more than one a twentieth of a second, as a drag goes across rows.
@@ -68,9 +68,9 @@ function M.note(clip_id, index)
   local clip = api.clip_get(clip_id)
   local note = api.clip_notes(clip_id)[index]
   if not note then return end
-  local lyric = note.meta and note.meta.lyric or daw.opt.utau_default_lyric
+  local lyric = note.meta and note.meta.lyric or paw.opt.utau_default_lyric
   if lyric == "R" or lyric == "r" then return end
-  local ms = daw.time.seconds(note.length, clip.start + note.start) * 1000
+  local ms = paw.time.seconds(note.length, clip.start + note.start) * 1000
   return M.play(clip.track, note.pitch, lyric, ms)
 end
 

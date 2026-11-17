@@ -36,7 +36,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - ✓ A track called Bus, below Keys. The cursor is on it.
 8. Route Keys into it: `/Keys` and `<CR>` find the track, then type `:track.output Bus` and `<CR>`.
    - ✓ Keys now plays through Bus: Bus's fader turns the chords up and down, with anything else you route there.
-9. A send copies some of a track to another, here to Echo, which has a delay. There is no key for it yet: type `:lua daw.track("Lead"):send(daw.track("Echo"), -6)` and `<CR>`.
+9. A send copies some of a track to another, here to Echo, which has a delay. There is no key for it yet: type `:lua paw.track("Lead"):send(paw.track("Echo"), -6)` and `<CR>`.
    - *Hint:* `:lua` runs Lua; Tab does not complete inside it, so type it as it is.
    - ✓ Lead sends to Echo 6 dB down: the melody now has an echo, and Echo's fader sets how much.
 10. Automation: `A` adds a volume point at the cursor and asks its value. On Keys, press `0`, `A`, `<C-u>` to clear the value, type `-30` and `<CR>`.

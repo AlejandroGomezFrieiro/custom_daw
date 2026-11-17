@@ -12,7 +12,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
 
 pub struct Client {
-    pub connection: daw_proto::Connection,
+    pub connection: paw_proto::Connection,
     /// What moves on its own (the playhead, the meters, the mode), as last sent.
     tick: Value,
     /// The parts of the state that change with the project, as last sent.
@@ -22,7 +22,7 @@ pub struct Client {
     fresh: bool,
     fresh_kinds: bool,
     /// The kernel's sound, played here (`:listen`, the engine menu).
-    pub player: Option<daw_listen::Player>,
+    pub player: Option<paw_listen::Player>,
 }
 
 impl Client {
@@ -30,23 +30,23 @@ impl Client {
     /// mode and selection), or in the instance's own (`shared`), as a window
     /// that started its kernel itself is.
     pub fn connect(path: &Path, shared: bool) -> Result<Self> {
-        Self::watching(daw_proto::Connection::unix(path)?, shared)
+        Self::watching(paw_proto::Connection::unix(path)?, shared)
     }
 
     /// Connect to a kernel on another machine (or this one) over the network.
-    pub fn connect_tcp(address: &str, token: &str, wire: &daw_proto::Wire) -> Result<Self> {
-        let connection = daw_proto::Connection::tcp_with(address, token, wire)?;
+    pub fn connect_tcp(address: &str, token: &str, wire: &paw_proto::Wire) -> Result<Self> {
+        let connection = paw_proto::Connection::tcp_with(address, token, wire)?;
         if let Some(print) = &connection.trusted_now {
             eprintln!(
-                "daw-gui: {address} is trusted from now on: its certificate is {print} \
+                "paw-gui: {address} is trusted from now on: its certificate is {print} \
                  (remembered in {})",
-                daw_proto::tls::known_path().display()
+                paw_proto::tls::known_path().display()
             );
         }
         Self::watching(connection, false)
     }
 
-    fn watching(connection: daw_proto::Connection, shared: bool) -> Result<Self> {
+    fn watching(connection: paw_proto::Connection, shared: bool) -> Result<Self> {
         let mut client = Self {
             connection,
             tick: Value::Null,
@@ -147,13 +147,13 @@ impl Client {
         if self.player.take().is_some() {
             return self.connection.notify("monitor.unlisten", json!([]));
         }
-        let player = daw_listen::Player::device()?;
+        let player = paw_listen::Player::device()?;
         self.call("monitor.listen", json!([]))?;
         self.player = Some(player);
         Ok(())
     }
 
-    /// The state to draw, in the shape `daw.frontend.state` gives it: what
+    /// The state to draw, in the shape `paw.frontend.state` gives it: what
     /// moves on its own always, and the project's parts (`project`,
     /// `tracks`, `clips`, ...) only when one of them has changed since the
     /// last time this was asked. None when nothing has arrived since.
@@ -180,7 +180,7 @@ impl Client {
                 Ok((name, _)) if name == "monitor.toggle" => {
                     if let Err(err) = self.toggle_listening() {
                         let message = format!("cannot play the instance's sound here: {err:#}");
-                        let _ = self.eval("daw.notify(..., 'error')", json!([message]));
+                        let _ = self.eval("paw.notify(..., 'error')", json!([message]));
                     }
                 }
                 Ok(_) => {}
@@ -220,15 +220,15 @@ pub fn start_kernel(args: &[String]) -> Result<(Client, Child)> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let socket = runtime.join(format!("daw-gui-{}.sock", std::process::id()));
-    // The `daw` binary beside this one, else whichever is on the path.
+    let socket = runtime.join(format!("paw-gui-{}.sock", std::process::id()));
+    // The `paw` binary beside this one, else whichever is on the path.
     let beside = std::env::current_exe()
         .ok()
-        .and_then(|exe| Some(exe.parent()?.join("daw")));
-    let binary = std::env::var_os("DAW_BIN")
+        .and_then(|exe| Some(exe.parent()?.join("paw")));
+    let binary = std::env::var_os("PAW_BIN")
         .map(PathBuf::from)
         .or(beside.filter(|path| path.is_file()))
-        .unwrap_or_else(|| PathBuf::from("daw"));
+        .unwrap_or_else(|| PathBuf::from("paw"));
     let mut child = Command::new(&binary);
     child
         .arg("--headless")

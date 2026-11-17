@@ -1,23 +1,23 @@
 -- Diagnostics, as `vim.diagnostic`: what is wrong (or worth knowing) about
--- anything with an address (daw/address.lua): notes of a clip, a track, a
+-- anything with an address (paw/address.lua): notes of a clip, a track, a
 -- device or one of its parameters, a stretch of time, the project, a
 -- rendered file. Anyone publishes them (a language server through
--- `daw.lsp`, a lint written in Lua) under a namespace of their own, for a
--- document of theirs; each view shows those it can place (`daw.ui.locator`).
+-- `paw.lsp`, a lint written in Lua) under a namespace of their own, for a
+-- document of theirs; each view shows those it can place (`paw.ui.locator`).
 --
 -- A diagnostic is a table:
---   { location = { uri = "daw://track/3", selector = { time = { 8, 16 } } },
+--   { location = { uri = "paw://track/3", selector = { time = { 8, 16 } } },
 --     severity,              -- 1 error, 2 warning, 3 info, 4 hint; or those words
 --     message, rule, source,
---     fixes = { { title, edit = { workspace changes } },     -- see daw.address.edit
+--     fixes = { { title, edit = { workspace changes } },     -- see paw.address.edit
 --               { title, apply = function(d) ... end } } }
 --
 -- About notes, the location is the clip with `selector = { notes = { ids } }`
 -- (the notes' own ids, which stay with them through every edit). The older
 -- form for a clip is still taken: `set(namespace, clip, { { notes = { places },
 -- at, length, ..., fixes = { { title, edits = { { note = place, pitch = 73 } } } } } })`.
-local api = daw.api
-local A = daw.address
+local api = paw.api
+local A = paw.address
 
 local M = {}
 
@@ -68,7 +68,7 @@ local function from_places(id, d)
       local changes = {}
       for _, e in ipairs(fix.edits) do
         local n = ok and list[e.note]
-        local uri = n and n.id and A.note(id, n.id) or ("daw://clip/" .. id .. "/note/gone")
+        local uri = n and n.id and A.note(id, n.id) or ("paw://clip/" .. id .. "/note/gone")
         if e.delete then
           changes[#changes + 1] = { uri = uri, delete = true }
         else
@@ -123,7 +123,7 @@ end
 
 local function changed(ns, doc)
   M.revision = M.revision + 1
-  daw.emit("diagnostic.changed", { namespace = ns, document = doc, clip = type(doc) == "number" and doc or nil })
+  paw.emit("diagnostic.changed", { namespace = ns, document = doc, clip = type(doc) == "number" and doc or nil })
   api.ui_redraw()
 end
 
@@ -131,7 +131,7 @@ end
 --- a server's document URI), replacing what it said of it before. An empty
 --- list clears it.
 function M.set(namespace, doc, list)
-  assert(type(namespace) == "string", "usage: daw.diagnostic.set(namespace, document, { diagnostic, ... })")
+  assert(type(namespace) == "string", "usage: paw.diagnostic.set(namespace, document, { diagnostic, ... })")
   doc = document_of(doc)
   local out = {}
   for _, d in ipairs(list or {}) do out[#out + 1] = normalize(namespace, doc, d) end
@@ -259,11 +259,11 @@ end
 --- id (those about it and its notes), an address (those about it or what
 --- it holds), or nil for all. `filter`: `namespace`, `severity` (a severity
 --- or `{ min, max }`, min the least severe), `note` (a place in the clip),
---- `kind` (as `daw.diagnostic.kind`), `document`.
+--- `kind` (as `paw.diagnostic.kind`), `document`.
 function M.get(target, filter)
   filter = filter or {}
   local within = type(target) == "string" and target or (type(target) == "table" and A.of(target)) or nil
-  local clip = type(target) == "number" and target or (type(target) == "table" and getmetatable(target) == daw.Clip and target.id) or nil
+  local clip = type(target) == "number" and target or (type(target) == "table" and getmetatable(target) == paw.Clip and target.id) or nil
   if clip then within = nil end
   local min, max = 1, 4
   if type(filter.severity) == "table" then
@@ -326,11 +326,11 @@ function M.worst(uri, filter)
 end
 
 --- Change how diagnostics are shown; returns the options in force.
----   daw.diagnostic.config({ virtual_text = false })
+---   paw.diagnostic.config({ virtual_text = false })
 function M.config(opts)
   for k, v in pairs(opts or {}) do options[k] = v end
   if opts then api.ui_redraw() end
-  return daw.util.merge(options, {})
+  return paw.util.merge(options, {})
 end
 
 -- Fixes ----------------------------------------------------------------------
@@ -346,7 +346,7 @@ function M.apply(d, fix)
   end
   local ok, why = A.edit(fix.edit or {}, fix.title or "Fix")
   if not ok then
-    daw.notify("the fix cannot be made: " .. tostring(why), "warn")
+    paw.notify("the fix cannot be made: " .. tostring(why), "warn")
     return false
   end
   return true
@@ -383,10 +383,10 @@ function M.where(d)
   if not p then return loc.uri end
   if p.kind == "clip" or p.kind == "note" or p.kind == "control" then
     local ok, c = pcall(api.clip_get, p.clip)
-    return ok and string.format("%s %s", c.name, daw.time.format(c.start + (d.at or 0))) or "a clip"
+    return ok and string.format("%s %s", c.name, paw.time.format(c.start + (d.at or 0))) or "a clip"
   end
   if p.kind == "track" or p.kind == "send" then
-    return track_name(p.track) .. (t and (" " .. daw.time.format(t[1])) or "")
+    return track_name(p.track) .. (t and (" " .. paw.time.format(t[1])) or "")
   end
   if p.kind == "device" or p.kind == "param" then
     local ok, dev = pcall(api.device_get, p.device)
@@ -400,7 +400,7 @@ function M.where(d)
     return name
   end
   if p.kind == "render" then return (p.path:match("([^/]+)$") or p.path) .. (t and string.format(" %.1f s", t[1]) or "") end
-  if t then return daw.time.format(t[1]) .. "–" .. daw.time.format(t[2]) end
+  if t then return paw.time.format(t[1]) .. "–" .. paw.time.format(t[2]) end
   return p.kind
 end
 
@@ -413,16 +413,16 @@ end
 
 --- Put the cursor of the view that shows it best on a diagnostic, and say it.
 function M.show(d)
-  daw.ui.go(d.location)
-  daw.notify(M.format(d), d.severity == 1 and "error" or d.severity == 2 and "warn" or "info")
+  paw.ui.go(d.location)
+  paw.notify(M.format(d), d.severity == 1 and "error" or d.severity == 2 and "warn" or "info")
 end
 
 --- The next (`dir` 1) or previous (-1) diagnostic the focused view can place,
 --- from its cursor, `count` times, round the ends; the cursor goes there.
 --- Returns it, or nil when the view has none.
 function M.jump(dir, count)
-  local view = daw.ui.focused
-  local loc = daw.ui.locators[view]
+  local view = paw.ui.focused
+  local loc = paw.ui.locators[view]
   local found
   if loc then
     local placed = {}
@@ -453,9 +453,9 @@ function M.jump(dir, count)
       end
     end
   end
-  if not found then return daw.notify("no diagnostics here") end
+  if not found then return paw.notify("no diagnostics here") end
   loc.go(found.location)
-  daw.notify(M.format(found), found.severity == 1 and "error" or found.severity == 2 and "warn" or "info")
+  paw.notify(M.format(found), found.severity == 1 and "error" or found.severity == 2 and "warn" or "info")
   return found
 end
 
@@ -474,10 +474,10 @@ function M.list(target)
       items[#items + 1] = { text = "── " .. (KIND_TITLE[kind] or kind) }
       last = kind
     end
-    items[#items + 1] = { text = string.format("  %-7s %-24s %s", M.severity[d.severity], daw.util.fit(M.where(d), 24), M.format(d):gsub("^%a+ ", "")), diagnostic = d }
+    items[#items + 1] = { text = string.format("  %-7s %-24s %s", M.severity[d.severity], paw.util.fit(M.where(d), 24), M.format(d):gsub("^%a+ ", "")), diagnostic = d }
   end
-  if #items == 0 then return daw.notify("no diagnostics") end
-  daw.pick({
+  if #items == 0 then return paw.notify("no diagnostics") end
+  paw.pick({
     title = "Diagnostics",
     items = items,
     on_choose = function(item) if item and item.diagnostic then M.show(item.diagnostic) end end,
@@ -487,12 +487,12 @@ end
 --- Put the diagnostics in the quickfix list, as `vim.diagnostic.setqflist`:
 --- `opts` has `target`, `severity` (the least severe), `title`, `open`.
 --- `setloclist` puts them in the current window's location list.
-function M.setqflist(opts) return daw.qf.diagnostics(opts) end
-function M.setloclist(opts) return daw.qf.diagnostics(daw.util.merge(opts or {}, { win = (opts and opts.win) or true })) end
+function M.setqflist(opts) return paw.qf.diagnostics(opts) end
+function M.setloclist(opts) return paw.qf.diagnostics(paw.util.merge(opts or {}, { win = (opts and opts.win) or true })) end
 
 -- Drawing ----------------------------------------------------------------------
 
-local g = function() return daw.draw.g end
+local g = function() return paw.draw.g end
 
 --- Mark the diagnostics of every clip the piano roll edits, as one of its
 --- layers: each note underlined in its severity's colour, the message after
@@ -535,7 +535,7 @@ function M.paint_part(p, id, offset)
         local x = p.x(last.start + last.length + offset) + 1
         local room = p.roll.width - x
         if room >= 8 then
-          local text = api.str_width(d.message) > room and daw.util.fit(d.message, room) or d.message
+          local text = api.str_width(d.message) > room and paw.util.fit(d.message, room) or d.message
           p.roll:text(x, row, text, M.group("DiagnosticVirtualText", d.severity))
         end
       end
@@ -547,19 +547,19 @@ end
 local function sign(buf, x, y, room, severity, message)
   buf:text(x, y, severity == 1 and g().error or g().warn, M.group("Diagnostic", severity))
   if options.virtual_text and message and room > 4 then
-    local text = api.str_width(message) > room - 2 and daw.util.fit(message, room - 2) or message
+    local text = api.str_width(message) > room - 2 and paw.util.fit(message, room - 2) or message
     buf:text(x + 2, y, text, M.group("DiagnosticVirtualText", severity))
   end
 end
 
 -- What the arrange view, the mixer and the device panel show, as layers of
--- theirs (`daw.ui.layer`), so that other modules' marks go beside them.
-daw.ui.layer("arrange", "clip", "diagnostics", 30, function(c)
+-- theirs (`paw.ui.layer`), so that other modules' marks go beside them.
+paw.ui.layer("arrange", "clip", "diagnostics", 30, function(c)
   if c.width < 3 or not next(store) then return end
   local worst = M.worst(A.clip(c.clip.id))
   if worst then c.buf:text(c.width - 1, 0, worst == 1 and g().error or g().warn, M.group("Diagnostic", worst)) end
 end)
-daw.ui.layer("arrange", "header", "diagnostics", 30, function(c)
+paw.ui.layer("arrange", "header", "diagnostics", 30, function(c)
   if not next(store) then return end
   -- What is said of the track itself, its devices or sends; its clips have marks of their own.
   local worst
@@ -569,7 +569,7 @@ daw.ui.layer("arrange", "header", "diagnostics", 30, function(c)
   if worst then c.buf:text(c.x, c.y, worst == 1 and g().error or g().warn, M.group("Diagnostic", worst)) end
 end)
 -- Stretches of time on the arrange view's ruler (one of its layers).
-daw.ui.views.arrange.layers.diagnostics = function(_, c)
+paw.ui.views.arrange.layers.diagnostics = function(_, c)
   if not next(store) then return end
   for _, d in ipairs(M.get(nil, { kind = "time" })) do
     local t = d.location.selector.time
@@ -583,13 +583,13 @@ daw.ui.views.arrange.layers.diagnostics = function(_, c)
   end
 end
 -- A strip: a sign at the right end of its name plate.
-daw.ui.layer("mixer", "strip", "diagnostics", 30, function(c)
+paw.ui.layer("mixer", "strip", "diagnostics", 30, function(c)
   if not next(store) then return end
   local worst = M.worst(A.track(c.track))
   if worst then c.buf:text(c.x + c.width - 1, c.y, worst == 1 and g().error or g().warn, M.group("Diagnostic", worst)) end
 end)
 -- A device: a sign after its name and what is said of it; a parameter: a sign before its name.
-daw.ui.layer("devices", "device", "diagnostics", 30, function(c)
+paw.ui.layer("devices", "device", "diagnostics", 30, function(c)
   if not next(store) then return end
   local list = M.get(A.device(c.device))
   if #list == 0 then return end
@@ -601,7 +601,7 @@ daw.ui.layer("devices", "device", "diagnostics", 30, function(c)
   -- What is said of the device itself; its parameters have marks of their own.
   sign(c.buf, c.x, c.y, c.width, worst, own and own.message or (#list .. " diagnostics"))
 end)
-daw.ui.layer("devices", "param", "diagnostics", 30, function(c)
+paw.ui.layer("devices", "param", "diagnostics", 30, function(c)
   if not next(store) then return end
   local worst = M.worst(A.param(c.device, c.param))
   if worst then c.buf:text(c.x, c.y, worst == 1 and g().error or g().warn, M.group("Diagnostic", worst)) end
@@ -611,8 +611,8 @@ end)
 --- whole project when none is open. Nil when there is nothing to say.
 function M.status()
   if not next(store) then return nil end
-  local view = daw.ui.views.pianoroll
-  local n = M.count(daw.ui.visible("pianoroll") and view.clip_id or nil)
+  local view = paw.ui.views.pianoroll
+  local n = M.count(paw.ui.visible("pianoroll") and view.clip_id or nil)
   if n.total == 0 then return nil end
   local pieces = {}
   for i, word in ipairs({ "error", "warning", "info", "hint" }) do
@@ -674,14 +674,14 @@ function M.marks()
   return { tracks = list, times = times }
 end
 
-daw.ui.views.pianoroll.layer("diagnostics", 30, function(p) M.paint_roll(p) end)
+paw.ui.views.pianoroll.layer("diagnostics", 30, function(p) M.paint_roll(p) end)
 
 -- The window's menu on a note: the `n`th of its fixes, as `actions` lists them.
-function daw.frontend.act.note_action(clip, place, n)
+function paw.frontend.act.note_action(clip, place, n)
   local action = M.actions(clip, place)[n]
   if action then action.run() end
 end
 
-daw.on("project.loaded", function() if next(store) then M.reset() end end)
+paw.on("project.loaded", function() if next(store) then M.reset() end end)
 
 return M

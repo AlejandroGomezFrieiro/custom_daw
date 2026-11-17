@@ -4,11 +4,11 @@
 --   extensions/euclid/lua/...       on the `require` path
 --   extensions/scratch.lua          a one-file extension, run at startup
 --
---   extensions/euclid/devices/*.lua devices written in Lua (see daw.luadev)
+--   extensions/euclid/devices/*.lua devices written in Lua (see paw.luadev)
 --
--- An extension is ordinary Lua using the same `daw` module as the user's
+-- An extension is ordinary Lua using the same `paw` module as the user's
 -- `init.lua`; there is no separate plugin interface.
-local api = daw.api
+local api = paw.api
 local M = { loaded = {} }
 
 local function exists(path)
@@ -30,18 +30,18 @@ function M.load(path)
   if not path:match("%.lua$") then
     package.path = path .. "/lua/?.lua;" .. path .. "/lua/?/init.lua;" .. package.path
     for _, item in ipairs(api.read_dir(path)) do
-      if item.is_dir and item.name == "devices" and daw.luadev then daw.luadev.add_dir(path .. "/devices") end
+      if item.is_dir and item.name == "devices" and paw.luadev then paw.luadev.add_dir(path .. "/devices") end
     end
     init = path .. "/init.lua"
     if not exists(init) then
-      daw.snippet.load_dir(path .. "/snippets", "extension")
+      paw.snippet.load_dir(path .. "/snippets", "extension")
       return entry
     end
   end
   local chunk, err = loadfile(init)
   if chunk then
     -- Kept out of the compiler, so that the time limit can stop its loops.
-    daw.limit.untrusted(chunk)
+    paw.limit.untrusted(chunk)
     M.current = entry
     entry.ok, err = xpcall(chunk, debug.traceback)
     M.current = nil
@@ -49,16 +49,16 @@ function M.load(path)
     entry.ok = false
   end
   -- Its snippets, one file per set; the user's own of the same name win.
-  if entry.ok and not path:match("%.lua$") then daw.snippet.load_dir(path .. "/snippets", "extension") end
+  if entry.ok and not path:match("%.lua$") then paw.snippet.load_dir(path .. "/snippets", "extension") end
   if not entry.ok then
     entry.error = err
-    daw.notify("extension " .. name .. " failed: " .. tostring(err), "error")
+    paw.notify("extension " .. name .. " failed: " .. tostring(err), "error")
   end
   return entry
 end
 
 --- Load the extensions the program was built with: `dirs` is a list of
---- their directories separated by `:` (`$DAW_EXTENSIONS`, which the flake's
+--- their directories separated by `:` (`$PAW_EXTENSIONS`, which the flake's
 --- `paw.withExtensions` sets).
 function M.load_packaged(dirs)
   for dir in (dirs or ""):gmatch("[^:]+") do
@@ -75,10 +75,10 @@ function M.load_dir(dir)
 end
 
 --- The directory of the extensions that come with the program:
---- `$DAW_HOME/extensions`, or `extensions` under the working directory in a
+--- `$PAW_HOME/extensions`, or `extensions` under the working directory in a
 --- source tree. Nil when neither is there.
 function M.bundled_dir()
-  for _, root in ipairs({ os.getenv("DAW_HOME") or ".", "." }) do
+  for _, root in ipairs({ os.getenv("PAW_HOME") or ".", "." }) do
     if #api.read_dir(root .. "/extensions") > 0 then return root .. "/extensions" end
   end
 end
@@ -100,7 +100,7 @@ function M.load_bundled(name)
   for _, known in ipairs(M.bundled()) do
     if known == name then return M.load(M.bundled_dir() .. "/" .. name) end
   end
-  return nil, "no bundled extension `" .. tostring(name) .. "`" .. (M.bundled_dir() and "" or ": set DAW_HOME to the source tree")
+  return nil, "no bundled extension `" .. tostring(name) .. "`" .. (M.bundled_dir() and "" or ": set PAW_HOME to the source tree")
 end
 
 --- Loaded extensions, sorted by name.

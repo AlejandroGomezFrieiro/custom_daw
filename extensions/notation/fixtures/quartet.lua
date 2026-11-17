@@ -3,9 +3,9 @@
 -- cello. The tracks come in an order a score would not keep, and the
 -- clarinet's part has a cue from the first flute. Used for the pictures
 -- of `:help notation-parts`:
---   daw --clean --no-plugins --audio null -e "dofile('extensions/notation/fixtures/quartet.lua')"
-local api = daw.api
-if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+--   paw --clean --no-plugins --audio null -e "dofile('extensions/notation/fixtures/quartet.lua')"
+local api = paw.api
+if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
 
 local PC = { C = 0, D = 2, E = 4, F = 5, G = 7, A = 9, B = 11 }
 
@@ -47,7 +47,7 @@ local cello = line("C3:4 | G2:4 | A2:2 E2:2 | F2:2 G2:2 | "
 
 local tracks = {}
 for _, spec in ipairs({ { "Violoncello", cello }, { "Clarinet in Bb", clarinet }, { "Flute 1", flute1 }, { "Flute 2", flute2 } }) do
-  local track = daw.add_track({ name = spec[1] })
+  local track = paw.add_track({ name = spec[1] })
   track:add_clip({ start = 0, length = 64, name = spec[1], notes = spec[2] })
   tracks[spec[1]] = track
 end
@@ -55,18 +55,18 @@ local meta = api.project_get().meta or {}
 meta.title, meta.composer = "Quartet", "paw"
 api.project_set("meta", meta)
 api.project_set("tempo", 96)
-daw.flush()
+paw.flush()
 
 -- Marks written in notation: a tempo, dynamics, a rehearsal mark.
 local view = require("notation")
 view:edit(tracks["Flute 1"]:clips()[1])
-daw.commands.exec("1notation.tempo Andante q=96")
-daw.commands.exec("1notation.dyn mf")
-daw.commands.exec("9notation.rehearsal B")
+paw.commands.exec("1notation.tempo Andante q=96")
+paw.commands.exec("1notation.dyn mf")
+paw.commands.exec("9notation.rehearsal B")
 view:edit(tracks["Violoncello"]:clips()[1])
-daw.commands.exec("1notation.dyn p")
+paw.commands.exec("1notation.dyn p")
 -- The clarinet comes in at bar 5: the flute's bars 3 and 4 as a cue.
-daw.commands.exec("part Clarinet")
-daw.commands.exec("3,4part.cue Flute 1")
-daw.commands.exec("part.score")
+paw.commands.exec("part Clarinet")
+paw.commands.exec("3,4part.cue Flute 1")
+paw.commands.exec("part.score")
 api.undo_checkpoint()

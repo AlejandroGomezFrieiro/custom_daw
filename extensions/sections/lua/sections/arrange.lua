@@ -15,7 +15,7 @@
 -- where it meets a different neighbour. Section markers go with their piece.
 --
 -- Called from a key or a command, a rebuild is one undo step like any edit.
-local api = daw.api
+local api = paw.api
 local S = require("sections")
 local M = {}
 local EPS = 1e-9
@@ -23,7 +23,7 @@ local INF = math.huge
 
 -- Clips ------------------------------------------------------------------------------
 
---- The part of a clip between two beats as a snapshot for `daw.restore_clip`,
+--- The part of a clip between two beats as a snapshot for `paw.restore_clip`,
 --- starting where it starts on the timeline; nil when there is none. Notes
 --- belong to the part they start in and are shortened to fit it.
 local function piece(c, notes, from, to)
@@ -35,12 +35,12 @@ local function piece(c, notes, from, to)
     for _, n in ipairs(notes) do
       local start = c.start + n.start
       if start >= a - EPS and start < b - EPS then
-        snap.notes[#snap.notes + 1] = daw.util.merge(n, { start = start - a, length = math.min(n.length, b - start) })
+        snap.notes[#snap.notes + 1] = paw.util.merge(n, { start = start - a, length = math.min(n.length, b - start) })
       end
     end
   else
     snap.file, snap.gain = c.file, c.gain
-    snap.offset = c.offset + daw.time.seconds(a - c.start, c.start)
+    snap.offset = c.offset + paw.time.seconds(a - c.start, c.start)
   end
   return snap
 end
@@ -52,9 +52,9 @@ end
 --- Put a clip snapshot on a track, `meta` included.
 local function restore(snap, track)
   local meta = snap.meta
-  local copy = daw.util.merge(snap, {})
+  local copy = paw.util.merge(snap, {})
   copy.meta = nil
-  local clip = daw.restore_clip(copy, track)
+  local clip = paw.restore_clip(copy, track)
   if type(meta) == "table" and next(meta) ~= nil then api.clip_set(clip.id, "meta", meta) end
   return clip
 end
@@ -237,7 +237,7 @@ function M.rebuild(plan)
       for _, p in ipairs(plan) do
         local rows = p.value and p.value.rows
         for _, snap in ipairs(rows and rows[t.row] or {}) do
-          copies[#copies + 1] = daw.util.merge(snap, { start = p.at + snap.start })
+          copies[#copies + 1] = paw.util.merge(snap, { start = p.at + snap.start })
         end
       end
       for _, snap in ipairs(copies) do restore(snap, t.id) end

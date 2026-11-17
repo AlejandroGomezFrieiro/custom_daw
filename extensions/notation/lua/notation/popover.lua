@@ -11,14 +11,14 @@
 -- `.`, macros, `@:` and `:5,8notation.dyn p` do the same. `<localleader>.` opens
 -- the last popover again with what was typed in it.
 --
--- The preview is a trial (`daw.audition.try`): the command is run on the
+-- The preview is a trial (`paw.audition.try`): the command is run on the
 -- project and taken back exactly, as a picker's choice is heard.
-local api = daw.api
+local api = paw.api
 local view = require("notation")
 local D = require("notation.doc")
 local W = require("notation.write")
-local cmdline = require("daw.views.cmdline")
-local keymap = daw.keymap
+local cmdline = require("paw.views.cmdline")
+local keymap = paw.keymap
 
 local P = { specs = {}, order = {} }
 view.popover = P
@@ -44,12 +44,12 @@ function P.current() return open_now and open_now.spec end
 --- whether they warn.
 local function quietly(fn)
   local said, level
-  local notify = daw.notify
-  daw.notify = function(text, lvl)
+  local notify = paw.notify
+  paw.notify = function(text, lvl)
     said, level = tostring(text), lvl
   end
   local ok, err = pcall(fn)
-  daw.notify = notify
+  paw.notify = notify
   if not ok then return tostring(err), "error" end
   return said, (level == "warn" or level == "error") and "error" or nil
 end
@@ -104,7 +104,7 @@ end
 --- Show what the text would do: run it as a trial, kept from the history
 --- and the messages, and the measures it changed drawn as a ghost.
 local function preview(text)
-  daw.audition.revert()
+  paw.audition.revert()
   view.ghost = nil
   local state = open_now
   if not state then return end
@@ -118,11 +118,11 @@ local function preview(text)
   local before = snapshot()
   W.entering = state.mode == "i"
   local said, level = quietly(function()
-    daw.audition.try(function() over(state, function() daw.commands.exec(line_of(state, text)) end) end)
+    paw.audition.try(function() over(state, function() paw.commands.exec(line_of(state, text)) end) end)
   end)
   W.entering = nil
   if level == "error" then
-    daw.audition.revert()
+    paw.audition.revert()
   else
     view.ghost = changed(before)
   end
@@ -134,18 +134,18 @@ end
 --- Write the text for real: one undo step, remembered for `@:`, the
 --- command line's history and `<localleader>.`.
 local function commit(state, text)
-  daw.audition.revert()
+  paw.audition.revert()
   view.ghost, view.cache = nil, nil
   if not text:match("%S") and not state.spec.empty then return end
   local line = line_of(state, text)
   P.last = { name = state.spec.name, text = text }
-  daw.state.last_cmdline = line
+  paw.state.last_cmdline = line
   cmdline.remember("cmdline", line)
   api.undo_label(state.spec.label)
   W.entering = state.mode == "i"
-  local ok, err = pcall(over, state, function() daw.commands.exec(line) end)
+  local ok, err = pcall(over, state, function() paw.commands.exec(line) end)
   W.entering = nil
-  if not ok then daw.notify(tostring(err), "error") end
+  if not ok then paw.notify(tostring(err), "error") end
 end
 
 --- Where the prompt goes on the screen: over the caret's staff, where the
@@ -160,8 +160,8 @@ end
 function P.open(name, opts)
   opts = opts or {}
   local spec = P.specs[name]
-  if not spec then return daw.notify("no popover " .. tostring(name), "warn") end
-  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  if not spec then return paw.notify("no popover " .. tostring(name), "warn") end
+  if not view:clip() then return paw.notify("no clip open as notation", "warn") end
   if view:readonly() then return end
   local mode = keymap.mode
   local range = ""
@@ -336,7 +336,7 @@ for _, name in ipairs(P.order) do
   if spec.key then keymap.set("<localleader>" .. spec.key, opener(name), { view = "notation", mode = { "n", "x" }, desc = desc }) end
 end
 local function again()
-  if not P.last then return daw.notify("no popover yet", "warn") end
+  if not P.last then return paw.notify("no popover yet", "warn") end
   P.open(P.last.name, { text = P.last.text })
 end
 keymap.set("<localleader>.", again, { view = "notation", mode = { "n", "x" }, desc = "The last popover again, with what was typed in it" })

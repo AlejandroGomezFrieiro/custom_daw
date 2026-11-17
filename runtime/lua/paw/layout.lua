@@ -16,13 +16,13 @@
 -- is closed, so that it comes back there. One with `float_below = n` is drawn
 -- over the others, along the right edge, on screens narrower than `n`.
 --
--- Every view registered with `daw.ui.view` is a buffer type with a single
+-- Every view registered with `paw.ui.view` is a buffer type with a single
 -- buffer, shown in one window at a time: showing it in another window moves
--- it there. Types made with `daw.buftype` have a buffer for each target, and
+-- it there. Types made with `paw.buftype` have a buffer for each target, and
 -- any number of windows can show one.
-local api = daw.api
+local api = paw.api
 local M = {
-  types = {},      -- buffer types made with `daw.buftype`, by name
+  types = {},      -- buffer types made with `paw.buftype`, by name
   buffers = {},    -- every buffer, by number
   homes = {},      -- where a docked view goes when no window has it: { side, size, weight, min, float_below, index }
   -- Short names for the buffers of built-in views, to type after `:vs`,
@@ -44,14 +44,14 @@ local next_win, next_buf = 0, 0
 -- The smallest window a split leaves, and the smallest that is drawn.
 M.min_width, M.min_height = 10, 3
 
-local function ui() return daw.ui end
+local function ui() return paw.ui end
 
 local function focusable(name)
   local view = ui().views[name]
   return view ~= nil and view.focusable ~= false
 end
 
-local function copy(value) return daw.seats.copy(value) end
+local function copy(value) return paw.seats.copy(value) end
 
 --- A new window showing `view`, with fields such as `size` or `hidden`.
 function M.leaf(view, fields)
@@ -145,7 +145,7 @@ function M.get(id)
 end
 
 --- Turn a tab's tree into one stacked in rows at the top, in place: the
---- table stays the one the tab and `daw.ui.layout` hold.
+--- table stays the one the tab and `paw.ui.layout` hold.
 local function to_rows(root)
   if root.dir == "v" then return end
   local inner = { dir = root.dir }
@@ -233,7 +233,7 @@ local function place_home(root, name, home, hidden)
 end
 
 --- Dock a view in the current tab and remember the place for other tabs.
---- See `daw.ui.dock`.
+--- See `paw.ui.dock`.
 function M.dock(name, opts)
   local home = { side = opts.side or "bottom", size = opts.size, weight = opts.weight, min = opts.min }
   M.homes[name] = home
@@ -306,7 +306,7 @@ function M.resolve(name)
   end
   if M.types[name] then return name, M.buf_create(name) end
   if views[name] and views[name].focusable ~= false then return name, single(name) end
-  -- A type may take names of its own form as targets (`daw://lane/3`).
+  -- A type may take names of its own form as targets (`paw://lane/3`).
   for type_name, def in pairs(M.types) do
     if def.claims and def.claims(name) then return type_name, M.buf_create(type_name, name) end
   end
@@ -416,7 +416,7 @@ function M.buf_delete(buf)
 end
 
 --- Close the windows of buffers whose target is gone, as when another
---- project is opened (a window with `daw://lane/9` in it): a type says so
+--- project is opened (a window with `paw://lane/9` in it): a type says so
 --- with `alive(buf)`. A window that cannot close, the last one, is left empty.
 function M.drop_dead()
   local dead = {}
@@ -426,12 +426,12 @@ function M.drop_dead()
   end
   for _, buf in ipairs(dead) do M.buf_delete(buf) end
 end
-daw.on("project.loaded", function() M.drop_dead() end)
+paw.on("project.loaded", function() M.drop_dead() end)
 
 -- Buffer types ----------------------------------------------------------------
 
 --- Make a buffer type. See docs/scripting.md.
----   daw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
+---   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
 --- Fields: `create(target, buf)` gives the buffer's state; `render(win,
 --- canvas, ctx)` draws (`ctx.buf` is the buffer, `win.state` the window's
 --- own); `on_key(win, key)` for keys with no mapping; `on_mouse(win,
@@ -439,7 +439,7 @@ daw.on("project.loaded", function() M.drop_dead() end)
 --- to start with); `listed` (false keeps its buffers off `:ls`, and forgets
 --- each once no window shows it); `delete(buf)`; `time` (see `timebind`);
 --- `claims(name)`, whether a name is a target of the type's by its form
---- (`:vs daw://lane/3`); `window()`, the window to draw when none in the
+--- (`:vs paw://lane/3`); `window()`, the window to draw when none in the
 --- tabs shows the type (one in a graphical frontend's window of its own).
 --- Key mappings for its windows are mapped with `{ view = name }`.
 function M.buftype(name, def)
@@ -461,7 +461,7 @@ function M.buftype(name, def)
     render = function(_, canvas, ctx)
       local win = win_of(ctx)
       if not win then return end
-      ctx = daw.util.merge(ctx or {}, { win = win, buf = M.buf_of(win) })
+      ctx = paw.util.merge(ctx or {}, { win = win, buf = M.buf_of(win) })
       if def.render then return def.render(win, canvas, ctx) end
     end,
     on_key = function(_, key)
@@ -526,16 +526,16 @@ function M.enter(win)
   local old = M.current()
   if old ~= win then
     local old_buf, new_buf = M.buf_of(old), M.buf_of(win)
-    if old then daw.emit("win.leave", { win = old.id }) end
-    if old_buf and old_buf ~= new_buf then daw.emit("buf.leave", { buf = old_buf.id, name = old_buf.name }) end
+    if old then paw.emit("win.leave", { win = old.id }) end
+    if old_buf and old_buf ~= new_buf then paw.emit("buf.leave", { buf = old_buf.id, name = old_buf.name }) end
     t.prev, t.win = old and old.id, win.id
-    daw.emit("win.enter", { win = win.id })
-    if new_buf and old_buf ~= new_buf then daw.emit("buf.enter", { buf = new_buf.id, name = new_buf.name }) end
+    paw.emit("win.enter", { win = win.id })
+    if new_buf and old_buf ~= new_buf then paw.emit("buf.enter", { buf = new_buf.id, name = new_buf.name }) end
   end
   if u.focused ~= win.view then
     local before = u.focused
     u.focused = win.view
-    daw.emit("view.focused", { view = win.view, old = before })
+    paw.emit("view.focused", { view = win.view, old = before })
   end
   api.ui_redraw()
 end
@@ -550,7 +550,7 @@ local function take(name)
       for _, win in ipairs(M.windows(t.layout)) do
         if win.view == name and not win.buf then
           win.hidden = true
-          daw.notify(called(name) .. " moved here from tab " .. i)
+          paw.notify(called(name) .. " moved here from tab " .. i)
           -- A tab is not left without a window: it has an empty one instead.
           if not first_window(t.layout) then
             win.hidden, win.view, win.buf, win.state = false, "empty", M.buf_create("empty").id, {}
@@ -704,7 +704,7 @@ function M.split(opts)
     root[#root + 1] = win
   else
     local dir = opts.vertical and "h" or "v"
-    local after = opts.vertical and daw.opt.splitright or (not opts.vertical and daw.opt.splitbelow)
+    local after = opts.vertical and paw.opt.splitright or (not opts.vertical and paw.opt.splitbelow)
     if parent.dir == dir then
       -- The new window takes half of the one split.
       if cur.size then
@@ -728,7 +728,7 @@ function M.split(opts)
     single(name).listed = true
     local view = u.views[name]
     if moved then
-      daw.notify(called(name) .. " moved to the new window")
+      paw.notify(called(name) .. " moved to the new window")
     elseif view.on_show then
       view:on_show()
     end
@@ -748,7 +748,7 @@ function M.show_in(win, name, buf)
   if single_view then
     local moved = remove_view(t.layout, name, win)
     take(name)
-    if moved then daw.notify(called(name) .. " moved to this window") end
+    if moved then paw.notify(called(name) .. " moved to this window") end
   elseif not buf then
     buf = M.buf_create(name).id
   end
@@ -765,8 +765,8 @@ function M.show_in(win, name, buf)
   reap(old_buf)
   local after = M.buf_of(win)
   if t.win == win.id and before ~= after then
-    if before then daw.emit("buf.leave", { buf = before.id, name = before.name }) end
-    if after then daw.emit("buf.enter", { buf = after.id, name = after.name }) end
+    if before then paw.emit("buf.leave", { buf = before.id, name = before.name }) end
+    if after then paw.emit("buf.enter", { buf = after.id, name = after.name }) end
   end
   M.enter(win)
   return win
@@ -950,15 +950,15 @@ end
 --- option (`devices_width`) has it set there.
 function M.set_size(node, axis, size)
   local option = node.view and node.view .. "_" .. axis
-  if option and daw.opt[option] ~= nil then
-    daw.opt[option] = size
+  if option and paw.opt[option] ~= nil then
+    paw.opt[option] = size
   else
     node.size = size
   end
 end
 
 --- The border between two windows at a cell of an arrangement
---- (`daw.ui.arrange`): the rule between windows side by side, or the top
+--- (`paw.ui.arrange`): the rule between windows side by side, or the top
 --- row of a window below another.
 function M.border_at(rects, x, y)
   for _, b in ipairs(rects.borders or {}) do
@@ -1068,7 +1068,7 @@ function M.tab_go(i)
   local t = u.tabs[i]
   local win = t.win and M.find_id(t.layout, t.win)
   if not (win and not win.hidden) then win = first_window(t.layout) end
-  if changed then daw.emit("tab.enter", { tab = i }) end
+  if changed then paw.emit("tab.enter", { tab = i }) end
   if win then M.enter(win) end
   api.ui_redraw()
   return true
@@ -1189,7 +1189,7 @@ function M.restore(saved)
   return true
 end
 
---- Layouts a configuration names, by name: `daw.layouts.edit = { ... }` in
+--- Layouts a configuration names, by name: `paw.layouts.edit = { ... }` in
 --- init.lua, in the form `M.restore` takes.
 M.layouts = {}
 
@@ -1260,8 +1260,8 @@ function M.time_lead()
   -- Playing, the windows follow the playhead together, whichever leads.
   local t = api.transport_get()
   local left, zoom, span = view:time_axis({ win = lead })
-  if t.playing and daw.opt.follow and left and span and (t.position < left or t.position >= left + span) then
-    view:set_time_axis(daw.time.bar_floor(t.position), zoom, { win = lead })
+  if t.playing and paw.opt.follow and left and span and (t.position < left or t.position >= left + span) then
+    view:set_time_axis(paw.time.bar_floor(t.position), zoom, { win = lead })
   end
   return lead, followers
 end
@@ -1279,13 +1279,13 @@ function M.set_option(win, name, value)
   if not win then return end
   win.opts = win.opts or {}
   win.opts[name] = value
-  daw.emit("win.option", { win = win.id, name = name, value = value })
+  paw.emit("win.option", { win = win.id, name = name, value = value })
   api.ui_redraw()
 end
 
 -- The script interface ----------------------------------------------------------------
 
---- `daw.buf`: buffers.
+--- `paw.buf`: buffers.
 M.buf = {
   list = M.buffers_list,
   get = function(name) local _, buf = M.resolve(name) return buf end,
@@ -1299,7 +1299,7 @@ M.buf = {
   title = M.title,
 }
 
---- `daw.win`: windows.
+--- `paw.win`: windows.
 M.win = {
   current = M.current,
   list = function() return M.windows(ui().layout) end,
@@ -1324,7 +1324,7 @@ M.win = {
   buf = M.buf_of,
 }
 
---- `daw.tab`: tabs.
+--- `paw.tab`: tabs.
 M.tabs = {
   list = function() return ui().tabs end,
   current = function() return ui().tab end,
@@ -1342,7 +1342,7 @@ M.tabs = {
 --- Make the empty buffer type, the commands and the keys. Run once the
 --- default commands are there, as some of these take over their short names.
 function M.setup()
-  local command, map = daw.command, daw.keymap.set
+  local command, map = paw.command, paw.keymap.set
 
   -- An empty window: what `:vnew` opens, and `:sp` without a name.
   M.buftype("empty", {
@@ -1367,7 +1367,7 @@ function M.setup()
       for _, item in ipairs(M.buffer_names()) do
         if #names < 6 then names[#names + 1] = item.text end
       end
-      daw.ui.titlebar(canvas, { name = "[No Name]", focused = ctx.focused })
+      paw.ui.titlebar(canvas, { name = "[No Name]", focused = ctx.focused })
       canvas:text(2, 2, "An empty window.", "Empty")
       canvas:text(2, 3, ":e <name> shows a buffer here: " .. table.concat(names, ", "), "Empty")
       canvas:text(2, 4, ":ls lists them, :close closes the window.", "Empty")
@@ -1375,9 +1375,9 @@ function M.setup()
     end,
   })
 
-  daw.option.define("splitright", true)
-  daw.option.define("splitbelow", true)
-  daw.option.define("layout", "")
+  paw.option.define("splitright", true)
+  paw.option.define("splitbelow", true)
+  paw.option.define("layout", "")
 
   local names = function() return M.buffer_names() end
 
@@ -1402,12 +1402,12 @@ function M.setup()
       local view, buf = "empty", nil
       if name ~= nil then
         view, buf = M.resolve(name)
-        if not view then return daw.notify("no buffer `" .. tostring(name) .. "`: `:ls` lists them", "warn") end
+        if not view then return paw.notify("no buffer `" .. tostring(name) .. "`: `:ls` lists them", "warn") end
       elseif not empty then
         view, buf = same_buffer()
       end
       local made, why = M.split({ vertical = vertical, view = view, buf = buf and not buf.single and buf.id or nil })
-      if not made then daw.notify(why, "warn") end
+      if not made then paw.notify(why, "warn") end
     end
   end
   command("split", split(false), { desc = "Split the window in two, one above the other, the new one showing a buffer: `sp roll`, or the same buffer without a name (the arrange view and the piano roll show each other, any other view leaves an empty window)", complete = names })
@@ -1417,42 +1417,42 @@ function M.setup()
   command("vnew", split(true, true), { desc = "A new empty window beside this one" })
 
   local function close_window()
-    if daw.ui.float then
-      daw.ui.close()
+    if paw.ui.float then
+      paw.ui.close()
       return true
     end
     -- A view in a window of the graphical frontend closes with it.
-    local u = daw.ui
+    local u = paw.ui
     local docked = M.find(u.layout, u.focused)
-    if not (docked and not docked.hidden) and daw.canvas.open_views[u.focused] then
+    if not (docked and not docked.hidden) and paw.canvas.open_views[u.focused] then
       u.close()
       return true
     end
     return M.close()
   end
   command("close", function()
-    if not close_window() then daw.notify("the last window does not close: `:q` quits", "warn") end
+    if not close_window() then paw.notify("the last window does not close: `:q` quits", "warn") end
   end, { desc = "Close the window; a panel's comes back where it was" })
   -- A view's own name goes to it: `:arrange`, `:mixer`, `:roll`.
   for view, word in pairs({ arrange = "arrange", mixer = "mixer", pianoroll = "roll", session = "session" }) do
-    if ui().views[view] and not daw.commands.get(word) then
-      command(word, function() daw.ui.focus(view) end, { desc = "Show " .. M.titles[view] .. " and go to it" })
+    if ui().views[view] and not paw.commands.get(word) then
+      command(word, function() paw.ui.focus(view) end, { desc = "Show " .. M.titles[view] .. " and go to it" })
     end
   end
   command("only", function() M.only() end, { desc = "Close every window but this one" })
   -- `:q` closes the window, and quits from the last one.
   command("q", function()
-    if not close_window() then daw.cmd("quit") end
+    if not close_window() then paw.cmd("quit") end
   end, { desc = "Close the window; in the last one, quit unless there are unsaved changes" })
   command("q!", function()
-    if not close_window() then daw.cmd("quit!") end
+    if not close_window() then paw.cmd("quit!") end
   end, { desc = "Close the window; in the last one, quit without saving" })
   -- `:e roll` shows a buffer here; `:e song.json` opens a project.
-  command("e", function(ctx) return daw.commands.run("edit", ctx.args, ctx) end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song.json`, `e song.mid`, `e take.wav`",
+  command("e", function(ctx) return paw.commands.run("edit", ctx.args, ctx) end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song.json`, `e song.mid`, `e take.wav`",
     complete = function(text, info)
       if info.index > 1 then return {} end
       local out = M.buffer_names()
-      for _, c in ipairs(daw.commands.completers.openable(text)) do out[#out + 1] = c end
+      for _, c in ipairs(paw.commands.completers.openable(text)) do out[#out + 1] = c end
       return out
     end })
 
@@ -1470,7 +1470,7 @@ function M.setup()
   end
   command("buffer", function(ctx)
     local view, buf = M.resolve(ctx.args[1])
-    if not view then return daw.notify("no buffer `" .. tostring(ctx.args[1]) .. "`: `:ls` lists them", "warn") end
+    if not view then return paw.notify("no buffer `" .. tostring(ctx.args[1]) .. "`: `:ls` lists them", "warn") end
     M.show_in(M.current(), view, buf and not buf.single and buf.id or nil)
   end, { desc = "Show a buffer in this window, by name or number: `b roll`, `b 3`", complete = names })
   command.alias("b", "buffer")
@@ -1486,14 +1486,14 @@ function M.setup()
     else
       buf = M.buf_of(M.current())
     end
-    if not buf then return daw.notify("no buffer `" .. tostring(ctx.args[1]) .. "`", "warn") end
+    if not buf then return paw.notify("no buffer `" .. tostring(ctx.args[1]) .. "`", "warn") end
     M.buf_delete(buf)
   end, { desc = "Close every window of a buffer (this one's without a name); an empty one is forgotten", complete = names })
   command.alias("bd", "bdelete")
   command("buffers", function()
     local here = M.buf_of(M.current())
     local shown = {}
-    for _, t in ipairs(daw.ui.tabs) do
+    for _, t in ipairs(paw.ui.tabs) do
       for _, win in ipairs(M.windows(t.layout)) do
         local buf = M.buf_of(win)
         if buf then shown[buf.id] = true end
@@ -1505,7 +1505,7 @@ function M.setup()
       lines[#lines + 1] = string.format("%3d %s  %-14s %s", buf.id, flags, buf.name, M.title(buf))
     end
     lines[#lines + 1] = { text = "% this window's   a in a window   h in none; `:b <name>` shows one here, `:vs <name>` beside", style = "Dim" }
-    daw.ui.page("Buffers", lines)
+    paw.ui.page("Buffers", lines)
   end, { desc = "List the buffers" })
   command.alias("ls", "buffers")
 
@@ -1516,7 +1516,7 @@ function M.setup()
     M.tab_new(name ~= nil and tostring(name) or nil, view or nil)
   end, { desc = "A new tab: `tabnew Mix` named, `tabnew mixer` showing the mixer", complete = names })
   command("tabclose", function()
-    if not M.tab_close() then daw.notify("the last tab does not close", "warn") end
+    if not M.tab_close() then paw.notify("the last tab does not close", "warn") end
   end, { desc = "Close the tab" })
   command("tabnext", function(ctx)
     local n = tonumber(ctx.args[1])
@@ -1529,8 +1529,8 @@ function M.setup()
   command("tabs", function()
     local lines = {}
     local here = M.current()
-    for i, t in ipairs(daw.ui.tabs) do
-      lines[#lines + 1] = { text = "Tab " .. i .. (t.name and " " .. t.name or "") .. (i == daw.ui.tab and "  (this one)" or ""), style = "Title" }
+    for i, t in ipairs(paw.ui.tabs) do
+      lines[#lines + 1] = { text = "Tab " .. i .. (t.name and " " .. t.name or "") .. (i == paw.ui.tab and "  (this one)" or ""), style = "Title" }
       for _, win in ipairs(M.windows(t.layout)) do
         local buf = M.buf_of(win)
         if buf and focusable(win.view) then
@@ -1538,21 +1538,21 @@ function M.setup()
         end
       end
     end
-    daw.ui.page("Tabs", lines)
+    paw.ui.page("Tabs", lines)
   end, { desc = "List the tabs and their windows" })
 
   -- `:resize 20`, `:resize +5`, `:vertical resize -10`.
   local function resize(axis, text)
     local sign, n = tostring(text or ""):match("^%s*([%+%-]?)(%d+)%s*$")
-    if not n then return daw.notify("usage: resize 20, resize +5, resize -5", "warn") end
+    if not n then return paw.notify("usage: resize 20, resize +5, resize -5", "warn") end
     n = tonumber(n)
     if sign == "-" then n = -n end
-    if not M.resize(nil, axis, n, sign ~= "") then daw.notify("the window has nothing to share its " .. axis .. " with", "warn") end
+    if not M.resize(nil, axis, n, sign ~= "") then paw.notify("the window has nothing to share its " .. axis .. " with", "warn") end
   end
   command("resize", function(ctx) resize("height", ctx.args[1]) end, { desc = "Set the window's height, or change it: `resize 20`, `resize +5`", raw = true })
   command("vertical", function(ctx)
     local rest = tostring(ctx.args[1] or ""):match("^%s*res[a-z]*%s+(.*)$")
-    if not rest then return daw.notify("usage: vertical resize 40, vertical resize +5", "warn") end
+    if not rest then return paw.notify("usage: vertical resize 40, vertical resize +5", "warn") end
     resize("width", rest)
   end, { desc = "Set the window's width, or change it: `vertical resize 40`, `vertical resize -5`", raw = true })
 
@@ -1567,11 +1567,11 @@ function M.setup()
       local win = M.current()
       local text = {}
       for option in pairs(window_options) do text[#text + 1] = option .. "=" .. tostring(win and win.opts[option] or false) end
-      return daw.notify(table.concat(text, " "))
+      return paw.notify(table.concat(text, " "))
     end
     if flip == "!" then value = not M.win.option(nil, name) end
     M.set_option(nil, name, value)
-    daw.notify(name .. (value and " on" or " off") .. " in this window")
+    paw.notify(name .. (value and " on" or " off") .. " in this window")
   end, { desc = "Set an option of this window: `setlocal timebind` scrolls and zooms it with the other time bound windows",
     complete = function() return { "timebind", "notimebind", "timebind!" } end })
   command.alias("setl", "setlocal")
@@ -1580,15 +1580,15 @@ function M.setup()
     local first, name = ctx.args[1], ctx.args[2]
     if first == nil then
       local list = M.layout_names()
-      return daw.notify(#list > 0 and "layouts: " .. table.concat(list, ", ") or "no layouts yet: `:layout save <name>` keeps the tabs and windows as they are")
+      return paw.notify(#list > 0 and "layouts: " .. table.concat(list, ", ") or "no layouts yet: `:layout save <name>` keeps the tabs and windows as they are")
     end
     if first == "save" then
-      if name == nil then return daw.notify("usage: layout save <name>", "warn") end
+      if name == nil then return paw.notify("usage: layout save <name>", "warn") end
       local ok, where = M.save(tostring(name))
-      return daw.notify(ok and "layout " .. tostring(name) .. " saved" or where, ok and "info" or "error")
+      return paw.notify(ok and "layout " .. tostring(name) .. " saved" or where, ok and "info" or "error")
     end
     local ok, why = M.load(tostring(first))
-    if not ok then daw.notify(why, "warn") end
+    if not ok then paw.notify(why, "warn") end
   end, { desc = "Put back a layout of tabs and windows: `layout edit`; `layout save edit` keeps the one now",
     complete = function(_, info)
       if info.index == 2 and info.words[1] == "save" then return M.layout_names() end
@@ -1602,14 +1602,14 @@ function M.setup()
     s = function() split(false)({ args = {} }) end,
     v = function() split(true)({ args = {} }) end,
     n = function() split(false, true)({ args = {} }) end,
-    c = function() daw.cmd("close") end,
-    q = function() daw.cmd("q") end,
+    c = function() paw.cmd("close") end,
+    q = function() paw.cmd("q") end,
     o = function() M.only() end,
     x = function(ctx) M.exchange(ctx.count) end,
     r = function() M.rotate(false) end,
     R = function() M.rotate(true) end,
     T = function()
-      if not M.to_tab() then daw.notify("the only window is a tab already", "warn") end
+      if not M.to_tab() then paw.notify("the only window is a tab already", "warn") end
     end,
     p = function()
       local t = tab()
@@ -1626,7 +1626,7 @@ function M.setup()
   end
   command("wincmd", function(ctx)
     local act = acts[tostring(ctx.args[1] or "")]
-    if not act then return daw.notify("usage: wincmd h, wincmd s, ... (what follows Ctrl-w)", "warn") end
+    if not act then return paw.notify("usage: wincmd h, wincmd s, ... (what follows Ctrl-w)", "warn") end
     act(ctx)
   end, { desc = "Do what Ctrl-w and a key do: `wincmd l` goes to the window on the right" })
 
@@ -1648,12 +1648,12 @@ function M.setup()
   map("gt", "tabnext", { desc = "The next tab" })
   map("gT", "tabprevious", { desc = "The previous tab" })
 
-  -- The configuration's layout to start with: `daw.opt.layout = "edit"`.
-  daw.on("startup", function()
-    local name = daw.opt.layout
+  -- The configuration's layout to start with: `paw.opt.layout = "edit"`.
+  paw.on("startup", function()
+    local name = paw.opt.layout
     if name and name ~= "" then
       local ok, why = M.load(name)
-      if not ok then daw.notify(why, "warn") end
+      if not ok then paw.notify(why, "warn") end
     end
   end)
 end

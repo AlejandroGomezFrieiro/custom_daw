@@ -1,7 +1,7 @@
 # The control protocol
 
-A running paw is a server. Other programs (the window, `daw ctl`,
-`daw attach`, the MCP server, your own scripts) connect to it, call into
+A running paw is a server. Other programs (the window, `paw ctl`,
+`paw attach`, the MCP server, your own scripts) connect to it, call into
 it, and are told what happens in it. This page is the whole protocol,
 version 3.
 
@@ -11,27 +11,27 @@ Messages are JSON objects, one per line, UTF-8, in both directions.
 
 | Way in | Who may use it |
 | --- | --- |
-| A Unix socket, `$XDG_RUNTIME_DIR/daw.sock` unless `--listen <path>` names another (`--no-listen` for none) | whoever may open the file: you, on that machine |
+| A Unix socket, `$XDG_RUNTIME_DIR/paw.sock` unless `--listen <path>` names another (`--no-listen` for none) | whoever may open the file: you, on that machine |
 | TCP inside TLS, when the instance is started with `--listen-tcp <host:port>` | whoever can reach the port and knows the token |
 
-The token is 32 hexadecimal digits in `~/.local/state/daw/token`
+The token is 32 hexadecimal digits in `~/.local/state/paw/token`
 (`--token-file <path>` for another place), made the first time it is needed
 and readable by you alone. Copy it to the machines that may connect.
 
 TCP is encrypted with TLS 1.3 (or 1.2), from the first byte; the lines
 below go inside it. The instance makes a self-signed certificate the first
-time it listens, keeps it in `~/.local/state/daw/tls/` and prints its
+time it listens, keeps it in `~/.local/state/paw/tls/` and prints its
 fingerprint (the SHA-256 of the certificate, in groups of four hexadecimal
 digits) when it starts. There is no authority to vouch for it: a client
 trusts the certificate the first time it connects to an address and holds
-the instance to it afterwards, as SSH does with host keys. `daw`'s clients
-remember it in `~/.local/state/daw/known_instances` (an address and a
+the instance to it afterwards, as SSH does with host keys. `paw`'s clients
+remember it in `~/.local/state/paw/known_instances` (an address and a
 fingerprint on each line), refuse a different one naming both, and take a
 new one with `--accept-certificate`. A client of your own can do the same
 with any TLS library: accept the certificate shown, compare its
 fingerprint with the one remembered.
 
-`--no-tls` (on the instance and on `daw`'s clients) speaks the lines in
+`--no-tls` (on the instance and on `paw`'s clients) speaks the lines in
 the clear instead, for a network you trust: `eval` runs any Lua, so
 whoever can change what is said can run anything on the instance's
 machine. A client that speaks in the clear to a port that only takes TLS
@@ -41,15 +41,15 @@ first) and its first request is answered with that error. SSH needs
 nothing from this program either:
 
 ```sh
-ssh -N -L /tmp/studio.sock:/run/user/1000/daw.sock studio &
-daw attach --socket /tmp/studio.sock
-daw-gui --socket /tmp/studio.sock
+ssh -N -L /tmp/studio.sock:/run/user/1000/paw.sock studio &
+paw attach --socket /tmp/studio.sock
+paw-gui --socket /tmp/studio.sock
 ```
 
 ## Requests and replies
 
 ```json
-{"id": 1, "method": "eval", "params": ["return daw.transport.position"]}
+{"id": 1, "method": "eval", "params": ["return paw.transport.position"]}
 {"id": 1, "result": 3.5}
 {"id": 2, "method": "nonsense", "params": []}
 {"id": 2, "error": "no method `nonsense`"}
@@ -65,8 +65,8 @@ are answered in order. A request with `"id": null` is answered with
 | `eval` | Lua source, then values for its `...` | runs it in the kernel and answers what it returns |
 | `cmd` | a command line, as after `:` | runs the command |
 | `keys` | keys, as typed: `"ggdd"`, `"<C-s>"` | types them |
-| `render` | path, options | `daw.render` |
-| any `daw.api` function | its arguments | calls it: `track_add`, `transport_get`, … |
+| `render` | path, options | `paw.render` |
+| any `paw.api` function | its arguments | calls it: `track_add`, `transport_get`, … |
 | `subscribe` | event names or patterns | events are pushed from now on; answers the list in force |
 | `unsubscribe` | patterns, or nothing for all | stops them |
 | `frontend.watch` | `{ "interval": ms, "seat": "own" or "instance" }` (33, `own`) | `frontend.state` events from now on, seen from a seat of the connection's own or the instance's |
@@ -82,7 +82,7 @@ are answered in order. A request with `"id": null` is answered with
 | `monitor.unlisten` | | stops them |
 
 An extension adds methods of its own with
-`daw.remote.methods["name"] = function(client, ...) return … end`.
+`paw.remote.methods["name"] = function(client, ...) return … end`.
 
 ### `hello` and the token
 
@@ -120,7 +120,7 @@ What the kernel pushes has no `id`:
 A connection is sent only what it asked for.
 
 **`subscribe`** takes exact names (`track.added`), families
-(`transport.*`) or `*`. The events are the ones `daw.on` hears in Lua,
+(`transport.*`) or `*`. The events are the ones `paw.on` hears in Lua,
 those of extensions included: `changed`, `project.loaded`,
 `project.saved`, `track.added`, `track.changed`, `track.removed`,
 `clip.add`, `clip.set`, `device.changed`, `device.stopped`,
@@ -130,7 +130,7 @@ those of extensions included: `changed`, `project.loaded`,
 be written as JSON is not sent.
 
 **`frontend.watch`** is for programs that draw the project. Instead of
-asking for `daw.frontend.state()` many times a second, the connection is
+asking for `paw.frontend.state()` many times a second, the connection is
 sent a `frontend.state` event at once, and after that only when something
 it would draw has changed, at most once every `interval` milliseconds:
 
@@ -143,7 +143,7 @@ it would draw has changed, at most once every `interval` milliseconds:
 ```
 
 The payload is what moves on its own (the playhead, the meters, the
-mode: everything `daw.frontend.state(known)` returns when the project has
+mode: everything `paw.frontend.state(known)` returns when the project has
 not changed). `sections`, when present, holds the parts of the project
 that differ from what this connection was last sent, each whole:
 
@@ -177,7 +177,7 @@ its 256) or `"#rrggbb"`; `attrs` adds 1 bold, 2 dim, 4 italic,
 says to clear the screen first (the first event, and after a change of
 size). A character two cells wide takes two. `"mouse": false` asks the
 terminal to stop reporting the pointer and leave it to its own selection
-(`daw.opt.mouse` off); without it, or `true`, it reports it.
+(`paw.opt.mouse` off); without it, or `true`, it reports it.
 
 A terminal that shows images says so with a third parameter of
 `ui.attach`, `{"graphics": true, "cell": [10, 20], "pixel_mouse": true,
@@ -191,7 +191,7 @@ surfaces views keep for their pixels:
 ```
 
 `covered` lists what covers part of it (column, row and columns, from
-its corner), and `ops`, the drawing (see `daw.canvas.paint`), comes only
+its corner), and `ops`, the drawing (see `paw.canvas.paint`), comes only
 when it differs from the last one sent for that name: the far side makes
 the pixels. Without the parameter the views draw in cells for it.
 
@@ -222,13 +222,13 @@ their own. A connection that attaches (`ui.attach`) or watches
 its own focused view and panels shown, edit cursor, mode, selection, keys
 half typed, registers, marks, prompt and scroll, and a terminal drawn at
 its own size. Every call that connection makes (`eval`, `cmd`, `keys`,
-`daw.frontend.act.*`) happens in its seat. The instance's own seat is its
+`paw.frontend.act.*`) happens in its seat. The instance's own seat is its
 terminal's, if it has one, and that of every connection without a seat of
-its own (`daw ctl`, scripts). A new seat starts at the instance's cursor,
+its own (`paw ctl`, scripts). A new seat starts at the instance's cursor,
 with the instance's panels shown, in normal mode; it closes with its
 connection. Edits from two seats are steps in the one undo history.
-Options (`daw.opt`) are shared. In Lua, `daw.seats` says whose turn it is
-(`daw.seats.current`); see runtime/lua/daw/seats.lua for how a module
+Options (`paw.opt`) are shared. In Lua, `paw.seats` says whose turn it is
+(`paw.seats.current`); see runtime/lua/paw/seats.lua for how a module
 keeps state of its own for each seat.
 
 ## Files
@@ -246,7 +246,7 @@ imports the path `file.end` answers like any other:
 …
 {"id": 4, "method": "file.end", "params": [1]}
 {"id": 4, "result": "/home/me/songs/media/take.wav"}
-{"id": 5, "method": "eval", "params": ["daw.commands.run('import', { ... })", "/home/me/songs/media/take.wav"]}
+{"id": 5, "method": "eval", "params": ["paw.commands.run('import', { ... })", "/home/me/songs/media/take.wav"]}
 ```
 
 The name keeps only its last part; a name taken already gets `-2`, `-3`…
@@ -254,7 +254,7 @@ The file has its name only once it is whole; one that has not ended when
 its connection closes is thrown away. `:upload <path>` typed in an
 attached terminal sends the connection `{"event": "file.wanted",
 "payload": {"path": "…", "import": true}}`, for its program to send that
-file from its own disk; `daw attach` does.
+file from its own disk; `paw attach` does.
 
 ## Sound
 
@@ -271,7 +271,7 @@ little-endian samples in base64, at half the engine's rate (a quarter at
 JSON. `seq` counts from 1. The engine only makes the copy while someone
 listens. `:listen` sends a terminal's or window's connection
 `{"event": "monitor.toggle"}`, for its program to start or stop
-listening; `daw attach` and `daw-gui` do, playing the frames through a
+listening; `paw attach` and `paw-gui` do, playing the frames through a
 jitter buffer that waits for 200 ms and holds at most a second.
 
 ## What is not here
@@ -286,14 +286,14 @@ jitter buffer that waits for 200 ms and holds at most a second.
 
 ## In Rust
 
-The crate `daw-proto` (with `serde_json`, `anyhow`, `base64` and
+The crate `paw-proto` (with `serde_json`, `anyhow`, `base64` and
 `rustls` on `ring`, no OpenSSL) is the client's side:
 `Connection::unix(path)` or `Connection::tcp(address, token)` (TLS,
 remembering the certificate in the state directory;
 `Connection::tcp_with(address, token, &Wire::…)` chooses where, or the
 clear), then `call(method, params)`, `notify(method, params)`, the
 `events` channel, `send_file(path)` and `send_and_import(path)`.
-`daw_proto::monitor` makes and reads `audio.frame` payloads, and the crate
-`daw-listen` plays them (`Player::device()`, or `Player::file(path,
-rate)` to write them to a WAV file). `daw_core::remote::apply` puts
+`paw_proto::monitor` makes and reads `audio.frame` payloads, and the crate
+`paw-listen` plays them (`Player::device()`, or `Player::file(path,
+rate)` to write them to a WAV file). `paw_core::remote::apply` puts
 `ui.grid` events into a grid of cells.

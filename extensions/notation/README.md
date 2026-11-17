@@ -15,7 +15,7 @@ longer or deleted is that MIDI note changed; each edit is one undo step,
 and it changes no note it does not write.
 
 ```lua
-daw.ext.load("extensions/notation")   -- or put it in ~/.config/daw/extensions
+paw.ext.load("extensions/notation")   -- or put it in ~/.config/paw/extensions
 ```
 
 ![The demo song's melody as a score in the terminal: its last bar entered by name with i, a hairpin written with the \\d popover and previewed before Enter, then played](images/tui-notation.gif)
@@ -60,7 +60,7 @@ its voice, and a note deleted takes its own away. Marks along the clip
 keep their beats.
 
 **What an edit in notation writes.** Each is an ordinary edit of the
-clip's notes (`daw.api.clip_notes_edit`), one undo step with what
+clip's notes (`paw.api.clip_notes_edit`), one undo step with what
 notation keeps:
 
 | In notation | The MIDI |
@@ -197,7 +197,7 @@ Each of these has a setting, kept with the clip in `clip.meta.notation.settings`
 | `voices` | on | held notes as a second voice |
 | `split` | auto | or a pitch: the hands split there |
 | `follow` | on | follow the player's drift from the grid |
-| `mode` | score | `raw`: every note as played, rounded to `daw.opt.notation_grid` |
+| `mode` | score | `raw`: every note as played, rounded to `paw.opt.notation_grid` |
 
 `:notation.set` alone lists them on a page, with the default of each the clip changed, `:notation.set swing off` sets one,
 `:notation.set swing default` forgets it, `:notation.reset` forgets them all.
@@ -217,7 +217,7 @@ metre divides it.
 The rest of the page:
 
 - **Measures** follow the song's bars. Where the kernel keeps time signatures
-  along the song (`daw.time.signature_at`), each bar takes its own, and the
+  along the song (`paw.time.signature_at`), each bar takes its own, and the
   new signature is written where it changes.
 - **Clef**: treble when the notes stay above A3, bass when they stay below
   E4, a grand staff when they need both. `:notation.clef bass` fixes it for
@@ -387,7 +387,7 @@ view `R` is not record). The insert mode badge says `INS`, `PUSH` or
 | `Ctrl-t` | a tuplet to enter: `3` (three in the time of two), `5` (in four), `5:4`, `2:3`, `off` |
 | `Ctrl-o` | one command of normal mode, then back to entering |
 | `Ctrl-r` and a register | paste it at the cursor and step past it (`Ctrl-r "`) |
-| `Tab` | take the suggestion `daw.complete` shows as ghost notes; in normal mode `3 Tab` takes three notes or chords of it (with none shown, `Tab` is the next view) |
+| `Tab` | take the suggestion `paw.complete` shows as ghost notes; in normal mode `3 Tab` takes three notes or chords of it (with none shown, `Tab` is the next view) |
 
 **Ex.** `:s`, `:g` and `:d` over notes change the clip's notes as they do
 in the piano roll, and the score shows them: `:%s/c4/db4/g` raises the C4s
@@ -460,13 +460,13 @@ applied.
 ## Popovers
 
 Everything that is not a note is written with a popover, as in Dorico,
-in the shape of a Vim prompt: the local leader (`\`, option `daw.opt.localleader`) and a letter opens a
+in the shape of a Vim prompt: the local leader (`\`, option `paw.opt.localleader`) and a letter opens a
 one-line prompt at the caret. In visual mode it is for the selection; in
 insert mode `Ctrl-o` comes first (`Ctrl-o \d`), and entering notes goes on
 after it. `Tab` completes, each choice with what it means; `Up` and `Down`
 go through what was typed before in that popover; while it is typed the
 page shows what it would write in the accent's ink (and you hear it: it is
-a trial, `daw.audition`), and the line says what it would do or why it
+a trial, `paw.audition`), and the line says what it would do or why it
 cannot. `Enter` writes it, one undo step; `Esc` leaves no trace.
 
 Each popover is an Ex command with what was typed after it, run with the
@@ -486,7 +486,7 @@ last popover again with what was typed in it.
 | `\b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`, `1.`, `2.`, `off` | at the cursor's barline (the one before the bar when the cursor is at its start, else after it); an ending over the bars of the selection |
 | `\X` | text | `dolce`, `Solo` | text over the staff |
 | `\r` | rehearsal mark | `A`, `Intro`; Enter alone writes the next letter | a boxed mark at the bar, and a marker of the same name in the song |
-| `\q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`daw.harmony`) |
+| `\q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`paw.harmony`) |
 | `\l` | lyrics | a syllable; `Space` the next note, `-` a hyphen, `_` an extender; `verse=2 ` first for verse 2 | under the note at the caret, and on to the next of its voice |
 | `\i` | intervals | `3`, `-6`, `8`, `m3`, `M6`, `P5` | a note that far above the top (below the lowest) note of each chord of the selection, in the key |
 | `\3` | tuplets | `3`, `5`, `5:4`, `7:8`, `off` | the beat at the cursor (or the selection) as that tuplet; in insert mode, the notes entered next |
@@ -502,7 +502,7 @@ its meaning in the notation view: `,d` is the device panel, `,m` the mixer,
 and `,x` start `,ca` (fixes and actions) and the mix measurements as they do
 elsewhere. The clef is `\C` and text `\X`.
 `\.` repeats the last popover. Change the local
-leader with `daw.opt.localleader`; a key of a view of your own that would
+leader with `paw.opt.localleader`; a key of a view of your own that would
 sit on a leader key of the whole program belongs on `<localleader>` too (the
 key rule's check says so).
 
@@ -550,7 +550,7 @@ across the rows either side (`▄▄` over `▀▀`, an open one `╭╮` over `
 `zi` opens it out to a row for every line and space, nine a staff, which is
 easier to read and lets the pointer reach the spaces; `zo` goes back. A
 panel too low for both staves of a grand staff shows the cursor's. With
-`daw.opt.ascii` the staff is drawn open in plain ASCII (`-` `|` `+`, heads
+`paw.opt.ascii` the staff is drawn open in plain ASCII (`-` `|` `+`, heads
 `@@` and `()`, `#` `b` `n`, the treble clef `&`, the bass clef `?:`, a C
 clef `B`). A clef or key that changes inside a system is drawn at the
 bar, the clef smaller; a key's old signs are cancelled with naturals.
@@ -645,8 +645,8 @@ systems of a full page spread over it. The paper is white with black ink
 (option `notation_paper`: `"theme"` keeps the theme's colours), and the
 staff space is the largest whose page fits the width, unless zoomed. Over the
 page are drawn, each apart from it: the selection (a faint band, its notes
-in the accent), suggestions from `daw.complete` (the notes laid out as they
-would be written, faint), diagnostics from `daw.diagnostic` (a wavy line
+in the accent), suggestions from `paw.complete` (the notes laid out as they
+would be written, faint), diagnostics from `paw.diagnostic` (a wavy line
 under the staff, the notes tinted, a mark in the margin, the message on the
 info line when the cursor is on it), the cursor (a hairline at its beat and
 the note `Enter` or a click would put there, half transparent; on a note,
@@ -754,7 +754,7 @@ reached by Vim's structural keys, as Tree-sitter's are:
 Each takes a count (`3]]`) and is a motion: `d]]` deletes this staff and
 the next whole, `Ctrl-v` stretches a block over the staves it reaches, and
 `V` over staves takes them whole. The group is the one the track is in
-(`daw.groups`), else the family its name says, as the score's brackets
+(`paw.groups`), else the family its name says, as the score's brackets
 show. On a grand staff `Ctrl-j` goes to the lower hand first; the hands'
 voices are reached with `]v` `[v`.
 
@@ -874,8 +874,8 @@ Sibelius and Finale work the same way.
 pages as the page view lays them out, on white paper, as a PDF of as many
 pages as there are, the last ending under its last system; `svg` writes each page as an SVG file (numbered after
 the first), `png` the first page as an image. They are drawn from the same
-drawing operations as the screen (`daw.api.canvas_export`, in
-crates/daw-raster), with the music font's glyphs and the text as outlines,
+drawing operations as the screen (`paw.api.canvas_export`, in
+crates/paw-raster), with the music font's glyphs and the text as outlines,
 so the files need no fonts.
 
 ## Parts
@@ -914,7 +914,7 @@ woodwinds, brass, percussion, harp and keyboards, voices, strings, and
 within a family as an orchestra has them (piccolo, flutes, oboes,
 clarinets, bassoons; horns before trumpets). The family is the one the
 track's group is named for (a group "Strings" or "Flutes", see
-`daw.groups`), else the one its name says; a track whose name says none
+`paw.groups`), else the one its name says; a track whose name says none
 comes after, in the order of the tracks. Each family has a bracket and its
 barlines run through it and stop at the next; an instrument of two staves
 has a brace. The names stand at the left of the staves, in full on the
@@ -1018,13 +1018,13 @@ from (`midi.memo = false` writes them all, as the tests compare);
 to another into the clip, comparing only the measures that changed and
 touching only the notes it changes.
 
-`notation.engrave` turns a layout into drawing operations for `daw.canvas`
+`notation.engrave` turns a layout into drawing operations for `paw.canvas`
 (`engrave.style`, `engrave.systems`, and each measure's and system's ink);
 `notation.smufl.font()` is the font's metadata as the engraver reads it,
-from the fonts the kernel embeds (`daw.api.smufl`; Leland, Bravura and
-Petaluma, under the SIL Open Font License, in crates/daw-raster/fonts).
+from the fonts the kernel embeds (`paw.api.smufl`; Leland, Bravura and
+Petaluma, under the SIL Open Font License, in crates/paw-raster/fonts).
 `tools/paintbench.lua`
-times the paint: run it with `daw --clean --no-plugins --no-listen --audio
+times the paint: run it with `paw --clean --no-plugins --no-listen --audio
 null -l extensions/notation/tools/paintbench.lua 64`.
 
 A feature with marks of its own (chord symbols, rehearsal marks, tempo

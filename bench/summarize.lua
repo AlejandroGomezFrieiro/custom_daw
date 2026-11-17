@@ -1,6 +1,6 @@
 -- Summarize a results file as Markdown tables: the median of the repeated
 -- runs of each configuration, both engines side by side.
---   daw --clean --no-plugins -l bench/summarize.lua bench/results/<name>.jsonl
+--   paw --clean --no-plugins -l bench/summarize.lua bench/results/<name>.jsonl
 local path = ...
 local records = {}
 for line in io.lines(path) do
@@ -95,27 +95,27 @@ local function engine(name, threads)
 end
 
 tbl("Offline render (ms of wall time for 32 s of audio)", "render", { "kind", "fx", "automation", "tracks" },
-  { engine("daw", 1), engine("tracktion", 1), engine("tracktion", "N") }, { "render_ms" })
+  { engine("paw", 1), engine("tracktion", 1), engine("tracktion", "N") }, { "render_ms" })
 tbl("Offline render, per-block processing time (ms; budget 10.7 ms)", "render", { "kind", "fx", "automation", "tracks" },
-  { engine("daw"), engine("tracktion", 1), engine("tracktion", "N") }, { "block_p99_ms", "block_max_ms" })
+  { engine("paw"), engine("tracktion", 1), engine("tracktion", "N") }, { "block_p99_ms", "block_max_ms" })
 tbl("Real-time playback, ms per callback (DAW: null backend on a real-time clock; Tracktion: hosted device, back to back)", "blocks", { "kind", "tracks", "buffer", "edits" },
-  { engine("daw"), engine("tracktion", 1), engine("tracktion", "N") }, { "p50_ms", "p99_ms", "max_ms" })
+  { engine("paw"), engine("tracktion", 1), engine("tracktion", "N") }, { "p50_ms", "p99_ms", "max_ms" })
 tbl("Clip edits, one undo step each (ms for all of them)", "edit", { "clips" },
-  { engine("daw"), engine("tracktion") }, { "add_ms", "move_ms", "delete_ms", "undo_ms", "redo_ms" })
+  { engine("paw"), engine("tracktion") }, { "add_ms", "move_ms", "delete_ms", "undo_ms", "redo_ms" })
 tbl("Clip edits without the sync to the engine (DAW) — what Tracktion's numbers above measure", "edit_nosync", { "clips" },
-  { engine("daw") }, { "add_ms", "move_ms", "delete_ms", "undo_ms", "redo_ms" })
+  { engine("paw") }, { "add_ms", "move_ms", "delete_ms", "undo_ms", "redo_ms" })
 tbl("Note edits without the sync to the engine (DAW)", "notes_nosync", { "notes" },
-  { engine("daw") }, { "add_ms", "move_ms", "delete_ms" })
+  { engine("paw") }, { "add_ms", "move_ms", "delete_ms" })
 tbl("Clip edits: ms per edit, first and last tenth", "edit", { "clips" },
-  { engine("daw") }, { "add_first_ms", "add_last_ms", "move_first_ms", "move_last_ms" })
+  { engine("paw") }, { "add_first_ms", "add_last_ms", "move_first_ms", "move_last_ms" })
 tbl("Note edits in one clip, one undo step each (ms for all of them)", "notes", { "notes" },
-  { engine("daw"), engine("tracktion") }, { "add_ms", "move_ms", "delete_ms" })
+  { engine("paw"), engine("tracktion") }, { "add_ms", "move_ms", "delete_ms" })
 tbl("One edit in a project of N tracks (ms, median of 50)", "scale", { "tracks" },
-  { engine("daw") }, { "build_ms", "volume_ms", "clip_move_ms", "undo_ms", "redo_ms", "track_add_ms" })
+  { engine("paw") }, { "build_ms", "volume_ms", "clip_move_ms", "undo_ms", "redo_ms", "track_add_ms" })
 tbl("Save and load (ms)", "saveload", { "tracks", "clips_per_track" },
-  { engine("daw"), engine("tracktion") }, { "build_ms", "save_ms", "load_ms", "file_bytes" })
+  { engine("paw"), engine("tracktion") }, { "build_ms", "save_ms", "load_ms", "file_bytes" })
 tbl("Resident memory (kB)", "memory", { "tracks", "clips_per_track", "undo_steps" },
-  { engine("daw"), engine("tracktion") }, { "rss_built_kb", "rss_undo_kb" })
+  { engine("paw"), engine("tracktion") }, { "rss_built_kb", "rss_undo_kb" })
 tbl("Memory over repeated build/edit/render/load rounds (kB)", "churn", { "rounds" },
-  { engine("daw") }, { "rss_first_kb", "rss_mid_kb", "rss_last_kb", "growth_kb_per_round" })
-tbl("Startup (ms)", "startup", { "plugins" }, { engine("daw"), engine("tracktion") }, { "ms" })
+  { engine("paw") }, { "rss_first_kb", "rss_mid_kb", "rss_last_kb", "growth_kb_per_round" })
+tbl("Startup (ms)", "startup", { "plugins" }, { engine("paw"), engine("tracktion") }, { "ms" })

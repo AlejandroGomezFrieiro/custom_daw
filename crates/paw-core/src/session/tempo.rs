@@ -1,8 +1,8 @@
 //! Editing the tempo map: tempo and signature points along the song.
 
 use anyhow::{Result, bail};
-use daw_engine::tempo::EPS;
-use daw_engine::{SigPoint, TempoMap, TempoPoint};
+use paw_engine::tempo::EPS;
+use paw_engine::{SigPoint, TempoMap, TempoPoint};
 
 use super::Session;
 

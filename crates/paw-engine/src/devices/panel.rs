@@ -5,7 +5,7 @@
 //! [`super::dsp::Tap`]); the face keeps a copy of the parameter values,
 //! which the host gives it alongside every change it sends the device.
 //!
-//! Scripts reach a face through `daw.api.device_call(id, method, data)`;
+//! Scripts reach a face through `paw.api.device_call(id, method, data)`;
 //! answers are text: numbers separated by spaces, or `name value` lines.
 
 use anyhow::{Result, bail};

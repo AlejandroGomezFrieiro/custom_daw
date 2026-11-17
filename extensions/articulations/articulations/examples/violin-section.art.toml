@@ -1,5 +1,5 @@
 # An example: the violin section of VSCO 2 CE, as a keyswitched SFZ plays it.
-# Copy it to ~/.config/daw/articulations/ and change it to fit your library;
+# Copy it to ~/.config/paw/articulations/ and change it to fit your library;
 # `:art.map violin-section` binds it to the track under the cursor.
 format = 1
 name = "Violin section"

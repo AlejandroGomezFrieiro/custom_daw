@@ -897,148 +897,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
-name = "daw-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "daw-engine",
- "daw-luadev",
- "daw-proto",
- "daw-raster",
- "flacenc",
- "include_dir",
- "libc",
- "mlua",
- "rcgen",
- "realfft",
- "rtrb",
- "rubato",
- "rustls",
- "serde",
- "serde_json",
- "unicode-width",
-]
-
-[[package]]
-name = "daw-engine"
-version = "0.1.0"
-dependencies = [
- "alsa-sys",
- "anyhow",
- "cpal",
- "hound",
- "libc",
- "rtrb",
- "symphonia",
-]
-
-[[package]]
-name = "daw-gui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ashpd",
- "daw-listen",
- "daw-proto",
- "daw-raster",
- "eframe",
- "egui",
- "egui_kittest",
- "kurbo",
- "libc",
- "serde_json",
- "skrifa",
- "tiny-skia",
-]
-
-[[package]]
-name = "daw-listen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cpal",
- "daw-proto",
- "serde_json",
-]
-
-[[package]]
-name = "daw-luadev"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "daw-engine",
- "mlua",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "daw-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hound",
- "libc",
- "serde_json",
-]
-
-[[package]]
-name = "daw-plugins"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap-sys",
- "daw-engine",
- "libc",
- "libloading",
- "lilv-sys",
- "rtrb",
- "serde",
- "serde_json",
- "vst3",
- "x11rb",
-]
-
-[[package]]
-name = "daw-proto"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "rustls",
- "serde_json",
-]
-
-[[package]]
-name = "daw-raster"
-version = "0.1.0"
-dependencies = [
- "base64",
- "flate2",
- "libc",
- "serde_json",
- "tiny-skia",
- "ttf-parser",
-]
-
-[[package]]
-name = "daw-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossterm",
- "daw-core",
- "daw-engine",
- "daw-listen",
- "daw-luadev",
- "daw-plugins",
- "daw-raster",
- "libc",
- "serde_json",
-]
-
-[[package]]
 name = "der-parser"
 version = "10.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2998,6 +2856,148 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link",
+]
+
+[[package]]
+name = "paw-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "flacenc",
+ "include_dir",
+ "libc",
+ "mlua",
+ "paw-engine",
+ "paw-luadev",
+ "paw-proto",
+ "paw-raster",
+ "rcgen",
+ "realfft",
+ "rtrb",
+ "rubato",
+ "rustls",
+ "serde",
+ "serde_json",
+ "unicode-width",
+]
+
+[[package]]
+name = "paw-engine"
+version = "0.1.0"
+dependencies = [
+ "alsa-sys",
+ "anyhow",
+ "cpal",
+ "hound",
+ "libc",
+ "rtrb",
+ "symphonia",
+]
+
+[[package]]
+name = "paw-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ashpd",
+ "eframe",
+ "egui",
+ "egui_kittest",
+ "kurbo",
+ "libc",
+ "paw-listen",
+ "paw-proto",
+ "paw-raster",
+ "serde_json",
+ "skrifa",
+ "tiny-skia",
+]
+
+[[package]]
+name = "paw-listen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cpal",
+ "paw-proto",
+ "serde_json",
+]
+
+[[package]]
+name = "paw-luadev"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "mlua",
+ "paw-engine",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "paw-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hound",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
+name = "paw-plugins"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap-sys",
+ "libc",
+ "libloading",
+ "lilv-sys",
+ "paw-engine",
+ "rtrb",
+ "serde",
+ "serde_json",
+ "vst3",
+ "x11rb",
+]
+
+[[package]]
+name = "paw-proto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "rustls",
+ "serde_json",
+]
+
+[[package]]
+name = "paw-raster"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "flate2",
+ "libc",
+ "serde_json",
+ "tiny-skia",
+ "ttf-parser",
+]
+
+[[package]]
+name = "paw-tui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "libc",
+ "paw-core",
+ "paw-engine",
+ "paw-listen",
+ "paw-luadev",
+ "paw-plugins",
+ "paw-raster",
+ "serde_json",
 ]
 
 [[package]]

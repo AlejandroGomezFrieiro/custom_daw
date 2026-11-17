@@ -4,15 +4,15 @@
 //! A clip in a slot is a clip like any other (its notes are edited with the
 //! same calls) kept in `Track::slots` with its row. Launching is a message
 //! to the engine, which starts the clip on the next boundary of its
-//! quantize to the frame (`daw_engine::launch`); what plays is read back
+//! quantize to the frame (`paw_engine::launch`); what plays is read back
 //! from the engine, never kept here, so it is not part of the project or
 //! of undo. A render plays the timeline: a fresh engine has nothing launched.
 
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use daw_engine::Msg;
-use daw_engine::launch::{Launch, Target};
+use paw_engine::Msg;
+use paw_engine::launch::{Launch, Target};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -192,7 +192,7 @@ impl Session {
             .map(|&track| Launch {
                 track,
                 target: Target::Arrangement,
-                quantize: daw_engine::launch::Quantize::Off,
+                quantize: paw_engine::launch::Quantize::Off,
                 legato: false,
                 from: None,
             })

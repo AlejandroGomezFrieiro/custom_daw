@@ -1,7 +1,7 @@
 //! Helper processes and Unix sockets, for extensions that drive a program of
 //! their own (a renderer, a language server) from Lua.
 //!
-//! Everything is addressed by number and moves as plain bytes, so `daw.api`
+//! Everything is addressed by number and moves as plain bytes, so `paw.api`
 //! stays plain data. Reads never block. A process started with pipes is read
 //! on a thread of its own, which wakes the kernel when bytes arrive, so that
 //! a script hears of them as an event instead of polling; sockets are polled
@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn a_piped_process_writes_its_errors_to_the_log_and_not_the_pipe() {
         let (mut io, _) = counted();
-        let dir = std::env::temp_dir().join(format!("daw-io-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-io-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let log = dir.join("helper.log");
         let argv = ["sh", "-c", "echo out; echo err >&2"].map(String::from);

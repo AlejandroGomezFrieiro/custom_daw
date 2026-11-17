@@ -14,8 +14,8 @@
 --   art.set({ { clip = id, place = 3 } }, "pizzicato")   -- one undo step
 --   art.of(track, note)                     -- the map's articulation a note plays, through M2-123's fallback
 --   art.attr_of(note)                       -- { type, data } or nil
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local m2 = require("articulations.m2")
 local maps = require("articulations.maps")
 
@@ -29,7 +29,7 @@ local M = { m2 = m2, maps = maps, toml = require("articulations.toml") }
 
 --- Whether the core keeps a note's attribute itself.
 function M.core()
-  return type(daw.attr) == "table" and type(daw.attr.m2) == "function"
+  return type(paw.attr) == "table" and type(paw.attr.m2) == "function"
 end
 
 --- A note's attribute, `{ type, data }`, or nil when it has none.
@@ -151,7 +151,7 @@ function M.bind(track, which)
     info.names = names
   end)
   M.set_attr_map(id, M.compile(map, default))
-  daw.emit("articulations.bound", { track = id, map = map.id })
+  paw.emit("articulations.bound", { track = id, map = map.id })
   return map
 end
 
@@ -162,7 +162,7 @@ function M.unbind(track)
   keep(id, function(info)
     for k in pairs(info) do info[k] = nil end
   end)
-  daw.emit("articulations.bound", { track = id })
+  paw.emit("articulations.bound", { track = id })
 end
 
 --- The articulation of a map an attribute plays, by M2-123's fallback, and
@@ -289,7 +289,7 @@ function M.set(places, choice)
     end
     table.sort(set, function(a, b) return a.index < b.index end)
     if #set > 0 then
-      daw.clip(id):edit_notes({ set = set })
+      paw.clip(id):edit_notes({ set = set })
       changed = changed + #set
     end
   end

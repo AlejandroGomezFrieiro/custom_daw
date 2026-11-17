@@ -356,7 +356,7 @@ impl Roll {
         }
     }
 
-    /// Take in the clip the roll has open (`daw.frontend.clip`).
+    /// Take in the clip the roll has open (`paw.frontend.clip`).
     fn clip(&mut self, clip: &Value, id: i64, bar: f32) {
         self.hidden = int(&clip["hidden"]);
         // Other clips it edits may start before it: the roll's beats then
@@ -553,7 +553,7 @@ impl View {
         match name {
             "roll-grid" => {
                 if let Some((_, value)) = GRIDS.get(at) {
-                    self.eval("daw.opt.note_grid = ...", json!([value]));
+                    self.eval("paw.opt.note_grid = ...", json!([value]));
                 }
             }
             "roll-length" => {
@@ -573,7 +573,7 @@ impl View {
         if !std::mem::take(&mut self.roll.stale) {
             return;
         }
-        let clip = self.ask("return daw.frontend.clip(...)", json!([id]));
+        let clip = self.ask("return paw.frontend.clip(...)", json!([id]));
         if clip.is_null() || clip["kind"] != "midi" {
             return;
         }

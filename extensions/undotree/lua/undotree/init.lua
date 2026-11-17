@@ -1,6 +1,6 @@
--- The undo tree, named checkpoints and A/B comparison, over `daw.api.undo_*`
--- and `daw.api.checkpoint_*`. See README.md beside the extension.
-local api = daw.api
+-- The undo tree, named checkpoints and A/B comparison, over `paw.api.undo_*`
+-- and `paw.api.checkpoint_*`. See README.md beside the extension.
+local api = paw.api
 
 local M = {
   a = nil,        -- the state marked A
@@ -10,7 +10,7 @@ local M = {
 
 -- Reading ------------------------------------------------------------------------
 
---- The tree as `daw.api.undo_tree()` gives it, with `by_id` added.
+--- The tree as `paw.api.undo_tree()` gives it, with `by_id` added.
 function M.tree()
   local tree = api.undo_tree()
   tree.by_id = {}
@@ -100,7 +100,7 @@ function M.describe(state)
   return string.format("#%d  %s  %s%s", state.id, M.when(state.time), tag, M.what(state))
 end
 
---- What a diff from `daw.api.undo_diff` adds up to, in one line:
+--- What a diff from `paw.api.undo_diff` adds up to, in one line:
 --- "2 clips changed, 5 notes added".
 function M.summary(diff)
   if diff.same then return "no change" end
@@ -124,14 +124,14 @@ end
 local function moved(id)
   if not id then return false end
   local s = M.tree().by_id[id]
-  if s then daw.notify(M.describe(s)) end
+  if s then paw.notify(M.describe(s)) end
   return true
 end
 
 --- Go to a state by id.
 function M.go(id)
   if not api.undo_goto(id) then
-    daw.notify("no state #" .. tostring(id) .. " in the undo tree", "warn")
+    paw.notify("no state #" .. tostring(id) .. " in the undo tree", "warn")
     return false
   end
   return moved(id)
@@ -154,7 +154,7 @@ end
 function M.travel(dir, text, count)
   local amount = M.parse_amount(text, count)
   if not amount then
-    daw.notify("give a count or a time such as 30s, 2m, 1h", "warn")
+    paw.notify("give a count or a time such as 30s, 2m, 1h", "warn")
     return nil
   end
   local id
@@ -164,7 +164,7 @@ function M.travel(dir, text, count)
     id = api.undo_travel(dir * amount.seconds)
   end
   if not id then
-    daw.notify(dir < 0 and "already at the oldest state" or "already at the newest state")
+    paw.notify(dir < 0 and "already at the oldest state" or "already at the newest state")
     return nil
   end
   moved(id)
@@ -180,7 +180,7 @@ function M.mark_a(id)
   if M.a and M.a ~= id and M.a ~= M.b then pcall(api.undo_keep, M.a, false) end
   M.a = id
   api.undo_keep(id, true)
-  daw.notify("A is #" .. id)
+  paw.notify("A is #" .. id)
   api.ui_redraw()
   return id
 end
@@ -268,7 +268,7 @@ end
 function M.restore(item)
   if item.file then
     local id = api.checkpoint_restore(item.file)
-    daw.notify("restored " .. item.name .. " as #" .. id)
+    paw.notify("restored " .. item.name .. " as #" .. id)
     return id
   end
   return M.go(item.state) and item.state
@@ -288,28 +288,28 @@ end
 function M.choose()
   local items = M.items()
   if #items == 0 then
-    daw.notify("no checkpoints yet: `:checkpoint <name>` makes one")
+    paw.notify("no checkpoints yet: `:checkpoint <name>` makes one")
     return
   end
-  if daw.pick then
-    daw.pick({ title = "Checkpoints", items = items, on_choose = function(item) M.restore(item) end })
+  if paw.pick then
+    paw.pick({ title = "Checkpoints", items = items, on_choose = function(item) M.restore(item) end })
     return
   end
   local lines = {}
   for i, item in ipairs(items) do lines[#lines + 1] = string.format("%3d  %s", i, item.text) end
   lines[#lines + 1] = ""
   lines[#lines + 1] = { text = ":checkpoint.restore <number or name> restores one", style = "Dim" }
-  daw.ui.page("Checkpoints", lines)
+  paw.ui.page("Checkpoints", lines)
 end
 
-daw.on("project.loaded", function()
+paw.on("project.loaded", function()
   M.a, M.b, M.pending = nil, nil, {}
 end)
 
-daw.on("project.saved", function()
+paw.on("project.saved", function()
   if #M.pending == 0 then return end
   local n = M.write_pending()
-  if n > 0 then daw.notify(string.format("wrote %d checkpoint%s beside the project", n, n == 1 and "" or "s")) end
+  if n > 0 then paw.notify(string.format("wrote %d checkpoint%s beside the project", n, n == 1 and "" or "s")) end
 end)
 
 return M

@@ -1,9 +1,9 @@
--- `require("daw.dsp")`: what a device written in Lua is made with. A device
+-- `require("paw.dsp")`: what a device written in Lua is made with. A device
 -- is a file that returns `dsp.device { ... }`: its name, its parameters, and
 -- a `process` function given each block of sound. See "Writing a device in
 -- Lua" in docs/devices.md.
 --
---   local dsp = require("daw.dsp")
+--   local dsp = require("paw.dsp")
 --   local dev = dsp.device {
 --     name = "Gain",
 --     params = { { key = "gain", name = "Gain", min = -60, max = 12, default = 0, unit = "dB" } },
@@ -23,15 +23,15 @@ local ffi = require("ffi")
 
 local M = {}
 
-if not pcall(ffi.typeof, "daw_event") then
+if not pcall(ffi.typeof, "paw_event") then
   ffi.cdef([[
-    typedef struct { int32_t frame, type, channel, key; double value; int32_t from, attr; } daw_event;
-    typedef struct { double sample_rate, tempo, beat, seconds, bar_start, bar, sig_num, sig_den, playing; } daw_transport;
-    int daw_open(const char *path, int flags) __asm__("open");
-    int daw_close(int fd) __asm__("close");
-    int64_t daw_lseek(int fd, int64_t offset, int whence) __asm__("lseek");
-    void *daw_mmap(void *addr, size_t length, int prot, int flags, int fd, int64_t offset) __asm__("mmap");
-    int daw_munmap(void *addr, size_t length) __asm__("munmap");
+    typedef struct { int32_t frame, type, channel, key; double value; int32_t from, attr; } paw_event;
+    typedef struct { double sample_rate, tempo, beat, seconds, bar_start, bar, sig_num, sig_den, playing; } paw_transport;
+    int paw_open(const char *path, int flags) __asm__("open");
+    int paw_close(int fd) __asm__("close");
+    int64_t paw_lseek(int fd, int64_t offset, int whence) __asm__("lseek");
+    void *paw_mmap(void *addr, size_t length, int prot, int flags, int fd, int64_t offset) __asm__("mmap");
+    int paw_munmap(void *addr, size_t length) __asm__("munmap");
   ]])
 end
 
@@ -49,7 +49,7 @@ M.OTHER = 8        -- anything else (a note's own controllers, RPNs): pass it on
 --- none. `e.attr` holds it as one number, `type * 65536 + data`, 0 for
 --- none, so that a device can compare it without making a table:
 ---   if e.attr ~= 0 then local a = dsp.attr(e) ... end
---- `daw.attr.describe` names it.
+--- `paw.attr.describe` names it.
 function M.attr(e)
   local packed = tonumber(e.attr)
   if packed == 0 then return nil end
@@ -105,7 +105,7 @@ Mapped.__index = Mapped
 --- Let go of the file now rather than when the map is collected.
 function Mapped:close()
   if self.base then
-    ffi.C.daw_munmap(ffi.gc(self.base, nil), self.size)
+    ffi.C.paw_munmap(ffi.gc(self.base, nil), self.size)
     self.base, self.data, self.n = nil, nil, 0
   end
 end
@@ -119,19 +119,19 @@ end
 --- that sends it writes a file and calls the device with its path.
 function M.map(path)
   local C = ffi.C
-  local fd = C.daw_open(path, 0)
+  local fd = C.paw_open(path, 0)
   if fd < 0 then error("cannot open " .. tostring(path), 2) end
-  local size = C.daw_lseek(fd, 0, 2)
+  local size = C.paw_lseek(fd, 0, 2)
   if size <= 0 then
-    C.daw_close(fd)
+    C.paw_close(fd)
     return setmetatable({ n = 0, size = 0 }, Mapped)
   end
   -- MAP_PRIVATE | MAP_POPULATE: read in now, not on the first touch.
-  local base = C.daw_mmap(nil, size, 1, 0x8002, fd, 0)
-  C.daw_close(fd)
+  local base = C.paw_mmap(nil, size, 1, 0x8002, fd, 0)
+  C.paw_close(fd)
   if base == ffi.cast("void *", -1) then error("cannot map " .. tostring(path), 2) end
   local m = setmetatable({ size = size, n = tonumber(size) / 4 - (tonumber(size) / 4) % 1 }, Mapped)
-  m.base = ffi.gc(base, function(p) C.daw_munmap(p, size) end)
+  m.base = ffi.gc(base, function(p) C.paw_munmap(p, size) end)
   m.data = ffi.cast("const float *", base)
   return m
 end
@@ -277,7 +277,7 @@ function Block:pass(e, frame)
   local n = self.nout
   if n >= self.max_events then return end
   local o = self.out[n]
-  ffi.copy(o, e, ffi.sizeof("daw_event"))
+  ffi.copy(o, e, ffi.sizeof("paw_event"))
   if frame then o.frame = frame end
   self.nout = n + 1
 end
@@ -346,7 +346,7 @@ function M._block(dev, ptr, max_block, max_events, sample_rate)
   local b = setmetatable({
     left = ffi.cast("float*", ptr.left), right = ffi.cast("float*", ptr.right),
     key_left = nil, key_right = nil,
-    events = ffi.cast("daw_event*", ptr.events_in), out = ffi.cast("daw_event*", ptr.events_out),
+    events = ffi.cast("paw_event*", ptr.events_in), out = ffi.cast("paw_event*", ptr.events_out),
     frames = 0, nevents = 0, nout = 0, max_block = max_block, max_events = max_events,
     sample_rate = sample_rate, params = {},
     playing = false, tempo = 120, beat = 0, seconds = 0, bar = 0, bar_start = 0, sig_num = 4, sig_den = 4,

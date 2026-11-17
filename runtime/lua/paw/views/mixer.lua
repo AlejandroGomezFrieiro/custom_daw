@@ -4,14 +4,14 @@
 -- level meters for both sides beside the fader, with the loudest of late held
 -- and 0 dB marked on the fader's rail; the peak and the fader in dB; the pan;
 -- and the M S R I chips.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 
--- `row` is the row of a strip the cursor is on (daw/mixer_rows.lua): "volume",
+-- `row` is the row of a strip the cursor is on (paw/mixer_rows.lua): "volume",
 -- "pan", "send2", "insert1", "mute" ...
 local view = { scroll = 0, row = "volume" }
-daw.seats.fields("mixer", view, { "scroll", "geometry", "row" }, { scroll = 0, row = "volume" })
-local draw = daw.draw
+paw.seats.fields("mixer", view, { "scroll", "geometry", "row" }, { scroll = 0, row = "volume" })
+local draw = paw.draw
 
 local SCALE = 4 -- columns for the dB scale on the left
 
@@ -41,7 +41,7 @@ local function above_fader(height)
   return math.max(plain, vca)
 end
 
--- `here` is the row the cursor is on, on the strip it is on (daw/mixer_rows.lua).
+-- `here` is the row the cursor is on, on the strip it is on (paw/mixer_rows.lua).
 local function strip(buf, x, t, index, selected, height, sw, here)
   local g = draw.g
   local hue = draw.track_hue(t, index)
@@ -50,15 +50,15 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   -- The name on a plate in the track's colour, lit for the track the cursor is on.
   buf:fill(x, 0, w, 1, " ", selected and hue.title_cur or hue.plate)
   buf:text(x + 1, 0, util.fit(t.name, w - 1))
-  -- What modules mark on the strip (`daw.ui.layer("mixer", "strip", ...)`).
-  daw.ui.paint("mixer", "strip", { buf = buf, x = x, y = 0, width = w, height = height, track = t.id })
+  -- What modules mark on the strip (`paw.ui.layer("mixer", "strip", ...)`).
+  paw.ui.paint("mixer", "strip", { buf = buf, x = x, y = 0, width = w, height = height, track = t.id })
   -- Where each part is, for the pointer.
   local parts = { x = x, w = w, id = t.id }
   local y = 1
   local vca = t.meta and t.meta.vca == true
   -- A VCA names the tracks it moves, with room; a track the VCAs it is under.
   if vca and height >= 12 then
-    local members = daw.vca.members(t.id)
+    local members = paw.vca.members(t.id)
     for i = 1, 3 do
       local name = members[i] and api.track_get(members[i]).name
       if i == 3 and #members > 3 then name = "+" .. (#members - 2) .. " more" end
@@ -81,7 +81,7 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   end
   -- The VCAs the track is under.
   if not vca and not t.master and height >= 12 then
-    local words = daw.frontend.vca_words(t.id)
+    local words = paw.frontend.vca_words(t.id)
     if words ~= "" then buf:text(x + 1, y, util.fit("vca " .. words, w - 1), "TrackInfo") end
     y = y + 1
   end
@@ -140,8 +140,8 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   local db = 20 * math.log10(math.max(hold, 1e-6))
   local peak = db < -60 and "-inf" or string.format("%.1f", db)
   buf:text(x + w - #peak, y, peak, db > -0.1 and "MeterHigh" or "TrackIndex")
-  -- What modules label the strip with, on the peak's row (`daw.ui.layer("mixer", "strip_foot", ...)`).
-  daw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - 1, track = t.id })
+  -- What modules label the strip with, on the peak's row (`paw.ui.layer("mixer", "strip_foot", ...)`).
+  paw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - 1, track = t.id })
   local vol = draw.db_text(t.volume)
   buf:text(x + w - #vol, y + 1, vol, selected and "Bright" or "TrackInfo")
   if not vca then draw.pan(buf, x + 1, y + 2, math.min(7, w - 1), t.pan or 0) end
@@ -187,8 +187,8 @@ end
 --- The tracks in the order of the strips: VCAs after the others.
 local function strip_order()
   local tracks, vcas = {}, {}
-  for _, id in ipairs(daw.scope.tracks()) do
-    local list = daw.vca.is_vca(id) and vcas or tracks
+  for _, id in ipairs(paw.scope.tracks()) do
+    local list = paw.vca.is_vca(id) and vcas or tracks
     list[#list + 1] = id
   end
   table.move(vcas, 1, #vcas, #tracks + 1, tracks)
@@ -199,20 +199,20 @@ function view:render(buf, ctx)
   local g = draw.g
   local tracks = strip_order()
   -- The row under the cursor, by name and value, on the right of the title.
-  local row, row_track = daw.mixer_rows.current()
+  local row, row_track = paw.mixer_rows.current()
   local here
   if row and ctx.focused then
-    local name, value = daw.mixer_rows.describe_row(row_track, row)
+    local name, value = paw.mixer_rows.describe_row(row_track, row)
     here = name .. " " .. value
   end
-  local body = daw.ui.titlebar(buf, {
+  local body = paw.ui.titlebar(buf, {
     name = "Mixer", context = #tracks .. (#tracks == 1 and " track" or " tracks"), focused = ctx.focused, right = here,
   })
   local w, h = body.width, body.height
   body:fill(0, 0, w, h, " ", "TrackHeader")
   local sw = view.strip_width(w + 1)
   local room = math.max(1, math.floor((w - SCALE - sw - 1) / sw))
-  local cursor_track = daw.cursor.track_id()
+  local cursor_track = paw.cursor.track_id()
   local index = 1
   for i, id in ipairs(tracks) do
     if id == cursor_track then index = i end
@@ -247,5 +247,5 @@ function view:render(buf, ctx)
   self.geometry = { sw = sw, shown = shown, strips = strips }
 end
 
-daw.ui.view("mixer", view)
+paw.ui.view("mixer", view)
 return view

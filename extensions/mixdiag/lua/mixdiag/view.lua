@@ -1,16 +1,16 @@
 -- The list of findings (when there is no picker), and the strip of marks
 -- drawn above the arrange view, lined up with its timeline.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local styles = { error = "MixError", warn = "MixWarn", info = "MixInfo", hint = "MixHint" }
 local glyphs = { error = "E", warn = "W", info = "I", hint = "H" }
 local rank = { error = 1, warn = 2, info = 3, hint = 4 }
 
-daw.ui.hl("MixError", "Error")
-daw.ui.hl("MixWarn", "Warn")
-daw.ui.hl("MixInfo", "Title")
-daw.ui.hl("MixHint", "Dim")
+paw.ui.hl("MixError", "Error")
+paw.ui.hl("MixWarn", "Warn")
+paw.ui.hl("MixInfo", "Title")
+paw.ui.hl("MixHint", "Dim")
 
 -- The report ----------------------------------------------------------------------
 
@@ -47,10 +47,10 @@ end
 function list:render(buf)
   local mixdiag = require("mixdiag")
   self.items = mixdiag.result and mixdiag.items() or {}
-  self.at = daw.util.clamp(self.at, 1, math.max(1, #self.items))
+  self.at = paw.util.clamp(self.at, 1, math.max(1, #self.items))
   local top = head(mixdiag)
-  for i, line in ipairs(top) do buf:text(1, i - 1, daw.util.fit(line[1], math.max(1, buf.width - 2)), line[2]) end
-  buf:fill(0, #top, buf.width, 1, daw.draw.g.h, "Rule")
+  for i, line in ipairs(top) do buf:text(1, i - 1, paw.util.fit(line[1], math.max(1, buf.width - 2)), line[2]) end
+  buf:fill(0, #top, buf.width, 1, paw.draw.g.h, "Rule")
   local first = #top + 1
   local rows = buf.height - first - 1
   self.first, self.rows = first, rows
@@ -62,9 +62,9 @@ function list:render(buf)
     local item = self.items[i]
     if not item then break end
     if i == self.at then buf:fill(0, first + row, buf.width, 1, " ", "Visual") end
-    buf:text(1, first + row, daw.util.fit(item.text, math.max(1, buf.width - 2)), styles[item.severity] or "Normal")
+    buf:text(1, first + row, paw.util.fit(item.text, math.max(1, buf.width - 2)), styles[item.severity] or "Normal")
   end
-  buf:text(1, buf.height - 1, daw.util.fit("j/k move  Enter go there  a measure the song  l the loop  t the track  T target  q close", buf.width - 2), "Dim")
+  buf:text(1, buf.height - 1, paw.util.fit("j/k move  Enter go there  a measure the song  l the loop  t the track  T target  q close", buf.width - 2), "Dim")
 end
 
 --- Go to the finding chosen. Floating, the report closes first; in a window
@@ -72,15 +72,15 @@ end
 local function go()
   local item = list.items[list.at]
   if not (item and item.finding) then return end
-  if daw.ui.float and daw.ui.float.name == "mixdiag" then daw.ui.close() end
-  daw.ui.focus("arrange")
+  if paw.ui.float and paw.ui.float.name == "mixdiag" then paw.ui.close() end
+  paw.ui.focus("arrange")
   require("mixdiag").jump(item.finding)
 end
 
 local function measure(scope)
   return function()
     local ok, err = pcall(require("mixdiag").analyze, scope)
-    if not ok then daw.notify("mix: " .. tostring(err), "warn") end
+    if not ok then paw.notify("mix: " .. tostring(err), "warn") end
   end
 end
 
@@ -93,11 +93,11 @@ local actions = {
   a = measure("song"),
   l = measure("loop"),
   t = measure("track"),
-  T = function() daw.cmd("mix.target") end,
-  q = function() daw.ui.close() end,
+  T = function() paw.cmd("mix.target") end,
+  q = function() paw.ui.close() end,
   -- Escape closes the report only while it floats, as a prompt does; in a
   -- window of its own it stays, and `q` closes it.
-  ["<Esc>"] = function() if daw.ui.float then daw.ui.close() end end,
+  ["<Esc>"] = function() if paw.ui.float then paw.ui.close() end end,
 }
 actions["<Down>"], actions["<Up>"], actions["<Enter>"] = actions.j, actions.k, actions["<CR>"]
 
@@ -120,7 +120,7 @@ function list:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("mixdiag", list)
+paw.ui.view("mixdiag", list)
 
 --- Show the report, on the first finding.
 function M.open()
@@ -128,7 +128,7 @@ function M.open()
   local items = require("mixdiag").items()
   local width = 60
   for _, item in ipairs(items) do width = math.max(width, api.str_width(item.text) + 6) end
-  daw.ui.open("mixdiag", { title = "Mix report", width = math.min(width, 140), height = math.min(#items + 8, 30) })
+  paw.ui.open("mixdiag", { title = "Mix report", width = math.min(width, 140), height = math.min(#items + 8, 30) })
 end
 
 M.list_view = list
@@ -140,7 +140,7 @@ local strip = { focusable = false }
 function strip:render(buf)
   local mixdiag = require("mixdiag")
   buf:fill(0, 0, buf.width, 1, " ", "Ruler")
-  local arrange = daw.ui.views.arrange
+  local arrange = paw.ui.views.arrange
   local g = arrange and arrange.geometry
   local job = mixdiag.job
   local label
@@ -150,7 +150,7 @@ function strip:render(buf)
     label = " " .. #mixdiag.findings .. (mixdiag.stale() and " (old)" or "")
   end
   if g then
-    buf:text(0, 0, daw.util.fit(" mix" .. (label or ""), math.max(1, g.hw - 1)), job and "Warn" or "Dim")
+    buf:text(0, 0, paw.util.fit(" mix" .. (label or ""), math.max(1, g.hw - 1)), job and "Warn" or "Dim")
     -- The most severe finding wins a column.
     local columns = {}
     for _, mark in ipairs(mixdiag.marks()) do
@@ -165,15 +165,15 @@ function strip:render(buf)
   end
 end
 
-daw.ui.view("mixdiag_strip", strip)
+paw.ui.view("mixdiag_strip", strip)
 
 -- In the graphical frontend, the findings that have a place are flags in a
 -- band under the ruler, in the colour of the worst at each place; a click
 -- goes to that one.
-if daw.frontend and daw.frontend.bands then
-  local c = daw.canvas.palette
+if paw.frontend and paw.frontend.bands then
+  local c = paw.canvas.palette
   local colours = { error = c.error, warn = c.warn, info = c.select, hint = c.text_3 }
-  table.insert(daw.frontend.bands, function()
+  table.insert(paw.frontend.bands, function()
     local mixdiag = require("mixdiag")
     local out, at = {}, {}
     for _, f in ipairs(mixdiag.findings or {}) do
@@ -197,24 +197,24 @@ if daw.frontend and daw.frontend.bands then
     end
     return out
   end)
-  daw.on("mixdiag.done", daw.frontend.refresh)
+  paw.on("mixdiag.done", paw.frontend.refresh)
 end
 
 local docked = false
 
 function M.strip(show)
   if show and not docked then
-    daw.ui.dock("mixdiag_strip", { side = "top", size = 1 })
+    paw.ui.dock("mixdiag_strip", { side = "top", size = 1 })
     docked = true
   elseif show then
-    daw.ui.show("mixdiag_strip")
+    paw.ui.show("mixdiag_strip")
   elseif docked then
-    daw.ui.hide("mixdiag_strip")
+    paw.ui.hide("mixdiag_strip")
   end
 end
 
 function M.strip_visible()
-  return docked and daw.ui.visible("mixdiag_strip")
+  return docked and paw.ui.visible("mixdiag_strip")
 end
 
 return M

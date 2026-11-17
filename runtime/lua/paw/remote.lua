@@ -2,7 +2,7 @@
 -- calling into the kernel: events as they happen, and the state a graphical
 -- frontend draws, pushed when it changes instead of asked for thirty times
 -- a second. docs/protocol.md describes the whole protocol; the transport
--- (the socket, TCP, the token) is in crates/daw-core/src/rpc.rs.
+-- (the socket, TCP, the token) is in crates/paw-core/src/rpc.rs.
 --
 --   subscribe "transport.*" "project.saved"   -- events are pushed as they happen
 --   unsubscribe                               -- all of them, or the ones named
@@ -10,8 +10,8 @@
 --   frontend.unwatch
 --
 -- An extension can add methods of its own:
---   daw.remote.methods["mything.status"] = function(client, ...) return ... end
-local api = daw.api
+--   paw.remote.methods["mything.status"] = function(client, ...) return ... end
+local api = paw.api
 local M = { methods = {} }
 
 local subs = {}      -- connection -> list of event patterns
@@ -51,7 +51,7 @@ end
 
 -- Every event goes to the connections that asked for it. What cannot be
 -- written as JSON (an extension's event carrying a function) is not sent.
-daw.on("*", function(payload, name)
+paw.on("*", function(payload, name)
   for client, patterns in pairs(subs) do
     for _, pattern in ipairs(patterns) do
       if matches(pattern, name) then
@@ -63,7 +63,7 @@ daw.on("*", function(payload, name)
   end
 end)
 
--- The parts of `daw.frontend.state` that only change with the project, each
+-- The parts of `paw.frontend.state` that only change with the project, each
 -- sent again only when it differs from what the connection last got. The
 -- bar and beat lines are a part of their own: they are most of a long
 -- song's state and change least.
@@ -86,7 +86,7 @@ function M.push(client)
   local w = watchers[client]
   if not w then return end
   -- What the window draws is seen from its own seat.
-  local state = daw.seats.within(client, daw.frontend.state, w.revision)
+  local state = paw.seats.within(client, paw.frontend.state, w.revision)
   local changed
   if state.project then
     w.revision = state.revision
@@ -117,8 +117,8 @@ end
 local function retime()
   local fastest
   for _, w in pairs(watchers) do fastest = math.min(fastest or w.interval, w.interval) end
-  if timer then daw.cancel(timer) end
-  timer = fastest and daw.every(fastest, function()
+  if timer then paw.cancel(timer) end
+  timer = fastest and paw.every(fastest, function()
     for client in pairs(watchers) do M.push(client) end
   end) or nil
 end
@@ -130,8 +130,8 @@ M.methods["frontend.watch"] = function(client, opts)
   -- A window has a seat of its own, unless it shares the instance's (one
   -- that started its kernel itself, and is the instance's only face).
   if not (type(opts) == "table" and opts.seat == "instance") then
-    daw.seats.open(client, "window")
-    daw.seats.enter(client)
+    paw.seats.open(client, "window")
+    paw.seats.enter(client)
   end
   retime()
   -- The whole state at once, without waiting for the first tick.
@@ -142,7 +142,7 @@ end
 M.methods["frontend.unwatch"] = function(client)
   watchers[client] = nil
   retime()
-  daw.seats.close(client, "window")
+  paw.seats.close(client, "window")
   return true
 end
 
@@ -152,7 +152,7 @@ function M.closed(client)
   if watchers[client] then
     watchers[client] = nil
     retime()
-    daw.seats.close(client, "window")
+    paw.seats.close(client, "window")
   end
 end
 
@@ -168,35 +168,35 @@ end
 -- The instance cannot read the disk of the machine a terminal is attached
 -- from, so it asks that terminal's program to send the file (`file.wanted`),
 -- which sends it into the project's media folder and imports it.
-daw.command("upload", function(ctx)
+paw.command("upload", function(ctx)
   local path = ctx.args[1]
-  if not path or path == "" then return daw.notify("upload what? `upload ~/takes/bass.wav`", "warn") end
+  if not path or path == "" then return paw.notify("upload what? `upload ~/takes/bass.wav`", "warn") end
   local client = api.ui_client()
-  if not daw.seats.has(client) then
-    return daw.notify("this terminal is the instance's own: `:import` reads this machine's files", "warn")
+  if not paw.seats.has(client) then
+    return paw.notify("this terminal is the instance's own: `:import` reads this machine's files", "warn")
   end
   api.rpc_push(client, "file.wanted", { path = path, import = true })
-  daw.notify("asked for " .. path .. " from the attached terminal's machine")
-end, { desc = "From a terminal attached with `daw attach`: send a sound file from that machine and import it: `upload ~/take.wav`", raw = true })
+  paw.notify("asked for " .. path .. " from the attached terminal's machine")
+end, { desc = "From a terminal attached with `paw attach`: send a sound file from that machine and import it: `upload ~/take.wav`", raw = true })
 
 -- Sound plays on the instance's machine; a terminal or window attached from
 -- another can have it played there too (`monitor.listen`), which its own
 -- program starts and stops.
-daw.command("listen", function()
+paw.command("listen", function()
   local client = api.ui_client()
-  if not daw.seats.has(client) then
-    return daw.notify("this is the instance's own terminal: its sound plays here already", "warn")
+  if not paw.seats.has(client) then
+    return paw.notify("this is the instance's own terminal: its sound plays here already", "warn")
   end
   api.rpc_push(client, "monitor.toggle", {})
 end, { desc = "From a terminal or window attached from another machine: hear the instance's sound there, or stop" })
 
-daw.command("detach", function()
+paw.command("detach", function()
   local client = api.ui_client()
-  -- A connection without a seat of its own (`daw ctl`) is no terminal.
-  if not daw.seats.has(client) then
-    return daw.notify("this is the program's own terminal: `:q` quits; `daw attach` from another terminal can be detached", "warn")
+  -- A connection without a seat of its own (`paw ctl`) is no terminal.
+  if not paw.seats.has(client) then
+    return paw.notify("this is the program's own terminal: `:q` quits; `paw attach` from another terminal can be detached", "warn")
   end
   api.ui_detach(client)
-end, { desc = "Leave a terminal that was attached with `daw attach`; the program runs on" })
+end, { desc = "Leave a terminal that was attached with `paw attach`; the program runs on" })
 
 return M

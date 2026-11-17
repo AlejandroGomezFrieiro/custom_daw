@@ -5,17 +5,17 @@
 -- the test voicebank, and are skipped without them.
 local T = ...
 io.stdout:setvbuf("line")
-local api = daw.api
+local api = paw.api
 local eq, near, test, fails = T.eq, T.near, T.test, T.fails
 
 local SINGER = os.getenv("REAUTAU_TEST_SINGER") or "Kitane sno act5 VCV"
 
 local utau
 local function load()
-  if not (daw.ext.loaded.utau and daw.ext.loaded.utau.ok) then daw.ext.load("extensions/utau") end
+  if not (paw.ext.loaded.utau and paw.ext.loaded.utau.ok) then paw.ext.load("extensions/utau") end
   utau = require("utau")
-  if daw.opt.utau_openutau_dir == "" and not os.getenv("REAUTAU_OPENUTAU_DIR") then
-    daw.opt.utau_openutau_dir = (os.getenv("HOME") or "") .. "/.local/share/OpenUtau"
+  if paw.opt.utau_openutau_dir == "" and not os.getenv("REAUTAU_OPENUTAU_DIR") then
+    paw.opt.utau_openutau_dir = (os.getenv("HOME") or "") .. "/.local/share/OpenUtau"
   end
   return utau
 end
@@ -37,7 +37,7 @@ local SYLLABLES = { "- あ", "- い", "- う", "- え", "- お" }
 
 --- A vocal track with a clip of `pitches` from `at`, a beat each.
 local function vocal(name, pitches, at)
-  local track = daw.add_track({ name = name or "Vocal" })
+  local track = paw.add_track({ name = name or "Vocal" })
   track:add_device(load().DEVICE)
   local list = {}
   for i, p in ipairs(pitches or { 60, 62, 64, 65 }) do
@@ -70,7 +70,7 @@ local function sung()
   local device = utau.device_of(track.id)
   n.stroke(track.id, device, "dyn", { { 4, -50 }, { 6, 30 }, { 8, -20 } })
   n.stroke(track.id, device, "pitd", { { 5, 100 }, { 7, -100 } })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   return track, clip
 end
@@ -101,7 +101,7 @@ end
 
 --- A vocal track with a clip and no notes: what it plays is what it is given.
 local function voice_track(name)
-  local track = daw.add_track({ name = name })
+  local track = paw.add_track({ name = name })
   track:add_device(load().DEVICE)
   track:add_clip({ start = 0, length = 8 })
   utau.assign_voices()
@@ -112,7 +112,7 @@ local function wait_for(what, limit, fn)
   local waited = 0
   while not fn() do
     if waited >= limit then error("waited " .. limit .. " ms for " .. what, 2) end
-    daw.wait(20)
+    paw.wait(20)
     waited = waited + 20
   end
 end
@@ -120,7 +120,7 @@ end
 test("utau: the device plays the phrases it is given, in time", function()
   T.fresh()
   load()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local t, device = voice_track("Voice")
   local v = utau.voices
   v.put(device, "11", 1.0, 44100, 1, 1, sine(330, 1.0, 44100))
@@ -141,15 +141,15 @@ test("utau: the device plays the phrases it is given, in time", function()
   info = T.render({ bits = 16, ["end"] = 8, tail = 0 })
   eq(T.channel_peaks(info, 1.1, 1.9) < 0.001, true, "a phrase that is not kept is gone")
   -- In real time, too.
-  daw.transport.seek(5)
-  daw.transport.play()
+  paw.transport.seek(5)
+  paw.transport.play()
   local loudest = 0
   local deadline = api.now() + 3000
-  while daw.transport.position < 5.9 and api.now() < deadline do
+  while paw.transport.position < 5.9 and api.now() < deadline do
     loudest = math.max(loudest, t:meter())
     api.sleep(5)
   end
-  daw.transport.stop()
+  paw.transport.stop()
   eq(loudest > 0.2, true, "heard while playing")
   v.clear(device)
   eq(#v.list(device), 0, "cleared")
@@ -158,7 +158,7 @@ end)
 test("utau: a device made later, a render's own and the one playing live sound exactly the same", function()
   T.fresh()
   load()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local first, device = voice_track("First")
   local voice = utau.voices.voice_of(device)
   local rate = T.render({ bits = 32, ["end"] = 1, tail = 0 }).sample_rate
@@ -167,10 +167,10 @@ test("utau: a device made later, a render's own and the one playing live sound e
   utau.voices.put(device, "7", 0.5, rate, 1, 1, raw)
   -- The track that was given the phrase goes; a new one takes its voice.
   first:remove()
-  local track = daw.add_track({ name = "Later" })
+  local track = paw.add_track({ name = "Later" })
   local later = track:add_device(utau.DEVICE, { voice = voice })
   track:add_clip({ start = 0, length = 8 })
-  daw.flush()
+  paw.flush()
   eq(utau.voices.voice_of(later.id), voice, "the new device has the voice")
   eq(#utau.voices.list(later.id), 1, "and knows its phrase, given before it was made")
   local given = ffi.cast("const float *", raw)
@@ -178,10 +178,10 @@ test("utau: a device made later, a render's own and the one playing live sound e
   local count = math.floor(1.5 * rate)
   -- Live: what the device plays while the song plays, kept by the device.
   api.device_call(later.id, "capture", "0.25 2.25")
-  daw.transport.seek(0)
-  daw.transport.play()
-  wait_for("the song to play past 2.25 s", 10000, function() return daw.transport.position > 4.6 end)
-  daw.transport.stop()
+  paw.transport.seek(0)
+  paw.transport.play()
+  wait_for("the song to play past 2.25 s", 10000, function() return paw.transport.position > 4.6 end)
+  paw.transport.stop()
   local captured = api.device_call(later.id, "captured")
   local live = ffi.cast("const float *", captured)
   local from = math.floor(0.25 * rate + 0.5)
@@ -221,38 +221,38 @@ end)
 test("utau: a vocal track is a kind of track: made, shown, described and opened as one", function()
   T.fresh()
   load()
-  daw.ui.focus("arrange")
-  local track = daw.cmd("track.add", { "vocal", ask = false })
-  eq(daw.track_kinds.of(track.id), "vocal", "track.add vocal makes a vocal track")
+  paw.ui.focus("arrange")
+  local track = paw.cmd("track.add", { "vocal", ask = false })
+  eq(paw.track_kinds.of(track.id), "vocal", "track.add vocal makes a vocal track")
   eq(utau.device_of(track.id) ~= nil, true, "with the singing device")
   utau.configure(track.id, { singer = "Someone" })
-  eq(daw.track_kinds.describe(track.id), "Vocal track · Someone", "described with its singer")
+  eq(paw.track_kinds.describe(track.id), "Vocal track · Someone", "described with its singer")
   local screen = table.concat(api.ui_snapshot(120, 30), "\n")
   eq(screen:find("1VVocal", 1, true) ~= nil, true, "the header shows V before the name")
   local clip = track:add_clip({ start = 0, length = 2, notes = { { pitch = 60, start = 0, length = 1 } } })
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(0.5)
-  daw.cmd("clip.edit")
-  eq(daw.ui.focused, "utau", "clip.edit opens the vocal editor")
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(0.5)
+  paw.cmd("clip.edit")
+  eq(paw.ui.focused, "utau", "clip.edit opens the vocal editor")
   eq(require("utau.editor").editor.clip_id, clip.id, "on the clip")
-  daw.ui.hide("utau")
-  daw.ui.focus("arrange")
+  paw.ui.hide("utau")
+  paw.ui.focus("arrange")
   -- A vocal track from before there were kinds of track: it has the device.
-  local old = daw.add_track({ name = "Old vocal" })
+  local old = paw.add_track({ name = "Old vocal" })
   old:add_device(utau.DEVICE)
-  eq(daw.track_kinds.of(old.id), "vocal", "a track with the device is a vocal track")
+  eq(paw.track_kinds.of(old.id), "vocal", "a track with the device is a vocal track")
   -- utau.voice makes the cursor track one, without asking for a singer.
-  local plain = daw.add_track({ name = "Plain" })
-  daw.cursor.set_track(plain)
-  daw.cmd("utau.voice")
+  local plain = paw.add_track({ name = "Plain" })
+  paw.cursor.set_track(plain)
+  paw.cmd("utau.voice")
   eq(plain.meta.kind .. " " .. tostring(utau.device_of(plain.id) ~= nil), "vocal true", "utau.voice makes it a vocal track")
 end)
 
 test("utau: a project saved when the device was built in sings with the Lua device", function()
   T.fresh()
   load()
-  daw.project.tempo = 120
-  local track = daw.add_track({ name = "Old" })
+  paw.project.tempo = 120
+  local track = paw.add_track({ name = "Old" })
   local old = track:add_device(utau.voices.OLD_DEVICE)
   track:add_clip({ start = 0, length = 8 })
   eq(old:get().kind, "utau", "the device keeps the kind it was saved with")
@@ -265,23 +265,23 @@ end)
 test("utau: a vocal device that crashes is stopped alone, and started again sings its voice", function()
   T.fresh()
   load()
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local _, device = voice_track("Voice")
   utau.voices.put(device, "21", 0.5, 44100, 1, 1, sine(440, 1, 44100))
   local pid = tonumber(api.device_call(device, "sandbox.pid"))
   eq(pid ~= api.env().pid, true, "the device runs in a process of its own")
   local stopped = {}
-  local handler = daw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
-  daw.transport.play()
+  local handler = paw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
+  paw.transport.play()
   api.sleep(100)
   os.execute("kill -KILL " .. pid)
   wait_for("the crash to be told", 5000, function() return #stopped > 0 end)
-  daw.transport.stop()
-  daw.off(handler)
+  paw.transport.stop()
+  paw.off(handler)
   eq(stopped[1].device, device, "the vocal device is the one stopped")
-  eq(#daw.tracks(), 1, "the session goes on")
-  daw.device(device):restart()
-  eq(daw.device(device):get().stopped, nil, "started again")
+  eq(#paw.tracks(), 1, "the session goes on")
+  paw.device(device):restart()
+  eq(paw.device(device):get().stopped, nil, "started again")
   eq(#utau.voices.list(device), 1, "it was given its voice again")
   near(T.channel_peaks(T.render({ bits = 16, ["end"] = 4, tail = 0 }), 0.6, 1.4), 0.5, 0.02, "and sings it")
 end)
@@ -341,25 +341,25 @@ test("utau: where the terminal shows pictures the pitch and the curve are strips
   -- The second note sings a vibrato 25 cents deep over its last half.
   notes.change_props(clip.id, function(p) p.vb = { 50, 175, 25, 0, 0, 0, 0, 0 }; return true end, { [2] = true })
   notes.stroke(track.id, utau.device_of(track.id), "dyn", { { 0, -50 }, { 2, 30 }, { 4, -20 } })
-  daw.flush()
+  paw.flush()
   local editor = require("utau.editor").editor
   editor:edit(clip.id)
   editor.curve = "dyn"
   local W, H = 120, 36
   local cells = api.ui_snapshot(W, H)
-  eq(daw.ui.rects.surfaces, nil, "no pictures: cells")
+  eq(paw.ui.rects.surfaces, nil, "no pictures: cells")
 
   api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
   T.after(function() api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } }) end)
   api.ui_snapshot(W, H)
   local strips = {}
-  for _, s in ipairs(daw.ui.rects.surfaces or {}) do strips[s.key:match("^utau:(%a+)#")] = s end
+  for _, s in ipairs(paw.ui.rects.surfaces or {}) do strips[s.key:match("^utau:(%a+)#")] = s end
   eq(strips.roll ~= nil and strips.curve ~= nil, true, "a strip for the roll and one for the curve")
   eq(strips.roll.under and strips.curve.under, true, "under the cells")
-  local function ops_of(s) return daw.canvas.draw(s.draw, { w = s.w * 10, h = s.h * 20, cell = { w = 10, h = 20 } }) end
+  local function ops_of(s) return paw.canvas.draw(s.draw, { w = s.w * 10, h = s.h * 20, cell = { w = 10, h = 20 } }) end
   local roll = ops_of(strips.roll)
-  local P = require("daw.theme").palette
-  local ppb = daw.opt.note_zoom * 10
+  local P = require("paw.theme").palette
+  local ppb = paw.opt.note_zoom * 10
   -- The vibrato swings 25 cents either side: half a row of 20 pixels from
   -- top to bottom, in the second half of the second note.
   local lo, hi = reach(roll, P.orange, 1.6 * ppb, 1.95 * ppb)
@@ -377,38 +377,38 @@ test("utau: where the terminal shows pictures the pitch and the curve are strips
   for tick = 0, 4 * require("utau.proto").TICKS, 5 do utau.pitch[clip.id].ticks[tick] = 6000 + 10 * math.sin(tick / 50) end
   T.after(function() utau.pitch[clip.id] = nil end)
   api.ui_snapshot(W, H)
-  for _, s in ipairs(daw.ui.rects.surfaces or {}) do if s.key:find("^utau:roll#") then strips.roll = s end end
+  for _, s in ipairs(paw.ui.rects.surfaces or {}) do if s.key:find("^utau:roll#") then strips.roll = s end end
   roll = ops_of(strips.roll)
   lo = reach(roll, "#ffffff", 0, 4 * ppb)
   eq(lo ~= nil, true, "the sung pitch is drawn")
 
   -- The cursor moves: the same pictures.
-  daw.keymap.feed("l")
+  paw.keymap.feed("l")
   api.ui_snapshot(W, H)
-  for _, s in ipairs(daw.ui.rects.surfaces or {}) do strips[s.key:match("^utau:(%a+)#")] = s end
-  eq(daw.inspect(ops_of(strips.roll)) == daw.inspect(roll), true, "a cursor move changes nothing in the picture")
+  for _, s in ipairs(paw.ui.rects.surfaces or {}) do strips[s.key:match("^utau:(%a+)#")] = s end
+  eq(paw.inspect(ops_of(strips.roll)) == paw.inspect(roll), true, "a cursor move changes nothing in the picture")
 
   -- Pictures off, or a terminal without them: the cells as before.
   utau.pitch[clip.id] = nil
   api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
   -- A message running out between the two would differ.
-  daw.ui.message = nil
+  paw.ui.message = nil
   cells = api.ui_snapshot(W, H)
   api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
-  daw.opt.graphics = false
+  paw.opt.graphics = false
   local now = api.ui_snapshot(W, H)
   -- The editor's rows: the master's meter above may fall back meanwhile.
   local rect
-  for _, r in ipairs(daw.ui.rects) do if r.name == "utau" then rect = r end end
+  for _, r in ipairs(paw.ui.rects) do if r.name == "utau" then rect = r end end
   for i = rect.y + 1, rect.y + rect.h do eq(now[i], cells[i], "graphics off draws the same cells, row " .. i) end
-  eq(daw.ui.rects.surfaces, nil, "and keeps no strip")
-  daw.opt.graphics = true
+  eq(paw.ui.rects.surfaces, nil, "and keeps no strip")
+  paw.opt.graphics = true
 
   -- Split: the editor is in one window at a time, its strips that window's.
-  daw.commands.exec("vs")
+  paw.commands.exec("vs")
   api.ui_snapshot(W, H)
   local rolls = {}
-  for _, s in ipairs(daw.ui.rects.surfaces or {}) do
+  for _, s in ipairs(paw.ui.rects.surfaces or {}) do
     if s.key:find("^utau:roll#") then rolls[#rolls + 1] = s end
   end
   eq(#rolls, 1, "one roll")
@@ -426,12 +426,12 @@ test("utau: the pitch line in pixels meets each note's edges where its cells do"
   eq(x_at(1.35), 40, "its end too")
   eq(x_at(2), 60, "the next note's start")
   eq(math.abs(beat_at(x_at(1.7)) - 1.7) < 1e-9, true, "and back")
-  local ops = daw.canvas.draw(function(g, px)
+  local ops = paw.canvas.draw(function(g, px)
     strips.roll(g, px, { list = list, clip = { start = 0, length = 4 }, scroll = 0, zoom = 3, top = 72 })
   end, { w = 200, h = 400, cell = { w = 10, h = 20 } })
   local left, right
   for _, op in ipairs(ops) do
-    if op[1] == "p" and op[3] == require("daw.theme").palette.orange then
+    if op[1] == "p" and op[3] == require("paw.theme").palette.orange then
       for x in op[2]:gmatch("[ML] ([%d.-]+) [%d.-]+") do
         x = tonumber(x)
         if x < 50 then left, right = math.min(left or x, x), math.max(right or x, x) end
@@ -451,18 +451,18 @@ test("utau: curves move with their clip, and undo puts both back", function()
   local before = curves(track, UNDER)
   eq(before, "4:-50/0 5:-10/100 6:30/0 7:5/-100 7.9:-17.5/0", "the curves as drawn")
   clip.start = 12
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   eq(curves(track, { 12, 13, 14, 15, 15.9 }), before:gsub("(%d+%.?%d*):", function(b) return (tonumber(b) + 8) .. ":" end),
     "the curves are under the clip at its new place")
   eq(curves(track, { 5, 6 }), "5:0/0 6:0/0", "and gone from where it was")
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.flush()
   eq(clip.start, 4, "undo moves the clip back")
   eq(curves(track, UNDER), before, "and its curves, in the same step")
   eq(curves(track, { 13, 14 }), "13:0/0 14:0/0", "leaving nothing behind")
-  daw.redo()
-  daw.flush()
+  paw.redo()
+  paw.flush()
   eq(curves(track, { 13, 14 }), "13:-10/100 14:30/0", "redo moves them again, once")
 end)
 
@@ -470,7 +470,7 @@ test("utau: a clip moved earlier, over its own old place, keeps its curves", fun
   local track, clip = sung()
   local before = curves(track, UNDER)
   clip.start = 2
-  daw.flush()
+  paw.flush()
   eq(curves(track, { 2, 3, 4, 5, 5.9 }), before:gsub("(%d+%.?%d*):", function(b) return (tonumber(b) - 2) .. ":" end),
     "the curves moved two beats earlier")
   eq(curves(track, { 9 }), "9:0/0", "and the curves after the old place are as they were")
@@ -480,17 +480,17 @@ test("utau: curves go with a clip moved to another vocal track", function()
   local track, clip = sung()
   local before = curves(track, UNDER)
   local other = vocal("Harmony", { 48 }, 20)
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   -- As a drag in the window moves it.
-  daw.frontend.act.move_clip(clip.id, 4, other.id)
-  daw.flush()
+  paw.frontend.act.move_clip(clip.id, 4, other.id)
+  paw.flush()
   api.undo_checkpoint()
   eq(clip:get().track, other.id, "the clip is on the other track")
   eq(curves(other, UNDER), before, "with its curves")
   eq(curves(track, { 5, 6 }), "5:0/0 6:0/0", "which left the first track")
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.flush()
   eq(curves(track, UNDER), before, "undo brings them back to the first track")
   eq(curves(other, { 5, 6 }), "5:0/0 6:0/0", "and off the other")
 end)
@@ -498,10 +498,10 @@ end)
 test("utau: a duplicated or copied clip takes a copy of the curves", function()
   local track, clip = sung()
   local before = curves(track, UNDER)
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(5)
-  daw.cmd("clip.duplicate")
-  daw.flush()
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(5)
+  paw.cmd("clip.duplicate")
+  paw.flush()
   api.undo_checkpoint()
   eq(#track:clips(), 2, "a copy after the clip")
   local shifted = before:gsub("(%d+%.?%d*):", function(b) return (tonumber(b) + 4) .. ":" end)
@@ -509,30 +509,30 @@ test("utau: a duplicated or copied clip takes a copy of the curves", function()
   eq(curves(track, UNDER), before, "which keeps its own")
   -- A copy dropped with the pointer, onto another vocal track.
   local other = vocal("Double", { 48 }, 30)
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  local made = daw.frontend.act.move_clip(clip.id, 16, other.id, true)
-  daw.flush()
+  local made = paw.frontend.act.move_clip(clip.id, 16, other.id, true)
+  paw.flush()
   eq(api.clip_get(made).track, other.id, "the copy is on the other track")
   eq(curves(other, { 16, 17, 18, 19, 19.9 }), before:gsub("(%d+%.?%d*):", function(b) return (tonumber(b) + 12) .. ":" end),
     "and has the curves too")
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.flush()
   eq(curves(other, { 17, 18 }), "17:0/0 18:0/0", "undo takes the copy's curves away with it")
 end)
 
 test("utau: splitting or trimming a clip leaves the curves in place", function()
   local track, clip = sung()
   local before = curves(track, UNDER)
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(6)
-  daw.cmd("clip.split")
-  daw.flush()
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(6)
+  paw.cmd("clip.split")
+  paw.flush()
   eq(#track:clips(), 2, "two clips")
   eq(curves(track, UNDER), before, "the curves did not move")
   -- Cutting the first beat away moves the clip's start but not its notes.
-  daw.edit.arrange.clear(track.id, 4, 5)
-  daw.flush()
+  paw.edit.arrange.clear(track.id, 4, 5)
+  paw.flush()
   eq(track:clips()[1].start, 5, "the clip starts later")
   eq(curves(track, { 5, 6, 7 }), "5:-10/100 6:30/0 7:5/-100", "the curves under it stay")
 end)
@@ -540,21 +540,21 @@ end)
 test("utau: deleting a clip takes its curves, and pasting it brings them back", function()
   local track, clip = sung()
   local before = curves(track, UNDER)
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(4)
-  local value = daw.edit.arrange.delete({ kind = "char", r0 = 1, r1 = 1, c0 = 4, c1 = 8 })
-  daw.flush()
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(4)
+  local value = paw.edit.arrange.delete({ kind = "char", r0 = 1, r1 = 1, c0 = 4, c1 = 8 })
+  paw.flush()
   api.undo_checkpoint()
   eq(#track:clips(), 0, "the clip is gone")
   eq(curves(track, { 5, 6 }), "5:0/0 6:0/0", "and its curves with it")
-  daw.cursor.set_beat(16)
-  daw.edit.arrange.paste(value, true)
-  daw.flush()
+  paw.cursor.set_beat(16)
+  paw.edit.arrange.paste(value, true)
+  paw.flush()
   eq(curves(track, { 16, 17, 18, 19, 19.9 }), before:gsub("(%d+%.?%d*):", function(b) return (tonumber(b) + 12) .. ":" end),
     "pasting the clip elsewhere brings its curves")
-  daw.undo()
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.undo()
+  paw.flush()
   eq(curves(track, UNDER), before, "undoing the paste and the delete puts all back")
   eq(#track:clips(), 1, "with the clip")
 end)
@@ -577,7 +577,7 @@ local function rich()
   end)
   local device = utau.device_of(track.id)
   notes.stroke(track.id, device, "dyn", { { 2, -40 }, { 4, 20 }, { 6, 0 } })
-  daw.flush()
+  paw.flush()
   return track, clip
 end
 
@@ -617,7 +617,7 @@ test("utau: a vocal track exported to .ustx imports back the same", function()
   eq(text:find("ustx_version", 1, true) ~= nil, true, "an OpenUtau project: " .. text:sub(1, 200))
   local want = describe(clip)
   local ids = require("utau.import").file(path, { at = 0 })
-  local back = daw.track(ids[1])
+  local back = paw.track(ids[1])
   local got = back:clips()[1]
   eq(got.start, clip.start, "the part where the clip was")
   -- OpenUtau decides how long a part is; it covers the notes.
@@ -649,13 +649,13 @@ test("utau: a clip exports to UTAU's .ust and to MIDI with lyrics", function()
     local files = export.write(path, { clip = clip.id })
     eq(#files, 1, ext .. ": one file")
     local ids = require("utau.import").file(path, { at = 0 })
-    local back = daw.track(ids[#ids]):clips()[1]
+    local back = paw.track(ids[#ids]):clips()[1]
     eq(plain(back), want, ext .. ": the same notes and lyrics")
   end
   -- Through the command, on the clip under the cursor.
-  daw.cursor.set_track(track)
-  daw.cursor.set_beat(3)
-  daw.cmd("utau.export", { T.scratch .. "/out/cmd.ustx", clip = true })
+  paw.cursor.set_track(track)
+  paw.cursor.set_beat(3)
+  paw.cmd("utau.export", { T.scratch .. "/out/cmd.ustx", clip = true })
   eq(exists(T.scratch .. "/out/cmd.ustx"), true, "utau.export writes the file")
 end)
 
@@ -664,16 +664,16 @@ test("utau: opening in OpenUtau writes a .ustx beside the project and says what 
   if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
   local export = require("utau.export")
   os.execute("mkdir -p '" .. T.scratch .. "/proj'")
-  daw.project.save(T.scratch .. "/proj/song.json")
+  paw.project.save(T.scratch .. "/proj/song.json")
   eq(export.open_path(), T.scratch .. "/proj/song.ustx", "beside the project, named after it")
-  daw.opt.utau_openutau = ""
+  paw.opt.utau_openutau = ""
   local path, argv = export.open({ dry = true })
   eq(exists(path), true, "the file is written")
   eq(argv[#argv], path, "and OpenUtau is to be started on it")
   eq(argv[1], os.getenv("REAUTAU_OPENUTAU") or "OpenUtau", "as ReaUtau starts it")
-  daw.opt.utau_openutau = "env FOO=1 OpenUtau"
+  paw.opt.utau_openutau = "env FOO=1 OpenUtau"
   eq(table.concat(export.open_command("/x.ustx"), " "), "env FOO=1 OpenUtau /x.ustx", "a command of one's own")
-  daw.opt.utau_openutau = ""
+  paw.opt.utau_openutau = ""
   eq(track ~= nil, true, "")
 end)
 
@@ -696,16 +696,16 @@ test("utau: a frozen track plays the same audio as the sung one, and unfreezes",
   T.fresh()
   local why = need_singer()
   if why then return why end
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local track = vocal("Lead", { 57, 60, 64 }, 0)
   utau.configure(track.id, { singer = SINGER })
   local sung = T.render({ bits = 16, tail = 0, ["end"] = 4 })
-  local before = #daw.tracks()
-  daw.cursor.set_track(track)
-  daw.cmd("utau.freeze")
+  local before = #paw.tracks()
+  paw.cursor.set_track(track)
+  paw.cmd("utau.freeze")
   eq(utau.frozen(track.id), true, "the track is frozen")
-  eq(#daw.tracks(), before + 1, "with an audio track")
-  local audio = daw.tracks()[before + 1]
+  eq(#paw.tracks(), before + 1, "with an audio track")
+  local audio = paw.tracks()[before + 1]
   eq(audio.name, "Lead (frozen)", "named after it, right below it")
   eq(audio:clips()[1].kind, "audio", "holding audio")
   eq(track.mute, true, "the vocal track is muted")
@@ -723,9 +723,9 @@ test("utau: a frozen track plays the same audio as the sung one, and unfreezes",
   end
   eq(energy > 0.05, true, "the sung track sounds")
   eq(diff < 0.002, true, "the frozen track sounds the same (largest difference " .. diff .. ")")
-  daw.cmd("utau.unfreeze")
+  paw.cmd("utau.unfreeze")
   eq(utau.frozen(track.id), false, "unfrozen")
-  eq(#daw.tracks(), before, "the audio track is gone")
+  eq(#paw.tracks(), before, "the audio track is gone")
   eq(track.mute, false, "the vocal track sounds again")
   local again = T.render({ bits = 16, tail = 0, ["end"] = 4 })
   eq(T.read_file(again.path) == T.read_file(sung.path), true, "and sings as it did")
@@ -736,7 +736,7 @@ end)
 test("utau: a track's voice is saved as a singer preset and given to another track", function()
   T.fresh()
   load()
-  daw.opt.utau_presets_dir = T.scratch .. "/presets"
+  paw.opt.utau_presets_dir = T.scratch .. "/presets"
   local a = vocal("Lead")
   local b = vocal("Harmony")
   utau.configure(a.id, { singer = "Someone", phonemizer = "Some.Phonemizer", renderer = "CLASSIC",
@@ -746,17 +746,17 @@ test("utau: a track's voice is saved as a singer preset and given to another tra
   api.device_set_param(device, "genc", -10)
   utau.configure(b.id, { singer = "Other", options = { keyshift = "12" } })
   api.device_set_param(utau.device_of(b.id), "tenc", 50)
-  daw.cursor.set_track(a)
-  daw.cmd("utau.singer_save", { "Soft", "lead" })
+  paw.cursor.set_track(a)
+  paw.cmd("utau.singer_save", { "Soft", "lead" })
   local path = T.scratch .. "/presets/Soft lead.json"
   eq(exists(path), true, "the preset is a file in the presets folder")
   local text = T.read_file(path)
   eq(text:find('"singer": "Someone"', 1, true) ~= nil, true, "JSON, as ReaUtau writes it")
   eq(#require("utau.singer_presets").list(), 1, "listed")
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  daw.cursor.set_track(b)
-  daw.cmd("utau.singer_preset", { "soft" })
+  paw.cursor.set_track(b)
+  paw.cmd("utau.singer_preset", { "soft" })
   local c = utau.config(b.id)
   eq(table.concat({ c.singer, c.phonemizer, c.renderer, c.resampler, c.voice_color }, " "),
     "Someone Some.Phonemizer CLASSIC moresampler soft", "the other track has the whole voice")
@@ -764,11 +764,11 @@ test("utau: a track's voice is saved as a singer preset and given to another tra
     "with the preset's options and none of its own")
   local params = api.device_get(utau.device_of(b.id)).params
   eq(params.brec .. "/" .. params.genc .. "/" .. params.tenc, "30/-10/0", "and the values its curves hold")
-  daw.undo()
+  paw.undo()
   eq(utau.config(b.id).singer, "Other", "one undo puts the old voice back")
-  daw.cmd("utau.singer_delete", { "Soft", "lead" })
+  paw.cmd("utau.singer_delete", { "Soft", "lead" })
   eq(exists(path), false, "a preset is deleted")
-  daw.opt.utau_presets_dir = ""
+  paw.opt.utau_presets_dir = ""
 end)
 
 -- Installing singers ------------------------------------------------------------------
@@ -858,10 +858,10 @@ test("utau: a harmony track sings the melody a diatonic interval away in the key
   require("utau.notes").set_lyric(clip.id, 3, "ら")
   require("utau.notes").stroke(track.id, utau.device_of(track.id), "dyn", { { 1, -30 }, { 3, 10 } })
   utau.configure(track.id, { singer = "Someone" })
-  daw.flush()
-  daw.cursor.set_track(track)
-  daw.cmd("utau.harmony", { "3up" })
-  local made = daw.cursor.track()
+  paw.flush()
+  paw.cursor.set_track(track)
+  paw.cmd("utau.harmony", { "3up" })
+  local made = paw.cursor.track()
   eq(made.name, "Lead (third above)", "a new track, named for the interval")
   eq(api.track_list()[2], made.id, "right under the lead")
   local pitches = {}
@@ -873,22 +873,22 @@ test("utau: a harmony track sings the melody a diatonic interval away in the key
   near(made.volume, track.volume - 3, 1e-6, "a little quieter")
   -- The project's key, as musicops keeps it, wins over the melody's.
   api.project_set("meta", { musicops = { root = "A", scale = "minor" } })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local _, info = h.create(track.id, { interval = "3down" })
   eq(h.key_name(info.key) .. " " .. info.key_source, "A minor project", "the project's key is used")
-  daw.undo()
-  eq(#daw.tracks(), 2, "one undo removes a harmony track")
+  paw.undo()
+  eq(#paw.tracks(), 2, "one undo removes a harmony track")
 end)
 
 test("utau: a double sings the same notes, a little apart in timing and tuning", function()
   T.fresh()
   load()
   local track, clip = vocal("Lead", { 60, 62, 64, 65, 67, 69 }, 0)
-  daw.flush()
-  daw.cursor.set_track(track)
-  daw.cmd("utau.double")
-  local made = daw.cursor.track()
+  paw.flush()
+  paw.cursor.set_track(track)
+  paw.cmd("utau.double")
+  local made = paw.cursor.track()
   eq(made.name, "Lead (double)", "a double")
   local moved, tuned, same = 0, 0, true
   for i, n in ipairs(made:clips()[1]:notes()) do
@@ -907,10 +907,10 @@ test("utau: a double sings the same notes, a little apart in timing and tuning",
   eq(same, true, "the same notes")
   eq(moved > 0 and tuned > 0, true, "some notes start a little apart, some are tuned a little apart")
   local first = made:clips()[1]:notes()[1].meta.utau
-  daw.cursor.set_track(track)
-  daw.cmd("utau.double")
-  local again = daw.cursor.track():clips()[1]:notes()[1].meta.utau
-  eq(daw.inspect(again), daw.inspect(first), "a double of the same take is the same")
+  paw.cursor.set_track(track)
+  paw.cmd("utau.double")
+  local again = paw.cursor.track():clips()[1]:notes()[1].meta.utau
+  eq(paw.inspect(again), paw.inspect(first), "a double of the same take is the same")
 end)
 
 -- What depends on the renderer ------------------------------------------------------------
@@ -941,15 +941,15 @@ test("utau: AI pitch, takes and the renderer's curves send what the protocol say
   local mp = require("utau.msgpack")
   local r = require("utau.renderer")
   local track, clip = vocal("Lead", { 60, 62, 64 }, 0)
-  daw.flush()
+  paw.flush()
   local sent, restore = stand_in()
   local ok, err = pcall(function()
-    daw.cursor.set_track(track)
-    daw.cursor.set_beat(0)
+    paw.cursor.set_track(track)
+    paw.cursor.set_beat(0)
     -- AI pitch is a track option the engine reads.
-    daw.cmd("utau.ai_pitch", { "off" })
+    paw.cmd("utau.ai_pitch", { "off" })
     eq(utau.config(track.id).options.pitchmode, "manual", "off is pitchmode=manual")
-    daw.cmd("utau.ai_pitch", { "on" })
+    paw.cmd("utau.ai_pitch", { "on" })
     eq(utau.config(track.id).options, nil, "on is the engine's default")
     -- A retake is RunBatchEdit "retake" for the clip's part.
     local id = r.retake(clip.id, "new", { kind = "timbre", notes = { [2] = true } })
@@ -981,20 +981,20 @@ test("utau: AI pitch, takes and the renderer's curves send what the protocol say
     local names = {}
     for _, e in ipairs(r.extra_expressions(track.id)) do names[#names + 1] = e.abbr end
     eq(table.concat(names, " "), "ene spk1", "the renderer's own curves are offered")
-    daw.cmd("utau.curve", { "ene" })
-    daw.cmd("utau.curve", { "spk1" })
+    paw.cmd("utau.curve", { "ene" })
+    paw.cmd("utau.curve", { "spk1" })
     eq(r.slot_of(track.id, "ene") .. " " .. r.slot_of(track.id, "spk1"), "x1 x2", "each on a slot")
     eq(api.device_get(utau.device_of(track.id)).params.x2, 100, "starting at the curve's default")
     require("utau.notes").stroke(track.id, utau.device_of(track.id), "x1", { { 0, 40 }, { 2, -20 } })
-    daw.flush()
+    paw.flush()
     local part = utau.snapshot().parts[1]
     local by = {}
     for _, c in ipairs(part.curves) do by[c.abbr] = c end
     eq(by.ene ~= nil and by.ene.knots[1][2], 40, "the engine gets the curve by its own name, in its units")
     eq(by.spk1 ~= nil and #by.spk1.knots, 0, "an untouched curve is at its default")
     -- Unison and shifts are options too.
-    daw.cmd("utau.unison", { 4, spacing = 50 })
-    daw.cmd("utau.shift", { 12, cents = -20 })
+    paw.cmd("utau.unison", { 4, spacing = 50 })
+    paw.cmd("utau.shift", { 12, cents = -20 })
     local o = utau.config(track.id).options
     eq(o.unison .. " " .. o.unison_spacing .. " " .. o.keyshift .. " " .. o.pitchshift, "4 50 12 -20", "unison and shift options")
     local snap = utau.snapshot()
@@ -1010,7 +1010,7 @@ test("utau: a timing take moves note onsets, and take 0 puts them back", functio
   load()
   local r = require("utau.renderer")
   local track, clip = vocal("Lead", { 60, 62, 64, 65, 67, 69, 71, 72 }, 0)
-  daw.flush()
+  paw.flush()
   local n = r.timing(clip.id, 1)
   eq(n > 0, true, "notes moved")
   local offsets = {}

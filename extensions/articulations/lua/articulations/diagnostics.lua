@@ -1,11 +1,11 @@
 -- What is wrong with the notes of a track that has a map, as diagnostics
--- (`daw.diagnostic`, namespace "articulations"), each with its fixes:
+-- (`paw.diagnostic`, namespace "articulations"), each with its fixes:
 -- notes the instrument cannot play (outside its range, or the range of
 -- their articulation), notes on keyswitch rows, articulations the map does
 -- not have (played by M2-123's fallback), and chords of two articulations
 -- that keyswitches cannot tell apart.
-local api = daw.api
-local music = daw.music
+local api = paw.api
+local music = paw.music
 local art = require("articulations")
 local m2 = art.m2
 
@@ -101,7 +101,7 @@ local pending = false
 function M.schedule()
   if pending then return end
   pending = true
-  daw.defer(function()
+  paw.defer(function()
     pending = false
     M.check()
   end, 150)
@@ -120,25 +120,25 @@ function M.check()
           local ok, list = pcall(M.of_clip, c.id)
           if ok and #list > 0 then
             now[c.id] = true
-            daw.diagnostic.set(M.namespace, c.id, list)
+            paw.diagnostic.set(M.namespace, c.id, list)
           end
         end
       end
     end
   end
   for id in pairs(published) do
-    if not now[id] then daw.diagnostic.set(M.namespace, id, {}) end
+    if not now[id] then paw.diagnostic.set(M.namespace, id, {}) end
   end
   published = now
 end
 
 for _, pattern in ipairs({ "clip.*", "track.*", "project.loaded", "articulations.bound", "undo.*" }) do
-  daw.on(pattern, function() M.schedule() end)
+  paw.on(pattern, function() M.schedule() end)
 end
 
-daw.command("art.check", function()
+paw.command("art.check", function()
   M.check()
-  daw.diagnostic.setqflist({ namespace = M.namespace })
+  paw.diagnostic.setqflist({ namespace = M.namespace })
 end, { desc = "Check the notes of the tracks that have an articulation map, into the quickfix list" })
 
 return M

@@ -456,7 +456,7 @@ fn defs() -> Vec<ToolDef> {
         "ESCAPE HATCH: type keys into paw as a person would, in Neovim notation (`ggdd`, `<Space>`, `<C-r>`, `:tempo 90<CR>`). Acts on the focused view and the cursor; the result gives the mode and focus afterwards, and any messages. One undo step per call. Only offered with --allow-eval.".into(),
         obj(json!({"keys": {"type": "string", "description": "Keys in Neovim notation"}}), &["keys"])));
     d.push(escape("eval_lua", "Escape hatch: run Lua in paw",
-        "ESCAPE HATCH: run Lua inside paw with the whole `daw` scripting interface (daw.tracks(), daw.project, daw.api.*, ...) and return what it returns, as text. An expression is returned as is (`daw.project.tempo`); statements need `return`. This is arbitrary code in paw's process, with its file and network access: only offered with --allow-eval. One undo step; not rolled back on failure.".into(),
+        "ESCAPE HATCH: run Lua inside paw with the whole `paw` scripting interface (paw.tracks(), paw.project, paw.api.*, ...) and return what it returns, as text. An expression is returned as is (`paw.project.tempo`); statements need `return`. This is arbitrary code in paw's process, with its file and network access: only offered with --allow-eval. One undo step; not rolled back on failure.".into(),
         obj(json!({"code": {"type": "string", "description": "Lua code"}}), &["code"])));
     d
 }

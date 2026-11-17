@@ -1,5 +1,5 @@
 [package]
-name = "daw-gui"
+name = "paw-gui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,9 +7,9 @@ description = "A graphical frontend, drawn with egui. It talks to the kernel ove
 
 [dependencies]
 anyhow.workspace = true
-daw-proto.workspace = true
-daw-listen.workspace = true
-daw-raster.workspace = true
+paw-proto.workspace = true
+paw-listen.workspace = true
+paw-raster.workspace = true
 serde_json.workspace = true
 libc = "0.2"
 # OpenGL through glow: it runs on any driver, Mesa's llvmpipe too, so the

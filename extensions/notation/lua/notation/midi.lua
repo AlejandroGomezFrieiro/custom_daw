@@ -37,8 +37,8 @@
 -- is all: the MIDI is then free to change, and the mark stays a label.
 -- Taking a mark away puts back what it wrote only where the note is still
 -- as the mark left it.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local D = require("notation.doc")
 local L = require("notation.layout")
 local model = require("notation.model")
@@ -869,7 +869,7 @@ function M.sync(clip_id, before, after, own, fixed)
   local wb, wa = M.written(before, from, to), M.written(after, from, to)
   local db, da = M.decisions(before, wb), M.decisions(after, wa)
   local ob, oa = D.origin(before), D.origin(after)
-  local default = daw.opt.velocity or 100
+  local default = paw.opt.velocity or 100
   local set, remove, add, named = {}, {}, {}, {}
   for id in pairs(wb) do
     local i = place[M.midi_id(id) or -1]

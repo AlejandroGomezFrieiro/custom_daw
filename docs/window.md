@@ -1,15 +1,15 @@
 # The graphical frontend
 
-`daw-gui` is a separate program for working with the mouse: transport,
+`paw-gui` is a separate program for working with the mouse: transport,
 tracks with faders and meters, clips on a timeline, the devices of the
 selected track, a mixer and a piano roll. It starts a kernel of its own
-(`daw --headless`) and stops it on exit, or attaches to a running one:
+(`paw --headless`) and stops it on exit, or attaches to a running one:
 
 ```sh
-daw-gui song.json                 # its own kernel; options are passed on to it
-daw --headless --listen /tmp/daw.sock &
-daw-gui --socket /tmp/daw.sock    # watch and drive a kernel that is already running
-daw-gui --connect studio:7700 --token-file studio.token   # one on another machine
+paw-gui song.json                 # its own kernel; options are passed on to it
+paw --headless --listen /tmp/paw.sock &
+paw-gui --socket /tmp/paw.sock    # watch and drive a kernel that is already running
+paw-gui --connect studio:7700 --token-file studio.token   # one on another machine
 ```
 
 The window is sent what it draws when that changes, instead of asking for
@@ -17,11 +17,11 @@ it: an idle project costs nothing on the wire, and a change sends only the
 part that changed (see [docs/protocol.md](protocol.md)).
 
 The window remembers how it was left, for the machine, in
-`~/.local/state/daw/window.json`: its size and, on X11, its position on the
+`~/.local/state/paw/window.json`: its size and, on X11, its position on the
 screen, the timeline's zoom, the height of the rows, and whether the mixer
 shows. It writes it
 when a value has stood for a second and when it closes, through
-`daw.frontend.layout_get()` and `layout_set(table)` in the kernel, so a window
+`paw.frontend.layout_get()` and `layout_set(table)` in the kernel, so a window
 attached to a running kernel finds it too.
 
 The position is only kept and restored where a program can ask for it and set
@@ -33,17 +33,17 @@ gone) is not used: the window goes to the top left of the main screen.
 It keeps no project state. The kernel sends it the state when it changes
 (`frontend.watch`, at most thirty times a second), what it shows is drawn
 from that, and everything the user does goes back as calls to
-`daw.frontend.act` and as keys, so it and a terminal UI or a script can
+`paw.frontend.act` and as keys, so it and a terminal UI or a script can
 drive the same session at once. Its menus are the kernel's too
-(`daw.frontend.menu`, in `runtime/lua/daw/window_menus.lua` beside the
+(`paw.frontend.menu`, in `runtime/lua/paw/window_menus.lua` beside the
 terminal's mouse menus): the window lays them out and says which entry was
 chosen.
 
 The window is written with [egui](https://github.com/emilk/egui) and drawn
 with OpenGL (eframe's glow renderer), on whatever driver the system has: the
 graphics card's, or Mesa's llvmpipe on the processor where there is none
-(on NixOS the driver comes from `hardware.graphics.enable`). `daw-gui
---renderer software`, or `DAW_GUI_RENDERER=software`, asks Mesa for llvmpipe
+(on NixOS the driver comes from `hardware.graphics.enable`). `paw-gui
+--renderer software`, or `PAW_GUI_RENDERER=software`, asks Mesa for llvmpipe
 even where a card is there; `--renderer gpu` is the default. Where OpenGL
 cannot start at all, the window says so in one line. It draws a frame only
 when something has changed: nothing at rest, and while playing at most 25
@@ -62,13 +62,13 @@ recording and arming; orange mute; yellow solo. A track's own colour is on
 its stripe, its clips, its notes and its name plate in the mixer, and
 nowhere else. Words are in Inter and numbers that change (the clock, levels,
 values) in JetBrains Mono; both fonts are built into the program
-(`crates/daw-gui/fonts`, under the SIL Open Font License), so the window
+(`crates/paw-gui/fonts`, under the SIL Open Font License), so the window
 looks the same on any machine. Japanese, Chinese and Korean (a lyric such
 as さくら) are drawn with the system's font for them, found through
 fontconfig (Noto Sans CJK, Source Han Sans and the like). Where there is
 none, kana are still drawn, with Noto Sans CJK JP cut down to them (60 KB,
 OFL, built in); kanji and hangul then show as boxes. Icons are Phosphor's (MIT,
-`crates/daw-gui/fonts/Phosphor-LICENSE`).
+`crates/paw-gui/fonts/Phosphor-LICENSE`).
 
 Each track header has its number, its name, the input, monitor, `M`, `S`
 and `R` switches (lit in their colours when on), a fader with its level in
@@ -96,7 +96,7 @@ does wherever it is.
 | Clip | click chooses it; Ctrl and a click adds it to the chosen clips or takes it out; Shift and a click takes in the clips between it and the last one chosen (on one track by time, across tracks the rectangle). Dragging a chosen clip moves all of them, keeping their places, also across tracks; Ctrl drops copies; they move by whole grid steps, so a clip off the grid keeps its distance from it; Shift leaves the grid. Either edge trims the clip, and the same edge of every chosen clip: the start without moving what plays (an audio clip starts further into its file; a MIDI clip hides the notes before its new start, which come back when the edge is dragged out again); Alt and an edge slips what plays inside instead; Alt and Shift on the right edge of an audio clip stretches what it plays to end there (see [Stretching and looping clips](mixing.md#stretching-and-looping-clips)), and a looped clip dragged longer repeats. On an audio clip the handles at the top corners drag its fades, drawn over it, and its top line drags its gain (Shift finely), which the waveform's height follows. A double click on an audio clip's top band puts a warp marker there, a yellow line down the clip with a handle at the top: drag the handle to move it, on the grid (Shift off it), stretching the sound on either side of it; right click the handle to remove it. Double click elsewhere opens its notes; right click to rename, split at the pointer or at the edit cursor, glue the chosen clips, repeat, mute, stretch, shift, loop or delete. One gesture is one undo step. Two or more chosen clips are visual mode's selection, so `d`, `x`, `y`, `>`, `gc`, `J` (glue) and the rest act on them, `S` splits them at the cursor, `Esc` lets go; one clip chosen with a click is the clip under the cursor |
 | Ruler | click puts the edit cursor and the playhead; a drag in its top half loops the stretch dragged over (in the bottom half it moves them to where it ends); drag the loop's edges to change it; double click turns the loop on or off. The punch range is the red line under the loop's band (grey while punching is off): drag its ends to move them, Shift off the grid; the timeline's menu sets it from the selection or the loop and turns it on and off. Bars are numbered by the tempo map; a flag marks each tempo change (`96`) and signature change (`6/8`): drag it to move it, double click it to type a value, right click it to remove it. The tempo lane, shown from the timeline's menu (or `zT`, `:tempo.lane`), is a row under the ruler that draws the tempo map as a curve: level where a change holds, sloping where it ramps; click to add a change at the height clicked, hold and draw to lay a curve of ramps (the pencil), drag a change to move it in time and tempo (the first only in tempo), double click it to make it ramp or hold, right click it to remove it. Its corner says the range |
 | Track header | click selects; double click renames; drag up or down to reorder, into a group when dropped among its tracks or under its header, out of it when dropped outside; drag the bottom edge to make the track taller or shorter (double click it for the height of the others; the height is kept with the track); press M, S or R and sweep across the others to set them all as the first was set; Shift on the fader moves it finely, double click puts it at 0 dB; right click (on release) for a colour, duplicate, bounce to audio, a new track below, delete |
-| Piano roll | the mouse works as in REAPER's MIDI editor. Left button on empty grid: press where a note should start and drag as far as it should last (a click gives the note length shown in the toolbar, which drawing or stretching a note sets). Shift leaves the grid while drawing, moving or stretching; the magnet in the toolbar turns snapping off altogether. A click on a note chooses it, Shift or Ctrl click adds it or takes it out; dragging a note moves it and the others chosen (Ctrl drops copies), dragging either end changes where they all start or stop, and the status line shows the note's name, place and length meanwhile. The right button dragged, or the left with Ctrl, chooses the notes its box touches (Shift adds, Ctrl toggles); a right click removes a note, or on empty grid opens a menu (choose all, let go, delete, quantize, snap); a double click removes a note; Alt and a drag erases every note crossed. The keyboard sounds a key under a click or a drag, and a right drag over it chooses the notes in that range of pitches. The wheel scrolls, with Shift sideways; Ctrl and the wheel zoom in time and Alt the rows, where the pointer is; the middle button pans. `Ctrl-a` (in the window), `gA` chooses every note, `x` or `Delete` removes the chosen, `Esc` lets go. The strip underneath shows velocities, set by dragging across the bars (only the chosen notes, if any are chosen), or a controller chosen from its dropdown (pitch wheel, modulation, expression, pedal), drawn with the pointer held down; a right drag draws a straight line of moves, a click on a move's head chooses it (Ctrl adds or takes it out), Ctrl and a drag chooses those in a box, dragging a chosen head moves them, `Delete` removes them, and a right click opens a menu (choose all, let go, delete, clear). List in the toolbar opens the event list, every note and move of the clip as rows to change in place (see Mixing). The toolbar holds the clip, the grid, snap, the note length, Quantize (`:notes.quantize`, the chosen notes or all), Step (`:notes.step_input`: with the transport stopped, notes played on a MIDI keyboard are entered at the cursor, chords together, and the cursor steps on), zoom, a window of its own and close. It also says how many notes are chosen and where. The ruler counts bars and beats; a click there moves the playhead. Over it a row names the chords that sound over every pitched track (`daw.opt.chords`: names, Roman numerals, both, or off; see [Harmony, completion and snippets](harmony.md)). An active snippet's notes are drawn in violet with a chip under them naming its current choice; the snippet picker's choice shows as violet ghosts. Notes of the track's other clips that sound at the same time show faintly behind, and those of other pitched tracks in their own colours (see the terminal's piano roll for which). A click on another track's note makes its clip the one edited (new notes go there), Ctrl and a click edits it too, or no longer: the roll then edits several clips at once, each clip's notes in its track's colour, and a click, a box, a drag, Delete, the velocity strip and the keys reach the notes of all of them, each note staying in its own clip, one undo step each. Selecting several clips in the timeline and double clicking one of them opens them all, that one active. Tracks in the toolbar opens the side panel: each track near the roll (a click shows or hides its notes) and under it its clips (a click on the name makes the clip active, on the box edits it too or no longer). A dot on the keyboard marks the keys sounding at the cursor; the toolbar names the chord when a harmony reader is loaded. A suggestion from a completion source (see [harmony.md](harmony.md)) shows as see-through ghost notes with a bright edge, under a row of chips: a numbered chip per alternative (a click shows it) and one saying what shows (a click accepts it, as `Tab` does; `Ctrl-l` takes its next note or chord, `Esc` dismisses). With a source loaded the toolbar has a Suggest switch for suggestions that come by themselves after a pause; `Ctrl-Space` asks at any time |
+| Piano roll | the mouse works as in REAPER's MIDI editor. Left button on empty grid: press where a note should start and drag as far as it should last (a click gives the note length shown in the toolbar, which drawing or stretching a note sets). Shift leaves the grid while drawing, moving or stretching; the magnet in the toolbar turns snapping off altogether. A click on a note chooses it, Shift or Ctrl click adds it or takes it out; dragging a note moves it and the others chosen (Ctrl drops copies), dragging either end changes where they all start or stop, and the status line shows the note's name, place and length meanwhile. The right button dragged, or the left with Ctrl, chooses the notes its box touches (Shift adds, Ctrl toggles); a right click removes a note, or on empty grid opens a menu (choose all, let go, delete, quantize, snap); a double click removes a note; Alt and a drag erases every note crossed. The keyboard sounds a key under a click or a drag, and a right drag over it chooses the notes in that range of pitches. The wheel scrolls, with Shift sideways; Ctrl and the wheel zoom in time and Alt the rows, where the pointer is; the middle button pans. `Ctrl-a` (in the window), `gA` chooses every note, `x` or `Delete` removes the chosen, `Esc` lets go. The strip underneath shows velocities, set by dragging across the bars (only the chosen notes, if any are chosen), or a controller chosen from its dropdown (pitch wheel, modulation, expression, pedal), drawn with the pointer held down; a right drag draws a straight line of moves, a click on a move's head chooses it (Ctrl adds or takes it out), Ctrl and a drag chooses those in a box, dragging a chosen head moves them, `Delete` removes them, and a right click opens a menu (choose all, let go, delete, clear). List in the toolbar opens the event list, every note and move of the clip as rows to change in place (see Mixing). The toolbar holds the clip, the grid, snap, the note length, Quantize (`:notes.quantize`, the chosen notes or all), Step (`:notes.step_input`: with the transport stopped, notes played on a MIDI keyboard are entered at the cursor, chords together, and the cursor steps on), zoom, a window of its own and close. It also says how many notes are chosen and where. The ruler counts bars and beats; a click there moves the playhead. Over it a row names the chords that sound over every pitched track (`paw.opt.chords`: names, Roman numerals, both, or off; see [Harmony, completion and snippets](harmony.md)). An active snippet's notes are drawn in violet with a chip under them naming its current choice; the snippet picker's choice shows as violet ghosts. Notes of the track's other clips that sound at the same time show faintly behind, and those of other pitched tracks in their own colours (see the terminal's piano roll for which). A click on another track's note makes its clip the one edited (new notes go there), Ctrl and a click edits it too, or no longer: the roll then edits several clips at once, each clip's notes in its track's colour, and a click, a box, a drag, Delete, the velocity strip and the keys reach the notes of all of them, each note staying in its own clip, one undo step each. Selecting several clips in the timeline and double clicking one of them opens them all, that one active. Tracks in the toolbar opens the side panel: each track near the roll (a click shows or hides its notes) and under it its clips (a click on the name makes the clip active, on the box edits it too or no longer). A dot on the keyboard marks the keys sounding at the cursor; the toolbar names the chord when a harmony reader is loaded. A suggestion from a completion source (see [harmony.md](harmony.md)) shows as see-through ghost notes with a bright edge, under a row of chips: a numbered chip per alternative (a click shows it) and one saying what shows (a click accepts it, as `Tab` does; `Ctrl-l` takes its next note or chord, `Esc` dismisses). With a source loaded the toolbar has a Suggest switch for suggestions that come by themselves after a pause; `Ctrl-Space` asks at any time |
 | Recording | the record button starts a take on the armed tracks (the `R` on a track). A track's input button (the microphone; blue when an input is chosen, and what it takes in, such as `UR22mkII · 1/2`, is written under the fader) opens a menu of its audio inputs, MIDI ports and MIDI channels; a bar along its foot shows the level arriving there, armed or not, and the loudspeaker beside it turns monitoring on. With no audio input a track records MIDI. With no track armed the record button arms the selected one and says so. Press it again, or stop, to end the take; what is being recorded is drawn in red as it grows (punched, only over the punch range). With a count-in the clock reads `count 4`, `count 3`… and the button blinks on the beats until the take starts; the timeline's menu turns the count-in on and off, and a pre-roll of two bars before a punch |
 | Take lanes | a track's menu, a clip's Takes menu or `zt` shows its takes as lanes under its clips. Drag across lane k: take k plays over that stretch (on the grid, Shift off it), the clips cut at its ends and pieces that then play the same take joined back, one undo step; a click on lane k gives the piece under the pointer take k; right click to hide them. The terminal comps the same way with its mouse (see [the terminal](terminal.md)) |
 | Groups | a track's menu has "New group with this track…", "Move into a group…" and "Take out of its group". A group's members stand under it, a step in and in its colour, and sound through it; the triangle beside its name folds them away and brings them back |
@@ -113,7 +113,7 @@ does wherever it is.
 | Pages over the window | a picker's rows (commands, files, devices) take the pointer: a click selects a row, a double click or Enter chooses it, the wheel scrolls; a click outside closes the page; "Open in a window" at its top right moves the page into a window of its own, in its colours |
 | Bands under the ruler | under the markers, a row for each extension that adds one: the sections of the song, the mix's findings. A click on an entry does what it stands for (goes to the section, to the finding); the status line says what |
 | Zoom | the buttons in the corner of the timeline: `−` and `+` in time (`Ctrl -`, `Ctrl +`), `Fit` for the whole song (`Ctrl 0`), the arrows for the height of the tracks (`Ctrl ↑`, `Ctrl ↓`), from one line a track to tall ones. Waveforms are drawn again at the width they then have |
-| Sound files | `Track` → "From a sound file…", or "Import a sound or MIDI file…" in the timeline's menu, lists files to choose from (type to narrow, Enter walks into a directory): wav, aiff, flac, mp3 and ogg come in on a track of their own at the cursor. `:import path` does the same, and `daw-gui take.mp3` starts a project with the file |
+| Sound files | `Track` → "From a sound file…", or "Import a sound or MIDI file…" in the timeline's menu, lists files to choose from (type to narrow, Enter walks into a directory): wav, aiff, flac, mp3 and ogg come in on a track of their own at the cursor. `:import path` does the same, and `paw-gui take.mp3` starts a project with the file |
 | MIDI files | File → Open… opens a `.mid` as a new project, asking first about unsaved changes as for a project; File → Import… (and the timeline menu's import) brings its tracks in below the cursor's track at the cursor, leaving the tempo map alone. What comes of a file is in [Recording](recording.md) under MIDI files |
 
 When the window started its kernel, so that the kernel's disk is the
@@ -122,21 +122,21 @@ the XDG desktop portal (`org.freedesktop.portal.FileChooser` over D-Bus, with
 no toolkit linked). It offers projects, MIDI files, sound files and all files, and starts
 where a file was last chosen, else beside the project; the list picker starts
 in the same place. The dialog does not stop the window. Without a portal (no
-session bus, a bare window manager), with `daw.opt.native_dialogs = false`, or
+session bus, a bare window manager), with `paw.opt.native_dialogs = false`, or
 when the window is attached to a kernel with `--socket` or `--connect`
 (which may be on another machine), the kernel's list picker is used, as it
 always was; but Import still shows the desktop's dialog there, and sends
 the sound file chosen to the kernel (see
 [Running it](running.md#on-another-machine)). A
 project chosen this way asks about unsaved changes like any other way of
-opening one: `daw.frontend.act.leave(how, "open:" .. path)`.
+opening one: `paw.frontend.act.leave(how, "open:" .. path)`.
 
 Files can be dragged in from a file manager on X11: a sound file becomes a
 track of its own, one for each file dropped together, with the clip at the
 edit cursor; a MIDI file's tracks come in as `:import` brings them; a
 project (`.json`) asks to open it, through the same question
 about unsaved changes; anything else is named in the status line as not
-taken. What a drop means is `daw.frontend.act.drop(paths, row, beat)`: with a
+taken. What a drop means is `paw.frontend.act.drop(paths, row, beat)`: with a
 `row` (a place in the list of tracks) and a `beat` it puts the files one
 after another on that track, at the beat on the grid; the window cannot say
 where the pointer was, for winit 0.30 does not tell, so it passes neither.
@@ -160,7 +160,7 @@ pages shown over the window. `:help` opens the manual in a docked pane, split of
 (`gw` or `:textbuf.window` pops it out into a window of its own), drawn as the
 terminal draws it and moved through with the same keys (see Help in [the
 terminal interface](terminal.md)). The status line shows the keys worth knowing in
-the view that has the keyboard (the terminal's key bar, `daw.opt.keybar`), the
+the view that has the keyboard (the terminal's key bar, `paw.opt.keybar`), the
 quickfix count (`qf E1 W2`) in the colour of the worst entry, and, while a
 command is typed, the list of what it could become, with each one's
 description, above the line (Tab and Shift-Tab move through it, Up and Down
@@ -181,11 +181,11 @@ session view are drawn by the window itself in their panes; any other
 buffer is drawn by the kernel at the pane's size, inset a little, under
 the window's own title with buttons to pop it out and to close it: a view
 that paints (the notation, the drum grid, the vocal editor, the undo tree)
-as a picture, any other (a curve `daw://lane/3`, the quickfix list, a text
-buffer `daw://tracks`, an empty window) cell by cell in the monospace font
+as a picture, any other (a curve `paw://lane/3`, the quickfix list, a text
+buffer `paw://tracks`, an empty window) cell by cell in the monospace font
 as the terminal draws it, the title row the terminal gives it hidden under
-the window's title. So `:vs daw://lane/3`,
-`Enter` on a lane row, `:copen`, `:sp quickfix`, `:e daw://tracks`,
+the window's title. So `:vs paw://lane/3`,
+`Enter` on a lane row, `:copen`, `:sp quickfix`, `:e paw://tracks`,
 `Ctrl-w` and its keys, `:q`, `:only`, `:tabnew mixer`, `gt` and `:layout
 edit` do in the window what they do in the terminal. A ring of the
 selection's colour goes round the pane with the keyboard when there is
@@ -195,20 +195,20 @@ cells is kept, as `Ctrl-w +` keeps it); with more than one tab a row of
 them runs along the top, and a click on one goes to it. Every window
 attached has tabs and windows of its own, and the first time a window
 shows its main area the device panel is put beside the arrange view. The
-kernel says where each pane goes in `daw.panes.state()`, told the main
-area's size with `daw.panes.area(width, height)`; it paints a pane with
-`daw.panes.paint(win, width, height)`, and takes the pointer in one with
-`daw.panes.pointer(win, event)`, a press with `daw.panes.focus(win)`, a
-border dragged with `daw.panes.border(i, x, y)` and a tab clicked with
-`daw.panes.tab(i)` (runtime/lua/daw/panes.lua, tested in the suite).
+kernel says where each pane goes in `paw.panes.state()`, told the main
+area's size with `paw.panes.area(width, height)`; it paints a pane with
+`paw.panes.paint(win, width, height)`, and takes the pointer in one with
+`paw.panes.pointer(win, event)`, a press with `paw.panes.focus(win)`, a
+border dragged with `paw.panes.border(i, x, y)` and a tab clicked with
+`paw.panes.tab(i)` (runtime/lua/paw/panes.lua, tested in the suite).
 A tab narrowed to a group (`:narrow Strings`, `zn`; see
 [Narrowing to a group](mixing.md#mixing-midi-and-rendering-in-the-core))
 is a tab like any other in its row, named after the group, and its panes
 draw only that group's tracks: the timeline, the mixer and the device panel
-take their rows from `daw.groups.rows()`, which is the narrowed tab's.
+take their rows from `paw.groups.rows()`, which is the narrowed tab's.
 
 What a gesture means is not decided in the window. It calls
-`daw.frontend.act` in the kernel (`select_clip`, `select_clips_box`,
+`paw.frontend.act` in the kernel (`select_clip`, `select_clips_box`,
 `drag_clips`, `trim_clips`, `set_fade`, `set_clip_gain`, `split_clips`,
 `glue_clips`, `move_track`, `set_track_height`, `sweep_flag`, `select_range`,
 `set_loop`, `set_loop_edge`, `ruler_click`, `float_pointer`, `add_note`,
@@ -217,12 +217,12 @@ What a gesture means is not decided in the window. It calls
 where beats
 snap to the grid and the suite tests each one, so another frontend gets the
 same behaviour by sending the same gestures. The clips chosen with the
-pointer are kept there too (`daw.frontend.chosen_clips()`), and the state
+pointer are kept there too (`paw.frontend.chosen_clips()`), and the state
 marks each clip `selected`.
 
 **A status line of your own.** The window's status bar is its own, and shows
 the mode, the prompt, messages and keys as it always has. Once
-`daw.statusline.setup` has run (see [Configuration](configuration.md#the-status-line)),
+`paw.statusline.setup` has run (see [Configuration](configuration.md#the-status-line)),
 `frontend.state` carries `modal.statusline`, `{ left, right }`, each a list of
 `{ text, group }` pieces (the groups are those of the terminal's theme): this
 is what the window needs to draw in place of its fixed fields. The window does
@@ -252,19 +252,19 @@ of one style each. Under it a line shows a prompt being answered, a message,
 or the view's keys. Keys typed there go to the view's mappings with the view
 focused, a prompt it opens is answered there, and the pointer reaches its
 `on_mouse` in cells, as from a terminal: down, up, drag, scroll. Closing the
-view (`q`, `daw.ui.close()`) closes the window. It is drawn again only when
+view (`q`, `paw.ui.close()`) closes the window. It is drawn again only when
 a redraw has been asked for and what it would show has changed, at most 30
 times a second. The font has no braille, so the window draws each braille
 character (U+2800 to U+28FF) itself, as small squares in the cell's two
 columns and four rows of dots, and curves there are drawn as in the
 terminal. The font has no sextants (U+1FB00 to U+1FB3B, the default for
 curves) either, so each is drawn as up to six rectangles, a half cell by a
-third. `daw.opt.curve_glyphs` chooses, and `daw.opt.braille` off draws lines
+third. `paw.opt.curve_glyphs` chooses, and `paw.opt.braille` off draws lines
 instead. A view that has a
 painted twin (`painted = "name"` on its table, as the undo tree and the mix
 report have) is offered under More as the twin. A terminal
 attached to the same kernel is not disturbed: the view is drawn on a grid of
-its own (`daw.api.ui_view_snapshot(name, width, height)` gives the same as
+its own (`paw.api.ui_view_snapshot(name, width, height)` gives the same as
 rows of runs `{ x, w, text, fg, bg, attrs }`).
 
 **Windows for extensions.** A view that paints is shown in a pane, or in a
@@ -272,9 +272,9 @@ window of its own, so an extension brings its own editor to the graphical
 frontend without the frontend knowing anything about it:
 
 ```lua
-daw.ui.view("scope", {
+paw.ui.view("scope", {
   paint = function(self, g, ctx)                 -- pixels; ctx.width, ctx.height
-    local c = daw.canvas.palette                 -- the window's colours, by name
+    local c = paw.canvas.palette                 -- the window's colours, by name
     g:rect(0, 0, ctx.width, ctx.height, { fill = c.surface })
     g:text(12, 10, "hello", { color = c.text, size = 14, bold = true })
     g:poly({ 0, 80, 40, 60, 80, 90 }, { color = c.select, width = 2 })
@@ -286,22 +286,22 @@ daw.ui.view("scope", {
   end,
   pointer = function(self, e) end,               -- e.kind: down, up, move (button held), hover, double, wheel; e.x, e.y, e.button
 })
-daw.ui.dock("scope", { side = "bottom", hidden = true })   -- where it docks
-daw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
+paw.ui.dock("scope", { side = "bottom", hidden = true })   -- where it docks
+paw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
 ```
 
-`daw.canvas.open` shows a view that docks (`daw.ui.dock`, or one with a
+`paw.canvas.open` shows a view that docks (`paw.ui.dock`, or one with a
 window in the layout already) in its pane, under the title given; a view
-with no place in the layout, or `daw.canvas.open(name, { window = true })`,
+with no place in the layout, or `paw.canvas.open(name, { window = true })`,
 in a window of its own that starts at the size given. The kernel paints the
 view at the pane's or the window's size and the frontend makes the
 rectangles, text, lines and music glyphs it is given into one image, with
-the rasterizer the terminal uses ([crates/daw-raster](../crates/daw-raster)),
+the rasterizer the terminal uses ([crates/paw-raster](../crates/paw-raster)),
 so the two show the same pixels. `g:glyph(x, y, size, codepoint, colour,
 font)` draws a glyph of a SMuFL music font built in (Leland, Bravura,
-Petaluma), `size` pixels to the em; `daw.api.smufl(font)` gives the font's
+Petaluma), `size` pixels to the em; `paw.api.smufl(font)` gives the font's
 metadata (engraving defaults, glyph boxes and anchors, glyph names);
-`daw.api.canvas_export(path, "pdf", pages)` writes drawings as a PDF (a
+`paw.api.canvas_export(path, "pdf", pages)` writes drawings as a PDF (a
 page for each `{ ops, width, height }`), `"svg"` or `"png"` the first, the
 glyphs and text as outlines. A
 view that also shows its pixels in the terminal keeps cells for them in
@@ -312,9 +312,9 @@ interface](terminal.md)); `ctx.surface` then says the drawing goes there,
 colours. That is a strip of the view's whole drawing; a view that draws
 cells can also keep strips of its own for part of itself, each drawn by a
 function, with `buf:strip(x, y, w, h, { key, draw, under })`, and
-`daw.plot` draws curves over time in them (see
+`paw.plot` draws curves over time in them (see
 [Pictures in the terminal](extensions.md#pictures-in-the-terminal)). A frontend that cannot draw a music font's glyphs is given each
-as a path from the font's outline (`daw.canvas.glyph_outline`). `daw.canvas.palette` holds the
+as a path from the font's outline (`paw.canvas.glyph_outline`). `paw.canvas.palette` holds the
 window's colours under the names the window itself uses (`surface`, `lane`,
 `panel`, `well`, `control`, `line_bar`, `text`, `text_2`, `text_3`,
 `select`, `play`, `rec`, `mute`, `solo`, `warn`, `error`, the meter colours
@@ -326,16 +326,16 @@ the singer, tools and grid. An extension with an editor of its own for the
 clips of a kind of track gives the kind an `editor` (see
 [Everything an extension can own](extensions.md#everything-an-extension-can-own)),
 and a double click on such a clip opens it there; for other clips it adds a
-function to `daw.frontend.openers`. A kind of track is offered by the "+
+function to `paw.frontend.openers`. A kind of track is offered by the "+
 Track" and "New track" menus, and the track header says what kind it is
 before its devices ("Vocal track · Kitane  ·  UTAU voice").
 
 **Menu entries for extensions.** The right-click menus of clips, track
-headers and the empty timeline take entries from `daw.frontend.menus`:
+headers and the empty timeline take entries from `paw.frontend.menus`:
 
 ```lua
-table.insert(daw.frontend.menus.clip, { label = "Open as notation", command = "notation.open", only = "midi" })
-table.insert(daw.frontend.menus.timeline, { label = "New drum track", run = function(track, beat) end })
+table.insert(paw.frontend.menus.clip, { label = "Open as notation", command = "notation.open", only = "midi" })
+table.insert(paw.frontend.menus.timeline, { label = "New drum track", run = function(track, beat) end })
 ```
 
 `command` is a command line, `run` a function given the clip or track and the
@@ -345,11 +345,11 @@ are also offered by the buttons that make a track, so an extension's kind of
 track (a drum track) is one click away in an empty project.
 
 **Bands under the ruler.** An extension adds a row of its own under the
-ruler's markers with a function in `daw.frontend.bands` that returns the
+ruler's markers with a function in `paw.frontend.bands` that returns the
 band's entries:
 
 ```lua
-table.insert(daw.frontend.bands, function()
+table.insert(paw.frontend.bands, function()
   return { { beat = 0, length = 16, name = "Intro", command = "section.goto 1", hint = "click goes there" } }
 end)
 ```
@@ -359,5 +359,5 @@ An entry with a `length` is drawn over its stretch, one without as a flag;
 function given the entry) is what a click does, and `hint` is what the
 status line says over it. A band with no entries takes no room. The bands
 are asked again when the project, the cursor or the transport changes;
-after a change of its own an extension calls `daw.frontend.refresh()`.
+after a change of its own an extension calls `paw.frontend.refresh()`.
 The sections and the mix's findings are shown this way.

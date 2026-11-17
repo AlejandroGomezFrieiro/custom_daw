@@ -1,4 +1,4 @@
--- Notation for daw: a MIDI clip shown as staff notation, to read and to
+-- Notation for paw: a MIDI clip shown as staff notation, to read and to
 -- edit, in the terminal and in a window of the graphical frontend.
 -- See README.md beside this file.
 local view = require("notation")
@@ -16,8 +16,8 @@ require("notation.part_keys")
 -- Last: it takes in every key of the view for the score's staves.
 require("notation.staves")
 
-daw.ui.view("notation", view)
-daw.ui.dock("notation", { side = "bottom", hidden = true })
+paw.ui.view("notation", view)
+paw.ui.dock("notation", { side = "bottom", hidden = true })
 -- Staves need rows: the panel takes twice the share of the arrange view.
 local function weigh(node)
   for _, child in ipairs(node) do
@@ -25,4 +25,4 @@ local function weigh(node)
     weigh(child)
   end
 end
-weigh(daw.ui.layout)
+weigh(paw.ui.layout)

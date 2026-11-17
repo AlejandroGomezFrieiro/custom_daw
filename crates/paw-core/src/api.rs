@@ -1,7 +1,7 @@
-//! `daw.api`: the flat, plain-data interface between the kernel and Lua.
+//! `paw.api`: the flat, plain-data interface between the kernel and Lua.
 //!
 //! Every function here takes and returns numbers, strings and tables, never
-//! live objects. The friendly objects in `require("daw")` are Lua wrappers over these, and the
+//! live objects. The friendly objects in `require("paw")` are Lua wrappers over these, and the
 //! RPC socket exposes the same functions to other processes.
 
 use std::cell::{Cell, RefCell};
@@ -11,8 +11,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use daw_engine::backend::{BackendOptions, TestInput};
-use daw_engine::{EventKind, ump};
+use paw_engine::backend::{BackendOptions, TestInput};
+use paw_engine::{EventKind, ump};
 use mlua::serde::SerializeOptions;
 use mlua::{Function, Lua, LuaSerdeExt, LuaString, Table, Value as LuaValue};
 use serde::Deserialize;
@@ -47,7 +47,7 @@ pub struct Timer {
 /// Everything the kernel and the Lua API functions both reach into.
 pub struct Shared {
     pub session: RefCell<Session>,
-    /// The screen of the seat whose turn it is (see runtime/lua/daw/seats.lua),
+    /// The screen of the seat whose turn it is (see runtime/lua/paw/seats.lua),
     /// as big as that seat's terminal: `sizes`, by connection, 0 for the
     /// program's own.
     pub grid: RefCell<Grid>,
@@ -287,7 +287,7 @@ fn cell(v: f64) -> i32 {
     v.floor() as i32
 }
 
-/// A terminal's capabilities as Lua reads them (`daw.api.ui_caps`).
+/// A terminal's capabilities as Lua reads them (`paw.api.ui_caps`).
 fn caps_lua(caps: &Caps) -> Value {
     let mut value = caps.to_json();
     value["cell"] = json!({ "w": caps.cell.0, "h": caps.cell.1 });
@@ -354,7 +354,7 @@ fn style_of(shared: &Shared, value: &LuaValue) -> mlua::Result<Style> {
 /// Draw the UI by calling the Lua runtime's `render(width, height)`.
 ///
 /// Lua draws through `api.grid_text` and `api.grid_fill`. There is deliberately
-/// no drawing-buffer object: `daw.api` only ever passes plain data, so nothing
+/// no drawing-buffer object: `paw.api` only ever passes plain data, so nothing
 /// Lua holds can keep kernel state alive or outlive a reload.
 ///
 /// Do not hand Lua a Rust type through `mlua::UserData` without checking this
@@ -368,8 +368,8 @@ pub fn render(lua: &Lua, shared: &Shared) -> mlua::Result<()> {
         let grid = shared.grid.borrow();
         (grid.width, grid.height)
     };
-    let daw: Table = lua.globals().get("daw")?;
-    let kernel: Table = daw.get("_kernel")?;
+    let paw: Table = lua.globals().get("paw")?;
+    let kernel: Table = paw.get("_kernel")?;
     kernel.get::<Function>("render")?.call((width, height))
 }
 
@@ -382,8 +382,8 @@ fn view_snapshot(lua: &Lua, sh: &Shared, name: &str, width: u16, height: u16) ->
     let (cursor, dirty, redraws) = (sh.cursor.replace(None), sh.dirty.get(), sh.redraws.get());
     sh.highlights.borrow_mut().full_colour = true;
     let drawn = (|| {
-        let daw: Table = lua.globals().get("daw")?;
-        let kernel: Table = daw.get("_kernel")?;
+        let paw: Table = lua.globals().get("paw")?;
+        let kernel: Table = paw.get("_kernel")?;
         kernel.get::<Function>("render_view")?.call::<()>((name, width, height))
     })();
     let normal = sh.highlights.borrow().get("Normal");
@@ -533,7 +533,7 @@ fn midi_kind(lua: &Lua, event: LuaValue) -> mlua::Result<EventKind> {
                     key: pitch()?,
                     vel,
                     ch,
-                    attr: event.attr.map_or(daw_engine::Attr::NONE, Into::into),
+                    attr: event.attr.map_or(paw_engine::Attr::NONE, Into::into),
                 }
             } else {
                 EventKind::NoteOff { key: pitch()?, ch }
@@ -562,7 +562,7 @@ fn xdg_dir(variable: &str, fallback: &str) -> String {
             std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(fallback))
         })
         .unwrap_or_else(std::env::temp_dir);
-    base.join("daw").to_string_lossy().into_owned()
+    base.join("paw").to_string_lossy().into_owned()
 }
 
 /// The functions of the timers that are due, with one-shot timers removed
@@ -598,7 +598,7 @@ macro_rules! define {
     };
 }
 
-/// Build the `daw.api` table and make it available as `require("daw.api")`.
+/// Build the `paw.api` table and make it available as `require("paw.api")`.
 pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
     let api = lua.create_table()?;
     api.set("limit_async", watchdog::ASYNC)?;
@@ -677,7 +677,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // The milliseconds a note with `attr` on the track is moved by its
         // attribute map (below 0: earlier); 0 without one.
         fn track_attr_delay(lua, sh, (id, attr) => (Id, LuaValue)) {
-            let attr = attr_from_lua(lua, attr)?.map_or(daw_engine::Attr::NONE, Into::into);
+            let attr = attr_from_lua(lua, attr)?.map_or(paw_engine::Attr::NONE, Into::into);
             sh.session.borrow().attr_delay(id, attr).lua()
         }
 
@@ -748,7 +748,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // Add devices that fail on purpose (`test.panic`, `test.nan`), for
         // testing what a bad device does to the rest.
         fn test_devices(_, sh, () => ()) {
-            daw_engine::guard::register_test_devices(&mut sh.session.borrow_mut().registry);
+            paw_engine::guard::register_test_devices(&mut sh.session.borrow_mut().registry);
             Ok(())
         }
         // Panic, as a bug in the program would: for testing what is kept.
@@ -805,7 +805,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 session.set_media_store(Some(crate::peaks::media_dir()), megabytes);
                 if let (Some(keep), Some((dir, megabytes))) = (keep, session.media_store()) {
                     // Tidied apart: a big cache takes a while to look through.
-                    let store = daw_engine::DiskStore { dir, limit: (megabytes * 1_048_576.0) as u64 };
+                    let store = paw_engine::DiskStore { dir, limit: (megabytes * 1_048_576.0) as u64 };
                     std::thread::spawn(move || store.tidy((keep.max(0.0) * 1_073_741_824.0) as u64));
                 }
             }
@@ -1016,7 +1016,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             if pitch > 127 {
                 return Err(mlua::Error::runtime(format!("a pitch goes up to 127, not {pitch}")));
             }
-            let attr = attr_from_lua(lua, attr)?.map_or(daw_engine::Attr::NONE, Into::into);
+            let attr = attr_from_lua(lua, attr)?.map_or(paw_engine::Attr::NONE, Into::into);
             sh.session.borrow_mut().live_note(track, pitch, vel, attr).lua()
         }
         fn note_off(_, sh, (track, pitch) => (Id, Option<u8>)) {
@@ -1166,7 +1166,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // `back_after = ms` plugs it in that long after it goes.
         fn audio_test_device(lua, _sh, opts => LuaValue) {
             let opts: TestDeviceOpts = options(lua, opts)?;
-            daw_engine::backend::test_device::set(opts.present, opts.fail_after, opts.back_after);
+            paw_engine::backend::test_device::set(opts.present, opts.fail_after, opts.back_after);
             Ok(())
         }
         // The MIDI ports the null backend lists, as if plugged in.
@@ -1213,7 +1213,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
         // Make the project as it is now the start of its undo history, and
-        // unchanged: a MIDI file opened as a project (daw/midifile.lua).
+        // unchanged: a MIDI file opened as a project (paw/midifile.lua).
         fn undo_reset(_, sh, () => ()) {
             sh.session.borrow_mut().undo_reset();
             Ok(())
@@ -1283,7 +1283,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
             Ok(())
         }
-        // Whether the terminal reports the pointer (`daw.opt.mouse`), for the
+        // Whether the terminal reports the pointer (`paw.opt.mouse`), for the
         // screen being drawn.
         fn ui_mouse(_, sh, on => bool) {
             sh.grid.borrow_mut().mouse_off = !on;
@@ -1321,7 +1321,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.grid.borrow_mut().seal_surfaces();
             Ok(())
         }
-        // The drawing a surface shows: the operations of `daw.canvas.paint`.
+        // The drawing a surface shows: the operations of `paw.canvas.paint`.
         fn grid_surface_ops(lua, sh, (index, ops) => (usize, LuaValue)) {
             let ops: Value = lua.from_value(ops)?;
             if let Some(surface) = sh.grid.borrow_mut().surfaces.get_mut(index.wrapping_sub(1)) {
@@ -1334,7 +1334,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // and `glyphs` (every glyph name with its code point). Nil for a
         // font there is none of.
         fn smufl(lua, _sh, font => Option<String>) {
-            match daw_raster::smufl(font.as_deref()) {
+            match paw_raster::smufl(font.as_deref()) {
                 Some(meta) => to_lua(lua, &meta),
                 None => Ok(LuaValue::Nil),
             }
@@ -1343,30 +1343,30 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // origin, y down (`{ "M", x, y, "C", ... }`), for a frontend that
         // cannot draw the font. Nil for a glyph or font there is none of.
         fn smufl_outline(lua, _sh, (font, codepoint) => (Option<String>, u32)) {
-            match daw_raster::glyph_outline(font.as_deref(), codepoint) {
+            match paw_raster::glyph_outline(font.as_deref(), codepoint) {
                 Some(path) => to_lua(lua, &serde_json::Value::from(path)),
                 None => Ok(LuaValue::Nil),
             }
         }
-        // Write drawings (the operations of `daw.canvas.paint`) to a file:
+        // Write drawings (the operations of `paw.canvas.paint`) to a file:
         // `format` "pdf" (a page for each), "svg" or "png" (the first).
         // Each page is `{ ops, width, height }` in pixels; `scale` is points
         // to a pixel in a PDF (0.75: 96 pixels to the inch).
         fn canvas_export(lua, _sh, (path, format, pages, scale) => (String, String, LuaValue, Option<f32>)) {
             let pages: Vec<Value> = lua.from_value(pages)?;
-            let drawn: Vec<(daw_raster::Drawing, f32, f32)> = pages
+            let drawn: Vec<(paw_raster::Drawing, f32, f32)> = pages
                 .iter()
                 .map(|p| {
                     let size = |k: &str| p[k].as_f64().unwrap_or(1.0).max(1.0) as f32;
-                    (daw_raster::Drawing::parse(&p["ops"]), size("width"), size("height"))
+                    (paw_raster::Drawing::parse(&p["ops"]), size("width"), size("height"))
                 })
                 .collect();
             let Some((first, width, height)) = drawn.first() else {
                 return Err(mlua::Error::runtime("nothing to write"));
             };
             let bytes = match format.as_str() {
-                "pdf" => daw_raster::vector::pdf(&drawn, scale.unwrap_or(0.75)),
-                "svg" => daw_raster::vector::svg(first, *width, *height).into_bytes(),
+                "pdf" => paw_raster::vector::pdf(&drawn, scale.unwrap_or(0.75)),
+                "svg" => paw_raster::vector::svg(first, *width, *height).into_bytes(),
                 "png" => first
                     .paint_all(*width as u32, *height as u32)
                     .and_then(|p| p.encode_png().ok())
@@ -1453,7 +1453,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
         fn now(_, sh, () => ()) { Ok(sh.started.elapsed().as_secs_f64() * 1000.0) }
-        // The time limit on Lua (`daw.limit`): the function to call when a
+        // The time limit on Lua (`paw.limit`): the function to call when a
         // callback has overrun, and when the running one must have returned
         // (on the clock of `now`; nil when it has). `limit_async` says
         // whether an overrun is noticed inside compiled code as well.
@@ -1471,7 +1471,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // that up; a script that waits for something a timer does uses this.
         fn wait(lua, sh, ms => f64) {
             let deadline = Instant::now() + Duration::from_secs_f64(ms.max(0.0) / 1000.0);
-            let kernel: Table = lua.globals().get::<Table>("daw")?.get("_kernel")?;
+            let kernel: Table = lua.globals().get::<Table>("paw")?.get("_kernel")?;
             let (timer, settle): (Function, Function) = (kernel.get("timer")?, kernel.get("settle")?);
             let mut idled = Instant::now() - Duration::from_secs(1);
             loop {
@@ -1547,7 +1547,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
 
-        // Connections on the control socket (crates/daw-core/src/rpc.rs):
+        // Connections on the control socket (crates/paw-core/src/rpc.rs):
         // push an event to one (false when it has closed), list them, say
         // which one's terminal the input being handled came from (0 for the
         // program's own), and let a connection's terminal go.
@@ -1670,5 +1670,5 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
     crate::fs_api::install(lua, &api)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
-    loaded.set("daw.api", api)
+    loaded.set("paw.api", api)
 }

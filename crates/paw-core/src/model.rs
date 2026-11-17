@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use daw_engine::{Ctl, EventKind, NoteCtl, SigPoint, TempoMap, TempoPoint};
+use paw_engine::{Ctl, EventKind, NoteCtl, SigPoint, TempoMap, TempoPoint};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -176,8 +176,8 @@ impl Quantize {
         *self == Quantize::Bar
     }
 
-    pub fn engine(self) -> daw_engine::launch::Quantize {
-        use daw_engine::launch::Quantize as Q;
+    pub fn engine(self) -> paw_engine::launch::Quantize {
+        use paw_engine::launch::Quantize as Q;
         match self {
             Quantize::Off => Q::Off,
             Quantize::Sixteenth => Q::Grid(0.25),
@@ -253,7 +253,7 @@ impl AutoMode {
 /// MIDI from one port, by its name, and optionally one channel of it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MidiInput {
-    /// The port's name as the system gives it (`daw.midi.inputs()`), or
+    /// The port's name as the system gives it (`paw.midi.inputs()`), or
     /// `None` for every port.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<String>,
@@ -266,7 +266,7 @@ pub struct MidiInput {
 /// message's own, in a form for ports that take no MIDI 2.0.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MidiOutput {
-    /// The port's name as `daw.midi.outputs()` gives it.
+    /// The port's name as `paw.midi.outputs()` gives it.
     pub port: String,
     /// From 1 to 16, or `None` for the channel each message has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -279,7 +279,7 @@ pub struct MidiOutput {
 }
 
 /// What a MIDI output sends where the port takes no MIDI 2.0 (see
-/// `daw_engine::midi_form`).
+/// `paw_engine::midi_form`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OutForm {
@@ -302,8 +302,8 @@ impl OutForm {
 
 impl MidiOutput {
     /// The form as the engine takes it.
-    pub fn engine_form(&self) -> daw_engine::midi_form::Form {
-        use daw_engine::midi_form::Form;
+    pub fn engine_form(&self) -> paw_engine::midi_form::Form {
+        use paw_engine::midi_form::Form;
         match self.form {
             OutForm::Auto => Form::Auto,
             OutForm::Plain => Form::Plain,
@@ -760,7 +760,7 @@ pub struct Note {
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub meta: Map<String, Value>,
     /// What names the note within its clip for as long as it lives, however
-    /// it is moved or changed (`daw://clip/7/note/41`). 0 until the session
+    /// it is moved or changed (`paw://clip/7/note/41`). 0 until the session
     /// gives it one, which it does to every note that has none, or shares
     /// one with a note before it, before the edit is played or kept.
     #[serde(default, skip_serializing_if = "unnamed")]
@@ -786,9 +786,9 @@ pub struct NoteAttr {
     pub data: u16,
 }
 
-impl From<NoteAttr> for daw_engine::Attr {
+impl From<NoteAttr> for paw_engine::Attr {
     fn from(a: NoteAttr) -> Self {
-        daw_engine::Attr {
+        paw_engine::Attr {
             kind: a.kind,
             data: a.data,
         }
@@ -797,7 +797,7 @@ impl From<NoteAttr> for daw_engine::Attr {
 
 impl NoteAttr {
     /// The attribute of an engine event's note-on, `None` for none.
-    pub fn of(attr: daw_engine::Attr) -> Option<Self> {
+    pub fn of(attr: paw_engine::Attr) -> Option<Self> {
         (!attr.is_none()).then_some(NoteAttr {
             kind: attr.kind,
             data: attr.data,
@@ -1615,7 +1615,7 @@ mod note_ids {
 #[cfg(test)]
 mod lane_shapes {
     use super::*;
-    use daw_engine::automation::value_at;
+    use paw_engine::automation::value_at;
 
     fn lane(shapes: Vec<Segment>) -> Lane {
         Lane { id: 1, target: Target::Volume, enabled: true, points: vec![(0.0, -12.0), (4.0, 0.0), (8.0, -6.0)], shapes }

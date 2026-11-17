@@ -7,10 +7,10 @@ use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use daw_engine::midi::{MidiInputs, MidiTarget, port_key};
-use daw_engine::midi_form::Form;
-use daw_engine::midi_out::{MidiOut, MidiOutputs, clock_ns};
-use daw_engine::{
+use paw_engine::midi::{MidiInputs, MidiTarget, port_key};
+use paw_engine::midi_form::Form;
+use paw_engine::midi_out::{MidiOut, MidiOutputs, clock_ns};
+use paw_engine::{
     Attr, ClipSet, Ctl, Engine, EventKind, MASTER, MidiEv, Msg, NO_SLOT, NoteCtl, SchedEntry, Schedule,
     TrackRt,
 };
@@ -36,7 +36,7 @@ fn outputs(name: &str) -> Option<MidiOutputs> {
     let outputs = MidiOutputs::start().ok()?;
     let deadline = Instant::now() + Duration::from_secs(4);
     while Instant::now() < deadline {
-        if outputs.ports().iter().any(|p| p.name == format!("daw: {name}")) {
+        if outputs.ports().iter().any(|p| p.name == format!("paw: {name}")) {
             return Some(outputs);
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -67,7 +67,7 @@ fn messages_leave_when_they_are_stamped_for() {
     let outputs = outputs("Loop A").unwrap();
     let (mut tx, queue) = rtrb::RingBuffer::<MidiOut>::new(64);
     outputs.set_queue(queue);
-    let port = port_key("daw: Loop A");
+    let port = port_key("paw: Loop A");
     let start = clock_ns() + 200_000_000;
     for (i, key) in [60u8, 64, 67].into_iter().enumerate() {
         let at = start + i as u64 * 150_000_000;
@@ -112,7 +112,7 @@ fn an_engine_sends_what_a_track_plays_and_ends_it_when_stopped() {
     let outputs = outputs("Loop B").unwrap();
     let (mut engine, mut handle) = Engine::new(48000.0);
     outputs.set_queue(handle.midi_output());
-    let send = |handle: &mut daw_engine::EngineHandle, engine: &mut Engine, msg| {
+    let send = |handle: &mut paw_engine::EngineHandle, engine: &mut Engine, msg| {
         handle.send_while(msg, engine)
     };
     send(&mut handle, &mut engine, Msg::InsertTrack { slot: 1, track: TrackRt::new() });
@@ -128,7 +128,7 @@ fn an_engine_sends_what_a_track_plays_and_ends_it_when_stopped() {
         &mut engine,
         Msg::SetMidiOutput {
             track: 1,
-            port: port_key("daw: Loop B"),
+            port: port_key("paw: Loop B"),
             channel: 10,
             form: Form::Auto,
         },
@@ -182,7 +182,7 @@ fn a_route_in_mpe_gives_each_note_a_channel_and_its_bend_there() {
     let outputs = outputs("Loop C").unwrap();
     let (mut tx, queue) = rtrb::RingBuffer::<MidiOut>::new(64);
     outputs.set_queue(queue);
-    let port = port_key("daw: Loop C");
+    let port = port_key("paw: Loop C");
     let at = clock_ns() + 50_000_000;
     let form = Form::Mpe(3);
     // A chord on one channel, and the middle note bent a semitone up.
@@ -217,7 +217,7 @@ fn a_route_in_mpe_gives_each_note_a_channel_and_its_bend_there() {
     assert!(
         got.iter().any(|(_, kind)| matches!(
             kind,
-            EventKind::Control { ctl: Ctl::Cc(6), ch: 0, value } if (*value - daw_engine::ump::unit7(3)).abs() < 1e-9
+            EventKind::Control { ctl: Ctl::Cc(6), ch: 0, value } if (*value - paw_engine::ump::unit7(3)).abs() < 1e-9
         )),
         "the MPE configuration message"
     );

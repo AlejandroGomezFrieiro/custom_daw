@@ -1,13 +1,13 @@
--- Tests of the file manager (daw/views/files.lua): a folder as lines to
+-- Tests of the file manager (paw/views/files.lua): a folder as lines to
 -- edit, the plan `:w` shows for renaming, moving, making, copying and
 -- deleting (to the trash), the tree, placing sound files and hearing them,
 -- and the project's media folder. Only a scratch folder is touched.
 -- Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh, after = T.test, T.eq, T.fresh, T.after
-local api = daw.api
-local L = daw.layout
-local tb = daw.textbuf
+local api = paw.api
+local L = paw.layout
+local tb = paw.textbuf
 
 local W, H = 160, 48
 local initial = L.capture()
@@ -17,9 +17,9 @@ local function sh(cmd) os.execute(cmd) end
 
 --- The windows and buffers a test opened go when it ends.
 local function tidy()
-  daw.audition.stop()
-  daw.opt.files_hear = false
-  while daw.ui.float do daw.ui.close() end
+  paw.audition.stop()
+  paw.opt.files_hear = false
+  while paw.ui.float do paw.ui.close() end
   L.restore(initial)
   for _, buf in ipairs(L.buffers_list()) do
     if buf.type == "textbuf" then L.buf_delete(buf) end
@@ -30,16 +30,16 @@ local function start()
   fresh()
   after(tidy)
   api.engine_restart({ backend = "null" })
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
   L.restore(initial)
-  daw.ui.focus("arrange")
+  paw.ui.focus("arrange")
   for _, buf in ipairs(L.buffers_list()) do
     if buf.type == "textbuf" then L.buf_delete(buf) end
   end
-  daw.audition.stop()
-  daw.opt.files_hear = false
-  daw.opt.files_hidden = false
+  paw.audition.stop()
+  paw.opt.files_hear = false
+  paw.opt.files_hidden = false
   sh("rm -rf '" .. root .. "' && mkdir -p '" .. root .. "/songs' '" .. root .. "/samples'")
   sh("cp tests/fixtures/tone-stereo-44k.mp3 '" .. root .. "/samples/pad.mp3'")
   sh("cp tests/fixtures/tone-mono-8k.wav '" .. root .. "/kick.wav'")
@@ -49,7 +49,7 @@ local function start()
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -90,9 +90,9 @@ end
 --- `:w` and `y`: the plan shown, then applied.
 local function write()
   keys(":w<CR>")
-  eq(daw.ui.focused, "textbuf.plan", "the plan is shown")
+  eq(paw.ui.focused, "textbuf.plan", "the plan is shown")
   local shown = {}
-  for _, step in ipairs(daw.ui.views["textbuf.plan"].shown) do shown[#shown + 1] = step.text end
+  for _, step in ipairs(paw.ui.views["textbuf.plan"].shown) do shown[#shown + 1] = step.text end
   keys("y")
   return table.concat(shown, "\n")
 end
@@ -101,7 +101,7 @@ local function open(dir) keys(":e " .. dir .. "<CR>") end
 
 local function wait_for(cond, ms)
   local limit = api.now() + (ms or 5000)
-  while not cond() and api.now() < limit do daw.wait(10) end
+  while not cond() and api.now() < limit do paw.wait(10) end
   return cond() and true or false
 end
 
@@ -112,7 +112,7 @@ local function trash_dir() return os.getenv("XDG_DATA_HOME") .. "/Trash" end
 test("files: a folder is a buffer: folders first, then files, with what a sound file's header says", function()
   start()
   open(root)
-  eq(tb.buf().name, "daw://files" .. root, "named by its folder")
+  eq(tb.buf().name, "paw://files" .. root, "named by its folder")
   local text = lines()
   eq(text[1]:match("^samples/") ~= nil, true, "folders first: " .. text[1])
   eq(text[2]:match("^songs/") ~= nil, true, "in order: " .. text[2])
@@ -132,9 +132,9 @@ test("files: a line left alone is no change, and `-` goes up and Enter goes in",
   open(root .. "/samples")
   eq(plan_of(), "", "nothing to do")
   keys("-")
-  eq(tb.buf().name, "daw://files" .. root, "up")
+  eq(tb.buf().name, "paw://files" .. root, "up")
   keys("gg<CR>")
-  eq(tb.buf().name, "daw://files" .. root .. "/samples", "Enter on a folder goes in")
+  eq(tb.buf().name, "paw://files" .. root .. "/samples", "Enter on a folder goes in")
   eq(screen():find("pad.mp3", 1, true) ~= nil, true, "and shows what is in it")
   eq(lines()[row_of("pad.mp3")]:find("2ch", 1, true) ~= nil, true, "the mp3 is read too")
 end)
@@ -264,7 +264,7 @@ end)
 test("files: a tree opens folders in place with Enter, and editing it works at each depth", function()
   start()
   keys(":files.tree " .. root .. "<CR>")
-  eq(tb.buf().name, "daw://tree" .. root, "a tree buffer")
+  eq(tb.buf().name, "paw://tree" .. root, "a tree buffer")
   local rows = lines()
   eq(rows[row_of("samples")]:match("^samples/") ~= nil, true, "folders closed at first")
   eq(table.concat(rows, "\n"):find("pad.mp3", 1, true), nil, "what is in them is not shown")
@@ -293,10 +293,10 @@ end)
 
 test("files: Enter on a sound file places it at the cursor's track and time, `go` on a new track", function()
   start()
-  local lead = daw.add_track({ name = "Lead" })
-  daw.flush()
-  daw.cursor.set_track(lead)
-  daw.cursor.set_beat(8)
+  local lead = paw.add_track({ name = "Lead" })
+  paw.flush()
+  paw.cursor.set_track(lead)
+  paw.cursor.set_beat(8)
   open(root)
   local before = #api.track_list()
   keys(":" .. row_of("kick.wav") .. "<CR><CR>")
@@ -307,24 +307,24 @@ test("files: Enter on a sound file places it at the cursor's track and time, `go
   eq(clips[1].file:match("kick.wav$") ~= nil, true, "of the file")
   keys("go")
   eq(#api.track_list(), before + 1, "`go` made a track")
-  eq(daw.cursor.track().name, "kick", "named after the file")
+  eq(paw.cursor.track().name, "kick", "named after the file")
 end)
 
 test("files: a sound file is heard with gh, and as the cursor rests on it when asked", function()
   start()
   open(root)
   keys(":" .. row_of("kick.wav") .. "<CR>gh")
-  eq(wait_for(function() local s = daw.audition.state() return s and s.kind == "file" and s.file:match("kick.wav$") end), true, "gh plays it")
-  daw.audition.stop()
-  daw.opt.files_hear = true
+  eq(wait_for(function() local s = paw.audition.state() return s and s.kind == "file" and s.file:match("kick.wav$") end), true, "gh plays it")
+  paw.audition.stop()
+  paw.opt.files_hear = true
   keys(":" .. row_of("notes.txt") .. "<CR>")
-  daw.wait(300)
-  eq(daw.audition.state(), nil, "a text file makes no sound")
+  paw.wait(300)
+  eq(paw.audition.state(), nil, "a text file makes no sound")
   keys(":" .. row_of("kick.wav") .. "<CR>")
-  eq(wait_for(function() local s = daw.audition.state() return s and s.kind == "file" end), true, "it plays when the cursor has rested")
+  eq(wait_for(function() local s = paw.audition.state() return s and s.kind == "file" end), true, "it plays when the cursor has rested")
   keys(":" .. row_of("notes.txt") .. "<CR>")
-  eq(wait_for(function() return daw.audition.state() == nil end), true, "and stops when it moves on")
-  daw.opt.files_hear = false
+  eq(wait_for(function() return paw.audition.state() == nil end), true, "and stops when it moves on")
+  paw.opt.files_hear = false
 end)
 
 -- The project's media folder ---------------------------------------------------------------
@@ -335,12 +335,12 @@ test("files: the media folder marks what no clip plays, and `:media.unused` list
   sh("rm -rf '" .. song .. "' && mkdir -p '" .. song .. "/media'")
   sh("cp tests/fixtures/tone-mono-8k.wav '" .. song .. "/media/used.wav'")
   sh("cp tests/fixtures/shape.wav '" .. song .. "/media/spare-" .. T.scratch:match("(%d+-%d+)$") .. ".wav'")
-  local t = daw.add_track({ name = "Take" })
+  local t = paw.add_track({ name = "Take" })
   t:add_clip({ start = 0, file = song .. "/media/used.wav" })
-  daw.flush()
-  daw.project.save(song .. "/song.json")
+  paw.flush()
+  paw.project.save(song .. "/song.json")
   keys(":files media<CR>")
-  eq(tb.buf().name, "daw://files" .. song .. "/media", "`:files media` is the project's folder")
+  eq(tb.buf().name, "paw://files" .. song .. "/media", "`:files media` is the project's folder")
   eq(lines()[row_of("spare-" .. T.scratch:match("(%d+-%d+)$") .. ".wav")]:find("unused", 1, true) ~= nil, true, "the spare file is marked")
   eq(lines()[row_of("used.wav")]:find("unused", 1, true), nil, "the one a clip plays is not")
   keys(":media.unused<CR>")
@@ -355,7 +355,7 @@ end)
 
 test("files: `:help files` is the page that says how the file manager works", function()
   start()
-  daw.cmd("help", { "files" })
+  paw.cmd("help", { "files" })
   local win = L.current()
   local buf = L.buf_of(win)
   eq(buf.name, "help://terminal.md", "in the terminal's page")

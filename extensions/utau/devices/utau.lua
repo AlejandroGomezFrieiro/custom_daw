@@ -2,7 +2,7 @@
 --
 -- The engine renders a vocal track phrase by phrase; extensions/utau writes
 -- each phrase to a file of 32-bit floats and tells every device of this kind
--- what each voice holds (`voice.<n>`, posted with `daw.api.device_post`, so
+-- what each voice holds (`voice.<n>`, posted with `paw.api.device_post`, so
 -- that devices made later, an offline render's among them, are told too). A
 -- device plays the voice its `voice` parameter names, in real time and in
 -- renders alike, and ignores the notes that reach it. The files are mapped,
@@ -11,7 +11,7 @@
 -- The other parameters are the singing curves, in OpenUtau's units. The
 -- device does nothing with them: they are there for automation lanes to
 -- draw, and the extension reads the lanes and sends them to the engine.
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 local ffi = require("ffi")
 local floor = math.floor
 

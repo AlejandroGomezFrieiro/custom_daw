@@ -1,14 +1,14 @@
--- `daw.audio`: which audio devices are open, and what each track takes in.
+-- `paw.audio`: which audio devices are open, and what each track takes in.
 --
---   daw.audio.devices()                         -- { outputs = {...}, inputs = {...}, output, input }
---   daw.audio.use({ output = "UR22", input = "UR22", buffer = 128 })
---   daw.audio.levels()                          -- each input channel's level, 0 to 1
---   daw.audio.choices(track)                    -- what a track's input can be, for a menu or a picker
---   daw.audio.choose(track, choice)             -- take one of them
+--   paw.audio.devices()                         -- { outputs = {...}, inputs = {...}, output, input }
+--   paw.audio.use({ output = "UR22", input = "UR22", buffer = 128 })
+--   paw.audio.levels()                          -- each input channel's level, 0 to 1
+--   paw.audio.choices(track)                    -- what a track's input can be, for a menu or a picker
+--   paw.audio.choose(track, choice)             -- take one of them
 --
 -- The lists and what each choice means live here, so that the terminal and
 -- the window offer the same and mean the same by it.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 --- Every device the system offers: `outputs` and `inputs`, each a list of
@@ -112,7 +112,7 @@ function M.choices(track)
   local midi = t.midi_input or {}
   add("midi", "All MIDI ports", { midi_port = false }, not midi.port)
   local seen = false
-  for _, port in ipairs(daw.midi.inputs()) do
+  for _, port in ipairs(paw.midi.inputs()) do
     seen = seen or port.name == midi.port
     add("midi", port.name, { midi_port = port.name }, port.name == midi.port)
   end
@@ -128,7 +128,7 @@ function M.choices(track)
   local sent = t.midi_output or {}
   add("midi_out", "None", { midi_out = false }, not sent.port)
   local found = false
-  for _, port in ipairs(daw.midi.outputs()) do
+  for _, port in ipairs(paw.midi.outputs()) do
     found = found or port.name == sent.port
     add("midi_out", port.name, { midi_out = port.name }, port.name == sent.port)
   end
@@ -140,8 +140,8 @@ function M.choices(track)
     add("midi_out_channel", "Channel " .. ch, { midi_out_channel = ch }, sent.channel == ch)
   end
   -- What it becomes at a port that takes no MIDI 2.0.
-  for _, form in ipairs(daw.routes.midi_out_form_order) do
-    local label = daw.routes.midi_out_forms[form]
+  for _, form in ipairs(paw.routes.midi_out_form_order) do
+    local label = paw.routes.midi_out_forms[form]
     add("midi_out_form", label:sub(1, 1):upper() .. label:sub(2), { midi_out_form = form }, (sent.form or "auto") == form)
   end
   return out
@@ -238,7 +238,7 @@ function M.choose_engine(choice)
   if not value or next(value) == nil then return end
   M.use(value)
   local e = api.engine_get()
-  daw.notify(string.format("audio: %s → %s, %s", e.input_device, e.device, M.timing()))
+  paw.notify(string.format("audio: %s → %s, %s", e.input_device, e.device, M.timing()))
 end
 
 return M

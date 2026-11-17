@@ -1,11 +1,11 @@
 -- Real-time headroom: per-callback processing time while the project plays
 -- on the null backend, which calls the engine on a real-time schedule.
---   daw --clean --no-plugins -l bench/blocks.lua <tracks> <audio|midi> <fx 0|1> <automation 0|1> <buffer> <seconds> [edit|play] [threads]
+--   paw --clean --no-plugins -l bench/blocks.lua <tracks> <audio|midi> <fx 0|1> <automation 0|1> <buffer> <seconds> [edit|play] [threads]
 -- With `edit`, the script edits the project (moves a clip, changes a
 -- volume) every 20 ms while it plays, as a user dragging things would.
 -- `threads` 0 or left out plays on one thread per core.
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local tracks, kind, fx, automation, buffer, seconds, edit, threads = ...
@@ -16,10 +16,10 @@ api.engine_restart({ backend = "null", buffer_size = buffer, sample_rate = 48000
 -- Builds from before the engine used several threads have no such call.
 if api.engine_set_threads then api.engine_set_threads(tonumber(threads) or 0) end
 local ids = B.build({ tracks = tracks, kind = kind, fx = fx == "1", automation = automation == "1", bars = 16 })
-daw.transport.loop_start, daw.transport.loop_end = 0, 64
-daw.transport.loop_enabled = true
-daw.transport.play()
-daw.flush()
+paw.transport.loop_start, paw.transport.loop_end = 0, 64
+paw.transport.loop_enabled = true
+paw.transport.play()
+paw.flush()
 api.sleep(200)
 api.engine_reset_stats()
 local edits = 0
@@ -30,7 +30,7 @@ while api.now() < deadline do
     local clip = api.clip_list(id)[1]
     api.clip_set(clip.id, "start", clip.start == 0 and 0.25 or 0)
     api.track_set(id, "volume", -(edits % 6))
-    daw.flush()
+    paw.flush()
     api.undo_checkpoint()
     edits = edits + 1
     api.sleep(20)
@@ -39,7 +39,7 @@ while api.now() < deadline do
   end
 end
 local info = api.engine_get()
-daw.transport.stop()
+paw.transport.stop()
 local b = info.blocks
 B.emit({
   workload = "blocks", tracks = tracks, kind = kind, fx = fx == "1" and 1 or 0, automation = automation == "1" and 1 or 0,

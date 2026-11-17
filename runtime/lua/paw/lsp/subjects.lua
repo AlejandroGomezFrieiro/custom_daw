@@ -3,28 +3,28 @@
 -- track, the project, the rendered file), sent as a document whose version
 -- moves when the projection does.
 --
---   daw.lsp.subject("lyrics", {
---     language = "daw-lyrics",
---     targets = function(where) return { "daw://track/3" } end,  -- what there is to show
+--   paw.lsp.subject("lyrics", {
+--     language = "paw-lyrics",
+--     targets = function(where) return { "paw://track/3" } end,  -- what there is to show
 --     build = function(address, where) return { words = ... } end,
---     depends = { "daw://clip/**" },                             -- what makes it worth sending again
+--     depends = { "paw://clip/**" },                             -- what makes it worth sending again
 --   })
 --
 -- `where` is the attachment's `where` (`focus`, `tracks`, `drums`, ...).
 -- The document's URI is the address, or the address and `#<subject>` when
--- the subject is not the address's own (`daw://project#mix`).
-local api = daw.api
-local A = daw.address
-local document = require("daw.lsp.document")
+-- the subject is not the address's own (`paw://project#mix`).
+local api = paw.api
+local A = paw.address
+local document = require("paw.lsp.document")
 
 local M = { list = {} }
 
 --- Add or replace a subject.
 function M.define(name, spec)
-  assert(type(spec) == "table" and spec.build and spec.targets, "usage: daw.lsp.subject(name, { targets = fn, build = fn, ... })")
+  assert(type(spec) == "table" and spec.build and spec.targets, "usage: paw.lsp.subject(name, { targets = fn, build = fn, ... })")
   spec.name = name
-  spec.language = spec.language or ("daw-" .. name)
-  spec.depends = spec.depends or { "daw://**" }
+  spec.language = spec.language or ("paw-" .. name)
+  spec.depends = spec.depends or { "paw://**" }
   M.list[name] = spec
 end
 
@@ -64,7 +64,7 @@ function M.track_passes(track, where)
 end
 
 -- The clips open in a piano roll, the active one and every other it edits
--- with it (daw.roll_clips): each seat (each person's terminal or window)
+-- with it (paw.roll_clips): each seat (each person's terminal or window)
 -- has its own, and the servers are shared, so they get all of them.
 local function open_clips()
   local open, out = {}, {}
@@ -75,12 +75,12 @@ local function open_clips()
     end
   end
   local function look()
-    local view = daw.ui.views.pianoroll
+    local view = paw.ui.views.pianoroll
     add(view and view.clip_id)
-    for _, id in ipairs(daw.roll_clips and daw.roll_clips.ids() or {}) do add(id) end
+    for _, id in ipairs(paw.roll_clips and paw.roll_clips.ids() or {}) do add(id) end
   end
-  local seats = daw.seats and daw.seats.list() or {}
-  if #seats <= 1 then look() else for _, seat in ipairs(seats) do daw.seats.within(seat, look) end end
+  local seats = paw.seats and paw.seats.list() or {}
+  if #seats <= 1 then look() else for _, seat in ipairs(seats) do paw.seats.within(seat, look) end end
   return out
 end
 
@@ -88,11 +88,11 @@ end
 local function focused_tracks()
   local seen, out = {}, {}
   local function look()
-    local id = daw.cursor.track_id()
+    local id = paw.cursor.track_id()
     if id and not seen[id] then seen[id], out[#out + 1] = true, id end
   end
-  local seats = daw.seats and daw.seats.list() or {}
-  if #seats <= 1 then look() else for _, seat in ipairs(seats) do daw.seats.within(seat, look) end end
+  local seats = paw.seats and paw.seats.list() or {}
+  if #seats <= 1 then look() else for _, seat in ipairs(seats) do paw.seats.within(seat, look) end end
   return out
 end
 
@@ -129,9 +129,9 @@ end
 -- Built in ---------------------------------------------------------------------
 
 -- A MIDI clip, with what sounds with it: MIDI LSP's take document
--- (daw/lsp/document.lua). By focus, the clips open in a piano roll.
+-- (paw/lsp/document.lua). By focus, the clips open in a piano roll.
 M.define("clip", {
-  language = "daw-clip",
+  language = "paw-clip",
   own = function(uri) return A.parse(uri) and A.parse(uri).kind == "clip" end,
   targets = function(where)
     local ids = {}
@@ -151,13 +151,13 @@ M.define("clip", {
   end,
   key = function(address) return document.key_of(A.parse(address).clip) end,
   build = function(address, _, key) return document.build(A.parse(address).clip, key) end,
-  depends = { "daw://clip/*", "daw://track/*", "daw://project" },
+  depends = { "paw://clip/*", "paw://track/*", "paw://project" },
 })
 
 -- One track: its chain of devices with their parameters, its routing, and
 -- what its clips are. By focus, the track a cursor is on.
 M.define("track", {
-  language = "daw-track",
+  language = "paw-track",
   own = function(uri) return A.parse(uri) and A.parse(uri).kind == "track" end,
   targets = function(where)
     local out = {}
@@ -177,17 +177,17 @@ M.define("track", {
     end
     return out
   end,
-  depends = { "daw://track/**", "daw://clip/*" },
+  depends = { "paw://track/**", "paw://clip/*" },
 })
 
-daw.option.define("loudness_target", -14)  -- LUFS a mix is meant to sit at (for a mix server)
-daw.option.define("true_peak_target", -1)  -- dBTP it should stay under
+paw.option.define("loudness_target", -14)  -- LUFS a mix is meant to sit at (for a mix server)
+paw.option.define("true_peak_target", -1)  -- dBTP it should stay under
 
 -- The mix: every track with its fader, pan, mute and solo, sends, where it
 -- goes, its devices and their parameters; the master; the tempo; the
 -- loudness it is meant for; the options of the last render.
 M.define("mix", {
-  language = "daw-mix",
+  language = "paw-mix",
   targets = function() return { A.project() } end,
   build = function()
     local tracks = {}
@@ -197,19 +197,19 @@ M.define("mix", {
     local e = api.engine_get()
     return {
       tracks = tracks, master = track_of(0),
-      tempo = daw.tempo.points(), signatures = daw.tempo.signatures(),
+      tempo = paw.tempo.points(), signatures = paw.tempo.signatures(),
       sample_rate = e.sample_rate,
-      targets = { loudness_lufs = daw.opt.loudness_target, true_peak_dbtp = daw.opt.true_peak_target },
+      targets = { loudness_lufs = paw.opt.loudness_target, true_peak_dbtp = paw.opt.true_peak_target },
       render = last and { path = last.path, opts = last.opts } or nil,
     }
   end,
-  depends = { "daw://track/**", "daw://project" },
+  depends = { "paw://track/**", "paw://project" },
 })
 
 -- The whole project, summarised: tracks with what is on them, markers, the
 -- tempo, how long it is.
 M.define("project", {
-  language = "daw-project",
+  language = "paw-project",
   own = function(uri) return uri == A.project() end,
   targets = function() return { A.project() } end,
   build = function()
@@ -221,16 +221,16 @@ M.define("project", {
       for _, c in ipairs(clips) do finish = math.max(finish, c.start + c.length) end
       tracks[#tracks + 1] = { id = id, address = A.track(id), name = t.name, clips = #clips, devices = #(t.devices or {}) }
     end
-    return { name = p.name, path = p.path, tracks = tracks, length = finish, tempo = daw.tempo.points(),
-      markers = daw.markers and daw.markers.list() or {} }
+    return { name = p.name, path = p.path, tracks = tracks, length = finish, tempo = paw.tempo.points(),
+      markers = paw.markers and paw.markers.list() or {} }
   end,
-  depends = { "daw://track/*", "daw://clip/*", "daw://project" },
+  depends = { "paw://track/*", "paw://clip/*", "paw://project" },
 })
 
 -- A rendered file: where, its format, rate and depth, how long, and what
 -- the render measured (peak, loudness) with the options it was made with.
 M.define("render", {
-  language = "daw-render",
+  language = "paw-render",
   own = function(uri) return A.parse(uri) and A.parse(uri).kind == "render" end,
   targets = function()
     local out = {}
@@ -251,7 +251,7 @@ M.define("render", {
       master = track_of(0),
     }
   end,
-  depends = { "daw://render/**" },
+  depends = { "paw://render/**" },
 })
 
 return M

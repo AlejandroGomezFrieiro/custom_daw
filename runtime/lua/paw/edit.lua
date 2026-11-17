@@ -1,7 +1,7 @@
 -- Editing by region: what the operators of the arrange view and the piano
--- roll do. A region comes from `daw.keymap` (a motion, a text object or a
+-- roll do. A region comes from `paw.keymap` (a motion, a text object or a
 -- visual selection) and has rows `r0` to `r1`, beats `c0` up to `c1`, and a
--- `kind`. Everything here is plain calls on `daw.api`, for use from
+-- `kind`. Everything here is plain calls on `paw.api`, for use from
 -- extensions and scripts as much as from key mappings.
 --
 -- In the arrange view rows are positions in the track list. "line" regions
@@ -15,10 +15,10 @@
 -- only between two pitches, a "line" one whole pitches. Notes belong to the
 -- region they start in, and are never cut. Where the roll edits several
 -- clips at once, `yank`, `delete`, `each` and `paste` take the list of them
--- (`daw.roll_clips.parts()`: `{ clip, offset }` each, beats counting from
+-- (`paw.roll_clips.parts()`: `{ clip, offset }` each, beats counting from
 -- the start of the first) in place of one clip; every note stays in its own.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local EPS = 1e-9
 
 local A, R = {}, {}
@@ -28,7 +28,7 @@ local M = { arrange = A, roll = R }
 
 --- The ids of the tracks a region covers.
 function A.tracks(region)
-  local list, out = daw.groups.rows(), {}
+  local list, out = paw.groups.rows(), {}
   for row = math.max(1, region.r0), region.r1 do
     if list[row] then out[#out + 1] = list[row] end
   end
@@ -41,14 +41,14 @@ local function piece(c, notes, from, to)
   if b - a <= EPS then return nil end
   local snap = { name = c.name, start = a, length = b - a, kind = c.kind, muted = c.muted }
   -- It plays as the clip does: stretched, shifted, looped from where it begins.
-  local moved = daw.stretch.carry(c, snap, a - c.start)
+  local moved = paw.stretch.carry(c, snap, a - c.start)
   -- What extensions keep with a clip describes the whole of it, so it goes
   -- with a whole copy and not with a part.
   if a - c.start < EPS and c.start + c.length - b < EPS and c.meta and next(c.meta) then
     snap.meta = c.meta
   else
     -- Its takes are another matter: every piece keeps them, lined up.
-    local takes = daw.takes.piece(c, a, b, c.loop and moved.shift)
+    local takes = paw.takes.piece(c, a, b, c.loop and moved.shift)
     if takes then snap.meta = { takes = takes } end
   end
   if c.kind == "midi" and c.loop then
@@ -133,7 +133,7 @@ function A.clear(track, from, to, only)
           local meta = util.merge(c.meta, { takes = keep.meta.takes })
           api.clip_set(c.id, "meta", meta)
         end
-        if left and right then daw.restore_clip(right, track) end
+        if left and right then paw.restore_clip(right, track) end
       end
     end
   end
@@ -190,7 +190,7 @@ function A.yank(region)
   end
   if region.kind == "line" then
     local tracks = {}
-    for i, id in ipairs(A.tracks(region)) do tracks[i] = daw.track(id):snapshot() end
+    for i, id in ipairs(A.tracks(region)) do tracks[i] = paw.track(id):snapshot() end
     return { kind = "tracks", tracks = tracks }
   end
   local rows = {}
@@ -199,7 +199,7 @@ function A.yank(region)
 end
 
 --- Remove a region and return what it held. Whole tracks go; a stretch of
---- time leaves a gap, or with `daw.opt.ripple` what follows moves up.
+--- time leaves a gap, or with `paw.opt.ripple` what follows moves up.
 function A.delete(region)
   local value = A.yank(region)
   for _, id in ipairs(A.tracks(region)) do
@@ -209,7 +209,7 @@ function A.delete(region)
       api.track_remove(id)
     else
       A.clear(id, region.c0, region.c1)
-      if daw.opt.ripple then A.ripple(id, region.c1, region.c0 - region.c1) end
+      if paw.opt.ripple then A.ripple(id, region.c1, region.c0 - region.c1) end
     end
   end
   return value
@@ -220,28 +220,28 @@ local last_paste  -- where the last paste left the cursor, and where it ended
 --- Put a register's value at the cursor, `count` times one after another.
 --- Tracks go below the cursor's track, or above it with `before`. A stretch
 --- of time goes after the clip under the cursor, or right at the cursor with
---- `before`; it replaces what is there, or with `daw.opt.ripple` pushes it
+--- `before`; it replaces what is there, or with `paw.opt.ripple` pushes it
 --- along.
 function A.paste(value, before, count)
-  local cursor = daw.cursor
-  if not value then return daw.notify("nothing to paste yet", "warn") end
+  local cursor = paw.cursor
+  if not value then return paw.notify("nothing to paste yet", "warn") end
   if value.kind == "tracks" then
     local at = (cursor.index() or 0) + (before and 0 or 1)
     local first
     for _ = 1, count or 1 do
       for _, snap in ipairs(value.tracks) do
-        local track = daw.restore_track(snap, at)
+        local track = paw.restore_track(snap, at)
         first, at = first or track, at + 1
       end
     end
     if first then cursor.set_track(first) end
     return
   elseif value.kind ~= "range" then
-    return daw.notify("that register holds " .. value.kind .. ", which does not go on the timeline", "warn")
+    return paw.notify("that register holds " .. value.kind .. ", which does not go on the timeline", "warn")
   end
 
   local row, at = cursor.index(), cursor.beat
-  if not row then return daw.notify("no track to paste on", "warn") end
+  if not row then return paw.notify("no track to paste on", "warn") end
   if not before then
     local edits = api.project_get().edits
     if last_paste and last_paste.row == row and last_paste.beat == at and last_paste.edits == edits then
@@ -252,19 +252,19 @@ function A.paste(value, before, count)
       if clip then at = clip.start + clip.length end
     end
   end
-  local list, start = daw.groups.rows(), at
+  local list, start = paw.groups.rows(), at
   for _ = 1, count or 1 do
     start = at
     for i, clips in ipairs(value.rows) do
       local track = list[row + i - 1]
       if track then
-        if daw.opt.ripple then
+        if paw.opt.ripple then
           A.clear(track, at, at)
           A.ripple(track, at, value.length)
         else
           A.clear(track, at, at + value.length)
         end
-        for _, snap in ipairs(clips) do daw.restore_clip(util.merge(snap, { start = at + snap.start }), track) end
+        for _, snap in ipairs(clips) do paw.restore_clip(util.merge(snap, { start = at + snap.start }), track) end
       end
     end
     at = at + value.length
@@ -283,7 +283,7 @@ end
 --- Snap the clips that start in a region to the grid, and the notes in them
 --- to the piano roll's.
 function A.quantize(region)
-  local grid, note_grid = daw.opt.grid, daw.opt.note_grid
+  local grid, note_grid = paw.opt.grid, paw.opt.note_grid
   for _, id in ipairs(A.tracks(region)) do
     for _, c in ipairs(starting_in(id, region)) do
       api.clip_set(c.id, "start", util.round(c.start, grid))
@@ -303,9 +303,9 @@ function A.mute(region)
   local things, field = {}, "muted"
   for _, id in ipairs(A.tracks(region)) do
     if region.kind == "line" then
-      things[#things + 1], field = daw.track(id), "mute"
+      things[#things + 1], field = paw.track(id), "mute"
     else
-      for _, c in ipairs(touching(id, region)) do things[#things + 1] = daw.clip(c.id) end
+      for _, c in ipairs(touching(id, region)) do things[#things + 1] = paw.clip(c.id) end
     end
   end
   local all = #things > 0
@@ -464,7 +464,7 @@ local function put(clip, add, finish)
       end
     end
   end
-  if finish > clip.length + EPS then clip.length = math.ceil(finish / daw.opt.note_grid - EPS) * daw.opt.note_grid end
+  if finish > clip.length + EPS then clip.length = math.ceil(finish / paw.opt.note_grid - EPS) * paw.opt.note_grid end
   if #add > 0 or #remove > 0 then clip:edit_notes({ remove = remove, add = add }) end
 end
 
@@ -475,9 +475,9 @@ end
 --- Given the clips the roll edits, notes yanked from one of them go back
 --- into it and the rest into `into` (one of them; the first by default).
 function R.paste(target, value, pitch, beat, into)
-  if not value then return daw.notify("nothing to paste yet", "warn") end
+  if not value then return paw.notify("nothing to paste yet", "warn") end
   if value.kind ~= "notes" then
-    return daw.notify("that register holds " .. value.kind .. ", not notes", "warn")
+    return paw.notify("that register holds " .. value.kind .. ", not notes", "warn")
   end
   local parts, single = parts_of(target)
   into = not single and into or parts[1]

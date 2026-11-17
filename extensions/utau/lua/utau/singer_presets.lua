@@ -4,19 +4,19 @@
 -- A preset holds the singer, phonemizer, renderer, resampler, wavtool,
 -- voice colour, the engine's other track options (AI pitch mode, unison,
 -- key shift, ...) and the value each curve holds where it has no lane. It is
--- a JSON file in `<data dir>/utau/presets/<name>.json` (`~/.local/share/daw`
--- by default; `daw.opt.utau_presets_dir` puts them elsewhere), in the shape
+-- a JSON file in `<data dir>/utau/presets/<name>.json` (`~/.local/share/paw`
+-- by default; `paw.opt.utau_presets_dir` puts them elsewhere), in the shape
 -- ReaUtau's singer presets have, so presets made there can be used here.
 -- Applying one replaces the track's voice whole: options it does not name
 -- are cleared.
-local api = daw.api
+local api = paw.api
 local utau = require("utau")
 local json = require("utau.json")
 
 local M = { VERSION = 1 }
 
 function M.dir()
-  local dir = daw.opt.utau_presets_dir
+  local dir = paw.opt.utau_presets_dir
   if dir and dir ~= "" then return dir end
   return api.env().data_dir .. "/utau/presets"
 end

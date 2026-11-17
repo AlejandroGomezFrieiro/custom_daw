@@ -2,16 +2,16 @@
 -- of what a notation edit writes. Loaded by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation"), require("notation.model")
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -19,13 +19,13 @@ end
 local function song(notes, length)
   fresh()
   local view = load()
-  local track = daw.add_track({ name = "Lead" })
+  local track = paw.add_track({ name = "Lead" })
   track:add_device("synth")
   local clip = track:add_clip({ start = 0, length = length or 4, name = "tune", notes = notes or {} })
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view.value, view.dot, view.voice, view.triplets = 1, false, 1, false
   api.undo_checkpoint()
   return view, clip, track
@@ -35,7 +35,7 @@ end
 local function played(clip, with_velocity)
   local out = {}
   for _, n in ipairs(clip:notes()) do
-    out[#out + 1] = string.format("%s@%g+%g", daw.music.name(n.pitch), math.floor(n.start * 1e6 + 0.5) / 1e6,
+    out[#out + 1] = string.format("%s@%g+%g", paw.music.name(n.pitch), math.floor(n.start * 1e6 + 0.5) / 1e6,
       math.floor(n.length * 1e6 + 0.5) / 1e6) .. (with_velocity and ("/" .. n.velocity) or "")
   end
   return table.concat(out, " ")
@@ -72,7 +72,7 @@ end
 --- The id of the clip's note on `pitch` starting at `start`.
 local function id_at(clip, pitch, start)
   for _, n in ipairs(clip:notes()) do
-    if n.pitch == daw.music.pitch(pitch) and math.abs(n.start - start) < 1e-6 then return n.id end
+    if n.pitch == paw.music.pitch(pitch) and math.abs(n.start - start) < 1e-6 then return n.id end
   end
 end
 
@@ -97,13 +97,13 @@ test("midi: written in notation, edited in the piano roll without notation, show
   keys("g~in")
   view:set(35, 0)
   keys("g'")
-  daw.cmd("notation.dyn", { "p" })
+  paw.cmd("notation.dyn", { "p" })
   api.undo_checkpoint()
-  daw.commands.exec("2notation.slur")
+  paw.commands.exec("2notation.slur")
   api.undo_checkpoint()
   eq(played(clip, true), "C4@0+0.5/52 D4@1+1/52 E4@2+1/52 F4@3+1/52 G4@4+1/52 A4@5+1/52 B4@6+1/52 C5@7+1/52",
     "written as MIDI notes: the staccato half as long, the p as velocity")
-  local path, out = T.scratch .. "/written.daw", T.scratch .. "/rolled.daw"
+  local path, out = T.scratch .. "/written.paw", T.scratch .. "/rolled.paw"
   os.remove(out)
   api.project_save(path)
   -- A kernel of its own, without the notation extension, edits it in the
@@ -113,10 +113,10 @@ test("midi: written in notation, edited in the piano roll without notation, show
   local said = io.popen(cmd):read("*a")
   eq(said:match("done%s*$") ~= nil and not said:find("wrong:", 1, true), true, "the piano roll's edits ran without notation:\n" .. said)
   api.project_load(out)
-  daw.flush()
-  clip = daw.tracks()[1]:clips()[1]
+  paw.flush()
+  clip = paw.tracks()[1]:clips()[1]
   view:edit(clip)
-  eq(played(clip, true), "C4@0+0.5/52 D4@1.25+1/52 F4@2+1/52 F4@3+1/100 A4@5+1/52 B4@6+1/52 G5@6+1/" .. daw.opt.velocity
+  eq(played(clip, true), "C4@0+0.5/52 D4@1.25+1/52 F4@2+1/52 F4@3+1/100 A4@5+1/52 B4@6+1/52 G5@6+1/" .. paw.opt.velocity
     .. " F4@7+1/100 C5@7+1/52", "the roll's edits are the MIDI")
   -- The score shows the MIDI, with what notation decided on the notes that are left.
   eq(spelled(view, clip, "F4", 3), "E#4", "the F kept its spelling")
@@ -138,7 +138,7 @@ test("midi: written in notation, edited in the piano roll without notation, show
   eq(spelled(view, clip, "C5", 6), "B#4", "spelled as sharpened")
   before = snapshot(clip)
   view:set(nil, 4)
-  daw.cmd("notation.dyn", { "f" })
+  paw.cmd("notation.dyn", { "f" })
   api.undo_checkpoint()
   local loud = {}
   for _, n in ipairs(clip:notes()) do
@@ -155,14 +155,14 @@ test("midi: written in notation, edited in the piano roll without notation, show
   api.undo_checkpoint()
   before = snapshot(clip)
   view:set(nil, 4)
-  daw.cmd("notation.dyn", { "off" })
+  paw.cmd("notation.dyn", { "off" })
   api.undo_checkpoint()
   local v = {}
   for _, n in ipairs(clip:notes()) do v[n.id] = n.velocity end
   eq(v[a4], 33, "the velocity the roll gave after the f is kept")
   eq(v[id_at(clip, "B#4", 6)] or v[id_at(clip, "C5", 6)], 52, "the others are as before the f: the p again")
   eq(v[id_at(clip, "F4", 7)], 100, "and the copy's own 100")
-  eq(v[id_at(clip, "G5", 6)], daw.opt.velocity, "and the drawn note's")
+  eq(v[id_at(clip, "G5", 6)], paw.opt.velocity, "and the drawn note's")
   local early = {}
   for _, n in ipairs(clip:notes()) do
     if n.start < 4 then early[n.id] = true end
@@ -199,11 +199,11 @@ test("midi: entered notes are MIDI notes at the written place and length, with w
   keys("u")
   eq(played(clip), "", "the notes entered in one go, one step")
   keys("<C-r><C-r>")
-  local path = T.scratch .. "/midi-roundtrip.daw"
+  local path = T.scratch .. "/midi-roundtrip.paw"
   api.project_save(path)
   api.project_load(path)
-  daw.flush()
-  local again = daw.tracks()[1]:clips()[1]
+  paw.flush()
+  local again = paw.tracks()[1]:clips()[1]
   view:edit(again)
   eq(played(again), "C4@0+1 D#4@1+1 E4@2+1", "saved and loaded")
   eq(written(view), "q C4 q D#4 q E4 qr | R", "and written the same")
@@ -247,14 +247,14 @@ test("midi: marks write MIDI when they are written; the roll's edits after are k
   local view, clip = song(nil, 8)
   keys("icdefgabc<Esc>")
   view:set(35, 0)
-  daw.cmd("notation.dyn", { "p" })
+  paw.cmd("notation.dyn", { "p" })
   api.undo_checkpoint()
   view:set(nil, 4)
-  daw.cmd("notation.dyn", { "f" })
+  paw.cmd("notation.dyn", { "f" })
   api.undo_checkpoint()
   local function vel() local v = {} for i, n in ipairs(clip:notes()) do v[i] = n.velocity end return table.concat(v, " ") end
   eq(vel(), "52 52 52 52 96 96 96 96", "p, then f from bar 2")
-  daw.commands.exec("1notation.cresc")
+  paw.commands.exec("1notation.cresc")
   api.undo_checkpoint()
   local ramp = {}
   for i, n in ipairs(clip:notes()) do ramp[i] = n.velocity end
@@ -293,7 +293,7 @@ test("midi: a clip kept as a score the old way reads as its notes and marks, and
   local view = load()
   local D = require("notation.doc")
   fresh()
-  local track = daw.add_track({ name = "Old" })
+  local track = paw.add_track({ name = "Old" })
   -- Notes as the old rendering left them: 90% of their values, each naming its written note.
   local notes = {}
   for i, p in ipairs({ 60, 62, 65, 65 }) do
@@ -312,8 +312,8 @@ test("midi: a clip kept as a score the old way reads as its notes and marks, and
   local stored = { version = 1, rev = "old", origin = { 0, 1 }, staves = sc.staves, marks = sc.marks, next = 9,
     measures = { api.json_encode(m) } }
   clip.meta = { score = stored }
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
   api.undo_checkpoint()
   eq(written(view, 1, 1), "q C4 q D4' q E#4 qr", "read as the score said: E sharp, a staccato")
@@ -338,7 +338,7 @@ end)
 test("midi: the piano roll is a plain MIDI editor; with timebind the note under one window's cursor is outlined in the other", function()
   local view, clip = song(nil, 4)
   keys("icdef<Esc>")
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
   local rollscore = require("notation.roll")
   local rows = {}
@@ -351,16 +351,16 @@ test("midi: the piano roll is a plain MIDI editor; with timebind the note under 
   eq(text:find("notation", 1, true), nil, "the roll says nothing of notation")
   eq(rollscore.partner("pianoroll"), nil, "not bound: no outline")
   T.after(function()
-    for _, win in ipairs(daw.layout.windows(daw.ui.layout)) do
-      if win.view == "pianoroll" or win.view == "notation" then daw.layout.set_option(win, "timebind", false) end
+    for _, win in ipairs(paw.layout.windows(paw.ui.layout)) do
+      if win.view == "pianoroll" or win.view == "notation" then paw.layout.set_option(win, "timebind", false) end
     end
-    daw.ui.hide("notation")
-    daw.ui.hide("pianoroll")
+    paw.ui.hide("notation")
+    paw.ui.hide("pianoroll")
   end)
-  daw.ui.show("pianoroll")
-  daw.ui.show("notation")
-  for _, win in ipairs(daw.layout.windows(daw.ui.layout)) do
-    if win.view == "pianoroll" or win.view == "notation" then daw.layout.set_option(win, "timebind", true) end
+  paw.ui.show("pianoroll")
+  paw.ui.show("notation")
+  for _, win in ipairs(paw.layout.windows(paw.ui.layout)) do
+    if win.view == "pianoroll" or win.view == "notation" then paw.layout.set_option(win, "timebind", true) end
   end
   eq(rollscore.bound(clip.id), true, "bound")
   view:set(36, 1)

@@ -2,8 +2,8 @@
 //! turns handling input, RPC calls and timers.
 //!
 //! Almost everything a user sees is Lua. The kernel only calls a handful of
-//! entry points in `daw._kernel` (`key`, `mouse`, `settle`, `render`, `rpc`, …)
-//! and exposes `daw.api` for Lua to call back into.
+//! entry points in `paw._kernel` (`key`, `mouse`, `settle`, `render`, `rpc`, …)
+//! and exposes `paw.api` for Lua to call back into.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
-use daw_engine::backend::BackendOptions;
-use daw_engine::Registry;
+use paw_engine::backend::BackendOptions;
+use paw_engine::Registry;
 use include_dir::{Dir, include_dir};
 use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua, LuaSerdeExt, Table, Value as LuaValue};
 use serde_json::Value;
@@ -122,7 +122,7 @@ impl Kernel {
         let (tx, rx) = channel();
         // MIDI input goes straight to the engine; scripts hear of it here.
         // It waits in a queue of its own, which a script that waits empties
-        // too (`daw.wait`): the message only wakes the loop.
+        // too (`paw.wait`): the message only wakes the loop.
         let midi_tx = tx.clone();
         let midi_in = Arc::new(Mutex::new(VecDeque::new()));
         let heard = midi_in.clone();
@@ -327,7 +327,7 @@ impl Kernel {
         self.lua = lua;
         self.shared.watchdog.attach(&self.lua).map_err(lua_error)?;
         self.lua
-            .load("require('daw')")
+            .load("require('paw')")
             .set_name("=boot")
             .exec()
             .map_err(lua_error)?;
@@ -343,10 +343,10 @@ impl Kernel {
         Ok(())
     }
 
-    /// Call one of the entry points the Lua runtime registers in `daw._kernel`.
+    /// Call one of the entry points the Lua runtime registers in `paw._kernel`.
     fn call<R: FromLuaMulti>(&self, name: &str, args: impl IntoLuaMulti) -> mlua::Result<R> {
-        let daw: Table = self.lua.globals().get("daw")?;
-        let kernel: Table = daw.get("_kernel")?;
+        let paw: Table = self.lua.globals().get("paw")?;
+        let kernel: Table = paw.get("_kernel")?;
         kernel.get::<Function>(name)?.call(args)
     }
 

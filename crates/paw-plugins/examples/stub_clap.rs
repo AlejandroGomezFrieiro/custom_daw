@@ -1,5 +1,5 @@
 //! A CLAP instrument for tests, built as `libstub_clap.so` by `cargo test
-//! -p daw-plugins` (or `cargo build --example stub_clap`). It takes notes as
+//! -p paw-plugins` (or `cargo build --example stub_clap`). It takes notes as
 //! MIDI 2.0 (its preferred dialect), names two of its keys (`note-name`),
 //! keeps the last note-on it was given for the test to read
 //! (`stub_clap_last`), and while a note sounds puts out the note-on's

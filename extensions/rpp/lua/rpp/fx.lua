@@ -81,16 +81,16 @@ end
 -- Import -----------------------------------------------------------------------------
 
 local function installed(kind)
-  for _, t in ipairs(daw.api.device_types()) do
+  for _, t in ipairs(paw.api.device_types()) do
     if t.kind == kind then return t end
   end
 end
 
 local function find_vst3(name, vendor)
-  for _, t in ipairs(daw.api.device_types()) do
+  for _, t in ipairs(paw.api.device_types()) do
     if t.format == "vst3" and t.name == name and (not vendor or t.vendor == "" or t.vendor == vendor) then return t end
   end
-  for _, t in ipairs(daw.api.device_types()) do
+  for _, t in ipairs(paw.api.device_types()) do
     if t.format == "vst3" and t.name:lower() == name:lower() then return t end
   end
 end
@@ -122,7 +122,7 @@ end
 --- part that was left out although the plugin itself was added.
 function M.import(block, track, bypass, notes)
   local d = M.describe(block)
-  local api = daw.api
+  local api = paw.api
   local function add(kind, opts)
     local ok, id = pcall(api.device_add, track, kind, opts or {})
     if not ok then return nil, "could not load here: " .. tostring(id):gsub("\n.*", "") end
@@ -185,7 +185,7 @@ end
 
 --- A plugin block for a device, or nil and why there is none.
 function M.export(device, info)
-  local api = daw.api
+  local api = paw.api
   local d = api.device_get(device)
   local meta = d.meta and d.meta.rpp
   local state = api.device_state(device)

@@ -1,11 +1,11 @@
 -- The doctor in a graphical frontend: the same page painted in pixels, with
--- buttons for what the keys do (see runtime/lua/daw/canvas.lua).
-local api = daw.api
-local util = daw.util
+-- buttons for what the keys do (see runtime/lua/paw/canvas.lua).
+local api = paw.api
+local util = paw.util
 local doctor = require("doctor")
 local view = require("doctor.panel")
 
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 local PAD, ROW, TOP = 16, 30, 52
 
 local hits = {}
@@ -42,7 +42,7 @@ function view:paint(g, ctx)
     x = button(g, x, 13, "Run all", function() doctor.start() end, { fill = c.select, color = c.surface })
     x = button(g, x, 13, "Those that need nobody", function() doctor.start({ unattended = true }) end)
   end
-  button(g, w - PAD - 70, 13, "Close", function() daw.cmd("doctor.close") end)
+  button(g, w - PAD - 70, 13, "Close", function() paw.cmd("doctor.close") end)
 
   -- The checks.
   local y = TOP + 10

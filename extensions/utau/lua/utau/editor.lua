@@ -2,9 +2,9 @@
 -- each note's lyric, the phonemes the engine made of it, which phrases are
 -- rendered, and the pitch that is actually sung; plus the lyric sheet and the
 -- singer picker. Keys are in utau.commands.
-local api = daw.api
-local util = daw.util
-local music = daw.music
+local api = paw.api
+local util = paw.util
+local music = paw.music
 local utau = require("utau")
 local notes = require("utau.notes")
 local lyrics = require("utau.lyrics")
@@ -15,8 +15,8 @@ local strips = require("utau.strips")
 local KEYS = 5 -- columns for note names
 local TICKS = proto.TICKS
 
-local c = require("daw.theme").palette
-daw.ui.theme({
+local c = require("paw.theme").palette
+paw.ui.theme({
   UtauHeader = { fg = c.fg, bg = c.bg_alt },
   UtauSinger = { fg = c.bright, bg = c.bg_alt, bold = true },
   UtauNote = { fg = c.bg, bg = c.cyan },
@@ -68,7 +68,7 @@ view.key_of = key_of
 
 --- The visual mode selection in this editor, if there is one.
 function view:visual_region()
-  local region = daw.keymap.selection()
+  local region = paw.keymap.selection()
   if region and region.view == "utau" then return region end
 end
 
@@ -82,7 +82,7 @@ function view:selected(list)
   local region = self:visual_region()
   if region then
     for i, n in ipairs(list) do
-      if daw.edit.roll.inside(n, region) then out[#out + 1] = i end
+      if paw.edit.roll.inside(n, region) then out[#out + 1] = i end
     end
   elseif next(self.sel) then
     for i, n in ipairs(list) do
@@ -200,15 +200,15 @@ end
 --- Open a MIDI clip of a vocal track in the editor.
 function view:edit(clip_id)
   local clip = api.clip_get(clip_id)
-  if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be sung", "warn") end
+  if clip.kind ~= "midi" then return paw.notify("only MIDI clips can be sung", "warn") end
   if not utau.device_of(clip.track) then
-    return daw.notify("not a vocal track: `:utau.track` makes it one", "warn")
+    return paw.notify("not a vocal track: `:utau.track` makes it one", "warn")
   end
   if self.clip_id ~= clip_id then self.sel, self.ph = {}, nil end
   self.clip_id, self.beat, self.scroll, self.top = clip_id, 0, 0, nil
   local first = notes.list(clip_id)[1]
   self.pitch = first and first.pitch or 60
-  daw.ui.focus("utau")
+  paw.ui.focus("utau")
 end
 
 --- The note under the cursor and its index.
@@ -245,7 +245,7 @@ view.grid = {
     view.pitch, view.beat = util.clamp(row, 0, 127), util.clamp(col, 0, clip.length)
     api.ui_redraw()
   end,
-  step = function() return daw.opt.note_grid end,
+  step = function() return paw.opt.note_grid end,
   -- Notes by what they sing: `/ka` finds the next note with "ka" in its lyric.
   search = function(text)
     local wanted, hits = text:lower(), {}
@@ -281,7 +281,7 @@ function view:toggle_note()
     api.clip_set_notes(clip.id, list)
   else
     api.clip_add_notes(clip.id, { {
-      pitch = self.pitch, start = self.beat, length = daw.opt.note_grid * 2, velocity = daw.opt.velocity,
+      pitch = self.pitch, start = self.beat, length = paw.opt.note_grid * 2, velocity = paw.opt.velocity,
     } })
   end
 end
@@ -314,10 +314,10 @@ end
 --- Esc does not.
 function view:edit_lyric()
   local note, index = self:note()
-  if not note then return daw.notify("no note under the cursor", "warn") end
+  if not note then return paw.notify("no note under the cursor", "warn") end
   self.entry = { kind = "lyric", index = index, chars = chars_of(notes.lyric(note) or ""), replace = true }
-  daw.ui.grabber = function(key, pasted) self:entry_key(key, pasted) end
-  daw.keymap.set_mode("i")
+  paw.ui.grabber = function(key, pasted) self:entry_key(key, pasted) end
+  paw.keymap.set_mode("i")
   api.ui_redraw()
 end
 
@@ -326,16 +326,16 @@ end
 --- where it belongs; the rest of `opts` stays in the entry for them.
 function view:type_text(text, commit, opts)
   if self.entry then self:close_entry() end
-  self.entry = daw.util.merge(opts or {}, { chars = chars_of(text or ""), replace = true, commit = commit })
-  daw.ui.grabber = function(key, pasted) self:entry_key(key, pasted) end
-  daw.keymap.set_mode("i")
+  self.entry = paw.util.merge(opts or {}, { chars = chars_of(text or ""), replace = true, commit = commit })
+  paw.ui.grabber = function(key, pasted) self:entry_key(key, pasted) end
+  paw.keymap.set_mode("i")
   api.ui_redraw()
 end
 
 function view:close_entry()
   self.entry = nil
-  daw.ui.grabber = nil
-  daw.keymap.set_mode("n")
+  paw.ui.grabber = nil
+  paw.keymap.set_mode("n")
   api.ui_redraw()
 end
 
@@ -429,7 +429,7 @@ function view:next_curve(dir)
     if c.key == self.curve then at = i end
   end
   self.curve = list[(at - 1 + dir) % #list + 1].key
-  daw.notify("curve: " .. list[(at - 1 + dir) % #list + 1].name)
+  paw.notify("curve: " .. list[(at - 1 + dir) % #list + 1].name)
   api.ui_redraw()
 end
 
@@ -440,9 +440,9 @@ function view:raise_curve(amount, abbr)
   if not clip or not device then return end
   abbr = abbr or self.curve
   local at = clip.start + self.beat
-  local value = notes.bend(clip.track, device, abbr, at, amount, daw.opt.note_grid)
+  local value = notes.bend(clip.track, device, abbr, at, amount, paw.opt.note_grid)
   local info = self:curve_info(abbr)
-  daw.notify(string.format("%s %+g at %s", info and info.name:lower() or abbr, math.floor(value * 10 + 0.5) / 10, daw.time.format(at)))
+  paw.notify(string.format("%s %+g at %s", info and info.name:lower() or abbr, math.floor(value * 10 + 0.5) / 10, paw.time.format(at)))
 end
 
 --- Put the chosen curve (or `abbr`) back to its default under the note at
@@ -555,17 +555,17 @@ end
 --- Move the start of the chosen phoneme by `ticks`.
 function view:shift_phoneme(ticks)
   local _, index, k = self:phoneme()
-  if not index then return daw.notify("no phoneme here: the engine has not sung this note yet", "warn") end
+  if not index then return paw.notify("no phoneme here: the engine has not sung this note yet", "warn") end
   self.ph = { note = index, k = k }
   local offset = (self:phoneme_override(index, k).offset or 0) + ticks
   self:set_phoneme(index, k, "offset", offset)
-  daw.notify(string.format("phoneme %d starts %+d ticks from where the voicebank puts it", k, offset))
+  paw.notify(string.format("phoneme %d starts %+d ticks from where the voicebank puts it", k, offset))
 end
 
 --- Type the phoneme to sing in place of the chosen one; empty sings its own.
 function view:replace_phoneme()
   local p, index, k = self:phoneme()
-  if not index then return daw.notify("no phoneme here: the engine has not sung this note yet", "warn") end
+  if not index then return paw.notify("no phoneme here: the engine has not sung this note yet", "warn") end
   self.ph = { note = index, k = k }
   local current = self:phoneme_override(index, k).phoneme or (p.phoneme ~= "" and p.phoneme or p.alias)
   self:type_text(current, function(text)
@@ -585,9 +585,9 @@ end
 function view:play_from_cursor()
   local clip = self:clip()
   if not clip then return end
-  if daw.transport.playing then return daw.transport.stop() end
-  daw.transport.seek(clip.start + self.beat)
-  daw.transport.play()
+  if paw.transport.playing then return paw.transport.stop() end
+  paw.transport.seek(clip.start + self.beat)
+  paw.transport.play()
 end
 
 --- Keep the playhead in sight while it plays: a page on when it leaves the
@@ -612,13 +612,13 @@ function view:render(buf, ctx)
   buf:fill(0, 0, w, h, " ", "Normal")
   local clip = self:clip()
   if not clip then
-    daw.ui.titlebar(buf, { name = "Vocal", focused = ctx.focused })
+    paw.ui.titlebar(buf, { name = "Vocal", focused = ctx.focused })
     buf:text(2, 2, "No vocal clip open. Put the cursor on a clip of a vocal track and press", "Empty")
     buf:text(74, 2, "Enter", "EmptyKey")
     return
   end
   local device = utau.device_of(clip.track)
-  local zoom, grid = daw.opt.note_zoom, daw.opt.note_grid
+  local zoom, grid = paw.opt.note_zoom, paw.opt.note_grid
   -- The chosen curve gets a few rows under the notes when there is room.
   local curve_rows = (device and h >= 16) and 4 or 0
   local rows, tw = math.max(1, h - 4 - curve_rows), w - KEYS
@@ -656,31 +656,31 @@ function view:render(buf, ctx)
   local detail = #parts > 0 and (" (" .. table.concat(parts, ", ") .. ")") or ""
   -- The clip on its track's colour, as in the piano roll, then who sings
   -- it and how far the engine has got.
-  local hue = daw.draw.track_hue(track)
-  daw.ui.titlebar(buf, {
-    pill = { (daw.opt.ascii and "" or "♪ ") .. clip.name, hue.pill }, name = track.name, focused = ctx.focused,
+  local hue = paw.draw.track_hue(track)
+  paw.ui.titlebar(buf, {
+    pill = { (paw.opt.ascii and "" or "♪ ") .. clip.name, hue.pill }, name = track.name, focused = ctx.focused,
     context = singer .. "  " .. state .. detail,
-    right = string.format("%s %s", music.name(self.pitch), daw.time.format(clip.start + self.beat)),
+    right = string.format("%s %s", music.name(self.pitch), paw.time.format(clip.start + self.beat)),
   })
 
   -- Ruler, coloured by the state of the phrase under each column.
   local ruler = buf:sub(KEYS, 1, tw, 1)
   buf:fill(0, 1, w, 1, " ", "Ruler")
-  local beat_of = daw.tempo.seconds_to_beats
+  local beat_of = paw.tempo.seconds_to_beats
   local layout = utau.layouts[tostring(clip.track)]
   for _, p in ipairs(layout and layout.phrases or {}) do
     local x0 = x_of(self, beat_of(p.start) - clip.start, zoom)
     local x1 = x_of(self, beat_of(p.stop) - clip.start, zoom)
     ruler:fill(x0, 0, math.max(1, x1 - x0), 1, nil, STATE_STYLE[p.state] or "Ruler")
   end
-  local lines = daw.draw.beats(ruler, self.scroll, span, zoom, clip.start)
+  local lines = paw.draw.beats(ruler, self.scroll, span, zoom, clip.start)
 
   -- The roll.
   local roll = buf:sub(KEYS, 2, tw, rows)
   local end_x = x_of(self, clip.length, zoom)
   for row = 0, rows - 1 do
     local pitch = self.top - row
-    daw.draw.piano_key(buf, row + 2, pitch, pitch == self.pitch, KEYS)
+    paw.draw.piano_key(buf, row + 2, pitch, pitch == self.pitch, KEYS)
     roll:fill(0, row, tw, 1, " ", music.is_black(pitch) and "RollRowBlack" or "RollRow")
     for _, line in ipairs(lines) do roll:text(line.x, row, "│", line.bar and "RollBar" or nil) end
     if end_x < tw then roll:fill(math.max(0, end_x), row, tw, 1, " ", "RollOutside") end
@@ -693,7 +693,7 @@ function view:render(buf, ctx)
     local row = self.top - note.pitch
     local x0 = x_of(self, note.start, zoom)
     local nw = math.max(1, x_of(self, note.start + note.length, zoom) - x0)
-    local lyric = notes.lyric(note) or daw.opt.utau_default_lyric
+    local lyric = notes.lyric(note) or paw.opt.utau_default_lyric
     local bad = false
     for _, p in ipairs(phonemes and phonemes.notes[index] or {}) do
       bad = bad or p.flags % 2 == 1
@@ -775,7 +775,7 @@ function view:render(buf, ctx)
     roll:fill(x_of(self, self.beat, zoom), self.top - self.pitch, math.max(1, math.floor(grid * zoom)), 1, nil, "RollCursor")
   end
   -- The selection of visual mode: a stretch of time, a block, or whole pitches.
-  local selection = ctx.focused and daw.keymap.selection()
+  local selection = ctx.focused and paw.keymap.selection()
   if selection then
     local x0, x1 = math.max(0, x_of(self, selection.c0, zoom)), math.min(tw, x_of(self, selection.c1, zoom))
     local y0, y1 = math.max(0, self.top - selection.r1), math.min(rows - 1, self.top - selection.r0)
@@ -793,7 +793,7 @@ function view:render(buf, ctx)
   end
 
   -- The chosen curve, under the notes: its name and value at the cursor on
-  -- the left, a line (`daw.draw.curve`) from its lowest to its highest value.
+  -- the left, a line (`paw.draw.curve`) from its lowest to its highest value.
   if curve_rows > 0 then
     local info = self:curve_info() or self:curves()[1]
     local cy = 2 + rows
@@ -816,7 +816,7 @@ function view:render(buf, ctx)
         local level = math.min(curve_rows * 4 - 1, math.floor((info.default - info.min) / range * curve_rows * 4))
         local base_row = curve_rows - 1 - math.floor(level / 4)
         area:fill(0, base_row, tw, 1, "┄", "UtauCurveBase")
-        daw.draw.curve(area, 0, curve_rows, function(i)
+        paw.draw.curve(area, 0, curve_rows, function(i)
           local beat = self.scroll + (i + 0.5) / (zoom * 2)
           if beat > clip.length then return nil end
           return (value(clip.start + beat) - info.min) / range
@@ -825,7 +825,7 @@ function view:render(buf, ctx)
       if drawn then
         -- Over the picture, a line on the cell's left edge rather than a
         -- block, so that moving it changes no pixels where blocks are painted in.
-        area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, daw.draw.g.playhead, { fg = c.normal })
+        area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, paw.draw.g.playhead, { fg = c.normal })
       else
         area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, nil, "RollCursor")
       end
@@ -873,7 +873,7 @@ function view:render(buf, ctx)
       end
       local vb = shapes.vb(note)
       info = string.format(" %s %s  len %g  lyric %q  [%s]%s%s", music.name(note.pitch),
-        daw.time.format(clip.start + note.start), note.length, notes.lyric(note) or daw.opt.utau_default_lyric,
+        paw.time.format(clip.start + note.start), note.length, notes.lyric(note) or paw.opt.utau_default_lyric,
         table.concat(names, " "),
         vb and string.format("  vibrato %g%% %gms %gc", vb[1], vb[2], vb[3]) or "",
         props.tu and ("  tuning " .. props.tu) or "")
@@ -897,7 +897,7 @@ function view:on_mouse(event)
   if event.kind == "scroll_up" then self.top = math.min(127, self.top + 2) end
   if event.kind == "scroll_down" then self.top = math.max(g.rows - 1, self.top - 2) end
   if event.kind == "down" and event.y >= 2 and event.y < 2 + g.rows and event.x >= KEYS then
-    local grid = daw.opt.note_grid
+    local grid = paw.opt.note_grid
     self.pitch = self.top - (event.y - 2)
     self.beat = math.max(0, math.floor((self.scroll + (event.x - KEYS) / g.zoom) / grid) * grid)
     if event.button == "right" then self:edit_lyric() end
@@ -906,11 +906,11 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("utau", view)
-daw.ui.dock("utau", { side = "bottom", hidden = true })
+paw.ui.view("utau", view)
+paw.ui.dock("utau", { side = "bottom", hidden = true })
 -- The keys worth knowing first, for the line at the bottom of the screen.
-if daw.ui.keybar then
-  daw.ui.keybar.set("utau", "n", {
+if paw.ui.keybar then
+  paw.ui.keybar.set("utau", "n", {
     { "i", "note" }, { "c", "lyric" }, { "<Tab>", "next note" }, { "<A-l>", "longer" }, { "<A-h>", "shorter" },
     { "}", "raise curve" }, { "]c", "curve" }, { ")", "phoneme" }, { "~", "vibrato" }, { "<Space>", "play" },
     { "S", "singer" }, { "<C-w>p", "back" },
@@ -928,7 +928,7 @@ local sheet = { line = 1, per_kana = false }
 function sheet:clip()
   local clip = view:clip()
   if clip then return clip end
-  local at = daw.cursor.clip()
+  local at = paw.cursor.clip()
   local found = at and api.clip_get(at.id)
   if found and found.kind == "midi" and utau.device_of(found.track) then return found end
 end
@@ -950,12 +950,12 @@ function sheet:render(buf, ctx)
   local w, h = buf.width, buf.height
   buf:fill(0, 0, w, h, " ", "Normal")
   local clip = self:clip()
-  daw.ui.titlebar(buf, { name = "Lyrics", context = clip and clip.name or nil, focused = ctx.focused })
+  paw.ui.titlebar(buf, { name = "Lyrics", context = clip and clip.name or nil, focused = ctx.focused })
   if not clip then
     buf:text(1, 2, "No vocal clip.", "Dim")
     return
   end
-  local _, lines, list = lyrics.sheet(clip.id, daw.opt.utau_default_lyric)
+  local _, lines, list = lyrics.sheet(clip.id, paw.opt.utau_default_lyric)
   self.lines = lines
   self.line = util.clamp(self.line, 1, math.max(1, #lines))
   local current, note = self:current(lines, list, clip)
@@ -965,7 +965,7 @@ function sheet:render(buf, ctx)
     local x = 1
     buf:text(0, row, i == self.line and "▸" or " ", "Accent")
     for index = line.first, line.last do
-      local word = notes.lyric(list[index]) or daw.opt.utau_default_lyric
+      local word = notes.lyric(list[index]) or paw.opt.utau_default_lyric
       local width = api.str_width(word)
       if x + width >= w and x > 1 then
         row, x = row + 1, 1
@@ -988,16 +988,16 @@ function sheet:edit_line()
   if not line then return end
   local list = notes.list(clip.id)
   local words = {}
-  for i = line.first, line.last do words[#words + 1] = notes.lyric(list[i]) or daw.opt.utau_default_lyric end
-  daw.ui.input({ prompt = "Line " .. self.line .. ": ", text = table.concat(words, " "), history = "utau.sheet" },
+  for i = line.first, line.last do words[#words + 1] = notes.lyric(list[i]) or paw.opt.utau_default_lyric end
+  paw.ui.input({ prompt = "Line " .. self.line .. ": ", text = table.concat(words, " "), history = "utau.sheet" },
     function(text)
       local count = lyrics.apply(clip.id, text, { first = line.first, last = line.last, per_kana = self.per_kana })
-      daw.notify(string.format("%d lyrics changed", count))
+      paw.notify(string.format("%d lyrics changed", count))
     end)
 end
 
-daw.ui.view("utau_lyrics", sheet)
-daw.ui.dock("utau_lyrics", { side = "right", size = 34, hidden = true })
+paw.ui.view("utau_lyrics", sheet)
+paw.ui.dock("utau_lyrics", { side = "right", size = 34, hidden = true })
 
 -- The singer picker ---------------------------------------------------------------------
 
@@ -1016,9 +1016,9 @@ end
 function picker:open(track_id)
   self.track, self.filter, self.row = track_id, "", 1
   if #utau.singers == 0 then
-    return daw.notify("no singers yet: " .. (utau.engine.reason or ("the engine is " .. utau.engine.state)), "warn")
+    return paw.notify("no singers yet: " .. (utau.engine.reason or ("the engine is " .. utau.engine.state)), "warn")
   end
-  daw.ui.open("utau_singers", { title = "Singer", width = 72, height = 20 })
+  paw.ui.open("utau_singers", { title = "Singer", width = 72, height = 20 })
 end
 
 function picker:render(buf)
@@ -1040,17 +1040,17 @@ end
 
 function picker:on_key(key)
   local list = self:matches()
-  if key == "<Esc>" then return daw.ui.close() end
+  if key == "<Esc>" then return paw.ui.close() end
   if key == "<Down>" or key == "<C-n>" then
     self.row = self.row + 1
   elseif key == "<Up>" or key == "<C-p>" then
     self.row = self.row - 1
   elseif key == "<CR>" then
     local s = list[self.row]
-    daw.ui.close()
+    paw.ui.close()
     if s and self.track then
       utau.configure(self.track, { singer = s.id })
-      daw.notify("singer: " .. s.name)
+      paw.notify("singer: " .. s.name)
     end
   elseif key == "<BS>" then
     self.filter = self.filter:sub(1, -2)
@@ -1061,6 +1061,6 @@ function picker:on_key(key)
   api.ui_redraw()
 end
 
-daw.ui.view("utau_singers", picker)
+paw.ui.view("utau_singers", picker)
 
 return { editor = view, sheet = sheet, picker = picker }

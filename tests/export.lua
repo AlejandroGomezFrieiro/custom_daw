@@ -2,7 +2,7 @@
 -- when ffmpeg is not installed. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fails, fresh = T.test, T.eq, T.fails, T.fresh
-local api = daw.api
+local api = paw.api
 
 local function have(program)
   local ok = os.execute("command -v " .. program .. " >/dev/null 2>&1")
@@ -36,8 +36,8 @@ end
 
 local function wait_idle()
   for _ = 1, 6000 do
-    if not daw.render_status() then return end
-    daw.wait(10)
+    if not paw.render_status() then return end
+    paw.wait(10)
   end
   error("the render did not end")
 end
@@ -49,11 +49,11 @@ test("a render to MP3, Ogg Vorbis and Opus has the length asked for and leaves n
   fresh()
   api.engine_restart({ backend = "null" })
   T.tone("Synth", 4)
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   local dir = fresh_dir("formats")
   for _, ext in ipairs({ "mp3", "ogg", "opus" }) do
     local path = dir .. "/song." .. ext
-    local info = daw.render(path, { tail = 0 })
+    local info = paw.render(path, { tail = 0 })
     eq(info.path, path, ext .. ": the file is the one asked for")
     local data = T.read_file(path)
     eq(#data > 1000, true, ext .. ": it has content")
@@ -62,8 +62,8 @@ test("a render to MP3, Ogg Vorbis and Opus has the length asked for and leaves n
     if seconds then T.near(seconds, 2, 0.15, ext .. ": two seconds long") end
   end
   eq(names(dir), "song.mp3 song.ogg song.opus", "no part file and no temporary WAV is left")
-  daw.project.name = "Sunrise"
-  daw.render(dir .. "/titled.mp3", { tail = 0 })
+  paw.project.name = "Sunrise"
+  paw.render(dir .. "/titled.mp3", { tail = 0 })
   if have("ffprobe") then
     local p = io.popen("ffprobe -v error -show_entries format_tags=title -of csv=p=0 " .. sh_quote(dir .. "/titled.mp3"))
     local title = p:read("*l")
@@ -80,14 +80,14 @@ test("quality and bitrate change the size of a lossy file", function()
   local dir = fresh_dir("quality")
   local sizes = {}
   for _, q in ipairs({ "low", "best" }) do
-    daw.render(dir .. "/" .. q .. ".opus", { tail = 0, quality = q })
+    paw.render(dir .. "/" .. q .. ".opus", { tail = 0, quality = q })
     sizes[q] = #T.read_file(dir .. "/" .. q .. ".opus")
   end
   eq(sizes.low < sizes.best, true, "best is bigger than low")
-  daw.render(dir .. "/num.mp3", { tail = 0, bitrate = 64 })
-  daw.render(dir .. "/num320.mp3", { tail = 0, bitrate = 320 })
+  paw.render(dir .. "/num.mp3", { tail = 0, bitrate = 64 })
+  paw.render(dir .. "/num320.mp3", { tail = 0, bitrate = 320 })
   eq(#T.read_file(dir .. "/num.mp3") < #T.read_file(dir .. "/num320.mp3"), true, "a bitrate in kbit/s is taken")
-  fails(function() daw.render(dir .. "/x.mp3", { tail = 0, quality = "loud" }) end, "quality", "a quality that is not one is refused")
+  fails(function() paw.render(dir .. "/x.mp3", { tail = 0, quality = "loud" }) end, "quality", "a quality that is not one is refused")
   eq(names(dir):find("%.part") == nil, true, "nothing partial is left, even after a refusal")
 end)
 
@@ -100,12 +100,12 @@ test("a background render to MP3 reports the final file once", function()
   local events = {}
   local handles = {}
   for _, name in ipairs({ "render.progress", "render.done", "render.cancelled", "render.failed" }) do
-    handles[#handles + 1] = daw.on(name, function(e) events[#events + 1] = { name = name, e = e } end)
+    handles[#handles + 1] = paw.on(name, function(e) events[#events + 1] = { name = name, e = e } end)
   end
   local path = dir .. "/bg.mp3"
-  eq(daw.render(path, { tail = 0, background = true }), nil, "it returns at once")
+  eq(paw.render(path, { tail = 0, background = true }), nil, "it returns at once")
   wait_idle()
-  for _, h in ipairs(handles) do daw.off(h) end
+  for _, h in ipairs(handles) do paw.off(h) end
   local ends = {}
   for _, ev in ipairs(events) do
     if ev.name ~= "render.progress" then ends[#ends + 1] = ev.name .. " " .. ev.e.path end
@@ -123,36 +123,36 @@ test("cancelling during the encode stops it and leaves nothing", function()
   -- A long file to play, made by ffmpeg, so that the encode takes a while.
   local src = dir .. "/src.wav"
   os.execute("ffmpeg -v error -f lavfi -i 'sine=frequency=440:duration=1500:sample_rate=48000' -ac 2 " .. sh_quote(src))
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = src, start = 0, length = 3000 })
   local out = fresh_dir("cancel-out")
   local events = {}
   local handles = {}
   for _, name in ipairs({ "render.done", "render.cancelled", "render.failed" }) do
-    handles[#handles + 1] = daw.on(name, function() events[#events + 1] = name end)
+    handles[#handles + 1] = paw.on(name, function() events[#events + 1] = name end)
   end
   local path = out .. "/long.mp3"
-  daw.render(path, { tail = 0, background = true, quality = "best" })
+  paw.render(path, { tail = 0, background = true, quality = "best" })
   -- On a busy machine playing the long file can take a while before the
   -- encode starts, so wait by the clock; and cancel whatever happens, so
   -- that a failure here leaves no render running for the tests after it.
   local seen
   local deadline = api.now() + 120000
   while api.now() < deadline do
-    local s = daw.render_status()
+    local s = paw.render_status()
     if not s then break end
     if s.stage == "encoding" then seen = s break end
-    daw.wait(2)
+    paw.wait(2)
   end
   if not seen then
-    if daw.render_status() then daw.cmd("render.cancel") wait_idle() end
-    for _, h in ipairs(handles) do daw.off(h) end
+    if paw.render_status() then paw.cmd("render.cancel") wait_idle() end
+    for _, h in ipairs(handles) do paw.off(h) end
   end
   eq(seen ~= nil, true, "the status says it is encoding")
   eq(seen.fraction < 1, true, "and is not at 100%")
-  daw.cmd("render.cancel")
+  paw.cmd("render.cancel")
   wait_idle()
-  for _, h in ipairs(handles) do daw.off(h) end
+  for _, h in ipairs(handles) do paw.off(h) end
   eq(table.concat(events, ","), "render.cancelled", "it says once that it was cancelled")
   eq(names(out), "", "no file, no part, no temporary WAV")
 end)
@@ -162,27 +162,27 @@ test("without ffmpeg a lossy format is refused before anything is rendered, and 
   api.engine_restart({ backend = "null" })
   T.tone("Synth", 2)
   local dir = fresh_dir("missing")
-  local was = daw.opt.ffmpeg
-  daw.opt.ffmpeg = "/no/such/ffmpeg"
+  local was = paw.opt.ffmpeg
+  paw.opt.ffmpeg = "/no/such/ffmpeg"
   -- Put ffmpeg back even if a check below fails, or every later lossy
   -- render in the suite fails with it.
-  T.after(function() daw.opt.ffmpeg = was end)
+  T.after(function() paw.opt.ffmpeg = was end)
   local heard = false
-  local off = daw.on("render.before", function() heard = true end)
-  fails(function() daw.render(dir .. "/a.mp3", { tail = 0 }) end, "ffmpeg", "the message says ffmpeg is needed")
-  fails(function() daw.render(dir .. "/a.opus", { tail = 0, background = true }) end, "WAV %(%.wav%) or FLAC", "and how formats that need nothing are named")
-  fails(function() daw.cmd("render", { dir .. "/a.ogg" }) end, "ffmpeg", "the command too")
-  fails(function() daw.render_stems(dir .. "/stems", { format = "mp3" }) end, "ffmpeg", "stems too")
-  daw.off(off)
+  local off = paw.on("render.before", function() heard = true end)
+  fails(function() paw.render(dir .. "/a.mp3", { tail = 0 }) end, "ffmpeg", "the message says ffmpeg is needed")
+  fails(function() paw.render(dir .. "/a.opus", { tail = 0, background = true }) end, "WAV %(%.wav%) or FLAC", "and how formats that need nothing are named")
+  fails(function() paw.cmd("render", { dir .. "/a.ogg" }) end, "ffmpeg", "the command too")
+  fails(function() paw.render_stems(dir .. "/stems", { format = "mp3" }) end, "ffmpeg", "stems too")
+  paw.off(off)
   eq(heard, false, "nothing was rendered")
   local by = {}
-  for _, f in ipairs(api.render_formats(daw.opt.ffmpeg)) do by[f.name] = f end
+  for _, f in ipairs(api.render_formats(paw.opt.ffmpeg)) do by[f.name] = f end
   eq(by.MP3.available, false, "MP3 is not available")
   eq(type(by.MP3.why), "string", "and says why")
   eq(by.WAV.available, true, "WAV needs nothing")
-  eq(daw.frontend.render_dialog().formats.mp3, false, "the window is not offered it")
-  daw.render(dir .. "/ok.wav", { tail = 0 })
-  daw.opt.ffmpeg = was
+  eq(paw.frontend.render_dialog().formats.mp3, false, "the window is not offered it")
+  paw.render(dir .. "/ok.wav", { tail = 0 })
+  paw.opt.ffmpeg = was
   eq(names(dir), "ok.wav", "only what was possible was written")
 end)
 
@@ -191,12 +191,12 @@ test("stems and regions are rendered to a lossy format too", function()
   fresh()
   api.engine_restart({ backend = "null" })
   T.tone("Lead", 4)
-  daw.project.tempo = 120
-  daw.markers.add(0, "Intro", { length = 2 })
+  paw.project.tempo = 120
+  paw.markers.add(0, "Intro", { length = 2 })
   local dir = fresh_dir("stems")
-  daw.render_stems(dir, { format = "ogg", tail = 0 })
+  paw.render_stems(dir, { format = "ogg", tail = 0 })
   eq(names(dir), "Lead.ogg", "a stem is an Ogg file")
-  local files = daw.markers.render_regions(dir .. "/regions", { format = "opus", tail = 0 })
+  local files = paw.markers.render_regions(dir .. "/regions", { format = "opus", tail = 0 })
   eq(#T.read_file(files[1]) > 500, true, "a region is an Opus file")
   eq(names(dir .. "/regions"), "01 Intro.opus", "with nothing left over")
 end)

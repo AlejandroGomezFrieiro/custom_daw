@@ -1,19 +1,19 @@
 -- Tests for the tutor, run by tests/suite.lua:
 --
---   daw --clean --no-plugins -l tests/suite.lua tutor
+--   paw --clean --no-plugins -l tests/suite.lua tutor
 --
 -- Every lesson is played from start to finish by typing each step's keys as
 -- a person would, and the tutor must notice each step only once it is done.
 local T = ...
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local test, eq = T.test, T.eq
 
 local function ext()
   -- Progress and practice projects go in the suite's scratch directory,
   -- never in the user's state directory.
-  daw.opt.tutor_dir = T.scratch .. "/tutor"
-  if not daw.ext.loaded.tutor then daw.ext.load("extensions/tutor") end
+  paw.opt.tutor_dir = T.scratch .. "/tutor"
+  if not paw.ext.loaded.tutor then paw.ext.load("extensions/tutor") end
   return require("tutor")
 end
 
@@ -21,15 +21,15 @@ end
 local function start()
   local tutor = ext()
   -- Some other extensions' tests leave the picker switched off.
-  if not daw.pick then daw.pick = require("daw.pick") end
+  if not paw.pick then paw.pick = require("paw.pick") end
   if tutor.state().active then tutor.quit() end
   tutor._forget()
   os.remove(T.scratch .. "/tutor/progress.lua")
   T.fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  daw.ui.close()
-  daw.ui.focus("arrange")
-  daw.flush()
+  paw.keymap.feed("<Esc><Esc>")
+  paw.ui.close()
+  paw.ui.focus("arrange")
+  paw.flush()
   return tutor
 end
 
@@ -37,10 +37,10 @@ end
 --- step after every key, and the tutor's timer looks after every key.
 local function type_keys(text)
   local tutor = require("tutor")
-  for _, key in ipairs(daw.keymap.parse(text)) do
-    daw.keymap.feed(key)
+  for _, key in ipairs(paw.keymap.parse(text)) do
+    paw.keymap.feed(key)
     api.undo_checkpoint()
-    daw.flush()
+    paw.flush()
     tutor.poll()
   end
 end
@@ -56,16 +56,16 @@ local function perform(step, lesson, from, to)
     elseif item.wait then
       -- The event loop runs meanwhile: a key that waits for more (`]` before
       -- `]d`) runs when its wait is over, as at the keyboard.
-      daw.wait(item.wait)
-      daw.flush()
+      paw.wait(item.wait)
+      paw.flush()
       tutor.poll()
     elseif item.sim == "quit" then
       -- Quitting cannot be typed in a test: the suite would end. The tutor
       -- hears of it through `command.pre`, as it would.
-      daw.emit("command.pre", { name = "quit", args = {} })
+      paw.emit("command.pre", { name = "quit", args = {} })
     elseif type(item.sim) == "function" then
       item.sim(lesson)
-      daw.flush()
+      paw.flush()
       tutor.poll()
     elseif type(item.keys) == "function" then
       type_keys(item.keys())
@@ -89,10 +89,10 @@ local function play_lesson(tutor, n)
   local ok, err = xpcall(function()
     tutor.start(n, { fresh = true, force = true })
     eq(tutor.state().active, true, lesson.id .. ": started")
-    eq(daw.ui.float and daw.ui.float.title, "Lesson " .. n .. ": " .. lesson.title, lesson.id .. ": the introduction is shown")
+    eq(paw.ui.float and paw.ui.float.title, "Lesson " .. n .. ": " .. lesson.title, lesson.id .. ": the introduction is shown")
     type_keys("<Esc>")
-    eq(daw.ui.float, nil, lesson.id .. ": any key closes the introduction")
-    eq(daw.project.path, T.scratch .. "/tutor/practice/" .. lesson.id .. ".json", lesson.id .. ": the practice project is the tutor's")
+    eq(paw.ui.float, nil, lesson.id .. ": any key closes the introduction")
+    eq(paw.project.path, T.scratch .. "/tutor/practice/" .. lesson.id .. ".json", lesson.id .. ": the practice project is the tutor's")
     for i, step in ipairs(lesson.steps) do
       local where = lesson.id .. " step " .. i
       eq(tutor.state().step, i, where .. ": the tutor is on it")
@@ -162,7 +162,7 @@ test("tutor: a hint is shown when asked for, and skipping goes on without doing 
   eq(tutor.record("first-steps").steps[1], "skipped", "recorded as skipped")
   eq(panel_text():find("✓ Skipped.", 1, true) ~= nil, true, "the panel says so")
   eq(panel_text():find("Hint:", 1, true), nil, "the hint goes with its step")
-  eq(daw.transport.playing, false, "skipping did not do the step")
+  eq(paw.transport.playing, false, "skipping did not do the step")
   -- A step that is not done is not noticed, even after other keys.
   type_keys("jk")
   eq(tutor.state().step, 2, "other keys do not do the step")
@@ -180,7 +180,7 @@ test("tutor: restarting a lesson builds its practice project again", function()
   eq(tutor.state().step, 1, "back at the first step")
   eq(require("tutor.look").names("Beat"), "kick snare fill crash", "a fresh practice project")
   eq(next(tutor.record("grammar").steps), nil, "the lesson's record starts again")
-  eq(daw.undo(), false, "the fresh project has nothing to undo: building it is not an edit")
+  eq(paw.undo(), false, "the fresh project has nothing to undo: building it is not an edit")
   tutor.quit()
 end)
 
@@ -220,13 +220,13 @@ end)
 
 local function own_project()
   T.fresh()
-  local mine = daw.add_track({ name = "Mine" })
+  local mine = paw.add_track({ name = "Mine" })
   mine:add_clip({ name = "idea", start = 0, length = 4 })
-  daw.opt.grid = 2
+  paw.opt.grid = 2
   local path = T.scratch .. "/mine.json"
   api.undo_checkpoint()
-  daw.project.save(path)
-  daw.flush()
+  paw.project.save(path)
+  paw.flush()
   return path, T.read_file(path)
 end
 
@@ -234,51 +234,51 @@ test("tutor: the learner's project is never touched, and comes back when they le
   local tutor = start()
   local path, before = own_project()
   type_keys(":tutor 3<CR>")
-  eq(daw.ui.messages[#daw.ui.messages].text:find(path .. " is closed while you practise", 1, true) ~= nil, true, "the tutor says what happens to it")
+  eq(paw.ui.messages[#paw.ui.messages].text:find(path .. " is closed while you practise", 1, true) ~= nil, true, "the tutor says what happens to it")
   type_keys("<Esc>")
-  eq(daw.project.path ~= path, true, "a practice project of its own")
-  eq(daw.track("Mine"), nil, "the learner's tracks are not in it")
-  eq(daw.opt.grid, 1, "lessons start from the default grid")
+  eq(paw.project.path ~= path, true, "a practice project of its own")
+  eq(paw.track("Mine"), nil, "the learner's tracks are not in it")
+  eq(paw.opt.grid, 1, "lessons start from the default grid")
   type_keys("o")
   type_keys(",hq")
   eq(tutor.state().active, false, "left the tutor")
-  eq(daw.project.path, path, "the learner's project is open again")
-  eq(daw.track("Mine") ~= nil and #daw.tracks() == 1, true, "as it was")
-  eq(daw.project.modified, false, "with nothing to save")
+  eq(paw.project.path, path, "the learner's project is open again")
+  eq(paw.track("Mine") ~= nil and #paw.tracks() == 1, true, "as it was")
+  eq(paw.project.modified, false, "with nothing to save")
   eq(T.read_file(path), before, "its file was not written")
-  eq(daw.opt.grid, 2, "the learner's grid is back")
-  eq(daw.ui.visible("tutor"), false, "the panel is gone")
+  eq(paw.opt.grid, 2, "the learner's grid is back")
+  eq(paw.ui.visible("tutor"), false, "the panel is gone")
 end)
 
 test("tutor: a project with unsaved changes is not closed without asking", function()
   local tutor = start()
   local path = own_project()
-  daw.add_track({ name = "Unsaved" })
+  paw.add_track({ name = "Unsaved" })
   api.undo_checkpoint()
-  daw.flush()
+  paw.flush()
   type_keys(":tutor 1<CR>")
   eq(tutor.state().active, false, "the lesson did not start")
-  eq(daw.ui.messages[#daw.ui.messages].text:find("changes that are not saved", 1, true) ~= nil, true, "the tutor says why")
-  eq(daw.track("Unsaved") ~= nil and daw.project.path == path, true, "the project is still open, changes and all")
+  eq(paw.ui.messages[#paw.ui.messages].text:find("changes that are not saved", 1, true) ~= nil, true, "the tutor says why")
+  eq(paw.track("Unsaved") ~= nil and paw.project.path == path, true, "the project is still open, changes and all")
   type_keys(":tutor! 1<CR><Esc>")
   eq(tutor.state().active, true, "`:tutor!` starts anyway")
   tutor.quit()
-  eq(daw.project.path, path, "and leaving reopens the project as last saved")
-  eq(daw.track("Unsaved"), nil, "without the changes that were thrown away")
+  eq(paw.project.path, path, "and leaving reopens the project as last saved")
+  eq(paw.track("Unsaved"), nil, "without the changes that were thrown away")
 end)
 
 test("tutor: a project opened from a MIDI file is not replaced without asking", function()
   local tutor = start()
-  local t = daw.add_track({ name = "Keys" })
+  local t = paw.add_track({ name = "Keys" })
   t:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1, velocity = 90 } } })
   local path = T.scratch .. "/tutor-import.mid"
-  daw.midifile.export(path)
+  paw.midifile.export(path)
   T.fresh()
   type_keys(":open " .. path .. "<CR>")
   eq(api.project_get().modified, false, "an imported project is not modified")
   type_keys(":tutor 1<CR>")
   eq(tutor.state().active, false, "yet the lesson did not start")
-  eq(daw.track("Keys") ~= nil, true, "and the notes are still there")
+  eq(paw.track("Keys") ~= nil, true, "and the notes are still there")
   type_keys(":tutor! 1<CR><Esc>")
   eq(tutor.state().active, true, "`:tutor!` starts anyway")
   tutor.quit()
@@ -296,10 +296,10 @@ test("tutor: progress survives leaving and coming back, and a restart of the pro
   tutor._forget()
   T.fresh()
   type_keys(":tutor<CR>")
-  eq(daw.ui.float and daw.ui.float.title, "Lesson 3: Tracks, clips and notes", "back in lesson 3")
+  eq(paw.ui.float and paw.ui.float.title, "Lesson 3: Tracks, clips and notes", "back in lesson 3")
   type_keys("<Esc>")
   eq(tutor.state().step, 3, "at the step after the last one done")
-  eq(daw.track("Bass") ~= nil, true, "with the practice project as it was left")
+  eq(paw.track("Bass") ~= nil, true, "with the practice project as it was left")
   eq(tutor.record("making").steps[2], "done", "and the steps done are remembered")
   type_keys("asynth<CR>")
   eq(tutor.state().step, 4, "and it carries on noticing")
@@ -310,12 +310,12 @@ test("tutor: quitting the program in a lesson keeps the place", function()
   local tutor = start()
   type_keys(":tutor 3<CR><Esc>o")
   eq(tutor.state().step, 2, "a step done")
-  daw.emit("command.pre", { name = "quit", args = {} })   -- what `:q` in the last window says before the program ends
+  paw.emit("command.pre", { name = "quit", args = {} })   -- what `:q` in the last window says before the program ends
   tutor._forget()
   T.fresh()
   type_keys(":tutor<CR><Esc>")
   eq(tutor.state().lesson .. " " .. tutor.state().step, "making 2", "back where it was")
-  eq(#daw.tracks(), 2, "with the track that was added")
+  eq(#paw.tracks(), 2, "with the track that was added")
   tutor.quit()
 end)
 
@@ -324,12 +324,12 @@ test("tutor: in another project the tutor waits, and `:tutor` goes back to the l
   local path = own_project()
   type_keys(":tutor 2<CR><Esc>")
   type_keys(":e " .. path .. "<CR>")
-  eq(daw.project.path, path, "the learner opened their own project")
+  eq(paw.project.path, path, "the learner opened their own project")
   type_keys("lll")
   eq(tutor.state().step, 1, "steps are not checked against it")
   eq(panel_text():find("not the lesson's project", 1, true) ~= nil, true, "the panel says the tutor is waiting")
   type_keys(":tutor<CR><Esc>")
-  eq(daw.project.path ~= path and tutor.state().step == 1, true, "back in the lesson")
+  eq(paw.project.path ~= path and tutor.state().step == 1, true, "back in the lesson")
   type_keys("lll")
   eq(tutor.state().step, 2, "and noticing again")
   tutor.quit()
@@ -340,7 +340,7 @@ test("tutor: the lessons are listed with progress, and one is chosen from the li
   type_keys(":tutor 1<CR><Esc>")
   for _ = 1, #tutor.by_id["first-steps"].steps do type_keys(",hn") end
   type_keys(",hl")
-  local state = daw.pick.state()
+  local state = paw.pick.state()
   eq(state and state.title, "Lessons", "a picker of lessons")
   eq(#state.matches, #tutor.lessons, "every lesson")
   eq(state.matches[1]:find("✓", 1, true) ~= nil, true, "lesson 1 is marked done")
@@ -353,8 +353,8 @@ test("tutor: another extension can add a lesson", function()
   local tutor = start()
   local lesson = tutor.register({
     id = "extra", title = "An extra lesson",
-    setup = function() daw.add_track({ name = "X" }) end,
-    steps = { { say = "Press `o`.", keys = { "o" }, check = function() return #daw.tracks() == 2 end } },
+    setup = function() paw.add_track({ name = "X" }) end,
+    steps = { { say = "Press `o`.", keys = { "o" }, check = function() return #paw.tracks() == 2 end } },
   }, { after = "first-steps" })
   eq(tutor.number(lesson), 2, "it goes where it was asked")
   type_keys(":tutor extra<CR><Esc>o")
@@ -375,7 +375,7 @@ test("tutor: docs/course is made from the lessons and agrees with them", functio
   for name, text in pairs(files) do
     local on_disk = T.read_file("docs/course/" .. name)
     if on_disk ~= text then
-      error("docs/course/" .. name .. " differs from the lessons: run `daw --clean --no-plugins -l extensions/tutor/make-docs.lua`", 0)
+      error("docs/course/" .. name .. " differs from the lessons: run `paw --clean --no-plugins -l extensions/tutor/make-docs.lua`", 0)
     end
   end
   for _, entry in ipairs(api.read_dir("docs/course")) do
@@ -386,7 +386,7 @@ end)
 
 test("tutor: every key in docs/course/keys.md is a key paw has", function()
   ext()
-  local keymap = daw.keymap
+  local keymap = paw.keymap
   local known, operators, chars = {}, {}, {}
   for _, mode in ipairs({ "n", "x", "o", "i" }) do
     for _, view in ipairs({ "arrange", "pianoroll", "pianoroll.complete", "pianoroll.keys", "mixer", "devices", "session", "textbuf" }) do
@@ -413,7 +413,7 @@ test("tutor: every key in docs/course/keys.md is a key paw has", function()
     if token == "<" then token = "<lt>" end
     if token:match("^:.") then
       local name = token:sub(2):match("^%S+")
-      return name:match("^%d+$") ~= nil or daw.commands.get(name) ~= nil
+      return name:match("^%d+$") ~= nil or paw.commands.get(name) ~= nil
     end
     if token:find(" ") then
       for piece in token:gmatch("%S+") do if not ok(piece) then return false end end

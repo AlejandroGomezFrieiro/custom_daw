@@ -100,7 +100,7 @@ M.scales = setmetatable({
   harmonic_minor = { 0, 2, 3, 5, 7, 8, 11 },
   melodic_minor = { 0, 2, 3, 5, 7, 9, 11 },
   whole_tone = { 0, 2, 4, 6, 8, 10 },
-}, { __index = function(_, name) return daw.music.scales[name] end })
+}, { __index = function(_, name) return paw.music.scales[name] end })
 
 local letters = { c = 0, d = 2, e = 4, f = 5, g = 7, a = 9, b = 11 }
 

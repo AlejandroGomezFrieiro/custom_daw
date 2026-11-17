@@ -1,5 +1,5 @@
 -- Windows for the built-in effects in a graphical frontend (see
--- runtime/lua/daw/canvas.lua), each opened by a command that works in the
+-- runtime/lua/paw/canvas.lua), each opened by a command that works in the
 -- terminal too, where the device panel shows the same things smaller:
 --
 --   :eq         the track's equaliser (one is added if it has none): its
@@ -14,13 +14,13 @@
 --               peaks, correlation and the spectrum.
 --
 -- The terminal keeps the keyboard in the device panel, on the device.
-local api = daw.api
-local util = daw.util
-local c = require("daw.theme").palette
+local api = paw.api
+local util = paw.util
+local c = require("paw.theme").palette
 local M = { device = {} }
 
 local function read(id, method, data)
-  local ok, value = pcall(daw.params.read, id, method, data)
+  local ok, value = pcall(paw.params.read, id, method, data)
   return ok and value or nil
 end
 
@@ -28,7 +28,7 @@ local function exists(id)
   return id and (pcall(api.device_get, id))
 end
 
-local function mix(a, b, t) return daw.draw.mix(a, b, t) end
+local function mix(a, b, t) return paw.draw.mix(a, b, t) end
 
 --- The first device of `kind` on a track, or a new one.
 local function device_on(track, kind)
@@ -41,21 +41,21 @@ end
 --- Show the device in the panel, with the keyboard on it, and its window.
 local function open(view, device, opts)
   M.device[view] = device.id
-  local panel = daw.ui.views.devices
+  local panel = paw.ui.views.devices
   if panel then
     for i, row in ipairs(panel:rows()) do
       if row.device.id == device.id and not row.param and not row.picture then panel.row = i end
     end
   end
-  daw.canvas.open(view, opts)
-  pcall(daw.ui.focus, "devices")
+  paw.canvas.open(view, opts)
+  pcall(paw.ui.focus, "devices")
 end
 
 -- The equaliser ---------------------------------------------------------------
 
 local EQ = { top = 40, left = 44, right = 16, bottom = 28, range = 18 }
 local eq = { drag = nil, hover = nil }
-daw.seats.keep("eq_window", function() return eq end, function(e) eq = e end, function() return {} end)
+paw.seats.keep("eq_window", function() return eq end, function(e) eq = e end, function() return {} end)
 
 local function eq_area(width, height)
   return EQ.left, EQ.top, width - EQ.left - EQ.right, height - EQ.top - EQ.bottom
@@ -96,7 +96,7 @@ end
 
 local BAND_COLOURS = { "#e0605a", "#e58a45", "#d9ab3a", "#a9c04a", "#45b3a3", "#4aa3df", "#9a7ff0", "#e06b9a" }
 
-daw.ui.view("eq_window", {
+paw.ui.view("eq_window", {
   focusable = false,
   paint = function(_, g, ctx)
     local width, height = ctx.width, ctx.height
@@ -156,7 +156,7 @@ daw.ui.view("eq_window", {
       local info = d.param_info
       local function fmt(key)
         for _, p in ipairs(info) do
-          if p.key == key then return daw.params.format(p, d.params[key]) end
+          if p.key == key then return paw.params.format(p, d.params[key]) end
         end
         return ""
       end
@@ -217,15 +217,15 @@ daw.ui.view("eq_window", {
 })
 
 -- The size the window was last painted at, for the pointer's arithmetic.
-local eq_paint = daw.ui.views.eq_window.paint
-daw.ui.views.eq_window.paint = function(self, g, ctx)
+local eq_paint = paw.ui.views.eq_window.paint
+paw.ui.views.eq_window.paint = function(self, g, ctx)
   eq.size = { ctx.width, ctx.height }
   return eq_paint(self, g, ctx)
 end
 
 -- The tuner -------------------------------------------------------------------
 
-daw.ui.view("tuner_window", {
+paw.ui.view("tuner_window", {
   focusable = false,
   paint = function(_, g, ctx)
     local width, height = ctx.width, ctx.height
@@ -264,7 +264,7 @@ daw.ui.view("tuner_window", {
 
 local function lufs(v) return (not v or v <= -150) and "–" or string.format("%.1f", v) end
 
-daw.ui.view("meter_window", {
+paw.ui.view("meter_window", {
   focusable = false,
   paint = function(_, g, ctx)
     local width, height = ctx.width, ctx.height
@@ -313,34 +313,34 @@ daw.ui.view("meter_window", {
 -- Commands and menus -------------------------------------------------------------
 
 local function need_track()
-  local track = daw.cursor.track()
-  if not track then daw.notify("no track selected", "warn") end
+  local track = paw.cursor.track()
+  if not track then paw.notify("no track selected", "warn") end
   return track
 end
 
-daw.command("eq", function()
+paw.command("eq", function()
   local track = need_track()
   if not track then return end
-  daw.ui.show("devices")
+  paw.ui.show("devices")
   open("eq_window", device_on(track, "eq"), { title = "EQ · " .. track.name, width = 900, height = 420 })
 end, { desc = "Show the track's equaliser (adding one if it has none): its curve, and in a window, bands to drag" })
 
-daw.command("tuner", function()
+paw.command("tuner", function()
   local track = need_track()
   if not track then return end
-  daw.ui.show("devices")
+  paw.ui.show("devices")
   open("tuner_window", device_on(track, "tuner"), { title = "Tuner · " .. track.name, width = 520, height = 300 })
 end, { desc = "Tune the track's input: shows its tuner (adding one if it has none)" })
 
-daw.command("loudness", function()
-  local master = daw.master
-  pcall(daw.cursor.set_track, master)
-  daw.ui.show("devices")
+paw.command("loudness", function()
+  local master = paw.master
+  pcall(paw.cursor.set_track, master)
+  paw.ui.show("devices")
   open("meter_window", device_on(master, "meter"), { title = "Loudness · Master", width = 720, height = 380 })
 end, { desc = "Measure the mix: the master's loudness meter (adding one if it has none)" })
 
-table.insert(daw.frontend.menus.track, { label = "EQ", command = "eq" })
-table.insert(daw.frontend.menus.track, { label = "Tuner", command = "tuner" })
-table.insert(daw.frontend.menus.timeline, { label = "Loudness meter", command = "loudness" })
+table.insert(paw.frontend.menus.track, { label = "EQ", command = "eq" })
+table.insert(paw.frontend.menus.track, { label = "Tuner", command = "tuner" })
+table.insert(paw.frontend.menus.timeline, { label = "Loudness meter", command = "loudness" })
 
 return M

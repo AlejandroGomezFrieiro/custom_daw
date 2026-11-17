@@ -5,11 +5,11 @@
 --   comp:set_sidechain(kick)                -- the bass's compressor listens to the kick
 --   comp:set_sidechain(kick, { pre = true }) -- before the kick's fader, pan and mute
 --   kit:set_output(2, kick_track)           -- the kit's second pair plays there
---   daw.routes.spread(kit)                  -- a track for each pair
---   daw.routes.feeds(a, b)                  -- whether a's sound reaches b
+--   paw.routes.spread(kit)                  -- a track for each pair
+--   paw.routes.feeds(a, b)                  -- whether a's sound reaches b
 --   :device.sidechain Kick                  -- the device panel's device
 --   :device.output 2 Kick   :device.spread
-local api = daw.api
+local api = paw.api
 local M = {}
 
 --- Where each track's sound goes next, by id: its output (the master, 0,
@@ -88,10 +88,10 @@ end
 local function track_of(track)
   if type(track) ~= "string" then return track end
   if track == "" or track:lower() == "none" then return nil end
-  local found = daw.track(track)
+  local found = paw.track(track)
   if not found then
     for _, id in ipairs(api.track_list()) do
-      if api.track_get(id).name:lower():find(track:lower(), 1, true) then return daw.track(id) end
+      if api.track_get(id).name:lower():find(track:lower(), 1, true) then return paw.track(id) end
     end
     error("no track `" .. track .. "`", 0)
   end
@@ -101,7 +101,7 @@ end
 --- Set a device's side-chain by a track, a track's id or name ("none" or
 --- nil for none), and `pre`. Errors say why it cannot be.
 function M.set_sidechain(device, track, pre)
-  daw.device(device):set_sidechain(track_of(track), { pre = pre })
+  paw.device(device):set_sidechain(track_of(track), { pre = pre })
 end
 
 --- A device's output pairs: `{ pair, name, target, target_name }` each,
@@ -140,46 +140,46 @@ end
 function M.spread(device)
   local d = api.device_get(device)
   local made = {}
-  local track = daw.track(d.track)
+  local track = paw.track(d.track)
   local at = track.index
   for _, out in ipairs(M.outputs(device)) do
     if out.pair > 1 and not out.target then
       at = at + 1
-      local t = daw.add_track({ name = out.name, index = at })
+      local t = paw.add_track({ name = out.name, index = at })
       M.set_output(device, out.pair, t)
       made[#made + 1] = t
     end
   end
   if #made == 0 then return made end
-  local group = daw.groups.of(track)
+  local group = paw.groups.of(track)
   if group then
-    for _, t in ipairs(made) do daw.groups.add(t, group) end
+    for _, t in ipairs(made) do paw.groups.add(t, group) end
   else
     local members = { track }
     for _, t in ipairs(made) do members[#members + 1] = t end
-    daw.groups.make(members, track.name .. " outputs")
+    paw.groups.make(members, track.name .. " outputs")
   end
   return made
 end
 
 function M.setup()
-  local command = daw.command
+  local command = paw.command
 
   command("device.sidechain", function(ctx)
-    local device = daw.fx.target()
+    local device = paw.fx.target()
     if not device then return end
     local pre = ctx.args.pre ~= nil and ctx.args.pre ~= "0" and ctx.args.pre ~= "false"
     local function set(track)
       local ok, err = pcall(M.set_sidechain, device.id, track, pre)
-      if not ok then return daw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):match("^[^\n]*")), "warn") end
+      if not ok then return paw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):match("^[^\n]*")), "warn") end
       local text = M.sidechain_text(device:get())
-      daw.notify(text and device.name .. " listens to " .. text or device.name .. " listens to its own input")
+      paw.notify(text and device.name .. " listens to " .. text or device.name .. " listens to its own input")
     end
     local name = table.concat(ctx.args, " ")
     if name ~= "" then return set(name) end
     local items = { { id = false, name = "None: its own input" } }
     for _, source in ipairs(M.sidechain_sources(device.id)) do items[#items + 1] = source end
-    daw.pick({
+    paw.pick({
       title = "Side-chain of " .. device.name, items = items,
       format = function(t) return t.name end,
       on_choose = function(t) set(t.id or nil) end,
@@ -190,20 +190,20 @@ function M.setup()
     complete = { "tracks" },
   })
 
-  -- Its key, `gS`, is in daw/device_rows.lua with the panel's others.
+  -- Its key, `gS`, is in paw/device_rows.lua with the panel's others.
 
-  local function warn(err) daw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):match("^[^\n]*")), "warn") end
+  local function warn(err) paw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):match("^[^\n]*")), "warn") end
 
   command("device.output", function(ctx)
-    local device = daw.fx.target()
+    local device = paw.fx.target()
     if not device then return end
     local outputs = M.outputs(device.id)
-    if #outputs < 2 then return daw.notify(device.name .. " has one output pair", "warn") end
+    if #outputs < 2 then return paw.notify(device.name .. " has one output pair", "warn") end
     local function set(pair, track)
       local ok, err = pcall(M.set_output, device.id, pair, track)
       if not ok then return warn(err) end
       local out = M.outputs(device.id)[pair]
-      daw.notify(string.format("%s %s → %s", device.name, out.name, out.target_name or "not heard"))
+      paw.notify(string.format("%s %s → %s", device.name, out.name, out.target_name or "not heard"))
     end
     local function choose_track(pair)
       local items = { { id = false, name = "Nowhere: not heard" } }
@@ -211,7 +211,7 @@ function M.setup()
       for _, id in ipairs(api.track_list()) do
         if id ~= device:get().track and not reaching[id] then items[#items + 1] = { id = id, name = api.track_get(id).name } end
       end
-      daw.pick({
+      paw.pick({
         title = outputs[pair].name .. " of " .. device.name .. " into", items = items,
         format = function(t) return t.name end,
         on_choose = function(t) set(pair, t.id or nil) end,
@@ -225,7 +225,7 @@ function M.setup()
     end
     local items = {}
     for i = 2, #outputs do items[#items + 1] = outputs[i] end
-    daw.pick({
+    paw.pick({
       title = "Outputs of " .. device.name, items = items,
       format = function(o) return string.format("%-3d %-24s → %s", o.pair, o.name, o.target_name or "not heard") end,
       on_choose = function(o) choose_track(o.pair) end,
@@ -236,19 +236,19 @@ function M.setup()
   })
 
   command("device.spread", function()
-    local device = daw.fx.target()
+    local device = paw.fx.target()
     if not device then return end
     local ok, made = pcall(M.spread, device.id)
     if not ok then return warn(made) end
-    daw.notify(#made == 0 and "every output pair of " .. device.name .. " already plays somewhere"
+    paw.notify(#made == 0 and "every output pair of " .. device.name .. " already plays somewhere"
       or string.format("%d output pairs of %s on tracks of their own", #made, device.name))
   end, { desc = "Spread the device's output pairs over new tracks, named after them and grouped with its track" })
 
-  daw.keymap.set("O", "device.output", { view = "devices", desc = "Route the device's further output pairs" })
+  paw.keymap.set("O", "device.output", { view = "devices", desc = "Route the device's further output pairs" })
 
   command("track.midi_out", function(ctx)
-    local track = daw.cursor.track()
-    if not track then return daw.notify("no track here", "warn") end
+    local track = paw.cursor.track()
+    if not track then return paw.notify("no track here", "warn") end
     local words = {}
     for _, word in ipairs(ctx.args) do words[#words + 1] = tostring(word) end
     -- A form and a channel last, after the port's name, in either order.
@@ -262,17 +262,17 @@ function M.setup()
       end
     end
     local name = table.concat(words, " ")
-    if name == "" then return daw.commands.exec("track.input") end
+    if name == "" then return paw.commands.exec("track.input") end
     local ok, err = pcall(M.set_midi_out, track.id, name, channel, form, tonumber(ctx.args.members))
     if not ok then return warn(err) end
-    daw.notify(track.name .. " → " .. M.midi_out_text(track:get()))
+    paw.notify(track.name .. " → " .. M.midi_out_text(track:get()))
   end, {
     desc = "Send what the track plays to a MIDI port: `track.midi_out Synth 2` (channel 2), "
       .. "`track.midi_out Synth` (each message's own channel), `track.midi_out Synth mpe` (a channel to each note, "
       .. "where the port takes no MIDI 2.0; or `plain`, `cc14`, `auto`), `track.midi_out none`; alone, the input list",
     complete = function()
       local words = { "none" }
-      for _, port in ipairs(daw.midi.outputs()) do words[#words + 1] = port.name end
+      for _, port in ipairs(paw.midi.outputs()) do words[#words + 1] = port.name end
       return words
     end,
   })
@@ -309,7 +309,7 @@ function M.set_midi_out(track, name, channel, form, members)
   end
   members = members or (form == "mpe" and was.members or nil)
   local port = name
-  for _, p in ipairs(daw.midi.outputs()) do
+  for _, p in ipairs(paw.midi.outputs()) do
     if p.name == name then
       port = p.name
       break

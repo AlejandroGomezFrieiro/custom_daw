@@ -4,16 +4,16 @@
 -- by tests.lua.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 local function load()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   return require("notation")
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -21,13 +21,13 @@ end
 local function song(bars)
   fresh()
   local view = load()
-  local track = daw.add_track({ name = "Lead" })
+  local track = paw.add_track({ name = "Lead" })
   track:add_device("synth")
   local clip = track:add_clip({ start = 0, length = (bars or 2) * 4, name = "tune", notes = {} })
-  daw.flush()
-  daw.keymap.set_mode("n")
+  paw.flush()
+  paw.keymap.set_mode("n")
   view:edit(clip)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view.value, view.dot, view.voice, view.triplets = 1, false, 1, false
   api.undo_checkpoint()
   return view, clip
@@ -38,10 +38,10 @@ local function dynamics(fifth)
   local view, clip = song(2)
   keys("icdef<Esc>")
   view:set(35, 0)
-  daw.cmd("notation.dyn", { "p" })
+  paw.cmd("notation.dyn", { "p" })
   api.undo_checkpoint()
   view:set(nil, 4)
-  daw.cmd("notation.dyn", { "f" })
+  paw.cmd("notation.dyn", { "f" })
   api.undo_checkpoint()
   if fifth then
     view:set(35, 4)
@@ -70,7 +70,7 @@ test("marks follow: a note entered under a dynamic takes its velocity, and under
   view:set(35, 4)
   keys("ia<Esc>")
   eq(vel(clip), "52 52 52 52 96", "a note entered in bar 2 is f")
-  daw.commands.exec("2notation.cresc")
+  paw.commands.exec("2notation.cresc")
   api.undo_checkpoint()
   view:set(37, 6)
   keys("ib<Esc>")
@@ -113,7 +113,7 @@ test("marks follow: a roll edit, then a notation edit elsewhere, leaves the roll
   eq(clip:notes()[5].velocity, 96, "while the new note follows the f")
   -- A mark written elsewhere is a change of the marks, and says so: it sets the notes it reaches.
   view:set(nil, 4)
-  daw.cmd("notation.dyn", { "mf" })
+  paw.cmd("notation.dyn", { "mf" })
   api.undo_checkpoint()
   eq(clip:notes()[2].velocity, 33, "a dynamic after it does not reach it")
 end)
@@ -127,7 +127,7 @@ test("apply-marks: MIDI that drifted plays as the marks say again, in one undo s
   clip:set_note(5, { velocity = 12 })
   api.undo_checkpoint()
   eq(vel(clip), "10 52 11 52 12", "drifted in the roll")
-  daw.commands.exec("1notation.apply-marks")
+  paw.commands.exec("1notation.apply-marks")
   api.undo_checkpoint()
   eq(vel(clip), "52 52 52 52 12", "a range of bars: bar 1 only")
   keys("u")
@@ -135,11 +135,11 @@ test("apply-marks: MIDI that drifted plays as the marks say again, in one undo s
   view:set(35, 2)
   keys("vl:notation.apply-marks<CR>")
   eq(vel(clip), "10 52 52 52 12", "the selection: its two notes (the second was right already)")
-  daw.cmd("notation.apply-marks")
+  paw.cmd("notation.apply-marks")
   api.undo_checkpoint()
   eq(vel(clip), "52 52 52 52 96", "with no range, the whole clip")
   local before = vel(clip)
-  daw.cmd("notation.apply-marks")
+  paw.cmd("notation.apply-marks")
   eq(vel(clip), before, "again: nothing more to do")
 end)
 
@@ -147,7 +147,7 @@ test("apply-marks: articulations set the length, an accent is not added twice, a
   local view, clip = song(1)
   keys("icdef<Esc>")
   view:set(35, 0)
-  daw.cmd("notation.dyn", { "mf" })
+  paw.cmd("notation.dyn", { "mf" })
   view:set(36, 1)
   keys("g'g>")
   api.undo_checkpoint()
@@ -155,11 +155,11 @@ test("apply-marks: articulations set the length, an accent is not added twice, a
   eq(clip:notes()[2].velocity, 100, "and an accent on the mf")
   clip:set_note(2, { velocity = 20, length = 1 })
   api.undo_checkpoint()
-  daw.cmd("notation.apply-marks")
+  paw.cmd("notation.apply-marks")
   api.undo_checkpoint()
   eq(clip:notes()[2].length, 0.5, "the staccato's length again")
   eq(clip:notes()[2].velocity, 100, "the accent on the mf again")
-  daw.cmd("notation.apply-marks")
+  paw.cmd("notation.apply-marks")
   eq(clip:notes()[2].velocity, 100, "not twice")
   eq(lengths(clip), "1 0.5 1 1", "the other notes keep their lengths")
   view:set(36, 1)

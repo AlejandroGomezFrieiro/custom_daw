@@ -1,9 +1,9 @@
 -- Saving and loading a large project.
---   daw --clean --no-plugins -l bench/saveload.lua <tracks> <clips per track>
+--   paw --clean --no-plugins -l bench/saveload.lua <tracks> <clips per track>
 -- Each track has a synth and a delay and `clips` one-bar MIDI clips of 12
 -- notes, as in the Tracktion driver's `saveload`.
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local tracks, clips = ...
@@ -20,7 +20,7 @@ local function build()
     end
   end
   api.undo_checkpoint()
-  daw.flush()
+  paw.flush()
 end
 
 local build_ms = B.time(build)
@@ -30,10 +30,10 @@ local f = io.open(path, "rb")
 local bytes = f:seek("end")
 f:close()
 api.project_new()
-daw.flush()
+paw.flush()
 local load_ms = B.time(function()
   api.project_load(path)
-  daw.flush()
+  paw.flush()
 end)
 local loaded = #api.track_list()
 os.remove(path)

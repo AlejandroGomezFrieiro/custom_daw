@@ -3,7 +3,7 @@
 //! is frozen.
 //!
 //! A track is frozen when its meta holds `frozen.file` (the runtime's
-//! `daw.freeze` writes it, so freezing is saved and undone with the track).
+//! `paw.freeze` writes it, so freezing is saved and undone with the track).
 //! The file is what comes out of the track before its fader: its clips, its
 //! devices, and every track whose sound reaches it through outputs (the
 //! members of a group). The fader, pan, mute and sends stay live. While it is

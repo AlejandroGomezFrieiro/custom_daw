@@ -11,8 +11,8 @@
 --   gen.text(spec)                                  -- as an .art.toml
 --   local banks, stats = gen.reabank(text)          -- one spec per bank
 --   gen.to_reabank(map)                             -- a map as a bank
-local api = daw.api
-local music = daw.music
+local api = paw.api
+local music = paw.music
 local toml = require("articulations.toml")
 local m2 = require("articulations.m2")
 local maps = require("articulations.maps")

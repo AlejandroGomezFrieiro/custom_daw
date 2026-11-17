@@ -134,7 +134,7 @@ pub fn unavailable(format: Lossy, ffmpeg: Option<&str>) -> Option<String> {
     let program = program(ffmpeg);
     match encoders(program) {
         Err(why) => Some(format!(
-            "it needs ffmpeg, and {why}: install it or set daw.opt.ffmpeg to where it is"
+            "it needs ffmpeg, and {why}: install it or set paw.opt.ffmpeg to where it is"
         )),
         Ok(set) if !set.contains(format.encoder()) => Some(format!(
             "this ffmpeg ({program}) was built without the {} encoder",

@@ -5,10 +5,10 @@
 --
 -- Drag to draw; right drag puts the curve back to its default over that
 -- stretch; double click puts it back under the note above.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local notes = require("utau.notes")
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 
 local TABS = 22
 local SHORT = {
@@ -139,12 +139,12 @@ return function(gui)
         d.samples[#d.samples + 1] = { clip.start + beat, v }
         d.line[#d.line + 1] = x_of(beat)
         d.line[#d.line + 1] = e.y - gui.geo.curve_y - TABS
-        d.label = string.format("%s %g at %s", info.name:lower(), math.floor(v * 10 + 0.5) / 10, daw.time.format(clip.start + beat))
+        d.label = string.format("%s %g at %s", info.name:lower(), math.floor(v * 10 + 0.5) / 10, paw.time.format(clip.start + beat))
       else
         d.x1 = x
         local a, b = beat_at(math.min(d.x0, d.x1)), beat_at(math.max(d.x0, d.x1))
         d.label = string.format("%s back to %g from %s to %s", info.name:lower(), info.default,
-          daw.time.format(clip.start + math.max(0, a)), daw.time.format(clip.start + b))
+          paw.time.format(clip.start + math.max(0, a)), paw.time.format(clip.start + b))
       end
     elseif e.kind == "up" then
       gui.drag = nil
@@ -171,7 +171,7 @@ return function(gui)
     local S = gui.S
     if not (S and S.curve) or e.y < gui.geo.curve_y + TABS or e.x < gui.KEYS then return end
     local info, x = S.curve.info, e.x - gui.KEYS
-    view.beat = util.clamp(gui.snap(beat_at(x) - daw.opt.note_grid / 2), 0, clip.length)
+    view.beat = util.clamp(gui.snap(beat_at(x) - paw.opt.note_grid / 2), 0, clip.length)
     if e.kind == "double" then
       gui.drag = nil
       local note = notes.near(clip.id, beat_at(x))

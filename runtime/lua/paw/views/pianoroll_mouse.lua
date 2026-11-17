@@ -4,25 +4,25 @@
 -- a drag moves it, or either end of it; the right button drags a box that
 -- chooses notes, or clicked removes a note or opens the menu; Alt and a
 -- drag erases. The keyboard sounds a key; the velocity strip is drawn on.
--- Each gesture calls `daw.frontend.act` once, as the window does, and is
+-- Each gesture calls `paw.frontend.act` once, as the window does, and is
 -- drawn as a layer of the roll until the button is let go. Beats are the
 -- roll's (the active clip's); a note of another clip edited with it is
 -- named by that clip and its place there.
-local api = daw.api
-local util = daw.util
-local music = daw.music
-local mouse = daw.mouse
-local menus = require("daw.mouse_menus")
-local strip = require("daw.views.pianoroll_strip")
-local view = daw.ui.views.pianoroll
-local A = daw.frontend.act
+local api = paw.api
+local util = paw.util
+local music = paw.music
+local mouse = paw.mouse
+local menus = require("paw.mouse_menus")
+local strip = require("paw.views.pianoroll_strip")
+local view = paw.ui.views.pianoroll
+local A = paw.frontend.act
 
 local function beat_at(self, tx) return mouse.beat(tx, self.scroll, self.geometry.zoom) end
 
 --- The grid step a column falls in, or with `free` the column's own beat.
 local function start_at(self, tx, free)
   if free then return beat_at(self, tx) end
-  return mouse.on_grid(tx, self.scroll, self.geometry.zoom, daw.opt.note_grid)
+  return mouse.on_grid(tx, self.scroll, self.geometry.zoom, paw.opt.note_grid)
 end
 
 --- Where the grid step a column falls in ends: a drag to a column takes in
@@ -30,7 +30,7 @@ end
 local function end_at(self, tx, free)
   local beat = beat_at(self, tx + 1)
   if free then return beat end
-  local grid = daw.opt.note_grid
+  local grid = paw.opt.note_grid
   return math.ceil(beat / grid - 1e-6) * grid
 end
 
@@ -78,7 +78,7 @@ local function hit(self, x, y)
 end
 
 local function say(n, clip)
-  return string.format("%s  %s  length %g", music.name(n.pitch), daw.time.format(clip.start + n.start), n.length)
+  return string.format("%s  %s  length %g", music.name(n.pitch), paw.time.format(clip.start + n.start), n.length)
 end
 
 --- Draw notes where a gesture will put them, over the roll.
@@ -95,7 +95,7 @@ end
 --- along: every chosen note of the clips edited, if it is one of them, as
 --- `{ clip, place }` each.
 local function grabbed(owner, place)
-  local refs = daw.frontend.chosen_refs()
+  local refs = paw.frontend.chosen_refs()
   for _, ref in ipairs(refs) do
     if ref[1] == owner and ref[2] == place then return refs end
   end
@@ -103,7 +103,7 @@ local function grabbed(owner, place)
 end
 
 local function among(owner, place)
-  for _, other in ipairs(daw.frontend.chosen_notes(owner)) do
+  for _, other in ipairs(paw.frontend.chosen_notes(owner)) do
     if other == place then return true end
   end
   return false
@@ -127,9 +127,9 @@ local function press_note(self, e, h, clip)
       if not (d and d.moved) then return end
       local dbeat, dpitch = d.dx / zoom, -d.dy
       for _, ref in ipairs(grabbed(id, place)) do
-        local m = daw.clip(ref[1]):notes()[ref[2]]
+        local m = paw.clip(ref[1]):notes()[ref[2]]
         if m then
-          m.start = m.start + daw.roll_clips.offset(ref[1]) - daw.roll_clips.offset(clip.id)
+          m.start = m.start + paw.roll_clips.offset(ref[1]) - paw.roll_clips.offset(clip.id)
           if part == "start" then
             local stop = m.start + m.length
             local start = math.min(stop - 1 / 64, m.start + dbeat)
@@ -170,7 +170,7 @@ end
 --- A press on empty grid: a note from the step pressed to the step the
 --- pointer is let go over; a click gives the roll's note length.
 local function press_draw(self, e, h, clip)
-  local free = mouse.has(e, "S") or not daw.opt.note_snap
+  local free = mouse.has(e, "S") or not paw.opt.note_snap
   local start, pitch, tx0 = start_at(self, h.tx, free), h.pitch, h.tx
   self:set(pitch, start)
   local function stop(tx) return end_at(self, math.max(tx, tx0), free) end
@@ -209,7 +209,7 @@ local function press_box(self, e, h, clip)
     roll = function(p)
       local d = mouse.gesture().d
       if not (d and d.moved) then return end
-      local g2 = daw.draw.g
+      local g2 = paw.draw.g
       local l, r = math.min(x0, d.x) - g.keys, math.max(x0, d.x) - g.keys
       local t, b = math.min(y0, d.y) - g.head, math.max(y0, d.y) - g.head
       p.roll:fill(l, t, r - l + 1, 1, g2.h, "MouseBox")
@@ -224,11 +224,11 @@ local function press_box(self, e, h, clip)
         local mode = mouse.has(u, "S") and "add" or (right and mouse.has(u, "C")) and "toggle" or "only"
         A.select_notes_box(clip.id, beat_at(self, a), pitch_of(y0), beat_at(self, b + 1), pitch_of(u.y), mode)
       elseif right and h.note and mouse.has(u, "C") then
-        daw.ui.menu(menus.note(h.owner, h.place), where)
+        paw.ui.menu(menus.note(h.owner, h.place), where)
       elseif right and h.note then
         A.remove_note(h.owner, h.place)
       elseif right then
-        daw.ui.menu(menus.roll(clip.id), where)
+        paw.ui.menu(menus.roll(clip.id), where)
       else
         -- Ctrl and a click on another track's note shown behind: its clip
         -- is edited too, or no longer.
@@ -299,7 +299,7 @@ end
 --- The furthest left the roll scrolls: its start, or before it the start
 --- of an earlier clip edited with it.
 local function leftmost()
-  return math.min(0, math.floor((daw.roll_clips.span())))
+  return math.min(0, math.floor((paw.roll_clips.span())))
 end
 
 local function wheel(self, e, h)
@@ -309,8 +309,8 @@ local function wheel(self, e, h)
     -- Zoom in time, keeping the beat under the pointer where it is.
     local tx = math.max(0, h.tx)
     local at = beat_at(self, tx)
-    local zoom = util.clamp(daw.opt.note_zoom * (step < 0 and math.sqrt(2) or 1 / math.sqrt(2)), 0.125, 64)
-    daw.opt.note_zoom = zoom
+    local zoom = util.clamp(paw.opt.note_zoom * (step < 0 and math.sqrt(2) or 1 / math.sqrt(2)), 0.125, 64)
+    paw.opt.note_zoom = zoom
     self.scroll = math.max(leftmost(), at - tx / zoom)
   elseif sideways or mouse.has(e, "S") then
     self.scroll = math.max(leftmost(), self.scroll + step)
@@ -325,7 +325,7 @@ function view:follow()
   local g = self.geometry
   local span = g.span or 1
   self.pitch = util.clamp(self.pitch, self.top - g.rows + 1, self.top)
-  self.beat = util.clamp(self.beat, self.scroll, math.max(self.scroll, self.scroll + span - 2 * daw.opt.note_grid))
+  self.beat = util.clamp(self.beat, self.scroll, math.max(self.scroll, self.scroll + span - 2 * paw.opt.note_grid))
   api.ui_redraw()
 end
 
@@ -341,7 +341,7 @@ local hints = {
 local function hover(self, h, clip)
   local text
   if h.area == "grid" then
-    local at = music.name(h.pitch) .. "  " .. daw.time.format(clip.start + math.max(0, h.beat))
+    local at = music.name(h.pitch) .. "  " .. paw.time.format(clip.start + math.max(0, h.beat))
     text = h.note and (say(h.note, clip) .. " · " .. hints.note) or (at .. " · " .. hints.grid)
   elseif h.area == "keys" then
     text = music.name(h.pitch) .. " · " .. hints.keys

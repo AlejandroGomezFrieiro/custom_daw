@@ -39,30 +39,30 @@ macro again, `5@q` five times.]],
   vim = [[
 Registers, `"0`, `"_`, `qq`…`q`, `@q`, `@@` and `@:` are Vim's. What a register
 holds is clips, tracks, notes or a device rather than text, and pasted time
-replaces what was there (`:lua daw.opt.ripple = true` makes it push along).]],
+replaces what was there (`:lua paw.opt.ripple = true` makes it push along).]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 16, notes = look.drums(look.beat, 4) })
-    local lead = daw.add_track({ name = "Lead", volume = -6 })
+    local lead = paw.add_track({ name = "Lead", volume = -6 })
     lead:add_device("synth", { wave = 1, cutoff = 2400, release = 0.2 })
     lead:add_clip({ name = "hook", start = 0, length = 4, notes = look.notes(HOOK) })
-    local bass = daw.add_track({ name = "Bass", volume = -4 })
+    local bass = paw.add_track({ name = "Bass", volume = -4 })
     bass:add_device("synth", { wave = 2, cutoff = 600, release = 0.05 })
     bass:add_clip({ name = "A", start = 0, length = 4, notes = look.pulse("A1", 4) })
     bass:add_clip({ name = "B", start = 4, length = 4, notes = look.pulse("F1", 4) })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 16, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 16, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Lead")) end,
+  at = function() paw.cursor.set_track(paw.track("Lead")) end,
   steps = {
     {
       say = "The cursor is on the hook. Press `yic` to yank (copy) the clip.",
       keys = { "yic" },
-      start = function(ctx) ctx.before = daw.keymap.getreg() end,
+      start = function(ctx) ctx.before = paw.keymap.getreg() end,
       check = function(ctx)
-        local r = daw.keymap.getreg()
-        return r ~= ctx.before and r and r.kind == "range" and daw.keymap.getreg("0") == r
+        local r = paw.keymap.getreg()
+        return r ~= ctx.before and r and r.kind == "range" and paw.keymap.getreg("0") == r
       end,
       done = "The hook is in the unnamed register, and in register 0, which keeps the last yank.",
     },
@@ -81,9 +81,9 @@ replaces what was there (`:lua daw.opt.ripple = true` makes it push along).]],
     {
       say = "Named registers keep several things at once. Press `j` to go to Bass, `0` to its start, and `\"ayic` to yank clip A into register a.",
       keys = { "j", "0", "\"ayic" },
-      start = function(ctx) ctx.before = daw.keymap.getreg("a") end,
+      start = function(ctx) ctx.before = paw.keymap.getreg("a") end,
       check = function(ctx)
-        local r = daw.keymap.getreg("a")
+        local r = paw.keymap.getreg("a")
         return r and r ~= ctx.before and r.kind == "range" and r.rows[1] and r.rows[1][1] and r.rows[1][1].name == "A"
       end,
       done = "Register a holds A.",
@@ -92,9 +92,9 @@ replaces what was there (`:lua daw.opt.ripple = true` makes it push along).]],
     {
       say = "Press `w` to go to B and `\"byic` to yank it into register b.",
       keys = { "w", "\"byic" },
-      start = function(ctx) ctx.before = daw.keymap.getreg("b") end,
+      start = function(ctx) ctx.before = paw.keymap.getreg("b") end,
       check = function(ctx)
-        local r = daw.keymap.getreg("b")
+        local r = paw.keymap.getreg("b")
         return r and r ~= ctx.before and r.kind == "range" and r.rows[1] and r.rows[1][1] and r.rows[1][1].name == "B"
       end,
       done = "Register b holds B.",
@@ -120,16 +120,16 @@ replaces what was there (`:lua daw.opt.ripple = true` makes it push along).]],
     {
       say = "Now a macro. Press `k` to go up to Lead and `0` to its start, then `qq` to start recording keys into register q.",
       keys = { "k", "0", "qq" },
-      check = function(_, look) return daw.keymap.recording() == "q" and look.cursor_track() == "Lead" and daw.cursor.beat == 0 end,
+      check = function(_, look) return paw.keymap.recording() == "q" and look.cursor_track() == "Lead" and paw.cursor.beat == 0 end,
       done = "The status line says `recording @q`.",
     },
     {
       say = "Type the change to record: `vic` (select the clip), `12<C-a>` (its notes up an octave: on a track `<C-a>` is the fader), `w` (on to the next clip), then `q` to stop recording.",
       keys = { "vic", "12<C-a>", "w", "q" },
-      start = function(ctx) ctx.before = daw.keymap.registers.q end,
+      start = function(ctx) ctx.before = paw.keymap.registers.q end,
       check = function(ctx)
-        local r = daw.keymap.registers.q
-        return daw.keymap.recording() == nil and r ~= ctx.before and r and r.kind == "keys" and r.keys == "vic12<C-a>w"
+        local r = paw.keymap.registers.q
+        return paw.keymap.recording() == nil and r ~= ctx.before and r and r.kind == "keys" and r.keys == "vic12<C-a>w"
       end,
       done = "The first hook went up an octave while you recorded, and register q holds `vic12<C-a>w`.",
       hint = "If it went wrong, `u` undoes the change and `qq` records again.",

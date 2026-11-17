@@ -2,28 +2,28 @@
 -- takes that end badly, devices that fail, the engine's counters.
 local T = ...
 local test, eq, fresh, render = T.test, T.eq, T.fresh, T.render
-local daw = require("daw")
-local api = daw.api
+local paw = require("paw")
+local api = paw.api
 
 test("a project saved before the safety work still opens", function()
   fresh()
-  daw.project.load("tests/fixtures/demo-song.json")
+  paw.project.load("tests/fixtures/demo-song.json")
   local names = {}
-  for _, t in ipairs(daw.tracks()) do names[#names + 1] = t.name end
+  for _, t in ipairs(paw.tracks()) do names[#names + 1] = t.name end
   eq(table.concat(names, ","), "Drums,Bass,Keys,Lead,Reverb", "its tracks")
-  eq(daw.project.tempo, 112, "its tempo")
-  eq(#daw.tracks()[1]:clips(), 8, "its clips")
-  eq(daw.project.modified, false, "and nothing is changed by opening it")
+  eq(paw.project.tempo, 112, "its tempo")
+  eq(#paw.tracks()[1]:clips(), 8, "its clips")
+  eq(paw.project.modified, false, "and nothing is changed by opening it")
 end)
 
 test("saving keeps the previous file as .bak and leaves no temporary file", function()
   fresh()
   local path = T.scratch .. "/bak-song.json"
-  daw.add_track({ name = "First" })
-  daw.project.save(path)
+  paw.add_track({ name = "First" })
+  paw.project.save(path)
   eq(io.open(path .. ".bak"), nil, "a first save has nothing to keep")
-  daw.add_track({ name = "Second" })
-  daw.project.save(path)
+  paw.add_track({ name = "Second" })
+  paw.project.save(path)
   local bak = T.read_file(path .. ".bak")
   eq(bak:find('"First"', 1, true) ~= nil and bak:find('"Second"', 1, true) == nil, true, "the .bak is the file as it was")
   eq(T.read_file(path):find('"Second"', 1, true) ~= nil, true, "the file is the project as it is")
@@ -32,42 +32,42 @@ end)
 
 test("a project that will not parse offers its .bak and its newest safety copy", function()
   fresh()
-  local autosave = daw.autosave
+  local autosave = paw.autosave
   local dir = T.scratch .. "/recovery-damaged"
   local old_dir = autosave.dir
   autosave.dir = dir
   local path = T.scratch .. "/damaged.json"
-  daw.add_track({ name = "Saved once" })
-  daw.project.save(path)
-  daw.add_track({ name = "Saved twice" })
-  daw.project.save(path)
+  paw.add_track({ name = "Saved once" })
+  paw.project.save(path)
+  paw.add_track({ name = "Saved twice" })
+  paw.project.save(path)
   -- A safety copy of later work, from a session that ended badly.
-  daw.add_track({ name = "Never saved" })
+  paw.add_track({ name = "Never saved" })
   api.project_backup(dir .. "/damaged-copy.json", { path = path, name = "damaged", time = os.time(), pid = 999999999 })
   -- The file is cut short, as a full disk or a bad copy would leave it.
   local text = T.read_file(path)
   T.write_file(path, text:sub(1, math.floor(#text / 2)))
 
-  daw.project.new()
-  local ok, err = pcall(daw.project.load, path)
+  paw.project.new()
+  local ok, err = pcall(paw.project.load, path)
   eq(ok, false, "the damaged file does not open")
   eq(tostring(err):find(":recover", 1, true) ~= nil, true, "the error says what can be opened instead: " .. tostring(err))
   local choices = autosave.choices()
   eq(#choices >= 2, true, "two stand-ins are offered")
   eq(choices[1].name .. "|" .. choices[2].name, "safety copy|backup (before the last save)", "the safety copy first, then the backup")
 
-  daw.commands.exec("recover 2")
+  paw.commands.exec("recover 2")
   local names = {}
-  for _, t in ipairs(daw.tracks()) do names[#names + 1] = t.name end
+  for _, t in ipairs(paw.tracks()) do names[#names + 1] = t.name end
   eq(table.concat(names, ","), "Saved once", "the backup is the file before the last save")
-  eq(daw.project.path, path, "and opens as the damaged project's file")
-  eq(daw.project.modified, true, "unsaved until saved over it")
+  eq(paw.project.path, path, "and opens as the damaged project's file")
+  eq(paw.project.modified, true, "unsaved until saved over it")
 
-  pcall(daw.project.load, path)
-  daw.commands.exec("recover! 1")
-  eq(#daw.tracks(), 3, "the safety copy has the later work")
-  daw.project.save()
-  eq(pcall(daw.project.load, path), true, "and once saved, the project opens again")
+  pcall(paw.project.load, path)
+  paw.commands.exec("recover! 1")
+  eq(#paw.tracks(), 3, "the safety copy has the later work")
+  paw.project.save()
+  eq(pcall(paw.project.load, path), true, "and once saved, the project opens again")
   autosave.dir = old_dir
 end)
 
@@ -88,7 +88,7 @@ local function wav_sizes(path)
 end
 
 local function last_message()
-  return (daw.ui.messages[#daw.ui.messages] or {}).text or ""
+  return (paw.ui.messages[#paw.ui.messages] or {}).text or ""
 end
 
 test("a take's file is a valid WAV while it is recorded, and is in the safety copy from the start", function()
@@ -96,28 +96,28 @@ test("a take's file is a valid WAV while it is recorded, and is in the safety co
     fresh()
     local dir = T.scratch .. "/take-progress"
     os.execute("mkdir -p '" .. dir .. "'")
-    daw.project.save(dir .. "/song.json")
-    local mic = daw.add_track({ name = "mic" })
+    paw.project.save(dir .. "/song.json")
+    local mic = paw.add_track({ name = "mic" })
     mic.input, mic.armed = "1", true
     api.undo_checkpoint()
     local files
-    local handle = daw.on("transport.record", function(e) files = e.files end)
-    daw.transport.record()
-    daw.flush()
-    daw.off(handle)
+    local handle = paw.on("transport.record", function(e) files = e.files end)
+    paw.transport.record()
+    paw.flush()
+    paw.off(handle)
     eq(files and #files, 1, "the take's file is named when it begins")
     -- A safety copy made now has the take in it.
     local copy = T.scratch .. "/take-copy.json"
     api.project_backup(copy, { path = dir .. "/song.json", time = os.time(), pid = 999999999 })
-    daw.wait(2600)
+    paw.wait(2600)
     local size, length = wav_sizes(files[1])
     eq(size > 48000 * 4, true, "the header counts what was written a moment ago: " .. size)
     eq(size <= length - 44, true, "and no more than is in the file")
-    daw.transport.stop()
+    paw.transport.stop()
     eq(#mic:clips(), 1, "stopping makes the clip")
-    daw.project.new()
+    paw.project.new()
     api.project_recover(copy)
-    local back = daw.tracks()[1]:clips()
+    local back = paw.tracks()[1]:clips()
     eq(#back, 1, "recovering the copy puts the take back as a clip")
     eq(back[1].file, files[1], "from its file")
     eq(back[1].length > 4, true, "with what the file holds: " .. back[1].length .. " beats")
@@ -128,16 +128,16 @@ test("starting to record with little room on the disk says how many minutes are 
   with_input(function()
     fresh()
     os.execute("mkdir -p '" .. T.scratch .. "/take-disk'")
-    daw.project.save(T.scratch .. "/take-disk/song.json")
-    local mic = daw.add_track({ name = "mic" })
+    paw.project.save(T.scratch .. "/take-disk/song.json")
+    local mic = paw.add_track({ name = "mic" })
     mic.input, mic.armed = "1/2", true
-    daw.opt.record_warn_minutes = 1e12
-    daw.transport.record()
-    daw.flush()
-    daw.opt.record_warn_minutes = nil
-    daw.transport.stop()
+    paw.opt.record_warn_minutes = 1e12
+    paw.transport.record()
+    paw.flush()
+    paw.opt.record_warn_minutes = nil
+    paw.transport.stop()
     local found
-    for _, m in ipairs(daw.ui.messages) do
+    for _, m in ipairs(paw.ui.messages) do
       if m.text:find("minutes? of recording") then found = m.text end
     end
     eq(found ~= nil, true, "a warning names the minutes left")
@@ -147,33 +147,33 @@ end)
 test("takes in media/ that no clip refers to are offered on open", function()
   fresh()
   local dir = T.scratch .. "/take-orphans"
-  daw.add_track({ name = "Guitar" })
+  paw.add_track({ name = "Guitar" })
   os.execute("mkdir -p '" .. dir .. "/media'")
   -- A take recorded and then undone before the last save is not offered.
   T.write_file(dir .. "/media/Guitar-take1.wav", T.read_file("tests/fixtures/shape.wav"))
   os.execute("touch -d '1 hour ago' '" .. dir .. "/media/Guitar-take1.wav'")
-  daw.project.save(dir .. "/song.json")
+  paw.project.save(dir .. "/song.json")
   os.execute("touch -d '1 minute ago' '" .. dir .. "/song.json'")
   -- One written after it, by a session that never saved again, is.
   T.write_file(dir .. "/media/Guitar-take3.wav", T.read_file("tests/fixtures/shape.wav"))
   T.write_file(dir .. "/media/drums.wav", T.read_file("tests/fixtures/shape.wav"))
-  daw.project.new()
-  daw.project.load(dir .. "/song.json")
-  daw.flush()
+  paw.project.new()
+  paw.project.load(dir .. "/song.json")
+  paw.flush()
   local found
-  for _, m in ipairs(daw.ui.messages) do
+  for _, m in ipairs(paw.ui.messages) do
     if m.text:find("1 recorded take in media/", 1, true) then found = true end
   end
   eq(found, true, "opening the project says a take is not in it")
-  local takes = daw.autosave.orphan_takes()
+  local takes = paw.autosave.orphan_takes()
   eq(#takes .. takes[1].name, "1Guitar-take3.wav", "only the take, not other media")
-  local choices = daw.autosave.choices()
+  local choices = paw.autosave.choices()
   local n
   for i, c in ipairs(choices) do if c.take then n = i end end
-  daw.commands.exec("recover " .. n)
-  eq(#daw.tracks(), 1, "it is brought in on the track it was recorded for")
-  eq(#daw.tracks()[1]:clips(), 1, "as a clip")
-  eq(#daw.autosave.orphan_takes(), 0, "and is no longer offered")
+  paw.commands.exec("recover " .. n)
+  eq(#paw.tracks(), 1, "it is brought in on the track it was recorded for")
+  eq(#paw.tracks()[1]:clips(), 1, "as a clip")
+  eq(#paw.autosave.orphan_takes(), 0, "and is no longer offered")
 end)
 
 -- Devices that fail ---------------------------------------------------------
@@ -202,18 +202,18 @@ test("a device that panics is bypassed and reported, and the rest plays on", fun
 
   -- Playing: the device is reported as stopped, and the other track sounds.
   local stopped
-  local handle = daw.on("device.stopped", function(e) stopped = e end)
-  daw.transport.play()
-  daw.wait(400)
-  daw.off(handle)
+  local handle = paw.on("device.stopped", function(e) stopped = e end)
+  paw.transport.play()
+  paw.wait(400)
+  paw.off(handle)
   eq(stopped and stopped.device, bad.id, "device.stopped names it")
   eq(stopped and stopped.reason:find("crashed", 1, true) ~= nil, true, "and says why: " .. tostring(stopped and stopped.reason))
   eq(api.device_get(bad.id).stopped ~= nil, true, "the device shows it has stopped")
-  eq(select(1, daw.tracks()[1]:meter()) > 0.01, true, "the other track still sounds")
-  local left, right = daw.master:meter()
+  eq(select(1, paw.tracks()[1]:meter()) > 0.01, true, "the other track still sounds")
+  local left, right = paw.master:meter()
   eq(left == left and right == right and left < 10, true, "the master is finite")
   eq(select(1, other:meter()) > 0.01, true, "and its own track plays on, through it")
-  daw.transport.stop()
+  paw.transport.stop()
   bad:set("fail", 0)
   bad:restart()
   eq(api.device_get(bad.id).stopped, nil, "restarted, it works again")
@@ -231,13 +231,13 @@ test("a device that puts out NaN is silenced at its output and reported once", f
   eq(largest_difference(T.samples(alone), T.samples(info)) < 1e-3, true, "and the mix is the other track alone")
 
   local said = 0
-  local handle = daw.on("device.invalid", function() said = said + 1 end)
-  daw.transport.play()
-  daw.wait(500)
-  daw.transport.stop()
-  daw.off(handle)
+  local handle = paw.on("device.invalid", function() said = said + 1 end)
+  paw.transport.play()
+  paw.wait(500)
+  paw.transport.stop()
+  paw.off(handle)
   eq(said, 1, "said once, not every block")
-  local left = daw.master:meter()
+  local left = paw.master:meter()
   eq(left == left, true, "the master meter is a number")
   local l2 = other:meter()
   eq(l2, 0, "the track's meter reads silence")
@@ -245,7 +245,7 @@ end)
 
 test("a plugin that hangs in processing is ended and reported, the rest plays on, and a render does not wait for it", function()
   local kind
-  for _, info in ipairs(daw.device_types()) do
+  for _, info in ipairs(paw.device_types()) do
     if info.format == "clap" and info.name:find("Limiter Stereo$") then kind = info.kind end
   end
   if not kind then return "skipped: test plugins not found" end
@@ -257,45 +257,45 @@ test("a plugin that hangs in processing is ended and reported, the rest plays on
   -- One that is not told to hang, to tell the helpers made later to answer again.
   local helper = T.tone("helper", 1):add_device(kind)
   local stopped
-  local handler = daw.on("device.stopped", function(e) if e.device == fx.id then stopped = e end end)
+  local handler = paw.on("device.stopped", function(e) if e.device == fx.id then stopped = e end end)
   api.device_call(fx.id, "sandbox.hang")
   local ok, err = xpcall(function()
-  daw.transport.play()
+  paw.transport.play()
   local began = api.now()
-  while not stopped and api.now() - began < 8000 do daw.wait(100) end
+  while not stopped and api.now() - began < 8000 do paw.wait(100) end
   local waited = api.now() - began
   eq(stopped and stopped.device, fx.id, "the plugin is reported")
   eq(waited < 4500, true, "within a few seconds: " .. waited .. " ms")
   eq(stopped.reason:find("stopped answering", 1, true) ~= nil, true, "as not answering: " .. stopped.reason)
-  eq(daw.transport.playing and daw.transport.position > 1, true, "the transport kept running")
+  eq(paw.transport.playing and paw.transport.position > 1, true, "the transport kept running")
   eq(select(1, steady:meter()) > 0.01, true, "the other track sounds")
   eq(select(1, other:meter()) > 0.01, true, "its own track plays on, the effect passed through")
-  daw.transport.stop()
+  paw.transport.stop()
 
   -- A render makes instances of its own, which hang too: it goes on without them.
-  local messages = #daw.ui.messages
+  local messages = #paw.ui.messages
   began = api.now()
   local info = render({ ["end"] = 8, tail = 0 })
   local took = api.now() - began
   eq(took < 5000, true, "the render waits for it once, briefly: " .. took .. " ms")
   eq(info.peak > 0.05, true, "and has the rest of the song")
-  daw.flush()
+  paw.flush()
   local said = false
-  for i = messages + 1, #daw.ui.messages do
-    if daw.ui.messages[i].text:find("stopped during the render", 1, true) then said = true end
+  for i = messages + 1, #paw.ui.messages do
+    if paw.ui.messages[i].text:find("stopped during the render", 1, true) then said = true end
   end
   eq(said, true, "the render says what it left out")
 
   end, debug.traceback)
-  daw.off(handler)
-  daw.transport.stop()
+  paw.off(handler)
+  paw.transport.stop()
   pcall(api.device_call, helper.id, "sandbox.hang", "0")
   if not ok then error(err, 0) end
   fx:restart()
   eq(api.device_get(fx.id).stopped, nil, "restarted, it works again")
-  daw.transport.play()
-  daw.wait(600)
-  daw.transport.stop()
+  paw.transport.play()
+  paw.wait(600)
+  paw.transport.stop()
   eq(api.device_get(fx.id).stopped, nil, "and keeps answering")
 end)
 
@@ -304,18 +304,18 @@ end)
 test("decoded audio no clip or undo step refers to is let go", function()
   fresh()
   local file = T.write_wav(T.scratch .. "/keep-me.wav", { 0.1, 0.2, 0.3, 0.4 })
-  local t = daw.add_track()
+  local t = paw.add_track()
   t:add_clip({ file = file, start = 0 })
   api.undo_checkpoint()
   eq(api.engine_get().audio_files, 1, "a file in use is held")
-  daw.project.new()
+  paw.project.new()
   eq(api.engine_get().audio_files, 0, "a new project lets it go")
-  t = daw.add_track()
+  t = paw.add_track()
   local clip = t:add_clip({ file = file, start = 0 })
   api.undo_checkpoint()
   clip:remove()
   api.undo_checkpoint()
-  daw.project.load("tests/fixtures/demo-song.json")
+  paw.project.load("tests/fixtures/demo-song.json")
   eq(api.engine_get().audio_files, 0, "opening a project lets go of what the last one used")
 end)
 
@@ -325,10 +325,10 @@ test("the engine's counters of what went wrong are read in one call and shown by
   for _, key in ipairs({ "xruns", "late_blocks", "midi_dropped", "record_dropped", "devices_stopped" }) do
     eq(type(e[key]), "number", key .. " is a number")
   end
-  local s = daw.frontend.state(-1)
+  local s = paw.frontend.state(-1)
   eq(type(s.xruns) .. type(s.late_blocks) .. type(s.midi_dropped), "numbernumbernumber", "and in the frontend's state")
-  daw.commands.exec("engine.status")
-  eq(daw.ui.messages[#daw.ui.messages].text:find("late plugin blocks", 1, true) ~= nil, true, ":engine.status prints them")
+  paw.commands.exec("engine.status")
+  eq(paw.ui.messages[#paw.ui.messages].text:find("late plugin blocks", 1, true) ~= nil, true, ":engine.status prints them")
 end)
 
 -- Relative media paths ------------------------------------------------------
@@ -338,19 +338,19 @@ test("a .bak names its media relative to the project and opens with them", funct
   local dir = T.scratch .. "/bak-relative"
   os.execute("mkdir -p '" .. dir .. "/media'")
   local file = T.write_wav(dir .. "/media/riff.wav", { 0.1, 0.2, 0.3, 0.4 })
-  daw.add_track({ name = "Gtr" }):add_clip({ file = file, start = 0 })
+  paw.add_track({ name = "Gtr" }):add_clip({ file = file, start = 0 })
   local path = dir .. "/song.json"
-  daw.project.save(path)
-  daw.tracks()[1].volume = -3
-  daw.project.save(path)
+  paw.project.save(path)
+  paw.tracks()[1].volume = -3
+  paw.project.save(path)
   eq(T.read_file(path .. ".bak"):find('"media/riff.wav"', 1, true) ~= nil, true, "the .bak holds the relative path")
   T.write_file(path, "{ broken")
-  daw.project.new()
-  pcall(daw.project.load, path)
+  paw.project.new()
+  pcall(paw.project.load, path)
   local n
-  for i, c in ipairs(daw.autosave.choices()) do if c.as_path then n = i end end
-  daw.commands.exec("recover " .. n)
-  local clip = daw.tracks()[1]:clips()[1]
+  for i, c in ipairs(paw.autosave.choices()) do if c.as_path then n = i end end
+  paw.commands.exec("recover " .. n)
+  local clip = paw.tracks()[1]:clips()[1]
   eq(clip.file, file, "its clip is the file beside the project")
   eq(#api.media_missing(), 0, "and nothing is missing")
 end)
@@ -360,19 +360,19 @@ test("takes of a project whose folder moved are not offered when the project use
     fresh()
     local dir = T.scratch .. "/take-moved"
     os.execute("mkdir -p '" .. dir .. "'")
-    daw.project.save(dir .. "/song.json")
-    local mic = daw.add_track({ name = "mic" })
+    paw.project.save(dir .. "/song.json")
+    local mic = paw.add_track({ name = "mic" })
     mic.input, mic.armed = "1", true
-    daw.transport.record()
-    daw.wait(600)
-    daw.transport.stop()
-    daw.project.save()
-    daw.project.new()
+    paw.transport.record()
+    paw.wait(600)
+    paw.transport.stop()
+    paw.project.save()
+    paw.project.new()
     os.execute("mv '" .. dir .. "' '" .. dir .. "-moved'")
-    daw.project.load(dir .. "-moved/song.json")
-    daw.flush()
-    eq(#daw.autosave.orphan_takes(), 0, "the take the project uses is not offered")
-    local clip = daw.tracks()[1]:clips()[1]
+    paw.project.load(dir .. "-moved/song.json")
+    paw.flush()
+    eq(#paw.autosave.orphan_takes(), 0, "the take the project uses is not offered")
+    local clip = paw.tracks()[1]:clips()[1]
     eq(clip.file:find(dir .. "-moved/media/", 1, true) == 1, true, "and plays from the moved folder: " .. clip.file)
   end)
 end)

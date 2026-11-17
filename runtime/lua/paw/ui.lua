@@ -1,17 +1,17 @@
 -- The screen: views, the tabs and windows that arrange them (laid out by
--- daw/layout.lua), focus, messages and highlight groups.
+-- paw/layout.lua), focus, messages and highlight groups.
 --
 -- A view is a table with a `render(self, buf, ctx)` function that draws into a
 -- cell buffer. Everything on screen, including the built-in arrange view and
--- status line, is a view registered through `daw.ui.view`.
+-- status line, is a view registered through `paw.ui.view`.
 --
--- A view that also paints (`paint`, see `daw.canvas`) can show its pixels
+-- A view that also paints (`paint`, see `paw.canvas`) can show its pixels
 -- in a terminal that shows images: its `render` keeps an area for them
 -- with `buf:surface`, or the view sets `surface = true` to be all pixels.
-local api = daw.api
-local L = require("daw.layout")
+local api = paw.api
+local L = require("paw.layout")
 local M = {
-  Buf = require("daw.buf"),
+  Buf = require("paw.buf"),
   views = {},
   focused = "arrange",
   messages = {},   -- every message so far, oldest first
@@ -21,7 +21,7 @@ local M = {
   rects = {},      -- where each view was last drawn
 }
 
--- The tabs, each a tree of windows (see daw/layout.lua for how a tree is
+-- The tabs, each a tree of windows (see paw/layout.lua for how a tree is
 -- laid out), and the current one, whose tree is `M.layout`. The status line
 -- and the command line are drawn along the bottom of every tab.
 M.tabs = { { layout = L.default_tree() } }
@@ -32,16 +32,16 @@ M.bars = { { view = "status", size = 1 }, { view = "cmdline", size = 1 } }
 -- Each seat has its own focus, floating view, prompt, tabs and windows,
 -- and the view a held button went down in; a new one starts with the tabs
 -- and windows of the instance's terminal.
-daw.seats.keep("ui",
+paw.seats.keep("ui",
   function() return M.focused, M.float, M.grabber, M.rects, M.tabs, M.tab, M.pressed end,
   function(focused, float, grabber, rects, tabs, tab, pressed)
     M.focused, M.float, M.grabber, M.rects, M.pressed = focused, float, grabber, rects, pressed
     M.tabs, M.tab, M.layout = tabs, tab, tabs[tab].layout
   end,
-  function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, daw.seats.copy(tabs), tab, nil end)
+  function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, paw.seats.copy(tabs), tab, nil end)
 
 --- Register a view, replacing any view of the same name.
----   daw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
+---   paw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
 --- Optional fields: `focusable` (default true), `on_key(self, key)` for keys
 --- with no mapping, `modal` (every key goes to `on_key`), `on_mouse(self, event)`,
 --- `on_show(self)`, `on_hide(self)`. A view is a buffer type with one
@@ -123,7 +123,7 @@ function M.toggle(name)
 end
 
 --- Add a view to the layout along one side of the screen.
----   daw.ui.dock("clock", { side = "top", size = 5 })
+---   paw.ui.dock("clock", { side = "top", size = 5 })
 --- `side` is "top", "bottom" (above the status line), "left" or "right" (beside
 --- the arrange view). Without `size` the view shares the space left over.
 --- Docking a view that is already in the layout moves it. Other tabs put
@@ -150,7 +150,7 @@ function M.focus(name)
   if M.focused ~= name then
     local old = M.focused
     M.focused = name
-    daw.emit("view.focused", { view = name, old = old })
+    paw.emit("view.focused", { view = name, old = old })
   end
   api.ui_redraw()
 end
@@ -347,9 +347,9 @@ end
 
 --- The size of the screen in cells: the terminal's, or for the seat of a
 --- graphical frontend that has said how big its main area is, that area's
---- (`daw.panes`), so that a split there is measured on what it shows.
+--- (`paw.panes`), so that a split there is measured on what it shows.
 function M.size()
-  local cells = daw.panes and daw.panes.cells()
+  local cells = paw.panes and paw.panes.cells()
   if cells then return cells.w, cells.h end
   return api.ui_size()
 end
@@ -361,7 +361,7 @@ end
 function M.arrange(width, height)
   if not width then width, height = M.size() end
   local out = { nodes = {}, borders = {}, floating = {} }
-  local top = (#M.tabs > 1 or daw.statusline.tabline_always()) and 1 or 0
+  local top = (#M.tabs > 1 or paw.statusline.tabline_always()) and 1 or 0
   local below = 0
   for _, node in ipairs(M.bars) do
     if not node.hidden then below = below + node.size end
@@ -400,7 +400,7 @@ local function draw_view(view, buf, ctx)
   if view.paint and not view.render then
     -- A view that only paints, on a terminal that shows no pictures.
     if not buf:surface(0, 0, buf.width, buf.height) then
-      buf:text(1, 0, daw.util.fit((view.title or view.name) .. ": drawn in a graphical window, or a terminal that shows pictures", buf.width - 1), "Dim")
+      buf:text(1, 0, paw.util.fit((view.title or view.name) .. ": drawn in a graphical window, or a terminal that shows pictures", buf.width - 1), "Dim")
     end
     return
   end
@@ -438,7 +438,7 @@ end
 function M.box(buf, title, style)
   local w, h = buf.width, buf.height
   style = style or "Border"
-  local g = daw.draw.g
+  local g = paw.draw.g
   buf:fill(0, 0, w, h, " ", "Normal")
   buf:text(0, 0, g.tl .. string.rep(g.h, w - 2) .. g.tr, style)
   for row = 1, h - 2 do
@@ -455,17 +455,17 @@ end
 --- drawn ahead of the name), `context` (after the name),
 --- `right` (state, at the right end), `focused`. Focus shows as the whole
 --- bar in the accent colour, inverted.
----   local body = daw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
+---   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
 function M.titlebar(buf, opts)
-  local g = daw.draw.g
+  local g = paw.draw.g
   local focused = opts.focused
   local plain = focused and "TitleBarFocus" or "TitleBar"
   buf:fill(0, 0, buf.width, 1, " ", plain)
   buf:text(0, 0, g.mark, focused and "TitleBarMarkFocus" or "TitleBarMark")
   local x = 2
   local right = opts.right and tostring(opts.right) or ""
-  -- What the winbar (`daw.statusline`) adds, at the end of the state.
-  local winbar = daw.statusline and M.drawing and daw.statusline.winbar(M.drawing, focused)
+  -- What the winbar (`paw.statusline`) adds, at the end of the state.
+  local winbar = paw.statusline and M.drawing and paw.statusline.winbar(M.drawing, focused)
   if winbar then right = right ~= "" and (winbar .. "  " .. right) or winbar end
   local right_w = api.str_width(right)
   if opts.pill then
@@ -475,14 +475,14 @@ function M.titlebar(buf, opts)
   if opts.name then
     local room = math.max(1, buf.width - x - (right_w > 0 and right_w + 2 or 0))
     local name = tostring(opts.name)
-    if api.str_width(name) > room then name = daw.util.fit(name, room) end
+    if api.str_width(name) > room then name = paw.util.fit(name, room) end
     x = x + buf:text(x, 0, name, focused and "TitleBarNameFocus" or "TitleBarName")
   end
   if opts.context and opts.context ~= "" then
     local room = buf.width - x - 2 - (right_w > 0 and right_w + 2 or 0)
     if room >= 4 then
       local text = tostring(opts.context)
-      if api.str_width(text) > room then text = daw.util.fit(text, room) end
+      if api.str_width(text) > room then text = paw.util.fit(text, room) end
       x = x + 2 + buf:text(x + 2, 0, text, plain)
     end
   end
@@ -494,7 +494,7 @@ end
 --- command line, and in the middle how big the screen is and needs to be.
 local function too_small(buf)
   local w, h = buf.width, buf.height
-  local g = daw.draw.g
+  local g = paw.draw.g
   local lines = {
     "Terminal too small: " .. w .. (g.ellipsis == "…" and "×" or "x") .. h,
     "needs " .. M.min_width .. (g.ellipsis == "…" and "×" or "x") .. M.min_height,
@@ -517,15 +517,15 @@ local function too_small(buf)
 end
 
 --- Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept
---- is in `daw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = {
+--- is in `paw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = {
 --- w, h }, under, draw, paint }` each, in cells of the screen (`name` the
 --- view that kept it, `win` the id of its window, `paint` for a view's
 --- whole drawing, `buf:surface`).
 function M.strip(buf, x, y, w, h, opts)
   opts = opts or {}
-  if daw.opt.graphics == false then return false end
+  if paw.opt.graphics == false then return false end
   if not M.screen then
-    -- A view drawn in cells for a window (`daw.canvas.paint_cells`): the
+    -- A view drawn in cells for a window (`paw.canvas.paint_cells`): the
     -- window draws the strip's picture with the cells, under their text.
     if not (M.pictures and opts.draw and opts.under) then return false end
     x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
@@ -580,12 +580,12 @@ local function paint_surfaces()
     if s.draw then
       -- The whole strip, of which `view` shows: a strip partly off its
       -- window draws what shows and a piece's width either side of it.
-      ops = daw.canvas.draw(s.draw, {
+      ops = paw.canvas.draw(s.draw, {
         w = s.whole_w * cw, h = s.whole_h * ch, cell = s.cell, fg = caps.fg, bg = caps.bg,
         view = { x = s.left * cw, y = s.top * ch, w = w, h = h },
       })
     else
-      local drawing = daw.canvas.paint(s.name, w, h, {
+      local drawing = paw.canvas.paint(s.name, w, h, {
         surface = true, glyphs = true, cell = s.cell, colors = { fg = caps.fg, bg = caps.bg },
       })
       ops = drawing and drawing.ops
@@ -603,11 +603,11 @@ end
 
 function M.render_screen(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
-  api.ui_mouse(daw.opt.mouse ~= false)
+  api.ui_mouse(paw.opt.mouse ~= false)
   if buf.width < M.min_width or buf.height < M.min_height then return too_small(buf) end
   local sizes_before = M.rects.sizes or {}
   M.rects = M.arrange(buf.width, buf.height)
-  local g = daw.draw.g
+  local g = paw.draw.g
   local current = L.current()
   -- A time bound window with the keyboard is drawn first, and the other
   -- time bound windows take its time before they are drawn.
@@ -640,7 +640,7 @@ function M.render_screen(buf)
       local follower = win and followers and followers[win.id]
       if follower then L.time_follow(lead, win) end
       if win and (r.w < L.min_width or r.h < (focusable(r.name) and 2 or 1)) then
-        area:text(0, 0, daw.util.fit("too small", r.w), "TooSmall")
+        area:text(0, 0, paw.util.fit("too small", r.w), "TooSmall")
       else
         draw(view, area, { focused = focused, x = r.x, y = r.y, win = win, follower = follower or nil })
       end
@@ -652,8 +652,8 @@ function M.render_screen(buf)
   end
   M.rects.sizes = sizes
   if #resized > 0 then
-    daw.defer(function()
-      for _, id in ipairs(resized) do daw.emit("win.resized", { win = id }) end
+    paw.defer(function()
+      for _, id in ipairs(resized) do paw.emit("win.resized", { win = id }) end
     end)
   end
   if M.rects.tabline then
@@ -669,7 +669,7 @@ function M.render_screen(buf)
     end
     M.rects.tabline.spans = spans
     -- What the tab line's own sections hold goes at the right end.
-    local right = daw.statusline.tabline(buf.width)
+    local right = paw.statusline.tabline(buf.width)
     local used = 0
     for _, piece in ipairs(right) do used = used + api.str_width(piece[1]) end
     local at = buf.width - used - 1
@@ -688,7 +688,7 @@ function M.render_screen(buf)
     local entries = M.keybar and M.keybar.lines[r.name] and M.keybar.entries() or {}
     if #entries > 0 and r.w > 12 then
       local footer = outer:sub(2, r.h + 1, r.w - 2, 1)
-      local used = daw.draw.keys(footer, 1, 0, entries, r.w - 4, "FloatFooter")
+      local used = paw.draw.keys(footer, 1, 0, entries, r.w - 4, "FloatFooter")
       if used > 0 then
         footer:text(0, 0, " ", "FloatFooter")
         footer:text(used + 1, 0, " ", "FloatFooter")
@@ -702,9 +702,9 @@ function M.render_screen(buf)
 end
 
 --- Draw one view by itself on a buffer of its own, as a window of a
---- graphical frontend shows it (see `daw.canvas.open_view`), or a pane of
+--- graphical frontend shows it (see `paw.canvas.open_view`), or a pane of
 --- its main area shows a window of the layout (`M.view_win`, while it is
---- drawn). Braille is drawn there as dots (`daw.canvas`), as the font has none.
+--- drawn). Braille is drawn there as dots (`paw.canvas`), as the font has none.
 function M.render_view(name, buf)
   M.screen = false
   local view = M.views[name]
@@ -712,15 +712,15 @@ function M.render_view(name, buf)
   if not view then return end
   local win = M.view_win
   local focused = M.focused == name
-  if win then focused = focused and win == L.current() and not daw.canvas.open_views[name] end
+  if win then focused = focused and win == L.current() and not paw.canvas.open_views[name] end
   draw(view, buf, { focused = focused, x = 0, y = 0, win = win })
 end
 
 --- List the keys that can follow a half-typed command, in a box along the
 --- bottom of the screen.
 function M.draw_hints(buf)
-  if not daw.opt.hints then return end
-  local hints, title = daw.keymap.hints()
+  if not paw.opt.hints then return end
+  local hints, title = paw.keymap.hints()
   if not hints then return end
   local width = 0
   for _, hint in ipairs(hints) do width = math.max(width, api.str_width(hint.key) + api.str_width(hint.desc) + 4) end
@@ -734,14 +734,14 @@ function M.draw_hints(buf)
     if col < columns then
       local x = col * width
       local used = inner:text(x + 1, row, hint.key, "HintKey")
-      inner:text(x + 2 + used, row, daw.util.fit(hint.desc, math.max(1, width - used - 3)), "Normal")
+      inner:text(x + 2 + used, row, paw.util.fit(hint.desc, math.max(1, width - used - 3)), "Normal")
     end
   end
 end
 
 --- Open a view in a box floating over the others. It takes the keyboard
---- until `daw.ui.close()`.
----   daw.ui.open("help", { title = "Keys", width = 80, height = 30 })
+--- until `paw.ui.close()`.
+---   paw.ui.open("help", { title = "Keys", width = 80, height = 30 })
 function M.open(name, opts)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
   opts = opts or {}
@@ -752,9 +752,9 @@ end
 
 function M.close()
   if not M.float then
-    -- A view drawn in a window of its own (`daw.canvas.open_view`) closes
+    -- A view drawn in a window of its own (`paw.canvas.open_view`) closes
     -- with it, as it would have closed floating.
-    if daw.canvas.open_views[M.focused] then daw.canvas.close(M.focused) end
+    if paw.canvas.open_views[M.focused] then paw.canvas.close(M.focused) end
     return
   end
   M.focused = M.float.back
@@ -764,7 +764,7 @@ end
 
 --- A border between two windows held from a press: it follows the pointer.
 local function hold_border(event, border, only_moved)
-  daw.mouse.grab(daw.util.merge(event, { view_x = 0, view_y = 0 }), {
+  paw.mouse.grab(paw.util.merge(event, { view_x = 0, view_y = 0 }), {
     drag = function(d) L.drag_border(border, M.rects, d.x, d.y) end,
     up = function(u)
       if u.moved or not only_moved then L.drag_border(border, M.rects, u.x, u.y) end
@@ -810,26 +810,26 @@ local function route(event)
     local win = target.win and L.find_id(M.layout, target.win)
     if win then L.enter(win) else M.focus(target.name) end
   end
-  if daw.mouse.to_surface(target, event) then return end
+  if paw.mouse.to_surface(target, event) then return end
   if view.on_mouse then
-    view:on_mouse(daw.util.merge(event, {
+    view:on_mouse(paw.util.merge(event, {
       x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
       win = target.win,
     }))
   end
   -- A press on a window's top row that the window did not hold drags the
   -- border above it.
-  if border and not daw.mouse.gesture() then hold_border(event, border, true) end
+  if border and not paw.mouse.gesture() then hold_border(event, border, true) end
 end
 
 --- Route a mouse event to the view under the pointer, with coordinates
 --- relative to that view (and `view_x`, `view_y`, `w`, `h`, where the view
 --- is), after what floats over the views and a gesture under way have had
---- it (`daw.mouse`).
+--- it (`paw.mouse`).
 function M.mouse(event)
-  if daw.mouse.take(event) then return end
+  if paw.mouse.take(event) then return end
   route(event)
-  daw.mouse.done(event)
+  paw.mouse.done(event)
 end
 
 --- Show a message. `level` is "info" (default), "warn" or "error".
@@ -843,26 +843,26 @@ function M.notify(text, level)
   -- frontend shows `M.message` like the command line does.
   if not api.ui_attached() then io.stderr:write(text, "\n") end
   M.message = message
-  daw.defer(function()
+  paw.defer(function()
     if M.message == message then
       M.message = nil
       api.ui_redraw()
     end
-  end, daw.opt.message_time)
+  end, paw.opt.message_time)
   api.ui_redraw()
 end
 
 -- Every group as it was defined, so that the colours can be made again for
--- a terminal that shows fewer of them (`daw.opt.termcolors`).
+-- a terminal that shows fewer of them (`paw.opt.termcolors`).
 local defined = {}
 local set_raw = api.hl_set
 local truecolor = nil
 
 local function set(name, def)
   defined[name] = def
-  if truecolor == nil then truecolor = daw.draw.truecolor() end
+  if truecolor == nil then truecolor = paw.draw.truecolor() end
   -- A window draws the group as defined, whatever the terminal shows.
-  local shown = daw.draw.term_def(def, truecolor)
+  local shown = paw.draw.term_def(def, truecolor)
   set_raw(name, shown, shown ~= def and def or nil)
 end
 -- Groups set straight through the kernel's call get the same treatment.
@@ -882,26 +882,26 @@ function M.theme(groups)
   for name, def in pairs(groups) do set(name, def) end
 end
 
---- Set every group again: after `daw.opt.termcolors` has changed.
+--- Set every group again: after `paw.opt.termcolors` has changed.
 function M.recolour()
-  truecolor = daw.draw.truecolor()
+  truecolor = paw.draw.truecolor()
   for name, def in pairs(defined) do set(name, def) end
   api.ui_redraw()
 end
 
-daw.on("option.changed", function(event)
+paw.on("option.changed", function(event)
   if event.name == "termcolors" then M.recolour() end
-  if event.name == "ascii" then daw.draw.use_glyphs() end
+  if event.name == "ascii" then paw.draw.use_glyphs() end
 end)
 
 --- Ask for a line of text on the command line.
----   daw.ui.input({ prompt = "Name: ", text = "Bass" }, function(text) ... end)
+---   paw.ui.input({ prompt = "Name: ", text = "Bass" }, function(text) ... end)
 --- The callback is not called when the prompt is cancelled. Options are
---- the command line's (`daw.views.cmdline.open`): `complete`, `history`,
+--- the command line's (`paw.views.cmdline.open`): `complete`, `history`,
 --- `on_change` (live preview), `anchor` (draw it beside what it is about),
 --- `on_key`.
 function M.input(opts, on_submit)
-  require("daw.views.cmdline").open(opts, on_submit)
+  require("paw.views.cmdline").open(opts, on_submit)
 end
 
 M.redraw = api.ui_redraw
@@ -910,14 +910,14 @@ M.redraw = api.ui_redraw
 --
 -- What modules draw over a view (diagnostics, annotations, a suggestion),
 -- each a layer of a part of it, drawn in order; and how a view says where
--- things with an address are (daw/address.lua). The piano roll has layers
--- of its own (`daw.ui.views.pianoroll.layer`).
+-- things with an address are (paw/address.lua). The piano roll has layers
+-- of its own (`paw.ui.views.pianoroll.layer`).
 
 M.layers = {}  -- view -> part -> { { name, order, paint } }
 
 --- Draw `paint(ctx)` as a layer of a part of a view (`"arrange", "header"`),
 --- replacing one of the same name (nil removes it). The view says what
---- `ctx` holds where it calls `daw.ui.paint`.
+--- `ctx` holds where it calls `paw.ui.paint`.
 function M.layer(view, part, name, order, paint)
   M.layers[view] = M.layers[view] or {}
   local list = M.layers[view][part] or {}
@@ -976,7 +976,7 @@ function M.poke(ms)
 end
 
 function M.start_ticker()
-  daw.every(1000 / daw.opt.fps, function()
+  paw.every(1000 / paw.opt.fps, function()
     if api.ui_attached() and (api.transport_get().playing or api.now() < active_until) then api.ui_redraw() end
   end)
 end

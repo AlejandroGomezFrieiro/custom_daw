@@ -26,7 +26,7 @@ const SEARCH_DEPTH: usize = 8;
 const SEARCH_ENTRIES: usize = 50_000;
 
 /// The files of a clip's other takes: `meta.takes.list[].file`, which
-/// `daw.takes` keeps (the take that plays is the clip's own file).
+/// `paw.takes` keeps (the take that plays is the clip's own file).
 fn take_files(clip: &Clip) -> impl Iterator<Item = PathBuf> + '_ {
     clip.meta
         .get("takes")
@@ -310,12 +310,12 @@ impl Session {
 
     /// Play long files from the disk instead of memory: the decoded sound
     /// of a file larger than `megabytes` is kept in `dir` and read as it is
-    /// played (`daw_engine::samples`). With `megabytes` at 0, or no `dir`,
+    /// played (`paw_engine::samples`). With `megabytes` at 0, or no `dir`,
     /// every file is held in memory. Files loaded already stay where they are.
     pub fn set_media_store(&mut self, dir: Option<PathBuf>, megabytes: f64) {
         let store = dir
             .filter(|_| megabytes.is_finite() && megabytes > 0.0)
-            .map(|dir| daw_engine::DiskStore {
+            .map(|dir| paw_engine::DiskStore {
                 dir,
                 limit: (megabytes * 1_048_576.0) as u64,
             });
@@ -470,7 +470,7 @@ impl Session {
         if !to.is_file() {
             bail!("{} is not a file", to.display());
         }
-        daw_engine::AudioData::load(&to)?;
+        paw_engine::AudioData::load(&to)?;
         if !files(&self.project).contains(from) {
             bail!("no clip plays {}", from.display());
         }
@@ -532,7 +532,7 @@ impl Session {
     }
 
     /// Copy a file into `media` beside the project, for importing with
-    /// `daw.opt.copy_imports` on. Gives the copy, or the file itself when it
+    /// `paw.opt.copy_imports` on. Gives the copy, or the file itself when it
     /// is in the project's tree already or the project has no file.
     pub fn media_adopt(&mut self, file: &Path) -> Result<PathBuf> {
         let Some(path) = self.path.clone() else {

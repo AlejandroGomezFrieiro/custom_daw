@@ -2,9 +2,9 @@
 -- engine then plays instead of the track's clips and devices, so that they
 -- cost nothing while it is frozen.
 --
---   daw.freeze.freeze(strings)     -- render it, and play the file
---   daw.freeze.unfreeze(strings)   -- play the clips and devices again
---   daw.freeze.state(violins)      -- "frozen", "held" (inside a frozen group) or nil
+--   paw.freeze.freeze(strings)     -- render it, and play the file
+--   paw.freeze.unfreeze(strings)   -- play the clips and devices again
+--   paw.freeze.state(violins)      -- "frozen", "held" (inside a frozen group) or nil
 --
 -- The file is what comes out of the track before its fader: its clips, its
 -- devices, and every track that sounds through it (a group's members). The
@@ -13,11 +13,11 @@
 -- the project and undone like any edit; the clips, notes and devices are
 -- not touched. The engine holds the devices of a frozen track and of the
 -- tracks inside it (bypassed there, not in the project) and plays nothing
--- of those tracks: crates/daw-core/src/freeze.rs.
+-- of those tracks: crates/paw-core/src/freeze.rs.
 --
 -- Editing what a frozen track plays asks whether to unfreeze it: the edit
 -- is not heard until it is.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local function id_of(track) return type(track) == "table" and track.id or track end
@@ -82,11 +82,11 @@ function M.freeze(track, opts)
     error(string.format("%s sounds through %s, which is frozen: unfreeze that first", name, api.track_get(holder).name), 0)
   end
   local path = file_for(track)
-  daw.render(path, M.render_opts(track, opts))
+  paw.render(path, M.render_opts(track, opts))
   local m = meta(track)
   m.frozen = { file = path }
   api.track_set(track, "meta", m)
-  daw.emit("track.frozen", { id = track, file = path })
+  paw.emit("track.frozen", { id = track, file = path })
   return path
 end
 
@@ -98,7 +98,7 @@ function M.unfreeze(track)
   local m = meta(track)
   m.frozen = nil
   api.track_set(track, "meta", m)
-  daw.emit("track.thawed", { id = track })
+  paw.emit("track.thawed", { id = track })
 end
 
 -- Editing what a frozen track plays -----------------------------------------------
@@ -112,13 +112,13 @@ local function ask(track)
   if not frozen or asked[frozen] then return end
   asked[frozen] = true
   local name = api.track_get(frozen).name
-  daw.ui.input({ prompt = name .. " is frozen: unfreeze it to hear this edit? (y/n) " }, function(answer)
+  paw.ui.input({ prompt = name .. " is frozen: unfreeze it to hear this edit? (y/n) " }, function(answer)
     if tostring(answer):lower():match("^y") then
       M.unfreeze(frozen)
       api.undo_checkpoint()
-      daw.notify(name .. " is unfrozen")
+      paw.notify(name .. " is unfrozen")
     else
-      daw.notify(name .. " stays frozen: the edit is heard once it is unfrozen (`:unfreeze`)")
+      paw.notify(name .. " stays frozen: the edit is heard once it is unfrozen (`:unfreeze`)")
     end
   end)
 end
@@ -128,9 +128,9 @@ local function edited(event)
   if M.state(event.track) then ask(event.track) end
 end
 for _, name in ipairs({ "clip.added", "clip.changed", "clip.removed", "device.added", "device.changed", "device.removed" }) do
-  daw.on(name, edited)
+  paw.on(name, edited)
 end
-daw.on("track.changed", function(event)
+paw.on("track.changed", function(event)
   if event.id and not M.frozen(event.id) then asked[event.id] = nil end
 end)
 
@@ -143,38 +143,38 @@ local function chosen(ctx)
   local name = ctx.args[1]
   if name and name ~= true then
     local wanted = tostring(name):lower()
-    for _, id in ipairs(daw.scope.tracks()) do
+    for _, id in ipairs(paw.scope.tracks()) do
       if api.track_get(id).name:lower() == wanted then return { id } end
     end
-    for _, id in ipairs(daw.scope.tracks()) do
+    for _, id in ipairs(paw.scope.tracks()) do
       if api.track_get(id).name:lower():find(wanted, 1, true) then return { id } end
     end
     error("no track `" .. tostring(name) .. "`", 0)
   end
-  local id = daw.cursor.track_id()
+  local id = paw.cursor.track_id()
   if not id then error("no track selected", 0) end
   return { id }
 end
 
 local function track_names()
   local out = {}
-  for _, id in ipairs(daw.scope.tracks()) do out[#out + 1] = api.track_get(id).name end
+  for _, id in ipairs(paw.scope.tracks()) do out[#out + 1] = api.track_get(id).name end
   return out
 end
 
-daw.command("freeze", function(ctx)
+paw.command("freeze", function(ctx)
   local done = {}
   for _, id in ipairs(chosen(ctx)) do
     M.freeze(id, { tail = tonumber(ctx.args.tail) })
     done[#done + 1] = api.track_get(id).name
   end
-  daw.notify(string.format("frozen: %s · its devices rest; `:unfreeze` plays them again", table.concat(done, ", ")))
+  paw.notify(string.format("frozen: %s · its devices rest; `:unfreeze` plays them again", table.concat(done, ", ")))
 end, {
   desc = "Render the track or group in place and play that, its devices at rest: `freeze`, `freeze Strings`, `:t2,t4freeze`, `freeze tail=4`",
   range = true, complete = track_names,
 })
 
-daw.command("unfreeze", function(ctx)
+paw.command("unfreeze", function(ctx)
   local done = {}
   for _, id in ipairs(chosen(ctx)) do
     -- A track inside a frozen group thaws that group.
@@ -182,7 +182,7 @@ daw.command("unfreeze", function(ctx)
     M.unfreeze(which)
     done[#done + 1] = api.track_get(which).name
   end
-  daw.notify("unfrozen: " .. table.concat(done, ", "))
+  paw.notify("unfrozen: " .. table.concat(done, ", "))
 end, { desc = "Play a frozen track's clips and devices again: `unfreeze`, `unfreeze Strings`", range = true, complete = track_names })
 
 return M

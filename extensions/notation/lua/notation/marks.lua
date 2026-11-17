@@ -7,7 +7,7 @@
 -- a staccato shortens its notes and a tenuto holds them, an accent makes
 -- them louder, a dynamic sets the loudness of the notes it reaches and a
 -- hairpin ramps it. Slurs, text and repeat signs are written only.
-local util = daw.util
+local util = paw.util
 local view = require("notation")
 local D = require("notation.doc")
 local midi = require("notation.midi")
@@ -41,7 +41,7 @@ function M.listen(fn) M.listeners[#M.listeners + 1] = fn end
 function M.tell(what)
   for _, fn in ipairs(M.listeners) do
     local ok, err = pcall(fn, what)
-    if not ok then daw.api.log("notation listener: " .. tostring(err)) end
+    if not ok then paw.api.log("notation listener: " .. tostring(err)) end
   end
 end
 
@@ -119,7 +119,7 @@ function M.put(_, mark)
     sc.marks = list
     D.touch(sc, mi)
   end)
-  daw.ui.poke()
+  paw.ui.poke()
 end
 
 --- A slur over the notes written from `from` to `to` (clip beats) on a
@@ -209,7 +209,7 @@ function M.decorate(layout, clip)
       extras[#extras + 1] = x
       for _, mk in ipairs(x.marks or {}) do marks[#marks + 1] = mk end
     elseif not ok then
-      daw.api.log("notation marks of " .. name .. ": " .. tostring(x))
+      paw.api.log("notation marks of " .. name .. ": " .. tostring(x))
     end
   end
   if #extras > 0 then table.sort(marks, function(a, b) return a.at < b.at end) end

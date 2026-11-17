@@ -1,13 +1,13 @@
--- The kernel side of daw-mcp. The server sends this chunk with every tool
+-- The kernel side of paw-mcp. The server sends this chunk with every tool
 -- call (`eval`, with the tool's name and its arguments as `...`), so it needs
 -- nothing installed in the kernel and survives `:reload`.
 --
 -- Arguments arrive normalized by the server: positions and lengths in beats,
 -- pitches as MIDI numbers, paths absolute and checked. Tracks may still be
--- named. Everything is done through `daw.api`, so every change is undoable,
+-- named. Everything is done through `paw.api`, so every change is undoable,
 -- and each tool call that writes is exactly one undo step: a failed call is
 -- rolled back.
-local api = daw.api
+local api = paw.api
 local T = {}
 
 local function clean(e)
@@ -162,14 +162,14 @@ end
 -- Whether there are edits since the project was last saved or opened. The
 -- kernel's `modified` only says the project has history, so remember the
 -- edit count at each save (ours, and others' once this has run).
-local SAVED = "daw-mcp.saved_edits"
-if not rawget(_G, "__daw_mcp_hooked") then
-  rawset(_G, "__daw_mcp_hooked", true)
-  daw.on("project.saved", function() daw.state[SAVED] = api.project_get().edits end)
-  daw.on("project.loaded", function() daw.state[SAVED] = api.project_get().edits end)
+local SAVED = "paw-mcp.saved_edits"
+if not rawget(_G, "__paw_mcp_hooked") then
+  rawset(_G, "__paw_mcp_hooked", true)
+  paw.on("project.saved", function() paw.state[SAVED] = api.project_get().edits end)
+  paw.on("project.loaded", function() paw.state[SAVED] = api.project_get().edits end)
 end
 local function unsaved(p)
-  return p.modified and daw.state[SAVED] ~= p.edits
+  return p.modified and paw.state[SAVED] ~= p.edits
 end
 
 local function project_view()
@@ -449,7 +449,7 @@ function T.undo(a)
     if not fn() then break end
     done = done + 1
   end
-  daw.flush()
+  paw.flush()
   return { done = done, project = project_view() }
 end
 
@@ -457,21 +457,21 @@ function T.file(a)
   local p = api.project_get()
   if a.action == "save" then
     local path = api.project_save(a.path)
-    daw.state[SAVED] = api.project_get().edits
+    paw.state[SAVED] = api.project_get().edits
     return { saved = path, project = { name = p.name, tempo = p.tempo } }
   end
   if unsaved(p) and not a.discard then
     fail("the project has unsaved changes, which " .. a.action .. " would lose for good (it also clears undo): save first, or pass discard=true")
   end
   if a.action == "load" then api.project_load(a.path) else api.project_new() end
-  daw.state[SAVED] = api.project_get().edits
-  daw.flush()
+  paw.state[SAVED] = api.project_get().edits
+  paw.flush()
   return { project = project_view() }
 end
 
 function T.render(a)
   local p = api.project_get()
-  local info = daw.render(a.path, { start = a.start, ["end"] = a["end"], tail = a.tail, bits = a.bits, sample_rate = a.sample_rate })
+  local info = paw.render(a.path, { start = a.start, ["end"] = a["end"], tail = a.tail, bits = a.bits, sample_rate = a.sample_rate })
   info.start, info["end"] = a.start or 0, a["end"] or p.length
   info.tempo, info.sig_num, info.sig_den = p.tempo, p.sig_num, p.sig_den
   return { render = info }
@@ -518,7 +518,7 @@ function T.status(a)
   local out = { transport = api.transport_get(), engine = e, project = {
     name = p.name, path = p.path, modified = unsaved(p), tempo = p.tempo, sig_num = p.sig_num, sig_den = p.sig_den, length = p.length,
   }, messages = {} }
-  local msgs = daw.ui.messages
+  local msgs = paw.ui.messages
   for i = math.max(1, #msgs - (a.messages or 10) + 1), #msgs do
     out.messages[#out.messages + 1] = { text = msgs[i].text, level = msgs[i].level }
   end
@@ -528,21 +528,21 @@ end
 -- Escape hatches ---------------------------------------------------------------
 
 function T.command(a)
-  local result = daw.commands.exec(a.line)
-  return { result = result ~= nil and daw.inspect(result) or nil }
+  local result = paw.commands.exec(a.line)
+  return { result = result ~= nil and paw.inspect(result) or nil }
 end
 
 function T.keys(a)
-  daw.keymap.feed(a.keys)
-  local km = daw.keymap
-  return { mode = km.mode, pending = km.pending(), focused = daw.ui.focused }
+  paw.keymap.feed(a.keys)
+  local km = paw.keymap
+  return { mode = km.mode, pending = km.pending(), focused = paw.ui.focused }
 end
 
 function T.lua(a)
   local chunk = loadstring("return " .. a.code, "=lua") or assert(loadstring(a.code, "=lua"))
   local results = { chunk() }
   local shown = {}
-  for i = 1, table.maxn(results) do shown[i] = daw.inspect(results[i]) end
+  for i = 1, table.maxn(results) do shown[i] = paw.inspect(results[i]) end
   return { result = table.concat(shown, "\n") }
 end
 
@@ -558,7 +558,7 @@ local name, args = ...
 local fn = T[name] or fail("no tool `" .. tostring(name) .. "` in the kernel side")
 args = args or {}
 
-local messages = daw.ui.messages
+local messages = paw.ui.messages
 local last = messages[#messages]
 local function new_messages()
   local out = {}
@@ -580,17 +580,17 @@ if writes[name] then
       api.undo()
       undone = true
     end
-    daw.flush()
+    paw.flush()
     fail(clean(res) .. (undone and " (nothing was changed: the call was rolled back)" or ""))
   end
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   result = res
   result.edited = api.project_get().edits ~= before
 else
   local ok, res = xpcall(fn, function(e) return e end, args)
   if not ok then fail(clean(res)) end
-  daw.flush()
+  paw.flush()
   result = res
 end
 result.messages = new_messages()

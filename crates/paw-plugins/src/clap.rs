@@ -60,8 +60,8 @@ use clap_sys::plugin::clap_plugin;
 use clap_sys::process::{CLAP_PROCESS_ERROR, clap_process};
 use clap_sys::stream::{clap_istream, clap_ostream};
 use clap_sys::version::CLAP_VERSION;
-use daw_engine::device::assign_keys;
-use daw_engine::{
+use paw_engine::device::assign_keys;
+use paw_engine::{
     Controller, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, NOTE_BEND_RANGE,
     NoteCtl, ParamInfo, Ports, ProcessCtx, Registry, ump,
 };
@@ -297,8 +297,8 @@ impl DeviceFactory for ClapFactory {
             let host = Box::new(clap_host {
                 clap_version: CLAP_VERSION,
                 host_data: Arc::as_ptr(&flags) as *mut c_void,
-                name: c"daw".as_ptr(),
-                vendor: c"daw".as_ptr(),
+                name: c"paw".as_ptr(),
+                vendor: c"paw".as_ptr(),
                 url: c"".as_ptr(),
                 version: c"0.1.0".as_ptr(),
                 get_extension: Some(host_get_extension),

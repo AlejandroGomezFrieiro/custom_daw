@@ -3,7 +3,7 @@
 -- in the map) and a run of notes starts with its technique text (`text =
 -- "pizz."`, and `ord.` where the default comes back); writing a mark or a
 -- technique in the score sets the attribute of the notes when the track's
--- map has an articulation for it (`daw.opt.art_from_notation`).
+-- map has an articulation for it (`paw.opt.art_from_notation`).
 local art = require("articulations")
 local marks = require("notation.marks")
 
@@ -63,7 +63,7 @@ local function by_text(map, text)
 end
 
 marks.listen(function(what)
-  if not daw.opt.art_from_notation or not what.clip then return end
+  if not paw.opt.art_from_notation or not what.clip then return end
   local c = what.clip:get()
   local map = art.map_of(c.track)
   if not map then return end

@@ -1,13 +1,13 @@
 -- The device panel: the cursor track's device chain and every parameter.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 
 local view = { row = 1, scroll = 0 }
-daw.seats.fields("devices", view, { "row", "scroll" }, { row = 1, scroll = 0 })
+paw.seats.fields("devices", view, { "row", "scroll" }, { row = 1, scroll = 0 })
 
 -- Built-in effects that show what they do under their name: how many rows,
--- and the function that draws them (in `daw.views.device_pictures`).
-local pictures = require("daw.views.device_pictures")
+-- and the function that draws them (in `paw.views.device_pictures`).
+local pictures = require("paw.views.device_pictures")
 
 -- Reading a plugin with hundreds of parameters is not free, so the rows are
 -- kept until the project changes: an edit made by the key just typed counts
@@ -17,7 +17,7 @@ local cache = { revision = -1, track = nil, rows = {} }
 --- The panel as a flat list of rows: a device heading, then its parameters.
 local function rows_for(track_id)
   local edits = api.project_get().edits
-  if cache.revision == daw.frontend.revision and cache.edits == edits and cache.track == track_id then return cache.rows end
+  if cache.revision == paw.frontend.revision and cache.edits == edits and cache.track == track_id then return cache.rows end
   local rows = {}
   for _, id in ipairs(track_id and api.track_get(track_id).devices or {}) do
     local device = api.device_get(id)
@@ -30,24 +30,24 @@ local function rows_for(track_id)
     end
     -- The host's wet/dry mix and output gain come last, after the device's own.
     for _, param in ipairs(device.param_info) do
-      rows[#rows + 1] = { device = device, param = param, value = device.params[param.key], host = daw.fx.host_params[param.key] }
+      rows[#rows + 1] = { device = device, param = param, value = device.params[param.key], host = paw.fx.host_params[param.key] }
     end
   end
-  cache = { revision = daw.frontend.revision, edits = edits, track = track_id, rows = rows }
+  cache = { revision = paw.frontend.revision, edits = edits, track = track_id, rows = rows }
   return rows
 end
 
 function view:rows()
-  return rows_for(daw.cursor.track_id())
+  return rows_for(paw.cursor.track_id())
 end
 
 function view:render(buf, ctx)
-  local g = daw.draw.g
-  local track = daw.cursor.track()
+  local g = paw.draw.g
+  local track = paw.cursor.track()
   local rows = self:rows()
   local devices = 0
   for _, row in ipairs(rows) do if not row.param and not row.picture then devices = devices + 1 end end
-  local inner = daw.ui.titlebar(buf, {
+  local inner = paw.ui.titlebar(buf, {
     name = "Devices", context = track and track.name or nil, focused = ctx.focused,
     right = devices > 0 and tostring(devices) or nil,
   })
@@ -88,10 +88,10 @@ function view:render(buf, ctx)
       local preset = type(d.meta) == "table" and d.meta.preset
       local room = w - 16 - api.str_width(name) - 6
       if preset and room > 3 then inner:text(4 + api.str_width(name), y, util.fit(preset, room):gsub("%s+$", ""), "Param") end
-      -- What modules mark on the device (`daw.ui.layer("devices", "device", ...)`):
+      -- What modules mark on the device (`paw.ui.layer("devices", "device", ...)`):
       -- from `x`, `width` columns up to its on/off chip.
       local after = 4 + api.str_width(name)
-      daw.ui.paint("devices", "device", { buf = inner, x = after, y = y, width = math.max(0, w - 6 - after), device = d.id })
+      paw.ui.paint("devices", "device", { buf = inner, x = after, y = y, width = math.max(0, w - 6 - after), device = d.id })
       -- A device that is not running says so, and what brings it back.
       local status = d.status
       local mark = status == "loading" and { "loading", "Warn" }
@@ -122,7 +122,7 @@ function view:render(buf, ctx)
         for _ in pairs(d.outputs or {}) do routed = routed + 1 end
         for _, text in ipairs({
           further > 0 and string.format("outs %d/%d", routed, further) or false,
-          daw.routes.sidechain_text(d) and "key " .. daw.routes.sidechain_text(d) or false,
+          paw.routes.sidechain_text(d) and "key " .. paw.routes.sidechain_text(d) or false,
         }) do
           local width = text and api.str_width(text) or 0
           if text and at - width - 1 > 4 + api.str_width(name) then
@@ -134,11 +134,11 @@ function view:render(buf, ctx)
     else
       local p = row.param
       inner:text(2, y, util.fit(p.name, name_w), chosen and "Bright" or row.host and "DeviceFormat" or "Param")
-      daw.ui.paint("devices", "param", { buf = inner, x = 1, y = y, width = w, device = d.id, param = p.key })
+      paw.ui.paint("devices", "param", { buf = inner, x = 1, y = y, width = w, device = d.id, param = p.key })
       local range = p.max - p.min
-      daw.draw.slider(inner, bar_at, y, bar, range ~= 0 and daw.params.fraction(p, row.value) or 0,
+      paw.draw.slider(inner, bar_at, y, bar, range ~= 0 and paw.params.fraction(p, row.value) or 0,
         chosen and "ParamBar" or "ParamBarDim", "ParamBarOff")
-      local value = daw.frontend.format_value(p, row.value)
+      local value = paw.frontend.format_value(p, row.value)
       if api.str_width(value) > value_w then value = util.fit(value, value_w) end
       inner:text(w - 1 - api.str_width(value), y, value, chosen and "Bright" or "ParamValue")
     end
@@ -159,7 +159,7 @@ function view:adjust(steps)
   -- The value now, not the row's: the rows are kept until the screen is
   -- drawn again, and keys typed faster than that (a macro, `.`) each count.
   local p = row.param
-  api.device_set_param(row.device.id, p.key, daw.params.step(p, view.value(row), steps))
+  api.device_set_param(row.device.id, p.key, paw.params.step(p, view.value(row), steps))
 end
 
 --- A parameter row's value as it is now.
@@ -169,8 +169,8 @@ end
 
 function view:selected()
   local row = self:rows()[self.row]
-  return row and daw.device(row.device.id), row
+  return row and paw.device(row.device.id), row
 end
 
-daw.ui.view("devices", view)
+paw.ui.view("devices", view)
 return view

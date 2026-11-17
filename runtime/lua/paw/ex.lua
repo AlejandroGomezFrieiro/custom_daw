@@ -22,18 +22,18 @@
 -- fields (`d4`, `+12`, `vel=90`, `vel-10`, `len*2`, `name:Chorus`), and an
 -- empty one removes what matched.
 --
--- Extensions add fields with `daw.ex.field` and say how a view of theirs
--- reads time with `daw.ex.view`; a command made with `range = true` gets
--- the range as `ctx.range` and the things in it from `daw.ex.items`.
-local api = daw.api
-local util = daw.util
-local commands = daw.commands
+-- Extensions add fields with `paw.ex.field` and say how a view of theirs
+-- reads time with `paw.ex.view`; a command made with `range = true` gets
+-- the range as `ctx.range` and the things in it from `paw.ex.items`.
+local api = paw.api
+local util = paw.util
+local commands = paw.commands
 local EPS = 1e-9
 local NEAR = 1e-6   -- how near a bar line a beat may be and still count as on it
 
 local M = {}
 
-daw.option.define("gdefault", false)   -- `:s` changes every match without `g`, and only the first of each bar with it
+paw.option.define("gdefault", false)   -- `:s` changes every match without `g`, and only the first of each bar with it
 
 local function plural(n, word) return n .. " " .. word .. (n == 1 and "" or "s") end
 
@@ -42,7 +42,7 @@ local function fail(text, ...) error(string.format(text, ...), 0) end
 -- Views ----------------------------------------------------------------------------
 --
 -- How a view's own beats (its grid's columns) map to beats of the song, and
--- which clips it edits: `daw.ex.view(name, { song = function(col) ... end,
+-- which clips it edits: `paw.ex.view(name, { song = function(col) ... end,
 -- col = function(beat) ... end, clips = function() return ids end,
 -- track = function() return id end })`. A view not named here counts in
 -- beats of the song. A view of several clips may also say: `clips_at(s, i)`,
@@ -56,20 +56,20 @@ M.views = {}
 
 function M.view(name, spec) M.views[name] = spec end
 
-local function roll() return daw.ui.views.pianoroll end
+local function roll() return paw.ui.views.pianoroll end
 local function roll_start()
   local clip = roll():clip()
   return clip and clip.start or 0
 end
 
 M.view("arrange", {
-  track = function() return daw.cursor.track_id() end,
-  go = function(beat) daw.cursor.set_beat(beat) end,
+  track = function() return paw.cursor.track_id() end,
+  go = function(beat) paw.cursor.set_beat(beat) end,
 })
 M.view("pianoroll", {
   song = function(col) return roll_start() + col end,
   col = function(beat) return beat - roll_start() end,
-  clips = function() return roll():clip() and daw.roll_clips.ids() or nil end,
+  clips = function() return roll():clip() and paw.roll_clips.ids() or nil end,
   track = function()
     local clip = roll():clip()
     return clip and clip.track or nil
@@ -77,7 +77,7 @@ M.view("pianoroll", {
   go = function(beat) roll():set(nil, beat - roll_start()) end,
 })
 
-local function adapter() return M.views[daw.ui.focused] or {} end
+local function adapter() return M.views[paw.ui.focused] or {} end
 
 local function song_of(col)
   local a = adapter()
@@ -86,9 +86,9 @@ end
 
 --- The beat of the song the focused view's cursor is on.
 local function cursor_beat()
-  local view = daw.ui.views[daw.ui.focused]
+  local view = paw.ui.views[paw.ui.focused]
   local g = view and view.grid
-  if not g then return daw.cursor.beat end
+  if not g then return paw.cursor.beat end
   local _, col = g.get()
   return song_of(col)
 end
@@ -96,7 +96,7 @@ end
 --- The track the focused view is about: the cursor's, or the clip's it edits.
 local function cursor_track()
   local a = adapter()
-  return (a.track and a.track()) or daw.cursor.track_id()
+  return (a.track and a.track()) or paw.cursor.track_id()
 end
 
 --- The clips the focused view edits, or nil when it is about the whole song.
@@ -109,8 +109,8 @@ local function view_clips(r)
 end
 
 --- The tracks a range can name: those of the narrowed tab's group, in a
---- tab narrowed to one (`daw.scope`); `t1` is the first of them.
-local function scoped() return daw.scope.tracks() end
+--- tab narrowed to one (`paw.scope`); `t1` is the first of them.
+local function scoped() return paw.scope.tracks() end
 
 -- Addresses of time --------------------------------------------------------------
 
@@ -122,28 +122,28 @@ local function song_end()
   return finish
 end
 
-local function last_bar() return math.max(1, daw.time.bar_of(math.max(0, song_end() - NEAR))) end
+local function last_bar() return math.max(1, paw.time.bar_of(math.max(0, song_end() - NEAR))) end
 
-local function bar_span(n) return { from = daw.time.bar_start(n), to = daw.time.bar_start(n + 1), unit = "bar", bar = n } end
+local function bar_span(n) return { from = paw.time.bar_start(n), to = paw.time.bar_start(n + 1), unit = "bar", bar = n } end
 
 --- The length of one beat of the signature at a place (an eighth in 6/8).
 local function beat_length(at)
-  local num = daw.time.signature_at(at)
+  local num = paw.time.signature_at(at)
   if type(num) == "table" then num = num[1] end
-  return daw.time.bar(at) / (num or 4)
+  return paw.time.bar(at) / (num or 4)
 end
 
 local function beat_span(bar, beat, text)
-  local start = daw.time.bar_start(bar)
+  local start = paw.time.bar_start(bar)
   local len = beat_length(start)
   local from = start + (beat - 1) * len
-  if beat < 1 or from >= daw.time.bar_start(bar + 1) - EPS then fail("`%s`: bar %d has no beat %d", text, bar, beat) end
+  if beat < 1 or from >= paw.time.bar_start(bar + 1) - EPS then fail("`%s`: bar %d has no beat %d", text, bar, beat) end
   return { from = from, to = from + len, unit = "beat" }
 end
 
 --- A mark's place in the song: Vim's marks, set with `m` in the focused view.
 local function mark_beat(name)
-  local pos = daw.keymap.marks()[name]
+  local pos = paw.keymap.marks()[name]
   if not pos then fail("`'%s`: mark %s is not set here (`m%s` sets it)", name, name, name) end
   if pos.beat then return pos.beat end
   return song_of(pos[2] or 0)
@@ -162,7 +162,7 @@ local function address(s, i)
       if tonumber(bar) < 1 then fail("`%s`: bars count from 1", bar) end
       span, j = bar_span(tonumber(bar)), e
     elseif s:sub(i, i) == "." then
-      span, j = bar_span(daw.time.bar_of(cursor_beat())), i + 1
+      span, j = bar_span(paw.time.bar_of(cursor_beat())), i + 1
     elseif s:sub(i, i) == "$" then
       span, j = bar_span(last_bar()), i + 1
     elseif s:sub(i, i) == "'" and s:sub(i + 1, i + 1):match("[%a<>]") then
@@ -178,7 +178,7 @@ local function address(s, i)
       end
       j = i + 2
     elseif s:sub(i, i):match("[%+%-]") then
-      span, j = bar_span(daw.time.bar_of(cursor_beat())), i
+      span, j = bar_span(paw.time.bar_of(cursor_beat())), i
     else
       return nil, i
     end
@@ -196,7 +196,7 @@ local function address(s, i)
       span = { from = span.from + n * len, to = span.to + n * len, unit = "beat" }
       if span.from < -EPS then fail("`%s`: before the start of the song", s:sub(i, e2 - 1)) end
     else
-      local at = math.max(0, span.from + n * daw.time.bar(span.from))
+      local at = math.max(0, span.from + n * paw.time.bar(span.from))
       span = { from = at, to = at, unit = "point" }
     end
     j = e2
@@ -216,21 +216,21 @@ end
 
 local function finish_range(r)
   if r.from then
-    r.bars = { daw.time.bar_of(r.from), daw.time.bar_of(math.max(r.from, r.to - NEAR)) }
+    r.bars = { paw.time.bar_of(r.from), paw.time.bar_of(math.max(r.from, r.to - NEAR)) }
   end
   return r
 end
 
 --- The last selection of the focused view as a range of the song.
 function M.selection_range()
-  local region = daw.keymap.last_selection()
+  local region = paw.keymap.last_selection()
   if not region then fail("no selection made in this view yet for '<,'>") end
-  local view = region.view or daw.ui.focused
+  local view = region.view or paw.ui.focused
   local spec = M.views[view] or {}
   local r = { selection = true, region = region, view = view }
   local song = spec.song or function(c) return c end
   if view == "arrange" then
-    local rows = daw.groups.rows()
+    local rows = paw.groups.rows()
     r.tracks = {}
     for row = math.max(1, region.r0), region.r1 do
       if rows[row] then r.tracks[#r.tracks + 1] = rows[row] end
@@ -322,7 +322,7 @@ end
 
 local function time_range(s, i)
   if s:sub(i, i) == "%" then
-    return { from = 0, to = daw.time.bar_start(last_bar() + 1), whole = true }, i + 1
+    return { from = 0, to = paw.time.bar_start(last_bar() + 1), whole = true }, i + 1
   end
   local sel = s:match("^'<%s*,%s*'>()", i)
   if sel then return M.selection_range(), sel end
@@ -338,7 +338,7 @@ local function time_range(s, i)
   local to = b.unit == "point" and b.from or b.to
   if not second and a.unit == "point" then
     -- A mark alone stands for the bar it is in, as a line in Vim.
-    local bar = bar_span(daw.time.bar_of(a.from))
+    local bar = bar_span(paw.time.bar_of(a.from))
     from, to = bar.from, bar.to
   end
   if to < from - EPS or b.from < a.from - EPS then fail("`%s`: a range goes from the first to the last", s:sub(i, j - 1)) end
@@ -387,10 +387,10 @@ function M.describe(r)
   local parts = {}
   if r.from then
     local a, b = r.bars[1], r.bars[2]
-    if math.abs(daw.time.bar_start(a) - r.from) < EPS and math.abs(daw.time.bar_start(b + 1) - r.to) < EPS then
+    if math.abs(paw.time.bar_start(a) - r.from) < EPS and math.abs(paw.time.bar_start(b + 1) - r.to) < EPS then
       parts[1] = a == b and "bar " .. a or string.format("bars %d–%d", a, b)
     else
-      parts[1] = daw.time.format(r.from) .. "–" .. daw.time.format(r.to)
+      parts[1] = paw.time.format(r.from) .. "–" .. paw.time.format(r.to)
     end
   end
   if r.tracks then
@@ -407,7 +407,7 @@ end
 -- Items: what a range holds -------------------------------------------------------
 --
 -- An item is a note, a clip or a track: `{ kind, track = id, clip = <clip
--- as daw.api gives it>, note = <note>, place = <its place in the clip>,
+-- as paw.api gives it>, note = <note>, place = <its place in the clip>,
 -- at = <beat of the song> }`, the fields a kind has.
 
 local LEVEL = { track = 1, clip = 2, note = 3 }
@@ -484,17 +484,17 @@ end
 
 --- The address of an item, for the quickfix list and for going to it.
 function M.address_of(item)
-  if item.kind == "note" then return daw.address.note(item.clip.id, item.note.id) end
-  if item.kind == "clip" then return daw.address.clip(item.clip.id) end
-  return daw.address.track(item.track)
+  if item.kind == "note" then return paw.address.note(item.clip.id, item.note.id) end
+  if item.kind == "clip" then return paw.address.clip(item.clip.id) end
+  return paw.address.track(item.track)
 end
 
 --- The item an address names, or nil.
 function M.item_of(uri)
-  local p = daw.address.parse(uri)
+  local p = paw.address.parse(uri)
   if not p then return nil end
   if p.kind == "note" then
-    local n, place = daw.address.find_note(p.clip, p.note)
+    local n, place = paw.address.find_note(p.clip, p.note)
     if not n then return nil end
     local c = api.clip_get(p.clip)
     return { kind = "note", track = c.track, clip = c, note = n, place = place, at = c.start + n.start }
@@ -508,26 +508,26 @@ end
 
 --- Put the cursor on an item, in the view that shows it.
 function M.show(item)
-  daw.qf.go({ location = { uri = M.address_of(item) } })
+  paw.qf.go({ location = { uri = M.address_of(item) } })
 end
 
 --- An item in a few words: "C4 vel 100 at 5.1.00 in Verse".
 function M.label(item)
   if item.kind == "note" then
     local n = item.note
-    return string.format("%s vel %d len %g at %s in %s", daw.music.name(n.pitch), n.velocity, n.length, daw.time.format(item.at), item.clip.name)
+    return string.format("%s vel %d len %g at %s in %s", paw.music.name(n.pitch), n.velocity, n.length, paw.time.format(item.at), item.clip.name)
   elseif item.kind == "clip" then
-    return string.format("clip %s at %s on %s", item.clip.name, daw.time.format(item.at), api.track_get(item.track).name)
+    return string.format("clip %s at %s on %s", item.clip.name, paw.time.format(item.at), api.track_get(item.track).name)
   end
   return "track " .. api.track_get(item.track).name
 end
 
 -- Fields and patterns --------------------------------------------------------------
 --
--- A field: `daw.ex.field(name, { level = "note" | "clip" | "track", type =
+-- A field: `paw.ex.field(name, { level = "note" | "clip" | "track", type =
 -- "number" | "beats" | "pitch" | "text", get = function(item) return value
 -- end, set = function(item, value, change) ... end, min, max, desc })`.
--- `set` writes what changes into `change`, a table of the fields `daw.api`
+-- `set` writes what changes into `change`, a table of the fields `paw.api`
 -- keeps for that kind of thing (a note's `velocity`, a clip's `name`);
 -- without it the field can be matched but not set. A field of a shallower
 -- level is read from the clip or track of a deeper item.
@@ -555,17 +555,17 @@ M.field("attr", { level = "note", type = "text",
   get = function(item)
     local a = item.note.attr
     if not a then return "none" end
-    return daw.attr.m2(a) or string.format("%X:%04X", a.type, a.data or 0)
+    return paw.attr.m2(a) or string.format("%X:%04X", a.type, a.data or 0)
   end,
   set = function(_, value, change)
     if value == "none" or value == "" then change.attr = false return end
-    local ok, attr = pcall(daw.attr.m2, value)
+    local ok, attr = pcall(paw.attr.m2, value)
     if not ok then fail("`attr=%s`: %s", value, tostring(attr):gsub("^[^:]*:%d+: ", "")) end
     change.attr = attr
   end })
 M.field("beat", { level = "note", type = "number", desc = "where in its bar the note starts: 1 is the downbeat, 2.5 the and of 2",
   get = function(item)
-    local start = daw.time.bar_floor(item.at)
+    local start = paw.time.bar_floor(item.at)
     return (item.at - start) / beat_length(start) + 1
   end })
 M.field("name", { level = "clip", type = "text", desc = "the clip's name",
@@ -749,7 +749,7 @@ function M.replacement(text, pattern)
 end
 
 --- What a replacement makes of one item: the fields that change, as
---- `daw.api` keeps them.
+--- `paw.api` keeps them.
 function M.change(item, sets, pattern)
   local change = {}
   for _, set in ipairs(sets) do
@@ -823,7 +823,7 @@ function M.apply(changes, remove)
   end
   for _, id in ipairs(order) do
     local e = per_clip[id]
-    if pcall(api.clip_get, id) then daw.clip(id):edit_notes({ set = e.set, remove = e.remove }) end
+    if pcall(api.clip_get, id) then paw.clip(id):edit_notes({ set = e.set, remove = e.remove }) end
   end
   for _, id in ipairs(tracks) do api.track_remove(id) end
 end
@@ -855,7 +855,7 @@ local function clips_value(items)
       row = #rows
       row_of[item.track] = row
     end
-    local snap = daw.clip(item.clip.id):snapshot()
+    local snap = paw.clip(item.clip.id):snapshot()
     snap.start = snap.start - first
     finish = math.max(finish, snap.start + snap.length)
     rows[row][#rows[row] + 1] = snap
@@ -865,7 +865,7 @@ end
 
 local function tracks_value(ids)
   local tracks = {}
-  for i, id in ipairs(ids) do tracks[i] = daw.track(id):snapshot() end
+  for i, id in ipairs(ids) do tracks[i] = paw.track(id):snapshot() end
   return { kind = "tracks", tracks = tracks }
 end
 
@@ -883,13 +883,13 @@ local function range_of(ctx, default)
   end
   local r
   if default == "%" then
-    r = { from = 0, to = daw.time.bar_start(last_bar() + 1), whole = true }
+    r = { from = 0, to = paw.time.bar_start(last_bar() + 1), whole = true }
   elseif default == "track" then
     local id = cursor_track()
     if not id then fail("no track here") end
     r = { tracks = { id } }
   else
-    r = bar_span(daw.time.bar_of(cursor_beat()))
+    r = bar_span(paw.time.bar_of(cursor_beat()))
   end
   return finish_range(r)
 end
@@ -916,7 +916,7 @@ local function time_tracks(r) return r.tracks or scoped() end
 
 --- Put a value in a register as `d` and `y` do, and say what it was.
 local function keep(value, ctx, yank)
-  daw.keymap.setreg(value, register_of(ctx), yank)
+  paw.keymap.setreg(value, register_of(ctx), yank)
 end
 
 local function remove_items(items, ctx, yank_only)
@@ -924,7 +924,7 @@ local function remove_items(items, ctx, yank_only)
   for _, item in ipairs(items) do by[item.kind][#by[item.kind] + 1] = item end
   local kind = #by.note > 0 and "note" or #by.clip > 0 and "clip" or "track"
   local list = by[kind]
-  if #list == 0 then return daw.notify("nothing there", "warn") end
+  if #list == 0 then return paw.notify("nothing there", "warn") end
   local value
   if kind == "note" then
     value = notes_value(list)
@@ -937,7 +937,7 @@ local function remove_items(items, ctx, yank_only)
   end
   keep(value, ctx, yank_only)
   if not yank_only then M.apply(nil, list) end
-  daw.notify(string.format("%s %s", yank_only and "yanked" or "deleted", plural(#list, kind)))
+  paw.notify(string.format("%s %s", yank_only and "yanked" or "deleted", plural(#list, kind)))
 end
 
 --- Notes whose clips start them at or after `from` move by `by` beats.
@@ -948,7 +948,7 @@ local function ripple_notes(clips, from, by)
     for place, n in ipairs(api.clip_notes(id)) do
       if c.start + n.start >= from - EPS then set[#set + 1] = { index = place, start = math.max(0, n.start + by) } end
     end
-    if #set > 0 then daw.clip(id):edit_notes({ set = set }) end
+    if #set > 0 then paw.clip(id):edit_notes({ set = set }) end
   end
 end
 
@@ -960,26 +960,26 @@ local function delete_or_yank(ctx, yank_only)
     if not yank_only then
       for _, id in ipairs(r.tracks) do api.track_remove(id) end
     end
-    return daw.notify(string.format("%s %s", yank_only and "yanked" or "deleted", plural(#r.tracks, "track")))
+    return paw.notify(string.format("%s %s", yank_only and "yanked" or "deleted", plural(#r.tracks, "track")))
   end
   if in_view_clips(r) then
     local items = M.items(r, "note")
-    if #items == 0 then return daw.notify("no notes in " .. M.describe(r), "warn") end
+    if #items == 0 then return paw.notify("no notes in " .. M.describe(r), "warn") end
     remove_items(items, ctx, yank_only)
     if bang(ctx) and not yank_only then ripple_notes(view_clips(r), r.to, r.from - r.to) end
     return
   end
   local rows = {}
   local tracks = time_tracks(r)
-  for i, id in ipairs(tracks) do rows[i] = daw.edit.arrange.copy(id, r.from, r.to) end
+  for i, id in ipairs(tracks) do rows[i] = paw.edit.arrange.copy(id, r.from, r.to) end
   keep({ kind = "range", length = r.to - r.from, rows = rows }, ctx, yank_only)
   if not yank_only then
     for _, id in ipairs(tracks) do
-      daw.edit.arrange.clear(id, r.from, r.to)
-      if bang(ctx) then daw.edit.arrange.ripple(id, r.to, r.from - r.to) end
+      paw.edit.arrange.clear(id, r.from, r.to)
+      if bang(ctx) then paw.edit.arrange.ripple(id, r.to, r.from - r.to) end
     end
   end
-  daw.notify(string.format("%s %s", yank_only and "yanked" or (bang(ctx) and "took out" or "emptied"), M.describe(r)))
+  paw.notify(string.format("%s %s", yank_only and "yanked" or (bang(ctx) and "took out" or "emptied"), M.describe(r)))
 end
 
 --- The place `co` and `m` take things to: an address's start.
@@ -1009,7 +1009,7 @@ local function copy_or_move(ctx, move)
       end
     end
     local snaps = {}
-    for i, id in ipairs(r.tracks) do snaps[i] = daw.track(id):snapshot() end
+    for i, id in ipairs(r.tracks) do snaps[i] = paw.track(id):snapshot() end
     if move then
       local list, below = api.track_list(), 0
       for _, id in ipairs(r.tracks) do
@@ -1020,8 +1020,8 @@ local function copy_or_move(ctx, move)
       for _, id in ipairs(r.tracks) do api.track_remove(id) end
       n = n - below
     end
-    for i, snap in ipairs(snaps) do daw.restore_track(snap, n + i) end
-    return daw.notify(string.format("%s %s", move and "moved" or "copied", plural(#snaps, "track")))
+    for i, snap in ipairs(snaps) do paw.restore_track(snap, n + i) end
+    return paw.notify(string.format("%s %s", move and "moved" or "copied", plural(#snaps, "track")))
   end
   local at = destination(text, name)
   local len = r.to - r.from
@@ -1045,29 +1045,29 @@ local function copy_or_move(ctx, move)
     end
     for id, e in pairs(per) do
       if e.finish > e.clip.length + EPS then api.clip_set(id, "length", e.finish) end
-      daw.clip(id):edit_notes({ set = e.set, add = e.add })
+      paw.clip(id):edit_notes({ set = e.set, add = e.add })
     end
-    return daw.notify(string.format("%s %s to %s", move and "moved" or "copied", plural(#items, "note"), daw.time.format(at)))
+    return paw.notify(string.format("%s %s to %s", move and "moved" or "copied", plural(#items, "note"), paw.time.format(at)))
   end
   for _, id in ipairs(time_tracks(r)) do
-    local snaps = daw.edit.arrange.copy(id, r.from, r.to)
+    local snaps = paw.edit.arrange.copy(id, r.from, r.to)
     local target = at
     if move then
-      daw.edit.arrange.clear(id, r.from, r.to)
+      paw.edit.arrange.clear(id, r.from, r.to)
       if bang(ctx) then
-        daw.edit.arrange.ripple(id, r.to, -len)
+        paw.edit.arrange.ripple(id, r.to, -len)
         if target >= r.to - EPS then target = target - len end
       end
     end
     if bang(ctx) then
-      daw.edit.arrange.clear(id, target, target)
-      daw.edit.arrange.ripple(id, target, len)
+      paw.edit.arrange.clear(id, target, target)
+      paw.edit.arrange.ripple(id, target, len)
     else
-      daw.edit.arrange.clear(id, target, target + len)
+      paw.edit.arrange.clear(id, target, target + len)
     end
-    for _, snap in ipairs(snaps) do daw.restore_clip(util.merge(snap, { start = target + snap.start }), id) end
+    for _, snap in ipairs(snaps) do paw.restore_clip(util.merge(snap, { start = target + snap.start }), id) end
   end
-  daw.notify(string.format("%s %s to %s", move and "moved" or "copied", M.describe(r), daw.time.format(at)))
+  paw.notify(string.format("%s %s to %s", move and "moved" or "copied", M.describe(r), paw.time.format(at)))
 end
 
 local function shift(ctx, dir)
@@ -1087,13 +1087,13 @@ local function shift(ctx, dir)
   local changes = {}
   for i, item in ipairs(items) do
     if item.kind == "note" then
-      changes[i] = { item = item, change = { start = math.max(0, item.note.start + steps * daw.opt.note_grid) } }
+      changes[i] = { item = item, change = { start = math.max(0, item.note.start + steps * paw.opt.note_grid) } }
     else
-      changes[i] = { item = item, change = { start = math.max(0, item.clip.start + steps * daw.opt.grid) } }
+      changes[i] = { item = item, change = { start = math.max(0, item.clip.start + steps * paw.opt.grid) } }
     end
   end
   M.apply(changes)
-  daw.notify(string.format("moved %s %s", plural(#items, #items > 0 and items[1].kind or "thing"), dir > 0 and "later" or "earlier"))
+  paw.notify(string.format("moved %s %s", plural(#items, #items > 0 and items[1].kind or "thing"), dir > 0 and "later" or "earlier"))
 end
 
 --- The notes a note command works on: the matches, or those in the range.
@@ -1140,17 +1140,17 @@ local function mute_or_solo(ctx, field, on)
     local clips = M.items(r, "clip")
     if #clips == 0 then
       if r.items then return set_tracks(ctx, field, field, value) end
-      return daw.notify("no clips in " .. M.describe(r), "warn")
+      return paw.notify("no clips in " .. M.describe(r), "warn")
     end
     if field ~= "mute" then fail("clips are muted, not soloed: `solo` takes tracks") end
     for _, item in ipairs(clips) do
       local now = api.clip_get(item.clip.id).muted
       api.clip_set(item.clip.id, "muted", value(now))
     end
-    return daw.notify(word .. " " .. plural(#clips, "clip"))
+    return paw.notify(word .. " " .. plural(#clips, "clip"))
   end
   local ids = set_tracks(ctx, field, field, value)
-  daw.notify(word .. " " .. plural(#ids, "track"))
+  paw.notify(word .. " " .. plural(#ids, "track"))
 end
 
 local function number_arg(ctx, name, example)
@@ -1160,7 +1160,7 @@ local function number_arg(ctx, name, example)
 end
 
 local function grid_arg(text)
-  if text == "" then return daw.opt.note_grid end
+  if text == "" then return paw.opt.note_grid end
   local a, b = text:match("^(%d+)/(%d+)$")
   local n = a and 4 * tonumber(a) / tonumber(b) or tonumber(text)
   if not n or n <= 0 then fail("`%s`: a grid is beats (`0.25`) or a note value (`1/16`)", text) end
@@ -1209,12 +1209,12 @@ function M.substitution(r, pattern, replacement, flags)
     if pattern.test(item) then items[#items + 1] = item end
   end
   local all = flags:find("g") ~= nil
-  if daw.opt.gdefault then all = not all end
+  if paw.opt.gdefault then all = not all end
   local chosen, seen = {}, {}
   for _, item in ipairs(items) do
     -- As in Vim, without `g` only the first match of each line changes,
     -- and a line here is a bar.
-    local key = item.kind == "track" and item.track or daw.time.bar_of(item.at)
+    local key = item.kind == "track" and item.track or paw.time.bar_of(item.at)
     if all or not seen[key] then
       seen[key] = true
       chosen[#chosen + 1] = { item = item, change = #replacement > 0 and M.change(item, replacement, pattern) or false }
@@ -1247,8 +1247,8 @@ local function substitute(ctx)
   local replacement = M.replacement(rep, pattern)
   local r = range_of(ctx, ".")
   local items, chosen = M.substitution(r, pattern, replacement, flags)
-  if #items == 0 then return daw.notify(string.format("no %s match `%s` in %s", pattern.level .. "s", pat, M.describe(r) ~= "" and M.describe(r) or "the range"), "warn") end
-  if flags:find("n") then return daw.notify(string.format("%s match", plural(#items, pattern.level))) end
+  if #items == 0 then return paw.notify(string.format("no %s match `%s` in %s", pattern.level .. "s", pat, M.describe(r) ~= "" and M.describe(r) or "the range"), "warn") end
+  if flags:find("n") then return paw.notify(string.format("%s match", plural(#items, pattern.level))) end
   if flags:find("c") then return confirm(chosen, rep, ctx.line or (":s/" .. pat .. "/" .. rep .. "/" .. flags)) end
   local changes, removed = {}, {}
   for _, c in ipairs(chosen) do
@@ -1256,7 +1256,7 @@ local function substitute(ctx)
   end
   M.apply(changes, removed)
   local word = #changes > 0 and "changed " or "removed "
-  daw.notify(word .. plural(#chosen, pattern.level) .. (#chosen < #items and string.format(" of %d that match (g for all)", #items) or ""))
+  paw.notify(word .. plural(#chosen, pattern.level) .. (#chosen < #items and string.format(" of %d that match (g for all)", #items) or ""))
 end
 
 --- Run keys at each place: `go()` puts the cursor there first.
@@ -1264,19 +1264,19 @@ local function at_each(places, keys)
   if keys == "" then fail("`normal` needs keys to type: `:5,8normal x`") end
   local failed
   for _, go in ipairs(places) do
-    daw.keymap.set_mode("n")
+    paw.keymap.set_mode("n")
     go()
-    local ok, err = pcall(daw.keymap.normal, keys)
+    local ok, err = pcall(paw.keymap.normal, keys)
     if not ok then failed = failed or tostring(err) end
   end
-  daw.keymap.set_mode("n")
-  if failed then daw.notify(failed, "error") end
+  paw.keymap.set_mode("n")
+  if failed then paw.notify(failed, "error") end
 end
 
 local function normal(ctx)
   local keys = ctx.args[1] or ""
   keys = keys:match("^%s?(.*)$")
-  if not ctx.range and not ctx.target then return daw.keymap.normal(keys) end
+  if not ctx.range and not ctx.target then return paw.keymap.normal(keys) end
   local r = range_of(ctx, ".")
   local places = {}
   if r.items then
@@ -1290,21 +1290,21 @@ local function normal(ctx)
   elseif whole_tracks(r) then
     for i, id in ipairs(r.tracks) do
       places[i] = function()
-        daw.ui.focus("arrange")
-        daw.cursor.set_track(id)
+        paw.ui.focus("arrange")
+        paw.cursor.set_track(id)
       end
     end
   else
     -- Where the range starts, then every bar line inside it.
     local bars = { { beat = r.from } }
-    for _, bar in ipairs(daw.time.bars(r.from + NEAR, r.to - NEAR)) do bars[#bars + 1] = bar end
-    local tracks = in_view_clips(r) and { false } or r.tracks or { daw.cursor.track_id() }
+    for _, bar in ipairs(paw.time.bars(r.from + NEAR, r.to - NEAR)) do bars[#bars + 1] = bar end
+    local tracks = in_view_clips(r) and { false } or r.tracks or { paw.cursor.track_id() }
     local a = adapter()
     for _, id in ipairs(tracks) do
       for _, bar in ipairs(bars) do
         places[#places + 1] = function()
-          if id then daw.cursor.set_track(id) end
-          if a.go then a.go(bar.beat) else daw.cursor.set_beat(bar.beat) end
+          if id then paw.cursor.set_track(id) end
+          if a.go then a.go(bar.beat) else paw.cursor.set_beat(bar.beat) end
         end
       end
     end
@@ -1329,10 +1329,10 @@ local function global(ctx, invert)
   if cmd == "" then
     local entries = {}
     for i, item in ipairs(matches) do entries[i] = { address = M.address_of(item), text = M.label(item), source = "ex" } end
-    daw.qf.set(entries, { title = title })
-    return daw.notify(string.format("%s in the quickfix list: ]q goes through them, :cdo runs a command on each", plural(#matches, pattern.level)))
+    paw.qf.set(entries, { title = title })
+    return paw.notify(string.format("%s in the quickfix list: ]q goes through them, :cdo runs a command on each", plural(#matches, pattern.level)))
   end
-  if #matches == 0 then return daw.notify(string.format("no %ss match `%s`", pattern.level, pat), "warn") end
+  if #matches == 0 then return paw.notify(string.format("no %ss match `%s`", pattern.level, pat), "warn") end
   local _, rest = M.range(cmd)
   local name, args, steps = M.split(rest or cmd)
   local spec = name and commands.get(name)
@@ -1383,9 +1383,9 @@ ex({ "j" }, function(ctx)
   if r.items or in_view_clips(r) or whole_tracks(r) then fail("`j` joins the clips of a stretch of time: `:5,8j`") end
   local joined = 0
   for _, id in ipairs(time_tracks(r)) do
-    if daw.edit.arrange.join(id, r.from, r.to) then joined = joined + 1 end
+    if paw.edit.arrange.join(id, r.from, r.to) then joined = joined + 1 end
   end
-  daw.notify(joined == 0 and "nothing to join" or "joined clips on " .. plural(joined, "track"))
+  paw.notify(joined == 0 and "nothing to join" or "joined clips on " .. plural(joined, "track"))
 end, { desc = "Join the MIDI clips of a range into one on each track: `:5,8j`", label = "Join clips" })
 ex({ "mute", "mute!" }, function(ctx) mute_or_solo(ctx, "mute", true) end, { items = true,
   desc = "Mute tracks (`:t2,t4 mute`) or the clips of a stretch of time (`:5,8 mute`); `mute!` switches", label = "Mute" })
@@ -1395,23 +1395,23 @@ ex({ "solo", "solo!" }, function(ctx) mute_or_solo(ctx, "solo", true) end, { ite
 ex({ "unsolo" }, function(ctx) mute_or_solo(ctx, "solo", false) end, { items = true, desc = "Unsolo tracks: `:t* unsolo`", label = "Unsolo" })
 ex({ "volume" }, function(ctx)
   local text = number_arg(ctx, "volume", "`:t* volume -3` 3 dB down, `=-6` to −6 dB")
-  local read = require("daw.views.cmdline").read_value
+  local read = require("paw.views.cmdline").read_value
   local ids = set_tracks(ctx, "volume", "volume", function(now)
     local v = read(text, now)
     if not v then fail("`%s`: not a volume: `-3`, `+2`, `=-6`", text) end
     return util.clamp(v, -150, 24)
   end)
-  daw.notify("volume of " .. plural(#ids, "track"))
+  paw.notify("volume of " .. plural(#ids, "track"))
 end, { items = true, desc = "Set the volume of tracks: `:t* volume -3` steps down 3 dB, `=-6` sets −6 dB", label = "Volume" })
 ex({ "pan" }, function(ctx)
   local text = number_arg(ctx, "pan", "`:t2 pan =-0.5` half left, `+0.1` a step right")
-  local read = require("daw.views.cmdline").read_value
+  local read = require("paw.views.cmdline").read_value
   local ids = set_tracks(ctx, "pan", "pan", function(now)
     local v = read(text, now)
     if not v then fail("`%s`: not a pan: `=-0.5`, `+0.1`, `0`", text) end
     return util.clamp(v, -1, 1)
   end)
-  daw.notify("pan of " .. plural(#ids, "track"))
+  paw.notify("pan of " .. plural(#ids, "track"))
 end, { items = true, desc = "Pan tracks, -1 left to 1 right: `:t2 pan =-0.5`, `+0.1` a step right", label = "Pan" })
 ex({ "quantize" }, function(ctx)
   local grid = grid_arg(arg(ctx))
@@ -1423,7 +1423,7 @@ ex({ "quantize" }, function(ctx)
     changes[i] = { item = item, change = { start = math.max(0, item.note.start + at - item.at) } }
   end
   M.apply(changes)
-  daw.notify(string.format("snapped %s to %g beats", plural(#items, "note"), grid))
+  paw.notify(string.format("snapped %s to %g beats", plural(#items, "note"), grid))
 end, { items = true, desc = "Snap the notes of a range to the grid: `:%quantize`, `:5,8quantize 1/16`", label = "Quantize" })
 ex({ "transpose" }, function(ctx)
   local by = tonumber((arg(ctx):gsub("^%+", "")))
@@ -1432,7 +1432,7 @@ ex({ "transpose" }, function(ctx)
   local changes = {}
   for i, item in ipairs(items) do changes[i] = { item = item, change = { pitch = util.clamp(item.note.pitch + by, 0, 127) } } end
   M.apply(changes)
-  daw.notify(string.format("moved %s by %d", plural(#items, "note"), by))
+  paw.notify(string.format("moved %s by %d", plural(#items, "note"), by))
 end, { items = true, desc = "Move the notes of a range up or down: `:5,8transpose 12`, `:%transpose -3`", label = "Transpose" })
 ex({ "s" }, substitute, { items = true,
   desc = "Change what matches a pattern: `:%s/c4/d4/g`, `:s/vel>100/vel=90/`, `:%s/name:Verse/name:Chorus/`; flags g c n", label = "Substitute" })
@@ -1472,11 +1472,11 @@ end
 
 --- Move to where a range starts, as `:5` does in Vim.
 function M.go(r)
-  daw.keymap.push_jump()
-  if r.tracks then daw.cursor.set_track(r.tracks[1]) end
+  paw.keymap.push_jump()
+  if r.tracks then paw.cursor.set_track(r.tracks[1]) end
   if r.from then
     local a = adapter()
-    if a.go then a.go(r.from) else daw.cursor.set_beat(r.from) end
+    if a.go then a.go(r.from) else paw.cursor.set_beat(r.from) end
   end
 end
 
@@ -1515,7 +1515,7 @@ function M.exec(line, ctx)
   if spec.range then
     local function run(r)
       local c = util.merge(ctx, { range = r })
-      if r.selection then return daw.keymap.with_selection(r.region, commands.run, name, parsed, c) end
+      if r.selection then return paw.keymap.with_selection(r.region, commands.run, name, parsed, c) end
       return commands.run(name, parsed, c)
     end
     -- A view of several clips runs its own commands on each in its own way.
@@ -1525,13 +1525,13 @@ function M.exec(line, ctx)
   end
 
   if range.selection and not range.track_range then
-    return daw.keymap.with_selection(range.region, commands.run, name, parsed, ctx)
+    return paw.keymap.with_selection(range.region, commands.run, name, parsed, ctx)
   end
   if whole_tracks(range) then
     -- Any command at each track, the cursor on it, as `:g` runs one at each match.
     for _, id in ipairs(range.tracks) do
-      daw.cursor.set_track(id)
-      commands.run(name, parsed, util.merge(ctx, { target = daw.address.track(id) }))
+      paw.cursor.set_track(id)
+      commands.run(name, parsed, util.merge(ctx, { target = paw.address.track(id) }))
     end
     return
   end
@@ -1544,7 +1544,7 @@ local view_state   -- what the views show while a line is typed: see M.preview
 
 confirm = function(chosen, rep, line)
   local accepted, i = {}, 0
-  local cmdline = require("daw.views.cmdline")
+  local cmdline = require("paw.views.cmdline")
   local function done()
     view_state = nil
     api.undo_label(line)
@@ -1553,7 +1553,7 @@ confirm = function(chosen, rep, line)
       if c.change then changes[#changes + 1] = c else removed[#removed + 1] = c.item end
     end
     M.apply(changes, removed)
-    daw.notify(string.format("changed %d of %d", #accepted, #chosen))
+    paw.notify(string.format("changed %d of %d", #accepted, #chosen))
     api.ui_redraw()
   end
   local ask
@@ -1706,7 +1706,7 @@ local function paint_roll(p)
           local grow = p.row(c.pitch or n.pitch)
           if grow then
             local g0, g1 = p.x(start + offset), p.x(start + len + offset)
-            p.roll:fill(g0, grow, math.max(1, g1 - g0), 1, daw.opt.ascii and ":" or "░", "ExGhost")
+            p.roll:fill(g0, grow, math.max(1, g1 - g0), 1, paw.opt.ascii and ":" or "░", "ExGhost")
           end
         end
       end
@@ -1731,11 +1731,11 @@ local function roll_marks(clip_id)
   return out
 end
 
-daw.ui.views.pianoroll.layer("ex", 45, paint_roll, roll_marks)
+paw.ui.views.pianoroll.layer("ex", 45, paint_roll, roll_marks)
 
 -- The arrange view: the range on the ruler, its tracks marked in the
 -- headers, clips that match (or hold notes that do) lit with how many.
-daw.ui.views.arrange.layers.ex = function(_, layer)
+paw.ui.views.arrange.layers.ex = function(_, layer)
   local s = view_state
   if not (s and s.from) then return end
   local x0, x1 = layer.x(s.from), layer.x(s.to)
@@ -1743,11 +1743,11 @@ daw.ui.views.arrange.layers.ex = function(_, layer)
   local w = math.min(layer.ruler.width, x1) - from
   if w > 0 then layer.ruler:fill(from, 0, w, 1, nil, "ExRange") end
 end
-daw.ui.layer("arrange", "header", "ex", 45, function(c)
+paw.ui.layer("arrange", "header", "ex", 45, function(c)
   local s = view_state
   if s and s.tracks and s.tracks[c.track] then c.buf:text(c.x, c.y, "▌", "ExCurrent") end
 end)
-daw.ui.layer("arrange", "clip", "ex", 45, function(c)
+paw.ui.layer("arrange", "clip", "ex", 45, function(c)
   local s = view_state
   local n = s and s.clips[c.clip.id]
   if not n then return end
@@ -1766,13 +1766,13 @@ function M.complete_range(line)
   if before and not before:find("%s") then
     local out = { { text = before .. "'<,'>", label = "'<,'>", desc = "the last selection" } }
     local names = {}
-    for name, pos in pairs(daw.keymap.marks()) do
+    for name, pos in pairs(paw.keymap.marks()) do
       if name:match("^%a$") then names[#names + 1] = { name, pos } end
     end
     table.sort(names, function(a, b) return a[1] < b[1] end)
     for _, m in ipairs(names) do
       local ok, at = pcall(mark_beat, m[1])
-      out[#out + 1] = { text = before .. "'" .. m[1], label = "'" .. m[1], desc = ok and "mark at " .. daw.time.format(at) or "mark" }
+      out[#out + 1] = { text = before .. "'" .. m[1], label = "'" .. m[1], desc = ok and "mark at " .. paw.time.format(at) or "mark" }
     end
     local typed = line:match("'(%a)$")
     if typed then

@@ -1,4 +1,4 @@
-//! What the kernel says to draw (`daw.frontend.state`), read into plain
+//! What the kernel says to draw (`paw.frontend.state`), read into plain
 //! data, and the small sums the drawing makes on it: levels on a fader's
 //! travel, which ruler lines show at a zoom, where a curve is at a beat.
 

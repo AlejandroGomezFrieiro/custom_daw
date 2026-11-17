@@ -8,17 +8,17 @@
 here=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$here/../../.." && pwd)
 # What tests/tools/env.sh sets up: everything under target/test-scratch.
-SCRATCH=${DAW_TEST_SCRATCH:-$ROOT/target/test-scratch}
+SCRATCH=${PAW_TEST_SCRATCH:-$ROOT/target/test-scratch}
 mkdir -p "$SCRATCH/xdg"
 export XDG_CACHE_HOME=$SCRATCH/xdg/cache XDG_STATE_HOME=$SCRATCH/xdg/state
 export XDG_DATA_HOME=$SCRATCH/xdg/data XDG_CONFIG_HOME=$SCRATCH/xdg/config
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/bus
-BIN=${DAW_TEST_BIN:-$ROOT/target/release}
+BIN=${PAW_TEST_BIN:-$ROOT/target/release}
 "$here/build.sh" > /dev/null 2>&1 || { echo "the sampler did not build"; exit 1; }
 cd "$ROOT" || exit 1
 out=$SCRATCH/sampler.out
 CLAP_PATH=$ROOT/extensions/sampler/clap LV2_PATH=$SCRATCH/none VST3_PATH=$SCRATCH/none \
-  "$BIN/daw" --clean --audio null -l tests/suite.lua "sampler: ${1:-}" > "$out" 2>&1
+  "$BIN/paw" --clean --audio null -l tests/suite.lua "sampler: ${1:-}" > "$out" 2>&1
 code=$?
 grep -E "^(ok|skip|FAIL)" "$out"
 grep -A8 "^FAIL" "$out"

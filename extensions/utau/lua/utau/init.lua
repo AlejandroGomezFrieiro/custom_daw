@@ -7,7 +7,7 @@
 -- of the track's voice. All of it is ordinary project data: saved, loaded and
 -- undone like any edit. This module mirrors it to the engine, and gives the
 -- device the audio that comes back.
-local api = daw.api
+local api = paw.api
 local proto = require("utau.proto")
 local payload = require("utau.payload")
 local engine = require("utau.engine")
@@ -189,10 +189,10 @@ end
 --- either.
 function M.tempo_map()
   local tempos, sigs, key = {}, {}, {}
-  local points = daw.tempo.points()
+  local points = paw.tempo.points()
   local function add(beat, bpm)
     local tick = math.floor(beat * proto.TICKS + 0.5)
-    tempos[#tempos + 1] = { tick = tick, bpm = bpm, sec = daw.tempo.beats_to_seconds(beat) }
+    tempos[#tempos + 1] = { tick = tick, bpm = bpm, sec = paw.tempo.beats_to_seconds(beat) }
     key[#key + 1] = tick .. ":" .. bpm
   end
   for i, p in ipairs(points) do
@@ -201,14 +201,14 @@ function M.tempo_map()
       local beat, step = p.beat, 0.25
       while beat < next_point.beat - 1e-9 and #tempos < 20000 do
         local to = math.min(beat + step, next_point.beat)
-        add(beat, (to - beat) * 60 / daw.tempo.seconds_between(beat, to))
+        add(beat, (to - beat) * 60 / paw.tempo.seconds_between(beat, to))
         beat = to
       end
     else
       add(p.beat, p.bpm)
     end
   end
-  for _, s in ipairs(daw.tempo.signatures()) do
+  for _, s in ipairs(paw.tempo.signatures()) do
     sigs[#sigs + 1] = { tick = math.floor(s.beat * proto.TICKS + 0.5), num = s.num, den = s.den, bar = s.bar - 1 }
     key[#key + 1] = s.beat .. "@" .. s.num .. "/" .. s.den
   end
@@ -223,7 +223,7 @@ function M.snapshot()
     sigs = sigs,
     tracks = {}, parts = {}, tempo = key,
   }
-  local default_lyric = daw.opt.utau_default_lyric
+  local default_lyric = paw.opt.utau_default_lyric
   for _, vocal in ipairs(M.vocal_tracks()) do
     if M.frozen(vocal.track) then goto next_track end
     local t = api.track_get(vocal.track)
@@ -446,19 +446,19 @@ end
 function M.schedule()
   if dirty then return end
   dirty = true
-  daw.defer(function() if dirty then M.sync() end end, 0)
+  paw.defer(function() if dirty then M.sync() end end, 0)
 end
 
 function M.send_transport()
   local t = api.transport_get()
-  local sec = daw.tempo.beats_to_seconds(t.position)
-  engine.send(proto.encode.transport(t.playing, sec, daw.tempo.beats_to_seconds(daw.cursor.beat)))
+  local sec = paw.tempo.beats_to_seconds(t.position)
+  engine.send(proto.encode.transport(t.playing, sec, paw.tempo.beats_to_seconds(paw.cursor.beat)))
 end
 
 engine.on_connect = function()
   sent = nil
   engine.send(proto.encode.render_policy({
-    draft = daw.opt.utau_drafts, final_delay_ms = daw.opt.utau_final_delay,
+    draft = paw.opt.utau_drafts, final_delay_ms = paw.opt.utau_final_delay,
   }))
   engine.send(proto.encode.request_singers(false))
   M.sync()
@@ -588,7 +588,7 @@ engine.handlers.SingerList = function(m)
     M.pending_singers[track] = nil
     if pcall(api.track_get, track) and M.device_of(track) then
       local s = M.choose_singer(track, query)
-      if not s then daw.notify("utau: no singer matches `" .. query .. "`", "warn") end
+      if not s then paw.notify("utau: no singer matches `" .. query .. "`", "warn") end
     end
   end
 end
@@ -603,7 +603,7 @@ end
 
 engine.handlers.Error = function(m)
   local level = m.fatal and "error" or "warn"
-  if m.code ~= 8 then daw.notify("utau: " .. tostring(m.message), level) end
+  if m.code ~= 8 then paw.notify("utau: " .. tostring(m.message), level) end
   -- The engine lost track of something: start over from the whole project.
   if m.code == 4 and not m.fatal then
     sent = nil

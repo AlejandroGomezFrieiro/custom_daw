@@ -1,7 +1,7 @@
 -- Editing what a vocal track sings: lyrics and properties on notes, and the
 -- singing curves, which are automation lanes on the track's `utau` device.
--- Everything goes through `daw.api`, so each change is an ordinary edit.
-local api = daw.api
+-- Everything goes through `paw.api`, so each change is an ordinary edit.
+local api = paw.api
 
 local M = {}
 

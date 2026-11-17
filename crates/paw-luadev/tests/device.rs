@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use daw_engine::device::{Instance, Io};
-use daw_engine::{Attr, Event, EventBuf, EventKind, ProcessCtx};
+use paw_engine::device::{Instance, Io};
+use paw_engine::{Attr, Event, EventBuf, EventKind, ProcessCtx};
 
 /// A script written to a file of its own.
 fn script(name: &str, text: &str) -> PathBuf {
@@ -42,7 +42,7 @@ fn run(
 }
 
 const GAIN: &str = r#"
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 local dev = dsp.device {
   name = "Gain",
   params = {
@@ -62,7 +62,7 @@ return dev
 
 #[test]
 fn a_script_says_what_it_is() {
-    let desc = daw_luadev::describe(&script("describe.lua", GAIN)).unwrap();
+    let desc = paw_luadev::describe(&script("describe.lua", GAIN)).unwrap();
     assert_eq!(desc.name.as_deref(), Some("Gain"));
     assert_eq!(desc.category, "effect");
     assert_eq!(desc.params.len(), 2);
@@ -73,7 +73,7 @@ fn a_script_says_what_it_is() {
 
 #[test]
 fn blocks_are_processed_by_the_numbers_and_follow_parameters() {
-    let mut dev = daw_luadev::make(&script("gain.lua", GAIN), 48000.0, 512).unwrap();
+    let mut dev = paw_luadev::make(&script("gain.lua", GAIN), 48000.0, 512).unwrap();
     let (l, r, _) = run(&mut dev, 1.0, 256, &[]);
     assert!((l[0] - 0.5).abs() < 1e-4 && (r[255] - 0.5).abs() < 1e-4, "{} {}", l[0], r[255]);
     dev.device.set_param(0, 0.0);
@@ -91,7 +91,7 @@ fn events_are_passed_on_with_those_sent_in_order() {
     let path = script(
         "echo.lua",
         r#"
-        local dsp = require("daw.dsp")
+        local dsp = require("paw.dsp")
         local dev = dsp.device { midi_effect = MIDI_EFFECT }
         function dev.process(b)
           for i = b.nevents - 1, 0, -1 do
@@ -124,14 +124,14 @@ fn events_are_passed_on_with_those_sent_in_order() {
         frame: 30,
         kind: EventKind::NoteControl {
             key: 60,
-            ctl: daw_engine::NoteCtl::Bend,
+            ctl: paw_engine::NoteCtl::Bend,
             value: 0.25,
             ch: 3,
         },
     };
     let text = std::fs::read_to_string(&path).unwrap();
     std::fs::write(&path, text.replace("MIDI_EFFECT", "false")).unwrap();
-    let mut dev = daw_luadev::make(&path, 48000.0, 512).unwrap();
+    let mut dev = paw_luadev::make(&path, 48000.0, 512).unwrap();
     let (_, _, out) = run(&mut dev, 0.0, 64, &[on(0, 60), on(20, 62), bend]);
     let frames: Vec<u32> = out.iter().map(|e| e.frame).collect();
     assert_eq!(frames, [0, 0, 5, 20, 25, 30], "merged in order: {out:?}");
@@ -157,7 +157,7 @@ fn events_are_passed_on_with_those_sent_in_order() {
     assert_eq!(out[1].kind, bend.kind, "an event the library does not describe, as it came");
 
     std::fs::write(&path, text.replace("MIDI_EFFECT", "true")).unwrap();
-    let mut dev = daw_luadev::make(&path, 48000.0, 512).unwrap();
+    let mut dev = paw_luadev::make(&path, 48000.0, 512).unwrap();
     let (_, _, out) = run(&mut dev, 0.0, 64, &[on(0, 60), on(20, 62), bend]);
     let frames: Vec<u32> = out.iter().map(|e| e.frame).collect();
     assert_eq!(frames, [0, 5, 25], "only what it sent: {out:?}");
@@ -168,7 +168,7 @@ fn a_script_that_fails_stops_and_says_why() {
     let path = script(
         "fails.lua",
         r#"
-        local dev = require("daw.dsp").device { category = "instrument" }
+        local dev = require("paw.dsp").device { category = "instrument" }
         local blocks = 0
         function dev.process(b)
           blocks = blocks + 1
@@ -178,7 +178,7 @@ fn a_script_that_fails_stops_and_says_why() {
         return dev
         "#,
     );
-    let mut dev = daw_luadev::make(&path, 48000.0, 512).unwrap();
+    let mut dev = paw_luadev::make(&path, 48000.0, 512).unwrap();
     let controller = dev.controller.as_mut().unwrap();
     assert_eq!(controller.health(), None);
     assert_eq!(run(&mut dev, 0.0, 32, &[]).0[0], 1.0);
@@ -198,7 +198,7 @@ fn calls_reach_the_script_between_blocks_and_files_are_mapped() {
     let path = script(
         "called.lua",
         r#"
-        local dsp = require("daw.dsp")
+        local dsp = require("paw.dsp")
         local dev = dsp.device { category = "instrument" }
         local level, table = 0, nil
         function dev.call(method, data)
@@ -218,7 +218,7 @@ fn calls_reach_the_script_between_blocks_and_files_are_mapped() {
         return dev
         "#,
     );
-    let mut dev = daw_luadev::make(&path, 48000.0, 64).unwrap();
+    let mut dev = paw_luadev::make(&path, 48000.0, 64).unwrap();
     let call = |dev: &mut Instance, method: &str, data: &[u8]| {
         dev.controller.as_mut().unwrap().call(method, data)
     };
@@ -231,19 +231,19 @@ fn calls_reach_the_script_between_blocks_and_files_are_mapped() {
     let err = call(&mut dev, "fail", b"").unwrap_err().to_string();
     assert!(err.ends_with("refused"), "{err}");
     assert_eq!(dev.controller.as_mut().unwrap().health(), None, "a refused call does not stop it");
-    let mut plain = daw_luadev::make(&script("plain.lua", GAIN), 48000.0, 64).unwrap();
+    let mut plain = paw_luadev::make(&script("plain.lua", GAIN), 48000.0, 64).unwrap();
     let err = call(&mut plain, "level", b"1").unwrap_err().to_string();
     assert!(err.contains("no method `level`"), "{err}");
 }
 
 #[test]
 fn a_script_that_does_not_load_says_why() {
-    let err = daw_luadev::make(&script("syntax.lua", "return {\n x = = 1 }"), 48000.0, 64)
+    let err = paw_luadev::make(&script("syntax.lua", "return {\n x = = 1 }"), 48000.0, 64)
         .err()
         .unwrap()
         .to_string();
     assert!(err.starts_with("syntax.lua:2:"), "{err}");
-    let err = daw_luadev::describe(&script("nothing.lua", "return 5"))
+    let err = paw_luadev::describe(&script("nothing.lua", "return 5"))
         .err()
         .unwrap()
         .to_string();
@@ -257,22 +257,22 @@ fn the_library_registers_scripts_and_sees_them_change() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("lib_gain.lua"), GAIN).unwrap();
     std::fs::write(dir.join("lib_broken.lua"), "return").unwrap();
-    let mut registry = daw_engine::Registry::default();
-    let found = daw_luadev::add_dir(&mut registry, &dir, 0);
+    let mut registry = paw_engine::Registry::default();
+    let found = paw_luadev::add_dir(&mut registry, &dir, 0);
     assert_eq!(found.added, ["lua:lib_gain"]);
     assert_eq!(found.errors.len(), 1);
     let info = registry.get("lua:lib_gain").unwrap().info().clone();
     assert_eq!((info.format.as_str(), info.name.as_str()), ("lua", "Gain"));
-    assert!(daw_luadev::rescan(&mut registry).changed.is_empty(), "nothing changed");
+    assert!(paw_luadev::rescan(&mut registry).changed.is_empty(), "nothing changed");
     std::fs::write(dir.join("lib_gain.lua"), GAIN.replace("\"Gain\"", "\"Louder\"")).unwrap();
-    assert_eq!(daw_luadev::rescan(&mut registry).changed, ["lua:lib_gain"]);
+    assert_eq!(paw_luadev::rescan(&mut registry).changed, ["lua:lib_gain"]);
     assert_eq!(registry.get("lua:lib_gain").unwrap().info().name, "Louder");
 }
 
 /// Not a check, a number for the record: what a block costs.
 #[test]
 fn a_block_of_a_simple_device_is_cheap() {
-    let mut dev = daw_luadev::make(&script("cost.lua", GAIN), 48000.0, 256).unwrap();
+    let mut dev = paw_luadev::make(&script("cost.lua", GAIN), 48000.0, 256).unwrap();
     for _ in 0..200 {
         run(&mut dev, 0.5, 256, &[]);
     }

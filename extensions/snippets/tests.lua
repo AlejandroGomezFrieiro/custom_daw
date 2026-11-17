@@ -2,20 +2,20 @@
 -- helpers. The first is the owner's example: before a C major chord,
 -- `dominant` writes G7 up to it.
 local T = ...
-local api = daw.api
+local api = paw.api
 local eq, test = T.eq, T.test
-local H = daw.harmony
-local music = daw.music
+local H = paw.harmony
+local music = paw.music
 
 local function load()
-  if not daw.ext.loaded.snippets then
-    daw.ext.load("extensions/snippets")
-    assert(daw.ext.loaded.snippets.ok, daw.ext.loaded.snippets.error)
+  if not paw.ext.loaded.snippets then
+    paw.ext.load("extensions/snippets")
+    assert(paw.ext.loaded.snippets.ok, paw.ext.loaded.snippets.error)
   end
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
@@ -27,7 +27,7 @@ end
 
 --- A track with one clip of chords: `{ "C4 E4 G4", at, length }` each.
 local function track(name, chords, length)
-  local t = daw.add_track({ name = name })
+  local t = paw.add_track({ name = name })
   local notes = {}
   for _, c in ipairs(chords) do
     for _, p in ipairs(notes_of(c[1])) do notes[#notes + 1] = { pitch = p, start = c[2], length = c[3], velocity = 90 } end
@@ -58,22 +58,22 @@ local function start()
   load()
   T.fresh()
   api.engine_restart({ backend = "null" })
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
   -- Panels other tests left open (the mixer, a drum grid) would leave the
   -- piano roll too few rows to show what these tests look for.
   for _, name in ipairs({ "mixer", "devices", "drums", "notation", "utau", "session", "undotree", "eventlist", "mixdiag", "sections", "vinput", "tutor" }) do
-    if daw.ui.views[name] and daw.ui.visible(name) then pcall(daw.ui.hide, name) end
+    if paw.ui.views[name] and paw.ui.visible(name) then pcall(paw.ui.hide, name) end
   end
 end
 
 local function open(clip, pitch, beat)
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
   roll:set(pitch, beat)
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   return roll
 end
 
@@ -93,7 +93,7 @@ test("snippets: dominant before a C major chord on another track writes G7 up to
   local before = table.concat(pitches, " ")
   -- Tab to the choices, C-n to the next voicing.
   keys("<Tab>")
-  eq(daw.snippet.active().choices[daw.snippet.active().current].name, "voicing", "the first choice is the voicing")
+  eq(paw.snippet.active().choices[paw.snippet.active().current].name, "voicing", "the first choice is the voicing")
   keys("<C-n>")
   local other, pcs2, length2 = at(keys_clip, 2)
   eq(pcs2, "2 5 7 11", "still G7")
@@ -110,7 +110,7 @@ test("snippets: the owner's example as the terminal shows it: chords over the ru
   local _, clip = track("Piano", { { "D3 F3 A3 C4", 0, 2 } }, 8)
   track("Strings", { { "C3 G3 C4 E4", 4, 4 } }, 8)
   open(clip, 60, 2)
-  daw.opt.note_zoom = 8
+  paw.opt.note_zoom = 8
   local function screen() return table.concat(api.ui_snapshot(140, 48), "\n") end
   local function has(text) return screen():find(text, 1, true) ~= nil end
   eq(has("▏Dm7") and has("▏C"), true, "the chord row: D minor seventh, then C")
@@ -130,11 +130,11 @@ test("snippets: the owner's example as the terminal shows it: chords over the ru
   eq(has("dominant · voicing: drop2 (3/5)"), true, "C-n: the next voicing that sounds otherwise (close is the smooth one here)")
   eq(screen() ~= before, true, "drawn anew")
   keys("<C-y>")
-  eq(#daw.snippet.window_marks(clip.id), 0, "C-y: done, the marks are gone")
+  eq(#paw.snippet.window_marks(clip.id), 0, "C-y: done, the marks are gone")
   eq(has("▏G7"), true, "the notes stay")
   keys("u")
   eq(has("▏G7"), false, "u: the whole snippet undone")
-  daw.ui.focus("arrange")
+  paw.ui.focus("arrange")
 end)
 
 test("snippets: with two clips edited, dominant writes into the active one, in its own beats", function()
@@ -142,22 +142,22 @@ test("snippets: with two clips edited, dominant writes into the active one, in i
   local _, piano = track("Piano", { { "D3 F3 A3 C4", 0, 2 } }, 8)
   -- The strings' clip starts at beat 2, so its C major at its own beat 2 is
   -- the song's beat 4.
-  local strings = daw.add_track({ name = "Strings" })
+  local strings = paw.add_track({ name = "Strings" })
   local other = strings:add_clip({ start = 2, length = 6, notes = {
     { pitch = 48, start = 2, length = 4 }, { pitch = 55, start = 2, length = 4 },
     { pitch = 60, start = 2, length = 4 }, { pitch = 64, start = 2, length = 4 } } })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
-  daw.roll_clips.open({ piano.id, other.id }, piano.id)
-  daw.ui.views.pianoroll:set(60, 2)
-  daw.ui.focus("pianoroll")
+  paw.roll_clips.open({ piano.id, other.id }, piano.id)
+  paw.ui.views.pianoroll:set(60, 2)
+  paw.ui.focus("pianoroll")
   keys(":snippet dominant<CR>")
   local pitches, pcs, length = at(piano, 2)
   eq(pcs .. " " .. length, "2 5 7 11 2", "G7 in the active clip, up to the C: " .. table.concat(pitches, " "))
   eq(#other:notes(), 4, "the other clip edited is left alone")
   keys("u")
   eq(#piano:notes(), 4, "one undo")
-  daw.roll_clips.only()
+  paw.roll_clips.only()
 end)
 
 test("snippets: dominant before a C major chord in this clip, through the picker, leads into it", function()
@@ -166,7 +166,7 @@ test("snippets: dominant before a C major chord in this clip, through the picker
   open(clip, 60, 0)
   keys("<C-s>")
   keys("dom")
-  eq(daw.pick.state().item.name, "dominant", "typing finds it")
+  eq(paw.pick.state().item.name, "dominant", "typing finds it")
   keys("<CR>")
   local pitches, pcs, length = at(clip, 0)
   eq(pcs, "2 5 7 11", "G7: " .. table.concat(pitches, " "))
@@ -246,7 +246,7 @@ test("snippets: pedal, arp and bass are made of the chords there", function()
   local n = clip:notes()[1]
   eq(n.pitch % 12 .. " " .. n.length, "9 4", "a held tonic for a bar (A minor)")
   keys("u")
-  daw.opt.note_grid = 0.5
+  paw.opt.note_grid = 0.5
   keys(":snippet arp<CR>")
   local arp = {}
   for _, x in ipairs(clip:notes()) do arp[#arp + 1] = x.pitch end
@@ -256,7 +256,7 @@ test("snippets: pedal, arp and bass are made of the chords there", function()
   for i = 1, 3 do pcs[i] = arp[i] % 12 end
   table.sort(pcs)
   eq(table.concat(pcs, " "), "0 4 9", "through A C E")
-  daw.opt.note_grid = 0.25
+  paw.opt.note_grid = 0.25
 end)
 
 test("snippets: harmonize and voice-lead work on the selection", function()
@@ -264,7 +264,7 @@ test("snippets: harmonize and voice-lead work on the selection", function()
   local _, clip = track("Lead", { { "C5", 0, 1 }, { "D5", 1, 1 }, { "E5", 2, 1 } })
   open(clip, 72, 0)
   keys(":snippet harmonize<CR>")
-  eq(daw.ui.message.text, "select the notes to harmonize first", "without a selection it says so")
+  eq(paw.ui.message.text, "select the notes to harmonize first", "without a selection it says so")
   keys("v$")
   keys("<C-s>harm<CR>")
   local pcs = {}
@@ -295,13 +295,13 @@ test("snippets: Ctrl-Space offers the snippets that fit as suggestions, and Tab 
   local _, clip = track("Piano", {}, 8)
   track("Strings", { { "C3 G3 C4 E4", 4, 4 } }, 8)
   open(clip, 60, 0)
-  daw.opt.complete_auto = false
+  paw.opt.complete_auto = false
   keys("<C-Space>")
   local shown
   for _ = 1, 300 do
-    shown = daw.complete.current()
+    shown = paw.complete.current()
     if shown then break end
-    daw.wait(10)
+    paw.wait(10)
   end
   eq(shown ~= nil, true, "suggestions show")
   local labels, which = {}, nil
@@ -311,11 +311,11 @@ test("snippets: Ctrl-Space offers the snippets that fit as suggestions, and Tab 
   end
   eq(which ~= nil, true, "dominant among them: " .. table.concat(labels, " "))
   for _ = 2, which do keys("<C-n>") end
-  eq(daw.complete.current().item.label, "dominant", "chosen")
+  eq(paw.complete.current().item.label, "dominant", "chosen")
   eq(#clip:notes(), 0, "a ghost, not written yet")
   keys("<Tab>")
   eq(select(2, at(clip, 0)), "2 5 7 11", "Tab writes the G7")
   keys("u")
   eq(#clip:notes(), 0, "one undo")
-  daw.opt.complete_auto = true
+  paw.opt.complete_auto = true
 end)

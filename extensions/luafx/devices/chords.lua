@@ -1,7 +1,7 @@
 -- Chords: every note played becomes a chord built on it. A MIDI effect:
 -- put it before an instrument. Everything else that comes in (pedals,
 -- bends) is passed on as it is.
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 
 local shapes = {
   { "Major", { 0, 4, 7 } },

@@ -15,17 +15,17 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// `daw --no-plugins <args> -l <script> <dir>` with its XDG directories in `dir`.
-fn daw(dir: &Path, script: &str, args: &[&Path]) -> Command {
-    daw_plugins(dir, script, args, false)
+/// `paw --no-plugins <args> -l <script> <dir>` with its XDG directories in `dir`.
+fn paw(dir: &Path, script: &str, args: &[&Path]) -> Command {
+    paw_plugins(dir, script, args, false)
 }
 
 /// The same, with plugins found as the program finds them, if `plugins`.
-fn daw_plugins(dir: &Path, script: &str, args: &[&Path], plugins: bool) -> Command {
+fn paw_plugins(dir: &Path, script: &str, args: &[&Path], plugins: bool) -> Command {
     let file = dir.join(format!("script-{}.lua", script.len()));
     std::fs::write(&file, script).unwrap();
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let mut command = Command::new(env!("CARGO_BIN_EXE_daw"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_paw"));
     command.current_dir(&root);
     if !plugins {
         command.arg("--no-plugins");
@@ -43,12 +43,12 @@ fn daw_plugins(dir: &Path, script: &str, args: &[&Path], plugins: bool) -> Comma
 }
 
 const RECORD: &str = r#"
-local api = daw.api
+local api = paw.api
 local dir = ...
 api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 } })
-local mic = daw.add_track({ name = "mic" })
+local mic = paw.add_track({ name = "mic" })
 mic.input, mic.armed = "1", true
-daw.project.save(dir .. "/song.json")
+paw.project.save(dir .. "/song.json")
 "#;
 
 #[test]
@@ -56,18 +56,18 @@ fn a_disk_that_fills_up_stops_the_take_and_keeps_it() {
     let dir = scratch("full");
     let script = format!(
         r#"{RECORD}
-daw.transport.record()
+paw.transport.record()
 local waited = 0
-while daw.transport.playing and waited < 15000 do daw.wait(100) waited = waited + 100 end
-daw.flush()
+while paw.transport.playing and waited < 15000 do paw.wait(100) waited = waited + 100 end
+paw.flush()
 local clips = mic:clips()
-print("playing", tostring(daw.transport.playing))
+print("playing", tostring(paw.transport.playing))
 print("clips", #clips)
 print("beats", clips[1] and clips[1].length or 0)
-for _, m in ipairs(daw.ui.messages) do print("message", m.text) end
+for _, m in ipairs(paw.ui.messages) do print("message", m.text) end
 "#
     );
-    let mut command = daw(&dir, &script, &[Path::new("--clean")]);
+    let mut command = paw(&dir, &script, &[Path::new("--clean")]);
     // Files may grow to 600 kB: about three seconds of a mono take.
     // SAFETY: only async-signal-safe calls between fork and exec.
     unsafe {
@@ -114,15 +114,15 @@ fn a_take_survives_the_program_being_killed() {
     let dir = scratch("killed");
     let script = format!(
         r#"{RECORD}
-daw.opt.autosave = 60
-daw.transport.record()
-daw.flush()
+paw.opt.autosave = 60
+paw.transport.record()
+paw.flush()
 print("recording")
 io.stdout:flush()
-daw.wait(20000)
+paw.wait(20000)
 "#
     );
-    let mut command = daw(&dir, &script, &[]);
+    let mut command = paw(&dir, &script, &[]);
     command.stdout(Stdio::piped());
     let mut child = command.spawn().unwrap();
     let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
@@ -141,26 +141,26 @@ daw.wait(20000)
 
     let check = r#"
 local dir = ...
-daw.flush()
-for _, m in ipairs(daw.ui.messages) do print("message", m.text) end
-local takes = daw.autosave.orphan_takes()
+paw.flush()
+for _, m in ipairs(paw.ui.messages) do print("message", m.text) end
+local takes = paw.autosave.orphan_takes()
 print("orphans", #takes)
-local choices = daw.autosave.choices()
+local choices = paw.autosave.choices()
 for i, c in ipairs(choices) do print("choice", i, c.name, c.take and "take" or "copy") end
 -- The safety copy puts the take back where it was, on its track.
 for i, c in ipairs(choices) do
   if not c.take and c.path == dir .. "/song.json" then
-    daw.commands.exec("recover " .. i)
+    paw.commands.exec("recover " .. i)
     break
   end
 end
-local clips = daw.tracks()[1]:clips()
-print("track", daw.tracks()[1].name)
+local clips = paw.tracks()[1]:clips()
+print("track", paw.tracks()[1].name)
 print("clips", #clips)
 print("beats", clips[1] and clips[1].length or 0)
 "#;
     let song = dir.join("song.json");
-    let mut command = daw(&dir, check, &[&song]);
+    let mut command = paw(&dir, check, &[&song]);
     let out = command.output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -216,8 +216,8 @@ fn bad_plugin(dir: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 const MESSAGES: &str = r#"
-daw.flush()
-for _, m in ipairs(daw.ui.messages) do print("message", m.text) end
+paw.flush()
+for _, m in ipairs(paw.ui.messages) do print("message", m.text) end
 "#;
 
 #[test]
@@ -231,8 +231,8 @@ fn plugin_files_that_failed_are_skipped_until_rescanned() {
     .unwrap();
     bad_plugin(&dir, "killed", "kill(getpid(), SIGKILL);");
     let run = |script: &str| {
-        let mut command = daw_plugins(&dir, script, &[Path::new("--clean")], true);
-        command.env_remove("DAW_TEST_PLUGINS");
+        let mut command = paw_plugins(&dir, script, &[Path::new("--clean")], true);
+        command.env_remove("PAW_TEST_PLUGINS");
         command
             .env("CLAP_PATH", dir.join("clap"))
             .env("VST3_PATH", dir.join("none"))
@@ -261,7 +261,7 @@ fn plugin_files_that_failed_are_skipped_until_rescanned() {
     );
     // Asked, it looks again: and finds them failing again.
     let rescan = format!(
-        "{MESSAGES}\nlocal notes = daw.api.plugins_rescan('killed')\nprint('notes', #notes)\nfor _, n in ipairs(notes) do print('note', n) end"
+        "{MESSAGES}\nlocal notes = paw.api.plugins_rescan('killed')\nprint('notes', #notes)\nfor _, n in ipairs(notes) do print('note', n) end"
     );
     let (third, _) = run(&rescan);
     assert!(
@@ -280,8 +280,8 @@ fn plugin_files_that_failed_are_skipped_until_rescanned() {
 fn a_plugin_file_being_scanned_when_the_program_is_killed_is_skipped_next_time() {
     let dir = scratch("scan-killed");
     bad_plugin(&dir, "stalls", "sleep(6);");
-    let mut command = daw_plugins(&dir, MESSAGES, &[Path::new("--clean")], true);
-    command.env_remove("DAW_TEST_PLUGINS");
+    let mut command = paw_plugins(&dir, MESSAGES, &[Path::new("--clean")], true);
+    command.env_remove("PAW_TEST_PLUGINS");
     command
         .env("CLAP_PATH", dir.join("clap"))
         .env("VST3_PATH", dir.join("none"))
@@ -291,8 +291,8 @@ fn a_plugin_file_being_scanned_when_the_program_is_killed_is_skipped_next_time()
     child.kill().unwrap();
     child.wait().unwrap();
 
-    let mut command = daw_plugins(&dir, MESSAGES, &[Path::new("--clean")], true);
-    command.env_remove("DAW_TEST_PLUGINS");
+    let mut command = paw_plugins(&dir, MESSAGES, &[Path::new("--clean")], true);
+    command.env_remove("PAW_TEST_PLUGINS");
     command
         .env("CLAP_PATH", dir.join("clap"))
         .env("VST3_PATH", dir.join("none"))
@@ -314,11 +314,11 @@ fn a_plugin_file_being_scanned_when_the_program_is_killed_is_skipped_next_time()
 fn a_panic_in_the_program_keeps_a_safety_copy() {
     let dir = scratch("panic");
     let script = r#"
-daw.add_track({ name = "Unsaved idea" })
-daw.flush()
-daw.api.test_panic("a bug in the program")
+paw.add_track({ name = "Unsaved idea" })
+paw.flush()
+paw.api.test_panic("a bug in the program")
 "#;
-    let out = daw(&dir, script, &[Path::new("--clean")]).output().unwrap();
+    let out = paw(&dir, script, &[Path::new("--clean")]).output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!out.status.success(), "the program ends");
     assert!(
@@ -329,7 +329,7 @@ daw.api.test_panic("a bug in the program")
         stderr.contains("`:recover` opens it"),
         "and where the copy is:\n{stderr}"
     );
-    let recovery = dir.join("xdg/daw/recovery");
+    let recovery = dir.join("xdg/paw/recovery");
     let copies: Vec<_> = std::fs::read_dir(&recovery).unwrap().flatten().collect();
     assert_eq!(copies.len(), 1, "one copy in {}", recovery.display());
     let text = std::fs::read_to_string(copies[0].path()).unwrap();
@@ -340,12 +340,12 @@ daw.api.test_panic("a bug in the program")
 
     // The next start offers it, and it opens.
     let check = r#"
-local list = daw.autosave.left_behind()
+local list = paw.autosave.left_behind()
 print("left", #list)
-daw.commands.exec("recover 1")
-print("track", daw.tracks()[1].name)
+paw.commands.exec("recover 1")
+print("track", paw.tracks()[1].name)
 "#;
-    let out = daw(&dir, check, &[Path::new("--clean")]).output().unwrap();
+    let out = paw(&dir, check, &[Path::new("--clean")]).output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         stdout.contains("left\t1") && stdout.contains("track\tUnsaved idea"),
@@ -359,17 +359,17 @@ fn a_take_cut_off_by_a_kill_is_offered_after_the_folder_moved() {
     std::fs::create_dir_all(dir.join("proj")).unwrap();
     let script = r#"
 local dir = ...
-daw.api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 } })
-local mic = daw.add_track({ name = "mic" })
+paw.api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 } })
+local mic = paw.add_track({ name = "mic" })
 mic.input, mic.armed = "1", true
-daw.project.save(dir .. "/proj/song.json")
-daw.transport.record()
-daw.flush()
+paw.project.save(dir .. "/proj/song.json")
+paw.transport.record()
+paw.flush()
 print("recording")
 io.stdout:flush()
-daw.wait(20000)
+paw.wait(20000)
 "#;
-    let mut command = daw(&dir, script, &[]);
+    let mut command = paw(&dir, script, &[]);
     command.stdout(Stdio::piped());
     let mut child = command.spawn().unwrap();
     let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
@@ -380,17 +380,17 @@ daw.wait(20000)
     std::fs::rename(dir.join("proj"), dir.join("moved")).unwrap();
 
     let check = r#"
-daw.flush()
-for _, m in ipairs(daw.ui.messages) do print("message", m.text) end
-local takes = daw.autosave.orphan_takes()
+paw.flush()
+for _, m in ipairs(paw.ui.messages) do print("message", m.text) end
+local takes = paw.autosave.orphan_takes()
 print("orphans", #takes)
-if takes[1] then daw.autosave.import_take(takes[1].file) end
-local mic = daw.tracks()[1]
+if takes[1] then paw.autosave.import_take(takes[1].file) end
+local mic = paw.tracks()[1]
 print("track", mic.name, #mic:clips())
 print("beats", mic:clips()[1] and mic:clips()[1].length or 0)
 "#;
     let song = dir.join("moved/song.json");
-    let out = daw(&dir, check, &[&song]).output().unwrap();
+    let out = paw(&dir, check, &[&song]).output().unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success(),

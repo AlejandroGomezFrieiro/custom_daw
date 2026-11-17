@@ -22,8 +22,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
-use daw_engine::backend;
-use daw_engine::{Engine, Msg, wav};
+use paw_engine::backend;
+use paw_engine::{Engine, Msg, wav};
 use serde_json::{Value, json};
 
 use super::encode::{self, Lossy, Quality};
@@ -144,7 +144,7 @@ pub fn format_of(path: &Path, ffmpeg: Option<&str>) -> Result<Format> {
     }
 }
 
-/// The formats, for `daw.api.render_formats()`: `{ { name, extensions, bits,
+/// The formats, for `paw.api.render_formats()`: `{ { name, extensions, bits,
 /// lossy, available, why } }`; `why` says what a format that is not
 /// available needs.
 pub fn formats_json(ffmpeg: Option<&str>) -> Value {
@@ -764,10 +764,10 @@ fn write(engine: Engine, plan: &Plan, part: &Path, raw: &Path) -> Result<Value> 
             && pass.peak > 0.0
             && pass.peak.is_finite()
         {
-            gain = daw_engine::db_to_gain(level) / pass.peak;
+            gain = paw_engine::db_to_gain(level) / pass.peak;
         }
         if let (Some(target), Some(measured)) = (plan.loudness, pass.loudness) {
-            let to_loudness = daw_engine::db_to_gain(target - measured);
+            let to_loudness = paw_engine::db_to_gain(target - measured);
             // With a peak level too, the peak is a ceiling the loudness gives way to.
             gain = if plan.peak.is_some() {
                 gain.min(to_loudness)
@@ -810,9 +810,9 @@ fn write(engine: Engine, plan: &Plan, part: &Path, raw: &Path) -> Result<Value> 
         "sample_rate": plan.sample_rate, "peak": pass.peak * gain,
         "format": plan.format.name(), "bits": plan.bits, "channels": plan.channels,
         // What normalizing raised or lowered the level by, in dB.
-        "gain": daw_engine::gain_to_db(gain),
+        "gain": paw_engine::gain_to_db(gain),
         // Integrated loudness of the file, in LUFS, when it was measured.
-        "loudness": pass.loudness.map(|l| l + daw_engine::gain_to_db(gain)),
+        "loudness": pass.loudness.map(|l| l + paw_engine::gain_to_db(gain)),
         // Samples that came out NaN or infinite, which the file holds as 0 or full scale.
         "nonfinite": pass.nonfinite,
         // Wall-clock time of the render loop, and of the engine alone

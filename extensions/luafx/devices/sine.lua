@@ -1,6 +1,6 @@
 -- Sine: a small instrument, eight voices of sine with an attack and a
 -- release. Shows how an instrument reads notes and adds its sound.
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 
 local dev = dsp.device {
   name = "Sine (Lua)",

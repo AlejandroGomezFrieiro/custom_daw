@@ -14,8 +14,8 @@
 -- gdi2m runs as a program of its own, takes the audio from the port itself
 -- and sends its notes to the input's MIDI port; nothing of it passes through
 -- this program's audio thread.
-local api = daw.api
-local music = daw.music
+local api = paw.api
+local music = paw.music
 local vinput = require("vinput")
 
 local K = { name = "Guitar", title = "Guitar to MIDI" }
@@ -81,10 +81,10 @@ local function exists(path)
   return file ~= nil
 end
 
---- The gdi2m program: `daw.opt.vinput_gdi2m`, `$GDI2M`, `gdi2m` on the
+--- The gdi2m program: `paw.opt.vinput_gdi2m`, `$GDI2M`, `gdi2m` on the
 --- PATH, or a guitar_tracker built in the home directory. Nil when none.
 function K.program()
-  local set = daw.opt.vinput_gdi2m
+  local set = paw.opt.vinput_gdi2m
   if set and set ~= "" then return exists(set) and set or nil end
   local env = os.getenv("GDI2M")
   if env and env ~= "" and exists(env) then return env end
@@ -96,7 +96,7 @@ function K.program()
   return built and exists(built) and built or nil
 end
 
-K.missing = "gdi2m was not found: put it on the PATH, or set `daw.opt.vinput_gdi2m` or $GDI2M to it"
+K.missing = "gdi2m was not found: put it on the PATH, or set `paw.opt.vinput_gdi2m` or $GDI2M to it"
 
 --- Why the input cannot run yet, or nil.
 function K.blocked(input)
@@ -109,7 +109,7 @@ function K.argv(input)
   local argv = {
     K.program(), "live", "--device", input.source,
     -- As PipeWire shows this program's port to gdi2m.
-    "--port", "daw:" .. input.name .. " (playback)",
+    "--port", "paw:" .. input.name .. " (playback)",
     "--gain", string.format("%g", input.gain),
     "--threshold", string.format("%g", input.threshold),
     "--mute-drop-db", string.format("%g", input.mute_drop),

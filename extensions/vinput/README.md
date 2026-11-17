@@ -17,11 +17,11 @@ its notes to a MIDI port paw makes for it, so nothing of it runs on the
 paw's audio thread.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/vinput")   -- or link it into ~/.config/daw/extensions
+paw.ext.load("/path/to/paw/extensions/vinput")   -- or link it into ~/.config/paw/extensions
 
 local vinput = require("vinput")
 vinput.add({ name = "Guitar", source = "Input 2", gain = 1.2 })
-local track = daw.add_track({ name = "Pad" })
+local track = paw.add_track({ name = "Pad" })
 track:add_device("synth")
 track.midi_input = { port = "Guitar" }            -- as for any MIDI port
 track.armed = true                                -- hear it; record it
@@ -29,12 +29,12 @@ track.armed = true                                -- hear it; record it
 
 ## What it needs
 
-- **gdi2m** with its model. It is looked for in `daw.opt.vinput_gdi2m`,
+- **gdi2m** with its model. It is looked for in `paw.opt.vinput_gdi2m`,
   `$GDI2M`, on the `PATH`, and in `~/guitar_tracker/result/bin`.
 - **PipeWire**, through which gdi2m finds the audio port and paw's MIDI
   port.
 - **A real audio device** in paw. On the null backend the MIDI ports are
-  not open, and no tracker is started (`daw.opt.vinput_run = true` starts
+  not open, and no tracker is started (`paw.opt.vinput_run = true` starts
   them regardless).
 - **A guitar tuned to A440**, dry, straight into the interface. A quarter
   tone out and chords fall apart; this is the tracker's nature, not a
@@ -112,21 +112,21 @@ whether or not anything is played. Turn the input off when it is not needed.
 ## Where things are kept
 
 The inputs belong to the machine, not to a project: they name audio ports of
-this computer. They are kept in `~/.local/state/daw/vinput.json`
-(`daw.opt.vinput_file` names another file) and are there at the next start.
+this computer. They are kept in `~/.local/state/paw/vinput.json`
+(`paw.opt.vinput_file` names another file) and are there at the next start.
 A project keeps only the name of the port its tracks take. What each tracker
 prints goes to `vinput/<name>.log` beside that file.
 
 ## How it works
 
-- `daw.midi.open_port(name)` makes a MIDI port of paw's own. PipeWire
-  shows it to other programs as `daw:<name>`, and whatever arrives there
+- `paw.midi.open_port(name)` makes a MIDI port of paw's own. PipeWire
+  shows it to other programs as `paw:<name>`, and whatever arrives there
   goes to the tracks that chose `name`.
-- The extension runs `gdi2m live --device <source> --port "daw:<name>
-  (playback)"` with the input's settings, through `daw.api.proc_spawn`. A
+- The extension runs `gdi2m live --device <source> --port "paw:<name>
+  (playback)"` with the input's settings, through `paw.api.proc_spawn`. A
   change to a setting ends that program and starts it with the new values,
   which takes about a second.
-- The program is asked to finish (`daw.api.proc_stop`) so that it sends its
+- The program is asked to finish (`paw.api.proc_stop`) so that it sends its
   note-offs; if it has to be cut off, the port is made again, which releases
   what was held on it. It also ends when paw does, however paw ends.
 - A kind of input is a table in `require("vinput").kinds`: its stages and

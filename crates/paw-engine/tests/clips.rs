@@ -1,6 +1,6 @@
 //! Replacing one track's clips while playing must not disturb the others.
 
-use daw_engine::{
+use paw_engine::{
     ClipSet, Engine, EngineHandle, EventKind, MASTER, MAX_BLOCK, Msg, NO_SLOT, Registry,
     SchedEntry, Schedule, Slot, TrackRt,
 };
@@ -137,7 +137,7 @@ fn replacing_a_tracks_clips_stops_its_own_notes() {
 /// notes a block into playback: the note-on at the very start arrives once.
 #[test]
 fn a_note_at_the_start_is_started_once() {
-    use daw_engine::{Device, Io, ProcessCtx};
+    use paw_engine::{Device, Io, ProcessCtx};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -192,8 +192,8 @@ fn a_note_at_the_start_is_started_once() {
 }
 
 /// One track playing `data` from beat 0 for 16 beats, at 120 BPM.
-fn region_engine(data: std::sync::Arc<daw_engine::AudioData>) -> (Engine, EngineHandle) {
-    use daw_engine::AudioRegion;
+fn region_engine(data: std::sync::Arc<paw_engine::AudioData>) -> (Engine, EngineHandle) {
+    use paw_engine::AudioRegion;
     let (engine, mut handle) = Engine::new(SR);
     let mut clips = ClipSet::default();
     clips.audio.push(AudioRegion {
@@ -235,7 +235,7 @@ fn region_engine(data: std::sync::Arc<daw_engine::AudioData>) -> (Engine, Engine
 /// way.
 #[test]
 fn a_sound_being_made_plays_as_far_as_it_is_there_without_clicks() {
-    use daw_engine::Sink;
+    use paw_engine::Sink;
     use std::sync::Arc;
     let sine: Vec<f32> = (0..SR as usize * 8)
         .map(|i| 0.5 * (std::f64::consts::TAU * 220.0 * i as f64 / SR).sin() as f32)

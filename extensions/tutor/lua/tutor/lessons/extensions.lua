@@ -1,6 +1,6 @@
 -- Lesson 16: what each bundled extension adds, one thing to try in each.
 local function loaded(name)
-  return daw.ext.loaded[name] ~= nil and daw.ext.loaded[name].ok
+  return paw.ext.loaded[name] ~= nil and paw.ext.loaded[name].ok
 end
 
 return {
@@ -8,10 +8,10 @@ return {
   title = "The bundled extensions",
   intro = [[
 Much of what paw can do comes in extensions: directories of Lua in
-`extensions/` beside the program, which use the same `daw` module as your
+`extensions/` beside the program, which use the same `paw` module as your
 `init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with
 `:tutor.try` and tries one thing in it; to have one always, link its directory
-into `~/.config/daw/extensions`.
+into `~/.config/paw/extensions`.
 
 Each extension's README.md says everything it does. Their keys live under
 their own prefixes: `]s` `[s` and `,S` (sections), `gz` (musicops), `,t`
@@ -25,15 +25,15 @@ and macros work with them.]],
   vim = [[
 `:tutor.try name` is like `:packadd`. `:extensions` lists what is loaded.]],
   setup = function(look)
-    daw.project.tempo = 100
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 100
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
-    local keys = daw.add_track({ name = "Keys", volume = -8 })
+    local keys = paw.add_track({ name = "Keys", volume = -8 })
     keys:add_device("synth", { wave = 1, attack = 0.01, release = 0.3, cutoff = 2200 })
     keys:add_clip({ name = "tune", start = 0, length = 8, notes = look.notes("C4:0:1 D4:1:1 E4:2:1 G4:3:1 E4:4:1 D4:5:1 C4:6:2") })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 8, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 8, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Drums")) end,
+  at = function() paw.cursor.set_track(paw.track("Drums")) end,
   test = {
     after = function() os.remove("tutor-song.rpp") end,
   },
@@ -91,7 +91,7 @@ and macros work with them.]],
       say = "utau sings notes with lyrics through OpenUtau's engines. Type `:tutor.try utau` and `<CR>`, press `o` for a new track, then type `:utau.voice` and `<CR>` to make it a vocal track.",
       keys = { ":tutor.try utau", "<CR>", "o", ":utau.voice", "<CR>" },
       check = function(_, look)
-        for _, t in ipairs(daw.tracks()) do
+        for _, t in ipairs(paw.tracks()) do
           if look.device(t, "lua:utau") then return loaded("utau") end
         end
       end,

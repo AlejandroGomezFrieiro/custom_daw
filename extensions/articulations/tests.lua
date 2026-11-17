@@ -1,26 +1,26 @@
 -- Tests of the articulations extension; tests/suite.lua runs them.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local api = daw.api
+local api = paw.api
 
 local EXAMPLE = "extensions/articulations/articulations/examples/violin-section.art.toml"
 
 local art
 local function load()
   if not art then
-    daw.ext.load("extensions/articulations")
+    paw.ext.load("extensions/articulations")
     art = require("articulations")
   end
   return art
 end
 
 local function keys(text)
-  daw.keymap.feed(text)
+  paw.keymap.feed(text)
   api.undo_checkpoint()
 end
 
 local function ex(line)
-  daw.commands.exec(line)
+  paw.commands.exec(line)
   api.undo_checkpoint()
 end
 
@@ -38,17 +38,17 @@ end
 local function strings(notes)
   load()
   fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  local track = daw.add_track({ name = "Violins" })
+  paw.keymap.feed("<Esc><Esc>")
+  local track = paw.add_track({ name = "Violins" })
   track:add_device("synth")
   local clip = track:add_clip({ start = 0, length = 8, name = "line", notes = notes or {
     { pitch = 67, start = 0, length = 1 }, { pitch = 69, start = 1, length = 1 },
     { pitch = 71, start = 2, length = 1 }, { pitch = 72, start = 3, length = 1 },
   } })
-  daw.flush()
+  paw.flush()
   art.bind(track.id, EXAMPLE)
   api.undo_checkpoint()
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
   roll:set(67, 0)
   return track, clip, roll
@@ -71,7 +71,7 @@ x = 1
 [[arr]]
 x = 2.5
 ]==]))
-  eq(daw.json.encode(t), '{"a":1,"arr":[{"x":1},{"x":2.5}],"b":"x\\ty","t":{"u":{"c":[1,2,3],"d":{"e":"lit","f":true,"g":{"h":31}}}}}', "the table")
+  eq(paw.json.encode(t), '{"a":1,"arr":[{"x":1},{"x":2.5}],"b":"x\\ty","t":{"u":{"c":[1,2,3],"d":{"e":"lit","f":true,"g":{"h":31}}}}}', "the table")
   eq(table.concat(toml.keys(t.t.u.d), ","), "e,f,g", "keys in the order written")
   eq(select(2, toml.parse("a = 1\na = 2")), "line 2: `a` is defined twice", "a key twice")
   eq(select(2, toml.parse('x = 1\ny = "open\n')), "line 2: a string that does not end on its line", "a string left open")
@@ -113,13 +113,13 @@ test("articulations: binding keeps the map on the track and hands the core its d
   eq(info.map .. " " .. info.default .. " " .. info.names["11.A"], "violin-section sustain pz", "the binding")
   local am = art.attr_map(track.id)
   eq(am.send .. " " .. am.default .. " " .. am.arts["11.A"].out .. " " .. table.concat(am.chase, ","), "change 10.0 ks=E1 1,11,64", "attr_map")
-  daw.cmd("art.default", { "staccato" })
+  paw.cmd("art.default", { "staccato" })
   eq(art.attr_map(track.id).default, "11.0", "the default compiles into it")
 end)
 
 test("articulations: :art sets the note under the cursor, a range, a selection and :g's matches, each one undo step", function()
   local _, clip, roll = strings()
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   ex("art stc")
   eq(codes(clip), "67:11.0 69:- 71:- 72:-", "the note under the cursor")
   ex("%art pizz")
@@ -140,13 +140,13 @@ end)
 test("articulations: a track with no map takes codes and the words libraries use", function()
   load()
   fresh()
-  local track = daw.add_track({ name = "Any" })
+  local track = paw.add_track({ name = "Any" })
   local clip = track:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
-  daw.flush()
-  local roll = daw.ui.views.pianoroll
+  paw.flush()
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
   roll:set(60, 0)
-  daw.commands.exec("art pizz")
+  paw.commands.exec("art pizz")
   eq(codes(clip), "60:11.A", "pizz is 11.A")
   eq(art.tag_of(track.id, clip:notes()[1]), "11.A", "shown by its code")
 end)
@@ -155,12 +155,12 @@ end)
 
 test("articulations: the roll labels keyswitch rows, tags notes, shows the band and the pen", function()
   local track, clip, roll = strings()
-  daw.ui.focus("pianoroll")
-  daw.commands.exec("%art stc")
+  paw.ui.focus("pianoroll")
+  paw.commands.exec("%art stc")
   roll:set(69, 1)
-  daw.commands.exec("art pz")
-  daw.cmd("art.pen", { "trm" })
-  daw.opt.note_zoom = 8
+  paw.commands.exec("art pz")
+  paw.cmd("art.pen", { "trm" })
+  paw.opt.note_zoom = 8
   roll.top = 72
   local s = screen(120, 44)
   eq(s:find("art ", 1, true) ~= nil, true, "the band's title:\n" .. s)
@@ -190,8 +190,8 @@ end)
 
 test("articulations: K on a note says its articulation and how it is sent", function()
   local _, _, roll = strings()
-  daw.ui.focus("pianoroll")
-  daw.commands.exec("art pz")
+  paw.ui.focus("pianoroll")
+  paw.commands.exec("art pz")
   local lines = roll:describe()
   local text = {}
   for i, l in ipairs(lines) do text[i] = type(l) == "table" and l.text or l end
@@ -204,10 +204,10 @@ end)
 
 test("articulations: notes entered in insert mode and with the mouse take the pen", function()
   local _, clip, roll = strings({})
-  daw.ui.focus("pianoroll")
-  daw.cmd("art.pen", { "spc" })
+  paw.ui.focus("pianoroll")
+  paw.cmd("art.pen", { "spc" })
   roll:set(60, 0)
-  daw.opt.octave = 4
+  paw.opt.octave = 4
   keys("I")
   keys("a")
   keys("s")
@@ -218,18 +218,18 @@ test("articulations: notes entered in insert mode and with the mouse take the pe
   keys("l")
   keys("<Esc>")
   eq(codes(clip), "60:11.5 62:11.5 67:11.5", "insert mode, drawing")
-  daw.frontend.act.add_note(clip.id, 64, 4)
+  paw.frontend.act.add_note(clip.id, 64, 4)
   eq(codes(clip), "60:11.5 62:11.5 67:11.5 64:11.5", "a click")
-  daw.cmd("art.pen", { "none" })
-  daw.frontend.act.add_note(clip.id, 65, 5)
+  paw.cmd("art.pen", { "none" })
+  paw.frontend.act.add_note(clip.id, 65, 5)
   eq(codes(clip), "60:11.5 62:11.5 67:11.5 64:11.5 65:-", "no pen")
 end)
 
 test("articulations: the popover lists the map's articulations and writes the one chosen", function()
   local _, clip = strings()
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys("\\a")
-  eq(daw.ui.float ~= nil, true, "a list opened")
+  eq(paw.ui.float ~= nil, true, "a list opened")
   local s = screen(120, 40)
   eq(s:find("5 pz   Pizzicato", 1, true) ~= nil, true, "numbered, with tags, names and codes:\n" .. s)
   keys("col<CR>")
@@ -240,12 +240,12 @@ end)
 
 test("articulations: the highlight resting on an articulation tries it on the notes, and Escape takes it back", function()
   local _, clip = strings()
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys("\\a")
   keys("<Down>")
   local tried
   for _ = 1, 40 do
-    daw.wait(50)
+    paw.wait(50)
     if codes(clip) == "67:10.2 69:- 71:- 72:-" then tried = true break end
   end
   eq(tried, true, "legato tried on the note: " .. codes(clip))
@@ -256,11 +256,11 @@ end)
 
 test("articulations: in insert mode \\a sets the pen", function()
   local track = strings({})
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys("I")
   keys("\\a")
   keys("pz<CR>")
-  eq(daw.keymap.mode, "i", "still entering")
+  eq(paw.keymap.mode, "i", "still entering")
   eq(art.info(track.id).pen, "pizzicato", "the pen")
   keys("<Esc>")
 end)
@@ -281,10 +281,10 @@ test("articulations: ia is the run of notes with the articulation under the curs
     { pitch = 67, start = 0, length = 1 }, { pitch = 69, start = 1, length = 1 },
     { pitch = 71, start = 2, length = 1 }, { pitch = 72, start = 3, length = 1 },
   })
-  daw.ui.focus("pianoroll")
-  daw.commands.exec("%art stc")
+  paw.ui.focus("pianoroll")
+  paw.commands.exec("%art stc")
   roll:set(72, 3)
-  daw.commands.exec("art pz")
+  paw.commands.exec("art pz")
   roll:set(69, 1)
   keys("dia")
   eq(codes(clip), "72:11.A", "the staccatos went")
@@ -301,15 +301,15 @@ test("articulations: notes out of range and on keyswitch rows are diagnosed, wit
   table.sort(rules)
   eq(table.concat(rules, " "), "keyswitch-row out-of-range", "two things wrong")
   diags.check()
-  local found = daw.diagnostic.get({ clip = clip.id }, { namespace = "articulations" })
+  local found = paw.diagnostic.get({ clip = clip.id }, { namespace = "articulations" })
   eq(#found, 2, "published")
   for _, d in ipairs(found) do
-    if d.rule == "out-of-range" then daw.diagnostic.apply(d, d.fixes[1]) end
+    if d.rule == "out-of-range" then paw.diagnostic.apply(d, d.fixes[1]) end
   end
   eq(clip:notes()[1].pitch, 55, "G2 moved an octave up into the range")
-  found = daw.diagnostic.get({ clip = clip.id }, { namespace = "articulations" })
+  found = paw.diagnostic.get({ clip = clip.id }, { namespace = "articulations" })
   for _, d in ipairs(found) do
-    if d.rule == "keyswitch-row" then daw.diagnostic.apply(d, d.fixes[1]) end
+    if d.rule == "keyswitch-row" then paw.diagnostic.apply(d, d.fixes[1]) end
   end
   eq(codes(clip), "55:- 72:11.0", "the keyswitch D1 became the staccato of the note after it")
 end)
@@ -377,20 +377,20 @@ test("articulations: :art.from-keyswitches turns keyswitch notes and UACC moves 
     { pitch = 26, start = 0, length = 0.25 }, { pitch = 67, start = 0, length = 1 }, { pitch = 69, start = 1, length = 1 },
     { pitch = 28, start = 2, length = 0.25 }, { pitch = 71, start = 2, length = 1 }, { pitch = 72, start = 3, length = 1 },
   })
-  daw.ui.focus("pianoroll")
-  daw.cmd("art.from-keyswitches")
+  paw.ui.focus("pianoroll")
+  paw.cmd("art.from-keyswitches")
   eq(codes(clip), "67:11.0 69:11.0 71:11.A 72:11.A", "D1 staccato, E1 pizzicato")
 end)
 
 test("articulations: :art.import writes a map per bank, and :art.map binds one by name", function()
   load()
   fresh()
-  local track = daw.add_track({ name = "Strings" })
-  daw.cursor.set_track(track)
-  daw.commands.exec("art.import extensions/articulations/fixtures/reaticulate/factory.reabank")
+  local track = paw.add_track({ name = "Strings" })
+  paw.cursor.set_track(track)
+  paw.commands.exec("art.import extensions/articulations/fixtures/reaticulate/factory.reabank")
   local found = art.maps.find("spitfire-chamber-strings/basic-articulations")
   eq(found and found.name, "Basic Articulations", "found by its id")
-  daw.commands.exec("art.map spitfire-chamber-strings/basic-articulations")
+  paw.commands.exec("art.map spitfire-chamber-strings/basic-articulations")
   eq(art.info(track.id).map, "reaticulate/spitfire-chamber-strings/basic-articulations", "bound by the end of its id")
   eq(art.attr_map(track.id).arts["11.A"].out, "cc32=56", "pizz by UACC")
 end)
@@ -399,7 +399,7 @@ end)
 
 test("articulations: the score shows the articulations as marks and technique text, and marks written in it set them", function()
   local track, clip = strings()
-  if not package.loaded["notation.keys"] then daw.ext.load("extensions/notation") end
+  if not package.loaded["notation.keys"] then paw.ext.load("extensions/notation") end
   require("articulations.notation")
   local map = art.map_of(track.id)
   art.set({ { clip = clip.id, place = 1 } }, { attr = map.by_id.staccato.attr })
@@ -407,7 +407,7 @@ test("articulations: the score shows the articulations as marks and technique te
   api.undo_checkpoint()
   local view = require("notation")
   view:edit(clip)
-  daw.ui.focus("notation")
+  paw.ui.focus("notation")
   view.cache = nil
   local m = view:layout().measures[1]
   eq(m.staves[1][1].art and m.staves[1][1].art.staccato, true, "a staccato's dot")
@@ -422,10 +422,10 @@ test("articulations: the score shows the articulations as marks and technique te
   keys("g'")
   eq(codes(clip), "67:11.0 69:- 71:11.A 72:11.A", "and taken away, not")
   view:set(nil, 2)
-  daw.cmd("notation.tech", { "arco" })
+  paw.cmd("notation.tech", { "arco" })
   api.undo_checkpoint()
   eq(codes(clip), "67:11.0 69:- 71:- 72:-", "arco: the default from there")
-  daw.ui.hide("notation")
+  paw.ui.hide("notation")
 end)
 
 -- Delays and linked controllers ------------------------------------------------------------
@@ -434,8 +434,8 @@ test("articulations: delays go from the map into the downgrade map, and K says t
   local track, _, roll = strings()
   local am = art.attr_map(track.id)
   eq(table.concat({ am.delay, am.arts["10.2"].delay, am.arts["11.0"].delay }, " "), "-30 -80 -30", "the instrument's, legato's own, the instrument's again")
-  daw.ui.focus("pianoroll")
-  daw.commands.exec("art leg")
+  paw.ui.focus("pianoroll")
+  paw.commands.exec("art leg")
   local text = {}
   for i, l in ipairs(roll:describe()) do text[i] = type(l) == "table" and l.text or l end
   eq(table.concat(text, "\n"):find("delay         -80ms", 1, true) ~= nil, true, table.concat(text, "\n"))
@@ -444,7 +444,7 @@ end)
 -- An instrument that starts each articulation's sound late: 20 ms for each
 -- key above C1 its last keyswitch was (C1 0, C#1 20, D1 40).
 local LATE = [[
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 local dev = dsp.device { name = "Late", category = "instrument", params = {} }
 local sr, art, wait, on, phase = 48000, 0, nil, false, 0
 function dev.init(rate) sr = rate end
@@ -479,20 +479,20 @@ test("articulations: :art.measure renders each articulation, finds how late it s
   local dir = T.scratch .. "/art-late"
   os.execute("mkdir -p '" .. dir .. "/devices'")
   T.write_file(dir .. "/devices/late.lua", LATE)
-  daw.luadev.add_dir(dir .. "/devices")
+  paw.luadev.add_dir(dir .. "/devices")
   local file = dir .. "/late.art.toml"
   T.write_file(file, table.concat({
     "format = 1", 'name = "Late"', 'range = "C4-C5"', "", "[art]",
     'sustain = { m2 = "10.0", out = "ks=C1" }  # long',
     'staccato = { m2 = "11.0", out = "ks=C#1" }',
     'pizzicato = { m2 = "11.A", out = "ks=D1", delay = "-5ms" }', "" }, "\n"))
-  local track = daw.add_track({ name = "Late" })
+  local track = paw.add_track({ name = "Late" })
   track:add_device("lua:late")
-  daw.flush()
+  paw.flush()
   art.maps.forget()
   art.bind(track.id, file)
   api.undo_checkpoint()
-  daw.cursor.set_track(track)
+  paw.cursor.set_track(track)
   local measure = require("articulations.measure")
   local results = measure.measure(track.id)
   -- To the millisecond block the onset falls in: one either way.
@@ -500,9 +500,9 @@ test("articulations: :art.measure renders each articulation, finds how late it s
     T.near(results[i].onset or -100, want, 1, results[i].art.id .. "'s onset in ms")
   end
   eq(#api.clip_list(track.id), 0, "the rendering left nothing behind")
-  daw.commands.exec("art.measure")
-  daw.ui.close()
-  daw.commands.exec("art.measure!")
+  paw.commands.exec("art.measure")
+  paw.ui.close()
+  paw.commands.exec("art.measure!")
   local text = T.read_file(file)
   local sent = art.attr_map(track.id).arts
   T.near(sent["11.0"].delay, -20, 1, "staccato's delay sent")
@@ -517,7 +517,7 @@ test("articulations: linked controllers are one lane, written through their curv
   local linked = require("articulations.linked")
   local entry = linked.entry(track.id)
   eq(entry.id .. " " .. table.concat(entry.cc, ","), "dynamics 1,11", "from the map")
-  local t = assert(daw.curves.target(linked.uri(clip.id, entry)))
+  local t = assert(paw.curves.target(linked.uri(clip.id, entry)))
   eq(t.name(), "Dynamics (CC1 CC11) · line", "one lane")
   eq(t.flat(), 0.7, "standing at the instrument's default")
   t.write({ { beat = 2, value = 0.5 }, { beat = 4, value = 1 } })
@@ -528,10 +528,10 @@ test("articulations: linked controllers are one lane, written through their curv
   local back = {}
   for i, q in ipairs(t.points()) do back[i] = string.format("%g=%.2f", q.beat, q.value) end
   eq(table.concat(back, " "), "0=0.70 2=0.50 4=1.00", "read back as one")
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   keys("u")
   eq(#clip:controls(), 0, "one undo step")
   keys("\\c")
-  eq(daw.ui.focused, "curve", "\\c opens it in the curve view")
-  daw.ui.hide("curve")
+  eq(paw.ui.focused, "curve", "\\c opens it in the curve view")
+  paw.ui.hide("curve")
 end)

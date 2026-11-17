@@ -1,4 +1,4 @@
-//! `daw-gui`: a window onto a kernel.
+//! `paw-gui`: a window onto a kernel.
 //!
 //! The frontend holds no project state. The kernel pushes the state to
 //! draw when it changes over the control socket, and what the user does
@@ -38,15 +38,15 @@ mod widgets;
 use client::Client;
 
 const HELP: &str = "\
-daw-gui: a graphical frontend for paw
+paw-gui: a graphical frontend for paw
 
 Usage:
-  daw-gui [kernel options] [project]   start a kernel and show it
-  daw-gui --socket <path>              show a kernel that is already running
-  daw-gui --connect <host:port> --token-file <path>
+  paw-gui [kernel options] [project]   start a kernel and show it
+  paw-gui --socket <path>              show a kernel that is already running
+  paw-gui --connect <host:port> --token-file <path>
                                        show one running on another machine
                                        (started with --listen-tcp; the token
-                                       is also taken from --token or $DAW_TOKEN)
+                                       is also taken from --token or $PAW_TOKEN)
     --accept-certificate               take the certificate it shows though
                                        another was remembered for it
     --no-tls                           connect in the clear, to one started
@@ -57,9 +57,9 @@ Usage:
 Options:
   --renderer gpu|software   draw with OpenGL on the graphics card (the
                             default) or have Mesa draw on the processor
-                            (llvmpipe); also DAW_GUI_RENDERER
+                            (llvmpipe); also PAW_GUI_RENDERER
 
-Kernel options are passed on to `daw --headless`; see `daw --help`.
+Kernel options are passed on to `paw --headless`; see `paw --help`.
 ";
 
 /// How the window is drawn: OpenGL on whatever driver the system has, or
@@ -71,7 +71,7 @@ enum Renderer {
 }
 
 /// The renderer asked for with `--renderer` (taken out of `args`, which go
-/// on to the kernel), else by `env` (`DAW_GUI_RENDERER`); else the GPU.
+/// on to the kernel), else by `env` (`PAW_GUI_RENDERER`); else the GPU.
 fn renderer_choice(args: &mut Vec<String>, env: Option<&str>) -> Result<Renderer> {
     let named = match args.iter().position(|a| a == "--renderer") {
         Some(at) => {
@@ -202,7 +202,7 @@ fn run() -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
-    let env = std::env::var("DAW_GUI_RENDERER").ok();
+    let env = std::env::var("PAW_GUI_RENDERER").ok();
     if renderer_choice(&mut args, env.as_deref())? == Renderer::Software {
         // Mesa draws on the processor; any other driver is not asked.
         unsafe {
@@ -223,16 +223,16 @@ fn run() -> Result<()> {
     let token = match (option("--token")?, option("--token-file")?) {
         (Some(token), _) => Some(token),
         (None, Some(path)) => Some(std::fs::read_to_string(&path).with_context(|| format!("reading the token in {path}"))?.trim().to_string()),
-        (None, None) => std::env::var("DAW_TOKEN").ok(),
+        (None, None) => std::env::var("PAW_TOKEN").ok(),
     };
     let (mut client, child) = match (&address, &socket) {
         (Some(address), _) => {
-            let token = token.context("--connect needs the token: --token, --token-file or $DAW_TOKEN")?;
+            let token = token.context("--connect needs the token: --token, --token-file or $PAW_TOKEN")?;
             let flag = |name: &str| args.iter().any(|a| a == name);
             let wire = if flag("--no-tls") {
-                daw_proto::Wire::Plain
+                paw_proto::Wire::Plain
             } else {
-                daw_proto::Wire::Tls { known: daw_proto::tls::known_path(), accept_new: flag("--accept-certificate") }
+                paw_proto::Wire::Tls { known: paw_proto::tls::known_path(), accept_new: flag("--accept-certificate") }
             };
             let mut client = Client::connect_tcp(address, &token, &wire)?;
             if flag("--listen-audio") {
@@ -247,9 +247,9 @@ fn run() -> Result<()> {
         }
     };
     // The window's colours are the kernel's, and how it was left is kept there.
-    let palette = client.eval("return daw.canvas.palette", json!([])).unwrap_or(Value::Null);
+    let palette = client.eval("return paw.canvas.palette", json!([])).unwrap_or(Value::Null);
     theme::set_theme(theme::Theme::from_palette(&palette));
-    let kept = client.eval("return daw.frontend.layout_get()", json!([])).unwrap_or(Value::Null);
+    let kept = client.eval("return paw.frontend.layout_get()", json!([])).unwrap_or(Value::Null);
     let size = |name: &str| kept[name].as_f64().filter(|v| *v >= 1.0).map(|v| v as f32);
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("paw")
@@ -285,7 +285,7 @@ fn run() -> Result<()> {
                 view.arrange.row_height = height;
             }
             if mixer {
-                view.eval("if not daw.ui.visible('mixer') then daw.commands.exec('view.toggle mixer') end", json!([]));
+                view.eval("if not paw.ui.visible('mixer') then paw.commands.exec('view.toggle mixer') end", json!([]));
             }
             Ok(Box::new(Window { view, child }))
         }),
@@ -320,7 +320,7 @@ fn visuals() -> egui::Visuals {
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("daw-gui: {err:#}");
+        eprintln!("paw-gui: {err:#}");
         std::process::exit(1);
     }
 }
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn the_newest_authority_file_is_found() {
-        let dir = std::env::temp_dir().join(format!("daw-gui-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("paw-gui-test-{}", std::process::id()));
         let (runtime, home) = (dir.join("run"), dir.join("home"));
         std::fs::create_dir_all(&runtime).unwrap();
         std::fs::create_dir_all(&home).unwrap();

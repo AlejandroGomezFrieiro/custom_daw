@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::Engine as _;
-use daw_engine::midi_form::Form;
+use paw_engine::midi_form::Form;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use daw_engine::launch::{SlotClip, Slots};
-use daw_engine::{
+use paw_engine::launch::{SlotClip, Slots};
+use paw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
     DiskStore, MASTER,
     KeyRt, MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, OutRt, ParamInfo,
@@ -106,7 +106,7 @@ pub struct Mapper {
     /// without waiting for them: each gets a stand-in, and its id is put
     /// in [`deferred`](Self::deferred) for the session to make it.
     ///
-    /// [`DeviceFactory::starts_apart`]: daw_engine::DeviceFactory::starts_apart
+    /// [`DeviceFactory::starts_apart`]: paw_engine::DeviceFactory::starts_apart
     pub defer: bool,
     /// Devices given a stand-in since the session last looked.
     pub deferred: Vec<Id>,
@@ -363,7 +363,7 @@ impl AudioCache {
         }
         // A long file converted is as long: it goes where the file went.
         let kept = self.store.as_ref().and_then(|store| {
-            Some((store, daw_engine::store_name(path, &rate.to_string())?))
+            Some((store, paw_engine::store_name(path, &rate.to_string())?))
         });
         if let Some((store, name)) = &kept
             && let Some(converted) = store.open(name)
@@ -372,7 +372,7 @@ impl AudioCache {
             self.converted.insert(key, converted.clone());
             return Some(converted);
         }
-        match crate::resample::convert_into(&data, rate, daw_engine::Sink::new(kept)) {
+        match crate::resample::convert_into(&data, rate, paw_engine::Sink::new(kept)) {
             Ok(converted) => {
                 let converted = Arc::new(converted);
                 self.converted.insert(key, converted.clone());
@@ -448,7 +448,7 @@ pub fn sync(
         let map = if current {
             (**new.tempo_map()).clone()
         } else {
-            daw_engine::TempoMap::new(&new.tempo_points(), &new.sig_points())
+            paw_engine::TempoMap::new(&new.tempo_points(), &new.sig_points())
         };
         send(Msg::SetTempoMap(Box::new(map)));
     }
@@ -790,7 +790,7 @@ pub fn sync(
         }
         let midi = track.midi_input.as_ref().map_or((0, 0), |m| {
             (
-                m.port.as_deref().map_or(0, daw_engine::midi::port_key),
+                m.port.as_deref().map_or(0, paw_engine::midi::port_key),
                 m.channel.unwrap_or(0),
             )
         });
@@ -804,7 +804,7 @@ pub fn sync(
         }
         let out = track.midi_output.as_ref().map_or((0, 0, Form::Auto), |m| {
             (
-                daw_engine::midi::port_key(&m.port),
+                paw_engine::midi::port_key(&m.port),
                 m.channel.unwrap_or(0),
                 m.engine_form(),
             )
@@ -844,7 +844,7 @@ pub fn sync(
     for id in keyed.difference(&map.keyed) {
         send(Msg::SetKey {
             device: map.devices[id],
-            key: Some(daw_engine::key_buf()),
+            key: Some(paw_engine::key_buf()),
         });
     }
     for id in map.keyed.difference(&keyed) {
@@ -868,7 +868,7 @@ pub fn sync(
         if map.outs.get(id) != Some(pairs) {
             send(Msg::SetOutputs {
                 device: map.devices[id],
-                outs: Some(daw_engine::out_bufs(pairs)),
+                outs: Some(paw_engine::out_bufs(pairs)),
             });
         }
     }
@@ -989,7 +989,7 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
     };
     // The host's wet/dry mix and gain come after the device's own.
     let own = params.len();
-    params.extend(daw_engine::host::params());
+    params.extend(paw_engine::host::params());
     let params = Arc::new(params);
     let latency = match &controller {
         Some(controller) => controller.latency(),
@@ -1002,7 +1002,7 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
     });
     send(Msg::SetHost {
         device: slot,
-        path: Box::new(daw_engine::host::HostPath::new(
+        path: Box::new(paw_engine::host::HostPath::new(
             own as u32, latency, MAX_BLOCK,
         )),
     });
@@ -1047,8 +1047,8 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
 }
 
 /// Give a device that was just made what scripts posted to its kind
-/// ([`Registry::post`](daw_engine::Registry::post)), before its first block.
-fn deliver_posts(kind: &str, controller: &mut dyn daw_engine::Controller, ctx: &mut SyncCtx) {
+/// ([`Registry::post`](paw_engine::Registry::post)), before its first block.
+fn deliver_posts(kind: &str, controller: &mut dyn paw_engine::Controller, ctx: &mut SyncCtx) {
     for (topic, data) in ctx.registry.posts(kind) {
         if let Err(err) = controller.call(topic, data) {
             ctx.warnings
@@ -1057,13 +1057,13 @@ fn deliver_posts(kind: &str, controller: &mut dyn daw_engine::Controller, ctx: &
     }
 }
 
-/// Whether a device's parameter is one of the host's (see `daw_engine::host`):
+/// Whether a device's parameter is one of the host's (see `paw_engine::host`):
 /// the last two, by those keys.
 pub fn is_host(params: &[ParamInfo], index: usize) -> bool {
     index + 2 >= params.len()
         && params
             .get(index)
-            .is_some_and(|p| p.key == daw_engine::host::WET || p.key == daw_engine::host::GAIN)
+            .is_some_and(|p| p.key == paw_engine::host::WET || p.key == paw_engine::host::GAIN)
 }
 
 /// What stands in the engine for a device that is still being made.
@@ -1071,8 +1071,8 @@ struct Standin {
     instrument: bool,
 }
 
-impl daw_engine::Device for Standin {
-    fn process(&mut self, _ctx: &daw_engine::ProcessCtx, io: &mut daw_engine::Io) {
+impl paw_engine::Device for Standin {
+    fn process(&mut self, _ctx: &paw_engine::ProcessCtx, io: &mut paw_engine::Io) {
         if self.instrument {
             io.left.fill(0.0);
             io.right.fill(0.0);
@@ -1087,7 +1087,7 @@ impl daw_engine::Device for Standin {
 /// bypass applied.
 pub fn install(
     device: &DeviceInst,
-    instance: daw_engine::Instance,
+    instance: paw_engine::Instance,
     map: &Mapper,
     ctx: &mut SyncCtx,
     send: &mut dyn FnMut(Msg),
@@ -1109,7 +1109,7 @@ pub fn install(
     };
     // The host's wet/dry mix and gain come after the device's own.
     let own = params.len();
-    params.extend(daw_engine::host::params());
+    params.extend(paw_engine::host::params());
     let params = Arc::new(params);
     let latency = controller.as_ref().map_or(0, |c| c.latency());
     send(Msg::InsertDevice {
@@ -1118,7 +1118,7 @@ pub fn install(
     });
     send(Msg::SetHost {
         device: slot,
-        path: Box::new(daw_engine::host::HostPath::new(
+        path: Box::new(paw_engine::host::HostPath::new(
             own as u32, latency, MAX_BLOCK,
         )),
     });
@@ -1282,8 +1282,8 @@ fn compile_clip(clip: &Clip, notes: &[Note], controls: &[Control]) -> Arc<[MidiE
 }
 
 /// A note's attribute as the engine has it.
-fn attr_of(note: &Note) -> daw_engine::Attr {
-    note.attr.map_or(daw_engine::Attr::NONE, Into::into)
+fn attr_of(note: &Note) -> paw_engine::Attr {
+    note.attr.map_or(paw_engine::Attr::NONE, Into::into)
 }
 
 /// Where each repeat of a looped clip begins and ends, from the clip's
@@ -1344,7 +1344,7 @@ fn audio_regions(
     data: Arc<AudioData>,
     offset: f64,
     gain: f32,
-    tempo: &daw_engine::TempoMap,
+    tempo: &paw_engine::TempoMap,
     out: &mut Vec<AudioRegion>,
 ) {
     let seconds = tempo.seconds_between(clip.start, clip.start + clip.length);
@@ -1424,7 +1424,7 @@ fn audio_regions(
 /// once gives, and nearly free when the clips follow each other in time).
 fn build_clips(
     track: &Track,
-    tempo: &daw_engine::TempoMap,
+    tempo: &paw_engine::TempoMap,
     map: &mut Mapper,
     ctx: &mut SyncCtx,
 ) -> ClipSet {
@@ -1461,7 +1461,7 @@ fn build_clips(
 }
 
 /// What the track's attribute map sends, put among its events.
-fn downgrade(track: &Track, set: &mut ClipSet, tempo: &daw_engine::TempoMap) {
+fn downgrade(track: &Track, set: &mut ClipSet, tempo: &paw_engine::TempoMap) {
     // A map is checked when it is set; one that no longer reads (from a
     // file edited by hand) plays as if there were none.
     if let Some(plan) = track.attr_map.as_ref().and_then(|m| m.plan().ok()) {
@@ -1473,7 +1473,7 @@ fn downgrade(track: &Track, set: &mut ClipSet, tempo: &daw_engine::TempoMap) {
 fn clip_audio(
     clip: &Clip,
     (file, offset, gain): (&Path, f64, f64),
-    tempo: &daw_engine::TempoMap,
+    tempo: &paw_engine::TempoMap,
     ctx: &mut SyncCtx,
     out: &mut Vec<AudioRegion>,
 ) {
@@ -1494,7 +1494,7 @@ fn clip_audio(
 
 /// What a frozen track plays: its file from the start of the song, as it
 /// was rendered, at unity gain and without fades.
-fn frozen_clips(file: &Path, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -> ClipSet {
+fn frozen_clips(file: &Path, tempo: &paw_engine::TempoMap, ctx: &mut SyncCtx) -> ClipSet {
     let mut set = ClipSet::default();
     if let Some(data) = ctx.audio.get(file, ctx.sample_rate as u32, ctx.warnings) {
         let end = tempo.beat(tempo.seconds(0.0) + data.whole_seconds());
@@ -1516,7 +1516,7 @@ fn frozen_clips(file: &Path, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) ->
 }
 
 /// What a track's slots play, each clip laid out from its own start.
-fn build_slots(track: &Track, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -> Slots {
+fn build_slots(track: &Track, tempo: &paw_engine::TempoMap, ctx: &mut SyncCtx) -> Slots {
     let mut rows: Vec<Option<SlotClip>> = Vec::new();
     for slot in track.slots.iter().filter(|s| !s.clip.muted) {
         let clip = &slot.clip;
@@ -1752,7 +1752,7 @@ fn vca_volume_lane(track: &Track, project: &Project) -> Option<Vec<(f64, f64)>> 
     for b in beats {
         // The value as a beat is reached, and as it is left (they differ at a jump).
         let before = sum(&|p| value_before(p, b));
-        let after = sum(&|p| daw_engine::automation::value_at(p, b).unwrap_or(0.0));
+        let after = sum(&|p| paw_engine::automation::value_at(p, b).unwrap_or(0.0));
         if before != after {
             out.push((b, before));
         }

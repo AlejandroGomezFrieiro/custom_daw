@@ -7,16 +7,16 @@
 -- tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
-local api = daw.api
-local keymap = daw.keymap
+local api = paw.api
+local keymap = paw.keymap
 
 local function start()
   fresh()
   api.engine_restart({ backend = "null" })
   keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do daw.ui.hide(name) end
-  daw.ui.focus("arrange")
+  while paw.ui.float do paw.ui.close() end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
+  paw.ui.focus("arrange")
 end
 
 local function keys(text)
@@ -27,15 +27,15 @@ end
 --- A key that also starts longer mappings (`]` and `]d`): it runs when the
 --- wait for the rest is over, as it does at the keyboard.
 local function waited(text)
-  local before = daw.opt.timeoutlen
-  daw.opt.timeoutlen = 20
+  local before = paw.opt.timeoutlen
+  paw.opt.timeoutlen = 20
   keymap.feed(text)
-  daw.wait(150)
-  daw.opt.timeoutlen = before
+  paw.wait(150)
+  paw.opt.timeoutlen = before
   api.undo_checkpoint()
 end
 
-local broken = daw.keyrule.broken
+local broken = paw.keyrule.broken
 
 test("every view's keys keep to the one rule, the bundled extensions' too", function()
   start()
@@ -79,7 +79,7 @@ test("the rule holds for a mapping made later, and says what it broke", function
   local found = table.concat(broken(), "\n")
   keymap.del("j", { view = "keyrule.test" })
   eq(found:find("keyrule.test n j: a motion key that does not move", 1, true) ~= nil, true, found)
-  eq(table.concat(daw.keyrule.lost_groups(), ", "), "", "and every named group of keys leads to keys")
+  eq(table.concat(paw.keyrule.lost_groups(), ", "), "", "and every named group of keys leads to keys")
 end)
 
 test("a view's own keys may not shadow a global leader key", function()
@@ -91,39 +91,39 @@ test("a view's own keys may not shadow a global leader key", function()
   keymap.del("<localleader>m", { view = "keyrule.test" })
   eq(found:find("keyrule.test n <leader>m: shadows a global leader key", 1, true) ~= nil, true, found)
   eq(found:find("<localleader>m", 1, true), nil, "the local leader is free")
-  eq(daw.opt.localleader ~= daw.opt.leader, true, "the two leaders are two keys")
-  eq(table.concat(keymap.parse("<LocalLeader>x")), daw.opt.localleader .. "x", "<LocalLeader> is expanded like <leader>")
-  eq(keymap.human("<localleader>d"), daw.opt.localleader .. "d", "and shown as typed")
+  eq(paw.opt.localleader ~= paw.opt.leader, true, "the two leaders are two keys")
+  eq(table.concat(keymap.parse("<LocalLeader>x")), paw.opt.localleader .. "x", "<LocalLeader> is expanded like <leader>")
+  eq(keymap.human("<localleader>d"), paw.opt.localleader .. "d", "and shown as typed")
 end)
 
 test("Escape cancels and stays in every view", function()
   start()
-  local t = daw.add_track({ name = "Keys" })
+  local t = paw.add_track({ name = "Keys" })
   t:add_device("synth")
   local clip = t:add_clip({ name = "c", start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
   api.undo_checkpoint()
   local moved = {}
   local function stays(name, open)
     open()
-    if daw.ui.focused ~= name then moved[#moved + 1] = name .. " did not open" return end
+    if paw.ui.focused ~= name then moved[#moved + 1] = name .. " did not open" return end
     keymap.feed("3d<Esc>")
     keymap.feed("<Esc><Esc>")
-    if daw.ui.focused ~= name then moved[#moved + 1] = name .. " -> " .. tostring(daw.ui.focused) end
+    if paw.ui.focused ~= name then moved[#moved + 1] = name .. " -> " .. tostring(paw.ui.focused) end
     eq(keymap.pending(), "", name .. ": the count and operator are cancelled")
     eq(keymap.mode, "n", name .. ": normal mode")
-    daw.ui.focus("arrange")
+    paw.ui.focus("arrange")
   end
-  stays("pianoroll", function() daw.ui.views.pianoroll:edit(clip) daw.ui.focus("pianoroll") end)
-  stays("mixer", function() daw.ui.show("mixer") daw.ui.focus("mixer") end)
-  stays("devices", function() daw.ui.show("devices") daw.ui.focus("devices") end)
-  stays("session", function() daw.ui.show("session") daw.ui.focus("session") end)
+  stays("pianoroll", function() paw.ui.views.pianoroll:edit(clip) paw.ui.focus("pianoroll") end)
+  stays("mixer", function() paw.ui.show("mixer") paw.ui.focus("mixer") end)
+  stays("devices", function() paw.ui.show("devices") paw.ui.focus("devices") end)
+  stays("session", function() paw.ui.show("session") paw.ui.focus("session") end)
   eq(table.concat(moved, ", "), "", "views Escape left")
   -- A second Escape soon after says how to leave.
-  daw.ui.show("mixer")
-  daw.ui.focus("mixer")
+  paw.ui.show("mixer")
+  paw.ui.focus("mixer")
   keymap.feed("<Esc><Esc>")
-  eq((daw.ui.message and daw.ui.message.text or ""):find("<C-w>p goes back", 1, true) ~= nil, true, "the hint")
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do daw.ui.hide(name) end
+  eq((paw.ui.message and paw.ui.message.text or ""):find("<C-w>p goes back", 1, true) ~= nil, true, "the hint")
+  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
 end)
 
 
@@ -132,12 +132,12 @@ end)
 local function mixer(tracks)
   start()
   local out = {}
-  for i, name in ipairs(tracks) do out[i] = daw.add_track({ name = name }) end
+  for i, name in ipairs(tracks) do out[i] = paw.add_track({ name = name }) end
   api.undo_checkpoint()
-  daw.cursor.set_track(out[1])
-  daw.ui.show("mixer")
-  daw.ui.focus("mixer")
-  daw.ui.views.mixer.row = "volume"
+  paw.cursor.set_track(out[1])
+  paw.ui.show("mixer")
+  paw.ui.focus("mixer")
+  paw.ui.views.mixer.row = "volume"
   return unpack(out)
 end
 
@@ -153,24 +153,24 @@ test("in the mixer h l go between strips and j k along a strip's rows, which + -
   waited("]")
   near(a.pan, 0.4, 1e-6, "] pans wherever the cursor is")
   keys("gg")
-  eq(daw.mixer_rows.current().kind, "send", "gg is the strip's top row: its send")
+  eq(paw.mixer_rows.current().kind, "send", "gg is the strip's top row: its send")
   keys("2-")
   near(api.track_get(a.id).sends[1].level, -14, 1e-6, "- lowers the send")
   keys("x")
   eq(#api.track_get(a.id).sends, 0, "x clears the row: the send goes")
   keys("l")
-  eq(daw.cursor.track_id(), b.id, "l is the next strip")
-  eq(daw.mixer_rows.current().kind, "volume", "on the row of the same kind, else the fader: B has no send")
+  eq(paw.cursor.track_id(), b.id, "l is the next strip")
+  eq(paw.mixer_rows.current().kind, "volume", "on the row of the same kind, else the fader: B has no send")
   keys("gg")
-  eq(daw.mixer_rows.current().kind, "insert", "gg: the strip's top row, its first device")
+  eq(paw.mixer_rows.current().kind, "insert", "gg: the strip's top row, its first device")
   keys("-")
   eq(b:devices()[1].bypass, true, "- on an insert switches it off")
   keys("G")
-  eq(daw.mixer_rows.current().field, "monitor", "G is the bottom row")
+  eq(paw.mixer_rows.current().field, "monitor", "G is the bottom row")
   keys("K")
-  eq(daw.ui.float ~= nil, true, "K describes")
-  while daw.ui.float do daw.ui.close() end
-  daw.ui.hide("mixer")
+  eq(paw.ui.float ~= nil, true, "K describes")
+  while paw.ui.float do paw.ui.close() end
+  paw.ui.hide("mixer")
 end)
 
 test("in the mixer operators and a selection work over strips and rows, and . repeats", function()
@@ -182,7 +182,7 @@ test("in the mixer operators and a selection work over strips and rows, and . re
   keys("2l.")
   near(c.volume, -1, 1e-6, ". does it again from the strip the cursor is on (the last: there is none after it)")
   near(b.volume, -1, 1e-6, "and not to the strips before")
-  daw.cursor.set_track(a)
+  paw.cursor.set_track(a)
   keys("j5+")
   keys("kyj")
   eq(keymap.getreg().kind, "mixrows", "y over two rows yanks their settings")
@@ -197,26 +197,26 @@ test("in the mixer operators and a selection work over strips and rows, and . re
   eq(#api.track_list(), 3, "rows are cleared, not tracks")
   keys("dd")
   eq(#api.track_list(), 2, "dd cuts the strip's track, as it cuts a line")
-  daw.ui.hide("mixer")
+  paw.ui.hide("mixer")
 end)
 
 -- The device panel as a grid -------------------------------------------------------------------
 
 local function panel()
   start()
-  local t = daw.add_track({ name = "Lead" })
+  local t = paw.add_track({ name = "Lead" })
   local synth = t:add_device("synth")
   local delay = t:add_device("delay")
   api.undo_checkpoint()
-  daw.cursor.set_track(t)
-  daw.ui.show("devices")
-  daw.ui.focus("devices")
-  daw.ui.views.devices.row = 1
+  paw.cursor.set_track(t)
+  paw.ui.show("devices")
+  paw.ui.focus("devices")
+  paw.ui.views.devices.row = 1
   return t, synth, delay
 end
 
 local function param_row(device, key)
-  for i, row in ipairs(daw.ui.views.devices:rows()) do
+  for i, row in ipairs(paw.ui.views.devices:rows()) do
     if row.param and row.device.id == device.id and row.param.key == key then return i end
   end
 end
@@ -224,13 +224,13 @@ end
 test("in the device panel w b go from device to device, + - change a parameter, gc bypasses", function()
   local _, synth, delay = panel()
   keys("w")
-  local device, row = daw.ui.views.devices:selected()
+  local device, row = paw.ui.views.devices:selected()
   eq(device.id == delay.id and not row.param, true, "w is the next device's heading")
   keys("gcc")
   eq(api.device_get(delay.id).bypass, true, "gcc bypasses it")
   keys("b")
-  eq(daw.ui.views.devices.row, 1, "b is the device before")
-  daw.ui.views.devices.row = param_row(synth, "cutoff")
+  eq(paw.ui.views.devices.row, 1, "b is the device before")
+  paw.ui.views.devices.row = param_row(synth, "cutoff")
   local before = api.device_get(synth.id).params.cutoff
   keys("5<C-a>")
   local after = api.device_get(synth.id).params.cutoff
@@ -240,36 +240,36 @@ test("in the device panel w b go from device to device, + - change a parameter, 
   keys("dd")
   near(api.device_get(synth.id).params.cutoff, synth:get().param_info[param_row(synth, "cutoff") - 1].default, 1e-3,
     "dd on a parameter puts it back at its default")
-  daw.ui.views.devices.row = 1
-  daw.ui.hide("devices")
+  paw.ui.views.devices.row = 1
+  paw.ui.hide("devices")
 end)
 
 test("in the device panel y p copy a device's settings onto another", function()
   local t, synth = panel()
   local other = t:add_device("synth")
   api.undo_checkpoint()
-  daw.ui.views.devices.row = param_row(synth, "cutoff")
+  paw.ui.views.devices.row = param_row(synth, "cutoff")
   keys("10+")
   keys("yy")
   eq(keymap.getreg().kind, "params", "yy on a parameter yanks its setting")
-  daw.ui.views.devices.row = param_row(other, "cutoff")
+  paw.ui.views.devices.row = param_row(other, "cutoff")
   keys("p")
   near(api.device_get(other.id).params.cutoff, api.device_get(synth.id).params.cutoff, 1e-6, "p puts it on the device under the cursor")
   eq(#t:devices(), 3, "no device was added")
-  daw.ui.views.devices.row = 1
-  daw.ui.hide("devices")
+  paw.ui.views.devices.row = 1
+  paw.ui.hide("devices")
 end)
 
 -- The piano roll ---------------------------------------------------------------------------
 
 test("in the piano roll + - are the pitch, Alt-l Alt-h the length, and a selection takes in the note under its end", function()
   start()
-  local t = daw.add_track({ name = "Keys" })
+  local t = paw.add_track({ name = "Keys" })
   local clip = t:add_clip({ name = "c", start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 }, { pitch = 60, start = 2, length = 1 } } })
   api.undo_checkpoint()
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   roll:edit(clip)
-  daw.ui.focus("pianoroll")
+  paw.ui.focus("pianoroll")
   roll:set(60, 0)
   keys("2+")
   eq(T.melody(clip), "62@0+1 60@2+1", "2+ raises the note two semitones")
@@ -281,24 +281,24 @@ test("in the piano roll + - are the pitch, Alt-l Alt-h the length, and a selecti
   keys("vd")
   eq(T.melody(clip), "62@0+1.25", "v d on a note takes the whole note")
   keymap.feed("<Esc>")
-  eq(daw.ui.focused, "pianoroll", "Escape stays")
-  daw.ui.hide("pianoroll")
+  eq(paw.ui.focused, "pianoroll", "Escape stays")
+  paw.ui.hide("pianoroll")
 end)
 
 -- The old keys ---------------------------------------------------------------------------------
 
-test("daw.opt.keys = classic puts the old keys back, and the default takes them away again", function()
+test("paw.opt.keys = classic puts the old keys back, and the default takes them away again", function()
   local a = mixer({ "A" })
-  T.after(function() daw.opt.keys = "default" end)
-  daw.opt.keys = "classic"
+  T.after(function() paw.opt.keys = "default" end)
+  paw.opt.keys = "classic"
   keys("j")
   near(a.volume, -1, 1e-6, "classic: j is the fader")
   keys("<lt>")
   near(a.pan, -0.1, 1e-6, "classic: < pans")
-  daw.opt.keys = "default"
+  paw.opt.keys = "default"
   keys("j")
   near(a.volume, -1, 1e-6, "default: j moves")
-  eq(daw.mixer_rows.current().kind, "pan", "to the pan row")
+  eq(paw.mixer_rows.current().kind, "pan", "to the pan row")
   eq(table.concat(broken(), "\n"), "", "and the rule holds again")
-  daw.ui.hide("mixer")
+  paw.ui.hide("mixer")
 end)

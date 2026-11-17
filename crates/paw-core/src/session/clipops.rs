@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use daw_engine::AudioData;
+use paw_engine::AudioData;
 use serde_json::{Value, json};
 
 use super::{RenderOpts, Session, unique_path};
@@ -102,7 +102,7 @@ impl Session {
         if peak <= 0.0 {
             bail!("clip {id} is silent: there is nothing to bring to a level");
         }
-        let gain = (level - daw_engine::gain_to_db(peak)).clamp(-120.0, 24.0);
+        let gain = (level - paw_engine::gain_to_db(peak)).clamp(-120.0, 24.0);
         self.edit(|p| {
             let c = p.clip_mut(id).context("the clip went away")?;
             if let ClipContent::Audio { gain: g, .. } = &mut c.content {
@@ -254,7 +254,7 @@ impl Session {
 
 /// Write stereo samples as a 32-bit float WAV file.
 fn write_float(path: &std::path::Path, data: &AudioData) -> Result<()> {
-    let mut w = daw_engine::wav::Writer::create(path, data.sample_rate, 32, true)
+    let mut w = paw_engine::wav::Writer::create(path, data.sample_rate, 32, true)
         .with_context(|| format!("creating {}", path.display()))?;
     for (l, r) in data.channels[0].iter().zip(&data.channels[1]) {
         w.write(*l)?;

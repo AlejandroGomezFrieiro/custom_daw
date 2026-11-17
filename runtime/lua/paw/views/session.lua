@@ -3,10 +3,10 @@
 -- its track's colour and filled as it goes round its loop; one queued to
 -- start is marked until its boundary comes. The last row says what each
 -- track plays: a slot, nothing (stopped), or its timeline.
-local api = daw.api
-local util = daw.util
-local draw = daw.draw
-local launcher = daw.launcher
+local api = paw.api
+local util = paw.util
+local draw = paw.draw
+local launcher = paw.launcher
 
 local view = { scroll = 0, top = 0 }
 
@@ -57,7 +57,7 @@ local function status_text(s)
     or s.queued == "arrangement" and (" " .. g.closed .. "tl")
     or type(s.queued) == "number" and (" " .. g.closed .. (s.queued + 1)) or ""
   if s.slot then
-    local bar = daw.time.bar(0)
+    local bar = paw.time.bar(0)
     local at = s.length and string.format(" %d/%d", math.floor(s.phase / bar) + 1, math.max(1, math.ceil(s.length / bar - 1e-9))) or ""
     return g.play .. " " .. (s.slot + 1) .. at .. queued, "Bright"
   elseif s.stopped then
@@ -70,11 +70,11 @@ function view:render(buf, ctx)
   local g = draw.g
   -- A VCA has no clips to launch.
   local tracks = {}
-  for _, id in ipairs(daw.scope.tracks()) do
-    if not daw.vca.is_vca(id) then tracks[#tracks + 1] = id end
+  for _, id in ipairs(paw.scope.tracks()) do
+    if not paw.vca.is_vca(id) then tracks[#tracks + 1] = id end
   end
   local quantize = api.project_get().launch_quantize
-  local body = daw.ui.titlebar(buf, {
+  local body = paw.ui.titlebar(buf, {
     name = "Session",
     context = "launches on " .. quantize .. (launcher.capturing and ("  " .. g.rec .. " capturing") or ""),
     focused = ctx.focused,
@@ -85,7 +85,7 @@ function view:render(buf, ctx)
   local room = math.max(1, math.floor((w - GUTTER - SCENES) / cw))
   local index = 1
   for i, id in ipairs(tracks) do
-    if id == daw.cursor.track_id() then index = i end
+    if id == paw.cursor.track_id() then index = i end
   end
   if index <= self.scroll then self.scroll = index - 1 end
   if index > self.scroll + room then self.scroll = index - room end
@@ -97,7 +97,7 @@ function view:render(buf, ctx)
   if launcher.row >= self.top + shown then self.top = launcher.row - shown + 1 end
   self.top = util.clamp(self.top, 0, math.max(0, rows - shown))
   local state = launcher.state()
-  local cursor_track = daw.cursor.track_id()
+  local cursor_track = paw.cursor.track_id()
   local columns = {}
   for col = 0, room - 1 do
     local i = self.scroll + col + 1
@@ -151,6 +151,6 @@ function view:render(buf, ctx)
   self.geometry = { columns = columns, cw = cw, sx = sx, shown = shown, h = h }
 end
 
-daw.ui.view("session", view)
-daw.ui.dock("session", { side = "bottom", hidden = true })
+paw.ui.view("session", view)
+paw.ui.dock("session", { side = "bottom", hidden = true })
 return view

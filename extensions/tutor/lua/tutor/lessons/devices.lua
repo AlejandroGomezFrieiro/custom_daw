@@ -1,6 +1,6 @@
 -- Lesson 9: instruments, effects, parameters, plugins and their windows.
 local function selected()
-  local device, row = daw.ui.views.devices:selected()
+  local device, row = paw.ui.views.devices:selected()
   return device, row
 end
 
@@ -27,16 +27,16 @@ reorder, `ge` opens a plugin's window. `,d` shows and hides the panel;
 devices as they work on lines, and `+` `-` change a value as `<C-a>` `<C-x>`
 change a number. `gc` bypasses, as it comments a line out.]],
   setup = function(look)
-    daw.project.tempo = 96
-    local drums = daw.add_track({ name = "Drums", volume = -6 })
+    paw.project.tempo = 96
+    local drums = paw.add_track({ name = "Drums", volume = -6 })
     drums:add_device("drums")
     drums:add_clip({ name = "beat", start = 0, length = 8, notes = look.drums(look.beat, 2) })
-    local lead = daw.add_track({ name = "Lead", volume = -6 })
+    local lead = paw.add_track({ name = "Lead", volume = -6 })
     lead:add_device("synth", { wave = 1, cutoff = 900, resonance = 0.3, release = 0.15 })
     lead:add_clip({ name = "line", start = 0, length = 8, notes = look.notes("D4:0:0.5 F4:0.5:0.5 A4:1:1 G4:2:0.5 F4:2.5:0.5 D4:3:1 C4:4:1 D4:5:3") })
-    daw.transport.loop_start, daw.transport.loop_end, daw.transport.loop_enabled = 0, 8, true
+    paw.transport.loop_start, paw.transport.loop_end, paw.transport.loop_enabled = 0, 8, true
   end,
-  at = function() daw.cursor.set_track(daw.track("Lead")) end,
+  at = function() paw.cursor.set_track(paw.track("Lead")) end,
   steps = {
     {
       say = "The cursor is on Lead. Press `,d` (comma, then d) to show its device panel on the right; the keyboard goes there.",

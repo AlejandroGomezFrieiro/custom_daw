@@ -1,10 +1,10 @@
 -- The quickfix list, as Neovim's: one shared place for what is wrong (or
--- found) anywhere in the project, each entry with an address (daw/address.lua)
+-- found) anywhere in the project, each entry with an address (paw/address.lua)
 -- to go to, and maybe a fix. docs/terminal.md says how it is used,
 -- docs/scripting.md how to fill it.
 --
 -- An entry is `{ address, selector?, text, level?, source, fix? }`:
--- `address` a `daw://` address (or a location, `{ uri, selector }`),
+-- `address` a `paw://` address (or a location, `{ uri, selector }`),
 -- `level` "error", "warning", "info" or "hint" (or 1 to 4; none for a
 -- plain match), `fix` `{ title, edit = { workspace changes } }`,
 -- `{ title, apply = function(entry) end }` or a command line run with the
@@ -13,18 +13,18 @@
 -- Lists are kept in a history of ten (`:colder`, `:cnewer`); each has a
 -- title. The quickfix lists are shared; every window has location lists of
 -- its own (`:lopen`, `:lnext`). One quickfix list, "Problems", is kept by
--- the program: each source (`daw.qf.feed`) owns its entries in it, and the
+-- the program: each source (`paw.qf.feed`) owns its entries in it, and the
 -- program feeds it the diagnostics, renders that clipped, were too loud or
 -- failed, missing sound files, plugins that stopped or are not installed,
 -- and plugin files that could not be looked into.
-local api = daw.api
-local A = daw.address
+local api = paw.api
+local A = paw.address
 
 local M = {}
 
-daw.option.define("qf_height", 10)            -- rows of the window `:copen` opens
-daw.option.define("qf_diagnostics", "warning") -- diagnostics this severe and worse go into Problems; "hint" for all, "off" for none
-daw.option.define("render_loudest", -9)       -- LUFS: a render louder than this is listed as too loud
+paw.option.define("qf_height", 10)            -- rows of the window `:copen` opens
+paw.option.define("qf_diagnostics", "warning") -- diagnostics this severe and worse go into Problems; "hint" for all, "off" for none
+paw.option.define("render_loudest", -9)       -- LUFS: a render louder than this is listed as too loud
 
 M.HISTORY = 10
 M.PROBLEMS = "Problems"
@@ -53,8 +53,8 @@ function M.stack() return quickfix end
 --- one it shows, as in Neovim.
 function M.loc_stack(win, make)
   if not win then
-    local cur = daw.layout.current()
-    local buf = cur and cur.view == "qflist" and daw.layout.buf_of(cur)
+    local cur = paw.layout.current()
+    local buf = cur and cur.view == "qflist" and paw.layout.buf_of(cur)
     win = buf and type(buf.target) == "number" and buf.target or (cur and cur.id)
   end
   if not win then return nil end
@@ -133,7 +133,7 @@ end
 --- `opts.title`, and make it current. A list of the same title already in
 --- the history is replaced where it is, with the entry it was on kept;
 --- `opts.current = false` leaves another list current. Returns the list.
----   daw.qf.set({ { address = "daw://track/3", text = "too quiet", level = "warning" } }, { title = "Levels" })
+---   paw.qf.set({ { address = "paw://track/3", text = "too quiet", level = "warning" } }, { title = "Levels" })
 function M.set(entries, opts)
   opts = opts or {}
   local stack = quickfix
@@ -151,7 +151,7 @@ function M.set(entries, opts)
     push(stack, list, opts.current)
   end
   api.ui_redraw()
-  daw.emit("qf.changed", { title = title, win = opts.win })
+  paw.emit("qf.changed", { title = title, win = opts.win })
   return list
 end
 
@@ -199,12 +199,12 @@ local function store_problems()
     push(quickfix, make_list(M.PROBLEMS, entries), not (current and #current.entries > 0) and true or false)
   end
   api.ui_redraw()
-  daw.emit("qf.changed", { title = M.PROBLEMS })
+  paw.emit("qf.changed", { title = M.PROBLEMS })
 end
 
 --- What a source says now, in the Problems list: its entries there are
 --- replaced by these (none takes them out). Any extension may feed it.
----   daw.qf.feed("tuning", { { address = "daw://clip/4", text = "out of tune", level = "warning" } })
+---   paw.qf.feed("tuning", { { address = "paw://clip/4", text = "out of tune", level = "warning" } })
 function M.feed(source, entries)
   local list = {}
   for i, e in ipairs(entries or {}) do list[i] = M.entry(e, source) end
@@ -213,7 +213,7 @@ function M.feed(source, entries)
 end
 
 --- A source asked for its entries when they may have changed: `fn()`
---- returns them, and is called again after `daw.qf.changed(source)`, once,
+--- returns them, and is called again after `paw.qf.changed(source)`, once,
 --- when the list is next looked at.
 function M.source(source, fn)
   pulls[source] = fn
@@ -240,7 +240,7 @@ refresh = function()
       local fn = pulls[source]
       local okf, entries = pcall(fn)
       if not okf then
-        daw.api.log("qf: " .. source .. ": " .. tostring(entries))
+        paw.api.log("qf: " .. source .. ": " .. tostring(entries))
         entries = {}
       end
       local list = {}
@@ -275,13 +275,13 @@ function M.where(e)
   if scheme and scheme.where then return scheme.where(loc, p) end
   if p and p.kind == "lane" then
     local ok, lane = pcall(api.lane_get, p.lane)
-    return (ok and daw.lanes.name(lane) or "a lane") .. (t and (" " .. daw.time.format(t[1])) or "")
+    return (ok and paw.lanes.name(lane) or "a lane") .. (t and (" " .. paw.time.format(t[1])) or "")
   end
   if p and p.kind == "marker" then
     local m = A.resolve(loc.uri)
-    return m and (m.name or "marker") .. " " .. daw.time.format(m.beat or m.start or 0) or "a marker"
+    return m and (m.name or "marker") .. " " .. paw.time.format(m.beat or m.start or 0) or "a marker"
   end
-  return daw.diagnostic.where({ location = loc, at = t and t[1] or 0 })
+  return paw.diagnostic.where({ location = loc, at = t and t[1] or 0 })
 end
 
 --- An entry in one line, as said when going to it: `(2 of 7) error: …`.
@@ -309,7 +309,7 @@ function M.go(e)
   local p = A.parse(loc.uri)
   if not p then return false end
   if GONE[p.kind] and not A.resolve(loc.uri) then
-    daw.notify("what this entry is about is gone", "warn")
+    paw.notify("what this entry is about is gone", "warn")
     return false
   end
   -- An address of an extension's own kind goes where the kind says.
@@ -317,12 +317,12 @@ function M.go(e)
   if scheme and scheme.go then return scheme.go(loc, p) ~= false end
   if p.kind == "lane" then
     local lane = api.lane_get(p.lane)
-    local arrange = daw.ui.locators.arrange
-    daw.ui.focus("arrange")
+    local arrange = paw.ui.locators.arrange
+    paw.ui.focus("arrange")
     arrange.go(loc)
     if lane.track then
-      daw.lanes.open(lane.track, true)
-      daw.cursor.set_track(lane.track, p.lane)
+      paw.lanes.open(lane.track, true)
+      paw.cursor.set_track(lane.track, p.lane)
     end
     return true
   end
@@ -330,15 +330,15 @@ function M.go(e)
   if p.kind == "clip" and not (loc.selector and loc.selector.notes) then
     local c = api.clip_get(p.clip)
     if c.kind == "audio" or not loc.selector then
-      daw.ui.focus("arrange")
-      daw.ui.locators.arrange.go(loc)
+      paw.ui.focus("arrange")
+      paw.ui.locators.arrange.go(loc)
       return true
     end
   end
   for _, name in ipairs({ "pianoroll", "devices", "arrange", "mixer" }) do
-    local locator = daw.ui.locators[name]
+    local locator = paw.ui.locators[name]
     if locator and locator.place(loc, true) then
-      daw.ui.go(loc)
+      paw.ui.go(loc)
       return true
     end
   end
@@ -346,13 +346,13 @@ function M.go(e)
 end
 
 local function say(e, list)
-  daw.notify(M.format(e, list), e.severity == 1 and "error" or e.severity == 2 and "warn" or "info")
+  paw.notify(M.format(e, list), e.severity == 1 and "error" or e.severity == 2 and "warn" or "info")
 end
 
 --- Make entry `n` of a stack's current list the current entry and go to it.
 function M.jump(n, stack)
   local list = M.current(stack)
-  if not list or #list.entries == 0 then return daw.notify("no entries" .. (list and " in " .. list.title or ""), "warn") end
+  if not list or #list.entries == 0 then return paw.notify("no entries" .. (list and " in " .. list.title or ""), "warn") end
   n = math.max(1, math.min(#list.entries, n))
   list.idx = n
   local e = list.entries[n]
@@ -366,12 +366,12 @@ end
 --- first `]q` goes to the first entry. Stops at the ends, as Neovim does.
 function M.step(count, stack)
   local list = M.current(stack)
-  if not list or #list.entries == 0 then return daw.notify("no entries" .. (list and " in " .. list.title or ""), "warn") end
+  if not list or #list.entries == 0 then return paw.notify("no entries" .. (list and " in " .. list.title or ""), "warn") end
   local at = list.idx
   if at == 0 then at = count > 0 and 0 or #list.entries + 1 end
   local to = at + count
   if (count > 0 and at >= #list.entries) or (count < 0 and at <= 1) then
-    return daw.notify(count > 0 and "no more entries: this is the last" or "no more entries: this is the first", "warn")
+    return paw.notify(count > 0 and "no more entries: this is the last" or "no more entries: this is the first", "warn")
   end
   return M.jump(to, stack)
 end
@@ -383,14 +383,14 @@ function M.last(stack) return M.jump(math.huge, stack) end
 function M.older(count, stack)
   stack = stack or quickfix
   refresh()
-  if #stack.lists == 0 then return daw.notify("no lists", "warn") end
+  if #stack.lists == 0 then return paw.notify("no lists", "warn") end
   local to = stack.at - (count or 1)
   if to < 1 or to > #stack.lists then
-    return daw.notify((count or 1) > 0 and "no older list" or "no newer list", "warn")
+    return paw.notify((count or 1) > 0 and "no older list" or "no newer list", "warn")
   end
   stack.at = to
   local list = stack.lists[to]
-  daw.notify(string.format("list %d of %d: %s, %d entr%s", to, #stack.lists, list.title, #list.entries, #list.entries == 1 and "y" or "ies"))
+  paw.notify(string.format("list %d of %d: %s, %d entr%s", to, #stack.lists, list.title, #list.entries, #list.entries == 1 and "y" or "ies"))
   api.ui_redraw()
   return list
 end
@@ -438,9 +438,9 @@ end
 function M.cdo(line, opts)
   opts = opts or {}
   line = tostring(line or ""):match("^%s*:?(.-)%s*$")
-  if line == "" then return daw.notify("usage: cdo <command>, run on every entry", "warn") end
+  if line == "" then return paw.notify("usage: cdo <command>, run on every entry", "warn") end
   local list = M.current(opts.stack)
-  if not list or #list.entries == 0 then return daw.notify("no entries", "warn") end
+  if not list or #list.entries == 0 then return paw.notify("no entries", "warn") end
   local targets, seen = {}, {}
   for i, e in ipairs(list.entries) do
     if opts.per_track then
@@ -458,11 +458,11 @@ function M.cdo(line, opts)
     local e = list.entries[i]
     list.idx = i
     M.go(e)
-    local ok, err = pcall(daw.commands.exec, line, { target = e.address, location = e.location, entry = e })
+    local ok, err = pcall(paw.commands.exec, line, { target = e.address, location = e.location, entry = e })
     if ok then done = done + 1 else failed = failed or tostring(err) end
   end
   api.ui_redraw()
-  if failed then daw.notify(string.format("ran on %d of %d: %s", done, #targets, failed), "error") end
+  if failed then paw.notify(string.format("ran on %d of %d: %s", done, #targets, failed), "error") end
   return done
 end
 
@@ -497,7 +497,7 @@ function M.fix(entries, opts)
       for _, e in ipairs(entries) do
         if type(e.fix) == "table" and e.fix.edit then
           local made, why = A.edit(e.fix.edit)
-          if made then n = n + 1 else daw.notify("a fix cannot be made: " .. tostring(why), "warn") end
+          if made then n = n + 1 else paw.notify("a fix cannot be made: " .. tostring(why), "warn") end
         end
       end
     end
@@ -506,12 +506,12 @@ function M.fix(entries, opts)
     local ok, err = pcall(function()
       if type(e.fix) == "string" then
         M.go(e)
-        daw.commands.exec(e.fix, { target = e.address, location = e.location, entry = e })
+        paw.commands.exec(e.fix, { target = e.address, location = e.location, entry = e })
       else
         e.fix.apply(e)
       end
     end)
-    if ok then n = n + 1 else daw.notify("a fix failed: " .. tostring(err), "warn") end
+    if ok then n = n + 1 else paw.notify("a fix failed: " .. tostring(err), "warn") end
   end
   for _, e in ipairs(entries) do
     if e.fix then e.fixed = true end
@@ -529,10 +529,10 @@ end
 
 -- Diagnostics -------------------------------------------------------------------------------
 
---- Diagnostics as entries (as `daw.diagnostic.get` takes `target` and `filter`).
+--- Diagnostics as entries (as `paw.diagnostic.get` takes `target` and `filter`).
 function M.from_diagnostics(target, filter)
   local out = {}
-  for _, d in ipairs(daw.diagnostic.get(target, filter)) do
+  for _, d in ipairs(paw.diagnostic.get(target, filter)) do
     out[#out + 1] = {
       location = d.location, level = d.severity, source = d.source,
       text = (d.rule and (d.rule .. ": ") or "") .. d.message, fix = d.fixes[1], data = { diagnostic = d },
@@ -542,7 +542,7 @@ function M.from_diagnostics(target, filter)
 end
 
 --- Put diagnostics in a list, as `vim.diagnostic.setqflist`: `opts` has
---- `target` and `severity` (as `daw.diagnostic.get` takes them), `title`
+--- `target` and `severity` (as `paw.diagnostic.get` takes them), `title`
 --- ("Diagnostics"), `win` for a location list, `open` to open its window.
 function M.diagnostics(opts)
   opts = opts or {}
@@ -553,14 +553,14 @@ function M.diagnostics(opts)
 end
 
 M.source("diagnostic", function()
-  local least = daw.opt.qf_diagnostics
+  local least = paw.opt.qf_diagnostics
   if least == false or least == "off" then return {} end
   return M.from_diagnostics(nil, { severity = { min = severity_of(least) or 2 } })
 end)
-daw.on("diagnostic.changed", function() M.changed("diagnostic") end)
-daw.on("option.changed", function(e) if e.name == "qf_diagnostics" then M.changed("diagnostic") end end)
+paw.on("diagnostic.changed", function() M.changed("diagnostic") end)
+paw.on("option.changed", function(e) if e.name == "qf_diagnostics" then M.changed("diagnostic") end end)
 -- A diagnostic goes with what it is about.
-daw.on("changed", function() if feeds.diagnostic then M.changed("diagnostic") end end)
+paw.on("changed", function() if feeds.diagnostic then M.changed("diagnostic") end end)
 
 -- Renders --------------------------------------------------------------------------------
 
@@ -585,9 +585,9 @@ local function render_problems(info)
         float and ": a 32-bit float file holds it, but it clips once converted" or ": it clips"),
       fix = render_again(path, { normalize = -1 }) }
   end
-  if info.loudness and info.loudness > daw.opt.render_loudest then
+  if info.loudness and info.loudness > paw.opt.render_loudest then
     out[#out + 1] = { address = uri, level = "warning",
-      text = string.format("%s is too loud: %.1f LUFS integrated, over %g", file_name(path), info.loudness, daw.opt.render_loudest),
+      text = string.format("%s is too loud: %.1f LUFS integrated, over %g", file_name(path), info.loudness, paw.opt.render_loudest),
       fix = render_again(path, { loudness = -14, normalize = -1 }) }
   end
   for _, why in ipairs(info.left_out or {}) do
@@ -607,21 +607,21 @@ local function render_feed()
   M.feed("render", all)
 end
 
-daw.on("render.before", function(e) if e.path then render_opts[e.path] = e.opts end end)
+paw.on("render.before", function(e) if e.path then render_opts[e.path] = e.opts end end)
 local function rendered(info)
   if type(info) ~= "table" or not info.path then return end
   renders[info.path] = render_problems(info)
   render_feed()
 end
-daw.on("render.done", rendered)
-daw.on("render.finished", rendered)
-daw.on("render.failed", function(e)
+paw.on("render.done", rendered)
+paw.on("render.finished", rendered)
+paw.on("render.failed", function(e)
   if not e.path then return end
   local path, opts = e.path, render_opts[e.path] or {}
   renders[path] = { {
     address = A.render(path), level = "error", text = "render of " .. file_name(path) .. " failed: " .. tostring(e.error),
     fix = { title = "Render " .. file_name(path) .. " again", apply = function()
-      daw.render(path, daw.util.merge(opts, { background = true }))
+      paw.render(path, paw.util.merge(opts, { background = true }))
     end },
   } }
   render_feed()
@@ -658,9 +658,9 @@ M.source("media", function()
   end
   return out
 end)
-daw.on("project.loaded", function() M.changed("media") end)
-daw.on("clip.added", function() M.changed("media") end)
-daw.on("changed", function() if feeds.media then M.changed("media") end end)
+paw.on("project.loaded", function() M.changed("media") end)
+paw.on("clip.added", function() M.changed("media") end)
+paw.on("changed", function() if feeds.media then M.changed("media") end end)
 
 -- Plugins ------------------------------------------------------------------------------------
 
@@ -675,7 +675,7 @@ M.source("plugins", function()
     for _, id in ipairs(ok and t.devices or {}) do
       local okd, d = pcall(api.device_get, id)
       if okd then
-        local uri = "daw://track/" .. track .. "/device/" .. id
+        local uri = "paw://track/" .. track .. "/device/" .. id
         local restart = { title = "Start " .. d.name .. " again", apply = function() api.device_restart(id) end }
         if d.missing or d.status == "missing" then
           out[#out + 1] = { address = uri, level = "error", text = d.name .. " on " .. t.name .. " is not installed or did not load" }
@@ -691,23 +691,23 @@ M.source("plugins", function()
   end
   return out
 end)
-daw.on("device.invalid", function(e)
+paw.on("device.invalid", function(e)
   invalid[e.device] = true
   M.changed("plugins")
 end)
 for _, name in ipairs({ "device.stopped", "device.added", "device.removed", "project.loaded" }) do
-  daw.on(name, function() M.changed("plugins") end)
+  paw.on(name, function() M.changed("plugins") end)
 end
-daw.on("device.ready", function(e)
+paw.on("device.ready", function(e)
   invalid[e.id] = nil
   M.changed("plugins")
 end)
-daw.on("device.changed", function() if feeds.plugins then M.changed("plugins") end end)
+paw.on("device.changed", function() if feeds.plugins then M.changed("plugins") end end)
 
 -- Plugin files that could not be looked into: what a scan notes, at start
 -- and after `:plugins.rescan` (the `plugins.scanned` event, `{ notes, name }`).
 local scans = {}
-daw.on("plugins.scanned", function(e)
+paw.on("plugins.scanned", function(e)
   local name = e.name and tostring(e.name):lower()
   local kept = {}
   for _, entry in ipairs(name and scans or {}) do
@@ -723,7 +723,7 @@ daw.on("plugins.scanned", function(e)
 end)
 
 -- Another project: what was said of the last one's renders goes.
-daw.on("project.loaded", function()
+paw.on("project.loaded", function()
   renders, render_opts, invalid = {}, {}, {}
   render_feed()
 end)
@@ -732,12 +732,12 @@ end)
 
 --- Open the list's window and give it the keyboard: the quickfix list's
 --- along the bottom of the tab, the whole width (`opts.height` rows, or
---- `daw.opt.qf_height`); a location list's below its window (`opts.loc`,
+--- `paw.opt.qf_height`); a location list's below its window (`opts.loc`,
 --- with `opts.win` the window, the current one by default). A window of
 --- the tab that shows it already is gone to. Returns the window.
 function M.open(opts)
   opts = opts or {}
-  local L = daw.layout
+  local L = paw.layout
   local target, from = "quickfix", nil
   if opts.loc then
     local stack, win = M.loc_stack(opts.win, true)
@@ -751,7 +751,7 @@ function M.open(opts)
       return w
     end
   end
-  local height = tonumber(opts.height) or daw.opt.qf_height
+  local height = tonumber(opts.height) or paw.opt.qf_height
   local win
   if from and from.view ~= "qflist" then
     local made = L.split({ win = from, view = "qflist", buf = buf.id })
@@ -760,7 +760,7 @@ function M.open(opts)
     win.size, win.weight = height, nil
   else
     win = L.leaf("qflist", { buf = buf.id, size = height })
-    local root = daw.ui.layout
+    local root = paw.ui.layout
     root[#root + 1] = win
     L.tidy(root)
   end
@@ -772,7 +772,7 @@ end
 --- Close the windows of the tab that show the quickfix list (`loc`: the
 --- current window's location list). Returns whether one closed.
 function M.close(loc)
-  local L = daw.layout
+  local L = paw.layout
   local target = "quickfix"
   if loc then
     local _, win = M.loc_stack(nil)
@@ -788,14 +788,14 @@ end
 
 -- Commands and keys -------------------------------------------------------------------------
 
-local command, map = daw.command, daw.keymap.set
+local command, map = paw.command, paw.keymap.set
 
 -- The stack a command works on: the quickfix lists, or the current
 -- window's location lists.
 local function stack_for(loc, make)
   if not loc then return quickfix end
   local stack = M.loc_stack(nil, make)
-  if not stack then daw.notify("no location list for this window: `:ldiag` makes one", "warn") end
+  if not stack then paw.notify("no location list for this window: `:ldiag` makes one", "warn") end
   return stack
 end
 
@@ -803,7 +803,7 @@ end
 -- location lists (`l<name>`); `%s` in the description names which.
 local function both(name, fn, desc, opts)
   for _, loc in ipairs({ false, true }) do
-    local spec = daw.util.merge(opts or {}, { desc = (desc:gsub("%%s", loc and "the window's location list" or "the quickfix list")) })
+    local spec = paw.util.merge(opts or {}, { desc = (desc:gsub("%%s", loc and "the window's location list" or "the quickfix list")) })
     command((loc and "l" or "c") .. name, function(ctx)
       local stack = stack_for(loc, spec.make)
       if stack then return fn(stack, ctx, loc) end
@@ -844,7 +844,7 @@ both("older", function(s, ctx) M.older(count(ctx), s) end, "Go to the list befor
 both("newer", function(s, ctx) M.newer(count(ctx), s) end, "Go to the next list in the history of %s")
 both("history", function(s)
   refresh()
-  if #s.lists == 0 then return daw.notify("no lists", "warn") end
+  if #s.lists == 0 then return paw.notify("no lists", "warn") end
   local lines = {}
   for i, list in ipairs(s.lists) do
     local n = M.count(list)
@@ -852,7 +852,7 @@ both("history", function(s)
       n.total, n.total == 1 and "y" or "ies", (n.error + n.warning > 0) and string.format(" (E%d W%d)", n.error, n.warning) or "")
   end
   lines[#lines + 1] = { text = "> the current one; `:colder` and `:cnewer` go between them", style = "Dim" }
-  daw.ui.page("Lists", lines)
+  paw.ui.page("Lists", lines)
 end, "List the lists in the history of %s")
 both("do", function(s, ctx) M.cdo(ctx.args[1], { stack = s }) end,
   "Run a command on every entry of %s, the cursor on each, as one undo step: `cdo track.mute`", { raw = true, label = "Run a command on every entry" })
@@ -860,20 +860,20 @@ both("fdo", function(s, ctx) M.cdo(ctx.args[1], { stack = s, per_track = true })
   "Run a command once for every track the entries of %s are on, as one undo step: `cfdo track.solo`", { raw = true, label = "Run a command on every track of the entries" })
 both("fix", function(s, ctx)
   local list = M.current(s)
-  if not list or #list.entries == 0 then return daw.notify("no entries", "warn") end
+  if not list or #list.entries == 0 then return paw.notify("no entries", "warn") end
   local entries = nil
   if ctx.args[1] == "." then entries = { list.entries[math.max(1, list.idx)] } end
   local n = M.fix(entries, { stack = s })
-  daw.notify(n == 0 and "no entry has a fix" or string.format("%d fix%s made", n, n == 1 and "" or "es"))
+  paw.notify(n == 0 and "no entry has a fix" or string.format("%d fix%s made", n, n == 1 and "" or "es"))
 end, "Make the fixes the entries of %s have, as one undo step; `cfix .` the current entry's", { label = "Fix the entries" })
 
 -- What the window shows: the piano roll its clip, the mixer and the device
 -- panel the cursor's track, the arrange view everything.
 local function shown_target()
-  local view = daw.ui.focused
-  if view == "pianoroll" then return daw.ui.views.pianoroll.clip_id end
+  local view = paw.ui.focused
+  if view == "pianoroll" then return paw.ui.views.pianoroll.clip_id end
   if view == "mixer" or view == "devices" then
-    local id = daw.cursor.track_id()
+    local id = paw.cursor.track_id()
     return id and A.track(id) or nil
   end
   return nil
@@ -881,7 +881,7 @@ end
 both("diag", function(_, ctx, loc)
   local severity = ctx.args[1] and severity_of(ctx.args[1]) or nil
   local list = M.diagnostics({ target = loc and shown_target() or nil, severity = severity, win = loc or nil })
-  daw.notify(string.format("%d diagnostic%s in the list", #list.entries, #list.entries == 1 and "" or "s"))
+  paw.notify(string.format("%d diagnostic%s in the list", #list.entries, #list.entries == 1 and "" or "s"))
 end, "Put the diagnostics in %s (the location list: those of what the window shows); `cdiag warning` only warnings and worse",
   { make = true, complete = function() return LEVELS end })
 

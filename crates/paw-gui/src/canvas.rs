@@ -1,8 +1,8 @@
 //! Views in windows of their own: an extension's editor drawn by its Lua
 //! in the kernel as rectangles, text, lines and music glyphs, or any view
 //! drawn in cells as the terminal draws it; made into one image by the
-//! rasterizer the terminal uses (crates/daw-raster), with the pointer and
-//! the keyboard passed back to it. See `daw.canvas`.
+//! rasterizer the terminal uses (crates/paw-raster), with the pointer and
+//! the keyboard passed back to it. See `paw.canvas`.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -67,7 +67,7 @@ impl View {
                 if ctx.input(|i| i.viewport().close_requested()) {
                     // Closing the window puts the view back in the main
                     // window, as `Ctrl-w d` does.
-                    self.eval("daw.canvas.dock(...)", json!([name]));
+                    self.eval("paw.canvas.dock(...)", json!([name]));
                 }
             });
         }
@@ -96,7 +96,7 @@ impl View {
             let (cw, ch) = cell();
             let fresh = canvas.is_none_or(|c| c.texture.is_none());
             let opts = json!({ "cell": { "w": cw, "h": ch }, "fresh": fresh, "glyphs": true, "status": true });
-            let drawing = self.ask("return daw.canvas.paint(...)", json!([name, size.0, size.1, opts]));
+            let drawing = self.ask("return paw.canvas.paint(...)", json!([name, size.0, size.1, opts]));
             let scale = ui.ctx().pixels_per_point();
             if let Some(c) = self.canvases.open.get_mut(name) {
                 c.painted = Instant::now();
@@ -117,13 +117,13 @@ impl View {
             );
         }
         for event in pointer_events(ui, view, Id::unique(("canvas-pointer", name))) {
-            self.eval("daw.canvas.pointer(...)", json!([name, event]));
+            self.eval("paw.canvas.pointer(...)", json!([name, event]));
             self.repaint = true;
         }
         // Keys typed here are the view's.
         let events = ui.input(|i| i.events.clone());
         for keys in self.keys.notations(&events) {
-            self.eval("daw.canvas.key(...)", json!([name, keys]));
+            self.eval("paw.canvas.key(...)", json!([name, keys]));
             self.repaint = true;
         }
         // The title, over the top of the view, with a way back as a pane.
@@ -134,7 +134,7 @@ impl View {
         let response = widgets::button(ui, dock, Id::unique(("dock", name)), None, "Dock", Look::quiet());
         widgets::hint_on(&response, "back into the main window, as a pane (Ctrl-w d)");
         if response.clicked() {
-            self.eval("daw.canvas.dock(...)", json!([name]));
+            self.eval("paw.canvas.dock(...)", json!([name]));
         }
         ui.painter().hline(heading.x_range(), heading.bottom() - 0.5, Stroke::new(1.0, t.divider));
         // The status line: the main window's mode, then the prompt being

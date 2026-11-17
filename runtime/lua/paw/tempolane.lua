@@ -1,19 +1,19 @@
 -- The tempo lane: the tempo map drawn as a curve in a row under the ruler, in
 -- steps where a change holds and in slopes where it ramps. It is a way to
 -- look at the map and to edit it with the pointer; every edit is one made to
--- `daw.tempo`, so the grid, the ruler and the clips that follow the tempo
+-- `paw.tempo`, so the grid, the ruler and the clips that follow the tempo
 -- follow the lane, and undo takes it back.
 --
---   daw.tempolane.toggle()            -- show or hide the row
---   daw.tempolane.range()             -- the tempo at its bottom and its top
---   daw.tempolane.add(17, 96)         -- a change to 96 bpm at beat 17
---   daw.tempolane.move(17, 20, 100)   -- the change at beat 17 to beat 20, at 100 bpm
---   daw.tempolane.remove(20)
---   daw.tempolane.draw({ { 8, 120 }, { 9, 118 }, ... })  -- a stroke of the pencil
+--   paw.tempolane.toggle()            -- show or hide the row
+--   paw.tempolane.range()             -- the tempo at its bottom and its top
+--   paw.tempolane.add(17, 96)         -- a change to 96 bpm at beat 17
+--   paw.tempolane.move(17, 20, 100)   -- the change at beat 17 to beat 20, at 100 bpm
+--   paw.tempolane.remove(20)
+--   paw.tempolane.draw({ { 8, 120 }, { 9, 118 }, ... })  -- a stroke of the pencil
 --
 -- Whether the row is shown is kept for the session (it survives `:reload`),
 -- not in the project, as for the automation lanes.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local shown = api.state_get("tempo_lane") == true
@@ -21,7 +21,7 @@ local shown = api.state_get("tempo_lane") == true
 local function changed()
   api.ui_redraw()
   -- A graphical frontend draws it too.
-  if daw.emit then daw.emit("lanes.changed", {}) end
+  if paw.emit then paw.emit("lanes.changed", {}) end
 end
 
 --- Whether the row is shown.
@@ -44,7 +44,7 @@ end
 --- never less than 80 apart, centred, so that a steady song is not drawn as a wall.
 function M.range()
   local lo, hi = math.huge, 0
-  for _, p in ipairs(daw.tempo.points()) do
+  for _, p in ipairs(paw.tempo.points()) do
     lo, hi = math.min(lo, p.bpm), math.max(hi, p.bpm)
   end
   lo = math.max(0, math.floor((lo - 30) / 10) * 10)
@@ -60,14 +60,14 @@ end
 --- Where a tempo is in the row, 0 at the bottom, 1 at the top.
 function M.fraction(bpm)
   local lo, hi = M.range()
-  return daw.util.clamp((bpm - lo) / (hi - lo), 0, 1)
+  return paw.util.clamp((bpm - lo) / (hi - lo), 0, 1)
 end
 
 --- The tempo at a height in the row (a fraction, 0 at the bottom), to a
 --- whole beat a minute and never below 20.
 function M.bpm(fraction)
   local lo, hi = M.range()
-  return math.max(20, math.floor(lo + daw.util.clamp(fraction, 0, 1) * (hi - lo) + 0.5))
+  return math.max(20, math.floor(lo + paw.util.clamp(fraction, 0, 1) * (hi - lo) + 0.5))
 end
 
 local function clamp_bpm(bpm) return math.max(1, math.min(999, bpm)) end
@@ -91,7 +91,7 @@ function M.move(beat, to, bpm)
   if index > 1 then
     table.remove(map.tempos, index)
     -- Not onto another change, and never to the start.
-    local target = math.max(daw.opt.grid, to or point.beat)
+    local target = math.max(paw.opt.grid, to or point.beat)
     for i = #map.tempos, 1, -1 do
       if math.abs(map.tempos[i].beat - target) < 1e-6 then table.remove(map.tempos, i) end
     end
@@ -105,7 +105,7 @@ end
 
 --- Take away the change at `beat`; the start's cannot be.
 function M.remove(beat)
-  for i, p in ipairs(daw.tempo.points()) do
+  for i, p in ipairs(paw.tempo.points()) do
     if i > 1 and math.abs(p.beat - beat) < 1e-6 then
       api.tempo_remove(p.beat)
       return true
@@ -116,7 +116,7 @@ end
 
 --- Make the change at `beat` ramp to the next, or hold again.
 function M.ramp(beat, on)
-  for _, p in ipairs(daw.tempo.points()) do
+  for _, p in ipairs(paw.tempo.points()) do
     if math.abs(p.beat - beat) < 1e-6 then
       if on == nil then on = not p.ramp end
       api.tempo_set(p.beat, p.bpm, on)
@@ -132,7 +132,7 @@ end
 function M.draw(points, step)
   if #points == 0 then return end
   table.sort(points, function(a, b) return a[1] < b[1] end)
-  step = step or math.max(0.5, daw.opt.grid)
+  step = step or math.max(0.5, paw.opt.grid)
   local from, to = math.max(0, points[1][1]), math.max(0, points[#points][1])
   local map = api.tempo_points()
   local out = {}
@@ -174,9 +174,9 @@ function M.commands(command)
     elseif word == nil then
       M.toggle()
     else
-      return daw.notify("tempo.lane: `on`, `off`, or nothing to toggle", "warn")
+      return paw.notify("tempo.lane: `on`, `off`, or nothing to toggle", "warn")
     end
-    daw.notify(shown and "tempo lane shown under the ruler" or "tempo lane hidden")
+    paw.notify(shown and "tempo lane shown under the ruler" or "tempo lane hidden")
   end, {
     desc = "Show or hide the tempo curve under the ruler: `tempo.lane`, `tempo.lane on`, `tempo.lane off`",
     label = "Tempo lane",
@@ -187,11 +187,11 @@ function M.commands(command)
     local a = ctx.args
     local to = a[1]
     if not to then error("tempo.move: say where to, a bar (17) or a bar and beat (17.3)", 0) end
-    local from = daw.tempo.point_at(a[2] and daw.tempo.place(a[2]) or daw.cursor.beat)
+    local from = paw.tempo.point_at(a[2] and paw.tempo.place(a[2]) or paw.cursor.beat)
     if from.beat == 0 then error("the start's tempo does not move", 0) end
-    local target = daw.tempo.place(to)
+    local target = paw.tempo.place(to)
     M.move(from.beat, target, from.bpm)
-    daw.notify(string.format("%g bpm moved to %s", from.bpm, daw.time.format(target)))
+    paw.notify(string.format("%g bpm moved to %s", from.bpm, paw.time.format(target)))
   end, {
     desc = "Move the tempo change at or before the cursor (or at a bar) to another bar: `tempo.move 17`, `tempo.move 17 9`",
     label = "Move a tempo change",

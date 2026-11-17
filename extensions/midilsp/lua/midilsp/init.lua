@@ -1,7 +1,7 @@
--- MIDI LSP's entry for `daw.lsp`, as an nvim-lspconfig entry is for one
+-- MIDI LSP's entry for `paw.lsp`, as an nvim-lspconfig entry is for one
 -- server: find the engine, say how to start it, and keep its settings (a
 -- preset and rules switched on or off) with the project.
-local api = daw.api
+local api = paw.api
 require("midilsp.adapter")
 
 local M = {
@@ -31,11 +31,11 @@ local function on_path(program)
   return found and found ~= "" and found or nil
 end
 
---- The engine's command, without the transport: `daw.opt.midilsp_cmd`
+--- The engine's command, without the transport: `paw.opt.midilsp_cmd`
 --- (words, or a list), else `$MIDI_LSP_ENGINE`, else `reaper-midi-lsp`
 --- on the PATH. Nil when there is none.
 function M.engine()
-  local opt = daw.opt.midilsp_cmd
+  local opt = paw.opt.midilsp_cmd
   if type(opt) == "table" and #opt > 0 then return opt end
   if type(opt) == "string" and opt:match("%S") then return words(opt) end
   local env = os.getenv("MIDI_LSP_ENGINE")
@@ -86,7 +86,7 @@ end
 
 -- The rule catalog the engine announced at `initialize`.
 local function catalog()
-  for _, c in ipairs(daw.lsp.clients()) do
+  for _, c in ipairs(paw.lsp.clients()) do
     local exp = c.capabilities and c.capabilities.experimental
     local midi = type(exp) == "table" and exp.midi
     if c.name == M.LSP and type(midi) == "table" and type(midi.rules) == "table" then return midi.rules end
@@ -133,26 +133,26 @@ function M.set_rule(id, on)
   if on == "toggle" then on = not rule_on(id, s) end
   s.rules[id] = { enabled = on }
   store(s.preset, s.rules)
-  daw.notify(string.format("midilsp: %s %s", id, on and "on" or "off"))
+  paw.notify(string.format("midilsp: %s %s", id, on and "on" or "off"))
 end
 
 --- The engine's rules in a picker, on or off; Enter switches one.
 function M.pick_rules()
   local rules = (catalog() or {}).rules
-  if not rules then return daw.notify("midilsp: the engine is not running", "warn") end
+  if not rules then return paw.notify("midilsp: the engine is not running", "warn") end
   local s, items = M.settings(), {}
   for _, r in ipairs(rules) do
     items[#items + 1] = { text = string.format("%s  %-24s %s", rule_on(r.id, s) and "on " or "off", r.id, r.title or ""), id = r.id }
   end
-  daw.pick({ title = "MIDI LSP rules (" .. s.preset .. ")", items = items,
+  paw.pick({ title = "MIDI LSP rules (" .. s.preset .. ")", items = items,
     on_choose = function(item) if item then M.set_rule(item.id, "toggle") end end })
 end
 
 -- Starting ------------------------------------------------------------------------
 
---- Tell `daw.lsp` how to start the engine and what to send it.
+--- Tell `paw.lsp` how to start the engine and what to send it.
 function M.configure()
-  daw.lsp.config(M.LSP, {
+  paw.lsp.config(M.LSP, {
     cmd = function() return command("--stdio") end,
     framing = "lines",
     adapter = "midi-lsp",
@@ -160,7 +160,7 @@ function M.configure()
     settings = wire(),
     restart = { max = 3, within_s = 60 },
   })
-  daw.lsp.config(M.SUGGEST, {
+  paw.lsp.config(M.SUGGEST, {
     cmd = function() return command("--role", "suggest", "--stdio") end,
     framing = "lines",
     adapter = "midi-lsp",
@@ -169,23 +169,23 @@ function M.configure()
   })
 end
 
---- Start the engine (both roles, the second as `daw.opt.midilsp_suggest`
+--- Start the engine (both roles, the second as `paw.opt.midilsp_suggest`
 --- says). `loud`: say so when there is no engine.
 function M.start(loud)
   M.configure()
   if not M.engine() then
-    if loud then daw.notify("midilsp: no engine: set daw.opt.midilsp_cmd or $MIDI_LSP_ENGINE, or put reaper-midi-lsp on the PATH", "warn") end
+    if loud then paw.notify("midilsp: no engine: set paw.opt.midilsp_cmd or $MIDI_LSP_ENGINE, or put reaper-midi-lsp on the PATH", "warn") end
     return false
   end
-  daw.lsp.enable(M.LSP)
-  if daw.opt.midilsp_suggest then daw.lsp.enable(M.SUGGEST) end
+  paw.lsp.enable(M.LSP)
+  if paw.opt.midilsp_suggest then paw.lsp.enable(M.SUGGEST) end
   require("midilsp.checks").start()
   return true
 end
 
 function M.stop()
-  daw.lsp.enable(M.LSP, false)
-  daw.lsp.enable(M.SUGGEST, false)
+  paw.lsp.enable(M.LSP, false)
+  paw.lsp.enable(M.SUGGEST, false)
   require("midilsp.checks").stop()
 end
 
@@ -195,14 +195,14 @@ function M.info_lines()
   local s = M.settings()
   local lines = {
     { text = "Engine", style = "Title" },
-    "  " .. (engine and table.concat(engine, " ") or "not found: daw.opt.midilsp_cmd, $MIDI_LSP_ENGINE or reaper-midi-lsp on the PATH"),
+    "  " .. (engine and table.concat(engine, " ") or "not found: paw.opt.midilsp_cmd, $MIDI_LSP_ENGINE or reaper-midi-lsp on the PATH"),
     "",
     { text = "Settings, kept with the project", style = "Title" },
     "  preset " .. s.preset,
   }
   for id, r in pairs(s.rules) do lines[#lines + 1] = string.format("  rule %s %s", id, r.enabled and "on" or "off") end
   lines[#lines + 1] = ""
-  for _, line in ipairs(daw.lsp.info_lines()) do lines[#lines + 1] = line end
+  for _, line in ipairs(paw.lsp.info_lines()) do lines[#lines + 1] = line end
   return lines
 end
 
@@ -212,31 +212,31 @@ end
 --- its fixes: Enter on a diagnostic goes to it, on a fix applies it.
 function M.problems()
   local items = {}
-  for _, d in ipairs(daw.diagnostic.get()) do
+  for _, d in ipairs(paw.diagnostic.get()) do
     local ok, c = pcall(api.clip_get, d.clip)
-    local where = ok and string.format("%s %s", c.name, daw.time.format(c.start + d.at)) or "?"
-    items[#items + 1] = { text = string.format("%-7s %-16s %s", daw.diagnostic.severity[d.severity], daw.util.fit(where, 16), daw.diagnostic.format(d):gsub("^%a+ ", "")), diagnostic = d }
+    local where = ok and string.format("%s %s", c.name, paw.time.format(c.start + d.at)) or "?"
+    items[#items + 1] = { text = string.format("%-7s %-16s %s", paw.diagnostic.severity[d.severity], paw.util.fit(where, 16), paw.diagnostic.format(d):gsub("^%a+ ", "")), diagnostic = d }
     for _, fix in ipairs(d.fixes) do
       items[#items + 1] = { text = "        fix: " .. tostring(fix.title), diagnostic = d, fix = fix }
     end
   end
-  if #items == 0 then return daw.notify("no problems") end
-  daw.pick({
+  if #items == 0 then return paw.notify("no problems") end
+  paw.pick({
     title = "Problems",
     items = items,
     on_choose = function(item)
       if not item then return end
-      if item.fix then daw.diagnostic.apply(item.diagnostic, item.fix) else daw.diagnostic.show(item.diagnostic) end
+      if item.fix then paw.diagnostic.apply(item.diagnostic, item.fix) else paw.diagnostic.show(item.diagnostic) end
     end,
   })
 end
 
 -- Settings follow the project: another project, other settings.
-daw.on("project.loaded", function()
+paw.on("project.loaded", function()
   M.configure()
-  for _, c in ipairs(daw.lsp.clients()) do
+  for _, c in ipairs(paw.lsp.clients()) do
     if c.name == M.LSP and c.status == "running" then
-      daw.lsp.notify(M.LSP, "workspace/didChangeConfiguration", { settings = wire() })
+      paw.lsp.notify(M.LSP, "workspace/didChangeConfiguration", { settings = wire() })
     end
   end
 end)

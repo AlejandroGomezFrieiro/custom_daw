@@ -3,9 +3,9 @@
 -- A view that has a `paint` function can be shown by a graphical frontend
 -- in a window of its own, at any size, in pixels:
 --
---   daw.ui.view("scope", {
+--   paw.ui.view("scope", {
 --     paint = function(self, g, ctx)          -- ctx: width, height, focused
---       local c = daw.canvas.palette
+--       local c = paw.canvas.palette
 --       g:rect(0, 0, ctx.width, ctx.height, { fill = c.surface })
 --       g:text(12, 10, "hello", { color = c.text, size = 14, bold = true })
 --       g:line(0, 40, ctx.width, 40, { color = c.line_bar })
@@ -13,7 +13,7 @@
 --     end,
 --     pointer = function(self, e) end,        -- e: kind, x, y, button, ctrl, shift, alt, dx, dy
 --   })
---   daw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
+--   paw.canvas.open("scope", { title = "Scope", width = 640, height = 360 })
 --
 -- `e.kind` is "down", "up", "move" (while a button is held), "hover" (the
 -- pointer moving over the window with no button down), "double" or
@@ -32,18 +32,18 @@
 -- through it is placed from its corner and cut off at its edges, which is
 -- how a view scrolls. Colours are `#rrggbb` or `#rrggbbaa`.
 --
--- `daw.canvas.palette` is the window's palette, by the names the window's
--- own drawing uses (`Theme` in crates/daw-gui/src/theme.rs, which takes its
+-- `paw.canvas.palette` is the window's palette, by the names the window's
+-- own drawing uses (`Theme` in crates/paw-gui/src/theme.rs, which takes its
 -- colours from here), so that a painted view looks like the rest of the
 -- window: neutral surfaces, colour for state, and a track's hue only on
 -- what is the track's.
 --
--- A view with no `paint` is shown too: `daw.canvas.open_view(name)` opens
+-- A view with no `paint` is shown too: `paw.canvas.open_view(name)` opens
 -- any view in a window, drawn cell by cell as the terminal draws it, in the
 -- window's monospace font, with its keys and its `on_mouse` as in the
 -- terminal. `g:mono` is the primitive that carries it: a run of text in
 -- cells of that font, on a background of its own.
-local api = daw.api
+local api = paw.api
 local band = bit.band
 local M = {
   open_views = {},
@@ -228,7 +228,7 @@ local function add_run(ops, x, y, w, h, chars, colour, background, attrs)
 end
 
 --- A run of text in the window's monospace font with its top left corner
---- at `x, y`, one character to a cell of `daw.canvas.cell`, `cells` of them
+--- at `x, y`, one character to a cell of `paw.canvas.cell`, `cells` of them
 --- wide (the text's length by default). `style`: `color`, `background`,
 --- `bold`, `italic`, `underline`, `strike`. Box-drawing and block
 --- characters join from one cell to the next. Cut at the painter's edges by
@@ -286,37 +286,37 @@ M.Painter = Painter
 
 --- Show a view that paints in a graphical frontend and give it the
 --- keyboard: docked, as the terminal shows it, when it has a place in the
---- layout (`daw.ui.dock`, or a window showing it); else, or with `window =
+--- layout (`paw.ui.dock`, or a window showing it); else, or with `window =
 --- true`, in a window of its own. A view already in a window of its own
 --- stays there. `opts`: `title`, `width`, `height` (what a window starts
 --- at), `window`.
 function M.open(name, opts)
-  local view = daw.ui.views[name]
+  local view = paw.ui.views[name]
   if not (view and view.paint) then error("no view `" .. tostring(name) .. "` that paints", 2) end
   opts = opts or {}
   M.titles[name] = opts.title or M.titles[name]
-  local L = daw.layout
-  if not opts.window and not M.open_views[name] and (L.homes[name] or L.find(daw.ui.layout, name)) then
-    daw.ui.focus(name)
+  local L = paw.layout
+  if not opts.window and not M.open_views[name] and (L.homes[name] or L.find(paw.ui.layout, name)) then
+    paw.ui.focus(name)
     return
   end
   -- Taking the keyboard may have shown its place in the layout too.
   local back = M.open_views[name] and M.open_views[name].back
   back = M.leave(name) or back
   M.open_views[name] = { title = opts.title or view.title or name, width = opts.width or 900, height = opts.height or 520, back = back }
-  if daw.ui.focused ~= name and not daw.ui.float then
-    daw.ui.focused = name
-    daw.emit("view.focused", { view = name })
+  if paw.ui.focused ~= name and not paw.ui.float then
+    paw.ui.focused = name
+    paw.emit("view.focused", { view = name })
   end
   api.ui_redraw()
 end
 
 --- Whether a graphical frontend shows a view: in a window of its own, or
 --- docked where the seat's screen is a frontend's main area (one that has
---- said its size to `daw.panes`, or the instance's own with no terminal).
+--- said its size to `paw.panes`, or the instance's own with no terminal).
 function M.shown(name)
   if M.open_views[name] then return true end
-  return daw.ui.visible(name) and (daw.panes.cells() ~= nil or not api.ui_attached())
+  return paw.ui.visible(name) and (paw.panes.cells() ~= nil or not api.ui_attached())
 end
 
 --- A view about to show in a window of its own leaves the layout, so as
@@ -325,9 +325,9 @@ end
 --- frontend draws itself (the arrange view, the mixer...) stays where it is
 --- as well: the window of its own is a second look at it.
 function M.leave(name)
-  local L = daw.layout
+  local L = paw.layout
   local here, t = L.current(), L.tab()
-  if daw.panes.native[name] then return here and here.id end
+  if paw.panes.native[name] then return here and here.id end
   -- Where the view had the keyboard, the window before it gets it back.
   local before = here and here.view == name and t.prev and L.find_id(t.layout, t.prev)
   L.conceal(name)
@@ -350,18 +350,18 @@ end
 --- arrange view.
 function M.back(name)
   local window = M.open_views[name]
-  local L = daw.layout
-  local win = window and window.back and L.find_id(daw.ui.layout, window.back)
+  local L = paw.layout
+  local win = window and window.back and L.find_id(paw.ui.layout, window.back)
   if win and not win.hidden then return L.enter(win) end
-  daw.ui.focus("arrange")
+  paw.ui.focus("arrange")
 end
 
 --- Give a view in a window the keyboard, as a click in it does.
 local function focus(name)
-  if daw.ui.focused ~= name and not daw.ui.float then
-    if daw.keymap.mode == "x" then daw.keymap.set_mode("n") end
-    daw.ui.focused = name
-    daw.emit("view.focused", { view = name })
+  if paw.ui.focused ~= name and not paw.ui.float then
+    if paw.keymap.mode == "x" then paw.keymap.set_mode("n") end
+    paw.ui.focused = name
+    paw.emit("view.focused", { view = name })
   end
 end
 
@@ -374,15 +374,15 @@ M.focus = focus
 --- under it for prompts, messages and its keys. A view floating over the
 --- terminal's views moves into the window. `opts`: `title`, `width`,
 --- `height` (in pixels).
----   daw.canvas.open_view("undotree")
+---   paw.canvas.open_view("undotree")
 function M.open_view(name, opts)
-  name = name or daw.ui.focused
-  local view = daw.ui.views[name]
+  name = name or paw.ui.focused
+  local view = paw.ui.views[name]
   if not view then error("no view `" .. tostring(name) .. "`", 2) end
-  if view.paint then return M.open(name, daw.util.merge(opts or {}, { window = true })) end
+  if view.paint then return M.open(name, paw.util.merge(opts or {}, { window = true })) end
   opts = opts or {}
-  local float = daw.ui.float and daw.ui.float.name == name and daw.ui.float
-  if float then daw.ui.close() end
+  local float = paw.ui.float and paw.ui.float.name == name and paw.ui.float
+  if float then paw.ui.close() end
   local back = M.open_views[name] and M.open_views[name].back or M.leave(name)
   M.open_views[name] = {
     title = opts.title or (float and float.title) or view.title or name, cells = true, back = back,
@@ -409,9 +409,9 @@ local not_windows = {
 --- of a view that has `paint`) is offered as that one.
 function M.openable()
   local out = {}
-  for name, view in pairs(daw.ui.views) do
+  for name, view in pairs(paw.ui.views) do
     if view.focusable ~= false and view.window ~= false and not not_windows[name] then
-      local twin = view.painted and daw.ui.views[view.painted]
+      local twin = view.painted and paw.ui.views[view.painted]
       out[#out + 1] = { name = twin and view.painted or name, title = view.title or name }
     end
   end
@@ -424,13 +424,13 @@ end
 --- closes its window there, as `:close` would.
 function M.close(name)
   if not M.open_views[name] then
-    local win = daw.layout.find(daw.ui.layout, name)
-    if win and not win.hidden then daw.layout.close(win) end
+    local win = paw.layout.find(paw.ui.layout, name)
+    if win and not win.hidden then paw.layout.close(win) end
     return
   end
-  if daw.ui.focused == name and not daw.ui.float then M.back(name) end
+  if paw.ui.focused == name and not paw.ui.float then M.back(name) end
   M.open_views[name] = nil
-  local view = daw.ui.views[name]
+  local view = paw.ui.views[name]
   if view and view.on_close then view:on_close() end
   api.ui_redraw()
 end
@@ -440,11 +440,11 @@ end
 --- in a window split from the current one. What closing its window of its
 --- own does; `Ctrl-w d` in it does the same.
 function M.dock(name)
-  name = name or daw.ui.focused
+  name = name or paw.ui.focused
   if not M.open_views[name] then return end
   M.open_views[name] = nil
-  local L = daw.layout
-  if daw.panes.native[name] or L.reveal(name) then return daw.ui.focus(name) end
+  local L = paw.layout
+  if paw.panes.native[name] or L.reveal(name) then return paw.ui.focus(name) end
   -- A type with a buffer for each target shows the buffer it showed.
   local def = L.types[name]
   local loose = def and def.window and def.window()
@@ -459,7 +459,7 @@ end
 function M.windows()
   local out = {}
   for name, w in pairs(M.open_views) do
-    local view = daw.ui.views[name]
+    local view = paw.ui.views[name]
     if view and (view.paint or w.cells) then
       out[#out + 1] = { name = name, title = w.title, width = w.width, height = w.height, cells = w.cells or false }
     end
@@ -469,7 +469,7 @@ function M.windows()
 end
 
 --- A view that draws cells, at a size in pixels: its snapshot
---- (`daw.api.ui_view_snapshot`) as runs of text, a run of one style each.
+--- (`paw.api.ui_view_snapshot`) as runs of text, a run of one style each.
 --- Drawn again only when a redraw has been asked for since, once a second
 --- for what changes on its own (times), and on every call while playing;
 --- `{ same = true }` when what it would draw is what it drew last.
@@ -492,14 +492,14 @@ function M.paint_cells(name, window, width, height, opts, win)
     and now - window.at < (api.transport_get().playing and 30 or 1000) then
     return { title = window.title, same = true }
   end
-  local focused = daw.ui.focused == name
-  daw.ui.view_win = win
+  local focused = paw.ui.focused == name
+  paw.ui.view_win = win
   -- The strips the view keeps under its cells (`buf:strip`), drawn here
   -- between the cells' backgrounds and their text.
-  daw.ui.pictures = {}
+  paw.ui.pictures = {}
   local ok, snap = pcall(api.ui_view_snapshot, name, cols, bare and rows or rows - 1)
-  local pictures = daw.ui.pictures
-  daw.ui.view_win, daw.ui.pictures = nil, nil
+  local pictures = paw.ui.pictures
+  paw.ui.view_win, paw.ui.pictures = nil, nil
   if not ok then error(snap, 0) end
   local ops = { { "r", 0, 0, width, height, snap.bg, "", 1, 0 } }
   local function add(lines, top, layer)
@@ -636,7 +636,7 @@ end
 --- given these in its context, as `cell`, `surface`, `fg` and `bg`. A view
 --- that draws cells answers `{ same = true }` when nothing would change.
 function M.paint(name, width, height, opts)
-  local view = daw.ui.views[name]
+  local view = paw.ui.views[name]
   local window = M.open_views[name]
   opts = opts or {}
   -- A terminal's cell is the surface's own: the window's stays as it measured it.
@@ -655,7 +655,7 @@ function M.paint(name, width, height, opts)
   local g = painter(ops, 0, 0, width, height)
   local colors = opts.colors or {}
   local ok, err = xpcall(view.paint, debug.traceback, view, g, {
-    width = width, height = height, focused = daw.ui.focused == name,
+    width = width, height = height, focused = paw.ui.focused == name,
     cell = opts.surface and opts.cell or M.cell, surface = opts.surface or false, fg = colors.fg, bg = colors.bg,
   })
   if not ok then
@@ -677,7 +677,7 @@ end
 --- The operations a function draws on a painter of `px.w` by `px.h`
 --- pixels: what a strip shows (`buf:strip`). `draw(g, px)` is given the
 --- painter and `px` itself; a failure is shown where it would have drawn.
----   local ops = daw.canvas.draw(function(g, px) g:rect(0, 0, px.w, 2, { fill = "#ffffff" }) end, { w = 80, h = 40 })
+---   local ops = paw.canvas.draw(function(g, px) g:rect(0, 0, px.w, 2, { fill = "#ffffff" }) end, { w = 80, h = 40 })
 function M.draw(draw, px)
   local ops = {}
   local ok, err = xpcall(draw, debug.traceback, painter(ops, 0, 0, px.w, px.h), px)
@@ -729,13 +729,13 @@ end
 --- keyboard: to its `pointer` in pixels, or for a view in cells to its
 --- `on_mouse` as the terminal would.
 function M.pointer(name, event)
-  local view = daw.ui.views[name]
+  local view = paw.ui.views[name]
   if not view then return end
   if event.kind == "down" then focus(name) end
   local window = M.open_views[name]
   if not view.paint and window and window.cells then
     local e = M.cell_event(window, event)
-    if e and view.on_mouse then daw.limit.named("the mouse", daw.mouse.to_view, view, e) end
+    if e and view.on_mouse then paw.limit.named("the mouse", paw.mouse.to_view, view, e) end
   elseif view.pointer then
     view:pointer(event)
   end
@@ -748,9 +748,9 @@ end
 --- do (`view.window_keys`, such as Ctrl-A for choosing every note), where
 --- the terminal keeps the one rule of every view.
 function M.key(name, keys)
-  local view = daw.ui.views[name]
+  local view = paw.ui.views[name]
   if view then focus(name) end
-  daw.keymap.feed(view and view.window_keys and view.window_keys[keys] or keys)
+  paw.keymap.feed(view and view.window_keys and view.window_keys[keys] or keys)
   api.ui_redraw()
 end
 

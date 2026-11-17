@@ -1,6 +1,6 @@
--- `daw.pick`: choose one of many things by typing a few letters of it.
+-- `paw.pick`: choose one of many things by typing a few letters of it.
 --
---   daw.pick({
+--   paw.pick({
 --     title = "Tracks",
 --     items = { { text = "Bass", id = 3 }, "Drums" },   -- or a function returning the list
 --     format = function(item) return item.text end,    -- optional: the line shown and matched
@@ -25,14 +25,14 @@
 --
 -- Every picker marks lines with Tab (unless `multi = false`), steps its
 -- mode with Ctrl-r (`mode` starts it "exact" or "regex"), recalls what was
--- typed with Ctrl-Up, and has the keys of `daw.pick.keys`: what they do
+-- typed with Ctrl-Up, and has the keys of `paw.pick.keys`: what they do
 -- with an item comes from `location(item)` (its address), `open(item,
 -- how)`, `delete(items)` and `insert(item)`. `preview(item, width,
 -- height)` is given the pane's size.
 --
 -- `audition(item)` lets the item under the selection be heard: once the
--- selection has rested on an item for `daw.opt.audition_delay` ms, the one
--- before is stopped (its trial taken back, see `daw.audition`) and the hook
+-- selection has rested on an item for `paw.opt.audition_delay` ms, the one
+-- before is stopped (its trial taken back, see `paw.audition`) and the hook
 -- plays this one. It returns a label for the preview pane ("Warm Pad ·
 -- loop bar 5"), or a table `{ label, loading, keep }`: `loading()` says
 -- whether it is still being made ready, and `keep(item)`, when given, is
@@ -43,10 +43,10 @@
 -- `audition_delay(item, ms)` may return a longer rest for an item that is
 -- slow to make ready.
 --
--- `daw.pick("tracks")` opens a source by name. `daw.pick.sources` holds them:
+-- `paw.pick("tracks")` opens a source by name. `paw.pick.sources` holds them:
 -- add a table of the same fields with a `desc`, or a function returning one.
--- The picker of pickers (`daw.pick("pickers")`) lists every source.
-local api = daw.api
+-- The picker of pickers (`paw.pick("pickers")`) lists every source.
+local api = paw.api
 local M = { sources = {} }
 
 local byte, lower, sub = string.byte, string.lower, string.sub
@@ -219,7 +219,7 @@ end
 
 -- The ways a query is read: "fuzzy" (letters in order, with fzf's `'`,
 -- `^`, `$` and `!` before or after a word), "exact" (each word as it is
--- written, anywhere) and "regex" (the whole query, `daw.regex`).
+-- written, anywhere) and "regex" (the whole query, `paw.regex`).
 M.MODES = { "fuzzy", "exact", "regex" }
 
 --- Split a query into terms. A term with a capital letter is matched as
@@ -230,7 +230,7 @@ local function terms_of(query, mode)
   local out = {}
   if mode == "regex" then
     if query:match("%S") then
-      local re, err = daw.regex.try(query)
+      local re, err = paw.regex.try(query)
       out[1] = { kind = "regex", re = re, invalid = err, text = query }
     end
     return out
@@ -296,8 +296,8 @@ end
 --- How well `query` matches `text`: a score, higher is better, and the byte
 --- positions of the matched characters in order. Nil when it does not match.
 --- Words of the query separated by spaces must each match. `mode` is one
---- of `daw.pick.MODES`, "fuzzy" by default.
----   daw.pick.match("bs", "Bass Synth")   --> score, { 1, 6 }
+--- of `paw.pick.MODES`, "fuzzy" by default.
+---   paw.pick.match("bs", "Bass Synth")   --> score, { 1, 6 }
 function M.match(query, text, want_positions, mode)
   if want_positions == nil then want_positions = true end
   local total, positions = 0, want_positions and {} or nil
@@ -426,8 +426,8 @@ local function filter_entries(query, entries, mode)
 end
 
 --- The items that match `query`, best first, each as { item, text, score };
---- `mode` as `daw.pick.match` takes it.
----   daw.pick.filter("bass", { "Bass", "Bass Synth", "Drums" })
+--- `mode` as `paw.pick.match` takes it.
+---   paw.pick.filter("bass", { "Bass", "Bass Synth", "Drums" })
 function M.filter(query, items, format, primary, mode)
   local out = {}
   for i, e in ipairs(filter_entries(query, entries_of(items, format, primary), mode)) do
@@ -440,7 +440,7 @@ end
 
 local active        -- the open picker
 local last_spec     -- for `resume`
-daw.seats.keep("pick",
+paw.seats.keep("pick",
   function() return active, last_spec end,
   function(a, spec) active, last_spec = a, spec end,
   function() return nil, nil end)
@@ -506,38 +506,38 @@ end
 
 local function hearing_on(p)
   if not p.spec.audition then return false end
-  local on = daw.state[hear_key(p)]
+  local on = paw.state[hear_key(p)]
   if on == nil then return p.spec.audition_default ~= false end
   return on
 end
 
 --- Forget what the picker plays, and stop its timer.
 local function hush(p)
-  if p.hear_timer then daw.cancel(p.hear_timer) end
-  if p.hear_ticker then daw.cancel(p.hear_ticker) end
+  if p.hear_timer then paw.cancel(p.hear_timer) end
+  if p.hear_ticker then paw.cancel(p.hear_ticker) end
   p.hear_timer, p.hear_ticker, p.hear_item, p.heard, p.hearing, p.hear_error = nil, nil, nil, nil, nil, nil
 end
 
 local function hear(p, item)
   p.hear_timer = nil
   if active ~= p then return end
-  daw.audition.revert()
+  paw.audition.revert()
   p.heard, p.hearing, p.hear_error = nil, nil, nil
-  if item == nil then return daw.audition.stop() end
-  local asked = daw.audition.asked
+  if item == nil then return paw.audition.stop() end
+  local asked = paw.audition.asked
   local ok, result = pcall(p.spec.audition, item)
   if not ok then
-    daw.audition.stop()
+    paw.audition.stop()
     p.hear_error = tostring(result):match("^[^\n]*"):gsub("^[^:]*:%d+: ", "")
   else
     -- An item with nothing to hear silences the one before.
-    if daw.audition.asked == asked then daw.audition.quiet() end
+    if paw.audition.asked == asked then paw.audition.quiet() end
     p.heard, p.hearing = item, type(result) == "table" and result or { label = result }
   end
   -- While something plays or loads, the pane follows it.
   if not p.hear_ticker then
-    p.hear_ticker = daw.every(100, function()
-      if active == p and (daw.audition.state() or (p.hearing and p.hearing.loading)) then api.ui_redraw() end
+    p.hear_ticker = paw.every(100, function()
+      if active == p and (paw.audition.state() or (p.hearing and p.hearing.loading)) then api.ui_redraw() end
     end)
   end
   api.ui_redraw()
@@ -549,21 +549,21 @@ local function follow(p)
   local item = current(p)
   if item == p.hear_item then return end
   p.hear_item = item
-  if p.hear_timer then daw.cancel(p.hear_timer) end
+  if p.hear_timer then paw.cancel(p.hear_timer) end
   -- A file stops at once; a phrase plays on until the next sound is ready.
   api.preview_stop()
   -- A source may wait longer for what is slow to make ready (a plugin).
-  local delay = tonumber(daw.opt.audition_delay) or 150
+  local delay = tonumber(paw.opt.audition_delay) or 150
   if p.spec.audition_delay and item ~= nil then delay = p.spec.audition_delay(item, delay) or delay end
-  p.hear_timer = daw.defer(function() hear(p, item) end, math.max(0, delay))
+  p.hear_timer = paw.defer(function() hear(p, item) end, math.max(0, delay))
 end
 
 local function toggle_hearing(p)
-  if not p.spec.audition then return daw.notify("nothing to hear in this picker", "warn") end
+  if not p.spec.audition then return paw.notify("nothing to hear in this picker", "warn") end
   local on = not hearing_on(p)
-  daw.state[hear_key(p)] = on
+  paw.state[hear_key(p)] = on
   hush(p)
-  if on then follow(p) else daw.audition.stop() end
+  if on then follow(p) else paw.audition.stop() end
   -- The pane says so at once: `♪ off` gives way to what plays, or to `…`.
   api.ui_redraw()
 end
@@ -572,9 +572,9 @@ local function close(p)
   if active == p then active = nil end
   if p.spec.audition then
     hush(p)
-    daw.audition.quiet()
+    paw.audition.quiet()
   end
-  if daw.ui.float and daw.ui.float.name == "pick" then daw.ui.close() end
+  if paw.ui.float and paw.ui.float.name == "pick" then paw.ui.close() end
 end
 
 local function choose(p)
@@ -585,10 +585,10 @@ local function choose(p)
   if p.spec.audition then
     -- What was heard is what is kept, as the step that choosing it makes.
     if kept and api.trial_active() then
-      daw.audition.keep()
+      paw.audition.keep()
       return keep(item)
     end
-    daw.audition.revert()
+    paw.audition.revert()
   end
   if p.multi and next(p.marked) then
     local items = {}
@@ -608,7 +608,7 @@ end
 
 local function cancel(p)
   close(p)
-  daw.audition.revert()
+  paw.audition.revert()
   if p.spec.on_cancel then p.spec.on_cancel() end
 end
 
@@ -633,7 +633,7 @@ local HISTORY = 50
 
 local function source_key(p) return tostring(p.source or p.spec.title or "?") end
 
-local function history_of(p) return daw.state["pick.history." .. source_key(p)] or {} end
+local function history_of(p) return paw.state["pick.history." .. source_key(p)] or {} end
 
 --- Remember the query of a picker that was used, unless it is the last one.
 local function remember(p)
@@ -643,12 +643,12 @@ local function remember(p)
   for _, q in ipairs(history_of(p)) do
     if q ~= query and #list < HISTORY then list[#list + 1] = q end
   end
-  daw.state["pick.history." .. source_key(p)] = list
+  paw.state["pick.history." .. source_key(p)] = list
 end
 
 local function step_history(p, by)
   local list = history_of(p)
-  if #list == 0 then return daw.notify("nothing typed in this picker before", "warn") end
+  if #list == 0 then return paw.notify("nothing typed in this picker before", "warn") end
   if not p.history_at then p.typed = table.concat(p.query) end
   local at = max(0, min(#list, (p.history_at or 0) + by))
   p.history_at = at
@@ -694,7 +694,7 @@ end
 
 -- The view that shows an address best, for a window of its own.
 local function view_for(loc)
-  local parsed = daw.address.parse(loc.uri)
+  local parsed = paw.address.parse(loc.uri)
   if not parsed then return "arrange" end
   if parsed.kind == "note" or parsed.kind == "control" then return "pianoroll" end
   if parsed.kind == "clip" then
@@ -710,32 +710,32 @@ end
 --- shows it best moving there. Returns whether there was somewhere to go.
 function M.show(loc, how)
   if type(loc) == "string" then loc = { uri = loc } end
-  if not how then return daw.qf.go({ location = loc }) end
+  if not how then return paw.qf.go({ location = loc }) end
   local name = view_for(loc)
-  local L = daw.layout
+  local L = paw.layout
   if how == "tab" then
     L.tab_new(nil, name)
   elseif not (L.current() and L.current().view == name) then
     local made, why = L.split({ vertical = how == "vsplit", view = name })
-    if not made then daw.notify(why, "warn") end
+    if not made then paw.notify(why, "warn") end
   end
-  daw.ui.focus(name)
-  local locator = daw.ui.locators[name]
+  paw.ui.focus(name)
+  local locator = paw.ui.locators[name]
   if locator and locator.place(loc, true) then
     locator.go(loc)
     return true
   end
-  return daw.qf.go({ location = loc })
+  return paw.qf.go({ location = loc })
 end
 
 local function open_with(how)
   return function(p, entries)
     local e = entries[1]
     if not e then return end
-    if #entries > 1 then daw.notify(string.format("opened the first of %d marked", #entries)) end
+    if #entries > 1 then paw.notify(string.format("opened the first of %d marked", #entries)) end
     if p.spec.open then return p.spec.open(e.item, how) end
     local loc = location_of(p, e.item)
-    if not loc then return daw.notify("this line has nowhere to open", "warn") end
+    if not loc then return paw.notify("this line has nowhere to open", "warn") end
     M.show(loc, how)
   end
 end
@@ -746,9 +746,9 @@ local function send_to_list(loc)
     local list = {}
     for i, e in ipairs(entries) do list[i] = { location = location_of(p, e.item), text = e.text } end
     local query = table.concat(p.query)
-    daw.qf.set(list, { title = (p.spec.title or "pick") .. (query ~= "" and " · " .. query or ""), win = loc or nil, source = "pick" })
-    daw.qf.open({ loc = loc })
-    daw.notify(string.format("%d line%s in the %s", #list, #list == 1 and "" or "s", loc and "location list" or "quickfix list"))
+    paw.qf.set(list, { title = (p.spec.title or "pick") .. (query ~= "" and " · " .. query or ""), win = loc or nil, source = "pick" })
+    paw.qf.open({ loc = loc })
+    paw.notify(string.format("%d line%s in the %s", #list, #list == 1 and "" or "s", loc and "location list" or "quickfix list"))
   end
 end
 
@@ -757,8 +757,8 @@ local function insert(p, entries)
   if not e then return end
   if p.spec.insert then return p.spec.insert(e.item) end
   local text = e.text:gsub("^%s+", ""):gsub("%s+$", "")
-  daw.ui.input({ prompt = ":", history = "cmdline", text = text }, function(line)
-    if line:match("%S") then daw.commands.exec(line) end
+  paw.ui.input({ prompt = ":", history = "cmdline", text = text }, function(line)
+    if line:match("%S") then paw.commands.exec(line) end
   end)
 end
 
@@ -776,7 +776,7 @@ local function delete(p, entries)
   local items = {}
   for i, e in ipairs(entries) do items[i] = e.item end
   local ok, err = pcall(p.spec.delete, items)
-  if not ok then daw.notify((tostring(err):gsub("^[^:]*:%d+: ", "")), "error") end
+  if not ok then paw.notify((tostring(err):gsub("^[^:]*:%d+: ", "")), "error") end
   local selected = p.selected
   reload(p)
   p.selected = max(1, min(selected, #p.matches))
@@ -806,13 +806,13 @@ local function cycle_mode(p)
     if m == p.mode then at = i end
   end
   p.mode = M.MODES[at % #M.MODES + 1]
-  daw.state["pick.mode." .. source_key(p)] = p.mode
+  paw.state["pick.mode." .. source_key(p)] = p.mode
   refilter(p)
 end
 
 function view:on_key(key)
   local p = active
-  if not p then return daw.ui.close() end
+  if not p then return paw.ui.close() end
   -- `resume` reopens as it was when Enter or Escape closed it.
   local function keep_for_resume()
     if last_spec and last_spec.spec == p.spec then
@@ -827,7 +827,7 @@ function view:on_key(key)
     remember(p)
     if not (action or g).keep then
       close(p)
-      daw.audition.revert()
+      paw.audition.revert()
     end
     if action then action.fn(item, table.concat(p.query), p) else g.fn(p, entries) end
     if active == p then follow(p) end
@@ -844,7 +844,7 @@ function view:on_key(key)
     toggle_hearing(p)
   elseif key == "<C-r>" then
     -- A picker that ranks its items itself reads what is typed its own way.
-    if p.spec.rank then daw.notify("this picker reads what is typed its own way", "warn") else cycle_mode(p) end
+    if p.spec.rank then paw.notify("this picker reads what is typed its own way", "warn") else cycle_mode(p) end
   elseif stepping then
     step_history(p, key == "<C-Up>" and 1 or -1)
   elseif key == "<C-a>" and p.multi then
@@ -918,7 +918,7 @@ end
 --- Draw `text` cut to `width` columns, with the characters at byte
 --- `positions` (sorted) in `style`.
 local function draw_matched(buf, x, y, text, positions, width, style)
-  buf:text(x, y, daw.util.fit(text, width), nil)
+  buf:text(x, y, paw.util.fit(text, width), nil)
   if not positions or #positions == 0 then return end
   -- A line that does not fit ends in "…" in its last column.
   local limit = api.str_width(text) > width and width - 1 or width
@@ -944,7 +944,7 @@ end
 local function hearing_lines(p, width)
   if not hearing_on(p) then return { { text = "♪ off · Ctrl-Space hears", style = "Dim" }, { text = "" } } end
   local lines = {}
-  local now = daw.audition.state()
+  local now = paw.audition.state()
   local h = p.hearing
   if p.hear_error then
     lines[1] = { text = "✗ " .. p.hear_error, style = "Warn" }
@@ -957,7 +957,7 @@ local function hearing_lines(p, width)
     local name = h.label or now.file:match("[^/]*$")
     lines[1] = { text = mark .. name .. (now.error and " · " .. now.error or ""), style = now.state == "failed" and "Warn" or "PickPlaying" }
     if now.outline then
-      for _, row in ipairs(daw.audition.outline_lines(now.outline, width, 3, now.position, now.length)) do
+      for _, row in ipairs(paw.audition.outline_lines(now.outline, width, 3, now.position, now.length)) do
         lines[#lines + 1] = { text = row.text, style = "PickWave", at = row.at }
       end
       lines[#lines + 1] = { text = clock(now.position) .. " / " .. clock(now.length), style = "Dim" }
@@ -1029,8 +1029,8 @@ function view:render(buf, ctx)
   if #p.entries == 0 then
     buf:text(2, 2, p.spec.empty or "Nothing to choose from.", "Dim")
   elseif #p.matches == 0 then
-    local bad = p.mode == "regex" and select(2, daw.regex.try(query))
-    buf:text(2, 2, bad and daw.util.fit(bad, list_w - 3) or "Nothing matches.", bad and "Warn" or "Dim")
+    local bad = p.mode == "regex" and select(2, paw.regex.try(query))
+    buf:text(2, 2, bad and paw.util.fit(bad, list_w - 3) or "Nothing matches.", bad and "Warn" or "Dim")
   end
   -- The column of marks shows once something is marked.
   local mark_room = (p.spec.multi or next(p.marked)) and 2 or 0
@@ -1043,7 +1043,7 @@ function view:render(buf, ctx)
     local selected = index == p.selected
     if selected then buf:fill(0, y, list_w, 1, nil, "PickSelected") end
     -- The cursor is `▶`; the row that is heard has `♪` in its place.
-    local heard = selected and p.heard ~= nil and p.heard == e.item and daw.audition.state() ~= nil
+    local heard = selected and p.heard ~= nil and p.heard == e.item and paw.audition.state() ~= nil
     buf:text(0, y, heard and "♪" or selected and "▶" or " ", selected and "PickCaret" or nil)
     if mark_room > 0 then buf:text(2, y, p.marked[e] and "+" or " ", "PickMarked") end
     local positions
@@ -1064,23 +1064,23 @@ function view:render(buf, ctx)
     end
     for i, line in ipairs(lines) do
       if i > rows then break end
-      buf:text(list_w + 2, 1 + i, daw.util.fit(line.text, pw), line.style or "Normal")
+      buf:text(list_w + 2, 1 + i, paw.util.fit(line.text, pw), line.style or "Normal")
       -- The column a sound file has got to, across its outline.
       if line.at and line.at <= pw then buf:fill(list_w + 1 + line.at, 1 + i, 1, 1, nil, "PickPlayhead") end
     end
   end
-  if footer then buf:text(0, h - 1, daw.util.fit(footer, w), "Dim") end
+  if footer then buf:text(0, h - 1, paw.util.fit(footer, w), "Dim") end
 end
 
-daw.ui.view("pick", view)
+paw.ui.view("pick", view)
 
 -- The key line while a picker is open: what the keys of this one do (the
 -- keys themselves are not mapped: the picker takes every key).
-daw.ui.keybar.set("pick", "n", function()
+paw.ui.keybar.set("pick", "n", function()
   local out = { { "", active and active.spec.choose or "choose", "Enter" } }
   local keys = {}
   for key, a in pairs(active and active.spec.actions or {}) do
-    if type(a) == "table" and a.desc then keys[#keys + 1] = { "", a.desc, daw.ui.keybar.show(key) } end
+    if type(a) == "table" and a.desc then keys[#keys + 1] = { "", a.desc, paw.ui.keybar.show(key) } end
   end
   table.sort(keys, function(a, b) return a[3] < b[3] end)
   for _, entry in ipairs(keys) do out[#out + 1] = entry end
@@ -1118,16 +1118,16 @@ function M.open(spec, extra)
     if not source then error("no picker `" .. name .. "`", 2) end
     spec = type(source) == "function" and source(extra or {}) or source
     if not spec then return end
-    if extra and extra.query then spec = daw.util.merge(spec, { query = extra.query }) end
-    if not spec.title then spec = daw.util.merge(spec, { title = name }) end
+    if extra and extra.query then spec = paw.util.merge(spec, { query = extra.query }) end
+    if not spec.title then spec = paw.util.merge(spec, { title = name }) end
   end
-  assert(type(spec) == "table", "usage: daw.pick({ items = ..., on_choose = function(item) end })")
+  assert(type(spec) == "table", "usage: paw.pick({ items = ..., on_choose = function(item) end })")
   local items = spec.items
   if type(items) == "function" then items = items() end
   -- A picker opened over one being heard takes over from it.
   if active and active.spec.audition then
     close(active)
-    daw.audition.revert()
+    paw.audition.revert()
   end
   local p = {
     spec = spec, source = source_name, prompt = spec.prompt or "> ", query = chars_of(spec.query or ""),
@@ -1135,13 +1135,13 @@ function M.open(spec, extra)
     multi = spec.multi ~= false, marked = {}, last_query = "",
   }
   -- The mode chosen last in this picker, else the picker's own.
-  p.mode = not spec.rank and (daw.state["pick.mode." .. source_key(p)] or spec.mode) or "fuzzy"
+  p.mode = not spec.rank and (paw.state["pick.mode." .. source_key(p)] or spec.mode) or "fuzzy"
   p.matches = p.entries
   p.footer = footer_of(p)
   if #p.query > 0 or spec.rank then refilter(p) end
   active, last_spec = p, { spec = spec, query = spec.query, source = source_name }
   local width, height = api.ui_size()
-  daw.ui.open("pick", {
+  paw.ui.open("pick", {
     title = spec.title or "Pick",
     width = spec.width or ((spec.preview or spec.audition) and min(120, width - 4) or min(80, width - 4)),
     height = spec.height or min(28, max(10, height - 4)),
@@ -1154,7 +1154,7 @@ end
 --- Open the last picker again, as it was: what was typed, the mode, the
 --- line selected. Its items are read again.
 function M.resume()
-  if not last_spec then return daw.notify("no picker opened yet", "warn") end
+  if not last_spec then return paw.notify("no picker opened yet", "warn") end
   local was = last_spec
   local p = M.open(was.spec)
   p.source, last_spec.source = was.source, was.source
@@ -1170,7 +1170,7 @@ end
 --- under the selection. For tests and for frontends.
 function M.state()
   local p = active
-  if not p or not (daw.ui.float and daw.ui.float.name == "pick") then return nil end
+  if not p or not (paw.ui.float and paw.ui.float.name == "pick") then return nil end
   local lines = {}
   for i, e in ipairs(p.matches) do lines[i] = e.text end
   local hearing
@@ -1185,7 +1185,7 @@ function M.state()
     audition = hearing, mode = p.mode, marked = marked, source = p.source }
 end
 
-local palette = require("daw.theme").palette
+local palette = require("paw.theme").palette
 for name, def in pairs({
   PickPrompt = { fg = palette.blue, bold = true },
   PickCount = { fg = palette.dim },
@@ -1206,20 +1206,20 @@ local SOUND = { wav = true, wave = true, aif = true, aiff = true, flac = true, m
 --- bars of a MIDI file through an instrument. The label for the pane.
 function M.hear_file(path)
   local ext = (path:match("%.([^./]+)$") or ""):lower()
-  if daw.midifile.is_midi_file(path) then
-    return daw.audition.try(function() return daw.audition.midi_file(path) end)
+  if paw.midifile.is_midi_file(path) then
+    return paw.audition.try(function() return paw.audition.midi_file(path) end)
   end
   if SOUND[ext] then
-    daw.audition.file(path)
+    paw.audition.file(path)
     return path:match("[^/]*$")
   end
 end
 
-M.sources = require("daw.pick.sources")(M)
+M.sources = require("paw.pick.sources")(M)
 
 --- Choose a file by walking directories:
 ---
----   daw.pick.file({ title = "Import audio", extensions = { "wav", "mp3" },
+---   paw.pick.file({ title = "Import audio", extensions = { "wav", "mp3" },
 ---                   on_choose = function(path) end })
 ---
 --- Directories come first and are entered with Enter; `..` goes up; only
@@ -1263,16 +1263,16 @@ function M.file(opts)
         if not item.dir then return M.hear_file(item.path) end
       end,
       on_choose = function(item)
-        if item.here then daw.state.pick_dir = dir return opts.on_choose(dir) end
+        if item.here then paw.state.pick_dir = dir return opts.on_choose(dir) end
         if item.dir then return open(item.path == "" and "/" or item.path) end
-        daw.state.pick_dir = dir
+        paw.state.pick_dir = dir
         opts.on_choose(item.path)
       end,
       on_cancel = opts.on_cancel,
     })
   end
   local project = api.project_get and api.project_get().path
-  open(opts.dir or daw.state.pick_dir or (project and project:match("^(.*)/[^/]+$")) or os.getenv("HOME") or "/")
+  open(opts.dir or paw.state.pick_dir or (project and project:match("^(.*)/[^/]+$")) or os.getenv("HOME") or "/")
 end
 
 return setmetatable(M, { __call = function(_, spec, extra) return M.open(spec, extra) end })

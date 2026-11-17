@@ -4,7 +4,7 @@
 -- skipped without ffmpeg). Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fails, fresh = T.test, T.eq, T.fails, T.fresh
-local api = daw.api
+local api = paw.api
 
 local function have(program)
   local ok = os.execute("command -v " .. program .. " >/dev/null 2>&1")
@@ -85,7 +85,7 @@ local function setup(name)
   fresh()
   api.engine_restart({ backend = "null" })
   T.tone("Synth", 2)
-  daw.project.tempo = 120
+  paw.project.tempo = 120
   return fresh_dir(name)
 end
 
@@ -93,31 +93,31 @@ local cover = "tests/fixtures/cover.png"
 
 test("a WAV carries the project's tags in an INFO chunk and is still a WAV", function()
   local dir = setup("wav")
-  eq(next(daw.render_tags()), nil, "a new project has no tags")
-  daw.render_tags({ artist = "Ana", album = "First", track = 3, year = 2026, genre = "Ambient", comment = "a note" })
-  eq(daw.render_tags().track, "3", "a number is kept as text")
-  daw.project.name = "Sunrise"
+  eq(next(paw.render_tags()), nil, "a new project has no tags")
+  paw.render_tags({ artist = "Ana", album = "First", track = 3, year = 2026, genre = "Ambient", comment = "a note" })
+  eq(paw.render_tags().track, "3", "a number is kept as text")
+  paw.project.name = "Sunrise"
   local path = dir .. "/a.wav"
-  daw.render(path, { tail = 0, bits = 16 })
+  paw.render(path, { tail = 0, bits = 16 })
   local info, size_ok = wav_info(T.read_file(path))
   eq(info.INAM, nil, "a WAV is not titled with the project's name unless asked")
   eq(info.IART .. "|" .. info.IPRD .. "|" .. info.ITRK .. "|" .. info.ICRD .. "|" .. info.IGNR .. "|" .. info.ICMT,
     "Ana|First|3|2026|Ambient|a note", "every tag is there")
   eq(size_ok, true, "the RIFF size covers the chunk")
-  local again = daw.render(dir .. "/b.wav", { tail = 0, bits = 16, tags = { artist = "Bo", title = "Other" } })
+  local again = paw.render(dir .. "/b.wav", { tail = 0, bits = 16, tags = { artist = "Bo", title = "Other" } })
   local info2 = wav_info(T.read_file(dir .. "/b.wav"))
   eq(info2.IART .. "|" .. info2.INAM .. "|" .. info2.IPRD, "Bo|Other|First", "a render's own tags go over the project's")
   eq(again.frames, 48000, "and the audio is as long as it was")
-  fails(function() daw.render(dir .. "/c.wav", { tail = 0, tags = { artsit = "x" } }) end, "artsit", "a tag that does not exist is refused")
-  daw.render_tags({ artist = "", album = "", track = "", year = "", genre = "", comment = "" })
-  eq(next(daw.render_tags()), nil, "empty values take tags out")
+  fails(function() paw.render(dir .. "/c.wav", { tail = 0, tags = { artsit = "x" } }) end, "artsit", "a tag that does not exist is refused")
+  paw.render_tags({ artist = "", album = "", track = "", year = "", genre = "", comment = "" })
+  eq(next(paw.render_tags()), nil, "empty values take tags out")
 end)
 
 test("a FLAC carries Vorbis comments and a cover picture", function()
   local dir = setup("flac")
-  daw.render_tags({ artist = "Ana", album = "First", track = "3/12", year = 2026, cover = cover })
+  paw.render_tags({ artist = "Ana", album = "First", track = "3/12", year = 2026, cover = cover })
   local path = dir .. "/a.flac"
-  daw.render(path, { tail = 0, bits = 16, tags = { title = "Song", comment = "x=y" } })
+  paw.render(path, { tail = 0, bits = 16, tags = { title = "Song", comment = "x=y" } })
   local blocks = flac_blocks(T.read_file(path))
   eq(blocks.comments.TITLE .. "|" .. blocks.comments.ARTIST .. "|" .. blocks.comments.TRACKNUMBER .. "|" .. blocks.comments.DATE
     .. "|" .. blocks.comments.COMMENT, "Song|Ana|3/12|2026|x=y", "the comments are there")
@@ -127,9 +127,9 @@ test("a FLAC carries Vorbis comments and a cover picture", function()
     local ok = os.execute("ffmpeg -v error -i " .. sh_quote(path) .. " -f null - 2>/dev/null")
     eq(ok == true or ok == 0, true, "ffmpeg decodes the file, tags and cover included")
   end
-  fails(function() daw.render(dir .. "/b.flac", { tail = 0, tags = { cover = "/no/such.png" } }) end, "cover", "a cover that cannot be read is refused")
+  fails(function() paw.render(dir .. "/b.flac", { tail = 0, tags = { cover = "/no/such.png" } }) end, "cover", "a cover that cannot be read is refused")
   eq(#api.read_dir(dir), 1, "and leaves nothing")
-  fails(function() daw.render(dir .. "/c.flac", { tail = 0, tags = { cover = "tests/fixtures/shape.wav" } }) end, "PNG or JPEG", "a cover that is no picture is refused")
+  fails(function() paw.render(dir .. "/c.flac", { tail = 0, tags = { cover = "tests/fixtures/shape.wav" } }) end, "PNG or JPEG", "a cover that is no picture is refused")
 end)
 
 --- What ffprobe says of a file: tags (lowercase) and the kinds of its streams.
@@ -157,10 +157,10 @@ end
 test("MP3, Ogg and Opus carry the tags and the cover, read back with ffprobe", function()
   if not (have("ffmpeg") and have("ffprobe")) then return "skipped: ffmpeg and ffprobe not found" end
   local dir = setup("lossy")
-  daw.render_tags({ title = "Song", artist = "Ana", album = "First", track = "3", year = 2026, genre = "Ambient", comment = "a=b; c", cover = cover })
+  paw.render_tags({ title = "Song", artist = "Ana", album = "First", track = "3", year = 2026, genre = "Ambient", comment = "a=b; c", cover = cover })
   for _, ext in ipairs({ "mp3", "ogg", "opus" }) do
     local path = dir .. "/a." .. ext
-    daw.render(path, { tail = 0 })
+    paw.render(path, { tail = 0 })
     local tags, streams = probe(path)
     eq(tags.title .. "|" .. tags.artist .. "|" .. tags.album .. "|" .. tags.genre,
       "Song|Ana|First|Ambient", ext .. ": the text tags are there")
@@ -170,31 +170,31 @@ test("MP3, Ogg and Opus carry the tags and the cover, read back with ffprobe", f
     eq(streams:find("video", 1, true) ~= nil, true, ext .. ": a picture is attached (" .. streams .. ")")
   end
   eq(#api.read_dir(dir), 3, "no metadata, picture or part file is left")
-  daw.render(dir .. "/plain.mp3", { tail = 0, tags = { cover = "" } })
-  daw.render_tags({ cover = "" })
-  daw.render(dir .. "/nocover.mp3", { tail = 0 })
+  paw.render(dir .. "/plain.mp3", { tail = 0, tags = { cover = "" } })
+  paw.render_tags({ cover = "" })
+  paw.render(dir .. "/nocover.mp3", { tail = 0 })
   local _, streams = probe(dir .. "/nocover.mp3")
   eq(streams, "audio", "without a cover there is only the sound")
 end)
 
 test("the tags are given to :render, :render.tags and the window's dialog, and kept with the project", function()
   local dir = setup("command")
-  daw.cmd("render.tags", { artist = "Ana", album = "Two words" })
-  eq(daw.render_tags().album, "Two words", "the command sets them")
-  eq(daw.frontend.render_dialog().tags.artist, "Ana", "the window's dialog starts from them")
-  daw.cmd("render", { dir .. "/a.wav", wait = true, tail = 0, title = "Mine", artist = "Bo" })
+  paw.cmd("render.tags", { artist = "Ana", album = "Two words" })
+  eq(paw.render_tags().album, "Two words", "the command sets them")
+  eq(paw.frontend.render_dialog().tags.artist, "Ana", "the window's dialog starts from them")
+  paw.cmd("render", { dir .. "/a.wav", wait = true, tail = 0, title = "Mine", artist = "Bo" })
   local info = wav_info(T.read_file(dir .. "/a.wav"))
   eq(info.INAM .. "|" .. info.IART .. "|" .. info.IPRD, "Mine|Bo|Two words", "a render's options go over the project's")
-  eq(daw.render_tags().artist, "Ana", "and do not change them")
-  daw.frontend.act.render({ path = dir .. "/b.wav", tail = 0, tags = { artist = "Cy", year = "1999" } })
-  while daw.render_status() do daw.wait(10) end
+  eq(paw.render_tags().artist, "Ana", "and do not change them")
+  paw.frontend.act.render({ path = dir .. "/b.wav", tail = 0, tags = { artist = "Cy", year = "1999" } })
+  while paw.render_status() do paw.wait(10) end
   info = wav_info(T.read_file(dir .. "/b.wav"))
   eq(info.IART .. "|" .. info.ICRD, "Cy|1999", "the dialog's tags are written")
-  eq(daw.render_tags().artist, "Cy", "and become the project's")
+  eq(paw.render_tags().artist, "Cy", "and become the project's")
   local project = dir .. "/p.json"
   api.project_save(project)
   api.project_load(project)
-  eq(daw.render_tags().year, "1999", "they are saved with the project")
-  daw.render_stems(dir .. "/stems", { tail = 0 })
+  eq(paw.render_tags().year, "1999", "they are saved with the project")
+  paw.render_stems(dir .. "/stems", { tail = 0 })
   eq(wav_info(T.read_file(dir .. "/stems/Synth.wav")).IART, "Cy", "a stem has the project's tags")
 end)

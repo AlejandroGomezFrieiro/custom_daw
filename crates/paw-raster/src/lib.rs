@@ -1,4 +1,4 @@
-//! A view's drawing (the operations `daw.canvas.paint` returns) made into
+//! A view's drawing (the operations `paw.canvas.paint` returns) made into
 //! pixels, the same in the terminal and in the window.
 //!
 //! The operations, positions in pixels of the drawing:

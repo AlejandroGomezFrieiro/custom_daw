@@ -151,7 +151,7 @@ impl Images {
 
     fn transmit(&mut self, out: &mut Vec<u8>, id: u32, rgba: &[u8], width: u32, height: u32) {
         self.serial += 1;
-        let name = format!("daw-tty-graphics-protocol-{}-{}", std::process::id(), self.serial);
+        let name = format!("paw-tty-graphics-protocol-{}-{}", std::process::id(), self.serial);
         let now = std::time::Instant::now();
         let sent = match self.transfer {
             Transfer::Shm => write_shm(&format!("/{name}"), rgba).map(|_| {
@@ -351,11 +351,11 @@ pub fn write_shm(name: &str, bytes: &[u8]) -> std::io::Result<()> {
 pub fn probe(out: &mut Vec<u8>) {
     let pixel = [255u8, 0, 0, 255];
     let _ = write!(out, "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=32;{}\x1b\\", B64.encode(pixel));
-    let name = format!("/daw-tty-graphics-protocol-{}-probe", std::process::id());
+    let name = format!("/paw-tty-graphics-protocol-{}-probe", std::process::id());
     if write_shm(&name, &pixel).is_ok() {
         let _ = write!(out, "\x1b_Gi=32,s=1,v=1,a=q,t=s,f=32;{}\x1b\\", B64.encode(&name));
     }
-    let path = std::env::temp_dir().join(format!("daw-tty-graphics-protocol-{}-probe", std::process::id()));
+    let path = std::env::temp_dir().join(format!("paw-tty-graphics-protocol-{}-probe", std::process::id()));
     if std::fs::write(&path, pixel).is_ok() {
         let _ = write!(out, "\x1b_Gi=33,s=1,v=1,a=q,t=t,f=32;{}\x1b\\", B64.encode(path.display().to_string()));
     }
@@ -363,11 +363,11 @@ pub fn probe(out: &mut Vec<u8>) {
 
 /// Remove what the probe left behind, when the terminal did not.
 pub fn probe_done() {
-    let name = format!("/daw-tty-graphics-protocol-{}-probe", std::process::id());
+    let name = format!("/paw-tty-graphics-protocol-{}-probe", std::process::id());
     if let Ok(cname) = std::ffi::CString::new(name) {
         unsafe { libc::shm_unlink(cname.as_ptr()) };
     }
-    let path = std::env::temp_dir().join(format!("daw-tty-graphics-protocol-{}-probe", std::process::id()));
+    let path = std::env::temp_dir().join(format!("paw-tty-graphics-protocol-{}-probe", std::process::id()));
     let _ = std::fs::remove_file(path);
 }
 

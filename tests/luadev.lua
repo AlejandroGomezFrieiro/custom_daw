@@ -1,9 +1,9 @@
--- Tests of devices written in Lua (daw.luadev, daw.dsp, the daw-luadev
+-- Tests of devices written in Lua (paw.luadev, paw.dsp, the paw-luadev
 -- crate). Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fails, fresh, render = T.test, T.eq, T.near, T.fails, T.fresh, T.render
 local tone, channel_peaks = T.tone, T.channel_peaks
-local api = daw.api
+local api = paw.api
 
 local dirs = 0
 
@@ -14,12 +14,12 @@ local function scripts(files)
   local dir = T.scratch .. "/luadev" .. dirs
   os.execute("mkdir -p '" .. dir .. "'")
   for name, text in pairs(files) do T.write_file(dir .. "/" .. name, text) end
-  return dir, daw.luadev.add_dir(dir)
+  return dir, paw.luadev.add_dir(dir)
 end
 
 -- Multiplies by a gain in dB.
 local GAIN = [[
-local dsp = require("daw.dsp")
+local dsp = require("paw.dsp")
 local dev = dsp.device {
   name = "Test gain",
   params = { { key = "gain", name = "Gain", min = -60, max = 12, default = 0, unit = "dB" } },
@@ -40,7 +40,7 @@ local function wait_for(what, limit, fn)
   local waited = 0
   while not fn() do
     if waited >= limit then error("waited " .. limit .. " ms for " .. what, 2) end
-    daw.wait(20)
+    paw.wait(20)
     waited = waited + 20
   end
 end
@@ -51,7 +51,7 @@ test("a device written in Lua is listed among the devices, as lua:<file>", funct
   eq(#found.errors, 0, "it loaded")
   eq(found.added[1], "lua:listed_gain", "found")
   local info
-  for _, t in ipairs(daw.device_types()) do
+  for _, t in ipairs(paw.device_types()) do
     if t.kind == "lua:listed_gain" then info = t end
   end
   eq(info and info.name, "Test gain", "with the name it gives")
@@ -62,7 +62,7 @@ end)
 test("a Lua device changes the sound by the numbers it says", function()
   fresh()
   scripts({ ["numbers_gain.lua"] = gain_script(), ["numbers_dc.lua"] = [[
-    local dev = require("daw.dsp").device {
+    local dev = require("paw.dsp").device {
       params = { { key = "level", min = -1, max = 1, default = 0.25 } },
     }
     function dev.sample(l, r, b) return b.params.level, -b.params.level / 2 end
@@ -87,7 +87,7 @@ end)
 
 test("the luafx devices: gain and pan, drive, chords and sine", function()
   fresh()
-  local ext = daw.ext.load("extensions/luafx")
+  local ext = paw.ext.load("extensions/luafx")
   eq(ext.ok, true, "the extension loads")
   local t = tone("tone", 4)
   local dry = render({ tail = 0, bits = 16 })
@@ -103,7 +103,7 @@ test("the luafx devices: gain and pan, drive, chords and sine", function()
 
   -- A chord of three from one note, heard by a device that counts them.
   scripts({ ["count_notes.lua"] = [[
-    local dsp = require("daw.dsp")
+    local dsp = require("paw.dsp")
     local dev = dsp.device { category = "instrument" }
     local held = 0
     function dev.process(b)
@@ -115,7 +115,7 @@ test("the luafx devices: gain and pan, drive, chords and sine", function()
     end
     return dev
   ]] })
-  local c = daw.add_track({ name = "chords" })
+  local c = paw.add_track({ name = "chords" })
   c:add_device("lua:chords", { chord = 1 })
   c:add_device("lua:count_notes")
   c:add_clip({ start = 0, length = 4, notes = { { pitch = "C4", start = 0, length = 2 } } })
@@ -124,7 +124,7 @@ test("the luafx devices: gain and pan, drive, chords and sine", function()
   near((channel_peaks(info, 0.2, 0.8)), 0.3, 1e-3, "chords: three notes held for one")
   eq((channel_peaks(info, 1.2, 1.8)) < 1e-3, true, "and all three let go")
 
-  local s = daw.add_track({ name = "sine" })
+  local s = paw.add_track({ name = "sine" })
   s:add_device("lua:sine")
   s:add_clip({ start = 0, length = 4, notes = { { pitch = "A4", start = 0, length = 2, velocity = 127 } } })
   c.mute = true
@@ -145,22 +145,22 @@ test("a Lua device's parameters automate, are learnt and are saved", function()
   eq(fx.params.gain, 0, "the project keeps its own value")
 
   api.device_set_param(fx.id, "gain", -20)
-  daw.flush()
-  eq(daw.learn.last.param, "gain", "the parameter moved last is known")
-  daw.cmd("learn")
-  daw.midi.inject({ type = "cc", number = 21, value = 0, channel = 1 })
-  daw.flush()
-  eq(daw.learn.learning, nil, "bound by the controller's first move")
-  daw.midi.inject({ type = "cc", number = 21, value = 1, channel = 1 })
-  daw.flush()
+  paw.flush()
+  eq(paw.learn.last.param, "gain", "the parameter moved last is known")
+  paw.cmd("learn")
+  paw.midi.inject({ type = "cc", number = 21, value = 0, channel = 1 })
+  paw.flush()
+  eq(paw.learn.learning, nil, "bound by the controller's first move")
+  paw.midi.inject({ type = "cc", number = 21, value = 1, channel = 1 })
+  paw.flush()
   near(api.device_get(fx.id).params.gain, 12, 1e-6, "the controller moves it")
-  daw.learn.clear()
+  paw.learn.clear()
 
   local path = T.scratch .. "/luadev-saved.json"
   fx:set("gain", -9)
-  daw.project.save(path)
-  daw.project.load(path)
-  local again = daw.tracks()[1]:devices()[2]
+  paw.project.save(path)
+  paw.project.load(path)
+  local again = paw.tracks()[1]:devices()[2]
   eq(again.kind, "lua:auto_gain", "the device comes back")
   eq(again.params.gain, -9, "with its value")
 end)
@@ -168,7 +168,7 @@ end)
 test("a script that fails is shown as stopped with its error, and starts again", function()
   fresh()
   scripts({ ["fails_on_cue.lua"] = [[
-    local dev = require("daw.dsp").device { params = { { key = "fail", min = 0, max = 1, default = 0 } } }
+    local dev = require("paw.dsp").device { params = { { key = "fail", min = 0, max = 1, default = 0 } } }
     function dev.process(b)
       if b.params.fail > 0.5 then error("asked to fail") end
     end
@@ -179,12 +179,12 @@ test("a script that fails is shown as stopped with its error, and starts again",
   local pid = tonumber(api.device_call(fx.id, "sandbox.pid"))
   eq(pid ~= api.env().pid, true, "it runs in a process of its own")
   local stopped = {}
-  local handler = daw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
-  daw.transport.play()
+  local handler = paw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
+  paw.transport.play()
   fx:set("fail", 1)
   wait_for("the device to stop", 5000, function() return #stopped > 0 end)
-  daw.transport.stop()
-  daw.off(handler)
+  paw.transport.stop()
+  paw.off(handler)
   eq(stopped[1].device, fx.id, "the stop is told")
   eq(stopped[1].reason:match("fails_on_cue%.lua:%d+: asked to fail") ~= nil, true,
     "with the script's own error and line (" .. stopped[1].reason .. ")")
@@ -201,13 +201,13 @@ test("a script that fails is shown as stopped with its error, and starts again",
   -- A crash of the process itself, as a script misusing ffi would cause.
   pid = tonumber(api.device_call(fx.id, "sandbox.pid"))
   stopped = {}
-  handler = daw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
-  daw.transport.play()
+  handler = paw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
+  paw.transport.play()
   api.sleep(100)
   os.execute("kill -KILL " .. pid)
   wait_for("the crash to be told", 5000, function() return #stopped > 0 end)
-  daw.transport.stop()
-  daw.off(handler)
+  paw.transport.stop()
+  paw.off(handler)
   eq(stopped[1].reason, "it was killed", "a killed helper is told")
   fx:restart()
   eq(fx:get().stopped, nil, "and starts again")
@@ -216,8 +216,8 @@ end)
 test("a script that does not load says why, and nothing else is hurt", function()
   fresh()
   local _, found = scripts({
-    ["broken_syntax.lua"] = "local dev = require('daw.dsp').device { }\nfunction dev.process(b) b.left[0] = = 1 end\nreturn dev\n",
-    ["no_process.lua"] = "return require('daw.dsp').device { name = 'Nothing' }\n",
+    ["broken_syntax.lua"] = "local dev = require('paw.dsp').device { }\nfunction dev.process(b) b.left[0] = = 1 end\nreturn dev\n",
+    ["no_process.lua"] = "return require('paw.dsp').device { name = 'Nothing' }\n",
     ["never_ready.lua"] = "while true do end\n",
     ["good_one.lua"] = gain_script(),
   })
@@ -227,7 +227,7 @@ test("a script that does not load says why, and nothing else is hurt", function(
   eq(why["lua:no_process"]:find("neither `process` nor `sample`", 1, true) ~= nil, true, "a device that runs nothing")
   eq(why["lua:never_ready"]:find("did not get ready within", 1, true) ~= nil, true, "a loop that never ends")
   eq(found.added[1], "lua:good_one", "the others load")
-  fails(function() daw.add_track({ name = "x" }):add_device("lua:broken_syntax") end, nil, "a script that did not load cannot be added")
+  fails(function() paw.add_track({ name = "x" }):add_device("lua:broken_syntax") end, nil, "a script that did not load cannot be added")
   local listed = {}
   for _, s in ipairs(api.lua_devices()) do listed[s.kind] = s end
   eq(listed["lua:broken_syntax"].error ~= nil, true, "the listing says why")
@@ -246,7 +246,7 @@ test("a script changed on the disk is loaded again, and its devices keep their v
   -- The new version halves again, and has a second parameter.
   local text = gain_script(0.5):gsub('unit = "dB" }', 'unit = "dB" }, { key = "extra", default = 0.3 }')
   T.write_file(dir .. "/reload_gain.lua", text)
-  local found = daw.luadev.check()
+  local found = paw.luadev.check()
   eq(found.changed[1], "lua:reload_gain", "the change is seen")
   eq(api.device_call(fx.id, "sandbox.pid") ~= pid, true, "the device started again")
   near(fx.params.gain, -6.0206, 1e-5, "keeping its value")
@@ -256,15 +256,15 @@ test("a script changed on the disk is loaded again, and its devices keep their v
   -- A version that does not load leaves the running one alone.
   pid = api.device_call(fx.id, "sandbox.pid")
   T.write_file(dir .. "/reload_gain.lua", "this is not Lua")
-  found = daw.luadev.check()
+  found = paw.luadev.check()
   eq(#found.errors, 1, "the error is told")
   eq(api.device_call(fx.id, "sandbox.pid"), pid, "the device goes on as it was")
 
   -- By command, with the file as it is.
   T.write_file(dir .. "/reload_gain.lua", gain_script(1))
-  daw.ui.focus("arrange")
-  daw.cursor.set_track(t)
-  daw.cmd("device.reload")
+  paw.ui.focus("arrange")
+  paw.cursor.set_track(t)
+  paw.cmd("device.reload")
   eq(api.device_call(fx.id, "sandbox.pid") ~= pid, true, ":device.reload starts it again")
   near(render({ tail = 0, bits = 32 }).peak / dry, 0.5, 1e-4, "from the file as it is now")
 end)
@@ -276,15 +276,15 @@ test("a script in the configuration's devices wins over an extension's of the sa
   local high = T.scratch .. "/luadev" .. dirs
   os.execute("mkdir -p '" .. high .. "'")
   T.write_file(high .. "/ranked.lua", (gain_script():gsub('"Test gain"', '"High"')))
-  daw.luadev.add_dir(high, daw.luadev.RANK_CONFIG)
+  paw.luadev.add_dir(high, paw.luadev.RANK_CONFIG)
   local name
-  for _, t in ipairs(daw.device_types()) do
+  for _, t in ipairs(paw.device_types()) do
     if t.kind == "lua:ranked" then name = t.name end
   end
   eq(name, "High", "the higher rank's")
   T.write_file(low .. "/ranked.lua", (gain_script():gsub('"Test gain"', '"Low again"')))
-  daw.luadev.check()
-  for _, t in ipairs(daw.device_types()) do
+  paw.luadev.check()
+  for _, t in ipairs(paw.device_types()) do
     if t.kind == "lua:ranked" then name = t.name end
   end
   eq(name, "High", "even after the lower one changes")
@@ -293,7 +293,7 @@ end)
 test("scripts call a Lua device, and what is posted to its kind reaches every one, a render's too", function()
   fresh()
   scripts({ ["posted_level.lua"] = [[
-    local dsp = require("daw.dsp")
+    local dsp = require("paw.dsp")
     local dev = dsp.device { category = "instrument" }
     local level = 0
     function dev.call(method, data)
@@ -306,14 +306,14 @@ test("scripts call a Lua device, and what is posted to its kind reaches every on
     end
     return dev
   ]] })
-  local a = daw.add_track({ name = "a" })
+  local a = paw.add_track({ name = "a" })
   local first = a:add_device("lua:posted_level")
   a:add_clip({ start = 0, length = 4 })
   eq(api.device_call(first.id, "get"), "0", "a call answers")
   eq(#api.device_post("lua:posted_level", "level", "0.25"), 0, "taken by every device")
   eq(api.device_call(first.id, "get"), "0.25", "the device there is told at once")
   near(render({ tail = 0, bits = 32, ["end"] = 2 }).peak, 0.25, 1e-6, "and so is the render's own")
-  local later = daw.add_track({ name = "b" }):add_device("lua:posted_level")
+  local later = paw.add_track({ name = "b" }):add_device("lua:posted_level")
   eq(api.device_call(later.id, "get"), "0.25", "a device made later is given what was posted")
   -- Large data goes as a file, which the device maps.
   local ffi = require("ffi")
@@ -322,7 +322,7 @@ test("scripts call a Lua device, and what is posted to its kind reaches every on
   api.device_post("lua:posted_level", "map", path)
   eq(api.device_call(later.id, "get"), "0.125", "a file of floats is read by mapping it")
   api.device_post("lua:posted_level", "map", nil)
-  local c = daw.add_track({ name = "c" }):add_device("lua:posted_level")
+  local c = paw.add_track({ name = "c" }):add_device("lua:posted_level")
   eq(api.device_call(c.id, "get"), "0.25", "a topic posted nil is forgotten")
   api.device_post("lua:posted_level", "level", nil)
 end)

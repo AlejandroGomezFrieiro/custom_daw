@@ -2,12 +2,12 @@
 -- or set offline, and an audio device that goes away and comes back.
 local T = ...
 local test, eq, fails, fresh, render = T.test, T.eq, T.fails, T.fresh, T.render
-local api = daw.api
+local api = paw.api
 local ffi = require("ffi")
 pcall(ffi.cdef, "int setenv(const char *name, const char *value, int overwrite); int unsetenv(const char *name);")
 
 local function plugin_kind(format, pattern)
-  for _, info in ipairs(daw.device_types()) do
+  for _, info in ipairs(paw.device_types()) do
     if info.format == format and info.name:find(pattern) then return info.kind end
   end
 end
@@ -23,7 +23,7 @@ end
 --- Wait, with the session looked after, until `ready()` is true or `ms` pass.
 local function wait_for(ready, ms)
   local deadline = api.now() + (ms or 10000)
-  while not ready() and api.now() < deadline do daw.wait(20) end
+  while not ready() and api.now() < deadline do paw.wait(20) end
   return ready()
 end
 
@@ -31,11 +31,11 @@ end
 --- makes them, and give up on any plugin after `limit` seconds.
 local function hang(part, secs, limit)
   if part then
-    ffi.C.setenv("DAW_PLUGIN_HOST_HANG", part .. ":" .. secs, 1)
-    ffi.C.setenv("DAW_PLUGIN_CREATE_LIMIT", tostring(limit), 1)
+    ffi.C.setenv("PAW_PLUGIN_HOST_HANG", part .. ":" .. secs, 1)
+    ffi.C.setenv("PAW_PLUGIN_CREATE_LIMIT", tostring(limit), 1)
   else
-    ffi.C.unsetenv("DAW_PLUGIN_HOST_HANG")
-    ffi.C.unsetenv("DAW_PLUGIN_CREATE_LIMIT")
+    ffi.C.unsetenv("PAW_PLUGIN_HOST_HANG")
+    ffi.C.unsetenv("PAW_PLUGIN_CREATE_LIMIT")
   end
 end
 
@@ -71,8 +71,8 @@ local function saved_limiter(kind, name)
   end
   fx:set(gain.key, gain.min)
   -- The plugin takes the value with its next block; its saved state after.
-  daw.wait(100)
-  local path = daw.project.save(T.scratch .. "/" .. name .. ".json")
+  paw.wait(100)
+  local path = paw.project.save(T.scratch .. "/" .. name .. ".json")
   return path, gain, saved_states(path)[2]
 end
 
@@ -83,18 +83,18 @@ test("a plugin added with loading apart is there at once and comes in when made"
     fresh()
     local t = T.tone("tone", 2)
     local ready = {}
-    local handler = daw.on("device.ready", function(e) ready[#ready + 1] = e end)
+    local handler = paw.on("device.ready", function(e) ready[#ready + 1] = e end)
     -- Slow to make: the program does not wait for it.
     hang(kind:match("[^:]*$"), 0.8, 20)
     local started = api.now()
     local fx = t:add_device(kind)
     eq(api.now() - started < 400, true, "adding it returns at once")
     eq(fx:get().status, "loading", "the device is loading")
-    daw.cursor.set_track(t)
-    local devices = daw.frontend.state(-1).devices
+    paw.cursor.set_track(t)
+    local devices = paw.frontend.state(-1).devices
     eq(devices[#devices].status, "loading", "and the frontend's state says so")
     eq(wait_for(function() return #ready > 0 end), true, "it is made")
-    daw.off(handler)
+    paw.off(handler)
     eq(ready[1].id, fx.id, "device.ready names it")
     local d = fx:get()
     eq(d.status, "running", "running now")
@@ -107,7 +107,7 @@ test("several plugins are made at the same time", function()
   if not kind then return "skipped: test plugins not found" end
   return apart(function()
     fresh()
-    local t = daw.add_track()
+    local t = paw.add_track()
     hang(kind:match("[^:]*$"), 1.5, 20)
     local started = api.now()
     local list = {}
@@ -130,24 +130,24 @@ test("a plugin that hangs while it is made is stopped and keeps its saved state"
   return apart(function()
     hang(kind:match("[^:]*$"), 30, 1.5)
     local stopped = {}
-    local handler = daw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
+    local handler = paw.on("device.stopped", function(e) stopped[#stopped + 1] = e end)
     fresh()
     local started = api.now()
-    daw.project.load(path)
+    paw.project.load(path)
     eq(api.now() - started < 1000, true, "opening does not wait for the plugin")
-    local fx = daw.tracks()[1]:devices()[2]
+    local fx = paw.tracks()[1]:devices()[2]
     eq(fx:get().status, "loading", "the plugin is loading")
     -- Saving now writes back what the file had, not an empty state.
-    local during = daw.project.save(T.scratch .. "/hang-during.json")
+    local during = paw.project.save(T.scratch .. "/hang-during.json")
     eq(saved_states(during)[2], state, "saved while loading: the state is kept")
     eq(wait_for(function() return #stopped > 0 end), true, "it is given up on")
-    daw.off(handler)
+    paw.off(handler)
     eq(stopped[1].device, fx.id, "device.stopped names it")
     eq(stopped[1].loading, true, "while it was loading")
     eq(stopped[1].reason:find("did not answer") ~= nil, true, "and says why: " .. stopped[1].reason)
     local d = fx:get()
     eq(d.status, "stopped", "the device is stopped")
-    local after = daw.project.save(T.scratch .. "/hang-after.json")
+    local after = paw.project.save(T.scratch .. "/hang-after.json")
     eq(saved_states(after)[2], state, "saved when stopped: the state is kept")
     fails(function() render({ tail = 0 }) end, "did not load", "rendering with a plugin that did not load")
     -- Once the plugin behaves, a restart brings it in with its state.
@@ -156,7 +156,7 @@ test("a plugin that hangs while it is made is stopped and keeps its saved state"
     eq(fx:get().status ~= "stopped", true, "restarting starts it again")
     eq(wait_for(function() return fx:get().status == "running" end), true, "and it is made")
     eq(fx.params[gain.key], gain.min, "with what the project had of it")
-    eq(saved_states(daw.project.save(T.scratch .. "/hang-restarted.json"))[2] ~= nil, true, "it saves a state again")
+    eq(saved_states(paw.project.save(T.scratch .. "/hang-restarted.json"))[2] ~= nil, true, "it saves a state again")
   end)
 end)
 
@@ -168,8 +168,8 @@ test("rendering waits for plugins that are still loading", function()
   return apart(function()
     hang(kind:match("[^:]*$"), 1, 20)
     fresh()
-    daw.project.load(path)
-    eq(daw.tracks()[1]:devices()[2]:get().status, "loading", "loading when the render starts")
+    paw.project.load(path)
+    eq(paw.tracks()[1]:devices()[2]:get().status, "loading", "loading when the render starts")
     local info = render({ tail = 0.2 })
     eq(info.peak <= quiet + 1e-6, true, "the render has the plugin in it")
   end)
@@ -181,9 +181,9 @@ end)
 local function project_with(name, devices)
   local path = T.scratch .. "/" .. name .. ".json"
   fresh()
-  local t = daw.add_track({ name = "Keys" })
+  local t = paw.add_track({ name = "Keys" })
   for _, d in ipairs(devices) do t:add_device(d.kind, d.params) end
-  daw.project.save(path)
+  paw.project.save(path)
   return path
 end
 
@@ -202,18 +202,18 @@ test("a plugin that is not installed is kept as it was: named, passed over, save
   rewrite(path, '"gain": %-6%.0', '"cutoff": 0.25')
   local before = api.json_decode(T.read_file(path)).project.tracks[1].devices[1]
   fresh()
-  daw.project.load(path)
-  local device = daw.tracks()[1]:devices()[1]
+  paw.project.load(path)
+  local device = paw.tracks()[1]:devices()[1]
   local d = device:get()
   eq(d.status, "missing", "the device is marked missing")
   eq(d.name, "Gone Synth", "with the plugin's name")
   eq(d.kind, "clap:com.example.gone", "and its id")
   eq(d.params.cutoff, 0.25, "it holds its parameter values")
   fails(function() device:restart() end, "not installed", "restarting a plugin that is not there")
-  daw.cursor.set_track(daw.tracks()[1])
-  local devices = daw.frontend.state(-1).devices
+  paw.cursor.set_track(paw.tracks()[1])
+  local devices = paw.frontend.state(-1).devices
   eq(devices[1].status, "missing", "the frontend's state says so")
-  local saved = daw.project.save(T.scratch .. "/missing-saved.json")
+  local saved = paw.project.save(T.scratch .. "/missing-saved.json")
   local after = api.json_decode(T.read_file(saved)).project.tracks[1].devices[1]
   eq(after.state, before.state, "its state is written back unchanged")
   eq(after.name, before.name, "and its name")
@@ -228,17 +228,17 @@ test("a plugin that was missing is the real plugin again when it is found", func
   local real = kind:gsub("%p", "%%%0")
   rewrite(path, real, "clap:com.example.not-here")
   fresh()
-  daw.project.load(path)
-  eq(daw.tracks()[1]:devices()[2]:get().status, "missing", "missing while it is not found")
+  paw.project.load(path)
+  eq(paw.tracks()[1]:devices()[2]:get().status, "missing", "missing while it is not found")
   local dry = render({ tail = 0.2 }).peak
   eq(dry > quiet * 5, true, "and passed over")
-  daw.project.save(path)
+  paw.project.save(path)
   eq(saved_states(path)[2], state, "saved unchanged")
   -- Installed again (here: named again), the next open finds it.
   rewrite(path, "clap:com%.example%.not%-here", (kind:gsub("%%", "%%%%")))
   fresh()
-  daw.project.load(path)
-  local fx = daw.tracks()[1]:devices()[2]
+  paw.project.load(path)
+  local fx = paw.tracks()[1]:devices()[2]
   eq(fx:get().status, "running", "the real plugin runs")
   eq(fx.params[gain.key], gain.min, "with its parameter")
   eq(render({ tail = 0.2 }).peak <= quiet + 1e-6, true, "and its sound")
@@ -251,7 +251,7 @@ test("a device set offline is not made, is passed over, keeps its state, and com
   if not kind then return "skipped: test plugins not found" end
   local path, gain, state = saved_limiter(kind, "offline")
   local quiet = render({ tail = 0.2 }).peak
-  local fx = daw.tracks()[1]:devices()[2]
+  local fx = paw.tracks()[1]:devices()[2]
   local pid = tonumber((select(2, pcall(api.device_call, fx.id, "sandbox.pid"))))
   fx:set_offline(true)
   local d = fx:get()
@@ -263,19 +263,19 @@ test("a device set offline is not made, is passed over, keeps its state, and com
   end
   fails(function() api.device_call(fx.id, "sandbox.pid") end, nil, "no process to ask")
   eq(render({ tail = 0.2 }).peak > quiet * 5, true, "the sound passes it by, in a render too")
-  daw.project.save(path)
+  paw.project.save(path)
   local file = api.json_decode(T.read_file(path))
   eq(file.project.tracks[1].devices[2].offline, true, "the flag is saved")
   eq(file.project.tracks[1].devices[2].state, state, "with the state unchanged")
   fresh()
-  daw.project.load(path)
-  fx = daw.tracks()[1]:devices()[2]
+  paw.project.load(path)
+  fx = paw.tracks()[1]:devices()[2]
   eq(fx:get().status, "offline", "and is offline when opened")
   fx:set_offline(false)
   eq(fx:get().status, "running", "set online, it runs")
   eq(fx.params[gain.key], gain.min, "with its parameter")
   eq(render({ tail = 0.2 }).peak <= quiet + 1e-6, true, "and its state")
-  daw.undo()
+  paw.undo()
   eq(fx:get().status, "offline", "undo sets it offline again")
 end)
 
@@ -283,23 +283,23 @@ test("a project opens with every plugin offline, and they come up together or on
   local kind = sandboxed_limiter()
   if not kind then return "skipped: test plugins not found" end
   local path, gain = saved_limiter(kind, "all-offline")
-  daw.tracks()[1]:add_device(kind)
-  daw.project.save(path)
+  paw.tracks()[1]:add_device(kind)
+  paw.project.save(path)
   fresh()
-  daw.open(path, { plugins_offline = true })
-  local devices = daw.tracks()[1]:devices()
+  paw.open(path, { plugins_offline = true })
+  local devices = paw.tracks()[1]:devices()
   eq(devices[1]:get().status, "running", "a built-in device is not a plugin")
   eq(devices[2]:get().status .. " " .. devices[3]:get().status, "offline offline", "every plugin is offline")
-  eq(daw.project.modified, false, "the project is as it was opened")
+  eq(paw.project.modified, false, "the project is as it was opened")
   -- One at a time, as the device panel's `o` does.
-  daw.frontend.act.toggle_offline(devices[3].id)
+  paw.frontend.act.toggle_offline(devices[3].id)
   eq(devices[3]:get().status, "running", "one comes up")
-  daw.commands.exec("plugins.online")
+  paw.commands.exec("plugins.online")
   eq(devices[2]:get().status, "running", "and the rest with :plugins.online")
   eq(devices[2].params[gain.key], gain.min, "with its parameter")
   fresh()
-  daw.commands.exec("edit " .. path .. " offline")
-  eq(daw.tracks()[1]:devices()[2]:get().status, "offline", ":edit <path> offline does the same")
+  paw.commands.exec("edit " .. path .. " offline")
+  eq(paw.tracks()[1]:devices()[2]:get().status, "offline", ":edit <path> offline does the same")
 end)
 
 test("a safety copy can be recovered with its plugins offline", function()
@@ -309,8 +309,8 @@ test("a safety copy can be recovered with its plugins offline", function()
   local copy = T.scratch .. "/recover-offline-copy.json"
   api.project_backup(copy, { path = path })
   fresh()
-  daw.autosave.recover(copy, { plugins_offline = true })
-  eq(daw.tracks()[1]:devices()[2]:get().status, "offline", "recovered with the plugin offline")
+  paw.autosave.recover(copy, { plugins_offline = true })
+  eq(paw.tracks()[1]:devices()[2]:get().status, "offline", "recovered with the plugin offline")
 end)
 
 test("a plugin that could not be loaded is opened offline next time, until it loads", function()
@@ -320,24 +320,24 @@ test("a plugin that could not be loaded is opened offline next time, until it lo
   return apart(function()
     hang(kind:match("[^:]*$"), 30, 1)
     fresh()
-    daw.open(path)
-    local fx = daw.tracks()[1]:devices()[2]
+    paw.open(path)
+    local fx = paw.tracks()[1]:devices()[2]
     eq(wait_for(function() return fx:get().status == "stopped" end), true, "it fails to load")
-    eq(#daw.loading.suggested(path), 1, "and is remembered")
-    eq(io.open(daw.loading.project_dir(path) .. "/plugins.json") ~= nil, true, "in the project's state directory")
+    eq(#paw.loading.suggested(path), 1, "and is remembered")
+    eq(io.open(paw.loading.project_dir(path) .. "/plugins.json") ~= nil, true, "in the project's state directory")
     eq(T.read_file(path):find('"offline"') == nil, true, "not in the project file")
     hang(nil)
     fresh()
-    daw.open(path)
-    fx = daw.tracks()[1]:devices()[2]
+    paw.open(path)
+    fx = paw.tracks()[1]:devices()[2]
     eq(fx:get().status, "offline", "the next open has it offline")
-    daw.commands.exec("plugins.online")
+    paw.commands.exec("plugins.online")
     eq(wait_for(function() return fx:get().status == "running" end), true, "brought up, it loads")
     eq(fx.params[gain.key], gain.min, "with its parameter")
-    eq(#daw.loading.suggested(path), 0, "and is no longer remembered")
+    eq(#paw.loading.suggested(path), 0, "and is no longer remembered")
     fresh()
-    daw.open(path)
-    eq(daw.tracks()[1]:devices()[2]:get().status ~= "offline", true, "so the next open loads it")
+    paw.open(path)
+    eq(paw.tracks()[1]:devices()[2]:get().status ~= "offline", true, "so the next open loads it")
   end)
 end)
 
@@ -352,12 +352,12 @@ local function on_test_device(fn)
     test_input = { frequency = 440, level = -12, channels = 2 } })
   local events = { lost = {}, restored = {} }
   local handlers = {
-    daw.on("audio.lost", function(e) events.lost[#events.lost + 1] = e end),
-    daw.on("audio.restored", function(e) events.restored[#events.restored + 1] = e end),
+    paw.on("audio.lost", function(e) events.lost[#events.lost + 1] = e end),
+    paw.on("audio.restored", function(e) events.restored[#events.restored + 1] = e end),
   }
   local ok, err = xpcall(fn, debug.traceback, events)
-  for _, h in ipairs(handlers) do daw.off(h) end
-  daw.opt.audio_reconnect = true
+  for _, h in ipairs(handlers) do paw.off(h) end
+  paw.opt.audio_reconnect = true
   api.audio_watch({ period = 3000 })
   api.audio_test_device({ present = true, fail_after = 0, back_after = 0 })
   api.engine_restart({ backend = "null" })
@@ -368,30 +368,30 @@ end
 test("a lost audio device stops the transport, keeps the take, and is opened again when it is back", function()
   return on_test_device(function(events)
     fresh()
-    local t = daw.add_track({ name = "Gtr" })
+    local t = paw.add_track({ name = "Gtr" })
     t.input = "1/2"
     t.armed = true
-    daw.transport.record()
-    daw.wait(300)
-    eq(daw.transport.playing, true, "recording")
+    paw.transport.record()
+    paw.wait(300)
+    eq(paw.transport.playing, true, "recording")
     api.audio_test_device({ fail_after = 1 })   -- unplugged at the next block
     eq(wait_for(function() return #events.lost > 0 end, 5000), true, "the loss is told")
     eq(events.lost[1].device:find("test device") ~= nil, true, "naming the device: " .. events.lost[1].device)
     eq(events.lost[1].recording, true, "and that a take was being made")
-    eq(daw.transport.playing, false, "the transport has stopped")
+    eq(paw.transport.playing, false, "the transport has stopped")
     eq(#t:clips(), 1, "the take is kept")
     eq(t:clips()[1].length > 0, true, "with what was recorded")
     local e = api.engine_get()
     eq(e.backend, "null", "the program goes on without sound")
     eq(e.lost and e.lost.device, events.lost[1].device, "and says what it waits for")
-    eq(daw.audio.summary():find("lost") ~= nil, true, "the engine summary says so: " .. daw.audio.summary())
+    eq(paw.audio.summary():find("lost") ~= nil, true, "the engine summary says so: " .. paw.audio.summary())
     -- Work goes on.
     t.volume = -3
-    daw.project.save(T.scratch .. "/lost.json")
+    paw.project.save(T.scratch .. "/lost.json")
     eq(render({ tail = 0 }).frames > 0, true, "rendering works")
-    daw.wait(400)
+    paw.wait(400)
     eq(#events.restored, 0, "not reopened while it is gone")
-    eq(daw.reconnect.reconnect(), false, ":audio.reconnect says it is not back")
+    eq(paw.reconnect.reconnect(), false, ":audio.reconnect says it is not back")
     api.audio_test_device({ present = true })
     eq(wait_for(function() return #events.restored > 0 end, 5000), true, "found again when it is back")
     e = api.engine_get()
@@ -399,23 +399,23 @@ test("a lost audio device stops the transport, keeps the take, and is opened aga
     eq(e.sample_rate .. " " .. e.buffer_size .. " " .. e.input_channels, "44100 256 2", "with the same rate, block and input")
     eq(e.lost, nil, "nothing is waited for")
     eq(t.input, "1/2", "the track keeps its input")
-    daw.transport.play()
-    daw.wait(200)
-    eq(daw.transport.position > 0, true, "and it plays")
-    daw.transport.stop()
+    paw.transport.play()
+    paw.wait(200)
+    eq(paw.transport.position > 0, true, "and it plays")
+    paw.transport.stop()
   end)
 end)
 
 test("with automatic reopening off, a device that is back is opened by :audio.reconnect", function()
   return on_test_device(function(events)
     fresh()
-    daw.opt.audio_reconnect = false
+    paw.opt.audio_reconnect = false
     api.audio_test_device({ fail_after = 1, back_after = 100 })
     eq(wait_for(function() return #events.lost > 0 end, 5000), true, "lost")
     eq(events.lost[1].auto, false, "and not to be reopened by itself")
-    daw.wait(500)
+    paw.wait(500)
     eq(#events.restored, 0, "back, but not reopened")
-    daw.commands.exec("audio.reconnect")
+    paw.commands.exec("audio.reconnect")
     eq(wait_for(function() return #events.restored > 0 end, 1000), true, ":audio.reconnect reopens it")
     eq(api.engine_get().backend, "test", "the device is open")
   end)
@@ -423,7 +423,7 @@ end)
 
 test("a MIDI input that goes away and comes back is told of, and its tracks take it again", function()
   fresh()
-  local t = daw.add_track({ name = "Keys" })
+  local t = paw.add_track({ name = "Keys" })
   t:add_device("synth", { attack = 0.001, release = 0.01 })
   t.midi_input = { port = "Keys A" }
   t.armed = true
@@ -435,42 +435,42 @@ test("a MIDI input that goes away and comes back is told of, and its tracks take
       if ours[e.port] then seen[#seen + 1] = word .. " " .. e.port .. " " .. table.concat(e.tracks, ",") end
     end
   end
-  local handlers = { daw.on("midi.lost", note("lost")), daw.on("midi.returned", note("back")) }
+  local handlers = { paw.on("midi.lost", note("lost")), paw.on("midi.returned", note("back")) }
   api.midi_test_ports({ "Keys A", "Pads" })
-  daw.wait(300)
+  paw.wait(300)
   api.midi_test_ports({ "Pads" })
-  daw.wait(300)
+  paw.wait(300)
   api.midi_test_ports({ "Pads", "Keys A" })
-  daw.wait(300)
-  for _, h in ipairs(handlers) do daw.off(h) end
+  paw.wait(300)
+  for _, h in ipairs(handlers) do paw.off(h) end
   eq(table.concat(seen, "; "), "lost Keys A Keys; back Keys A Keys", "the port's going and coming back, with its track")
   eq(t.midi_input.port, "Keys A", "the track still chooses it")
-  daw.transport.play()
-  daw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" })
-  daw.wait(200)
+  paw.transport.play()
+  paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" })
+  paw.wait(200)
   eq(select(1, t:meter()) > 0.01, true, "and plays what comes from it")
-  daw.midi.inject({ type = "note_off", pitch = 60, port = "Keys A" })
-  daw.transport.stop()
+  paw.midi.inject({ type = "note_off", pitch = 60, port = "Keys A" })
+  paw.transport.stop()
   api.midi_test_ports({})
-  daw.wait(250)
+  paw.wait(250)
 end)
 
 -- Choosing the device ------------------------------------------------------------
 
 test(":audio offers the sample rate and the sound system beside the devices and block sizes", function()
   local groups = {}
-  for _, choice in ipairs(daw.audio.engine_choices()) do groups[choice.group] = (groups[choice.group] or 0) + 1 end
+  for _, choice in ipairs(paw.audio.engine_choices()) do groups[choice.group] = (groups[choice.group] or 0) + 1 end
   eq(groups.rate ~= nil and groups.backend ~= nil and groups.block ~= nil, true, "rate, sound system and block size are offered")
-  local menu = daw.frontend.engine_menu()
+  local menu = paw.frontend.engine_menu()
   eq(#menu.rate, groups.rate, "the window's menu has the rates")
   eq(#menu.backend, groups.backend, "and the sound systems")
-  fails(function() daw.audio.use({ backend = "no-such-system" }) end, "auto", "an unknown sound system, refused with the list")
-  daw.audio.use({ rate = 44100 })
+  fails(function() paw.audio.use({ backend = "no-such-system" }) end, "auto", "an unknown sound system, refused with the list")
+  paw.audio.use({ rate = 44100 })
   eq(api.engine_get().sample_rate, 44100, "a rate is chosen")
   local checked
-  for _, choice in ipairs(daw.audio.engine_choices()) do
+  for _, choice in ipairs(paw.audio.engine_choices()) do
     if choice.group == "rate" and choice.checked then checked = choice.value.rate end
   end
   eq(checked, 44100, "and shown as chosen")
-  daw.audio.use({ rate = 48000 })
+  paw.audio.use({ rate = 48000 })
 end)

@@ -1,15 +1,15 @@
 [package]
-name = "daw-core"
+name = "paw-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "The kernel: project model, engine sync, Lua host, cell grid, event loop, RPC."
 
 [dependencies]
-daw-engine.workspace = true
-daw-luadev.workspace = true
-daw-proto.workspace = true
-daw-raster.workspace = true
+paw-engine.workspace = true
+paw-luadev.workspace = true
+paw-proto.workspace = true
+paw-raster.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

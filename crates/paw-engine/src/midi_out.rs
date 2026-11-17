@@ -37,7 +37,7 @@ use crate::midi_form::Form;
 
 /// The name of the sequencer client that sends: its ports are not read
 /// back as MIDI input.
-pub const CLIENT: &str = "daw out";
+pub const CLIENT: &str = "paw out";
 
 /// Messages that may wait between the audio thread and the sender.
 pub const MIDI_OUT_CAPACITY: usize = 4096;
@@ -130,7 +130,7 @@ impl MidiOutputs {
     }
 
     /// Make a port of this program's that other programs read MIDI from,
-    /// shown to them as `daw out: <name>`; tracks send to it by `name`.
+    /// shown to them as `paw out: <name>`; tracks send to it by `name`.
     pub fn open_port(&self, name: &str) {
         let _ = self.commands.send(Command::Open(name.to_string()));
     }
@@ -185,7 +185,7 @@ mod imp {
     const REFRESH: Duration = Duration::from_secs(1);
     /// The catch-all input of this program's MIDI input, which would send
     /// what it is sent straight back to the tracks that send it.
-    const OWN_INPUT: &str = "daw: input";
+    const OWN_INPUT: &str = "paw: input";
 
     type Addr = (i32, i32);
 
@@ -221,7 +221,7 @@ mod imp {
             )?;
             let seq = Seq(handle);
             check(
-                snd_seq_set_client_name(seq.0, c"daw out".as_ptr()),
+                snd_seq_set_client_name(seq.0, c"paw out".as_ptr()),
                 "naming the client",
             )?;
             // A MIDI 2.0 client can send packets; an older system refuses,
@@ -237,7 +237,7 @@ mod imp {
                 "making the output port",
             )?;
             let queue = check(
-                snd_seq_alloc_named_queue(seq.0, c"daw".as_ptr()),
+                snd_seq_alloc_named_queue(seq.0, c"paw".as_ptr()),
                 "making a queue",
             )?;
             check(
@@ -270,7 +270,7 @@ mod imp {
         };
         client.refresh();
         let thread = std::thread::Builder::new()
-            .name("daw-midi-out".into())
+            .name("paw-midi-out".into())
             .spawn(move || client.run(rx))?;
         Ok(thread)
     }

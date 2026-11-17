@@ -1,4 +1,4 @@
-"""A small language server for the tests of daw.lsp, on the `clip` subject.
+"""A small language server for the tests of paw.lsp, on the `clip` subject.
 
 It marks notes outside a pitch range (initializationOptions `lo` and `hi`,
 then `settings`), offers to move each an octave into it, says what a note is
@@ -95,7 +95,7 @@ def capabilities():
                                  "hoverProvider": True, "completionProvider": {"lanes": ["notes"]}}}
     return {"serverInfo": {"name": "range-lint", "version": "0.1"},
             "capabilities": {"textDocumentSync": 1, "hoverProvider": True, "completionProvider": {"lanes": ["notes"]},
-                             "daw": {"subjects": ["clip"]}}}
+                             "paw": {"subjects": ["clip"]}}}
 
 
 def note_of(uri):
@@ -124,7 +124,7 @@ def answer(method, params):
             raise ValueError("document changed")
         return {"contents": {"kind": "plaintext", "value": f"{name(params['pitch'])} in range-lint's eyes"}}
     if method == "textDocument/hover":
-        _, n = note_of(params["daw"]["location"]["uri"])
+        _, n = note_of(params["paw"]["location"]["uri"])
         return {"contents": {"kind": "plaintext", "value": f"{name(n['pitch'])} in range-lint's eyes"}}
     if method == "midi/completion":
         doc = docs[params["uri"]]
@@ -133,7 +133,7 @@ def answer(method, params):
                 "items": [{"kind": "melody", "label": "middle C", "score": 1.0,
                            "notes": [{"pitch": 60, "start": start, "end": start + doc["ppq"], "vel": 90, "chan": 0}]}]}
     if method == "textDocument/completion":
-        at = params["daw"]["at"]
+        at = params["paw"]["at"]
         return {"items": [{"label": "middle C", "data": {"notes": [{"pitch": 60, "start": at, "length": 1, "velocity": 90}]}}]}
     if method == "shutdown":
         return None

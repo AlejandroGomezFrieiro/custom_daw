@@ -54,15 +54,15 @@ end
 --- Cut or pad text to exactly `width` columns.
 function M.fit(text, width)
   text = tostring(text)
-  local have = daw.api.str_width(text)
+  local have = paw.api.str_width(text)
   if have <= width then return text .. string.rep(" ", width - have) end
   local out, used = {}, 0
   for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-    local w = daw.api.str_width(ch)
+    local w = paw.api.str_width(ch)
     if used + w > width - 1 then break end
     out[#out + 1], used = ch, used + w
   end
-  return table.concat(out) .. (daw.draw and daw.draw.g.ellipsis or "…") .. string.rep(" ", width - used - 1)
+  return table.concat(out) .. (paw.draw and paw.draw.g.ellipsis or "…") .. string.rep(" ", width - used - 1)
 end
 
 return M

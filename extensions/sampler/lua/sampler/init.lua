@@ -1,7 +1,7 @@
 -- The sampler extension's state: where its plugin is, the sampler device
 -- of a track, loading an instrument into it, what the instrument says of
 -- itself (`describe`), and the instruments found in the library folders.
-local api = daw.api
+local api = paw.api
 
 local M = {}
 
@@ -20,8 +20,8 @@ end
 --- `clap/` beside the extension (where its Nix package, and
 --- `native/build.sh`, put it). Nil when neither has it.
 function M.plugin_dir()
-  local loaded = daw.ext.loaded.sampler
-  for _, dir in ipairs({ daw.opt.sampler_plugin_dir or "", loaded and (loaded.path .. "/clap") or "" }) do
+  local loaded = paw.ext.loaded.sampler
+  for _, dir in ipairs({ paw.opt.sampler_plugin_dir or "", loaded and (loaded.path .. "/clap") or "" }) do
     if dir ~= "" and exists(dir .. "/paw-sampler.clap") then return dir end
   end
 end
@@ -54,7 +54,7 @@ local described = {}
 function M.describe(device)
   local ok, text = pcall(api.device_call, device, "describe")
   if not ok then return nil end
-  local value = daw.json.decode(text)
+  local value = paw.json.decode(text)
   described[device] = { path = value.path, value = value }
   return value
 end
@@ -67,7 +67,7 @@ function M.known(device)
 end
 
 --- Load an instrument file into the device, as one edit that undo takes
---- back (and a trial, inside `daw.audition.try`): the plugin's state, which
+--- back (and a trial, inside `paw.audition.try`): the plugin's state, which
 --- names the file, is kept in the project. Returns the instrument's
 --- description, or nil and why.
 function M.load(device, path)
@@ -76,7 +76,7 @@ function M.load(device, path)
   described[device] = nil
   if not ok then return nil, (tostring(err):gsub("^.-: ", "")) end
   local d = M.describe(device)
-  daw.emit("sampler.loaded", { device = device, path = path })
+  paw.emit("sampler.loaded", { device = device, path = path })
   return d
 end
 
@@ -95,11 +95,11 @@ end
 --- (folders separated by `:`) and `instruments/` in paw's data folder.
 function M.roots()
   local roots = {}
-  for dir in (daw.opt.sampler_libraries or ""):gmatch("[^:]+") do
+  for dir in (paw.opt.sampler_libraries or ""):gmatch("[^:]+") do
     roots[#roots + 1] = (dir:gsub("^~", os.getenv("HOME") or "~"))
   end
   local data = os.getenv("XDG_DATA_HOME") or ((os.getenv("HOME") or ".") .. "/.local/share")
-  roots[#roots + 1] = data .. "/daw/instruments"
+  roots[#roots + 1] = data .. "/paw/instruments"
   return roots
 end
 

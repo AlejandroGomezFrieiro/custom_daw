@@ -5,7 +5,7 @@ as `.rpp`, so work can move both ways. Underneath is a reader and writer for
 the file format itself, which scripts can use on their own.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/rpp")   -- or link it into ~/.config/daw/extensions
+paw.ext.load("/path/to/paw/extensions/rpp")   -- or link it into ~/.config/paw/extensions
 ```
 
 ![A REAPER project opened with :rpp.import! and the list of what could not be carried over, then the project itself and :w writing it back as .rpp](images/tui-rpp.gif)

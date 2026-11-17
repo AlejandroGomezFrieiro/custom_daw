@@ -1,12 +1,12 @@
 # snippets: a starting set of snippets
 
-Snippets for the core's snippet engine (`daw.snippet`), as
+Snippets for the core's snippet engine (`paw.snippet`), as
 friendly-snippets is for LuaSnip: chords that lead into the next chord of
 the song, parts made of the chords already there, and voices for a
 selection.
 
 ```lua
-daw.ext.load("/path/to/daw/extensions/snippets")   -- or link it into ~/.config/daw/extensions
+paw.ext.load("/path/to/paw/extensions/snippets")   -- or link it into ~/.config/paw/extensions
 ```
 
 In the piano roll, `<C-s>` and a few letters, or `:snippet dominant`.

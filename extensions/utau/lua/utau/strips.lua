@@ -2,11 +2,11 @@
 -- pictures (`buf:strip`): under the notes, the line each note is sung on
 -- (its transition from the note before and its vibrato, as the window's
 -- Pitch tool draws them, plus the pitch curve) and the pitch the engine
--- sang; under the curve rows, the chosen curve through `daw.plot`. The
+-- sang; under the curve rows, the chosen curve through `paw.plot`. The
 -- notes, lyrics, cursor and playhead stay cells, drawn over the pictures.
 -- Each drawing is cut at the bars, so that an edit sends again only the
 -- bars it touched.
-local api = daw.api
+local api = paw.api
 local notes = require("utau.notes")
 local shapes = require("utau.shapes")
 local proto = require("utau.proto")
@@ -15,13 +15,13 @@ local M = {}
 
 local floor = math.floor
 
-local function palette() return require("daw.theme").palette end
+local function palette() return require("paw.theme").palette end
 
 --- Where the drawing `w` pixels wide may be cut, from the project beat
 --- `from` at `ppb` pixels a beat: 0, each bar on a cell's edge, and `w`.
 local function edges(g, w, h, from, ppb, cw)
   local out = { 0 }
-  for _, line in ipairs(daw.plot.lines(w, from, ppb, cw)) do
+  for _, line in ipairs(paw.plot.lines(w, from, ppb, cw)) do
     if line.cut and line.cut > out[#out] and line.cut < w then
       out[#out + 1] = line.cut
       g:cut(line.cut, 0, h)
@@ -187,13 +187,13 @@ function M.curve(g, px, o)
   if w <= 0 then return end
   local part = { w = w, h = px.h, cell = px.cell, fg = px.fg, bg = px.bg }
   g = g:sub(0, 0, w, px.h)
-  local _, Y = daw.plot.curve(g, part, {
+  local _, Y = paw.plot.curve(g, part, {
     points = points, from = o.clip.start + o.scroll, pixels_per_beat = ppb,
     lo = o.info.min, hi = o.info.max, flat = #points == 0 and o.constant or nil,
     color = P.green, guides = false, markers = false,
   })
   -- The default, as a line across.
-  g:rect(0, floor(Y(o.info.default)), w, 1, { fill = daw.plot.alpha(P.dim, 0.6) })
+  g:rect(0, floor(Y(o.info.default)), w, 1, { fill = paw.plot.alpha(P.dim, 0.6) })
 end
 
 return M

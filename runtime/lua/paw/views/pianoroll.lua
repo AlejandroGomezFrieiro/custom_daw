@@ -1,10 +1,10 @@
 -- The piano roll: edit the notes of a MIDI clip, or of several at once (see
--- `daw.roll_clips`), with other tracks' notes shown behind them.
-local api = daw.api
-local util = daw.util
-local music = daw.music
-local clips = require("daw.roll_clips")
-daw.roll_clips = clips
+-- `paw.roll_clips`), with other tracks' notes shown behind them.
+local api = paw.api
+local util = paw.util
+local music = paw.music
+local clips = require("paw.roll_clips")
+paw.roll_clips = clips
 
 local KEYS = 5 -- columns for the note names on the left
 
@@ -15,35 +15,35 @@ local view = {
   top = 72,       -- pitch of the first row
   scroll = 0,     -- beat at the left edge
 }
-daw.seats.fields("pianoroll", view, { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
+paw.seats.fields("pianoroll", view, { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
   { pitch = 60, beat = 0, top = 72, scroll = 0 })
 
 function view:clip()
-  if self.clip_id and pcall(api.clip_get, self.clip_id) then return daw.clip(self.clip_id) end
+  if self.clip_id and pcall(api.clip_get, self.clip_id) then return paw.clip(self.clip_id) end
   self.clip_id = nil
 end
 
 --- The clips being edited, the active one first: `{ id, clip, offset, ... }`
---- each (see `daw.roll_clips.parts`).
+--- each (see `paw.roll_clips.parts`).
 function view:parts() return clips.parts() end
 
 --- Open a MIDI clip in the piano roll, alone.
 function view:edit(clip)
-  if clip.kind ~= "midi" then return daw.notify("only MIDI clips open in the piano roll", "warn") end
+  if clip.kind ~= "midi" then return paw.notify("only MIDI clips open in the piano roll", "warn") end
   self.clip_id, self.beat, self.scroll = clip.id, 0, 0
   clips.only()
   local notes = clip:notes()
   self.pitch = notes[1] and notes[1].pitch or 60
   self.top = nil
-  daw.ui.focus("pianoroll")
-  daw.emit("pianoroll.opened", { clip = clip.id })
+  paw.ui.focus("pianoroll")
+  paw.emit("pianoroll.opened", { clip = clip.id })
 end
 
 --- Shown beside a view that has a clip open (the notation view), the roll
 --- takes that clip, as the arrange view's clip is taken: the window that
 --- had the keyboard says which.
 function view:on_show()
-  local other = daw.ui.views[daw.ui.focused]
+  local other = paw.ui.views[paw.ui.focused]
   if not other or other == self or type(other.clip) ~= "function" then return end
   local clip = other:clip()
   if not clip or clip.kind ~= "midi" or clip.id == self.clip_id then return end
@@ -59,7 +59,7 @@ end
 function view:time_axis()
   local clip = self:clip()
   if not clip then return nil end
-  return clip.start + self.scroll, daw.opt.note_zoom, self.geometry and self.geometry.span
+  return clip.start + self.scroll, paw.opt.note_zoom, self.geometry and self.geometry.span
 end
 
 function view:set_time_axis(left, zoom)
@@ -68,7 +68,7 @@ function view:set_time_axis(left, zoom)
   -- As far left as the earliest clip edited starts, as the roll scrolls.
   local lo = clips.span()
   self.scroll = math.max(math.min(0, math.floor(lo or 0)), left - clip.start)
-  if zoom and daw.opt.note_zoom ~= zoom then daw.opt.note_zoom = zoom end
+  if zoom and paw.opt.note_zoom ~= zoom then paw.opt.note_zoom = zoom end
 end
 
 --- The note under the cursor in any of the clips edited, the active one's
@@ -80,13 +80,13 @@ function view:note_at(pitch, beat)
 end
 
 --- Rows above the notes on a panel `h` rows tall: the panel's title, the
---- chord symbols when `daw.opt.chords` asks for them and there is room,
+--- chord symbols when `paw.opt.chords` asks for them and there is room,
 --- then the ruler.
 function view.head_rows(h)
-  return (daw.opt.chords and h >= 12) and 3 or 2
+  return (paw.opt.chords and h >= 12) and 3 or 2
 end
 -- Switches a module adds to the window's piano roll toolbar: `fn()`
--- returns `{ label, on, tip, act }` (`act` names the `daw.frontend.act`
+-- returns `{ label, on, tip, act }` (`act` names the `paw.frontend.act`
 -- function a click calls, given the clip), or nil to show none for now.
 view.tools = {}
 
@@ -109,10 +109,10 @@ end
 -- Keys that hold for a while: a module whose state takes keys of its own
 -- (a suggestion showing, a snippet being filled in) names a scope of
 -- mappings and says when it is on; while it is, its keys come before the
--- piano roll's, earlier entries first (`daw.keymap` looks here through
+-- piano roll's, earlier entries first (`paw.keymap` looks here through
 -- `subscope`).
 --
---   daw.ui.views.pianoroll:key_scope("pianoroll.complete", 50, function() return shown ~= nil end)
+--   paw.ui.views.pianoroll:key_scope("pianoroll.complete", 50, function() return shown ~= nil end)
 view.key_scopes = {}
 
 function view:key_scope(name, order, active)
@@ -144,7 +144,7 @@ local NOTES = 20
 --- Draw `paint(p)` as a layer of the roll, replacing one of the same name
 --- (nil removes it). `p` holds `roll` and `ruler` (cell buffers), `clip`
 --- (the active one), `data` (its fields), `parts` (every clip edited, see
---- `daw.roll_clips`), `x(beat)` (a column of the roll), `row(pitch)` (a
+--- `paw.roll_clips`), `x(beat)` (a column of the roll), `row(pitch)` (a
 --- row, nil when off screen), `scroll`, `from` and `to` (the beats that
 --- show), `zoom`, `top`, `rows`, `width`, `focused` and `hue`. Beats are the
 --- roll's: the active clip's.
@@ -155,7 +155,7 @@ local NOTES = 20
 --- a chip with the label on the row of `pitch`, as wide as its text, `slot`
 --- putting chips side by side (in steps of 20 px; a chip with a longer
 --- label takes the last slot); `act` and `arg` for what a click on it does,
---- the name of a `daw.frontend.act` function given the clip and `arg`, and
+--- the name of a `paw.frontend.act` function given the clip and `arg`, and
 --- `tip` for what the pointer on it says. A failing layer is skipped.
 function view.layer(name, order, paint, marks)
   for i = #view.layers, 1, -1 do
@@ -196,27 +196,27 @@ end
 -- Other tracks' notes, behind the clips' own. In the terminal each is a
 -- dashed line on a faint shade of its track's colour, without a name: the
 -- clips' own notes are solid and named. The window is handed them with the
--- clip (`daw.frontend.clip`), not with every look at the layers: there may
+-- clip (`paw.frontend.clip`), not with every look at the layers: there may
 -- be thousands, and they change only with the project.
 view.layer("context", 10, function(L)
-  local glyph = daw.opt.ascii and "-" or "╌"
+  local glyph = paw.opt.ascii and "-" or "╌"
   for _, n in ipairs(clips.context()) do
     local row = L.row(n.pitch)
     if row and n.start < L.to and n.start + n.length > L.from then
       local x0 = math.floor((n.start - L.from) * L.zoom + 0.5)
       local x1 = math.floor((n.start + n.length - L.from) * L.zoom + 0.5)
-      L.roll:fill(x0, row, math.max(1, x1 - x0), 1, glyph, daw.draw.hue(n.color).body)
+      L.roll:fill(x0, row, math.max(1, x1 - x0), 1, glyph, paw.draw.hue(n.color).body)
     end
   end
 end)
 
 -- The notes of the clips being edited.
 view.layer("notes", 20, function(L)
-    local g = daw.draw.g
+    local g = paw.draw.g
     for i, part in ipairs(L.parts) do
-      local hue = i == 1 and L.hue or daw.draw.track_hue(api.track_get(part.track))
+      local hue = i == 1 and L.hue or paw.draw.track_hue(api.track_get(part.track))
       local chosen = {}
-      for _, place in ipairs(daw.frontend.chosen_notes(part.id)) do chosen[place] = true end
+      for _, place in ipairs(paw.frontend.chosen_notes(part.id)) do chosen[place] = true end
       local shown, places = part.clip:notes({
         from = L.from - part.offset, to = L.to - part.offset, low = math.max(0, L.top - L.rows + 1), high = L.top,
       })
@@ -227,13 +227,13 @@ view.layer("notes", 20, function(L)
         local x1 = math.floor((start + note.length - L.from) * L.zoom + 0.5)
         local nw = math.max(1, x1 - x0)
         local at_cursor = L.under_part and L.under_part.id == part.id and places[k] == L.under_place
-        local style = at_cursor and "NoteCursor" or chosen[places[k]] and hue.title_cur or daw.draw.note_style(hue, note.velocity)
+        local style = at_cursor and "NoteCursor" or chosen[places[k]] and hue.title_cur or paw.draw.note_style(hue, note.velocity)
         L.roll:fill(x0, row, nw, 1, " ", style)
         L.roll:text(x0, row, g.clip_start)
         -- Long enough notes say which they are, or the articulation
         -- (MIDI 2.0 attribute) they carry.
         if nw >= 4 then
-          local said = note.attr and daw.attr.describe(note.attr)
+          local said = note.attr and paw.attr.describe(note.attr)
           L.roll:text(x0 + 1, row, (said and said.tag or music.name(note.pitch)):sub(1, nw - 1))
         end
       end
@@ -244,9 +244,9 @@ view.layer("notes", 20, function(L)
 view.layer("attr", 25, nil, function(clip_id)
   local out, fill = {}, nil
   for _, n in ipairs(api.clip_notes(clip_id)) do
-    local said = n.attr and daw.attr.describe(n.attr)
+    local said = n.attr and paw.attr.describe(n.attr)
     if said then
-      fill = fill or daw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
+      fill = fill or paw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
       out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, badge = true, label = said.tag, tip = said.text,
         fill = fill, alpha = 0.9 }
     end
@@ -322,12 +322,12 @@ function view.velocity_rows(h)
 end
 
 function view:render(buf, ctx)
-  local g = daw.draw.g
+  local g = paw.draw.g
   local w, h = buf.width, buf.height
   local clip = self:clip()
   buf:fill(0, 0, w, h, " ", "Normal")
   if not clip then
-    daw.ui.titlebar(buf, { name = "Piano roll", focused = ctx.focused })
+    paw.ui.titlebar(buf, { name = "Piano roll", focused = ctx.focused })
     buf:text(2, 2, "No clip open.", "Empty")
     local lead = "Put the cursor on a MIDI clip in the arrange view and press "
     buf:text(2, 3, lead, "Empty")
@@ -336,10 +336,10 @@ function view:render(buf, ctx)
   end
   local c = clip:get()
   local track = api.track_get(c.track)
-  local hue = daw.draw.track_hue(track)
+  local hue = paw.draw.track_hue(track)
   local parts = clips.parts()
   local lo, hi = clips.span()
-  local zoom, grid = daw.opt.note_zoom, daw.opt.note_grid
+  local zoom, grid = paw.opt.note_zoom, paw.opt.note_grid
   -- With room to spare, the notes' velocities get a few rows of their own.
   local vel = view.velocity_rows(h)
   local head = view.head_rows(h)
@@ -365,20 +365,20 @@ function view:render(buf, ctx)
   -- Title: the active clip in its track's colour, the track and how many
   -- clips are edited, where the cursor is and the chord sounding there; on
   -- the right what the keys will enter.
-  local inserting = ctx.focused and daw.keymap.mode == "i"
-  local grid_text = daw.ui.views.status.grid_text
+  local inserting = ctx.focused and paw.keymap.mode == "i"
+  local grid_text = paw.ui.views.status.grid_text
   local right = string.format("grid %s  len %s  vel %d  oct %d", grid_text(grid), grid_text(self:step_length()),
-    daw.opt.velocity, daw.opt.octave)
+    paw.opt.velocity, paw.opt.octave)
   local sounding, chord = clips.sounding(self.beat)
-  local place = music.name(self.pitch) .. "  " .. daw.time.format(c.start + self.beat)
-  daw.ui.titlebar(buf, {
+  local place = music.name(self.pitch) .. "  " .. paw.time.format(c.start + self.beat)
+  paw.ui.titlebar(buf, {
     pill = { c.name, hue.pill }, focused = ctx.focused,
     name = #parts > 1 and string.format("%s  +%d clip%s", track.name, #parts - 1, #parts == 2 and "" or "s") or track.name,
     context = chord and place .. "  " .. chord or place,
     right = w >= 90 and right or nil,
   })
   if inserting then
-    local text = " " .. daw.roll_draw.label() .. " "
+    local text = " " .. paw.roll_draw.label() .. " "
     buf:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
 
@@ -389,11 +389,11 @@ function view:render(buf, ctx)
   local ruler = buf:sub(KEYS, head - 1, tw, 1)
   if head == 3 then
     buf:fill(0, 1, w, 1, " ", "Ruler")
-    local key = daw.harmony.key(c.start + self.scroll)
+    local key = paw.harmony.key(c.start + self.scroll)
     buf:text(0, 1, (key.name:gsub(" major", ""):gsub(" minor", "m")):sub(1, KEYS - 1), "RulerChordEdge")
-    daw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
+    paw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
   end
-  local lines = daw.draw.beats(ruler, self.scroll, span, zoom, c.start)
+  local lines = paw.draw.beats(ruler, self.scroll, span, zoom, c.start)
   for i, band in ipairs(bands) do
     local y = head - 1 - #bands + i - 1
     buf:fill(0, y, w, 1, " ", "Ruler")
@@ -421,7 +421,7 @@ function view:render(buf, ctx)
 
   -- What the track's instrument calls its keys (a drum, a keyswitch) is
   -- written on them.
-  local key_names = daw.plugins.key_names(c.track)
+  local key_names = paw.plugins.key_names(c.track)
   -- The keys that sound at the cursor, in any clip shown, are marked.
   local sounds = {}
   for _, pitch in ipairs(sounding) do sounds[pitch] = true end
@@ -430,7 +430,7 @@ function view:render(buf, ctx)
   for row = 0, rows - 1 do
     local pitch = self.top - row
     local look = view.row_look(pitch, c.track) or {}
-    daw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS, key_names[pitch])
+    paw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS, key_names[pitch])
     if look.label and pitch ~= self.pitch then buf:text(0, row + head, util.fit(look.label, KEYS - 1) .. " ", look.style or "PianoWhite") end
     if sounds[pitch] then buf:text(KEYS - 1, row + head, "•", "PianoCursor") end
     roll:fill(0, row, tw, 1, " ", look.shade or (music.is_black(pitch) and "RollRowBlack" or "RollRow"))
@@ -470,7 +470,7 @@ function view:render(buf, ctx)
       if line.bar then lane:fill(line.x, 0, 1, vel, g.bar, "RollBar") end
     end
     for i, part in ipairs(parts) do
-      local fg = i == 1 and hue.fg or daw.draw.track_hue(api.track_get(part.track)).fg
+      local fg = i == 1 and hue.fg or paw.draw.track_hue(api.track_get(part.track)).fg
       local all, places = part.clip:notes({ from = self.scroll - part.offset, to = self.scroll + span - part.offset })
       for k, note in ipairs(all) do
         local x0 = math.floor((note.start + part.offset - self.scroll) * zoom + 0.5)
@@ -489,7 +489,7 @@ function view:render(buf, ctx)
   end
 
   -- The selection of visual mode: a stretch of time, a block, or whole pitches.
-  local selection = ctx.focused and daw.keymap.selection()
+  local selection = ctx.focused and paw.keymap.selection()
   if selection then
     local x0 = math.max(0, math.floor((selection.c0 - self.scroll) * zoom + 0.5))
     local x1 = math.min(tw, math.floor((selection.c1 - self.scroll) * zoom + 0.5))
@@ -514,7 +514,7 @@ end
 --- Play the pitch under the cursor on the track of the clip it is in.
 function view:audition(pitch)
   local part = clips.target(self.beat)
-  if part then part.clip:track():play_note(pitch or self.pitch, daw.opt.velocity, 180) end
+  if part then part.clip:track():play_note(pitch or self.pitch, paw.opt.velocity, 180) end
 end
 
 --- How far the cursor can go: the stretch of the clips edited.
@@ -600,9 +600,9 @@ function view:to_bar(n)
   local clip = self:clip()
   if not clip then return end
   local at = clip.start + self.beat
-  local bar = daw.time.bar_of(at)
-  local to = n > 0 and bar + n or bar + n + (daw.tempo.is_bar_line(at) and 0 or 1)
-  self:set(nil, daw.time.bar_start(math.max(1, to)) - clip.start)
+  local bar = paw.time.bar_of(at)
+  local to = n > 0 and bar + n or bar + n + (paw.tempo.is_bar_line(at) and 0 or 1)
+  self:set(nil, paw.time.bar_start(math.max(1, to)) - clip.start)
 end
 
 --- Go to the first note (`dir` 1) or to the end of the clips (-1).
@@ -647,7 +647,7 @@ function view:paste(value, before, count)
   for _ = 1, count or 1 do
     start = at
     local parts = clips.parts()
-    local finish = daw.edit.roll.paste(#parts > 1 and parts or clip, value, self.pitch, at, clips.target(at, parts))
+    local finish = paw.edit.roll.paste(#parts > 1 and parts or clip, value, self.pitch, at, clips.target(at, parts))
     if not finish then return end
     at = finish
   end
@@ -659,7 +659,7 @@ end
 
 --- How long a note entered in insert mode is, and how far the cursor then moves.
 function view:step_length()
-  return self.length or daw.opt.note_grid
+  return self.length or paw.opt.note_grid
 end
 
 function view:set_step(length)
@@ -681,7 +681,7 @@ function view:step(n)
     taken = taken or (other ~= part and to >= other.offset - 1e-9 and to < other.offset + other.length - 1e-9)
   end
   if to > part.offset + part.length - 1e-9 and not taken then
-    part.clip.length = daw.time.bar_ceil(part.start + to - part.offset + 1e-9) - part.start
+    part.clip.length = paw.time.bar_ceil(part.start + to - part.offset + 1e-9) - part.start
   end
   self:set(nil, to)
 end
@@ -704,19 +704,19 @@ function view:enter(semitone, advance)
   if not self:clip() then return end
   local part = clips.target(self.beat)
   local clip, beat = part.clip, self.beat - part.offset
-  local pitch = util.clamp((daw.opt.octave + 1) * 12 + semitone, 0, 127)
+  local pitch = util.clamp((paw.opt.octave + 1) * 12 + semitone, 0, 127)
   local length = self:step_length()
   if beat + length > part.length + 1e-9 then
-    clip.length = daw.time.bar_ceil(part.start + beat + length - 1e-9) - part.start
+    clip.length = paw.time.bar_ceil(part.start + beat + length - 1e-9) - part.start
   end
   -- A note of the same pitch that starts here is replaced.
   clip:edit_notes({
     remove = self:starting_here(clip, pitch, part.offset),
-    add = { view.new_note(clip, { pitch = pitch, start = beat, length = length, velocity = daw.opt.velocity }) },
+    add = { view.new_note(clip, { pitch = pitch, start = beat, length = length, velocity = paw.opt.velocity }) },
   })
   self.pitch = pitch
-  clip:track():play_note(pitch, daw.opt.velocity, 180)
-  daw.ui.poke()
+  clip:track():play_note(pitch, paw.opt.velocity, 180)
+  paw.ui.poke()
   if advance then self:step(1) else api.ui_redraw() end
 end
 
@@ -730,7 +730,7 @@ function view:backspace()
 end
 
 function view:set_octave(delta)
-  daw.opt.octave = util.clamp(daw.opt.octave + delta, -1, 9)
+  paw.opt.octave = util.clamp(paw.opt.octave + delta, -1, 9)
 end
 
 -- What modal editing works on: rows are pitches, which count upwards.
@@ -738,7 +738,7 @@ view.grid = {
   down = -1,
   get = function() return view.pitch, view.beat end,
   set = function(row, col) view:set(row, col) end,
-  step = function() return daw.opt.note_grid end,
+  step = function() return paw.opt.note_grid end,
   -- A selection takes in the note under its far end, as Vim's takes in the
   -- character under the cursor.
   extent = function(row, col)
@@ -763,7 +763,7 @@ function view:toggle_note()
     part.clip:remove_note(place)
   else
     part = clips.target(self.beat)
-    part.clip:add_note(view.new_note(part.clip, { pitch = self.pitch, start = self.beat - part.offset, length = self.length or daw.opt.note_grid }))
+    part.clip:add_note(view.new_note(part.clip, { pitch = self.pitch, start = self.beat - part.offset, length = self.length or paw.opt.note_grid }))
     self:audition()
   end
 end
@@ -776,9 +776,9 @@ function view:describe()
     { text = "Note  " .. music.name(note.pitch), style = "Title" },
     string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity),
   }
-  local said = note.attr and daw.attr.describe(note.attr)
+  local said = note.attr and paw.attr.describe(note.attr)
   if said then lines[#lines + 1] = "  articulation: " .. said.text end
-  local key = daw.plugins.key_names(part.track)[note.pitch]
+  local key = paw.plugins.key_names(part.track)[note.pitch]
   if key then lines[#lines + 1] = "  the instrument calls this key " .. key end
   for _, d in ipairs(view.describers) do
     local ok, more = pcall(d.fn, note, part)
@@ -804,7 +804,7 @@ function view:change(fn)
   return true
 end
 
-daw.ui.view("pianoroll", view)
+paw.ui.view("pianoroll", view)
 -- Insert mode's drawing, which draws on the roll as one of its layers.
-daw.roll_draw = require("daw.roll_draw")
+paw.roll_draw = require("paw.roll_draw")
 return view

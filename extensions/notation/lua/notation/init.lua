@@ -5,8 +5,8 @@
 -- edit changes that score (`notation.doc`) and is written back as MIDI
 -- edits, one undo step. Drawing is in notation.tui (cells) and
 -- notation.gui (pixels); keys are in notation.keys.
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local model = require("notation.model")
 local score = require("notation.score")
 local D = require("notation.doc")
@@ -15,7 +15,7 @@ local midi = require("notation.midi")
 
 local EPS = 1e-6
 
-daw.option.define("notation_grid", 0.25)   -- the smallest value written, in beats
+paw.option.define("notation_grid", 0.25)   -- the smallest value written, in beats
 
 local view = {
   clip_id = nil,
@@ -30,7 +30,7 @@ local view = {
 }
 
 function view:clip()
-  if self.clip_id and pcall(api.clip_get, self.clip_id) then return daw.clip(self.clip_id) end
+  if self.clip_id and pcall(api.clip_get, self.clip_id) then return paw.clip(self.clip_id) end
   self.clip_id = nil
 end
 
@@ -46,14 +46,14 @@ function view.key()
 end
 
 --- The key's name, for the title: the project's when one is set; else the
---- key the music is read in (`daw.harmony.key` at `beat`) when it is the
+--- key the music is read in (`paw.harmony.key` at `beat`) when it is the
 --- minor key of the signature in force, so a song in A minor is called so
 --- rather than C major; else the signature's major key.
 local MAJORS = { [-7] = "Cb", [-6] = "Gb", [-5] = "Db", [-4] = "Ab", [-3] = "Eb", [-2] = "Bb", [-1] = "F",
   [0] = "C", "G", "D", "A", "E", "B", "F#", "C#" }
 function view.key_name(fifths, stored, beat)
   if stored and stored.root then return stored.root .. " " .. (stored.scale or "major") end
-  local ok, read = pcall(daw.harmony.key, beat)
+  local ok, read = pcall(paw.harmony.key, beat)
   if ok and type(read) == "table" and read.mode == "minor" and read.name then
     local root = read.name:match("^(%S+)")
     if root and model.fifths_of(root, "minor") == fifths then return read.name end
@@ -78,7 +78,7 @@ end
 --- The time signature in force at a beat of the project: from the kernel's
 --- signature map when it has one, else the project's signature.
 function view.signature_at(beat)
-  local t = daw.time
+  local t = paw.time
   local f = t.signature_at or t.sig_at or t.meter_at
   if f then
     local a, b = f(beat)
@@ -93,7 +93,7 @@ end
 --- with `start` in beats from `start`, where the signature changes along
 --- the song.
 function view.bars(start, length)
-  local t = daw.time
+  local t = paw.time
   if not (t.signature_at or t.sig_at or t.meter_at) then
     local p = api.project_get()
     return model.even_bars(start, length, p.sig_num, p.sig_den)
@@ -111,7 +111,7 @@ end
 
 --- The tempo at a beat, for the transcription's windows in milliseconds.
 function view.tempo_at(beat)
-  local f = daw.time.tempo_at
+  local f = paw.time.tempo_at
   if f then
     local ok, v = pcall(f, beat)
     if ok and tonumber(v) then return tonumber(v) end
@@ -128,7 +128,7 @@ end
 --- The transcription's settings for a clip: the defaults under its own.
 function view.settings_of(c)
   local set = score.settings(view.own(c).settings)
-  set.grid = (view.own(c).settings or {}).grid or daw.opt.notation_grid
+  set.grid = (view.own(c).settings or {}).grid or paw.opt.notation_grid
   return set
 end
 
@@ -164,13 +164,13 @@ function view.layout_opts(c, own)
   local fifths = view.key()
   own = own or view.own(c)
   local settings = score.settings(own.settings)
-  settings.grid = (own.settings or {}).grid or daw.opt.notation_grid
+  settings.grid = (own.settings or {}).grid or paw.opt.notation_grid
   -- The track's clef, else the staves the clip was written on in notation.
   local staves = type(own.staves) == "table" and own.staves or nil
   local clef = view.track_clef(c.track) or view.track_clefs[c.track] or (staves and (#staves == 2 and "grand" or staves[1]))
   return {
     length = c.length, offset = c.start, bars = view.bars(c.start, c.length), fifths = fifths,
-    clef = clef, grid = daw.opt.notation_grid, tempo = view.tempo_at(c.start),
+    clef = clef, grid = paw.opt.notation_grid, tempo = view.tempo_at(c.start),
     settings = settings, tuplets = own.tuplets,
   }
 end
@@ -187,7 +187,7 @@ end
 --- checked before they are exported (`:score.check`). Says so.
 function view:readonly()
   if self.parts and self.parts.check then
-    daw.notify("the pages are shown to check before export, to read: :score.check again (or zp) to edit", "warn")
+    paw.notify("the pages are shown to check before export, to read: :score.check again (or zp) to edit", "warn")
     return true
   end
   return false
@@ -246,14 +246,14 @@ function view:layout()
     self.clip_id = nil
     return nil
   end
-  local clip = daw.clip(c.id)
+  local clip = paw.clip(c.id)
   local opts = view.layout_opts(c)
   -- Laid out from the score the clip's notes are written as.
   local sc = view.score_of(c)
-  local stamp = table.concat({ tostring(sc), c.length, opts.fifths, daw.opt.notation_grid,
+  local stamp = table.concat({ tostring(sc), c.length, opts.fifths, paw.opt.notation_grid,
     tostring(opts.bars[1] and opts.bars[1].number), serial(view.track_meta(c.track)) }, ":")
   if self.cache and self.cache.stamp == stamp then return self.cache.layout end
-  local layout = L.layout(sc, { length = c.length, fifths = opts.fifths, grid = daw.opt.notation_grid,
+  local layout = L.layout(sc, { length = c.length, fifths = opts.fifths, grid = paw.opt.notation_grid,
     number = opts.bars[1] and opts.bars[1].number })
   -- Each written note knows the note that plays it, by its place among the clip's.
   local place = {}
@@ -289,7 +289,7 @@ function view.score_of(c)
   local old = type(c.meta) == "table" and type(c.meta.score) == "table" and c.meta.score or nil
   local opts = view.layout_opts(c, own)
   local key = table.concat({ c.id, tostring(c.stamp), tostring(c.note_count), c.length, c.start, opts.fifths, tostring(opts.tempo),
-    tostring(opts.clef), serial(own), serial(opts.bars), daw.opt.notation_grid, old and tostring(old.rev) or "" }, ":")
+    tostring(opts.clef), serial(own), serial(opts.bars), paw.opt.notation_grid, old and tostring(old.rev) or "" }, ":")
   local hit = derived[c.id]
   if hit and hit.key == key then return hit.score end
   local notes = api.clip_notes(c.id)
@@ -442,7 +442,7 @@ function view:describe()
   return {
     { text = "Note  " .. model.name(written), style = "Title" },
     "  written " .. table.concat(how, ", "),
-    string.format("  played at %s, %g beats long, velocity %d (MIDI note %d, n%s)", daw.time.format(c.start + note.start),
+    string.format("  played at %s, %g beats long, velocity %d (MIDI note %d, n%s)", paw.time.format(c.start + note.start),
       note.length, note.velocity, note.pitch, tostring(note.id)),
     "",
   }
@@ -481,7 +481,7 @@ end
 --- Sound a pitch on the clip's track.
 function view:audition(pitch)
   local clip = self:clip()
-  if clip then clip:track():play_note(pitch or self:cursor_pitch(), daw.opt.velocity, 220) end
+  if clip then clip:track():play_note(pitch or self:cursor_pitch(), paw.opt.velocity, 220) end
 end
 
 --- Move the cursor by beats and staff positions.
@@ -624,7 +624,7 @@ function view:write(fn)
   local ok, result = pcall(fn, sc, clip)
   if not ok then error(result, 0) end
   if result ~= false then view.store(clip, before, sc) end
-  daw.ui.poke()
+  paw.ui.poke()
   return result
 end
 
@@ -887,7 +887,7 @@ end
 --- Make the room for the clip to reach `finish`, a bar at a time.
 function view:grow(clip, finish)
   if finish > clip.length + EPS then
-    local bar = daw.time.bar()
+    local bar = paw.time.bar()
     clip.length = math.ceil((clip.start + finish - EPS) / bar) * bar - clip.start
   end
 end
@@ -902,7 +902,7 @@ function view:place(pitch, beat, length, keep, spell)
     local why
     id, why = self:put(sc, spelled(util.clamp(pitch, 0, 127), spell), beat, length, keep)
     if not id then
-      daw.notify(why or "nothing written", "warn")
+      paw.notify(why or "nothing written", "warn")
       return false
     end
   end)
@@ -958,7 +958,7 @@ function view:relength(fn)
     if not was then return false end
     local f = D.frame(sc)
     local t = f.starts[was.mi] + was.at
-    local len = D.from_beats(math.max(daw.opt.notation_grid / 2, fn(was.len / D.Q)))
+    local len = D.from_beats(math.max(paw.opt.notation_grid / 2, fn(was.len / D.Q)))
     drop(sc, was, t, len)
     self.beat = math.max(0, (D.origin(sc) + t) / D.Q)
   end) ~= false
@@ -989,7 +989,7 @@ function view:relength_region(region, by)
       local was = lift(sc, ids[k])
       if was then
         local f = D.frame(sc)
-        drop(sc, was, f.starts[was.mi] + was.at, math.max(D.from_beats(daw.opt.notation_grid / 2), was.len + D.from_beats(by)))
+        drop(sc, was, f.starts[was.mi] + was.at, math.max(D.from_beats(paw.opt.notation_grid / 2), was.len + D.from_beats(by)))
       end
     end
   end)
@@ -1069,7 +1069,7 @@ function view:quantize(from, to, low, high)
     end
   end
   if #set > 0 then api.clip_notes_edit(clip.id, { set = set, remove = {}, add = {} }) end
-  daw.ui.poke()
+  paw.ui.poke()
   return #set
 end
 
@@ -1092,7 +1092,7 @@ function view:apply_marks(from, to, low, high)
     end
   end
   if #set > 0 then api.clip_notes_edit(clip.id, { set = set, remove = {}, add = {} }) end
-  daw.ui.poke()
+  paw.ui.poke()
   return #set
 end
 
@@ -1129,7 +1129,7 @@ function view:retranscribe(from, to)
     end)
   end
   self.cache = nil
-  daw.ui.poke()
+  paw.ui.poke()
   return #list
 end
 
@@ -1197,7 +1197,7 @@ function view:toggle_voice()
       if f.starts[tlast.mi] + tlast.at + D.length(tlast.ev) - t ~= len then target = nil end
     end
     if not target and not silent(sc, staff, to, t, len) then
-      daw.notify("voice " .. to .. " has other notes there", "warn")
+      paw.notify("voice " .. to .. " has other notes there", "warn")
       return false
     end
     if whole then
@@ -1350,14 +1350,14 @@ function view:toggle_tuplet()
     for _, it in ipairs(D.line(sc, mi, staff, v)) do
       if it.ev.kind == "chord" and not it.ev.grace and it.s < finish and it.e > a then
         if it.s < a or (it.e > finish and not (span and span.s == a)) then
-          daw.notify("a note goes over the edge of the beat: shorten it first", "warn")
+          paw.notify("a note goes over the edge of the beat: shorten it first", "warn")
           return false
         end
         chords[#chords + 1] = it
       end
     end
     if #chords == 0 then
-      daw.notify("no notes on this beat", "warn")
+      paw.notify("no notes on this beat", "warn")
       return false
     end
     local function keep(it, extra)
@@ -1388,7 +1388,7 @@ function view:toggle_tuplet()
       local actual = b.compound and 2 or 3
       local normal = b.compound and 3 or 2
       if #chords > actual then
-        daw.notify("more notes on the beat than the tuplet has places", "warn")
+        paw.notify("more notes on the beat than the tuplet has places", "warn")
         return false
       end
       local value = blen / normal
@@ -1599,7 +1599,7 @@ function view:add_interval(interval)
   local fifths = view.key()
   local step = last.step + interval - 1
   local pitch = model.key_pitch(step, fifths)
-  if pitch > 127 then return daw.notify("no note that high", "warn") end
+  if pitch > 127 then return paw.notify("no note that high", "warn") end
   if not (self.chord and math.abs(self.chord.beat - last.beat) < EPS) then self.chord = { beat = last.beat, pitches = { [last.pitch] = true } } end
   self.chord.pitches[pitch] = true
   local id = self:place(pitch, last.beat, self:entry_length(), true)
@@ -1612,7 +1612,7 @@ end
 --- Enter the chord entered last again at the cursor, and step on.
 function view:repeat_chord()
   local again = self.again
-  if not (again and #again.pitches > 0) then return daw.notify("nothing entered yet to repeat", "warn") end
+  if not (again and #again.pitches > 0) then return paw.notify("nothing entered yet to repeat", "warn") end
   local id
   self:write(function(sc)
     for k, p in ipairs(again.pitches) do id = self:put(sc, spelled(p), self.beat, self:entry_length(), k > 1) end
@@ -1737,9 +1737,9 @@ end
 
 --- Open a MIDI clip as notation, in the terminal and in a window.
 function view:edit(clip)
-  if type(clip) == "number" then clip = daw.clip(clip) end
-  if not clip then return daw.notify("no clip here", "warn") end
-  if clip.kind ~= "midi" then return daw.notify("only MIDI clips can be shown as notation", "warn") end
+  if type(clip) == "number" then clip = paw.clip(clip) end
+  if not clip then return paw.notify("no clip here", "warn") end
+  if clip.kind ~= "midi" then return paw.notify("only MIDI clips can be shown as notation", "warn") end
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache = clip.id, 0, 1, nil, nil, nil
   self.parts = nil
   self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace, self.pending_grace = false, nil, nil, nil, nil, nil, nil
@@ -1754,20 +1754,20 @@ function view:edit(clip)
   end
   if first and first.notes then self.step = first.notes[#first.notes].step end
   if first then self.beat = math.max(0, first.notes and first.start or 0) end
-  daw.ui.focus("notation")
-  if daw.canvas then daw.canvas.open("notation", { title = "Notation", width = 1100, height = 560 }) end
+  paw.ui.focus("notation")
+  if paw.canvas then paw.canvas.open("notation", { title = "Notation", width = 1100, height = 560 }) end
 end
 
 --- The clip to open: the piano roll's when it has the keyboard, else the
 --- one under the arrange cursor.
 function view.target()
-  local focused = daw.ui.focused
+  local focused = paw.ui.focused
   if focused == "pianoroll" then
-    local c = daw.ui.views.pianoroll:clip()
+    local c = paw.ui.views.pianoroll:clip()
     if c then return c end
   end
   if focused == "notation" and view:clip() then return view:clip() end
-  return daw.cursor.clip()
+  return paw.cursor.clip()
 end
 
 return view

@@ -1,277 +1,277 @@
--- `require("daw")`: the whole scripting surface, assembled from the modules in
--- this directory. The kernel provides `daw.api`; everything else is Lua that
+-- `require("paw")`: the whole scripting surface, assembled from the modules in
+-- this directory. The kernel provides `paw.api`; everything else is Lua that
 -- you can read, replace or extend.
-local api = require("daw.api")
+local api = require("paw.api")
 
-local daw = { api = api, version = "0.1.0" }
-_G.daw = daw
-package.loaded["daw"] = daw
+local paw = { api = api, version = "0.1.0" }
+_G.paw = paw
+package.loaded["paw"] = paw
 
-daw.util = require("daw.util")
-daw.inspect = daw.util.inspect
+paw.util = require("paw.util")
+paw.inspect = paw.util.inspect
 
 --- Call a function, reporting an error as a message instead of raising it.
 --- Returns true and the function's results, or false and the error.
-function daw.try(fn, ...)
+function paw.try(fn, ...)
   local result = { xpcall(fn, debug.traceback, ...) }
-  if not result[1] then daw.notify(result[2], "error") end
+  if not result[1] then paw.notify(result[2], "error") end
   return unpack(result)
 end
 
-local events = require("daw.events")
-daw.on, daw.once, daw.off, daw.emit = events.on, events.once, events.off, events.emit
+local events = require("paw.events")
+paw.on, paw.once, paw.off, paw.emit = events.on, events.once, events.off, events.emit
 
-local options = require("daw.options")
-daw.opt, daw.option = options.opt, options
-daw.limit = require("daw.limit")
+local options = require("paw.options")
+paw.opt, paw.option = options.opt, options
+paw.limit = require("paw.limit")
 -- Before anything that keeps state of its own for each terminal and window.
-daw.seats = require("daw.seats")
+paw.seats = require("paw.seats")
 
 --- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
-function daw.defer(fn, ms)
+function paw.defer(fn, ms)
   return api.timer_start(ms or 0, false, fn)
 end
 
---- Run `fn` every `ms` milliseconds. Returns a handle for `daw.cancel`.
-function daw.every(ms, fn)
+--- Run `fn` every `ms` milliseconds. Returns a handle for `paw.cancel`.
+function paw.every(ms, fn)
   return api.timer_start(ms, true, fn)
 end
 
-daw.cancel = api.timer_stop
+paw.cancel = api.timer_stop
 
 --- Let `ms` milliseconds pass while timers fire and events are delivered, as
 --- they do between key presses. A script run with `-l` is one long turn in
 --- which neither happens unless it waits like this.
-daw.wait = api.wait
+paw.wait = api.wait
 
-daw.commands = require("daw.commands")
-daw.command = setmetatable({ alias = daw.commands.alias }, {
-  __call = function(_, ...) return daw.commands.define(...) end,
+paw.commands = require("paw.commands")
+paw.command = setmetatable({ alias = paw.commands.alias }, {
+  __call = function(_, ...) return paw.commands.define(...) end,
 })
-daw.cmd = daw.commands.run
+paw.cmd = paw.commands.run
 
-daw.music = require("daw.music")
--- A note's MIDI 2.0 attribute and the articulations in it (daw/attr.lua).
-daw.attr = require("daw.attr")
-daw.params = require("daw.params")
-daw.ui = require("daw.ui")
--- Buffers, windows and tabs (daw/layout.lua).
-daw.layout = require("daw.layout")
-daw.buf, daw.win, daw.tab = daw.layout.buf, daw.layout.win, daw.layout.tabs
-daw.buftype, daw.layouts = daw.layout.buftype, daw.layout.layouts
-daw.draw = require("daw.draw")
-daw.ui.keybar = require("daw.keybar")
-daw.mouse = require("daw.mouse")
-require("daw.menu")
-daw.canvas = require("daw.canvas")
--- The tabs and windows as panes of a graphical frontend (daw/panes.lua).
-daw.panes = require("daw.panes")
-daw.notify = daw.ui.notify
-daw.keymap = require("daw.keymap")
-daw.keyrule = require("daw.keyrule")
+paw.music = require("paw.music")
+-- A note's MIDI 2.0 attribute and the articulations in it (paw/attr.lua).
+paw.attr = require("paw.attr")
+paw.params = require("paw.params")
+paw.ui = require("paw.ui")
+-- Buffers, windows and tabs (paw/layout.lua).
+paw.layout = require("paw.layout")
+paw.buf, paw.win, paw.tab = paw.layout.buf, paw.layout.win, paw.layout.tabs
+paw.buftype, paw.layouts = paw.layout.buftype, paw.layout.layouts
+paw.draw = require("paw.draw")
+paw.ui.keybar = require("paw.keybar")
+paw.mouse = require("paw.mouse")
+require("paw.menu")
+paw.canvas = require("paw.canvas")
+-- The tabs and windows as panes of a graphical frontend (paw/panes.lua).
+paw.panes = require("paw.panes")
+paw.notify = paw.ui.notify
+paw.keymap = require("paw.keymap")
+paw.keyrule = require("paw.keyrule")
 
-local objects = require("daw.objects")
-daw.Track, daw.Device, daw.Clip, daw.Lane = objects.Track, objects.Device, objects.Clip, objects.Lane
-daw.tracks, daw.track, daw.device, daw.clip = objects.tracks, objects.track, objects.device, objects.clip
-daw.lane = objects.lane
-daw.add_track = objects.add_track
-daw.restore_track, daw.restore_clip, daw.restore_device = objects.restore_track, objects.restore_clip, objects.restore_device
-daw.master, daw.project, daw.transport, daw.time = objects.master, objects.project, objects.transport, objects.time
-daw.midi = objects.midi
-daw.tempo = require("daw.tempo")
-daw.midifile = require("daw.midifile")
-daw.audio = require("daw.audio")
+local objects = require("paw.objects")
+paw.Track, paw.Device, paw.Clip, paw.Lane = objects.Track, objects.Device, objects.Clip, objects.Lane
+paw.tracks, paw.track, paw.device, paw.clip = objects.tracks, objects.track, objects.device, objects.clip
+paw.lane = objects.lane
+paw.add_track = objects.add_track
+paw.restore_track, paw.restore_clip, paw.restore_device = objects.restore_track, objects.restore_clip, objects.restore_device
+paw.master, paw.project, paw.transport, paw.time = objects.master, objects.project, objects.transport, objects.time
+paw.midi = objects.midi
+paw.tempo = require("paw.tempo")
+paw.midifile = require("paw.midifile")
+paw.audio = require("paw.audio")
 
--- Plugins an extension ships, and what plugins call their keys (daw/plugins.lua).
-daw.plugins = require("daw.plugins")
+-- Plugins an extension ships, and what plugins call their keys (paw/plugins.lua).
+paw.plugins = require("paw.plugins")
 
 --- Descriptions of every kind of device that can be added to a track; one
---- an extension added (`daw.plugins.add_dir`) says which, as `from`.
-function daw.device_types()
+--- an extension added (`paw.plugins.add_dir`) says which, as `from`.
+function paw.device_types()
   local list = api.device_types()
-  for _, info in ipairs(list) do info.from = daw.plugins.from[info.kind] end
+  for _, info in ipairs(list) do info.from = paw.plugins.from[info.kind] end
   return list
 end
 
---- Render the project to a file, and render stems: see `daw/render.lua`
---- for the options. `daw.render_status()` and `daw.render_cancel()` look
---- after a render running in the background; `daw.render_ranges` holds the
+--- Render the project to a file, and render stems: see `paw/render.lua`
+--- for the options. `paw.render_status()` and `paw.render_cancel()` look
+--- after a render running in the background; `paw.render_ranges` holds the
 --- named ranges a render can take.
-function daw.render(path, opts) return require("daw.render").render(path, opts) end
-function daw.render_stems(dir, opts) return require("daw.render").stems(dir, opts) end
---- The tags of the project's rendered files: `daw.render_tags()`, `daw.render_tags({ artist = "Me" })`.
-function daw.render_tags(set) return require("daw.render").tags(set) end
-function daw.render_status() return require("daw.render").status() end
-function daw.render_cancel() return require("daw.render").cancel() end
-daw.render_ranges = setmetatable({}, {
-  __index = function(_, k) return require("daw.render").ranges[k] end,
-  __newindex = function(_, k, v) require("daw.render").ranges[k] = v end,
+function paw.render(path, opts) return require("paw.render").render(path, opts) end
+function paw.render_stems(dir, opts) return require("paw.render").stems(dir, opts) end
+--- The tags of the project's rendered files: `paw.render_tags()`, `paw.render_tags({ artist = "Me" })`.
+function paw.render_tags(set) return require("paw.render").tags(set) end
+function paw.render_status() return require("paw.render").status() end
+function paw.render_cancel() return require("paw.render").cancel() end
+paw.render_ranges = setmetatable({}, {
+  __index = function(_, k) return require("paw.render").ranges[k] end,
+  __newindex = function(_, k, v) require("paw.render").ranges[k] = v end,
 })
 
 --- Render a track with its devices to audio, as one clip on a new track
 --- right below it that feeds where it fed, and mute the original. Goes
---- through `daw.render`, so `render.before` is heard. `opts.name` names the
+--- through `paw.render`, so `render.before` is heard. `opts.name` names the
 --- new track ("<name> (bounced)" by default), `opts.tail` is the seconds
 --- rendered after its last clip (2). Returns the new track, or nil when the
 --- track has no clips.
-function daw.bounce(track, opts)
+function paw.bounce(track, opts)
   opts = opts or {}
-  track = type(track) == "table" and track or daw.track(track)
+  track = type(track) == "table" and track or paw.track(track)
   local finish = 0
   for _, clip in ipairs(track:clips()) do finish = math.max(finish, clip.start + clip.length) end
   if finish <= 0 then return nil end
   local dir = api.media_dir()
   os.execute("mkdir -p '" .. dir:gsub("'", "'\\''") .. "'")
   local path = string.format("%s/%s-bounce-%d-%d.wav", dir, track.name:gsub("[^%w%-_]", "_"), os.time(), track.id)
-  daw.render(path, { tracks = { track.id }, start = 0, ["end"] = finish, tail = opts.tail or 2, bits = 32 })
+  paw.render(path, { tracks = { track.id }, start = 0, ["end"] = finish, tail = opts.tail or 2, bits = 32 })
   local index = 0
   for i, id in ipairs(api.track_list()) do
     if id == track.id then index = i end
   end
-  local bounced = daw.add_track({ name = opts.name or (track.name .. " (bounced)"), index = index + 1, output = track.output })
+  local bounced = paw.add_track({ name = opts.name or (track.name .. " (bounced)"), index = index + 1, output = track.output })
   bounced:add_clip({ file = path, start = 0, name = track.name })
   track.mute = true
   return bounced
 end
 
-daw.undo, daw.redo = api.undo, api.redo
-daw.cursor = require("daw.cursor")
-daw.edit = require("daw.edit")
-daw.ext = require("daw.ext")
-daw.vca = require("daw.vca")
-daw.groups = require("daw.groups")
-daw.lanes = require("daw.lanes")
-daw.tempolane = require("daw.tempolane")
-daw.frontend = require("daw.frontend")
-daw.audition = require("daw.audition")
-daw.regex = require("daw.regex")
-daw.pick = require("daw.pick")
-daw.track_kinds = require("daw.track_kinds")
-daw.fx = require("daw.fx")
-daw.routes = require("daw.routes")
-daw.controls = require("daw.controls")
-daw.takes = require("daw.takes")
-daw.stretch = require("daw.stretch")
-daw.harmony = require("daw.harmony")
-daw.snippet = require("daw.snippet")
-daw.launcher = require("daw.launcher")
--- The window's menus, shown by it and built here (daw/window_menus.lua).
-require("daw.window_menus")
+paw.undo, paw.redo = api.undo, api.redo
+paw.cursor = require("paw.cursor")
+paw.edit = require("paw.edit")
+paw.ext = require("paw.ext")
+paw.vca = require("paw.vca")
+paw.groups = require("paw.groups")
+paw.lanes = require("paw.lanes")
+paw.tempolane = require("paw.tempolane")
+paw.frontend = require("paw.frontend")
+paw.audition = require("paw.audition")
+paw.regex = require("paw.regex")
+paw.pick = require("paw.pick")
+paw.track_kinds = require("paw.track_kinds")
+paw.fx = require("paw.fx")
+paw.routes = require("paw.routes")
+paw.controls = require("paw.controls")
+paw.takes = require("paw.takes")
+paw.stretch = require("paw.stretch")
+paw.harmony = require("paw.harmony")
+paw.snippet = require("paw.snippet")
+paw.launcher = require("paw.launcher")
+-- The window's menus, shown by it and built here (paw/window_menus.lua).
+require("paw.window_menus")
 
--- JSON, for what extensions keep in files: `daw.json.encode(value, pretty)`
--- gives text, `daw.json.decode(text)` the value, or nil and the reason.
-daw.json = { encode = api.json_encode, decode = api.json_decode }
+-- JSON, for what extensions keep in files: `paw.json.encode(value, pretty)`
+-- gives text, `paw.json.decode(text)` the value, or nil and the reason.
+paw.json = { encode = api.json_encode, decode = api.json_decode }
 
 -- Values kept by the kernel, so they survive `:reload`.
-daw.state = setmetatable({}, {
+paw.state = setmetatable({}, {
   __index = function(_, key) return api.state_get(key) end,
   __newindex = function(_, key, value) api.state_set(key, value) end,
 })
 
 -- Entry points the kernel calls. Not part of the scripting interface.
 local K = {}
-daw._kernel = K
+paw._kernel = K
 
 function K.startup()
-  daw.ui.theme(require("daw.theme").groups)
-  daw.statusline = require("daw.statusline")
+  paw.ui.theme(require("paw.theme").groups)
+  paw.statusline = require("paw.statusline")
   for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
-    require("daw.views." .. name)
+    require("paw.views." .. name)
   end
   -- What the pointer does in them: the window's gestures, in cells.
   for _, name in ipairs({ "arrange_mouse", "pianoroll_mouse", "panels_mouse" }) do
-    require("daw.views." .. name)
+    require("paw.views." .. name)
   end
-  daw.address = require("daw.address")
-  daw.diagnostic = require("daw.diagnostic")
-  daw.annotation = require("daw.annotation")
-  require("daw.locators")
-  daw.lsp = require("daw.lsp")
-  require("daw.defaults")
-  daw.layout.setup()
-  daw.curves = require("daw.curves")
-  daw.plot = require("daw.plot")
-  daw.curves.editor = require("daw.views.curve")
-  daw.complete = require("daw.complete")
-  daw.fx.setup()
-  daw.routes.setup()
-  daw.media = require("daw.media")
-  require("daw.render")
+  paw.address = require("paw.address")
+  paw.diagnostic = require("paw.diagnostic")
+  paw.annotation = require("paw.annotation")
+  require("paw.locators")
+  paw.lsp = require("paw.lsp")
+  require("paw.defaults")
+  paw.layout.setup()
+  paw.curves = require("paw.curves")
+  paw.plot = require("paw.plot")
+  paw.curves.editor = require("paw.views.curve")
+  paw.complete = require("paw.complete")
+  paw.fx.setup()
+  paw.routes.setup()
+  paw.media = require("paw.media")
+  require("paw.render")
   -- Freezing tracks, and tabs narrowed to a group.
-  daw.freeze = require("daw.freeze")
-  daw.scope = require("daw.scope")
-  daw.stems = require("daw.stems")
-  daw.markers = require("daw.markers")
-  -- Listings edited as text (`:e daw://tracks`), and the kinds built in.
-  daw.textbuf = require("daw.textbuf")
-  require("daw.views.tracklist")
-  daw.files = require("daw.views.files")
-  daw.recent = require("daw.recent")
-  daw.learn = require("daw.learn")
-  daw.remote = require("daw.remote")
-  daw.autosave = require("daw.autosave")
-  daw.loading = require("daw.loading")
-  daw.reconnect = require("daw.reconnect")
-  daw.qf = require("daw.qf")
-  require("daw.views.qflist")
-  daw.ex = require("daw.ex")
+  paw.freeze = require("paw.freeze")
+  paw.scope = require("paw.scope")
+  paw.stems = require("paw.stems")
+  paw.markers = require("paw.markers")
+  -- Listings edited as text (`:e paw://tracks`), and the kinds built in.
+  paw.textbuf = require("paw.textbuf")
+  require("paw.views.tracklist")
+  paw.files = require("paw.views.files")
+  paw.recent = require("paw.recent")
+  paw.learn = require("paw.learn")
+  paw.remote = require("paw.remote")
+  paw.autosave = require("paw.autosave")
+  paw.loading = require("paw.loading")
+  paw.reconnect = require("paw.reconnect")
+  paw.qf = require("paw.qf")
+  require("paw.views.qflist")
+  paw.ex = require("paw.ex")
   -- Searching the project: queries over its tree, and its text.
-  daw.query = require("daw.query")
-  daw.grep = require("daw.grep")
-  require("daw.structure")
+  paw.query = require("paw.query")
+  paw.grep = require("paw.grep")
+  require("paw.structure")
   -- The manual inside the program (`:help`).
-  daw.markdown = require("daw.markdown")
-  daw.help = require("daw.help")
-  daw.ui.start_ticker()
+  paw.markdown = require("paw.markdown")
+  paw.help = require("paw.help")
+  paw.ui.start_ticker()
 
-  daw.luadev = require("daw.luadev")
+  paw.luadev = require("paw.luadev")
   local env = api.env()
   -- Extensions the program was built with (`paw.withExtensions` in the
   -- flake): part of the program, so loaded with `--clean` too.
-  daw.ext.load_packaged(os.getenv("DAW_EXTENSIONS"))
+  paw.ext.load_packaged(os.getenv("PAW_EXTENSIONS"))
   if not env.clean then
-    daw.luadev.add_dir(env.config_dir .. "/devices", daw.luadev.RANK_CONFIG)
-    daw.ext.load_dir(env.config_dir .. "/extensions")
+    paw.luadev.add_dir(env.config_dir .. "/devices", paw.luadev.RANK_CONFIG)
+    paw.ext.load_dir(env.config_dir .. "/extensions")
     local init = env.config_dir .. "/init.lua"
     local file = io.open(init, "r")
     if file then
       file:close()
       local chunk, err = loadfile(init)
-      if chunk then daw.try(daw.limit.untrusted(chunk)) else daw.notify(err, "error") end
+      if chunk then paw.try(paw.limit.untrusted(chunk)) else paw.notify(err, "error") end
     end
-    daw.snippet.load_dir(env.config_dir .. "/snippets", "config")
+    paw.snippet.load_dir(env.config_dir .. "/snippets", "config")
   end
-  for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
-  daw.emit("startup", {})
+  for _, warning in ipairs(api.warnings()) do paw.notify(warning, "warn") end
+  paw.emit("startup", {})
 end
 
 --- The program is about to end.
 function K.exit()
-  daw.emit("exit", {})
+  paw.emit("exit", {})
 end
 
 function K.key(key)
   -- The keys of a finished command (`dd`, `3>ic`) label the undo step it makes.
   -- Keys typed into a prompt are text, not commands.
-  local typed = not daw.ui.grabber and daw.keymap.pending() .. key
-  daw.limit.guard("the key " .. key, daw.keymap.dispatch, key)
-  if typed and daw.keymap.pending() == "" then api.undo_keys(typed) end
+  local typed = not paw.ui.grabber and paw.keymap.pending() .. key
+  paw.limit.guard("the key " .. key, paw.keymap.dispatch, key)
+  if typed and paw.keymap.pending() == "" then api.undo_keys(typed) end
 end
 
 function K.paste(text)
-  if daw.ui.grabber then daw.limit.guard("pasting", daw.ui.grabber, text, true) end
+  if paw.ui.grabber then paw.limit.guard("pasting", paw.ui.grabber, text, true) end
 end
 
 function K.mouse(event)
-  daw.limit.guard("the mouse", daw.ui.mouse, event)
+  paw.limit.guard("the mouse", paw.ui.mouse, event)
 end
 
 function K.resize(width, height)
-  daw.emit("ui.resized", { width = width, height = height })
+  paw.emit("ui.resized", { width = width, height = height })
 end
 
 --- Deliver the change events for edits made so far. The kernel does this at
---- the end of every turn; call `daw.flush()` to have handlers run sooner.
+--- the end of every turn; call `paw.flush()` to have handlers run sooner.
 local function settle()
   -- Handlers may edit the project and cause more events, so go round until
   -- it is quiet, with a limit in case two handlers keep triggering each other.
@@ -280,44 +280,44 @@ local function settle()
     if #events == 0 then return end
     for _, event in ipairs(events) do
       if event.name == "changed" then
-        for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
+        for _, warning in ipairs(api.warnings()) do paw.notify(warning, "warn") end
         api.ui_redraw()
       elseif event.name == "transport.record" then
         -- What starting a take has to say (a punch range already passed).
-        for _, warning in ipairs(api.warnings()) do daw.notify(warning, "warn") end
+        for _, warning in ipairs(api.warnings()) do paw.notify(warning, "warn") end
       end
-      daw.emit(event.name, event.payload)
+      paw.emit(event.name, event.payload)
     end
   end
-  daw.notify("event handlers keep triggering each other; stopped delivering events for this turn", "error")
+  paw.notify("event handlers keep triggering each other; stopped delivering events for this turn", "error")
 end
 
-daw.flush = settle
+paw.flush = settle
 
 --- The kernel's own call at the end of a turn: with the time limit on the
 --- handlers it runs.
 function K.settle()
-  daw.limit.guard("an event handler", settle)
+  paw.limit.guard("an event handler", settle)
 end
 
 function K.timer(fn)
-  daw.limit.guard("a timer", fn)
+  paw.limit.guard("a timer", fn)
 end
 
 function K.render(width, height)
-  daw.limit.guard("drawing the screen", daw.ui.render, daw.ui.Buf.root(width, height))
+  paw.limit.guard("drawing the screen", paw.ui.render, paw.ui.Buf.root(width, height))
 end
 
---- One view drawn by itself, for a window: see `daw.api.ui_view_snapshot`.
+--- One view drawn by itself, for a window: see `paw.api.ui_view_snapshot`.
 function K.render_view(name, width, height)
-  daw.limit.guard("drawing the view " .. name, daw.ui.render_view, name, daw.ui.Buf.root(width, height))
+  paw.limit.guard("drawing the view " .. name, paw.ui.render_view, name, paw.ui.Buf.root(width, height))
 end
 
---- Calls from the control socket: `eval`, `cmd`, `keys`, what `daw.remote`
---- offers a connection (`client` is its number), or any `daw.api` function.
+--- Calls from the control socket: `eval`, `cmd`, `keys`, what `paw.remote`
+--- offers a connection (`client` is its number), or any `paw.api` function.
 function K.rpc(method, params, client)
   params = params or {}
-  local offered = daw.remote and daw.remote.methods[method]
+  local offered = paw.remote and paw.remote.methods[method]
   if offered then
     return offered(client or 0, unpack(params))
   elseif method == "eval" then
@@ -325,12 +325,12 @@ function K.rpc(method, params, client)
     local chunk = loadstring("return " .. code, "=rpc") or assert(loadstring(code, "=rpc"))
     return chunk(unpack(params, 2))
   elseif method == "cmd" then
-    return daw.commands.exec(table.concat(params, " "))
+    return paw.commands.exec(table.concat(params, " "))
   elseif method == "keys" then
-    return daw.keymap.feed(params[1])
+    return paw.keymap.feed(params[1])
   elseif method == "render" then
-    -- Through `daw.render`, so that what listens for `render.before` hears of it.
-    return daw.render(unpack(params))
+    -- Through `paw.render`, so that what listens for `render.before` hears of it.
+    return paw.render(unpack(params))
   elseif api[method] then
     return api[method](unpack(params))
   end
@@ -339,22 +339,22 @@ end
 
 --- A connection on the control socket closed.
 function K.rpc_closed(client)
-  if daw.remote then daw.remote.closed(client) end
-  daw.seats.close(client)
+  if paw.remote then paw.remote.closed(client) end
+  paw.seats.close(client)
 end
 
 --- Whose turn it is: a connection with a seat of its own, or 0.
 function K.seat(client)
-  daw.seats.enter(client)
+  paw.seats.enter(client)
 end
 
 --- A connection's terminal attached, or went away.
 function K.seat_open(client, why)
-  daw.seats.open(client, why)
+  paw.seats.open(client, why)
 end
 
 function K.seat_close(client, why)
-  daw.limit.guard("leaving a seat", daw.seats.close, client, why)
+  paw.limit.guard("leaving a seat", paw.seats.close, client, why)
 end
 
 -- With a screen attached, stdout belongs to the terminal UI.
@@ -363,7 +363,7 @@ function print(...)
   if not api.ui_attached() then return raw_print(...) end
   local parts = {}
   for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
-  daw.notify(table.concat(parts, "  "))
+  paw.notify(table.concat(parts, "  "))
 end
 
-return daw
+return paw

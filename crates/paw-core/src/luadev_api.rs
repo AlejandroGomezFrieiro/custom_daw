@@ -1,10 +1,10 @@
-//! `daw.api.lua_devices*`: where devices written in Lua are found, and
-//! looking at their files again (see the `daw-luadev` crate).
+//! `paw.api.lua_devices*`: where devices written in Lua are found, and
+//! looking at their files again (see the `paw-luadev` crate).
 
 use std::path::Path;
 use std::rc::Rc;
 
-use daw_luadev::Scanned;
+use paw_luadev::Scanned;
 use mlua::{Lua, Table};
 
 use crate::api::Shared;
@@ -35,7 +35,7 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
         "lua_devices_add",
         lua.create_function(move |lua, (dir, rank): (String, Option<u8>)| {
             let mut session = sh.session.borrow_mut();
-            let found = daw_luadev::add_dir(&mut session.registry, Path::new(&dir), rank.unwrap_or(0));
+            let found = paw_luadev::add_dir(&mut session.registry, Path::new(&dir), rank.unwrap_or(0));
             scanned(lua, found)
         })?,
     )?;
@@ -47,7 +47,7 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
         "lua_devices_rescan",
         lua.create_function(move |lua, ()| {
             let mut session = sh.session.borrow_mut();
-            scanned(lua, daw_luadev::rescan(&mut session.registry))
+            scanned(lua, paw_luadev::rescan(&mut session.registry))
         })?,
     )?;
     // Every script found: `{ kind, path, name, category, error, active }`,
@@ -57,7 +57,7 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
         "lua_devices",
         lua.create_function(|lua, ()| {
             let list = lua.create_table()?;
-            for s in daw_luadev::scripts() {
+            for s in paw_luadev::scripts() {
                 let t = lua.create_table()?;
                 t.set("kind", s.kind)?;
                 t.set("path", s.path.to_string_lossy().into_owned())?;

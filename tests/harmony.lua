@@ -1,11 +1,11 @@
--- Tests of `daw.harmony`: chords and keys read from real and constructed
+-- Tests of `paw.harmony`: chords and keys read from real and constructed
 -- music, the theory around them, providers, and the chord row of the piano
 -- roll. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local api = daw.api
-local H = daw.harmony
-local music = daw.music
+local api = paw.api
+local H = paw.harmony
+local music = paw.music
 
 --- The chords read over the song as "at:name" words.
 local function reading(from, to, how)
@@ -26,7 +26,7 @@ end
 --- or `{ "C4 E4 G4", beats, at = beat }`.
 local function chords(name, list, opts)
   opts = opts or {}
-  local track = daw.add_track({ name = name })
+  local track = paw.add_track({ name = name })
   local notes, at = {}, opts.start or 0
   for _, entry in ipairs(list) do
     at = entry.at or at
@@ -41,7 +41,7 @@ end
 
 --- A melody track: `{ "E5", beats }` one after another.
 local function line(name, list, start)
-  local track = daw.add_track({ name = name })
+  local track = paw.add_track({ name = name })
   local notes, at = {}, start or 0
   for _, entry in ipairs(list) do
     if entry[1] ~= "r" then notes[#notes + 1] = { pitch = music.pitch(entry[1]), start = at, length = entry[2], velocity = 90 } end
@@ -56,7 +56,7 @@ test("harmony: block chords in C major are named, numbered and in C major", func
   chords("Piano", {
     { "C3 C4 E4 G4", 4 }, { "A2 A3 C4 E4", 4 }, { "D3 D4 F4 A4", 4 }, { "G2 G3 B3 D4 F4", 4 }, { "C3 C4 E4 G4", 4 },
   })
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C 4:Am 8:Dm 12:G7 16:C", "the names")
   eq(reading(nil, nil, "roman"), "0:I 4:vi 8:ii 12:V7 16:I", "the numerals")
   eq(keys(), "0:C major", "the key")
@@ -76,7 +76,7 @@ test("harmony: inversions are read from the bass and written as slash chords", f
     { "E3 G3 C4", 4 }, { "F3 A3 C4", 4 }, { "B2 F3 G3 D4", 4 }, { "C3 E3 G3 C4", 4 },
     { "F2 A3 D4", 4 }, { "G2 B3 D4 F4", 4 }, { "E3 G#3 B3 D4", 4 }, { "A2 E3 A3 C4", 4 },
   })
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C/E 4:F 8:G7/B 12:C 16:Dm/F 20:G7 24:E7 28:Am", "inversions and their bass")
 end)
 
@@ -87,7 +87,7 @@ test("harmony: sevenths, half-diminished and diminished chords", function()
     { "B2 D3 F3 A3", 4 }, { "E3 G#3 B3 D4", 4 }, { "G#2 B2 D3 F3", 4 }, { "A2 C3 E3 A3", 4 },
     { "F3 A3 C4 E4", 4 }, { "C3 E3 G3 A3", 4 }, { "G2 C3 D3 F3", 4 }, { "C3 G3 C4", 4 },
   })
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:Cmaj7 4:Am7 8:Dm7 12:G7 16:Bm7b5 20:E7 24:G#dim7 28:Am 32:Fmaj7 36:C6 40:G7sus4 44:C5",
     "every quality")
 end)
@@ -102,14 +102,14 @@ test("harmony: a chord holds across the melody's passing notes", function()
     { "D5", 0.5 }, { "E5", 0.5 }, { "F5", 1 }, { "B4", 0.5 }, { "C5", 0.5 }, { "D5", 1 },
     { "E5", 0.5 }, { "D5", 0.25 }, { "C5", 0.25 }, { "C5", 3 },
   })
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C 4:F 8:G 12:C", "the chords, not the passing notes")
 end)
 
 test("harmony: a melody alone names no chords, an arpeggio in eighths does", function()
   fresh()
   line("Flute", { { "C5", 1 }, { "D5", 1 }, { "E5", 1 }, { "G5", 1 } })
-  daw.flush()
+  paw.flush()
   eq(reading(), "", "do re mi sol is no chord")
   eq(keys(), "0:C major", "but is in C major")
   fresh()
@@ -117,7 +117,7 @@ test("harmony: a melody alone names no chords, an arpeggio in eighths does", fun
     { "C4", 0.5 }, { "E4", 0.5 }, { "G4", 0.5 }, { "E4", 0.5 }, { "C4", 0.5 }, { "E4", 0.5 }, { "G4", 0.5 }, { "E4", 0.5 },
     { "A3", 0.5 }, { "C4", 0.5 }, { "F4", 0.5 }, { "C4", 0.5 }, { "A3", 0.5 }, { "C4", 0.5 }, { "F4", 0.5 }, { "C4", 0.5 },
   })
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C 4:F/A", "the chords the notes spell out one at a time")
 end)
 
@@ -130,7 +130,7 @@ test("harmony: a modulation from C major to G major is found", function()
     { "A2 C3 E3", 4 }, { "D3 F#3 A3 C4", 4 }, { "G2 B2 D3", 4 }, { "E3 G3 B3", 4 },
     { "C3 E3 G3", 4 }, { "A2 C3 E3 G3", 4 }, { "D3 F#3 A3 C4", 4 }, { "G2 B2 D3", 4 },
   })
-  daw.flush()
+  paw.flush()
   -- The pivot belongs to both keys and is heard in the old one: the new key
   -- begins with its dominant, where its F sharp first sounds.
   eq(keys(), "0:C major 36:G major", "the keys")
@@ -143,7 +143,7 @@ end)
 test("harmony: the demo song", function()
   fresh()
   dofile("examples/demo-song.lua")
-  daw.flush()
+  paw.flush()
   -- The drums are left out; the bass, the keys and the lead are read
   -- together: Am F C E twice, the second time with the keys' phrase in two
   -- voices and the melody over it.
@@ -156,66 +156,66 @@ test("harmony: drum tracks, muted tracks and muted clips are left out", function
   fresh()
   chords("Piano", { { "C3 E3 G3", 4 } })
   local kit = chords("Kit", { { "C#3 D#3 F#3", 4 } })
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C", "a drum track by its name")
   kit.name = "Perc 2"
   local pad = chords("Pad", { { "D3 F#3 A3", 4 } })
-  daw.flush()
+  paw.flush()
   eq(reading() ~= "0:C", true, "a pitched track is heard")
   pad.mute = true
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C", "a muted track is not")
   pad.mute = false
   pad:clips()[1].muted = true
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C", "nor a muted clip")
   local meta = pad.meta or {}
   meta.drums = { map = "gm", rows = { { note = 36, name = "Kick" } } }
   pad:clips()[1].muted = false
   pad.meta = meta
-  daw.flush()
+  paw.flush()
   eq(reading(), "0:C", "nor a track with a drum map")
 end)
 
 test("harmony: the reading is cached, follows edits and undo, and says when it changes", function()
   fresh()
   local t = chords("Piano", { { "C3 E3 G3", 4 } })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   local changes = 0
-  local id = daw.on("harmony.changed", function() changes = changes + 1 end)
+  local id = paw.on("harmony.changed", function() changes = changes + 1 end)
   eq(reading(), "0:C", "read")
   local first = H.chords()
   eq(H.chords()[1], first[1], "the same reading while nothing changes")
   t:clips()[1]:add_note({ pitch = music.pitch("Bb3"), start = 0, length = 4 })
-  daw.flush()
+  paw.flush()
   api.undo_checkpoint()
   eq(reading(), "0:C7", "an edit is read at once")
   for _ = 1, 200 do
     if changes > 0 then break end
-    daw.wait(25)
+    paw.wait(25)
   end
   eq(changes >= 1, true, "and heard of")
-  daw.undo()
-  daw.flush()
+  paw.undo()
+  paw.flush()
   eq(reading(), "0:C", "and undone")
-  daw.off(id)
+  paw.off(id)
 end)
 
 test("harmony: the project's key wins over the one read, and is kept as musicops kept it", function()
   fresh()
   chords("Piano", { { "A2 C3 E3", 4 }, { "D3 F3 A3", 4 }, { "E3 G#3 B3", 4 }, { "A2 C3 E3", 4 } })
-  daw.flush()
+  paw.flush()
   eq(H.key(0).name, "A minor", "read")
   eq(reading(nil, nil, "roman"), "0:i 4:iv 8:V 12:i", "numerals in A minor")
   H.set_key("C major")
-  daw.flush()
+  paw.flush()
   eq(H.key(0).name, "C major", "set")
   eq(api.project_get().meta.musicops.root, "C", "where musicops kept it")
   eq(reading(nil, nil, "roman"), "0:vi 4:ii 8:III 12:vi", "numerals in the key set")
   eq(keys(), "0:C major", "the only key")
   H.set_key(nil)
-  daw.flush()
+  paw.flush()
   eq(H.project_key(), nil, "cleared")
   eq(H.key(0).name, "A minor", "read again")
 end)
@@ -264,12 +264,12 @@ end)
 
 test("harmony: an instrument's range is guessed from the track", function()
   fresh()
-  local bass = daw.add_track({ name = "Bass" })
+  local bass = paw.add_track({ name = "Bass" })
   eq(H.range(bass).low, 28, "a bass")
-  eq(H.range(daw.add_track({ name = "Lead Guitar" })).name, "guitar", "a guitar")
-  eq(H.range(daw.add_track({ name = "Track 3" })).low, 48, "else C3")
-  eq(H.range(daw.add_track({ name = "Track 4" })).high, 84, "to C6")
-  local own = daw.add_track({ name = "Odd" })
+  eq(H.range(paw.add_track({ name = "Lead Guitar" })).name, "guitar", "a guitar")
+  eq(H.range(paw.add_track({ name = "Track 3" })).low, 48, "else C3")
+  eq(H.range(paw.add_track({ name = "Track 4" })).high, 84, "to C6")
+  local own = paw.add_track({ name = "Odd" })
   own.meta = { range = { low = 50, high = 70 } }
   eq(H.range(own).high, 70, "or the track's own")
 end)
@@ -277,7 +277,7 @@ end)
 test("harmony: a provider answers instead of the reading", function()
   fresh()
   chords("Piano", { { "C3 E3 G3", 4 } })
-  daw.flush()
+  paw.flush()
   eq(H.provider(), "builtin", "the built-in reading")
   H.provide("server", function(from, to)
     return { { at = 0, length = 2, root = 2, quality = "m7" }, { at = 2, length = 2, root = 7, quality = "7" } },
@@ -301,50 +301,50 @@ end)
 test("harmony: chord symbols in the piano roll's ruler", function()
   fresh()
   chords("Piano", { { "C3 E3 G3", 4 }, { "A2 C3 E3", 4 }, { "G2 B2 D3 F3", 4 }, { "C3 E3 G3", 4 } })
-  daw.flush()
-  local roll = daw.ui.views.pianoroll
-  roll:edit(daw.tracks()[1]:clips()[1])
-  daw.opt.note_zoom = 4
+  paw.flush()
+  local roll = paw.ui.views.pianoroll
+  roll:edit(paw.tracks()[1]:clips()[1])
+  paw.opt.note_zoom = 4
   local function chord_row()
     local lines = api.ui_snapshot(100, 30)
     for _, l in ipairs(lines) do
       if l:find("Am") then return l end
     end
   end
-  daw.opt.chords = "names"
+  paw.opt.chords = "names"
   local row = chord_row()
   eq(row ~= nil and row:find("C") ~= nil and row:find("G7") ~= nil, true, "the names: " .. tostring(row))
-  daw.opt.chords = "roman"
+  paw.opt.chords = "roman"
   local function has(text)
     for _, l in ipairs(api.ui_snapshot(100, 30)) do
       if l:find(text, 1, true) then return true end
     end
   end
   eq(has("vi") and has("V7"), true, "the numerals")
-  daw.opt.chords = false
+  paw.opt.chords = false
   eq(chord_row(), nil, "and none")
-  daw.opt.chords = "names"
-  daw.opt.note_zoom = 8
-  daw.ui.focus("arrange")
+  paw.opt.chords = "names"
+  paw.opt.note_zoom = 8
+  paw.ui.focus("arrange")
 end)
 
 test("harmony: the chords MIDI LSP's engine hears flow into the reading and the terminal's chord row", function()
   -- Only with the engine named: the extension's own tests load it otherwise.
   if not os.getenv("MIDI_LSP_ENGINE") then return "no MIDI LSP engine: set $MIDI_LSP_ENGINE to run this" end
-  daw.opt.midilsp_autostart = false
-  if not daw.ext.loaded.midilsp then daw.ext.load("extensions/midilsp") end
+  paw.opt.midilsp_autostart = false
+  if not paw.ext.loaded.midilsp then paw.ext.load("extensions/midilsp") end
   local midilsp = require("midilsp")
   fresh()
   dofile("examples/demo-song.lua")
-  daw.flush()
-  local keys = daw.tracks()[3]
-  daw.ui.views.pianoroll:edit(keys:clips()[1])
+  paw.flush()
+  local keys = paw.tracks()[3]
+  paw.ui.views.pianoroll:edit(keys:clips()[1])
   local ok, err = pcall(function()
     midilsp.start(true)
     local deadline = api.now() + 30000
     while H.provider() ~= "lsp" do
       if api.now() > deadline then error("waited in vain for the engine's analysis", 0) end
-      daw.wait(20)
+      paw.wait(20)
     end
     local first = H.at(0)
     eq(first.name, "Am", "the engine hears A minor at the start")
@@ -356,7 +356,7 @@ test("harmony: the chords MIDI LSP's engine hears flow into the reading and the 
     end
     eq(row ~= nil, true, "the terminal's chord row shows it")
   end)
-  daw.lsp.stop()
-  daw.ui.focus("arrange")
+  paw.lsp.stop()
+  paw.ui.focus("arrange")
   if not ok then error(err, 0) end
 end)

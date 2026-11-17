@@ -8,7 +8,7 @@
 -- or text object the count belongs to that, as with every operator.
 local mo = require("musicops")
 local scale = mo.scale
-local api, keymap, edit = daw.api, daw.keymap, daw.edit
+local api, keymap, edit = paw.api, paw.keymap, paw.edit
 local EPS = 1e-9
 
 local M = {}
@@ -21,10 +21,10 @@ local POLY = { "pianoroll", "arrange" }             -- not the vocal editor: one
 
 --- The clip open in a note view, as a handle, and the view.
 function M.view_clip(name)
-  local v = daw.ui.views[name]
+  local v = paw.ui.views[name]
   if not (v and v.clip_id) then return end
   local ok, c = pcall(api.clip_get, v.clip_id)
-  if ok and c.kind == "midi" then return daw.clip(v.clip_id), v end
+  if ok and c.kind == "midi" then return paw.clip(v.clip_id), v end
 end
 
 --- Replace the notes of a clip that `pick(note)` chooses with what
@@ -42,7 +42,7 @@ function M.apply_to_clip(clip, pick, fn)
     finish = math.max(finish, n.start + n.length)
   end
   if finish > clip.length + EPS then
-    local grid = daw.opt.note_grid
+    local grid = paw.opt.note_grid
     clip.length = math.ceil(finish / grid - EPS) * grid
   end
   clip:set_notes(keep)
@@ -60,7 +60,7 @@ function M.apply_arrange(region, fn)
       if c.kind == "midi" and (whole or (c.start < region.c1 - EPS and c.start + c.length > region.c0 + EPS)) then
         index = index + 1
         local i = index
-        count = count + M.apply_to_clip(daw.clip(c.id), function(n)
+        count = count + M.apply_to_clip(paw.clip(c.id), function(n)
           local at = c.start + n.start
           return whole or (at >= region.c0 - EPS and at < region.c1 - EPS)
         end, function(notes) return fn(notes, i) end)
@@ -75,11 +75,11 @@ function M.apply(view, region, fn)
   if view == "arrange" then return M.apply_arrange(region, fn) end
   -- The piano roll may edit several clips at once: each is done on its own,
   -- the region taken in its own beats, so that its notes stay in it.
-  local parts = view == "pianoroll" and daw.roll_clips and daw.roll_clips.parts() or {}
+  local parts = view == "pianoroll" and paw.roll_clips and paw.roll_clips.parts() or {}
   if #parts > 1 then
     local count = 0
     for i, part in ipairs(parts) do
-      local mine = daw.util.merge(region, { c0 = region.c0 - part.offset, c1 = region.c1 - part.offset })
+      local mine = paw.util.merge(region, { c0 = region.c0 - part.offset, c1 = region.c1 - part.offset })
       count = count + M.apply_to_clip(part.clip, function(n) return edit.roll.inside(n, mine) end,
         function(notes) return fn(notes, i) end)
     end
@@ -110,7 +110,7 @@ function M.operator(lhs, desc, views, fn)
   end
 end
 
-local function opt(name) return daw.opt["musicops_" .. name] end
+local function opt(name) return paw.opt["musicops_" .. name] end
 local function pct(amount) return amount and amount / 100 end
 
 local seeds = 0
@@ -127,7 +127,7 @@ keymap.group("gz", "music ops")
 op("gzh", "Humanize timing and velocity", ALL, function(notes, amount, info)
   if info.index == 1 then
     last_seed = seed()
-    daw.notify(string.format("humanized, seed %d (:lua daw.opt.musicops_seed = %d repeats it)", last_seed, last_seed))
+    paw.notify(string.format("humanized, seed %d (:lua paw.opt.musicops_seed = %d repeats it)", last_seed, last_seed))
   end
   return mo.humanize(notes, {
     timing = pct(amount) or opt("humanize_timing"),
@@ -145,7 +145,7 @@ end)
 for lhs, mode in pairs({ gzp = "up", gzP = "down", gzb = "updown", gzB = "played" }) do
   op(lhs, "Arpeggiate chords " .. (mode == "played" and "as played" or mode), POLY, function(notes, amount)
     return mo.arpeggiate(notes, {
-      mode = mode, step = amount and 1 / amount or opt("arp_step") or daw.opt.note_grid,
+      mode = mode, step = amount and 1 / amount or opt("arp_step") or paw.opt.note_grid,
       gate = opt("arp_gate"), tolerance = opt("together"),
     })
   end)
@@ -158,12 +158,12 @@ op("gzt", "Staccato: shorten the notes", ALL, function(notes, amount)
 end)
 op("gzq", "Quantize, with strength and swing", ALL, function(notes, amount)
   return mo.quantize(notes, {
-    grid = daw.opt.note_grid, strength = pct(amount) or opt("strength"), swing = opt("swing"),
+    grid = paw.opt.note_grid, strength = pct(amount) or opt("strength"), swing = opt("swing"),
   })
 end)
 op("gzw", "Quantize with swing", ALL, function(notes, amount)
   return mo.quantize(notes, {
-    grid = daw.opt.note_grid, strength = opt("strength"), swing = pct(amount) or opt("swing_amount"),
+    grid = paw.opt.note_grid, strength = opt("strength"), swing = pct(amount) or opt("swing_amount"),
   })
 end)
 op("gz>", "Crescendo", POLY, function(notes, amount)
@@ -251,7 +251,7 @@ function M.chord_region(view, around)
     e0, e1 = math.min(e0, n.start + n.length), math.max(e1, n.start + n.length)
   end
   if around then return { view = view, kind = "char", r0 = v.pitch, r1 = v.pitch, c0 = s0, c1 = e1 } end
-  local c1 = math.max(s1 + 1e-6, math.min(e0, s1 + daw.opt.note_grid))
+  local c1 = math.max(s1 + 1e-6, math.min(e0, s1 + paw.opt.note_grid))
   return { view = view, kind = "block", r0 = lo, r1 = hi, c0 = s0, c1 = c1 }
 end
 
@@ -305,35 +305,35 @@ local function key_command(ctx)
   local text = table.concat(words, " ")
   if text == "" then
     local key = scale.project()
-    return daw.notify(key and ("key: " .. scale.name(key)) or ("no key set; working in " .. scale.default))
+    return paw.notify(key and ("key: " .. scale.name(key)) or ("no key set; working in " .. scale.default))
   end
   if text == "off" or text == "none" then
     scale.set(nil)
-    return daw.notify("key cleared")
+    return paw.notify("key cleared")
   end
   local ok, err = pcall(scale.parse, text)
-  if not ok then return daw.notify(tostring(err):gsub("^.-:%d+: ", ""), "error") end
+  if not ok then return paw.notify(tostring(err):gsub("^.-:%d+: ", ""), "error") end
   scale.set(text)
-  daw.notify("key: " .. scale.name(text))
+  paw.notify("key: " .. scale.name(text))
 end
-daw.command("musicops.key", key_command, { desc = "Set the project's key: `key D minor`, `key off`; alone shows it" })
-if not daw.commands.get("key") or daw.commands.get("key").alias_of == "musicops.key" then
-  daw.commands.alias("key", "musicops.key")
+paw.command("musicops.key", key_command, { desc = "Set the project's key: `key D minor`, `key off`; alone shows it" })
+if not paw.commands.get("key") or paw.commands.get("key").alias_of == "musicops.key" then
+  paw.commands.alias("key", "musicops.key")
 end
-daw.command("musicops.scales", function()
-  daw.ui.page("Scales", scale.names())
+paw.command("musicops.scales", function()
+  paw.ui.page("Scales", scale.names())
 end, { desc = "List the scales `key` knows" })
 
 local function lock(ctx)
   local arg = ctx and ctx.args and ctx.args[1]
   if arg == nil then
-    daw.opt.musicops_scale_lock = not daw.opt.musicops_scale_lock
+    paw.opt.musicops_scale_lock = not paw.opt.musicops_scale_lock
   else
-    daw.opt.musicops_scale_lock = arg == true or arg == "on" or arg == 1
+    paw.opt.musicops_scale_lock = arg == true or arg == "on" or arg == 1
   end
-  daw.notify("scale lock " .. (daw.opt.musicops_scale_lock and ("on: " .. scale.name(scale.current())) or "off"))
+  paw.notify("scale lock " .. (paw.opt.musicops_scale_lock and ("on: " .. scale.name(scale.current())) or "off"))
 end
-daw.command("musicops.lock", lock, { desc = "Keep note entry and transposing in the key: `musicops.lock on|off`, alone toggles" })
+paw.command("musicops.lock", lock, { desc = "Keep note entry and transposing in the key: `musicops.lock on|off`, alone toggles" })
 keymap.set("gzL", function() lock() end, { desc = "Scale lock on or off", repeatable = false })
 
 --- Apply a function of the module to the notes of the clip being edited:
@@ -344,24 +344,24 @@ local APPLY = {
   add_octave = true, transpose = true, transpose_scale = true, snap_scale = true, mirror = true, ramp = true,
   crescendo = true, diminuendo = true, compress = true, set_velocity = true, accent = true, remove_overlaps = true,
 }
-daw.command("musicops.apply", function(ctx)
+paw.command("musicops.apply", function(ctx)
   local name = ctx.args[1]
   if not APPLY[name] then
     local names = {}
     for k in pairs(APPLY) do names[#names + 1] = k end
     table.sort(names)
-    return daw.notify("usage: musicops.apply <" .. table.concat(names, "|") .. "> name=value ...", "warn")
+    return paw.notify("usage: musicops.apply <" .. table.concat(names, "|") .. "> name=value ...", "warn")
   end
   local opts = {}
   for k, v in pairs(ctx.args) do
     if type(k) == "string" then opts[k] = v end
   end
-  local clip = M.view_clip(daw.ui.focused)
+  local clip = M.view_clip(paw.ui.focused)
   if not clip then
-    local at = daw.cursor.clip()
+    local at = paw.cursor.clip()
     clip = at and at.kind == "midi" and at or nil
   end
-  if not clip then return daw.notify("no MIDI clip to change", "warn") end
+  if not clip then return paw.notify("no MIDI clip to change", "warn") end
   M.apply_to_clip(clip, function() return true end, function(notes)
     if name == "transpose" then return mo.transpose(notes, ctx.args[2] or opts.by) end
     if name == "transpose_scale" then return mo.transpose_scale(notes, ctx.args[2] or opts.by, opts.key) end
@@ -379,8 +379,8 @@ end, { desc = "Apply a musicops function to the clip being edited: `musicops.app
 -- mode). These replace the runtime's mappings and hand back to them while
 -- the lock is off.
 
-daw.state.musicops_originals = daw.state.musicops_originals or {}
-local saved = daw.state.musicops_originals
+paw.state.musicops_originals = paw.state.musicops_originals or {}
+local saved = paw.state.musicops_originals
 
 local function original(mode, view, lhs)
   local id = mode .. "|" .. view .. "|" .. lhs
@@ -395,10 +395,10 @@ local function call(m, ...)
   if not m then return end
   if m.operator then return m.operator(...) end
   if type(m.rhs) == "function" then return m.rhs(...) end
-  if type(m.rhs) == "string" then return daw.commands.exec(m.rhs, ...) end
+  if type(m.rhs) == "string" then return paw.commands.exec(m.rhs, ...) end
 end
 
-local function locked() return daw.opt.musicops_scale_lock end
+local function locked() return paw.opt.musicops_scale_lock end
 
 --- Put the scale-lock mappings in place over the runtime's (and the vocal
 --- editor's, which may be loaded later: this runs again when a view is focused).
@@ -414,8 +414,8 @@ function M.install_locks()
       local orig = original("i", "pianoroll.keys", lhs)
       keymap.set(lhs, function(ctx)
         if not locked() then return call(orig, ctx) end
-        local roll = daw.ui.views.pianoroll
-        local base = (daw.opt.octave + 1) * 12
+        local roll = paw.ui.views.pianoroll
+        local base = (paw.opt.octave + 1) * 12
         local pitch = scale.snap(scale.current(), base + semitone - 1, opt("snap"))
         roll:enter(pitch - base, i == 1)
       end, { view = "pianoroll.keys", mode = "i", desc = orig and orig.desc, musicops = true })
@@ -426,7 +426,7 @@ function M.install_locks()
     local orig = original("i", "pianoroll", lhs)
     keymap.set(lhs, function(ctx)
       if not locked() then return call(orig, ctx) end
-      daw.roll_draw.pitch(dir, function(pitch, n) return scale.step(scale.current(), pitch, dir * n) end)
+      paw.roll_draw.pitch(dir, function(pitch, n) return scale.step(scale.current(), pitch, dir * n) end)
     end, { view = "pianoroll", mode = "i", desc = orig and orig.desc, musicops = true })
   end
 
@@ -435,7 +435,7 @@ function M.install_locks()
     local orig = original("n", "pianoroll", lhs)
     keymap.set(lhs, function(ctx)
       if not locked() then return call(orig, ctx) end
-      local roll = daw.ui.views.pianoroll
+      local roll = paw.ui.views.pianoroll
       local key, to = scale.current(), nil
       if roll:change(function(n)
         n.pitch = math.max(0, math.min(127, scale.step(key, n.pitch, dir * (ctx.count or 1))))
@@ -461,7 +461,7 @@ function M.install_locks()
 end
 
 M.install_locks()
-daw.on("view.focused", function()
+paw.on("view.focused", function()
   local m = nil
   for _, map in ipairs(keymap.list("x", "utau")) do
     if map.scope == "utau" and map.lhs == "<C-a>" then m = map end

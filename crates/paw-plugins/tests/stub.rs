@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use daw_engine::{Attr, Event, EventBuf, EventKind, Io, ProcessCtx, Registry};
+use paw_engine::{Attr, Event, EventBuf, EventKind, Io, ProcessCtx, Registry};
 
 /// A directory holding the stub, as `stub.clap`. `cargo test` builds the
 /// examples beside the tests.
@@ -32,7 +32,7 @@ fn a_plugin_in_an_added_directory_takes_the_attribute_and_names_its_keys() {
     let mut registry = Registry::default();
     let kind = "clap:dev.paw.stub";
     assert!(registry.get(kind).is_none());
-    let (kinds, notes) = daw_plugins::add_dir(&mut registry, None, &dir);
+    let (kinds, notes) = paw_plugins::add_dir(&mut registry, None, &dir);
     assert_eq!(
         kinds,
         [kind],

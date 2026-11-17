@@ -12,13 +12,13 @@
 --   :launch.stop            stop the track's clip; `launch.stop all` every one
 --   :launch.back            back to the arrangement; `launch.back all`
 --   :launch.quantize 1/8    where launches land (off 1/16 1/8 1/4 beat bar 2bars 4bars)
---   daw.launcher.launch(track.id, 0)
+--   paw.launcher.launch(track.id, 0)
 --
--- The clips are clips like any other (`daw.api.clip_add(track, { slot = row })`),
+-- The clips are clips like any other (`paw.api.clip_add(track, { slot = row })`),
 -- saved with the project and undone like any edit. Scene names are kept in
--- `project.meta.scenes`. Rows count from 0 here and in `daw.api`, from 1 in
+-- `project.meta.scenes`. Rows count from 0 here and in `paw.api`, from 1 in
 -- commands and on screen.
-local api = daw.api
+local api = paw.api
 local M = {
   -- The slot the session view's cursor is on, as a row from 0; the track
   -- is the cursor's.
@@ -30,7 +30,7 @@ local M = {
 }
 
 -- Rows the session view shows at least.
-daw.option.define("launch_rows", 8)
+paw.option.define("launch_rows", 8)
 
 local function contains(list, value)
   for _, v in ipairs(list) do
@@ -53,7 +53,7 @@ function M.clip(track, row)
   end
 end
 
---- What each track plays and has queued, by track id: see `daw.api.launcher`.
+--- What each track plays and has queued, by track id: see `paw.api.launcher`.
 --- A track with nothing launched is missing.
 function M.state()
   local out = {}
@@ -93,13 +93,13 @@ function M.set_scene_name(row, name)
 end
 
 --- How many rows there are: those with clips or names, one empty row more,
---- and at least `daw.opt.launch_rows`.
+--- and at least `paw.opt.launch_rows`.
 function M.rows()
   local last = #M.scenes()
   for _, id in ipairs(api.track_list()) do
     for _, clip in ipairs(api.slot_list(id)) do last = math.max(last, clip.slot + 1) end
   end
-  return math.max(daw.opt.launch_rows, last + 1)
+  return math.max(paw.opt.launch_rows, last + 1)
 end
 
 -- Launching ------------------------------------------------------------------
@@ -109,7 +109,7 @@ end
 local function send(list, start)
   if #list == 0 then return end
   api.launch(list)
-  if start and not daw.transport.playing then daw.transport.play() end
+  if start and not paw.transport.playing then paw.transport.play() end
   api.ui_redraw()
 end
 
@@ -187,7 +187,7 @@ end
 
 --- An empty MIDI clip of `bars` bars (1) in a slot. Returns its id.
 function M.new_clip(track, row, bars)
-  local length = daw.time.bar(0) * (bars or 1)
+  local length = paw.time.bar(0) * (bars or 1)
   return api.clip_add(track, { slot = row, length = length, name = "clip " .. (row + 1) })
 end
 
@@ -224,7 +224,7 @@ function M.boundary(beat, q)
     if start < beat - 1e-9 then bar = bar + 1 end
     return api.tempo_bar_start(math.ceil(bar / every) * every)
   end
-  local unit = grids[q] or 4 / select(2, daw.tempo.signature_at(beat))
+  local unit = grids[q] or 4 / select(2, paw.tempo.signature_at(beat))
   local steps = math.max(0, math.ceil((beat - start) / unit - 1e-9))
   return math.min(start + steps * unit, api.tempo_bar_start(bar + 1))
 end
@@ -243,11 +243,11 @@ local function piece(c, from, to)
     end
     for _, m in ipairs(c.control_count > 0 and api.clip_controls(c.id) or {}) do
       local at = c.start + m.start
-      if at >= from - 1e-9 and at < to - 1e-9 then opts.controls[#opts.controls + 1] = daw.util.merge(m, { start = at - from }) end
+      if at >= from - 1e-9 and at < to - 1e-9 then opts.controls[#opts.controls + 1] = paw.util.merge(m, { start = at - from }) end
     end
   else
     opts.file, opts.gain = c.file, c.gain
-    opts.offset = c.offset + daw.time.seconds(from - c.start, c.start)
+    opts.offset = c.offset + paw.time.seconds(from - c.start, c.start)
   end
   return opts
 end
@@ -256,11 +256,11 @@ local function finish_recording()
   local r = M.recording
   if not r then return end
   M.recording = nil
-  if rec_timer then daw.cancel(rec_timer) end
+  if rec_timer then paw.cancel(rec_timer) end
   rec_timer = nil
-  local stopped_at = daw.transport.position
+  local stopped_at = paw.transport.position
   -- Ending the take puts it on the timeline, as any take.
-  daw.transport.recording = false
+  paw.transport.recording = false
   if r.punch then api.transport_set("punch_enabled", true) end
   local made
   for _, c in ipairs(api.clip_list(r.track)) do
@@ -276,10 +276,10 @@ local function finish_recording()
   api.undo_checkpoint()
   api.ui_redraw()
   if not made then
-    return daw.notify("nothing was recorded into the slot: the song stopped before its first boundary", "warn")
+    return paw.notify("nothing was recorded into the slot: the song stopped before its first boundary", "warn")
   end
   -- Going on in step: the loop counts from where the recording began.
-  if daw.transport.playing and stopped_at >= r.to - 1e-9 then
+  if paw.transport.playing and stopped_at >= r.to - 1e-9 then
     api.launch({ { track = r.track, slot = r.row, quantize = "off", from = r.from } })
   end
 end
@@ -298,17 +298,17 @@ function M.record(track, row, bars)
   -- set aside until they are done. A count-in still leads in when stopped.
   local punch = api.transport_get().punch_enabled
   if punch then api.transport_set("punch_enabled", false) end
-  if daw.transport.playing then
-    daw.transport.recording = true
+  if paw.transport.playing then
+    paw.transport.recording = true
   else
-    daw.transport.record()
+    paw.transport.record()
   end
-  local from = M.boundary(daw.transport.position)
-  M.recording = { track = track, row = row, from = from, to = from + (bars or 1) * daw.time.bar(from), before = before, punch = punch }
+  local from = M.boundary(paw.transport.position)
+  M.recording = { track = track, row = row, from = from, to = from + (bars or 1) * paw.time.bar(from), before = before, punch = punch }
   api.launch({ { track = track, stop = true } })
-  rec_timer = daw.every(10, function()
+  rec_timer = paw.every(10, function()
     local r = M.recording
-    if r and (not daw.transport.playing or daw.transport.position >= r.to) then finish_recording() end
+    if r and (not paw.transport.playing or paw.transport.position >= r.to) then finish_recording() end
   end)
   api.ui_redraw()
 end
@@ -344,8 +344,8 @@ local function note(s, position)
 end
 
 local function poll()
-  if not daw.transport.playing then return end
-  local position = daw.transport.position
+  if not paw.transport.playing then return end
+  local position = paw.transport.position
   for _, s in ipairs(api.launcher()) do note(s, position) end
 end
 
@@ -359,10 +359,10 @@ local function write(position)
   for _, item in ipairs(log) do
     local e, track = item.entry, item.track
     if e.to and e.to - e.from > 1e-9 and pcall(api.track_get, track) then
-      daw.edit.arrange.clear(track, e.from, e.to)
+      paw.edit.arrange.clear(track, e.from, e.to)
       local clip = e.kind == "slot" and M.clip(track, e.row)
       if clip then
-        local snap = daw.clip(clip.id):snapshot()
+        local snap = paw.clip(clip.id):snapshot()
         snap.slot, snap.quantize, snap.mode, snap.legato = nil, nil, nil, nil
         snap.start, snap.length = e.from, e.to - e.from
         snap.loop, snap.loop_length, snap.loop_start = true, clip.length, 0
@@ -372,7 +372,7 @@ local function write(position)
           for _, n in ipairs(snap.notes or {}) do n.start = n.start - e.phase end
           for _, c in ipairs(snap.controls or {}) do c.start = c.start - e.phase end
         end
-        daw.restore_clip(snap, track)
+        paw.restore_clip(snap, track)
       end
       wrote = wrote + 1
     end
@@ -389,14 +389,14 @@ function M.capture(on)
   M.capturing = on
   if on then
     log, last = {}, {}
-    timer = daw.every(10, poll)
+    timer = paw.every(10, poll)
     poll()
-    daw.notify("capturing: what is launched is written into the timeline when the song stops")
+    paw.notify("capturing: what is launched is written into the timeline when the song stops")
   else
-    if timer then daw.cancel(timer) end
+    if timer then paw.cancel(timer) end
     timer = nil
     poll()
-    M.write_captured(daw.transport.position)
+    M.write_captured(paw.transport.position)
   end
   api.ui_redraw()
 end
@@ -407,15 +407,15 @@ function M.write_captured(position)
   if #log == 0 then return end
   local wrote = write(position)
   api.undo_checkpoint()
-  if wrote > 0 then daw.notify("captured " .. wrote .. (wrote == 1 and " clip" or " clips") .. " into the timeline") end
+  if wrote > 0 then paw.notify("captured " .. wrote .. (wrote == 1 and " clip" or " clips") .. " into the timeline") end
 end
 
 -- The song stopped where it says: so did what was launched.
-daw.on("transport.stop", function(e)
-  if M.capturing then M.write_captured(e.position or daw.transport.position) end
+paw.on("transport.stop", function(e)
+  if M.capturing then M.write_captured(e.position or paw.transport.position) end
 end)
 
-daw.on("project.loaded", function()
+paw.on("project.loaded", function()
   M.row = 0
   if M.capturing then M.capture(false) end
 end)
@@ -423,8 +423,8 @@ end)
 -- Commands ---------------------------------------------------------------------
 
 local function track_or_warn()
-  local id = daw.cursor.track_id()
-  if not id or id == 0 then daw.notify("no track selected", "warn") end
+  local id = paw.cursor.track_id()
+  if not id or id == 0 then paw.notify("no track selected", "warn") end
   return id ~= 0 and id or nil
 end
 
@@ -434,35 +434,35 @@ local function row_arg(arg)
   return n and math.max(0, math.floor(n) - 1) or M.row
 end
 
-daw.command("launch", function(ctx)
+paw.command("launch", function(ctx)
   local track = track_or_warn()
   if track then M.press(track, row_arg(ctx.args[1])) end
 end, { desc = "Launch a slot of the selected track: `launch 2`, or the one under the cursor" })
-daw.command("launch.stop", function(ctx)
+paw.command("launch.stop", function(ctx)
   if ctx.args[1] == "all" then return M.stop() end
   local track = track_or_warn()
   if track then M.stop(track) end
 end, { desc = "Stop the selected track's clip on the next boundary: `launch.stop all` stops every one", complete = { "all" } })
-daw.command("launch.back", function(ctx)
+paw.command("launch.back", function(ctx)
   if ctx.args[1] == "all" then return M.back() end
   local track = track_or_warn()
   if track then M.back(track) end
 end, { desc = "Have the selected track play its timeline again: `launch.back all` for every track", complete = { "all" } })
-daw.command("launch.quantize", function(ctx)
+paw.command("launch.quantize", function(ctx)
   local q = ctx.args[1]
-  if not q then return daw.notify("launches land on: " .. api.project_get().launch_quantize) end
+  if not q then return paw.notify("launches land on: " .. api.project_get().launch_quantize) end
   M.set_quantize(q)
 end, { desc = "Where launches land: `launch.quantize 1/8` (off 1/16 1/8 1/4 beat bar 2bars 4bars)", complete = M.quantizes })
-daw.command("launch.capture", function() M.capture() end, {
+paw.command("launch.capture", function() M.capture() end, {
   desc = "Write what is launched into the timeline when the song stops (again: stop capturing)",
 })
-daw.command("scene", function(ctx) M.scene(row_arg(ctx.args[1])) end, {
+paw.command("scene", function(ctx) M.scene(row_arg(ctx.args[1])) end, {
   desc = "Launch a scene, every clip in a row: `scene 2`, or the cursor's row",
 })
-daw.command("scene.name", function(ctx)
+paw.command("scene.name", function(ctx)
   local name = table.concat(ctx.args, " ")
   if name ~= "" then return M.set_scene_name(M.row, name) end
-  daw.ui.input({ prompt = "Scene name: ", text = M.scene_name(M.row) }, function(text)
+  paw.ui.input({ prompt = "Scene name: ", text = M.scene_name(M.row) }, function(text)
     if text then M.set_scene_name(M.row, text) end
   end)
 end, { desc = "Name the scene of the cursor's row: `scene.name Chorus`" })
@@ -471,38 +471,38 @@ end, { desc = "Name the scene of the cursor's row: `scene.name Chorus`" })
 local function slot_clip()
   local track = track_or_warn()
   local clip = track and M.clip(track, M.row)
-  if track and not clip then daw.notify("the slot is empty", "warn") end
+  if track and not clip then paw.notify("the slot is empty", "warn") end
   return clip
 end
 
-daw.command("slot.new", function(ctx)
+paw.command("slot.new", function(ctx)
   local track = track_or_warn()
   if not track then return end
-  if M.clip(track, M.row) then return daw.notify("the slot holds a clip already", "warn") end
+  if M.clip(track, M.row) then return paw.notify("the slot holds a clip already", "warn") end
   M.new_clip(track, M.row, tonumber(ctx.args[1]))
 end, { desc = "A new MIDI clip in the slot under the cursor: `slot.new 2` for two bars" })
-daw.command("slot.record", function(ctx)
+paw.command("slot.record", function(ctx)
   if M.recording then return M.finish_recording() end
   local track = track_or_warn()
   if not track then return end
-  if M.clip(track, M.row) then return daw.notify("the slot holds a clip already", "warn") end
+  if M.clip(track, M.row) then return paw.notify("the slot holds a clip already", "warn") end
   M.record(track, M.row, tonumber(ctx.args[1]) or ctx.count)
 end, { desc = "Record into the empty slot under the cursor from the next boundary: `slot.record 2` for two bars (again: stop now)" })
-daw.command("slot.copy", function()
+paw.command("slot.copy", function()
   local track = track_or_warn()
-  local clip = track and daw.cursor.clip()
-  if not clip then return daw.notify("no clip under the arrange view's cursor", "warn") end
+  local clip = track and paw.cursor.clip()
+  if not clip then return paw.notify("no clip under the arrange view's cursor", "warn") end
   M.copy(clip.id, track, M.row)
 end, { desc = "Copy the clip under the arrange view's cursor into the slot under the session view's" })
-daw.command("slot.delete", function()
+paw.command("slot.delete", function()
   local clip = slot_clip()
   if clip then api.clip_remove(clip.id) end
 end, { desc = "Empty the slot under the cursor" })
-daw.command("slot.edit", function()
+paw.command("slot.edit", function()
   local clip = slot_clip()
-  if clip and clip.kind == "midi" then daw.ui.views.pianoroll:edit(daw.clip(clip.id)) end
+  if clip and clip.kind == "midi" then paw.ui.views.pianoroll:edit(paw.clip(clip.id)) end
 end, { desc = "Open the notes of the clip in the slot under the cursor" })
-daw.command("slot.mode", function(ctx)
+paw.command("slot.mode", function(ctx)
   local clip = slot_clip()
   if not clip then return end
   local mode = ctx.args[1]
@@ -512,30 +512,30 @@ daw.command("slot.mode", function(ctx)
       if m == clip.mode then mode = M.modes[i % #M.modes + 1] end
     end
   end
-  if not contains(M.modes, mode) then return daw.notify("a mode is trigger, gate or toggle", "warn") end
+  if not contains(M.modes, mode) then return paw.notify("a mode is trigger, gate or toggle", "warn") end
   api.clip_set(clip.id, "mode", mode)
-  daw.notify(clip.name .. ": " .. mode)
+  paw.notify(clip.name .. ": " .. mode)
 end, { desc = "How the slot's clip launches: `slot.mode gate` (trigger, gate, toggle; none goes round them)", complete = M.modes })
-daw.command("slot.legato", function()
+paw.command("slot.legato", function()
   local clip = slot_clip()
   if clip then api.clip_set(clip.id, "legato", not clip.legato) end
 end, { desc = "Have the slot's clip take over where the clip before it had got to, or not" })
-daw.command("slot.quantize", function(ctx)
+paw.command("slot.quantize", function(ctx)
   local clip = slot_clip()
   if not clip then return end
   local q = ctx.args[1]
   if q and q ~= "project" and not contains(M.quantizes, q) then
-    return daw.notify("a quantize is project or one of " .. table.concat(M.quantizes, ", "), "warn")
+    return paw.notify("a quantize is project or one of " .. table.concat(M.quantizes, ", "), "warn")
   end
   api.clip_set(clip.id, "quantize", (q and q ~= "project") and q or nil)
 end, {
   desc = "Where the slot's clip launches: `slot.quantize 1/16`, or `slot.quantize` for the project's",
   complete = function() return { "project", unpack(M.quantizes) } end,
 })
-daw.command("slot.length", function(ctx)
+paw.command("slot.length", function(ctx)
   local clip = slot_clip()
   local bars = tonumber(ctx.args[1])
-  if clip and bars and bars > 0 then api.clip_set(clip.id, "length", bars * daw.time.bar(0)) end
+  if clip and bars and bars > 0 then api.clip_set(clip.id, "length", bars * paw.time.bar(0)) end
 end, { desc = "How many bars the slot's clip loops over: `slot.length 2`" })
 
 return M

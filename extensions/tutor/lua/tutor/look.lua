@@ -1,16 +1,16 @@
 -- What lessons look at to see whether a step is done, and build their
--- practice projects with. Plain readings of the public `daw` module.
-local api = daw.api
+-- practice projects with. Plain readings of the public `paw` module.
+local api = paw.api
 local M = {}
 
 --- A track by name, or nil.
 function M.track(name)
-  return daw.track(name)
+  return paw.track(name)
 end
 
 --- A track's clips in time order.
 function M.clips(track)
-  if type(track) == "string" then track = daw.track(track) end
+  if type(track) == "string" then track = paw.track(track) end
   if not track then return {} end
   local list = track:clips()
   table.sort(list, function(a, b)
@@ -57,27 +57,27 @@ end
 
 --- The name of the track the cursor is on.
 function M.cursor_track()
-  local t = daw.cursor.track()
+  local t = paw.cursor.track()
   return t and t.name
 end
 
 --- The piano roll's view, its clip and cursor.
 function M.roll()
-  local roll = daw.ui.views.pianoroll
+  local roll = paw.ui.views.pianoroll
   return roll, roll:clip()
 end
 
-function M.focused() return daw.ui.focused end
-function M.mode() return daw.keymap.mode end
-function M.float() return daw.ui.float and daw.ui.float.name end
-function M.float_title() return daw.ui.float and daw.ui.float.title end
+function M.focused() return paw.ui.focused end
+function M.mode() return paw.keymap.mode end
+function M.float() return paw.ui.float and paw.ui.float.name end
+function M.float_title() return paw.ui.float and paw.ui.float.title end
 
 --- Whether a view is on screen.
-function M.visible(name) return daw.ui.visible(name) end
+function M.visible(name) return paw.ui.visible(name) end
 
 --- The first device of a kind on a track, or nil.
 function M.device(track, kind)
-  if type(track) == "string" then track = daw.track(track) end
+  if type(track) == "string" then track = paw.track(track) end
   if not track then return end
   for _, d in ipairs(track:devices()) do
     if d.kind == kind then return d end
@@ -100,8 +100,8 @@ end
 --- Whether a message containing `text` was shown since the step began.
 function M.said(ctx, text)
   -- From the newest back to the last one there was when the step began.
-  for i = #daw.ui.messages, 1, -1 do
-    local message = daw.ui.messages[i]
+  for i = #paw.ui.messages, 1, -1 do
+    local message = paw.ui.messages[i]
     if message == ctx.messages then return false end
     if message.text:find(text, 1, true) then return true end
   end
@@ -117,7 +117,7 @@ end
 
 --- Whether the transport played and then stopped since the step began.
 function M.played(ctx)
-  return M.saw(ctx, "transport.play") and not daw.transport.playing
+  return M.saw(ctx, "transport.play") and not paw.transport.playing
 end
 
 --- A list of notes from text: "C4:0:1 D4:1:1" is pitch, start, length (and velocity).
@@ -126,7 +126,7 @@ function M.notes(text)
   for item in text:gmatch("%S+") do
     local pitch, start, length, velocity = item:match("^([^:]+):([^:]+):([^:]+):?(%d*)$")
     out[#out + 1] = {
-      pitch = tonumber(pitch) or daw.music.pitch(pitch), start = tonumber(start), length = tonumber(length),
+      pitch = tonumber(pitch) or paw.music.pitch(pitch), start = tonumber(start), length = tonumber(length),
       velocity = tonumber(velocity) or 100,
     }
   end
@@ -157,7 +157,7 @@ M.beat = { [36] = "x.....x.x.......", [38] = "....x.......x...", [42] = "x.o.x.o
 function M.pulse(pitch, beats, from)
   local out = {}
   for i = 0, beats * 2 - 1 do
-    out[#out + 1] = { pitch = daw.music.pitch(pitch), start = (from or 0) + i * 0.5, length = 0.45, velocity = 100 }
+    out[#out + 1] = { pitch = paw.music.pitch(pitch), start = (from or 0) + i * 0.5, length = 0.45, velocity = 100 }
   end
   return out
 end
@@ -166,14 +166,14 @@ end
 function M.chord(pitches, beats, from)
   local out = {}
   for _, p in ipairs(pitches) do
-    out[#out + 1] = { pitch = daw.music.pitch(p), start = from or 0, length = beats, velocity = 80 }
+    out[#out + 1] = { pitch = paw.music.pitch(p), start = from or 0, length = beats, velocity = 80 }
   end
   return out
 end
 
 --- The register's value, or nil.
 function M.register(name)
-  return daw.keymap.getreg(name)
+  return paw.keymap.getreg(name)
 end
 
 --- The value of a device parameter.

@@ -14,7 +14,7 @@ The Lead track has a short hook; Bass has two clips, A and B.
 
 ## If you know Vim
 
-Registers, `"0`, `"_`, `qq`…`q`, `@q`, `@@` and `@:` are Vim's. What a register holds is clips, tracks, notes or a device rather than text, and pasted time replaces what was there (`:lua daw.opt.ripple = true` makes it push along).
+Registers, `"0`, `"_`, `qq`…`q`, `@q`, `@@` and `@:` are Vim's. What a register holds is clips, tracks, notes or a device rather than text, and pasted time replaces what was there (`:lua paw.opt.ripple = true` makes it push along).
 
 ## Steps
 

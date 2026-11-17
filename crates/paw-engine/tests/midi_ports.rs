@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use alsa_sys::*;
-use daw_engine::midi::{MidiInputs, MidiTarget};
-use daw_engine::{Attr, Ctl, EventKind, NoteCtl, ump};
+use paw_engine::midi::{MidiInputs, MidiTarget};
+use paw_engine::{Attr, Ctl, EventKind, NoteCtl, ump};
 
 /// A sequencer client with one port that others can read from.
 struct Sender {
@@ -215,13 +215,13 @@ fn midi_2_packets_arrive_whole_and_midi_1_events_as_the_same_events() {
     };
     // MIDI 2.0 needs a sequencer built for it (the kernel's SND_SEQ_UMP).
     // Without one, the ports are MIDI 1.0 and only that half can be tried.
-    match Sender::open(c"daw-test-midi2", true) {
+    match Sender::open(c"paw-test-midi2", true) {
         Some(modern) => packets(&inputs, &rx, &modern),
         None => eprintln!("MIDI 2.0 part skipped: this system's sequencer has no UMP"),
     }
 
     // A MIDI 1.0 device: the same events, from seven and fourteen bits.
-    let old = Sender::open(c"daw-test-midi1", false).expect("a second client");
+    let old = Sender::open(c"paw-test-midi1", false).expect("a second client");
     assert!(opened(&inputs, &old.address()));
     old.legacy(SND_SEQ_EVENT_NOTEON, |data| {
         data.note = snd_seq_ev_note {
@@ -300,7 +300,7 @@ fn midi_2_packets_arrive_whole_and_midi_1_events_as_the_same_events() {
 }
 
 /// Wait for something to be true of the inputs' ports.
-fn ports_settle(inputs: &MidiInputs, done: impl Fn(&[daw_engine::midi::PortInfo]) -> bool) -> bool {
+fn ports_settle(inputs: &MidiInputs, done: impl Fn(&[paw_engine::midi::PortInfo]) -> bool) -> bool {
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
         if done(&inputs.ports()) {
@@ -342,13 +342,13 @@ fn what_arrives_at_a_port_of_our_own_goes_by_that_ports_name() {
     let dest: (c_int, c_int) = (client.parse().unwrap(), port.parse().unwrap());
 
     // Another program sends a note straight to that port.
-    let sender = Sender::open(c"daw-test-own", false).unwrap();
+    let sender = Sender::open(c"paw-test-own", false).unwrap();
     sender.legacy_to(dest, SND_SEQ_EVENT_NOTEON, |data| {
         data.note.channel = 2;
         data.note.note = 101;
         data.note.velocity = 90;
     });
-    let key = daw_engine::midi::port_key(&name);
+    let key = paw_engine::midi::port_key(&name);
     let deadline = Instant::now() + Duration::from_secs(3);
     let mut heard = None;
     while heard.is_none() && Instant::now() < deadline {

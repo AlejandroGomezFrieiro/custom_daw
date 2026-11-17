@@ -1,14 +1,14 @@
 //! Which audio devices to open. The choice belongs to the machine, not to a
 //! project, so it is kept in the program's state directory
-//! (`$XDG_STATE_HOME/daw/audio.json`) and applied before the engine starts.
+//! (`$XDG_STATE_HOME/paw/audio.json`) and applied before the engine starts.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use daw_engine::backend::BackendOptions;
+use paw_engine::backend::BackendOptions;
 use serde::{Deserialize, Serialize};
 
-/// What was last chosen with `daw.audio.use`. `None` leaves it to the
+/// What was last chosen with `paw.audio.use`. `None` leaves it to the
 /// system's default, or for the block size to the device.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -33,7 +33,7 @@ pub fn file() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("daw").join("audio.json")
+    base.join("paw").join("audio.json")
 }
 
 /// The choice kept in `path`; nothing chosen when there is no such file or it
@@ -84,8 +84,8 @@ mod tests {
 
     #[test]
     fn a_choice_is_kept_and_read_back() {
-        let dir = std::env::temp_dir().join(format!("daw-audio-test-{}", std::process::id()));
-        let path = dir.join("daw/audio.json");
+        let dir = std::env::temp_dir().join(format!("paw-audio-test-{}", std::process::id()));
+        let path = dir.join("paw/audio.json");
         assert_eq!(
             load(&path),
             Remembered::default(),

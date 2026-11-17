@@ -1,5 +1,5 @@
 -- Kits of samples: one audio file per note, played by the built-in `sampler`
--- device. The kit is the device's state (see crates/daw-engine/src/devices/
+-- device. The kit is the device's state (see crates/paw-engine/src/devices/
 -- sampler.rs), so it is saved with the project, undone like any edit, and
 -- heard in renders; this module reads and writes it as a list of pads:
 --
@@ -11,12 +11,12 @@
 --   local kit = require("drums.kit")
 --   kit.build(track, "~/samples/808")       -- a pad for every sound file, by its name
 --   kit.set_pad(device, 42, { level = -4 })
-local api = daw.api
+local api = paw.api
 local drums = require("drums")
 
 local M = {}
 
--- Base64, which is how a device's state crosses `daw.api`.
+-- Base64, which is how a device's state crosses `paw.api`.
 local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local decode_map = {}
 for i = 1, #alphabet do decode_map[alphabet:byte(i)] = i - 1 end
@@ -77,13 +77,13 @@ function M.decode(text)
 end
 
 local function device_of(which)
-  if type(which) == "number" then return daw.device(which) end
+  if type(which) == "number" then return paw.device(which) end
   return which
 end
 
 --- The sampler on a track, if it has one.
 function M.device(track)
-  if type(track) == "number" then track = daw.track(track) end
+  if type(track) == "number" then track = paw.track(track) end
   return track:device("sampler")
 end
 
@@ -240,7 +240,7 @@ end
 --- place of the built-in kit if it has one) and a drum map whose rows are
 --- named after the files. Returns the sampler.
 function M.build(track, dir, opts)
-  if type(track) == "number" then track = daw.track(track) end
+  if type(track) == "number" then track = paw.track(track) end
   local pads, rows, path = M.from_folder(dir)
   local device = M.device(track)
   if not device then

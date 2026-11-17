@@ -1,14 +1,14 @@
 -- Keys and commands of the vocal editor for working on several notes, the
 -- curves, the phonemes, note properties and hearing; the first keys are in
 -- utau.commands. They mean the same in the terminal and in the window.
-local api = daw.api
-local util = daw.util
-local keymap, edit = daw.keymap, daw.edit
+local api = paw.api
+local util = paw.util
+local keymap, edit = paw.keymap, paw.edit
 local notes = require("utau.notes")
 local shapes = require("utau.shapes")
 local audition = require("utau.audition")
 local editor = require("utau.editor").editor
-local map, command = keymap.set, daw.command
+local map, command = keymap.set, paw.command
 
 local function emap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "utau", desc = desc }, opts)) end
 
@@ -31,9 +31,9 @@ end
 
 emap("<C-c>", function(ctx)
   local value = editor:copy()
-  if not value then return daw.notify("nothing to copy: select notes first", "warn") end
+  if not value then return paw.notify("nothing to copy: select notes first", "warn") end
   keymap.setreg(value, ctx.register, true)
-  daw.notify(#value.notes == 1 and "copied 1 note" or "copied " .. #value.notes .. " notes")
+  paw.notify(#value.notes == 1 and "copied 1 note" or "copied " .. #value.notes .. " notes")
 end, "Copy the selected notes")
 -- `Ctrl-x` and `Ctrl-a` change the pitch, as in every view; cutting is `d`
 -- and `x`, and choosing every note `gA`, as in the piano roll.
@@ -43,15 +43,15 @@ keymap.classic("<C-x>", function(ctx)
   keymap.setreg(value, ctx.register)
   local indices = editor:targets()
   editor:clear_selection()
-  daw.clip(editor.clip_id):edit_notes({ remove = indices })
+  paw.clip(editor.clip_id):edit_notes({ remove = indices })
 end, { view = "utau", desc = "Cut the selected notes" })
 --- Paste at the cursor; the pasted notes are selected.
 local function paste_here(ctx)
   local clip = editor:clip()
   if not clip then return end
   local value = keymap.getreg(ctx.register)
-  if not value or value.kind ~= "notes" then return daw.notify("nothing to paste yet", "warn") end
-  edit.roll.paste(daw.clip(clip.id), value, editor.pitch, editor.beat)
+  if not value or value.kind ~= "notes" then return paw.notify("nothing to paste yet", "warn") end
+  edit.roll.paste(paw.clip(clip.id), value, editor.pitch, editor.beat)
   local sel = {}
   for _, n in ipairs(value.notes) do
     local note = util.merge(n, {})
@@ -63,7 +63,7 @@ local function paste_here(ctx)
 end
 -- Ctrl+V pastes in a graphical window; in the terminal it selects a block, as it does everywhere.
 emap("<C-v>", function(ctx)
-  if daw.canvas.shown("utau") then return paste_here(ctx) end
+  if paw.canvas.shown("utau") then return paste_here(ctx) end
   keymap.visual_start("b")
 end, "Paste at the cursor (window), select a block (terminal)")
 local function select_all()
@@ -71,7 +71,7 @@ local function select_all()
   local all = {}
   for i in ipairs(list) do all[i] = i end
   editor:select(all)
-  daw.notify(#all .. " notes selected")
+  paw.notify(#all .. " notes selected")
 end
 local function select_phrase()
   local phrase = editor:phrase_at(editor.beat)
@@ -125,7 +125,7 @@ for _, f in ipairs(shapes.VB_FIELDS) do VB_KEYS[f.key] = f end
 command("utau.note", function(ctx)
   local which = {}
   for _, i in ipairs(editor:targets()) do which[i] = true end
-  if not next(which) then return daw.notify("no note under the editor's cursor", "warn") end
+  if not next(which) then return paw.notify("no note under the editor's cursor", "warn") end
   local count = notes.change_props(editor.clip_id, function(p, note)
     for key, value in pairs(ctx.args) do
       if type(key) == "string" then
@@ -151,7 +151,7 @@ command("utau.note", function(ctx)
     end
     return true
   end, which)
-  daw.notify(string.format("%d notes changed", count))
+  paw.notify(string.format("%d notes changed", count))
 end, { desc = "Set properties of the selected notes: `utau.note tuning=20 vibrato=on depth=40 vel=120`" })
 
 -- Hearing ------------------------------------------------------------------------------

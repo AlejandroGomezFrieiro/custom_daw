@@ -5,8 +5,8 @@
 -- imported work. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
-local api = daw.api
-local L = daw.layout
+local api = paw.api
+local L = paw.layout
 
 local W, H = 160, 48
 local initial = L.capture()
@@ -20,30 +20,30 @@ end
 
 local function start()
   fresh()
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
   L.restore(initial)
   clear_empty()
-  daw.ui.focus("arrange")
+  paw.ui.focus("arrange")
   T.after(function()
-    daw.keymap.feed("<Esc><Esc>")
-    while daw.ui.float do daw.ui.close() end
+    paw.keymap.feed("<Esc><Esc>")
+    while paw.ui.float do paw.ui.close() end
     L.restore(initial)
     clear_empty()
-    daw.ui.focus("arrange")
+    paw.ui.focus("arrange")
   end)
 end
 
 local function screen() return table.concat(api.ui_snapshot(W, H), "\n") end
-local function last_message() return daw.ui.messages[#daw.ui.messages].text end
+local function last_message() return paw.ui.messages[#paw.ui.messages].text end
 local function windows()
   local out = {}
-  for _, win in ipairs(L.windows(daw.ui.layout)) do out[#out + 1] = L.buf_of(win).name end
+  for _, win in ipairs(L.windows(paw.ui.layout)) do out[#out + 1] = L.buf_of(win).name end
   return table.concat(out, " ")
 end
 
 test("the pager breaks a word longer than its width instead of hanging", function()
-  local wrap = daw.ui.views.pager.wrap
+  local wrap = paw.ui.views.pager.wrap
   local long = "saved " .. string.rep("a/", 40) .. "song.json"
   local rows = wrap(long, 20)
   for _, row in ipairs(rows) do eq(#row <= 20, true, "every row fits: " .. row) end
@@ -54,83 +54,83 @@ end)
 
 test(":messages shows a message with a long path", function()
   start()
-  daw.notify("saved /" .. string.rep("long-directory-name/", 12) .. "song.json")
-  daw.cmd("messages")
+  paw.notify("saved /" .. string.rep("long-directory-name/", 12) .. "song.json")
+  paw.cmd("messages")
   eq(screen():find("song.json", 1, true) ~= nil, true, "the end of the path is on the screen")
-  daw.ui.close()
+  paw.ui.close()
 end)
 
 test(":edit and :e show a known buffer by name even when there is unsaved work", function()
   start()
-  daw.add_track({ name = "Keys" })
-  daw.ui.show("mixer")
-  daw.commands.exec("e mixer")
+  paw.add_track({ name = "Keys" })
+  paw.ui.show("mixer")
+  paw.commands.exec("e mixer")
   eq(L.buf_of(L.current()).name, "mixer", "`:e` shows the mixer here")
-  daw.commands.exec("edit arrange")
+  paw.commands.exec("edit arrange")
   eq(L.buf_of(L.current()).name, "arrange", "`:edit` shows the arrange view here, not the project guard")
   eq(api.project_get().path, nil, "no file was read")
-  daw.commands.exec("edit daw://tracks")
+  paw.commands.exec("edit paw://tracks")
   eq(L.buf_of(L.current()).type, "textbuf", "an address opens its text buffer")
   eq(#api.track_list(), 1, "the work is still there")
 end)
 
 test("`,m` in a window that is only the mixer brings the arrange view back", function()
   start()
-  daw.ui.show("mixer")
-  daw.ui.focus("mixer")
+  paw.ui.show("mixer")
+  paw.ui.focus("mixer")
   L.only()
   eq(windows(), "mixer", "the mixer alone")
-  daw.keymap.feed(",m")
+  paw.keymap.feed(",m")
   eq(windows(), "arrange", "the mixer made way for the arrange view")
-  daw.keymap.feed(",m")
+  paw.keymap.feed(",m")
   eq(windows():find("mixer", 1, true) ~= nil, true, "and `,m` shows it again")
 end)
 
 test(":vs and :sp without a name show the same buffer as far as a view can", function()
   start()
-  daw.cmd("vs")
+  paw.cmd("vs")
   eq(windows(), "arrange roll", "the arrange view's companion is the piano roll")
-  daw.cmd("only")
-  daw.commands.exec("e mixer")
-  daw.cmd("sp")
+  paw.cmd("only")
+  paw.commands.exec("e mixer")
+  paw.cmd("sp")
   eq(windows():find("[No Name]", 1, true) ~= nil, true, "a view with no companion leaves an empty window")
   eq(screen():find("shows in one window only", 1, true) ~= nil, true, "which says why")
-  daw.cmd("only")
-  daw.commands.exec("e daw://tracks")
+  paw.cmd("only")
+  paw.commands.exec("e paw://tracks")
   local buf = L.buf_of(L.current())
-  daw.cmd("vs")
+  paw.cmd("vs")
   eq(L.buf_of(L.current()), buf, "a text buffer shows in both windows")
-  eq(#L.windows(daw.ui.layout), 2, "two windows")
-  daw.cmd("vnew")
+  eq(#L.windows(paw.ui.layout), 2, "two windows")
+  paw.cmd("vnew")
   eq(L.buf_of(L.current()).type, "empty", ":vnew is always empty")
 end)
 
 test("empty windows are numbered among those there are, from none", function()
   start()
-  daw.cmd("tabnew")
-  eq(L.tab_title(daw.ui.tabs[2]), "[No Name]", "the first is not numbered")
-  daw.cmd("tabnew")
-  eq(L.tab_title(daw.ui.tabs[3]), "[No Name 2]", "the second is")
-  daw.cmd("tabclose")
-  daw.cmd("tabclose")
-  daw.cmd("tabnew")
-  eq(L.tab_title(daw.ui.tabs[2]), "[No Name]", "the numbers are free again once the windows are closed")
-  eq(L.tab_title(daw.ui.tabs[1]), "arrange", "the first tab is named after its buffer")
-  daw.cmd("tabclose")
+  paw.cmd("tabnew")
+  eq(L.tab_title(paw.ui.tabs[2]), "[No Name]", "the first is not numbered")
+  paw.cmd("tabnew")
+  eq(L.tab_title(paw.ui.tabs[3]), "[No Name 2]", "the second is")
+  paw.cmd("tabclose")
+  paw.cmd("tabclose")
+  paw.cmd("tabnew")
+  eq(L.tab_title(paw.ui.tabs[2]), "[No Name]", "the numbers are free again once the windows are closed")
+  eq(L.tab_title(paw.ui.tabs[1]), "arrange", "the first tab is named after its buffer")
+  paw.cmd("tabclose")
 end)
 
 local function ranked(source, query)
-  local src = daw.pick.sources[source]
+  local src = paw.pick.sources[source]
   src = type(src) == "function" and src() or src
   local out = {}
-  for _, r in ipairs(daw.pick.filter(query, src.items(), src.format, src.primary)) do out[#out + 1] = r end
+  for _, r in ipairs(paw.pick.filter(query, src.items(), src.format, src.primary)) do out[#out + 1] = r end
   return out
 end
 
 test("`?` in the mixer finds the arrange view's `,s` for `send`, and says it is an arrange key", function()
   start()
-  daw.ui.show("mixer")
-  daw.ui.focus("mixer")
+  paw.ui.show("mixer")
+  paw.ui.focus("mixer")
   local list = ranked("keys", "send")
   local found
   for _, r in ipairs(list) do
@@ -151,48 +151,48 @@ end)
 test("a prompt with text comes with the text selected, so that typing replaces it", function()
   start()
   local got
-  daw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
-  eq(daw.ui.messages and require("daw.views.cmdline").state().selected, true, "selected")
-  daw.keymap.feed("Lead<CR>")
+  paw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
+  eq(paw.ui.messages and require("paw.views.cmdline").state().selected, true, "selected")
+  paw.keymap.feed("Lead<CR>")
   eq(got, "Lead", "typing replaced it")
-  daw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
-  daw.keymap.feed("<CR>")
+  paw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
+  paw.keymap.feed("<CR>")
   eq(got, "Track 1", "Enter keeps it")
-  daw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
-  daw.keymap.feed("<Right>s<CR>")
+  paw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
+  paw.keymap.feed("<Right>s<CR>")
   eq(got, "Track 1s", "a motion key takes the selection off, and typing adds")
-  daw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
-  daw.keymap.feed("<C-u>x<CR>")
+  paw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
+  paw.keymap.feed("<C-u>x<CR>")
   eq(got, "x", "Ctrl-u clears it")
-  daw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
-  daw.keymap.feed("<BS>y<CR>")
+  paw.ui.input({ prompt = "Name: ", text = "Track 1" }, function(text) got = text end)
+  paw.keymap.feed("<BS>y<CR>")
   eq(got, "y", "backspace clears it")
-  daw.ui.input({ prompt = ":", text = "set " }, function(text) got = text end)
-  daw.keymap.feed("zoom<CR>")
+  paw.ui.input({ prompt = ":", text = "set " }, function(text) got = text end)
+  paw.keymap.feed("zoom<CR>")
   eq(got, "set zoom", "the command line's text is not selected")
 end)
 
 test("`grn` asks for the name with the old one selected", function()
   start()
-  daw.add_track({ name = "Track 1" })
-  daw.keymap.feed("grn")
-  daw.keymap.feed("Lead<CR>")
-  eq(daw.tracks()[1].name, "Lead", "the name was replaced")
+  paw.add_track({ name = "Track 1" })
+  paw.keymap.feed("grn")
+  paw.keymap.feed("Lead<CR>")
+  eq(paw.tracks()[1].name, "Lead", "the name was replaced")
 end)
 
 test(":set says an unknown option is an error, and `?` shows a known one", function()
   start()
-  daw.commands.exec("set master?")
+  paw.commands.exec("set master?")
   eq(last_message(), "E518: Unknown option: master", "unknown")
-  eq(daw.ui.messages[#daw.ui.messages].level, "error", "as an error")
-  daw.commands.exec("set zoom?")
-  eq(last_message(), "zoom = " .. tostring(daw.opt.zoom), "a known option is shown")
-  daw.commands.exec("set nosuch 3")
+  eq(paw.ui.messages[#paw.ui.messages].level, "error", "as an error")
+  paw.commands.exec("set zoom?")
+  eq(last_message(), "zoom = " .. tostring(paw.opt.zoom), "a known option is shown")
+  paw.commands.exec("set nosuch 3")
   eq(last_message(), "E518: Unknown option: nosuch", "setting one is the same error")
 end)
 
 test("the quickfix list's key line has Enter to jump and q to close", function()
-  local entries = daw.ui.keybar.lines.qflist.n
+  local entries = paw.ui.keybar.lines.qflist.n
   local keys = {}
   for _, entry in ipairs(entries) do keys[entry[1]] = entry[2] end
   eq(keys["<CR>"], "jump", "jump")
@@ -201,12 +201,12 @@ end)
 
 test("a bare extension name opens its main view, or suggests what it could mean", function()
   local ran = 0
-  daw.command("uxext.open", function() ran = ran + 1 end, { desc = "the view" })
-  daw.command("uxext.other", function() end, { desc = "another" })
-  daw.command("uxonly.first", function() end, { desc = "one" })
-  daw.commands.exec("uxext")
+  paw.command("uxext.open", function() ran = ran + 1 end, { desc = "the view" })
+  paw.command("uxext.other", function() end, { desc = "another" })
+  paw.command("uxonly.first", function() end, { desc = "one" })
+  paw.commands.exec("uxext")
   eq(ran, 1, "`:uxext` ran `uxext.open`")
-  local ok, why = pcall(daw.commands.exec, "uxonly")
+  local ok, why = pcall(paw.commands.exec, "uxonly")
   eq(ok, false, "without one it is still an error")
   eq(tostring(why):find("did you mean :uxonly.first", 1, true) ~= nil, true, "which suggests: " .. tostring(why))
 end)
@@ -223,26 +223,26 @@ end
 
 test("opening a project puts the cursor back at its start", function()
   start()
-  daw.add_track({ name = "A" })
-  daw.add_track({ name = "B" })
-  daw.cursor.set_track(daw.tracks()[2])
-  daw.cursor.set_beat(7)
-  daw.commands.exec("open! " .. midi_file())
-  daw.flush()
-  eq(daw.cursor.beat, 0, "at the start")
-  eq(daw.cursor.index(), 1, "on the first track")
+  paw.add_track({ name = "A" })
+  paw.add_track({ name = "B" })
+  paw.cursor.set_track(paw.tracks()[2])
+  paw.cursor.set_beat(7)
+  paw.commands.exec("open! " .. midi_file())
+  paw.flush()
+  eq(paw.cursor.beat, 0, "at the start")
+  eq(paw.cursor.index(), 1, "on the first track")
 end)
 
 test("autosave keeps a copy of an imported project that was never modified", function()
   start()
   local dir = T.scratch .. "/ux-autosave"
   os.execute("mkdir -p '" .. dir .. "'")
-  local old = daw.autosave.dir
-  daw.autosave.dir = dir
-  T.after(function() daw.autosave.dir = old end)
-  daw.commands.exec("open! " .. midi_file())
-  daw.flush()
+  local old = paw.autosave.dir
+  paw.autosave.dir = dir
+  T.after(function() paw.autosave.dir = old end)
+  paw.commands.exec("open! " .. midi_file())
+  paw.flush()
   eq(api.project_get().modified, false, "nothing was changed")
-  eq(daw.project.unsaved(), true, "yet it is not on disk")
-  eq(daw.autosave.copy() ~= nil, true, "a copy is written")
+  eq(paw.project.unsaved(), true, "yet it is not on disk")
+  eq(paw.autosave.copy() ~= nil, true, "a copy is written")
 end)

@@ -175,7 +175,7 @@ impl Caps {
 }
 
 /// Cells a view shows pixels in (a strip, `buf:strip`, or `buf:surface`):
-/// its drawing, the operations of `daw.canvas`, for the frontend to make
+/// its drawing, the operations of `paw.canvas`, for the frontend to make
 /// into pixels at `cell` pixels a cell, and which of its cells something
 /// drawn after it covers (a menu, a floating view), where the pixels must
 /// not show.
@@ -246,7 +246,7 @@ pub struct Grid {
     pub height: u16,
     pub cells: Vec<Cell>,
     /// The terminal keeps the pointer for its own selection instead of
-    /// reporting it (`daw.opt.mouse` off); set by the runtime as it draws.
+    /// reporting it (`paw.opt.mouse` off); set by the runtime as it draws.
     pub mouse_off: bool,
     pub surfaces: Vec<Surface>,
 }

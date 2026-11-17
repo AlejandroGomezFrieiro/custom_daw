@@ -2,7 +2,7 @@
 # The hardware check, on the null backend with a test signal and a stand-in
 # MIDI port: none of the machine's own devices is opened or listed.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/doctor') daw.api.engine_restart({ backend = 'null', test_input = { frequency = 220, level = -12, channels = 2 }, test_midi = { 'Keys A' } })"
+SETUP="$TUI_DEMO paw.ext.load('extensions/doctor') paw.api.engine_restart({ backend = 'null', test_input = { frequency = 220, level = -12, channels = 2 }, test_midi = { 'Keys A' } })"
 rig_start
 term_start
 rec_start tui-doctor

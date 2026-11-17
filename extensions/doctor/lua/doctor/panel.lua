@@ -1,8 +1,8 @@
 -- The doctor's page: the checks with how each one went, what the one under
 -- the cursor needs from you, and the question being asked. In the terminal it
 -- floats over the screen; in the window it is painted in pixels (see gui.lua).
-local api = daw.api
-local util = daw.util
+local api = paw.api
+local util = paw.util
 local doctor = require("doctor")
 
 local view = { title = "Doctor", row = 1, scroll = 0 }
@@ -145,6 +145,6 @@ function view:on_mouse(event)
   api.ui_redraw()
 end
 
-daw.ui.view("doctor", view)
+paw.ui.view("doctor", view)
 package.loaded["doctor.panel"] = view
 return view

@@ -4,11 +4,11 @@
 //! does not call hooks from compiled code, so the code that needs watching
 //! would have to be kept out of the compiler. Instead nothing is set while a
 //! callback runs. A thread here knows when the callback must have returned
-//! (`daw.limit` tells it), and only when that time has passed does it set a
+//! (`paw.limit` tells it), and only when that time has passed does it set a
 //! hook, from outside, which LuaJIT is built to allow
 //! (`LUAJIT_ENABLE_CHECKHOOK`, see `.cargo/config.toml`: compiled loops look
 //! for a hook and leave to the interpreter when there is one). The hook calls
-//! the Lua function `daw.limit` registered, which raises the error.
+//! the Lua function `paw.limit` registered, which raises the error.
 
 use std::ffi::c_int;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -22,7 +22,7 @@ use mlua::{Function, Lua, ffi};
 pub const ASYNC: bool = cfg!(lua_checkhook);
 
 /// The registry key of the Lua function the hook calls.
-const HOOK_KEY: &std::ffi::CStr = c"daw.limit.hook";
+const HOOK_KEY: &std::ffi::CStr = c"paw.limit.hook";
 
 /// In `deadline`: the kernel is gone and the thread should end.
 const GONE: u64 = u64::MAX;

@@ -2,7 +2,7 @@
 # Everyday note edits as operators, on the demo song's chords in the piano
 # roll: arpeggiate, strum, humanize, each undone or played.
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO daw.ext.load('extensions/musicops')"
+SETUP="$TUI_DEMO paw.ext.load('extensions/musicops')"
 rig_start
 term_start
 key Return; pause 1.0

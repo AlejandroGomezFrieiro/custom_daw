@@ -21,14 +21,14 @@ to extensions. Write the feature you want in a few lines of Lua, or load an
 extension that does it your way.
 
 ```lua
--- ~/.config/daw/init.lua: :reload applies it without stopping the sound
-daw.ui.hl("Playhead", { bg = "#f38ba8" })
-daw.keymap.set("<leader>T", "track.add Strings device=synth", { desc = "A strings track" })
+-- ~/.config/paw/init.lua: :reload applies it without stopping the sound
+paw.ui.hl("Playhead", { bg = "#f38ba8" })
+paw.keymap.set("<leader>T", "track.add Strings device=synth", { desc = "A strings track" })
 ```
 
 Drive it from the keyboard in the [terminal](docs/terminal.md), with the
 mouse in a [window](docs/window.md), from [Lua scripts](docs/scripting.md),
-over a [socket](docs/protocol.md), or from an AI assistant through `daw-mcp`.
+over a [socket](docs/protocol.md), or from an AI assistant through `paw-mcp`.
 They all drive one kernel and can be open on the same project.
 
 > [!NOTE]
@@ -52,7 +52,7 @@ builds paw from source, which takes several minutes.
 ```sh
 git clone https://github.com/AlejandroGomezFrieiro/custom_daw paw && cd paw
 nix run . -- -e 'dofile("examples/demo-song.lua")'          # the terminal, with a demo song
-nix run .#daw-gui -- -e 'dofile("examples/demo-song.lua")'  # the window, with the same song
+nix run .#paw-gui -- -e 'dofile("examples/demo-song.lua")'  # the window, with the same song
 ```
 
 `Space` plays, `?` lists every key of the view you are in, `:tutor` runs a
@@ -183,7 +183,7 @@ in Nix: `paw.withExtensions (exts: [ exts.utau ])`.
 | [The window](docs/window.md) | every gesture |
 | [Recording](docs/recording.md) and [mixing](docs/mixing.md) | inputs, takes, routing, automation, tempo, export |
 | [Devices](docs/devices.md) | plugins, the sandbox, built-in devices, devices in Lua |
-| [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `daw` module, `daw ctl` |
+| [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `paw` module, `paw ctl` |
 | [Extensions](docs/extensions.md) | what belongs in the core, and what an extension can own |
 | [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | the crates, the threads, the socket |
 | [What is missing](docs/missing.md) | what it does not do yet |

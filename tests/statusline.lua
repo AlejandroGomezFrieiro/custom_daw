@@ -1,30 +1,30 @@
--- Tests of the status line's sections and components (daw/statusline.lua):
+-- Tests of the status line's sections and components (paw/statusline.lua):
 -- the line that comes with the program, setting it up, widths, a line per
 -- view, components of a script's own, the tab line and the winbar.
 -- Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh, after = T.test, T.eq, T.fresh, T.after
-local api = daw.api
-local sl = daw.statusline
+local api = paw.api
+local sl = paw.statusline
 
 local W, H = 140, 40
-local initial = daw.layout.capture()
+local initial = paw.layout.capture()
 
 --- The windows a test opened go when it ends.
 local function tidy()
-  while daw.ui.float do daw.ui.close() end
-  daw.layout.restore(initial)
-  for _, buf in ipairs(daw.layout.buffers_list()) do
-    if buf.type == "textbuf" then daw.layout.buf_delete(buf) end
+  while paw.ui.float do paw.ui.close() end
+  paw.layout.restore(initial)
+  for _, buf in ipairs(paw.layout.buffers_list()) do
+    if buf.type == "textbuf" then paw.layout.buf_delete(buf) end
   end
 end
 
 local function start()
   fresh()
   after(tidy)
-  daw.keymap.feed("<Esc><Esc>")
-  while daw.ui.float do daw.ui.close() end
-  daw.ui.focus("arrange")
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
+  paw.ui.focus("arrange")
   sl.reset()
   after(function() sl.reset() end)
 end
@@ -42,7 +42,7 @@ local function screen() return api.ui_snapshot(W, H) end
 
 test("statusline: the status line that comes with the program has the mode first and the project last", function()
   start()
-  daw.project.new()
+  paw.project.new()
   local l = line()
   local left, right = text_of(l.left), text_of(l.right)
   eq(left:match("^ NORMAL·arrange ") ~= nil, true, "the mode pill first: " .. left)
@@ -98,9 +98,9 @@ end)
 
 test("statusline: the line is the same for the window and the terminal", function()
   start()
-  eq(daw.frontend.state(-1).modal.statusline, nil, "nothing is sent while it is as it comes")
+  eq(paw.frontend.state(-1).modal.statusline, nil, "nothing is sent while it is as it comes")
   sl.setup({ sections = { z = { function() return "from a script" end } } })
-  local sent = daw.frontend.state(-1).modal.statusline
+  local sent = paw.frontend.state(-1).modal.statusline
   eq(type(sent), "table", "the pieces are sent once it is set up")
   eq(text_of(sent.right):find("from a script", 1, true) ~= nil, true, "with what the script put in")
   eq(text_of(sent.left):match("^ NORMAL") ~= nil, true, "and the mode")
@@ -115,33 +115,33 @@ test("statusline: a view may have a line of its own, and a float that has the ke
   })
   local function left() return text_of(line().left) end
   eq(left():find("everywhere", 1, true) ~= nil, true, "the usual")
-  daw.ui.show("pianoroll")
-  daw.ui.focus("pianoroll")
+  paw.ui.show("pianoroll")
+  paw.ui.focus("pianoroll")
   eq(left():find("in the roll", 1, true) ~= nil, true, "the roll's own")
   eq(left():find("everywhere", 1, true), nil, "instead of the usual")
-  daw.ui.hide("pianoroll")
-  daw.ui.focus("arrange")
-  daw.ui.open("help")
+  paw.ui.hide("pianoroll")
+  paw.ui.focus("arrange")
+  paw.ui.open("help")
   eq(left():find("float open", 1, true) ~= nil, true, "while a float has the keys")
-  daw.ui.close()
+  paw.ui.close()
 end)
 
 test("statusline: an extension adds a component and a script that fails is said, not fatal", function()
   start()
-  daw.statusline.component("pulse", { fn = function() return { { "pulse!", "StatusRec" } } end, rank = 2 })
+  paw.statusline.component("pulse", { fn = function() return { { "pulse!", "StatusRec" } } end, rank = 2 })
   sl.setup({ sections = { z = { "pulse", function() error("broken on purpose") end, "nothing named so" } } })
   local l = line()
   eq(text_of(l.right):find("pulse!", 1, true) ~= nil, true, "the named component")
-  eq(#l.errors, 2, "two things said: " .. daw.inspect(l.errors))
+  eq(#l.errors, 2, "two things said: " .. paw.inspect(l.errors))
   eq(l.errors[1]:find("broken on purpose", 1, true) ~= nil, true, "what went wrong")
   eq(l.errors[2]:find("nothing named so", 1, true) ~= nil, true, "and what was not found")
-  daw.statusline.components.pulse = nil
+  paw.statusline.components.pulse = nil
 end)
 
 test("statusline: a component with a key is called again only when its key changes", function()
   start()
   local key, calls = "one", 0
-  daw.statusline.component("counted", { key = function() return key end, fn = function()
+  paw.statusline.component("counted", { key = function() return key end, fn = function()
     calls = calls + 1
     return "n" .. calls
   end })
@@ -153,14 +153,14 @@ test("statusline: a component with a key is called again only when its key chang
   key = "two"
   line()
   eq(calls, 2, "again when the key changed")
-  eq(daw.statusline.stats.cached >= 2, true, "and the saved ones were counted")
-  daw.statusline.components.counted = nil
+  eq(paw.statusline.stats.cached >= 2, true, "and the saved ones were counted")
+  paw.statusline.components.counted = nil
 end)
 
 test("statusline: the project's name is cut before anything is dropped", function()
   start()
-  daw.project.new()
-  daw.api.project_set("name", string.rep("a-very-long-name", 4))
+  paw.project.new()
+  paw.api.project_set("name", string.rep("a-very-long-name", 4))
   local l = line(70)
   eq(text_of(l.left) .. text_of(l.right) ~= "", true, "something is shown")
   local total = api.str_width(text_of(l.left)) + api.str_width(text_of(l.right))
@@ -172,11 +172,11 @@ test("statusline: a theme chooses the colours of the mode pill and of each secti
   start()
   local function pill() return line().left[1][2] end
   eq(pill(), "StatusMode", "normal mode")
-  daw.keymap.set_mode("i")
+  paw.keymap.set_mode("i")
   eq(pill(), "StatusInsert", "insert mode has its own")
   sl.setup({ theme = "mono" })
   eq(pill(), "StatusMode", "one colour in the mono theme")
-  daw.keymap.set_mode("n")
+  paw.keymap.set_mode("n")
   sl.setup({ theme = { c = "StatusDim" }, sections = { c = { function() return "dimmed" end } } })
   local styles = {}
   for _, piece in ipairs(line().left) do styles[piece[1]] = piece[2] end
@@ -196,8 +196,8 @@ end)
 
 test("statusline: a winbar adds to the title bar of the window with the keys, and the others have their own", function()
   start()
-  daw.ui.show("mixer")
-  daw.textbuf.open("daw://tracks")
+  paw.ui.show("mixer")
+  paw.textbuf.open("paw://tracks")
   sl.setup({
     winbar = { sections = { x = { function(ctx) return "focused:" .. tostring(ctx.focused) end } } },
     inactive_winbar = { sections = { x = { function() return "elsewhere" end } } },
@@ -212,9 +212,9 @@ end)
 
 test("statusline: `:help statusline` is the page that says how to set it up", function()
   start()
-  daw.cmd("help", { "statusline" })
-  local buf = daw.layout.buf_of(daw.layout.current())
+  paw.cmd("help", { "statusline" })
+  local buf = paw.layout.buf_of(paw.layout.current())
   eq(buf.name, "help://configuration.md", "in the configuration page")
-  local _, _, t, st = daw.textbuf.here()
+  local _, _, t, st = paw.textbuf.here()
   eq(t:line(st.row):find("The status line is built as lualine", 1, true) ~= nil, true, "at the paragraph: " .. t:line(st.row))
 end)

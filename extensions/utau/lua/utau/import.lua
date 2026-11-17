@@ -2,7 +2,7 @@
 --
 -- OpenUtau's own readers do the parsing: `reautau-engine --convert` loads
 -- the file and writes it out as a Lua table, which becomes vocal tracks here.
-local api = daw.api
+local api = paw.api
 local engine = require("utau.engine")
 local utau = require("utau")
 
@@ -37,13 +37,13 @@ function M.add(project, opts)
       for i, s in ipairs(project.timesigs or {}) do
         sigs[i] = { beat = 0, num = s.beatPerBar or s.num or 4, den = s.beatUnit or s.den or 4, bar = s.barPosition or s.bar or 0 }
       end
-      daw.tempo.set_points(points, nil)
+      paw.tempo.set_points(points, nil)
       -- Signatures are by bar in the file: place each where its bar starts.
-      for _, s in ipairs(sigs) do daw.api.signature_set(daw.tempo.bar_start(s.bar + 1), s.num, s.den) end
+      for _, s in ipairs(sigs) do paw.api.signature_set(paw.tempo.bar_start(s.bar + 1), s.num, s.den) end
     else
-      daw.project.tempo = project.tempos[1].bpm
+      paw.project.tempo = project.tempos[1].bpm
       if #project.tempos > 1 then
-        daw.notify("utau: imported away from the start, only the file's first tempo is used", "warn")
+        paw.notify("utau: imported away from the start, only the file's first tempo is used", "warn")
       end
     end
   end

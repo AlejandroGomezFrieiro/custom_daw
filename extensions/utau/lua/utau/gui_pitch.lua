@@ -8,12 +8,12 @@
 -- Vibrato, on the notes the edits work on: drag its start (length), its
 -- fades, its depth (up and down), a period, a trough (shift) and its drift.
 -- Ctrl+click a note switches its vibrato on or off.
-local util = daw.util
-local api = daw.api
+local util = paw.util
+local api = paw.api
 local notes = require("utau.notes")
 local shapes = require("utau.shapes")
 local proto = require("utau.proto")
-local c = require("daw.canvas").palette
+local c = require("paw.canvas").palette
 
 local VIB_COLOURS = {
   length = "#ffd040", ["in"] = "#ff9f40", out = "#ff9f40", depth = "#ff6fae",
@@ -222,12 +222,12 @@ return function(gui)
           table.remove(pp.pts, h.k)
           store_pp(view, h.index, pp)
         else
-          daw.notify("a transition keeps two points", "warn")
+          paw.notify("a transition keeps two points", "warn")
         end
       elseif e.ctrl then
         pp.pts[h.k][3] = ((pp.pts[h.k][3] or 0) + 1) % 4
         store_pp(view, h.index, pp)
-        daw.notify("point " .. h.k .. ": " .. shapes.SHAPES[pp.pts[h.k][3]])
+        paw.notify("point " .. h.k .. ": " .. shapes.SHAPES[pp.pts[h.k][3]])
       else
         local shown = shapes.points(note, list[h.index - 1], pp)
         gui.drag = {

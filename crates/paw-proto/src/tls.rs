@@ -2,7 +2,7 @@
 //! threads, and the client's side, which trusts an instance's certificate
 //! the first time it sees it and holds it to that certificate afterwards
 //! (as SSH does with a host key). The instance makes its own certificate:
-//! see `daw_core::tls`.
+//! see `paw_core::tls`.
 
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -311,7 +311,7 @@ pub fn connect(address: &str, mut socket: TcpStream, known_file: &Path, accept_n
     let host = address.rsplit_once(':').map_or(address, |(host, _)| host);
     let host = host.trim_start_matches('[').trim_end_matches(']');
     let name = ServerName::try_from(host.to_string())
-        .or_else(|_| ServerName::try_from("daw-instance".to_string()))
+        .or_else(|_| ServerName::try_from("paw-instance".to_string()))
         .map_err(|err| anyhow!("{err}"))?;
     let mut tls: rustls::Connection = rustls::ClientConnection::new(Arc::new(config), name)?.into();
     let mut sniff = Sniff {

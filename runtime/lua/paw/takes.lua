@@ -23,7 +23,7 @@
 -- (`:take.lanes`, `zt`), row k holding take k of every clip of the track
 -- that has takes, each over the clip's own stretch of time, so that the
 -- pieces of a comp line up into lanes. In the window a drag across row k
--- makes take k play over that stretch (`daw.frontend.act.comp`). Which
+-- makes take k play over that stretch (`paw.frontend.act.comp`). Which
 -- tracks show them is kept for the session, like open automation lanes,
 -- not in the project.
 --
@@ -35,7 +35,7 @@
 -- and `controls` for notes. `origin` is the clip's own offset into its file
 -- at the time the others' offsets were written, so that a clip trimmed or
 -- cut since (which moves its offset) still finds them lined up.
-local api = daw.api
+local api = paw.api
 local M = {}
 
 local EPS = 1e-9
@@ -187,17 +187,17 @@ function M.explode(id)
   for i, entry in ipairs(takes.list) do
     if i ~= takes.active then
       at = at + 1
-      local t = daw.add_track({ name = entry.name or (track.name .. " take " .. i), index = at })
+      local t = paw.add_track({ name = entry.name or (track.name .. " take " .. i), index = at })
       local snap = { name = entry.name or c.name, start = c.start, length = c.length, kind = c.kind }
       -- Each plays as the clip does: stretched, shifted, looped.
-      daw.stretch.carry(c, snap, 0)
+      paw.stretch.carry(c, snap, 0)
       if c.kind == "audio" then
         snap.file, snap.offset, snap.gain = entry.file, math.max(0, (entry.offset or 0) + shift), entry.gain or 0
         snap.fade_in, snap.fade_out = c.fade_in, c.fade_out
       else
         snap.notes, snap.controls = entry.notes or {}, entry.controls
       end
-      daw.restore_clip(snap, t)
+      paw.restore_clip(snap, t)
       out[#out + 1] = t
     end
   end
@@ -210,7 +210,7 @@ end
 --- they are (the piece's own offset says where it is in them); notes are
 --- those of the stretch, counted from the piece's start. Nil for a clip
 --- without takes. The notes of a looped clip all go with every piece,
---- moved by `shift` as the piece's own are (see `daw.stretch.moved`).
+--- moved by `shift` as the piece's own are (see `paw.stretch.moved`).
 function M.piece(c, from, to, shift)
   local takes = M.of(c)
   if not takes then return nil end
@@ -334,11 +334,11 @@ local function same_moved(x, y, by)
 end
 
 --- Whether looped clip `b` carries on `a`'s repeats where `a` ends: the
---- same loop, turned on as far as `a` is long (see `daw.stretch.moved`),
+--- same loop, turned on as far as `a` is long (see `paw.stretch.moved`),
 --- and for notes the same notes, every take's too.
 local function loop_continues(a, b, ta, tb)
   if not (a.loop and b.loop) or math.abs(a.loop_length - b.loop_length) > 1e-9 then return false end
-  local m = daw.stretch.moved(a, a.length)
+  local m = paw.stretch.moved(a, a.length)
   if math.abs(m.loop_start - b.loop_start) > 1e-6 then return false end
   if a.kind == "audio" then
     for i = 1, #ta.list do
@@ -396,7 +396,7 @@ local function continues(a, b)
     return true
   end
   if (a.fade_out or 0) > EPS or (b.fade_in or 0) > EPS then return false end
-  local seconds = daw.stretch.file_seconds(a, a.length)
+  local seconds = paw.stretch.file_seconds(a, a.length)
   for i = 1, #ta.list do
     local x, y = M.content(a, i), M.content(b, i)
     if x.file ~= y.file or math.abs((x.gain or 0) - (y.gain or 0)) > 1e-9 then return false end
@@ -491,7 +491,7 @@ function M.comp(track, take, from, to)
     for _, c in ipairs(api.clip_list(track)) do
       if has(c) then only[c.id] = true end
     end
-    daw.edit.arrange.clear(track, at, at, only)
+    paw.edit.arrange.clear(track, at, at, only)
   end
   local any = false
   for _, c in ipairs(api.clip_list(track)) do
@@ -548,7 +548,7 @@ local function save_lanes()
   api.state_set("take_lanes_open", out)
   api.ui_redraw()
   -- A graphical frontend draws them too.
-  if daw.emit then daw.emit("lanes.changed", {}) end
+  if paw.emit then paw.emit("lanes.changed", {}) end
 end
 
 local function id_of(track) return type(track) == "table" and track.id or track end
@@ -584,8 +584,8 @@ function M.lane_count(track)
 end
 
 -- A track that goes away takes its take lanes with it.
-if daw.on then
-  daw.on("track.removed", function(event)
+if paw.on then
+  paw.on("track.removed", function(event)
     if lanes_open[event.id] then
       lanes_open[event.id] = nil
       save_lanes()
@@ -596,35 +596,35 @@ end
 -- Commands -----------------------------------------------------------------------
 
 local function need_clip()
-  local clip = daw.cursor.clip()
-  if not clip then daw.notify("no clip under the cursor", "warn") return nil end
-  if not M.of(clip.id) then daw.notify("the clip has no other takes: record with the loop on, or `:take.new`", "warn") return nil end
+  local clip = paw.cursor.clip()
+  if not clip then paw.notify("no clip under the cursor", "warn") return nil end
+  if not M.of(clip.id) then paw.notify("the clip has no other takes: record with the loop on, or `:take.new`", "warn") return nil end
   return clip
 end
 
 local function said(id)
   local n, active = M.count(id)
   local takes = M.of(id)
-  daw.notify(string.format("take %d of %d: %s", active, n, takes and takes.list[active].name or ""))
+  paw.notify(string.format("take %d of %d: %s", active, n, takes and takes.list[active].name or ""))
 end
 
 --- The cursor's track and the stretch of time selected on it, or nil when
 --- no stretch is selected.
 local function selected_stretch()
-  local sel = daw.keymap.selection()
-  local track = daw.cursor.track_id()
+  local sel = paw.keymap.selection()
+  local track = paw.cursor.track_id()
   if not (sel and sel.kind ~= "line" and sel.c0 and sel.c1 and sel.c1 > sel.c0 and track) then return nil end
   return track, sel.c0, sel.c1
 end
 
-daw.command("take", function(ctx)
+paw.command("take", function(ctx)
   local word = ctx.args[1]
   local track, from, to
   if word then track, from, to = selected_stretch() end
   -- Comping: this take over the selected stretch, whatever plays around it.
   if track and tonumber(word) and M.comp(track, tonumber(word), from, to) > 0 then
-    daw.keymap.set_mode("n")
-    return daw.notify("take " .. word .. " over the selection")
+    paw.keymap.set_mode("n")
+    return paw.notify("take " .. word .. " over the selection")
   end
   local clip = need_clip()
   if not clip then return end
@@ -639,13 +639,13 @@ daw.command("take", function(ctx)
         if entry.name == table.concat(ctx.args, " ") then index = i end
       end
     end
-    if not index then return daw.notify("take: a number, `next` or `prev`", "warn") end
+    if not index then return paw.notify("take: a number, `next` or `prev`", "warn") end
     M.select(clip.id, index)
   end
   said(clip.id)
 end, { desc = "Play another take of the clip: `take 2`, `take next`, `take prev`; over a selected stretch, only there" })
 
-daw.command("take.list", function()
+paw.command("take.list", function()
   local clip = need_clip()
   if not clip then return end
   local takes = M.of(clip.id)
@@ -653,36 +653,36 @@ daw.command("take.list", function()
   for i, entry in ipairs(takes.list) do
     items[i] = { text = string.format("%s %d  %s", i == takes.active and "●" or " ", i, entry.name or ""), index = i }
   end
-  daw.pick({ title = "Takes", items = items, on_choose = function(item)
+  paw.pick({ title = "Takes", items = items, on_choose = function(item)
     M.select(clip.id, item.index)
     said(clip.id)
   end })
 end, { desc = "Choose the take that plays from a list" })
 
-daw.command("take.new", function(ctx)
-  local clip = daw.cursor.clip()
-  if not clip then return daw.notify("no clip under the cursor", "warn") end
+paw.command("take.new", function(ctx)
+  local clip = paw.cursor.clip()
+  if not clip then return paw.notify("no clip under the cursor", "warn") end
   local n = M.new(clip.id, ctx.args[1] and table.concat(ctx.args, " "))
-  daw.notify("take " .. n .. ": a copy to change, with what was there kept as take " .. (n - 1))
+  paw.notify("take " .. n .. ": a copy to change, with what was there kept as take " .. (n - 1))
 end, { desc = "Keep what the clip plays as a take and carry on in a copy" })
 
-daw.command("take.remove", function(ctx)
+paw.command("take.remove", function(ctx)
   local clip = need_clip()
   if not clip then return end
   M.remove(clip.id, tonumber(ctx.args[1]))
-  if M.of(clip.id) then said(clip.id) else daw.notify("one take left: the clip is a clip again") end
+  if M.of(clip.id) then said(clip.id) else paw.notify("one take left: the clip is a clip again") end
 end, { desc = "Throw away the playing take, or the one numbered: `take.remove 1`" })
 
-daw.command("take.keep", function()
+paw.command("take.keep", function()
   local clip = need_clip()
   if not clip then return end
   M.keep(clip.id)
-  daw.notify("kept the playing take alone")
+  paw.notify("kept the playing take alone")
 end, { desc = "Throw away every take but the one that plays" })
 
-daw.command("take.lanes", function(ctx)
-  local track = daw.cursor.track_id()
-  if not track then return daw.notify("no track selected", "warn") end
+paw.command("take.lanes", function(ctx)
+  local track = paw.cursor.track_id()
+  if not track then return paw.notify("no track selected", "warn") end
   local word = ctx.args[1]
   local on
   if word == "on" or word == "off" then
@@ -691,17 +691,17 @@ daw.command("take.lanes", function(ctx)
   else
     on = M.toggle_lanes(track)
   end
-  if not on then return daw.notify("take lanes hidden") end
+  if not on then return paw.notify("take lanes hidden") end
   local n = M.lane_count(track)
-  if n == 0 then return daw.notify("take lanes shown: no clip of this track has takes yet") end
-  daw.notify(n .. " take lanes: a drag across one in the window makes that take play there; `:take 2` over a selection here")
+  if n == 0 then return paw.notify("take lanes shown: no clip of this track has takes yet") end
+  paw.notify(n .. " take lanes: a drag across one in the window makes that take play there; `:take 2` over a selection here")
 end, { desc = "Show the track's takes as lanes under its clips, or hide them: `take.lanes`, `take.lanes on`" })
 
-daw.command("take.explode", function()
+paw.command("take.explode", function()
   local clip = need_clip()
   if not clip then return end
   local tracks = M.explode(clip.id)
-  daw.notify(#tracks .. " takes are clips on tracks of their own now")
+  paw.notify(#tracks .. " takes are clips on tracks of their own now")
 end, { desc = "Put every other take on a track of its own" })
 
 return M
