@@ -98,6 +98,51 @@ function M.run(bars, opts, rounds, how)
   return out
 end
 
+--- A notation edit against a MIDI edit, each with the paint after it, one
+--- after the other on one clip of `bars` bars, `rounds` times: so that a
+--- busy machine slows both alike. Returns the medians in ms (`plain`,
+--- `notation`) and the median of each round's ratio of the two (`ratio`).
+function M.pair(bars, opts, rounds)
+  local view = require("notation")
+  local model = require("notation.model")
+  local notes = M.notes(bars)
+  local track = api.track_add({ name = "Bench" })
+  local id = api.clip_add(track, { start = 0, length = bars * 4, notes = notes })
+  daw.flush()
+  view:edit(id)
+  local function paint() return daw.canvas.paint("notation", W, H, opts) end
+  -- Each from a clean heap, so that neither pays for the other's garbage.
+  local function time(fn)
+    collectgarbage()
+    local t = api.now()
+    fn()
+    return api.now() - t
+  end
+  paint()
+  local clip = view:clip()
+  local at = math.floor(#notes / 2)
+  local plain, notation, ratio = {}, {}, {}
+  for i = 1, rounds do
+    local n = clip:notes()[at]
+    plain[i] = time(function()
+      clip:set_note(at, { pitch = n.pitch + 1 })
+      paint()
+    end)
+    for _, ev in ipairs(model.events(view:layout())) do
+      for _, w in ipairs(ev.notes or {}) do
+        if w.index == at and not w.tied then view.beat, view.step = ev.start, w.step end
+      end
+    end
+    notation[i] = time(function()
+      view:inflect(-1)
+      paint()
+    end)
+    ratio[i] = notation[i] / math.max(0.01, plain[i])
+  end
+  api.clip_remove(id)
+  return { plain = median(plain), notation = median(notation), ratio = median(ratio) }
+end
+
 function M.format(r)
   local kinds = {}
   for k, v in pairs(r.kinds) do kinds[#kinds + 1] = k .. "=" .. v end

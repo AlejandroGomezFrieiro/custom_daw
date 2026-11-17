@@ -36,8 +36,8 @@ soon it says how to leave.
 ## MIDI is the truth
 
 Every MIDI clip opens as notation; there is nothing to convert first. The
-score of a clip is made from its notes each time they change (laid out
-again only in the bars that changed), with what notation keeps:
+score of a clip is made from its notes each time they change (written and
+laid out again only in the bars that changed), with what notation keeps:
 
 | Kept | Where | What |
 | --- | --- | --- |
@@ -136,9 +136,12 @@ played.
   written where it starts. A roll slower than 160 ms gets an arpeggio sign
   with its direction.
 - **Onsets** go on the simplest grid that explains each beat: the beat, its
-  halves, quarters or eighths, or triplets (in 6/8 the beat's eighths, or a
-  duplet), chosen per beat by how well it fits against how complex it is. A
-  lone triplet among plainly duple beats needs more to convince.
+  halves, quarters or eighths, triplets or sixths, or fifths and sevenths
+  (in 6/8 the beat's eighths, or two or four in its time), chosen per beat
+  by how well it fits against how complex it is. A tuplet has to fit
+  clearly better than the straight grid, its notes no shorter than the
+  `finest` value, and a lone one among plainly duple beats needs more to
+  convince: a straight part played loosely is not written in tuplets.
 - **Drift**: the player's distance from the grid is followed, first beat by
   beat and then by a line fitted through the onsets around each beat, so a
   part played ahead of the beat or slowing down (a ritardando against the
@@ -150,14 +153,20 @@ played.
   not a tie; otherwise the value nearest what was played, by proportion, so
   a long note let go early is still a long note.
 - **Grace notes**: a note shorter than 100 ms (and a sixth of a beat) just
-  before a longer note of another pitch, let go by the time it sounds.
+  before a longer note of another pitch, let go by the time it sounds, and
+  not a step of an even run (a fast tuplet's last note).
 - **Voices**: a note held well past the next onset under (or over) notes
   that move is a second voice, stems down (or up), with its own rests.
 - **Hands**: on a grand staff each chord's notes are split between the hands
   by where each hand has been, so a melody that goes below middle C stays in
   the right hand.
-- **Tuplets** are bracketed; quarter-note triplets over two beats are one
-  bracket. **Rests** are merged as the metre divides the bar.
+- **Tuplets** are bracketed with their number: `3` for triplets (quarter-note
+  triplets over two beats are one bracket), `6` for a beat of sixteenths in
+  sixes, `5` and `7` for quintuplets and septuplets of sixteenths (in the
+  time of four), and in 6/8 `2` for a duplet and `4` for four eighths in
+  the time of three. A tuplet said in notation (`,3`, `gt`) is kept over
+  what the notes would suggest, and so is a beat said to be plain.
+  **Rests** are merged as the metre divides the bar.
 - Notes drawn exactly on the grid (in the piano roll) are written as they
   are: the interpretation is for what was played.
 
@@ -168,7 +177,8 @@ Each of these has a setting, kept with the clip in `clip.meta.notation.settings`
 | `chord` | 35 | ms: onsets this close are one chord |
 | `strum`, `strum_span` | 70, 450 | ms between strings of a strum (0 off); its longest |
 | `arpeggio` | 160 | ms: a strum this long gets an arpeggio sign (0 never) |
-| `triplets` | on | beats may be written in triplets (duplets in 6/8) |
+| `triplets` | on | beats may be written in triplets (duplets and quadruplets in 6/8) |
+| `tuplets` | on | beats may be written as quintuplets and septuplets |
 | `finest` | 0.25 | the shortest duple subdivision, in beats |
 | `simplicity` | 1 | how strongly simple grids are preferred (0 to 2) |
 | `gap` | 0.3 | a silence shorter than this share of the time to the next onset is articulation |
@@ -778,9 +788,11 @@ the clip's score to change and then writes what changed as MIDI edits (and
 what notation keeps on the notes and the clip), as one undo step:
 `view:write(function(sc) ... end)`. `midi.derive(notes, own, opts)` makes
 the score of notes (as `clip:notes()` gives them) with what a clip keeps
-(`clip.meta.notation`); `midi.sync(clip_id, before, after, own)` writes the
-change from one score to another into the clip, touching only the notes it
-changes.
+(`clip.meta.notation`), each measure written once for what it is written
+from (`midi.memo = false` writes them all, as the tests compare);
+`midi.sync(clip_id, before, after, own)` writes the change from one score
+to another into the clip, comparing only the measures that changed and
+touching only the notes it changes.
 
 `notation.engrave` turns a layout into drawing operations for `daw.canvas`
 (`engrave.style`, `engrave.systems`, and each measure's and system's ink);
@@ -842,12 +854,17 @@ tenuto inside a slur (a slur goes over every articulation), and slurs that
 keep clear of the staff lines; systems that interlock (each system's band
 holds all of its ink); the cell view places its marks on fixed rows, not
 against skylines; text in a PDF is outlines, so it cannot be searched.
+Tuplets read from the MIDI are a beat's (and quarter-note triplets over
+two); others, such as nine in a beat or five over two beats, are written
+when said in notation.
 Repeats unfolded, trills played, swing written into the MIDI, `!` through a
 snippet (snippets work in the piano roll), a filter that reads and writes
 MusicXML (it reads and writes the line text above). What notation keeps:
 a tie the metre does not need (a tied note is one note, written as the
 metre divides it); a spelling typed in an Ex replacement (`:s/c4/db4/` is
 spelled by the key); a grace note before a clip's first beat is kept
-before the clip, where it does not play. A clip is transcribed whole after
-each change of its notes, and laid out and engraved again only in the
-measures that changed.
+before the clip, where it does not play. A clip's notes are read whole
+after each change (their chords, swing, drift, hands and voices, which
+reach across bars: some 6 ms for 64 bars); what each measure is then
+written as is kept by what it is written from, and only the measures
+that changed are written, laid out and engraved again.

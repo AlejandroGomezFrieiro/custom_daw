@@ -269,6 +269,57 @@ test("score: triplets, quarter-note triplets and 6/8", function()
   eq(want, "2{e C4 e D4} q. E4", "a duplet in 6/8")
 end)
 
+test("score: quintuplets, sextuplets, septuplets, and quadruplets in 6/8, from where the notes fall", function()
+  local function beat_of(n, names)
+    local out = { "C4 0 0.5, D4 0.5 0.5" }
+    for k = 0, n - 1 do out[#out + 1] = string.format("%s %.10f %.10f", names[k + 1], 1 + k / n, 1 / n) end
+    out[#out + 1] = "C5 2 1, G4 3 1"
+    return table.concat(out, ", ")
+  end
+  local names = { "E4", "F4", "G4", "A4", "B4", "A4", "G4" }
+  for _, case in ipairs({ { 5, "5{s E4 s F4 s G4 s A4 s B4}" }, { 6, "6{s E4 s F4 s G4 s A4 s B4 s A4}" },
+    { 7, "7{s E4 s F4 s G4 s A4 s B4 s A4 s G4}" } }) do
+    seed = 40 + case[1]
+    local want, got = both(beat_of(case[1], names), { jitter = 8 })
+    eq(want, "e C4 e D4 " .. case[2] .. " q C5 q G4", case[1] .. " in a beat")
+    eq(got, want, case[1] .. " in a beat, played")
+  end
+  seed = 47
+  local want, got = both("C4 0 0.375, D4 0.375 0.375, E4 0.75 0.375, F4 1.125 0.375, G4 1.5 1.5", { jitter = 8 },
+    { num = 6, den = 8, length = 3 })
+  eq(want, "4{e C4 e D4 e E4 e F4} q. G4", "four eighths in the time of three in 6/8")
+  eq(got, want, "played")
+end)
+
+test("score: a straight part played loosely is never written in tuplets", function()
+  local sixteenths = {}
+  for k = 0, 15 do sixteenths[#sixteenths + 1] = string.format("%s %g 0.25", ({ "C4", "D4", "E4", "F4", "G4" })[k % 5 + 1], k * 0.25) end
+  sixteenths = table.concat(sixteenths, ", ")
+  for s = 1, 6 do
+    seed = 60 + s
+    local want, got = both(MELODY, { jitter = 20, release = 25 }, { length = 8 })
+    eq(got, want, "a melody within 20 ms, seed " .. s)
+    want, got = both(sixteenths, { jitter = 18 })
+    eq(got, want, "sixteenths within 18 ms, seed " .. s)
+    eq(got:find("{", 1, true), nil, "no tuplet")
+    want, got = both("C4 0 0.5, D4 0.5 0.5, E4 1 0.5, F4 1.5 0.5, G4 2 0.5, A4 2.5 0.5", { jitter = 25, tempo = 150 },
+      { num = 6, den = 8, length = 3, tempo = 150 })
+    eq(got, want, "eighths in 6/8 within 25 ms, seed " .. s)
+  end
+end)
+
+test("score: a tuplet said in notation wins over the guess, and other tuplets can be turned off", function()
+  local _, model = load()
+  local five = clean("C4 0 1, E4 1 0.2, F4 1.2 0.2, G4 1.4 0.2, A4 1.6 0.2, B4 1.8 0.2, C5 2 2")
+  local said = model.text(model.layout(five, { length = 4, tuplets = { { start = 1, length = 1, plain = true } } }))
+  eq(said:find("5{", 1, true), nil, "a beat said to be plain: no quintuplet, " .. said)
+  local four = clean("C4 0 1, E4 1 0.25, F4 1.25 0.25, G4 1.5 0.25, A4 1.75 0.25, C5 2 2")
+  said = model.text(model.layout(four, { length = 4, tuplets = { { start = 1, length = 1, n = 5, normal = 4 } } }))
+  eq(said:find("5{", 1, true) ~= nil, true, "straight sixteenths said to be a quintuplet: one, " .. said)
+  local off = model.text(model.layout(five, { length = 4, settings = { tuplets = false } }))
+  eq(off:find("5{", 1, true), nil, "with tuplets off, no quintuplet: " .. off)
+end)
+
 test("score: grace notes, staccato, and a held note as a second voice", function()
   seed = 15
   local _, got = both("C5 0 1, E5 1 1, G5 2 2", { jitter = 8, graces = { { "D5", 1, 50, 35 }, { "F#5", 2, 45, 30 } } })

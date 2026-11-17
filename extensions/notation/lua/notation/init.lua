@@ -256,7 +256,7 @@ function view:layout()
     number = opts.bars[1] and opts.bars[1].number })
   -- Each written note knows the note that plays it, by its place among the clip's.
   local place = {}
-  for i, n in ipairs(clip:notes()) do
+  for i, n in ipairs(view.notes_of(c)) do
     if n.id then place["n" .. n.id] = i end
   end
   layout.places = {}
@@ -299,8 +299,16 @@ function view.score_of(c)
   end
   local sc = midi.derive(notes, own, opts)
   if derived_count > 8 then derived, derived_count = {}, 0 end
-  derived[c.id], derived_count = { key = key, score = sc }, derived_count + 1
+  derived[c.id], derived_count = { key = key, score = sc, notes = notes }, derived_count + 1
   return sc
+end
+
+--- The clip's notes as its score (`view.score_of`) was written from, to
+--- read: they must not be changed.
+function view.notes_of(c)
+  view.score_of(c)
+  local hit = derived[c.id]
+  return hit and hit.notes or api.clip_notes(c.id)
 end
 
 --- What the track keeps for notation (its clef, its tablature).
@@ -550,7 +558,7 @@ function view.store(clip, before, sc)
   local f = D.frame(sc)
   local last = 0
   for i, m in ipairs(sc.measures) do
-    for _, entry in ipairs(m.voices) do
+    for _, entry in ipairs(D.peek(m, "voices")) do
       if #entry.events > 0 then last = i end
     end
   end
@@ -578,7 +586,7 @@ function view:write(fn)
   -- first, in the same step.
   if midi.migrate(clip.id) then self.cache = nil end
   local before = view.score_of(clip:get())
-  local sc = D.copy(before)
+  local sc = D.copy(before, true)
   local ok, result = pcall(fn, sc, clip)
   if not ok then error(result, 0) end
   if result ~= false then view.store(clip, before, sc) end

@@ -115,7 +115,9 @@
   transcription when it goes out again; LilyPond writes chord symbols as
   text, not `ChordNames`. The notation window outlines the roll's note in
   the terminal only; the several-tracks view and a track's export
-  transcribe what the clips play.
+  transcribe what the clips play. Tuplets are read from the MIDI within a
+  beat (and quarter-note triplets over two); nine to a beat, five over two
+  beats and the like are written only when said in notation.
   Of the grammar for music: `!` does not run a snippet (snippets expand in
   the piano roll) nor hand a filter MusicXML (it hands it a line of text an
   event); `in` takes no count; a chord tied only in some of its notes is
