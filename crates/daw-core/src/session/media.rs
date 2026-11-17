@@ -18,6 +18,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use super::Session;
+use crate::freeze;
 use crate::model::{Clip, ClipContent, Project};
 
 /// How deep, and how far, the search for a missing file by name looks.
@@ -58,8 +59,9 @@ fn map_take_files(clip: &mut Clip, f: &mut impl FnMut(&Path) -> Option<PathBuf>)
     }
 }
 
-/// Change the file of every audio clip, and of every other take of one, for
-/// which `f` gives a new one. Returns how many clips changed.
+/// Change the file of every audio clip, of every other take of one, and of
+/// every frozen track (see `crate::freeze`), for which `f` gives a new one.
+/// Returns how many clips and tracks changed.
 pub(super) fn map_files(
     project: &mut Project,
     mut f: impl FnMut(&Path) -> Option<PathBuf>,
@@ -70,6 +72,10 @@ pub(super) fn map_files(
         .iter_mut()
         .chain(std::iter::once(&mut project.master))
     {
+        if freeze::frozen_file(track).is_some_and(|file| f(&file).is_some()) {
+            freeze::map_frozen_file(Arc::make_mut(track), &mut f);
+            changed += 1;
+        }
         let new: Vec<(Option<PathBuf>, bool)> = track
             .clips
             .iter()
@@ -105,7 +111,7 @@ pub(super) fn map_files(
 }
 
 /// Every file the project's audio clips play, once each: the takes that
-/// are not playing included.
+/// are not playing included, and the files frozen tracks play.
 pub fn files(project: &Project) -> BTreeSet<PathBuf> {
     project
         .all_tracks()
@@ -117,6 +123,7 @@ pub fn files(project: &Project) -> BTreeSet<PathBuf> {
             };
             own.into_iter().chain(take_files(c))
         })
+        .chain(project.all_tracks().filter_map(|t| freeze::frozen_file(t)))
         .collect()
 }
 

@@ -1589,11 +1589,14 @@ end
 function M.apply(buf, steps)
   api.undo_label("Write " .. buf.name)
   local before = api.project_get().edits
-  local state = { made = {} }
+  -- A step that changes something outside the project (a file) notes how
+  -- to take it back in `state.undo`.
+  local state = { made = {}, undo = {} }
   for _, step in ipairs(steps) do
     if step.run then
       local ok, err = pcall(step.run, state)
       if not ok then
+        for i = #state.undo, 1, -1 do pcall(state.undo[i]) end
         if api.project_get().edits ~= before then
           api.undo_checkpoint()
           daw.undo()

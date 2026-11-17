@@ -62,6 +62,7 @@ top and bottom, `0` `$` the first and last strip. In **D**: `j` `k` are rows,
 | `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
 | `<A-j>` `<A-k>` | move the track down, up | |
 | `M` `s` `r` | mute, solo, arm the track | |
+| `zn` `zw` | narrow to the group at the cursor, in a tab of its own; widen again | |
 | `,vn` `,va` `,vr` `,vx` `,vl` | a new VCA over the selected tracks; put them under a VCA; take them out of their VCAs; take the VCA at the cursor away; link the faders of a group | |
 | `I` `<A-i>` | choose the input (audio, MIDI port and channel), monitor it | |
 | `a` | add a device | enter notes after the note |
@@ -278,6 +279,20 @@ text as in Vim; nothing changes in the project until `:w`.
 | `:sort` | sort the lines (`!` reversed, `n` by number); over ranges of lines too: `:%s/a/b/g`, `:2,4d`, `:m 0` |
 | `<CR>` `-` | a track's devices, a device in the panel, go to a marker; back up to the tracks |
 | `gw` | the buffer in a window of its own, in the graphical frontend |
+
+
+## Files (`:e folder`)
+
+A folder as lines to edit, and as a tree (`:Files`). Edits are the text's;
+`:w` shows the plan and `y` does it; deleted files go to the trash.
+
+| Keys | |
+| --- | --- |
+| `<CR>` `-` | open (a folder goes in, a project opens, a sound is placed at the cursor); up |
+| `go` `gh` `gH` | a sound on a new track; hear it; hear each as the cursor rests |
+| `g.` | show or hide files that start with a dot |
+| `za` `zR` `zM` | in the tree: open or close a folder, all, none |
+| `cw` `dd` `yy` `p` `o` | rename (or move, with a path); trash; copy; new file (`name/` a folder) |
 
 ## Launch clips (the session view, `,l`)
 

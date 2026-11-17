@@ -63,26 +63,31 @@ function M.folded(group)
   return meta(id_of(group)).group_folded == true
 end
 
---- Whether a track is out of sight: inside a group that is folded.
-function M.hidden(track)
+--- Whether a track is out of sight: inside a group that is folded. Seen
+--- from inside group `top` (a narrowed tab's), only the groups inside it
+--- count: `top` itself is open there.
+function M.hidden(track, top)
+  if top and id_of(track) == top then return false end
   local at, steps = M.of(track), 0
-  while at and steps < 16 do
+  while at and at ~= top and steps < 16 do
     if M.folded(at) then return true end
     at, steps = M.of(at), steps + 1
   end
   return false
 end
 
---- The tracks that are drawn, in order: all but those folded away. Rows of
---- the arrange view and of a graphical frontend are places in this list.
+--- The tracks that are drawn, in order: all but those folded away, and in
+--- a narrowed tab only those of its group (`daw.scope`). Rows of the
+--- arrange view and of a graphical frontend are places in this list.
 --- With `{ lanes = true }`, every row: `{ track = id }` for a track and
 --- `{ track = id, lane = id }` for an automation lane shown under it
 --- (see `daw.lanes`).
 function M.rows(opts)
   if opts and opts.lanes then return daw.lanes.lines() end
   local out, vcas = {}, {}
-  for _, id in ipairs(api.track_list()) do
-    if not M.hidden(id) then
+  local scope = daw.scope and daw.scope.current()
+  for _, id in ipairs(daw.scope and daw.scope.tracks(scope) or api.track_list()) do
+    if not M.hidden(id, scope) then
       -- VCAs come after the tracks they move.
       local list = daw.vca.is_vca(id) and vcas or out
       list[#list + 1] = id

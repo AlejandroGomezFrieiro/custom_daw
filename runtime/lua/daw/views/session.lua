@@ -70,7 +70,7 @@ function view:render(buf, ctx)
   local g = draw.g
   -- A VCA has no clips to launch.
   local tracks = {}
-  for _, id in ipairs(api.track_list()) do
+  for _, id in ipairs(daw.scope.tracks()) do
     if not daw.vca.is_vca(id) then tracks[#tracks + 1] = id end
   end
   local quantize = api.project_get().launch_quantize

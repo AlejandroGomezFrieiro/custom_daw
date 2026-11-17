@@ -62,7 +62,8 @@ transport and position, the time, tempo and signature, what is switched on
 (`loop 3–5`, `click`, `rec`, `write`), the grid, the size of a visual
 selection; on the right keys typed so far, the project (an amber dot when it
 has unsaved changes), the engine, and its load with dropouts (`xrun 3`) when
-there have been any. Each segment has the narrowest screen it is shown on, so
+there have been any ([The status line](#the-status-line) below says how to
+change what is in it). Each segment has the narrowest screen it is shown on, so
 the line does not change shape as the width changes by a column; the
 project's name is cut before anything else goes. The bottom line shows the
 keys worth knowing first for the view and mode you are in, and gives way to
@@ -106,3 +107,77 @@ vocal editor and lyric sheet.
 Devices written in Lua go in `~/.config/daw/devices/`, one `.lua` file each,
 and are loaded again whenever they are saved: see
 [Writing a device in Lua](devices.md#writing-a-device-in-lua).
+
+## The status line
+
+<!-- tags: statusline lualine -->
+The status line is built as lualine builds Neovim's: six sections, `a b c`
+from the left and `x y z` to the right edge, each a list of components, and
+`daw.statusline.setup` in `init.lua` changes what you name. What you leave
+out keeps its default, so the line that comes with the program is the
+starting point:
+
+```lua
+daw.statusline.setup({
+  sections = {
+    a = { "mode" },
+    b = { "take" },
+    c = { "transport", "clock", "tempo", "flags", "cursor", "grid" },
+    x = { "midi", "keys" },
+    y = { "engine", "cpu" },
+    z = { "project" },
+  },
+  separators = { component = "│", section = "│" },   -- "" for a space
+  theme = "default",                                 -- "mono", or a table of highlight groups
+  views = { pianoroll = { sections = { c = { "cursor", "grid" } } } },
+})
+```
+
+The components that come with the program: `mode` (with the view that has
+the keys), `macro`, `transport`, `clock`, `tempo` (and the metre where the
+playhead is), `flags` (loop, click, punch, count-in, rec, write), `take`,
+`render`, `diagnostics`, `qf`, `pointer` (what is under the mouse), `grid`,
+`selection`, `cursor` (the track and clip under the cursor), `buffer` (the
+text buffer with the keys), `keys` (what is typed so far), `project` (an
+amber dot when it has unsaved changes), `engine`, `cpu` (and dropouts) and
+`midi` (lit for a moment after MIDI comes in). A component is one of:
+
+- a name: `"tempo"`;
+- a function: `function(ctx) return "text" end`, which gives nothing (it has
+  nothing to say now), a string, or a list of `{ text, group }` pieces;
+- a table with either of those first and options after it: `{ "grid", min = 120 }`,
+  `{ fn, rank = 2, style = "StatusDim", cond = function(ctx) return ... end,
+  fmt = function(text) return text:upper() end }`.
+
+`min` is the narrowest screen it is shown on and `rank` how late it is
+dropped when the line is too long (a higher rank goes first, `0` never; the
+project's name is cut before anything goes). `ctx` holds `width`, `mode`,
+`view` (the view that has the keys), `focused` (for a winbar), `g` (the
+characters, as `daw.draw.g`) and, read when asked for, `transport`,
+`project` and `engine`, the same tables `daw.api.transport_get`,
+`project_get` and `engine_get` give. An error in a component is not shown on
+the line: `daw.statusline.line(120).errors` lists them. A component with
+`key = function(ctx) return value end` is called again only when its key
+changes (the project, engine and cpu components do this), so that a long
+line costs what has changed.
+
+An extension adds a component for scripts to name:
+`daw.statusline.component("pulse", { fn = function(ctx) return "♥" end, min = 90, rank = 6 })`.
+
+`views` gives sections to use while a view has the keys (the roll may show
+its clip, the mixer nothing but the mode); `inactive_sections`, those to use
+while a float (a picker, help, the plan of a write) has them. The other bars
+take the same sections: `winbar` adds to the title bar of the window that
+has the keys and `inactive_winbar` to the others; `tabline = { sections =
+{ z = { ... } }, always = true }` puts sections at the right end of the row of
+tabs, which is shown with one tab too when `always` is set (not yet in the
+window). `theme` is `"default"`, `"mono"` (one colour for every mode) or a
+table that gives a highlight group to the mode (`mode = { n = "...", i = "..." }`),
+to each section (`c = "StatusDim"`) and to the separators (`sep`); define a
+group with `daw.ui.hl`. `daw.statusline.reset()` goes back to what came with the
+program. `:help statusline` has this page.
+
+The graphical window shows the line it has always shown, until `setup` is
+called: then the kernel tells it the line's pieces as `modal.statusline`
+(`{ left, right }`, each a list of `{ text, group }`) and the window is
+to draw those; see [Window](window.md).

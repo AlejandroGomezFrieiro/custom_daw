@@ -281,7 +281,7 @@ return function(pick)
     title = "Tracks",
     items = function()
       local out = {}
-      for i, id in ipairs(api.track_list()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
+      for i, id in ipairs(daw.scope.tracks()) do out[#out + 1] = { id = id, index = i, name = track_name(id) } end
       return out
     end,
     format = function(t) return string.format("%2d  %s", t.index, t.name) end,
@@ -320,7 +320,7 @@ return function(pick)
     title = "Clips",
     items = function()
       local out = {}
-      for _, id in ipairs(api.track_list()) do
+      for _, id in ipairs(daw.scope.tracks()) do
         local name = track_name(id)
         for _, c in ipairs(api.clip_list(id)) do
           out[#out + 1] = { id = c.id, track = id, track_name = name, name = c.name, start = c.start, length = c.length, kind = c.kind }

@@ -1111,6 +1111,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow().engine_reset_stats();
             Ok(())
         }
+        // Play a track from a sound file for now, as if frozen, or live again
+        // with nil; the project is not changed (see `freeze.rs`).
+        fn engine_hold(_, sh, (track, file) => (Id, Option<String>)) {
+            sh.session.borrow_mut().hold(track, file.map(PathBuf::from)).lua()
+        }
+        fn engine_held(_, sh, () => ()) { Ok(sh.session.borrow().held()) }
+        // Only these tracks heard for now, as a solo would, or all with nil.
+        fn engine_audible(_, sh, tracks => Option<Vec<Id>>) {
+            sh.session.borrow_mut().set_audible(tracks);
+            Ok(())
+        }
         // Threads to process tracks on, counting the audio thread; 0 leaves
         // it to the machine. `engine_get().threads` says how many are in use.
         fn engine_set_threads(_, sh, threads => usize) {
@@ -1656,6 +1667,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
     crate::measure::install(lua, &api, shared)?;
     crate::tempo_api::install(lua, &api, shared)?;
     crate::luadev_api::install(lua, &api, shared)?;
+    crate::fs_api::install(lua, &api)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("daw.api", api)

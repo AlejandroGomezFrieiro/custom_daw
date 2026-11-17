@@ -1,10 +1,10 @@
 # extensions/sampler as a package: its Lua, with the plugin it plays
 # through in `clap/` beside it, where the extension looks for it first.
 # What `paw.withExtensions (exts: [ exts.sampler ])` puts in the program.
-{ lib, runCommand, callPackage }:
+{ lib, runCommand, callPackage, craneLib }:
 
 let
-  engine = callPackage ./engine.nix { };
+  engine = callPackage ./engine.nix { inherit craneLib; };
   # The extension as the program loads it: the plugin's source and the
   # packaging stay behind.
   lua = lib.fileset.toSource {

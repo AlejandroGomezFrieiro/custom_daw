@@ -220,6 +220,12 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
     buf:text(before - 1, y, letter, writes and "Armed" or (on and mode ~= "off") and "Automation" or "TrackIndex")
     before = before - 2
   end
+  -- An `F` on a frozen track, an `f` on one held inside a frozen group.
+  local frozen = not t.master and daw.freeze and daw.freeze.state(t.id)
+  if frozen then
+    buf:text(before - 1, y, frozen == "frozen" and "F" or "f", "TrackInfo")
+    before = before - 2
+  end
   -- With one row, the volume goes there too.
   if height == 1 and not narrow then
     local vol = draw.db_text(t.volume)

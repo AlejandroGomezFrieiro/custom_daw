@@ -215,6 +215,9 @@ local function modal()
     local row, id = require("daw.mixer_rows").current()
     if row then out.mixer_row = { track = id, kind = row.kind, index = row.index or 0, field = row.field or "" } end
   end
+  -- The status line when it was set up (`daw.statusline.setup`): the
+  -- pieces of each side as `{ text, style }`, for a window that draws it.
+  if daw.statusline.customized() then out.statusline = daw.statusline.frontend() end
   local qf = daw.qf and daw.qf.status()
   if qf then
     local text, worst = {}, 0
