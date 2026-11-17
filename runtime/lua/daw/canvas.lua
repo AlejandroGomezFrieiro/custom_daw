@@ -182,10 +182,19 @@ end
 local DOT_ROW = { [0] = 0, 1, 2, 0, 1, 2, 3, 3 }
 local DOT_COLUMN = { [0] = 0, 0, 0, 1, 1, 1, 0, 1 }
 local function add_run(ops, x, y, w, h, chars, colour, background, attrs)
-  local dots, shown, cell = {}, {}, M.cell.w
+  local dots, sextants, shown, cell = {}, {}, {}, M.cell.w
   for i, ch in ipairs(chars) do
-    local b1, b2, b3 = ch:byte(1, 3)
-    if b1 == 0xE2 and b2 and b2 >= 0xA0 and b2 <= 0xA3 then
+    local b1, b2, b3, b4 = ch:byte(1, 4)
+    if b1 == 0xF0 and b2 == 0x9F and b3 and b3 >= 0xAC and b3 <= 0xAF and b4
+        and (b3 - 0xAC) * 64 + (b4 - 0x80) <= 0x3B then
+      -- A sextant (U+1FB00 to U+1FB3B): the font has none either.
+      local n = (b3 - 0xAC) * 64 + (b4 - 0x80)
+      local bits = n + 1
+      if bits >= 21 then bits = bits + 1 end
+      if bits >= 42 then bits = bits + 1 end
+      shown[i] = " "
+      sextants[#sextants + 1] = { i - 1, bits }
+    elseif b1 == 0xE2 and b2 and b2 >= 0xA0 and b2 <= 0xA3 then
       local bits = (b2 - 0xA0) * 64 + (b3 - 0x80)
       shown[i] = " "
       if bits ~= 0 then dots[#dots + 1] = { i - 1, bits } end
@@ -194,8 +203,16 @@ local function add_run(ops, x, y, w, h, chars, colour, background, attrs)
     end
   end
   local text = table.concat(shown)
-  if #dots == 0 or text:find("[^ ]") or background ~= "" then
+  if (#dots == 0 and #sextants == 0) or text:find("[^ ]") or background ~= "" then
     ops[#ops + 1] = { "m", x, y, w, h, text, colour, background, attrs }
+  end
+  -- A sextant is up to six rectangles, a half cell wide and a third tall.
+  for _, sx in ipairs(sextants) do
+    for bit = 0, 5 do
+      if band(sx[2], 2 ^ bit) ~= 0 then
+        ops[#ops + 1] = { "r", x + (sx[1] + (bit % 2) / 2) * cell, y + math.floor(bit / 2) * h / 3, cell / 2, h / 3, colour, "", 1, 0 }
+      end
+    end
   end
   local dw, dh = math.max(1, cell * 0.24), math.max(1, h * 0.13)
   for _, dot in ipairs(dots) do

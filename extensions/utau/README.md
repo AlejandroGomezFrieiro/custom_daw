@@ -116,7 +116,7 @@ here), the state of each phrase in the ruler (grey pending, yellow rendering,
 blue draft, green final, red error), the pitch actually sung as a white line
 across the rows (`▔`, `─` and `▁` for the upper, middle and lower third of a
 semitone), the bends you drew as orange dots, and under the notes the chosen
-curve in braille with its value at the cursor.
+curve in cells (`daw.opt.curve_glyphs`) with its value at the cursor.
 
 Notes are heard as they are placed or clicked: sung by the engine with the
 track's voice when it is running and the track has a singer, else as a soft

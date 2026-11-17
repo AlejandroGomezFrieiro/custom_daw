@@ -149,7 +149,7 @@ pan and every parameter of the track's devices. A lane's header names what it
 moves, its value at the cursor, and whether it is read or bypassed; its curve
 and points (`◆`) are drawn along the timeline instead of over the clips. `j`
 and `k` step onto lane rows as onto tracks. With the lanes closed, the
-track the cursor is on draws its volume curve in braille in the empty stretches
+track the cursor is on draws its volume curve (sextants; `daw.opt.curve_glyphs`) in the empty stretches
 of its row, never over clips; the other tracks show an `A` in their header
 and draw nothing, so that the notes stay readable. On a lane row `h` `l` and the
 other motions move in time, `w` `b` go to the next and previous point, `A`
@@ -181,8 +181,8 @@ The curve is a buffer named by its address, so `:vs daw://lane/3`, `:e
 daw://tempo` or `:sp daw://clip/7/control/cc/74` show one, and `:setlocal
 timebind` scrolls it with the arrange view. A window showing a lane that
 the project no longer has (another project was opened) closes, or, when it
-is the last, is left empty. It draws the curve in braille
-dots over the bars and beats, the values in their unit along the left, each
+is the last, is left empty. It draws the curve in
+sextants (`daw.opt.curve_glyphs`) over the bars and beats, the values in their unit along the left, each
 point as `◆` (`■` where the stretch after it holds, `●` where it eases),
 and along the bottom the point under the cursor or the curve's value there.
 
