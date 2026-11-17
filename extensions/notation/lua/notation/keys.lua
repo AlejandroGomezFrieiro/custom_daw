@@ -402,17 +402,28 @@ end
 
 local motion, linewise = { motion = true }, { motion = true, linewise = true }
 local far = { motion = true, jump = true }
---- Keys that edit do nothing (and say why) while the pages are shown to check.
-local function guarded(rhs)
+--- Keys do nothing (and say why) when the clip shown is gone: undone or deleted.
+local function present(rhs)
   if type(rhs) ~= "function" then return rhs end
   return function(...)
-    if view:readonly() then return end
+    if not view:clip() then return view.missing() end
     return rhs(...)
   end
 end
+--- Keys that edit do nothing (and say why) while the pages are shown to check.
+local function guarded(rhs)
+  if type(rhs) ~= "function" then return rhs end
+  return present(function(...)
+    if view:readonly() then return end
+    return rhs(...)
+  end)
+end
 local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, zp = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, ["<leader>n"] = true, ZZ = true, gd = true, gR = true, gT = true, ["<Tab>"] = true }
+-- Keys that leave the view, or open another clip, work with no clip shown.
+local ANYWAY = { ["<Esc>"] = true, ["<leader>n"] = true, gT = true }
 local function nmap(lhs, rhs, desc, opts)
-  if not (opts and opts.motion) and not READ[lhs] and not lhs:match("^g%d$") then rhs = guarded(rhs) end
+  if not (opts and opts.motion) and not READ[lhs] and not lhs:match("^g%d$") then rhs = guarded(rhs)
+  elseif not ANYWAY[lhs] then rhs = present(rhs) end
   map(lhs, rhs, util.merge({ view = "notation", desc = desc }, opts))
 end
 
@@ -432,8 +443,8 @@ nmap("<Up>", move(0, 1), "Up a line or space", linewise)
 -- describes, as in every view.
 nmap("<C-d>", move(0, -7), "Down an octave", linewise)
 nmap("<C-u>", move(0, 7), "Up an octave", linewise)
-keymap.classic("J", move(0, -7), { view = "notation", desc = "Down an octave", motion = true, linewise = true })
-keymap.classic("K", move(0, 7), { view = "notation", desc = "Up an octave", motion = true, linewise = true })
+keymap.classic("J", present(move(0, -7)), { view = "notation", desc = "Down an octave", motion = true, linewise = true })
+keymap.classic("K", present(move(0, 7)), { view = "notation", desc = "Up an octave", motion = true, linewise = true })
 nmap("w", function(ctx) view:to_event(1, ctx.count) end, "Next note or rest", motion)
 nmap("b", function(ctx) view:to_event(-1, ctx.count) end, "Previous note or rest", motion)
 nmap("e", function(ctx)

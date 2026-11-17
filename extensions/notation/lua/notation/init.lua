@@ -31,7 +31,20 @@ local view = {
 
 function view:clip()
   if self.clip_id and pcall(api.clip_get, self.clip_id) then return paw.clip(self.clip_id) end
-  self.clip_id = nil
+  -- Undone or deleted: kept, so that a redo shows it again.
+  if self.clip_id then self.gone, self.clip_id, self.cache = self.clip_id, nil, nil end
+  if self.gone and pcall(api.clip_get, self.gone) then
+    self.clip_id, self.gone = self.gone, nil
+    return paw.clip(self.clip_id)
+  end
+end
+
+--- Say that there is no clip to act on: why, when it was undone or deleted.
+function view.missing()
+  if view.gone then
+    return paw.notify("the clip shown here is gone (undone or deleted): Ctrl-r brings it back", "warn")
+  end
+  paw.notify("no clip open: put the cursor on a MIDI clip in the arrange view and open it", "warn")
 end
 
 -- What the layout is made from ---------------------------------------------------------
@@ -481,7 +494,8 @@ end
 --- Sound a pitch on the clip's track.
 function view:audition(pitch)
   local clip = self:clip()
-  if clip then clip:track():play_note(pitch or self:cursor_pitch(), paw.opt.velocity, 220) end
+  pitch = pitch or self:cursor_pitch()
+  if clip and pitch >= 0 and pitch <= 127 then clip:track():play_note(pitch, paw.opt.velocity, 220) end
 end
 
 --- Move the cursor by beats and staff positions.
@@ -1564,6 +1578,8 @@ function view:enter(letter, advance)
   local step = math.floor(from / 7) * 7 + l
   if step - from > 3 then step = step - 7 elseif from - step > 3 then step = step + 7 end
   local pitch = model.key_pitch(step, fifths)
+  -- MIDI ends at G9 and starts at C-1: past them the cursor stays.
+  if pitch > 127 or pitch < 0 then return paw.notify(pitch > 127 and "no note that high: MIDI ends at G9" or "no note that low: MIDI starts at C-1", "warn") end
   local building = self.chord and math.abs(self.chord.beat - self.beat) < EPS
   if not building then self.chord = { beat = self.beat, pitches = {} } end
   self.chord.pitches[pitch] = true
@@ -1741,7 +1757,7 @@ function view:edit(clip)
   if not clip then return paw.notify("no clip here", "warn") end
   if clip.kind ~= "midi" then return paw.notify("only MIDI clips can be shown as notation", "warn") end
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache = clip.id, 0, 1, nil, nil, nil
-  self.parts = nil
+  self.parts, self.gone = nil, nil
   self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace, self.pending_grace = false, nil, nil, nil, nil, nil, nil
   local layout = self:layout()
   local first = model.events(layout)[1]
