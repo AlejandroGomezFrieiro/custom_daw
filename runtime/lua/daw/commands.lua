@@ -324,7 +324,8 @@ local function candidates(spec, rest, info)
   if not ok or type(list) ~= "table" then return {} end
   local out = {}
   for i, c in ipairs(list) do out[i] = type(c) == "table" and item(tostring(c.text or c[1]), c.desc) or item(tostring(c)) end
-  return out
+  -- A completer that ranks what it gives (`ranked = true`) is taken in its order, all of it.
+  return out, false, list.ranked
 end
 
 local function starts(text, stem) return text:sub(1, #stem):lower() == stem:lower() end
@@ -369,10 +370,10 @@ function M.complete(line)
   local info = { word = word, index = #words_before + 1, words = words_before, line = line }
   local head = name .. sep
   local whole, part, inside = {}, {}, {}
-  local list, by_word = candidates(spec, rest, info)
+  local list, by_word, ranked = candidates(spec, rest, info)
   for _, c in ipairs(list) do
     local text = c.text
-    if not by_word and starts(text, rest) then
+    if ranked or (not by_word and starts(text, rest)) then
       whole[#whole + 1] = { text = head .. text, label = text, desc = c.desc }
     else
       -- A name with a space in it is quoted, unless the command takes its

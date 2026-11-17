@@ -80,7 +80,7 @@ function M.paragraphs()
     local n = tutor.number(lesson)
     local following = tutor.lessons[n + 1]
     if following then
-      add(string.format("Lesson done. `,hn` goes on to lesson %d, %s; `,hl` lists the lessons; `,hq` leaves the tutor.", n + 1, following.title))
+      add(string.format("Lesson done. `,hn` goes on to lesson %d, %s; `,hl` lists the lessons; `,hq` leaves the tutor; `:help course-%d` is this lesson to read again.", n + 1, following.title, n))
     else
       add("That was the last lesson. `,hl` lists them all; `,hq` leaves the tutor.")
     end
@@ -126,7 +126,11 @@ function view:render(buf)
     for _, piece in ipairs(line) do inner:text(1 + piece.x, y, piece.text, piece.style) end
     y = y + 1
   end
-  local footer = M.keys("`,hh` hint · `,hn` skip · `,hr` restart · `,hl` lessons · `,hq` leave")
+  local footer = "`,hh` hint · `,hn` skip · `,hr` restart · `,hl` lessons · `,hq` leave"
+  -- The lesson's page of help, where there is room for it.
+  local page = lesson and string.format(" · `:help course-%d` the lesson to read", tutor.number(lesson))
+  if page and api.str_width((footer .. page):gsub("`", "")) < w - 2 then footer = footer .. page end
+  footer = M.keys(footer)
   local x = 1
   for _, word in ipairs(words(footer, "TutorDim")) do
     if word.space and x > 1 then x = x + 1 end

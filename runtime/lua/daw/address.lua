@@ -254,7 +254,9 @@ end
 --- Add a kind of address: `daw://<name>/...`, for what an extension keeps
 --- (the vocal editor's phrases, a score's measures). `spec.resolve(uri,
 --- parts)` gives the thing or nil; optional `of(object)`, `children(uri,
---- parts)`, `parent(uri, parts)`, and `edit(change, parts)` to apply a
+--- parts)`, `parent(uri, parts)`, `go(location, parts)` and `where(location,
+--- parts)` for the quickfix list (going there, and naming it in a few words),
+--- and `edit(change, parts)` to apply a
 --- workspace edit's change to it (which must make its edits through
 --- `daw.api`, so that they join the undo step).
 function M.scheme(name, spec)

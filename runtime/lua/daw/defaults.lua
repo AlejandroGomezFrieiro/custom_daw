@@ -1841,7 +1841,7 @@ map("gI", "punch selection", { mode = "x", desc = "Punch in and out over the sel
 map("ge", "device.editor", { desc = "Show or hide the plugin's window" })
 map("R", "transport.record", { desc = "Record, or stop recording" })
 map(":", "cmdline", { mode = nx, desc = "Type a command" })
-map("?", "help", { mode = nx, desc = "Show key mappings" })
+map("?", "pick.keys", { mode = nx, desc = "Show key mappings" })
 map("u", "undo", { desc = "Undo", repeatable = false })
 map("<C-r>", "redo", { desc = "Redo", repeatable = false })
 map(".", function(ctx) keymap.repeat_last(ctx.count) end, { desc = "Repeat the last change", repeatable = false })

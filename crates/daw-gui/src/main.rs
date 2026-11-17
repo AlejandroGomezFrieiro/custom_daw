@@ -990,8 +990,10 @@ fn notation(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
         // down: passed on as `<C-q>` it would cancel a count typed before
         // it (`6` then `Ctrl-x`). Nothing is mapped to Ctrl-q.
         None if key == char::from(Key::Control) => return None,
-        // With Control held some systems send the control character.
-        None if ctrl && (key as u32) < 0x20 => (((key as u8 + 0x60) as char).to_string(), true),
+        // With Control held some systems send the control character: 0x01
+        // to 0x1a are the letters, 0x1b to 0x1f `[` `\` `]` `^` `_`.
+        None if ctrl && (key as u32) < 0x1b => (((key as u8 + 0x60) as char).to_string(), true),
+        None if ctrl && (key as u32) < 0x20 => (((key as u8 + 0x40) as char).to_string(), true),
         // What is left below a space, or in the private range Slint uses for
         // keys, is a modifier or a key with no name here.
         None if (key as u32) < 0x20
