@@ -37,6 +37,23 @@ function M.get(name)
   return registry[name]
 end
 
+--- Count a use of a command that was chosen by name (typed, or picked), so
+--- that pickers can put what is used often first. Kept in `daw.state`.
+function M.used(name)
+  local spec = registry[name]
+  name = spec and spec.alias_of or name
+  if not registry[name] then return end
+  local uses = daw.state.command_uses or {}
+  uses[name] = math.min((uses[name] or 0) + 1, 1000)
+  daw.state.command_uses = uses
+end
+
+--- How many times `used` has counted a command.
+function M.uses(name)
+  local uses = daw.state.command_uses
+  return type(uses) == "table" and uses[name] or 0
+end
+
 --- Every command, sorted by name.
 function M.list()
   local out = {}
@@ -57,6 +74,15 @@ end
 --- with it, if there are any.
 function M.unknown(name)
   name = tostring(name)
+  local ext = daw.ext
+  local stem = name:match("^[^.]+")
+  if ext and stem and not ext.loaded[stem] then
+    for _, bundled in ipairs(ext.bundled()) do
+      if bundled == stem then
+        return stem .. " is a bundled extension that isn't loaded: `:ext.load " .. stem .. "` loads it now, `daw.ext.load` in init.lua keeps it"
+      end
+    end
+  end
   local near = {}
   for _, other in ipairs(M.list()) do
     if #near < 5 and #name >= 2 and other.name:sub(1, #name) == name then near[#near + 1] = ":" .. other.name end

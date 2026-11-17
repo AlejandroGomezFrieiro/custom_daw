@@ -356,3 +356,32 @@ work on what is written, and each edit is one undo step that `.` repeats.
   letter re-pitches a note, `R` re-pitches in turn (not record here); in
   insert mode `/` `//` a grace note, `Ctrl-t` a tuplet, `Ctrl-o` one normal
   command, `Ctrl-r` a register, `Tab` the suggestion.
+
+Everything that is not a note is written with a popover: the leader and a
+letter opens a one-line prompt at the caret (in visual mode for the
+selection; in insert mode after `Ctrl-o`, and entering goes on after).
+`Tab` completes, `Up` brings back what was typed before in that popover,
+the page shows the result in the accent while it is typed, `Enter` writes
+it as one undo step and `Esc` leaves nothing. Each is an Ex command, so `.`,
+`@:` and `:5,8notation.dyn p` do the same.
+
+The popovers are keys of the notation view (its README has them all):
+
+| Popover | Keys | Accepts |
+| --- | --- | --- |
+| dynamics | `,d` | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<` |
+| tempo | `,t` | `Allegro q=132`, `q.=60`, `rit.`, `accel.`, `a tempo` |
+| time signature | `,m` | `6/8`, `3+3+2/8`, `C`, `¢` |
+| key | `,k` | `Eb`, `f#m`, `D dorian` |
+| clef | `,C` | `bass`, `treble8`, `alto`, `tenor` |
+| barlines, repeats, endings | `,b` | `\|\|`, `\|.`, `\|:`, `:\|`, `1.`, `2.` |
+| text | `,X` | `dolce` |
+| rehearsal mark | `,r` | `A` (Enter alone: the next letter) |
+| chord symbols | `,q` | `Cmaj7`, `G/B`, `N.C.`; `Space` next beat |
+| lyrics | `,l` | syllables; `Space` next note, `-` hyphen, `_` extender; `verse=2 ` first |
+| intervals | `,i` | `3`, `-6`, `8`, `m3`, `P5` |
+| tuplets | `,3` | `3`, `5:4` |
+| voice | `,v` | `1` to `4` |
+| ornaments | `,o` | `tr`, `mordent`, `turn`, `fermata` |
+| playing techniques | `,p` | `pizz.`, `arco`, `con sord.` |
+| the last popover again, with its text | `,.` | |

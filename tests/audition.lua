@@ -75,7 +75,7 @@ test("a picker hears the item the selection rests on, once, after the delay", fu
   eq(table.concat(calls, " "), "three", "only the item rested on")
   eq(heard().label, "hearing three", "the label the pane shows")
   local screen = table.concat(api.ui_snapshot(120, 30), "\n")
-  eq(screen:find("▶ hearing three", 1, true) ~= nil, true, "the pane says what plays")
+  eq(screen:find("♪ hearing three", 1, true) ~= nil, true, "the pane says what plays")
   eq(screen:find("C-Space hear", 1, true) ~= nil, true, "the footer names the key")
   keys("<Esc>")
 end)

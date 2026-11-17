@@ -60,6 +60,35 @@ function M.load_dir(dir)
   end
 end
 
+--- The directory of the extensions that come with the program:
+--- `$DAW_HOME/extensions`, or `extensions` under the working directory in a
+--- source tree. Nil when neither is there.
+function M.bundled_dir()
+  for _, root in ipairs({ os.getenv("DAW_HOME") or ".", "." }) do
+    if #api.read_dir(root .. "/extensions") > 0 then return root .. "/extensions" end
+  end
+end
+
+--- The names of the bundled extensions, loaded or not, sorted.
+function M.bundled()
+  local dir, out = M.bundled_dir(), {}
+  for _, item in ipairs(dir and api.read_dir(dir) or {}) do
+    if item.is_dir then out[#out + 1] = item.name end
+  end
+  table.sort(out)
+  return out
+end
+
+--- Load a bundled extension by name; a name already loaded is left alone.
+--- Returns the entry, or nil and what is wrong.
+function M.load_bundled(name)
+  if M.loaded[name] then return M.loaded[name] end
+  for _, known in ipairs(M.bundled()) do
+    if known == name then return M.load(M.bundled_dir() .. "/" .. name) end
+  end
+  return nil, "no bundled extension `" .. tostring(name) .. "`" .. (M.bundled_dir() and "" or ": set DAW_HOME to the source tree")
+end
+
 --- Loaded extensions, sorted by name.
 function M.list()
   local out = {}

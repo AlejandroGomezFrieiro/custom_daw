@@ -32,6 +32,15 @@ local function fader_row(volume, rows)
 end
 view.fader_row = fader_row
 
+--- The rows above the fader, for a strip `height` tall: the most any kind of
+--- strip (a track, a VCA, the master) fills there. Every strip starts its
+--- fader on this row, so that one scale on the left serves them all.
+local function above_fader(height)
+  local plain = 1 + (height >= 20 and 3 or 0) + (height >= 12 and 1 or 0) + (height >= 10 and height < 24 and 1 or 0) + (height >= 24 and 2 or 0)
+  local vca = 1 + (height >= 12 and 3 or 0) + (height >= 24 and 2 or 0)
+  return math.max(plain, vca)
+end
+
 -- `here` is the row the cursor is on, on the strip it is on (daw/mixer_rows.lua).
 local function strip(buf, x, t, index, selected, height, sw, here)
   local g = draw.g
@@ -114,6 +123,7 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   end
 
   -- Meters and fader, over what the rows under them leave.
+  y = above_fader(height)
   local rows = math.max(1, height - y - 4)
   local left, right = api.track_meter(t.id)
   local hold = draw.hold("mix" .. t.id, math.max(left, right))
@@ -164,8 +174,9 @@ local function mark_row(buf, parts, row)
   elseif row.kind == "pan" then y = parts.pan
   end
   if y then
-    buf:fill(parts.x + 1, y, parts.w - 1, 1, nil, "Selected")
-    return buf:text(parts.x, y, g.mark, "SelectedMark")
+    -- Lit across the whole strip, brighter than the selected strip behind it.
+    buf:fill(parts.x + 1, y, parts.w - 1, 1, nil, "CursorLine")
+    return buf:text(parts.x, y, g.mark, "CursorLineMark")
   end
   if row.kind == "toggle" then
     local order = { mute = 0, solo = 1, armed = 2, monitor = 3 }

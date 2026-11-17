@@ -17,6 +17,7 @@ local c = {
   bg_hl = "#20242d",     -- wells: chips that are off, meter rails
   sel = "#262c38",       -- the selected header, strip or row
   raise = "#2c3240",     -- what stands out from a panel
+  cursor_line = "#35425c", -- the row the cursor is on, within the selected strip
   line = "#1b1f26",      -- grid steps
   line_beat = "#252a33", -- beat lines
   line_hi = "#363d4b",   -- bar lines and rules between panes
@@ -250,6 +251,8 @@ local function build()
     ParamBarOff = { fg = c.bg_hl },
     Selected = { bg = c.sel },
     SelectedMark = { fg = c.accent, bg = c.sel },
+    CursorLine = { fg = c.bright, bg = c.cursor_line },
+    CursorLineMark = { fg = c.accent, bg = c.cursor_line },
 
     HelpKey = { fg = c.accent, bold = true },
     HelpSection = { fg = c.dim, bold = true },

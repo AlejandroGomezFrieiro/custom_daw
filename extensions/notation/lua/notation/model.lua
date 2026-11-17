@@ -71,7 +71,7 @@ end
 --- The metrical tree of a bar: nested spans of the bar, each split where the
 --- metre divides it. A node at the level of the beat or below is `free`:
 --- inside a beat any single value may stand.
-function M.meter(num, den)
+function M.meter(num, den, groups)
   local unit = 4 / den
   local bar = num * unit
   local MIN = 0.125
@@ -79,6 +79,18 @@ function M.meter(num, den)
     local node = { s = s, e = s + len, free = true }
     if len / 2 >= MIN - EPS then node.children = { binary(s, len / 2), binary(s + len / 2, len / 2) } end
     return node
+  end
+  if groups and #groups > 1 then
+    -- An additive metre (3+3+2/8): a beat for each group, of its units.
+    local beats, s = {}, 0
+    for _, g in ipairs(groups) do
+      local node = { s = s, e = s + g * unit, free = true, children = {}, beat = true }
+      for k = 0, g - 1 do node.children[k + 1] = binary(s + k * unit, unit) end
+      beats[#beats + 1] = node
+      s = s + g * unit
+    end
+    return { root = { s = 0, e = bar, children = beats }, bar = bar, beat = unit, beats = beats, compound = false,
+      unit = unit, num = num, den = den, groups = groups }
   end
   local compound = den >= 8 and num % 3 == 0 and num > 3
   local beat_len = compound and 3 * unit or unit
@@ -280,12 +292,32 @@ end
 -- Staves ------------------------------------------------------------------------------
 
 --- The step of each clef's bottom line: E4 for treble, G2 for bass.
-M.CLEF_BOTTOM = { treble = 4 * 7 + 2 + 7, bass = 2 * 7 + 4 + 7, treble8 = 3 * 7 + 2 + 7 }
+M.CLEF_BOTTOM = { treble = 4 * 7 + 2 + 7, bass = 2 * 7 + 4 + 7, treble8 = 3 * 7 + 2 + 7, bass8 = 1 * 7 + 4 + 7,
+  alto = 3 * 7 + 3 + 7, tenor = 3 * 7 + 1 + 7 }
+M.CLEFS = { "treble", "treble8", "bass", "bass8", "alto", "tenor" }
+
+-- Where a key signature's sharps and flats go on the treble staff, in order.
+local SHARP_POS = { 8, 5, 9, 6, 3, 7, 4 }
+local FLAT_POS = { 4, 7, 3, 6, 2, 5, 1 }
+local KEY_SHIFT = { treble = 0, treble8 = 0, bass = -2, bass8 = -2, alto = -1, tenor = 1 }
+
+--- The staff positions of a key signature's signs on a clef, in order.
+function M.key_positions(fifths, clef)
+  local out = {}
+  local list = fifths > 0 and SHARP_POS or FLAT_POS
+  for i = 1, math.abs(fifths) do
+    local pos = list[i] + (KEY_SHIFT[clef] or 0)
+    -- The tenor clef's sharps would climb off the staff: an octave down.
+    if pos > 9 then pos = pos - 7 end
+    out[i] = pos
+  end
+  return out
+end
 
 --- Which staves a set of pitches is best written on: `{ "treble" }`,
 --- `{ "bass" }` or `{ "treble", "bass" }`.
 function M.choose_clef(pitches, fixed)
-  if fixed == "treble" or fixed == "bass" or fixed == "treble8" then return { fixed } end
+  if fixed and M.CLEF_BOTTOM[fixed] then return { fixed } end
   if fixed == "grand" then return { "treble", "bass" } end
   if #pitches == 0 then return { "treble" } end
   local low, high, sorted = 127, 0, {}
@@ -321,9 +353,9 @@ function M.even_bars(offset, length, num, den)
 end
 
 local meters = {}
-local function meter_of(num, den)
-  local key = num .. "/" .. den
-  meters[key] = meters[key] or M.meter(num, den)
+local function meter_of(num, den, groups)
+  local key = num .. "/" .. den .. (groups and #groups > 1 and (":" .. table.concat(groups, "+")) or "")
+  meters[key] = meters[key] or M.meter(num, den, groups)
   return meters[key]
 end
 M.meter_of = meter_of
@@ -627,11 +659,12 @@ end
 
 --- Spell every note and decide which accidentals are shown.
 function M.spell_all(layout)
-  local fifths = layout.fifths
   for s, clef in ipairs(layout.staves) do
-    local bottom = M.CLEF_BOTTOM[clef]
     local before = {}  -- steps left altered against the key by the last bar
     for _, m in ipairs(layout.measures) do
+      -- A score's measures may change key and clef.
+      local fifths = m.fifths or layout.fifths
+      local bottom = M.CLEF_BOTTOM[m.clefs and m.clefs[s] or clef]
       local state, reminded = {}, {}
       local function spell_note(n, tied)
         local sp

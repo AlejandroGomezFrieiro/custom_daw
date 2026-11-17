@@ -148,7 +148,10 @@ fold groups, not lanes); `,al` chooses a lane to make or show, from volume,
 pan and every parameter of the track's devices. A lane's header names what it
 moves, its value at the cursor, and whether it is read or bypassed; its curve
 and points (`◆`) are drawn along the timeline instead of over the clips. `j`
-and `k` step onto lane rows as onto tracks. On a lane row `h` `l` and the
+and `k` step onto lane rows as onto tracks. With the lanes closed, the
+track the cursor is on draws its volume curve in braille in the empty stretches
+of its row, never over clips; the other tracks show an `A` in their header
+and draw nothing, so that the notes stay readable. On a lane row `h` `l` and the
 other motions move in time, `w` `b` go to the next and previous point, `A`
 adds a point at the cursor at the curve's value there, `+` `-` raise and
 lower the point under the cursor (a dB, 5% of pan, a hundredth of a
@@ -294,7 +297,7 @@ and last, `5|` the fifth) and `j` `k` along a strip's rows, top to bottom as
 drawn: its devices (inserts), its sends, the fader, the pan, mute, solo, arm
 and the input monitor (`gg` `G` the top and bottom, `w` `b` the next kind of
 row). The row under the cursor is marked on the strip's left edge (a switch
-is lit) and named, with its value, on the right of the title bar. `+` `-`
+is lit) and lit across the strip in a colour of its own, and named, with its value, on the right of the title bar. `+` `-`
 change it: a dB on the fader or a send, a tenth of pan, a switch on or off,
 an insert playing or bypassed; `6 Ctrl-x` is six dB down. `]` `[` pan the
 strip from any row, `Enter` types the row's value (switches it, or shows an
@@ -304,7 +307,7 @@ strips and rows: `dj` clears the fader and pan, `yj` then `p` on another
 strip copies them, `gcc` mutes a strip (`gc2l` three), `dd` `yy` `p` cut,
 yank and paste whole tracks. `V` over strips and `-` lowers every fader
 selected, `.` again. `grv` `grp` type the strip's volume and pan. The scale left of the
-first strip is the fader's (`+6` to `-48`, on the rows its cap takes: the
+first strip is the fader's, and true for every strip, whatever it holds above its fader (`+6` to `-48`, on the rows its cap takes: the
 fader spends most of its travel on the top twenty decibels); the meters beside
 the fader are linear from -60 to 0 and have the loudest of late in numbers
 under them. VCAs (see
@@ -539,7 +542,11 @@ edit: the arrange view (`arrange`), the piano roll (`roll`), the mixer
 event list, help, an extension's view (`notation`, `drums`, `utau`, ...). A
 **window** shows one buffer; a **tab** holds windows split side by side and
 one above another. The status line and the bottom line stay along the
-bottom of every tab. On start there is one tab and the screen is as it
+bottom of every tab. In insert mode a message goes at the right end of the
+bottom line and the keys keep the rest. When three or more panels stack, the
+arrange view keeps a third of the rows (as `Ctrl-w =` gives it) and the
+notation view takes at most half. `:view.focus` of a view that is not shown
+puts it in the current window, so that focus is never on what is not drawn. On start there is one tab and the screen is as it
 always was: the arrange view, with the panels coming and going in their
 places (`,m`, `,d`, `,p`, `Enter` on a clip). `,m` in a window that is the mixer alone (after `Ctrl-w o`) brings the arrange view back in its place.
 
@@ -848,7 +855,7 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 
 | Keys | Command | Lists | Enter |
 | --- | --- | --- | --- |
-| `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description, a name that is the word typed or starts with it above the rest (`arrange` finds `:arrange`) | runs it; `Ctrl-e` types it on the command line instead, for arguments |
+| `,,` `,fc` | `pick.commands` | every command, with its key; a match in the name ranks above one in the description, a name that is the word typed or starts with it above the rest (`arrange` finds `:arrange`); among equal matches the commands you have run from here come first, and those the focused view has keys of its own for | runs it; `Ctrl-e` types it on the command line instead, for arguments |
 | `?` `,fk` | `pick.keys` | every key of the focused view and the global ones, written as `Alt-h`, `,at`, `Ctrl-w o`, each tagged with where it works and whether it is a motion, operator, text object, or for a selection or insert mode. The view's own keys come first, then the global ones; plain keys before operators, motions and the rest, short keys before long. Keys that do the same are one line (`Ctrl-z, u`). Last come the keys of the other views, tagged `arrange view` and so on, so that `send` in the mixer finds the arrange view's `,s`; choosing one goes to that view | runs it |
 | `,ft` | `pick.tracks` | tracks | moves the cursor to the track |
 | `,fl` | `pick.clips` | every clip, with its track | goes to it |
@@ -910,7 +917,9 @@ it, as the one undo step choosing it makes (the plugin that was loaded is
 kept, not made again). Nothing plays a phrase while the transport runs: the
 song is what you hear then, with the preset or device in it. `Ctrl-Space`
 turns hearing off and on for that kind of picker, and it is remembered
-until the program ends.
+until the program ends. What plays is marked with `♪` in the pane (and in
+place of the cursor arrow on its row); the pane says so as soon as hearing is
+turned on.
 
 **Matching** is fuzzy, as in fzf: the letters typed must appear in the line in
 that order, not necessarily together. `dfh` finds `Dragonfly Hall`. Lines rank
@@ -941,6 +950,7 @@ daw.pick({
 | `actions` | other keys: `{ ["<C-e>"] = function(item, query) end }`, or `{ fn = ..., desc = "edit", keep = true }` to list it at the bottom and leave the picker open |
 | `multi` | `Tab` marks several; `on_choose_multi(items)` gets them (or `on_choose` is called for each) |
 | `empty` | what to say when there is nothing to choose from |
+| `boost(item)` | a number (up to 120) added to the score of an item that matches: what is used often, what belongs to the focused view |
 | `primary(item)` | the part of the line that counts first: lines that match there rank above lines that match only elsewhere |
 | `audition(item)` | makes the item heard when the selection rests on it; returns the label the pane shows, or `{ label, loading = function, keep = function(item) }`: `keep` runs in place of `on_choose` when the item heard is chosen, its trial kept. `audition_key` names the setting `Ctrl-Space` keeps, `audition_default = false` starts it off, `audition_delay(item, ms)` rests longer on a slow item |
 | `prompt`, `width`, `height` | |
