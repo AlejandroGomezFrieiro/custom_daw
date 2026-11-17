@@ -412,6 +412,9 @@ export component PianoRoll inherits Rectangle {
     init => {
         Roll.view-start = self.shows-from;
         Roll.view-end = self.shows-to;
+        // The roll is made when a clip opens: start on the cursor.
+        root.centre-pending = true;
+        root.reveal(true);
     }
     changed shows-from => {
         Roll.view-start = self.shows-from;
@@ -430,8 +433,23 @@ export component PianoRoll inherits Rectangle {
     changed cursor-beat => {
         root.reveal(false);
     }
+    // A clip that opens before the grid has a size is centred when it has one.
+    property <bool> centre-pending;
+    property <length> grid-h: roll.visible-height;
+    property <length> grid-w: roll.visible-width;
     changed clip-open => {
         if (Roll.open) {
+            root.centre-pending = true;
+            root.reveal(true);
+        }
+    }
+    changed grid-h => {
+        if (root.centre-pending) {
+            root.reveal(true);
+        }
+    }
+    changed grid-w => {
+        if (root.centre-pending) {
             root.reveal(true);
         }
     }
@@ -481,6 +499,7 @@ export component PianoRoll inherits Rectangle {
         if (roll.visible-height <= 0px || roll.visible-width <= 0px) {
             return;
         }
+        root.centre-pending = false;
         let cy = (127 - Roll.pitch) * root.note-height;
         let cx = Roll.cursor * root.beat;
         let margin = min(2 * root.note-height, roll.visible-height / 4);

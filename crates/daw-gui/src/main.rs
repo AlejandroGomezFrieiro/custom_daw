@@ -1348,6 +1348,9 @@ struct View {
     /// The key bar and the command line's candidates, shown like the hints.
     keys: Rc<VecModel<HintData>>,
     matches: Rc<VecModel<HintData>>,
+    /// The rows and clips an Ex line being typed covers.
+    ex_rows: Rc<VecModel<i32>>,
+    ex_marks: Rc<VecModel<ExMark>>,
     /// When the message on the status bar was made, the one a key or a
     /// change of mode put away, and the mode the last state had.
     message_time: f64,
@@ -1787,8 +1790,8 @@ impl View {
                 })
             })
             .collect();
-        ui.set_ex_rows(ModelRc::from(Rc::new(VecModel::from(ex_rows))));
-        ui.set_ex_marks(ModelRc::from(Rc::new(VecModel::from(ex_marks))));
+        sync(&self.ex_rows, ex_rows);
+        sync(&self.ex_marks, ex_marks);
         ui.set_qf(text(&modal["qf"]["text"]));
         ui.set_qf_level(modal["qf"]["level"].as_i64().unwrap_or(0) as i32);
         // A message stays until the next key or a change of mode, as well as
@@ -2956,6 +2959,8 @@ fn run() -> Result<()> {
         hints: Rc::new(VecModel::default()),
         keys: Rc::new(VecModel::default()),
         matches: Rc::new(VecModel::default()),
+        ex_rows: Rc::new(VecModel::default()),
+        ex_marks: Rc::new(VecModel::default()),
         message_time: 0.0,
         message_dismissed: 0.0,
         last_mode: String::new(),
@@ -2973,6 +2978,8 @@ fn run() -> Result<()> {
     ui.set_hints(ModelRc::from(view.borrow().hints.clone()));
     ui.set_keys(ModelRc::from(view.borrow().keys.clone()));
     ui.set_matches(ModelRc::from(view.borrow().matches.clone()));
+    ui.set_ex_rows(ModelRc::from(view.borrow().ex_rows.clone()));
+    ui.set_ex_marks(ModelRc::from(view.borrow().ex_marks.clone()));
     ui.set_clip_entries(ModelRc::from(view.borrow().clip_entries.clone()));
     ui.set_route_targets(ModelRc::from(view.borrow().route_targets.clone()));
     ui.set_route_sends(ModelRc::from(view.borrow().route_sends.clone()));
