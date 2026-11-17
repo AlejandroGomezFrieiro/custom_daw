@@ -52,9 +52,30 @@ What the package takes care of, which the dev shell does otherwise:
 - `ffmpeg` is on the programs' PATH, after your own, for rendering to MP3,
   Ogg Vorbis and Opus; nothing else needs it. `daw.opt.ffmpeg` names
   another.
-- The tests do not run in the build: they drive plugins, audio devices and
-  an X server, which a build sandbox has none of. They run in the dev shell
-  (`cargo test`, `tests/tools/suite.sh`).
+- The tests do not run in the build. `nix flake check` builds the program
+  and runs clippy, rustfmt and the Rust tests that need no display, audio
+  device or Lua suite (with cargo-nextest; these must pass). The tree is not
+  yet free of clippy's warnings nor formatted by rustfmt as a whole, so
+  those two say what they find and do not fail. The Lua suite and the window's tests
+  drive plugins, an X server and directories of their own, which a build
+  sandbox has none of: they run in the dev shell (`cargo test`,
+  `tests/tools/suite.sh`).
+
+The build is made with [crane](https://github.com/ipetkov/crane), in layers.
+Every crate the workspace depends on (over five hundred, LuaJIT among them)
+is compiled once into a derivation of its own, which changes only with
+`Cargo.toml`, `Cargo.lock` or `.cargo`; the program and every check start
+from it and compile only paw's own crates. A change to a crate or to the
+runtime's Lua recompiles those few crates, and a change to an extension, an
+example or the configuration only copies files: they are installed beside
+the programs, not compiled into them. crane was chosen over crate2nix (a
+derivation per crate, which caches finer but needs a generated file kept in
+step with `Cargo.lock` and per-crate overrides for every build script, such
+as LuaJIT's, bindgen's and the ones that write library paths into the
+binaries) and naersk (the same two layers, but no checks and less upkeep);
+the dependencies have no git sources, so nothing needs hashes by hand. The
+programs as cargo builds them are `.#default.programs`, the dependencies
+`.#default.deps`.
 
 The project's state (recent projects, the window's layout, the plugin cache)
 is kept under your home directory as with any build, in `~/.local/state/daw`
