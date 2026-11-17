@@ -520,8 +520,19 @@ end
 --- whole drawing, `buf:surface`).
 function M.strip(buf, x, y, w, h, opts)
   opts = opts or {}
-  -- Pictures only on the screen a terminal shows, not in a window's cells.
-  if daw.opt.graphics == false or not M.screen then return false end
+  if daw.opt.graphics == false then return false end
+  if not M.screen then
+    -- A view drawn in cells for a window (`daw.canvas.paint_cells`): the
+    -- window draws the strip's picture with the cells, under their text.
+    if not (M.pictures and opts.draw and opts.under) then return false end
+    x, y, w, h = math.floor(buf.x + x), math.floor(buf.y + y), math.floor(w), math.floor(h)
+    local x0, y0 = math.max(x, buf.cx), math.max(y, buf.cy)
+    local x1, y1 = math.min(x + w, buf.cx + buf.cw), math.min(y + h, buf.cy + buf.ch)
+    if x1 <= x0 or y1 <= y0 then return false end
+    M.pictures[#M.pictures + 1] = { x = x0, y = y0, w = x1 - x0, h = y1 - y0, left = x0 - x, top = y0 - y,
+      whole_w = w, whole_h = h, draw = opts.draw }
+    return true
+  end
   local caps = api.ui_caps()
   if not caps.pixels or (opts.under and not caps.under) then return false end
   local name = opts.view or M.drawing

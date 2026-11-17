@@ -9,6 +9,12 @@ local api = daw.api
 local W, H = 120, 36
 local PIXELS = { graphics = true, cell = { w = 10, h = 20 }, under = true }
 
+--- The screen as text, without a message that could run out between two.
+local function screen()
+  daw.ui.message = nil
+  return table.concat(api.ui_snapshot(W, H), "\n")
+end
+
 --- Pictures on, for the rest of a test.
 local function pictures()
   api.ui_caps_set(PIXELS)
@@ -97,7 +103,7 @@ test("an audio clip's waveform is a strip under its cells, of the whole clip, ke
   daw.cursor.set_track(t)
   daw.opt.zoom, daw.opt.track_height = 8, 4
   T.after(function() daw.opt.zoom, daw.opt.track_height = 2, "auto" end)
-  local cells = api.ui_snapshot(W, H)
+  local cells = screen()
   eq(strip("arrange:wave:" .. clip.id), nil, "no pictures: cells")
 
   pictures()
@@ -125,7 +131,7 @@ test("an audio clip's waveform is a strip under its cells, of the whole clip, ke
   -- Pictures off: the cells as before.
   daw.opt.graphics = false
   T.after(function() daw.opt.graphics = true end)
-  eq(table.concat(api.ui_snapshot(W, H), "\n"), table.concat(cells, "\n"), "graphics off draws the same cells")
+  eq(screen(), cells, "graphics off draws the same cells")
 end)
 
 test("the piano roll's controller strip is a strip under its cells, the moves marked", function()
@@ -139,7 +145,7 @@ test("the piano roll's controller strip is a strip under its cells, the moves ma
   local strip_view = require("daw.views.pianoroll_strip")
   strip_view.show("bend")
   T.after(function() strip_view.show(nil) end)
-  local cells = api.ui_snapshot(W, H)
+  local cells = screen()
   pictures()
   api.ui_snapshot(W, H)
   local s = strip("pianoroll:strip")
@@ -152,5 +158,5 @@ test("the piano roll's controller strip is a strip under its cells, the moves ma
   eq(marks, 2, "a mark on each move")
   daw.opt.graphics = false
   T.after(function() daw.opt.graphics = true end)
-  eq(table.concat(api.ui_snapshot(W, H), "\n"), table.concat(cells, "\n"), "graphics off draws the same cells")
+  eq(screen(), cells, "graphics off draws the same cells")
 end)

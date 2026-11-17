@@ -391,10 +391,13 @@ test("utau: where the terminal shows pictures the pitch and the curve are strips
   -- Pictures off, or a terminal without them: the cells as before.
   utau.pitch[clip.id] = nil
   api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
+  -- A message running out between the two would differ.
+  daw.ui.message = nil
   cells = api.ui_snapshot(W, H)
   api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
   daw.opt.graphics = false
-  eq(table.concat(api.ui_snapshot(W, H), "\n"), table.concat(cells, "\n"), "graphics off draws the same cells")
+  local now = api.ui_snapshot(W, H)
+  for i = 1, math.max(#now, #cells) do eq(now[i], cells[i], "graphics off draws the same cells, row " .. i) end
   eq(daw.ui.rects.surfaces, nil, "and keeps no strip")
   daw.opt.graphics = true
 

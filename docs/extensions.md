@@ -231,6 +231,22 @@ crates/daw-core/src/remote.rs). To draw them as the terminal does:
   (`Drawing::piece_key`), so that an unchanged piece, or one scrolled to
   another place, is not made again.
 
+The window (crates/daw-gui, on egui) does not get the grid: a view it
+shows in a pane or in a window of its own as the terminal draws it comes
+as one drawing from `daw.canvas.paint_cells`, which the window makes into
+an image with the same rasterizer (`panes::raster`, through
+`daw_raster::Drawing::paint_scaled`) and shows as a texture. That drawing
+already holds the strips: while the view is drawn for the window,
+`buf:strip` keeps each strip under the text (`daw.ui.pictures`) and
+answers true, and `paint_cells` puts the cells' backgrounds first, then
+each strip's `draw(g, px)` at the window's cell size (a painter clipped to
+the strip, from the whole strip's corner, `px.view` what shows), then the
+cells' text. So the curve editor and the vocal editor show their curves
+in pixels in the window with nothing in crates/daw-gui knowing of strips.
+A view the window draws natively (the arrange view, the piano roll, the
+mixer) draws its own curves and waveforms with egui's painter and has no
+strips; were one to move to cells, it would get them the same way.
+
 ## Everything an extension can own
 
 extensions/utau is the example of how far an extension goes. Singing is not
