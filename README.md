@@ -1,55 +1,78 @@
 # paw
 
-paw is a personal audio workstation built the way Neovim is built: a small
-kernel, and everything you touch written in Lua on top of it. You drive it
-from the keyboard with modal editing, from a window with the mouse, or from
-a script, and all three are the same program.
+**A personal audio workstation you drive like Neovim and rebuild in Lua.**
 
-If you know Vim you already know most of it. A track is a line and a clip is
-a word; `3>ic` moves a clip three steps later, `:%s/c4/d4/gc` changes notes
-with a preview, `:e daw://tracks` edits your tracks as text, `:help gU`
-opens the manual, and your configuration is Lua that calls the same `daw`
-module the built-in keys are made with.
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
+![Linux](https://img.shields.io/badge/platform-Linux-informational)
+![Built with Nix](https://img.shields.io/badge/built%20with-Nix-5277C3)
+![Status: personal, work in progress](https://img.shields.io/badge/status-personal%20WIP-orange)
+
+![Moving, deleting, yanking and pasting clips, and running a command](docs/images/tui-arrange.gif)
+
+- **Modal, on a timeline.** A track is a line and a clip is a word: `3>ic`
+  moves a clip three steps later, `:%s/c4/d4/gc` changes notes with a preview,
+  `:e daw://tracks` edits your tracks as text.
+- **Lua all the way up.** A small Rust kernel (audio engine, project model,
+  plugin hosting); the views, every command and every key are Lua your
+  `init.lua` can change, replace or extend.
+- **One program, three faces.** The terminal, a window for the mouse, and
+  scripts all drive the same kernel, and can be open on the same project.
 
 ![The window, playing the demo song](docs/images/gui.png)
 
-![The same song in the terminal](docs/images/tui.png)
-
-The kernel is Rust: a real-time audio engine, the project model with its undo
-tree, plugin hosting and a Lua host. The arrange view, the mixer, the piano
-roll, the score, every command and every key are Lua. The terminal UI and the
-window are two faces of one kernel, and both can be open on the same project.
-The terminal comes first: whatever the window does, the terminal does too.
-
 > [!NOTE]
-> This is an early, personal project. It runs on Linux (PipeWire, ALSA or
-> JACK) and is built with Nix. It plays, edits, records and renders MIDI and
-> audio through built-in devices and CLAP, LV2 and VST3 plugins, but most of
-> it has been tested against stand-ins, not real hardware. See
-> [what is missing](docs/missing.md).
+> paw is a **personal, work-in-progress** project, made first for one
+> person's music and taste. It runs on Linux (PipeWire, ALSA or JACK) and is
+> built with Nix. It plays, edits, records and renders MIDI and audio through
+> built-in devices and CLAP, LV2 and VST3 plugins, but most of it has been
+> tested against stand-ins, not real hardware, and things change without
+> notice. See [what is missing](docs/missing.md).
 
 ## Try it
 
-The programs keep short names for now: `daw` is paw's terminal interface, `daw-gui` its
-window, and the Lua module is `daw`.
+You need Linux and [Nix](https://nixos.org/download/) with flakes enabled
+(`experimental-features = nix-command flakes` in `nix.conf`).
+
+```sh
+git clone https://github.com/AlejandroGomezFrieiro/custom_daw paw && cd paw
+nix run . -- -e 'dofile("examples/demo-song.lua")'          # the terminal UI, with a demo song
+nix run .#daw-gui -- -e 'dofile("examples/demo-song.lua")'  # the window, with the same song
+```
+
+Then press `Space` to play, `?` to list every key of the view you are in,
+`:tutor` for a course of seventeen short lessons (also in
+[docs/course](docs/course/README.md)), `:help` for the manual, and `:q` to
+quit. `nix run . -- doctor` checks your sound devices, MIDI ports and plugins.
+
+To build it yourself, or install it:
 
 ```sh
 nix develop                      # the Rust toolchain and the system libraries
-cargo build --release
-
-target/release/daw -e 'dofile("examples/demo-song.lua")'       # the terminal UI, with a demo song
-target/release/daw-gui -e 'dofile("examples/demo-song.lua")'   # the window, with the same song
-target/release/daw doctor        # check your sound devices, MIDI ports and plugins
+cargo build --release            # target/release/daw and target/release/daw-gui
+nix profile install .            # or install both programs
 ```
 
-Or without the dev shell: `nix run .` (the terminal UI) and `nix run .#daw-gui`
-(the window); `nix profile install .` installs them
-([Installing with Nix](docs/running.md#installing-with-nix)).
+The programs keep short names for now: `daw` is paw's terminal interface,
+`daw-gui` its window, and the Lua module is `daw`. See
+[Installing with Nix](docs/running.md#installing-with-nix).
 
-In the terminal, `?` lists every key of the view you are in, `:` runs any
-command by name, `:help` opens the manual (`:help gU`, `:help quickfix-list`),
-and `:q` quits. A course of seventeen short lessons runs inside the program
-(`:tutor`) and can also be read in [docs/course](docs/course/README.md).
+## Is paw for you?
+
+paw is for people who like open programs they can take apart: who live in
+Neovim or a tiling window manager, keep their configuration in a repository,
+and would rather write ten lines of Lua than wait for a feature.
+
+| If you want | Look at |
+| --- | --- |
+| A keyboard-first, modal DAW you script and reshape, terminal or window | **paw** |
+| A mature, deeply customisable DAW on every platform | [REAPER](https://www.reaper.fm) |
+| A mature open-source DAW for recording and mixing on Linux | [Ardour](https://ardour.org) |
+| Sound design, modulation and performance | [Bitwig Studio](https://www.bitwig.com), [Ableton Live](https://www.ableton.com) |
+| Keyboard-driven composing in a tracker | [Renoise](https://www.renoise.com) |
+| Engraving first, playback second | [MuseScore](https://musescore.org), [Dorico](https://www.steinberg.net/dorico/) |
+
+paw is younger and smaller than all of them; choose it for the way it works,
+not for the size of its feature list.
 
 ## In the terminal
 
@@ -58,7 +81,7 @@ operators, motions, text objects, visual mode, registers, macros, marks and
 `.` all apply, and one rule holds in every view: `h` `j` `k` `l` only move,
 `+` `-` change the value under the cursor, `Esc` cancels and never leaves.
 
-![Moving, deleting, yanking and pasting clips, and running a command](docs/images/tui-arrange.gif)
+![The demo song in the terminal](docs/images/tui.png)
 
 Notes are drawn or typed. `Enter` opens a clip; `i` draws a note with the
 cursor, and `I` turns the home row into a piano:
@@ -274,4 +297,36 @@ touch your sound card or your screen. The pictures on this page are
 recordings of the real program, driven by the scripts in
 [docs/images/make](docs/images/make).
 
-The crates are declared as MIT OR Apache-2.0 in `Cargo.toml`.
+## Inspiration
+
+- [Neovim](https://neovim.io) and Vim: the modal grammar, Ex, the quickfix
+  list, `:help`, a small core with everything else in Lua, and
+  [oil.nvim](https://github.com/stevearc/oil.nvim) for lists edited as text.
+- [pi](https://pi.dev), the minimal coding agent: a tiny core that does
+  little and trusts you, with everything else added as extensions you own.
+- [REAPER](https://www.reaper.fm): a light, scriptable DAW, and notation as
+  a view over MIDI.
+- [Ardour](https://ardour.org), [Bitwig Studio](https://www.bitwig.com) and
+  [Renoise](https://www.renoise.com) for the DAW itself, and
+  [Dorico](https://www.steinberg.net/dorico/) and
+  [MuseScore](https://musescore.org) for the score (Dorico's popovers).
+- [TidalCycles](https://tidalcycles.org) for patterns written as text.
+
+## Contributing
+
+paw is a personal project that follows one person's taste, so it moves at
+its own pace. Bug reports, questions and ideas are welcome as GitHub issues.
+For anything larger than a small fix, open an issue before a pull request.
+The tests above must pass, and new behaviour comes with a test.
+
+## License
+
+paw is licensed under either of [MIT](LICENSE-MIT) or
+[Apache-2.0](LICENSE-APACHE), at your option. Unless you state otherwise,
+any contribution you submit for inclusion is licensed the same way, without
+additional terms or conditions.
+
+The window is made with [Slint](https://slint.dev), used under its
+royalty-free license:
+
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
