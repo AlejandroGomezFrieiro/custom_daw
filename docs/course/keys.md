@@ -435,10 +435,10 @@ the pages to check before export, the one view that is only read.
 | the next, previous instrument (a grand staff is one) | `]]` `[[` |
 | the next, previous instrument in the same group | `]s` `[s` |
 | the group's first, last instrument (again: the group before, after) | `[{` `]}` |
-| a block of bars by staves: `x`, `d`, `y`, `gU`, `>`, `\d`... on each staff, one undo step | `<C-v>` then those |
+| a block of bars by staves, which x, d, y, gU, >, a popover... act on, each staff's clip, one undo step | `<C-v>` then those |
 | whole staves | `V` then those |
 | on a condensed staff, the other player (voice 2 is the second's clip) | `]v` `[v` |
-| Ex over staves: `s4`, `s2,s5`, `s.` the cursor's, a group's name | `:5,8 s4 d`, `:5,8 Strings notation.dyn p` |
+| Ex over staves: s4, s2,s5, s. the cursor's, a group's name | `:5,8 s4 d`, `:5,8 Strings notation.dyn p` |
 
 `:set score_dim` dims the other staves, `:set score_colors` tints them in
 their tracks' colours.
