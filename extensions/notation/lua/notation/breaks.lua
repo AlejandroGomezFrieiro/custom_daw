@@ -49,8 +49,9 @@ function M.lines(widths, prefix, width, o)
         local count = j - i + 1
         local last = j == n
         local cost
-        -- A line wider than twice the width is not worth weighing.
-        if count > 1 and used > 2 * width then break end
+        -- A line wider than twice the width is not worth weighing, unless
+        -- the score asks for so many measures to a line.
+        if count > 1 and used > 2 * width and not (per and per > 0) then break end
         if per and per > 0 and count > per then break end
         local own = used - prefix(i)
         local stretch = (width - used) / math.max(1, own)

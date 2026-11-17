@@ -304,10 +304,10 @@ mod tests {
         ]));
         let text = svg(&drawing, 100.0, 50.0);
         assert!(text.starts_with("<svg") && text.trim_end().ends_with("</svg>"));
-        assert!(text.contains(r#"<path d="M2 3L6 3L6 8L2 8Z" fill="#ff0000"/>"#), "{text}");
+        assert!(text.contains(r##"<path d="M2 3L6 3L6 8L2 8Z" fill="#ff0000"/>"##), "{text}");
         assert_eq!(text.matches("<path").count(), 1 + 1 + 2 + 1, "a rect, a glyph, two letters, a line");
         assert!(text.contains(r#"fill-opacity="0.5""#));
-        assert!(text.contains(r#"fill="none" stroke="#0000ff" stroke-width="2""#));
+        assert!(text.contains(r##"fill="none" stroke="#0000ff" stroke-width="2""##));
     }
 
     #[test]
