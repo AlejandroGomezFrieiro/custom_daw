@@ -2,8 +2,8 @@
 -- lays a score out in the shape `notation.model` gives a transcription
 -- (measures, staves, written events with their notes, ties, tuplets,
 -- accidentals, stems and beams), which the terminal and the engraver draw;
--- `M.import` makes a score of such a layout, which is how a MIDI clip is
--- written as a score (`:score.from-midi`): the transcription is the
+-- `M.import` makes a score of such a layout, which is how a clip's notes
+-- are written as a score (`notation.midi`): the transcription is the
 -- importer.
 local model = require("notation.model")
 local D = require("notation.doc")
@@ -249,7 +249,7 @@ function M.layout(score, opts)
     end
   end
   local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = measures[1].fifths or opts.fifths or 0,
-    grid = opts.grid or 0.25, origin = origin / Q, score = { events = {} }, doc = score }
+    grid = opts.grid or 0.25, origin = origin / Q, score = score._transcribed or { events = {} }, doc = score }
   -- Accidentals and stems of the measures laid out now, each run of them
   -- after the measure before it, which says what its bar left altered.
   local i = 1
@@ -280,43 +280,71 @@ local function normal_of(tp) return math.floor(tp.n / tp.ratio + 0.5) end
 --- value, tie, tuplet, voice, grace note, arpeggio and articulation, and
 --- spelling. Returns the score and, by the place of each played note in
 --- the list the layout was made from, the id of the note that writes it.
+---
+--- `opts.keep` names the notes by place (`keep[i]` the id of the note that
+--- writes played note `i`); with it every id is made from where things
+--- are, not counted, so that the same notes always give the same ids
+--- (a chord is named after its first note, a rest after its place).
+--- `opts.next` is where the ids counted from then on start.
 function M.import(layout, opts)
   opts = opts or {}
   local bars = {}
   for i, m in ipairs(layout.measures) do bars[i] = { start = m.start, num = m.meter.num, den = m.meter.den } end
   local score = D.new(bars, layout.staves)
-  -- Ids from the score this is written into, and kept where a played note
-  -- says which written note it was.
-  if opts.score then score.next = math.max(score.next, opts.score.next or 1) end
+  score.next = math.max(score.next, opts.next or 1)
   local ids = score
-  local keep, used = opts.keep or {}, {}
+  local keep, used = opts.keep, {}
+  local stable = keep ~= nil
+  keep = keep or {}
   local written = {}
+  local pieces = {}   -- how many written notes each played note has had
   for i, m in ipairs(layout.measures) do
     local sm = score.measures[i]
     if m.repeat_start then sm.repeat_start = true end
     if m.repeat_end then sm.barline = ":|" end
+    if stable then sm.id = "m" .. i end
     for s, evs in ipairs(m.staves) do
       local staff = score.staves[s].id
       local tuplets = {}
+      local serial, ev_voice = 0, 1
+      local function place(prefix)
+        serial = serial + 1
+        return prefix .. i .. "." .. s .. "." .. ev_voice .. "." .. serial
+      end
       for _, ev in ipairs(evs) do
+        ev_voice = ev.voice
         local entry = D.voice(sm, staff, ev.voice, true)
         local function note_of(n)
-          local id = n.index and not n.tied and keep[n.index]
+          local id = n.index and keep[n.index]
+          if id and stable then
+            local k = (pieces[n.index] or 0) + 1
+            pieces[n.index] = k
+            if k > 1 then id = id .. "." .. k end
+          elseif n.tied then
+            id = nil
+          end
           if not id or used[id] then id = D.id(ids, "n") end
           used[id] = true
           if n.index and not n.tied then written[n.index] = id end
           return { id = id, step = n.letter, alter = n.alter, octave = n.octave }
         end
+        --- An event's id: after its first note's, or its place.
+        local function event_id(prefix, note)
+          if not stable then return D.id(ids, prefix == "r" and "e" or prefix) end
+          if note then return prefix .. note.id:sub(2) end
+          return place(prefix)
+        end
         for _, g in ipairs(ev.grace or {}) do
-          entry.events[#entry.events + 1] = { id = D.id(ids, "e"), kind = "chord", grace = "acciaccatura", dur = { 1, 8 }, dots = 0, notes = { note_of(g) } }
+          local note = note_of(g)
+          entry.events[#entry.events + 1] = { id = event_id("g", note), kind = "chord", grace = "acciaccatura", dur = { 1, 8 }, dots = 0, notes = { note } }
         end
         if not (ev.whole and ev.voice == 1) then
-          local sev = { id = D.id(ids, "e"), kind = ev.kind == "note" and "chord" or "rest", dur = D.ratio(D.from_beats(ev.base)), dots = ev.dots or 0 }
+          local sev = { kind = ev.kind == "note" and "chord" or "rest", dur = D.ratio(D.from_beats(ev.base)), dots = ev.dots or 0 }
           if ev.whole then sev.dur, sev.dots = D.ratio(D.from_beats(m.length)), 0 end
           if ev.tuplet then
             local tp = tuplets[ev.tuplet]
             if not tp then
-              tp = { id = D.id(ids, "t"), actual = ev.tuplet.n, normal = normal_of(ev.tuplet) }
+              tp = { id = stable and place("t") or D.id(ids, "t"), actual = ev.tuplet.n, normal = normal_of(ev.tuplet) }
               tuplets[ev.tuplet] = tp
             end
             sev.tuplet = tp
@@ -327,14 +355,17 @@ function M.import(layout, opts)
               sev.notes[k] = note_of(n)
               sev.notes[k].tie = n.tie or nil
               local own = n.meta and type(n.meta.notation) == "table" and n.meta.notation
-              if own and own.beam == "break" then sev.beam = "break" end
+              if own and own.beam == "break" and not n.tied then sev.beam = "break" end
             end
+            sev.id = event_id("e", sev.notes[1])
             local art = {}
             for k, x in pairs(ev.art or {}) do art[k] = x end
             if ev.staccato then art.staccato = true end
             sev.art = next(art) and art or nil
             sev.arpeggio = ev.arpeggio == 1 and "up" or ev.arpeggio == -1 and "down" or nil
             sev.lyric = ev.lyric
+          else
+            sev.id = event_id("r")
           end
           entry.events[#entry.events + 1] = sev
         end
@@ -347,7 +378,6 @@ function M.import(layout, opts)
       for v = 1, 4 do D.normalize(score, i, st.id, v) end
     end
   end
-  if opts.score then opts.score.next = score.next end
   return score, written
 end
 

@@ -291,7 +291,7 @@ function A.quantize(region)
       if c.kind == "midi" then
         local notes = api.clip_notes(c.id)
         for _, n in ipairs(notes) do n.start = util.round(n.start, note_grid) end
-        if not daw.clips.write(c.id, { replace = notes }) then api.clip_set_notes(c.id, notes) end
+        api.clip_set_notes(c.id, notes)
       end
     end
   end
@@ -320,7 +320,7 @@ function A.transpose(region, semitones)
       if c.kind == "midi" then
         local notes = api.clip_notes(c.id)
         for _, n in ipairs(notes) do n.pitch = util.clamp(n.pitch + semitones, 0, 127) end
-        if not daw.clips.write(c.id, { replace = notes }) then api.clip_set_notes(c.id, notes) end
+        api.clip_set_notes(c.id, notes)
       end
     end
   end

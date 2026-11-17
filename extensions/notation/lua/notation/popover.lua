@@ -56,8 +56,9 @@ end
 
 --- A measure as text, without the token that changes with every edit.
 local function content(m)
-  local text = m._src or api.json_encode(D.copy(m))
-  return (text:gsub('"v":"[^"]*",?', ""))
+  local copy = D.copy(m)
+  copy.v = nil
+  return api.json_encode(copy)
 end
 
 --- What the score holds now, to tell what a preview changed.

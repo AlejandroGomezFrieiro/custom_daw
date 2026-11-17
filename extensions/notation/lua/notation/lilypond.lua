@@ -63,7 +63,7 @@ local function part_text(part, pi, first_part)
   local sc = part.score
   local f = D.frame(sc)
   local origin = D.origin(sc)
-  local render = require("notation.render")
+  local midi = require("notation.midi")
   local write_cmds = require("notation.write")
   -- A pickup when the first bar holds only rests before the clip starts.
   local cut = origin < 0 and -origin or 0
@@ -122,7 +122,7 @@ local function part_text(part, pi, first_part)
     return best or voice.seq[#voice.seq]
   end
   for _, mk in ipairs(sc.marks or {}) do
-    local t = render.at_of(sc, f, mk.from)
+    local t = midi.at_of(sc, f, mk.from)
     local it = t and event_at(top, t)
     if it then
       local id = it.ev.id
@@ -135,7 +135,7 @@ local function part_text(part, pi, first_part)
         if mk.subito then add(post, id, '_\\markup { \\italic "subito" }') end
       elseif mk.kind == "hairpin" then
         add(post, id, mk.value == "dim" and "\\>" or "\\<")
-        local e = render.at_of(sc, f, mk.to)
+        local e = midi.at_of(sc, f, mk.to)
         local stop = e and event_at(top, e, true)
         if stop and stop ~= it then add(post, stop.ev.id, "\\!") end
       elseif mk.kind == "text" or mk.kind == "technique" then
@@ -152,7 +152,7 @@ local function part_text(part, pi, first_part)
           add(pre, id, "\\tempo " .. quote(tp.words or mk.value or "") .. " 4 = " .. string.format("%g", mk.bpm))
         end
       elseif mk.kind == "slur" then
-        local e = render.at_of(sc, f, mk.to)
+        local e = midi.at_of(sc, f, mk.to)
         for _, voice in ipairs(voices) do
           if voice.id == (mk.staff or sc.staves[1].id) then
             local a, b

@@ -35,7 +35,6 @@ local function score(notes, length)
   daw.keymap.set_mode("n")
   view:edit(clip)
   daw.ui.focus("notation")
-  view:ensure_score()
   api.undo_checkpoint()
   return view, clip
 end

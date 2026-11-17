@@ -1,6 +1,6 @@
 -- MusicXML files and the project: scores brought in and taken out.
 --
---   :open song.musicxml            -- a new project: a track and a score clip for each part
+--   :open song.musicxml            -- a new project: a track and a MIDI clip for each part
 --   :import song.mxl               -- the parts on new tracks below the cursor's, at the cursor
 --   :import song.mxl tempo=yes     -- and its tempo marks and time signatures from there on
 --   :notation.import song.xml      -- the same as :import
@@ -15,6 +15,7 @@
 -- program goes in its clip as a program change. What could not be kept is
 -- counted and said.
 local api = daw.api
+local util = daw.util
 local view = require("notation")
 local D = require("notation.doc")
 local mx = require("notation.musicxml")
@@ -68,8 +69,10 @@ local function put_tempo_map(file, at)
 end
 
 --- A track for each part below `index` (nil: at the end), each with a
---- score clip whose first bar starts at beat `at`. Returns the tracks and
---- how many notes they play.
+--- MIDI clip of what the part plays whose first bar starts at beat `at`,
+--- with what its score says kept as notation data. The track keeps the
+--- part's staves (its clef, or a grand staff). Returns the tracks and how
+--- many notes they play.
 local function add_parts(file, at, index, name)
   local tracks, notes = {}, 0
   for i, part in ipairs(file.parts) do
@@ -78,10 +81,14 @@ local function add_parts(file, at, index, name)
     local origin = D.origin(sc)
     local track = daw.add_track({ name = part.name, index = index and index + i or nil })
     if part.drums then track:add_device("drums") end
+    local meta = track.meta or {}
+    meta.notation = util.merge(type(meta.notation) == "table" and meta.notation or {},
+      { clef = #sc.staves == 2 and "grand" or sc.staves[1].clef })
+    track.meta = meta
     local controls = part.program and { { start = 0, type = "program", program = part.program, value = 0 } } or nil
     local clip = track:add_clip({ start = at - origin / D.Q, length = math.max(1, (origin + f.finish) / D.Q),
       name = #file.parts == 1 and name or part.name, controls = controls })
-    view.commit(clip, sc)
+    view.store(clip, view.score_of(clip:get()), sc)
     notes = notes + #clip:notes()
     tracks[#tracks + 1] = track
   end
@@ -158,11 +165,8 @@ end
 
 -- Taking scores out ---------------------------------------------------------------------------
 
---- The score of a clip: its own, or for a plain MIDI clip the one it would
---- be written as.
-local function score_of_clip(clip)
-  return view.score_of(clip:get()) or view.from_midi(clip)
-end
+--- The score of a clip: what its notes are written as.
+local function score_of_clip(clip) return view.score_of(clip:get()) end
 
 --- Whether a track plays the drum kit.
 local function drums(track)
@@ -244,20 +248,17 @@ function F.export(path, clips, opts)
 end
 
 --- The clips `:notation.export … all` writes: on each track, its first
---- score clip, else its first MIDI clip with notes.
+--- MIDI clip with notes.
 function F.all_clips()
   local out = {}
   for _, track in ipairs(daw.tracks()) do
-    local pick
     for _, clip in ipairs(track:clips()) do
       local c = clip:get()
-      if c.kind == "midi" and view.has_score(c) then
-        pick = clip
+      if c.kind == "midi" and c.note_count > 0 then
+        out[#out + 1] = clip
         break
       end
-      if c.kind == "midi" and c.note_count > 0 and not pick then pick = clip end
     end
-    if pick then out[#out + 1] = pick end
   end
   return out
 end
@@ -291,7 +292,7 @@ daw.command("notation.import", function(ctx)
   local path, tempo = path_and_tempo(ctx.args[1])
   if path == "" then return daw.notify("usage: notation.import <score.musicxml|.mxl> [tempo=yes]", "warn") end
   return import_command(path, tempo or ctx.args.tempo)
-end, { raw = true, desc = "Bring a MusicXML score in: a track for each part at the cursor, each a score clip: `notation.import song.musicxml`, `song.mxl tempo=yes` (its tempo marks and time signatures too)", complete = "files" })
+end, { raw = true, desc = "Bring a MusicXML score in: a track for each part at the cursor, each a MIDI clip with its notation: `notation.import song.musicxml`, `song.mxl tempo=yes` (its tempo marks and time signatures too)", complete = "files" })
 
 -- `:open`, `:edit` and `:import` of a MusicXML file come here; other files
 -- go to the commands as they were.

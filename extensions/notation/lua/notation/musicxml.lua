@@ -609,7 +609,7 @@ local function read_part(part_el, info, count)
   local recs = {}
   for _, mel in ipairs(xml.children(part_el, "measure")) do recs[#recs + 1] = read_measure(mel, st, count) end
   local maps = voice_maps(recs, count)
-  local sc = { version = 1, staves = {}, measures = {}, marks = {}, style = {}, feel = {}, next = 1 }
+  local sc = { version = 1, staves = {}, measures = {}, marks = {}, style = {}, next = 1 }
   -- Staves and their clefs where the part starts.
   local first_clef = {}
   for _, c in ipairs(recs[1] and recs[1].clefs or {}) do
@@ -1137,12 +1137,12 @@ local function part_xml(w, part, pid, divisions, g)
       end
     end
   end)
-  local render = require("notation.render")
+  local midi = require("notation.midi")
   local slur_start, slur_stop = {}, {}
   local slur_list = {}
   for _, mk in ipairs(sc.marks or {}) do
     if mk.kind == "slur" then
-      local a, b = render.at_of(sc, f, mk.from), render.at_of(sc, f, mk.to)
+      local a, b = midi.at_of(sc, f, mk.from), midi.at_of(sc, f, mk.to)
       -- It ends in the voice it starts in, when that voice has a chord there.
       local first, last
       local list = chords_by_staff[mk.staff or sc.staves[1].id] or {}
@@ -1178,10 +1178,10 @@ local function part_xml(w, part, pid, divisions, g)
   for _, mk in ipairs(sc.marks or {}) do
     if mk.kind == "hairpin" then pins[#pins + 1] = mk end
   end
-  table.sort(pins, function(x, y) return (render.at_of(sc, f, x.from) or 0) < (render.at_of(sc, f, y.from) or 0) end)
+  table.sort(pins, function(x, y) return (midi.at_of(sc, f, x.from) or 0) < (midi.at_of(sc, f, y.from) or 0) end)
   local pin_number = {}
   for _, mk in ipairs(pins) do
-    local a, b = render.at_of(sc, f, mk.from), render.at_of(sc, f, mk.to)
+    local a, b = midi.at_of(sc, f, mk.from), midi.at_of(sc, f, mk.to)
     if a and b then
       local number = 1
       while pin_ends[number] and pin_ends[number] >= a do number = number + 1 end
@@ -1197,7 +1197,7 @@ local function part_xml(w, part, pid, divisions, g)
         local name = mk.value == "niente" and "n" or mk.value
         put(mi, t, '<direction placement="below"><direction-type><dynamics><' .. name .. "/></dynamics></direction-type>"
           .. (mk.subito and "<direction-type><words>subito</words></direction-type>" or "") .. "%OFFSET%" .. staff_tag
-          .. (render.DYNAMICS[mk.value] and ('<sound dynamics="' .. floor(render.DYNAMICS[mk.value] / 0.9 + 0.5) .. '"/>') or "") .. "</direction>")
+          .. (midi.DYNAMICS[mk.value] and ('<sound dynamics="' .. floor(midi.DYNAMICS[mk.value] / 0.9 + 0.5) .. '"/>') or "") .. "</direction>")
       elseif mk.kind == "hairpin" and pin_number[mk] then
         local number = pin_number[mk]
         local cresc = mk.value ~= "dim"
@@ -1396,7 +1396,9 @@ local function part_xml(w, part, pid, divisions, g)
                 .. (#tnot > 0 and ("<notations>" .. table.concat(tnot) .. "</notations>") or "") .. "</note>")
             else
               for i, n in ipairs(ev.notes) do
-                local parts = { "      <note>" }
+                -- The note's id goes out with it: `n41` is the clip's MIDI note 41.
+                local id = type(n.id) == "string" and n.id:match("^n[%d.]+$")
+                local parts = { id and ('      <note id="' .. id .. '">') or "      <note>" }
                 if ev.grace then parts[#parts + 1] = ev.grace == "acciaccatura" and '<grace slash="yes"/>' or "<grace/>" end
                 if i > 1 then parts[#parts + 1] = "<chord/>" end
                 parts[#parts + 1] = "<pitch><step>" .. LETTERS[n.step] .. "</step>" .. ((n.alter or 0) ~= 0 and ("<alter>" .. n.alter .. "</alter>") or "")

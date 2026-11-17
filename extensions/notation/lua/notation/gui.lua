@@ -510,7 +510,6 @@ function view:status_text()
     return string.format("%s  played at %s, %.2f beats long, velocity %d", model.name(written), daw.time.format(clip.start + note.start), note.length, note.velocity)
   end
   local layout = self:layout()
-  if layout and layout.midi and not self.multi then return view.MIDI_LINE end
   if daw.keymap.mode == "i" then
     return "click the staff to enter a " .. (self.dot and "dotted " or "") .. model.NAMES[self.value] .. " there · letters enter notes · Esc ends"
   end
@@ -722,11 +721,12 @@ end
 --- written there in its voice, as long as it was, over what that voice has
 --- there (a note of a chord leaves the chord, and goes where a voice is free).
 function view:move_note(index, note, step, beat)
-  local clip = self:ensure_score()
+  local clip = self:editable()
   if not clip then return end
   local D = require("notation.doc")
-  local id = require("notation.render").note_id(clip:notes()[index] or note)
-  if not id then return end
+  local played = clip:notes()[index] or note
+  if not (played and played.id) then return end
+  local id = "n" .. played.id
   local fifths = view.key()
   local pitch
   self:write(function(sc)
