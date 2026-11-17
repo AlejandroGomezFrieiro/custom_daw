@@ -721,6 +721,8 @@ fn envelope(eg: &mut Envelope, stage: &str, v: f32, ctx: &mut Ctx) -> bool {
         "vel2decay" => eg.vel2decay = v,
         "vel2release" => eg.vel2release = v,
         "vel2sustain" => eg.vel2sustain = v / 100.0,
+        // Whether controllers move the envelope while it runs: none do here.
+        "dynamic" => {}
         _ => {
             ctx.instrument.warn(format!("envelope stage `{stage}` is not played"));
         }

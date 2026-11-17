@@ -23,10 +23,62 @@ impl FormatReader for DecentSampler {
 
     fn read(&self, path: &Path) -> Result<Instrument, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let doc = Document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         let dir = path.parent().unwrap_or(Path::new("."));
-        read_document(&doc, dir)
+        match Document::parse(&text) {
+            Ok(doc) => read_document(&doc, dir),
+            // Decent Sampler reads presets that are not quite XML: an
+            // attribute given twice keeps its first value there.
+            Err(roxmltree::Error::DuplicatedAttribute(..)) => {
+                let text = first_attributes(&text);
+                let doc = Document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+                read_document(&doc, dir)
+            }
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
     }
+}
+
+/// The text with every attribute given twice in a tag left out after its
+/// first.
+fn first_attributes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('<') {
+        out.push_str(&rest[..open]);
+        rest = &rest[open..];
+        let end = rest.find('>').map_or(rest.len(), |e| e + 1);
+        let tag = &rest[..end];
+        rest = &rest[end..];
+        if tag.starts_with("<!") || tag.starts_with("<?") || tag.starts_with("</") {
+            out.push_str(tag);
+            continue;
+        }
+        // The name, then `name = "value"` pairs.
+        let name_end = tag[1..].find(|c: char| c.is_whitespace() || c == '>' || c == '/').map_or(tag.len(), |i| i + 1);
+        out.push_str(&tag[..name_end]);
+        let mut seen: Vec<&str> = Vec::new();
+        let mut t = &tag[name_end..];
+        loop {
+            let trimmed = t.trim_start();
+            let Some(eq) = trimmed.find('=') else { break };
+            let attr = trimmed[..eq].trim();
+            let after = trimmed[eq + 1..].trim_start();
+            let Some(quote) = after.chars().next().filter(|c| *c == '"' || *c == '\'') else { break };
+            let Some(close) = after[1..].find(quote) else { break };
+            let value = &after[..close + 2];
+            if !seen.contains(&attr) {
+                seen.push(attr);
+                out.push(' ');
+                out.push_str(attr);
+                out.push('=');
+                out.push_str(value);
+            }
+            t = &after[close + 2..];
+        }
+        out.push_str(t.trim_start());
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A binding that turns a group or a tag on or off.
@@ -490,6 +542,12 @@ mod tests {
         assert_eq!(i.regions[1].switch_all, 0b10);
         assert_eq!(i.regions[2].switch_all, 0, "a group no keyswitch touches plays always");
         assert!(i.switches[1].swallow);
+    }
+
+    #[test]
+    fn an_attribute_given_twice_keeps_its_first_value() {
+        let text = first_attributes(r#"<?xml version="1.0"?><a x="1" y='2' x = "3"><b z="4" z="5"/></a>"#);
+        assert_eq!(text, r#"<?xml version="1.0"?><a x="1" y='2'><b z="4"/></a>"#);
     }
 
     #[test]
