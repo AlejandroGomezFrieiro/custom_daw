@@ -848,7 +848,7 @@ arrange view, `:help mixer` in the mixer). In the keys picker (`?`) and the
 commands picker (`,,`), `Ctrl-]` opens the help of the key or command
 chosen. The tutor's panel names its lesson's page (`:help course-5`). In
 the graphical frontend help opens as a docked pane, with the same
-keys.
+keys (`gw` pops it out into a window of its own).
 
 ## Pickers
 
