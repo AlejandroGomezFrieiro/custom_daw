@@ -19,12 +19,16 @@
 //! parameter, `{ "graphics": true, "cell": [w, h], ... }`, see
 //! [`crate::grid::Caps`]) is also sent the surfaces views show pixels in,
 //!
-//!   "surfaces": [ { "name": "notation", "x": 0, "y": 3, "w": 80, "h": 30,
-//!                   "cell": [10, 20], "covered": [[col, row, cols], ...],
-//!                   "ops": [...] }, ... ]
+//!   "surfaces": [ { "key": "notation#3", "x": 0, "y": 3, "w": 80, "h": 30,
+//!                   "cell": [10, 20], "under": false,
+//!                   "covered": [[col, row, cols], ...], "ops": [...] }, ... ]
 //!
 //! with `ops`, the drawing, only when it differs from what was last sent
-//! for that name: the drawing travels, and the far side makes the pixels.
+//! for that key: the drawing travels, and the far side makes the pixels.
+//! `under` places the pixels under the text, which is drawn there as usual.
+//! A strip partly off its window has `"offset": [cols, rows]` (where what
+//! shows is in the whole) and `"whole": [cols, rows]`, and its drawing is
+//! of the whole.
 //! The other side keeps a [`Grid`] and gives each event to [`apply`].
 
 use anyhow::{Result, bail};
@@ -141,11 +145,11 @@ pub fn apply(grid: &mut Grid, payload: &Value) -> Result<Option<(u16, u16)>> {
     for s in payload["surfaces"].as_array().into_iter().flatten() {
         let number = |v: &Value| v.as_i64().unwrap_or(0) as i32;
         let rect = Rect { x: number(&s["x"]), y: number(&s["y"]), w: number(&s["w"]).max(0), h: number(&s["h"]).max(0) };
-        let name = s["name"].as_str().unwrap_or("").to_string();
+        let key = s["key"].as_str().unwrap_or("").to_string();
         let ops = match s.get("ops") {
             Some(ops) => Arc::new(ops.clone()),
             // The same drawing as before.
-            None => before.iter().find(|b| b.name == name).map(|b| b.ops.clone()).unwrap_or_default(),
+            None => before.iter().find(|b| b.key == key).map(|b| b.ops.clone()).unwrap_or_default(),
         };
         let mut covered = vec![false; (rect.w * rect.h) as usize];
         for run in s["covered"].as_array().into_iter().flatten() {
@@ -157,7 +161,17 @@ pub fn apply(grid: &mut Grid, payload: &Value) -> Result<Option<(u16, u16)>> {
             }
         }
         let size = |v: &Value| v.as_u64().unwrap_or(0).min(1000) as u16;
-        grid.surfaces.push(Surface { name, rect, cell: (size(&s["cell"][0]), size(&s["cell"][1])), covered, ops });
+        grid.surfaces.push(Surface {
+            key,
+            rect,
+            cell: (size(&s["cell"][0]), size(&s["cell"][1])),
+            under: s["under"].as_bool().unwrap_or(false),
+            covered,
+            ops,
+            open: false,
+            offset: (number(&s["offset"][0]), number(&s["offset"][1])),
+            whole: (number(&s["whole"][0]), number(&s["whole"][1])),
+        });
     }
     let cursor = &payload["cursor"];
     Ok(match (cursor[0].as_u64(), cursor[1].as_u64()) {
@@ -204,10 +218,14 @@ impl Frontend for RemoteFrontend {
             .iter()
             .map(|s| {
                 let mut out = json!({
-                    "name": s.name, "x": s.rect.x, "y": s.rect.y, "w": s.rect.w, "h": s.rect.h,
-                    "cell": [s.cell.0, s.cell.1], "covered": s.covered_runs(),
+                    "key": s.key, "x": s.rect.x, "y": s.rect.y, "w": s.rect.w, "h": s.rect.h,
+                    "cell": [s.cell.0, s.cell.1], "under": s.under, "covered": s.covered_runs(),
                 });
-                let sent = self.shown.as_ref().and_then(|shown| shown.surfaces.iter().find(|b| b.name == s.name));
+                let sent = self.shown.as_ref().and_then(|shown| shown.surfaces.iter().find(|b| b.key == s.key));
+                if s.whole != (0, 0) {
+                    out["offset"] = json!([s.offset.0, s.offset.1]);
+                    out["whole"] = json!([s.whole.0, s.whole.1]);
+                }
                 if sent.is_none_or(|sent| sent.ops != s.ops) {
                     out["ops"] = (*s.ops).clone();
                 }
@@ -347,25 +365,41 @@ mod tests {
     #[test]
     fn a_surface_arrives_with_what_covers_it_and_keeps_its_drawing_when_none_is_sent() {
         let mut near = Grid::new(12, 3);
-        let index = near.surface("notation", Rect { x: 2, y: 0, w: 6, h: 3 }, (10, 20)).unwrap();
+        let index = near.surface("notation#1", Rect { x: 2, y: 0, w: 6, h: 3 }, (10, 20), false).unwrap();
         near.surfaces[index].ops = Arc::new(json!([["r", 0, 0, 5, 5, "#ffffff", "", 1, 0]]));
+        // The same view in a second window, a strip under its text.
+        let index = near.surface("notation#2", Rect { x: 9, y: 0, w: 3, h: 3 }, (10, 20), true).unwrap();
+        near.surfaces[index].ops = Arc::new(json!([["r", 0, 0, 9, 9, "#000000", "", 1, 0]]));
+        near.seal_surfaces();
         // A menu over two cells of its middle row.
         let clip = near.rect();
         near.text(clip, 4, 1, "ok", Style::default());
         let s = &near.surfaces[0];
         assert_eq!(s.covered_runs(), vec![[2, 1, 2]]);
-        let sent = |ops: Option<&Value>| {
-            let mut surface = json!({ "name": "notation", "x": 2, "y": 0, "w": 6, "h": 3, "cell": [10, 20], "covered": s.covered_runs() });
-            if let Some(ops) = ops {
-                surface["ops"] = ops.clone();
-            }
-            json!({ "w": 12, "h": 3, "runs": [], "surfaces": [surface] })
+        let sent = |with_ops: bool| {
+            let surfaces: Vec<Value> = near
+                .surfaces
+                .iter()
+                .map(|s| {
+                    let mut surface = json!({
+                        "key": s.key, "x": s.rect.x, "y": s.rect.y, "w": s.rect.w, "h": s.rect.h,
+                        "cell": [10, 20], "under": s.under, "covered": s.covered_runs(),
+                    });
+                    if with_ops {
+                        surface["ops"] = (*s.ops).clone();
+                    }
+                    surface
+                })
+                .collect();
+            json!({ "w": 12, "h": 3, "runs": [], "surfaces": surfaces })
         };
         let mut far = Grid::new(12, 3);
-        apply(&mut far, &sent(Some(&s.ops))).unwrap();
+        apply(&mut far, &sent(true)).unwrap();
         assert_eq!(far.surfaces, near.surfaces);
-        apply(&mut far, &sent(None)).unwrap();
+        assert!(far.surfaces[1].under, "placed under the text there too");
+        apply(&mut far, &sent(false)).unwrap();
         assert_eq!(far.surfaces[0].ops, near.surfaces[0].ops, "the drawing it had");
+        assert_eq!(far.surfaces[1].ops, near.surfaces[1].ops, "each by its key");
         apply(&mut far, &json!({ "w": 12, "h": 3, "runs": [] })).unwrap();
         assert!(far.surfaces.is_empty(), "gone when not sent");
     }

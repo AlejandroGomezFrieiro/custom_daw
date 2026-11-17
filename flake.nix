@@ -15,9 +15,10 @@
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
 
       # The graphical frontend loads its windowing libraries at run time.
-      # `libglvnd` is libGL and libEGL for `--renderer gpu`; they find the
-      # system's driver themselves (on NixOS in /run/opengl-driver), which
-      # must match the machine and so is not named here.
+      # `libglvnd` is libGL and libEGL, which the window draws with; they find
+      # the system's driver themselves (on NixOS in /run/opengl-driver), which
+      # must match the machine and so is not named here. `fontconfig` also
+      # finds a font for Japanese and the like.
       guiLibs = pkgs: with pkgs; [
         wayland libxkbcommon fontconfig libx11 libxcursor libxi libxcb libglvnd
       ];
@@ -65,10 +66,11 @@
           # `DAW_HOME` is where `daw doctor` finds its script. ffmpeg is
           # there for MP3, Ogg and Opus export (no codec is linked into the
           # program); it goes last on the PATH, so that the user's own wins.
+          # fc-list is how the window finds a font for Japanese and the like.
           for bin in daw daw-gui daw-mcp; do
             wrapProgram $out/bin/$bin \
               --set-default DAW_HOME $out/share/daw \
-              --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless ]}
+              --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless pkgs.fontconfig.bin ]}
           done
         '';
         # The fixup phase trims the binaries' library paths to what they are
@@ -185,7 +187,16 @@
 
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ffmpeg-headless ];
+          nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ffmpeg-headless sccache cargo-sweep ];
+          # Every git worktree has a `target/` of its own, and cargo shares
+          # nothing between them: each one compiles the same four hundred
+          # crates again. sccache keeps what rustc made in one place, shared
+          # by every checkout, with a ceiling on its size; it only caches
+          # builds that are not incremental. `cargo sweep -t 14` clears what
+          # no build has used for two weeks (tools/sweep.sh does every tree).
+          RUSTC_WRAPPER = "sccache";
+          SCCACHE_CACHE_SIZE = "40G";
+          CARGO_INCREMENTAL = "0";
           # What the window tests (`crates/daw-gui/tests/window.rs`) drive: a
           # private X server, a window manager, a pointer and key sender, and
           # tesseract to find words on a screenshot.

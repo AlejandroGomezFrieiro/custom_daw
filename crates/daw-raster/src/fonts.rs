@@ -30,10 +30,10 @@ const DATA: [&[u8]; 7] = [
     include_bytes!("../fonts/Leland.otf"),
     include_bytes!("../fonts/Bravura.otf"),
     include_bytes!("../fonts/Petaluma.otf"),
-    include_bytes!("../../daw-gui/ui/fonts/Inter-Regular.ttf"),
-    include_bytes!("../../daw-gui/ui/fonts/Inter-SemiBold.ttf"),
-    include_bytes!("../../daw-gui/ui/fonts/JetBrainsMono-Regular.ttf"),
-    include_bytes!("../../daw-gui/ui/fonts/JetBrainsMono-Medium.ttf"),
+    include_bytes!("../../daw-gui/fonts/Inter-Regular.ttf"),
+    include_bytes!("../../daw-gui/fonts/Inter-SemiBold.ttf"),
+    include_bytes!("../../daw-gui/fonts/JetBrainsMono-Regular.ttf"),
+    include_bytes!("../../daw-gui/fonts/JetBrainsMono-Medium.ttf"),
 ];
 
 const METADATA: [&str; 3] = [

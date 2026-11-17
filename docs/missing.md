@@ -22,6 +22,11 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
+  column's lowest to highest sample and nothing of its loudness: there is no
+  darker inner band for the RMS. The window draws a clip's peaks from the
+  same data (`daw.frontend.peaks`: the lowest, the highest and the loudness
+  of each point) as it did before.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the
@@ -144,7 +149,17 @@
   placements (not Sixel, not iTerm's, not Unicode placeholders), so not
   through tmux, which does not pass them on; a terminal that puts images
   over images well is known only by its name (kitty, Ghostty, herdr), and
-  any other has the moving parts drawn into the page.
+  any other has the moving parts drawn into the page; one that puts text
+  over images under it (a strip `under` the text) also only by its name
+  (kitty, Ghostty, herdr, WezTerm); in any other (Konsole) the cells'
+  backgrounds are painted into the picture, and one that is a single run
+  along one row (a cursor block, the note under the cursor, a selection one
+  row high) hides the line under it. The score, the curve editor's plot,
+  the piano roll's controller strip, audio waveforms and the utau editor's
+  pitch and curves are pictures; the arrange view's automation lanes, the
+  velocity strip, the tempo lane and the meters are still cells. In Konsole
+  a scrolled strip sends again the pieces at its edges, whose painted
+  backgrounds changed.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).
@@ -226,9 +241,10 @@
   beyond the parameters' values (a pattern an arpeggiator keeps), more
   than one stereo output, and reporting latency of their own to delay
   compensation.
-- The window's GPU renderer as the default: it is tried only on a software
-  OpenGL (llvmpipe) so far, where it draws correctly but costs more than
-  the software renderer.
+- The window measured on a real graphics card: it is tried only on Mesa's
+  llvmpipe so far, where playing costs more than a core.
+- In the window, kanji, hanzi and hangul where the system has no font for
+  them: only kana are built in, and the rest show as boxes then.
 - In clip launching: follow actions (a clip that launches the next, or a
   random one, after so many bars); under a tempo ramp a slot's clip spreads
   each block's beats evenly over it, so its notes can land up to a frame or

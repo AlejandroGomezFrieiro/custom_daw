@@ -1,5 +1,9 @@
 # Running it
 
+The programs keep short names for now: `daw` is paw's terminal interface,
+`daw-gui` its window, `daw-mcp` the bridge for AI assistants, and the Lua
+module is `daw`.
+
 The dev shell provides the Rust toolchain and the PipeWire libraries.
 
 ```sh
@@ -35,8 +39,8 @@ What the package takes care of, which the dev shell does otherwise:
 
 - The window's libraries (Wayland, xkbcommon, X11, fontconfig, OpenGL) and
   the ones that plugins built elsewhere open by name are written into the
-  programs, so they run from any shell. The OpenGL driver for
-  `--renderer gpu` is the system's (on NixOS `hardware.graphics.enable`).
+  programs, so they run from any shell. The OpenGL driver the window draws
+  with is the system's (on NixOS `hardware.graphics.enable`).
 - LuaJIT is built with `LUAJIT_ENABLE_CHECKHOOK`, as `.cargo/config.toml`
   asks, so that `daw.limit` can stop a runaway loop.
 - The runtime's Lua and the window's fonts are compiled into the binaries.
