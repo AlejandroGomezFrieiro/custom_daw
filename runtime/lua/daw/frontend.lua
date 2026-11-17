@@ -199,6 +199,8 @@ local function modal()
     -- bottom line shows them.
     out.keys = {}
     for i, entry in ipairs(ui.keybar.entries()) do out.keys[i] = { key = entry[1], desc = entry[2] } end
+    local topic = daw.help and daw.help.topic_of(ui.focused)
+    if topic then out.keys[#out.keys + 1] = { key = ":help " .. topic, desc = "the manual" } end
   end
   -- What an Ex line being typed would act on: the stretch of time, the
   -- tracks, and the clips that match with how many matches each holds.

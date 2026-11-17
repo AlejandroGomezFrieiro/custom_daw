@@ -1,5 +1,6 @@
--- `?`: the keys that work where the cursor is, in a picker that filters as
--- you type and runs the key chosen. `:help all` shows them as one long list.
+-- `:help all`: the keys that work where the cursor is, as one long list.
+-- `?` shows them in a picker (daw/pick/sources.lua), and `:help` with a
+-- topic opens the manual (daw/help.lua).
 local api = daw.api
 
 -- `modal` sends every key to `on_key`, bypassing the mappings behind the window.
@@ -79,16 +80,17 @@ end
 daw.ui.view("help", view)
 
 daw.command("help", function(ctx)
-  local target = daw.ui.focused
-  if ctx.args[1] == "all" then
+  local topic = (ctx.args[1] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if topic == "all" then
+    local target = daw.ui.focused
     view.lines, view.scroll = collect(target), 0
     return daw.ui.open("help", { title = "Keys · " .. tostring(target) .. " · all", width = 76, height = 30 })
   end
-  local query = ctx.args[1] and table.concat(ctx.args, " ") or nil
-  daw.pick("keys", { query = query })
+  daw.help.open(topic)
 end, {
-  desc = "Find a key for the focused view by typing part of it; Enter runs it. `help all` lists every key",
-  complete = function() return { "all" } end,
+  desc = "The manual: `help` its contents, `help gU` a key, `help :s` a command, `help 'timebind'` an option, `help daw.qf` a module, `help key-rule` a section (Tab completes). `help all` lists every key",
+  raw = true,
+  complete = function(rest) return daw.help.complete(rest) end,
 })
 
 -- A scrollable list of text lines, used for `:messages` and similar. Lines

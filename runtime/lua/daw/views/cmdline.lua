@@ -516,6 +516,14 @@ daw.ui.view("cmdline", {
         x = x + buf:text(x, 0, key, "KeyBarKey") + 1
         buf:text(x, 0, "last error", "Error")
         room = buf.width - w - 3
+      else
+        -- Else the topic of help for the view, where there is room for it.
+        local topic = daw.help and daw.help.topic_of(daw.ui.focused)
+        local hint = topic and ":help " .. topic
+        if hint and api.str_width(hint) + 40 < room then
+          buf:text(buf.width - api.str_width(hint) - 1, 0, hint, "KeyBarText")
+          room = room - api.str_width(hint) - 3
+        end
       end
       daw.draw.keys(buf, 1, 0, daw.ui.keybar.entries(), room)
     end

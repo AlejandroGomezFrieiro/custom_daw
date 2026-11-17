@@ -49,6 +49,14 @@
   ghosts (as the roll's marks) and the count (`prompt.note`), but does not
   show the count yet, nor shade the range or light clips in the arrange view.
 
+- Help (`:help`): pages are laid out 78 columns wide, not to the window;
+  `:helpgrep` takes words, not patterns; there is no `:helptags` (the tags
+  are made the first time help is asked for, in about half a second) and
+  no help in other languages. The Nix package installs the extensions
+  beside the program but not `docs/`, so installed, help has the
+  extensions' pages and not the manual's, until `DAW_HOME` names a source
+  tree.
+
 - Lists edited as text (`daw://tracks` and the others): a track's input,
   MIDI ports, height and automation, a device's side-chain, outputs and
   parameters, and a send's place among a track's sends are not fields of

@@ -374,6 +374,12 @@ impl Terminal {
 fn key_notation(key: KeyEvent) -> Option<String> {
     let mods = key.modifiers;
     let (name, is_char) = match key.code {
+        // A terminal sends Ctrl-\ Ctrl-] Ctrl-^ Ctrl-_ as the bytes 0x1c to
+        // 0x1f, which crossterm reads as Ctrl-4 to Ctrl-7: they are the keys
+        // that were pressed (`Ctrl-]` follows a link in help).
+        KeyCode::Char(c @ '4'..='7') if mods.contains(KeyModifiers::CONTROL) => {
+            (['\\', ']', '^', '_'][c as usize - '4' as usize].to_string(), true)
+        }
         KeyCode::Char(' ') => ("Space".to_string(), false),
         KeyCode::Char('<') => ("lt".to_string(), false),
         KeyCode::Char(c) => (c.to_string(), true),
@@ -452,5 +458,20 @@ fn mouse_event(mouse: MouseEvent, cell: Option<(u16, u16)>) -> InputEvent {
         y,
         mods,
         pixel,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_and_a_bracket_is_that_key_not_a_digit() {
+        let ctrl = |c| key_notation(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
+        assert_eq!(ctrl('5').as_deref(), Some("<C-]>"));
+        assert_eq!(ctrl('4').as_deref(), Some("<C-\\>"));
+        assert_eq!(ctrl('w').as_deref(), Some("<C-w>"));
+        let five = key_notation(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE));
+        assert_eq!(five.as_deref(), Some("5"));
     }
 }

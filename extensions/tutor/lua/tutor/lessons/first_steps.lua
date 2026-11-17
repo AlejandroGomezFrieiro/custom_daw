@@ -70,7 +70,7 @@ commands by name (`:tempo 120`), and Ex commands over bars and tracks
     {
       say = "`?` lists every key that works in the view you are in. Press `?`, type `mute` to narrow the list down, then press `<Esc>` to close it.",
       keys = { "?", "mute", "<Esc>" },
-      check = function(ctx, look) return look.ran(ctx, "help") and not look.float() end,
+      check = function(ctx, look) return look.ran(ctx, "pick.keys") and not look.float() end,
       done = "That list is always there when you forget a key; `<CR>` (Enter) on a line runs its key.",
       hint = "Typing narrows the list; `<Esc>` closes it.",
     },

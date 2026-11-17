@@ -146,7 +146,9 @@ driven exactly as the terminal UI is: the same modes, operators, registers
 and macros, with the mode and the view that has the keys (`NORMAL·mixer`),
 the prompt, messages and half-typed keys in the status line, the selection
 and both cursors drawn, the keys that can follow listed, and help and other
-pages shown over the window. The status line shows the keys worth knowing in
+pages shown over the window. `:help` opens the manual in a window of its own, drawn as the
+terminal draws it and moved through with the same keys (see Help in [the
+terminal interface](terminal.md)). The status line shows the keys worth knowing in
 the view that has the keyboard (the terminal's key bar, `daw.opt.keybar`), the
 quickfix count (`qf E1 W2`) in the colour of the worst entry, and, while a
 command is typed, the list of what it could become, with each one's
