@@ -8,8 +8,11 @@
     url = "github:openutau/OpenUtau/bc194b6fe4897427a73066390b286e11205fd10f";
     flake = false;
   };
+  # Builds the workspace in layers: every dependency once, in a derivation
+  # of its own that the program and the checks reuse (docs/running.md).
+  inputs.crane.url = "github:ipetkov/crane";
 
-  outputs = { self, nixpkgs, openutau }:
+  outputs = { self, nixpkgs, openutau, crane }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
@@ -32,66 +35,165 @@
         stdenv.cc.cc.lib
       ];
 
-      # The whole workspace in one build: `daw` (the terminal, `--headless`,
-      # `ctl`), `daw-gui` and `daw-mcp`.
-      daw = pkgs: pkgs.rustPlatform.buildRustPackage (finalAttrs: {
-        pname = "daw";
-        version = "0.1.0";
-        # Only what the build reads, so that a change to the manual does not
-        # rebuild the program. The runtime's Lua is compiled into the binary
-        # (`include_dir!`); the extensions and examples are installed.
-        src = pkgs.lib.fileset.toSource {
-          root = ./.;
-          fileset = pkgs.lib.fileset.unions [
-            ./Cargo.toml ./Cargo.lock ./.cargo ./crates ./runtime ./extensions ./examples ./config
-          ];
+      # The Rust workspace with crane, in layers. `deps` is every crate the
+      # workspace depends on, compiled once (checked, built, and built for
+      # the tests); it changes only with Cargo.toml, Cargo.lock or
+      # `.cargo`. The program and every check start from it and compile
+      # only the workspace's own crates.
+      rust = pkgs:
+        let
+          lib = pkgs.lib;
+          craneLib = crane.mkLib pkgs;
+          # Only what cargo reads, so that a change to the manual, an
+          # extension or an example does not rebuild the program. The
+          # runtime's Lua is compiled into the binary (`include_dir!`).
+          src = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./.cargo ./crates ./runtime ];
+          };
+          # The crates as cargo downloads them, each a store path, so every
+          # file in them is read-only. LuaJIT's build copies its source tree
+          # and then writes its version file over the copied one, which fails
+          # on a read-only copy; the build writes that file itself, so the
+          # tree goes without it.
+          cargoVendorDir = craneLib.vendorCargoDeps {
+            inherit src;
+            overrideVendorCargoPackage = p: drv:
+              if p.name == "luajit-src" then
+                drv.overrideAttrs { postInstall = "rm $out/luajit2/.relver"; }
+              else drv;
+          };
+          common = {
+            inherit src cargoVendorDir;
+            pname = "daw";
+            version = "0.1.0";
+            strictDeps = true;
+            nativeBuildInputs = with pkgs; [ pkg-config rustPlatform.bindgenHook ];
+            buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
+            # `.cargo/config.toml` sets this for LuaJIT; saying it here as
+            # well makes it hold however cargo is set up in the build,
+            # because without it `daw.limit` cannot stop a compiled loop.
+            # LuaJIT is a dependency, so `deps` must have it too.
+            TARGET_CFLAGS = "-DLUAJIT_ENABLE_CHECKHOOK";
+            # Frame pointers, as nixpkgs' own Rust builds have them (for
+            # profilers; they also make the unwinding tables smaller). And
+            # the binaries name the source file of every place that can
+            # panic: the crates' long store paths are shortened.
+            RUSTFLAGS = "-Cforce-frame-pointers=yes --remap-path-prefix=${cargoVendorDir}/${builtins.hashString "sha256" "registry+https://github.com/rust-lang/crates.io-index"}=/cargo-vendor";
+            # bindgen's flags carry a seed made from the derivation's own
+            # output path, and the build scripts that run bindgen rerun
+            # when the flags change: without this every derivation would
+            # build PipeWire's bindings, and all that uses them, again.
+            preBuild = ''
+              export BINDGEN_EXTRA_CLANG_ARGS="$(echo "$BINDGEN_EXTRA_CLANG_ARGS" | sed 's/-frandom-seed=[^ ]*//g')"
+            '';
+          };
+          deps = craneLib.buildDepsOnly common;
+          withDeps = common // { cargoArtifacts = deps; };
+        in {
+          inherit deps;
+          # `daw` (the terminal, `--headless`, `ctl`), `daw-gui` and
+          # `daw-mcp`, as cargo builds them.
+          programs = craneLib.buildPackage (withDeps // {
+            pname = "daw-programs";
+            nativeBuildInputs = withDeps.nativeBuildInputs ++ [ pkgs.patchelf ];
+            # The window's build script writes where its libraries are into
+            # the binary, so that it runs from any shell; so does the plugin
+            # host.
+            DAW_GUI_LIBS = lib.makeLibraryPath (guiLibs pkgs);
+            DAW_PLUGIN_LIB_DIRS = lib.makeLibraryPath (pluginLibs pkgs);
+            # The tests are the checks (`nix flake check`) and the dev shell's.
+            doCheck = false;
+            # The fixup phase trims the binaries' library paths to what they
+            # are linked against, which drops the window's: it opens those by
+            # name. They are put back here, after it.
+            postFixup = ''
+              patchelf --add-rpath ${lib.makeLibraryPath (guiLibs pkgs)} $out/bin/daw-gui
+            '';
+          });
+          # What `nix flake check` runs, each from `deps`. The Lua suite and
+          # the window's tests need a private X server, plugins and their own
+          # directories, which a build sandbox has none of: they run in the
+          # dev shell (`tests/tools/suite.sh`, `cargo test -p daw-gui`).
+          # Nothing is built on top of a check, so none keeps its `target`.
+          checks = {
+            clippy = craneLib.cargoClippy (withDeps // {
+              cargoClippyExtraArgs = "--all-targets";
+              doInstallCargoArtifacts = false;
+            });
+            # The tree has never been run through rustfmt as a whole, and
+            # doing it would collide with every branch in flight, so this
+            # says how much it would change and does not fail. Once
+            # `cargo fmt` has been run on all of it, the plain
+            # `craneLib.cargoFmt` makes it a check that fails.
+            fmt = craneLib.mkCargoDerivation {
+              inherit src;
+              pname = "daw";
+              version = "0.1.0";
+              pnameSuffix = "-fmt";
+              cargoArtifacts = null;
+              cargoVendorDir = null;
+              nativeBuildInputs = [ pkgs.rustfmt ];
+              buildPhaseCargoCommand = ''
+                if ! cargo fmt --all -- --check > fmt.diff; then
+                  echo "warning: rustfmt would change $(grep -c '^Diff in' fmt.diff) places (cargo fmt in the dev shell)"
+                fi
+              '';
+              doInstallCargoArtifacts = false;
+              installPhaseCommand = "mkdir -p $out";
+            };
+            # The Rust tests that need no display, audio device or Lua
+            # suite: those of the libraries and the engine's own.
+            tests = craneLib.cargoNextest (withDeps // {
+              cargoNextestExtraArgs = "--workspace -E 'not (package(daw-gui) | binary(suite) | binary(remote) | binary(safety))'";
+              doInstallCargoArtifacts = false;
+            });
+          };
         };
-        cargoLock.lockFile = ./Cargo.lock;
-        nativeBuildInputs = with pkgs; [ pkg-config rustPlatform.bindgenHook makeBinaryWrapper patchelf ];
-        buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
-        # The window's build script writes where its libraries are into the
-        # binary, so that it runs from any shell; so does the plugin host.
-        DAW_GUI_LIBS = pkgs.lib.makeLibraryPath (guiLibs pkgs);
-        DAW_PLUGIN_LIB_DIRS = pkgs.lib.makeLibraryPath (pluginLibs pkgs);
-        # `.cargo/config.toml` sets this for LuaJIT; saying it here as well
-        # makes it hold however cargo is set up in the build, because
-        # without it `daw.limit` cannot stop a compiled loop.
-        TARGET_CFLAGS = "-DLUAJIT_ENABLE_CHECKHOOK";
-        # The tests drive a private X server, plugins and audio devices,
-        # which a build sandbox has none of. They run in the dev shell.
-        doCheck = false;
-        postInstall = ''
-          mkdir -p $out/share/daw
-          cp -r extensions examples config $out/share/daw/
-          # `DAW_HOME` is where `daw doctor` finds its script. ffmpeg is
-          # there for MP3, Ogg and Opus export (no codec is linked into the
-          # program); it goes last on the PATH, so that the user's own wins.
-          # fc-list is how the window finds a font for Japanese and the like.
-          for bin in daw daw-gui daw-mcp; do
-            wrapProgram $out/bin/$bin \
-              --set-default DAW_HOME $out/share/daw \
-              --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless pkgs.fontconfig.bin ]}
-          done
-        '';
-        # The fixup phase trims the binaries' library paths to what they are
-        # linked against, which drops the window's: it opens those by name.
-        # They are put back here, after it.
-        postFixup = ''
-          patchelf --add-rpath ${pkgs.lib.makeLibraryPath (guiLibs pkgs)} $out/bin/.daw-gui-wrapped
-        '';
-        # The extensions as packages, and the program with some of them:
-        # `paw.withExtensions (exts: [ exts.utau ])`.
-        passthru = {
-          extensions = extensionsFor pkgs;
-          withExtensions = pick: withExtensions pkgs finalAttrs.finalPackage (pick (extensionsFor pkgs));
-        };
-        meta = {
-          description = "A hackable DAW with a small Rust kernel and everything else in Lua";
-          license = with pkgs.lib.licenses; [ mit asl20 ];
-          mainProgram = "daw";
-          platforms = [ "x86_64-linux" "aarch64-linux" ];
-        };
-      });
+
+      # The programs ready to run, with what they need beside them.
+      daw = pkgs:
+        let inherit (rust pkgs) programs deps;
+        in pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
+          pname = "daw";
+          version = "0.1.0";
+          # The extensions, examples and configuration go in `share/daw`.
+          # They are not in the Rust build's source, so a change to one of
+          # them only remakes this, in a second.
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [ ./extensions ./examples ./config ];
+          };
+          nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
+          installPhase = ''
+            mkdir -p $out/share/daw
+            cp -r extensions examples config $out/share/daw/
+            # `DAW_HOME` is where `daw doctor` finds its script. ffmpeg is
+            # there for MP3, Ogg and Opus export (no codec is linked into the
+            # program); it goes last on the PATH, so that the user's own wins.
+            # fc-list is how the window finds a font for Japanese and the like.
+            # The window starts the `daw` beside its binary, which is the
+            # unwrapped one; it inherits these from the window's wrapper.
+            for bin in daw daw-gui daw-mcp; do
+              makeWrapper ${programs}/bin/$bin $out/bin/$bin \
+                --set-default DAW_HOME $out/share/daw \
+                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless pkgs.fontconfig.bin ]}
+            done
+          '';
+          # The extensions as packages, and the program with some of them:
+          # `paw.withExtensions (exts: [ exts.utau ])`.
+          passthru = {
+            inherit programs deps;
+            extensions = extensionsFor pkgs;
+            withExtensions = pick: withExtensions pkgs finalAttrs.finalPackage (pick (extensionsFor pkgs));
+          };
+          meta = {
+            description = "A hackable DAW with a small Rust kernel and everything else in Lua";
+            license = with pkgs.lib.licenses; [ mit asl20 ];
+            mainProgram = "daw";
+            platforms = [ "x86_64-linux" "aarch64-linux" ];
+          };
+        });
 
       # Every extension as a package holding `share/daw/extensions/<name>`.
       # Most are Lua and nothing else; one with native parts (an engine to
@@ -148,6 +250,10 @@
         paw-utau = pawUtau pkgs;
         utau-engine = (extensionsFor pkgs).utau.engine;
       });
+
+      # `nix flake check`: clippy, rustfmt, the Rust tests a sandbox can run,
+      # and the program itself.
+      checks = forAll (pkgs: (rust pkgs).checks // { daw = daw pkgs; });
 
       apps = forAll (pkgs:
         nixpkgs.lib.genAttrs [ "daw" "daw-gui" "daw-mcp" ] (name: {
