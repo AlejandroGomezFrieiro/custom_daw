@@ -822,7 +822,13 @@ function view:render(buf, ctx)
           return (value(clip.start + beat) - info.min) / range
         end, "UtauCurve")
       end
-      area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, nil, "RollCursor")
+      if drawn then
+        -- Over the picture, a line on the cell's left edge rather than a
+        -- block, so that moving it changes no pixels where blocks are painted in.
+        area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, daw.draw.g.playhead, { fg = c.normal })
+      else
+        area:fill(x_of(self, self.beat, zoom), 0, 1, curve_rows, nil, "RollCursor")
+      end
       local here = value(clip.start + self.beat)
       buf:text(0, cy, util.fit(info.key, KEYS), "UtauCurveName")
       buf:text(0, cy + 1, util.fit(string.format("%g", math.floor(here * 10 + 0.5) / 10), KEYS), "UtauCurveName")
