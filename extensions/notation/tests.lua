@@ -958,9 +958,12 @@ test("notation terminal: a head in a space lies across two rows; accidentals bef
 end)
 
 test("notation terminal: a grand staff fits in eighteen rows; zoomed in, every line and space has a row", function()
+  -- The view with the arrange view alone, whatever other tests left open.
+  daw.cmd("view.only")
   local view = song({ N(36, 0, 1), N(43, 1, 1), N(76, 0, 1), N(79, 1, 1) }, 4)
   daw.ui.focus("notation")
-  local rows = panel(120, 40)
+  local rows, rect = panel(120, 50)
+  eq(rect.h >= 20, true, "a panel of twenty rows or more: " .. rect.h)
   local g = view.geometry
   eq(#g.staves, 2, "both staves are drawn")
   local sys = g.systems[1]
@@ -970,7 +973,7 @@ test("notation terminal: a grand staff fits in eighteen rows; zoomed in, every l
   -- The keys zoom the window's page too.
   T.after(function() view.zoom, view.space = 1, nil end)
   keys("zi")
-  rows = panel(120, 40)
+  rows = panel(120, 50)
   g = view.geometry
   eq(g.dense, false, "zoomed in, the staff is open")
   sys = g.systems[1]
