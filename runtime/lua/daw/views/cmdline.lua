@@ -474,6 +474,7 @@ daw.ui.view("cmdline", {
     if active and not anchored(active) then
       local used = buf:text(0, 0, active.prompt, "Accent")
       local typed = buf:text(used, 0, text(), active.selected and "Visual" or "Normal")
+      if typed == 0 and active.ghost then buf:text(used, 0, daw.util.fit(active.ghost, math.max(1, buf.width - used - 1)), "Dim") end
       -- What the line would do, at the right end while there is room.
       local note = active.note
       if note and note ~= "" then

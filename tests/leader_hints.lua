@@ -7,6 +7,8 @@ local daw = require("daw")
 local api = daw.api
 local L = daw.layout
 
+local initial = L.capture()
+
 local function hint_of(key)
   for _, hint in ipairs(daw.keymap.hints() or {}) do
     if hint.key == key then return hint.desc end
@@ -21,6 +23,8 @@ end
 --- A clip open as notation, the cursor in it.
 local function song()
   fresh()
+  while daw.ui.float do daw.ui.close() end
+  L.restore(initial)
   local view = load()
   local track = daw.add_track({ name = "Lead" })
   track:add_device("synth")
@@ -85,7 +89,7 @@ end)
 test("popover: an empty prompt shows examples, and Tab fills the line", function()
   local view = song()
   daw.keymap.feed(",d")
-  eq(rows_with("pp p mp mf f ff  mp<f  sfz") ~= nil and #rows_with("pp p mp mf f ff  mp<f  sfz") > 0, true, "dynamics examples")
+  eq(#rows_with("pp p mp mf f ff  mp<f  sfz") > 0, true, "dynamics examples")
   daw.keymap.feed("<Tab>")
   eq(#rows_with("pp p mp mf f ff  mp<f  sfz"), 0, "gone once the line has text")
   daw.keymap.feed("<Esc>")
