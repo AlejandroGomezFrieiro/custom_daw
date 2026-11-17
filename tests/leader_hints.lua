@@ -90,7 +90,11 @@ end)
 
 test("popover: an empty prompt shows examples, and Tab fills the line", function()
   local view = song()
+  local wait = daw.opt.timeoutlen
+  T.after(function() daw.opt.timeoutlen = wait end)
+  daw.opt.timeoutlen = 20
   daw.keymap.feed(",d")
+  daw.wait(150)
   eq(#rows_with("pp p mp mf f ff  mp<f  sfz") > 0, true, "dynamics examples")
   daw.keymap.feed("<Tab>")
   eq(#rows_with("pp p mp mf f ff  mp<f  sfz"), 0, "gone once the line has text")
@@ -98,6 +102,8 @@ test("popover: an empty prompt shows examples, and Tab fills the line", function
   for key, ghost in pairs({ t = "Allegro q=132  rit.  a tempo", k = "Eb  f#m  D dorian", m = "6/8  3+3+2/8", q = "Cmaj7  G/B  N.C.",
       l = "syllables, Space next, - hyphen" }) do
     daw.keymap.feed("," .. key)
+    -- An extension's longer mapping (the pattern's `,t…`) makes the popover wait out `timeoutlen`.
+    daw.wait(150)
     eq(#rows_with(ghost) > 0, true, "," .. key .. " shows " .. ghost .. " on\n" .. screen())
     daw.keymap.feed("<Esc>")
   end
