@@ -51,7 +51,7 @@ frames a second for the playhead, the clock and the meters. The piano roll
 and the timeline are handed only the notes, lines and points near what
 shows, so a clip of thousands of notes opens and scrolls as fast as a short
 one. Measured with the demo song in a 1500x960 window on llvmpipe (no
-graphics card, the worst case): 0% of a core at rest, about 125% playing
+graphics card, the worst case): 0% of a core at rest, about 105% playing
 (a frame takes 4 ms of the window's own work; the rest is llvmpipe filling
 pixels on its threads). On a graphics card the filling is the card's.
 
