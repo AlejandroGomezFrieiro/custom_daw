@@ -5,8 +5,8 @@ return {
   intro = [[
 Everything from the last lesson works in the piano roll, with notes in place of
 clips and pitches in place of tracks. `w` goes to the next note, so `dw`
-deletes up to it; `in` is the note under the cursor, `ic` every note of the
-clip; `dd` deletes a whole row, which here is every note of one pitch; `.`
+deletes up to it; `in` is the note under the cursor, `ic` the notes that
+sound together there, `ie` every note of the clip; `dd` deletes a whole row, which here is every note of one pitch; `.`
 repeats; `y` and `p` copy.
 
 The clip `riff` is open in the piano roll: C D E G E D C, a beat each.]],
@@ -14,7 +14,7 @@ The clip `riff` is open in the piano roll: C D E G E D C, a beat each.]],
 Learn the grammar once, use it everywhere: the operators are the same (`d` `y`
 `c` `>` `<` `=` `gl`), the motions are the same keys (`w` `b` `e` `0` `$` `W`
 `B`, `j` `k` by pitch), and the text objects are `in` (note), `ib` (bar) and
-`ic` (the whole clip). A note belongs to the stretch it starts in, so `dw`
+`ie` (the whole clip; `ic` is the chord). A note belongs to the stretch it starts in, so `dw`
 from the middle of a gap deletes nothing.]],
   vim = [[
 `in` stands where `iw` would. `dd` takes a whole row, which is a pitch.
@@ -67,8 +67,8 @@ from the middle of a gap deletes nothing.]],
       hint = "The cursor must be on G4 (beat 4). `u` takes back a move that went wrong.",
     },
     {
-      say = "`yic` yanks every note of the clip. Then `$` goes to the end of the clip and `p` pastes them there. Press `yic`, `$`, `p`.",
-      keys = { "yic", "$", "p" },
+      say = "`yie` yanks every note of the clip. Then `$` goes to the end of the clip and `p` pastes them there. Press `yie`, `$`, `p`.",
+      keys = { "yie", "$", "p" },
       check = function(_, look) return #look.clip("Lead"):notes() == 14 end,
       done = "The riff twice, and the clip grew to hold it.",
     },
@@ -95,5 +95,5 @@ from the middle of a gap deletes nothing.]],
       done = "Your changed riff.",
     },
   },
-  outro = "`dw`, `.`, `>in`, `yic` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes.",
+  outro = "`dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes.",
 }

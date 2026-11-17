@@ -383,8 +383,12 @@ test("ex: an extension adds a pattern field and a command that takes a range", f
   ex.fields.lyric = nil
 end)
 
-test("ex: score clips are refused with a reason", function()
+test("ex: a score clip nothing writes is refused with a reason", function()
   local t = song()
+  -- What an extension (notation) would add to read and write it.
+  local writers = daw.ex.writers
+  daw.ex.writers = {}
+  T.after(function() daw.ex.writers = writers end)
   t:clips()[1].meta = { score = { measures = {} } }
   fails(function() daw.commands.exec("%s/c4/d4/g") end, "is a score")
 end)

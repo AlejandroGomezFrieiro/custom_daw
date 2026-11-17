@@ -43,7 +43,8 @@ selection. Typed twice they take whole lines: `dd` is a track, `3dd` three.
 **Text objects** name a region: `ic` the clip under the cursor, `ac` the clip
 and the gap after it, `ib` this bar (`2ib` two), `il` the loop, `it` everything
 on the track, `ie` the entire project. In the piano roll: `in` the note, `ib`
-the bar, `ic` every note of the clip.
+the bar, `ic` the notes that sound together at the cursor (`ac` with every
+note that overlaps them), `ie` every note of the clip.
 
 **Visual mode** selects first: `v` a stretch of time, stretched across tracks
 with `j` and `k`; `V` whole tracks; in the piano roll `v` a stretch of time at
