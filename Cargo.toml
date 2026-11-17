@@ -24,9 +24,13 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 
 [profile.dev]
 opt-level = 1
+# Backtraces keep their file and line; full debug info for every crate is
+# what makes `target/debug` tens of gigabytes.
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 [profile.release]
 lto = "thin"

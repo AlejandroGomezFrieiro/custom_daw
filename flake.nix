@@ -189,7 +189,16 @@
 
       devShells = forAll (pkgs: {
         default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ffmpeg-headless ];
+          nativeBuildInputs = with pkgs; [ cargo rustc clippy rustfmt rust-analyzer pkg-config rustPlatform.bindgenHook ffmpeg-headless sccache cargo-sweep ];
+          # Every git worktree has a `target/` of its own, and cargo shares
+          # nothing between them: each one compiles the same four hundred
+          # crates again. sccache keeps what rustc made in one place, shared
+          # by every checkout, with a ceiling on its size; it only caches
+          # builds that are not incremental. `cargo sweep -t 14` clears what
+          # no build has used for two weeks (tools/sweep.sh does every tree).
+          RUSTC_WRAPPER = "sccache";
+          SCCACHE_CACHE_SIZE = "40G";
+          CARGO_INCREMENTAL = "0";
           # What the window tests (`crates/daw-gui/tests/window.rs`) drive: a
           # private X server, a window manager, a pointer and key sender, and
           # tesseract to find words on a screenshot.
