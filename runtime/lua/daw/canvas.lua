@@ -303,10 +303,13 @@ end
 
 --- A view about to show in a window of its own leaves the layout, so as
 --- not to show twice: its windows in the tabs close, keeping their place.
---- Returns the window that had the keyboard, to give it back to.
+--- Returns the window that had the keyboard, to give it back to. A view a
+--- frontend draws itself (the arrange view, the mixer...) stays where it is
+--- as well: the window of its own is a second look at it.
 function M.leave(name)
   local L = daw.layout
   local here, t = L.current(), L.tab()
+  if daw.panes.native[name] then return here and here.id end
   -- Where the view had the keyboard, the window before it gets it back.
   local before = here and here.view == name and t.prev and L.find_id(t.layout, t.prev)
   L.conceal(name)
