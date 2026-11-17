@@ -72,6 +72,18 @@ test("notation: every key of the view says the clip is gone when an undo took it
   paw.ui.focus("arrange")
 end)
 
+test("notation: a page of a few tall systems keeps them close, not spread over the page", function()
+  load()
+  local E = require("notation.engrave")
+  local systems = {}
+  for i = 1, 3 do systems[i] = { height = 400 } end
+  local pg = { height = 1200, gap = 20, margin = 50, header = 0 }
+  local pages = E.paginate(systems, pg, 0, function(sys, y) sys.y = y end, 1)
+  eq(#pages, 2, "two systems on the first page, the third on the next")
+  local gap = systems[2].y - (systems[1].y + systems[1].height)
+  eq(gap > 0 and gap <= pg.height / 16, true, "a little room between them, not a quarter of the page: " .. gap)
+end)
+
 test("notation: the key bar names + and - for sharp and flat, as the manual does", function()
   song({ N(60, 0, 1) }, 4)
   paw.ui.focus("notation")

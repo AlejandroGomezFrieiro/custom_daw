@@ -141,6 +141,7 @@ setting), `<A-j>` `<A-k>` reorder, `gS` the track the device listens to
 | `o` | keep it, draw another from the same start, for a chord |
 | `<BS>` | take back the note kept last |
 | `[` `]` | softer, louder |
+| `I` | keep what was drawn and type notes from here as on a piano (a piano's letter while drawing says so) |
 | `<Esc>` | write what was drawn (one undo step; `.` draws it again) and go back to normal mode |
 
 ## Enter notes as on a piano (`I`, R)
