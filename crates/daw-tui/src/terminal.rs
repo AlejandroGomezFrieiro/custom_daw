@@ -460,3 +460,18 @@ fn mouse_event(mouse: MouseEvent, cell: Option<(u16, u16)>) -> InputEvent {
         pixel,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_and_a_bracket_is_that_key_not_a_digit() {
+        let ctrl = |c| key_notation(KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL));
+        assert_eq!(ctrl('5').as_deref(), Some("<C-]>"));
+        assert_eq!(ctrl('4').as_deref(), Some("<C-\\>"));
+        assert_eq!(ctrl('w').as_deref(), Some("<C-w>"));
+        let five = key_notation(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE));
+        assert_eq!(five.as_deref(), Some("5"));
+    }
+}
