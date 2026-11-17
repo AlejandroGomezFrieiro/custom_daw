@@ -980,6 +980,32 @@ test("notation terminal: a grand staff fits in eighteen rows; zoomed in, every l
   eq(view.dense(), true, "and back")
 end)
 
+test("notation terminal: the staff is drawn only in characters the common monospace fonts have", function()
+  load()
+  -- Checked against DejaVu Sans Mono, JetBrains Mono, Fira Code and Noto
+  -- Sans Mono; the accidentals are the one exception (cells.lua says why).
+  local common = "─━│┆┌┐└┘├┤┬┳┴┻┼║╭╮╯╰╱╲╵╷╸╺▀▄█●·–•⎧⎨⎩⎪" .. "♯♭♮"
+  local seen = {}
+  local function walk(v)
+    if type(v) == "table" then for _, x in pairs(v) do walk(x) end return end
+    if type(v) ~= "string" then return end
+    for ch in v:gmatch("[\194-\244][\128-\191]*") do
+      if not common:find(ch, 1, true) then seen[#seen + 1] = ch end
+    end
+  end
+  local cells = require("notation.cells")
+  walk(cells.unicode)
+  for _, clef in ipairs({ "treble", "bass" }) do walk(cells.clef(clef, true)) end
+  eq(table.concat(seen, " "), "", "characters outside the common set")
+  seen = {}
+  local function ascii(v)
+    if type(v) == "table" then for _, x in pairs(v) do ascii(x) end return end
+    if type(v) == "string" and v:find("[\128-\255]") then seen[#seen + 1] = v end
+  end
+  ascii(cells.ascii)
+  eq(table.concat(seen, " "), "", "the ASCII set is ASCII")
+end)
+
 test("notation terminal: with daw.opt.ascii the staff is drawn in plain ASCII", function()
   local view = song({ N(67, 0, 0.5), N(69, 0.5, 0.5), N(71, 1, 1), N(66, 2, 2) }, 8)
   daw.ui.focus("notation")

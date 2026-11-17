@@ -459,7 +459,7 @@ function view:render(buf, ctx)
               local up = (ev.stem or 1) > 0
               local p = up and ev.notes[1].pos - 2 or ev.notes[#ev.notes].pos + 2
               local art = ev.art or {}
-              for _, mark in ipairs({ { ev.staccato or art.staccato, "·" }, { art.tenuto, "–" }, { art.accent, ">" }, { art.marcato, "^" } }) do
+              for _, mark in ipairs({ { ev.staccato or art.staccato, G.staccato }, { art.tenuto, G.tenuto }, { art.accent, ">" }, { art.marcato, "^" } }) do
                 if mark[1] then
                   buf:text(ex, up and R.below(p) or R.above(p), mark[2], note_style)
                   p = p + (up and -step or step)
@@ -487,10 +487,7 @@ function view:render(buf, ctx)
               local ya, yb
               if up then ya, yb = row(tip), R.above(low_pos) - 1 else ya, yb = R.below(top_pos) + 1, row(tip) end
               for y = ya, yb do
-                if not taken[sx][y] then
-                  local pos = R.pos_of(y)
-                  buf:text(sx, y, (pos % 2 == 0 and pos >= 0 and pos <= 8) and G.stem_line or G.stem, note_style)
-                end
+                if not taken[sx][y] then buf:text(sx, y, G.stem, note_style) end
               end
               if not b then
                 for f = 1, ev.flags or 0 do

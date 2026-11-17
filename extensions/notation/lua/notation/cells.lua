@@ -24,7 +24,7 @@ M.unicode = {
   filled_space = { "▄▄", "▀▀" }, hollow_space = { "╭╮", "╰╯" },
   -- An open head in a space with its stem: up from its right side, down from its left.
   hollow_up = "╭┤", hollow_down = "├╯", hollow_join = "├┤",
-  stem = "│", stem_line = "┼", beam = "━", beam_up = "┳", beam_down = "┻", stub_right = "━╸", stub_left = "╺━",
+  stem = "│", beam = "━", beam_up = "┳", beam_down = "┻", stub_right = "━╸", stub_left = "╺━",
   flag_up = "╲", flag_down = "╱", ledger = "────", dot = "·", space_dot = ".",
   acc = { [1] = "♯", [-1] = "♭", [0] = "♮", [2] = "x", [-2] = "♭" },
   -- Rests: the whole hangs from the fourth line, the half sits on the
@@ -35,7 +35,7 @@ M.unicode = {
   tie_under = { "╰", "─", "╯" }, tie_over = { "╭", "─", "╮" },
   bracket_over = { "┌", "─", "┐" }, bracket_under = { "└", "─", "┘" },
   arpeggio = "┆", grace = "•", repeat_bar = "║", brace = { "⎧", "⎪", "⎨", "⎩" },
-  hairpin = "─",
+  hairpin = "─", staccato = "·", tenuto = "–",
 }
 
 M.ascii = {
@@ -43,7 +43,7 @@ M.ascii = {
   join = { "+", "+", "+" }, first = { "+", "+", "+" }, last = { "+", "+", "+" },
   filled = "@@", hollow = "()",
   filled_space = { "@@", "@@" }, hollow_space = { "()", "()" }, hollow_up = "()", hollow_down = "()", hollow_join = "()",
-  stem = "|", stem_line = "|", beam = "=", beam_up = "=", beam_down = "=", stub_right = "=-", stub_left = "-=",
+  stem = "|", beam = "=", beam_up = "=", beam_down = "=", stub_right = "=-", stub_left = "-=",
   flag_up = "\\", flag_down = "/", ledger = "----", dot = ".", space_dot = ".",
   acc = { [1] = "#", [-1] = "b", [0] = "n", [2] = "x", [-2] = "b" },
   whole = "==", half = "==", whole_open = { "==", "  " }, half_open = { "==", "  " },
@@ -51,7 +51,7 @@ M.ascii = {
   tie_under = { "\\", "_", "/" }, tie_over = { "/", "~", "\\" },
   bracket_over = { "+", "-", "+" }, bracket_under = { "+", "-", "+" },
   arpeggio = "S", grace = "*", repeat_bar = "#", brace = { "/", "|", "<", "\\" },
-  hairpin = "-",
+  hairpin = "-", staccato = ".", tenuto = "_",
 }
 
 --- The characters in use.
