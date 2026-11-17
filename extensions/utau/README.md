@@ -97,7 +97,7 @@ ordinary MIDI track.
 | `c`, `Enter` | type the note's lyric: the first key replaces it, `Tab` keeps it and moves on to the next note, `S-Tab` to the previous one, `Enter` keeps it, `Esc` drops it. Pasting several words fills the notes from this one on |
 | `+` `-` (`C-a` `C-x` with a count), `A-l` `A-h`, `H` `L` | up, down a semitone; lengthen, shorten; move: the selected notes, else the note under the cursor |
 | `gA`, `ip` `ap` | select every note; the phrase as a text object (`yip`, `vap`) |
-| `C-c`, `d` `x` | copy the selected notes (or the note), cut them; `p` `P` paste, keeping their pitches |
+| `<C-c>`, `d` `x` | copy the selected notes (or the note), cut them; `p` `P` paste, keeping their pitches |
 | `]c` `[c`, `:utau.curve <abbr>` | the curve shown under the notes: next, previous, by name |
 | `}` `{` | raise or lower that curve at the cursor (the pitch by 10 cents, the others by a step of their own; a count multiplies) |
 | `=`, `<leader>=` | put that curve back to its default under the note, in the whole clip |
@@ -147,6 +147,7 @@ go to its notes in order, `K` splits Japanese into one kana per note.
 | `utau.preset [name]` | tuning presets: breath at phrase starts, soft endings, swells, tension on high notes, overshoot and preparation on leaps, crisp consonants, vibrato styles, raspy, scream, growl, vocal fry, reset |
 | `utau.import <file>` | an OpenUtau `.ustx`, UTAU `.ust`, VOCALOID `.vsqx`, Synthesizer V `.svp`, MIDI or MusicXML file as vocal tracks, read by OpenUtau's own code |
 | `utau.render`, `utau.restart`, `utau.status` | render a track again, restart the engine, show what it is doing |
+| `utau.inspector` | show or hide the note inspector in the vocal editor's window |
 
 ## In the graphical frontend
 

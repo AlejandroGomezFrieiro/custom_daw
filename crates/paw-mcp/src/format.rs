@@ -63,6 +63,29 @@ pub fn messages(out: &mut String, list: &Value) {
     }
 }
 
+/// The loudness a render or a file measured: `loudness: -14.2 LUFS ...`.
+pub fn loudness(l: &Value) -> Option<String> {
+    if !l.is_object() {
+        return None;
+    }
+    let level = |key: &str| l[key].as_f64().map(|v| num((v * 10.0).round() / 10.0));
+    let Some(integrated) = level("integrated") else {
+        return Some("loudness: not measurable (silent, or shorter than 400 ms)\n".into());
+    };
+    let mut out = format!("loudness: {integrated} LUFS integrated");
+    if let Some(v) = level("short_term_max") {
+        let _ = write!(out, ", short-term maximum {v} LUFS");
+    }
+    if let Some(v) = level("lra") {
+        let _ = write!(out, ", range {v} LU");
+    }
+    if let Some(v) = level("true_peak") {
+        let _ = write!(out, ", true peak {v} dBTP");
+    }
+    out.push('\n');
+    Some(out)
+}
+
 pub fn transport(t: &Value, meter: Meter) -> String {
     let mut out = format!(
         "{} at {}",
@@ -99,7 +122,7 @@ pub fn project_header(p: &Value, meter: Meter) -> String {
         None => "never saved".into(),
     };
     format!(
-        "Project \"{}\" ({file}{}) · {} BPM · {}/{} · length {}",
+        "Project \"{}\" ({file}{}) · {} BPM · {}/{}{} · length {}",
         s(&p["name"]),
         if p["modified"].as_bool() == Some(true) {
             ", unsaved changes"
@@ -109,6 +132,10 @@ pub fn project_header(p: &Value, meter: Meter) -> String {
         num(f(&p["tempo"])),
         meter.num,
         meter.den,
+        p["key"]
+            .as_str()
+            .map(|key| format!(" · key {key}"))
+            .unwrap_or_default(),
         span(f(&p["length"]), meter)
     ) + &tempo_changes(p, meter)
 }
@@ -159,7 +186,39 @@ pub fn project(p: &Value) -> String {
         track(&mut out, t, meter, false);
     }
     track(&mut out, &p["master"], meter, false);
+    let markers = items(&p["markers"]);
+    if !markers.is_empty() {
+        let _ = writeln!(out, "Markers and regions ({}):", markers.len());
+        for m in markers {
+            let _ = writeln!(out, "  {}", marker_line(m, meter));
+        }
+    }
     out
+}
+
+/// `[id 2] region "Chorus" at 9.1, 8 beats = 2 bars, to 11.1`.
+pub fn marker_line(m: &Value, meter: Meter) -> String {
+    let beat = f(&m["beat"]);
+    let mut line = format!(
+        "[id {}] {} \"{}\" at {}",
+        f(&m["id"]),
+        if m["region"].as_bool() == Some(true) {
+            "region"
+        } else {
+            "marker"
+        },
+        s(&m["name"]),
+        at(beat, meter)
+    );
+    if let Some(length) = m["length"].as_f64() {
+        let _ = write!(
+            line,
+            ", {}, to {}",
+            span(length, meter),
+            meter.format(beat + length)
+        );
+    }
+    line
 }
 
 fn track_line(t: &Value, meter: Meter) -> String {
@@ -246,6 +305,14 @@ pub fn track(out: &mut String, t: &Value, meter: Meter, detail: bool) {
     for l in items(&t["lanes"]) {
         let _ = writeln!(out, "   automation: {}", lane(l, meter));
     }
+    if detail && t["meter"].is_object() {
+        let _ = writeln!(
+            out,
+            "   meter now: left {}, right {} (the engine's live peak: -120 dB when nothing plays)",
+            db(f(&t["meter"]["left"])),
+            db(f(&t["meter"]["right"]))
+        );
+    }
 }
 
 fn device_short(d: &Value) -> String {
@@ -303,11 +370,19 @@ pub fn clip(out: &mut String, c: &Value, meter: Meter) {
         let _ = writeln!(out, "on track \"{track}\" [id {}]", f(&c["track"]));
     }
     let notes = items(&c["notes"]);
+    if c["filtered"].as_bool() == Some(true) {
+        let _ = writeln!(
+            out,
+            "{} of {} notes match the filter",
+            notes.len(),
+            f(&c["note_count"])
+        );
+    }
     if notes.is_empty() {
         return;
     }
     out.push_str(
-        "notes: pitch start length velocity (beats from the clip's start; bar.beat within the clip)\n",
+        "notes: pitch start length velocity (beats from the clip's start; bar.beat within the clip) [note id]\n",
     );
     for n in notes {
         let start = f(&n["start"]);
@@ -322,6 +397,9 @@ pub fn clip(out: &mut String, c: &Value, meter: Meter) {
         );
         if let Some(lyric) = n["lyric"].as_str() {
             let _ = write!(out, " lyric \"{lyric}\"");
+        }
+        if let Some(id) = n["id"].as_u64() {
+            let _ = write!(out, " [id {id}]");
         }
         out.push('\n');
     }

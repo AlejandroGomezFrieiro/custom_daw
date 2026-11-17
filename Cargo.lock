@@ -2944,6 +2944,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "hound",
+ "include_dir",
  "libc",
  "serde_json",
 ]

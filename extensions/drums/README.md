@@ -87,7 +87,7 @@ the step, and how hard the hit there is.
 | `gh`, `gp`, `gb` | hear the piece; playhead to the cursor; a beat to start from |
 | `Esc`, `Ctrl-w p` | cancel (the grid stays); back to the window before |
 
-Text objects: `ih` the cell, `ir` the row, `ib` the bar on every row, `ic`
+Text objects: `ih` the cell, `ir` `ar` the row, `ib` the bar on every row, `ic`
 every hit. Visual mode: `v` a stretch of time on every row, `Ctrl-v` a
 block, `V` whole rows; then `x`, `+` `-`, `gs`, `y`, `p`. Registers, counts,
 `.` and macros work as everywhere.

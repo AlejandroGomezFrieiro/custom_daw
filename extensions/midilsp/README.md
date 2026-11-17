@@ -13,6 +13,14 @@ paw.ext.load("/path/to/paw/extensions/midilsp")
 ```
 
 The engine is `paw.opt.midilsp_cmd`, else `$MIDI_LSP_ENGINE`, else
-`reaper-midi-lsp` on the PATH. Commands, keys and what the engine is sent
-are in [docs/lsp.md](../../docs/lsp.md). Its tests run against the real
-engine when one is found and are skipped otherwise.
+`reaper-midi-lsp` on the PATH. What the engine is sent is in
+[docs/lsp.md](../../docs/lsp.md). Its tests run against the real engine
+when one is found and are skipped otherwise.
+
+| Command | Keys | |
+| --- | --- | --- |
+| `:midilsp` | | where the engine is and how it runs; `:midilsp start`, `:midilsp stop` |
+| `:midilsp.preset strict-counterpoint` | | the rules to check, as one of the engine's profiles |
+| `:midilsp.rule parallel-perfect off` | `,Lr` | a rule on or off; alone, a list to switch them in |
+| `:problems` | `,Lp` | every server's diagnostics with their fixes: Enter goes to one, or applies a fix |
+| | `,Li` | the language servers and what they can do |

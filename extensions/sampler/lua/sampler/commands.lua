@@ -9,6 +9,12 @@ local function exists(path)
   return f ~= nil
 end
 
+--- Whether words name a file rather than words to find an instrument by:
+--- a path, or a name with an instrument's extension.
+local function file_like(text)
+  return text:find("/", 1, true) ~= nil or text:lower():match("%.sfz$") ~= nil or text:lower():match("%.dspreset$") ~= nil
+end
+
 --- The sampler device of the cursor's track, or a warning.
 local function cursor_device()
   local id = paw.cursor.track_id()
@@ -97,6 +103,8 @@ paw.track_kinds.define("sampler", {
     local path = args.path or (#words == 1 and words[1]:gsub("^~", os.getenv("HOME") or "~"))
     if path and exists(path) then
       load(device, path)
+    elseif path and file_like(path) then
+      paw.notify("sampler: no such file: " .. path, "error")
     elseif args.ask ~= false then
       sampler.pick(track.id, #words > 0 and table.concat(words, " ") or nil)
     end
@@ -120,6 +128,7 @@ command("sampler.load", function(ctx)
   local text = ctx.args[1] and (tostring(ctx.args[1]):gsub("^%s+", ""):gsub("%s+$", "")) or ""
   local path = text:gsub("^~", os.getenv("HOME") or "~")
   if path ~= "" and exists(path) then return load(device, path) end
+  if file_like(path) then return paw.notify("sampler: no such file: " .. path, "error") end
   sampler.pick(track, text ~= "" and text or nil)
 end, { desc = "Choose the sampler's instrument: a file (`sampler.load ~/sfz/Violins.sfz`), or from a list where each is heard (`sampler.load violin`)", raw = true, complete = "files" })
 

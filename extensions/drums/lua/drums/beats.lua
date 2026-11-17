@@ -70,7 +70,8 @@ function M.names()
 end
 
 --- Fill a clip with a beat, a bar at a time to its end, in place of what it
---- had. One edit.
+--- had. One edit. Returns the hits written, and how many of the notes that
+--- went were on no row of the track's drum map.
 function M.apply(clip, name)
   if type(clip) == "number" then clip = paw.clip(clip) end
   local beat = M.list[name]
@@ -91,10 +92,18 @@ function M.apply(clip, name)
       end
     end
   end
-  local remove = {}
-  for i = 1, #clip:notes() do remove[i] = i end
+  -- Every note goes; those on no row of the drum map were not to be seen
+  -- in the grid, so they are counted for the message.
+  local rows = {}
+  local info = require("drums").info(clip:get().track)
+  for _, r in ipairs(info and info.rows or {}) do rows[r.note] = true end
+  local remove, hidden = {}, 0
+  for i, n in ipairs(clip:notes()) do
+    remove[i] = i
+    if info and not rows[n.pitch] then hidden = hidden + 1 end
+  end
   clip:edit_notes({ remove = remove, add = add })
-  return #add
+  return #add, hidden
 end
 
 return M

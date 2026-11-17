@@ -238,6 +238,15 @@ function M.keys_once()
   keys_once = true
 end
 
+--- From drawing to the piano keys without leaving insert mode: what was
+--- drawn is written, and the letters are notes from now on.
+function M.to_keys()
+  if not session then return end
+  M.finish()
+  keys_once = true
+  paw.notify("typing notes as a piano: a s d f g h j k are a scale, Esc stops")
+end
+
 -- Entering insert mode in the piano roll starts a note at the cursor, unless
 -- the keys are a piano this time; leaving it writes what was drawn.
 local entered   -- { clip, notes it held } when insert mode began

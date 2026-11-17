@@ -213,7 +213,7 @@ fn check_schema(schema: &Value, at: &str) {
                 }
             }
             "items" | "additionalProperties" => check_schema(value, &format!("{at}.{key}")),
-            "anyOf" | "prefixItems" => {
+            "anyOf" => {
                 for (i, sub) in value
                     .as_array()
                     .unwrap_or_else(|| panic!("{at}: {key}"))
@@ -305,11 +305,17 @@ fn handshake_and_tool_list() {
         "project_file",
         "render",
         "analyze_audio",
+        "find",
+        "diagnose",
+        "marker",
+        "duplicate_clip",
+        "repeat_bars",
+        "batch",
     ] {
         assert!(names.contains(&expected), "missing tool {expected}");
     }
     // The escape hatches are not offered without --allow-eval.
-    for hidden in ["run_command", "send_keys", "eval_lua"] {
+    for hidden in ["lua", "run_command", "send_keys"] {
         assert!(
             !names.contains(&hidden),
             "{hidden} offered without --allow-eval"
@@ -355,11 +361,13 @@ fn handshake_and_tool_list() {
         client.request("no/such/method", json!({}))["error"]["code"],
         -32601
     );
+    // An unknown tool is a tool error the model can read, not a protocol one.
     let unknown = client.request(
         "tools/call",
         json!({ "name": "no_such_tool", "arguments": {} }),
     );
-    assert_eq!(unknown["error"]["code"], -32602);
+    assert_eq!(unknown["result"]["isError"], true);
+    assert!(unknown["result"]["content"][0]["text"].as_str().unwrap().contains("get_project"));
     client.send(&json!("not a request"));
     assert_eq!(client.receive()["error"]["code"], -32600);
     writeln!(client.stdin, "{{ this is not json").unwrap();
@@ -434,7 +442,7 @@ fn build_render_undo() {
         json!({ "clip": riff, "add_notes": ["E2 6 1"], "remove_notes": { "pitches": ["G1"] } }),
     );
     assert!(text.contains("6 notes"), "{text}");
-    assert!(text.contains("(1 notes removed)"), "{text}");
+    assert!(text.contains("(1 note removed)"), "{text}");
 
     // Read it back.
     let text = c.ok("get_project", json!({}));
@@ -511,7 +519,7 @@ fn build_render_undo() {
     );
     assert!(
         c.fails("add_clip", json!({ "track": "Bass", "start": "0.5" }))
-            .contains("bar.beat")
+            .contains("bar 3 beat 1")
     );
     assert!(
         c.fails("get_clip", json!({ "clip": 99999 }))
@@ -526,7 +534,7 @@ fn build_render_undo() {
             .contains("missing required argument `track`")
     );
     assert!(
-        c.fails("eval_lua", json!({ "code": "1" }))
+        c.fails("lua", json!({ "code": "1" }))
             .contains("--allow-eval")
     );
     assert!(
@@ -574,21 +582,21 @@ fn escape_hatches_with_allow_eval() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|t| t["name"] == "eval_lua")
+            .any(|t| t["name"] == "lua")
     );
-    assert_eq!(c.ok("eval_lua", json!({ "code": "1 + 2" })), "3");
+    assert_eq!(c.ok("lua", json!({ "code": "1 + 2" })), "3");
     let text = c.ok("run_command", json!({ "line": "tempo 97" }));
     assert!(text.contains("one undo step"), "{text}");
     assert!(c.ok("get_project", json!({})).contains("97 BPM"));
     assert!(
-        c.fails("eval_lua", json!({ "code": "error('boom')" }))
+        c.fails("lua", json!({ "code": "error('boom')" }))
             .contains("boom")
     );
     c.ok("send_keys", json!({ "keys": "gg" }));
 
     // The kernel this server started goes away: the next call starts another
     // and says so.
-    c.ok("eval_lua", json!({ "code": "paw.api.quit(0)" }));
+    c.ok("lua", json!({ "code": "paw.api.quit(0)" }));
     std::thread::sleep(Duration::from_millis(300));
     let text = c.ok("get_project", json!({}));
     assert!(
@@ -655,4 +663,261 @@ fn id_after(text: &str, marker: &str) -> u64 {
         .collect::<String>()
         .parse()
         .unwrap()
+}
+
+impl Client {
+    /// A tool's structured result; the call must not have failed.
+    fn data(&mut self, name: &str, args: Value) -> Value {
+        let reply = self.request("tools/call", json!({ "name": name, "arguments": args }));
+        let result = &reply["result"];
+        assert_eq!(result["isError"], false, "{name}: {result}");
+        assert!(result["content"][0]["text"].as_str().is_some());
+        assert!(result["structuredContent"].is_object(), "{name}: {result}");
+        result["structuredContent"].clone()
+    }
+
+    fn add_drums(&mut self) {
+        self.ok(
+            "add_track",
+            json!({
+                "name": "Drums", "devices": ["drums"],
+                "clips": [{ "start": 4, "length": 4, "notes": ["C2 0", "D2 1", "C2 2", "D2 3"] }]
+            }),
+        );
+    }
+}
+
+fn pitches_of(data: &Value) -> Vec<u64> {
+    data["clip"]["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["pitch"].as_u64().unwrap())
+        .collect()
+}
+
+#[test]
+fn an_agent_composes_with_json_ids_markers_and_one_step_batches() {
+    let dir = scratch("agent");
+    let mut args = vec!["--spawn", "--"];
+    args.extend(KERNEL_ARGS);
+    let mut c = Client::start(&dir, &args);
+    c.initialize("2025-06-18");
+
+    // Results are JSON as well as prose; empty lists are lists.
+    let p = c.data("get_project", json!({}));
+    assert_eq!(p["project"]["tracks"], json!([]));
+    assert_eq!(p["project"]["markers"], json!([]));
+
+    // Time in every syntax means the same place; the key is the project's.
+    c.ok("set_project", json!({ "key": "D minor", "tempo": 120 }));
+    let d = c.data(
+        "add_track",
+        json!({
+            "name": "Lead", "devices": ["synth"],
+            "clips": [{ "name": "tune", "start": "bar 2 beat 1", "length": "2 bars",
+                        "notes": ["D4 0 1", "F4 1 1", "A4 2 1", "C5 3 1 80"] }]
+        }),
+    );
+    let clip = &d["track"]["clips"][0];
+    assert_eq!(clip["start"], 4.0);
+    assert_eq!(clip["at"], "2.1");
+    let id = clip["id"].as_u64().unwrap();
+    for start in ["2.1", "2:1", "bar 2 beat 1", "bar 2"] {
+        let t = c.data(
+            "add_clip",
+            json!({ "track": "Lead", "start": start, "notes": ["C4 0 1"] }),
+        );
+        assert_eq!(t["clip"]["start"], 4.0, "{start}");
+    }
+
+    // Note ids, and one note edited by its id.
+    let got = c.data("get_clip", json!({ "clip": id }));
+    let notes = got["clip"]["notes"].as_array().unwrap().clone();
+    assert_eq!(notes.len(), 4);
+    assert_eq!(notes[1]["name"], "F4");
+    let f4 = notes[1]["id"].as_u64().unwrap();
+    let c5 = notes[3]["id"].as_u64().unwrap();
+    let e = c.data(
+        "edit_clip",
+        json!({ "clip": id, "edit_notes": [{ "id": f4, "pitch": "G4", "length": "1/8" }] }),
+    );
+    let moved = e["clip"]["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == f4)
+        .unwrap()
+        .clone();
+    assert_eq!((moved["pitch"].as_u64(), moved["length"].as_f64()), (Some(67), Some(0.5)));
+    // Absolute velocity over a pitch range, and the filter of get_clip.
+    c.ok(
+        "edit_clip",
+        json!({ "clip": id, "set_velocity": { "value": 64, "pitches": ["A4", "C5"] } }),
+    );
+    let got = c.data("get_clip", json!({ "clip": id, "pitches": ["C5"] }));
+    assert_eq!(got["clip"]["notes"].as_array().unwrap().len(), 1);
+    assert_eq!(got["clip"]["notes"][0]["velocity"], 64);
+    assert_eq!(got["clip"]["notes"][0]["id"], c5);
+    c.fails(
+        "edit_clip",
+        json!({ "clip": id, "edit_notes": [{ "id": 99999, "pitch": 60 }] }),
+    );
+
+    // A third up in D minor stays in D minor: D4 G4 A4 C5 -> F4 Bb4 C5 E5.
+    let was = pitches_of(&c.data("get_clip", json!({ "clip": id })));
+    assert_eq!(was, vec![62, 67, 69, 72]);
+    let t = c.data("edit_clip", json!({ "clip": id, "transpose": { "degrees": 2 } }));
+    assert_eq!(pitches_of(&t), vec![65, 70, 72, 76]);
+    // Chromatic transpose still takes an integer.
+    let t = c.data("edit_clip", json!({ "clip": id, "transpose": -12 }));
+    assert_eq!(pitches_of(&t), vec![53, 58, 60, 64]);
+
+    // Markers and regions: add, rename, move, list, remove; loop by region.
+    c.data("marker", json!({ "action": "add", "at": "1.1", "name": "Intro", "length": "1 bar" }));
+    let m = c.data(
+        "marker",
+        json!({ "action": "add", "at": "bar 2", "name": "Verse", "length": "2 bars" }),
+    );
+    assert_eq!(m["markers"].as_array().unwrap().len(), 2);
+    let verse = m["marker"]["id"].as_u64().unwrap();
+    assert_eq!(m["marker"]["beat"], 4.0);
+    let m = c.data("marker", json!({ "action": "rename", "marker": verse, "name": "Verse 1" }));
+    assert_eq!(m["marker"]["name"], "Verse 1");
+    c.data("marker", json!({ "action": "move", "marker": "Intro", "at": 0, "length": 4 }));
+    assert!(c.ok("get_project", json!({})).contains("region \"Verse 1\""));
+    let t = c.data("transport", json!({ "loop_marker": "Verse 1" }));
+    assert_eq!(t["transport"]["loop_start"], 4.0);
+    assert_eq!(t["transport"]["loop_end"], 12.0);
+    assert_eq!(t["transport"]["loop_enabled"], true);
+    c.fails("marker", json!({ "action": "remove", "marker": "Nope" }));
+
+    // Render options: a region, LUFS in the answer, FLAC, a loudness target, stems.
+    let text = c.ok("render", json!({ "path": "v.wav", "region": "Verse 1", "tail": 0.2 }));
+    assert!(text.contains("LUFS integrated"), "{text}");
+    assert!(text.contains("beats 4 (2.1) to 12 (4.1)"), "{text}");
+    let flac = c.ok(
+        "render",
+        json!({ "path": "v.flac", "region": "Verse 1", "loudness": -20 }),
+    );
+    assert!(dir.join("v.flac").is_file() && flac.contains("-20"), "{flac}");
+    c.add_drums();
+    let stems = c.ok("render", json!({ "path": "stems", "stems": true, "tail": 0 }));
+    assert!(stems.contains("Lead.wav: peak") && stems.contains("Drums.wav"), "{stems}");
+    assert!(dir.join("stems/Lead.wav").is_file());
+    let an = c.ok("analyze_audio", json!({ "path": "v.flac" }));
+    assert!(an.contains("LUFS"), "{an}");
+
+    // Duplicate a clip, repeat a stretch.
+    let d = c.data("duplicate_clip", json!({ "clip": id, "times": 2 }));
+    assert_eq!(d["clips"].as_array().unwrap().len(), 2);
+    assert_eq!(d["clips"][0]["start"], 12.0);
+    let r = c.data("repeat_bars", json!({ "from": "2.1", "to": "4.1", "at": "20" }));
+    assert!(!r["clips"].as_array().unwrap().is_empty());
+    assert!(c
+        .fails("repeat_bars", json!({ "from": "4.1", "to": "2.1" }))
+        .contains("after"));
+
+    // Find and diagnose.
+    let f = c.data("find", json!({ "query": "note[pitch>=c4]" }));
+    assert!(f["total"].as_u64().unwrap() >= 1, "{f}");
+    c.fails("find", json!({ "query": "note[" }));
+    c.ok(
+        "add_track",
+        json!({ "name": "Strings", "clips": [{ "start": 0, "notes": ["C4 0 1"] }] }),
+    );
+    c.ok("add_track", json!({ "name": "Blank" }));
+    let dg = c.data("diagnose", json!({}));
+    let found = dg["findings"].as_array().unwrap().clone();
+    assert!(found.iter().any(|f| f["rule"] == "empty_track"), "{dg}");
+    let silent = found.iter().find(|f| f["rule"] == "silent_midi_track").unwrap();
+    assert!(silent["message"].as_str().unwrap().contains("Strings"));
+    let dg = c.data("diagnose", json!({ "measure": true }));
+    assert!(dg["measure"]["integrated"].is_number(), "{dg}");
+    c.ok("set_track", json!({ "track": "Lead", "sends": [{ "target": "Blank" }] }));
+    c.ok("set_track", json!({ "track": "Blank", "mute": true }));
+    let dg = c.data("diagnose", json!({}));
+    assert!(
+        dg["findings"].as_array().unwrap().iter().any(|f| f["rule"] == "muted_destination"),
+        "{dg}"
+    );
+
+    // A batch is one named undo step, and a failing one changes nothing.
+    let before = c.ok("get_project", json!({}));
+    let text = c.ok(
+        "batch",
+        json!({ "label": "verse bass", "steps": [
+            { "tool": "add_track", "arguments": { "name": "Bass", "devices": ["synth"] } },
+            { "tool": "add_clip", "arguments": { "track": "Bass", "notes": ["A1 0 1"] } },
+            { "tool": "marker", "arguments": { "action": "add", "at": 8, "name": "Bass in" } },
+        ]}),
+    );
+    assert!(text.contains("mcp: verse bass"), "{text}");
+    let list = c.data("undo", json!({ "list": true }));
+    assert_eq!(list["history"][0]["label"], "mcp: verse bass");
+    assert_eq!(list["history"][1]["label"], "mcp: set_track Blank");
+    let undone = c.ok("undo", json!({}));
+    assert!(undone.contains("Undid 1 step: mcp: verse bass"), "{undone}");
+    assert_eq!(c.ok("get_project", json!({})), before);
+    let redo = c.data("undo", json!({ "list": true }));
+    assert_eq!(redo["redoable"][0]["label"], "mcp: verse bass");
+    c.ok("undo", json!({ "redo": true }));
+    let text = c.fails(
+        "batch",
+        json!({ "steps": [
+            { "tool": "add_track", "arguments": { "name": "Doomed" } },
+            { "tool": "set_track", "arguments": { "track": "Nobody", "mute": true } },
+        ]}),
+    );
+    assert!(text.contains("step 2"), "{text}");
+    assert!(!c.ok("get_project", json!({})).contains("Doomed"));
+    c.fails(
+        "batch",
+        json!({ "steps": [{ "tool": "render", "arguments": {} }] }),
+    );
+
+    // Per-track meter in get_track; nothing to undo is an error.
+    assert!(c.ok("get_track", json!({ "track": "Lead" })).contains("meter now"));
+    for _ in 0..50 {
+        let (_, error) = c.call("undo", json!({ "steps": 100 }));
+        if error {
+            break;
+        }
+    }
+    assert!(c.fails("undo", json!({})).contains("Nothing to undo"));
+    c.finish();
+}
+
+#[test]
+fn the_manual_and_the_api_are_resources() {
+    let dir = scratch("resources");
+    let mut args = vec!["--spawn", "--"];
+    args.extend(KERNEL_ARGS);
+    let mut c = Client::start(&dir, &args);
+    let init = c.initialize("2025-06-18");
+    assert!(init["capabilities"]["resources"].is_object());
+    let api = c.request("resources/read", json!({ "uri": "paw://reference/api" }));
+    let text = api["result"]["contents"][0]["text"].as_str().unwrap();
+    assert!(text.contains("### `track_add("), "{}", &text[..300.min(text.len())]);
+    let lua = c.request("resources/read", json!({ "uri": "paw://reference/lua/harmony" }));
+    assert!(lua["result"]["contents"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("paw.harmony.key(beat)"));
+    let list = c.request("resources/list", json!({}))["result"]["resources"].clone();
+    let uris: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["uri"].as_str().unwrap())
+        .collect();
+    assert!(uris.contains(&"paw://reference/api"));
+    let page = uris.iter().find(|u| u.starts_with("paw://help/")).copied();
+    let page = page.expect("the manual's pages are listed");
+    let r = c.request("resources/read", json!({ "uri": page }));
+    assert!(r["result"]["contents"][0]["text"].as_str().unwrap().len() > 100, "{r}");
+    assert!(c.request("resources/read", json!({ "uri": "paw://nope" }))["error"].is_object());
+    let templates = c.request("resources/templates/list", json!({}));
+    assert!(templates["result"]["resourceTemplates"].as_array().unwrap().len() >= 2);
+    c.finish();
 }

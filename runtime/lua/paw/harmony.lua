@@ -426,6 +426,11 @@ local function signature()
   return table.concat(parts, "|")
 end
 
+--- Whether the reading is up to date with the project, so that `key` and
+--- `chords` answer at once: a view drawn on every key asks this first, as
+--- reading a long song again takes a while.
+function M.fresh() return cache.stamp == signature() end
+
 --- The whole song's reading: `{ chords, keys, provider }`.
 local function reading()
   local sig = signature()

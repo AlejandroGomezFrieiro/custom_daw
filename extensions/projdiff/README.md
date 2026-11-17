@@ -121,7 +121,7 @@ since) is read again from it. When the last is settled, `git add` the file.
 
 ```lua
 local pd = require("projdiff")
-local from, to = pd.file("a.json"), pd.file("b.json")
+local from, to = pd.file("a.json"), pd.file("b.json")  -- pd.file(path, true): media paths made whole
 local tree = pd.diff.diff(from.project, to.project)   -- { children, count }
 pd.diff.lines(tree)                                    -- the text of the view
 pd.diff.entries(tree)                                  -- { address, text } for paw.qf
@@ -142,6 +142,12 @@ every time" in docs/mixing.md), so a diff of a file saved again is empty and
 one change is a small diff. The project's name is taken from the file's name
 the first time it is saved, so a copy saved under another name differs in
 that one line.
+
+"The project now" is the project with every edit in it, those a script
+made without an undo step included: `:Pdiff` closes the open undo step
+first. Media files the file names relative to its folder (`media/a.wav`)
+are compared as the whole paths the open project holds, so reopening a
+project shows no change. Numbers are shown to four decimals.
 
 The views are drawn in cells, like every extension's view that has no
 painted twin, so the graphical frontend draws them as the terminal does

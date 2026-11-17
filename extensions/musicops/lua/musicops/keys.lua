@@ -49,15 +49,24 @@ function M.apply_to_clip(clip, pick, fn)
   return #inside
 end
 
+--- Whether a clip is on a drum track (one with a drum map): its pitches
+--- name drum sounds, not notes, so pitch operators leave it alone.
+function M.on_drum_track(clip)
+  local ok, t = pcall(api.track_get, clip:get().track)
+  return ok and type(t.meta) == "table" and t.meta.drums ~= nil
+end
+
 --- Apply `fn(notes, index)` to the notes of the MIDI clips that a region of
 --- the arrange view reaches: for whole tracks every note, otherwise the
---- notes that start inside the region. Each clip is done on its own.
-function M.apply_arrange(region, fn)
+--- notes that start inside the region. Each clip is done on its own; clips
+--- that `skip(clip)` names are left as they are.
+function M.apply_arrange(region, fn, skip)
   local index, count = 0, 0
   for _, track in ipairs(edit.arrange.tracks(region)) do
     for _, c in ipairs(api.clip_list(track)) do
       local whole = region.kind == "line"
-      if c.kind == "midi" and (whole or (c.start < region.c1 - EPS and c.start + c.length > region.c0 + EPS)) then
+      if c.kind == "midi" and (whole or (c.start < region.c1 - EPS and c.start + c.length > region.c0 + EPS))
+        and not (skip and skip(paw.clip(c.id))) then
         index = index + 1
         local i = index
         count = count + M.apply_to_clip(paw.clip(c.id), function(n)
@@ -70,42 +79,56 @@ function M.apply_arrange(region, fn)
   return count
 end
 
---- Apply `fn(notes, index)` to what a region of `view` holds.
-function M.apply(view, region, fn)
-  if view == "arrange" then return M.apply_arrange(region, fn) end
+--- Apply `fn(notes, index)` to what a region of `view` holds, leaving the
+--- clips that `skip(clip)` names as they are.
+function M.apply(view, region, fn, skip)
+  if view == "arrange" then return M.apply_arrange(region, fn, skip) end
   -- The piano roll may edit several clips at once: each is done on its own,
   -- the region taken in its own beats, so that its notes stay in it.
   local parts = view == "pianoroll" and paw.roll_clips and paw.roll_clips.parts() or {}
   if #parts > 1 then
     local count = 0
     for i, part in ipairs(parts) do
-      local mine = paw.util.merge(region, { c0 = region.c0 - part.offset, c1 = region.c1 - part.offset })
-      count = count + M.apply_to_clip(part.clip, function(n) return edit.roll.inside(n, mine) end,
-        function(notes) return fn(notes, i) end)
+      if not (skip and skip(part.clip)) then
+        local mine = paw.util.merge(region, { c0 = region.c0 - part.offset, c1 = region.c1 - part.offset })
+        count = count + M.apply_to_clip(part.clip, function(n) return edit.roll.inside(n, mine) end,
+          function(notes) return fn(notes, i) end)
+      end
     end
     return count
   end
   local clip = M.view_clip(view)
-  if not clip then return 0 end
+  if not clip or (skip and skip(clip)) then return 0 end
   return M.apply_to_clip(clip, function(n) return edit.roll.inside(n, region) end, function(notes) return fn(notes, 1) end)
 end
 
 -- Operators ---------------------------------------------------------------------
 
---- Every operator: { lhs, desc, views }, for the help and the tests.
+--- Every operator: { lhs, desc, views, pitched }, for the help and the tests.
 M.operators = {}
 
 --- Define a musical operator: `fn(notes, amount, info)` returns the new
 --- notes; `amount` is the count typed in visual mode, or nil; `info.index`
---- counts the clips done by one use (arrange regions reach several).
-function M.operator(lhs, desc, views, fn)
-  M.operators[#M.operators + 1] = { lhs = lhs, desc = desc, views = views }
+--- counts the clips done by one use (arrange regions reach several). A
+--- `pitched` operator changes pitches and leaves drum tracks alone.
+function M.operator(lhs, desc, views, fn, pitched)
+  M.operators[#M.operators + 1] = { lhs = lhs, desc = desc, views = views, pitched = pitched }
   for _, view in ipairs(views) do
     keymap.operator(lhs, function(region, ctx)
       local amount = region.visual and ctx.count or nil
+      local drums = 0
+      local skip = pitched and function(clip)
+        if not M.on_drum_track(clip) then return false end
+        drums = drums + 1
+        return true
+      end
       M.apply(view, region, function(notes, index)
         return fn(notes, amount, { index = index, view = view, ctx = ctx })
-      end)
+      end, skip)
+      if drums > 0 then
+        paw.notify(string.format("left %d clip%s of drum tracks alone: their pitches are drum sounds",
+          drums, drums == 1 and "" or "s"), "warn")
+      end
     end, { view = view, desc = desc })
   end
 end
@@ -186,28 +209,28 @@ op("gzd", "Double time: twice as fast", ALL, function(notes) return mo.double_ti
 op("gzD", "Half time: half as fast", ALL, function(notes) return mo.half_time(notes) end)
 op("gzu", "Invert chords upwards", POLY, function(notes, amount)
   return mo.invert(notes, { dir = 1, times = amount or 1, tolerance = opt("together") })
-end)
+end, true)
 op("gzU", "Invert chords downwards", POLY, function(notes, amount)
   return mo.invert(notes, { dir = -1, times = amount or 1, tolerance = opt("together") })
-end)
+end, true)
 op("gzk", "Up a step of the scale", ALL, function(notes, amount)
   return mo.transpose_scale(notes, amount or 1, scale.current())
-end)
+end, true)
 op("gzj", "Down a step of the scale", ALL, function(notes, amount)
   return mo.transpose_scale(notes, -(amount or 1), scale.current())
-end)
+end, true)
 op("gzn", "Snap to the scale", ALL, function(notes)
   return mo.snap_scale(notes, scale.current(), { dir = opt("snap") })
-end)
+end, true)
 op("gzm", "Mirror the melody around its first note, in the scale", ALL, function(notes)
   return mo.mirror(notes, { key = opt("mirror_chromatic") and nil or scale.current() })
-end)
+end, true)
 op("gzo", "Double an octave up", POLY, function(notes, amount)
   return mo.add_octave(notes, { by = 12 * (amount or 1) })
-end)
+end, true)
 op("gzO", "Double an octave down", POLY, function(notes, amount)
   return mo.add_octave(notes, { by = -12 * (amount or 1) })
-end)
+end, true)
 op("gzx", "Remove overlapping notes of a pitch", ALL, function(notes) return mo.remove_overlaps(notes) end)
 
 -- Text objects and motions ------------------------------------------------------------

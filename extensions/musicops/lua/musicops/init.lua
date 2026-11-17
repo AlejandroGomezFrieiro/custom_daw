@@ -190,11 +190,13 @@ function M.legato(notes, opts)
   opts = opts or {}
   local gap = opts.gap or 0
   local out = sorted(notes)
-  for _, n in ipairs(out) do
-    local next_start
-    for _, m in ipairs(out) do
-      if m.start > n.start + EPS and (not next_start or m.start < next_start) then next_start = m.start end
-    end
+  -- The notes are in order of start, so the next start is found walking
+  -- back from the end: one pass, not one per note.
+  local next_start, later = nil, nil
+  for i = #out, 1, -1 do
+    local n = out[i]
+    if later and later > n.start + EPS then next_start = later end
+    later = n.start
     if next_start then n.length = next_start - n.start - gap end
   end
   return finish(out)
@@ -325,7 +327,8 @@ end
 
 --- Invert each chord `times` times (default 1): upwards (`dir` 1, the
 --- default) the lowest note goes up by octaves until it is the highest;
---- downwards (-1) the highest goes below the lowest.
+--- downwards (-1) the highest goes below the lowest. A note that would
+--- leave 0..127 stays where it is.
 function M.invert(notes, opts)
   opts = opts or {}
   local dir, times = opts.dir or 1, opts.times or 1
@@ -337,10 +340,17 @@ function M.invert(notes, opts)
         if n.pitch < lo.pitch then lo = n end
         if n.pitch > hi.pitch then hi = n end
       end
+      -- The bounds are taken before moving: with every pitch the same, the
+      -- lowest note and the highest are one note.
+      local bottom, top = lo.pitch, hi.pitch
       if dir > 0 then
-        while lo.pitch <= hi.pitch do lo.pitch = lo.pitch + 12 end
+        local p = bottom
+        while p <= top do p = p + 12 end
+        if p <= 127 then lo.pitch = p end
       else
-        while hi.pitch >= lo.pitch do hi.pitch = hi.pitch - 12 end
+        local p = top
+        while p >= bottom do p = p - 12 end
+        if p >= 0 then hi.pitch = p end
       end
     end
     for _, n in ipairs(chord) do out[#out + 1] = n end

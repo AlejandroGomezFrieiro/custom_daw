@@ -184,16 +184,27 @@ end
 
 --- Events starting from cycle `from` up to `to`, in order: { start, stop (in
 --- cycles), text (the word as written), value, params, pitches }.
+--- The most events a pattern may make over the stretch asked for: past
+--- them it is an error, not a clip of hundreds of thousands of notes.
+M.MAX_EVENTS = 20000
+
 function M.events(compiled, from, to)
   local out = {}
-  for _, ev in ipairs(compiled.main.query(from, to)) do
-    if math.abs(ev.pb - ev.wb) < EPS and ev.wb >= from - EPS and ev.wb < to - EPS then
-      local params = sample(compiled.params, ev.wb)
-      out[#out + 1] = {
-        start = round(ev.wb), stop = round(ev.we), text = ev.v.text, value = ev.v.v, pos = ev.v.pos,
-        params = params, pitches = M.pitches(ev.v.v, params),
-      }
+  -- A cycle at a time, so that a pattern that makes too many stops early.
+  local c0 = from
+  while c0 < to - EPS do
+    local c1 = math.min(to, math.floor(c0 + EPS) + 1)
+    for _, ev in ipairs(compiled.main.query(c0, c1)) do
+      if math.abs(ev.pb - ev.wb) < EPS and ev.wb >= c0 - EPS and ev.wb < c1 - EPS then
+        local params = sample(compiled.params, ev.wb)
+        out[#out + 1] = {
+          start = round(ev.wb), stop = round(ev.we), text = ev.v.text, value = ev.v.v, pos = ev.v.pos,
+          params = params, pitches = M.pitches(ev.v.v, params),
+        }
+      end
     end
+    if #out > M.MAX_EVENTS then error("more than " .. M.MAX_EVENTS .. " notes: make the clip shorter or the pattern sparser", 0) end
+    c0 = c1
   end
   table.sort(out, function(a, b)
     if a.start ~= b.start then return a.start < b.start end
