@@ -291,6 +291,11 @@ component MixerStrip inherits Rectangle {
     in property <TrackData> track;
     in property <MeterData> meter;
     in property <bool> chosen;
+    // The row of this strip the keyboard is on ("insert", "send", "volume",
+    // "pan" or "toggle", with its place or field), or "" on other strips.
+    in property <string> row-kind;
+    in property <int> row-index;
+    in property <string> row-field;
     callback select();
     callback set-volume(float);
     callback reset-volume();
@@ -340,6 +345,8 @@ component MixerStrip inherits Rectangle {
             border-radius: 2px;
             property <bool> used: slot < root.track.inserts.length;
             background: self.used ? (slot-touch.has-hover ? Theme.control-hover : Theme.control) : Theme.control-press;
+            border-width: root.row-kind == "insert" && root.row-index == slot + 1 ? 1px : 0px;
+            border-color: Theme.select;
             if slot-box.used: Text {
                 x: 5px;
                 width: parent.width - 10px;
@@ -359,6 +366,9 @@ component MixerStrip inherits Rectangle {
         // Its sends, as many as the strip has room for.
         for send[at] in (root.track.vca ? 0 : min(root.track.sends.length, root.height < 300px ? 1 : 3)): Rectangle {
             height: 16px;
+            border-width: root.row-kind == "send" && (root.row-index == at + 1 || root.height < 300px) ? 1px : 0px;
+            border-color: Theme.select;
+            border-radius: 2px;
             Text {
                 x: 5px;
                 width: parent.width - 10px;
@@ -377,6 +387,9 @@ component MixerStrip inherits Rectangle {
                 width: 24px;
                 height: 24px;
                 y: 1px;
+                border-radius: 12px;
+                border-width: root.row-kind == "pan" ? 1px : 0px;
+                border-color: Theme.select;
                 value: root.track.pan;
                 held(on) => {
                     root.hold("pan", on);
@@ -466,6 +479,8 @@ component MixerStrip inherits Rectangle {
                 horizontal-stretch: 1;
                 border-radius: 2px;
                 background: Theme.well;
+                border-width: root.row-kind == "volume" ? 1px : 0px;
+                border-color: Theme.select;
                 Text {
                     width: parent.width;
                     text: root.track.volume-text;
@@ -507,6 +522,8 @@ component MixerStrip inherits Rectangle {
                 label: "M";
                 on: root.track.mute;
                 lit: Theme.mute;
+                border-width: root.row-kind == "toggle" && root.row-field == "mute" ? 1px : 0px;
+                border-color: Theme.select;
                 clicked => {
                     root.toggle-flag("mute");
                 }
@@ -515,6 +532,8 @@ component MixerStrip inherits Rectangle {
                 label: "S";
                 on: root.track.solo;
                 lit: Theme.solo;
+                border-width: root.row-kind == "toggle" && root.row-field == "solo" ? 1px : 0px;
+                border-color: Theme.select;
                 clicked => {
                     root.toggle-flag("solo");
                 }
@@ -523,6 +542,8 @@ component MixerStrip inherits Rectangle {
                 label: "R";
                 on: root.track.armed;
                 lit: Theme.rec;
+                border-width: root.row-kind == "toggle" && root.row-field == "armed" ? 1px : 0px;
+                border-color: Theme.select;
                 clicked => {
                     root.toggle-flag("armed");
                 }
@@ -747,6 +768,11 @@ in property <string> render-stage;
     // for the status bar (`qf-level` 0 plain, 1 warning, 2 error), and what
     // the command line could be completed to.
     in property <[HintData]> keys;
+    // Where the keyboard is in the mixer: the track and the row of its strip.
+    in property <int> mixer-row-track: -1;
+    in property <string> mixer-row-kind;
+    in property <int> mixer-row-index;
+    in property <string> mixer-row-field;
     // An Ex line being typed: the stretch of time it covers (-1 for none),
     // the rows of the tracks it covers, and the clips that match.
     in property <float> ex-from: -1;
@@ -5856,6 +5882,9 @@ in property <string> render-stage;
                         track: track;
                         meter: root.meters[index];
                         chosen: track.id == root.selected;
+                        row-kind: track.id == root.mixer-row-track ? root.mixer-row-kind : "";
+                        row-index: root.mixer-row-index;
+                        row-field: root.mixer-row-field;
                         select => {
                             root.select-track(track.id, root.cursor);
                         }
@@ -5892,6 +5921,9 @@ in property <string> render-stage;
                     width: 88px;
                     track: root.tracks[root.tracks.length - 1];
                     chosen: self.track.id == root.selected;
+                    row-kind: self.track.id == root.mixer-row-track ? root.mixer-row-kind : "";
+                    row-index: root.mixer-row-index;
+                    row-field: root.mixer-row-field;
                     select => {
                         root.select-track(self.track.id, root.cursor);
                     }

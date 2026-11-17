@@ -1792,6 +1792,11 @@ impl View {
             .collect();
         sync(&self.ex_rows, ex_rows);
         sync(&self.ex_marks, ex_marks);
+        let row = &modal["mixer_row"];
+        ui.set_mixer_row_track(row["track"].as_i64().map_or(-1, |id| id as i32));
+        ui.set_mixer_row_kind(text(&row["kind"]));
+        ui.set_mixer_row_index(row["index"].as_i64().unwrap_or(0) as i32);
+        ui.set_mixer_row_field(text(&row["field"]));
         ui.set_qf(text(&modal["qf"]["text"]));
         ui.set_qf_level(modal["qf"]["level"].as_i64().unwrap_or(0) as i32);
         // A message stays until the next key or a change of mode, as well as

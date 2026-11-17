@@ -208,6 +208,11 @@ local function modal()
     for id in pairs(shown.tracks or {}) do out.ex.tracks[#out.ex.tracks + 1] = id end
     for id, n in pairs(shown.clips or {}) do out.ex.clips[#out.ex.clips + 1] = { id = id, count = n, notes = shown.notes[id] ~= nil } end
   end
+  -- The row of a strip the keyboard is on in the mixer.
+  if out.mixer and ui.focused == "mixer" then
+    local row, id = require("daw.mixer_rows").current()
+    if row then out.mixer_row = { track = id, kind = row.kind, index = row.index or 0, field = row.field or "" } end
+  end
   local qf = daw.qf and daw.qf.status()
   if qf then
     local text, worst = {}, 0
