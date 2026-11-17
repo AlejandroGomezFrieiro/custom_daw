@@ -52,8 +52,8 @@
   A view's locator (`daw.ui.locator`, where in the project the view's
   cursor is) belongs to the view, not to each of its windows; phase 2
   makes it per window.
-- The quickfix list: `:g/pattern/` with no command fills it, but no `:grep`
-  or `:vimgrep` does yet, nor `/` searches; `:cfdo` runs once per track, as there
+- The quickfix list: `:g/pattern/` and `:vimgrep` fill it, but no `:grep`
+  (there are no files to run a program over) nor `/` searches; `:cfdo` runs once per track, as there
   are no files; lists are not kept with the project or between runs; a
   location list stays with its window's number after the window closes.
   The window's status bar does not count it.
@@ -66,6 +66,19 @@
   like. Of the preview the window is handed the piano roll's matches and
   ghosts (as the roll's marks) and the count (`prompt.note`), but does not
   show the count yet, nor shade the range or light clips in the arrange view.
+
+- Searching: the pickers' regex mode and `:vimgrep` read the common kind of
+  regular expression made into Lua patterns, so a group cannot repeat
+  (`(ab)+`), and there is no `\b`, no backreference and no lookaround. A
+  picker's preview draws a clip as a piano roll or a waveform, not as a score
+  snippet (the notation extension draws staves only in its own view). A
+  picker over a hundred thousand notes takes most of a second to open. The
+  `,fg` live grep searches text kept in the project, not text a plugin
+  shows; the text of automation and of devices' parameters is not searched.
+  `:select` chooses notes and clips; tracks, devices, markers and points
+  found go to the quickfix list only. `]]` and `[[` stay on the cursor's
+  track. The open-in-split keys of a picker open the first of the marked
+  lines, as a view is shown in one window at a time.
 
 - Help (`:help`): pages are laid out 78 columns wide, not to the window;
   `:helpgrep` takes words, not patterns; there is no `:helptags` (the tags

@@ -1080,6 +1080,10 @@ function A.select_clips_box(row0, beat0, row1, beat1, mode)
   return count
 end
 
+--- Choose a set of clips (`{ [id] = true }`), as visual mode's selection:
+--- what `:select` does.
+function M.choose_clips(set) choose_clips(set, nil, true) end
+
 --- Every clip on the timeline, chosen.
 function A.select_all_clips()
   local set = {}
@@ -2185,6 +2189,13 @@ daw.seats.keep("frontend.chosen", function() return chosen end, function(c) chos
 local function stamp_of(clip)
   local ok, data = pcall(api.clip_get, clip)
   return ok and data.stamp or nil
+end
+
+--- Choose notes of `clip` by their places (`{ [place] = true }`), as the
+--- pointer would: what `:select` does.
+function M.choose_notes(clip, places)
+  chosen[clip] = next(places) and { places = places, stamp = stamp_of(clip) } or nil
+  api.ui_redraw()
 end
 
 --- The places of the chosen notes of `clip`, in order; none if the clip's

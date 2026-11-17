@@ -917,9 +917,19 @@ Telescope does in Neovim. `,,` runs a command by name; the others are under
 | `,fn` | `pick.messages` | earlier messages, newest first | shows the whole message |
 | `,ff` | `pick.files` | projects, audio and MIDI files under the working directory | opens the project, adds the audio at the cursor, or brings the MIDI file's tracks in there |
 | `,fo` | `pick.options` | options and their values | switches a true/false option, or asks for a new value |
-| `,fR` | `recent` | the recent projects, with where they are and when each was last opened | opens it |
+| `,fR` | `recent` | the recent projects, with where they are and when each was last opened; `Alt-d` forgets one | opens it |
+| `,fh` | `pick.help` | every help tag, the page beside it | goes to it |
+| `,f'` | `pick.markers` | markers and regions, with what plays there | goes to it |
+| `,fg` | `pick.grep` | every piece of text in the project: track, clip, marker and device names, lyrics, articulations, comments, the project's tags (a live grep; exact words to start with) | goes to it |
+| `,fN` | `pick.notes` | every note: pitch, velocity, lyric, articulations, clip and place, the clip drawn beside it; heard as the selection rests on it | goes to it |
+| `,fw` | `pick.media` | the sound files the project uses, and the clips that play each | adds it at the cursor |
+| `,fq` | `pick.quickfix` | the entries of the quickfix list | goes to it |
+| `,fu` | `pick.undo` | the states of the undo history, newest first, with what going there changes | goes there |
+| `,fe` | `pick.extensions` | the extensions, loaded or not, with their README | its help, or loads it |
+| `,fs` | `pick.symbols` | every function of the Lua API, with its parameters and the comment above it | its help |
+| `,fP` | `pick.presets` | the presets of the device (as `:preset`) | loads it |
 | `,fp` | `pick` | every picker | opens it |
-| `,f.` | `pick.resume` | the last picker, with what was typed | |
+| `,f.` | `pick.resume` | the last picker as it was: what was typed, the mode, the line (`:pick resume`) | |
 
 `a` in the arrange view and the device panel, and `:device.add` with no name,
 choose the device in a picker too. It lists your favourites first (`Ctrl-f`
@@ -944,7 +954,26 @@ selected, marked `▶`, with the letters that matched highlighted. `Ctrl-n`
 `Enter` chooses, `Esc` cancels, `Backspace` and `Ctrl-w` delete a character
 and a word, `Ctrl-u` clears. The extra keys a picker has are listed along its
 bottom, and a pane on the right shows more about the selected line when the
-picker has one.
+picker has one: a clip's notes as a small piano roll (the note chosen drawn
+`▓`), an audio clip's waveform, a help page, the comment above a function.
+
+**Keys every picker has**, as Telescope's:
+
+| Keys | |
+| --- | --- |
+| `Tab` `Shift-Tab` | mark the line and move on (`+` marks it); `Ctrl-a` marks every line that matches, or none |
+| `Ctrl-v` `Ctrl-x` `Ctrl-t` | open what is chosen in a window beside this one, below it, or in a new tab: a MIDI clip or a note in the piano roll, a device in the device panel, the rest in the arrange view, a help tag as a page |
+| `Ctrl-q` | the marked lines, or every line that matches, to the quickfix list (titled by the picker and what was typed), and its window opens; `Ctrl-l` to the window's location list |
+| `Ctrl-y` | type the line on the command line (a Lua function: `lua daw.x(`) |
+| `Alt-d` | delete what is marked, or the line: tracks, clips, notes, markers, recent projects; the picker stays open, and `u` brings it back |
+| `Ctrl-r` | the next mode: fuzzy, exact, regex |
+| `Ctrl-Up` `Ctrl-Down` | what was typed in this picker before, newest first |
+
+A picker's own keys come before these: in the device picker `Ctrl-t` still
+steps between instruments and effects. The pickers of tracks, clips, notes
+and media can be heard as the selection rests on a line (`Ctrl-Space`): a
+clip's first two bars through its track, a note with the chord it starts,
+an audio file; the tracks picker starts with it off.
 
 **Pickers you can hear.** In the pickers of presets (`:preset`), devices
 (`,fa`), files (`,ff`, and the file picker of `:import`), beats
@@ -978,7 +1007,17 @@ higher when the letters are consecutive, when they start words (after a
 space, `/`, `:`, `.`, `_`, `-`, or at a capital inside a word), and when the
 line is shorter. Words separated by a space must each match, in any order:
 `hall drag`. Lower case matches either case; a word with a capital in it
-matches case exactly.
+matches case exactly. As in fzf, a word can say how it matches: `'hall`
+as written, `^drag` at the start of the line, `hall$` at its end, `!plate`
+not in it.
+
+`Ctrl-r` steps the **mode**: *fuzzy* (the above), *exact* (each word as
+written, anywhere: what `,fg` starts with) and *regex* (the whole line typed
+is a regular expression: `. * + ? {n,m} ^ $ [a-z] \d \w \s`, `|` between
+alternatives, `( )` around alternatives; lower case ignores case). A mode
+other than fuzzy is shown beside the count, and a picker keeps the mode it
+was last left in. A regular expression that cannot be read says why in
+place of the list.
 
 **From Lua**:
 
@@ -1004,12 +1043,23 @@ daw.pick({
 | `boost(item)` | a number (up to 120) added to the score of an item that matches: what is used often, what belongs to the focused view |
 | `primary(item)` | the part of the line that counts first: lines that match there rank above lines that match only elsewhere |
 | `audition(item)` | makes the item heard when the selection rests on it; returns the label the pane shows, or `{ label, loading = function, keep = function(item) }`: `keep` runs in place of `on_choose` when the item heard is chosen, its trial kept. `audition_key` names the setting `Ctrl-Space` keeps, `audition_default = false` starts it off, `audition_delay(item, ms)` rests longer on a slow item |
+| `location(item)` | the item's address (`daw://clip/7`) or location: `Ctrl-v`, `Ctrl-x`, `Ctrl-t` open it and `Ctrl-q` sends it to the quickfix list with it |
+| `open(item, how)` | opens it some way of its own, `how` "vsplit", "split" or "tab", in place of `location` |
+| `delete(items)` | `Alt-d`: deletes them (the marked ones, or the line) |
+| `insert(item)` | `Ctrl-y`, in place of typing the line on the command line |
+| `mode` | "exact" or "regex" to start in, in place of "fuzzy" |
+| `multi = false` | `Tab` does not mark |
 | `prompt`, `width`, `height` | |
 
-`daw.pick.match(query, line)` returns the score and the positions that
-matched, `daw.pick.filter(query, items, format)` the items that match, best
-first. `daw.pick.state()` is the open picker's query, matches and selection.
-`daw.pick.resume()` opens the last picker again.
+`preview(item, width, height)` is given the pane's size, for drawing to fit;
+`require("daw.pick.preview").clip(id, width, height, note_id)` draws a clip
+as the clips picker does. `daw.pick.show(location, how)` opens a location
+beside, below or in a tab as `Ctrl-v` does. `daw.pick.match(query, line,
+true, mode)` returns the score and the positions that matched,
+`daw.pick.filter(query, items, format, primary, mode)` the items that match,
+best first. `daw.pick.state()` is the open picker's query, mode, matches,
+marked items and selection. `daw.pick.resume()` opens the last picker again,
+as it was. `daw.pick.keys` holds the keys every picker has.
 
 **Hearing from Lua.** `daw.audition` is what the pickers use:
 
@@ -1047,9 +1097,120 @@ daw.keymap.set("<leader>fT", function() daw.pick("tempo") end, { desc = "Choose 
 ```
 
 `items` as a function is called each time the picker opens, so the list is
-current. Several thousand items are fine: typing on narrows the last matches
-rather than starting again, and only the lines on screen are drawn.
+current. A hundred thousand items are fine: the notes of a thousand tracks
+open in under a second and each key typed takes tens of milliseconds, since
+typing on narrows the last matches rather than starting again and only the
+lines on screen are drawn.
 
 The graphical frontend shows a picker as it shows any floating view, through
 `daw.frontend.float`, so the selected line is marked with `▶` and not only
-with a colour.
+with a colour, and the preview pane, its piano roll and waveform with it.
+
+## Searching the project's text
+<!-- tags: vimgrep :vimgrep :lvimgrep project-grep grep daw.grep -->
+
+`:vimgrep /pattern/` finds every piece of text in the project that matches
+a regular expression (as the pickers' regex mode reads it) and puts the
+places in the quickfix list, as Vim's does with files, then goes to the
+first. The text is the names of tracks, clips, markers, regions and
+devices, the lyrics and articulations of notes, comments
+(`meta.comment` on a track or clip) and the project's tags; an extension
+adds its own (the notation extension adds the text and dynamics written
+over its staves).
+
+| Command | |
+| --- | --- |
+| `:vimgrep /pizz/` | everything that holds pizz; each entry says what kind of text it is: `clip: pizz 2`, `lyric: la` |
+| `:vimgrep /^la$/ lyric` | only in the fields named after it: `track`, `clip`, `marker`, `region`, `device`, `lyric`, `art`, `comment`, `tag`, and the notation extension's `text` and `dynamic` (`Tab` completes them) |
+| `:vimgrep /verse/j` | `j` stays where it is |
+| `:lvimgrep /…/` | into the window's location list |
+| `:vimgrepadd /…/` | added to the current list |
+
+The list is then worked through as any: `]q` and `[q`, `:copen`, and
+`:cdo` and `:cfdo` run a command on every place found as one undo step
+(`:vimgrep /^Viol/ track` then `:cdo track.mute`). `,fg` is the same text in
+a picker, narrowed as you type, `Ctrl-q` sending what is left to the list.
+
+From Lua, `daw.grep.search(pattern, { mode = "regex", fields = { lyric = true } })`
+gives the records found, `{ text, field, location, where }`, and
+`daw.grep.records()` all of them. An extension adds a source:
+
+```lua
+daw.grep.source("chords", function(add)
+  add({ text = "Cmaj7", field = "chord", location = "daw://clip/4", where = "Verse 5.1.00" })
+end)
+```
+
+## Structural queries
+<!-- tags: query select :select :query daw.query -->
+
+A query finds things by where they sit in the project, as a Tree-sitter
+query or a CSS selector finds nodes in a tree:
+
+```
+:select clip[name~=pizz] > note[pitch>=C5]     the high notes of the pizzicato clips
+:select group[name=Strings] clip               every clip of the tracks in the Strings group
+:query note[lyric^=la], note[art=staccato]     two kinds of note
+:query clip:has(note[vel>120])                 clips with a very loud note
+```
+
+The tree: the project holds its tracks (a group holds its members),
+markers and regions; a track holds its clips, devices and automation
+lanes; a MIDI clip holds its notes and controller moves; a lane holds its
+points. A step names a kind, `track` `group` `clip` `note` `cc` `device`
+`lane` `point` `marker` `region` (or `*`, any), then tests in brackets.
+`a > b` is a `b` right inside an `a`, `a b` one anywhere inside it, `,`
+joins two queries, and `:has(query)` keeps what holds something the query
+finds.
+
+A test is a field, an operator and a value: `=` `!=` `<` `<=` `>` `>=`,
+`~=` a regular expression holds, `^=` starts with, `$=` ends with, `*=`
+holds the words; `pitch=c4|e4` is either. A field alone holds when it is
+set (`track[mute]`), `!field` when it is not (`clip[!muted]`). Pitches are
+`c4`, `c#4`, `60`, or `c` in any octave; lengths are beats or note values
+(`note[len<1/8]`); text is compared without case. The fields are what
+`daw.api` gives for each kind (a note's `pitch` `velocity` `start`
+`length`, a clip's `name` `start` `length` `kind` `file`, a track's `name`
+`volume` `pan` `mute` `solo`), and besides:
+
+| Kind | Fields |
+| --- | --- |
+| note | `vel` `len` `end` `at` (the song's beat) `bar` `lyric` `art` (its articulations: any may match) `channel`, and the fields of `:s` and `:g` (`daw.ex.field`) |
+| clip | `end` `bar` `notes` (how many) `muted` `track` (its track's name) |
+| track, group | `index` `group` `devices` (how many) |
+| marker, region | `name` `start` `end` `bar` |
+| device | `index` `track` |
+| lane | `name` `points` |
+| all | `comment` |
+
+`:select` chooses what it finds where things can be chosen (the notes in
+the piano roll, each clip's own, the first shown; or the clips in the
+arrange view, as visual mode's selection) and lists it all in the quickfix
+list; `:query` only lists it, `:lquery` in the window's location list.
+From there `:cdo` acts on each.
+
+From Lua, `daw.query(q)` returns the nodes, `{ kind, id, data, parent,
+track, clip, location }`, `data` the thing as `daw.api` gives it. A query
+may also be a table of steps, each a string or a table of the kind and its
+tests, `">"` between two for a step right inside:
+
+```lua
+for _, n in ipairs(daw.query("clip[name~=pizz] > note[pitch>=C5]")) do print(n.data.pitch) end
+daw.query({ { "clip", name = "~= pizz" }, ">", { "note", pitch = ">= C5", function(n) return n.data.velocity > 90 end } })
+daw.query.select("note[lyric=la]")            -- what :select does
+daw.query.field("note", "channel", function(n) return n.data.meta.channel end)   -- a field of your own
+```
+
+**Motions and text objects of the tree**, where they keep the key rule:
+
+| Keys | View | |
+| --- | --- | --- |
+| `]]` `[[` | arrange | the next or previous clip of the same kind on the track: the same name without a number or "copy" at its end (`pizz 2` is a `pizz`), and MIDI or audio alike |
+| `]s` `[s` | arrange | the next or previous track beside this one in its group (or at the top) |
+| `[u` `]u` | arrange | up to the group the track is in; down into a group, to its first track |
+| `ig` `ag` | arrange | the tracks of the group the cursor is in; with the group track |
+| `]]` `[[` | piano roll | the next or previous note of the same pitch |
+
+They take a count and are motions for the operators (`d]]` deletes up to
+the next clip of the kind); `]]`, `[[` and `[u` go in the jump list. `:g`
+and `:v` (Ex, above) are the other way to act on what a pattern finds.
