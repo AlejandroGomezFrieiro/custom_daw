@@ -347,6 +347,12 @@ impl Session {
                 opts.channels
             );
         }
+        if let Some(id) = opts.freeze {
+            if !opts.tracks.is_empty() {
+                bail!("a render is of a frozen track or of a list of tracks, not both");
+            }
+            crate::freeze::alone(&mut project, id)?;
+        }
         if !opts.tracks.is_empty() {
             // Only these tracks, with what they pass through on the way to
             // the master: as when they are soloed.

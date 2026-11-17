@@ -257,6 +257,18 @@
   kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
   MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's
   own ports).
+- Freezing after the fader: a freeze is taken before the fader, so that
+  the mix stays live (`:track.bounce` prints the fader too). A send from a
+  track inside a frozen group to a track outside it is not heard while the
+  group is frozen, and a frozen track is not rendered again by itself when
+  the tempo changes. The window draws no `F` on a frozen track's header yet
+  (the terminal does; `daw.freeze.state(id)` says it).
+- A narrowed tab is not kept by `:layout save` (a group's id belongs to its
+  project), and the window's own drawing has no mark for it beyond its tab's
+  name. With `scope_rest=frozen` a part of the rest edited from another tab
+  plays live until it is rendered again; renders always play it live. With a
+  terminal and a window attached at once, each with tabs of its own, the
+  last to change tabs chooses what the rest does.
 - A VCA over a group's own fader, a VCA under a VCA, and VCA gain on the master. A VCA is a track here (so it shows in the arrange view as a row, with lanes like any other), and what it moves is the tracks assigned to it, not what they are routed into. A VCA's solo makes its members the only sound; it does not solo what they feed.
 - Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
   for them in pure Rust of a quality worth shipping, and no C library is

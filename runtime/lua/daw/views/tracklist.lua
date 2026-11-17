@@ -138,6 +138,15 @@ local function resolver(lines, what)
   end
   return function(name, row)
     local list = by_name[name]
+    -- A narrowed tab lists its group's tracks: the others are named as they are.
+    if not list and daw.scope.current() then
+      for _, id in ipairs(api.track_list()) do
+        if api.track_get(id).name == name and not daw.scope.contains(id) then
+          list = list or {}
+          list[#list + 1] = { id = id, fields = { name = name, head = daw.groups.is_group(id) or nil } }
+        end
+      end
+    end
     if not list then error(string.format("line %d: no track `%s` in the list for %s", row, name, what), 0) end
     if #list > 1 then error(string.format("line %d: %d tracks are called `%s`: name them apart first", row, #list, name), 0) end
     return list[1]
@@ -157,7 +166,8 @@ tb.kind("tracks", {
   end,
   read = function()
     local out = {}
-    for i, id in ipairs(api.track_list()) do out[i] = { id = id, track = api.track_get(id) } end
+    -- In a narrowed tab, the tracks of its group: the others are left as they are.
+    for i, id in ipairs(daw.scope.tracks()) do out[i] = { id = id, track = api.track_get(id) } end
     return out
   end,
   format = function(item)
@@ -325,7 +335,12 @@ tb.kind("tracks", {
     if ch.moved or #made > 0 or #ch.added > 0 then
       for _, e in ipairs(ch.moves) do step(string.format("move %s from %d to %d", quote(e.fields.name), e.from, e.place)) end
       step("order the tracks as the lines are", function(st)
+        -- In a narrowed tab, its tracks keep the place in the list they had.
         local i = 0
+        local first = daw.scope.current() and daw.scope.tracks()[1]
+        for k, id in ipairs(first and api.track_list() or {}) do
+          if id == first then i = k - 1 end
+        end
         for _, e in ipairs(ch.lines) do
           local id = id_of(e, st)
           if id then

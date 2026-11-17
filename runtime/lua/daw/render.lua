@@ -304,6 +304,12 @@ daw.command("render", function(ctx)
   end
   opts.tags = next(tags) ~= nil and tags or nil
   if opts.start or opts["end"] then opts.range = nil end
+  -- `:render stems` and `:render Strings`: by group, the plan shown first.
+  local stems = require("daw.stems")
+  if a[1] == "stems" or stems.names_group(a[1]) then
+    opts.tracks = nil
+    return stems.command(ctx, opts)
+  end
   if a.stems == true then
     local dir = a[1] and tostring(a[1]) or (default_path():gsub("%.wav$", "") .. " stems")
     local files = M.stems(dir, daw.util.merge(opts, { format = a.format }))
@@ -318,11 +324,18 @@ daw.command("render", function(ctx)
   end
 end, {
   desc = "Render to WAV or FLAC by the file's extension, or MP3, Ogg or Opus with ffmpeg installed: `render mix.flac "
-    .. "range=loop tail=2 bits=16 dither=true channels=mono rate=44100 normalize=-1 loudness=-14 tracks=selected master=false stems=true`",
+    .. "range=loop tail=2 bits=16 dither=true channels=mono rate=44100 normalize=-1 loudness=-14 tracks=selected master=false stems=true`; "
+    .. "`render stems [dir]` one file per group (`render stems tracks` per track), `render Strings` one group",
   complete = function(rest)
     local before, last = rest:match("^(.-)(%S*)$")
     local out = {}
     local key = last:match("^(%w+)=")
+    if before == "" and not key then
+      out[1] = "stems"
+      for _, id in ipairs(api.track_list()) do
+        if daw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+      end
+    end
     for _, o in ipairs(M.options) do
       if key and o[1] == key .. "=" then
         for _, v in ipairs(o[2] or {}) do out[#out + 1] = before .. o[1] .. v end

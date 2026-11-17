@@ -589,6 +589,7 @@ left and above).
 | `:resize 20` `:resize +5`, `:vertical resize 40` | the window's height, its width |
 | `:tabnew Mix`, `:tabnew mixer`, `gt` `gT`, `:tabn 2`, `Ctrl-w T` | a new tab named Mix, or showing the mixer; next and previous tab; tab 2; the window to a tab of its own |
 | `:tabclose`, `:tabs` | close the tab; list the tabs and their windows |
+| `:narrow Strings` `zn`, `:widen` `zw` | a tab of one group's tracks alone, the windows as in this one (`zn`: the group at the cursor); close it and go back (see [Narrowing to a group](mixing.md#mixing-midi-and-rendering-in-the-core)) |
 | `:view.open undotree` | show a view where it docks, else in a window split from this one (the graphical frontend's More) |
 | `:setlocal timebind` | bind this window's time to the other bound windows' |
 | `:layout save edit`, `:layout edit` | keep the tabs and windows as they are; put them back |
@@ -619,6 +620,15 @@ daw.opt.layout = "edit"
 `dir = "h"` puts windows side by side, `dir = "v"` one above another, and a
 window may have a `size` in cells or a `weight` (its share, 1 by default).
 Every terminal attached with `daw attach` has tabs and windows of its own.
+
+**Narrowed tabs.** A tab can be narrowed to a group (`:narrow Strings`,
+`zn`): it starts with the windows of the tab it came from, and everything in
+it (the arrange view, the mixer, the device panel, the session view,
+`daw://tracks`, the pickers, the motions and the Ex ranges) sees only that
+group's tracks; `:widen` (`zw`) closes it and goes back. The status line says
+`narrowed Strings`. Each tab has its own, so `gt` goes from the whole song to
+the strings and on to the brass. `daw://tracks` in a narrowed tab lists the
+group's tracks, and `:w` leaves the others where they are.
 
 ## Lists edited as text
 
