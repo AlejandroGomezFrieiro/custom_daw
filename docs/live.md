@@ -59,10 +59,10 @@ round its loop; one waiting for its boundary is marked until it starts.
 | `h` `l` `j` `k` | previous, next track; next, previous slot (`gg` `G` first, last) |
 | `<CR>` | launch the slot; an empty one stops the track |
 | `L` | launch the scene of the cursor's row |
-| `s` `S` | stop the track's clip, every clip |
-| `b` `B` | the track back to its timeline, every track |
+| `S` `gS` | stop the track's clip, every clip (`s` `M` solo and mute the track, as everywhere) |
+| `B` `gB` | the track back to its timeline, every track |
 | `n` | a new MIDI clip of a bar in the slot (`:slot.new 2` for two) |
-| `e` | open the clip's notes in the piano roll |
+| `i` | open the clip's notes in the piano roll |
 | `x` `dd` | empty the slot |
 | `yy` `p` | yank the slot's clip; paste a clip into the slot (one yanked here, or the first yanked in the arrange view) |
 | `gp` | copy the clip under the arrange view's cursor into the slot |

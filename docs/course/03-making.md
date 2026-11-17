@@ -33,7 +33,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
 5. `l` draws the note a step longer: `4l` makes it a beat. `<CR>` keeps it and starts the next where it ends, `2k` goes up two semitones. Press `4l`, `<CR>`, `2k`, `4l`, `<CR>`, `2k`, `4l`, and `<Esc>` to write them.
    - *Hint:* What is drawn shows in green and is written by `<Esc>`. `h` makes a note shorter, `j` moves it down.
    - ✓ Three notes, C D E, written when you left insert mode.
-6. Press `<Esc>` to go back to the arrange view.
+6. Press `<C-w>p` to go back to the arrange view, the window before (`<Esc>` stays in the piano roll, as it stays in every view).
    - ✓ Back in the arrange view, in NORMAL mode.
 7. Press `<Space>` to hear your notes with the drums, and `<Space>` to stop.
    - ✓ That is your bass line.

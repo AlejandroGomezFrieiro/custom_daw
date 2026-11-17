@@ -114,7 +114,7 @@ test("without a source nothing is suggested and the piano roll's keys are as the
   eq(complete.current(), nil, "nothing shows")
   eq(roll:subscope(), nil, "no keys of its own")
   daw.keymap.feed("<Esc>")
-  eq(daw.ui.focused, "arrange", "Escape leaves the piano roll as before")
+  eq(daw.ui.focused, "pianoroll", "Escape stays in the piano roll, as in every view")
 end)
 
 test("a suggestion shows as ghost notes with its badge and changes nothing in the project", function()
@@ -215,7 +215,7 @@ test("alternatives are stepped through with ctrl-n and ctrl-p and picked with al
   end)
 end)
 
-test("escape dismisses the suggestion before it leaves insert mode or the piano roll", function()
+test("escape dismisses the suggestion before it leaves insert mode", function()
   start()
   with({ fixed("fixed", next_bar) }, {}, function()
     daw.keymap.feed("i<C-Space>")
@@ -230,7 +230,7 @@ test("escape dismisses the suggestion before it leaves insert mode or the piano 
     daw.keymap.feed("<C-Space><Esc>")
     eq(daw.ui.focused, "pianoroll", "in normal mode Escape dismisses first")
     daw.keymap.feed("<Esc>")
-    eq(daw.ui.focused, "arrange", "and only then leaves the piano roll")
+    eq(daw.ui.focused, "pianoroll", "and the next stays in the piano roll, as in every view")
   end)
 end)
 

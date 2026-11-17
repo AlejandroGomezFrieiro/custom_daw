@@ -883,11 +883,14 @@ daw.ui.dock("utau", { side = "bottom", hidden = true })
 -- The keys worth knowing first, for the line at the bottom of the screen.
 if daw.ui.keybar then
   daw.ui.keybar.set("utau", "n", {
-    { "i", "note" }, { "c", "lyric" }, { "<Tab>", "next note" }, { "+", "longer" }, { "-", "shorter" },
-    { "}", "raise curve" }, { "gc", "curve" }, { ")", "phoneme" }, { "~", "vibrato" }, { "<Space>", "play" },
-    { "S", "singer" }, { "<Esc>", "back" },
+    { "i", "note" }, { "c", "lyric" }, { "<Tab>", "next note" }, { "<A-l>", "longer" }, { "<A-h>", "shorter" },
+    { "}", "raise curve" }, { "]c", "curve" }, { ")", "phoneme" }, { "~", "vibrato" }, { "<Space>", "play" },
+    { "S", "singer" }, { "<C-w>p", "back" },
   })
 end
+-- In its window Ctrl-A chooses every note, as in other programs; in the
+-- terminal it raises the pitch, as in every view.
+view.window_keys = { ["<C-a>"] = "gA" }
 
 -- The lyric sheet ---------------------------------------------------------------------
 

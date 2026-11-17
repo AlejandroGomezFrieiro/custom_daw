@@ -430,7 +430,8 @@ function M.install_locks()
     end, { view = "pianoroll", mode = "i", desc = orig and orig.desc, musicops = true })
   end
 
-  for lhs, dir in pairs({ ["<C-a>"] = 1, ["<C-x>"] = -1 }) do
+  -- `+` `-` are the pitch as `Ctrl-a` `Ctrl-x` are (docs/terminal.md, "Keys: one grammar").
+  for lhs, dir in pairs({ ["<C-a>"] = 1, ["<C-x>"] = -1, ["+"] = 1, ["-"] = -1 }) do
     local orig = original("n", "pianoroll", lhs)
     keymap.set(lhs, function(ctx)
       if not locked() then return call(orig, ctx) end
@@ -442,7 +443,7 @@ function M.install_locks()
       end) then
         roll:move(0, to - roll.pitch)
       end
-    end, { view = "pianoroll", desc = orig and orig.desc, musicops = true })
+    end, { view = "pianoroll", desc = orig and orig.desc, role = orig and orig.role, musicops = true })
 
     for _, view in ipairs(NOTES) do
       local xorig = original("x", view, lhs)

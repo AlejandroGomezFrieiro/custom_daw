@@ -669,7 +669,7 @@ function view:menu_items(on_note, at)
     add("Delete the chord", "X", function() self:delete_chord() end)
     add("Sharpen", "Ctrl-a", function() self:inflect(1) end)
     add("Flatten", "Ctrl-x", function() self:inflect(-1) end)
-    add("Respell", "ge", function() self:respell() end)
+    add("Respell", "g~", function() self:respell() end)
     items[#items + 1] = "-"
     for _, kind in ipairs({ "staccato", "accent", "tenuto", "marcato" }) do
       add(kind:sub(1, 1):upper() .. kind:sub(2), nil, function() view.marks.toggle_art(kind, self:chord_indices()) end)

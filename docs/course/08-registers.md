@@ -39,9 +39,9 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - ✓ A B again. (`2<C-r>` would redo both.)
 9. Now a macro. Press `k` to go up to Lead and `0` to its start, then `qq` to start recording keys into register q.
    - ✓ The status line says `recording @q`.
-10. Type the change to record: `12<C-a>` (up an octave), `w` (on to the next clip), then `q` to stop recording.
+10. Type the change to record: `vic` (select the clip), `12<C-a>` (its notes up an octave: on a track `<C-a>` is the fader), `w` (on to the next clip), then `q` to stop recording.
    - *Hint:* If it went wrong, `u` undoes the change and `qq` records again.
-   - ✓ The first hook went up an octave while you recorded, and register q holds `12<C-a>w`.
+   - ✓ The first hook went up an octave while you recorded, and register q holds `vic12<C-a>w`.
 11. `@q` plays the macro on the clip under the cursor, and `@@` plays it again. Press `@q`, then `@@`.
    - ✓ Three hooks an octave up, the last one as it was.
 12. Listen: `gs`, `<Space>`, and `<Space>` to stop.

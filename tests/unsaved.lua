@@ -40,10 +40,11 @@ end)
 test(":open, :edit, :new and :recent leave an imported project in place and say why", function()
   local path = imported()
   for _, line in ipairs({ ":open " .. path, ":edit " .. T.scratch .. "/other.json", ":new", ":recent" }) do
-    local before = #daw.ui.messages
+    -- The last message, not how many: the list keeps the latest 500 only.
+    local before = daw.ui.messages[#daw.ui.messages]
     T.keys(line .. "<CR>")
     kept(line .. " left it")
-    eq(#daw.ui.messages > before and said():find("unsaved work", 1, true) ~= nil, true, line .. " says why: " .. said())
+    eq(daw.ui.messages[#daw.ui.messages] ~= before and said():find("unsaved work", 1, true) ~= nil, true, line .. " says why: " .. said())
   end
   T.keys(":q<CR>")
   eq(said():find("unsaved work", 1, true) ~= nil, true, ":q is refused too")

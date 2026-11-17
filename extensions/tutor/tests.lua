@@ -54,7 +54,9 @@ local function perform(step, lesson, from, to)
     if type(item) == "string" then
       type_keys(item)
     elseif item.wait then
-      api.sleep(item.wait)
+      -- The event loop runs meanwhile: a key that waits for more (`]` before
+      -- `]d`) runs when its wait is over, as at the keyboard.
+      daw.wait(item.wait)
       daw.flush()
       tutor.poll()
     elseif item.sim == "quit" then
@@ -387,7 +389,7 @@ test("tutor: every key in docs/course/keys.md is a key paw has", function()
   local keymap = daw.keymap
   local known, operators, chars = {}, {}, {}
   for _, mode in ipairs({ "n", "x", "o", "i" }) do
-    for _, view in ipairs({ "arrange", "pianoroll", "pianoroll.complete", "pianoroll.keys", "mixer", "devices", "textbuf" }) do
+    for _, view in ipairs({ "arrange", "pianoroll", "pianoroll.complete", "pianoroll.keys", "mixer", "devices", "session", "textbuf" }) do
       for _, map in ipairs(keymap.list(mode, view)) do
         local keys = table.concat(keymap.parse(map.lhs))
         known[keys] = true
