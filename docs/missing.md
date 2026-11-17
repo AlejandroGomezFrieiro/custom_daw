@@ -22,6 +22,18 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- paw's sampler (extensions/sampler) reads an instrument's samples whole
+  into memory while the program waits, and nothing streams from disk: a
+  library that takes more than 30 s to read is ended by the plugin
+  helper's time limit. Not played: SFZ's LFOs (`amplfo_*`, `fillfo_*`,
+  `pitchlfo_*`, `lfoN_*`), its v2 envelopes (`egN_*`), `<effect>`,
+  `amp_keytrack`, `sw_vel`, controllers on envelope times and offsets, and
+  smoothing per controller (`_smoothccN`); Decent Sampler's effects,
+  modulators, buses, glide, `legatoInterval` and oscillators. SoundFont 2,
+  folders of samples and `.dslibrary` archives are not read, nor FLAC or
+  Ogg samples. The plugin lists no presets for `:preset`, has no editor
+  window of its own, one stereo output, and ignores per-note controllers,
+  MPE and note-off velocity.
 - The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
   column's lowest to highest sample and nothing of its loudness: there is no
   darker inner band for the RMS. The window draws a clip's peaks from the

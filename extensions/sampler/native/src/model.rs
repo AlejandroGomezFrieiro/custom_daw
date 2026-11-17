@@ -140,8 +140,6 @@ pub struct CcMod {
     pub depth: f32,
     /// Index into `Instrument::curves`.
     pub curve: Option<usize>,
-    /// Smoothing in milliseconds.
-    pub smooth: f32,
 }
 
 /// How a crossfade shapes its gain.

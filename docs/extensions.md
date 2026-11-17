@@ -218,6 +218,17 @@ Vocal tracks (utau) and drum tracks (drums) are kinds.
 `daw.track_kinds.add(name, opts)`, `set(track, name, args)`, `clear(track)`,
 `of(track)` and `describe(track)` are there for scripts.
 
+**Plugins of its own.** An extension can bring a plugin built from its own
+source. extensions/sampler is paw's sample player, a CLAP plugin written
+in Rust in `native/` (its own Cargo workspace, so building paw never
+compiles it); its package puts `paw-sampler.clap` in `clap/` beside the
+extension, which adds that folder to the plugin scan. Scripts ask such a
+plugin things by name as they ask a Lua device: `daw.api.device_call(device,
+method, data)` reaches any method paw does not know itself through the
+plugin's `dev.paw.call/1` extension (the sampler answers `describe`), and
+`device_call(device, "preset.load", "file:<path>")` loads a file through
+the plugin's preset-load.
+
 **Programs of its own.** An extension can start a program and talk to it
 over a socket or its standard input and output (see Helper programs in
 [Scripting](scripting.md)). The utau engine is such a program, built from

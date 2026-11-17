@@ -424,8 +424,7 @@ fn build_region(ctx: &mut Ctx, levels: [&Vec<(String, String)>; 4]) {
     }
     for (cc, target, depth) in b.mods {
         let curve = b.curves.iter().find(|c| c.0 == cc && c.1 == target).map(|c| c.2);
-        let smooth = b.smooths.iter().find(|c| c.0 == cc && c.1 == target).map_or(0.0, |c| c.2);
-        r.mods.push(CcMod { cc, target, depth, curve, smooth });
+        r.mods.push(CcMod { cc, target, depth, curve });
     }
     if let Some(f) = r.filter.as_mut()
         && f.keycenter == 255
@@ -455,7 +454,6 @@ struct Build {
     fileg_depth: f32,
     mods: Vec<(u8, Target, f32)>,
     curves: Vec<(u8, Target, usize)>,
-    smooths: Vec<(u8, Target, f32)>,
 }
 
 impl Build {
@@ -543,10 +541,6 @@ fn opcode(ctx: &mut Ctx, r: &mut Region, sw: &mut SwitchOps, b: &mut Build, name
         }
         if let Some(cc) = cc_suffix(rest, "_curvecc") {
             b.curves.push((cc, target, f() as usize));
-            return true;
-        }
-        if let Some(cc) = cc_suffix(rest, "_smoothcc") {
-            b.smooths.push((cc, target, f()));
             return true;
         }
     }

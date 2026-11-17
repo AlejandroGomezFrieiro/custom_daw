@@ -1,0 +1,3 @@
+# Where native/build.sh puts the plugin and its command.
+/clap
+/bin
