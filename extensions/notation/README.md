@@ -251,7 +251,7 @@ The rest of the page:
 - **Several tracks**: `:notation.tracks` (`gT`) shows every track with MIDI
   over the open clip's stretch as one system of staves, each named, to read;
   a click on a note sounds it. The same again goes back to the clip alone, to
-  edit.
+  edit. The full score and each instrument's part are in [Parts](#parts).
 
 ## Keys
 
@@ -769,6 +769,105 @@ drawing operations as the screen (`daw.api.canvas_export`, in
 crates/daw-raster), with the music font's glyphs and the text as outlines,
 so the files need no fonts.
 
+## Parts
+
+A song of several instruments is a score, and each instrument has a part
+to play from. Every track with MIDI is an instrument (its first MIDI clip
+with notes); nothing is copied: the score and the parts are made from the
+clips' MIDI each time they change, with what notation keeps on the notes,
+so a part is never out of date.
+
+![The quartet's full score in the terminal: flutes, clarinet and cello in orchestral order, a bracket over the woodwinds](images/tui-parts-score.png)
+
+![The clarinet's part in the window, on a page: written in B flat in D major, two bars of rest as one, the flute's notes as a cue](images/gui-parts-clarinet.png)
+
+| | |
+| --- | --- |
+| `:part.score`, `\Ps` | the full score in the notation view, to read |
+| `:part.condense`, `\Pc` | two players of an instrument on one staff, or each on their own |
+| `:part`, `\Pp` | the part of the open clip's track; `:part Flute 1` an instrument's (by name, its start, or its place in the score) |
+| `:part.next` `:part.prev`, `\Pn` `\PN` | the next, previous part, in score order |
+| `:part off`, `\Po` | the clip again, to edit |
+| `:part.transpose Bb` | how the track's part is written (below) |
+| `:5,8part.cue Oboe` | the oboe's notes as a cue in this part's rests of bars 5 to 8 (or a selection); `:part.cue off` |
+| `:part.break`, `\Pb`; `:part.join`, `\Pj` | in the part: a system starts at the cursor's bar; the bar stays on the system before; again, as it fits |
+| `:part.bars-per-system 4` | in the part: that many bars to a system |
+| `:part.name Flute 1 \| Fl. 1` | the names the score and the part give the instrument, in full and short |
+| `:part.export flute.pdf`, `\Pe` | the part shown (or the score) as engraved pages; `all` a file for each part, `score` the full score; `.musicxml` or `.mxl` every part in one file |
+
+The score and the parts are read only, as the several-tracks view is: the
+keys that edit say so, and `zg`, `zp`, `zi`, `zo` and the motions work.
+
+**The full score.** The instruments stand in an orchestra's order:
+woodwinds, brass, percussion, harp and keyboards, voices, strings, and
+within a family as an orchestra has them (piccolo, flutes, oboes,
+clarinets, bassoons; horns before trumpets). The family is the one the
+track's group is named for (a group "Strings" or "Flutes", see
+`daw.groups`), else the one its name says; a track whose name says none
+comes after, in the order of the tracks. Each family has a bracket and its
+barlines run through it and stop at the next; an instrument of two staves
+has a brace. The names stand at the left of the staves, in full on the
+first system and short after (`Fl. 1`, `Cl.`, `Vc.`). Tempo marks are
+written once over the score, rehearsal marks once, from whichever track
+has them. The full score is at concert pitch.
+
+**Condensed.** With `:part.condense`, two players of one instrument (two
+tracks of one name but their number, `Flute 1` and `Flute 2`, on the same
+clef) share a staff, `Flute 1.2`: where they play the same notes it is
+written once with `a2` over it, where one rests the other's notes with
+`1.` or `2.`, and where they part, both as two voices, the first's stems
+up and the second's down. The label is written where it changes.
+
+**A part** is one instrument as its player reads it, its name at the top
+left of the page:
+
+- **Transposed.** A clarinet in B flat reads a major second above how it
+  sounds, in the key two sharps up. `:part.transpose Bb` (kept in the
+  track's `meta.notation.transpose`) says so; without it a track named
+  "Clarinet in Bb" (or `in A`, `in F`, `in Eb`) is taken at its word. The
+  key names an instrument that sounds that far below C: `Bb` a clarinet or
+  trumpet, `A` a clarinet in A, `F` a horn, `Eb` an alto sax. `up` is for
+  one that sounds above (`Eb up`, an E flat clarinet; `D up`, a trumpet in
+  D), and `octave` adds an octave either way (`Bb octave` a tenor sax,
+  `C up octave` a piccolo, `C octave` a double bass when its clef does not
+  say so). `off` writes it as it sounds. Each note is moved by the
+  interval and spelled so; a key that would pass seven sharps or flats
+  takes the enharmonic interval.
+- **Multi-measure rests.** Bars of rest in a row are one bar with a thick
+  bar across it and their count over it; the count starts again at a
+  rehearsal mark, a tempo mark, a change of key, clef or time, a repeat or
+  a double barline, and the bars after it keep their numbers.
+- **Rehearsal marks and tempo** of the whole score are in every part,
+  whichever track they were written on.
+- **Cues.** `:5,8part.cue Oboe` writes the oboe's notes small in this
+  part's bars of rest from 5 to 8, as this part is written (transposed,
+  on its clef), with the oboe's short name over them; the part's own rest
+  stays under them. Kept with the track (`meta.notation.part.cues`, in
+  beats of the song), made again from the oboe's MIDI each time.
+- **Page turns.** A part's systems break, where they can, after a bar of
+  rest, and the page after each odd one (where the player turns) ends with
+  a system that ends in rests when one does in its second half; the systems
+  after it go over to the next page.
+- **Its own layout.** Breaks (`:part.break`, `:part.join`) and bars to a
+  system are the part's (`meta.notation.part`), not the score's: the
+  score's breaks (`zs`) do not move the part's.
+
+**Export.** `:part.export` writes PDF (or SVG, PNG) pages as the page view
+lays them out: `:part.export parts.pdf all` writes `parts-Flute_1.pdf`
+and one for each other part, `:part.export score.pdf score` the full
+score, and with a part shown `:part.export` alone writes it, named after
+the song. `:part.export score.musicxml` writes every part in one file:
+each written as it is played with a `<transpose>` saying how it sounds (a
+reader brings it back to concert pitch, as this extension does), the
+families as part groups with brackets, the short names as abbreviations.
+MuseScore, Dorico and Sibelius make their own parts of it.
+
+From Lua: `require("notation.parts")` has `instruments()`,
+`score_layout({ condensed })`, `part_layout(track_id)` (layouts the
+engraver and the cell view draw, and `page.export` writes), `interval(spec)`,
+`transposition(track_id)`, `transpose_score(score, interval, fifths)`,
+`multirests(layout)` and `condense(a, b)`.
+
 ## From Lua
 
 ```lua
@@ -853,7 +952,15 @@ on each staff: notes and rests with their start, value (`base`, `dots`),
 
 ## Not done
 
-Editing several tracks at once (they are shown to read);
+Editing several tracks at once, and editing in the score or a part
+(they are shown to read). Of the parts: a score written transposed (it is
+at concert pitch); chord symbols transposed in a part; a track's later
+MIDI clips (an instrument is its first clip with notes); cue notes beamed
+(they have flags) and cues on a part's second staff; condensing more than
+two players, chords of two players on one stem (they are two voices), and
+accidentals that carry from one player to the other on a condensed staff;
+every part as one book of pages; multi-measure rests and cues in MusicXML
+(readers make their own); the score and parts in LilyPond;
 tablature in the several-tracks view and as its own staff in MusicXML (the
 string and fret are on each note); D.C., D.S., segno and coda; endings and
 repeats played (they are written); trills and other ornaments played (they

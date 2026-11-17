@@ -118,6 +118,10 @@
   transcribe what the clips play. Tuplets are read from the MIDI within a
   beat (and quarter-note triplets over two); nine to a beat, five over two
   beats and the like are written only when said in notation.
+  The full score is at concert pitch only, and the score and the parts are
+  to read (edits are made in a clip); a part is its track's first MIDI
+  clip; condensing pairs two players, as two voices where they part; cues
+  are flagged, not beamed; MusicXML carries no multi-measure rests or cues.
   Of the grammar for music: `!` does not run a snippet (snippets expand in
   the piano roll) nor hand a filter MusicXML (it hands it a line of text an
   event); `in` takes no count; a chord tied only in some of its notes is

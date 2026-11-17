@@ -409,7 +409,7 @@ local function guarded(rhs)
     return rhs(...)
   end
 end
-local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, ["<leader>n"] = true, ZZ = true, gd = true, gR = true, gT = true, ["<Tab>"] = true }
+local READ = { gh = true, gp = true, zi = true, zo = true, zg = true, zp = true, ["]d"] = true, ["[d"] = true, gK = true, ["<Esc>"] = true, ["<leader>n"] = true, ZZ = true, gd = true, gR = true, gT = true, ["<Tab>"] = true }
 local function nmap(lhs, rhs, desc, opts)
   if not (opts and opts.motion) and not READ[lhs] and not lhs:match("^g%d$") then rhs = guarded(rhs) end
   map(lhs, rhs, util.merge({ view = "notation", desc = desc }, opts))

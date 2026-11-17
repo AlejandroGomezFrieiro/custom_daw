@@ -32,6 +32,8 @@ local E = {}
 
 --- The staff spaces the page is drawn at, in pixels: zoom steps through these.
 E.STEPS = { 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 24 }
+--- How large a cue is drawn, of a note's size.
+E.CUE = 0.7
 
 local function round(v) return floor(v + 0.5) end
 
@@ -449,6 +451,8 @@ local function spaced(m, st, spread)
     unit = function(d) return s * spread * (1.15 + 1.6 * sqrt(d / 0.25)) end,
     room = function(ev) return room(st, ev) end,
   })
+  -- A multi-measure rest is as wide as a bar of a few notes, whatever it counts.
+  if m.multirest then p.width = max(p.width, 9 * s) end
   return p
 end
 
@@ -521,7 +525,8 @@ local function staff_signature(m, p, k)
   for _, ev in ipairs(m.staves[k] or {}) do
     parts[#parts + 1] = table.concat({ ev.kind, ev.start, ev.length, tostring(ev.base), ev.dots, tostring(ev.stem),
       tostring(ev.flags), tostring(ev.beam and true), tostring(ev.whole), tostring(ev.shift), ev.voice,
-      tostring(ev.arpeggio), tostring(ev.staccato), tostring(ev.tuplet and ev.tuplet.n), tostring(ev.tuplet and ev.tuplet.s) }, ",")
+      tostring(ev.arpeggio), tostring(ev.staccato), tostring(ev.tuplet and ev.tuplet.n), tostring(ev.tuplet and ev.tuplet.s),
+      tostring(ev.cue), tostring(ev.multirest) }, ",")
     if ev.art then
       for _, a in ipairs({ "staccato", "accent", "tenuto", "marcato" }) do
         if ev.art[a] then parts[#parts + 1] = a end
@@ -621,21 +626,39 @@ local function staff_ink(st, m, p, staff)
 
   for _, ev in ipairs(evs) do
     local ex = xt(ev.start)
-    if ev.kind == "rest" then
+    -- A cue (another part's notes, to come in by) is drawn small.
+    local k = ev.cue and E.CUE or 1
+    if ev.kind == "rest" and ev.multirest then
+      -- A multi-measure rest: a thick bar on the middle line between two
+      -- serifs, how many bars it counts over the staff.
+      local x0, x1 = round(1.2 * s), round(w - 1.6 * s)
+      local h = round(0.6 * s)
+      out:rect(x0, round(Y(4) - h / 2), x1 - x0, h, colour)
+      out:rect(x0, round(Y(6)), st.thick, round(2 * s), colour)
+      out:rect(x1 - st.thick, round(Y(6)), st.thick, round(2 * s), colour)
+      local digits = tostring(ev.multirest)
+      local dw = 0
+      for ch in digits:gmatch("%d") do dw = dw + gwidth(st, "timeSig" .. ch) end
+      local dx = (x0 + x1 - dw) / 2
+      for ch in digits:gmatch("%d") do
+        out:glyph(st, round(dx), round(Y(11)), "timeSig" .. ch, colour)
+        dx = dx + gwidth(st, "timeSig" .. ch)
+      end
+    elseif ev.kind == "rest" then
       local rx = ev.whole and (w / 2) or ex
       local sh = ev.shift or 0
       local base = ev.whole and 4 or ev.base
       local name = REST_GLYPH[base] or "rest16th"
-      local rw = gwidth(st, name)
+      local rw = gwidth(st, name, k)
       local pos = (base >= 4) and 6 or 4
-      out:glyph(st, round(rx - rw / 2), round(Y(pos + sh)), name, colour)
+      out:glyph(st, round(rx - rw / 2), round(Y(pos + sh)), name, colour, k)
       if ev.dots > 0 and not ev.whole then
-        out:glyph(st, round(rx + rw / 2 + 0.3 * s), round(Y(5 + sh)), "augmentationDot", colour)
+        out:glyph(st, round(rx + rw / 2 + 0.3 * s), round(Y(5 + sh)), "augmentationDot", colour, k)
       end
     else
       local dir = ev.stem or 1
       local hname = HEAD_GLYPH(ev.base)
-      local hw = gwidth(st, hname)
+      local hw = gwidth(st, hname, k)
       local hx = round(ex - hw / 2)
       -- A second up from its neighbour goes on the other side of the stem.
       local shifted, any_shift = seconds(ev)
@@ -652,7 +675,7 @@ local function staff_ink(st, m, p, staff)
       for i, n in ipairs(ev.notes) do
         local nx = hx + (shifted[i] and (dir > 0 and side or -side) or 0)
         local ny = Y(n.pos)
-        out:glyph(st, nx, ny, hname, colour)
+        out:glyph(st, nx, ny, hname, colour, k)
         out.heads[#out.heads + 1] = { x = nx + hw / 2, y = ny, index = n.index, id = n.id, step = n.step, start = ev.start, staff = staff,
           base = ev.base, glyph = hname, gx = nx }
         if n.acc then
@@ -664,13 +687,13 @@ local function staff_ink(st, m, p, staff)
             out:glyph(st, round(ax + lw), round(ny), name, st.faint)
             out:glyph(st, round(ax + lw + gwidth(st, name)), round(ny), "accidentalParensRight", st.faint)
           else
-            out:glyph(st, round(ax), round(ny), name, colour)
+            out:glyph(st, round(ax), round(ny), name, colour, k)
           end
         end
         for d = 1, ev.dots do
           local dy = n.pos % 2 == 0 and Y(n.pos + 1) or ny
           local dx = hx + hw + ((any_shift and dir > 0) and side or 0) + (0.35 + 0.5 * (d - 1)) * s
-          out:glyph(st, round(dx), round(dy), "augmentationDot", colour)
+          out:glyph(st, round(dx), round(dy), "augmentationDot", colour, k)
         end
         if n.tie and ev.next and ev.next.measure == ev.measure then
           local tdir, outside = tie_side(ev, i)
@@ -745,21 +768,24 @@ local function staff_ink(st, m, p, staff)
       -- Stem, then flags when nothing beams it.
       if ev.stem then
         local sx = stem_x(ev, dir)
+        if ev.cue then sx = dir > 0 and hx + round(stem_up_x * k) - st.stem or hx end
         local anchor = dir > 0 and glyph(st, hname).anchors and glyph(st, hname).anchors.stemUpSE
-        local base_y = dir > 0 and Y(low) - (anchor and anchor[2] or 0.16) * s or Y(high) + 0.17 * s
+        local base_y = dir > 0 and Y(low) - (anchor and anchor[2] or 0.16) * s * k or Y(high) + 0.17 * s * k
         local tip
         local b = ev.beam and beams[ev.beam]
         if b then
           tip = b.line.at(sx + st.stem / 2)
         else
-          local len = 3.5 * s + ((ev.flags or 0) >= 2 and (ev.flags - 1) * 0.5 * s or 0)
-          tip = dir > 0 and min(Y(high) - len, Y(4)) or max(Y(low) + len, Y(4))
+          local len = (3.5 * s + ((ev.flags or 0) >= 2 and (ev.flags - 1) * 0.5 * s or 0)) * k
+          -- A stem reaches the middle line at least; a cue's keeps its own length.
+          local mid = not ev.cue and Y(4) or nil
+          tip = dir > 0 and min(Y(high) - len, mid or math.huge) or max(Y(low) + len, mid or -math.huge)
         end
         local y0, y1 = round(min(base_y, tip)), round(max(base_y, tip))
         out:rect(sx, y0, st.stem, y1 - y0, colour)
         if not b and (ev.flags or 0) > 0 then
           local name = FLAG_GLYPH[min(4, ev.flags)] .. (dir > 0 and "Up" or "Down")
-          out:glyph(st, sx, round(tip), name, colour)
+          out:glyph(st, sx, round(tip), name, colour, k)
         end
       end
     end
@@ -866,6 +892,13 @@ local function staff_ink(st, m, p, staff)
   return out
 end
 
+--- The runs of staves a barline joins, `{ first, last }`: a score's
+--- `layout.spans` (its barlines stop between the families of
+--- instruments), else every staff.
+function E.bar_spans(layout)
+  return layout.spans or { { 1, #layout.staves } }
+end
+
 --- A measure's barline, and its stretch of the tablature, in coordinates
 --- from its left edge and the system's top.
 local function frame_ink(st, layout, sys, placed)
@@ -874,10 +907,12 @@ local function frame_ink(st, layout, sys, placed)
   local colour = st.ink
   local w = p.width
   local nstaves = #layout.staves
-  local top_y = sys.staff_top[1] - sys.y
-  local bottom_y = sys.staff_top[nstaves] - sys.y + 4 * s + st.line
   local bx = round(w) - st.bar
-  out:rect(bx, round(top_y), st.bar, round(bottom_y - top_y), colour)
+  for _, span in ipairs(E.bar_spans(layout)) do
+    local top_y = sys.staff_top[span[1]] - sys.y
+    local bottom_y = sys.staff_top[span[2]] - sys.y + 4 * s + st.line
+    out:rect(bx, round(top_y), st.bar, round(bottom_y - top_y), colour)
+  end
   local tab = layout.tab
   if tab and sys.tab_top then
     local function ty(i) return sys.tab_top - sys.y + (i - 1) * sys.tab_line end
@@ -1422,8 +1457,10 @@ end
 -- Systems ------------------------------------------------------------------------------------
 
 --- The breaks a layout's score asks for, by measure (`notation.breaks`'
---- `breaks`, `joins` and `per`).
+--- `breaks`, `joins` and `per`); a layout made of parts says its own
+--- (`layout.asked`).
 local function asked(layout)
+  if layout.asked then return layout.asked end
   local own = layout.doc and layout.doc.layout
   if not own then return {} end
   local index = {}
@@ -1454,12 +1491,38 @@ local function paginate(systems, pg, y0, set_y, row)
   end
   new_page()
   local limit = function() return page.y + pg.height - pg.margin end
-  for _, sys in ipairs(systems) do
-    if #page.systems > 0 and page.at + sys.height > limit() then new_page() end
+  local function put(sys)
     page.systems[#page.systems + 1] = sys
     sys.page = #pages
     set_y(sys, page.at)
     page.at = page.at + sys.height
+  end
+  -- A part's page is turned after each odd page: there the page had
+  -- better end with a system that ends in rests (`pg.turn(sys)`), when
+  -- one does in its second half; the systems after it go over.
+  local function turn_over()
+    local list = page.systems
+    if not pg.turn or #pages % 2 == 0 or pg.turn(list[#list]) then return {} end
+    for k = #list - 1, math.max(1, math.ceil(#list / 2)), -1 do
+      if pg.turn(list[k]) then
+        local moved = {}
+        for j = k + 1, #list do
+          moved[#moved + 1] = list[j]
+          list[j] = nil
+        end
+        page.at = list[k].y + list[k].height
+        return moved
+      end
+    end
+    return {}
+  end
+  for _, sys in ipairs(systems) do
+    if #page.systems > 0 and page.at + sys.height > limit() then
+      local moved = turn_over()
+      new_page()
+      for _, m in ipairs(moved) do put(m) end
+    end
+    put(sys)
   end
   for i, p in ipairs(pages) do
     local free = p.y + pg.height - pg.margin - p.at
@@ -1491,13 +1554,16 @@ function E.systems(layout, st, o)
   local function rows(v) return ceil(v / ch - EPS) * ch end
   local cache = o.cache or { generation = 0 }
   local staves = #layout.staves
-  -- Room at the left for a grand staff's brace.
+  -- Room at the left for a grand staff's brace, and a score's names and
+  -- brackets: the full names on the first system, the short ones after.
   local left = (o.x or 0) + cols(max(cw, (staves >= 2 and not layout.names and 1.8 or 0.8) * s))
+  local full, short = E.label_room(st, layout)
+  local function left_of(i) return left + cols(i == 1 and full or short) end
   local width = o.width
   local spaced_of = {}
   for i, m in ipairs(layout.measures) do spaced_of[i] = spaced(m, st, o.spread or 1) end
   local n = #layout.measures
-  local function begins(i) return cols((prefix(st, layout, i, left))) end
+  local function begins(i) return cols((prefix(st, layout, i, left_of(i)))) end
   local starts = { 1 }
   if not o.galley then
     local widths = {}
@@ -1510,8 +1576,9 @@ function E.systems(layout, st, o)
   local tab = layout.tab
   for k, first in ipairs(starts) do
     local x0 = begins(first)
-    local _, signs = prefix(st, layout, first, left)
-    local sys = { measures = {}, x0 = x0, signs = signs, first = first, layout_measures = layout.measures }
+    local sys_left = left_of(first)
+    local _, signs = prefix(st, layout, first, sys_left)
+    local sys = { measures = {}, x0 = x0, signs = signs, first = first, layout_measures = layout.measures, left = sys_left }
     local x = x0
     for j = first, (starts[k + 1] or n + 1) - 1 do
       local p = spaced_of[j]
@@ -1541,18 +1608,18 @@ function E.systems(layout, st, o)
       local cg = CLEF_GLYPH[fm.clefs and fm.clefs[k2] or layout.staves[k2]] or CLEF_GLYPH.treble
       local bb = glyph(st, cg[1]).bbox
       local cy = staff_y(st, cg[2])
-      sky:box(left, cy - bb[4] * s, signs, cy - bb[2] * s)
+      sky:box(sys_left, cy - bb[4] * s, signs, cy - bb[2] * s)
       local name = layout.names and layout.names[k2]
       if name and name ~= "" then
         local size = max(10, round(1.1 * s))
-        sky:box(left, -2.4 * s + 0.2 * size, left + #name * 0.56 * size, -2.4 * s + 1.2 * size)
+        sky:box(sys_left, -2.4 * s + 0.2 * size, sys_left + #name * 0.56 * size, -2.4 * s + 1.2 * size)
       end
       for _, placed in ipairs(sys.measures) do
         sky:merge(staff_sky(st, E.staff(cache, st, placed.m, placed.p, k2), placed.p.width), placed.x)
       end
       sys.skies[k2] = sky
     end
-    place_marks(st, layout, sys, left, slurs, hairpins)
+    place_marks(st, layout, sys, sys_left, slurs, hairpins)
     -- The staves as far apart as their skylines need.
     local rel = {}
     local top1 = sys.skies[1]:over(0, reach)
@@ -1580,6 +1647,10 @@ function E.systems(layout, st, o)
   local y = o.top or 0
   local pages
   if o.page and not o.galley then
+    o.page.turn = o.page.turn or (layout.turns and function(sys)
+      local last = sys.measures[#sys.measures]
+      return layout.turns[last.m.index] == true
+    end)
     pages, y = paginate(systems, o.page, y, set_y, ch)
   else
     for _, sys in ipairs(systems) do
@@ -1592,6 +1663,57 @@ end
 
 
 -- What starts and spans a system -------------------------------------------------------------
+
+--- The size of a score's instrument names.
+local function label_size(st) return max(10, round(1.2 * st.sp)) end
+
+--- How much room a score's names and brackets take at the left of its
+--- first system and of the others: `layout.labels` (`{ first, last, full,
+--- short }`, a name for staves `first` to `last`) and `layout.brackets`.
+function E.label_room(st, layout)
+  if not layout.labels then return 0, 0 end
+  local size = label_size(st)
+  local full, short = 0, 0
+  for _, l in ipairs(layout.labels) do
+    full = max(full, text_width(l.full or "", size))
+    short = max(short, text_width(l.short or "", size))
+  end
+  local bracket = (layout.brackets and #layout.brackets > 0) and 1.2 * st.sp or 0
+  return (full > 0 and full + 0.8 * st.sp or 0) + bracket, (short > 0 and short + 0.8 * st.sp or 0) + bracket
+end
+
+--- A score's names, brackets (each family of instruments) and braces (an
+--- instrument of two staves) at the start of a system.
+local function label_ink(out, st, layout, sys, Y, left)
+  local s = st.sp
+  local brackets = layout.brackets or {}
+  local brace_room = (#layout.staves >= 2 and not layout.names and 1.8 or 0.8) * s
+  local bx = round(left - brace_room - (#brackets > 0 and 0.5 * s or 0))
+  for _, b in ipairs(brackets) do
+    local top, bottom = round(Y(b[1], 8) - 0.6 * s), round(Y(b[2], 0) + 0.6 * s)
+    local th = round(0.5 * s)
+    out:rect(bx, top, th, bottom - top, st.ink)
+    -- The hooks at either end, curving out to the right.
+    out:path({ "M", bx, top + th, "L", bx, top, "C", bx + 0.8 * s, top, bx + 1.4 * s, top - 0.2 * s, bx + 1.8 * s, top - 0.7 * s,
+      "C", bx + 1.4 * s, top + 0.1 * s, bx + 0.8 * s, top + th, bx, top + th, "Z" }, "", 1, st.ink)
+    out:path({ "M", bx, bottom - th, "L", bx, bottom, "C", bx + 0.8 * s, bottom, bx + 1.4 * s, bottom + 0.2 * s, bx + 1.8 * s, bottom + 0.7 * s,
+      "C", bx + 1.4 * s, bottom - 0.1 * s, bx + 0.8 * s, bottom - th, bx, bottom - th, "Z" }, "", 1, st.ink)
+  end
+  for _, b in ipairs(layout.braces or {}) do
+    local top, bottom = round(Y(b[1], 8) - st.line / 2), round(Y(b[2], 0) + st.line / 2)
+    local h = bottom - top
+    out:glyph(st, round(left - 0.4 * s - gwidth(st, "brace") * h / (4 * s)), bottom, "brace", st.ink, h / (4 * s))
+  end
+  local size = label_size(st)
+  local right = bx - (#brackets > 0 and 0.4 * s or 0)
+  for _, l in ipairs(layout.labels or {}) do
+    local text = sys.first == 1 and l.full or l.short
+    if text and text ~= "" then
+      local mid = (Y(l.first, 4) + Y(l.last, 4)) / 2
+      out:text(round(right), round(mid - 0.7 * size), text, st.ink, size, false, "right", right)
+    end
+  end
+end
 
 --- The system's own ink, in coordinates from the page's left edge and the
 --- system's top, as two parts: what starts it (staff lines up to the
@@ -1606,7 +1728,7 @@ function E.system_ink(st, layout, sys, eng)
   local nstaves = #layout.staves
   local sy = sys.y
   local function Y(staff, pos) return E.y_of(st, sys, staff, pos) - sy end
-  local left = eng.left
+  local left = sys.left or eng.left
   local right = sys.measures[1].x
   local top_y, bottom_y = round(Y(1, 8) - st.line / 2), round(Y(nstaves, 0) + st.line / 2)
   local first_m = sys.measures[1].m
@@ -1645,8 +1767,13 @@ function E.system_ink(st, layout, sys, eng)
       end
     end
   end
-  out:rect(left, top_y, st.bar, bottom_y - top_y, colour)
-  if nstaves >= 2 and not layout.names then
+  for _, span in ipairs(E.bar_spans(layout)) do
+    local y0, y1 = round(Y(span[1], 8) - st.line / 2), round(Y(span[2], 0) + st.line / 2)
+    out:rect(left, y0, st.bar, y1 - y0, colour)
+  end
+  if layout.labels then
+    label_ink(out, st, layout, sys, Y, left)
+  elseif nstaves >= 2 and not layout.names then
     -- A grand staff's brace.
     local h = bottom_y - top_y
     out:glyph(st, round(left - 0.4 * s - gwidth(st, "brace") * h / (4 * s)), bottom_y, "brace", colour, h / (4 * s))
