@@ -666,7 +666,7 @@ function M.draw(draw, px)
     local g = painter(ops, 0, 0, px.w, px.h)
     local row = 0
     for line in tostring(err):gmatch("[^\n]+") do
-      g:text(4, 2 + row * 14, line:gsub("\t", "  "), { color = c.error })
+      g:text(4 + (px.view and px.view.x or 0), 2 + (px.view and px.view.y or 0) + row * 14, line:gsub("\t", "  "), { color = c.error })
       row = row + 1
     end
   end

@@ -68,19 +68,56 @@ function M.written(list, tempo, pitd)
     local note, k = over(beat)
     local next_k = (k or 0) + 1
     local after = list[next_k]
-    -- The next note's transition, once it has begun.
-    if after then
+    -- The next note's transition, once it has begun, over a note still
+    -- sounding: none starts in a rest, where no cells are.
+    if after and note and beat < note.start + note.length then
       local s = shape_of(next_k)
       local ms = shapes.ms(beat - after.start, tempo)
       if s.pts[1] and ms >= s.pts[1][1] then note, k = after, next_k end
     end
-    if not note or beat >= note.start + note.length then return nil end
+    if not note or beat > note.start + note.length + 1e-9 then return nil end
     local s = shape_of(k)
     local ms = shapes.ms(beat - note.start, tempo)
     local semis = note.pitch + (shapes.transition_at(s.pts, ms) or 0)
     semis = semis + shapes.vibrato_at(s.vb, (beat - note.start) / note.length, s.dur) / 100
     return semis + (pitd and pitd(beat) or 0) / 100
   end
+end
+
+--- Where beats are across the roll, in pixels, so that the lines meet the
+--- notes' edges: a note's cells start and end where its beats round to
+--- (`floor(cells + 0.5)`), and the beats between are spread evenly over
+--- them. Returns `x(beat)` and `beat(x)`.
+function M.warp(list, scroll, zoom, cw)
+  local knots = {}
+  local function put(beat)
+    local x = floor((beat - scroll) * zoom + 0.5) * cw
+    local last = knots[#knots]
+    if not last or (beat > last[2] + 1e-9 and x >= last[1]) then knots[#knots + 1] = { x, beat } end
+  end
+  for _, n in ipairs(list) do
+    put(n.start)
+    put(n.start + n.length)
+  end
+  local ppb = zoom * cw
+  local function between(a, b, from, to, v)
+    if not a then return nil end
+    if not b or a[from] == b[from] then return a[to] + (v - a[from]) * (to == 1 and ppb or 1 / ppb) end
+    return a[to] + (v - a[from]) * (b[to] - a[to]) / (b[from] - a[from])
+  end
+  -- Asked in order, mostly: the search starts where the last one ended.
+  local hint = { 2, 2 }
+  local function find(v, from, to)
+    if #knots == 0 then return to == 1 and (v - scroll) * ppb or scroll + v / ppb end
+    if v <= knots[1][from] then return between(knots[1], nil, from, to, v) end
+    local i = hint[from]
+    if i > #knots or v < knots[i - 1][from] then i = 2 end
+    while i <= #knots and v > knots[i][from] do i = i + 1 end
+    hint[from] = math.max(2, math.min(i, #knots))
+    if i > #knots then return between(knots[#knots], nil, from, to, v) end
+    return between(knots[i - 1], knots[i], from, to, v)
+  end
+  return function(beat) return find(beat, 2, 1) end, function(x) return find(x, 1, 2) end
 end
 
 --- The roll's picture. `o`: `list` (the clip's notes), `clip`, `scroll`
@@ -97,8 +134,9 @@ function M.roll(g, px, o)
   local tempo = api.project_get().tempo
   local written = M.written(o.list, tempo, pitd and function(beat) return pitd(o.clip.start + beat) end)
   local length = o.clip.length
+  local x_at, beat_at = M.warp(o.list, o.scroll, o.zoom, cw)
   trace(g, cuts, function(x)
-    local beat = o.scroll + x / ppb
+    local beat = beat_at(x)
     if beat > length then return nil end
     local semis = written(beat)
     return semis and Y(semis)
@@ -114,7 +152,7 @@ function M.roll(g, px, o)
   local style = { color = "#ffffff", width = 1.5 }
   for tick = first, last, step do
     local cents = sung.ticks[tick]
-    local x = (tick / proto.TICKS - o.scroll) * ppb
+    local x = x_at(tick / proto.TICKS)
     while cuts[cut] and x > cuts[cut] do
       -- Across a cut: the line ends a point past it and starts again a
       -- point before it.
