@@ -931,8 +931,10 @@ do
       if not land then return end
     end
     view:set(land == it and D.diatonic(note) or near_step(land.ev, view.step), O.beat(sc, land.s))
-    -- An operator reaches over the note found (f), or up to it (t).
+    -- An operator reaches over the note found (f), or up to it (t): the
+    -- operator this motion is for, not one typed later.
     O.reach = dir > 0 and { at = O.beat(sc, land.s), to = O.beat(sc, till and it.s or it.e) } or nil
+    daw.defer(function() O.reach = nil end, 0)
   end
   local function finder(dir, till) return function(ctx) find(ctx.char, dir, till, ctx.count) end end
   local chars = util.merge(motion, { char = true })
