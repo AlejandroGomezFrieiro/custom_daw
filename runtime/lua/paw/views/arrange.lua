@@ -186,6 +186,10 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   local narrow = w < 16
   if not narrow then buf:text(1, y, string.format("%2s", index or ""), selected and "TrackInfo" or "TrackIndex") end
   local name_at = narrow and 2 or 4
+  -- The free column before the name, for what modules mark there. A kind
+  -- of track's letter stands clear of the number and of the name.
+  local mark_at = name_at - 1
+  if not narrow and not t.master and paw.track_kinds.spec(t.id) then mark_at, name_at = 4, 6 end
 
   -- The chips on the right: M S R I with room, MSRI in less, only those
   -- that are on in less still.
@@ -250,7 +254,7 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   buf:text(name_at, y, name, selected and "TrackNameSel" or "TrackName")
   -- What modules mark on the header (`paw.ui.layer("arrange", "header", ...)`):
   -- `x` is the free column before the name.
-  paw.ui.paint("arrange", "header", { buf = buf, x = name_at - 1, y = y, width = w, height = height, track = t.id })
+  paw.ui.paint("arrange", "header", { buf = buf, x = mark_at, y = y, width = w, height = height, track = t.id })
 
   if height >= 2 then
     local left, r = api.track_meter(t.id)
@@ -433,7 +437,8 @@ local function welcome(buf)
   local lines = {
     { "o", "add a track" },
     { "a", "put an instrument on it" },
-    { "I", "type notes: a s d f g h j k are a scale" },
+    { "i", "enter notes: a clip opens to draw them" },
+    { "then I", "type them: a s d f g h j k are a scale" },
     { "Space", "play, and stop" },
     { ",,", "find any command, track or device" },
     { "?", "every key that works where you are" },

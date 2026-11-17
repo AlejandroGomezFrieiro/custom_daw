@@ -31,7 +31,7 @@ command("drums.track", function(ctx)
   paw.cursor.set_track(track)
   paw.cursor.set_beat(start)
   if ctx.args.open ~= false then open(clip) end
-  paw.notify("drum track " .. track.name .. ": program the beat in the grid (Enter on a cell), Esc goes back")
+  paw.notify("drum track " .. track.name .. ": program the beat in the grid (Enter on a cell), Ctrl-w p goes back")
 end, {
   desc = "Add a drum track with the built-in kit and a clip to program: `drums.track`, `drums.track Beat map=gm-full kit=~/samples/808`",
 })
@@ -142,10 +142,14 @@ command("drums.beat", function(ctx)
   local beats = require("drums.beats")
   local clip = grid:clip() and paw.ui.focused == "drums" and grid:clip() or paw.cursor.clip()
   if not clip then return paw.notify("put the cursor on a clip, or open one in the drum grid", "warn") end
-  local function apply(name)
-    local n = beats.apply(clip, name)
+  local function said(name, n, hidden)
+    if hidden > 0 then
+      return paw.notify(string.format("%s: %d hits; %d note%s outside the drum map went with the old beat (u brings them back)",
+        name, n, hidden, hidden == 1 and "" or "s"), "warn")
+    end
     paw.notify(string.format("%s: %d hits", name, n))
   end
+  local function apply(name) said(name, beats.apply(clip, name)) end
   if ctx.args[1] then return apply(tostring(ctx.args[1])) end
   local items = {}
   for _, name in ipairs(beats.names()) do items[#items + 1] = { name = name, text = string.format("%-9s %s", name, beats.list[name].label) } end
@@ -158,7 +162,7 @@ command("drums.beat", function(ctx)
     -- over through the track; Escape gives the clip its notes back.
     audition_key = "drums.beat",
     audition = function(item)
-      local n = paw.audition.try(function() return beats.apply(clip, item.name) end)
+      local n, hidden = paw.audition.try(function() return beats.apply(clip, item.name) end)
       local c = clip:get()
       local bar = math.min(paw.time.bar(c.start), c.length)
       local notes = {}
@@ -168,7 +172,7 @@ command("drums.beat", function(ctx)
       paw.audition.phrase(c.track, notes, { length = bar, at = c.start })
       return {
         label = item.name .. " · its first bar",
-        keep = function() paw.notify(string.format("%s: %d hits", item.name, n)) end,
+        keep = function() said(item.name, n, hidden or 0) end,
       }
     end,
     preview = function(item)

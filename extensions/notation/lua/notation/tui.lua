@@ -231,6 +231,10 @@ function view:render(buf, ctx)
   buf:fill(0, 0, w, h, " ", "Normal")
   if not clip then
     paw.ui.titlebar(buf, { name = "Notation", focused = ctx.focused })
+    if self.gone then
+      buf:text(2, 2, "The clip shown here is gone: undone or deleted. Ctrl-r brings it back.", "Empty")
+      return
+    end
     local x = 2 + buf:text(2, 2, "No clip open. Put the cursor on a MIDI clip in the arrange view and press", "Empty")
     x = x + 1 + buf:text(x + 1, 2, paw.ui.keybar.show("<leader>n"), "EmptyKey")
     buf:text(x + 1, 2, "or :notation.", "Empty")

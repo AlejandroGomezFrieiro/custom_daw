@@ -2152,10 +2152,17 @@ end
 tmap(":", cmdline(false), "Type a command: the buffer's own (`:w`, `:s`, `:sort`, `:e!`) or any", { repeatable = false })
 map(":", cmdline(true), { view = "textbuf", mode = "x", desc = "Type a command on the lines selected", repeatable = false })
 
-paw.ui.keybar.set("textbuf", "n", {
+local text_keys = {
   { "c", "change" }, { "d", "delete" }, { "y", "yank" }, { "p", "put" }, { "<C-a>", "+1" }, { ":", "command, :w applies" },
   { "<CR>", "open" }, { "?", "keys" },
-})
+}
+-- A kind with keys of its own (`keys` in its spec, as the files buffers
+-- have) shows those.
+paw.ui.keybar.set("textbuf", "n", function()
+  local buf = M.buf()
+  local kind = buf and buf.state and buf.state.kind
+  return kind and kind.keys or text_keys
+end)
 paw.ui.keybar.set("textbuf", "i", { { "<Esc>", "normal" } })
 paw.ui.keybar.set("textbuf", "x", { { "d", "delete" }, { "y", "yank" }, { "c", "change" }, { "<C-a>", "+1" }, { "I", "insert" }, { ":", "on lines" } })
 

@@ -12,7 +12,9 @@
 local data = require("projdiff.data")
 
 local M = {}
-local show, num = data.show, data.num
+-- Numbers as they are read, not as they are kept (`data.short`).
+local num = data.short
+local function show(v, limit) return data.show(v, limit, true) end
 
 -- Notes, controls and points listed under their clip or lane before "more".
 local SHOWN = 30
@@ -217,7 +219,7 @@ local function clip_node(a, b, track)
   local address = "paw://clip/" .. c.id
   local trail = track.trail .. " › " .. clip_label(c)
   if not a or not b then
-    return node(a and "-" or "+", clip_label(c) .. ", " .. num(c.start) .. " for " .. num(c.length) .. " beats, "
+    return node(a and "-" or "+", clip_label(c) .. ", at beat " .. num(c.start) .. ", " .. num(c.length) .. " beats long, "
       .. clip_summary(c), { address = a and track.address or address, trail = trail, change = true })
   end
   if data.equal(a, b) then return nil end
@@ -419,7 +421,7 @@ end
 
 local function marker_text(m)
   local text = (m.length and "region" or "marker") .. " " .. m.id .. " " .. show(m.name or "") .. " at beat " .. num(m.beat or 0)
-  if m.length then text = text .. " for " .. num(m.length) .. " beats" end
+  if m.length then text = text .. ", " .. num(m.length) .. " beats long" end
   return text
 end
 

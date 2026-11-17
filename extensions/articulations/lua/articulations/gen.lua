@@ -57,8 +57,37 @@ function M.code(arts)
       until not taken[a.m2]
     end
     taken[a.m2] = true
+    M.fill(a)
   end
   return coded
+end
+
+-- What the score shows for the articulations it has a sign or a word for,
+-- by code: a mark on the note, or a technique's text over the run.
+local MARKS = { ["11.0"] = "staccato", ["11.1"] = "staccato", ["11.4"] = "staccatissimo", ["10.6"] = "marcato" }
+local TEXTS = {
+  ["11.A"] = "pizz.", ["11.B"] = "Bartók pizz.", ["11.C"] = "col legno", ["11.D"] = "col legno", ["12.0"] = "trem.",
+  ["14.0"] = "harm.", ["14.1"] = "harm.", ["14.2"] = "col legno", ["14.3"] = "flaut.", ["10.8"] = "senza vib.",
+}
+-- The colour of each classification (Reaticulate's classes).
+local CLASSES = { [0x10] = "long", [0x11] = "short", [0x12] = "long-dark", [0x13] = "long-dark", [0x14] = "long-light",
+  [0x15] = "fx", [0x16] = "textured", [0x17] = "fx" }
+
+--- Fill in what a coded articulation leaves out, from the profile: its
+--- tag (`stc`, `pz`), its class, and the mark or text the score shows.
+function M.fill(a)
+  local attr = m2.parse(a.m2)
+  local d = attr and paw.attr.describe(attr)
+  if not (d and d.code) then return a end
+  local base = string.format("%X.%X", attr.type, bit.rshift(attr.data, 12) % 16)
+  a.tag = a.tag or d.tag
+  local class = CLASSES[attr.type]
+  if base == "10.2" or base == "10.3" then class = "legato" end
+  if base == "11.A" or base == "11.B" then class = "short-light" end
+  a.class = a.class or class
+  a.mark = a.mark or MARKS[base]
+  a.text = a.text or TEXTS[base]
+  return a
 end
 
 --- A spec as the text of an `.art.toml`: `{ name, generated, source, match,
@@ -92,6 +121,14 @@ function M.text(spec)
     for _, m in ipairs(spec.mods) do
       lines[#lines + 1] = toml.key(m.id) .. " = " .. toml.inline({ m2 = m.m2, out = m.out, off = m.off, text = m.text }, { "m2", "out", "off", "text" })
     end
+  end
+  -- Dynamics on the modulation wheel and expression, as most sampled
+  -- orchestral libraries take them, unless the spec says otherwise (`linked
+  -- = false` for none): `\c` then draws them as one curve.
+  if spec.linked ~= false then
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "[linked]"
+    lines[#lines + 1] = spec.linked or 'dynamics = { cc = [1, 11], curve = ["linear", "linear"], default = 0.7, name = "Dynamics" }'
   end
   return table.concat(lines, "\n") .. "\n"
 end

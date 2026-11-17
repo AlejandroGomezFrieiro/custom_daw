@@ -231,7 +231,10 @@ The rest of the page:
   relative major. `:notation.key Eb major` sets it, `:notation.key off`
   clears it; with a clip open in the view it writes a key signature from
   the cursor's bar (`\k`, see Popovers), and the first bar's is the
-  project's key too.
+  project's key too. With no key set, the title names the minor key the
+  music is read in (`A minor` rather than `C major`); in a song of more
+  than 2000 notes that reading is done once the edits pause, as it takes
+  a while, and the title follows a moment later.
 - **Spelling**: notes of the key take its letters; the others lean the way
   the key does. Accidentals are remembered to the end of the bar, a tied
   note keeps its accidental across the barline without a sign, and a note
@@ -262,6 +265,8 @@ everywhere. The operators and text objects work on the written score (see
 selection and the roll's single keys on it work as in the piano roll. Every
 key that edits writes the clip's MIDI (see
 [MIDI is the truth](#midi-is-the-truth)), one undo step.
+
+<!-- tags: g3 g4 g5 g6 -->
 
 | Keys | |
 | --- | --- |
@@ -331,6 +336,8 @@ operator changes the written score and so the notes it writes, so `d3ab`,
 `gUip`, `y2iv` and `.` after any of them are exact and each is one undo
 step. A motion acts in the cursor's staff and voice; a visual selection in
 every staff and voice (a block in its pitches).
+
+<!-- tags: i. a. iv av -->
 
 | Object | `i…` | `a…` |
 | --- | --- | --- |
@@ -429,6 +436,22 @@ The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
 `repeat`, `quantize`, `apply-marks`, `retranscribe`, `transpose`, and those the popovers
 run: `tempo`, `meter`, `key`, `clef`, `bar`, `rehearsal`, `chord`, `lyric`,
 `orn`, `tech`, `interval`, `tuplet` and `voice`.
+
+| Command | |
+| --- | --- |
+| `:notation.open` | show the clip under the cursor as notation (as `:notation`) |
+| `:notation.value eighth` | the value notes are entered with (`g2` … `g7`) |
+| `:notation.art accent` | staccato, accent, tenuto or marcato on the chord or the range |
+| `:notation.orn tr` | an ornament: `tr`, `mordent`, `prall`, `turn`, `fermata`, `trem`, `off` |
+| `:notation.tech pizz.` | a playing technique, written: `pizz.`, `arco`, `con sord.`, `off` |
+| `:notation.bar :\|` | a barline at the cursor or the range's end: `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`; endings `1.` `2.` over the range; `off` |
+| `:notation.meter 6/8` | the time signature from the cursor's bar, the music written again in its bars (`3+3+2/8`, `C`) |
+| `:notation.rehearsal` | a rehearsal mark at the cursor's bar (the next letter), and a song marker |
+| `:notation.chord Cmaj7` | a chord symbol at the cursor (`G/B`, `N.C.`, `off`) |
+| `:notation.lyric la-` | a syllable under the note at the cursor; `verse=2` for the second verse |
+| `:notation.interval 3` | a note an interval above (`-6` below, `m3`) each chord of the range |
+| `:notation.tuplet 3` | the beat or the range as a tuplet (`5:4`); in insert mode, enter in it (`off` plain) |
+| `:part.bars-per-system 4` | in the part shown, that many bars to every system; without a number, as they fit |
 
 **Marks that play.** `:notation.dyn mf` puts a dynamic at the cursor (`ppp` to
 `fff`, `off`): the velocities of the notes from there to the next dynamic

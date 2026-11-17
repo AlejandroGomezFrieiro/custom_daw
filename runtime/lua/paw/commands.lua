@@ -14,7 +14,15 @@ local registry = {}
 function M.define(name, run, opts)
   assert(type(name) == "string" and type(run) == "function", "usage: paw.command(name, function, opts)")
   opts = opts or {}
-  registry[name] = { name = name, run = run, desc = opts.desc or "", raw = opts.raw, complete = opts.complete, label = opts.label, range = opts.range }
+  registry[name] = { name = name, run = run, desc = opts.desc or "", raw = opts.raw, complete = opts.complete, label = opts.label, range = opts.range,
+    ext = opts.ext or M.owner() }
+end
+
+--- The extension being loaded, whose commands and keys these are: what
+--- `:help` takes them to.
+function M.owner()
+  local ext = rawget(paw, "ext")
+  return ext and ext.current and ext.current.name or nil
 end
 
 --- What an undo step made by a command is called: its `label`, or the
@@ -30,7 +38,7 @@ end
 --- Make `alias` another name for `target`.
 function M.alias(alias, target)
   local spec = assert(registry[target], "no command " .. target)
-  registry[alias] = { name = alias, run = spec.run, desc = spec.desc, raw = spec.raw, complete = spec.complete, label = spec.label, range = spec.range, alias_of = target }
+  registry[alias] = { name = alias, run = spec.run, desc = spec.desc, raw = spec.raw, complete = spec.complete, label = spec.label, range = spec.range, alias_of = target, ext = spec.ext }
 end
 
 function M.get(name)

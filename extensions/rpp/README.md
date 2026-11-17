@@ -74,7 +74,7 @@ project's tempo map, and back.
 | --- | --- | --- |
 | Tempo, time signature | The whole tempo map: `TEMPO` and the `TEMPOENVEX` points, square ones as steps and linear ones as ramps (linear in time, as REAPER plays them), with their time signatures (packed as numerator + denominator × 65536). Other point shapes become ramps and are reported. Merged into an open project, the project keeps its own map. | `TEMPO`, and `TEMPOENVEX` when the tempo or signature changes along the song. |
 | Loop | Loop points (`SELECTION`) and the repeat switch (`LOOP`). | The same. |
-| Markers and regions | Into `project.meta.markers` and `project.meta.regions`: `{ id, name, beat, seconds, color }` and `{ id, name, start, length, seconds, color }`, in beats. | From the same tables. |
+| Markers and regions | Into `project.meta.markers` and `project.meta.regions`: `{ id, name, beat, seconds, color }` and `{ id, name, start, length, seconds, color }`, in beats. | From the same tables; song sections (`project.meta.sections`) become regions, each up to where the next starts. |
 | Tracks | Name, volume, pan, mute, solo, record arm, audio input and monitoring. | The same. |
 | Folders | A folder's children are routed into the folder track. | A track routed into the track above it (or into a folder it is already in) becomes a folder child; any other routing into a track is written as a send from a track whose parent send is off, and reported. |
 | Sends | Receives (`AUXRECV`) become sends from the source track, at their level. | Sends become receives, post-fader. |
@@ -107,7 +107,8 @@ Listed after each import or export:
 - **Here → REAPER:** built-in devices (`synth`, `drums`, `gain`, `delay`)
   and other non-plugin devices; VST3 plugins added here (REAPER's id for them
   is not known); LV2 state beyond control ports; parameter automation of
-  plugins; track colours; note times finer than 1/960 beat are rounded.
+  plugins; track colours; note attributes (MIDI 2.0 articulations: a REAPER
+  project keeps MIDI 1.0); note times finer than 1/960 beat are rounded.
 - REAPER project settings paw has no place for (render settings, grid,
   view, metronome, project notes) are not read, and are written as REAPER's
   defaults.
