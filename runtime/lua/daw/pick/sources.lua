@@ -178,7 +178,9 @@ return function(pick)
     local view = daw.ui.focused
     -- The picker is as wide as the screen allows, the list on the left
     -- and, beside it, the help of the key chosen.
-    local total = math.min(150, (api.ui_size()) - 4)
+    -- (A window's main area is wider than the screen the kernel keeps for it.)
+    local cells = daw.panes.cells()
+    local total = math.min(150, math.max((api.ui_size()), cells and cells.w or 0) - 4)
     local list_w = math.floor(total * 0.6)
     local preview_w = total - list_w - 3
     local cols = { key = 8, tag = 4, desc = 10 }
