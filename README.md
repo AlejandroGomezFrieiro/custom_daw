@@ -7,7 +7,7 @@
 ![Built with Nix](https://img.shields.io/badge/built%20with-Nix-5277C3)
 ![Status: personal, work in progress](https://img.shields.io/badge/status-personal%20WIP-orange)
 
-![Moving, deleting, yanking and pasting clips, and running a command](docs/images/tui-arrange.gif)
+![The demo song playing in the terminal while a clip is moved with 3>ic and undone, the melody changed with :%s/e5/g5/g previewed as it is typed, and the same clip opened as a score with ,n](docs/images/tui-arrange.gif)
 
 - **Modal, on a timeline.** A track is a line and a clip is a word: `3>ic`
   moves a clip three steps later, `:%s/c4/d4/gc` changes notes with a preview,
@@ -18,7 +18,7 @@
 - **One program, three faces.** The terminal, a window for the mouse, and
   scripts all drive the same kernel, and can be open on the same project.
 
-![The window, playing the demo song](docs/images/gui.png)
+![The window playing the demo song, with the device panel of the keys](docs/images/gui.png)
 
 > [!NOTE]
 > paw is a **personal, work-in-progress** project, made first for one
@@ -81,16 +81,16 @@ operators, motions, text objects, visual mode, registers, macros, marks and
 `.` all apply, and one rule holds in every view: `h` `j` `k` `l` only move,
 `+` `-` change the value under the cursor, `Esc` cancels and never leaves.
 
-![The demo song in the terminal](docs/images/tui.png)
+![The demo song in the terminal: drums, bass, keys, a melody and a reverb over eight bars](docs/images/tui.png)
 
 Notes are drawn or typed. `Enter` opens a clip; `i` draws a note with the
 cursor, and `I` turns the home row into a piano:
 
-![Typing notes into the piano roll, selecting and transposing them](docs/images/tui-pianoroll.gif)
+![The melody opened in the piano roll: a note drawn with i and 8l, two typed on the home row with I, the bar selected with vib and transposed with Ctrl-a and Ctrl-x](docs/images/tui-pianoroll.gif)
 
 The mixer, the device picker and the device panel are views like any other:
 
-![The mixer, adding a reverb from the picker, and changing its parameters](docs/images/tui-mixer.gif)
+![The mixer while the song plays: a fader moved, a strip muted with gcc, a chorus added from the picker and its mix raised in the device panel](docs/images/tui-mixer.gif)
 
 ### Score, engraved in the terminal
 
@@ -101,9 +101,9 @@ and the rest are written with a prompt on the local leader (`\`), as in Dorico, 
 hear each one before you write it. The notation has a grammar of its own:
 `gUib` raises a bar a step in the key, `g(ip` slurs a phrase.
 
-![Entering notes, a dynamic, a tempo and a hairpin in the score](docs/images/tui-notation.gif)
+![The melody as a score: its last bar entered by name with i, a hairpin written with \\d mp<f and previewed before Enter, then played](docs/images/tui-notation.gif)
 
-![The score, with the hairpin about to be written](docs/images/tui-notation.png)
+![The score in the terminal, the hairpin's popover open and its preview drawn](docs/images/tui-notation.png)
 
 The score is a view of the clip's MIDI, as REAPER's notation is: writing
 in it edits the notes, and the piano roll beside it edits the same notes.
@@ -116,8 +116,6 @@ The command line takes Vim's Ex commands where a line is a bar and a range
 can be tracks: `:5,8d`, `:t2,t4 mute`, `:%s/c4/d4/gc`. What you type is
 previewed live, and `c` asks about each match.
 
-![A substitution with a live preview and confirmation, then tracks muted by range](docs/images/tui-ex.gif)
-
 ### Lists as text, the quickfix list, help
 
 Tracks, sends, devices and markers are text buffers, as directories are in
@@ -126,9 +124,9 @@ step. Problems found anywhere land in one quickfix list (`:copen`, `]q`).
 Pickers play what they would choose before you choose it. And the manual is
 inside, as Vim's is.
 
-![Editing the tracks as text, then writing the plan](docs/images/tui-textbuf.gif)
+![The tracks as text under the arrange view: a track renamed with cw and turned down with 3 Ctrl-x, then :w shows the plan and y applies it](docs/images/tui-textbuf.gif)
 
-![The manual: a key looked up, a link followed, back again](docs/images/tui-help.gif)
+![K describing the clip under the cursor, :help g@ opening the manual there, a link followed with Ctrl-] and back with Ctrl-t](docs/images/tui-help.gif)
 
 | To | Press |
 | --- | --- |
@@ -151,29 +149,29 @@ The window is for the mouse, and shows the terminal's windows as panes you
 can drag the borders of: the arrange view with the device panel beside it,
 the piano roll, the score, a list of tracks as text, the quickfix list.
 
-![The window with its panes: the arrange view, the piano roll and the score](docs/images/gui-panes.png)
+![The window with its panes: the arrange view and the device panel, the piano roll and the score of the melody](docs/images/gui-panes.png)
 
 Clips are dragged, trimmed, copied and stretched; everything else is on the
 right button.
 
-![Moving, trimming and copying clips, the clip menu, zooming and playing](docs/images/gui-arrange.gif)
+![The melody copied with a Ctrl-drag and trimmed by its edge, the clip menu, zooming with Ctrl and the wheel, and playing](docs/images/gui-arrange.gif)
 
 The piano roll is a pencil: drag to draw, drag a note to move it, right-drag
 to select with a box, and draw velocities and controllers in the strip below.
 
-![Drawing notes, moving them, drawing velocities, selecting with a box](docs/images/gui-pianoroll.gif)
+![The melody opened with a double click: notes drawn in its last bar, one dragged to another pitch, velocities drawn, and played](docs/images/gui-pianoroll.gif)
 
 The score is engraved with the same font, docked beside the piano roll; a
 click enters a note, with a shadow note under the pointer to show where.
 
-![The score beside the piano roll, a click entering notes](docs/images/gui-notation.gif)
+![The score beside the piano roll: a hairpin written in the score sets the velocities in the roll, velocities drawn in the roll leave the marks alone, and g@ plays the notes as the marks say again](docs/images/gui-notation.gif)
 
-![The score engraved in the window](docs/images/gui-notation.png)
+![The keys' phrase in two voices, engraved in the window](docs/images/gui-notation.png)
 
 Devices are added by name, the mixer has a strip for every track, and a
 parameter is automated by drawing its curve:
 
-![Adding a reverb, the mixer while playing, drawing an automation curve](docs/images/gui-mix.gif)
+![A chorus added by name, the mixer while playing, and an automation curve drawn with the pointer](docs/images/gui-mix.gif)
 
 Keys still work in the window: it passes them to the same mappings the
 terminal uses. [docs/window.md](docs/window.md) has every gesture.

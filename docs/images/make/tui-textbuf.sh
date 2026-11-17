@@ -1,19 +1,17 @@
 #!/bin/sh
+# The tracks as a text buffer under the arrange view, edited with Vim's
+# keys and written as a plan.
 . "$(dirname "$0")/rig.sh"
-rig_start 1100x420
+SETUP=$TUI_DEMO
+rig_start
 term_start
 rec_start tui-textbuf
-cap ":e daw://tracks lists the tracks as text, one a line"
-pause 0.8; key colon; pause 0.3
-TYPE_DELAY=80 typ "e daw://tracks"; pause 0.5; key Return; pause 1.6
-cap "Edit it with Vim's own keys: cw renames a track"
-key j; pause 0.4
-TYPE_DELAY=200 typ "cw"; pause 0.4
-TYPE_DELAY=110 typ "Bassline"; key Escape; pause 1.0
-cap "3 Ctrl-x takes 3 dB off a volume"
-key w; key w; pause 0.3
-key 3; key ctrl+x; pause 1.2
+cap ":sp daw://tracks shows the tracks as text, one a line"
+pause 0.5; key colon; TYPE_DELAY=90 typ "sp daw://tracks"; pause 0.3; key Return; pause 1.2
+cap "Vim's own keys edit it: cw renames a track, 3 Ctrl-x takes 3 dB off"
+keys 0.25 j j j; TYPE_DELAY=160 typ "cw"; TYPE_DELAY=100 typ "Melody"; key Escape; pause 0.5
+keys 0.25 w w 3 ctrl+x; pause 0.9
 cap ":w shows the plan; y applies it as one undo step"
-key colon; pause 0.3; typ "w"; key Return; pause 2.0
-key y; pause 2.2
+key colon w Return; pause 2.0
+key y; pause 2.0
 rec_stop

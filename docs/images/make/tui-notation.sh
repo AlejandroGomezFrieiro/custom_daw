@@ -1,33 +1,22 @@
 #!/bin/sh
+# The score: the melody's open last bar entered by name, then a hairpin
+# written with the popover, previewed before it is written, and played.
 . "$(dirname "$0")/rig.sh"
-SETUP="dofile('docs/images/make/scene-melody.lua')"
-rig_start 1100x640
+SETUP=$TUI_NOTATION
+rig_start
 term_start
+key j w; pause 0.4
 rec_start tui-notation
-cap ",n shows the clip as staff notation, engraved in the terminal"
-pause 0.8; key comma; pause 0.25; key n; pause 2.0
-for k in z i z i z i z i z i; do key $k; pause 0.2; done
-pause 0.8
-cap "i enters notes: 5 is a quarter, then c e g type them in"
-for k in W W W W; do key $k; pause 0.2; done
-key i; pause 0.6; key 5; pause 0.3
-for k in c e g; do key $k; pause 0.35; done
-key 4; pause 0.3
-for k in a g e; do key $k; pause 0.3; done
-key Escape; pause 0.8
-cap "\\d writes a dynamic: mf, heard before it is written"
-key h; key h; pause 0.4
-key backslash; pause 0.25; key d; pause 0.5
-typ "mf"; pause 1.1; key Return; pause 1.0
-cap "\\t writes a tempo: Allegro q=132"
-key backslash; pause 0.25; key t; pause 0.5
-TYPE_DELAY=55 typ "Allegro q=132"; pause 0.9; key Return; pause 1.0
-cap "v selects notes; \\d mp<f makes a hairpin over them"
-key 0; pause 0.3; key v; for k in l l l l; do key $k; pause 0.2; done
-key backslash; pause 0.25; key d; pause 0.5
-TYPE_DELAY=90 typ "mp<f"; pause 1.1
+cap ",n opens the clip as a score, engraved in the terminal"
+pause 0.5; key comma n; pause 1.3
+cap "i enters notes by name: 6 a half, 5 a quarter; + sharpens"
+keys 0.15 W W W
+key i; pause 0.2; keys 0.28 6 e 5 b g plus; key Escape; pause 0.7
+cap "v selects; \\d mp<f writes a hairpin, heard and drawn before Enter"
+keys 0.15 0 v W W
+key backslash d; pause 0.2; TYPE_DELAY=140 typ "mp<f"; pause 1.3
 shot tui-notation.png
-key Return; pause 1.0
-cap "Space plays what is written"
-key space; pause 2.5; key space; pause 0.4
+key Return; pause 0.7
+cap "gp puts the playhead at the cursor; Space plays what is written"
+key g p; pause 0.2; key space; pause 3.2; key space; pause 0.4
 rec_stop

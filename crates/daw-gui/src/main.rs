@@ -1012,8 +1012,9 @@ fn notation(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
     if alt {
         prefix.push_str("A-");
     }
-    // Shift is already part of a typed character, and of `S-Tab`.
-    if shift && !is_char && name != "S-Tab" {
+    // Shift is already part of a typed character (`<` too, which is Shift
+    // and the comma on most keyboards), and of `S-Tab`.
+    if shift && !is_char && name != "S-Tab" && name != "lt" {
         prefix.push_str("S-");
     }
     Some(if prefix.is_empty() && is_char {
@@ -4881,6 +4882,8 @@ mod tests {
             Some("<Space>")
         );
         assert_eq!(notation("<", false, false, false).as_deref(), Some("<lt>"));
+        // Typed with Shift, as it is on most keyboards, it is still `<`.
+        assert_eq!(notation("<", false, false, true).as_deref(), Some("<lt>"));
         // Control alone is no key, so a count before `Ctrl-x` is kept.
         assert_eq!(notation("\u{11}", true, false, false), None);
         assert_eq!(notation("\u{18}", true, false, false).as_deref(), Some("<C-x>"));
