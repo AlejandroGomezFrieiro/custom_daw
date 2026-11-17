@@ -531,6 +531,25 @@ local function without_glyphs(ops)
   return out
 end
 
+--- The status line and the command line, as rows of runs at `y`: under a
+--- view that paints in a window of its own, which the main window's would
+--- otherwise be out of sight of (the mode, a prompt typed there, messages).
+local function bars(ops, width, y)
+  local cell = M.cell
+  local cols = math.max(1, math.floor(width / cell.w))
+  for i, name in ipairs({ "status", "cmdline" }) do
+    local snap = api.ui_view_snapshot(name, cols, 1)
+    local top = y + (i - 1) * cell.h
+    ops[#ops + 1] = { "r", 0, top, width, cell.h, snap.bg, "", 1, 0 }
+    for _, run in ipairs(snap.rows[1] or {}) do
+      local chars = {}
+      for ch in run.text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+      add_run(ops, run.x * cell.w, top, run.w * cell.w, cell.h, chars, run.fg, run.bg == snap.bg and "" or run.bg, run.attrs)
+    end
+    if snap.cursor then ops[#ops + 1] = { "r", snap.cursor.x * cell.w, top, 2, cell.h, snap.fg, "", 1, 0 } end
+  end
+end
+
 --- Paint a view at a size. Returns the drawing as a list of operations:
 ---   { "r", x, y, w, h, fill, stroke, stroke width, radius }
 ---   { "t", x, y, text, colour, size, bold (0 or 1), align, width }
@@ -546,10 +565,12 @@ end
 --- `glyphs` when the frontend draws glyph ops itself (else they come as
 --- paths, and the markers are left out), `surface` when the drawing goes
 --- into a terminal's cells (the view leaves out what the terminal's own
---- bars show, and its background), and `colors` `{ fg, bg }`, the
---- terminal's. The view's `paint` is given these in its context, as
---- `cell`, `surface`, `fg` and `bg`. A view that draws cells answers
---- `{ same = true }` when nothing would change.
+--- bars show, and its background), `colors` `{ fg, bg }`, the terminal's,
+--- and `pane` when it goes into a pane of a frontend's main area (a view in
+--- a window of its own has the status line and the command line drawn
+--- under it; a pane's frontend has them already). The view's `paint` is
+--- given these in its context, as `cell`, `surface`, `fg` and `bg`. A view
+--- that draws cells answers `{ same = true }` when nothing would change.
 function M.paint(name, width, height, opts)
   local view = daw.ui.views[name]
   local window = M.open_views[name]
@@ -562,6 +583,11 @@ function M.paint(name, width, height, opts)
   end
   if not view then return nil end
   local ops = {}
+  -- In a window of its own the view has the two lines of the screen's
+  -- bottom under it; in a pane or a terminal the screen has them.
+  local under = window and not opts.surface and not opts.pane and 2 * M.cell.h or 0
+  local full = height
+  height = math.max(1, height - under)
   local g = painter(ops, 0, 0, width, height)
   local colors = opts.colors or {}
   local ok, err = xpcall(view.paint, debug.traceback, view, g, {
@@ -579,6 +605,7 @@ function M.paint(name, width, height, opts)
       row = row + 1
     end
   end
+  if under > 0 then bars(ops, width, full - under) end
   if not opts.glyphs then ops = without_glyphs(ops) end
   return { title = window and window.title or name, ops = ops }
 end

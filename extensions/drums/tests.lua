@@ -32,12 +32,7 @@ local function keys(text)
 end
 
 --- A fresh project with a drum track made by the command, its clip open in the grid.
--- The grid docks in a graphical frontend as in the terminal: it is closed
--- again after a test, so as not to take the room of the tests after.
-local function close_grid() daw.ui.hide("drums") end
-
 local function drum_track()
-  T.after(close_grid)
   load()
   fresh()
   daw.keymap.feed("<Esc><Esc>")
@@ -346,7 +341,6 @@ local function click(row, cell, button)
 end
 
 test("drums: the window opens on a double click of a drum track's clip only", function()
-  T.after(close_grid)
   load()
   fresh()
   daw.canvas.close("drums")

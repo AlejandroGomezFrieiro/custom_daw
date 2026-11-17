@@ -208,7 +208,9 @@ window" on a floating page. A view docked in a pane leaves it while it is in
 a window. The keyboard is the window's while it is in front; closing it (its
 close button, `:q`, or the view's own `q`; `Esc` stays in the view, as
 everywhere) gives the keyboard back to the main window, in the pane that had
-it before, and so do keys typed in the main window meanwhile. The kernel draws the view by itself
+it before, and so do keys typed in the main window meanwhile. A view that
+paints has the status line and the command line under it there, so its
+mode, a prompt typed in it and messages show where it is. The kernel draws the view by itself
 at the window's size, in cells of the bundled JetBrains Mono (their size is
 measured on the font, so box-drawing characters join), with the theme's
 colours in 24 bits whatever the terminal shows, and sends it as runs of text

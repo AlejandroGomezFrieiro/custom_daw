@@ -151,7 +151,7 @@ function M.paint(id, width, height, opts)
   if not win then return nil end
   local view = daw.ui.views[win.view]
   if not view then return nil end
-  if view.paint then return daw.canvas.paint(win.view, width, height, opts) end
+  if view.paint then return daw.canvas.paint(win.view, width, height, daw.util.merge(opts or {}, { pane = true })) end
   cells[id] = cells[id] or {}
   return daw.canvas.paint_cells(win.view, cells[id], width, height, opts or {}, win)
 end

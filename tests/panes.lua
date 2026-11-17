@@ -169,6 +169,12 @@ test("panes: a view that paints is docked where it docks, and popped out it give
   daw.canvas.open("panes_probe", { window = true })
   eq(daw.canvas.open_views.panes_probe ~= nil, true, "a window of its own on request")
   eq(panes().panes_probe, nil, "and no pane")
+  local runs = {}
+  for _, op in ipairs(daw.canvas.paint("panes_probe", 600, 300).ops) do
+    if op[1] == "m" then runs[#runs + 1] = op[6] end
+  end
+  eq(table.concat(runs, " "):find("NOR", 1, true) ~= nil, true, "the status line under it, with the mode: " .. table.concat(runs, " "))
+  eq(seen.size, "600x" .. (300 - 2 * daw.canvas.cell.h), "over the status line and the command line")
   daw.canvas.key("panes_probe", "<Esc>")
   eq(daw.canvas.open_views.panes_probe ~= nil, true, "Esc stays in the view")
   daw.canvas.key("panes_probe", ":q<CR>")
@@ -246,9 +252,10 @@ test("panes: the window is told the mixer's cursor row, which the keys move", fu
   daw.ui.focus("mixer")
   local row = daw.frontend.state(-1).modal.mixer_row
   eq(row and row.track, t.id, "the strip under the cursor")
-  local before = row.key
+  local function key(r) return r.kind .. r.index .. r.field end
+  local before = key(row)
   daw.keymap.feed("j")
-  local after = daw.frontend.state(-1).modal.mixer_row.key
+  local after = key(daw.frontend.state(-1).modal.mixer_row)
   eq(after ~= before, true, "j moves it down the strip: " .. before .. " to " .. after)
   daw.ui.focus("arrange")
   eq(daw.frontend.state(-1).modal.mixer_row, nil, "and nothing while the mixer has not the keyboard")

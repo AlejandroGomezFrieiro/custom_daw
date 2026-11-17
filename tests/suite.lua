@@ -2437,7 +2437,8 @@ local function vocal_window(pitches)
   daw.canvas.open("utau", { window = true })
   gui.tool, gui.curves, gui.inspector = "notes", true, true
   local win = { editor = editor, gui = gui, track = track, clip = clip }
-  function win.paint() return daw.canvas.paint("utau", 1180, 620) end
+  -- Painted as in a pane: what a window of its own has under it left out.
+  function win.paint() return daw.canvas.paint("utau", 1180, 620, { pane = true }) end
   function win.at(beat, pitch)
     return 64 + (beat - gui.scroll) * gui.zoom, 38 + 24 + (gui.top - pitch) * gui.row + gui.row / 2
   end
