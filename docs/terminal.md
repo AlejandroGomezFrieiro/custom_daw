@@ -807,7 +807,8 @@ A picture is a **strip**: a rectangle of cells a view keeps for pixels as
 it draws (`buf:strip`, see [Extensions](extensions.md)), under a key of its
 own, so that a view can have several, and the same view in two windows
 (`:vs`) has one in each, kept apart. The score is one strip over its
-window; the curve editor's plot (`gC`) is another. A strip is either over
+window; the curve editor's plot (`gC`) is another, and the utau vocal
+editor has two, the pitch lines under its notes and its curve. A strip is either over
 the text, with its cells left blank (the score), or **under** it: the
 view's cells are drawn as usual above the picture, so that the curve
 editor keeps its points, its cursor, the selection and the playhead as
@@ -816,9 +817,12 @@ for each pixel across, with nothing of the curve drawn twice. A strip
 under the text is placed at a z of -2 (its moving parts at -1): in kitty,
 Ghostty (and herdr) and WezTerm the text shows above it and the picture
 above the cells' coloured backgrounds, which show through wherever it
-draws nothing. Konsole puts a coloured background above such a picture,
-which would hide it, so there, and in any terminal not known by its name,
-a strip under the text is not made and the view draws cells.
+draws nothing. Konsole, and any terminal not known by its name, puts a
+coloured background above such a picture, which would hide it: there the
+cells' backgrounds (the lane, the notes, a selection) are painted into the
+picture and the cells written on the terminal's own background, while a
+background only a few cells have (a cursor block) shows as cells, the
+picture left out of them, so that a cursor moving sends no pixels.
 
 `daw attach` from a terminal that shows images shows them too: it tells
 the instance what its terminal can do, and is sent each strip's drawing

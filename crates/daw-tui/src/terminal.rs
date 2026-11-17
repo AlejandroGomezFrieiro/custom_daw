@@ -166,7 +166,7 @@ impl Terminal {
             pixel_mouse: self.probe.pixel_mouse,
             fg: self.probe.fg,
             bg: self.probe.bg,
-            under: self.graphics.is_some() && self.probe.under(),
+            under: self.graphics.is_some(),
         }
     }
 
@@ -269,6 +269,10 @@ fn term_color(color: Color) -> TermColor {
 
 impl Frontend for Terminal {
     fn present(&mut self, grid: &Grid, cursor_at: Option<(u16, u16)>) -> Result<()> {
+        // Where a coloured background would hide a strip under the text,
+        // the strip paints it instead.
+        let backed = if self.graphics.is_some() && !self.probe.under() { graphics::backed(grid) } else { None };
+        let grid = backed.as_ref().unwrap_or(grid);
         let same_size = self
             .shown
             .as_ref()
