@@ -66,13 +66,34 @@ local CLEFS = {
     { 10, "  ╭╮" }, { 8, "  │╯" }, { 6, " ╭╯" }, { 4, "╭┼╮" }, { 2, "│●┼╮" }, { 0, "╰─┼╯" }, { -2, "  │" }, { -4, " ╰╯" },
   },
   bass = { { 8, "╭─╮" }, { 6, "● │:" }, { 4, " ╱" }, { 2, "╱" } },
+  -- A C clef's two strokes, its point on its middle line.
+  alto = { { 8, "┃│╮" }, { 6, "┃│╯" }, { 4, "┃│<" }, { 2, "┃│╮" }, { 0, "┃│╯" } },
+  tenor = { { 10, "┃│╮" }, { 8, "┃│╯" }, { 6, "┃│<" }, { 4, "┃│╮" }, { 2, "┃│╯" } },
 }
-CLEFS.treble8 = CLEFS.treble
+CLEFS.treble8, CLEFS.bass8 = CLEFS.treble, CLEFS.bass
 local ASCII_CLEFS = {
   treble = { { 2, "&" } },
   bass = { { 6, "?:" } },
+  alto = { { 4, "B" } },
+  tenor = { { 6, "B" } },
 }
-ASCII_CLEFS.treble8 = ASCII_CLEFS.treble
+ASCII_CLEFS.treble8, ASCII_CLEFS.bass8 = ASCII_CLEFS.treble, ASCII_CLEFS.bass
+
+-- A clef that changes inside a system: smaller, two columns, its sign on
+-- the line it names.
+local SMALL = {
+  treble = { { 4, "╭╮" }, { 2, "●┼" }, { 0, "╰┘" } },
+  bass = { { 6, "●╮" }, { 4, " ╯" } },
+  alto = { { 6, "┃╯" }, { 4, "┃<" }, { 2, "┃╮" } },
+  tenor = { { 8, "┃╯" }, { 6, "┃<" }, { 4, "┃╮" } },
+}
+SMALL.treble8, SMALL.bass8 = SMALL.treble, SMALL.bass
+
+--- A clef changed inside a system, as rows `{ pos, text }`.
+function M.small_clef(clef)
+  if daw.opt.ascii then return ASCII_CLEFS[clef] or ASCII_CLEFS.treble end
+  return SMALL[clef] or SMALL.treble
+end
 
 -- Box drawing characters by whether they reach the top and the bottom of their cell.
 local REACH_DOWN = { ["│"] = true, ["┼"] = true, ["╭"] = true, ["╮"] = true, ["┬"] = true, ["├"] = true, ["┤"] = true, ["╷"] = true }

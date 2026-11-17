@@ -698,7 +698,10 @@ end)
 
 --- Ask for a line of text on the command line.
 ---   daw.ui.input({ prompt = "Name: ", text = "Bass" }, function(text) ... end)
---- The callback is not called when the prompt is cancelled.
+--- The callback is not called when the prompt is cancelled. Options are
+--- the command line's (`daw.views.cmdline.open`): `complete`, `history`,
+--- `on_change` (live preview), `anchor` (draw it beside what it is about),
+--- `on_key`.
 function M.input(opts, on_submit)
   require("daw.views.cmdline").open(opts, on_submit)
 end

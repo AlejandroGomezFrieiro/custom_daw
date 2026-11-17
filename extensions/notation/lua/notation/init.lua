@@ -772,6 +772,7 @@ local function lift(sc, eid)
   local first = f.starts[head.mi] + head.at
   local last = links[#links]
   local was = { notes = head.ev.notes, art = head.ev.art, arpeggio = head.ev.arpeggio, beam = head.ev.beam, id = head.ev.id,
+    orn = head.ev.orn, lyric = head.ev.lyric, lyrics = head.ev.lyrics,
     staff = head.entry.staff, voice = head.entry.voice, mi = head.mi, at = head.at,
     len = f.starts[last.mi] + last.at + D.length(last.ev) - first, graces = graces_before(head.entry, head.ev) }
   for _, g in ipairs(was.graces) do
@@ -783,6 +784,7 @@ local function lift(sc, eid)
     local ev = link.ev
     -- A rest of its own: the chord's id goes with the chord.
     ev.id, ev.kind, ev.notes, ev.art, ev.arpeggio, ev.beam, ev.stem = D.id(sc, "e"), "rest", nil, nil, nil, nil, nil
+    ev.orn, ev.lyric, ev.lyrics = nil, nil, nil
     D.normalize(sc, link.mi, link.entry.staff, link.entry.voice)
     D.touch(sc, link.mi)
   end
@@ -796,7 +798,7 @@ view.lift = lift
 local function drop(sc, was, t, len, staff, voice)
   local mi, at = D.locate(sc, math.max(0, t))
   local ev = D.put_chord(sc, mi, staff or was.staff, voice or was.voice, at, len, was.notes,
-    { id = was.id, art = was.art, arpeggio = was.arpeggio, beam = was.beam })
+    { id = was.id, art = was.art, arpeggio = was.arpeggio, beam = was.beam, orn = was.orn, lyric = was.lyric, lyrics = was.lyrics })
   if #was.graces > 0 then
     local _, entry, k = D.find(sc, ev.id)
     for g = #was.graces, 1, -1 do table.insert(entry.events, k, was.graces[g]) end
@@ -823,6 +825,7 @@ local function join_chord(sc, eid, note)
   end
   return id
 end
+view.join_chord = join_chord
 
 view.join_chord = join_chord
 
