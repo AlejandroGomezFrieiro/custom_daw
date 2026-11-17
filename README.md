@@ -163,6 +163,7 @@ core knows nothing about singing. See
 | [sections](extensions/sections) | intro, verse and chorus as named stretches of the song |
 | [templates](extensions/templates) | tracks and device chains saved under a name |
 | [undotree](extensions/undotree) | the undo tree, to walk through |
+| [projdiff](extensions/projdiff) | what changed in a project, and merging two versions of it, in git too |
 | [mixdiag](extensions/mixdiag) | measurements of the mix, and what is wrong with it |
 | [rpp](extensions/rpp) | opening and writing REAPER projects |
 | [vinput](extensions/vinput) | virtual inputs, such as a guitar turned into MIDI |

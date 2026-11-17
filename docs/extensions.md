@@ -38,6 +38,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/midilsp` | MIDI LSP, the language server for music, plugged into `daw.lsp`: voice-leading diagnostics with fixes, the chords it hears, suggestions |
 | `extensions/mixdiag` | the mix measured (LUFS, true peak, phase) and reported as findings to jump to |
 | `extensions/undotree` | a window on the undo tree, named checkpoints, A/B listening |
+| `extensions/projdiff` | what changed between two versions of a project (a file, a git revision, an undo state, a snapshot), and three-way merges of projects for git: `:Pdiff`, `:Pmerge`, `:Psnapshot` |
 | `extensions/rpp` | opening and writing REAPER projects |
 | `extensions/tutor` | a course for first-time users, inside the program |
 | `extensions/doctor` | a guided check of the real hardware (audio, MIDI, recording, plugins), with a written report: `:doctor`, `daw doctor` |
