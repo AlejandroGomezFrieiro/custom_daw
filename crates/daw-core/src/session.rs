@@ -266,6 +266,9 @@ pub struct RenderOpts {
     pub bits: u16,
     /// Only these tracks, as if they were soloed: a stem. All when empty.
     pub tracks: Vec<Id>,
+    /// This track and what feeds it, before its fader, and nothing else:
+    /// what freezing it plays (see [`crate::freeze::alone`]).
+    pub freeze: Option<Id>,
     /// Add dither when writing 16 or 24 bits.
     pub dither: bool,
     /// Bring the loudest sample to this level in dB.
@@ -301,6 +304,7 @@ impl Default for RenderOpts {
             sample_rate: None,
             bits: 24,
             tracks: Vec::new(),
+            freeze: None,
             dither: false,
             normalize: None,
             loudness: None,
@@ -3786,6 +3790,38 @@ impl Session {
         self.handle.shared.blocks.reset();
     }
 
+    /// Play a track from a sound file for now, as if it were frozen (see
+    /// [`crate::freeze`]), or live again with `None`. The project is not
+    /// changed: nothing is saved or undone, and renders play it live.
+    pub fn hold(&mut self, track: Id, file: Option<PathBuf>) -> Result<()> {
+        if track == MASTER_ID || self.project.track(track).is_none() {
+            bail!("no track {track} to hold");
+        }
+        match file {
+            Some(file) => self.map.held_files.insert(track, file),
+            None => self.map.held_files.remove(&track),
+        };
+        self.dirty = true;
+        self.flush();
+        Ok(())
+    }
+
+    /// The tracks held by [`hold`](Self::hold).
+    pub fn held(&self) -> Vec<Id> {
+        let mut out: Vec<Id> = self.map.held_files.keys().copied().collect();
+        out.sort_unstable();
+        out
+    }
+
+    /// Let only these tracks be heard for now, with what they pass through
+    /// (as a solo would, without the project's solos changing), or every
+    /// track again with `None`.
+    pub fn set_audible(&mut self, tracks: Option<Vec<Id>>) {
+        self.map.audible = tracks.map(|ids| ids.into_iter().collect());
+        self.dirty = true;
+        self.flush();
+    }
+
     /// Stop the audio backend and start another one, rebuilding the engine
     /// from the project.
     pub fn engine_restart(&mut self, opts: &BackendOptions) -> Result<()> {
@@ -3801,8 +3837,11 @@ impl Session {
         self.send_pool();
         self.live.clear();
         self.seeks = 0;
+        let held = std::mem::take(&mut self.map.held_files);
+        let audible = self.map.audible.take();
         self.map = Mapper::new();
         self.map.defer = self.loads.on;
+        (self.map.held_files, self.map.audible) = (held, audible);
         self.loads.devices.clear();
         self.synced = Project::default();
         self.dirty = true;

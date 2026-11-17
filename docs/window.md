@@ -201,6 +201,11 @@ area's size with `daw.panes.area(width, height)`; it paints a pane with
 `daw.panes.pointer(win, event)`, a press with `daw.panes.focus(win)`, a
 border dragged with `daw.panes.border(i, x, y)` and a tab clicked with
 `daw.panes.tab(i)` (runtime/lua/daw/panes.lua, tested in the suite).
+A tab narrowed to a group (`:narrow Strings`, `zn`; see
+[Narrowing to a group](mixing.md#mixing-midi-and-rendering-in-the-core))
+is a tab like any other in its row, named after the group, and its panes
+draw only that group's tracks: the timeline, the mixer and the device panel
+take their rows from `daw.groups.rows()`, which is the narrowed tab's.
 
 What a gesture means is not decided in the window. It calls
 `daw.frontend.act` in the kernel (`select_clip`, `select_clips_box`,

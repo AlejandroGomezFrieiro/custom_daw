@@ -254,11 +254,11 @@ command("cursor.bar", function(ctx)
   cursor.set_beat(daw.time.bar_start(ctx.count or tonumber(ctx.args[1]) or 1))
 end, { desc = "Start of a bar: `cursor.bar 9`" })
 command("cursor.first_track", function(ctx)
-  local list = api.track_list()
+  local list = daw.scope.tracks()
   if #list > 0 then cursor.set_track(list[util.clamp(ctx.count or 1, 1, #list)]) end
 end, { desc = "First track, or track number N" })
 command("cursor.last_track", function(ctx)
-  local list = api.track_list()
+  local list = daw.scope.tracks()
   if #list > 0 then cursor.set_track(list[util.clamp(ctx.count or #list, 1, #list)]) end
 end, { desc = "Last track, or track number N" })
 command("cursor.to_playhead", function()
@@ -2089,6 +2089,8 @@ amap("zz", function() daw.ui.views.arrange:center() end, "Scroll the cursor to t
 map("<leader>g", "track.group", { view = "arrange", mode = nx, desc = "Group the selected tracks" })
 amap("<leader>G", "track.ungroup", "Take the track out of its group; dissolve a group")
 amap("za", "track.fold", "Fold the group away, or open it")
+amap("zn", "narrow", "Narrow to the group: a tab of its tracks alone")
+amap("zw", "widen", "Widen: close the narrowed tab")
 -- VCAs, and the faders of a group moving together.
 map("<leader>vn", "vca.make", { view = "arrange", mode = nx, desc = "A new VCA over the selected tracks" })
 map("<leader>va", "vca.assign", { view = "arrange", mode = nx, desc = "Put the selected tracks under a VCA" })

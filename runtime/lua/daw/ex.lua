@@ -100,6 +100,10 @@ local function view_clips()
   return a.clips and a.clips() or nil
 end
 
+--- The tracks a range can name: those of the narrowed tab's group, in a
+--- tab narrowed to one (`daw.scope`); `t1` is the first of them.
+local function scoped() return daw.scope.tracks() end
+
 -- Addresses of time --------------------------------------------------------------
 
 local function song_end()
@@ -234,7 +238,7 @@ function M.selection_range()
 end
 
 local function track_index(s, i)
-  local list = api.track_list()
+  local list = scoped()
   local n, j
   local num, e = s:match("^(%d+)()", i)
   if num then
@@ -268,12 +272,12 @@ end
 local function track_range(s, i)
   if s:sub(i, i) ~= "t" then return nil, i end
   local c, j = s:sub(i + 1, i + 1), i + 1
-  if c == "*" then return api.track_list(), j + 1 end
+  if c == "*" then return scoped(), j + 1 end
   if c == "/" then
     local close = s:find("/", j + 1, true)
     local text = s:sub(j + 1, (close or #s + 1) - 1)
     local out, wanted = {}, text:lower()
-    for _, id in ipairs(api.track_list()) do
+    for _, id in ipairs(scoped()) do
       if api.track_get(id).name:lower():find(wanted, 1, true) then out[#out + 1] = id end
     end
     if #out == 0 then fail("`t/%s/`: no track's name holds `%s`", text, text) end
@@ -302,7 +306,7 @@ local function track_range(s, i)
     if not b then fail("`%s`: a range of tracks needs a second track: `t2,t4`", s:sub(i, more - 1)) end
   end
   if b < a then fail("`%s`: a range of tracks goes from the first to the last", s:sub(i, k - 1)) end
-  local list, out = api.track_list(), {}
+  local list, out = scoped(), {}
   for n = a, b do out[#out + 1] = list[n] end
   return out, k
 end
@@ -399,7 +403,7 @@ local function scope_clips(r)
     if ids then
       for _, id in ipairs(ids) do out[#out + 1] = api.clip_get(id) end
     else
-      for _, id in ipairs(api.track_list()) do add_track(id) end
+      for _, id in ipairs(scoped()) do add_track(id) end
     end
   end
   if r.clip_ids then
@@ -434,7 +438,7 @@ function M.items(r, kind)
   end
   local out = {}
   if kind == "track" then
-    local ids = r.tracks or (view_clips() and { cursor_track() }) or api.track_list()
+    local ids = r.tracks or (view_clips() and { cursor_track() }) or scoped()
     for i, id in ipairs(ids) do out[i] = { kind = "track", track = id, at = 0, order = i } end
     return out
   end
@@ -874,7 +878,7 @@ end
 
 local function whole_tracks(r) return r.tracks and not r.from end
 
-local function time_tracks(r) return r.tracks or api.track_list() end
+local function time_tracks(r) return r.tracks or scoped() end
 
 --- Put a value in a register as `d` and `y` do, and say what it was.
 local function keep(value, ctx, yank)
@@ -960,8 +964,16 @@ local function copy_or_move(ctx, move)
   if whole_tracks(r) then
     -- Whole tracks go below track N (`0` for the top).
     local n = tonumber((text:gsub("^t", "")))
-    if text == "$" or text == "t$" then n = #api.track_list() end
+    if text == "$" or text == "t$" then n = #scoped() end
     if not n then fail("`%s`: tracks go below a track's number: `:t2 %s 5`, `0` for the top", text, name) end
+    -- In a narrowed tab N counts its tracks: below the Nth of them.
+    local seen = scoped()
+    if #seen < #api.track_list() and n > 0 then
+      local id = seen[math.min(n, #seen)]
+      for k, other in ipairs(api.track_list()) do
+        if other == id then n = k end
+      end
+    end
     local snaps = {}
     for i, id in ipairs(r.tracks) do snaps[i] = daw.track(id):snapshot() end
     if move then
@@ -1733,7 +1745,7 @@ function M.complete_range(line)
   local stem = line:match("^%s*t/([^/]*)$")
   if stem then
     local out = {}
-    for i, id in ipairs(api.track_list()) do
+    for i, id in ipairs(scoped()) do
       local name = api.track_get(id).name
       if name:lower():find(stem:lower(), 1, true) then
         out[#out + 1] = { text = "t/" .. name .. "/ ", label = "t/" .. name .. "/", desc = "track " .. i }

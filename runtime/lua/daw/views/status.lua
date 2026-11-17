@@ -139,6 +139,13 @@ function view.segments(width)
   -- 10: keys typed so far, or the register chosen.
   local pending = daw.keymap.pending()
   if pending ~= "" then add(right, 0, 3, { { pending, "StatusOn" } }) end
+  -- The group a narrowed tab shows, and what the rest of the song does.
+  local scope = daw.scope and daw.scope.current()
+  if scope then
+    local rest = daw.opt.scope_rest
+    local text = "narrowed " .. api.track_get(scope).name
+    add(right, 0, 2, { { text, "StatusOn" }, rest ~= "play" and width >= 100 and { " rest " .. rest, "StatusDim" } or nil })
+  end
   -- 11: the project, with an amber dot when it has unsaved changes.
   local seg = { { p.name, "StatusName" }, name = true }
   if p.modified then table.insert(seg, 1, { g.modified .. " ", "StatusModified" }) end

@@ -185,6 +185,10 @@ function K.startup()
   daw.routes.setup()
   daw.media = require("daw.media")
   require("daw.render")
+  -- Freezing tracks, and tabs narrowed to a group.
+  daw.freeze = require("daw.freeze")
+  daw.scope = require("daw.scope")
+  daw.stems = require("daw.stems")
   daw.markers = require("daw.markers")
   -- Listings edited as text (`:e daw://tracks`), and the kinds built in.
   daw.textbuf = require("daw.textbuf")

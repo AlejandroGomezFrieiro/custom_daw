@@ -21,6 +21,7 @@ use daw_engine::{
 };
 use serde_json::{Value, json};
 
+use crate::freeze::Played;
 use crate::model::{
     Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, Note, Project, Target, Track,
 };
@@ -109,6 +110,14 @@ pub struct Mapper {
     pub defer: bool,
     /// Devices given a stand-in since the session last looked.
     pub deferred: Vec<Id>,
+    /// Tracks the session plays from a file for now, as if they were
+    /// frozen, without the project saying so (see [`crate::freeze`]).
+    pub held_files: HashMap<Id, PathBuf>,
+    /// When set, only these tracks are heard, with what they pass through,
+    /// as if they were soloed; the project is not changed.
+    pub audible: Option<HashSet<Id>>,
+    /// What the engine was last told to play of each track that is not live.
+    played: HashMap<Id, Played>,
 }
 
 impl Default for Mapper {
@@ -139,6 +148,9 @@ impl Mapper {
             host_latency: HashMap::new(),
             defer: false,
             deferred: Vec::new(),
+            held_files: HashMap::new(),
+            audible: None,
+            played: HashMap::new(),
         }
     }
 
@@ -469,12 +481,16 @@ pub fn sync(
     // Side-chains name device slots, so a device that gets one does too.
     let mut device_slots = false;
     let mut removals = Vec::new();
+    // Frozen tracks play a file, and what feeds them is held.
+    let mut played = crate::freeze::played(new, &map.held_files);
 
     for track in new.all_tracks() {
         let prev = old_tracks.get(&track.id).copied();
         // A track the engine had no room for is built whole once there is room.
         let fresh = !map.tracks.contains_key(&track.id);
-        if !fresh && prev.is_some_and(|p| Arc::ptr_eq(p, track)) {
+        let plays = played.get(&track.id).cloned().unwrap_or(Played::Live);
+        let replayed = map.played.get(&track.id).unwrap_or(&Played::Live) != &plays;
+        if !fresh && !replayed && prev.is_some_and(|p| Arc::ptr_eq(p, track)) {
             continue;
         }
         if fresh {
@@ -562,6 +578,19 @@ pub fn sync(
                 .collect();
             send(Msg::SetChain { track: slot, chain });
         }
+        // A frozen or held track's devices are held in the engine only: the
+        // model keeps its own bypass, which comes back when it thaws.
+        let held = plays != Played::Live;
+        if held || replayed {
+            for device in &track.devices {
+                if let Some(&device_slot) = map.devices.get(&device.id) {
+                    send(Msg::SetBypass {
+                        device: device_slot,
+                        bypass: device.bypass || held,
+                    });
+                }
+            }
+        }
 
         let same_clips = prev.is_some_and(|p| {
             p.clips.len() == track.clips.len()
@@ -572,9 +601,16 @@ pub fn sync(
         });
         if !same_clips {
             clips_changed = true;
+        }
+        if !same_clips || replayed {
+            let clips = match &plays {
+                Played::Live => build_clips(track, new.tempo_map(), map, ctx),
+                Played::Frozen(file) => frozen_clips(file, new.tempo_map(), ctx),
+                Played::Held => ClipSet::default(),
+            };
             send(Msg::SetClips {
                 track: slot,
-                clips: Box::new(build_clips(track, new.tempo_map(), map, ctx)),
+                clips: Box::new(clips),
             });
         }
 
@@ -585,13 +621,24 @@ pub fn sync(
                     .zip(&track.slots)
                     .all(|(a, b)| a.row == b.row && Arc::ptr_eq(&a.clip, &b.clip))
         });
-        if !same_slots {
+        if !same_slots || (replayed && !track.slots.is_empty()) {
+            let slots = if held {
+                Slots::default()
+            } else {
+                build_slots(track, new.tempo_map(), ctx)
+            };
             send(Msg::SetSlots {
                 track: slot,
-                slots: Box::new(build_slots(track, new.tempo_map(), ctx)),
+                slots: Box::new(slots),
             });
-            emit("slot.changed", json!({ "track": track.id }));
+            if !same_slots {
+                emit("slot.changed", json!({ "track": track.id }));
+            }
         }
+        match played.remove(&track.id) {
+            Some(plays) => map.played.insert(track.id, plays),
+            None => map.played.remove(&track.id),
+        };
 
         let same_lanes = prev.map_or(track.lanes.is_empty(), |p| {
             p.lanes.len() == track.lanes.len()
@@ -684,11 +731,20 @@ pub fn sync(
     } else {
         solo_paths(new, &soloed)
     };
+    // What the session lets be heard for now: as a solo, but not the model's.
+    let audible = map
+        .audible
+        .as_ref()
+        .map(|ids| solo_paths(new, &ids.iter().copied().filter(|id| new.track(*id).is_some()).collect()));
+    map.played.retain(|id, _| new.track(*id).is_some());
     for track in new.all_tracks() {
         let Some(&slot) = map.tracks.get(&track.id) else {
             continue;
         };
-        let silenced = !soloed.is_empty() && track.id != MASTER_ID && !sounding.contains(&track.id);
+        let silenced = track.id != MASTER_ID
+            && ((!soloed.is_empty() && !sounding.contains(&track.id))
+                || audible.as_ref().is_some_and(|a| !a.contains(&track.id))
+                || map.played.get(&track.id) == Some(&Played::Held));
         let vcas = vcas_of(track, new);
         let mix = (
             db_to_gain(track.volume + vcas.iter().map(|v| v.volume).sum::<f64>()),
@@ -770,7 +826,7 @@ pub fn sync(
             });
         }
     }
-    let routing = routing_of(new, ctx.live);
+    let routing = routing_of(new, ctx.live, &map.played);
     // Devices that listen to a side-chain get a buffer for it, before the
     // schedule that fills it; those that no longer do give theirs back.
     let keyed: HashSet<Id> = routing
@@ -1413,6 +1469,29 @@ fn clip_audio(
     }
 }
 
+/// What a frozen track plays: its file from the start of the song, as it
+/// was rendered, at unity gain and without fades.
+fn frozen_clips(file: &Path, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -> ClipSet {
+    let mut set = ClipSet::default();
+    if let Some(data) = ctx.audio.get(file, ctx.sample_rate as u32, ctx.warnings) {
+        let end = tempo.beat(tempo.seconds(0.0) + data.whole_seconds());
+        set.audio.push(AudioRegion {
+            start: 0.0,
+            end,
+            declick_in: false,
+            declick_out: false,
+            data,
+            offset: 0.0,
+            gain: 1.0,
+            fade_in: 0.0,
+            fade_out: 0.0,
+            hold: Default::default(),
+        });
+    }
+    set.finish();
+    set
+}
+
 /// What a track's slots play, each clip laid out from its own start.
 fn build_slots(track: &Track, tempo: &daw_engine::TempoMap, ctx: &mut SyncCtx) -> Slots {
     let mut rows: Vec<Option<SlotClip>> = Vec::new();
@@ -1786,7 +1865,7 @@ fn solo_paths(project: &Project, soloed: &HashSet<Id>) -> HashSet<Id> {
     sounding
 }
 
-fn routing_of(project: &Project, live: &LiveDevices) -> Routing {
+fn routing_of(project: &Project, live: &LiveDevices, played: &HashMap<Id, Played>) -> Routing {
     let ids: HashSet<Id> = project.all_tracks().map(|t| t.id).collect();
     let exists = |id: Id| ids.contains(&id);
     // A device that is bypassed is not run, so it holds nothing back.
@@ -1797,7 +1876,13 @@ fn routing_of(project: &Project, live: &LiveDevices) -> Routing {
         live.get(&d.id)
             .map_or(0, |l| l.latency.min(MAX_DELAY as u32))
     };
-    let latency = |t: &Track| -> u32 { t.devices.iter().map(|d| device_latency(d)).sum() };
+    // Nor are the devices of a frozen or held track.
+    let latency = |t: &Track| -> u32 {
+        if played.contains_key(&t.id) {
+            return 0;
+        }
+        t.devices.iter().map(|d| device_latency(d)).sum()
+    };
     // Side-chains, by the track they are taken from. The master feeds
     // nothing, so it keys nothing.
     let mut keys: HashMap<Id, Vec<Key>> = HashMap::new();
