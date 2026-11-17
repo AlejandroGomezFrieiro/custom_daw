@@ -145,12 +145,11 @@ test("harmony: the demo song", function()
   dofile("examples/demo-song.lua")
   daw.flush()
   -- The drums are left out; the bass, the keys and the lead are read
-  -- together: A minor, F over C and over G (with its added ninth), A minor
-  -- seventh, the G triad over a C bass (a C major ninth without its third)
-  -- and G.
-  eq(reading(), "0:Am 8:F/C 12:Fadd9/G 16:Am7 24:Cmaj9 28:G", "the chords")
+  -- together: Am F C E twice, the second time with the keys' phrase in two
+  -- voices and the melody over it.
+  eq(reading(), "0:Am 4:F 8:C 12:E 16:Am 20:F 24:C 28:E", "the chords")
   eq(keys(), "0:A minor", "the key")
-  eq(reading(nil, nil, "roman"), "0:i 8:bVI 12:bVIadd9 16:i7 24:bIIImaj9 28:bVII", "the numerals")
+  eq(reading(nil, nil, "roman"), "0:i 4:bVI 8:bIII 12:V 16:i 20:bVI 24:bIII 28:V", "the numerals")
 end)
 
 test("harmony: drum tracks, muted tracks and muted clips are left out", function()

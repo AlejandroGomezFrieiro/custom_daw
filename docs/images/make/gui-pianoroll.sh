@@ -1,31 +1,28 @@
 #!/bin/sh
-. "$(dirname "$0")/rig.sh"
-rig_start 1280x800
+# The piano roll with the pointer: the melody's open last bar drawn,
+# a note moved, velocities drawn, and played. (The clip is opened with a
+# double click, before the recording starts.)
+. "$MAKE/rig.sh"
+rig_start $GUI_SIZE
 gui_start
+# The melody opened with a double click, and zoomed out a step.
+glide 700 390; xdotool click --repeat 2 --delay 60 1; pause 1.0
+glide 600 550; xdotool keydown ctrl; xdotool click 5; xdotool keyup ctrl; pause 0.6
 rec_start gui-pianoroll
-cap "Double click a clip to open its notes"
-pause 0.7
-glide 560 300; pause 0.2; xdotool click --repeat 2 --delay 60 1; pause 1.5
-# The roll: x = 64 + 80 a beat; C5 is at y 563, a semitone is 12 high.
-cap "Drag on the grid to draw notes"
-drag 150 611 208 611
-drag 230 635 288 635
-drag 310 611 368 611
-drag 390 635 448 635
-pause 0.5
+# The roll: bar 5 at x 64, 55.75 a beat, bar 8 at 733; E5 at y 515, 12 a semitone.
+cap "Drag on the grid to draw a note as long as the drag"
+drag 736 515 845 515
+drag 848 575 900 575
+drag 904 623 952 623
+pause 0.3
 cap "Drag a note to move it"
-drag 340 611 340 587
-pause 0.5
-cap "Draw velocities under the notes"
-stroke 70 765 300 715 620 760 900 720 1180 750
-pause 0.8
-cap "Right-drag draws a box around notes"
-drag 120 600 460 650 3
-pause 0.7
-cap "Drag one of them and they all move"
-drag 180 611 180 587
-pause 0.9
-shot gui-pianoroll.png
-cap "Space plays"
-xdotool key space; pause 4; xdotool key space; pause 0.5
+drag 925 623 925 611
+pause 0.4
+cap "Draw the velocities in the strip under the notes"
+key Escape; pause 0.2
+stroke 66 770 300 745 520 765 735 735 950 750
+pause 0.6
+cap "A click on the ruler moves the playhead; Space plays"
+glide 512 380 10; xdotool click 1; pause 0.3
+key space; pause 3.6; key space; pause 0.4
 rec_stop

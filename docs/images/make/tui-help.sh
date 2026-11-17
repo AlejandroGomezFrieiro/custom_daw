@@ -1,17 +1,18 @@
 #!/bin/sh
-. "$(dirname "$0")/rig.sh"
-rig_start 1100x640
+# Finding your way: ? lists the keys, the leader alone lists its keys,
+# K describes what is under the cursor, and :help opens the manual inside.
+. "$MAKE/rig.sh"
+SETUP=$TUI_DEMO
+rig_start
 term_start
+key j w; pause 0.4
 rec_start tui-help
-cap ":help gU opens the manual where gU is described"
-pause 0.8; key colon; pause 0.3
-TYPE_DELAY=110 typ "help gU"; pause 0.6; key Return; pause 2.0
-cap "/ searches; Ctrl-] looks up the word under the cursor"
-key slash; TYPE_DELAY=90 typ ":normal"; key Return; pause 0.9
-key ctrl+bracketright; pause 2.2
-cap "Ctrl-t goes back"
-key ctrl+t; pause 1.8
-cap ":help takes keys, commands, options and sections"
-key colon; pause 0.3
-TYPE_DELAY=110 typ "help quickfix-list"; key Return; pause 2.2
+cap "? lists every key of the view you are in"
+pause 0.5; key question; pause 2.0; key Escape; pause 0.3
+cap ", alone waits and lists what can follow it"
+key comma; pause 1.8; key Escape; pause 0.3
+cap "K says what is under the cursor"
+key K; pause 1.8; key Escape; pause 0.3
+cap ":help opens the manual where a topic is described"
+key colon; TYPE_DELAY=100 typ "help motions"; key Return; pause 2.4
 rec_stop

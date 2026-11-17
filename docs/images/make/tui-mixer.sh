@@ -1,28 +1,21 @@
 #!/bin/sh
-. "$(dirname "$0")/rig.sh"
-rig_start 1280x800
+# The mixer while the song plays, a device added from the picker (which
+# plays what it would add), and its parameters.
+. "$MAKE/rig.sh"
+SETUP=$TUI_DEMO
+rig_start
 term_start
 rec_start tui-mixer
-cap ",m opens the mixer"
-pause 0.8; key comma; pause 0.25; key m; pause 1.2
-cap "h l pick a strip · + - move its fader · j k pick a row"
-key h; pause 0.5
-for k in plus plus plus plus minus minus; do key $k; pause 0.35; done
-key j; pause 0.4
-for k in plus plus plus; do key $k; pause 0.35; done
-key k; pause 0.4
-cap "gcc mutes the strip, again unmutes it"
-TYPE_DELAY=200 typ "gcc"; pause 1.0; TYPE_DELAY=200 typ "gcc"; pause 0.6
-cap "Ctrl-w c closes a view"
-key ctrl+w; pause 0.3; key c; pause 1.0
-cap "a adds a device: type a few letters of its name"
-key a; pause 1.2
-TYPE_DELAY=200 typ "rev"; pause 1.0
-shot tui-picker.png
-key Return; pause 1.4
-cap ",d opens the device panel: j k pick a parameter, + - change it"
-key comma; pause 0.25; key d; pause 1.2
-for k in j j j plus plus plus plus j minus minus; do key $k; pause 0.4; done
-pause 0.8
+cap "Space plays; ,m opens the mixer"
+pause 0.5; key space; pause 0.3; key comma m; pause 1.0
+cap "l picks a strip; + - move its fader; gcc mutes it, again unmutes"
+key l; pause 0.3; keys 0.25 plus plus minus
+key g c c; pause 0.8; key g c c; pause 0.5
+cap "a adds a device: the picker plays each one before you choose"
+key a; pause 0.4; TYPE_DELAY=180 typ "chor"; pause 1.2
+key Return; pause 0.8
+cap ",d shows its parameters: j k pick one, + - change it"
+key comma d; pause 0.6
+keys 0.25 G k k k; keys 0.15 3 0 plus; pause 0.6; keys 0.15 2 0 plus; pause 1.0
+key space; pause 0.4
 rec_stop
-shot tui-devices.png

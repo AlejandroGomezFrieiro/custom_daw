@@ -18,6 +18,12 @@ and it changes no note it does not write.
 daw.ext.load("extensions/notation")   -- or put it in ~/.config/daw/extensions
 ```
 
+![The demo song's melody as a score in the terminal: its last bar entered by name with i, a hairpin written with the \\d popover and previewed before Enter, then played](images/tui-notation.gif)
+
+![The score beside the piano roll in the window: a hairpin written in the score sets the velocities in the roll, velocities drawn in the roll leave the marks alone, and g@ plays the notes as the marks say again](images/gui-notation.gif)
+
+![The score in the terminal, the hairpin's popover open and what it would write drawn in the accent](images/tui-notation.png)
+
 ## Opening it
 
 | | |
