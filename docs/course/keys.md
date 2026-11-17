@@ -240,6 +240,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `<C-w>h` `<C-w>j` `<C-w>k` `<C-w>l` | the window left, below, above, right |
 | `<C-w>H` `<C-w>J` `<C-w>K` `<C-w>L` | move the window to the far left, bottom, top, right |
 | `<C-w>x` `<C-w>r` `<C-w>T` | exchange the window with the next, rotate them, the window to a tab of its own |
+| `<C-w>d` | in the graphical window: a view in a window of its own back into the main window, as a pane |
 | `gt` `gT` | next tab, previous tab (`:tabnew` makes one) |
 | `ge` | the track's plugin window |
 | `zi` `zo` `[g` `]g` | zoom in, out; finer, coarser grid |

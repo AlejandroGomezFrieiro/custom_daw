@@ -1154,6 +1154,21 @@ fn paint_colour(value: &Value) -> Color {
     }
 }
 
+/// The main window's status line as one line of text for a view's window
+/// of its own, with its level (0 plain, 1 a warning, 2 an error, 3 the
+/// view's keys): the prompt being typed, else the last message, else the keys.
+fn status_line(ui: &App) -> (String, i32) {
+    if ui.get_prompt_open() {
+        let line = format!("{}{}▏{}", ui.get_prompt(), ui.get_prompt_before(), ui.get_prompt_after());
+        return (line, 0);
+    }
+    if !ui.get_status().is_empty() {
+        return (ui.get_status().to_string(), ui.get_status_level().clamp(0, 2));
+    }
+    let keys: Vec<String> = ui.get_keys().iter().map(|k| format!("{} {}", k.key, k.desc)).collect();
+    (keys.join("   "), 3)
+}
+
 /// One operation of a view drawn in cells (see `daw.canvas.paint`) as the
 /// window shows it: a rectangle or a run of monospace cells.
 fn canvas_item(op: &Value) -> Option<CanvasItem> {
@@ -2111,6 +2126,12 @@ impl View {
             })
             .collect();
         sync(&self.vel_preview, Vec::new());
+        // The middle of the clip's notes, where the roll opens.
+        let middle = notes
+            .iter()
+            .map(|n| (n.pitch, n.pitch))
+            .reduce(|(lo, hi), (a, b)| (lo.min(a), hi.max(b)))
+            .map(|(lo, hi)| (lo + hi) / 2);
         self.roll_notes = notes;
         self.roll_ghosts = ghosts;
         self.roll_controls = rows(&clip["controls"]).to_vec();
@@ -2132,6 +2153,7 @@ impl View {
             roll.set_start(number(&clip["start"]) + origin);
             roll.set_length(reach);
             roll.set_bar(ui.get_bar());
+            roll.set_middle(middle.unwrap_or(-1));
             roll.set_open(true);
         }
         self.roll_lines = roll_lines(number(&clip["start"]) + origin, reach);
@@ -2605,6 +2627,15 @@ impl View {
         ui.set_selected_name(selected_name);
         ui.set_selected_color(selected_colour);
         ui.set_cursor_row(cursor_row);
+        // Every strip in the mixer keeps rows for as many sends as the
+        // track with most has, so that their faders share a baseline.
+        ui.set_mixer_send_rows(
+            rows(&state["tracks"])
+                .iter()
+                .map(|t| rows(&t["sends"]).len().min(3) as i32)
+                .max()
+                .unwrap_or(0),
+        );
 
         let clips: Vec<ClipData> = rows(&state["clips"])
             .iter()
@@ -4613,8 +4644,19 @@ fn run() -> Result<()> {
                     let Ok(window) = CanvasWindow::new() else { continue };
                     let items = Rc::new(VecModel::default());
                     window.set_name(name.as_str().into());
+                    window.set_cells(*cells);
                     window.set_items(ModelRc::from(items.clone()));
-                    window.window().set_size(slint::LogicalSize::new(*width, *height));
+                    // Room for the title, the status line and the inset
+                    // round the view, and over the middle of the main window.
+                    let size = slint::LogicalSize::new(*width + 12.0, *height + 62.0);
+                    window.window().set_size(size);
+                    let scale = ui.window().scale_factor();
+                    let main = ui.window().position().to_logical(scale);
+                    let main_size = ui.window().size().to_logical(scale);
+                    window.window().set_position(slint::LogicalPosition::new(
+                        main.x + ((main_size.width - size.width) / 2.0).max(0.0),
+                        main.y + ((main_size.height - size.height) / 2.0).max(0.0),
+                    ));
                     let send = {
                         let (act, view, name) = (act.clone(), view.clone(), name.clone());
                         move |event: Value| {
@@ -4650,10 +4692,16 @@ fn run() -> Result<()> {
                             }
                         }
                     });
+                    window.on_dock({
+                        let (act, name) = (act.clone(), name.clone());
+                        move || act(&|c| c.eval("daw.canvas.dock(...)", json!([name])))
+                    });
                     window.window().on_close_requested({
                         let (act, name) = (act.clone(), name.clone());
                         move || {
-                            act(&|c| c.eval("daw.canvas.close(...)", json!([name])));
+                            // Closing the window puts the view back in the
+                            // main window, as `Ctrl-w d` does.
+                            act(&|c| c.eval("daw.canvas.dock(...)", json!([name])));
                             slint::CloseRequestResponse::HideWindow
                         }
                     });
@@ -4671,6 +4719,11 @@ fn run() -> Result<()> {
                 }
                 let Some(canvas) = canvases.get_mut(name) else { continue };
                 canvas.window.set_heading(title.as_str().into());
+                canvas.window.set_mode(ui.get_mode());
+                canvas.window.set_mode_name(ui.get_mode_name());
+                let (line, level) = status_line(&ui);
+                canvas.window.set_line(line.into());
+                canvas.window.set_line_level(level);
                 // Painted again when something may have changed, when the
                 // window has another size, and now and then regardless. A
                 // view in cells is asked every time: the kernel knows
@@ -4686,9 +4739,8 @@ fn run() -> Result<()> {
                     "cell": { "w": canvas.window.get_cell_width(), "h": canvas.window.get_cell_height() },
                     "fresh": canvas.items.row_count() == 0,
                     "glyphs": true,
-                    // The status line and the command line under the view: the
-                    // main window's are out of sight behind this one.
-                    "bars": true,
+                    // The window has a status line of its own under the view.
+                    "status": true,
                 });
                 let drawing = client
                     .borrow_mut()

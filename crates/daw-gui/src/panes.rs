@@ -139,6 +139,9 @@ impl Panes {
                 h: at[3],
                 focused: is_focused,
                 image: self.drawn.get(&win).map(|d| d.image.clone()).unwrap_or_default(),
+                // A view in cells draws a title row of its own, which the
+                // pane's title covers.
+                under: if kind == 2 { cell().1 } else { 0.0 },
             });
         }
         // A view the window draws itself keeps where it was while it is not
@@ -197,8 +200,9 @@ impl Panes {
         let scale = ui.window().scale_factor();
         for index in 0..self.model.row_count() {
             let Some(mut pane) = self.model.row_data(index) else { continue };
-            let heading = if pane.kind == 1 { ui.global::<PaneSizes>().get_heading() } else { 0.0 };
-            let size = (pane.w, (pane.h - heading).max(1.0));
+            let sizes = ui.global::<PaneSizes>();
+            let (heading, pad) = (sizes.get_heading(), sizes.get_pad());
+            let size = ((pane.w - 2.0 * pad).max(1.0), (pane.h - heading + pane.under - pad).max(1.0));
             let cells = pane.kind == 2;
             let fresh = !self.drawn.contains_key(&pane.win);
             let stale = self

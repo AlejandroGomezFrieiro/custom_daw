@@ -1391,6 +1391,11 @@ command("view.window", function(ctx)
   if not daw.ui.views[name] then return daw.notify("no view `" .. name .. "`", "warn") end
   daw.canvas.open_view(name)
 end, { desc = "Open a view in a window of its own, in the graphical frontend: `view.window undotree`; the focused one without a name", complete = { "views" } })
+command("view.dock", function(ctx)
+  local name = ctx.args[1] and tostring(ctx.args[1]) or daw.ui.focused
+  if not daw.canvas.open_views[name] then return daw.notify("`" .. tostring(name) .. "` is not in a window of its own", "warn") end
+  daw.canvas.dock(name)
+end, { desc = "Put a view in a window of its own back in the main window, as a pane: `view.dock notation`; the focused one without a name", complete = { "views" } })
 command("view.open", function(ctx)
   local name = tostring(ctx.args[1] or "")
   local view = daw.ui.views[name]
@@ -2797,6 +2802,7 @@ command("view.maximize", function()
   end
 end, { desc = "Give the focused window the whole tab, or put the others back" })
 
+map("<C-w>d", "view.dock", { desc = "Put a view in a window of its own back in the main window, as a pane" })
 map("<C-w>+", "view.height 1", { desc = "Taller window; with the arrange view alone, taller tracks" })
 map("<C-w>-", "view.height -1", { desc = "Shorter window; with the arrange view alone, shorter tracks" })
 map("<C-w>=", "view.equal", { desc = "Windows of equal size; with the arrange view alone, track height automatic" })

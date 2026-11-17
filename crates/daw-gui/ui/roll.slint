@@ -113,6 +113,9 @@ export global Roll {
     in property <float> cursor;
     in property <int> pitch: 60;
     in property <[NoteData]> notes;
+    // The pitch halfway between the clip's lowest and highest notes, or -1
+    // for a clip with none: what the roll opens on.
+    in property <int> middle: -1;
     // Notes of the track's other clips that sound during this one, in this
     // clip's beats: drawn faintly behind its own.
     in property <[NoteData]> ghosts;
@@ -496,18 +499,23 @@ export component PianoRoll inherits Rectangle {
     // it with a row or two to spare, or with `centre` the cursor in the
     // middle, as the terminal does when it opens a clip.
     function reveal(centre: bool) {
-        if (roll.visible-height <= 0px || roll.visible-width <= 0px) {
+        // A pane still growing to its size is centred when it has some.
+        if (roll.visible-height < 8 * root.note-height || roll.visible-width <= 0px) {
             return;
         }
         root.centre-pending = false;
-        let cy = (127 - Roll.pitch) * root.note-height;
+        if (centre) {
+            // Opened: no wider than the clip and a bar, on its notes.
+            Roll.zoom = clamp(max(Roll.zoom, roll.visible-width / 1px / max(1, Roll.length + Roll.bar)), 8, 640);
+        }
+        let cy = (127 - (centre && Roll.middle >= 0 ? Roll.middle : Roll.pitch)) * root.note-height;
         let cx = Roll.cursor * root.beat;
         let margin = min(2 * root.note-height, roll.visible-height / 4);
         let above = cy - margin < -roll.content-y;
         let below = cy + root.note-height + margin > -roll.content-y + roll.visible-height;
         let aside = cx < -roll.content-x || cx + root.beat > -roll.content-x + roll.visible-width;
         root.scroll-to(
-            centre || aside ? -(cx - (centre ? roll.visible-width / 2 : roll.visible-width / 3)) : roll.content-x,
+            centre && cx < roll.visible-width * 0.8 ? 0px : centre || aside ? -(cx - (centre ? roll.visible-width / 2 : roll.visible-width / 3)) : roll.content-x,
             centre ? -(cy + root.note-height / 2 - roll.visible-height / 2) : above ? -(cy - margin) : below ? -(cy + root.note-height + margin - roll.visible-height) : roll.content-y
         );
     }
@@ -1047,7 +1055,8 @@ export component PianoRoll inherits Rectangle {
                         background: key.lit ? Theme.select : root.hover-pitch == key.pitch ? #3a3c42 : #1c1d20;
                     }
                     if Math.mod(key.pitch, 12) == 0 && root.note-height >= 8px: Text {
-                        x: parent.width - self.preferred-width - 5px;
+                        // Left of the dot, when the key has one.
+                        x: parent.width - self.preferred-width - (Roll.chord-keys[key.pitch] ? 14px : 5px);
                         text: "C" + (floor(key.pitch / 12) - 1);
                         color: #4a4c53;
                         font-size: min(10px, root.note-height - 1px);
@@ -1057,7 +1066,7 @@ export component PianoRoll inherits Rectangle {
                     }
                     // The keys sounding at the cursor: the chord there.
                     if Roll.chord-keys[key.pitch]: Rectangle {
-                        x: parent.width - 12px;
+                        x: parent.width - 10px;
                         y: (parent.height - self.height) / 2;
                         width: min(7px, root.note-height - 3px);
                         height: self.width;
