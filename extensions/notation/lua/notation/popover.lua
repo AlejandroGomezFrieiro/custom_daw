@@ -23,7 +23,7 @@ local keymap = daw.keymap
 local P = { specs = {}, order = {} }
 view.popover = P
 
---- Define a popover: `key` (after the local leader), `name`, `command`, `prompt`,
+--- Define a popover: `key` (after the local leader; none for one an operator opens), `name`, `command`, `prompt`,
 --- `complete(text)`, `on_key(key, text)` for keys of its own, `hint` (the
 --- words shown before anything is typed).
 function P.define(spec)
@@ -89,6 +89,13 @@ local function changed(before)
   return out
 end
 
+--- Run `fn` for a popover opened over a region (an operator's): with that
+--- region as the selection, as `:'<,'>` runs its command.
+local function over(state, fn)
+  if state.region then return keymap.with_selection(state.region, fn) end
+  return fn()
+end
+
 --- The command line a popover's text makes.
 local function line_of(state, text)
   return state.range .. state.spec.command .. " " .. text
@@ -111,7 +118,7 @@ local function preview(text)
   local before = snapshot()
   W.entering = state.mode == "i"
   local said, level = quietly(function()
-    daw.audition.try(function() daw.commands.exec(line_of(state, text)) end)
+    daw.audition.try(function() over(state, function() daw.commands.exec(line_of(state, text)) end) end)
   end)
   W.entering = nil
   if level == "error" then
@@ -136,7 +143,7 @@ local function commit(state, text)
   cmdline.remember("cmdline", line)
   api.undo_label(state.spec.label)
   W.entering = state.mode == "i"
-  local ok, err = pcall(daw.commands.exec, line)
+  local ok, err = pcall(over, state, function() daw.commands.exec(line) end)
   W.entering = nil
   if not ok then daw.notify(tostring(err), "error") end
 end
@@ -148,7 +155,8 @@ local function anchor()
   if at then return { x = at.x, y = at.y } end
 end
 
---- Open a popover by name: `opts.text` puts text in the line.
+--- Open a popover by name: `opts.text` puts text in the line, `opts.region`
+--- is the stretch an operator chose, which it is for.
 function P.open(name, opts)
   opts = opts or {}
   local spec = P.specs[name]
@@ -164,13 +172,15 @@ function P.open(name, opts)
   -- Insert mode's Ctrl-o (one command of normal mode) opened it: it is for
   -- entering, and entering goes on after it.
   local entering = mode == "i" or view.once_normal
-  open_now = { spec = spec, range = range, mode = entering and "i" or "n" }
+  open_now = { spec = spec, range = range, mode = entering and "i" or "n", region = opts.region }
   local state = open_now
   cmdline.open({
     prompt = spec.prompt, history = "notation." .. spec.name, label = spec.label, text = opts.text,
     complete = spec.complete, on_change = preview, anchor = anchor, mode = state.mode, ghost = spec.hint,
     on_key = spec.on_key and function(key, text) return spec.on_key(key, text, state) end,
   }, function(text) commit(state, text) end)
+  -- One that needs no text shows what Enter would do at once.
+  if spec.at_once then preview("") end
 end
 
 -- The popovers ---------------------------------------------------------------------------------
@@ -263,6 +273,12 @@ for _, t in ipairs(W.TECHNIQUES) do tech[#tech + 1] = { t } end
 P.define({ key = "p", name = "techniques", command = "notation.tech", prompt = "technique ", label = "Write a playing technique",
   complete = items(tech), hint = "pizz.  arco  con sord." })
 
+-- Marks that drifted: no letter of its own, `g@` opens it (an operator, so
+-- over what a motion or the selection reaches), and `:notation.apply-marks`
+-- is the same without the prompt.
+P.define({ name = "apply-marks", command = "notation.apply-marks", prompt = "apply marks ", label = "Apply the marks to the notes",
+  hint = "Enter: the notes play as the dynamics and articulations say", empty = true, at_once = true })
+
 -- Lyrics and chord symbols are typed along the music: Space puts down what
 -- is typed and goes on, the line open for the next.
 
@@ -317,7 +333,7 @@ local function opener(name) return function() P.open(name) end end
 for _, name in ipairs(P.order) do
   local spec = P.specs[name]
   local desc = "Popover: " .. spec.name .. " (" .. spec.hint .. ")"
-  keymap.set("<localleader>" .. spec.key, opener(name), { view = "notation", mode = { "n", "x" }, desc = desc })
+  if spec.key then keymap.set("<localleader>" .. spec.key, opener(name), { view = "notation", mode = { "n", "x" }, desc = desc }) end
 end
 local function again()
   if not P.last then return daw.notify("no popover yet", "warn") end

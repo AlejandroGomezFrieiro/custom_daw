@@ -356,6 +356,7 @@ work on what is written, and each edit is one undo step that `.` repeats.
   | `g(` | slur (`g(ip`) |
   | `g?` | retrograde (`2g?` inverts) |
   | `gq` | tidy |
+  | `g@` | make the notes play as the marks say (a prompt shows it first) |
   | `!` | filter (`!ib reverse`, `!ib tac`) |
 
 - Motions: `f` `F` `t` `T` and a letter, `;` `,` again (`,` waits a moment:

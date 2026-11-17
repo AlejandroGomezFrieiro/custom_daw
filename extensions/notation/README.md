@@ -80,6 +80,7 @@ or a playing technique writes nothing.
 | | |
 | --- | --- |
 | `:notation.quantize`, `=` | quantize to the notation: each note starts where it is written and lasts as long as written (or as marked) |
+| `:notation.apply-marks`, `g@` | make the notes play as the marks say again, after the piano roll changed them: dynamics and hairpins set the velocity, staccato and tenuto the length |
 | `:notation.retranscribe`, `g=` | forget what notation decided about the notes (spellings, voices, hands, tuplets): written again from how they play |
 
 **Projects from before.** A clip written in notation by an older version
@@ -404,7 +405,7 @@ types from visual mode), `:5,8` bars 5 to 8, `:5` bar 5. So
 `:5,8notation.transpose 2`, `:'<,'>notation.slur`, `:9notation.dyn p`,
 `:1,4notation.repeat` (both signs around bars 1 to 4), `:5,8notation.quantize`.
 The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
-`repeat`, `quantize`, `retranscribe`, `transpose`, and those the popovers
+`repeat`, `quantize`, `apply-marks`, `retranscribe`, `transpose`, and those the popovers
 run: `tempo`, `meter`, `key`, `clef`, `bar`, `rehearsal`, `chord`, `lyric`,
 `orn`, `tech`, `interval`, `tuplet` and `voice`.
 
@@ -420,6 +421,20 @@ staccato makes a note half its written length, a tenuto all of it, an
 accent 20 louder, a marcato 30. Each writes the MIDI when it is written;
 after that the notes are free to change (see
 [MIDI is the truth](#midi-is-the-truth)).
+
+**Marks follow notation edits.** A note entered, moved or pasted in
+notation takes the loudness the marks ask where it lands: the dynamic in
+force, a hairpin's ramp there, an accent's push; a note that stays under the
+same marks keeps the velocity it has, and a note no edit touched is never
+changed (a piano roll edit is left alone by a notation edit elsewhere). To
+bring back MIDI that drifted from the marks, `:notation.apply-marks` (with
+a range, `:5,8notation.apply-marks`, or on the selection) writes what the
+marks ask into the notes it covers, one undo step, and `g@` and a motion
+or selection (`g@ib`, `vjg@`) does it with a prompt: while it is open the
+change is heard and drawn in the accent, `Enter` writes it and `Esc` leaves
+nothing. It does it again to no effect (an accent is not added twice), and
+taking a mark away afterwards puts back what the note had before it was
+applied.
 
 ## Popovers
 

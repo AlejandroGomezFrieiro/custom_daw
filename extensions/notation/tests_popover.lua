@@ -233,7 +233,7 @@ test("popover: Ex ranges say the same as the popover", function()
   local mk = marks_of(clip, "dynamic")[1]
   eq(mk.from.measure, sc.measures[2].id, "in bar 2")
   eq(D.ticks(mk.from.at), 0, "at its start")
-  keys(":1<localleader>2notation.bar 1.<CR>")
+  keys(":1,2notation.bar 1.<CR>")
   sc = score_of(clip)
   eq(sc.measures[1].volta, 1, "a first ending over bars 1")
   eq(sc.measures[2].volta, 1, "and 2")
