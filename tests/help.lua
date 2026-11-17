@@ -125,6 +125,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
   eq(where("course-5"), "course/05-grammar.md course-5", "a lesson")
   eq(where("notation"), "notation/README.md notation", "an extension")
   eq(where("notation-keys"), "notation/README.md notation-keys", "an extension's heading")
+  eq(where("notation-popovers"), "notation/README.md notation-popovers", "another")
   eq(where("ic"), "terminal.md ic", "a text object")
   eq(where("<C-w>o"), where("Ctrl-w o"), "a key written either way")
   -- Each lands on the line that names it.
@@ -250,6 +251,17 @@ test("the page of an extension that is not loaded says how to load it", function
   eq(all:find("daw.ext.load(\"" .. H.normalize(dir) .. "\")", 1, true) ~= nil, true, "and how to load it")
   table.remove(H.extra)
   H.dirty = true
+  -- A bundled one is loaded by its name.
+  local name
+  for _, ext in ipairs(daw.ext.bundled()) do
+    if not daw.ext.loaded[ext] and io.open("extensions/" .. ext .. "/README.md") then name = name or ext end
+  end
+  if name then
+    daw.cmd("help", { name })
+    local text = {}
+    for _, l in ipairs(daw.textbuf.buf().state.text.lines) do text[#text + 1] = l.text end
+    eq(table.concat(text, "\n"):find(":ext.load " .. name, 1, true) ~= nil, true, name .. "'s page names :ext.load")
+  end
 end)
 
 test("Ctrl-] in the keys picker opens the help of the key chosen", function()

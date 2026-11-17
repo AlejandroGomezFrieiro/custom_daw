@@ -370,10 +370,10 @@ end
 --- The note at the top of the page of an extension that is not loaded.
 local function unloaded_note(source)
   local env = api.env()
-  -- The tutor loads the extensions bundled beside it by name.
-  local tutor = daw.ext.loaded.tutor
-  local beside = tutor and daw.commands.get("tutor.try") and dir_of(normalize(tutor.path)) == dir_of(source.dir)
-  local now = beside and ":tutor.try " .. source.ext or ":lua daw.ext.load(\"" .. source.dir .. "\")"
+  -- A bundled extension is loaded by its name.
+  local bundled = daw.ext.bundled_dir and daw.ext.bundled_dir()
+  local by_name = bundled and normalize(bundled) == dir_of(source.dir)
+  local now = by_name and ":ext.load " .. source.ext or ":lua daw.ext.load(\"" .. source.dir .. "\")"
   return table.concat({
     "**This extension is not loaded.** For this session:",
     "",
