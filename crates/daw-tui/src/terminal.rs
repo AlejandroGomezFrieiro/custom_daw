@@ -166,6 +166,7 @@ impl Terminal {
             pixel_mouse: self.probe.pixel_mouse,
             fg: self.probe.fg,
             bg: self.probe.bg,
+            under: self.graphics.is_some() && self.probe.under(),
         }
     }
 

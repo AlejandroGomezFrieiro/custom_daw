@@ -22,6 +22,11 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
+  column's lowest to highest sample and nothing of its loudness: there is no
+  darker inner band for the RMS. The window draws a clip's peaks from the
+  same data (`daw.frontend.peaks`: the lowest, the highest and the loudness
+  of each point) as it did before.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the
@@ -144,7 +149,12 @@
   placements (not Sixel, not iTerm's, not Unicode placeholders), so not
   through tmux, which does not pass them on; a terminal that puts images
   over images well is known only by its name (kitty, Ghostty, herdr), and
-  any other has the moving parts drawn into the page.
+  any other has the moving parts drawn into the page; one that puts text
+  over images under it (a strip `under` the text) also only by its name
+  (kitty, Ghostty, herdr, WezTerm), so Konsole keeps cells there. Only the
+  score and the curve editor's plot are pictures: the utau editor's pitch
+  and curves, the arrange view's automation lanes and audio waveforms are
+  still cells in the terminal.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).

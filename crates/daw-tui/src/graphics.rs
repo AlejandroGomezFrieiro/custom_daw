@@ -1,6 +1,13 @@
-//! Pixels in the terminal: the surfaces views show their drawings in
-//! (`buf:surface`), made into pixels here, in the frontend, at this
-//! terminal's cell size, and shown as kitty graphics placements.
+//! Pixels in the terminal: the strips views show drawings in (`buf:strip`,
+//! `buf:surface`), made into pixels here, in the frontend, at this
+//! terminal's cell size, and shown as kitty graphics placements. Each is
+//! kept by its key, so two strips of a view, or a view in two windows,
+//! are kept apart.
+//!
+//! A strip over the text (z 0) has blank cells under it. A strip under
+//! the text (z -2, its overlay -1: below text but above the cells'
+//! backgrounds, which the kitty protocol keeps for a z under
+//! -1073741824) leaves the view's cells drawn over its pixels.
 //!
 //! A surface is cut into pieces (whole cells, at the barlines its drawing
 //! marks), each a terminal image kept by the hash of its pixels, so that an
@@ -38,7 +45,13 @@ pub struct Graphics {
     /// The terminal puts images above text well: the overlay is an image
     /// of its own (a sprite) rather than baked into the page.
     pub layered: bool,
+    /// By key.
     surfaces: HashMap<String, Shown>,
+}
+
+/// Where a strip's page and overlay are placed: above the text, or under it.
+fn depth(under: bool) -> (i32, i32) {
+    if under { (-2, -1) } else { (0, 1) }
 }
 
 impl Graphics {
@@ -65,7 +78,7 @@ impl Graphics {
         for surface in &grid.surfaces {
             self.surface(out, surface, &written);
         }
-        self.surfaces.retain(|name, _| grid.surfaces.iter().any(|s| &s.name == name));
+        self.surfaces.retain(|key, _| grid.surfaces.iter().any(|s| &s.key == key));
         self.images.end(out);
     }
 
@@ -75,7 +88,8 @@ impl Graphics {
         if cw == 0 || ch == 0 || cols == 0 || rows == 0 {
             return;
         }
-        let shown = self.surfaces.entry(surface.name.clone()).or_insert_with(|| Shown {
+        let (page_z, overlay_z) = depth(surface.under);
+        let shown = self.surfaces.entry(surface.key.clone()).or_insert_with(|| Shown {
             ops: Arc::default(),
             drawing: Drawing::default(),
             pieces: HashMap::new(),
@@ -132,9 +146,9 @@ impl Graphics {
                     ],
                     at: (at.0 as u16, at.1 as u16),
                     offset: (0, 0),
-                    z: 0,
+                    z: page_z,
                 };
-                self.images.place(out, &placement(&surface.name, part), place, again);
+                self.images.place(out, &placement(&surface.key, part), place, again);
             }
         }
         if sprite && let Some(area) = shown.drawing.overlay_box() {
@@ -153,23 +167,23 @@ impl Graphics {
                     src: [0, 0, w, h],
                     at: ((surface.rect.x as u16) + x / cw, (surface.rect.y as u16) + y / ch),
                     offset: (x % cw, y % ch),
-                    z: 1,
+                    z: overlay_z,
                 };
-                self.images.place(out, &format!("{}/overlay", surface.name), place, false);
+                self.images.place(out, &format!("{}/overlay", surface.key), place, false);
             }
         }
     }
 }
 
 /// The name a part of a surface is placed under.
-fn placement(surface: &str, part: Cells) -> String {
-    format!("{surface}/{},{},{},{}", part.col, part.row, part.cols, part.rows)
+fn placement(key: &str, part: Cells) -> String {
+    format!("{key}/{},{},{},{}", part.col, part.row, part.cols, part.rows)
 }
 
-/// Whether the cell at a screen position shows a surface's pixels: the
-/// terminal's cursor is not shown there.
+/// Whether the cell at a screen position shows a surface's pixels over
+/// its text: the terminal's cursor is not shown there.
 pub fn under_pixels(grid: &Grid, x: u16, y: u16) -> bool {
-    grid.surfaces.iter().any(|s| {
+    grid.surfaces.iter().filter(|s| !s.under).any(|s| {
         let (col, row) = (x as i32 - s.rect.x, y as i32 - s.rect.y);
         col >= 0 && row >= 0 && col < s.rect.w && row < s.rect.h && !s.is_covered(col as u16, row as u16)
     })
@@ -183,7 +197,7 @@ mod tests {
 
     fn grid_with(ops: Value) -> Grid {
         let mut grid = Grid::new(20, 6);
-        let index = grid.surface("notation", Rect { x: 2, y: 1, w: 8, h: 4 }, (10, 20)).unwrap();
+        let index = grid.surface("notation#1", Rect { x: 2, y: 1, w: 8, h: 4 }, (10, 20), false).unwrap();
         grid.surfaces[index].ops = Arc::new(ops);
         grid
     }
@@ -298,6 +312,77 @@ mod tests {
             text(&out),
             "\x1b_Ga=d,d=i,i=2,p=2,q=2\x1b\\\x1b[2;7H\x1b_Ga=p,i=2,p=2,x=0,y=0,w=40,h=80,z=0,C=1,q=2\x1b\\"
         );
+    }
+
+    #[test]
+    fn two_strips_of_one_view_are_kept_apart_by_their_keys() {
+        let mut graphics = Graphics::new(Transfer::Zlib, false);
+        let mut grid = Grid::new(20, 6);
+        let page = json!([["r", 0, 0, 30, 30, "#ffffff", "", 1, 0]]);
+        let other = json!([["r", 0, 0, 30, 30, "#00ff00", "", 1, 0]]);
+        for (key, x, ops) in [("lanes:1/a", 0, &page), ("lanes:1/b", 10, &other)] {
+            let index = grid.surface(key, Rect { x, y: 0, w: 4, h: 2 }, (10, 20), false).unwrap();
+            grid.surfaces[index].ops = Arc::new(ops.clone());
+        }
+        let mut out = Vec::new();
+        graphics.frame(&mut out, &grid, |_, _| false);
+        let sent = text(&out);
+        assert_eq!(sent.matches("a=t,").count(), 2, "{sent:?}");
+        assert!(sent.contains("\x1b[1;1H\x1b_Ga=p,i=1,"), "{sent:?}");
+        assert!(sent.contains("\x1b[1;11H\x1b_Ga=p,i=2,"), "{sent:?}");
+        // One of them changes: only it is sent again.
+        out.clear();
+        let mut grid2 = grid.clone();
+        grid2.surfaces[1].ops = Arc::new(json!([["r", 0, 0, 30, 30, "#0000ff", "", 1, 0]]));
+        graphics.frame(&mut out, &grid2, |_, _| false);
+        let sent = text(&out);
+        assert_eq!(sent.matches("a=t,").count(), 1, "{sent:?}");
+        assert!(sent.contains("\x1b[1;11H"), "{sent:?}");
+        assert!(!sent.contains("\x1b[1;1H"), "the other strip untouched: {sent:?}");
+    }
+
+    #[test]
+    fn one_view_in_two_windows_is_placed_in_both_from_one_image() {
+        let mut graphics = Graphics::new(Transfer::Zlib, false);
+        let mut grid = Grid::new(20, 6);
+        for (key, x) in [("notation#1", 0), ("notation#2", 10)] {
+            let index = grid.surface(key, Rect { x, y: 1, w: 8, h: 4 }, (10, 20), false).unwrap();
+            grid.surfaces[index].ops = Arc::new(page());
+        }
+        let mut out = Vec::new();
+        graphics.frame(&mut out, &grid, |_, _| false);
+        let sent = text(&out);
+        // The same pixels: sent once, placed in each window.
+        assert_eq!(sent.matches("a=t,").count(), 2, "{sent:?}");
+        assert_eq!(placements(&sent).len(), 4, "{sent:?}");
+        assert!(sent.contains("\x1b[2;1H\x1b_Ga=p,i=1,"), "{sent:?}");
+        assert!(sent.contains("\x1b[2;11H\x1b_Ga=p,i=1,"), "{sent:?}");
+        // Again: nothing, the two windows do not undo each other.
+        out.clear();
+        graphics.frame(&mut out, &grid, |_, _| false);
+        assert!(out.is_empty(), "{:?}", text(&out));
+    }
+
+    #[test]
+    fn a_strip_under_the_text_is_placed_below_it_and_keeps_the_cursor() {
+        let mut graphics = Graphics::new(Transfer::Zlib, true);
+        let mut grid = Grid::new(20, 6);
+        let clip = grid.rect();
+        grid.fill(clip, clip, Some('.'), Style::default());
+        let index = grid.surface("curve:3", Rect { x: 2, y: 1, w: 8, h: 4 }, (10, 20), true).unwrap();
+        grid.surfaces[index].ops = Arc::new(page());
+        grid.text(clip, 4, 2, "+", Style::default());
+        grid.seal_surfaces();
+        assert_eq!(grid.cells[2 * 20 + 3].ch, '.', "its cells are not blanked");
+        assert_eq!(grid.cells[2 * 20 + 4].ch, '+', "and the view's own are kept");
+        assert!(grid.surfaces[0].covered.iter().all(|c| !c), "nor are they covers");
+        let mut out = Vec::new();
+        graphics.frame(&mut out, &grid, |_, _| false);
+        let sent = text(&out);
+        assert!(sent.contains("\x1b[2;3H\x1b_Ga=p,i=1,p=1,x=0,y=0,w=40,h=80,z=-2,C=1,q=2"), "{sent:?}");
+        assert!(sent.contains(",z=-1,C=1"), "the overlay under the text too: {sent:?}");
+        assert!(!sent.contains("z=0") && !sent.contains("z=1,"), "{sent:?}");
+        assert!(!under_pixels(&grid, 4, 2), "the terminal's cursor shows over it");
     }
 
     #[test]

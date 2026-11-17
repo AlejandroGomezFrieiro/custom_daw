@@ -779,7 +779,7 @@ function view:render(buf, ctx)
   end
 
   -- The chosen curve, under the notes: its name and value at the cursor on
-  -- the left, braille dots from its lowest to its highest value.
+  -- the left, a line (`daw.draw.curve`) from its lowest to its highest value.
   if curve_rows > 0 then
     local info = self:curve_info() or self:curves()[1]
     local cy = 2 + rows

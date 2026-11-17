@@ -4,6 +4,7 @@
 --   buf:fill(x, y, w, h, char, style)  restyle an area; `char` overwrites it too
 --   buf:sub(x, y, w, h)                a buffer for part of this one
 --   buf:surface(x, y, w, h, name)      keep an area for a view's pixels
+--   buf:strip(x, y, w, h, opts)        keep an area for pixels a function draws
 --   buf.width, buf.height
 --
 -- Coordinates count cells from 0 at the buffer's top-left corner, and
@@ -42,6 +43,25 @@ end
 ---   if buf:surface(0, 1, buf.width, buf.height - 1) then return end
 function Buf:surface(x, y, w, h, name)
   return daw.ui.surface(self, x, y, w, h, name)
+end
+
+--- Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal
+--- shows images: `g` a painter of `daw.canvas`, `px` `{ w, h, cell = { w,
+--- h }, fg, bg }`, the strip's size and the terminal's cell in pixels and
+--- its colours. Called once the screen is drawn. `opts.key` names the
+--- strip (images are kept by it: put the window's id in it for a view
+--- that can be in two windows; the view and its window by default).
+--- With `opts.under`, the cells the view draws there stay, above the
+--- picture (its cursor, labels, the playhead); else they are left blank.
+--- False where there are no pixels (`daw.opt.graphics` off, a terminal
+--- without images, tmux, or one that cannot put text over an image under
+--- it), for the view to draw cells there instead:
+---   local pictured = plot:strip(0, 0, plot.width, plot.height, {
+---     key = "curve:" .. win.id, under = true,
+---     draw = function(g, px) daw.plot.curve(g, px, { ... }) end,
+---   })
+function Buf:strip(x, y, w, h, opts)
+  return daw.ui.strip(self, x, y, w, h, opts)
 end
 
 function Buf:sub(x, y, w, h)

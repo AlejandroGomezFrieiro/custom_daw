@@ -142,6 +142,16 @@ leaves insert mode. See [harmony.md](harmony.md).
 | `Ctrl-w <` `Ctrl-w >`, `Ctrl-w _` | narrower or wider window (the device panel's `devices_width`; with the arrange view alone, its track headers); give the window the whole tab, and again to put the others back |
 | `ZZ` `ZQ` | save and quit; quit |
 
+**Audio waveforms.** An audio clip draws its sound under its name, one cell
+column for each column of the timeline, from the lowest to the highest
+sample of that stretch, around the middle of the rows (so a clip three rows
+tall has about twenty levels each way) with eighth blocks; a block that
+grows from the top is drawn in reverse video. The scale is linear, so that
+a kick stands over a hat: `daw.opt.wave_scale = "db"` shows quiet sound too,
+at the cost of the hits. Columns that reach full scale after the clip's gain
+are red. `zi` and `zo` draw it again from the peaks the kernel keeps, never
+from the file. It is cells everywhere, with or without pictures.
+
 **Automation lanes as rows.** `,aa` shows a track's automation lanes as
 rows under it, two lines each, and hides them again (`za`, `zM` and `zR`
 fold groups, not lanes); `,al` chooses a lane to make or show, from volume,
@@ -149,7 +159,7 @@ pan and every parameter of the track's devices. A lane's header names what it
 moves, its value at the cursor, and whether it is read or bypassed; its curve
 and points (`◆`) are drawn along the timeline instead of over the clips. `j`
 and `k` step onto lane rows as onto tracks. With the lanes closed, the
-track the cursor is on draws its volume curve in braille in the empty stretches
+track the cursor is on draws its volume curve (sextants; `daw.opt.curve_glyphs`) in the empty stretches
 of its row, never over clips; the other tracks show an `A` in their header
 and draw nothing, so that the notes stay readable. On a lane row `h` `l` and the
 other motions move in time, `w` `b` go to the next and previous point, `A`
@@ -181,8 +191,8 @@ The curve is a buffer named by its address, so `:vs daw://lane/3`, `:e
 daw://tempo` or `:sp daw://clip/7/control/cc/74` show one, and `:setlocal
 timebind` scrolls it with the arrange view. A window showing a lane that
 the project no longer has (another project was opened) closes, or, when it
-is the last, is left empty. It draws the curve in braille
-dots over the bars and beats, the values in their unit along the left, each
+is the last, is left empty. It draws the curve in
+sextants (`daw.opt.curve_glyphs`) over the bars and beats, the values in their unit along the left, each
 point as `◆` (`■` where the stretch after it holds, `●` where it eases),
 and along the bottom the point under the cursor or the curve's value there.
 
@@ -784,7 +794,7 @@ a line that starts `terminal:`.
 
 The picture is made in the program at the terminal's own cell size and
 cut into pieces at its barlines, so that an edit sends again only the
-bars it touched. The cells under it are left blank. A menu or a floating
+bars it touched. A menu or a floating
 view over part of it hides the pieces under it. What moves over the page
 (the cursor, the note about to be entered, the playhead) is a picture of
 its own above the page where the terminal is known to put images over
@@ -793,10 +803,30 @@ any other terminal, WezTerm among them, it is drawn into the pieces it
 crosses. Over a picture the pointer goes to the view in pixels where the
 terminal reports them, else at the middle of the cell.
 
-Where the terminal shows no images (tmux, which does not pass them on, a
-terminal without the protocol, `daw attach` from one) the view draws in
-cells as before. `:set graphics!` (`daw.opt.graphics = false`) keeps
-cells everywhere; the same again takes the pictures back.
+A picture is a **strip**: a rectangle of cells a view keeps for pixels as
+it draws (`buf:strip`, see [Extensions](extensions.md)), under a key of its
+own, so that a view can have several, and the same view in two windows
+(`:vs`) has one in each, kept apart. The score is one strip over its
+window; the curve editor's plot (`gC`) is another. A strip is either over
+the text, with its cells left blank (the score), or **under** it: the
+view's cells are drawn as usual above the picture, so that the curve
+editor keeps its points, its cursor, the selection and the playhead as
+cells while the grid, the line and the area under it are pixels, a sample
+for each pixel across, with nothing of the curve drawn twice. A strip
+under the text is placed at a z of -2 (its moving parts at -1): in kitty,
+Ghostty (and herdr) and WezTerm the text shows above it and the picture
+above the cells' coloured backgrounds, which show through wherever it
+draws nothing. Konsole puts a coloured background above such a picture,
+which would hide it, so there, and in any terminal not known by its name,
+a strip under the text is not made and the view draws cells.
+
+`daw attach` from a terminal that shows images shows them too: it tells
+the instance what its terminal can do, and is sent each strip's drawing
+(only when it changed), which it makes into pixels itself. Where the
+terminal shows no images (tmux, which does not pass them on, a terminal
+without the protocol, `daw attach` from one) the view draws in cells as
+before. `:set graphics!` (`daw.opt.graphics = false`) keeps cells
+everywhere; the same again takes the pictures back.
 
 ## Help
 
