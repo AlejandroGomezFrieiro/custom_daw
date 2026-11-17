@@ -31,6 +31,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/musicops` | musical operators: humanize, strum, arpeggiate, scales |
 | `extensions/pattern` | clips written as patterns of text, in the manner of TidalCycles |
 | `extensions/notation` | a MIDI clip as staff notation, read and edited in the terminal and in a window |
+| `extensions/articulations` | each note's articulation as its MIDI 2.0 attribute, named per instrument by `.art.toml` maps, sent as keyswitches to MIDI 1.0 instruments; maps made from SFZ, Decent Sampler, folders and Reaticulate banks |
 | `extensions/drums` | drum tracks in one step, and a grid of the kit's pieces by name, in the terminal and a window |
 | `extensions/templates` | a track, a group of tracks or a chain of devices saved under a name, to make again in any project |
 | `extensions/vinput` | virtual inputs: a guitar heard as MIDI through gdi2m, as a port any track takes, set up in the terminal and a window |
