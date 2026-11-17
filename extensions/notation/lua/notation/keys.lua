@@ -1223,7 +1223,8 @@ end
 
 if paw.ui.keybar then
   paw.ui.keybar.set("notation", "n", {
-    { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" },
+    -- `+` `-` as in every view (docs/course/keys.md); `Ctrl-a` `Ctrl-x` are the same with a count.
+    { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "+", "sharp" }, { "-", "flat" },
     { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
   })
   paw.ui.keybar.set("notation", "i", {
@@ -1232,7 +1233,7 @@ if paw.ui.keybar then
     { "'", "8va" }, { ",", "8vb" }, { "<BS>", "back" },
   })
   paw.ui.keybar.set("notation", "x", {
-    { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" }, { "}", "8va" }, { "{", "8vb" },
+    { "x", "delete" }, { "+", "sharp" }, { "-", "flat" }, { "}", "8va" }, { "{", "8vb" },
     { "g>", "accent" }, { "g(", "slur" }, { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "<Esc>", "done" },
   })
 end
