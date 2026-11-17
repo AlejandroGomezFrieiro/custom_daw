@@ -132,3 +132,57 @@ test("notation: in insert mode the title keeps the key and metre beside the INS 
   eq(title:find("C major  4/4", 1, true) ~= nil, true, "the key and metre whole: " .. tostring(title))
   eq(title:find("quarter", 1, true) == title:find("INS quarter", 1, true) + 4, true, "the value once, in the badge: " .. title)
 end)
+
+test("notation: in the cell view a low second voice's stems stop at their system, clear of the next", function()
+  -- Whole notes over quarters: the only stems are the low voice's.
+  local notes = {}
+  for i = 0, 15 do
+    if i % 4 == 0 then notes[#notes + 1] = N(72, i, 4) end
+    local low = N(55 - (i % 3), i, 1)
+    low.meta = { notation = { voice = 2 } }
+    notes[#notes + 1] = low
+  end
+  song(notes, 16)
+  daw.cmd("notation.clef", { "treble" })
+  local rows = api.ui_snapshot(80, 100)
+  local numbers
+  for i, row in ipairs(rows) do
+    -- The second system's bar numbers: a row that starts with a number past 1.
+    local first = row:match("^%s+(%d+)%s")
+    if first and tonumber(first) > 1 and not numbers then numbers = i end
+  end
+  eq(numbers ~= nil, true, "two systems:\n" .. table.concat(rows, "\n"))
+  eq(rows[numbers]:find("│", 1, true), nil, "nothing of the system above on its bar numbers:\n" .. table.concat(rows, "\n", math.max(1, numbers - 12), numbers))
+end)
+
+test("notation: a dynamic written inside a hairpin ends its ramp there, as it is drawn", function()
+  local view, clip = song(scale())
+  view:set(nil, 0)
+  keys("v6l<localleader>dp<lt>f<CR>")
+  local function velocities()
+    local out = {}
+    for i, n in ipairs(clip:notes()) do out[i] = n.velocity end
+    return out
+  end
+  local v = velocities()
+  eq(v[1] < v[2] and v[2] < v[3] and v[3] < v[4], true, "a ramp from p: " .. table.concat(v, " "))
+  view:set(nil, 3)
+  keys("<localleader>dmf<CR>")
+  v = velocities()
+  eq(v[4], 80, "the note at the mf plays mf: " .. table.concat(v, " "))
+  eq(v[5], 80, "and so does the next, the hairpin over: " .. table.concat(v, " "))
+  eq(v[2] < v[3] and v[3] < 80, true, "the ramp before rises to mf: " .. table.concat(v, " "))
+end)
+
+test("notation: :notation.set alone lists every setting on a page, saying which the clip changed", function()
+  song(scale())
+  daw.cmd("notation.set", { "swing", "off" })
+  keys(":notation.set<CR>")
+  local text = screen(160, 50)
+  keys("q")
+  for _, k in ipairs(require("notation.score").ORDER) do
+    eq(text:find("  " .. k .. " ", 1, true) ~= nil, true, k .. " is listed:\n" .. text)
+  end
+  eq(text:find("swing       off       (default auto)", 1, true) ~= nil, true, "a setting changed says its default:\n" .. text)
+  eq(text:find("chord       35       ", 1, true) ~= nil and text:find("(default 35)", 1, true) == nil, true, "one left alone, its value")
+end)

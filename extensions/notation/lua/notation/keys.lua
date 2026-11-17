@@ -90,9 +90,16 @@ command("notation.set", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1])
   local set = view.settings_of(clip:get())
   if not name then
-    local words = {}
-    for _, k in ipairs(score.ORDER) do words[#words + 1] = k .. "=" .. tostring(set[k]) end
-    return daw.notify(table.concat(words, " "))
+    -- A page, as `K` shows one: a line a setting, and whether the clip changed it.
+    local own = view.own(clip:get()).settings or {}
+    local lines = { { text = "Transcription of " .. clip:get().name, style = "Title" } }
+    for _, k in ipairs(score.ORDER) do
+      local changed = own[k] ~= nil and own[k] ~= score.DEFAULTS[k]
+      lines[#lines + 1] = string.format("  %-11s %-8s%s", k, tostring(set[k]), changed and ("  (default " .. tostring(score.DEFAULTS[k]) .. ")") or "")
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "  :notation.set swing off sets one, :notation.set swing default forgets it, :notation.reset all"
+    return daw.ui.page("Notation settings", lines)
   end
   if score.DEFAULTS[name] == nil then return daw.notify("no setting " .. name .. "; they are: " .. table.concat(score.ORDER, ", "), "warn") end
   if ctx.args[2] == nil then return daw.notify(name .. " = " .. tostring(set[name])) end
