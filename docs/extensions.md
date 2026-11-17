@@ -117,6 +117,60 @@ notice inside compiled loops (`LUAJIT_ENABLE_CHECKHOOK`, asked for in
 the runtime's own kept in LuaJIT's interpreter. `:lua` typed by hand
 gets a minute, and scripts run with `-l` have no limit.
 
+## Pictures in the terminal
+
+A view that draws cells can show part of itself in pixels where the
+terminal shows images (see "Pictures" in [The terminal
+interface](terminal.md)): in its `render` it keeps a **strip** of cells
+and says how to draw it, and draws its cells as it would anyway.
+
+```lua
+render = function(self, buf, ctx)
+  local plot = buf:sub(10, 2, buf.width - 10, buf.height - 3)
+  plot:fill(0, 0, plot.width, plot.height, " ", "Lane")
+  local pictured = plot:strip(0, 0, plot.width, plot.height, {
+    key = "mylane:" .. ctx.win.id,       -- what the strip is: one for each window
+    under = true,                         -- the cells drawn here stay, above the picture
+    draw = function(g, px)                -- after the screen is drawn; px: w, h, cell = { w, h }, fg, bg
+      daw.plot.curve(g, px, { points = points, from = left, pixels_per_beat = zoom * px.cell.w,
+        lo = 0, hi = 1, color = daw.draw.track_colour(track) })
+    end,
+  })
+  if not pictured then draw_the_curve_in_cells(plot) end
+  draw_the_cursor_and_points(plot)       -- cells, over the picture or alone
+end
+```
+
+`buf:strip(x, y, w, h, opts)` returns false where there are no pixels
+(`daw.opt.graphics` off, a terminal that shows no images, tmux, `daw
+attach` from such a terminal, or for `under` a terminal not known to draw
+text over an image under it, as Konsole does not), and the view draws its
+cells there instead. `draw(g, px)` gets a painter of `daw.canvas` (the
+same `g:rect`, `g:poly`, `g:text`, `g:cut`, `g:layer` as `paint`) for the
+strip's pixels. A strip over the text (no `under`) has its cells left
+blank. Strips are kept by `key`, which names the images the terminal
+holds: the view and its window when none is given, and a view with more
+than one strip names each. The pixels are made in the frontend, cut into
+pieces at the drawing's `g:cut` marks and kept by the hash of their
+pixels, so a strip that draws the same again sends nothing, and an edit
+sends again only the pieces it touched. `buf:surface(x, y, w, h)` is the
+same, over the text, for a view's whole `paint`.
+
+`daw.plot` draws what views show over time in strips, so that they look
+alike: `daw.plot.curve(g, px, opts)` draws a curve's bar and beat lines
+(from the tempo map, `daw.draw.bar_lines`), cut at each bar on a cell's
+edge, the area under it and the line, sampled once a pixel with
+`daw.curves.value_at`, and a small mark at each point. `opts`: `points`
+(as `daw.curves` gives them), `from` (the beat at the left),
+`pixels_per_beat`, `frac(value)` from 0 to 1 or `lo` and `hi`, `flat`,
+`color`, `fill` (how opaque the area is), `width`, `top`, `bottom`,
+`grid`, `beats`, `guides`, `markers`, `background`. It draws no
+background unless given one, so that under the text the cells' own
+show. It returns `x(beat)` and `y(value)` for the rest of the drawing.
+`daw.plot.lines(w, from, pixels_per_beat, cell_w)` gives the bar and beat
+lines alone. The curve editor's plot is drawn this way
+(`daw.curves.editor.picture`).
+
 ## Everything an extension can own
 
 extensions/utau is the example of how far an extension goes. Singing is not

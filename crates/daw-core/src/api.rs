@@ -1209,14 +1209,21 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.dirty.set(true);
             Ok(())
         }
-        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for a
-        // view's pixels (`buf:surface`): returns the surface's number for
-        // `grid_surface_ops`, or nil when nothing of it is on the screen.
-        fn grid_surface(_, sh, (name, x, y, w, h, cx, cy, cw, ch) => (String, f64, f64, f64, f64, f64, f64, f64, f64)) {
+        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for
+        // pixels under the name `key` (`buf:strip`), over the text or
+        // `under` it: returns the surface's number for `grid_surface_ops`,
+        // or nil when nothing of it is on the screen.
+        fn grid_surface(_, sh, (key, x, y, w, h, cx, cy, cw, ch, under) => (String, f64, f64, f64, f64, f64, f64, f64, f64, Option<bool>)) {
             let cell_px = sh.caps.borrow().get(&sh.seat.get()).map_or((0, 0), |c| c.cell);
             let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
             let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) }.intersect(&clip);
-            Ok(sh.grid.borrow_mut().surface(&name, area, cell_px).map(|i| i + 1))
+            Ok(sh.grid.borrow_mut().surface(&key, area, cell_px, under.unwrap_or(false)).map(|i| i + 1))
+        }
+        // The view being drawn is done with the surfaces it kept: what is
+        // drawn over them from now on covers them.
+        fn grid_surfaces_seal(_, sh, () => ()) {
+            sh.grid.borrow_mut().seal_surfaces();
+            Ok(())
         }
         // The drawing a surface shows: the operations of `daw.canvas.paint`.
         fn grid_surface_ops(lua, sh, (index, ops) => (usize, LuaValue)) {

@@ -420,3 +420,68 @@ test("a curve opens in a window of its own and draws there", function()
   end
   eq(table.concat(lines, "\n"):find("2 points", 1, true) ~= nil, true, "drawn in cells")
 end)
+
+-- Pictures ------------------------------------------------------------------------
+
+test("where the terminal shows pictures the plot is a strip under the cells, one for each window", function()
+  start()
+  local _, lane = lane_with({ { 0, -12 }, { 4, 0 } })
+  local function plot_text(lines, s)
+    local out = {}
+    for row = s.y, s.y + s.h - 1 do
+      local chars = {}
+      for ch in lines[row + 1]:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+      out[#out + 1] = table.concat(chars, "", s.x + 1, math.min(#chars, s.x + s.w))
+    end
+    return table.concat(out, "\n")
+  end
+  local cells = api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "no pictures: cells")
+
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
+  T.after(function() api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } }) end)
+  local lines = api.ui_snapshot(W, H)
+  local s = daw.ui.rects.surfaces and daw.ui.rects.surfaces[1]
+  local win = editor.current()
+  eq(s and s.key, "curve:" .. win.id, "a strip for the window")
+  eq(s.under, true, "under the cells")
+  eq(s.paint, nil, "drawn by the editor, not the view's paint")
+  local geo = win.state.geo
+  eq(s.w, geo.w, "over the plot")
+  eq(s.h, geo.rows)
+  local before, after = plot_text(cells, s), plot_text(lines, s)
+  eq(before ~= after, true, "the curve is not drawn in cells as well")
+  eq(after:find("●", 1, true) ~= nil or after:find(daw.draw.g.point, 1, true) ~= nil, true, "the points stay cells")
+  eq(table.concat(lines, "\n"):find("2 points", 1, true) ~= nil, true, "and so does the rest")
+
+  -- What the strip draws: the curve and its fill, cut at the bars.
+  local ops = daw.canvas.draw(function(g, px)
+    local t = editor.target(win)
+    editor.picture(g, px, t, t.points(), { left = 0, zoom = 4 })
+  end, { w = 400, h = 200, cell = { w = 10, h = 20 } })
+  local kinds = {}
+  for _, op in ipairs(ops) do kinds[op[1]] = (kinds[op[1]] or 0) + 1 end
+  eq((kinds.cut or 0) >= 1, true, "cut at a bar: " .. daw.inspect(ops[1]))
+  eq(kinds.p, 2 * ((kinds.cut or 0) + 1), "a line and a fill between cuts")
+  for _, op in ipairs(ops) do
+    if op[1] == "cut" then eq(op[2] % 10, 0, "on a cell's edge") end
+  end
+
+  -- The same curve in two windows: two strips, each its own.
+  daw.commands.exec("vs")
+  api.ui_snapshot(W, H)
+  local keys = {}
+  for _, strip in ipairs(daw.ui.rects.surfaces or {}) do keys[#keys + 1] = strip.key end
+  eq(#keys, 2, "a strip in each window")
+  eq(keys[1] ~= keys[2], true, "kept apart")
+
+  -- A terminal that cannot put text over a picture under it, or pictures off: cells.
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = false })
+  api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "no strip under the text there")
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
+  daw.opt.graphics = false
+  T.after(function() daw.opt.graphics = true end)
+  api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "daw.opt.graphics off keeps cells")
+end)
