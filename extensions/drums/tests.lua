@@ -293,6 +293,8 @@ test("drums: Enter opens a drum track's clip in the grid, other clips in the pia
   fresh()
   daw.keymap.feed("<Esc><Esc>")
   daw.ui.focus("arrange")
+  -- Enter opens the roll and the grid in panes that Esc leaves on screen.
+  T.after(function() daw.ui.hide("pianoroll") daw.ui.hide("drums") end)
   local keys_track = daw.add_track({ name = "Keys" })
   keys_track:add_device("synth")
   keys_track:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
