@@ -4,7 +4,7 @@
 -- and the project's media folder. Only a scratch folder is touched.
 -- Loaded by tests/suite.lua with its helpers.
 local T = ...
-local test, eq, fresh = T.test, T.eq, T.fresh
+local test, eq, fresh, after = T.test, T.eq, T.fresh, T.after
 local api = daw.api
 local L = daw.layout
 local tb = daw.textbuf
@@ -15,8 +15,20 @@ local root = T.scratch .. "/files"
 
 local function sh(cmd) os.execute(cmd) end
 
+--- The windows and buffers a test opened go when it ends.
+local function tidy()
+  daw.audition.stop()
+  daw.opt.files_hear = false
+  while daw.ui.float do daw.ui.close() end
+  L.restore(initial)
+  for _, buf in ipairs(L.buffers_list()) do
+    if buf.type == "textbuf" then L.buf_delete(buf) end
+  end
+end
+
 local function start()
   fresh()
+  after(tidy)
   api.engine_restart({ backend = "null" })
   daw.keymap.feed("<Esc><Esc>")
   while daw.ui.float do daw.ui.close() end

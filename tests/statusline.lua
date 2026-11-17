@@ -8,9 +8,20 @@ local api = daw.api
 local sl = daw.statusline
 
 local W, H = 140, 40
+local initial = daw.layout.capture()
+
+--- The windows a test opened go when it ends.
+local function tidy()
+  while daw.ui.float do daw.ui.close() end
+  daw.layout.restore(initial)
+  for _, buf in ipairs(daw.layout.buffers_list()) do
+    if buf.type == "textbuf" then daw.layout.buf_delete(buf) end
+  end
+end
 
 local function start()
   fresh()
+  after(tidy)
   daw.keymap.feed("<Esc><Esc>")
   while daw.ui.float do daw.ui.close() end
   daw.ui.focus("arrange")
