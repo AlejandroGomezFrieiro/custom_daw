@@ -268,7 +268,9 @@ function paint:pointer(e)
 end
 
 function paint:on_key(key)
-  if key == "q" or key == "<Esc>" then return canvas.close(NAME) end
+  -- A window of its own: Escape stays, as in every view, and `q` closes it.
+  if key == "<Esc>" then return end
+  if key == "q" then return canvas.close(NAME) end
   list:on_key(key)
 end
 

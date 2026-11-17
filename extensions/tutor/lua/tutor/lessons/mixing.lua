@@ -16,15 +16,17 @@ fader (or any parameter) over time.
 The mixer shows a strip per track; the same changes can be made from the
 arrange view.]],
   idea = [[
-In the mixer tracks run across, so `h` `l` choose a track, `k` `j` move its
-fader by 1 dB, `>` `<` pan, `M` `s` `r` mute, solo, arm. In the arrange view the
-same are `+` `-`, `)` `(`, `M` `s` `r`. Routing is done by command:
+In the mixer tracks run across, so `h` `l` choose a strip and `j` `k` a row of
+it (its devices, sends, fader, pan, mute, solo, arm). `+` `-` change the row
+under the cursor, by 1 dB on the fader, `]` `[` pan, `M` `s` `r` mute, solo,
+arm. In the arrange view the same are `+` `-`, `]` `[`, `M` `s` `r`. Routing is done by command:
 `:track.output Bus` sends the track into the track called Bus, `:track.output`
 alone back to the master. `A` adds a volume automation point at the cursor,
 `,at` switches the automation off and on, `,ax` clears it.]],
   vim = [[
 The mixer turns the grid sideways: `h` `l` move between tracks because tracks
-are its columns. `<C-w>c` closes it.]],
+are its columns, and `j` `k` only ever move, as everywhere. `6<C-x>` lowers the
+row by six, as `<C-x>` lowers a number in Vim. `<C-w>c` closes it.]],
   setup = function(look)
     daw.project.tempo = 100
     local drums = daw.add_track({ name = "Drums", volume = -6 })
@@ -60,14 +62,14 @@ are its columns. `<C-w>c` closes it.]],
       done = "The mixer has the keyboard. The master is on the right.",
     },
     {
-      say = "Here `h` and `l` choose a track and `j` `k` move its fader down and up by 1 dB. Press `l` to go to Bass, then `j` three times.",
-      keys = { "l", "j", "j", "j" },
+      say = "Here `h` and `l` choose a strip and the cursor starts on its fader; `-` and `+` move the row under the cursor down and up by 1 dB. Press `l` to go to Bass, then `-` three times.",
+      keys = { "l", "-", "-", "-" },
       check = function(_, look) return look.cursor_track() == "Bass" and near(look.track("Bass").volume, -7) end,
-      done = "Bass is at -7 dB, three quieter than it was.",
+      done = "Bass is at -7 dB, three quieter than it was. `3-` or `3<C-x>` does it in one go.",
     },
     {
-      say = "`>` and `<` pan the track right and left. Press `>` three times.",
-      keys = { ">", ">", ">" },
+      say = "`]` and `[` pan the strip right and left, wherever the cursor is on it. Press `]` three times.",
+      keys = { "]", "]", "]", { wait = 1000 } },
       check = function(_, look) return near(look.track("Bass").pan, 0.3) end,
       done = "Bass leans to the right.",
     },
@@ -90,7 +92,7 @@ are its columns. `<C-w>c` closes it.]],
       say = "Press `M` again to unmute Keys, and `<C-w>c` to close the mixer.",
       keys = { "M", "<C-w>c" },
       check = function(ctx, look) return look.became(ctx, "back", not look.track("Keys").mute and not look.visible("mixer")) end,
-      done = "Back in the arrange view, still on Keys. Here `+` `-` are the fader and `(` `)` the pan.",
+      done = "Back in the arrange view, still on Keys. Here too `+` `-` are the fader and `]` `[` the pan.",
     },
     {
       say = "A bus is a track that others play into. Type `:track.add Bus` and `<CR>` to add one.",

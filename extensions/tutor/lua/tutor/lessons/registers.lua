@@ -124,14 +124,14 @@ replaces what was there (`:lua daw.opt.ripple = true` makes it push along).]],
       done = "The status line says `recording @q`.",
     },
     {
-      say = "Type the change to record: `12<C-a>` (up an octave), `w` (on to the next clip), then `q` to stop recording.",
-      keys = { "12<C-a>", "w", "q" },
+      say = "Type the change to record: `vic` (select the clip), `12<C-a>` (its notes up an octave: on a track `<C-a>` is the fader), `w` (on to the next clip), then `q` to stop recording.",
+      keys = { "vic", "12<C-a>", "w", "q" },
       start = function(ctx) ctx.before = daw.keymap.registers.q end,
       check = function(ctx)
         local r = daw.keymap.registers.q
-        return daw.keymap.recording() == nil and r ~= ctx.before and r and r.kind == "keys" and r.keys == "12<C-a>w"
+        return daw.keymap.recording() == nil and r ~= ctx.before and r and r.kind == "keys" and r.keys == "vic12<C-a>w"
       end,
-      done = "The first hook went up an octave while you recorded, and register q holds `12<C-a>w`.",
+      done = "The first hook went up an octave while you recorded, and register q holds `vic12<C-a>w`.",
       hint = "If it went wrong, `u` undoes the change and `qq` records again.",
     },
     {

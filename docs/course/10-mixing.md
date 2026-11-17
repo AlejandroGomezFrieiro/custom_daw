@@ -10,11 +10,11 @@ The mixer shows a strip per track; the same changes can be made from the arrange
 
 ## The idea
 
-In the mixer tracks run across, so `h` `l` choose a track, `k` `j` move its fader by 1 dB, `>` `<` pan, `M` `s` `r` mute, solo, arm. In the arrange view the same are `+` `-`, `)` `(`, `M` `s` `r`. Routing is done by command: `:track.output Bus` sends the track into the track called Bus, `:track.output` alone back to the master. `A` adds a volume automation point at the cursor, `,at` switches the automation off and on, `,ax` clears it.
+In the mixer tracks run across, so `h` `l` choose a strip and `j` `k` a row of it (its devices, sends, fader, pan, mute, solo, arm). `+` `-` change the row under the cursor, by 1 dB on the fader, `]` `[` pan, `M` `s` `r` mute, solo, arm. In the arrange view the same are `+` `-`, `]` `[`, `M` `s` `r`. Routing is done by command: `:track.output Bus` sends the track into the track called Bus, `:track.output` alone back to the master. `A` adds a volume automation point at the cursor, `,at` switches the automation off and on, `,ax` clears it.
 
 ## If you know Vim
 
-The mixer turns the grid sideways: `h` `l` move between tracks because tracks are its columns. `<C-w>c` closes it.
+The mixer turns the grid sideways: `h` `l` move between tracks because tracks are its columns, and `j` `k` only ever move, as everywhere. `6<C-x>` lowers the row by six, as `<C-x>` lowers a number in Vim. `<C-w>c` closes it.
 
 ## Steps
 
@@ -22,16 +22,16 @@ The tutor opens a practice project made for this lesson and checks each step as 
 
 1. Press `,m` to open the mixer along the bottom: a strip per track, with its fader and meter.
    - ✓ The mixer has the keyboard. The master is on the right.
-2. Here `h` and `l` choose a track and `j` `k` move its fader down and up by 1 dB. Press `l` to go to Bass, then `j` three times.
-   - ✓ Bass is at -7 dB, three quieter than it was.
-3. `>` and `<` pan the track right and left. Press `>` three times.
+2. Here `h` and `l` choose a strip and the cursor starts on its fader; `-` and `+` move the row under the cursor down and up by 1 dB. Press `l` to go to Bass, then `-` three times.
+   - ✓ Bass is at -7 dB, three quieter than it was. `3-` or `3<C-x>` does it in one go.
+3. `]` and `[` pan the strip right and left, wherever the cursor is on it. Press `]` three times.
    - ✓ Bass leans to the right.
 4. `s` solos a track: only soloed tracks are heard. Press `<Space>` to play, `s` to hear Bass alone, `s` again to hear everything, and `<Space>` to stop.
    - ✓ Solo is for listening closely; it changes nothing in the mix.
 5. `M` mutes. Press `l` to go to Keys and `M` to mute it.
    - ✓ Keys is muted: its `M` is lit.
 6. Press `M` again to unmute Keys, and `<C-w>c` to close the mixer.
-   - ✓ Back in the arrange view, still on Keys. Here `+` `-` are the fader and `(` `)` the pan.
+   - ✓ Back in the arrange view, still on Keys. Here too `+` `-` are the fader and `]` `[` the pan.
 7. A bus is a track that others play into. Type `:track.add Bus` and `<CR>` to add one.
    - ✓ A track called Bus, below Keys. The cursor is on it.
 8. Route Keys into it: `/Keys` and `<CR>` find the track, then type `:track.output Bus` and `<CR>`.

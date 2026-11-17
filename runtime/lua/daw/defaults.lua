@@ -1278,7 +1278,8 @@ command("device.bypass", function()
 end, { desc = "Bypass the device selected in the device panel" })
 command("device.editor", function()
   -- The device selected in the panel, else the track's first one with a window.
-  local device = daw.ui.focused == "devices" and daw.ui.views.devices:selected() or nil
+  local device = daw.ui.focused == "devices" and daw.ui.views.devices:selected()
+    or daw.ui.focused == "mixer" and daw.mixer_rows.device() or nil
   if not (device and device.editor) then
     device = nil
     local track = need_track()
@@ -1742,9 +1743,14 @@ command("delmarks!", function() remove_marks("", true) end, { desc = "Remove eve
 command.alias("delm", "delmarks")
 command.alias("delm!", "delmarks!")
 command("info", function()
+  -- A view says what is under its own cursor first (`view:describe()`);
+  -- with `only` set, that is all there is to say.
+  local view = daw.ui.views[daw.ui.focused]
+  local first = view and view.describe and view:describe() or nil
+  if first and first.only then return daw.ui.page(first.title or "Under the cursor", first) end
   local track = need_track()
   if not track then return end
-  local t, lines = track:get(), {}
+  local t, lines = track:get(), first or {}
   local clip = cursor.clip()
   if clip then
     local c = clip:get()
@@ -1807,7 +1813,12 @@ map("gs", "transport.start", { mode = nx, desc = "Playhead to the start" })
 map("gp", "transport.to_cursor", { mode = nx, desc = "Playhead to the cursor" })
 map("gL", "transport.loop", { mode = nx, desc = "Toggle looping" })
 map("gm", "transport.metronome", { mode = nx, desc = "Toggle the metronome" })
-map("gC", "countin", { mode = nx, desc = "Count a bar in before recording, or not" })
+-- The metronome's: `gC` opens curves in every view.
+map("gM", "countin", { mode = nx, desc = "Count a bar in before recording, or not" })
+keymap.classic("gC", "countin", { mode = nx, desc = "Count a bar in before recording, or not" })
+-- `K` describes what is under the cursor in every view: `:info` asks the
+-- view first (`view:describe()`).
+map("K", "info", { desc = "Describe what is under the cursor", role = "describe" })
 map("gI", "punch", { desc = "Punch in and out: record only between two points, or not" })
 map("gI", "punch selection", { mode = "x", desc = "Punch in and out over the selection" })
 map("ge", "device.editor", { desc = "Show or hide the plugin's window" })
@@ -1871,16 +1882,11 @@ local function settle(row)
   if #list > 0 then cursor.set_track(list[util.clamp(row, 1, #list)]) end
 end
 
--- Tracks can be driven from the arrange view and the mixer alike.
+-- Tracks can be driven from the arrange view and the mixer alike. The
+-- mixer's motions, values and operators are in daw/mixer_rows.lua: its
+-- strips are a grid of rows.
 for _, name in ipairs({ "arrange", "mixer" }) do
-  local across = name == "mixer"
   local function vmap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = name, desc = desc }, opts)) end
-  vmap(across and "l" or "j", "cursor.down", "Next track", linewise)
-  vmap(across and "h" or "k", "cursor.up", "Previous track", linewise)
-  vmap(across and "<Right>" or "<Down>", "cursor.down", "Next track", linewise)
-  vmap(across and "<Left>" or "<Up>", "cursor.up", "Previous track", linewise)
-  vmap("gg", "cursor.first_track", "First track, or track N", far_lines)
-  vmap("G", "cursor.last_track", "Last track, or track N", far_lines)
   vmap("o", "track.add", "Add a track below")
   vmap("O", "track.add above=true", "Add a track above")
   vmap("grn", "track.rename", "Rename the track")
@@ -1889,29 +1895,31 @@ for _, name in ipairs({ "arrange", "mixer" }) do
   vmap("r", "track.armed", "Arm for recording")
   vmap("I", "track.input", "Choose the input")
   vmap("<A-i>", "track.monitor", "Hear the input without arming")
-  vmap(across and "k" or "+", "track.volume by=1", "Volume up 1 dB")
-  vmap(across and "j" or "-", "track.volume by=-1", "Volume down 1 dB")
-  vmap(across and ">" or ")", "track.pan by=0.1", "Pan right")
-  vmap(across and "<lt>" or "(", "track.pan by=-0.1", "Pan left")
   vmap("<A-j>", "track.move by=1", "Move the track down")
   vmap("<A-k>", "track.move by=-1", "Move the track up")
   vmap("a", "device.add", "Add a device")
 end
-
--- The mixer has no timeline, so its tracks are cut and pasted with plain keys.
-local function mmap(lhs, rhs, desc) map(lhs, rhs, { view = "mixer", desc = desc }) end
-mmap("dd", function(ctx)
-  local row = cursor.index()
-  if not row then return end
-  keymap.setreg(edit.arrange.delete(rows(row, ctx.count)), ctx.register)
-  settle(row)
-end, "Cut the track")
-mmap("yy", function(ctx)
-  local row = cursor.index()
-  if row then keymap.setreg(edit.arrange.yank(rows(row, ctx.count)), ctx.register, true) end
-end, "Yank the track")
-mmap("p", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), false, ctx.count) end, "Paste tracks after this one")
-mmap("P", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), true, ctx.count) end, "Paste tracks before this one")
+local function tmap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "arrange", desc = desc }, opts)) end
+tmap("j", "cursor.down", "Next track", linewise)
+tmap("k", "cursor.up", "Previous track", linewise)
+tmap("<Down>", "cursor.down", "Next track", linewise)
+tmap("<Up>", "cursor.up", "Previous track", linewise)
+tmap("gg", "cursor.first_track", "First track, or track N", far_lines)
+tmap("G", "cursor.last_track", "Last track, or track N", far_lines)
+-- A track's main value is its volume and its second its pan, as in the mixer.
+tmap("+", "track.volume by=1", "Volume up 1 dB", { role = "main+" })
+tmap("-", "track.volume by=-1", "Volume down 1 dB", { role = "main-" })
+tmap("<C-a>", "track.volume by=1", "Volume up, a dB for each of the count", { role = "main+" })
+tmap("<C-x>", "track.volume by=-1", "Volume down, a dB for each of the count", { role = "main-" })
+tmap("]", "track.pan by=0.1", "Pan right", { role = "second+" })
+tmap("[", "track.pan by=-0.1", "Pan left", { role = "second-" })
+keymap.classic(")", "track.pan by=0.1", { view = "arrange", desc = "Pan right" })
+keymap.classic("(", "track.pan by=-0.1", { view = "arrange", desc = "Pan left" })
+keymap.classic("]", false, { view = "arrange" })
+keymap.classic("[", false, { view = "arrange" })
+keymap.classic("<C-a>", "clip.transpose by=1", { view = "arrange", desc = "Transpose the clip up a semitone" })
+keymap.classic("<C-x>", "clip.transpose by=-1", { view = "arrange", desc = "Transpose the clip down a semitone" })
+daw.mixer_rows = require("daw.mixer_rows")
 
 -- The session view: clips in slots, launched while the song plays (`daw.launcher`).
 local launcher = daw.launcher
@@ -1921,24 +1929,35 @@ local function to_row(row)
   launcher.row = math.max(0, row)
   api.ui_redraw()
 end
-smap("l", "cursor.down", "Next track")
-smap("h", "cursor.up", "Previous track")
-smap("<Right>", "cursor.down", "Next track")
-smap("<Left>", "cursor.up", "Previous track")
-smap("j", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
-smap("k", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
-smap("<Down>", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
-smap("<Up>", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
-smap("gg", function(ctx) to_row((ctx.count or 1) - 1) end, "First slot, or slot N")
-smap("G", function(ctx) to_row(ctx.count and ctx.count - 1 or launcher.rows() - 2) end, "Last slot with a clip, or slot N")
+-- Tracks are the columns and slots the rows: `h` `l` go across, `j` `k` down.
+local function smotion(lhs, rhs, desc) map(lhs, rhs, { view = "session", desc = desc, motion = true }) end
+smotion("l", "cursor.down", "Next track")
+smotion("h", "cursor.up", "Previous track")
+smotion("<Right>", "cursor.down", "Next track")
+smotion("<Left>", "cursor.up", "Previous track")
+smotion("j", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smotion("k", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smotion("<Down>", function(ctx) to_row(launcher.row + (ctx.count or 1)) end, "Next slot")
+smotion("<Up>", function(ctx) to_row(launcher.row - (ctx.count or 1)) end, "Previous slot")
+smotion("gg", function(ctx) to_row((ctx.count or 1) - 1) end, "First slot, or slot N")
+smotion("G", function(ctx) to_row(ctx.count and ctx.count - 1 or launcher.rows() - 2) end, "Last slot with a clip, or slot N")
+smotion("0", "cursor.first_track", "The first track")
+smotion("^", "cursor.first_track", "The first track")
+smotion("$", "cursor.last_track", "The last track")
 smap("<CR>", "launch", "Launch the slot (an empty one stops the track)")
 smap("L", "scene", "Launch the scene: the whole row")
-smap("s", "launch.stop", "Stop the track's clip")
-smap("S", "launch.stop all", "Stop every clip")
-smap("b", "launch.back", "Back to the track's timeline")
-smap("B", "launch.back all", "Every track back to its timeline")
+-- `s` solos and `M` mutes, as on a track anywhere; stopping is the session's own.
+smap("s", "track.solo", "Solo")
+smap("M", "track.mute", "Mute the track")
+smap("S", "launch.stop", "Stop the track's clip")
+smap("gS", "launch.stop all", "Stop every clip")
+smap("B", "launch.back", "Back to the track's timeline")
+smap("gB", "launch.back all", "Every track back to its timeline")
 smap("n", "slot.new", "A new MIDI clip in the slot")
-smap("e", "slot.edit", "Open the clip's notes")
+smap("i", "slot.edit", "Open the clip's notes, to enter some")
+for lhs, rhs in pairs({ s = "launch.stop", S = "launch.stop all", b = "launch.back", B = "launch.back all", e = "slot.edit" }) do
+  keymap.classic(lhs, rhs, { view = "session" })
+end
 smap("x", "slot.delete", "Empty the slot")
 smap("dd", "slot.delete", "Empty the slot")
 smap("gp", "slot.copy", "Copy the arrange view's clip into the slot")
@@ -2088,7 +2107,7 @@ end
 aop(">", function(region, ctx) shift(region, region.visual and ctx.count or 1) end, "Move clips later")
 aop("<lt>", function(region, ctx) shift(region, -(region.visual and ctx.count or 1)) end, "Move clips earlier")
 aop("=", edit.arrange.quantize, "Snap clips and their notes to the grid")
-aop("gc", edit.arrange.mute, "Mute or unmute")
+keymap.operator("gc", edit.arrange.mute, { view = "arrange", desc = "Mute or unmute", role = "mute" })
 aop("gl", function(region)
   local c0, c1 = edit.arrange.span(region)
   if c1 <= c0 then return end
@@ -2115,8 +2134,6 @@ amap("L", "clip.move by=1", "Move the clip right")
 amap("H", "clip.move by=-1", "Move the clip left")
 amap("<A-l>", "clip.resize by=1", "Lengthen the clip")
 amap("<A-h>", "clip.resize by=-1", "Shorten the clip")
-amap("<C-a>", "clip.transpose by=1", "Transpose the clip up a semitone")
-amap("<C-x>", "clip.transpose by=-1", "Transpose the clip down a semitone")
 amap("A", "lane.add", "Add a volume automation point at the cursor")
 amap("<leader>at", "lane.toggle", "Turn volume automation off or on")
 amap("<leader>aw", "lane.write", "Write automation by moving things while playing, or stop")
@@ -2131,7 +2148,6 @@ amap("g'", "marker", "Put a marker at the cursor")
 amap('g"', "marker.list", "Go to a marker or region from a list")
 amap("gx", "marker.remove", "Remove the marker or region at the cursor")
 amap("<leader>ax", "lane.clear", "Clear the volume automation")
-amap("K", "info", "Describe what is under the cursor")
 
 -- Arrange: on a selection.
 local function ax(lhs, fn, desc) map(lhs, nil, { view = "arrange", mode = "x", operator = fn, desc = desc }) end
@@ -2169,64 +2185,34 @@ ax("<CR>", function(region)
   local under = daw.cursor.clip()
   daw.roll_clips.open(ids, under and under.id)
 end, "Edit the notes of the selected MIDI clips together")
-ax("<C-a>", function(region, ctx) edit.arrange.transpose(region, ctx.count or 1) end, "Transpose up")
-ax("<C-x>", function(region, ctx) edit.arrange.transpose(region, -(ctx.count or 1)) end, "Transpose down")
+-- The main value of what is selected: whole tracks (`V`) their volume, a
+-- stretch of clips the pitch of their notes; the second the tracks' pan.
+local function main_value(sign) return function(region, ctx)
+  local n = sign * (ctx.count or 1)
+  if region.kind ~= "line" then return edit.arrange.transpose(region, n) end
+  for _, id in ipairs(edit.arrange.tracks(region)) do
+    local track = daw.track(id)
+    track.volume = util.clamp(track.volume + n, -60, 6)
+  end
+end end
+local function pan_value(sign) return function(region, ctx)
+  for _, id in ipairs(edit.arrange.tracks(region)) do
+    local track = daw.track(id)
+    track.pan = util.clamp(util.round(track.pan + 0.1 * sign * (ctx.count or 1), 0.01), -1, 1)
+  end
+end end
+ax("<C-a>", main_value(1), "Tracks louder, or the clips' notes up")
+ax("<C-x>", main_value(-1), "Tracks softer, or the clips' notes down")
+ax("+", main_value(1), "Tracks louder, or the clips' notes up")
+ax("-", main_value(-1), "Tracks softer, or the clips' notes down")
+ax("]", pan_value(1), "Pan the tracks right")
+ax("[", pan_value(-1), "Pan the tracks left")
 ax("L", function(region, ctx) shift(region, ctx.count or 1) end, "Move the clips right")
 ax("H", function(region, ctx) shift(region, -(ctx.count or 1)) end, "Move the clips left")
 
--- Device panel.
-local devices = daw.ui.views.devices
-local function dmap(lhs, rhs, desc) map(lhs, rhs, { view = "devices", desc = desc }) end
-local function row(step) return function(ctx)
-  devices.row = devices.row + step * (ctx.count or 1)
-  api.ui_redraw()
-end end
-dmap("j", row(1), "Next row")
-dmap("k", row(-1), "Previous row")
-dmap("<Down>", row(1), "Next row")
-dmap("<Up>", row(-1), "Previous row")
-dmap("l", function(ctx) devices:adjust(ctx.count or 1) end, "Raise the parameter")
-dmap("h", function(ctx) devices:adjust(-(ctx.count or 1)) end, "Lower the parameter")
-dmap("L", function() devices:adjust(10) end, "Raise the parameter a lot")
-dmap("H", function() devices:adjust(-10) end, "Lower the parameter a lot")
-dmap("<C-a>", function(ctx) devices:adjust(ctx.count or 1) end, "Raise the parameter")
-dmap("<C-x>", function(ctx) devices:adjust(-(ctx.count or 1)) end, "Lower the parameter")
-dmap("a", "device.add", "Add a device")
-dmap("x", "device.remove", "Remove the device")
-dmap("b", "device.bypass", "Bypass the device")
-dmap("R", "device.restart", "Start a stopped plugin again")
-dmap("o", "device.offline", "Set the device offline, or back online")
-dmap("e", "device.editor", "Show or hide the plugin's window")
-dmap("<CR>", "device.editor", "Show or hide the plugin's window")
-dmap("yy", function(ctx)
-  local device = devices:selected()
-  if device then keymap.setreg({ kind = "device", device = device:snapshot() }, ctx.register, true) end
-end, "Yank the device")
-dmap("dd", function(ctx)
-  local device = devices:selected()
-  if not device then return end
-  keymap.setreg({ kind = "device", device = device:snapshot() }, ctx.register)
-  device:remove()
-end, "Cut the device")
-local function paste_device(offset) return function(ctx)
-  local value, track = keymap.getreg(ctx.register), need_track()
-  if not track then return end
-  if not (value and (value.kind == "device" or value.kind == "devices")) then return daw.notify("no device in the register: `yy` or `dd` on one first", "warn") end
-  local selected = devices:selected()
-  local at = selected and selected.index + offset or nil
-  -- Several devices, from a selection, go in in their order.
-  for i, snap in ipairs(value.devices or { value.device }) do daw.restore_device(snap, track, at and at + i - 1) end
-end end
-dmap("p", paste_device(1), "Paste the device after this one")
-dmap("P", paste_device(0), "Paste the device before this one")
-dmap("<A-j>", function()
-  local device = devices:selected()
-  if device then device:move(device.index + 1) end
-end, "Move the device later in the chain")
-dmap("<A-k>", function()
-  local device = devices:selected()
-  if device and device.index > 1 then device:move(device.index - 1) end
-end, "Move the device earlier in the chain")
+-- Device panel: its rows are devices and parameters (daw/device_rows.lua).
+daw.device_rows = require("daw.device_rows")
+
 
 -- Piano roll: motions.
 local function pmap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "pianoroll", desc = desc }, opts)) end
@@ -2242,8 +2228,12 @@ pmap("<Left>", move(-1, 0), "Left one step", motion)
 pmap("<Right>", move(1, 0), "Right one step", motion)
 pmap("<Down>", move(0, -1), "Down a semitone", linewise)
 pmap("<Up>", move(0, 1), "Up a semitone", linewise)
-pmap("J", move(0, -12), "Down an octave", linewise)
-pmap("K", move(0, 12), "Up an octave", linewise)
+-- An octave is half a page of pitches: `Ctrl-d` `Ctrl-u`, as in Vim. `K`
+-- describes, as in every view.
+pmap("<C-d>", move(0, -12), "Down an octave", linewise)
+pmap("<C-u>", move(0, 12), "Up an octave", linewise)
+keymap.classic("J", move(0, -12), { view = "pianoroll", desc = "Down an octave", motion = true, linewise = true })
+keymap.classic("K", move(0, 12), { view = "pianoroll", desc = "Up an octave", motion = true, linewise = true })
 pmap("w", function(ctx) roll:to_note(1, ctx.count) end, "Next note", motion)
 pmap("b", function(ctx) roll:to_note(-1, ctx.count) end, "Previous note", motion)
 pmap("e", function(ctx) roll:to_note_end(ctx.count) end, "End of this note, or the next", motion)
@@ -2408,12 +2398,18 @@ pmap("C", function() keymap.normal("c$") end, "Change to the end of the clip")
 pmap("Y", function() keymap.normal("y$") end, "Yank to the end of the clip")
 pmap("p", function(ctx) roll:paste(keymap.getreg(ctx.register), false, ctx.count) end, "Paste after the note")
 pmap("P", function(ctx) roll:paste(keymap.getreg(ctx.register), true, ctx.count) end, "Paste at the cursor")
-pmap("+", function()
+-- A note's length is `Alt-h` `Alt-l`, as a clip's is in the arrange view;
+-- `+` `-` are its pitch, its main value.
+local function lengthen()
   roll:change(function(n) n.length = n.length + daw.opt.note_grid end)
-end, "Lengthen the note")
-pmap("-", function()
+end
+local function shorten()
   roll:change(function(n) n.length = math.max(daw.opt.note_grid, n.length - daw.opt.note_grid) end)
-end, "Shorten the note")
+end
+pmap("<A-l>", lengthen, "Lengthen the note")
+pmap("<A-h>", shorten, "Shorten the note")
+keymap.classic("+", lengthen, { view = "pianoroll", desc = "Lengthen the note" })
+keymap.classic("-", shorten, { view = "pianoroll", desc = "Shorten the note" })
 pmap("L", function()
   if roll:change(function(n) n.start = n.start + daw.opt.note_grid end) then roll:move(daw.opt.note_grid, 0) end
 end, "Move the note right")
@@ -2421,24 +2417,22 @@ pmap("H", function()
   local step = math.min(daw.opt.note_grid, roll.beat)
   if roll:change(function(n) n.start = math.max(0, n.start - step) end) then roll:move(-step, 0) end
 end, "Move the note left")
-pmap("<C-a>", function(ctx)
-  local by = ctx.count or 1
+local function transpose(sign) return function(ctx)
+  local by = sign * (ctx.count or 1)
   local clip, place = chosen()
   if clip then return daw.frontend.act.drag_notes(clip, place, 0, by, false, true) end
-  if roll:change(function(n) n.pitch = math.min(127, n.pitch + by) end) then roll:move(0, by) end
-end, "Move the note up a semitone")
-pmap("<C-x>", function(ctx)
-  local by = ctx.count or 1
-  local clip, place = chosen()
-  if clip then return daw.frontend.act.drag_notes(clip, place, 0, -by, false, true) end
-  if roll:change(function(n) n.pitch = math.max(0, n.pitch - by) end) then roll:move(0, -by) end
-end, "Move the note down a semitone")
-pmap("]", function()
-  roll:change(function(n) n.velocity = math.min(127, n.velocity + 10) end)
-end, "Louder")
-pmap("[", function()
-  roll:change(function(n) n.velocity = math.max(1, n.velocity - 10) end)
-end, "Softer")
+  if roll:change(function(n) n.pitch = util.clamp(n.pitch + by, 0, 127) end) then roll:move(0, by) end
+end end
+pmap("+", transpose(1), "Move the note up a semitone", { role = "main+" })
+pmap("-", transpose(-1), "Move the note down a semitone", { role = "main-" })
+pmap("<C-a>", transpose(1), "Move the note up a semitone for each of the count", { role = "main+" })
+pmap("<C-x>", transpose(-1), "Move the note down a semitone for each of the count", { role = "main-" })
+pmap("]", function(ctx)
+  roll:change(function(n) n.velocity = math.min(127, n.velocity + 10 * (ctx.count or 1)) end)
+end, "Louder", { role = "second+" })
+pmap("[", function(ctx)
+  roll:change(function(n) n.velocity = math.max(1, n.velocity - 10 * (ctx.count or 1)) end)
+end, "Softer", { role = "second-" })
 pmap("gh", function() roll:audition() end, "Hear the pitch under the cursor")
 -- The clips the roll edits (`daw.roll_clips`).
 local function clip_here()
@@ -2462,10 +2456,16 @@ pmap("gN", function(ctx) daw.roll_clips.cycle(-(ctx.count or 1)) end, "The clip 
 command("roll.tracks", function() daw.roll_clips.pick() end,
   { desc = "Choose whose notes the piano roll shows behind its own, and which clips it edits together" })
 command("roll.only", function() daw.roll_clips.only() end, { desc = "Edit the piano roll's active clip alone" })
+-- Escape cancels and stays, as in every view: `<C-w>p` goes back to the
+-- window before, `,p` hides the roll.
 pmap("<Esc>", function()
   if chosen() then return daw.frontend.act.clear_note_selection() end
+  keymap.escape_hint()
+end, "Let go of the chosen notes", { repeatable = false })
+keymap.classic("<Esc>", function()
+  if chosen() then return daw.frontend.act.clear_note_selection() end
   daw.ui.focus("arrange")
-end, "Let go of the chosen notes; back to the arrange view")
+end, { view = "pianoroll", desc = "Let go of the chosen notes; back to the arrange view" })
 
 -- Diagnostics and language servers (daw.diagnostic, daw.lsp), on whatever
 -- is under the cursor in each view: a note, a clip, a track, a strip, a
@@ -2506,12 +2506,27 @@ px("<C-x>", function(clip, region, ctx)
 end, "Down a semitone")
 px("]", function(clip, region) edit.roll.each(clip, region, function(n) n.velocity = math.min(127, n.velocity + 10) end) end, "Louder")
 px("[", function(clip, region) edit.roll.each(clip, region, function(n) n.velocity = math.max(1, n.velocity - 10) end) end, "Softer")
-px("+", function(clip, region)
+local function lengthen_region(clip, region)
   edit.roll.each(clip, region, function(n) n.length = n.length + daw.opt.note_grid end)
-end, "Lengthen")
-px("-", function(clip, region)
+end
+local function shorten_region(clip, region)
   edit.roll.each(clip, region, function(n) n.length = math.max(daw.opt.note_grid, n.length - daw.opt.note_grid) end)
-end, "Shorten")
+end
+px("<A-l>", lengthen_region, "Lengthen")
+px("<A-h>", shorten_region, "Shorten")
+px("+", function(clip, region, ctx)
+  local by = ctx.count or 1
+  edit.roll.each(clip, region, function(n) n.pitch = math.min(127, n.pitch + by) end)
+end, "Up a semitone")
+px("-", function(clip, region, ctx)
+  local by = ctx.count or 1
+  edit.roll.each(clip, region, function(n) n.pitch = math.max(0, n.pitch - by) end)
+end, "Down a semitone")
+for lhs, fn in pairs({ ["+"] = lengthen_region, ["-"] = shorten_region }) do
+  keymap.classic(lhs, nil, { view = "pianoroll", mode = "x", desc = lhs == "+" and "Lengthen" or "Shorten", operator = function(region)
+    if roll:clip() then fn(editing(), region) end
+  end })
+end
 
 -- Piano roll: insert mode draws a note from the cursor (`daw.roll_draw`).
 -- What is drawn is written when insert mode ends, as one undo step.
@@ -2526,6 +2541,8 @@ for _, lhs in ipairs({ "k", "<Up>" }) do drawmap(lhs, function() drawing.pitch(1
 for _, lhs in ipairs({ "j", "<Down>" }) do drawmap(lhs, function() drawing.pitch(-1) end, "The note down a semitone") end
 drawmap("K", function() drawing.pitch(12) end, "The note up an octave")
 drawmap("J", function() drawing.pitch(-12) end, "The note down an octave")
+drawmap("<C-u>", function() drawing.pitch(12) end, "The note up an octave")
+drawmap("<C-d>", function() drawing.pitch(-12) end, "The note down an octave")
 drawmap("<CR>", function() drawing.next("legato") end, "Keep the note, and draw the next where it ends")
 drawmap("<Space>", function() drawing.next("rest") end, "Keep the note, and draw the next after a step's rest")
 drawmap("o", function() drawing.next("chord") end, "Keep the note, and draw another as long from where it starts, for a chord")
@@ -2798,8 +2815,7 @@ for _, name in ipairs({ "arrange", "mixer" }) do
   map("grp", "track.pan.set", { view = name, desc = "Type the pan" })
 end
 map("grt", "tempo.set", { desc = "Type the tempo" })
-map("c", "device.value", { view = "devices", desc = "Type the parameter's value" })
-map("=", "device.value", { view = "devices", desc = "Type the parameter's value" })
+-- The device panel's `c` and `=` are in daw/device_rows.lua.
 
 -- Automation lanes as rows (see daw.lanes) ------------------------------------
 
@@ -2964,8 +2980,8 @@ end
 
 local function lmap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "arrange.lane", desc = desc }, opts)) end
 lmap("A", "lane.point.add", "Add a point at the cursor, at the curve's value")
-lmap("+", "lane.point.nudge by=1", "Raise the point under the cursor")
-lmap("-", "lane.point.nudge by=-1", "Lower the point under the cursor")
+lmap("+", "lane.point.nudge by=1", "Raise the point under the cursor", { role = "main+" })
+lmap("-", "lane.point.nudge by=-1", "Lower the point under the cursor", { role = "main-" })
 lmap("c", "lane.point.set", "Type the value of the point under the cursor")
 lmap("=", "lane.point.set", "Type the value of the point under the cursor")
 lmap("x", "lane.point.remove", "Remove the point under the cursor")
@@ -3028,6 +3044,19 @@ local function nudge_points(sign) return function(id, region, ctx)
 end end
 lx("+", nudge_points(1), "Raise the points selected")
 lx("-", nudge_points(-1), "Lower the points selected")
+lx("<C-a>", nudge_points(1), "Raise the points selected by the count")
+lx("<C-x>", nudge_points(-1), "Lower the points selected by the count")
+-- On a lane row the time operators move points, not clips.
+for lhs, steps in pairs({ [">"] = 1, ["<lt>"] = -1 }) do
+  keymap.operator(lhs, function(region, ctx)
+    local id = cursor.lane_id()
+    if id then move_points(steps)(id, region, ctx) end
+  end, { view = "arrange.lane", desc = steps > 0 and "Move points later" or "Move points earlier" })
+end
+lmap("<C-a>", "lane.point.nudge by=1", "Raise the point under the cursor by the count", { role = "main+" })
+lmap("<C-x>", "lane.point.nudge by=-1", "Lower the point under the cursor by the count", { role = "main-" })
+lmap("gc", "lane.toggle", "Turn the lane's automation off or on", { role = "mute" })
+keymap.classic("gc", "curve.open", { view = "arrange.lane", desc = "Edit this lane's curve" })
 amap("<leader>cf", "clip.fade", "Fade the clip in and out: type the lengths")
 for _, name in ipairs({ "arrange", "mixer" }) do
   map("grC", "track.color.pick", { view = name, desc = "Choose the track's colour" })
