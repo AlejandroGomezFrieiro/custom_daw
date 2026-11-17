@@ -143,7 +143,6 @@ local function commit(state, text)
   W.entering = nil
   if not ok then daw.notify(tostring(err), "error") end
 end
-P.commit = commit
 
 --- Where the prompt goes on the screen: over the caret's staff, where the
 --- cell view drew it; nil on an engraved page, which draws its own.

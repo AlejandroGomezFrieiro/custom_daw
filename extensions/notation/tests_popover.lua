@@ -56,7 +56,7 @@ local function scale()
   return notes
 end
 
-local function screen() return table.concat(api.ui_snapshot(140, 50), "\n") end
+local function screen() return table.concat(api.ui_snapshot(140, 110), "\n") end
 
 -- The framework ---------------------------------------------------------------------------------
 
@@ -128,7 +128,7 @@ test("popover: each has its own history, and the prompt is drawn at the caret", 
   keys(",d<Up>")
   eq(require("daw.views.cmdline").state().before, "mf", "Up brings back the dynamic typed last")
   local text = screen()
-  local rows = api.ui_snapshot(140, 50)
+  local rows = api.ui_snapshot(140, 110)
   local found
   for i, row in ipairs(rows) do
     if row:find("dynamic mf", 1, true) then found = i end
@@ -427,7 +427,9 @@ test("popover: lyrics go note by note with Space, hyphens and a second verse", f
     if ev.lyrics then second[#second + 1] = ev.lyrics[1] end
   end)
   eq(table.concat(second, " "), "A men", "verse 2")
-  eq(screen():find("men", 1, true) ~= nil, true, "drawn")
+  -- Tall enough for the lyrics under the staff whatever other panels are open.
+  local shown = table.concat(api.ui_snapshot(140, 110), "\n")
+  eq(shown:find("men", 1, true) ~= nil, true, "drawn:\n" .. shown)
 end)
 
 test("popover: chord symbols with Space to the next beat and Tab from what sounds", function()
