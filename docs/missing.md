@@ -151,10 +151,11 @@
   over images well is known only by its name (kitty, Ghostty, herdr), and
   any other has the moving parts drawn into the page; one that puts text
   over images under it (a strip `under` the text) also only by its name
-  (kitty, Ghostty, herdr, WezTerm), so Konsole keeps cells there. Only the
-  score and the curve editor's plot are pictures: the utau editor's pitch
-  and curves, the arrange view's automation lanes and audio waveforms are
-  still cells in the terminal.
+  (kitty, Ghostty, herdr, WezTerm); in any other (Konsole) a cell of a
+  background other than the strip's own shows as a cell, so a selection
+  hides the line under it. Only the score, the curve editor's plot and the
+  utau editor's pitch and curves are pictures: the arrange view's automation
+  lanes and audio waveforms are still cells in the terminal.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).

@@ -25,7 +25,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use daw_core::grid::{Grid, Surface};
+use daw_core::grid::{self, Color, Grid, Surface};
 use daw_raster::kitty::{Images, Place, Transfer};
 use daw_raster::tiles::{self, Cells};
 use daw_raster::{Drawing, Layers, straight_rgba};
@@ -173,6 +173,57 @@ impl Graphics {
             }
         }
     }
+}
+
+/// The grid as it is shown in a terminal that lets a cell's coloured
+/// background hide an image placed under the text (Konsole), where the
+/// strips under the text are drawn otherwise: the background most of a
+/// strip's cells share is painted into its picture and those cells are
+/// written on the terminal's own background, and a cell of any other
+/// background (a cursor block, a selection) is left out of the picture
+/// and shows as it is. Nothing when the grid has no strip under the text.
+pub fn backed(grid: &Grid) -> Option<Grid> {
+    if !grid.surfaces.iter().any(|s| s.under) {
+        return None;
+    }
+    let mut out = grid.clone();
+    let width = grid.width as usize;
+    for surface in out.surfaces.iter_mut().filter(|s| s.under) {
+        let r = surface.rect;
+        let at = |col: i32, row: i32| (r.y + row) as usize * width + (r.x + col) as usize;
+        let mut counts: Vec<(Color, usize)> = Vec::new();
+        for row in 0..r.h {
+            for col in 0..r.w {
+                let cell = &grid.cells[at(col, row)];
+                if surface.is_covered(col as u16, row as u16) || cell.attrs & grid::REVERSE != 0 {
+                    continue;
+                }
+                match counts.iter_mut().find(|(c, _)| *c == cell.bg) {
+                    Some((_, n)) => *n += 1,
+                    None => counts.push((cell.bg, 1)),
+                }
+            }
+        }
+        let base = counts.iter().max_by_key(|(_, n)| *n).map_or(Color::Default, |(c, _)| *c);
+        for row in 0..r.h {
+            for col in 0..r.w {
+                let cell = &mut out.cells[at(col, row)];
+                if cell.bg == base && cell.attrs & grid::REVERSE == 0 {
+                    cell.bg = Color::Default;
+                } else if cell.bg != Color::Default || cell.attrs & grid::REVERSE != 0 {
+                    surface.covered[(row * r.w + col) as usize] = true;
+                }
+            }
+        }
+        if base != Color::Default {
+            let (red, green, blue) = grid::rgb(base, (0, 0, 0));
+            let (w, h) = (r.w * surface.cell.0 as i32, r.h * surface.cell.1 as i32);
+            let mut ops = vec![serde_json::json!(["r", 0, 0, w, h, format!("#{red:02x}{green:02x}{blue:02x}"), "", 1, 0])];
+            ops.extend(surface.ops.as_array().into_iter().flatten().cloned());
+            surface.ops = Arc::new(Value::Array(ops));
+        }
+    }
+    Some(out)
 }
 
 /// The name a part of a surface is placed under.
@@ -396,5 +447,35 @@ mod tests {
         out.clear();
         graphics.clear(&mut out);
         assert_eq!(text(&out), "\x1b_Ga=d,d=A,q=2\x1b\\");
+    }
+
+    #[test]
+    fn where_backgrounds_hide_pictures_a_strip_paints_its_own_and_leaves_other_cells_out() {
+        let mut grid = Grid::new(20, 6);
+        let clip = grid.rect();
+        let lane = Style { bg: Some(Color::Rgb(16, 32, 48)), ..Style::default() };
+        grid.fill(clip, clip, Some(' '), lane);
+        let index = grid.surface("curve:3", Rect { x: 2, y: 1, w: 8, h: 4 }, (10, 20), true).unwrap();
+        grid.surfaces[index].ops = Arc::new(page());
+        // The cursor, a block of its own colour, and a point over the lane.
+        grid.text(clip, 4, 2, " ", Style { bg: Some(Color::Rgb(200, 0, 0)), ..Style::default() });
+        grid.text(clip, 6, 3, "o", Style::default());
+        grid.seal_surfaces();
+        let shown = backed(&grid).unwrap();
+        assert_eq!(shown.cells[3 * 20 + 6].bg, Color::Default, "the lane is in the picture");
+        assert_eq!(shown.cells[3 * 20 + 6].ch, 'o');
+        assert_eq!(shown.cells[20 + 1].bg, Color::Rgb(16, 32, 48), "outside the strip as it was");
+        assert_eq!(shown.cells[2 * 20 + 4].bg, Color::Rgb(200, 0, 0));
+        assert_eq!(shown.surfaces[0].covered_runs(), vec![[2, 1, 1]], "the cursor shows as a cell");
+        assert_eq!(shown.surfaces[0].ops[0], json!(["r", 0, 0, 80, 80, "#102030", "", 1, 0]));
+        assert_eq!(shown.surfaces[0].ops[1], page()[0]);
+        // The same screen again: the same pictures, nothing sent.
+        let mut graphics = Graphics::new(Transfer::Zlib, false);
+        let mut out = Vec::new();
+        graphics.frame(&mut out, &shown, |_, _| false);
+        out.clear();
+        graphics.frame(&mut out, &backed(&grid).unwrap(), |_, _| false);
+        assert!(out.is_empty(), "{:?}", text(&out));
+        assert!(backed(&Grid::new(4, 4)).is_none());
     }
 }

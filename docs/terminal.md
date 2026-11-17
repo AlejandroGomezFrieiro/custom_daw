@@ -816,9 +816,13 @@ for each pixel across, with nothing of the curve drawn twice. A strip
 under the text is placed at a z of -2 (its moving parts at -1): in kitty,
 Ghostty (and herdr) and WezTerm the text shows above it and the picture
 above the cells' coloured backgrounds, which show through wherever it
-draws nothing. Konsole puts a coloured background above such a picture,
-which would hide it, so there, and in any terminal not known by its name,
-a strip under the text is not made and the view draws cells.
+draws nothing. Konsole, and any terminal not known by its name, puts a
+coloured background above such a picture, which would hide it: there the
+background most of the strip's cells share (the curve editor's lane) is
+painted into the picture and those cells are written on the terminal's own
+background, while a cell of any other background (the cursor block, a
+selection) shows as a cell, the picture left out of it. So a selection
+hides the line there, where WezTerm shows the line through it.
 
 `daw attach` from a terminal that shows images shows them too: it tells
 the instance what its terminal can do, and is sent each strip's drawing

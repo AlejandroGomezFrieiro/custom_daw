@@ -136,10 +136,9 @@ pub struct Caps {
     /// The terminal's own foreground and background colours, when it said.
     pub fg: Option<(u8, u8, u8)>,
     pub bg: Option<(u8, u8, u8)>,
-    /// Text is drawn above an image placed under it (a negative z), over
-    /// cells of any background: kitty, Ghostty and WezTerm. Konsole lets a
-    /// coloured background hide such an image, so strips placed under the
-    /// text are not shown there.
+    /// Strips can be placed under the text (a negative z): in any terminal
+    /// that shows images. Where a coloured background would hide them
+    /// (Konsole), the terminal's frontend paints it into the picture.
     pub under: bool,
 }
 

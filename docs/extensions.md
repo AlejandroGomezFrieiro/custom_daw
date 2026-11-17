@@ -143,9 +143,12 @@ end
 
 `buf:strip(x, y, w, h, opts)` returns false where there are no pixels
 (`daw.opt.graphics` off, a terminal that shows no images, tmux, `daw
-attach` from such a terminal, or for `under` a terminal not known to draw
-text over an image under it, as Konsole does not), and the view draws its
-cells there instead. `draw(g, px)` gets a painter of `daw.canvas` (the
+attach` from such a terminal), and the view draws its cells there
+instead. Under the text, the cells' backgrounds show where the picture
+draws nothing; in a terminal that would let a coloured background hide the
+picture (Konsole) the background most of the strip's cells share is
+painted into the picture, and a cell of any other background shows as a
+cell over it. `draw(g, px)` gets a painter of `daw.canvas` (the
 same `g:rect`, `g:poly`, `g:text`, `g:cut`, `g:layer` as `paint`) for the
 strip's pixels. A strip over the text (no `under`) has its cells left
 blank. Strips are kept by `key`, which names the images the terminal
