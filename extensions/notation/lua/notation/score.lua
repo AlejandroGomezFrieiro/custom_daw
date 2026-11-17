@@ -39,7 +39,8 @@ M.DEFAULTS = {
   strum = 70,       -- ms between the strings of a strum or a roll (0: off)
   strum_span = 450, -- ms: the longest strum
   arpeggio = 160,   -- ms: a strum at least this long is marked with an arpeggio sign (0: never)
-  triplets = true,  -- whether a beat may be written in triplets (duplets in 6/8)
+  triplets = true,  -- whether a beat may be written in triplets (duplets and quadruplets in 6/8)
+  tuplets = true,   -- whether a beat may be written as a quintuplet or a septuplet
   finest = 0.25,    -- the shortest duple subdivision written, in beats: 0.25 a sixteenth
   simplicity = 1,   -- how strongly simple grids are preferred (0 none, 2 strongly)
   gap = 0.3,        -- a silence shorter than this share of the time to the next onset is articulation
@@ -52,7 +53,7 @@ M.DEFAULTS = {
   grid = 0.25,      -- raw view only: the grid notes are rounded to
 }
 
-M.ORDER = { "mode", "chord", "strum", "strum_span", "arpeggio", "triplets", "finest", "simplicity", "gap", "staccato",
+M.ORDER = { "mode", "chord", "strum", "strum_span", "arpeggio", "triplets", "tuplets", "finest", "simplicity", "gap", "staccato",
   "grace", "swing", "voices", "split", "follow", "grid" }
 
 --- The settings in force: the defaults under what a clip keeps.
@@ -88,14 +89,18 @@ end
 M.exact = exact
 
 -- Candidate grids for a beat, with their complexity: the number of parts
--- the beat is divided into.
-local SIMPLE = { { 1, 0 }, { 2, 0.02 }, { 4, 0.07 }, { 8, 0.3 }, { 3, 0.1, true }, { 6, 0.3, true } }
-local COMPOUND = { { 1, 0 }, { 3, 0.02 }, { 6, 0.08 }, { 12, 0.35 }, { 2, 0.15, true }, { 4, 0.4, true } }
+-- the beat is divided into; a triplet's (3, 6, and in compound metre the
+-- duplet's and quadruplet's) or another tuplet's, written in the time of
+-- that many parts (a quintuplet or septuplet of sixteenths, in the time of
+-- four).
+local SIMPLE = { { 1, 0 }, { 2, 0.02 }, { 4, 0.07 }, { 8, 0.3 }, { 3, 0.1, "triplet" }, { 6, 0.3, "triplet" },
+  { 5, 0.3, "tuplet", 4 }, { 7, 0.4, "tuplet", 4 } }
+local COMPOUND = { { 1, 0 }, { 3, 0.02 }, { 6, 0.08 }, { 12, 0.35 }, { 2, 0.15, "triplet" }, { 4, 0.3, "triplet" } }
 local FIT = 40   -- weight of the squared error (in beats) against the complexity
 -- And of each onset by where it falls: the beat, its half, its quarter...
 -- by the denominator of its place in the beat.
-local PLACE = { [1] = 0, [2] = 0.05, [4] = 0.15, [8] = 0.45, [3] = 0.15, [6] = 0.45, [12] = 0.6, [24] = 0.8 }
-local PLACE_COMPOUND = { [1] = 0, [3] = 0.05, [6] = 0.15, [12] = 0.45, [2] = 0.2, [4] = 0.5, [24] = 0.8 }
+local PLACE = { [1] = 0, [2] = 0.05, [4] = 0.15, [8] = 0.45, [3] = 0.15, [6] = 0.45, [12] = 0.6, [24] = 0.8, [5] = 0.35, [7] = 0.45 }
+local PLACE_COMPOUND = { [1] = 0, [3] = 0.05, [6] = 0.15, [12] = 0.45, [2] = 0.2, [4] = 0.35, [24] = 0.8 }
 local function gcd(a, b)
   while b ~= 0 do a, b = b, a % b end
   return a
@@ -151,33 +156,99 @@ end
 
 -- Hands ------------------------------------------------------------------------------------
 
+--- What playing pitches `from` to `to` of a chord (lowest first) costs a
+--- hand centred on `centre` that last played `last`, at ease between
+--- `low_ok` and `high_ok`.
+local function hand_cost(pitches, from, to, centre, last, low_ok, high_ok)
+  if to < from then return 0 end
+  local c = 0
+  for i = from, to do
+    local p = pitches[i]
+    c = c + 0.5 * abs(p - centre) / 12
+    if last then c = c + abs(p - last) / 12 end
+    if p < low_ok then c = c + (low_ok - p) * 0.25 end
+    if p > high_ok then c = c + (p - high_ok) * 0.25 end
+  end
+  local span = pitches[to] - pitches[from]
+  if span > 12 then c = c + (span - 12) * 0.5 end
+  return c
+end
+
 --- Split a chord's pitches (lowest first) between the hands: how many go to
 --- the left. `state` carries where each hand has been.
 local function split_hands(pitches, state)
   local best, best_k
   for k = 0, #pitches do
-    local cost = 0
-    local lh, rh = {}, {}
-    for i, p in ipairs(pitches) do
-      if i <= k then lh[#lh + 1] = p else rh[#rh + 1] = p end
-    end
-    local function hand(list, centre, last, low_ok, high_ok)
-      if #list == 0 then return 0 end
-      local c = 0
-      for _, p in ipairs(list) do
-        c = c + 0.5 * abs(p - centre) / 12
-        if last then c = c + abs(p - last) / 12 end
-        if p < low_ok then c = c + (low_ok - p) * 0.25 end
-        if p > high_ok then c = c + (p - high_ok) * 0.25 end
-      end
-      local span = list[#list] - list[1]
-      if span > 12 then c = c + (span - 12) * 0.5 end
-      return c
-    end
-    cost = hand(lh, state.lh, state.lh_last, 0, 64) + hand(rh, state.rh, state.rh_last, 53, 127)
+    local cost = hand_cost(pitches, 1, k, state.lh, state.lh_last, 0, 64)
+      + hand_cost(pitches, k + 1, #pitches, state.rh, state.rh_last, 53, 127)
     if not best or cost < best - 1e-9 then best, best_k = cost, k end
   end
   return best_k
+end
+
+--- Of a written length `len` (with `penalty`) for a chord at `start` and
+--- the best so far, the one nearer what was played (`played` long), by
+--- proportion, of those that end by `limit`.
+local function nearer(len, penalty, start, limit, played, best, best_cost)
+  if start + len <= limit + EPS then
+    local r = math.log(len / played)
+    local cost = (r > 0 and 0.6 * r or -r) + penalty
+    if not best_cost or cost < best_cost - 1e-9 then return len, cost end
+  end
+  return best, best_cost
+end
+
+--- Whether item `i` steps on to item `b` as evenly as it came from the two
+--- onsets before it (chords' notes `win` apart are one onset), at least
+--- an eighth of a beat apart: a note of a run, such as a fast tuplet's,
+--- and not a grace note.
+local function in_run(items, i, b, win)
+  local step = b.s - items[i].s
+  if step < 0.125 then return false end
+  local at, count = items[i].s, 0
+  for k = i - 1, 1, -1 do
+    local x = items[k]
+    if at - x.s > win then
+      if abs((at - x.s) - step) > 0.2 * step then return false end
+      at, count = x.s, count + 1
+      if count == 2 then return true end
+    end
+  end
+  return false
+end
+
+-- Orders, made once.
+local function by_pitch(a, b) return a.pitch < b.pitch or (a.pitch == b.pitch and a.index < b.index) end
+local function by_first(a, b) return a.first < b.first end
+local function by_s_pitch(a, b) return a.s < b.s or (a.s == b.s and a.pitch < b.pitch) end
+local function by_onset(a, b)
+  if abs(a.s - b.s) > EPS then return a.s < b.s end
+  return a.pitch < b.pitch
+end
+local function by_q_staff(a, b)
+  if abs(a.q - b.q) > EPS then return a.q < b.q end
+  return a.staff < b.staff
+end
+local function by_q_staff_voice(a, b)
+  if abs(a.q - b.q) > EPS then return a.q < b.q end
+  if a.staff ~= b.staff then return a.staff < b.staff end
+  return a.voice < b.voice
+end
+
+--- Sort a list as `table.sort` would, but short lists in place here, where
+--- the compiler can follow.
+local function sort(list, less)
+  local n = #list
+  if n > 12 then return table.sort(list, less) end
+  for i = 2, n do
+    local x = list[i]
+    local j = i - 1
+    while j >= 1 and less(x, list[j]) do
+      list[j + 1] = list[j]
+      j = j - 1
+    end
+    list[j + 1] = x
+  end
 end
 
 -- Transcription ------------------------------------------------------------------------------
@@ -235,10 +306,7 @@ function M.transcribe(notes, ctx)
         exact = exact(n.start) and (written ~= nil or exact(n.start + n.length)) }
     end
   end
-  table.sort(items, function(a, b)
-    if abs(a.s - b.s) > EPS then return a.s < b.s end
-    return a.pitch < b.pitch
-  end)
+  sort(items, by_onset)
 
   -- Grace notes: short, just before a longer note of another pitch, and
   -- let go by the time it sounds.
@@ -255,7 +323,8 @@ function M.transcribe(notes, ctx)
       for j = i + 1, #items do
         local b = items[j]
         if b.s - a.s > (forced and 1 or gmax) then break end
-        if b.s > a.s + EPS and b.pitch ~= a.pitch and (forced or (a.e <= b.s + 0.6 * gmax and b.len > 2 * a.len)) then
+        if b.s > a.s + EPS and b.pitch ~= a.pitch
+          and (forced or (a.e <= b.s + 0.6 * gmax and b.len > 2 * a.len and not in_run(items, i, b, ms(set.chord)))) then
           a.grace_of = b
           break
         end
@@ -327,7 +396,7 @@ function M.transcribe(notes, ctx)
   local live = {}
   for _, gr in ipairs(groups) do
     if not gr.dead and #gr.items > 0 then
-      table.sort(gr.items, function(a, b) return a.pitch < b.pitch end)
+      sort(gr.items, by_pitch)
       local first, last = math.huge, -math.huge
       for _, x in ipairs(gr.items) do
         first, last = min(first, x.s), max(last, x.s)
@@ -349,7 +418,7 @@ function M.transcribe(notes, ctx)
       live[#live + 1] = gr
     end
   end
-  table.sort(live, function(a, b) return a.first < b.first end)
+  sort(live, by_first)
   groups = live
 
   -- Swing, then onsets beat by beat.
@@ -395,7 +464,8 @@ function M.transcribe(notes, ctx)
         gi = gi + 1
       end
       if #list > 0 then
-        local function share(t) return unswing(((t - drift_of(bi, t)) - b.s) / b.len, (not b.compound) and ratio or nil) end
+        -- Where in the beat an onset is, the drift and the swing taken out.
+        local sw = (not b.compound) and ratio or nil
         local cands = {}
         if forced[bi] then
           for _, d in ipairs(forced[bi]) do cands[#cands + 1] = { d, 0 } end
@@ -403,8 +473,14 @@ function M.transcribe(notes, ctx)
           for _, c in ipairs(b.compound and COMPOUND or SIMPLE) do
             local d = c[1]
             local tuplet = c[3]
-            local ok = b.len / d >= (tuplet and finest * 0.66 or finest) - EPS
-            if tuplet and not set.triplets then ok = false end
+            local ok
+            if tuplet == "tuplet" then
+              -- Its notes are written no shorter than the finest value.
+              ok = set.tuplets and b.len / c[4] >= finest - EPS
+            else
+              ok = b.len / d >= (tuplet and finest * 0.66 or finest) - EPS
+              if tuplet and not set.triplets then ok = false end
+            end
             if tuplet and ratio then ok = false end
             if ok then cands[#cands + 1] = { d, (c[2] + (tuplet and tuplet_cost or 0)) * (set.simplicity or 1) } end
           end
@@ -414,7 +490,7 @@ function M.transcribe(notes, ctx)
           local d, cost = c[1], c[2]
           local used = {}
           for _, gr in ipairs(list) do
-            local u = share(gr.first)
+            local u = unswing(((gr.first - drift_of(bi, gr.first)) - b.s) / b.len, sw)
             local k = math.max(0, math.min(d, floor(u * d + 0.5)))
             local err = (u - k / d) * b.len
             local den = d / gcd(k, d)
@@ -427,7 +503,7 @@ function M.transcribe(notes, ctx)
         b.d = best_d
         local res, count = 0, 0
         for _, gr in ipairs(list) do
-          local u = share(gr.first)
+          local u = unswing(((gr.first - drift_of(bi, gr.first)) - b.s) / b.len, sw)
           local k = math.max(0, math.min(best_d, floor(u * best_d + 0.5)))
           gr.q = math.max(origin, b.s + k / best_d * b.len)
           -- How far the player is from the grid.
@@ -474,15 +550,15 @@ function M.transcribe(notes, ctx)
         rate = rate * 0.9
       end
     end)
-    -- How much of the part is in triplets: a lone triplet among duple
-    -- beats needs more to convince.
+    -- How much of the part is in triplets and other tuplets: a lone
+    -- tuplet among duple beats needs more to convince.
     local duple, triple = 0, 0
     for _, b in ipairs(beats) do
       local d = b.d or 1
       if b.compound then
         if d % 2 == 0 and d % 3 ~= 0 then triple = triple + 1 elseif d > 1 then duple = duple + 1 end
       else
-        if d % 3 == 0 then triple = triple + 1 elseif d > 1 then duple = duple + 1 end
+        if d % 3 == 0 or d == 5 or d == 7 then triple = triple + 1 elseif d > 1 then duple = duple + 1 end
       end
     end
     if duple + triple > 0 then tuplet_cost = 0.3 * math.max(0, duple - triple) / (duple + triple) end
@@ -514,15 +590,14 @@ function M.transcribe(notes, ctx)
   if ctx.debug then
     for bi, f in pairs(fits) do print("fit", bi, f[1], f[2]) end
   end
-  for bi, b in ipairs(beats) do b.drift_at = function(t) return fitted(bi, t) end end
   for _, gr in ipairs(groups) do
     if not gr.q then gr.q = math.max(origin, math.min(finish, gr.first)) end
   end
 
   -- Where a performed time is written: the drift taken out.
   local function warp(t)
-    local b = beat_at(t)
-    return t - b.drift_at(t)
+    local _, bi = beat_at(t)
+    return t - fitted(bi, t)
   end
   --- The grid of the beat a written time is in, for rounding a release.
   local function release_grid(t)
@@ -576,22 +651,19 @@ function M.transcribe(notes, ctx)
     end
     for s = 1, 2 do
       if #parts[s] > 0 then
-        table.sort(parts[s], function(a, b) return a.pitch < b.pitch end)
+        sort(parts[s], by_pitch)
         chords[#chords + 1] = { q = gr.q, staff = s, items = parts[s], arpeggio = gr.arpeggio, group = gr }
       end
     end
   end
-  table.sort(chords, function(a, b)
-    if abs(a.q - b.q) > EPS then return a.q < b.q end
-    return a.staff < b.staff
-  end)
+  sort(chords, by_q_staff)
   -- Two chords on a staff written at one place are one chord.
   local merged, last_on = {}, {}
   for _, c in ipairs(chords) do
     local prev = last_on[c.staff]
     if prev and abs(prev.q - c.q) < EPS then
       for _, x in ipairs(c.items) do prev.items[#prev.items + 1] = x end
-      table.sort(prev.items, function(a, b) return a.pitch < b.pitch end)
+      sort(prev.items, by_pitch)
     else
       merged[#merged + 1] = c
       last_on[c.staff] = c
@@ -670,11 +742,7 @@ function M.transcribe(notes, ctx)
       end
     end
   end
-  table.sort(out_chords, function(a, b)
-    if abs(a.q - b.q) > EPS then return a.q < b.q end
-    if a.staff ~= b.staff then return a.staff < b.staff end
-    return a.voice < b.voice
-  end)
+  sort(out_chords, by_q_staff_voice)
 
   -- Lengths, voice by voice.
   local seqs = {}
@@ -722,15 +790,12 @@ function M.transcribe(notes, ctx)
           local g0 = release_grid(c.q)
           local played_w = math.max(rel - c.q, 0.01)
           local best, best_cost
-          local function try(len, penalty)
-            if c.q + len <= q_next + EPS then
-              local r = math.log(len / played_w)
-              local cost = (r > 0 and 0.6 * r or -r) + penalty
-              if not best_cost or cost < best_cost - 1e-9 then best, best_cost = len, cost end
-            end
+          for k = 1, floor(beat_len / g0 + 0.5) do
+            best, best_cost = nearer(k * g0, k % 2 == 0 and 0 or 0.02, c.q, q_next, played_w, best, best_cost)
           end
-          for k = 1, floor(beat_len / g0 + 0.5) do try(k * g0, k % 2 == 0 and 0 or 0.02) end
-          for k = 2, 32 do try(k * beat_len / 2, k % 2 == 0 and 0 or 0.05) end
+          for k = 2, 32 do
+            best, best_cost = nearer(k * beat_len / 2, k % 2 == 0 and 0 or 0.05, c.q, q_next, played_w, best, best_cost)
+          end
           e = c.q + (best or g0)
           if set.staccato and q_next < math.huge and played_w <= 0.55 * (e - c.q) and (e - c.q) <= beat_len + EPS then c.staccato = true end
           e = min(e, q_next)
@@ -765,7 +830,7 @@ function M.transcribe(notes, ctx)
       ev.notes[j] = { index = x.index, pitch = x.pitch, meta = x.meta, velocity = x.velocity, offset = x.s - c.q, played = x.len }
     end
     if c.grace then
-      table.sort(c.grace, function(a, b) return a.s < b.s or (a.s == b.s and a.pitch < b.pitch) end)
+      sort(c.grace, by_s_pitch)
       ev.grace = {}
       for j, x in ipairs(c.grace) do
         ev.grace[j] = { index = x.index, pitch = x.pitch, meta = x.meta, velocity = x.velocity, offset = x.s - c.q, played = x.len }
