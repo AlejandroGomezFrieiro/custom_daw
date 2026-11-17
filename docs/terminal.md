@@ -238,7 +238,11 @@ In the piano roll, `Enter` adds or removes a note, `+` `-` (and `Ctrl-a`
 `H` `L` move it, `[` `]` change its velocity, `K` describes it,
 `gh` sounds the pitch, `E` lists the clip's notes and controller moves to
 change in place (the event list). `Esc` lets go of the notes chosen with the
-pointer and stays; `Ctrl-w p` goes back to the arrange view.
+pointer and stays; `Ctrl-w p` goes back to the arrange view. A note that
+carries an articulation (its MIDI 2.0 attribute) shows a short tag of it
+(`pz` for pizzicato) instead of its pitch, and `K` names it; keys that the
+track's instrument names (a drum kit's drums, a sampler's keyswitches)
+have their names on the keyboard, and `K` says them too.
 Over the ruler a row names the chords that sound, read over every pitched
 track, with the key on the left (`daw.opt.chords`); `Ctrl-s` writes a
 snippet such as the dominant of the next chord, and `Tab`, `Ctrl-n` step

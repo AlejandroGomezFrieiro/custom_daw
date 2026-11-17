@@ -57,6 +57,66 @@ the note's `meta`, under a key of its own (`meta.lyric`, `meta.notation`),
 and about the clip in `clip.meta`; the core carries it with the note
 through moves, copies, undo and saving, and never reads it.
 
+**A note's attribute: articulations.** A note may carry the attribute of
+a MIDI 2.0 note-on, `note.attr = { type, data }` (nil for none): mostly an
+articulation of the orchestral articulation profile (M2-123), where the
+type is the classification (0x10 to 0x1F) and the data's top bits the
+subclass and variation. Unlike `meta` it is MIDI, so the core keeps it and
+plays it: through edits, copies and pastes, undo, project files, recording
+from MIDI 2.0 input, and MIDI files (in a sequencer-specific event just
+before the note, which other programs pass over). It reaches MIDI 2.0
+ports, CLAP plugins that prefer MIDI 2.0 notes, and Lua devices; what
+takes only MIDI 1.0 never sees it, unless the track's `attr_map` (below)
+tells it in keyswitches.
+
+```lua
+clip:add_note({ pitch = "G4", start = 2, attr = daw.attr.m2("11.A") })   -- pizzicato
+clip:set_note(at, { attr = false })            -- none; left out, a change keeps it
+daw.attr.m2("11.A")          -- { type = 0x11, data = 0xA000 }; "10.2.3" with a variation
+daw.attr.m2(note.attr)       -- "11.A", or nil for what is no articulation
+daw.attr.m2("11.A", { direction = "up", string = 4, reset = true })
+daw.attr.parts(note.attr)    -- { type, data, subclass, variation, direction, reset, string }
+daw.attr.describe(note.attr) -- { code = "11.A", tag = "pz", name = "Pizzicato", class = ..., text = "Pizzicato (11.A)" }
+bass:play_note("C2", 100, 200, daw.attr.m2("11.0"))   -- live, with what the map sends first
+```
+
+The piano roll writes the tag on a note long enough for it, the window
+gives the note a chip, and `K` says what it is. Naming articulations per
+instrument, choosing them and drawing them well is
+the articulations extension's work; the core keeps only the numbers.
+
+**What an instrument is told for an attribute: `track.attr_map`.** For an
+instrument that takes only MIDI 1.0 (most samplers and libraries, any
+hardware), a track's map turns its notes' attributes into what that
+instrument understands. It is plain data; whatever knows the instrument
+writes it (an articulations extension from its own files), and the project
+keeps it and plays it with no extension loaded.
+
+```lua
+track.attr_map = {
+  send = "change",                   -- only when a note's articulation differs from the one before; "every"
+  default = { out = "ks=C1" },       -- notes with no attribute
+  arts = { ["11.0"] = { out = "ks=D1" }, ["11.A"] = { out = "ks=E1 cc1=96", name = "pizz" } },
+  by_type = { [0x13] = { out = "pc=12" } },   -- a whole classification, or another attribute type
+  chase = { 1, 11 },                 -- controllers told again after a change
+  attribute = true,                  -- notes keep their attribute as well (false: drop it, `attr` keeps one's)
+}
+track.attr_map = nil                 -- none
+```
+
+`out` is events separated by spaces: `ks=D1` a keyswitch struck (`ks=D1:64`
+with a velocity), `hold=D1` one held while the articulation lasts,
+`cc32=40` (0 to 127), `pc=12` or `pc=12/258` with a bank, `bend=0.5`, `ch=2`
+(the note goes out on channel 2, and so do its events: a multi-timbral
+instrument), `attr` (this note keeps its attribute). Keys are named with C4
+as 60. An entry may carry fields of its writer's beside `out`, kept as they
+are. A note's articulation is found by its code, falling back as M2-123 says:
+the subclass without its variation, the classification's `by_type` entry,
+its subclass 0, then `"10.0"`; then `default`. The events go on the note's
+own beat, ahead of it, which is the order a keyswitched sampler needs; where
+playback starts or the loop goes back, the last change before it is sent
+again first. A map that does not read is refused when it is set.
+
 **Transport.**
 
 ```lua

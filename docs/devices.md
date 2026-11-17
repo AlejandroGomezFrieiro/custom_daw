@@ -14,7 +14,17 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
 ```
 
 - **Where they are found.** `~/.clap`, `~/.lv2`, `~/.vst3`, the Nix profiles and
-  `/usr/lib`, or the directories in `CLAP_PATH`, `LV2_PATH` and `VST3_PATH`.
+  `/usr/lib`, or the directories in `CLAP_PATH`, `LV2_PATH` and `VST3_PATH`;
+  and for CLAP and VST3, the directories extensions add with
+  `daw.plugins.add_dir(dir)` (even with `--no-plugins`): their plugins are
+  listed as coming from the extension.
+- **Notes.** A CLAP plugin gets notes as CLAP's own note events, or as MIDI
+  2.0 when it prefers that: then a note's attribute (an articulation, see
+  [Scripting](scripting.md)) reaches it on the note-on. A plugin that names
+  its keys (CLAP's `note-name`: a drum kit's drums, a sampler's
+  keyswitches) has them written on the piano roll's keys and said by `K`;
+  `daw.plugins.note_names(device)` and `daw.api.device_note_names(device)`
+  give them as `{ [pitch] = name }`.
 - **Parameters** are listed per instance, with keys made from their names. VST3
   values are normalized to 0..1; CLAP and LV2 use the plugin's own ranges.
 - **State** is saved in the project file, restored on load, and carried over to
@@ -255,11 +265,13 @@ return dev
   the new pair.
 - **MIDI.** `b.events[0]` to `b.events[b.nevents - 1]` are the block's
   events in order, each with `frame`, `type`, `channel` (1 to 16), `key`
-  and `value`. Types are `dsp.NOTE_ON` (`value` is the velocity, 0 to 1),
+  and `value`, and `attr`, a note-on's MIDI 2.0 attribute as one number
+  (type × 65536 + data, 0 for none: `dsp.attr(e)` gives `{ type, data }`
+  or nil). Types are `dsp.NOTE_ON` (`value` is the velocity, 0 to 1),
   `dsp.NOTE_OFF`, `dsp.CC` (`key` is the controller, `value` 0 to 1),
   `dsp.BEND` (-1 to 1), `dsp.PRESSURE`, `dsp.PROGRAM`, `dsp.ALL_NOTES_OFF`,
   and `dsp.OTHER` for the rest (a note's own controllers, RPNs).
-  `b:note_on(frame, key, velocity, channel)`, `b:note_off(frame, key,
+  `b:note_on(frame, key, velocity, channel, attr)`, `b:note_off(frame, key,
   channel)`, `b:cc(frame, number, value, channel)` and `b:send(frame, type,
   key, value, channel)` send events to the devices after it, in any order;
   `b:pass(e)` sends on one that came in as it is. What comes in is passed
