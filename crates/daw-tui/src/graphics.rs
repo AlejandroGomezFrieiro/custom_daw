@@ -175,13 +175,19 @@ impl Graphics {
     }
 }
 
+/// A background shown on fewer cells of a strip than this is taken for
+/// something that moves (a cursor block) and shows as cells.
+const FEW: usize = 12;
+
 /// The grid as it is shown in a terminal that lets a cell's coloured
 /// background hide an image placed under the text (Konsole), where the
-/// strips under the text are drawn otherwise: the background most of a
-/// strip's cells share is painted into its picture and those cells are
-/// written on the terminal's own background, and a cell of any other
-/// background (a cursor block, a selection) is left out of the picture
-/// and shows as it is. Nothing when the grid has no strip under the text.
+/// strips under the text are drawn otherwise: the backgrounds of a strip's
+/// cells are painted into its picture, under its drawing, and the cells
+/// written on the terminal's own background. A background few of its
+/// cells have (a cursor block) is left out: those cells show as they are,
+/// the picture not placed there, and the picture has there what is to
+/// their left in the row, so that a cursor moving sends no pixels.
+/// Nothing when the grid has no strip under the text.
 pub fn backed(grid: &Grid) -> Option<Grid> {
     if !grid.surfaces.iter().any(|s| s.under) {
         return None;
@@ -190,6 +196,7 @@ pub fn backed(grid: &Grid) -> Option<Grid> {
     let width = grid.width as usize;
     for surface in out.surfaces.iter_mut().filter(|s| s.under) {
         let r = surface.rect;
+        let (cw, ch) = (surface.cell.0 as i32, surface.cell.1 as i32);
         let at = |col: i32, row: i32| (r.y + row) as usize * width + (r.x + col) as usize;
         let mut counts: Vec<(Color, usize)> = Vec::new();
         for row in 0..r.h {
@@ -204,23 +211,53 @@ pub fn backed(grid: &Grid) -> Option<Grid> {
                 }
             }
         }
-        let base = counts.iter().max_by_key(|(_, n)| *n).map_or(Color::Default, |(c, _)| *c);
+        let painted = |c: Color| c != Color::Default && counts.iter().any(|(k, n)| *k == c && *n >= FEW);
+        let mut backs = Vec::new();
         for row in 0..r.h {
+            // Each cell's colour in the picture: none for the terminal's own,
+            // and for a hole (`None`) the one to its left, else to its right.
+            let mut colours: Vec<Option<Option<Color>>> = Vec::with_capacity(r.w as usize);
             for col in 0..r.w {
                 let cell = &mut out.cells[at(col, row)];
-                if cell.bg == base && cell.attrs & grid::REVERSE == 0 {
-                    cell.bg = Color::Default;
-                } else if cell.bg != Color::Default || cell.attrs & grid::REVERSE != 0 {
+                let hole = surface.is_covered(col as u16, row as u16)
+                    || cell.attrs & grid::REVERSE != 0
+                    || (cell.bg != Color::Default && !painted(cell.bg));
+                if hole {
                     surface.covered[(row * r.w + col) as usize] = true;
+                    colours.push(None);
+                } else {
+                    let bg = std::mem::replace(&mut cell.bg, Color::Default);
+                    colours.push(Some((bg != Color::Default).then_some(bg)));
                 }
             }
+            let mut filled: Vec<Option<Color>> = Vec::with_capacity(colours.len());
+            for (i, c) in colours.iter().enumerate() {
+                let colour = match c {
+                    Some(c) => *c,
+                    None if i > 0 => filled[i - 1],
+                    None => colours.iter().find_map(|c| *c).flatten(),
+                };
+                filled.push(colour);
+            }
+            // Runs of one colour along the row, a rectangle each.
+            let mut run: Option<(i32, Color)> = None;
+            for (col, colour) in filled.iter().copied().chain(std::iter::once(None)).enumerate() {
+                if run.is_some_and(|(_, c)| Some(c) == colour) {
+                    continue;
+                }
+                if let Some((from, c)) = run.take() {
+                    let (red, green, blue) = grid::rgb(c, (0, 0, 0));
+                    backs.push(serde_json::json!([
+                        "r", from * cw, row * ch, (col as i32 - from) * cw, ch,
+                        format!("#{red:02x}{green:02x}{blue:02x}"), "", 1, 0
+                    ]));
+                }
+                run = colour.map(|c| (col as i32, c));
+            }
         }
-        if base != Color::Default {
-            let (red, green, blue) = grid::rgb(base, (0, 0, 0));
-            let (w, h) = (r.w * surface.cell.0 as i32, r.h * surface.cell.1 as i32);
-            let mut ops = vec![serde_json::json!(["r", 0, 0, w, h, format!("#{red:02x}{green:02x}{blue:02x}"), "", 1, 0])];
-            ops.extend(surface.ops.as_array().into_iter().flatten().cloned());
-            surface.ops = Arc::new(Value::Array(ops));
+        if !backs.is_empty() {
+            backs.extend(surface.ops.as_array().into_iter().flatten().cloned());
+            surface.ops = Arc::new(Value::Array(backs));
         }
     }
     Some(out)
@@ -450,32 +487,44 @@ mod tests {
     }
 
     #[test]
-    fn where_backgrounds_hide_pictures_a_strip_paints_its_own_and_leaves_other_cells_out() {
-        let mut grid = Grid::new(20, 6);
-        let clip = grid.rect();
+    fn where_backgrounds_hide_pictures_a_strip_paints_them_and_leaves_a_cursor_out() {
         let lane = Style { bg: Some(Color::Rgb(16, 32, 48)), ..Style::default() };
-        grid.fill(clip, clip, Some(' '), lane);
-        let index = grid.surface("curve:3", Rect { x: 2, y: 1, w: 8, h: 4 }, (10, 20), true).unwrap();
-        grid.surfaces[index].ops = Arc::new(page());
-        // The cursor, a block of its own colour, and a point over the lane.
-        grid.text(clip, 4, 2, " ", Style { bg: Some(Color::Rgb(200, 0, 0)), ..Style::default() });
-        grid.text(clip, 6, 3, "o", Style::default());
-        grid.seal_surfaces();
+        let note = Style { bg: Some(Color::Rgb(0, 200, 0)), ..Style::default() };
+        let screen = |cursor: i32| {
+            let mut grid = Grid::new(20, 6);
+            let clip = grid.rect();
+            grid.fill(clip, clip, Some(' '), lane);
+            let index = grid.surface("curve:3", Rect { x: 2, y: 1, w: 16, h: 4 }, (10, 20), true).unwrap();
+            grid.surfaces[index].ops = Arc::new(page());
+            // A note twelve cells long, the cursor block and a point.
+            grid.fill(clip, Rect { x: 4, y: 3, w: 12, h: 1 }, None, note);
+            grid.text(clip, cursor, 2, " ", Style { bg: Some(Color::Rgb(200, 0, 0)), ..Style::default() });
+            grid.text(clip, 6, 4, "o", Style::default());
+            grid.seal_surfaces();
+            grid
+        };
+        let grid = screen(4);
         let shown = backed(&grid).unwrap();
-        assert_eq!(shown.cells[3 * 20 + 6].bg, Color::Default, "the lane is in the picture");
-        assert_eq!(shown.cells[3 * 20 + 6].ch, 'o');
+        assert_eq!(shown.cells[4 * 20 + 6].bg, Color::Default, "the lane is in the picture");
+        assert_eq!(shown.cells[4 * 20 + 6].ch, 'o');
+        assert_eq!(shown.cells[3 * 20 + 5].bg, Color::Default, "and so is the note");
         assert_eq!(shown.cells[20 + 1].bg, Color::Rgb(16, 32, 48), "outside the strip as it was");
         assert_eq!(shown.cells[2 * 20 + 4].bg, Color::Rgb(200, 0, 0));
         assert_eq!(shown.surfaces[0].covered_runs(), vec![[2, 1, 1]], "the cursor shows as a cell");
-        assert_eq!(shown.surfaces[0].ops[0], json!(["r", 0, 0, 80, 80, "#102030", "", 1, 0]));
-        assert_eq!(shown.surfaces[0].ops[1], page()[0]);
-        // The same screen again: the same pictures, nothing sent.
+        let ops = shown.surfaces[0].ops.as_array().unwrap().clone();
+        assert_eq!(ops[0], json!(["r", 0, 0, 160, 20, "#102030", "", 1, 0]));
+        assert_eq!(ops[1], json!(["r", 0, 20, 160, 20, "#102030", "", 1, 0]), "the lane where the cursor is");
+        assert_eq!(ops[3], json!(["r", 20, 40, 120, 20, "#00c800", "", 1, 0]));
+        assert_eq!(ops[ops.len() - page().as_array().unwrap().len()], page()[0], "the drawing over them");
+        // The cursor moves: the same pictures, nothing sent.
         let mut graphics = Graphics::new(Transfer::Zlib, false);
         let mut out = Vec::new();
         graphics.frame(&mut out, &shown, |_, _| false);
         out.clear();
-        graphics.frame(&mut out, &backed(&grid).unwrap(), |_, _| false);
-        assert!(out.is_empty(), "{:?}", text(&out));
+        let moved = backed(&screen(9)).unwrap();
+        assert_eq!(moved.surfaces[0].ops, shown.surfaces[0].ops);
+        graphics.frame(&mut out, &moved, |_, _| false);
+        assert!(!text(&out).contains("a=t"), "{:?}", text(&out));
         assert!(backed(&Grid::new(4, 4)).is_none());
     }
 }

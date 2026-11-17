@@ -818,11 +818,10 @@ Ghostty (and herdr) and WezTerm the text shows above it and the picture
 above the cells' coloured backgrounds, which show through wherever it
 draws nothing. Konsole, and any terminal not known by its name, puts a
 coloured background above such a picture, which would hide it: there the
-background most of the strip's cells share (the curve editor's lane) is
-painted into the picture and those cells are written on the terminal's own
-background, while a cell of any other background (the cursor block, a
-selection) shows as a cell, the picture left out of it. So a selection
-hides the line there, where WezTerm shows the line through it.
+cells' backgrounds (the lane, the notes, a selection) are painted into the
+picture and the cells written on the terminal's own background, while a
+background only a few cells have (a cursor block) shows as cells, the
+picture left out of them, so that a cursor moving sends no pixels.
 
 `daw attach` from a terminal that shows images shows them too: it tells
 the instance what its terminal can do, and is sent each strip's drawing

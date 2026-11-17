@@ -146,9 +146,8 @@ end
 attach` from such a terminal), and the view draws its cells there
 instead. Under the text, the cells' backgrounds show where the picture
 draws nothing; in a terminal that would let a coloured background hide the
-picture (Konsole) the background most of the strip's cells share is
-painted into the picture, and a cell of any other background shows as a
-cell over it. `draw(g, px)` gets a painter of `daw.canvas` (the
+picture (Konsole) the cells' backgrounds are painted into the picture,
+except one only a few cells have (a cursor block), which shows as cells. `draw(g, px)` gets a painter of `daw.canvas` (the
 same `g:rect`, `g:poly`, `g:text`, `g:cut`, `g:layer` as `paint`) for the
 strip's pixels. A strip over the text (no `under`) has its cells left
 blank. Strips are kept by `key`, which names the images the terminal
