@@ -31,6 +31,7 @@ and can be deleted without the rest noticing. The core never requires one.
 | `extensions/musicops` | musical operators: humanize, strum, arpeggiate, scales |
 | `extensions/pattern` | clips written as patterns of text, in the manner of TidalCycles |
 | `extensions/notation` | a MIDI clip as staff notation, read and edited in the terminal and in a window |
+| `extensions/articulations` | each note's articulation as its MIDI 2.0 attribute, named per instrument by `.art.toml` maps, sent as keyswitches to MIDI 1.0 instruments; maps made from SFZ, Decent Sampler, folders and Reaticulate banks |
 | `extensions/drums` | drum tracks in one step, and a grid of the kit's pieces by name, in the terminal and a window |
 | `extensions/templates` | a track, a group of tracks or a chain of devices saved under a name, to make again in any project |
 | `extensions/vinput` | virtual inputs: a guitar heard as MIDI through gdi2m, as a port any track takes, set up in the terminal and a window |
@@ -117,6 +118,136 @@ notice inside compiled loops (`LUAJIT_ENABLE_CHECKHOOK`, asked for in
 `daw.api.limit_async` and falls back to a count hook, with code that is not
 the runtime's own kept in LuaJIT's interpreter. `:lua` typed by hand
 gets a minute, and scripts run with `-l` have no limit.
+
+## Pictures in the terminal
+
+A view that draws cells can show part of itself in pixels where the
+terminal shows images (see "Pictures" in [The terminal
+interface](terminal.md)): in its `render` it keeps a **strip** of cells
+and says how to draw it, and draws its cells as it would anyway.
+
+```lua
+render = function(self, buf, ctx)
+  local plot = buf:sub(10, 2, buf.width - 10, buf.height - 3)
+  plot:fill(0, 0, plot.width, plot.height, " ", "Lane")
+  local pictured = plot:strip(0, 0, plot.width, plot.height, {
+    key = "mylane:" .. ctx.win.id,       -- what the strip is: one for each window
+    under = true,                         -- the cells drawn here stay, above the picture
+    draw = function(g, px)                -- after the screen is drawn; px: w, h, cell = { w, h }, fg, bg
+      daw.plot.curve(g, px, { points = points, from = left, pixels_per_beat = zoom * px.cell.w,
+        lo = 0, hi = 1, color = daw.draw.track_colour(track) })
+    end,
+  })
+  if not pictured then draw_the_curve_in_cells(plot) end
+  draw_the_cursor_and_points(plot)       -- cells, over the picture or alone
+end
+```
+
+`buf:strip(x, y, w, h, opts)` returns false where there are no pixels
+(`daw.opt.graphics` off, a terminal that shows no images, tmux, `daw
+attach` from such a terminal), and the view draws its cells there
+instead. Under the text, the cells' backgrounds show where the picture
+draws nothing; in a terminal that would let a coloured background hide the
+picture (Konsole) the cells' backgrounds are painted into the picture,
+except one that is a single run along one row (a cursor block, the note
+under the cursor), which shows as cells; a cursor that moves over the
+picture is best drawn as such a block or as a glyph (a line on the
+cell's left edge), never as a column of blocks. `draw(g, px)` gets a
+painter of `daw.canvas` (the same `g:rect`, `g:poly`, `g:text`, `g:cut`,
+`g:layer` as `paint`) for the strip's pixels. A strip may reach past its
+window (an audio clip scrolled half out of view): `px.w`, `px.h` are then
+the whole strip's, drawn from its own corner, and `px.view` (`x`, `y`,
+`w`, `h`) the part that shows; `daw.plot.span(px, step)` gives the
+stretch worth drawing, in whole steps from the strip's left, so that a
+stretch drawn before is drawn the same after a scroll and its pieces are
+placed again rather than sent. A strip over the text (no `under`) has its cells left
+blank. Strips are kept by `key`, which names the images the terminal
+holds: the view and its window when none is given, and a view with more
+than one strip names each. The pixels are made in the frontend, cut into
+pieces at the drawing's `g:cut` marks and kept by the hash of their
+pixels, so a strip that draws the same again sends nothing, and an edit
+sends again only the pieces it touched. `buf:surface(x, y, w, h)` is the
+same, over the text, for a view's whole `paint`.
+
+`daw.plot` draws what views show over time in strips, so that they look
+alike: `daw.plot.curve(g, px, opts)` draws a curve's bar and beat lines
+(from the tempo map, `daw.draw.bar_lines`), cut at each bar on a cell's
+edge, the area under it and the line, sampled once a pixel with
+`daw.curves.value_at`, and a small mark at each point. `opts`: `points`
+(as `daw.curves` gives them), `from` (the beat at the left),
+`pixels_per_beat`, `frac(value)` from 0 to 1 or `lo` and `hi`, `flat`,
+`color`, `fill` (how opaque the area is), `width`, `top`, `bottom`,
+`grid`, `beats`, `guides`, `markers`, `background`. It draws no
+background unless given one, so that under the text the cells' own
+show. It returns `x(beat)` and `y(value)` for the rest of the drawing.
+`daw.plot.lines(w, from, pixels_per_beat, cell_w)` gives the bar and beat
+lines alone. The curve editor's plot is drawn this way
+(`daw.curves.editor.picture`), and so are the piano roll's controller
+strip (the value held from each move, `shape = "hold"`) and the utau
+editor's curve.
+
+`daw.plot.bars(g, px, opts)` draws a bar from the bottom for each of
+`opts.items`, `{ beat, value, color, bright }` (`value` 0 to 1), with
+`from`, `pixels_per_beat`, `width`, `color`. `daw.plot.wave(g, px, opts)`
+draws a waveform: `opts.peaks(n)` gives `n` `{ min, max, rms }` across the
+whole strip (`api.clip_peaks`), drawn from lowest to highest around the
+middle with the RMS as a brighter band inside (`rms`, false for none), a
+column at full scale in `clipped` (red), on the scale of
+`daw.opt.wave_scale`, in stretches of eight cells. The arrange view's audio
+clips are drawn this way. Each has a twin in cells, for where there are no
+pictures, with the same options and `zoom` (cells a beat) for
+`pixels_per_beat`: `daw.plot.curve_cells(buf, opts)` (connected sextants,
+`daw.opt.curve_glyphs`), `daw.plot.bars_cells(buf, opts)` (eighth blocks)
+and `daw.plot.wave_cells(buf, opts)` (`daw.draw.waveform`).
+
+### What a frontend does with strips
+
+A frontend that draws the screen itself (the window, a remote terminal)
+is given the grid of cells and its strips, each a `Surface` (crates/daw-
+core/src/grid.rs; over `daw attach` the `surfaces` of `ui.grid`, see
+crates/daw-core/src/remote.rs). To draw them as the terminal does:
+
+- `key` names the strip. Keep what is made of it (images, textures) by
+  key, and drop it when a frame has no strip of that key.
+- `rect` is the cells the strip shows, on the screen. `whole` is the
+  whole strip's size in cells when part of it is off its window ((0, 0)
+  when all of it shows), `offset` the cells of it left of and above
+  `rect`. `cell` is the cell size in pixels the drawing was made for.
+- `ops` is the drawing, in pixels from the whole strip's corner: the
+  operations of `daw.canvas` (`r` rectangles, `p` paths, `t` text, `m`
+  runs of cells, `g` music glyphs, `cut` where it may be cut into pieces,
+  `layer` for what follows). Draw them through `daw_raster::Drawing`, or
+  with the frontend's own painter, scaled by its cell size over `cell`,
+  translated by `-offset * cell` and clipped to `rect`.
+- `under` false: the strip's cells are blank, and the picture is drawn
+  over everything in `rect`. `under` true: draw the picture after the
+  cells' backgrounds and before their text, so that the view's own
+  characters (its cursor, points, labels, the playhead) are over it and
+  the cells' backgrounds show where it draws nothing.
+- `covered` (a flag a cell, row by row; `covered_runs` over the wire)
+  marks cells drawn over the strip later (a menu, a floating view): leave
+  the picture out of them.
+- A frontend that paints its pictures in pieces (the terminal does, by
+  the kitty protocol) cuts the whole strip at the `cut` marks and keeps
+  each piece by the hash of the operations that reach into it
+  (`Drawing::piece_key`), so that an unchanged piece, or one scrolled to
+  another place, is not made again.
+
+The window (crates/daw-gui, on egui) does not get the grid: a view it
+shows in a pane or in a window of its own as the terminal draws it comes
+as one drawing from `daw.canvas.paint_cells`, which the window makes into
+an image with the same rasterizer (`panes::raster`, through
+`daw_raster::Drawing::paint_scaled`) and shows as a texture. That drawing
+already holds the strips: while the view is drawn for the window,
+`buf:strip` keeps each strip under the text (`daw.ui.pictures`) and
+answers true, and `paint_cells` puts the cells' backgrounds first, then
+each strip's `draw(g, px)` at the window's cell size (a painter clipped to
+the strip, from the whole strip's corner, `px.view` what shows), then the
+cells' text. So the curve editor and the vocal editor show their curves
+in pixels in the window with nothing in crates/daw-gui knowing of strips.
+A view the window draws natively (the arrange view, the piano roll, the
+mixer) draws its own curves and waveforms with egui's painter and has no
+strips; were one to move to cells, it would get them the same way.
 
 ## Everything an extension can own
 

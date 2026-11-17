@@ -17,9 +17,10 @@ use std::sync::{Condvar, Mutex, Once};
 use std::time::{Duration, Instant};
 
 /// Where things are in the window, in pixels from the corner of its content,
-/// worked out from `ui/app.slint` (`header-width`, `row-height`, the
-/// ruler's rows, the zoom `beat` starts at) and checked against a
-/// screenshot. Scenarios compute their positions from these.
+/// as the window draws them (src/arrange.rs: `HEADER_W`, the row height and
+/// zoom an `Arrange` starts with, the ruler's rows; src/app.rs:
+/// `TRANSPORT_H`) and checked against a screenshot. Scenarios compute their
+/// positions from these.
 mod place {
     /// The track headers' width: the timeline starts here.
     pub const HEADER_W: i32 = 240;
@@ -1697,8 +1698,10 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     // copied into it: the slot under the bass's clip, in the second row.
     let column = w.find_text("Walk", 0);
     let row = w.find_text("Bridge", 0);
-    let chorus = w.find_text("Chorus", 0);
-    w.drag((chorus.0, chorus.1 + 20), (column.0, row.1));
+    // The chorus is the clip at the start of the first row: its name is small
+    // on its colour, which the reading of the screen does not always make out.
+    let chorus = (place::beat_x(1.0), place::row_top(0, false) + 30);
+    w.drag(chorus, (column.0, row.1));
     w.expect(
         "a copy of the chorus in the bass's second slot",
         &format!(
@@ -1764,7 +1767,8 @@ fn the_command_line_lists_what_it_could_complete() {
     assert!(w.shows("tempo", 5), "tempo among the candidates");
     w.key("Escape");
     // Up walks back through what was run.
-    w.type_text(":set grid 1/8\n");
+    w.type_text(":set grid 1/8");
+    w.key("Return");
     w.expect("the line run", "daw.keymap.mode == 'n'");
     w.type_text(":");
     w.key("Up");
@@ -1873,7 +1877,8 @@ fn an_ex_line_shows_its_count_and_marks_what_it_covers() {
     assert!(w.shows("match", 5), "the count at the end of the line");
     w.shot("ex-preview.png");
     w.key("Escape");
-    w.type_text(":%s/c4/d4/gc\n");
+    w.type_text(":%s/c4/d4/gc");
+    w.key("Return");
     w.expect("the question asked", "daw.ex.shown() ~= nil and daw.ex.shown().current ~= nil");
     assert!(w.shows("replace with", 5), "the question on the status bar");
     w.key("q");

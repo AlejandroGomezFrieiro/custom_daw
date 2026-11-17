@@ -625,3 +625,34 @@ test("mixdiag: the painted report draws meters, a spectrum and the findings, whi
   eq(daw.canvas.open_views.mixdiag_paint, nil, "q closes the window")
   mixdiag.clear()
 end)
+
+test("mixdiag: <leader>xp opens the painted report in pixels where the terminal shows them, and the report in cells where it does not", function()
+  load()
+  fresh()
+  local function closed()
+    daw.keymap.feed("<Esc><Esc>")
+    while daw.ui.float do daw.ui.close() end
+    daw.ui.hide("mixdiag_paint")
+    daw.ui.focus("arrange")
+  end
+  T.after(function()
+    api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } })
+    daw.opt.graphics = true
+    closed()
+  end)
+  for _, on in ipairs({ true, false }) do
+    closed()
+    api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, pixel_mouse = true, fg = "#cdd6f4" })
+    daw.opt.graphics = on
+    daw.keymap.feed("<leader>xp")
+    eq(daw.ui.focused, "mixdiag_paint", "the key opens it, graphics " .. tostring(on))
+    local lines = api.ui_snapshot(100, 30)
+    local surface = (daw.ui.rects.surfaces or {})[1]
+    if on then
+      eq(surface and surface.name, "mixdiag_paint", "pixels: it keeps a surface")
+    else
+      eq(surface, nil, "cells: no surface")
+      eq(table.concat(lines, "\n"):find("nothing measured yet", 1, true) ~= nil, true, "the report is drawn in cells")
+    end
+  end
+end)

@@ -147,7 +147,7 @@ test("the arrange view draws a volume curve only on the track the cursor is on",
   pad:automate("volume"):set_points({ { beat = 0, value = -12 }, { beat = 8, value = 0 } })
   daw.cursor.set_track(lead)
   daw.ui.focus("arrange")
-  local braille = "[\226][\160-\163]"
+  local braille = "[\240][\159][\172-\175]"
   eq(screen():find(braille) == nil, true, "no curve on a track the cursor is not on")
   daw.cursor.set_track(pad)
   eq(screen():find(braille) ~= nil, true, "the curve of the track the cursor is on")
