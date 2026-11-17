@@ -62,6 +62,43 @@ end
 
 -- Curves by address ----------------------------------------------------------------
 
+test("curves in cells are connected sextants, and steep jumps have no gaps", function()
+  local draw = daw.draw
+  eq(draw.sextant(0), " ", "no sextants is a space")
+  eq(draw.sextant(21), "▌", "the left column is a half block")
+  eq(draw.sextant(42), "▐", "the right column")
+  eq(draw.sextant(63), "█", "all six is the full block")
+  eq(draw.sextant(1), "\240\159\172\128", "the top left one is U+1FB00")
+  eq(draw.sextant(62), "\240\159\172\187", "and 62 of them are U+1FB3B")
+  local function plot(value, glyphs)
+    local was = daw.opt.curve_glyphs
+    daw.opt.curve_glyphs = glyphs
+    local cells = {}
+    local buf = { width = 6, text = function(_, x, y, ch) cells[y * 6 + x] = ch end }
+    draw.curve(buf, 0, 2, value, "Normal")
+    daw.opt.curve_glyphs = was
+    return cells
+  end
+  -- A step from the bottom to the top at the middle of six columns: six
+  -- sextant rows over two cell rows. The line runs along the bottom, then
+  -- goes up the left of the fourth column with no gap, and along the top.
+  local cells = plot(function(i) return i < 6 and 0 or 1 end, "sextant")
+  eq(cells[6 + 0], draw.sextant(48), "along the bottom")
+  eq(cells[6 + 2], draw.sextant(48), "to the step")
+  eq(cells[6 + 3], draw.sextant(1 + 4), "the lower cell of the jump, filled up from the bottom")
+  eq(cells[3], draw.sextant(1 + 2 + 4 + 16), "the upper cell, filled to the top")
+  eq(cells[4], draw.sextant(3), "along the top")
+  daw.opt.ascii = false
+  local braille = plot(function(i) return i / 12 end, "braille")
+  local any = false
+  for _, ch in pairs(braille) do any = any or ch:find("^\226[\160-\163]") ~= nil end
+  eq(any, true, "braille on request")
+  local lines = plot(function(i) return i / 12 end, "line")
+  local ok = true
+  for _, ch in pairs(lines) do ok = ok and (ch == "▁" or ch == "─" or ch == "▔") end
+  eq(ok, true, "and lines")
+end)
+
 test("every kind of curve reads and writes through its address", function()
   start()
   local t = daw.add_track({ name = "Lead" })
@@ -134,7 +171,7 @@ test("a curve is a buffer named by its address, shown in a window split off", fu
   local text = screen()
   eq(text:find("2 points", 1, true) ~= nil, true, "the editor shows how many points")
   eq(text:find("-12.0 dB", 1, true) ~= nil, true, "and the value in its unit")
-  eq(text:find("[⠁-⣿]") ~= nil, true, "the curve drawn in braille")
+  eq(text:find("[\240][\159][\172-\175]") ~= nil or text:find("[▌▐█]") ~= nil, true, "the curve drawn in sextants")
   daw.commands.exec("close")
   daw.commands.exec("vs " .. uri)
   eq(daw.win.current().view, "curve", ":vs takes an address")
@@ -419,4 +456,101 @@ test("a curve opens in a window of its own and draws there", function()
     lines[#lines + 1] = table.concat(parts)
   end
   eq(table.concat(lines, "\n"):find("2 points", 1, true) ~= nil, true, "drawn in cells")
+end)
+
+test("in a window of its own the plot is drawn in pixels between the cells' backgrounds and their text", function()
+  start()
+  lane_with({ { 0, -12 }, { 4, 0 } })
+  daw.commands.exec("curve.window")
+  T.after(function() daw.canvas.close("curve") end)
+  local function drawing()
+    local d = daw.canvas.paint("curve", 800, 400, { fresh = true })
+    local kinds, sextants, first_poly, last_back, first_text = {}, 0, nil, 0, nil
+    for i, op in ipairs(d.ops) do
+      kinds[op[1]] = (kinds[op[1]] or 0) + 1
+      if op[1] == "p" and not first_poly then first_poly = i end
+      if op[1] == "m" then
+        if op[8] == "" and not first_text and first_poly then first_text = i end
+      end
+      -- The window draws the cells' sextants and dots as rectangles smaller than a cell.
+      if op[1] == "r" and op[4] < daw.canvas.cell.w - 0.01 and op[5] < daw.canvas.cell.h - 0.01 then sextants = sextants + 1 end
+      if op[1] == "r" and i > 1 and not first_poly then last_back = i end
+    end
+    return kinds, sextants, first_poly, last_back, first_text
+  end
+  local kinds, sextants, first_poly, last_back, first_text = drawing()
+  eq((kinds.p or 0) >= 2, true, "the line and the area under it, in pixels")
+  local dots = sextants
+  eq(first_poly > last_back, true, "over the cells' backgrounds")
+  eq(first_text ~= nil and first_text > first_poly, true, "and under their text")
+  daw.opt.graphics = false
+  T.after(function() daw.opt.graphics = true end)
+  kinds, sextants = drawing()
+  eq(kinds.p, nil, "graphics off: cells")
+  eq(sextants > dots + 20, true, string.format("the line in cells there and not with pictures: %d, %d", sextants, dots))
+end)
+
+-- Pictures ------------------------------------------------------------------------
+
+test("where the terminal shows pictures the plot is a strip under the cells, one for each window", function()
+  start()
+  local _, lane = lane_with({ { 0, -12 }, { 4, 0 } })
+  local function plot_text(lines, s)
+    local out = {}
+    for row = s.y, s.y + s.h - 1 do
+      local chars = {}
+      for ch in lines[row + 1]:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+      out[#out + 1] = table.concat(chars, "", s.x + 1, math.min(#chars, s.x + s.w))
+    end
+    return table.concat(out, "\n")
+  end
+  local cells = api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "no pictures: cells")
+
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
+  T.after(function() api.ui_caps_set({ graphics = false, cell = { w = 0, h = 0 } }) end)
+  local lines = api.ui_snapshot(W, H)
+  local s = daw.ui.rects.surfaces and daw.ui.rects.surfaces[1]
+  local win = editor.current()
+  eq(s and s.key, "curve:" .. win.id, "a strip for the window")
+  eq(s.under, true, "under the cells")
+  eq(s.paint, nil, "drawn by the editor, not the view's paint")
+  local geo = win.state.geo
+  eq(s.w, geo.w, "over the plot")
+  eq(s.h, geo.rows)
+  local before, after = plot_text(cells, s), plot_text(lines, s)
+  eq(before ~= after, true, "the curve is not drawn in cells as well")
+  eq(after:find("●", 1, true) ~= nil or after:find(daw.draw.g.point, 1, true) ~= nil, true, "the points stay cells")
+  eq(table.concat(lines, "\n"):find("2 points", 1, true) ~= nil, true, "and so does the rest")
+
+  -- What the strip draws: the curve and its fill, cut at the bars.
+  local ops = daw.canvas.draw(function(g, px)
+    local t = editor.target(win)
+    editor.picture(g, px, t, t.points(), { left = 0, zoom = 4 })
+  end, { w = 400, h = 200, cell = { w = 10, h = 20 } })
+  local kinds = {}
+  for _, op in ipairs(ops) do kinds[op[1]] = (kinds[op[1]] or 0) + 1 end
+  eq((kinds.cut or 0) >= 1, true, "cut at a bar: " .. daw.inspect(ops[1]))
+  eq(kinds.p, 2 * ((kinds.cut or 0) + 1), "a line and a fill between cuts")
+  for _, op in ipairs(ops) do
+    if op[1] == "cut" then eq(op[2] % 10, 0, "on a cell's edge") end
+  end
+
+  -- The same curve in two windows: two strips, each its own.
+  daw.commands.exec("vs")
+  api.ui_snapshot(W, H)
+  local keys = {}
+  for _, strip in ipairs(daw.ui.rects.surfaces or {}) do keys[#keys + 1] = strip.key end
+  eq(#keys, 2, "a strip in each window")
+  eq(keys[1] ~= keys[2], true, "kept apart")
+
+  -- A terminal that cannot put text over a picture under it, or pictures off: cells.
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = false })
+  api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "no strip under the text there")
+  api.ui_caps_set({ graphics = true, cell = { w = 10, h = 20 }, under = true })
+  daw.opt.graphics = false
+  T.after(function() daw.opt.graphics = true end)
+  api.ui_snapshot(W, H)
+  eq(daw.ui.rects.surfaces, nil, "daw.opt.graphics off keeps cells")
 end)

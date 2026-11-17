@@ -26,7 +26,7 @@ def font(name):
 SANS, MONO = font("DejaVu Sans"), font("FiraCode Nerd Font")
 
 NAMES = {
-    "Return": "<CR>", "Escape": "<Esc>", "space": "<Space>", "Tab": "<Tab>", "BackSpace": "<BS>",
+    "Return": "<CR>", "braceright": "}", "braceleft": "{", "Escape": "<Esc>", "space": "<Space>", "Tab": "<Tab>", "BackSpace": "<BS>",
     "comma": ",", "colon": ":", "plus": "+", "minus": "-", "dollar": "$", "slash": "/",
     "backslash": "\\", "less": "<", "greater": ">", "at": "@", "period": ".", "question": "?",
     "bracketright": "]", "bracketleft": "[", "apostrophe": "'", "parenleft": "(",

@@ -1,0 +1,37 @@
+# An example: the violin section of VSCO 2 CE, as a keyswitched SFZ plays it.
+# Copy it to ~/.config/daw/articulations/ and change it to fit your library;
+# `:art.map violin-section` binds it to the track under the cursor.
+format = 1
+name = "Violin section"
+family = "strings"                    # for notation's defaults and M2-123 fallbacks
+match = ["sfz:Violin Section KS.sfz", "dspreset:Violin Section KS.dspreset"]
+range = "G3-A7"                       # the roll shades outside it
+comfortable = "G3-E7"                 # and lightly outside this
+keyswitches = "C1-A1"                 # rows labelled with articulations, kept free of notes
+default = "sustain"                   # what a note with no articulation plays
+send = "change"                       # keyswitch only when it changes ("every": before every note)
+chase = [1, 11, 64]
+labels = { 1 = "Dynamics", 11 = "Expression", 64 = "Sustain pedal" }
+delay = "-30ms"                       # every note 30 ms early: the samples' own attack (`:art.measure` finds it)
+
+[art]
+#            M2-123   what the instrument is told        shown as               class (colour)
+sustain    = { m2 = "10.0", out = "ks=C1",            tag = "sus", name = "Sustain",     class = "long" }
+legato     = { m2 = "10.2", out = "ks=C#1",           tag = "leg", name = "Legato",      class = "legato", mono = true, delay = "-80ms" }
+staccato   = { m2 = "11.0", out = "ks=D1",            tag = "stc", name = "Staccato",    class = "short", mark = "staccato" }
+spiccato   = { m2 = "11.5", out = "ks=D#1",           tag = "spc", name = "Spiccato",    class = "short" }
+pizzicato  = { m2 = "11.A", out = "ks=E1",            tag = "pz",  name = "Pizzicato",   class = "short-light", text = "pizz.", range = "G3-E7" }
+col-legno  = { m2 = "11.C", out = "ks=F1",            tag = "cl",  name = "Col legno",   class = "short-dark", text = "col legno" }
+tremolo    = { m2 = "12.0", out = "ks=F#1",           tag = "trm", name = "Tremolo",     class = "long-dark", mark = "tremolo3" }
+trill-min  = { m2 = "13.0", out = "ks=G1",            tag = "tr♭", name = "Trill, minor second", class = "long" }
+trill-maj  = { m2 = "13.2", out = "ks=G#1",           tag = "tr",  name = "Trill, major second", class = "long" }
+harmonics  = { m2 = "14.0", out = "ks=A1 cc1=96",     tag = "hrm", name = "Harmonics",   class = "long-light", text = "harm." }
+
+[linked]
+# Controllers drawn as one lane (`\c`), each through its own curve.
+dynamics   = { cc = [1, 11], curve = ["linear", "0:0.4 1:1"], default = 0.7, name = "Dynamics" }
+
+[mod]
+# Modifiers combine with any articulation. M2-123 makes them controllers.
+con-sord   = { m2 = "mute=straight", out = "cc20=127", off = "cc20=0", text = "con sord.", group = 2 }
+sul-pont   = { m2 = "position=0.05", out = "cc21=127", off = "cc21=0", text = "sul pont.", group = 3 }

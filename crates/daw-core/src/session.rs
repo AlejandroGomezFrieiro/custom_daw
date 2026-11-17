@@ -168,6 +168,19 @@ struct ProjectFile {
     transport: Transport,
 }
 
+/// The text of a project file for a project given as data, such as one
+/// merged from three in a script. It goes through the model, so that it has
+/// the form and the key order `project_save` writes (two writers that agree
+/// make small diffs) and cannot be a file that does not load.
+pub fn project_file_text(value: Value) -> Result<String> {
+    let file: ProjectFile = serde_json::from_value(value).context("not a project file")?;
+    if file.version > FILE_VERSION {
+        bail!("the file is of a newer version");
+    }
+    file.project.validate()?;
+    Ok(serde_json::to_string_pretty(&file)?)
+}
+
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TrackOpts {

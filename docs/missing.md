@@ -22,6 +22,24 @@
   pickers of templates, UTAU presets and singers, sends and drum maps are
   not heard. The window shows a picker's pane as text, the outline of a
   sound file in block characters, not as a drawn waveform.
+- paw's sampler (extensions/sampler) reads an instrument's samples whole
+  into memory while the program waits, and nothing streams from disk: a
+  library that takes more than 30 s to read is ended by the plugin
+  helper's time limit. Not played: SFZ's LFOs (`amplfo_*`, `fillfo_*`,
+  `pitchlfo_*`, `lfoN_*`), its v2 envelopes (`egN_*`), `<effect>`,
+  `amp_keytrack`, `sw_vel`, controllers on envelope times and offsets, and
+  smoothing per controller (`_smoothccN`); Decent Sampler's effects,
+  modulators, buses, glide, `legatoInterval` and oscillators. SoundFont 2,
+  folders of samples and `.dslibrary` archives are not read; FLAC samples
+  are kept as floats (twice the memory of 16-bit). The plugin lists no
+  presets for `:preset`, has no editor
+  window of its own, one stereo output, and ignores per-note controllers,
+  MPE and note-off velocity.
+- The waveform of an audio clip in cells (`daw.opt.wave_scale`) draws each
+  column's lowest to highest sample and nothing of its loudness: there is no
+  darker inner band for the RMS. The window draws a clip's peaks from the
+  same data (`daw.frontend.peaks`: the lowest, the highest and the loudness
+  of each point) as it did before.
 - Windows, buffers and tabs (phase 1 is built): a built-in view is still
   one buffer shown in one window at a time, as its state (cursor, scroll,
   the clip open) is one table; phase 2 splits each view's state into the
@@ -86,9 +104,10 @@
   score own the song's tempo); repeats and endings are written, not
   unfolded; trills, mordents, turns and tremolos are written, not played,
   and a fermata holds its note's whole value but does not stop the time;
-  playing techniques (`pizz.`, `con sord.`) are written text that switches
-  no articulation of the instrument; swing and expression maps are not
-  rendered; no CC1 or CC11 is written for sustained instruments; a key
+  playing techniques (`pizz.`, `con sord.`) switch an articulation only
+  on a track with an articulation map (extensions/articulations), and
+  only from where they are written to the end of the clip or the range;
+  swing is not rendered; no CC1 or CC11 is written for sustained instruments; a key
   change after the first bar is not read by `daw.harmony` (there is no key
   track in the core: the key the score starts in is the project's); a
   time signature written in notation is the song's, for every track. A mark
@@ -129,6 +148,20 @@
   takes suggestions made for the piano roll's clip (notation does not ask
   for them); `Ctrl-t` asks on the command line, not in a popover.
 
+- Articulations (extensions/articulations): the window shows the notes'
+  tags and colours and the shaded, named rows, but not the band, the
+  keyboard's labels or menus of its own; keyswitch rows are labelled, not
+  folded away; the score draws an articulation's mark in the same ink as a
+  written one, and the techniques popover does not offer the map's
+  articulations first; a modifier writes MIDI 1.0 controllers, not the
+  profile's registered controllers (mute type, playing position);
+  `:art.edit` (a map edited in a text buffer) is not there; a generated map
+  is not made again when its library changes; Kontakt and SF2 are not
+  read. `:art.measure` finds onsets by level alone (a sample with a slow
+  swell reads late), and does not yet use the onsets a sampler's
+  `describe` could report; linked controllers are a curve of their own,
+  not one of the choices of the strip under the roll.
+
 - Engraved notation: page breaks of one's own (pages fill as systems
   come), and the engraving options as a buffer to edit (staff size,
   spacing, font); articulations inside a slur; systems whose skylines
@@ -148,7 +181,17 @@
   placements (not Sixel, not iTerm's, not Unicode placeholders), so not
   through tmux, which does not pass them on; a terminal that puts images
   over images well is known only by its name (kitty, Ghostty, herdr), and
-  any other has the moving parts drawn into the page.
+  any other has the moving parts drawn into the page; one that puts text
+  over images under it (a strip `under` the text) also only by its name
+  (kitty, Ghostty, herdr, WezTerm); in any other (Konsole) the cells'
+  backgrounds are painted into the picture, and one that is a single run
+  along one row (a cursor block, the note under the cursor, a selection one
+  row high) hides the line under it. The score, the curve editor's plot,
+  the piano roll's controller strip, audio waveforms and the utau editor's
+  pitch and curves are pictures; the arrange view's automation lanes, the
+  velocity strip, the tempo lane and the meters are still cells. In Konsole
+  a scrolled strip sends again the pieces at its edges, whose painted
+  backgrounds changed.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).
@@ -217,9 +260,10 @@
   beyond the parameters' values (a pattern an arpeggiator keeps), more
   than one stereo output, and reporting latency of their own to delay
   compensation.
-- The window's GPU renderer as the default: it is tried only on a software
-  OpenGL (llvmpipe) so far, where it draws correctly but costs more than
-  the software renderer.
+- The window measured on a real graphics card: it is tried only on Mesa's
+  llvmpipe so far, where playing costs more than a core.
+- In the window, kanji, hanzi and hangul where the system has no font for
+  them: only kana are built in, and the rest show as boxes then.
 - In clip launching: follow actions (a clip that launches the next, or a
   random one, after so many bars); under a tempo ramp a slot's clip spreads
   each block's beats evenly over it, so its notes can land up to a frame or
@@ -271,3 +315,15 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
+- Project diff and merge (extensions/projdiff): the diff and conflict views
+  are drawn in cells, as the window draws any such view, with no painted
+  version of their own (they were driven in the terminal, not in the
+  window); the folds are the view's own, since a text buffer has no folds. A merge keeps a note edited on both sides as a
+  conflict only when its id is the same; a note given a new id by an edit
+  on each side is two notes. Lists with nothing to name their items
+  (controllers) merge as sets, so a controller moved on both sides shows
+  up twice. A conflict is settled by taking one side whole: there is no
+  editing the two together. Anything an extension keeps in `meta` and
+  points at ids with is not followed when two sides give different things
+  the same id: tracks, devices, clips and lanes are renumbered with what
+  points at them in the model's own fields only.

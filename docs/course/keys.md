@@ -401,3 +401,21 @@ read: `\Ps` the score, `\Pc` condensed (two players to a staff), `\Pp`
 this track's part, `\Pn` `\PN` the next and previous part, `\Po` the clip
 again, `\Pb` `\Pj` a system break in the part, `\Pe` export
 (`:part.export parts.pdf all`).
+
+## Articulations
+
+The articulations extension (`:ext.load articulations`) gives each note the
+way it is played, as its MIDI 2.0 attribute; a track's map (`:art.map`)
+names them and sets up the piano roll. Its keys are the roll's (its
+README has them all):
+
+| What | Keys |
+| --- | --- |
+| the articulation of the note, or of the selection, heard as you choose | `\a` |
+| a modifier (con sord.) over the note or the selection | `\A` |
+| the pen: what notes are entered with, in insert mode | `\a` |
+| the run of notes with the articulation under the cursor | `ia` `aa` |
+| the instrument's linked controllers (dynamics) as one curve | `\c` |
+
+`:'<,'>art stc`, `:5,8art pizz` and `:g/art=pz/art arco` do the same on
+ranges and matches.

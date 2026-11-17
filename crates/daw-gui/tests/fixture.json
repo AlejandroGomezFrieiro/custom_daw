@@ -1,0 +1,1307 @@
+{
+  "clip": {
+    "color": "#e0605a",
+    "context": {},
+    "control_count": 0,
+    "control_stamp": 7388120807022986,
+    "controls": {},
+    "editable": [
+      {
+        "color": "#e0605a",
+        "id": 2,
+        "length": 4,
+        "name": "c",
+        "offset": 0
+      }
+    ],
+    "ghosts": {},
+    "hidden": 0,
+    "id": 2,
+    "kind": "midi",
+    "length": 4,
+    "loop": false,
+    "loop_start": 0,
+    "meta": {},
+    "more": {},
+    "muted": false,
+    "name": "c",
+    "note_count": 3,
+    "notes": [
+      {
+        "id": 1,
+        "length": 1,
+        "pitch": 60,
+        "start": 0,
+        "velocity": 100
+      },
+      {
+        "id": 2,
+        "length": 1,
+        "pitch": 64,
+        "start": 1,
+        "velocity": 100
+      },
+      {
+        "id": 3,
+        "length": 2,
+        "pitch": 67,
+        "start": 2,
+        "velocity": 100
+      }
+    ],
+    "rows": [
+      {
+        "active": true,
+        "color": "#e0605a",
+        "id": 1,
+        "kind": "track",
+        "name": "A",
+        "on": true
+      },
+      {
+        "active": true,
+        "id": 2,
+        "kind": "clip",
+        "name": "c",
+        "on": true,
+        "track": 1
+      },
+      {
+        "active": false,
+        "color": "#e58a45",
+        "id": 3,
+        "kind": "track",
+        "name": "B",
+        "on": true
+      }
+    ],
+    "stamp": 3803665897873632,
+    "start": 4,
+    "track": 1,
+    "track_name": "A"
+  },
+  "palette": {
+    "card": "#2b2c31",
+    "card_line": "#3d3f46",
+    "control": "#34363c",
+    "control_hover": "#3e4047",
+    "control_press": "#2a2b30",
+    "divider": "#0f1012",
+    "error": "#ff5a4f",
+    "key_black": "#1c1d20",
+    "key_line": "#9a9ca3",
+    "key_white": "#d8d9dc",
+    "lane": "#1f2024",
+    "lane_alt": "#1c1d20",
+    "line_bar": "#3b3d44",
+    "line_beat": "#2c2d32",
+    "line_sub": "#25262a",
+    "meter_clip": "#ff3b30",
+    "meter_high": "#f2d24b",
+    "meter_hot": "#f59e3b",
+    "meter_low": "#35c46a",
+    "meter_mid": "#a6d84a",
+    "meter_well": "#0e0f11",
+    "mute": "#f08a3c",
+    "on_hue": "#121316",
+    "panel": "#26272b",
+    "panel_sel": "#313238",
+    "play": "#fec13a",
+    "play_on": "#4ade80",
+    "rec": "#ef4444",
+    "select": "#46b9fe",
+    "solo": "#f2d24b",
+    "surface": "#18191c",
+    "text": "#e4e5e8",
+    "text_2": "#a1a3ab",
+    "text_3": "#6b6e77",
+    "text_off": "#4a4c53",
+    "warn": "#f2c94c",
+    "well": "#121315"
+  },
+  "state": {
+    "armed": false,
+    "clips": [
+      {
+        "id": 2,
+        "length": 4,
+        "midi": true,
+        "muted": false,
+        "name": "c",
+        "notches": {},
+        "selected": true,
+        "stamp": "3803665897873632|7388120807022986|4",
+        "start": 4,
+        "take": 1,
+        "takes": 1,
+        "track": 0,
+        "warps": {}
+      },
+      {
+        "id": 4,
+        "length": 4,
+        "midi": true,
+        "muted": false,
+        "name": "d",
+        "notches": {},
+        "selected": false,
+        "stamp": "7855798376983456|7388120807022986|4",
+        "start": 12,
+        "take": 1,
+        "takes": 1,
+        "track": 1,
+        "warps": {}
+      }
+    ],
+    "clock": "0:00.0",
+    "counting": 0,
+    "cpu": 0.0021650625858455896,
+    "cursor": 4,
+    "devices": [
+      {
+        "bypass": false,
+        "editor": "",
+        "format": "builtin",
+        "gain": 0,
+        "id": 8,
+        "keyed": false,
+        "more": 0,
+        "name": "Synth",
+        "pairs": 1,
+        "params": [
+          {
+            "default": 0.3333333333333333,
+            "key": "wave",
+            "max": 3,
+            "min": 0,
+            "name": "wave",
+            "text": "saw",
+            "value": 0.3333333333333333
+          },
+          {
+            "default": 0.211742995152068,
+            "key": "attack",
+            "max": 2,
+            "min": 0.0010000000474974513,
+            "name": "attack",
+            "text": "5 ms",
+            "value": 0.211742995152068
+          },
+          {
+            "default": 0.6592158423709298,
+            "key": "decay",
+            "max": 2,
+            "min": 0.0010000000474974513,
+            "name": "decay",
+            "text": "150 ms",
+            "value": 0.6592158423709298
+          },
+          {
+            "default": 0.6000000238418579,
+            "key": "sustain",
+            "max": 1,
+            "min": 0,
+            "name": "sustain",
+            "text": "0.600",
+            "value": 0.6000000238418579
+          },
+          {
+            "default": 0.6220731694613157,
+            "key": "release",
+            "max": 5,
+            "min": 0.0010000000474974513,
+            "name": "release",
+            "text": "200 ms",
+            "value": 0.6220731694613157
+          },
+          {
+            "default": 0.7670099985546603,
+            "key": "cutoff",
+            "max": 20000,
+            "min": 20,
+            "name": "cutoff",
+            "text": "4 kHz",
+            "value": 0.7670099985546603
+          },
+          {
+            "default": 0.20000000298023224,
+            "key": "resonance",
+            "max": 1,
+            "min": 0,
+            "name": "resonance",
+            "text": "0.200",
+            "value": 0.20000000298023224
+          },
+          {
+            "default": 0.6666666666666666,
+            "key": "gain",
+            "max": 12,
+            "min": -60,
+            "name": "gain",
+            "text": "-12.0 dB",
+            "value": 0.6666666666666666
+          }
+        ],
+        "preset": "",
+        "routed": 0,
+        "sidechain": "",
+        "status": "running",
+        "stopped": "",
+        "wet": 1
+      }
+    ],
+    "devices_stopped": 0,
+    "inputs": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "kinds": [
+      "chorus",
+      "compressor",
+      "delay",
+      "drums",
+      "eq",
+      "flanger",
+      "gain",
+      "gate",
+      "limiter",
+      "meter",
+      "phaser",
+      "reverb",
+      "sampler",
+      "saturation",
+      "synth",
+      "tremolo",
+      "tuner",
+      "utility"
+    ],
+    "late_blocks": 0,
+    "launch": {},
+    "levels": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "midi_dropped": 0,
+    "modal": {
+      "capturing": false,
+      "focused": "pianoroll",
+      "keys": [
+        {
+          "desc": "note",
+          "key": "Enter"
+        },
+        {
+          "desc": "draw notes",
+          "key": "i"
+        },
+        {
+          "desc": "delete",
+          "key": "x"
+        },
+        {
+          "desc": "up",
+          "key": "+"
+        },
+        {
+          "desc": "longer",
+          "key": "<A-l>"
+        },
+        {
+          "desc": "next note",
+          "key": "w"
+        },
+        {
+          "desc": "play",
+          "key": "Space"
+        },
+        {
+          "desc": "back",
+          "key": "Ctrl-w p"
+        },
+        {
+          "desc": "keys",
+          "key": "?"
+        },
+        {
+          "desc": "the manual",
+          "key": ":help piano-roll"
+        }
+      ],
+      "menus": {
+        "clip": {},
+        "timeline": [
+          {
+            "label": "Loudness meter",
+            "only": ""
+          }
+        ],
+        "track": [
+          {
+            "label": "EQ",
+            "only": ""
+          },
+          {
+            "label": "Tuner",
+            "only": ""
+          }
+        ]
+      },
+      "mixer": false,
+      "mode": "n",
+      "name": "NORMAL",
+      "pending": "",
+      "recording": "",
+      "roll": {
+        "beat": 0,
+        "chords": {},
+        "chosen": "",
+        "clip": 2,
+        "controls_chosen": {},
+        "marks": {},
+        "octave": 4,
+        "over": {},
+        "pitch": 60,
+        "refs": {},
+        "revision": 9,
+        "selected": {},
+        "snap": true,
+        "sounding": [
+          60
+        ],
+        "step": 0.25,
+        "step_input": false,
+        "tools": [
+          {
+            "act": "toggle_complete_auto",
+            "label": "Suggest",
+            "on": true,
+            "tip": "suggestions: ask the completion sources by themselves after a pause (Ctrl-Space asks now) · Tab accepts, Esc dismisses"
+          }
+        ],
+        "under": {}
+      },
+      "session": false,
+      "slot_row": 0,
+      "views": [
+        {
+          "name": "eventlist",
+          "title": "Events"
+        },
+        {
+          "name": "qflist",
+          "title": "Quickfix list"
+        },
+        {
+          "name": "session",
+          "title": "session"
+        }
+      ],
+      "windows": {}
+    },
+    "playing": false,
+    "position": 0,
+    "project": {
+      "backend": "null",
+      "bands": {
+        "entries": {},
+        "rows": 0
+      },
+      "bar": 4,
+      "count_in": 0,
+      "engine": "null · 48 kHz",
+      "grid": 1,
+      "launch_quantize": "bar",
+      "length": 16,
+      "lines": [
+        {
+          "bar": 1,
+          "beat": 0,
+          "index": 0,
+          "label": "1",
+          "next": 1,
+          "place": "1.1"
+        },
+        {
+          "bar": 1,
+          "beat": 1,
+          "index": 1,
+          "label": "",
+          "next": 2,
+          "place": "1.2"
+        },
+        {
+          "bar": 1,
+          "beat": 2,
+          "index": 2,
+          "label": "",
+          "next": 3,
+          "place": "1.3"
+        },
+        {
+          "bar": 1,
+          "beat": 3,
+          "index": 3,
+          "label": "",
+          "next": 4,
+          "place": "1.4"
+        },
+        {
+          "bar": 2,
+          "beat": 4,
+          "index": 0,
+          "label": "2",
+          "next": 5,
+          "place": "2.1"
+        },
+        {
+          "bar": 2,
+          "beat": 5,
+          "index": 1,
+          "label": "",
+          "next": 6,
+          "place": "2.2"
+        },
+        {
+          "bar": 2,
+          "beat": 6,
+          "index": 2,
+          "label": "",
+          "next": 7,
+          "place": "2.3"
+        },
+        {
+          "bar": 2,
+          "beat": 7,
+          "index": 3,
+          "label": "",
+          "next": 8,
+          "place": "2.4"
+        },
+        {
+          "bar": 3,
+          "beat": 8,
+          "index": 0,
+          "label": "3",
+          "next": 9,
+          "place": "3.1"
+        },
+        {
+          "bar": 3,
+          "beat": 9,
+          "index": 1,
+          "label": "",
+          "next": 10,
+          "place": "3.2"
+        },
+        {
+          "bar": 3,
+          "beat": 10,
+          "index": 2,
+          "label": "",
+          "next": 11,
+          "place": "3.3"
+        },
+        {
+          "bar": 3,
+          "beat": 11,
+          "index": 3,
+          "label": "",
+          "next": 12,
+          "place": "3.4"
+        },
+        {
+          "bar": 4,
+          "beat": 12,
+          "index": 0,
+          "label": "4",
+          "next": 13,
+          "place": "4.1"
+        },
+        {
+          "bar": 4,
+          "beat": 13,
+          "index": 1,
+          "label": "",
+          "next": 14,
+          "place": "4.2"
+        },
+        {
+          "bar": 4,
+          "beat": 14,
+          "index": 2,
+          "label": "",
+          "next": 15,
+          "place": "4.3"
+        },
+        {
+          "bar": 4,
+          "beat": 15,
+          "index": 3,
+          "label": "",
+          "next": 16,
+          "place": "4.4"
+        },
+        {
+          "bar": 5,
+          "beat": 16,
+          "index": 0,
+          "label": "5",
+          "next": 17,
+          "place": "5.1"
+        },
+        {
+          "bar": 5,
+          "beat": 17,
+          "index": 1,
+          "label": "",
+          "next": 18,
+          "place": "5.2"
+        },
+        {
+          "bar": 5,
+          "beat": 18,
+          "index": 2,
+          "label": "",
+          "next": 19,
+          "place": "5.3"
+        },
+        {
+          "bar": 5,
+          "beat": 19,
+          "index": 3,
+          "label": "",
+          "next": 20,
+          "place": "5.4"
+        },
+        {
+          "bar": 6,
+          "beat": 20,
+          "index": 0,
+          "label": "6",
+          "next": 21,
+          "place": "6.1"
+        },
+        {
+          "bar": 6,
+          "beat": 21,
+          "index": 1,
+          "label": "",
+          "next": 22,
+          "place": "6.2"
+        },
+        {
+          "bar": 6,
+          "beat": 22,
+          "index": 2,
+          "label": "",
+          "next": 23,
+          "place": "6.3"
+        },
+        {
+          "bar": 6,
+          "beat": 23,
+          "index": 3,
+          "label": "",
+          "next": 24,
+          "place": "6.4"
+        },
+        {
+          "bar": 7,
+          "beat": 24,
+          "index": 0,
+          "label": "7",
+          "next": 25,
+          "place": "7.1"
+        },
+        {
+          "bar": 7,
+          "beat": 25,
+          "index": 1,
+          "label": "",
+          "next": 26,
+          "place": "7.2"
+        },
+        {
+          "bar": 7,
+          "beat": 26,
+          "index": 2,
+          "label": "",
+          "next": 27,
+          "place": "7.3"
+        },
+        {
+          "bar": 7,
+          "beat": 27,
+          "index": 3,
+          "label": "",
+          "next": 28,
+          "place": "7.4"
+        },
+        {
+          "bar": 8,
+          "beat": 28,
+          "index": 0,
+          "label": "8",
+          "next": 29,
+          "place": "8.1"
+        },
+        {
+          "bar": 8,
+          "beat": 29,
+          "index": 1,
+          "label": "",
+          "next": 30,
+          "place": "8.2"
+        },
+        {
+          "bar": 8,
+          "beat": 30,
+          "index": 2,
+          "label": "",
+          "next": 31,
+          "place": "8.3"
+        },
+        {
+          "bar": 8,
+          "beat": 31,
+          "index": 3,
+          "label": "",
+          "next": 32,
+          "place": "8.4"
+        },
+        {
+          "bar": 9,
+          "beat": 32,
+          "index": 0,
+          "label": "9",
+          "next": 33,
+          "place": "9.1"
+        },
+        {
+          "bar": 9,
+          "beat": 33,
+          "index": 1,
+          "label": "",
+          "next": 34,
+          "place": "9.2"
+        },
+        {
+          "bar": 9,
+          "beat": 34,
+          "index": 2,
+          "label": "",
+          "next": 35,
+          "place": "9.3"
+        },
+        {
+          "bar": 9,
+          "beat": 35,
+          "index": 3,
+          "label": "",
+          "next": 36,
+          "place": "9.4"
+        },
+        {
+          "bar": 10,
+          "beat": 36,
+          "index": 0,
+          "label": "10",
+          "next": 37,
+          "place": "10.1"
+        },
+        {
+          "bar": 10,
+          "beat": 37,
+          "index": 1,
+          "label": "",
+          "next": 38,
+          "place": "10.2"
+        },
+        {
+          "bar": 10,
+          "beat": 38,
+          "index": 2,
+          "label": "",
+          "next": 39,
+          "place": "10.3"
+        },
+        {
+          "bar": 10,
+          "beat": 39,
+          "index": 3,
+          "label": "",
+          "next": 40,
+          "place": "10.4"
+        },
+        {
+          "bar": 11,
+          "beat": 40,
+          "index": 0,
+          "label": "11",
+          "next": 41,
+          "place": "11.1"
+        },
+        {
+          "bar": 11,
+          "beat": 41,
+          "index": 1,
+          "label": "",
+          "next": 42,
+          "place": "11.2"
+        },
+        {
+          "bar": 11,
+          "beat": 42,
+          "index": 2,
+          "label": "",
+          "next": 43,
+          "place": "11.3"
+        },
+        {
+          "bar": 11,
+          "beat": 43,
+          "index": 3,
+          "label": "",
+          "next": 44,
+          "place": "11.4"
+        },
+        {
+          "bar": 12,
+          "beat": 44,
+          "index": 0,
+          "label": "12",
+          "next": 45,
+          "place": "12.1"
+        },
+        {
+          "bar": 12,
+          "beat": 45,
+          "index": 1,
+          "label": "",
+          "next": 46,
+          "place": "12.2"
+        },
+        {
+          "bar": 12,
+          "beat": 46,
+          "index": 2,
+          "label": "",
+          "next": 47,
+          "place": "12.3"
+        },
+        {
+          "bar": 12,
+          "beat": 47,
+          "index": 3,
+          "label": "",
+          "next": 48,
+          "place": "12.4"
+        },
+        {
+          "bar": 13,
+          "beat": 48,
+          "index": 0,
+          "label": "13",
+          "next": 49,
+          "place": "13.1"
+        },
+        {
+          "bar": 13,
+          "beat": 49,
+          "index": 1,
+          "label": "",
+          "next": 50,
+          "place": "13.2"
+        },
+        {
+          "bar": 13,
+          "beat": 50,
+          "index": 2,
+          "label": "",
+          "next": 51,
+          "place": "13.3"
+        },
+        {
+          "bar": 13,
+          "beat": 51,
+          "index": 3,
+          "label": "",
+          "next": 52,
+          "place": "13.4"
+        },
+        {
+          "bar": 14,
+          "beat": 52,
+          "index": 0,
+          "label": "14",
+          "next": 53,
+          "place": "14.1"
+        },
+        {
+          "bar": 14,
+          "beat": 53,
+          "index": 1,
+          "label": "",
+          "next": 54,
+          "place": "14.2"
+        },
+        {
+          "bar": 14,
+          "beat": 54,
+          "index": 2,
+          "label": "",
+          "next": 55,
+          "place": "14.3"
+        },
+        {
+          "bar": 14,
+          "beat": 55,
+          "index": 3,
+          "label": "",
+          "next": 56,
+          "place": "14.4"
+        },
+        {
+          "bar": 15,
+          "beat": 56,
+          "index": 0,
+          "label": "15",
+          "next": 57,
+          "place": "15.1"
+        },
+        {
+          "bar": 15,
+          "beat": 57,
+          "index": 1,
+          "label": "",
+          "next": 58,
+          "place": "15.2"
+        },
+        {
+          "bar": 15,
+          "beat": 58,
+          "index": 2,
+          "label": "",
+          "next": 59,
+          "place": "15.3"
+        },
+        {
+          "bar": 15,
+          "beat": 59,
+          "index": 3,
+          "label": "",
+          "next": 60,
+          "place": "15.4"
+        },
+        {
+          "bar": 16,
+          "beat": 60,
+          "index": 0,
+          "label": "16",
+          "next": 61,
+          "place": "16.1"
+        },
+        {
+          "bar": 16,
+          "beat": 61,
+          "index": 1,
+          "label": "",
+          "next": 62,
+          "place": "16.2"
+        },
+        {
+          "bar": 16,
+          "beat": 62,
+          "index": 2,
+          "label": "",
+          "next": 63,
+          "place": "16.3"
+        },
+        {
+          "bar": 16,
+          "beat": 63,
+          "index": 3,
+          "label": "",
+          "next": 64,
+          "place": "16.4"
+        },
+        {
+          "bar": 17,
+          "beat": 64,
+          "index": 0,
+          "label": "17",
+          "next": 65,
+          "place": "17.1"
+        },
+        {
+          "bar": 17,
+          "beat": 65,
+          "index": 1,
+          "label": "",
+          "next": 66,
+          "place": "17.2"
+        },
+        {
+          "bar": 17,
+          "beat": 66,
+          "index": 2,
+          "label": "",
+          "next": 67,
+          "place": "17.3"
+        },
+        {
+          "bar": 17,
+          "beat": 67,
+          "index": 3,
+          "label": "",
+          "next": 68,
+          "place": "17.4"
+        },
+        {
+          "bar": 18,
+          "beat": 68,
+          "index": 0,
+          "label": "18",
+          "next": 69,
+          "place": "18.1"
+        },
+        {
+          "bar": 18,
+          "beat": 69,
+          "index": 1,
+          "label": "",
+          "next": 70,
+          "place": "18.2"
+        },
+        {
+          "bar": 18,
+          "beat": 70,
+          "index": 2,
+          "label": "",
+          "next": 71,
+          "place": "18.3"
+        },
+        {
+          "bar": 18,
+          "beat": 71,
+          "index": 3,
+          "label": "",
+          "next": 72,
+          "place": "18.4"
+        },
+        {
+          "bar": 19,
+          "beat": 72,
+          "index": 0,
+          "label": "19",
+          "next": 73,
+          "place": "19.1"
+        },
+        {
+          "bar": 19,
+          "beat": 73,
+          "index": 1,
+          "label": "",
+          "next": 74,
+          "place": "19.2"
+        },
+        {
+          "bar": 19,
+          "beat": 74,
+          "index": 2,
+          "label": "",
+          "next": 75,
+          "place": "19.3"
+        },
+        {
+          "bar": 19,
+          "beat": 75,
+          "index": 3,
+          "label": "",
+          "next": 76,
+          "place": "19.4"
+        },
+        {
+          "bar": 20,
+          "beat": 76,
+          "index": 0,
+          "label": "20",
+          "next": 77,
+          "place": "20.1"
+        },
+        {
+          "bar": 20,
+          "beat": 77,
+          "index": 1,
+          "label": "",
+          "next": 78,
+          "place": "20.2"
+        },
+        {
+          "bar": 20,
+          "beat": 78,
+          "index": 2,
+          "label": "",
+          "next": 79,
+          "place": "20.3"
+        },
+        {
+          "bar": 20,
+          "beat": 79,
+          "index": 3,
+          "label": "",
+          "next": 80,
+          "place": "20.4"
+        },
+        {
+          "bar": 21,
+          "beat": 80,
+          "index": 0,
+          "label": "21",
+          "next": 81,
+          "place": "21.1"
+        },
+        {
+          "bar": 21,
+          "beat": 81,
+          "index": 1,
+          "label": "",
+          "next": 82,
+          "place": "21.2"
+        },
+        {
+          "bar": 21,
+          "beat": 82,
+          "index": 2,
+          "label": "",
+          "next": 83,
+          "place": "21.3"
+        },
+        {
+          "bar": 21,
+          "beat": 83,
+          "index": 3,
+          "label": "",
+          "next": 84,
+          "place": "21.4"
+        }
+      ],
+      "loop_enabled": false,
+      "loop_end": 16,
+      "loop_start": 0,
+      "markers": [
+        {
+          "beat": 8,
+          "id": 1,
+          "length": 0,
+          "name": "Verse"
+        }
+      ],
+      "marks": [
+        {
+          "beat": 16,
+          "kind": "tempo",
+          "text": "140"
+        }
+      ],
+      "metronome": false,
+      "modified": true,
+      "name": "untitled",
+      "note_grid": 0.25,
+      "pre_roll": 0,
+      "pre_roll_seconds": 0,
+      "punch_enabled": false,
+      "punch_end": 0,
+      "punch_start": 0,
+      "sample_rate": 48000,
+      "scenes": [
+        "Verse",
+        "Scene 2",
+        "Scene 3",
+        "Scene 4",
+        "Scene 5",
+        "Scene 6",
+        "Scene 7",
+        "Scene 8"
+      ],
+      "signature": "4/4",
+      "tempo": 120,
+      "threads": 12,
+      "xruns": 0
+    },
+    "record_dropped": 0,
+    "recording": false,
+    "revision": 9,
+    "routing": {
+      "master": false,
+      "output": "Master",
+      "output_id": 0,
+      "sends": {},
+      "targets": [
+        {
+          "id": 0,
+          "name": "Master"
+        },
+        {
+          "id": 3,
+          "name": "B"
+        },
+        {
+          "id": 5,
+          "name": "C"
+        }
+      ]
+    },
+    "selected": 1,
+    "signature": "4/4",
+    "slots": [
+      {
+        "id": 6,
+        "legato": false,
+        "midi": true,
+        "mode": "trigger",
+        "muted": false,
+        "name": "Riff",
+        "quantize": "",
+        "row": 0,
+        "track": 0
+      }
+    ],
+    "tempo": 120,
+    "time": "1.1.00",
+    "tracks": [
+      {
+        "armed": false,
+        "automation": "read",
+        "chain": "Synth",
+        "color": "#e0605a",
+        "depth": 0,
+        "folded": false,
+        "group": false,
+        "height": 1,
+        "id": 1,
+        "lane_rows": [
+          7
+        ],
+        "lanes": [
+          {
+            "enabled": true,
+            "hi": 6,
+            "id": 7,
+            "lo": -60,
+            "max": 24,
+            "min": -120,
+            "name": "Volume",
+            "points": [
+              [
+                0,
+                -12
+              ],
+              [
+                8,
+                0
+              ]
+            ],
+            "target": "volume"
+          }
+        ],
+        "master": false,
+        "members": 0,
+        "monitor": false,
+        "mute": false,
+        "name": "A",
+        "pan": 0,
+        "sends": {},
+        "solo": false,
+        "take_rows": 0,
+        "vca": false,
+        "vcas": "",
+        "volume": 0
+      },
+      {
+        "armed": false,
+        "automation": "read",
+        "chain": "",
+        "color": "#e58a45",
+        "depth": 0,
+        "folded": false,
+        "group": false,
+        "height": 1,
+        "id": 3,
+        "lane_rows": {},
+        "lanes": {},
+        "master": false,
+        "members": 0,
+        "monitor": false,
+        "mute": false,
+        "name": "B",
+        "pan": 0,
+        "sends": {},
+        "solo": false,
+        "take_rows": 0,
+        "vca": false,
+        "vcas": "",
+        "volume": 0
+      },
+      {
+        "armed": false,
+        "automation": "read",
+        "chain": "",
+        "color": "#d9ab3a",
+        "depth": 0,
+        "folded": false,
+        "group": false,
+        "height": 1,
+        "id": 5,
+        "lane_rows": {},
+        "lanes": {},
+        "master": false,
+        "members": 0,
+        "monitor": false,
+        "mute": false,
+        "name": "C",
+        "pan": 0,
+        "sends": {},
+        "solo": false,
+        "take_rows": 0,
+        "vca": false,
+        "vcas": "",
+        "volume": 0
+      },
+      {
+        "armed": false,
+        "automation": "read",
+        "chain": "",
+        "color": "#8a91a3",
+        "depth": 0,
+        "folded": false,
+        "group": false,
+        "height": 1,
+        "id": 0,
+        "lane_rows": {},
+        "lanes": {},
+        "master": true,
+        "members": 0,
+        "monitor": false,
+        "mute": false,
+        "name": "Master",
+        "pan": 0,
+        "sends": {},
+        "solo": false,
+        "take_rows": 0,
+        "vca": false,
+        "vcas": "",
+        "volume": 0
+      }
+    ],
+    "xruns": 0
+  }
+}
