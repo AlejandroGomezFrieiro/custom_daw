@@ -283,7 +283,8 @@ test("the keys picker shows the help of the key chosen, wide columns, and a key 
   daw.pick("keys", { query = "Ctrl-w o" })
   local text = table.concat(api.ui_snapshot(200, 40), "\n")
   eq(text:find("Ctrl-w o", 1, true) ~= nil, true, "the key is listed")
-  eq(text:find("terminal", 1, true) ~= nil, true, "the manual's page is named in the preview")
+  -- A key's help is its row in the key table, so the preview names that page.
+  eq(text:find("Keys, by idea", 1, true) ~= nil, true, "the manual's page is named in the preview")
   local shown = {}
   for _, e in ipairs(daw.ui.keybar.entries()) do shown[#shown + 1] = e[1] .. " " .. e[2] end
   eq(table.concat(shown, " · "), "Enter run · Ctrl-] help · Esc close", "the key line")
