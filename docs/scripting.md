@@ -424,6 +424,24 @@ A chip's `act` names a `daw.frontend.act` function, called with the clip and
 `arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
 left. A failing layer is skipped, and the others are drawn.
 
+An instrument whose keys mean more than pitches (keyswitches, a playable
+range) says so with four more hooks, each by name, nil taking one away:
+
+```lua
+roll.rows("mine", function(pitch, track)       -- the keyboard edge and the row's shade
+  if pitch < 55 then return { shade = "RollOutside" } end
+  if pitch == 24 then return { label = "sus", style = "PianoC" } end
+end)
+roll.band("mine", 10, {                         -- a row of its own above the ruler
+  title = "art", active = function(clip) return true end,
+  paint = function(buf, b) buf:text(b.x(0), 0, "│sus") end,   -- b.x(beat), b.from, b.to, b.width, b.clip
+})
+roll.describer("mine", function(note, part) return { "  played as  sustain" } end)   -- lines K adds for a note
+roll.entering("mine", function(note, clip) note.velocity = 90 end)   -- a note the keys, insert mode or a click enter
+```
+
+extensions/articulations uses all four.
+
 **Other.** `daw.defer(fn, ms)`, `daw.every(ms, fn)`, `daw.cancel(handle)`;
 `daw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `daw.music.pitch("F#3")`,
