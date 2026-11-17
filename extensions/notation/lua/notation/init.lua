@@ -414,6 +414,39 @@ function view:note()
   if note then return note, written.index, written end
 end
 
+--- What `K` shows before the track: the note under the cursor as it is
+--- written, and the MIDI note it is.
+function view:describe()
+  local note, _, written = self:note()
+  if not note then return nil end
+  local ev = self:event_at(self.beat, self.step)
+  local how = {}
+  local value = ev and model.NAMES[ev.base]
+  if value then how[#how + 1] = string.rep("dotted ", ev.dots or 0) .. value end
+  if ev and ev.tuplet then how[#how + 1] = "in a tuplet of " .. ev.tuplet.n end
+  if ev then how[#how + 1] = "voice " .. (ev.voice or 1) end
+  local marks = {}
+  for k in pairs(ev and ev.art or {}) do marks[#marks + 1] = k end
+  table.sort(marks)
+  if ev and ev.staccato and not (ev.art and ev.art.staccato) then marks[#marks + 1] = "staccato" end
+  if #marks > 0 then how[#how + 1] = table.concat(marks, ", ") end
+  local dynamic
+  for _, m in ipairs(self:layout().measures) do
+    for _, mk in ipairs(m.marks or {}) do
+      if mk.kind == "dyn" and mk.at <= note.start + EPS then dynamic = mk.value end
+    end
+  end
+  if dynamic then how[#how + 1] = "under " .. dynamic end
+  local c = self:clip():get()
+  return {
+    { text = "Note  " .. model.name(written), style = "Title" },
+    "  written " .. table.concat(how, ", "),
+    string.format("  played at %s, %g beats long, velocity %d (MIDI note %d, n%s)", daw.time.format(c.start + note.start),
+      note.length, note.velocity, note.pitch, tostring(note.id)),
+    "",
+  }
+end
+
 --- The pitch the cursor stands for: the note's there, or the key's at that line or space.
 function view:cursor_pitch()
   local note = self:note()

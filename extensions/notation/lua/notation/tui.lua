@@ -285,19 +285,22 @@ function view:render(buf, ctx)
   local extra = (layout.names and ("  " .. #layout.names .. " staves, to read") or "") .. (view.raw_view() and "  raw" or "")
     .. ((self.voice or 1) > 1 and ("  voice " .. self.voice) or "")
     .. (only and ("  " .. (only == 1 and "right hand" or "left hand") .. " (low panel)") or "")
+  -- How letters write: overwriting (as entered), pushing later music
+  -- along, re-pitching what is there; and a tuplet or grace note to come.
+  -- The title's right side stands clear of it.
+  local badge
+  if inserting then
+    local tp = self:entry_tuplet()
+    local how = self.repitch and " REPITCH " or self.push and " PUSH " or " INS "
+    badge = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
+  end
+  local right = (badge and "" or value .. "  ") .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra
   daw.ui.titlebar(real, {
     pill = { c.name, hue.pill }, name = track.name, focused = ctx.focused,
     context = string.format("%s  %s", here, daw.time.format(c.start + self.beat)),
-    right = value .. "  " .. keyname .. "  " .. layout.meter.num .. "/" .. layout.meter.den .. extra,
+    right = right .. (badge and string.rep(" ", api.str_width(badge) + 1) or ""),
   })
-  if inserting then
-    -- How letters write: overwriting (as entered), pushing later music
-    -- along, re-pitching what is there; and a tuplet or grace note to come.
-    local tp = self:entry_tuplet()
-    local how = self.repitch and " REPITCH " or self.push and " PUSH " or " INS "
-    local text = how .. value .. (tp and (" " .. tp[1] .. ":" .. tp[2]) or "") .. (self.grace and (" " .. self.grace) or "") .. " "
-    real:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
-  end
+  if badge then real:text(math.max(0, w - api.str_width(badge) - 1), 0, badge, "RulerInsert") end
   -- Where the terminal shows images, the engraved page (gui.lua) below the title.
   if real:surface(0, 1, w, h - 1) then return end
 
@@ -692,11 +695,22 @@ function view:render(buf, ctx)
         end
       end
       -- Dynamics, hairpins and text; repeat signs at the barlines.
+      -- Under the first staff (between a grand staff's two); in a low
+      -- panel, on the last row there is.
+      local dyn_row = math.min(band(1) + staff_rows - 1, h - 1)
+      -- A hairpin from an earlier bar runs on through this one.
+      for k = m.index - 1, 1, -1 do
+        for _, mk in ipairs(layout.measures[k].marks or {}) do
+          if (mk.kind == "cresc" or mk.kind == "dim") and mk.to > m.start + EPS then
+            local x1 = mk.to >= m.start + m.length - EPS and bx - 1 or xt(mk.to)
+            local style = mk.ghost and "ExGhost" or note_style
+            for hx = mx + 1, x1 do buf:text(hx, dyn_row, G.hairpin, style) end
+            if mk.kind == "dim" and mk.to <= m.start + m.length + EPS then buf:text(x1, dyn_row, ">", style) end
+          end
+        end
+      end
       for _, mk in ipairs(m.marks or {}) do
         local mxp = xt(mk.at)
-        -- Under the first staff (between a grand staff's two); in a low
-        -- panel, on the last row there is.
-        local dyn_row = math.min(band(1) + staff_rows - 1, h - 1)
         local note_style = mk.ghost and "ExGhost" or note_style
         if mk.kind == "dyn" then
           buf:text(mxp, dyn_row, mk.value, mk.ghost and note_style or { fg = colour, bold = true, italic = true })
@@ -706,7 +720,11 @@ function view:render(buf, ctx)
             if other.kind == "dyn" and math.abs(other.at - mk.at) < EPS then mxp = mxp + #other.value + 1 end
           end
           for hx = mxp, x1 do buf:text(hx, dyn_row, G.hairpin, note_style) end
-          if mk.kind == "cresc" then buf:text(mxp, dyn_row, "<", note_style) else buf:text(x1, dyn_row, ">", note_style) end
+          if mk.kind == "cresc" then
+            buf:text(mxp, dyn_row, "<", note_style)
+          elseif mk.to <= m.start + m.length + EPS then
+            buf:text(x1, dyn_row, ">", note_style)
+          end
         elseif mk.kind == "text" then
           buf:text(mxp, band(1) + math.max(0, margin - 2) + (margin > 1 and 1 or 0), tostring(mk.value), mk.ghost and note_style or { fg = colour, italic = true })
         end
@@ -755,9 +773,11 @@ function view:render(buf, ctx)
           local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
           -- A popover opens under the system, at the caret's column, so that
           -- the staff and what it previews stay in sight; at the foot of the
-          -- panel when the system fills it.
+          -- panel when the system fills it. Under the row of dynamics too,
+          -- which is what a dynamic's popover previews.
           local last = sys.rows[#sys.rows]
-          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.min(h - 1, math.max(1, last.above(0) + 3)) }
+          local under_marks = math.max(last.above(0) + 3, sys.top + geometry.staff_rows)
+          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.min(h - 1, math.max(1, under_marks)) }
           local style = inserting and "InsertCursor" or "RollCursor"
           if selection then
             buf:fill(cx, R.above(pos), 2, 1, nil, style)
