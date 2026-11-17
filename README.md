@@ -1,8 +1,15 @@
 # paw
 
-paw, a personal audio workstation, built the way Neovim is built: a small kernel,
-and everything you touch written in Lua on top of it. You can drive it from the
-keyboard with modal editing, from a window with the mouse, or from a script.
+paw is a personal audio workstation built the way Neovim is built: a small
+kernel, and everything you touch written in Lua on top of it. You drive it
+from the keyboard with modal editing, from a window with the mouse, or from
+a script, and all three are the same program.
+
+If you know Vim you already know most of it. A track is a line and a clip is
+a word; `3>ic` moves a clip three steps later, `:%s/c4/d4/gc` changes notes
+with a preview, `:e daw://tracks` edits your tracks as text, `:help gU`
+opens the manual, and your configuration is Lua that calls the same `daw`
+module the built-in keys are made with.
 
 ![The window, playing the demo song](docs/images/gui.png)
 
@@ -10,9 +17,9 @@ keyboard with modal editing, from a window with the mouse, or from a script.
 
 The kernel is Rust: a real-time audio engine, the project model with its undo
 tree, plugin hosting and a Lua host. The arrange view, the mixer, the piano
-roll, every command and every key are Lua, written with the same `daw` module
-your own configuration and extensions use. The terminal UI and the window are
-two faces of one kernel, and both can be open on the same project.
+roll, the score, every command and every key are Lua. The terminal UI and the
+window are two faces of one kernel, and both can be open on the same project.
+The terminal comes first: whatever the window does, the terminal does too.
 
 > [!NOTE]
 > This is an early, personal project. It runs on Linux (PipeWire, ALSA or
@@ -40,17 +47,16 @@ Or without the dev shell: `nix run .` (the terminal UI) and `nix run .#daw-gui`
 ([Installing with Nix](docs/running.md#installing-with-nix)).
 
 In the terminal, `?` lists every key of the view you are in, `:` runs any
-command by name, and `:q` quits. A course of sixteen ten-minute lessons runs
-inside the program (`:tutor`, once the `tutor` extension is loaded) and can
-also be read in [docs/course](docs/course/README.md).
+command by name, `:help` opens the manual (`:help gU`, `:help quickfix-list`),
+and `:q` quits. A course of seventeen short lessons runs inside the program
+(`:tutor`) and can also be read in [docs/course](docs/course/README.md).
 
 ## In the terminal
 
-Keys work as they do in Vim, on a timeline instead of a text. In the arrange
-view a track is a line and a clip is a word; in the piano roll a pitch is a
-line and a note is a word. Counts, operators, motions, text objects, visual
-mode, registers, macros, marks and `.` all apply: `3>ic` moves a clip three
-steps later, `yic` yanks it, `dd` deletes a track.
+Keys work as they do in Vim, on a timeline instead of a text. Counts,
+operators, motions, text objects, visual mode, registers, macros, marks and
+`.` all apply, and one rule holds in every view: `h` `j` `k` `l` only move,
+`+` `-` change the value under the cursor, `Esc` cancels and never leaves.
 
 ![Moving, deleting, yanking and pasting clips, and running a command](docs/images/tui-arrange.gif)
 
@@ -62,15 +68,52 @@ The mixer, the device picker and the device panel are views like any other:
 
 ![The mixer, adding a reverb from the picker, and changing its parameters](docs/images/tui-mixer.gif)
 
+### Score, engraved in the terminal
+
+A clip can be read and written as staff notation, drawn with a music font as
+pictures in terminals that show images (WezTerm, kitty, Ghostty), and in cells
+elsewhere. Notes are entered as in a notation program; dynamics, tempo, key
+and the rest are written with a prompt on the leader, as in Dorico, and you
+hear each one before you write it. The notation has a grammar of its own:
+`gUib` raises a bar, `g(` goes to the start of a phrase.
+
+![Entering notes, a dynamic, a tempo and a hairpin in the score](docs/images/tui-notation.gif)
+
+![The score, with the hairpin about to be written](docs/images/tui-notation.png)
+
+The piano roll beside the score edits the same clip, and shows what is
+written and what is played, the feel, apart. See the
+[notation extension](extensions/notation/README.md).
+
+### Ex, over bars and tracks
+
+The command line takes Vim's Ex commands where a line is a bar and a range
+can be tracks: `:5,8d`, `:t2,t4 mute`, `:%s/c4/d4/gc`. What you type is
+previewed live, and `c` asks about each match.
+
+![A substitution with a live preview and confirmation, then tracks muted by range](docs/images/tui-ex.gif)
+
+### Lists as text, the quickfix list, help
+
+Tracks, sends, devices and markers are text buffers, as directories are in
+oil.nvim: edit the lines, `:w` shows the plan, `y` applies it as one undo
+step. Problems found anywhere land in one quickfix list (`:copen`, `]q`).
+Pickers play what they would choose before you choose it. And the manual is
+inside, as Vim's is.
+
+![Editing the tracks as text, then writing the plan](docs/images/tui-textbuf.gif)
+
+![The manual: a key looked up, a link followed, back again](docs/images/tui-help.gif)
+
 | To | Press |
 | --- | --- |
 | Move by track, by clip, by bar | `j` `k`, `w` `b`, `W` `B` |
 | Play and stop | `Space` |
 | Add a track, add a device | `o`, `a` |
 | Open a clip's notes, type notes | `Enter`, `i` |
-| Delete, yank, paste | `x` or `d`…, `y`…, `p` |
+| Delete, yank, paste | `x` or `d`..., `y`..., `p` |
 | Undo, redo | `u`, `Ctrl-r` |
-| Mixer, device panel, piano roll | `,m` `,d` `,p` |
+| Mixer, device panel, piano roll, score | `,m` `,d` `,p` `,n` |
 | Find a command, a key, any picker | `,,` `,fk` `,fp` |
 | Arm a track, record | `r`, `R` |
 
@@ -79,8 +122,14 @@ and [docs/terminal.md](docs/terminal.md) explains it.
 
 ## In the window
 
-The window is for the mouse. Clips are dragged, trimmed, copied and
-stretched; everything else is on the right button.
+The window is for the mouse, and shows the terminal's windows as panes you
+can drag the borders of: the arrange view with the device panel beside it,
+the piano roll, the score, a list of tracks as text, the quickfix list.
+
+![The window with its panes: the arrange view, the piano roll and the score](docs/images/gui-panes.png)
+
+Clips are dragged, trimmed, copied and stretched; everything else is on the
+right button.
 
 ![Moving, trimming and copying clips, the clip menu, zooming and playing](docs/images/gui-arrange.gif)
 
@@ -88,6 +137,13 @@ The piano roll is a pencil: drag to draw, drag a note to move it, right-drag
 to select with a box, and draw velocities and controllers in the strip below.
 
 ![Drawing notes, moving them, drawing velocities, selecting with a box](docs/images/gui-pianoroll.gif)
+
+The score is engraved with the same font, docked beside the piano roll; a
+click enters a note, with a shadow note under the pointer to show where.
+
+![The score beside the piano roll, a click entering notes](docs/images/gui-notation.gif)
+
+![The score engraved in the window](docs/images/gui-notation.png)
 
 Devices are added by name, the mixer has a strip for every track, and a
 parameter is automated by drawing its curve:
@@ -185,11 +241,12 @@ Protocol.
 | Page | About |
 | --- | --- |
 | [Running it](docs/running.md) | options, audio devices, recent projects, the tests |
-| [The terminal interface](docs/terminal.md) | every key and picker |
+| [The terminal interface](docs/terminal.md) | every key and picker, Ex, text buffers, the quickfix list, `:help` |
 | [The graphical frontend](docs/window.md) | every gesture in the window |
 | [Input and recording](docs/recording.md) | inputs, monitoring, takes, punch, count-in |
 | [Editing, mixing and rendering](docs/mixing.md) | routing, automation, tempo, stretching, markers, export |
 | [Live performance](docs/live.md) | clips in slots, launched on the bar, scenes, capturing a performance |
+| [Notation](extensions/notation/README.md) | the score: entering notes, popovers, the grammar, the engraved page |
 | [Harmony, completion and snippets](docs/harmony.md) | suggestions as ghost notes in the piano roll, and how to write a source |
 | [Plugins and built-in devices](docs/devices.md) | CLAP, LV2, VST3, the sandbox, the built-in devices |
 | [Configuration](docs/configuration.md) | options, colours, the look |
