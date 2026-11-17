@@ -7,8 +7,6 @@ gui_start
 glide 300 100; xdotool click --repeat 2 --delay 60 1; pause 1.2
 typ ":vs notation"; key Return; pause 1.2
 typ ":notation"; key Return; pause 1.8
-glide 700 790 4; pause 0.3
-shot gui-panes.png
 rec_start gui-notation
 cap "The piano roll and the score are panes of the window, side by side"
 pause 1.6
