@@ -119,8 +119,10 @@ test("notation: the key bar names + and - for sharp and flat, as the manual does
   song({ N(60, 0, 1) }, 4)
   paw.ui.focus("notation")
   paw.keymap.set_mode("n")
-  local screen = table.concat(api.ui_snapshot(160, 40), "\n")
-  eq(screen:find("+ sharp", 1, true) ~= nil and screen:find("- flat", 1, true) ~= nil, true, "the key bar: " .. (screen:match("[^\n]*sharp[^\n]*") or "no sharp"))
+  local words = {}
+  for _, e in ipairs(paw.ui.keybar.entries()) do words[#words + 1] = e[1] .. " " .. e[2] end
+  local line = table.concat(words, " · ")
+  eq(line:find("+ sharp", 1, true) ~= nil and line:find("- flat", 1, true) ~= nil, true, "the key bar: " .. line)
   paw.keymap.feed("+")
   eq(paw.ui.views.notation:clip():notes()[1].pitch, 61, "and + sharpens")
   paw.ui.focus("arrange")
