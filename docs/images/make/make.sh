@@ -17,7 +17,7 @@ fi
 ROOT=$(cd "$HERE/../../.." && pwd)
 WORK=${WORK:-$ROOT/target/test-scratch/media}
 export WORK
-[ $# -eq 0 ] && set -- tui-arrange tui-pianoroll tui-mixer gui-arrange gui-pianoroll gui-mix stills
+[ $# -eq 0 ] && set -- tui-arrange tui-pianoroll tui-mixer tui-notation tui-ex tui-textbuf tui-help gui-arrange gui-pianoroll gui-mix gui-notation stills
 for scene in "$@"; do
   echo "$scene"
   "$HERE/$scene.sh" || exit 1
@@ -26,7 +26,7 @@ for scene in "$@"; do
   fi
 done
 # The stills the scenes took on the way.
-for still in gui.png gui-pianoroll.png gui-mixer.png tui.png tui-pianoroll.png tui-devices.png tui-picker.png; do
+for still in gui.png gui-pianoroll.png gui-mixer.png gui-notation.png gui-panes.png tui.png tui-pianoroll.png tui-notation.png tui-devices.png tui-picker.png; do
   [ -f "$WORK/$still" ] && cp "$WORK/$still" "$HERE/../$still"
 done
 ls -la "$HERE/.."

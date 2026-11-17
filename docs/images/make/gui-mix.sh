@@ -11,17 +11,17 @@ xdotool type --delay 170 "rev"; pause 0.9
 xdotool key Return; pause 1.3
 cap "Play, and open the mixer"
 glide 181 21; pause 0.2; xdotool click 1; pause 0.8
-glide 811 21; pause 0.2; xdotool click 1; pause 1.2
+glide 892 21; pause 0.2; xdotool click 1; pause 1.2
 cap "Faders, pans, mute and solo for every track"
-drag 108 633 108 606
+drag 36 636 36 618
 pause 0.4
-drag 254 637 254 645
+drag 148 640 148 654
 pause 0.6
 shot gui-mixer.png
-glide 811 21; pause 0.2; xdotool click 1; pause 0.8
+glide 892 21; pause 0.2; xdotool click 1; pause 0.8
 cap "Automation: show the lanes and draw with the pointer"
-glide 905 21; pause 0.2; xdotool click 1; pause 1.2
-stroke 250 185 400 150 560 182 720 146 876 176
+glide 988 21; pause 0.2; xdotool click 1; pause 1.2
+stroke 250 292 400 262 560 290 720 258 876 284
 pause 2.5
 glide 149 21; xdotool click 1; pause 0.6
 rec_stop
