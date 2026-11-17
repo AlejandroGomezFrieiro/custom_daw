@@ -145,7 +145,9 @@ test("zn narrows to the group at the cursor and zw widens; scopes open side by s
   daw.cursor.set_track(o.violins)
   keys("zn")
   eq(daw.scope.current(), o.strings.id, "zn on a member: its group")
+  local seen = daw.frontend.revision
   keys("gt")
+  eq(daw.frontend.revision > seen, true, "a window is told to draw the other tab's tracks")
   eq(daw.scope.current(), nil, "the first tab is wide")
   eq(#daw.groups.rows(), 7, "and shows everything")
   daw.cursor.set_track(o.brass)

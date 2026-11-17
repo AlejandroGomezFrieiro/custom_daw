@@ -328,15 +328,16 @@ local function reread()
   end
 end
 
-daw.on("tab.enter", function()
+--- Everything that shows tracks catches up with the tab in front: lists
+--- edited as text, a graphical frontend's state, the engine.
+local function follow()
   cursor_inside()
   reread()
+  daw.frontend.refresh()
   M.apply(M.current())
-end)
-daw.on("scope.changed", function()
-  reread()
-  M.apply(M.current())
-end)
+end
+daw.on("tab.enter", follow)
+daw.on("scope.changed", follow)
 daw.on("option.changed", function(e)
   if e.name == "scope_rest" then M.apply(M.current()) end
 end)
