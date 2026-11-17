@@ -142,7 +142,7 @@ pub fn position(value: &Value, meter: Meter, what: &str) -> Result<f64> {
     let beats = match value {
         Value::Number(n) => n.as_f64().context("not a number")?,
         Value::String(text) => parse_position(text.trim(), meter)
-            .with_context(|| format!("bad {what} `{text}`: use beats as a JSON number (4.5), or a \"bar.beat\" string counting from 1 such as \"3.1\" or \"2.3.50\", with the beat inside the bar ({}/{})", meter.num, meter.den))?,
+            .with_context(|| format!("bad {what} `{text}`: use beats as a JSON number (4.5), or a string counting bars and beats from 1: \"3.1\", \"3:1\", \"2.3.50\" or \"bar 3 beat 1\", with the beat inside the bar ({}/{})", meter.num, meter.den))?,
         _ => bail!("{what} must be a number of beats or a \"bar.beat\" string"),
     };
     if !beats.is_finite() || beats < 0.0 {
@@ -151,7 +151,27 @@ pub fn position(value: &Value, meter: Meter, what: &str) -> Result<f64> {
     Ok(beats)
 }
 
+/// `bar 5`, `bar 5 beat 2`, `bar 5, beat 2.5`: the words some models write.
+fn parse_spoken(text: &str, meter: Meter) -> Option<f64> {
+    let lower = text.to_ascii_lowercase().replace(',', " ");
+    let mut words = lower.split_whitespace();
+    if words.next()? != "bar" {
+        return None;
+    }
+    let bar: i64 = words.next()?.parse().ok().filter(|b| *b >= 1)?;
+    let (start, num, den) = meter.bar_start(bar - 1);
+    let beat: f64 = match words.next() {
+        None => 1.0,
+        Some("beat") => words.next()?.parse().ok().filter(|b| *b >= 1.0 && *b < num as f64 + 1.0)?,
+        Some(_) => return None,
+    };
+    words.next().is_none().then_some(start + (beat - 1.0) * 4.0 / den as f64)
+}
+
 fn parse_position(text: &str, meter: Meter) -> Option<f64> {
+    if text.len() > 3 && text[..3].eq_ignore_ascii_case("bar") && text[3..].starts_with([' ', ',']) {
+        return parse_spoken(text, meter);
+    }
     if let Some(beats) = text
         .strip_suffix("beats")
         .or_else(|| text.strip_suffix("beat"))
@@ -424,6 +444,11 @@ mod tests {
         assert_eq!(position(&json!("2:3"), m, "p").unwrap(), 6.0);
         assert_eq!(position(&json!("2.3.50"), m, "p").unwrap(), 6.5);
         assert_eq!(position(&json!("6b"), m, "p").unwrap(), 6.0);
+        assert_eq!(position(&json!("bar 5"), m, "p").unwrap(), 16.0);
+        assert_eq!(position(&json!("bar 5 beat 2"), m, "p").unwrap(), 17.0);
+        assert_eq!(position(&json!("Bar 2, beat 3.5"), m, "p").unwrap(), 6.5);
+        assert!(position(&json!("bar 2 beat 5"), m, "p").is_err());
+        assert!(position(&json!("bar"), m, "p").is_err());
         assert!(position(&json!("0.1"), m, "p").is_err());
         assert!(position(&json!("2.5"), m, "p").is_err());
         let six8 = Meter::new(6, 8);

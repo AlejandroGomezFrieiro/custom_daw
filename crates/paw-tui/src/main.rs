@@ -20,7 +20,8 @@ Usage:
   paw [options] [project]         open the terminal UI (a sound file starts a project with it)
   paw -l <script.lua> [args...]   run a Lua script without a UI, then exit
   paw --headless [project]        run without a UI until told to quit
-  paw ctl <method> [params...]    call a running instance over its socket
+  paw ctl [--json] <method> [params...]
+                                  call a running instance over its socket
   paw attach                      show a running instance's terminal UI here
   paw doctor [options]            check the audio, MIDI, plugins and environment, and print a report
 
@@ -68,6 +69,7 @@ doctor options: --seconds <n> (length of the dropout runs), --plugin <name> (rep
 ctl examples:
   paw ctl eval 'return paw.transport.position'
   paw ctl cmd transport.toggle
+  paw ctl --json eval 'return paw.project.tempo'
   paw ctl track_add '{\"name\": \"Bass\"}'
   paw ctl --connect studio:7700 --token-file studio.token cmd transport.toggle
 
@@ -254,23 +256,55 @@ fn connect(argv: &mut std::iter::Peekable<impl Iterator<Item = String>>) -> Resu
     }
 }
 
-/// `paw ctl <method> [params...]`: each parameter is JSON, or a plain string
-/// when it does not parse as JSON.
+/// `paw ctl [--json] <method> [params...]`: each parameter is JSON, or a plain
+/// string when it does not parse as JSON. With `--json` the answer is one line
+/// of JSON on stdout, `{"ok": true, "result": ...}` or `{"ok": false,
+/// "error": "..."}` (and the exit status 1), whatever went wrong.
 fn ctl(argv: impl Iterator<Item = String>) -> Result<()> {
+    let mut argv: Vec<String> = argv.collect();
+    // The option may stand among the connection's: take it out, leaving the
+    // values of the options that take one alone.
+    let mut json = false;
+    let mut i = 0;
+    while i < argv.len() && argv[i].starts_with("--") {
+        match argv[i].as_str() {
+            "--json" => {
+                json = true;
+                argv.remove(i);
+            }
+            "--socket" | "--connect" | "--token" | "--token-file" => i += 2,
+            _ => i += 1,
+        }
+    }
+    let outcome = ctl_call(argv.into_iter());
+    if !json {
+        match outcome? {
+            Value::Null => {}
+            Value::String(text) => println!("{text}"),
+            other => println!("{}", serde_json::to_string_pretty(&other)?),
+        }
+        return Ok(());
+    }
+    match outcome {
+        Ok(result) => println!("{}", serde_json::json!({ "ok": true, "result": result })),
+        Err(err) => {
+            println!("{}", serde_json::json!({ "ok": false, "error": format!("{err:#}") }));
+            std::process::exit(1);
+        }
+    }
+    Ok(())
+}
+
+fn ctl_call(argv: impl Iterator<Item = String>) -> Result<Value> {
     let mut argv = argv.peekable();
     let mut connection = connect(&mut argv)?;
     let method = argv.next().context(
-        "usage: paw ctl [--socket <path> | --connect <host:port>] <method> [params...]",
+        "usage: paw ctl [--json] [--socket <path> | --connect <host:port>] <method> [params...]",
     )?;
     let params: Vec<Value> = argv
         .map(|p| serde_json::from_str(&p).unwrap_or(Value::String(p)))
         .collect();
-    match connection.call(&method, Value::Array(params))? {
-        Value::Null => {}
-        Value::String(text) => println!("{text}"),
-        other => println!("{}", serde_json::to_string_pretty(&other)?),
-    }
-    Ok(())
+    connection.call(&method, Value::Array(params))
 }
 
 /// Where an attached terminal plays the instance's sound.

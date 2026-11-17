@@ -81,6 +81,18 @@ are answered in order. A request with `"id": null` is answered with
 | `monitor.listen` | | `audio.frame` events from now on; answers `{ "rate", "channels", "format", "frame_ms" }` |
 | `monitor.unlisten` | | stops them |
 
+`paw ctl --json <method> [params...]` is for programs and agents that have a
+shell: it prints one line of JSON, `{"ok": true, "result": ...}` or
+`{"ok": false, "error": "..."}`, and exits with status 1 on an error,
+whether the call failed, the method does not exist, or there is no instance
+to talk to. Without `--json`, a result is printed as it is (a string as text,
+anything else as indented JSON) and an error goes to stderr.
+
+```sh
+paw ctl --json eval 'return paw.project.tempo'     # {"ok":true,"result":120}
+paw ctl --json track_get 99                        # {"ok":false,"error":"..."}
+```
+
 An extension adds methods of its own with
 `paw.remote.methods["name"] = function(client, ...) return … end`.
 
