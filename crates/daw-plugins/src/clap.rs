@@ -1167,9 +1167,58 @@ impl Controller for ClapController {
                 self.shared.flags.rescan.store(true, Relaxed);
                 Ok(Vec::new())
             },
-            _ => bail!("this device has no method `{method}`"),
+            _ => unsafe {
+                let ext: *const PawPluginCall = extension(self.shared.plugin, PAW_EXT_CALL);
+                let call = ext
+                    .as_ref()
+                    .and_then(|e| e.call)
+                    .with_context(|| format!("this device has no method `{method}`"))?;
+                let name = CString::new(method)?;
+                let mut answer: Vec<u8> = Vec::new();
+                let ok = call(
+                    self.shared.plugin,
+                    name.as_ptr(),
+                    data.as_ptr(),
+                    data.len(),
+                    &mut answer as *mut Vec<u8> as *mut c_void,
+                    Some(call_write),
+                );
+                // What the plugin read or loaded may have changed its parameters.
+                self.shared.flags.rescan.store(true, Relaxed);
+                if !ok {
+                    bail!("{}", String::from_utf8_lossy(&answer));
+                }
+                Ok(answer)
+            },
         }
     }
+}
+
+/// paw's own extension, for plugins that answer `device_call` methods the
+/// host does not know (paw's sampler answers `describe`): the plugin
+/// writes its answer through `write`, and returns false when the method
+/// failed, having written why.
+const PAW_EXT_CALL: &CStr = c"dev.paw.call/1";
+
+#[repr(C)]
+struct PawPluginCall {
+    call: Option<
+        unsafe extern "C" fn(
+            plugin: *const clap_plugin,
+            method: *const c_char,
+            data: *const u8,
+            size: usize,
+            out: *mut c_void,
+            write: Option<unsafe extern "C" fn(out: *mut c_void, data: *const u8, size: usize)>,
+        ) -> bool,
+    >,
+}
+
+unsafe extern "C" fn call_write(out: *mut c_void, data: *const u8, size: usize) {
+    if out.is_null() || data.is_null() {
+        return;
+    }
+    unsafe { (*(out as *mut Vec<u8>)).extend_from_slice(std::slice::from_raw_parts(data, size)) };
 }
 
 impl Drop for ClapController {
