@@ -98,7 +98,8 @@ command("notation.set", function(ctx)
       lines[#lines + 1] = string.format("  %-11s %-8s%s", k, tostring(set[k]), changed and ("  (default " .. tostring(score.DEFAULTS[k]) .. ")") or "")
     end
     lines[#lines + 1] = ""
-    lines[#lines + 1] = "  :notation.set swing off sets one, :notation.set swing default forgets it, :notation.reset all"
+    lines[#lines + 1] = "  :notation.set swing off sets one, swing default forgets it"
+    lines[#lines + 1] = "  :notation.reset forgets them all"
     return daw.ui.page("Notation settings", lines)
   end
   if score.DEFAULTS[name] == nil then return daw.notify("no setting " .. name .. "; they are: " .. table.concat(score.ORDER, ", "), "warn") end

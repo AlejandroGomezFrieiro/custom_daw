@@ -723,7 +723,7 @@ function view:render(buf, ctx)
           if (mk.kind == "cresc" or mk.kind == "dim") and mk.to > m.start + EPS then
             local x1 = mk.to >= m.start + m.length - EPS and bx - 1 or xt(mk.to)
             local style = mk.ghost and "ExGhost" or note_style
-            for hx = mx + 1, x1 do buf:text(hx, dyn_row, G.hairpin, style) end
+            for hx = mx - 1, x1 do buf:text(hx, dyn_row, G.hairpin, style) end
             if mk.kind == "dim" and mk.to <= m.start + m.length + EPS then buf:text(x1, dyn_row, ">", style) end
           end
         end
