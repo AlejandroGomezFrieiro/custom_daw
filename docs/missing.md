@@ -62,6 +62,17 @@
   shown as the terminal draws it, in a window of its own (`:textbuf.window`),
   not among the window's panels.
 
+- One key grammar (docs/terminal.md, "Keys: one grammar"): the window's
+  mixer and device cards do not draw the row the cursor is on, though the
+  keys typed there move it and act on it as in the terminal; a selection
+  across mixer strips with different devices or sends picks rows by what
+  they are (the fader, the second send), and skips a strip that has none.
+  `]` and `[` wait a moment for `]d` `]g` and the like before they run, as
+  Vim's keys do when a longer mapping starts with them. `daw.opt.keys =
+  "classic"` brings back the keys of before, and is to go after a release.
+  The session view's `m` and `n` still mean launch mode and a new clip, not
+  Vim's mark and next match.
+
 - Score clips (notation): tempo marks are written only (`:notation.text`),
   not tempo-map points, and no option makes the score own the song's
   tempo; repeats and voltas are written, not unfolded; trills, tremolos,

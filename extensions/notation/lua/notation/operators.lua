@@ -409,21 +409,30 @@ function P.shift_note(n, by, fifths)
   return model.spell(pitch, fifths)
 end
 
---- The other name of a note's pitch: a sharp as a flat and back, a double
---- accidental as the simplest; a natural keeps its name.
+--- The next name of a note's pitch, in turn: G sharp, A flat, G sharp; E,
+--- F flat; F, E sharp. Double sharps and flats only where nothing simpler
+--- names it otherwise (D, C double sharp, E double flat).
 function P.enharmonic(n)
   local pitch = D.pitch(n)
-  if n.alter == 0 then return nil end
-  local best
+  local all, simple = {}, {}
   for letter = 0, 6 do
     for alter = -2, 2 do
       local sp = model.spelled(letter, alter, pitch)
-      if letter ~= n.step and model.pitch_of(sp.step, alter) == pitch then
-        if not best or math.abs(alter) < math.abs(best.alter) then best = sp end
+      if model.pitch_of(sp.step, alter) == pitch then
+        all[#all + 1] = sp
+        if math.abs(alter) <= 1 then simple[#simple + 1] = sp end
       end
     end
   end
-  return best
+  local options = #simple > 1 and simple or all
+  table.sort(options, function(a, b)
+    if math.abs(a.alter) ~= math.abs(b.alter) then return math.abs(a.alter) < math.abs(b.alter) end
+    return a.step < b.step
+  end)
+  for i, sp in ipairs(options) do
+    if sp.letter == n.step and sp.alter == n.alter then return options[i % #options + 1] end
+  end
+  return options[1]
 end
 
 --- Retrograde: each line of the selection backwards, rhythm and pitches,

@@ -22,7 +22,7 @@ local EPS = 1e-9
 local AXIS = 10  -- the columns of the value axis at the left
 
 -- What is under way in some window, each seat its own: the points insert
--- mode has drawn (`{ win, from, to, points }`), a wave made with `gn`
+-- mode has drawn (`{ win, from, to, points }`), a wave made with `g~`
 -- whose choices can still be stepped through, and what the pointer drags.
 local insert, gen, drag
 daw.seats.keep("curve", function() return insert, gen, drag end,
@@ -395,6 +395,9 @@ function M.under_cursor(note)
     if daw.tempolane.shown() then return daw.address.tempo() end
     return nil, "not on a lane row: `,aa` shows the lanes, `,al` chooses one"
   end
+  -- A view that knows the curve of what is under its cursor (the mixer's fader).
+  local view = daw.ui.views[focused]
+  if view and view.curve_uri then return view:curve_uri() end
   return nil, "no curve under the cursor here"
 end
 
@@ -540,7 +543,7 @@ local function shape_points(t, points, list, shape)
   end
   for _, i in ipairs(list) do points[i].shape = shape end
   write(t, points, "Shape the curve")
-  daw.notify(shape .. (shape == "smooth" and ": `<` `>` bend it" or ""))
+  daw.notify(shape .. (shape == "smooth" and ": `[` `]` bend it" or ""))
 end
 
 --- The next shape for the stretch from the point under the cursor.
@@ -557,7 +560,7 @@ function M.tension(by)
   local win, t, s, points = here()
   if not win then return end
   local at, q = point_at(points, s.beat, s.zoom)
-  if not (q and q.shape == "smooth") then return daw.notify("no smooth stretch from here: `s` makes one", "warn") end
+  if not (q and q.shape == "smooth") then return daw.notify("no smooth stretch from here: `~` makes one", "warn") end
   q.tension = util.clamp((q.tension or 0) + by, -1, 1)
   write(t, points, "Bend the curve")
   daw.notify(string.format("tension %+.2f", q.tension))
@@ -1108,8 +1111,8 @@ cmap("k", count(M.climb), "A step higher", motion)
 cmap("j", count(function(n) M.climb(-n) end), "A step lower", motion)
 cmap("<Up>", count(M.climb), "A step higher", motion)
 cmap("<Down>", count(function(n) M.climb(-n) end), "A step lower", motion)
-cmap("K", count(function(n) M.climb(10 * n) end), "Ten steps higher", motion)
-cmap("J", count(function(n) M.climb(-10 * n) end), "Ten steps lower", motion)
+cmap("<C-u>", count(function(n) M.climb(10 * n) end), "Ten steps higher", motion)
+cmap("<C-d>", count(function(n) M.climb(-10 * n) end), "Ten steps lower", motion)
 cmap("w", function(ctx) M.to_point(1, ctx.count) end, "Next point", motion)
 cmap("b", function(ctx) M.to_point(-1, ctx.count) end, "Previous point", motion)
 cmap("e", function(ctx) M.to_point(1, ctx.count) end, "Next point", motion)
@@ -1118,13 +1121,17 @@ cmap("$", function() M.to_end(1) end, "Last point", motion)
 cmap("o", function() M.add(false) end, "Add a point at the cursor")
 cmap("A", function() M.add(true) end, "Add a point on the curve at the cursor")
 cmap("x", count(M.remove), "Remove the point under the cursor")
-cmap("+", count(M.nudge_point), "Raise the point under the cursor")
-cmap("-", count(function(n) M.nudge_point(-n) end), "Lower the point under the cursor")
+-- A point's main value is its height, its second the bend of the smooth
+-- stretch from it.
+cmap("+", count(M.nudge_point), "Raise the point under the cursor", { role = "main+" })
+cmap("-", count(function(n) M.nudge_point(-n) end), "Lower the point under the cursor", { role = "main-" })
+cmap("<C-a>", count(M.nudge_point), "Raise the point under the cursor by the count", { role = "main+" })
+cmap("<C-x>", count(function(n) M.nudge_point(-n) end), "Lower the point under the cursor by the count", { role = "main-" })
+cmap("]", count(function(n) M.tension(0.25 * n) end), "Bend the smooth stretch: move early", { role = "second+" })
+cmap("[", count(function(n) M.tension(-0.25 * n) end), "Bend the smooth stretch: move late", { role = "second-" })
 cmap("c", M.type_value, "Type the value of the point under the cursor")
 cmap("=", M.type_value, "Type the value of the point under the cursor")
-cmap("s", M.cycle_shape, "The next shape of the stretch from the point: straight, held, smooth")
-cmap(">", count(function(n) M.tension(0.25 * n) end), "Bend the smooth stretch: move early")
-cmap("<lt>", count(function(n) M.tension(-0.25 * n) end), "Bend the smooth stretch: move late")
+cmap("~", M.cycle_shape, "The next shape of the stretch from the point: straight, held, smooth")
 cmap("i", function() M.insert_start(false) end, "Draw: the cursor's moves put points, from its value")
 cmap("a", function() M.insert_start(true) end, "Draw from the curve's value at the cursor")
 cmap("p", function(ctx) M.paste(ctx.register, ctx.count) end, "Paste points at the cursor")
@@ -1132,7 +1139,7 @@ cmap("zi", function() M.zoom(2) end, "Zoom in")
 cmap("zo", function() M.zoom(0.5) end, "Zoom out")
 cmap("]g", function() M.grid(2) end, "Coarser grid")
 cmap("[g", function() M.grid(0.5) end, "Finer grid")
-cmap("gw", "curve.window", "Show the curve in a window of its own")
+cmap("<C-w>f", "curve.window", "Show the curve in a window of its own")
 
 local function op(lhs, fn, desc) map(lhs, nil, { view = "curve", mode = nx, desc = desc, operator = fn }) end
 op("d", M.ops.delete, "Delete points")
@@ -1140,21 +1147,27 @@ op("y", M.ops.yank, "Yank points")
 op("gS", M.ops.thin, "Thin out points")
 op("gs", M.ops.smooth, "Smooth points")
 op("gq", M.ops.quantize, "Quantize points to the grid")
-op("gn", function(region)
+op(">", M.ops.shift(1), "Move points later")
+op("<lt>", M.ops.shift(-1), "Move points earlier")
+function M.ops.wave(region)
   if region.kind == "line" then
     local win, _, s = here()
     if not win then return end
     return wave_menu(s.left, s.left + s.geo.w / s.zoom)
   end
   wave_menu(region.c0, region.c1)
-end, "Draw a wave")
+end
+-- `~` looks like a wave.
+op("g~", M.ops.wave, "Draw a wave")
 local function vmap(lhs, fn, desc) map(lhs, nil, { view = "curve", mode = "x", desc = desc, operator = fn }) end
 vmap("x", M.ops.delete, "Delete the points selected")
 vmap("+", M.ops.raise(1), "Raise the points selected")
 vmap("-", M.ops.raise(-1), "Lower the points selected")
+vmap("<C-a>", M.ops.raise(1), "Raise the points selected by the count")
+vmap("<C-x>", M.ops.raise(-1), "Lower the points selected by the count")
 vmap("L", M.ops.shift(1), "Move the points selected later")
 vmap("H", M.ops.shift(-1), "Move the points selected earlier")
-vmap("s", M.ops.shape, "The next shape for the points selected")
+vmap("~", M.ops.shape, "The next shape for the points selected")
 
 -- Insert mode: each move of the cursor draws.
 local function imap(lhs, fn, desc) map(lhs, function(ctx) fn(ctx) M.insert_mark() end, { view = "curve", mode = "i", desc = desc }) end
@@ -1168,6 +1181,8 @@ imap("<Up>", function() M.climb(1) end, "Draw a step higher")
 imap("<Down>", function() M.climb(-1) end, "Draw a step lower")
 imap("K", function() M.climb(10) end, "Draw ten steps higher")
 imap("J", function() M.climb(-10) end, "Draw ten steps lower")
+imap("<C-u>", function() M.climb(10) end, "Draw ten steps higher")
+imap("<C-d>", function() M.climb(-10) end, "Draw ten steps lower")
 
 -- A wave's choices.
 local function gmap(lhs, fn, desc) map(lhs, fn, { view = "curve.gen", desc = desc, repeatable = false }) end
@@ -1180,19 +1195,33 @@ gmap("<Esc>", M.gen_finish, "Keep the wave")
 daw.on("view.focused", function() if gen then M.gen_finish() end end)
 
 daw.ui.keybar.set("curve", "n", {
-  { "i", "draw" }, { "o", "point" }, { "x", "remove" }, { "w", "next" }, { "s", "shape" }, { "gn", "wave" }, { "?", "keys" },
+  { "i", "draw" }, { "o", "point" }, { "x", "remove" }, { "w", "next" }, { "~", "shape" }, { "g~", "wave" }, { "?", "keys" },
 })
 daw.ui.keybar.set("curve", "i", { { "h", "back" }, { "l", "right" }, { "k", "up" }, { "j", "down" }, { "<Esc>", "write" } })
-daw.ui.keybar.set("curve", "x", { { "d", "delete" }, { "+", "raise" }, { "H", "earlier" }, { "L", "later" }, { "gs", "smooth" }, { "gn", "wave" } })
+daw.ui.keybar.set("curve", "x", { { "d", "delete" }, { "+", "raise" }, { "<lt>", "earlier" }, { ">", "later" }, { "gs", "smooth" }, { "g~", "wave" } })
 daw.ui.keybar.set("curve.gen", "n", { { "<Tab>", "next choice" }, { "<C-n>", "change" }, { "<C-y>", "keep" } })
 
--- Where it opens from: a lane row, the device panel, the piano roll.
-map("gc", "curve.open", { view = "arrange.lane", desc = "Edit this lane's curve" })
+-- Where it opens from: `gC` or Enter on a lane row, a parameter, the mixer's
+-- fader or pan, the piano roll's strip (`gX` the note's own expression).
+map("gC", "curve.open", { view = "arrange.lane", desc = "Edit this lane's curve" })
 map("<CR>", "curve.open", { view = "arrange.lane", desc = "Edit this lane's curve" })
-map("gc", "curve.open", { view = "devices", desc = "Edit the parameter's curve" })
+map("gC", "curve.open", { view = "devices", desc = "Edit the parameter's curve" })
 map("A", "param.automate", { view = "devices", desc = "Automate the parameter: its lane, with a point at its value at the cursor" })
-map("gc", "curve.open", { view = "pianoroll", desc = "Edit the strip's controller as a curve" })
-map("gC", "curve.open note", { view = "pianoroll", desc = "Edit the note's own expression as a curve" })
+map("gC", "curve.open", { view = "pianoroll", desc = "Edit the strip's controller as a curve" })
+map("gX", "curve.open note", { view = "pianoroll", desc = "Edit the note's own expression as a curve" })
+
+-- The keys the curve editor had before the rule (`daw.opt.keys = "classic"`).
+local function classic(lhs, rhs, desc, opts) daw.keymap.classic(lhs, rhs, util.merge({ view = "curve", desc = desc }, opts)) end
+classic("K", count(function(n) M.climb(10 * n) end), "Ten steps higher", motion)
+classic("J", count(function(n) M.climb(-10 * n) end), "Ten steps lower", motion)
+classic("s", M.cycle_shape, "The next shape of the stretch from the point: straight, held, smooth")
+classic(">", count(function(n) M.tension(0.25 * n) end), "Bend the smooth stretch: move early", { mode = "n" })
+classic("<lt>", count(function(n) M.tension(-0.25 * n) end), "Bend the smooth stretch: move late", { mode = "n" })
+classic("gw", "curve.window", "Show the curve in a window of its own")
+classic("gn", nil, "Draw a wave", { mode = nx, operator = M.ops.wave })
+daw.keymap.classic("gc", "curve.open", { view = "pianoroll", desc = "Edit the strip's controller as a curve" })
+daw.keymap.classic("gC", "curve.open note", { view = "pianoroll", desc = "Edit the note's own expression as a curve" })
+daw.keymap.classic("gc", "curve.open", { view = "devices", desc = "Edit the parameter's curve" })
 
 -- The frontends' menus and gestures.
 daw.frontend.act.automate_param = function(device, key) return M.automate(device, key) end

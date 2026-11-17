@@ -424,7 +424,7 @@ test("notation: normal keys move by lines and spaces and edit the note under the
   eq(notes_of(clip), "F4@0+1 G4@3+1", "flatten back, then up a step of the key")
   keys("}")
   eq(notes_of(clip), "F5@0+1 G4@3+1", "up an octave")
-  keys("+")
+  keys("<A-l>")
   eq(notes_of(clip), "F5@0+1.9 G4@3+1", "lengthened by the chosen quarter, played as long as before over 90%")
   keys("g.")
   eq(notes_of(clip), "F5@0+2.8 G4@3+1", "dotted")
@@ -440,7 +440,7 @@ test("notation: a note played loosely keeps its timing when it is edited", funct
   keys("<A-k>")
   local n = clip:notes()[1]
   eq(n.start, 0.02, "moving it up a step keeps when it was played")
-  keys("+")
+  keys("<A-l>")
   n = clip:notes()[1]
   eq(n.start, 0.02, "lengthened, it still starts as played")
   eq(math.abs(n.length - 1.85) < 1e-9, true, "and played as much longer than a half's 90% as it was than a quarter's")
@@ -464,11 +464,11 @@ test("score editing: a chord moved, lengthened or deleted moves its played notes
   view.cache = nil
   eq(view:layout().score.events[1].start, 1, "the strum is written on beat two")
   view:set(37, 1)
-  keys("<A-l>")
+  keys("L")
   eq(played(clip), "E3@2.010+0.900/90 G#3@2.040+0.850/80 B3@2.070+0.800/70 C5@5.000+1.000/64",
     "a beat later, strummed and as loud as before")
   eq(view.beat, 2, "the cursor goes with it")
-  keys("+")
+  keys("<A-l>")
   eq(played(clip):find("E3@2.010+1.800/90 G#3@2.040+1.750/80 B3@2.070+1.700/70", 1, true) ~= nil, true,
     "a half note: each played as much shorter than written as it was")
   keys("X")
@@ -544,7 +544,7 @@ test("score editing: grace notes, strums, beams and spelling by key", function()
   keys("gs")
   eq(model.text((view:layout())):find("<C4 E4 G4>^", 1, true) ~= nil, true, "an arpeggio sign on the chord")
   view:set(45, 1.5)
-  keys("ge")
+  keys("g~in")
   eq(model.text((view:layout())):find("E#5", 1, true) ~= nil, true, "F respelled as E sharp")
 end)
 
@@ -1580,7 +1580,7 @@ end)
 test("notation: a visual selection takes in the note under the cursor", function()
   local view, clip = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) })
   view:set(35, 0)
-  keys("v3wS")
+  keys("v3wg(")
   local evs = view:layout().measures[1].staves[1]
   eq(evs[1].slur_to ~= nil, true, "the slur starts on the first note")
   eq(evs[1].slur_to == evs[4], true, "and reaches over the fourth, under the cursor")

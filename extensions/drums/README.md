@@ -83,7 +83,7 @@ the step, and how hard the hit there is.
 | `gs` | swing: every other step later by `drums_swing` of a step (`50gs` half a step). Hits already swung are not moved again |
 | `p` `P` | paste after or at the cursor; a block lands on the rows under the cursor |
 | `gh`, `gp`, `gb` | hear the piece; playhead to the cursor; a beat to start from |
-| `Esc` | back to the arrange view |
+| `Esc`, `Ctrl-w p` | cancel (the grid stays); back to the window before |
 
 Text objects: `ih` the cell, `ir` the row, `ib` the bar on every row, `ic`
 every hit. Visual mode: `v` a stretch of time on every row, `Ctrl-v` a

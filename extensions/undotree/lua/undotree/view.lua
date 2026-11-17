@@ -139,7 +139,9 @@ local actions = {
     if api.transport_get().playing then daw.transport.stop() else daw.transport.play() end
   end,
   ["q"] = function() daw.ui.close() end,
-  ["<Esc>"] = function() daw.ui.close() end,
+  -- Escape closes the tree only while it floats, as a prompt does; in a
+  -- window of its own it stays, and `q` closes it.
+  ["<Esc>"] = function() if daw.ui.float then daw.ui.close() end end,
 }
 actions["<Down>"], actions["<Up>"] = actions.j, actions.k
 actions["<BS>"] = actions["-"]

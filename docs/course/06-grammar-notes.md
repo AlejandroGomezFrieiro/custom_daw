@@ -39,7 +39,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - ✓ The riff starts on G now.
 8. `/` searches: `/d4` and `<CR>` go to the next D4. Then `dd` deletes every note of that pitch. Press `/d4`, `<CR>`, `dd`.
    - ✓ No D4 left anywhere in the clip.
-9. Press `<Esc>` to go back to the arrange view and `<Space>` to listen; `<Space>` stops.
+9. Press `<C-w>p` to go back to the arrange view and `<Space>` to listen; `<Space>` stops.
    - ✓ Your changed riff.
 
 ## What you did

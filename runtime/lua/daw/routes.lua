@@ -190,7 +190,7 @@ function M.setup()
     complete = { "tracks" },
   })
 
-  daw.keymap.set("K", "device.sidechain", { view = "devices", desc = "Choose the track the device listens to (side-chain)" })
+  -- Its key, `gS`, is in daw/device_rows.lua with the panel's others.
 
   local function warn(err) daw.notify((tostring(err):gsub("^[^:]*:%d+: ", ""):match("^[^\n]*")), "warn") end
 

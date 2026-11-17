@@ -11,18 +11,18 @@ it.
 
 The clip `tune` has three notes in its second bar. You will add to it.]],
   idea = [[
-Moving: `h` `l` a step, `j` `k` a semitone, `J` `K` an octave, `w` `b` notes, `0`
+Moving: `h` `l` a step, `j` `k` a semitone, `<C-d>` `<C-u>` an octave, `w` `b` notes, `0`
 `$` the start and end of the clip. Changing the note under the cursor: `<CR>`
-adds or removes, `+` `-` length, `H` `L` move it, `<C-a>` `<C-x>` pitch, `[` `]`
+adds or removes, `+` `-` (and `<C-a>` `<C-x>`) its pitch, `<A-h>` `<A-l>` its length, `H` `L` move it, `[` `]`
 velocity, `gh` hear the pitch. Insert mode (`i`, or `a` after the note) draws a
-note from the cursor: `l` `h` longer and shorter, `j` `k` `J` `K` its pitch,
+note from the cursor: `l` `h` longer and shorter, `j` `k` `<C-d>` `<C-u>` its pitch,
 `<CR>` keeps it and draws the next where it ends, `<Space>` after a rest, `o`
 from the same start for a chord, `<BS>` takes back, `<Esc>` writes and leaves.
 `I` makes the keyboard a piano instead: `a w s e d f t g y h u j k` are C up to
-the next C.]],
+the next C. `<Esc>` in normal mode stays in the roll; `<C-w>p` goes back to the arrange view.]],
   vim = [[
 `<C-a>` and `<C-x>` add and subtract, as on numbers in Vim; here they move a
-note's pitch. Insert mode does not insert text: it draws a note, and all of it
+note's pitch, as `+` `-` do: the main value of a note is its pitch. Insert mode does not insert text: it draws a note, and all of it
 is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.]],
   setup = function(look)
     daw.project.tempo = 90
@@ -42,7 +42,7 @@ is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.]],
       done = "The piano roll. The cursor is on E4 at the start of the clip.",
     },
     {
-      say = "`j` and `k` move a semitone down and up (`J` `K` an octave), and you hear each pitch. Press `k` three times to reach G4.",
+      say = "`j` and `k` move a semitone down and up (`<C-d>` `<C-u>` an octave, half a page as in Vim), and you hear each pitch. Press `k` three times to reach G4.",
       keys = { "k", "k", "k" },
       check = function() return daw.ui.views.pianoroll.pitch == 67 end,
       done = "G4: the name is in the title row and highlighted on the left.",
@@ -55,13 +55,13 @@ is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.]],
       done = "A short G4: one step, a sixteenth.",
     },
     {
-      say = "`+` makes the note under the cursor a step longer, `-` shorter. Press `+` three times.",
-      keys = { "+", "+", "+" },
+      say = "`<A-l>` makes the note under the cursor a step longer, `<A-h>` shorter, as they do to a clip in the arrange view. Press `<A-l>` three times.",
+      keys = { "<A-l>", "<A-l>", "<A-l>" },
       check = function(_, look) return look.melody(look.clip("Piano")):find("67@0+1", 1, true) ~= nil end,
       done = "Now it lasts a beat.",
     },
     {
-      say = "`<C-a>` moves the note up a semitone and `<C-x>` down. Press `<C-a>` twice.",
+      say = "`<C-a>` (or `+`) moves the note up a semitone and `<C-x>` (or `-`) down. Press `<C-a>` twice.",
       keys = { "<C-a>", "<C-a>" },
       check = function(_, look) return look.melody(look.clip("Piano")):find("^69@0%+1") ~= nil end,
       done = "A4 now, and the cursor went with it.",
@@ -108,8 +108,8 @@ is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.]],
       done = "C and E kept, G being drawn.",
     },
     {
-      say = "`<CR>` goes on after the chord; `J` and `K` move an octave. Press `<CR>`, `J` and `7j` (the C below), `4l`, and `<Esc>`.",
-      keys = { "<CR>", "J", "7j", "4l", "<Esc>" },
+      say = "`<CR>` goes on after the chord; `<C-d>` and `<C-u>` move an octave. Press `<CR>`, `<C-d>` and `7j` (the C below), `4l`, and `<Esc>`.",
+      keys = { "<CR>", "<C-d>", "7j", "4l", "<Esc>" },
       check = function(_, look)
         local m = look.melody(look.clip("Piano"))
         return daw.keymap.mode == "n" and m:find("60@8+1 64@8+1 67@8+1", 1, true) ~= nil and m:find("48@9+1", 1, true) ~= nil
@@ -118,8 +118,8 @@ is one undo step, which `.` repeats at the cursor, as Vim repeats an insert.]],
       hint = "`<Space>` would have left a step's rest before the next note instead.",
     },
     {
-      say = "Press `<Esc>` (out of the piano roll), then `gs` and `<Space>` to listen; `<Space>` stops.",
-      keys = { "<Esc>", "gs", "<Space>", { wait = 300 }, "<Space>" },
+      say = "`<Esc>` in normal mode stays in the piano roll, as in every view; `<C-w>p` goes back to the window before. Press `<C-w>p`, then `gs` and `<Space>` to listen; `<Space>` stops.",
+      keys = { "<C-w>p", "gs", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.focused() == "arrange" and look.played(ctx) end,
       done = "Your tune, over the drums.",
     },

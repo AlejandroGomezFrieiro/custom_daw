@@ -412,8 +412,12 @@ nmap("j", move(0, -1), "Down a line or space", linewise)
 nmap("k", move(0, 1), "Up a line or space", linewise)
 nmap("<Down>", move(0, -1), "Down a line or space", linewise)
 nmap("<Up>", move(0, 1), "Up a line or space", linewise)
-nmap("J", move(0, -7), "Down an octave", linewise)
-nmap("K", move(0, 7), "Up an octave", linewise)
+-- An octave is half a page: `Ctrl-d` `Ctrl-u`, as in the piano roll. `K`
+-- describes, as in every view.
+nmap("<C-d>", move(0, -7), "Down an octave", linewise)
+nmap("<C-u>", move(0, 7), "Up an octave", linewise)
+keymap.classic("J", move(0, -7), { view = "notation", desc = "Down an octave", motion = true, linewise = true })
+keymap.classic("K", move(0, 7), { view = "notation", desc = "Up an octave", motion = true, linewise = true })
 nmap("w", function(ctx) view:to_event(1, ctx.count) end, "Next note or rest", motion)
 nmap("b", function(ctx) view:to_event(-1, ctx.count) end, "Previous note or rest", motion)
 nmap("e", function(ctx)
@@ -494,8 +498,13 @@ nmap("a", function()
 end, "Enter notes after this one")
 nmap("x", function() view:delete() end, "Delete the note")
 nmap("X", function() view:delete_chord() end, "Delete the chord: every note it stands for")
-nmap("<A-l>", function(ctx) view:move_chord((ctx.count or 1) * view:entry_length()) end, "Move the chord later by the chosen value, as played")
-nmap("<A-h>", function(ctx) view:move_chord(-(ctx.count or 1) * view:entry_length()) end, "Move the chord earlier by the chosen value, as played")
+-- `L` `H` move in time, as they move a note in the piano roll and a clip in
+-- the arrange view.
+local function move_chord(sign) return function(ctx) view:move_chord(sign * (ctx.count or 1) * view:entry_length()) end end
+nmap("L", move_chord(1), "Move the chord later by the chosen value, as played")
+nmap("H", move_chord(-1), "Move the chord earlier by the chosen value, as played")
+keymap.classic("<A-l>", guarded(move_chord(1)), { view = "notation", desc = "Move the chord later by the chosen value, as played" })
+keymap.classic("<A-h>", guarded(move_chord(-1)), { view = "notation", desc = "Move the chord earlier by the chosen value, as played" })
 nmap("gv", function()
   local v = view:toggle_voice()
   if v then daw.notify("voice " .. v .. "; entering in voice " .. v) end
@@ -514,7 +523,10 @@ nmap("gt", function()
   local on = view:toggle_tuplet()
   if on ~= nil then daw.notify(on and "this beat in triplets" or "triplets as played") end
 end, "This beat in triplets (a duplet in 6/8), or as played")
-nmap("ge", function() view:respell() end, "Respell the note: G sharp, A flat")
+-- `ge` is the plugin window in every view; `g~` (an operator, with the
+-- grammar below) changes how notes are written, as Vim's changes the case
+-- of letters.
+keymap.classic("ge", guarded(function() view:respell() end), { view = "notation", desc = "Respell the note: G sharp, A flat" })
 for lhs, kind in pairs({ ["g'"] = "staccato", ["g>"] = "accent", ["g_"] = "tenuto", ["g^"] = "marcato" }) do
   nmap(lhs, function()
     local on = marks.toggle_art(kind, view:chord_indices())
@@ -523,11 +535,19 @@ for lhs, kind in pairs({ ["g'"] = "staccato", ["g>"] = "accent", ["g_"] = "tenut
 end
 nmap("D", function() keymap.normal("d$") end, "Delete to the end of the clip")
 nmap("Y", function() keymap.normal("y$") end, "Yank to the end of the clip")
-nmap("+", function(ctx) view:lengthen((ctx.count or 1) * view:entry_length()) end, "Lengthen the note by the chosen value")
-nmap("-", function(ctx) view:lengthen(-(ctx.count or 1) * view:entry_length()) end, "Shorten the note by the chosen value")
+-- A note's main value is its pitch, as in the piano roll: `+` `-` and
+-- `Ctrl-a` `Ctrl-x` sharpen and flatten. Its length is `Alt-l` `Alt-h`, as a
+-- clip's is in the arrange view.
+local function lengthen(sign) return function(ctx) view:lengthen(sign * (ctx.count or 1) * view:entry_length()) end end
+nmap("<A-l>", lengthen(1), "Lengthen the note by the chosen value")
+nmap("<A-h>", lengthen(-1), "Shorten the note by the chosen value")
+keymap.classic("+", guarded(lengthen(1)), { view = "notation", desc = "Lengthen the note by the chosen value" })
+keymap.classic("-", guarded(lengthen(-1)), { view = "notation", desc = "Shorten the note by the chosen value" })
 nmap("g.", function() view:toggle_dot() end, "Dot the note, or take its dot away")
-nmap("<C-a>", each_count(function() view:inflect(1) end), "Sharpen the note: a semitone up")
-nmap("<C-x>", each_count(function() view:inflect(-1) end), "Flatten the note: a semitone down")
+nmap("+", each_count(function() view:inflect(1) end), "Sharpen the note: a semitone up", { role = "main+" })
+nmap("-", each_count(function() view:inflect(-1) end), "Flatten the note: a semitone down", { role = "main-" })
+nmap("<C-a>", each_count(function() view:inflect(1) end), "Sharpen the note: a semitone up", { role = "main+" })
+nmap("<C-x>", each_count(function() view:inflect(-1) end), "Flatten the note: a semitone down", { role = "main-" })
 nmap("<A-k>", function(ctx) view:transpose_steps(ctx.count or 1) end, "Move the note up a step of the key")
 nmap("<A-j>", function(ctx) view:transpose_steps(-(ctx.count or 1)) end, "Move the note down a step of the key")
 nmap("}", function(ctx) view:transpose_octaves(ctx.count or 1) end, "Move the note up an octave")
@@ -583,12 +603,20 @@ vmap("x", function(clip, region, ctx) keymap.setreg(edit.roll.delete(clip, regio
 for lhs, kind in pairs({ ["g'"] = "staccato", ["g>"] = "accent", ["g_"] = "tenuto", ["g^"] = "marcato" }) do
   vmap(lhs, function(_, region) marks.toggle_art(kind, target_notes(region)) end, kind:sub(1, 1):upper() .. kind:sub(2) .. " on the selection, or off")
 end
-vmap("+", function(clip, region, ctx)
+vmap("<A-l>", function(clip, region, ctx)
   view:relength_region(region, (ctx.count or 1) * view:entry_length())
 end, "Lengthen each chord of the selection by the chosen value")
-vmap("-", function(clip, region, ctx)
+vmap("<A-h>", function(clip, region, ctx)
   view:relength_region(region, -(ctx.count or 1) * view:entry_length())
 end, "Shorten each chord of the selection by the chosen value")
+vmap("+", function(clip, region, ctx)
+  local by = ctx.count or 1
+  edit.roll.each(clip, region, function(n) n.pitch = math.min(127, n.pitch + by) end)
+end, "Up a semitone")
+vmap("-", function(clip, region, ctx)
+  local by = ctx.count or 1
+  edit.roll.each(clip, region, function(n) n.pitch = math.max(0, n.pitch - by) end)
+end, "Down a semitone")
 vmap("gs", function(clip, region)
   local _, places = edit.roll.notes(clip, region)
   local n = view:merge_chords(view:events_of(places))
@@ -852,7 +880,7 @@ do
   sop("gu", pitches(function(n, by, fifths) return P.step_note(n, -by, fifths) end), "Down a step of the key (3gu: three steps)", own)
   sop("g+", pitches(function(n, by, fifths) return P.shift_note(n, by, fifths) end), "Up a semitone, spelled as the key has it (a count: semitones)", own)
   sop("g-", pitches(function(n, by, fifths) return P.shift_note(n, -by, fifths) end), "Down a semitone, spelled as the key has it (a count: semitones)", own)
-  sop("g~", pitches(function(n) return P.enharmonic(n) end), "Respell: sharps as flats and flats as sharps")
+  sop("g~", pitches(function(n) return P.enharmonic(n) end), "Respell: G sharp, A flat, G sharp again (g~in the note)")
   local function slur(region)
     local sc = O.score()
     if not sc then return end
@@ -868,8 +896,8 @@ do
     local on = marks.slur(view:clip(), O.beat(sc, a), O.beat(sc, b) - 1e-3, staff)
     daw.notify(on and "slurred: the notes played legato" or "slur taken away")
   end
-  sop("s", slur, "Slur over the notes (again: taken away)")
-  vmap("S", function(_, region) slur(region) end, "A slur over the selection, played legato")
+  -- `s` is solo wherever there is a track; `(` and `)` go by phrase.
+  sop("g(", slur, "Slur over the notes (again: taken away)")
   sop("g?", function(region, ctx)
     P.on(region, function(sc, sel)
       if ctx.op_count then return P.invert(sc, sel) > 0 end
@@ -1100,7 +1128,7 @@ end
 if daw.ui.keybar then
   daw.ui.keybar.set("notation", "n", {
     { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" },
-    { "+", "longer" }, { "-", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
+    { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
   })
   daw.ui.keybar.set("notation", "i", {
     { "c", "C..B", "a-g" }, { "C", "chord", "A-G" }, { "<A-3>", "+3rd", "Alt-2…8" }, { "5", "value", "2-7" }, { ".", "dot" },
@@ -1109,7 +1137,7 @@ if daw.ui.keybar then
   })
   daw.ui.keybar.set("notation", "x", {
     { "x", "delete" }, { "<C-a>", "sharp" }, { "<C-x>", "flat" }, { "}", "8va" }, { "{", "8vb" },
-    { "g>", "accent" }, { "S", "slur" }, { "+", "longer" }, { "-", "shorter" }, { "<Esc>", "done" },
+    { "g>", "accent" }, { "g(", "slur" }, { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "<Esc>", "done" },
   })
 end
 

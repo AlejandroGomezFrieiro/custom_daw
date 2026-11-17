@@ -130,8 +130,8 @@ not a column or a line.]],
       done = "Same key, different view, different meaning: but still 'up'.",
     },
     {
-      say = "`<Esc>` leaves the piano roll. Then `gp` puts the playhead at the cursor and `<Space>` plays from there; `<Space>` again stops.",
-      keys = { "<Esc>", "gp", "<Space>", { wait = 300 }, "<Space>" },
+      say = "`<Esc>` stays where it is, in every view; `<C-w>p` goes back to the window before. Press `<C-w>p` to leave the piano roll. Then `gp` puts the playhead at the cursor and `<Space>` plays from there; `<Space>` again stops.",
+      keys = { "<C-w>p", "gp", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look)
         return look.focused() == "arrange" and look.ran(ctx, "transport.to_cursor") and look.played(ctx)
       end,

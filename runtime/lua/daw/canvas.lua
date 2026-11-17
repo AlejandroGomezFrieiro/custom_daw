@@ -557,9 +557,13 @@ end
 
 --- Keys typed in a view's window: they go to the key mappings with that
 --- view focused (or to a prompt that is open), as typed in the terminal.
+--- A view may give keys a meaning of its own in its window, as other programs
+--- do (`view.window_keys`, such as Ctrl-A for choosing every note), where
+--- the terminal keeps the one rule of every view.
 function M.key(name, keys)
-  if daw.ui.views[name] then focus(name) end
-  daw.keymap.feed(keys)
+  local view = daw.ui.views[name]
+  if view then focus(name) end
+  daw.keymap.feed(view and view.window_keys and view.window_keys[keys] or keys)
   api.ui_redraw()
 end
 

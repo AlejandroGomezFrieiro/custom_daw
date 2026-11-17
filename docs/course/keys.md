@@ -19,18 +19,20 @@ change.
 | --- | --- | --- |
 | `h` `l` | a grid step | a step in time |
 | `j` `k` | next, previous track | a semitone down, up |
-| `J` `K` | | an octave down, up |
+| `<C-d>` `<C-u>` | four tracks down, up | an octave down, up |
 | `w` `b` `e` | next clip's start, this clip's start, this clip's end | the same for notes |
 | `W` `B` | next, previous bar | next, previous bar |
 | `0` `^` `$` | start of the project, first clip, end of the last clip | start of the clip, first note, end of the clip |
 | `gg` `G` | first, last track (`5G` track 5) | highest, lowest note |
 | `5\|` | bar 5 (also `:5`) | |
-| `<C-d>` `<C-u>` | four tracks down, up | |
 | `gP` | cursor to the playhead | |
 | `]'` `['` | next marker or region, the one before | |
 | `zz` `zh` `zl` | centre the cursor, scroll a bar | |
 
-In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
+These keys only ever move, in every view. In **M**: `h` `l` are strips and `j`
+`k` a strip's rows (devices, sends, fader, pan, mute, solo, arm), `gg` `G` its
+top and bottom, `0` `$` the first and last strip. In **D**: `j` `k` are rows,
+`w` `b` devices, `e` a device's last parameter.
 
 ## Act (operators and single keys)
 
@@ -47,15 +49,14 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `D` `C` `Y` | delete, change, yank to the end of the track | to the end of the clip |
 | `p` `P` | paste after the clip (tracks below), at the cursor (tracks above) | after the note, at the cursor |
 | `&` `S` `J` `~` | repeat, split, join, mute the clip | |
-| `H` `L` `<A-h>` `<A-l>` | move the clip, shorten and lengthen it | `H` `L` move the note |
-| `<C-a>` `<C-x>` | transpose the clip | transpose the note |
-| `+` `-` | track volume | note length |
-| `(` `)` | pan | |
-| `[` `]` | | velocity |
+| `H` `L` `<A-h>` `<A-l>` | move the clip, shorten and lengthen it | move the note, shorten and lengthen it |
+| `+` `-` `<C-a>` `<C-x>` | track volume (`6<C-x>` six dB down) | the note's pitch (`12<C-a>` an octave up) |
+| `[` `]` | pan | velocity |
 | `<CR>` | open the clip in R | add or remove a note |
 | `gh` | | hear the pitch |
 | `ga` `gE` | | edit the clip of another track's note under the cursor instead; edit it too, or no longer |
 | `gn` `gN` | | the next, the previous clip edited becomes the active one |
+| `gC` `gX` | the lane's curve (on a lane row; `gc` turns it off and on) | the strip's controller as a curve, the note's own |
 | `o` `O` | add a track below, above | |
 | `grn` `grc` | rename the track, the clip | |
 | `gw` `gW` | put a warp marker on an audio clip at the cursor, take off the nearest | |
@@ -71,23 +72,33 @@ In **M**: `h` `l` are tracks. In **D**: `j` `k` are rows.
 | `zt` `zT` | show or hide the track's take lanes, the tempo lane under the ruler | |
 | `g'` `g"` | put a marker at the cursor; go to one from a list | |
 | `gx` | remove the marker or region at the cursor; a right click on its name under the ruler has "Remove" | |
-| `K` | describe what is under the cursor | |
+| `K` | describe what is under the cursor | the note |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
 
-In **D**: `A` automates the parameter, `gc` edits its curve. On a lane row,
-`gc` or `<CR>` edits the lane's curve; in **R** `gc` the strip's controller,
-`gC` the note's own.
+The same keys mean the same in every view: `+` `-` (`<C-a>` `<C-x>` with a
+count) the main value under the cursor, `[` `]` the second, `>` `<` move in
+time, `K` describe, `ge` the plugin's window, `gc` mute or bypass, `gC` or
+`<CR>` a curve. `<Esc>` cancels and stays; `<C-w>p` goes back to the window
+before. The whole rule is in [The terminal interface](../terminal.md#keys-one-grammar).
+
+In **D**: `A` automates the parameter, `gC` or `<CR>` edits its curve. On a
+lane row, `gC` or `<CR>` edits the lane's curve, `gc` turns the lane off and
+on.
 
 In the **curve editor**: `h` `l` `j` `k` move the cursor in time and value,
 `w` `b` from point to point, `o` `A` add a point, `x` remove it, `+` `-`
-raise and lower it, `c` type its value, `s` its shape, `<` `>` its bend,
-`i` draw with the cursor until `<Esc>`, `d` `y` `p` points, `gs` smooth,
-`gS` thin, `gq` quantize, `gn` a wave (then `<Tab>` `<C-n>` `<C-y>`).
+raise and lower it, `c` type its value, `~` its shape, `[` `]` its bend,
+`i` draw with the cursor until `<Esc>`, `d` `y` `p` `>` `<` points, `gs` smooth,
+`gS` thin, `gq` quantize, `g~` a wave (then `<Tab>` `<C-n>` `<C-y>`).
 
-In **M**: `k` `j` the fader, `>` `<` pan, `M` `s` `r` `I`, `dd` `yy` `p` tracks.
-In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
-`b` bypass, `e` the plugin's window, `yy` `dd` `p` devices, `<A-j>` `<A-k>` reorder,
-`K` the track the device listens to (side-chain), `O` where its further output pairs play.
+In **M**: `+` `-` the row under the cursor (the fader, a send, the pan, a
+switch), `[` `]` pan, `x` clear the row, `<CR>` type it, `M` `s` `r` `I`,
+`gc` mute, `dj` `yj` `p` rows, `dd` `yy` `p` tracks, `V` with `-` several faders.
+In **D**: `+` `-` (`10+`) change the parameter, `a` add, `x` remove (on a
+parameter: its default), `gc` bypass, `c` a preset or a value, `[p` `]p`
+step presets, `,w` save one, `yy` `dd` `p` devices (`yy` on a parameter, its
+setting), `<A-j>` `<A-k>` reorder, `gS` the track the device listens to
+(side-chain), `O` where its further output pairs play.
 
 ## Name a region (text objects)
 
@@ -111,7 +122,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `x` `p` | delete it, replace it with the register |
 | `<CR>` | (A) edit the notes of the MIDI clips selected together in R |
 | `~` `J` | mute, join (A) |
-| `<C-a>` `<C-x>` | transpose; a count first is how much: `12<C-a>` |
+| `<C-a>` `<C-x>` `+` `-` | transpose; a count first is how much: `12<C-a>` (over whole tracks, `V`: the volume) |
 | `:` | a command for the selection: the line starts `:'<,'>` |
 | `<Esc>` | back to normal mode |
 
@@ -122,7 +133,7 @@ In **D**: `h` `l` (`H` `L` a lot) change the parameter, `a` add, `x` remove,
 | `i` | draw a note from the cursor (in A: in the clip under the cursor, or a new one) |
 | `a` | draw from where the note under the cursor ends |
 | `l` `h` | the note a step longer, shorter; a count first: `4l` |
-| `k` `j` `K` `J` | the note up, down a semitone; an octave |
+| `k` `j` `<C-u>` `<C-d>` | the note up, down a semitone; an octave (`K` `J` too) |
 | `<CR>` | keep it, draw the next where it ends |
 | `<Space>` | keep it, draw the next after a step's rest |
 | `o` | keep it, draw another from the same start, for a chord |
@@ -186,7 +197,7 @@ See [Harmony, completion and snippets](../harmony.md).
 | `<S-CR>` | play from the cursor |
 | `gs` `gp` | playhead to the start, to the cursor |
 | `gL` `gm` | loop on and off, metronome |
-| `gC` | count a bar in before recording, or not |
+| `gM` | count a bar in before recording, or not |
 | `gI` | punch recording on and off (over a selection: punch there); `:preroll 2` plays two bars before the punch in |
 | `R` | record armed tracks, or stop recording; with the loop on, every time round is a take |
 
@@ -210,6 +221,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | Keys | |
 | --- | --- |
 | `<Tab>` `<C-w>w` | next window |
+| `<C-w>p` | back to the window that had the keyboard before (out of R, say) |
 | `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
 | `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this window, close every other window |
@@ -251,9 +263,10 @@ text as in Vim; nothing changes in the project until `:w`.
 | --- | --- |
 | `h` `l` `j` `k` | previous, next track; next, previous slot (`gg` `G` first, last) |
 | `<CR>` `L` | launch the slot (an empty one stops the track), launch the row as a scene |
-| `s` `S` | stop the track's clip, every clip |
-| `b` `B` | the track back to its timeline, every track |
-| `n` `e` | a new MIDI clip in the slot, open its notes |
+| `S` `gS` | stop the track's clip, every clip |
+| `B` `gB` | the track back to its timeline, every track |
+| `s` `M` | solo, mute the track |
+| `n` `i` | a new MIDI clip in the slot, open its notes |
 | `x` `dd` `yy` `p` | empty the slot, yank its clip, paste a clip into it |
 | `gp` | copy the arrange view's clip into the slot |
 | `m` `gl` | the next launch mode (trigger, gate, toggle), legato on or off |
@@ -296,7 +309,7 @@ text as in Vim; nothing changes in the project until `:w`.
 | `:doctor` `:doctor all` `:doctor input` | open the hardware check, run every check, run one |
 | `j` `k` `<CR>` `A` `u` | on its page: choose a check, run it, run all, run those that need nobody |
 | `y` `n` `s` ... | answer the question it asks (the keys are listed under it); `s` skips |
-| `<Esc>` `q` | stop the run, close the page |
+| `<Esc>` `q` | stop the run (the page stays), close the page |
 
 ## Notation
 
@@ -321,7 +334,7 @@ work on what is written, and each edit is one undo step that `.` repeats.
   `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (`ic` is the clip
   in the piano roll).
 - Operators: `gU` `gu` a step of the key (`3gUib` three steps), `g+` `g-`
-  a semitone, `g~` respell, `s` slur (`sip`), `g?` retrograde (`2g?`
+  a semitone, `g~` respell, `g(` slur (`g(ip`), `g?` retrograde (`2g?`
   inverts), `gq` tidy, `!` filter (`!ib reverse`, `!ib tac`).
 - Motions: `f` `F` `t` `T` and a letter, `;` `,` again (`,` waits a moment:
   it is the leader), `)` `(` by phrase, `]v` `[v` by voice, `Ctrl-j`
