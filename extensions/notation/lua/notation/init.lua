@@ -61,6 +61,11 @@ function view.key_name(fifths, stored, beat)
   return (MAJORS[fifths] or "C") .. " major"
 end
 
+--- The staves a track's clips are all written on, where they would choose
+--- different ones (`notation.parts`, which puts them on one staff in a
+--- score), by track.
+view.track_clefs = {}
+
 --- The clef a track asks for, or nil to choose by the notes.
 function view.track_clef(track_id)
   local ok, t = pcall(api.track_get, track_id)
@@ -162,7 +167,7 @@ function view.layout_opts(c, own)
   settings.grid = (own.settings or {}).grid or daw.opt.notation_grid
   -- The track's clef, else the staves the clip was written on in notation.
   local staves = type(own.staves) == "table" and own.staves or nil
-  local clef = view.track_clef(c.track) or (staves and (#staves == 2 and "grand" or staves[1]))
+  local clef = view.track_clef(c.track) or view.track_clefs[c.track] or (staves and (#staves == 2 and "grand" or staves[1]))
   return {
     length = c.length, offset = c.start, bars = view.bars(c.start, c.length), fifths = fifths,
     clef = clef, grid = daw.opt.notation_grid, tempo = view.tempo_at(c.start),
@@ -207,8 +212,10 @@ function view:frame()
     if layout then
       local found, player
       for k, u in ipairs(layout.units) do
-        for p, id in ipairs(u.clips) do
-          if id == c.id then found, player = k, p end
+        for p, ids in ipairs(u.players) do
+          for _, id in ipairs(ids) do
+            if id == c.id then found, player = k, p end
+          end
         end
       end
       if not found then

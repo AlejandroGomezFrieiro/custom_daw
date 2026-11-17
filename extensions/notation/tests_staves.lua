@@ -347,9 +347,84 @@ test("a condensed staff: voice 2 is the second player, an edit where they play a
   daw.commands.exec("part.condense off")
 end)
 
-test(":help notation-the-score finds the score's section, and :help :score the command", function()
+test(":help notation-scores finds the score's section, and :help :score the command", function()
   load()
-  local tag = daw.help.lookup("notation-the-score")
-  eq(tag and (tag.source.name .. " " .. tag.name), "notation/README.md notation-the-score", "the README's section")
+  local tag = daw.help.lookup("notation-scores")
+  eq(tag and (tag.source.name .. " " .. tag.name), "notation/README.md notation-scores", "the README's section")
   eq(daw.help.lookup(":score") ~= nil, true, "the command")
+end)
+
+test("a staff is every clip of its track: pasted clips in a row, a gap as rests, the cursor and edits going to the clip there", function()
+  fresh()
+  local view = load()
+  local violin = daw.add_track({ name = "Violin" })
+  violin:add_device("synth")
+  -- Four one-bar clips, as pasted in the arrange view, the fourth after a bar of nothing.
+  local clips = {}
+  for i, at in ipairs({ 0, 4, 8, 16 }) do
+    clips[i] = violin:add_clip({ start = at, length = 4, name = "v" .. i, notes = line(72 + 2 * (i - 1), 1) })
+  end
+  local cello = daw.add_track({ name = "Violoncello" })
+  cello:add_clip({ start = 0, length = 20, name = "vc", notes = line(48, 5) })
+  daw.flush()
+  api.undo_checkpoint()
+  keymap.set_mode("n")
+  view:edit(clips[1])
+  daw.commands.exec("score all")
+  api.undo_checkpoint()
+  local F = view:frame()
+  eq(#F.layout.units[1].clips, 4, "the violin's staff shows its four clips")
+  local model = require("notation.model")
+  local function bar(i)
+    local out = {}
+    for _, ev in ipairs(F.layout.measures[i].staves[1]) do
+      for _, n in ipairs(ev.notes or {}) do out[#out + 1] = model.name(n) end
+    end
+    return table.concat(out, " ")
+  end
+  eq(bar(1), "C5 D5 E5 F5", "bar 1 from the first clip")
+  eq(bar(3), "E5 F#5 G#5 A5", "bar 3 from the third")
+  eq(bar(4), "", "bar 4, where no clip plays, rests")
+  eq(bar(5), "F#5 G#5 Bb5 B5", "bar 5 from the fourth")
+  -- The cursor goes on from clip to clip.
+  view:set(nil, 3)
+  keys("l")
+  eq(view.clip_id, clips[2].id, "l past the first clip's end: into the second")
+  keys("k")
+  keys("x")
+  eq(#clips[2]:notes() .. " " .. #clips[1]:notes(), "3 4", "x there deletes in the second clip")
+  keys("u")
+  keys("W")
+  eq(view.clip_id, clips[3].id, "W into the third")
+  keys("B")
+  eq(view.clip_id, clips[2].id, "B back into the second")
+  -- In the gap: what is entered goes into the clip before, which grows.
+  view:activate(clips[3].id)
+  view:set(nil, 4)
+  keys("ic<Esc>")
+  ok(clips[3]:get().length > 4, "the third clip grows into the gap")
+  eq(#clips[3]:notes(), 5, "with the note entered there")
+  keys("u")
+  -- The part and MusicXML export are made of every clip.
+  local P = require("notation.parts")
+  local part = P.part_layout(violin.id)
+  local notes = 0
+  for _, m in ipairs(part.measures) do
+    for _, evs in ipairs(m.staves) do
+      for _, ev in ipairs(evs) do notes = notes + #(ev.notes or {}) end
+    end
+  end
+  eq(notes, 16, "the violin's part has the four clips' sixteen notes")
+  local path = T.scratch .. "/pasted.musicxml"
+  P.musicxml(path)
+  local file = require("notation.musicxml").read(path)
+  local written = 0
+  for _, m in ipairs(file.parts[1].score.measures) do
+    for _, entry in ipairs(m.voices or {}) do
+      for _, ev in ipairs(entry.events) do
+        if ev.kind == "chord" then written = written + #ev.notes end
+      end
+    end
+  end
+  eq(written, 16, "and so has its MusicXML")
 end)

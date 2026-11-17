@@ -151,8 +151,11 @@
   beat (and quarter-note triplets over two); nine to a beat, five over two
   beats and the like are written only when said in notation.
   The full score is at concert pitch only; a staff of the score and a part
-  are their track's first MIDI clip with notes (a track of several clips
-  is edited a clip at a time, outside the score); in a transposed part
+  are every MIDI clip of their track, but a tie does not join two clips,
+  a mark's beat in a clip that starts after the score's first is not moved
+  with it, and a note entered before a track's first clip goes nowhere
+  (one entered in a gap goes into the clip before); in a transposed part
+
   the popovers' keys and clefs and `:s` go by the sounding notes; a selection
   over staves takes each staff's every pitch (a block keeps its pitches
   within one staff only); a pasted passage is written as it was, not

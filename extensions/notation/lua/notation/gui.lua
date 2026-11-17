@@ -230,12 +230,15 @@ local function tint(g, eng, h, colour)
 end
 
 --- The heads of notes by their places among a clip's notes: on the staves
---- `first` to `last` of the page (all of them without).
-local function heads_of(places, first, last)
+--- `first` to `last` of the page (all of them without), of `clip` (in a
+--- score, where a staff shows several).
+local function heads_of(places, first, last, clip)
   local set, out = {}, {}
   for _, p in ipairs(places) do set[p] = true end
   for _, h in ipairs(gui.heads) do
-    if set[h.index] and (not first or (h.staff >= first and h.staff <= last)) then out[#out + 1] = h end
+    if set[h.index] and (not first or (h.staff >= first and h.staff <= last)) and (not clip or not h.clip or h.clip == clip) then
+      out[#out + 1] = h
+    end
   end
   return out
 end
@@ -275,7 +278,7 @@ local function draw_selection(g, eng, layout, F, selection, area)
       local shift = c.start - F.start
       local region = util.merge(part.region, { c0 = part.region.c0 - shift, c1 = part.region.c1 - shift })
       local _, places = daw.edit.roll.notes(daw.clip(id), region)
-      for _, h in ipairs(heads_of(places, u and u.first, u and u.last)) do tint(g, eng, h, st.accent) end
+      for _, h in ipairs(heads_of(places, u and u.first, u and u.last, id)) do tint(g, eng, h, st.accent) end
     end
   end
 end
@@ -382,7 +385,8 @@ local function draw_diagnostics(g, eng, layout, clip, area, F)
         end
       end
     end
-    for _, h in ipairs(heads_of(diag.places(d), mine(F))) do tint(g, eng, h, colour) end
+    local first, last = mine(F)
+    for _, h in ipairs(heads_of(diag.places(d), first, last, clip.id)) do tint(g, eng, h, colour) end
   end
   for sys, severity in pairs(marked) do
     local y = engrave.y_of(st, sys, F.base + 1, 4) + dy
@@ -406,7 +410,8 @@ local function draw_caret(g, eng, layout, area, under_index, inserting, F)
   g.ops[#g.ops + 1] = { "r", round(x + dx), round(top + dy), 1, round(bottom - top), alpha(st.accent, 0.7), "", 1, 0 }
   if under_index and not (gui.hover and inserting) then
     local here = view.beat + F.off
-    for _, h in ipairs(heads_of({ under_index }, mine(F))) do
+    local first, last = mine(F)
+    for _, h in ipairs(heads_of({ under_index }, first, last, view.clip_id)) do
       if (h.player or 1) == F.player and (abs(h.start - here) < EPS or (h.start <= here + EPS)) then tint(g, eng, h, st.accent) end
     end
   else
@@ -708,16 +713,16 @@ function view:locate(x, y, fine, activate)
       end
       local pos = floor((engrave.y_of(st, sys, staff, 0) - py) / (st.sp / 2) + 0.5)
       local step = model.CLEF_BOTTOM[layout.staves[staff]] + pos
-      if not self:onto_staff(F, staff, nil, activate) then return nil end
-      F = self:frame()
+      local beat, measure
       for _, placed in ipairs(sys.measures) do
         local m = placed.m
         if px >= placed.x and px < placed.x + placed.p.width then
-          local beat = self:snap(m, model.t_of(placed.p, px - placed.x) - m.start, fine) + m.start
-          return { sys = sys, staff = staff - F.base, step = step - F.dstep, beat = beat - F.off, measure = m }
+          beat, measure = self:snap(m, model.t_of(placed.p, px - placed.x) - m.start, fine) + m.start, m
         end
       end
-      return { sys = sys, staff = staff - F.base, step = step - F.dstep }
+      if not self:onto_staff(F, staff, nil, activate, beat) then return nil end
+      F = self:frame()
+      return { sys = sys, staff = staff - F.base, step = step - F.dstep, beat = beat and beat - F.off, measure = measure }
     end
   end
 end
@@ -872,7 +877,7 @@ function view:pointer(e)
     local hd = head_at(e.x, e.y)
     if hd then
       local F = self:frame()
-      self:onto_staff(F, hd.staff, hd.player, true)
+      self:onto_staff(F, hd.staff, hd.player, true, nil, hd.clip)
       F = self:frame()
       hd = util.merge(hd, { start = hd.start - F.off, step = hd.step - F.dstep })
     end

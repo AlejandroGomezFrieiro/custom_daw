@@ -279,9 +279,8 @@ function P.musicxml(path)
   local mx = require("notation.musicxml")
   local list = P.instruments()
   if #list == 0 then error("no track has MIDI", 0) end
-  local clips = {}
-  for i, e in ipairs(list) do clips[i] = e.clip end
-  local parts = view.files.parts(clips)
+  -- Each made of every clip of its track.
+  local parts = P.scores(list)
   local groups = 0
   for i, p in ipairs(parts) do
     local e = list[i]

@@ -107,13 +107,33 @@ function view:activate(id, opts)
   api.ui_redraw()
 end
 
---- Onto a staff of the score (and a condensed staff's player): true when
---- it is the active one, or was made so with `activate`.
-function view:onto_staff(F, staff, player, activate)
+--- The song's beat at the cursor.
+function S.song()
+  local clip = view:clip()
+  return clip and clip:get().start + view.beat or 0
+end
+
+--- A player's clip at a beat of the song, of a staff's (`u`, of
+--- `layout.units`): the one playing then, else the last before it (where
+--- what is entered in a gap goes, the clip growing to hold it), else the
+--- first.
+function S.clip_at(u, player, song)
+  local ids = u.players[player] or u.players[1]
+  local best
+  for _, id in ipairs(ids) do
+    if api.clip_get(id).start <= song + EPS then best = id end
+  end
+  return best or ids[1]
+end
+
+--- Onto a staff of the score (and a condensed staff's player) at a beat of
+--- the score (else the cursor's), or onto `clip` of it: true when the clip
+--- there is the open one, or was made so with `activate`.
+function view:onto_staff(F, staff, player, activate, beat, clip)
   if not F.multi then return true end
   local k, u = S.unit_of(F.layout, staff)
   if not u then return false end
-  local id = u.clips[player or (k == F.unit and F.player) or 1] or u.clips[1]
+  local id = clip or S.clip_at(u, player or (k == F.unit and F.player) or 1, beat and F.start + beat or S.song())
   if id == self.clip_id then return true end
   if not activate then return false end
   self:activate(id, { staff = staff - u.first + 1 })
@@ -132,7 +152,7 @@ function S.go_staff(staff)
     if within ~= view:cursor_staff() then view:set(landing(view, within), nil) end
     return
   end
-  view:activate(u.clips[1], { staff = within })
+  view:activate(S.clip_at(u, 1, S.song()), { staff = within })
 end
 
 -- Moving between staves -------------------------------------------------------------------------
@@ -147,7 +167,7 @@ function S.player(dir)
   local to = dir == 1 and 2 or dir == -1 and 1 or 3 - F.player
   if to == F.player then return false end
   local step = view.step
-  view:activate(u.clips[to], { step = step })
+  view:activate(S.clip_at(u, to, S.song()), { step = step })
   daw.notify("voice " .. to .. ": " .. api.track_get(u.tracks[to]).name)
   return true
 end
@@ -174,7 +194,7 @@ function S.unit(dir, count)
   local units = F.layout.units
   local k = util.clamp(F.unit + dir * (count or 1), 1, #units)
   if k == F.unit then return daw.notify(dir > 0 and "the last instrument of the score" or "the first instrument of the score", "warn") end
-  view:activate(units[k].clips[1])
+  view:activate(S.clip_at(units[k], 1, S.song()))
 end
 
 --- The run of instruments (a group) the active one is in.
@@ -193,7 +213,7 @@ function S.sibling(dir, count)
   if not run or k < run.first or k > run.last then
     return daw.notify(dir > 0 and "the last instrument of its group" or "the first instrument of its group", "warn")
   end
-  view:activate(F.layout.units[k].clips[1])
+  view:activate(S.clip_at(F.layout.units[k], 1, S.song()))
 end
 
 --- The first (-1) or last (1) instrument of the group; there already, of
@@ -216,7 +236,7 @@ function S.edge(dir, count)
     end
     k = target
   end
-  if k ~= F.unit then view:activate(F.layout.units[k].clips[1]) end
+  if k ~= F.unit then view:activate(S.clip_at(F.layout.units[k], 1, S.song())) end
 end
 
 -- The grid: rows are an instrument's pitches, instrument under instrument --------------------
@@ -256,12 +276,25 @@ function S.split(F, region)
     if top ~= bottom then low, high = 0, 127 end
     -- A condensed staff: the player under the cursor's, or both where
     -- they play the same (`a2`) or the region takes the staff whole.
-    local clips = { u.clips[1] }
-    if u.condensed then
-      local both = top ~= bottom or region.kind == "line" or S.a2(F.layout, u, region.c0, region.c1)
-      local player = k == F.unit and F.player or 1
-      clips = both and { u.clips[3 - player], u.clips[player] } or { u.clips[player] }
+    local players = { k == F.unit and F.player or 1 }
+    if u.condensed and (top ~= bottom or region.kind == "line" or S.a2(F.layout, u, region.c0, region.c1)) then
+      players = { 3 - players[1], players[1] }
     end
+    -- Each player's clips the stretch reaches; in a gap, the clip before.
+    local clips = {}
+    for _, p in ipairs(players) do
+      local found = false
+      for _, id in ipairs(u.players[p] or {}) do
+        local c = api.clip_get(id)
+        local a = c.start - F.start
+        if region.kind == "line" or (a < region.c1 - EPS and a + c.length > region.c0 + EPS) then
+          clips[#clips + 1] = id
+          found = true
+        end
+      end
+      if not found then clips[#clips + 1] = S.clip_at(u, p, F.start + region.c0) end
+    end
+
     local part = { unit = k, clips = clips, region = util.merge(region, { r0 = low, r1 = high,
       kind = top ~= bottom and region.kind ~= "line" and "block" or region.kind, unit = false }) }
     if k == F.unit then mine = part else out[#out + 1] = part end
@@ -371,7 +404,7 @@ do
     if not (F and F.multi) then return plain.set(row, col) end
     local k, pitch = unit_of_row(F, row)
     if k ~= F.unit then
-      view:activate(F.layout.units[k].clips[1])
+      view:activate(S.clip_at(F.layout.units[k], 1, F.start + (col or view.beat + F.off)))
       F = view:frame()
     end
     plain.set(pitch, col and col - F.off)
@@ -418,6 +451,61 @@ function S.wrap_maps()
   end
 end
 
+-- Across a track's clips --------------------------------------------------------------------
+--
+-- In a score a staff is every clip of its track on the song's timeline:
+-- the cursor going past the open clip's ends goes on into the clip there,
+-- which becomes the open one. Past the last clip's end it stays at the
+-- end, where a note entered makes the clip longer.
+
+do
+  local set, move, to_event, to_bar = view.set, view.move, view.to_event, view.to_bar
+  function view:move(dbeat, dstep)
+    if not (self.parts and self.beat + dbeat < -EPS) then return move(self, dbeat, dstep) end
+    -- Back past the clip's start, into the clip before.
+    local was = self.step
+    self:set(self.step + dstep, self.beat + dbeat)
+    if self.step ~= was then self:audition() end
+  end
+  function view:set(step, beat)
+    local F = beat and self.parts and self:frame()
+    local clip = self:clip()
+    if F and F.multi and clip then
+      local c = clip:get()
+      if beat < -EPS or beat > c.length - EPS then
+        local id = S.clip_at(F.layout.units[F.unit], F.player, c.start + beat)
+        if id ~= c.id then
+          local start = api.clip_get(id).start
+          self.clip_id, self.cache, self.chord, self.last = id, nil, nil, nil
+          return set(self, step, c.start + beat - start)
+        end
+      end
+    end
+    return set(self, step, beat)
+  end
+
+  --- On from a clip's last note (back from its first) into the next
+  --- (previous) clip of the track.
+  local function onward(self, dir, before, at, again)
+    if not self.parts or self.clip_id ~= before or math.abs(self.beat - at) > EPS then return end
+    local c = self:clip():get()
+    self:set(nil, dir > 0 and c.length or -0.001)
+    if self.clip_id ~= before and dir < 0 then again() end
+  end
+  function view:to_event(dir, count)
+    for _ = 1, count or 1 do
+      local before, at = self.clip_id, self.beat
+      to_event(self, dir, 1)
+      onward(self, dir, before, at, function() to_event(self, dir, 1) end)
+    end
+  end
+  function view:to_bar(n)
+    local before, at = self.clip_id, self.beat
+    to_bar(self, n)
+    if n < 0 then onward(self, -1, before, at, function() to_bar(self, -1) end) end
+  end
+end
+
 -- An edit where two players play the same ----------------------------------------------------
 
 do
@@ -432,7 +520,7 @@ do
       local _, mi = self:measure_at(self.beat + F.off, F.layout)
       if mi and u.condensed[mi] == "a2" then
 
-        local other = u.clips[3 - F.player]
+        local other = S.clip_at(u, 3 - F.player, S.song())
         self.mirroring = true
         local ok, err = pcall(S.within, other, function() write(self, fn) end)
         self.mirroring = nil

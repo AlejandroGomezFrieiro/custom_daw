@@ -584,7 +584,8 @@ function view:render(buf, ctx)
             local boxed = dense and hollow
             for i, n in ipairs(ev.notes) do
               local hx = ex + (shifted[i] and 2 or 0)
-              local is_cursor = under and ctx.focused and mine and (ev.player or 1) == F.player and n.index == written.index
+              local is_cursor = under and ctx.focused and mine and (ev.player or 1) == F.player and (ev.clip or c.id) == c.id
+                and n.index == written.index
                 and ev.start <= self.beat + F.off + EPS and self.beat + F.off < ev.start + ev.length - EPS
               -- The note under the piano roll's cursor stands out.
               head(buf, G, R, hx, n.pos, hollow, is_cursor and "NoteCursor" or mine and partner == n.index and "Bright" or note_style)
@@ -905,19 +906,19 @@ function view:cell_at(x, y, fine, activate)
             -- A head is drawn at its chord's start, two cells wide, or two
             -- columns right beside a second; on the dense staff a head in a
             -- space is on the rows either side of it.
-            local player
+            local player, owner
             for _, near in ipairs(R.step == 2 and { step, step + 1, step - 1 } or { step }) do
               for _, ev in ipairs(m.staves[s] or {}) do
                 local hx = placed.x + floor(model.x_of(m, ev.start) + 0.5)
                 for _, n in ipairs(ev.notes or {}) do
                   if not at.note and n.step == near and at.beat >= ev.start - EPS and at.beat < ev.start + ev.length - EPS
                     and x >= hx and x <= hx + 3 then
-                    at.note, at.beat, at.step, player = n.index, ev.start, near, ev.player
+                    at.note, at.beat, at.step, player, owner = n.index, ev.start, near, ev.player, ev.clip
                   end
                 end
               end
             end
-            if not self:onto_staff(F, staff, player, activate) then return nil end
+            if not self:onto_staff(F, staff, player, activate, at.beat, owner) then return nil end
             F = self:frame()
             at.beat = at.beat - F.off
             at.staff = staff - F.base

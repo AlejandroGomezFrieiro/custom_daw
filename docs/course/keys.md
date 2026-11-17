@@ -421,24 +421,24 @@ The popovers are keys of the notation view (its README has them all):
 | playing techniques | `\p` | `pizz.`, `arco`, `con sord.` |
 | the last popover again, with its text | `\.` | |
 
-A score of several tracks (`:help notation-the-score`) is edited where it
+A score of several tracks (`:help notation-scores`) is edited where it
 is read: each staff is a line, and the staff under the cursor is the
 track every key writes. `:score` shows the tab's scope (or every track),
 `:score Strings` a group, `:score selection` the arrange view's selected
 tracks, `gT` the tracks over the clip's stretch; `:score.check` (and `zp`)
 the pages to check before export, the one view that is only read.
 
-| Keys | In a score |
+| In a score | Keys |
 | --- | --- |
-| `j` `k` | the cursor's pitch, as on one staff (entering goes by it) |
-| `<C-j>` `<C-k>` | a staff down, up: a grand staff's two, then the next instrument |
-| `]]` `[[` | the next, previous instrument (a grand staff is one) |
-| `]s` `[s` | the next, previous instrument in the same group |
-| `[{` `]}` | the group's first, last instrument (again: the group before, after) |
-| `<C-v>` then those | a block of bars by staves: `x`, `d`, `y`, `gU`, `>`, `\d`... on each staff, one undo step |
-| `V` then those | whole staves |
-| `]v` `[v` | on a condensed staff, the other player (voice 2 is the second's clip) |
-| `:5,8 s4 d` `:5,8 Strings notation.dyn p` | Ex over staves: `s4`, `s2,s5`, `s.` the cursor's, a group's name |
+| the cursor's pitch, as on one staff (entering goes by it) | `j` `k` |
+| a staff down, up: a grand staff's two, then the next instrument | `<C-j>` `<C-k>` |
+| the next, previous instrument (a grand staff is one) | `]]` `[[` |
+| the next, previous instrument in the same group | `]s` `[s` |
+| the group's first, last instrument (again: the group before, after) | `[{` `]}` |
+| a block of bars by staves: `x`, `d`, `y`, `gU`, `>`, `\d`... on each staff, one undo step | `<C-v>` then those |
+| whole staves | `V` then those |
+| on a condensed staff, the other player (voice 2 is the second's clip) | `]v` `[v` |
+| Ex over staves: `s4`, `s2,s5`, `s.` the cursor's, a group's name | `:5,8 s4 d`, `:5,8 Strings notation.dyn p` |
 
 `:set score_dim` dims the other staves, `:set score_colors` tints them in
 their tracks' colours.

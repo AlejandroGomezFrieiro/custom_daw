@@ -677,7 +677,7 @@ local function staff_ink(st, m, p, staff)
         local ny = Y(n.pos)
         out:glyph(st, nx, ny, hname, colour, k)
         out.heads[#out.heads + 1] = { x = nx + hw / 2, y = ny, index = n.index, id = n.id, step = n.step, start = ev.start, staff = staff,
-          base = ev.base, glyph = hname, gx = nx, player = ev.player }
+          base = ev.base, glyph = hname, gx = nx, player = ev.player, clip = ev.clip }
         if n.acc then
           local name = ACC_GLYPH[n.acc]
           local ax = acc_left - acc_at[i]
