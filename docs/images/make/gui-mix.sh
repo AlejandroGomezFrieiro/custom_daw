@@ -13,9 +13,9 @@ cap "Play, and open the mixer"
 glide 181 21; pause 0.2; xdotool click 1; pause 0.8
 glide 892 21; pause 0.2; xdotool click 1; pause 1.2
 cap "Faders, pans, mute and solo for every track"
-drag 346 622 346 606
+drag 36 636 36 618
 pause 0.4
-drag 460 630 460 646
+drag 148 640 148 654
 pause 0.6
 shot gui-mixer.png
 glide 892 21; pause 0.2; xdotool click 1; pause 0.8
