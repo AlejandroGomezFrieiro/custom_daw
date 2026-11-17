@@ -672,8 +672,8 @@ local function bar_break(kind)
     or now == "join" and ("bar " .. layout.measures[index].number .. " stays on the system before")
     or ("bar " .. layout.measures[index].number .. " goes where it fits"))
 end
-nmap("gS", function() bar_break("break") end, "Start a system at this bar, or let it go where it fits again")
-nmap("gJ", function() bar_break("join") end, "Keep this bar on the system before, or let it go where it fits again")
+nmap("zs", function() bar_break("break") end, "Start a system at this bar, or let it go where it fits again")
+nmap("zj", function() bar_break("join") end, "Keep this bar on the system before, or let it go where it fits again")
 nmap("zp", function()
   view.page = not view.page
   view.galley = view.galley and not view.page

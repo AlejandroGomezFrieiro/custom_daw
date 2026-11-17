@@ -248,7 +248,7 @@ test("notation layout: systems break balanced: none stretched past the bound, no
   end
 end)
 
-test("notation layout: gS starts a system at the bar, gJ keeps one on the system before, kept in the score and undone", function()
+test("notation layout: zs starts a system at the bar, zj keeps one on the system before, kept in the score and undone", function()
   local notes = {}
   for bar = 0, 7 do
     for b = 0, 3 do notes[#notes + 1] = N(60 + (bar + b) % 8, bar * 4 + b, 1) end
@@ -262,20 +262,20 @@ test("notation layout: gS starts a system at the bar, gJ keeps one on the system
   local before = firsts()
   eq(before:find("^1 ") ~= nil, true, before)
   view:set(nil, 9)
-  keys("gS")
+  keys("zs")
   local sc = view.score_of(clip:get())
   eq(#sc.layout.breaks, 1)
   local b = sc.layout.breaks[1]
   eq(b.kind == "break" and b.measure == sc.measures[3].id and type(b.id) == "string", true, "a break before bar 3, by its measure's id")
   eq((" " .. firsts() .. " "):find(" 3 ") ~= nil, true, "a system starts at bar 3")
-  keys("gS")
-  eq(#view.score_of(clip:get()).layout.breaks, 0, "gS again takes it away")
+  keys("zs")
+  eq(#view.score_of(clip:get()).layout.breaks, 0, "zs again takes it away")
   eq(firsts(), before)
-  -- gJ on the first bar of a system keeps it on the one before.
+  -- zj on the first bar of a system keeps it on the one before.
   local eng = paint(view)
   local second = eng.systems[2].first
   view:set(nil, (second - 1) * 4)
-  keys("gJ")
+  keys("zj")
   eq(view.score_of(clip:get()).layout.breaks[1].kind, "join")
   eq((" " .. firsts() .. " "):find(" " .. second .. " ") == nil, true, "no system starts there now")
   api.undo()
@@ -286,6 +286,8 @@ test("notation layout: gS starts a system at the bar, gJ keeps one on the system
   eq(firsts(), before)
   -- The terminal's cell view breaks the same way.
   daw.commands.exec("notation.bars-per-system 3")
+  view.first = 1
+  view:set(nil, 0)
   api.ui_snapshot(140, 60)
   local systems = view.geometry.systems
   eq(#systems >= 2 and #systems[1].measures == 3 and systems[2].measures[1].m.number == 4, true, "three bars to a row")

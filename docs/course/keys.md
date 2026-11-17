@@ -323,5 +323,5 @@ insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
 Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
 the other voice, `R` repeats the chord, and the numbers choose the value (5
 a quarter). zg shows the engraved page as one long system, zp on pages
-under the title (`:notation.export pdf` writes them); gS starts a system
-at the bar under the cursor, gJ keeps it on the system before.
+under the title (`:notation.export pdf` writes them); zs starts a system
+at the bar under the cursor, zj joins it to the system before.

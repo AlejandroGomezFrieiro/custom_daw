@@ -384,6 +384,9 @@ Where the views used to differ, the rule chose:
   with `S` (`gS` every clip); the curve editor's shapes are `~`; the panel's
   presets are `c` on a device (choose), `]p` `[p` (step), `,w` (save, as
   `:w` writes) and `,W` (the default).
+- The score's system breaks are `zs` (a system starts here) and `zj` (join
+  the bar to the system before), beside `zg` and `zp`, which also say how
+  the page is laid out; `gS` keeps its meaning of the session and the panel.
 - `a` appends: it was already a device on a track and notes after a note,
   and is the same in the mixer and the panel.
 - `A` was already "a point of automation at the cursor" in every view that

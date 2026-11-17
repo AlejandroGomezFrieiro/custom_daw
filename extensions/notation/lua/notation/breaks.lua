@@ -14,7 +14,7 @@
 -- the end when it can be helped.
 --
 -- What a score asks for (`notation.doc`'s `layout`, by measure id): a break
--- before a measure (`gS`), a measure kept on the line before (`gJ`), and a
+-- before a measure (`zs`), a measure kept on the line before (`zj`), and a
 -- fixed number of measures to a line (`:notation.bars-per-system`).
 local M = {}
 

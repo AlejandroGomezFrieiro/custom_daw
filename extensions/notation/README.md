@@ -219,8 +219,8 @@ the edit), and says so.
 | `zi` `zo` | spread the notes out, draw them closer; on the engraved page, a larger, smaller staff |
 | `zg` | the engraved page as one long system scrolled sideways (the galley), or wrapped |
 | `zp` | the engraved systems on pages of paper, under the title and composer (the page view), or without pages |
-| `gS` | start a system at the cursor's bar; again, let the bar go where it fits |
-| `gJ` | keep the cursor's bar on the system before; again, let it go where it fits |
+| `zs` | start a system at the cursor's bar; again, let the bar go where it fits |
+| `zj` | keep the cursor's bar on the system before; again, let it go where it fits |
 | `:notation.bars-per-system 4` | that many bars on every system; without a number, as they fit |
 | `,n` | back to the arrange view |
 | `:q` `ZZ` `Ctrl-w c` | close the view |
@@ -360,8 +360,8 @@ square of how far its bars are stretched, so the stretch is shared out
 evenly, none is stretched past twice its bars' own width while another way
 exists, and a bar is left alone on the last system only when everything
 else is worse. Every system but the last is spread to the width, and the
-last too when it is three quarters full. `gS` starts a system at the
-cursor's bar, `gJ` keeps it on the system before, and
+last too when it is three quarters full. `zs` starts a system at the
+cursor's bar, `zj` keeps it on the system before, and
 `:notation.bars-per-system 4` fixes the count; they are kept in the score
 (`score.layout`, each break with an id and its measure's id), undone like
 any edit, and the terminal's cell view breaks the same way, in whole
