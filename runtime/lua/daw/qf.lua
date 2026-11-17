@@ -271,6 +271,8 @@ function M.where(e)
   if not loc then return "" end
   local p = A.parse(loc.uri)
   local t = loc.selector and loc.selector.time
+  local scheme = p and A.schemes[p.kind]
+  if scheme and scheme.where then return scheme.where(loc, p) end
   if p and p.kind == "lane" then
     local ok, lane = pcall(api.lane_get, p.lane)
     return (ok and daw.lanes.name(lane) or "a lane") .. (t and (" " .. daw.time.format(t[1])) or "")
@@ -310,6 +312,9 @@ function M.go(e)
     daw.notify("what this entry is about is gone", "warn")
     return false
   end
+  -- An address of an extension's own kind goes where the kind says.
+  local scheme = A.schemes[p.kind]
+  if scheme and scheme.go then return scheme.go(loc, p) ~= false end
   if p.kind == "lane" then
     local lane = api.lane_get(p.lane)
     local arrange = daw.ui.locators.arrange

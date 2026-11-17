@@ -1,0 +1,939 @@
+-- Help, as Vim's: the manual inside the program. docs/terminal.md says how
+-- it is used, docs/scripting.md how an extension ships help of its own.
+--
+--   :help                the contents
+--   :help gU             a key        :help :s           a command
+--   :help 'timebind'     an option    :help daw.qf       a Lua module
+--   :help key-rule       a section    :helpgrep stretch  every line that says it
+--
+-- The pages are the Markdown of docs/*.md, docs/course/*.md, every
+-- extension's README.md and doc/*.md (bundled beside the program or in the
+-- configuration, loaded or not), and what `daw.help.add` names, made into
+-- text by daw/markdown.lua and shown in text buffers (`help://terminal.md`)
+-- that cannot be changed. Their keys are the text buffers' own (motions,
+-- `v`, `y`, `/`), with `Ctrl-]` (or `Enter`, or a double click) to follow
+-- the link or look up the word under the cursor, `K` to look a word up,
+-- `Ctrl-o` and `Ctrl-t` to go back.
+--
+-- Tags are made, the first time help is asked for, from the headings (the
+-- page's name for its title, the heading's words joined by `-` below it,
+-- after the extension's name or `course-N` in theirs), from `<!-- tags: a b
+-- -->` comments, and from every key, command (`:s`), option (`'timebind'`),
+-- Lua name (`daw.qf.feed`) and address (`daw://tracks`) written as code:
+-- each at the first place it is described (a table's first column, the
+-- start of a list item), else where it is first named.
+local api = daw.api
+local util = daw.util
+local md = daw.markdown
+local layout = daw.layout
+
+local M = { width = 78, extra = {} }
+
+-- Files -------------------------------------------------------------------------
+
+local function read_file(path)
+  local f = io.open(path, "r")
+  if not f then return nil end
+  local text = f:read("*a")
+  f:close()
+  return text
+end
+
+local function list_dir(dir)
+  local ok, items = pcall(api.read_dir, dir)
+  return ok and items or {}
+end
+
+local function exists(path)
+  local f = io.open(path, "r")
+  if f then f:close() end
+  return f ~= nil
+end
+
+--- A path with `.` and `..` taken out, made absolute from the working
+--- directory.
+local function normalize(path)
+  if not path:match("^/") then path = (os.getenv("PWD") or ".") .. "/" .. path end
+  local parts = {}
+  for part in path:gmatch("[^/]+") do
+    if part == ".." then
+      parts[#parts] = nil
+    elseif part ~= "." then
+      parts[#parts + 1] = part
+    end
+  end
+  return "/" .. table.concat(parts, "/")
+end
+M.normalize = normalize
+
+local function dir_of(path) return path:match("^(.*)/[^/]*$") or "." end
+
+--- The directories that may be a copy of the source tree, the manual and
+--- the bundled extensions in it: `$DAW_HOME` (where an installed program
+--- keeps them), the runtime's parent (`--runtime`), the tree a loaded
+--- extension is in, and the working directory.
+function M.roots()
+  local out, seen = {}, {}
+  local function add(dir)
+    if not dir or dir == "" then return end
+    dir = normalize(dir)
+    if not seen[dir] then
+      seen[dir] = true
+      out[#out + 1] = dir
+    end
+  end
+  add(os.getenv("DAW_HOME"))
+  local env = api.env()
+  if env.runtime_dir then add(env.runtime_dir .. "/..") end
+  for _, entry in ipairs(daw.ext.list()) do
+    local tree = normalize(entry.path):match("^(.*)/extensions/[^/]+$")
+    add(tree)
+  end
+  add(os.getenv("PWD"))
+  return out
+end
+
+local DOC_ORDER = {
+  "terminal", "window", "running", "configuration", "recording", "mixing", "devices", "live", "harmony", "lsp",
+  "scripting", "extensions", "architecture", "protocol", "missing",
+}
+
+local function ext_loaded(name)
+  local entry = daw.ext.loaded[name]
+  return entry ~= nil and entry.ok ~= false
+end
+
+--- Every page of help, in order: the contents, the manual, the course, the
+--- extensions (each with whether it is loaded) and what was added. A page
+--- is `{ path, name, aliases, prefix, ext? }`: `name` is its buffer's
+--- (`help://name`), `aliases` its tags (the first is shown on its title),
+--- `prefix` what its headings' tags start with.
+function M.sources()
+  local out = { { name = "index", aliases = { "help", "index", "contents" }, prefix = "help", index = true } }
+  local roots = M.roots()
+  local docs
+  for _, root in ipairs(roots) do
+    if not docs and exists(root .. "/docs/terminal.md") then docs = root .. "/docs" end
+  end
+  if docs then
+    local rank = {}
+    for i, name in ipairs(DOC_ORDER) do rank[name] = i end
+    local pages = {}
+    for _, item in ipairs(list_dir(docs)) do
+      local base = item.name:match("^(.+)%.md$")
+      if base and not item.is_dir then pages[#pages + 1] = base end
+    end
+    table.sort(pages, function(a, b)
+      local ra, rb = rank[a] or 99, rank[b] or 99
+      if ra ~= rb then return ra < rb end
+      return a < b
+    end)
+    for _, base in ipairs(pages) do
+      out[#out + 1] = { path = docs .. "/" .. base .. ".md", name = base .. ".md", aliases = { base, base .. ".md" }, prefix = "", group = "manual" }
+    end
+    local lessons = {}
+    for _, item in ipairs(list_dir(docs .. "/course")) do
+      if item.name:match("%.md$") then lessons[#lessons + 1] = item.name end
+    end
+    table.sort(lessons, function(a, b)
+      -- The course's own page first, the lessons by number, the keys last.
+      local function order(n) return n == "README.md" and "" or n:match("^%d") and n or "~" .. n end
+      return order(a) < order(b)
+    end)
+    for _, file in ipairs(lessons) do
+      local n, rest = file:match("^(%d+)%-(.+)%.md$")
+      local aliases, prefix
+      if n then
+        aliases, prefix = { "course-" .. tonumber(n), "course-" .. rest }, "course-" .. tonumber(n)
+      elseif file == "README.md" then
+        aliases, prefix = { "course", "tutor-course" }, "course"
+      else
+        local base = file:gsub("%.md$", "")
+        aliases, prefix = { "course-" .. base }, "course-" .. base
+      end
+      out[#out + 1] = { path = docs .. "/course/" .. file, name = "course/" .. file, aliases = aliases, prefix = prefix, group = "course", lesson = n and tonumber(n) }
+    end
+  end
+  -- Extensions: a loaded one where it was loaded from, then those in the
+  -- configuration, then those bundled in the source tree.
+  local exts, order = {}, {}
+  local function add_ext(name, path)
+    if exts[name] then return end
+    exts[name] = path
+    order[#order + 1] = name
+  end
+  for _, entry in ipairs(daw.ext.list()) do
+    if not entry.path:match("%.lua$") then add_ext(entry.name, normalize(entry.path)) end
+  end
+  for _, item in ipairs(list_dir(api.env().config_dir .. "/extensions")) do
+    if item.is_dir then add_ext(item.name, normalize(api.env().config_dir .. "/extensions/" .. item.name)) end
+  end
+  for _, root in ipairs(roots) do
+    for _, item in ipairs(list_dir(root .. "/extensions")) do
+      if item.is_dir then add_ext(item.name, root .. "/extensions/" .. item.name) end
+    end
+  end
+  table.sort(order)
+  for _, name in ipairs(order) do
+    local dir = exts[name]
+    if exists(dir .. "/README.md") then
+      out[#out + 1] = { path = dir .. "/README.md", name = name .. "/README.md", aliases = { name }, prefix = name, ext = name, dir = dir, group = "extensions" }
+    end
+    local files = {}
+    for _, item in ipairs(list_dir(dir .. "/doc")) do
+      if item.name:match("%.md$") then files[#files + 1] = item.name end
+    end
+    table.sort(files)
+    for _, file in ipairs(files) do
+      local base = file:gsub("%.md$", "")
+      local tag = (base == name or base == "README") and name or name .. "-" .. base
+      out[#out + 1] = { path = dir .. "/doc/" .. file, name = name .. "/doc/" .. file, aliases = { tag }, prefix = tag, ext = name, dir = dir, group = "extensions" }
+    end
+  end
+  for _, extra in ipairs(M.extra) do out[#out + 1] = extra end
+  return out
+end
+
+--- Add a page of help: a Markdown file anywhere. `opts.tag` is its tag and
+--- what its headings' tags start with (the file's name by default);
+--- `opts.ext` the extension it is about and `opts.dir` where that is, for
+--- the note shown while it is not loaded. An extension's README.md and
+--- doc/*.md need no adding.
+---   daw.help.add("/path/to/mine/notes.md", { tag = "mine-notes" })
+function M.add(path, opts)
+  opts = opts or {}
+  path = normalize(path)
+  local tag = opts.tag or path:match("([^/]+)%.md$") or path:match("([^/]+)$")
+  for i, extra in ipairs(M.extra) do
+    if extra.path == path then table.remove(M.extra, i) break end
+  end
+  M.extra[#M.extra + 1] = { path = path, name = tag .. ".md", aliases = { tag }, prefix = tag, ext = opts.ext, dir = opts.dir and normalize(opts.dir), group = "added" }
+  M.dirty = true
+end
+
+-- Tags ----------------------------------------------------------------------------
+
+--- A heading's words as a tag: `Ex: ranges, :s and :g` is `ex-ranges-s-and-g`.
+local function slug(text)
+  local s = md.plain(text):lower():gsub("[^%w%.]+", "-"):gsub("^%-+", ""):gsub("%-+$", "")
+  s = s:gsub("^the%-", ""):gsub("^an?%-", "")
+  return s
+end
+M.slug = slug
+
+--- A heading as GitHub makes its anchor, for links written `page.md#anchor`.
+local function anchor(text)
+  return (md.plain(text):lower():gsub("[^%w%s%-_]", ""):gsub("%s", "-"))
+end
+
+--- The command an Ex line runs: `:%s/a/b/g` runs `s`, `:5,8co 17` `co`.
+local function ex_name(line)
+  local s = line:gsub("^:", "")
+  local before
+  repeat
+    before = s
+    s = s:gsub("^%s+", ""):gsub("^%%", ""):gsub("^[%d%.]+", ""):gsub("^[,;]", ""):gsub("^%$", "")
+    s = s:gsub("^'[%a<>]", ""):gsub("^[+%-]%d*", ""):gsub("^t[%d%.%$%*]+", ""):gsub("^t/[^/]*/", ""):gsub("^t'<,'>", "")
+  until s == before
+  return s:match("^([%a][%w%._]*!?)")
+end
+M.ex_name = ex_name
+
+local known_keys
+local function keys_known()
+  if known_keys then return known_keys end
+  known_keys = {}
+  for _, map in ipairs(daw.keymap.every()) do
+    known_keys[map.lhs] = true
+    known_keys[daw.keymap.human(map.lhs)] = true
+  end
+  return known_keys
+end
+
+local known_options
+local function option_known(name)
+  if not known_options then
+    known_options = {}
+    for _, o in ipairs(daw.option.list()) do known_options[o.name] = true end
+  end
+  return known_options[name] == true
+end
+
+--- The tags a piece of code names: a command line its command, `:set x`
+--- the option too, a Lua name and the modules it is in, an address, an
+--- option, a command's name, a key. `first`: it is where something is
+--- described (a table's first column), so any short word in it is a tag.
+local function tags_of_code(text, first)
+  local out = {}
+  if #text > 48 then return out end
+  if text:match("^:") then
+    local cmd = ex_name(text)
+    if cmd then
+      out[#out + 1] = ":" .. cmd:gsub("!$", "")
+      local opt = (cmd == "set" or cmd == "setlocal") and text:match("^:set%a*%s+([%w_]+)")
+      if opt then
+        if not option_known(opt) and opt:match("^no") and option_known(opt:sub(3)) then opt = opt:sub(3) end
+        out[#out + 1] = "'" .. opt .. "'"
+      end
+    end
+    return out
+  end
+  local opt = text:match("^daw%.opt%.([%w_]+)")
+  if opt then
+    out[#out + 1] = "'" .. opt .. "'"
+    return out
+  end
+  local lua = text:match("^(daw[%.:][%w_%.:]*[%w_])")
+  if lua then
+    out[#out + 1] = lua
+    local parent = lua
+    while true do
+      parent = parent:match("^(.+)[%.:][^%.:]+$")
+      if not parent or parent == "daw" then break end
+      out[#out + 1] = parent
+    end
+    return out
+  end
+  if text:match("^daw://") then
+    out[#out + 1] = text:match("^(daw://[%w_/%.%*]+)")
+    return out
+  end
+  if text:match("^'[%w_]+'$") then
+    out[#out + 1] = text
+    return out
+  end
+  if text:match("^[%w_]+$") and option_known(text) and text:find("_") then out[#out + 1] = "'" .. text .. "'" end
+  if daw.commands.get(text) and text:find("%.") then out[#out + 1] = ":" .. text end
+  -- Keys written as mappings write them (`<C-w>o`) are named as people
+  -- write them (`Ctrl-w o`), as the docs do.
+  if text:match("^<%a%-.->") or text:match("^<%u%a+>$") then text = daw.keymap.human(text) end
+  local short = #text <= 16 and not text:find("  ") and not text:find("^%s")
+  local keyish = short and (not text:find(" ") or text:match("^%u%l+%-%S+ %S+$"))
+  if keyish and (keys_known()[text] or first) then out[#out + 1] = text end
+  return out
+end
+M.tags_of_code = tags_of_code
+
+-- Building ------------------------------------------------------------------------
+
+local built           -- { sources, tags = name -> tag, list = { tag }, by_name = source by name, by_path }
+local parsed = {}     -- path -> { text, blocks }
+
+--- The contents page, as Markdown.
+local function index_text(sources)
+  local out = {
+    "# paw help",
+    "",
+    "Move in this page as in any text: `j` `k`, `/` to search, `v` and `y` to copy. "
+      .. "`Ctrl-]` (or `Enter`, or a double click) on a link or a word follows it; "
+      .. "`Ctrl-o` and `Ctrl-t` go back. `K` looks up the word under the cursor. "
+      .. "`:help` with a topic goes to it (`Tab` completes): a key (`:help gU`), a command "
+      .. "(`:help :s`), an option (`:help 'timebind'`), a Lua module (`:help daw.qf`) or a "
+      .. "section (`:help key-rule`). `:helpgrep` with words lists every line of help that "
+      .. "holds them in the quickfix list (`]q` goes through them). `?` lists the keys of "
+      .. "the view you are in, `:q` closes this window, `-` comes back here.",
+  }
+  local has_manual = false
+  for _, source in ipairs(sources) do has_manual = has_manual or source.group == "manual" end
+  if not has_manual then
+    out[#out + 1] = ""
+    out[#out + 1] = "The manual (`docs/`) was not found: run the program from its source tree, or set `DAW_HOME` to a copy of it."
+  end
+  local groups = {
+    { "manual", "The manual" }, { "course", "The course" }, { "extensions", "Extensions" }, { "added", "Added" },
+  }
+  for _, group in ipairs(groups) do
+    local any = false
+    for _, source in ipairs(sources) do
+      if source.group == group[1] then
+        if not any then
+          out[#out + 1] = ""
+          out[#out + 1] = "## " .. group[2]
+          out[#out + 1] = ""
+          any = true
+        end
+        local title = source.title or source.name
+        local note = ""
+        if source.ext and not ext_loaded(source.ext) then note = " (not loaded)" end
+        out[#out + 1] = "- [" .. title:gsub("[%[%]]", "") .. "](help:" .. source.aliases[1] .. ")" .. note
+        for _, heading in ipairs(source.headings or {}) do
+          if heading.level == 2 then
+            out[#out + 1] = "    - [" .. md.plain(heading.text):gsub("[%[%]]", "") .. "](help:" .. heading.tag .. ")"
+          end
+        end
+      end
+    end
+  end
+  return table.concat(out, "\n")
+end
+
+--- The note at the top of the page of an extension that is not loaded.
+local function unloaded_note(source)
+  local env = api.env()
+  -- The tutor loads the extensions bundled beside it by name.
+  local tutor = daw.ext.loaded.tutor
+  local beside = tutor and daw.commands.get("tutor.try") and dir_of(normalize(tutor.path)) == dir_of(source.dir)
+  local now = beside and ":tutor.try " .. source.ext or ":lua daw.ext.load(\"" .. source.dir .. "\")"
+  return table.concat({
+    "**This extension is not loaded.** For this session:",
+    "",
+    "    " .. now,
+    "",
+    "To have it every time, link it into your configuration:",
+    "",
+    "    ln -s " .. source.dir .. " " .. env.config_dir .. "/extensions/",
+  }, "\n")
+end
+
+local function heading_tags(sources)
+  local used = {}
+  local function take(name)
+    if used[name] then return nil end
+    used[name] = true
+    return name
+  end
+  for _, source in ipairs(sources) do
+    for _, alias in ipairs(source.aliases) do used[alias] = used[alias] or source end
+  end
+  for _, source in ipairs(sources) do
+    source.headings = {}
+    for _, block in ipairs(source.blocks) do
+      if block.type == "heading" then
+        local base = slug(block.text)
+        if block.level == 1 and not source.title then
+          source.title = md.plain(block.text)
+          block.tag = source.aliases[1]
+        else
+          local name = source.prefix ~= "" and source.prefix .. "-" .. base or base
+          block.tag = take(name) or take(source.aliases[1] .. "-" .. base)
+          local n = 2
+          while not block.tag do
+            block.tag = take(name .. "-" .. n)
+            n = n + 1
+          end
+        end
+        source.headings[#source.headings + 1] = block
+      end
+    end
+  end
+end
+
+--- Read every page, give its headings their tags, make it into lines and
+--- gather the tags. Done again when a page changed, an extension was loaded
+--- or a page was added.
+local function build()
+  -- The files are looked at again at most every two seconds.
+  local loaded = {}
+  for _, entry in ipairs(daw.ext.list()) do loaded[#loaded + 1] = entry.name .. tostring(entry.ok) end
+  loaded = table.concat(loaded, " ")
+  if built and not M.dirty and built.loaded == loaded and api.now() - built.checked < 2000 then return built end
+  local sources = M.sources()
+  local signature = {}
+  for _, source in ipairs(sources) do
+    if not source.index then
+      local text = read_file(source.path) or ""
+      local cached = parsed[source.path]
+      if not (cached and cached.text == text) then
+        cached = { text = text, blocks = md.parse(text) }
+        parsed[source.path] = cached
+      end
+      source.blocks = cached.blocks
+      source.loaded = not source.ext or ext_loaded(source.ext)
+      signature[#signature + 1] = source.path .. "\0" .. tostring(cached) .. "\0" .. tostring(source.loaded)
+    end
+  end
+  signature = table.concat(signature, "\n")
+  if built and built.signature == signature and not M.dirty then
+    built.checked, built.loaded = api.now(), loaded
+    return built
+  end
+  M.dirty = false
+  known_keys, known_options = nil, nil
+  -- The contents are made from the pages' titles and headings.
+  sources[1].blocks = {}
+  heading_tags(sources)
+  sources[1].blocks = md.parse(index_text(sources))
+  sources[1].title = nil
+  heading_tags({ sources[1] })
+  local tags = {}
+  local function add(name, source, row, col, prio)
+    if not name or name == "" then return end
+    local old = tags[name]
+    if old and old.prio <= prio then return end
+    tags[name] = { name = name, source = source, row = row, col = col or 0, prio = prio, order = source.order }
+  end
+  local by_name, by_path = {}, {}
+  for i, source in ipairs(sources) do
+    source.order = i
+    by_name[source.name] = source
+    if source.path then by_path[source.path] = source end
+    local blocks = source.blocks
+    if source.ext and not source.loaded and source.dir then
+      blocks = util.merge({}, blocks)
+      local note = md.parse(unloaded_note(source))
+      local at = 1
+      while blocks[at] and blocks[at].type ~= "heading" do at = at + 1 end
+      table.insert(blocks, at + 1, { type = "blank" })
+      for i, block in ipairs(note) do table.insert(blocks, at + 1 + i, block) end
+      table.insert(blocks, at + 2 + #note, { type = "blank" })
+    end
+    source.doc = md.render(blocks, { width = M.width, heading_tag = function(block) return block.tag end })
+    source.anchors = {}
+    for _, alias in ipairs(source.aliases) do add(alias, source, 1, 0, 0) end
+    local heading_at = 0
+    for _, a in ipairs(source.doc.anchors) do
+      if a.kind == "heading" then
+        heading_at = heading_at + 1
+        local block = source.headings[heading_at]
+        if block then
+          add(block.tag, source, a.row, 0, 1)
+          source.anchors[anchor(block.text)] = a.row
+        end
+      elseif a.kind == "tags" then
+        for _, name in ipairs(a.names) do add(name, source, a.row, 0, 1) end
+      elseif a.kind == "lead" then
+        local base = slug(a.text)
+        add(source.prefix ~= "" and source.prefix .. "-" .. base or base, source, a.row, 0, 3)
+      elseif a.kind == "code" then
+        -- Where the manual names a thing comes before where the course
+        -- or an extension's page does.
+        local after = source.group == "manual" and 0 or 3
+        for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, (a.first and 2 or 4) + after) end
+      end
+    end
+  end
+  local list = {}
+  for _, tag in pairs(tags) do list[#list + 1] = tag end
+  table.sort(list, function(a, b) return a.name < b.name end)
+  built = { checked = api.now(), loaded = loaded, signature = signature, sources = sources, tags = tags, list = list, by_name = by_name, by_path = by_path }
+  return built
+end
+
+--- What help knows: `{ sources, tags = name -> { name, source, row, col }, list }`.
+function M.index() return build() end
+
+-- Finding ---------------------------------------------------------------------------
+
+--- How well `name` matches `q` (lowercase both), lower is better, or nil:
+--- whole, start, inside, then the letters in order (fewer gaps first).
+local function score(name, q)
+  local lower = name:lower()
+  if lower == q then return 1 end
+  if lower:sub(1, #q) == q then return 2 + #name / 1000 end
+  local at = lower:find(q, 1, true)
+  if at then return 3 + #name / 1000 end
+  local pos, gaps = 0, 0
+  for i = 1, #q do
+    local found = lower:find(q:sub(i, i), pos + 1, true)
+    if not found then return nil end
+    if found > pos + 1 and pos > 0 then gaps = gaps + 1 end
+    pos = found
+  end
+  return 4 + gaps / 100 + #name / 100000
+end
+
+--- The tags a topic finds, best first, as Vim's `:help` ranks them: the
+--- tag itself, then those that start with it, those that hold it, and
+--- those that hold its letters in order. Keys may be written either way:
+--- `<C-w>o` finds `Ctrl-w o`.
+function M.find(topic, limit)
+  local index = build()
+  topic = (topic or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if topic == "" then return { index.tags.help } end
+  local exact = index.tags[topic]
+  if not exact and topic:match("^<.+>") then exact = index.tags[daw.keymap.human(topic)] end
+  local q = topic:lower()
+  local found = {}
+  for _, tag in ipairs(index.list) do
+    if tag ~= exact then
+      local s = score(tag.name, q)
+      if s then found[#found + 1] = { tag = tag, score = s } end
+    end
+  end
+  table.sort(found, function(a, b)
+    if a.score ~= b.score then return a.score < b.score end
+    if a.tag.prio ~= b.tag.prio then return a.tag.prio < b.tag.prio end
+    if a.tag.order ~= b.tag.order then return a.tag.order < b.tag.order end
+    return a.tag.name < b.tag.name
+  end)
+  local out = { exact }
+  for _, f in ipairs(found) do
+    if limit and #out >= limit then break end
+    out[#out + 1] = f.tag
+  end
+  return out
+end
+
+--- The tag a topic goes to, or nil.
+function M.lookup(topic) return M.find(topic, 1)[1] end
+
+-- The buffers -------------------------------------------------------------------------
+
+local function is_help(buf) return buf and buf.type == "textbuf" and buf.state and buf.state.kind and buf.state.kind.name == "help" end
+M.is_help = is_help
+
+local function source_of(buf)
+  local name = buf.name:match("^help://(.+)$")
+  return name and build().by_name[name]
+end
+
+--- Whether the keys come from a graphical frontend: its seat, or the
+--- instance's when it has no terminal and a window watches it.
+local function windowed()
+  local seat = daw.seats.current
+  local watching = false
+  for _, l in ipairs(daw.remote.listeners()) do
+    if l.watching and (seat == 0 or l.client == seat) then watching = true end
+  end
+  if seat ~= 0 then return watching end
+  return watching and not api.ui_attached()
+end
+
+--- The window showing help in this tab, if any.
+local function help_window()
+  local cur = layout.current()
+  if cur and is_help(layout.buf_of(cur)) then return cur end
+  for _, win in ipairs(layout.windows()) do
+    if is_help(layout.buf_of(win)) then return win end
+  end
+end
+
+--- Put the cursor of a help window at a row and column, the row near the
+--- top as a tag jump does.
+local function place(win, row, col)
+  local s = win.state
+  s.row, s.col, s.want = row, col or 0, col or 0
+  -- A section's rule stays in sight above its heading.
+  s.top = math.max(1, row - 1)
+  api.ui_redraw()
+end
+
+-- Where tag jumps came from, for `Ctrl-t`.
+local stack = {}
+daw.seats.keep("help", function() return stack end, function(s) stack = s end, function() return {} end)
+
+--- Show a page at a row: in the help window, else one split off this one
+--- (as Vim's `:help` splits), or in a window of its own in a graphical
+--- frontend. Returns the window.
+function M.show(source, row, col)
+  local name = "help://" .. source.name
+  if windowed() then
+    local win = daw.textbuf.open(name, { window = true })
+    if win then place(win, row, col) end
+    return win
+  end
+  local buf = layout.buf_create("textbuf", name)
+  local win = help_window()
+  if win then
+    layout.enter(win)
+    win = layout.show_in(win, "textbuf", buf.id)
+  else
+    local new = layout.split({ view = "textbuf", buf = buf.id })
+    -- Help takes two thirds of what it was split from, as Vim gives it
+    -- 'helpheight' rows.
+    if new and not new.size then new.weight = (new.weight or 1) * 2 end
+    win = new or layout.show_in(layout.current(), "textbuf", buf.id)
+  end
+  place(win, row, col)
+  return win
+end
+
+--- Go to a tag: remember where from (for `Ctrl-t` and `Ctrl-o`) and show it.
+function M.jump(tag)
+  local win, buf, _, s = daw.textbuf.here()
+  if win and buf then
+    stack[#stack + 1] = { name = buf.name, row = s.row, col = s.col }
+    if #stack > 50 then table.remove(stack, 1) end
+    daw.keymap.push_jump()
+  end
+  local source = tag.source
+  if source.ext and not source.loaded then daw.notify(source.ext .. " is not loaded: the page says how to load it", "warn") end
+  return M.show(source, tag.row, tag.col)
+end
+
+--- `:help topic`: go to the best tag for it, or say there is none.
+function M.open(topic)
+  local tag = M.lookup(topic)
+  if not tag then return daw.notify("no help for " .. tostring(topic), "warn") end
+  return M.jump(tag)
+end
+
+--- Back along the tags followed (`Ctrl-t`).
+function M.back(n)
+  local win
+  for _ = 1, n or 1 do
+    local last = table.remove(stack)
+    if not last then
+      if not win then daw.notify("at the bottom of the tag stack", "warn") end
+      return win
+    end
+    local source = source_of({ name = last.name })
+    if source then win = M.show(source, last.row, last.col) end
+  end
+  return win
+end
+
+--- Where a link's target leads from a page: a tag (`help:tag`), another
+--- page (`mixing.md`, `../docs/terminal.md#keys`), or a place on the web.
+local function link_target(source, target)
+  local tag = target:match("^help:(.+)$")
+  if tag then return build().tags[tag] end
+  if target:match("^%a+:") then return nil, target end
+  local path, frag = target:match("^([^#]*)#?(.*)$")
+  local dest = source
+  if path ~= "" then
+    if not source.path then return nil end
+    dest = build().by_path[normalize(dir_of(source.path) .. "/" .. path)]
+    if not dest then return nil, path end
+  end
+  local row = frag ~= "" and dest.anchors[frag] or 1
+  return { name = frag, source = dest, row = row, col = 0 }
+end
+
+--- The word under the cursor as help reads it: the run of characters that
+--- are not blanks, `*`, `|` or `"`.
+local function word_at(text, col)
+  local chars = {}
+  for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+  local function part(ch) return ch and not ch:match("^[%s%*|\"]$") end
+  local i = col + 1
+  if not part(chars[i]) then return nil end
+  local a, b = i, i
+  while part(chars[a - 1]) do a = a - 1 end
+  while part(chars[b + 1]) do b = b + 1 end
+  return table.concat(chars, "", a, b)
+end
+
+--- Look a word up: as written, then without the punctuation around it.
+local function lookup_word(word)
+  local tags = build().tags
+  local tries = { word, (word:gsub("[%.,;:!%?%)%]}]+$", "")), (word:gsub("^[%(%[{]+", ""):gsub("[%.,;:!%?%)%]}]+$", "")) }
+  for _, w in ipairs(tries) do
+    if tags[w] then return tags[w] end
+  end
+  for _, w in ipairs(tries) do
+    if w ~= "" then
+      local tag = M.lookup(w)
+      if tag then return tag end
+    end
+  end
+end
+
+--- What is under the cursor of a help window: a link, code, or a word.
+local function under_cursor()
+  local win, buf, t, s = daw.textbuf.here()
+  if not (win and is_help(buf)) then return nil end
+  local source = source_of(buf)
+  local line = source and source.doc.lines[s.row]
+  if line then
+    for _, link in ipairs(line.links) do
+      if s.col >= link[1] and s.col < link[2] then return { link = link[3], source = source } end
+    end
+    for _, code in ipairs(line.codes) do
+      if s.col >= code[1] and s.col < code[2] then return { code = code[3], source = source } end
+    end
+  end
+  return { word = word_at(t:line(s.row), s.col), source = source }
+end
+
+--- `Ctrl-]`: follow the link under the cursor, or look up the code or the
+--- word there.
+function M.follow()
+  local here = under_cursor()
+  if not here then return daw.notify("Ctrl-] follows links in help: `:help` opens it", "warn") end
+  if here.link then
+    local tag, other = link_target(here.source, here.link)
+    if tag then return M.jump(tag) end
+    return daw.notify(other and ("not a page of help: " .. other) or "the link leads nowhere", "warn")
+  end
+  local text = here.code or here.word
+  if not text then return end
+  local tag
+  if here.code then
+    for _, name in ipairs(tags_of_code(text, true)) do tag = tag or build().tags[name] end
+  end
+  tag = tag or lookup_word(text)
+  if not tag then return daw.notify("no help for " .. text, "warn") end
+  return M.jump(tag)
+end
+
+--- `K`: look up the word under the cursor, in help or any text.
+function M.keyword()
+  local win, buf, t, s = daw.textbuf.here()
+  if not win then return end
+  local here = is_help(buf) and under_cursor() or { word = word_at(t:line(s.row), s.col) }
+  local text = here.code or here.word
+  if not text then return end
+  local tag = lookup_word(text)
+  if not tag then return daw.notify("no help for " .. text, "warn") end
+  return M.jump(tag)
+end
+
+-- `:helpgrep`: every line of help that holds the words, in the quickfix list.
+function M.grep(pattern)
+  pattern = (pattern or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if pattern == "" then return daw.notify("usage: helpgrep words", "warn") end
+  -- Case counts only when the words have a capital, as with 'smartcase'.
+  local fold = not pattern:find("%u")
+  local needle = fold and pattern:lower() or pattern
+  local entries = {}
+  for _, source in ipairs(build().sources) do
+    for row, line in ipairs(source.doc.lines) do
+      local text = fold and line.text:lower() or line.text
+      local at = text:find(needle, 1, true)
+      if at then
+        entries[#entries + 1] = {
+          location = { uri = "daw://help/" .. source.name, selector = { line = row, col = md.width(line.text:sub(1, at - 1)) } },
+          text = (line.text:gsub("^%s+", "")), source = "helpgrep",
+        }
+      end
+    end
+  end
+  if #entries == 0 then return daw.notify("no help holds " .. pattern, "warn") end
+  daw.qf.set(entries, { title = "helpgrep " .. pattern })
+  daw.qf.jump(1)
+  return entries
+end
+
+-- Help as a kind of text buffer, and where its entries in the quickfix list go.
+daw.textbuf.kind("help", {
+  pattern = "^help://(.+)$",
+  readonly = "help cannot be changed: its pages are the Markdown files under docs/ and in the extensions",
+  gutter = false,
+  static = true,
+  read = function(ctx)
+    local source = build().by_name[ctx.args[1]]
+    if not source then return nil, "no page of help " .. tostring(ctx.args[1]) end
+    local items = {}
+    for i, line in ipairs(source.doc.lines) do items[i] = { id = i, text = line.text } end
+    return items
+  end,
+  format = function(item) return { item.text } end,
+  parse = function() return {} end,
+  title = function(ctx)
+    local source = build().by_name[ctx.args[1]]
+    return "help · " .. (source and source.title or tostring(ctx.args[1]))
+  end,
+  hint = "Ctrl-] follows a link or looks up the word · Ctrl-o back · K looks up · :helpgrep searches · - contents",
+  paint = function(canvas, x, y, text, _, maxw, row, buf)
+    local chars = {}
+    for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = ch end
+    canvas:text(x, y, table.concat(chars, "", 1, math.min(#chars, maxw)), "Normal")
+    local source = source_of(buf)
+    local line = source and source.doc.lines[row]
+    if not (line and line.text == text) then return end
+    for _, span in ipairs(line.spans) do
+      local part = table.concat(chars, "", span[1] + 1, math.min(span[2], maxw, #chars))
+      if part ~= "" then canvas:text(x + span[1], y, part, span[3]) end
+    end
+  end,
+  open = function() M.follow() end,
+  parent = function(ctx) return ctx.args[1] ~= "index" and "help://index" or nil end,
+})
+
+daw.address.scheme("help", {
+  resolve = function(uri) return build().by_name[uri:match("^daw://help/(.+)$") or ""] end,
+  where = function(loc)
+    local name = loc.uri:match("^daw://help/(.+)$") or "?"
+    return name .. ":" .. tostring(loc.selector and loc.selector.line or 1)
+  end,
+  go = function(loc)
+    local source = build().by_name[loc.uri:match("^daw://help/(.+)$") or ""]
+    if not source then return false end
+    local sel = loc.selector or {}
+    M.show(source, sel.line or 1, sel.col or 0)
+    return true
+  end,
+})
+
+-- Keys and commands ------------------------------------------------------------------
+
+local map = daw.keymap.set
+map("<C-]>", M.follow, { view = "textbuf", desc = "Help: follow the link, or look up the word, under the cursor", repeatable = false })
+map("<C-t>", function(ctx) M.back(ctx.count or 1) end, { view = "textbuf", desc = "Help: back to where the last link was followed from", repeatable = false })
+map("K", function()
+  if is_help(daw.textbuf.buf()) then return M.keyword() end
+  daw.commands.run("info")
+end, { view = "textbuf", role = "describe", desc = "Look up the word under the cursor in help (`:help`)", repeatable = false })
+
+--- The first line of help that names `text` as code, the manual's first.
+local function mention(text)
+  for _, source in ipairs(build().sources) do
+    for row, line in ipairs(source.doc.lines) do
+      for _, code in ipairs(line.codes) do
+        if code[3] == text or code[3]:sub(1, #text + 1) == text .. " " then
+          return { name = text, source = source, row = row, col = code[1] }
+        end
+      end
+    end
+  end
+end
+
+--- Go to the help of the first of `names` that is a tag, else to where the
+--- first of them is named; say so when none is.
+local function help_for(names, shown)
+  local tags = build().tags
+  for _, name in ipairs(names) do
+    if tags[name] then return M.jump(tags[name]) end
+  end
+  for _, name in ipairs(names) do
+    local place = mention(name)
+    if place then return M.jump(place) end
+  end
+  daw.notify("no help for " .. shown .. ": `:helpgrep " .. shown .. "` searches every page", "warn")
+end
+
+--- The help for a key mapping: of its keys, else of the command it runs
+--- (what `Ctrl-]` does in the keys picker).
+function M.for_map(map)
+  local human = daw.keymap.human(map.lhs)
+  local names = { human, map.lhs }
+  if type(map.rhs) == "string" then names[#names + 1] = ":" .. map.rhs:match("^%S+") end
+  return help_for(names, human)
+end
+
+--- The help for a command (what `Ctrl-]` does in the commands picker).
+function M.for_command(name)
+  return help_for({ ":" .. name, name }, ":" .. name)
+end
+
+-- The key line of a help window: its own keys, not those that edit.
+local text_keys = daw.ui.keybar.lines.textbuf and daw.ui.keybar.lines.textbuf.n
+daw.ui.keybar.set("textbuf", "n", function()
+  if is_help(daw.textbuf.buf()) then
+    return {
+      { "<C-]>", "follow" }, { "<C-t>", "back" }, { "K", "look up" }, { "-", "contents" }, { "v", "select" }, { "y", "yank" },
+      { "?", "keys" },
+    }
+  end
+  return type(text_keys) == "function" and text_keys() or text_keys or {}
+end)
+
+daw.command("helpgrep", function(ctx) M.grep(ctx.args[1]) end, {
+  desc = "Every line of help that holds the words, in the quickfix list: `helpgrep stretch`",
+  raw = true,
+})
+
+--- What `:help` completes: the tags, ranked as `:help` ranks them.
+function M.complete(rest)
+  local out = { ranked = true }
+  if not rest:match("%S") then return out end
+  for _, tag in ipairs(M.find(rest, 200)) do out[#out + 1] = { text = tag.name, desc = tag.source.title or tag.source.name } end
+  return out
+end
+
+--- The topic of help for a view, for the key line: its `help` field, a
+--- section of the manual, or the page of the extension it is from.
+function M.topic_of(view)
+  if view == "textbuf" and is_help(daw.textbuf.buf()) then return "help" end
+  local v = daw.ui.views[view]
+  if v and v.help then return v.help end
+  return M.view_topics[view] or (daw.ext.loaded[view] and view) or nil
+end
+
+M.view_topics = {
+  arrange = "terminal", pianoroll = "piano-roll", mixer = "mixer", devices = "device-panel", session = "session-view",
+  textbuf = "lists-edited-as-text", qflist = "quickfix-list",
+}
+
+return M

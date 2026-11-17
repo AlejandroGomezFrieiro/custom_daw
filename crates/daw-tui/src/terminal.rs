@@ -374,6 +374,12 @@ impl Terminal {
 fn key_notation(key: KeyEvent) -> Option<String> {
     let mods = key.modifiers;
     let (name, is_char) = match key.code {
+        // A terminal sends Ctrl-\ Ctrl-] Ctrl-^ Ctrl-_ as the bytes 0x1c to
+        // 0x1f, which crossterm reads as Ctrl-4 to Ctrl-7: they are the keys
+        // that were pressed (`Ctrl-]` follows a link in help).
+        KeyCode::Char(c @ '4'..='7') if mods.contains(KeyModifiers::CONTROL) => {
+            (['\\', ']', '^', '_'][c as usize - '4' as usize].to_string(), true)
+        }
         KeyCode::Char(' ') => ("Space".to_string(), false),
         KeyCode::Char('<') => ("lt".to_string(), false),
         KeyCode::Char(c) => (c.to_string(), true),

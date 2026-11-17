@@ -237,10 +237,27 @@ function Text:insert_lines(at, lines)
   for i, l in ipairs(lines) do table.insert(self.lines, at + i - 1, { text = l.text, id = l.id }) end
 end
 
+-- A text that cannot be changed (a page of help, `readonly` being what to
+-- say) stays as it is, and says so.
+for _, name in ipairs({ "set", "delete_span", "insert", "delete_lines", "insert_lines" }) do
+  local change = Text[name]
+  Text[name] = function(self, row, col, ...)
+    if not self.readonly then return change(self, row, col, ...) end
+    daw.notify(self.readonly, "warn")
+    if name == "insert" then return row, col end
+    if name == "delete_lines" then return {} end
+    if name == "delete_span" then return "" end
+  end
+end
+
 -- Kinds -------------------------------------------------------------------------------
 
 --- Make a kind of text buffer, shown for the names its `pattern` matches
---- (`daw://` and the rest). See docs/scripting.md.
+--- (`daw://` and the rest). See docs/scripting.md. A kind with `readonly`
+--- (what to say when a change is tried) cannot be changed; `gutter = false`
+--- leaves out the line numbers; `static` is not read again when the project
+--- changes; `paint(canvas, x, y, text, kind, width, row, buf)` draws a line
+--- in place of the plain colouring.
 ---   daw.textbuf.kind("clips", { pattern = "^daw://clips$", read = ..., format = ..., parse = ..., plan = ... })
 function M.kind(name, spec)
   spec.name = name
@@ -403,6 +420,7 @@ end
 --- modified one is marked as being behind it.
 function M.sync(buf)
   local st = buf.state
+  if st.kind.static then return end
   local edits = api.project_get().edits
   if edits == st.seen then return end
   st.seen = edits
@@ -963,6 +981,7 @@ end
 function M.insert(how, opts)
   local win, buf, t, s = here()
   if not win then return end
+  if t.readonly then return daw.notify(t.readonly, "warn") end
   if keymap.mode == "x" then keymap.set_mode("n") end
   t:begin(s.row, s.col)
   if how == "a" then
@@ -1691,6 +1710,11 @@ end
 
 local GUTTER = 5
 
+--- The columns left of the text: the line numbers and signs, if the kind has them.
+local function gutter(buf)
+  return buf.state.kind and buf.state.kind.gutter == false and 0 or GUTTER
+end
+
 --- What a line is, for the gutter: its place when read, `+` new or a
 --- copy, `~` changed, `!` not readable.
 local function signs(buf)
@@ -1757,8 +1781,9 @@ local function render(win, canvas, ctx)
   s.height = rows
   if s.row < s.top then s.top = s.row elseif s.row >= s.top + rows then s.top = s.row - rows + 1 end
   s.top = math.max(1, s.top)
-  local gs = signs(buf)
-  local tw = W - GUTTER
+  local gs = st.text.readonly and {} or signs(buf)
+  local G = gutter(buf)
+  local tw = W - G
   local mode = ctx.focused and keymap.mode or "n"
   local sel = ctx.focused and keymap.selection()
   local sp = sel and sel.view == "textbuf" and span(sel, nil, t)
@@ -1770,10 +1795,12 @@ local function render(win, canvas, ctx)
       canvas:text(0, y, "~", "Faint")
     else
       local g = gs[row]
-      canvas:text(0, y, string.format("%3s", g.number), "TrackIndex")
-      canvas:text(3, y, g.sign, g.style)
+      if g then
+        canvas:text(0, y, string.format("%3s", g.number), "TrackIndex")
+        canvas:text(3, y, g.sign, g.style)
+      end
       local text = t:line(row)
-      paint_line(canvas, GUTTER, y, text, st.kind, tw)
+      ;(st.kind.paint or paint_line)(canvas, G, y, text, st.kind, tw, row, buf)
       if sp and row >= sp.r0 and row <= sp.r1 then
         local a, b
         if sp.kind == "line" then
@@ -1785,13 +1812,13 @@ local function render(win, canvas, ctx)
           b = row == sp.r1 and sp.c1 or width(text) + 1
         end
         a, b = math.max(0, a), math.min(tw, b)
-        if b > a then canvas:fill(GUTTER + a, y, b - a, 1, nil, "Visual") end
+        if b > a then canvas:fill(G + a, y, b - a, 1, nil, "Visual") end
       end
       if row == s.row and ctx.focused then
         local cx = s.col
         if cx < tw then
           local ch = char_at(text, cx) or " "
-          canvas:text(GUTTER + cx, y, ch, mode == "i" and "InsertCursor" or (mode == "x" and "CursorVisual" or "Cursor"))
+          canvas:text(G + cx, y, ch, mode == "i" and "InsertCursor" or (mode == "x" and "CursorVisual" or "Cursor"))
         end
       end
     end
@@ -1833,6 +1860,7 @@ local def = layout.buftype("textbuf", {
   create = function(target, buf)
     local kind, args = kind_of(target)
     local st = { kind = kind, args = args, text = M.text({}), fields = {}, order = {}, parsed = {} }
+    if kind and kind.readonly then st.text.readonly = type(kind.readonly) == "string" and kind.readonly or "this buffer cannot be changed" end
     buf.state = st
     if kind then M.reload(buf) end
     return st
@@ -1861,6 +1889,21 @@ view.grid = {
     api.ui_redraw()
   end,
   step = function() return 1 end,
+  -- A place for marks and jumps names its buffer too, so that `Ctrl-o`
+  -- goes back across buffers, as Vim's jump list does.
+  mark = function()
+    local win, buf, _, s = here()
+    if not win then return { 0, 0 } end
+    return { s.row, s.row * BIG + s.col, buf.name }
+  end,
+  jump = function(pos)
+    local win, buf = here()
+    if not win then return end
+    if pos[3] and pos[3] ~= buf.name and kind_of(pos[3]) then
+      win = layout.show_in(win, "textbuf", layout.buf_create("textbuf", pos[3]).id)
+    end
+    view.grid.set(pos[1], pos[2])
+  end,
   search = function(text)
     local _, _, t = here()
     local out = {}
@@ -1889,9 +1932,13 @@ function def.on_mouse(win, e)
   if layout.current() ~= win and win ~= loose then layout.enter(win) end
   local row = s.top + e.y - 1
   if e.y >= 1 and row <= t:count() then
-    s.row, s.col = row, math.max(0, e.x - GUTTER)
+    s.row, s.col = row, math.max(0, e.x - gutter(buf))
     clamp(t, s)
     s.want = s.col
+    -- A double click opens what the line stands for, as Enter does.
+    if e.double and buf.state.kind.open then
+      buf.state.kind.open(ctx_of(buf), t.lines[s.row], t:line(s.row))
+    end
   end
   api.ui_redraw()
 end

@@ -99,7 +99,10 @@ return function(pick)
       daw.state.last_cmdline = spec.name
       daw.commands.run(spec.name)
     end,
-    actions = { ["<C-e>"] = { fn = function(spec) if spec then edit_command(spec) end end, desc = "edit arguments" } },
+    actions = {
+      ["<C-e>"] = { fn = function(spec) if spec then edit_command(spec) end end, desc = "edit arguments" },
+      ["<C-]>"] = { fn = function(spec) if spec then daw.help.for_command(spec.alias_of or spec.name) end end, desc = "help" },
+    },
     preview = function(spec)
       local lines = { { text = spec.name, style = "Title" }, "" }
       for line in (spec.desc ~= "" and spec.desc or "(no description)"):gmatch("[^\n]+") do lines[#lines + 1] = line end
@@ -218,6 +221,7 @@ return function(pick)
       end,
       primary = function(e) return e.human end,
       on_choose = run_key,
+      actions = { ["<C-]>"] = { fn = function(e) if e then daw.help.for_map(e.map) end end, desc = "help" } },
     }
   end
 

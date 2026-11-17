@@ -253,6 +253,18 @@ local function build()
 
     HelpKey = { fg = c.accent, bold = true },
     HelpSection = { fg = c.dim, bold = true },
+    -- Pages of help (`:help`): titles, headings and their tags, links, code.
+    HelpTitle = { fg = c.bright, bold = true },
+    HelpHeading = { fg = c.accent, bold = true },
+    HelpTag = { fg = c.faint },
+    HelpRule = { fg = c.line_hi },
+    HelpLink = { fg = c.normal, underline = true },
+    HelpCode = { fg = c.monitor },
+    HelpBold = { fg = c.bright, bold = true },
+    HelpItalic = { italic = true },
+    HelpBullet = { fg = c.dim },
+    HelpTableHead = { fg = c.bright, bold = true },
+    HelpDim = { fg = c.dim },
 
     TooSmall = { fg = c.dim, bg = c.bg },
     TooSmallTitle = { fg = c.bright, bg = c.bg, bold = true },

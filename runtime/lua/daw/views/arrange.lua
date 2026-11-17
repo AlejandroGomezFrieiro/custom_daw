@@ -392,6 +392,7 @@ local function welcome(buf)
     { ",,", "find any command, track or device" },
     { "?", "every key that works where you are" },
     { ":", "run a command by name" },
+    { ":help", "the manual, inside the program" },
   }
   if daw.commands.get("tutor") then lines[#lines + 1] = { ":tutor", "take the course, ten minutes a lesson" } end
   local x, y = math.max(2, math.floor((buf.width - 52) / 2)), math.max(1, math.floor((buf.height - #lines - 3) / 2))

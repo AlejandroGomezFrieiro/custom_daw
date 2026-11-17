@@ -193,6 +193,9 @@ function K.startup()
   daw.qf = require("daw.qf")
   require("daw.views.qflist")
   daw.ex = require("daw.ex")
+  -- The manual inside the program (`:help`).
+  daw.markdown = require("daw.markdown")
+  daw.help = require("daw.help")
   daw.ui.start_ticker()
 
   daw.luadev = require("daw.luadev")
