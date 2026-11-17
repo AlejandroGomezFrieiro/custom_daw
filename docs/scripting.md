@@ -155,6 +155,7 @@ daw.ex.view("myview", { song = function(col) return clip_start + col end,
 daw.cmd("track.add", { "Bass", device = "synth" })
 daw.keymap.set("<leader>x", "command and arguments", { view = "arrange", desc = "..." })
 daw.keymap.set("gx", function(ctx) end)          -- ctx.count, ctx.register
+daw.keymap.set("<localleader>x", fn, { view = "myview" })  -- a view's own leader (a backslash); never `<leader>` for one view's keys
 daw.keymap.set("gz", fn, { mode = { "n", "x" } })    -- normal and visual mode; "i" is insert
 daw.keymap.set("}", fn, { view = "arrange", motion = true })  -- a motion: also after operators and in visual mode
 

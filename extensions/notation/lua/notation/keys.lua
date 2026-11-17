@@ -224,6 +224,13 @@ command("notation.quantize", function(ctx)
   daw.notify(n == 1 and "1 note moved to where it is written" or n .. " notes moved to where they are written")
 end, { range = true, desc = "Quantize the clip's notes (or the range's) to the notation: each starts where it is written and lasts as long as it is written" })
 
+command("notation.apply-marks", function(ctx)
+  if not view:clip() then return daw.notify("no clip open as notation", "warn") end
+  local n = view:apply_marks(bounds(ranged(ctx)))
+  daw.notify(n == 0 and "the notes already play as the marks say"
+    or (n == 1 and "1 note" or n .. " notes") .. " made to play as the marks say")
+end, { range = true, desc = "Make the clip's notes (or the range's) play as the marks say: dynamics and hairpins set the velocity, staccato and tenuto the length. For MIDI that was changed since in the piano roll" })
+
 command("notation.retranscribe", function(ctx)
   if not view:clip() then return daw.notify("no clip open as notation", "warn") end
   view:retranscribe(bounds(ranged(ctx)))
@@ -468,6 +475,10 @@ op("g=", function(_, region)
   local n = view:retranscribe(bounds(region))
   daw.notify("written again from the playing" .. (n > 0 and (" (" .. n .. " notes)") or ""))
 end, "Write again from the playing: the bars transcribed afresh from what the notes play")
+op("g@", function(_, region)
+  -- Asks first, with the change heard and shown as a popover's is.
+  view.popover.open("apply-marks", { region = region })
+end, "Make the notes play as the marks say (dynamics, hairpins, articulations): a prompt shows the change; Enter writes it")
 op("gl", function(clip, region)
   local c0, c1 = region.c0, region.c1
   if region.kind == "line" then c0, c1 = 0, clip.length end

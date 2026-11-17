@@ -80,6 +80,7 @@ or a playing technique writes nothing.
 | | |
 | --- | --- |
 | `:notation.quantize`, `=` | quantize to the notation: each note starts where it is written and lasts as long as written (or as marked) |
+| `:notation.apply-marks`, `g@` | make the notes play as the marks say again, after the piano roll changed them: dynamics and hairpins set the velocity, staccato and tenuto the length |
 | `:notation.retranscribe`, `g=` | forget what notation decided about the notes (spellings, voices, hands, tuplets): written again from how they play |
 
 **Projects from before.** A clip written in notation by an older version
@@ -205,12 +206,12 @@ The rest of the page:
   `tenor`, `grand`, `auto`), kept in `track.meta.notation`. A clip written
   in notation keeps the clefs it was written on where its notes would now
   choose others (a melody taken a little under the treble staff stays on
-  it), and a clef change at a bar (`,C`, see Popovers).
+  it), and a clef change at a bar (`\C`, see Popovers).
 - **Key**: the project's key, as the `musicops` extension keeps it in
   `project.meta.musicops`; modes and minor keys take the signature of their
   relative major. `:notation.key Eb major` sets it, `:notation.key off`
   clears it; with a clip open in the view it writes a key signature from
-  the cursor's bar (`,k`, see Popovers), and the first bar's is the
+  the cursor's bar (`\k`, see Popovers), and the first bar's is the
   project's key too.
 - **Spelling**: notes of the key take its letters; the others lean the way
   the key does. Accidentals are remembered to the end of the bar, a tied
@@ -343,7 +344,7 @@ is `ie` (as in the piano roll too).
 | --- | --- |
 | `f` `F` + letter | to the next, previous note of that name in the voice (`2fe`); with an operator the note found is taken in, as Vim's `df` |
 | `t` `T` + letter | to the note before (after) it |
-| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is the leader: alone it lists the leader keys (the popovers by name) and waits a few seconds for one, then moves; `,` followed by a key no leader map has moves at once |
+| `;` `,` | the last `f` `F` `t` `T` again, the other way. `,` is also the leader: alone it lists the leader keys and waits a few seconds for one, then moves; `,` followed by a key no leader map has moves at once. The popovers are on the local leader (`\`), so every `,` key means here what it means everywhere |
 | `)` `(` | the next, previous phrase: a note after a rest |
 | `]v` `[v` | the next, previous voice (then the next staff's); entering goes into it |
 | `Ctrl-j` `Ctrl-k` | the staff below, above |
@@ -404,7 +405,7 @@ types from visual mode), `:5,8` bars 5 to 8, `:5` bar 5. So
 `:5,8notation.transpose 2`, `:'<,'>notation.slur`, `:9notation.dyn p`,
 `:1,4notation.repeat` (both signs around bars 1 to 4), `:5,8notation.quantize`.
 The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
-`repeat`, `quantize`, `retranscribe`, `transpose`, and those the popovers
+`repeat`, `quantize`, `apply-marks`, `retranscribe`, `transpose`, and those the popovers
 run: `tempo`, `meter`, `key`, `clef`, `bar`, `rehearsal`, `chord`, `lyric`,
 `orn`, `tech`, `interval`, `tuplet` and `voice`.
 
@@ -421,12 +422,26 @@ accent 20 louder, a marcato 30. Each writes the MIDI when it is written;
 after that the notes are free to change (see
 [MIDI is the truth](#midi-is-the-truth)).
 
+**Marks follow notation edits.** A note entered, moved or pasted in
+notation takes the loudness the marks ask where it lands: the dynamic in
+force, a hairpin's ramp there, an accent's push; a note that stays under the
+same marks keeps the velocity it has, and a note no edit touched is never
+changed (a piano roll edit is left alone by a notation edit elsewhere). To
+bring back MIDI that drifted from the marks, `:notation.apply-marks` (with
+a range, `:5,8notation.apply-marks`, or on the selection) writes what the
+marks ask into the notes it covers, one undo step, and `g@` and a motion
+or selection (`g@ib`, `vjg@`) does it with a prompt: while it is open the
+change is heard and drawn in the accent, `Enter` writes it and `Esc` leaves
+nothing. It does it again to no effect (an accent is not added twice), and
+taking a mark away afterwards puts back what the note had before it was
+applied.
+
 ## Popovers
 
 Everything that is not a note is written with a popover, as in Dorico,
-in the shape of a Vim prompt: the leader (`,`) and a letter opens a
+in the shape of a Vim prompt: the local leader (`\`, option `daw.opt.localleader`) and a letter opens a
 one-line prompt at the caret. In visual mode it is for the selection; in
-insert mode `Ctrl-o` comes first (`Ctrl-o ,d`), and entering notes goes on
+insert mode `Ctrl-o` comes first (`Ctrl-o \d`), and entering notes goes on
 after it. `Tab` completes, each choice with what it means; `Up` and `Down`
 go through what was typed before in that popover; while it is typed the
 page shows what it would write in the accent's ink (and you hear it: it is
@@ -434,38 +449,41 @@ a trial, `daw.audition`), and the line says what it would do or why it
 cannot. `Enter` writes it, one undo step; `Esc` leaves no trace.
 
 Each popover is an Ex command with what was typed after it, run with the
-selection's range when there is one: `,d` `mp<f` on a selection runs
+selection's range when there is one: `\d` `mp<f` on a selection runs
 `:'<,'>notation.dyn mp<f`. So `.` writes it again at the cursor, `@:`
 runs the line again, a macro records it, and `:5,8notation.dyn p` or
-`:9notation.tempo rit.` say the same without the popover. `,.` opens the
+`:9notation.tempo rit.` say the same without the popover. `\.` opens the
 last popover again with what was typed in it.
 
 | Keys | Popover | Accepts | Writes |
 | --- | --- | --- | --- |
-| `,d` | dynamics | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<`, `off` | a dynamic at the cursor (the start of the selection); a hairpin over the selection, or to the next dynamic when there is no selection, and the dynamic it reaches. `sfz` `sf` `fz` `rfz` accent the notes there, `fp` `sfp` are loud there and soft after |
-| `,t` | tempo | `Allegro q=132`, `q.=60`, `Andante`, `rit.`, `accel.`, `a tempo`, `off` | a tempo mark, and a point of the song's tempo map: `rit.` and `accel.` ramp a fifth slower or faster to the end of the selection (or the bar), `a tempo` goes back to the last tempo marked; a word alone has its tempo (Allegro 132) |
-| `,m` | time signature | `6/8`, `3/4`, `3+3+2/8`, `C`, `¢` | the song's signature from the cursor's bar: every note stays where it is and is written in the new bars, tied over the new barlines; a grouping (`3+3+2/8`) and `C` `¢` kept with the clip |
-| `,k` | key | `Eb`, `f#m` (a small letter is minor), `D dorian`, `off` | a key signature from the cursor's bar; in the first bar, the project's key too |
-| `,C` | clef | `treble`, `bass`, `alto`, `tenor`, `treble8`, `bass8` | a clef change at the cursor's bar on its staff; in the first bar, the track's clef |
-| `,b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`, `1.`, `2.`, `off` | at the cursor's barline (the one before the bar when the cursor is at its start, else after it); an ending over the bars of the selection |
-| `,X` | text | `dolce`, `Solo` | text over the staff |
-| `,r` | rehearsal mark | `A`, `Intro`; Enter alone writes the next letter | a boxed mark at the bar, and a marker of the same name in the song |
-| `,q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`daw.harmony`) |
-| `,l` | lyrics | a syllable; `Space` the next note, `-` a hyphen, `_` an extender; `verse=2 ` first for verse 2 | under the note at the caret, and on to the next of its voice |
-| `,i` | intervals | `3`, `-6`, `8`, `m3`, `M6`, `P5` | a note that far above the top (below the lowest) note of each chord of the selection, in the key |
-| `,3` | tuplets | `3`, `5`, `5:4`, `7:8`, `off` | the beat at the cursor (or the selection) as that tuplet; in insert mode, the notes entered next |
-| `,v` | voice | `1` to `4` | the voice notes are entered in; with a selection, its chords moved into it |
-| `,o` | ornaments | `tr`, `mordent`, `prall`, `turn`, `fermata`, `trem`, `off` | on the chord, or each chord of the selection; a fermata holds its note's whole value |
-| `,p` | playing techniques | `pizz.`, `arco`, `con sord.`, `sul pont.` | text at the cursor (written only) |
-| `,.` | the last popover again | | with what was typed in it |
+| `\d` | dynamics | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<`, `off` | a dynamic at the cursor (the start of the selection); a hairpin over the selection, or to the next dynamic when there is no selection, and the dynamic it reaches. `sfz` `sf` `fz` `rfz` accent the notes there, `fp` `sfp` are loud there and soft after |
+| `\t` | tempo | `Allegro q=132`, `q.=60`, `Andante`, `rit.`, `accel.`, `a tempo`, `off` | a tempo mark, and a point of the song's tempo map: `rit.` and `accel.` ramp a fifth slower or faster to the end of the selection (or the bar), `a tempo` goes back to the last tempo marked; a word alone has its tempo (Allegro 132) |
+| `\m` | time signature | `6/8`, `3/4`, `3+3+2/8`, `C`, `¢` | the song's signature from the cursor's bar: every note stays where it is and is written in the new bars, tied over the new barlines; a grouping (`3+3+2/8`) and `C` `¢` kept with the clip |
+| `\k` | key | `Eb`, `f#m` (a small letter is minor), `D dorian`, `off` | a key signature from the cursor's bar; in the first bar, the project's key too |
+| `\C` | clef | `treble`, `bass`, `alto`, `tenor`, `treble8`, `bass8` | a clef change at the cursor's bar on its staff; in the first bar, the track's clef |
+| `\b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`, `1.`, `2.`, `off` | at the cursor's barline (the one before the bar when the cursor is at its start, else after it); an ending over the bars of the selection |
+| `\X` | text | `dolce`, `Solo` | text over the staff |
+| `\r` | rehearsal mark | `A`, `Intro`; Enter alone writes the next letter | a boxed mark at the bar, and a marker of the same name in the song |
+| `\q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`daw.harmony`) |
+| `\l` | lyrics | a syllable; `Space` the next note, `-` a hyphen, `_` an extender; `verse=2 ` first for verse 2 | under the note at the caret, and on to the next of its voice |
+| `\i` | intervals | `3`, `-6`, `8`, `m3`, `M6`, `P5` | a note that far above the top (below the lowest) note of each chord of the selection, in the key |
+| `\3` | tuplets | `3`, `5`, `5:4`, `7:8`, `off` | the beat at the cursor (or the selection) as that tuplet; in insert mode, the notes entered next |
+| `\v` | voice | `1` to `4` | the voice notes are entered in; with a selection, its chords moved into it |
+| `\o` | ornaments | `tr`, `mordent`, `prall`, `turn`, `fermata`, `trem`, `off` | on the chord, or each chord of the selection; a fermata holds its note's whole value |
+| `\p` | playing techniques | `pizz.`, `arco`, `con sord.`, `sul pont.` | text at the cursor (written only) |
+| `\.` | the last popover again | | with what was typed in it |
 
-The letters are Dorico's where Dorico's is not a note name. The two that
-clash with keys of every view take the capital: `,c` starts `,ca` (fixes
-and actions) and `,x` the mix measurements (`,xa` …), so the clef is `,C`
-and text `,X`. In the notation view `,d`, `,m`, `,l` and `,p` are the
-popovers, not the device panel, the mixer, the session view and the piano
-roll they show elsewhere (`:view.toggle devices` and the others do that
-there). `,,` stays the command list; `,.` repeats the last popover.
+The letters are Dorico's where Dorico's is not a note name. They sit on
+the local leader (`\`) and not on the leader (`,`), so that the leader keeps
+its meaning in the notation view: `,d` is the device panel, `,m` the mixer,
+`,l` the session view and `,p` the piano roll there as everywhere, and `,c`
+and `,x` start `,ca` (fixes and actions) and the mix measurements as they do
+elsewhere. The clef is `\C` and text `\X`.
+`\.` repeats the last popover. Change the local
+leader with `daw.opt.localleader`; a key of a view of your own that would
+sit on a leader key of the whole program belongs on `<localleader>` too (the
+key rule's check says so).
 
 The prompt is drawn under the caret's system in the terminal and on the
 engraved page (in a window, and on a terminal's pixel surface), so that what
@@ -474,7 +492,7 @@ not repeat it. Before anything is typed it shows examples of what to type,
 dim; `Tab` offers the choices.
 
 **Coming from Dorico.** The popovers are Dorico's (Shift and a letter
-there, the leader and a letter here), with the same words: `mp<f`,
+there, the local leader and a letter here), with the same words: `mp<f`,
 `p subito`, `niente<`, `Allegro q=132`, `rit.`, `a tempo`, `3+3+2/8`,
 `f#m`, `|:`, `1.`, `5:4`. What differs: there is no Write and Play mode,
 since the piano roll on the same clip is Play mode: both edit the clip's

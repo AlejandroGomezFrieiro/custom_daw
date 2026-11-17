@@ -74,7 +74,7 @@ The mixer, the device picker and the device panel are views like any other:
 A clip can be read and written as staff notation, drawn with a music font as
 pictures in terminals that show images (WezTerm, kitty, Ghostty), and in cells
 elsewhere. Notes are entered as in a notation program; dynamics, tempo, key
-and the rest are written with a prompt on the leader, as in Dorico, and you
+and the rest are written with a prompt on the local leader (`\`), as in Dorico, and you
 hear each one before you write it. The notation has a grammar of its own:
 `gUib` raises a bar a step in the key, `g(ip` slurs a phrase.
 

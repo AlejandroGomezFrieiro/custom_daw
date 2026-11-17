@@ -20,7 +20,7 @@ local names = { ["<Space>"] = "Space", ["<CR>"] = "Enter", ["<Esc>"] = "Esc", ["
 
 --- A key as a person reads it: `<leader>m` is `,m`, `<C-w>c` is `Ctrl-w c`.
 function M.show(lhs)
-  local out = lhs:gsub("<leader>", function() return daw.opt.leader end)
+  local out = daw.keymap.expand(lhs)
   out = out:gsub("<C%-(.)>(.*)", "Ctrl-%1 %2"):gsub("%s+$", "")
   return names[out] or out
 end
