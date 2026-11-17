@@ -38,7 +38,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Context, Result, bail};
-use daw_engine::{Attr, ClipSet, Ctl, EventKind, MidiEv, Switch};
+use daw_engine::{Attr, ClipSet, Ctl, EventKind, MidiEv, Switch, TempoMap};
 use serde::{Deserialize, Serialize};
 
 /// How long a keyswitch that is struck is held, in beats.
@@ -59,7 +59,14 @@ pub struct AttrMap {
     pub by_type: BTreeMap<TypeKey, Art>,
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub attribute: bool,
+    /// Seconds every note plays early (below 0) or late, unless its
+    /// articulation says otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay: Option<f64>,
 }
+
+/// How far a note may be moved by a delay, in seconds, each way.
+const MOST_DELAY: f64 = 2.0;
 
 fn yes() -> bool {
     true
@@ -86,6 +93,10 @@ pub enum Art {
     Line(String),
     Table {
         out: String,
+        /// Seconds the articulation's notes play early (below 0: a sample
+        /// that is slow to speak) or late, so that they sound on the beat.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        delay: Option<f64>,
         /// Anything else an entry carries (a name, a tag) is the writer's,
         /// kept as given.
         #[serde(flatten)]
@@ -97,6 +108,13 @@ impl Art {
     fn out(&self) -> &str {
         match self {
             Art::Line(out) | Art::Table { out, .. } => out,
+        }
+    }
+
+    fn delay(&self) -> Option<f64> {
+        match self {
+            Art::Line(_) => None,
+            Art::Table { delay, .. } => *delay,
         }
     }
 }
@@ -169,6 +187,8 @@ struct Compiled {
     channel: Option<u8>,
     /// Whether the note keeps its attribute.
     attr: bool,
+    /// Seconds the note is moved, and its articulation's events with it.
+    delay: f64,
 }
 
 /// A map made ready to play.
@@ -179,14 +199,39 @@ pub struct Plan {
     default: Option<usize>,
     by_code: HashMap<String, usize>,
     by_type: HashMap<u8, usize>,
+    /// The delay of a note with no articulation found.
+    delay: f64,
 }
 
 impl AttrMap {
+    /// Whether any note is moved in time: then where it lands depends on
+    /// the tempo map, and the track's events are made again with it.
+    pub fn has_delay(&self) -> bool {
+        let moves = |a: &Art| a.delay().is_some_and(|d| d != 0.0);
+        self.delay.is_some_and(|d| d != 0.0)
+            || self.default.as_ref().is_some_and(moves)
+            || self.arts.values().any(moves)
+            || self.by_type.values().any(moves)
+    }
+
     /// The map ready to play, or what is wrong with it.
     pub fn plan(&self) -> Result<Plan> {
+        let check = |delay: Option<f64>, what: &str| -> Result<f64> {
+            match delay {
+                Some(d) if !d.is_finite() || d.abs() > MOST_DELAY => bail!(
+                    "{what}: a delay is seconds from -{MOST_DELAY} to {MOST_DELAY}, not {d}"
+                ),
+                d => Ok(d.unwrap_or(0.0)),
+            }
+        };
+        let delay = check(self.delay, "`delay`")?;
         let mut arts = Vec::new();
         let mut compile = |art: &Art, what: &str| -> Result<usize> {
-            let c = compile(art.out(), self.attribute).with_context(|| format!("in {what}"))?;
+            let mut c = compile(art.out(), self.attribute).with_context(|| format!("in {what}"))?;
+            c.delay = match art.delay() {
+                Some(_) => check(art.delay(), what)?,
+                None => delay,
+            };
             arts.push(c);
             Ok(arts.len() - 1)
         };
@@ -217,6 +262,7 @@ impl AttrMap {
             default,
             by_code,
             by_type,
+            delay,
         })
     }
 }
@@ -379,6 +425,11 @@ impl Plan {
         found.copied().or(self.default)
     }
 
+    /// The seconds a note with `attr` is moved by: below 0, earlier.
+    pub fn delay_of(&self, attr: Attr) -> f64 {
+        self.find(attr).map_or(self.delay, |i| self.arts[i].delay)
+    }
+
     /// What to send ahead of a note played live with `attr`: the events,
     /// and the channel the note goes out on.
     pub fn live(&self, attr: Attr) -> (Vec<EventKind>, Option<u8>, bool) {
@@ -422,15 +473,26 @@ fn on_channel(kind: EventKind, ch: u8) -> EventKind {
 /// whose articulation is not the one before it (or every note), the
 /// articulation's events on the note's beat, ahead of it; the note on its
 /// articulation's channel; the attribute kept or dropped. Every change is
-/// listed in `set.switches` for chasing.
-pub fn downgrade(set: &mut ClipSet, plan: &Plan) {
+/// listed in `set.switches` for chasing. A note whose articulation has a
+/// delay is moved by it, its events with it and its end too, by `tempo`;
+/// one moved before where playback starts is started there as a held note
+/// is, as early as it can be.
+pub fn downgrade(set: &mut ClipSet, plan: &Plan, tempo: &TempoMap) {
     let midi = std::mem::take(&mut set.midi);
     let mut out = Vec::with_capacity(midi.len() + midi.len() / 2);
     // The articulation in force, and the keyswitches it holds down.
     let mut current: Option<usize> = None;
     let mut held: Vec<(u8, u8)> = Vec::new();
-    // Where each key's sounding notes were sent, oldest first, when not 0.
-    let mut routed: HashMap<u8, Vec<u8>> = HashMap::new();
+    // Where each key's sounding notes were sent and how far they were
+    // moved, oldest first, when not 0 and not at all.
+    let mut routed: HashMap<u8, Vec<(u8, f64)>> = HashMap::new();
+    let moved = |beat: f64, delay: f64| {
+        if delay == 0.0 {
+            beat
+        } else {
+            tempo.beat(tempo.seconds(beat) + delay)
+        }
+    };
     let mut controllers = [f64::NAN; 128];
     let mut last_beat = 0.0f64;
     for ev in midi {
@@ -440,6 +502,9 @@ pub fn downgrade(set: &mut ClipSet, plan: &Plan) {
         match ev.kind {
             EventKind::NoteOn { key, vel, ch, attr } => {
                 let found = plan.find(attr);
+                let delay = found.map_or(plan.delay, |i| plan.arts[i].delay);
+                let beat = moved(beat, delay);
+                let push = |out: &mut Vec<MidiEv>, kind| out.push(MidiEv { beat, kind });
                 if let Some(i) = found
                     && (plan.every || current != Some(i))
                 {
@@ -489,8 +554,8 @@ pub fn downgrade(set: &mut ClipSet, plan: &Plan) {
                 }
                 let art = found.map(|i| &plan.arts[i]);
                 let ch = art.and_then(|a| a.channel).unwrap_or(ch);
-                if ch != 0 {
-                    routed.entry(key).or_default().push(ch);
+                if ch != 0 || delay != 0.0 {
+                    routed.entry(key).or_default().push((ch, delay));
                 }
                 let attr = if art.is_none_or(|a| a.attr) {
                     attr
@@ -500,11 +565,14 @@ pub fn downgrade(set: &mut ClipSet, plan: &Plan) {
                 push(&mut out, EventKind::NoteOn { key, vel, ch, attr });
             }
             EventKind::NoteOff { key, ch: 0 } => {
-                let ch = match routed.get_mut(&key) {
+                let (ch, delay) = match routed.get_mut(&key) {
                     Some(list) if !list.is_empty() => list.remove(0),
-                    _ => 0,
+                    _ => (0, 0.0),
                 };
-                push(&mut out, EventKind::NoteOff { key, ch });
+                out.push(MidiEv {
+                    beat: moved(beat, delay),
+                    kind: EventKind::NoteOff { key, ch },
+                });
             }
             EventKind::NoteControl {
                 key,
@@ -512,11 +580,7 @@ pub fn downgrade(set: &mut ClipSet, plan: &Plan) {
                 value,
                 ch: 0,
             } => {
-                let ch = routed
-                    .get(&key)
-                    .and_then(|l| l.first())
-                    .copied()
-                    .unwrap_or(0);
+                let ch = routed.get(&key).and_then(|l| l.first()).map_or(0, |r| r.0);
                 push(
                     &mut out,
                     EventKind::NoteControl {
@@ -549,6 +613,8 @@ pub fn downgrade(set: &mut ClipSet, plan: &Plan) {
     }
     set.midi = out;
     set.finish();
+    // Moved notes may have moved their switches past one another.
+    set.switches.sort_by(|a, b| a.beat.total_cmp(&b.beat));
 }
 
 /// The map of a track from Lua's or a file's data: nothing for nil, an
@@ -589,18 +655,19 @@ mod tests {
 
     /// The events as short words, in order.
     fn words(set: &ClipSet) -> Vec<String> {
+        let beat = |b: f64| (b * 1e6).round() / 1e6;
         set.midi
             .iter()
             .map(|e| match e.kind {
-                EventKind::NoteOn { key, ch, .. } => format!("{} on{key}/{ch}", e.beat),
-                EventKind::NoteOff { key, ch } => format!("{} off{key}/{ch}", e.beat),
+                EventKind::NoteOn { key, ch, .. } => format!("{} on{key}/{ch}", beat(e.beat)),
+                EventKind::NoteOff { key, ch } => format!("{} off{key}/{ch}", beat(e.beat)),
                 EventKind::Control {
                     ctl: Ctl::Cc(n),
                     value,
                     ch,
-                } => format!("{} cc{n}={}/{ch}", e.beat, (value * 127.0).round()),
-                EventKind::Program { program, ch, .. } => format!("{} pc{program}/{ch}", e.beat),
-                other => format!("{} {other:?}", e.beat),
+                } => format!("{} cc{n}={}/{ch}", beat(e.beat), (value * 127.0).round()),
+                EventKind::Program { program, ch, .. } => format!("{} pc{program}/{ch}", beat(e.beat)),
+                other => format!("{} {other:?}", beat(e.beat)),
             })
             .collect()
     }
@@ -645,7 +712,7 @@ mod tests {
         note(&mut set, 4.0, 67, m2(0x11, 4));
         note(&mut set, 5.0, 69, m2(0x11, 0xA));
         set.finish();
-        downgrade(&mut set, &plan);
+        downgrade(&mut set, &plan, &TempoMap::constant(120.0, 4, 4));
         let on: Vec<String> = words(&set)
             .into_iter()
             .filter(|w| w.contains(" on"))
@@ -690,7 +757,7 @@ mod tests {
         note(&mut set, 1.0, 62, m2(0x11, 0));
         note(&mut set, 2.0, 64, m2(0x11, 0xA));
         set.finish();
-        downgrade(&mut set, &plan);
+        downgrade(&mut set, &plan, &TempoMap::constant(120.0, 4, 4));
         let w = words(&set);
         // Every note is told again; the held keyswitch is let go at the change.
         assert!(w.contains(&"1 on26/0".to_string()), "{w:?}");
@@ -716,6 +783,38 @@ mod tests {
         let at2: Vec<&String> = w.iter().filter(|x| x.starts_with("2 ")).collect();
         let pos = |s: &str| at2.iter().position(|x| x.as_str() == s).unwrap();
         assert!(pos("2 on28/2") < pos("2 on64/2"), "{at2:?}");
+    }
+
+    #[test]
+    fn a_delay_moves_a_note_its_end_and_its_keyswitch_by_seconds() {
+        let plan = map(serde_json::json!({
+            "default": "ks=C1",
+            "arts": { "11.0": { "out": "ks=D1", "delay": -0.1 } },
+        }));
+        assert_eq!(plan.delay_of(m2(0x11, 0)), -0.1);
+        assert_eq!(plan.delay_of(Attr::NONE), 0.0);
+        let mut set = ClipSet::default();
+        note(&mut set, 0.0, 60, Attr::NONE);
+        note(&mut set, 2.0, 62, m2(0x11, 0));
+        set.finish();
+        // At 60 beats a minute a tenth of a second is a tenth of a beat.
+        downgrade(&mut set, &plan, &TempoMap::constant(60.0, 4, 4));
+        let w = words(&set);
+        let at = |s: &str| w.iter().any(|x| x == s);
+        assert!(at("1.9 on26/0") && at("1.9 on62/0") && at("2.4 off62/0"), "{w:?}");
+        assert!(at("0 on24/0") && at("0 on60/0") && at("0.5 off60/0"), "{w:?}");
+        assert_eq!(
+            set.switches
+                .iter()
+                .map(|s| (s.beat * 1e6).round() / 1e6)
+                .collect::<Vec<_>>(),
+            [0.0, 1.9]
+        );
+        let map = parse(serde_json::json!({ "arts": { "11.0": { "out": "ks=D1", "delay": -0.1 } } }))
+            .unwrap()
+            .unwrap();
+        assert!(map.has_delay());
+        assert!(parse(serde_json::json!({ "delay": 3.0 })).is_err());
     }
 
     #[test]

@@ -204,7 +204,10 @@
   some other programs read; `daw.plugins.add_dir` finds CLAP and VST3
   plugins, not LV2; only CLAP plugins' key names are read, and the window's
   piano roll shows a note's articulation as a chip but not the names on
-  its keyboard.
+  its keyboard. A note an articulation's `delay` moves before the loop's
+  start is late after the loop goes round (it starts with the loop, not
+  before its end), and in a launched slot's clip notes are moved by the
+  song's tempo at the clip's own beats.
 - MIDI 2.0 output through the sequencer is untried here: this machine's
   kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
   MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's

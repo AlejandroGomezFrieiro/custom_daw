@@ -242,11 +242,13 @@ view.layer("notes", 20, function(L)
 
 -- The window draws notes itself: an attribute is a chip at a note's start.
 view.layer("attr", 25, nil, function(clip_id)
-  local out = {}
+  local out, fill = {}, nil
   for _, n in ipairs(api.clip_notes(clip_id)) do
     local said = n.attr and daw.attr.describe(n.attr)
     if said then
-      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, badge = true, label = said.tag, tip = said.text }
+      fill = fill or daw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
+      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, badge = true, label = said.tag, tip = said.text,
+        fill = fill, alpha = 0.9 }
     end
   end
   return out

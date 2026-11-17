@@ -9,6 +9,7 @@
 --   daw.attr.m2({ type = 0x11, data = 0xA000 })   -- "11.A"
 --   daw.attr.parts(attr)               -- { type, subclass, variation, direction, reset, string }
 --   daw.attr.describe(attr)            -- { code = "11.A", tag = "pz", name = "Pizzicato", ... }
+--   daw.attr.delay_of(track, attr)     -- seconds the track's attr_map moves such a note: -0.08
 --
 -- A code is the classification (the attribute type, 10 to 1F in hex), a
 -- dot, the subclass (one hex digit), and optionally a dot and the
@@ -154,6 +155,13 @@ function M.describe(attr)
   end
   local text = string.format("attr 0x%02X 0x%04X", p.type, p.data)
   return { tag = string.format("a%02X", p.type), name = text, text = text }
+end
+
+--- The seconds a note with `attr` (nil for none) on `track` plays early
+--- (below 0) or late by the track's `attr_map`, so that a library slow to
+--- speak still sounds on the beat; 0 without a map.
+function M.delay_of(track, attr)
+  return daw.api.track_attr_delay(type(track) == "table" and track.id or track, attr)
 end
 
 --- The same attribute: both none, or the same type and data.

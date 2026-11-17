@@ -100,6 +100,7 @@ track.attr_map = {
   by_type = { [0x13] = { out = "pc=12" } },   -- a whole classification, or another attribute type
   chase = { 1, 11 },                 -- controllers told again after a change
   attribute = true,                  -- notes keep their attribute as well (false: drop it, `attr` keeps one's)
+  delay = 0,                         -- seconds every note plays early (below 0) or late; an entry's own `delay` wins
 }
 track.attr_map = nil                 -- none
 ```
@@ -116,6 +117,21 @@ its subclass 0, then `"10.0"`; then `default`. The events go on the note's
 own beat, ahead of it, which is the order a keyswitched sampler needs; where
 playback starts or the loop goes back, the last change before it is sent
 again first. A map that does not read is refused when it is set.
+
+**Notes that sound on the beat.** A library whose staccato speaks slowly,
+or whose legato starts with a transition, is played early by that much:
+`arts["11.0"] = { out = "ks=D1", delay = -0.08 }` moves those notes (their
+start, their end, and the keyswitch before them) 80 ms earlier, so that
+they can be written on the beat and still sound on it; `attr_map.delay`
+is the same for every note whose entry has none. The kernel moves them
+when it lays the track's events out, by the tempo map at each note, so
+playing, an offline render, a bounce and a freeze all agree, and a tempo
+change moves them again. A note moved before where playback starts (the
+song's first beat, a seek, the loop's start after it goes round) starts
+there, as a note already sounding does: as early as it can.
+`daw.attr.delay_of(track, attr)` says how far a note is moved, for a
+view to show. Notes played live are not moved: they cannot be earlier
+than now.
 
 **Transport.**
 

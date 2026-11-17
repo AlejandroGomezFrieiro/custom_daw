@@ -53,8 +53,15 @@ local dsp = require("daw.dsp")
 local dev = dsp.device { category = "instrument" }
 local chosen, playing, switches = 0, 0, 0
 function dev.process(b)
+  -- To the frame, so that where a note starts can be measured.
+  local at = 0
+  local function fill(to)
+    for i = at, to - 1 do b.left[i], b.right[i] = playing / 100, switches / 100 end
+    at = math.max(at, to)
+  end
   for i = 0, b.nevents - 1 do
     local e = b.events[i]
+    fill(e.frame)
     if e.type == dsp.NOTE_ON and e.key < 36 then
       chosen, switches = e.key, switches + 1
     elseif e.type == dsp.NOTE_ON then
@@ -63,7 +70,7 @@ function dev.process(b)
       playing = 0
     end
   end
-  for i = 0, b.frames - 1 do b.left[i], b.right[i] = playing / 100, switches / 100 end
+  fill(b.frames)
 end
 return dev
 ]]
@@ -255,6 +262,108 @@ test("an attribute map is checked, undone, saved and copied with its track", fun
   daw.project.load(path)
   eq(daw.track("Violins").attr_map.by_type["17"].out, "hold=D1 cc32=40", "saved and loaded")
   eq(daw.track("Violins"):duplicate().attr_map ~= nil, true, "a copy of the track keeps it")
+end)
+
+--- The first time from `from` seconds on at which the left side of a
+--- 16-bit render is above a tenth: where a note starts sounding.
+local function onset(info, from)
+  local data = T.read_file(info.path)
+  local at = data:find("data", 1, true) + 8
+  for i = at + math.floor(from * info.sample_rate) * 4, #data - 1, 4 do
+    local lo, hi = data:byte(i, i + 1)
+    local v = lo + hi * 256
+    if v >= 32768 then v = v - 65536 end
+    if v / 32768 > 0.1 then return (i - at) / 4 / info.sample_rate end
+  end
+end
+
+-- Staccato speaks slowly in this library: its notes play a tenth of a
+-- second early, its keyswitch with them, so that they sound on the beat.
+local LATE = { default = { out = "ks=C1" }, arts = { ["11.0"] = { out = "ks=D1", delay = -0.1 } } }
+
+--- The keyswitched instrument playing a plain note on beat 0 and a
+--- staccato on beat 2, with LATE as the map.
+local function delayed()
+  fresh()
+  local kind = lua_device("keyswitched", KEYSWITCHED)
+  daw.project.tempo = 120
+  local t = daw.add_track({ name = "Violins" })
+  t:add_device(kind)
+  t:add_clip({ start = 0, length = 4, notes = {
+    { pitch = "C4", start = 0, length = 0.5 },
+    { pitch = "D4", start = 2, length = 0.5, attr = daw.attr.m2("11.0") },
+  } })
+  t.attr_map = LATE
+  return t
+end
+
+test("a delay in an attribute map plays its notes that much earlier, and the rest where they are", function()
+  local t = delayed()
+  eq(daw.attr.delay_of(t, daw.attr.m2("11.0")), -0.1, "the staccato's delay")
+  eq(daw.attr.delay_of(t, daw.attr.m2("11.4")), -0.1, "and what falls back to it")
+  eq(daw.attr.delay_of(t, nil), 0, "a note with none is not moved")
+  local info = render({ tail = 0, bits = 16, ["end"] = 4 })
+  near(onset(info, 0), 0, 1e-3, "the plain note on its beat")
+  near(onset(info, 0.5), 0.9, 2e-3, "the staccato a tenth of a second before its beat (1 s)")
+  near(channel_peaks(info, 0.92, 0.98), 0.26, 2e-3, "with its keyswitch before it")
+  -- At another tempo it is still a tenth of a second.
+  daw.project.tempo = 60
+  near(onset(render({ tail = 0, bits = 16, ["end"] = 4 }), 1), 1.9, 2e-3, "a tenth before 2 s at 60 bpm")
+  daw.project.tempo = 120
+  t.attr_map = daw.util.merge(LATE, { delay = 0.05 })
+  near(onset(render({ tail = 0, bits = 16, ["end"] = 4 }), 0), 0.05, 2e-3, "the map's own delay for the rest")
+  fails(function() t.attr_map = daw.util.merge(LATE, { delay = 5 }) end, "delay", "seconds are checked")
+end)
+
+test("a note moved before where playback starts is started there", function()
+  local t = delayed()
+  -- From between where the staccato is played (0.9 s, beat 1.8) and its beat (2).
+  local info = render({ tail = 0, bits = 16, start = 1.9, ["end"] = 4 })
+  near(onset(info, 0), 0, 1e-3, "sounding from the start of the render")
+  near(channel_peaks(info, 0.01, 0.04), 0.26, 2e-3, "as staccato")
+  -- At the very start of the song.
+  t:clips()[1]:set_note(1, { attr = daw.attr.m2("11.0") })
+  info = render({ tail = 0, bits = 16, ["end"] = 4 })
+  near(onset(info, 0), 0, 1e-3, "a note on the first beat cannot be earlier: it starts at once")
+  near(channel_peaks(info, 0.01, 0.04), 0.26, 2e-3, "with its keyswitch")
+end)
+
+test("a delayed note plays as early live as it renders", function()
+  local t = delayed()
+  daw.flush()
+  daw.transport.seek(0)
+  daw.transport.play()
+  -- The staccato's beat is 2; it should be heard from 1.8 on.
+  local heard
+  local deadline = api.now() + 10000
+  while not heard and api.now() < deadline do
+    local pos = daw.transport.position
+    if pos > 1.2 and t:meter() > 0.2 then heard = pos end
+    daw.wait(2)
+  end
+  daw.transport.stop()
+  eq(heard ~= nil, true, "heard")
+  eq(heard >= 1.75 and heard < 1.97, true, "heard before its beat, from about 1.8: " .. tostring(heard))
+  -- Going round a loop, every time.
+  daw.transport.loop_start, daw.transport.loop_end = 1, 3
+  daw.transport.loop_enabled = true
+  T.after(function() daw.transport.loop_enabled = false end)
+  daw.transport.seek(1)
+  daw.transport.play()
+  local onsets, was = {}, false
+  deadline = api.now() + 15000
+  while #onsets < 3 and api.now() < deadline do
+    local pos, on = daw.transport.position, t:meter() > 0.2
+    -- (What the meter still shows from before is passed over.)
+    if on and not was and pos > 1.5 then onsets[#onsets + 1] = pos end
+    was = on
+    daw.wait(2)
+  end
+  daw.transport.stop()
+  eq(#onsets, 3, "heard three times round")
+  for i, pos in ipairs(onsets) do
+    eq(pos >= 1.75 and pos < 1.97, true, "round " .. i .. " before its beat: " .. tostring(pos))
+  end
 end)
 
 test("a note played live with an attribute is preceded by what the map sends", function()

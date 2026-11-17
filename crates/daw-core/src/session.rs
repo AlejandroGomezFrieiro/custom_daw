@@ -3639,6 +3639,18 @@ impl Session {
         self.live(track, EventKind::NoteOn { key, vel, ch, attr })
     }
 
+    /// The seconds a note with `attr` is moved by the track's attribute map.
+    pub fn attr_delay(&self, track: Id, attr: daw_engine::Attr) -> Result<f64> {
+        let track = self
+            .project
+            .track(track)
+            .with_context(|| format!("no track {track}"))?;
+        Ok(match &track.attr_map {
+            Some(map) => map.plan()?.delay_of(attr),
+            None => 0.0,
+        })
+    }
+
     /// Stop a note played with [`live_note`](Self::live_note), on every
     /// channel the track's attribute map may have sent it to.
     pub fn live_note_off(&mut self, track: Id, key: u8) -> Result<()> {
