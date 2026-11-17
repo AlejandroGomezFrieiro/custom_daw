@@ -19,7 +19,11 @@ local D = require("notation.doc")
 local M = {}
 local Q = D.Q
 
-M.DYNAMICS = { ppp = 25, pp = 38, p = 52, mp = 66, mf = 80, f = 96, ff = 112, fff = 124 }
+M.DYNAMICS = { ppp = 25, pp = 38, p = 52, mp = 66, mf = 80, f = 96, ff = 112, fff = 124, pppp = 16, ffff = 127, niente = 8 }
+-- Dynamics of one moment: louder by `add` over what holds, or at `level`,
+-- for the notes that start there; `after` holds from just after it.
+M.MOMENTS = { sf = { add = 24 }, sfz = { add = 30 }, sffz = { add = 36 }, fz = { add = 24 }, rfz = { add = 18 },
+  fp = { level = 96, after = "p" }, sfp = { add = 30, after = "p" } }
 M.ORDER = { "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff" }
 M.ARTICULATIONS = { staccato = true, staccatissimo = true, accent = true, tenuto = true, marcato = true }
 local GATE = { staccatissimo = 0.25, staccato = 0.5, tenuto = 1 }
@@ -151,12 +155,16 @@ end
 --- The marks of a score in ticks: dynamics, hairpins and slurs.
 function M.resolve(score)
   local f = D.frame(score)
-  local out = { dyns = {}, pins = {}, slurs = {} }
+  local out = { dyns = {}, pins = {}, slurs = {}, moments = {} }
   for _, mk in ipairs(score.marks or {}) do
     local s = at_of(score, f, mk.from)
     if s then
       if mk.kind == "dynamic" and M.DYNAMICS[mk.value] then
         out.dyns[#out.dyns + 1] = { t = s, level = M.DYNAMICS[mk.value] }
+      elseif mk.kind == "dynamic" and M.MOMENTS[mk.value] then
+        local mo = M.MOMENTS[mk.value]
+        out.moments[#out.moments + 1] = { t = s, add = mo.add, level = mo.level }
+        if mo.after then out.dyns[#out.dyns + 1] = { t = s + 1, level = M.DYNAMICS[mo.after] } end
       elseif mk.kind == "hairpin" then
         local e = at_of(score, f, mk.to)
         if e and e > s then out.pins[#out.pins + 1] = { s = s, e = e, kind = mk.value == "dim" and "dim" or "cresc" } end
@@ -238,7 +246,7 @@ function M.render(score, opts)
       g = GATE.staccatissimo
     elseif art.staccato then
       g = GATE.staccato
-    elseif art.tenuto then
+    elseif art.tenuto or art.fermata or art.fermata_long or art.fermata_short then
       g = GATE.tenuto
     else
       for _, sl in ipairs(marks.slurs) do
@@ -248,6 +256,9 @@ function M.render(score, opts)
     if opts.gate then g = opts.gate end
     local len = p.grace and p.len or p.len * g
     local vel = level(marks, p.s)
+    for _, mo in ipairs(marks.moments) do
+      if mo.t == p.s then vel = mo.level or (vel + mo.add) end
+    end
     for kind, add in pairs(ACCENT) do
       if art[kind] then vel = vel + add end
     end

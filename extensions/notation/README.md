@@ -40,8 +40,11 @@ the voices of each staff, each a list of chords and rests that fills the
 bar. Values are fractions of a whole note (`{ 1, 4 }` a quarter) with their
 dots and tuplets, so nothing drifts however long the piece; pitches are
 spelled (`step` 0 to 6 from C, `alter`, `octave`); every measure, chord,
-note and mark has an id that stays. Dynamics, hairpins, slurs and text are
-marks at places in measures; repeat signs are on the measures.
+note and mark has an id that stays. Dynamics, hairpins, slurs, text, tempo
+marks, chord symbols and playing techniques are marks at places in
+measures; key, clef and time-signature changes, barlines, repeat signs,
+endings and rehearsal marks are on the measures; articulations,
+ornaments, fermatas and lyrics (a verse each) are on the chords.
 
 | | |
 | --- | --- |
@@ -176,12 +179,15 @@ The rest of the page:
   new signature is written where it changes.
 - **Clef**: treble when the notes stay above A3, bass when they stay below
   E4, a grand staff when they need both. `:notation.clef bass` fixes it for
-  the track (`treble`, `treble8` for guitar, `bass`, `grand`, `auto`), kept
-  in `track.meta.notation`.
+  the track (`treble`, `treble8` for guitar, `bass`, `bass8`, `alto`,
+  `tenor`, `grand`, `auto`), kept in `track.meta.notation`; a score keeps
+  its staves' clefs, and a clef change at a bar (`,C`, see Popovers).
 - **Key**: the project's key, as the `musicops` extension keeps it in
   `project.meta.musicops`; modes and minor keys take the signature of their
   relative major. `:notation.key Eb major` sets it, `:notation.key off`
-  clears it.
+  clears it; in a score open in the view it writes a key signature from
+  the cursor's bar (`,k`, see Popovers), and the first bar's is the
+  project's key too.
 - **Spelling**: notes of the key take its letters; the others lean the way
   the key does. Accidentals are remembered to the end of the bar, a tied
   note keeps its accidental across the barline without a sign, and a note
@@ -377,7 +383,9 @@ types from visual mode), `:5,8` bars 5 to 8, `:5` bar 5. So
 `:5,8notation.transpose 2`, `:'<,'>notation.slur`, `:9notation.dyn p`,
 `:1,4notation.repeat` (both signs around bars 1 to 4), `:5,8notation.quantize`.
 The commands that take one are `art`, `dyn`, `cresc`, `dim`, `slur`, `text`,
-`repeat`, `quantize`, `retranscribe` and `transpose`.
+`repeat`, `quantize`, `retranscribe`, `transpose`, and those the popovers
+run: `tempo`, `meter`, `key`, `clef`, `bar`, `rehearsal`, `chord`, `lyric`,
+`orn`, `tech`, `interval`, `tuplet` and `voice`.
 
 **Marks that play.** `:notation.dyn mf` puts a dynamic at the cursor (`ppp` to
 `fff`, `off`): the notes from there to the next dynamic play at its
@@ -389,6 +397,67 @@ selection. `:notation.text Allegro` writes text above the staff, and
 these two are written only (the song's timeline plays as it is). Staccato
 plays a note half its written length, tenuto its full length, an accent 20
 louder, a marcato 30.
+
+## Popovers
+
+Everything that is not a note is written with a popover, as in Dorico,
+in the shape of a Vim prompt: the leader (`,`) and a letter opens a
+one-line prompt at the caret. In visual mode it is for the selection; in
+insert mode `Ctrl-o` comes first (`Ctrl-o ,d`), and entering notes goes on
+after it. `Tab` completes, each choice with what it means; `Up` and `Down`
+go through what was typed before in that popover; while it is typed the
+page shows what it would write in the accent's ink (and you hear it: it is
+a trial, `daw.audition`), and the line says what it would do or why it
+cannot. `Enter` writes it, one undo step; `Esc` leaves no trace.
+
+Each popover is an Ex command with what was typed after it, run with the
+selection's range when there is one: `,d` `mp<f` on a selection runs
+`:'<,'>notation.dyn mp<f`. So `.` writes it again at the cursor, `@:`
+runs the line again, a macro records it, and `:5,8notation.dyn p` or
+`:9notation.tempo rit.` say the same without the popover. `,.` opens the
+last popover again with what was typed in it.
+
+| Keys | Popover | Accepts | Writes |
+| --- | --- | --- | --- |
+| `,d` | dynamics | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<`, `off` | a dynamic at the cursor (the start of the selection); a hairpin over the selection, or to the next dynamic when there is no selection, and the dynamic it reaches. `sfz` `sf` `fz` `rfz` accent the notes there, `fp` `sfp` are loud there and soft after |
+| `,t` | tempo | `Allegro q=132`, `q.=60`, `Andante`, `rit.`, `accel.`, `a tempo`, `off` | a tempo mark, and a point of the song's tempo map: `rit.` and `accel.` ramp a fifth slower or faster to the end of the selection (or the bar), `a tempo` goes back to the last tempo marked; a word alone has its tempo (Allegro 132) |
+| `,m` | time signature | `6/8`, `3/4`, `3+3+2/8`, `C`, `¢` | from the cursor's bar: the music after it written again in the new bars (every note where it was, tied over the new barlines), and the song's signature there |
+| `,k` | key | `Eb`, `f#m` (a small letter is minor), `D dorian`, `off` | a key signature from the cursor's bar; in the first bar, the project's key too |
+| `,C` | clef | `treble`, `bass`, `alto`, `tenor`, `treble8`, `bass8` | a clef change at the cursor's bar on its staff; in the first bar, the staff's clef |
+| `,b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `:\|:`, `1.`, `2.`, `off` | at the cursor's barline (the one before the bar when the cursor is at its start, else after it); an ending over the bars of the selection |
+| `,X` | text | `dolce`, `Solo` | text over the staff |
+| `,r` | rehearsal mark | `A`, `Intro`; Enter alone writes the next letter | a boxed mark at the bar, and a marker of the same name in the song |
+| `,q` | chord symbols | `Cmaj7`, `G/B`, `F#m7b5`, `N.C.` | over the staff; `Space` writes it and goes to the next beat, the prompt still open; `Tab` offers first what the notes there sound (`daw.harmony`) |
+| `,l` | lyrics | a syllable; `Space` the next note, `-` a hyphen, `_` an extender; `verse=2 ` first for verse 2 | under the note at the caret, and on to the next of its voice |
+| `,i` | intervals | `3`, `-6`, `8`, `m3`, `M6`, `P5` | a note that far above the top (below the lowest) note of each chord of the selection, in the key |
+| `,3` | tuplets | `3`, `5`, `5:4`, `7:8`, `off` | the beat at the cursor (or the selection) as that tuplet; in insert mode, the notes entered next |
+| `,v` | voice | `1` to `4` | the voice notes are entered in; with a selection, its chords moved into it |
+| `,o` | ornaments | `tr`, `mordent`, `prall`, `turn`, `fermata`, `trem`, `off` | on the chord, or each chord of the selection; a fermata holds its note's whole value |
+| `,p` | playing techniques | `pizz.`, `arco`, `con sord.`, `sul pont.` | text at the cursor (written only) |
+| `,.` | the last popover again | | with what was typed in it |
+
+The letters are Dorico's where Dorico's is not a note name. The two that
+clash with keys of every view take the capital: `,c` starts `,ca` (fixes
+and actions) and `,x` the mix measurements (`,xa` …), so the clef is `,C`
+and text `,X`. In the notation view `,d`, `,m`, `,l` and `,p` are the
+popovers, not the device panel, the mixer, the session view and the piano
+roll they show elsewhere (`:view.toggle devices` and the others do that
+there). `,,` stays the command list; `,.` repeats the last popover.
+
+The prompt is drawn over the caret's staff in the terminal and on the
+engraved page (in a window, and on a terminal's pixel surface), and on
+the command line of the window as well.
+
+**Coming from Dorico.** The popovers are Dorico's (Shift and a letter
+there, the leader and a letter here), with the same words: `mp<f`,
+`p subito`, `niente<`, `Allegro q=132`, `rit.`, `a tempo`, `3+3+2/8`,
+`f#m`, `|:`, `1.`, `5:4`. What differs: there is no Write and Play mode,
+since the piano roll on the same clip is Play mode (see "The piano roll on
+a score clip"); a popover with a selection works on all of it, and its
+line is an Ex command you can type, repeat and record. **Coming from
+MuseScore**: the popovers stand for MuseScore's palettes and the
+`Ctrl-E`/`Ctrl-T`/`Ctrl-K`/`Ctrl-L` text entries; lyrics and chord
+symbols go on with `Space` as there, and `-` hyphenates.
 
 ## The staff in cells
 
@@ -414,7 +483,9 @@ across the rows either side (`▄▄` over `▀▀`, an open one `╭╮` over `
 easier to read and lets the pointer reach the spaces; `zo` goes back. A
 panel too low for both staves of a grand staff shows the cursor's. With
 `daw.opt.ascii` the staff is drawn open in plain ASCII (`-` `|` `+`, heads
-`@@` and `()`, `#` `b` `n`, the treble clef `&`, the bass clef `?:`).
+`@@` and `()`, `#` `b` `n`, the treble clef `&`, the bass clef `?:`, a C
+clef `B`). A clef or key that changes inside a system is drawn at the
+bar, the clef smaller; a key's old signs are cancelled with naturals.
 
 The accidentals `♯ ♭ ♮` are the one exception to the common set: Fira Code
 and JetBrains Mono lack some of them, and terminals take them from a font
@@ -656,18 +727,12 @@ on each staff: notes and rests with their start, value (`base`, `dots`),
 
 Importing MusicXML; editing several tracks at once (they are shown to read);
 tablature in the several-tracks view and as its own staff in MusicXML (the
-string and fret are on each note); first and second endings, D.C. and D.S.;
-clefs other than treble, the guitar's treble and bass; key changes within a
-clip; trills and other ornaments; a mark's own room in the terminal when the
-<<<<<<< HEAD
+string and fret are on each note); D.C., D.S., segno and coda; endings and
+repeats played (they are written); trills and other ornaments played (they
+are written); percussion clefs; key, clef and tempo changes, chord symbols
+and endings in MusicXML and LilyPond; a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows); in the cell view, a
 grace note's slash and a beam's slope (beams are flat). On the engraved page:
-collision avoidance between marks, dynamics and the notes of the other
-staff; slurs that bend round the notes under them; line breaking that
-balances every system (only a bar alone at the end is avoided); a choice of Bravura
-or Petaluma (the kernel has them; nothing chooses them yet). For score
-=======
-panel is low (dynamics then fall below what shows). On the engraved page:
 page breaks of one's own (pages fill as systems come), the style as a
 buffer to edit (staff size, spacing, slur height), a choice of Bravura or
 Petaluma (the kernel has them; nothing chooses them yet); staccato and
@@ -675,9 +740,7 @@ tenuto inside a slur (a slur goes over every articulation), and slurs that
 keep clear of the staff lines; systems that interlock (each system's band
 holds all of its ink); the cell view places its marks on fixed rows, not
 against skylines; text in a PDF is outlines, so it cannot be searched. For score
->>>>>>> main
-clips: tempo marks that play, repeats unfolded, trills and fermatas played,
-swing, key and clef changes per measure, `!` through a snippet (snippets
+clips: repeats unfolded, trills played, swing, `!` through a snippet (snippets
 work in the piano roll), a filter that reads and writes MusicXML (it reads
 and writes the line text above), the piano roll showing which notes
 are written and their feel (see docs/missing.md). A plain MIDI clip is

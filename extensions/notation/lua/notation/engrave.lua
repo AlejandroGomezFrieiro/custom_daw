@@ -339,7 +339,12 @@ local REST_GLYPH = { [4] = "restWhole", [2] = "restHalf", [1] = "restQuarter", [
 local FLAG_GLYPH = { "flag8th", "flag16th", "flag32nd", "flag64th" }
 E.ACC_GLYPH, E.HEAD_GLYPH = ACC_GLYPH, HEAD_GLYPH
 local DYN_GLYPH = { p = "dynamicPiano", mp = "dynamicMP", mf = "dynamicMF", f = "dynamicForte",
-  pp = "dynamicPP", ff = "dynamicFF", ppp = "dynamicPPP", fff = "dynamicFFF" }
+  pp = "dynamicPP", ff = "dynamicFF", ppp = "dynamicPPP", fff = "dynamicFFF", pppp = "dynamicPPPP", ffff = "dynamicFFFF",
+  sf = "dynamicSforzando1", sfz = "dynamicSforzato", sffz = "dynamicSforzatoFF", fz = "dynamicForzando", rfz = "dynamicRinforzando2",
+  fp = "dynamicFortePiano", sfp = "dynamicSforzandoPiano", niente = "dynamicNiente" }
+local CLEF_GLYPH = { treble = { "gClef", 2 }, treble8 = { "gClef8vb", 2 }, bass = { "fClef", 6 }, bass8 = { "fClef8vb", 6 },
+  alto = { "cClef", 4 }, tenor = { "cClef", 6 } }
+E.CLEF_GLYPH = CLEF_GLYPH
 
 --- Between a head and its accidental, and between columns of accidentals,
 --- in staff spaces.
@@ -440,7 +445,7 @@ local function spaced(m, st, spread)
   local p = setmetatable({}, { __index = m })
   local s = st.sp
   model.space({ measures = { p } }, {
-    lead = 1.5 * s, gap = 0.5 * s, tail = 0.9 * s,
+    lead = 1.5 * s + E.change_room(st, m), gap = 0.5 * s, tail = 0.9 * s,
     unit = function(d) return s * spread * (1.15 + 1.6 * sqrt(d / 0.25)) end,
     room = function(ev) return room(st, ev) end,
   })
@@ -484,7 +489,7 @@ local function prefix(st, layout, i, left)
   local s = st.sp
   local x = left + 0.6 * s + gwidth(st, "gClef") + 0.8 * s
   local signs = x - 0.8 * s
-  local fifths = layout.fifths
+  local fifths = layout.measures[i].fifths or layout.fifths
   if fifths ~= 0 then
     x = x + abs(fifths) * (gwidth(st, fifths > 0 and "accidentalSharp" or "accidentalFlat") + 0.12 * s) + 0.6 * s
     signs = x - 0.6 * s
@@ -512,7 +517,7 @@ end
 --- What a staff's ink in a measure depends on, as text: two that say the
 --- same draw the same.
 local function staff_signature(m, p, k)
-  local parts = { k, floor(p.width + 0.5), tostring(m.repeat_start), tostring(m.repeat_end), m.start }
+  local parts = { k, floor(p.width + 0.5), tostring(m.repeat_start), tostring(m.repeat_end), m.start, tostring(m.ghost) }
   for _, ev in ipairs(m.staves[k] or {}) do
     parts[#parts + 1] = table.concat({ ev.kind, ev.start, ev.length, tostring(ev.base), ev.dots, tostring(ev.stem),
       tostring(ev.flags), tostring(ev.beam and true), tostring(ev.whole), tostring(ev.shift), ev.voice,
@@ -585,7 +590,8 @@ end
 --- crosses barlines or stands outside the staff is the system's.
 local function staff_ink(st, m, p, staff)
   local s, out = st.sp, ink()
-  local colour = st.ink
+  -- What a popover would write is drawn in the accent until Enter.
+  local colour = m.ghost and st.accent or st.ink
   local function xt(beat) return model.x_of(p, beat) end
   local w = p.width
   local function Y(pos) return staff_y(st, pos) end
@@ -924,11 +930,12 @@ function E.staff(cache, st, m, p, k)
   local width = floor(p.width + 0.5)
   local seen = evs and known[evs]
   local sig
-  if seen and seen.width == width and seen.start == m.start and seen.k == k and seen.rs == m.repeat_start and seen.re == m.repeat_end then
+  if seen and seen.width == width and seen.start == m.start and seen.k == k and seen.rs == m.repeat_start and seen.re == m.repeat_end
+    and seen.ghost == m.ghost then
     sig = seen.sig
   else
     sig = staff_signature(m, p, k)
-    if evs then known[evs] = { width = width, start = m.start, k = k, rs = m.repeat_start, re = m.repeat_end, sig = sig } end
+    if evs then known[evs] = { width = width, start = m.start, k = k, rs = m.repeat_start, re = m.repeat_end, ghost = m.ghost, sig = sig } end
   end
   local hit = cache[sig]
   if hit then
@@ -951,6 +958,7 @@ function E.measure(cache, st, layout, sys, placed)
     offset(E.staff(cache, st, placed.m, placed.p, k), out, sys.staff_top[k] - sys.y)
   end
   for _, op in ipairs(frame_ink(st, layout, sys, placed).ops) do out.ops[#out.ops + 1] = op end
+  for _, op in ipairs(E.change_ink(st, layout, sys, placed).ops) do out.ops[#out.ops + 1] = op end
   return out
 end
 
@@ -994,11 +1002,16 @@ skyline.kind("lyric", { side = "below", pad = 0.6, row = "lyrics",
 skyline.kind("dyn", { order = skyline.ORDER.dynamics, side = dynamics_side, pad = 0.7, row = "dynamics", ink = function(out, st, item)
   local s = st.sp
   local name = DYN_GLYPH[item.value]
+  local colour = item.ghost and st.accent or st.ink
+  local x = round(item.x - gwidth(st, "noteheadBlack") / 2)
   if name then
-    out:glyph(st, round(item.x - gwidth(st, "noteheadBlack") / 2), 0, name, st.ink)
+    out:glyph(st, x, 0, name, colour)
+    x = x + round(gwidth(st, name))
   else
-    out:text(round(item.x), round(-1.3 * s), item.value, st.ink, round(1.6 * s), true)
+    out:text(round(item.x), round(-1.3 * s), item.value, colour, round(1.6 * s), true)
+    x = x + round(text_width(item.value, round(1.6 * s), true))
   end
+  if item.subito then out:text(x + round(0.4 * s), round(-1.2 * s), "subito", colour, round(1.2 * s), false) end
 end })
 
 local function hairpin(out, st, item)
@@ -1007,13 +1020,16 @@ local function hairpin(out, st, item)
   local mid = -0.5 * s
   local open, shut = x0, x1
   if item.kind == "cresc" then open, shut = x1, x0 end
-  out:path({ "M", open, mid - 0.55 * s, "L", shut, mid, "L", open, mid + 0.55 * s }, st.ink, st.hairpin)
+  local colour = item.ghost and st.accent or st.ink
+  out:path({ "M", open, mid - 0.55 * s, "L", shut, mid, "L", open, mid + 0.55 * s }, colour, st.hairpin)
+  -- Niente: a small circle at the point, from or to nothing.
+  if item.niente then out:glyph(st, round(shut - 0.9 * s), round(mid + 0.4 * s), "dynamicNiente", colour, 0.6) end
 end
 skyline.kind("cresc", { order = skyline.ORDER.dynamics, side = dynamics_side, pad = 0.7, row = "dynamics", ink = hairpin })
 skyline.kind("dim", { order = skyline.ORDER.dynamics, side = dynamics_side, pad = 0.7, row = "dynamics", ink = hairpin })
 
 skyline.kind("text", { side = "above", pad = 0.6, ink = function(out, st, item)
-  out:text(round(item.x), 0, tostring(item.value), st.ink, round(1.4 * st.sp), true)
+  out:text(round(item.x), 0, tostring(item.value), item.ghost and st.accent or st.ink, round(1.4 * st.sp), true)
 end })
 
 --- The x of a beat on a system, or nil off it. `ending`: the beat ends
@@ -1027,6 +1043,183 @@ local function x_on(st, sys, beat, ending)
   end
   local last = list[#list]
   if ending and abs(beat - (last.m.start + last.m.length)) < EPS then return last.x + last.p.width - 0.6 * st.sp end
+end
+E.x_on = x_on
+
+-- What the popovers write (`notation.popover`) -------------------------------------------------
+
+local ORN_GLYPH = { trill = "ornamentTrill", mordent = "ornamentMordent", prall = "ornamentShortTrill", turn = "ornamentTurn",
+  turn_inverted = "ornamentTurnInverted", tremolo = "tremolo3", fermata = "fermataAbove", fermata_short = "fermataShortAbove",
+  fermata_long = "fermataLongAbove" }
+local METRONOME = { q = "metNoteQuarterUp", h = "metNoteHalfUp", e = "metNote8thUp" }
+local CHANGE_SCALE = 0.75   -- a clef changed inside a system is drawn smaller
+
+local function mark_colour(st, item) return item.ghost and st.accent or st.ink end
+
+skyline.kind("chord", { side = "above", pad = 0.6, row = "chords", ink = function(out, st, item)
+  out:text(round(item.x - gwidth(st, "noteheadBlack") / 2), -round(1.5 * st.sp), item.value, mark_colour(st, item), round(1.5 * st.sp), true)
+end })
+
+skyline.kind("technique", { order = 45, side = "above", pad = 0.5, ink = function(out, st, item)
+  out:text(round(item.x), -round(1.3 * st.sp), item.value, mark_colour(st, item), round(1.3 * st.sp), false)
+end })
+
+-- Words, then the metronome mark: the note's glyph and its number.
+skyline.kind("tempo", { side = "above", pad = 0.6, ink = function(out, st, item)
+  local s, colour = st.sp, mark_colour(st, item)
+  local size = round(1.4 * s)
+  local words, unit, per = item.value:match("^(.-)%s*([qhe]%.?)%s*=%s*(%d+%.?%d*)$")
+  if not unit and item.bpm and not item.change then words, unit, per = item.value, "q", tostring(floor(item.bpm + 0.5)) end
+  words = words or item.value
+  local x = round(item.x)
+  if words ~= "" then
+    out:text(x, -size, words, colour, size, not item.change)
+    x = x + round(text_width(words, size, not item.change) + 0.6 * s)
+  end
+  if unit then
+    local name = METRONOME[unit:sub(1, 1)]
+    out:glyph(st, x, round(-0.2 * s), name, colour, 0.8)
+    x = x + round(gwidth(st, name, 0.8))
+    if unit:find("%.") then
+      out:glyph(st, x + round(0.2 * s), round(-0.2 * s), "metAugmentationDot", colour, 0.8)
+      x = x + round(0.6 * s)
+    end
+    out:text(x + round(0.3 * s), -size, "= " .. per, colour, size, false)
+  end
+end })
+
+-- A rehearsal mark in its box over the bar's start.
+skyline.kind("rehearsal", { side = "above", pad = 0.8,
+  collect = function(m, add)
+    if m.rehearsal then add({ at = m.start, staff = 1, value = m.rehearsal, ghost = m.ghost }) end
+  end,
+  ink = function(out, st, item)
+    local s, colour = st.sp, mark_colour(st, item)
+    local size = round(1.4 * s)
+    local w = round(text_width(item.value, size, true) + 0.8 * s)
+    local h = round(1.9 * s)
+    local x = round(item.x - 0.5 * s)
+    out:rect(x, -h, w, st.line, colour)
+    out:rect(x, 0, w + st.line, st.line, colour)
+    out:rect(x, -h, st.line, h, colour)
+    out:rect(x + w, -h, st.line, h, colour)
+    out:text(x + round(w / 2), -h + round(0.25 * s), item.value, colour, size, true, "center", w)
+  end })
+
+-- An ending's bracket over its bars, its number where it starts.
+skyline.kind("volta", { order = 65, side = "above", pad = 0.8, row = "voltas",
+  collect = function(m, add)
+    if m.volta then add({ at = m.start, to = m.start + m.length, staff = 1, value = m.volta, index = m.index, ghost = m.ghost }) end
+  end,
+  ink = function(out, st, item)
+    local s, colour = st.sp, mark_colour(st, item)
+    local sys = item.system
+    local x1 = E.x_on(st, sys, item.to, true) or sys.width
+    local x0 = round(item.x - 1.2 * s)
+    local h = round(2 * s)
+    out:rect(x0, -h, round(x1 - x0), st.line, colour)
+    local before = sys.layout_measures and sys.layout_measures[item.index - 1]
+    if not (before and before.volta == item.value and sys.measures[1].m.index ~= item.index) then
+      out:rect(x0, -h, st.line, h, colour)
+      out:text(x0 + round(0.4 * s), -h + round(0.2 * s), item.value .. ".", colour, round(1.2 * s), false)
+    end
+  end })
+
+-- Ornaments and fermatas over their chords.
+skyline.kind("orn", { order = 15, side = "above", pad = 0.5,
+  collect = function(m, add)
+    for k, evs in ipairs(m.staves) do
+      for _, ev in ipairs(evs) do
+        local src = ev.kind == "note" and ev.source
+        if src and src.orn and ORN_GLYPH[src.orn] then add({ at = ev.start, staff = k, value = src.orn, ghost = m.ghost }) end
+        for _, kind in ipairs({ "fermata", "fermata_short", "fermata_long" }) do
+          if src and src.art and src.art[kind] then add({ at = ev.start, staff = k, value = kind, ghost = m.ghost }) end
+        end
+      end
+    end
+  end,
+  ink = function(out, st, item)
+    out:glyph(st, round(item.x - gwidth(st, ORN_GLYPH[item.value]) / 2), 0, ORN_GLYPH[item.value], mark_colour(st, item))
+  end })
+
+-- The verses after the first, each a line under the one before.
+for verse = 2, 4 do
+  skyline.kind("verse" .. verse, { order = 20 + verse / 10, side = "below", pad = 0.3, row = "verse" .. verse,
+    collect = function(m, add)
+      for k, evs in ipairs(m.staves) do
+        for _, ev in ipairs(evs) do
+          local text = ev.source and ev.source.lyrics and ev.source.lyrics[verse - 1]
+          if text and text ~= "" then add({ at = ev.start, staff = k, value = text }) end
+        end
+      end
+    end,
+    ink = function(out, st, item)
+      out:text(round(item.x), 0, item.value, st.ink, lyric_size(st), false, "center")
+    end })
+end
+
+--- Room at a measure's start for the clef and key that change there.
+function E.change_room(st, m)
+  local w = 0
+  if m.clef_change then w = w + gwidth(st, "gClef") * CHANGE_SCALE + 0.5 * st.sp end
+  if m.key_change and m.index > 1 then
+    local n = max(1, abs(m.fifths or 0), m.key_from and abs(m.key_from) or 0)
+    w = w + n * (gwidth(st, "accidentalSharp") + 0.12 * st.sp) + 0.6 * st.sp
+  end
+  return w
+end
+
+--- What a measure changes where it starts, inside a system (at a system's
+--- start its clef and key say it): a smaller clef, the key's signs (the
+--- old ones cancelled where they must be); and its barline when it is a
+--- double or the final one. In coordinates from its left edge and the
+--- system's top.
+function E.change_ink(st, layout, sys, placed)
+  local m, p = placed.m, placed.p
+  local s, out = st.sp, ink()
+  local colour = m.ghost and st.accent or st.ink
+  local nstaves = #layout.staves
+  local function Y(staff, pos) return sys.staff_top[staff] - sys.y + staff_y(st, pos) end
+  local inside = sys.measures[1] ~= placed
+  local x = 0.4 * s
+  if m.clef_change and inside then
+    for staff, clef in pairs(m.clef_change) do
+      local cg = CLEF_GLYPH[clef] or CLEF_GLYPH.treble
+      out:glyph(st, round(x), round(Y(staff, cg[2])), cg[1], colour, CHANGE_SCALE)
+    end
+    x = x + gwidth(st, "gClef") * CHANGE_SCALE + 0.5 * s
+  end
+  if m.key_change and m.index > 1 and inside then
+    local before = m.key_from or 0
+    local fifths = m.fifths or 0
+    for staff = 1, nstaves do
+      local clef = m.clefs and m.clefs[staff] or layout.staves[staff]
+      local kx = x
+      if fifths == 0 or (before ~= 0 and (before > 0) ~= (fifths > 0)) then
+        for _, pos in ipairs(model.key_positions(before, clef)) do
+          out:glyph(st, round(kx), round(Y(staff, pos)), "accidentalNatural", colour)
+          kx = kx + gwidth(st, "accidentalNatural") + 0.12 * s
+        end
+      end
+      local name = fifths > 0 and "accidentalSharp" or "accidentalFlat"
+      for _, pos in ipairs(model.key_positions(fifths, clef)) do
+        out:glyph(st, round(kx), round(Y(staff, pos)), name, colour)
+        kx = kx + gwidth(st, name) + 0.12 * s
+      end
+    end
+  end
+  if m.barline == "||" or m.barline == "|." then
+    local t0 = round(sys.staff_top[1] - sys.y)
+    local t1 = round(sys.staff_top[nstaves] - sys.y + 4 * s + st.line)
+    local w = round(p.width)
+    if m.barline == "||" then
+      out:rect(w - st.bar - st.bar_gap - st.bar, t0, st.bar, t1 - t0, colour)
+    else
+      out:rect(w - st.thick, t0, st.thick, t1 - t0, colour)
+      out:rect(w - st.thick - st.bar_gap - st.bar, t0, st.bar, t1 - t0, colour)
+    end
+  end
+  return out
 end
 
 --- Slurs and hairpins of a layout, which may run over systems. A hairpin
@@ -1049,7 +1242,7 @@ local function spanners(layout)
     for _, at in ipairs(dynamics) do
       if at > hp.at + EPS and at < to then to = at end
     end
-    hairpins[i] = { kind = hp.kind, at = hp.at, to = to, staff = hp.staff }
+    hairpins[i] = { kind = hp.kind, at = hp.at, to = to, staff = hp.staff, niente = hp.niente, ghost = hp.ghost }
   end
   return slurs, hairpins
 end
@@ -1218,7 +1411,7 @@ local function place_marks(st, layout, sys, left, slurs, hairpins)
         if abs(dyn.at - hp.at) < EPS then x = max(x, dr + 0.4 * s) end
         if abs(dyn.at - hp.to) < EPS then x1 = min(x1, dl - 0.4 * s) end
       end
-      if x and x1 then add({ kind = hp.kind, at = hp.at, to = hp.to, x = x, x1 = x1, staff = hp.staff }) end
+      if x and x1 then add({ kind = hp.kind, at = hp.at, to = hp.to, x = x, x1 = x1, staff = hp.staff, niente = hp.niente, ghost = hp.ghost }) end
     end
   end
   for _, item in ipairs(skyline.place(items, sys.skies, st, ink)) do
@@ -1318,7 +1511,7 @@ function E.systems(layout, st, o)
   for k, first in ipairs(starts) do
     local x0 = begins(first)
     local _, signs = prefix(st, layout, first, left)
-    local sys = { measures = {}, x0 = x0, signs = signs, first = first }
+    local sys = { measures = {}, x0 = x0, signs = signs, first = first, layout_measures = layout.measures }
     local x = x0
     for j = first, (starts[k + 1] or n + 1) - 1 do
       local p = spaced_of[j]
@@ -1344,10 +1537,10 @@ function E.systems(layout, st, o)
     sys.skies = {}
     for k2 = 1, staves do
       local sky = skyline.new(reach, 0, staff_h + st.line)
-      local clef = layout.staves[k2]
-      local cname = clef == "bass" and "fClef" or clef == "treble8" and "gClef8vb" or "gClef"
-      local bb = glyph(st, cname).bbox
-      local cy = staff_y(st, clef == "bass" and 6 or 2)
+      local fm = layout.measures[first]
+      local cg = CLEF_GLYPH[fm.clefs and fm.clefs[k2] or layout.staves[k2]] or CLEF_GLYPH.treble
+      local bb = glyph(st, cg[1]).bbox
+      local cy = staff_y(st, cg[2])
       sky:box(left, cy - bb[4] * s, signs, cy - bb[2] * s)
       local name = layout.names and layout.names[k2]
       if name and name ~= "" then
@@ -1416,7 +1609,9 @@ function E.system_ink(st, layout, sys, eng)
   local left = eng.left
   local right = sys.measures[1].x
   local top_y, bottom_y = round(Y(1, 8) - st.line / 2), round(Y(nstaves, 0) + st.line / 2)
+  local first_m = sys.measures[1].m
   for staff, clef in ipairs(layout.staves) do
+    clef = first_m.clefs and first_m.clefs[staff] or clef
     for pos = 0, 8, 2 do
       out:rect(left, round(Y(staff, pos) - st.line / 2), right - left, st.line, st.staff)
     end
@@ -1424,20 +1619,13 @@ function E.system_ink(st, layout, sys, eng)
       out:text(left, round(Y(staff, 8) - 2.4 * s), layout.names[staff], st.faint, max(10, round(1.1 * s)))
     end
     local cx = round(left + 0.6 * s)
-    if clef == "bass" then
-      out:glyph(st, cx, round(Y(staff, 6)), "fClef", colour)
-    elseif clef == "treble8" then
-      out:glyph(st, cx, round(Y(staff, 2)), "gClef8vb", colour)
-    else
-      out:glyph(st, cx, round(Y(staff, 2)), "gClef", colour)
-    end
+    local cg = CLEF_GLYPH[clef] or CLEF_GLYPH.treble
+    out:glyph(st, cx, round(Y(staff, cg[2])), cg[1], colour)
     local x = cx + gwidth(st, "gClef") + 0.8 * s
-    local fifths = layout.fifths
+    local fifths = first_m.fifths or layout.fifths
     if fifths ~= 0 then
-      local list = fifths > 0 and SHARP_POS or FLAT_POS
       local name = fifths > 0 and "accidentalSharp" or "accidentalFlat"
-      for i = 1, abs(fifths) do
-        local pos = list[i] - (clef == "bass" and 2 or 0)
+      for _, pos in ipairs(model.key_positions(fifths, clef)) do
         out:glyph(st, round(x), round(Y(staff, pos)), name, colour)
         x = x + gwidth(st, name) + 0.12 * s
       end
