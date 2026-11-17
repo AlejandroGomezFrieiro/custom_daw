@@ -178,6 +178,10 @@ qmap("q", function()
   if win and not layout.close(win) then daw.notify("the last window does not close", "warn") end
 end, "Close the window")
 
+daw.ui.keybar.set("qflist", "n", {
+  { "j", "next" }, { "k", "previous" }, { "<CR>", "jump" }, { "<leader>ca", "fix" }, { "q", "close" }, { "?", "keys" },
+})
+
 daw.command("qf.window", function()
   daw.canvas.open_view("qflist", { title = "Quickfix list", width = 760, height = 300 })
 end, { desc = "Show the quickfix list in a window of its own, in the graphical frontend" })

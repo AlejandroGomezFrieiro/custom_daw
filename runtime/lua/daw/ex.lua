@@ -22,8 +22,9 @@
 -- fields (`d4`, `+12`, `vel=90`, `vel-10`, `len*2`, `name:Chorus`), and an
 -- empty one removes what matched.
 --
--- Extensions add fields with `daw.ex.field` and say how a view of theirs
--- reads time with `daw.ex.view`; a command made with `range = true` gets
+-- Extensions add fields with `daw.ex.field`, say how a view of theirs
+-- reads time with `daw.ex.view`, and how the notes of clips they write
+-- (a score clip's) are read and changed with `daw.ex.clips`; a command made with `range = true` gets
 -- the range as `ctx.range` and the things in it from `daw.ex.items`.
 local api = daw.api
 local util = daw.util
@@ -392,6 +393,27 @@ function M.is_score(c)
   return c.kind == "score" or (type(c.meta) == "table" and c.meta.score ~= nil)
 end
 
+-- Clips whose notes are written by something else (a score clip's notes
+-- are played from its score): `daw.ex.clips(name, { claims = function(c)
+-- return true end, notes = function(c) return items end, apply =
+-- function(c, changes, removes) end })`. `notes` gives the clip's notes as
+-- items (`{ kind = "note", note, place, at }`, `at` the beat of the song
+-- where the note is written); `apply` makes the changes (`{ item, change
+-- }`, a pitch's `change.spelling = { letter, alter }` when the
+-- replacement spelled it: `db4`) and takes out the items in `removes`,
+-- as one edit. A score clip nothing claims is refused.
+
+M.writers = {}
+
+function M.clips(name, spec) M.writers[name] = spec end
+
+local function writer_of(c)
+  if not M.is_score(c) then return nil end
+  for _, w in pairs(M.writers) do
+    if w.claims(c) then return w end
+  end
+end
+
 local function scope_clips(r)
   local out = {}
   local function add_track(id)
@@ -449,8 +471,18 @@ function M.items(r, kind)
     if kind == "clip" then
       if inside(r, c.start) then out[#out + 1] = { kind = "clip", track = c.track, clip = c, at = c.start, order = order[c.track] } end
     elseif c.kind == "midi" or M.is_score(c) then
-      if M.is_score(c) then fail("clip `%s` is a score: its notes are changed through the score, which Ex does not reach yet", c.name) end
-      for place, n in ipairs(api.clip_notes(c.id)) do
+      local writer = writer_of(c)
+      if M.is_score(c) and not writer then fail("clip `%s` is a score, and nothing loaded writes its notes", c.name) end
+      if writer then
+        for _, item in ipairs(writer.notes(c)) do
+          local n = item.note
+          if (not r.pitches or (n.pitch >= r.pitches[1] and n.pitch <= r.pitches[2])) and inside(r, item.at) then
+            item.track, item.clip, item.order = c.track, c, order[c.track]
+            out[#out + 1] = item
+          end
+        end
+      end
+      for place, n in ipairs(writer and {} or api.clip_notes(c.id)) do
         local at = c.start + n.start
         local pitch_ok = not r.pitches or (n.pitch >= r.pitches[1] and n.pitch <= r.pitches[2])
         if pitch_ok and inside(r, at) then
@@ -552,11 +584,14 @@ local function pitch_word(text)
   if n then return tonumber(n) <= 127 and { pitch = tonumber(n) } or nil end
   local letter, acc, octave = text:match("^([A-Ga-g])([#b]?)(%-?%d*)$")
   if not letter or octave == "-" then return nil end
-  local semitone = NOTE[letter:lower()] + (acc == "#" and 1 or acc == "b" and -1 or 0)
-  if octave == "" then return { class = semitone % 12 } end
+  local alter = acc == "#" and 1 or acc == "b" and -1 or 0
+  local semitone = NOTE[letter:lower()] + alter
+  -- How it was spelled, for what keeps spellings (a score).
+  local spelling = { letter = ("cdefgab"):find(letter:lower(), 1, true) - 1, alter = alter }
+  if octave == "" then return { class = semitone % 12, spelling = spelling } end
   local pitch = (tonumber(octave) + 1) * 12 + semitone
   if pitch < 0 or pitch > 127 then return nil end
-  return { pitch = pitch }
+  return { pitch = pitch, spelling = spelling }
 end
 
 local function field_names()
@@ -747,6 +782,7 @@ function M.change(item, sets, pattern)
       if spec.max then value = math.min(spec.max, value) end
     end
     spec.set(item, value, change)
+    if spec.type == "pitch" and set.op == "=" and set.value.spelling then change.spelling = set.value.spelling end
   end
   return change
 end
@@ -760,7 +796,7 @@ function M.apply(changes, remove)
   local function clip_edit(item)
     local id = item.clip.id
     if not per_clip[id] then
-      per_clip[id] = { set = {}, remove = {} }
+      per_clip[id] = { set = {}, remove = {}, changes = {}, removes = {} }
       order[#order + 1] = id
     end
     return per_clip[id]
@@ -770,8 +806,12 @@ function M.apply(changes, remove)
     if item.kind == "note" then
       local n = item.note
       local e = clip_edit(item)
+      e.changes[#e.changes + 1] = c
+      -- A spelling is for what writes the clip; notes have none.
+      local change = util.merge(c.change, {})
+      change.spelling = nil
       e.set[#e.set + 1] = util.merge({ index = item.place, start = n.start, length = n.length, pitch = n.pitch,
-        velocity = n.velocity, meta = n.meta or {} }, c.change)
+        velocity = n.velocity, meta = n.meta or {} }, change)
     elseif item.kind == "clip" then
       for key, value in pairs(c.change) do api.clip_set(item.clip.id, key, value) end
     else
@@ -782,6 +822,7 @@ function M.apply(changes, remove)
   for _, item in ipairs(remove or {}) do
     if item.kind == "note" then
       local e = clip_edit(item)
+      e.removes[#e.removes + 1] = item
       e.remove[#e.remove + 1] = item.place
     elseif item.kind == "clip" then
       if pcall(api.clip_get, item.clip.id) then api.clip_remove(item.clip.id) end
@@ -791,7 +832,13 @@ function M.apply(changes, remove)
   end
   for _, id in ipairs(order) do
     local e = per_clip[id]
-    if pcall(api.clip_get, id) then daw.clip(id):edit_notes(e) end
+    local ok, c = pcall(api.clip_get, id)
+    local writer = ok and writer_of(c)
+    if writer then
+      writer.apply(c, e.changes, e.removes)
+    elseif ok then
+      daw.clip(id):edit_notes({ set = e.set, remove = e.remove })
+    end
   end
   for _, id in ipairs(tracks) do api.track_remove(id) end
 end
@@ -1454,7 +1501,11 @@ function M.exec(line, ctx)
   local name, args, steps = M.split(rest)
   if not name then error("`" .. rest:match("^%s*(.-)%s*$") .. "`: not a command", 0) end
   local spec = commands.get(name)
-  if not spec then error("no command `" .. name .. "`: `,fc` or `:` and Tab find one", 0) end
+  if not spec then
+    spec = commands.main(name)
+    if not spec then error(commands.unknown(name), 0) end
+    name = spec.name
+  end
   local text = line:match("^%s*:?(.-)%s*$")
   if spec.ex and (range or name ~= "normal") then
     api.undo_label(":" .. text)

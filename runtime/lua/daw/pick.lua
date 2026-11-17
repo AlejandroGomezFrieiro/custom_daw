@@ -255,6 +255,22 @@ end
 -- over one found only in the rest of the line.
 local PRIMARY_BONUS = 1000
 
+-- A line holding every term as the start of a word ("send" in "Send the
+-- track"), a primary part that starts with the term or is it: worth more
+-- than the same letters scattered, and less than a match in the primary.
+local WORD_BONUS, PREFIX_BONUS, EXACT_BONUS = 200, 300, 600
+
+--- Whether `text` has `term` at the start of a word.
+local function starts_word(text, term)
+  local from = 1
+  while true do
+    local at = text:find(term, from, true)
+    if not at then return false end
+    if at == 1 or not sub(text, at - 1, at - 1):match("%w") then return true end
+    from = at + 1
+  end
+end
+
 -- Equal scores go to the match that ends sooner, then to the shorter line.
 local function by_score(a, b)
   if a.score ~= b.score then return a.score > b.score end
@@ -298,7 +314,25 @@ local function filter_entries(query, entries)
           break
         end
       end
-      if all then total = total + PRIMARY_BONUS end
+      if all then
+        total = total + PRIMARY_BONUS
+        local low = lower(e.primary)
+        if #terms == 1 and (terms[1].exact and e.primary or low) == terms[1].text then
+          total = total + EXACT_BONUS
+        elseif #terms == 1 and sub(terms[1].exact and e.primary or low, 1, #terms[1].text) == terms[1].text then
+          total = total + PREFIX_BONUS
+        end
+      end
+    end
+    if total and not (e.primary and total >= PRIMARY_BONUS) then
+      local words = true
+      for _, term in ipairs(terms) do
+        if not starts_word(term.exact and e.text or e.low, term.text) then
+          words = false
+          break
+        end
+      end
+      if words then total = total + WORD_BONUS end
     end
     if total then
       e.score, e.finish = total, finish
@@ -311,9 +345,9 @@ end
 
 --- The items that match `query`, best first, each as { item, text, score }.
 ---   daw.pick.filter("bass", { "Bass", "Bass Synth", "Drums" })
-function M.filter(query, items, format)
+function M.filter(query, items, format, primary)
   local out = {}
-  for i, e in ipairs(filter_entries(query, entries_of(items, format))) do
+  for i, e in ipairs(filter_entries(query, entries_of(items, format, primary))) do
     out[i] = { item = e.item, text = e.text, score = e.score }
   end
   return out

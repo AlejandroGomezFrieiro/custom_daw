@@ -362,7 +362,8 @@ function M.splice(score, mi, staff, v, a, b, new)
   for _, it in ipairs(items) do
     local graced = it.s == it.e
     if graced then
-      if it.s < a or it.s >= b then
+      -- Grace notes where the stretch starts lead into what is written there.
+      if it.s <= a or it.s >= b then
         if it.s >= b then insert() end
         out[#out + 1] = it
       end
