@@ -143,14 +143,41 @@ function M.layout(score, opts)
       end)
     end
   end
+  -- The key and the clefs in force, as measures change them.
+  local fifths, in_force = opts.fifths or 0, {}
+  for k, clef in ipairs(staves) do in_force[k] = clef end
   for i = 1, count do
-    local meter = D.meter(meters[i][1], meters[i][2])
+    local meter = D.meter(meters[i][1], meters[i][2], meters[i].groups)
     local sm, before, after = score.measures[i], score.measures[i - 1], score.measures[i + 1]
+    local key_change, clef_change, key_from = nil, nil, fifths
+    if sm and sm.key and sm.key.fifths then
+      key_change = sm.key.fifths ~= fifths or i == 1
+      fifths = sm.key.fifths
+    end
+    if sm and sm.clef then
+      for id, clef in pairs(sm.clef) do
+        local k = ids[id]
+        if k and in_force[k] ~= clef then
+          clef_change = clef_change or {}
+          clef_change[k], in_force[k] = clef, clef
+        end
+      end
+    end
+    local now = table.concat(in_force, ",")
     local key = table.concat({ i, tostring(sm and sm.v), tostring(before and before.v), tostring(after and after.v), clefs,
-      starts[i], lengths[i], i == count and "last" or "" }, "|")
+      starts[i], lengths[i], i == count and "last" or "", fifths, now }, "|")
     local m = { number = (opts.number or 1) + i - 1, index = i, start = (origin + starts[i]) / Q, length = lengths[i] / Q,
-      meter = meter, staves = {}, id = sm and sm.id, v = sm and sm.v }
-    if sm then m.repeat_start, m.repeat_end = sm.repeat_start, sm.barline == ":|" end
+      meter = meter, staves = {}, id = sm and sm.id, v = sm and sm.v, fifths = fifths, key_change = key_change or nil,
+      key_from = key_change and key_from or nil,
+      clef_change = clef_change }
+    if now ~= table.concat(staves, ",") then
+      m.clefs = {}
+      for k, clef in ipairs(in_force) do m.clefs[k] = clef end
+    end
+    if sm then
+      m.repeat_start, m.repeat_end = sm.repeat_start, sm.barline == ":|"
+      m.barline, m.volta, m.rehearsal, m.key_name = sm.barline, sm.volta, sm.rehearsal, sm.key and sm.key.name
+    end
     local hit = kept[key]
     if hit then
       m.staves, m.incomplete, m.overfull = hit.staves, hit.incomplete, hit.overfull
@@ -196,7 +223,7 @@ function M.layout(score, opts)
       end
     end
   end
-  local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = opts.fifths or 0,
+  local result = { measures = measures, staves = staves, meter = measures[1].meter, fifths = measures[1].fifths or opts.fifths or 0,
     grid = opts.grid or 0.25, origin = origin / Q, score = { events = {} }, doc = score }
   -- Accidentals and stems of the measures laid out now, each run of them
   -- after the measure before it, which says what its bar left altered.

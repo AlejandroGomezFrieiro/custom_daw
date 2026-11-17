@@ -579,6 +579,16 @@ function view:paint(g, ctx)
   end
   g:layer("playhead")
   draw_playhead(g, eng, layout, clip, area)
+  -- A popover is drawn over the caret's staff, the page under it.
+  local popover = view.popover
+  if popover and popover.active() then
+    local sys, x = at_beat(eng, view.beat)
+    if sys then
+      local top = engrave.y_of(st, sys, 1, 8) - 2 * st.sp + area.top - gui.scroll
+      g:layer("popover")
+      popover.paint(g, x + (view.galley and -gui.hscroll or 0), math.max(area.top + 26, top), w, c)
+    end
+  end
 
   if chrome then
     toolbar(g, w, rows)

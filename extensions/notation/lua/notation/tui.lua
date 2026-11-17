@@ -12,21 +12,14 @@ local EPS = 1e-6
 
 view.zoom = 1   -- how wide the terminal spaces notes: 1 is a sixteenth in two columns
 
+local room_for_changes, draw_directions
+
 -- Characters: what a note head, a rest or an accidental looks like in a cell.
 local ACC = { [1] = "♯", [-1] = "♭", [0] = "♮", [2] = "x", [-2] = "♭" }
 local REST = { [1] = "ζ", [0.5] = "γ", [0.25] = "ɣ", [0.125] = "ɣ" }
-local CLEF = { treble = { "G", 2 }, bass = { "F", 6 }, treble8 = { "G", 2 } }
--- Where a key signature's sharps and flats go on the treble staff, in order;
--- the bass staff has them two steps lower.
-local SHARP_POS = { 8, 5, 9, 6, 3, 7, 4 }
-local FLAT_POS = { 4, 7, 3, 6, 2, 5, 1 }
+local CLEF = { treble = { "G", 2 }, bass = { "F", 6 }, treble8 = { "G", 2 }, bass8 = { "F", 6 }, alto = { "C", 4 }, tenor = { "C", 6 } }
 
-local function key_positions(fifths, clef)
-  local out = {}
-  local list = fifths > 0 and SHARP_POS or FLAT_POS
-  for i = 1, math.abs(fifths) do out[i] = list[i] - (clef == "bass" and 2 or 0) end
-  return out
-end
+local function key_positions(fifths, clef) return model.key_positions(fifths, clef) end
 view.key_positions = key_positions
 
 --- Whether a chord has a head at a staff position (where its stem is not drawn).
@@ -78,6 +71,98 @@ local function pack(layout, first, width, systems, prefix)
   return out, i - 1
 end
 
+--- Room at the start of a measure for a clef or key that changes there.
+room_for_changes = function(layout)
+  for i, m in ipairs(layout.measures) do
+    local extra = 0
+    if m.clef_change then extra = extra + 2 end
+    if m.key_change and i > 1 then
+      local before = layout.measures[i - 1].fifths or 0
+      extra = extra + math.max(1, math.abs(m.fifths or 0), m.fifths == 0 and math.abs(before) or 0) + 1
+    end
+    if extra > 0 then
+      for _, slot in ipairs(m.slots) do slot.x = slot.x + extra end
+      m.width = m.width + extra
+    end
+  end
+end
+
+local ORN = { trill = "tr", mordent = "∿", prall = "∿", turn = "∾", turn_inverted = "∾", tremolo = "≡" }
+
+--- What a measure says besides its notes, in cells: clef and key changes
+--- at its start, barlines and endings, rehearsal marks, tempo, chord
+--- symbols and techniques over the staff, ornaments over chords, the
+--- lyrics of later verses. `o`: `mx`, `bx`, `xt`, `row_of`, `margin`,
+--- `note_style`, `colour`, `bar_style`, `bottom`.
+draw_directions = function(buf, layout, m, inside, o)
+  local row_of, margin, ink = o.row_of, o.margin, o.note_style
+  local top_row, text_row = row_of(1, 8 + margin), row_of(1, 8 + math.max(1, margin - 1))
+  local x = o.mx
+  for s, clef in ipairs(layout.staves) do
+    clef = m.clefs and m.clefs[s] or clef
+    if m.clef_change and m.clef_change[s] and inside then
+      buf:text(x, row_of(s, CLEF[clef][2]), CLEF[clef][1], ink)
+    end
+    if m.key_change and m.index > 1 then
+      local kx = x + (m.clef_change and 2 or 0)
+      local before = layout.measures[m.index - 1].fifths or 0
+      if (m.fifths or 0) == 0 then
+        for i, pos in ipairs(key_positions(before, clef)) do buf:text(kx + i - 1, row_of(s, pos), "♮", ink) end
+      else
+        for i, pos in ipairs(key_positions(m.fifths, clef)) do buf:text(kx + i - 1, row_of(s, pos), m.fifths > 0 and "♯" or "♭", ink) end
+      end
+    end
+    if m.barline == "||" or m.barline == "|." then
+      for pp = 0, 8 do buf:text(o.bx, row_of(s, pp), m.barline == "||" and "║" or "┃", m.ghost and ink or o.bar_style) end
+    end
+  end
+  local used = x
+  if m.rehearsal then used = used + buf:text(x, top_row, "[" .. m.rehearsal .. "]", { fg = o.colour, bold = true }) + 1 end
+  if m.volta then
+    -- The ending's number where it starts; its line over every bar of it.
+    local before = layout.measures[m.index - 1]
+    local label = (before and before.volta == m.volta and inside) and "" or (m.volta .. ".")
+    buf:text(used, top_row, (label ~= "" and "┌" or "─") .. label, ink)
+    for vx = used + 1 + #label, o.bx - 1 do buf:text(vx, top_row, "─", ink) end
+  end
+  for _, mk in ipairs(m.marks or {}) do
+    local mx = o.xt(mk.at)
+    local ink = mk.ghost and "ExGhost" or ink
+    if mk.kind == "tempo" then
+      local label = mk.value:gsub("q(%.?)%s*=%s*", "♩%1=")
+      if not mk.change and mk.bpm and not label:find("=") then label = label .. " ♩=" .. math.floor(mk.bpm + 0.5) end
+      buf:text(math.max(mx, used), top_row, label, (m.ghost or mk.ghost) and ink or { fg = o.colour, bold = true })
+    elseif mk.kind == "chord" then
+      buf:text(mx, text_row, mk.value, (m.ghost or mk.ghost) and ink or { fg = o.colour, bold = true })
+    elseif mk.kind == "technique" then
+      buf:text(mx, text_row, mk.value, (m.ghost or mk.ghost) and ink or { fg = o.colour, italic = true })
+    elseif mk.kind == "dyn" and mk.subito then
+      buf:text(mx + #mk.value + 1, math.min(row_of(1, -margin), o.bottom), "sub.", { fg = o.colour, italic = true })
+    elseif (mk.kind == "cresc" or mk.kind == "dim") and mk.niente then
+      local at = mk.kind == "cresc" and mx or (mk.to >= m.start + m.length - EPS and o.bx - 1 or o.xt(mk.to))
+      buf:text(at, math.min(row_of(1, -margin), o.bottom), "o", ink)
+    end
+  end
+  for s in ipairs(layout.staves) do
+    for _, ev in ipairs(m.staves[s] or {}) do
+      local src = ev.source
+      if ev.kind == "note" and src then
+        local art = src.art or {}
+        local above = math.max(ev.notes[#ev.notes].pos + 2, (ev.stem or 0) > 0 and ev.notes[#ev.notes].pos + 5 or 9)
+        local mark = (art.fermata or art.fermata_long or art.fermata_short) and "⌒" or nil
+        if src.orn then buf:text(o.xt(ev.start), row_of(s, above), ORN[src.orn] or src.orn, ink) end
+        if mark then buf:text(o.xt(ev.start), row_of(s, above + (src.orn and 1 or 0)), mark, ink) end
+        if s == 1 then
+          for verse, text in ipairs(src.lyrics or {}) do
+            local y = row_of(1, -margin + (#layout.staves == 2 and 0 or 1)) + verse
+            if text ~= "" and y <= o.bottom then buf:text(o.xt(ev.start), y, text, "Normal") end
+          end
+        end
+      end
+    end
+  end
+end
+
 function view:render(buf, ctx)
   local w, h = buf.width, buf.height
   local clip = self:clip()
@@ -95,6 +180,8 @@ function view:render(buf, ctx)
   local colour = daw.draw.track_colour(track)
   local layout = self:layout()
   model.space(layout, { lead = 2, acc = 1, grace = 2, tail = 1, unit = unit })
+  room_for_changes(layout)
+  self.caret_cell = nil
   local fifths, stored = view.key()
   local inserting = ctx.focused and daw.keymap.mode == "i"
   -- A grand staff in a panel too low for both staves: the cursor's staff alone.
@@ -165,7 +252,7 @@ function view:render(buf, ctx)
     return i == 1 or (before and before.meter ~= m.meter)
   end
   local function prefix(i)
-    local p = 3 + math.abs(fifths) + 1
+    local p = 3 + math.abs(layout.measures[i].fifths or fifths) + 1
     if meter_changes(i) then p = p + 3 end
     return p
   end
@@ -194,16 +281,19 @@ function view:render(buf, ctx)
     geometry.systems[si] = { top = top, measures = sys.measures, row_of = row_of, width = sys.width }
     -- Staff lines, clef, key.
     for s, clef in ipairs(layout.staves) do
+      local first = sys.measures[1].m
+      -- The clef and key in force where the system starts.
+      clef = first.clefs and first.clefs[s] or clef
+      local sys_fifths = first.fifths or fifths
       for pos = 0, 8, 2 do buf:fill(0, row_of(s, pos), sys.width, 1, "─", staff_style) end
       buf:text(1, row_of(s, CLEF[clef][2]), CLEF[clef][1], { fg = colour, bold = true })
-      if clef == "treble8" then buf:text(1, row_of(s, -1), "8", { fg = colour }) end
+      if clef == "treble8" or clef == "bass8" then buf:text(1, row_of(s, -1), "8", { fg = colour }) end
       if layout.names and layout.names[s] ~= "" then buf:text(2, row_of(s, 10), layout.names[s], "Dim") end
-      for i, pos in ipairs(key_positions(fifths, clef)) do
-        buf:text(2 + i, row_of(s, pos), fifths > 0 and "♯" or "♭", "Dim")
+      for i, pos in ipairs(key_positions(sys_fifths, clef)) do
+        buf:text(2 + i, row_of(s, pos), sys_fifths > 0 and "♯" or "♭", "Dim")
       end
-      local first = sys.measures[1].m
       if meter_changes(first.index) then
-        local tx = 3 + math.abs(fifths) + 1
+        local tx = 3 + math.abs(sys_fifths) + 1
         buf:text(tx, row_of(s, 6), tostring(first.meter.num), "Bright")
         buf:text(tx, row_of(s, 2), tostring(first.meter.den), "Bright")
       end
@@ -225,6 +315,8 @@ function view:render(buf, ctx)
 
     for _, placed in ipairs(sys.measures) do
       local m, mx = placed.m, placed.x
+      -- What a popover would write is drawn as a ghost until Enter.
+      local note_style = m.ghost and "ExGhost" or note_style
       local function xt(beat) return mx + floor(model.x_of(m, beat) + 0.5) end
       -- Barline after, the bar's number over it.
       local bx = mx + m.width
@@ -467,8 +559,9 @@ function view:render(buf, ctx)
         local mxp = xt(mk.at)
         -- Under the first staff; in a low panel, on the last row there is.
         local dyn_row = math.min(row_of(1, -margin), h - 1)
+        local note_style = mk.ghost and "ExGhost" or note_style
         if mk.kind == "dyn" then
-          buf:text(mxp, dyn_row, mk.value, { fg = colour, bold = true })
+          buf:text(mxp, dyn_row, mk.value, mk.ghost and note_style or { fg = colour, bold = true })
         elseif mk.kind == "cresc" or mk.kind == "dim" then
           local x1 = mk.to >= m.start + m.length - EPS and bx - 1 or xt(mk.to)
           local y = dyn_row
@@ -478,7 +571,7 @@ function view:render(buf, ctx)
           for hx = mxp, x1 do buf:text(hx, y, "─", note_style) end
           if mk.kind == "cresc" then buf:text(mxp, y, "<", note_style) else buf:text(x1, y, ">", note_style) end
         elseif mk.kind == "text" then
-          buf:text(mxp, row_of(1, 8 + margin - 1), tostring(mk.value), { fg = colour, italic = true })
+          buf:text(mxp, row_of(1, 8 + margin - 1), tostring(mk.value), mk.ghost and note_style or { fg = colour, italic = true })
         end
       end
       for st in ipairs(layout.staves) do
@@ -493,6 +586,10 @@ function view:render(buf, ctx)
           buf:text(bx - 1, row_of(st, 5), ":", note_style)
         end
       end
+
+      draw_directions(buf, layout, m, placed ~= sys.measures[1], {
+        mx = mx, bx = bx, xt = xt, row_of = row_of, margin = margin, note_style = note_style, colour = colour, bar_style = bar_style,
+        bottom = h - 1 })
 
       -- The playhead.
       if t.position >= c.start + m.start - EPS and t.position < c.start + m.start + m.length - EPS then
@@ -516,8 +613,10 @@ function view:render(buf, ctx)
         local m = placed.m
         if beat >= m.start - EPS and (beat < m.start + m.length - EPS or (m.index == #layout.measures and beat <= m.start + m.length + EPS)) then
           s = s or (only and 1 or self:cursor_staff(layout))
-          local pos = step - model.CLEF_BOTTOM[layout.staves[s]]
+          local pos = step - model.CLEF_BOTTOM[m.clefs and m.clefs[s] or layout.staves[s]]
           local cx = placed.x + floor(model.x_of(m, beat) + 0.5)
+          -- A popover opens over the caret's staff.
+          self.caret_cell = { x = (ctx.x or 0) + cx, y = (ctx.y or 0) + math.max(1, sys.row_of(s, 8) - 2) }
           local style = inserting and "InsertCursor" or "RollCursor"
           if selection then
             buf:fill(cx, sys.row_of(s, pos), 1, 1, nil, style)
@@ -569,7 +668,7 @@ function view:cell_at(x, y, fine)
         for s, clef in ipairs(g.staves or layout.staves) do
           local pos = sys.row_of(s, 0) - y
           if pos >= -g.margin - 1 and pos <= 8 + g.margin + 1 then
-            local step = model.CLEF_BOTTOM[clef] + pos
+            local step = model.CLEF_BOTTOM[m.clefs and m.clefs[s] or clef] + pos
             local at = { step = step, beat = m.start + self:snap(m, model.t_of(m, x - placed.x) - m.start, fine) }
             at.staff = self:staff_of_step(step, layout)
             -- A head is drawn at its chord's start, or a column right of it

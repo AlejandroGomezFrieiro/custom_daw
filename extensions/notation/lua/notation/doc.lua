@@ -8,8 +8,9 @@
 --     version = 1, rev,          -- rev changes with every edit
 --     origin = { n, d },         -- where measure 1 starts, from the clip's start (0 or less)
 --     staves = { { id, clef } }, -- a grand staff is two staves of one clip
---     measures = { { id, v, meter? = { num, den }, barline?, repeat_start?,
---                    voices = { { staff, voice, events } } } },
+--     measures = { { id, v, meter? = { num, den }, groups? = { 3, 3, 2 }, barline? = "||" | "|." | ":|",
+--                    repeat_start?, volta? = n, rehearsal? = "A", key? = { fifths, name },
+--                    clef? = { [staff id] = clef }, voices = { { staff, voice, events } } } },
 --     marks = { { id, kind, staff?, from = ref, to? = ref, value? } },
 --     style = { gate? }, feel = { [note id] = { dt, dlen, dvel } }, next,
 --   }
@@ -17,6 +18,11 @@
 --             notes = { { id, step = 0..6, alter, octave, tie? } }, grace? = "acciaccatura" | "appoggiatura",
 --             art? = { staccato, ... }, arpeggio? = "up" | "down", beam? = "break", stem? = "up" | "down", lyric? }
 --   ref = { measure = id, at = { n, d } } or, for a slur, { measure = id, event = id }
+--   mark kinds: dynamic (value, subito?), hairpin (value "cresc" | "dim", to, niente?), slur, text,
+--             tempo (value = the text, bpm?, change? = "rit." | "accel." | "a tempo"), chord (value),
+--             technique (value)
+--   event marks: art = { staccato, ..., fermata }, orn? = "trill" | "mordent" | "turn" | ...,
+--             lyric (verse 1), lyrics? = { [n] = text } for verses after it ("" where none)
 --
 -- Durations are fractions of a whole note, `dur` the undotted value. Inside
 -- this module time is counted in ticks, whole numbers of 1/40320 of a whole
@@ -94,7 +100,7 @@ function M.frame(score)
   f = { meters = {}, starts = {}, lengths = {}, index = {}, count = #score.measures, rev = score.rev }
   local meter, at = { 4, 4 }, 0
   for i, m in ipairs(score.measures) do
-    if m.meter then meter = m.meter end
+    if m.meter then meter = m.groups and { m.meter[1], m.meter[2], groups = m.groups } or m.meter end
     f.meters[i], f.starts[i], f.lengths[i], f.index[m.id] = meter, at, meter[1] * W / meter[2], i
     at = at + f.lengths[i]
   end
@@ -181,7 +187,7 @@ function M.length(ev)
   return floor(len + 0.5)
 end
 
-function M.meter(num, den) return model.meter_of(num, den) end
+function M.meter(num, den, groups) return model.meter_of(num, den, groups) end
 
 local BASES = {}
 for _, b in ipairs(model.BASES) do BASES[#BASES + 1] = M.from_beats(b) end
@@ -190,7 +196,7 @@ for _, b in ipairs(model.BASES) do BASES[#BASES + 1] = M.from_beats(b) end
 --- metre divides it: `{ { s, len, dur, dots } }`. `rest` writes silence.
 function M.values(a, b, meter, rest)
   local out = {}
-  local mo = M.meter(meter[1], meter[2])
+  local mo = M.meter(meter[1], meter[2], meter.groups)
   for _, p in ipairs(model.split(a / Q, b / Q, mo, rest)) do
     local s, e = M.from_beats(p[1]), M.from_beats(p[2])
     local base, dots = model.value_of((e - s) / Q, 2)
@@ -281,7 +287,8 @@ local function pieces(score, item, a, b, meter, rest)
     else
       local last = k == #vals
       piece = { id = k == 1 and ev.id or M.id(score, "e"), kind = "chord", dur = p.dur, dots = p.dots, tuplet = tp,
-        art = k == 1 and ev.art or nil, arpeggio = k == 1 and ev.arpeggio or nil, beam = k == 1 and ev.beam or nil, stem = ev.stem }
+        art = k == 1 and ev.art or nil, arpeggio = k == 1 and ev.arpeggio or nil, beam = k == 1 and ev.beam or nil, stem = ev.stem,
+        orn = k == 1 and ev.orn or nil, lyric = k == 1 and ev.lyric or nil, lyrics = k == 1 and ev.lyrics or nil }
       if k == 1 then
         piece.notes = {}
         for i, n in ipairs(ev.notes) do
@@ -618,6 +625,7 @@ function M.remove_note(score, nid)
   table.remove(ev.notes, k)
   if #ev.notes == 0 then
     ev.kind, ev.notes, ev.art, ev.arpeggio, ev.beam, ev.stem = "rest", nil, nil, nil, nil, nil
+    ev.orn, ev.lyric, ev.lyrics = nil, nil, nil
     if ev.grace then
       for i, other in ipairs(entry.events) do
         if other == ev then table.remove(entry.events, i) break end

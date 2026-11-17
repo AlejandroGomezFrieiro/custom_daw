@@ -310,3 +310,30 @@ insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
 Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
 the other voice, `R` repeats the chord, and the numbers choose the value (5
 a quarter). zg shows the engraved page as one long system.
+
+Everything that is not a note is written with a popover: the leader and a
+letter opens a one-line prompt at the caret (in visual mode for the
+selection; in insert mode `Ctrl-o` first, and entering goes on after).
+`Tab` completes, `Up` brings back what was typed before in that popover,
+the page shows the result in the accent while it is typed, `Enter` writes
+it as one undo step and `Esc` leaves nothing. Each is an Ex command, so `.`,
+`@:` and `:5,8notation.dyn p` do the same.
+
+| Keys | Popover | Accepts |
+| --- | --- | --- |
+| `,d` | dynamics | `mp`, `sfz`, `fp`, `p subito`, `mp<f`, `<`, `>`, `niente<` |
+| `,t` | tempo | `Allegro q=132`, `q.=60`, `rit.`, `accel.`, `a tempo` |
+| `,m` | time signature | `6/8`, `3+3+2/8`, `C`, `¢` |
+| `,k` | key | `Eb`, `f#m`, `D dorian` |
+| `,C` | clef | `bass`, `treble8`, `alto`, `tenor` |
+| `,b` | barlines, repeats, endings | `\|\|`, `\|.`, `\|:`, `:\|`, `1.`, `2.` |
+| `,X` | text | `dolce` |
+| `,r` | rehearsal mark | `A` (Enter alone: the next letter) |
+| `,q` | chord symbols | `Cmaj7`, `G/B`, `N.C.`; `Space` next beat |
+| `,l` | lyrics | syllables; `Space` next note, `-` hyphen, `_` extender; `verse=2 ` first |
+| `,i` | intervals | `3`, `-6`, `8`, `m3`, `P5` |
+| `,3` | tuplets | `3`, `5:4` |
+| `,v` | voice | `1` to `4` |
+| `,o` | ornaments | `tr`, `mordent`, `turn`, `fermata` |
+| `,p` | playing techniques | `pizz.`, `arco`, `con sord.` |
+| `,.` | the last popover again, with its text | |

@@ -21,17 +21,20 @@ end, { desc = "Show the clip under the cursor as notation, to read and edit" })
 command("notation.open", function() daw.cmd("notation") end, { desc = "Show the clip under the cursor as notation" })
 
 command("notation.clef", function(ctx)
+  local want = ctx.args[1] and tostring(ctx.args[1])
+  local valid = want and (model.CLEF_BOTTOM[want] or want == "grand" or want == "auto" or want == "off")
+  -- On a score's bar after the first: a clef change there.
+  if valid and want ~= "grand" and want ~= "auto" and require("notation.write").clef(ctx, want) then return end
   local clip = view.target()
   local track = clip and clip:track() or daw.cursor.track()
   if not track then return daw.notify("no track", "warn") end
-  local want = ctx.args[1] and tostring(ctx.args[1])
   local meta = track.meta or {}
   if not want then
     local fixed = type(meta.notation) == "table" and meta.notation.clef
     return daw.notify("clef: " .. (fixed or "chosen by the notes"))
   end
-  if not ({ treble = true, bass = true, grand = true, auto = true, treble8 = true })[want] then
-    return daw.notify("a clef is treble, treble8 (guitar), bass, grand or auto", "warn")
+  if not valid or want == "off" then
+    return daw.notify("a clef is treble, treble8 (guitar), bass, bass8, alto, tenor, grand or auto", "warn")
   end
   if clip and view.has_score(clip:get()) then
     -- A score keeps its own staves.
@@ -44,9 +47,11 @@ command("notation.clef", function(ctx)
   meta.notation = next(own) and own or nil
   track.meta = meta
   daw.notify("clef: " .. (own.clef or "chosen by the notes"))
-end, { desc = "Fix the track's clef: `notation.clef bass` (treble, bass, grand, auto)" })
+end, { range = true, desc = "Fix the track's clef: `notation.clef bass` (treble, treble8, bass, bass8, alto, tenor, grand, auto); in a score after its first bar, a clef change at the cursor's bar" })
 
 command("notation.key", function(ctx)
+  -- In a score open in the view: a key change at the cursor's bar.
+  if #ctx.args > 0 and require("notation.write").key(ctx) ~= false then return end
   local words = {}
   for _, a in ipairs(ctx.args) do words[#words + 1] = tostring(a) end
   if #words == 0 then
@@ -65,7 +70,7 @@ command("notation.key", function(ctx)
   meta.musicops = next(stored) and stored or nil
   api.project_set("meta", meta)
   daw.emit("musicops.key", { key = stored.root and (stored.root .. " " .. stored.scale) or nil })
-end, { desc = "Set the project's key, as musicops keeps it: `notation.key Eb major`, `notation.key off`" })
+end, { range = true, desc = "Set the key: in a score open in the view, from the cursor's bar (`notation.key Eb`, `f#m`, `D dorian`, `off`); else the project's, as musicops keeps it" })
 
 --- The clip the settings commands work on.
 local function settings_clip()
@@ -154,18 +159,13 @@ local function mark_span(ctx)
 end
 
 command("notation.dyn", function(ctx)
-  local clip = view:clip()
-  if not clip then return daw.notify("no clip open as notation", "warn") end
-  local value = tostring(ctx.args[1] or "")
-  local at = mark_span(ctx)
-  if value == "off" then
-    marks.put(clip, { at = at, kind = "dyn", value = false })
-    return daw.notify("no dynamic here")
+  local value = tostring(ctx.args[1] or ""):match("^%s*(.-)%s*$")
+  if marks.DYNAMICS[value] and view:clip() then
+    marks.put(view:clip(), { at = (mark_span(ctx)), kind = "dyn", value = value })
+    return daw.notify(value .. ": notes from here as loud as " .. marks.DYNAMICS[value])
   end
-  if not marks.DYNAMICS[value] then return daw.notify("a dynamic is " .. table.concat(marks.ORDER, ", ") .. " or off", "warn") end
-  marks.put(clip, { at = at, kind = "dyn", value = value })
-  daw.notify(value .. ": notes from here as loud as " .. marks.DYNAMICS[value])
-end, { range = true, desc = "A dynamic at the cursor (or the start of the range), which sets how loud the notes from there play: `notation.dyn mf`" })
+  require("notation.write").dynamic(ctx)
+end, { range = true, raw = true, desc = "A dynamic at the cursor (or the start of the range), which sets how loud the notes from there play: `notation.dyn mf`; `sfz`, `fp`, `p subito`; a hairpin to the next dynamic `<`, `>`, or `mp<f` over the range" })
 
 for _, kind in ipairs({ "cresc", "dim" }) do
   command("notation." .. kind, function(ctx)
@@ -256,13 +256,15 @@ command("score.detach", function()
 end, { desc = "Keep the notes a score clip plays and forget its score: a plain MIDI clip" })
 
 command("notation.voice", function(ctx)
+  -- Over a range or a selection, the chords into that voice.
+  if require("notation.write").voice(ctx) then return end
   local v = tonumber(ctx.args[1])
   if not v then return daw.notify("entering in voice " .. (view.voice or 1)) end
   if v < 1 or v > 4 then return daw.notify("a voice is 1 to 4", "warn") end
   view.voice = math.floor(v)
   api.ui_redraw()
   daw.notify("entering in voice " .. view.voice)
-end, { desc = "Choose the voice notes are entered in, on the cursor's staff: `notation.voice 2` (1 to 4)" })
+end, { range = true, desc = "Choose the voice notes are entered in, on the cursor's staff: `notation.voice 2` (1 to 4); over a range or selection, its chords into that voice" })
 
 command("notation.transpose", function(ctx)
   if not view:clip() then return daw.notify("no clip open as notation", "warn") end
@@ -720,7 +722,7 @@ imap("v", function()
   api.ui_redraw()
 end, "Enter in the other voice (1 or 2) of the staff")
 imap("t", function()
-  view.triplets = not view.triplets
+  view.triplets, view.tuplet = not view.triplets, nil
   daw.notify(view.triplets and "entering triplets" or "entering plain values")
   api.ui_redraw()
 end, "Enter triplets, or plain values again")

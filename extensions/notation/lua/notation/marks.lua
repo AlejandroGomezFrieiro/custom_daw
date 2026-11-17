@@ -164,18 +164,24 @@ local function marks_of(layout, c)
     return t and (origin + t) / D.Q
   end
   local marks, slurs = {}, {}
+  -- What a popover would write is drawn as a ghost until it is written.
+  local ghost = view.ghost and view.ghost.marks or {}
   for _, mk in ipairs(sc.marks or {}) do
     local at = beat(mk.from)
     if at then
+      local first = #marks
       if mk.kind == "dynamic" then
-        marks[#marks + 1] = { at = at, kind = "dyn", value = mk.value }
+        marks[#marks + 1] = { at = at, kind = "dyn", value = mk.value, subito = mk.subito }
       elseif mk.kind == "hairpin" then
-        marks[#marks + 1] = { at = at, kind = mk.value == "dim" and "dim" or "cresc", to = beat(mk.to) or at }
+        marks[#marks + 1] = { at = at, kind = mk.value == "dim" and "dim" or "cresc", to = beat(mk.to) or at, niente = mk.niente }
+      elseif mk.kind == "tempo" or mk.kind == "chord" or mk.kind == "technique" then
+        marks[#marks + 1] = { at = at, kind = mk.kind, value = mk.value, bpm = mk.bpm, change = mk.change }
       elseif mk.kind == "text" then
         marks[#marks + 1] = { at = at, kind = "text", value = mk.value }
       elseif mk.kind == "slur" then
         slurs[#slurs + 1] = { from = at, to = beat(mk.to) or at, staff = D.staff_index(sc, mk.staff) or 1 }
       end
+      if ghost[mk.id] and marks[first + 1] then marks[first + 1].ghost = true end
     end
   end
   table.sort(marks, function(a, b) return a.at < b.at end)
@@ -198,7 +204,7 @@ function M.decorate(layout, clip)
           m.directions[#m.directions + 1] = { start = mk.at, xml = "<dynamics><" .. mk.value .. "/></dynamics>" }
         elseif XML_WEDGE[mk.kind] then
           m.directions[#m.directions + 1] = { start = mk.at, xml = '<wedge type="' .. XML_WEDGE[mk.kind] .. '"/>' }
-        elseif mk.kind == "text" then
+        elseif mk.kind == "text" or mk.kind == "technique" or (mk.kind == "tempo" and not mk.bpm) then
           m.directions[#m.directions + 1] = { start = mk.at, xml = "<words>" .. tostring(mk.value):gsub("&", "&amp;"):gsub("<", "&lt;") .. "</words>" }
         end
         if mk.kind == "repeat" and mk.value == "start" then m.repeat_start = true end
