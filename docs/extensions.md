@@ -26,7 +26,7 @@ and can be deleted without the rest noticing. The core never requires one.
 
 | Plugin | What it adds |
 | --- | --- |
-| `extensions/utau` | singing synthesis, a vocal editor |
+| `extensions/utau` | singing synthesis: vocal tracks, a vocal editor, the device that plays the singing and the engine that sings (see below) |
 | `extensions/sections` | named sections of the song as text objects, and arranging by section |
 | `extensions/musicops` | musical operators: humanize, strum, arpeggiate, scales |
 | `extensions/pattern` | clips written as patterns of text, in the manner of TidalCycles |
@@ -43,8 +43,11 @@ and can be deleted without the rest noticing. The core never requires one.
 | `crates/daw-mcp` | a Model Context Protocol server in front of the control socket |
 
 Each has a README of its own. Where a plugin needed something only the core
-could give (measuring loudness quickly, a tree of undo states), that one
-thing went into the core as an API function and the rest stayed outside.
+could give (measuring loudness quickly, a tree of undo states, data for a
+device's every instance), that one thing went into the core as an API
+function, general enough for any extension, and the rest stayed outside.
+[Everything an extension can own](#everything-an-extension-can-own) shows
+how far that goes: singing synthesis is an extension, engine included.
 
 ## Extensions
 
@@ -111,3 +114,82 @@ notice inside compiled loops (`LUAJIT_ENABLE_CHECKHOOK`, asked for in
 `daw.api.limit_async` and falls back to a count hook, with code that is not
 the runtime's own kept in LuaJIT's interpreter. `:lua` typed by hand
 gets a minute, and scripts run with `-l` have no limit.
+
+## Everything an extension can own
+
+extensions/utau is the example of how far an extension goes. Singing is not
+in the program: the extension brings the vocal editor, the kind of track,
+the device that plays what was sung, and the engine that sings, and a Nix
+configuration that names it gets all of them.
+
+```
+extensions/utau/
+  init.lua, lua/utau/   the editor, the commands, the talk with the engine
+  devices/utau.lua      the device that plays the singing (Lua, in its own process)
+  engine/               the engine's C# source, on OpenUtau.Core
+  nix/                  how the engine and the extension are built and packaged
+```
+
+What the core gives it, which any extension can use the same way:
+
+**Devices written in Lua.** `devices/` holds devices (see
+[Writing a device in Lua](devices.md#writing-a-device-in-lua)). Each runs
+in a helper process with a LuaJIT state of its own, so one that fails or
+crashes stops alone. Scripts in the session talk to a device's `dev.call`:
+`daw.api.device_call(device, method, data)` for one device, and
+`daw.api.device_post(kind, topic, data)` for every device of a kind, those
+there now and every one made later, an offline render's own among them,
+before its first block. Large data goes as files the device maps with
+`dsp.map(path)`, shared by every device that maps them. The utau device
+gets the singing this way: the extension writes each phrase the engine
+sends to a file and posts each voice's list of files; the devices play
+them at their place, the same live and rendered, bit for bit.
+
+**Kinds of track.** `daw.track_kinds.define(name, spec)` says what a kind
+of track is: `title`, `letter` (shown in the track header before the name),
+`create(track, args)` (what makes an ordinary track this kind: devices, a
+question), `editor(clip)` (what Enter, a double click and `:clip.edit` open
+for its clips; true when it opened one), `describe(track)` (a few words for
+`K` and the window's track header), and `is(track)` (a track that is of the
+kind without saying so). From then on `:track.add <name> [words]`,
+`:track.new` (a list of every kind), the window's buttons and menus that
+make a track, the header, `K` and `:clip.edit` know it. The kind is kept in
+the track's `meta.kind`, saved with the project; opened without the
+extension, the track is an ordinary one and `K` says which kind it was.
+Vocal tracks (utau) and drum tracks (drums) are kinds.
+`daw.track_kinds.add(name, opts)`, `set(track, name, args)`, `clear(track)`,
+`of(track)` and `describe(track)` are there for scripts.
+
+**Programs of its own.** An extension can start a program and talk to it
+over a socket or its standard input and output (see Helper programs in
+[Scripting](scripting.md)). The utau engine is such a program, built from
+the extension's own `engine/` source; `bin/` beside the extension is where
+its package puts it, and where the extension looks first after the
+`utau_engine` option and `$REAUTAU_ENGINE`.
+
+**A renamed device.** `daw.api.device_alias(old, new)` makes devices of a
+kind that was renamed as the new one: projects saved when the utau device
+was built into the program get the Lua device.
+
+**Packaging with Nix.** The flake makes every extension a package holding
+`share/daw/extensions/<name>`. Most are their Lua copied; one with parts to
+build has a `nix/default.nix` of its own, which is given the flake inputs
+it asks for (utau's asks for `openutau`, the OpenUtau source its engine is
+built against, pinned in the flake). The program with some of them:
+
+```nix
+paw.packages.${system}.default.withExtensions (exts: [ exts.utau ])
+```
+
+or, in home-manager, with the flake's `homeManagerModules.default`:
+
+```nix
+programs.paw = { enable = true; extensions = [ "utau" ]; };
+```
+
+The program's commands are wrapped to name the extensions' directories in
+`$DAW_EXTENSIONS` (separated by `:`), and those are loaded at startup,
+before the configuration and with `--clean` too: they are part of the
+program. A configuration that loads the same extension from elsewhere gets
+the packaged one. `nix run .#paw-utau` is paw that sings; plain `nix run .`
+has no .NET in it.

@@ -120,7 +120,7 @@ leaves insert mode. See [harmony.md](harmony.md).
 | Keys | Also in the arrange view |
 | --- | --- |
 | `x` `D` `C` `Y` | delete the clip; delete, change, yank to the end of the track |
-| `o` `O`, `grn`, `Alt-j` `Alt-k` | add a track below or above; rename it; move it down or up |
+| `o` `O`, `grn`, `Alt-j` `Alt-k` | add a track below or above; rename it; move it down or up. `:track.new` chooses its kind from a list (a vocal track, a drum track: kinds extensions define), `:track.add vocal` names one; the header shows a kind's letter before the name, and `K` says what it is |
 | `M` `s` `r`, `+` `-` (`Ctrl-a` `Ctrl-x` with a count), `]` `[` | mute, solo, arm; volume; pan |
 | `grv` `grp`, `grt` | type the volume (dB) or pan (`L30`, `R25`, `C`, -100 to 100), the tempo: a number, `+2` or `-3` to step from the value now, `=-6` for a value below zero |
 | `I` `Alt-i`, `R` | next audio input, monitor the input; record or stop recording |

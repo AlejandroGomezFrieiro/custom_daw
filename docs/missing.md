@@ -254,3 +254,14 @@
   only, a looped clip once, a tempo ramp as steps a sixteenth apart, a
   note's own bend and controllers (MIDI 2.0) not at all, and every control
   on its track's channel.
+- Kinds of track: a kind says how a track is made and how its clips are
+  opened, not how a new clip on it starts (no `new_clip`: a double click
+  makes an empty clip on any track), and a track's kind is changed by
+  commands of the extension (`:utau.voice`, `:drums.map off`), not from a
+  list. The header shows a kind's letter in the column before the name, the
+  same one diagnostics mark, which draw over it. Extensions bring devices
+  written in Lua; one cannot bring a native plugin (CLAP, VST3) of its own
+  to be found when it loads, nor package one with Nix: plugins are found
+  where the system keeps them.
+- Packaged extensions (`paw.withExtensions`) are loaded at startup and
+  cannot be left out for one run other than by running the plain program.

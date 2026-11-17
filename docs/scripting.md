@@ -456,7 +456,11 @@ written in Lua answers with its `dev.call` (see
 [Writing a device in Lua](devices.md#writing-a-device-in-lua)).
 `daw.api.device_post(kind, topic, bytes)` gives data to every device of a
 kind at once: those there now, and every one made later, an offline
-render's own among them, before its first block. A helper
+render's own among them, before its first block. `daw.track_kinds`
+defines kinds of track, and `daw.api.device_alias(old, new)` keeps a
+renamed device kind working: see
+[Everything an extension can own](extensions.md#everything-an-extension-can-own).
+A helper
 is asked to finish when the program ends, however it ends. Started with
 `{ pipe = true }`, a program is talked to over its standard input and
 output instead (its errors still go to `log`): `proc_write(id, bytes)`,
