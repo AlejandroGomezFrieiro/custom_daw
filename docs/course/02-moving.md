@@ -49,7 +49,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
    - ✓ The piano roll has the keyboard now.
 13. Here the rows are pitches, so `k` goes up a semitone instead of a track. Press `k` twice (you hear each pitch).
    - ✓ Same key, different view, different meaning: but still 'up'.
-14. `<Esc>` leaves the piano roll. Then `gp` puts the playhead at the cursor and `<Space>` plays from there; `<Space>` again stops.
+14. `<Esc>` stays where it is, in every view; `<C-w>p` goes back to the window before. Press `<C-w>p` to leave the piano roll. Then `gp` puts the playhead at the cursor and `<Space>` plays from there; `<Space>` again stops.
    - *Hint:* `<S-CR>` (shift and Enter) plays from the cursor in one go, where the terminal can tell it from Enter.
    - ✓ You played the song from bar 5, where the melody comes in.
 

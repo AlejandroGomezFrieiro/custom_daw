@@ -10,12 +10,14 @@ daw.seats.fields("devices", view, { "row", "scroll" }, { row = 1, scroll = 0 })
 local pictures = require("daw.views.device_pictures")
 
 -- Reading a plugin with hundreds of parameters is not free, so the rows are
--- kept until the project changes.
+-- kept until the project changes: an edit made by the key just typed counts
+-- at once, for the keys typed after it in the same breath (a macro, `ddj`).
 local cache = { revision = -1, track = nil, rows = {} }
 
 --- The panel as a flat list of rows: a device heading, then its parameters.
 local function rows_for(track_id)
-  if cache.revision == daw.frontend.revision and cache.track == track_id then return cache.rows end
+  local edits = api.project_get().edits
+  if cache.revision == daw.frontend.revision and cache.edits == edits and cache.track == track_id then return cache.rows end
   local rows = {}
   for _, id in ipairs(track_id and api.track_get(track_id).devices or {}) do
     local device = api.device_get(id)
@@ -31,7 +33,7 @@ local function rows_for(track_id)
       rows[#rows + 1] = { device = device, param = param, value = device.params[param.key], host = daw.fx.host_params[param.key] }
     end
   end
-  cache = { revision = daw.frontend.revision, track = track_id, rows = rows }
+  cache = { revision = daw.frontend.revision, edits = edits, track = track_id, rows = rows }
   return rows
 end
 
@@ -106,14 +108,14 @@ function view:render(buf, ctx)
           at = at - #d.format - 1
           inner:text(at, y, d.format, "DeviceFormat")
         end
-        -- How much of it is heard, when not all of it: `h` `l` here change it.
+        -- How much of it is heard, when not all of it: `+` `-` here change it.
         local wet = d.params.fx_wet
         if wet and wet < 100 then
           local text = string.format("wet %d%%", math.floor(wet + 0.5))
           at = at - #text - 1
           inner:text(at, y, text, "ParamValue")
         end
-        -- The track it listens to as its side-chain (`K` chooses it), and
+        -- The track it listens to as its side-chain (`gS` chooses it), and
         -- how many of its further output pairs play somewhere (`O`).
         local further = #(d.ports and d.ports.outputs or {}) - 1
         local routed = 0
@@ -150,12 +152,19 @@ function view:adjust(steps)
   if row.picture then return end
   -- On the device's own line: its wet/dry mix.
   if not row.param then
-    local wet = row.device.params.fx_wet
+    local wet = api.device_get(row.device.id).params.fx_wet
     if wet then api.device_set_param(row.device.id, "fx_wet", util.clamp(wet + steps, 0, 100)) end
     return
   end
+  -- The value now, not the row's: the rows are kept until the screen is
+  -- drawn again, and keys typed faster than that (a macro, `.`) each count.
   local p = row.param
-  api.device_set_param(row.device.id, p.key, daw.params.step(p, row.value, steps))
+  api.device_set_param(row.device.id, p.key, daw.params.step(p, view.value(row), steps))
+end
+
+--- A parameter row's value as it is now.
+function view.value(row)
+  return api.device_get(row.device.id).params[row.param.key]
 end
 
 function view:selected()

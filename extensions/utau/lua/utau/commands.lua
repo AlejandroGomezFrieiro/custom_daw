@@ -561,8 +561,10 @@ emap("<Left>", move(-1, 0), "Left one step", motion)
 emap("<Right>", move(1, 0), "Right one step", motion)
 emap("<Down>", move(0, -1), "Down a semitone", linewise)
 emap("<Up>", move(0, 1), "Up a semitone", linewise)
-emap("J", move(0, -12), "Down an octave", linewise)
-emap("K", move(0, 12), "Up an octave", linewise)
+emap("<C-d>", move(0, -12), "Down an octave", linewise)
+emap("<C-u>", move(0, 12), "Up an octave", linewise)
+daw.keymap.classic("J", move(0, -12), { view = "utau", desc = "Down an octave", motion = true, linewise = true })
+daw.keymap.classic("K", move(0, 12), { view = "utau", desc = "Up an octave", motion = true, linewise = true })
 emap("w", steps(1), "Next note", motion)
 emap("b", steps(-1), "Previous note", motion)
 emap("<Tab>", steps(1), "Next note", motion)
@@ -662,6 +664,12 @@ for lhs, fn in pairs({
   ["<C-x>"] = function(clip, region, ctx)
     edit.roll.each(clip, region, function(n) n.pitch = math.max(0, n.pitch - (ctx.count or 1)) end)
   end,
+  ["+"] = function(clip, region, ctx)
+    edit.roll.each(clip, region, function(n) n.pitch = math.min(127, n.pitch + (ctx.count or 1)) end)
+  end,
+  ["-"] = function(clip, region, ctx)
+    edit.roll.each(clip, region, function(n) n.pitch = math.max(0, n.pitch - (ctx.count or 1)) end)
+  end,
 }) do
   map(lhs, nil, { view = "utau", mode = "x", desc = lhs == "x" and "Delete" or "Transpose", operator = function(region, ctx)
     if editor.clip_id and editor:clip() then fn(daw.clip(editor.clip_id), region, ctx) end
@@ -681,12 +689,27 @@ emap("<CR>", function()
   if editor:note() then editor:edit_lyric() else editor:toggle_note() end
 end, "Type the lyric of the note, or add a note")
 -- These work on the selected notes, else the note under the cursor.
-emap("+", function()
+-- A note's main value is its pitch, as in the piano roll; its length is
+-- `Alt-h` `Alt-l`, as a clip's is in the arrange view.
+local function lengthen()
   editor:change_targets(function(n) n.length = n.length + daw.opt.note_grid end)
-end, "Lengthen the notes")
-emap("-", function()
+end
+local function shorten()
   editor:change_targets(function(n) n.length = math.max(daw.opt.note_grid, n.length - daw.opt.note_grid) end)
-end, "Shorten the notes")
+end
+local function transpose(sign) return function(ctx)
+  local by = sign * (ctx.count or 1)
+  editor:change_targets(function(n) n.pitch = math.max(0, math.min(127, n.pitch + by)) end)
+  editor:move(0, by)
+end end
+emap("+", transpose(1), "Up a semitone", { role = "main+" })
+emap("-", transpose(-1), "Down a semitone", { role = "main-" })
+emap("<C-a>", transpose(1), "Up a semitone for each of the count", { role = "main+" })
+emap("<C-x>", transpose(-1), "Down a semitone for each of the count", { role = "main-" })
+emap("<A-l>", lengthen, "Lengthen the notes")
+emap("<A-h>", shorten, "Shorten the notes")
+daw.keymap.classic("+", lengthen, { view = "utau", desc = "Lengthen the notes" })
+daw.keymap.classic("-", shorten, { view = "utau", desc = "Shorten the notes" })
 emap("L", function()
   editor:change_targets(function(n) n.start = n.start + daw.opt.note_grid end)
 end, "Move the notes right")
@@ -709,26 +732,35 @@ emap("~", "utau.vibrato", "Vibrato on or off")
 emap("S", "utau.singer", "Choose the singer")
 emap("s", "utau.sheet", "Show or hide the lyric sheet")
 emap("r", "utau.render", "Render the track again")
+-- Escape cancels and stays, as in every view (docs/terminal.md, "Keys: one
+-- grammar"): it lets go of the selection.
 emap("<Esc>", function()
   if next(editor.sel) then return editor:clear_selection() end
+  daw.keymap.escape_hint()
+end, "Forget the selection", { repeatable = false })
+daw.keymap.classic("<Esc>", function()
+  if next(editor.sel) then return editor:clear_selection() end
   daw.ui.focus("arrange")
-end, "Forget the selection, else back to the arrange view")
+end, { view = "utau", desc = "Forget the selection, else back to the arrange view" })
 
-local function smap(lhs, rhs, desc) map(lhs, rhs, { view = "utau_lyrics", desc = desc }) end
+local function smap(lhs, rhs, desc, opts) map(lhs, rhs, daw.util.merge({ view = "utau_lyrics", desc = desc }, opts)) end
 smap("j", function(ctx)
   sheet.line = sheet.line + (ctx.count or 1)
   api.ui_redraw()
-end, "Next line")
+end, "Next line", motion)
 smap("k", function(ctx)
   sheet.line = math.max(1, sheet.line - (ctx.count or 1))
   api.ui_redraw()
-end, "Previous line")
+end, "Previous line", motion)
 smap("c", function() sheet:edit_line() end, "Retype the line")
 smap("<CR>", function() sheet:edit_line() end, "Retype the line")
-smap("K", function()
+-- `~` switches a setting of the sheet, as it switches a clip's mute; `K`
+-- describes, as in every view.
+smap("~", function()
   sheet.per_kana = not sheet.per_kana
   api.ui_redraw()
 end, "Split Japanese into one kana per note, or not")
-smap("<Esc>", function() daw.ui.hide("utau_lyrics") end, "Close the lyric sheet")
+smap("q", function() daw.ui.hide("utau_lyrics") end, "Close the lyric sheet")
+daw.keymap.classic("<Esc>", function() daw.ui.hide("utau_lyrics") end, { view = "utau_lyrics", desc = "Close the lyric sheet" })
 
 return {}

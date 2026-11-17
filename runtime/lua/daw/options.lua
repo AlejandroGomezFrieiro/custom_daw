@@ -7,6 +7,9 @@ local defaults = {
   timeoutlen = 800,        -- ms to wait for the rest of a key sequence
   hint_delay = 500,        -- ms before the keys that can follow are listed; 0 for at once
   hints = true,            -- list the keys that can follow a half-typed command
+  -- "classic" keeps the keys each view had before they all kept to one rule
+  -- (docs/terminal.md, "Keys: one grammar"), for a while.
+  keys = "default",
   keybar = true,           -- show the keys worth knowing first on the bottom line
   ripple = false,          -- deleting time closes the gap, pasting makes room
   -- Seconds between safety copies of unsaved work; 0 for none. Off when

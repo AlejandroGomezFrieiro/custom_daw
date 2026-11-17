@@ -523,7 +523,7 @@ test("notes are drawn, chosen with clicks and a box, and moved and stretched tog
   daw.keymap.feed("<Esc>")
   eq(chosen() .. " " .. daw.ui.focused, " pianoroll", "Esc lets go of them first")
   daw.keymap.feed("<Esc>")
-  eq(daw.ui.focused, "arrange", "and then leaves the roll")
+  eq(daw.ui.focused, "pianoroll", "and then stays in the roll, as Escape does in every view")
 end)
 
 -- Clips chosen with the pointer.

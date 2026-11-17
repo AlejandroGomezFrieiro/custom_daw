@@ -23,7 +23,7 @@ test("the bottom line shows the keys for the focused view, and gives way to mess
   eq(last():find("Space play", 1, true), nil, "instead of the keys")
   daw.ui.message = nil
   daw.ui.focus("mixer")
-  eq(last():find("louder", 1, true) ~= nil, true, "another view has its own")
+  eq(last():find("j row", 1, true) ~= nil, true, "another view has its own")
   daw.ui.hide("mixer")
   daw.ui.focus("arrange")
   daw.opt.keybar = false

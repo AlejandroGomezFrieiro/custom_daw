@@ -64,6 +64,7 @@ require("daw.menu")
 daw.canvas = require("daw.canvas")
 daw.notify = daw.ui.notify
 daw.keymap = require("daw.keymap")
+daw.keyrule = require("daw.keyrule")
 
 daw.clips = require("daw.clips")
 local objects = require("daw.objects")

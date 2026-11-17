@@ -7,8 +7,10 @@
 local api = daw.api
 local util = daw.util
 
-local view = { scroll = 0 }
-daw.seats.fields("mixer", view, { "scroll", "geometry" }, { scroll = 0 })
+-- `row` is the row of a strip the cursor is on (daw/mixer_rows.lua): "volume",
+-- "pan", "send2", "insert1", "mute" ...
+local view = { scroll = 0, row = "volume" }
+daw.seats.fields("mixer", view, { "scroll", "geometry", "row" }, { scroll = 0, row = "volume" })
 local draw = daw.draw
 
 local SCALE = 4 -- columns for the dB scale on the left
@@ -30,7 +32,8 @@ local function fader_row(volume, rows)
 end
 view.fader_row = fader_row
 
-local function strip(buf, x, t, index, selected, height, sw)
+-- `here` is the row the cursor is on, on the strip it is on (daw/mixer_rows.lua).
+local function strip(buf, x, t, index, selected, height, sw, here)
   local g = draw.g
   local hue = draw.track_hue(t, index)
   local w = sw - 1
@@ -87,6 +90,29 @@ local function strip(buf, x, t, index, selected, height, sw)
     end
   end
 
+  -- With too little room for them, the devices and sends fold into one row
+  -- that counts them (`3 ↗2`), or names the one the cursor is on: they are
+  -- rows of the strip for `j` `k`, and must show.
+  local devices, sends = t.devices or {}, t.sends or {}
+  local fold_devices = not vca and not parts.devices and #devices > 0
+  local fold_sends = not vca and not parts.sends and #sends > 0
+  if (fold_devices or fold_sends) and height >= 10 then
+    parts.compact = y
+    local text
+    if here and here.kind == "insert" and fold_devices then
+      local ok, d = pcall(api.device_get, devices[here.index])
+      text = (ok and d.bypass and g.bypass or "") .. (ok and d.name or "?")
+    elseif here and here.kind == "send" and fold_sends then
+      local send = sends[here.index]
+      local okt, to = pcall(api.track_get, send.target)
+      text = g.send .. (okt and to.name:sub(1, 3) or "?") .. " " .. string.format("%g", math.floor(send.level + 0.5))
+    else
+      text = (fold_devices and #devices .. " " or "") .. (fold_sends and g.send .. #sends or "")
+    end
+    buf:text(x + 1, y, util.fit(text, w - 1), "TrackInfo")
+    y = y + 1
+  end
+
   -- Meters and fader, over what the rows under them leave.
   local rows = math.max(1, height - y - 4)
   local left, right = api.track_meter(t.id)
@@ -121,7 +147,30 @@ local function strip(buf, x, t, index, selected, height, sw)
     buf:text(x + 1, y + 3, "master", "TrackIndex")
   end
   parts.y = parts.fader
+  parts.chip_gap = w >= 8 and 1 or 0
   return parts
+end
+
+--- Mark the row of the strip the cursor is on (`j` `k` move it): a mark
+--- on the strip's left edge beside the row, or the chip itself lit. A row
+--- the strip has no room to show is named in the title bar alone.
+local function mark_row(buf, parts, row)
+  local g = draw.g
+  local y
+  if row.kind == "insert" and parts.devices and row.index <= 3 then y = parts.devices + row.index - 1
+  elseif row.kind == "send" and parts.sends and row.index <= 2 then y = parts.sends + row.index - 1
+  elseif (row.kind == "insert" or row.kind == "send") and parts.compact then y = parts.compact
+  elseif row.kind == "volume" then y = parts.vol
+  elseif row.kind == "pan" then y = parts.pan
+  end
+  if y then
+    buf:fill(parts.x + 1, y, parts.w - 1, 1, nil, "Selected")
+    return buf:text(parts.x, y, g.mark, "SelectedMark")
+  end
+  if row.kind == "toggle" then
+    local order = { mute = 0, solo = 1, armed = 2, monitor = 3 }
+    buf:fill(parts.x + 1 + order[row.field] * (1 + parts.chip_gap), parts.chips, 1, 1, nil, "Cursor")
+  end
 end
 
 --- The tracks in the order of the strips: VCAs after the others.
@@ -138,8 +187,15 @@ end
 function view:render(buf, ctx)
   local g = draw.g
   local tracks = strip_order()
+  -- The row under the cursor, by name and value, on the right of the title.
+  local row, row_track = daw.mixer_rows.current()
+  local here
+  if row and ctx.focused then
+    local name, value = daw.mixer_rows.describe_row(row_track, row)
+    here = name .. " " .. value
+  end
   local body = daw.ui.titlebar(buf, {
-    name = "Mixer", context = #tracks .. (#tracks == 1 and " track" or " tracks"), focused = ctx.focused,
+    name = "Mixer", context = #tracks .. (#tracks == 1 and " track" or " tracks"), focused = ctx.focused, right = here,
   })
   local w, h = body.width, body.height
   body:fill(0, 0, w, h, " ", "TrackHeader")
@@ -157,7 +213,9 @@ function view:render(buf, ctx)
   for col = 0, room - 1 do
     local id = tracks[self.scroll + col + 1]
     if not id then break end
-    block = strip(body, x, api.track_get(id), self.scroll + col + 1, id == cursor_track, h, sw)
+    block = strip(body, x, api.track_get(id), self.scroll + col + 1, id == cursor_track, h, sw,
+      id == cursor_track and ctx.focused and row or nil)
+    if id == cursor_track and row and ctx.focused then mark_row(body, block, row) end
     strips[#strips + 1] = block
     x, shown = x + sw, shown + 1
   end

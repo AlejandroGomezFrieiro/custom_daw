@@ -52,17 +52,17 @@ track opens the vocal editor instead of the piano roll.
 
 | Keys | Vocal editor |
 | --- | --- |
-| `h` `j` `k` `l`, `J` `K` | move the cursor a grid step or a semitone, an octave |
+| `h` `j` `k` `l`, `<C-d>` `<C-u>` | move the cursor a grid step or a semitone, an octave |
 | `w` `b`, `Tab` `S-Tab`, `0` `$`, `W` `B` | next and previous note, start and end of the clip, next and previous bar |
 | `d` `y` `>` `<` `gl` with a motion, `in` `ib` `ic`, or a selection (`v` `V` `<C-v>`) | delete, yank, nudge or loop notes, as in the piano roll; the notes keep their lyrics and tuning |
 | `p` `P` | paste after the note, or at the cursor |
 | `/` | find a note by its lyric; `n` and `N` go on |
 | `i` `x` | add a note, remove the note (`x` and `Del` remove the selected notes when there are some) |
 | `c`, `Enter` | type the note's lyric: the first key replaces it, `Tab` keeps it and moves on to the next note, `S-Tab` to the previous one, `Enter` keeps it, `Esc` drops it. Pasting several words fills the notes from this one on |
-| `+` `-`, `H` `L` | lengthen, shorten, move the selected notes, else the note under the cursor |
-| `C-a`, `gA`, `ip` `ap` | select every note, the phrase at the cursor; the phrase as a text object (`yip`, `vip`) |
-| `C-c`, `C-x` | copy, cut the selected notes (or the note); `p` `P` paste, keeping their pitches |
-| `gc` `gC`, `:utau.curve <abbr>` | the curve shown under the notes: next, previous, by name |
+| `+` `-` (`C-a` `C-x` with a count), `A-l` `A-h`, `H` `L` | up, down a semitone; lengthen, shorten; move: the selected notes, else the note under the cursor |
+| `gA`, `ip` `ap` | select every note; the phrase as a text object (`yip`, `vap`) |
+| `C-c`, `d` `x` | copy the selected notes (or the note), cut them; `p` `P` paste, keeping their pitches |
+| `]c` `[c`, `:utau.curve <abbr>` | the curve shown under the notes: next, previous, by name |
 | `}` `{` | raise or lower that curve at the cursor (the pitch by 10 cents, the others by a step of their own; a count multiplies) |
 | `=`, `<leader>=` | put that curve back to its default under the note, in the whole clip |
 | `(` `)` | choose the previous or next phoneme (shown in the phoneme row and the bottom line) |
@@ -71,7 +71,7 @@ track opens the vocal editor instead of the piano roll.
 | `~`, `:utau.note key=value ...` | vibrato on or off; set properties of the selected notes: `tuning`, `vibrato=on`, `length` `period` `depth` `in` `out` `shift` `drift` `vol_link`, `po` (phonemizer, `default` for the track's), `transition=default`, and any expression (`vel=120`) |
 | `Space`, `gh` | play from the cursor or stop; hear the note under the cursor |
 | `S`, `s`, `r` | choose the singer, show the lyric sheet, render again |
-| `Esc`, `<C-w>c` | forget the selection, else back to the arrange view; close the editor |
+| `Esc`, `<C-w>p`, `<C-w>c` | forget the selection (the editor stays); back to the window before; close the editor |
 
 The selection is one thing in both frontends: the notes inside a visual
 selection while there is one, else the notes chosen with the pointer; every

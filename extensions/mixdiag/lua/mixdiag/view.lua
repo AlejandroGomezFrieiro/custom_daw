@@ -95,7 +95,9 @@ local actions = {
   t = measure("track"),
   T = function() daw.cmd("mix.target") end,
   q = function() daw.ui.close() end,
-  ["<Esc>"] = function() daw.ui.close() end,
+  -- Escape closes the report only while it floats, as a prompt does; in a
+  -- window of its own it stays, and `q` closes it.
+  ["<Esc>"] = function() if daw.ui.float then daw.ui.close() end end,
 }
 actions["<Down>"], actions["<Up>"], actions["<Enter>"] = actions.j, actions.k, actions["<CR>"]
 
