@@ -60,7 +60,8 @@ operators, motions, text objects, visual mode, registers, macros, marks and
 
 ![Moving, deleting, yanking and pasting clips, and running a command](docs/images/tui-arrange.gif)
 
-Notes are typed. `i` opens a clip and the home row becomes a piano:
+Notes are drawn or typed. `Enter` opens a clip; `i` draws a note with the
+cursor, and `I` turns the home row into a piano:
 
 ![Typing notes into the piano roll, selecting and transposing them](docs/images/tui-pianoroll.gif)
 
@@ -75,7 +76,7 @@ pictures in terminals that show images (WezTerm, kitty, Ghostty), and in cells
 elsewhere. Notes are entered as in a notation program; dynamics, tempo, key
 and the rest are written with a prompt on the leader, as in Dorico, and you
 hear each one before you write it. The notation has a grammar of its own:
-`gUib` raises a bar, `g(` goes to the start of a phrase.
+`gUib` raises a bar a step in the key, `g(ip` slurs a phrase.
 
 ![Entering notes, a dynamic, a tempo and a hairpin in the score](docs/images/tui-notation.gif)
 
@@ -169,8 +170,10 @@ terminal uses. [docs/window.md](docs/window.md) has every gesture.
   VST3 plugins. Each plugin runs in a process of its own, so one that crashes
   takes nothing else with it. Tracks can also send their MIDI to hardware.
 - **Files.** Projects are JSON you can read. Renders to WAV, FLAC, MP3, Ogg
-  and Opus, whole or by region, on a background thread. REAPER projects open
-  through the `rpp` extension.
+  and Opus, whole or by region, on a background thread. MIDI files open and
+  export; MusicXML (from MuseScore, Dorico or Sibelius) opens as scores and
+  exports again, and scores print to PDF. REAPER projects open through the
+  `rpp` extension.
 - **Playing live.** Clips in slots beside the timeline, launched on the bar
   from the keyboard, the mouse or a pad, in scenes. See [Live performance](docs/live.md).
 - **Somewhere else.** `daw attach` shows the terminal UI of a running
