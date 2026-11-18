@@ -17,6 +17,8 @@ local function start()
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
   paw.ui.focus("arrange")
+  -- The list keeps the last 500: a full one would not grow by what is said.
+  for i = #paw.ui.messages, 1, -1 do paw.ui.messages[i] = nil end
 end
 
 --- The messages since `from` (an index into the list), as one text.
