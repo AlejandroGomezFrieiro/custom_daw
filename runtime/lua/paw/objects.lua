@@ -806,9 +806,13 @@ function time.bar_floor(beat) return api.tempo_bar_start(api.tempo_bar_of(beat))
 
 --- The first bar line at or after a beat.
 function time.bar_ceil(beat)
-  local start = api.tempo_bar_start(api.tempo_bar_of(beat))
-  if math.abs(start - beat) < 1e-9 then return start end
-  return api.tempo_bar_start(api.tempo_bar_of(beat) + 1)
+  local bar = api.tempo_bar_of(beat)
+  local start = api.tempo_bar_start(bar)
+  -- The bar of a beat a hair before a bar line can be the bar after the
+  -- line (the kernel rounds): its start is then the line asked for, not
+  -- a bar before the next one.
+  if start >= beat - 1e-12 then return start end
+  return api.tempo_bar_start(bar + 1)
 end
 
 --- The bar lines from beat `from` up to `to`: { beat, bar } each, bars

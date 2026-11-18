@@ -949,6 +949,8 @@ handle = function(key)
     if exact or longer then
       if first.after ~= first.before and api.project_get().edits == first.after then paw.undo() end
       if track.keys then track.edits = api.project_get().edits end
+      -- The count typed first is the longer mapping's: `2[t`.
+      count, register = first.count, first.register
     else
       pending = {}
       if track.keys then track.keys[#track.keys] = nil end
@@ -1013,10 +1015,10 @@ handle = function(key)
       -- It runs now; the wait is only for a key that makes a longer one.
       -- Its change is a step of its own, so that one undo takes it back.
       api.undo_checkpoint()
-      local before = api.project_get().edits
+      local before, typed_count, typed_register = api.project_get().edits, count, register
       take(exact)
       pending = { key }
-      eager = { key = key, before = before, after = api.project_get().edits }
+      eager = { key = key, before = before, after = api.project_get().edits, count = typed_count, register = typed_register }
       timer = api.timer_start(paw.opt.timeoutlen, false, function()
         timer = nil
         if not eager then return end

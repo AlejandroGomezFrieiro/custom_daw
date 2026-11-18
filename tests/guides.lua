@@ -100,6 +100,7 @@ test("make music 1: the first song has drums, bass and keys in a loop of four ba
   step("i", "<C-d>", "3j", "16l", "<CR>", "4j", "16l", "<CR>", "7k", "16l", "<CR>", "5j", "16l", "<Esc>")
   step("<C-w>p")
   eq(melody(paw.track("Bass"):clips()[1]), "45@0+4 41@4+4 48@8+4 43@12+4", "the bass plays A F C G")
+  eq(paw.track("Bass"):clips()[1].length, 16, "the clip ends with the notes, at the end of bar 4")
 
   step("o", "grn", "<C-u>", "Keys<CR>", "a", "synth", "<CR>", "0")
   step("i", "3j", "16l", "o", "3k", "o", "4k", "<CR>")
