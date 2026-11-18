@@ -1,33 +1,56 @@
 # snippets: a starting set of snippets
 
-Snippets for the core's snippet engine (`paw.snippet`), as
-friendly-snippets is for LuaSnip: chords that lead into the next chord of
-the song, parts made of the chords already there, and voices for a
-selection.
+Snippets for the snippet engine of the core (`paw.snippet`), as
+friendly-snippets is for LuaSnip. They write chords that lead into the
+next chord of the song, parts made of the chords that are there, and
+voices for a selection.
 
 ```lua
 paw.ext.load("/path/to/paw/extensions/snippets")   -- or link it into ~/.config/paw/extensions
 ```
 
-In the piano roll, `<C-s>` and a few letters, or `:snippet dominant`.
-Before a C major chord `dominant` writes G7 from the cursor up to it; `<Tab>`
-goes to its choices and `<C-n>` steps one (the voicing first); `u` takes it
-all away. What each snippet writes and its choices are listed in
-[docs/harmony.md](../../docs/harmony.md#the-starting-set), with how to write
+## Try it
+
+1. Type `:ext.load snippets`.
+2. Open a clip in the piano roll, before a bar with a C major chord.
+3. Type `:snippet dominant`. A G7 chord appears from the cursor to the C
+   major chord.
+4. Press `Tab`, then `Ctrl-n`. The voicing of the chord changes.
+5. Press `u`. The chord goes away.
+
+## How to use a snippet
+
+- To expand a snippet by name, type `:snippet name`, or press `Ctrl-s` and
+  type some letters of the name.
+- To go to the choices of the snippet, press `Tab`. To change a choice,
+  press `Ctrl-n`.
+- To remove the snippet, press `u`.
+- To replace a snippet of this set, write one with the same name in
+  `init.lua` or in `<config>/snippets/`. paw uses yours.
+
+[Harmony, completion and snippets](../../docs/harmony.md#the-starting-set)
+lists what each snippet writes and its choices, and tells how to write
 your own.
 
-- `snippets/harmony.lua`: `dominant`, `secondary`, `two-five`, `tritone`,
-  `passing-dim`, `sus`, `cadence`.
-- `snippets/patterns.lua`: `pedal`, `arp`, `bass`.
-- `snippets/voices.lua`: `harmonize`, `voice-lead`.
-- `lua/snippets/init.lua` (`require("snippets")`): what they share, for
-  snippets of your own: the voicing and length choices, `dominant_tones`,
-  `split` (a span cut on the grid), `progression` (chords voiced each from
-  the one before), `next_chord`.
+## Reference
 
-A snippet of yours with the same name, in `init.lua` or
-`<config>/snippets/`, is used instead of the one here.
+| File | Snippets |
+| --- | --- |
+| `snippets/harmony.lua` | `dominant`, `secondary`, `two-five`, `tritone`, `passing-dim`, `sus`, `cadence` |
+| `snippets/patterns.lua` | `pedal`, `arp`, `bass` |
+| `snippets/voices.lua` | `harmonize`, `voice-lead` |
 
-`tests.lua` is run by the suite: the owner's example (G7 before a C major
-chord on another track, and in the same clip through the picker), every
-snippet's chords on known material, choices, counts and undo.
+`lua/snippets/init.lua` (`require("snippets")`) holds the parts that the
+snippets share, for snippets of your own:
+
+| Name | What it is |
+| --- | --- |
+| the voicing and length choices | choices that many snippets give |
+| `dominant_tones` | the tones of a dominant chord |
+| `split` | a span cut on the grid |
+| `progression` | chords, each voiced from the chord before it |
+| `next_chord` | the next chord of the song |
+
+The suite runs `tests.lua`: the example of the owner (G7 before a C major
+chord on another track, and in the same clip through the picker), the
+chords of each snippet on known material, choices, counts and undo.

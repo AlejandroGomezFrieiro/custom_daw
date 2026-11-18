@@ -1,22 +1,40 @@
 # luafx
 
-Devices written in Lua, to use and to start your own from. Loading the
-extension adds them to the device picker beside the built-in ones:
+Devices written in Lua, to use, and to copy as a start for your own
+devices. When the extension loads, the device picker shows them beside the
+built-in devices.
 
 ```lua
 paw.ext.load("extensions/luafx")   -- or put the directory in ~/.config/paw/extensions
 ```
 
+## Try it
+
+1. Type `:ext.load luafx`.
+2. Put the cursor on a track with an instrument, and type `:device.add`.
+   The device picker opens.
+3. Type `lua` in the picker. The four devices of the list below appear.
+4. Choose "Chords (Lua)".
+5. Play a note on the track. You hear a chord.
+
+## How to change one of the devices
+
+1. Copy the file from `devices/` into `~/.config/paw/devices/`.
+2. Edit the copy. When you save it, paw loads it again. The devices made
+   from it keep their parameters.
+
+A script in `~/.config/paw/devices/` has priority over a script with the
+same name in an extension. "Writing a device in Lua" in
+[Devices](../../docs/devices.md) tells how to write a device.
+
+## Reference
+
 | Device | Kind | What it does |
 | --- | --- | --- |
 | Gain and pan (Lua) | `lua:gain_pan` | a level in dB, a balance, and stereo, mono or swapped sides |
 | Drive (Lua) | `lua:drive` | a soft clipper with a low-pass tone control and a dry/wet mix |
-| Chords (Lua) | `lua:chords` | a MIDI effect: each note played becomes a chord on it |
-| Sine (Lua) | `lua:sine` | an instrument: eight voices of sine with attack and release |
+| Chords (Lua) | `lua:chords` | a MIDI effect: each note becomes a chord on that note |
+| Sine (Lua) | `lua:sine` | an instrument: eight sine voices with attack and release |
 
-They are the files in `devices/`. An extension ships devices by having that
-directory, and needs nothing else for it. To change one, copy it into
-`~/.config/paw/devices/` (a script there wins over one of the same name in
-an extension) and edit it there: it is loaded again when it is saved, and
-the devices made from it keep their parameters. How to write one is in
-"Writing a device in Lua" in [docs/devices.md](../../docs/devices.md).
+The devices are the files in `devices/`. An extension gives devices with
+that directory and needs nothing more.
