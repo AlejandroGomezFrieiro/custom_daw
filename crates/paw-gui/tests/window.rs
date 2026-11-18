@@ -1355,16 +1355,18 @@ fn an_idle_window_uses_little_of_a_processor() {
 #[ignore]
 fn playing_with_two_rolls_costs_about_what_one_does() {
     let mut w = scene!("cpu-two-rolls", TWO_CLIPS, alone);
-    w.ctl("paw.ui.start_layout = 'roll://' .. first paw.layout.start()");
+    let one_roll = "paw.commands.exec('e roll://' .. first) paw.commands.exec('only')";
+    w.ctl(one_roll);
     w.expect("one roll", "#paw.panes.state().panes == 1 and paw.ui.views.pianoroll.clip_id == first");
     let (mut one, mut two) = (Vec::new(), Vec::new());
     for round in 0..4 {
         for split in [round % 2 == 1, round % 2 == 0] {
             if split {
-                w.ctl("paw.ui.start_layout = { dir = 'h', 'roll://' .. first, 'roll://' .. second } paw.layout.start()");
+                w.ctl(one_roll);
+                w.ctl("paw.commands.exec('vs roll://' .. second)");
                 w.expect("two rolls", "#paw.panes.state().panes == 2");
             } else {
-                w.ctl("paw.ui.start_layout = 'roll://' .. first paw.layout.start()");
+                w.ctl(one_roll);
                 w.expect("one roll", "#paw.panes.state().panes == 1");
             }
             w.ctl("paw.api.transport_seek(0) paw.api.transport_play()");
