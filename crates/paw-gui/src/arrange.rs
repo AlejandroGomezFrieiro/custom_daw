@@ -116,12 +116,6 @@ impl Arrange {
         self.scroll.x = 0.0;
     }
 
-    /// The row of the header at a point of the window, if one is there.
-    pub fn header_at(&self, pos: Pos2) -> Option<usize> {
-        let (headers, geo) = self.last.as_ref()?;
-        headers.contains(pos).then(|| geo.row_at(pos.y))
-    }
-
     /// Zoom by a wheel step, keeping the beat under the pointer (at `x` in
     /// the timeline's content) where it is.
     pub fn zoom_at(&mut self, closer: bool, x: f32) {
@@ -754,16 +748,6 @@ impl View {
             _ => self.s.track(track).and_then(|t| t.lanes.iter().filter(|l| l.param).nth(choice - 2)).map(|l| l.id),
         };
         if let Some(lane) = made {
-            self.arrange.shown.insert(track, lane);
-            self.show_automation = true;
-        }
-    }
-
-    /// Automate a device's parameter: it gets a lane, which the selected
-    /// track shows.
-    pub fn automate_param(&mut self, device: i64, key: &str) {
-        let track = self.s.selected;
-        if let Some(lane) = self.ask("return paw.frontend.act.lane(...)", json!([track, "param", device, key])).as_i64() {
             self.arrange.shown.insert(track, lane);
             self.show_automation = true;
         }

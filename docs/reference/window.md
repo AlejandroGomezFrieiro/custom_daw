@@ -335,7 +335,7 @@ shows the members.
 
 ## Routing
 
-Above the devices of the selected track:
+Under the devices of the selected track, in the device panel:
 
 | Part | Effect |
 | --- | --- |
@@ -466,17 +466,27 @@ in the terminal.
 
 ## Device panel
 
+The device panel is the kernel's device panel, drawn from the same scene
+as in the terminal. The window paints its parts as widgets. The heading of
+a device is a band with a power button. A parameter is a slider with its
+value. The buttons have icons.
+
+The pointer uses the hit regions and gestures of the
+terminal, in fractions of a cell. [The device panel](device-panel.md#the-pointer)
+lists the gestures.
+
 | Gesture | Effect |
 | --- | --- |
-| Type in the box | Finds a device or a plugin by part of its name. |
-| `Enter`, or a click on a result | Adds the device. |
-| `Esc` | Releases the box. |
-| Drag a parameter | Changes it. |
-| Wheel over a parameter | Changes it in small steps. |
-| Double-click a parameter | Sets it to its default. |
+| `+ add a device` | Opens the picker of devices. Type part of a name, then `Enter`. `Ctrl-f` in the picker makes a device a favorite. |
+| Drag a slider | Changes the parameter. |
+| `Ctrl` and the wheel over a slider | Changes it in small steps. |
+| Double-click a slider | Sets it to its default. |
 | Power button | Disables or enables the device. |
-| Arrows | Move the device along the chain. |
+| Arrows, cross | Move the device along the chain, remove it. |
 | Window button | Opens the plugin's own editor. |
+
+A parameter that a lane moves has an amber slider. The slider moves with
+the lane while the song plays, with no new scene from the kernel.
 
 ## Piano roll
 
@@ -682,8 +692,8 @@ its view needs.
 
 | View | How the window draws it |
 | --- | --- |
-| The arrange view, the device panel, the session view | The window's own drawing. |
-| The mixer, the piano roll, the drum grid | From the scene. The window paints the roles (faders, meters, switches, buttons, notes) as widgets. |
+| The arrange view, the session view | The window's own drawing. |
+| The mixer, the piano roll, the device panel, the drum grid | From the scene. The window paints the roles (faders, meters, switches, buttons, sliders, notes) as widgets. |
 | A view that paints (the notation, the vocal editor, the undo tree) | From the scene, as a picture. |
 | Any other buffer (a curve `paw://lane/3`, the quickfix list, a text buffer `paw://tracks`, an empty window) | From the scene, cell by cell in the monospace font, as the terminal draws it. |
 

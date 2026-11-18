@@ -111,72 +111,157 @@ mixer.gestures = {
 
 local devices = paw.ui.views.devices
 
---- Where the parts of a parameter's line are on a panel `w` wide, as the
---- panel draws them: the slider's first column and its width.
-local function slider(w)
-  local name_w = math.min(12, math.max(4, w - 24))
-  local at = 2 + name_w + 1
-  return at, math.max(3, w - at - 9 - 1)
+--- A menu of the window's (paw/window_menus.lua) at the pointer, on the
+--- button's release.
+local function menu_at(e, kind, args)
+  local items = require("paw.window_menus").items(kind, args)
+  if #items == 0 then return end
+  return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(items, screen(e)) end end })
 end
 
-function devices:on_mouse(e)
-  local rows = self:rows()
-  local index = e.y + self.scroll
-  local row = e.y >= 1 and rows[index] or nil
+--- Where along a slider of `bar` columns from the left of its region the
+--- pointer is, from 0 to 1: the middle of a terminal's cell, a window's
+--- point.
+local function on_bar(x, rect, bar, fine)
+  return util.clamp((x - rect.x + (fine and 0 or 0.5)) / math.max(1, bar), 0, 1)
+end
+
+--- What the pointer says over each part of the panel.
+local device_hints = {
+  row = "click chooses the row · right click: automate a parameter, its curve · Ctrl and the wheel nudge a parameter",
+  device = "click chooses the device · drag up or down to move it along the chain",
+  param = "drag the slider · double click puts it back · Ctrl and the wheel nudge it",
+  power = "on or off: bypass the device",
+  preset = "the presets of the device: choose one, or save one",
+  outputs = "where the further outputs of the device play",
+  sidechain = "the track the device listens to (side-chain)",
+  up = "move the device up the chain", down = "move the device down the chain", remove = "remove the device",
+  editor = "show or hide the plugin's own window",
+  status = "click to bring the plugin back",
+  automate = "automate: a lane for this parameter, with a point at its value",
+  learn = "learn: move a knob of a MIDI controller, and it moves this parameter from then on",
+  add = "add a device or a plugin to the track (a)",
+  output = "the track this one plays into; a bus or a group takes several",
+  send_add = "send: also feed this track's sound to another, a reverb for one",
+  send = "drag the level of the send · double click: 0 dB",
+  send_pre = "before the fader: the send keeps its level when the fader moves",
+  send_remove = "remove the send",
+}
+
+--- Choose a row of the panel, as `j` `k` do.
+local function choose(index)
+  devices.row = index
+  api.ui_redraw()
+end
+
+--- Every part of the panel (paw/views/devices.lua marks them) answers the
+--- pointer the same in the terminal and in a window: the wheel moves the
+--- row (with Ctrl over a parameter, the parameter), a move says what is
+--- there, a press does what the part is for.
+local function device_gesture(self, e)
+  local h = e.hit
   local step = mouse.wheel(e)
   if step then
-    if mouse.has(e, "C") and row and row.param then
-      self.row = index
+    if mouse.has(e, "C") and h.kind == "param" then
+      choose(h.index)
       self:adjust(-step)
     else
       self.row = self.row + step
     end
     return api.ui_redraw()
   end
-  local w = e.w or 40
-  if e.kind == "move" then
-    if row and row.param then return mouse.hint(row.param.name .. " · drag the slider · double click puts it back · Ctrl and the wheel nudge it") end
-    if row and not row.picture then return mouse.hint(row.device.name .. " · click on/off to bypass it") end
-    return
-  end
-  -- A right click on a device or a parameter: automating a parameter, its
-  -- fixes and what the servers say of it.
-  if e.kind == "down" and e.button == "right" and row and not row.picture then
-    self.row = index
+  if e.kind == "move" then return mouse.hint(device_hints[h.kind]) end
+  if e.kind ~= "down" then return end
+  local kind, id = h.kind, h.device
+  -- A right click on a row: automating a parameter, its fixes and what the
+  -- servers say of it.
+  if e.button == "right" then
+    local row = h.index and self:rows()[h.index]
+    if not row or row.picture then return end
+    choose(h.index)
     local uri = row.param and paw.address.param(row.device.id, row.param.key) or paw.address.device(row.device.id)
     local items = row.param and menus.param(row.device.id, row.param.key) or {}
     local lens = menus.lens({ uri = uri })
     if #items > 0 and #lens > 0 then items[#items + 1] = "-" end
     for _, item in ipairs(lens) do items[#items + 1] = item end
-    if #items > 0 then
-      return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(items, screen(e)) end end })
-    end
-    return api.ui_redraw()
+    if #items == 0 then return end
+    return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(items, screen(e)) end end })
   end
-  if e.kind ~= "down" or e.button ~= "left" or not row then return end
-  self.row = index
+  if e.button ~= "left" then return end
+  if h.index then choose(h.index) end
+  if kind == "param" then
+    if e.double then return A.reset_param(id, h.key) end
+    local row = self:rows()[h.index]
+    local rect, fine, track = e.rect, e.fine, row.device.track
+    A.set_param(id, h.key, on_bar(e.x, rect, h.bar, fine))
+    local start = paw.params.fraction(row.param, api.device_get(id).params[h.key])
+    -- Held, it writes automation in touch mode, as a fader does.
+    A.hold(track, "param", id, h.key, true)
+    local function let_go() A.hold(track, "param", id, h.key, false) end
+    return mouse.grab(e, {
+      drag = function(m)
+        if mouse.has(m, "S") then
+          A.set_param(id, h.key, util.clamp(start + m.dx / (h.bar * 8), 0, 1))
+        else
+          A.set_param(id, h.key, on_bar(m.x, rect, h.bar, fine))
+        end
+      end,
+      up = let_go, cancel = let_go,
+    })
+  elseif kind == "device" then
+    -- Dragged up or down the panel, the device goes before the device of
+    -- the row it is let go on (after the last, below them).
+    -- The heading's row in the view is its region's; the title is row 0.
+    local top = e.rect.y
+    return mouse.grab(e, { up = function(u)
+      if not u.moved then return end
+      local rows = self:rows()
+      local target = rows[self.scroll + math.floor(top + u.dy + 0.5)]
+      local d = api.device_get(id)
+      local index = target and target.device.index or #api.track_get(d.track).devices + 1
+      if target and target.device.id ~= id and target.device.index > d.index then index = index + 1 end
+      if index ~= d.index then A.place_device(id, index, mouse.has(u, "C")) end
+    end })
+  elseif kind == "power" then
+    A.toggle_bypass(id)
+  elseif kind == "preset" then
+    return menu_at(e, "preset", { id })
+  elseif kind == "outputs" or kind == "sidechain" then
+    return menu_at(e, kind, { id })
+  elseif kind == "up" or kind == "down" then
+    A.move_device(id, kind == "up" and -1 or 1)
+  elseif kind == "remove" then
+    api.device_remove(id)
+  elseif kind == "editor" then
+    api.device_editor(id)
+  elseif kind == "status" then
+    if h.status == "offline" then A.toggle_offline(id) else A.restart_device(id) end
+  elseif kind == "automate" then
+    A.automate_param(id, h.key)
+  elseif kind == "learn" then
+    paw.commands.exec("learn.param " .. id .. " " .. h.key)
+  elseif kind == "add" then
+    paw.commands.exec("device.add")
+  elseif kind == "output" then
+    return menu_at(e, "output", { h.track })
+  elseif kind == "send_add" then
+    return menu_at(e, "send", { h.track })
+  elseif kind == "send" then
+    if e.double then return A.set_send(h.track, h.index, 0) end
+    local rect, fine = e.rect, e.fine
+    local function level(x) return on_bar(x, rect, h.bar, fine) * 66 - 60 end
+    A.set_send(h.track, h.index, level(e.x))
+    return mouse.grab(e, { drag = function(m) A.set_send(h.track, h.index, level(m.x)) end })
+  elseif kind == "send_pre" then
+    A.set_send(h.track, h.index, nil, not api.track_get(h.track).sends[h.index].pre)
+  elseif kind == "send_remove" then
+    A.remove_send(h.track, h.index)
+  end
   api.ui_redraw()
-  local d = row.device
-  if row.param then
-    local key = row.param.key
-    if e.double then return A.reset_param(d.id, key) end
-    local at, width = slider(w)
-    local function fraction(x) return util.clamp((x - at + 0.5) / width, 0, 1) end
-    if e.x >= at and e.x < at + width then A.set_param(d.id, key, fraction(e.x)) end
-    return drag(e, function() return paw.params.fraction(row.param, api.device_get(d.id).params[key]) end, function(start, m)
-      if mouse.has(m, "S") then
-        A.set_param(d.id, key, util.clamp(start + m.dx / (width * 8), 0, 1))
-      else
-        A.set_param(d.id, key, fraction(m.x))
-      end
-    end)
-  elseif not row.picture then
-    -- The on and off chip at the right of the device's line.
-    local chip = d.bypass and " off " or " on "
-    local chip_at = w - #chip - 1
-    if e.x >= chip_at and e.x < chip_at + #chip then A.toggle_bypass(d.id) end
-  end
 end
+
+devices.gestures = {}
+for kind in pairs(device_hints) do devices.gestures[kind] = device_gesture end
 
 -- The session view -----------------------------------------------------------------------
 

@@ -17,7 +17,7 @@ use crate::client::Client;
 use crate::model::{self, Clip, Line, PeakHold, Track, flag, int, number, rows, text};
 use crate::pictures::Pictures;
 use crate::theme::th;
-use crate::{arrange, canvas, devices, dialogs, keys, menu, panes, portal, scene, session};
+use crate::{arrange, canvas, dialogs, keys, menu, panes, portal, scene, session};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -76,8 +76,6 @@ pub struct State {
     pub lines: Vec<Line>,
     pub tracks: Vec<Track>,
     pub clips: Vec<Clip>,
-    pub devices: Value,
-    pub routing: Value,
     pub slots: Value,
     pub kinds: Vec<String>,
     pub selected: i64,
@@ -152,7 +150,6 @@ pub struct View {
     pub rec_start: Option<f32>,
     pub show_automation: bool,
     pub arrange: arrange::Arrange,
-    pub devices: devices::Devices,
     pub session: session::Session,
     pub panes: panes::Panes,
     pub canvases: canvas::Canvases,
@@ -202,7 +199,6 @@ impl View {
             rec_start: None,
             show_automation: false,
             arrange: arrange::Arrange::default(),
-            devices: devices::Devices::default(),
             session: session::Session::default(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
@@ -346,8 +342,6 @@ impl View {
         self.s.lines = model::lines(&project["lines"]);
         self.s.tracks = model::tracks(&state["tracks"]);
         self.s.clips = model::clips(&state["clips"]);
-        self.s.devices = state["devices"].clone();
-        self.s.routing = state["routing"].clone();
         self.s.slots = state["slots"].clone();
         if let Some(kinds) = state["kinds"].as_array() {
             self.s.kinds = kinds.iter().map(text).collect();
@@ -357,7 +351,6 @@ impl View {
         self.s.project = project.clone();
         let ids: Vec<i64> = self.s.clips.iter().map(|c| c.id).collect();
         self.pictures.keep(|id| ids.contains(&id));
-        self.devices.project(&self.s.devices);
     }
 
     /// Peaks are held a moment, then fall; a clip light stays on.
@@ -489,7 +482,6 @@ impl View {
             child.set_clip_rect(rect.intersect(ui.clip_rect()));
             match view.as_str() {
                 "arrange" => self.draw_arrange(&mut child, rect),
-                "devices" => self.draw_devices(&mut child, rect),
                 "session" => self.draw_session(&mut child, rect),
                 _ => {}
             }

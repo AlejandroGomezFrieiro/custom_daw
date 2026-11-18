@@ -108,7 +108,6 @@ gets the function.
   - The graphical frontend draws a text buffer as the terminal does, in the monospace font, not with its own widgets.
 
 - The key rule ([The key rule](key-rule.md)):
-  - The mixer and the device cards of the graphical window do not show the row of the cursor. But the keys move the cursor and act on the row as in the terminal.
   - A selection across mixer strips with different devices or sends chooses rows by their kind (the fader, the second send). It skips a strip that does not have that row.
   - `]` and `[` wait a moment for `]d`, `]g` and similar keys before they run. Vim does the same when a longer mapping starts with a key.
   - `paw.opt.keys = "classic"` gives the old keys. It will go after a release.
@@ -272,8 +271,8 @@ gets the function.
   - A view can draw over a role in cells (the cursor and selection of the
     roll, the tag of an articulation). The graphical window shows this over
     the role in cells too, not as a part of the note.
-  - The arrange view, the device panel and the session view are still the
-    own drawings of the graphical window, fed by `frontend.watch`.
+  - The arrange view and the session view are still the own drawings of
+    the graphical window, fed by `frontend.watch`.
   - The graphical window does not scroll or zoom a plane itself. The wheel
     goes to the kernel, which draws the plane again.
   - paw-raster makes pictures into images when their drawing changes. They
@@ -302,6 +301,24 @@ gets the function.
   The accent of the theme still differs between the terminal (amber focus)
   and the graphical window (blue selection). This is the decision of the
   owner.
+- The device panel of the graphical window is the device panel of the
+  terminal, laid out in cells:
+  - A row is one cell high, lower than the cards of the earlier panel of
+    the window. A parameter has no row of its own for its buttons.
+  - You add a device with the picker of devices, not with a box in the
+    panel that lists the matches as you type. `Ctrl-f` in the picker makes
+    a device a favorite.
+  - The heading of a device has a menu of presets, but no buttons for the
+    next and the previous preset. `]p` and `[p` step through them.
+  - A drag of a device onto the header of a track does not move it to that
+    track. A drag in the panel moves it along the chain. `:device.move_to`
+    and `:device.copy_to` move it to a different track, and `dd` and `p`
+    too.
+  - The wheel over a slider moves the cursor from row to row. `Ctrl` and
+    the wheel change the parameter, as in the terminal.
+  - The pictures of the built-in effects (the curve of the equalizer, the
+    gain reduction, the loudness, the tuner) are drawn in cells. While one
+    shows, the window gets a new scene while the song plays.
 - The drum grid is one view for both frontends, in cells. In the graphical
   window:
   - A step is three cells wide for all lengths of clip.

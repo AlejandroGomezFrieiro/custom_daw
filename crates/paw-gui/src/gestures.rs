@@ -39,8 +39,6 @@ impl Kernel for Fake {
         let code = params[0].as_str().unwrap_or("");
         Ok(if code.contains("paw.frontend.menu(") {
             json!([{ "label": "First" }, { "separator": true }, { "label": "More", "items": [{ "label": "Inner" }] }, { "label": "Quit", "window": "quit" }])
-        } else if code.contains("search_devices") {
-            json!([{ "line": "Synth  · builtin instrument", "kind": "synth" }])
         } else if code.contains("paw.frontend.closing()") {
             json!({ "modified": true, "name": "song" })
         } else if code.contains("paw.frontend.act.lane(") {
@@ -81,7 +79,7 @@ fn panes() -> Value {
         "panes": [
             { "win": 1, "view": "arrange", "kind": "native", "x": 0, "y": 0, "w": 1088, "h": 500, "focused": true },
             { "win": 2, "view": "pianoroll", "kind": "cells", "x": 0, "y": 500, "w": 1088, "h": 396, "focused": false },
-            { "win": 3, "view": "devices", "kind": "native", "x": 1088, "y": 0, "w": 412, "h": 896, "focused": false },
+            { "win": 3, "view": "devices", "kind": "cells", "x": 1088, "y": 0, "w": 412, "h": 896, "focused": false },
         ],
         "borders": [{ "dir": "v", "x": 0, "y": 500, "length": 1088 }],
         "tabs": [{ "title": "arrange" }],
@@ -544,27 +542,7 @@ fn a_menu_the_kernel_opens_is_shown_by_the_window_and_chosen_or_let_go() {
     assert!(h.state().menu.is_none() && acted(&calls, "menu_dismiss").is_some(), "Esc lets go of it, in the kernel too");
 }
 
-// -------------------------------------------------- devices, mixer, transport
-
-#[test]
-fn the_device_box_finds_and_adds_a_device() {
-    let (mut h, calls) = window();
-    click(&mut h, pos2(1300.0, AREA_TOP + 64.0));
-    h.event(Event::Text("syn".into()));
-    h.run_steps(3);
-    assert!(sent(&calls, "search_devices"));
-    h.event(Event::Key { key: egui::Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
-    h.run_steps(3);
-    assert_eq!(act(&calls, "add_device"), [json!("synth"), json!("syn")]);
-}
-
-#[test]
-fn a_devices_power_button_and_its_parameters_take_the_pointer() {
-    let (mut h, calls) = window();
-    let power = h.get_by_label("power of Synth").rect().center();
-    click(&mut h, power);
-    assert!(acted(&calls, "toggle_bypass").is_some(), "the power button");
-}
+// ---------------------------------------------------------- mixer, transport
 
 #[test]
 fn the_transport_buttons_and_the_file_menu() {
@@ -804,24 +782,61 @@ fn a_drag_on_the_mixers_fader_goes_back_in_cells_with_fractions() {
 
 // ---------------------------------------------------------------- the devices
 
+/// A device of the panel as the kernel sends it to a window that paints
+/// the widget roles (paw/views/devices.lua): its heading's band, name and
+/// power button, and a parameter that a lane moves, bound to its live value.
+fn device_scene() -> paw_scene::Patch {
+    use paw_scene::{Kind, Node};
+    let mut scene = paw_scene::Scene::new([50.0, 20.0]);
+    (scene.fg, scene.bg) = ("#c9ced8".into(), "#101216".into());
+    let role = |key: &str, role: &str, rect, props: Value| Node::new(key, Kind::Role { role: role.into(), props }, rect);
+    scene.push(None, role("band@0,1", "band", [0.0, 1.0, 50.0, 1.0], json!({})));
+    scene.push(None, role("label@3,1", "label", [3.0, 1.0, 5.0, 1.0], json!({ "text": "Synth", "font": "title", "label": "name of Synth" })));
+    let mut power = role("power@45,1", "power", [45.0, 1.0, 4.0, 1.0], json!({ "on": true, "label": "power of Synth" }));
+    power.hit = Some(json!({ "kind": "power", "device": 8 }));
+    scene.push(None, power);
+    let mut cutoff = role("param@15,2", "param", [15.0, 2.0, 31.0, 1.0], json!({ "bar": 22, "label": "Cutoff of Synth" }));
+    cutoff.bind = Some("param:8:cutoff".into());
+    cutoff.hit = Some(json!({ "kind": "param", "device": 8, "key": "cutoff", "bar": 22 }));
+    scene.push(None, cutoff);
+    let mut patch = paw_scene::Scene::diff(&paw_scene::Scene::default(), &scene, "3");
+    patch.full = true;
+    patch
+}
+
 #[test]
-fn a_devices_buttons_remove_and_move_it() {
-    let (mut h, calls) = window_with(|s| {
-        let synth = s["devices"][0].clone();
-        let mut delay = synth.clone();
-        delay["id"] = json!(9);
-        delay["name"] = json!("Delay");
-        s["devices"] = json!([synth, delay]);
-    });
-    let at = h.get_by_label("move Delay up").rect().center();
-    click(&mut h, at);
-    assert_eq!(act(&calls, "move_device"), [json!(9), json!(-1)]);
-    let at = h.get_by_label("move Synth down").rect().center();
-    click(&mut h, at);
-    assert_eq!(act(&calls, "move_device"), [json!(8), json!(1)]);
-    let at = h.get_by_label("remove Synth").rect().center();
-    click(&mut h, at);
-    assert!(calls.borrow().iter().any(|(_, p)| p[0] == "return paw.api.device_remove(...)" && p[1] == 8));
+fn the_device_panel_is_painted_from_its_scene_and_a_parameter_a_lane_moves_follows_the_live_values() {
+    let (mut h, calls, patches) = window_and_patches(|_| {});
+    let area = calls.borrow().iter().find(|(m, p)| m == "scene.area" && p[0] == "3").map(|(_, p)| p.clone());
+    assert!(area.is_some(), "the panel is a pane the kernel draws, sized in cells");
+    patches.borrow_mut().push(serde_json::to_value(device_scene()).unwrap());
+    h.run_steps(2);
+    assert!(h.query_by_label("power of Synth").is_some() && h.query_by_label("Cutoff of Synth").is_some());
+    assert!(drawn_text(&h).contains("Synth"), "the name, in words");
+    patches.borrow_mut().push(json!({ "scene.live": { "params": { "param:8:cutoff": { "fraction": 0.5, "text": "1.2 kHz" } } } }));
+    h.run_steps(2);
+    assert!(drawn_text(&h).contains("1.2 kHz"), "the value the lane gives, from the live values alone");
+    patches.borrow_mut().push(json!({ "scene.live": { "params": { "param:8:cutoff": { "fraction": 0.9, "text": "8.5 kHz" } } } }));
+    h.run_steps(2);
+    let text = drawn_text(&h);
+    assert!(text.contains("8.5 kHz") && !text.contains("1.2 kHz"), "and it moves with them: {text}");
+}
+
+#[test]
+fn a_press_on_a_devices_power_button_goes_back_in_cells() {
+    let (mut h, calls, patches) = window_and_patches(|_| {});
+    patches.borrow_mut().push(serde_json::to_value(device_scene()).unwrap());
+    h.run_steps(2);
+    calls.borrow_mut().clear();
+    let power = h.get_by_label("power of Synth").rect();
+    click(&mut h, power.center());
+    let down = calls
+        .borrow()
+        .iter()
+        .find(|(m, p)| m == "scene.input" && p[0] == "3" && p[1]["kind"] == "down")
+        .map(|(_, p)| p[1].clone())
+        .expect("the press passed on");
+    assert!((num(&down["x"]) - 47.0).abs() < 0.1 && (num(&down["y"]) - 1.5).abs() < 0.1, "the power button's middle in units: {down}");
 }
 
 // ------------------------------------------------------------ the session view
@@ -875,7 +890,6 @@ fn what_the_window_writes_has_glyphs() {
         include_str!("arrange.rs"),
         include_str!("canvas.rs"),
         include_str!("chrome.rs"),
-        include_str!("devices.rs"),
         include_str!("dialogs.rs"),
         include_str!("headers.rs"),
         include_str!("menu.rs"),

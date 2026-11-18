@@ -30,8 +30,8 @@ The kernel sends a frontend what changed, when it changes. The window does
 not ask for the state many times a second. An idle project sends nothing,
 and an idle window draws nothing. A change sends only the part that
 changed. While the song plays, the values that move (the playhead, the clock,
-the meters) come as small live messages. The window moves its widgets with
-them.
+the meters, the parameters that lanes move) come as small live messages.
+The window moves its widgets with them.
 
 The full description is in [The control
 protocol](../reference/protocol.md).
@@ -77,10 +77,10 @@ cells.
 
 ## What is not yet a scene
 
-The mixer, the piano roll, the drum grid, text buffers, curves, the
-quickfix list and the views that paint come from scenes. The arrange view,
-the device panel and the session view are still the window's own drawings
-in egui, fed by `frontend.watch`. They have no roles for clips or curves
+The mixer, the piano roll, the device panel, the drum grid, text buffers,
+curves, the quickfix list and the views that paint come from scenes. The
+arrange view and the session view are still the window's own drawings in
+egui, fed by `frontend.watch`. They have no roles for clips or curves
 yet. [Limits](../reference/limits.md) has the current list.
 
 ## Why the window looks as it does

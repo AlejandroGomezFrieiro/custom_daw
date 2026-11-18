@@ -360,6 +360,11 @@ function M.title(buf)
     if ok and text then return tostring(text) end
   end
   local view = ui().views[buf.type]
+  -- A view's title may say what it shows now (`view:title_of()`).
+  if view and view.title_of then
+    local ok, text = pcall(view.title_of, view)
+    if ok and text then return tostring(text) end
+  end
   return view and view.title or M.pane_titles[buf.type] or M.titles[buf.type] or buf.name
 end
 

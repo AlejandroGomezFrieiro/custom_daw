@@ -10,7 +10,11 @@ local role = paw.roles.define
 --- Text, as `buf:text` writes it: `align` "left" (the default), "right" or
 --- "center" in the rectangle, cut to it.
 role("label", {
-  props = { text = "string", style = "highlight group", align = "left | right | center", tone = "theme token (window)" },
+  props = {
+    text = "string", style = "highlight group", align = "left | right | center", tone = "theme token (window)",
+    font = "mono (the default) | sans | title: how a window writes it", strike = "boolean (window)",
+    capital = "boolean: a window writes the first letter in capitals",
+  },
   cells = function(buf, p)
     local text = util.fit(tostring(p.text or ""), buf.width)
     local w = paw.api.str_width(text)
@@ -19,9 +23,14 @@ role("label", {
   end,
 })
 
---- Something to click: its text, lit when `on`.
+--- Something to click: its text, lit when `on`. A window draws `icon`
+--- in place of the text, when it has one of that name.
 role("button", {
-  props = { text = "string", style = "highlight group", on = "boolean" },
+  props = {
+    text = "string", style = "highlight group", on = "boolean", menu = "boolean: it opens a menu",
+    quiet = "boolean: no face until the pointer is on it", off = "boolean: dimmed", tone = "theme token of its text (window)",
+    icon = "up | down | remove | window | plus | automate | learn | plugs | warning | circle (window)",
+  },
   cells = function(buf, p)
     buf:text(0, 0, util.fit(tostring(p.text or ""), buf.width), p.on and (p.on_style or "Visual") or p.style)
   end,
@@ -97,4 +106,44 @@ role("chip", {
     buf:fill(0, 0, buf.width, buf.height, " ", p.style)
     buf:text(1, 0, util.fit(tostring(p.text or ""), buf.width - 1))
   end,
+})
+
+--- A parameter: a slider along its first `bar` columns, then its value
+--- in its unit at the right of the rest (`text`). `fraction` is where it
+--- sits, from 0 to 1; `centred` fills from the middle; `steps` is the
+--- number of choices of a parameter that has them. Bound to a parameter
+--- (`bind = "param:<device>:<key>"`), a window takes `fraction` and `text`
+--- from `scene.live`, so that automation moves it with no new scene.
+role("param", {
+  props = {
+    fraction = "number 0..1", text = "string", bar = "number (columns)", centred = "boolean", steps = "number",
+    style = "highlight group of the bar", off_style = "highlight group of the rest of the rail",
+    value_style = "highlight group of the value", dim = "boolean (window)",
+  },
+  bound = { "fraction", "text" },
+  cells = function(buf, p)
+    local bar = math.min(p.bar or buf.width, buf.width)
+    if bar > 0 then draw.slider(buf, 0, 0, bar, p.fraction or 0, p.style, p.off_style) end
+    local text, room = tostring(p.text or ""), buf.width - bar
+    if room <= 0 or text == "" then return end
+    if paw.api.str_width(text) > room then text = util.fit(text, room) end
+    buf:text(buf.width - paw.api.str_width(text), 0, text, p.value_style)
+  end,
+})
+
+--- A device's power: ` on `, or ` off ` lit when it is bypassed. A window
+--- paints a power button, lit when on.
+role("power", {
+  props = { on = "boolean" },
+  cells = function(buf, p)
+    buf:text(0, 0, p.on and " on " or " off ", p.on and "FlagOff" or "Mute")
+  end,
+})
+
+--- The heading of a group of rows, such as a device and its parameters:
+--- nothing of its own in cells, where the rows' text says it all; a window
+--- paints a band across, dimmed when `off`.
+role("band", {
+  props = { off = "boolean", selected = "boolean: the keyboard's cursor is on it" },
+  cells = function() end,
 })

@@ -60,12 +60,6 @@ pub fn pan_text(pan: f32) -> String {
     }
 }
 
-/// A parameter's name with a capital letter, as a label.
-pub fn capitalised(name: &str) -> String {
-    let mut chars = name.chars();
-    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
-}
-
 /// A meter's peaks, held a moment and then let fall, and the light that
 /// comes on when a level reaches 0 dB and stays on until it is cleared.
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -423,7 +417,6 @@ mod tests {
         assert_eq!(decibels(-0.01), "0.0");
         assert_eq!(decibels(3.5), "3.5");
         assert_eq!(decibels(-90.0), "\u{2212}inf");
-        assert_eq!(capitalised("attack"), "Attack");
         assert_eq!(pan_text(0.0), "C");
         assert_eq!(pan_text(-0.3), "L30");
         assert_eq!(pan_text(1.0), "R100");

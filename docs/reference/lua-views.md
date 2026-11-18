@@ -43,6 +43,10 @@ lists the fields for the graphical window (`title`, `window`, `paint`,
 | `status(self, line)` | the part of the status line for the view |
 | `help` | the topic of `:help` for the key line of the view |
 | `live_roles` | the roles that change while the song plays (see [Roles](#roles)) |
+| `live_values()` | values of its own for the live messages, by name (see [Roles](#roles)) |
+| `moving(self)` | true while the view also shows something else that moves (see [Roles](#roles)) |
+| `redraw_every` | the milliseconds between two scenes of a view that moves while the song plays |
+| `title_of(self)` | the title of its pane in the graphical window, for what the view shows now |
 
 ### Pictures
 
@@ -100,14 +104,17 @@ The widget roles:
 
 | Role | Props |
 | --- | --- |
-| `label` | `text`, `align` |
-| `button` | `text`, `on` |
+| `label` | `text`, `align`, `font` (`sans` or `title` in the window), `capital`, `strike` |
+| `button` | `text`, `on`, `menu`, `quiet`, `icon` (the window shows the icon in place of the glyph) |
 | `switch` | `letter`, `on`, `style`, `tone` |
 | `knob` | `value`, -1 to 1 |
 | `fader` | `at` and `zero`, 0 to 1 along its travel |
 | `meter` | `levels`, `hold`, `clipped` |
 | `peak` | `hold`, `clipped`: the loudest recent level, in dB |
 | `chip` | `text`, `style`, `color` |
+| `param` | `fraction` (0 to 1), `text` (the value), `bar` (the columns of the slider), `centred`, `steps` |
+| `power` | `on`: a device's power chip |
+| `band` | `off`: the heading of a group of rows, a band in the window and nothing in cells |
 
 - `style` is how the terminal draws the role. `tone` is a color of the
   palette of the graphical window, by name. `label` is the name of the role
@@ -122,6 +129,15 @@ The widget roles:
   parts that change, and the graphical window paints them all, the window
   gets only the live values, not new scenes. The piano roll names
   `{ "playhead" }`.
+- A view can add values of its own to the live messages:
+  `view.live_values()` returns a table, and each of its fields goes into
+  the message under its name. The device panel sends `params`, the
+  parameters that lanes move, for its `param` roles bound to
+  `param:<device>:<key>`.
+- `view:moving()` returns true while the view shows something else that
+  moves, such as the gain reduction of a compressor. Then the window gets
+  new scenes while the song plays. `view.redraw_every` is the time between
+  them, in milliseconds (30 by default; the device panel has 100).
 - A view whose title row has buttons of its own has `titled = true`. A
   window then gives it no title of its own.
 - A `button` with `menu` opens a menu (it shows a caret).

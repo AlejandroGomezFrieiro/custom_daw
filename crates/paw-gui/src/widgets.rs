@@ -46,9 +46,15 @@ pub fn take_hint() -> String {
 
 /// Draw `icon` filling `rect` in `ink`.
 pub fn icon(ui: &Ui, rect: Rect, icon: Icon, ink: Color32) {
-    let pixels = (rect.width().max(rect.height()) * ui.ctx().pixels_per_point()).round().max(1.0) as u32;
-    let texture = ICONS.with(|icons| icons.borrow_mut().get(ui.ctx(), icon, pixels));
-    ui.painter().image(texture.id(), rect, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), ink);
+    icon_on(ui.painter(), rect, icon, ink);
+}
+
+/// The same with a painter of its own, cut as it is.
+pub fn icon_on(painter: &egui::Painter, rect: Rect, icon: Icon, ink: Color32) {
+    let ctx = painter.ctx();
+    let pixels = (rect.width().max(rect.height()) * ctx.pixels_per_point()).round().max(1.0) as u32;
+    let texture = ICONS.with(|icons| icons.borrow_mut().get(ctx, icon, pixels));
+    painter.image(texture.id(), rect, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), ink);
 }
 
 /// How a button looks.

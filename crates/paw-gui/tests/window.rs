@@ -1380,7 +1380,7 @@ fn an_idle_window_with_kernel_panes_and_a_window_of_a_view_asks_for_nothing() {
     w.type_text(":qf.window");
     w.key("Return");
     w.expect("the list in a window of its own", "#paw.canvas.windows() == 1");
-    w.expect("both sent as scenes", "#paw.scene.watchers()[1].windows == 2");
+    w.expect("both sent as scenes, beside the device panel", "#paw.scene.watchers()[1].windows == 3");
     w.find_text("dB", 0);
     let idle = w.settled_cpu_percent(5.0);
     assert!(idle.last() < Some(&5.0), "the idle window uses {idle:.1?}% of a core");
@@ -1994,6 +1994,61 @@ fn the_clip_light_lights_at_full_scale_and_a_click_on_the_peak_puts_it_out() {
     w.pause(0.5);
     assert!(!red(&w), "and the window shows it out");
     w.assert_alive("after the clip light");
+}
+
+/// Where a point of the device panel is in the window, from the kernel:
+/// `x` and `y` (Lua, fractions allowed) in the panel's own cells, its title
+/// row 0, with `W` its width and `lay` its layout (paw/views/devices.lua).
+fn devices_point(w: &Scene, x: &str, y: &str) -> Point {
+    let lua = format!(
+        "for _, p in ipairs(paw.panes.state().panes) do
+           if p.view == 'devices' then
+             local c = paw.canvas.cell
+             local W = math.floor((p.w - 12) / c.w)
+             local lay = paw.ui.views.devices.layout(W)
+             local x, y = {x}, {y}
+             return math.floor(p.x + 6 + x * c.w) .. ',' .. math.floor({top} + p.y + 24 - c.h + y * c.h)
+           end
+         end",
+        top = place::AREA_TOP
+    );
+    let text = w.ctl(&lua);
+    let (x, y) = text.trim_matches('"').split_once(',').unwrap_or_else(|| panic!("no device pane: {text}"));
+    (x.parse().unwrap(), y.parse().unwrap())
+}
+
+#[test]
+fn the_device_panel_is_the_kernels_scene_and_its_sliders_and_buttons_take_the_pointer() {
+    let mut w = scene!(
+        "devices-scene",
+        "local t = paw.add_track({ name = 'Lead' })
+         t:add_device('gain')
+         t:add_device('delay')
+         paw.cursor.set_track(t)"
+    );
+    w.expect(
+        "the panel sent as a scene, its widgets as roles",
+        "(function() for _, p in ipairs(paw.panes.state().panes) do if p.view == 'devices' then return p.kind == 'cells' end end end)()",
+    );
+    w.expect("drawn", "paw.ui.views.devices.geometry ~= nil and paw.ui.views.devices.geometry.lay ~= nil");
+    let id = "paw.api.track_get(paw.cursor.track_id()).devices";
+    let first = w.number(&format!("return {id}[1]")) as i64;
+    // The first parameter of the gain, on row 2: dragged to the end of its
+    // slider, the top of its range.
+    let key = "paw.api.device_get(".to_string() + &first.to_string() + ").param_info[1]";
+    let start = devices_point(&w, "lay.bar_at + 1.5", "2.5");
+    let end = devices_point(&w, "lay.bar_at + lay.bar + 2", "2.5");
+    w.shot("devices-scene.png");
+    w.drag(start, end);
+    w.expect("dragged to the end: the top of its range", &format!("paw.api.device_get({first}).params[{key}.key] == {key}.max"));
+    // A double click: back to its default.
+    w.double_click(start);
+    w.expect("a double click: its default", &format!("paw.api.device_get({first}).params[{key}.key] == {key}.default"));
+    // The power button, at the right of the heading on row 1.
+    w.click(devices_point(&w, "W - 3", "1.5"));
+    w.expect("the power button bypasses it", &format!("paw.api.device_get({first}).bypass == true"));
+    w.shot("devices-scene-after.png");
+    w.assert_alive("after working the device panel");
 }
 
 #[test]

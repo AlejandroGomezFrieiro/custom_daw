@@ -683,10 +683,8 @@ test("a parameter's slider in the device panel follows the pointer, a double cli
   for i, entry in ipairs(panel:rows()) do if entry.param and not row then row = i end end
   local p = panel:rows()[row].param
   local ly = rect.y + row - panel.scroll
-  local w = rect.w
-  local name_w = math.min(12, math.max(4, w - 24))
-  local bar_at = 2 + name_w + 1
-  local bar = math.max(3, w - bar_at - 10)
+  local lay = panel.layout(rect.w)
+  local bar_at, bar = lay.bar_at, lay.bar
   click(rect.x + bar_at + bar - 1, ly)
   near(paw.params.fraction(p, api.device_get(d.id).params[p.key]), 1 - 0.5 / bar, 0.02, "the last cell of the slider")
   apart()
