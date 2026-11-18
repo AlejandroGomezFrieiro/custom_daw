@@ -257,6 +257,12 @@ extension has a README.
   you, and extensions that you own for all else.
 - [REAPER](https://www.reaper.fm): a light DAW that you can script, and
   notation as a view over MIDI.
+- The Vim modes for REAPER, which showed that key sequences can control a
+  DAW: [reaper-keys](https://github.com/gwatcha/reaper-keys),
+  [vimper](https://github.com/ggVGc/vimper),
+  [reavim-ext](https://github.com/AntoineBalaine/reavim-ext) and
+  [ReaLeader](https://github.com/SV3A/ReaLeader) (leader keys with a
+  which-key list).
 - [Ardour](https://ardour.org), [Bitwig Studio](https://www.bitwig.com) and
   [Renoise](https://www.renoise.com) for the DAW. [Dorico](https://www.steinberg.net/dorico/)
   and [MuseScore](https://musescore.org) for the score.

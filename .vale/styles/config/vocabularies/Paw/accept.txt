@@ -222,3 +222,6 @@ Alacritty
 aiff
 (?i)aftertouch
 (?i)sus
+vimper
+reavim
+ReaLeader
