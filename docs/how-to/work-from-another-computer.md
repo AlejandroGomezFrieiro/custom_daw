@@ -85,3 +85,4 @@ Type `:detach` in an attached terminal. The instance continues to run.
 
 - [About seats](../explanation/about-seats.md): what each frontend has of its own, and why the network is safe.
 - [The programs and their options](../reference/programs.md).
+- [How to run the graphical window against a kernel on another machine](run-the-window-against-a-remote-kernel.md): the graphical window in more detail.

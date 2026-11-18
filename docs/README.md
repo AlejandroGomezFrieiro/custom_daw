@@ -20,6 +20,9 @@ each extension (`:help notation`).
 - [How to add a picker](how-to/add-a-picker.md): a list to choose from, with a key
 - [How to work on paw from another computer](how-to/work-from-another-computer.md): attach over the network or SSH, send files, hear the sound
 - [How to run the tests](how-to/run-the-tests.md): the Lua suite, the Rust tests, the tests of the graphical window
+- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
+- [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
+- [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
 
 ## Reference
 
@@ -46,7 +49,8 @@ each extension (`:help notation`).
 - [Pictures in the terminal](reference/pictures.md): pixels in terminals that show images
 - [The status line](reference/status-line.md): sections, components, `paw.statusline`
 - [Options](reference/options.md): every option of `paw.opt`
-- [The graphical frontend](window.md): each gesture of the graphical window
+- [The graphical window](reference/window.md): its command line, each gesture, the panes and the views in windows of their own
+- [The graphical window in Lua](reference/window-lua.md): `paw.frontend.act`, menus, bands, panes, views that paint
 - [The programs and their options](reference/programs.md): `paw`, `paw-gui`, `paw-mcp`, environment variables
 - [Files that paw keeps](reference/state-files.md): configuration, state, cache, recent projects
 - [The Nix package](reference/nix-package.md): the outputs of the flake and the checks
@@ -59,7 +63,7 @@ each extension (`:help notation`).
 - [Scripts](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
 - [Extensions](extensions.md): what is in the core, what an extension can add
 - [Lua API reference](reference/api.md): each function, made from the code
-- [The control protocol](reference/protocol.md): the messages of the socket
+- [The control protocol](reference/protocol.md): the messages of the socket, scenes, seats, files and sound
 - [Limits: what paw does not do yet](reference/limits.md): what paw does not do, and the known limits of what it does
 
 ## Explanation
@@ -69,3 +73,4 @@ each extension (`:help notation`).
 - [About seats](explanation/about-seats.md): many frontends on one instance, and a safe network connection
 - [About the look of paw](explanation/about-the-look.md): color for attention, the color of a track, cells first
 - [About the Nix build](explanation/about-the-nix-build.md): two layers, and why crane
+- [About scenes: one view, two frontends](explanation/about-scenes.md): why the graphical window has no views of its own

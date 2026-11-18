@@ -3,7 +3,7 @@
 <!-- tags: graphics kitty-graphics strips -->
 
 A view that paints for the graphical window (`paint`, see
-[The graphical frontend](../window.md)) shows the same pixels in a
+[The graphical frontend](window.md)) shows the same pixels in a
 terminal that shows images. An example is the score of `:notation`.
 
 ## What paw asks the terminal

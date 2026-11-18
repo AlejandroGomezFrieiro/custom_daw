@@ -2538,11 +2538,6 @@ function paw.frontend.chosen_refs() end
 ---@param clip any
 function paw.frontend.chosen_text(clip) end
 
---- One clip with its notes and controller moves, for a piano roll, and the
---- name and colour of the track it is on. Nil when the clip is gone.
----@param id any
-function paw.frontend.clip(id) end
-
 --- Whether closing now would lose anything: { modified, name, path }.
 function paw.frontend.closing() end
 
@@ -2653,11 +2648,6 @@ function paw.frontend.refresh() end
 --- selection, every region), the engine's sample rate, and which lossy
 --- formats ffmpeg can make here (`formats`: `{ mp3 = true, ogg = false, ... }`).
 function paw.frontend.render_dialog() end
-
---- The chord symbols over a clip, as `paw.opt.chords` asks for them:
---- `{ start, length, label }` in the clip's beats; none when it is off.
----@param clip any
-function paw.frontend.roll_chords(clip) end
 
 --- Where a track's sound goes, for a frontend to show and change:
 ---   output   the name of the track it plays into ("Master" without one)
@@ -4971,7 +4961,7 @@ function paw.panes.pointer(id, event, drawn) end
 
 --- Where everything goes in the main area, for a frontend's state: `panes`,
 --- each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h,
---- focused }`; `borders`, each `{ dir ("h": a rule between panes side by
+--- focused, titled }`; `borders`, each `{ dir ("h": a rule between panes side by
 --- side, "v": one between panes one above another), x, y, length }`, by
 --- their place in the list; `tabs`, each `{ title }`, and `tab`, the
 --- current one; `top`, where the panes start under the row of tabs. Nil
@@ -5524,6 +5514,15 @@ function paw.roles.input(client, id, view, win, event, held) end
 ---@param props any
 function paw.roles.mark(buf, role, x, y, w, h, props) end
 
+--- `buf:plane(x, y, w, h, opts)`: see above.
+---@param buf any
+---@param x any
+---@param y any
+---@param w any
+---@param h any
+---@param opts any
+function paw.roles.plane(buf, x, y, w, h, opts) end
+
 --- A mouse event in the terminal, in the cells of the view it is over (as
 --- its `on_mouse` takes it, with `view_x`, `view_y`, `win`): to the gesture
 --- of the hit region under it. True when it was taken.
@@ -5540,8 +5539,9 @@ function paw.roll_clips.activate(id) end
 --- The id of the active clip, or nil with no clip open.
 function paw.roll_clips.active() end
 
---- The context notes: those of the shown tracks' clips (not the editable
---- ones) that sound within the editable clips' stretch, in the roll's beats:
+--- The context notes: those of the active clip's track's other clips and
+--- of the shown tracks' clips (not the editable ones) that sound within the
+--- editable clips' stretch, in the roll's beats:
 --- `{ pitch, start, length, velocity, clip, track, color }` each, at most
 --- `paw.opt.roll_context_max` of them. Kept until the project, the set of
 --- clips or the toggles change.
@@ -5993,12 +5993,6 @@ function paw.snippet.step(dir) end
 --- The selection the command line was opened over, once: what
 --- `:snippet` works on.
 function paw.snippet.take_cmdline_selection() end
-
---- The same for the window (the layer's marks, in the clip's beats):
---- ghosts of what the picker would write, the active snippet's notes, and
---- a chip under its lowest note saying what Tab and `<C-n>` work on.
----@param clip_id any
-function paw.snippet.window_marks(clip_id) end
 
 --- Add a component, as an extension does: `paw.statusline.component("pulse",
 --- function(ctx) return "♥" end)`, or with the fields of a table (`fn`,
@@ -6951,7 +6945,8 @@ function paw.ui.theme(groups) end
 --- Draw a one-row title bar along the top of a docked panel and return a
 --- buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`,
 --- drawn ahead of the name), `context` (after the name),
---- `right` (state, at the right end), `focused`. Focus shows as the whole
+--- `right` (state, at the right end), `reserve` (columns kept free at the
+--- right end, for what the view puts there), `focused`. Focus shows as the whole
 --- bar in the accent colour, inverted.
 ---   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
 ---@param buf any
@@ -7018,6 +7013,22 @@ function paw.ui.Buf.hit(self, x, y, w, h, action) end
 ---@param h any
 ---@param props any
 function paw.ui.Buf.mark(self, role, x, y, w, h, props) end
+
+--- A plane over an area (paw/roles.lua, "Planes"): what is marked in it is
+--- placed by a domain of its own along each axis, `opts.x` and `opts.y`
+--- (`{ domain, from, per }`: `per` cells a unit of the domain, `from` at
+--- the area's edge); a terminal shows it on the cells it rounds to, a
+--- window where it is.
+---   local roll = buf:plane(5, 2, 60, 20, { key = "roll", x = { domain = "beat", from = 0, per = 4 },
+---     y = { domain = "pitch", from = 73, per = -1 }, hit = { kind = "grid" } })
+---   roll:mark("note", 1.5, 60, 0.5, 1, { label = "C4" })
+---@param self any
+---@param x any
+---@param y any
+---@param w any
+---@param h any
+---@param opts any
+function paw.ui.Buf.plane(self, x, y, w, h, opts) end
 
 --- The buffer covering a whole screen of the given size.
 ---@param width any

@@ -72,7 +72,7 @@ gets the function.
   - Notation does not keep the name of a note typed in a replacement (`:s/c4/db4/`). It spells the note by the key.
   - A term of a pattern has no spaces. So `name=` cannot name a clip with a space in its name.
   - The `:t` of Vim (copy) is not there, because `t` starts a range of tracks. `:k`, `:j!`, `:retab` and similar commands are not there.
-  - The graphical window gets the matches and ghosts of the piano roll (as the marks of the roll) and the count (`prompt.note`). It does not show the count yet. It does not shade the range or light clips in the arrange view.
+  - The graphical window shows the matches and ghosts of the piano roll as the terminal draws them. It gets the count (`prompt.note`), but does not show it yet. It does not shade the range or light clips in the arrange view.
 
 - Search:
   - The regex mode of the pickers and `:vimgrep` change the common kind of regular expression into Lua patterns. So a group cannot repeat (`(ab)+`), and there is no `\b`, no backreference and no lookaround.
@@ -214,17 +214,28 @@ gets the function.
   backgrounds changed.
 - Scenes (the window's panes and windows of views the kernel draws; see
   "Scenes" in [the protocol](protocol.md)): runs, fills, pictures, the
-  widget roles and hit regions (`buf:mark`, `buf:hit`), but no planes (a
-  domain such as beats and pitches mapped onto a rectangle) and no roles
-  for clips, notes or curves yet. The window paints the widget roles only;
-  an extension's own role (`paw.ui.role`) shows in its cells there, as it
-  has no `pixels` drawing yet. The arrange view, the piano roll, the device
-  panel and the session view are still the window's own drawings, fed by
-  `frontend.watch`. Pictures are made into images by paw-raster when their
+  widget roles, hit regions (`buf:mark`, `buf:hit`), planes and notes on
+  them, but no roles for clips or curves yet. The window paints the widget
+  roles and notes only; an extension's own role (`paw.ui.role`) shows in its cells there, as it
+  has no `pixels` drawing yet. What a view draws over a role in cells
+  (the roll's cursor and selection, an articulation's tag) the window shows
+  over it in cells too, not as a part of the note. The arrange view, the
+  device panel and the session view are still the window's own drawings,
+  fed by `frontend.watch`. A plane is not scrolled or zoomed by the window
+  itself: the wheel goes to the kernel, which draws it again. Pictures are made into images by paw-raster when their
   drawing changes, not drawn as egui shapes. Nodes are named by where they
   are written, so a view that scrolls sends what scrolled again. A drag on
   a hit region costs a turn of the kernel for each move, also over
   `--connect`.
+- The window's piano roll is the terminal's, laid out in cells: a row a
+  pitch at the window's cell (Alt and the wheel do not make the rows
+  taller: a taller row would be two cells, in the terminal too, which the
+  roll does not do yet), the tracks near the roll in the `:roll.tracks`
+  list rather than a side panel beside it, a suggestion's alternatives
+  shown with `Alt-1`…`Alt-9` rather than chips to click. It opens at the
+  roll's zoom (`note_zoom`), not fitted to the clip, so short notes are
+  too narrow for their names until zoomed in. While a note is dragged it
+  stays where it was and a copy of it follows the pointer.
 - The window's mixer is the terminal's, laid out in cells: its switches
   are a cell wide, and its devices have rows of their own only when it is
   at least twenty rows tall (in the window's usual height they fold into

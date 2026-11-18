@@ -3,7 +3,7 @@
 <!-- tags: the-mouse pointer -->
 
 The mouse does in the terminal what it does in the graphical window (see
-[The graphical frontend](../window.md)), in cells. Each gesture goes to the
+[The graphical frontend](window.md)), in cells. Each gesture goes to the
 same function in the kernel as the gesture of the window
 (`paw.frontend.act`). So the two frontends give a gesture the same
 meaning. The keys do not change.

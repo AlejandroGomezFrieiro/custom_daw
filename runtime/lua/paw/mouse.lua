@@ -93,7 +93,11 @@ local function feed_gesture(event)
   local g = state.gesture
   local e = paw.util.merge(event, { x = event.x - g.ox, y = event.y - g.oy })
   e.dx, e.dy = e.x - g.x0, e.y - g.y0
-  g.moved = g.moved or e.dx ~= 0 or e.dy ~= 0
+  -- A window's pointer comes in fractions of a cell (`fine`): half of one
+  -- away is away, so that a click that wavers a pixel stays a click.
+  local away
+  if event.fine then away = math.abs(e.dx) >= 0.5 or math.abs(e.dy) >= 0.5 else away = e.dx ~= 0 or e.dy ~= 0 end
+  g.moved = g.moved or away
   e.moved = g.moved
   if event.kind == "up" then
     -- What the drag said is over; the next move says what is under the pointer.

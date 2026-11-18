@@ -1,6 +1,6 @@
 #!/bin/sh
 # Make tests/fixture.json again: what a kernel with tests/fixture.lua tells
-# a window (paw.frontend.state, the clip in the piano roll, the palette).
+# a window (paw.frontend.state with the piano roll open, the palette).
 # Run from the checkout after a change to what the kernel tells.
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
@@ -17,7 +17,6 @@ local clip = paw.api.clip_list(a.id)[1].id
 paw.frontend.act.open_clip(clip)
 return paw.api.json_encode({
   state = paw.frontend.state(-1),
-  clip = paw.frontend.clip(clip),
   palette = paw.canvas.palette,
 }, true)" > "$here/fixture.json"
 kill $kernel

@@ -79,15 +79,32 @@ function view:note_at(pitch, beat)
   return clips.note_at(pitch, beat)
 end
 
---- Rows above the notes on a panel `h` rows tall: the panel's title, the
---- chord symbols when `paw.opt.chords` asks for them and there is room,
---- then the ruler.
-function view.head_rows(h)
-  return (paw.opt.chords and h >= 12) and 3 or 2
+--- Whether a panel `h` rows tall has a row of tools under its title.
+--- (A panel `w` wide enough has them in its title row instead.)
+function view.toolbar_rows(h, w)
+  return not view.tools_in_title(w) and h >= 20 and 1 or 0
 end
--- Switches a module adds to the window's piano roll toolbar: `fn()`
--- returns `{ label, on, tip, act }` (`act` names the `paw.frontend.act`
--- function a click calls, given the clip), or nil to show none for now.
+
+--- Whether a panel `w` columns wide has its tools in its title row.
+function view.tools_in_title(w)
+  return (w or 0) >= 140
+end
+
+--- Columns for the keyboard on the left of a panel `w` wide.
+function view.keys_width(w)
+  return (w or 0) >= 100 and 8 or KEYS
+end
+
+--- Rows above the notes on a panel `h` rows tall and `w` wide: the panel's
+--- title, the tools when they are not in it and there is room, the chord
+--- symbols when `paw.opt.chords` asks for them and there is room, then the
+--- ruler.
+function view.head_rows(h, w)
+  return 2 + view.toolbar_rows(h, w) + ((paw.opt.chords and h >= 12) and 1 or 0)
+end
+-- Switches a module adds to the piano roll's row of tools: `fn()` returns
+-- `{ label, on, tip, act }` (`act` names the `paw.frontend.act` function a
+-- click calls, given the clip), or nil to show none for now.
 view.tools = {}
 
 function view:tool(name, fn)
@@ -139,65 +156,39 @@ end
 -- ("draw", 35), a snippet's marks 40, suggestions 50; the
 -- selection and the cursor last of all.
 view.layers = {}
-local NOTES = 20
 
 --- Draw `paint(p)` as a layer of the roll, replacing one of the same name
---- (nil removes it). `p` holds `roll` and `ruler` (cell buffers), `clip`
---- (the active one), `data` (its fields), `parts` (every clip edited, see
---- `paw.roll_clips`), `x(beat)` (a column of the roll), `row(pitch)` (a
---- row, nil when off screen), `scroll`, `from` and `to` (the beats that
---- show), `zoom`, `top`, `rows`, `width`, `focused` and `hue`. Beats are the
---- roll's: the active clip's.
----
---- `marks(clip_id)`, if given, lists what the window draws for the layer:
---- `{ pitch, start, length }` in the clip's beats, with `fill` (`#rrggbb`),
---- `alpha` (0 to 1), `edge` (a border colour), `label`; `badge = true` for
---- a chip with the label on the row of `pitch`, as wide as its text, `slot`
---- putting chips side by side (in steps of 20 px; a chip with a longer
---- label takes the last slot); `act` and `arg` for what a click on it does,
---- the name of a `paw.frontend.act` function given the clip and `arg`, and
---- `tip` for what the pointer on it says. A failing layer is skipped.
-function view.layer(name, order, paint, marks)
+--- (nil removes it). `p` holds `roll` and `ruler` (cell buffers), `plane`
+--- (the roll as a plane of beats along and pitches up, see `buf:plane`:
+--- what is marked there a window paints where it is, between cells),
+--- `clip` (the active one), `data` (its fields), `parts` (every clip
+--- edited, see `paw.roll_clips`), `x(beat)` (a column of the roll),
+--- `row(pitch)` (a row, nil when off screen), `scroll`, `from` and `to`
+--- (the beats that show), `zoom`, `top`, `rows`, `width`, `focused` and
+--- `hue`. Beats are the roll's: the active clip's. Both frontends show
+--- what a layer draws. A chip that does something is a hit region,
+--- `p.roll:hit(x, y, w, 1, { kind = "act", act = name, arg = arg, tip = text })`:
+--- a click calls `paw.frontend.act[name](clip, arg)`, and `tip` is what the
+--- pointer over it says. A failing layer is skipped.
+function view.layer(name, order, paint)
   for i = #view.layers, 1, -1 do
     if view.layers[i].name == name then table.remove(view.layers, i) end
   end
-  if paint or marks then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint, marks = marks } end
+  if paint then view.layers[#view.layers + 1] = { name = name, order = order, paint = paint } end
   table.sort(view.layers, function(a, b) return a.order < b.order end)
   api.ui_redraw()
 end
 
-local function paint_layers(p, from, to)
+local function paint_layers(p)
   for _, layer in ipairs(view.layers) do
-    if layer.paint and layer.order >= from and layer.order < to then
-      local ok, err = pcall(layer.paint, p)
-      if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(err)) end
-    end
+    local ok, err = pcall(layer.paint, p)
+    if not ok then api.log("piano roll layer " .. layer.name .. ": " .. tostring(err)) end
   end
 end
 
---- What the window draws of the layers for `clip_id`: those behind the
---- clip's notes and those in front of them.
-function view:marks(clip_id)
-  local under, over = {}, {}
-  for _, layer in ipairs(self.layers) do
-    if layer.marks then
-      local ok, list = pcall(layer.marks, clip_id)
-      if ok and type(list) == "table" then
-        local into = layer.order < NOTES and under or over
-        for _, mark in ipairs(list) do into[#into + 1] = mark end
-      elseif not ok then
-        api.log("piano roll layer " .. layer.name .. ": " .. tostring(list))
-      end
-    end
-  end
-  return under, over
-end
-
--- Other tracks' notes, behind the clips' own. In the terminal each is a
--- dashed line on a faint shade of its track's colour, without a name: the
--- clips' own notes are solid and named. The window is handed them with the
--- clip (`paw.frontend.clip`), not with every look at the layers: there may
--- be thousands, and they change only with the project.
+-- Other tracks' notes, behind the clips' own: each a dashed line on a
+-- faint shade of its track's colour, without a name; the clips' own notes
+-- are solid and named.
 view.layer("context", 10, function(L)
   local glyph = paw.opt.ascii and "-" or "╌"
   for _, n in ipairs(clips.context()) do
@@ -210,49 +201,32 @@ view.layer("context", 10, function(L)
   end
 end)
 
--- The notes of the clips being edited.
+-- The notes of the clips being edited: each a note on the roll's plane,
+-- and what the pointer finds there.
 view.layer("notes", 20, function(L)
-    local g = paw.draw.g
     for i, part in ipairs(L.parts) do
-      local hue = i == 1 and L.hue or paw.draw.track_hue(api.track_get(part.track))
+      local colour = paw.draw.track_colour(api.track_get(part.track))
+      local hue = i == 1 and L.hue or paw.draw.hue(colour)
       local chosen = {}
       for _, place in ipairs(paw.frontend.chosen_notes(part.id)) do chosen[place] = true end
       local shown, places = part.clip:notes({
         from = L.from - part.offset, to = L.to - part.offset, low = math.max(0, L.top - L.rows + 1), high = L.top,
       })
       for k, note in ipairs(shown) do
-        local row = L.top - note.pitch
-        local start = note.start + part.offset
-        local x0 = math.floor((start - L.from) * L.zoom + 0.5)
-        local x1 = math.floor((start + note.length - L.from) * L.zoom + 0.5)
-        local nw = math.max(1, x1 - x0)
-        local at_cursor = L.under_part and L.under_part.id == part.id and places[k] == L.under_place
-        local style = at_cursor and "NoteCursor" or chosen[places[k]] and hue.title_cur or paw.draw.note_style(hue, note.velocity)
-        L.roll:fill(x0, row, nw, 1, " ", style)
-        L.roll:text(x0, row, g.clip_start)
+        local place, start = places[k], note.start + part.offset
+        local at_cursor = L.under_part and L.under_part.id == part.id and place == L.under_place
+        local style = at_cursor and "NoteCursor" or chosen[place] and hue.title_cur or paw.draw.note_style(hue, note.velocity)
         -- Long enough notes say which they are, or the articulation
         -- (MIDI 2.0 attribute) they carry.
-        if nw >= 4 then
-          local said = note.attr and paw.attr.describe(note.attr)
-          L.roll:text(x0 + 1, row, (said and said.tag or music.name(note.pitch)):sub(1, nw - 1))
-        end
+        local said = note.attr and paw.attr.describe(note.attr)
+        L.plane:mark("note", start, note.pitch, note.length, 1, {
+          label = said and said.tag or music.name(note.pitch), style = style, color = colour, velocity = note.velocity,
+          selected = chosen[place] or nil, cursor = at_cursor or nil, key = "note:" .. part.id .. ":" .. place,
+          hit = { kind = "note", clip = part.id, place = place, pitch = note.pitch, start = start, length = note.length },
+        })
       end
     end
   end)
-
--- The window draws notes itself: an attribute is a chip at a note's start.
-view.layer("attr", 25, nil, function(clip_id)
-  local out, fill = {}, nil
-  for _, n in ipairs(api.clip_notes(clip_id)) do
-    local said = n.attr and paw.attr.describe(n.attr)
-    if said then
-      fill = fill or paw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
-      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, badge = true, label = said.tag, tip = said.text,
-        fill = fill, alpha = 0.9 }
-    end
-  end
-  return out
-end)
 
 -- What modules say about rows and notes, for an instrument whose keys mean
 -- more than pitches (keyswitches, a playable range, drum pieces):
@@ -318,6 +292,78 @@ function view.new_note(clip, note)
   return note
 end
 
+-- The grids the row of tools offers, as `:grid` takes them.
+view.grids = {
+  { "1/1", 4 }, { "1/2", 2 }, { "1/4", 1 }, { "1/8", 0.5 }, { "1/16", 0.25 }, { "1/32", 0.125 },
+  { "1/8 triplet", 1 / 3 }, { "1/16 triplet", 1 / 6 },
+}
+
+--- The tools the pointer reaches without keys, in order: `{ name, text,
+--- tip, on, menu, act }` each (`menu` for one that opens a menu).
+local function tool_list(self, titled)
+  local grid_text = paw.ui.views.status.grid_text
+  local list = {
+    { name = "tracks", text = "Tracks", tip = "the tracks whose notes show behind these, and the clips edited together (also :roll.tracks)" },
+    { name = "grid", text = "Grid " .. grid_text(paw.opt.note_grid), menu = true, tip = "the grid notes snap to and the lines it draws (also :grid)" },
+    { name = "snap", text = "Snap", on = paw.opt.note_snap, tip = "snap to the grid: notes land on it (Shift while dragging leaves it)" },
+    { name = "length", text = "Note " .. grid_text(self:step_length()), menu = true,
+      tip = "the length a click gives a note, and that step input enters; drawing a note sets it" },
+    { name = "quantize", text = "Quantize", tip = "the chosen notes, or all of them, start on the grid (also :notes.quantize)" },
+    { name = "step", text = "Step", on = paw.frontend.step_input(),
+      tip = "step input: with the transport stopped, notes played on a MIDI keyboard are entered at the cursor (also :notes.step_input)" },
+    { name = "list", text = "List", tip = "the event list: every note and controller move of the clip, a row each (also E)" },
+  }
+  for _, t in ipairs(self:toolbar()) do list[#list + 1] = { name = "layer", act = t.act, text = t.label, on = t.on, tip = t.tip } end
+  list[#list + 1] = { name = "zoom_out", text = "-", tip = "zoom out in time (Ctrl and the wheel zoom where the pointer is)" }
+  list[#list + 1] = { name = "zoom_in", text = "+", tip = "zoom in in time" }
+  if titled then
+    list[#list + 1] = { name = "window", text = "Window", tip = "the piano roll in a window of its own, in a graphical frontend (also :view.window)" }
+    list[#list + 1] = { name = "close", text = "x", tip = "close the piano roll" }
+  end
+  return list
+end
+
+--- The tools as buttons on a row of `buf` from column `x`; each a button
+--- whose hit region names it (paw/views/pianoroll_mouse.lua). Returns the
+--- columns they take; with `measure`, draws nothing.
+local function place_tools(buf, list, x, measure)
+  local from = x
+  local caret = paw.opt.ascii and "v" or "▾"
+  for _, t in ipairs(list) do
+    local text = " " .. t.text .. (t.menu and " " .. caret or "") .. " "
+    local w = api.str_width(text)
+    if x + w > buf.width then break end
+    if not measure then
+      buf:mark("button", x, 0, w, 1, {
+        text = text, on = t.on or nil, menu = t.menu or nil, style = "TrackInfo",
+        on_style = "TitleBarFocus", label = t.text, hit = { kind = "tool", name = t.name, act = t.act, tip = t.tip },
+      })
+    end
+    x = x + w + 1
+  end
+  return x - from
+end
+
+--- The tools under the title, on a row of their own (`buf`), where the
+--- panel is not wide enough for them in its title: then what the pointer
+--- has chosen, or what insert mode is doing.
+function view.draw_tools(self, buf, clip, ctx)
+  buf:fill(0, 0, buf.width, 1, " ", "Ruler")
+  local x = 1 + place_tools(buf, tool_list(self, false), 1)
+  local said = ctx.focused and paw.keymap.mode == "i" and paw.roll_draw.status() or paw.frontend.chosen_text(clip.id)
+  if said and said ~= "" and buf.width - x > 6 then buf:text(x + 1, 0, util.fit(said, buf.width - x - 2), "RulerChordEdge") end
+end
+
+--- The tools at the right end of the title row (`buf`, the row): the
+--- columns they take, from the right edge; with `measure`, draws nothing.
+function view.title_tools(self, buf, measure)
+  local list = tool_list(self, true)
+  local w = place_tools(buf, list, 0, true)
+  local x = math.max(0, buf.width - w)
+  if not measure then place_tools(buf, list, x) end
+  return w
+end
+
 --- Rows for the velocity lane on a panel `h` rows tall.
 function view.velocity_rows(h)
   return h >= 30 and 5 or h >= 16 and 3 or 0
@@ -344,11 +390,27 @@ function view:render(buf, ctx)
   local zoom, grid = paw.opt.note_zoom, paw.opt.note_grid
   -- With room to spare, the notes' velocities get a few rows of their own.
   local vel = view.velocity_rows(h)
-  local head = view.head_rows(h)
+  local head = view.head_rows(h, w)
+  local tools = view.toolbar_rows(h, w)
+  local titled = view.tools_in_title(w)
+  local KEYS = view.keys_width(w)
+  local chords_row = paw.opt.chords and h >= 12 and 1 + tools or nil
   local bands = h >= 12 and view.active_bands(clip) or {}
   head = head + #bands
   self.head = head
-  local rows, tw = h - head - vel, w - KEYS
+  -- A wide roll has a scroll bar through the pitches in a column of its own.
+  local bar = titled and 1 or 0
+  local rows, tw = h - head - vel, w - KEYS - bar
+  -- Opened by the pointer (`fit_next`), zoomed in as far as the clips and
+  -- a bar after them fill the width, never out.
+  if self.fit_next then
+    self.fit_next = nil
+    local fit = math.floor(tw / (hi - math.min(0, lo) + paw.time.bar_ceil(c.start + 1) - c.start) * 4) / 4
+    if fit > zoom then
+      zoom = math.min(64, fit)
+      paw.opt.note_zoom = zoom
+    end
+  end
   local span = tw / zoom
 
   -- Keep the cursor on screen.
@@ -373,27 +435,38 @@ function view:render(buf, ctx)
     paw.opt.velocity, paw.opt.octave)
   local sounding, chord = clips.sounding(self.beat)
   local place = music.name(self.pitch) .. "  " .. paw.time.format(c.start + self.beat)
+  -- A wide panel has its tools at the right of the title row, and says
+  -- there what is chosen or what insert mode is doing, as the row of tools
+  -- does where they have a row of their own.
+  local title_row = buf:sub(0, 0, w, 1)
+  local reserve = titled and view.title_tools(self, title_row, true) or 0
+  if titled then
+    right = ctx.focused and paw.keymap.mode == "i" and paw.roll_draw.status() or paw.frontend.chosen_text(clip.id)
+  end
   paw.ui.titlebar(buf, {
     pill = { c.name, hue.pill }, focused = ctx.focused,
     name = #parts > 1 and string.format("%s  +%d clip%s", track.name, #parts - 1, #parts == 2 and "" or "s") or track.name,
     context = chord and place .. "  " .. chord or place,
-    right = w >= 90 and right or nil,
+    right = (titled or w >= 90) and right ~= "" and right or nil, reserve = reserve,
   })
-  if inserting then
+  if inserting and not titled then
     local text = " " .. paw.roll_draw.label() .. " "
     buf:text(math.max(0, w - api.str_width(text) - 1), 0, text, "RulerInsert")
   end
+  if titled then view.title_tools(self, title_row) end
+  if tools > 0 then view.draw_tools(self, buf:sub(0, 1, w, 1), clip, ctx) end
 
   -- Ruler: bars as the project counts them, beats in between; above it
   -- the chords that sound, read over every pitched track, and the key.
   buf:fill(0, head - 1, w, 1, " ", "Ruler")
+  buf:hit(0, head - 1, w, 1, { kind = "ruler" })
   local roll = buf:sub(KEYS, head, tw, rows)
   local ruler = buf:sub(KEYS, head - 1, tw, 1)
-  if head == 3 then
-    buf:fill(0, 1, w, 1, " ", "Ruler")
+  if chords_row then
+    buf:fill(0, chords_row, w, 1, " ", "Ruler")
     local key = paw.harmony.key(c.start + self.scroll)
-    buf:text(0, 1, (key.name:gsub(" major", ""):gsub(" minor", "m")):sub(1, KEYS - 1), "RulerChordEdge")
-    paw.harmony.draw(buf:sub(KEYS, 1, tw, 1), self.scroll, span, zoom, c.start)
+    buf:text(0, chords_row, (key.name:gsub(" major", ""):gsub(" minor", "m")):sub(1, KEYS - 1), "RulerChordEdge")
+    paw.harmony.draw(buf:sub(KEYS, chords_row, tw, 1), self.scroll, span, zoom, c.start)
   end
   local lines = paw.draw.beats(ruler, self.scroll, span, zoom, c.start)
   for i, band in ipairs(bands) do
@@ -424,35 +497,46 @@ function view:render(buf, ctx)
   -- What the track's instrument calls its keys (a drum, a keyswitch) is
   -- written on them.
   local key_names = paw.plugins.key_names(c.track)
-  -- The keys that sound at the cursor, in any clip shown, are marked.
-  local sounds = {}
-  for _, pitch in ipairs(sounding) do sounds[pitch] = true end
   local start_x = math.floor((lo - self.scroll) * zoom + 0.5)
   local end_x = math.floor((hi - self.scroll) * zoom + 0.5)
+  local names, labels = {}, {}
   for row = 0, rows - 1 do
     local pitch = self.top - row
     local look = view.row_look(pitch, c.track) or {}
-    paw.draw.piano_key(buf, row + head, pitch, pitch == self.pitch, KEYS, key_names[pitch])
-    if look.label and pitch ~= self.pitch then buf:text(0, row + head, util.fit(look.label, KEYS - 1) .. " ", look.style or "PianoWhite") end
-    if sounds[pitch] then buf:text(KEYS - 1, row + head, "•", "PianoCursor") end
+    if key_names[pitch] then names[#names + 1] = { pitch, key_names[pitch] } end
+    if look.label then labels[#labels + 1] = { pitch, look.label, look.style } end
     roll:fill(0, row, tw, 1, " ", look.shade or (music.is_black(pitch) and "RollRowBlack" or "RollRow"))
     if steps then roll:text(0, row, steps, music.is_black(pitch) and "RollStepBlack" or "RollStep") end
     for _, line in ipairs(lines) do roll:text(line.x, row, line.bar and g.bar or g.beat, line.bar and "RollBar" or "RollBeat") end
-    if start_x > 0 then roll:fill(0, row, math.min(tw, start_x), 1, " ", "RollOutside") end
-    if end_x < tw then roll:fill(math.max(0, end_x), row, tw, 1, " ", "RollOutside") end
+    -- Before and past the clips, the grid goes on, shaded.
+    local outside = music.is_black(pitch) and "RollOutsideBlack" or "RollOutside"
+    if start_x > 0 then roll:fill(0, row, math.min(tw, start_x), 1, nil, outside) end
+    if end_x < tw then roll:fill(math.max(0, end_x), row, tw, 1, nil, outside) end
   end
+  buf:mark("keyboard", 0, head, KEYS, rows, {
+    top = self.top, cursor = self.pitch, names = names, labels = labels, sounding = sounding, hit = { kind = "keys" },
+  })
 
-  -- The playhead is a thin line on the beat's left edge, under the notes:
-  -- one that starts where it stands is drawn whole, from where it starts.
+  -- The playhead is a thin line on the beat's left edge, under the notes,
+  -- with a cap on the ruler: one that starts where it stands is drawn
+  -- whole, from where it starts. A window moves it as the song plays.
   local t = api.transport_get()
-  local px = math.floor((t.position - c.start - self.scroll) * zoom + 0.5)
-  local playing_here = px >= 0 and px < tw and t.position >= c.start + lo and t.position <= c.start + hi
-  if playing_here then roll:fill(px, 0, 1, rows, g.playhead, "Playhead") end
+  buf:mark("playhead", KEYS, head - 1, tw, rows + 1, {
+    at = t.position, from = c.start + self.scroll, per = zoom, lo = c.start + lo, hi = c.start + hi, bind = "position",
+  })
+
+  -- The grid as a plane: beats along from the left edge, a row a pitch
+  -- down from the top. What the layers mark on it a window paints where
+  -- it is; a press on its empty part is on the grid.
+  local plane = buf:plane(KEYS, head, tw, rows, {
+    key = "roll", hit = { kind = "grid" },
+    x = { domain = "beat", from = self.scroll, per = zoom }, y = { domain = "pitch", from = self.top + 1, per = -1 },
+  })
 
   -- The layers, back to front. Only what is on screen crosses over from the core.
   local _, under_place, under_part = self:note_at(self.pitch, self.beat)
   local L = {
-    roll = roll, ruler = ruler, clip = clip, data = c, scroll = self.scroll, from = self.scroll, to = self.scroll + span,
+    roll = roll, ruler = ruler, plane = plane, clip = clip, data = c, scroll = self.scroll, from = self.scroll, to = self.scroll + span,
     top = self.top, rows = rows, zoom = zoom, width = tw, focused = ctx.focused, parts = parts, hue = hue,
     under_place = under_place, under_part = under_part,
     x = function(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end,
@@ -461,13 +545,21 @@ function view:render(buf, ctx)
       return row >= 0 and row < rows and row or nil
     end,
   }
-  paint_layers(L, -math.huge, math.huge)
+  paint_layers(L)
 
   -- How hard each note on screen is played, along the bottom.
   if vel > 0 then
     local lane = buf:sub(KEYS, head + rows, tw, vel)
     buf:fill(0, head + rows, w, vel, " ", "VelocityLane")
-    buf:text(1, head + rows + vel - 1, "vel", "VelocityLane")
+    buf:hit(0, head + rows, w, vel, { kind = "velocity" })
+    -- What it shows, which a click on it chooses.
+    local shown = require("paw.views.pianoroll_strip").shown()
+    local caret = paw.opt.ascii and "v" or "▾"
+    local name = shown.short
+    buf:mark("button", 0, head + rows + vel - 1, KEYS, 1, {
+      text = " " .. name .. " " .. caret, menu = true, style = "VelocityLane", label = shown.label,
+      hit = { kind = "velocity" },
+    })
     for _, line in ipairs(lines) do
       if line.bar then lane:fill(line.x, 0, 1, vel, g.bar, "RollBar") end
     end
@@ -510,7 +602,13 @@ function view:render(buf, ctx)
     roll:fill(cx, self.top - self.pitch, cw, 1, nil, inserting and "InsertCursor" or "RollCursor")
   end
 
-  if playing_here then ruler:text(px, 0, g.cap, "RulerPlayhead") end
+  -- Where the view is among the pitches, down its right side.
+  if bar > 0 then
+    buf:fill(KEYS + tw, head, 1, rows, " ", "RollRowBlack")
+    buf:mark("scrollbar", KEYS + tw, head, 1, rows, {
+      axis = "y", from = 127 - self.top, span = rows, total = 128, hit = { kind = "scrollbar", axis = "y" },
+    })
+  end
 end
 
 --- Play the pitch under the cursor on the track of the clip it is in.
@@ -811,6 +909,12 @@ function view:change(fn)
   return true
 end
 
+-- Its title row has buttons of its own (`view.title_tools`): a graphical
+-- frontend shows it rather than a title of its own over it (paw/panes.lua).
+view.titled = true
+-- What moves on its own as the song plays is the playhead: a frontend that
+-- paints it with the live values needs no new scene of the roll for it.
+view.live_roles = { "playhead" }
 paw.ui.view("pianoroll", view)
 -- Insert mode's drawing, which draws on the roll as one of its layers.
 paw.roll_draw = require("paw.roll_draw")

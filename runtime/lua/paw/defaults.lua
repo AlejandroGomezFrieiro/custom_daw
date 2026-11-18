@@ -2756,7 +2756,7 @@ imap("<Down>", move(0, -1), "Down a semitone")
 
 -- Piano roll: snippets (runtime/lua/paw/snippet.lua). While one is active its
 -- keys come first; otherwise each key does what it does everywhere else.
-roll.layer("snippet", 40, function(p) paw.snippet.paint(p) end, function(clip_id) return paw.snippet.window_marks(clip_id) end)
+roll.layer("snippet", 40, function(p) paw.snippet.paint(p) end)
 command("snippet", function(ctx)
   local name = ctx.args[1]
   local region = paw.snippet.take_cmdline_selection()

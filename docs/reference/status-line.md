@@ -121,4 +121,4 @@ A component is one of these:
 Until `setup` runs, the graphical window shows its own line. After
 `setup`, the kernel sends the pieces of the line as `modal.statusline`
 (`{ left, right }`, each a list of `{ text, group }`), and the window shows
-them. See [The graphical frontend](../window.md).
+them. See [The graphical frontend](window.md).

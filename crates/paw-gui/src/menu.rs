@@ -1,7 +1,9 @@
 //! Menus at the pointer. Their entries are the kernel's
 //! (`paw.frontend.menu`, runtime/lua/paw/window_menus.lua): the window shows
-//! them and says which was chosen, by its place. A few belong to the window
-//! alone (which lane a track shows, the piano roll's grid), built here.
+//! them and says which was chosen, by its place. A menu the kernel opens
+//! itself, from a gesture in a pane drawn from its scene, is shown the same
+//! way (`shown`). A few belong to the window alone (which lane a track
+//! shows, the render's range), built here.
 
 use egui::{Align2, CornerRadius, Id, Order, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
@@ -84,6 +86,32 @@ impl View {
         }
         let frame = self.frame_nr();
         self.menu = Some(Menu { source: Source::Kernel { kind: kind.into(), args }, items, at, open: Vec::new(), frame });
+    }
+
+    /// A menu the kernel opened (a right click in a pane drawn from its
+    /// scene goes to the view there, which opens its menu as in a
+    /// terminal) is shown as the window's, at the pointer; one the kernel
+    /// let go of (a key) goes.
+    pub fn kernel_menu(&mut self, modal: &Value) {
+        let shown = |m: &Option<Menu>| matches!(m, Some(Menu { source: Source::Kernel { kind, .. }, .. }) if kind == "shown");
+        match modal["menu"].as_i64() {
+            Some(n) if n != self.kernel_menu => {
+                self.kernel_menu = n;
+                let at = self.ctx.as_ref().and_then(|c| c.input(|i| i.pointer.latest_pos())).unwrap_or_default();
+                self.open_menu("shown", json!([]), at);
+            }
+            None if shown(&self.menu) => self.menu = None,
+            _ => {}
+        }
+    }
+
+    /// Let go of the menu open; the kernel too, of its own the window shows.
+    pub fn let_go_menu(&mut self) {
+        if let Some(Menu { source: Source::Kernel { kind, .. }, .. }) = self.menu.take()
+            && kind == "shown"
+        {
+            self.pass("menu_dismiss", json!([]));
+        }
     }
 
     /// Open a menu of the window's own.
@@ -176,10 +204,12 @@ impl View {
         }
         let pressed_outside = sheet.inner && !over_menu && menu.frame != ctx.cumulative_frame_nr();
         let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
+        self.menu = Some(menu);
         if let Some(path) = chosen {
+            let menu = self.menu.take().expect("the menu just put back");
             self.choose(&menu, &path);
-        } else if !(pressed_outside || escape) {
-            self.menu = Some(menu);
+        } else if pressed_outside || escape {
+            self.let_go_menu();
         }
     }
 
@@ -215,8 +245,6 @@ impl View {
             self.show_lane(track, first);
         } else if name == "render-range" {
             self.dialogs.render_range(first);
-        } else {
-            self.roll_choice(name, first);
         }
     }
 }

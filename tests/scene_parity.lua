@@ -205,6 +205,49 @@ test("a view that paints is one picture of the whole in its scene", function()
   api.scene_forget(0)
 end)
 
+test("the piano roll with notes on its plane, two clips edited, a drawing and a selection is its drawing in its scene", function()
+  fresh()
+  local saved = paw.opt.note_zoom
+  T.after(function()
+    paw.opt.note_zoom = saved
+    paw.ui.views.pianoroll:set_step(nil)
+    paw.keymap.feed("<Esc><Esc>")
+    paw.roll_clips.only()
+    paw.ui.hide("pianoroll")
+    api.scene_forget(0)
+  end)
+  local t = paw.add_track({ name = "keys" })
+  local u = paw.add_track({ name = "bass" })
+  local a = t:add_clip({ start = 0, length = 8, notes = {
+    { pitch = 60, start = 0, length = 1 }, { pitch = 64, start = 1.25, length = 0.33 }, { pitch = 67, start = 2.1, length = 3 },
+  } })
+  local b = u:add_clip({ start = 2, length = 4, notes = { { pitch = 48, start = 0.5, length = 2 } } })
+  paw.roll_clips.open({ a.id, b.id }, a.id)
+  local roll = paw.ui.views.pianoroll
+  roll.top, roll.scroll, roll.pitch, roll.beat = 70, 0, 64, 1.25
+  paw.frontend.act.select_note(a.id, 3, "only")
+  -- Notes between cells at every zoom: a column a beat, two, five.
+  for _, zoom in ipairs({ 1, 2, 5 }) do
+    paw.opt.note_zoom = zoom
+    eq(all_checked({ "pianoroll" }, written), "", "at " .. zoom .. " columns a beat, drawn through its buffer")
+    eq(all_checked({ "pianoroll" }, lowered), "", "at " .. zoom .. " columns a beat, its scene is its drawing")
+  end
+  -- Insert mode's drawing, and visual mode's selection over the notes.
+  paw.ui.show("pianoroll")
+  paw.ui.focus("pianoroll")
+  paw.keymap.feed("ill")
+  eq(all_checked({ "pianoroll" }, lowered), "", "drawing a note")
+  paw.keymap.feed("<Esc>vj")
+  eq(all_checked({ "pianoroll" }, lowered), "", "with a selection")
+  api.scene_forget(0)
+  local patch = scene_of("pianoroll", 120, 40)
+  local notes = 0
+  for _, node in ipairs(patch.set) do
+    if node.role == "note" then notes = notes + 1 end
+  end
+  eq(notes >= 4, true, "its notes are roles in the scene: " .. notes)
+end)
+
 -- Once every other test has run, since loading every extension changes
 -- what the tests of the core see.
 T.last("every bundled extension's view draws only through its buffer, and its scene is its drawing", function()

@@ -162,17 +162,6 @@ pub fn lines_in_view(all: &[Line], from: f32, to: f32, zoom: f32) -> Vec<&Line> 
         .collect()
 }
 
-/// A song position as bar.beat.sixteenth by the tempo map's lines.
-pub fn place_of(lines: &[Line], pos: f32) -> String {
-    let i = lines.partition_point(|l| l.beat <= pos + 1e-4);
-    let Some(line) = i.checked_sub(1).and_then(|i| lines.get(i)) else {
-        return "1.1.1".into();
-    };
-    let unit = lines.get(i).map_or(1.0, |next| next.beat - line.beat).max(1e-6);
-    let part = (((pos - line.beat) / unit * 4.0 + 1e-4).floor() as i64).clamp(0, 3) + 1;
-    format!("{}.{}.{part}", line.bar, line.index + 1)
-}
-
 /// The value of a curve of points `(beat, value)` at `beat`: flat before
 /// its first point and after its last, straight between.
 pub fn curve_at(points: &[(f32, f32)], beat: f32) -> Option<f32> {
@@ -235,30 +224,6 @@ pub fn tempo_corners(points: &[(f32, f32, bool)], from: f32, to: f32) -> Vec<(f3
         }
     }
     out
-}
-
-/// What a stroke over the velocity strip gives each note, as the kernel's
-/// `draw_velocities` will: the height drawn above the start of each note
-/// within the stretch drawn over (or within `reach` beats of a click), only
-/// the chosen notes when any are chosen; -1 for the notes it leaves alone.
-pub fn velocity_preview(stroke: &[(f32, f32)], notes: &[(f32, bool)], reach: f32) -> Vec<f32> {
-    let mut points = stroke.to_vec();
-    points.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let (Some(first), Some(last)) = (points.first().copied(), points.last().copied()) else {
-        return Vec::new();
-    };
-    let any = notes.iter().any(|n| n.1);
-    notes
-        .iter()
-        .map(|&(start, selected)| {
-            let within = start >= first.0 - reach - 1e-6 && start <= last.0 + reach + 1e-6;
-            if within && (!any || selected) {
-                curve_at(&points, start).unwrap_or(0.0).clamp(1.0 / 127.0, 1.0)
-            } else {
-                -1.0
-            }
-        })
-        .collect()
 }
 
 /// An automation lane, with its points as (beat, height from 0 to 1 over
@@ -465,16 +430,6 @@ mod tests {
     }
 
     #[test]
-    fn a_velocity_stroke_is_previewed_as_the_kernel_draws_it() {
-        let notes = [(0.0, false), (1.0, false), (2.0, false), (4.0, false)];
-        let stroke = [(0.0, 0.0), (4.0, 1.0)];
-        assert_eq!(velocity_preview(&stroke, &notes, 0.0)[1..], [0.25, 0.5, 1.0]);
-        let chosen = [(0.0, false), (1.0, true)];
-        assert_eq!(velocity_preview(&stroke, &chosen, 0.0), [-1.0, 0.25], "only the chosen notes");
-        assert_eq!(velocity_preview(&[(1.05, 0.5)], &notes, 0.1), [-1.0, 0.5, -1.0, -1.0], "a click reaches a note nearby");
-    }
-
-    #[test]
     fn a_curve_is_drawn_over_the_stretch_in_view_alone() {
         let points = [(0.0, 0.0), (100.0, 1.0), (200.0, 0.0)];
         assert_eq!(curve_in_view(&points, 50.0, 150.0), [(50.0, 0.5), (100.0, 1.0), (150.0, 0.5)]);
@@ -502,7 +457,6 @@ mod tests {
         let far = lines_in_view(&all, 0.0, 4000.0, 1.0);
         assert!(far.iter().all(|l| !l.label.is_empty()), "no beat lines");
         assert_eq!(far.len(), 500, "every second bar when a bar is 4 px");
-        assert_eq!(place_of(&all, 5.5), "2.2.3");
     }
 
     #[test]

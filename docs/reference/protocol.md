@@ -1,44 +1,58 @@
 # The control protocol
+<!-- tags: protocol -->
 
-A running paw is a server. Other programs (the window, `paw ctl`,
-`paw attach`, the MCP server, your own scripts) connect to it, call into
-it, and are told what happens in it. This page is the whole protocol,
-version 3.
+paw is a server while it runs. Other programs connect to it: the graphical
+window, `paw ctl`, `paw attach`, the MCP server and your scripts. They call
+functions in it, and it tells them what happens. This page describes the
+whole protocol, version 3.
 
-## Connecting
+## Connections
 
-Messages are JSON objects, one per line, UTF-8, in both directions.
+The messages are JSON objects, one on each line, in UTF-8, in the two
+directions.
 
-| Way in | Who may use it |
+| Way in | Who can use it |
 | --- | --- |
-| A Unix socket, `$XDG_RUNTIME_DIR/paw.sock` unless `--listen <path>` names another (`--no-listen` for none) | whoever may open the file: you, on that machine |
-| TCP inside TLS, when the instance is started with `--listen-tcp <host:port>` | whoever can reach the port and knows the token |
+| A Unix socket: `$XDG_RUNTIME_DIR/paw.sock`, or the path of `--listen <path>`. `--no-listen` opens no socket. | A user who can open the file on that machine. |
+| TCP inside TLS, when paw starts with `--listen-tcp <host:port>` | A user who can get to the port and who knows the token. |
 
-The token is 32 hexadecimal digits in `~/.local/state/paw/token`
-(`--token-file <path>` for another place), made the first time it is needed
-and readable by you alone. Copy it to the machines that may connect.
+### The token
 
-TCP is encrypted with TLS 1.3 (or 1.2), from the first byte; the lines
-below go inside it. The instance makes a self-signed certificate the first
-time it listens, keeps it in `~/.local/state/paw/tls/` and prints its
-fingerprint (the SHA-256 of the certificate, in groups of four hexadecimal
-digits) when it starts. There is no authority to vouch for it: a client
-trusts the certificate the first time it connects to an address and holds
-the instance to it afterwards, as SSH does with host keys. `paw`'s clients
-remember it in `~/.local/state/paw/known_instances` (an address and a
-fingerprint on each line), refuse a different one naming both, and take a
-new one with `--accept-certificate`. A client of your own can do the same
-with any TLS library: accept the certificate shown, compare its
-fingerprint with the one remembered.
+The token is 32 hexadecimal digits in `~/.local/state/paw/token`, or in the
+file of `--token-file <path>`. paw makes it the first time that it needs
+it. Only its owner can read it. The machines that connect need a copy.
 
-`--no-tls` (on the instance and on `paw`'s clients) speaks the lines in
-the clear instead, for a network you trust: `eval` runs any Lua, so
-whoever can change what is said can run anything on the instance's
-machine. A client that speaks in the clear to a port that only takes TLS
-is greeted with `{"event": "hello", "payload": {"version": 3, "error":
-"…"}}` (after a second and a half of silence, or at once if it speaks
-first) and its first request is answered with that error. SSH needs
-nothing from this program either:
+### TLS
+
+TCP is encrypted with TLS 1.3 (or 1.2) from the first byte. The lines of
+this page go inside TLS.
+
+- The first time that paw listens on TCP, it makes a self-signed
+  certificate. It keeps it in `~/.local/state/paw/tls/`.
+- When it starts, it shows the fingerprint of the certificate: the
+  SHA-256, in groups of four hexadecimal digits.
+- No authority signs the certificate. A client trusts the certificate the
+  first time that it connects to an address. After that, it accepts only
+  that certificate, as SSH does with host keys.
+- The clients of paw remember the certificates in
+  `~/.local/state/paw/known_instances`: an address and a fingerprint on
+  each line. They refuse a different certificate and show the two
+  fingerprints. `--accept-certificate` accepts the new one.
+- A client of your own can do the same with a TLS library: accept the
+  certificate shown, and compare its fingerprint with the remembered one.
+
+### Without TLS
+
+`--no-tls`, on paw and on its clients, sends the lines without encryption.
+Use it only on a network that you trust. `eval` runs any Lua. So a person
+who can change the messages can run any program on the machine of paw.
+
+A client without TLS that connects to a port that takes only TLS gets
+`{"event": "hello", "payload": {"version": 3, "error": "…"}}`. It gets it
+after 1.5 seconds without data, or at once when it sends data first. Its
+first request gets that error as its reply.
+
+SSH needs nothing from paw:
 
 ```sh
 ssh -N -L /tmp/studio.sock:/run/user/1000/paw.sock studio &
@@ -55,113 +69,132 @@ paw-gui --socket /tmp/studio.sock
 {"id": 2, "error": "no method `nonsense`"}
 ```
 
-`id` is yours and comes back with the answer; requests on one connection
-are answered in order. A request with `"id": null` is answered with
-`"id": null`: send those when you do not care for the answer.
+The client gives the `id`, and the reply has the same `id`. paw replies to
+the requests of one connection in their order. A request with
+`"id": null` gets a reply with `"id": null`. Send such requests when you do
+not need the reply.
 
-| Method | Parameters | Does |
+| Method | Parameters | Effect |
 | --- | --- | --- |
-| `hello` | `{ "proof": "…" }` over TCP, `{}` otherwise | says who is there; answers `{ "version": 3, "client": n }` |
-| `eval` | Lua source, then values for its `...` | runs it in the kernel and answers what it returns |
-| `cmd` | a command line, as after `:` | runs the command |
-| `keys` | keys, as typed: `"ggdd"`, `"<C-s>"` | types them |
-| `render` | path, options | `paw.render` |
-| any `paw.api` function | its arguments | calls it: `track_add`, `transport_get`, … |
-| `subscribe` | event names or patterns | events are pushed from now on; answers the list in force |
-| `unsubscribe` | patterns, or nothing for all | stops them |
-| `frontend.watch` | `{ "interval": ms, "seat": "own" or "instance" }` (33, `own`) | `frontend.state` events from now on, seen from a seat of the connection's own or the instance's |
-| `frontend.unwatch` | | stops them |
-| `scene.watch` | `{ "cell": { "w", "h" }, "live": bool }` | `scene.patch` events from now on (and `scene.live` with `live`), for the windows given an area; see "Scenes" |
-| `scene.area` | window, width, height in cell units | how big a window is shown; 0 by 0 for one no longer shown |
-| `scene.input` | window, a pointer event in cell units | the pointer over a window |
-| `scene.blob` | a content key | a drawing sent by its key |
-| `scene.unwatch` | | stops the patches |
-| `ui.attach` | width, height in cells | this connection becomes a terminal: `ui.grid` events from now on |
-| `ui.input` | one input event | typing and pointing in that terminal |
-| `ui.detach` | | stops being a terminal |
-| `file.begin` | `{ "name": "take.wav", "size": bytes }` | starts sending a file; answers its upload number |
-| `file.chunk` | upload number, the next bytes in base64 | answers how many bytes have arrived |
-| `file.end` | upload number | answers where the whole file is on the instance's machine |
-| `file.abort` | upload number | throws away what arrived |
-| `monitor.listen` | | `audio.frame` events from now on; answers `{ "rate", "channels", "format", "frame_ms" }` |
-| `monitor.unlisten` | | stops them |
+| `hello` | `{ "proof": "…" }` over TCP, `{}` on the Unix socket | Replies `{ "version": 3, "client": n }`. See [`hello` and the token](#hello-and-the-token). |
+| `eval` | Lua source, then the values for its `...` | Runs the source in the kernel. Replies what it returns. |
+| `cmd` | A command line, as after `:` | Runs the command. |
+| `keys` | Keys as typed: `"ggdd"`, `"<C-s>"` | Types the keys. |
+| `render` | A path, options | Calls `paw.render`. |
+| A `paw.api` function | Its arguments | Calls the function: `track_add`, `transport_get` and other. |
+| `subscribe` | Event names or patterns | Sends the events from now on. Replies the list of patterns. |
+| `unsubscribe` | Patterns, or nothing for all | Stops the events. |
+| `frontend.watch` | `{ "interval": ms, "seat": "own" or "instance" }`. Defaults: 33, `"own"`. | Sends `frontend.state` events from now on. See [`frontend.watch`](#frontendwatch). |
+| `frontend.unwatch` | | Stops them. |
+| `scene.watch` | `{ "cell": { "w", "h" }, "roles": [...], "live": bool }` | Sends `scene.patch` events from now on, and `scene.live` events with `live`. See [Scenes](#scenes). |
+| `scene.area` | A window, a width, a height in cell units | Tells the size of a window. 0 by 0 tells that the window does not show. |
+| `scene.input` | A window, a pointer event in cell units | Sends the pointer over a window. |
+| `scene.blob` | A content key | Replies the drawing of that key. |
+| `scene.unwatch` | | Stops the patches. |
+| `ui.attach` | A width and a height in cells, options | Makes the connection a terminal: `ui.grid` events from now on. See [A remote terminal](#a-remote-terminal). |
+| `ui.input` | One input event | Sends a key, a paste or the pointer to that terminal. |
+| `ui.detach` | | Stops the terminal. |
+| `file.begin` | `{ "name": "take.wav", "size": bytes }` | Starts to send a file. Replies its upload number. See [Files](#files). |
+| `file.chunk` | The upload number, the next bytes in base64 | Replies the number of bytes received. |
+| `file.end` | The upload number | Replies the path of the file on the machine of paw. |
+| `file.abort` | The upload number | Deletes what was received. |
+| `monitor.listen` | | Sends `audio.frame` events from now on. Replies `{ "rate", "channels", "format", "frame_ms" }`. See [Sound](#sound). |
+| `monitor.unlisten` | | Stops them. |
 
-`paw ctl --json <method> [params...]` is for programs and agents that have a
-shell: it prints one line of JSON, `{"ok": true, "result": ...}` or
-`{"ok": false, "error": "..."}`, and exits with status 1 on an error,
-whether the call failed, the method does not exist, or there is no instance
-to talk to. Without `--json`, a result is printed as it is (a string as text,
-anything else as indented JSON) and an error goes to stderr.
+An extension adds methods of its own:
+
+```lua
+paw.remote.methods["name"] = function(client, ...) return … end
+```
+
+### Time limit
+
+Each request that runs Lua has the time limit of a key,
+`paw.opt.lua_limit` (2 seconds). These requests do not run Lua: `hello`,
+`ui.*`, `file.*` and `monitor.*`. paw stops a request that runs longer, and
+replies an error that tells so. paw continues to run. Time that the kernel
+waits (a render, a project that opens) does not count. Code sent with
+`eval` that needs more time asks for it first: `paw.limit.extend(60000)`.
+
+### Errors
+
+An error is only the message, as Lua or the kernel gave it, without a
+stack: ``"no method `nonsense`"``, `"no clip 9"`, `"rpc:1: attempt to
+perform arithmetic on a nil value"`. `rpc` is the code sent with `eval`.
+
+### `paw ctl --json`
+
+`paw ctl --json <method> [params...]` is for programs and agents with a
+shell. It prints one line of JSON: `{"ok": true, "result": ...}` or
+`{"ok": false, "error": "..."}`. It exits with status 1 on an error: the
+call failed, the method does not exist, or no instance runs. Without
+`--json`, it prints a string result as text and other results as indented
+JSON, and it writes an error to stderr.
 
 ```sh
 paw ctl --json eval 'return paw.project.tempo'     # {"ok":true,"result":120}
 paw ctl --json track_get 99                        # {"ok":false,"error":"..."}
 ```
 
-An extension adds methods of its own with
-`paw.remote.methods["name"] = function(client, ...) return … end`.
-
-Every request that runs Lua (all of the above but `hello`, `ui.*`,
-`file.*` and `monitor.*`) has the time limit a key has,
-`paw.opt.lua_limit` (2 seconds): one that runs longer is stopped and
-answered with an error that says so, and the instance goes on. Waiting
-in the kernel does not count (a render, opening a project). Code sent
-with `eval` that knows it needs longer asks for it first:
-`paw.limit.extend(60000)`.
-
-An error is the message alone, as Lua or the kernel gave it, with no
-stack: ``"no method `nonsense`"``, `"no clip 9"`, `"rpc:1: attempt to
-perform arithmetic on a nil value"` (`rpc` is the code sent with `eval`).
-
 ### `hello` and the token
 
-Over TCP the kernel speaks first:
+Over TCP, paw sends the first message:
 
 ```json
 {"event": "hello", "payload": {"version": 3, "nonce": "9f1c…"}}
 ```
 
-and listens to nothing until the connection has answered with the proof
-that it knows the token: the SHA-256, in hexadecimal, of the token, a
-colon and the nonce.
+Then it ignores all other requests until the connection sends the proof
+that it knows the token. The proof is the SHA-256, in hexadecimal, of the
+token, a colon and the nonce.
 
 ```json
 {"id": 1, "method": "hello", "params": [{"proof": "sha256(token + ':' + nonce)"}]}
 {"id": 1, "result": {"version": 3, "client": 7}}
 ```
 
-A wrong proof is answered with an error and the connection is closed. On
-the Unix socket `hello` is optional and only tells you the version and
-your connection's number.
+A wrong proof gets an error, and paw closes the connection. On the Unix
+socket, `hello` is optional. It gives only the version and the number of
+the connection.
 
-A network connection has ten seconds and 4096 bytes to show the proof.
-Any connection is closed when it lets 32 MB wait unread, and a request
-may be 64 MB long.
+### Size limits
+
+| Limit | Value |
+| --- | --- |
+| Time to send the proof, over TCP | 10 seconds |
+| Size of the proof message, over TCP | 4096 bytes |
+| Data that waits unread for a connection | 32 MB. paw closes a connection that lets more data wait. |
+| Size of a request | 64 MB |
 
 ## Events
 
-What the kernel pushes has no `id`:
+Events have no `id`:
 
 ```json
 {"event": "transport.play", "payload": {"position": 0}}
 ```
 
-A connection is sent only what it asked for.
+A connection gets only the events that it asked for.
 
-**`subscribe`** takes exact names (`track.added`), families
-(`transport.*`) or `*`. The events are the ones `paw.on` hears in Lua,
-those of extensions included: `changed`, `project.loaded`,
-`project.saved`, `track.added`, `track.changed`, `track.removed`,
-`clip.add`, `clip.set`, `device.changed`, `device.stopped`,
-`transport.play`, `transport.stop`, `transport.seek`, `transport.record`,
-`transport.changed`, `midi.in`, `render.progress`, `render.done`,
-`audio.lost`, `audio.restored`, and so on. An event whose payload cannot
-be written as JSON is not sent.
+### `subscribe`
 
-**`frontend.watch`** is for programs that draw the project. Instead of
-asking for `paw.frontend.state()` many times a second, the connection is
-sent a `frontend.state` event at once, and after that only when something
-it would draw has changed, at most once every `interval` milliseconds:
+`subscribe` takes exact names (`track.added`), families (`transport.*`) or
+`*`. The events are the events of `paw.on` in Lua, also those of
+extensions. Some of them are:
+
+`changed`, `project.loaded`, `project.saved`, `track.added`,
+`track.changed`, `track.removed`, `clip.add`, `clip.set`,
+`device.changed`, `device.stopped`, `transport.play`, `transport.stop`,
+`transport.seek`, `transport.record`, `transport.changed`, `midi.in`,
+`render.progress`, `render.done`, `audio.lost`, `audio.restored` and other.
+paw does not send an event whose payload is not valid JSON.
+
+### `frontend.watch`
+
+`frontend.watch` is for programs that draw the project. paw sends a
+`frontend.state` event at once. After that, it sends one only when
+something to draw changed, at most once in each `interval` milliseconds
+(16 or more).
 
 ```json
 {"event": "frontend.state", "payload": {
@@ -171,44 +204,72 @@ it would draw has changed, at most once every `interval` milliseconds:
 }}
 ```
 
-The payload is what moves on its own (the playhead, the meters, the
-mode: everything `paw.frontend.state(known)` returns when the project has
-not changed). `cpu` is the engine's load averaged over about a second, in
-steps of 2.5% (`paw.audio.load`), so that an idle program is not heard
-from each time a block took a little longer. `sections`, when present, holds the parts of the project
-that differ from what this connection was last sent, each whole:
+The payload has the values that move without a change to the project: the
+playhead, the meters, the mode. It is what `paw.frontend.state(known)`
+returns when the project did not change.
 
-| Section | Is |
+- `cpu` is the load of the engine, averaged over about one second, in steps
+  of 2.5% (`paw.audio.load`). So an idle program does not send a new
+  value when one block takes a little longer.
+- `levels` and `inputs` are rounded to four decimals.
+- `modal.menu` counts the menus that the kernel opened. The window then
+  shows `paw.frontend.menu("shown")` at the pointer (see [The graphical
+  window in Lua](window-lua.md#pawfrontendact)).
+- `modal.hint` is what the pointer is over, or what its drag does, for the
+  status line.
+- `sections`, when present, has the parts of the project that changed since
+  the last event to this connection. Each part comes whole:
+
+| Section | Value |
 | --- | --- |
-| `project` | name, tempo, loop, markers, … (`state.project` without `lines`) |
-| `lines` | the bar and beat lines (`state.project.lines`) |
-| `tracks`, `clips`, `devices` | as in the state |
-| `routing` | the selected track's, or `false` without one |
+| `project` | The name, the tempo, the loop, the markers and other: `state.project` without `lines`. |
+| `lines` | The bar and beat lines: `state.project.lines`. |
+| `tracks`, `clips`, `devices` | As in the state. |
+| `slots` | The slots of the session view. |
+| `routing` | The routing of the selected track, or `false` without a selected track. |
 | `view` | `{ "selected": track id, "cursor": beat }` |
-| `kinds` | the kinds of device there are; sent once |
+| `kinds` | The kinds of device. |
 
-An idle program sends nothing at all.
+An idle program sends nothing.
 
 ## Scenes
 
-A graphical frontend shows the views it has no drawing of its own for (a
-pane of its main area, a view in a window of its own) from their scenes
-(crates/paw-scene): what a view draws, as nodes in **cell units** that
-are kept by name, so that after the first time only what changed is sent.
-The window draws them in its own font at its own resolution, and the
-same scene lowered to cells is cell for cell what a terminal shows.
+A graphical frontend shows some windows from their scenes. These are the
+panes of its main area that it does not draw itself, and the views in
+windows of their own.
 
-`scene.watch` starts it, with the size of the frontend's cell in pixels
-(pictures are drawn for it, and its main area is laid out on it) and the
-roles it paints itself (`roles`, a list of names); it answers the theme's
-colours (`theme`, the palette by name, which a node's `tone` names) and
-`roles_version`. A
-window is named by a string: a window of the layout by its number
-(`"3"`, as `paw.panes.state()` lists it), a view in a window of its own as
-`"view:<name>"` (`paw.canvas.windows()`). Nothing is sent of a window
-until `scene.area` says how big it is shown, in units, fractions allowed;
-then its whole scene, and after every turn that changed it (and while
-playing, at most thirty times a second) what changed:
+A scene (crates/paw-scene) is what a view draws, as nodes in **cell
+units**. Each node has a key, so after the first scene paw sends only what
+changed. The frontend draws the scene in its own font at its own
+resolution. The same scene lowered to cells is the same, cell for cell, as
+what a terminal shows. See [About scenes](../explanation/about-scenes.md).
+
+### `scene.watch`
+
+| Parameter | Value |
+| --- | --- |
+| `cell` | `{ "w", "h" }`: the size of the frontend's cell in pixels. paw draws pictures for it and lays out the main area on it. |
+| `roles` | The names of the roles that the frontend paints itself. |
+| `live` | `true` to also get `scene.live` events. |
+
+The reply has `theme`, the palette by name (a node's `tone` names one), and
+`roles_version`, the version of the roles a frontend can know.
+
+### Windows
+
+A string names a window:
+
+| Window | Name |
+| --- | --- |
+| A window of the layout | Its number, as `paw.panes.state()` lists it: `"3"` |
+| A view in a window of its own | `"view:<name>"`, as `paw.canvas.windows()` lists it |
+
+paw sends nothing about a window until `scene.area` tells its size, in
+units (fractions are permitted). Then it sends the whole scene. After each
+turn that changed the window, it sends what changed. While the song plays,
+it sends at most 30 patches a second.
+
+### `scene.patch`
 
 ```json
 {"event": "scene.patch", "payload": {
@@ -218,47 +279,110 @@ playing, at most thirty times a second) what changed:
 }}
 ```
 
-`full` says to forget what was had of the window first. `size`, `root`
-(the keys of the top nodes, in drawing order), `colors` (`[fg, bg]`, what
-`default` stands for) and `cursor` (`[]` for none) come only when they
-change. A node has its key `k`, its kind `t`, its rectangle `r` (x, y,
-width, height in units of its parent), and as the kind needs: `text`
-(`run`), `ch` (`fill`: the character it overwrites with; restyled only
-without), `s` its style (`fg`, `bg` as `"#rrggbb"`, `"default"` or one of
-256; `on` and `off`, the attributes it sets and clears: 1 bold, 2 dim, 4
-italic, 8 underline, 16 reverse, 32 strike), `clip` (what it is cut to),
-`kids`. Runs and fills are written in order onto cells, as the terminal
-does; reverse and dim are resolved with the cells. A `picture` has
-`ops` (see `paw.canvas.paint`, music glyphs as glyphs), drawn for `px`
-pixels and scaled to its rectangle, under the cells' text with `under`
-(their backgrounds under it); a drawing too big to send each time comes
-as `blob`, a content key to ask `scene.blob` for once.
+| Field | Value |
+| --- | --- |
+| `win` | The window. |
+| `rev` | The revision of the scene. |
+| `full` | `true`: forget the scene of the window first. |
+| `set` | The nodes added or changed. |
+| `drop` | The keys of the nodes removed. |
+| `size` | The size of the scene. Only when it changes. |
+| `root` | The keys of the top nodes, in drawing order. Only when it changes. |
+| `colors` | `[fg, bg]`, the colors that `default` means. Only when they change. |
+| `cursor` | The cursor, or `[]` for none. Only when it changes. |
 
-A `role` is a named element a view marked over its rectangle (`buf:mark`,
-see [Roles](../scripting.md#roles)): `role` its name and `props` what it
-shows, such as `{"role": "fader", "props": {"at": 0.81, "zero": 0.79,
-"value": -2}}`. Its kids are its cells, which a frontend that does not
-know the role draws; a frontend that said it paints the role is sent it
-without them. The widget roles (`label`, `button`, `switch`, `knob`,
-`fader`, `meter`, `peak`, `chip`) are the core's; an extension may add
-more. A node with `bind` (`"meter:4"`) is moved by the live values below,
-and its props that those give (a meter's `levels`, `hold` and `clipped`,
-a peak's `hold` and `clipped`) are left out, so that a view playing sends
-no new scene for them. A node with `hit`
-is a hit region: a press, a move or the wheel there means what the view
-says it does (`hit.kind` and the rest, its action).
+### Nodes
 
-`scene.input` takes a pointer event as `paw.canvas.pointer` does (`kind`
-down, up, move, hover, double or wheel, `button`, `ctrl`, `shift`,
-`alt`, `dx`, `dy`), with `x` and `y` in units from the window's corner.
-The kernel finds the hit region under it in the scene it sent
-(`paw_scene::Scene::hit`) and gives the view's gesture for it the event in
-units, as the terminal gives it one in cells; a drag begun there goes on
-in units until it is let go. Off every region, the event goes to the view
-as a terminal's would.
+| Field | Value |
+| --- | --- |
+| `k` | The key. |
+| `t` | The kind: `run`, `fill`, `picture`, `group`, `plane`, `role`. |
+| `r` | The rectangle: x, y, width and height, in units of the parent. |
+| `text` | The text of a `run`. |
+| `ch` | For a `fill`, the character that it writes. Without it, the fill changes only the style. |
+| `s` | The style: `fg` and `bg` (`"#rrggbb"`, `"default"` or a number from the 256 colors), and `on` and `off`, the attributes that it sets and clears. |
+| `clip` | The rectangle that cuts the node. |
+| `kids` | The child nodes. |
+| `ops` | The drawing of a `picture` (see `paw.canvas.paint`, music glyphs as glyphs). |
+| `px` | The pixel size that the `picture` is drawn for. It is scaled to its rectangle. |
+| `under` | The `picture` goes under the text of the cells, over their backgrounds. |
+| `blob` | In place of `ops`: a content key for a drawing that is too large to send each time. Ask `scene.blob` for it once. |
+| `role`, `props` | The name and the data of a role. |
+| `bind` | The live value that moves the node, for example `"meter:4"`. |
+| `hit` | The node is a hit region. `hit.kind` and the other fields are its action. |
 
-With `"live": true` the connection is also sent, while they change, the
-values a frontend moves things by without a new scene:
+The attributes are 1 bold, 2 dim, 4 italic, 8 underline, 16 reverse and
+32 strike. Runs and fills are written onto cells in their order, as the
+terminal does. Reverse and dim are resolved with the cells.
+
+### Roles
+
+A `role` is a named element that a view marked over its rectangle
+(`buf:mark`, see [Roles](../scripting.md#roles)). `role` is its name, and
+`props` is what it shows, for example `{"role": "fader", "props": {"at":
+0.81, "zero": 0.79, "value": -2}}`. Its kids are its cells. A frontend that
+does not know the role draws the cells. A frontend that told paw that it
+paints the role gets the role without the kids.
+
+| Roles | Owner |
+| --- | --- |
+| `label`, `button`, `switch`, `knob`, `fader`, `meter`, `peak`, `chip` | The core: the widget roles. |
+| `note`, `keyboard`, `playhead`, `scrollbar` | The core: the roles of the piano roll. |
+| Other names | An extension, with `paw.ui.role`. |
+
+A node with `bind` moves with the live values. Its props that the live
+values give are not in the scene: a meter's `levels`, `hold` and `clipped`,
+and a peak's `hold` and `clipped`. So a view does not send a new scene for
+them while the song plays.
+
+A node with `hit` is a hit region. A press, a move or the wheel on it does
+what the view tells: `hit.kind` and the other fields are its action.
+
+### Planes
+
+A `plane` places its kids in a domain of its own (`buf:plane`). `x` and `y`
+are each `{ "domain", "from", "per" }`. The domain's `from` is at the edge
+of the plane. Each unit of the domain is `per` units, backwards when `per`
+is negative. A kid's rectangle is in the domain. For example, this note of
+the piano roll is a half beat long, from beat 1.5, on pitch 60:
+
+```json
+{"k": "roll/note:7:3", "t": "role", "role": "note", "r": [1.5, 60, 0.5, 1],
+ "props": {"label": "C4", "color": "#e0a050", "velocity": 90}}
+```
+
+A window paints the note there, between cells. Its cells, which the
+terminal rounds it to, are also in the domain. Something can draw over a
+plane, and then the view can mark the plane again. Then the plane
+continues in a new node (`roll#2`), so the drawing order stays correct. Runs and fills drawn after
+a painted role, over it, are painted over it again, as the terminal shows
+them. A fill that only changes the style is a tint.
+
+### Menus
+
+A right-click on a pane drawn from its scene can open a menu of the
+kernel. `frontend.state`'s `modal.menu` counts the menus that the kernel
+opened. The window shows `paw.frontend.menu("shown")` at the pointer. It
+sends the selected entry with `paw.frontend.act.menu_choose("shown", {},
+path)`, or `paw.frontend.act.menu_dismiss()` when the user selects nothing.
+
+### `scene.input`
+
+`scene.input` takes a pointer event as `paw.canvas.pointer` does. Its
+fields are `kind` (`down`, `up`, `move`, `hover`, `double` or `wheel`),
+`button`, `ctrl`, `shift`, `alt`, `dx` and `dy`. `x` and `y` are in units
+from the corner of the window.
+
+The kernel finds the hit region under the event in the scene that
+it sent (`paw_scene::Scene::hit`). It gives the event, in units, to the
+view's gesture for that region, as the terminal gives one in cells. A drag
+that starts on a region continues in units until its release. Outside all
+regions, the event goes to the view as from a terminal.
+
+### `scene.live`
+
+With `"live": true`, the connection also gets the values that move nodes
+without a new scene, when they change:
 
 ```json
 {"event": "scene.live", "payload": {"position": 12.5, "playing": true, "recording": false,
@@ -266,14 +390,17 @@ values a frontend moves things by without a new scene:
   "peaks": {"4": 0.5, "0": 0.6}, "clips": {"4": true}, "inputs": {"4": 0}}}
 ```
 
-`meters` are each track's sides by its id, the master's as `"0"`; `peaks`
-the loudest of late of each, and `clips` the tracks whose clip light is
-lit (a click on the peak puts it out, as `paw.draw.clear_peak` does).
+| Field | Value |
+| --- | --- |
+| `meters` | The level of each side of each track, by its id. The master is `"0"`. |
+| `peaks` | The recent peak of each track. |
+| `clips` | The tracks whose clip light is on. A click on the peak clears it, as `paw.draw.clear_peak` does. |
+| `inputs` | The level at the input of each track. |
 
-## A terminal somewhere else
+## A remote terminal
 
-`ui.attach` makes the connection a terminal of the instance, beside its
-own if it has one: after every turn that changed the screen it is sent
+`ui.attach` makes the connection a terminal of paw, beside the terminal of
+paw if it has one. After each turn that changed the screen, paw sends:
 
 ```json
 {"event": "ui.grid", "payload": {
@@ -282,73 +409,97 @@ own if it has one: after every turn that changed the screen it is sent
 }}
 ```
 
-A run is `[x, y, text, fg, bg, attrs]`: a stretch of cells of one style
-on one row. Colours are `null` (the terminal's own), a number (one of
-its 256) or `"#rrggbb"`; `attrs` adds 1 bold, 2 dim, 4 italic,
-8 underline, 16 reverse, 32 strike. Only what changed is sent; `full`
-says to clear the screen first (the first event, and after a change of
-size). A character two cells wide takes two. `"mouse": false` asks the
-terminal to stop reporting the pointer and leave it to its own selection
-(`paw.opt.mouse` off); without it, or `true`, it reports it.
+| Field | Value |
+| --- | --- |
+| `w`, `h` | The size of the screen in cells. |
+| `full` | `true`: clear the screen first. The first event and the event after a change of size have it. |
+| `cursor` | The cursor. |
+| `runs` | Each run is `[x, y, text, fg, bg, attrs]`: cells of one style on one row. Only the changed runs come. |
+| `mouse` | `false`: stop the report of the pointer, and leave the pointer to the terminal's own selection (`paw.opt.mouse` off). Without it, or `true`, report the pointer. |
 
-A terminal that shows images says so with a third parameter of
-`ui.attach`, `{"graphics": true, "cell": [10, 20], "pixel_mouse": true,
-"fg": "#cdd6f4", "bg": "#1e1e2e"}` (its cell size in pixels, whether it
-reports the pointer in pixels, its colours). It is then also sent the
-surfaces views keep for their pixels:
+A color is `null` (the terminal's own color), a number (one of its 256
+colors) or `"#rrggbb"`. `attrs` adds 1 bold, 2 dim, 4 italic, 8 underline,
+16 reverse and 32 strike. A character two cells wide takes two cells.
+
+### Images
+
+A terminal that shows images tells so with a third parameter of
+`ui.attach`:
+
+```json
+{"graphics": true, "cell": [10, 20], "pixel_mouse": true, "fg": "#cdd6f4", "bg": "#1e1e2e"}
+```
+
+These are its cell size in pixels, its colors, and `true` if it reports
+the pointer in pixels. Then it also gets the surfaces that the views keep
+for their pixels:
 
 ```json
 "surfaces": [{"name": "notation", "x": 0, "y": 3, "w": 80, "h": 30,
               "cell": [10, 20], "covered": [[4, 2, 20]], "ops": [...]}]
 ```
 
-`covered` lists what covers part of it (column, row and columns, from
-its corner), and `ops`, the drawing (see `paw.canvas.paint`), comes only
-when it differs from the last one sent for that name: the far side makes
-the pixels. Without the parameter the views draw in cells for it.
+`covered` lists what covers a part of the surface: a column, a row and a
+count of columns, from its corner. `ops` is the drawing (see
+`paw.canvas.paint`). It comes only when it is different from the last
+drawing sent for that name. The client makes the pixels. Without the third
+parameter, the views draw in cells for this terminal.
 
-`ui.input` takes one of
+### `ui.input`
+
+`ui.input` takes one of these:
 
 ```json
 {"key": "<C-s>"}
 {"paste": "text"}
 {"resize": [100, 30]}
 {"mouse": {"kind": "down", "button": "left", "x": 3, "y": 4, "mods": "C"}}
+{"cell": [10, 20]}
 ```
 
-with keys in the notation key mappings use, mouse kinds `down`, `up`,
-`drag`, `move`, `scroll_up`, `scroll_down`, `scroll_left`, `scroll_right`,
-and `mods` any of `C`, `A`, `S`. A terminal that reports the pointer in
-pixels adds `"px"` and `"py"`, from the screen's corner, and
-`{"cell": [w, h]}` says a cell has another size (the font changed).
+| Field | Value |
+| --- | --- |
+| `key` | A key, in the notation of the key mappings. |
+| `paste` | Pasted text. |
+| `resize` | The new size in cells. |
+| `mouse.kind` | `down`, `up`, `drag`, `move`, `scroll_up`, `scroll_down`, `scroll_left`, `scroll_right`. |
+| `mouse.mods` | Any of `C`, `A`, `S`. |
+| `mouse.px`, `mouse.py` | The pointer in pixels from the corner of the screen, from a terminal that reports pixels. |
+| `cell` | The new size of a cell in pixels (the font changed). |
 
-`:detach` (or `ui.detach`) lets a remote terminal go, answered with a
-`ui.detached` event; the instance runs on. `:q` quits the instance for
-everyone.
+`:detach`, or `ui.detach`, releases a remote terminal. paw replies with a
+`ui.detached` event and continues to run. `:q` stops paw for all
+connections.
 
 ## Seats
 
-The project is one; what each person sees and is in the middle of is
-their own. A connection that attaches (`ui.attach`) or watches
-(`frontend.watch`, unless it asks for `"seat": "instance"`) has a seat:
-its own focused view and panels shown, edit cursor, mode, selection, keys
-half typed, registers, marks, prompt and scroll, and a terminal drawn at
-its own size. Every call that connection makes (`eval`, `cmd`, `keys`,
-`paw.frontend.act.*`) happens in its seat. The instance's own seat is its
-terminal's, if it has one, and that of every connection without a seat of
-its own (`paw ctl`, scripts). A new seat starts at the instance's cursor,
-with the instance's panels shown, in normal mode; it closes with its
-connection. Edits from two seats are steps in the one undo history.
-Options (`paw.opt`) are shared. In Lua, `paw.seats` says whose turn it is
-(`paw.seats.current`); see runtime/lua/paw/seats.lua for how a module
-keeps state of its own for each seat.
+The project is one. What each person sees and does is their own. A
+connection that attaches (`ui.attach`) or watches (`frontend.watch`) has a
+seat, unless it asks for `"seat": "instance"`. A seat has its own:
+
+- focused view and visible panels
+- edit cursor, mode and selection
+- keys typed so far, registers, marks and prompt
+- scroll position
+- terminal, drawn at its own size.
+
+Each call of that connection (`eval`, `cmd`, `keys`, `paw.frontend.act.*`)
+happens in its seat. The seat of paw itself is the seat of its terminal, if
+it has one. Each connection without a seat (`paw ctl`, scripts) uses it.
+
+A new seat starts at the cursor of paw, with the panels of paw, in normal
+mode. It closes with its connection. The edits of two seats are steps in
+the one undo history. The options (`paw.opt`) are shared. In Lua,
+`paw.seats.current` is the seat of the current turn. See
+`runtime/lua/paw/seats.lua` for how a module keeps state for each seat.
 
 ## Files
 
-A client on another machine sends a file into the project's media folder
-(beside a saved project, else a scratch folder) with `file.begin`, as
-many `file.chunk` as it takes (1 MB each is right) and `file.end`, then
-imports the path `file.end` answers like any other:
+A client on another machine sends a file into the media folder of the
+project. The media folder is beside a saved project, else in a scratch
+folder. The client sends `file.begin`, then `file.chunk` messages (1 MB
+each is good), then `file.end`. Then it imports the path that `file.end`
+replies, as any other path:
 
 ```json
 {"id": 1, "method": "file.begin", "params": [{"name": "take.wav", "size": 2400044}]}
@@ -361,51 +512,63 @@ imports the path `file.end` answers like any other:
 {"id": 5, "method": "eval", "params": ["paw.commands.run('import', { ... })", "/home/me/songs/media/take.wav"]}
 ```
 
-The name keeps only its last part; a name taken already gets `-2`, `-3`…
-The file has its name only once it is whole; one that has not ended when
-its connection closes is thrown away. `:upload <path>` typed in an
-attached terminal sends the connection `{"event": "file.wanted",
-"payload": {"path": "…", "import": true}}`, for its program to send that
-file from its own disk; `paw attach` does.
+- paw keeps only the last part of the name. If the name is used, it adds
+  `-2`, `-3` and other.
+- The file gets its name only when it is complete. paw deletes a file that
+  is not complete when its connection closes.
+- `:upload <path>`, typed in an attached terminal, sends the connection
+  `{"event": "file.wanted", "payload": {"path": "…", "import": true}}`.
+  The client then sends that file from its own disk. `paw attach` does
+  this.
 
 ## Sound
 
-`monitor.listen` sends the connection what the instance plays, as it
-plays it:
+`monitor.listen` sends the connection the sound of paw while it plays:
 
 ```json
 {"event": "audio.frame", "payload": {"seq": 41, "rate": 24000, "channels": 2, "pcm": "…"}}
 ```
 
-Each frame is 20 ms of sound, left and right interleaved, as 16-bit
-little-endian samples in base64, at half the engine's rate (a quarter at
-88.2 kHz and above). That is about 770 kbit/s, a megabit with base64 and
-JSON. `seq` counts from 1. The engine only makes the copy while someone
-listens. `:listen` sends a terminal's or window's connection
-`{"event": "monitor.toggle"}`, for its program to start or stop
-listening; `paw attach` and `paw-gui` do, playing the frames through a
-jitter buffer that waits for 200 ms and holds at most a second.
+| Field | Value |
+| --- | --- |
+| `seq` | The number of the frame, from 1. |
+| `rate` | Half the rate of the engine. A quarter, at 88.2 kHz and more. |
+| `channels` | 2: left and right, interleaved. |
+| `pcm` | 20 ms of sound, as 16-bit little-endian samples in base64. |
 
-## What is not here
+This is about 770 kbit/s, and about 1 Mbit/s with base64 and JSON. The
+engine makes the copy only while a connection listens.
 
-- Sound in compressed form: frames are plain 16-bit samples (no pure Rust
-  Opus encoder is good enough to ship, and no C codec is linked), and
-  nothing goes from the client to the instance (no recording from the
-  client's microphone).
-- Opening and saving projects on the client's disk: Open, Save and
-  Render use the instance's.
-- Plugin windows. They open on the instance's display.
+`:listen` sends the connection of a terminal or a window
+`{"event": "monitor.toggle"}`. The client then starts or stops to listen.
+`paw attach` and `paw-gui` do this. They play the frames through a jitter
+buffer that waits for 200 ms and holds at most one second.
+
+## Limits
+
+- The sound is not compressed: the frames are 16-bit samples. No Opus
+  encoder in pure Rust is good enough, and paw links no C codec.
+- No sound goes from the client to paw. A client cannot record from its
+  own microphone.
+- Open, Save and Render use the disk of paw, not the disk of the client.
+- Plugin windows open on the display of paw.
 
 ## In Rust
 
-The crate `paw-proto` (with `serde_json`, `anyhow`, `base64` and
-`rustls` on `ring`, no OpenSSL) is the client's side:
-`Connection::unix(path)` or `Connection::tcp(address, token)` (TLS,
-remembering the certificate in the state directory;
-`Connection::tcp_with(address, token, &Wire::…)` chooses where, or the
-clear), then `call(method, params)`, `notify(method, params)`, the
-`events` channel, `send_file(path)` and `send_and_import(path)`.
-`paw_proto::monitor` makes and reads `audio.frame` payloads, and the crate
-`paw-listen` plays them (`Player::device()`, or `Player::file(path,
-rate)` to write them to a WAV file). `paw_core::remote::apply` puts
-`ui.grid` events into a grid of cells.
+The crate `paw-proto` is the side of the client. It uses `serde_json`,
+`anyhow`, `base64`, and `rustls` on `ring`. It does not use OpenSSL.
+
+| Name | Effect |
+| --- | --- |
+| `Connection::unix(path)` | Connects to a Unix socket. |
+| `Connection::tcp(address, token)` | Connects over TLS. It remembers the certificate in the state directory. |
+| `Connection::tcp_with(address, token, &Wire::…)` | Connects with TLS and a different file of known certificates, or without TLS. |
+| `call(method, params)` | Sends a request and waits for its reply. |
+| `notify(method, params)` | Sends a request without a reply. |
+| `events` | The channel of events. |
+| `send_file(path)`, `send_and_import(path)` | Send a file, and import it. |
+| `paw_proto::monitor` | Makes and reads `audio.frame` payloads. |
+
+The crate `paw-listen` plays the frames: `Player::device()`, or
+`Player::file(path, rate)` to write them to a WAV file.
+`paw_core::remote::apply` puts `ui.grid` events into a grid of cells.

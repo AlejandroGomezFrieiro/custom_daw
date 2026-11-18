@@ -678,31 +678,6 @@ function M.paint(p)
   end
 end
 
-local VIOLET = "#ac93e6"
-
---- The same for the window (the layer's marks, in the clip's beats):
---- ghosts of what the picker would write, the active snippet's notes, and
---- a chip under its lowest note saying what Tab and `<C-n>` work on.
-function M.window_marks(clip_id)
-  local out = {}
-  for _, n in ipairs(M.preview_marks(clip_id) or {}) do
-    out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = VIOLET, alpha = 0.2, edge = VIOLET }
-  end
-  local m = M.marks(clip_id)
-  if m then
-    local low
-    for _, n in ipairs(m.notes) do
-      out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = VIOLET, alpha = 0.6, edge = VIOLET }
-      low = math.min(low or n.pitch, n.pitch)
-    end
-    if low then
-      out[#out + 1] = { pitch = math.max(0, low - 1), start = m.from, length = m.to - m.from, badge = true, label = m.label,
-        fill = VIOLET, alpha = 0.9, tip = "Tab: the next choice · Ctrl-n: its next value · Ctrl-y: done" }
-    end
-  end
-  return out
-end
-
 --- Snippets as a source of suggestions (`paw.complete`): on `<C-Space>`,
 --- each snippet of the piano roll that has something to write at the
 --- suggestion's place is offered, its notes as the ghost. Taking one

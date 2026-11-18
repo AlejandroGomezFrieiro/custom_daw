@@ -218,7 +218,7 @@ the same pages.
   [work from another computer](docs/how-to/work-from-another-computer.md).
 - Reference: [all the keys](docs/reference/keys.md),
   [the keys of the terminal](docs/reference/grammar.md), [the options](docs/reference/options.md),
-  [the graphical window](docs/window.md),
+  [the graphical window](docs/reference/window.md),
   [the Lua API](docs/reference/api.md) and [the limits](docs/reference/limits.md).
   The manual has more reference pages.
 - Explanation: [about the architecture](docs/explanation/about-the-architecture.md),

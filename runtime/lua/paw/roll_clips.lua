@@ -294,8 +294,9 @@ function M.show_track(id, on)
   changed()
 end
 
---- The context notes: those of the shown tracks' clips (not the editable
---- ones) that sound within the editable clips' stretch, in the roll's beats:
+--- The context notes: those of the active clip's track's other clips and
+--- of the shown tracks' clips (not the editable ones) that sound within the
+--- editable clips' stretch, in the roll's beats:
 --- `{ pitch, start, length, velocity, clip, track, color }` each, at most
 --- `paw.opt.roll_context_max` of them. Kept until the project, the set of
 --- clips or the toggles change.
@@ -311,7 +312,10 @@ function M.context()
   for _, id in ipairs(ids) do editable[id] = true end
   local max = paw.opt.roll_context_max
   local from, to = a.start + lo, a.start + hi
-  for _, track in ipairs(M.tracks()) do
+  local own = api.track_get(a.track)
+  local looked = { { id = a.track, on = true, color = paw.draw.track_colour(own) } }
+  for _, track in ipairs(M.tracks()) do looked[#looked + 1] = track end
+  for _, track in ipairs(looked) do
     if track.on then
       for _, c in ipairs(api.clip_list(track.id)) do
         if c.kind == "midi" and not editable[c.id] and c.start < to - EPS and c.start + c.length > from + EPS then
