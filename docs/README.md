@@ -23,31 +23,62 @@ each extension (`:help notation`).
 - [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
 - [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
 - [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
-- [How to record an audio take](how-to/record-an-audio-take.md)
-- [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
-- [How to punch in over a part](how-to/punch-in-over-a-part.md)
-- [How to set the recording offset](how-to/set-the-recording-offset.md)
-- [How to render a song](how-to/render-a-song.md)
-- [How to render stems](how-to/render-stems.md)
-- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
 - [How to work on one group of a large project](how-to/work-on-one-group.md)
 - [How to duck a track under the kick](how-to/duck-a-track-under-the-kick.md)
 - [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
 - [How to write automation with the faders](how-to/write-automation-with-the-faders.md)
 - [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
-- [How to relink lost media](how-to/relink-missing-media.md)
-- [How to recover lost work](how-to/recover-lost-work.md)
 - [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 - [How to write a language server](how-to/write-a-language-server.md)
 - [How to write a snippet](how-to/write-a-snippet.md)
 - [How to write a completion source](how-to/write-a-completion-source.md)
 - [How to write a device in Lua](how-to/write-a-device-in-lua.md)
-- [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
-- [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
 - [How to load an extension](how-to/load-an-extension.md): a bundled extension, your own, or one from Nix
 - [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let an agent that writes code, or an assistant, edit a project
+
+### Record
+
+- [How to record a guitar or a bass](how-to/record-a-guitar-or-a-bass.md): the instrument input, the level, the tuner, a take
+- [How to record vocals with a count-in and a click](how-to/record-vocals-with-a-count-in-and-a-click.md)
+- [How to record MIDI from a keyboard](how-to/record-midi-from-a-keyboard.md): a take, a take merged into a clip, a take over a loop
+- [How to use the metronome](how-to/use-the-metronome.md): the click, the count-in
+- [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
+- [How to punch in over a part](how-to/punch-in-over-a-part.md)
+- [How to set the recording offset](how-to/set-the-recording-offset.md)
+
+### Mix
+
+- [How to set levels and pan, and keep the master out of the red](how-to/set-levels-and-pan.md)
+- [How to add an effect and change its settings](how-to/add-an-effect.md): EQ, compressor, reverb, delay, presets
+- [How to send several tracks to one reverb](how-to/send-several-tracks-to-one-reverb.md)
+- [How to check the mix](how-to/check-the-mix.md): meters, loudness, mono
+- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
+
+### Render and share
+
+- [How to export a song as WAV, FLAC or MP3](how-to/export-a-song.md): where the file goes, tags
+- [How to export part of the song or a loop](how-to/export-part-of-the-song.md)
+- [How to render stems](how-to/render-stems.md)
+- [How to export MIDI for another program](how-to/export-midi.md)
+- [How to open a REAPER project, and save one for REAPER](how-to/open-a-reaper-project.md)
+
+### Projects and files
+
+- [How to save, back up and open projects](how-to/save-and-open-projects.md): recent projects, safety copies
+- [How to import audio and MIDI files](how-to/import-audio-and-midi-files.md): commands, the file manager, a drop on the graphical window
+- [How to make and use track templates](how-to/use-track-templates.md)
+- [How to relink lost media](how-to/relink-missing-media.md)
+
+### When something goes wrong
+
+- [How to fix no sound](how-to/fix-no-sound.md)
+- [How to fix crackles and dropouts](how-to/fix-crackles-and-dropouts.md)
+- [How to deal with a plugin that crashes or hangs](how-to/deal-with-a-plugin-that-crashes.md)
+- [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
+- [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
+- [How to recover lost work](how-to/recover-lost-work.md)
 
 ## Reference
 
