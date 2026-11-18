@@ -1,10 +1,9 @@
-// Per-note payload of REAPER's type-15 notation event (docs/storage-format.md, "Payload schema"). Mirror of
-// native/common/notation_payload.{h,cpp}. Map with short string keys in canonical order: v id ly po tu pp vb ph ex, then unknown keys.
+// Per-note payload: what the extension sends of each note (lua/utau/payload.lua is the other side). Map with short string keys in canonical order: v id ly po tu pp vb ph ex, then unknown keys.
 using System.Buffers;
 using System.Text;
 using MessagePack;
 
-namespace ReaUtau.Protocol;
+namespace PawUtau.Protocol;
 
 public static class PitchShape { public const byte IO = 0, Linear = 1, In = 2, Out = 3; }
 public static class OverrideMask { public const byte Phoneme = 1, Offset = 2, Preutter = 4, Overlap = 8, Attack = 16, Release = 32; }
@@ -183,127 +182,5 @@ public sealed class NotePayload
         {
             return false;
         }
-    }
-}
-
-/// <summary>base64url + NOTE event line handling; mirrors notation_payload.cpp and reaper/ReaUtau/spikes/storage/notation_codec.lua.</summary>
-public static class NotationCodec
-{
-    private const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-    public static string B64UrlEncode(ReadOnlySpan<byte> d)
-    {
-        var sb = new StringBuilder((d.Length + 2) / 3 * 4);
-        for (int i = 0; i < d.Length; i += 3)
-        {
-            uint a = d[i], b = i + 1 < d.Length ? d[i + 1] : 0u, c = i + 2 < d.Length ? d[i + 2] : 0u;
-            uint v = (a << 16) | (b << 8) | c;
-            int k = Math.Min(d.Length - i, 3) + 1;
-            for (int j = 0; j < k; j++) sb.Append(Alphabet[(int)((v >> (18 - 6 * j)) & 63)]);
-        }
-        return sb.ToString();
-    }
-
-    public static byte[]? B64UrlDecode(string s)
-    {
-        if (s.Length % 4 == 1) return null;
-        var o = new List<byte>(s.Length * 3 / 4);
-        for (int i = 0; i < s.Length; i += 4)
-        {
-            uint v = 0; int k = 0;
-            for (int j = 0; j < 4; j++)
-            {
-                v <<= 6;
-                if (i + j < s.Length)
-                {
-                    int x = Alphabet.IndexOf(s[i + j]);
-                    if (x < 0) return null;
-                    v |= (uint)x; k++;
-                }
-            }
-            for (int j = 0; j + 1 < k; j++) o.Add((byte)(v >> (16 - 8 * j)));
-        }
-        return o.ToArray();
-    }
-
-    private static bool IsSpace(char c) => c is ' ' or '\t' or '\n' or '\r' or '\v' or '\f';
-
-    public static (int Chan, int Pitch, string Tail)? ParseNoteEvent(string m)
-    {
-        int i = 0;
-        void SkipWs() { while (i < m.Length && IsSpace(m[i])) i++; }
-        bool Num(out int val)
-        {
-            int st = i; long v = 0;
-            while (i < m.Length && m[i] >= '0' && m[i] <= '9') { v = v * 10 + (m[i] - '0'); i++; if (v > 100000) { val = 0; return false; } }
-            val = (int)v;
-            return i > st;
-        }
-        if (!m.StartsWith("NOTE", StringComparison.Ordinal)) return null;
-        i = 4;
-        if (i >= m.Length || !IsSpace(m[i])) return null;
-        SkipWs();
-        if (!Num(out int ch)) return null;
-        if (i >= m.Length || !IsSpace(m[i])) return null;
-        SkipWs();
-        if (!Num(out int pitch)) return null;
-        SkipWs();
-        return (ch, pitch, m.Substring(i));
-    }
-
-    private static bool FindCustom(string m, int from, out int s, out int e, out int valueStart)
-    {
-        for (int i = from; i + 6 <= m.Length; i++)
-        {
-            if (string.CompareOrdinal(m, i, "custom", 0, 6) != 0) continue;
-            if (i > 0 && !IsSpace(m[i - 1])) continue;
-            int j = i + 6;
-            if (j >= m.Length || !IsSpace(m[j])) continue;
-            while (j < m.Length && IsSpace(m[j])) j++;
-            int vs = j;
-            while (j < m.Length && !IsSpace(m[j])) j++;
-            if (j == vs) continue;
-            s = i; e = j; valueStart = vs;
-            return true;
-        }
-        s = e = valueStart = 0;
-        return false;
-    }
-
-    public static string? GetCustom(string m)
-    {
-        int from = 0;
-        while (from < m.Length && FindCustom(m, from, out _, out int e, out int vs))
-        {
-            string val = m.Substring(vs, e - vs);
-            if (val.StartsWith("reautau:", StringComparison.Ordinal) && val.Length > 8) return val.Substring(8);
-            from = e;
-        }
-        return null;
-    }
-
-    public static string SetCustom(string m, string b64)
-    {
-        string repl = "custom reautau:" + b64;
-        if (FindCustom(m, 0, out int s, out int e, out _)) return m.Substring(0, s) + repl + m.Substring(e);
-        return m + " " + repl;
-    }
-
-    public static string MakeNoteEvent(int chan, int pitch, string b64) => $"NOTE {chan} {pitch} custom reautau:{b64}";
-
-    public static NotePayload? PayloadFromEvent(string msg)
-    {
-        var v = GetCustom(msg);
-        if (v == null) return null;
-        var bytes = B64UrlDecode(v);
-        if (bytes == null) return null;
-        return NotePayload.TryDecode(bytes, out var p) ? p : null;
-    }
-
-    /// <summary>Empty string when the event would exceed <see cref="NotePayload.MaxEventBytes"/> (spill to P_EXT).</summary>
-    public static string EventWithPayload(string msg, NotePayload p)
-    {
-        string o = SetCustom(msg, B64UrlEncode(p.Encode()));
-        return Encoding.UTF8.GetByteCount(o) > NotePayload.MaxEventBytes ? "" : o;
     }
 }

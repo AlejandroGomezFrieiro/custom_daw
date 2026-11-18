@@ -489,7 +489,9 @@ fraction, seconds, cancelling, stage, queued }`) and `paw.render_cancel()` stops
 the window finds the same in `paw.frontend.state().modal.render`.
 `paw.render_ranges.chorus = function() return 32, 48 end` adds a named range.
 `paw.render_stems(dir, opts)` writes one file per track, which add up to the
-mix. `:render stems` writes one file per group instead, each named after it,
+mix (to the last bit through sends, returns and buses that only filter, delay
+or mix; a compressor or a limiter on a bus they share hears each stem alone,
+and acts on it as it would not on the sum, so there they differ a little). `:render stems` writes one file per group instead, each named after it,
 into `<project> stems` (or `:render stems out`): every group at the top and
 every track outside a group that has clips, each with what its sound passes
 through, so that they add up to the mix too. It first shows the plan, each

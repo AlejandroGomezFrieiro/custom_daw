@@ -1,7 +1,6 @@
--- The reautau-engine process and the connection to it.
+-- The paw-utau-engine process and the connection to it.
 --
--- The engine connects to a socket this side listens on, as it does with the
--- REAPER extension, so it runs unchanged. Reading never blocks: `pump` takes
+-- The engine connects to a socket this side listens on. Reading never blocks: `pump` takes
 -- whatever has arrived and hands each message to `handlers[name]`. The
 -- process and socket handles are kept in `paw.state`, so that after
 -- `:reload` the old engine can be stopped rather than left running.
@@ -28,19 +27,17 @@ local function home()
   return os.getenv("HOME") or "."
 end
 
---- Where the engine is: the `utau_engine` option, `$REAUTAU_ENGINE`, the
+--- Where the engine is: the `utau_engine` option, `$PAW_UTAU_ENGINE`, the
 --- one built with the extension (`bin/` beside it, where the Nix package
---- puts it), `reautau-engine` on the PATH, or a ReaUtau install in REAPER's
---- folder.
+--- puts it), or `paw-utau-engine` on the PATH.
 function M.find()
   local loaded = paw.ext.loaded.utau
   -- `false`, not nil, where there is nothing: the list must have no holes.
-  local candidates = { paw.opt.utau_engine or false, os.getenv("REAUTAU_ENGINE") or false,
-    loaded and loaded.path .. "/bin/reautau-engine" or false }
+  local candidates = { paw.opt.utau_engine or false, os.getenv("PAW_UTAU_ENGINE") or false,
+    loaded and loaded.path .. "/bin/paw-utau-engine" or false }
   for dir in (os.getenv("PATH") or ""):gmatch("[^:]+") do
-    candidates[#candidates + 1] = dir .. "/reautau-engine"
+    candidates[#candidates + 1] = dir .. "/paw-utau-engine"
   end
-  candidates[#candidates + 1] = home() .. "/.config/REAPER/UserPlugins/reautau-engine/reautau-engine"
   for _, path in ipairs(candidates) do
     if type(path) == "string" and path ~= "" and exists(path) then return path end
   end
@@ -118,7 +115,7 @@ function M.start()
   if link then return true end
   local engine = M.find()
   if not engine then
-    M.state, M.reason = "missing", "reautau-engine not found: set REAUTAU_ENGINE or paw.opt.utau_engine"
+    M.state, M.reason = "missing", "paw-utau-engine not found: set PAW_UTAU_ENGINE or paw.opt.utau_engine"
     return false
   end
   local path = socket_path()
@@ -130,7 +127,7 @@ function M.start()
       argv[#argv + 1] = value
     end
   end
-  flag("--openutau-dir", paw.opt.utau_openutau_dir ~= "" and paw.opt.utau_openutau_dir or os.getenv("REAUTAU_OPENUTAU_DIR"))
+  flag("--openutau-dir", paw.opt.utau_openutau_dir ~= "" and paw.opt.utau_openutau_dir or os.getenv("PAW_UTAU_OPENUTAU_DIR"))
   flag("--data-dir", paw.opt.utau_data_dir)
   flag("--cache-dir", paw.opt.utau_cache_dir)
   os.execute("mkdir -p '" .. cache_dir() .. "'")
@@ -161,7 +158,7 @@ end
 --- OpenUtau's data folder the engine reads voicebanks from, or nil for
 --- its own default (`$XDG_DATA_HOME/OpenUtau`).
 function M.openutau_dir()
-  local dir = paw.opt.utau_openutau_dir ~= "" and paw.opt.utau_openutau_dir or os.getenv("REAUTAU_OPENUTAU_DIR")
+  local dir = paw.opt.utau_openutau_dir ~= "" and paw.opt.utau_openutau_dir or os.getenv("PAW_UTAU_OPENUTAU_DIR")
   if dir and dir ~= "" then return dir end
 end
 
@@ -180,7 +177,7 @@ end
 --- and what it printed.
 function M.tool(args, seconds)
   local exe = M.find()
-  if not exe then error("reautau-engine not found: set REAUTAU_ENGINE or paw.opt.utau_engine", 0) end
+  if not exe then error("paw-utau-engine not found: set PAW_UTAU_ENGINE or paw.opt.utau_engine", 0) end
   local argv = { exe }
   for _, a in ipairs(args) do argv[#argv + 1] = a end
   local dir = M.openutau_dir()
@@ -195,7 +192,7 @@ function M.tool(args, seconds)
     if api.now() > deadline then
       api.proc_kill(proc)
       os.remove(out)
-      error("reautau-engine took too long", 0)
+      error("paw-utau-engine took too long", 0)
     end
     api.sleep(20)
   end

@@ -1524,6 +1524,9 @@ command("write", function(ctx)
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
+  if path and paw.files.is_dir((path:gsub("^~", os.getenv("HOME") or "~"))) then
+    return paw.notify(path .. " is a folder: name a file in it, `:w " .. path:gsub("/+$", "") .. "/song.json`", "warn")
+  end
   paw.notify("saved " .. paw.project.save(path))
 end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
 command("saveas", function() paw.frontend.save_as() end, { desc = "Save the project under a name chosen from a list of directories" })
@@ -1705,18 +1708,24 @@ end, {
     return out
   end,
 })
-command("ext.unload", function(ctx)
+local function loaded_names()
+  local out = {}
+  for _, e in ipairs(paw.ext.list()) do out[#out + 1] = e.name end
+  return out
+end
+local function unload(ctx, force)
   local name = tostring(ctx.args[1] or "")
-  local ok, err = paw.ext.unload(name)
+  local ok, err = paw.ext.unload(name, { force = force })
   if not ok then return paw.notify(err, "warn") end
-  paw.notify(name .. " unloaded: what it registered is gone")
-end, {
-  desc = "Take a loaded extension away, with everything it registered: `ext.unload notation`",
-  complete = function()
-    local out = {}
-    for _, e in ipairs(paw.ext.list()) do out[#out + 1] = e.name end
-    return out
-  end,
+  paw.notify(name .. " unloaded: what it registered is gone" .. (type(ok) == "string" and "; " .. ok or ""))
+end
+command("ext.unload", function(ctx) unload(ctx, false) end, {
+  desc = "Take a loaded extension away, with everything it registered: `ext.unload notation`; refused while its devices are on tracks",
+  complete = loaded_names,
+})
+command("ext.unload!", function(ctx) unload(ctx, true) end, {
+  desc = "Take a loaded extension away even while its devices are on tracks, where they stay until removed",
+  complete = loaded_names,
 })
 command("extensions", function()
   local lines = {}

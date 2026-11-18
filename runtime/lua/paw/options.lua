@@ -171,6 +171,8 @@ function M.read(name, text)
 end
 
 local values = {}
+-- What `M.define` was given, by name.
+local definitions = {}
 
 local opt = setmetatable({}, {
   __index = function(_, name)
@@ -198,6 +200,32 @@ local opt = setmetatable({}, {
 function M.define(name, default, spec)
   defaults[name] = default
   specs[name] = spec or specs[name]
+  definitions[name] = { default = default, spec = specs[name] }
+end
+
+--- Each option given a default by `paw.option.define`, by name: what it
+--- was given, `{ default, spec }`, the same table until defined again.
+function M.definitions()
+  local out = {}
+  for name, d in pairs(definitions) do out[name] = d end
+  return out
+end
+
+--- Take an option's definition away, and the value set for it (an
+--- extension that defined it was unloaded): `paw.opt[name]` is nil again.
+--- With `was`, what `paw.option.definitions` gave before, that comes back
+--- instead, and the value stays.
+function M.undefine(name, was)
+  if was then
+    defaults[name], specs[name], definitions[name] = was.default, was.spec, was
+    return
+  end
+  local old = opt[name]
+  defaults[name], specs[name], definitions[name], values[name] = nil, nil, nil, nil
+  if old ~= nil then
+    paw.emit("option.changed", { name = name, old = old })
+    paw.api.ui_redraw()
+  end
 end
 
 --- Every option that has a default, by name: { name, default }.

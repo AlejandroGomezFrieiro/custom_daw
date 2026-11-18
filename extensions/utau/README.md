@@ -1,8 +1,8 @@
 # utau: singing synthesis
 
 Vocal tracks whose notes and lyrics are sung by OpenUtau's engines (classic
-UTAU voicebanks, DiffSinger, ENUNU, Vogen, VOICEVOX), through ReaUtau's
-`reautau-engine`, with the core of ReaUtau's vocal editor.
+UTAU voicebanks, DiffSinger, ENUNU, Vogen, VOICEVOX), through the
+extension's own engine, `paw-utau-engine`, with a vocal editor of its own.
 
 ```lua
 local vocal = paw.track_kinds.add("vocal", { name = "Vocal", ask = false })
@@ -51,9 +51,9 @@ What else it needs:
 
 - **Voicebanks** installed for OpenUtau, in `~/.local/share/OpenUtau/Singers`.
   The engine reads that folder (`utau_openutau_dir` or
-  `$REAUTAU_OPENUTAU_DIR` points elsewhere), and keeps its own data in
-  `~/.local/share/ReaUtau/openutau-data` and its render cache (with the AI
-  pitch takes) in `~/.cache/ReaUtau`. `:utau.install` writes singers into
+  `$PAW_UTAU_OPENUTAU_DIR` points elsewhere), and keeps its own data in
+  `~/.local/share/paw/utau/openutau-data` and its render cache (with the AI
+  pitch takes) in `~/.cache/paw/utau`. `:utau.install` writes singers into
   that OpenUtau folder, as OpenUtau itself does.
 
 Without the engine the device and the editor still work; nothing is sung,
@@ -64,11 +64,10 @@ and an offline render says so.
 Without Nix packaging: link the extension into `~/.config/paw/extensions/utau`
 (or `paw.ext.load("/path/to/paw/extensions/utau")` in `init.lua`); its device
 is Lua and needs no build. The engine is found through the `utau_engine`
-option, `$REAUTAU_ENGINE`, `bin/reautau-engine` beside the extension (where
-the package puts it), `reautau-engine` on the `PATH`, or a ReaUtau install
-in `~/.config/REAPER/UserPlugins/reautau-engine/`. `nix build .#utau-engine`
+option, `$PAW_UTAU_ENGINE`, `bin/paw-utau-engine` beside the extension (where
+the package puts it), or `paw-utau-engine` on the `PATH`. `nix build .#utau-engine`
 builds the engine alone from `engine/` (see engine/README.md for building it
-with `dotnet`); point `utau_engine` at `result/bin/reautau-engine` to try a
+with `dotnet`); point `utau_engine` at `result/bin/paw-utau-engine` to try a
 change. The device is reloaded when its file changes (`:device.reload`).
 
 The tests are in `tests.lua`, run by the suite (`tests/tools/suite.sh only
@@ -177,7 +176,7 @@ to keep the playhead in sight.
 | Command | |
 | --- | --- |
 | `utau.export <file> [all=1] [clip=1]` | the vocal track (every vocal track, the clip under the cursor) to OpenUtau's `.ustx`, UTAU's `.ust` or MIDI with lyrics (`.mid`), by the file's extension. A `.ust` holds one part: further parts go to `name-2.ust` and on |
-| `utau.openutau` | write the vocal tracks to `<project>.ustx` beside the project file (`~/.local/share/paw/utau/openutau/` for a project not saved yet) and start OpenUtau on it: `paw.opt.utau_openutau`, else `$REAUTAU_OPENUTAU`, else `OpenUtau` |
+| `utau.openutau` | write the vocal tracks to `<project>.ustx` beside the project file (`~/.local/share/paw/utau/openutau/` for a project not saved yet) and start OpenUtau on it: `paw.opt.utau_openutau`, else `$PAW_UTAU_OPENUTAU`, else `OpenUtau` |
 | `utau.freeze`, `utau.unfreeze` | render the vocal track to audio on a track below it, "Vocal (frozen)", mute it and stop singing it; sing it again and remove the audio |
 | `utau.singer_save <name>`, `utau.singer_preset [name]`, `utau.singer_delete <name>` | save the track's voice as a singer preset; give a track a preset (with no name, from a list); delete one |
 | `utau.install <archive or folder>`, `utau.singers` | install a voicebank (zip, rar, 7z, uar, a folder), Vogen singer (`.vogeon`) or dependency package (`.oudep`); list the installed singers, and choose one for the track |
@@ -188,7 +187,7 @@ to keep the playhead in sight.
 | `utau.curve [abbr] [off=1]` | show a curve under the notes of the editor; one of the renderer's own (energy, voice colour blends, ...) is first given the lane of a device slot `x1` to `x8`; with no name, list them |
 | `utau.unison <voices> [spacing= pitch= timing= level=]`, `utau.shift <semitones> [cents=]` | sing with several voices; sing higher or lower without moving the notes |
 
-- **Export and import** go through the engine: `reautau-engine --export`
+- **Export and import** go through the engine: `paw-utau-engine --export`
   builds the OpenUtau project from the same description the engine sings
   from and saves it with OpenUtau's writers; `--convert` reads it back with
   OpenUtau's readers. A `.ustx` comes back with the same notes, lyrics,
@@ -198,12 +197,11 @@ to keep the playhead in sight.
   sung every phrase at final quality. The frozen track keeps its notes,
   curves and voice; the bounced file is in the project's media folder.
 - **Singer presets** are JSON files in `~/.local/share/paw/utau/presets`
-  (`paw.opt.utau_presets_dir`), in the shape of ReaUtau's, so presets from
-  ReaUtau work here. A preset holds the singer, phonemizer, renderer,
+  (`paw.opt.utau_presets_dir`). A preset holds the singer, phonemizer, renderer,
   resampler, wavtool, voice colour, the engine's options (AI pitch, unison,
   shifts) and the value each curve holds where it has no lane; applying one
   replaces the track's voice whole.
-- **Installing** runs `reautau-engine --install`, ReaUtau's installer, which
+- **Installing** runs `paw-utau-engine --install`, which
   finds the singer type and the file name encoding; a folder is copied into
   `Singers`. The singers go into OpenUtau's folder (`~/.local/share/OpenUtau`,
   or `utau_openutau_dir`), and the engine looks for singers again.
@@ -228,7 +226,7 @@ any other edit:
   without one sings `paw.opt.utau_default_lyric` (`a`), and `R` is a rest.
 - **Note properties** (tuning, vibrato, pitch transitions, phoneme overrides,
   expressions, phonemizer override) are `note.meta.utau`, in the shape
-  `reautau-engine --convert` writes them (see `lua/utau/payload.lua`).
+  `paw-utau-engine --convert` writes them (see `lua/utau/payload.lua`).
 - **Curves** (pitch deviation `pitd`, dynamics `dyn`, tension, breathiness,
   gender, voicing, tone shift, growl, cross synthesis) are the parameters of
   the `utau` device (`lua:utau`): an automation lane on one is that curve,
@@ -256,7 +254,7 @@ opened again is sung again from that cache.
 ## How it works
 
 ```
- Lua: extensions/utau                       reautau-engine (.NET, OpenUtau.Core)
+ Lua: extensions/utau                       paw-utau-engine (.NET, OpenUtau.Core)
    project ── snapshot/diff ── msgpack ─────▶ phonemize, render phrases
    editor  ◀── phonemes, sung pitch ────────
    phrase files, device_post("voice.N") ◀── PhraseAudio ─
@@ -264,13 +262,12 @@ opened again is sung again from that cache.
    devices/utau.lua (lua:utau) maps the files and plays each phrase at its time
 ```
 
-- The extension starts `reautau-engine --socket <path>` with `paw.api.proc_spawn`
+- The extension starts `paw-utau-engine --socket <path>` with `paw.api.proc_spawn`
   and listens on that socket with `paw.api.sock_listen`; the engine connects,
-  as it does to ReaUtau's REAPER extension, and the two speak ReaUtau's
-  protocol (`docs/protocol.md` in ReaUtau), written here in Lua
-  (`lua/utau/proto.lua`, `msgpack.lua`). The extension takes the place of the
-  REAPER extension: after every edit it compares the vocal tracks with what it
-  last sent and sends the difference.
+  and the two speak msgpack frames (`lua/utau/proto.lua` and `msgpack.lua`
+  on this side, `engine/PawUtau.Protocol` on that one). After every edit the
+  extension compares the vocal tracks with what it last sent and sends the
+  difference.
 - Rendered phrases come back as audio with their place in seconds. The
   extension writes each to a file of 32-bit floats (in
   `~/.cache/paw/utau-voices/<pid>`, gone when paw ends) and posts the list of
@@ -278,7 +275,7 @@ opened again is sung again from that cache.
   "voice.<n>", list)`, `lua/utau/voices.lua`). Each device maps the files
   (`dsp.map`) in its own process and plays the phrases of its voice under
   the playhead; the sound is kept once, in the files. Superseded phrases are
-  dropped by ReaUtau's rule: an old phrase keeps playing until its
+  dropped, but an old phrase keeps playing until its
   replacement arrives.
 - A device made later, an offline render's own among them, is given the
   same lists before its first block, so it plays the same phrases. Phrases
@@ -298,9 +295,8 @@ opened again is sung again from that cache.
   `restored` (undo, redo, opening a project) are only noted
   (`lua/utau/follow.lua`).
 
-## What is not ported
+## What is not done
 
-From ReaUtau, not (yet) here:
 
 - The expression pad, and a panel for curves that only one renderer has.
 - Tracing the sung pitch into pitch points.

@@ -1,5 +1,5 @@
 -- A small JSON writer and reader, for what the extension writes to files
--- and hands to `reautau-engine --export`: objects, arrays, strings, numbers,
+-- and hands to `paw-utau-engine --export`: objects, arrays, strings, numbers,
 -- booleans. A table is an array when it has `[1]` or is marked with
 -- `M.array`; an empty table is an object unless marked.
 local M = {}

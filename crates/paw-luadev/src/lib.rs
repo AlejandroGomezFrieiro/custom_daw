@@ -229,6 +229,40 @@ pub fn add_dir(registry: &mut Registry, dir: &Path, rank: u8) -> Scanned {
     rescan(registry)
 }
 
+/// Look in `dir` no more. A kind one of its scripts made is made from now on
+/// by a script of the same name in another directory, the highest ranked,
+/// or by none; devices already made go on. Returns the kinds of its scripts.
+pub fn remove_dir(registry: &mut Registry, dir: &Path) -> Vec<String> {
+    LIBRARY.with_borrow_mut(|lib| {
+        lib.dirs.retain(|(d, _)| d != dir);
+        let mut gone = Vec::new();
+        lib.scripts.retain(|path, script| {
+            let here = path.parent() == Some(dir);
+            if here {
+                gone.push(script.kind.clone());
+            }
+            !here
+        });
+        for kind in &gone {
+            let other = lib
+                .scripts
+                .iter()
+                .filter(|(_, s)| &s.kind == kind && s.desc.is_some())
+                .max_by_key(|(_, s)| s.rank);
+            match other {
+                Some((path, script)) => {
+                    let desc = script.desc.as_ref().expect("filtered on desc");
+                    registry.register(factory(info(path, script, desc), path));
+                }
+                None => {
+                    registry.unregister(kind);
+                }
+            }
+        }
+        gone
+    })
+}
+
 /// Look at every directory again: new scripts and changed ones are loaded
 /// (in a helper) and registered.
 pub fn rescan(registry: &mut Registry) -> Scanned {

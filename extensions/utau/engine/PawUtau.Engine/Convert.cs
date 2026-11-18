@@ -4,12 +4,12 @@ using OpenUtau.Core;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
-/// One-shot converter: <c>reautau-engine --convert &lt;file&gt; --out &lt;file.lua&gt;</c>. Any project OpenUtau can read
+/// One-shot converter: <c>paw-utau-engine --convert &lt;file&gt; --out &lt;file.lua&gt;</c>. Any project OpenUtau can read
 /// (.ustx, .ust, .vsqx, .mid, .svp, MusicXML, ...) is loaded with OpenUtau's own format code and written as a plain Lua
-/// table (`return { ... }`) that the REAPER importer turns into vocal tracks, MIDI items, notes, payloads and curves.
+/// table (`return { ... }`) that the extension (lua/utau/import.lua) turns into vocal tracks, clips, notes, payloads and curves.
 /// Ticks are OpenUtau ticks (480 per quarter note); part positions are absolute, note positions part-relative.
 /// </summary>
 static class Convert
@@ -26,7 +26,7 @@ static class Convert
         });
         if (project == null)
         {
-            Console.Error.WriteLine("reautau-engine: cannot read " + o.ConvertPath + (error != null ? ": " + error.Message : ""));
+            Console.Error.WriteLine("paw-utau-engine: cannot read " + o.ConvertPath + (error != null ? ": " + error.Message : ""));
             return 1;
         }
         var sb = new StringBuilder();

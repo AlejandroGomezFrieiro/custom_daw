@@ -1,4 +1,4 @@
--- The reautau-engine wire protocol, version 1.0 (ReaUtau's docs/protocol.md).
+-- The paw-utau-engine wire protocol, version 1.0, written down by engine/PawUtau.Protocol/Messages.cs.
 --
 -- A frame is a little-endian u32 length, a type byte and a msgpack array
 -- whose fields are positional. Frames of type 0x80 and up carry a binary
@@ -136,7 +136,7 @@ end
 
 --- A batch edit the engine runs, answered by `BatchEditResult` with the
 --- same `request`: `{ request, name, parts = { part ids }, notes = { note ids }, args = json }`.
---- ReaUtau's engine knows "retake" (AI pitch and timbre takes) and "graph".
+--- The engine knows "retake" (AI pitch and timbre takes) and "graph".
 function encode.run_batch_edit(b)
   return M.frame(T.RunBatchEdit, mp.array(5) .. mp.uint(b.request) .. mp.str(b.name)
     .. mp.strs(b.parts or {}) .. mp.list(b.notes or {}, mp.uint) .. mp.str(b.args or ""))

@@ -143,6 +143,11 @@ pub fn add_dir(
     (kinds, notes)
 }
 
+/// Look in `dir` no more: an extension that added it was taken away.
+pub fn remove_dir(dir: &Path) {
+    ADDED_DIRS.lock().unwrap().retain(|d| d != dir);
+}
+
 /// The directories added so far, as [`ADDED_DIRS_ENV`] holds them.
 pub(crate) fn added_dirs_env() -> Option<std::ffi::OsString> {
     let dirs = ADDED_DIRS.lock().unwrap();

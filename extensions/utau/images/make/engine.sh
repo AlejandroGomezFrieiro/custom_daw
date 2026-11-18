@@ -2,15 +2,15 @@
 # Sourced by the utau scenes after rig.sh: finds the engine and the singer,
 # or ends the scene saying what is missing (so `make.sh all` goes on).
 #
-# The engine is $REAUTAU_ENGINE, or `nix build .#utau-engine` linked as
+# The engine is $PAW_UTAU_ENGINE, or `nix build .#utau-engine` linked as
 # target/utau-engine or result. The singer (UTAU_SINGER, Kitane sno act5
 # VCV unless set) is copied from OpenUtau's folder into the scratch
 # directory and the engine pointed there: nothing the engine writes can
 # land among your voicebanks, and its data and cache are the scene's too.
 SINGER=${UTAU_SINGER:-Kitane sno act5 VCV}
-SINGERS=${REAUTAU_OPENUTAU_DIR:-$HOME/.local/share/OpenUtau}/Singers
+SINGERS=${PAW_UTAU_OPENUTAU_DIR:-$HOME/.local/share/OpenUtau}/Singers
 ENGINE=
-for e in "$REAUTAU_ENGINE" "$ROOT/target/utau-engine/bin/reautau-engine" "$ROOT/result/bin/reautau-engine"; do
+for e in "$PAW_UTAU_ENGINE" "$ROOT/target/utau-engine/bin/paw-utau-engine" "$ROOT/result/bin/paw-utau-engine"; do
   if [ -n "$e" ] && [ -x "$e" ]; then ENGINE=$e; break; fi
 done
 if [ -z "$ENGINE" ] || [ ! -d "$SINGERS/$SINGER" ]; then
@@ -21,7 +21,7 @@ OPENUTAU=$WORK/openutau
 if [ ! -d "$OPENUTAU/Singers/$SINGER" ]; then
   mkdir -p "$OPENUTAU/Singers" && cp -r "$SINGERS/$SINGER" "$OPENUTAU/Singers/"
 fi
-export REAUTAU_ENGINE="$ENGINE" REAUTAU_OPENUTAU_DIR="$OPENUTAU"
+export PAW_UTAU_ENGINE="$ENGINE" PAW_UTAU_OPENUTAU_DIR="$OPENUTAU"
 # The engine's socket goes in the runtime directory, and a socket's path
 # must be short.
 XDG_RUNTIME_DIR=$(mktemp -d)

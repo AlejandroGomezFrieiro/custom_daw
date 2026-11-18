@@ -1,8 +1,8 @@
 using System.Net.Sockets;
 using System.Threading.Channels;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>Client side of the UDS: one atomic frame per queued buffer, written by a single writer task.</summary>
 public sealed class Connection : IDisposable, IEngineConnection

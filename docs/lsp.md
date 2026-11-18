@@ -218,11 +218,10 @@ with notes by their place when published.
 
 ## MIDI LSP
 
-`extensions/midilsp` is MIDI LSP's entry, from openutau_reaper_editor
-(`projects/midi-lsp`): its engine checks voice leading, counterpoint,
-ranges, rhythm and form, hears chords and keys, and suggests melodies,
-velocities and controller curves; its delivery and settings checks look at
-rendered masters.
+`extensions/midilsp` is the entry of MIDI LSP, a language server for music:
+its engine checks voice leading, counterpoint, ranges, rhythm and form, hears
+chords and keys, and suggests melodies, velocities and controller curves; its
+delivery and settings checks look at rendered masters.
 
 ```lua
 paw.ext.load("/path/to/paw/extensions/midilsp")
@@ -230,7 +229,7 @@ paw.ext.load("/path/to/paw/extensions/midilsp")
 
 The engine is found in `paw.opt.midilsp_cmd` (words, such as `"reaper-midi-lsp
 --rules /home/me/rules"`), else `$MIDI_LSP_ENGINE`, else `reaper-midi-lsp`
-on the PATH. To build one: `nix build <openutau_reaper_editor>#midi-lsp-engine`.
+on the PATH.
 It is started when the extension loads (`paw.opt.midilsp_autostart`), as
 two servers on clips in MIDI LSP's dialect: `midi-lsp`, the language role,
 and `midi-lsp-suggest`, the suggestion role (`paw.opt.midilsp_suggest`).

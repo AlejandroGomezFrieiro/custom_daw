@@ -554,3 +554,26 @@ test("articulations: linked controllers are one lane, written through their curv
   eq(paw.ui.focused, "curve", "\\c opens it in the curve view")
   paw.ui.hide("curve")
 end)
+
+test("articulations: K on a note with an articulation says it once, in the map's words or the attribute's", function()
+  local track, clip, roll = strings()
+  local map = art.map_of(track.id)
+  art.set({ { clip = clip.id, place = 1 } }, { attr = map.by_id.staccato.attr })
+  api.undo_checkpoint()
+  roll:set(67, 0)
+  local function said()
+    local out = {}
+    for _, line in ipairs(roll:describe()) do
+      local text = type(line) == "table" and line.text or line
+      if text:find("articulation", 1, true) then out[#out + 1] = text end
+    end
+    return out
+  end
+  local lines = said()
+  eq(#lines, 1, "one line about it with a map: " .. table.concat(lines, " | "))
+  eq(lines[1]:find(map.by_id.staccato.name, 1, true) ~= nil, true, "the map's name for it")
+  art.unbind(track.id)
+  api.undo_checkpoint()
+  lines = said()
+  eq(#lines, 1, "and one without: " .. table.concat(lines, " | "))
+end)

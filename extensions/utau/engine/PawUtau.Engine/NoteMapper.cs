@@ -1,11 +1,11 @@
 using OpenUtau.Core.Ustx;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 using Log = Serilog.Log;
 using PitchPoint = OpenUtau.Core.Ustx.PitchPoint;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
-/// <summary>NoteMsg (+ type-15 payload) -> UNote. Mapping table: docs/protocol.md section 6.2.</summary>
+/// <summary>NoteMsg (+ its payload) -> UNote.</summary>
 static class NoteMapper
 {
     /// <param name="keyShift">track key shift in semitones (added to the tone)</param>

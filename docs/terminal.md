@@ -630,7 +630,7 @@ Every terminal attached with `paw attach` has tabs and windows of its own.
 **Narrowed tabs.** A tab can be narrowed to a group (`:narrow Strings`,
 `zn`): it starts with the windows of the tab it came from, and everything in
 it (the arrange view, the mixer, the device panel, the session view,
-`paw://tracks`, the pickers, the motions and the Ex ranges) sees only that
+`paw://tracks`, the pickers, `:query`, the motions and the Ex ranges) sees only that
 group's tracks; `:widen` (`zw`) closes it and goes back. The status line says
 `narrowed Strings`. Each tab has its own, so `gt` goes from the whole song to
 the strings and on to the brass. `paw://tracks` in a narrowed tab lists the

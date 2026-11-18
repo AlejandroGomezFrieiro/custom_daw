@@ -752,6 +752,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 None => Ok(LuaValue::Nil),
             }
         }
+        // Look in a directory added with `plugins_add_dir` no more, and make
+        // no more devices of `kinds`, those found there; devices already made
+        // go on.
+        fn plugins_remove_dir(_, sh, (dir, kinds) => (String, Vec<String>)) {
+            sh.session.borrow_mut().registry.remove_dir(std::path::Path::new(&dir), &kinds);
+            Ok(())
+        }
         // What a plugin calls its keys, `{ [pitch] = name }` (CLAP `note-name`).
         fn device_note_names(lua, sh, id => Id) {
             let names = sh.session.borrow_mut().device_note_names(id);

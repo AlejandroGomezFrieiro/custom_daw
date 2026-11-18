@@ -762,6 +762,10 @@ impl Session {
                 }
                 "sig_num" | "sig_den" => {
                     let n = de::<u32>(key, value)?.clamp(1, 64);
+                    // A beat is a whole note halved some times: 3/3 has no note to count.
+                    if key == "sig_den" && !n.is_power_of_two() {
+                        bail!("a time signature's lower number is 1, 2, 4, 8, 16, 32 or 64, not {n}");
+                    }
                     let (num, den) = if key == "sig_num" {
                         (n, p.sig_den)
                     } else {

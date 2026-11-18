@@ -2052,12 +2052,12 @@ test("scripts run helper processes and talk to them over sockets", function()
 end)
 
 -- Singing ---------------------------------------------------------------------
--- extensions/utau sings with reautau-engine; its own device and what it plays
+-- extensions/utau sings with paw-utau-engine; its own device and what it plays
 -- are tested in its tests.lua. The tests that sing need the engine
--- (REAUTAU_ENGINE or reautau-engine on the PATH) and the voicebank below in
+-- (PAW_UTAU_ENGINE or paw-utau-engine on the PATH) and the voicebank below in
 -- OpenUtau's folder, and are skipped without them.
 
-local SINGER = os.getenv("REAUTAU_TEST_SINGER") or "Kitane sno act5 VCV"
+local SINGER = os.getenv("PAW_UTAU_TEST_SINGER") or "Kitane sno act5 VCV"
 local SYLLABLES = { "- あ", "- い", "- う", "- え", "- お" }
 
 --- The pitch of the left channel of a 16-bit render between two times, by
@@ -2101,7 +2101,7 @@ local function load_utau()
     paw.ext.load("extensions/utau")
     utau = require("utau")
   end
-  if paw.opt.utau_openutau_dir == "" and not os.getenv("REAUTAU_OPENUTAU_DIR") then
+  if paw.opt.utau_openutau_dir == "" and not os.getenv("PAW_UTAU_OPENUTAU_DIR") then
     -- The suite may run with its own XDG_DATA_HOME; the voicebanks stay where they are.
     paw.opt.utau_openutau_dir = (os.getenv("HOME") or "") .. "/.local/share/OpenUtau"
   end
@@ -2123,10 +2123,10 @@ end
 --- Skip unless the engine runs and has the test voicebank.
 local function need_singer()
   load_utau()
-  if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped: paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   utau.engine.start()
   if not utau.wait(function() return #utau.singers > 0 end, 60) then
-    return "skipped: reautau-engine did not start: " .. tostring(utau.engine.reason)
+    return "skipped: paw-utau-engine did not start: " .. tostring(utau.engine.reason)
   end
   if not utau.find_singer(SINGER) or utau.find_singer(SINGER).id ~= SINGER then
     return "skipped: voicebank " .. SINGER .. " is not installed"
@@ -2724,7 +2724,7 @@ end)
 test("OpenUtau projects import as vocal tracks", function()
   fresh()
   load_utau()
-  if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped: paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   local ok, ids = pcall(require("utau.import").file, fixtures .. "vocal.ustx")
   eq(ok, true, "imported: " .. tostring(ids))
   local track = paw.track(ids[1])

@@ -1,4 +1,4 @@
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>Single-thread TaskScheduler that plays the role of OpenUtau's UI thread (DocManager's main thread).</summary>
 public sealed class PumpScheduler : TaskScheduler, IDisposable
@@ -11,7 +11,7 @@ public sealed class PumpScheduler : TaskScheduler, IDisposable
         Thread = new Thread(() =>
         {
             foreach (var t in queue.GetConsumingEnumerable()) TryExecuteTask(t);
-        }) { IsBackground = true, Name = "reautau-main" };
+        }) { IsBackground = true, Name = "paw-utau-main" };
         Thread.Start();
     }
 

@@ -1,7 +1,7 @@
 -- Hearing a note as it is placed or clicked in the vocal editor.
 --
 -- When the engine is up and the track has a singer, the engine sings the
--- note by itself with the track's voice (ReaUtau's `Audition` message), and
+-- note by itself with the track's voice (the `Audition` message), and
 -- the track's `utau` device plays that at once (a classic voicebank answers
 -- in a fraction of a second). Without the engine or a singer, a soft tone at
 -- the note's pitch stands in. `paw.opt.utau_audition` turns it off.

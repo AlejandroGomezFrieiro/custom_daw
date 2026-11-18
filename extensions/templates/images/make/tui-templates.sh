@@ -1,10 +1,15 @@
 #!/bin/sh
 # Templates: the keys track saved with its chain and levels, and made again
-# under another name in the same song.
+# under another name in the same song. The program's home is a directory
+# made for the scene, so that the path a template is saved to reads as a
+# user's (~/.local/share/paw/templates).
 . "$MAKE/rig.sh"
-SETUP="$TUI_DEMO paw.ext.load('extensions/templates')"
+PAW_HOME=$(mktemp -d)
+SETUP="$TUI_DEMO paw.opt.templates_dir = os.getenv('HOME') .. '/.local/share/paw/templates'
+paw.ext.load('extensions/templates')"
 rig_start
 term_start
+[ "$(ctl "return os.getenv('HOME')")" = "$PAW_HOME" ] || { echo "tui-templates: ~ is not $PAW_HOME"; rm -rf "$PAW_HOME"; exit 1; }
 rec_start tui-templates
 cap ",Ts saves the track: its devices with their settings, levels and sends"
 pause 0.5; key comma T s; pause 0.5; TYPE_DELAY=110 typ "Soft keys"; key Return; pause 1.0
@@ -13,3 +18,4 @@ keys 0.3 j j; key comma T l; pause 0.5; TYPE_DELAY=110 typ "soft"; pause 0.6; ke
 cap ",d shows what it came with"
 key comma d; pause 2.0
 rec_stop
+rm -rf "$PAW_HOME"

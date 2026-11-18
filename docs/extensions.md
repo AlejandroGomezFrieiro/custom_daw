@@ -157,18 +157,31 @@ commands, keys and key groups, views, buffer types, kinds of text buffer,
 kinds of track, picker sources, query fields, fields and views of `:s` and
 `:g`, completers, status line components, grep sources, curve providers,
 address schemes, completion sources, layers, health checks, hooks
-(`paw.on`) and options. `:extensions` lists it, `paw.ext.provides(name)`
-returns it, and a command or a key says whose it is (`spec.ext`,
-`map.ext`), which `:help` uses.
+(`paw.on`), options, timers (`paw.every`, `paw.defer`), its directory of
+devices written in Lua and the plugin directories it adds
+(`paw.plugins.add_dir`). So is what it registers later, from a command,
+a handler or a timer of its own: an entry is its own when a function of its
+files is in it, or when its code made it (a key mapped from its code says
+so in `map.ext`). A timer the core starts while an extension loads stays
+the core's. `:extensions` lists it, `paw.ext.provides(name)` returns it,
+and a command or a key says whose it is (`spec.ext`, `map.ext`), which
+`:help` uses.
 
 `paw.ext.unload(name)` (`:ext.unload`) removes exactly that: each thing it
 registered goes, and what it replaced (a key of the core it remapped, a
-command it redefined) comes back. Its modules are forgotten, so loading it
-again runs it afresh, and `ext.unloading` and `ext.unloaded` are emitted.
-An extension that another loaded one requires is not unloaded. Two things
-stay: options keep their defaults (a value set for one stays meaningful),
-and the Lua devices and plugins it ships stay among the devices for the
-session. `:reload` starts the whole runtime again and needs none of this.
+command it redefined, an option of the core it gave another default) comes
+back. Its options go with the values set for them, its timers stop, and its
+devices written in Lua and the plugins in the directories it added are no
+longer offered (a script of the same name elsewhere takes its place). Its
+modules are forgotten, so loading it again runs it afresh, and
+`ext.unloading` and `ext.unloaded` are emitted. An extension that another
+loaded one requires is not unloaded. Nor is one whose devices are on
+tracks, as Neovim will not delete a buffer with changes: it names the
+devices and the tracks, and `:ext.unload! name` (`paw.ext.unload(name, {
+force = true })`) unloads it anyway, leaving those devices where they are,
+playing, until they are removed (a project saved with them opens with them
+missing without the extension). `:reload` starts the whole runtime again
+and needs none of this.
 
 ### Health checks
 
@@ -404,7 +417,7 @@ over a socket or its standard input and output (see Helper programs in
 [Scripting](scripting.md)). The utau engine is such a program, built from
 the extension's own `engine/` source; `bin/` beside the extension is where
 its package puts it, and where the extension looks first after the
-`utau_engine` option and `$REAUTAU_ENGINE`.
+`utau_engine` option and `$PAW_UTAU_ENGINE`.
 
 **Plugins of its own.** An extension that builds a CLAP or VST3 plugin
 (its Nix package puts it beside the extension) registers the directory
