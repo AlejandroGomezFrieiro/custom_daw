@@ -1,7 +1,7 @@
 # drums
 
 A drum track made in one step, and a grid to program it on whose rows are
-the pieces of the kit, by name: in the terminal and in a window.
+the pieces of the kit, by name: one view, in the terminal and in a window.
 
 ```lua
 paw.ext.load("/path/to/paw/extensions/drums")
@@ -92,25 +92,29 @@ every hit. Visual mode: `v` a stretch of time on every row, `Ctrl-v` a
 block, `V` whole rows; then `x`, `+` `-`, `gs`, `y`, `p`. Registers, counts,
 `.` and macros work as everywhere.
 
-## The grid in a window
+## The grid with the pointer
 
-The same editor, opened by a double click on a drum track's clip (never on
-another track's), from the clip's menu, or with any of the commands above
-when a graphical frontend is attached.
+The grid is one view, the same in the terminal and in a window: a window
+shows it in a pane, in its own font, with the toolbar's buttons as buttons.
+It opens on a double click of a drum track's clip (never another track's),
+from the clip's menu, or with any of the commands above. The pointer does
+the same in both:
 
 - Click a cell for a hit, click a hit to take it out; right click removes.
 - Drag along a row: from an empty cell it paints hits, from a hit it
   erases, on that row only wherever the pointer wanders; the whole stroke is
   one undo step.
-- The velocity lane under the grid shows how hard each hit of the selected
-  row is; click or drag across it to set them.
+- The velocity lane under the rows (with room for it) shows how hard each
+  hit of the cursor's row is, as bars two rows tall; click or drag across
+  it to set them.
 - Click a row's name to hear the piece.
-- The toolbar plays the clip round and round, sets the step (1/4 to 1/32,
-  1/8 and 1/16 triplets), and the clip's length in bars.
+- The toolbar under the title plays the clip round and round, sets the
+  step (1/4 to 1/32, 1/8 and 1/16 triplets), and the clip's length in bars.
 - The ruler moves the playhead; the playhead moves across while it plays.
-- The wheel scrolls the rows, with Shift sideways, with Ctrl it zooms.
+- The wheel scrolls the rows.
 
-Every key of the terminal grid works in the window.
+The steps and hits are roles (`step`, `hit`) and every part a hit region
+(see "Roles" in docs/scripting.md), which is how one drawing serves both.
 
 ## Kits
 

@@ -9,5 +9,4 @@ paw.option.define("drums_swing", 0.33)      -- how far `gs` moves every other st
 require("drums")
 require("drums.grid")
 require("drums.commands")
-require("drums.gui")
 require("drums.kit")
