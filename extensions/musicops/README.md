@@ -91,7 +91,7 @@ the chord, `gzsih` strums it, `d)` deletes to the next phrase.
 ## Key and scale
 
 The project's key is the core's (`paw.harmony.key`, see
-[docs/harmony.md](../../docs/harmony.md)), still kept in
+[Harmony](../../docs/reference/harmony.md)), still kept in
 `project.meta.musicops` (`{ root = "D", scale = "minor" }`), so it is saved
 with the project and undone like any edit. Without one, the operators work
 in C major (not in the key the core reads from the notes).

@@ -16,6 +16,8 @@ each extension (`:help notation`).
 - [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 - [How to write a language server](how-to/write-a-language-server.md)
+- [How to write a snippet](how-to/write-a-snippet.md)
+- [How to write a completion source](how-to/write-a-completion-source.md)
 
 ## Reference
 
@@ -28,7 +30,10 @@ each extension (`:help notation`).
 - [Plugins and built-in devices](devices.md): plugins, the sandbox, built-in devices, devices in Lua
 - [The session view](reference/session-view.md): slots, scenes, launch rules, keys and commands
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
-- [Harmony, completion and snippets](harmony.md): keys and chords, snippets, completion, many clips in the piano roll
+- [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
+- [Snippets](reference/snippets.md): keys, the starting set, the fields of a snippet
+- [Completion](reference/completion.md): suggestions, their keys and options, the fields of a source
+- [Several clips in the piano roll](reference/roll-clips.md): context notes, edit many clips, `paw.roll_clips`, layers
 - [Language servers and diagnostics](reference/language-servers.md): keys, addresses, subjects, server configs, the protocol, MIDI LSP
 - [Scripts](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
 - [Extensions](extensions.md): what is in the core, what an extension can add
@@ -41,3 +46,4 @@ each extension (`:help notation`).
 - [About the architecture](explanation/about-the-architecture.md): the crates, the threads, the kernel and its frontends
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
+- [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it

@@ -259,7 +259,7 @@ paw.keymap.with_selection(region, fn, ...)   -- run fn with region as the select
 paw.keymap.feed("3jdd")          paw.keymap.normal("dic")  -- as typed; from inside a mapping
 paw.edit.arrange.yank(region)    paw.edit.arrange.paste(value)   paw.edit.roll.delete(clip, region)
 track:snapshot()                 paw.restore_track(snapshot, index)   -- with devices, clips, automation
-paw.roll_clips.parts()           paw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/harmony.md)
+paw.roll_clips.parts()           paw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/reference/roll-clips.md)
 paw.ui.views.pianoroll.layer("lint", 35, paint, marks)                -- draw in the piano roll, both frontends
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
@@ -572,8 +572,7 @@ several controllers as one this way
 (`paw://clip/7/control/cc/1#linked=dynamics`).
 
 **Completion.** `paw.complete` shows suggestions as ghost notes in the piano
-roll, from sources that extensions register; see "Writing a source" in
-[harmony.md](harmony.md) for the context and the items.
+roll, from sources that extensions register; see [Completion](reference/completion.md) for the context and the items.
 
 ```lua
 paw.complete.register({ name = "mine", priority = 10, views = { "pianoroll" }, auto = true,
@@ -645,8 +644,8 @@ saved with the project, for extension data; `paw.music.pitch("F#3")`,
 `paw.music.degree("A4", "minor_pentatonic", 3)`; `paw.time.format(beats)`;
 `paw.harmony` is the chords and key that sound when (`paw.harmony.at(8)`,
 `.next(8)`, `.key(8)`, providers with `.provide`), and `paw.snippet` writes
-named music from them (`paw.snippet.add`, `.expand("dominant")`); both in
-[Harmony, completion and snippets](harmony.md).
+named music from them (`paw.snippet.add`, `.expand("dominant")`); see
+[Harmony](reference/harmony.md) and [Snippets](reference/snippets.md).
 `:3snippet arp`: a number before a command's name is its count.
 `paw.cursor` is the edit cursor; `paw.inspect(value)`; `paw.device_types()`
 lists every device kind with its format and vendor. Notes may carry a `meta`
