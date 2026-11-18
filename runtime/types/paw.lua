@@ -3956,6 +3956,11 @@ function paw.launcher.stop(track) end
 ---@param position any
 function paw.launcher.write_captured(position) end
 
+--- True if a window of this number is in a tab of the seat, or is a
+--- window in no tab (`M.loose`) that is still in use.
+---@param id any
+function paw.layout.alive(id) end
+
 --- Every window of every tab, as `{ win, tab }`.
 function paw.layout.all_windows() end
 

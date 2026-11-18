@@ -973,6 +973,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.layout
 
+- `paw.layout.alive(id)`: True if a window of this number is in a tab of the seat, or is a window in no tab (`M.loose`) that is still in use.
 - `paw.layout.all_windows()`: Every window of every tab, as `{ win, tab }`.
 - `paw.layout.alternate(win)`: Show again what a window (the current one) showed before what it shows now: Vim's alternate buffer, `Ctrl-^` and `:b#`.
 - `paw.layout.as_tabs(spec)`: A layout as `M.restore` takes it, from any of the forms a configuration writes: a view's name (`"notation"`), a tree (`{ dir = "h", "roll", "notation" }`), a list of tabs, or what `M.capture` gives.
