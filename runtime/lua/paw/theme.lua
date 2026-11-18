@@ -163,6 +163,7 @@ local function build()
     MeterHigh = { fg = c.meter_high },
     MeterOff = { fg = c.bg_hl },
     MeterPeak = { fg = c.bright },
+    MeterClip = { fg = c.red, bold = true },
     MeterScale = { fg = c.faint },
     Fader = { fg = c.fg, bold = true },
     FaderSel = { fg = c.accent, bold = true },

@@ -766,14 +766,6 @@ command("track.color.pick", function()
   })
 end, { desc = "Choose the track's colour from the theme's hues" })
 
-command("track.output", function(ctx)
-  local track = need_track()
-  if not track then return end
-  local target = ctx.args[1] and paw.track(ctx.args[1])
-  track.output = target
-  paw.notify(track.name .. " → " .. (target and target.name or "Master"))
-end, { desc = "Route the track into another by name, or to the master: `track.output Drums`", complete = { "tracks" } })
-
 -- Clips ----------------------------------------------------------------------
 
 command("clip.add", function(ctx)

@@ -54,10 +54,17 @@ local function strip_gesture(_, e)
   end
   if e.kind == "move" then
     local t = api.track_get(id)
+    if h.kind == "peak" then return mouse.hint("the loudest of late · click to put out the clip light") end
+    if h.kind == "output" then return mouse.hint(t.name .. " plays into " .. paw.frontend.routing(id).output .. " · click to choose another") end
     return mouse.hint(t.name .. " · " .. draw_db(t.volume) .. " · drag the fader or the pan · double click resets · right click for more")
   end
   if e.kind ~= "down" then return end
   if id ~= 0 then paw.cursor.set_track(id) end
+  if e.button == "left" and h.kind == "peak" then
+    paw.draw.clear_peak(id)
+    return api.ui_redraw()
+  end
+  if e.button == "left" and h.kind == "output" then return paw.commands.exec("track.output") end
   if e.button == "right" then
     if id == 0 then return end
     return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(menus.track(id), screen(e)) end end })
@@ -97,7 +104,7 @@ end
 
 mixer.gestures = {
   strip = strip_gesture, fader = strip_gesture, volume = strip_gesture, pan = strip_gesture,
-  flag = strip_gesture, insert = strip_gesture, send = strip_gesture,
+  flag = strip_gesture, insert = strip_gesture, send = strip_gesture, peak = strip_gesture, output = strip_gesture,
 }
 
 -- The device panel ---------------------------------------------------------------------

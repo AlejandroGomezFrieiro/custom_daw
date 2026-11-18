@@ -239,11 +239,11 @@
   a hit region costs a turn of the kernel for each move, also over
   `--connect`.
 - The window's mixer is the terminal's, laid out in cells: its switches
-  are a cell wide, and it lost what only the window's own mixer had: the
-  row naming where a track plays into, a fourth device, the clip light and
-  the peak held that a click cleared. The theme's accent still differs
-  between the terminal (amber focus) and the window (blue selection): the
-  owner's decision.
+  are a cell wide, and its devices have rows of their own only when it is
+  at least twenty rows tall (in the window's usual height they fold into
+  one row that counts them). The theme's accent still differs between the
+  terminal (amber focus) and the window (blue selection): the owner's
+  decision.
 - The drum grid is one view for both frontends, in cells: in a window a
   step is three cells wide whatever the clip's length, the wheel does not
   zoom the steps or scroll them sideways (the grid follows the cursor), and
