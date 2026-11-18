@@ -296,7 +296,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.canvas.focus(name)`: Give a view in a window the keyboard, as a click in it does.
 - `paw.canvas.glyph_outline(font, codepoint)`: A music font's glyph as commands and numbers in staff spaces from its origin, y down, from the fonts built into the kernel, or nil.
 - `paw.canvas.key(name, keys)`: Keys typed in the window of a view. They go to the key mappings with that view focused (or to an open prompt), as when typed in the terminal. In its window, a view can give a key its own meaning, as other programs do (`view.window_keys`, for example Ctrl-A to select all notes). The terminal keeps the one rule of all views.
-- `paw.canvas.leave(name)`: A view that will show in a separate window leaves the layout, so it does not show two times. Its windows in the tabs close and keep their place. Returns the window that had the keyboard, to give the keyboard back to it. A view that a frontend draws itself (the arrange view, the mixer and other views) also stays where it is. The separate window is a second view of it.
+- `paw.canvas.leave(name, pane)`: A view that will show in a separate window leaves the layout, so it does not show two times. Its windows in the tabs close and keep their place. Returns the window that had the keyboard, to give the keyboard back to it. A view that a frontend draws itself (the arrange view, the mixer and other views) also stays where it is. The separate window is a second view of it. A view with a state for each window leaves only the pane `pane` that it goes out of: its other windows stay.
 - `paw.canvas.open(name, opts)`: Show a view that paints in a graphical frontend, and give it the keyboard. When the view has a place in the layout (`paw.ui.dock`, or a window that shows it), it is docked, as the terminal shows it. If not, or with `window = true`, it is in a separate window. A view that is already in a separate window stays there. `opts`: `title`, `width`, `height` (the start size of a window), `window`.
 - `paw.canvas.open_view(name, opts)`: Show a view in a window of a graphical frontend (the focused view when `name` is nil), and give it the keyboard. A view that paints is painted (`M.open`). Other views are drawn as the terminal draws them, in cells of the monospace font of the window, at the size of the window. A line below the view shows prompts, messages and its keys. A view that floats over the views of the terminal moves into the window. `opts`: `title`, `width`, `height` (in pixels).
 
@@ -414,6 +414,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.cursor.clip()`: The clip under the cursor, if any.
 - `paw.cursor.index()`: 1-based position of the cursor track in the track list.
 - `paw.cursor.lane_id()`: The automation lane row of the cursor: a lane of the cursor track that shows as a row (see `paw.lanes`). Nil when the cursor is on the track.
+- `paw.cursor.lens()`: Keys and commands typed in a pinned window act on its track: the track of "the cursor" is the window's while that window has the keyboard, or while paw draws it.
 - `paw.cursor.line()`: 1-based row of the cursor among every row drawn, lanes included.
 - `paw.cursor.move_track(delta)`: Move by rows. In normal mode, the rows of open automation lanes count. After an operator or in a selection, only tracks count, as for `dj`.
 - `paw.cursor.row()`: 1-based row of the cursor track among the tracks that are drawn: the same as `index` until a group is folded.
@@ -972,6 +973,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.layout
 
+- `paw.layout.alive(id)`: True if a window of this number is in a tab of the seat, or is a window in no tab (`M.loose`) that is still in use.
 - `paw.layout.all_windows()`: Every window of every tab, as `{ win, tab }`.
 - `paw.layout.alternate(win)`: Show again what a window (the current one) showed before what it shows now: Vim's alternate buffer, `Ctrl-^` and `:b#`.
 - `paw.layout.as_tabs(spec)`: A layout as `M.restore` takes it, from any of the forms a configuration writes: a view's name (`"notation"`), a tree (`{ dir = "h", "roll", "notation" }`), a list of tabs, or what `M.capture` gives.
@@ -1003,10 +1005,12 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.layout.find_id(root, id)`: The window of an id in the tree under `root`.
 - `paw.layout.focusable_windows()`: The windows of the current tab that take the keyboard.
 - `paw.layout.get(id)`: A window by its number, and the tab it is in.
+- `paw.layout.hand_over(from, to)`: Give the state of the window `from` to the window `to` of the same view, in place of its own: a view in a window of its own that goes back into its pane takes what it showed there.
 - `paw.layout.import(spec)`: A node as saved, or as a configuration writes it: `"roll"` or `{ view = "roll", size = 20 }` for a window, `{ dir = "h", "arrange", "roll" }` (or with `children`) for a split. Windows of views that are not there (an extension not loaded) are left out.
 - `paw.layout.layout_names()`: The names of the layouts there are: the configuration's and those saved.
 - `paw.layout.leaf(view, fields)`: A new window that shows `view`, with fields such as `size` or `hidden`.
 - `paw.layout.load(name)`: Put back layout `name`: the configuration's, else one saved.
+- `paw.layout.loose(name, from)`: A window in no tab for the view `name`: a view in a window of its own of a graphical frontend. It starts from the state of the window `from` (the pane that it leaves), else of the window whose state the view holds now. It keeps its own state from then on.
 - `paw.layout.maximize()`: Give the current window the whole tab, or put the others back.
 - `paw.layout.move_to_edge(edge)`: Move the current window to an edge of the tab ("H", "J", "K", "L"), the whole height or width of it.
 - `paw.layout.neighbour(dir, count)`: The window next to the current one in a direction ("h", "j", "k", "l"), `count` steps on.
@@ -1023,6 +1027,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   ```
 
   `wrap(fn)`, if given, makes each function that the keymap calls. It can add to the `ctx` of the function (the first argument).
+- `paw.layout.project_screen()`: The tabs and windows that the project keeps: `{ default, seats }`, `seats` the layout of each kind of seat (`paw.seats.kind`), each in the form `M.capture` gives. Nil when it keeps none. A project saved with one layout gives it as the default.
 - `paw.layout.resize(win, axis, n, relative)`: Resize a window (the current one): `axis` "height" or "width", to `n` cells, or by `n` with `relative`. It is the window's row or column in the split along that axis that changes. Returns false when nothing can.
 - `paw.layout.resolve(name)`: The type and the buffer of a name. The name is the name or the number of a buffer, or the name or the short name of a view (`roll`). It can also be a type with a target (`type://target`). Nil when the name is not known.
 - `paw.layout.restore(saved)`: Put back tabs and windows from `M.capture()`'s data, or from a list of tabs as a configuration writes them:
@@ -1047,6 +1052,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.layout.tab_close(i)`: Close tab `i` (the current tab). The last tab does not close.
 - `paw.layout.tab_copy(name)`: Make a tab with the same windows as the current one, after it, and go to it, the keyboard in the same kind of window. Views shown in a window of each show the same state in both.
 - `paw.layout.tab_go(i)`: Go to tab `i`.
+- `paw.layout.tab_move(to, i)`: Move tab `i` (the current tab) to place `to` among the tabs: 1 is the first. The current tab stays the current tab.
 - `paw.layout.tab_new(name, view, win, buf, target)`: Make a tab after the current tab, and go to it. It shows a buffer (the name of a view; `buf`, a buffer of a type with many) or the window `win`. Without them, it shows an empty window, the start page. `target` is what the view opens there (`roll://7`).
 - `paw.layout.tab_step(n)`: Go `n` tabs on (back, when negative), round the end.
 - `paw.layout.tab_title(t)`: What a tab is called: its name, else the buffer of its current window.
@@ -1283,6 +1289,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.panes.pointer(id, event, drawn)`: A pointer event in a pane, in pixels from its corner (as `paw.canvas.pointer` takes them). A press gives it the keyboard first. For a pane drawn in cells, `drawn` tells how: its `cell`, and its size in cells, `cols` and `rows`. It keeps the button held in a drag.
 - `paw.panes.state()`: The positions of all items in the main area, for the state of a frontend. `panes` is a list of `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h, focused, titled }`. `borders` is a list of `{ dir, x, y, length }`. For `dir`, "h" is a rule between panes side by side, and "v" is a rule between panes one above the other. `tabs` is a list of `{ title }`, and `tab` is the current tab. `top` is where the panes start, below the row of tabs. Nil until the frontend gives the size of its area.
 - `paw.panes.tab(i)`: A click on tab `i` goes to it.
+- `paw.panes.tab_close(i)`: Close tab `i`, as `:tabclose` does (its close button, a middle click).
+- `paw.panes.tab_move(from, to)`: Move tab `from` to place `to` among the tabs, as `:tabmove` does (a tab dragged along the row).
+- `paw.panes.tab_new()`: A new tab on the start page, after the current one, as `:tabnew` makes.
 
 ## Module paw.params
 
@@ -1562,6 +1571,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   ```
 - `paw.seats.has(id)`: True if `id` has its own seat.
 - `paw.seats.keep(name, get, set, fresh)`: Name some state that each seat has its own of. See the top of the file.
+- `paw.seats.kind(id)`: What kind of seat `id` is, as a name that stays from one run to the next: "window" for the graphical window, "terminal" for a terminal (the instance's own, or one attached with `paw attach`). The seat of the instance with no terminal is the window that started it.
 - `paw.seats.list()`: The seats there are, the instance's first.
 - `paw.seats.open(id, why)`: Give connection `id` its own seat, for a reason (`terminal`, `window`). The seat stays while a reason stays.
 - `paw.seats.within(id, fn, ...)`: Run `fn` in seat `id` (in the seat of the instance, if that seat closed), then return to the current seat.

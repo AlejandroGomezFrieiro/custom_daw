@@ -4,7 +4,7 @@
 //! borders, the tabs and the pane with the keyboard. Gestures go back to
 //! `paw.panes`.
 
-use egui::{Align2, CornerRadius, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+use egui::{CornerRadius, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::app::View;
@@ -205,32 +205,79 @@ impl View {
             let rect = pane_rect(pane).translate(area.min.to_vec2());
             ui.painter().rect_stroke(rect.shrink(1.0), CornerRadius::ZERO, Stroke::new(2.0, alpha(t.select, 0.85)), StrokeKind::Middle);
         }
-        // The tabs, along the top when there is more than one.
+        // The tabs, along the top when there is more than one (or always,
+        // as the configuration says): each with its close button, and a
+        // button for a new tab after the last.
         let tabs = rows(&state["tabs"]);
-        if tabs.len() > 1 {
-            let bar = Rect::from_min_size(area.min, vec2(area.width(), TABS));
-            ui.painter().rect_filled(bar, CornerRadius::ZERO, t.panel);
-            ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, t.divider));
-            let current = state["tab"].as_i64().unwrap_or(1) as usize;
-            let mut x = bar.left() + 6.0;
-            for (i, tab) in tabs.iter().enumerate() {
-                let on = i + 1 == current;
-                let label = format!("{}  {}", i + 1, text(&tab["title"]));
-                let font = if on { semi(T_SMALL) } else { crate::theme::sans(T_SMALL) };
-                let w = widgets::text_width(ui, &label, font.clone()) + 24.0;
-                let rect = Rect::from_min_size(pos2(x, bar.top() + 3.0), vec2(w, TABS - 3.0));
-                let response = ui.interact(rect, Id::unique(("tab", i)), Sense::click());
-                let face = if on { t.surface } else if response.hovered() { egui::Color32::from_white_alpha(0x12) } else { egui::Color32::TRANSPARENT };
-                ui.painter().rect_filled(rect, CornerRadius::same(4), face);
-                if on {
-                    ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(w, 2.0)), CornerRadius::ZERO, t.select);
-                }
-                ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, font, if on { t.text } else { t.text_2 });
-                if response.clicked() {
-                    self.eval("paw.panes.tab(...)", json!([i + 1]));
-                }
-                x += w + 2.0;
-            }
+        if number(&state["top"]) > 0.0 {
+            self.tab_row(ui, area, state, &tabs);
         }
     }
+
+    /// The row of tabs. A click on a tab goes to it, a middle click or its
+    /// close button closes it, a drag moves it among the others (as
+    /// `:tabmove`), and `+` opens a new tab on the start page (`:tabnew`).
+    /// Every tab is as wide, so that a drop lands on a slot.
+    fn tab_row(&mut self, ui: &mut Ui, area: Rect, state: &Value, tabs: &[Value]) {
+        let t = th();
+        let bar = Rect::from_min_size(area.min, vec2(area.width(), TABS));
+        ui.painter().rect_filled(bar, CornerRadius::ZERO, t.panel);
+        ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, t.divider));
+        let current = state["tab"].as_i64().unwrap_or(1) as usize;
+        let slot = |x: f32| (((x - bar.left() - TAB_LEFT) / (TAB_W + TAB_GAP)).floor().max(0.0) as usize + 1).min(tabs.len());
+        for (i, tab) in tabs.iter().enumerate() {
+            let on = i + 1 == current;
+            let label = format!("{}  {}", i + 1, text(&tab["title"]));
+            let font = if on { semi(T_SMALL) } else { crate::theme::sans(T_SMALL) };
+            let rect = tab_rect(bar, i);
+            let response = ui.interact(rect, Id::unique(("tab", i)), Sense::click_and_drag());
+            let face = if on { t.surface } else if response.hovered() { egui::Color32::from_white_alpha(0x12) } else { egui::Color32::TRANSPARENT };
+            ui.painter().rect_filled(rect, CornerRadius::same(4), face);
+            if on {
+                ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(rect.width(), 2.0)), CornerRadius::ZERO, t.select);
+            }
+            widgets::text_in(ui, pos2(rect.left() + 10.0, rect.center().y), &label, font, if on { t.text } else { t.text_2 }, TAB_W - 40.0);
+            let close = Rect::from_center_size(pos2(rect.right() - 13.0, rect.center().y), vec2(18.0, 18.0));
+            let shut = widgets::button(ui, close, Id::unique(("tab-close", i)), Some(icons::X), "", Look::quiet());
+            widgets::hint_on(&shut, "close the tab (:tabclose)");
+            widgets::hint_on(&response, "drag to move the tab (:tabmove); a middle click closes it");
+            // Where a drag would put the tab: a mark at the slot.
+            if response.dragged()
+                && let Some(pos) = response.interact_pointer_pos()
+            {
+                let to = slot(pos.x);
+                if to != i + 1 {
+                    let edge = tab_rect(bar, to - 1);
+                    let x = if to > i + 1 { edge.right() + TAB_GAP / 2.0 } else { edge.left() - TAB_GAP / 2.0 };
+                    ui.painter().vline(x, edge.y_range(), Stroke::new(2.0, t.select));
+                }
+            }
+            if shut.clicked() || response.middle_clicked() {
+                self.eval("paw.panes.tab_close(...)", json!([i + 1]));
+            } else if response.drag_stopped() {
+                let to = response.interact_pointer_pos().map(|p| slot(p.x)).unwrap_or(i + 1);
+                if to != i + 1 {
+                    self.eval("paw.panes.tab_move(...)", json!([i + 1, to]));
+                }
+            } else if response.clicked() {
+                self.eval("paw.panes.tab(...)", json!([i + 1]));
+            }
+        }
+        let plus = Rect::from_min_size(pos2(tab_rect(bar, tabs.len()).left(), bar.top() + 4.0), vec2(22.0, 22.0));
+        let response = widgets::button(ui, plus, Id::unique("tab-new"), Some(icons::PH_PLUS), "", Look::quiet());
+        widgets::hint_on(&response, "a new tab (:tabnew)");
+        if response.clicked() {
+            self.eval("paw.panes.tab_new()", json!([]));
+        }
+    }
+}
+
+/// Every tab is this wide, with this gap between, from this far in.
+const TAB_W: f32 = 150.0;
+const TAB_GAP: f32 = 2.0;
+const TAB_LEFT: f32 = 6.0;
+
+/// Where tab `i` (from 0) is in the row of tabs.
+fn tab_rect(bar: Rect, i: usize) -> Rect {
+    Rect::from_min_size(pos2(bar.left() + TAB_LEFT + i as f32 * (TAB_W + TAB_GAP), bar.top() + 3.0), vec2(TAB_W, TABS - 3.0))
 }

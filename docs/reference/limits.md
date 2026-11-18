@@ -61,12 +61,12 @@ gets the function.
   draws the peaks of a clip from the same data as before (`paw.frontend.peaks`:
   the lowest, the highest and the loudness of each point).
 - Windows, buffers and tabs:
-  - The arrange view, the piano roll and the notation view have a state for each window. The mixer, the device panel and the session view are one buffer each, shown in one window at a time, because their state is one table.
+  - The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view have a state for each window. The views of extensions that name no state for each window show in one window at a time.
   - The edit cursor of the arrange view (the track and the time) and the selections are one for all the windows of a frontend.
-  - The piano roll and the notation view of the graphical window also show in a window of their own (`Ctrl-w f`). That window shows the state of the pane of the view that had the keyboard last.
+  - The graphical window draws the session view itself, so two session views there show the same scroll.
   - Floats (help, pickers, pages) are not windows of a tab yet.
   - Each view draws its own window title bar (the winbar of Neovim).
-  - The project keeps one layout: that of the frontend that saved it. It does not keep a layout for each seat, because seats do not last after the program ends.
+  - The project keeps a layout for each kind of seat (the graphical window, the terminal), not for each seat. Two terminals attached at the same time share one layout in the project: that of the terminal that saved it last.
   - `:new` starts a new project. `:vnew` and `Ctrl-w n` open an empty window.
 - The quickfix list:
   - `:g/pattern/` and `:vimgrep` fill it. paw has no `:grep`, because it has no files to run a program on. `/` does not fill it.

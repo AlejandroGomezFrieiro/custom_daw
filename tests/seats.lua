@@ -152,6 +152,55 @@ test("a button held down in one terminal is that terminal's drag alone", functio
   K.seat_close(13, "terminal")
 end)
 
+test("the project keeps a layout for each kind of seat, and a default", function()
+  start()
+  local L = paw.layout
+  local initial = L.capture()
+  T.after(function()
+    if paw.seats.has(21) then K.seat_close(21, "terminal") end
+    if paw.seats.has(22) then K.seat_close(22, "window") end
+    L.restore(initial)
+    paw.ui.focus("arrange")
+  end)
+  local function views(seat)
+    local out
+    as(seat, function()
+      out = {}
+      for _, win in ipairs(L.windows(paw.ui.layout)) do out[#out + 1] = win.view end
+      out = table.concat(out, " ")
+    end)
+    return out
+  end
+  local mine = paw.seats.kind(0)
+  local other = mine == "window" and "terminal" or "window"
+  local seat = 21
+  K.seat_open(seat, other)
+  eq(paw.seats.kind(seat), other, "a seat of the other kind")
+  keys(0, ":e mixer<CR>:only<CR>")
+  keys(seat, ":e session<CR>:only<CR>")
+  local path = T.scratch .. "/seats-screen.json"
+  keys(0, ":w " .. path .. "<CR>")
+  local screen = L.project_screen()
+  eq(screen.seats[mine] ~= nil and screen.seats[other] ~= nil and screen.default ~= nil, true,
+    "the project keeps the layout of each seat and a default")
+  keys(0, ":e arrange<CR>")
+  keys(seat, ":e arrange<CR>")
+  keys(0, ":e " .. path .. "<CR>")
+  eq(views(0), "mixer", "opening it gives this seat its own")
+  eq(views(seat), "session", "and the other seat its own")
+  -- A project saved with one layout (as before) gives it to every seat.
+  keys(0, ":set noproject_screen<CR>")
+  T.after(function() paw.opt.project_screen = true end)
+  api.project_screen_set(screen.seats[mine])
+  keys(0, ":w<CR>")
+  keys(0, ":set project_screen<CR>")
+  keys(0, ":e arrange<CR>")
+  keys(seat, ":e arrange<CR>")
+  keys(0, ":e " .. path .. "<CR>")
+  eq(views(0) .. " / " .. views(seat), "mixer / mixer", "a seat with no layout of its own takes the default")
+  K.seat_close(seat, other)
+end)
+
 test("with one seat, nothing is put away or brought back", function()
   start()
   local stowed = 0

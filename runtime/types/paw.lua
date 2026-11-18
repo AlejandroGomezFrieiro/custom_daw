@@ -1223,9 +1223,11 @@ function paw.canvas.key(name, keys) end
 --- Returns the window that had the keyboard, to give the keyboard back to
 --- it. A view that a frontend draws itself (the arrange view, the mixer and
 --- other views) also stays where it is. The separate window is a second
---- view of it.
+--- view of it. A view with a state for each window leaves only the pane
+--- `pane` that it goes out of: its other windows stay.
 ---@param name any
-function paw.canvas.leave(name) end
+---@param pane any
+function paw.canvas.leave(name, pane) end
 
 --- Show a view that paints in a graphical frontend, and give it the
 --- keyboard. When the view has a place in the layout (`paw.ui.dock`, or a
@@ -1596,6 +1598,11 @@ function paw.cursor.index() end
 --- The automation lane row of the cursor: a lane of the cursor track that
 --- shows as a row (see `paw.lanes`). Nil when the cursor is on the track.
 function paw.cursor.lane_id() end
+
+--- Keys and commands typed in a pinned window act on its track: the track
+--- of "the cursor" is the window's while that window has the keyboard, or
+--- while paw draws it.
+function paw.cursor.lens() end
 
 --- 1-based row of the cursor among every row drawn, lanes included.
 function paw.cursor.line() end
@@ -3949,6 +3956,11 @@ function paw.launcher.stop(track) end
 ---@param position any
 function paw.launcher.write_captured(position) end
 
+--- True if a window of this number is in a tab of the seat, or is a
+--- window in no tab (`M.loose`) that is still in use.
+---@param id any
+function paw.layout.alive(id) end
+
 --- Every window of every tab, as `{ win, tab }`.
 function paw.layout.all_windows() end
 
@@ -4108,6 +4120,13 @@ function paw.layout.focusable_windows() end
 ---@param id any
 function paw.layout.get(id) end
 
+--- Give the state of the window `from` to the window `to` of the same
+--- view, in place of its own: a view in a window of its own that goes
+--- back into its pane takes what it showed there.
+---@param from any
+---@param to any
+function paw.layout.hand_over(from, to) end
+
 --- A node as saved, or as a configuration writes it: `"roll"` or
 --- `{ view = "roll", size = 20 }` for a window, `{ dir = "h", "arrange",
 --- "roll" }` (or with `children`) for a split. Windows of views that are
@@ -4126,6 +4145,14 @@ function paw.layout.leaf(view, fields) end
 --- Put back layout `name`: the configuration's, else one saved.
 ---@param name any
 function paw.layout.load(name) end
+
+--- A window in no tab for the view `name`: a view in a window of its own
+--- of a graphical frontend. It starts from the state of the window `from`
+--- (the pane that it leaves), else of the window whose state the view
+--- holds now. It keeps its own state from then on.
+---@param name any
+---@param from any
+function paw.layout.loose(name, from) end
 
 --- Give the current window the whole tab, or put the others back.
 function paw.layout.maximize() end
@@ -4168,6 +4195,12 @@ function paw.layout.parent_of(node, target) end
 ---@param def any
 ---@param wrap any
 function paw.layout.powers(scope, def, wrap) end
+
+--- The tabs and windows that the project keeps: `{ default, seats }`,
+--- `seats` the layout of each kind of seat (`paw.seats.kind`), each in
+--- the form `M.capture` gives. Nil when it keeps none. A project saved
+--- with one layout gives it as the default.
+function paw.layout.project_screen() end
 
 --- Resize a window (the current one): `axis` "height" or "width", to `n`
 --- cells, or by `n` with `relative`. It is the window's row or column in
@@ -4273,6 +4306,12 @@ function paw.layout.tab_copy(name) end
 --- Go to tab `i`.
 ---@param i any
 function paw.layout.tab_go(i) end
+
+--- Move tab `i` (the current tab) to place `to` among the tabs: 1 is the
+--- first. The current tab stays the current tab.
+---@param to any
+---@param i any
+function paw.layout.tab_move(to, i) end
 
 --- Make a tab after the current tab, and go to it. It shows a buffer (the
 --- name of a view; `buf`, a buffer of a type with many) or the window
@@ -5149,6 +5188,19 @@ function paw.panes.state() end
 --- A click on tab `i` goes to it.
 ---@param i any
 function paw.panes.tab(i) end
+
+--- Close tab `i`, as `:tabclose` does (its close button, a middle click).
+---@param i any
+function paw.panes.tab_close(i) end
+
+--- Move tab `from` to place `to` among the tabs, as `:tabmove` does (a
+--- tab dragged along the row).
+---@param from any
+---@param to any
+function paw.panes.tab_move(from, to) end
+
+--- A new tab on the start page, after the current one, as `:tabnew` makes.
+function paw.panes.tab_new() end
 
 --- Set a device to one of the presets of its kind, by name. This is the
 --- same as a load with `paw.fx.load` (`:preset`): one undo step, and the
@@ -6071,6 +6123,13 @@ function paw.seats.has(id) end
 ---@param set any
 ---@param fresh any
 function paw.seats.keep(name, get, set, fresh) end
+
+--- What kind of seat `id` is, as a name that stays from one run to the
+--- next: "window" for the graphical window, "terminal" for a terminal
+--- (the instance's own, or one attached with `paw attach`). The seat of
+--- the instance with no terminal is the window that started it.
+---@param id any
+function paw.seats.kind(id) end
 
 --- The seats there are, the instance's first.
 function paw.seats.list() end

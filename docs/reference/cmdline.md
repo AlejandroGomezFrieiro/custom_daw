@@ -36,7 +36,9 @@ paw shows the commands that the name can mean.
 | Command | Effect |
 | --- | --- |
 | `:set {name} {value}`, `:set {name}={value}` | Sets an option: `:set zoom 4`, `:set zoom=4`. |
-| `:set {name}!` | Switches a true or false option: `:set follow!`. |
+| `:set {name}` | Sets a true or false option to true: `:set follow`. For other options, shows the value. |
+| `:set no{name}` | Sets a true or false option to false: `:set nofollow`. |
+| `:set {name}!`, `:set inv{name}` | Switches a true or false option: `:set follow!`. |
 | `:set {name}?` | Shows the value of an option: `:set zoom?`. |
 | `:setlocal {name}` | Sets an option of the window: `:setlocal timebind`. |
 

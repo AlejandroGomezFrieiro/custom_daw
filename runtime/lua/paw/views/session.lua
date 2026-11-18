@@ -8,7 +8,13 @@ local util = paw.util
 local draw = paw.draw
 local launcher = paw.launcher
 
-local view = { scroll = 0, top = 0 }
+-- Each window of the session view has its own scroll: it shows in any
+-- number of windows. The slot of the cursor is one for them all.
+local view = {
+  scroll = 0, top = 0,
+  window_state = { "scroll", "top", "geometry" },
+  window_fresh = { "geometry" },
+}
 
 local GUTTER = 4 -- the row numbers
 local SCENES = 14 -- the scenes' column

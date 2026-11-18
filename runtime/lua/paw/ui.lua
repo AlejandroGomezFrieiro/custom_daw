@@ -751,7 +751,13 @@ function M.render_view(name, buf)
   if not view then return end
   local win = M.view_win
   local focused = M.focused == name
-  if win then focused = focused and win == L.current() and not paw.canvas.open_views[name] end
+  local own = paw.canvas.open_views[name]
+  if win and own and own.win == win then
+    -- The view in a window of its own.
+    focused = focused and paw.canvas.inside == name
+  elseif win then
+    focused = focused and win == L.current() and not (own and paw.canvas.inside == name)
+  end
   draw(view, buf, { focused = focused, x = 0, y = 0, win = win })
 end
 

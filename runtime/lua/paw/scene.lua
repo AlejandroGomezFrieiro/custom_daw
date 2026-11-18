@@ -35,7 +35,11 @@ local function shown()
   for _, pane in ipairs(state and state.panes or {}) do
     if pane.kind ~= "native" then out[tostring(pane.win)] = { view = pane.view, win = L.find_id(paw.ui.layout, pane.win) } end
   end
-  for _, w in ipairs(paw.canvas.windows()) do out["view:" .. w.name] = { view = w.name } end
+  -- A view in a window of its own draws with that window's state.
+  for _, w in ipairs(paw.canvas.windows()) do
+    local own = paw.canvas.open_views[w.name]
+    out["view:" .. w.name] = { view = w.name, win = own and own.win }
+  end
   return out
 end
 
@@ -216,6 +220,8 @@ paw.remote.methods["scene.input"] = function(client, id, event)
   -- The view takes the pointer with the state of the window under it
   -- (paw/layout.lua), and then of the window with the keyboard again.
   local win = tonumber(id) and L.find_id(paw.ui.layout, tonumber(id))
+  local own = not win and paw.canvas.open_views[tostring(id):match("^view:(.+)$") or ""]
+  win = win or (own and own.win)
   if win then L.bind(win) end
   local ok, result = pcall(input, client, id, event)
   L.settle()

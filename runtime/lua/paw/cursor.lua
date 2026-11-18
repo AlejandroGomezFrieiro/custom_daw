@@ -23,9 +23,16 @@ local function save()
   api.ui_redraw()
 end
 
+--- A function that gives the track that keys and commands act on in
+--- place of the cursor's, or nil: a device panel pinned to a track
+--- (paw/views/devices.lua) sets it, for while its window has the keyboard.
+M.lens = nil
+
 --- The id of the track of the cursor, or of the first track when that track
 --- does not exist now. Nil when the project has no tracks.
 function M.track_id()
+  local lens = M.lens and M.lens()
+  if lens then return lens end
   if track_id and pcall(api.track_get, track_id) and track_id ~= 0 then return track_id end
   track_id = api.track_list()[1]
   return track_id

@@ -126,6 +126,20 @@ function M.list()
   return out
 end
 
+--- What kind of seat `id` is, as a name that stays from one run to the
+--- next: "window" for the graphical window, "terminal" for a terminal
+--- (the instance's own, or one attached with `paw attach`). The seat of
+--- the instance with no terminal is the window that started it.
+function M.kind(id)
+  id = id or M.current
+  local seat = seats[id]
+  if id ~= 0 and seat then
+    if seat.why.window then return "window" end
+    return "terminal"
+  end
+  return api.ui_attached() and "terminal" or "window"
+end
+
 --- Give connection `id` its own seat, for a reason (`terminal`, `window`).
 --- The seat stays while a reason stays.
 function M.open(id, why)

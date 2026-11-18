@@ -29,14 +29,25 @@ To return to the view that the window showed before, press `Ctrl-^`.
    `Ctrl-w k` and `Ctrl-w l` go down, up and right.
 4. To close the window that has the keyboard, press `Ctrl-w c`.
 
-The piano roll, the notation and the arrange view can show in many
-windows. Each window has its own clip, cursor and scroll. So you can edit
-two clips at the same time. You can also see the notation and the piano
-roll of one clip. `Ctrl-w v` and `Ctrl-w s` show the same view again, on the same
-clip.
+Every view can show in many windows. Each window has its own clip,
+cursor and scroll. So you can edit two clips at the same time. You can
+also see the notation and the piano roll of one clip. `Ctrl-w v` and
+`Ctrl-w s` show the same view again, on the same clip.
 
-The mixer, the device panel and the session view show in one window at a
-time. If you show one of them in a second window, it moves there.
+## See the devices of two tracks
+
+The device panel shows the devices of the track that the cursor is on.
+To keep a panel on one track, pin it:
+
+1. To put a panel for the track `Bass` on the right, type
+   `:vs devices://Bass`. Its title says `pinned`.
+2. Move the cursor to a different track. The other panel follows the
+   cursor. The panel of `Bass` stays.
+3. To pin the panel that has the keyboard to the track that it shows,
+   press `\p`. Press `\p` again to make it follow the cursor.
+
+The keys that you type in a pinned panel act on its track. For example,
+`a` adds a device to `Bass`.
 
 ## Give one view the whole screen
 
@@ -54,6 +65,8 @@ name.
    example, type `:tabnew mixer`.
 2. To go to the next tab or the previous tab, press `gt` or `gT`.
 3. To close the tab, type `:tabclose`.
+4. To move the tab, type `:tabmove` and a number. For example,
+   `:tabmove 0` makes it the first tab.
 
 A tab without a view shows the start page. The start page shows the
 transport, the projects that you opened last, and what to type. To open a
@@ -78,8 +91,17 @@ paw.ui.start_layout = { { name = "Write", layout = "notation" }, { name = "Mix",
 
 When you save a project with `:w`, paw keeps the tabs and windows in the
 project file. When you open the project again, the screen is as it was.
+
+You can use paw in a terminal and in the graphical window at the same
+time. Each one is a seat: a place where you work. Each seat has its own
+tabs and windows. The project keeps one layout for the graphical window
+and one for the terminal. For example, keep the mixer in the window, and
+only the notation in the terminal. When you open the project, each seat
+gets its own layout. A seat without a layout in the project gets the
+layout of the last save.
+
 To keep the screen as it is when you open a project, type
-`:set project_screen=false`.
+`:set noproject_screen`.
 
 To keep a layout for many projects, type `:layout save write`. To use
 it again, type `:layout write`.
@@ -90,4 +112,8 @@ The graphical window shows the same tabs and windows as the terminal.
 
 - To change the size of two windows, drag the border between them.
 - To go to a tab, click it.
+- To close a tab, click the close button on the tab, or click the tab
+  with the middle button.
+- To open a new tab, click `+` after the last tab.
+- To move a tab, drag it along the row of tabs.
 - To close a window, click the close button in its title.

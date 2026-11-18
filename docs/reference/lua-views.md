@@ -84,10 +84,17 @@ paw.ui.view("score", {
 | `paw.layout.within(win, fn, ...)` | runs `fn` with the state of the window `win` in the table, then puts the state before back |
 | `paw.layout.bound(view)` | the window whose state the table of the view has now |
 | `paw.layout.clip_named(target)` | the clip of a number, an address or a name |
+| `paw.layout.loose(view, from)` | a window in no tab, for a view in a window of its own of the graphical window, with the state of the window `from` to start |
+| `paw.layout.hand_over(from, to)` | gives the state of the window `from` to the window `to` of the same view |
+| `paw.layout.project_screen()` | the layouts that the project keeps: `{ default, seats }`, `seats` by the kind of seat |
+| `paw.seats.kind(seat)` | the kind of a seat, `"window"` or `"terminal"`: the key of its layout in the project |
 
 A command can act on a view from a different window, for example
 `Enter` on a clip in the arrange view. Then it acts in the window of that
-view that had the keyboard last.
+view that had the keyboard last. A view in a window of its own of the
+graphical window has a state of its own too. It starts from the state of
+the pane that it left. When it returns to the main window, that pane
+takes its state.
 
 ### Pictures
 
@@ -212,8 +219,8 @@ with the props `label`, `style`, `color`, `velocity`, `selected`, `cursor`,
 
 ## Buffer types
 
-A view is a buffer type with one buffer, shown in one window at a time.
-`paw.buftype` makes a type that has a buffer for each target. Any number
+A view is a buffer type with one buffer. Without `window_state`, it shows
+in one window at a time. `paw.buftype` makes a type that has a buffer for each target. Any number
 of windows can show each buffer.
 
 ```lua
@@ -276,7 +283,7 @@ keys.
 | --- | --- |
 | `paw.buf` | `list()`, `get(name)`, `create(type, target)`, `delete(name)`, `current()`, `of(win)` |
 | `paw.win` | `current()`, `list()` (the windows of the tab on the screen, each with `id`, `view`, `opts`, `state`), `split({ vertical, view })`, `close(win)`, `only()`, `show(win, name)`, `enter(win)`, `resize(win, "height" or "width", n, relative)`, `equalize()`, `maximize()`, `option(win, name, value)` |
-| `paw.tab` | `list()`, `current()`, `new(name, buffer)`, `go(i)`, `close(i)` |
+| `paw.tab` | `list()`, `current()`, `new(name, buffer)`, `go(i)`, `close(i)`, `move(i, to)` |
 | `paw.layout` | `capture()` gives the tabs and windows as plain data. `restore(data)` makes them again |
 | `paw.layouts` | `paw.layouts.name = {...}` names a layout for `:layout name` |
 

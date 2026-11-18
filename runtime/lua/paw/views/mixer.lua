@@ -9,7 +9,13 @@ local util = paw.util
 
 -- `row` is the row of a strip the cursor is on (paw/mixer_rows.lua): "volume",
 -- "pan", "send2", "insert1", "mute" ...
-local view = { scroll = 0, row = "volume" }
+-- Each window of the mixer has its own scroll and row: the mixer shows in
+-- any number of windows. The track of the cursor is one for them all.
+local view = {
+  scroll = 0, row = "volume",
+  window_state = { "scroll", "geometry", "row" },
+  window_fresh = { "geometry" },
+}
 paw.seats.fields("mixer", view, { "scroll", "geometry", "row" }, { scroll = 0, row = "volume" })
 -- What moves on its own as the song plays is drawn as these roles, bound to
 -- the live values: a window that paints them is sent no new scene for it.

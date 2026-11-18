@@ -143,6 +143,7 @@ In the **curve editor**:
 | `<A-j>` `<A-k>` | reorder |
 | `gS` | the track that the device listens to (side-chain) |
 | `O` | where its further output pairs play |
+| `\p` | pin the panel to its track, or follow the cursor again |
 
 ## Name a region (text objects)
 
