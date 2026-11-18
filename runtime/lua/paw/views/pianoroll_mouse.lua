@@ -1,13 +1,19 @@
--- The pointer in the piano roll: the window's pencil, as in REAPER's MIDI
--- editor, in cells. A press on empty grid draws a note as long as the drag
--- (a click gives the roll's note length), a press on a note chooses it and
--- a drag moves it, or either end of it; the right button drags a box that
--- chooses notes, or clicked removes a note or opens the menu; Alt and a
--- drag erases. The keyboard sounds a key; the velocity strip is drawn on.
--- Each gesture calls `paw.frontend.act` once, as the window does, and is
--- drawn as a layer of the roll until the button is let go. Beats are the
--- roll's (the active clip's); a note of another clip edited with it is
--- named by that clip and its place there.
+-- The pointer in the piano roll: a pencil, as in REAPER's MIDI editor. A
+-- press on empty grid draws a note as long as the drag (a click gives the
+-- roll's note length), a press on a note chooses it and a drag moves it,
+-- or either end of it; the right button drags a box that chooses notes, or
+-- clicked removes a note or opens the menu; Alt and a drag erases. The
+-- keyboard sounds a key; the velocity strip is drawn on; the row of tools
+-- does what each says.
+--
+-- The roll marks every part of itself as a hit region when it draws (the
+-- grid is a plane, each note on it a role): a press comes here as the
+-- gesture of what it is on (`view.gestures`), from the terminal in cells
+-- and from a window in fractions of them (`e.fine`), so both frontends do
+-- the same. Each gesture calls `paw.frontend.act` once, and is drawn as a
+-- layer of the roll until the button is let go. Beats are the roll's (the
+-- active clip's); a note of another clip edited with it is named by that
+-- clip and its place there.
 local api = paw.api
 local util = paw.util
 local music = paw.music
@@ -25,55 +31,50 @@ local function start_at(self, tx, free)
   return mouse.on_grid(tx, self.scroll, self.geometry.zoom, paw.opt.note_grid)
 end
 
---- Where the grid step a column falls in ends: a drag to a column takes in
---- the step drawn there.
-local function end_at(self, tx, free)
-  local beat = beat_at(self, tx + 1)
+--- Where the grid step under the pointer ends: a drag to a column takes in
+--- the step drawn there. A terminal's column is its left edge, so the
+--- step it shows ends a column on; a window's pointer is where it is.
+local function end_at(self, tx, free, fine)
+  local beat = beat_at(self, tx + (fine and 0 or 1))
   if free then return beat end
   local grid = paw.opt.note_grid
   return math.ceil(beat / grid - 1e-6) * grid
 end
 
---- What is under the pointer at `x`, `y` of the view: `area` "ruler",
---- "keys", "grid" or "velocity", the pitch, the column of the roll, and on
---- the grid the note there (its start in the roll's beats), the clip it is
---- in (`owner`) with its place there, and the part pressed ("start", "end"
---- or "body").
-local function hit(self, x, y)
-  local g = self.geometry
-  local out = { tx = x - g.keys }
-  local row = y - g.head
-  if y == g.head - 1 then
-    out.area = "ruler"
-  elseif row >= 0 and row < g.rows then
-    out.area = x < g.keys and "keys" or "grid"
-    out.pitch = util.clamp(self.top - row, 0, 127)
-  elseif row >= g.rows and row < g.rows + g.vel then
-    out.area = "velocity"
-  else
-    out.area = "title"
-  end
+--- The pitch of a row of the view, which may be a fraction of one.
+local function pitch_of(self, y)
+  return util.clamp(self.top - math.floor(y - self.geometry.head), 0, 127)
+end
+
+--- Rows a drag went, as whole pitches.
+local function rows_moved(d) return math.floor(d.dy + 0.5) end
+
+--- What a press is on, from the hit region it found: `area` "ruler",
+--- "keys", "grid", "velocity" or "tool", the column of the roll, the beat
+--- and the pitch there, and on a note the note (its start in the roll's
+--- beats), the clip it is in (`owner`) with its place there, and the part
+--- pressed ("start", "end" or "body").
+local function hit_of(self, e)
+  local g, a = self.geometry, e.hit
+  local out = { area = a.kind == "note" and "grid" or a.kind, tx = e.x - g.keys }
   out.beat = beat_at(self, out.tx)
-  if out.area ~= "grid" then return out end
-  local zoom = g.zoom
-  -- The active clip's notes last, so that they win where clips overlap.
-  local parts = self:parts()
-  for k = #parts, 1, -1 do
-    local part = parts[k]
-    local notes, places = part.clip:notes({
-      from = self.scroll - part.offset, to = self.scroll + g.span - part.offset, low = out.pitch, high = out.pitch,
-    })
-    for i, n in ipairs(notes) do
-      local start = n.start + part.offset
-      local x0 = math.floor((start - self.scroll) * zoom + 0.5)
-      local nw = math.max(1, math.floor((start + n.length - self.scroll) * zoom + 0.5) - x0)
-      if out.tx >= x0 and out.tx < x0 + nw then
-        out.note = { pitch = n.pitch, start = start, length = n.length, velocity = n.velocity }
-        out.owner, out.offset, out.place, out.part = part.id, part.offset, places[i], "body"
-        if nw >= 3 and out.tx == x0 then out.part = "start" elseif nw >= 2 and out.tx == x0 + nw - 1 then out.part = "end" end
-      end
-    end
+  if a.kind == "grid" and e.at then
+    out.pitch = util.clamp(math.floor(e.at.y), 0, 127)
+  elseif a.kind == "keys" or a.kind == "grid" then
+    out.pitch = pitch_of(self, e.y)
   end
+  if a.kind ~= "note" then return out end
+  out.note = { pitch = a.pitch, start = a.start, length = a.length }
+  out.owner, out.place, out.pitch, out.part = a.clip, a.place, a.pitch, "body"
+  -- Its ends: its first column and its last, as a terminal shows it; a
+  -- column's worth of it in a window.
+  local x0, x1 = (a.start - self.scroll) * g.zoom, (a.start + a.length - self.scroll) * g.zoom
+  if not e.fine then
+    x0 = math.floor(x0 + 0.5)
+    x1 = math.max(x0 + 1, math.floor(x1 + 0.5))
+  end
+  local into, nw = out.tx - x0, x1 - x0
+  if nw >= 3 and into < 1 then out.part = "start" elseif nw >= 2 and nw - into <= 1 then out.part = "end" end
   return out
 end
 
@@ -81,14 +82,13 @@ local function say(n, clip)
   return string.format("%s  %s  length %g", music.name(n.pitch), paw.time.format(clip.start + n.start), n.length)
 end
 
---- Draw notes where a gesture will put them, over the roll.
+--- Draw a note where a gesture will put it, over the roll: on the cells it
+--- rounds to in a terminal, with the pointer between them in a window.
 local function ghost(p, start, length, pitch)
-  local row = p.row(pitch)
-  if not row then return end
-  local x0 = p.x(start)
-  local w = math.max(1, p.x(start + length) - x0)
-  p.roll:fill(x0, row, w, 1, " ", "MouseGhost")
-  if w >= 4 then p.roll:text(x0 + 1, row, music.name(pitch):sub(1, w - 1), "MouseGhost") end
+  if not p.row(pitch) then return end
+  p.plane:mark("note", start, pitch, length, 1, {
+    ghost = true, style = "MouseGhost", label = music.name(pitch), color = paw.draw.track_colour(api.track_get(p.data.track)),
+  })
 end
 
 --- The notes a gesture on the note at `place` of clip `owner` takes
@@ -125,7 +125,7 @@ local function press_note(self, e, h, clip)
     roll = function(p)
       local d = mouse.gesture().d
       if not (d and d.moved) then return end
-      local dbeat, dpitch = d.dx / zoom, -d.dy
+      local dbeat, dpitch = d.dx / zoom, -rows_moved(d)
       for _, ref in ipairs(grabbed(id, place)) do
         local m = paw.clip(ref[1]):notes()[ref[2]]
         if m then
@@ -147,7 +147,7 @@ local function press_note(self, e, h, clip)
       local dbeat = d.dx / zoom
       local shown = part == "start" and { pitch = n.pitch, start = n.start + dbeat, length = n.length - dbeat }
         or part == "end" and { pitch = n.pitch, start = n.start, length = n.length + dbeat }
-        or { pitch = util.clamp(n.pitch - d.dy, 0, 127), start = math.max(0, n.start + dbeat), length = n.length }
+        or { pitch = util.clamp(n.pitch - rows_moved(d), 0, 127), start = math.max(0, n.start + dbeat), length = n.length }
       mouse.hint(say(shown, clip))
     end,
     up = function(u)
@@ -161,7 +161,7 @@ local function press_note(self, e, h, clip)
       elseif part == "end" then
         A.stretch_notes(id, place, nil, dbeat, free)
       else
-        A.drag_notes(id, place, dbeat, -u.dy, copy, free)
+        A.drag_notes(id, place, dbeat, -rows_moved(u), copy, free)
       end
     end,
   })
@@ -173,7 +173,7 @@ local function press_draw(self, e, h, clip)
   local free = mouse.has(e, "S") or not paw.opt.note_snap
   local start, pitch, tx0 = start_at(self, h.tx, free), h.pitch, h.tx
   self:set(pitch, start)
-  local function stop(tx) return end_at(self, math.max(tx, tx0), free) end
+  local function stop(tx) return end_at(self, math.max(tx, tx0), free, e.fine) end
   mouse.grab(e, {
     roll = function(p)
       local d = mouse.gesture().d
@@ -202,16 +202,18 @@ end
 local function press_box(self, e, h, clip)
   local x0, y0 = e.x, e.y
   local right = e.button == "right"
-  local where = { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) }
+  local where = { x = math.floor(e.x + (e.view_x or 0)), y = math.floor(e.y + (e.view_y or 0)) }
   local g = self.geometry
-  local function pitch_of(y) return util.clamp(self.top - (y - g.head), 0, 127) end
+  -- The last column a box takes in: a terminal's whole column, a window's
+  -- pointer where it is.
+  local reach = e.fine and 0 or 1
   mouse.grab(e, {
     roll = function(p)
       local d = mouse.gesture().d
       if not (d and d.moved) then return end
       local g2 = paw.draw.g
-      local l, r = math.min(x0, d.x) - g.keys, math.max(x0, d.x) - g.keys
-      local t, b = math.min(y0, d.y) - g.head, math.max(y0, d.y) - g.head
+      local l, r = math.floor(math.min(x0, d.x)) - g.keys, math.floor(math.max(x0, d.x)) - g.keys
+      local t, b = math.floor(math.min(y0, d.y)) - g.head, math.floor(math.max(y0, d.y)) - g.head
       p.roll:fill(l, t, r - l + 1, 1, g2.h, "MouseBox")
       p.roll:fill(l, b, r - l + 1, 1, g2.h, "MouseBox")
       p.roll:fill(l, t, 1, b - t + 1, g2.v, "MouseBox")
@@ -222,7 +224,7 @@ local function press_box(self, e, h, clip)
       if u.moved then
         local a, b = math.min(x0, u.x) - g.keys, math.max(x0, u.x) - g.keys
         local mode = mouse.has(u, "S") and "add" or (right and mouse.has(u, "C")) and "toggle" or "only"
-        A.select_notes_box(clip.id, beat_at(self, a), pitch_of(y0), beat_at(self, b + 1), pitch_of(u.y), mode)
+        A.select_notes_box(clip.id, beat_at(self, a), pitch_of(self, y0), beat_at(self, b + reach), pitch_of(self, u.y), mode)
       elseif right and h.note and mouse.has(u, "C") then
         paw.ui.menu(menus.note(h.owner, h.place), where)
       elseif right and h.note then
@@ -241,7 +243,9 @@ end
 --- Alt and a drag: every note the pointer crosses is taken away.
 local function press_erase(self, e, h, clip)
   local g = self.geometry
-  local function point(x, y) return { beat_at(self, x - g.keys + 0.5), self.top - (y - g.head) } end
+  -- A terminal's column at its middle, a window's pointer where it is.
+  local middle = e.fine and 0 or 0.5
+  local function point(x, y) return { beat_at(self, x - g.keys + middle), pitch_of(self, y) } end
   local stroke = { point(e.x, e.y) }
   mouse.grab(e, {
     drag = function(d) stroke[#stroke + 1] = point(d.x, d.y) end,
@@ -255,12 +259,10 @@ end
 --- The keyboard down the left: a key sounds under a click or a drag; the
 --- right button dragged chooses the notes of the pitches it crosses.
 local function press_keys(self, e, h, clip)
-  local g = self.geometry
-  local function pitch_of(y) return util.clamp(self.top - (y - g.head), 0, 127) end
   if e.button == "right" then
     return mouse.grab(e, {
       up = function(u)
-        if u.moved then A.select_pitches(clip.id, h.pitch, pitch_of(u.y), mouse.has(u, "S") and "add" or mouse.has(u, "C") and "toggle" or "only") end
+        if u.moved then A.select_pitches(clip.id, h.pitch, pitch_of(self, u.y), mouse.has(u, "S") and "add" or mouse.has(u, "C") and "toggle" or "only") end
       end,
     })
   end
@@ -268,7 +270,7 @@ local function press_keys(self, e, h, clip)
   local last = h.pitch
   mouse.grab(e, {
     drag = function(d)
-      local pitch = pitch_of(d.y)
+      local pitch = pitch_of(self, d.y)
       if pitch ~= last then
         last = pitch
         A.audition(clip.id, pitch)
@@ -282,9 +284,11 @@ end
 local function press_velocity(self, e, h, clip)
   local g = self.geometry
   local top = g.head + g.rows
-  local half = 0.5 / g.zoom
+  -- A terminal's cell at its middle, a window's pointer where it is.
+  local half = e.fine and 0 or 0.5
+  local reach = 0.5 / g.zoom
   local function point(x, y)
-    return { beat_at(self, x - g.keys) + half, util.clamp(1 - (y - top + 0.5) / g.vel, 0, 1) }
+    return { beat_at(self, x - g.keys) + half / g.zoom, util.clamp(1 - (y - top + half) / g.vel, 0, 1) }
   end
   local stroke = { point(e.x, e.y) }
   mouse.grab(e, {
@@ -292,7 +296,7 @@ local function press_velocity(self, e, h, clip)
       stroke[#stroke + 1] = point(d.x, d.y)
       mouse.hint(string.format("velocity %d", util.clamp(math.floor(stroke[#stroke][2] * 127 + 0.5), 1, 127)))
     end,
-    up = function() A.draw_velocities(clip.id, stroke, half) end,
+    up = function() A.draw_velocities(clip.id, stroke, reach) end,
   })
 end
 
@@ -354,10 +358,12 @@ local function hover(self, h, clip)
   mouse.hint(text)
 end
 
-function view:on_mouse(e)
+--- A press, a move or the wheel on the ruler, the keyboard, the grid, a
+--- note or the velocity strip.
+local function pointer(self, e)
   local clip = self:clip()
-  if not (self.geometry and self.geometry.keys and clip) then return end
-  local h = hit(self, e.x, e.y)
+  if not (self.geometry and self.geometry.keys and clip) then return false end
+  local h = hit_of(self, e)
   if e.kind == "move" then return hover(self, h, clip) end
   if mouse.wheel(e) then return wheel(self, e, h) end
   if e.kind ~= "down" then return end
@@ -367,16 +373,21 @@ function view:on_mouse(e)
     return mouse.grab(e, {
       drag = function(d)
         self.scroll = math.max(leftmost(), scroll - d.dx / zoom)
-        self.top = util.clamp(top + d.dy, self.geometry.rows - 1, 127)
+        self.top = util.clamp(top + rows_moved(d), self.geometry.rows - 1, 127)
         self:follow()
       end,
     })
   end
-  if h.area == "ruler" and h.tx >= 0 and e.button == "left" then return A.roll_seek(clip.id, beat_at(self, h.tx)) end
+  if h.area == "ruler" then
+    if h.tx >= 0 and e.button == "left" then A.roll_seek(clip.id, beat_at(self, h.tx)) end
+    return
+  end
   if h.area == "keys" then return press_keys(self, e, h, clip) end
-  if h.area == "velocity" and strip.press(self, e, clip) then return end
-  if h.area == "velocity" and h.tx >= 0 and e.button == "left" then return press_velocity(self, e, h, clip) end
-  if h.area ~= "grid" then return end
+  if h.area == "velocity" then
+    if strip.press(self, e, clip) then return end
+    if h.tx >= 0 and e.button == "left" then press_velocity(self, e, h, clip) end
+    return
+  end
   if e.button == "right" or (e.button == "left" and mouse.has(e, "C") and not h.note) then
     return press_box(self, e, h, clip)
   end
@@ -385,6 +396,83 @@ function view:on_mouse(e)
   if h.note then return press_note(self, e, h, clip) end
   press_draw(self, e, h, clip)
 end
+
+--- A menu of choices, the one standing ticked.
+local function choices(list, now, choose)
+  local items = {}
+  for _, c in ipairs(list) do
+    items[#items + 1] = { label = c[1], checked = c[2] == now, run = function() choose(c[2]) end }
+  end
+  return items
+end
+
+--- A button of the row of tools.
+local function tool(self, e)
+  local t = e.hit
+  if e.kind == "move" then return mouse.hint(t.tip) end
+  if e.kind ~= "down" or e.button ~= "left" then return end
+  local clip = self:clip()
+  if not clip then return end
+  -- A menu opens under the button.
+  local where = { x = math.floor(e.rect.x + (e.view_x or 0)), y = math.floor(e.rect.y + (e.view_y or 0)) + 1 }
+  local name = t.name
+  if name == "grid" then
+    paw.ui.menu(choices(view.grids, paw.opt.note_grid, function(v) paw.opt.note_grid = v end), where)
+  elseif name == "length" then
+    local list = { { "Grid", 0 } }
+    for i = 1, 6 do list[#list + 1] = view.grids[i] end
+    paw.ui.menu(choices(list, self.length or 0, function(v) A.set_note_length(v) end), where)
+  elseif name == "snap" then
+    A.toggle_note_snap()
+  elseif name == "quantize" then
+    A.quantize_notes(clip.id)
+  elseif name == "step" then
+    A.toggle_step_input()
+  elseif name == "list" then
+    A.open_event_list(clip.id)
+  elseif name == "tracks" then
+    paw.roll_clips.pick()
+  elseif name == "zoom_in" or name == "zoom_out" then
+    paw.opt.note_zoom = util.clamp(paw.opt.note_zoom * (name == "zoom_in" and math.sqrt(2) or 1 / math.sqrt(2)), 0.125, 64)
+  elseif name == "window" then
+    paw.commands.exec("view.window pianoroll")
+  elseif name == "close" then
+    A.close_roll()
+  elseif name == "layer" and A[t.act] then
+    A[t.act](clip.id)
+  end
+  api.ui_redraw()
+end
+
+--- The scroll bar through the pitches dragged: the pitches shown follow it.
+local function scrollbar(self, e)
+  if e.kind == "move" then return mouse.hint("drag to scroll through the pitches") end
+  if e.kind ~= "down" or e.button ~= "left" then return end
+  local g = self.geometry
+  local top = self.top
+  mouse.grab(e, {
+    drag = function(d)
+      self.top = util.clamp(top - math.floor(d.dy * 128 / g.rows + 0.5), g.rows - 1, 127)
+      self:follow()
+    end,
+  })
+end
+
+--- A chip a layer marked as a hit region `{ kind = "act", act, arg, tip }`:
+--- a click calls `paw.frontend.act[act](clip, arg)`.
+local function chip(self, e)
+  local t = e.hit
+  if e.kind == "move" then return mouse.hint(t.tip) end
+  if e.kind ~= "down" or e.button ~= "left" then return end
+  local clip = self:clip()
+  if clip and A[t.act] then A[t.act](clip.id, t.arg) end
+  api.ui_redraw()
+end
+
+view.gestures = {
+  ruler = pointer, keys = pointer, grid = pointer, note = pointer, velocity = pointer, tool = tool, act = chip,
+  scrollbar = scrollbar,
+}
 
 -- What a gesture under way draws: over the notes, under the cursor.
 view.layer("mouse", 60, function(p)

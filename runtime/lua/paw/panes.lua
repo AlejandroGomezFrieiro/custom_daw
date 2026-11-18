@@ -6,7 +6,7 @@
 -- state (`state`) where every window of the current tab goes, which has the
 -- keyboard, the borders between them and the tabs. It draws the views it
 -- has its own drawing for (`native`: the arrange view, the device panel,
--- the piano roll, the session view) in their panes, and is sent
+-- the session view) in their panes, and is sent
 -- every other as a scene (paw/scene.lua): a view that paints as a picture
 -- at the pane's size, any other cell by cell as the terminal draws it,
 -- with the roles it marks (paw/roles.lua) as widgets where it knows them.
@@ -18,7 +18,7 @@ local L = require("paw.layout")
 
 local M = {
   -- Views a frontend draws in its own way.
-  native = { arrange = true, devices = true, pianoroll = true, session = true },
+  native = { arrange = true, devices = true, session = true },
   -- The least room, in pixels, a view needs in a frontend.
   least = {
     arrange = { w = 320, h = 120 }, devices = { w = 260 }, pianoroll = { h = 200 },
@@ -58,9 +58,6 @@ end
 --- How a pane is drawn: by the frontend itself, painted, or in cells.
 local function kind_of(name)
   local view = paw.ui.views[name]
-  -- The piano roll with no clip open is drawn as the terminal draws it,
-  -- saying how to open one: the window's own draws a clip.
-  if name == "pianoroll" and not view:clip() then return "cells" end
   if M.native[name] then return "native" end
   return view and view.paint and "paint" or "cells"
 end
@@ -98,7 +95,7 @@ end
 
 --- Where everything goes in the main area, for a frontend's state: `panes`,
 --- each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h,
---- focused }`; `borders`, each `{ dir ("h": a rule between panes side by
+--- focused, titled }`; `borders`, each `{ dir ("h": a rule between panes side by
 --- side, "v": one between panes one above another), x, y, length }`, by
 --- their place in the list; `tabs`, each `{ title }`, and `tab`, the
 --- current one; `top`, where the panes start under the row of tabs. Nil
@@ -118,6 +115,10 @@ function M.state()
     if win then
       out.panes[#out.panes + 1] = {
         win = win.id, view = win.view, kind = kind_of(win.view), title = title_of(win),
+        -- A view whose title row has its own buttons (the piano roll's
+        -- tools, its window and close) is shown with it, under no title of
+        -- the frontend's.
+        titled = paw.ui.views[win.view] and paw.ui.views[win.view].titled or nil,
         x = r.x, y = r.y, w = r.w, h = r.h,
         focused = win == current and u.focused == win.view and not paw.canvas.open_views[win.view],
       }

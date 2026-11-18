@@ -187,7 +187,9 @@ The program continues.
 A view that an extension registers with `paw.ui.view` and draws in cells
 works in the graphical window with no more code. The window offers it
 under More, and `:view.window name` opens it. The window draws it as the
-terminal does, with its keys and its `on_mouse`.
+terminal does, with its keys and its `on_mouse`. See "Views in windows of
+their own" in [The graphical window](window.md#views-in-windows-of-their-own),
+and [Views that paint](window-lua.md#views-that-paint) for `paint`.
 
 | Field of the view | Effect |
 | --- | --- |
@@ -203,8 +205,8 @@ this, in `paint.lua` beside `view.lua`. The vocal editor of utau uses
 
 Braille in a view of cells, or in `g:mono`, shows as dots in the window.
 A layer of the arrange view in the terminal goes into the ruler of the
-window as a band (`paw.frontend.bands`). See "Bands under the ruler" in
-[The graphical frontend](../window.md).
+window as a band (see [`paw.frontend.bands`](window-lua.md#pawfrontendbands)
+and [Bands under the ruler](window.md#bands-under-the-ruler)).
 
 ## Health checks
 

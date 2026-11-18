@@ -207,18 +207,19 @@ impl Patch {
 }
 
 /// How a space maps to the scene's units, along x and along y:
-/// `unit = a + b * value`.
-#[derive(Clone, Copy, Debug)]
-struct Map {
-    x: (f64, f64),
-    y: (f64, f64),
+/// `unit = a + b * value`. The root's space is the scene's units; a plane's
+/// kids are in its domain; any other node's kids are placed from its corner.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Map {
+    pub x: (f64, f64),
+    pub y: (f64, f64),
 }
 
 impl Map {
-    const UNITS: Map = Map { x: (0.0, 1.0), y: (0.0, 1.0) };
+    pub const UNITS: Map = Map { x: (0.0, 1.0), y: (0.0, 1.0) };
 
     /// A rectangle of this space in units, edges in order.
-    fn rect(&self, r: &Units) -> [f64; 4] {
+    pub fn rect(&self, r: &Units) -> [f64; 4] {
         let along = |(a, b): (f64, f64), at: f32, len: f32| {
             let (p, q) = (a + b * at as f64, a + b * (at + len) as f64);
             (p.min(q), p.max(q))
@@ -228,8 +229,20 @@ impl Map {
         [x0, y0, x1, y1]
     }
 
+    /// A rectangle in units (left, top, right, bottom) as this space has
+    /// it: the other way from [`Map::rect`].
+    pub fn unrect(&self, r: [f64; 4]) -> Units {
+        let along = |(a, b): (f64, f64), p: f64, q: f64| {
+            let (p, q) = ((p - a) / b, (q - a) / b);
+            (p.min(q), (q - p).abs())
+        };
+        let (x, w) = along(self.x, r[0], r[2]);
+        let (y, h) = along(self.y, r[1], r[3]);
+        [x as f32, y as f32, w as f32, h as f32]
+    }
+
     /// The space of a node's kids.
-    fn inside(&self, node: &Node) -> Map {
+    pub fn inside(&self, node: &Node) -> Map {
         let (r, (ax, bx), (ay, by)) = (&node.rect, self.x, self.y);
         match &node.kind {
             Kind::Plane(plane) => Map {
@@ -241,7 +254,7 @@ impl Map {
     }
 
     /// A point in units, in this space.
-    fn back(&self, at: [f64; 2]) -> [f64; 2] {
+    pub fn back(&self, at: [f64; 2]) -> [f64; 2] {
         [(at[0] - self.x.0) / self.x.1, (at[1] - self.y.0) / self.y.1]
     }
 }
@@ -250,10 +263,21 @@ fn overlap(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 
-/// A rectangle in units as the whole cells it covers.
+/// What a node's kids are cut to: a group or a plane cuts them to itself; a
+/// role's are its cells, whole cells where a terminal snaps it, which may
+/// stand a little past a rectangle that is not whole (a note in a plane):
+/// each write of them keeps its own cut.
+fn kids_cut(node: &Node, cut: [f64; 4], rect: [f64; 4]) -> [f64; 4] {
+    if matches!(node.kind, Kind::Role { .. }) { cut } else { overlap(cut, rect) }
+}
+
+/// A rectangle in units as the whole cells it covers. An edge a hair
+/// short of a cell's, as a cell placed in a plane comes back from its
+/// domain, is that cell's.
 fn whole(r: [f64; 4]) -> Rect {
-    let (x, y) = (r[0].floor() as i32, r[1].floor() as i32);
-    Rect { x, y, w: (r[2].floor() as i32 - x).max(0), h: (r[3].floor() as i32 - y).max(0) }
+    let cell = |v: f64| (v + 1e-3).floor() as i32;
+    let (x, y) = (cell(r[0]), cell(r[1]));
+    Rect { x, y, w: (cell(r[2]) - x).max(0), h: (cell(r[3]) - y).max(0) }
 }
 
 impl Scene {
@@ -400,8 +424,31 @@ impl Scene {
             }
             let rect = map.rect(&node.rect);
             f(node, rect, cut);
-            self.placed_in(&node.kids, map.inside(node), overlap(cut, rect), f, depth + 1);
+            self.placed_in(&node.kids, map.inside(node), kids_cut(node, cut, rect), f, depth + 1);
         }
+    }
+
+    /// The runs and fills drawn after a role that a frontend paints itself
+    /// (`known`) and over it, with where they are and what they are cut to
+    /// in units (left, top, right, bottom). A frontend that paints its roles
+    /// over the cells paints these over the roles again, so that what a
+    /// view drew over a role (a tag on a note, the selection, the cursor)
+    /// shows there as a terminal shows it.
+    pub fn over_roles(&self, known: &dyn Fn(&str) -> bool) -> Vec<(Node, [f64; 4], [f64; 4])> {
+        let mut roles: Vec<[f64; 4]> = Vec::new();
+        let mut out = Vec::new();
+        let crosses = |a: &[f64; 4], b: &[f64; 4]| a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+        self.placed(&mut |node, rect, cut| match &node.kind {
+            Kind::Role { role, .. } if known(role) => roles.push(overlap(rect, cut)),
+            Kind::Run { .. } | Kind::Fill { .. } if !roles.is_empty() => {
+                let shown = overlap(rect, cut);
+                if roles.iter().any(|r| crosses(r, &shown)) {
+                    out.push((node.clone(), rect, cut));
+                }
+            }
+            _ => {}
+        });
+        out
     }
 
     /// Lower the scene for a frontend that draws the roles `known` itself:
@@ -453,7 +500,7 @@ impl Scene {
                 Kind::Fill { ch } => cells.fill(whole(cut), whole(rect), *ch, node.style),
                 Kind::Picture(_) => {}
                 Kind::Group | Kind::Plane(_) | Kind::Role { .. } => {
-                    self.cells_in(&node.kids, map.inside(node), overlap(cut, rect), cells, depth + 1)
+                    self.cells_in(&node.kids, map.inside(node), kids_cut(node, cut, rect), cells, depth + 1)
                 }
             }
         }
@@ -612,6 +659,57 @@ mod tests {
         let mut seen = Vec::new();
         lowered.placed(&mut |node, rect, _| seen.push((node.key.clone(), rect)));
         assert_eq!(seen.last(), Some(&("note:1".to_string(), [4.0, 3.0, 7.0, 4.0])), "where the note is in units");
+    }
+
+    #[test]
+    fn a_plane_may_run_time_down_and_its_hits_say_where_in_time() {
+        // A tracker: lanes across, three units each; beats down, four rows
+        // a beat from beat 2.
+        let mut scene = Scene::new([12.0, 8.0]);
+        let plane = Plane {
+            x: Axis { domain: "lane".into(), from: 0.0, per: 3.0 },
+            y: Axis { domain: "beat".into(), from: 2.0, per: 4.0 },
+        };
+        let mut grid = Node::new("pattern", Kind::Plane(plane), [0.0, 0.0, 12.0, 8.0]);
+        grid.hit = Some(json!({ "kind": "cell" }));
+        scene.push(None, grid);
+        // A note in lane 1 at beat 2.75, a quarter beat long: one row.
+        let mut note = Node::new("n", Kind::Role { role: "note".into(), props: json!({}) }, [1.0, 2.75, 1.0, 0.25]);
+        note.hit = Some(json!({ "kind": "note" }));
+        scene.push(Some("pattern"), note);
+        scene.push(Some("n"), fill("n/cells", [0.0, 0.0, 1.0, 0.25], Some('C'), Style::default()));
+        let rows = lines(&scene.to_cells());
+        assert_eq!(rows[3], "   CCC      ", "lane 1, the fourth row");
+        let on = scene.hit([4.5, 3.5]).unwrap();
+        assert_eq!((on.key.as_str(), on.at), ("n", [1.5, 2.875]));
+        let off = scene.hit([10.5, 6.0]).unwrap();
+        assert_eq!(off.at, [3.5, 3.5], "lane 3, beat three and a half");
+    }
+
+    #[test]
+    fn what_is_drawn_over_a_painted_role_is_found_to_paint_over_it_again() {
+        let mut scene = roll();
+        scene.lower(&|role| role == "note");
+        // Before the note, under it: not over it. After it: a tag on the
+        // note, and a line elsewhere.
+        scene.root.insert(1, "under".into());
+        scene.nodes.insert("under".into(), run("under", 4.0, 3.0, "x"));
+        scene.push(None, run("tag", 5.0, 3.0, "[]"));
+        scene.push(None, run("far", 12.0, 5.0, "y"));
+        let over = scene.over_roles(&|role| role == "note");
+        assert_eq!(over.iter().map(|(n, ..)| n.key.as_str()).collect::<Vec<_>>(), vec!["tag"]);
+        assert_eq!(over[0].1, [5.0, 3.0, 7.0, 4.0], "where it is in units");
+        assert!(scene.over_roles(&|_| false).is_empty(), "nothing is over a role painted in cells");
+    }
+
+    #[test]
+    fn a_roles_cells_snapped_past_its_rectangle_still_show() {
+        // A note from 2.4 to 4.6 units, which a terminal rounds to columns
+        // 2 to 4: its last cell lies past its rectangle.
+        let mut scene = Scene::new([8.0, 1.0]);
+        scene.push(None, Node::new("n", Kind::Role { role: "note".into(), props: json!({}) }, [2.4, 0.0, 2.2, 1.0]));
+        scene.push(Some("n"), fill("n/cells", [-0.4, 0.0, 3.0, 1.0], Some('#'), Style::default()));
+        assert_eq!(lines(&scene.to_cells())[0], "  ###   ");
     }
 
     #[test]

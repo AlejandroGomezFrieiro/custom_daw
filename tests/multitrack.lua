@@ -80,10 +80,6 @@ test("the piano roll shows other pitched tracks' notes behind its own, in their 
   paw.opt.roll_context = "all"
   roll:edit(s.bass)
   eq(pitches(rc.context()), "67@0 72@-2 76@2", "from the bass clip's start, only what sounds during it")
-  -- Drawn faintly in the terminal, and handed to the window as marks.
-  local under = paw.frontend.clip(s.bass.id).context
-  eq(#under, 3, "the window gets them with the clip")
-  eq(under[1].fill, paw.draw.track_colour(api.track_get(s.tracks.keys.id)), "in their tracks' colours")
   roll:set(43, 1)
   local sounding = rc.sounding(1)
   eq(table.concat(sounding, " "), "43 72", "the keys sounding at the cursor, in every track shown")
@@ -99,7 +95,7 @@ local function cells(width, height)
   local shot = api.ui_view_snapshot("pianoroll", width, height)
   local roll = paw.ui.views.pianoroll
   local at = function(beat, pitch)
-    local x = 5 + math.floor((beat - roll.scroll) * paw.opt.note_zoom + 0.5)
+    local x = roll.geometry.keys + math.floor((beat - roll.scroll) * paw.opt.note_zoom + 0.5)
     -- Under the title, the chord row when it shows, and the ruler.
     local y = (roll.head or 2) + roll.top - pitch
     for _, run in ipairs(shot.rows[y + 1] or {}) do
@@ -349,32 +345,40 @@ test("several chosen clips open together: Enter on a selection, or a double clic
   eq(#rc.ids(), 1, "on a clip alone, that clip alone")
 end)
 
-test("the window is told the notes of every clip edited, the layers' marks and the side panel's rows", function()
+test("a window is sent the notes of every clip edited as notes on the roll's plane, each in its own clip and colour", function()
   local s = song()
   rc.open({ s.keys.id, s.bass.id }, s.keys.id)
   paw.ui.show("pianoroll")
-  local c = paw.frontend.clip(s.keys.id)
-  eq(#c.notes .. " " .. #c.more .. " " .. #c.editable, "3 3 2", "the active clip's notes, the bass's, both clips")
-  eq(c.more[1].start .. " " .. c.more[1].clip .. " " .. c.more[1].place, "2 " .. s.bass.id .. " 1", "a bass note in the keys' beats, with its clip and place")
-  eq(#c.context, 2, "the pad's notes, drawn behind them")
-  local kinds = {}
-  for _, row in ipairs(c.rows) do kinds[#kinds + 1] = row.kind .. ":" .. row.name .. (row.on and "+" or "") end
-  eq(table.concat(kinds, " "), "track:Keys+ clip:chords+ track:Bass+ clip:line+ track:Pad+ clip:pad track:Drums clip:beat", "the side panel's rows")
+  local roll = paw.ui.views.pianoroll
+  roll.top, roll.scroll = 80, 0
   paw.frontend.act.select_notes_box(s.keys.id, 2.5, 30, 3.5, 70)
-  local state = paw.frontend.state(-1)
-  eq(#state.modal.roll.refs, 3, "the chosen notes of both, as clip and place")
+  api.scene_forget(0)
+  api.scene_roles(0, { "note" })
+  paw.ui.render_scene("pianoroll", 140, 90, { w = 8, h = 16 })
+  local patch = api.json_decode(api.scene_end(0, "multitrack"))
+  api.scene_forget(0)
+  local keys, bass, chosen = 0, nil, 0
+  for _, n in ipairs(patch.set) do
+    if n.role == "note" then
+      if n.hit.clip == s.keys.id then keys = keys + 1 end
+      if n.hit.clip == s.bass.id and n.hit.place == 1 then bass = n end
+      if n.props.selected then chosen = chosen + 1 end
+    end
+  end
+  eq(keys, 3, "the active clip's notes")
+  eq(bass ~= nil and bass.r[1] .. " " .. bass.props.color, "2 " .. paw.draw.track_colour(api.track_get(s.tracks.bass.id)),
+    "a bass note in the keys' beats, in the bass's colour, named by its clip and place")
+  eq(chosen, 3, "the chosen notes of both")
   paw.ui.hide("pianoroll")
 end)
 
-test("a layer of the piano roll draws in the terminal and is handed to the window, in order", function()
+test("the layers of the piano roll draw back to front, the same for both frontends", function()
   local s = song()
   local roll = paw.ui.views.pianoroll
   roll:edit(s.keys)
   local before = #roll.layers
-  roll.layer("test-marks", 35, nil, function() return { { pitch = 60, start = 0, length = 1, fill = "#ff0000" } } end)
-  roll.layer("test-under", 5, nil, function() return { { pitch = 61, start = 0, length = 1, fill = "#00ff00" } } end)
-  local under, over = roll:marks(s.keys.id)
-  eq(under[1].pitch .. " " .. over[#over].pitch, "61 60", "under the notes by order, then over them")
+  roll.layer("test-marks", 35, function(p) p.roll:text(0, 0, "over", "Bright") end)
+  roll.layer("test-under", 5, function(p) p.roll:text(0, 0, "under", "Bright") end)
   local orders = {}
   for _, layer in ipairs(roll.layers) do
     if layer.name:match("^test") or layer.name == "context" or layer.name == "notes" then orders[#orders + 1] = layer.name end

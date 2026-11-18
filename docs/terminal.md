@@ -805,7 +805,7 @@ out into a window of its own.
 ## The mouse
 
 The mouse does in the terminal what it does in the window (see
-[What the pointer does](window.md)), in cells. Each gesture goes to the
+[What the pointer does](reference/window.md)), in cells. Each gesture goes to the
 function in the kernel the window's goes to (`paw.frontend.act`), so the two
 mean the same by it, and the keys are as they were. A press gives the view
 under the pointer the keyboard. A gesture that changes the project does so
@@ -860,7 +860,7 @@ takes it back.
 ## Pictures
 
 A view that paints for the window (`paint`, see
-[The graphical frontend](window.md)), such as the score of `:notation`,
+[The graphical frontend](reference/window.md)), such as the score of `:notation`,
 shows the same pixels in a terminal that shows images. At start the
 program asks the terminal what it is (XTVERSION), its colours (`OSC 10`
 and `11`), the size of a cell in pixels, whether it draws images (the

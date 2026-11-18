@@ -606,46 +606,15 @@ local function paint(l)
   local at = first and first.start or roll().beat
   -- Kept on screen when the notes reach past its top or bottom.
   local row = paw.util.clamp(l.top - ((highest or roll().pitch) + 1), 0, l.rows - 1)
-  l.roll:text(math.max(0, math.min(l.x(at), l.width - 12)), row, badge_text(cur), style.badge)
+  local x = math.max(0, math.min(l.x(at), l.width - 12))
+  local w = l.roll:text(x, row, badge_text(cur), style.badge)
+  -- A click on it accepts the suggestion.
+  l.roll:hit(x, row, w, 1, {
+    kind = "act", act = "complete_badge", arg = cur.index, tip = "accept the suggestion (Tab; Ctrl-l its next notes) · Esc dismisses",
+  })
 end
 
-local function marks(clip_id)
-  local cur = M.current()
-  if not cur or cur.clip ~= clip_id then return {} end
-  local colour = paw.draw.track_colour(api.track_get(api.clip_get(clip_id).track))
-  local out = {}
-  local highest
-  -- Fainter than the notes that are there, brighter at the edge than
-  -- other tracks' notes, which are faint all over.
-  local edge = paw.draw.mix(colour, "#ffffff", 0.45)
-  for _, n in ipairs(cur.item.notes) do
-    out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, fill = colour, alpha = 0.3, edge = edge, label = paw.music.name(n.pitch) }
-    highest = math.max(highest or n.pitch, n.pitch)
-  end
-  for _, v in ipairs(cur.item.velocities) do
-    out[#out + 1] = { pitch = v.pitch, start = v.start, length = v.length, fill = colour, alpha = 0, edge = edge, label = "vel " .. v.velocity }
-  end
-  -- Over the first note, a chip per alternative (a click shows it) and
-  -- then what the one showing is (a click accepts it).
-  local first = cur.item.notes[1] or cur.item.velocities[1] or cur.item.remove[1]
-  local at = first and first.start or roll().beat
-  local pitch = math.min(127, (highest or roll().pitch) + 1)
-  local count = math.min(9, #cur.items)
-  for i = 1, count do
-    out[#out + 1] = {
-      pitch = pitch, start = at, length = 0, badge = true, slot = i - 1, label = tostring(i), fill = colour,
-      alpha = i == cur.index and 0.9 or 0.3, act = "complete_badge", arg = i, tip = "show " .. cur.items[i].label .. " (Alt-" .. i .. ")",
-    }
-  end
-  local text = badge_text(cur):gsub("^ ", ""):gsub(" $", "")
-  out[#out + 1] = {
-    pitch = pitch, start = at, length = 0, badge = true, slot = count, label = text, fill = colour, alpha = 0.9,
-    act = "complete_badge", arg = cur.index, tip = "accept the suggestion (Tab; Ctrl-l its next notes) · Esc dismisses",
-  }
-  return out
-end
-
-roll().layer("complete", 50, paint, marks)
+roll().layer("complete", 50, paint)
 
 roll():key_scope("pianoroll.complete", 50, keys_on)
 -- The terminal's key line while a suggestion shows.

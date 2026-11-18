@@ -13,6 +13,9 @@ each extension (`:help notation`).
 ## How-to guides
 
 - [Run paw](running.md): install paw, build it from the source, its options, audio devices, other computers
+- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
+- [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
+- [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
 - [How to load an extension](how-to/load-an-extension.md): a bundled extension, your own, or one from Nix
 - [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let a coding agent or an assistant edit a project
 
@@ -20,7 +23,8 @@ each extension (`:help notation`).
 
 - [Keys, by idea](reference/keys.md): all the keys on one page, to keep near the keyboard
 - [The terminal interface](terminal.md): keys, Ex, windows, text buffers, files, the quickfix list, the mouse, help, pickers, queries
-- [The graphical frontend](window.md): each gesture of the graphical window
+- [The graphical window](reference/window.md): its command line, each gesture, the panes and the views in windows of their own
+- [The graphical window in Lua](reference/window-lua.md): `paw.frontend.act`, menus, bands, panes, views that paint
 - [Configuration](configuration.md): `init.lua`, options, colors, the status line
 - [Input and recordings](recording.md): inputs, input monitors, takes
 - [Edit, mix and render](mixing.md): routes, automation, tempo, stretched clips, markers, MIDI controllers, export
@@ -39,12 +43,13 @@ each extension (`:help notation`).
 - [Extensions](reference/extensions.md): the bundled extensions, files, loading, manifests, what an extension owns, health checks
 - [Pictures in the terminal](reference/pictures.md): strips, `paw.plot`, and what a frontend does with strips
 - [Lua API reference](reference/api.md): each function, made from the code
-- [The control protocol](reference/protocol.md): the messages of the socket
+- [The control protocol](reference/protocol.md): the messages of the socket, scenes, seats, files and sound
 - [Limits: what paw does not do yet](reference/limits.md): what paw does not do, and the known limits of what it does
 
 ## Explanation
 
 - [About the architecture](explanation/about-the-architecture.md): the crates, the threads, the kernel and its frontends
+- [About scenes: one view, two frontends](explanation/about-scenes.md): why the graphical window has no views of its own
 - [About the core and extensions](explanation/about-core-and-extensions.md): where the line is, why, and how far an extension goes
 - [About MIDI as the truth](explanation/about-midi-as-the-truth.md): why the notes are the truth, and where extensions keep their data
 - [About seats](explanation/about-seats.md): many people in one instance, and the state of each

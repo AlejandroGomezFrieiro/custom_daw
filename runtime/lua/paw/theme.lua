@@ -212,6 +212,8 @@ local function build()
     RollStep = { fg = c.line, bg = c.bg },
     RollStepBlack = { fg = c.line, bg = c.bg_dark },
     RollOutside = { fg = c.bg_alt, bg = "#08090b" },
+    RollOutsideBlack = { fg = c.bg_alt, bg = "#060709" },
+    ScrollThumb = { fg = c.dim },
     Note = { fg = c.bg, bg = c.green },
     NoteCursor = { fg = c.bg, bg = c.bright, bold = true },
     RollCursor = { bg = "#2a3a50" },

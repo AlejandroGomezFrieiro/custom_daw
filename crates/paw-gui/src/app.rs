@@ -17,7 +17,7 @@ use crate::client::Client;
 use crate::model::{self, Clip, Line, PeakHold, Track, flag, int, number, rows, text};
 use crate::pictures::Pictures;
 use crate::theme::th;
-use crate::{arrange, canvas, devices, dialogs, keys, menu, panes, portal, roll, scene, session};
+use crate::{arrange, canvas, devices, dialogs, keys, menu, panes, portal, scene, session};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -152,13 +152,14 @@ pub struct View {
     pub rec_start: Option<f32>,
     pub show_automation: bool,
     pub arrange: arrange::Arrange,
-    pub roll: roll::Roll,
     pub devices: devices::Devices,
     pub session: session::Session,
     pub panes: panes::Panes,
     pub canvases: canvas::Canvases,
     pub scenes: scene::Scenes,
     pub menu: Option<menu::Menu>,
+    /// The kernel's menu last shown (`modal.menu`, how many it has opened).
+    pub kernel_menu: i64,
     pub dialogs: dialogs::Dialogs,
     /// The floating page the kernel draws (help, a list, a picker).
     pub float: Option<(String, Vec<String>)>,
@@ -201,13 +202,13 @@ impl View {
             rec_start: None,
             show_automation: false,
             arrange: arrange::Arrange::default(),
-            roll: roll::Roll::default(),
             devices: devices::Devices::default(),
             session: session::Session::default(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
             scenes: scene::Scenes::default(),
             menu: None,
+            kernel_menu: 0,
             dialogs: dialogs::Dialogs::default(),
             float: None,
             float_size: (120, 30),
@@ -357,7 +358,6 @@ impl View {
         let ids: Vec<i64> = self.s.clips.iter().map(|c| c.id).collect();
         self.pictures.keep(|id| ids.contains(&id));
         self.devices.project(&self.s.devices);
-        self.roll.stale = true;
     }
 
     /// Peaks are held a moment, then fall; a clip light stays on.
@@ -400,7 +400,7 @@ impl View {
         } else {
             None
         };
-        self.roll.modal(&self.s, modal);
+        self.kernel_menu(modal);
     }
 
     /// The kernel's message to show, with its level (0 plain, 1 a warning,
@@ -447,7 +447,6 @@ impl View {
         }
         self.text_ids.borrow_mut().clear();
         crate::widgets::new_frame();
-        self.roll_frame();
         // The whole window, whatever margin the `ui` given has.
         let full = ctx.content_rect();
         ui.set_clip_rect(full);
@@ -463,7 +462,6 @@ impl View {
         self.menu_popup(ui);
         self.dialog(ui, full);
         self.canvas_windows(&ctx);
-        self.roll_window(&ctx);
         self.keyboard(ui);
         self.files_dropped(ui);
         self.close_requested(ui);
@@ -492,7 +490,6 @@ impl View {
             match view.as_str() {
                 "arrange" => self.draw_arrange(&mut child, rect),
                 "devices" => self.draw_devices(&mut child, rect),
-                "pianoroll" => self.draw_roll(&mut child, rect, false),
                 "session" => self.draw_session(&mut child, rect),
                 _ => {}
             }
@@ -533,7 +530,7 @@ impl View {
             let keys = keys::window_keys(keys, in_roll);
             self.message_dismissed = self.message_time;
             // A key closes a menu that was open, as a click elsewhere does.
-            self.menu = None;
+            self.let_go_menu();
             self.acts.borrow_mut().push(("keys".into(), json!([keys])));
         }
     }

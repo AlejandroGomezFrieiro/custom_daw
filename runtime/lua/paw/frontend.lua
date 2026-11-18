@@ -181,6 +181,12 @@ local function modal()
     -- The session view, clips to launch, and the slot its cursor is on.
     session = ui.visible("session"), slot_row = paw.launcher.row, capturing = paw.launcher.capturing,
     float = ui.float and (ui.float.title or ui.float.name) or nil,
+    -- A menu the kernel opened (a right click in a pane drawn from its
+    -- scene), by how many were: the window shows it (`paw.frontend.menu("shown")`).
+    menu = select(2, require("paw.menu").shown()),
+    -- What the pointer is over in a pane drawn from its scene, or what its
+    -- drag will do (`paw.mouse.hint`), for the status line.
+    hint = paw.mouse.hint_text(),
     selection = keymap.selection(),
     -- A render in the background: { path, fraction, seconds, cancelling, stage }.
     render = paw.api.render_status(),
@@ -231,39 +237,6 @@ local function modal()
   if paw.opt.hints then
     local hints, title = keymap.hints()
     if hints then out.hints = { title = title, items = hints } end
-  end
-  local roll = ui.views.pianoroll
-  local clip = ui.visible("pianoroll") and roll:clip()
-  if clip then
-    out.roll = {
-      clip = clip.id, pitch = roll.pitch, beat = roll.beat, step = roll:step_length(), octave = paw.opt.octave,
-      snap = paw.opt.note_snap,
-      -- The notes chosen with the pointer, by place.
-      selected = M.chosen_notes(clip.id),
-      -- The chosen notes in words: how many, and the stretch they cover.
-      chosen = M.chosen_text(clip.id),
-      step_input = M.step_input(),
-      -- What insert mode is doing, in words, while it is on.
-      insert = keymap.mode == "i" and paw.roll_draw.status() or nil,
-      -- Notes with diagnostics: { index, pitch, start, length, severity, message, actions }.
-      marks = paw.diagnostic and paw.diagnostic.roll_marks(clip.id),
-      -- The controller moves chosen in the strip, by place.
-      controls_chosen = paw.controls.chosen(clip.id),
-      -- The chord symbols over the ruler, in the clip's beats.
-      chords = M.roll_chords(clip),
-      -- What the roll's layers draw behind and in front of the notes, and
-      -- the switches modules add to its toolbar (`pianoroll:layer`, `:tool`).
-      tools = roll:toolbar(),
-    }
-    -- Where it edits several clips, the chosen notes of all of them, as
-    -- `{ clip, place }`; and the keys that sound at the cursor, with the
-    -- chord they make when that is known.
-    out.roll.refs = M.chosen_refs()
-    -- What the roll shows changes with the clips it edits and its layers,
-    -- not only with the project: fetch it again when this does.
-    out.roll.revision = M.revision
-    out.roll.sounding, out.roll.chord = paw.roll_clips.sounding(roll.beat)
-    out.roll.under, out.roll.over = roll:marks(clip.id)
   end
   local under = paw.cursor.clip()
   out.clip = ui.focused == "arrange" and under and under.id or nil
@@ -327,91 +300,6 @@ function M.lane_name(lane)
     if p.key == lane.param then return device.name .. " · " .. p.name end
   end
   return device.name .. " · " .. tostring(lane.param)
-end
-
---- One clip with its notes and controller moves, for a piano roll, and the
---- name and colour of the track it is on. Nil when the clip is gone.
-function M.clip(id)
-  local ok, clip = pcall(api.clip_get, id)
-  if not ok then return nil end
-  -- Notes hidden by a trim of the clip's edges are left out. Those before
-  -- its start come first in the clip's order: `hidden` says how many, so
-  -- that the place of the notes given is their index plus it.
-  clip.notes, clip.hidden = {}, 0
-  for _, n in ipairs(clip.kind == "midi" and api.clip_notes(id) or {}) do
-    if n.start < 0 then
-      clip.hidden = clip.hidden + 1
-    elseif n.start < clip.length then
-      clip.notes[#clip.notes + 1] = n
-    end
-  end
-  clip.controls = {}
-  for place, move in ipairs(clip.kind == "midi" and api.clip_controls(id) or {}) do
-    -- With its place among all of them, as gestures name it.
-    move.place = place
-    if move.start >= 0 and move.start < clip.length then clip.controls[#clip.controls + 1] = move end
-  end
-  local track = api.track_get(clip.track)
-  clip.track_name, clip.color = track.name, paw.draw.track_colour(track)
-  -- The notes of the track's other MIDI clips that sound during this one,
-  -- with their starts in this clip's beats, for drawing faintly.
-  clip.ghosts = {}
-  local rc = paw.roll_clips
-  local open = clip.kind == "midi" and rc.active() == id
-  for _, other in ipairs(clip.kind == "midi" and api.clip_list(clip.track) or {}) do
-    if other.id ~= id and other.kind == "midi" and other.start < clip.start + clip.length and other.start + other.length > clip.start
-      and not (open and rc.editable(other.id)) then
-      for _, n in ipairs(api.clip_notes(other.id)) do
-        local at = other.start + n.start - clip.start
-        if n.start < other.length and at < clip.length and at + n.length > 0 and #clip.ghosts < M.preview_notes then
-          clip.ghosts[#clip.ghosts + 1] = { pitch = n.pitch, start = at, length = math.min(n.length, other.length - n.start), velocity = n.velocity }
-        end
-      end
-    end
-  end
-  -- Open in the piano roll, which may edit other clips with it: those
-  -- clips (`editable`, this one first, each with how far it starts after
-  -- this one), their notes (`more`, starts in this clip's beats, each with
-  -- its clip, its place there and its track's colour), the tracks and
-  -- clips its side panel lists (`rows`: see `paw.roll_clips.rows`), and
-  -- other tracks' notes (`context`).
-  clip.editable, clip.more, clip.rows, clip.context = {}, {}, {}, {}
-  if open then
-    for i, part in ipairs(rc.parts()) do
-      local colour = paw.draw.track_colour(api.track_get(part.track))
-      clip.editable[i] = { id = part.id, name = part.name, offset = part.offset, length = part.length, color = colour }
-      if i > 1 then
-        for place, n in ipairs(api.clip_notes(part.id)) do
-          if n.start >= 0 and n.start < part.length then
-            clip.more[#clip.more + 1] = {
-              pitch = n.pitch, start = n.start + part.offset, length = math.min(n.length, part.length - n.start),
-              velocity = n.velocity, clip = part.id, place = place, color = colour,
-            }
-          end
-        end
-      end
-    end
-    clip.rows = rc.rows()
-    -- Other tracks' notes, drawn behind as the layers' marks are (see
-    -- `paw.ui.views.pianoroll.layer`): sent here, with the notes, since
-    -- there may be thousands and they change only with the project.
-    clip.context = {}
-    for i, n in ipairs(rc.context()) do
-      clip.context[i] = { pitch = n.pitch, start = n.start, length = n.length, fill = n.color, alpha = 0.2, edge = n.color }
-    end
-  end
-  return clip
-end
-
---- The chord symbols over a clip, as `paw.opt.chords` asks for them:
---- `{ start, length, label }` in the clip's beats; none when it is off.
-function M.roll_chords(clip)
-  local out = {}
-  if not paw.opt.chords then return out end
-  for _, c in ipairs(paw.harmony.chords(clip.start, clip.start + clip.length)) do
-    out[#out + 1] = { start = c.at - clip.start, length = c.length, label = paw.harmony.label(c) }
-  end
-  return out
 end
 
 --- A clip's takes as its take lanes show them: `{ name, key }` each, `key`
@@ -1468,8 +1356,11 @@ function A.open_clip(id)
   for _, opener in ipairs(M.openers) do
     if opener(clip) then return end
   end
-  if clip.kind == "midi" and #together > 1 then return paw.roll_clips.open(together, id) end
-  if clip.kind == "midi" then paw.ui.views.pianoroll:edit(clip) end
+  if clip.kind ~= "midi" then return end
+  -- Opened by the pointer, the roll shows the clips whole where it can.
+  paw.ui.views.pianoroll.fit_next = true
+  if #together > 1 then return paw.roll_clips.open(together, id) end
+  paw.ui.views.pianoroll:edit(clip)
 end
 
 --- The record button. With nothing being recorded: arm the selected track

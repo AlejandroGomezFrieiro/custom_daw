@@ -365,11 +365,12 @@ test("midi: the piano roll is a plain MIDI editor; with timebind the note under 
   eq(rollscore.bound(clip.id), true, "bound")
   view:set(36, 1)
   eq(rollscore.partner("pianoroll"), clip:notes()[2].id, "the roll outlines the note under notation's cursor")
-  local outlined
-  for _, mk in ipairs(select(2, roll:marks(clip.id))) do
-    if mk.edge == "#ffd34d" then outlined = mk end
+  local screen = ""
+  for _, row in ipairs(paw.api.ui_view_snapshot("pianoroll", 120, 30).rows) do
+    for _, run in ipairs(row) do screen = screen .. run.text end
+    screen = screen .. "\n"
   end
-  eq(outlined ~= nil and outlined.pitch, 62, "as a mark for the window, on its row")
+  eq(screen:find(paw.opt.ascii and "[" or "⟦", 1, true) ~= nil, true, "drawn on the roll, for both frontends")
   roll:set(64, 2)
   eq(rollscore.partner("notation"), clip:notes()[3].id, "notation outlines the note under the roll's cursor")
   eq(rollscore.partner_place(), 3, "by its place among the clip's notes")

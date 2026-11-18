@@ -1,85 +1,4 @@
 {
-  "clip": {
-    "color": "#e0605a",
-    "context": {},
-    "control_count": 0,
-    "control_stamp": 7388120807022986,
-    "controls": {},
-    "editable": [
-      {
-        "color": "#e0605a",
-        "id": 2,
-        "length": 4,
-        "name": "c",
-        "offset": 0
-      }
-    ],
-    "ghosts": {},
-    "hidden": 0,
-    "id": 2,
-    "kind": "midi",
-    "length": 4,
-    "loop": false,
-    "loop_start": 0,
-    "meta": {},
-    "more": {},
-    "muted": false,
-    "name": "c",
-    "note_count": 3,
-    "notes": [
-      {
-        "id": 1,
-        "length": 1,
-        "pitch": 60,
-        "start": 0,
-        "velocity": 100
-      },
-      {
-        "id": 2,
-        "length": 1,
-        "pitch": 64,
-        "start": 1,
-        "velocity": 100
-      },
-      {
-        "id": 3,
-        "length": 2,
-        "pitch": 67,
-        "start": 2,
-        "velocity": 100
-      }
-    ],
-    "rows": [
-      {
-        "active": true,
-        "color": "#e0605a",
-        "id": 1,
-        "kind": "track",
-        "name": "A",
-        "on": true
-      },
-      {
-        "active": true,
-        "id": 2,
-        "kind": "clip",
-        "name": "c",
-        "on": true,
-        "track": 1
-      },
-      {
-        "active": false,
-        "color": "#e58a45",
-        "id": 3,
-        "kind": "track",
-        "name": "B",
-        "on": true
-      }
-    ],
-    "stamp": 3803665897873632,
-    "start": 4,
-    "track": 1,
-    "track_name": "A"
-  },
   "palette": {
     "card": "#2b2c31",
     "card_line": "#3d3f46",
@@ -130,7 +49,7 @@
         "name": "c",
         "notches": {},
         "selected": true,
-        "stamp": "3803665897873632|7388120807022986|4",
+        "stamp": "4345267048817514|7388120807022986|4",
         "start": 4,
         "take": 1,
         "takes": 1,
@@ -145,7 +64,7 @@
         "name": "d",
         "notches": {},
         "selected": false,
-        "stamp": "7855798376983456|7388120807022986|4",
+        "stamp": "335928504669249|7388120807022986|4",
         "start": 12,
         "take": 1,
         "takes": 1,
@@ -155,7 +74,7 @@
     ],
     "clock": "0:00.0",
     "counting": 0,
-    "cpu": 0.0021650625858455896,
+    "cpu": 0,
     "cursor": 4,
     "devices": [
       {
@@ -359,35 +278,6 @@
       "name": "NORMAL",
       "pending": "",
       "recording": "",
-      "roll": {
-        "beat": 0,
-        "chords": {},
-        "chosen": "",
-        "clip": 2,
-        "controls_chosen": {},
-        "marks": {},
-        "octave": 4,
-        "over": {},
-        "pitch": 60,
-        "refs": {},
-        "revision": 9,
-        "selected": {},
-        "snap": true,
-        "sounding": [
-          60
-        ],
-        "step": 0.25,
-        "step_input": false,
-        "tools": [
-          {
-            "act": "toggle_complete_auto",
-            "label": "Suggest",
-            "on": true,
-            "tip": "suggestions: ask the completion sources by themselves after a pause (Ctrl-Space asks now) · Tab accepts, Esc dismisses"
-          }
-        ],
-        "under": {}
-      },
       "session": false,
       "slot_row": 0,
       "views": [

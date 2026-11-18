@@ -284,9 +284,7 @@ When the notation extension is loaded too:
 
 ### Limits
 
-- The graphical window shows the tags and colors on the notes, and the
-  shaded and named rows (as marks of the layer of the roll). It does not
-  show the band, the labels of the keyboard, or a menu of its own.
+- The articulations have no menu of their own in the graphical window.
 - The keyswitch rows have labels and shades, but they do not fold.
 - The score draws the mark of an articulation in the same ink as a written
   mark.

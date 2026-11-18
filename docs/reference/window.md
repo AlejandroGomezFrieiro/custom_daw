@@ -1,0 +1,767 @@
+# The graphical window
+<!-- tags: window gui paw-gui -->
+
+`paw-gui` is the graphical frontend of paw. It shows the kernel's views
+for the mouse. These are the transport, the tracks, the clips on a
+timeline, the devices of the selected track, the mixer and the piano roll. This page
+describes its command line, its parts and what each gesture does. For the
+reasons behind its design, see [About scenes](../explanation/about-scenes.md).
+For the Lua functions behind it, see [The graphical window in
+Lua](window-lua.md).
+
+## Command line
+
+```sh
+paw-gui [kernel options] [project]
+paw-gui --socket <path>
+paw-gui --connect <host:port> --token-file <path>
+```
+
+| Option | Value | Effect |
+| --- | --- | --- |
+| kernel options, project | | Starts a kernel (`paw --headless`) with these options, and stops it when the window closes. |
+| `--socket` | path | Attaches to a kernel that runs on this machine, on its Unix socket. |
+| `--connect` | host:port | Attaches to a kernel on another machine, over TCP and TLS. The kernel must run with `--listen-tcp`. |
+| `--token` | token | The token for `--connect`. |
+| `--token-file` | path | The file that holds the token for `--connect`. |
+| `PAW_TOKEN` | token | The environment variable that holds the token, when the two options above are absent. |
+| `--accept-certificate` | | Accepts the certificate that the kernel shows, also when a different one is remembered for its address. |
+| `--no-tls` | | Connects without TLS, to a kernel started with `--no-tls`. |
+| `--listen-audio` | | Plays the kernel's sound on this machine (about 1 Mbit/s). The engine menu has the same switch. |
+| `--renderer` | `gpu` (default) or `software` | `gpu` draws with OpenGL on the system's driver. `software` asks Mesa for llvmpipe, which draws on the processor. |
+| `PAW_GUI_RENDERER` | `gpu` or `software` | The environment variable for the renderer, when `--renderer` is absent. |
+| `-h`, `--help` | | Shows the options. |
+
+The token, the certificates and the TLS rules are in [The control
+protocol](protocol.md#connections).
+
+## The kernel and the window
+
+The window keeps no project state. The kernel sends the state when it
+changes (`frontend.watch`, at most 30 times a second). Each gesture and
+each key returns to the kernel as a call to `paw.frontend.act` or as a key.
+So the window, a terminal and a script can control the same project at
+the same time.
+
+A window that started its kernel shares the kernel's seat. A window
+attached with `--socket` or `--connect` has a seat of its own: its own
+cursor, selection and mode. See [Seats](protocol.md#seats).
+
+The menus of the window are the kernel's menus (`paw.frontend.menu`, in
+`runtime/lua/paw/window_menus.lua`). The window shows them and tells the
+kernel which entry the user selected.
+
+## What the window keeps
+
+The window keeps its layout in `window.json`, in the state directory of the
+kernel's machine (`~/.local/state/paw/window.json`). It writes the file
+when a value is stable for one second, and when it closes. It uses
+`paw.frontend.layout_get()` and `paw.frontend.layout_set(table)`, so a
+window attached to a kernel that runs already also finds the file.
+
+| Field | Value |
+| --- | --- |
+| `width`, `height` | The size of the window. |
+| `x`, `y` | The position of the window on the screen, on X11 only. |
+| `zoom` | The zoom of the timeline. |
+| `row_height` | The height of the track rows. |
+| `mixer` | `true` when the mixer shows. |
+
+On Wayland, the compositor decides the position of a window. So the
+window keeps no position there. If no screen shows a saved position, the
+window opens at the top left of the main screen.
+
+## Drawing
+
+The window is written with [egui](https://github.com/emilk/egui). It draws
+with OpenGL through eframe's glow renderer, on the system's driver: the
+driver of the graphics card, or Mesa's llvmpipe on the processor. On NixOS,
+`hardware.graphics.enable` supplies the driver. If OpenGL cannot start,
+the window shows one line that tells so, and stops.
+
+The window draws a frame only when something changes. At rest, it draws
+nothing. While the song plays, it draws at most 25 frames a second for the
+playhead, the clock and the meters. The piano roll and the timeline get
+only the notes, lines and points near the visible area. So a clip of
+thousands of notes opens and scrolls as fast as a short clip.
+
+Measured with the demo song in a 1500x960 window on llvmpipe, without a
+graphics card:
+
+| State | Load |
+| --- | --- |
+| At rest | 0% of a core |
+| While the song plays | about 105% of a core. A frame takes 4 ms of the window's own work. llvmpipe uses the rest to fill pixels on its threads. |
+
+On a graphics card, the card fills the pixels.
+
+## Colors and fonts
+
+The surfaces are neutral grays. A color tells a state:
+
+| Color | Meaning |
+| --- | --- |
+| Blue | The selection, the edit cursor, a switch that is on |
+| Amber | The playhead, the loop |
+| Green | Playback |
+| Red | Record, an armed track |
+| Orange | Mute |
+| Yellow | Solo |
+| The track's color | The track's stripe, its clips, its notes and its name plate in the mixer, and nothing else |
+
+| Text | Font |
+| --- | --- |
+| Words | Inter, in the program |
+| Numbers that change (the clock, levels, values) | JetBrains Mono, in the program |
+| Japanese, Chinese and Korean (a lyric such as さくら) | The system's font for them, found through fontconfig (Noto Sans CJK, Source Han Sans and other) |
+| Kana, when the system has no such font | Noto Sans CJK JP, cut to the kana (60 KB, in the program). Kanji and hangul then show as boxes. |
+| Icons | Phosphor |
+
+The fonts in the program are in `crates/paw-gui/fonts`, with their
+licenses: the SIL Open Font License, and MIT for Phosphor. So the window
+looks the same on all machines.
+
+## Parts of the window
+
+From top to bottom, the window has:
+
+- the transport bar
+- a row of tabs, when there is more than one tab
+- the main area, with one pane for each window of the current tab
+- the status line.
+
+A pane of the arrange view shows the ruler, the track headers and the
+timeline. The status line tells what the pointer does at its position.
+
+## Transport bar
+
+| Part | Gesture and effect |
+| --- | --- |
+| Buttons | Return to the start, stop, play or pause, record, loop, metronome. |
+| Tempo | Drag it, or turn the wheel over it, to change the tempo. Double-click it to type a tempo. |
+| Project name | Click it to open the file menu. A dot beside the name tells that there are changes that are not saved. |
+| Mixer, Automation, Piano roll | Show or hide these views. |
+| More | Lists all the other views of the kernel, also the views of extensions. Each one opens in a pane: where it docks, else split from the pane that has the keyboard. A view with a painted twin (`painted = "name"` on its table, as the undo tree and the mix report have) is offered as the twin. |
+| Session | Shows the session view under the timeline. |
+| Engine indicator (`pipewire · UR22mkII · 48 kHz`) | Click it to open the engine menu. |
+
+## File menu
+
+| Entry | Effect |
+| --- | --- |
+| New project, Open… | Make or open a project. If there are changes that are not saved, the window asks first. |
+| Open recent | A submenu of the recent projects. "Clear the list" is at its end. |
+| Recover unsaved work… | Runs `:recover`. |
+| Save, Save as… | Save the project. |
+| Import… | Imports a sound file or a MIDI file. |
+| Render… | Opens the render dialog. |
+| Sound files | "Find missing files…" (`:media.relink`) and "Copy into the project's folder" (`:media.collect`). |
+| Markers and regions…, MIDI controllers… | Run `:marker.list` and `:learn.list`. |
+| Quit | Closes the window. If there are changes that are not saved, the window asks first. |
+
+The question about changes that are not saved has three answers: save the
+changes, do not save them, or stay. For a project that has no file yet,
+the window then asks where to save it. A click on the close button of the
+window asks the same question. In Lua, the question is
+`paw.frontend.act.leave(how, "open:" .. path)`.
+
+Open… with a `.mid` file opens it as a new project. Import, and the import
+entry of the timeline menu, put its tracks below the track of the cursor.
+They start at the cursor, and the tempo map does not change. See
+[Recording](../recording.md) for what paw makes of a MIDI file.
+
+The render dialog has these fields:
+
+| Field | Values |
+| --- | --- |
+| File | The path of the rendered file. The `…` button opens a file dialog. |
+| Range | The song, the loop, the selection or a region. |
+| Format | WAV, FLAC. With ffmpeg installed, also MP3, Ogg and Opus. These have a quality (Low, Medium, High or Best) in place of the sample size and the dither. |
+| Sample size, tail, normalize, dither, mono, a file for each track | As `:render` takes them. |
+| Tags | Title, artist, album, track, year, genre, comment and cover. The project keeps them. |
+
+The render runs in the background. The status line shows its progress and
+a Cancel button.
+
+## File dialogs
+
+When the window started its kernel, the two use the same disk. Then Open…,
+Save as…, Import and the `…` button of the render dialog show the desktop's
+file dialog. The window asks for it through the XDG desktop portal
+(`org.freedesktop.portal.FileChooser` over D-Bus) and links no toolkit.
+
+- The dialog offers projects, MIDI files, sound files and all files.
+- It starts in the directory of the last file selected, else beside the
+  project. The list picker of the kernel starts there too.
+- The window continues to work while the dialog is open.
+
+The window uses the kernel's list picker in these conditions:
+
+- there is no portal (no session bus, a bare window manager)
+- `paw.opt.native_dialogs` is `false`
+- the window is attached with `--socket` or `--connect`.
+
+But an attached window still shows the desktop's dialog for Import. It then
+sends the selected sound file to the kernel.
+
+## Engine menu
+
+The engine menu starts with the sample rate, the block size and the
+latencies. It lists the output devices, the input devices and the block
+sizes. On an attached window, "Hear it on this machine" plays the kernel's
+sound on this machine, as `--listen-audio` does. The sound comes 0.25
+seconds late or more.
+
+## Ruler
+
+| Gesture | Effect |
+| --- | --- |
+| Click | Puts the edit cursor and the playhead there. |
+| Drag in the top half | Loops the dragged range. |
+| Drag in the bottom half | Moves the edit cursor and the playhead to where the drag stops. |
+| Drag an edge of the loop | Changes the loop. |
+| Double-click | Starts or stops the loop. |
+| Drag an end of the punch range | Moves it. Hold `Shift` to move off the grid. |
+| Drag a tempo flag (`96`) or a signature flag (`6/8`) | Moves the change. |
+| Double-click a flag | Opens a prompt for a new value. |
+| Right-click a flag | Removes the change. |
+
+The ruler numbers the bars by the tempo map. The punch range is the line
+under the band of the loop: red when punch is on, gray when it is off. The
+timeline menu sets the punch range from the selection or from the loop, and
+starts and stops punch.
+
+## Tempo lane
+
+The tempo lane is a row under the ruler that shows the tempo map as a
+curve. A change that holds is level. A ramp slopes. The timeline menu, `zT`
+and `:tempo.lane` show and hide it. Its corner shows its range of tempos.
+
+| Gesture | Effect |
+| --- | --- |
+| Click | Adds a tempo change at the tempo of the height clicked. |
+| Hold and drag | Draws a curve of ramps. |
+| Drag a change | Moves it in time and in tempo. The first change moves only in tempo. |
+| Double-click a change | Makes it a ramp, or makes a ramp hold. |
+| Right-click a change | Removes it. |
+
+## Bands under the ruler
+
+Under the markers, each extension that adds a band has a row: for example,
+the sections of the song or the findings of the mix. A click on an entry
+does what the entry is for, for example go to the section. The status line
+tells what the click does.
+
+## Timeline
+
+| Gesture | Effect |
+| --- | --- |
+| Click on empty space | Puts the edit cursor there and clears the selection of clips. |
+| Double-click on empty space | Makes an empty MIDI clip, one bar long. |
+| Drag across empty lanes | Selects a range of time on those tracks. Then `Delete` deletes it. A right-click on it opens a menu to delete, copy, loop or mute it. |
+| Right-drag | Draws a box. The clips that it touches become selected. With `Shift`, they are added. With `Ctrl`, each one changes state. |
+| Hold the middle button | Moves the view. |
+| Right-click | Opens a menu on release, if the pointer did not move: a new clip, paste, a new track. |
+
+## Clips
+
+| Gesture | Effect |
+| --- | --- |
+| Click | Selects the clip. |
+| `Ctrl` and click | Adds the clip to the selection, or removes it. |
+| `Shift` and click | Selects the clips between this clip and the last clip selected. On one track, by time. Across tracks, the rectangle. |
+| Drag a selected clip | Moves all selected clips. They keep their positions to each other, also across tracks. They move in whole steps of the grid, so a clip off the grid keeps its distance to the grid. |
+| `Ctrl` and drag | Drops copies. |
+| `Shift` and drag | Moves off the grid. |
+| Drag an edge | Trims the clip, and the same edge of each selected clip. The start moves without a change to what plays: an audio clip starts later in its file, a MIDI clip hides the notes before its new start. When you drag the edge out again, the notes show again. |
+| `Alt` and drag an edge | Slips the contents inside the clip. |
+| `Alt`, `Shift` and drag the right edge of an audio clip | Stretches its sound to end there. See [Stretched and looped clips](../mixing.md#stretching-and-looping-clips). |
+| Drag the end of a looped clip | Makes it longer, and the loop repeats. |
+| Double-click | Opens the notes of the clip. A selection of several clips opens all of them, with the clicked one active. A clip of a kind of track with an `editor` opens in that editor. |
+| Right-click | A menu: rename, split at the pointer or at the edit cursor, glue the selected clips, repeat, mute, stretch, shift, loop, delete, and the entries of extensions. |
+
+On an audio clip:
+
+| Gesture | Effect |
+| --- | --- |
+| Drag a top corner | Changes the fade in or the fade out. The fade shows on the clip. |
+| Drag the top line | Changes the gain of the clip. Hold `Shift` for small steps. The height of the waveform follows the gain. |
+| Double-click the top band | Puts a warp marker there: a yellow line down the clip, with a handle at the top. |
+| Drag the handle of a warp marker | Moves it on the grid, and stretches the sound on each side. Hold `Shift` to move off the grid. |
+| Right-click the handle of a warp marker | Removes it. |
+
+Each gesture is one undo step. Two or more selected clips are the
+selection of visual mode. So `d`, `x`, `y`, `>`, `gc`, `J` (glue) and the
+other operators act on them. `S` splits them at the cursor. `Esc` clears
+the selection. One clip selected with a click is the clip under the cursor.
+
+## Track headers
+
+A track header shows, in this order:
+
+- the number and the name of the track
+- the switches: input, monitor, `M`, `S` and `R`. A switch that is on has its color.
+- a fader with its level in dB, and a pan knob
+- the input and the devices of the track
+- a meter for each side, with a clip light on top.
+
+A shorter row shows less. The shortest row shows only the first line. A
+kind of track from an extension shows its kind before its devices ("Vocal
+track · Kitane  ·  UTAU voice").
+
+The meters have these colors: green to −18 dB, then yellow-green, yellow,
+orange, and red from 0 dB. A thin line holds the peak for a short time. The
+clip light comes on when a level reaches 0 dB. It stays on until you click
+it, or until playback starts again.
+
+| Gesture | Effect |
+| --- | --- |
+| Click | Selects the track. |
+| Double-click | Opens a prompt for a new name. |
+| Drag up or down | Moves the track. Drop it among the tracks of a group, or under its header, to put it in the group. Drop it outside the group to remove it from the group. |
+| Drag the bottom edge | Changes the height of the track. The track keeps its height. |
+| Double-click the bottom edge | Gives the track the height of the other tracks. |
+| Press `M`, `S` or `R` and move across other tracks | Sets the switch of each track as the first one was set. |
+| `Shift` and drag the fader | Moves the fader in small steps. |
+| Double-click the fader | Sets it to 0 dB. |
+| Right-click | A menu on release: color, duplicate, bounce to audio, a new track below, delete, the groups, the VCAs, the take lanes, the automation, the templates, and the entries of extensions. |
+
+The menu of a track has entries for groups: "New group with this
+track…", "Move into a group…" and "Take out of its group" ("Dissolve the
+group" on a group). The members of
+a group show under it, one step in and in its color. Their sound goes
+through the group. The triangle beside the name of the group hides and
+shows the members.
+
+## Routing
+
+Above the devices of the selected track:
+
+| Part | Effect |
+| --- | --- |
+| Output | Selects the track that this track plays into. |
+| + Send | Adds a send to another track. |
+| Level of a send | Drag it to change the level. |
+| `pre` | Takes the send before the fader. |
+| Cross | Removes the send. |
+
+## Templates
+
+With the templates extension:
+
+| Menu | Entry | Effect |
+| --- | --- | --- |
+| A track's menu | Save as a template… | Saves the track. On a group, saves the whole group. |
+| A track's menu | Save its devices as a chain… | Saves the chain of devices. |
+| `Track`, and the timeline menu | From a template… | Makes a track from a template. |
+| A track's menu | Add devices from a template… | Puts a saved chain on the track. |
+
+## Record
+
+| Part | Effect |
+| --- | --- |
+| Record button | Starts a take on the armed tracks. With no track armed, it arms the selected track and tells so. A second click, or stop, ends the take. |
+| `R` on a track | Arms the track. |
+| Input button (the microphone) | Opens a menu of the audio inputs, MIDI ports and MIDI channels of the track. It is blue when the track has an input. The input (for example `UR22mkII · 1/2`) shows under the fader. |
+| Bar under the input button | Shows the level at the input, armed or not. |
+| Loudspeaker | Starts and stops input monitoring. |
+
+A track without an audio input records MIDI. The take shows in red and
+becomes longer while it records. With punch on, it records only in the
+punch range. With a count-in, the clock shows `count 4`, `count 3` and
+other, and the button blinks on the beats until the take starts. The
+timeline menu starts and stops the count-in, and a pre-roll of two bars
+before a punch.
+
+## Take lanes
+
+A track's menu, a clip's Takes menu or `zt` shows the takes of a track as
+lanes under its clips.
+
+| Gesture | Effect |
+| --- | --- |
+| Drag across lane k | Take k plays over that range, on the grid. Hold `Shift` to move off the grid. The clips are cut at its ends. Adjacent pieces of the same take join again. It is one undo step. |
+| Click on lane k | Gives the piece under the pointer take k. |
+| Right-click | Hides the lanes. |
+
+The mouse of the terminal does the same (see [the terminal](../terminal.md)).
+
+## Automation
+
+With Automation on, each track shows one lane over the timeline. The name
+of the lane is at its left. The last line of the track header selects the
+lane: volume, pan, or a parameter.
+
+| Gesture | Effect |
+| --- | --- |
+| Click | Adds a point. |
+| Hold and drag | Draws a curve. |
+| Drag a point | Moves it. |
+| Right-click a point | Removes it. |
+| Right-click elsewhere | A menu to clear the lane or to stop it. |
+| Curve button beside a parameter of a device | Gives the parameter a lane and shows the lane. |
+| Right-click the name of a parameter | A menu to automate it (a lane with a point at its value, at the cursor), or to edit its curve in the curve editor. The curve editor opens in a pane split from the pane that has the keyboard. |
+
+A track's menu has Automation ▸ Show or hide the lanes as rows. Then each
+lane of the track is a row under its clips, always ready for points. The
+gestures on these rows are the gestures above. The clips above stay
+editable. A track with no lane gets a lane for its fader. The same menu,
+and the `A` flag on the header, set the automation mode of the track.
+
+## Session view
+
+| Gesture | Effect |
+| --- | --- |
+| Click the play mark of a slot | Launches the slot. For a gate clip, the release stops it. |
+| Click a slot | Selects it. |
+| Double-click a slot | Opens its notes. An empty slot gets a new MIDI clip first. |
+| Drag a slot to another slot | Moves the clip. With `Ctrl`, copies it. |
+| Drag a clip from the timeline to a slot | Copies the clip there. |
+| Click the dot of an empty slot | Records into the slot. |
+| Click a scene at the right | Launches its row. |
+| Bar along the top | Sets the quantize, captures, returns all tracks to the arrangement, and stops all clips. |
+
+See [Live performance](../live.md).
+
+## Mixer
+
+The mixer is the terminal's mixer, laid out in cells of the window's
+monospace font. Each track has a strip, the VCAs follow the tracks, and the
+master is the last strip. A strip shows:
+
+- the name of the track on a plate in its color
+- the track it plays into
+- its first four devices and its sends, when the mixer is tall enough
+- the meters and the clip light, beside a fader with its scale
+- the peak, the level and the pan
+- the switches `M`, `S`, `R` and `I`.
+
+The window paints the faders, the switches, the meters, the peaks and the
+clip lights as widgets (the roles of [About
+scenes](../explanation/about-scenes.md)). A fader cap can be at any point
+along its travel. The live values move the meters, the peaks and the clip
+lights 30 times a second, with no new scene. The pointer uses the hit
+regions of the terminal, in fractions of a cell, so a fader moves smoothly.
+
+| Gesture | Effect |
+| --- | --- |
+| Drag a fader up or down | Changes the level. Hold `Shift` for small steps. |
+| Drag the level sideways | Changes the level. |
+| Click or drag along the pan | Changes the pan. |
+| Double-click a fader or a pan | Sets 0 dB or the center. |
+| Wheel | Moves the fader. With `Shift`, scrolls the strips. |
+| Click a device | Shows it in the device panel. |
+| Click the output | Opens a menu of outputs. |
+| Drag a send | Changes its level. |
+| Click `M`, `S`, `R` or `I` | Changes the switch. |
+| Click the peak or the clip light | Clears the clip light. |
+| Right-click a strip | Opens the menu of the track. |
+
+The menus of a strip and of a track header have entries for VCAs. They
+make a VCA with the track, put the track under a VCA, or remove it from
+its VCA.
+
+When the mixer has the keyboard, its strip shows the row of its cursor, as
+in the terminal.
+
+## Device panel
+
+| Gesture | Effect |
+| --- | --- |
+| Type in the box | Finds a device or a plugin by part of its name. |
+| `Enter`, or a click on a result | Adds the device. |
+| `Esc` | Releases the box. |
+| Drag a parameter | Changes it. |
+| Wheel over a parameter | Changes it in small steps. |
+| Double-click a parameter | Sets it to its default. |
+| Power button | Disables or enables the device. |
+| Arrows | Move the device along the chain. |
+| Window button | Opens the plugin's own editor. |
+
+## Piano roll
+
+The piano roll is the kernel's piano roll, drawn from the same scene as in
+the terminal. Its grid is a plane of beats and pitches. The window paints
+the notes where they are, between cells, in the colors of their tracks.
+The pointer uses the hit regions and gestures of the terminal's mouse, in
+fractions of a cell. The mouse works as in REAPER's MIDI editor.
+
+Notes:
+
+| Gesture | Effect |
+| --- | --- |
+| Drag on empty grid | Draws a note from where the press starts to where the drag stops. |
+| Click on empty grid | Draws a note of the note length on the tools row. To draw or stretch a note sets that length. |
+| `Shift` while you draw, move or stretch | Moves off the grid. |
+| Click a note | Selects it. |
+| `Shift` or `Ctrl` and click a note | Adds it to the selection, or removes it. |
+| Drag a note | Moves it and the other selected notes. With `Ctrl`, drops copies. A copy of the note follows the pointer. |
+| Drag an end of a note | Changes the start or the end of all selected notes. |
+| Right-drag, or `Ctrl` and drag | Selects the notes that the box touches. With `Shift`, adds them. With `Ctrl`, each one changes state. |
+| Right-click a note | Removes it. |
+| Right-click empty grid | A menu: select all, clear the selection, delete, quantize, snap. |
+| Double-click a note | Removes it. |
+| `Alt` and drag | Erases each note that the pointer crosses. |
+
+While you drag, the status line shows the name, the position and the
+length of the note.
+
+The keyboard and the view:
+
+| Gesture | Effect |
+| --- | --- |
+| Click or drag on the keyboard | Plays the key under the pointer. |
+| Right-drag on the keyboard | Selects the notes in that range of pitches. |
+| Wheel | Scrolls the pitches. With `Shift`, scrolls in time. |
+| `Ctrl` and wheel | Zooms in time at the pointer. |
+| Middle button | Moves the view. |
+| Scroll bar at the right of the grid | Scrolls the pitches, in a wide roll. |
+| Click on the ruler | Moves the playhead. |
+
+| Key | Effect |
+| --- | --- |
+| `Ctrl-a` (in the window), `gA` | Selects all notes. |
+| `x`, `Delete` | Remove the selected notes. |
+| `Esc` | Clears the selection. |
+
+The strip under the roll shows the velocities. Its name at its left (Vel ▾)
+selects what it shows: velocities, or a controller (pitch wheel,
+modulation, expression, pedal).
+
+| Gesture | Effect |
+| --- | --- |
+| Drag across the velocity bars | Sets the velocities. If notes are selected, only theirs. |
+| Hold and drag on a controller | Draws moves. |
+| Right-drag on a controller | Draws a straight line of moves. |
+| Click the head of a move | Selects it. With `Ctrl`, adds it or removes it. |
+| `Ctrl` and drag | Selects the moves in a box. |
+| Drag a selected head | Moves the selected moves. |
+| `Delete` | Removes the selected moves. |
+| Right-click | A menu: select all, clear the selection, delete, clear. |
+
+The tools are at the right of the title row of the roll. A roll can be
+narrower than 140 columns and 20 rows tall or more. Then the tools are on
+a row of their own under the title, in the terminal too. Before them, the row shows
+the selection, or what insert mode draws. The tools are, in order:
+
+| Tool | Effect |
+| --- | --- |
+| grid | A menu of grid sizes. |
+| note length | A menu of note lengths. |
+| snap | Starts or stops the snap to the grid. |
+| quantize | Quantizes the selected notes, or all notes (`:notes.quantize`). |
+| step | Step input (`:notes.step_input`): with the transport stopped, notes played on a MIDI keyboard go in at the cursor, chords together, and the cursor moves on. |
+| list | The event list: each note and move of the clip as a row to change in place. See [Edit, mix and render](../mixing.md). |
+| Suggest, and other switches of modules | Start and stop the suggestions of a completion source. |
+| tracks | `:roll.tracks`: each track near the roll, to show or hide its notes, and its clips, to edit them together. |
+| zoom | A menu of zooms. |
+| Window | Moves the roll into a window of its own. |
+| x | Closes the roll. |
+
+Above the ruler, a row shows the names of the chords that sound over all
+pitched tracks (`paw.opt.chords`: names, Roman numerals, both, or off). See
+[Harmony, completion and snippets](../harmony.md). The ruler counts bars
+and beats. A dot on the keyboard shows the keys that sound at the cursor.
+The title shows the name of the chord.
+
+Notes of the other clips of the track, and of other pitched tracks, show
+behind as dashed lines in their colors. The layers that extensions add
+(articulations, the notes of a snippet, the ghosts of a suggestion and its
+badge, the outline of the notation) show as in the terminal.
+
+Several clips:
+
+| Gesture | Effect |
+| --- | --- |
+| Click a note of another track | Makes its clip the active clip. New notes go there. |
+| `Ctrl` and click a note of another track | Adds its clip to the edited clips, or removes it. |
+| Double-click one of several selected clips in the timeline | Opens all of them, that one active. |
+
+With several clips edited, each clip's notes have the color of its track.
+A click, a box, a drag, `Delete`, the velocity strip and the keys reach the
+notes of all of them. Each note stays in its clip. Each edit is one undo
+step.
+
+Suggestions, with a completion source loaded (see
+[Harmony, completion and snippets](../harmony.md)):
+
+| Key | Effect |
+| --- | --- |
+| Suggest on the tools row | Suggestions come by themselves after a pause. |
+| `Ctrl-Space` | Asks for a suggestion. |
+| `Tab` | Accepts the suggestion. A click on the badge does the same. |
+| `Alt-1` … `Alt-9` | Shows another suggestion. |
+| `Esc` | Dismisses the suggestion. |
+
+## Wheel and zoom
+
+| Gesture | Effect |
+| --- | --- |
+| Wheel | Scrolls. |
+| `Shift` and wheel | Scrolls sideways. |
+| `Ctrl` and wheel | Zooms in time at the pointer, in the timeline and in the piano roll. Over the track headers, it makes all tracks taller or shorter. |
+| `Alt` and wheel | Makes the tracks taller or shorter. |
+| `−`, `+` in the corner of the timeline (`Ctrl -`, `Ctrl +`) | Zoom in time. |
+| `Fit` (`Ctrl 0`) | Shows the whole song. |
+| Arrows in the corner (`Ctrl ↑`, `Ctrl ↓`) | Change the height of the tracks, from one line to tall. |
+
+After a zoom, the window draws the waveforms again at their new width.
+
+## Sound files and MIDI files
+
+| Gesture | Effect |
+| --- | --- |
+| `Track` → "From a sound file…", or "Import a sound or MIDI file…" in the timeline menu | Opens a list of files. Type to make the list shorter. `Enter` opens a directory. A wav, aiff, flac, mp3 or ogg file goes on a new track at the cursor. |
+| `:import path` | Does the same. |
+| `paw-gui take.mp3` | Starts a project with the file. |
+
+## Drops
+
+On X11, you can drag files from a file manager into the window:
+
+| File | Result |
+| --- | --- |
+| A sound file | A new track for each file, with the clip at the edit cursor. |
+| A MIDI file | Its tracks, as `:import` puts them. |
+| A project (`.json`) | Opens it, after the question about changes that are not saved. |
+| Other files | The status line tells that it did not take them. |
+
+The window does not know the position of the pointer at a drop, because
+winit 0.30 does not tell it. With this version of winit, Wayland sends no
+drops. A window can be attached to a kernel that it did not start. Then
+it first sends the sound files and MIDI files to the kernel, into the
+media folder of its project. It sends no other files.
+
+## Pages over the window
+
+A picker (commands, files, devices) shows over the window.
+
+| Gesture | Effect |
+| --- | --- |
+| Click a row | Selects it. |
+| Double-click a row, or `Enter` | Accepts the row. |
+| Wheel | Scrolls. |
+| Click outside the page | Closes it. |
+| "Open in a window" at its top right | Moves the page into a window of its own, in its colors. |
+
+## Keys
+
+All keys go to the key mappings of the kernel. So the window has the
+modes, operators, registers and macros of the terminal. The status line
+shows:
+
+- the mode, and the view that has the keys (`NORMAL·mixer`)
+- the prompt, messages and keys typed so far
+- the important keys of the view that has the keyboard (the key bar of the terminal, `paw.opt.keybar`)
+- the count of the quickfix list (`qf E1 W2`), in the color of the worst entry.
+
+While you type a command, a list above the status line shows what the
+command can become, with a description of each. `Tab` and `Shift-Tab` move
+through it. `Up` and `Down` move through the history. A message stays until
+the next key, a change of mode, or for `paw.opt.message_time`.
+
+The window shows the selection, the two cursors, the list of the keys that
+can come next, and help and other pages over the window. A page such as
+the list of commands is as wide as the window. `Ctrl-z`, `Ctrl-y`, `Ctrl-s`
+and `Delete` do what they do in the terminal. When the piano roll or the
+mixer opens, it gets the keyboard.
+
+`:help` opens the manual in a pane, split as in the terminal. `gw` or
+`:textbuf.window` moves it into a window of its own. The keys are the keys
+of help in [the terminal](../terminal.md).
+
+## Panes and tabs
+
+The window shows the tabs and windows of the kernel, as the terminal does
+(see [Windows, buffers and tabs](../terminal.md#windows-buffers-and-tabs)).
+Each window of the current tab is a pane of the main area, laid out by
+the same rules. A size in cells is that number of cells of the monospace
+font, in pixels. A pane is never smaller than the window's own drawing of
+its view needs.
+
+| View | How the window draws it |
+| --- | --- |
+| The arrange view, the device panel, the session view | The window's own drawing. |
+| The mixer, the piano roll, the drum grid | From the scene. The window paints the roles (faders, meters, switches, buttons, notes) as widgets. |
+| A view that paints (the notation, the vocal editor, the undo tree) | From the scene, as a picture. |
+| Any other buffer (a curve `paw://lane/3`, the quickfix list, a text buffer `paw://tracks`, an empty window) | From the scene, cell by cell in the monospace font, as the terminal draws it. |
+
+A pane drawn from its scene has the window's own title. Its buttons move
+the pane into a window of its own, or close it. The title row of the
+terminal is hidden under it. What a view draws over a role (the
+articulation of a note, the cursor, the selection) shows over it, as in
+the terminal. A menu that the view opens (a right-click) shows as a menu
+of the window. An idle pane does no work.
+
+So these keys and commands do in the window what they do in the terminal.
+
+`:vs paw://lane/3`, `Enter` on a lane row, `:copen`, `:sp quickfix`,
+`:e paw://tracks`, `Ctrl-w` and its keys, `:q`, `:only`, `:tabnew mixer`,
+`gt`, `:layout edit`.
+
+| Gesture | Effect |
+| --- | --- |
+| Press in a pane | Gives the pane the keyboard. A ring in the color of the selection shows that pane, when there is more than one pane. |
+| Drag a border between panes | Shares the space. The panes keep a size of whole cells, as `Ctrl-w +` does. |
+| Click a tab | Goes to the tab. The row of tabs shows when there is more than one tab. |
+
+Each attached window has its own tabs and windows. When a window first
+shows its main area, the kernel puts the device panel beside the arrange
+view.
+
+A tab narrowed to a group (`:narrow Strings`, `zn`, see
+[Edit, mix and render](../mixing.md#mixing-midi-and-rendering-in-the-core))
+has the name of the group in the row of tabs. Its panes show only the
+tracks of the group: the timeline, the mixer and the device panel take
+their rows from `paw.groups.rows()`.
+
+## Views in windows of their own
+
+A view can move into a window of its own:
+
+- `:view.window undotree`. Without a name, the focused view, or the page over the other views.
+- `Ctrl-w f` in a curve, `gw` in a text buffer.
+- The button on the title of a pane drawn from its scene.
+- "Open in a window" on a page over the window.
+
+The window opens over the center of the main window. It shows the view
+under a title with a Dock button. Its status line shows the mode, then a
+prompt, a message, or the keys of the view. A view in a pane leaves the
+pane while it is in a window. The window has the keyboard while it is in
+front.
+
+| Action | Result |
+| --- | --- |
+| The close button, the Dock button, or `Ctrl-w d` (`:view.dock`) | The view returns to the main window as a pane: where it was, else where it docks, else split from the window that has the keyboard. That pane gets the keyboard. |
+| `:q`, or the view's own `q` | Closes the view. The keyboard returns to the main window, to the pane that had it. |
+| `Esc` | Stays in the view. |
+| A key typed in the main window | The keyboard returns to the main window. |
+
+The kernel draws the view at the size of the window, in cells of
+JetBrains Mono. It uses the theme's colors in 24 bits. The
+size of a cell comes from the font, so box-drawing characters join.
+
+Keys go to the view's mappings with the view focused. A prompt that the view
+opens shows there. The pointer goes to the view's `on_mouse` in cells,
+as from a terminal: down, up, drag, scroll. The kernel draws the view again
+only when a redraw is necessary and the view changed, at most 30 times a
+second.
+
+The font has no braille. So the window draws each braille character
+(U+2800 to U+28FF) as small squares, in two columns and four rows of dots.
+The font has no sextants (U+1FB00 to U+1FB3B, the default for curves).
+So the window draws each one as up to six rectangles, each a half cell
+by a third. `paw.opt.curve_glyphs` selects the characters, and
+`paw.opt.braille` off draws lines.
+
+A terminal attached to the same kernel does not change: the view is drawn
+on a grid of its own (`paw.api.ui_view_snapshot`).
+
+## Status line
+
+The status line of the window is its own. It shows the mode, the prompt,
+messages and keys. `paw.statusline.setup` (see
+[Configuration](../configuration.md#the-status-line)) sets
+`modal.statusline` in `frontend.state`, but the window does not draw it.
+The terminal draws it. The extra sections of the tab line, and
+`tabline.always`, are also for the terminal only.

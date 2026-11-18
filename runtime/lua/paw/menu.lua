@@ -68,8 +68,18 @@ function M.open(items, opts)
   if #items == 0 then return end
   if #open.levels == 0 then open.grabber = paw.ui.grabber end
   open.levels = {}
+  open.count = (open.count or 0) + 1
   paw.ui.grabber = on_key
   push(items, opts.x or 0, opts.y or 0)
+end
+
+--- The menu open, for a frontend that shows it in its own way (a window,
+--- for a menu a gesture in one of its panes opened): its entries, and how
+--- many menus were opened, which tells a new one from the one shown. Nil
+--- when none is open.
+function M.shown()
+  local first = open.levels[1]
+  if first then return first.items, open.count end
 end
 
 --- Choose entry `index` of level `at`: a submenu opens beside it, anything

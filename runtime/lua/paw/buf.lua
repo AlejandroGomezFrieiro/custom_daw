@@ -7,6 +7,7 @@
 --   buf:strip(x, y, w, h, opts)        keep an area for pixels a function draws
 --   buf:mark(role, x, y, w, h, props)  a role there: a fader, a button (paw/roles.lua)
 --   buf:hit(x, y, w, h, action)        a region the pointer acts on
+--   buf:plane(x, y, w, h, opts)        an area placing what is marked in it by a domain (beats, pitches)
 --   buf:columns(widths, gap)           buffers side by side, a width each
 --   buf.width, buf.height
 --
@@ -84,6 +85,18 @@ end
 --- the view's gesture for `action.kind` (paw/roles.lua), in either frontend.
 function Buf:hit(x, y, w, h, action)
   paw.roles.hit(self, x, y, w, h, action)
+end
+
+--- A plane over an area (paw/roles.lua, "Planes"): what is marked in it is
+--- placed by a domain of its own along each axis, `opts.x` and `opts.y`
+--- (`{ domain, from, per }`: `per` cells a unit of the domain, `from` at
+--- the area's edge); a terminal shows it on the cells it rounds to, a
+--- window where it is.
+---   local roll = buf:plane(5, 2, 60, 20, { key = "roll", x = { domain = "beat", from = 0, per = 4 },
+---     y = { domain = "pitch", from = 73, per = -1 }, hit = { kind = "grid" } })
+---   roll:mark("note", 1.5, 60, 0.5, 1, { label = "C4" })
+function Buf:plane(x, y, w, h, opts)
+  return paw.roles.plane(self, x, y, w, h, opts)
 end
 
 --- Buffers side by side across this one, a width each from the left with

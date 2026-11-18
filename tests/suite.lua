@@ -1569,6 +1569,21 @@ local function melody(clip)
   return table.concat(notes, " ")
 end
 
+--- The notes of the piano roll as a window that paints them is sent them:
+--- the scene's `note` roles, in drawing order.
+local function roll_notes()
+  api.scene_forget(0)
+  api.scene_roles(0, { "note" })
+  paw.ui.render_scene("pianoroll", 120, 40, { w = 8, h = 16 })
+  local patch = api.json_decode(api.scene_end(0, "roll_notes"))
+  api.scene_forget(0)
+  local out = {}
+  for _, n in ipairs(patch.set) do
+    if n.role == "note" then out[#out + 1] = n end
+  end
+  return out
+end
+
 --- Type keys as one undo step.
 local function keys(text)
   paw.keymap.feed(text)
@@ -2286,7 +2301,7 @@ test("the vocal editor paints itself in a pane and is worked with the pointer", 
   paw.frontend.act.open_clip(clip.id)
   eq(#paw.frontend.state(-1).modal.windows, 0, "a double click on a vocal clip opens the vocal editor docked, in no window of its own")
   eq(paw.ui.visible("utau") and paw.ui.focused, "utau", "with the keyboard")
-  eq(paw.frontend.state(-1).modal.roll, nil, "and not the piano roll")
+  eq(paw.ui.visible("pianoroll"), false, "and not the piano roll")
   local first = clip:notes()[1].meta.lyric
   eq(texts():find(first, 1, true) ~= nil, true, "the notes are painted with their lyrics")
   eq(texts():find("Notes", 1, true) ~= nil and texts():find("Pitch", 1, true) ~= nil, true, "with a toolbar")
@@ -2827,6 +2842,7 @@ local T = {
   test = test, last = last, after = after, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
   scratch = scratch, read_file = read_file, write_file = write_file, frequency = frequency,
   channel_peaks = channel_peaks, three_clips = three_clips, layout = layout, melody = melody, keys = keys,
+  roll_notes = roll_notes,
 }
 local files = {}
 for _, entry in ipairs(api.read_dir("tests")) do
