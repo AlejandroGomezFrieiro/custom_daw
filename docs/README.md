@@ -8,6 +8,12 @@ each extension (`:help notation`).
 
 ## Tutorials
 
+- [Make music with paw](tutorials/make-music/README.md): five lessons that make one song, from the first note to an MP3 file
+  - [Your first song](tutorials/make-music/01-first-song.md): drums, a bass and chords in a loop of four bars
+  - [Play a synth from a MIDI keyboard](tutorials/make-music/02-play-a-midi-keyboard.md): play live, record over the loop, quantize
+  - [Record a guitar](tutorials/make-music/03-record-a-guitar.md): an amp chain, two takes, the best parts, a fade
+  - [Arrange the song](tutorials/make-music/04-arrange-the-song.md): verse and chorus, markers, the tempo, find a part
+  - [Mix and render the song](tutorials/make-music/05-mix-and-render.md): levels, pan, effects, a send, automation, WAV and MP3
 - [The course](tutorials/course/README.md): seventeen short lessons for your first days with paw, also inside paw as `:tutor`
 
 ## How-to guides
