@@ -21,19 +21,38 @@ writers of extensions come after them.
 ### Install and configure
 
 - [How to install paw with Nix](how-to/install-paw.md): the package, without the dev shell
+- [How to start paw the first time and hear sound](how-to/start-paw-and-hear-sound.md): `paw doctor`, `:checkhealth`, a test tone
 - [How to choose the audio devices](how-to/choose-audio-devices.md): in paw, at the start, in `init.lua`
+- [How to lower the latency](how-to/lower-the-latency.md): the block size, and what to change when the sound crackles
+- [How to connect a MIDI keyboard](how-to/connect-a-midi-keyboard.md): check that paw sees it, and play an instrument
+- [How to use your own plugins](how-to/use-your-own-plugins.md): CLAP, VST3, LV2, where paw looks, Windows plugins through yabridge
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 - [How to work on paw from another computer](how-to/work-from-another-computer.md): attach over the network or SSH, send files, hear the sound
 
 ### Tracks and instruments
 
+- [How to add a track with a virtual instrument](how-to/add-an-instrument-track.md): the built-in synth, a plugin, a preset
+- [How to add an audio track for a microphone or a guitar](how-to/add-an-audio-track.md): the input, the monitor, an amp
+- [How to name, color, reorder and group tracks](how-to/organize-tracks.md): groups are folders and buses
+- [How to change the sound of an instrument](how-to/change-the-sound-of-an-instrument.md): parameters, presets, the editor of the plugin
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
 - [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
 
 ### Edit and arrange
 
+- [How to move, copy, split and trim clips](how-to/move-copy-split-and-trim-clips.md)
+- [How to change the velocity, length and pitch of notes, and quantize them](how-to/edit-notes.md)
+- [How to loop a part of the song while you work](how-to/loop-a-part-of-the-song.md)
+- [How to change the tempo and the time signature](how-to/change-the-tempo-and-time-signature.md): also in the middle of the song
+- [How to undo, and return to an earlier state](how-to/undo-and-return-to-an-earlier-state.md): the undo tree
 - [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
 - [How to work on one group of a large project](how-to/work-on-one-group.md)
+
+### Find things
+
+- [How to find a command or a key you forgot](how-to/find-a-command-or-a-key.md)
+- [How to find a track, a clip or a marker by name](how-to/find-a-track-clip-or-marker.md)
+- [How to search the project and go through the results](how-to/search-the-project.md): `:vimgrep`, notes, queries, the quickfix list
 
 ### Record
 
