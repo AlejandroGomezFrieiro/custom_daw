@@ -6538,6 +6538,8 @@ function paw.takes.choose_at(track, take, beat) end
 --- it joins again the adjacent pieces that play the same take, where that
 --- is exact (`M.join_pieces`). Clips without takes do not change. Returns
 --- the number of pieces that got the take, or 0 when no clip there has it.
+--- A piece named after its recording or its take is named after the take
+--- that it plays.
 ---@param track any
 ---@param take any
 ---@param from any
@@ -6582,6 +6584,12 @@ function paw.takes.lane_count(track) end
 --- True if a track shows its take lanes.
 ---@param track any
 function paw.takes.lanes_shown(track) end
+
+--- Whether a clip's name is not its own but its takes': the name of the
+--- take that plays, or of the recording ("take 1" for "take 1.2").
+---@param c any
+---@param takes any
+function paw.takes.named_by_take(c, takes) end
 
 --- Keep the sound of the clip as a take, and continue in a copy of it. The
 --- copy becomes the take that plays. Use it to try a variation. Returns its number.

@@ -229,6 +229,8 @@ test("make music 3: a guitar through an amp chain is recorded in two takes and c
   eq(paw.takes.count(clips[2]), 2, "each piece keeps both takes")
   eq(clips[1].meta.takes.active, 2, "bar 1 plays take 2")
   eq(clips[2].meta.takes.active, 1, "bar 2 plays take 1")
+  eq(clips[1].name:match("%.2$") ~= nil and clips[2].name:match("%.1$") ~= nil, true,
+    "each piece is named after the take it plays: " .. clips[1].name .. ", " .. clips[2].name)
   eq(listen() > 0.01, true, "the comp plays")
 
   step("0", "w", ":clip.fade out=2<CR>")
