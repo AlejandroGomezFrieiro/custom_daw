@@ -1,5 +1,5 @@
 -- Tests of stretched, pitch-shifted, tempo-following and looped clips
--- (`paw.stretch`, docs/mixing.md, "Stretching and looping clips"). Loaded by
+-- (`paw.stretch`, docs/reference/stretch.md). Loaded by
 -- tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fails, fresh, render = T.test, T.eq, T.near, T.fails, T.fresh, T.render

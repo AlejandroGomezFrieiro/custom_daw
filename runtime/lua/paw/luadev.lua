@@ -1,5 +1,4 @@
--- `paw.luadev`: devices written in Lua (see "Writing a device in Lua" in
--- docs/devices.md). Scripts are `.lua` files in `devices` in the
+-- `paw.luadev`: devices written in Lua (see docs/reference/lua-devices.md). Scripts are `.lua` files in `devices` in the
 -- configuration directory and in each extension, and show among the devices
 -- as `lua:<file name>`. A script that changes on the disk is loaded again,
 -- and devices made from it start again with their parameters as they were.

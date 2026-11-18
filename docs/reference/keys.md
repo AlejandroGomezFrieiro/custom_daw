@@ -165,7 +165,7 @@ setting), `<A-j>` `<A-k>` reorder, `gS` the track the device listens to
 | `<C-n>` `<C-p>` | the choice's next value, the one before, written again in the same undo step |
 | `<C-y>` `<Esc>` | done with the snippet |
 
-See [Harmony, completion and snippets](../harmony.md).
+See [Snippets](snippets.md) and [Completion](completion.md).
 
 ## Take a suggestion (piano roll, normal and insert mode)
 

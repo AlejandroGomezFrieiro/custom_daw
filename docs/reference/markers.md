@@ -1,0 +1,47 @@
+# Markers and regions
+
+<!-- tags: markers regions -->
+
+A marker is a named place in the song. A region is a named time range.
+They are on a second row of the ruler (a band of their own in the
+graphical window). They move with the beats when the tempo changes, and
+the project saves them. The module is `paw.markers`.
+
+## Keys and commands
+
+| Keys, command | Effect |
+| --- | --- |
+| `g'`, `:marker Chorus` | Put a marker at the cursor. |
+| `:region Verse` | Make a region over the selection, or over the loop. |
+| `]'` `['` | Go to the next start of a marker or region, or the one before. These are motions: `d]'`. |
+| `g"`, `:marker.list` | List all markers and regions. Select one to go there. |
+| `:marker.goto 3`, `:marker.goto Chorus` | Go to a marker by number or by name. |
+| `:marker.rename Bridge` | Rename the marker at the cursor. |
+| `:marker.move` | Move the marker at the cursor. |
+| `:marker.remove` | Remove the marker at the cursor. |
+| `:region.loop Verse` | Loop a region. |
+| `:render.regions out` | Render each region to a file of its own: `01 Intro.wav`, and the next files. |
+
+A region is also a range for `:render`: `:render out.wav range=Verse`
+(see [Render](render.md)).
+
+## Graphical window
+
+| Gesture | Effect |
+| --- | --- |
+| Right click on the timeline | Put a marker there, or make a region over the selection or the loop. |
+| Click a marker | Go to it. |
+| Drag a marker | Move it. |
+| The menu of a marker | Rename or remove it. Loop a region. |
+
+## Lua
+
+| Function | Effect |
+| --- | --- |
+| `paw.markers.add(16, "Chorus")` | Add a marker at beat 16. |
+| `paw.markers.add(0, "Intro", { length = 16 })` | Add a region of 16 beats. |
+| `paw.markers.list()` | All markers and regions. |
+| `paw.markers.find("Chorus")` | A marker by name. |
+| `paw.markers.set(id, { beat = 24 })` | Change a marker. |
+| `paw.markers.remove(id)` | Remove a marker. |
+| `paw.markers.render_regions(dir, opts)` | Render each region. |

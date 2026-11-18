@@ -12,7 +12,7 @@ Make paw fit your music, not the other way around. A small Rust kernel plays
 the sound, keeps the project and hosts plugins; everything you touch, every
 view, command and key, is Lua that your own configuration can change. Extend
 it with [your `init.lua`](docs/configuration.md), [extensions](#extensions),
-[devices written in Lua](docs/devices.md#writing-a-device-in-lua) and
+[devices written in Lua](docs/reference/lua-devices.md) and
 [kinds of track](docs/extensions.md#everything-an-extension-can-own), and
 package them for Nix or share them as a git repository.
 
@@ -107,7 +107,7 @@ not for the size of its feature list.
   place sounds by editing lines), and `:Pdiff` / git drivers that diff and
   merge projects.
 - **Live and remote.** Clips launched on the bar in scenes
-  ([live](docs/live.md)); a terminal or a window attached to an instance on
+  ([the session view](docs/reference/session-view.md)); a terminal or a window attached to an instance on
   another machine over TLS ([running](docs/running.md#on-another-machine)).
 
 ## A tour

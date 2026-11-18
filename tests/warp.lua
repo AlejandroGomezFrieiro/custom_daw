@@ -1,6 +1,6 @@
 -- Tests of stretched sound made as it plays, warp markers, clips bent along
--- the tempo and formants kept (`paw.stretch`, docs/mixing.md, "Stretching
--- and looping clips"). Loaded by tests/suite.lua with its helpers.
+-- the tempo and formants kept (`paw.stretch`,
+-- docs/reference/stretch.md). Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fails, fresh, render = T.test, T.eq, T.near, T.fails, T.fresh, T.render
 local api = paw.api

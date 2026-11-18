@@ -115,7 +115,7 @@ while playing or recording, or with `Ctrl-Space`. `Tab` accepts all of it,
 `Ctrl-l` its next note or chord, `Ctrl-n` `Ctrl-p` and `Alt-1` to `Alt-9`
 show the other alternatives, `gh` plays it from a bar before, `Ctrl-e` or
 `Esc` dismiss it; in insert mode the first `Esc` dismisses and the second
-leaves insert mode. See [harmony.md](harmony.md).
+leaves insert mode. See [Completion](reference/completion.md).
 
 | Keys | Also in the arrange view |
 | --- | --- |
@@ -256,7 +256,7 @@ have their names on the keyboard, and `K` says them too.
 Over the ruler a row names the chords that sound, read over every pitched
 track, with the key on the left (`paw.opt.chords`); `Ctrl-s` writes a
 snippet such as the dominant of the next chord, and `Tab`, `Ctrl-n` step
-through its choices (see [Harmony, completion and snippets](harmony.md)).
+through its choices (see [Harmony](reference/harmony.md) and [Snippets](reference/snippets.md)).
 
 Behind the clip's notes the piano roll shows the notes of other tracks that
 sound at the same time, so the harmony can be seen where it is written:
@@ -336,14 +336,14 @@ With room, the row under a strip's name says where the track plays into
 (`→ Master`, `→ Drum bus`; a click there or `:track.output` chooses), and four rows
 name its first devices, the last counting those after (`+2 more`); with
 less, one row counts the devices and sends. VCAs (see
-[Mixing](mixing.md)) have strips after the tracks: `,vn` makes one over the
+[Routing](reference/routing.md#vcas)) have strips after the tracks: `,vn` makes one over the
 selected tracks, `,va` puts them under one, `,vr` takes them out, `,vx` takes
 one away, and `,vl` links the faders of a group.
 
 <!-- tags: session-view -->
 `,l` shows the session view, the clip launcher: a column of slots under
 each track and a scene for each row, launched with `<CR>` and `L`; its keys
-are in [Live performance](live.md).
+are in [The session view](reference/session-view.md).
 
 ## Keys: one grammar
 
@@ -600,7 +600,7 @@ left and above).
 | `:resize 20` `:resize +5`, `:vertical resize 40` | the window's height, its width |
 | `:tabnew Mix`, `:tabnew mixer`, `gt` `gT`, `:tabn 2`, `Ctrl-w T` | a new tab named Mix, or showing the mixer; next and previous tab; tab 2; the window to a tab of its own |
 | `:tabclose`, `:tabs` | close the tab; list the tabs and their windows |
-| `:narrow Strings` `zn`, `:widen` `zw` | a tab of one group's tracks alone, the windows as in this one (`zn`: the group at the cursor); close it and go back (see [Narrowing to a group](mixing.md#mixing-midi-and-rendering-in-the-core)) |
+| `:narrow Strings` `zn`, `:widen` `zw` | a tab of one group's tracks alone, the windows as in this one (`zn`: the group at the cursor); close it and go back (see [Narrowed tabs](reference/narrowing.md)) |
 | `:view.open undotree` | show a view where it docks, else in a window split from this one (the graphical frontend's More) |
 | `:setlocal timebind` | bind this window's time to the other bound windows' |
 | `:layout save edit`, `:layout edit` | keep the tabs and windows as they are; put them back |
@@ -758,7 +758,7 @@ partway puts back what it had done. Undoing a write in the project's history
 does not undo files: take a deleted file back from the trash.
 
 `:media.unused` lists the sound files in the project's media folder that no
-clip plays, to delete with `dd` and `:w` (see [Mixing](mixing.md#media-files),
+clip plays, to delete with `dd` and `:w` (see [Media files](reference/media.md),
 `:media.collect` copies in files from elsewhere). A file a clip that was
 deleted played may still be needed by `u`: the trash keeps it.
 

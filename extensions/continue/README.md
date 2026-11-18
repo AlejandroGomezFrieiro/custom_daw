@@ -27,7 +27,7 @@ below it.
 With the extension loaded, suggestions come by themselves a moment after an
 edit (`paw.opt.complete_auto`), or with `Ctrl-Space`. `Tab` takes one,
 `Ctrl-l` its next note or chord, `Ctrl-n` and `Ctrl-p` show the others,
-`Esc` dismisses it. See "Completion" in `docs/harmony.md`.
+`Esc` dismisses it. See [Completion](../../docs/reference/completion.md).
 
 The whole source is `init.lua`, a dozen lines, and the music is plain
 functions in `lua/continue.lua`: `suggest(ctx)`, `guess_key(notes)` and

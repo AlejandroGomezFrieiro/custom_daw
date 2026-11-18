@@ -14,19 +14,23 @@ gets the function.
 - A MIDI clip's length is its own, as in REAPER: deleting its last notes
   does not shorten it (`:clip.resize`, or dragging its end, does).
 
-- Harmony: chords are read per half beat, so a chord shorter than about a
-  beat is taken for passing notes; the chords and the key are not shown in
-  the arrange view's ruler (only over the piano roll); slash chords whose
-  bass is not a chord tone are named by the full pitch set (C G B D is
-  Cmaj9, not G/C). The reading is redone over the whole song after each
-  edit, which is quick for songs of some thousands of notes but not
-  incremental.
-- Snippets are offered in the piano roll only (a snippet may name other
-  views, but nothing opens the picker there yet). Taken as a suggestion
-  (`Ctrl-Space`) a snippet has no choices to step through, and the picker's
-  preview is drawn by the snippet's own layer rather than through
-  `paw.complete.show`. A melody of eighth notes alone may be read as
-  chords (a beat with two pitches in it is evidence of one).
+- Harmony:
+  - The reading uses steps of half a beat. So it reads a chord shorter
+    than about a beat as passing tones (a technical name).
+  - The arrange ruler does not show the chords and the key. Only the piano
+    roll shows them.
+  - A slash chord can have a bass that is not a chord tone. Then its name
+    comes from the full set of pitches: C G B D is Cmaj9, not G/C.
+  - paw reads the full song again after each edit. This is fast for songs
+    of some thousands of notes, but it is not incremental.
+- Snippets:
+  - Only the piano roll offers snippets. A snippet can name other views,
+    but nothing opens the picker there yet.
+  - A snippet taken as a suggestion (`Ctrl-Space`) has no choices.
+  - The preview of the picker uses the layer of the snippet, not
+    `paw.complete.show`.
+  - A melody of eighth notes alone can give chords, because a beat with
+    two pitches is a sign of a chord.
 - Pickers you can hear: `paw.opt.audition_level` sets the level of sound
   files only; a phrase plays through the track at the track's own level,
   so that a preset is heard as it would be. A phrase is timed by the
@@ -207,14 +211,19 @@ gets the function.
   interlock; in the terminal's cell view marks keep fixed rows rather than
   skylines; the text of an exported PDF is outlines, not searchable text.
 
-- Language servers: documents are sent whole, never as incremental
-  changes; the related notes of other tracks a diagnostic names are kept but
-  not drawn; annotations are drawn on mixer strips, devices and the ruler,
-  not yet on clips or notes; a fix that renders again is not an undo step
-  (a render is not an edit of the project); the window shows the marks on
-  notes only (tracks, devices, time and renders are marked in the terminal,
-  and the window shows them through `:diagnostics` and the float); MIDI LSP's
-  settings check names REAPER's render dialog in its messages.
+- Language servers:
+  - paw sends each document complete, never as incremental changes.
+  - paw keeps the related notes of other tracks that a diagnostic names,
+    but does not draw them.
+  - paw draws annotations on mixer strips, devices and the ruler, not yet
+    on clips or notes.
+  - A fix that renders again is not an undo step, because a render is not
+    an edit of the project.
+  - The graphical window shows the marks only on notes. The terminal marks
+    tracks, devices, time and renders. The graphical window shows them
+    through `:diagnostics` and the float.
+  - The settings check of MIDI LSP names the render dialog of REAPER in its
+    messages.
 
 - Pictures in the terminal: only by the kitty graphics protocol, as direct
   placements (not Sixel, not iTerm's, not Unicode placeholders), so not
@@ -265,9 +274,9 @@ gets the function.
   step is three cells wide whatever the clip's length, the wheel does not
   zoom the steps or scroll them sideways (the grid follows the cursor), and
   a hit is drawn as a block character, not a box shaded by velocity.
-- A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
-  each ramping to the next (the curve editor writes a smooth stretch of it
-  as ramps a sixteenth of a beat long).
+- A smooth tempo curve: a drawn stroke makes a change about each beat,
+  each change a ramp to the next. The curve editor writes a smooth part as
+  ramps of a sixteenth of a beat.
 - In the curve editor: send levels and clip gain are not curves yet; a
   controller's moves only hold (a ramp is written as many moves); the
   window draws a lane's held and smooth stretches straight, though they
@@ -280,64 +289,86 @@ gets the function.
   lane are as fine as its two lines, and finer only by dragging a point.
   Where the terminal keeps Shift for its own selection, Shift does not
   reach the program.
-- In stretching: ratios are 0.25 to 4 (each part between warp markers
-  too) and shifts 24 semitones either way; a stretch is always made from
-  the start of its file, so the playhead put far into a long clip just
-  changed is silent there until the making gets that far; formants are
-  kept only by the tonal way; a looped clip following the tempo is
-  stretched evenly, not bent along a ramp inside it; warp markers are not
-  found by themselves at onsets (each is put by hand), and the other takes
-  of a clip share its markers.
-- Plugins with main buses wider than stereo (surround), and inputs beyond
-  the main pair and one side-chain.
-- Pre-roll without a punch (a take from the playhead is not played in from
-  before it), and pre-roll in fractions of a bar.
-- MIDI-CI: no discovery, profiles or property exchange. It is SysEx, which
-  the MIDI ports neither send nor read yet, so a loopback could not test
-  it.
-- MPE for plugins that take only MIDI 1.0 (LV2, some CLAP): a note's own
-  bend and controllers do not reach them; MPE is a form of MIDI output only.
-- A note's MIDI 2.0 attribute (articulations): a note's velocity stays
-  seven bits (1 to 127) in the project, though MIDI 2.0's sixteen reach
-  and leave the engine; a note-off's attribute (M2-123's endings) is not
-  kept; what is played on a MIDI keyboard into a track is not turned into
-  keyswitches by its `attr_map` (clips and `track:play_note` are); in a
-  chord on one channel whose notes have different articulations, each
-  keyswitch goes before its own note but a controller or program change
-  is in force for the whole chord (route one with `ch=`); a MIDI file
-  keeps the attribute in an event of this program's, not in the NRPN form
-  some other programs read; `paw.plugins.add_dir` finds CLAP and VST3
-  plugins, not LV2; only CLAP plugins' key names are read, and the window's
-  piano roll shows a note's articulation as a chip but not the names on
-  its keyboard. A note an articulation's `delay` moves before the loop's
-  start is late after the loop goes round (it starts with the loop, not
-  before its end), and in a launched slot's clip notes are moved by the
-  song's tempo at the clip's own beats.
-- MIDI 2.0 output through the sequencer is untried here: this machine's
-  kernel has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0 (the
-  MIDI 1.0 forms, plain, MPE and 14-bit, are tried through the program's
-  own ports).
-- Freezing after the fader: a freeze is taken before the fader, so that
-  the mix stays live (`:track.bounce` prints the fader too). A send from a
-  track inside a frozen group to a track outside it is not heard while the
-  group is frozen, and a frozen track is not rendered again by itself when
-  the tempo changes. The window draws no `F` on a frozen track's header yet
-  (the terminal does; `paw.freeze.state(id)` says it).
-- A narrowed tab is not kept by `:layout save` (a group's id belongs to its
-  project), and the window's own drawing has no mark for it beyond its tab's
-  name. With `scope_rest=frozen` a part of the rest edited from another tab
-  plays live until it is rendered again; renders always play it live. With a
-  terminal and a window attached at once, each with tabs of its own, the
-  last to change tabs chooses what the rest does.
-- A VCA over a group's own fader, a VCA under a VCA, and VCA gain on the master. A VCA is a track here (so it shows in the arrange view as a row, with lanes like any other), and what it moves is the tracks assigned to it, not what they are routed into. A VCA's solo makes its members the only sound; it does not solo what they feed.
-- Rendering to MP3, Ogg Vorbis or Opus without ffmpeg: there is no encoder
-  for them in pure Rust of a quality worth shipping, and no C library is
-  linked for them; they need ffmpeg installed (see Rendering; the Nix
-  package puts one on the PATH).
-- A cover in a WAV file (a WAV has no cover that players read; the
-  other formats carry it), and a file dialog for the cover in the render
-  dialog: its path is typed. Tags are text only: no lyrics, ISRC, composer,
-  disc number or replay gain.
+- Stretch:
+  - Ratios are 0.25 to 4 (also each part between warp markers). Shifts are
+    24 semitones at most in each direction.
+  - paw always makes a stretch from the start of its file. If you put the
+    playhead far into a long clip that just changed, the clip is silent
+    there until paw reaches that point.
+  - Only the `tonal` method keeps formants.
+  - A looped clip that follows the tempo stretches evenly. paw does not
+    bend it along a ramp inside it.
+  - paw does not find warp markers at onsets: you put each marker by hand.
+    The other takes of a clip share its markers.
+- Plugins with main buses wider than stereo (surround), and inputs other
+  than the main pair and one side-chain.
+- Pre-roll without a punch: a take from the playhead does not play in from
+  before it. Pre-roll in parts of a bar.
+- MIDI-CI: no discovery, profiles or property exchange. MIDI-CI uses
+  SysEx, and the MIDI ports do not send or read SysEx yet. So a loopback
+  test is not possible.
+- MPE for plugins that take only MIDI 1.0 (LV2, some CLAP plugins): the
+  bend and controllers of a note do not reach them. MPE is a form of MIDI
+  output only.
+- The MIDI 2.0 attribute of a note (articulations):
+  - The velocity of a note stays seven bits (1 to 127) in the project. The
+    sixteen bits of MIDI 2.0 reach and leave the engine.
+  - paw does not keep the attribute of a note-off (the endings of M2-123).
+  - The `attr_map` of a track does not change notes played on a MIDI
+    keyboard into keyswitches. It changes clips and `track:play_note`.
+  - In a chord on one channel with different articulations, each
+    keyswitch goes before its note. But a controller or a program change
+    applies to the full chord (route one with `ch=`).
+  - A MIDI file keeps the attribute in an event of paw, not in the NRPN
+    form that some other programs read.
+  - `paw.plugins.add_dir` finds CLAP and VST3 plugins, not LV2 plugins.
+  - paw reads key names only from CLAP plugins. The piano roll of the
+    graphical window shows the articulation of a note as a chip, but does
+    not show the names on its keyboard.
+  - A note that the `delay` of an articulation moves before the loop start
+    is late after the loop turns. It starts with the loop, not before its
+    end.
+  - In the clip of a launched slot, paw moves notes by the tempo of the
+    song at the beats of the clip.
+- MIDI 2.0 output through the sequencer is not tried: the test computer
+  has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0. The tests try
+  the MIDI 1.0 forms (plain, MPE and 14-bit) through the ports of paw.
+- A freeze after the fader: paw takes a freeze before the fader, so the
+  mix stays live (`:track.bounce` also renders the fader).
+  - A send from a track inside a frozen group to a track outside it is not
+    heard while the group is frozen.
+  - paw does not render a frozen track again when the tempo changes.
+  - The graphical window does not draw `F` on the header of a frozen track
+    yet. The terminal does, and `paw.freeze.state(id)` tells it.
+- Narrowed tabs:
+  - `:layout save` does not keep a narrowed tab, because the id of a group
+    belongs to its project.
+  - The graphical window has no mark for a narrowed tab other than the
+    name of the tab.
+  - With `scope_rest=frozen`, a part of the rest that you edit from a
+    different tab plays live until paw renders it again. Renders always
+    play it live.
+  - A terminal and a graphical window can attach at the same time, each
+    with its own tabs. Then the last frontend to change tabs sets what the
+    rest does.
+- VCAs:
+  - No VCA over the own fader of a group, no VCA under a VCA, and no VCA
+    gain on the master.
+  - A VCA is a track, so it shows in the arrange view as a row, with lanes
+    as any other track.
+  - A VCA moves the tracks assigned to it, not the tracks that they play
+    into. The solo of a VCA makes its members the only sound. It does not
+    solo what they feed.
+- MP3, Ogg Vorbis and Opus without `ffmpeg`. No encoder for these formats
+  in pure Rust has enough quality, and paw links no C library for them.
+  They need `ffmpeg` (see [Render](render.md)). The Nix package puts one on
+  the PATH.
+- Tags:
+  - No cover in a WAV file, because players do not read one. The other
+    formats have the cover.
+  - The render dialog has no file dialog for the cover: you type its path.
+  - Tags are text only: no lyrics, ISRC, composer, disc number or replay
+    gain.
 - For instances on other machines: the sound is sent as plain 16-bit
   samples (about 1 Mbit/s) rather than Opus, which has no encoder in pure
   Rust worth shipping; nothing is sent the other way (recording from the
@@ -355,56 +386,70 @@ gets the function.
   Wayland it is told of no drops at all. For a kernel the window attached
   to, the desktop's file dialog is only shown to import (the file chosen is
   sent to the kernel); Open and Save as browse the kernel's disk.
-- For devices written in Lua: a window of their own drawn by the script
-  (they show their parameters as sliders, like any device), sample-accurate
-  parameter moves within a block (a block reads each parameter once), state
-  beyond the parameters' values (a pattern an arpeggiator keeps), more
-  than one stereo output, and reporting latency of their own to delay
-  compensation.
+- Lua devices do not have:
+  - a window of their own drawn by the script. They show their parameters
+    as sliders, as any device.
+  - parameter moves inside a block. A block reads each parameter one time.
+  - state other than the values of the parameters (for example, the
+    pattern of an arpeggiator).
+  - more than one stereo output.
+  - their own latency for delay compensation.
 - The window measured on a real graphics card: it is tried only on Mesa's
   llvmpipe so far, where playing costs more than a core.
 - In the window, kanji, hanzi and hangul where the system has no font for
   them: only kana are built in, and the rest show as boxes then.
-- In clip launching: follow actions (a clip that launches the next, or a
-  random one, after so many bars); under a tempo ramp a slot's clip spreads
-  each block's beats evenly over it, so its notes can land up to a frame or
-  so from where the timeline would put them; and launches are not rendered
-  as they are: they are captured into the timeline first.
+- Clip launch:
+  - No follow actions (a clip that launches the next clip, or a random
+    clip, after some bars).
+  - Under a tempo ramp, a clip in a slot spreads the beats of each block
+    evenly. Its notes can be about one frame from where the timeline puts
+    them.
+  - paw does not render launches directly. Capture them into the timeline
+    first.
 - The window's position on Wayland: the compositor places windows and a
   program cannot ask for a place, so only X11 keeps it.
 - The flake's `flake.lock` names the `nixpkgs` of this machine as a path in
   its Nix store, so the package builds here but not from a URL elsewhere
   until it is locked to a release (`nix flake update`). The package is built
   for x86_64 and aarch64 Linux, and tried only on the first.
-- In the piano roll with several clips: `i` on a selection of clips in the
-  arrange view does not open them (`i` there begins a text object; `Enter`
-  does); musicops' phrase and chord text objects see the active clip only;
-  the window does not shade the gaps between the clips edited; a click on a
-  note shown behind always makes its clip active, so a note cannot be
-  added on top of one by a click (a drag draws it).
+- The piano roll with several clips:
+  - `i` on a selection of clips in the arrange view does not open them,
+    because `i` there starts a text object. `Enter` opens them.
+  - The phrase and chord text objects of musicops see only the active
+    clip.
+  - The graphical window does not shade the gaps between the edited clips.
+  - A click on a context note always makes its clip active. So a click
+    cannot add a note on top of a context note. A drag draws it.
 - Insert mode's drawing writes nothing until it ends: notes drawn are not
   heard when the song plays meanwhile, nor seen by suggestions or language
   servers, and the window shows them as marks, not as notes to drag. The
   keyboard as a piano (`I`) still writes as it goes, a step to undo each key.
   Notes drawn have no length shorter than the grid, and a count before `i`
   does not draw the insert several times.
-- Suggestions in the arrange view (whole clips) and the drum view: sources
-  may say they offer them (`views`), but only the piano roll asks and shows
-  them. A suggestion's controller moves are written when accepted but not
-  drawn beforehand, and its badge has no list of the alternatives' details
-  to read through; hearing one uses the track's live input, so it is timed
-  by the kernel's timers rather than the engine's clock.
-- MIDI files: key signatures, sysex, text and copyright events and SMPTE
-  offsets are left out (counted in the message), for the project has no
-  place for them; lyrics go only on notes of their own track, so a karaoke
-  file with its words in a track of their own keeps none; controller moves
-  on a channel or track with no notes are left out; a format 1 track that
-  plays on several channels stays one track (each note keeps its channel in
-  `meta.channel`, its controls are merged). A melodic track gets no
-  instrument (the drum kit only on channel 10). `:export` writes MIDI clips
-  only, a looped clip once, a tempo ramp as steps a sixteenth apart, a
-  note's own bend and controllers (MIDI 2.0) not at all, and every control
-  on its track's channel.
+- Suggestions:
+  - Sources can say that they offer suggestions in the arrange view
+    (whole clips) and the drum view (`views`). But only the piano roll asks
+    for them and shows them.
+  - paw writes the controller moves of a suggestion when you accept it,
+    but does not draw them before.
+  - The badge has no list of the details of the alternatives.
+  - To play a suggestion, paw uses the live input of the track. So the
+    timers of the kernel set its time, not the clock of the engine.
+- MIDI files:
+  - paw does not import key signatures, sysex, text and copyright events,
+    and SMPTE offsets. The message counts them. The project has no place
+    for them.
+  - Lyrics go only on notes of their own track. So a karaoke file with its
+    words in a separate track keeps no words.
+  - paw does not import controller moves on a channel or track with no
+    notes.
+  - A format 1 track that plays on several channels stays one track. Each
+    note keeps its channel in `meta.channel`, and paw merges the controls.
+  - A melodic track gets no instrument. Only channel 10 gets the drum kit.
+  - `:export` writes only MIDI clips. It writes a looped clip one time, a
+    tempo ramp as steps a sixteenth apart, and every control on the channel
+    of its track. It does not write the bend and controllers of a note
+    (MIDI 2.0).
 - Kinds of track: a kind says how a track is made and how its clips are
   opened, not how a new clip on it starts (no `new_clip`: a double click
   makes an empty clip on any track), and a track's kind is changed by

@@ -61,7 +61,7 @@ An extension is a directory or a single file in `~/.config/paw/extensions`:
 extensions/euclid/init.lua      run at startup
 extensions/euclid/manifest.lua  what it is and what it needs (optional)
 extensions/euclid/lua/          on the require path
-extensions/euclid/devices/      devices written in Lua (see Writing a device in Lua, in devices.md)
+extensions/euclid/devices/      devices written in Lua (see reference/lua-devices.md)
 extensions/clock.lua            a one-file extension
 ```
 
@@ -374,7 +374,7 @@ extensions/utau/
 What the core gives it, which any extension can use the same way:
 
 **Devices written in Lua.** `devices/` holds devices (see
-[Writing a device in Lua](devices.md#writing-a-device-in-lua)). Each runs
+[Lua devices](reference/lua-devices.md)). Each runs
 in a helper process with a LuaJIT state of its own, so one that fails or
 crashes stops alone. Scripts in the session talk to a device's `dev.call`:
 `paw.api.device_call(device, method, data)` for one device, and

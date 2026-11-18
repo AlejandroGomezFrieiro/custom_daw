@@ -19,4 +19,4 @@ directory, and needs nothing else for it. To change one, copy it into
 `~/.config/paw/devices/` (a script there wins over one of the same name in
 an extension) and edit it there: it is loaded again when it is saved, and
 the devices made from it keep their parameters. How to write one is in
-"Writing a device in Lua" in [docs/devices.md](../../docs/devices.md).
+[How to write a device in Lua](../../docs/how-to/write-a-device-in-lua.md).
