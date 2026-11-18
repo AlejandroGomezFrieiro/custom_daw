@@ -192,8 +192,7 @@ So the two frontends show the same pixels.
 
 A view that also shows its pixels in the terminal keeps cells for them in
 its `render` with `buf:surface(x, y, w, h)`. It returns false where the
-terminal shows only cells (see "Pictures" in [The terminal
-interface](../terminal.md)). A view that draws cells can also keep strips
+terminal shows only cells (see [Pictures in the terminal](pictures.md)). A view that draws cells can also keep strips
 for a part of itself, each drawn by a function, with
 `buf:strip(x, y, w, h, { key, draw, under })`. `paw.plot` draws curves over
 time in them (see [Pictures in the

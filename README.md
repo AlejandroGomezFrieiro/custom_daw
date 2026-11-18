@@ -11,7 +11,7 @@
 paw is a digital audio workstation for Linux. A small Rust kernel plays the
 sound, keeps the project and hosts plugins. Each view, command and key that
 you use is Lua, and your configuration can change it. To extend paw, use
-[your `init.lua`](docs/configuration.md), [extensions](#extensions),
+[your `init.lua`](docs/how-to/configure-paw.md), [extensions](#extensions),
 [devices written in Lua](docs/reference/lua-devices.md) and
 [kinds of track](docs/reference/extensions.md#kinds-of-track). You can
 package them for Nix or share them as a git repository.
@@ -26,7 +26,7 @@ paw.ui.hl("Playhead", { bg = "#f38ba8" })
 paw.keymap.set("<leader>T", "track.add Strings device=synth", { desc = "A strings track" })
 ```
 
-paw works in the [terminal](docs/terminal.md). It is modal and you use it
+paw works in the [terminal](docs/reference/grammar.md). It is modal and you use it
 from the keyboard. Where the terminal can show pictures (kitty graphics), paw
 shows them. The same views also open in a [graphical window](crates/paw-gui/README.md)
 for the mouse, from the same Lua. [Lua scripts](docs/reference/scripting.md), a
@@ -68,8 +68,9 @@ builds paw from source. This takes several minutes.
 
 `:help` opens the manual. `:checkhealth` shows what works on your computer.
 `nix run . -- doctor` examines your sound devices, MIDI ports and plugins.
-[Run paw](docs/running.md) tells how to install paw, build it from source
-and select the audio options.
+[How to install paw](docs/how-to/install-paw.md) and
+[how to build it from the source](docs/how-to/build-paw-from-source.md) give
+the steps. [The programs](docs/reference/programs.md) lists their options.
 
 ## Is paw for you?
 
@@ -119,7 +120,7 @@ not for the length of its list of features.
   merge projects.
 - **Live and remote.** Scenes start clips on the bar ([the session view](docs/reference/session-view.md)).
   A terminal or a graphical window can attach to paw on a different computer
-  over TLS ([running](docs/running.md#on-another-machine)).
+  over TLS ([how to work from another computer](docs/how-to/work-from-another-computer.md)).
 
 ## A tour
 
@@ -229,13 +230,17 @@ the same pages.
 
 - Tutorials: [the course](docs/tutorials/course/README.md), seventeen short
   lessons. In paw, `:tutor` gives the same lessons.
-- How-to guides: [run paw](docs/running.md), with its options, audio devices
-  and other computers.
+- How-to guides: [install paw](docs/how-to/install-paw.md),
+  [configure it](docs/how-to/configure-paw.md),
+  [choose the audio devices](docs/how-to/choose-audio-devices.md) and
+  [work from another computer](docs/how-to/work-from-another-computer.md).
 - Reference: [all the keys](docs/reference/keys.md),
-  [the terminal](docs/terminal.md), [the graphical window](docs/reference/window.md),
+  [the keys of the terminal](docs/reference/grammar.md), [the options](docs/reference/options.md),
+  [the graphical window](docs/reference/window.md),
   [the Lua API](docs/reference/api.md) and [the limits](docs/reference/limits.md).
   The manual has more reference pages.
-- Explanation: [about the architecture](docs/explanation/about-the-architecture.md).
+- Explanation: [about the architecture](docs/explanation/about-the-architecture.md),
+  [about the key rule](docs/explanation/about-the-key-rule.md).
 
 The graphical window has [its own page](crates/paw-gui/README.md), and each
 extension has a README.

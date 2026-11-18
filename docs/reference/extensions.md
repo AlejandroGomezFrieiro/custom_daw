@@ -251,7 +251,7 @@ extension uses all of them.
 ### Devices in Lua
 
 `devices/` holds devices written in Lua (see "Writing a device in Lua" in
-[Devices](../devices.md#writing-a-device-in-lua)). Each device runs in a
+[Devices](devices.md)). Each device runs in a
 helper process with its own LuaJIT state. A device that fails stops
 alone.
 

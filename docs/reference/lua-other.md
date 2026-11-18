@@ -21,8 +21,8 @@ seat, and the small modules of `paw`.
 | `paw.music.pitch("F#3")` | the MIDI number of a pitch name |
 | `paw.music.degree("A4", "minor_pentatonic", 3)` | a degree of a scale |
 | `paw.time.format(beats)` | a position as text |
-| `paw.harmony` | the chords and the key that sound at a time: `paw.harmony.at(8)`, `.next(8)`, `.key(8)`, providers with `.provide`. See [Harmony, completion and snippets](../harmony.md) |
-| `paw.snippet` | writes named music from the chords: `paw.snippet.add`, `.expand("dominant")`. See [Harmony, completion and snippets](../harmony.md) |
+| `paw.harmony` | the chords and the key that sound at a time: `paw.harmony.at(8)`, `.next(8)`, `.key(8)`, providers with `.provide`. See [Completion](completion.md) |
+| `paw.snippet` | writes named music from the chords: `paw.snippet.add`, `.expand("dominant")`. See [Completion](completion.md) |
 | `paw.cursor` | the edit cursor |
 | `paw.inspect(value)` | a value as text |
 | `paw.json.encode(value, pretty)`, `paw.json.decode(text)` | JSON, for the files of an extension |
@@ -59,7 +59,7 @@ Nothing polls. When paw stops, it asks each helper program to stop.
 
 | Function | Effect |
 | --- | --- |
-| `paw.api.device_call(device, method, bytes)` | sends data to one device. A device in Lua answers with its `dev.call` (see "Writing a device in Lua" in [Devices](../devices.md#writing-a-device-in-lua)) |
+| `paw.api.device_call(device, method, bytes)` | sends data to one device. A device in Lua answers with its `dev.call` (see "Writing a device in Lua" in [How to write a device in Lua](../how-to/write-a-device-in-lua.md)) |
 | `paw.api.device_post(kind, topic, bytes)` | sends data to every device of a kind: the devices that exist now, and each device made later. The devices of an offline render get it before their first block |
 | `paw.api.device_alias(old, new)` | makes devices of a renamed kind as the new kind |
 | `paw.track_kinds` | defines kinds of track |

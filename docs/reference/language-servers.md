@@ -59,7 +59,7 @@ and "What the language servers say about it".
 
 Each thing in the project has an address, a URI made from ids. An address
 stays correct after edits. The module is `paw.address` (see
-[Scripts](../scripting.md) for every kind).
+[The Lua interface](scripting.md) for every kind).
 
 | Address | Thing |
 | --- | --- |

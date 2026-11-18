@@ -453,7 +453,7 @@ function M.install_locks()
     end, { view = "pianoroll", mode = "i", desc = orig and orig.desc, musicops = true })
   end
 
-  -- `+` `-` are the pitch as `Ctrl-a` `Ctrl-x` are (docs/terminal.md, "Keys: one grammar").
+  -- `+` `-` are the pitch as `Ctrl-a` `Ctrl-x` are (docs/reference/key-rule.md).
   for lhs, dir in pairs({ ["<C-a>"] = 1, ["<C-x>"] = -1, ["+"] = 1, ["-"] = -1 }) do
     local orig = original("n", "pianoroll", lhs)
     keymap.set(lhs, function(ctx)

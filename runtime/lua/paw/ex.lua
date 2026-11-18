@@ -1,7 +1,7 @@
 -- Ex: command lines over time and tracks, as Vim's are over lines.
 --
 -- A line may start with a range of tracks, then a range of time, then the
--- command (docs/terminal.md, "Ex", says it for people):
+-- command (docs/reference/ex.md says it for people):
 --
 --   :5,8d          bars 5 to 8 of every track         :t2,t4 mute    tracks 2 to 4
 --   :5.3,6.1y      from beat 3 of bar 5 to beat 1 of bar 6, both beats taken in

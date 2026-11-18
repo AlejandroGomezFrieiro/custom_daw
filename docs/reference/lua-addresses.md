@@ -72,7 +72,7 @@ The event is `diagnostic.changed`.
 
 ## `paw.lsp`
 
-`paw.lsp` is `vim.lsp`. See [Language servers and diagnostics](../lsp.md).
+`paw.lsp` is `vim.lsp`. See [Language servers and diagnostics](language-servers.md).
 
 | Function | Effect |
 | --- | --- |
@@ -133,5 +133,5 @@ The event is `qf.changed { title }`. The program also listens to
 | `paw.grep.source(name, function(add) end)` | adds text to the search |
 | `paw.regex.compile(text)` | makes a usual regular expression (`re:find(s)`) |
 
-[The terminal interface](../terminal.md) describes the syntax, under
+[Motions, operators and modes](grammar.md) describes the syntax, under
 "Structural queries" and under the search of text.

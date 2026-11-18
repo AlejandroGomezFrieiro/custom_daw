@@ -3,7 +3,7 @@
 This page describes how Lua draws on the screen. It describes views,
 roles, buffer types, windows and tabs, text buffers, the pointer, curves,
 completion and the layers of the views. The terms window, buffer and tab have the
-meanings of [The terminal interface](../terminal.md), under "Windows,
+meanings of [Windows, buffers and tabs](windows.md), under "Windows,
 buffers and tabs".
 
 ## `paw.ui.view`
@@ -233,7 +233,7 @@ do. `ctx.follower` draws a window that follows another window.
 ## Text buffers
 
 `paw.textbuf.kind` adds a list that you edit as text, as `paw://tracks` is
-(see "Lists edited as text" in [The terminal interface](../terminal.md)).
+(see "Lists edited as text" in [Lists edited as text](lists-edited-as-text.md)).
 The kind does these things:
 
 1. It reads the project into items.
@@ -332,7 +332,7 @@ the other `fs_` functions.
 
 `paw.statusline.setup` and `paw.statusline.component` change and add to the
 status line, a winbar and the tab line. See "The status line" in
-[Configuration](../configuration.md#the-status-line).
+[The status line](status-line.md).
 
 ## Help
 
@@ -410,7 +410,7 @@ one curve this way (`paw://clip/7/control/cc/1#linked=dynamics`).
 
 `paw.complete` shows suggestions as ghost notes in the piano roll. The
 suggestions come from sources that extensions register. "Writing a
-source" in [Harmony, completion and snippets](../harmony.md) describes
+source" in [Completion](completion.md) describes
 the context and the items.
 
 ```lua

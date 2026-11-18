@@ -7,7 +7,7 @@ belong to the computer, not to the project. paw keeps the choice in
 `$XDG_STATE_HOME/paw/audio.json` for the next start. If a remembered device
 is not connected, paw uses the default device of the system, and shows a
 message. For the options of the command line (`--output`, `--input`,
-`--no-input`, `--audio`), see [Run paw](../running.md).
+`--no-input`, `--audio`), see [How to choose the audio devices](../how-to/choose-audio-devices.md).
 
 ## Commands
 

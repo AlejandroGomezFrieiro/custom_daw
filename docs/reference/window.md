@@ -384,7 +384,7 @@ lanes under its clips.
 | Click on lane k | Gives the piece under the pointer take k. |
 | Right-click | Hides the lanes. |
 
-The mouse of the terminal does the same (see [the terminal](../terminal.md)).
+The mouse of the terminal does the same (see [The mouse](mouse.md)).
 
 ## Automation
 
@@ -668,12 +668,12 @@ mixer opens, it gets the keyboard.
 
 `:help` opens the manual in a pane, split as in the terminal. `gw` or
 `:textbuf.window` moves it into a window of its own. The keys are the keys
-of help in [the terminal](../terminal.md).
+of help in [Help](help.md).
 
 ## Panes and tabs
 
 The window shows the tabs and windows of the kernel, as the terminal does
-(see [Windows, buffers and tabs](../terminal.md#windows-buffers-and-tabs)).
+(see [Windows, buffers and tabs](windows.md)).
 Each window of the current tab is a pane of the main area, laid out by
 the same rules. A size in cells is that number of cells of the monospace
 font, in pixels. A pane is never smaller than the window's own drawing of
@@ -761,7 +761,7 @@ on a grid of its own (`paw.api.ui_view_snapshot`).
 
 The status line of the window is its own. It shows the mode, the prompt,
 messages and keys. `paw.statusline.setup` (see
-[Configuration](../configuration.md#the-status-line)) sets
+[The status line](status-line.md)) sets
 `modal.statusline` in `frontend.state`, but the window does not draw it.
 The terminal draws it. The extra sections of the tab line, and
 `tabline.always`, are also for the terminal only.

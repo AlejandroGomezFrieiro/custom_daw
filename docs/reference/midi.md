@@ -58,7 +58,7 @@ port.
 ### Note attributes
 
 A note can have a MIDI 2.0 attribute, for example an articulation
-(`note.attr`, see [Scripts](../scripting.md)).
+(`note.attr`, see [The Lua interface](scripting.md)).
 
 - paw records it from a MIDI 2.0 note-on.
 - The `midi.in` event gives it as `e.attr`.
@@ -261,4 +261,4 @@ A file that opens as a project gives:
 The new project has no file: `:w` asks for a path, and never writes over
 the `.mid` file. paw does not import what has no place in paw (sysex, key
 signatures, text), and the message says how much it left out. In Lua, use
-`paw.midifile` (see [Scripts](../scripting.md)).
+`paw.midifile` (see [The Lua interface](scripting.md)).

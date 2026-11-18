@@ -1,11 +1,15 @@
 # Keys, by idea
 <!-- tags: course-keys -->
 
-One page to keep beside the keyboard. Keys are written as Vim writes them:
-`<C-r>` is Ctrl and r, `<A-j>` Alt and j, `<CR>` Enter, `<Esc>` Escape, `,` is
-the leader key, `\` the local leader of a view (the notation popovers). **A** is the arrange view, **R** the piano roll, **M** the mixer,
-**D** the device panel. Every key here is checked against paw's mappings by
-the tutor's tests; `?` in paw lists every key of the view you are in.
+One page to keep next to the keyboard. The keys are written as Vim writes
+them. `<C-r>` is Ctrl and r, `<A-j>` Alt and j, `<CR>` Enter, `<Esc>`
+Escape. `,` is the leader key, and `\` the local leader of a view (the
+notation popovers). **A** is the arrange view, **R** the piano roll, **M**
+the mixer, **D** the device panel.
+
+The tests of the tutor compare every key
+here with the mappings of paw. `?` in paw lists every key of the view that
+you are in.
 
 ## The sentence
 
@@ -30,10 +34,10 @@ change.
 | `]'` `['` | next marker or region, the one before | |
 | `zz` `zh` `zl` | centre the cursor, scroll a bar | |
 
-These keys only ever move, in every view. In **M**: `h` `l` are strips and `j`
-`k` a strip's rows (devices, sends, fader, pan, mute, solo, arm), `gg` `G` its
-top and bottom, `0` `$` the first and last strip. In **D**: `j` `k` are rows,
-`w` `b` devices, `e` a device's last parameter.
+These keys only move, in every view. In **M**, `h` `l` are strips. `j` `k`
+are the rows of a strip (devices, sends, fader, pan, mute, solo, arm), `gg`
+`G` its top and bottom, `0` `$` the first and last strip. In **D**, `j` `k`
+are rows, `w` `b` devices, `e` the last parameter of a device.
 
 ## Act (operators and single keys)
 
@@ -77,30 +81,68 @@ top and bottom, `0` `$` the first and last strip. In **D**: `j` `k` are rows,
 | `K` | describe what is under the cursor | the note |
 | `u` `<C-r>` | undo, redo (`3u`) | the same |
 
-The same keys mean the same in every view: `+` `-` (`<C-a>` `<C-x>` with a
-count) the main value under the cursor, `[` `]` the second, `>` `<` move in
-time, `K` describe, `ge` the plugin's window, `gc` mute or bypass, `gC` or
-`<CR>` a curve. `<Esc>` cancels and stays; `<C-w>p` goes back to the window
-before. The whole rule is in [The terminal interface](../terminal.md#keys-one-grammar).
+The same keys mean the same in every view:
 
-In **D**: `A` automates the parameter, `gC` or `<CR>` edits its curve. On a
-lane row, `gC` or `<CR>` edits the lane's curve, `gc` turns the lane off and
-on.
+| Keys | In every view |
+| --- | --- |
+| `+` `-` (`<C-a>` `<C-x>` with a count) | the main value under the cursor |
+| `[` `]` | the second value |
+| `>` `<` | move in time |
+| `K` | describe |
+| `ge` | the window of the plugin |
+| `gc` | mute or bypass |
+| `gC` `<CR>` | a curve |
+| `<Esc>` | cancel, and stay in the view |
+| `<C-w>p` | the window before |
 
-In the **curve editor**: `h` `l` `j` `k` move the cursor in time and value,
-`w` `b` from point to point, `o` `A` add a point, `x` remove it, `+` `-`
-raise and lower it, `c` type its value, `~` its shape, `[` `]` its bend,
-`i` draw with the cursor until `<Esc>`, `d` `y` `p` `>` `<` points, `gs` smooth,
-`gS` thin, `gq` quantize, `g~` a wave (then `<Tab>` `<C-n>` `<C-y>`).
+The full rule is in [The key rule](key-rule.md).
 
-In **M**: `+` `-` the row under the cursor (the fader, a send, the pan, a
-switch), `[` `]` pan, `x` clear the row, `<CR>` type it, `M` `s` `r` `I`,
-`gc` mute, `dj` `yj` `p` rows, `dd` `yy` `p` tracks, `V` with `-` several faders.
-In **D**: `+` `-` (`10+`) change the parameter, `a` add, `x` remove (on a
-parameter: its default), `gc` bypass, `c` a preset or a value, `[p` `]p`
-step presets, `,w` save one, `yy` `dd` `p` devices (`yy` on a parameter, its
-setting), `<A-j>` `<A-k>` reorder, `gS` the track the device listens to
-(side-chain), `O` where its further output pairs play.
+In **D**, `A` automates the parameter, and `gC` or `<CR>` edits its curve.
+On a lane row, `gC` or `<CR>` edits the curve of the lane, and `gc` turns the
+lane off and on.
+
+In the **curve editor**:
+
+| What | Keys |
+| --- | --- |
+| move the cursor in time and value | `h` `l` `j` `k` |
+| from point to point | `w` `b` |
+| add a point | `o` `A` |
+| remove it | `x` |
+| raise and lower it | `+` `-` |
+| type its value | `c` |
+| its shape | `~` |
+| its bend | `[` `]` |
+| draw with the cursor until `<Esc>` | `i` |
+| points | `d` `y` `p` `>` `<` |
+| smooth, thin, quantize | `gs` `gS` `gq` |
+| a wave (then `<Tab>` `<C-n>` `<C-y>`) | `g~` |
+
+| Keys | M |
+| --- | --- |
+| `+` `-` | the row under the cursor: the fader, a send, the pan, a switch |
+| `[` `]` | pan |
+| `x` | clear the row |
+| `<CR>` | type it |
+| `M` `s` `r` `I` | mute, solo, arm, input |
+| `gc` | mute |
+| `dj` `yj` `p` | rows |
+| `dd` `yy` `p` | tracks |
+| `V` with `-` | several faders |
+
+| Keys | D |
+| --- | --- |
+| `+` `-` | change the parameter (`10+`) |
+| `a` | add a device |
+| `x` | remove (on a parameter: its default) |
+| `gc` | bypass |
+| `c` | a preset or a value |
+| `[p` `]p` | step presets |
+| `,w` | save a preset |
+| `yy` `dd` `p` | devices (`yy` on a parameter: its setting) |
+| `<A-j>` `<A-k>` | reorder |
+| `gS` | the track that the device listens to (side-chain) |
+| `O` | where its further output pairs play |
 
 ## Name a region (text objects)
 
@@ -263,10 +305,10 @@ Stop half way through a sequence and the keys that can follow are listed.
 
 ## Edit lists as text (`:e paw://tracks`)
 
-The tracks, sends, a track's devices and the markers as lines of text
+The tracks, sends, the devices of a track and the markers as lines of text
 (`paw://tracks`, `paw://sends`, `paw://track/2/devices`, `paw://markers`).
 Every motion, operator, count, register, selection and `.` works on the
-text as in Vim; nothing changes in the project until `:w`.
+text as in Vim. Nothing changes in the project until `:w`.
 
 | Keys | |
 | --- | --- |
@@ -286,8 +328,8 @@ text as in Vim; nothing changes in the project until `:w`.
 
 ## Files (`:e folder`)
 
-A folder as lines to edit, and as a tree (`:Files`). Edits are the text's;
-`:w` shows the plan and `y` does it; deleted files go to the trash.
+A folder as lines to edit, and as a tree (`:Files`). The edits are those of
+text. `:w` shows the plan and `y` does it. Deleted files go to the trash.
 
 | Keys | |
 | --- | --- |
@@ -353,27 +395,49 @@ A folder as lines to edit, and as a tree (`:Files`). Edits are the text's;
 
 ## Notation
 
-The notation extension (`,n` on a MIDI clip) has its own keys, listed in
-[its README](../../extensions/notation/README.md) and by `?` in the view.
-Notation is a view of the clip's MIDI: every edit in it is an edit of the
-notes, and what it decides (a spelling, a voice, a dynamic) is kept beside
-them. Normal mode takes the piano roll's grammar;
-insert mode enters notes by letter, a capital adds to the chord, Alt-2 to
-Alt-8 add an interval above, `~` ties, `t` enters triplets, `v` enters in
-the other voice, `R` repeats the chord, and the numbers choose the value (5
-a quarter). zg shows the engraved page as one long system, zp on pages
-under the title (`:notation.export pdf` writes them); zs starts a system
-at the bar under the cursor, zj joins it to the system before.
+The notation extension (`,n` on a MIDI clip) has its own keys. They are in
+[its README](../../extensions/notation/README.md), and `?` in the view lists
+them. Notation is a view of the MIDI of the clip. Every edit in it is an
+edit of the notes. What it decides (a spelling, a voice, a dynamic) is kept
+next to the notes.
 
-The grammar in notation is about the score: operators and text objects
-work on what is written, and each edit is one undo step that `.` repeats.
+Normal mode takes the grammar of the piano roll. Insert mode enters notes by
+letter:
 
-- Objects: `in` `an` the note (with its ties), `ic` `ac` the chord (with
-  grace notes and ties), `i.` `a.` the beat (`a.` in every voice), `ib` what
-  the bar holds and `ab` the bar itself (`dab` takes it out, `p` puts it
-  back), `ip` `ap` the phrase, `iv` `av` the voice, `is` `as` the staff,
-  `it` `at` the tuplet, `il` `al` the slur, `ie` the clip (as in the piano
-  roll).
+| Keys | In insert mode |
+| --- | --- |
+| a capital letter | adds the note to the chord |
+| Alt-2 to Alt-8 | add an interval above |
+| `~` | ties |
+| `t` | enters triplets |
+| `v` | enters in the other voice |
+| `R` | repeats the chord |
+| the numbers | choose the value (5 a quarter) |
+
+| Keys | In normal mode |
+| --- | --- |
+| zg | shows the engraved page as one long system |
+| zp | shows it on pages under the title (`:notation.export pdf` writes them) |
+| zs | starts a system at the bar under the cursor |
+| zj | joins the bar to the system before |
+
+The grammar in notation is about the score. Operators and text objects act
+on what is written. Each edit is one undo step that `.` repeats.
+
+- Objects:
+
+  | Keys | Object |
+  | --- | --- |
+  | `in` `an` | the note (with its ties) |
+  | `ic` `ac` | the chord (with grace notes and ties) |
+  | `i.` `a.` | the beat (`a.` in every voice) |
+  | `ib` `ab` | what the bar holds, the bar itself (`dab` removes it, `p` puts it back) |
+  | `ip` `ap` | the phrase |
+  | `iv` `av` | the voice |
+  | `is` `as` | the staff |
+  | `it` `at` | the tuplet |
+  | `il` `al` | the slur |
+  | `ie` | the clip (as in the piano roll) |
 - Operators:
 
   | Keys | In notation |
@@ -390,18 +454,21 @@ work on what is written, and each edit is one undo step that `.` repeats.
 - Motions: `f` `F` `t` `T` and a letter, `;` `,` again (`,` waits a moment:
   it is the leader), `)` `(` by phrase, `]v` `[v` by voice, `Ctrl-j`
   `Ctrl-k` by staff.
-- Entering: `I` pushes later music along (`Insert` toggles), `r` and a
-  letter re-pitches a note, `R` re-pitches in turn (not record here); in
-  insert mode `/` `//` a grace note, `Ctrl-t` a tuplet, `Ctrl-o` one normal
-  command, `Ctrl-r` a register, `Tab` the suggestion.
+- Note entry: `I` moves the music after the cursor later (`Insert` toggles
+  it). `r` and a letter changes the pitch of a note. `R` changes pitches in
+  turn (it does not record here). In insert mode, `/` `//` is a grace note,
+  `Ctrl-t` a tuplet, `Ctrl-o` one normal command, `Ctrl-r` a register, and
+  `Tab` the suggestion.
 
-Everything that is not a note is written with a popover: the local leader (a backslash) and a
-letter opens a one-line prompt at the caret (in visual mode for the
-selection; in insert mode after `Ctrl-o`, and entering goes on after).
-`Tab` completes, `Up` brings back what was typed before in that popover,
-the page shows the result in the accent while it is typed, `Enter` writes
-it as one undo step and `Esc` leaves nothing. Each is an Ex command, so `.`,
-`@:` and `:5,8notation.dyn p` do the same.
+A popover writes everything that is not a note. The local leader (a
+backslash) and a letter opens a one-line prompt at the caret. In visual
+mode, the popover is for the selection. In insert mode, use it after
+`Ctrl-o`, and the note entry continues after it.
+
+In a popover, `Tab` completes, and `Up` gives the text typed before in that
+popover. The page shows the result in the accent color while you type.
+`Enter` writes it as one undo step, and `Esc` writes nothing. Each popover
+is an Ex command, so `.`, `@:` and `:5,8notation.dyn p` do the same.
 
 The popovers are keys of the notation view (its README has them all):
 
@@ -424,12 +491,17 @@ The popovers are keys of the notation view (its README has them all):
 | playing techniques | `\p` | `pizz.`, `arco`, `con sord.` |
 | the last popover again, with its text | `\.` | |
 
-A score of several tracks (`:help notation-scores`) is edited where it
-is read: each staff is a line, and the staff under the cursor is the
-track every key writes. `:score` shows the tab's scope (or every track),
-`:score Strings` a group, `:score selection` the arrange view's selected
-tracks, `gT` the tracks over the clip's stretch; `:score.check` (and `zp`)
-the pages to check before export, the one view that is only read.
+You edit a score of several tracks (`:help notation-scores`) where you read
+it. Each staff is a line, and every key writes to the track of the staff
+under the cursor.
+
+| Shows | Command |
+| --- | --- |
+| the tracks of the tab (or every track) | `:score` |
+| a group | `:score Strings` |
+| the selected tracks of the arrange view | `:score selection` |
+| the tracks over the time of the clip | `gT` |
+| the pages to check before export. This is the one view that you cannot edit. | `:score.check`, `zp` |
 
 | In a score | Keys |
 | --- | --- |
@@ -443,27 +515,33 @@ the pages to check before export, the one view that is only read.
 | on a condensed staff, the other player (voice 2 is the second's clip) | `]v` `[v` |
 | Ex over staves: s4, s2,s5, s. the cursor's, a group's name | `:5,8 s4 d`, `:5,8 Strings notation.dyn p` |
 
-`:set score_dim` dims the other staves, `:set score_colors` tints them in
-their tracks' colours.
+`:set score_dim` dims the other staves, and `:set score_colors` tints them
+in the colors of their tracks.
 
-The full score and the parts (`:help notation-parts`) are on `\P`, to
-edit: `\Ps` the score, `\Pc` condensed (two players to a staff), `\Pp`
-this track's part (letters typed in a transposed part are the written
-notes), `\Pn` `\PN` the next and previous part, `\Po` the clip alone,
-`\Pb` `\Pj` a system break in the part, `\Pe` export
-(`:part.export parts.pdf all`).
+The full score and the parts (`:help notation-parts`) are on `\P`:
 
-In the piano roll the other tracks' notes show behind in their colours
-(REAPER's visible tracks): `]t` `[t` make the next or previous of them the
-one edited, `<Tab>` `<S-Tab>` go round them (with none shown, `<Tab>` is the
-next view), and a click on a note behind makes its track the one edited.
+| Shows or does | Keys |
+| --- | --- |
+| the score | `\Ps` |
+| the condensed score (two players to a staff) | `\Pc` |
+| the part of this track (letters typed in a transposed part are the written notes) | `\Pp` |
+| the next and the previous part | `\Pn` `\PN` |
+| the clip alone | `\Po` |
+| a system break in the part | `\Pb` `\Pj` |
+| export (`:part.export parts.pdf all`) | `\Pe` |
+
+In the piano roll, the notes of the other tracks show behind, in their
+colors (as the visible tracks of REAPER). `]t` `[t` make the next or the
+previous of them the edited track. `<Tab>` `<S-Tab>` go round them. With no
+track shown, `<Tab>` is the next view. A click on a note behind makes its
+track the edited track.
 
 ## Articulations
 
 The articulations extension (`:ext.load articulations`) gives each note the
-way it is played, as its MIDI 2.0 attribute; a track's map (`:art.map`)
-names them and sets up the piano roll. Its keys are the roll's (its
-README has them all):
+way to play it, as its MIDI 2.0 attribute. The map of a track (`:art.map`)
+names the articulations and configures the piano roll. Its keys are keys of
+the piano roll. Its README has all of them:
 
 | What | Keys |
 | --- | --- |

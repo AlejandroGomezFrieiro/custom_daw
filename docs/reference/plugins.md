@@ -66,7 +66,7 @@ makes its window. Without them, an editor is an empty black window.
 
 - A CLAP plugin gets notes as CLAP note events. If it prefers MIDI 2.0, it
   gets MIDI 2.0, and the attribute of a note (an articulation, see
-  [Scripts](../scripting.md)) is part of the note-on.
+  [The Lua interface](scripting.md)) is part of the note-on.
 - A plugin that names its keys (the CLAP `note-name` extension: the drums
   of a drum kit, the keyswitches of a sampler) shows the names on the keys
   of the piano roll, and `K` says them.

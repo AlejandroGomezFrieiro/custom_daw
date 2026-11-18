@@ -4,7 +4,7 @@
 
 This page describes how other programs use paw: scripts with `paw -l`,
 calls with `paw ctl`, and terminals with `paw attach`. Every option of the
-command line is in [Run paw](../running.md).
+command line is in [The programs and their options](programs.md).
 
 ## `paw -l`
 
@@ -71,7 +71,7 @@ paw attach --connect studio:7700 --token-file studio.token   # over the network
 Over the network, the instance must start with `--listen-tcp
 0.0.0.0:7700`, or `127.0.0.1:7700` for this machine only. The connection
 is encrypted (TLS), and must show that it knows the token. "On another
-machine" in [Run paw](../running.md#on-another-machine) gives the steps.
+machine" in [How to work on paw from another computer](../how-to/work-from-another-computer.md) gives the steps.
 
 ## `paw doctor`
 

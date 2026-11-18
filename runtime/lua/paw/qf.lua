@@ -1,6 +1,6 @@
 -- The quickfix list, as Neovim's: one shared place for what is wrong (or
 -- found) anywhere in the project, each entry with an address (paw/address.lua)
--- to go to, and maybe a fix. docs/terminal.md says how it is used,
+-- to go to, and maybe a fix. docs/reference/quickfix.md says how it is used,
 -- docs/reference/lua-addresses.md how to fill it.
 --
 -- An entry is `{ address, selector?, text, level?, source, fix? }`:

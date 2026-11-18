@@ -8,7 +8,7 @@
 --   ig  ag    the tracks of the group the cursor is in; with the group track
 --   ]]  [[    in the piano roll: the next or previous note of the same pitch
 --
--- `:select` and `:query` run a query (docs/terminal.md, "Structural queries").
+-- `:select` and `:query` run a query (docs/reference/queries.md).
 local api = paw.api
 local keymap = paw.keymap
 local cursor = paw.cursor

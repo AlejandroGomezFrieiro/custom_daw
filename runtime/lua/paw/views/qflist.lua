@@ -160,7 +160,7 @@ end
 
 local map = paw.keymap.set
 local function qmap(lhs, rhs, desc, opts) map(lhs, rhs, paw.util.merge({ view = "qflist", desc = desc }, opts)) end
--- Moving keys are motions, as in every view (docs/terminal.md, "Keys: one grammar").
+-- Moving keys are motions, as in every view (docs/reference/key-rule.md).
 local motion = { motion = true }
 qmap("j", function(ctx) move(ctx.count or 1) end, "The next entry", motion)
 qmap("k", function(ctx) move(-(ctx.count or 1)) end, "The entry above", motion)

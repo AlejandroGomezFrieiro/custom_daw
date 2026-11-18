@@ -1,4 +1,4 @@
--- Windows, buffers and tabs, after Neovim's. docs/terminal.md says how they
+-- Windows, buffers and tabs, after Neovim's. docs/reference/windows.md says how they
 -- are used, docs/reference/lua-views.md how to write a buffer type.
 --
 -- A buffer is something to show and edit; its type says how. A window is a

@@ -1,6 +1,6 @@
 -- The curve editor: a buffer for each curve (an automation lane, a
 -- parameter, a clip's controller, one note's expression, the tempo map),
--- named by its address, shown in any number of windows. docs/terminal.md
+-- named by its address, shown in any number of windows. docs/reference/curve-editor.md
 -- says how it is used; `paw.curves` reads and writes the curves.
 --
 --   :vs paw://lane/9          :e paw://tempo          :curve.open

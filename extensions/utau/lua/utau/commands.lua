@@ -759,8 +759,7 @@ emap("~", "utau.vibrato", "Vibrato on or off")
 emap("S", "utau.singer", "Choose the singer")
 emap("s", "utau.sheet", "Show or hide the lyric sheet")
 emap("r", "utau.render", "Render the track again")
--- Escape cancels and stays, as in every view (docs/terminal.md, "Keys: one
--- grammar"): it lets go of the selection.
+-- Escape cancels and stays, as in every view (docs/reference/key-rule.md): it lets go of the selection.
 emap("<Esc>", function()
   if next(editor.sel) then return editor:clear_selection() end
   paw.keymap.escape_hint()
