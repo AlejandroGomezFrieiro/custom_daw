@@ -38,8 +38,13 @@ click resets it.
 5. Play the part again. To reset the red light, click it, or start the
    song again.
 
-To catch the peaks that remain, add a limiter to the master. Type
-`:lua paw.master:add_device('limiter')`. The limiter keeps the peaks
-below -1 dB.
+To catch the peaks that remain, add a limiter to the master:
+
+1. Press `$` to go to the Master strip. In the arrange view, press `j` on
+   the last track.
+2. Press `a`, type `Limiter` and press `Enter`. The limiter keeps the
+   peaks below -1 dB.
+
+The keys `+`, `-`, `grv` and `a` also work on the master.
 
 For the loudness of the mix, see [How to check the mix](check-the-mix.md).

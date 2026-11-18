@@ -101,6 +101,7 @@ end
 --- anything is rendered; nothing is left under the name asked for when a
 --- render fails or is cancelled.
 function M.render(path, opts)
+  path = paw.util.expand_path(path)
   check(path)
   local background = opts and opts.background
   opts = kernel_opts(opts)
@@ -172,6 +173,7 @@ end
 --- or "opus"). With
 --- `background`, they are rendered one after another. Returns the files.
 function M.stems(dir, opts)
+  dir = paw.util.expand_path(dir)
   opts = opts or {}
   local ext = opts.format or "wav"
   check(dir .. "/stem." .. ext)
@@ -319,7 +321,7 @@ paw.command("render", function(ctx)
     local files = M.stems(dir, paw.util.merge(opts, { format = a.format }))
     return paw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))
   end
-  local path = a[1] and tostring(a[1]) or default_path()
+  local path = paw.util.expand_path(a[1] and tostring(a[1]) or default_path())
   local info = M.render(path, opts)
   if info then
     notify_rendered(path, info, "")

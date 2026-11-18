@@ -39,6 +39,30 @@ function M.clamp(v, lo, hi)
   return v
 end
 
+--- A path as typed, with `~` at its start for the home folder, as a shell
+--- reads it: `~/mix.wav`. Every command that takes a file name reads it so.
+function M.expand_path(path)
+  if type(path) ~= "string" then return path end
+  if path == "~" or path:sub(1, 2) == "~/" then return (os.getenv("HOME") or "~") .. path:sub(2) end
+  return path
+end
+
+-- The travel of a fader and a send: -60 to +6 dB. A level typed
+-- (`grv`) can go past it, as far as the engine's own limits, -120 to
+-- +24 dB.
+M.FADER_MIN, M.FADER_MAX = -60, 6
+
+--- The level a fader goes to from `now` when it is moved to `want`: in its
+--- travel (`lo` to `hi`, the fader's when not given), but never back past
+--- where it is. A track at +10 dB that is turned down goes to +9, not to
+--- the top of the travel.
+function M.fader_db(now, want, lo, hi)
+  lo, hi = lo or M.FADER_MIN, hi or M.FADER_MAX
+  now = now or 0
+  if want > now then return math.min(want, math.max(hi, now)) end
+  return math.max(want, math.min(lo, now))
+end
+
 --- `v` rounded to the nearest multiple of `step` (1).
 function M.round(v, step)
   step = step or 1

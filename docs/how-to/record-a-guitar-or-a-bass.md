@@ -35,9 +35,9 @@ If you hear the instrument late, make the block size smaller: type
 
 ## Record
 
-1. Move the cursor to where the take starts. Press `gp` to move the
-   playhead to the cursor. A take starts at the playhead.
-2. Press `R`. The song plays, and the status line shows `rec`.
+1. Move the cursor to where the take starts.
+2. Press `R`. The song plays from the cursor, and the status line shows
+   `rec`.
 3. Play the part. Press `<Space>` to stop. The take is now a clip on the
    track.
 

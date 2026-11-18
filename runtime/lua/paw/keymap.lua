@@ -752,7 +752,12 @@ local function run(map, char)
     if map.object then
       reg = map.object(ctx)
     else
-      exec(map, ctx, true)
+      -- The motion knows it moves for an operator (`paw.cursor` then
+      -- keeps to the tracks).
+      M.motion_for = o.map
+      local ok, err = pcall(exec, map, ctx, true)
+      M.motion_for = nil
+      if not ok then error(err, 0) end
       local r2, c2 = g.get()
       if not map.linewise and r == r2 and c == c2 then return end
       reg = region(r, c, r2, c2, map.linewise and "line" or "char")

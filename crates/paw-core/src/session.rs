@@ -1254,6 +1254,9 @@ impl Session {
                         "pan" => t.pan = de::<f64>(key, value)?.clamp(-1.0, 1.0),
                         "mute" => t.mute = de(key, value)?,
                         "solo" => t.solo = de(key, value)?,
+                        "armed" | "monitor" if id == MASTER_ID && de::<bool>(key, value.clone())? => {
+                            bail!("the master track records nothing: arm a track")
+                        }
                         "armed" => t.armed = de(key, value)?,
                         "monitor" => t.monitor = de(key, value)?,
                         "color" => t.color = de(key, value)?,
@@ -1550,6 +1553,11 @@ impl Session {
         self.flush();
         let mut captured = Vec::new();
         for (id, live) in &mut self.live {
+            // A device that stopped working has no state to give: the
+            // project keeps the one it had, and its stop was told already.
+            if live.stopped.is_some() {
+                continue;
+            }
             let Some(controller) = live.controller.as_mut() else {
                 continue;
             };
@@ -2044,6 +2052,9 @@ impl Session {
     }
 
     pub fn clip_add(&mut self, track: Id, opts: ClipOpts) -> Result<Id> {
+        if track == MASTER_ID {
+            bail!("the master track has no clips: put them on a track");
+        }
         let kind =
             opts.kind
                 .as_deref()
@@ -2256,6 +2267,9 @@ impl Session {
             if !in_slot && key == "track" {
                 let (from, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
                 let to: Id = de(key, value)?;
+                if to == MASTER_ID {
+                    bail!("the master track has no clips: put them on a track");
+                }
                 if p.track(to).is_none() {
                     bail!("no track {to}");
                 }

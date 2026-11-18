@@ -77,6 +77,10 @@ graphical window) lists all the inputs of a track:
     its devices) to a WAV file.
   - each armed track without an audio input plays and records MIDI input:
     from all ports, or from the port (and channel) of its `midi_input`.
+- **Where a take starts.** `R` (`:transport.record`) with the song
+  stopped moves the playhead to the cursor, and records from there, as
+  `Shift-Enter` plays from the cursor. While the song plays, `R` records
+  from the playhead. `paw.transport.record()` records from the playhead.
 - **The end of a take.** A stop, or recording off, ends the take. A seek
   starts a new take. paw adds the clips of a take, audio and MIDI, as one
   undo step. Notes that are held at the end are cut there.

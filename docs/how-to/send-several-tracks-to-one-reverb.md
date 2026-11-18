@@ -24,7 +24,11 @@ of its own. The tracks then share one room. For each rule, see
 3. Go to the next track, and do step 2 again.
 
 To give the level when you send, type the command: `:send Reverb -9`.
-Then press `j@:` to send the next track the same way.
+Then press `j@:` to send the next track the same way. To send many tracks
+in one step, select them with `V` and `j`, then type `:send Reverb -9`.
+
+To change the level of a send, type the command again with the new level:
+`:send Reverb -6`.
 
 ## Set the amount of reverb
 

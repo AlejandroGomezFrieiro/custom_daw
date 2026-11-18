@@ -104,6 +104,10 @@ playback, on any number of threads.
 | `:send.remove Reverb` | Remove the send. |
 
 - A send with no level is at `paw.opt.send_level` (-12 dB).
+- `:send Reverb -6` on a track that already sends to Reverb sets the level
+  of that send. Without a level, the send does not change, and paw says so.
+- With a selection of tracks (`V` in the arrange view or in the mixer),
+  `:send` acts on each track of the selection.
 - The list of `,s` shows first the tracks with no instrument (the
   returns).
 - In Lua: `track:send(reverb, -6, { pre = true })`.

@@ -245,7 +245,7 @@ See [Snippets](snippets.md) and [Completion](completion.md).
 | `gL` `gm` | loop on and off, metronome |
 | `gM` | count a bar in before recording, or not |
 | `gI` | punch recording on and off (over a selection: punch there); `:preroll 2` plays two bars before the punch in |
-| `R` | record armed tracks, or stop recording; with the loop on, every time round is a take |
+| `R` | record armed tracks from the cursor (while the song plays, from the playhead), or stop recording; with the loop on, every time round is a take |
 
 ## Find
 
