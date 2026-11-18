@@ -440,6 +440,18 @@ function M.splice(score, mi, staff, v, a, b, new)
   M.touch(score, mi)
 end
 
+--- A run of rests (`{ s, e, ids }`, or nil) put in `out` as the metre
+--- divides it, keeping their ids. Returns nil, the run done. Made once,
+--- not in the loop that uses it: LuaJIT does not compile a loop that makes
+--- a function.
+local function rests_of(score, run, meter, out)
+  if not run then return nil end
+  for k, p in ipairs(M.values(run.s, run.e, meter, true)) do
+    out[#out + 1] = { id = run.ids[k] or M.id(score, "e"), kind = "rest", dur = p.dur, dots = p.dots }
+  end
+  return nil
+end
+
 --- Merge a voice's rests as the metre divides the bar; a tuplet of rests
 --- alone is a plain rest; a voice 1 of rests is empty, and any other voice
 --- of rests is taken away.
@@ -456,13 +468,6 @@ function M.normalize(score, mi, staff, v)
     if it.ev.tuplet and it.ev.kind ~= "rest" then silent[it.ev.tuplet.id] = nil end
   end
   local out, run = {}, nil
-  local function flush()
-    if not run then return end
-    for k, p in ipairs(M.values(run.s, run.e, f.meters[mi], true)) do
-      out[#out + 1] = { id = run.ids[k] or M.id(score, "e"), kind = "rest", dur = p.dur, dots = p.dots }
-    end
-    run = nil
-  end
   local any = false
   for _, it in ipairs(items) do
     local ev = it.ev
@@ -471,12 +476,12 @@ function M.normalize(score, mi, staff, v)
       if run then run.e = it.e else run = { s = it.s, e = it.e, ids = {} } end
       run.ids[#run.ids + 1] = ev.id
     else
-      flush()
+      run = rests_of(score, run, f.meters[mi], out)
       out[#out + 1] = ev
       any = true
     end
   end
-  flush()
+  rests_of(score, run, f.meters[mi], out)
   if not any then
     if v == 1 then
       entry.events = {}

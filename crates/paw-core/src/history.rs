@@ -121,6 +121,18 @@ impl<T: Clone> History<T> {
         self.bytes
     }
 
+    pub fn byte_limit(&self) -> usize {
+        self.byte_limit
+    }
+
+    /// Keep at most `limit` states and about `byte_limit` bytes from now on,
+    /// dropping the oldest states at once if there are more.
+    pub fn set_limits(&mut self, limit: usize, byte_limit: usize) {
+        self.limit = limit.max(2);
+        self.byte_limit = byte_limit;
+        self.prune();
+    }
+
     /// Whether states have been dropped to keep within the limits since the
     /// tree was reset, the first time this is asked after they have been.
     pub fn newly_pruned(&mut self) -> bool {
@@ -684,6 +696,22 @@ mod tests {
         assert_eq!(t.at(), "cccc");
         t.h.reset("new".into(), 2000.0);
         assert_eq!(t.h.bytes(), 0);
+    }
+
+    #[test]
+    fn lowering_the_limits_drops_the_oldest_states_at_once() {
+        let mut t = T::new(100);
+        t.h = History::new("root".into(), 1000.0, 100).weigh_with(|_, s: &String| s.len(), 1000);
+        for _ in 0..10 {
+            t.edit("aaaa");
+        }
+        t.h.set_limits(5, 1000);
+        assert_eq!(t.h.len(), 5);
+        assert!(t.h.newly_pruned());
+        t.h.set_limits(100, 8);
+        assert_eq!((t.h.len(), t.h.bytes()), (3, 8), "the root and two steps of 4 bytes");
+        assert_eq!((t.h.limit(), t.h.byte_limit()), (100, 8));
+        assert_eq!(t.at(), "aaaa");
     }
 
     #[test]

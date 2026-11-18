@@ -44,7 +44,11 @@ local values = { {}, {} }   -- what value_of found, by the dots allowed and the 
 local value_count = 0
 function M.value_of(d, max_dots)
   local memo = values[(max_dots or 1) >= 2 and 2 or 1]
-  local hit = memo[d]
+  -- Kept by a key that is never a whole number (one for each duration):
+  -- LuaJIT does not compile looking up a whole number among other keys,
+  -- and every loop that writes a value would run uncompiled.
+  local key = d * 7 + 0.1
+  local hit = memo[key]
   if hit then return hit[1], hit[2] end
   local base, dots
   for _, b in ipairs(M.BASES) do
@@ -54,7 +58,7 @@ function M.value_of(d, max_dots)
   end
   value_count = value_count + 1
   if value_count > 20000 then values, value_count = { {}, {} }, 0 end
-  memo[d] = { base, dots }
+  memo[key] = { base, dots }
   return base, dots
 end
 
@@ -141,52 +145,57 @@ local function on_child_boundary(node, t)
   return false
 end
 
+local function emit(out, a, b) out[#out + 1] = { a, b } end
+
+--- `a` to `b` of the division `node` of a bar, written into `out`: what
+--- `M.split` does, made once rather than for every call (LuaJIT does not
+--- compile what makes a function).
+local function split_in(out, a, b, node, rest)
+  local len = b - a
+  if len < EPS then return end
+  local base, dots = M.value_of(len)
+  if base then
+    if node.free and not (rest and dots > 0 and not node.beat and not near(a, node.s)) then return emit(out, a, b) end
+    if on_child_boundary(node, a) then
+      if on_child_boundary(node, b) then return emit(out, a, b) end
+      -- A dot may carry a value into the next part of the bar.
+      if dots == 1 and not rest and on_child_boundary(node, a + base) then return emit(out, a, b) end
+    end
+  end
+  local children = node.children
+  if not children then
+    -- Below the smallest division: the largest values that fit.
+    local t = a
+    while b - t > EPS do
+      local step
+      for _, v in ipairs(M.BASES) do
+        if v <= b - t + EPS then
+          step = v
+          break
+        end
+      end
+      step = step or (b - t)
+      emit(out, t, t + step)
+      t = t + step
+    end
+    return
+  end
+  for _, c in ipairs(children) do
+    if a >= c.s - EPS and a < c.e - EPS then
+      if b <= c.e + EPS then return split_in(out, a, b, c, rest) end
+      split_in(out, a, c.e, c, rest)
+      return split_in(out, c.e, b, node, rest)
+    end
+  end
+  emit(out, a, b)
+end
+
 --- Split the stretch `s` to `e` of a bar (beats from the bar's start) into
 --- written values, as `{ { start, length }, ... }`. `rest` writes silence,
 --- which is never dotted across a division of the bar.
 function M.split(s, e, meter, rest)
   local out = {}
-  local function emit(a, b) out[#out + 1] = { a, b } end
-  local function go(a, b, node)
-    local len = b - a
-    if len < EPS then return end
-    local base, dots = M.value_of(len)
-    if base then
-      if node.free and not (rest and dots > 0 and not node.beat and not near(a, node.s)) then return emit(a, b) end
-      if on_child_boundary(node, a) then
-        if on_child_boundary(node, b) then return emit(a, b) end
-        -- A dot may carry a value into the next part of the bar.
-        if dots == 1 and not rest and on_child_boundary(node, a + base) then return emit(a, b) end
-      end
-    end
-    local children = node.children
-    if not children then
-      -- Below the smallest division: the largest values that fit.
-      local t = a
-      while b - t > EPS do
-        local step
-        for _, v in ipairs(M.BASES) do
-          if v <= b - t + EPS then
-            step = v
-            break
-          end
-        end
-        step = step or (b - t)
-        emit(t, t + step)
-        t = t + step
-      end
-      return
-    end
-    for _, c in ipairs(children) do
-      if a >= c.s - EPS and a < c.e - EPS then
-        if b <= c.e + EPS then return go(a, b, c) end
-        go(a, c.e, c)
-        return go(c.e, b, node)
-      end
-    end
-    emit(a, b)
-  end
-  go(s, e, meter.root)
+  split_in(out, s, e, meter.root, rest)
   return out
 end
 
@@ -379,6 +388,8 @@ function M.tuplet_normal(n)
   return normal
 end
 
+local function by_s(a, b) return a.s < b.s end
+
 --- The tuplets voice `voice` of staff `staff` needs in a measure: the user's (`user`, `{ start,
 --- length, n, normal, staff?, voice? }` in clip beats, or `plain` for none), and beats whose
 --- divisions are not plain, as `{ s, e, n, ratio }` (written = played *
@@ -441,7 +452,7 @@ local function tuplet_spans(m, bounds, user, staff, voice)
     end
   end
   -- Quarter-note triplets over two beats.
-  table.sort(spans, function(a, b) return a.s < b.s end)
+  table.sort(spans, by_s)
   local out, i = {}, 1
   while i <= #spans do
     local a, b = spans[i], spans[i + 1]
@@ -850,6 +861,15 @@ local function rest_shift(evs, rest, v)
   return shift
 end
 
+--- Whether a beam group of measure `m` is two plain eighths on the beat.
+local function plain_pair(g, m)
+  if #g.events ~= 2 then return false end
+  for _, ev in ipairs(g.events) do
+    if ev.base ~= 0.5 or ev.dots ~= 0 or ev.tuplet then return false end
+  end
+  return near(g.events[1].start - m.start, g.g0) and near(g.events[2].start - m.start, g.g0 + 0.5)
+end
+
 --- Stems, flags and beams; with two voices on a staff, the first's stems up
 --- and the second's down, and their rests out of each other's way.
 function M.stems_and_beams(layout)
@@ -891,14 +911,7 @@ function M.stems_and_beams(layout)
           local i = 1
           while i <= #groups do
             local a, b = groups[i], groups[i + 1]
-            local function plain_pair(g)
-              if #g.events ~= 2 then return false end
-              for _, ev in ipairs(g.events) do
-                if ev.base ~= 0.5 or ev.dots ~= 0 or ev.tuplet then return false end
-              end
-              return near(g.events[1].start - m.start, g.g0) and near(g.events[2].start - m.start, g.g0 + 0.5)
-            end
-            if b and near(a.g1, b.g0) and (near(a.g0, 0) or near(a.g0, 2)) and plain_pair(a) and plain_pair(b) and not breaks_beam(b.events[1]) then
+            if b and near(a.g1, b.g0) and (near(a.g0, 0) or near(a.g0, 2)) and plain_pair(a, m) and plain_pair(b, m) and not breaks_beam(b.events[1]) then
               merged[#merged + 1] = { g0 = a.g0, g1 = b.g1, events = { a.events[1], a.events[2], b.events[1], b.events[2] } }
               i = i + 2
             else
@@ -1012,7 +1025,20 @@ function M.t_of(m, x)
   return slots[#slots].t
 end
 
+local function by_start_staff_voice(a, b)
+  if not near(a.start, b.start) then return a.start < b.start end
+  if a.staff ~= b.staff then return a.staff < b.staff end
+  return a.voice < b.voice
+end
+
+-- The events of each layout, by staff (0 for all), as last sorted: the
+-- cursor's every move reads them, and a clip of thousands of notes takes a
+-- while to sort.
+local sorted_events = setmetatable({}, { __mode = "k" })
+
 --- Every event of a layout, with its measure, staff by staff in time order.
+--- To read: the list is kept for the next call while the layout holds the
+--- same events.
 function M.events(layout, staff)
   local out = {}
   for _, m in ipairs(layout.measures) do
@@ -1022,11 +1048,52 @@ function M.events(layout, staff)
       end
     end
   end
-  table.sort(out, function(a, b)
-    if not near(a.start, b.start) then return a.start < b.start end
-    if a.staff ~= b.staff then return a.staff < b.staff end
-    return a.voice < b.voice
-  end)
+  local kept = sorted_events[layout]
+  local was = kept and kept[staff or 0]
+  if was and #was == #out then
+    local same = {}
+    for _, ev in ipairs(was) do same[ev] = true end
+    local all = true
+    for _, ev in ipairs(out) do
+      if not same[ev] then
+        all = false
+        break
+      end
+    end
+    -- And still in order, should an event have moved.
+    for i = 2, all and #was or 0 do
+      if by_start_staff_voice(was[i], was[i - 1]) then
+        all = false
+        break
+      end
+    end
+    if all then return was end
+  end
+  -- Measure by measure, which is quicker than sorting them all; measures
+  -- follow each other in time, else they are sorted all together.
+  out = {}
+  local one = {}
+  for _, m in ipairs(layout.measures) do
+    for s, evs in ipairs(m.staves) do
+      if not staff or staff == s then
+        for _, ev in ipairs(evs) do one[#one + 1] = ev end
+      end
+    end
+    table.sort(one, by_start_staff_voice)
+    for i, ev in ipairs(one) do
+      out[#out + 1] = ev
+      one[i] = nil
+    end
+  end
+  for i = 2, #out do
+    if by_start_staff_voice(out[i], out[i - 1]) then
+      table.sort(out, by_start_staff_voice)
+      break
+    end
+  end
+  kept = kept or {}
+  kept[staff or 0] = out
+  sorted_events[layout] = kept
   return out
 end
 

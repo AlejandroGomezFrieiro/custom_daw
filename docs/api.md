@@ -2114,6 +2114,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.api.undo_keep(id, keep)`
 - `paw.api.undo_keys(text)`
 - `paw.api.undo_label(text)`: Name the open step; the first name given wins. nil takes back a name given while the step has changed nothing yet.
+- `paw.api.undo_limits(steps, bytes)`: How many steps the history keeps, and about how many bytes of what they changed: `paw.opt.undo_steps` and `undo_memory` set these.
 - `paw.api.undo_name(name, id)`
 - `paw.api.undo_pending()`: Whether this turn's edits will close as a step, and putting back what they changed instead (`edit.before`, paw/hooks.lua).
 - `paw.api.undo_project(id)`: A state's project as a project file holds it (the current state's by default), and the text of a project file for a project given as data: see extensions/projdiff.

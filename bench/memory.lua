@@ -5,13 +5,66 @@
 --   paw --clean --no-plugins -l bench/memory.lua churn <rounds>
 --       build, edit, render, undo and clear the same project over and over:
 --       resident memory should level off rather than keep growing
+--   paw --clean --no-plugins -l bench/memory.lua bigclip <notes> <steps> <adds>
+--       one clip of many notes, `steps` one-note edits as undo steps (what
+--       each costs the undo history, and how long it takes), undo and redo
+--       them all, then `adds` notes added one at a time
 local paw = require("paw")
 local api = paw.api
 local B = dofile(debug.getinfo(1, "S").source:sub(2):match("(.*)/") .. "/lib.lua")
 
 local mode, a, b, c = ...
 
-if mode == "project" then
+if mode == "bigclip" then
+  local count, steps, adds = tonumber(a) or 200000, tonumber(b) or 100, tonumber(c) or 2000
+  local track = api.track_add({ name = "T" })
+  local clip = api.clip_add(track, { start = 0, length = count / 4 })
+  local notes = {}
+  for i = 1, count do
+    notes[i] = { start = (i - 1) / 4, length = 0.25, pitch = 36 + i % 48, velocity = 90 }
+  end
+  api.clip_set_notes(clip, notes)
+  notes = nil
+  paw.flush()
+  api.undo_checkpoint()
+  collectgarbage()
+  local bytes_before = api.undo_tree().bytes
+  local rss_before = B.rss()
+  local times = {}
+  for i = 1, steps do
+    local t = api.now()
+    api.clip_note_set(clip, 1 + (i * 7919) % count, { velocity = 1 + i % 126 })
+    paw.flush()
+    api.undo_checkpoint()
+    times[i] = api.now() - t
+  end
+  collectgarbage()
+  local tree = api.undo_tree()
+  local rss_after = B.rss()
+  local undo_ms = B.time(function()
+    for _ = 1, steps do api.undo() paw.flush() end
+  end)
+  local redo_ms = B.time(function()
+    for _ = 1, steps do api.redo() paw.flush() end
+  end)
+  local add_ms = B.time(function()
+    for i = 1, adds do
+      api.clip_note_add(clip, { start = (i * 7919) % count / 4, length = 0.25, pitch = 100, velocity = 90 })
+      paw.flush()
+      api.undo_checkpoint()
+    end
+  end)
+  local s = B.stats(times)
+  B.emit({
+    workload = "bigclip", notes = count, steps = steps,
+    -- Builds from before the history told its size leave this out.
+    history_bytes_per_step = tree.bytes and (tree.bytes - bytes_before) / steps,
+    rss_kb_per_step = (rss_after - rss_before) / steps,
+    edit_p50_ms = s.p50, edit_max_ms = s.max,
+    undo_ms_per_step = undo_ms / steps, redo_ms_per_step = redo_ms / steps,
+    adds_per_second = adds / (add_ms / 1000),
+  })
+elseif mode == "project" then
   local tracks, clips, steps = tonumber(a) or 100, tonumber(b) or 8, tonumber(c) or 1000
   local rss_start = B.rss()
   local first
