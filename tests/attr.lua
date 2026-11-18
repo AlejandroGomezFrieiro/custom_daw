@@ -431,7 +431,8 @@ test("a plugin an extension ships is found once its directory is added, plays at
   local roll = paw.ui.views.pianoroll
   roll.pitch, roll.beat, roll.top = 30, 2, 30
   local screen = table.concat(api.ui_snapshot(160, 50), "\n")
-  eq(screen:find("Sus…", 1, true) ~= nil and screen:find("Sta…", 1, true) ~= nil, true, "the names on their keys")
+  -- The keyboard is 8 columns wide in a roll this wide: 7 for a name.
+  eq(screen:find("Sustain", 1, true) ~= nil and screen:find("Stacca…", 1, true) ~= nil, true, "the names on their keys")
   roll.pitch = 26
   local said = roll:describe()
   eq(said[3], "  the instrument calls this key Staccato", "K says so too")
