@@ -3,8 +3,8 @@
 <!-- tags: routing groups vca sends side-chain outputs -->
 
 A track plays into the master, or into a different track. It can also send
-its sound to other tracks, key a device on a different track, and give an
-instrument with several outputs a track for each output. For why groups
+its sound to other tracks, and key a device on a different track. An
+instrument with several outputs can have a track for each output. For why groups
 and VCAs are usual tracks, see
 [About groups and VCAs](../explanation/about-groups-and-vcas.md).
 
@@ -29,7 +29,7 @@ below the group, indented one step, in its color.
 - `paw.groups.make({ violins, violas, cellos }, "Strings")` makes a group.
 - `paw.groups.rows()` is the list of the tracks that show: all the tracks
   but the folded tracks.
-- For work on one group alone, see [Narrowing](narrowing.md).
+- For work on one group alone, see [Narrowed tabs](narrowing.md).
 
 ### Linked faders
 
@@ -45,7 +45,7 @@ balance stays. A fader stops at its end, and the others continue.
 ## VCAs
 
 A VCA is a fader, a mute and a solo that control other tracks without
-their sound, as on a mixing desk. Nothing is routed: the tracks play where
+their sound, as on a console. Nothing is routed: the tracks play where
 they played.
 
 | Keys, command | Effect |
@@ -80,9 +80,9 @@ drums:automate("volume"):set_points({ { 0, 0 }, { 16, -12 } })
 paw.vca.assign(room, drums)       -- also `unassign`, `members`, `of`, `dissolve`
 ```
 
-The sync adds the VCAs into each member: a fixed fader into the gain of
-the member, and lanes into one lane for the member, which is the sum of
-the lines in dB (with a point where any of them has a point). The audio
+The sync adds the VCAs into each member. A fixed fader goes into the gain
+of the member. Lanes go into one lane for the member: the sum of the
+lines in dB, with a point where any of them has a point. The audio
 thread plays that lane sample by sample, so a render sounds the same as
 playback, on any number of threads.
 
@@ -105,8 +105,9 @@ playback, on any number of threads.
 
 ## Side-chains
 
-A device can listen to a different track: a compressor on the bass that
-ducks under the kick, a gate on a pad that opens on the hi-hat.
+A device can listen to a different track. Examples are a compressor on
+the bass that ducks under the kick, and a gate on a pad that opens on the
+hi-hat.
 
 | Way | Effect |
 | --- | --- |
@@ -120,10 +121,11 @@ ducks under the kick, a gate on a pad that opens on the hi-hat.
   heard. A mute of the track removes a key taken after the fader.
 - The built-in `compressor` and `gate` key their detector from it
   (`listen` plays it).
-- CLAP, VST3 and LV2 plugins get it on their first side-chain input: a
-  CLAP audio port that is not the main port, a VST3 auxiliary bus, an LV2
-  port marked `isSideChain` or in a group that is the side-chain of a
-  different group. `device.ports.sidechain` tells if a device has one.
+- CLAP, VST3 and LV2 plugins get it on their first side-chain input:
+  - a CLAP audio port that is not the main port
+  - a VST3 auxiliary bus
+  - an LV2 port marked `isSideChain`, or in a group that is the side-chain
+    of a different group. `device.ports.sidechain` tells if a device has one.
   Other devices ignore it.
 - Lua devices with `sidechain = true` get it in `b.key_left` and
   `b.key_right` (see [Lua devices](lua-devices.md)).
@@ -132,14 +134,15 @@ ducks under the kick, a gate on a pad that opens on the hi-hat.
   the latency of the devices before it, or delays the track of the device
   when the key is later.
 - The device panel shows `key Kick` on the line of the device. In the
-  graphical window, a device that can listen has a Key row on its card,
-  with a menu of the tracks that it can hear.
+  graphical window, a device that can listen has a Key row on its card.
+  The row has a menu of the tracks that the device can hear.
 
 ### Loops and lifetime
 
-- paw refuses a side-chain that makes a loop: from the track of the device
-  itself, from the master, or from a track that the track of the device
-  plays into, sends to or keys, directly or through other tracks. The
+- paw refuses a side-chain that makes a loop. The key of a loop is the
+  track of the device, or the master. It can also be a track that the
+  track of the device plays into, sends to or keys, directly or through
+  other tracks. The
   message gives the reason. paw also refuses outputs and sends that make a
   loop.
 - When you remove the key track, the side-chain goes (undo brings it

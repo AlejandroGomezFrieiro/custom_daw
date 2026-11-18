@@ -1,4 +1,4 @@
-# Freezing
+# Frozen tracks
 
 <!-- tags: freezing frozen freeze -->
 
@@ -40,7 +40,7 @@ module is `paw.freeze`. For the steps, see
   freeze. The suite compares them sample by sample.
 - A change of tempo does not render the file again. Unfreeze and freeze.
 - The vocal freeze of `extensions/utau` is a different function, because it
-  waits for the singing.
+  waits for the voice synthesis.
 
 ## Lua
 

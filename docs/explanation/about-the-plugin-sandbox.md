@@ -24,10 +24,10 @@ longer than about one block. A slow plugin then costs its own track one
 block, but the other tracks do not drop out. A plugin that gives no block
 for two seconds has hung, and paw stops it as if it crashed.
 
-The cost is the crossing: each block goes to a different process and
-back. `--plugins-in-process` removes the crossing and also removes the
+The cost is the transfer: each block goes to a different process and
+back. `--plugins-in-process` removes the transfer and also removes the
 protection. The default keeps the protection: a crash costs more than the
-crossing.
+transfer.
 
 ## Why Lua devices also run apart
 
@@ -54,5 +54,5 @@ A plugin that crashes during a scan, or during the load of a project,
 would crash again at each start. So paw records the file of the plugin,
 and the next start does not use it until the file changes or you ask for
 it. For a project, paw records the failure next to the state of the
-project, not in the project file, because the failure belongs to this
-computer, not to the project.
+project, not in the project file. The failure belongs to this computer,
+not to the project.

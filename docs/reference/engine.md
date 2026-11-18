@@ -58,14 +58,14 @@ same values to the graphical window and the status line.
   `saturation`, and the `compressor` and `gate` with `lookahead` report
   it.
 - paw delays each other path to the same place by the difference, through
-  buses and sends, so that all the sound arrives together.
+  buses and sends. Then all the sound arrives together.
 - A render removes the delay from the start of the file.
 - paw does not delay the clips of a track to match the sound that is routed
   into the track.
 
 ## A device that fails
 
-- paw guards the processing of each device on the audio thread. A device
+- paw guards each device on the audio thread. A device
   that panics is marked failed, and the chain ignores it after that. An
   instrument is silent, and an effect lets its input through.
 - The event `device.stopped` tells, as for a plugin whose helper crashed.
@@ -90,6 +90,6 @@ So a long session does not keep each file that it played.
 | Function | Effect |
 | --- | --- |
 | `paw.api.engine_restart(spec)` | Restart the engine (see [Audio devices](audio-devices.md#test-backends)). |
-| `paw.api.engine_audible(ids)` | Play only these tracks, and what their sound goes through. `scope_rest=mute` uses it (see [Narrowing](narrowing.md)). |
+| `paw.api.engine_audible(ids)` | Play only these tracks, and what their sound goes through. `scope_rest=mute` uses it (see [Narrowed tabs](narrowing.md)). |
 | `paw.api.engine_hold(track, file)` | Play a file instead of a track. `scope_rest=frozen` uses it. |
 | `paw.wait(ms)` | Let time pass, with timers and events. `paw.api.sleep` does not run timers or events. A script run with `-l` is otherwise one long turn. |

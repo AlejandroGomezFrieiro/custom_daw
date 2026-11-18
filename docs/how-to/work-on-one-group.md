@@ -1,8 +1,8 @@
 # How to work on one group of a large project
 
-This guide shows you how to see and edit only one group, for example the
-strings, in a large project. For each rule, see
-[Narrowing to a group](../reference/narrowing.md).
+This guide shows you how to see and edit only one group of a large
+project. For each rule, see
+[Narrowed tabs](../reference/narrowing.md).
 
 1. Move the cursor to the header of the group, or to one of its tracks.
 2. Press `zn`. A new tab opens with the group and its tracks only. The
@@ -11,8 +11,8 @@ strings, in a large project. For each rule, see
 4. To hear only the group, type `:set scope_rest=mute`.
 5. To return to the full project, press `zw`.
 
-To go between the narrowed tab and the full project without closing it,
-press `gt`.
+To go between the narrowed tab and the full project, press `gt`. The
+narrowed tab stays open.
 
 If the rest of the song uses much CPU, type `:set scope_rest=frozen`. paw
 renders the rest in the background and plays the files.

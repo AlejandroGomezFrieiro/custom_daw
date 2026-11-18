@@ -12,8 +12,8 @@ kick (a side-chain). For each rule, see
 5. To hear what the detector hears, set `listen` on. Set it off again
    after.
 
-If you want the kick to key the compressor but not to be heard, mute the
-kick and key before its fader: `:device.sidechain Kick pre=1`.
+To key the compressor with a kick that you do not hear, mute the kick.
+Then key before its fader: `:device.sidechain Kick pre=1`.
 
 To duck under a plugin compressor, use the same steps. The plugin must
 have a side-chain input.

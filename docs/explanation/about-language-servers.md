@@ -3,8 +3,8 @@
 A text editor shows the problems in code where the code is, with fixes. A
 language server finds the problems, and the editor shows them. Neovim does
 this with `vim.lsp` and `vim.diagnostic`. paw does the same for music and
-for the mix: a server finds a parallel fifth, a fader that clips, or a
-master that is too loud, and each view shows the problem on the thing.
+for the mix. A server finds a parallel fifth, a fader that clips, or a
+master that is too loud. Each view shows the problem on the thing.
 
 ## Four layers
 
@@ -33,11 +33,13 @@ on that note, and its fix changes that note.
 ## Why subjects are projections
 
 A server must not know the internal model of paw. A subject is a stable
-view of a part of the project: a clip in the format of MIDI LSP, a track,
-the mix, a render. When the model changes, only the projection changes,
-and the servers continue to work. A server says what it wants to see, and
-with `focus` it gets only what a person looks at, so that a large project
-does not send all its clips.
+view of a part of the project. Examples are a clip in the format of MIDI
+LSP, a track, the mix and a render. When the model changes, only the
+projection changes, and the servers continue to work.
+
+A server says what it wants to see. With
+`focus`, it gets only what a person looks at. Then a large project does
+not send all its clips.
 
 ## Why the protocol is LSP
 

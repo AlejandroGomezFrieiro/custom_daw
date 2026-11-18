@@ -1,4 +1,6 @@
-# About stretching
+# About time stretch
+
+<!-- tags: about-stretching -->
 
 To stretch sound is to change its length without a change of pitch, or its
 pitch without a change of length. No method is good for all sound. This
@@ -11,7 +13,7 @@ time and not while it plays. For the commands and fields, see
 paw has two methods, both written for paw in Rust
 (`crates/paw-core/src/stretch.rs`).
 
-- **`tonal`** is a phase vocoder with identity phase locking. It starts its
+- **`tonal`** is a phase vocoder with identity phase lock. It starts its
   phases again at each onset. It is good for held and melodic sound, at any
   ratio.
 - **`percussive`** overlaps pieces of the file at their own speed (WSOLA).
@@ -24,14 +26,14 @@ more each second. Both methods keep the two channels as one stereo image.
 
 ## Formants
 
-A pitch shift is a stretch, then a resampling. The resampling moves all
-frequencies, also the formants: the peaks of the spectrum that tell which
+A pitch shift is a stretch, then a change of sample rate. This change
+moves all frequencies, also the formants: the peaks of the spectrum that tell which
 vowel a voice sings. So a voice shifted far sounds smaller or larger.
 
 When a clip keeps its formants, the vocoder finds the spectral envelope of
 each frame (from the cepstrum, liftered at 1.5 ms). It moves the envelope
-in the opposite direction before the resampling, and the resampling moves
-it back. The harmonics move, and the formants stay. This needs the
+in the opposite direction before the change of rate, and the change of
+rate moves it back. The harmonics move, and the formants stay. This needs the
 vocoder, so a clip that keeps its formants uses `tonal` in all modes.
 
 ## Why paw stretches a file one time
@@ -53,5 +55,5 @@ A uniform stretch cannot correct a part that is not in time. A warp
 marker pins a moment of the file to a beat, and each part between two
 markers stretches by its own amount. A move of a marker changes only its
 two neighbors. paw saves the markers as moments of the file with no
-stretch, so they stay on the sound when you trim, slip or stretch the
+stretch. So they stay on the sound when you trim, slip or stretch the
 clip.

@@ -3,15 +3,15 @@
 The timeline is one fixed order of clips. Some music does not start with a
 fixed order. You find a song when you try parts against each other, and you
 play some songs live in a different order each time. Ableton Live has a
-session view for this, and paw copies the idea: each track has slots, and a
-row of slots across the tracks is a scene.
+session view for this, and paw copies the idea. Each track has slots, and
+a row of slots across the tracks is a scene.
 
 ## Why the engine times a launch
 
 A launch must start on the beat. If the Lua runtime started the clip, the
 start would depend on when the main thread runs, and a busy kernel would
-start clips late. In paw the kernel sends the launch to the engine with its
-boundary, and the audio thread starts the clip on the frame of that
+start clips late. In paw, the kernel sends the launch to the engine with its
+boundary. The audio thread starts the clip on the frame of that
 boundary. The main thread can be late by a few milliseconds and the clip
 still starts on the beat.
 
@@ -34,8 +34,8 @@ on the timeline, and then the render plays it.
 ## Why slot clips are usual clips
 
 A clip in a slot is a usual clip with a `slot` field. So the piano roll,
-undo, copy and paste, and the project file treat it as any other clip, and
-no part of paw needs a second kind of clip.
+undo, copy and paste, and the project file treat it as any other clip. No
+part of paw needs a second kind of clip.
 
 See [The session view](../reference/session-view.md) for the keys and
 commands, and

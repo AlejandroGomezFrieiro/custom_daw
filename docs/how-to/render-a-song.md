@@ -16,7 +16,7 @@ example an MP3 to share. For each option, see [Render](../reference/render.md).
 
 The file is next to the project, unless you give a path.
 
-If `:render mix.mp3` fails because `ffmpeg` is missing, install `ffmpeg`,
+If `:render mix.mp3` fails because there is no `ffmpeg`, install `ffmpeg`,
 or set `paw.opt.ffmpeg` to its path. WAV and FLAC need no other program.
 
 If reverbs or delays continue after the last clip, add `tail=4` for four

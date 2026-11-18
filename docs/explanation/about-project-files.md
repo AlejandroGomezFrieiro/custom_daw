@@ -27,11 +27,11 @@ Version control can then store projects efficiently, and
 ## Relative paths for media
 
 A project names the files inside its folder by a relative path, so you can
-move or copy the folder. When a file is missing, paw looks for it before
-it asks you: in the folder of the project, by the last parts of its old
-path, and next to other files that it found. A missing file does not stop
-the project from opening: its clips stay, silent and marked offline, and a
-save keeps the old path. So a project that you open on a computer without
+move or copy the folder. If paw cannot find a file, it looks for the file
+before it asks you. It looks in the folder of the project, by the last
+parts of the old path, and next to other files that it found. A lost file
+does not stop the project. Its clips stay, silent and marked offline, and
+a save keeps the old path. So a project that you open on a computer without
 the samples does not lose them.
 
 ## Safety copies

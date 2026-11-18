@@ -3,7 +3,7 @@
 <!-- tags: takes take-lanes comping -->
 
 A clip can hold several versions of what it plays. One version plays: the
-playing take. Recording round the loop makes takes (see
+active take. Recording round the loop makes takes (see
 [Recording](recording.md#rules)). `:take.new` makes a take by hand. For the
 steps, see
 [How to record takes over a loop and comp them](../how-to/record-takes-and-comp.md).
@@ -12,19 +12,19 @@ steps, see
 
 | Keys, command | Effect |
 | --- | --- |
-| `]t` `[t`, `:take next`, `:take prev` | Play the next take of the clip, or the take before. |
+| `]t` `[t`, `:take next`, `:take prev` | Make the next take of the clip active, or the take before. |
 | `:take 2` | Play the second take. |
 | `:take.list` | Select a take from a list. |
 | `:take.new` | Keep what the clip plays as a take, and continue in a copy of it. |
-| `:take.remove`, `:take.remove 1` | Delete the playing take, or take 1. |
-| `:take.keep` | Delete all the takes but the playing take. |
+| `:take.remove`, `:take.remove 1` | Delete the active take, or take 1. |
+| `:take.keep` | Delete all the takes but the active take. |
 | `:take.explode` | Put each other take as a clip on a new track of its own. |
 | `zt`, `:take.lanes` | Show the takes of the track as lanes below its clips, or hide them. |
 
 In the graphical window, the menu of a clip has a Takes entry with these
 actions.
 
-## Comping
+## Comp
 
 To comp is to select the best part of each take.
 
@@ -44,12 +44,12 @@ below its clips.
 
 - Lane k holds take k of each clip of the track that has takes, each over
   the time range of its clip. So the pieces of a comp align in lanes.
-- The playing take is bright. The other takes are dim. Each piece shows
+- The active take is bright. The other takes are dim. Each piece shows
   the waveform or the notes of its take, and its name.
 - After recording round the loop, the lanes do not open automatically.
   `zt` shows each time round.
 - In the terminal, the lanes are one line each below the track. They are
-  read-only: the playing take is bright and has its name. To comp, use
+  read-only: the active take is bright and has its name. To comp, use
   `:take 2` on a selection.
 - The tracks that show take lanes are kept for the session, as the
   automation lanes that show as rows. They are not saved in the project.
@@ -64,20 +64,20 @@ below its clips.
   grid step is a click.
 - Adjacent pieces that then play the same take join into one piece where
   the join is exact. So swipes back and forth leave no small pieces:
-  - For audio, the join is exact when each take aligns across the join
-    (the same file and gain, and the second piece starts in each take
-    where the first ends), the clips have the same name and mute state,
-    and there is no fade at the join.
+  - For audio, the join is exact when these are true: each take aligns
+    across the join (the same file and gain, and the second piece starts
+    in each take where the first ends). The clips have the same name and
+    mute state. There is no fade at the join.
   - For notes, the join is exact when the names of the takes match and no
     note is hidden past the edge of either piece. A note cut in two by an
     earlier cut stays as two notes after the join, as it played.
 
 ## Stretch and loop
 
-The playing take and the other takes all play through the stretch and the
-loop of the clip. Comping keeps both on each piece. paw joins pieces again
+The active take and the other takes all play through the stretch and the
+loop of the clip. A comp keeps both on each piece. paw joins pieces again
 only where they have the same stretch, shift and loop, and the second
-piece continues the repeats of the first. In the take lanes, the playing
+piece continues the repeats of the first. In the take lanes, the active
 take shows as it plays. A different take shows its file, compressed or
 expanded in time by the stretch of the clip, and repeated as the clip
 loops.
@@ -87,11 +87,11 @@ loops.
 | Function | Effect |
 | --- | --- |
 | `paw.takes.count(clip)` | The number of takes. |
-| `paw.takes.select(clip, n)` | Play take n. |
+| `paw.takes.select(clip, n)` | Make take n the active take. |
 | `paw.takes.step(clip, 1)` | Play the next take. |
 | `paw.takes.new(clip)` | Make a take. |
 | `paw.takes.remove(clip, n)` | Delete take n. |
-| `paw.takes.keep(clip)` | Delete all the takes but the playing take. |
+| `paw.takes.keep(clip)` | Delete all the takes but the active take. |
 | `paw.takes.explode(clip)` | Put the other takes on new tracks. |
 | `paw.takes.comp(track, n, from, to)` | Play take n over beats `from` to `to`, then join the pieces as above. |
 | `paw.takes.choose_at(track, n, beat)` | Play take n in the piece at a beat. |
@@ -108,5 +108,5 @@ loops.
 - The takes are in `clip.meta.takes` (`runtime/lua/paw/takes.lua` shows
   the format).
 - The files of takes that do not play count as files of the project. paw
-  moves them into `media` at the first save, and finds them again when
-  they are missing.
+  moves them into `media` at the first save, and looks for them as for
+  other files that it cannot find.

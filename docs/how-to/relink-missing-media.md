@@ -1,19 +1,22 @@
-# How to relink missing media
+# How to relink lost media
 
-This guide shows you how to find sound files that a project cannot find,
-for example after you move the files. For each command, see
+<!-- tags: relink-missing-media -->
+
+This guide shows you how to find the sound files of a project after you
+move them. For each command, see
 [Media files and audio clips](../reference/media.md).
 
-1. Open the project. A message lists the missing files. Their clips show
+1. Open the project. A message lists the files that paw cannot find. Their clips show
    "offline".
-2. Type `:media.relink`. paw lists the missing files.
+2. Type `:media.relink`. paw lists these files.
 3. Select a file, then select the file that it is now. paw looks for the
-   other missing files next to it.
-4. If files are still missing, type `:media.relink` again and select
+   other lost files next to it.
+4. If paw still cannot find some files, type `:media.relink` again and select
    "Search a directory". Select the directory.
 5. Save the project. The new paths go into the project file.
 
-In the graphical window, select File → Sound files → Find missing files….
+In the graphical window, select File → Sound files, then the entry that
+finds the lost files.
 
 To give a directory on the command line, type `:media.relink ~/samples`.
 

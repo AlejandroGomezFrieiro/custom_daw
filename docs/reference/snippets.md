@@ -4,9 +4,9 @@
 
 A snippet is music with a name, made from the context at the cursor. For
 example, `dominant` before a C major chord writes G7 from the cursor to
-the C chord, in the range of the track, and led smoothly from the chord
-before it. The module is `paw.snippet`. The set of snippets comes from
-extensions: `extensions/snippets` is the starting set. For the steps to
+the C chord. The chord is in the range of the track, and moves smoothly
+from the chord before it. The module is `paw.snippet`. The snippets come
+from extensions: `extensions/snippets` is the first set. For the steps to
 write one, see [How to write a snippet](../how-to/write-a-snippet.md).
 
 ## Expand a snippet
@@ -18,7 +18,8 @@ write one, see [How to write a snippet](../how-to/write-a-snippet.md).
 | `3<C-s>`, `:3snippet walk` | Expand the snippet three times. Each repeat starts where the one before ended. |
 | `<C-Space>` | Show the snippets among the suggestions (the `snippets` source, see [Completion](completion.md)). |
 
-- The picker is at the top of the screen. Typing makes the list shorter.
+- The picker is at the top of the screen. When you type, the list becomes
+  shorter.
   Its pane shows the notes and choices of the selected snippet, and the
   piano roll shows its notes as named ghost notes. `Enter` writes it.
 - A snippet that takes the count itself (`dominant`, `bass`, `pedal`) uses
@@ -35,9 +36,9 @@ write one, see [How to write a snippet](../how-to/write-a-snippet.md).
 
 ## The active snippet
 
-The expansion is one undo step. After it, the snippet is active: its notes
-are violet, and a band at the bottom of the piano roll shows its range,
-its name and its current choice. In the graphical window, a chip below its
+The expansion is one undo step. After it, the snippet is active. Its notes
+are violet. A band at the bottom of the piano roll shows its range, its
+name and its current choice. In the graphical window, a chip below its
 notes shows them.
 
 | Keys (piano roll, normal and insert mode) | Effect |
@@ -54,7 +55,7 @@ notes shows them.
   active, the keys do their usual action (`<Tab>` goes to the next view,
   `<C-y>` redoes).
 
-## The starting set
+## The first set
 
 `extensions/snippets` holds these snippets. Load it with `paw.ext.load`, or
 link it into `<config>/extensions`.
@@ -74,10 +75,10 @@ link it into `<config>/extensions`.
 | `harmonize` | a voice a third or a sixth from each selected note, in the key at the note | interval |
 | `voice-lead` | the selected chords voiced again to move least, with the bass kept or free | bass, voicing |
 
-The first value of the voicing choice is `smooth`: the voicing that moves
-least from the notes of this clip before the cursor, and into the notes
-after it. If the clip has no notes before the cursor, the voicing moves
-least from the notes that other tracks play in its range.
+The first value of the `voicing` choice is `smooth`. This value selects
+the chord position that moves least from the notes of this clip before
+the cursor, and into the notes after it. If the clip has no notes before
+the cursor, it moves least from the notes of other tracks in its range.
 
 ## Where snippets are found
 

@@ -2,9 +2,9 @@
 
 <!-- tags: lsp language-servers -->
 
-A language server reads a part of the project and reports problems in it:
-a parallel fifth, a fader that clips, a master louder than the delivery
-target, a render without dither. The modules are `paw.lsp` and
+A language server reads a part of the project and reports problems in it.
+Examples are a parallel fifth, a fader that clips, a master louder than
+the delivery target, and a render without dither. The modules are `paw.lsp` and
 `paw.diagnostic`, after `vim.lsp` and `vim.diagnostic` in Neovim. For the
 design, see [About language servers](../explanation/about-language-servers.md).
 For the steps to write a server, see
@@ -270,7 +270,7 @@ paw.diagnostic.set("mylint", clip, { { notes = { 3 }, message = "...", fixes = {
 ## Servers that come with paw
 
 - **MIDI LSP** (`extensions/midilsp`, see its [README](../../extensions/midilsp/README.md)).
-  Its engine checks voice leading, counterpoint, ranges, rhythm and form,
+  Its engine checks voice leading (a technical name), counterpoint, ranges, rhythm and form,
   finds chords and keys, and suggests melodies, velocities and controller
   curves. The extension starts it as two servers on clips, in the `midi/*`
   protocol: `midi-lsp` (the language role) and `midi-lsp-suggest` (the
@@ -283,19 +283,22 @@ paw.diagnostic.set("mylint", clip, { { notes = { 3 }, message = "...", fixes = {
   default), two one-shot servers check each render, if their programs are
   installed next to the engine:
   - `midilsp-delivery` runs `reaper-midi-lsp-delivery` on each WAV render.
-    It checks the integrated loudness, the true peak, clipping, the
+    It checks the integrated loudness, the true peak, clipped samples, the
     loudest passage and the loudness range against
     `paw.opt.midilsp_delivery_target` (`spotify`, `ebu-r128`, or empty for
     information only). If the render is too loud or above the true-peak
     ceiling, a fix lowers the master by the difference.
   - `midilsp-settings` runs `reaper-midi-lsp-settings` on the render
     settings. paw makes these settings from the render options and the
-    devices of the master. It finds a 16-bit render without dither (fix:
-    render again with dither), normalization on, a rate that is not the
-    rate of the project (fix: render again at that rate), and a limiter on
-    the master that is bypassed (fix: enable it) or not last. Its messages
+    devices of the master. It finds these problems:
+    - a 16-bit render without dither (fix: render again with dither)
+    - normalization on
+    - a rate that is not the rate of the project (fix: render again at
+      that rate)
+    - a limiter on the master that is bypassed (fix: enable it) or not
+      last. Its messages
     name the render dialog of REAPER, where paw has the render options.
-- **mixdiag** (`extensions/mixdiag`) is a server in Lua. Its findings
-  become diagnostics on the tracks that they name. If a finding gives the
+- **mixdiag** (`extensions/mixdiag`) is a server in Lua. Its results
+  become diagnostics on the tracks that they name. If a result gives the
   number of dB to lower a fader, the diagnostic has a fix. So its report
   and `:diagnostics` agree.

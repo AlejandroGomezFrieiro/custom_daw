@@ -10,9 +10,9 @@ steps, see [How to recover lost work](../how-to/recover-lost-work.md).
 
 ## Save
 
-- A save writes a temporary file next to the project, writes it to the
-  disk, gives it the name of the project, and writes the directory to the
-  disk. So the file on the disk is always the old project or the new
+- A save writes a temporary file next to the project and writes it to the
+  disk. Then it gives the file the name of the project, and writes the
+  directory to the disk. So the file on the disk is always the old project or the new
   project, complete.
 - paw keeps the file as it was before the save next to it, as
   `song.json.bak`.
@@ -23,9 +23,9 @@ steps, see [How to recover lost work](../how-to/recover-lost-work.md).
 
 ## The same file each time
 
-paw writes a project as JSON, with its fields in the order of the model,
-its maps by key, and its numbers with the fewest digits that read back
-exactly. So a save of a project with no change writes the same bytes, and
+paw writes a project as JSON. The fields are in the order of the model,
+the maps are by key, and the numbers have the fewest digits that read
+back exactly. So a save of a project with no change writes the same bytes, and
 one change gives a small diff.
 
 | Function | Result |

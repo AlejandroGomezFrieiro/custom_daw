@@ -29,8 +29,8 @@ field, see [Snippets](../reference/snippets.md).
 5. Press `<C-s>` and type `plagal`. The piano roll shows the notes as ghost
    notes.
 6. Press `Enter`. The snippet writes the notes and stays active.
-7. Press `<Tab>` to select the voicing choice. Press `<C-n>` to try the
-   next voicing.
+7. Press `<Tab>` to select the `voicing` choice. Press `<C-n>` to try the
+   next value.
 8. Press `<Esc>` to keep the notes.
 
 `ctx:chord` puts the chord in the range of the track and leads it from the

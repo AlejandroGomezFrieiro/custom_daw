@@ -18,5 +18,5 @@ To record many takes of the range, also set the loop. Each time through
 the range becomes a take (see
 [How to record takes over a loop and comp them](record-takes-and-comp.md)).
 
-To stop punching, press `gI` again. paw keeps the range in the project for
+To stop the punch, press `gI` again. paw keeps the range in the project for
 the next time.

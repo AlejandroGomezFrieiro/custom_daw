@@ -16,7 +16,8 @@ assumes that your audio interface is connected. For each rule, see
 7. Put the cursor where the take must start, and press `R`.
 8. Play. Press `<Space>` to stop. The take is now a clip on the track.
 
-To hear the input without recording it, switch monitoring with `<A-i>`.
+To hear the input without a recording, press `<A-i>`. This switches the
+monitor of the track.
 
 If you record a MIDI keyboard, do not select an audio input. In the input
 list, select the MIDI port and channel. A track with no audio input

@@ -32,9 +32,9 @@ parameters, presets, a wet/dry mix and an output gain.
 
 ### Displays and windows
 
-- In the device panel, the `eq` shows its curve, the `compressor`, `gate`
-  and `limiter` show their gain reduction, the `meter` shows its loudness
-  and the `tuner` shows a needle, below their names.
+- In the device panel, some devices show a display below their names. The
+  `eq` shows its curve. The `compressor`, `gate` and `limiter` show their
+  gain reduction. The `meter` shows its loudness, and the `tuner` a needle.
 - `:eq` and `:tuner` show the equalizer or the tuner of the track, and add
   one if the track has none. `:loudness` shows the meter of the master.
 - In the graphical window, each of these opens a window of its own (also

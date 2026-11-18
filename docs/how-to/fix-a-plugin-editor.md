@@ -1,7 +1,7 @@
 # How to fix a plugin editor that does not work
 
-This guide shows you what to do when the editor of a plugin is black,
-ignores clicks, or is too small. For how paw shows each kind of editor, see
+This guide shows you how to repair a plugin editor that is black, ignores
+clicks, or is too small. For how paw shows each kind of editor, see
 [Plugins](../reference/plugins.md#editors).
 
 ## The editor is an empty black window
@@ -18,8 +18,8 @@ libraries that the plugin needs.
 ## A Windows plugin ignores clicks in a part of the screen
 
 A Windows plugin through yabridge draws and reads the pointer in Wine, not
-in paw. If its editor ignores clicks in a part of the screen, or on all of
-one monitor, the Wine server has an old size of the screen. This occurs
+in paw. An editor can ignore clicks in a part of the screen, or on one
+monitor. Then the Wine server has an old size of the screen. This occurs
 when the Wine server continues to run after a change of monitors or of
 scale.
 

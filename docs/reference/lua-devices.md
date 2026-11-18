@@ -123,9 +123,9 @@ Use one filter or smoother for each channel.
   the answer. An error is an error of the caller, and the device continues
   to play.
 - `paw.api.device_post(kind, topic, data)` calls `dev.call(topic, data)`
-  on each device of a kind: immediately on the devices that exist, and
-  before the first block of each device made later (the private devices of
-  an offline render too). paw keeps the latest data of each topic for
+  on each device of a kind. It calls the devices that exist immediately.
+  It calls each device made later before its first block (the private
+  devices of an offline render too). paw keeps the latest data of each topic for
   these devices, so devices made at any time agree. `nil` removes a topic.
 
 ## Large data
@@ -143,7 +143,7 @@ singer, is too big for a string on each call.
 - For new data, write a new file. Do not write over a file that a device
   has in memory.
 
-`extensions/utau` plays its singing this way.
+`extensions/utau` plays its synthesized voice this way.
 
 ## Reload
 
@@ -172,7 +172,7 @@ singer, is too big for a string on each call.
 Each Lua device runs in a helper process, as a plugin does, with a LuaJIT
 state of its own. The engine gives the helper each block through shared
 memory and waits for it inside the block. So a Lua device adds no latency,
-a slow script costs its own track a block, and a script that hangs or
+and a slow script costs its own track a block. A script that hangs or
 crashes (`ffi` can crash) stops without an effect on other devices. This
 is also true with `--plugins-in-process`. For why, see
 [About the plugin sandbox](../explanation/about-the-plugin-sandbox.md).

@@ -13,7 +13,7 @@ In the piano roll, `<C-s>` and a few letters, or `:snippet dominant`.
 Before a C major chord `dominant` writes G7 from the cursor up to it; `<Tab>`
 goes to its choices and `<C-n>` steps one (the voicing first); `u` takes it
 all away. What each snippet writes and its choices are listed in
-[Snippets](../../docs/reference/snippets.md#the-starting-set), with
+[Snippets](../../docs/reference/snippets.md#the-first-set), with
 [How to write a snippet](../../docs/how-to/write-a-snippet.md).
 
 - `snippets/harmony.lua`: `dominant`, `secondary`, `two-five`, `tritone`,

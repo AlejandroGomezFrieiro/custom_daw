@@ -41,10 +41,10 @@ extension. In Lua, use `paw.harmony.set_key`.
 
 ## Names and numerals
 
-- Chord names use the spelling of the key: Bb in F major, A# in B major. In
+- Chord names use the letters of the key: Bb in F major, A# in B major. In
   C major, and with no key, the names are C#, Eb, F#, Ab and Bb.
 - A diminished chord that is not in the key has the name of the leading
-  note that it is: G#dim7 before A minor.
+  note (a technical name) that it is: G#dim7 before A minor.
 - Roman numerals count from the tonic as in the major scale, in each mode:
   `bVII`, `bVI`, `i`, `V7`, `viiø7`, `ii°`.
 

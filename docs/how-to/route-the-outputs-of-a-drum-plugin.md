@@ -1,7 +1,7 @@
 # How to route the outputs of a drum plugin
 
-This guide shows you how to give each drum of a multi-output plugin a
-track of its own, to mix the drums separately. For each rule, see
+This guide shows you how to give each output of a drum plugin a track of
+its own. For each rule, see
 [Routing](../reference/routing.md#instruments-with-several-outputs).
 
 1. Add the drum plugin to a track.

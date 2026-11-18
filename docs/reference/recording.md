@@ -47,7 +47,7 @@ graphical window) lists all the inputs of a track:
 
 - A choice that is saved but not available now (a pair that the device
   does not have, a port that is disconnected) shows as selected, with the
-  mark missing.
+  mark `missing`.
 - `paw.audio.choices(track)` gives this list, and
   `paw.audio.choose(track, choice)` selects an entry.
 
@@ -62,15 +62,15 @@ graphical window) lists all the inputs of a track:
 
 - The track header shows the input (`UR22mkII · 1/2`) and the level at the
   input. The level shows also when the track is not armed or monitored.
-- In the terminal, `I` next to `M S R` on the header switches monitoring.
-  In the graphical window, the loudspeaker next to the input button does
-  the same. `<A-i>` also switches monitoring.
+- In the terminal, `I` next to `M S R` on the header switches the monitor
+  on or off. In the graphical window, the loudspeaker next to the input
+  button does the same. `<A-i>` also switches the monitor.
 
 ## Rules
 
-- **Monitoring.** You hear the input of a track when the track is armed,
-  or when its monitor is on. Arming always monitors, so what you hear is
-  what paw records. A track with no input ignores both.
+- **Monitor.** You hear the input of a track when the track is armed, or
+  when its monitor is on. An armed track always monitors, so what you hear
+  is what paw records. A track with no input ignores both.
 - **What records.** While `paw.transport.recording` is on and the
   transport plays:
   - each armed track with an audio input records its dry input (before
@@ -80,14 +80,16 @@ graphical window) lists all the inputs of a track:
 - **The end of a take.** A stop, or recording off, ends the take. A seek
   starts a new take. paw adds the clips of a take, audio and MIDI, as one
   undo step. Notes that are held at the end are cut there.
-- **Recording round the loop.** With the loop on, recording continues
+- **A recording round the loop.** With the loop on, recording continues
   round the loop. Each time round becomes a take of one clip over the
   loop (see [Takes](takes.md)). The last take plays, and the name of the
-  clip shows which take (`take 3 ‹3/3›`). What you played before the loop
-  start becomes a separate clip before it. The first time round counts if
-  it started at the loop start or before. The last time round counts if it
-  reached at least half of the loop. With the loop off, a take is one
-  clip.
+  clip shows which take (`take 3 ‹3/3›`).
+  - What you played before the loop start becomes a separate clip before
+    it.
+  - The first time round counts if it started at the loop start or
+    before. The last time round counts if it reached at least half of the
+    loop.
+  - With the loop off, a take is one clip.
 
 ## Count-in
 
@@ -104,8 +106,8 @@ count-in.
 - The record button, `R` and `paw.transport.record()` count in. Play with
   record mode on also counts in. A punch in by hand while the song plays
   does not.
-- The clicks use the tempo and time signature at the playhead: one click
-  on each beat, and a higher click on the first beat of each bar. They
+- The clicks use the tempo and time signature at the playhead. There is
+  one click on each beat, and a higher click on the first beat of each bar. They
   sound when the metronome is off too, with the same latency as the song.
 - The playhead does not move during the count. The song and the take
   start on the frame after the count, so the recording aligns as without a
@@ -162,14 +164,15 @@ that starts from a stop.
 
 The timeline menu of the graphical window has the same entries.
 
-- With punch on, the transport stopped and recording started, the
-  playhead goes back by the bars, from the bar line at or before the punch
-  in, then back by the seconds. The song plays from there.
+- This applies when punch is on, the transport is stopped, and recording
+  starts. The playhead moves back by the bars, from the bar line at or
+  before the punch in. Then it moves back by the seconds. The song plays from there.
 - paw records nothing until the punch in. The take starts on the frame of
   the punch in, so the clip starts exactly at the punch in.
-- A playhead that is already further back does not move. There is no
-  pre-roll for a playhead inside or after the range, for a take that starts
-  while the song plays, or for a take without punch.
+- A playhead that is already further back does not move.
+- There is no pre-roll for a playhead inside or after the range. There is
+  no pre-roll for a take that starts while the song plays, or for a take
+  without punch.
 - A count-in comes before the pre-roll: it counts at the start of the
   pre-roll, and then the song plays from there.
 - The pre-roll belongs to you, as the count-in does. It is not saved with

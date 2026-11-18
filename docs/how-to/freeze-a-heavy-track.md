@@ -1,8 +1,8 @@
 # How to freeze a heavy track
 
-This guide shows you how to stop a heavy instrument from using the CPU,
-and continue to mix. For each rule, see
-[Freezing](../reference/freezing.md).
+This guide shows you how to stop the CPU use of a heavy instrument, and
+continue to mix. For each rule, see
+[Frozen tracks](../reference/freezing.md).
 
 1. Move the cursor to the track, or to the header of a group.
 2. Type `:freeze`. paw renders the track and plays the file. The header

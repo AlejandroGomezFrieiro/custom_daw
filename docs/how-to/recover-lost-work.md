@@ -19,7 +19,7 @@ If the project file is damaged, paw shows a message when you open it.
 Type `:recover`. The newest safety copy and the `.bak` file of the project
 are first in the list.
 
-If a take is missing after a crash, type `:recover`. Select the take. paw
+If a take is not on its track after a crash, type `:recover`. Select the take. paw
 puts it on the track that recorded it.
 
 In the graphical window, select File → Recover unsaved work….

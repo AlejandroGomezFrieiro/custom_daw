@@ -4,8 +4,8 @@
 
 The sound files of a project are its media. This page describes how a
 project finds its files, how paw reads them, and the operations on audio
-clips. For the steps to find missing files, see
-[How to relink missing media](../how-to/relink-missing-media.md).
+clips. For the steps to find lost files, see
+[How to relink lost media](../how-to/relink-missing-media.md).
 
 ## Paths
 
@@ -15,24 +15,24 @@ clips. For the steps to find missing files, see
 - When a project opens and a file is not at its path, paw looks for it:
   1. relative to the project (the last parts of its old path),
   2. by name, in the folder tree of the project,
-  3. in the directories where other missing files were found.
-- A file found at a different place marks the project as changed, so that
-  a save keeps the new place.
-- paw reports the files that are still missing in one message. Their clips
+  3. in the directories where it found other lost files.
+- A file found at a different place marks the project as changed. Then a
+  save keeps the new place.
+- paw reports the files that it cannot find in one message. Their clips
   stay in the project, silent, with `offline = true` in their state
   (`paw.clip(id).offline`, and in `paw.frontend.state`). Both frontends
   write "offline" before their names.
-- A save keeps the path that a missing file had.
+- A save keeps the path of a file that paw cannot find.
 - Old projects with full paths open with no change.
 
 ## Commands
 
 | Command | Effect |
 | --- | --- |
-| `:media.relink` | List the missing files. Select one, then the file that it is now. paw then looks for the others next to it. Or select "Search a directory" and a directory. |
-| `:media.relink <dir>` | Look for the missing files in a directory. |
-| `:media.relink <old> <new>` | Point a missing file to a new file. |
-| `:media.missing` | List the missing files. |
+| `:media.relink` | List the files that paw cannot find. Select one, then the file that it is now. paw then looks for the others next to it. Or select "Search a directory" and a directory. |
+| `:media.relink <dir>` | Look for these files in a directory. |
+| `:media.relink <old> <new>` | Point a file that paw cannot find to a new file. |
+| `:media.missing` | List the files that paw cannot find. |
 | `:media.collect` | Copy each file from outside the project folder into `media` next to the project, and point the clips to the copies. The original files stay. |
 
 `paw.opt.copy_imports = true` makes each import copy its file into `media`
@@ -40,21 +40,22 @@ immediately.
 
 | Function | Result |
 | --- | --- |
-| `paw.media.missing()` | The missing files. |
+| `paw.media.missing()` | The files that paw cannot find. |
 | `paw.media.list()` | Each file: `{ path, missing, inside, on_disk }`. |
 | `paw.media.relink(old, new)` | Point a file to a new file. |
-| `paw.media.search(dir)` | Look for missing files in a directory. |
+| `paw.media.search(dir)` | Look for these files in a directory. |
 | `paw.media.collect()` | Copy the files into `media`. |
 | `paw.pick.file({ directory = true })` | Select a directory. |
 
 Each change is one undo step. The event `media.missing` (`{ files, found
-}`) comes after a project opens with files missing or moved.
+}`) comes after a project opens with files that paw did not find, or found
+at a new place.
 
 ## Sample rates
 
 paw converts a sound file at a different rate than the engine (or than a
 render) one time, when it loads the file. The converter is a band-limited
-windowed-sinc resampler (`rubato`, 256 taps): no frequency above the
+windowed-sinc resampler (`rubato`, 256 taps). No frequency above the
 Nyquist frequency of the new rate folds back, and a tone keeps its level
 and position. A change of the engine rate converts again.
 
@@ -75,7 +76,7 @@ A file whose decoded sound is larger than `paw.opt.media_stream` megabytes
 - The engine reads them as any other samples. The system reads the pages
   from the disk, and releases them when memory is low.
 - The kernel asks for the next seconds before the playhead (and before the
-  loop start), so that the audio thread does not wait for the disk.
+  loop start). Then the audio thread does not wait for the disk.
 - paw keeps the decoded sound between runs, by the identity of the file.
   So a recording of one hour opens immediately the second time.
 - The cache stays within `paw.opt.media_cache` gigabytes (16). The files
@@ -95,7 +96,7 @@ An audio clip has `fade_in` and `fade_out`, in beats.
 | `:clip.crossfade 1` | Extend the clip under the start of the next clip by one beat, and fade the two across each other. |
 
 An edge that cuts into a recording always gets a fade of three
-milliseconds, so that splits and cuts of audio do not click.
+milliseconds. Then splits and cuts of audio do not click.
 
 ## Operations on audio clips
 

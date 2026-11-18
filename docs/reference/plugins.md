@@ -129,10 +129,10 @@ makes its window. Without them, an editor is an empty black window.
 - A plugin that you add by hand (the device picker, `:device.add`, the
   "Add a device" box in the graphical window) opens its editor
   immediately, as in REAPER. Some instruments make no sound until their
-  editor opens one time. A plugin that a script adds, that a project load
-  adds, or that is added with no person at paw (`-l`, a kernel that no
-  window watches) does not open its editor.
-  `paw.opt.editor_on_add = false` stops this.
+  editor opens one time. `paw.opt.editor_on_add = false` stops this.
+- A plugin that a script adds or that a project load adds does not open
+  its editor. A plugin that paw adds with nobody at paw (`-l`, a kernel
+  that no window watches) also does not open its editor.
 
 | Kind of editor | How paw shows it |
 | --- | --- |
@@ -142,7 +142,7 @@ makes its window. Without them, an editor is an empty black window.
 | CLAP editors that can only float | In their own window, a native Wayland window if they can. |
 
 - paw tells editors the scale of the screen (`Xft.dpi`, or
-  `PAW_UI_SCALE=1.5`), so that they are not too small or blurred on a dense
+  `PAW_UI_SCALE=1.5`). Then they are not too small or blurred on a dense
   screen.
 - An X11 error of a plugin does not stop paw.
 - paw tells the window manager when an editor cannot change size.
@@ -172,7 +172,7 @@ again.
 - Each other request has a time limit. If a plugin hangs while paw makes
   it or saves its state, paw stops it and reports it.
 - `--plugins-in-process` (or `PAW_PLUGIN_SANDBOX=0`) loads the plugins
-  into paw itself. This removes the cost of the crossing, and removes the
+  into paw itself. This removes the cost of the transfer, and removes the
   protection.
 
 ## Status of a device
@@ -188,21 +188,21 @@ of these values:
 | `offline` | The device is set offline. paw does not make it. |
 | `missing` | The plugin is not installed. |
 
-### Loading
+### Load in the background
 
-- When a project opens or you add a plugin, the device shows immediately
-  as `loading`. Its helper makes it, four plugins at a time.
+- When a project opens or you add a plugin, the device shows immediately,
+  with the status `loading`. Its helper makes it, four plugins at a time.
 - When the plugin is ready, it gets its saved state, and paw sends the
   event `device.ready`.
 - `:device.restart` tries a stopped device again.
-- A device that is loading or stopped keeps the state that it had when the
-  project opened. A save writes that state back with no change.
-- A render waits for devices that are loading. It refuses to start if paw
+- A device with the status `loading` or `stopped` keeps the state that it
+  had when the project opened. A save writes that state back with no change.
+- A render waits for devices with the status `loading`. It refuses to start if paw
   cannot make a device, and names the device.
 - A script run with `-l` waits for each plugin that it adds, unless it
   calls `paw.api.load_apart(true)`.
 
-### Missing plugins
+### Plugins that are not installed
 
 A plugin that is not installed stays in the project. paw shows it by its
 name, as `missing` ("not installed"), with its saved state and parameter
@@ -237,9 +237,9 @@ The offline flags that these set are saved with the project.
 
 ### Plugins that failed to load
 
-If a plugin fails or hangs while a project opens, paw records it next to
-the other state of the project (`$XDG_STATE_HOME/paw/projects/`), not in
-the project file. The next time that the project opens, that plugin is
+If a plugin fails or hangs while a project opens, paw records it. The
+record is next to the other state of the project
+(`$XDG_STATE_HOME/paw/projects/`), not in the project file. The next time that the project opens, that plugin is
 offline, and a message says so. `:edit song.json online` opens the
 project with all its plugins. When the plugin loads, paw forgets the
 failure.

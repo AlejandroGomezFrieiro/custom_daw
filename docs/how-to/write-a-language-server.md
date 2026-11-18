@@ -1,7 +1,7 @@
 # How to write a language server
 
-This guide shows you how to make a server that checks the mix and shows
-its findings as diagnostics with fixes. It assumes that you know Lua or a
+This guide shows you how to make a server that checks the mix and gives
+diagnostics with fixes. It assumes that you know Lua or a
 language that reads JSON. For every field and message, see
 [Language servers and diagnostics](../reference/language-servers.md).
 
@@ -87,5 +87,5 @@ use a one-shot server.
 
 3. Render the song. `:diagnostics` shows the findings under Renders.
 
-To give a finding a location or a fix, add a `diagnostic(finding, doc)`
+To give a result a location or a fix, add a `diagnostic(finding, doc)`
 function to the config.

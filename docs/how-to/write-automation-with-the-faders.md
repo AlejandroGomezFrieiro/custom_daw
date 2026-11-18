@@ -11,7 +11,7 @@ while the song plays. For each mode, see
    graphical window, a MIDI controller, or the editor of a plugin. The
    header shows `T` in red while the track writes.
 5. Release the control. The lane controls it again.
-6. Stop the song. Type `:automation read` so that later moves write
+6. Stop the song. Type `:automation read`. Later moves then write
    nothing.
 
 If you want a control to keep its new value until the song stops, use

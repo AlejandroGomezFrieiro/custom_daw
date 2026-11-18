@@ -26,7 +26,7 @@ each extension (`:help notation`).
 - [How to write automation with the faders](how-to/write-automation-with-the-faders.md)
 - [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
-- [How to relink missing media](how-to/relink-missing-media.md)
+- [How to relink lost media](how-to/relink-missing-media.md)
 - [How to recover lost work](how-to/recover-lost-work.md)
 - [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
@@ -50,8 +50,8 @@ each extension (`:help notation`).
 - [The audio engine](reference/engine.md): threads, the state of the engine, delay compensation, failed devices
 - [Tempo and time signatures](reference/tempo.md): the tempo map, its commands, the timebase of audio clips
 - [Routing: groups, VCAs, sends and side-chains](reference/routing.md): groups, linked faders, VCAs, outputs, sends, side-chains, output pairs
-- [Narrowing to a group](reference/narrowing.md): a tab of one group, the rest of the song
-- [Freezing](reference/freezing.md): frozen and held tracks
+- [Narrowed tabs](reference/narrowing.md): a tab of one group, the rest of the song
+- [Frozen tracks](reference/freezing.md): frozen and held tracks
 - [Automation](reference/automation.md): automation modes, writing with the controls
 - [Stretched and looped clips](reference/stretch.md): stretch, pitch, warp markers, tempo, loops
 - [Markers and regions](reference/markers.md): markers, regions, their keys and commands
@@ -80,7 +80,7 @@ each extension (`:help notation`).
 - [About the audio engine](explanation/about-the-audio-engine.md): many cores and one result, delay compensation, failed devices, long files
 - [About time and tempo](explanation/about-time-and-tempo.md): the tempo map, and which clock each thing keeps
 - [About groups and VCAs](explanation/about-groups-and-vcas.md): why groups and VCAs are usual tracks, narrowing, freezing
-- [About stretching](explanation/about-stretching.md): the two methods, formants, why paw stretches a file one time
+- [About time stretch](explanation/about-stretching.md): the two methods, formants, why paw stretches a file one time
 - [About project files](explanation/about-project-files.md): saves, the same bytes, relative paths, safety copies
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP

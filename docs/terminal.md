@@ -600,7 +600,7 @@ left and above).
 | `:resize 20` `:resize +5`, `:vertical resize 40` | the window's height, its width |
 | `:tabnew Mix`, `:tabnew mixer`, `gt` `gT`, `:tabn 2`, `Ctrl-w T` | a new tab named Mix, or showing the mixer; next and previous tab; tab 2; the window to a tab of its own |
 | `:tabclose`, `:tabs` | close the tab; list the tabs and their windows |
-| `:narrow Strings` `zn`, `:widen` `zw` | a tab of one group's tracks alone, the windows as in this one (`zn`: the group at the cursor); close it and go back (see [Narrowing to a group](reference/narrowing.md)) |
+| `:narrow Strings` `zn`, `:widen` `zw` | a tab of one group's tracks alone, the windows as in this one (`zn`: the group at the cursor); close it and go back (see [Narrowed tabs](reference/narrowing.md)) |
 | `:view.open undotree` | show a view where it docks, else in a window split from this one (the graphical frontend's More) |
 | `:setlocal timebind` | bind this window's time to the other bound windows' |
 | `:layout save edit`, `:layout edit` | keep the tabs and windows as they are; put them back |

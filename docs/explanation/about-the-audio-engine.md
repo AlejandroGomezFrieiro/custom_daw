@@ -53,6 +53,6 @@ A recording of one hour, decoded, takes gigabytes of memory. paw decodes
 such a file one time into a cache on the disk, and maps the cache into
 memory. The system reads the pages when the engine needs them, and
 releases them when memory is low. The kernel asks for the next seconds
-before the playhead, so that the audio thread never waits for the disk.
+before the playhead. Then the audio thread never waits for the disk.
 The decoded sound stays in the cache between runs, so the second open is
 immediate.

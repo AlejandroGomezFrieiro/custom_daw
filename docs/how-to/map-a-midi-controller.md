@@ -1,7 +1,7 @@
 # How to map a MIDI controller
 
 This guide shows you how to move faders and parameters with the knobs of a
-MIDI controller. It assumes that paw runs with an audio device, so that the
+MIDI controller. It assumes that paw runs with an audio device. Then the
 MIDI ports are open (see [MIDI](../reference/midi.md#midi-input)). For each
 command, see [MIDI controllers](../reference/learn.md).
 
@@ -32,8 +32,8 @@ turn the knob.
 1. Type `:learn.list`.
 2. Select the mapping. paw removes it.
 
-If the target does not move when you turn the knob, turn the knob past the
-current value of the target. paw waits until the control reaches the value.
+If the target does not move, turn the knob past the current value of the
+target. paw waits until the control reaches the value.
 To make the target jump immediately, set `paw.opt.learn_pickup = false` in
 `init.lua`.
 

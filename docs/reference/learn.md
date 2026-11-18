@@ -2,10 +2,11 @@
 
 <!-- tags: learn midi-controllers -->
 
-A knob, a fader or a wheel of a MIDI controller can move the fader or the
-pan of a track, or a parameter of a device. A pad or a button can launch a
-slot or a scene of the [session view](session-view.md), or stop clips. The
-module is `paw.learn`.
+A knob, a fader or a wheel of a MIDI controller can move a control. A
+control is the fader or the pan of a track, or a parameter of a device. A
+pad or a button can launch a slot or a scene of the
+[session view](session-view.md). It can also stop clips. The module is
+`paw.learn`.
 
 ## Commands
 

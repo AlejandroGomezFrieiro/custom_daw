@@ -129,8 +129,8 @@ Scripts use `paw.controls`: `rows`, `cells`, `edit`, `select_box`, `move`,
 - A track names its port in `midi_input` by name. So paw finds the port
   again when you connect the keyboard later, or on a different computer.
 - When a port goes away, paw releases the notes that were held on it. paw
-  tells when the port goes away and when it comes back, with the tracks
-  that use it. The tracks use it again by its name.
+  tells when the port goes away and when it returns, with the tracks that
+  use it. The tracks use it again by its name.
 - paw opens the ports only with a real audio device, or with
   `paw.api.engine_restart({ midi = true })` (see
   [Audio devices](audio-devices.md#test-backends)).
@@ -158,8 +158,9 @@ same. There is no MIDI-CI (see [Limits](limits.md)).
 
 ## MIDI output
 
-A track sends what it plays to a port: the notes and controllers of its
-clips, and the MIDI input that passes through it, before its devices.
+A track sends what it plays to a port. This is the notes and controllers
+of its clips, and the MIDI input that passes through it, before its
+devices.
 
 | Way | Example |
 | --- | --- |
@@ -175,9 +176,9 @@ paw sends MIDI 2.0 where the port takes it: when the sequencer has MIDI
 2.0 (`CONFIG_SND_SEQ_UMP`) and the program of the port speaks it. Then the
 notes, the bends and controllers of each note, and all values go as
 Universal MIDI Packets with full resolution. Else paw sends MIDI 1.0, in
-the form of the route: `form` in `track.midi_output`, or
-`:track.midi_out UM-ONE 2 mpe`, or the MIDI out form entries of the input
-list and the input menu.
+the form of the route. You set the form with `form` in
+`track.midi_output`, with `:track.midi_out UM-ONE 2 mpe`, or with the MIDI
+out form entries of the input list and the input menu.
 
 | Form | Output |
 | --- | --- |
@@ -195,16 +196,17 @@ With `mpe`:
   pitch bend, pressure and controller 74 of its channel.
 - paw first sends the zone (the MPE configuration message) with a bend
   range of 48 semitones, which is the bend range of a note in paw.
-- A note takes the channel that was released first, so that a release
-  that still sounds does not bend with the next note. If all channels are
+- A note takes the channel that was released first. Then a release that
+  still sounds does not bend with the next note. If all channels are
   in use, the note shares the channel with the fewest notes.
 - paw sends the moves that come for a note before its start on its
   channel, just before the note.
 
 ### Timing
 
-- The audio thread puts a time stamp on each message: when it is heard,
-  with the latency of the output and the delay of the plugins. It gives the
+- The audio thread puts a time stamp on each message. The stamp is when
+  the message is heard, with the latency of the output and the delay of
+  the plugins. It gives the
   message through a lock-free queue to a thread that schedules it on an
   ALSA sequencer queue in real time. So a synth on the port sounds with the
   tracks.
@@ -248,9 +250,9 @@ A file that opens as a project gives:
 
 - one track for each track of the file that has notes (paw splits a
   format 0 file by channel), with the name of the track, or "Channel N"
-- one clip on each track, over the bars that it plays, with its
-  controllers, pitch bend, pressure and program changes as controller moves
-  of the clip (the curve editor shows them at `paw://clip/C/control/cc/N`)
+- one clip on each track, over the bars that it plays. Its controllers,
+  pitch bend, pressure and program changes become controller moves of the
+  clip (the curve editor shows them at `paw://clip/C/control/cc/N`).
 - the tempo map, time signatures and markers of the file
 - the lyrics, on the notes where they start (`note.meta.lyric`)
 - the built-in drum kit on a track that plays only on channel 10. The

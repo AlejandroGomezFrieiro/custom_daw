@@ -2,12 +2,14 @@
 
 <!-- tags: stretching-and-looping-clips stretch warp loop pitch formants -->
 
-An audio clip can play its file longer or shorter at the same pitch,
-higher or lower at the same length, and in time with any tempo. Any clip
-can loop. Each of these is a field of the clip. The project saves it, and
-copy, paste, cut and undo keep it. The module is `paw.stretch`. For how
-paw stretches sound, see
-[About stretching](../explanation/about-stretching.md).
+An audio clip can play its file longer or shorter at the same pitch. It
+can also play it higher or lower at the same length, and in time with any
+tempo. Any clip
+can loop.
+
+Each of these is a field of the clip. The project saves it, and
+copy, paste, cut and undo keep it. The module is `paw.stretch`. For the
+stretch methods, see [About time stretch](../explanation/about-stretching.md).
 
 ## Commands
 
@@ -72,9 +74,9 @@ A stretched clip has a label before its name, in both frontends:
 - paw makes the sound from its start, into space for all of it, and the
   clip plays it as far as it is ready. paw makes it many times faster than
   it plays, so a long file plays immediately.
-- If the playhead is past the ready part (for example, far into a long
-  clip that just changed), the clip fades out just before that point, is
-  silent, and fades in where the ready part reaches.
+- The playhead can be past the ready part, for example far into a long
+  clip that just changed. Then the clip fades out just before that point,
+  is silent, and fades in where the ready part reaches.
 - A render waits until all of the sound is ready. A render gives the same
   file at any time.
 - paw keeps each stretched version by file, warp markers, shift, method,
@@ -85,7 +87,7 @@ A stretched clip has a label before its name, in both frontends:
 
 A warp marker pins a moment of the file to a place in the clip. Each part
 of the sound between two markers stretches by its own amount. For example,
-put a marker on each beat of a part that is not in time, and move each
+put a marker on each beat of a part that is not in time. Then move each
 marker to its beat, or move all of them with `:clip.warp snap`.
 
 - A new marker changes nothing.
@@ -113,13 +115,12 @@ marker to its beat, or move all of them with `:clip.warp snap`.
 
 A clip in the `stretch` timebase (`:clip.tempo`, or
 `clip.timebase = "stretch"`) keeps its start and its length on their beats
-when the tempo changes. Its stretch changes so that it fits, and its pitch
-stays.
+when the tempo changes. Its stretch changes to fit, and its pitch stays.
 
 - `clip.source_tempo` is the tempo of the sound of the clip. paw sets it
   when the timebase changes to `stretch` (the tempo at the start of the
-  clip, times its stretch). You can set it (`:clip.tempo 100` makes a loop
-  recorded at 100 BPM play at the tempo of the song). Recording sets it on
+  clip, times its stretch). You can set it: `:clip.tempo 100` makes a loop
+  recorded at 100 BPM play at the tempo of the song. Recording sets it on
   each clip of a take, to the tempo of the recording.
 - Where the tempo changes inside such a clip (a ramp, or a change in the
   middle), paw does not stretch it evenly. paw bends it along the tempo

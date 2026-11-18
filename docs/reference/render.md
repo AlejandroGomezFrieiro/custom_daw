@@ -137,11 +137,11 @@ in a file, not on its command line.
 
 ## Lua
 
-`paw.render(path, opts)` accepts the options as a table: `range`, `start`,
-`end`, `tail`, `sample_rate` or `rate`, `bits`, `channels` (1, 2,
-`"mono"`, `"stereo"`), `quality`, `bitrate`, `ffmpeg`, `dither`,
-`normalize`, `loudness`, `tracks = { id, ... }`, `master`, `threads`,
-`tags`, `freeze`.
+`paw.render(path, opts)` accepts the options as a table. The fields are
+`range`, `start`, `end`, `tail`, `sample_rate` or `rate`, `bits`,
+`channels` (1, 2, `"mono"`, `"stereo"`), `quality`, `bitrate`, `ffmpeg`,
+`dither`, `normalize`, `loudness`, `tracks = { id, ... }`, `master`,
+`threads`, `tags` and `freeze`.
 
 - It waits for the file, and returns `{ path, frames, seconds,
   sample_rate, peak, gain, loudness, format, bits, channels, ... }`.
@@ -169,8 +169,8 @@ The graphical window finds the render in `paw.frontend.state().modal.render`.
 `paw.render_stems(dir, opts)` writes one file for each track. The files add
 up to the mix exactly through sends, returns and buses that only filter,
 delay or mix. A compressor or a limiter on a shared bus hears each stem
-alone, and acts on it differently than on the sum, so there the files
-differ a little.
+alone. It acts on a stem differently than on the sum, so there the files
+are a little different.
 
 `:render stems` writes one file for each group, with the name of the
 group, into `<project> stems`:
@@ -213,8 +213,8 @@ which returns the new track.
 - paw tells plugins when a render is offline, and gives them a moment to
   prepare before it starts. Many plugins load the data of a setting in the
   background, and would still be silent at the end of a fast render.
-- A render waits for devices that are loading (see
-  [Plugins](plugins.md#loading)).
+- A render waits for devices with the status `loading` (see
+  [Plugins](plugins.md#load-in-the-background)).
 - Language servers can get each render as a subject. A delivery or
   settings check can then look at each render and show diagnostics with
   fixes. A server of the mix gets the fader, pan, sends and devices of each

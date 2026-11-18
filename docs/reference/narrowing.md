@@ -1,9 +1,9 @@
-# Narrowing to a group
+# Narrowed tabs
 
 <!-- tags: narrowing scope narrow -->
 
-In a large project, you can narrow a tab to one group: the tab shows only
-that group and the tracks inside it, at any depth. This is similar to a
+In a large project, you can narrow a tab to one group. The tab then shows
+only that group and the tracks inside it, at any depth. This is similar to a
 subproject in REAPER. The module is `paw.scope`.
 
 ## Commands
@@ -19,9 +19,10 @@ subproject in REAPER. The module is `paw.scope`.
 
 - It is the same project, with one undo tree. Undo in any tab undoes an
   edit made in the narrowed tab.
-- These see only the tracks of the group: the arrange view, the mixer, the
-  device panel, the session view, `paw://tracks`, the pickers, the track
-  motions (`gg`, `G`, `j`) and the Ex ranges. `t1` is the group, `t*` and
+- Only the tracks of the group show in these: the arrange view, the mixer,
+  the device panel, the session view, `paw://tracks`, the pickers.
+- The track motions (`gg`, `G`, `j`) and the Ex ranges use only these
+  tracks. `t1` is the group, `t*` and
   `%` are its tracks, and `:g` and `:s` look only in them.
 - The fold of the group is open.
 - The status line shows `narrowed Strings`, and the tab has the name of the

@@ -1,7 +1,7 @@
 # How to render stems
 
-This guide shows you how to render the parts of a song to separate files,
-for example for a mix engineer. For each option, see
+This guide shows you how to render the parts of a song to separate
+files. For each option, see
 [Render](../reference/render.md#stems).
 
 ## One file for each group
@@ -27,5 +27,5 @@ To use a different folder, type `:render stems out`. To render FLAC, add
 
 1. Type `:render Strings`. paw writes `Strings.wav` next to the project.
 
-If a compressor or a limiter is on a bus that the stems share, the stems
-do not add up exactly to the mix. The bus hears each stem alone.
+A compressor or a limiter on a shared bus hears each stem alone. Then the
+stems do not add up exactly to the mix.

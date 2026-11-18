@@ -5,6 +5,7 @@
 A suggestion shows notes that you can add to the clip in the piano roll.
 The suggestions come from sources, which extensions register. The module
 is `paw.complete`. Without a source, paw suggests nothing.
+
 `extensions/continue` is a small source: it repeats the last bar, or moves
 it one step up or down the key. A language server or a snippet set can be
 a source too. For the steps to write a source, see
@@ -19,9 +20,9 @@ a source too. For the steps to write a source, see
   alternatives, and the source: `1/4 continue: the bar again`.
 - paw writes nothing until you accept the suggestion. The accept is one
   undo step.
-- In the graphical window, a row of chips is above the ghost notes: one
-  numbered chip for each alternative (a click shows it), and one chip that
-  names the alternative that shows (a click accepts it).
+- In the graphical window, a row of chips is above the ghost notes. Each
+  alternative has a numbered chip: a click shows it. One more chip names
+  the alternative that shows: a click accepts it.
 
 ## When paw asks the sources
 
@@ -39,7 +40,7 @@ a source too. For the steps to write a source, see
 A suggestion starts after the selected notes (selected with the pointer,
 or in visual mode). If no notes are selected, it starts at the cursor. In
 insert mode, the cursor is after the notes that you entered, so a pause
-after some notes is sufficient to get more notes.
+after some notes is enough to get more notes.
 
 ## Keys
 

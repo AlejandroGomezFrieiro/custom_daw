@@ -4,8 +4,8 @@ MIDI 1.0 has seven-bit values: 128 steps for a controller, and one pitch
 wheel for each channel. A slow filter sweep in 128 steps can sound as
 steps, and a bend of one note bends all the notes of the channel. MIDI 2.0
 has 32-bit values and controllers for each note. paw keeps all MIDI at the
-resolution of MIDI 2.0, and changes it to MIDI 1.0 only at the edge, for a
-device or a port that needs MIDI 1.0. For the reference, see
+resolution of MIDI 2.0. It changes MIDI to MIDI 1.0 only at the edge, for
+a device or a port that needs MIDI 1.0. For the reference, see
 [MIDI](../reference/midi.md).
 
 ## Fractions, not steps
@@ -21,9 +21,9 @@ the same project.
 A controller move with a `key` belongs to one note. This is how MIDI 2.0
 and the note expressions of CLAP and VST3 work: one note of a chord can
 bend while the others stay. paw keeps these moves on the clip as any other
-move, and gives them to each device in the best form that the device
-takes: note expressions for CLAP and VST3, MIDI 2.0 for a CLAP plugin that
-prefers it. A device with only MIDI 1.0 cannot get them, because MIDI 1.0
+move. It gives them to each device in the best form that the device
+takes. That is note expressions for CLAP and VST3, and MIDI 2.0 for a
+CLAP plugin that prefers it. A device with only MIDI 1.0 cannot get them, because MIDI 1.0
 has no bend for one note.
 
 ## Ports: read MIDI 2.0, widen MIDI 1.0
@@ -39,10 +39,10 @@ rest of paw reads one form of MIDI, from any port and any kernel.
 A hardware synth with MIDI 1.0 can still play the controllers of each
 note, with MIDI Polyphonic Expression. MPE gives each note a channel of
 its own, so the pitch bend of the channel is the bend of the note. paw
-gives a note the channel that was released first, so that the release
-of a note that still sounds does not bend with the next note. The bend
-range is 48 semitones, the same as the bend range of a note in paw, so a
-bend sounds the same through MPE and through MIDI 2.0.
+gives a note the channel that was released first. Then the release of a
+note that still sounds does not bend with the next note. The bend range
+is 48 semitones, the same as the bend range of a note in paw. So a bend
+sounds the same through MPE and through MIDI 2.0.
 
 ## Why the audio thread stamps MIDI output
 

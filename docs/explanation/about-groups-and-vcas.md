@@ -1,11 +1,11 @@
 # About groups and VCAs
 
-A mix of many tracks needs structure: a bus for the drums, one fader for
-all the strings, a way to work on one part without the rest. paw gives
+A mix of many tracks needs structure. For example: a bus for the drums,
+one fader for all the strings, and a way to work on one part alone. paw gives
 this structure with usual tracks and data in their `meta`, not with new
 kinds of objects. This page tells why. For the commands, see
-[Routing](../reference/routing.md), [Narrowing to a group](../reference/narrowing.md)
-and [Freezing](../reference/freezing.md).
+[Routing](../reference/routing.md), [Narrowed tabs](../reference/narrowing.md)
+and [Frozen tracks](../reference/freezing.md).
 
 ## A group is a track
 
@@ -17,8 +17,8 @@ the members into the group, and indent them below it.
 ## A VCA is a fader without sound
 
 A group sums the sound of its members. Sometimes you want to control the
-level of tracks that play to different places: a VCA does this, as on a
-mixing desk. A VCA is also a usual track with a mark, but it has no
+level of tracks that play to different places. A VCA does this, as on a
+console. A VCA is also a usual track with a mark, but it has no
 devices and plays nothing.
 
 The engine does not know VCAs. The sync adds the fader and the lanes of
@@ -34,16 +34,17 @@ the others by the same number of dB. This keeps the balance, as a VCA does,
 but without a separate fader. The fader of the group itself does not move,
 because it already acts on the sum.
 
-## Narrowing
+## Narrowed tabs
 
 REAPER opens a part of a large project as a subproject, in a separate
 file. paw narrows a tab to one group instead. The tab sees only the
 group, but it is the same project, with one undo tree. So an edit in the
 narrowed tab is a usual edit, and you can go between the tabs at any
 time. While you work on the group, the rest of the song can play, be
-silent, or play from rendered files so that its devices rest.
+silent, or play from rendered files. The last choice lets its devices
+rest.
 
-## Freezing before the fader
+## A freeze before the fader
 
 A frozen track plays a rendered file instead of its devices. paw takes
 the freeze before the fader, so the fader, pan, mute and sends stay live,
