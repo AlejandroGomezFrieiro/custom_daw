@@ -6,13 +6,14 @@ This page lists what paw does not do, and the known limits of what it does.
 Each item is a fact about the current version. An item goes away when paw
 gets the function.
 
-- Undo shares a clip's notes between steps in runs of a few hundred, but
-  not its controller moves: a step that changes a clip keeps a whole copy
-  of those. A clip that changed is played again from all its notes: an
-  edit or an undo on a clip of 200,000 notes takes some milliseconds to
-  reach the engine.
-- A MIDI clip's length is its own, as in REAPER: deleting its last notes
-  does not shorten it (`:clip.resize`, or dragging its end, does).
+- Undo: the steps share the notes of a clip in runs of a few hundred, but
+  not its controller moves. A step that changes a clip keeps a full copy of
+  its controller moves. The engine plays a changed clip again from all its
+  notes. So an edit or an undo on a clip of 200,000 notes takes some
+  milliseconds to reach the engine.
+- A MIDI clip has its own length, as in REAPER. When you delete its last
+  notes, the clip does not become shorter. `:clip.resize`, or a drag on its
+  end, changes the length.
 
 - Harmony: chords are read per half beat, so a chord shorter than about a
   beat is taken for passing notes; the chords and the key are not shown in
@@ -27,15 +28,12 @@ gets the function.
   preview is drawn by the snippet's own layer rather than through
   `paw.complete.show`. A melody of eighth notes alone may be read as
   chords (a beat with two pitches in it is evidence of one).
-- Pickers you can hear: `paw.opt.audition_level` sets the level of sound
-  files only; a phrase plays through the track at the track's own level,
-  so that a preset is heard as it would be. A phrase is timed by the
-  kernel's timers rather than the engine, so it can be a few milliseconds
-  uneven under load. A plugin factory preset takes as long to try as to
-  load (some plugins hold the program up to a third of a second). The
-  pickers of templates, UTAU presets and singers, sends and drum maps are
-  not heard. The window shows a picker's pane as text, the outline of a
-  sound file in block characters, not as a drawn waveform.
+- Pickers that you can hear:
+  - `paw.opt.audition_level` sets the level of sound files only. A phrase plays through the track at the level of the track, to give the sound of the preset in the mix.
+  - The timers of the kernel time a phrase, not the engine. So under load, a phrase can be a few milliseconds uneven.
+  - A factory preset of a plugin takes as long to try as to load. Some plugins stop the program for up to a third of a second.
+  - You cannot hear the pickers of templates, UTAU presets and singers, sends and drum maps.
+  - The graphical window shows the pane of a picker as text, and the outline of a sound file in block characters, not as a waveform.
 - paw's sampler (extensions/sampler) reads an instrument's samples whole
   into memory while the program waits, and nothing streams from disk: a
   library that takes more than 30 s to read is ended by the plugin
@@ -49,81 +47,64 @@ gets the function.
   presets for `:preset`, has no editor
   window of its own, one stereo output, and ignores per-note controllers,
   MPE and note-off velocity.
-- The waveform of an audio clip in cells (`paw.opt.wave_scale`) draws each
-  column's lowest to highest sample and nothing of its loudness: there is no
-  darker inner band for the RMS. The window draws a clip's peaks from the
-  same data (`paw.frontend.peaks`: the lowest, the highest and the loudness
-  of each point) as it did before.
-- Windows, buffers and tabs (phase 1 is built): a built-in view is still
-  one buffer shown in one window at a time, as its state (cursor, scroll,
-  the clip open) is one table; phase 2 splits each view's state into the
-  buffer's and the window's, so that two windows can show two clips in
-  piano rolls, or one clip twice. Floating views (help, pickers, pages)
-  are not yet windows of a tab, the window title bar (Neovim's winbar) is
-  drawn by each view itself, layouts are not saved with the project, and
-  the graphical frontend keeps its own layout of panels. `:new` still
-  starts a new project; `:vnew` and `Ctrl-w n` open an empty window.
-  A view's locator (`paw.ui.locator`, where in the project the view's
-  cursor is) belongs to the view, not to each of its windows; phase 2
-  makes it per window.
-- The quickfix list: `:g/pattern/` and `:vimgrep` fill it, but no `:grep`
-  (there are no files to run a program over) nor `/` searches; `:cfdo` runs once per track, as there
-  are no files; lists are not kept with the project or between runs; a
-  location list stays with its window's number after the window closes.
-  The window's status bar does not count it.
-- Ex (`:5,8d`, `:%s`, `:g`): `d`, `m` and `co` move clips, not automation,
-  tempo changes or markers in the range; `:m`, `:co` and `:>` move notes as
-  the piano roll does; a spelling typed in a replacement (`:s/c4/db4/`) is
-  not kept for notation, which spells it by the key; a term of a pattern holds no
-  spaces, so `name=` cannot name a clip with one; Vim's `:t` (copy) is not
-  there, as `t` starts a range of tracks, nor `:k`, `:j!`, `:retab` and the
-  like. Of the preview the window is handed the piano roll's matches and
-  ghosts (as the roll's marks) and the count (`prompt.note`), but does not
-  show the count yet, nor shade the range or light clips in the arrange view.
+- The waveform of an audio clip in cells (`paw.opt.wave_scale`) shows the
+  lowest to the highest sample of each column. It does not show the
+  loudness: there is no darker inner band for the RMS. The graphical window
+  draws the peaks of a clip from the same data as before (`paw.frontend.peaks`:
+  the lowest, the highest and the loudness of each point).
+- Windows, buffers and tabs (phase 1 is complete):
+  - A built-in view is one buffer, shown in one window at a time, because its state (cursor, scroll, the open clip) is one table. Phase 2 will put the state of a view in its buffer and its windows. Then two windows can show two clips in piano rolls, or one clip two times.
+  - A view's locator (`paw.ui.locator`, the place of the cursor of the view in the project) belongs to the view, not to each of its windows. Phase 2 makes it a property of each window.
+  - Floats (help, pickers, pages) are not windows of a tab yet.
+  - Each view draws its own window title bar (the winbar of Neovim).
+  - The project does not keep layouts.
+  - The graphical frontend keeps its own layout of panels.
+  - `:new` starts a new project. `:vnew` and `Ctrl-w n` open an empty window.
+- The quickfix list:
+  - `:g/pattern/` and `:vimgrep` fill it. There is no `:grep` (there are no files to run a program on), and `/` does not fill it.
+  - `:cfdo` runs one time for each track, as there are no files.
+  - The project does not keep the lists, and they do not stay between runs.
+  - A location list stays with the number of its window after the window closes.
+  - The status bar of the graphical window does not count the entries.
+- Ex (`:5,8d`, `:%s`, `:g`):
+  - `d`, `m` and `co` move clips, not the automation, tempo changes or markers in the range.
+  - `:m`, `:co` and `:>` move notes as the piano roll does.
+  - Notation does not keep the name of a note typed in a replacement (`:s/c4/db4/`). It spells the note by the key.
+  - A term of a pattern has no spaces. So `name=` cannot name a clip with a space in its name.
+  - The `:t` of Vim (copy) is not there, because `t` starts a range of tracks. `:k`, `:j!`, `:retab` and similar commands are not there.
+  - The graphical window gets the matches and ghosts of the piano roll (as the marks of the roll) and the count (`prompt.note`). It does not show the count yet. It does not shade the range or light clips in the arrange view.
 
-- Searching: the pickers' regex mode and `:vimgrep` read the common kind of
-  regular expression made into Lua patterns, so a group cannot repeat
-  (`(ab)+`), and there is no `\b`, no backreference and no lookaround. A
-  picker's preview draws a clip as a piano roll or a waveform, not as a score
-  snippet (the notation extension draws staves only in its own view). A
-  picker over a hundred thousand notes takes most of a second to open. The
-  `,fg` live grep searches text kept in the project, not text a plugin
-  shows; the text of automation and of devices' parameters is not searched.
-  `:select` chooses notes and clips; tracks, devices, markers and points
-  found go to the quickfix list only. `]]` and `[[` stay on the cursor's
-  track. The open-in-split keys of a picker open the first of the marked
-  lines, as a view is shown in one window at a time.
+- Search:
+  - The regex mode of the pickers and `:vimgrep` change the common kind of regular expression into Lua patterns. So a group cannot repeat (`(ab)+`), and there is no `\b`, no backreference and no lookaround.
+  - The preview of a picker draws a clip as a piano roll or a waveform, not as a score (the notation extension draws staves only in its own view).
+  - A picker over a hundred thousand notes takes most of a second to open.
+  - The live grep of `,fg` searches the text in the project, not the text that a plugin shows. It does not search the text of automation and of device parameters.
+  - `:select` chooses notes and clips. The tracks, devices, markers and points that it finds go only to the quickfix list.
+  - `]]` and `[[` stay on the track of the cursor.
+  - In a picker, the keys that open a split open only the first marked line. A view shows in one window at a time.
 
-- Help (`:help`): pages are laid out 78 columns wide, not to the window;
-  `:helpgrep` takes words, not patterns; there is no `:helptags` (the tags
-  are made the first time help is asked for, in about half a second) and
-  no help in other languages. The Nix package installs the extensions
-  beside the program but not `docs/`, so installed, help has the
-  extensions' pages and not the manual's, until `PAW_HOME` names a source
-  tree.
+- Help (`:help`):
+  - The pages are 78 columns wide, not the width of the window.
+  - `:helpgrep` takes words, not patterns.
+  - There is no `:helptags`. paw makes the tags the first time that you ask for help, in about half a second.
+  - There is no help in other languages.
+  - The Nix package installs the extensions next to the program, but not `docs/`. So an installed paw has the pages of the extensions, but not the manual, unless `PAW_HOME` names a source tree.
 
-- Lists edited as text (`paw://tracks` and the others): a track's input,
-  MIDI ports, height and automation, a device's side-chain, outputs and
-  parameters, and a send's place among a track's sends are not fields of
-  their lines (a copy keeps them); a device is not renamed or replaced by
-  editing its name; the lines are not laid out in columns again until the
-  buffer is read again (`:w`, `:e!`); `:s` takes Lua patterns with `\d`
-  `\s` `\w` `\(` `\)` of Vim's, not Vim's whole syntax; there is no `:g`,
-  no completion of track and device names while typing, and no buffer of
-  clips, lanes or notes yet. In the graphical frontend a text buffer is
-  drawn as the terminal draws it, in the monospace font, not with the
-  window's own widgets.
+- Lists edited as text (`paw://tracks` and the others):
+  - The input, MIDI ports, height and automation of a track are not fields of its line. The side-chain, outputs and parameters of a device are not fields either. The place of a send among the sends of a track is not a field. A copy keeps all of them.
+  - An edit of the name of a device does not rename or replace the device.
+  - paw puts the lines in columns again only when it reads the buffer again (`:w`, `:e!`).
+  - `:s` takes Lua patterns with `\d` `\s` `\w` `\(` `\)` of Vim, not the full syntax of Vim.
+  - There is no `:g`, and no completion of track and device names while you type.
+  - There is no buffer of clips, lanes or notes yet.
+  - The graphical frontend draws a text buffer as the terminal does, in the monospace font, not with its own widgets.
 
-- One key grammar (docs/terminal.md, "Keys: one grammar"): the window's
-  mixer and device cards do not draw the row the cursor is on, though the
-  keys typed there move it and act on it as in the terminal; a selection
-  across mixer strips with different devices or sends picks rows by what
-  they are (the fader, the second send), and skips a strip that has none.
-  `]` and `[` wait a moment for `]d` `]g` and the like before they run, as
-  Vim's keys do when a longer mapping starts with them. `paw.opt.keys =
-  "classic"` brings back the keys of before, and is to go after a release.
-  The session view's `m` and `n` still mean launch mode and a new clip, not
-  Vim's mark and next match.
+- The key rule ([The key rule](key-rule.md)):
+  - The mixer and the device cards of the graphical window do not show the row of the cursor. But the keys move the cursor and act on the row as in the terminal.
+  - A selection across mixer strips with different devices or sends chooses rows by their kind (the fader, the second send). It skips a strip that does not have that row.
+  - `]` and `[` wait a moment for `]d`, `]g` and similar keys before they run. Vim does the same when a longer mapping starts with a key.
+  - `paw.opt.keys = "classic"` gives the old keys. It will go after a release.
+  - In the session view, `m` is still the launch mode and `n` a new clip. They are not the mark and the next match of Vim.
 
 - Notation: a tempo mark writes a point of the song's tempo
   map when it is written, and nothing keeps the two together after (moving
