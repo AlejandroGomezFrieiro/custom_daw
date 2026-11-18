@@ -2,14 +2,14 @@
 
 Mix diagnostics. paw measures the mix and reports the problems as a list
 of findings, as a language server reports problems in code. Each finding
-has a severity, a message with the number that caused it, a fix, and a
-place (a track and a beat) that `]d` and `[d` go to.
+has a severity, a message with the number that caused it, and a fix. It
+also has a place (a track and a beat) that `]d` and `[d` go to.
 
 ```lua
 paw.ext.load("extensions/mixdiag")      -- or put it in ~/.config/paw/extensions
 ```
 
-![The bass pushed 14 dB too loud, ,xa measuring the song and saying so on the status line, and ,xx listing the finding: the true peak over the ceiling at bar 5](images/tui-mixdiag.gif)
+![The bass pushed 14 dB too loud, ,xa measures the song and tells it on the status line, and ,xx lists the finding: the true peak over the ceiling at bar 5](images/tui-mixdiag.gif)
 
 ## Try it
 
@@ -123,7 +123,7 @@ change.
 | `silent` | the measured part never goes above -60 dBFS | | error |
 | `clip` | the master over full scale: where, how many runs and samples, and how much to lower it | a run (see below). Runs within `merge` = 4 beats are one finding. At most `max` = 20 | error |
 | `true_peak` | the true peak is over the ceiling of the target (Spotify: -1, or -2 when louder than -14 LUFS. EBU: -1). With no target: over 0 dBTP when no sample clips | | error for a delivery target, else warn |
-| `loudness` | EBU R 128: the integrated loudness is more than `tolerance` (1 LU) from -23 LUFS. Streaming: louder than -14 by more than `slack` (0.5 LU), with how much the service turns it down. Or quieter, when the true peak stops the service from raising it fully, with how much quieter it plays | | error (EBU, full song), info (streaming, or a part) |
+| `loudness` | EBU R 128: the integrated loudness is more than `tolerance` (1 LU) from -23 LUFS. Streaming: louder than -14 by more than `slack` (0.5 LU), with how much the service turns it down. Or quieter, when the true peak stops the service from a full increase, with how much quieter it plays | | error (EBU, full song), info (streaming, or a part) |
 | `track_over` | the post-fader output of a track is over full scale, and where it first went over | 0 dBFS | warn when the master clips too, else info |
 | `phase` | a passage with a correlation under `floor` for at least `seconds`, while louder than `audible` | -0.2, 2 s, -50 LUFS | warn |
 | `mono` | the measured part loses more than `limit` in mono, or cancels fully | 4 dB (unrelated sides lose 3.0) | warn. error when it cancels |
@@ -155,7 +155,7 @@ measures the audio during the render.
 | DC offset | the median of the 1 s means of each channel, and the 1 s means over time | none (the convention of MIDI LSP) |
 | Crest factor, peak-to-loudness ratio | sample peak over RMS. True peak minus integrated loudness | arithmetic |
 | Correlation, width, side level | Pearson correlation of left and right. Side energy over mid plus side | arithmetic |
-| Mono-sum loss | K-weighted loudness of (L+R)/2 on both sides, over the blocks that the stereo reading kept | arithmetic on BS.1770 |
+| Mono-sum loss | K-weighted loudness of (L+R)/2 on both sides, over the blocks that the stereo measurement kept | arithmetic on BS.1770 |
 | Spectral balance | Hann-windowed FFT of the mid signal, frames of about 1/6 s. The share of energy in each octave band, IEC 61260-1 base-ten mid frequencies 31.5 Hz to 16 kHz, with `sub` below and `air` above | the bands of IEC. No target curve |
 | Peaks of each track | the post-fader meter of each track, read every engine block (1024 samples) | |
 | Series every 100 ms | momentary and short-term loudness, correlation (400 ms and for each 100 ms), mono loss, sample and true peak. DC for each second | |
@@ -174,7 +174,7 @@ Rust tests (`cargo test -p paw-core --lib measure`) make these signals:
 | case 4: -72 / -36 / -23 / -36 / -72 dBFS | -23.0 | -23.01 |
 | case 5: -26 / -20 / -26 dBFS for 20 / 20.1 / 20 s | -23.0 | -22.98 |
 | case 9: 1.34 s at -20 and 1.66 s at -30 dBFS, 20 times | short-term -23.0 at all points | -23.0 ± 0.1 at every point |
-| a tone at -75 dBFS alone | gated out: no reading | none |
+| a tone at -75 dBFS alone | gated out: no value | none |
 | Tech 3342 cases 1 to 4 (20 s steps of -20/-30, -20/-15, -40/-20, -50/-35/-20/-35/-50) | LRA 10, 5, 20, 15 ± 1 | 10.0, 5.0, 20.0, 15.0 |
 | sine at fs/4, 45° phase, peak -6.02 dBFS | true peak -6.02, samples 3.01 dB lower | -6.02 dBTP, -9.03 dBFS |
 | sine at fs/6, samples 30° from the crest | true peak -6.02, samples 1.25 dB lower | -6.02, -7.27 |
@@ -190,8 +190,8 @@ through `paw.api.measure`, as -23 LUFS.
 
 #### Speed
 
-A song of 5 minutes, with 9 tracks of built-in synths, drums and delays,
-takes about 3 s in a debug build (the dev profile of the workspace).
+Take a song of 5 minutes, with 9 tracks of built-in synths, drums and delays.
+Its diagnostics take about 3 s in a debug build (the dev profile of the workspace).
 `paw.render` of the same song takes most of that time.
 
 - The render and the analysis run on two worker threads, a few pieces

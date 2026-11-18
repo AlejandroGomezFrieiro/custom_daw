@@ -11,7 +11,10 @@ project, and has a scale lock for the entry and the movement of notes.
 paw.ext.load("/path/to/paw/extensions/musicops")   -- or link it into ~/.config/paw/extensions
 ```
 
-![The demo song's chords in the piano roll: gzpie arpeggiates every chord and u undoes it, gzsie strums them, gzhie humanizes, then played](images/tui-musicops.gif)
+In the picture, `gzpie` arpeggiates every chord and `u` undoes it. Then
+`gzsie` strums the chords and `gzhie` humanizes them:
+
+![The demo song's chords in the piano roll: arpeggiated, undone, strummed, humanized, then played](images/tui-musicops.gif)
 
 All keys start with `gz`.
 
@@ -197,7 +200,7 @@ clip:set_notes(mo.transpose_scale(clip:notes(), 2, "D minor"))
 | `stretch(notes, opts)` | `factor` 1, `anchor` the first start |
 | `double_time(notes, opts)`, `half_time(notes, opts)` | `anchor` |
 | `strum(notes, opts)` | `step` 0.05, `dir` "up" or "down", `tolerance` |
-| `arpeggiate(notes, opts)` | `mode` "up", "down", "updown" or "played", `step` 0.25, `gate` 1, `tolerance`. A note alone stays |
+| `arpeggiate(notes, opts)` | `mode` `"up"`, `"down"`, `"updown"` or `"played"`, `step` 0.25, `gate` 1, `tolerance`. A note alone stays |
 | `invert(notes, opts)` | `dir` 1 or -1, `times` 1, `tolerance` |
 | `add_octave(notes, opts)` | `by` 12 |
 | `transpose(notes, semitones)` | |
@@ -293,7 +296,7 @@ musicops`):
   across two clips is reversed, stretched or ramped clip by clip. Notes of
   a clip that start before the region do not change, also when they sound
   in it.
-- There are no motions of the form `]p` and `[p`. So `]` and `[` (velocity
+- The extension has no motions of the form `]p` and `[p`. So `]` and `[` (velocity
   in the piano roll) do not wait for a second key.
 - Nobody tried the extension by hand in a terminal. The suite checked all
   of it through `paw.keymap.feed`.

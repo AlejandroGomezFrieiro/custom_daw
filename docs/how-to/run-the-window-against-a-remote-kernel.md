@@ -37,7 +37,7 @@ connect: a different machine can pretend to be `studio`.
 
 ## Use SSH in place of TLS
 
-If you can log in to `studio` with SSH, you do not need `--listen-tcp`:
+If you can sign in to `studio` with SSH, you do not need `--listen-tcp`:
 
 1. On `studio`, start paw: `paw --headless`.
 2. On your machine, forward the socket:
@@ -63,7 +63,7 @@ these:
 The sound comes 0.25 seconds late or more, and it uses about 1 Mbit/s.
 Use it to monitor a mix, not to play along.
 
-## Bring in a sound file from your machine
+## Import a sound file from your machine
 
 Open, Save and Render use the disk of `studio`. To import a sound file
 from your disk, do one of these:

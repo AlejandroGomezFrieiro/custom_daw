@@ -63,7 +63,7 @@ In Vim, `gc` changes lines to comments. Here it mutes. `gl` (loop) is new.
       say = "A text object names an item, not a movement. `ic` is the clip under the cursor. Press `w` to go to `snare`, then press `dic`.",
       keys = { "w", "dic" },
       check = function(_, look) return look.names("Beat") == "kick fill crash" end,
-      done = "`dic` means \"delete in clip\". There is a gap where `snare` was.",
+      done = "`dic` means \"delete in clip\". A gap is now where `snare` was.",
     },
     {
       say = "`.` repeats the last change. Press `w` to go to `fill`. Then press `.` to delete it too.",

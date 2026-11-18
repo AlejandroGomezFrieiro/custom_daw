@@ -2,8 +2,9 @@
 
 <!-- tags: scripting-driving-paw-from-an-agent -->
 
-This guide shows you how to let a program (a coding agent, an assistant
-or a script of your own) edit a project in paw. It assumes that paw runs
+This guide shows you how to let a program edit a project in paw. The
+program can be an agent that writes code, an assistant or a script of your
+own. The guide assumes that paw runs
 on the same machine.
 
 ## With a shell

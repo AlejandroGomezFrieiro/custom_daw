@@ -50,7 +50,7 @@ ssh -N -L /tmp/studio.sock:/run/user/1000/paw.sock studio &
 paw attach --socket /tmp/studio.sock
 ```
 
-## Bring a sound file from the client
+## Import a sound file from the client
 
 Import and Open show the files of `studio`. To import a sound file from
 the client, do one of these:

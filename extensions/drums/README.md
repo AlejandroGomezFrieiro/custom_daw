@@ -8,7 +8,7 @@ and in the graphical window.
 paw.ext.load("/path/to/paw/extensions/drums")
 ```
 
-![The demo song's drums in the grid: claps put in by name with / and Enter, one made softer, the bar repeated with &, and played](images/tui-drums.gif)
+![The demo song's drums in the grid: claps added by name with / and Enter, one made softer, the bar repeated with &, and played](images/tui-drums.gif)
 
 ## Try it
 

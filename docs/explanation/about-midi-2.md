@@ -3,9 +3,11 @@
 MIDI 1.0 has seven-bit values: 128 steps for a controller, and one pitch
 wheel for each channel. A slow filter sweep in 128 steps can sound as
 steps, and a bend of one note bends all the notes of the channel. MIDI 2.0
-has 32-bit values and controllers for each note. paw keeps all MIDI at the
-resolution of MIDI 2.0. It changes MIDI to MIDI 1.0 only at the edge, for
-a device or a port that needs MIDI 1.0. For the reference, see
+has 32-bit values and controllers for each note.
+
+paw keeps all MIDI at the resolution of MIDI 2.0. Some devices and ports
+need MIDI 1.0. paw changes MIDI to MIDI 1.0 only at the edge, for them. For
+the reference, see
 [MIDI](../reference/midi.md).
 
 ## Fractions, not steps
@@ -18,13 +20,15 @@ the same project.
 
 ## Controllers for each note
 
-A controller move with a `key` belongs to one note. This is how MIDI 2.0
-and the note expressions of CLAP and VST3 work: one note of a chord can
-bend while the others stay. paw keeps these moves on the clip as any other
-move. It gives them to each device in the best form that the device
-takes. That is note expressions for CLAP and VST3, and MIDI 2.0 for a
-CLAP plugin that prefers it. A device with only MIDI 1.0 cannot get them, because MIDI 1.0
-has no bend for one note.
+A controller move with a `key` belongs to one note. MIDI 2.0 and the note
+expressions of CLAP and VST3 work in this way. One note of a chord can
+bend while the others stay.
+
+These moves stay on the clip as any other move. paw gives them to each
+device in the best form that the device takes. That is note expressions
+for CLAP and VST3, and MIDI 2.0 for a CLAP plugin that prefers it. A device
+with only MIDI 1.0 cannot get them, because MIDI 1.0 has no bend for one
+note.
 
 ## Ports: read MIDI 2.0, widen MIDI 1.0
 

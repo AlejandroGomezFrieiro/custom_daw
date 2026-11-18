@@ -38,4 +38,4 @@ To make the target jump immediately, set `paw.opt.learn_pickup = false` in
 `init.lua`.
 
 To record the moves as automation, set the automation mode of the track
-first (see [How to write automation with the faders](write-automation-with-the-faders.md)).
+first. See [How to write automation with the faders](write-automation-with-the-faders.md).

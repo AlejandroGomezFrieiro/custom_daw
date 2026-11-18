@@ -3,7 +3,7 @@
 <!-- tags: look -->
 
 A screen of a DAW has much information: tracks, clips, notes, meters,
-lanes. If all of it has strong colors, nothing is easy to see. paw keeps
+lanes. If all of it has strong colors, you cannot see the important parts. paw keeps
 the content neutral and puts color only where your attention must go.
 
 ## Color for attention

@@ -8,7 +8,7 @@ of the file format, which scripts can use alone.
 paw.ext.load("/path/to/paw/extensions/rpp")   -- or link it into ~/.config/paw/extensions
 ```
 
-![A REAPER project opened with :rpp.import! and the list of what could not be carried over, then the project itself and :w writing it back as .rpp](images/tui-rpp.gif)
+![A REAPER project opened with :rpp.import! and the list of what could not be carried over, then the project itself, and :w writes it back as .rpp](images/tui-rpp.gif)
 
 ## Try it
 
@@ -114,7 +114,7 @@ children. Lines do not.
 `rpp.format.quote` and `rpp.format.number` are the quotes and the number
 format of REAPER. A token has no quotes, unless it is empty, holds a blank
 or starts with a quote. Then it takes the first of `"`, `'` and `` ` `` that
-it does not contain. There are no escapes.
+it does not contain. The format has no escapes.
 
 ### What comes across
 
@@ -137,7 +137,7 @@ tempo map of the project, and back.
 | VST3 plugins | When installed here (found by name and vendor): the same plugin with its state, from the chunk of REAPER (paw checks the sizes first) | Only plugins that came from a REAPER project: paw keeps the header of REAPER for them, and puts the current state into it |
 | LV2 plugins | When installed here: the same plugin with its control ports (`P` lines. The symbols of the ports are the parameter keys of paw) | With their control ports |
 | Bypass | For each plugin, and a bypassed FX chain | For each plugin |
-| Other plugins | VST2, JSFX, AU, DX, containers, and plugins that are not installed: a placeholder in `meta.rpp_placeholders` of the track (`name`, `format`, `position`, `reason`, and the text of REAPER for it), reported | Placeholders go back into the chain at their places, as paw read them |
+| Other plugins | VST2, JSFX, AU, DX, containers, and plugins that are not installed: a placeholder in `meta.rpp_placeholders` of the track (`name`, `format`, `position`, `reason`, and the text of REAPER for it), reported | Placeholders return into the chain at their places, as paw read them |
 
 ### What does not come across
 

@@ -8,7 +8,7 @@ In this course, we use paw to make and change small songs. Each lesson takes abo
 paw.ext.load("extensions/tutor")   -- in ~/.config/paw/init.lua, or link the directory into ~/.config/paw/extensions
 ```
 
-Then type `:tutor` in paw. The tutor makes these pages from its lessons, so the pages and the tutor give the same steps. [keys.md](../../reference/keys.md) is a page of keys to keep near the keyboard.
+Then type `:tutor` in paw. The tutor makes these pages from its lessons, so the pages and the tutor give the same steps. [Keys, by idea](../../reference/keys.md) is a page of keys to keep near the keyboard.
 
 | | Lesson | What we do |
 | --- | --- | --- |

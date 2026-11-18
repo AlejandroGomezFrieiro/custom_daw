@@ -24,7 +24,7 @@ paw.ext.load("extensions/luafx")   -- or put the directory in ~/.config/paw/exte
    from it keep their parameters.
 
 A script in `~/.config/paw/devices/` has priority over a script with the
-same name in an extension. "Writing a device in Lua" in
+same name in an extension.
 [How to write a device in Lua](../../docs/how-to/write-a-device-in-lua.md) tells how to write a device.
 
 ## Reference

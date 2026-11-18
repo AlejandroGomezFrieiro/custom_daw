@@ -7,7 +7,7 @@ module is divided between the seats and the project.
 
 ## One project, many points of view
 
-All seats edit one project. There is one list of tracks, one set of
+All seats edit one project. They share one list of tracks, one set of
 notes, one undo tree. But each person looks at a different part of it.
 One person edits the drums in the piano roll while another person moves
 the faders in the mixer. If the two seats shared one cursor, each key of
@@ -28,8 +28,8 @@ scripts). A graphical window that started its own kernel shares seat 0.
 
 ## Why modules do not change
 
-The simple solution is to give each module a table of state for each seat,
-and to make all code find the current seat. This makes each module
+The first solution that comes to mind is a table of state for each seat in
+each module. Then all code must find the current seat. This makes each module
 more difficult to write, and each module that a person forgets is
 incorrect.
 

@@ -8,13 +8,13 @@ Each lesson ends with something that you made or changed and can hear.
 
 The same lessons are text in [the
 course](../../docs/tutorials/course/README.md), with a page of keys to keep
-beside the keyboard, [keys.md](../../docs/reference/keys.md).
+beside the keyboard, [Keys, by idea](../../docs/reference/keys.md).
 
 ```lua
 paw.ext.load("/path/to/paw/extensions/tutor")   -- in ~/.config/paw/init.lua
 ```
 
-![:tutor! opening lesson 1 in a practice project: the introduction, then the panel along the bottom saying which key to press and noticing each step done](images/tui-tutor.gif)
+![:tutor! opens lesson 1 in a practice project: the introduction, then the panel along the bottom. It tells which key to press and sees each step done](images/tui-tutor.gif)
 
 ## Try it
 
@@ -167,7 +167,7 @@ this, so the text and the test stay the same. Other items:
 
 | Item | Effect |
 | --- | --- |
-| `{ wait = 300 }` | waits, in milliseconds, for listening |
+| `{ wait = 300 }` | waits, in milliseconds, so that the learner can listen |
 | `{ sim = function(lesson) end, instead = { "keys" } }` | what a person does away from the computer keyboard: a test tone on the input, MIDI notes, a quit |
 | `{ sim = "quit", instead = { ":q", "<CR>" } }` | quits |
 
@@ -194,7 +194,7 @@ checks:
 A new lesson is tested when you add it. You write nothing more.
 
 **The text.** `make-docs.lua` writes `docs/tutorials/course/` from the
-lessons. `docs/reference/keys.md` is written by hand. The tests check that
+lessons. A person writes `docs/reference/keys.md` by hand. The tests check that
 each key in its first column is a key of paw.
 
 ### Steps that the tests cannot do
@@ -229,7 +229,7 @@ the tests act in place of the person. Two steps are not checked:
 - `:engine`, sample rates and latency, `:midi.select`
 - `<C-v>` blocks in the piano roll, `o` in visual mode, `ac` `it` `ie`, `=`,
   `S` `J` on clips, `<A-j>` `<A-k>`, zoom and scroll (in the text of the
-  lessons and in keys.md, but not practiced)
+  lessons and in `keys.md`, but not practiced)
 - ripple edits, and tempo and time signature beyond `:tempo`
 - controller edits, autosave, stems and other export options, and more
   options of recording
@@ -274,8 +274,8 @@ row gives the lesson and a change that would help a new user.
 | 13 | `:w name.json` is the `:saveas` of Vim: the project moves to the new file. A user of Vim expects a copy. No command writes a copy | `:w name` for a copy, as in Vim |
 | 13 | `:render name.wav` writes relative to the folder where paw started. It does not expand `~`, and the message gives only the name | Expand `~`, and give the full path |
 | 14 | Key hints group `grn` and `grc` as `r +2 more` under `g`, and hide the rename keys | List the keys of the group when there are few |
-| — | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`). An extension that listens for `quit` does not see `:q` | Add the name of the command to the event |
-| — | In a script, `paw.project.save` while an undo step is open counts later edits of that step as saved (`modified` is false after a track is added) | Close the open step before the save |
+| none | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`). An extension that listens for `quit` does not see `:q` | Add the name of the command to the event |
+| none | In a script, `paw.project.save` while an undo step is open counts later edits of that step as saved (`modified` is false after a track is added) | Close the open step before the save |
 
 ## About
 

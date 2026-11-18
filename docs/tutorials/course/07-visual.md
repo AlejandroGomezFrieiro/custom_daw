@@ -34,9 +34,9 @@ The tutor opens a practice project for this lesson. It checks each step when you
    - *Hint:* If the selection is wrong, press `<Esc>` to leave visual mode. Then press `gg` and start again.
    - ✓ The register contains two tracks.
 6. `G` goes to the last track, and `p` pastes the tracks below it. Press `G`, then `p`.
-   - ✓ There are five tracks. The copies of Drums and Bass are at the bottom.
+   - ✓ The song now has five tracks. The copies of Drums and Bass are at the bottom.
 7. Press `u` to remove the copies.
-   - ✓ There are three tracks again.
+   - ✓ The song has three tracks again.
 8. `gv` selects the last selection again: the two tracks. Press `gv`, then `~` to mute them.
    - ✓ Drums and Bass are muted, and their `M` flags are lit. On whole tracks, `~` mutes the tracks. On a range of time, it mutes the clips in the range.
 9. Press `gv` and `~` again to unmute them.

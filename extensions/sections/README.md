@@ -14,7 +14,7 @@ applies to every track, as one undo step.
 paw.ext.load("extensions/sections")   -- or put it in ~/.config/paw/extensions
 ```
 
-![The demo song named Intro and Verse with ,Sa, [s and ]s going between them, ,S& repeating the verse after itself on every track, and u](images/tui-sections.gif)
+![The demo song named Intro and Verse with ,Sa, [s and ]s going between them, ,S& repeats the verse after itself on every track, and u](images/tui-sections.gif)
 
 ## Try it
 

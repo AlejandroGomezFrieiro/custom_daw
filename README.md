@@ -82,10 +82,10 @@ repository. They write ten lines of Lua before they wait for a feature.
 | --- | --- |
 | A modal DAW in the terminal for the keyboard, which you can script and change | **paw** |
 | A mature DAW on each platform, with many settings | [REAPER](https://www.reaper.fm) |
-| A mature open-source DAW for recording and mixing on Linux | [Ardour](https://ardour.org) |
+| A mature open-source DAW to record and mix on Linux | [Ardour](https://ardour.org) |
 | Sound design, modulation and performance | [Bitwig Studio](https://www.bitwig.com), [Ableton Live](https://www.ableton.com) |
 | A tracker for composition from the keyboard | [Renoise](https://www.renoise.com) |
-| Engraving first, playback second | [MuseScore](https://musescore.org), [Dorico](https://www.steinberg.net/dorico/) |
+| Scores to print first, playback second | [MuseScore](https://musescore.org), [Dorico](https://www.steinberg.net/dorico/) |
 
 paw is newer and smaller than all of them. Select it for the way it works,
 not for the length of its list of features.
@@ -154,7 +154,10 @@ folders. `:w` shows the plan and applies it as one undo step:
 
 ![:e ~/music shows a folder of sounds as text. cw renames a file. A new name moves one into samples/, and dd deletes one. :w shows the plan](docs/images/tui-files.gif)
 
-![The song has two groups. zn narrows the views to the rhythm section, and the other tracks play from files. :t* is the range of its tracks. :freeze renders the other group](docs/images/tui-narrow.gif)
+`zn` narrows the views to one group of tracks, `:t*` is the range of its
+tracks, and `:freeze` renders the other group:
+
+![The song has two groups. The views narrow to the rhythm section, and the other tracks play from files. Then the other group is rendered](docs/images/tui-narrow.gif)
 
 ![Loop recording into takes (a script plays the notes), and a comp of one take](docs/images/tui-takes.gif)
 

@@ -15,8 +15,8 @@ the playhead, the loop, the metronome, MIDI and automation all agree with
 the map. Plugins get the same tempo and bar at each block.
 
 A project with one tempo and one signature keeps the fields that it had
-before the map. So older projects open with no change, and a simple song
-has a simple file.
+before the map. So older projects open with no change, and a song with one tempo
+has a short file.
 
 ## Which clock each thing keeps
 

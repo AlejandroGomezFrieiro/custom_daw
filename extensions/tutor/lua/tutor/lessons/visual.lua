@@ -85,13 +85,13 @@ the arrange view, `v` with `j` `k` is already a block of time on some tracks.
       say = "`G` goes to the last track, and `p` pastes the tracks below it. Press `G`, then `p`.",
       keys = { "G", "p" },
       check = function() return #paw.tracks() == 5 end,
-      done = "There are five tracks. The copies of Drums and Bass are at the bottom.",
+      done = "The song now has five tracks. The copies of Drums and Bass are at the bottom.",
     },
     {
       say = "Press `u` to remove the copies.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and #paw.tracks() == 3 end,
-      done = "There are three tracks again.",
+      done = "The song has three tracks again.",
     },
     {
       say = "`gv` selects the last selection again: the two tracks. Press `gv`, then `~` to mute them.",

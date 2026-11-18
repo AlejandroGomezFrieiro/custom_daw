@@ -9,7 +9,10 @@ the tempo map, markers), not lines.
 paw.ext.load("extensions/projdiff")   -- or put the directory in ~/.config/paw/extensions
 ```
 
-![The demo song saved, then its melody moved, three notes changed, the lead renamed and the bass turned down; :Pdiff lists the six changes by track, clip and note, ]c and za go through them, and Enter goes to one](images/tui-projdiff.gif)
+In the picture, `:Pdiff` lists the changes. `]c` and `za` go through them,
+and `Enter` goes to one:
+
+![The demo song saved. Then its melody moved, three notes changed, the lead renamed and the bass turned down. A list shows the six changes by track, clip and note](images/tui-projdiff.gif)
 
 ## Try it
 

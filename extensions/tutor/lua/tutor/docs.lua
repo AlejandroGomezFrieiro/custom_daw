@@ -70,7 +70,7 @@ load the tutor, add this line to your configuration:]]))
   add("")
   add(paragraphs([[
 Then type `:tutor` in paw. The tutor makes these pages from its lessons, so
-the pages and the tutor give the same steps. [keys.md](../../reference/keys.md)
+the pages and the tutor give the same steps. [Keys, by idea](../../reference/keys.md)
 is a page of keys to keep near the keyboard.]]))
   add("")
   add("| | Lesson | What we do |")

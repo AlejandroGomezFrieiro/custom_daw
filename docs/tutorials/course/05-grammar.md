@@ -34,7 +34,7 @@ The tutor opens a practice project for this lesson. It checks each step when you
 2. Press `u` to bring it back.
    - ✓ The track has its four clips again.
 3. A text object names an item, not a movement. `ic` is the clip under the cursor. Press `w` to go to `snare`, then press `dic`.
-   - ✓ `dic` means "delete in clip". There is a gap where `snare` was.
+   - ✓ `dic` means "delete in clip". A gap is now where `snare` was.
 4. `.` repeats the last change. Press `w` to go to `fill`. Then press `.` to delete it too.
    - ✓ `.` did `dic` again, on the clip that is under the cursor now.
 5. Undo the two changes: press `u` two times.
