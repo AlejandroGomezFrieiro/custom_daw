@@ -50,7 +50,7 @@ the language servers say about it".
 ## Addresses
 
 Everything has a URI built from ids, so it survives edits
-(`paw.address`, see [Scripting](scripting.md) for the whole list):
+(`paw.address`, see [Addresses, diagnostics and lists in Lua](reference/lua-addresses.md) for the whole list):
 `paw://project`, `paw://track/12` (`paw://track/0` is the master),
 `paw://track/12/device/3`, `paw://track/12/device/3/param/cutoff`,
 `paw://track/12/send/5`, `paw://clip/7`, `paw://clip/7/note/41`,

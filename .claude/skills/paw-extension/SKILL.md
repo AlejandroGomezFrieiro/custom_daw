@@ -14,7 +14,7 @@ the source of truth; this page is the map):
   manifests and versions, what an extension owns and `:ext.unload`, health
   checks, pictures in the terminal (strips), everything an extension can own
   (devices, track kinds, native engines, Nix packaging).
-- `docs/scripting.md` — the API by area, with **Events** (every hook, one
+- `docs/reference/scripting.md` and the `lua-*.md` pages beside it — the API by area; `docs/reference/events.md` (every hook, one
   table) and buffer types / text buffer kinds.
 - `docs/reference/api.md` (`:help paw.<name>`) — every public function, generated.
   `runtime/types/paw.lua` is the LuaLS meta file: point LuaLS's
@@ -80,7 +80,7 @@ paw.ui.view("euclid", { render = function(self, buf, ctx) end, on_key = …, tit
 paw.buftype("tally", { … })                    -- a buffer type with its own keys/motions/K/status
 paw.textbuf.kind("clips", { … })               -- a listing edited as text, :w shows a plan
 paw.track_kinds.define("euclid", { … })        -- a kind of track (create, editor, describe)
-paw.on("edit.after", function(payload) end)    -- hooks: see docs/scripting.md "Events"
+paw.on("edit.after", function(payload) end)    -- hooks: see docs/reference/events.md
 paw.statusline.component("euclid", { fn = function(ctx) return { { "E", "StatusOn" } } end })
 paw.query.field("note", "onset", function(note) end)  -- :select / :query fields
 paw.grep.source("euclid", function(add) end)           -- :vimgrep text
@@ -88,7 +88,7 @@ paw.health.register("euclid", function(h) h.ok("ready") end, { desc = "Euclid" }
 paw.option.define("euclid_density", 0.5, { min = 0, max = 1 })  -- typed, bounded
 ```
 
-Check exact signatures in docs/scripting.md / `:help` before using one; the
+Check exact signatures in docs/reference/lua-*.md / `:help` before using one; the
 lines above are a map, not the contract. For devices see docs/devices.md
 "Writing a device in Lua" (`dsp.device{…}`; `dev.call` receives
 `paw.api.device_call`; large data via `dsp.map`). For an extension that ships
@@ -105,7 +105,7 @@ an engine or a plugin, follow `extensions/utau` and `extensions/sampler`
 | a kind of track with its own editor | `extensions/drums`, `extensions/utau` |
 | per-note data, roll layers, popovers | `extensions/articulations` |
 | a native engine / CLAP plugin built by Nix | `extensions/sampler`, `extensions/utau` |
-| a buffer type (e.g. a tracker, time top→down) | docs/scripting.md `paw.buftype` example ("tally") |
+| a buffer type (e.g. a tracker, time top→down) | docs/reference/lua-views.md `paw.buftype` example ("tally") |
 
 ## Tests and checks (do these before calling it done)
 

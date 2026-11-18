@@ -429,7 +429,7 @@ return function(pick, S)
       local lines = { { text = s.text, style = "Title" }, "" }
       local doc, where, line = doc_of(s.fn)
       if not doc then
-        lines[#lines + 1] = { text = "a function of the kernel (docs/scripting.md)", style = "Dim" }
+        lines[#lines + 1] = { text = "a function of the kernel (docs/reference/api.md)", style = "Dim" }
         return lines
       end
       for _, l in ipairs(#doc > 0 and doc or { "(no comment above it)" }) do lines[#lines + 1] = l end

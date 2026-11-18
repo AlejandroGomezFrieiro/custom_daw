@@ -1,0 +1,106 @@
+# Events
+
+<!-- tags: scripting-events -->
+
+This page lists every event of paw, with the payload that its handler
+gets.
+
+## Listen and send
+
+| Function | Effect |
+| --- | --- |
+| `paw.on(name, fn)` | calls `fn(payload, name)` for the event |
+| `paw.on("family.*", fn)` | listens to a family of events, for example `clip.*` |
+| `paw.on("*", fn)` | listens to all events |
+| `paw.emit(name, payload)` | sends an event of your own |
+| `paw.flush()` | delivers the change events now |
+
+## When events arrive
+
+- Change events come from the kernel. paw delivers them when the current
+  command or callback returns, or at `paw.flush()`. The other events
+  arrive when they occur.
+- A command or a key press is one undo step. A handler can answer an edit
+  with edits of its own. Those edits join the same undo step.
+- Events from undo, redo, the undo tree or `project.loaded` have
+  `restored = true`. That state already holds the answers of the handlers.
+- Some events ask a question: `edit.before`, `project.saving` and
+  `key.pre`. A handler that returns `false, "why"` refuses the action.
+  `paw.emit` then returns `false, "why"` to the code that sent the event.
+- paw calculates `edit.before`, `edit.after`, `selection.changed`,
+  `view.opened` and `view.closed` at the end of each turn. It sends
+  `key.pre`, `undo` and `redo` when they occur.
+- paw sends those eight events only when a handler listens to them by name
+  or by family. `paw.on("*")` alone does not get them.
+
+## Every event
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `changed` | `{}` | something in the project changed in this turn. paw draws the screen again |
+| `project.changed` | `{}` | a field of the project changed: tempo, signature, name, meta |
+| `project.loaded` | `{ path }` | a project opened, or a new project started |
+| `project.saving` | `{ path }` | paw will write a project. A handler can refuse |
+| `project.saved` | `{ path }` | paw wrote the project |
+| `track.added`, `track.changed`, `track.removed` | `{ id }` | a track, by its id |
+| `track.moved` | `{ order }` | the order of the tracks changed |
+| `track.frozen`, `track.thawed` | `{ id, file }` | a track is rendered to a file and plays from it, or plays live again |
+| `device.added`, `device.changed`, `device.removed` | `{ id, track }` | a device in the project |
+| `device.added_by_hand` | `{ id, kind }` | the user added a device (not a script) |
+| `device.ready`, `device.stopped`, `device.invalid` | `{ id, track, name, ... }` | a plugin is ready, stopped (it crashed or went offline), or cannot be used |
+| `preset.loaded` | `{ id, name }` | a preset loaded into a device |
+| `param.touched` | `{ device, param, from }` | a parameter moved in the editor of the plugin |
+| `clip.added`, `clip.changed`, `clip.removed` | `{ id, track }` | a clip |
+| `lane.added`, `lane.changed`, `lane.removed` | `{ id, track }` | an automation lane |
+| `lanes.changed` | `{}` | the shown lanes changed |
+| `slot.changed` | `{ track }` | a slot of the clip launcher |
+| `edit.before` | `{ changes }` | a turn edited the project, and the edit will become an undo step. `changes` is a list of `{ name, payload }`: the events above that make the edit. A handler can refuse: paw then puts the project back as the turn found it. Edits of a handler join the step |
+| `edit.after` | `{ changes, state }` | paw made the step. `state` is its id in the undo tree. Edits made here are a separate edit |
+| `undo`, `redo` | `{ from, to, how, label }` | a move in the undo tree. `from` and `to` are states, `label` the step. `how` is `undo`, `redo`, `goto`, `step` or `travel`. A jump to an older state is an `undo` |
+| `transport.play`, `transport.stop` | `{ position, count_in }` | the transport started (after the count-in) or stopped |
+| `transport.seek` | `{ position }` | the playhead moved |
+| `transport.record` | `{ ... }` | recording started, or a take started |
+| `transport.changed` | `{}` | the loop, the punch, the metronome or a similar setting changed |
+| `midi.in` | `{ port, ... }` | a MIDI message arrived |
+| `midi.lost`, `midi.returned` | `{ port, tracks }` | a MIDI port disappeared, or is available again |
+| `audio.lost`, `audio.restored` | `{ device, ... }` | the audio device disappeared, or is available again |
+| `engine.started` | engine info | the audio engine started or started again |
+| `media.missing` | `{ files, found }` | the sound files of a project are not at their paths |
+| `proc.output` | `{ id }` | a helper process wrote output (see [Timers, programs and other modules](lua-other.md#helper-programs)) |
+| `render.before` | `{ path, opts }` | a render will start |
+| `render.progress` | `{ path, fraction, ... }` | a render in the background moved forward |
+| `render.done`, `render.failed`, `render.cancelled` | `{ path, ... }` | a render in the background stopped |
+| `render.finished` | render info | `paw.render` returned |
+| `mode.changed` | `{ mode, old }` | the mode of the keymap changed |
+| `key.pre` | `{ key, mode, view }` | a key, before the keymap gets it. A handler can refuse: then the key does nothing more |
+| `escape` | `{}` | Escape had nothing to cancel |
+| `cursor.changed` | `{ track, beat, lane }` | the cursor moved |
+| `selection.changed` | `{ view, kind, region, clips, notes }` | the selection changed. `kind` is `region` (visual mode, `region` as an operator gets it), `clips` (ids, selected with the pointer), `notes` (notes of the clips that the piano roll edits, `{ clip, place }`) or nil |
+| `command.pre`, `command.post` | `{ name, command, args }` | before and after a command |
+| `option.changed` | `{ name, value, old }` | an option got a different value |
+| `view.focused` | `{ view, old }` | another view gets the keys |
+| `view.opened`, `view.closed` | `{ name }` | a view came on the screen, or went off the screen |
+| `pianoroll.opened` | `{ clip }` | the piano roll opened a clip |
+| `roll_clips.changed` | `{ active, count }` | the clips that the piano roll edits changed |
+| `win.enter`, `win.leave` | `{ win }` | the keys went into a window, or left it |
+| `win.resized` | `{ win }` | a window changed size |
+| `win.option` | `{ win, name, value }` | a window option changed |
+| `buf.enter`, `buf.leave` | `{ buf, name }` | a window shows a different buffer |
+| `tab.enter` | `{ tab }` | a different tab |
+| `ui.resized` | `{ width, height }` | the screen changed size |
+| `scope.changed` | `{ scope }` | the tab is narrowed to a group, or not narrowed |
+| `seat.opened`, `seat.closing` | `{ seat }` | a terminal or a graphical window attached, or will go |
+| `address.changed` | `{ uris, revision }` | things with addresses changed (`paw/address.lua`) |
+| `annotation.changed`, `diagnostic.changed` | `{ namespace, document, ... }` | annotations or diagnostics changed |
+| `qf.changed` | `{ title, win }` | the quickfix list or a location list changed |
+| `lsp.status` | `{ client, status, document }` | a language server started, failed or stopped |
+| `lsp.analysis` | `{ clip, client }` | the analysis of a clip arrived from a language server |
+| `harmony.changed` | `{ provider }` | the chords that paw hears changed |
+| `complete.changed` | `{ shown }` | suggestions appeared or disappeared |
+| `snippet.expanded`, `snippet.finished` | `{ name, clip }` | a snippet |
+| `plugins.scanned` | `{ notes, ... }` | a scan for plugins ended |
+| `luadev.checked` | the results | paw checked the devices in Lua again |
+| `ext.loaded` | `{ name, ok }` | an extension loaded, or failed to load |
+| `ext.unloading`, `ext.unloaded` | `{ name }` | paw will unload an extension, and unloaded it |
+| `startup` | `{}` | the runtime, the extensions and the configuration loaded |
+| `exit` | `{}` | the program will stop |

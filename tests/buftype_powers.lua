@@ -42,7 +42,7 @@ local function pager_text()
   return table.concat(out, "\n")
 end
 
--- The example of docs/scripting.md: a tally of marks, one row of cells per
+-- The example of docs/reference/lua-views.md: a tally of marks, one row of cells per
 -- buffer, a cursor in each window.
 local function define_tally(heard)
   paw.buftype("tally", {

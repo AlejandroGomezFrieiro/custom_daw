@@ -289,7 +289,7 @@ function paw.add_track(opts) end
 ---@param opts any
 function paw.bounce(track, opts) end
 
---- Make a buffer type. See docs/scripting.md.
+--- Make a buffer type. See docs/reference/lua-views.md.
 ---   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
 --- Fields: `create(target, buf)` gives the buffer's state; `render(win,
 --- canvas, ctx)` draws (`ctx.buf` is the buffer, `win.state` the window's
@@ -1634,7 +1634,7 @@ function paw.curves.is_curve(uri) end
 
 --- Make curves of addresses of your own: `fn(uri, parts)` returns a target
 --- with `points`, `write`, `name`, `format`, `lo`, `hi` and the rest, or nil
---- to leave the address to the others (docs/scripting.md, Curves).
+--- to leave the address to the others (docs/reference/lua-views.md, Curves).
 ---@param name any
 ---@param fn any
 function paw.curves.provide(name, fn) end
@@ -2367,7 +2367,7 @@ function paw.ex.split(rest) end
 function paw.ex.substitution(r, pattern, replacement, flags) end
 
 --- Say how a view of your own maps its columns to the song's beats and
---- which clips it edits, for ranges: see docs/scripting.md.
+--- which clips it edits, for ranges: see docs/reference/lua-commands.md.
 ---@param name any
 ---@param spec any
 function paw.ex.view(name, spec) end
@@ -6568,7 +6568,7 @@ function paw.textbuf.insert(how, opts) end
 function paw.textbuf.join(ctx) end
 
 --- Make a kind of text buffer, shown for the names its `pattern` matches
---- (`paw://` and the rest). See docs/scripting.md. A kind with `readonly`
+--- (`paw://` and the rest). See docs/reference/lua-views.md. A kind with `readonly`
 --- (what to say when a change is tried) cannot be changed; `gutter = false`
 --- leaves out the line numbers; `static` is not read again when the project
 --- changes; `paint(canvas, x, y, text, kind, width, row, buf)` draws a line

@@ -269,7 +269,7 @@ assign to them; LV2 plugins, and CLAP plugins that take only MIDI 1.0, get
 MIDI 1.0, which has no per-note bend: a note's own controllers do not reach
 them (MPE for them, as for a MIDI output, is not there yet).
 A note's MIDI 2.0 attribute (an articulation, `note.attr`: see
-[Scripting](scripting.md)) is recorded from a MIDI 2.0 note-on, said in a
+[Project objects in Lua](reference/lua-objects.md)) is recorded from a MIDI 2.0 note-on, said in a
 `midi.in` event as `e.attr`, sent on in MIDI 2.0 ports' note-ons, and
 reaches CLAP plugins that prefer MIDI 2.0 notes and Lua devices; a
 track's `attr_map` turns it into keyswitches and controllers for the rest.

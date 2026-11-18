@@ -23,7 +23,7 @@
 --
 -- The core keeps and plays the attribute; what an instrument is told for
 -- one it does not take (keyswitches, controllers) is the track's
--- `attr_map` (docs/scripting.md). Names here are the profile's, short
+-- `attr_map` (docs/reference/lua-objects.md). Names here are the profile's, short
 -- tags for the piano roll; an articulation map may name them its own way.
 local M = {}
 

@@ -20,7 +20,7 @@ verb:set("dry_level", 80)       -- by key, or by the name the plugin shows
   listed as coming from the extension.
 - **Notes.** A CLAP plugin gets notes as CLAP's own note events, or as MIDI
   2.0 when it prefers that: then a note's attribute (an articulation, see
-  [Scripting](scripting.md)) reaches it on the note-on. A plugin that names
+  [Project objects in Lua](reference/lua-objects.md)) reaches it on the note-on. A plugin that names
   its keys (CLAP's `note-name`: a drum kit's drums, a sampler's
   keyswitches) has them written on the piano roll's keys and said by `K`;
   `paw.plugins.note_names(device)` and `paw.api.device_note_names(device)`

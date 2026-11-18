@@ -1,6 +1,6 @@
 -- The hooks the runtime gives around edits, undo, saving, keys, the
 -- selection and the views on screen: events an extension listens for with
--- `paw.on` like any other (see "Events" in docs/scripting.md for every one).
+-- `paw.on` like any other (see docs/reference/events.md for every one).
 --
 -- Some events ask: a handler of `edit.before`, `project.saving` or
 -- `key.pre` that returns `false, "why"` refuses what is about to happen.

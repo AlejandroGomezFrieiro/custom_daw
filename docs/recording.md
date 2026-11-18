@@ -186,7 +186,7 @@ and the loudspeaker beside the input button in the window, switch monitoring;
   `:export song.mid` writes the project as a format 1 file with its tempo
   map, time signatures and markers; `:export riff.mid clip` the clip at the
   cursor, `:export part.mid selection` the selected tracks. In scripts:
-  `paw.midifile` (see [Scripting](scripting.md)).
+  `paw.midifile` (see [Project objects in Lua](reference/lua-objects.md)).
 - **Latency.** cpal runs input and output as separate streams, joined by a
   ring that holds at most one input period plus one output block; when the
   clocks drift, the excess is dropped or the last frame repeated.

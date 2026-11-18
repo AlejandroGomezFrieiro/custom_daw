@@ -1,5 +1,5 @@
 -- Help, as Vim's: the manual inside the program. docs/terminal.md says how
--- it is used, docs/scripting.md how an extension ships help of its own.
+-- it is used, docs/reference/lua-views.md how an extension ships help of its own.
 --
 --   :help                the contents
 --   :help gU             a key        :help :s           a command

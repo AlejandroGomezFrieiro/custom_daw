@@ -114,7 +114,7 @@ the same in both:
 - The wheel scrolls the rows.
 
 The steps and hits are roles (`step`, `hit`) and every part a hit region
-(see "Roles" in docs/scripting.md), which is how one drawing serves both.
+(see "Roles" in docs/reference/lua-views.md), which is how one drawing serves both.
 
 ## Kits
 

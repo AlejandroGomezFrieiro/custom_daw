@@ -763,7 +763,7 @@ clip plays, to delete with `dd` and `:w` (see [Mixing](mixing.md#media-files),
 deleted played may still be needed by `u`: the trash keeps it.
 
 An extension makes its own listing with `paw.textbuf.kind` (see
-[Scripting](scripting.md)); `paw.files.open(folder, { tree = true })` shows
+[Views and buffers in Lua](reference/lua-views.md#text-buffers)); `paw.files.open(folder, { tree = true })` shows
 a folder, and `paw.files.sound_info(path)` reads a file's header.
 
 ## The quickfix list
@@ -783,7 +783,7 @@ say among them; renders that go over full scale, are louder than
 plugins that stopped, put out invalid numbers or are not installed; and
 plugin files a scan could not use. Each keeps its own place too: the
 marks, `]d`, `:diagnostics`, the mix report and the messages stay as they
-were. Extensions add to it (see [Scripting](scripting.md)).
+were. Extensions add to it (see [Views and buffers in Lua](reference/lua-views.md#text-buffers)).
 
 | Keys or command | |
 | --- | --- |

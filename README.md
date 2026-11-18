@@ -30,7 +30,7 @@ paw lives in the [terminal](docs/terminal.md), modal and keyboard first,
 with pictures where the terminal can show them (kitty graphics). The same
 views also open in a [window](crates/paw-gui/README.md) for the mouse, drawn
 from the same Lua, and everything can be driven from
-[Lua scripts](docs/scripting.md), over a [socket](docs/reference/protocol.md)
+[Lua scripts](docs/reference/scripting.md), over a [socket](docs/reference/protocol.md)
 (`paw ctl`), or by an [AI agent](#for-agents).
 
 > [!NOTE]
@@ -198,7 +198,7 @@ in Nix: `paw.withExtensions (exts: [ exts.utau ])`.
 
 An AI agent with a shell drives paw the way a script does: `paw ctl --json
 eval '<lua>'` against a running instance, or `paw -l script.lua` headless
-(see "Driving paw from an agent" in [scripting](docs/scripting.md)). Clients
+(see [How to drive paw from an agent](docs/how-to/drive-paw-from-an-agent.md)). Clients
 without a shell use the MCP server, `paw-mcp`: tools that return JSON, a
 `lua` escape hatch, and the manual and API reference as resources. Every
 batch an agent makes is one named undo step. See
