@@ -38,9 +38,9 @@ To comp is to select the best part of each take.
 
 ## Take lanes
 
-`zt` (or `:take.lanes`, the Takes entry of the menu of a clip, or the menu
-of the track in the graphical window) shows the takes of a track as lanes
-below its clips.
+`zt` shows the takes of a track as lanes below its clips. `:take.lanes`,
+the Takes entry of the menu of a clip, and the menu of the track in the
+graphical window do the same.
 
 - Lane k holds take k of each clip of the track that has takes, each over
   the time range of its clip. So the pieces of a comp align in lanes.
@@ -67,7 +67,7 @@ below its clips.
   - For audio, the join is exact when these are true: each take aligns
     across the join (the same file and gain, and the second piece starts
     in each take where the first ends). The clips have the same name and
-    mute state. There is no fade at the join.
+    mute state. The join has no fade.
   - For notes, the join is exact when the names of the takes match and no
     note is hidden past the edge of either piece. A note cut in two by an
     earlier cut stays as two notes after the join, as it played.

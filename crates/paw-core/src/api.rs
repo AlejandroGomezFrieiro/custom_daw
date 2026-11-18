@@ -861,7 +861,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_glue(lua, sh, ids => Vec<Id>) {
             to_lua(lua, &sh.session.borrow_mut().clip_glue(&ids).lua()?)
         }
-        // Warp markers of an audio clip (session/stretching.rs), counted from 1.
+        // Warp markers of an audio clip (`session/stretching.rs`), counted from 1.
         fn clip_warp_add(_, sh, (id, beat) => (Id, f64)) {
             Ok(sh.session.borrow_mut().warp_add(id, beat).lua()? + 1)
         }
@@ -1348,7 +1348,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.dirty.set(true);
             Ok(())
         }
-        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for pixels
+        // Keep the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, for pixels
         // under the name `key` (`buf:strip`), over the text or `under` it.
         // Returns the number of the surface for `grid_surface_ops`, or nil when
         // no part of it is on the screen.
@@ -1460,7 +1460,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let snapshot = view_snapshot(lua, &sh, &name, width.max(1), height.max(1))?;
             to_lua(lua, &snapshot)
         }
-        // Draw text at (x, y), clipped to the rectangle (cx, cy, cw, ch).
+        // Draw text at `(x, y)`, clipped to the rectangle `(cx, cy, cw, ch)`.
         // Returns the number of columns the text takes.
         fn grid_text(_, sh, (x, y, text, style, cx, cy, cw, ch) => (f64, f64, LuaString, LuaValue, f64, f64, f64, f64)) {
             let style = style_of(&sh, &style)?;
@@ -1470,7 +1470,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.scenes.borrow_mut().text(clip, cell(x), cell(y), &text, style);
             Ok(sh.grid.borrow_mut().text(clip, cell(x), cell(y), &text, style))
         }
-        // Restyle the area (x, y, w, h), clipped to (cx, cy, cw, ch), and
+        // Restyle the area `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, and
         // overwrite its characters when `fill` is given.
         fn grid_fill(_, sh, (x, y, w, h, fill, style, cx, cy, cw, ch) => (f64, f64, f64, f64, Option<LuaString>, LuaValue, f64, f64, f64, f64)) {
             let style = style_of(&sh, &style)?;
@@ -1568,8 +1568,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
         // A process started with `pipe = true`: what it wrote ("" when
-        // nothing, nil once it closed its output), and writing to it. A
-        // `proc.output` event says when there is something to read.
+        // nothing, nil once it closed its output). `proc_write` writes to it.
+        // A `proc.output` event says when there is something to read.
         fn proc_read(lua, sh, (id, max) => (u64, Option<usize>)) {
             match sh.io.borrow_mut().read_output(id, max.unwrap_or(1 << 20)).lua()? {
                 Some(bytes) => Ok(LuaValue::String(lua.create_string(bytes)?)),

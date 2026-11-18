@@ -48,7 +48,7 @@ A menu opens at the pointer and takes the keys while it is open.
 | --- | --- |
 | `j` `k` | Move. |
 | `l`, `Enter` | Opens a submenu, or chooses. |
-| `h` | Goes back out of a submenu. |
+| `h` | Returns from a submenu to its parent menu. |
 | `Esc` | Closes the menu. |
 
 The menu also has the entries of extensions (`paw.frontend.menus`), as the

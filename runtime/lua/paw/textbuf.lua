@@ -256,7 +256,7 @@ end
 -- Kinds -------------------------------------------------------------------------------
 
 --- Make a kind of text buffer. It shows for the names that its `pattern`
---- matches (`paw://` and the others). See docs/reference/lua-views.md. A kind with
+--- matches (`paw://` and the others). See `docs/reference/lua-views.md`. A kind with
 --- `readonly` (the message for a change) cannot change. `gutter = false`
 --- removes the line numbers. paw does not read a `static` kind again when
 --- the project changes. `paint(canvas, x, y, text, kind, width, row, buf)`

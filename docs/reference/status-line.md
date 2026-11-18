@@ -43,7 +43,7 @@ name of the project before it removes a component.
 | `buffer` | The text buffer that has the keys. |
 | `keys` | The keys typed until now. |
 | `scope` | The group of a narrowed tab: `narrowed Strings`. |
-| `project` | The name of the project, with an amber dot if it has unsaved changes. |
+| `project` | The name of the project, with an amber dot if it has changes that are not saved. |
 | `engine` | The audio engine. |
 | `cpu` | The load of the engine, and the dropouts, if there are any: `xrun 3`. |
 | `midi` | Lights for a moment after MIDI comes in. |

@@ -40,9 +40,9 @@ function M.toggle()
   return shown
 end
 
---- The tempo at the bottom and at the top of the row. There is a small
---- space around the slowest and the fastest tempo of the map, in tens of
---- beats a minute. The range is at least 80 and centered. So a steady
+--- The tempo at the bottom and at the top of the row. The range keeps a
+--- small space around the slowest and the fastest tempo of the map, in tens
+--- of beats a minute. The range is at least 80 and centered. So a steady
 --- song does not show as a wall.
 function M.range()
   local lo, hi = math.huge, 0

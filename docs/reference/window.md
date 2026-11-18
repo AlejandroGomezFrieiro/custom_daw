@@ -71,7 +71,7 @@ On Wayland, the compositor decides the position of a window. So the
 window keeps no position there. If no screen shows a saved position, the
 window opens at the top left of the main screen.
 
-## Drawing
+## Graphics
 
 The window is written with [egui](https://github.com/emilk/egui). It draws
 with OpenGL through eframe's glow renderer, on the system's driver: the
@@ -326,9 +326,9 @@ it, or until playback starts again.
 | Double-click the fader | Sets it to 0 dB. |
 | Right-click | A menu on release: color, duplicate, bounce to audio, a new track below, delete, the groups, the VCAs, the take lanes, the automation, the templates, and the entries of extensions. |
 
-The menu of a track has entries for groups: "New group with this
-track…", "Move into a group…" and "Take out of its group" ("Dissolve the
-group" on a group). The members of
+The menu of a track has three entries for groups. They are `New group
+with this track…`, `Move into a group…` and `Take out of its group`
+(`Dissolve the group` on a group). The members of
 a group show under it, one step in and in its color. Their sound goes
 through the group. The triangle beside the name of the group hides and
 shows the members.
@@ -566,8 +566,9 @@ The title shows the name of the chord.
 
 Notes of the other clips of the track, and of other pitched tracks, show
 behind as dashed lines in their colors. The layers that extensions add
-(articulations, the notes of a snippet, the ghosts of a suggestion and its
-badge, the outline of the notation) show as in the terminal.
+show as in the terminal. These layers are the articulations, the notes of a
+snippet, the ghosts of a suggestion and its badge, and the outline of the
+notation.
 
 Several clips:
 

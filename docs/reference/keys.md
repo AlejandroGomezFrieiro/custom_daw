@@ -13,7 +13,7 @@ you are in.
 
 ## The sentence
 
-**count** · **operator** · **motion** or **text object** — `3>ic`, `d2W`, `yic`,
+**count** · **operator** · **motion** or **text object**, for example `3>ic`, `d2W`, `yic`,
 `gl4W`. An operator typed twice takes whole rows (tracks in A, pitches in R):
 `dd`, `3yy`. `"a` before it names a register: `"ayic`. `.` repeats the last
 change.
@@ -32,7 +32,7 @@ change.
 | `5\|` | bar 5 (also `:5`) | |
 | `gP` | cursor to the playhead | |
 | `]'` `['` | next marker or region, the one before | |
-| `zz` `zh` `zl` | centre the cursor, scroll a bar | |
+| `zz` `zh` `zl` | center the cursor, scroll a bar | |
 
 These keys only move, in every view. In **M**, `h` `l` are strips. `j` `k`
 are the rows of a strip (devices, sends, fader, pan, mute, solo, arm), `gg`
@@ -185,7 +185,7 @@ In the **curve editor**:
 | `<BS>` | take back the note kept last |
 | `[` `]` | softer, louder |
 | `I` | keep what was drawn and type notes from here as on a piano (a piano's letter while drawing says so) |
-| `<Esc>` | write what was drawn (one undo step; `.` draws it again) and go back to normal mode |
+| `<Esc>` | write what was drawn (one undo step; `.` draws it again) and return to normal mode |
 
 ## Enter notes as on a piano (`I`, R)
 
@@ -260,7 +260,7 @@ See [Snippets](snippets.md) and [Completion](completion.md).
 | `,fR` | recent projects (`:recent 2` opens the second) |
 | `,fh` `,f'` `,fg` `,fN` `,fw` | help tags, markers and regions, any text in the project, notes (pitch, lyric, articulation), sound files |
 | `,fq` `,fu` `,fe` `,fs` `,fP` | the quickfix list, undo states, extensions, the Lua API, presets |
-| `<C-Space>` | in a picker of presets, devices, files, beats, snippets, clips or notes: hear the item under the selection, or stop hearing it; `<Esc>` takes back what was tried |
+| `<C-Space>` | in a picker of presets, devices, files, beats, snippets, clips or notes: hear the item under the selection, or stop the sound; `<Esc>` takes back what was tried |
 | in a picker | Tab marks a line, Ctrl-q sends the marked (or all) to the quickfix list; Ctrl-v, Ctrl-x, Ctrl-t open it beside, below, in a tab; Ctrl-r steps fuzzy, exact, regex; Alt-d deletes; Ctrl-Up what was typed before |
 | `:vimgrep /pizz/` | every text in the project that matches, in the quickfix list |
 | `:select clip[name~=pizz] > note[pitch>=C5]` | choose what a query finds; `:query` lists it |
@@ -277,9 +277,9 @@ Stop half way through a sequence and the keys that can follow are listed.
 | Keys | |
 | --- | --- |
 | `:help` `:help gU` | the manual: its contents; where a key, command (`:help :s`), option (`:help 'timebind'`) or section is described; `<Tab>` completes |
-| `<C-]>` | in help: follow the link, or look up the word, under the cursor |
+| `<C-]>` | in help: follow the link, or find the word, under the cursor |
 | `<C-t>` `<C-o>` | in help: back to where the link was followed from |
-| `K` | in help: look up the word under the cursor |
+| `K` | in help: find the word under the cursor |
 | `:helpgrep stretch` | every line of help that holds the words, in the quickfix list |
 
 ## Views and the program
@@ -319,7 +319,7 @@ text as in Vim. Nothing changes in the project until `:w`.
 | `rM` `rS` `rR` `r-` | on a track's flags: mute, solo, arm, or not |
 | `<C-v>` `I` `A` `r` | in a block: type before or after it on every line, replace it |
 | `u` `<C-r>` | undo, redo the text |
-| `:w` | show what will change; `y` or `<CR>` applies it as one undo step, `n` goes back |
+| `:w` | show what will change; `y` or `<CR>` applies it as one undo step, `n` returns to the buffer |
 | `:e` | with `!` (`:e!`), throw the changes away and read again; `:w!` applies over changes made elsewhere since |
 | `:sort` | sort the lines (`!` reversed, `n` by number); over ranges of lines too: `:%s/a/b/g`, `:2,4d`, `:m 0` |
 | `<CR>` `-` | a track's devices, a device in the panel, go to a marker; back up to the tracks |
@@ -416,10 +416,10 @@ letter:
 
 | Keys | In normal mode |
 | --- | --- |
-| zg | shows the engraved page as one long system |
-| zp | shows it on pages under the title (`:notation.export pdf` writes them) |
-| zs | starts a system at the bar under the cursor |
-| zj | joins the bar to the system before |
+| <kbd>zg</kbd> | shows the engraved page as one long system |
+| <kbd>zp</kbd> | shows it on pages under the title (`:notation.export pdf` writes them) |
+| <kbd>zs</kbd> | starts a system at the bar under the cursor |
+| <kbd>zj</kbd> | joins the bar to the system before |
 
 The grammar in notation is about the score. Operators and text objects act
 on what is written. Each edit is one undo step that `.` repeats.
@@ -505,7 +505,7 @@ under the cursor.
 
 | In a score | Keys |
 | --- | --- |
-| the cursor's pitch, as on one staff (entering goes by it) | `j` `k` |
+| the cursor's pitch, as on one staff (note entry goes by it) | `j` `k` |
 | a staff down, up: a grand staff's two, then the next instrument | `<C-j>` `<C-k>` |
 | the next, previous instrument (a grand staff is one) | `]]` `[[` |
 | the next, previous instrument in the same group | `]s` `[s` |

@@ -25,8 +25,8 @@ as the rest of paw.
 ## The lines
 
 A line is a file. A folder ends in `/`. Columns after the name give what is
-known of the file: the length, sample rate and channels of a sound file
-(from its header), and the size. In the `media` folder of the project,
+known of the file. For a sound file, they give the length, sample rate and
+channels (from its header). For all files, they give the size. In the `media` folder of the project,
 `unused` marks a sound file that no clip plays.
 
 ```

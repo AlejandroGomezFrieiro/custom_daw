@@ -116,8 +116,8 @@ paw.keymap.set("}", fn, { view = "arrange", motion = true })  -- a motion: also 
 paw.keymap.group("<leader>x", "mix checks")                -- the name of a prefix in the key hints: `+mix checks`
 ```
 
-The keys of one view use `<localleader>`, never `<leader>`. `<leader>`
-keys are for keys that apply in every view.
+The keys of one view use `<localleader>`. `<leader>` keys are only for
+keys that apply in every view.
 
 ### Operators and text objects
 

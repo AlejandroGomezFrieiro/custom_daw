@@ -37,8 +37,8 @@ A motion moves the cursor. A count repeats it: `3W` moves three bars.
 | --- | --- |
 | `ma`, `'a`, `''` | Sets mark `a`. Goes to mark `a`. Goes to the place before the last jump. |
 | `:delmarks a b c-e`, `:delmarks!` | Removes marks, as in Vim (`:delm`). `Tab` completes the marks that are set. With `!`, removes every lowercase mark. |
-| `Ctrl-o` `Ctrl-i` | Goes back and forward through the places of the jumps. |
-| `g;` `g,` | Goes back and forward through the places of the edits (`3g;` three edits back). Each view keeps its own list. |
+| `Ctrl-o` `Ctrl-i` | Moves back and forward through the places of the jumps. |
+| `g;` `g,` | Moves back and forward through the places of the edits (`3g;` three edits back). Each view keeps its own list. |
 | `` `. ``, `'.` | Goes to the place of the last edit. |
 | `:changes` | Lists the places of the edits. |
 | `g'`, `g"`, `gx` | Puts a marker (a name on the ruler) at the cursor. Chooses a marker from a list. Removes the marker at the cursor. |

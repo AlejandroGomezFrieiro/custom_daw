@@ -13,8 +13,8 @@ server for AI assistants). `--help` on each program prints its options.
 | `paw [options] [project]` | Opens the terminal interface. A sound file as the project starts a new project with it. |
 | `paw -l <script.lua> [args...]` | Runs a Lua script without a UI, then stops. |
 | `paw --headless [project]` | Runs without a UI until it gets a quit command. |
-| `paw ctl [--json] <method> [params...]` | Calls a method of a running instance through its socket. |
-| `paw attach` | Shows the terminal interface of a running instance in this terminal. |
+| `paw ctl [--json] <method> [params...]` | Calls a method of an instance that runs, through its socket. |
+| `paw attach` | Shows the terminal interface of an instance that runs, in this terminal. |
 | `paw doctor [options]` | Checks the audio, MIDI, plugins and environment, and prints a report. |
 
 | Option | Effect |
@@ -34,7 +34,7 @@ server for AI assistants). `--help` on each program prints its options.
 | `--no-listen` | Does not open a control socket. |
 | `--listen-tcp <address>` | Also accepts connections from the network, on `host:port`, in TLS. `127.0.0.1:7700` accepts only this computer, `0.0.0.0:7700` any computer that knows the token. |
 | `--no-tls` | Accepts network connections without encryption. |
-| `--token-file <path>` | The file of the token for network connections. The default is `~/.local/state/paw/token`. paw makes it if it is missing. |
+| `--token-file <path>` | The file of the token for network connections. The default is `~/.local/state/paw/token`. paw makes it if it does not exist. |
 | `--no-plugins` | Does not look for CLAP, LV2 and VST3 plugins. |
 | `--plugins-in-process` | Loads plugins into this process, not each into a process of its own. |
 | `--plugins-offline` | Opens the project with every plugin offline (see `:plugins.online`). |
@@ -101,7 +101,7 @@ paw ctl --connect studio:7700 --token-file studio.token cmd transport.toggle
 
 | Use | Effect |
 | --- | --- |
-| `paw-mcp [options]` | Attaches to a running kernel. |
+| `paw-mcp [options]` | Attaches to a kernel that runs. |
 | `paw-mcp --spawn [project] [-- kernel options...]` | Starts a headless kernel of its own, and stops it at the end. The options after `--` go to the kernel, for example `--audio null`. |
 
 | Option | Effect |

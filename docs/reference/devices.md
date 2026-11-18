@@ -26,7 +26,7 @@ parameters, presets, a wet/dry mix and an output gain.
 | `reverb` | Rooms and plates: an eight-line feedback delay network whose lines drift slowly, so that it does not ring. `size`, `decay` (seconds to fall 60 dB), `predelay`, `damp_high` and `damp_low` (where the highs and lows decay sooner, off at the ends of their ranges), `diffusion`, `early` (early reflections against the tail), `width`, `mix` (the dry sound stays at full level up to 50 %, and the wet sound reaches full level there). |
 | `utility` | Level and stereo: `gain`, `pan` (a balance: the far side fades out), `width` (0 % is mono, 200 % is two times as wide), `mono_below` (no sides below this frequency, off at 20 Hz), `invert_l`, `invert_r`, `swap`, `dc` (a 5 Hz high-pass). |
 | `saturation` | Warmth or grit: `drive`, `curve` (tape: soft and symmetric, tube: biased, adds even harmonics, hard clip), `oversample` (2x or 4x, so that the harmonics do not fold back as noise), `tone` (a high shelf after the curve), `mix`, `output`. Quiet audio passes at its own level. 31 samples late (0.65 ms at 48 kHz), reported as latency. |
-| `meter` | Measures the audio and lets it through with no change. `paw.params.read(m, "meters")` gives `momentary`, `short_term` and `integrated` loudness (LUFS, EBU R 128 with its gates), `true_peak` (dBTP) and `sample_peak` held since `paw.params.read(m, "reset")` (or for 3 s with `hold`), and `rms_l`, `rms_r` and `correlation` over 300 ms. `"spectrum", n` gives dB in `n` bands from 20 Hz to 20 kHz. A reading that is not ready is -200. |
+| `meter` | Measures the audio and lets it through with no change. `paw.params.read(m, "meters")` gives `momentary`, `short_term` and `integrated` loudness (LUFS, EBU R 128 with its gates), `true_peak` (dBTP) and `sample_peak` held since `paw.params.read(m, "reset")` (or for 3 s with `hold`), and `rms_l`, `rms_r` and `correlation` over 300 ms. `"spectrum", n` gives dB in `n` bands from 20 Hz to 20 kHz. A value that is not ready is -200. |
 | `tuner` | Tunes a guitar or a bass: `paw.params.read(t, "pitch")` gives `freq`, `note` (`E2`), `midi`, `cents` and `confidence`, from the last 85 ms (YIN). `reference` sets A4. `mute` silences the track while you tune. |
 | `gate` | Removes the spill between hits on a drum track, or the noise between phrases: `mode` (gate or expander), `threshold`, `range`, `ratio` (expander), `attack`, `hold`, `release`, `hysteresis`, `lookahead`, `detector_hp`, `detect`, `link`, `listen`. A side-chain can key it, as for the compressor. The same meters as the compressor. |
 
@@ -61,8 +61,8 @@ The cost of one instance on one core at 48 kHz (`bench/devices.lua`):
 
 | Function | Result |
 | --- | --- |
-| `paw.params.presets(kind)` | The starting points of a device: vocal high-pass and presence, drum bus glue, plate, room and others. They are in [device_presets.lua](../../runtime/lua/paw/device_presets.lua). |
-| `paw.params.apply(device, name)` | Apply a starting point. |
+| `paw.params.presets(kind)` | The built-in settings of a device: vocal high-pass and presence, drum bus glue, plate, room and others. They are in [device_presets.lua](../../runtime/lua/paw/device_presets.lua). |
+| `paw.params.apply(device, name)` | Apply one of the built-in settings. |
 | `paw.params.format(param, value)` | A value in its unit: `2.5 kHz`, `-18.0 dB`, `4:1`, `1/8.`. |
 | `paw.params.read(device, what, ...)` | The meters, curves and readings of a device (see the table above). |
 

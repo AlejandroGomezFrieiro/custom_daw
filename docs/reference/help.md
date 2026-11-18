@@ -60,7 +60,7 @@ in the help of Vim. Code has its own color, and tables show in columns.
 | Keys or command | In help |
 | --- | --- |
 | `Ctrl-]`, `Enter`, a double click | Follows the link under the cursor, or finds the key, command or word there. |
-| `Ctrl-t`, `Ctrl-o` | Go back to where you followed the link. `Ctrl-o` returns through every jump, across pages. |
+| `Ctrl-t`, `Ctrl-o` | Return to where you followed the link. `Ctrl-o` returns through every jump, across pages. |
 | `K` | Finds the word under the cursor (in any text buffer). |
 | `-` | Shows the contents. |
 | `:helpgrep stretch` | Puts every line of help that holds the words in the quickfix list, and goes to the first. `]q` `[q` go through them. Case counts only when a word has a capital. |

@@ -371,7 +371,7 @@ end
 -- Choosing and accepting ------------------------------------------------------
 
 --- Show the next alternative (`n` 1), the previous (-1), or with `absolute`
---- the `n`th.
+--- the alternative number `n`.
 function M.select(n, absolute)
   if not M.current() then return end
   local count = #shown.items

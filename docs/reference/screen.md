@@ -69,7 +69,7 @@ sets the characters of curves. See [Options](options.md#screen).
 In a terminal that shows images, the views that paint show pixels. See
 [Pictures in the terminal](pictures.md).
 
-## Drawing for views
+## Parts to draw views
 
 The views and the extensions draw with the same parts, in `paw.draw`.
 The parts include the colors of a track (`track_hue`), meters, sliders, the

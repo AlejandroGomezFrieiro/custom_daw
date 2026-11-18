@@ -154,7 +154,7 @@ Packets. A MIDI 2.0 device arrives with all its data. A MIDI 1.0 device
 arrives as the same events with less resolution. This needs a kernel built
 with `CONFIG_SND_SEQ_UMP`. Without it, the ports are MIDI 1.0, and paw
 widens what arrives by the rules of the specification, so both read the
-same. There is no MIDI-CI (see [Limits](limits.md)).
+same. paw does not support MIDI-CI (see [Limits](limits.md)).
 
 ## MIDI output
 
@@ -190,7 +190,7 @@ out form entries of the input list and the input menu.
 With `mpe`:
 
 - Each note gets a channel of its own in the lower zone. Channel 1 is for
-  the full instrument. The member channels start at 2. There are 15
+  the full instrument. The member channels start at 2. The zone has 15
   member channels unless you set `members`.
 - The bend, pressure and brightness (controller 74) of a note are the
   pitch bend, pressure and controller 74 of its channel.
@@ -200,7 +200,7 @@ With `mpe`:
   still sounds does not bend with the next note. If all channels are
   in use, the note shares the channel with the fewest notes.
 - paw sends the moves that come for a note before its start on its
-  channel, just before the note.
+  channel, immediately before the note.
 
 ### Timing
 

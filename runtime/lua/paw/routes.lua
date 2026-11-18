@@ -76,7 +76,7 @@ function M.sidechain_sources(device)
   return out
 end
 
---- What a device listens to, as text: the name of the track, with "pre"
+--- What a device listens to, as text: the name of the track, with `pre`
 --- when it takes the sound before the fader. Nil if it listens to nothing.
 function M.sidechain_text(d)
   if not d.sidechain then return nil end

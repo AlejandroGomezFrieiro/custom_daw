@@ -69,7 +69,7 @@ name. So any part of the runtime can be replaced.
 | `paw.ext.provides(name)` | what an extension registered |
 
 A command of an extension that is not loaded tells you so, in place of
-"no command". There is no separate interface for extensions. An extension
+"no command". Extensions have no separate interface. An extension
 is Lua that calls `paw.command`, `paw.keymap.set`, `paw.on` and
 `paw.ui.view` as a configuration does. [How to load an
 extension](../how-to/load-an-extension.md) gives the steps.
@@ -218,10 +218,10 @@ advice under it. `:checkhealth audio ffmpeg` runs only those checks.
 | --- | --- |
 | `paw` | the program and its Lua |
 | `audio` | the audio engine and MIDI |
-| `plugins` | plugin hosting |
+| `plugins` | the plugin host |
 | `ffmpeg` | `ffmpeg`, for compressed renders |
 | `terminal` | pictures in the terminal |
-| `fonts` | the fonts that the graphical window uses when a glyph is missing |
+| `fonts` | the fonts that the graphical window uses when its own font has no glyph |
 | `extensions` | the extensions, their versions and their requirements |
 
 The utau extension checks its engine. The sampler extension checks its

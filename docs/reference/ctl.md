@@ -48,8 +48,8 @@ paw ctl --json track_add '{"name": "Bass"}'
 
 The socket carries one JSON object on each line:
 `{"id":1,"method":"eval","params":["..."]}`. A connection can also get the
-events that it subscribed to, the state that a frontend draws (sent in
-parts when it changes), and the screen of the terminal UI. [The control
+events that it subscribed to and the screen of the terminal UI. It can get
+the state that a frontend draws, which paw sends in parts when it changes. [The control
 protocol](protocol.md) describes all the messages.
 
 ## `paw attach`

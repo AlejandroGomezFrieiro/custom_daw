@@ -9,8 +9,8 @@ the rule. `:lua =paw.keyrule.broken()` does the same check on your own
 mappings.
 
 Buffers of text (`:e paw://tracks`) keep the keys of Vim for text. There,
-`Ctrl-a` adds to the number under the cursor, and `-` goes up to the
-buffer above, as in oil.nvim. Their motions and operators obey the rule.
+`Ctrl-a` adds to the number under the cursor. As in oil.nvim, `-` goes up
+to the buffer above. Their motions and operators obey the rule.
 
 For the reasons of the rule, see [About the key rule](../explanation/about-the-key-rule.md).
 
@@ -27,7 +27,7 @@ For the reasons of the rule, see [About the key rule](../explanation/about-the-k
 | `gc` | Mute: an operator over clips and tracks (`gcc` the track), and over strips in the mixer. A lane of automation off or on. A device bypassed (`gcc` in the panel). |
 | `gC`, `Enter` | Opens the curve of what is under the cursor: a lane row, a parameter, the fader or pan of the mixer, the strip of the piano roll. `gX` opens the expression of the note. |
 | `Alt-h` `Alt-l`, `H` `L` | Shorter and longer. Earlier and later. For a clip, a note, a chord in the score. |
-| `Esc` | Cancels: a count, an operator, a selection, insert mode, a suggestion, the chosen notes, a running check. It never leaves or closes a view. A second `Esc` says how to leave: `Ctrl-w p` returns to the window before, and `:q`, `ZZ`, `Ctrl-w c` or the key of the view (`,m` `,d` `,p`, `q` on a page) close it. Pickers, menus and floating lists are prompts, and close on `Esc`. |
+| `Esc` | Cancels: a count, an operator, a selection, insert mode, a suggestion, the chosen notes, a check that runs. It never leaves or closes a view. A second `Esc` says how to leave: `Ctrl-w p` returns to the window before, and `:q`, `ZZ`, `Ctrl-w c` or the key of the view (`,m` `,d` `,p`, `q` on a page) close it. Pickers, menus and floating lists are prompts, and close on `Esc`. |
 | `s` `M` `r` | Solo, mute, arm the track: in the arrange view, the mixer, the session view (the track of the column) and the device panel (its track). |
 | `a` | Append: a device after the chain of the track (arrange view, mixer, device panel), notes after the note (piano roll, score), a drawing from the curve (curve editor). |
 | `A` | Automate the main value: a point at the cursor on the volume of the track, the parameter, the lane. |

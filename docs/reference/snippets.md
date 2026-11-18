@@ -68,7 +68,7 @@ link it into `<config>/extensions`.
 | `tritone` | bII7, the tritone substitute of the dominant of the next chord | voicing, kind |
 | `passing-dim` | a diminished seventh into the next chord: on its leading note, or on its root | voicing, kind, length |
 | `sus` | the next chord, suspended until it comes, then resolved | voicing, sus (sus4, sus2, 7sus4), resolve |
-| `cadence` | V–I (or IV–V–I, ii–V–I, IV–I) to the tonic of the key, one bar each | voicing, kind, each |
+| `cadence` | V-I (or IV-V-I, ii-V-I, IV-I) to the tonic of the key, one bar each | voicing, kind, each |
 | `pedal` | a held tonic, dominant or chord root at the bottom of the range | note, length |
 | `arp` | the chord at the cursor as an arpeggio over its length | pattern (up, down, up-down, broken), rate, voicing |
 | `bass` | root and fifth (or roots, or octaves) below the chords, in the range of a bass | pattern, length |

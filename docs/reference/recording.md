@@ -29,7 +29,7 @@ keys.midi_input = { port = "Keystation 49", channel = 1 }   -- MIDI from one por
 | Field of a track | Value |
 | --- | --- |
 | `input` | `"1"`, `"1/2"`, `"3"`, or nil for no audio input. |
-| `monitor` | True: you hear the input without arming. |
+| `monitor` | True: you hear the input, also when the track is not armed. |
 | `armed` | True: the track records. |
 | `midi_input` | `{ port, channel }`: MIDI from one port, and optionally one channel. Nil: all ports. |
 
@@ -106,7 +106,7 @@ count-in.
 - The record button, `R` and `paw.transport.record()` count in. Play with
   record mode on also counts in. A punch in by hand while the song plays
   does not.
-- The clicks use the tempo and time signature at the playhead. There is
+- The clicks use the tempo and time signature at the playhead. paw plays
   one click on each beat, and a higher click on the first beat of each bar. They
   sound when the metronome is off too, with the same latency as the song.
 - The playhead does not move during the count. The song and the take
@@ -170,9 +170,9 @@ The timeline menu of the graphical window has the same entries.
 - paw records nothing until the punch in. The take starts on the frame of
   the punch in, so the clip starts exactly at the punch in.
 - A playhead that is already further back does not move.
-- There is no pre-roll for a playhead inside or after the range. There is
-  no pre-roll for a take that starts while the song plays, or for a take
-  without punch.
+- A playhead inside or after the range gets no pre-roll. A take that
+  starts while the song plays, or a take without punch, also gets no
+  pre-roll.
 - A count-in comes before the pre-roll: it counts at the start of the
   pre-roll, and then the song plays from there.
 - The pre-roll belongs to you, as the count-in does. It is not saved with
