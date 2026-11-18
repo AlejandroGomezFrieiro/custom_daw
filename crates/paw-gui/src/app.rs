@@ -149,6 +149,8 @@ pub struct View {
     pub gone: bool,
     pub listening: bool,
     pub ctx: Option<egui::Context>,
+    /// OpenGL draws the window on the processor (llvmpipe).
+    pub software: bool,
     /// The window's title as last set.
     title: String,
 }
@@ -186,6 +188,7 @@ impl View {
             gone: false,
             listening: false,
             ctx: None,
+            software: false,
             title: String::new(),
         }
     }

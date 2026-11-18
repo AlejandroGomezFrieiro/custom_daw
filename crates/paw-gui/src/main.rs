@@ -85,6 +85,36 @@ fn renderer_choice(args: &mut Vec<String>, env: Option<&str>) -> Result<Renderer
     }
 }
 
+/// Whether an OpenGL renderer draws on the processor: Mesa's llvmpipe,
+/// softpipe and swrast, and lavapipe under zink.
+pub fn is_software(renderer: &str) -> bool {
+    let name = renderer.to_lowercase();
+    ["llvmpipe", "softpipe", "swrast", "software rasterizer", "lavapipe"].iter().any(|n| name.contains(n))
+}
+
+/// What the window tells the kernel of the OpenGL that draws it
+/// (`paw.frontend.window_renderer`): the renderer's name and version,
+/// whether it draws on the processor, and the likely cause when it does:
+/// `asked` (`--renderer software`, `PAW_GUI_RENDERER`), `libgl`
+/// (`LIBGL_ALWAYS_SOFTWARE` set), `no-card` (no graphics card in
+/// /dev/dri) or `driver` (a card, but its driver or DRI3 missing).
+fn renderer_report(renderer: &str, version: &str, asked: bool, libgl: bool, card: bool) -> Value {
+    let software = is_software(renderer);
+    let cause = match () {
+        _ if !software => None,
+        _ if asked => Some("asked"),
+        _ if libgl => Some("libgl"),
+        _ if !card => Some("no-card"),
+        _ => Some("driver"),
+    };
+    json!({ "renderer": renderer, "version": version, "software": software, "cause": cause })
+}
+
+/// Whether the machine has a graphics card the window could draw on.
+fn has_card() -> bool {
+    std::fs::read_dir("/dev/dri").is_ok_and(|dir| dir.flatten().any(|e| e.file_name().to_string_lossy().starts_with("renderD")))
+}
+
 /// The X authority file to use when the one the environment names is gone:
 /// the newest of those a desktop keeps in the runtime directory, else the
 /// one in the home directory.
@@ -200,7 +230,10 @@ fn run() -> Result<()> {
         return Ok(());
     }
     let env = std::env::var("PAW_GUI_RENDERER").ok();
-    if renderer_choice(&mut args, env.as_deref())? == Renderer::Software {
+    // Asked of Mesa before this program asks it too.
+    let libgl = std::env::var_os("LIBGL_ALWAYS_SOFTWARE").is_some_and(|v| !v.is_empty() && v != "0");
+    let asked = renderer_choice(&mut args, env.as_deref())? == Renderer::Software;
+    if asked {
         // Mesa draws on the processor; any other driver is not asked.
         unsafe {
             std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
@@ -268,11 +301,27 @@ fn run() -> Result<()> {
         Box::new(move |cc| {
             cc.egui_ctx.set_fonts(theme::fonts(cjk.join().ok().flatten()));
             cc.egui_ctx.set_visuals(visuals());
+            // Which OpenGL draws the window: said in the log, and to the
+            // kernel, which says it once when it is the processor.
+            let (renderer, version) = match &cc.gl {
+                Some(gl) => unsafe {
+                    use eframe::glow::HasContext as _;
+                    (gl.get_parameter_string(eframe::glow::RENDERER), gl.get_parameter_string(eframe::glow::VERSION))
+                },
+                None => (String::new(), String::new()),
+            };
+            eprintln!("paw-gui: OpenGL renderer: {renderer} ({version})");
+            let report = renderer_report(&renderer, &version, asked, libgl, has_card());
+            let software = report["software"] == true;
+            if let Err(err) = client.eval("paw.frontend.window_renderer_set(...)", json!([report])) {
+                eprintln!("paw-gui: {err:#}");
+            }
             let ctx = cc.egui_ctx.clone();
             // A frame for what came, and one only: egui draws two for a
             // request to draw at once.
             client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
-            let view = app::View::new(Box::new(client), ours);
+            let mut view = app::View::new(Box::new(client), ours);
+            view.software = software;
             Ok(Box::new(Window { view, child }))
         }),
     )
@@ -343,5 +392,22 @@ mod tests {
         assert_eq!(renderer_choice(&mut args, Some("")).unwrap(), Renderer::Gpu);
         assert!(renderer_choice(&mut args, Some("vulkan")).is_err());
         assert!(renderer_choice(&mut vec!["--renderer".into()], None).is_err());
+    }
+
+    #[test]
+    fn a_renderer_on_the_processor_is_told_with_its_likely_cause() {
+        let card = renderer_report("AMD Radeon 890M (radeonsi, gfx1150, LLVM 19.1.7, DRM 3.61)", "4.6 (Compatibility Profile) Mesa 25.1.5", false, false, true);
+        assert_eq!(card["software"], false);
+        assert_eq!(card["cause"], Value::Null);
+        let llvmpipe = "llvmpipe (LLVM 19.1.7, 256 bits)";
+        let cause = |asked, libgl, card| renderer_report(llvmpipe, "4.5", asked, libgl, card)["cause"].clone();
+        assert_eq!(cause(true, true, true), "asked", "asked for first: --renderer software, PAW_GUI_RENDERER");
+        assert_eq!(cause(false, true, true), "libgl");
+        assert_eq!(cause(false, false, false), "no-card");
+        assert_eq!(cause(false, false, true), "driver", "a card, but no driver or no DRI3");
+        for name in ["softpipe", "Mesa X11 swrast", "Software Rasterizer", "zink Vulkan 1.3(llvmpipe (LLVM 19.1.7, 256 bits) (MESA_LLVMPIPE))"] {
+            assert!(is_software(name), "{name}");
+        }
+        assert!(!is_software("Mesa Intel(R) Graphics (ADL GT2)"));
     }
 }

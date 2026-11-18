@@ -1,6 +1,7 @@
 -- The how-to guides of the user guide for when something goes wrong, each
 -- driven with the keys and commands that it gives (docs/how-to/fix-no-sound.md,
--- fix-crackles-and-dropouts.md, deal-with-a-plugin-that-crashes.md). Loaded
+-- fix-crackles-and-dropouts.md, deal-with-a-plugin-that-crashes.md,
+-- run-the-window-without-a-graphics-card.md). Loaded
 -- by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
@@ -131,4 +132,30 @@ test("guide: deal with a plugin that crashes or hangs", function()
   before = mark()
   keys(":edit " .. d .. "/song.json offline<CR>")
   eq(said(before):find("opened with every plugin offline", 1, true) ~= nil, true, ":edit song.json offline opens it with the plugins offline")
+end)
+
+--- The text of the page `:checkhealth` opened.
+local function page()
+  local lines = {}
+  for _, line in ipairs(paw.ui.views.pager.lines) do lines[#lines + 1] = line.text end
+  return table.concat(lines, "\n")
+end
+
+test("guide: run the window without a graphics card, then on the card again", function()
+  start()
+  local was = paw.frontend.window_renderer
+  -- The window started on the processor because PAW_GUI_RENDERER asked.
+  local before = mark()
+  paw.frontend.window_renderer_set({ renderer = "llvmpipe (LLVM 19.1.7, 256 bits)", version = "4.5", software = true, cause = "asked" })
+  eq(said(before):find("The window draws on the processor", 1, true) ~= nil, true, "a warning when it starts: " .. said(before))
+  keys(":checkhealth window<CR>")
+  eq(page():find("- WARN the window draws on the processor", 1, true) ~= nil, true, ":checkhealth window: " .. page())
+  eq(page():find("    - PAW_GUI_RENDERER=software", 1, true) ~= nil, true, "the likely cause first")
+  paw.ui.close()
+  -- Started again without the variable: on the card.
+  paw.frontend.window_renderer_set({ renderer = "AMD Radeon 890M (radeonsi)", version = "4.6", software = false })
+  keys(":checkhealth window<CR>")
+  eq(page():find("- OK the window draws on the graphics card", 1, true) ~= nil, true, "OK on the card: " .. page())
+  paw.ui.close()
+  paw.frontend.window_renderer = was
 end)

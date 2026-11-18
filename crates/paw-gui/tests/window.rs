@@ -1031,6 +1031,16 @@ fn demo_song_shows_and_answers_the_pointer() {
     w.assert_alive("after showing the demo song");
     assert_eq!(w.number("return #paw.api.track_list()"), 5.0);
     w.shot("demo.png");
+    // Xvfb has no graphics card: the window says that it draws on the
+    // processor, once, and `:checkhealth window` tells why.
+    w.expect(
+        "the renderer told",
+        "paw.frontend.window_renderer and paw.frontend.window_renderer.software",
+    );
+    w.expect(
+        "a warning in :checkhealth",
+        "paw.health.run('window').items[1].level == 'warn'",
+    );
 
     // A click on a header selects the track.
     let keys = w.number("return paw.api.track_list()[3]") as i32;

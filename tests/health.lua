@@ -23,7 +23,7 @@ local function read_errors()
 end
 
 test("checkhealth: the core's checks each report, with a level and advice", function()
-  for _, name in ipairs({ "paw", "audio", "plugins", "ffmpeg", "terminal", "fonts", "extensions" }) do
+  for _, name in ipairs({ "paw", "audio", "plugins", "ffmpeg", "terminal", "window", "fonts", "extensions" }) do
     local r = paw.health.run(name)
     eq(#r.items > 0, true, name .. " says something")
     for _, item in ipairs(r.items) do
@@ -55,6 +55,33 @@ test("checkhealth: the command shows every check, or the ones named", function()
   local found = false
   for _, c in ipairs(completions) do found = found or (c.text or ""):match("audio$") ~= nil end
   eq(found, true, "names complete")
+end)
+
+test("checkhealth: the window says whether it draws on a graphics card, and why not", function()
+  local was = paw.frontend.window_renderer
+  paw.frontend.window_renderer = nil
+  local r = paw.health.run("window")
+  eq(levels(r), "info", "no window yet")
+  paw.frontend.window_renderer_set({ renderer = "AMD Radeon 890M (radeonsi)", version = "4.6", software = false })
+  r = paw.health.run("window")
+  eq(levels(r), "ok", "on the card")
+  eq(r.items[1].text:find("AMD Radeon 890M", 1, true) ~= nil, true, "it names the renderer")
+  -- On the processor: said once when the window starts, with what to do.
+  local before = #paw.ui.messages
+  paw.frontend.window_renderer_set({ renderer = "llvmpipe (LLVM 19.1.7, 256 bits)", version = "4.5", software = true, cause = "asked" })
+  local said = paw.ui.messages[#paw.ui.messages]
+  eq(#paw.ui.messages, before + 1, "one message")
+  eq(said.level, "warn", "a warning")
+  eq(said.text:find("draws on the processor (llvmpipe)", 1, true) ~= nil, true, "in words: " .. said.text)
+  eq(said.text:find("PAW_GUI_RENDERER", 1, true) ~= nil, true, "with the fix for its cause")
+  r = paw.health.run("window")
+  eq(levels(r), "warn", "a warning in :checkhealth")
+  eq(r.items[1].advice[1]:find("PAW_GUI_RENDERER", 1, true) ~= nil, true, "the likely cause first")
+  eq(#r.items[1].advice, 4, "and the other usual causes")
+  paw.frontend.window_renderer_set({ renderer = "llvmpipe (LLVM 19.1.7, 256 bits)", version = "4.5", software = true, cause = "driver" })
+  eq(paw.health.run("window").items[1].advice[1]:find("driver", 1, true) ~= nil, true, "no driver or DRI3 first")
+  paw.frontend.window_renderer = was
+  read_errors()
 end)
 
 test("checkhealth: an extension's check is its own, and a check that fails is an error of its own", function()

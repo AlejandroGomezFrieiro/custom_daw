@@ -81,6 +81,21 @@ driver of the graphics card, or Mesa's llvmpipe on the processor. On NixOS,
 `hardware.graphics.enable` supplies the driver. If OpenGL cannot start,
 the window shows one line that tells so, and stops.
 
+At start, the window writes the name of the OpenGL renderer to its log
+(`paw-gui: OpenGL renderer: ...`) and tells it to the kernel
+(`paw.frontend.window_renderer`). If the renderer draws on the processor
+(`llvmpipe`, `softpipe` or `swrast`), the kernel shows one warning. The warning
+tells the likely cause and what to do. `:checkhealth window` shows the
+renderer and the advice for all the usual causes:
+
+| Cause | What to do |
+| --- | --- |
+| `PAW_GUI_RENDERER=software` or `--renderer software` | Remove the variable and the option. |
+| `LIBGL_ALWAYS_SOFTWARE` is set | Remove the variable. |
+| The system has no OpenGL driver for the graphics card | On NixOS, set `hardware.graphics.enable = true`. On other systems, install the Mesa drivers. |
+| The X server gives no DRI3 (SSH with X forwarding, VNC, Xvfb) | Start the window on the screen of the computer. |
+| The computer has no graphics card (no render node in `/dev/dri`) | The window can draw only on the processor. |
+
 The window draws a frame only when something changes. At rest, it draws
 nothing. While the song plays, it draws at most 25 frames a second for the
 playhead, the clock and the meters. The piano roll and the timeline get

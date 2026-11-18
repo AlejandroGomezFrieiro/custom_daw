@@ -25,3 +25,19 @@ at all. Then use the terminal (`paw song.json`), which has the same views.
 At rest, the window uses no processor time. While the song plays, expect
 about one core for llvmpipe. See [Graphics](../reference/window.md#graphics)
 for the measured values.
+
+## Make the window use the graphics card again
+
+When the window draws on the processor, it shows a warning when it
+starts. To find the cause, type `:checkhealth window` and press `Enter`.
+The first advice under the warning is the likely cause.
+
+1. If you set `PAW_GUI_RENDERER=software`, remove it from your shell
+   profile. Start the window without `--renderer software`.
+2. If `LIBGL_ALWAYS_SOFTWARE` is set, remove it.
+3. If the system has no driver for the graphics card, install it. On
+   NixOS, set `hardware.graphics.enable = true`.
+4. If you started the window over SSH or VNC, start it on the screen of
+   the computer.
+5. Start the window again. Type `:checkhealth window`. It must say
+   `OK the window draws on the graphics card`.
