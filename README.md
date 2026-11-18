@@ -135,7 +135,13 @@ in oil.nvim; `:w` shows the plan and applies it as one undo step:
 ![The tracks as text: one renamed and turned down, then written](docs/images/tui-textbuf.gif)
 
 <details>
-<summary>More: recording, help, configuration</summary>
+<summary>More: finding things, files, large projects, recording, help, configuration</summary>
+
+![The clips picker drawing the melody beside the list, the notes picker, and :vimgrep putting four clips in the quickfix list, gone through with ]q](docs/images/tui-pickers.gif)
+
+![A folder of sounds as text with :e ~/music: a file renamed with cw, one moved into samples/ by its name, one deleted, and :w showing the plan](docs/images/tui-files.gif)
+
+![The song in two groups: zn narrows to the rhythm section while the rest plays from files, :t* is its tracks alone, and :freeze renders the other group](docs/images/tui-narrow.gif)
 
 ![Loop recording into takes (played in by a script) and comping one](docs/images/tui-takes.gif)
 

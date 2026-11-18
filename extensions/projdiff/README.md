@@ -13,6 +13,8 @@ paw.ext.load("extensions/projdiff")   -- or put the directory in ~/.config/paw/e
 
 `:Pdiff` opens the changes as text with folds, in a window over the project:
 
+![The demo song saved, then its melody moved, three notes changed, the lead renamed and the bass turned down; :Pdiff lists the six changes by track, clip and note, ]c and za go through them, and Enter goes to one](images/tui-projdiff.gif)
+
 ```
 base.json → now: 5 changes
 ▾ ~ track 1 "Lead" -> "Lead 2"

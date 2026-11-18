@@ -33,6 +33,8 @@ that, put the folder in `CLAP_PATH` or link the plugin into `~/.clap`.
 
 ## Using it
 
+![:track.add sampler on the demo song: the instrument picker loading each instrument of a small library and playing a phrase through it as the selection rests, viol narrowing it to the violins, Enter keeping them, and :sampler.info](images/tui-sampler.gif)
+
 - `:sampler.track [file or words]` adds a sampler track (`:track.add sampler`
   does the same, and `:track.new` and the window offer it). With a file it
   loads that; with words, or nothing, it opens the instrument picker.
