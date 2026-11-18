@@ -192,27 +192,12 @@ function point(view, id, event, drawn)
 end
 
 --- A border of the last arrangement (by its place in `state().borders`)
---- dragged to `x, y`: the side that has a size keeps one, in whole cells.
+--- dragged to `x, y`: as a border dragged in the terminal, the side that
+--- has a size keeps one, in whole cells.
 function M.border(index, x, y)
   local b = last and last.rects.borders[index]
   if not b then return end
-  local nodes = last.rects.nodes
-  local a, z = nodes[b.a], nodes[b.b]
-  if not (a and z) then return end
-  local across = b.dir == "h"
-  local start = across and a.x or a.y
-  local finish = across and z.x + z.w or z.y + z.h
-  local at = math.max(start + 1, math.min(across and x or y, finish - 1))
-  local axis = across and "width" or "height"
-  local cell = paw.canvas.cell
-  local unit = across and cell.w or cell.h
-  local first, second = last.map[b.a], last.map[b.b]
-  if second.size and not first.size then
-    L.set_size(second, axis, math.max(1, math.floor((finish - at) / unit + 0.5)))
-  else
-    L.set_size(first, axis, math.max(1, math.floor((at - start) / unit + 0.5)))
-  end
-  api.ui_redraw()
+  L.drag_border(b, last.rects, x, y, { unit = paw.canvas.cell, map = last.map })
 end
 
 --- Close a pane's window, as `:close` in it would.

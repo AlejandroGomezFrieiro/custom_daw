@@ -679,15 +679,13 @@ impl View {
     // ------------------------------------------------------------- layout
 
     /// How the window is now, for the kernel to keep: its size and place
-    /// (X11 tells a program where its window is; Wayland does not) and
-    /// whether the mixer shows.
+    /// (X11 tells a program where its window is; Wayland does not). What
+    /// its panes show is the kernel's layout, which the project keeps.
     pub fn layout(&self, ctx: &egui::Context) -> Value {
         let (size, at) = ctx.input(|i| (i.viewport().inner_rect.map(|r| r.size()), i.viewport().outer_rect.map(|r| r.min)));
         let ppp = ctx.pixels_per_point();
         let size = size.unwrap_or(vec2(1400.0, 860.0));
-        let mut layout = json!({
-            "width": size.x.round(), "height": size.y.round(), "mixer": flag(&self.s.modal["mixer"]),
-        });
+        let mut layout = json!({ "width": size.x.round(), "height": size.y.round() });
         if let Some(at) = at
             && std::env::var_os("WAYLAND_DISPLAY").is_none()
         {

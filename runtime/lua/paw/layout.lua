@@ -1348,7 +1348,11 @@ end
 
 --- Move a border to the position of the pointer. If one of the two sides
 --- has its own size, it keeps a size. If not, the first side gets a size.
-function M.drag_border(border, rects, x, y)
+--- A graphical frontend lays the tree out in pixels (paw/panes.lua):
+--- `opts.unit` is its cell `{ w, h }`, and `opts.map` takes each node
+--- of its arrangement to the node of the tree. Sizes stay in cells.
+function M.drag_border(border, rects, x, y, opts)
+  opts = opts or {}
   local nodes = rects.nodes or {}
   local a, b = nodes[border.a], nodes[border.b]
   if not (a and b) then return end
@@ -1357,10 +1361,13 @@ function M.drag_border(border, rects, x, y)
   local finish = across and b.x + b.w or b.y + b.h
   local at = math.max(start + 1, math.min(across and x or y, finish - 1))
   local axis = across and "width" or "height"
-  if border.b.size and not border.a.size then
-    M.set_size(border.b, axis, finish - at)
+  local unit = opts.unit and (across and opts.unit.w or opts.unit.h) or 1
+  local first, second = border.a, border.b
+  if opts.map then first, second = opts.map[first], opts.map[second] end
+  if second.size and not first.size then
+    M.set_size(second, axis, math.max(1, math.floor((finish - at) / unit + 0.5)))
   else
-    M.set_size(border.a, axis, at - start)
+    M.set_size(first, axis, math.max(1, math.floor((at - start) / unit + 0.5)))
   end
   api.ui_redraw()
 end
