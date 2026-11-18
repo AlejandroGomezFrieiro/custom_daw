@@ -8,11 +8,8 @@ start of each part and change the tempo. Then we jump from part to part.
 
 ## Open the practice project
 
-1. In your folder for songs, type this command and press Enter:
-
-   ```sh
-   paw -e 'dofile(os.getenv("PAW_HOME") .. "/examples/tutorials/make-music/4-arrange.lua")'
-   ```
+1. Start paw in your folder for songs. Type
+   `:example make-music/4-arrange` and press Enter.
 
    - paw opens the song of lesson 3. Each track has four bars, and the
      guitar riff has two bars.

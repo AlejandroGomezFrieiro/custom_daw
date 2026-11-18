@@ -36,7 +36,8 @@ A key in normal mode does an action at the cursor. A command starts with
 
 The piano roll has one row for each pitch, and one column for each
 sixteenth note. The drum kit plays a kick on C2, a snare on D2 and a
-closed hi-hat on F#2.
+closed hi-hat on F#2. The keys at the left of the piano roll show these
+names.
 
 1. Press `<C-d>` two times.
    - `<C-d>` moves the cursor down one octave. The title row shows `C2`.
@@ -115,7 +116,8 @@ same.
 
 To open the song again later, type `paw first-song.json` in the folder.
 The finished song of this lesson is also in the practice project
-`examples/tutorials/make-music/1-first-song.lua`.
+`examples/tutorials/make-music/1-first-song.lua`. To open it, type
+`:example make-music/1-first-song`.
 
 ## What we made
 

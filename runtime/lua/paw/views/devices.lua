@@ -8,13 +8,14 @@ local util = paw.util
 
 -- `pin` is the track a window shows whatever the cursor is on, or nil to
 -- follow the cursor. Each window of the panel has its own row, scroll and
--- pin: two panels show the devices of two tracks.
+-- pin: two panels show the devices of two tracks. `row_track` is the track
+-- the row was chosen on.
 local view = {
   row = 1, scroll = 0, pin = nil,
-  window_state = { "row", "scroll", "geometry", "pin" },
+  window_state = { "row", "scroll", "geometry", "pin", "row_track" },
   window_fresh = { "geometry" },
 }
-paw.seats.fields("devices", view, { "row", "scroll", "geometry", "pin" }, { row = 1, scroll = 0 })
+paw.seats.fields("devices", view, { "row", "scroll", "geometry", "pin", "row_track" }, { row = 1, scroll = 0 })
 -- A parameter that a lane moves is drawn bound to its live value: a
 -- window moves it as the song plays with no new scene.
 view.live_roles = { "param" }
@@ -76,7 +77,13 @@ function view:track()
 end
 
 function view:rows()
-  return rows_for(self:track_id())
+  local id = self:track_id()
+  -- Another track: the cursor starts again on its first device, not on
+  -- the row that it had in the chain before.
+  if self.row_track ~= id then
+    self.row_track, self.row, self.scroll = id, 1, 0
+  end
+  return rows_for(id)
 end
 
 --- Its title where a window shows one over it: the track it shows.

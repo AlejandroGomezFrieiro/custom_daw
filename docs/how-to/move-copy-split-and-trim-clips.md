@@ -24,7 +24,8 @@ start of this clip. Press `j` and `k` to go to a different track.
 3. Press `P`. The copy starts at the cursor.
 
 To repeat the clip directly after itself, press `&`. Press `&` again for
-the next copy.
+the next copy. A count makes more copies: `4&` puts four copies after
+the clip.
 
 ## Split a clip
 

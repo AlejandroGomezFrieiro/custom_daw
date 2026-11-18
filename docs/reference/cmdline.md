@@ -40,6 +40,8 @@ paw shows the commands that the name can mean.
 | `:set no{name}` | Sets a true or false option to false: `:set nofollow`. |
 | `:set {name}!`, `:set inv{name}` | Switches a true or false option: `:set follow!`. |
 | `:set {name}?` | Shows the value of an option: `:set zoom?`. |
+| `:set {name}=a,b` | Sets an option that is a list: `:set doctor_plugins=Surge,Vital`. Nothing after `=` makes the list empty. |
+| `:set {name}+=a`, `:set {name}-=a` | Adds an item to a list option, or removes it. |
 | `:setlocal {name}` | Sets an option of the window: `:setlocal timebind`. |
 
 A name that is not an option gives the error `E518`. See [Options](options.md).
@@ -49,6 +51,12 @@ A name that is not an option gives the error `E518`. See [Options](options.md).
 Some keys open a prompt with the current value in it, for example `grn`
 (rename the track). The value is selected: what you type replaces it. To
 edit the value, press `Left` or `Home` first.
+
+Some prompts ask for a number: `grv`, `grp`, `grt`, and `c` on a parameter
+or on a point of automation. A number is the value, with its sign: `-6` is
+-6 dB, and `+3` is +3 dB. To change the value by a step, put `=` after the sign:
+`-=3` is 3 dB lower, and `+=2` is 2 dB higher. The prompt shows this rule.
+The Ex commands `:volume` and `:pan` use the same rule (`:t* volume -=3`).
 
 ## Unsaved work
 
@@ -60,10 +68,30 @@ and `:q`. They show a message and stop.
 
 - `:w` saves the work first.
 - The same command with `!` discards the work: `:open! song.json`, `:new!`, `:q!`.
+- `:e!` alone opens the project again as you saved it last, as in Vim.
 
 The graphical window asks in a dialog box.
 
 `:open` opens a project, a MIDI file (as a new project) or a sound file.
+`:example` opens an example or a practice project that comes with paw.
+
+## Relative names
+
+A file name without a folder (`:w take2.json`, `:render mix.wav`,
+`:import loop.wav`) goes into the folder of the project file. Before the
+first save, it goes into the folder where paw started.
+
+| Command | Effect |
+| --- | --- |
+| `:pwd` | Shows the folder for relative names. |
+| `:cd {folder}` | Sets that folder, as in Vim. A relative folder starts from the folder now. |
+| `:cd -` | Returns to the folder before. |
+| `:cd` | Goes to your home folder. |
+
+## Errors
+
+A command that fails shows one line that says why. The full error, with
+the place in the code, goes to the log.
 
 ## Messages
 

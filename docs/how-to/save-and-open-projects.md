@@ -8,8 +8,8 @@ and [Files that paw keeps](../reference/state-files.md).
 
 1. The first time, give the project a name and a place:
    `:w /home/ana/songs/demo/demo.json`. Use one folder for each song.
-   Give the full path. A name alone, for example `:w demo.json`, saves
-   into the folder where you started paw.
+   Give the full path the first time. A name alone, for example
+   `:w demo.json`, saves into the folder where you started paw.
 2. After that, type `:w` to save. The status line shows the name of the
    project, and a mark when there is work that is not saved.
 3. To save and quit, press `ZZ`.
@@ -26,10 +26,25 @@ In the graphical window, choose File → Save, and File → Open recent.
   its name and press `Enter`.
 - To open the second project in that list, type `:recent 2`.
 - To open a project by its path, type `:e /home/ana/songs/demo/demo.json`.
+- To open an example song or a practice project of the lessons, type
+  `:example demo-song`. `Tab` completes the names.
 
 If the open project has work that is not saved, paw does not open the
 other project. Type `:w` to save the work first. To drop the work, type
-`:edit!` with the path.
+`:e!` with the path. To open the project again as you saved it last, type
+`:e!` alone.
+
+## Where a name alone goes
+
+When a project has a file, a name without a folder goes next to the
+project. For example, `:w take2.json` and `:render mix.wav` put the files
+in the folder of the song. Before the first save, a name alone goes to the
+folder where you started paw.
+
+- To see the folder, type `:pwd`.
+- To use a different folder, type `:cd` and the folder, as in Vim:
+  `:cd ~/songs/demo`. `:cd -` returns to the folder before it, and `:cd`
+  alone goes to your home folder.
 
 To open the last project each time paw starts, put this line in your
 `init.lua`:

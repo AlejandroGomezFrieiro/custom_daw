@@ -796,8 +796,11 @@ end, { desc = "Set the pan from -1 to 1, or nudge it: `track.pan by=0.1`" })
 command("track.move", function(ctx)
   local track = need_track()
   if cursor.on_master() then return paw.notify("the master track stays after the last track", "warn") end
-  if track then track:move(cursor.index() + (ctx.args.by or 1)) end
-end, { desc = "Move the track down or up: `track.move by=-1`" })
+  if not track then return end
+  -- A count moves it that many places: `3<A-j>`.
+  local to = cursor.index() + (ctx.args.by or 1) * (ctx.count or 1)
+  track:move(util.clamp(to, 1, #api.track_list()))
+end, { desc = "Move the track down or up, by the count: `track.move by=-1`" })
 -- What each choice of input means, and the lists, are `paw.audio`'s; here
 -- they are a picker and commands.
 local group_names = {
@@ -991,7 +994,7 @@ command("import", function(ctx)
     local rest, word = path:match("^(.-)%s+tempo=(%S+)%s*$")
     if rest then path, tempo = rest, word end
   end
-  if path and path ~= "" then return bring(util.expand_path(path)) end
+  if path and path ~= "" then return bring(paw.files.path(path)) end
   local endings = {}
   for _, list in ipairs({ audio_extensions, paw.midifile.extensions }) do
     for _, ext in ipairs(list) do endings[#endings + 1] = ext end
@@ -1010,7 +1013,7 @@ command("open", function(ctx)
   end
   local path = ctx.args[1]
   if path and path ~= "" and paw.files.is_dir(path) then return paw.files.open(path, { here = true }) end
-  if path and path ~= "" then return go(util.expand_path(path)) end
+  if path and path ~= "" then return go(paw.files.path(path)) end
   paw.pick.file({ title = "Open", on_choose = go })
 end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
 
@@ -1019,7 +1022,7 @@ command("export", function(ctx)
   if not path or not paw.midifile.is_midi_file(path) then
     return paw.notify("usage: export <song.mid> [clip|selection]; `:render` makes sound files", "warn")
   end
-  path = util.expand_path(path)
+  path = paw.files.path(path)
   local opts = {}
   if what == "clip" then
     local clip = cursor.clip()
@@ -1043,6 +1046,23 @@ command("set", function(ctx)
   end
   if not name then return paw.pick("options") end
   name = tostring(name)
+  -- `set plugins+=Surge` and `set plugins-=Surge` add to a list and take
+  -- from it, as in Vim.
+  local list_name, how, item = name:match("^([%w_]+)([%+%-])=(.*)$")
+  if list_name then
+    if type(paw.opt[list_name]) ~= "table" then
+      return paw.notify(list_name .. " is not a list option: `set " .. list_name .. "=value`", "warn")
+    end
+    local out = {}
+    for _, v in ipairs(paw.opt[list_name]) do
+      if not (how == "-" and tostring(v) == item) then out[#out + 1] = v end
+    end
+    if how == "+" then out[#out + 1] = tonumber(item) or item end
+    local value, err = paw.option.read(list_name, out)
+    if value == nil then return paw.notify(err, "error") end
+    paw.opt[list_name] = value
+    return paw.notify(list_name .. " = " .. paw.option.show(paw.opt[list_name]))
+  end
   -- `set follow?` shows an option; a name that is none is an error, as in Vim.
   local ask = name:match("^(.-)%?$")
   if ask then name, value = ask, nil end
@@ -1068,14 +1088,14 @@ command("set", function(ctx)
   elseif value == nil and boolean and not ask then
     value = true
   end
-  if value == nil then return paw.notify(name .. " = " .. tostring(paw.opt[name])) end
+  if value == nil then return paw.notify(name .. " = " .. paw.option.show(paw.opt[name])) end
   local err
   value, err = paw.option.read(name, value)
   if value == nil then return paw.notify(err, "error") end
   paw.opt[name] = value
-  paw.notify(name .. " = " .. tostring(paw.opt[name]))
+  paw.notify(name .. " = " .. paw.option.show(paw.opt[name]))
 end, {
-  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow` and `set nofollow` turn it on and off, `set follow!` flips it, `set` alone lists them",
+  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow` and `set nofollow` turn it on and off, `set follow!` flips it, a list `set plugins=a,b`, `+=c`, `-=a`; `set` alone lists them",
   complete = { "options" },
 })
 
@@ -1083,12 +1103,14 @@ command("clip.remove", function()
   local clip = need_clip()
   if clip then clip:remove() end
 end, { desc = "Remove the clip under the cursor" })
-command("clip.duplicate", function()
+command("clip.duplicate", function(ctx)
   local clip = need_clip()
   if not clip then return end
-  local copy = clip:duplicate()
+  -- A count makes that many copies, one after the other: `4&`.
+  local copy = clip
+  for _ = 1, math.max(1, ctx.count or 1) do copy = copy:duplicate() end
   cursor.set_beat(copy.start)
-end, { desc = "Repeat the clip right after itself" })
+end, { desc = "Repeat the clip right after itself, as many times as the count" })
 command("clip.mute", function()
   local clip = need_clip()
   if clip then clip.muted = not clip.muted end
@@ -1251,6 +1273,22 @@ command("clip.fade", function(ctx)
   if fade_out then clip.fade_out = math.min(math.max(0, fade_out), clip.length) end
   paw.notify(string.format("%s fades in over %g beats and out over %g", clip.name, clip.fade_in, clip.fade_out))
 end, { desc = "Fade an audio clip in and out, in beats: `clip.fade in=1 out=2`, `clip.fade 0.5`, `clip.fade 0`; alone, it asks" })
+command("clip.fade.cursor", function(ctx)
+  local which = tostring(ctx.args[1] or "")
+  if which ~= "in" and which ~= "out" then return paw.notify("usage: clip.fade.cursor in|out", "warn") end
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return paw.notify("only audio clips fade", "warn") end
+  -- A count is the length in beats; else the fade reaches the cursor.
+  local beats = ctx.count
+  if not beats then
+    beats = which == "in" and cursor.beat - clip.start or clip.start + clip.length - cursor.beat
+  end
+  beats = math.min(math.max(0, beats), clip.length)
+  if which == "in" then clip.fade_in = beats else clip.fade_out = beats end
+  if beats == 0 then return paw.notify(string.format("%s has no fade-%s", clip.name, which)) end
+  paw.notify(string.format("%s fades %s over %g beat%s", clip.name, which, beats, beats == 1 and "" or "s"))
+end, { desc = "Fade the audio clip in from its start to the cursor (`in`), or out from the cursor to its end (`out`); a count gives the beats", label = "Fade the clip" })
 command("clip.crossfade", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -1265,7 +1303,7 @@ command("clip.crossfade", function(ctx)
   end
   -- Let this clip run on under the start of the next for as long as its
   -- file has sound, and fade the two across each other there.
-  local beats = tonumber(ctx.args[1]) or paw.opt.grid
+  local beats = tonumber(ctx.args[1]) or ctx.count or paw.opt.grid
   local overlap = math.min(beats, next_clip.length)
   local file_end = clip.start + api.clip_source_length(clip.id)
   local reach = math.min(next_clip.start + overlap, file_end)
@@ -1669,20 +1707,30 @@ command("redo", function(ctx)
 end, { desc = "Redo, saying what was redone" })
 command("write", function(ctx)
   local path = ctx.args[1] and tostring(ctx.args[1]) or nil
+  -- A relative name goes beside the project, or to the folder `:cd` set.
+  if path then path = paw.files.path(path) end
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
   if not path and not api.project_get().path and paw.fx.interactive() then return paw.frontend.save_as() end
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
-  if path and paw.files.is_dir(util.expand_path(path)) then
+  if path and paw.files.is_dir(path) then
     return paw.notify(path .. " is a folder: name a file in it, `:w " .. path:gsub("/+$", "") .. "/song.json`", "warn")
   end
   paw.notify("saved " .. paw.project.save(path))
 end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
 command("saveas", function() paw.frontend.save_as() end, { desc = "Save the project under a name chosen from a list of directories" })
 command("edit", function(ctx)
-  if not ctx.args[1] then return paw.notify("usage: edit <project.json>", "warn") end
+  -- Alone, as in Vim, it opens the project's own file again: `:e!` goes
+  -- back to the saved project and throws away what changed since.
+  if not ctx.args[1] then
+    local path = api.project_get().path
+    if not path then return paw.notify("the project has no file yet: `:e song.json` opens one, `:w song.json` saves this one", "warn") end
+    if not paw.project.guard("edit") then return end
+    paw.open(path)
+    return paw.notify("opened " .. path .. " again as it was saved")
+  end
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return paw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
@@ -1693,13 +1741,76 @@ command("edit", function(ctx)
   local view, buf, target = paw.layout.resolve(path)
   local win = view and not how and paw.layout.current()
   if win then return paw.layout.show_in(win, view, buf and not buf.single and buf.id or nil, target) end
+  path = paw.files.path(path)
   if paw.midifile.is_midi_file(path) or paw.is_audio_file(path) then return paw.commands.run("open", { path }) end
   if not paw.project.guard("edit") then return end
-  paw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
-end, { desc = "Open a project: `edit song.json`; `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
+  paw.open(path, { plugins_offline = how == "offline", all_online = how == "online" })
+end, { desc = "Open a project: `edit song.json`; alone, the project's file again (`edit!` goes back to it as saved); `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
 command("new", function()
   if paw.project.guard("new") then paw.project.new() end
 end, { desc = "Start an empty project, unless there is unsaved work" })
+
+--- The example and practice projects that come with paw, by name:
+--- `{ name, path }` for each `.lua` file under `examples/` (not the
+--- configuration) of the first source tree or package that has them.
+local function examples()
+  for _, root in ipairs(paw.help.roots()) do
+    local out = {}
+    local function walk(dir, prefix)
+      for _, entry in ipairs(api.read_dir(dir)) do
+        local name = entry.name
+        if entry.is_dir and name ~= "config" then
+          walk(dir .. "/" .. name, prefix .. name .. "/")
+        elseif not entry.is_dir and name:match("%.lua$") then
+          out[#out + 1] = { name = (prefix .. name:gsub("%.lua$", "")):gsub("^tutorials/", ""), path = dir .. "/" .. name }
+        end
+      end
+    end
+    walk(root .. "/examples", "")
+    if #out > 0 then
+      table.sort(out, function(a, b) return a.name < b.name end)
+      return out
+    end
+  end
+  return {}
+end
+command("example", function(ctx)
+  local list = examples()
+  if #list == 0 then
+    return paw.notify("no examples found: start paw in its source tree, or set PAW_HOME to it", "warn")
+  end
+  local word = ctx.args[1] and tostring(ctx.args[1]) or ""
+  local found
+  for _, e in ipairs(list) do
+    if e.name == word then found = e end
+  end
+  -- A part of the name is enough when only one example has it.
+  if not found and word ~= "" then
+    local some = {}
+    for _, e in ipairs(list) do
+      if e.name:find(word, 1, true) then some[#some + 1] = e end
+    end
+    if #some == 1 then found = some[1] end
+  end
+  if not found then
+    local names = {}
+    for i, e in ipairs(list) do names[i] = e.name end
+    return paw.notify((word == "" and "which example? " or "no single example `" .. word .. "`: ") .. table.concat(names, ", "), "warn")
+  end
+  if not paw.project.guard("example") then return end
+  paw.project.new()
+  dofile(found.path)
+  -- The example is where its history starts: `u` does not take it apart.
+  api.undo_reset()
+  paw.notify("opened the example " .. found.name .. ": `:w song.json` saves it as your own")
+end, {
+  desc = "Open an example or a practice project that comes with paw: `example demo-song`, `example make-music/2-midi-keyboard`",
+  complete = function()
+    local out = {}
+    for _, e in ipairs(examples()) do out[#out + 1] = { text = e.name, desc = e.path } end
+    return out
+  end,
+})
 -- `:render`, `:render.cancel` and `:stems` are in paw/render.lua.
 command("track.bounce", function()
   local track = need_track()
@@ -1911,7 +2022,7 @@ command("extensions", function()
   paw.ui.page("Extensions", lines)
 end, { desc = "List loaded extensions, each with what it registered" })
 
-for _, name in ipairs({ "open", "edit", "new" }) do paw.project.allow_discard(name) end
+for _, name in ipairs({ "open", "edit", "new", "example" }) do paw.project.allow_discard(name) end
 
 for alias, target in pairs({ w = "write", e = "edit", q = "quit", ["q!"] = "quit!", u = "undo" }) do
   command.alias(alias, target)
@@ -2459,7 +2570,7 @@ amap("zT", "tempo.lane", "Show or hide the tempo curve under the ruler")
 amap("zt", "take.lanes", "Show the track's takes as lanes under its clips, or hide them")
 amap("]'", "marker.next", "The next marker or region", { motion = true })
 amap("['", "marker.prev", "The marker or region before", { motion = true })
-amap("g'", "marker", "Put a marker at the cursor")
+amap("g'", "marker.new", "Put a marker at the cursor: type its name")
 amap('g"', "marker.list", "Go to a marker or region from a list")
 amap("gx", "marker.remove", "Remove the marker or region at the cursor")
 amap("<leader>ax", "lane.clear", "Clear the volume automation")
@@ -3105,7 +3216,7 @@ map("<C-w>_", "view.maximize", { desc = "Give the window the whole tab, or put t
 
 -- Exact values ----------------------------------------------------------------
 --
--- A prompt that takes a number, or `+2` and `-3` to step from the value now.
+-- A prompt that takes a number (`-6` is -6), or `+=2` and `-=3` to step from the value now.
 
 --- Pan as it is shown, L30 C R25, read back into -100..100.
 local function read_pan(text)
@@ -3123,7 +3234,7 @@ command("track.volume.set", function()
     track.volume = v
     paw.notify(string.format("%s at %+.1f dB", track.name, track.volume))
   end)
-end, { desc = "Type the track's volume in dB: a number, or +2 and -3 to step" })
+end, { desc = "Type the track's volume in dB: a number (-6 is -6 dB), or +=2 and -=3 to step" })
 command("track.pan.set", function()
   local track = need_track()
   if not track then return end
@@ -3134,7 +3245,7 @@ command("track.pan.set", function()
     track.pan = v / 100
     paw.notify(track.name .. " panned " .. paw.draw.pan_text(track.pan))
   end)
-end, { desc = "Type the track's pan: L30, R25, C, or -100 to 100; +10 and -10 step" })
+end, { desc = "Type the track's pan: L30, R25, C, or -100 to 100; +=10 and -=10 step" })
 command("tempo.set", function()
   -- The tempo in force at the cursor: the change at or before it.
   local point = paw.tempo.point_at(cursor.beat)
@@ -3142,7 +3253,7 @@ command("tempo.set", function()
     api.tempo_set(point.beat, v)
     paw.notify(string.format("tempo %g bpm from %s", v, point.beat == 0 and "the start" or "bar " .. paw.time.bar_of(point.beat)))
   end)
-end, { desc = "Type the tempo in force at the cursor (the change at or before it) in bpm: a number, or +2 and -3 to step", label = "Set the tempo" })
+end, { desc = "Type the tempo in force at the cursor (the change at or before it) in bpm: a number, or +=2 and -=3 to step", label = "Set the tempo" })
 
 --- Read a parameter's value as it is shown: a choice by name, or a number.
 local function param_reader(p)
@@ -3178,6 +3289,8 @@ for _, name in ipairs({ "arrange", "mixer" }) do
   map("grp", "track.pan.set", { view = name, desc = "Type the pan" })
 end
 map("grt", "tempo.set", { desc = "Type the tempo" })
+-- Tapped again and again in time; each tap sets the tempo from the taps so far.
+map("<leader>b", "tempo.tap", { desc = "Tap the tempo (the beat): again and again, in time", repeatable = false })
 -- The device panel's `c` and `=` are in paw/device_rows.lua.
 
 -- Automation lanes as rows (see paw.lanes) ------------------------------------
@@ -3421,6 +3534,12 @@ lmap("<C-x>", "lane.point.nudge by=-1", "Lower the point under the cursor by the
 lmap("gc", "lane.toggle", "Turn the lane's automation off or on", { role = "mute" })
 keymap.classic("gc", "curve.open", { view = "arrange.lane", desc = "Edit this lane's curve" })
 amap("<leader>cf", "clip.fade", "Fade the clip in and out: type the lengths")
+-- The clip's own keys, on the local leader: fades.
+keymap.group("<localleader>f", "fades", { view = "arrange" })
+amap("<localleader>fi", "clip.fade.cursor in", "Fade the clip in up to the cursor; a count gives the beats")
+amap("<localleader>fo", "clip.fade.cursor out", "Fade the clip out from the cursor; a count gives the beats")
+amap("<localleader>ff", "clip.fade", "Fade the clip in and out: type the lengths")
+amap("<localleader>fx", "clip.crossfade", "Crossfade the clip into the next one over a grid step")
 for _, name in ipairs({ "arrange", "mixer" }) do
   map("grC", "track.color.pick", { view = name, desc = "Choose the track's colour" })
 end

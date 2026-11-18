@@ -35,6 +35,10 @@ To comp is to select the best part of each take.
 - A trim or a slip of the start moves all the takes the same.
 - With a time selection, `:take 2` cuts at its ends and plays the second
   take there.
+- A piece has the name of the take that it plays. A recording round the
+  loop is `take 1`, and its takes are `take 1.1`, `take 1.2` and so on. A
+  piece that plays the second take is `take 1.2`. A name that you gave the
+  clip stays.
 
 ## Take lanes
 
@@ -67,7 +71,7 @@ graphical window do the same.
   - For audio, the join is exact when these are true: each take aligns
     across the join (the same file and gain, and the second piece starts
     in each take where the first ends). The clips have the same name and
-    mute state. The join has no fade.
+    mute state, or each has the name of its take. The join has no fade.
   - For notes, the join is exact when the names of the takes match and no
     note is hidden past the edge of either piece. A note cut in two by an
     earlier cut stays as two notes after the join, as it played.

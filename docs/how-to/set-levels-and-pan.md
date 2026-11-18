@@ -11,14 +11,16 @@ pan. It also shows how to keep the master below full scale. For each key, see
    strip.
 3. Press `-` to lower the fader by one dB, and `+` to raise it. A count
    gives the dB: `6-` lowers the fader by 6 dB.
-4. To type a level, press `grv`. Type `=-6` and press `Enter`. The fader
+4. To type a level, press `grv`. Type `-6` and press `Enter`. The fader
    goes to -6 dB.
 5. Press `]` to pan to the right, and `[` to pan to the left. Each press
    moves the pan by a tenth.
 6. To type a pan, press `grp`. Type `L30`, `R25` or `C`, and press `Enter`.
 
-In the `grv` prompt, `-3` and `+2` are steps from the level that the
-fader has. To type a level below 0 dB, put `=` first.
+In the `grv` prompt, a number is the level: `-6` is -6 dB and `+2` is
++2 dB. To change the level by a step, put `=` after the sign. `-=3` lowers
+the fader by 3 dB. `+=2` raises it by 2 dB. Each prompt that asks for a
+value has the same rule.
 
 The same keys work on a track in the arrange view: `+`, `-`, `]`, `[`,
 `grv` and `grp`.

@@ -20,7 +20,7 @@ For the reasons of the rule, see [About the key rule](../explanation/about-the-k
 | --- | --- |
 | `h` `j` `k` `l` `w` `b` `e` `0` `^` `$` `gg` `G`, with counts | Motions only. They work after an operator and in visual mode. `h` `l` go along the columns of the view, `j` `k` along its rows. In the mixer, `h` `l` go from strip to strip, and `j` `k` along the rows of a strip. In the device panel, `j` `k` go over the devices and their parameters, `w` `b` from device to device, and `e` to the last parameter of a device. |
 | `+` `-`, `Ctrl-a` `Ctrl-x` | The main value of what is under the cursor, up and down. A count first gives how much: `6 Ctrl-x` is 6 dB down on a fader, six semitones down on a note. On a selection, the value of all of it. |
-| `]` `[` | The second value, up and down. |
+| `]` `[` | The second value, up and down. They act at once, also when you press them fast: `]]` is two steps. A key that comes soon after and makes a longer mapping (`]g`, `]q`) takes back the step and does its own action. |
 | `>` `<` | The time operators: later and earlier (`>>`, `>ic`, `3>` on a selection). Never pan. |
 | `K` | Describes what is under the cursor. `gK` gives what the diagnostics and language servers say about it. |
 | `ge` | The plugin window of what is under the cursor (an insert in the mixer, a device in the panel), else of the track. |
@@ -57,7 +57,7 @@ For the reasons of the rule, see [About the key rule](../explanation/about-the-k
 | Leader | Meaning |
 | --- | --- |
 | The leader | `<leader>` in a mapping. It is `paw.opt.leader`, `,` by default. It starts the keys that mean the same in every view: `,m` the mixer, `,d` the device panel. |
-| The local leader | `<localleader>` in a mapping. It is `paw.opt.localleader`, a backslash by default, as in Vim. It starts the keys of one view, for example the notation popovers: `\d` dynamics, `\t` tempo. |
+| The local leader | `<localleader>` in a mapping. It is `paw.opt.localleader`, a backslash by default, as in Vim. It starts the keys of one view, for example the notation popovers (`\d` dynamics, `\t` tempo) and the fades of a clip in the arrange view (`\fi`, `\fo`). |
 
 A key of one view must not use a key of the global leader.
 `:lua =paw.keyrule.broken()` lists the keys that do. `:map` and the key

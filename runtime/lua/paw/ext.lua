@@ -177,6 +177,16 @@ M.registries = {
       paw.ui.views[key] = value
       api.ui_redraw()
     end },
+  -- The line of keys at the bottom that a view of its shows, by view and mode.
+  { kind = "keybar", title = "key bar lines", snapshot = two_level(function() return paw.ui.keybar and paw.ui.keybar.lines end),
+    put = function(key, value)
+      local view, mode = split(key)
+      local lines = paw.ui.keybar.lines
+      lines[view] = lines[view] or {}
+      lines[view][mode] = value
+      if next(lines[view]) == nil then lines[view] = nil end
+      api.ui_redraw()
+    end },
   keyed("buftypes", "buffer types", function() return paw.layout.types end, function(key, value)
     paw.layout.types[key] = value
     if value then

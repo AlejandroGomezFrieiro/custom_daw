@@ -359,6 +359,12 @@ function paw.emit(name, payload) end
 ---@param fn any
 function paw.every(ms, fn) end
 
+--- What a user sees of an error: one line, without the list of calls.
+--- The place in the code (`paw/x.lua:12:`) moves to the end, where it does
+--- not hide what went wrong. The whole error goes to the log.
+---@param err any
+function paw.failure(err) end
+
 --- Send the change events for the edits made until now. The kernel does
 --- this at the end of each turn. Call `paw.flush()` to make handlers run sooner.
 function paw.flush() end
@@ -460,6 +466,8 @@ function paw.tracks() end
 
 --- Call a function. If it fails, show the error as a message and do not
 --- raise it. Returns true and the results of the function, or false and the error.
+--- The message is the first lines of the error (`paw.failure`). The log
+--- keeps the list of calls.
 ---@param fn any
 function paw.try(fn, ...) end
 
@@ -2514,6 +2522,21 @@ function paw.ext.unload(name, opts) end
 ---@param tree any
 function paw.files.buffer_name(dir, tree) end
 
+--- Set the folder for relative names, as `:cd` does: `dir` is relative to
+--- the folder now; `-` is the folder before; nil is the home folder;
+--- false returns to the default (beside the project).
+--- Returns the folder, or nil and why not.
+---@param dir any
+function paw.files.cd(dir) end
+
+--- The folder that `:cd` set, or nil when there is none.
+function paw.files.cwd() end
+
+--- The folder that a relative name in a command goes to: the folder that
+--- `:cd` set; else the folder of the project's file; else the folder that
+--- paw started in.
+function paw.files.here() end
+
 --- True if a path is a folder.
 ---@param path any
 function paw.files.is_dir(path) end
@@ -2523,6 +2546,12 @@ function paw.files.is_dir(path) end
 ---@param dir any
 ---@param opts any
 function paw.files.open(dir, opts) end
+
+--- The full path of a name that the user typed: `~` is the home folder, and
+--- a relative name is in `paw.files.here()`.
+---   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+---@param name any
+function paw.files.path(name) end
 
 --- What a sound file's header says: `{ rate, channels, seconds }`, or nil
 --- for a file that is not one that can be read.
@@ -3745,7 +3774,11 @@ function paw.keymap.selection() end
 --- Such a mapping also works in visual mode and after an operator.
 --- `linewise = true` is for a motion across rows. `jump = true` keeps the
 --- position of the cursor for `<C-o>`. With `repeatable = false`, `.` does
---- not repeat the mapping.
+--- not repeat the mapping. `nowait = true` makes a key that also starts
+--- longer mappings run at once, without the wait for more keys. Each key
+--- with `role` "second+" or "second-" (the `[` and `]` of a view) does so. The same key again is a second press. Another key soon after it
+--- that makes a longer mapping (`]g`, `]q`) takes back its change and runs
+--- that mapping.
 ---@param lhs any
 ---@param rhs any
 ---@param opts any
@@ -4810,6 +4843,9 @@ function paw.markers.add(beat, name, opts) end
 ---@param reach any
 function paw.markers.at(beat, reach) end
 
+--- A name for a new marker that has none: "Marker 3" for the third.
+function paw.markers.default_name() end
+
 --- The marker or region of a number (its place in the song), of an id
 --- given as `{ id = n }`, or of a name. Nil if there is none.
 ---@param which any
@@ -5134,11 +5170,16 @@ function paw.option.definitions() end
 function paw.option.list() end
 
 --- The value typed text stands for in option `name` (`true`, `off`, a
---- number, or the text), or nil and an error that says what it takes.
---- A value that is not text is checked as it is.
+--- number, the text, or a list for an option that takes one: `a,b`), or
+--- nil and an error that says what it takes. A value that is not text is
+--- checked as it is.
 ---@param name any
 ---@param text any
 function paw.option.read(name, text) end
+
+--- An option's value as text: a list is its items with commas between.
+---@param value any
+function paw.option.show(value) end
 
 --- Remove the definition of an option and its value (the extension that
 --- defined it unloaded). `paw.opt[name]` is nil again. With `was`, the
@@ -5436,8 +5477,9 @@ function paw.plugins.add_dir(dir, name) end
 function paw.plugins.key_names(track) end
 
 --- What a device calls its keys, by pitch: a plugin that implements CLAP's
---- `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for
---- the rest. Asked again after `M.names_ttl`.
+--- `note-name` (a drum kit's drums, a sampler's keyswitches), or a built-in
+--- device of `M.builtin_names` (the `drums` kit). Empty for the rest. Asked
+--- again after `M.names_ttl`.
 ---@param device any
 function paw.plugins.note_names(device) end
 
@@ -6510,6 +6552,8 @@ function paw.takes.choose_at(track, take, beat) end
 --- it joins again the adjacent pieces that play the same take, where that
 --- is exact (`M.join_pieces`). Clips without takes do not change. Returns
 --- the number of pieces that got the take, or 0 when no clip there has it.
+--- A piece named after its recording or its take is named after the take
+--- that it plays.
 ---@param track any
 ---@param take any
 ---@param from any
@@ -6554,6 +6598,12 @@ function paw.takes.lane_count(track) end
 --- True if a track shows its take lanes.
 ---@param track any
 function paw.takes.lanes_shown(track) end
+
+--- True if the name of a clip comes from its takes: the name of the take
+--- that plays, or of the recording ("take 1" for "take 1.2").
+---@param c any
+---@param takes any
+function paw.takes.named_by_take(c, takes) end
 
 --- Keep the sound of the clip as a take, and continue in a copy of it. The
 --- copy becomes the take that plays. Use it to try a variation. Returns its number.
@@ -6977,8 +7027,9 @@ function paw.track_kinds.spec(which) end
 ---@param height any
 function paw.ui.arrange(width, height) end
 
---- Ask for an exact value on the command line: a number, or `+2` and `-3`
---- to change the current value by steps. `=-6` gives a value below zero.
+--- Ask for an exact value on the command line: a number is the value, with
+--- its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value
+--- by a step.
 ---   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
 --- The options are `show(value)`, which writes the current value,
 --- `parse(text)`, which reads one absolute value, and `min` and `max`, the

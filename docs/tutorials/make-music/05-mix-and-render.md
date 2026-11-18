@@ -9,11 +9,8 @@ render the song to a WAV file and an MP3 file, and listen to the file.
 
 ## Open the practice project
 
-1. In your folder for songs, type this command and press Enter:
-
-   ```sh
-   paw -e 'dofile(os.getenv("PAW_HOME") .. "/examples/tutorials/make-music/5-mix.lua")'
-   ```
+1. Start paw in your folder for songs. Type
+   `:example make-music/5-mix` and press Enter.
 
    - paw opens the arranged song of lesson 4, with its markers.
 

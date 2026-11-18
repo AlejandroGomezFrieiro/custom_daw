@@ -42,10 +42,10 @@ test("guide: set levels and pan, and keep the master out of the red", function()
   eq(paw.cursor.track_id(), guitar.id, "0 goes to the first strip")
   keys("2-")
   eq(guitar.volume, 4, "- lowers the fader a dB, a count gives the dB")
-  keys("grv=-4<CR>")
-  eq(guitar.volume, -4, "grv types the level, =-4 is below 0 dB")
-  keys("grv-2<CR>")
-  eq(guitar.volume, -6, "and -2 steps from it")
+  keys("grv-4<CR>")
+  eq(guitar.volume, -4, "grv types the level, -4 is -4 dB")
+  keys("grv-=2<CR>")
+  eq(guitar.volume, -6, "and -=2 steps from it")
   timed("3]")
   near(guitar.pan, 0.3, 1e-9, "] pans to the right")
   keys("grpL30<CR>")
@@ -60,7 +60,7 @@ test("guide: set levels and pan, and keep the master out of the red", function()
       if p.key == "gain" then synth:set("gain", p.max) end
     end
   end
-  keys("grv=6<CR>")
+  keys("grv6<CR>")
   guitar.volume = 6
   paw.flush()
   local loud = T.render({ tail = 0, bits = 32 }).peak

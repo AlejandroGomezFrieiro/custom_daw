@@ -31,7 +31,7 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `D` `C` `Y` | Deletes, changes, copies to the end of the track. |
 | `o` `O` | Adds a track below or above. |
 | `grn` | Renames the track. |
-| `Alt-j` `Alt-k` | Moves the track down or up. |
+| `Alt-j` `Alt-k` | Moves the track down or up. A count gives the places: `3 Alt-j`. |
 | `:track.new` | Adds a track of a kind chosen from a list (a vocal track, a drum track: kinds that extensions define). |
 | `:track.add vocal` | Adds a track of the named kind. |
 | `M` `s` `r` | Mutes, solos, arms the track. |
@@ -42,13 +42,15 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `I` | Selects the next input (audio, MIDI port and channel). |
 | `Alt-i` | Monitors the input. |
 | `R` | Records from the cursor, or stops the recording. While the song plays, the recording starts at the playhead. |
-| `&` `S` `J` `~` | Repeats, splits, joins, mutes the clip. `J` joins the clip with the MIDI clips over it (a take over it), or else with the next clip. |
+| `&` `S` `J` `~` | Repeats, splits, joins, mutes the clip. `J` joins the clip with the MIDI clips over it (a take over it), or else with the next clip. A count before `&` gives the copies: `4&`. |
 | `grc` | Renames the clip. |
 | `H` `L` | Moves the clip. |
 | `Alt-h` `Alt-l` | Shortens and lengthens the clip. |
 | `vic` `Ctrl-a` | Transposes the clip. On a selection, `Ctrl-a` `Ctrl-x` change the pitch of the clips. |
 | `gw` `gW` | Puts a warp marker on the audio clip at the cursor. Removes the warp marker nearest to the cursor. |
-| `,cf` | Types the fade in and fade out of the audio clip, in beats (`1 2`, or one length for both). |
+| `,cf`, `\ff` | Types the fade in and fade out of the audio clip, in beats (`1 2`, or one length for both). |
+| `\fi` `\fo` | Fades the audio clip in from its start to the cursor. Fades it out from the cursor to its end. A count gives the beats: `2\fo`. |
+| `\fx` | Crossfades the audio clip into the next clip, over a grid step. A count gives the beats. |
 | `grC` | Chooses the color of the track from the colors of the theme. |
 | `Enter` | Edits the notes of the clip in the piano roll. |
 | `K` | Describes what is under the cursor. A kind of track also says what it is. |

@@ -239,7 +239,10 @@ local function files(word, extensions)
   local home = os.getenv("HOME") or ""
   local typed_dir, stem = word:match("^(.*/)([^/]*)$")
   typed_dir, stem = typed_dir or "", stem or word
-  local dir = typed_dir == "" and "." or typed_dir:gsub("^~/", home .. "/")
+  -- Relative names are in the folder that `:cd` set, or beside the project.
+  local here = paw.files and paw.files.here() or "."
+  local dir = typed_dir == "" and here or typed_dir:gsub("^~/", home .. "/")
+  if dir:sub(1, 1) ~= "/" then dir = here .. "/" .. dir end
   local ok, entries = pcall(paw.api.read_dir, dir)
   if not ok then return {} end
   local out = {}
@@ -298,7 +301,7 @@ M.completers = {
   end,
   options = function()
     local out = {}
-    for _, o in ipairs(paw.option.list()) do out[#out + 1] = item(o.name, "now " .. tostring(paw.opt[o.name])) end
+    for _, o in ipairs(paw.option.list()) do out[#out + 1] = item(o.name, "now " .. paw.option.show(paw.opt[o.name])) end
     return out
   end,
   views = function()
@@ -323,6 +326,7 @@ M.completers = {
     return files(word, set_of({ "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga", "mid", "midi", "smf", "kar" }))
   end,
   projects = function(word) return files(word, set_of({ "json", "rpp" })) end,
+  dirs = function(word) return files(word, {}) end,
   -- What `edit` opens: projects, MIDI files (as projects) and sound files.
   openable = function(word)
     return files(word, set_of({ "json", "rpp", "mid", "midi", "smf", "kar", "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }))

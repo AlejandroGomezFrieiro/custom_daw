@@ -90,6 +90,15 @@ local function play(id, c, entry, shift)
   end
 end
 
+--- True if the name of a clip comes from its takes: the name of the take
+--- that plays, or of the recording ("take 1" for "take 1.2").
+function M.named_by_take(c, takes)
+  takes = takes or M.of(c)
+  local name = takes and takes.list[takes.active] and takes.list[takes.active].name
+  if not name then return false end
+  return c.name == name or c.name == (name:gsub("%.%d+$", "")) or c.name == (name:gsub(" %d+$", ""))
+end
+
 --- Play take `index` of a clip. One undo step. Returns the take's name.
 function M.select(id, index)
   local c = api.clip_get(id)
@@ -112,6 +121,11 @@ function M.select(id, index)
     end
   end
   play(id, c, takes.list[index], shift)
+  -- A clip named after its recording ("take 1", its takes "take 1.1" and
+  -- "take 1.2") or after the take it played is named after the take it
+  -- plays now: a piece of a comp says which take it is. A name of the
+  -- user's own stays.
+  if takes.list[index].name and M.named_by_take(c, takes) then api.clip_set(id, "name", takes.list[index].name) end
   local origin = c.kind == "audio" and api.clip_get(id).offset or nil
   write(id, c, { active = index, origin = origin, list = list })
   return takes.list[index].name
@@ -370,8 +384,10 @@ end
 --- where the second carries on the first's repeats.
 local function continues(a, b)
   if math.abs(a.start + a.length - b.start) > 1e-6 or a.kind ~= b.kind then return false end
-  if a.name ~= b.name or (a.muted or false) ~= (b.muted or false) then return false end
   local ta, tb = M.of(a), M.of(b)
+  -- Names that only say the take (pieces of a comp) do not keep them apart.
+  local same_name = a.name == b.name or (ta and tb and M.named_by_take(a, ta) and M.named_by_take(b, tb))
+  if not same_name or (a.muted or false) ~= (b.muted or false) then return false end
   if not (ta and tb) or ta.active ~= tb.active or #ta.list ~= #tb.list then return false end
   for i = 1, #ta.list do
     if ta.list[i].name ~= tb.list[i].name then return false end
@@ -474,12 +490,23 @@ function M.join_pieces(track, from, to)
   return joins
 end
 
+-- The pieces of a comp say the take they play, not the recording.
+local function name_pieces(track)
+  for _, c in ipairs(api.clip_list(track)) do
+    local takes = M.of(c)
+    local name = takes and takes.list[takes.active].name
+    if name and c.name ~= name and M.named_by_take(c, takes) then api.clip_set(c.id, "name", name) end
+  end
+end
+
 --- Make take `take` play on a track from beat `from` to `to`. paw cuts
 --- each clip there with that number of takes at the two ends where it goes
 --- across them. paw selects take `take` for each piece between them. Then
 --- it joins again the adjacent pieces that play the same take, where that
 --- is exact (`M.join_pieces`). Clips without takes do not change. Returns
 --- the number of pieces that got the take, or 0 when no clip there has it.
+--- A piece named after its recording or its take is named after the take
+--- that it plays.
 function M.comp(track, take, from, to)
   take = math.floor(take)
   from, to = math.max(0, math.min(from, to)), math.max(from, to)
@@ -508,6 +535,7 @@ function M.comp(track, take, from, to)
       n = n + 1
     end
   end
+  name_pieces(track)
   M.join_pieces(track, from, to)
   return n
 end
@@ -527,6 +555,7 @@ function M.choose_at(track, take, beat)
   local c = piece_at(track, math.floor(take), beat)
   if not c then return nil end
   M.select(c.id, math.floor(take))
+  name_pieces(track)
   M.join_pieces(track, c.start, c.start + c.length)
   return c
 end

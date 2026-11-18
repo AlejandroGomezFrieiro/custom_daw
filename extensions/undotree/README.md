@@ -84,6 +84,9 @@ is not loaded. The extension is the interface to the rest of the tree.
   state. Redo goes to the child that you visited last.
 - `\` is the option `undotree_ab_key`. Set it to another key, or to `""`
   for none, before the extension loads.
+- `\` is also the local leader. In a view with keys of its own after `\`
+  (the fades of the arrange view, the popovers of a score), the switch
+  comes when the wait for more keys ends.
 
 ### The window
 

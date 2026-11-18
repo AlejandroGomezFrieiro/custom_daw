@@ -170,7 +170,11 @@ end
 --- Such a mapping also works in visual mode and after an operator.
 --- `linewise = true` is for a motion across rows. `jump = true` keeps the
 --- position of the cursor for `<C-o>`. With `repeatable = false`, `.` does
---- not repeat the mapping.
+--- not repeat the mapping. `nowait = true` makes a key that also starts
+--- longer mappings run at once, without the wait for more keys. Each key
+--- with `role` "second+" or "second-" (the `[` and `]` of a view) does so. The same key again is a second press. Another key soon after it
+--- that makes a longer mapping (`]g`, `]q`) takes back its change and runs
+--- that mapping.
 function M.set(lhs, rhs, opts)
   opts = opts or {}
   local default = opts.motion and { "n", "x", "o" } or { "n" }
@@ -368,7 +372,12 @@ function M.set_mode(mode)
   api.ui_redraw()
 end
 
+-- A key that ran at once though longer mappings start with it (`nowait`):
+-- { key, edits_before, edits_after } until the next key or the wait ends.
+local eager
+
 local function reset()
+  eager = nil
   pending, count, register, awaiting, hint_at = {}, nil, nil, nil, nil
   stop_timer()
   if op then
@@ -933,6 +942,27 @@ handle = function(key)
     return fn(key)
   end
 
+  -- After a key that ran at once (`nowait`), this key either makes a longer
+  -- mapping with it, which takes back what that key changed, or starts afresh.
+  if eager then
+    local first = eager
+    eager = nil
+    stop_timer()
+    local exact, longer
+    if key ~= first.key then exact, longer = lookup(first.key .. key) end
+    if exact or longer then
+      if first.after ~= first.before and api.project_get().edits == first.after then paw.undo() end
+      if track.keys then track.edits = api.project_get().edits end
+      -- The count typed first is the longer mapping's: `2[t`.
+      count, register = first.count, first.register
+    else
+      pending = {}
+      if track.keys then track.keys[#track.keys] = nil end
+      finish_command()
+      track.keys, track.edits, track.texts = { key }, api.project_get().edits, text_changes
+    end
+  end
+
   local escape = key == "<Esc>" or key == "<C-c>"
   if escape and (#pending > 0 or count or register or op) then return reset() end
   -- Escape leaves visual and insert mode, unless something that holds keys
@@ -984,6 +1014,24 @@ handle = function(key)
     -- Wait for the rest. Only when what was typed is a mapping already does
     -- the wait end by itself, in favour of that one; a bare prefix stays
     -- until it is finished or Escape drops it.
+    if exact and #pending == 1 and M.mode ~= "o" and not exact.char
+      and (exact.nowait or exact.role == "second+" or exact.role == "second-") then
+      -- It runs now; the wait is only for a key that makes a longer one.
+      -- Its change is a step of its own, so that one undo takes it back.
+      api.undo_checkpoint()
+      local before, typed_count, typed_register = api.project_get().edits, count, register
+      take(exact)
+      pending = { key }
+      eager = { key = key, before = before, after = api.project_get().edits, count = typed_count, register = typed_register }
+      timer = api.timer_start(paw.opt.timeoutlen, false, function()
+        timer = nil
+        if not eager then return end
+        eager, pending = nil, {}
+        finish_command()
+        api.ui_redraw()
+      end)
+      return
+    end
     if exact then
       -- The leader that is also a motion (`,` again in the notation view)
       -- waits longer, so that the list of what can follow it has its time

@@ -78,8 +78,9 @@ extension](../how-to/load-an-extension.md) gives the steps.
 
 paw records all that an extension registers while it loads:
 
-- commands, keys and key groups, views, buffer types, kinds of text
-  buffer, kinds of track
+- commands, keys and key groups, the lines of the key bar
+  (`paw.ui.keybar.set`), views, buffer types, kinds of text buffer, kinds
+  of track
 - picker sources, query fields, fields and views of `:s` and `:g`,
   completers, status line components, grep sources
 - curve providers, address schemes, completion sources, layers, health

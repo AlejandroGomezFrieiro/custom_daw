@@ -11,7 +11,7 @@ the project saves them. The module is `paw.markers`.
 
 | Keys, command | Effect |
 | --- | --- |
-| `g'`, `:marker Chorus` | Put a marker at the cursor. |
+| `g'`, `:marker Chorus` | Put a marker at the cursor. `g'` asks for its name. A marker with no name typed is `Marker 1`, `Marker 2` and so on. |
 | `:region Verse` | Make a region over the selection, or over the loop. |
 | `]'` `['` | Go to the next start of a marker or region, or the one before. These are motions: `d]'`. |
 | `g"`, `:marker.list` | List all markers and regions. Select one to go there. |

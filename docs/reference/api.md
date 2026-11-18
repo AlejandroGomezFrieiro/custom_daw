@@ -33,6 +33,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.device_types()`: Descriptions of each kind of device that you can add to a track. A kind that an extension added (`paw.plugins.add_dir`) has its extension in `from`.
 - `paw.emit(name, payload)`: Call each handler for `name`. paw reports a handler that fails, and goes to the next. Returns true, or false and the reason when a handler returned `false, reason`. So a handler refuses the request of an event (`edit.before`, `project.saving`, `key.pre`).
 - `paw.every(ms, fn)`: Run `fn` every `ms` milliseconds. Returns a handle for `paw.cancel`.
+- `paw.failure(err)`: What a user sees of an error: one line, without the list of calls. The place in the code (`paw/x.lua:12:`) moves to the end, where it does not hide what went wrong. The whole error goes to the log.
 - `paw.flush()`: Send the change events for the edits made until now. The kernel does this at the end of each turn. Call `paw.flush()` to make handlers run sooner.
 - `paw.import_audio(path, opts)`: Bring a sound file into the project: on a new track named after the file (or on `opts.track`), at the cursor (or `opts.start`). Returns the clip.
 - `paw.inspect(value, indent, seen)`: Render any value as readable Lua-like text.
@@ -54,7 +55,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.restore_track(snap, index)`: Make a track from a snapshot, at a 1-based position in the track list.
 - `paw.track(which)`: A track by id, or by name.
 - `paw.tracks()`: Every track, in order, as `paw.Track` objects (the master is `paw.master`).
-- `paw.try(fn, ...)`: Call a function. If it fails, show the error as a message and do not raise it. Returns true and the results of the function, or false and the error.
+- `paw.try(fn, ...)`: Call a function. If it fails, show the error as a message and do not raise it. Returns true and the results of the function, or false and the error. The message is the first lines of the error (`paw.failure`). The log keeps the list of calls.
 - `paw.undo`: the same as `paw.api.undo`.
 - `paw.wait`: the same as `paw.api.wait`.
 
@@ -614,8 +615,16 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.files
 
 - `paw.files.buffer_name(dir, tree)`: The name of the buffer that lists a folder, as a tree or not.
+- `paw.files.cd(dir)`: Set the folder for relative names, as `:cd` does: `dir` is relative to the folder now; `-` is the folder before; nil is the home folder; false returns to the default (beside the project). Returns the folder, or nil and why not.
+- `paw.files.cwd()`: The folder that `:cd` set, or nil when there is none.
+- `paw.files.here()`: The folder that a relative name in a command goes to: the folder that `:cd` set; else the folder of the project's file; else the folder that paw started in.
 - `paw.files.is_dir(path)`: True if a path is a folder.
 - `paw.files.open(dir, opts)`: Show a folder: in this window (`opts.here`), or split beside (a tree by default). `opts.tree`, `opts.filter` ("unused") and `opts.hidden`.
+- `paw.files.path(name)`: The full path of a name that the user typed: `~` is the home folder, and a relative name is in `paw.files.here()`.
+
+  ```lua
+  paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+  ```
 - `paw.files.sound_info(path, stat)`: What a sound file's header says: `{ rate, channels, seconds }`, or nil for a file that is not one that can be read.
 - `paw.files.watch()`: Start to watch the cursor, when a files buffer exists.
 
@@ -914,7 +923,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
   `ctx` has `count`, `register` and, for mappings made with `char = true`, the key typed after the mapping as `char`.
 
-  The options are `mode` (one mode or a list, default "n"), `view` and `desc`. `motion = true` is for a mapping that only moves the cursor. Such a mapping also works in visual mode and after an operator. `linewise = true` is for a motion across rows. `jump = true` keeps the position of the cursor for `<C-o>`. With `repeatable = false`, `.` does not repeat the mapping.
+  The options are `mode` (one mode or a list, default "n"), `view` and `desc`. `motion = true` is for a mapping that only moves the cursor. Such a mapping also works in visual mode and after an operator. `linewise = true` is for a motion across rows. `jump = true` keeps the position of the cursor for `<C-o>`. With `repeatable = false`, `.` does not repeat the mapping. `nowait = true` makes a key that also starts longer mappings run at once, without the wait for more keys. Each key with `role` "second+" or "second-" (the `[` and `]` of a view) does so. The same key again is a second press. Another key soon after it that makes a longer mapping (`]g`, `]q`) takes back its change and runs that mapping.
 - `paw.keymap.set_mode(mode)`: Change mode. When visual mode stops, the selection closes. `gv` opens it again.
 - `paw.keymap.setreg(value, name, yank)`: Put a value in a register: the unnamed register, and `name` if given. With `yank` and no name, it also goes to `"0`, which a delete never changes. A value is a table with a `kind`. The code that yanks and pastes it decides what else it contains. `"_` discards.
 - `paw.keymap.textobject(lhs, fn, opts)`: Define a text object: `fn(ctx)` returns a region, or nil when there is nothing of that kind at the cursor.
@@ -1183,6 +1192,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.markers.add(beat, name, opts)`: Add a marker at a beat. With `opts.length`, add a region from there. Returns it.
 - `paw.markers.at(beat, reach)`: The marker or region start nearest a beat within `reach` beats (half a grid step by default), or the region the beat is inside.
+- `paw.markers.default_name()`: A name for a new marker that has none: "Marker 3" for the third.
 - `paw.markers.find(which)`: The marker or region of a number (its place in the song), of an id given as `{ id = n }`, or of a name. Nil if there is none.
 - `paw.markers.label(marker)`: What a marker is called on screen: its name, or its number in the song.
 - `paw.markers.list()`: Each marker and region, in order of time: { id, beat, name, length, color }. A region has a `length` in beats. A marker has no length.
@@ -1278,7 +1288,8 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   ```
 - `paw.option.definitions()`: Each option given a default by `paw.option.define`, by name: what it was given, `{ default, spec }`, the same table until defined again.
 - `paw.option.list()`: Every option that has a default, by name: { name, default }.
-- `paw.option.read(name, text)`: The value typed text stands for in option `name` (`true`, `off`, a number, or the text), or nil and an error that says what it takes. A value that is not text is checked as it is.
+- `paw.option.read(name, text)`: The value typed text stands for in option `name` (`true`, `off`, a number, the text, or a list for an option that takes one: `a,b`), or nil and an error that says what it takes. A value that is not text is checked as it is.
+- `paw.option.show(value)`: An option's value as text: a list is its items with commas between.
 - `paw.option.undefine(name, was)`: Remove the definition of an option and its value (the extension that defined it unloaded). `paw.opt[name]` is nil again. With `was`, the value that `paw.option.definitions` gave before, that definition returns, and the value stays.
 
 ## Module paw.panes
@@ -1384,7 +1395,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   paw.plugins.add_dir(here .. "/result/lib/clap")   -- `here`: the extension's directory
   ```
 - `paw.plugins.key_names(track)`: The key names of all the devices of a track. When two devices name a key, the first in the chain wins.
-- `paw.plugins.note_names(device)`: What a device calls its keys, by pitch: a plugin that implements CLAP's `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for the rest. Asked again after `M.names_ttl`.
+- `paw.plugins.note_names(device)`: What a device calls its keys, by pitch: a plugin that implements CLAP's `note-name` (a drum kit's drums, a sampler's keyswitches), or a built-in device of `M.builtin_names` (the `drums` kit). Empty for the rest. Asked again after `M.names_ttl`.
 - `paw.plugins.remove_dir(dir)`: Stop to find plugins in `dir`, and stop to offer the devices found there. The devices that exist continue to work.
 
 ## Module paw.qf
@@ -1656,7 +1667,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.takes.badge(c)`: A clip's takes in a few characters, for its label: "2/4", or nil.
 - `paw.takes.choose_at(track, take, beat)`: Make take `take` play in the piece of a track at `beat`, and join it to the pieces next to it where that is exact. Returns the clip, or nil if no piece there has such a take.
-- `paw.takes.comp(track, take, from, to)`: Make take `take` play on a track from beat `from` to `to`. paw cuts each clip there with that number of takes at the two ends where it goes across them. paw selects take `take` for each piece between them. Then it joins again the adjacent pieces that play the same take, where that is exact (`M.join_pieces`). Clips without takes do not change. Returns the number of pieces that got the take, or 0 when no clip there has it.
+- `paw.takes.comp(track, take, from, to)`: Make take `take` play on a track from beat `from` to `to`. paw cuts each clip there with that number of takes at the two ends where it goes across them. paw selects take `take` for each piece between them. Then it joins again the adjacent pieces that play the same take, where that is exact (`M.join_pieces`). Clips without takes do not change. Returns the number of pieces that got the take, or 0 when no clip there has it. A piece named after its recording or its take is named after the take that it plays.
 - `paw.takes.content(clip, index)`: What take `index` of a clip plays, as the clip would have it if that take were selected. For sound, it is `{ file, offset, gain }`, with the offset of the start of the clip in the file. For notes, it is `{ notes, controls }`, counted from the start of the clip. The take that plays is the content of the clip.
 - `paw.takes.count(clip)`: How many takes a clip has (1 without any others), and which plays.
 - `paw.takes.explode(id)`: Each take as a separate clip, on new tracks below the track of the clip, one take on each track. The clip keeps the take that plays. Returns the tracks.
@@ -1664,6 +1675,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.takes.keep(id)`: Throw away every take but the one that plays.
 - `paw.takes.lane_count(track)`: The number of take lanes that a track shows: the highest number of takes of its clips. None while they are hidden or when no clip has takes.
 - `paw.takes.lanes_shown(track)`: True if a track shows its take lanes.
+- `paw.takes.named_by_take(c, takes)`: True if the name of a clip comes from its takes: the name of the take that plays, or of the recording ("take 1" for "take 1.2").
 - `paw.takes.new(id, name)`: Keep the sound of the clip as a take, and continue in a copy of it. The copy becomes the take that plays. Use it to try a variation. Returns its number.
 - `paw.takes.of(clip)`: The takes of a clip: { active, list = { { name }, ... } }, or nil for a clip that has only what it plays.
 - `paw.takes.piece(c, from, to, shift)`: The takes of a piece of a clip, from beat `from` to `to` of the timeline: what a cut gives to each side. Sound keeps its entries as they are (the offset of the piece tells where it is in them). Notes are those of the range, counted from the start of the piece. Nil for a clip without takes. All notes of a looped clip go with each piece, moved by `shift` as the notes of the piece are (see `paw.stretch.moved`).
@@ -1769,7 +1781,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.ui
 
 - `paw.ui.arrange(width, height)`: The position of each visible view on a screen of the current size: a list of `{ name, win, x, y, w, h }`. The tab line is along the top when there is more than one tab. `.borders` contains the borders between windows, and `.nodes` the position of each node of the tree, to resize them.
-- `paw.ui.ask_value(opts, set)`: Ask for an exact value on the command line: a number, or `+2` and `-3` to change the current value by steps. `=-6` gives a value below zero.
+- `paw.ui.ask_value(opts, set)`: Ask for an exact value on the command line: a number is the value, with its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value by a step.
 
   ```lua
   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)

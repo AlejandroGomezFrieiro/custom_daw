@@ -245,6 +245,7 @@ See [Snippets](snippets.md) and [Completion](completion.md).
 | `gs` `gp` | playhead to the start, to the cursor |
 | `gL` `gm` | loop on and off, metronome |
 | `gM` | count a bar in before recording, or not |
+| `,b` | tap the tempo (the beat): press it on each beat, four times or more |
 | `gI` | punch recording on and off (over a selection: punch there); `:preroll 2` plays two bars before the punch in |
 | `R` | record armed tracks from the cursor (while the song plays, from the playhead), or stop recording; with the loop on, every time round is a take |
 
@@ -265,7 +266,7 @@ See [Snippets](snippets.md) and [Completion](completion.md).
 | in a picker | Tab marks a line, Ctrl-q sends the marked (or all) to the quickfix list; Ctrl-v, Ctrl-x, Ctrl-t open it beside, below, in a tab; Ctrl-r steps fuzzy, exact, regex; Alt-d deletes; Ctrl-Up what was typed before |
 | `:vimgrep /pizz/` | every text in the project that matches, in the quickfix list |
 | `:select clip[name~=pizz] > note[pitch>=C5]` | choose what a query finds; `:query` lists it |
-| `]]` `[[` | next, previous clip of the same kind on the track (R: note of the same pitch; in a score, instrument) |
+| `]c` `[c` | next, previous clip of the same kind on the track (R: `]n` `[n`, note of the same pitch) |
 | `]s` `[s` | next, previous track in the group (in a score, instrument in the group) |
 | `[{` `]}` | up to the group the track is in; its last track (in a score, the group's first and last instrument); `[u` is `[{` too |
 | `]u` | down into the group: its first track |

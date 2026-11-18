@@ -227,10 +227,27 @@ local function wanted(ctx, regions_only)
   return m
 end
 
+--- A name for a new marker that has none: "Marker 3" for the third.
+function M.default_name()
+  local taken, n = {}, #M.list() + 1
+  for _, m in ipairs(M.list()) do taken[m.name] = true end
+  while taken["Marker " .. n] do n = n + 1 end
+  return "Marker " .. n
+end
+
 paw.command("marker", function(ctx)
-  local m = M.add(tonumber(ctx.args.at) or paw.cursor.beat, table.concat(ctx.args, " "))
+  local name = table.concat(ctx.args, " "):match("^%s*(.-)%s*$")
+  if name == "" then name = M.default_name() end
+  local m = M.add(tonumber(ctx.args.at) or paw.cursor.beat, name)
   paw.notify(describe(m))
-end, { desc = "Put a marker at the cursor: `marker`, `marker Chorus`; `at=` a beat instead" })
+end, { desc = "Put a marker at the cursor: `marker Chorus`; alone, it is called Marker 1, Marker 2...; `at=` a beat instead" })
+
+paw.command("marker.new", function()
+  local beat = paw.cursor.beat
+  paw.ui.input({ prompt = "Marker name: ", text = M.default_name(), label = "Put a marker" }, function(name)
+    paw.commands.run("marker", { name, at = beat })
+  end)
+end, { desc = "Put a marker at the cursor, asking for its name (Marker 1, Marker 2... if none is typed)" })
 
 paw.command("marker.remove", function(ctx)
   local m = wanted(ctx)
@@ -293,9 +310,13 @@ paw.command("marker.list", function()
   for i, m in ipairs(list) do
     local where = paw.time.format(m.beat)
     if m.length then where = where .. " – " .. paw.time.format(m.beat + m.length) end
-    items[i] = { text = string.format("%2d  %-7s %-24s %s", i, m.length and "region" or "marker", M.label(m), where), beat = m.beat }
+    items[i] = { text = string.format("%2d  %-7s %-24s %s", i, m.length and "region" or "marker", M.label(m), where), beat = m.beat,
+      name = M.label(m), kind = m.length and "region" or "marker" }
   end
-  paw.pick({ title = "Markers and regions", items = items, on_choose = function(item) paw.cursor.set_beat(item.beat) end })
+  paw.pick({ title = "Markers and regions", items = items, on_choose = function(item) paw.cursor.set_beat(item.beat) end,
+    -- What is typed finds a name, not the number of the line: `Chorus 2`.
+    search = function(item) return item.name .. " " .. item.kind end,
+    primary = function(item) return item.name end })
 end, { desc = "List the markers and regions; choose one to go there" })
 
 paw.command("region", function(ctx)

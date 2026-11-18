@@ -264,6 +264,8 @@ return function(pick)
         return { { text = e.human, style = "HelpKey" }, "", e.desc, "", { text = "the manual has nothing on it yet", style = "Dim" } }
       end,
       primary = function(e) return e.human end,
+      -- The whole description, not the part that the width leaves.
+      search = function(e) return e.human .. " " .. e.desc .. " " .. e.tag end,
       on_choose = run_key,
       actions = { ["<C-]>"] = { fn = function(e) if e then paw.help.for_map(e.map) end end, desc = "help" } },
     }

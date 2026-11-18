@@ -13,7 +13,6 @@ local test, eq = T.test, T.eq
 
 -- "Make music with paw" (docs/tutorials/make-music) --------------------------
 
-local practice = "examples/tutorials/make-music/"
 
 --- Type the keys of a step, each item as one key at the keyboard: the
 --- kernel closes the undo step after each.
@@ -25,12 +24,14 @@ local function step(...)
   end
 end
 
---- Open a practice project as `paw -e 'dofile(...)'` does: a new project,
---- then the script.
+--- Open a practice project as the lessons say: `:example make-music/<name>`.
 local function open(script)
   T.fresh()
   paw.keymap.feed("<Esc><Esc>")
-  if script then dofile(practice .. script) end
+  if script then
+    step(":example make-music/" .. script:gsub("%.lua$", "") .. "<CR>")
+    eq(paw.ui.message.text:find("opened the example", 1, true) ~= nil, true, ":example opens " .. script .. ": " .. paw.ui.message.text)
+  end
   paw.flush()
 end
 
@@ -99,6 +100,7 @@ test("make music 1: the first song has drums, bass and keys in a loop of four ba
   step("i", "<C-d>", "3j", "16l", "<CR>", "4j", "16l", "<CR>", "7k", "16l", "<CR>", "5j", "16l", "<Esc>")
   step("<C-w>p")
   eq(melody(paw.track("Bass"):clips()[1]), "45@0+4 41@4+4 48@8+4 43@12+4", "the bass plays A F C G")
+  eq(paw.track("Bass"):clips()[1].length, 16, "the clip ends with the notes, at the end of bar 4")
 
   step("o", "grn", "<C-u>", "Keys<CR>", "a", "synth", "<CR>", "0")
   step("i", "3j", "16l", "o", "3k", "o", "4k", "<CR>")
@@ -227,6 +229,8 @@ test("make music 3: a guitar through an amp chain is recorded in two takes and c
   eq(paw.takes.count(clips[2]), 2, "each piece keeps both takes")
   eq(clips[1].meta.takes.active, 2, "bar 1 plays take 2")
   eq(clips[2].meta.takes.active, 1, "bar 2 plays take 1")
+  eq(clips[1].name:match("%.2$") ~= nil and clips[2].name:match("%.1$") ~= nil, true,
+    "each piece is named after the take it plays: " .. clips[1].name .. ", " .. clips[2].name)
   eq(listen() > 0.01, true, "the comp plays")
 
   step("0", "w", ":clip.fade out=2<CR>")

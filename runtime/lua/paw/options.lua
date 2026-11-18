@@ -163,9 +163,29 @@ function M.check(name, value)
   return nil, string.format("%s takes %s, not %s", name, takes(name), show(value))
 end
 
+--- A list typed as text: `Surge, Vital` is { "Surge", "Vital" }, and a
+--- number in it is a number.
+local function list_of(text)
+  local out = {}
+  for part in tostring(text):gmatch("[^,]+") do
+    part = part:match("^%s*(.-)%s*$")
+    if part ~= "" then out[#out + 1] = tonumber(part) or part end
+  end
+  return out
+end
+
+--- An option's value as text: a list is its items with commas between.
+function M.show(value)
+  if type(value) ~= "table" then return tostring(value) end
+  local parts = {}
+  for i, v in ipairs(value) do parts[i] = tostring(v) end
+  return table.concat(parts, ",")
+end
+
 --- The value typed text stands for in option `name` (`true`, `off`, a
---- number, or the text), or nil and an error that says what it takes.
---- A value that is not text is checked as it is.
+--- number, the text, or a list for an option that takes one: `a,b`), or
+--- nil and an error that says what it takes. A value that is not text is
+--- checked as it is.
 function M.read(name, text)
   local value = text
   if text == "true" or text == "on" then
@@ -177,6 +197,12 @@ function M.read(name, text)
   end
   -- `set ffmpeg=7` keeps the text, for an option that takes text.
   if not M.check(name, value) and M.check(name, tostring(text)) then value = tostring(text) end
+  -- An option that takes a list reads text with commas, or nothing, or
+  -- what it takes in no other form, as one.
+  if type(text) ~= "table" and has(types_of(name), "table")
+    and (tostring(text):find(",", 1, true) or tostring(text) == "" or not M.check(name, value)) then
+    value = list_of(text)
+  end
   local ok, err = M.check(name, value)
   if not ok then return nil, err end
   return value
