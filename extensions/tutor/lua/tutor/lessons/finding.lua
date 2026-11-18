@@ -1,27 +1,34 @@
 -- Lesson 14: finding any command or key.
 return {
   id = "finding",
-  title = "Finding any command or key",
+  title = "Find a command or a key",
   intro = [[
-Nobody remembers every key. paw tells you what you can do at every point:
-stop half way through a key sequence and it lists what can follow; `?` lists
-every key of the view you are in; `:` runs any command by name, with Tab to
-complete it; and pickers find a command, a key, a track or a clip from a few
-letters of its name.
+In this lesson, we find keys and commands from a part of their name. Then we
+use them.
 
-Every key is a command with a name, so whatever you can do with a key you can
-also type, and whatever you find by name you can map to a key of your own.]],
+Nobody remembers all the keys. paw shows what you can do at each point. Stop
+in the middle of a key sequence, and paw shows the keys that can come next.
+`?` shows all the keys of the current view. `:` runs a command by its name,
+and Tab completes the name. Pickers find a command, a key, a track or a clip
+from some letters of its name.
+
+Each key runs a command with a name. So you can type the name of each action
+that a key does. You can also map each command that you find to a key.]],
   idea = [[
-Key hints appear when you pause after the start of a sequence (`g`, `,`, `d`,
-`"`). `?` is the list of keys for the focused view. `:commands` lists every
-command with what it does. `,,` (or `,fc`) picks a command, `,fk` a key, `,ft` a
-track, `,fl` a clip, `,fa` a device, `,fm` a mark, `,fr` a register, `,fp` any
-picker. In a picker, typing narrows the list (letters in order, not
-necessarily together), `<C-n>` `<C-p>` move, `<CR>` chooses, `<Esc>` cancels.
-`K` describes the clip and track under the cursor.]],
+Key hints show when you stop after the start of a sequence (`g`, `,`, `d`,
+`"`). `?` is the list of keys for the view that has the keys. `:commands`
+shows each command and what it does.
+
+`,,` (or `,fc`) finds a command, `,fk` a key, `,ft` a track and `,fl` a
+clip. `,fa` finds a device, `,fm` a mark, `,fr` a register and `,fp` a picker. In a
+picker, the text that you type makes the list shorter. The letters must be in
+order, but they can have other letters between them. `<C-n>` `<C-p>` move,
+`<CR>` selects and `<Esc>` cancels. `K` gives data about the clip and the
+track under the cursor.]],
   vim = [[
-Hints are which-key's, built in. The pickers are Telescope's way: fuzzy, with
-`<C-n>` `<C-p>`. `:` completes with Tab and keeps a history (`<Up>`).]],
+The hints are those of which-key, built into paw. The pickers work as in
+Telescope: fuzzy, with `<C-n>` `<C-p>`. `:` completes with Tab and keeps a
+history (`<Up>`).]],
   setup = function(look)
     paw.project.tempo = 100
     local drums = paw.add_track({ name = "Drums", volume = -6 })
@@ -35,61 +42,61 @@ Hints are which-key's, built in. The pickers are Telescope's way: fuzzy, with
   at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
-      say = "Press `g` and wait: after half a second a box lists every key that can follow `g`. Then press `<Esc>` to drop it.",
+      say = "Press `g` and wait. After half a second, a box shows all the keys that can come after `g`. Then press `<Esc>` to close the box.",
       keys = { "g", { wait = 700 }, "<Esc>" },
       check = function(ctx)
         if paw.keymap.hints() then ctx.hints = true end
         return ctx.hints and paw.keymap.pending() == ""
       end,
-      done = "Any half-typed command shows what can come next: try `,` or `d` or `\"` some time.",
-      hint = "Wait without pressing anything until the box appears.",
+      done = "Each command that is not complete shows what can come next. Try `,`, `d` or `\"` later.",
+      hint = "Do not press a key until the box shows.",
     },
     {
-      say = "`:commands` lists every command and what it does. Type `:commands` and `<CR>`, look, and `q` to close it.",
+      say = "`:commands` shows each command and what it does. Type `:commands` and `<CR>`. Look at the list, then press `q` to close it.",
       keys = { ":commands", "<CR>", "q" },
       check = function(ctx, look) return look.ran(ctx, "commands") and not look.float() end,
-      done = "Every key you have learned runs one of those commands.",
+      done = "Each key that you used runs one of those commands.",
     },
     {
-      say = "Tab completes command names. Press `j` to go to Bass, type `:track.vol`, press `<Tab>` (it becomes `track.volume`), then `<Space>`, `-6` and `<CR>`.",
+      say = "Tab completes the names of commands. Press `j` to go to Bass. Type `:track.vol` and press `<Tab>`: it becomes `track.volume`. Then press `<Space>`, type `-6` and press `<CR>`.",
       keys = { "j", ":track.vol", "<Tab>", "<Space>", "-6", "<CR>" },
       check = function(_, look) return look.track("Bass").volume == -6 end,
-      done = "Bass is at -6 dB: `track.volume` is the command behind `+` and `-`.",
+      done = "Bass is at -6 dB. `+` and `-` run the command `track.volume`.",
     },
     {
-      say = "`,,` opens a picker of every command: type a few letters and `<CR>` runs the one on top. Press `,,`, type `metro` and `<CR>`.",
+      say = "`,,` opens a picker of all the commands. Type some letters, and `<CR>` runs the first command. Press `,,`, type `metro` and press `<CR>`.",
       keys = { ",,", "metro", "<CR>" },
       check = function() return paw.transport.metronome end,
-      done = "The metronome is on: you ran `transport.metronome` without knowing its name or its key.",
+      done = "The metronome is on. You ran `transport.metronome`, but you did not know its name or its key.",
     },
     {
-      say = "`,fk` finds a key by what it does. Press `,fk`, type `loop` to see every key about looping, then `<Esc>`.",
+      say = "`,fk` finds a key from its action. Press `,fk` and type `loop` to see all the keys for the loop. Then press `<Esc>`.",
       keys = { ",fk", "loop", "<Esc>" },
       check = function(ctx, look)
         local state = paw.pick.state()
         if state and state.query == "loop" then ctx.found = true end
         return ctx.found and not look.float()
       end,
-      done = "`gL`, `gl`, `il`: and `<CR>` would have typed the key for you.",
+      done = "The list showed `gL`, `gl` and `il`. `<CR>` on a line types its key for you.",
     },
     {
-      say = "`,ft` goes to a track by name. Press `,ft`, type `dr` and `<CR>`.",
+      say = "`,ft` goes to a track by its name. Press `,ft`, type `dr` and press `<CR>`.",
       keys = { ",ft", "dr", "<CR>" },
       check = function(ctx, look) return look.ran(ctx, "pick.tracks") and look.cursor_track() == "Drums" end,
-      done = "On Drums. `,fl` does the same for clips.",
+      done = "The cursor is on Drums. `,fl` does the same for clips.",
     },
     {
-      say = "`K` describes what is under the cursor: the clip, the track, its devices. Press `K`, then `q` to close.",
+      say = "`K` gives data about the item under the cursor: the clip, the track and its devices. Press `K`, then `q` to close it.",
       keys = { "K", "q" },
       check = function(ctx, look) return look.ran(ctx, "info") and not look.float() end,
-      done = "`K` is the quickest way to see a track's devices, sends and automation.",
+      done = "`K` is the fastest way to see the devices, sends and automation of a track.",
     },
     {
-      say = "Listen with the click: `<Space>`, then `<Space>` to stop and `gm` to switch the click off.",
+      say = "Listen with the click. Press `<Space>`, then `<Space>` to stop and `gm` to disable the click.",
       keys = { "<Space>", { wait = 300 }, "<Space>", "gm" },
       check = function(ctx, look) return look.played(ctx) and not paw.transport.metronome end,
-      done = "The quieter bass, with the click you found by name.",
+      done = "The bass is quieter, and the click came from a command that you found by its name.",
     },
   },
-  outro = "Key hints, `?`, `:commands`, Tab on the command line, `,,` and the `,f` pickers, and `K`.",
+  outro = "We used key hints, `?`, `:commands`, Tab on the command line, `,,`, the `,f` pickers and `K`.",
 }

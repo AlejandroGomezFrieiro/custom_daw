@@ -22,24 +22,31 @@ return {
   id = "registers",
   title = "Yank, paste, registers and macros",
   intro = [[
-Deleting and yanking put what they took in a register; pasting takes it out.
-There is one register you use without naming it, and named ones (`"a` to `"z`)
-for keeping several things at once. Every change can be undone, a count at a
-time. And a macro records keys into a register to play them again.
+In this lesson, we copy a short hook along a track and keep two bass clips
+in named registers. Then we record a macro that changes the hook.
 
-The Lead track has a short hook; Bass has two clips, A and B.]],
+A delete or a yank puts the items in a register, and a paste takes them from
+it. You use one register without a name. The named registers (`"a` to `"z`)
+keep several items at the same time. You can undo each change, and a count
+undoes more than one. A macro records keys into a register, and you can play
+them again.
+
+The Lead track has a short hook. Bass has two clips, A and B.]],
   idea = [[
-`y` yanks, `d` and `x` delete into the register, `p` pastes after the clip (or
-note) under the cursor and `P` at the cursor; `3p` pastes three in a row, and `p`
-again carries on from the last paste. `"a` before a command names the register:
-`"ayic`, `"ap`. `"0` keeps the last yank even after deletes, `"_` throws away,
-`:registers` shows them all. `u` undoes, `3u` three times, `<C-r>` redoes. `qq`
-records keys into register q until `q`; `@q` plays them, `@@` plays the last
-macro again, `5@q` five times.]],
+`y` yanks, and `d` and `x` delete into the register. `p` pastes after the
+clip (or note) under the cursor, and `P` pastes at the cursor. `3p` pastes
+three copies, one after the other, and `p` again continues from the last
+paste. `"a` before a command names the register: `"ayic`, `"ap`. `"0` keeps
+the last yank after deletes, `"_` discards, and `:registers` shows all the
+registers.
+
+`u` undoes, `3u` undoes three times, and `<C-r>` redoes. `qq` records keys
+into register q until `q`. `@q` plays them, `@@` plays the last macro again,
+and `5@q` plays it five times.]],
   vim = [[
-Registers, `"0`, `"_`, `qq`…`q`, `@q`, `@@` and `@:` are Vim's. What a register
-holds is clips, tracks, notes or a device rather than text, and pasted time
-replaces what was there (`:lua paw.opt.ripple = true` makes it push along).]],
+Registers, `"0`, `"_`, `qq`…`q`, `@q`, `@@` and `@:` are from Vim. A register
+contains clips, tracks, notes or a device, not text. Pasted time replaces the
+items that were there. `:lua paw.opt.ripple = true` moves those items later.]],
   setup = function(look)
     paw.project.tempo = 100
     local drums = paw.add_track({ name = "Drums", volume = -6 })
@@ -64,75 +71,75 @@ replaces what was there (`:lua paw.opt.ripple = true` makes it push along).]],
         local r = paw.keymap.getreg()
         return r ~= ctx.before and r and r.kind == "range" and paw.keymap.getreg("0") == r
       end,
-      done = "The hook is in the unnamed register, and in register 0, which keeps the last yank.",
+      done = "The hook is in the unnamed register. It is also in register 0, which keeps the last yank.",
     },
     {
       say = "`p` pastes after the clip under the cursor. Press `p`.",
       keys = { "p" },
       check = function(_, look) return look.layout("Lead") == "hook@0+4 hook@4+4" end,
-      done = "A second hook, right after the first.",
+      done = "A second hook shows immediately after the first.",
     },
     {
-      say = "A count pastes several in a row, and `p` again carries on from the last paste. Press `2p`.",
+      say = "A count pastes more than one copy, and `p` again continues from the last paste. Press `2p`.",
       keys = { "2p" },
       check = function(_, look) return look.layout("Lead") == "hook@0+4 hook@4+4 hook@8+4 hook@12+4" end,
-      done = "Four hooks, filling four bars.",
+      done = "Four hooks fill four bars.",
     },
     {
-      say = "Named registers keep several things at once. Press `j` to go to Bass, `0` to its start, and `\"ayic` to yank clip A into register a.",
+      say = "Named registers keep more than one item. Press `j` to go to Bass and `0` to go to its start. Press `\"ayic` to yank clip A into register a.",
       keys = { "j", "0", "\"ayic" },
       start = function(ctx) ctx.before = paw.keymap.getreg("a") end,
       check = function(ctx)
         local r = paw.keymap.getreg("a")
         return r and r ~= ctx.before and r.kind == "range" and r.rows[1] and r.rows[1][1] and r.rows[1][1].name == "A"
       end,
-      done = "Register a holds A.",
-      hint = "`\"` is the double quote key: `\"`, then `a`, then `yic`.",
+      done = "Register a contains A.",
+      hint = "`\"` is the double quote key. Press `\"`, then `a`, then `yic`.",
     },
     {
-      say = "Press `w` to go to B and `\"byic` to yank it into register b.",
+      say = "Press `w` to go to B. Press `\"byic` to yank it into register b.",
       keys = { "w", "\"byic" },
       start = function(ctx) ctx.before = paw.keymap.getreg("b") end,
       check = function(ctx)
         local r = paw.keymap.getreg("b")
         return r and r ~= ctx.before and r.kind == "range" and r.rows[1] and r.rows[1][1] and r.rows[1][1].name == "B"
       end,
-      done = "Register b holds B.",
+      done = "Register b contains B.",
     },
     {
-      say = "`:registers` shows what each register holds. Type `:registers` and `<CR>`, look, and press `q` to close it.",
+      say = "`:registers` shows the contents of each register. Type `:registers` and `<CR>`. Look at the list, then press `q` to close it.",
       keys = { ":registers", "<CR>", "q" },
       check = function(ctx, look) return look.ran(ctx, "registers") and not look.float() end,
-      done = "`\"a` and `\"b` are there, beside `\"0` and the unnamed `\"\"`.",
+      done = "The list showed `\"a` and `\"b`, with `\"0` and the unnamed `\"\"`.",
     },
     {
-      say = "Press `$` to go to the end of B, then `\"ap` to paste A there and `\"bp` to paste B after it.",
+      say = "Press `$` to go to the end of B. Press `\"ap` to paste A there, and `\"bp` to paste B after it.",
       keys = { "$", "\"ap", "\"bp" },
       check = function(_, look) return look.names("Bass") == "A B A B" end,
-      done = "A B A B: the bass line goes round twice.",
+      done = "The bass line is A B A B. It plays two times.",
     },
     {
-      say = "Undo takes a count too: press `2u` to take both pastes back.",
+      say = "Undo also accepts a count. Press `2u` to undo the two pastes.",
       keys = { "2u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Bass") == "A B" end,
-      done = "A B again. (`2<C-r>` would redo both.)",
+      done = "The bass line is A B again. `2<C-r>` redoes the two pastes.",
     },
     {
-      say = "Now a macro. Press `k` to go up to Lead and `0` to its start, then `qq` to start recording keys into register q.",
+      say = "Now we record a macro. Press `k` to go up to Lead and `0` to go to its start. Then press `qq` to record keys into register q.",
       keys = { "k", "0", "qq" },
       check = function(_, look) return paw.keymap.recording() == "q" and look.cursor_track() == "Lead" and paw.cursor.beat == 0 end,
-      done = "The status line says `recording @q`.",
+      done = "The status line shows `recording @q`.",
     },
     {
-      say = "Type the change to record: `vic` (select the clip), `12<C-a>` (its notes up an octave: on a track `<C-a>` is the fader), `w` (on to the next clip), then `q` to stop recording.",
+      say = "Type the change. `vic` selects the clip, `12<C-a>` moves its notes up one octave and `w` goes to the next clip. Then press `q` to stop the recording.",
       keys = { "vic", "12<C-a>", "w", "q" },
       start = function(ctx) ctx.before = paw.keymap.registers.q end,
       check = function(ctx)
         local r = paw.keymap.registers.q
         return paw.keymap.recording() == nil and r ~= ctx.before and r and r.kind == "keys" and r.keys == "vic12<C-a>w"
       end,
-      done = "The first hook went up an octave while you recorded, and register q holds `vic12<C-a>w`.",
-      hint = "If it went wrong, `u` undoes the change and `qq` records again.",
+      done = "The first hook went up one octave while you recorded. Register q contains `vic12<C-a>w`.",
+      hint = "Without the selection, `<C-a>` on a track moves the fader. If the result is wrong, press `u` to undo the change and `qq` to record again.",
     },
     {
       say = "`@q` plays the macro on the clip under the cursor, and `@@` plays it again. Press `@q`, then `@@`.",
@@ -142,14 +149,14 @@ replaces what was there (`:lua paw.opt.ripple = true` makes it push along).]],
         return #clips == 4 and sorted(look, clips[2]) == hook(look, 12) and sorted(look, clips[3]) == hook(look, 12)
           and sorted(look, clips[4]) == hook(look, 0)
       end,
-      done = "Three hooks an octave up, the last one as it was.",
+      done = "Three hooks are one octave higher. The last hook did not change.",
     },
     {
-      say = "Listen: `gs`, `<Space>`, and `<Space>` to stop.",
+      say = "Listen to the result. Press `gs` and `<Space>`. Press `<Space>` to stop.",
       keys = { "gs", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.ran(ctx, "transport.start") and look.played(ctx) end,
-      done = "A hook that climbs and comes back down.",
+      done = "The hook goes up and then comes down again.",
     },
   },
-  outro = "`yic` and `p` with counts, named registers, `:registers`, `2u`, and a macro recorded with `qq` and played with `@q` and `@@`.",
+  outro = "We used `yic` and `p` with counts, named registers, `:registers` and `2u`. We recorded a macro with `qq` and played it with `@q` and `@@`.",
 }

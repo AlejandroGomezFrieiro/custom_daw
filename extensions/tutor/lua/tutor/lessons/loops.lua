@@ -1,26 +1,34 @@
 -- Lesson 11: looping, the metronome, marks, jumps and search.
 return {
   id = "loops",
-  title = "Looping, marks and finding your way",
+  title = "Loops, marks and jumps",
   intro = [[
-Working on a part means hearing it over and over: the loop. It can be switched
-on and off, set to any stretch with the `gl` operator, and shown on the ruler.
-And in a long song you need to get about quickly: search clips and tracks by
-name with `/`, leave marks with `m` and come back to them with `'`, and go back
-to where you were before a jump.
+In this lesson, we loop the chorus of a song with a click. Then we jump
+between marks and loop two bars of the verse.
+
+When you work on a part, you hear it again and again: this is the loop. You
+can enable and disable the loop, and set it with the `gl` operator. The
+ruler shows it. 
+
+In a long song, you must move quickly. `/` finds
+clips and tracks by name. `m` sets a mark and `'` returns to it. Other keys
+return to the position before a jump.
 
 This song has an intro, a verse and a chorus.]],
   idea = [[
-`gL` loop on and off, `gl` + motion or object sets the loop (`glic`, `gl2W`),
-`il` is the loop as a text object (`yil`, `dil`). `gm` is the metronome, `gs`
-the playhead to the start and `gp` to the cursor. `ma` marks a place, `'a` goes
-back to it, `''` back to before the last jump, `<C-o>` `<C-i>` back and forward
-through jumps. `/name` finds a clip or track, `n` `N` the next and previous
-match, `*` the next clip with the same name.]],
+`gL` enables and disables the loop. `gl` with a motion or an object sets the
+loop (`glic`, `gl2W`). `il` is the loop as a text object (`yil`, `dil`). `gm`
+is the metronome. `gs` moves the playhead to the start and `gp` moves it to
+the cursor.
+
+`ma` sets a mark and `'a` returns to it. `''` returns to the position before
+the last jump. `<C-o>` `<C-i>` move back and forward through jumps. `/name`
+finds a clip or a track. `n` `N` go to the next and the previous match. `*`
+goes to the next clip with the same name.]],
   vim = [[
-Marks, `''`, `<C-o>` `<C-i>`, `/` `n` `N` and `*` are Vim's. Marks belong to a
-view (the arrange view and the piano roll have their own) and follow their
-track when tracks move. `:marks` lists them.]],
+Marks, `''`, `<C-o>` `<C-i>`, `/` `n` `N` and `*` are from Vim. Each view has
+its own marks: the arrange view has some and the piano roll has others. When
+a track moves, its marks move with it. `:marks` shows them.]],
   setup = function(look)
     paw.project.tempo = 110
     local drums = paw.add_track({ name = "Drums", volume = -4 })
@@ -40,16 +48,16 @@ track when tracks move. `:marks` lists them.]],
   at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
-      say = "`gL` switches looping on and off; the status line's `loop` lights up and the ruler shows the loop. Press `gL`.",
+      say = "`gL` enables and disables the loop. The `loop` in the status line comes on, and the ruler shows the loop. Press `gL`.",
       keys = { "gL" },
       check = function() return paw.transport.loop_enabled end,
-      done = "Looping is on, over the first two bars.",
+      done = "The loop is on, over the first two bars.",
     },
     {
-      say = "`/` finds a clip or track by name. Type `/chorus` and press `<CR>`.",
+      say = "`/` finds a clip or a track by its name. Type `/chorus` and press `<CR>`.",
       keys = { "/chorus", "<CR>" },
       check = function() return paw.cursor.beat == 24 end,
-      done = "On the chorus. `n` would go on to the next match (the chorus of Bass).",
+      done = "The cursor is on the chorus. `n` goes to the next match, the chorus of Bass.",
     },
     {
       say = "`gl` is the loop operator. Press `glic` to loop the clip under the cursor.",
@@ -58,53 +66,53 @@ track when tracks move. `:marks` lists them.]],
       done = "The chorus is the loop.",
     },
     {
-      say = "`gm` switches the metronome (click) on. Press `gm`, then `gp` (the playhead to the cursor) and `<Space>`; `<Space>` stops.",
+      say = "`gm` enables the metronome (the click). Press `gm`. Then press `gp` to move the playhead to the cursor, and `<Space>` to play. `<Space>` stops.",
       keys = { "gm", "gp", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return paw.transport.metronome and look.played(ctx) end,
-      done = "The chorus with a click.",
+      done = "The chorus played with a click.",
     },
     {
-      say = "Press `gm` to switch the click off again.",
+      say = "Press `gm` to disable the click.",
       keys = { "gm" },
       check = function(ctx, look) return look.became(ctx, "quiet", not paw.transport.metronome) end,
-      done = "No click.",
+      done = "The click is off.",
     },
     {
       say = "`ma` sets mark a at the cursor. Press `ma`.",
       keys = { "ma" },
       start = function(ctx) ctx.before = paw.keymap.marks("arrange").a end,
       check = function(ctx) local m = paw.keymap.marks("arrange").a return m and m ~= ctx.before and m.beat == 24 end,
-      done = "Mark a is on the chorus. `:marks` lists marks.",
+      done = "Mark a is on the chorus. `:marks` shows the marks.",
     },
     {
-      say = "Go somewhere else with `G` (the last track) and `0` (the start), then press `'a` to jump back to the mark.",
+      say = "Move to a different position: press `G` (the last track) and `0` (the start). Then press `'a` to jump to the mark.",
       keys = { "G", "0", "'a" },
       check = function(ctx, look)
         local there = look.cursor_track() == "Drums" and paw.cursor.beat == 24
         if not there then ctx.away = true end
         return there and ctx.away
       end,
-      done = "Back on the chorus of Drums.",
+      done = "The cursor is on the chorus of Drums again.",
       hint = "`'` is the apostrophe key.",
     },
     {
-      say = "`''` goes back to where you jumped from. Press `''`.",
+      say = "`''` returns to the position before the jump. Press `''`.",
       keys = { "''" },
       check = function(_, look) return look.cursor_track() == "Lead" and paw.cursor.beat == 0 end,
-      done = "On Lead at the start, where you were before `'a`. `''` again would go back to the chorus; `<C-o>` goes further back.",
+      done = "The cursor is at the start of Lead, where it was before `'a`. `''` again returns to the chorus. `<C-o>` goes further back.",
     },
     {
-      say = "`gl` takes motions too: press `3|` to go to bar 3, then `gl2W` to loop two bars from there.",
+      say = "`gl` also accepts motions. Press `3|` to go to bar 3. Then press `gl2W` to loop two bars from there.",
       keys = { "3|", "gl2W" },
       check = function() return paw.transport.loop_start == 8 and paw.transport.loop_end == 16 end,
-      done = "The first two bars of the verse are the loop.",
+      done = "The loop is the first two bars of the verse.",
     },
     {
-      say = "Listen: `gp` and `<Space>`; `<Space>` stops.",
+      say = "Listen. Press `gp` and `<Space>`. `<Space>` stops.",
       keys = { "gp", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.ran(ctx, "transport.to_cursor") and look.played(ctx) end,
-      done = "Two bars of the verse, round and round.",
+      done = "Two bars of the verse play again and again.",
     },
   },
-  outro = "`gL`, `glic` and `gl2W` for the loop, `gm` for the click, `/` to find, `ma` `'a` `''` to come and go.",
+  outro = "We set the loop with `gL`, `glic` and `gl2W`, and the click with `gm`. We used `/` to find, and `ma` `'a` `''` to jump.",
 }

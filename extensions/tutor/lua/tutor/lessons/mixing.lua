@@ -5,28 +5,37 @@ local function near(a, b) return math.abs(a - b) < 1e-6 end
 
 return {
   id = "mixing",
-  title = "Mixing: faders, pan, buses, sends, automation",
+  title = "The mix: faders, pan, buses, sends, automation",
   intro = [[
-Mixing is setting how loud each track is (its fader, in dB), where it sits
-from left to right (pan), which tracks to silence (mute) or hear alone (solo),
-and where its sound goes: to the master, into a bus that groups tracks under
-one fader, or partly to an effect track through a send. Automation changes a
-fader (or any parameter) over time.
+In this lesson, we mix a short song. We change the level and the pan of the
+bass, and we send the keys through a bus. Then we give the melody an echo
+and make the chords fade in.
 
-The mixer shows a strip per track; the same changes can be made from the
-arrange view.]],
+To mix, you set the level of each track (its fader, in dB) and its position
+from left to right (pan). You mute some tracks, or solo a track to hear it
+alone. You also set where the sound of each track goes. It can go to the
+master, or into a bus that groups tracks under one fader. A send can also
+take a part of it to an effect track. Automation changes a fader (or a parameter) over time.
+
+The mixer shows one strip for each track. You can make the same changes from
+the arrange view.]],
   idea = [[
-In the mixer tracks run across, so `h` `l` choose a strip and `j` `k` a row of
-it (its devices, sends, fader, pan, mute, solo, arm). `+` `-` change the row
-under the cursor, by 1 dB on the fader, `]` `[` pan, `M` `s` `r` mute, solo,
-arm. In the arrange view the same are `+` `-`, `]` `[`, `M` `s` `r`. Routing is done by command:
-`:track.output Bus` sends the track into the track called Bus, `:track.output
-master` back to the master; alone it offers the tracks to choose from. `A` adds a volume automation point at the cursor,
-`,at` switches the automation off and on, `,ax` clears it.]],
+In the mixer, the tracks go across. `h` `l` select a strip, and `j` `k`
+select a row of it. The rows are devices, sends, fader, pan, mute, solo and arm. `+` `-`
+change the row under the cursor, by 1 dB on the fader. `]` `[` pan, and `M`
+`s` `r` mute, solo and arm. In the arrange view, the same keys are `+` `-`,
+`]` `[` and `M` `s` `r`.
+
+Commands set the routing. `:track.output Bus` sends the track into the track
+with the name Bus, and `:track.output master` sends it to the master again.
+With no name, it shows the tracks that you can select. `A` adds a volume
+automation point at the cursor. `,at` disables and enables the automation,
+and `,ax` clears it.]],
   vim = [[
-The mixer turns the grid sideways: `h` `l` move between tracks because tracks
-are its columns, and `j` `k` only ever move, as everywhere. `6<C-x>` lowers the
-row by six, as `<C-x>` lowers a number in Vim. `<C-w>c` closes it.]],
+The mixer turns the grid on its side. `h` `l` move between tracks because the
+tracks are its columns, and `j` `k` only move, as in each view. `6<C-x>`
+decreases the row by six, as `<C-x>` decreases a number in Vim. `<C-w>c`
+closes the mixer.]],
   setup = function(look)
     paw.project.tempo = 100
     local drums = paw.add_track({ name = "Drums", volume = -6 })
@@ -56,93 +65,93 @@ row by six, as `<C-x>` lowers a number in Vim. `<C-w>c` closes it.]],
   at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
-      say = "Press `,m` to open the mixer along the bottom: a strip per track, with its fader and meter.",
+      say = "Press `,m` to open the mixer at the bottom. It has one strip for each track, with a fader and a meter.",
       keys = { ",m" },
       check = function(_, look) return look.focused() == "mixer" end,
-      done = "The mixer has the keyboard. The master is on the right.",
+      done = "The mixer gets the keys. The master is on the right.",
     },
     {
-      say = "Here `h` and `l` choose a strip and the cursor starts on its fader; `-` and `+` move the row under the cursor down and up by 1 dB. Press `l` to go to Bass, then `-` three times.",
+      say = "Here `h` and `l` select a strip, and the cursor starts on its fader. `-` and `+` change the row under the cursor by 1 dB. Press `l` to go to Bass, then press `-` three times.",
       keys = { "l", "-", "-", "-" },
       check = function(_, look) return look.cursor_track() == "Bass" and near(look.track("Bass").volume, -7) end,
-      done = "Bass is at -7 dB, three quieter than it was. `3-` or `3<C-x>` does it in one go.",
+      done = "Bass is at -7 dB, 3 dB lower than before. `3-` or `3<C-x>` does the same in one step.",
     },
     {
-      say = "`]` and `[` pan the strip right and left, wherever the cursor is on it. Press `]` three times.",
+      say = "`]` and `[` pan the strip to the right and to the left, at each row of the strip. Press `]` three times.",
       keys = { "]", "]", "]", { wait = 1000 } },
       check = function(_, look) return near(look.track("Bass").pan, 0.3) end,
-      done = "Bass leans to the right.",
+      done = "Bass is a little to the right.",
     },
     {
-      say = "`s` solos a track: only soloed tracks are heard. Press `<Space>` to play, `s` to hear Bass alone, `s` again to hear everything, and `<Space>` to stop.",
+      say = "`s` solos a track: you hear only the soloed tracks. Press `<Space>` to play and `s` to hear Bass alone. Press `s` again to hear all tracks, and `<Space>` to stop.",
       keys = { "<Space>", "s", { wait = 200 }, "s", "<Space>" },
       check = function(ctx, look)
         local _, n = look.ran(ctx, "track.solo")
         return n >= 2 and not look.track("Bass").solo and look.played(ctx)
       end,
-      done = "Solo is for listening closely; it changes nothing in the mix.",
+      done = "Solo helps you listen carefully. It does not change the mix.",
     },
     {
       say = "`M` mutes. Press `l` to go to Keys and `M` to mute it.",
       keys = { "l", "M" },
       check = function(_, look) return look.track("Keys").mute end,
-      done = "Keys is muted: its `M` is lit.",
+      done = "Keys is muted, and its `M` is lit.",
     },
     {
-      say = "Press `M` again to unmute Keys, and `<C-w>c` to close the mixer.",
+      say = "Press `M` again to unmute Keys. Press `<C-w>c` to close the mixer.",
       keys = { "M", "<C-w>c" },
       check = function(ctx, look) return look.became(ctx, "back", not look.track("Keys").mute and not look.visible("mixer")) end,
-      done = "Back in the arrange view, still on Keys. Here too `+` `-` are the fader and `]` `[` the pan.",
+      done = "The arrange view gets the keys again, and the cursor is still on Keys. Here also, `+` `-` change the fader and `]` `[` change the pan.",
     },
     {
-      say = "A bus is a track that others play into. Type `:track.add Bus` and `<CR>` to add one.",
+      say = "A bus is a track that other tracks play into. Type `:track.add Bus` and press `<CR>` to add one.",
       keys = { ":track.add Bus", "<CR>" },
       check = function(_, look) return look.track("Bus") ~= nil end,
-      done = "A track called Bus, below Keys. The cursor is on it.",
+      done = "A track with the name Bus shows below Keys. The cursor is on it.",
     },
     {
-      say = "Route Keys into it: `/Keys` and `<CR>` find the track, then type `:track.output Bus` and `<CR>`.",
+      say = "Now send Keys into the bus. Type `/Keys` and `<CR>` to find the track. Then type `:track.output Bus` and `<CR>`.",
       keys = { "/Keys", "<CR>", ":track.output Bus", "<CR>" },
       check = function(_, look) return api.track_get(look.track("Keys").id).output == look.track("Bus").id end,
-      done = "Keys now plays through Bus: Bus's fader turns the chords up and down, with anything else you route there.",
+      done = "Keys plays through Bus now. The fader of Bus changes the level of the chords and of each other track that you send there.",
     },
     {
-      say = "A send copies some of a track to another, here to Echo, which has a delay. There is no key for it yet: type `:lua paw.track(\"Lead\"):send(paw.track(\"Echo\"), -6)` and `<CR>`.",
+      say = "A send copies a part of a track to a different track. Here it goes to Echo, which has a delay. No key does this yet. Type `:lua paw.track(\"Lead\"):send(paw.track(\"Echo\"), -6)` and `<CR>`.",
       keys = { ":lua paw.track(\"Lead\"):send(paw.track(\"Echo\"), -6)", "<CR>" },
       check = function(_, look)
         for _, send in ipairs(api.track_get(look.track("Lead").id).sends) do
           if send.target == look.track("Echo").id and near(send.level, -6) then return true end
         end
       end,
-      done = "Lead sends to Echo 6 dB down: the melody now has an echo, and Echo's fader sets how much.",
-      hint = "`:lua` runs Lua; Tab does not complete inside it, so type it as it is.",
+      done = "Lead sends to Echo at -6 dB. The melody has an echo now, and the fader of Echo sets its level.",
+      hint = "`:lua` runs Lua. Tab does not complete in it, so type the text exactly as it is.",
     },
     {
-      say = "Automation: `A` adds a volume point at the cursor and asks its value. On Keys, press `0`, `A`, `<C-u>` to clear the value, type `-30` and `<CR>`.",
+      say = "Now we add automation. `A` adds a volume point at the cursor and asks for its value. On Keys, press `0` and `A`. Press `<C-u>` to clear the value, type `-30` and press `<CR>`.",
       keys = { "0", "A", "<C-u>", "-30", "<CR>" },
       check = function(_, look)
         local lane = look.track("Keys"):lane("volume")
         return lane and #lane:points() == 1 and lane:points()[1][1] == 0 and near(lane:points()[1][2], -30)
       end,
-      done = "A point: -30 dB at the start. An `A` appears in the track header.",
-      hint = "The cursor must be on Keys: `/Keys` and `<CR>`.",
+      done = "A point of -30 dB is at the start. An `A` shows in the track header.",
+      hint = "The cursor must be on Keys. Type `/Keys` and `<CR>`.",
     },
     {
-      say = "Press `2W` to go two bars on, then `A`, `<C-u>`, `-10` and `<CR>`: the chords fade in over two bars.",
+      say = "Press `2W` to move two bars. Then press `A` and `<C-u>`, type `-10` and press `<CR>`. The chords fade in over two bars.",
       keys = { "2W", "A", "<C-u>", "-10", "<CR>" },
       check = function(_, look)
         local lane = look.track("Keys"):lane("volume")
         local p = lane and lane:points()
         return p and #p == 2 and p[2][1] == 8 and near(p[2][2], -10)
       end,
-      done = "The line between the points is drawn in the track's lane.",
+      done = "The lane of the track shows the line between the points.",
     },
     {
-      say = "Listen from the start: `gs`, `<Space>`, and `<Space>` to stop.",
+      say = "Listen from the start. Press `gs` and `<Space>`, and `<Space>` to stop.",
       keys = { "gs", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.ran(ctx, "transport.start") and look.played(ctx) end,
-      done = "Chords fading in through a bus, a melody with an echo, the bass to the right.",
+      done = "The chords fade in through a bus, the melody has an echo, and the bass is on the right.",
     },
   },
-  outro = "The mixer's faders, pan, solo and mute; a bus with `:track.output`; a send; volume automation with `A`.",
+  outro = "We used the faders, pan, solo and mute of the mixer. We made a bus with `:track.output`, a send, and volume automation with `A`.",
 }
