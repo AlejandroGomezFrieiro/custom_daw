@@ -78,7 +78,7 @@ closes the mixer.]],
     },
     {
       say = "`]` and `[` pan the strip to the right and to the left, at each row of the strip. Press `]` three times.",
-      keys = { "]", "]", "]", { wait = 1000 } },
+      keys = { "]", "]", "]" },
       check = function(_, look) return near(look.track("Bass").pan, 0.3) end,
       done = "Bass is a little to the right.",
     },
