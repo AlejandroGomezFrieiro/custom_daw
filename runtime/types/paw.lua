@@ -4883,8 +4883,8 @@ function paw.mouse.has(event, letter) end
 
 --- Show on the status line what is under the pointer, or what it would do.
 --- nil shows nothing. A view calls it while the pointer moves over it.
---- `shape` is the shape a window gives the pointer there: "resize_h" over
---- an edge dragged sideways, "resize_v" over one dragged up or down.
+--- `shape` is the shape a window gives the pointer there: `"resize_h"` over
+--- an edge dragged sideways, `"resize_v"` over one dragged up or down.
 ---@param text any
 ---@param shape any
 function paw.mouse.hint(text, shape) end
